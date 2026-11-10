@@ -1,10 +1,11 @@
 # Trealla with Fil-C
 
 The Fil-C package tracks upstream commit
-[`12f4cbd7fc2269265e7306775ded2f6410671499`](https://github.com/trealla-prolog/trealla/commit/12f4cbd7fc2269265e7306775ded2f6410671499),
-HEAD when checked on September 5, 2026 (one commit after v3.9.40).
-The previous pin was v2.84.14, from November 5, 2025. Both versions were
-built with the existing Fil-C toolchain; LLVM and the runtime were unchanged.
+[`98a821db66715618e358c36c7d7164213c0f6820`](https://github.com/trealla-prolog/trealla/commit/98a821db66715618e358c36c7d7164213c0f6820),
+HEAD when checked on November 10, 2026. The previous pins were
+`12f4cbd7` (September 5, 2026, one commit after v3.9.40; 630 commits
+earlier) and v2.84.14 (November 5, 2025). All were built with the existing
+Fil-C toolchain; LLVM and the runtime were unchanged.
 
 ```sh
 nix build .#pkgsFilc.trealla
@@ -29,6 +30,36 @@ union. Choice-point copies consequently preserve the cursor's capability.
 The generation checks that reject invalidated enumerations remain intact.
 This is ordinary C and does not require a Fil-C-specific escape hatch.
 
+### November 2026 update
+
+- Both Fil-C patches are redone against the new source. The tabling patch
+  now covers a third cursor, and the FFI handle patch covers the new
+  `'$dlsym_deref'/3`.
+- `trealla-runtime-atom-arity-unify.patch` is dropped: upstream's
+  `unify.c` now refuses to unify a run-time atom with a compound of the
+  same name.
+- `trealla-goal-expansion-share-cells.patch` stays. Unpatched HEAD still
+  reads a freed bigint in the runtime check's `bigint_expansion.pl`.
+- `trealla-heap-page-mark.patch` is new and fixes wrong answers in
+  unpatched HEAD. A clause that builds a term and tail-calls with it
+  could have its frame reused and the term cut short when the term began
+  a new heap page; `msort(Xs, Ys), merged(Ys, Zs)` then failed for some
+  list lengths, which stopped `experiments/regex-nanofil/rx.pl` on the
+  pattern `word`. Upstream
+  [`ccb10b7d`](https://github.com/trealla-prolog/trealla/commit/ccb10b7db513ed9fc4194c08a458d68d42314b01)
+  (October 12) exposed it by allowing more tail calls; the cause is an
+  older off-by-one in how a heap mark names its page. The patch
+  describes it, the runtime check has the reproduction, and upstream's
+  688 tests pass with it. It is not reported upstream yet.
+- Upstream added foreign callbacks (`foreign_callback/4`, libffi
+  closures) and passes more C pointers through Prolog integers. Those
+  paths are not converted to handles and are untested under Fil-C; a
+  pointer that travels through an integer loses its capability, so they
+  would trap rather than work.
+- `(1<<64) /\ \1` now evaluates correctly and `atom_number/2` fails on
+  a non-number instead of throwing, two defects nanofil had worked
+  around (`nanofil/docs/archive/hosts.md`).
+
 ## Validation
 
 Before the cursor patch, the latest revision built successfully but failed
@@ -40,7 +71,8 @@ After the cursor patch, all 402 upstream tests passed in 2 minutes
 
 The Nix runtime check exercises all six tabling regression files and five
 DCG files, plus CLP(Z), installed-library association maps, exact integer
-arithmetic, and a call from Prolog into a Fil-C-built shared library through
+arithmetic, a tail call whose argument starts a new heap page, and a call
+from Prolog into a Fil-C-built shared library through
 `use_foreign_module`. It checks both exit status and expected output;
 Trealla can report an initialization error while exiting successfully.
 Package build-time checks remain disabled in favor of this explicit check.

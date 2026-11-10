@@ -1,41 +1,35 @@
 diff --git a/src/bif_tabling.c b/src/bif_tabling.c
-index 764929e0..e49f9aa6 100644
+index 413b447f..20b817b4 100644
 --- a/src/bif_tabling.c
 +++ b/src/bif_tabling.c
-@@ -734,7 +734,7 @@ typedef struct {
- 
- 	// Bumped by abolish; enumerations carry the generation they started
- 	// in and stop cleanly if the tables were pulled out from under them.
+@@ -850,7 +850,7 @@ typedef struct {
+ 	// Bumped by abolish; the worklist enumerations carry the generation
+ 	// they started in and stop cleanly if the tables were pulled out from
+ 	// under them. Answer enumerations keep their tables (tbl_abolish()).
 -	// int64_t (not uint64_t) to match q->st.v2, where they stash it.
 +	// int64_t (not uint64_t) to match q->st.table_generation, where they stash it.
  
  	int64_t generation;
  
-@@ -1975,10 +1975,10 @@ static bool bif_tbl_get_answer_2(query *q)
- 
- 	// Stop cleanly if the tables were abolished under a live enumeration.
- 
--	if (q->retry && (q->st.v2 != s->generation))
-+	if (q->retry && (q->st.table_generation != s->generation))
- 		return false;
+@@ -3369,7 +3369,7 @@ static bool bif_tbl_get_answer_2(query *q)
+ 	if (!t)
+ 		return throw_error(q, p1, p1_ctx, "type_error", "table_handle");
  
 -	tbl_ans *a = q->retry ? (tbl_ans*)(size_t)q->st.v1 : t->first_ans;
 +	tbl_ans *a = q->retry ? (tbl_ans*)q->st.table_cursor : t->first_ans;
  
  	if (!a)
  		return false;
-@@ -1991,8 +1991,8 @@ static bool bif_tbl_get_answer_2(query *q)
+@@ -3382,7 +3382,7 @@ static bool bif_tbl_get_answer_2(query *q)
  	// and either would silently drop answers here.
  
  	if (a->next) {
 -		q->st.v1 = (uint64_t)(size_t)a->next;
--		q->st.v2 = s->generation;
 +		q->st.table_cursor = a->next;
-+		q->st.table_generation = s->generation;
+ 		CHECKED(tbl_note_reader(s, q));
  		CHECKED(push_choice(q));
- 	}
- 
-@@ -2150,17 +2150,17 @@ static bool bif_tbl_wkl_work_3(query *q)
+ 		t->enumerated = true;		// see tbl_revalidate()
+@@ -3608,17 +3608,17 @@ static bool bif_tbl_wkl_work_3(query *q)
  	if (!t)
  		return throw_error(q, p1, p1_ctx, "type_error", "table_handle");
  
@@ -57,15 +51,37 @@ index 764929e0..e49f9aa6 100644
  		CHECKED(push_choice(q));
  	}
  
+@@ -3688,17 +3688,17 @@ static bool tbl_neg_work(query *q, tbl_state *s, cell *p1, pl_ctx p1_ctx)
+ 	if (!s->scc_depth)
+ 		return false;
+ 
+-	if (q->retry && (q->st.v2 != s->generation))
++	if (q->retry && (q->st.table_generation != s->generation))
+ 		return false;
+ 
+-	tbl_susp *sp = q->retry ? (tbl_susp*)(size_t)q->st.v1 : s->scc[s->scc_depth-1].negs;
++	tbl_susp *sp = q->retry ? (tbl_susp*)q->st.table_cursor : s->scc[s->scc_depth-1].negs;
+ 
+ 	if (!sp)
+ 		return false;
+ 
+ 	if (sp->next) {
+-		q->st.v1 = (uint64_t)(size_t)sp->next;
+-		q->st.v2 = s->generation;
++		q->st.table_cursor = sp->next;
++		q->st.table_generation = s->generation;
+ 		CHECKED(push_choice(q));
+ 	}
+ 
 diff --git a/src/internal.h b/src/internal.h
-index 45775cc7..216ff890 100644
+index 08b28a83..84176415 100644
 --- a/src/internal.h
 +++ b/src/internal.h
-@@ -648,6 +648,7 @@ struct run_state_ {
- 			iter_single:1;
+@@ -686,6 +686,7 @@ struct run_state_ {
+ 			kchain:1, kchain2:1;		// dbe walks a key chain (idx2's if kchain2), not pr->head
  		};
  		struct { uint64_t uv1, uv2; };
 +		struct { void *table_cursor; int64_t table_generation; };
  		struct { int64_t v1, v2; };
  		struct { cell *c; pl_ctx c_ctx; };
- 		int64_t cnt;
+ 		sliter *tmp_iter;

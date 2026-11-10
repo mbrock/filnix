@@ -143,9 +143,9 @@ natively and the WebAssembly memory size in wasm, which never shrinks.
   "RuntimeError: function signature mismatch" as soon as a goal such as
   `catch((call(c_parse(T, I)), R = ok), E, R = error(E))` runs over real tokens; each
   stage alone succeeds. It is also built without filnix's Trealla
-  patches, one of which (`trealla-runtime-atom-arity-unify`) fixes
-  unification that nanofil relies on.
-- **Trealla `tpl.wasm`** at nanofil's pinned revision with the patches
+  patches, one of which (`trealla-runtime-atom-arity-unify`, dropped
+  since upstream fixed it) fixed unification that nanofil relies on.
+- **Trealla `tpl.wasm`** at nanofil's then pinned revision (`12f4cbd7`) with the patches
   (`trealla-wasm.nix`, 2.1 MB) runs everything correctly, at 5 to 10x
   swipl-wasm's time and 3 to 10x its memory. Hello world needs a 1 GB
   heap. On the 26-header input it reaches 3.77 GB of the 4 GB that

@@ -31,6 +31,27 @@ pkgs.runCommand "filc-trealla-runtime-check" { } ''
   timeout 30 ${trealla}/bin/tpl -q bigint_expansion.pl < /dev/null > actual
   echo 9223372036854775808-5 > bigint_expected
   diff -u bigint_expected actual
+  # A tail call whose argument starts a new heap page used to reuse the
+  # frame and trim the page under it (patches/trealla-heap-page-mark.patch).
+  cat > heap_page_tco.pl <<'EOF'
+  merged([], []).
+  merged([R], [R]) :- !.
+  merged([A-B, C-D|Rs], Out) :-
+      (   C =< B + 1 -> E is max(B, D), merged([A-E|Rs], Out)
+      ;   Out = [A-B|Out1], merged([C-D|Rs], Out1)
+      ).
+  normal(Rs0, Rs) :- msort(Rs0, Rs1), merged(Rs1, Rs).
+  pairs(N, N, []) :- !.
+  pairs(I, N, [I-I|T]) :- I1 is I + 1, pairs(I1, N, T).
+  main :-
+      (   between(1, 400, N), pairs(0, N, Cs), M is N - 1,
+          \+ normal(Cs, [0-M]), write(wrong(N)), nl, fail
+      ;   write(ok), nl
+      ).
+  :- initialization((main, halt)).
+  EOF
+  timeout 30 ${trealla}/bin/tpl -q heap_page_tco.pl < /dev/null > actual
+  diff -u expected actual
   echo 'int trealla_test_increment(int x) { return x + 1; }' > ffi.c
   ${filcc}/bin/clang -shared -fPIC ffi.c -o ffi.so
   cat > ffi.pl <<EOF

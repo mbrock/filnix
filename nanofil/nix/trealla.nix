@@ -2,17 +2,17 @@
 # fast development runs. nixpkgs' Trealla predates native tabling.
 { pkgs }:
 pkgs.trealla.overrideAttrs (old: {
-  version = "unstable-2026-09-05";
+  version = "unstable-2026-11-10";
   src = pkgs.fetchFromGitHub {
     owner = "trealla-prolog";
     repo = "trealla";
-    rev = "12f4cbd7fc2269265e7306775ded2f6410671499";
-    hash = "sha256-PL5RyiakGDyFLnoSiOS5/b2AoRNwqoG7W+ShYsNl5a4=";
+    rev = "98a821db66715618e358c36c7d7164213c0f6820";
+    hash = "sha256-kU3Vgtk7Ni7nYVJ/ii++EForHclMh1WrQpyNYKgpqmQ=";
   };
   patches = (old.patches or [ ]) ++ [
     ../../patches/trealla-filc-tabling-cursors.patch
     ../../patches/trealla-goal-expansion-share-cells.patch
-    ../../patches/trealla-runtime-atom-arity-unify.patch
+    ../../patches/trealla-heap-page-mark.patch
   ];
   postPatch = builtins.replaceStrings [ "Makefile" ] [ "GNUmakefile" ] (
     old.postPatch or ""

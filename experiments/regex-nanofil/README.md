@@ -261,7 +261,7 @@ Compile time, all 36 functions in one module (27000 lines of assembly):
 | Step | Time |
 | --- | ---: |
 | bytecode to IR, SWI-Prolog | 0.07 s |
-| bytecode to IR, Trealla | 0.16 s |
+| bytecode to IR, Trealla | 0.17 s |
 | `nanofil -O compile`, SWI-Prolog with a saved state | 5.1 s |
 | `as` | 0.02 s |
 | `clang -shared` | 0.06 s |
@@ -297,22 +297,27 @@ What differs is the cost. `nanofil -O compile` of one pattern, over the 39:
 | Host | Load | Compile, median | Compile, longest | Peak memory |
 | --- | ---: | ---: | ---: | ---: |
 | SWI-Prolog, saved state | 0.05 s | 0.2 s | 0.7 s | 43 MB |
-| Trealla | 1.1 s | 0.64 s | 4.8 s | 1.9 GB |
-| Trealla, `--registers=stack` | 1.1 s | 0.22 s | 1.1 s | 0.55 GB |
-| Fil-C Trealla | 5.5 s | 4.0 s | 26 s | 7.5 GB |
-| Fil-C Trealla, `--registers=stack` | 5.9 s | 1.3 s | 6.8 s | 2.4 GB |
+| Trealla | 0.5 s | 0.40 s | 2.8 s | 0.63 GB |
+| Trealla, `--registers=stack` | 0.5 s | 0.15 s | 0.7 s | 0.23 GB |
+| Fil-C Trealla | 2.8 s | 2.4 s | 17 s | 2.1 GB |
+| Fil-C Trealla, `--registers=stack` | 2.6 s | 0.87 s | 4.2 s | 0.80 GB |
 
 - The Trealla rows are one process that loads nanofil once and compiles the
   39 in turn, as a compiler embedded in a long-lived process would. It is a
   scratch copy of `main.pl` with a loop in place of `main` and without the C
-  front end and the interpreter; with them loading takes 1.65 s (8 to 9 s
+  front end and the interpreter; with them loading takes 0.9 s (4.8 s
   on Fil-C Trealla). The peak memory is the largest pattern's, which
-  needs 1.8 GB alone.
+  needs 0.6 GB alone.
+- These are for the pin of November 10 (`98a821db` and
+  `patches/trealla-heap-page-mark.patch`). The pin of September 5 took
+  1.5 times as long and three times the memory: 0.58 s median, 4.0 s
+  longest and 1.9 GB native, 4.0 s, 26 s and 7.5 GB under Fil-C.
+  `nanofil/docs/archive/hosts.md` says where the time and memory go.
 - `rxc` starts a process per pattern and loads all of `main.pl`, so it takes
-  1.9 to 7.8 s per pattern on Trealla (median 2.4 s; 21 s for the slowest of
+  1.0 to 4.1 s per pattern on Trealla (median 1.4 s; 11 s for the slowest of
   the 346) against 0.15 to 0.8 s on SWI-Prolog. Filling the cache for the
-  39 takes 116 s instead of 13 s.
-- The whole module of 36 functions takes 37 s and 5.5 GB on Trealla, 5.5 s
+  39 takes 62 s instead of 13 s.
+- The whole module of 36 functions takes 23 s and 1.6 GB on Trealla, 5.5 s
   and 48 MB on SWI-Prolog.
 - `--registers=stack` skips the register allocator and its checker. Its
   code is 1.1 to 1.7 times slower in the direct-call loop above (`tag` 91 to
@@ -323,9 +328,9 @@ So the regex compiler no longer needs SWI-Prolog, and what an embedded
 Trealla would cost is known:
 
 - libpcre2 is Fil-C code, so a Trealla inside it is Fil-C Trealla, five to
-  six times slower than the native one: the first miss in a process pays 5.5 s
-  of loading, and each miss 1.3 to 26 s and up to 7.5 GB in that process.
-  A native `tpl` as a child process costs 2 to 8 s per miss.
+  six times slower than the native one: the first miss in a process pays 2.7 s
+  of loading, and each miss 0.9 to 17 s and up to 2.1 GB in that process.
+  A native `tpl` as a child process costs 1 to 4 s per miss.
 - nanofil's entry point is its command line: `main.pl` holds the defaults
   of `-O` and halts when done. Calling it from a host needs that split in
   nanofil; the scratch copy stands in for it here.

@@ -3443,13 +3443,13 @@ in
   (for pkgs.trealla [
     (arg { lineEditingLibrary = "readline"; })
     (use {
-      version = "unstable-2026-09-05";
+      version = "unstable-2026-11-10";
       # GitHub's archive bytes for this commit changed; hash the contents.
       src = pkgs.fetchFromGitHub {
         owner = "trealla-prolog";
         repo = "trealla";
-        rev = "12f4cbd7fc2269265e7306775ded2f6410671499";
-        hash = "sha256-PL5RyiakGDyFLnoSiOS5/b2AoRNwqoG7W+ShYsNl5a4=";
+        rev = "98a821db66715618e358c36c7d7164213c0f6820";
+        hash = "sha256-kU3Vgtk7Ni7nYVJ/ii++EForHclMh1WrQpyNYKgpqmQ=";
       };
     })
     (use (old: {
@@ -3468,6 +3468,7 @@ in
     (patch ./patches/trealla-filc-ffi-zptrtable.patch)
     (patch ./patches/trealla-filc-tabling-cursors.patch)
     (patch ./patches/trealla-goal-expansion-share-cells.patch)
+    (patch ./patches/trealla-heap-page-mark.patch)
     (skipTests "runtime coverage lives in checks.x86_64-linux.trealla")
   ])
 

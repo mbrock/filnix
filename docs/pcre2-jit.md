@@ -166,6 +166,6 @@ patterns are compiled and the rest stay on the interpreter. It is not wired
 into `pkgsFilc.pcre2`.
 
 The compiler also runs on Trealla alone, with the same output as on
-SWI-Prolog, but a miss then takes 2 to 8 s with a native Trealla and 1.3 to
-26 s inside a Fil-C one, against 0.15 to 0.8 s. The README has the numbers,
+SWI-Prolog, but a miss then takes 1 to 4 s with a native Trealla and 0.9 to
+17 s inside a Fil-C one, against 0.15 to 0.8 s. The README has the numbers,
 the cache rules and what is not compiled.

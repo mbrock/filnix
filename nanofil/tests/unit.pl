@@ -4804,9 +4804,9 @@ test(checked_call_rules) :-
     catch(( valid_module(module([func(f, local, void, [param(f, tmp(q))], [
                 block(s, [], [Call], ret)])])), fail ), nanofil_error(_), true).
 
-% A host atom built at run time is an atom of arity 0 only. Unpatched
-% Trealla unified it with any same-name compound, so a field named label
-% entered a label/2 clause (patches/trealla-runtime-atom-arity-unify.patch).
+% A host atom built at run time is an atom of arity 0 only. Trealla
+% 12f4cbd unified it with any same-name compound, so a field named label
+% entered a label/2 clause (upstream had fixed it by 98a821d).
 test(runtime_atom_is_not_a_compound) :-
     atom_chars(A, "foo"), \+ A = foo(_),
     atom_concat(fo, o, C), \+ C = foo(_, _, _),

@@ -6,8 +6,10 @@ remains paused. This file records the compatibility work and measurements.
 
 ## Trealla backend restored (November 2026)
 
-The pinned native Trealla (`nix/trealla.nix`, revision `12f4cbd7`) runs
-`optimize/3`, `pizlonate_module/2` and `filc_module_emit/3`. Run the CLI
+The pinned native Trealla (`nix/trealla.nix`) runs `optimize/3`,
+`pizlonate_module/2` and `filc_module_emit/3`. This section was written
+and measured on revision `12f4cbd7`; the pin has since moved, see
+[Trealla 98a821db](#trealla-98a821db-speed-memory-and-where-they-go-november-2026). Run the CLI
 from `nanofil/src`, with stdin closed:
 
 ```sh
@@ -87,6 +89,104 @@ a substitute for testing the allocating modes. There is no measured
 speedup from this compatibility repair, and no host/runtime tuning is
 claimed. An embedded Trealla build and full frontend/interpreter
 coverage are not established by these native-host measurements.
+
+## Trealla 98a821db: speed, memory and where they go (November 2026)
+
+The pin moved from `12f4cbd7` (September 5) to upstream HEAD of November
+10, `98a821db`, 630 commits later, with one new patch for a wrong-answer
+defect in it (`patches/trealla-heap-page-mark.patch`, described in
+`docs/trealla.md`). `tests/backend-hosts.sh` passes and takes 9.2 s
+instead of 12.7 s. This revision fixes both host defects worked around
+above: `atom_number/2` fails on a symbolic label and `(1<<64) /\ \1` is
+2^64. The workarounds are still in the source.
+
+`-O compile` of the 39 single-function modules that
+`experiments/regex-nanofil/hook.c` compiles, in one process without the C
+front end. The outputs are SWI's, byte for byte, in both register modes:
+
+| Host | Registers | Load | Sum | Median | Longest | Peak RSS |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| SWI 9.2.9, saved state | pointers | 0.05 s | | 0.2 s | 0.7 s | 43 MB |
+| Trealla `12f4cbd7` | pointers | 1.05 s | 33.8 s | 0.58 s | 4.0 s | 1.92 GB |
+| Trealla `12f4cbd7` | stack | 1.05 s | 12.1 s | 0.21 s | 1.24 s | 547 MB |
+| Trealla `98a821db` | pointers | 0.50 s | 23.8 s | 0.40 s | 2.8 s | 634 MB |
+| Trealla `98a821db` | stack | 0.50 s | 8.4 s | 0.15 s | 0.7 s | 229 MB |
+| Fil-C Trealla `12f4cbd7` | pointers | 5.5 s | | 4.0 s | 26 s | 7.5 GB |
+| Fil-C Trealla `98a821db` | pointers | 2.8 s | 142 s | 2.4 s | 16.7 s | 2.1 GB |
+| Fil-C Trealla `98a821db` | stack | 2.6 s | 48.7 s | 0.87 s | 4.2 s | 0.80 GB |
+
+So the new revision takes about 0.7 of the time and a third of the memory,
+and is still 2 to 4 times slower than SWI with 15 times the memory. The
+heap patch accounts for 210 MB of that: unpatched `98a821db` peaks at
+844 MB.
+
+The rest is from the largest of the 39 (3242 lines of assembly), which
+takes 2.8 s of CPU and 600 MB on Trealla against 0.64 s and 38 MB on SWI.
+
+### Memory
+
+Trealla has no garbage collector. A frame, its variable slots and the heap
+cells built under it are released by backtracking, by a tail call that
+reuses the frame, or when a deterministic call exits and nothing older
+refers into it. Binding an older variable to a newer frame's variable or
+structure pins that frame, and that is what deterministic code that
+returns terms through output arguments does all the time. nanofil's
+passes are such code, so nearly everything they touch stays allocated
+until the pass's caller fails or the process ends.
+
+High-water marks for the largest pattern, and what is live after each
+stage:
+
+| | Frames (72 B) | Slots (24 B) | Heap cells (24 B) | Trail (16 B) |
+| --- | ---: | ---: | ---: | ---: |
+| after read | 65 | 433 | 7 k | 86 |
+| after optimize, 0.3 s | 143 k | 1.02 M | 132 k | 170 k |
+| after validation and checks, 0.5 s | 175 k | 1.29 M | 297 k | 229 k |
+| in emit, after the first lowering, 1.2 s | 544 k | 4.15 M | 560 k | 804 k |
+| in emit, after register allocation, 2.7 s | 1.33 M | 10.6 M | 1.76 M | 1.93 M |
+| high-water mark | 1.37 M | 10.75 M | 5.52 M | 1.94 M |
+
+The high-water marks come to 520 MB of the 600 MB. Emission is 2.3 of the
+2.8 s and four fifths of the memory, and within it the register allocator
+and its checker (`placed_lines`).
+
+Running a stage inside `findall/3`, so that leaving it backtracks, gives
+the same assembly in the same time: the peak is 558 MB with the stages
+isolated on unpatched `98a821db`, and 362 MB with the heap patch and the
+three steps of one function's emission isolated as well. What is left is
+inside one call of the register allocator. This was a scratch driver;
+nanofil's source is unchanged.
+
+### Time
+
+- Trealla runs naive reverse at 3.8 to 6.5 million inferences a second
+  and SWI at 31 to 37 million, so the engine is 6 to 8 times slower on
+  plain list code. On nanofil the gap is smaller, 2 to 4 times.
+- A sampling profile of the largest pattern puts 51% of the time under
+  `match_head` (clause selection and head unification), 21% under
+  `unify_head`, about 15% in `deref` and `get_slot`, and 9% in copying
+  for `findall/3`.
+- `strcmp` is 7 to 9%: `must_be/2` compares type names as strings on
+  each call (2.9%), `call/N` looks its module up by name (0.7%), and the
+  rest is atom and operator lookups while loading.
+- By call count the workload is association lists: about 1.5 million
+  calls each of `get_assoc/3` and its helper and 1.4 million of the
+  six-argument one, from the register allocator and its checker.
+
+Hardware counters are unavailable in an orb, so there are no cache or
+branch figures.
+
+### What would help
+
+- In nanofil: isolate each function's emission, and each pass, so that
+  leaving it backtracks. That is the 600 to 362 MB above at no cost in
+  time, and it is what stack mode shows from the other side: without the
+  register allocator the same pattern needs 229 MB.
+- In nanofil: fewer association-list lookups in the register allocator
+  and its checker should help both hosts. Not tried.
+- In Trealla: frame pinning is the design, not a defect, so a collector
+  or a finer-grained pin is upstream's to decide. The `strcmp` calls in
+  `must_be/2` and `call/N` are small, local changes.
 
 ## Scryer Prolog: not worth supporting yet (October 2026)
 

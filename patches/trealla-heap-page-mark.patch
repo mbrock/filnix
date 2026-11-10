@@ -1,0 +1,81 @@
+From: filnix <filnix@users.noreply.github.com>
+Subject: [PATCH] Count a heap page added after a mark as wholly past it
+
+alloc_heap() numbers a new page with the page count before it
+(a->num = q->st.hp_num++), so a heap mark (hp_num, hp), as a frame or
+a choicepoint keeps one, is offset hp in page hp_num-1. A page numbered
+hp_num was therefore added after the mark. trim_heap() and
+is_heap_since() read it as the mark's own page instead: the trim kept
+its first hp cells, and is_heap_since() called a term in those cells
+older than the frame.
+
+Since ccb10b7d ("... let the head rule veto only a tail call") a head
+that binds the new frame's variables into such a term no longer stops
+the tail call, so refs_trimmed_heap() is the only guard. It let the
+reuse through and the trim then cut the term the new frame was still
+reading. A clause that builds a list and tail-calls with it fails or
+answers wrongly whenever the list starts a new heap page:
+
+    merged([], []).
+    merged([R], [R]) :- !.
+    merged([A-B, C-D|Rs], Out) :-
+        (   C =< B + 1 -> E is max(B, D), merged([A-E|Rs], Out)
+        ;   Out = [A-B|Out1], merged([C-D|Rs], Out1)
+        ).
+    normal(Rs0, Rs) :- msort(Rs0, Rs1), merged(Rs1, Rs).
+
+normal/2 fails for the lists [0-0, 1-1, ..., (N-1)-(N-1)] with N = 9,
+59 and 159 when called from a failure-driven loop over N = 1..300.
+
+Treat a page numbered hp_num as added after the mark. trim_heap()
+empties it and makes it the current page from its start, which also
+puts hp_num back in step with the pages; it keeps the page, as before,
+so a loop that backtracks across the boundary does not allocate a page
+each pass. is_heap_since() counts the whole page, and
+refs_trimmed_heap() no longer returns early when one exists.
+---
+diff --git a/src/heap.c b/src/heap.c
+index b26c7e3b..e889045b 100644
+--- a/src/heap.c
++++ b/src/heap.c
+@@ -838,6 +838,16 @@ void trim_heap(query *q)
+ 	if (!q->heap_pages)
+ 		return;
+ 
++	// alloc_heap() numbers a page with the count before it, so a mark (hp_num, hp) is an offset into page hp_num-1
++	// and a page numbered hp_num was added after the mark: all of it goes, not just what lies past that offset.
++	// The page stays, so that a loop backtracking over the boundary does not allocate one a pass, and becomes the
++	// current one from its start.
++
++	if (q->heap_pages->num == q->st.hp_num) {
++		q->st.hp = 0;
++		q->st.hp_num++;
++	}
++
+ 	while (q->heap_pages->idx > q->st.hp) {
+ 		cell *c = q->heap_pages->cells + --q->heap_pages->idx;
+ 		unshare_cell(c);
+@@ -852,7 +862,9 @@ bool is_heap_since(const query *q, const frame *f, const cell *c)
+ {
+ 	const page *a = q->heap_pages;
+ 
+-	for (; a && (a->num > f->hp_num); a = a->next) {
++	// A page numbered hp_num or more was added after f's mark, see trim_heap().
++
++	for (; a && (a->num >= f->hp_num); a = a->next) {
+ 		if ((c >= a->cells) && (c < (a->cells + a->idx)))
+ 			return true;
+ 	}
+diff --git a/src/query.c b/src/query.c
+index 2e980582..fc651d0f 100644
+--- a/src/query.c
++++ b/src/query.c
+@@ -1833,7 +1833,7 @@ static bool refs_trimmed_heap(const query *q, const frame *f, unsigned num_vars)
+ {
+ 	const page *a = q->heap_pages;
+ 
+-	if (!a || ((a->num <= f->hp_num) && (a->idx <= f->hp)))
++	if (!a || ((a->num < f->hp_num) && (a->idx <= f->hp)))
+ 		return false;
+ 
+ 	const frame *f_new = GET_NEW_FRAME();
