@@ -515,8 +515,10 @@ The second is the one that costs something, because every canonical-form rule be
 > reader renamed at the forms table's name fields, and
 > `decode_module` commutes with `named` for each core-subset decoder.
 > That is about 1,500 to 2,500 lines, in an `Nfb*.v` file outside the
-> model's quick gate. The unchecked stage waits on the backend's
-> `Unchecked.v` types. A reader from words straight to `Syntax.v`,
+> model's quick gate. It covers the checked stage only: the unchecked
+> stage has no `Syntax.v` types (the backend pizlonates it as a term,
+> with `Pizlonate.pizlonate_module`), so unchecked NFB decodes to its
+> term, by `read_term`. A reader from words straight to `Syntax.v`,
 > with no intermediate term, would be a second large proof for
 > perhaps twice the speed, and comes only if a profile asks for it.
 
