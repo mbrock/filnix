@@ -1242,6 +1242,7 @@ block_(_, F, fence("prolog", Lines)) -->
     el(div, "prose-terms", seq(Ts, fence_term(F))).
 block_(_, F, fence("diagram", Lines)) --> !, diagram(Lines, F).
 block_(_, _, embed(Name)) --> concept_embed(Name).
+block_(_, _, fence("c", Lines)) --> c_fence(Lines), !.
 block_(_, _, fence(Lang, Lines)) -->
     { dedent(Lines, Ls), atomic_list_concat(Ls, '\n', T),
       ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },
@@ -1274,6 +1275,9 @@ inline(Text, Vars, F) --> { string_codes(Text, Cs) }, inl(Cs, Vars, F).
 inl([], _, _) --> !, [].
 inl([0'[, 0'[|Cs0], Vars, F) --> { concept_link_codes(Cs0, Name, Shown, Cs) }, !,
     concept_ref(Name, Shown), inl(Cs, Vars, F).
+%  C in a comment: `c: EXPR`, or unmarked C beyond doubt (c/c_draw.pl).
+inl([0'`|Cs0], Vars, F) --> { once(append(Code, [0'`|Cs], Cs0)) }, ( c_inline(Code) ; c_inline_auto(Code) ), !,
+    inl(Cs, Vars, F).
 inl([0'`|Cs0], Vars, F) --> { append(Code, [0'`|Cs], Cs0) }, !,
     (   { code_term(Code, T) }
     ->  el(code, "term", term(T, _, 999, ctx(F, data)))

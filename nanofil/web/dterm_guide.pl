@@ -50,17 +50,17 @@
 :- use_module(rocq/rocq_draw, [rocq_inline//1, rocq_fence//1, rocq_layout//0]).
 :- use_module(rocq/rocq_syntax, [rocq_read_file/3]).
 :- use_module(concepts).
-%  dterm-c (c/) draws ```c fences and is where links to C files go; a
-%  build whose sources lack it keeps C fences as text and links on GitHub.
+%  dterm-c (c/) draws ```c fences and `c: EXPR` from nanofil's own
+%  parse; a build whose sources lack it keeps them as text.
 :- prolog_load_context(directory, D), directory_file_path(D, 'c/c_draw.pl', P),
-   ( exists_file(P) -> assertz(guide_c_pages) ; true ).
-:- dynamic guide_c_pages/0.
-:- if(guide_c_pages).
-:- use_module(c/c_draw, [c_fence//1]).
-:- use_module(c/c_read, [c_read_load/1]).
+   ( exists_file(P) -> assertz(guide_c_drawn) ; true ).
+:- dynamic guide_c_drawn/0.
+:- if(guide_c_drawn).
+:- use_module(c/c_draw, [c_fence//1, c_inline//1, c_inline_auto//1]).
 :- else.
 c_fence(_) --> { fail }.
-c_read_load(_).
+c_inline(_) --> { fail }.
+c_inline_auto(_) --> { fail }.
 :- endif.
 
 %  guide_rocq(Doc): Doc is about Rocq (names it), so its inline code may
@@ -297,7 +297,7 @@ heading_modules(T, Mods) :-
 guide_page(Doc, Blocks) -->
     { findall(Id-T, guide_heading(Doc, Id, 1, T, _), [_-Title|_]), doc_label(Doc, Label) },
     shell(Title, guide_crumbs(Doc),
-          ( rocq_style(Doc), c_style(Blocks),
+          ( rocq_style(Doc),
             el(nav, "toc dterm-nav guide-nav",
                ( el(div, "toc-title", esc(Label)), guide_toc(Doc) )),
             el(article, "dterm guide",
@@ -323,20 +323,6 @@ rocq_style(Doc) --> { guide_rocq(Doc) }, !,
     "<script defer src=\"rocq/dterm-rocq.js\"></script>\n".
 rocq_style(_) --> [].
 
-%  A document with C fences sets them with dterm-c's stylesheet (c/).
-c_style(Blocks) --> { guide_c_pages, sub_term(B, Blocks), ( B = fence("c", _) ; B = output(_, "c", _) ) }, !,
-    "<link rel=\"stylesheet\" href=\"c/dterm-c.css\">\n".
-c_style(_) --> [].
-
-%  c_frontend: nanofil's lexer and parser are loaded, from the source
-%  directory dterm reads (c_src_dir, set by dterm.pl), the first time a
-%  C fence needs them, with src/swi/compat.pl as run_examples loads
-%  modules. Without them a C fence stays text.
-c_frontend :- nb_current(guide_c_frontend, Done), !, Done == true.
-c_frontend :-
-    (   guide_c_pages, nb_current(c_src_dir, Dir) -> c_read_load(Dir), nb_setval(guide_c_frontend, true)
-    ;   nb_setval(guide_c_frontend, false), fail
-    ).
 
 %  A document's first # heading is its title; a later one names a part,
 %  listed in the contents above its sections.
@@ -409,7 +395,7 @@ gblock(output(Name, Lang, Lines)) -->
     gfence(Lang, Lines).
 
 %  A C fence is drawn by dterm-c from nanofil's own parse (c/c_draw.pl).
-gfence("c", Lines) --> { c_frontend }, c_fence(Lines), !.
+gfence("c", Lines) --> c_fence(Lines), !.
 gfence(Lang, Lines) -->
     { atomic_list_concat(Lines, '\n', T),
       ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },
@@ -525,6 +511,7 @@ path_char(C) :- ( code_type(C, csym) ; memberchk(C, `.-/`) ), !.
 gtext(T) --> { text_codes(T, Cs) }, gt(Cs).
 
 gt([]) --> [].
+gt([0'`|Cs0]) --> { once(append(Code, [0'`|Cs], Cs0)) }, c_inline(Code), !, gt(Cs).
 gt([0'`|Cs0]) --> { append(Code, [0'`|Cs], Cs0) }, !,
     (   { code_term(Code, T) } -> el(code, term, term(T, _, 999, ctx(guide, data)))
     ;   el(code, none, esc(Code))
@@ -544,6 +531,8 @@ gword(W, Cs) --> esc(W), gi(Cs).
 
 %  gcode(+Code): inline code: a predicate or module reference, a
 %  concept's name, a term, or plain code.
+%  `c: EXPR` is C, drawn from nanofil's parse (c/c_draw.pl).
+gcode(Code) --> c_inline(Code), !.
 gcode(Code) --> { code_pred(Code, M, PI) }, !, gpred(M, PI, Code).
 gcode(Code) --> { append(W, `.pl`, Code), W \== [], maplist(word_char, W) }, !,
     gmodule(W, el(code, none, esc(Code))).
@@ -552,6 +541,8 @@ gcode(Code) --> { atom_codes(A, Code), gloss_link(A, Id, Href) }, !,
     el(a, gloss, [href=Href], el(code, none, esc(Code))).
 %  Rocq that only Rocq writes (Ret v, cap := None | Obj base, a Theorem)
 %  is drawn as Rocq; a Prolog term as a term.
+%  Unmarked code that is C beyond doubt (sizeof(void *), while (n)).
+gcode(Code) --> c_inline_auto(Code), !.
 gcode(Code) --> { nb_getval(guide_doc, D), guide_rocq(D) }, rocq_inline(Code), !.
 gcode(Code) --> { code_term(Code, T) }, !, el(code, term, term(T, _, 999, ctx(guide, data))).
 gcode(Code) --> el(code, none, esc(Code)).
@@ -683,8 +674,6 @@ link_target(Url, Href, none) :-
         )
     ;   file_name_extension(_, nix, Path), nix_page(Path, Page)
     ->  format(atom(Href), "../nix/~w~w", [Page, Frag])
-    ;   guide_c_pages, file_name_extension(_, Ext, Path), memberchk(Ext, [c, h]), c_page(Path, Page)
-    ->  format(atom(Href), "c/~w~w", [Page, Frag])
     ;   file_name_extension(_, v, Path), rocq_page(Path, Page)
     ->  rocq_anchor(Abs, Path, Frag),
         format(atom(Href), "rocq/~w~w", [Page, Frag])
@@ -710,19 +699,6 @@ nix_page(Path, Page) :-
     Parts \== [], Parts \= [experiments|_],
     atomic_list_concat(Parts, '-', B0),
     file_name_extension(B, nix, B0), file_name_extension(B, html, Page).
-
-%  c_page(+Path, -Page): the dterm-c page of a C file a link from
-%  nanofil/docs names (every .c and .h under nanofil/ is drawn):
-%  ../tests/c/basic.c is tests-c-basic.html and a header x.h is x-h.html,
-%  in the site's nanofil/c/.
-c_page(Path, Page) :-
-    atomic_list_concat(Parts0, '/', Path),
-    append([nanofil, docs], Parts0, Parts1),
-    foldl(rel_part, Parts1, [], RevParts), reverse(RevParts, [nanofil|Parts]),
-    Parts \== [], atomic_list_concat(Parts, '-', B0),
-    file_name_extension(B, Ext, B0),
-    ( Ext == c -> B1 = B ; atomic_list_concat([B, '-', Ext], B1) ),
-    file_name_extension(B1, html, Page).
 
 %  rocq_page(+Path, -Page): the dterm-rocq page of a .v file a link from
 %  nanofil/docs names: ../rocq/theories/Values.v is

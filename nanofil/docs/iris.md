@@ -8,7 +8,7 @@ This page tells where Iris comes from, what its logic can say, how it differs fr
 
 In 1967 Robert Floyd attached assertions to the edges of flowcharts, and in 1969 Tony Hoare made that a logic of program text ([An Axiomatic Basis for Computer Programming](https://dl.acm.org/doi/10.1145/363235.363259)). Its judgment is the [[hoare-triple|Hoare triple]] {P} c {Q}: if P holds when c starts and c finishes, Q holds when it does. Each construct has a rule. Assignment substitutes into the postcondition, sequencing chains two triples, and a loop needs an invariant that each iteration keeps. The triple says nothing about a run that never finishes, and neither do Iris's: it is partial correctness.
 
-Hoare logic handles variables and breaks on pointers. Its assignment rule substitutes for the variable assigned, but `*p = 1` may change `*q` when p and q alias, so every assertion about any cell must say whether it might be the one written. Proofs of pointer programs drowned in such side conditions, as Rod Burstall had already noticed in 1972.
+Hoare logic handles variables and breaks on pointers. Its assignment rule substitutes for the variable assigned, but `c: *p = 1` may change `c: *q` when p and q alias, so every assertion about any cell must say whether it might be the one written. Proofs of pointer programs drowned in such side conditions, as Rod Burstall had already noticed in 1972.
 
 > nanofil's first proofs of single programs are Floyd's method. Cycle.v attaches an assertion to each of 19 points of a loop ([cycle_never_panics]), and [never_panics_by_invariant] is the rule that checks them: every step from a point that holds its assertion lands at a point that holds its own.
 

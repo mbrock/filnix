@@ -437,6 +437,40 @@ A frame whose check_ahead failed early: ...
   source. A C23 attribute, `[[gnu::packed]]`, and anything in backticks
   is not a link.
 
+## C in prose (November 2026)
+
+C written into documents and comments is drawn from nanofil's own
+parse ([web/c](../web/c/README.md)): c_lex lexes it and c_parse reads
+it, as the compiler would, and c_draw sets what they read the way dterm
+sets terms.
+
+- A ```` ```c ```` fence, in a document dterm draws, a module header or
+  a Rocq `(** *)` comment, is drawn as a file is: a function is its
+  signature over a column of statements, `if`/`else if` one chain,
+  `switch` a table of its labels, a struct a table of its fields. Its
+  names link to their definitions in the fence. A function has an
+  **IR** link to the [playground](../web/play/README.md), which compiles
+  the fence and opens that function's checked IR, when the fence
+  compiles there by itself: it includes headers, or calls only its own
+  functions.
+- Inline, write `` `c: EXPR` ``: the code after `c:` is C, read as an
+  expression, a type, a statement or a declaration, whichever reads
+  whole, and drawn in the colours of the code with dterm's bows:
+  `` `c: n->value` ``, `` `c: s += n->value;` ``,
+  `` `c: struct { int lock; void *owner; }` ``. On GitHub it reads as
+  code with a `c:` tag. Code that does not parse is drawn as its tokens.
+- Unmarked inline code is drawn as C only when it is C beyond doubt: it
+  reads whole as C and has a C keyword, such as `sizeof(void *)`,
+  `long double`, `while (n)` or `int main(void) { return 0; }`. Code
+  that reads as a Prolog compound (`typeof(type(TypeName))`) or writes
+  a keyword against its parenthesis (`const(N)`, `int(ptr)`) stays
+  Prolog, so mark C that has no keyword (`n->value`, `argv[optind]`)
+  with `c:`.
+- Assignment is `←`, equality `=`, an initializer `≔`, and
+  `≠ ≤ ≥ ∧ ∨ ¬ × −` and `→` for `->` are glyphs, each keeping its C
+  spelling as its title. Integers keep the spelling they were written
+  with (`0x1FUL`).
+
 ## Not yet
 
 - Captions as data (`case/2` in `doc/3`, naming the clauses), so a

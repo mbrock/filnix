@@ -39,7 +39,7 @@
     It is called before the first read, after the drawing modules are
     compiled, because compat.pl changes how later modules read strings.
 */
-:- module(c_read, [c_read_load/1, c_read_text/3, c_read_file/3, c_unit_lines/2, c_unit_spelling/3]).
+:- module(c_read, [c_read_load/1, c_read_text/3, c_read_file/3, c_unit_lines/2, c_unit_spelling/3, c_snippet/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).
@@ -82,6 +82,36 @@ c_read_text(Text, Name, unit(Items, Cms, Dirs, Spellings, Lines)) :-
     spellings(Nums, Tokens, Spellings),
     seed_env(Env),
     phrase(items(Env, Items), Tokens).
+
+%! c_snippet(+Text, -Snippet) is semidet.
+%
+%  Snippet is C written inline in prose, read whole as the first of
+%  `expr(E)`, `type(TypeName)`, `stmt(Item)` (a block item, its `;`
+%  optional) or `decl(Item)` (an external declaration, such as a
+%  function definition), each as `snip(Form, Semi, Spellings, Tokens)`, Semi
+%  `yes` when the text ends in its own `;`. Otherwise `tokens(Tokens)`
+%  as snip(tokens(Tokens), no, Spellings, Tokens). Fails if the text does not
+%  lex.
+c_snippet(Text, snip(Form, Semi, Spellings, Tokens)) :-
+    string_codes(Text, Cs),
+    phrase(scan(Ev, 1, bol), Cs),
+    include([E]>>(E = num(_, _)), Ev, Nums),
+    string_chars(Text, Chars),
+    catch(c_lex:c_tokens(Chars, inline, Tokens0), _, fail),
+    Tokens0 \== [],
+    rename_builtins(Tokens0, Tokens),
+    spellings(Nums, Tokens, Spellings),
+    seed_env(Env),
+    (   last(Tokens, tok(p(';'), _)) -> Semi = yes, Ts1 = Tokens ; Semi = no, last(Tokens, tok(_, L)), append(Tokens, [tok(p(';'), L)], Ts1) ),
+    (   Semi == no, whole(c_parse:expr(Env, E), Tokens) -> Form = expr(E)
+    ;   Semi == no, whole(c_parse:type_name(Env, T), Tokens) -> Form = type(T)
+    ;   whole(c_parse:block_item(Env, _, I), Ts1) -> Form = stmt(I)
+    ;   whole(c_parse:external_decl(Env, _, [D], []), Ts1) -> Form = decl(D)
+    ;   whole(c_parse:external_decl(Env, _, [D], []), Tokens) -> Form = decl(D)
+    ;   Form = tokens(Tokens)
+    ).
+
+whole(G, Ts) :- catch(phrase(G, Ts), _, fail), !.
 
 %% Scanning: comments, directives and integer spellings
 

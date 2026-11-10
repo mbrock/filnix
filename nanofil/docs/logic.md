@@ -590,7 +590,7 @@ mbrtowc, errno and composite-world contracts. New in the logic:
 - Logic.v adds `wp_renew` and `wp_half_check_read`. The second is a
   read half check through a read-only capability, as rpl_mbsrtowcs
   makes on the greeting literal. MemLogic.v adds `wp_raw_store_w`,
-  the 4-byte store with which rpl_mbrtowc's fallback writes `*pwc`.
+  the 4-byte store with which rpl_mbrtowc's fallback writes `c: *pwc`.
   It also adds `bytes_app`, `auxes_app` and `obj_zero_block`, which
   read a fresh object as a block.
 - [HelloLeaf.v](../rocq/theories/HelloLeaf.v) adds `xmalloc_spec`:
@@ -1111,7 +1111,7 @@ exits (`operand_exit`), each with a fact about pr.2 and optind:
 - `iw_1.join`, on to greet: pr.2 clear and optind = argc.
 
 With pr.2 clear, main compares the token's optind with argc. If an
-operand remains, or pr.2 is set, main loads `argv[optind]`. The token
+operand remains, or pr.2 is set, main loads `c: argv[optind]`. The token
 keeps optind at most argc, so the load is of one of argv's argc + 1
 slots. `argv_block_slot` lends that slot's pointer cell out of argv's
 block for `wp_raw_load_pointer_in`, and its capability is an

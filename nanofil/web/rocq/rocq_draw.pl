@@ -41,6 +41,16 @@
 :- use_module(library(uri)).
 :- use_module(rocq_syntax).
 :- use_module('../concepts').
+:- prolog_load_context(directory, D), directory_file_path(D, '../c/c_draw.pl', P),
+   ( exists_file(P) -> assertz(rocq_c_drawn) ; true ).
+:- dynamic rocq_c_drawn/0.
+:- if(rocq_c_drawn).
+:- use_module('../c/c_draw', [c_fence//1, c_inline//1, c_inline_auto//1]).
+:- else.
+c_fence(_) --> { fail }.
+c_inline(_) --> { fail }.
+c_inline_auto(_) --> { fail }.
+:- endif.
 
 :- include('../dterm_html').
 
@@ -1311,6 +1321,7 @@ block_(table(Head, Rows)) -->
                                el(tbody, none, seq(Rows, [R]>>el(tr, none, seq(R, [C]>>el(td, none, rocq_prose_inline(C)))))) )).
 block_(embed(Name)) --> concept_embed(Name).
 block_(fence(Lang, Lines)) --> { memberchk(Lang, ["rocq", "coq", ""]) }, !, rocq_fence(Lines).
+block_(fence("c", Lines)) --> c_fence(Lines), !.
 block_(fence(_, Lines)) --> { atomic_list_concat(Lines, '\n', T) }, el(pre, fence, esc(T)).
 
 rocq_prose_inline(Text) --> { text_codes(Text, Cs) }, pi(Cs).
@@ -1427,6 +1438,9 @@ prolog_href(M, N, Ds, Href) :-
 
 %  Code in prose: a reference to nanofil's Prolog, Rocq when it reads as
 %  Rocq, else code.
+%  `c: EXPR`, and unmarked C beyond doubt, are C (c/c_draw.pl).
+code_(Code) --> c_inline(Code), !.
+code_(Code) --> c_inline_auto(Code), !.
 code_(Code) --> { prolog_ref(Code, Href) }, !, el(a, "ref pl", [href=Href], el(code, none, esc(Code))).
 %  name(Args) without a space is Prolog, as the comments quote it.
 code_(Code) --> { append(_, [C, 0'(|_], Code), code_type(C, csym) }, !, el(code, none, esc(Code)).

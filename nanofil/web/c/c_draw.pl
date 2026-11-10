@@ -31,11 +31,12 @@
     - what the grammar refused stays as its tokens, marked with the
       parser's reason.
 */
-:- module(c_draw, [c_unit//1, c_fence//1, c_set_page/4, c_unit_names/2, c_unit_lede/3, c_prose//1]).
+:- module(c_draw, [c_fence//1, c_inline//1, c_inline_auto//1, c_ready/0]).
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).
 :- use_module(library(uri)).
+:- use_module(library(base64)).
 :- use_module(c_read).
 
 :- include('../dterm_html').
@@ -64,9 +65,9 @@ c_set_page(Unit, Mode, Github, Play) :-
 
 index_unit(Items, Dirs) :-
     forall(( member(I, Items), item_defines(I, Kind, Name, Anchor) ),
-           ( c_global(Name, _, _) -> true ; atom_concat('#', Anchor, H), assertz(c_global(Name, Kind, H)) )),
+           ( c_global(Name, _, _) -> true ; pre(Anchor, A), atom_concat('#', A, H), assertz(c_global(Name, Kind, H)) )),
     forall(( member(dir(_, _, T), Dirs), define_name(T, N) ),
-           ( c_global(N, _, _) -> true ; atom_concat('#', N, H), assertz(c_global(N, macro, H)) )),
+           ( c_global(N, _, _) -> true ; pre(N, A), atom_concat('#', A, H), assertz(c_global(N, macro, H)) )),
     forall(( member(I, Items), item_specs(I, Specs), member(Sp, Specs), tag_defined(Sp, K, Tag, Fs) ),
            ( tag_anchor(K, Tag, A), atom_concat('#', A, H),
              ( c_tag(K, Tag, _) -> true ; assertz(c_tag(K, Tag, H)) ),
@@ -99,7 +100,11 @@ tag_defined(su(K, some(Tag), Ms, _), K, Tag, Fs) :- is_list(Ms),
 tag_defined(enum(some(Tag), Es), enum, Tag, []) :- Es \== none.
 tag_defined(su(_, _, Ms, _), K, Tag, Fs) :- is_list(Ms), member(field(Sp, _, _), Ms), member(S, Sp), tag_defined(S, K, Tag, Fs).
 
-tag_anchor(K, Tag, A) :- atomic_list_concat([K, '-', Tag], A).
+tag_anchor(K, Tag, A) :- atomic_list_concat([K, '-', Tag], A0), pre(A0, A).
+
+%  pre(+Anchor0, -Anchor): an anchor of the fence being drawn, which its
+%  prefix keeps apart from the page's and the other fences' anchors.
+pre(A0, A) :- ( nb_current(c_prefix, P) -> true ; P = '' ), atom_concat(P, A0, A).
 
 define_name(T, N) :-
     split_string(T, " \t", " \t", [H|Rest0]), exclude(==(""), Rest0, Rest),
@@ -210,9 +215,6 @@ pblock(table(H, Rows)) -->
     el(table, "prose-table", ( el(thead, none, el(tr, none, seq(H, [C]>>el(th, none, inline(C))))),
                                el(tbody, none, seq(Rows, [R]>>el(tr, none, seq(R, [C]>>el(td, none, inline(C)))))) )).
 
-%  c_prose(+Lines): comment lines as prose, for a page's lede.
-c_prose(Ls) --> { blocks(Ls, Bs) }, seq(Bs, pblock).
-
 %  Inline Markdown: `code`, [text](url), and the rest as text.
 inline(T) --> { text_codes(T, Cs) }, inl(Cs).
 
@@ -238,7 +240,7 @@ directive(F, Text) -->
 directive("include", R, F) --> !,
     el(div, "c-dir c-include", ( line_link(F), dkw("include"), " ", el(span, "c-path", esc(R)) )).
 directive("define", R, F) --> { define_parts(R, N, Ps, Body) }, !,
-    { ( nb_getval(c_mode, page) -> As = [id=N] ; As = [] ) },
+    { ( nb_getval(c_mode, page) -> pre(N, A), As = [id=A] ; As = [] ) },
     el(div, "clause c-dir c-define", As,
        el(div, "head", ( line_link(F), dkw("define"), " ", el(span, "f def c-mac", esc(N)),
                          ( { Ps == none } -> [] ; el(span, "c c-params", ['data-d'=args], el(span, args, macro_params(Ps))) ),
@@ -321,17 +323,18 @@ function(F, Specs, Dcl, Body) -->
        ( el(div, head, ( line_link(F), specs_dcl(Specs, Dcl, def, Locals), ir_link(N), head_asides(F) )),
          body(Body, Locals) )).
 
-label_anchor(Fn, L, H) :- atomic_list_concat(['#', Fn, '--', L], H).
+label_anchor(Fn, L, H) :- atomic_list_concat([Fn, '--', L], A0), pre(A0, A), atom_concat('#', A, H).
 
 anchor_attrs(Kind, N, As) :-
-    (   nb_getval(c_mode, page), c_global(N, Kind, H), atom_concat('#', N, H) -> As = [id=N]
+    (   nb_getval(c_mode, page), c_global(N, Kind, H), pre(N, A), atom_concat('#', A, H) -> As = [id=A]
     ;   As = []
     ).
 
 ir_link(N) -->
     { nb_getval(c_play, Play) },
     (   { Play == none } -> []
-    ;   " ", el(a, "c-ir", [href=Play, 'data-ir'=N, title="This function's IR, compiled by nanofil in the playground"], "IR")
+    ;   { uri_encoded(query_value, N, Q), format(atom(H), "~w&ir=~w", [Play, Q]) },
+        " ", el(a, "c-ir", [href=H, title="This function's IR, compiled by nanofil in the playground"], "IR")
     ).
 
 %  The names a function binds: its parameters and every declaration in
@@ -604,7 +607,7 @@ tight(id(_), p('(')) :- !.
 tight(kw(K), p('(')) :- memberchk(K, [sizeof, alignof, attribute, typeof, asm]), !.
 
 token(id(N), Ls) --> !, name_ref(N, Ls).
-token(kw(K), _) --> !, el(span, "c-kw", esc(K)).
+token(kw(K), _) --> !, { kw_spelling(K, W) }, el(span, "c-kw", esc(W)).
 token(p(P), _) --> !, el(span, "c-p", esc(P)).
 token(int(V, S), _) --> !, num(V, S).
 token(float(Cs), _) --> !, { atom_chars(A, Cs) }, el(span, n, esc(A)).
@@ -613,6 +616,11 @@ token(chr(V), _) --> !, chr_lit(V).
 token(str(Bs), _) --> !, str_lit(Bs).
 token(wstr(_, Vs), _) --> !, "L", str_lit(Vs).
 token(T, _) --> el(code, none, esc(T)).
+
+%  c_lex folds GNU's spellings into keywords; a token is drawn as C writes it.
+kw_spelling(attribute, '__attribute__') :- !.
+kw_spelling(extension, '__extension__') :- !.
+kw_spelling(K, K).
 
 %% Specifiers and declarators
 
@@ -671,6 +679,8 @@ spec(qual(Q), _) --> !, { qual_spelling(Q, W) }, el(span, "c-kw", esc(W)).
 spec(fspec(F), _) --> !, { fspec_spelling(F, W) }, el(span, "c-kw", esc(W)).
 spec(tspec(K), _) --> !, { tspec_spelling(K, W) }, el(span, ty, esc(W)).
 spec(tname(N), _) --> !, type_ref(N).
+spec(su(K, Tag, Ms, _), Ls) --> { is_list(Ms) }, !,
+    el(span, "c-kw", esc(K)), ( { Tag = some(T) } -> " ", el(span, "ty def", esc(T)) ; [] ), " ", inline_members(Ms, Ls).
 spec(su(K, Tag, Ms, _), _) --> !, el(span, "c-kw", esc(K)), " ", tag_ref(K, Tag, Ms).
 spec(enum(Tag, Es), _) --> !, el(span, "c-kw", "enum"), " ", tag_ref(enum, Tag, Es).
 spec(attr(A), _) --> !, attr(A).
@@ -756,7 +766,7 @@ array_size(none, _) --> !, el(span, "args c-sub empty", "").
 array_size(star, _) --> !, el(span, "args c-sub", "*").
 array_size(E, Ls) --> subscript(E, Ls).
 
-params(unspecified, _) --> !.
+params(unspecified, _) --> !, el(span, "c-noparams", []).
 params(params(Ps, V), Ls) --> !, param_list(Ps, V, Ls).
 params(knr(Ns), _) --> !, knr_names(Ns).
 params(knr(Ns, _), _) --> !, knr_names(Ns).
@@ -1016,31 +1026,164 @@ line_link(L) -->
 
 %% Pages and fences
 
-%  c_unit_names(+Unit, -Groups): g(Title, Names) for a page's contents,
-%  each name n(Name, Anchor, Class).
-c_unit_names(unit(Items, _, Dirs, _, _), Groups) :-
-    findall(n(N, A, "fn"), ( member(I, Items), item_defines(I, fn, N, A), c_global(N, fn, H), atom_concat('#', A, H) ), Fs0),
-    findall(n(N, A, "ty"), ( member(I, Items), item_specs(I, Sp), member(S, Sp), tag_defined(S, K, T, _), tag_anchor(K, T, A), atomic_list_concat([K, ' ', T], N) ), Ts1),
-    findall(n(N, N, "ty"), ( member(I, Items), item_defines(I, type, N, _) ), Ts2),
-    findall(n(N, N, "g"), ( member(I, Items), item_defines(I, var, N, _), c_global(N, var, _) ), Vs),
-    findall(n(N, N, "mac"), ( member(dir(_, _, T), Dirs), define_name(T, N), c_global(N, macro, _) ), Ms),
-    append(Ts1, Ts2, Ts0),
-    maplist([L0, L]>>list_to_set(L0, L), [Fs0, Ts0, Vs, Ms], [Fs, Ts, Vs1, Ms1]),
-    exclude([g(_, [])]>>true, [g("Functions", Fs), g("Types", Ts), g("Variables", Vs1), g("Macros", Ms1)], Groups).
+%  c_fence(+Lines): a ```c fence of a document, drawn as a file is:
+%  its names link to their definitions in the fence, under anchors only
+%  it uses (c1-sum), and each function links to its IR in the
+%  playground when the fence compiles there by itself.
+c_fence(Lines) -->
+    { c_ready, atomic_list_concat(Lines, '\n', T), atom_string(T, Text),
+      catch(c_read_text(Text, fence, Unit), _, fail),
+      flag(c_fence, N0, N0 + 1), N is N0 + 1, format(atom(P), "c~d-", [N]), nb_setval(c_prefix, P),
+      fence_play(Text, Unit, Play),
+      c_set_page(Unit, page, none, Play) }, !,
+    el(div, "dterm-c c-fence", c_unit(Unit)),
+    { nb_setval(c_prefix, '') }.
 
-%  c_unit_lede(+Unit, -Lines, -Rest): the comment before anything else
-%  in the file, as lines; Rest is Unit without it.
-c_unit_lede(unit(Items, Cms0, Dirs, Sp, Ls), Lede, unit(Items, Cms, Dirs, Sp, Ls)) :-
-    (   Cms0 = [cm(F, _, Text, no)|Cms],
-        \+ ( member(dir(D, _, _), Dirs), D < F ),
-        \+ ( member(I, Items), item_lines(I, IF, _), IF =< F )
-    ->  comment_lines(Text, Lede)
-    ;   Lede = [], Cms = Cms0
+%  The playground can compile a fence that includes headers, or whose
+%  calls are all to its own functions.
+fence_play(Text, unit(Items, _, Dirs, _, _), Href) :-
+    findall(N, ( member(I, Items), ( I = item(_, _, fundef(_, _, dcl(some(N), _, _), _)) ; I = fun(_, _, _, dcl(some(N), _, _), _) ) ), Defined),
+    (   Defined \== [], \+ member(raw(_, _, _, _), Items),
+        (   member(dir(_, _, D), Dirs), sub_string(D, _, _, _, "include") -> true
+        ;   forall(( sub_term(call(id(F), _), Items) ), memberchk(F, Defined))
+        ),
+        string_length(Text, L), L =< 24000
+    ->  ( nb_current(c_play_root, Root) -> true ; Root = 'play/' ),
+        base64url(Text, B), format(atom(Href), "~w#src=~w&name=example.c", [Root, B])
+    ;   Href = none
     ).
 
-%  c_fence(+Lines): a ```c fence of a document: the same drawing without
-%  anchors or links between its names.
-c_fence(Lines) -->
-    { atomic_list_concat(Lines, '\n', T), atom_string(T, Text),
-      c_read_text(Text, fence, Unit), c_set_page(Unit, fence, none, none) }, !,
-    el(div, "dterm-c c-fence", c_unit(Unit)).
+%% C in running text
+
+%  c_ready: nanofil's lexer and parser are loaded, from the source
+%  directory the drawer names in c_src_dir (dterm.pl, dterm_rocq.pl's
+%  --prolog), the first time C is drawn. Fails without one.
+c_ready :- nb_current(c_frontend, Done), !, Done == true.
+c_ready :-
+    (   nb_current(c_src_dir, Dir), directory_file_path(Dir, 'c_parse.pl', P), exists_file(P)
+    ->  c_read_load(Dir), nb_setval(c_frontend, true)
+    ;   nb_setval(c_frontend, false), fail
+    ).
+
+%  c_inline(+Codes): `c: EXPR` in prose, the code after `c:` drawn as
+%  C. Whatever does not parse is drawn as its tokens.
+c_inline(Codes) --> { c_marked(Codes, Rest) }, !,
+    (   { c_ready, string_codes(T, Rest), c_snippet(T, Snip) } -> snippet(Snip)
+    ;   el(code, none, esc(Rest))
+    ).
+
+c_marked([0'c, 0':|Cs0], Cs) :- ( Cs0 = [0' |Cs] -> true ; Cs = Cs0 ), Cs \== [].
+
+%  c_inline_auto(+Codes): unmarked inline code that is C beyond doubt:
+%  it reads whole as C, has a C keyword (not true, false or bool, which
+%  Rocq writes too) among at least two tokens, and is a type, an
+%  expression, a statement that starts with its keyword or ends with its
+%  ; or }, or a declaration with a space in it. int(ptr) and const(N)
+%  stay Prolog.
+c_inline_auto(Codes) -->
+    { c_ready, string_codes(T, Codes), c_snippet(T, Snip), Snip = snip(Form, Semi, _, _),
+      Form \= tokens(_), auto_tokens(T, Ts), length(Ts, NT), NT >= 2,
+      once(( member(tok(kw(K), _), Ts), \+ memberchk(K, [true, false, bool, nullptr]) )),
+      auto_form(Form, Semi, Ts, Codes), \+ prolog_shaped(Codes), \+ prolog_compound(Codes) }, !,
+    snippet(Snip).
+
+%  Code that reads as a Prolog compound (typeof(type(TypeName)), the
+%  parser's own terms) is Prolog, as dterm draws it.
+prolog_compound(Codes) :-
+    catch(term_string(T, Codes, [syntax_errors(quiet)]), _, fail), compound(T).
+
+%  A keyword written against its parenthesis, as const(N), int(ptr) and
+%  void(void) are, is a Prolog term about C; sizeof(x) and the like are C.
+prolog_shaped(Codes) :-
+    append(Pre, [0'(|_], Codes), append(Before, W, Pre), W \== [],
+    ( Before == [] -> true ; last(Before, C), \+ code_type(C, csym) ),
+    atom_codes(K, W), c_lex:keyword(K, _),
+    \+ memberchk(K, [sizeof, '_Alignof', alignof, '__alignof__', typeof, '__typeof__', '__attribute__', asm, '__asm__',
+                      '_Alignas', '_Generic', '_Static_assert', static_assert, '__builtin_offsetof']), !.
+
+auto_tokens(T, Ts) :- string_chars(T, Cs), catch(c_lex:c_tokens(Cs, inline, Ts), _, fail).
+
+auto_form(expr(_), _, _, _).
+auto_form(type(_), _, _, _).
+auto_form(decl(_), _, _, Codes) :- memberchk(0' , Codes).
+auto_form(stmt(decl(_, _, _)), _, _, Codes) :- !, memberchk(0' , Codes).
+auto_form(stmt(_), yes, _, _) :- !.
+auto_form(stmt(_), _, _, Codes) :- last(Codes, 0'}), !.
+auto_form(stmt(_), _, [tok(kw(K), _)|_], _) :-
+    memberchk(K, [return, while, if, for, do, switch, goto, break, continue]).
+
+%  snippet(+Snip): C inline, as a term is drawn in prose: in the
+%  colours of the code, broken by dterm.js. A name is a variable unless
+%  it is called or in capitals.
+snippet(snip(Form, Semi, Sp, Ts)) -->
+    { retractall(c_global(_, _, _)), retractall(c_tag(_, _, _)), retractall(c_field(_, _, _)),
+      retractall(c_label(_, _)), retractall(c_spelling(_, _)),
+      forall(member(V-S-Spelling, Sp), assertz(c_spelling(V-S, Spelling))),
+      nb_setval(c_mode, inline), nb_setval(c_github, none), nb_setval(c_play, none),
+      nb_setval(c_events, []), nb_setval(c_lines, []), nb_setval(c_line, 0), nb_setval(c_snippet_tokens, Ts),
+      snippet_locals(Form, Ls) },
+    el(code, "term cx", ( inline_form(Form, Ls), ( { Semi == yes } -> el(span, sep, ";") ; [] ) )).
+
+snippet_locals(Form, Ls) :-
+    findall(N, ( sub_term(id(N), Form), atom(N), \+ sub_term(call(id(N), _), Form), \+ upcase_atom(N, N) ), Ns0),
+    findall(N, ( sub_term(dcl(some(N), _, _), Form) ), Ns1),
+    append(Ns0, Ns1, Ns2), sort(Ns2, Ls).
+
+inline_form(expr(E), Ls) --> term(E, Ls).
+inline_form(type(T), Ls) --> type_name(T, Ls).
+inline_form(stmt(at(_, null)), Ls) --> !, { nb_getval(c_snippet_tokens, Ts), append(Ts1, [tok(p(';'), _)], Ts) -> true ; nb_getval(c_snippet_tokens, Ts1) }, tokens(Ts1, Ls).
+inline_form(stmt(S), Ls) --> inline_stmt(S, Ls).
+inline_form(decl(D), Ls) --> inline_decl(D, Ls).
+inline_form(tokens(Ts), Ls) --> tokens(Ts, Ls).
+
+inline_decl(fundef(_, Specs, Dcl, Body), Ls) --> !, specs_dcl(Specs, Dcl, def, Ls), " ", inline_stmt(Body, Ls).
+inline_decl(decl(_, Specs, []), Ls) --> !, specs(Specs, Ls).
+inline_decl(decl(_, Specs, Inits), Ls) --> !, specs_inits(Specs, Specs, Inits, Ls, local).
+inline_decl(D, _) --> el(code, none, esc(D)).
+
+%  A statement on one line: a block is its statements in braces, each
+%  with its ;.
+inline_stmt(decl(_, Specs, []), Ls) --> !, specs(Specs, Ls).
+inline_stmt(decl(_, Specs, Inits), Ls) --> !, specs_inits(Specs, Specs, Inits, Ls, local).
+inline_stmt(at(_, S), Ls) --> inline_stmt_(S, Ls), !.
+inline_stmt(S, _) --> el(code, none, esc(S)).
+
+inline_stmt_(expr(E), Ls) --> term(E, Ls).
+inline_stmt_(null, _) --> [].
+inline_stmt_(return(none), _) --> ikw(return).
+inline_stmt_(return(E), Ls) --> ikw(return), " ", term(E, Ls).
+inline_stmt_(break, _) --> ikw(break).
+inline_stmt_(continue, _) --> ikw(continue).
+inline_stmt_(goto(L), _) --> ikw(goto), " ", el(span, "c-lname", esc(L)).
+inline_stmt_(computed_goto(E), Ls) --> ikw(goto), " ", el(span, "o pre", ( el(span, op, "*"), expr(E, 14, Ls) )).
+inline_stmt_(label(L, S), Ls) --> el(span, "c-lname", esc(L)), el(span, sep, ":"), inline_body(S, Ls).
+inline_stmt_(while(C, S), Ls) --> ikw(while), " ", el(span, paren, term(C, Ls)), inline_body(S, Ls).
+inline_stmt_(if(C, T, E), Ls) --> ikw(if), " ", el(span, paren, term(C, Ls)), inline_body(T, Ls),
+    ( { E == none } -> [] ; " ", ikw(else), inline_body(E, Ls) ).
+inline_stmt_(block(Items), Ls) --> inline_block(Items, Ls).
+
+inline_body(at(_, null), _) --> !.
+inline_body(S, Ls) --> " ", inline_stmt(S, Ls).
+
+inline_block([], _) --> !, el(span, "c-brace empty", "{ }").
+inline_block(Items, Ls) --> el(span, "c c-init", ['data-d'=args], el(span, "args c-brace", block_items_(Items, Ls))).
+
+block_items_([I], Ls) --> !, el(span, arg, ( inline_stmt(I, Ls), item_semi(I) )).
+block_items_([I|Is], Ls) --> el(span, arg, ( inline_stmt(I, Ls), item_semi(I) )), " ", block_items_(Is, Ls).
+
+item_semi(at(_, block(_))) --> !.
+item_semi(at(_, while(_, at(_, block(_))))) --> !.
+item_semi(at(_, if(_, _, _))) --> !.
+item_semi(_) --> el(span, sep, ";").
+
+%  A struct's or union's members inline, in braces, each with its ;.
+inline_members([], _) --> !, el(span, "c-brace empty", "{ }").
+inline_members(Ms, Ls) --> el(span, "c c-init", ['data-d'=args], el(span, "args c-brace", members_(Ms, Ls))).
+
+members_([M], Ls) --> !, el(span, arg, ( member_(M, Ls), el(span, sep, ";") )).
+members_([M|Ms], Ls) --> el(span, arg, ( member_(M, Ls), el(span, sep, ";") )), " ", members_(Ms, Ls).
+
+member_(field(Specs, Dcl, W), Ls) --> !, specs(Specs, Ls), dcl_space(Dcl), declarator(Dcl, Ls, field), width(W).
+member_(M, _) --> el(code, none, esc(M)).
+
+ikw(W) --> el(span, "c-kw", esc(W)).

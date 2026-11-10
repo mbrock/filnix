@@ -54,7 +54,9 @@ main :-
     ;   Args = Args1
     ),
     (   select(A, Args, Files), atom_concat('--prolog=', Dir, A)
-    ->  index_prolog(Dir), nb_setval(rq_prolog, '../')
+    ->  index_prolog(Dir), nb_setval(rq_prolog, '../'),
+        % C in comments is drawn from nanofil's parse (c/c_draw.pl).
+        nb_setval(c_src_dir, Dir), nb_setval(c_play_root, '../play/')
     ;   Files = Args, nb_setval(rq_prolog, none)
     ),
     maplist(read_or_report(Root), Files, Read),

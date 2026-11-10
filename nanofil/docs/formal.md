@@ -641,7 +641,7 @@ The source/ABI evidence is the `coreRev` in `lib/filc-staging.json`, its
 `bits/types/struct_FILE.h` and NPTL `stdio-lock.h`. The installed Fil-C
 compiler reports FILE size 216 and alignment 8. Pointer slots are at
 56, 64 and 136; the short-buffer offset is 131. `_IO_FILE_plus` adds its eight-byte vtable
-pointer; the private lock is `{ int lock; int cnt; void *owner; }`.
+pointer; the private lock is `c: struct { int lock; int cnt; void *owner; }`.
 The [libc-output.c](../tests/c/prog/libc-output.c) probe checks the used
 public layout constants, stat-selected allocated capacity and the
 embedded one-byte unbuffered path against native Fil-C.
@@ -841,7 +841,7 @@ realization, host termination, full entry readiness or `hi.c` closure.
 shape emitted for `tests/c/prog/hi.c`: copy the read-only literal to
 `v0`, call `puts` with that temporary and a W result in `v1`, then
 return zero. Its module initializer actually constructs the literal's
-global object, bytes and capability. `main(void)` accepts arbitrary
+global object, bytes and capability. `c: int main(void)` accepts arbitrary
 launcher argc/argv/environment words and ignores them; the proof does
 not replace the entry contract by an empty argument vector.
 

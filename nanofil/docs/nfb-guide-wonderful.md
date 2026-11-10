@@ -509,7 +509,7 @@ Read the pieces:
   *only* thing the following `raw_load(sw, 0)` may read. The raw
   load itself performs no test.
 - `flight(tmp(v14), add, [address(pr.1), const(8)], lower(pr.1))`
-  builds `&n->next` explicitly: the address is `pr.1`'s intval plus
+  builds `c: &n->next` explicitly: the address is `pr.1`'s intval plus
   8 (`copy`, `add`, or `sub` over 64-bit words; each argument is an
   `l` value or an `address(P)` projection), and the capability is
   exactly `pr.1`'s (`lower(P)`), or `none` for integer-to-pointer.

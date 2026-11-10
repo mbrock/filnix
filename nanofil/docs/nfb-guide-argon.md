@@ -266,7 +266,7 @@ The validator (`ir:valid_module/1` in Prolog, [Validate.valid] in Rocq) statical
 
 ### Safepoints, `free`, and check-reuse evidence
 
-In Fil-C, `free(p)` does not immediately reuse virtual memory (the concurrent collector FUGC reclaims the memory only after no references remain), but `free(p)` immediately sets `upper = lower` and raises the `FREE` flag in the object header so any subsequent dereference traps (`use-after-free`).
+In Fil-C, `c: free(p)` does not immediately reuse virtual memory (the concurrent collector FUGC reclaims the memory only after no references remain), but `c: free(p)` immediately sets `upper = lower` and raises the `FREE` flag in the object header so any subsequent dereference traps (`use-after-free`).
 
 Crucially, an object's bounds only ever shrink (to empty, when freed) and never move. Therefore, once `check(Lo, Hi, Rights, Align)` succeeds on a heap pointer `P`, the fact that `[P+Lo, P+Hi)` lies within `P`'s object remains true **until something can call `free`**.
 

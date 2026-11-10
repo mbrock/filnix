@@ -148,7 +148,7 @@ conditionals (whose `#if` expressions it hands to c_types'
 constant-expression evaluator), `#pragma once` and `push_macro`. It
 lexes each resulting preprocessing token with c_lex and keeps the
 location of the token it came from. The result is a list of
-`tok(T, File:Line)`. Line 9, `s += n->value;`, comes out as:
+`tok(T, File:Line)`. Line 9, `c: s += n->value;`, comes out as:
 
 <!-- guide: pp -->
 ```prolog
@@ -255,7 +255,7 @@ val(ptr(struct(0)),
 The tree states what C leaves implicit. The category is the principal
 functor: `val(Type, Node)` for a value, `obj(Type, Place)` for an
 lvalue, and `fun` for a function designator. Reading an lvalue is an
-explicit `load` node, C11's lvalue conversion (6.3.2.1). `n->value` is
+explicit `load` node, C11's lvalue conversion (6.3.2.1). `c: n->value` is
 `member(obj(struct(0), deref(...)), value)`, as 6.5.2.3p4 defines `->`.
 `struct(0)` is the first struct of the environment's `Defs` table,
 whose layout puts `value` at offset 0 and `next` at offset 8.
@@ -318,9 +318,9 @@ This is nanofil's IR, which [ir.pl](../src/ir.pl) defines. A function is
 `l` are 32- and 64-bit integers, `s` and `d` floats, and `p` a pointer,
 which in Fil-C carries a capability. `v1` is the 8-byte slot of the
 parameter `n` and `v2` the 4-byte slot of `s`. `while (n)` became the
-loop `L3`/`L4` with exit `L5`. `n->value` is a `load(p)` of `n`'s slot
+loop `L3`/`L4` with exit `L5`. `c: n->value` is a `load(p)` of `n`'s slot
 followed by a `load(sw)` (a signed word) at the pointer read, and
-`n->next` is an `add` of 8 and a `load(p)`. In this *unchecked* IR a
+`c: n->next` is an `add` of 8 and a `load(p)`. In this *unchecked* IR a
 `load` at a `p` address means "Fil-C's check, then the access"; no
 check is written yet.
 
@@ -479,7 +479,7 @@ func(sum, export, w, [param(p, tmp(v0))], [
   the access size and 8), and checks plain integer and float scalars at
   alignment 1, as here (`ir:access_size_align/3`).
 - `flight(tmp(v14), add, [address(tmp('pr.1')), const(8)], lower(tmp('pr.1')))`
-  is `&n->next`: its address is `pr.1`'s plus 8, and its capability
+  is `c: &n->next`: its address is `pr.1`'s plus 8, and its capability
   ("lower") is `pr.1`'s. Pizlonation states both; the backend emits
   them and infers neither.
 - The pointer load reads an 8-aligned slot (`check(0, 8, read, 8)`), and
@@ -824,7 +824,7 @@ follows:
 reloaded from its frame slot at `-152(%rbp)`, which is a root. The int
 load's check is the same as before, without the borrow test, which
 checks of at most 16 bytes do not need ([docs/perf.md](perf.md) item
-6a). The pointer load's check of `n->next` tests only the upper end:
+6a). The pointer load's check of `c: n->next` tests only the upper end:
 the int load's check just before proved `n`'s object not null and its
 address at or above lower, so `-O`'s combined checks make it a half
 check ([docs/half.md](half.md)). The pointer load reads the aux word at
