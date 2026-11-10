@@ -231,8 +231,8 @@ Proof.
 Qed.
 
 (** The locale logic over any [[runtime]] R. *)
-Module LocaleLogic (R : Runtime).
-Module LL := LentLogic R.
+Module LocaleLogicOn (R : Runtime) (LG0 : LogicSig R).
+Module LL := LentLogicOn R LG0.
 Module LG := LL.LG.
 Module L := LG.L.
 Module LC := LocaleOn R L.M.
@@ -380,4 +380,10 @@ Qed.
 
 End setter.
 
+End LocaleLogicOn.
+
+(** [LocaleLogicOn] over a Logic instance of its own. *)
+Module LocaleLogic (R : Runtime).
+Module LG0 := Logic R.
+Include LocaleLogicOn R LG0.
 End LocaleLogic.

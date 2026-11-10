@@ -1349,3 +1349,11 @@ Proof.
 Qed.
 
 End Logic.
+
+(** The signature of a Logic instance. Two applications of [Logic] have
+    distinct expressions and states, so the layers above it take one
+    instance of this signature, and a program's proof hands them all
+    the same. *)
+Module Type LogicSig (R : Runtime).
+Include Logic R.
+End LogicSig.

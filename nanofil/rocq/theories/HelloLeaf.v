@@ -186,8 +186,8 @@ Ltac word_premise := first [ reflexivity | compute_premise ].
 Ltac addr_premise := cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; arith.
 
 (** Hello's leaf functions over any [[runtime]] R. *)
-Module HelloLeaf (R : Runtime).
-Module LL := LentLogic R.
+Module HelloLeafOn (R : Runtime) (LG0 : LogicSig R).
+Module LL := LentLogicOn R LG0.
 Module ML := LL.ML.
 Module SL := ML.SL.
 Module LG := ML.LG.
@@ -369,4 +369,10 @@ Proof.
 Qed.
 
 End leaves.
+End HelloLeafOn.
+
+(** [HelloLeafOn] over a Logic instance of its own. *)
+Module HelloLeaf (R : Runtime).
+Module LG0 := Logic R.
+Include HelloLeafOn R LG0.
 End HelloLeaf.

@@ -385,8 +385,8 @@ Proof.
   - assert (Ek : (4 * k = length ws)%nat) by lia. rewrite Ek drop_app_length. rewrite take_ge; [exact Hx | lia].
 Qed.
 
-Module HelloConv (R : Runtime).
-Module HLo := HelloLocale R.
+Module HelloConvOn (R : Runtime) (LG0 : LogicSig R).
+Module HLo := HelloLocaleOn R LG0.
 Module HL := HLo.HL.
 Module LL := HL.LL.
 Module ML := HL.ML.
@@ -1499,4 +1499,10 @@ Qed.
 
 End mbrtowc.
 
+End HelloConvOn.
+
+(** [HelloConvOn] over a Logic instance of its own. *)
+Module HelloConv (R : Runtime).
+Module LG0 := Logic R.
+Include HelloConvOn R LG0.
 End HelloConv.

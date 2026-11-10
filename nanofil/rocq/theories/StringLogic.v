@@ -222,8 +222,8 @@ Definition stdio_wi (rep : mem -> stdio_world -> Prop) (m : mem) (w : stdio_worl
   rep m w /\ stdio_ready m w /\ roots_apart (stdio_roots w) h m.
 
 (** C strings and the string calls over any [[runtime]] R. *)
-Module StringLogic (R : Runtime).
-Module LG := Logic R.
+Module StringLogicOn (R : Runtime) (LG0 : LogicSig R).
+Module LG := LG0.
 Module L := LG.L.
 Import L LG.
 
@@ -614,4 +614,10 @@ Qed.
 
 End puts.
 End strings.
+End StringLogicOn.
+
+(** [StringLogicOn] over a Logic instance of its own. *)
+Module StringLogic (R : Runtime).
+Module LG0 := Logic R.
+Include StringLogicOn R LG0.
 End StringLogic.

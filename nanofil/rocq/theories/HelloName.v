@@ -113,8 +113,8 @@ Lemma progname_globals :
 Proof. vm_compute. auto. Qed.
 
 (** `set_program_name` over any [[runtime]] R. *)
-Module HelloName (R : Runtime).
-Module HL := HelloLeaf R.
+Module HelloNameOn (R : Runtime) (LG0 : LogicSig R).
+Module HL := HelloLeafOn R LG0.
 Module ML := HL.ML.
 Module SL := ML.SL.
 Module LG := ML.LG.
@@ -371,4 +371,10 @@ Proof.
 Qed.
 
 End name.
+End HelloNameOn.
+
+(** [HelloNameOn] over a Logic instance of its own. *)
+Module HelloName (R : Runtime).
+Module LG0 := Logic R.
+Include HelloNameOn R LG0.
 End HelloName.

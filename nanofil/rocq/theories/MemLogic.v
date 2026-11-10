@@ -524,8 +524,8 @@ Proof.
 Qed.
 
 (** The memory and aux triples over any [[runtime]] R. *)
-Module MemLogic (R : Runtime).
-Module SL := StringLogic R.
+Module MemLogicOn (R : Runtime) (LG0 : LogicSig R).
+Module SL := StringLogicOn R LG0.
 Module LG := SL.LG.
 Module L := LG.L.
 Import L LG SL.
@@ -1243,4 +1243,10 @@ Qed.
 
 End calls.
 End mem.
+End MemLogicOn.
+
+(** [MemLogicOn] over a Logic instance of its own. *)
+Module MemLogic (R : Runtime).
+Module LG0 := Logic R.
+Include MemLogicOn R LG0.
 End MemLogic.

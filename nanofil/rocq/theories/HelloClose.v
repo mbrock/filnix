@@ -48,8 +48,8 @@ Lemma close_stream_entry p : invocation close_stream_fn [WPtr p] =
 Proof. reflexivity. Qed.
 
 (** The stream helper over any [[runtime]]. *)
-Module HelloClose (R : Runtime).
-Module HL := HelloLeaf R.
+Module HelloCloseOn (R : Runtime) (LG0 : LogicSig R).
+Module HL := HelloLeafOn R LG0.
 Module ML := HL.ML.
 Module SL := ML.SL.
 Module LG := ML.LG.
@@ -726,4 +726,10 @@ Proof.
 Qed.
 
 End close.
+End HelloCloseOn.
+
+(** [HelloCloseOn] over a Logic instance of its own. *)
+Module HelloClose (R : Runtime).
+Module LG0 := Logic R.
+Include HelloCloseOn R LG0.
 End HelloClose.

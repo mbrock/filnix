@@ -955,6 +955,25 @@ and only the world interpretation reads it. It is not a `VName`, so
 `lent_current`, which constrains every `VName` in the heap, says
 nothing about it. A stream's handle keeps its own `PLive` piece.
 
+**One logic for main.** Two applications of `Logic R` have distinct
+expressions, states and step relations, so triples proved over
+separate instances cannot be combined. Before this change each Hello
+file built its own chain from `R`, and so did `LocaleLogic R` and
+`CallbackLogic R`. Logic.v now has a module type, `LogicSig`, the
+signature of one instance. Each layer above it is a functor over one
+instance, `XOn (R : Runtime) (LG0 : LogicSig R)`:
+- StringLogic, MemLogic, LentLogic and LocaleLogic;
+- HelloLeaf, HelloLocale, HelloConv, HelloName, HelloProgName and
+  HelloClose;
+- CallbackLogic.
+
+Inside each, `Module LG := LG0.` keeps the old paths. `X` itself is
+`XOn` over a `Logic R` of its own, so no statement and no existing
+user changes. Main's proof applies every `…On` functor to one
+instance. HelloVersion follows once its speedup lands. Campaign 4's
+StreamFrameLogic has the same signature, so its `…On` modules take
+the same instance.
+
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?

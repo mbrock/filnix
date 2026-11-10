@@ -12,8 +12,8 @@ Import ListNotations.
 Open Scope Z_scope.
 
 (** Callback proofs over any runtime, independently of libc's representation. *)
-Module CallbackLogic (R : Runtime).
-Module LG := Logic R.
+Module CallbackLogicOn (R : Runtime) (LG0 : LogicSig R).
+Module LG := LG0.
 Module L := LG.L.
 Module LK := Linked R.
 Import L LG L.RM.
@@ -248,4 +248,10 @@ Proof.
   exact (adequate_result _ _ _ _ Had [] _ _ Hreach eq_refl).
 Qed.
 
+End CallbackLogicOn.
+
+(** [CallbackLogicOn] over a Logic instance of its own. *)
+Module CallbackLogic (R : Runtime).
+Module LG0 := Logic R.
+Include CallbackLogicOn R LG0.
 End CallbackLogic.

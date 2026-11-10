@@ -175,8 +175,8 @@ Qed.
 (** ## Triples *)
 
 (** The triples over any [[runtime]] R. *)
-Module LentLogic (R : Runtime).
-Module ML := MemLogic R.
+Module LentLogicOn (R : Runtime) (LG0 : LogicSig R).
+Module ML := MemLogicOn R LG0.
 Module SL := ML.SL.
 Module LG := ML.LG.
 Module L := LG.L.
@@ -475,4 +475,10 @@ Qed.
 
 End calls.
 End lent.
+End LentLogicOn.
+
+(** [LentLogicOn] over a Logic instance of its own. *)
+Module LentLogic (R : Runtime).
+Module LG0 := Logic R.
+Include LentLogicOn R LG0.
 End LentLogic.

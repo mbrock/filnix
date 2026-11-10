@@ -184,8 +184,8 @@ Ltac all_cases :=
 (** ## The triples *)
 
 (** The locale helpers over any [[runtime]] R. *)
-Module HelloLocale (R : Runtime).
-Module HL := HelloLeaf R.
+Module HelloLocaleOn (R : Runtime) (LG0 : LogicSig R).
+Module HL := HelloLeafOn R LG0.
 Module LL := HL.LL.
 Module ML := HL.ML.
 Module SL := ML.SL.
@@ -511,4 +511,10 @@ Proof.
 Qed.
 
 End locale.
+End HelloLocaleOn.
+
+(** [HelloLocaleOn] over a Logic instance of its own. *)
+Module HelloLocale (R : Runtime).
+Module LG0 := Logic R.
+Include HelloLocaleOn R LG0.
 End HelloLocale.

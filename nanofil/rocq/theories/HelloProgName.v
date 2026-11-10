@@ -40,8 +40,8 @@ Proof.
 Qed.
 
 (** String-valued program-name reasoning over any [[runtime]]. *)
-Module HelloProgName (R : Runtime).
-Module HN := HelloName R.
+Module HelloProgNameOn (R : Runtime) (LG0 : LogicSig R).
+Module HN := HelloNameOn R LG0.
 (** Import the existing module paths rather than copying their nested
     signatures into another chain of aliases. *)
 Import HN.L HN.LG HN.SL HN.ML HN.HL HN.
@@ -301,4 +301,10 @@ Proof.
 Qed.
 
 End name.
+End HelloProgNameOn.
+
+(** [HelloProgNameOn] over a Logic instance of its own. *)
+Module HelloProgName (R : Runtime).
+Module LG0 := Logic R.
+Include HelloProgNameOn R LG0.
 End HelloProgName.
