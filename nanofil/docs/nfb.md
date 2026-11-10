@@ -469,6 +469,57 @@ The second is the one that costs something, because every canonical-form rule be
 
 **Speed.** Reusing `Syntax.v` means the decoder still builds names and the backend still looks them up in `Maps.v`. The gain from dense ids arrives only when a consumer works on ids directly. A reasonable path is to decode to an id-indexed form, prove it corresponds to the `Syntax.v` module, and let the hot passes use that form.
 
+> **Changed in the implementation (Nov 10, 2026).** Measured on
+> SQLite 3.51.2, both stages together (6.8 million words), in CPU
+> seconds:
+>
+> | Path | Time |
+> |---|---|
+> | main.ml's term reader and `decode_module` | 1.8 s |
+> | `decode_input`: the reader, then `decode_module` | 4.7 s |
+> | `decode_input` without NAMES | 3.5 s |
+> | `decode`, which also re-encodes to check the words | 17.3 s |
+>
+> `decode_input` (`Nfb.v`, with `input_round_trip` in `NfbProof.v`) is
+> the reader for a consumer that needs the module rather than the
+> words' identity. `decode` keeps the check, so `decode_canonical`
+> holds. About 45% of `decode_input` is the GC, because every
+> instruction is built twice: once as a term by the reader and once as
+> `Syntax.v` by `decode_module`. So the backend keeps the term reader
+> until NFB pays for itself, and that needs the id-indexed form above.
+> `nanofil-backend nfb-read FILE.nfb` times the input path by itself.
+>
+> **The id-indexed form, agreed with the backend.** This waits until
+> the backend starts M5.
+>
+> - The decoder returns a `Syntax.v` module and no second inductive.
+>   Temporaries and locals are `TInt` of their ids, and a label is
+>   `TInt` of its block's index. Symbols, functions and data keep
+>   their names, since the assembly prints them. A function outside
+>   the core subset stays `IOutside` with its term and its real names.
+> - Beside the module it returns each function's names, from NAMES or
+>   the ids themselves without it: the terms of its temporaries,
+>   labels and locals, each list indexed by id.
+> - The backend owns what uses ids: maps keyed by the `Z` inside
+>   `TInt`, and a ranking of each function's names after pizlonation.
+>   The frame layout follows the names' order, and pizlonation adds
+>   names, so the decoder sorts nothing.
+> - The theorem: `decode_ids ws = Some (m, ns)` implies
+>   `decode_input ws = Some (named ns m)`, where `named` renames ids
+>   back to names. Every proof over `Syntax.v` carries over through it.
+>
+> The plan is the cheap variant first. The reader already names by id
+> when NAMES is absent, so `decode_ids` reads NAMES into the record
+> instead of substituting it, then runs `decode_module`. The proof is a
+> renaming lemma at two levels: the reader with name tables is the id
+> reader renamed at the forms table's name fields, and
+> `decode_module` commutes with `named` for each core-subset decoder.
+> That is about 1,500 to 2,500 lines, in an `Nfb*.v` file outside the
+> model's quick gate. The unchecked stage waits on the backend's
+> `Unchecked.v` types. A reader from words straight to `Syntax.v`,
+> with no intermediate term, would be a second large proof for
+> perhaps twice the speed, and comes only if a profile asks for it.
+
 ## Security considerations
 
 The reader's input is untrusted by assumption. Under Fil-C a reader's bug is a panic and not a corruption, but a panic inside a host process is still a denial of service, so the reader should not have any.

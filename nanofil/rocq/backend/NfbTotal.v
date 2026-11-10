@@ -32,15 +32,17 @@ Qed.
 
 (** ## Taking words *)
 
+(** [take_acc] n leaves n fewer words. *)
+Lemma take_acc_length : forall n xs acc a b, take_acc n xs acc = Some (a, b) -> (length b + n = length xs)%nat.
+Proof.
+  induction n as [|n IH]; intros xs acc a b H; cbn [take_acc] in H.
+  - injection H as _ <-. lia.
+  - destruct xs as [|x xs]; [discriminate|]. apply IH in H. simpl. lia.
+Qed.
+
 (** [take] n leaves n fewer words. *)
 Lemma take_length : forall n xs a b, take n xs = Some (a, b) -> (length b + n = length xs)%nat.
-Proof.
-  induction n as [|n IH]; intros xs a b H; simpl in H.
-  - injection H as <- <-. lia.
-  - destruct xs as [|x xs]; [discriminate|].
-    destruct (take n xs) as [[a' b']|] eqn:E; [|discriminate].
-    injection H as <- <-. apply IH in E. simpl. lia.
-Qed.
+Proof. intros n xs a b H. exact (take_acc_length n xs [] a b H). Qed.
 
 (** Reading n of what a reader reads, where the reader never leaves
     more words than it was given, leaves no more. *)

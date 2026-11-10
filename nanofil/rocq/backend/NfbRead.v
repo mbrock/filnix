@@ -198,9 +198,17 @@ Qed.
 Lemma mapo_length : forall {X Y} (f : X -> option Y) xs ys, mapo f xs = Some ys -> length ys = length xs.
 Proof. intros. apply mapo_forall2 in H. eapply Forall2_length in H. auto. Qed.
 
+(** [take_acc] the first part of two joined lists, after what it took. *)
+Lemma take_acc_app : forall xs ys acc, take_acc (length xs) (xs ++ ys) acc = Some (rev acc ++ xs, ys).
+Proof.
+  induction xs as [|x xs IH]; intros ys acc; cbn [length app take_acc].
+  - rewrite rev_append_rev. reflexivity.
+  - rewrite IH. cbn [rev]. rewrite <- app_assoc. reflexivity.
+Qed.
+
 (** [take] the first part of two joined lists. *)
 Lemma take_app : forall xs ys, take (length xs) (xs ++ ys) = Some (xs, ys).
-Proof. induction xs as [|x xs IH]; intros ys; simpl; [reflexivity|]. rewrite IH. reflexivity. Qed.
+Proof. intros xs ys. unfold take. rewrite take_acc_app. reflexivity. Qed.
 
 (** An integer that [take] counts. *)
 Lemma take_app_z : forall xs ys, take (Z.to_nat (Z.of_nat (length xs))) (xs ++ ys) = Some (xs, ys).

@@ -139,15 +139,15 @@ Fixpoint mapo {X Y : Type} (f : X -> option Y) (xs : list X) : option (list Y) :
   | x :: xs' => let* y := f x in let* ys := mapo f xs' in Some (y :: ys)
   end.
 
-(** The first n elements of xs and the rest, if xs has n. *)
-Fixpoint take (n : nat) (xs : list Z) : option (list Z * list Z) :=
+(** As [take], the elements taken so far reversed in acc: tail-recursive. *)
+Fixpoint take_acc (n : nat) (xs acc : list Z) : option (list Z * list Z) :=
   match n with
-  | O => Some ([], xs)
-  | S n' => match xs with
-            | [] => None
-            | x :: xs' => let* p := take n' xs' in Some (x :: fst p, snd p)
-            end
+  | O => Some (rev_append acc [], xs)
+  | S n' => match xs with [] => None | x :: xs' => take_acc n' xs' (x :: acc) end
   end.
+
+(** The first n elements of xs and the rest, if xs has n. *)
+Definition take (n : nat) (xs : list Z) : option (list Z * list Z) := take_acc n xs [].
 
 (** Whether xs has at least n elements; it looks at no more than n of
     them, so a reader can check a count against the words left in time

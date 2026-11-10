@@ -49,6 +49,11 @@ Extract Constant Z.to_nat =>
   "(fun z -> if Big_int_Z.sign_big_int z <= 0 then 0 else Big_int_Z.int_of_big_int z)".
 Extract Constant Z.of_nat => "Big_int_Z.big_int_of_int".
 
+(** A list's length is OCaml's, which is tail-recursive: the extracted
+    [length] is not, and NFB's reader takes the length of SQLite's 4.5
+    million words. *)
+Extract Inlined Constant length => "List.length".
+
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
   decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
