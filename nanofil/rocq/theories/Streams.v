@@ -204,9 +204,8 @@ Definition fclose_contract {world} (model : stream_model world) : contract world
     (fclose_prefix model) (fclose_post model) resource_reason puts_panic.
 
 (** Consequences of trusted calls over any runtime, without changing
-    the machine or adding runtime axioms. *)
-Module Streams (R : Runtime).
-Module M := ExternalMachine R.
+    the supplied machine or adding runtime axioms. *)
+Module StreamsOn (R : Runtime) (M : ExternalMachineSig R).
 Module E := M.E.
 
 (** Construct a normal query from independently established effects and
@@ -284,6 +283,13 @@ Proof.
   repeat split; try assumption. eapply stream_settlement_complete; exact Hsettle.
 Qed.
 
+End StreamsOn.
+
+(** Standalone compatibility wrapper; logic clients supply their own
+    machine to [StreamsOn] so its invocation type is exactly theirs. *)
+Module Streams (R : Runtime).
+Module M := ExternalMachine R.
+Include StreamsOn R M.
 End Streams.
 
 (** Physical buffering and protocol outstanding bytes are independent. *)

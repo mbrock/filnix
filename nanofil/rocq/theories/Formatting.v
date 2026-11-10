@@ -351,9 +351,9 @@ Definition error_format_contract {world} (model : stream_model world)
       error_format_prefix model stdout stderr diagnostic xs m w born trace m' w' /\
       ending = CallReturn []) resource_reason puts_panic.
 
-(** Runtime-parametric inversion keeps returns and resource stops apart. *)
-Module Formatting (R : Runtime).
-Module M := ExternalMachine R.
+(** Inversion over the supplied machine keeps ordinary returns and
+    resource stops apart without a sibling invocation relation. *)
+Module FormattingOn (R : Runtime) (M : ExternalMachineSig R).
 Module E := M.E.
 
 (** Construct an ordinary output completion from the independently
@@ -390,6 +390,30 @@ Proof.
   - right. eauto.
 Qed.
 
+(** Hello's output frames need a canonical W, not successful output or
+    an exact fputs byte count. Negative results remain canonical too. *)
+Theorem output_returned : forall world api (model : stream_model world) stdout
+    r args xs s m w trace values s' m' w',
+  E.invoke (output_contract api model stdout) r args xs s m w trace
+    (CallReturn values) s' m' w' ->
+  exists result, values = [WInt result] /\ 0 <= result < 2 ^ 32.
+Proof.
+  intros world api model stdout r args xs s m w trace values s' m' w' Hcall.
+  destruct (output_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall)
+    as [(born & info & info' & bytes & actions & tail & result &
+      _ & _ & _ & _ & _ & _ & _ & _ & Hr & _ & Hend) | (why & Hbad & _)];
+    [|discriminate Hbad].
+  injection Hend as ->. exists result. split; [reflexivity|].
+  destruct Hr as [(_ & Hrange & _) | Hrange]; unfold negative_int in *; lia.
+Qed.
+
+End FormattingOn.
+
+(** Standalone compatibility wrapper; logic clients use [FormattingOn]
+    with their actual exported machine instance. *)
+Module Formatting (R : Runtime).
+Module M := ExternalMachine R.
+Include FormattingOn R M.
 End Formatting.
 
 (** %n is not silently admitted as a read-only conversion. *)

@@ -2040,18 +2040,29 @@ machine inside each contract module does not make those types equal.
 ExternalMachineSig, which includes the complete existing machine
 signature without adding assumptions or changing transitions. Contract
 clients pass their **actual exported machine** to LocaleOn, StartupOn,
-LibioOn, ExitPopOn and ExitUnlinkOn. Each reuses that machine's E module;
+LibioOn, ExitPopOn, ExitUnlinkOn, LibcOn, StreamsOn and FormattingOn.
+Each reuses that machine's E module;
 its existing theorem names and statements are otherwise unchanged.
 For example, an Iris locale client that reaches Logic as LG instantiates
 LocaleOn R LG.L.M and can apply setlocale_query_invocation and
 setlocale_invocation directly to LG.L.M.E.invoke hypotheses. It must not
 instantiate a sibling ExternalMachine R instead.
 
-The existing Locale, Startup, Libio, ExitPop and ExitUnlink module names
-remain standalone wrappers for clients that do not share an existing
+The existing Locale, Startup, Libio, ExitPop, ExitUnlink, Libc, Streams and
+Formatting module names remain standalone wrappers for clients that do not share an existing
 machine. The project orders their files after ExternalMachine. This is
 module plumbing only: no core/runtime axiom, contract precondition,
 footprint, event, transition or preservation theorem changes.
+
+FormattingOn's output_returned extracts a canonical W result from any
+ordinary narrow-output return, including negative results and partial
+acceptance. It supplies the result portion of HelloVersion's output
+frame premises without assuming success or an exact fputs count. StreamsOn
+likewise makes the existing query/close inversion and consumption lemmas
+available over the logic's exact machine. These adapters do not instantiate
+the composite stream model, registry, literal admission or world frames;
+those remain independent integration obligations. In particular they do
+not introduce a stream token or duplicate the authoritative stdout FIFO.
 
 ### Campaign 4 milestone 6e: composite world and plain mbrtowc
 
