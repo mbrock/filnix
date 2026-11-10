@@ -2066,8 +2066,13 @@ codec and borrow epoch, stdio state, errno pointer and shutdown inventory.
 The P/P/L/P-to-L contract admits nonnull input, output and state operands,
 canonical readable input, four-byte-aligned writable wchar_t and eight-byte
 mbstate_t storage, and a valid same-codec state. The chosen validity
-predicate must explicitly admit all-eight-zero storage. Non-EILSEQ normal
-results preserve validity; EILSEQ does not. The audited Hello profile adds
+predicate must explicitly admit all-eight-zero storage and imply canonical
+byte values for all eight state bytes. Non-EILSEQ normal results preserve
+validity; generic and UTF-8 EILSEQ leave state unspecified. The audited
+stateless C converter additionally preserves the exact entry state on
+EILSEQ and rejects only a first byte in [128,256). Thus C-locale byte
+fallback can reuse its admitted state without resetting it, while ASCII
+and NUL cannot spuriously take that error branch. The audited Hello profile adds
 nonzero wide output and no consumed NUL to positive bounded consumption,
 the NUL/output-zero interpretation of result zero, count-zero completion,
 and the two incomplete exclusions. Initial state is not eight zero bytes:
@@ -2095,9 +2100,21 @@ representation/delegation and result obligations: mbrtowc_zero,
 mbrtowc_completed, mbrtowc_returned, mbrtowc_zero_exact and
 mbrtowc_world. The pure mbrtowc_positive, mbrtowc_incomplete and
 mbrtowc_valid_after lemmas expose result facts independently of that module.
+For repeated conversions, mbstate_valid_bytes is the required representation
+law and mbstate_byte_range extracts each state's canonical byte bound.
+mbrtowc_c_error exposes the C-only exact-state/high-input-byte facts;
+mbrtowc_valid_after_c preserves admitted validity for every normal C result,
+including EILSEQ. These endpoint lemmas use the entry world's codec;
+mbrtowc_world transports it to the resulting world. Byte validity alone
+does not prove readable_bytes: the caller must still frame the live object
+and its successful access check. No local_effect or Runtime axiom is
+strengthened. Resource endpoints obtain none of these normal-result facts.
 Logical controls are specification witnesses, not native decoding or
 termination proofs. The existing native C/C.UTF-8 conversion probes
-supplement the source audit above. Null source/state/output forms,
+supplement the source audit above. A repeated-call C probe additionally
+sweeps every first byte with a zero count and nonzero residual state bytes,
+checks exact EILSEQ state preservation, then converts ASCII and NUL on
+that same state without resetting it. Null source/state/output forms,
 composite setlocale/stdio lifts, Iris triples, native representation/prefix
 coverage and the whole Hello theorem remain later work. No core/runtime
 axioms or Campaign 3-owned files change.

@@ -37,6 +37,33 @@ static int conversion_result(const char *s, size_t n, size_t r, wchar_t wc) {
     return 1;
 }
 
+// The selected C converter is stateless, including its EILSEQ path.
+// An initial count may have nonzero residual bytes. Do not reset after
+// an error: gnulib's byte fallback reuses this exact state next time.
+static int c_conversion_reuse(void) {
+    if (!setlocale(LC_ALL, "C") || sizeof(mbstate_t) != 8) return 0;
+    for (unsigned lead = 0; lead < 256; ++lead) {
+        mbstate_t state;
+        unsigned char initial[8] = {0, 0, 0, 0, 83, 167, 254, 19};
+        memcpy(&state, initial, sizeof state);
+        if (!mbsinit(&state)) return 0;
+        char byte = (char)lead;
+        wchar_t wc = 937;
+        errno = 0;
+        size_t r = mbrtowc(&wc, &byte, 1, &state);
+        if (lead < 128) {
+            if (r != (lead != 0) || wc != (wchar_t)lead) return 0;
+        } else {
+            if (r != (size_t)-1 || errno != EILSEQ || wc != 937 ||
+                memcmp(&state, initial, sizeof state) != 0) return 0;
+        }
+        if (!mbsinit(&state) || mbrtowc(&wc, "Q", 1, &state) != 1 || wc != L'Q' ||
+            !mbsinit(&state) || mbrtowc(&wc, "", 1, &state) != 0 || wc != 0 ||
+            !mbsinit(&state)) return 0;
+    }
+    return 1;
+}
+
 static int conversion_boundaries(const char *locale, int utf8) {
     if (!setlocale(LC_ALL, locale) || sizeof(wchar_t) != 4 || sizeof(mbstate_t) != 8)
         return 0;
@@ -143,6 +170,7 @@ int main(void) {
     answer("invalid byte is EILSEQ not panic", mbrtowc(&wc, "\xff", 1, &state) == (size_t)-1 && errno == EILSEQ);
     memset(&state, 0, sizeof state);
     answer("null conversion input resets", mbrtowc(0, 0, 0, &state) == 0 && mbrtoc32(0, 0, 0, &state) == 0 && mbsinit(&state));
+    answer("C conversion preserves residual state on EILSEQ and reuses it without reset", c_conversion_reuse());
     answer("C conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption", conversion_boundaries("C", 0));
     answer("UTF-8 conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption", conversion_boundaries("C.UTF-8", 1));
     answer("UTF-8 locale names retain aligned capability bases after conversion", locale_name_bases());

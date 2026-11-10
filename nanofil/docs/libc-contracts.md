@@ -508,7 +508,7 @@ setlocale nor the environment is restricted to C/ASCII by the contract.
 | `nl_langinfo` | supported string-valued nl_item in current locale (Hello uses CODESET) | borrowed readable string for that item, not caller-owned; GNU internal non-string items need a different result contract | — |
 | `__ctype_b_loc` | initialized locale/TLS | readable pointer cell to unsigned-short table valid at indices −128 through 255; no out-of-range indexing; negative compatibility entries do not extend C's isalpha domain | — |
 | `__ctype_get_mb_cur_max` | initialized locale | current positive maximum multibyte character length; may change with locale | — |
-| `mbrtowc` | s=null reset or `R(s,n)`; output null or writable wchar_t; ps=null internal state or writable valid mbstate_t; state initially zero or previous valid continuation for this locale | 0 for NUL, bytes consumed, −2 incomplete, −1/EILSEQ invalid; output only when a character completes, state can change on partial input; after invalid input reinitialize state before reuse | R,W |
+| `mbrtowc` | s=null reset or `R(s,n)`; output null or writable wchar_t; ps=null internal state or writable valid mbstate_t; state initially zero or previous valid continuation for this locale | 0 for NUL, bytes consumed, −2 incomplete, −1/EILSEQ invalid; output only when a character completes, state can change on partial input; generic invalid input requires reinitialization before reuse, but the audited stateless C converter preserves exact state on EILSEQ | R,W |
 | `mbrtoc32` | analogous, writable char32_t output | analogous conversion; at this pin forwards to mbrtowc, whose wchar_t is UTF-32; a portable contract may additionally admit standard −3 pending-output results | R,W |
 | `mbsinit` | ps=null or readable valid mbstate_t | nonzero for null/initial state, zero otherwise; no mutation | R |
 | `iswalnum` | WEOF or valid wint_t wide character | nonzero iff alphanumeric in current locale; WEOF false | — |
@@ -533,12 +533,17 @@ EILSEQ. Complete conversions leave mbsinit true in these two locales;
 this is not a universal stateful-codec result or a promise that all eight
 state bytes are zero. Valid-state admission must include initialization
 and the converter's own non-EILSEQ updates, not arbitrary writable bytes.
+The Rocq validity predicate must imply that all eight state values are
+canonical bytes in [0,256). A separate repeated-call C probe sweeps all
+256 first bytes with zero count and four nonzero residual state bytes.
+It checks exact state and unchanged output on high-byte EILSEQ, then
+converts ASCII and NUL with the same state and no intervening reset.
 The errno probe writes through a live aligned four-byte int pointer from
 plain __errno_location. These finite probes pass both ordinary and -O
-native comparisons; the conversion Rocq contract remains work in
-progress, while errno lookup is modeled below. `get_gconv_fcts` may
+native comparisons; the conversion endpoint contract is in
+[Libc.v](../rocq/theories/Libc.v), while errno lookup is modeled below. `get_gconv_fcts` may
 initialize caches, acquire locks, allocate and clean up internal objects.
-Any future contract must expose those permissions while retaining
+The contract exposes those permissions while retaining
 effective locale names/text/codec and
 the borrow window; it must not disguise cache effects as writes to
 Hello-owned memory or infer universal native adequacy from these probes.
@@ -556,7 +561,16 @@ pending state into a new one just by retaining its bytes.
 The selected source audit follows wcsmbs/mbrtowc.c's status mapping and
 input-pointer consumption, wcsmbs/wcsmbsload.c's C converter/loader, and
 iconv/gconv_simple.c's ASCII/UTF-8 loops with iconv/loop.c and skeleton.c
-for pending state. C consumes one ASCII byte or rejects it. The selected
+for pending state. C consumes one ASCII byte or rejects a first byte
+in [128,256) without touching any of the eight state bytes. Its converter
+has one-byte maximum input and no state access: the pending-state and
+store-rest guards in skeleton.c are false, and do_flush is zero. The
+illegal-input marker updates step-data flags, not the caller's state.
+Lazy loader fallback selects the same C table and has no caller-state
+pointer. The pre-converter address-overflow error is excluded by full
+input readability and Runtime.address_space, not by the result relation
+alone. This C-only guarantee is keyed by the audited opaque codec,
+not a name comparison, and does not extend to C.UTF-8 EILSEQ. The selected
 UTF-8 loop permits up to **six** bytes, checks available continuation
 bytes before declaring incomplete, and treats NUL as a non-continuation.
 For a valid same-codec state, this supports consumption at most n, no NUL

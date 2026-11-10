@@ -12,6 +12,7 @@ conversion writes output and state: yes
 empty input is incomplete not NUL: yes
 invalid byte is EILSEQ not panic: yes
 null conversion input resets: yes
+C conversion preserves residual state on EILSEQ and reuses it without reset: yes
 C conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption: yes
 UTF-8 conversion excludes incomplete at NUL or 16 bytes and positive NUL consumption: yes
 UTF-8 locale names retain aligned capability bases after conversion: yes

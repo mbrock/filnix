@@ -74,6 +74,24 @@ Definition mbstate_bytes (m : mem) (p : ptr) : list Z :=
 Definition mbstate_zero_valid (valid : term -> list Z -> Prop) : Prop :=
   forall codec, valid codec (repeat 0 8).
 
+(** Valid represented states contain bytes, not arbitrary mathematical
+    integers. This independent representation law closes state reuse;
+    a zero load alone cannot establish it. *)
+Definition mbstate_valid_bytes (valid : term -> list Z -> Prop) : Prop :=
+  forall codec bytes, valid codec bytes -> Forall (fun b => 0 <= b < 256) bytes.
+
+Lemma mbstate_byte_range : forall valid codec m p,
+  mbstate_valid_bytes valid -> valid codec (mbstate_bytes m p) ->
+  forall i, 0 <= i < 8 -> 0 <= m_bytes m (ptr_addr p + i) < 256.
+Proof.
+  intros valid codec m p Hlaw Hvalid i Hi.
+  pose proof (Hlaw _ _ Hvalid) as Hbytes. rewrite Forall_forall in Hbytes.
+  apply Hbytes. unfold mbstate_bytes. apply in_map_iff.
+  exists (Z.to_nat i). split.
+  - rewrite Z2Nat.id by lia. reflexivity.
+  - apply in_seq. split; [lia|]. apply Nat2Z.inj_lt. rewrite Z2Nat.id by lia. simpl. lia.
+Qed.
+
 Lemma mbstate_zero_admitted : forall valid codec m p,
   mbstate_zero_valid valid ->
   (forall i, 0 <= i < 8 -> m_bytes m (ptr_addr p + i) = 0) ->
@@ -97,7 +115,8 @@ Definition mbrtowc_abi (r : call_result) (args : list arg) : Prop :=
 (** Null output/source/state forms and caller aliasing are outside this
     first slice. Private releases cannot end any argument/errno object. *)
 Definition mbrtowc_pre (valid : term -> list Z -> Prop) rep xs m w : Prop :=
-  libc_ready rep m w /\ mbstate_zero_valid valid /\ exists out src n state,
+  libc_ready rep m w /\ mbstate_zero_valid valid /\ mbstate_valid_bytes valid /\
+  exists out src n state,
     xs = [WPtr out; WPtr src; WInt n; WPtr state] /\
     ptr_addr out <> 0 /\ ptr_addr src <> 0 /\ ptr_addr state <> 0 /\
     readable_bytes m src n /\
@@ -166,7 +185,9 @@ Definition mbrtowc_prefix rep xs m w born (trace : list event) m' w' : Prop :=
   end.
 
 (** Entry-memory byte claims never inspect an already modified input.
-    EILSEQ leaves state unspecified, but does not require it to be invalid.
+    Generic EILSEQ state stays unspecified. The audited stateless C
+    converter rejects only non-ASCII and leaves all eight state bytes
+    unchanged, including residual bytes. UTF-8 gets no such error law.
     Nonerror errno changes are permitted while lazy loading is unaudited. *)
 Definition mbrtowc_result (valid : term -> list Z -> Prop) audit m w out src n state result m' : Prop :=
   0 <= result < 2 ^ 64 /\
@@ -181,7 +202,10 @@ Definition mbrtowc_result (valid : term -> list Z -> Prop) audit m w out src n s
         load_bytes m' (ptr_addr state) 4 = 0 /\
         forall i, 0 <= i < result -> m_bytes m (ptr_addr src + i) <> 0)) \/
    (result = 2 ^ 64 - 1 /\ load_bytes m' (ptr_addr (libc_errno (fst w))) 4 = 84 /\
-      (forall a, span_contains (mkSpan out 4) a -> m_bytes m' a = m_bytes m a)) \/
+      (forall a, span_contains (mkSpan out 4) a -> m_bytes m' a = m_bytes m a) /\
+      (audit (locale_codec (libc_locale (fst w))) = Some CodecC ->
+        mbstate_bytes m' state = mbstate_bytes m state /\
+        128 <= m_bytes m (ptr_addr src) < 256)) \/
    (result = 2 ^ 64 - 2 /\
       valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m' state) /\
       (forall a, span_contains (mkSpan out 4) a -> m_bytes m' a = m_bytes m a) /\
@@ -243,7 +267,7 @@ Theorem mbrtowc_world : forall valid audit rep requests r args xs s m w trace en
 Proof.
   intros valid audit rep requests r args xs s m w trace ending s' m' w' Hcall.
   assert (Hpre : mbrtowc_pre valid rep xs m w) by (inversion Hcall; assumption).
-  destruct Hpre as (_ & _ & out & src & n & state & -> & _).
+  destruct Hpre as (_ & _ & _ & out & src & n & state & -> & _).
   destruct (E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hcall) as (born & _ & Htrace & Hp).
   cbn [mbrtowc_prefix] in Hp. split; [exact Htrace|]. destruct (n =? 0).
   - destruct Hp as (_ & _ & ->). split; [apply locale_unchanged_refl|].
@@ -365,6 +389,32 @@ Proof.
     congruence.
 Qed.
 
+(** Only the independently identified stateless C converter gets this
+    error rule. It preserves admitted state, not necessarily zero state. *)
+Theorem mbrtowc_c_error : forall valid audit m w out src n state m',
+  mbrtowc_result valid audit m w out src n state (2 ^ 64 - 1) m' ->
+  audit (locale_codec (libc_locale (fst w))) = Some CodecC ->
+  mbstate_bytes m' state = mbstate_bytes m state /\
+  128 <= m_bytes m (ptr_addr src) < 256.
+Proof.
+  intros valid audit m w out src n state m' (_ & Hcases) Hc.
+  destruct Hcases as [(Hbad & _)|[(_ & Hbad & _)|[(_ & _ & _ & Herror)|(Hbad & _)]]];
+    try lia. exact (Herror Hc).
+Qed.
+
+Theorem mbrtowc_valid_after_c : forall valid audit m w out src n state result m',
+  mbrtowc_result valid audit m w out src n state result m' ->
+  audit (locale_codec (libc_locale (fst w))) = Some CodecC ->
+  valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m state) ->
+  valid (locale_codec (libc_locale (fst w))) (mbstate_bytes m' state).
+Proof.
+  intros valid audit m w out src n state result m' Hresult Hc Hvalid.
+  destruct (Z.eq_dec result (2 ^ 64 - 1)) as [->|Hnoterror].
+  - destruct (mbrtowc_c_error _ _ _ _ _ _ _ _ _ Hresult Hc) as [Hstate _].
+    rewrite Hstate. exact Hvalid.
+  - eapply mbrtowc_valid_after; eauto.
+Qed.
+
 (** Logical fixtures, not a native representation or decoder. Separate
     objects prevent a symmetric/overlapping footprint from hiding errors. *)
 Definition conversion_mem : mem := mkMem
@@ -389,7 +439,7 @@ Definition conversion_words (n : Z) : list word :=
     one explicitly represented pending state. No count-bit validity rule
     is being asserted for native arbitrary-codec states. *)
 Definition conversion_valid (_ : term) (bytes : list Z) : Prop :=
-  length bytes = 8%nat /\
+  Forall (fun b => 0 <= b < 256) bytes /\ length bytes = 8%nat /\
   (firstn 4 bytes = repeat 0 4 \/ bytes = [1; 0; 0; 0; 226; 0; 0; 0]).
 
 Definition conversion_audit (_ : term) : option audited_codec := Some CodecC.
@@ -410,7 +460,8 @@ Proof.
       * split; [discriminate|]. split; [|reflexivity]. split; [simpl; lia|].
         exists 5120, (mkRegion 5120 5128 Heap Live). repeat split; reflexivity.
       * split; [apply stdout_initial_wf|]. split; [constructor|]. split; [simpl; lia|exact I].
-  - split; [intros codec; vm_compute; auto|].
+  - split; [intros codec; vm_compute; split; [repeat constructor; congruence|auto]|].
+    split; [intros codec bytes [Hbytes _]; exact Hbytes|].
     exists (mkPtr 2048 (Obj 2048)), (mkPtr 1024 (Ro 1024)), n, (mkPtr 3072 (Obj 3072)).
     split; [reflexivity|]. split; [discriminate|]. split; [discriminate|]. split; [discriminate|].
     split.
@@ -433,7 +484,8 @@ Proof.
               ** split; [reflexivity|]. intros i Hi. cbn [conversion_mem m_bytes ptr_addr].
                  repeat match goal with |- context [?a =? ?b] => destruct (a =? b) end; lia.
            ++ split; [reflexivity|].
-           split; [vm_compute; auto|]. split; [left; change (1024 + n <= 2048); lia|].
+           split; [vm_compute; split; [repeat constructor; congruence|auto]|].
+           split; [left; change (1024 + n <= 2048); lia|].
            split; [left; change (1024 + n <= 3072); lia|]. split; [left; vm_compute; congruence|]. split.
            ** intros p size [Heq|[Heq|[Heq|[]]]]; injection Heq as <- <-;
                 split; [right; change (1024 + n <= 5120); lia|
@@ -545,7 +597,8 @@ Proof.
     + discriminate.
     + apply conversion_scalar_prefix.
     + split; [lia|]. right. left. split; [lia|]. split; [lia|].
-      split; [vm_compute; auto|]. intros _. split; [vm_compute; auto|].
+      split; [vm_compute; split; [repeat constructor; congruence|auto]|].
+      intros _. split; [vm_compute; auto|].
       split; [reflexivity|]. intros i Hi. assert (i = 0) by lia. subst. discriminate.
   - split; reflexivity.
 Qed.
@@ -570,26 +623,96 @@ Proof.
 Qed.
 
 (** Profiled incomplete calls preserve valid continuation, not initial
-    state. EILSEQ may instead leave an invalid state, but must set errno. *)
+    state. Both unprofiled and UTF-8 EILSEQ may leave invalid state. *)
 Example conversion_incomplete_and_error :
   mbrtowc_result conversion_valid conversion_audit conversion_mem conversion_world
     (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
     (2 ^ 64 - 2) (conversion_memory 0 (226 * 2 ^ 32 + 1) 9) /\
-  mbrtowc_result conversion_valid conversion_audit conversion_mem conversion_world
+  (forall audit, audit (TInt 0) <> Some CodecC ->
+  mbrtowc_result conversion_valid audit conversion_mem conversion_world
     (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
-    (2 ^ 64 - 1) (conversion_memory 0 255 84).
+    (2 ^ 64 - 1) (conversion_memory 0 255 84)).
 Proof.
-  split; (split; [lia|]).
-  - right. right. right. split; [reflexivity|]. split; [vm_compute; auto|].
+  split.
+  - split; [lia|]. right. right. right. split; [reflexivity|].
+    split; [vm_compute; split; [repeat constructor; congruence|auto]|].
     split.
     + intros a Ha. change (2048 <= a < 2052) in Ha.
       assert (a = 2048 \/ a = 2049 \/ a = 2050 \/ a = 2051) by lia.
       destruct H as [-> | [-> | [-> | ->]]]; reflexivity.
     + intros _. split; [lia|]. intros i Hi. assert (i = 0) by lia. subst. discriminate.
-  - right. right. left. split; [reflexivity|]. split; [reflexivity|].
-    intros a Ha. change (2048 <= a < 2052) in Ha.
-    assert (a = 2048 \/ a = 2049 \/ a = 2050 \/ a = 2051) by lia.
-    destruct H as [-> | [-> | [-> | ->]]]; reflexivity.
+  - intros audit Hnotc. split; [lia|]. right. right. left.
+    split; [reflexivity|]. split; [reflexivity|].
+    split.
+    + intros a Ha. change (2048 <= a < 2052) in Ha.
+      assert (a = 2048 \/ a = 2049 \/ a = 2050 \/ a = 2051) by lia.
+      destruct H as [-> | [-> | [-> | ->]]]; reflexivity.
+    + intros Hc. contradiction.
+Qed.
+
+(** A mathematical memory write is not automatically a byte. Neither
+    normal nor incomplete validity may admit this damaged state. *)
+Example conversion_bad_state_byte_rejected : forall byte result,
+  (byte < 0 \/ 256 <= byte) -> result <> 2 ^ 64 - 1 ->
+  ~ mbrtowc_result conversion_valid conversion_audit conversion_mem conversion_world
+    (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
+    result (mkMem (fun a => if a =? 3076 then byte else m_bytes conversion_mem a)
+      (m_regions conversion_mem) (m_aux conversion_mem)).
+Proof.
+  intros byte result Hbad Hnoterror Hresult.
+  pose proof (mbrtowc_valid_after _ _ _ _ _ _ _ _ _ _ Hresult Hnoterror) as Hvalid.
+  assert (mbstate_valid_bytes conversion_valid) as Hlaw.
+  { intros codec bytes [Hbytes _]. exact Hbytes. }
+  pose proof (mbstate_byte_range _ _ _ _ Hlaw Hvalid 4 ltac:(lia)) as Hrange.
+  change (0 <= byte < 256) in Hrange. lia.
+Qed.
+
+(** C error and subsequent reuse retain a nonzero residual state byte;
+    they do not silently reinitialize the state. *)
+Definition conversion_c_error_mem := store_bytes conversion_mem 1024 1 255.
+Definition conversion_c_error_end := store_bytes conversion_c_error_mem 5120 4 84.
+
+Example conversion_c_error_result :
+  mbrtowc_result conversion_valid conversion_audit conversion_c_error_mem conversion_world
+    (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
+    (2 ^ 64 - 1) conversion_c_error_end.
+Proof.
+  split; [lia|]. right. right. left. split; [reflexivity|]. split; [reflexivity|].
+  split.
+  - intros a Ha. change (2048 <= a < 2052) in Ha.
+    unfold conversion_c_error_end, store_bytes. cbn [m_bytes].
+    rewrite (proj2 (Z.leb_gt 5120 a) ltac:(lia)). reflexivity.
+  - intros _. split; [reflexivity|]. vm_compute. repeat split; congruence.
+Qed.
+
+Example conversion_c_error_valid_residual :
+  conversion_valid (locale_codec (libc_locale (fst conversion_world)))
+    (mbstate_bytes conversion_c_error_end (mkPtr 3072 (Obj 3072))) /\
+  m_bytes conversion_c_error_end 3076 = 83.
+Proof.
+  split; [|reflexivity].
+  eapply mbrtowc_valid_after_c; [exact conversion_c_error_result|reflexivity|].
+  vm_compute. split; [repeat constructor; congruence|auto].
+Qed.
+
+Example conversion_c_error_ascii_rejected :
+  ~ mbrtowc_result conversion_valid conversion_audit conversion_mem conversion_world
+    (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
+    (2 ^ 64 - 1) (conversion_memory 0 (83 * 2 ^ 32) 84).
+Proof.
+  intros Hresult.
+  destruct (mbrtowc_c_error _ _ _ _ _ _ _ _ _ Hresult eq_refl) as [_ Hbyte].
+  change (128 <= 65 < 256) in Hbyte. lia.
+Qed.
+
+Example conversion_c_error_changed_state_rejected :
+  ~ mbrtowc_result conversion_valid conversion_audit conversion_c_error_mem conversion_world
+    (mkPtr 2048 (Obj 2048)) (mkPtr 1024 (Ro 1024)) 1 (mkPtr 3072 (Obj 3072))
+    (2 ^ 64 - 1) (conversion_memory 0 (84 * 2 ^ 32) 84).
+Proof.
+  intros Hresult.
+  destruct (mbrtowc_c_error _ _ _ _ _ _ _ _ _ Hresult eq_refl) as [Hstate _].
+  discriminate Hstate.
 Qed.
 
 (** The profiled output interpretations are not generic decoder laws. *)
@@ -602,8 +725,11 @@ Example conversion_unprofiled_outputs :
     1 (conversion_memory 0 0 7).
 Proof.
   split; (split; [lia|]).
-  - left. split; [reflexivity|]. split; [vm_compute; auto|]. intros (kind & Hbad & _). discriminate.
-  - right. left. split; [lia|]. split; [lia|]. split; [vm_compute; auto|].
+  - left. split; [reflexivity|].
+    split; [vm_compute; split; [repeat constructor; congruence|auto]|].
+    intros (kind & Hbad & _). discriminate.
+  - right. left. split; [lia|]. split; [lia|].
+    split; [vm_compute; split; [repeat constructor; congruence|auto]|].
     intros (kind & Hbad & _). discriminate.
 Qed.
 
@@ -747,7 +873,7 @@ Proof.
     + discriminate.
     + exact conversion_cleanup_prefix.
     + split; [lia|]. right. right. right. split; [reflexivity|].
-      split; [vm_compute; auto|]. split.
+      split; [vm_compute; split; [repeat constructor; congruence|auto]|]. split.
       * intros a Ha. change (2048 <= a < 2052) in Ha.
         change ((if (8192 <=? a) && (a <? 8200) then byte_of 4096 (a - 8192)
           else m_bytes conversion_mem a) = m_bytes conversion_mem a).
