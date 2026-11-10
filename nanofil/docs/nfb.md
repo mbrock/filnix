@@ -487,13 +487,25 @@ Resource limits (largest module, most functions, largest `alloc`) belong to the 
 6. **Ordered: a flag or a second profile?** One flag keeps the format single. A producer that sets it wrongly is rejected, which is cheap to check. Is the one-pass consumer worth even that?
 7. **The 16-bit instruction length.** It caps a call at about 32,000 arguments and a phi at as many predecessors. A long form can be added if the corpus has anything larger.
 
-> **Changed in the implementation (Nov 10, 2026).** no instruction of the corpus comes near it; the encoder
-refuses one longer than 65535 words. Questions 2 and 4 are answered
-provisionally above and sent to Mikael: block labels do reach the
-emitted assembly (`.L<function>.<label>`, filc_amd64.pl's
-`block_label`), so while Prolog is the oracle a backend that wants byte
-identity reads NAMES for labels; and constants are signed and up to 96
-bits wide. Question 3 keeps the draft's default, `loc` in the stream.
+> **Changed in the implementation (Nov 10, 2026).** Questions 2, 3, 4
+> and 7 are decided, with the choices the implementation made, which
+> Mikael confirmed:
+>
+> - **2.** Block labels reach the emitted assembly
+>   (`.L<function>.<label>`, filc_amd64.pl's `block_label`). While the
+>   Prolog compiler is the byte-identity reference, a backend reads
+>   NAMES for its labels.
+> - **3.** `loc` stays in the stream, as the draft says, and is part of
+>   the module id.
+> - **4.** Constants are signed. An operand holds a signed 30-bit
+>   constant inline; CONSTANTS holds the rest as signed 96-bit
+>   integers, three words each, for negative and x87 constants.
+> - **7.** The 16-bit length stays. No instruction of the corpus comes
+>   near it, and the encoder refuses one longer than 65535 words.
+>
+> The rebind prefix for a temporary defined twice (opcode 1, under
+> Instructions) is decided too. The other questions keep the draft's
+> defaults.
 8. **An id-indexed model.** The speed argument needs a consumer that works on ids. Whether that is a second inductive in the backend or a change to `Syntax.v` is the model owner's decision.
 9. **The hash.** SHA-256 is a conventional choice. A Gallina implementation for the identity theorem is not needed, since the theorem is about bytes, but the library needs one in its trusted base.
 10. **Shipping the IR with the code.** A `.nanofil.ir` section in the shared object, holding the checked module the code was compiled from, would let anyone re-run `valid` against the binary they have. Not specified here.
