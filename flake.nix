@@ -332,6 +332,17 @@
                   filcc = filcc-staging;
                 }).model;
             };
+            # Programs linked with nanofil's IR of user glibc, proved
+            # (nanofil/docs/glibc-ir.md); off the main path.
+            nanofil-glibc = import ./nanofil/nix/glibc.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+              model =
+                (import ./nanofil/nix/rocq.nix {
+                  inherit pkgs;
+                  filcc = filcc-staging;
+                }).model;
+            };
             nanofil-backend = import ./nanofil/nix/backend.nix {
               inherit pkgs;
               filcc = filcc-staging;

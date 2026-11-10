@@ -1,0 +1,7 @@
+full 12 12 1
+readonly 7 7 1
+empty 0 0
+partial 1 1 1
+ebadf -1 1 1 1 1 1
+eagain -1 1 1
+oob 1 0

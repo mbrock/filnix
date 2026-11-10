@@ -47,6 +47,9 @@ page about it is listed here.
   libpizlo's pizlonated system calls as the boundary instead of libc,
   what Hello reaches through user glibc, and how much of user glibc
   nanofil compiles to IR.
+- [A spike: proofs that link user glibc's IR](glibc-ir.md): two
+  programs proved with glibc's own strlen and write in the module, and
+  libpizlo's zsys_write as the one contract.
 
 ## The compiler
 
