@@ -2,7 +2,6 @@
 theories/Term.v
 theories/SumCode.v
 theories/HiCode.v
-theories/PrefixCode.v
 theories/CycleCode.v
 theories/BufferCode.v
 theories/ScanCode.v
@@ -61,7 +60,6 @@ theories/Panics.v
 theories/Program.v
 theories/Transport.v
 theories/Sum.v
-theories/Prefix.v
 theories/StepRules.v
 theories/Symbolic.v
 theories/Cycle.v

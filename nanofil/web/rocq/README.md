@@ -200,7 +200,8 @@ replay already executes every command and checks every closure. It keeps
 every command, source hash, active goal and proof-closure check; concurrency
 changes neither the snapshots nor the capture/build deadlines. At 4 cores
 this took the capture from 279s to 148s with byte-identical output; the
-remaining critical path is Prefix.v's own replay.
+remaining critical path was Prefix.v's own replay (Prefix.v has since been
+removed).
 
 The pinned agent-browser 0.38.1 has a fixed 25-second navigation load wait,
 independent of its advertised default timeout. If only that wait expires,

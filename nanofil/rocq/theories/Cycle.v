@@ -3,7 +3,7 @@
     read-only global array of four, `xs[i % 4]` for i from 0 while
     i < n, for every int n (CycleCode.v, checked current by
     rocq/programs.sh). The loop runs up to 2^31 - 1 times, so no list
-    of runs covers it, as Prefix.v's six runs cover its loop.
+    of runs covers it.
 
     The proof is Floyd's: an assertion at each point of the function
     ([cycle_assert]) says what the [[temporary|temporaries]] hold

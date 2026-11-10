@@ -13,7 +13,7 @@
     arithmetic over the facts' ranges, or split into its two answers
     when the facts do not decide it.
 
-    Cycle.v, Buffer.v and Prefix.v take each step by its rule from
+    Cycle.v and Buffer.v take each step by its rule from
     StepRules.v ([take_step]): the step itself is never reduced, only
     its rule's premises, with the same facts, wraps and comparisons.
 
