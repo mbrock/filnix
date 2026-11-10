@@ -163,5 +163,9 @@ objects, named by `PCRE2_RX_CACHE`, and runs the compiler on a miss. With it
 nine patterns, and a cache hit costs 0.1 to 0.9 ms. PCRE2's `testinput1` and
 `testinput2` give the interpreter's output with `-jit`; 1383 of their 2485
 patterns are compiled and the rest stay on the interpreter. It is not wired
-into `pkgsFilc.pcre2`. The README has the numbers, the cache rules and what
-is not compiled.
+into `pkgsFilc.pcre2`.
+
+The compiler also runs on Trealla alone, with the same output as on
+SWI-Prolog, but a miss then takes 2 to 8 s with a native Trealla and 1.3 to
+26 s inside a Fil-C one, against 0.15 to 0.8 s. The README has the numbers,
+the cache rules and what is not compiled.

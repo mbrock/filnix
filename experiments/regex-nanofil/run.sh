@@ -7,7 +7,9 @@
 # hook.c against it with an empty cache and again with the full one.
 #
 #   ./run.sh              all patterns in one shared object, then the hook
-#   HOST=tpl ./run.sh     regex to IR on Trealla instead of SWI-Prolog
+#   HOST=tpl ./run.sh     the same with rx.pl and nanofil on Trealla; no
+#                         SWI-Prolog is used. Slower: the module takes
+#                         40 s and 5.5 GB, a pattern of the hook 2 to 7 s.
 #
 # Needs nix, GNU as, and the PCRE2 source and Fil-C build that
 # ../pcre2-sljit-llvm/run.sh leaves in $WORK. SWIPL and TPL name the
@@ -31,7 +33,7 @@ mkdir -p "$OUT"
 cd "$OUT"
 
 nixpkgs="(import (builtins.getFlake \"$repo\").inputs.nixpkgs { system = \"x86_64-linux\"; })"
-if [ -z "${SWIPL:-}" ]; then
+if [ "$HOST" = swi ] && [ -z "${SWIPL:-}" ]; then
   [ -e swipl ] || nix build --impure --expr "$nixpkgs.swi-prolog" -o swipl
   SWIPL=$OUT/swipl/bin/swipl
 fi
@@ -40,7 +42,12 @@ if [ "$HOST" = tpl ] && [ -z "${TPL:-}" ]; then
   TPL=$OUT/tpl/bin/tpl
 fi
 filcc=$WORK/filcc-staging/bin/clang
-export SWIPL
+# What bin/nanofil and rxc read to find their Prolog.
+case $HOST in
+  swi) export SWIPL NANOFIL_HOST=swi NANOFIL_STATE=$OUT/nanofil.state ;;
+  tpl) export TPL NANOFIL_HOST=trealla RXC_SECONDS=${RXC_SECONDS:-60} ;;
+  *) echo "HOST must be swi or tpl" >&2; exit 2 ;;
+esac
 
 # What pcre2_compile made of each pattern, as Prolog terms.
 "$filcc" -O2 -DHAVE_CONFIG_H -I"$pcre2/src" -I"$src/src" -I"$here/../pcre2-sljit-llvm" \
@@ -64,13 +71,16 @@ regex_to_ir() {
   esac
 }
 ir_to_asm() {
-  (cd "$repo/nanofil/src" && NANOFIL_STATE=$OUT/nanofil.state ../bin/nanofil -O compile "$OUT/rx.ir" </dev/null) >rx.s
+  (cd "$repo/nanofil/src" && ../bin/nanofil -O compile "$OUT/rx.ir" </dev/null) >rx.s
 }
 
-[ -e nanofil.state ] || "$repo/nanofil/bin/nanofil" --save-state "$OUT/nanofil.state"
+# A saved state is a snapshot of nanofil/src: make it again when that changed.
+if [ "$HOST" = swi ] && { [ ! -e nanofil.state ] || [ -n "$(find "$repo/nanofil/src" -newer nanofil.state -print -quit)" ]; }; then
+  "$repo/nanofil/bin/nanofil" --save-state "$OUT/nanofil.state"
+fi
 step "regex to IR ($HOST)" regex_to_ir
 grep '^%' rx.ir || true
-step "nanofil -O compile (swi)" ir_to_asm
+step "nanofil -O compile ($HOST)" ir_to_asm
 step "as" as -o rx.o rx.s
 step "link -shared" "$filcc" -shared -o rx.so rx.o
 
@@ -92,7 +102,7 @@ mkdir -p "$hooked"
 
 rm -rf cache
 mkdir -m 755 cache
-export PCRE2_RX_CACHE=$OUT/cache NANOFIL_STATE=$OUT/nanofil.state
+export PCRE2_RX_CACHE=$OUT/cache
 echo "empty cache:"
 PCRE2_RX_COMPILER=$here/rxc ./hook "$BUDGET"
 echo "full cache, no compiler:"

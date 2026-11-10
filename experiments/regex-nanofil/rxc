@@ -10,7 +10,9 @@
 #
 # SWIPL names SWI-Prolog (default: swipl on PATH). NANOFIL_STATE names a
 # saved state of nanofil (bin/nanofil --save-state), which saves the
-# quarter second of loading its sources. Needs GNU as, ld and timeout.
+# quarter second of loading its sources. With NANOFIL_HOST=trealla both
+# Prolog steps run on Trealla instead (TPL, default: tpl on PATH), and
+# no SWI-Prolog is needed. Needs GNU as, ld and timeout.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -30,8 +32,14 @@ slow() {
 }
 limited() { timeout "${RXC_SECONDS:-10}" "$@"; }
 
-limited "$SWIPL" -q -g "consult('$here/rx.pl'), rx:rx_file('$terms')" -t halt \
-  "$repo/nanofil/src/swi/compat.pl" </dev/null >"$work/rx.ir" || slow
+case ${NANOFIL_HOST:-swi} in
+  trealla)
+    limited "${TPL:-tpl}" -q "$here/rx.pl" -g "rx:rx_file('$terms')" -g halt \
+      </dev/null >"$work/rx.ir" || slow ;;
+  *)
+    limited "$SWIPL" -q -g "consult('$here/rx.pl'), rx:rx_file('$terms')" -t halt \
+      "$repo/nanofil/src/swi/compat.pl" </dev/null >"$work/rx.ir" || slow ;;
+esac
 if grep '^%' "$work/rx.ir" >"$output"; then
   exit 1
 fi
