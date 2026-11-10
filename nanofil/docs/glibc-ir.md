@@ -70,7 +70,9 @@ IR. What is new is that glibc's code is under it too, where until now
 Campaign 4's contracts and their native probes stood. Each native
 probe, such as [zsys-write.c](../rocq/glibc/zsys-write.c), checks one
 libpizlo primitive under filcc. It does not check G1 for glibc's code.
-mbrock decides whether G1 is acceptable before Hello uses glibc's IR.
+**Decided by mbrock (2026-11-10):** G1 stands as a named, written-down
+assumption for now. Whether to keep it is decided before Hello uses
+glibc's IR.
 
 ## The proofs
 
@@ -163,8 +165,8 @@ which needs a 2 GiB buffer, and the log-descriptor assertion.
 ## Decisions this raises
 
 1. **What the proofs trust about glibc's compiler.** Recorded as
-   assumption G1 (above). Open: whether mbrock accepts it before Hello
-   uses glibc's IR.
+   assumption G1 (above). mbrock's decision: it stands as written for
+   now, and is decided again before Hello uses glibc's IR.
 2. **A descriptor event.** `StreamBytes` means stdio acceptance in
    Campaign 4's contracts, and ExternalCalls.v says it is not a kernel
    write. Reusing it does no harm while no registry holds both `puts`
