@@ -383,6 +383,7 @@ Module ML := HL.ML.
 Module SL := ML.SL.
 Module LG := LG0.
 Module L := LG.L.
+Module GR := GetoptRefinementOn R L.M.
 Import L LG SL ML LL HL.
 
 Section main.
@@ -740,10 +741,12 @@ Qed.
     The run's argv is at av, in an object of the region ar, and holds
     the arguments sargs; the launcher copies each into an object of its
     own. getopt_long's registry entry is Campaign 4's
-    [libc_getopt_contract] for this run's input, fixed for the run.
-    Main owns argv as one block, the arguments' strings and the getopt
-    token; the call hands argv back permuted, the strings unchanged and
-    the token naming the new optarg and optind. *)
+    [libc_getopt_refined_contract] for this run's input, fixed for the
+    run: the safety contract [libc_getopt_contract], whose admission,
+    writes and prefixes it keeps, with a transition added to its
+    ordinary returns. Main owns argv as one block, the arguments'
+    strings and the getopt token; the call hands argv back permuted, the
+    strings unchanged and the token naming the new optarg and optind. *)
 
 (** argv: aligned, its argc + 1 slots in its region, argc a positive C
     int, each argument a C string. *)
@@ -755,16 +758,18 @@ Context (av : Z) (ar : region) (sargs : list argument)
 (** The number of argv's bytes and aux slots. *)
 Local Notation argv_len := (8 * (length sargs + 1))%nat.
 
-(** getopt_long has libc's contract for this run's input, over the
-    native parser's initialized and running representations and its
-    allocation requests. *)
+(** getopt_long has libc's refined contract for this run's input, over
+    the native parser's initialized and running representations, its
+    allocation requests and the transition an ordinary return makes. *)
 Context (initialized running : mem -> libc_world -> Prop)
   (grequests : list word -> mem -> libc_world -> Z -> Z -> Prop)
+  (transition : list word -> mem -> libc_world -> list Z -> list event -> list word -> mem -> libc_world -> Prop)
   (Hgetopt : registry (TAtom "getopt_long") =
-     Some (libc_getopt_contract (hello_input av sargs) initialized running grequests)).
+     Some (libc_getopt_refined_contract (hello_input av sargs) initialized running grequests transition)).
 
 (** The contract. *)
-Local Notation getopt_spec := (libc_getopt_contract (hello_input av sargs) initialized running grequests).
+Local Notation getopt_spec :=
+  (libc_getopt_refined_contract (hello_input av sargs) initialized running grequests transition).
 
 (** wi ties libc's optarg and optind cells to the parser's state and
     the getopt token, as GetoptLogic.v's reads need. *)
@@ -910,7 +915,26 @@ Lemma getopt_returned r args xs s m w trace values s' m' w' :
   exists born, getopt_post (hello_input av sargs) libc_getopt_view (libc_getopt_rep initialized)
     xs m w born trace (CallReturn values) m' w'.
 Proof.
-  intros H. inversion H as [trace' ending s0 m0 w0 born Habi Hpre Hp Hpost | ]; subst. exists born. exact Hpost.
+  intros H. apply GR.refined_invoke_base in H.
+  inversion H as [trace' ending s0 m0 w0 born Habi Hpre Hp Hpost | ]; subst. exists born. exact Hpost.
+Qed.
+
+(** What a return of getopt_long with values from the token a, i shows
+    of the transition: a call from a memory and world where wi holds
+    with the token's pieces made that transition. *)
+Definition getopt_step (a : ptr) (i : Z) (values : list word) : Prop :=
+  exists xs m w h born trace m' w',
+    wi m w h /\ (forall l v, (l, v) ∈ getopt_ps a i -> h !! l = Some v) /\
+    transition xs m w born trace values m' w'.
+
+(** A return of getopt_long, from a memory and world where wi holds
+    with the token's pieces, makes the transition: [refined_return]. *)
+Lemma getopt_stepped r args xs s m w h trace values s' m' w' a i :
+  M.E.invoke getopt_spec r args xs s m w trace (CallReturn values) s' m' w' -> wi m w h ->
+  (forall l v, (l, v) ∈ getopt_ps a i -> h !! l = Some v) -> getopt_step a i values.
+Proof.
+  intros Hi Hw Kt. destruct (GR.refined_return _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hi) as (born & Ht).
+  exists xs, m, w, h, born, trace, m', w'. auto.
 Qed.
 
 (** A return of the call keeps every piece but argv's bytes and slots
@@ -973,7 +997,8 @@ Qed.
     optind is at most argc, the call binds d to its code, a C int, and
     hands back argv holding another permitted order, the strings, and
     the token naming the new optarg and optind, in range; a 'g' comes
-    with a nonnull borrow of an argument. *)
+    with a nonnull borrow of an argument, and the code is a
+    [getopt_step] from the token. *)
 Lemma wp_main_getopt f e ls lab d va vv vs vl vi rest j ps cs a i Φ :
   map_option (arg_x ge e) [Arg W va; Arg P vv; Arg P vs; Arg P vl; Arg P vi] =
     Some (getopt_words (hello_input av sargs)) ->
@@ -981,7 +1006,8 @@ Lemma wp_main_getopt f e ls lab d va vv vs vl vi rest j ps cs a i Φ :
   pts (block_ps av ar 0 (argv_bytes ps) cs) -∗ pts (flat_map arg_ps sargs) -∗ pts (getopt_ps a i) -∗
   ▷ (∀ code ps' cs' a' i',
        ⌜getopt_order (map arg_ptr sargs) ps' /\ argv_caps cs' ps' /\ 0 <= i' <= Z.of_nat (length sargs) /\
-        getopt_int code /\ (code = 103 -> getopt_borrow (hello_input av sargs) a' /\ ptr_addr a' <> 0)⌝ -∗
+        getopt_int code /\ (code = 103 -> getopt_borrow (hello_input av sargs) a' /\ ptr_addr a' <> 0) /\
+        getopt_step a i [WInt (code mod 2 ^ 32)]⌝ -∗
        pts (block_ps av ar 0 (argv_bytes ps') cs') -∗ pts (flat_map arg_ps sargs) -∗ pts (getopt_ps a' i') -∗
        WP (ERun (mkFrame f (put d (WInt (code mod 2 ^ 32)) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
@@ -1006,9 +1032,10 @@ Proof.
     exact (getopt_admitted _ _ _ _ _ _ _ Hw Ha Hd Ho Hc Hi Kb Ks Kt).
   - iNext. iIntros (σ trace values s' m' w' Hinv) "(%h & Hh & %Hf) (Hb & Hs & Ht)".
     destruct Hf as (Ha & Hd & Hr & Hw).
-    iDestruct (pts_lookup with "Hh Hb") as %Kb.
+    iDestruct (pts_lookup with "Hh Hb") as %Kb. iDestruct (pts_lookup with "Hh Ht") as %Kt.
     destruct (getopt_returned _ _ _ _ _ _ _ _ _ _ _ Hinv) as (born & _ & Hin' & _ & _ & code & Hend & Hres).
     injection Hend as ->.
+    pose proof (getopt_stepped _ _ _ _ _ _ _ _ _ _ _ _ a i Hinv Hw Kt) as Hstep.
     change (getopt_argc (hello_input av sargs)) with (Z.of_nat (length sargs)) in Hres.
     assert (E : (Z.of_nat (length sargs) =? 0) = false) by (apply Z.eqb_neq; lia).
     rewrite E in Hres. destruct Hres as (_ & _ & Hrange & Hresult).
@@ -1037,7 +1064,8 @@ Proof.
     + iExists _. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world]. auto.
     + rewrite pts_app. iDestruct "Hn" as "[Hb Ht]".
       iApply ("HK" $! code ps' (mem_auxes m' av argv_len) a' i' with "[%] Hb Hs Ht").
-      split; [exact Ho'|]. split; [exact Ec|]. split; [exact Hrange|]. split; [exact Hint | exact Hg].
+      split; [exact Ho'|]. split; [exact Ec|]. split; [exact Hrange|]. split; [exact Hint|].
+      split; [exact Hg | exact Hstep].
 Qed.
 
 (** ## The option loop
@@ -1120,7 +1148,7 @@ Proof.
   iApply wp_let; [reflexivity | reflexivity | cbn; rewrite (Hglob _ _ G64); reflexivity | intros ?m; word_premise |].
   iNext. gen_env.
   iApply (wp_main_getopt with "Hb Hs Ht"); [word_premise | exact Ho | exact Hc | exact Hi |].
-  iNext. iIntros (code ps' cs' a' i' (Ho' & Hc' & Hi' & Hint & Hgc)) "Hb Hs Ht".
+  iNext. iIntros (code ps' cs' a' i' (Ho' & Hc' & Hi' & Hint & Hgc & _)) "Hb Hs Ht".
   pose proof (int32_end code Hint) as Hcend. pose proof (fun k => int32_eq code k Hint) as Hceq.
   pose proof (Z.mod_pos_bound code (2 ^ 32) ltac:(lia)) as Hcr.
   set (c := code mod 2 ^ 32) in *. clearbody c. gen_env.
@@ -1234,10 +1262,75 @@ Proof.
   iSplit; [iIntros "(Hl & [Hc Hy] & [Ha Hx])" | iIntros "(Hl & [Ha Hc] & Hy & Hx)"]; iFrame.
 Qed.
 
-(** Main from its entry to the option loop's exits: [main_start], with
-    argv's first slot and string out of argv's block and the arguments,
-    then [main_loop] from start. The continuation is given everything
-    the start block leaves outside the loop, and builds the exits. *)
+(** Main from its entry to the option loop's first entry: [main_start],
+    with argv's first slot and string out of argv's block and the
+    arguments, then put back. The continuation is given the loop's
+    pieces and facts, and everything the start block leaves outside the
+    loop. *)
+Lemma main_to_L8 s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
+  sargs = s0 :: srest -> argv_caps cs0 (map arg_ptr sargs) -> 0 <= ix <= Z.of_nat (length sargs) ->
+  pts (block_ps av ar 0 (argv_bytes (map arg_ptr sargs)) cs0) -∗ pts (flat_map arg_ps sargs) -∗
+  pts (getopt_ps a ix) -∗
+  HP.HN.literals r3 r4 -∗ HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
+  ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ pts (codec_ps c0) -∗
+  string empty_ptr 69968 r80 [] -∗
+  ▷ (∀ e b4 b6 (i k : nat) q (new : Z -> ptr * list Z) c',
+       ⌜start_vars e (Z.of_nat (length sargs)) av b4 b6 /\
+        lookup (TAtom "chk1") e = Some (WPtr (mkPtr b4 (Obj b4))) /\
+        fresh_ok b4 /\ fresh_ok b6 /\ (i <= length (arg_text s0))%nat /\ (k <= length (arg_text s0))%nat /\
+        (q = mkPtr 0 CNone \/ q = (new 6).1)⌝ -∗
+       ⌜loop_facts e b4 b6 (map arg_ptr sargs) cs0 ix greeting_ptr⌝ -∗
+       loop_res b4 (map arg_ptr sargs) cs0 a ix greeting_ptr -∗
+       HP.HN.literals r3 r4 -∗
+       HP.HN.name_cells pn nreg sreg nb sb
+         (mkPtr (ptr_addr (arg_ptr s0) + Z.of_nat i) (ptr_cap (arg_ptr s0)))
+         (mkPtr (ptr_addr (arg_ptr s0) + Z.of_nat i) (ptr_cap (arg_ptr s0)))
+         (mkPtr (ptr_addr (arg_ptr s0) + Z.of_nat k) (ptr_cap (arg_ptr s0))) -∗
+       ([∗ list] k ∈ locale_categories, LL.lent k (new k).1 (new k).2) -∗ pts (codec_ps c') -∗
+       string empty_ptr 69968 r80 [] -∗
+       bytes b4 8 (replicate 8 0) -∗ auxes b4 1 (replicate 15 CNone) -∗
+       live b6 (mkRegion b6 (b6 + 16) Heap Live) -∗ bytes b6 0 (replicate 8 0) -∗
+       bytes b6 8 (replicate 8 0) -∗ auxes b6 0 (clear_slots 0 (replicate 8 CNone)) -∗
+       auxes b6 8 (replicate 8 CNone) -∗
+       WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom "start")))) : mexpr)
+         {{ Φ }}) -∗
+  WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
+Proof.
+  intros Hhd [Lc Hc] Hix. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 HK".
+  pose proof Hav as (Hav0 & Hav8 & Haend & Har48).
+  assert (Hok0 : string_ok (arg_ptr s0) (arg_base s0) (arg_region s0) (arg_text s0)).
+  { apply (proj1 (List.Forall_forall _ _) Hargs). rewrite Hhd. left. reflexivity. }
+  assert (Ec0 : exists csr, cs0 = ptr_cap (arg_ptr s0) :: csr).
+  { pose proof (Hc 0%nat (arg_ptr s0)) as H. rewrite Hhd in H. specialize (H eq_refl).
+    destruct cs0 as [|c csr]; [discriminate H|]. cbn in H. injection H as ->. eauto. }
+  destruct Ec0 as (csr & ->).
+  assert (Eps : map arg_ptr sargs = arg_ptr s0 :: map arg_ptr srest) by (rewrite Hhd; reflexivity).
+  assert (Efl : flat_map arg_ps sargs = arg_ps s0 ++ flat_map arg_ps srest) by (rewrite Hhd; reflexivity).
+  iEval (rewrite Eps argv_block_split) in "Hb". iDestruct "Hb" as "(Hal & Ha0 & Hy & Hx)".
+  iEval (rewrite Efl pts_app) in "Hs". iDestruct "Hs" as "[Hs0 Hsr]".
+  iAssert (string (arg_ptr s0) (arg_base s0) (arg_region s0) (arg_text s0)) with "[Hs0]" as "Hstr".
+  { iSplit; [iPureIntro; exact Hok0 | iExact "Hs0"]. }
+  iApply (main_start with "Hal Ha0 Hstr Hlit Hcells Hks Hcod Hs80"); [lia | exact Hav8 | lia | exact Har48 |].
+  iNext. iIntros (e b4 b6 i k q new c' (Hv & Hc1 & Hf4 & Hf6 & Hi & Hk & Hq))
+    "Hal Ha0 Hstr Hlit Hcells Hlent Hcod Hs80 Hl4 Hp4 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'".
+  iDestruct "Hstr" as "[_ Hs0]".
+  iAssert (pts (block_ps av ar 0 (argv_bytes (map arg_ptr sargs)) (ptr_cap (arg_ptr s0) :: csr)))
+    with "[Hal Ha0 Hy Hx]" as "Hb".
+  { rewrite Eps argv_block_split. iFrame. }
+  iAssert (pts (flat_map arg_ps sargs)) with "[Hs0 Hsr]" as "Hs".
+  { rewrite Efl pts_app. iFrame. }
+  iApply ("HK" $! e b4 b6 i k q new c' with
+            "[%] [%] [Hb Hs Ht Hl4 Hp4] Hlit Hcells Hlent Hcod Hs80 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'").
+  - auto 10.
+  - split; [exact Hv|]. split; [exact Hc1|]. split; [exact Hf4|].
+    split; [rewrite Eps; split; [reflexivity | apply Permutation_refl]|].
+    split; [split; [exact Lc | exact Hc]|]. split; [exact Hix|]. left. reflexivity.
+  - rewrite /loop_res. iFrame.
+Qed.
+
+(** Main from its entry to the option loop's exits: [main_to_L8], then
+    [main_loop] from start. The continuation is given everything the
+    start block leaves outside the loop, and builds the exits. *)
 Lemma main_to_loop s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
   sargs = s0 :: srest -> argv_caps cs0 (map arg_ptr sargs) -> 0 <= ix <= Z.of_nat (length sargs) ->
   pts (block_ps av ar 0 (argv_bytes (map arg_ptr sargs)) cs0) -∗ pts (flat_map arg_ps sargs) -∗
@@ -1266,38 +1359,14 @@ Lemma main_to_loop s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
         loop_exit b4 b6 "iw_1.L10"%string "iw_1.L8"%string Φ)) -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
 Proof.
-  intros Hhd [Lc Hc] Hix. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 HK".
-  pose proof Hav as (Hav0 & Hav8 & Haend & Har48).
-  assert (Hok0 : string_ok (arg_ptr s0) (arg_base s0) (arg_region s0) (arg_text s0)).
-  { apply (proj1 (List.Forall_forall _ _) Hargs). rewrite Hhd. left. reflexivity. }
-  assert (Ec0 : exists csr, cs0 = ptr_cap (arg_ptr s0) :: csr).
-  { pose proof (Hc 0%nat (arg_ptr s0)) as H. rewrite Hhd in H. specialize (H eq_refl).
-    destruct cs0 as [|c csr]; [discriminate H|]. cbn in H. injection H as ->. eauto. }
-  destruct Ec0 as (csr & ->).
-  assert (Eps : map arg_ptr sargs = arg_ptr s0 :: map arg_ptr srest) by (rewrite Hhd; reflexivity).
-  assert (Efl : flat_map arg_ps sargs = arg_ps s0 ++ flat_map arg_ps srest) by (rewrite Hhd; reflexivity).
-  iEval (rewrite Eps argv_block_split) in "Hb". iDestruct "Hb" as "(Hal & Ha0 & Hy & Hx)".
-  iEval (rewrite Efl pts_app) in "Hs". iDestruct "Hs" as "[Hs0 Hsr]".
-  iAssert (string (arg_ptr s0) (arg_base s0) (arg_region s0) (arg_text s0)) with "[Hs0]" as "Hstr".
-  { iSplit; [iPureIntro; exact Hok0 | iExact "Hs0"]. }
-  iApply (main_start with "Hal Ha0 Hstr Hlit Hcells Hks Hcod Hs80"); [lia | exact Hav8 | lia | exact Har48 |].
-  iNext. iIntros (e b4 b6 i k q new c' (Hv & Hc1 & Hf4 & Hf6 & Hi & Hk & Hq))
-    "Hal Ha0 Hstr Hlit Hcells Hlent Hcod Hs80 Hl4 Hp4 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'".
-  iDestruct "Hstr" as "[_ Hs0]".
-  iAssert (pts (block_ps av ar 0 (argv_bytes (map arg_ptr sargs)) (ptr_cap (arg_ptr s0) :: csr)))
-    with "[Hal Ha0 Hy Hx]" as "Hb".
-  { rewrite Eps argv_block_split. iFrame. }
-  iAssert (pts (flat_map arg_ps sargs)) with "[Hs0 Hsr]" as "Hs".
-  { rewrite Efl pts_app. iFrame. }
-  iApply (main_loop b4 b6 Φ $! "start"%string e 0 (map arg_ptr sargs) (ptr_cap (arg_ptr s0) :: csr) a ix
-            greeting_ptr with "[%] [Hb Hs Ht Hl4 Hp4] [-]").
-  - split; [left; split; reflexivity|].
-    split; [exact Hv|]. split; [exact Hc1|]. split; [exact Hf4|].
-    split; [rewrite Eps; split; [reflexivity | apply Permutation_refl]|].
-    split; [split; [exact Lc | exact Hc]|]. split; [exact Hix|]. left. reflexivity.
-  - rewrite /loop_res. iFrame.
+  intros Hhd Hcs Hix. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 HK".
+  iApply (main_to_L8 with "Hb Hs Ht Hlit Hcells Hks Hcod Hs80"); [exact Hhd | exact Hcs | exact Hix |].
+  iNext. iIntros (e b4 b6 i k q new c' Hst Hf) "Hres Hlit Hcells Hlent Hcod Hs80 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'".
+  iApply (main_loop b4 b6 Φ $! "start"%string e 0 (map arg_ptr sargs) cs0 a ix greeting_ptr
+            with "[%] Hres [-]").
+  - split; [left; split; reflexivity | exact Hf].
   - iApply ("HK" $! e b4 b6 i k q new c' with "[%] Hlit Hcells Hlent Hcod Hs80 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'").
-    auto 10.
+    exact Hst.
 Qed.
 
 (** ## The operand check
@@ -1674,6 +1743,78 @@ Proof.
             Kversion_alloc Kversion_store Kversion_cursor Kversion_snapshot with "Hps").
   iNext. iIntros "_". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. gen_env.
   iApply (wp_main_exit _ _ _ _ _ _ _ 0); [reflexivity | lia].
+Qed.
+
+(** ## --version from main's entry
+
+    Where getopt_long's first call can only return 129, main goes from
+    its entry straight to --version: the loop's first round enters
+    iw_1.L8, calls getopt_long, and with 129 branches by iw_1.L19 to
+    iw_1.L21. No other exit of the loop is reached, so the greeting,
+    --help and the diagnostics need none of their premises. *)
+
+(** The option loop's first round, where every [getopt_step] from the
+    token a, i returns 129: from its entry by any edge to the version
+    exit. *)
+Lemma loop_version b4 b6 from e lose ps cs a i g Φ :
+  loop_entry from e lose -> loop_facts e b4 b6 ps cs i g ->
+  (forall c, 0 <= c < 2 ^ 32 -> getopt_step a i [WInt c] -> c = 129) ->
+  loop_res b4 ps cs a i g -∗ loop_exit b4 b6 "iw_1.L21"%string "iw_1.L19"%string Φ -∗
+  WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom from)))) : mexpr) {{ Φ }}.
+Proof.
+  intros Hent Hf Hlaw. unfold loop_res, loop_exit.
+  iIntros "(Hb & Hs & Ht & Hl4 & Hp4) HK".
+  destruct Hf as ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg).
+  assert (Hlose : lose = 0 \/ lose = 1).
+  { destruct Hent as [[_ ->] | [[_ ->] | [_ [_ Hl]]]]; auto. }
+  destruct getopt_globals as (G69 & G64 & _). pose proof Hlinked as (Hm & Hglob & _).
+  pose proof Hargc as Hargc'.
+  (* Enter iw_1.L8: pr.2 is lose. *)
+  iApply (wp_enter _ _ _ _ _ _ _ _ (main_block "iw_1.L8") (put (TAtom "iw_1.pr.2") (WInt lose) e)).
+  { vm_compute. reflexivity. }
+  { destruct Hent as [[-> ->] | [[-> ->] | [[-> | ->] [Hpr _]]]]; word_premise. }
+  iNext. cbn [b_insts b_jump main_block hblk]. gen_env.
+  (* getopt_long(argc, argv, "g:t", longopts, NULL) returns 129. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite (Hglob _ _ G69); reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite (Hglob _ _ G64); reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_main_getopt with "Hb Hs Ht"); [word_premise | exact Ho | exact Hc | exact Hi |].
+  iNext. iIntros (code ps' cs' a' i' (Ho' & Hc' & Hi' & Hint & _ & Hstep)) "Hb Hs Ht".
+  pose proof (Z.mod_pos_bound code (2 ^ 32) ltac:(lia)) as Hcr.
+  pose proof (Hlaw _ Hcr Hstep) as E129. rewrite E129. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  mn_enter "iw_1.L19".
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  iApply ("HK" $! _ ps' cs' a' i' g lose with "[%] [$Hb $Hs $Ht $Hl4 $Hp4]").
+  split; [|split; [assumption | exact Hlose]].
+  split; [repeat split; assumption|]. split; [assumption|]. split; [exact Hfr|]. auto.
+Qed.
+
+(** Main from its entry to its exit by --version, where every
+    [getopt_step] from the first token returns 129: [main_to_L8],
+    [loop_version] and [main_version]. Main owns what the start block
+    and the version block need, and nothing for the other paths. *)
+Lemma main_to_version s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
+  sargs = s0 :: srest -> argv_caps cs0 (map arg_ptr sargs) -> 0 <= ix <= Z.of_nat (length sargs) ->
+  (forall c, 0 <= c < 2 ^ 32 -> getopt_step a ix [WInt c] -> c = 129) ->
+  pts (block_ps av ar 0 (argv_bytes (map arg_ptr sargs)) cs0) -∗ pts (flat_map arg_ps sargs) -∗
+  pts (getopt_ps a ix) -∗
+  HP.HN.literals r3 r4 -∗ HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
+  ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ pts (codec_ps c0) -∗
+  string empty_ptr 69968 r80 [] -∗ pts version_ps -∗
+  WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
+Proof.
+  intros Hhd Hcs Hix Hlaw. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 Hv".
+  iApply (main_to_L8 with "Hb Hs Ht Hlit Hcells Hks Hcod Hs80"); [exact Hhd | exact Hcs | exact Hix |].
+  iNext. iIntros (e b4 b6 i k q new c' _ Hf) "Hres _ _ _ _ _ _ _ _ _ _ _ _".
+  iApply (loop_version b4 b6 "start"%string e 0 with "Hres [Hv]").
+  - left. split; reflexivity.
+  - exact Hf.
+  - exact Hlaw.
+  - iApply (main_version with "Hv").
 Qed.
 
 (** setlocale's query of LC_MESSAGES, whose name is lent, is admitted,

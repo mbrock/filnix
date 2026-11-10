@@ -1040,7 +1040,11 @@ the registry can be fixed per launch after startup fixes argv, which
 
 **getopt_long's call.** [HelloMain.v](../rocq/theories/HelloMain.v)'s
 `wp_main_getopt` is the call main makes, with
-`libc_getopt_contract (hello_input av sargs) …` in the registry. The
+`libc_getopt_refined_contract (hello_input av sargs) … transition` in
+the registry. That is Campaign 4's safety contract with a `transition`
+conjoined to each ordinary return's postcondition; its admission,
+writes and prefixes are the safety contract's, and `getopt_returned`
+reads the safety post through `refined_invoke_base`. The
 run's arguments `sargs` are strings in objects of their own, as the
 launcher copies them. `hello_input` is getopt's input for the whole
 run: argv, "g:t" and Hello's four long options, every flag null. Main
@@ -1060,6 +1064,10 @@ holds (`argv_bytes`) and its aux slots their capabilities (`argv_caps`).
   optind in range. `hello_code` adds that the code is a C int and that
   a 'g', short or `--greeting`, comes with a nonnull borrow of an
   argument.
+- The code is a `getopt_step` from the token: some call from a memory
+  and world where wi holds with the token's pieces made the transition
+  with that return (`getopt_stepped`, by `refined_return`). The loop
+  ignores it; the version path below uses it.
 
 The premises on wi are call-local:
 - `Hgetopt_wi`: the cells and token are current.
@@ -1089,9 +1097,10 @@ pr.2 at 0 or 1. Main owns everything else the start block left
 (b4's tail, b6, the lent names and the codec), and the continuations
 capture it.
 
-`main_to_loop` composes `main_start` with the loop. It takes argv as a
-block holding the arguments in order (`argv_block_split` lends its
-first slot to `main_start`) and the token at any optind in range. It
+`main_to_loop` composes `main_start` with the loop, through
+`main_to_L8`. It takes argv as a block holding the arguments in order
+(`argv_block_split` lends its first slot to `main_start`) and the token
+at any optind in range. It
 needs the launcher to give the arguments' strings objects of their
 own, which Startup.v's `copy_slots` does, one allocation per string.
 
@@ -1124,6 +1133,21 @@ the same shape as HelloClose's `_exit`). In this language the call
 stalls. The handlers exit runs, close_stdout among them, are the
 ending's, and Campaign 4's Ending and Linked compose them with main.
 Since main never resumes, the loop's pieces are dropped there.
+
+**--version from main's entry.** `main_to_version` proves main from its
+entry to `exit(0)` by --version alone, where every `getopt_step` from
+the first token returns 129. Its premises are those of the start block,
+getopt's call and the version block; none of the greeting's, --help's
+or the diagnostics'. `main_to_L8` is the start block up to the loop's
+first entry, and
+`loop_version` is the loop's first round: the call, the comparison with
+-1 and the branch by `iw_1.L19` to `iw_1.L21`. The code-129 premise is
+where Campaign 4's concrete binding enters. Its transition for argv
+`[hello, --version]` with a fresh parser yields 129, and its wi has to
+tie the first token to that fresh parser. The safety contract alone
+cannot do this: it allows `'?'` for the same input and memory, so
+without the transition the other exits are reachable as far as the
+contracts say.
 
 **The help path.** `main_help` is the loop's exit at `iw_1.L39`, the
 inlined `print_help`. It needs the help literals' pieces, the string

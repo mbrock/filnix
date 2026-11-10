@@ -147,13 +147,17 @@ Context (av : Z) (ar : region) (sargs : list argument)
   (Hargc : 1 <= Z.of_nat (length sargs) < 2 ^ 31)
   (Hargs : Forall (fun s => string_ok (arg_ptr s) (arg_base s) (arg_region s) (arg_text s)) sargs).
 
-(** getopt_long has libc's contract for this run's input, over the
-    native parser's initialized and running representations and its
-    allocation requests. *)
+(** getopt_long has libc's refined contract for this run's input, over
+    the native parser's initialized and running representations, its
+    allocation requests and the transition an ordinary return makes.
+    Every path is proved whatever the transition, so the safety
+    contract's own returns are the case of a transition that always
+    holds. *)
 Context (initialized running : mem -> libc_world -> Prop)
   (grequests : list word -> mem -> libc_world -> Z -> Z -> Prop)
+  (transition : list word -> mem -> libc_world -> list Z -> list event -> list word -> mem -> libc_world -> Prop)
   (Hgetopt : registry (TAtom "getopt_long") =
-     Some (libc_getopt_contract (hello_input av sargs) initialized running grequests)).
+     Some (libc_getopt_refined_contract (hello_input av sargs) initialized running grequests transition)).
 
 (** wi ties libc's optarg and optind cells to the parser's state and
     the getopt token, as GetoptLogic.v's reads need. *)
@@ -189,7 +193,8 @@ Context (Hgetopt_apart : forall m w h, wi m w h ->
     the memory then holds and the token naming the new optarg and
     optind. *)
 Context (Kgetopt : forall r args xs s m w h trace values s' m' w' bs cs,
-   M.E.invoke (libc_getopt_contract (hello_input av sargs) initialized running grequests) r args xs s m w trace (CallReturn values) s' m' w' ->
+   M.E.invoke (libc_getopt_refined_contract (hello_input av sargs) initialized running grequests transition)
+     r args xs s m w trace (CallReturn values) s' m' w' ->
    (forall l v, (l, v) ∈ block_ps av ar 0 bs cs -> h !! l = Some v) -> wi m w h ->
    wi m' w' (overwrite (block_ps av ar 0 (mem_bytes m' av (8 * (length sargs + 1))) (mem_auxes m' av (8 * (length sargs + 1))) ++
      getopt_ps (getopt_optarg (libc_getopt_view w')) (getopt_optind (libc_getopt_view w'))) h)).
