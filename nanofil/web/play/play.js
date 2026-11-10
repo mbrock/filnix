@@ -131,9 +131,9 @@ async function symbol(name) {
   return dom;
 }
 
-// A C page (nanofil/c/) links here with its file in the address:
-// #src=BASE64URL&name=FILE, and &ir=FUNCTION to open that function's IR
-// once it is compiled.
+// A C fence that compiles alone (web/c/c_draw.pl) links here with its
+// source in the address: #src=BASE64URL&name=FILE, and &ir=FUNCTION when
+// one of its names is clicked, to open that function's IR once compiled.
 const linked = new URLSearchParams(location.hash.startsWith("#src=") ? location.hash.slice(1) : "");
 let irFocus = linked.get("ir");
 if (linked.has("src")) {
