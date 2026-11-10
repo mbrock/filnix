@@ -1109,8 +1109,24 @@ block for `wp_raw_load_pointer_in`, and its capability is an
 argument's, whose life main owns, or the sentinel's, which is null.
 `operands_exit` makes the operand check the loop's end-of-options exit.
 
-Next are the version and help paths over HelloVersionOn and
-HelloStdioOn, then the greeting at `iw_1.join`.
+**The version path.** `main_version` is the loop's exit at `iw_1.L21`.
+Given the version literals' pieces, main does four things:
+- it loads stdout's stream through the world (`wi_stdout`, as in
+  HelloVersion's footer);
+- it calls `proper_name` four times (`wp_main_proper_name`; the helper
+  is the identity);
+- it calls `version_etc` through HelloVersion's `version_etc_spec`,
+  with that section's premises taken over as main's;
+- it calls `exit(0)`.
+
+`exit` has a contract that never returns into main (`wp_main_exit`,
+the same shape as HelloClose's `_exit`). In this language the call
+stalls. The handlers exit runs, close_stdout among them, are the
+ending's, and Campaign 4's Ending and Linked compose them with main.
+Since main never resumes, the loop's pieces are dropped there.
+
+Next are the help path over the stdio contracts, then the greeting at
+`iw_1.join`.
 
 ## Open questions for mbrock
 

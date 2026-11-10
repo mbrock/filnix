@@ -15,7 +15,7 @@ From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
   LentLogic Locale LocaleLogic Libc HelloModule HelloLeaf HelloLocale HelloConv HelloName
-  HelloProgName Startup Getopt GetoptLogic.
+  HelloProgName Startup Getopt GetoptLogic HelloVersion.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -354,6 +354,7 @@ Module LG0 := Logic R.
 Module HC := HelloConvOn R LG0.
 Module HP := HelloProgNameOn R LG0.
 Module GL := GetoptLogicOn R LG0.
+Module HV := HelloVersionOn R LG0.
 Module HLo := HC.HLo.
 Module HL := HC.HL.
 Module LL := HC.LL.
@@ -1486,6 +1487,172 @@ Lemma operands_exit b4 b6 Φ :
 Proof.
   iIntros "HK". rewrite /loop_exit. iIntros (e ps cs a i g lose Hf) "Hr".
   iApply (main_operands with "[%] Hr HK"). exact Hf.
+Qed.
+
+(** exit has a contract that admits any canonical status and never
+    returns to main. The handlers it runs, close_stdout among them, are
+    the ending's, not main's: in this language the call stalls. *)
+Context (exit_spec : contract libc_world)
+  (Hexit : registry (TAtom "exit") = Some exit_spec)
+  (Hexit_abi : forall v, contract_abi exit_spec CVoid [Arg W v])
+  (Hexit_pre : forall n m w h, 0 <= n < 2 ^ 32 -> wi m w h -> contract_pre exit_spec [WInt n] m w)
+  (Hexit_post : forall args n s m w tr vs s' m' w',
+    M.E.invoke exit_spec CVoid args [WInt n] s m w tr (CallReturn vs) s' m' w' -> False).
+
+(** exit(n), for a canonical n, is safe under every postcondition. *)
+Lemma wp_main_exit f e ls lab v rest j n Φ :
+  arg_x ge e (Arg W v) = Some (WInt n) -> 0 <= n < 2 ^ 32 ->
+  ⊢ WP (ERun (mkFrame f e ls None (Exec lab
+    (Call CVoid (Global (TAtom "exit")) [Arg W v] :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hv Hn.
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ exit_spec [WInt n] True%I with "[] []").
+  - apply linked_outside; [exact Hlinked|reflexivity].
+  - apply linked_unbound; [exact Hlinked|reflexivity].
+  - reflexivity.
+  - exact Hexit.
+  - cbn [map_option]. rewrite Hv. reflexivity.
+  - apply Hexit_abi.
+  - iIntros (σ) "Hσ _". iDestruct "Hσ" as (h) "[_ %Hσ]". iPureIntro.
+    exact (Hexit_pre _ _ _ _ Hn (proj2 (proj2 (proj2 Hσ)))).
+  - done.
+  - iNext. iIntros (σ tr vs s' m' w' Hi) "_ _". exfalso. exact (Hexit_post _ _ _ _ _ _ _ _ _ _ Hi).
+Qed.
+
+(** libc's stdout: the world keeps its cell readable and holding the
+    stream, as HelloVersion's footer assumes. *)
+Context (stdout_cell stream : ptr)
+  (Hstdout_g : lookup (TAtom "stdout") (ge_globals ge) = Some stdout_cell)
+  (wi_stdout : forall m w h, wi m w h ->
+    access_res m (raw_address (ptr_addr stdout_cell) 0) (ptr_cap stdout_cell) 8 Read 8 = Some ok /\
+    pointer_load_effects m (raw_address (ptr_addr stdout_cell) 0)
+      [AuxRead; LowerResolve; AddressRead] = Some stream).
+
+(** version_etc's premises, as HelloVersion's [version_etc_spec] takes
+    them: the literal pieces main owns, the authors' lives among them,
+    the six output contracts and the frame of its allocations, stores
+    and snapshot. *)
+Context (version_ps : list (piece * pval)) (author_reg : String.string -> region)
+  (Hauthor_live : forall s, In s ["hello#str.72"; "hello#str.73"; "hello#str.74"; "hello#str.75"] ->
+    (PLive (ptr_addr (version_literal s)), VLive (author_reg s)) ∈ version_ps)
+  (version_spec : name -> contract libc_world)
+  (Hversion_reg : forall g xs, In (g, xs) (version_output_args stream) -> registry g = Some (version_spec g))
+  (Hversion_ret : forall g xs, In (g, xs) (version_output_args stream) ->
+    contract_returns (version_spec g) = RClass W)
+  (Hversion_abi : forall g xs d args, In (g, xs) (version_output_args stream) ->
+    map (fun a => match a with Arg k _ => k end) args = version_output_classes xs ->
+    contract_abi (version_spec g) (CResult d W) args)
+  (Hversion_pre : forall g xs m w h, In (g, xs) (version_output_args stream) ->
+    (forall l v, (l, v) ∈ version_ps -> h !! l = Some v) ->
+    agrees m h -> wi m w h -> contract_pre (version_spec g) xs m w)
+  (Hversion_frame : forall g xs r args s m w h trace values s' m' w',
+    In (g, xs) (version_output_args stream) ->
+    agrees m h -> live_disjoint m -> R.ready s m -> wi m w h ->
+    M.E.invoke (version_spec g) r args xs s m w trace (CallReturn values) s' m' w' ->
+    agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ wi m' w' h /\
+      exists n, values = [WInt n] /\ 0 <= n < 2 ^ 32)
+  (Kversion_alloc : forall size m wd h base,
+    In size [24; 80] -> fresh m (heap_req 8 size) base -> wi m wd h ->
+    wi (allocated m (heap_req 8 size) base) wd (overwrite (obj_ps base (heap_req 8 size)) h))
+  (Kversion_store : forall b reg o x xp m wd h,
+    (forall k v, (k, v) ∈ [(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) -> h !! k = Some v) ->
+    wi m wd h ->
+    wi (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
+      (overwrite ([(PLive b, VLive reg)] ++
+        (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h))
+  (Kversion_cursor : forall cb cr sb off m wd h,
+    (forall k v, (k, v) ∈ va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb)) -> h !! k = Some v) ->
+    wi m wd h ->
+    wi (store_bytes m cb 8 (sb + off + 8)) wd
+      (overwrite (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) h))
+  (Kversion_snapshot : forall m wd h sb,
+    fresh m (heap_req 16 72) sb -> wi m wd h ->
+    wi (snapshot_values (HV.version_main_args stream) sb (allocated m (heap_req 16 72) sb)) wd
+      (overwrite (snapshot_ps (HV.version_main_args stream) sb (heap_req 16 72)) h)).
+
+(** The version block's literals are linked where HelloVersion reads
+    them. *)
+Lemma main_version_lookup s :
+  In s ["hello#str.70"; "hello#str.63"; "hello#str.71"; "hello#str.72";
+        "hello#str.73"; "hello#str.74"; "hello#str.75"] ->
+  lookup (TAtom s) (ge_globals ge) = Some (version_literal s).
+Proof.
+  intros Hin. apply (proj1 (proj2 Hlinked)).
+  repeat destruct Hin as [<- | Hin]; try contradiction; vm_compute; reflexivity.
+Qed.
+
+(** proper_name(p), from main: the helper is the identity, so d is
+    bound to p and nothing main owns changes. *)
+Lemma wp_main_proper_name e ls lab d v rest j p Φ :
+  arg_x ge e (Arg P v) = Some (WPtr p) ->
+  ▷ WP (ERun (mkFrame main_fn (put d (WPtr p) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame main_fn e ls None (Exec lab
+    (Call (CResult d P) (Global (TAtom "proper_name")) [Arg P v] :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hv. iIntros "HK".
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ proper_name_fn (invocation proper_name_fn [WPtr p])).
+  1: cbn [map_option]; rewrite Hv; reflexivity.
+  1: unfold find_fn; rewrite (proj1 Hlinked); vm_compute; reflexivity.
+  1: reflexivity.
+  iNext. iApply (HV.proper_name_spec registry wi ge).
+  iNext. iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. iExact "HK".
+Qed.
+
+(** --version, iw_1.L21: main loads stdout, names the four authors,
+    calls version_etc and exits with 0. Only the version literals are
+    needed; the loop's pieces are left behind, since exit does not
+    return. *)
+Lemma main_version b4 b6 Φ :
+  pts version_ps -∗ loop_exit b4 b6 "iw_1.L21"%string "iw_1.L19"%string Φ.
+Proof.
+  pose proof (main_version_lookup "hello#str.70" ltac:(simpl; tauto)) as H70.
+  pose proof (main_version_lookup "hello#str.63" ltac:(simpl; tauto)) as H63.
+  pose proof (main_version_lookup "hello#str.71" ltac:(simpl; tauto)) as H71.
+  pose proof (main_version_lookup "hello#str.72" ltac:(simpl; tauto)) as H72.
+  pose proof (main_version_lookup "hello#str.73" ltac:(simpl; tauto)) as H73.
+  pose proof (main_version_lookup "hello#str.74" ltac:(simpl; tauto)) as H74.
+  pose proof (main_version_lookup "hello#str.75" ltac:(simpl; tauto)) as H75.
+  iIntros "Hps". rewrite /loop_exit. iIntros (e ps cs a i g lose _) "_".
+  mn_enter "iw_1.L21".
+  (* stdout's stream. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hstdout_g; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_check. exact (proj1 (wi_stdout _ _ _ Hw)). }
+  iNext. iIntros "_". gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_raw_load_pointer; apply (wi_stdout _ _ _ Hw). }
+  iNext. iIntros "_". gen_env.
+  (* The heading's literals and the four authors. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H70; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H63; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H71; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H72; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H73; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H74; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H75; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  (* version_etc, then exit(0). *)
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ HV.version_etc_fn
+            (invocation HV.version_etc_fn (HV.version_main_args stream)));
+    [word_premise | unfold find_fn; rewrite (proj1 Hlinked); vm_compute; reflexivity | reflexivity |].
+  iNext.
+  iApply (HV.version_etc_spec registry wi ge Hlinked stream version_ps author_reg Hauthor_live
+            version_spec Hversion_reg Hversion_ret Hversion_abi Hversion_pre Hversion_frame
+            Kversion_alloc Kversion_store Kversion_cursor Kversion_snapshot with "Hps").
+  iNext. iIntros "_". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. gen_env.
+  iApply (wp_main_exit _ _ _ _ _ _ _ 0); [reflexivity | lia].
 Qed.
 
 End main.
