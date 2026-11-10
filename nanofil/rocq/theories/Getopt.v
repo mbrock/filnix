@@ -70,6 +70,24 @@ Definition getopt_int_cell m p z : Prop :=
   access_res m (ptr_addr p) (ptr_cap p) 4 Write 4 = Some ok /\
   load_bytes m (ptr_addr p) 4 = z mod 2 ^ 32.
 
+(** The selected x86-64 native parser structure is 56 bytes. The fixed
+    parser pointer must identify libc's actual private object, not a
+    caller-chosen phase tag. Its root is delegated by the existing
+    parser inventory; main owns none of these bytes. *)
+Definition getopt_parser_storage (parser : ptr) m g : Prop :=
+  In (mkSpan parser 56) (getopt_roots g) /\
+  readable_bytes m parser 56 /\ writable_span m (mkSpan parser 56) /\
+  access_res m (ptr_addr parser) (ptr_cap parser) 56 Read 8 = Some ok.
+
+(** First use, not a reset inferred from public optind alone. Native
+    __initialized is the int at offset 24; zero forces initialization
+    of nextchar, ordering and permutation bounds. Startup must identify
+    this storage and establish that no preceding call initialized it.
+    Public optopt need not equal the zero-initialized private copy. *)
+Definition getopt_parser_fresh parser m g : Prop :=
+  getopt_parser_storage parser m g /\ getopt_optind g = 1 /\
+  load_bytes m (ptr_addr parser + 24) 4 = 0.
+
 (** Optional out-int: null is absence, not a writable null span. *)
 Definition getopt_optional_int m p : Prop :=
   ptr_addr p = 0 \/ exists z, getopt_int_cell m p z.
@@ -378,6 +396,28 @@ Definition getopt_contract {World} input (view : World -> getopt_world)
     resource_reason
     (fun why => In why [NullCapability; OutOfBounds; Misaligned; Readonly; ArgumentSize; ReturnSize]).
 
+(** A functional libc binding refines ordinary completions without
+    changing the safety contract's admission, authority or resource
+    prefixes. The transition is an additional trusted claim until a
+    concrete binding establishes its native realization; it is not a
+    consequence of initialized public cells or the base postcondition. *)
+Definition getopt_refined_contract {World} input (view : World -> getopt_world)
+    (rep inflight : mem -> World -> Prop) (stable : World -> World -> Prop)
+    (requests : list word -> mem -> World -> Z -> Z -> Prop)
+    (transition : list word -> mem -> World -> list Z -> list event ->
+      list word -> mem -> World -> Prop) : contract World :=
+  let base := getopt_contract input view rep inflight stable requests in
+  mkContract World (contract_returns base) (contract_abi base) (contract_pre base)
+    (contract_sources base) (contract_writes base) (contract_releases base)
+    (contract_requests base) (contract_prefix base)
+    (fun xs m w born trace ending m' w' =>
+      contract_post base xs m w born trace ending m' w' /\
+      match ending with
+      | CallReturn values => transition xs m w born trace values m' w'
+      | _ => True
+      end)
+    (contract_resource base) (contract_panics base).
+
 (** The exact capability of a borrowed optarg is never replaced by a
     stronger Obj capability having the same address. *)
 Lemma getopt_borrow_cap : forall input p,
@@ -424,6 +464,66 @@ Proof.
   intros World input view rep xs m w born trace ending m' w' (_ & _ & [Hcell _] & _).
   apply exposed_pointer_load. exact Hcell.
 Qed.
+
+(** Refinement lemmas over the consumer's supplied machine, so the
+    projection never transports an invocation between sibling functors. *)
+Module GetoptRefinementOn (R : Runtime) (M : ExternalMachineSig R).
+Module E := M.E.
+
+(** Every refined invocation is a base invocation with the same effects,
+    allocation witnesses, trace, runtime and memory/world endpoints. *)
+Theorem refined_invoke_base : forall World input view rep inflight stable requests transition
+    r args xs s m (w : World) trace ending s' m' w',
+  E.invoke (getopt_refined_contract input view rep inflight stable requests transition)
+    r args xs s m w trace ending s' m' w' ->
+  E.invoke (getopt_contract input view rep inflight stable requests)
+    r args xs s m w trace ending s' m' w'.
+Proof.
+  intros World input view rep inflight stable requests transition
+    r args xs s m w trace ending s' m' w' Hcall.
+  destruct Hcall as [trace ending s' m' w' born Habi Hpre Hp Hpost Hnr Hvalues Hexit
+    |why trace s' m' w' born Habi Hpre Hp Hfailure Hresource].
+  - eapply E.invoke_normal with (born := born); try eassumption.
+    exact (proj1 Hpost).
+  - eapply E.invoke_resource with (born := born); eassumption.
+Qed.
+
+(** Only an ordinary refined return supplies the additional transition;
+    resource prefixes do not imply a completed parser state. *)
+Theorem refined_return : forall World input view rep inflight stable requests transition
+    r args xs s m (w : World) trace values s' m' w',
+  E.invoke (getopt_refined_contract input view rep inflight stable requests transition)
+    r args xs s m w trace (CallReturn values) s' m' w' ->
+  exists born, transition xs m w born trace values m' w'.
+Proof.
+  intros World input view rep inflight stable requests transition
+    r args xs s m w trace values s' m' w' Hcall.
+  inversion Hcall as
+    [tr ending sr mr wr born Habi Hpre Hp Hpost Hnr Hvalues Hexit
+    |why tr sr mr wr born Habi Hpre Hp Hfailure Hresource]; subst.
+  eexists. exact (proj2 Hpost).
+Qed.
+
+(** Refining ordinary posts preserves resource invocations in both
+    directions, even when the selected transition is unsatisfiable. *)
+Theorem refined_resource_iff : forall World input view rep inflight stable requests transition
+    r args xs s m (w : World) trace why s' m' w',
+  E.invoke (getopt_refined_contract input view rep inflight stable requests transition)
+    r args xs s m w trace (CallResource why) s' m' w' <->
+  E.invoke (getopt_contract input view rep inflight stable requests)
+    r args xs s m w trace (CallResource why) s' m' w'.
+Proof.
+  intros World input view rep inflight stable requests transition
+    r args xs s m w trace why s' m' w'. split.
+  - apply refined_invoke_base.
+  - intros Hcall. inversion Hcall as
+      [tr ending sr mr wr born Habi Hpre Hp Hpost Hnr Hvalues Hexit
+      |why' tr sr mr wr born Habi Hpre Hp Hfailure Hresource]; subst.
+    + exfalso. exact (Hnr why eq_refl).
+    + eapply E.invoke_resource with (born := born); eassumption.
+Qed.
+
+End GetoptRefinementOn.
 
 (** Runtime-facing lemmas for this machine instance. Sibling functor
     applications are generative; using these inside Logic requires the

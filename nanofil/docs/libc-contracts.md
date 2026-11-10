@@ -495,6 +495,18 @@ Sources: `posix/getopt.c`, `getopt1.c`, Linux fcntl wrappers. argv
 permutation is within a live pointer array, so it satisfies kept only
 when stored capabilities, not just raw bytes, follow the permutation.
 
+The Rocq safety result classification does not determine which option
+was scanned. Its ordinary-return refinement overlay leaves admission,
+authority and resource prefixes unchanged; a functional transition is
+an additional trusted libc claim, not implied by that safety relation.
+For the version path, [libc-getopt.c](../tests/c/prog/libc-getopt.c) checks
+true first use of `[program, "--version"]`: code 129, null optarg,
+optind 2, then code -1. It also checks explicit reset and a counterexample
+to treating optind 1 as freshness: an unfinished `-tt` scan continues
+with `t` even after switching argv to `--version`. The fixed private
+parser object, its storage authority, initialization/environment validity
+and persistence before the call remain representation obligations.
+
 ## 5. Locale and characters (12)
 
 Locale transitions can update TLS/table pointers, allocate caches and

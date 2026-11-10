@@ -105,6 +105,16 @@ Definition libc_getopt_contract input initialized running
   getopt_contract input libc_getopt_view (libc_getopt_rep initialized)
     (libc_getopt_inflight running) libc_getopt_stable requests.
 
+(** A functional ordinary-return binding over the same payload and
+    authority as [libc_getopt_contract]. Its transition must be justified
+    separately; it does not follow from the safety representation. *)
+Definition libc_getopt_refined_contract input initialized running
+    (requests : list word -> mem -> libc_world -> Z -> Z -> Prop)
+    (transition : list word -> mem -> libc_world -> list Z -> list event ->
+      list word -> mem -> libc_world -> Prop) : contract libc_world :=
+  getopt_refined_contract input libc_getopt_view (libc_getopt_rep initialized)
+    (libc_getopt_inflight running) libc_getopt_stable requests transition.
+
 (** Borrowed-name facts survive projection through the composite world.
     No separate ghost copy of the locale names is introduced here. *)
 Lemma libc_name : forall rep m w category,

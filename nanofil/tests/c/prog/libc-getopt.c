@@ -29,10 +29,18 @@ int main(void) {
     unsetenv("POSIXLY_CORRECT");
     char name[] = "probe", operand[] = "operand", greeting[] = "--greeting=abc";
     char help[] = "--help", version[] = "--version";
+    char *version_only[] = {name, version, 0};
+    check("fresh parser starts at one", optind == 1);
+    int r = getopt_long(2, version_only, "g:t", opts, 0);
+    check("fresh exact version", r == 129 && optarg == 0 && optind == 2);
+    r = getopt_long(2, version_only, "g:t", opts, 0);
+    check("exact version then end", r == -1 && optarg == 0 && optind == 2 &&
+          version_only[0] == name && version_only[1] == version && version_only[2] == 0 &&
+          strcmp(version_only[1], "--version") == 0);
     char *av[] = {name, operand, greeting, help, version, 0};
     reset();
     int index = -7;
-    int r = getopt_long(5, av, "g:t", opts, &index);
+    r = getopt_long(5, av, "g:t", opts, &index);
     check("greeting interior borrow", r == 'g' && index == 0 && optarg == greeting + 11 &&
           strcmp(optarg, "abc") == 0);
     // Pointer equality alone checks addresses. Dereference the permuted
@@ -103,5 +111,19 @@ int main(void) {
     char *hv[] = {name, high, 0};
     reset();
     check("signed high short byte", getopt_long(2, hv, highopts, opts, 0) == -1 && optarg == 0);
+
+    // optind=1 and null optarg alone do not mean a fresh continuation.
+    char partial[] = "-tt";
+    char *pending[] = {name, partial, 0};
+    reset();
+    r = getopt_long(2, pending, "g:t", opts, 0);
+    check("partial short scan at one", r == 't' && optind == 1 && optarg == 0);
+    r = getopt_long(2, version_only, "g:t", opts, 0);
+    check("one is not a parser reset", r == 't' && r != 129);
+    reset();
+    r = getopt_long(2, version_only, "g:t", opts, 0);
+    check("reset exact version", r == 129 && optarg == 0 && optind == 2);
+    r = getopt_long(2, version_only, "g:t", opts, 0);
+    check("reset version then end", r == -1 && optarg == 0 && optind == 2);
     return failures != 0;
 }

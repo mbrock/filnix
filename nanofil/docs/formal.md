@@ -378,6 +378,22 @@ these specifications as relations, not global axioms or a purported
 proof of libc. The first relation is standalone; Prolog execution and
 the extracted driver still model only `free`.
 
+**Current priority (2026-11-10):** freeze unrelated contract expansion
+until one inhabited composite `wi` discharges Hello's `--version` path.
+Campaign 4 owns the concrete representation and libc bindings;
+Campaign 3 owns the main/entry wrapper. Start with `main_version`, then
+compose startup, locale, callback registration and the selected getopt
+call. A five-day checkpoint must expose remaining blockers, not add
+more conditional triples. Getopt's safety contract does not determine
+the selected code: [Getopt.v](../rocq/theories/Getopt.v) now provides an
+ordinary-return refinement overlay, same-machine projection and resource
+equivalence. A concrete functional binding still needs actual private
+parser freshness, compatible endpoints and the whole-world frame; an
+arbitrary transition predicate proves none of those. Public optind 1
+alone is not freshness. Main branches directly to version on code 129;
+the following end-of-options call is a native continuation control, not
+a prerequisite for that branch.
+
 Fil-C's own layering helps: libc is pizlonated C, the runtime's syscall
 wrappers check buffer capabilities before the kernel sees raw addresses,
 so "the kernel writes only within ranges the wrapper checked" is an

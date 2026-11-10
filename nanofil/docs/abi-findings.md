@@ -1243,3 +1243,24 @@ nanofil's object places them the same way: data objects in `.data` and
 which nothing defines, so filcc's link fails. nanofil accepts the
 attribute (c_types known_attribute/3, honored) and emits what filcc
 emits. CPython puts `_PyRuntime` in `.PyRuntime` only for debuggers.
+
+## GNU getopt's private continuation
+
+At staging pin `18b6663a2785c8eba6cc2a544a7711e19fc448c7`,
+`projects/user-glibc-2.44/posix/getopt_int.h` defines `_getopt_data`.
+Compiling a `sizeof`/`offsetof` probe against that actual header with
+the host compiler and Fil-C 0.687 gives size 56, with `__initialized`
+at 24, `__nextchar` at 32, `__ordering` at 40, `__first_nonopt` at 44
+and `__last_nonopt` at 48. This is the selected native layout, not a
+public interface or a proof that a chosen pointer names its object.
+
+In `posix/getopt.c`, public optind starts at 1 and the private static
+structure is zero-initialized. `_getopt_internal` copies public optind
+and opterr in, then exports private optind, optarg and optopt. Public
+optopt initially equals `'?'`, unlike its zero-initialized private copy.
+Initialization clears nextchar, sets both non-option bounds to optind,
+and reads the ordering/environment; exact no-argument long-option
+success increments optind, clears nextchar and returns the table value.
+The fresh/reset and stale-short-continuation cases in
+[libc-getopt.c](../tests/c/prog/libc-getopt.c) distinguish this protocol
+from treating optind 1 and null optarg as a parser reset.
