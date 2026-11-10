@@ -886,6 +886,51 @@ left the output alone. The -2 case of `conv_result` keeps its premise
 through a NUL can rule it out. That is how rpl_mbsrtowcs's `abort`
 becomes unreachable even in a hard locale.
 
+**rpl_mbsrtowcs's converting loop.** For each character, the loop picks
+a window of n bytes for rpl_mbrtowc. It reads up to four bytes,
+stopping at the NUL, and then asks strnlen1 for at most twelve more.
+`mbs_window` proves that n = min(len + 1, 16) for the string suffix at
+the cursor, on all five paths.
+
+`rpl_step` turns one call's `rpl_result` into what the loop needs. The
+call is never incomplete, so the `abort` after -2 is not reached:
+- -2 would need n below 16 and no NUL among the n bytes;
+- n below 16 means the window reaches the NUL.
+
+EILSEQ stores 84 in errno. The NUL stores a zero character. Anything
+else consumes 1 to len bytes before the NUL, stores a nonzero
+character, and leaves the state valid and in its initial shift state
+(its first four bytes zero).
+
+The fallback after EILSEQ needs the same facts under C.UTF-8. Campaign
+4's `mbrtowc_initial_error` gives them: from a valid initial state, an
+EILSEQ keeps the state valid and initial, and its first byte is not
+NUL. `conv_result`'s EILSEQ case now carries that law.
+
+`mbs_loop` proves the loop from block L28 by Löb induction. Its
+invariant:
+- i characters written from the first j bytes, with i ≤ j ≤ len;
+- the written words are nonzero (`wide_ok`);
+- the rest of the destination is owned, word by word;
+- the state is valid and initial.
+
+There are three exits:
+- EILSEQ in a hard locale: the cursor is stored back through srcp,
+  errno gets 84 (`wp_conv_errno`, a libc_world copy of HelloClose's
+  rule, for promotion), and the loop returns -1;
+- the NUL: null is stored through srcp, and the loop returns i, after
+  i nonzero characters and a zero one (`mbs_post`);
+- otherwise both cursors advance and the loop goes round.
+
+The count left, len - i, never reaches zero before the NUL, because
+i ≤ j ≤ len. Main reads the result as a wide string with
+`wprintf("%ls")`, or calls `error` on -1.
+
+rpl_mbsrtowcs's entry (start to L28) is not proved yet. It loads the
+greeting pointer through srcp, and the greeting may be a read-only
+literal, which only HelloVersion's `wp_raw_load_literal` can load.
+That rule awaits its Oracle review.
+
 ## Open questions for mbrock
 
 - Start the logic now, or finish Campaign 4's hi.c first?

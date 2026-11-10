@@ -222,7 +222,9 @@ Definition conv_result (valid : term -> list Z -> Prop) (c_codec : Prop) (codec 
   (0 < r <= n /\ r < 2 ^ 64 - 2 /\ valid codec ys' /\ 0 < le_value xo' < 2 ^ 32 /\
      le_value (take 4 ys') = 0 /\ Forall (fun x => x <> 0) (take (Z.to_nat r) ss)) \/
   (r = 2 ^ 64 - 1 /\ le_value xe' = 84 /\ xo' = xo /\
-     (c_codec -> ys' = ys /\ exists x, ss !! 0%nat = Some x /\ 128 <= x < 256)) \/
+     (c_codec -> ys' = ys /\ exists x, ss !! 0%nat = Some x /\ 128 <= x < 256) /\
+     (valid codec ys -> le_value (take 4 ys) = 0 ->
+        valid codec ys' /\ le_value (take 4 ys') = 0 /\ exists x, ss !! 0%nat = Some x /\ x <> 0)) \/
   (r = 2 ^ 64 - 2 /\ valid codec ys' /\ xo' = xo /\ n < 16 /\
      Forall (fun x => x <> 0) (take (Z.to_nat n) ss)).
 
@@ -271,6 +273,116 @@ Lemma conv_result_range valid c_codec codec n ss xo ys xo' ys' xe' r :
   0 <= r < 2 ^ 64 /\ (2 ^ 64 - 2 <= r -> xo' = xo).
 Proof.
   intros [(-> & _) | [(Hr & Hr2 & _) | [(-> & _ & Hx & _) | (-> & _ & Hx & _)]]]; split; try lia; auto.
+Qed.
+
+(** ## gnulib's rpl_mbsrtowcs *)
+
+(** `rpl_mbsrtowcs(dest, srcp, len, ps)`: converts the string at *srcp
+    into at most len wide characters at dest, one rpl_mbrtowc call per
+    character, each given a window of n bytes that reaches the NUL or
+    is 16 bytes long. *)
+Definition mbs_fn : func := Eval vm_compute in hello_fn "rpl_mbsrtowcs".
+(** A block of rpl_mbsrtowcs. *)
+Definition mbs_block (s : String.string) : block := hblk mbs_fn s.
+
+(** A nonzero byte loaded signed is not zero. *)
+Lemma sb_ne x : 0 < x < 256 -> ((if 128 <=? x then x - 256 else x) mod 2 ^ 32 =? 0) = false.
+Proof.
+  intros Hx. apply Z.eqb_neq. destruct (Z.leb_spec 128 x).
+  - assert (E : (x - 256) mod 2 ^ 32 = x - 256 + 2 ^ 32) by (symmetry; apply Z.mod_unique with (-1); lia).
+    rewrite E. lia.
+  - rewrite Z.mod_small; lia.
+Qed.
+
+(** In a string's bytes and NUL, a zero byte is the NUL. *)
+Lemma nul_index bs k x : Forall (fun x => 0 < x < 256) bs -> (bs ++ [0]) !! k = Some x ->
+  0 <= x < 256 /\ (x = 0 -> k = length bs) /\ (x <> 0 -> (k < length bs)%nat).
+Proof.
+  intros Hbs Hk. pose proof (proj1 (Forall_lookup _ _) Hbs) as Hb.
+  apply lookup_app_Some in Hk as [Hk|[Hl Hk]].
+  - pose proof (Hb _ _ Hk) as Hx. cbv beta in Hx. apply lookup_lt_Some in Hk.
+    split; [lia|]. split; [intros E; lia | auto].
+  - apply list_lookup_singleton_Some in Hk as [Hk Ex]. subst x.
+    split; [lia|]. split; [intros _; lia | intros E; lia].
+Qed.
+
+(** A window of four bytes and a count from the fifth: what strnlen1's
+    answer plus 4 comes to. *)
+Lemma window_min l : (4 <= l)%nat -> Z.min (Z.of_nat (l - 4) + 1) 12 + 4 = Z.min (Z.of_nat l + 1) 16.
+Proof. intros Hl. lia. Qed.
+
+(** A byte stored as a four-byte word reads back as itself. *)
+Lemma le_value_byte x : 0 <= x < 256 -> le_value (le_bytes x 4) = x.
+Proof.
+  intros Hx. unfold le_bytes, le_value, byte_of. cbn.
+  change (8 * Z.of_nat 1) with 8. change (8 * Z.of_nat 2) with 16. change (8 * Z.of_nat 3) with 24.
+  change (8 * Z.of_nat 0) with 0.
+  rewrite Z.pow_0_r. rewrite Z.div_1_r. rewrite (Z.mod_small x 256); [|lia].
+  rewrite (Z.div_small x (2 ^ 8)); [|lia]. rewrite (Z.div_small x (2 ^ 16)); [|lia].
+  rewrite (Z.div_small x (2 ^ 24)); [|lia]. rewrite Zmod_0_l. lia.
+Qed.
+
+(** A run of nonzero bytes at the start of a string and its NUL ends
+    before the NUL. *)
+Lemma before_nul bs r : 0 <= r -> Forall (fun x => x <> 0) (take (Z.to_nat r) (bs ++ [0])) ->
+  r <= Z.of_nat (length bs).
+Proof.
+  intros Hr H. destruct (Z.le_gt_cases r (Z.of_nat (length bs))) as [Hle|Hgt]; [exact Hle|]. exfalso.
+  rewrite Forall_lookup in H. apply (H (length bs) 0); [|reflexivity].
+  rewrite lookup_take_lt; [|lia]. rewrite lookup_app_r; [|lia]. rewrite Nat.sub_diag. reflexivity.
+Qed.
+
+(** One rpl_mbrtowc call of rpl_mbsrtowcs's converting loop, on the
+    suffix bs of the string, with the window that reaches the NUL or is
+    16 bytes long, from a valid state in its initial shift state: never
+    the incomplete answer, which would abort; EILSEQ stores 84 in
+    errno; the NUL stores a zero character; anything else consumes r
+    bytes before the NUL and stores a nonzero character, leaving a
+    valid initial state. *)
+Lemma rpl_step valid c codec bs xo ys xo' ys' xe' r :
+  Forall (fun x => 0 < x < 256) bs -> valid codec ys -> le_value (take 4 ys) = 0 ->
+  rpl_result valid c codec (Z.min (Z.of_nat (length bs) + 1) 16) (bs ++ [0]) xo ys xo' ys' xe' r ->
+  0 <= r < 2 ^ 64 /\ r <> 2 ^ 64 - 2 /\ (r = 2 ^ 64 - 1 -> le_value xe' = 84) /\
+  (r = 0 -> le_value xo' = 0) /\
+  (r <> 0 -> r <> 2 ^ 64 - 1 -> 0 < r <= Z.of_nat (length bs) /\ 0 < le_value xo' < 2 ^ 32 /\
+     valid codec ys' /\ le_value (take 4 ys') = 0).
+Proof.
+  intros Hbs Hval Hinit Hres.
+  assert (No2 : forall ys1 xo1 r1, ~ (r1 = 2 ^ 64 - 2 /\ valid codec ys1 /\ xo1 = xo /\
+              Z.min (Z.of_nat (length bs) + 1) 16 < 16 /\
+              Forall (fun x => x <> 0) (take (Z.to_nat (Z.min (Z.of_nat (length bs) + 1) 16)) (bs ++ [0])))).
+  { intros ys1 xo1 r1 (_ & _ & _ & Hn16 & Hnz). apply before_nul in Hnz; lia. }
+  destruct Hres as [Hc | (-> & (r0 & Hr0 & Hc0) & (x & Hx & ->))].
+  - destruct Hc as [(-> & _ & _ & Ho & _) | [(Hr & Hr2 & Hv & Ho & Hs & Hnz) | [(-> & He & _) | H2]]].
+    + repeat split; try lia; auto.
+    + apply before_nul in Hnz; [|lia]. repeat split; try lia; auto.
+    + repeat split; try lia; auto.
+    + exfalso. exact (No2 _ _ _ H2).
+  - destruct (nul_index _ _ _ Hbs Hx) as (Hxr & _ & Hn).
+    destruct Hc0 as [(-> & _) | [(_ & Hr2 & _) | [(_ & _ & _ & _ & Hlaw) | H2]]]; try lia;
+      [| exfalso; exact (No2 _ _ _ H2)].
+    destruct (Hlaw Hval Hinit) as (Hv' & Hs' & x' & Hx' & Hx0). rewrite Hx in Hx'. injection Hx' as <-.
+    pose proof (Hn Hx0) as Hlen. rewrite (le_value_byte x Hxr).
+    repeat split; try lia; auto.
+Qed.
+
+(** The four-byte words of ws are wide characters, none of them zero. *)
+Definition wide_ok (ws : list Z) : Prop :=
+  forall k, (4 * k + 4 <= length ws)%nat -> 0 < le_value (take 4 (drop (4 * k) ws)) < 2 ^ 32.
+
+(** No words, no wide characters. *)
+Lemma wide_ok_nil : wide_ok [].
+Proof. intros k Hk. cbn in Hk. lia. Qed.
+
+(** A nonzero wide character after i of them. *)
+Lemma wide_ok_app ws xo i :
+  wide_ok ws -> length ws = (4 * i)%nat -> length xo = 4%nat -> 0 < le_value xo < 2 ^ 32 ->
+  wide_ok (ws ++ xo).
+Proof.
+  intros Hw Lw Lx Hx k Hk. rewrite length_app in Hk.
+  destruct (decide (4 * k + 4 <= length ws)%nat) as [Hlt|Hge].
+  - rewrite drop_app_le; [|lia]. rewrite take_app_le; [|rewrite length_drop; lia]. apply Hw. exact Hlt.
+  - assert (Ek : (4 * k = length ws)%nat) by lia. rewrite Ek drop_app_length. rewrite take_ge; [exact Hx | lia].
 Qed.
 
 Module HelloConv (R : Runtime).
@@ -563,11 +675,23 @@ Proof.
     split; [rewrite <- Hcodec; exact Hv|].
     rewrite Hst4. rewrite <- !load_bytes_4. split; [exact Ho|]. split; [exact Hs|]. apply Hnz; [lia | exact Hb].
   - right; right; left. split; [reflexivity|]. split; [rewrite <- load_bytes_4; rewrite Herrno in He; exact He|].
-    split; [exact (Hkept Hk)|]. intros Hc. rewrite <- Hcodec in Hc.
-    destruct (mbrtowc_c_error _ _ _ _ _ _ _ _ _ Hfull Hc) as [Hst Hsrc0]. split.
-    + rewrite <- (mem_bytes_of m (bs + os) ys Vs). rewrite Lys. exact Hst.
-    + destruct (Hsrc 0 ltac:(lia)) as (x & Hx & Hb). exists x. split; [exact Hx|].
-      rewrite <- Hb, Z.add_0_r. exact Hsrc0.
+    split; [exact (Hkept Hk)|]. split.
+    { intros Hc. rewrite <- Hcodec in Hc.
+      destruct (mbrtowc_c_error _ _ _ _ _ _ _ _ _ Hfull Hc) as [Hst Hsrc0]. split.
+      + rewrite <- (mem_bytes_of m (bs + os) ys Vs). rewrite Lys. exact Hst.
+      + destruct (Hsrc 0 ltac:(lia)) as (x & Hx & Hb). exists x. split; [exact Hx|].
+        rewrite <- Hb, Z.add_0_r. exact Hsrc0. }
+    { intros Hv0 Hz0. rewrite <- Hcodec in Hv0.
+      assert (Ey : mem_bytes m (bs + os) 8 = ys).
+      { rewrite <- (mem_bytes_of m (bs + os) ys Vs). rewrite Lys. reflexivity. }
+      assert (Hl0 : load_bytes m (ptr_addr (mkPtr (bs + os) (Obj bs))) 4 = 0).
+      { cbn [ptr_addr]. rewrite load_bytes_4. rewrite <- Ey in Hz0. exact Hz0. }
+      rewrite <- Ey in Hv0.
+      destruct (mbrtowc_initial_error _ _ _ _ _ _ _ _ _ Hfull Hprof Hl0 Hv0) as (Hv' & Hc' & Hs0).
+      split; [rewrite <- Hcodec; exact Hv'|]. split.
+      + rewrite Hst4. rewrite <- load_bytes_4. exact Hc'.
+      + destruct (Hsrc 0 ltac:(lia)) as (x & Hx & Hb). exists x. split; [exact Hx|].
+        rewrite <- Hb, Z.add_0_r. exact Hs0. }
   - right; right; right. destruct (Hp Hprof) as [Hn16 Hb]. split; [reflexivity|].
     split; [rewrite <- Hcodec; exact Hv|]. split; [exact (Hkept Hk)|].
     split; [exact Hn16|]. apply Hnz; [lia | exact Hb].
@@ -882,6 +1006,401 @@ Proof.
   iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [subst out; word_premise|]. iNext. cbn [Z.eqb edge_label].
   rm_enter "L10". iApply wp_goto. iNext. rm_enter "L11".
   iApply (rpl_tail with "Hk Hc Hposix Hcod HBo HBs HBe HBsrc HΦ"); assumption.
+Qed.
+
+(** ## rpl_mbsrtowcs's window *)
+
+(** The memchr contract, for `strnlen1`. *)
+Context (Hmemchr : registry (TAtom "memchr") = Some (memchr_contract libc_world)).
+
+(** Enter a block of rpl_mbsrtowcs. *)
+Ltac ms_enter s :=
+  iApply (wp_enter _ _ _ _ _ _ _ _ (mbs_block s));
+  [vm_compute; reflexivity | word_premise |]; iNext;
+  cbn [b_insts b_jump mbs_block hblk].
+
+(** Read byte k of the window in block blk, after the first: a flight
+    to q + k, a half check against the first check, a load and its
+    test. Leaves the branch on the test, with the byte named x. *)
+Ltac mid_read blk q bs k Hc x Hx Hxr Hz Hn Hbs :=
+  ms_enter blk;
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (ptr_addr q + Z.of_nat k));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]; iNext; gen_env;
+  destruct (lookup_lt_is_Some_2 (bs ++ [0]) k) as [x Hx]; [rewrite length_app; cbn; lia|];
+  destruct (nul_index _ _ _ Hbs Hx) as (Hxr & Hz & Hn);
+  iDestruct (string_byte _ _ _ _ k x with "Hs") as "(_ & Hl & Hb & Hk)"; [exact Hx|];
+  iApply (wp_half_check_read with "Hl");
+    [reflexivity | word_premise | reflexivity | exact Hc | addr_premise | addr_premise | lia | lia |
+     apply Z.mod_1_r |];
+  iNext; iIntros "Hl"; gen_env;
+  iApply (wp_raw_load_byte with "Hl Hb");
+    [reflexivity | word_premise | reflexivity | reflexivity | exact Hc | addr_premise |];
+  iNext; iIntros "Hl Hb"; iDestruct ("Hk" with "Hl Hb") as "Hs"; gen_env;
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]; iNext; gen_env.
+
+(** The temporaries the converting loop keeps, and their values: the
+    destination cursor, the source cursor, the count left, the state,
+    srcp, its check, and the destination's address. *)
+Definition mbs_vars (e : env) (q : ptr) (dst len st sp c0 d0 : word) : Prop :=
+  lookup (TAtom "pr.5") e = Some (WPtr q) /\ lookup (TAtom "pr.7") e = Some dst /\
+  lookup (TAtom "pr.1") e = Some len /\ lookup (TAtom "pr.2") e = Some st /\
+  lookup (TAtom "v2") e = Some sp /\ lookup (TAtom "chk0") e = Some c0 /\
+  lookup (TAtom "v23") e = Some d0.
+
+(** End the window at L37, with the window's length n in pr.8. *)
+Ltac close_window L :=
+  ms_enter "L37"; gen_env;
+  iApply ("HK" with "[%] Hs"); split; [repeat split; assumption|];
+  match goal with H : lookup (TAtom "pr.8") _ = Some _ |- _ => rewrite H end;
+  rewrite <- L; reflexivity.
+
+(** rpl_mbsrtowcs's window, blocks L29 to L57: with the source cursor q
+    at a string bs, the loop reads up to four bytes, stopping at the
+    NUL, and then asks strnlen1 for at most 12 more; pr.8 is then
+    min(len + 1, 16), and the loop's other temporaries are as they
+    were. *)
+Lemma mbs_window e q dst len st sp c0 d0 b reg bs Φ :
+  mbs_vars e q dst len st sp c0 d0 ->
+  SL.string q b reg bs -∗
+  ▷ (∀ e', ⌜mbs_vars e' q dst len st sp c0 d0 /\
+             lookup (TAtom "pr.8") e' = Some (WInt (Z.min (Z.of_nat (length bs) + 1) 16))⌝ -∗
+        SL.string q b reg bs -∗
+        WP (ERun (mkFrame mbs_fn e' [] None
+              (Exec (TAtom "L37") (b_insts (mbs_block "L37")) (b_jump (mbs_block "L37")))) : cexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame mbs_fn e [] None
+        (Exec (TAtom "L29") (b_insts (mbs_block "L29")) (b_jump (mbs_block "L29")))) : cexpr) {{ Φ }}.
+Proof.
+  intros (Hq & H7 & H1 & H2 & Hv2 & Hc0 & H23). iIntros "Hs HK".
+  iDestruct "Hs" as "[%Hok Hps]". iAssert (SL.string q b reg bs) with "[$Hps]" as "Hs"; [done|].
+  pose proof Hok as (Hc & Hb0 & Hbq & Hend & H48 & Hbs).
+  pose proof (Hm := proj1 Hlinked).
+  cbn [b_insts b_jump mbs_block hblk].
+  (* The first byte, through a check. *)
+  destruct (lookup_lt_is_Some_2 (bs ++ [0]) 0) as [x0 Hx0]; [rewrite length_app; cbn; lia|].
+  destruct (nul_index _ _ _ Hbs Hx0) as (Hx0r & Hz0 & Hn0).
+  iDestruct (string_byte _ _ _ _ 0 x0 with "Hs") as "(_ & Hl & Hb & Hk)"; [exact Hx0|].
+  iApply (wp_check_read with "Hl");
+    [reflexivity | word_premise | exact Hc | addr_premise | addr_premise | apply Z.mod_1_r |].
+  iNext. iIntros "Hl". gen_env.
+  iApply (wp_raw_load_byte with "Hl Hb");
+    [reflexivity | word_premise | reflexivity | reflexivity | exact Hc | addr_premise |].
+  iNext. iIntros "Hl Hb". iDestruct ("Hk" with "Hl Hb") as "Hs". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext. gen_env.
+  destruct (Z.eqb_spec x0 0) as [E0|E0].
+  { subst x0. (* The NUL first: a window of one byte. *)
+    pose proof (Hz0 eq_refl) as L0. iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|].
+    iNext. cbn [Z.eqb edge_label]. close_window L0. }
+  pose proof (Hn0 E0) as L0.
+  match goal with H : lookup (TAtom "v41") _ = _ |- _ => rewrite (sb_ne x0) in H; [|lia] end.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  (* The second byte. *)
+  ms_enter "L36".
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (ptr_addr q + Z.of_nat 1));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
+  destruct (lookup_lt_is_Some_2 (bs ++ [0]) 1) as [x1 Hx1]; [rewrite length_app; cbn; lia|].
+  destruct (nul_index _ _ _ Hbs Hx1) as (Hx1r & Hz1 & Hn1).
+  iDestruct (string_byte _ _ _ _ 1 x1 with "Hs") as "(_ & Hl & Hb & Hk)"; [exact Hx1|].
+  iApply (wp_half_check_read with "Hl");
+    [reflexivity | word_premise | reflexivity | exact Hc | addr_premise | addr_premise | lia | lia |
+     apply Z.mod_1_r |].
+  iNext. iIntros "Hl". gen_env.
+  iApply (wp_raw_load_byte with "Hl Hb");
+    [reflexivity | word_premise | reflexivity | reflexivity | exact Hc | addr_premise |].
+  iNext. iIntros "Hl Hb". iDestruct ("Hk" with "Hl Hb") as "Hs". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  destruct (Z.eqb_spec x1 0) as [E1|E1].
+  { subst x1. pose proof (Hz1 eq_refl) as L1. iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|].
+    iNext. cbn [Z.eqb edge_label]. close_window L1. }
+  pose proof (Hn1 E1) as L1.
+  match goal with H : lookup (TAtom "v48") _ = _ |- _ => rewrite (sb_ne x1) in H; [|lia] end.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  (* The third byte. *)
+  mid_read "L43" q bs 2%nat Hc x2 Hx2 Hx2r Hz2 Hn2 Hbs.
+  destruct (Z.eqb_spec x2 0) as [E2|E2].
+  { subst x2. pose proof (Hz2 eq_refl) as L2. iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|].
+    iNext. cbn [Z.eqb edge_label]. close_window L2. }
+  pose proof (Hn2 E2) as L2.
+  match goal with H : lookup (TAtom "v55") _ = _ |- _ => rewrite (sb_ne x2) in H; [|lia] end.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  (* The fourth byte. *)
+  mid_read "L60" q bs 3%nat Hc x3 Hx3 Hx3r Hz3 Hn3 Hbs.
+  destruct (Z.eqb_spec x3 0) as [E3|E3].
+  { subst x3. pose proof (Hz3 eq_refl) as L3. iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|].
+    iNext. cbn [Z.eqb edge_label]. close_window L3. }
+  pose proof (Hn3 E3) as L3.
+  match goal with H : lookup (TAtom "v65") _ = _ |- _ => rewrite (sb_ne x3) in H; [|lia] end.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  (* Four bytes before the NUL: strnlen1 counts the rest, up to 12. *)
+  ms_enter "L57".
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (ptr_addr q + Z.of_nat 4));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
+  iDestruct (string_suffix _ _ _ _ 4 with "Hs") as "[Hs4 Hback]"; [lia|].
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ strnlen1_fn
+            (invocation strnlen1_fn [WPtr (mkPtr (ptr_addr q + Z.of_nat 4) (ptr_cap q)); WInt 12]));
+    [word_premise | unfold find_fn; rewrite Hm; vm_compute; reflexivity | reflexivity |].
+  iNext. iApply (HL.strnlen1_spec registry wi ge Hlinked with "Hs4"); [exact Hmemchr | lia |].
+  iNext. iIntros "Hs4". iDestruct ("Hback" with "Hs4") as "Hs".
+  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
+  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_goto. iNext. ms_enter "L37". gen_env.
+  iApply ("HK" with "[%] Hs"). split; [repeat split; assumption|].
+  match goal with H : lookup (TAtom "pr.8") _ = Some _ |- _ => rewrite H end.
+  rewrite length_drop. rewrite window_min; [reflexivity | lia].
+Qed.
+
+(** A string's pieces are a block from its offset: its life and its
+    bytes with the NUL, and no aux slots. *)
+Lemma string_block q b reg bs :
+  SL.string q b reg bs ⊣⊢ ⌜string_ok q b reg bs⌝ ∗ pts (block_ps b reg (ptr_addr q - b) (bs ++ [0]) []).
+Proof. rewrite /SL.string /string_ps /block_ps. cbn [aux_ps]. rewrite app_nil_r. done. Qed.
+
+(** An object's life, bytes and aux slots from offset o are its block
+    from o. *)
+Lemma dest_block b reg o xs cs : live b reg ∗ bytes b o xs ∗ auxes b o cs ⊣⊢ pts (block_ps b reg o xs cs).
+Proof. rewrite /block_ps /pts big_sepL_cons big_sepL_app /live /bytes /auxes /pts big_sepL_singleton. done. Qed.
+
+(** errno's lookup has Campaign 4's contract. *)
+Context (Herrno_reg : registry (TAtom "__errno_location") = Some (LB.errno_contract rep)).
+
+(** The world interpretation survives a pointer store into a cell the
+    program owns. *)
+Context (Kpstore : forall b reg o x xp m wd h,
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) ->
+     h !! l = Some v) ->
+  wi m wd h ->
+  wi (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
+    (overwrite ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h)).
+
+(** `__errno_location()` returns the errno cell and changes nothing:
+    HelloClose.v's [wp_close_errno] over [libc_world]. A local rule, for
+    promotion to a libc logic module. *)
+Lemma wp_conv_errno f e ls lab d rest j Φ :
+  ▷ WP (ERun (mkFrame f (put d (WPtr errno) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec lab
+    (Call (CResult d P) (Global (TAtom "__errno_location")) [] :: rest) j)) : cexpr) {{ Φ }}.
+Proof.
+  iIntros "HK".
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (LB.errno_contract rep) [] True%I with "[] [HK]").
+  - apply linked_outside; [exact Hlinked | reflexivity].
+  - apply linked_unbound; [exact Hlinked | reflexivity].
+  - reflexivity.
+  - exact Herrno_reg.
+  - reflexivity.
+  - split; [right; eexists; reflexivity | reflexivity].
+  - iIntros (σ) "Hσ _". iDestruct "Hσ" as (h) "[_ %Hσ]".
+    destruct (Hlibc _ _ _ (proj2 (proj2 (proj2 Hσ)))) as (Hr & _).
+    iPureIntro. split; [reflexivity|]. split; [exact Hr | exact (proj1 (proj2 (proj2 (proj2 Hr))))].
+  - done.
+  - iNext. iIntros (σ tr vs s' m' w' Hi) "Hσ _".
+    destruct (LB.errno_exact _ _ _ _ _ _ _ _ _ _ _ _ Hi) as (-> & -> & -> & -> & He).
+    injection He as ->.
+    iDestruct "Hσ" as (h) "[Hh %Hσ]".
+    destruct (Hlibc _ _ _ (proj2 (proj2 (proj2 Hσ)))) as (_ & _ & Ec & _).
+    iModIntro. iExists _. iSplit.
+    + iPureIntro. cbn [external_env external_outcome contract_returns site_result returned_env].
+      rewrite Ec. reflexivity.
+    + iSplitL "Hh"; [iExists h; iFrame; done|]. iExact "HK".
+Qed.
+
+(** What rpl_mbsrtowcs's caller learns when it returns r, with dest's
+    final bytes ws, errno's bytes xe and the length l of the source:
+    EILSEQ, -1 with 84 in errno; or r wide characters, none zero,
+    then a zero one. *)
+Definition mbs_post (l : nat) (r : Z) (ws xe : list Z) : Prop :=
+  (r = 2 ^ 64 - 1 /\ le_value xe = 84) \/
+  (exists k : nat, r = Z.of_nat k /\ (k <= l)%nat /\ wide_ok (take (4 * k) ws) /\
+     le_value (take 4 (drop (4 * k) ws)) = 0).
+
+(** Owning the bytes xs from o is owning their first n and the rest. *)
+Lemma bytes_split b o xs n : (n <= length xs)%nat ->
+  bytes b o xs ⊣⊢ bytes b o (take n xs) ∗ bytes b (o + Z.of_nat n) (drop n xs).
+Proof.
+  intros Hn. assert (E : Z.of_nat n = Z.of_nat (length (take n xs))) by (rewrite length_take; lia).
+  rewrite E -bytes_app take_drop. done.
+Qed.
+
+(** Owning the slots cs from o is owning their first n and the rest. *)
+Lemma auxes_split b o cs n : (n <= length cs)%nat ->
+  auxes b o cs ⊣⊢ auxes b o (take n cs) ∗ auxes b (o + Z.of_nat n) (drop n cs).
+Proof.
+  intros Hn. assert (E : Z.of_nat n = Z.of_nat (length (take n cs))) by (rewrite length_take; lia).
+  rewrite E -auxes_app take_drop. done.
+Qed.
+
+(** rpl_mbsrtowcs's converting loop, from block L28, by Löb induction:
+    after i wide characters from the first j bytes of the string at p,
+    with the state valid and in its initial shift state, every path
+    returns what [mbs_post] says; the abort after an incomplete
+    sequence is never reached. *)
+Lemma mbs_loop p b reg bs bd rd sb sr so be re oe spb spr spo codec dq p0 t0 rc rp Φ :
+  errno = mkPtr (be + oe) (Obj be) ->
+  0 < bd -> bd mod 4 = 0 -> bd + 4 * (Z.of_nat (length bs) + 1) <= r_end rd -> r_end rd <= 2 ^ 48 ->
+  0 < sb -> (sb + so) mod 4 = 0 ->
+  0 < spb -> 0 <= spo -> (spb + spo) mod 8 = 0 -> spb + spo + 8 <= r_end spr -> r_end spr <= 2 ^ 48 ->
+  0 < be -> 0 <= oe -> be + oe + 4 <= r_end re -> r_end re <= 2 ^ 48 ->
+  ⊢ ∀ e (i j : nat) wpre cpre wrest crest ys cs xe ce x,
+    ⌜mbs_vars e (mkPtr (ptr_addr p + Z.of_nat j) (ptr_cap p)) (WPtr (mkPtr (bd + Z.of_nat (4 * i)) (Obj bd)))
+        (WInt (Z.of_nat (length bs) + 1 - Z.of_nat i)) (WPtr (mkPtr (sb + so) (Obj sb)))
+        (WPtr (mkPtr (spb + spo) (Obj spb))) (WPtr (mkPtr (spb + spo) (Obj spb))) (WInt bd) /\
+      (i <= j <= length bs)%nat /\ length wpre = (4 * i)%nat /\ length cpre = (4 * i)%nat /\
+      length wrest = (4 * (length bs + 1 - i))%nat /\ length crest = (4 * (length bs + 1 - i))%nat /\
+      wide_ok wpre /\ valid codec ys /\ le_value (take 4 ys) = 0 /\ length ys = 8%nat /\ length cs = 8%nat /\
+      length xe = 4%nat /\ length ce = 4%nat⌝ -∗
+    LL.lent 0 p0 t0 -∗ SL.string c_ptr 65824 rc c_bytes -∗ SL.string posix_ptr 65856 rp posix_bytes -∗
+    pointsto (PName codec_key) dq (VCodec codec) -∗ SL.string p b reg bs -∗
+    live bd rd -∗ bytes bd 0 wpre -∗ auxes bd 0 cpre -∗
+    bytes bd (Z.of_nat (4 * i)) wrest -∗ auxes bd (Z.of_nat (4 * i)) crest -∗
+    pts (block_ps sb sr so ys cs) -∗ pts (block_ps be re oe xe ce) -∗ live spb spr -∗ pcell spb spo x -∗
+    (∀ r ws cws ys' cs' xe' ce' x',
+       ⌜mbs_post (length bs) r ws xe' /\ length ws = (4 * (length bs + 1))%nat⌝ -∗
+       SL.string c_ptr 65824 rc c_bytes -∗ SL.string posix_ptr 65856 rp posix_bytes -∗
+       pointsto (PName codec_key) dq (VCodec codec) -∗ SL.string p b reg bs -∗
+       live bd rd -∗ bytes bd 0 ws -∗ auxes bd 0 cws -∗
+       pts (block_ps sb sr so ys' cs') -∗ pts (block_ps be re oe xe' ce') -∗ live spb spr -∗ pcell spb spo x' -∗
+       Φ (Ret (WInt r))) -∗
+    WP (ERun (mkFrame mbs_fn e [] None
+          (Exec (TAtom "L28") (b_insts (mbs_block "L28")) (b_jump (mbs_block "L28")))) : cexpr) {{ Φ }}.
+Proof.
+  intros Herr Hbd Hbd4 Hdend Hd48 Hsb Hsal Hspb Hspo Hspal Hspend Hsp48 Hbe Hoe Heend He48.
+  pose proof Hlinked as (Hm & _ & Hext).
+  iLöb as "IH".
+  iIntros (e i j wpre cpre wrest crest ys cs xe ce x
+    ((Hq & H7 & H1 & H2 & Hv2 & Hc0 & H23) & Hij & Lwp & Lcp & Lwr & Lcr & Hwide & Hval & Hinit & Lys & Lcs & Lxe & Lce))
+    "#Hk Hc Hposix Hcod Hs Hdl Hdw Hda Hrw Hra HBs HBe Hspl Hsp HΦ".
+  iDestruct "Hs" as "[%Hok Hps]". iAssert (SL.string p b reg bs) with "[$Hps]" as "Hs"; [done|].
+  pose proof Hok as (Hc & Hb0 & Hbp & Hsend & H48 & Hbs).
+  cbn [b_insts b_jump mbs_block hblk].
+  (* Characters are left to write. *)
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  ms_enter "L29".
+  (* The window over the suffix from byte j. *)
+  iDestruct (string_suffix _ _ _ _ j with "Hs") as "[Hsuf Hback]"; [lia|].
+  iApply (mbs_window with "Hsuf"); [repeat split; eassumption|].
+  iNext. iIntros (e' ((Hq' & H7' & H1' & H2' & Hv2' & Hc0' & H23') & Hn8)) "Hsuf".
+  (* The next output word, and the source as a block. *)
+  assert (Lr4 : (4 <= length wrest)%nat) by lia. assert (Lc4 : (4 <= length crest)%nat) by lia.
+  iEval (rewrite (bytes_split _ _ _ 4 Lr4)) in "Hrw". iDestruct "Hrw" as "[Hw0 Hw1]".
+  iEval (rewrite (auxes_split _ _ _ 4 Lc4)) in "Hra". iDestruct "Hra" as "[Ha0 Ha1]".
+  iAssert (pts (block_ps bd rd (Z.of_nat (4 * i)) (take 4 wrest) (take 4 crest))) with "[Hdl Hw0 Ha0]" as "HBo";
+    [rewrite -dest_block; iFrame|].
+  iEval (rewrite string_block) in "Hsuf". iDestruct "Hsuf" as "[%Hok' HBsrc]".
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ rpl_fn
+            (invocation rpl_fn [WPtr (mkPtr (bd + Z.of_nat (4 * i)) (Obj bd));
+                                WPtr (mkPtr (ptr_addr p + Z.of_nat j) (ptr_cap p));
+                                WInt (Z.min (Z.of_nat (length (drop j bs)) + 1) 16);
+                                WPtr (mkPtr (sb + so) (Obj sb))]));
+    [word_premise | unfold find_fn; rewrite Hm; vm_compute; reflexivity | reflexivity |].
+  iNext.
+  pose proof Hok' as (Hc' & _ & Hbq' & Hsend' & _ & Hbs').
+  assert (Hal : (bd + Z.of_nat (4 * i)) mod 4 = 0).
+  { replace (bd + Z.of_nat (4 * i)) with (bd + Z.of_nat i * 4) by lia. rewrite Z.mod_add; [exact Hbd4 | lia]. }
+  assert (Hss : Forall (fun x => 0 <= x < 256) (drop j bs ++ [0])).
+  { apply Forall_app. split; [| repeat constructor; lia].
+    apply Forall_drop. eapply Forall_impl; [exact Hbs | intros y Hy; cbv beta in Hy |- *; lia]. }
+  iApply (rpl_mbrtowc_spec _ _ _ _ bd rd (Z.of_nat (4 * i)) (take 4 wrest) (take 4 crest) sb sr so ys cs
+            be re oe xe ce b reg (ptr_addr p + Z.of_nat j - b) (drop j bs ++ [0])
+            with "Hk Hc Hposix Hcod HBo HBs HBe [HBsrc]").
+  all: try first [reflexivity | assumption | exact Herr | lia | (cbn [ptr_addr ptr_cap]; lia) |
+                  (rewrite length_take; lia) | (rewrite length_app length_drop; cbn [length]; lia)].
+  { iEval (cbn [ptr_addr]) in "HBsrc". iExact "HBsrc". }
+  iNext. iIntros (r xo' ys' xe' co' cs' ce' (Hres & Lxo' & Lys' & Lxe' & Lco' & Lcs' & Lce'))
+    "Hc Hposix Hcod HBo HBs HBe HBsrc".
+  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. gen_env.
+  iDestruct ("Hback" with "[HBsrc]") as "Hs".
+  { iApply string_block. iSplit; [done|]. iEval (cbn [ptr_addr]) in "HBsrc". iExact "HBsrc". }
+  destruct (rpl_step _ _ _ (drop j bs) _ _ _ _ _ _ (Forall_drop _ _ _ Hbs) Hval Hinit Hres)
+    as (Hr64 & Hn2 & Hm1 & Hz & Hpos).
+  iEval (rewrite -dest_block) in "HBo". iDestruct "HBo" as "(Hdl & Hw0 & Ha0)".
+  (* Never incomplete: the abort is not reached. *)
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  ms_enter "L82".
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  destruct (Z.eqb_spec r (2 ^ 64 - 1)) as [Er|Er].
+  { (* EILSEQ: the cursor goes back through srcp, errno gets 84, and -1 returns. *)
+    iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    ms_enter "L94".
+    iApply (wp_renew with "Hspl");
+      [reflexivity | word_premise | reflexivity | reflexivity | addr_premise | addr_premise |
+       cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; rewrite Z.add_0_r; exact Hspal |].
+    iNext. iIntros "Hspl". gen_env.
+    iApply (wp_raw_store_pointer with "Hspl Hsp");
+      [word_premise | word_premise | reflexivity | addr_premise | exact Hspal |
+       intros ?m ?wd ?h Hl Hw; exact (Kpstore _ _ _ _ _ _ _ _ Hl Hw) |].
+    iNext. iIntros "Hspl Hsp".
+    iApply wp_goto. iNext. ms_enter "L196".
+    iApply wp_conv_errno. iNext. gen_env.
+    iEval (rewrite -dest_block) in "HBe". iDestruct "HBe" as "(Hel & Hew & Hea)".
+    iApply (wp_check with "Hel");
+      [reflexivity | word_premise | rewrite Herr; reflexivity | rewrite Herr; addr_premise |
+       rewrite Herr; addr_premise | apply Z.mod_1_r |].
+    iNext. iIntros "Hel". gen_env.
+    iApply (wp_raw_store_w with "Hel Hew");
+      [word_premise | word_premise | rewrite Herr; reflexivity | rewrite Herr; addr_premise | exact Lxe' |
+       intros ?m ?wd ?h Hl Hw; exact (Kstore _ _ _ _ _ _ _ _ Hl Hw) |].
+    iNext. iIntros "Hel Hew".
+    iApply wp_ret; [reflexivity | word_premise |]. iNext.
+    change (18446744073709551615 mod 2 ^ 64) with (2 ^ 64 - 1).
+    iApply ("HΦ" $! _ (wpre ++ xo' ++ drop 4 wrest) (cpre ++ co' ++ drop 4 crest) ys' cs' (le_bytes 84 4) ce'
+              with "[%] Hc Hposix Hcod Hs Hdl [Hdw Hw0 Hw1] [Hda Ha0 Ha1] HBs [Hel Hew Hea] Hspl Hsp").
+    - split; [left; split; [reflexivity | apply le_value_byte; lia]|].
+      rewrite !length_app length_drop. lia.
+    - rewrite bytes_app bytes_app Lwp Lxo' Z.add_0_l. iFrame.
+    - rewrite auxes_app auxes_app Lcp Lco' Z.add_0_l. iFrame.
+    - rewrite -dest_block. iFrame. }
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  ms_enter "L89".
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  destruct (Z.eqb_spec r 0) as [Ez|Ez].
+  { (* The NUL: null goes back through srcp, and the count of characters returns. *)
+    subst r. iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    ms_enter "L31". gen_env.
+    iApply (wp_renew with "Hspl");
+      [reflexivity | word_premise | reflexivity | reflexivity | addr_premise | addr_premise |
+       cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; rewrite Z.add_0_r; exact Hspal |].
+    iNext. iIntros "Hspl". gen_env.
+    iApply (wp_raw_store_pointer with "Hspl Hsp");
+      [word_premise | word_premise | reflexivity | addr_premise | exact Hspal |
+       intros ?m ?wd ?h Hl Hw; exact (Kpstore _ _ _ _ _ _ _ _ Hl Hw) |].
+    iNext. iIntros "Hspl Hsp".
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+    iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+    iApply wp_ret; [reflexivity | word_premise |]. iNext.
+    assert (E4 : bd + Z.of_nat (i + (i + (i + (i + 0)))) - bd = Z.of_nat i * 4) by lia. rewrite E4.
+    rewrite Z.div_mul; [|lia]. rewrite Z.mod_small; [|lia].
+    iApply ("HΦ" $! _ (wpre ++ xo' ++ drop 4 wrest) (cpre ++ co' ++ drop 4 crest) ys' cs' xe' ce'
+              with "[%] Hc Hposix Hcod Hs Hdl [Hdw Hw0 Hw1] [Hda Ha0 Ha1] HBs HBe Hspl Hsp").
+    - split; [right; exists i; split; [reflexivity|]; split; [lia|]; split|].
+      + rewrite <- Lwp. rewrite take_app_length. exact Hwide.
+      + rewrite <- Lwp. rewrite drop_app_length. rewrite take_app_le; [|lia]. rewrite take_ge; [|lia].
+        exact (Hz eq_refl).
+      + rewrite !length_app length_drop. lia.
+    - rewrite bytes_app bytes_app Lwp Lxo' Z.add_0_l. iFrame.
+    - rewrite auxes_app auxes_app Lcp Lco' Z.add_0_l. iFrame. }
+  (* A character: both cursors move on, and the loop goes round. *)
+  destruct (Hpos Ez Er) as (Hr0 & Hxo & Hv' & Hi').
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  ms_enter "L102".
+  rewrite length_drop in Hr0.
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (ptr_addr p + Z.of_nat (j + Z.to_nat r)));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
+  iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (bd + Z.of_nat (4 * S i)));
+    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_goto. iNext. ms_enter "L28". gen_env.
+  iAssert (bytes bd 0 (wpre ++ xo')) with "[Hdw Hw0]" as "Hdw"; [rewrite bytes_app Lwp Z.add_0_l; iFrame|].
+  iAssert (auxes bd 0 (cpre ++ co')) with "[Hda Ha0]" as "Hda"; [rewrite auxes_app Lcp Z.add_0_l; iFrame|].
+  assert (Eo : Z.of_nat (4 * i) + Z.of_nat 4 = Z.of_nat (4 * S i)) by lia.
+  iEval (rewrite Eo) in "Hw1". iEval (rewrite Eo) in "Ha1".
+  iApply ("IH" $! _ (S i) (j + Z.to_nat r)%nat (wpre ++ xo') (cpre ++ co') (drop 4 wrest) (drop 4 crest)
+            ys' cs' xe' ce' x with "[%] Hk Hc Hposix Hcod Hs Hdl Hdw Hda Hw1 Ha1 HBs HBe Hspl Hsp HΦ").
+  pose proof (wide_ok_app _ _ i Hwide Lwp Lxo' Hxo) as Hw'.
+  unfold mbs_vars. repeat match goal with |- _ /\ _ => split end.
+  all: try assumption; try lia; try (rewrite length_app; lia); try (rewrite length_drop; lia).
+  match goal with H : lookup (TAtom "pr.1") _ = Some _ |- _ => rewrite H; f_equal; f_equal; lia end.
 Qed.
 
 End mbrtowc.
