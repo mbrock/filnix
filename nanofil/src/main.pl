@@ -18,6 +18,7 @@
     | `abi-terms FILE` | print the checked module of a Fil-C file, then the reference ABI plan of each of its functions and its weak thunks' plans, as terms (rocq/backend) |
     | `encode FILE OUT` | read, validate and write the module as NFB, the bytecode of nfb.pl, to OUT (docs/nfb.md) |
     | `decode FILE` | read an NFB file, validate, print the IR |
+    | `nfb-terms FILE PREFIX` | write the module, and a Fil-C module's checked module, as NFB with NAMES to `PREFIX.unchecked.nfb` and `PREFIX.checked.nfb`, and print each as `nfb_module(Stage, Module)` without its context items (rocq/backend) |
     | `nfb-check FILE` | write the module, and a Fil-C module's checked module, as NFB and read each back: the same term with NAMES, the same words without it (tests/nfb.sh) |
 
     A FILE ending in `.c` or `.i` goes through the C frontend, one ending
@@ -593,6 +594,15 @@ command(Opt, _, Checks, ['nfb-check', File]) :- !,
         nfb_round_trip(File, checked, Checked)
     ;   true
     ).
+command(Opt, _, Checks, ['nfb-terms', File, Prefix]) :- !,
+    file_module(File, Module0),
+    optimize(Opt, Module0, Module),
+    nfb_terms(Prefix, unchecked, Module),
+    (   module_mode(Module, filc)
+    ->  checked_module(Checks, Module, Checked),
+        nfb_terms(Prefix, checked, Checked)
+    ;   true
+    ).
 command(Opt, _, Checks, [difftest, File, Dir]) :- !,
     difftest(Opt, Checks, File, Dir).
 command(Opt, _, Checks, [outcomes, File]) :- !,
@@ -697,6 +707,17 @@ nfb_round_trip(File, Stage, Module) :-
     ;   format(atom(Msg), '~w: the ~w module does not read back from NFB', [File, Stage]),
         throw(nanofil_error(Msg))
     ).
+
+% nfb_terms(+Prefix, +Stage, +Module): write Module, its context items
+% dropped, as NFB with NAMES to Prefix.Stage.nfb, and print it as
+% nfb_module(Stage, Module) for the Gallina reader and writer
+% (rocq/backend/tests/nfb.sh).
+nfb_terms(Prefix, Stage, module(All)) :-
+    findall(I, ( member(I, All), I \= context(_, _) ), Items),
+    module_nfb(module(Items), [names], Words),
+    format(atom(Out), '~w.~w.nfb', [Prefix, Stage]),
+    write_nfb_file(Out, Words),
+    format("~k.~n", [nfb_module(Stage, module(Items))]).
 
 %! outcomes(+Opt, +Checks, +File) is det.
 %

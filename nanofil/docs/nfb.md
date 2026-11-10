@@ -21,8 +21,15 @@ Status: a draft for discussion. Opcode numbers and section ids are provisional. 
 > **Changed in the implementation (Nov 10, 2026).** The Prolog side is implemented: [nfb.pl](../src/nfb.pl), the
 commands `encode FILE OUT` and `decode FILE`, and the gate
 `tests/nfb.sh`, which round-trips every module of the corpus, unchecked
-and checked, with and without `-O`. The numbers are still provisional
-(major version 0).
+and checked, with and without `-O`. The Gallina side is in the
+backend project: `rocq/backend/NfbTerm.v` reads and writes module terms
+by the same table, and `rocq/backend/Nfb.v` gives `encode` and `decode`
+over Syntax.v's modules, through IrTerm.v's encoders and Transport.v's
+`decode_module`. `rocq/backend/tests/nfb.sh` holds the two to the same
+bytes on the corpus, NAMES included, and the Gallina reader to the same
+module. The Gallina reader keeps a string's bytes as they are; the
+Prolog one also requires them to be UTF-8. The numbers are still
+provisional (major version 0).
 
 ## Motivation
 

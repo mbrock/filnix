@@ -292,6 +292,64 @@ let abi () =
       !parse_s !decode_s !lower_s !compare_s;
   if !differ > 0 || (!refused > 0 && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None) then exit 1
 
+(* The little-endian words of the file f. *)
+let file_words f =
+  let s = In_channel.with_open_bin f In_channel.input_all in
+  List.init (String.length s / 4) (fun i ->
+      Big_int_Z.big_int_of_int (Int32.to_int (String.get_int32_le s (4 * i)) land 0xFFFFFFFF))
+
+(* The NFB gate (tests/nfb.sh, docs/nfb.md). Stdin is what `nanofil
+   nfb-terms FILE PREFIX` prints: `nfb_module(Stage, Module)` for each
+   stage, whose NFB that command wrote to PREFIX.Stage.nfb. Nfb.v's
+   writer must write those very words for the module decode_module
+   makes of the term, and its reader must read them back as that
+   module. Exits 1 on any difference. *)
+let nfb prefix =
+  let next = reader (In_channel.input_all stdin) in
+  let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
+  let encode_s = ref 0.0 and read_s = ref 0.0 in
+  let bad = ref 0 in
+  let rec go () =
+    match timed parse_s next with
+    | None -> ()
+    | Some (TApp ("nfb_module", [TAtom stage; t])) ->
+        let theirs = file_words (prefix ^ "." ^ stage ^ ".nfb") in
+        let md = match timed decode_s (fun () -> decode_module t) with
+          | Some md -> md
+          | None -> fail "%s: not a module" stage in
+        (match timed encode_s (fun () -> encode md) with
+         | None -> incr bad; Printf.printf "%s: the writer refuses the module\n" stage
+         | Some ours ->
+             let rec first i xs ys = match xs, ys with
+               | [], [] -> None
+               | x :: xs', y :: ys' -> if Big_int_Z.eq_big_int x y then first (i + 1) xs' ys' else Some i
+               | _ -> Some i in
+             (match first 0 ours theirs with
+              | None -> ()
+              | Some i ->
+                  incr bad;
+                  let around ws = String.concat " " (List.filteri (fun j _ -> j >= i - 2 && j < i + 4)
+                      (List.map (fun w -> Printf.sprintf "%08x" (Big_int_Z.int_of_big_int w)) ws)) in
+                  Printf.printf "%s: words differ at %d of %d/%d\n  rocq:   %s\n  prolog: %s\n" stage i
+                    (List.length ours) (List.length theirs) (around ours) (around theirs)));
+        (match timed read_s (fun () -> decode theirs) with
+         | None -> incr bad; Printf.printf "%s: the reader refuses the words\n" stage
+         | Some md' ->
+             if not (term_eqb (enc_module md') (enc_module md)) then begin
+               incr bad;
+               let path, a, b = first_difference [] (enc_module md') (enc_module md) in
+               Printf.printf "%s: read back differs at %s\n  read:   %s\n  module: %s\n" stage
+                 (String.concat "." path) (shown a) (shown b)
+             end else Printf.printf "%s: same %d words\n" stage (List.length theirs));
+        go ()
+    | Some t -> fail "not an nfb_module: %s" (shown t)
+  in
+  go ();
+  if report then
+    Printf.eprintf "nanofil-backend: parse %.3fs decode_module %.3fs encode %.3fs nfb decode %.3fs\n"
+      !parse_s !decode_s !encode_s !read_s;
+  if !bad > 0 then exit 1
+
 (* A minor heap of 32 MB: with OCaml's 2 MB, the plans of a large
    function were promoted while they were built, which cost a
    quarter of the time of SQLite's. *)
@@ -301,4 +359,5 @@ let () =
   match Sys.argv with
   | [| _ |] -> asm ()
   | [| _; "abi" |] -> big_minor_heap (); abi ()
-  | _ -> prerr_endline "usage: nanofil-backend [abi] <TERMS"; exit 2
+  | [| _; "nfb"; prefix |] -> big_minor_heap (); nfb prefix
+  | _ -> prerr_endline "usage: nanofil-backend [abi | nfb PREFIX] <TERMS"; exit 2

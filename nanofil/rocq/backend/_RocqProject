@@ -11,4 +11,6 @@ Liveness.v
 FrameSlots.v
 Abi.v
 PlanTerm.v
+NfbTerm.v
+Nfb.v
 Extract.v

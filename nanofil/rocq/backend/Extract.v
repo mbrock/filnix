@@ -10,6 +10,10 @@
       ([plan_term], [thunks_term]) and compared ([term_eqb]) with
       what `nanofil abi-terms` prints, on the module that command
       prints first ([decode_module], [module_symbols]).
+    - the NFB writer and reader of a module (Nfb.v's [encode] and
+      [decode]), held to the words `nanofil nfb-terms` writes, and
+      [enc_module] to compare what the reader gives with the
+      module that command prints.
 
     Integers become zarith's, strings OCaml's and [nat] OCaml's
     `int`, as in the model's extraction. The order of two atoms'
@@ -20,7 +24,7 @@ From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString
   ExtrOcamlZBigInt ExtrOcamlNatInt.
 From Stdlib Require Import ZArith.
 From Nanofil Require Import Term Maps Transport.
-From Backend Require Import Text Asm AsmTerm Order Abi PlanTerm.
+From Backend Require Import Text Asm AsmTerm Order Abi PlanTerm Nfb.
 
 (** The hash that picks a name's bucket becomes OCaml's string hash,
     as in the model's extraction (theories/Extract.v): a lookup
@@ -41,4 +45,5 @@ Extract Constant Z.of_nat => "Big_int_Z.big_int_of_int".
 
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
-  decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb.
+  decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
+  Nfb.encode Nfb.decode enc_module.
