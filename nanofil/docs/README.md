@@ -63,6 +63,9 @@ page about it is listed here.
 - [NFB, a bytecode for nanofil IR](nfb.md): an RFC draft for the IR as
   little-endian words, with one encoding per module; the numbers the
   encoder and decoder of [nfb.pl](../src/nfb.pl) assign.
+- [A guide to nanofil's IR and NFB bytecode (Argon)](nfb-guide-argon.md):
+  how the IR and its checked stage work, how NFB encodes a module into
+  words, and how the Prolog and Gallina sides fit together.
 - [The IR and NFB: a guide](nfb-guide-wonder.md): the IR (modules,
   blocks, phis, classes, the unchecked and checked stages) and then
   NFB for a newcomer, with real encoded words from the corpus.
