@@ -37,15 +37,19 @@ without deciding a retention/redirect policy first. Operation charges remain
 metered; monitor account usage during the trial.
 
 The manual `Site builder comparison` workflow builds one revision on GitHub
-4-core and Namespace's existing `default` profile (4-core / 16 GB), both on
-Ubuntu 22.04 with the same public Nix substituters. Its optional `revision`
-input pins the source independently of the workflow revision.
+4-core and Namespace, both on Ubuntu 22.04 with the same public Nix
+substituters. `namespace_runner` selects the existing `default` profile
+(4-core / 16 GB) or a 16-core / 32 GB machine; the default is unchanged.
+Its optional `revision` input pins the source independently of the workflow
+revision.
 It records elapsed time, hardware, output path and size as short-lived
 artifacts. Namespace's 30-minute job limit bounds compute near $0.72/attempt
 at the original 16x32 shape, or $0.36 with the default 4x16 shape, with no
 volume storage charge. The initial 16x32 raw-label request remained queued
-without an instance even after connecting GitHub and rerunning, so the trial
-uses the documented profile selection instead; no tier restriction was proven.
+without an instance even after connecting GitHub and rerunning. The default
+profile subsequently worked; a further 16x32 comparison was authorized after
+activating Developer billing. The original allocation failure's cause was
+not established.
 The Namespace GitHub App must be
 connected to this repository; an authenticated MCP session alone is not that
 connection. This first comparison measures fresh runners, not persistent-store

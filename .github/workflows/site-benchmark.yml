@@ -1,4 +1,4 @@
-# Manual, bounded trial: no persistent volumes or paid subscription needed.
+# Manual, bounded trial: no persistent volumes or routine paid builds.
 # Both machines build the same revision using the same public Nix caches.
 name: Site builder comparison
 
@@ -9,6 +9,13 @@ on:
         description: Commit to build on both runners (defaults to this workflow's commit)
         type: string
         required: false
+      namespace_runner:
+        description: Namespace shape to compare with GitHub
+        type: choice
+        default: namespace-profile-default
+        options:
+          - namespace-profile-default
+          - nscloud-ubuntu-22.04-amd64-16x32
 
 permissions:
   contents: read
@@ -20,18 +27,18 @@ env:
 
 jobs:
   build:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.name }} (${{ matrix.runner }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: GitHub 4-core
             runner: ubuntu-22.04
-          - name: Namespace default 4-core
-            runner: namespace-profile-default
+          - name: Namespace
+            runner: ${{ inputs.namespace_runner || 'namespace-profile-default' }}
     runs-on: ${{ matrix.runner }}
-    # Existing default profile: Ubuntu 22.04, amd64, 4 vCPU / 16 GB.
-    # At $0.012/min PAYG, at most $0.36 compute; no cache volumes attached.
+    # Both options use Ubuntu 22.04 / amd64, without cache volumes.
+    # At most $0.72 compute for 16x32, or $0.36 for the default 4x16.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
