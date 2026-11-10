@@ -169,6 +169,28 @@ Proof.
   - iNext. iIntros (q new gs' [Hq [c' ->]]) "Hs Hcodec Hl". iApply ("HK" with "[%] Hs Hcodec Hl"). exact Hq.
 Qed.
 
+(** A pointer store into a cell the program owns keeps wi. *)
+Context (Kpstore : forall b reg o x xp m wd h,
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) ->
+     h !! l = Some v) ->
+  wi m wd h ->
+  wi (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
+    (overwrite ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h)).
+
+(** atexit has a contract returning an int, which admits the call
+    main makes, registering close_stdout, and whose return keeps the
+    program's pieces and wi: the registration is libc's state. *)
+Context (atexit_spec : contract libc_world)
+  (Hatexit : registry (TAtom "atexit") = Some atexit_spec)
+  (Hatexit_ret : contract_returns atexit_spec = RClass W)
+  (Hatexit_abi : contract_abi atexit_spec (CResult (TAtom "v15") W) [Arg P (Tmp (TAtom "v14"))])
+  (Hatexit_pre : forall m w h, wi m w h -> contract_pre atexit_spec [WPtr close_stdout_ptr] m w)
+  (Katexit : forall r args s m w h trace values s' m' w', wi m w h -> agrees m h -> live_disjoint m ->
+     R.ready s m ->
+     M.E.invoke atexit_spec r args [WPtr close_stdout_ptr] s m w trace (CallReturn values) s' m' w' ->
+     exists x, values = [WInt x] /\ 0 <= x < 2 ^ 32 /\ agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\
+       wi m' w' h).
+
 (** Eight zero bytes and an empty slot at offset 0 are a null pointer
     cell. *)
 Lemma zero_pcell b : bytes b 0 (replicate 8 0) ∗ auxes b 0 [CNone] ⊣⊢ pcell b 0 (mkPtr 0 CNone).
@@ -292,6 +314,109 @@ Proof.
   iApply ("HK" $! _ b4 b6 i k with "[%] Hal Ha0 Hs0 Hlit Hcells Hl4 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'").
   split; [repeat split; assumption|]. split; [split; [exact Hb40 | split; [exact Hb416 | exact Hb448]]|].
   split; [split; [exact Hb60 | split; [exact Hb616 | exact Hb648]]|]. auto.
+Qed.
+
+(** The rest of main's start block, from setlocale's call: setlocale
+    lends every category's new name and sets the codec; the default
+    greeting is stored in b4's cell; atexit registers close_stdout; and
+    the option loop is entered. *)
+Lemma main_start_rest e argc av b4 b6 old c0 r80 Φ :
+  start_vars e argc av b4 b6 -> fresh_ok b4 ->
+  ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ pts (codec_ps c0) -∗
+  string empty_ptr 69968 r80 [] -∗
+  live b4 (mkRegion b4 (b4 + 16) Heap Live) -∗ bytes b4 0 (replicate 16 0) -∗
+  auxes b4 0 (replicate 16 CNone) -∗
+  ▷ (∀ e' q (new : Z -> ptr * list Z) c',
+       ⌜start_vars e' argc av b4 b6 /\ lookup (TAtom "chk1") e' = Some (WPtr (mkPtr b4 (Obj b4))) /\
+        (q = mkPtr 0 CNone \/ q = (new 6).1)⌝ -∗
+       ([∗ list] k ∈ locale_categories, LL.lent k (new k).1 (new k).2) -∗ pts (codec_ps c') -∗
+       string empty_ptr 69968 r80 [] -∗
+       live b4 (mkRegion b4 (b4 + 16) Heap Live) -∗ pcell b4 0 greeting_ptr -∗
+       bytes b4 8 (replicate 8 0) -∗ auxes b4 1 (replicate 15 CNone) -∗
+       WP (ERun (mkFrame main_fn e' [] None (Enter (TAtom "iw_1.L8") (Some (TAtom "start")))) : mexpr)
+         {{ Φ }}) -∗
+  WP (ERun (mkFrame main_fn e [] None (Exec (TAtom "start") start_rest (b_jump (main_block "start"))))
+        : mexpr) {{ Φ }}.
+Proof.
+  intros (H0 & H2 & H4 & H6 & H11) (Hb40 & Hb416 & Hb448).
+  iIntros "Hks Hcod Hs80 Hl4 Hy4 Hc4 HK".
+  destruct main_globals as (G80 & G81 & Gcs). pose proof Hlinked as (Hm & Hg & _).
+  rewrite /start_rest. cbn [b_jump main_block hblk].
+  (* setlocale(LC_ALL, ""). *)
+  iApply (wp_main_setlocale with "Hks Hcod Hs80"); [word_premise | word_premise | cbn; tauto |].
+  iNext. iIntros (q new c' Hq) "Hs80 Hcod Hlent". gen_env.
+  (* The default greeting, stored in b4's cell. *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite (Hg _ _ G81); reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_check with "Hl4");
+    [reflexivity | word_premise | reflexivity | addr_premise | cbn [ptr_addr r_end]; unfold raw_address; drop_wraps_goal; lia |
+     cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; rewrite Z.add_0_r; apply mod16_mod8; exact Hb416 |].
+  iNext. iIntros "Hl4". gen_env.
+  iEval (rewrite (HC.bytes_split _ _ _ 8); [|rewrite length_replicate; lia]) in "Hy4".
+  iEval (rewrite (HC.auxes_split _ _ _ 1); [|rewrite length_replicate; lia]) in "Hc4".
+  iDestruct "Hy4" as "[Hy4 Hy4']". iDestruct "Hc4" as "[Hc4 Hc4']".
+  iAssert (pcell b4 0 (mkPtr 0 CNone)) with "[Hy4 Hc4]" as "Hp4"; [iApply zero_pcell; iFrame|].
+  iApply (wp_raw_store_pointer with "Hl4 Hp4");
+    [word_premise | word_premise | reflexivity | addr_premise |
+     rewrite Z.add_0_r; apply mod16_mod8; exact Hb416 |
+     intros m wd h Hin Hw; exact (Kpstore _ _ _ _ _ _ _ _ Hin Hw) |].
+  iNext. iIntros "Hl4 Hp4".
+  (* atexit(close_stdout). *)
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite (Hg _ _ Gcs); reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ atexit_spec [WPtr close_stdout_ptr] emp%I with "[//] [-]");
+    [apply linked_outside; first [exact Hlinked | reflexivity] |
+     apply linked_unbound; first [exact Hlinked | reflexivity] | reflexivity | exact Hatexit |
+     cbn [map_option]; word_premise | exact Hatexit_abi | |].
+  - iIntros (σ) "Hσ _". iDestruct "Hσ" as (h) "[_ %Hf]". destruct Hf as (_ & _ & _ & Hw).
+    iPureIntro. exact (Hatexit_pre _ _ _ Hw).
+  - iNext. iIntros (σ trace values s' m' w' Hi) "Hσ _".
+    iDestruct "Hσ" as (h) "[Hh %Hf]". destruct Hf as (Ha & Hd & Hr & Hw).
+    destruct (Katexit _ _ _ _ _ _ _ _ _ _ _ Hw Ha Hd Hr Hi) as (x & -> & Hx & Ha' & Hd' & Hr' & Hw').
+    iModIntro. iExists _. iSplit.
+    + iPureIntro. unfold external_env. rewrite Hatexit_ret. cbn. reflexivity.
+    + iSplitL "Hh"; [iExists h; iFrame; iPureIntro; auto|].
+      iApply wp_goto. iNext. cbn [edge_label]. gen_env.
+      iApply ("HK" $! _ q new c' with "[%] Hlent Hcod Hs80 Hl4 Hp4 Hy4' Hc4'").
+      split; [repeat split; assumption|]. split; [assumption | exact Hq].
+Qed.
+
+(** Main's start block, from its entry to the option loop: the two
+    segments above. *)
+Lemma main_start argc av ar a0 b0 r0 ys0 r3 r4 x0 x1 y0 old c0 r80 Φ :
+  0 < av -> av mod 8 = 0 -> av + 8 <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  live av ar -∗ pcell av 0 a0 -∗ string a0 b0 r0 ys0 -∗
+  HP.HN.literals r3 r4 -∗ HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
+  ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ pts (codec_ps c0) -∗
+  string empty_ptr 69968 r80 [] -∗
+  ▷ (∀ e b4 b6 (i k : nat) q (new : Z -> ptr * list Z) c',
+       ⌜start_vars e argc av b4 b6 /\ lookup (TAtom "chk1") e = Some (WPtr (mkPtr b4 (Obj b4))) /\
+        fresh_ok b4 /\ fresh_ok b6 /\ (i <= length ys0)%nat /\ (k <= length ys0)%nat /\
+        (q = mkPtr 0 CNone \/ q = (new 6).1)⌝ -∗
+       live av ar -∗ pcell av 0 a0 -∗ string a0 b0 r0 ys0 -∗ HP.HN.literals r3 r4 -∗
+       HP.HN.name_cells pn nreg sreg nb sb
+         (mkPtr (ptr_addr a0 + Z.of_nat i) (ptr_cap a0)) (mkPtr (ptr_addr a0 + Z.of_nat i) (ptr_cap a0))
+         (mkPtr (ptr_addr a0 + Z.of_nat k) (ptr_cap a0)) -∗
+       ([∗ list] k ∈ locale_categories, LL.lent k (new k).1 (new k).2) -∗ pts (codec_ps c') -∗
+       string empty_ptr 69968 r80 [] -∗
+       live b4 (mkRegion b4 (b4 + 16) Heap Live) -∗ pcell b4 0 greeting_ptr -∗
+       bytes b4 8 (replicate 8 0) -∗ auxes b4 1 (replicate 15 CNone) -∗
+       live b6 (mkRegion b6 (b6 + 16) Heap Live) -∗ bytes b6 0 (replicate 8 0) -∗
+       bytes b6 8 (replicate 8 0) -∗ auxes b6 0 (clear_slots 0 (replicate 8 CNone)) -∗
+       auxes b6 8 (replicate 8 CNone) -∗
+       WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom "start")))) : mexpr)
+         {{ Φ }}) -∗
+  WP (ERun (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
+Proof.
+  intros Hav Hav8 Haend Har48. iIntros "Hal Ha0 Hs0 Hlit Hcells Hks Hcod Hs80 HK".
+  iApply (main_to_setlocale with "Hal Ha0 Hs0 Hlit Hcells"); [exact Hav | exact Hav8 | exact Haend | exact Har48 |].
+  iNext. iIntros (e b4 b6 i k (Hv & Hf4 & Hf6 & Hi & Hk))
+    "Hal Ha0 Hs0 Hlit Hcells Hl4 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'".
+  iApply (main_start_rest with "Hks Hcod Hs80 Hl4 Hy4 Hc4"); [exact Hv | exact Hf4 |].
+  iNext. iIntros (e' q new c' (Hv' & Hc1 & Hq)) "Hlent Hcod Hs80 Hl4 Hp4 Hy4 Hc4".
+  iApply ("HK" $! e' b4 b6 i k q new c' with
+           "[%] Hal Ha0 Hs0 Hlit Hcells Hlent Hcod Hs80 Hl4 Hp4 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'").
+  auto 10.
 Qed.
 
 End main.

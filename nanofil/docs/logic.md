@@ -999,8 +999,22 @@ setlocale's call, and the triples of three files compose in it:
 4. `set_program_name` (HelloProgName);
 5. the literal "" copied.
 
-The rest of the start block comes next: setlocale, the greeting's store
-into b4, and atexit(close_stdout). Then the option loop.
+`main_start_rest` proves the rest of the start block:
+1. setlocale(LC_ALL, "") through `wp_main_setlocale`;
+2. the default greeting stored in b4's cell (`Kpstore`);
+3. atexit(close_stdout). Its contract stays abstract: it returns an
+   int and keeps the program's pieces and wi (`Katexit`), because the
+   registration is libc's own state.
+
+`main_start` composes the two segments. It goes from main's entry to
+the option loop's first block, with every resource the loop needs:
+argv, the name cells, the lent names and the codec, the greeting's
+cell and the zeroed state.
+
+Next is the option loop. GNU getopt_long may permute argv, and main
+reads `optind` and `optarg`, which are libc's cells, directly. So the
+loop needs a getopt triple that takes argv's cells and hands them back
+permuted, and a world-justified read of libc's cells.
 
 ## Open questions for mbrock
 
