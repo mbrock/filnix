@@ -300,7 +300,8 @@ unused `__int128_t` padding members as aligned bytes of the same size.
 | `sqrt` and `trunc` | 2,979 (96%) | |
 | aliases of thread-local data | 2,982 (96%) | |
 | `__alignof__` of an expression | 2,986 (96%) | |
-| `__label__`, `#pragma weak` in a body, `rdtsc`, `cvtpd2ps` | **2,991 (96%)** | |
+| `__label__`, `#pragma weak` in a body, `rdtsc`, `cvtpd2ps` | 2,991 (96%) | |
+| `_Complex float` and `double` | **3,041 (98%)** | |
 
 The last three rows are a new capture, preprocessed without
 `__BITINT_MAXWIDTH__`, so `math_uint128.h` takes its portable path. No
@@ -328,7 +329,8 @@ First errors (one error per unit, so a fix can uncover the next layer):
 
 | Cause | Units | Where |
 | --- | ---: | --- |
-| `__real__`, `__imag__`, `_Complex` returns | 72 | libm's complex functions |
+| `_Complex long double` returns | 20 | libm's `l` complex functions |
+| a product of two complex values | 2 | `cpow`, `cpowf` |
 | x87 and MXCSR | 51 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
 
 - **x87 and MXCSR.** Fil-C's own glibc keeps a few x87 instructions
@@ -426,6 +428,25 @@ Each frontend fix has a test that fails without it:
   unit. `tests/c/prog/pragma-weak-body.c` against filcc. (clang ignores
   a `#pragma weak` that follows a definition; nanofil, at any scope,
   makes the definition weak. glibc does not rely on either.)
+- `_Complex float` and `_Complex double` are structs of their two
+  parts (`complex_type/2`), laid out, copied, passed and returned as
+  clang compiles them, which is the code of `struct { F re, im; }`:
+  `__real__` and `__imag__` are their members, lvalues too; `1.0iF` is an
+  imaginary constant; a real converts to a complex with imaginary part
+  +0, a complex to a real through its real part and to `_Bool` through
+  both; `==`, `!=`, `+`, `-`, unary `-` and `~` (GNU's conjugate) work
+  part by part, and `*` and `/` with one real operand, which stays real
+  (Annex G.5.1: `z + 2` keeps `z`'s `-0` imaginary part); a complex
+  initializes as a scalar does, so `{ 1, 2.0i }` fills two elements.
+  Refused: a product or quotient of two complex values (decision 11),
+  `_Complex long double` returns (decision 10), integer complex types
+  and static complex initializers, which glibc does not use.
+  `tests/c/prog/complex.c` against clang, with `lib/complex.c` across the
+  call boundary (`long double` complex arguments included); four reject
+  tests. 50 of the 72 complex units compile.
+- A label defined twice in a function is the C diagnostic "redefinition
+  of label" at the second definition, as clang's, not an internal
+  `domain_error`. `tests/c/reject/label-redefined.c`.
 - `__builtin_ia32_rdtsc` is `asm_fixed(rdtsc)`, edx:eax as one
   `unsigned long long`, and `__builtin_ia32_cvtpd2ps` rounds two
   doubles to float and zeroes the upper two elements.
@@ -477,6 +498,19 @@ Every generated syscall stub now compiles: its body, a `zcall` of the
    FilPizlonator accepts a list of x87 control instructions and treats
    `stmxcsr` and `ldmxcsr` as checked memory accesses. Recommended:
    later; the interpreter has no floating-point environment to model.
-9. **`_Complex`** (72 libm units). A frontend feature: complex types,
-   `__real__`, `__imag__`, arithmetic and the calling convention.
-   Recommended: a separate piece of work after the C core.
+9. **`_Complex`.** Done for `float` and `double` (above); what is
+   left is 10 and 11.
+10. **`_Complex long double` returns** (20 libm units, the `l` variants).
+   FilPizlonator returns one through the call buffer, its parts at
+   offsets 128 and 144, 16 bytes each with their aux words zeroed, where
+   a struct of two `long double`s takes a hidden result pointer. The
+   IR's returns are at most two words (`tuple([K1, K2])`), so this is an
+   IR change, a two-`x` return the Fil-C backend writes to both slots,
+   with the interpreter and Rocq's validator. Its arguments, through
+   memory, already match. Recommended: when libm's `l` functions matter.
+11. **Multiplying or dividing two complex values** (`cpow`, `cpowf`).
+   clang calls compiler-rt's `__muldc3`, `__mulsc3`, `__divdc3` and
+   `__divsc3`, which in Fil-C are native code (`libyolort.a`) that IR
+   cannot call. Recommended: compile compiler-rt's `muldc3.c` and its
+   kin with nanofil into ordinary IR the frontend calls, or leave the two
+   units out.

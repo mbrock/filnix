@@ -1,2 +1,4 @@
 // error: _Complex
-int f(void) { _Complex double z; return 0; }
+/* GNU's integer complex types are not supported; _Complex float and
+   double are (tests/c/prog/complex.c). */
+int f(void) { _Complex int z; return 0; }

@@ -404,16 +404,30 @@ pp_number_rest([C|Cs]) -->
     pp_number_rest(Cs).
 pp_number_rest([]) --> [].
 
-% number_token(+Chars, -T, +Loc): T is int(Value, Suffix-Radix) or
-% float(Chars) for the pp-number Chars; anything else is an error.
+% number_token(+Chars, -T, +Loc): T is int(Value, Suffix-Radix),
+% float(Chars) or, for a floating constant with GNU's imaginary suffix i
+% or j before or after its f or l (1.0iF, glibc's _Complex_I),
+% imag(float(Chars)) without it, for the pp-number Chars; anything else
+% is an error.
 number_token(Cs, T, Loc) :-
     (   phrase(integer_literal(V, Suffix), Cs)
     ->  T = int(V, Suffix)
+    ;   imaginary_chars(Cs, Cs1), \+ phrase(integer_literal(_, _), Cs1),
+        phrase(float_chars, Cs1)
+    ->  T = imag(float(Cs1))
     ;   phrase(float_chars, Cs)
     ->  T = float(Cs)
     ;   atom_chars(A, Cs),
         loc_error(Loc, 'bad number ~w', [A])
     ).
+
+imaginary_chars(Cs, Cs1) :-
+    append(Body, [I], Cs), memberchk(I, [i, 'I', j, 'J']), !,
+    Cs1 = Body.
+imaginary_chars(Cs, Cs1) :-
+    append(Body, [I, S], Cs), memberchk(I, [i, 'I', j, 'J']),
+    memberchk(S, [f, 'F', l, 'L']),
+    append(Body, [S], Cs1).
 
 integer_literal(V, Suffix-Radix) -->
     (   ['0', X], { memberchk(X, [x, 'X']) }
@@ -796,6 +810,10 @@ keyword('_Bool', bool).
 keyword('_Complex', complex).
 keyword('_Generic', generic).
 keyword('_Imaginary', imaginary).
+keyword('__real__', real).
+keyword('__real', real).
+keyword('__imag__', imag).
+keyword('__imag', imag).
 keyword('_Noreturn', noreturn).
 keyword('_Static_assert', static_assert).
 keyword('_Thread_local', thread_local).

@@ -60,7 +60,7 @@
     Env as its last two arguments, so it threads through foldl/4,6.
 */
 :- module(c_types, [empty_env/1, specs_type/4, apply_declarator/5,
-                    type_size_align/4, sizeof_size/3, expr_alignment/3, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
+                    type_size_align/4, sizeof_size/3, expr_alignment/3, complex_type/2, complex_of/2, arith_size/3, classify_builtin/1, complete_type/2, int_type/1, int_info/3,
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, constant_address/3, float_literal/3,
@@ -104,7 +104,41 @@ empty_env(e(Ords, Tags, Defs, 0)) :-
     empty_assoc(Ords),
     empty_assoc(Tags),
     va_list_def(Def),
-    list_to_assoc(['builtin.va_list'-Def], Defs).
+    findall(K-CD, ( complex_key(K, F), complex_def(F, CD) ), Cs),
+    list_to_assoc(['builtin.va_list'-Def|Cs], Defs).
+
+doc(complex_type(+T, -F), semidet, [
+    T: "a type, perhaps qualified",
+    F: "its real type: float, double or ldouble",
+    "_Complex F (6.2.5p11) is laid out, copied, passed and returned as a",
+    "struct of two F members, the real and the imaginary part, whose",
+    "names no C code can spell: clang compiles _Complex float and double",
+    "to the code of struct { F re, im; }. It is not an arithmetic type",
+    "here, since nanofil's arithmetic values sit in registers; its",
+    "operators and conversions are the cases that name it.",
+    example(complex_type(struct('builtin.complex.double'), double)),
+    example(complex_type(qualified([const], struct('builtin.complex.float')), float)),
+    fails(complex_type(double, _)),
+    cites('C11 6.2.5p13'),
+    cites('GCC manual, Complex Numbers')
+]).
+complex_type(T0, F) :-
+    unqualified(T0, struct(K)), atom(K), complex_key(K, F).
+
+doc(complex_of(?(F), ?(T)), nondet, [
+    F: "float, double or ldouble",
+    T: "_Complex F, the struct complex_type/2 names",
+    example(complex_of(float, struct('builtin.complex.float'))),
+    fails(complex_of(int, _))
+]).
+complex_of(F, struct(K)) :- complex_key(K, F).
+
+complex_key('builtin.complex.float', float).
+complex_key('builtin.complex.double', double).
+complex_key('builtin.complex.ldouble', ldouble).
+
+complex_def(F, def(struct, [m(some('builtin.re'), F, 0), m(some('builtin.im'), F, S)], Size, A)) :-
+    type_size_align(F, _, S, A), Size is 2 * S.
 
 va_list_def(def(struct, [m(some(gp_offset), uint, 0),
                         m(some(fp_offset), uint, 4),
@@ -1188,6 +1222,10 @@ keyword_combo(S, ullong) :-
 keyword_combo([float], float).
 keyword_combo([double], double).
 keyword_combo([double, long], ldouble).
+keyword_combo([complex], struct('builtin.complex.double')).      % GNU
+keyword_combo([complex, float], struct('builtin.complex.float')).
+keyword_combo([complex, double], struct('builtin.complex.double')).
+keyword_combo([complex, double, long], struct('builtin.complex.ldouble')).
 keyword_combo(S, bad('_Complex')) :- memberchk(complex, S).
 keyword_combo(S, bad('__int128')) :- memberchk(int128, S).
 keyword_combo(S, bad('_Float16')) :- memberchk(float16, S).
@@ -2409,6 +2447,23 @@ expr_alignment(X, Env, A) :-
 array_level(T, T).
 array_level(array(T, _), L) :- array_level(T, L).
 
+% complex_part_node(+XS, +Part, +Env, -X): X is GNU __real__ or __imag__
+% (Part 'builtin.re' or 'builtin.im') of the elaborated XS: the member
+% of a complex XS, an lvalue if XS is; and of a real XS, XS itself for
+% __real__. (GCC's __imag__ of a real value, its zero, is refused.)
+complex_part_node(XS, Part, Env, X) :-
+    tree_type(XS, T0),
+    (   complex_type(T0, _)
+    ->  member_type(T0, Part, Env, T), member_node(XS, Part, T, X)
+    ;   Part == 'builtin.re', unqualified(T0, T), arithmetic_type(T)
+    ->  X = XS
+    ).
+
+complex_part_fault(Op, E, Env, F, As) :-
+    (   untyped(E, Env) -> fault_(E, Env, F, As)
+    ;   F = '~w of a value that is not complex', As = [Op]
+    ).
+
 doc(sizeof_size(+Type, +Env, -Size), det, [
     Type: "the type of sizeof's operand",
     Env: "the scope",
@@ -3530,6 +3585,12 @@ elab(member(E, F), Env, X) :-
     ->  XS = obj(_, _), X = obj(T, bitfield(member(XS, F), W))
     ;   member_node(XS, F, T, X)
     ).
+elab(real_part(E), Env, X) :-                               % GNU
+    elaborate(E, Env, XS), complex_part_node(XS, 'builtin.re', Env, X).
+elab(imag_part(E), Env, X) :-
+    elaborate(E, Env, XS), complex_part_node(XS, 'builtin.im', Env, X).
+elab(imag(float(Cs)), Env, val(T, imag(XF))) :-             % GNU 1.0i
+    elab(float(Cs), Env, XF), tree_type(XF, F), complex_of(F, T).
 elab(arrow(E, F), Env, X) :-                                % 6.5.2.3p4
     elab(member(un(deref, E), F), Env, X).
 % filc_test_support.h's zhas_union(p) only blocks optimizations in
@@ -3670,7 +3731,8 @@ lowered(XV, T) :- tree_type(XV, T0), unqualified(T0, T).
 % or the result of the operator applied to the two (6.5.16.2).
 assigns(=, TA, XB, TB, Env) :- !, nullness(XB, Env, N), assignable(TB, N, TA, Env).
 assigns(Op, TA, _, TB, _) :-
-    compound_assignment(Op, BinOp), ( scalar_type(TA) ; TA = vec(_, _, _) ),
+    compound_assignment(Op, BinOp),
+    ( scalar_type(TA) ; TA = vec(_, _, _) ; complex_type(TA, _) ),
     binary_operands(BinOp, TA, TB, _, _, T), assignable(T, value, TA).
 
 % arity_fits(+Ps, +V, +Args): a function with parameters Ps, fixed or
@@ -5177,6 +5239,8 @@ doc(unary_operand(+Op, +T0, -T), semidet, [
 unary_operand(Op, T0, T0) :-                         % GNU vectors
     T0 = vec(E, _, _), !,
     ( memberchk(Op, [plus, neg]) -> true ; Op == bnot, int_type(E) ).
+unary_operand(Op, T0, T) :-                          % ~z is GNU's conj
+    complex_type(T0, _), !, memberchk(Op, [plus, neg, bnot]), unqualified(T0, T).
 unary_operand(Op, T0, T) :-
     memberchk(Op, [plus, neg]), arithmetic_type(T0), integer_promotion(T0, T).
 unary_operand(bnot, T0, T) :- int_type(T0), integer_promotion(T0, T).
@@ -5266,6 +5330,13 @@ doc(binary_operands(+Op, +TA, +TB, -CA, -CB, -T), semidet, [
 binary_operands(Op, TA, TB, C, C, T) :-
     ( TA = vec(_, _, _) ; TB = vec(_, _, _) ), !,
     vector_operands(Op, TA, TB, C, T).
+binary_operands(Op, TA, TB, CA, CB, T) :-              % 6.3.1.8p1, G.5
+    ( complex_type(TA, _) ; complex_type(TB, _) ), !,
+    memberchk(Op, [add, sub, mul, div, eq, ne]),
+    complex_real(TA, RA), complex_real(TB, RB),
+    usual_arith_conversion(RA, RB, R),
+    complex_side(TA, R, CA), complex_side(TB, R, CB),
+    ( memberchk(Op, [eq, ne]) -> T = int ; complex_of(R, T) ).
 binary_operands(Op, TA, TB, CA, CB, CA) :- memberchk(Op, [shl, shr]), !,
     int_type(TA), int_type(TB),
     integer_promotion(TA, CA), integer_promotion(TB, CB).
@@ -5293,6 +5364,13 @@ operand_domain(compare, arithmetic_type).
 
 comparison(Op) :- c_operator(_, _, Op, compare).
 
+% complex_real(+T, -R): R is complex T's real type, or arithmetic T.
+% complex_side(+T, +R, -C): an operand of type T is converted to C, the
+% complex of the common real type R if T is complex, else R: a real
+% operand stays real (Annex G.5.1), so 2 * z multiplies each part.
+complex_real(T, R) :- ( complex_type(T, F) -> R = F ; arithmetic_type(T), R = T ).
+complex_side(T, R, C) :- ( complex_type(T, _) -> complex_of(R, C) ; C = R ).
+
 doc(castable(+From, +To), semidet, [
     From: "the unqualified value type of the operand",
     To: "the type named in the cast",
@@ -5315,6 +5393,7 @@ doc(castable(+From, +To), semidet, [
 ]).
 castable(_, void) :- !.
 castable(A, B) :- arithmetic_type(A), arithmetic_type(B), !.
+castable(A, B) :- complex_or_arithmetic(A, B).
 castable(ptr(_), B) :- ( B = ptr(_) ; int_type(B) ), !.
 castable(A, ptr(_)) :- int_type(A), !.
 castable(T, U) :- T == U, ( T = struct(_) ; T = union(_) ).
@@ -5355,6 +5434,7 @@ assignable(From, Null, To) :- assignable(From, Null, To, none).
 % assignable(+From, +Null, +To, +Env): as assignable/3; function pointers
 % are compared with compatible_type/3 in Env.
 assignable(From, _, To, _) :- arithmetic_type(From), arithmetic_type(To), !.
+assignable(From, _, To, _) :- complex_or_arithmetic(From, To), !.
 assignable(T, _, U, _) :- T == U, !.
 assignable(S, _, atomic(S1, _), _) :- S == S1, !.       % atomic_su_type/3
 assignable(vec(E, N, _), _, vec(F, M, _), _) :- !,       % GNU vectors
@@ -5365,6 +5445,13 @@ assignable(ptr(_), _, bool, _) :- !.
 assignable(_, null, ptr(_), _) :- !.
 assignable(ptr(A), _, ptr(B), Env) :-
     ( A = func(_, _, _), B = func(_, _, _) -> compatible_type(A, B, Env) ; true ).
+
+% complex_or_arithmetic(+A, +B): A and B are complex or arithmetic, and
+% one is complex: a value of one converts to the other (6.3.1.7).
+complex_or_arithmetic(A, B) :-
+    ( complex_type(A, _) ; complex_type(B, _) ), !,
+    ( complex_type(A, _) ; arithmetic_type(A) ), !,
+    ( complex_type(B, _) ; arithmetic_type(B) ), !.
 
 doc(conditional_type(+Arms, +Env, -T), semidet, [
     Arms: "A-B, the second and third operands of ?:",
@@ -5484,6 +5571,10 @@ doc(arms_type(+TA, +NA, +TB, +NB, -T), semidet, [
 arms_type(TA, _, TB, _, T) :-
     arithmetic_type(TA), arithmetic_type(TB), !,
     usual_arith_conversion(TA, TB, T).
+arms_type(TA, _, TB, _, T) :-                  % a complex arm (6.3.1.8p1)
+    complex_or_arithmetic(TA, TB), !,
+    complex_real(TA, RA), complex_real(TB, RB),
+    usual_arith_conversion(RA, RB, R), complex_of(R, T).
 arms_type(void, _, _, _, void) :- !.
 arms_type(_, _, void, _, void) :- !.
 arms_type(T, _, U, _, T) :- T == U, ( T = struct(_) ; T = union(_) ), !.
@@ -5808,6 +5899,8 @@ fault_(member(E, Field), Env, F, As) :-
     ->  tree_type(XS, T), missing_member(T, Field, Env, F, As)
     ;   F = 'member access on a non-lvalue', As = []
     ).
+fault_(real_part(E), Env, F, As) :- complex_part_fault('__real__', E, Env, F, As).
+fault_(imag_part(E), Env, F, As) :- complex_part_fault('__imag__', E, Env, F, As).
 fault_(arrow(E, Field), Env, F, As) :-
     (   untyped(E, Env) -> fault_(E, Env, F, As)
     ;   lowered_type(E, Env, ptr(T)) -> missing_member(T, Field, Env, F, As)

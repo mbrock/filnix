@@ -190,6 +190,7 @@ token_text(kw(K), K).
 token_text(id(N), N).
 token_text(int(V, S), int(V, S)).
 token_text(float(Cs), float(Cs)).
+token_text(imag(float(Cs)), imag(float(Cs))).
 token_text(chr(V), chr(V)).
 token_text(str(Bs), str(Bs)).
 token_text(wstr(T, Vs), wstr(T, Vs)).
@@ -1425,6 +1426,12 @@ unary(Env, E) -->
     ;   unary(Env, E0),
         { E = sizeof_expr(E0) }
     ).
+unary(Env, real_part(E)) -->       % GNU __real__ and __imag__
+    kw(real), !,
+    cast(Env, E).
+unary(Env, imag_part(E)) -->
+    kw(imag), !,
+    cast(Env, E).
 unary(Env, E) -->
     kw(alignof), !,
     (   punct('('), starts_type(Env)
@@ -1531,6 +1538,7 @@ primary(Env, cast(Type, num(0, none-dec))) -->
 primary(_, id(N)) --> token(id(N)), !.
 primary(_, num(V, S)) --> token(int(V, S)), !.
 primary(_, float(Cs)) --> token(float(Cs)), !.
+primary(_, imag(float(Cs))) --> token(imag(float(Cs))), !.
 primary(_, chr(V)) --> token(chr(V)), !.
 primary(_, S) -->
     ( peek(str(_)) ; peek(wstr(_, _)) ), !,

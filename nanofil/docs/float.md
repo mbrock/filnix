@@ -109,7 +109,10 @@ compares exactly against native code:
   in XMM0 and XMM1 beside the integer words in RDX and RCX.
 - `long double` is x87 extended precision, as in clang (see *x87 long
   double* below).
-- Refused with a message: `_Complex`.
+- `_Complex float` and `_Complex double` are structs of their two parts,
+  laid out and passed as clang does (docs/zsys.md, *Fixes made along the
+  way*). Refused with a message: `_Complex long double` returns, a
+  product or quotient of two complex values, and integer complex types.
 - `<math.h>` functions are ordinary calls into libm.
 
 ## Backends

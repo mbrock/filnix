@@ -185,7 +185,8 @@ Fil-C's own tests, nanofil builds and passes 4,011 of the 5,491 written
 in C; none that must trap runs to the end, and most of the rest use SIMD
 asm and intrinsics nanofil refuses ([docs/filc-tests.md](docs/filc-tests.md)).
 
-It refuses `_Complex`, `__int128`, inline `asm` other than an empty
+It refuses `_Complex long double` returns and products of two complex
+values, `__int128`, inline `asm` other than an empty
 barrier, GNU vector types, and K&R definitions. Without
 `-O` every temporary lives in a stack slot; `-O` promotes locals and
 allocates scalar registers ([docs/perf.md](docs/perf.md)).

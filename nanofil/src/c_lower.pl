@@ -1443,6 +1443,9 @@ variadic_entry(fixed, RetType-Types, Sret, Params) -->
 % of a function returning RetType.
 ret_class(_, void, _, void) :- !.
 ret_class(_, ldouble, _, tuple([l, l])) :- !.
+ret_class(Loc, Type, _, _) :-
+    complex_type(Type, ldouble), !,
+    sema_error(Loc, 'returning _Complex long double is not supported yet', []).
 ret_class(_, Type, _, Class) :-
     type_class(Type, Class), !.
 ret_class(Loc, Type, Env, Class) :-
@@ -3275,7 +3278,7 @@ init_error(c(_, _, Loc), Format, Args) :-
     sema_error(Loc, Format, Args).
 
 aggregate(array(_, _)).
-aggregate(struct(_)).
+aggregate(struct(K)) :- \+ complex_type(struct(K), _).   % a scalar's initializer (6.7.9p11)
 aggregate(union(_)).
 
 % undesignated(+Entries, -Pre, -Post): Pre is the longest prefix of
@@ -3425,6 +3428,9 @@ lower(X, Ctx, R) -->
 lower_node(val(T, int(V)), _, v(const(V), U)) --> !, { unqualified(T, U) }.
 lower_node(val(_, float(Cs)), _, v(const(V), Type)) --> !,
     { float_literal(Cs, V, Type) }.
+lower_node(val(T, imag(XF)), Ctx, R) --> !,                 % GNU 1.0i
+    lower_node(XF, Ctx, V),
+    cx_made(T, v(const(0), int), V, R).
 lower_node(val(T, load(X)), Ctx, R) --> !,                 % 6.3.2.1p2
     place(X, Ctx, P),
     { unqualified(T, U) },
@@ -3689,6 +3695,9 @@ lower_node(val(_, stmtexpr(at(_, block(Items)))), Ctx, R) --> % GNU ({ ... })
 % assignment and casts convert, the elaborator having judged that they
 % may: to void it is nothing, a struct or union stays its address.
 converted(_, void, v(const(0), void)) --> !.
+converted(Value0, Type, R) -->                  % _Complex is a struct here
+    { complex_type(Type, _) ; Value0 = v(_, From), complex_type(From, _) }, !,
+    convert(Value0, Type, R).
 converted(v(Addr, _), Type, v(Addr, Type)) --> { su(Type) }, !.
 
 converted(Value0, Type, R) --> convert(Value0, Type, R).
@@ -3811,6 +3820,7 @@ place_loaded(bits(Addr, T, Pos, W), _, Ctx, R) -->
 
 % place_read(+P, +Ctx, -R)//: R is the scalar value at place P.
 place_read(lv(P, U), Ctx, R) --> { U = vec(_, _, _) }, !, loaded(U, P, Ctx, R).
+place_read(lv(P, U), _, v(P, U)) --> { complex_type(U, _) }, !.   % as a struct's
 place_read(lv(P, U), Ctx, v(Cur, U)) --> load_typed(U, P, Ctx, Cur).
 place_read(bits(Addr, T, Pos, W), Ctx, R) -->
     load_typed(T, Addr, Ctx, Unit),
@@ -4982,6 +4992,9 @@ goto_blocks([p(T, From)|Ps], To, Label) -->
 % v(V, From) converted to scalar type To (or void). Callers check that
 % the types are scalar first.
 convert(v(V, Type), Type, v(V, Type)) --> !.
+convert(v(V, From), To, R) -->                          % 6.3.1.7
+    { complex_type(From, _) ; complex_type(To, _) }, !,
+    complex_convert(v(V, From), To, R).
 convert(v(V, vec(_, _, _)), To, v(V, To)) --> { To = vec(_, _, _) }, !.  % bitcast
 convert(v(V, From), To, v(Addr, To)) -->                % a scalar repeated
     { To = vec(E, N, _) }, !,
@@ -5095,6 +5108,89 @@ assign_convert(Expr, Value0, To, Loc, R) -->
     { assigned(Expr, Env, To, Loc) },
     converted(Value0, To, R).
 
+%% _Complex
+%
+% A complex value, like a struct's, is the address of its object: its
+% real part, then its imaginary part (c_types complex_type/2). Its
+% operators take the parts apart and build a new object, as GNU
+% vectors take lanes; a real operand stays real (Annex G.5.1), so
+% z + 2 leaves z's imaginary part as it is, -0 included.
+
+% complex_convert(+V, +To, -R)//: V converted to To, one of them complex.
+% A real becomes the real part, with imaginary part +0; a complex keeps
+% its real part as a real, or tests both for _Bool.
+complex_convert(V, To, R) -->
+    { V = v(_, From), complex_type(From, _) }, !,
+    cx_parts(V, unknown_ctx, Re, Im),
+    (   { complex_type(To, _) } -> cx_made(To, Re, Im, R)
+    ;   { To == void } -> { R = v(const(0), void) }
+    ;   { To == bool }
+    ->  { cx_ctx(unknown_ctx, Ctx) },
+        binary(ne, Re, v(const(0), int), Ctx, A),
+        binary(ne, Im, v(const(0), int), Ctx, B),
+        binary(or, A, B, Ctx, C), convert(C, bool, R)
+    ;   convert(Re, To, R)
+    ).
+complex_convert(V, To, R) --> cx_made(To, V, v(const(0), int), R).
+
+% cx_parts(+V, +Ctx, -Re, -Im)//: Re and Im, v(X, F), are the parts of
+% the complex value V of real type F.
+cx_parts(v(Addr, CT), Ctx0, v(X, F), v(Y, F)) -->
+    { complex_type(CT, F), type_size_align(F, _, S, _), cx_ctx(Ctx0, Ctx) },
+    load_typed(F, Addr, Ctx, X), offset(Addr, S, P), load_typed(F, P, Ctx, Y).
+
+% cx_made(+CT, +Re, +Im, -R)//: R is a new complex value of type CT,
+% its parts Re and Im converted to its real type.
+cx_made(CT0, Re, Im, v(Addr, CT)) -->
+    { unqualified(CT0, CT), complex_type(CT, F), type_size_align(F, _, S, _) },
+    convert(Re, F, v(X, _)), convert(Im, F, v(Y, _)),
+    local_slot(CT, Addr),
+    store_typed(F, X, Addr), offset(Addr, S, P), store_typed(F, Y, P).
+
+cx_ctx(unknown_ctx, ctx(_, _, _, _, unknown)) :- !.
+cx_ctx(Ctx, Ctx).
+
+% cx_split(+V, +Ctx, -Re, -Im)//: complex V's parts, or a real V and none.
+cx_split(V, Ctx, Re, Im) --> { V = v(_, T), complex_type(T, _) }, !, cx_parts(V, Ctx, Re, Im).
+cx_split(V, _, V, none) --> [].
+
+% complex_binary(+Op, +A, +B, +T, +Ctx, -R)//: R, of type T, is Op on A
+% and B, converted already (c_types binary_operands/6), one complex.
+% clang multiplies and divides two complex values with compiler-rt's
+% __muldc3 and __divdc3, native code in Fil-C that IR cannot call, so
+% those are refused.
+complex_binary(Op, A, B, T, Ctx, R) -->
+    cx_split(A, Ctx, Ar, Ai), cx_split(B, Ctx, Br, Bi),
+    (   { memberchk(Op, [mul, div]), Bi \== none, ( Op == div ; Ai \== none ) }
+    ->  { ctx_loc(Ctx, Loc), complex_type(T, F), memberchk(F-L, [float-s, double-d, ldouble-x]),
+          ( Op == mul -> W = 'multiplying a _Complex value by' ; W = 'dividing by' ),
+          sema_error(Loc, '~w a _Complex value is not supported: clang calls compiler-rt\'s native __~w~wc3', [W, Op, L]) }
+    ;   { memberchk(Op, [eq, ne]) }
+    ->  binary(Op, Ar, Br, Ctx, E1),
+        cx_im_compare(Op, Ai, Bi, Ctx, E2),
+        { Op == eq -> J = and ; J = or },
+        binary(J, E1, E2, Ctx, R)
+    ;   binary(Op, Ar, Br, Ctx, Re),
+        cx_im(Op, Ai, Bi, Ar, Br, Ctx, Im),
+        cx_made(T, Re, Im, R)
+    ).
+
+% cx_im(+Op, +Ai, +Bi, +Ar, +Br, +Ctx, -Im)//: the imaginary part of A
+% Op B for add, sub, mul and div, one of Ai and Bi none for a real.
+cx_im(Op, Ai, Bi, _, _, Ctx, Im) --> { Ai \== none, Bi \== none }, !,
+    binary(Op, Ai, Bi, Ctx, Im).
+cx_im(add, Ai, none, _, _, _, Ai) --> !.
+cx_im(sub, Ai, none, _, _, _, Ai) --> !.
+cx_im(add, none, Bi, _, _, _, Bi) --> !.
+cx_im(sub, none, Bi, _, _, Ctx, Im) --> !, unary(neg, Bi, Ctx, Im).
+cx_im(Op, Ai, none, _, Br, Ctx, Im) --> !, binary(Op, Ai, Br, Ctx, Im).   % mul, div
+cx_im(mul, none, Bi, Ar, _, Ctx, Im) --> binary(mul, Ar, Bi, Ctx, Im).
+
+cx_im_compare(Op, Ai, Bi, Ctx, E) --> { Ai \== none, Bi \== none }, !,
+    binary(Op, Ai, Bi, Ctx, E).
+cx_im_compare(Op, Ai, none, Ctx, E) --> !, binary(Op, Ai, v(const(0), int), Ctx, E).
+cx_im_compare(Op, none, Bi, Ctx, E) --> binary(Op, Bi, v(const(0), int), Ctx, E).
+
 %% Operators
 
 % unary(+Op, +Value0, +Ctx, -R)//: R is unary operator Op applied to
@@ -5106,6 +5202,13 @@ unary(Op, Value0, Ctx, R) -->
       ) },
     unary_value(Op, Value0, Type, Ctx, R).
 
+unary_value(Op, V, T, Ctx, R) -->                       % ~z is conj(z)
+    { complex_type(T, _) }, !,
+    cx_parts(V, Ctx, Re, Im),
+    (   { Op == plus } -> { R = V }
+    ;   { Op == neg } -> unary(neg, Re, Ctx, Re1), unary(neg, Im, Ctx, Im1), cx_made(T, Re1, Im1, R)
+    ;   unary(neg, Im, Ctx, Im1), cx_made(T, Re, Im1, R)
+    ).
 unary_value(Op, v(A, T), T, Ctx, v(Addr, T)) -->
     { T = vec(E, _, _) }, !,                            % GNU vectors
     lanes_loaded(T, A, Ctx, Xs),
@@ -5137,6 +5240,10 @@ binary(Op, VA, VB, Ctx, R) -->
 % is Op applied to VA converted to CA and VB converted to CB. Pointer
 % arithmetic scales by the element size. Direct ordered comparisons are
 % essential: !(a < b) is not a >= b when either operand is NaN.
+binary_value(Op, CA, CB, T, VA, VB, Ctx, R) -->
+    { complex_type(CA, _) ; complex_type(CB, _) }, !,
+    convert(VA, CA, A), convert(VB, CB, B),
+    complex_binary(Op, A, B, T, Ctx, R).
 binary_value(Op, C, _, T, VA, VB, Ctx, v(Addr, T)) -->
     { C = vec(E, _, _) }, !,                            % GNU vectors
     convert(VA, C, v(AA, _)), convert(VB, C, v(BA, _)),
@@ -5330,7 +5437,9 @@ call_result(global(Kind), RetType, IRArgs, Ctx, R) -->
     { R = v(V, int) }.
 call_result(Callee, RetType, IRArgs, Ctx, R) -->
     { ctx_loc(Ctx, Loc) },
-    (   { memtype(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
+    (   { complex_type(RetType, ldouble) }
+    ->  { sema_error(Loc, 'calls returning _Complex long double are not supported yet', []) }
+    ;   { memtype(RetType) } -> struct_call(RetType, Callee, IRArgs, Loc, R)
     ;   { RetType == ldouble }
     ->  struct_call(RetType, Callee, IRArgs, Loc, v(Tmp, _)),
         let(x, load(x), [Tmp], V),
