@@ -310,17 +310,17 @@ sljit takes 0.1 ms. So the steps are:
    after it. The regex compiler itself stays Prolog for now (0.07 s
    for 36 patterns).
 2. **Code worth running.** The first version's code is what Prolog
-   makes without `-O`, which the experiment measured at 5 to 10 times
-   slower than `-O` code. That is about the interpreter's speed on
-   some patterns, so the route is not yet worth switching on. The
-   experiment says where the difference is: "The `--checks` variants
-   barely differ", and with `-O` but stack homes the code is only
-   1.1 to 1.7 times slower than full `-O`. So it is the middle end.
-   The regex compiler keeps a node's choice state in `alloc` slots,
-   and without promotion every use of one is a checked load or
-   store. For pcre2 the middle end matters far more than the check
-   passes or a register allocator, and M5b ports the part of it
-   that code needs, before Crane and before the allocator.
+   makes without `-O`. M5 measured it on the experiment's nine
+   benchmark patterns: 2.7 to 16 times slower than `-O` code, 6.2
+   times in the geometric mean, and still 1.5 to 3.5 times faster
+   than PCRE2's interpreter. The regex compiler keeps a node's
+   choice state in `alloc` slots, and without promotion every use of
+   one is a checked load or store. Promotion, copy propagation and
+   the selection of branches bring the code to 2.1 times `-O`'s,
+   which is all that `-O` gives with stack homes; registers are the
+   other 2 times. Simplification, inlining, the check passes and the
+   inline `memcpy` change nothing for this code. M5b ports the first
+   three, before Crane and before the allocator.
 3. **`libnanofil`, pizlonated.** Crane's output is plain C++23, and
    Fil-C is a C++ compiler (clang 20 with libc++), so the extracted
    compiler is built with filcc and given a C interface: IR text or
@@ -484,6 +484,92 @@ its temporary, and a label is built from strings at each use.
 Numbered temporaries remove the first, and a label kept as parts
 until it is printed removes the second.
 
+**The measurements of M5.** On the standalone compiler, which
+compiles SQLite's IR text in 41 s where `nanofil compile` takes 70.
+
+*The validator is the cost.* The model's `valid` is 18 to 20 s of
+the 41, where Prolog's own validator takes 14. It grows with the
+square of a function's definitions: two thirds of it is in three
+functions of 6,000 to 14,800 definitions.
+
+- `single_definitions` is 7.0 s. For each definition it filters the
+  list of all of them.
+- The reuse forms' stage is 5 to 6 s more, and the blocks' own
+  rules 4.2 s. Both find a name's definition and its class with
+  `lookup`, a walk along a list of pairs.
+- Dominance, the classes and the data are under a second together.
+
+The validator is the model's, and nine proof files of the program
+logic read `single_definitions`, so the repair is not this
+campaign's to make alone. Decision 6 below is about it.
+
+*Numbered temporaries gain nothing.* A pass that numbered a
+function's temporaries and gave the plans integer names was written
+and measured: the validator and the plans took the same time. What
+they pay for is the walk along a list, not the comparison of two
+names at each step. So the repair is maps in place of the lists,
+with whatever names, and the pass is not in the tree.
+
+*pcre2 through `rxc`.* With `NANOFIL_BACKEND` set, `rxc` and the
+experiment's `run.sh` compile the IR with `nanofil-backend compile`,
+and no Prolog runs after the regex compiler. The experiment's checks
+pass: the module of 36 functions is Prolog's plain compile byte for
+byte, `bench` agrees with PCRE2 on every pattern, and `hook`
+compiles its 39 patterns and agrees on all of them.
+
+Compile time, on an orb:
+
+- The module of 36: 0.39 s, against 1.4 s for `nanofil compile` and
+  6.3 s for `nanofil -O compile`.
+- A cold cache of 39 patterns through the hook: 4.5 to 4.7 s,
+  against 12.8 s. That is 120 ms a miss against 330.
+- One pattern, for a small, a middling and a large one: the regex
+  compiler 44 to 58 ms, the backend 16 to 43 ms, `as` 7 to 12 ms and
+  `ld` 17 to 19 ms. `nanofil -O compile` takes 214 to 548 ms for the
+  same three.
+- The large one's 43 ms are 2 reading, 24 pizlonating and
+  validating, 10 lowering and emitting, 1 printing, and 6 outside
+  those.
+
+So the 10 ms target is missed by two to four times, and validation
+is again the largest part. A miss is now bounded as the target
+wanted, by the regex compiler in SWI-Prolog and three process
+starts, at about a tenth of a second.
+
+*The code's speed, and which passes it needs.* `nanofil compile` on
+the module with one selection of `-O`'s parts at a time, then
+`bench`. The figure is the geometric mean over the nine benchmark
+patterns of the time per call, as a multiple of full `-O`'s:
+
+- the first version's code: 6.2 (2.7 to 16);
+- with selected branches: 5.5;
+- with registers and selected branches, and no middle end: 4.0;
+- promotion and copy propagation: 2.7;
+- those and simplification: 2.6;
+- those and inlining: 2.5, with the same count of assembly lines;
+- promotion, copy propagation and selected branches: 2.1 (1.5 to
+  2.9);
+- all of `-O` but with stack homes: 2.2 (1.6 to 2.9);
+- promotion, copy propagation, simplification and registers: 1.6;
+- those and selected branches: 1.03;
+- those and the combined checks: 1.08, and the inline `memcpy` 1.00;
+- all of `-O` without simplification: 0.97.
+
+Four things follow:
+
+- Promotion with copy propagation is worth 2.3 times, registers
+  1.7 to 2 times after it, and branch selection 1.1 to 1.6 times,
+  the more the less other work is left.
+- Promotion, copy propagation and branch selection are everything
+  `-O` gives with stack homes. Simplification, inlining, the check
+  passes and the inline `memcpy` do nothing for regex code.
+- The experiment's README had stack homes at 1.1 to 1.7 times
+  registers. Measured again it is 1.6 to 2.9, so the target of code
+  within 2 times of `-O`'s waits for M7's allocator on most
+  patterns.
+- In Prolog the registers are also what compiling costs: the module
+  takes 1.5 s with stack homes and 6.6 s with registers.
+
 ## Milestones
 
 Each ends with its gate green and a short note of what it found.
@@ -646,8 +732,10 @@ What it showed:
   entry and the thunk.
 - Some arms cannot be reached through the gate, because the
   validator rejects their input: an alias with `local` linkage, an
-  alias of a thread-local object or of a weak declaration, and a
-  negative `x` constant.
+  alias of a weak declaration, and a negative `x` constant. An
+  alias of a thread-local object was among them until Prolog began
+  to take one; `tests/edge/data.ir` now has one of each linkage,
+  since C cannot write the local one.
 - A data object of 200,000 items overflows the 8 MB stack in the
   driver, with the stub emission as with the real one. With an
   unlimited stack the lines are Prolog's. `payload_items` is not
@@ -792,19 +880,37 @@ Gate: the second performance target; the experiment's checks pass
 with the extracted compiler; the miss time and the code's speed are
 recorded, with a list of the `-O` passes that code needs.
 
+*Measured, and half done.* The numbers are under
+[Performance targets](#performance-targets).
+
+- Done: the `rxc` switch, the experiment's checks with the extracted
+  compiler, the miss time, the code's speed and the list of passes.
+- Not done: the second performance target. After reading, SQLite
+  takes 32 s, and the target is a fiftieth of Prolog's 53, about a
+  second. The model's validator is 18 to 20 s of it and quadratic,
+  and its repair needs the model's owner. Reading is 10 s more, and
+  waits for the NFB reader. The plans and the emission still find
+  names in lists.
+- Dropped: numbering the temporaries, which measured as no gain.
+
 **M5b. The middle end pcre2's code needs.** Promotion and what it
 stands on: the CFG and dominators of `cfg.pl`, `escape.pl`,
-`promote.pl`, `copy.pl` and `simplify.pl`, about 2,900 lines of
-Prolog. They run before pizlonation, on the unchecked module, and
-their result is in the first version's forms, so nothing after them
-changes. Inlining and local storage are added only if M5's list
-asks for them. Gate: byte identity on the corpus with the Prolog
-compiler run with `-O`'s middle end and the first version's back
-end (`--checks=reference --registers=stack --inline=none`, and the
-emission options at their values without `-O`), and the regex
-experiment's patterns within the 1.1 to 1.7 times of full `-O`
-that stack homes cost. This is the first point where the `rxc`
-route is worth switching on.
+`promote.pl` and `copy.pl`, about 2,100 lines of Prolog. They run
+before pizlonation, on the unchecked module, and their result is in
+the first version's forms, so nothing after them changes. With them
+comes the selection of branches in the emission (`compare_branch`
+and `selected_jump` in filc_amd64.pl, under 100 lines): a branch
+reads the flags of the comparison before it, and an edge to the
+next block falls through. `simplify.pl`, inlining and local storage
+are left out: M5's list says regex code does not need the first
+two, and local storage changes nothing in the regex module. Gate:
+byte identity on the corpus with the Prolog compiler run with those
+parts alone (opt.pl's `passes([promote, copy])`, which leaves local
+storage off, with `--registers=stack --branches=selected
+--memcpy=call --checks=reference`), and the regex experiment's
+patterns at the 2.1 times of full `-O` that this selection measures
+in Prolog. This is the first point where the `rxc` route is worth
+switching on.
 
 **M6. Crane.** Build Crane in Nix against our Rocq, extract the same
 entry points to C++, compile with clang++ and run the same
@@ -888,13 +994,27 @@ otherwise.
    process are later options; the second is a runtime change and
    would wait for its own review.
 5. **What pcre2 needs after M5.** The first version's code has none
-   of `-O`. The experiment puts the 5 to 10× in the middle end: the
-   `--checks` variants barely differ, and registers are worth 1.1 to
-   1.7×. Recommended: port promotion, copy propagation and simplify
-   (M5b) before Crane (M6) and the allocator (M7), and leave the
-   check passes for later. An earlier version of this decision
-   credited the check passes with the 5 to 10×; that was a
-   misreading of the experiment. The other way to the same speed
-   for pcre2 alone is a regex compiler that emits SSA with no
-   `alloc` slots; the port is preferred because every other
-   producer of IR needs promotion too.
+   of `-O`, and M5 measured what each part is worth on the nine
+   benchmark patterns. Promotion with copy propagation is 2.3 times,
+   registers 1.7 to 2 times, branch selection 1.1 to 1.6; the check
+   passes, simplification and inlining are nothing. Recommended:
+   port promotion, copy propagation and branch selection (M5b)
+   before Crane (M6) and the allocator (M7), and leave the check
+   passes and `simplify.pl` for later. Two earlier versions of this
+   decision were wrong: the first credited the check passes, and the
+   second took registers to be worth 1.1 to 1.7 times and put
+   simplification in M5b. The other way to the same speed for pcre2
+   alone is a regex compiler that emits SSA with no `alloc` slots;
+   the port is preferred because every other producer of IR needs
+   promotion too.
+6. **How the validator gets fast.** `valid` is half of a compile
+   and quadratic in a function's size, and it is the model's
+   definition, with proofs that read it. Recommended: this campaign
+   writes, in a file of its own, maps in place of the lists behind
+   `single_definitions` and the `lookup` of a definition and of a
+   class, each proved equal to the list it replaces; the model's
+   owner then switches `valid_func` to them, so `valid` stays the
+   same function and the proofs rewrite once. The backend takes no
+   unproved replacement at extraction. Proving `valid (pizlonate m)
+   = Some true`, which removes the run altogether for the first
+   version, stays the later goal.

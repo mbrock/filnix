@@ -3,7 +3,8 @@
 % item that is a constant, a negative addend, an extended float,
 % alignments of 64 and 128, an empty object, string bytes past 127,
 % thread-local objects with pointers and with a zero template, init
-% entries with each kind of priority, and aliases of each target.
+% entries with each kind of priority, and aliases of each target,
+% a thread-local object with each linkage among them.
 data(a, ro(weak), 8, [item(l, const(-1))]).
 data(b, weak, 64, [item(p, const(5)), item(p, sym(a, -8)), item(x, const(604462909807314587365633)), item(h, const(-3)), item(b, const(300)), zero(3), item(s, const(1)), item(d, const(2)), item(b, str("a\"\\\x80\\xff\\n\t~\x7f\\0\"))]).
 data(t, tls(local), 32, [zero(8), item(p, sym(b, 16)), item(p, sym(a, 0)), item(w, const(0))]).
@@ -20,6 +21,8 @@ alias(al, weak, f).
 alias(al2, export, b).
 alias(al4, export, a2).
 alias(al5, export, a3).
+alias(al6, export, t).
+alias(al7, weak, t2).
 func(f, local, w, [], [
     block(s, [], [], ret(const(0)))
 ]).

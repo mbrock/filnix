@@ -273,6 +273,29 @@ disk. When the module had nine functions (1.7 s), nanofil's profile put the
 time in the register-allocation checker (`amd64_regs_check`), assoc
 operations and garbage collection.
 
+## The compiler extracted from Rocq
+
+`NANOFIL_BACKEND=.../nanofil-backend` makes `rxc` and `run.sh` compile the
+IR with `nanofil-backend compile`, the backend extracted from Rocq
+(`nanofil/rocq/backend`, `nanofil/docs/gallina-backend.md`), so that no
+Prolog runs after `rx.pl`. It is the compiler without `-O`, and its
+assembly for the module of 36 is `nanofil compile`'s byte for byte. `bench`
+and `hook` pass with it. Measured on November 10:
+
+- The module compiles in 0.39 s, against 1.4 s for `nanofil compile` and
+  6.3 s for `nanofil -O compile`.
+- A cold cache of the hook's 39 patterns takes 4.6 s, against 12.8 s: 120
+  ms a miss against 330. Of one miss, `rx.pl` is 44 to 58 ms, the backend
+  16 to 43 ms, `as` 7 to 12 ms and `ld` 17 to 19 ms.
+- The code is slower: 2.7 to 16 times `-O`'s per call on the nine patterns
+  above (6.2 times in the geometric mean), which is still 1.5 to 3.5 times
+  faster than the interpreter.
+- What the code needs from `-O` is promotion with copy propagation (2.3
+  times), registers (1.7 to 2 times) and selected branches (1.1 to 1.6
+  times). `--simplify=none`, `--inline=none`, `--checks=reference` and
+  `--memcpy=call` each change the time by under a tenth. The whole list is
+  in `nanofil/docs/gallina-backend.md`.
+
 ## Trealla
 
 `rx.pl` runs on the Trealla that `nanofil/nix/trealla.nix` pins, and since
@@ -322,7 +345,9 @@ What differs is the cost. `nanofil -O compile` of one pattern, over the 39:
 - `--registers=stack` skips the register allocator and its checker. Its
   code is 1.1 to 1.7 times slower in the direct-call loop above (`tag` 91 to
   148 ns, `email` 2033 to 3513, `word` 26 to 37), which is still far ahead
-  of the interpreter.
+  of the interpreter. Measured again on November 10 it is 1.6 to 2.9
+  times slower (`tag` 109 to 290 ns, `email` 2249 to 6322, `word` 26 to
+  78).
 
 So the regex compiler no longer needs SWI-Prolog, and what an embedded
 Trealla would cost is known:

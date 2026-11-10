@@ -13,6 +13,11 @@
 # quarter second of loading its sources. With NANOFIL_HOST=trealla both
 # Prolog steps run on Trealla instead (TPL, default: tpl on PATH), and
 # no SWI-Prolog is needed. Needs GNU as, ld and timeout.
+#
+# NANOFIL_BACKEND names the compiler extracted from Rocq
+# (nanofil/rocq/backend, docs/gallina-backend.md). With it the IR is
+# compiled by `nanofil-backend compile` and no Prolog runs after rx.pl.
+# It is the compiler without -O, so the code is the plain compile's.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -43,7 +48,11 @@ esac
 if grep '^%' "$work/rx.ir" >"$output"; then
   exit 1
 fi
-(cd "$repo/nanofil/src" && limited ../bin/nanofil -O compile "$work/rx.ir" </dev/null) >"$work/rx.s" || slow
+if [ -n "${NANOFIL_BACKEND:-}" ]; then
+  limited "$NANOFIL_BACKEND" compile "$work/rx.ir" </dev/null >"$work/rx.s" || slow
+else
+  (cd "$repo/nanofil/src" && limited ../bin/nanofil -O compile "$work/rx.ir" </dev/null) >"$work/rx.s" || slow
+fi
 as -o "$work/rx.o" "$work/rx.s"
 # The Fil-C runtime it calls is already in the process that loads it.
 ld -shared -o "$output" "$work/rx.o"

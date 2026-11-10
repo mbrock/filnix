@@ -10,6 +10,9 @@
 #   HOST=tpl ./run.sh     the same with rx.pl and nanofil on Trealla; no
 #                         SWI-Prolog is used. Slower: the module takes
 #                         40 s and 5.5 GB, a pattern of the hook 2 to 7 s.
+#   NANOFIL_BACKEND=.../nanofil-backend ./run.sh
+#                         the IR compiled by the compiler extracted from
+#                         Rocq, which has no -O: here and in rxc
 #
 # Needs nix, GNU as, and the PCRE2 source and Fil-C build that
 # ../pcre2-sljit-llvm/run.sh leaves in $WORK. SWIPL and TPL name the
@@ -70,9 +73,15 @@ regex_to_ir() {
     tpl) "$TPL" -q "$here/rx.pl" -g "rx:rx_file('pats.pl')" -g halt </dev/null >rx.ir ;;
   esac
 }
+compiler="nanofil -O compile ($HOST)"
 ir_to_asm() {
   (cd "$repo/nanofil/src" && ../bin/nanofil -O compile "$OUT/rx.ir" </dev/null) >rx.s
 }
+if [ -n "${NANOFIL_BACKEND:-}" ]; then
+  export NANOFIL_BACKEND
+  compiler="nanofil-backend compile"
+  ir_to_asm() { "$NANOFIL_BACKEND" compile rx.ir </dev/null >rx.s; }
+fi
 
 # A saved state is a snapshot of nanofil/src: make it again when that changed.
 if [ "$HOST" = swi ] && { [ ! -e nanofil.state ] || [ -n "$(find "$repo/nanofil/src" -newer nanofil.state -print -quit)" ]; }; then
@@ -80,7 +89,7 @@ if [ "$HOST" = swi ] && { [ ! -e nanofil.state ] || [ -n "$(find "$repo/nanofil/
 fi
 step "regex to IR ($HOST)" regex_to_ir
 grep '^%' rx.ir || true
-step "nanofil -O compile ($HOST)" ir_to_asm
+step "$compiler" ir_to_asm
 step "as" as -o rx.o rx.s
 step "link -shared" "$filcc" -shared -o rx.so rx.o
 

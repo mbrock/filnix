@@ -453,8 +453,8 @@ Definition data_lines (n : name) (lk : Syntax.linkage) (align : Z) (items : list
   end.
 
 (** Whether the module defines the name target with a linkage that
-    keeps its getter local: a `local` function, or `local` or
-    `ro(local)` data. *)
+    keeps its getter local: a `local` function, or `local`,
+    `ro(local)` or `tls(local)` data. *)
 Definition alias_target_local (sy : symbols) (target : name) : bool :=
   match nm_find target (sy_funcs sy) with
   | Some fe => is_atom "local" (fe_linkage fe)
@@ -462,7 +462,7 @@ Definition alias_target_local (sy : symbols) (target : name) : bool :=
   end
   || match nm_find target (sy_data sy) with
      | Some LLocal => true
-     | Some (LRo l) => is_atom "local" l
+     | Some (LRo l) | Some (LTls l) => is_atom "local" l
      | _ => false
      end.
 
