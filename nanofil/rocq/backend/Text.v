@@ -17,11 +17,18 @@ Definition parts := list string.
 Definition nl : string := String "010"%char EmptyString.
 Definition tab : string := String "009"%char EmptyString.
 
+(** The digits 0 to 9. A definition of its own, like [ten] below,
+    because the extracted code builds a list or a number again each
+    time it meets one written inside a function. *)
+Definition digit_texts : list string :=
+  ["0"; "1"; "2"; "3"; "4"; "5"; "6"; "7"; "8"; "9"].
+
 (** The digit [d], for 0 to 9. *)
-Definition digit (d : nat) : string :=
-  nth d ["0"; "1"; "2"; "3"; "4"; "5"; "6"; "7"; "8"; "9"] "?".
+Definition digit (d : nat) : string := nth d digit_texts "?".
 
 Local Open Scope Z_scope.
+
+Definition ten : Z := 10.
 
 (** The digits of [n], which is not negative, in front of [acc]. The
     fuel is a bound on the number of digits. *)
@@ -29,16 +36,23 @@ Fixpoint digits (fuel : nat) (n : Z) (acc : string) : string :=
   match fuel with
   | O => acc
   | S fuel' =>
-      let acc' := (digit (Z.to_nat (n mod 10)) ++ acc)%string in
-      if n <? 10 then acc' else digits fuel' (n / 10) acc'
+      let (q, r) := Z.div_eucl n ten in
+      let acc' := (digit (Z.to_nat r) ++ acc)%string in
+      if q =? 0 then acc' else digits fuel' q acc'
   end.
 
-(** The number of binary digits of [n] bounds its decimal ones. *)
+(** Numbers below this have at most 18 decimal digits. *)
+Definition eighteen_digits : Z := 10 ^ 18.
+
+(** A bound on the number of decimal digits of [n]: 18 for the
+    numbers below 10^18, which are nearly all a compile prints, and
+    the number of binary digits for the others. *)
 Definition digits_fuel (n : Z) : nat :=
-  match n with
-  | Zpos p => Pos.size_nat p
-  | _ => 1%nat
-  end.
+  if n <? eighteen_digits then 18%nat
+  else match n with
+       | Zpos p => Pos.size_nat p
+       | _ => 1%nat
+       end.
 
 (** [n] in decimal, with a minus sign when it is negative, as Prolog
     writes an integer. *)

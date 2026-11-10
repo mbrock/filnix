@@ -393,8 +393,8 @@ Xeon):
   With the frontend at 94% of the corpus's time, no backend makes
   those compiles much faster.
 
-The extracted printer prints SQLite's lines in 5.0 s, which is 2.5
-times Prolog's speed, within 230 MB. Two things follow:
+At M1 the extracted printer printed SQLite's lines in 5.0 s, which
+is 2.5 times Prolog's speed, within 230 MB. Two things follow:
 
 - Printing is where Prolog is nearest to native code, because SWI
   writes its text in C. The Gallina printer makes a string per digit
@@ -402,6 +402,53 @@ times Prolog's speed, within 230 MB. Two things follow:
 - A twentieth of 53.3 s is 2.7 s, and the printer alone takes 5.0.
   The M3 target cannot be met unless the printer gets faster too, so
   M3 profiles it first and M5 owns what remains.
+
+**The profile, at the start of M3.** `perf record` with DWARF call
+graphs, on SQLite, in CPU seconds: an orb has no hardware counters,
+so instructions are not counted here. The targets for the two parts
+are a twentieth of Prolog's stages: 0.64 s for printing, and 1.0 s
+for the plans and the emission together.
+
+The printer went from 5.0 s to 1.1 s:
+
+- To 2.1 s by reading 64 lines at a time and not 4096. The terms,
+  lines and parts of a large chunk outlived OCaml's 2 MB minor heap
+  and were copied to the major one. This was the driver's fault and
+  not the printer's.
+- To 1.8 s in `decimal`. The extracted code builds a number or a
+  list written inside a function again at each call, so every digit
+  built the number 10 three times and the list of ten digits once.
+  They are definitions of their own now. The bound on the digits
+  was the count of the number's bits, taken a bit at a time; it is
+  18 for numbers below 10^18.
+- To 1.5 s with one division per digit, and with zarith's
+  conversions between `Z` and `nat` where the stdlib's count by
+  ones.
+- To 1.1 s by filling a buffer per chunk; each part was a write.
+
+What remains is a list cell per part and a string per digit.
+
+The plans went from 7.8 s to 2.6 s:
+
+- To 3.7 s by taking OCaml's hash of a string for a name's bucket,
+  as the model's extraction does. The Gallina hash is eight integer
+  operations per character.
+- To 2.6 s with a 32 MB minor heap in the gate.
+
+Of what remains, liveness is a third, the first and last touch of
+each temporary a quarter, the fusing of checks a fifth, and the
+lowering of instructions a tenth. No one function stands out. About
+half of all of it is finding and adding names in maps: a name is a
+term such as `tmp(v12)`, hashed and compared as one at every step.
+The repair is to number a function's temporaries once and key the
+maps and sets by number, which changes every pass of M2 and belongs
+to M5. The gate's 1.4 GB for SQLite, nearly all of it the module
+read as terms, goes with M4's reader.
+
+Both parts still miss their targets, by less than twice for
+printing and by more than twice for the plans before any emission.
+M3's emission is written with this in mind, with no number or list
+written inside a loop.
 
 ## Milestones
 
@@ -473,10 +520,9 @@ plans and the thunks are the same, with nothing outside. Found:
 - `touch` is the pizlonated `access`, and it keeps a third of the
   corpus's functions out of the gate. It is the first construct to
   ask the model's owner for.
-- Building SQLite's plans takes 7.8 s in OCaml, more than the whole
-  M3 target of 2.7 s. It has no profile yet. Liveness visits the
-  blocks in rounds where `cfg.pl` keeps a worklist, and its sets are
-  sorted lists. M3 profiles this with the printer.
+- Building SQLite's plans took 7.8 s in OCaml, more than the whole
+  M3 target of 2.7 s. The profile under Performance targets brought
+  it to 2.6 s and says where the rest goes.
 
 **M3. Stack-homed emission.** `filc_amd64.pl`'s reference emission
 and `amd64.pl`'s scalar selection, in pieces: scalars, compares and

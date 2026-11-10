@@ -144,13 +144,17 @@ let timed total f =
 
 (* The terms are read, decoded and printed a chunk of lines at a
    time, so nothing of a whole module (SQLite has 5.5 million lines
-   and 135 MB of text) is held but the input. *)
-let chunk = 4096
+   and 135 MB of text) is held but the input. A chunk is small
+   enough for its terms, lines and parts to die in the minor heap:
+   with 4096 lines they were promoted first, and SQLite took twice
+   as long. *)
+let chunk = 64
 
 let asm () =
   let next = reader (In_channel.input_all stdin) in
   set_binary_mode_out stdout true;
   let count = ref 0 in
+  let text = Buffer.create 65536 in
   let rec terms acc k =
     if k = chunk then acc
     else match next () with
@@ -177,7 +181,9 @@ let asm () =
         count := !count + List.length rev;
         (* The printer reads the lines in reverse. *)
         timed print_s (fun () ->
-          List.iter print_string (rev_lines_parts (List.rev ls) []));
+          List.iter (Buffer.add_string text) (rev_lines_parts (List.rev ls) []);
+          Buffer.output_buffer stdout text;
+          Buffer.clear text);
         go ()
   in
   go ();
@@ -286,8 +292,13 @@ let abi () =
       !parse_s !decode_s !lower_s !compare_s;
   if !differ > 0 || (!refused > 0 && Sys.getenv_opt "NANOFIL_BACKEND_STRICT" <> None) then exit 1
 
+(* A minor heap of 32 MB: with OCaml's 2 MB, the plans of a large
+   function were promoted while they were built, which cost a
+   quarter of the time of SQLite's. *)
+let big_minor_heap () = Gc.set { (Gc.get ()) with Gc.minor_heap_size = 4 * 1024 * 1024 }
+
 let () =
   match Sys.argv with
   | [| _ |] -> asm ()
-  | [| _; "abi" |] -> abi ()
+  | [| _; "abi" |] -> big_minor_heap (); abi ()
   | _ -> prerr_endline "usage: nanofil-backend [abi] <TERMS"; exit 2
