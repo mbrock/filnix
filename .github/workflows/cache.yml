@@ -11,10 +11,32 @@
 # until the campaign publishes them. Cache/evaluation/test errors still fail.
 name: Binary cache
 
+# Skip pushes that cannot change the toolchain or baseline: the same
+# rule as the pre-push hook's foundations_unaffected (scripts/git-hooks/
+# lib.sh). This workflow itself still triggers, and the nightly schedule
+# checks everything regardless.
 on:
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!nanofil/**"
+      - nanofil/web/play/swipl.nix
+      - "!docs/**"
+      - "!pages/**"
+      - "!.github/**"
+      - .github/workflows/cache.yml
+      - "!**.md"
   pull_request:
+    paths:
+      - "**"
+      - "!nanofil/**"
+      - nanofil/web/play/swipl.nix
+      - "!docs/**"
+      - "!pages/**"
+      - "!.github/**"
+      - .github/workflows/cache.yml
+      - "!**.md"
   workflow_dispatch:
   schedule:
     - cron: "17 6 * * *"
