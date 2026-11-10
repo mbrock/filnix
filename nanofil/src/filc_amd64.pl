@@ -256,7 +256,8 @@ module_emit(Module, Registers, Branches, Emit) :-
     lower_thunks(Module, Callees),
     forall(member(Callee, Callees),
            ( thunk_lines(Callee, Lines), call(Emit, Lines) )),
-    slow_call_stubs(Stubs), call(Emit, Stubs),
+    slow_call_stubs(Stubs),
+    ( Stubs == [] -> true ; call(Emit, Stubs) ),
     call(Emit, [section(note_gnu_stack)]).
 
 thunk_lines(Callee, Lines) :-

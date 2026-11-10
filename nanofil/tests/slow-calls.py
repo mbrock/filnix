@@ -30,6 +30,14 @@ def main():
     env.pop("NANOFIL_SLOW_CALLS", None)
     reference = emission(env=env)
     assert ".Lnanofil_save_" not in reference
+    # emit-terms exposes chunk boundaries to the Gallina mirror, not
+    # just flattened assembly. Reference has no synthetic stub chunk.
+    for options in ([], ["-O"]):
+        terms = subprocess.check_output(
+            [str(COMPILER), *options, "emit-terms", str(HERE / "filc/pointer-effects.ir")],
+            env=env, stdin=subprocess.DEVNULL, text=True).splitlines()
+        assert terms[-1] == "[section(note_gnu_stack)]."
+        assert terms[-2] != "[].", "reference emitted an empty save-stub chunk"
     env["NANOFIL_SLOW_CALLS"] = "save"
     assert emission("--slow-calls=reference", env=env) == reference
     saved = emission("--slow-calls=save", env=env)
