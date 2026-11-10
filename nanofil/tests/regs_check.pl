@@ -117,6 +117,28 @@ regs_case(callee_saved_across_call, Hs, [-16-r10, -8-rbx], [save(rbx,-24)], B, y
     homes(Hs), across_call(B).
 regs_case(scratch_across_call, Hs, [-16-r10, -8-r11], [], B, no) :-
     homes(Hs), across_call(B).
+% Only the three compiler-local save stubs preserve scratch homes. In
+% particular the original PLT entry, indirect calls and near-miss names
+% must not inherit the wrapper's stronger contract.
+regs_case(slow_call_home(Target), Hs, Map, [], B, Expected) :-
+    member(Map, [[-16-r10, -8-r11], [-16-r11, -8-r10]]),
+    member(Helper, [filc_pollcheck_slow, filc_store_barrier_for_lower_slow,
+                    filc_object_ensure_aux_ptr_outline]),
+    atom_concat('.Lnanofil_save_', Helper, Stub),
+    atom_concat(Stub, '_unknown', Unknown),
+    member(Target-Expected, [sym(Stub)-yes, plt(Helper)-no, plt(Stub)-no,
+                             sym(Unknown)-no, ind(reg(rax))-no]),
+    homes(Hs), across_call(Body),
+    append(Front, [ins(call,none,[sym(g)])|Rest], Body),
+    append(Front, [ins(call,none,[Target])|Rest], B).
+regs_case(mixed_preserving_call_paths, Hs, [-8-r10], [], B, no) :-
+    homes(Hs), exit(E),
+    append([ins(mov,q,[reg(rdx),mem(-8,rbp)]),
+            ins(test,q,[reg(rax),reg(rax)]), ins(jz,none,[sym(ordinary)]),
+            ins(call,none,[sym('.Lnanofil_save_filc_pollcheck_slow')]),
+            ins(jmp,none,[sym(join)]), label(ordinary),
+            ins(call,none,[plt(filc_pollcheck_slow)]), label(join),
+            ins(mov,q,[mem(-8,rbp),reg(rax)])], E, B).
 % A phi shadow shared by two edges (docs/perf.md item 9): each edge's
 % copy stores the shadow, loads it into the phi's home, then polls. The
 % shadow is dead at each poll, so a scratch register may hold it.

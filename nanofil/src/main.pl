@@ -80,6 +80,11 @@
     the same operand checker. The default is regions;
     NANOFIL_OPERANDS supplies the same choice.
 
+    `--slow-calls=reference|save` (NANOFIL_SLOW_CALLS) selects ordinary
+    SysV slow calls, the default, or local r10/r11 save stubs for poll,
+    store-barrier and ensure-aux calls. Only save mode lets register
+    homes cross those calls in r10/r11 (docs/abi-findings.md).
+
     `--registers-limit=N` (or NANOFIL_REGISTERS_LIMIT), opt-in, emits
     each function of more than N checked IR instructions by the
     reference (stack) emission when registers are temps or pointers, to
@@ -226,7 +231,8 @@ main :-
               bounds_options(ArgvV, ArgvB),
               share_options(ArgvB, ArgvS),
               lowers_options(ArgvS, ArgvL),
-              operands_options(ArgvL, Argv00),
+              operands_options(ArgvL, ArgvP),
+              slow_calls_options(ArgvP, Argv00),
               register_default(Default),
               checks_default(Checks0),
               inline_default(Inline0),
@@ -341,6 +347,19 @@ operands_options(Argv0, Argv) :-
     ;   true
     ).
 operands_option(A) :- atom(A), atom_concat('--operands=', _, A).
+% slow_calls_options(+Argv0, -Argv): the last --slow-calls option
+% selects the opt-in compiler-local r10/r11 save stubs. With no option
+% NANOFIL_SLOW_CALLS applies; unset means reference, even under -O.
+slow_calls_options(Argv0, Argv) :-
+    exclude(slow_calls_option, Argv0, Argv),
+    (   include(slow_calls_option, Argv0, Opts), last(Opts, Opt)
+    ->  atom_concat('--slow-calls=', S, Opt),
+        (   memberchk(S, [reference, save]) -> setenv('NANOFIL_SLOW_CALLS', S)
+        ;   throw(nanofil_error('slow-calls must be reference or save'))
+        )
+    ;   true
+    ).
+slow_calls_option(A) :- atom(A), atom_concat('--slow-calls=', _, A).
 % inline_options(+Argv0, +Inline0, -Inline, -Argv): Argv is Argv0 less
 % its --inline= options, the last of which gives Inline.
 inline_options([], I, I, []).

@@ -1,0 +1,27 @@
+{
+  "description": "swa acceptance guardrail, frozen before slow-call implementation; do not refresh the denominator to pass a regression",
+  "source_revision": "960063d7887580d82a59ddf1f5d71b67d60f6478",
+  "cpu_model": "AMD Ryzen 9 7950X3D 16-Core Processor",
+  "cpu": 14,
+  "calibration_trials": 3,
+  "optimized_over_plain": 6.0,
+  "frozen_multiplier": 1.25,
+  "candidate_over_O": 1.10,
+  "peak_rss_kb": 3145728,
+  "wall_timeout_s": 600,
+  "stack_limit_bytes": 4000000000,
+  "cases": {
+    "compress": {
+      "sha256": "4f8fd813d4a76af8cefd3529c6a1b9c3e42a6c810f2b82072801cb5d9283f780",
+      "O_user_s": 2.0
+    },
+    "lvm": {
+      "sha256": "59c27f1d6fa6d8ec0fe73743384253a7d6071402c00c83baa265713eafd7c991",
+      "O_user_s": 5.16
+    },
+    "sqlite3": {
+      "sha256": "890d04eb18a183d908a523273114b5d64604d7013e47ff3c3d7984bba80457ac",
+      "O_user_s": 207.57
+    }
+  }
+}

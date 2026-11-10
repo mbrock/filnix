@@ -5,9 +5,12 @@
    addressing-register reads; flags and control/frame effects are separate.
    This describes selected instructions, not IR liveness or GC roots.
    Calls are unconditional cache boundaries; their ABI argument reads are
-   not enumerated. Do not use this as a general call-liveness contract. */
+   not enumerated. Do not use this as a general call-liveness contract.
+   Three compiler-local save stubs additionally preserve r10/r11 on
+   normal return (docs/abi-findings.md); their original PLT calls do not. */
 :- module(amd64_contract, [instruction_effects/2, register/3,
-                           explicit_registers/2, operand_register/2]).
+                           explicit_registers/2, operand_register/2,
+                           slow_call_stub/2, preserving_call/1]).
 :- use_module(library(lists)).
 :- discontiguous(instruction_effects/2).
 
@@ -177,7 +180,8 @@ instruction_effects(ins(Op,none,[T]), effect([],[],read,[],branch)) :-
     atom_concat(j,CC,Op), condition(CC), target(T,[],[]).
 instruction_effects(ins(call,S,[T]), effect([rsp|Rs],Ws,write,Ms,call)) :-
     memberchk(S,[none,q]), target(T,Rs,M),
-    findall(write(R,W), caller_clobber(R,W), Ws),
+    ( preserving_call(ins(call,S,[T])) -> Kept = [r10,r11] ; Kept = [] ),
+    findall(write(R,W), (caller_clobber(R,W), \+ memberchk(R,Kept)), Ws),
     append(M,[read_write(runtime,unknown)],Ms).
 instruction_effects(ins(push,q,[reg(R)]),
                     effect([F,rsp],[write(rsp,64)],preserve,[write(stack,8)],frame)) :-
@@ -221,6 +225,21 @@ instruction_effects(D, effect([],[],preserve,[],directive)) :- directive(D).
 target(sym(S),[],[]) :- atom(S).
 target(plt(S),[],[]) :- atom(S).
 target(ind(O),Rs,Ms) :- source(O,64,Rs,Ms), O \= imm(_).
+
+%! slow_call_stub(?Helper, ?Label) is nondet.
+%
+%  Label is the compiler-local r10/r11 save stub for exactly Helper.
+%  Its emitter template is trusted; the native ABI fixture checks it.
+slow_call_stub(filc_pollcheck_slow, '.Lnanofil_save_filc_pollcheck_slow').
+slow_call_stub(filc_store_barrier_for_lower_slow, '.Lnanofil_save_filc_store_barrier_for_lower_slow').
+slow_call_stub(filc_object_ensure_aux_ptr_outline, '.Lnanofil_save_filc_object_ensure_aux_ptr_outline').
+
+%! preserving_call(+Line) is semidet.
+%
+%  Line calls an authenticated local stub preserving full r10/r11 on
+%  normal return. No PLT or indirect target inherits this guarantee.
+preserving_call(ins(call,none,[sym(Label)])) :- slow_call_stub(_, Label).
+
 caller_clobber(R,64) :- member(R,[rax,rcx,rdx,rsi,rdi,r8,r9,r10,r11,rsp]).
 caller_clobber(R,128) :- register(R,R,128).
 directive(section(text)).

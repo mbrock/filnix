@@ -25,7 +25,7 @@
    | function entry | no mapped half is live |
    | a write to home H in register R | every other home in R is dead after it |
    | a 32-bit write to H | H's high half is dead after it (a register write zero-extends) |
-   | a `call` | homes in r10/r11 are dead after it (the callee may clobber them) |
+   | a `call` | homes in r10/r11 are dead after it, except at the three authenticated save stubs |
    | a `leave` | no mapped half is live (the restores replace the registers) |
 
    Byte and word writes preserve the rest of a register as they do of
@@ -56,7 +56,8 @@
            read_value/4, no_fallthrough/2]).
 
 :- use_module(amd64_contract,
-              [instruction_effects/2, register/3, operand_register/2]).
+              [instruction_effects/2, register/3, operand_register/2,
+               preserving_call/1]).
 :- use_module(library(assoc)).
 :- use_module(library(lists)).
 :- use_module(library(pairs)).
@@ -574,7 +575,7 @@ line_obligation(Mapped, Index, Masks, Scratch, All, Line, Out) :-
         Out /\ xor(M, M /\ Own) =:= 0,
         ( S == l -> Out /\ (2 << Sh) =:= 0 ; true )
     ;   Line = ins(call,_,_)
-    ->  Out /\ Scratch =:= 0
+    ->  ( preserving_call(Line) -> true ; Out /\ Scratch =:= 0 )
     ;   Line = ins(leave,none,[])
     ->  Out /\ All =:= 0
     ;   Line = asm_fixed(_)

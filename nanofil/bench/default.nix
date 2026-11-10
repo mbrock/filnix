@@ -57,6 +57,7 @@ let
     O-getter = "-O --checks=getter";
     O-extended = "-O --checks=extended";
     O-lowers = "-O --lowers=shared";
+    O-slow = "-O --slow-calls=save";
   };
   chosen =
     if only == "" then

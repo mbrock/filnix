@@ -1,0 +1,1 @@
+slow calls: poll, aux, abandoning jump and subsequent GC intact

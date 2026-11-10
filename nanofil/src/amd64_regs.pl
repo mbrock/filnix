@@ -21,7 +21,7 @@
    a failed check is an error, never a silent fallback. */
 :- module(amd64_regs, [regs_asm/6]).
 :- use_module(amd64_contract, [instruction_effects/2, register/3,
-                                explicit_registers/2]).
+                                explicit_registers/2, preserving_call/1]).
 :- use_module(amd64_regs_check).
 :- use_module(list_partition).
 :- use_module(library(assoc)).
@@ -235,7 +235,7 @@ take_events(Es, _, D, D, Es).
 % K's own excluded. HomeBits masks off the analysis's scratch and flags
 % bits.
 home_facts(Index, HomeBits, Line, Out, f(C0,W0)-E0, f(C,W)-E) :-
-    (   Line = ins(call,_,_)
+    (   Line = ins(call,_,_), \+ preserving_call(Line)
     ->  C is C0 \/ Out, W = W0, E = E0
     ;   Line = ins(mov,S,[_,mem(D,rbp)]), rbp_access(Line, D, _),
         get_assoc(D, Index, K)

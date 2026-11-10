@@ -17,13 +17,14 @@ for host in swi trealla; do
     unset NANOFIL_STATE NANOFIL_PROFILE NANOFIL_REGISTERS NANOFIL_BRANCHES \
       NANOFIL_CHECKS NANOFIL_MEMCPY NANOFIL_INLINE NANOFIL_SIMPLIFY \
       NANOFIL_SHARE NANOFIL_BOUNDS NANOFIL_LOWERS NANOFIL_OPERANDS \
-      NANOFIL_REGISTERS_LIMIT
+      NANOFIL_REGISTERS_LIMIT NANOFIL_SLOW_CALLS
     ../bin/nanofil --script "$here/backend-hosts.pl" "${inputs[@]}" </dev/null
     ../bin/nanofil compile "${inputs[0]}" </dev/null
     ../bin/nanofil -O compile "${inputs[0]}" </dev/null
+    ../bin/nanofil -O --slow-calls=save compile "${inputs[0]}" </dev/null
   ) >"$work/$host.out" 2>"$work/$host.err"
   if [[ -s $work/$host.err ]]; then cat "$work/$host.err" >&2; exit 1; fi
   [[ -s $work/$host.out ]]
 done
 diff -u "$work/swi.out" "$work/trealla.out"
-echo "backend hosts: ${#files[@]} fixtures + wide masks, optimized + checked IR and stack/temps/pointers assembly identical; CLI identical"
+echo "backend hosts: ${#files[@]} fixtures + wide masks, list/stream and reference/save calls, stack/temps/pointers and CLI identical"

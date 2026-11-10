@@ -131,6 +131,7 @@ pkgs.runCommandCC
     step "check watchdog" bash -c 'python3 tests/watch_test.py && python3 tests/harness_test.py'
     step unit bash -c '(cd src && ../bin/nanofil --script ../tests/unit.pl </dev/null) | tee unit.log && grep -q "tests ok$" unit.log'
     step "Trealla backend parity" bash tests/backend-hosts.sh
+    step "slow-call native ABI" python3 tests/slow-calls.py
     # Every module has a header and every export PlDoc (docs/guide.md,
     # Conventions).
     step docs swipl tests/docs.pl -- src
@@ -141,6 +142,9 @@ pkgs.runCommandCC
     step "difftest fixtures+gen1" env CC=$CC tests/par.sh tests/difftest.sh tests/fixtures/*.ir gen1.ir
     step "difftest backend" env CC=$CC tests/par.sh tests/difftest.sh tests/backend/*.ir
     export FILCC=${filcc}/bin/clang
+    step "slow-call GC and callbacks" env NANOFIL_OPT="-O --slow-calls=save" \
+      RUN_ENV="FUGC_SCRIBBLE=1 FUGC_VERIFY=1" \
+      tests/filc/run-c.sh slow-calls pointer-effects gc reuse-gc lowers setjmp exceptions
     step pptest tests/pptest.sh
     step "difftest filc/*.ir" tests/par.sh tests/difftest.sh tests/filc/basic.ir tests/filc/asm-fixed-runs.ir tests/filc/globals.ir tests/filc/tuples.ir tests/filc/copy.ir tests/filc/local.ir tests/filc/check-range.ir tests/filc/reuse.ir tests/filc/reuse-offset.ir tests/filc/shadows.ir tests/filc/guard-span.ir tests/filc/branches.ir tests/filc/alloc-limit.ir
     step "run-c interop gc float" tests/par.sh tests/filc/run-c.sh interop gc float asm-fixed

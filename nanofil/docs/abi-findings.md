@@ -1264,3 +1264,101 @@ success increments optind, clears nextchar and returns the table value.
 The fresh/reset and stale-short-continuation cases in
 [libc-getopt.c](../tests/c/prog/libc-getopt.c) distinguish this protocol
 from treating optind 1 and null optarg as a parser reset.
+
+## Slow-path register call rule (2026-11-10)
+
+This is an opt-in native calling-convention experiment, not a change to
+checked IR or to the Fil-C runtime ABI. The ordinary path stays the
+default. `--slow-calls=save` lets scalar/address homes in r10/r11
+survive exactly three compiler-owned local save stubs; `reference`
+keeps today's calls and allocation. Neither path puts a lower in a
+register: the existing checked root ranges and stores remain authoritative.
+
+At staging pin `18b6663a2785c8eba6cc2a544a7711e19fc448c7`, the ordinary
+C functions in `libpas/src/libpas/filc_runtime.c` do **not** promise to
+preserve r10/r11. The experiment must therefore emit wrappers, not merely
+weaken the allocator/checker at the existing PLT calls:
+
+- `filc_pollcheck_slow(thread, origin)` calls `filc_exit`/`filc_enter`.
+- `filc_store_barrier_for_lower_slow(thread, lower)` calls `barrier_impl`.
+- `filc_object_ensure_aux_ptr_outline(thread, object)` returns an aux
+  pointer in rax; its slow implementation may exit the mutator.
+
+### Stub and call contract
+
+Each translation unit emits one local `.Lnanofil_save_<helper>` label per
+helper in save mode. These labels are compiler-reserved, outside every
+implementation body's CFG, and never exported or interposable. A stub
+pushes r10 then r11, subtracts 8 from rsp, calls the **original** helper
+through its PLT, adds 8, pops r11 then r10, and returns. At entry rsp is
+8 modulo 16; immediately before the nested call it is 0 modulo 16.
+The saves lie in allocated machine-stack space, not a live red zone.
+All original argument registers reach the helper unchanged. The result
+in rax (ensure-aux), every other SysV result/clobber, and the helper's
+memory/GC effects remain unchanged. Flags remain clobbered, not preserved.
+
+Only an exact direct call to one of these three local labels has the
+extra guarantee that both 64-bit r10/r11 values equal their input bits
+on normal return. Ordinary runtime PLT calls, indirect calls, getters,
+allocations, user calls, atomic helpers and similarly named symbols keep
+the full caller-clobber rule. No claim is made about other caller-saved
+registers or SSE registers. Operand rewriting still ends its region at
+every call; this experiment changes whole-function home allocation only.
+
+The allocator excludes a home from r10/r11 if it is live across **any**
+non-preserving call. Independently, translation validation rejects a live
+home in either register at such a call, checks the original half-word
+liveness/interference obligations, and admits only the exact existing
+move substitution plus callee-save insertion. Machine effects for the
+three local calls omit r10/r11 clobbers; calls remain memory barriers and
+use the existing conservative scratch-argument liveness. Unknown targets
+never acquire the preservation guarantee.
+
+### GC, exits and validation obligations
+
+The stubs' native-stack saves are **not GC roots**. Every pointer lower
+remains in the caller's registered frame before a potentially exiting
+helper; the saved bits are scalar values or address halves only. GC is
+non-moving. Existing pointer-store rooted reloads and aux publication
+stay in the same order. Poll and ensure-aux can execute arbitrary user
+signal handlers through `filc_exit` (runtime.c's deferred-signal path),
+and enter/exit also run native handshake callbacks. Normal callback return
+eventually restores the saved registers. A longjmp that abandons the stub
+does not run its epilogue and needs no stub cleanup: no root/frame record
+was added. The jump destination restores its own native registers, and
+setjmp-containing functions remain excluded from home allocation. This
+does not broaden the asynchronous-jump guarantees in [setjmp.md](setjmp.md).
+The signal forwarder rejects a Fil-C exceptional return; this is different
+from native DWARF unwinding, which these stubs do not support or newly
+promise. Fatal errors do not return. Stack use increases by 32 bytes at
+these calls (40 bytes from caller rsp to nested helper entry); the runtime's
+stack-limit calculation leaves 32768 bytes of slack (runtime.c:429–442).
+
+Oracle's pre-implementation source review accepted the normal-return
+mechanism, requiring the callback/nonlocal-exit correction above, exact
+finite label authentication, and independent native stub validation.
+Its subsequent implementation review found no blockers; the native test
+was strengthened to check the two argument positions separately.
+
+`tests/slow-calls.py` runs the actual CLI-emitted stubs against native
+helpers that clobber both full registers, checks arguments, alignment,
+result and rsp, and rejects a deleted restore. `tests/regs_check.pl`
+covers exact labels versus PLT/indirect/near-match targets and mixed CFG
+paths. `tests/filc/slow-calls.*` queues a real signal while entered,
+checks a returning poll/large-aux callback and a controlled siglongjmp
+through the poll stub to an excluded setjmp destination, then collects
+and polls again. These passed in reference and save modes under
+scribble/verify. The actual-helper trace observed 20 ensure-aux exits
+and 20 store barriers in save mode. Unit tests, list/stream and both-host
+parity passed, as did 82 selected frozen plain/-O assembly snapshots.
+
+Acceptance requires Oracle review of this rule and the pinned helper
+implementations; a negative checker control for ordinary/indirect calls;
+a native stub test whose wrapped helper deliberately clobbers r10/r11
+and returns a distinct rax result; existing GC/pointer-store/poll programs
+in save mode, including returning signal handlers and an abandoning jump;
+unchanged default snapshots and cross-host parity. Runtime
+measurement compares fresh reference/save builds from the same revision,
+with the quiet-swa gate and reordered bzip2/SQLite controls. Compile-time
+budgets must retain plain, reference -O and save -O measurements, plus a
+frozen baseline, so a moving denominator cannot conceal regressions.

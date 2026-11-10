@@ -1,0 +1,40 @@
+% Queue a real signal while entered, then leave two changing scalar
+% homes live across the backedge poll that delivers it.
+func(signal_poll, export, l, [], [
+    block(start, [], [
+        call(result(tmp(seed), l), global(queue_signal), [])
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(i), l, [start-const(0), body-tmp(next)]),
+        phi(tmp(acc), l, [start-tmp(seed), body-tmp(sum)])
+    ], [let(tmp(more), w, cmp(slt, l), [tmp(i), const(3)])],
+       branch(tmp(more), body, done)),
+    block(body, [], [
+        let(tmp(next), l, add, [tmp(i), const(1)]),
+        let(tmp(sum), l, add, [tmp(acc), tmp(next)])
+    ], goto(loop)),
+    block(done, [], [], ret(tmp(acc)))
+]).
+
+% No call between queuing and the store. A dirty large-aux allocation
+% exits and delivers the deferred signal while seed is live in a home.
+func(signal_store, export, l, [], [
+    block(start, [], [
+        call(result(tmp(dst), p), global(signal_large), []),
+        call(result(tmp(src), p), global(signal_value), []),
+        call(result(tmp(seed), l), global(queue_signal), []),
+        store(p, tmp(src), tmp(dst)),
+        let(tmp(result), l, add, [tmp(seed), const(9)])
+    ], ret(tmp(result)))
+]).
+
+% This destination is excluded from home allocation. A controlled
+% deferred handler jumps through the poll's native save stub to it.
+func(signal_catch, export, w, [], [
+    block(start, [], [
+        call(result(tmp(buf), p), global(signal_buffer), []),
+        let(tmp(r), w, setjmp(sigsetjmp), [tmp(buf), const(1)])
+    ], branch(tmp(r), done, queue)),
+    block(queue, [], [call(result(tmp(unused), l), global(signal_poll), [])], ret(const(0))),
+    block(done, [], [], ret(tmp(r)))
+]).

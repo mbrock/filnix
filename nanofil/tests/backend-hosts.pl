@@ -39,5 +39,13 @@ module_products(M0) :-
     print_module(M),
     pizlonate_module(M, C), valid_module(C),
     print_module(C),
-    forall(member(R, [stack, temps, pointers]),
-           filc_module_emit(C, emit(R, selected, inline), print_asm)).
+    forall(member(S, [reference, save]),
+           ( setenv('NANOFIL_SLOW_CALLS', S),
+             forall(member(R, [stack, temps, pointers]),
+                    ( with_output_to(atom(A),
+                                     (filc_module_asm(C, emit(R,selected,inline), Ls, _),
+                                      print_asm(Ls))),
+                      with_output_to(atom(B),
+                                     filc_module_emit(C, emit(R,selected,inline), print_asm)),
+                      A == B, write(A) )) )),
+    setenv('NANOFIL_SLOW_CALLS', reference).

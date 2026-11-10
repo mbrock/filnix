@@ -115,6 +115,7 @@
 :- use_module(amd64).
 :- use_module(amd64_regs).
 :- use_module(amd64_regs_check, [callee_saved/1]).
+:- use_module(amd64_contract, [slow_call_stub/2]).
 :- use_module(filc_abi).
 :- use_module(cfg, [edge_label/2, inst_def/2]).
 :- use_module(check_share, [share_mode/1, shared_blocks/4, share_bounds//4, shared_uppers/2]).
@@ -155,7 +156,8 @@ filc_module_asm(Module0, Emission, Lines, Reports) :-
     append(LinesPerItem, ItemLines),
     maplist(thunk_lines, Callees, LinesPerThunk),
     append(LinesPerThunk, ThunkLines),
-    append([ItemLines, ThunkLines, [section(note_gnu_stack)]], Lines).
+    slow_call_stubs(Stubs),
+    append([ItemLines, ThunkLines, Stubs, [section(note_gnu_stack)]], Lines).
 
 emission(emit(Registers, Branches, Copies), Registers, choices(Branches, Copies)) :- !.
 emission(emit(Registers, Branches), Registers, Branches) :- !.
@@ -254,10 +256,40 @@ module_emit(Module, Registers, Branches, Emit) :-
     lower_thunks(Module, Callees),
     forall(member(Callee, Callees),
            ( thunk_lines(Callee, Lines), call(Emit, Lines) )),
+    slow_call_stubs(Stubs), call(Emit, Stubs),
     call(Emit, [section(note_gnu_stack)]).
 
 thunk_lines(Callee, Lines) :-
     phrase(thunk(Callee), Lines).
+
+% The only stronger-than-SysV call rule (docs/abi-findings.md). Route
+% calls before allocation/validation; never retarget a checked stream.
+slow_calls_mode(Mode) :-
+    ( getenv('NANOFIL_SLOW_CALLS', M) -> Mode = M ; Mode = reference ),
+    ( memberchk(Mode, [reference,save]) -> true
+    ; throw(nanofil_error('slow-calls must be reference or save')) ).
+
+slow_call(Helper) -->
+    { ( slow_calls_mode(Mode), Mode == save, slow_call_stub(Helper, Label)
+      -> Target = sym(Label) ; Target = plt(Helper) ) },
+    [ins(call,none,[Target])].
+
+slow_call_stubs(Lines) :-
+    (   slow_calls_mode(Mode), Mode == save
+    ->  findall(Stub, (slow_call_stub(Helper,Label),
+                      phrase(slow_call_stub_lines(Helper,Label), Stub)), Stubs),
+        append(Stubs, Lines)
+    ;   Lines = []
+    ).
+
+% Entry rsp is 8 mod 16. Allocate saves and padding before calling the
+% ordinary C helper. These are not GC roots; lower stores stay in place.
+slow_call_stub_lines(Helper, Label) -->
+    [section(text), p2align(4), type(Label,function), label(Label),
+     ins(push,q,[reg(r10)]), ins(push,q,[reg(r11)]),
+     ins(sub,q,[imm(8),reg(rsp)]), ins(call,none,[plt(Helper)]),
+     ins(add,q,[imm(8),reg(rsp)]), ins(pop,q,[reg(r11)]),
+     ins(pop,q,[reg(r10)]), ins(ret,none,[]), size(Label)].
 
 %! filc_module_plans(+Module, :Emit) is det.
 %
@@ -1599,9 +1631,9 @@ pollcheck(Ctx, Block, Tag) -->
     slot_reg_load(thread, rdi, Ctx),
     [ins(test, b, [imm(14), State]),
      ins(jz, none, [sym(NoPoll)]),
-     ins(lea, q, [rip(Origin), reg(rsi)]),
-     ins(call, none, [plt(filc_pollcheck_slow)]),
-     label(NoPoll)].
+     ins(lea, q, [rip(Origin), reg(rsi)])],
+    slow_call(filc_pollcheck_slow),
+    [label(NoPoll)].
 
 % The parallel copy of an edge's phis: first every incoming value into
 % its phi's shadow slots (phi_reads//3), then every shadow into the phi
@@ -2319,9 +2351,9 @@ pointer_store_effect(aux_ensure, _, _, Index, Block, Ctx) -->
     aux_of_lower,
     [ins(jnz, none, [sym(HaveAux)])],
     slot_reg_load(thread, rdi, Ctx),
-    [ins(lea, q, [mem(-16, rcx), reg(rsi)]),
-     ins(call, none, [plt(filc_object_ensure_aux_ptr_outline)]),
-     ins(mov, q, [reg(rax), reg(rdx)]),
+    [ins(lea, q, [mem(-16, rcx), reg(rsi)])],
+    slow_call(filc_object_ensure_aux_ptr_outline),
+    [ins(mov, q, [reg(rax), reg(rdx)]),
      label(HaveAux)],
     reg_slot_store(rdx, aux, Ctx).
 pointer_store_effect(lower_barrier, V, _, Index, Block, Ctx) -->
@@ -2333,8 +2365,8 @@ pointer_store_effect(lower_barrier, V, _, Index, Block, Ctx) -->
      ins(cmp, l, [imm(0), mem(0, rax)]),
      ins(je, none, [sym(NoBarrier)])],
     slot_reg_load(thread, rdi, Ctx),
-    [ins(call, none, [plt(filc_store_barrier_for_lower_slow)]),
-     label(NoBarrier)].
+    slow_call(filc_store_barrier_for_lower_slow),
+    [label(NoBarrier)].
 pointer_store_effect(rooted_reload, V, A, _, _, Ctx) -->
     { ctx_fn(Ctx, Fn) },
     flight_load(A, Ctx),
