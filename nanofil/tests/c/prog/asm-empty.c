@@ -12,7 +12,10 @@
    ("0") receives the input's value: ell's DO_NOT_OPTIMIZE(var),
    asm("" : "=r"(var) : "0"(var)). A pointer "r" input is evaluated and
    nothing else, as filcc passes it: libgcrypt's wipememory barrier,
-   asm volatile("\n" :: "r"(ptr) : "memory"), after a memset. */
+   asm volatile("\n" :: "r"(ptr) : "memory"), after a memset. "x" (SSE)
+   and "t" and "f" (x87) operands of floating type are registers like
+   "r": glibc's x86 math_opt_barrier and math_force_eval, whose branch
+   that sizeof rules out names the other constraint. */
 #include <stdio.h>
 #include <string.h>
 
@@ -59,7 +62,27 @@ static void tied_inputs(void) {
     printf("%u %u %g %u %ld %ld %d\n", diff, b, d, out, a[0], a[1], i);
 }
 
+#define opt_barrier(x) ({ __typeof (x) __x; \
+    if (sizeof (x) <= sizeof (double)) __asm ("" : "=x" (__x) : "0" (x)); \
+    else __asm ("" : "=t" (__x) : "0" (x)); __x; })
+#define force_eval(x) do { if (sizeof (x) <= sizeof (double)) \
+    __asm __volatile ("" : : "x" (x)); else __asm __volatile ("" : : "f" (x)); } while (0)
+static void float_barriers(void) {
+    float f = opt_barrier(2.5f);
+    double d = opt_barrier(-0.25);
+    long double l = opt_barrier(3.0L);
+    force_eval(f * 2);
+    force_eval(d);
+    force_eval(l + 1);
+    double y = 1.5;
+    __asm__ ("" : "+x" (y));
+    long double z = 4.0L;
+    __asm__ ("" : "+t" (z));
+    printf("%g %g %Lg %g %Lg\n", f, d, l, y, z);
+}
+
 int main(void) {
+    float_barriers();
     memory_operands();
     tied_inputs();
     int k = 3, junk = 0;

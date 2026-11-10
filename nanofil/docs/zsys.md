@@ -292,7 +292,8 @@ and is no longer needed.
 | --- | ---: | ---: |
 | first survey | 255 | 2,365 with `--drop-filc-asm` |
 | three small fixes | 313 | 2,477 with `--drop-filc-asm` |
-| `.filc_*` directives, gnu89 | 2,111 (68%) | **2,749 (88%)** |
+| `.filc_*` directives, gnu89 | 2,111 (68%) | 2,749 (88%) |
+| sign builtins, float asm, forward enums | 2,206 (71%) | **2,866 (92%)** |
 
 No unit timed out (120 s); most take under a second.
 
@@ -319,29 +320,33 @@ unit, so a fix can uncover the next layer):
 | Cause | As captured | Padded | Where |
 | --- | ---: | ---: | --- |
 | `__int128` | 762 | 30 | link.h padding, then `math_uint128.h` |
-| inline asm, float registers | 79 | 79 | `math_opt_barrier`, `math_force_eval` (`=x`, `x`) |
-| aligned struct members | 10 | 74 | `struct pthread` in nptl's `descr.h`, `tls-internal.h` |
+| aligned struct members | 10 | 74 | a `packed` member of `struct __res_state`, inside `struct pthread` |
 | `__real__`, `__imag__`, `_Complex` returns | 72 | 72 | libm's complex functions |
-| sign builtins, `__builtin_trap` | 44 | 44 | `__builtin_fabsf`, `copysign`, the printf buffers |
-| conflicting redeclarations | 5 | 27 | an enum declared before its definition (`nss_files.h`) |
-| x87 and MXCSR | 18 | 18 | `frndint`, `fnclex`, `__builtin_ia32_ldmxcsr` |
-| other math builtins | 4 | 4 | `__builtin_trunc`, `sqrtf`, `sqrtl` |
+| x87 and MXCSR | 50 | 50 | `fnclex`, `frndint`, `__builtin_ia32_ldmxcsr` in libm's fenv |
 | other attributes | 3 | 9 | `address_space`, `weak` and `section` placement |
-| other parse errors | 5 | 6 | `strcoll_l`, `strxfrm_l`, `strptime_l`, `nptl_db` |
+| other | 6 | 7 | `__alignof__` of an expression, `__label__`, `#pragma weak` in a body, `__builtin_ia32_cvtpd2ps` |
+| other math builtins | 4 | 4 | `__builtin_trunc`, `truncf`, `sqrtf`, `sqrtl` |
 | TLS alias | 1 | 2 | `__libc_errno`, `__libc_h_errno` |
 
 - **`__int128`.** 762 units fail only on three unused padding members of
   `bits/link.h`'s audit structs, which `ldsodefs.h` includes nearly
   everywhere. The other 30 use `u128` arithmetic (`printf_fp`, `fma`).
-- **inline asm.** `math_opt_barrier` and `math_force_eval` are empty
-  asm statements that pin a float in a register (`=x`, `x`, or `=t` for
-  a long double). Read with gnu89, as glibc compiles, the `roundsd`
-  inline functions stay out of units that do not call them; they were
-  most of the first survey's inline asm.
-- **aligned members.** `struct pthread` ends in
-  `__attribute ((aligned (TCB_ALIGNMENT)))`, which nanofil refuses as a
-  layout attribute. It reaches 74 units, all nptl or what touches
-  `THREAD_SELF`: Hello's rwlock and cleanup members among them.
+- **aligned members.** The first error names a member of `struct
+  pthread`, but what nanofil refuses is a member of `struct __res_state`
+  inside it, `__glibc_extension_index __attribute__((packed))`: a
+  `packed` member, which nanofil reads as a layout attribute it does not
+  honor. It reaches 74 units, all nptl or what touches `THREAD_SELF`:
+  Hello's rwlock and cleanup members among them.
+- **x87 and MXCSR.** Fil-C's own glibc keeps a few x87 instructions
+  (`fnclex`, `frndint`, `fnstsw`) as inline asm, which FilPizlonator's
+  `validateSafeInlineAsm` accepts, and reads MXCSR through
+  `__builtin_ia32_stmxcsr`, a checked memory access. nanofil's IR has
+  only the fixed-register instructions of `asm_fixed`.
+- **math builtins.** glibc's own `sqrt`, `sqrtf`, `sqrtl`, `trunc` and
+  `truncf` are these builtins. nanofil reads `__builtin_sqrt` as a call
+  of libm's `sqrt`, which is right in a program but not in libm: the
+  IR of `e_sqrt` compiles, and its `__ieee754_sqrt` calls `sqrt`, whose
+  wrapper calls `__ieee754_sqrt`. They need IR operations.
 
 ### Fixes made along the way
 
@@ -359,6 +364,20 @@ Each frontend fix has a test that fails without it:
   of the chain, and a cycle is refused as clang refuses it.
   `tests/c/prog/alias.c` covers it.
 
+- `__builtin_fabs`, `__builtin_copysign` and their `f` and `l` forms
+  edit the sign bit through the float's bits (`sign_builtin/3`, with
+  `doc/3` examples), and `__builtin_trap` is `unreachable`. glibc's own
+  `fabs` and `copysign` are these builtins, so a call would recurse.
+  `tests/c/prog/sign-builtins.c`.
+- An empty asm statement may pin a float in an SSE or x87 register
+  (`=x`, `+x`, `x`, `=t`, `=f` and ties to them), as `math_opt_barrier`
+  and `math_force_eval` do. `tests/c/prog/asm-empty.c`.
+- A function declared to return an enum before the enum is defined, as
+  `nss_files.h` declares `_nss_files_*` before `nss.h` defines `enum
+  nss_status`, agrees with its later declarations: their reflected
+  types name the same enum. `tests/c/prog/enum-forward.c` fails without
+  the fix, as a conflicting declaration, and with the earlier
+  declaration's placeholder type kept, as `-2` read back as 4294967294.
 - The `.filc_*` module asm directives, which glibc's `hidden_proto`,
   `hidden_def` and alias macros expand to: `.filc_rename name,
   __GI_name` renames a symbol everywhere, `.filc_alias` and

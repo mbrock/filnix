@@ -64,7 +64,7 @@
                     integer_promotion/2, usual_arith_conversion/3,
                     float_type/1, arithmetic_type/1, default_promotion/2,
                     constant_value/4, const_convert/4, constant_address/3, float_literal/3,
-                    float_builtin/3, libm_builtin/2, object_size/4, compatible_type/2, composite_type/3, composite_type/4, inherited_alignment/4, knr_definition/6,
+                    float_builtin/3, libm_builtin/2, sign_builtin/3, object_size/4, compatible_type/2, composite_type/3, composite_type/4, inherited_alignment/4, knr_definition/6,
                     convert_int/3, const_value/4, pp_value/2, num_type/3,
                     scalar_type/1, type_class/2, member_type_offset/5, type_name_type/4,
                     lookup_ordinary/3, bind_ordinary/4, env_scope/3,
@@ -3207,6 +3207,12 @@ doc(composite_type(+T, +U, -C), semidet, [
     cites('C11 6.7.2.2p4'),
     example(compatible_type(qualified([enum('E')], uint), uint)),
     fails(compatible_type(qualified([enum('E')], uint), qualified([enum('G')], uint))),
+    "A use of an enum before its definition, as a function's return",
+    "type, has the placeholder uint (enum_type/5) and is the same type",
+    "as a later use, whatever its definition's underlying type.",
+    example(composite_type(qualified([enum('E')], uint), qualified([enum('E')], int), C), C == int),
+    example(composite_type(qualified([enum('E')], long), qualified([enum('E')], uint), C), C == long),
+    fails(composite_type(qualified([enum('E')], int), qualified([enum('E')], long), _)),
     fails(composite_type(array(int, 2), array(int, 3), _)),
     fails(composite_type(func(int, [], fixed), func(int, [], variadic), _))
 ]).
@@ -3226,8 +3232,10 @@ doc(composite_type(+T, +U, -C, +Env), semidet, [
             C == ptr(func(int, [int], fixed)))
 ]).
 composite_type(T, U, T, _) :- T == U, !.
-composite_type(T, U, C, Env) :- enum_marked(T, K, T1), !,
-    ( enum_marked(U, L, U1) -> K == L ; U1 = U ),
+composite_type(T, U, C, Env) :- enum_marked(T, K, T0), !,
+    (   enum_marked(U, L, U0) -> K == L, enum_completed(T0, U0, T1, U1)
+    ;   T1 = T0, U1 = U
+    ),
     composite_type(T1, U1, C, Env).
 composite_type(T, U, C, Env) :- enum_marked(U, _, U1), !, composite_type(T, U1, C, Env).
 composite_type(qualified(Qs, T), qualified(Qs, U), qualified(Qs, C), Env) :-
@@ -3239,6 +3247,17 @@ composite_type(array(T, N), array(U, M), array(C, K), Env) :-
 composite_type(func(R, Ps, V), func(S, Qs, V), func(C, Cs, V), Env) :-
     composite_type(R, S, C, Env),
     composite_params(Ps, Qs, Cs, Env).
+
+% enum_completed(+T0, +U0, -T, -U): the underlying types of two uses of
+% one enum, T0 and U0, are T and U, with a use before the enum's
+% definition (GNU's forward reference, as glibc's nss_files.h declares
+% functions returning enum nss_status before nss.h defines it), whose
+% placeholder underlying type is uint (enum_type/5), taken as the
+% definition's: both name the one enum type, which nothing could use
+% before it was complete.
+enum_completed(uint, U, U, U) :- !.
+enum_completed(T, uint, T, T) :- !.
+enum_completed(T, U, T, U).
 
 % enum_marked(+T, -K, -T1): reflected type T is enum K (enum_key/3),
 % otherwise T1.
@@ -4273,6 +4292,7 @@ doc(builtin_type(?(Name), ?(Type)), nondet, [
     cites('C11 5.2.4.2.2p8'),
     cites('C11 7.12.3.4p2'),
     example(builtin_type('__builtin_isnan', T), T = int),
+    example(builtin_type('__builtin_fabsl', T), T = ldouble),
     "__builtin_assume_aligned(p, align[, offset]) is p as a void *; the",
     "alignment it promises changes no bounds, so nanofil drops it.",
     example(builtin_type('__builtin_assume_aligned', T), T = ptr(void)),
@@ -4297,6 +4317,8 @@ builtin_type('__builtin_bswap32', uint).
 builtin_type('__builtin_bswap64', ulong).
 builtin_type(Name, Type) :- rotate_builtin(Name, _, Type).
 builtin_type(Name, double) :- libm_builtin(Name, _).
+builtin_type(Name, T) :- sign_builtin(Name, _, T).
+builtin_type('__builtin_trap', void).
 builtin_type('__builtin_isnan', int).
 builtin_type('__builtin_flt_rounds', int).
 builtin_type('__builtin_object_size', ulong).
@@ -4548,6 +4570,30 @@ doc(libm_builtin(?(Name), ?(F)), nondet, [
 libm_builtin('__builtin_ceil', ceil).
 libm_builtin('__builtin_floor', floor).
 libm_builtin('__builtin_sqrt', sqrt).
+
+doc(sign_builtin(?(Name), ?(Op), ?(Type)), nondet, [
+    Name: "a GNU builtin that edits a float's sign bit",
+    Op: "abs, which clears it, or copysign, which takes it from the second argument",
+    Type: "the type of its arguments and result",
+    "__builtin_fabs(x) is x with its sign bit clear, and",
+    "__builtin_copysign(x, y) is x with y's sign bit, with their f",
+    "(float) and l (long double) forms: only that bit changes, so a NaN",
+    "keeps its payload and -0 becomes +0. clang computes them inline",
+    "(llvm.fabs, llvm.copysign), and glibc's own fabs and copysign are",
+    "these builtins, so they are never a call.",
+    cites('C11 7.12.7.2p2'),
+    cites('C11 7.12.11.1p2'),
+    cites('GCC manual, Other Built-in Functions'),
+    example(sign_builtin('__builtin_fabsf', Op, T), (Op, T) = (abs, float)),
+    example(sign_builtin('__builtin_copysignl', Op, T), (Op, T) = (copysign, ldouble)),
+    fails(sign_builtin('__builtin_fabsll', _, _))
+]).
+sign_builtin('__builtin_fabs', abs, double).
+sign_builtin('__builtin_fabsf', abs, float).
+sign_builtin('__builtin_fabsl', abs, ldouble).
+sign_builtin('__builtin_copysign', copysign, double).
+sign_builtin('__builtin_copysignf', copysign, float).
+sign_builtin('__builtin_copysignl', copysign, ldouble).
 
 doc(vector_builtin(?(Name), ?(Params), ?(Ret)), nondet, [
     Name: "a clang builtin that immintrin.h's SSE through SSE4.2 intrinsics call",

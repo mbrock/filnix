@@ -1100,12 +1100,24 @@ redeclared(Loc, Name, Sym, Type0, Env, Type) :-
         ),
         (   composite_type(PType, Type0, Type, Env)    % a transparent union
         ->  true                                       % meets its members
+        ;   same_enum_redeclared(Name, Sym, Env)
+        ->  Type = Type0
         ;   Type0 = func(_, _, _)
         ->  sema_error(Loc, 'conflicting types for \'~w\'', [Name])
         ;   sema_error(Loc, 'redeclaration of \'~w\' with a different type', [Name])
         )
     ;   Type = Type0
     ).
+
+% same_enum_redeclared(+Name, +Sym, +Env): the plain types of Name's
+% declaration and an earlier one of Sym differ only where both name one
+% enum, before and after its definition (c_types' enum_completed/4):
+% their reflected types, which keep each enum's identity, agree. The
+% later declaration's type, which sees the definition, is the composite.
+same_enum_redeclared(Name, Sym, Env) :-
+    lookup_ordinary(Env, qtype(Name), QT),
+    env_defs(Env, Defs), get_assoc(qsym(Name, Sym), Defs, PQT),
+    composite_type(PQT, QT, _, Env).
 
 % qualified_redeclared(+Loc, +Name, +Sym, +Type, +Env0, -Env): Name's
 % declaration, of qualified type qtype(Name) (c_types binds it first),
@@ -1918,7 +1930,10 @@ stmt_(null, _) --> [].
    read nor written, and inputs are evaluated, an "r" pointer input too
    (libgcrypt's wipememory, `asm volatile("\\n" :: "r"(p) : "memory")`;
    filcc passes the pointer's address and the blank asm uses nothing). These are libgcrypt's,
-   xxhash's and elfutils' optimization barriers. A "memory" or
+   xxhash's and elfutils' optimization barriers. "x" (an SSE register)
+   and "t" or "f" (the x87 stack) on any floating type are register
+   operands like "r", as glibc's math_opt_barrier and math_force_eval
+   use them. A "memory" or
    "cc" clobber needs nothing: no pass of nanofil keeps a value of
    escaped memory across an instruction (promote takes only locals
    whose address does not escape, copy and the backend's caches only
@@ -2160,6 +2175,7 @@ asm_outputs([], _, []) --> [].
 asm_outputs([op(C, E)|Os], Ctx, [P|Ps]) -->
     { ctx_loc(Ctx, Loc),
       (   memberchk(C, ['+r', '=r']) -> Class = reg
+      ;   asm_float_reg(C, Class) -> true
       ;   memberchk(C, ['=m', '+m', '=mr', '+mr', '=rm', '+rm', '=g', '+g']) -> Class = mem
       ;   sema_error(Loc, 'the asm output constraint "~w" is not supported', [C])
       ) },
@@ -2191,13 +2207,27 @@ asm_output_type(mem, C, T, Env) :-
 
 asm_output_type(reg, _, T, _) :- asm_value_type(T), !.
 asm_output_type(reg, '+r', ptr(_), _).
+asm_output_type(float, _, T, _) :- memberchk(T, [float, double, ldouble]).
+
+% asm_float_reg(?C, ?Class): C is an output constraint of a floating
+% register, "x" (SSE) or "t" and "f" (x87), whose operands c_lower
+% takes of any floating type: glibc's barriers choose between "x" and
+% "t" by sizeof, so the branch not taken names a long double "x" too,
+% which clang drops before it allocates registers.
+asm_float_reg('=x', float).
+asm_float_reg('+x', float).
+asm_float_reg('=t', float).
+asm_float_reg('+t', float).
+asm_float_reg('=f', float).
+asm_float_reg('+f', float).
 
 asm_inputs([], _, _, []) --> [].
 asm_inputs([op(C, E)|Os], OPs, Ctx, Ties) -->
     { ctx_loc(Ctx, Loc),
-      (   memberchk(C, [r, g, i, n, m]) -> true
+      (   memberchk(C, [r, g, i, n, m, x, t, f]) -> true
       ;   atom_number(C, N), integer(N), OPs = Outs-Places,
-          nth0(N, Outs, op('=r', _)), nth0(N, Places, lv(Addr, T))
+          nth0(N, Outs, op(OC, _)), memberchk(OC, ['=r', '=x', '=t', '=f']),
+          nth0(N, Places, lv(Addr, T))
       ->  true
       ;   sema_error(Loc, 'the asm input constraint "~w" is not supported', [C])
       ) },
@@ -2206,7 +2236,7 @@ asm_inputs([op(C, E)|Os], OPs, Ctx, Ties) -->
     ->  % Tied to "=r" output N: the asm leaves the input's value in the
         % output's register, so the output receives it.
         judged_rval(E, Ctx, v(V, T1)),
-        { unqualified(T1, U), unqualified(T, U), asm_value_type(U) -> true
+        { unqualified(T1, U), unqualified(T, U), ( asm_value_type(U) ; U == ldouble ) -> true
         ; sema_error(Loc, 'an asm input tied to an output must have its integer or floating type', []) },
         { Ties = [U-V-Addr|Ties1] }
     ;   { Ties = Ties1 },
@@ -2242,7 +2272,11 @@ asm_reg_input(C, E, Env, Loc, Ctx) -->
       ) },
     judged_rval(E, Ctx, v(_, T0)),
     { unqualified(T0, T),
-      (   asm_value_type(T) -> true
+      (   memberchk(C, [x, t, f])
+      ->  (   memberchk(T, [float, double, ldouble]) -> true
+          ;   sema_error(Loc, 'an asm "~w" operand must have floating type', [C])
+          )
+      ;   asm_value_type(T) -> true
       ;   C == r, T = ptr(_) -> true      % libgcrypt's wipememory barrier
       ;   sema_error(Loc, 'an asm operand must have integer or floating type', [])
       ) }.
@@ -3880,6 +3914,10 @@ builtin(Name, Args, _, v(const(V), ulong)) -->
     env(Env), { object_size(Name, Args, Env, V) }, !.
 builtin('__builtin_unreachable', [], _, v(const(0), void)) --> !,
     term(unreachable).
+% __builtin_trap() stops the program, as clang's llvm.trap does; the
+% IR's unreachable is a trap instruction.
+builtin('__builtin_trap', [], _, v(const(0), void)) --> !,
+    term(unreachable).
 % filcc's __builtin_frame_address(0) is the frame's address as an
 % integer, without a capability; at a nonzero level it is a run-time
 % error with the reason below, which nanofil calls zsafety_error with.
@@ -3905,6 +3943,17 @@ builtin('__builtin_alloca', [Size], Ctx, v(Addr, ptr(void))) --> !,
     { ctx_loc(Ctx, Loc) },
     assign_convert(Size, V0, ulong, Loc, v(N, _)),
     let(p, alloc(16), [N], Addr).
+% The sign builtins (c_types' sign_builtin/3) clear or copy the sign
+% bit: of a float or double through its bits, of a long double through
+% bit 15 of the 16-bit sign and exponent at byte 8 of its 80, in memory.
+builtin(Name, Args, Ctx, v(R, T)) -->
+    { sign_builtin(Name, Op, T) }, !,
+    { ctx_loc(Ctx, Loc),
+      (   ( Op == abs -> length(Args, 1) ; length(Args, 2) ) -> true
+      ;   sema_error(Loc, 'wrong number of arguments to ~w', [Name])
+      ) },
+    sign_args(Args, T, Ctx, Xs),
+    sign_result(T, Op, Xs, Ctx, R).
 builtin(Name, [A], Ctx, v(D, double)) -->
     { libm_builtin(Name, F) }, !,
     rval(A, Ctx, V0),
@@ -4341,6 +4390,55 @@ float_bits(A, Ctx, f(K, Bits, Abs, const(Inf), const(MinNormal))) -->
         let(l, cast, [X], Bits)
     ),
     let(K, and, [Bits, const(Mask)], Abs).
+
+% sign_args(+Args, +T, +Ctx, -Xs)//: Xs are the values of Args
+% converted to T, as to a prototyped parameter.
+sign_args([], _, _, []) --> [].
+sign_args([A|As], T, Ctx, [X|Xs]) -->
+    rval(A, Ctx, V0), { ctx_loc(Ctx, Loc) },
+    assign_convert(A, V0, T, Loc, v(X, _)),
+    sign_args(As, T, Ctx, Xs).
+
+% sign_result(+T, +Op, +Xs, +Ctx, -R)//: R is sign_builtin/3's Op of Xs
+% at type T.
+sign_result(T, Op, Xs, _, R) -->
+    { sign_bits(T, F, K, Sign, Mask) }, !,
+    sign_bits_of(Xs, K, Bs),
+    (   { Op == abs, Bs = [B] }
+    ->  let(K, and, [B, const(Mask)], B1)
+    ;   { Bs = [Bx, By] },
+        let(K, and, [Bx, const(Mask)], Mx),
+        let(K, and, [By, const(Sign)], Sy),
+        let(K, or, [Mx, Sy], B1)
+    ),
+    let(F, cast, [B1], R).
+sign_result(ldouble, Op, Xs, Ctx, R) -->
+    sign_tops(Xs, Ctx, [Slot-Top|_], [E|Es]),
+    (   { Op == abs }
+    ->  let(w, and, [E, const(0x7fff)], E1)
+    ;   { Es = [Ey] },
+        let(w, and, [E, const(0x7fff)], Mx),
+        let(w, and, [Ey, const(0x8000)], Sy),
+        let(w, or, [Mx, Sy], E1)
+    ),
+    store_typed(ushort, E1, Top),
+    load_typed(ldouble, Slot, Ctx, R).
+
+sign_bits(float, s, w, 0x80000000, 0x7fffffff).
+sign_bits(double, d, l, 0x8000000000000000, 0x7fffffffffffffff).
+
+sign_bits_of([], _, []) --> [].
+sign_bits_of([X|Xs], K, [B|Bs]) --> let(K, cast, [X], B), sign_bits_of(Xs, K, Bs).
+
+% sign_tops(+Xs, +Ctx, -SlotTops, -Es)//: each long double of Xs stored
+% in a local slot, the address of its sign and exponent, and them.
+sign_tops([], _, [], []) --> [].
+sign_tops([X|Xs], Ctx, [Slot-Top|STs], [E|Es]) -->
+    local_slot(ldouble, Slot),
+    store_typed(ldouble, X, Slot),
+    let(p, add, [Slot, const(8)], Top),
+    load_typed(ushort, Top, Ctx, E),
+    sign_tops(Xs, Ctx, STs, Es).
 
 % bit_count(+Op, +Bits, +X, -N)//: N is the number of trailing zeros,
 % leading zeros or ones of X, a Bits-wide unsigned value zero-extended
