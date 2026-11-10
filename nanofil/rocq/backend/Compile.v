@@ -26,7 +26,7 @@
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Validate ValidFast Transport.
-From Backend Require Import Text Asm Pizlonate Copy Promote EmitModule.
+From Backend Require Import Text Asm Pizlonate Copy Promote EmitModule Regs.
 Import ListNotations.
 Local Open Scope string_scope.
 
@@ -105,6 +105,44 @@ Definition compile : term -> compiled := compile_as false.
 
 (** With promotion, copy propagation and selected branches. *)
 Definition compile_promoted : term -> compiled := compile_as true.
+
+(** The lines of an unchecked Fil-C module compiled with whole-function
+    register allocation and direct register selection (Regs.v). *)
+Definition checked_lines_allocated (m : term) : compiled :=
+  match pizlonate_module m with
+  | None => Refused "an item is not of the unchecked grammar"
+  | Some checked =>
+      match decode_module checked with
+      | None => Refused "the checked module does not read back"
+      | Some md =>
+          match valid_fast md with
+          | None => Outside "a function is outside the subset"
+          | Some false => Refused "the checked module is not valid"
+          | Some true => Pieces (module_code_allocated md)
+          end
+      end
+  end.
+
+(** With promotion, copy propagation, selected branches and register
+    allocation (`nanofil-backend compile-allocated`). *)
+Definition compile_allocated (m : term) : compiled :=
+  match m with
+  | TApp f [TList items] =>
+      if negb (String.eqb f "module") then Refused "not a module"
+      else if negb (forallb func_named_by_atom items) then
+        Refused "a function's name is not an atom"
+      else if negb (module_filc items) then Outside "a plain module"
+      else
+        match promote_module m with
+        | None => Refused "promotion refuses the module"
+        | Some m1 =>
+            match copy_module m1 with
+            | None => Refused "copy propagation refuses the module"
+            | Some m2 => checked_lines_allocated m2
+            end
+        end
+  | _ => Refused "not a module"
+  end.
 
 (** A module of one function that returns its argument is taken, and
     one with no pointer and no outside call is plain. *)

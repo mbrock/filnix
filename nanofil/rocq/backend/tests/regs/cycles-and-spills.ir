@@ -1,0 +1,102 @@
+% Adversarial register-allocation, parallel-move and selection cases
+% (M7, Regs.v):
+% - cyclic 3-way phi swap with fan-out across a loop pollcheck;
+% - 8 simultaneously live values across calls and pointer stores
+%   (exceeding the 5 callee-saved registers, exercising spills + saves
+%   + RCallDuringReads on pointer store);
+% - asymmetric non-commutative sub(y, x) and shl(x, y) where the second
+%   operand dies and shares its register with the destination;
+% - L -> W truncation in-place followed by uwtof (testing 32-bit
+%   zero-extension invariant) and w sub by -2^31 via leal.
+
+data(sink, local, 8, [item(l, const(0))]).
+
+func(step_call, local, l, [param(l, tmp(v))], [
+    block(top, [], [
+        let(tmp(p), p, copy, [global(sink)]),
+        store(l, tmp(v), tmp(p)),
+        let(tmp(r), l, add, [tmp(v), const(3)])
+    ], ret(tmp(r)))
+]).
+
+% 3-cycle phi (a, b, c := b, c, a) + fan-out (acc := acc + a * 100 + b * 10 + c)
+func(phi_cycle_fanout, export, l, [param(l, tmp(a0)), param(l, tmp(b0)), param(l, tmp(c0)), param(w, tmp(n))], [
+    block(entry, [], [
+        let(tmp(dummy), p, copy, [global(sink)])
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(i), w, [entry-const(0), body-tmp(i1)]),
+        phi(tmp(a), l, [entry-tmp(a0), body-tmp(b)]),
+        phi(tmp(b), l, [entry-tmp(b0), body-tmp(c)]),
+        phi(tmp(c), l, [entry-tmp(c0), body-tmp(a)]),
+        phi(tmp(fan), l, [entry-const(0), body-tmp(a)]),
+        phi(tmp(acc), l, [entry-const(0), body-tmp(acc2)])
+    ], [
+        let(tmp( cmp_i ), w, cmp(slt, w), [tmp(i), tmp(n)])
+    ], branch(tmp(cmp_i), body, done)),
+    block(body, [], [
+        let(tmp(t1), l, mul, [tmp(a), const(100)]),
+        let(tmp(t2), l, mul, [tmp(b), const(10)]),
+        let(tmp(t3), l, add, [tmp(t1), tmp(t2)]),
+        let(tmp(t4), l, add, [tmp(t3), tmp(c)]),
+        let(tmp(t5), l, add, [tmp(t4), tmp(fan)]),
+        let(tmp(acc2), l, add, [tmp(acc), tmp(t5)]),
+        let(tmp(i1), w, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [], ret(tmp(acc)))
+]).
+run(phi_cycle_fanout, [1, 2, 3, 1]).
+run(phi_cycle_fanout, [1, 2, 3, 2]).
+run(phi_cycle_fanout, [1, 2, 3, 3]).
+run(phi_cycle_fanout, [1, 2, 3, 5]).
+
+% 8 live values across calls + alloc + pointer store (spills + callee-saved)
+func(eight_across_calls, export, l,
+     [param(l, tmp(v1)), param(l, tmp(v2)), param(l, tmp(v3)), param(l, tmp(v4)),
+      param(l, tmp(v5)), param(l, tmp(v6)), param(l, tmp(v7)), param(l, tmp(v8))], [
+    block(entry, [], [
+        let(tmp(box), p, alloc(8), [const(16)]),
+        let(tmp(cell), p, alloc(8), [const(8)]),
+        store(l, tmp(v1), tmp(cell)),
+        store(p, tmp(cell), tmp(box)),
+        call(result(tmp(k1), l), global(step_call), [arg(l, tmp(v2))]),
+        let(tmp(p_loaded), p, load(p), [tmp(box)]),
+        let(tmp(c_val), l, load(l), [tmp(p_loaded)]),
+        let(tmp(s1), l, sub, [tmp(c_val), tmp(k1)]),
+        let(tmp(s2), l, sub, [tmp(s1), tmp(v3)]),
+        let(tmp(s3), l, add, [tmp(s2), tmp(v4)]),
+        let(tmp(s4), l, sub, [tmp(s3), tmp(v5)]),
+        let(tmp(s5), l, add, [tmp(s4), tmp(v6)]),
+        let(tmp(s6), l, sub, [tmp(s5), tmp(v7)]),
+        let(tmp(s7), l, add, [tmp(s6), tmp(v8)])
+    ], ret(tmp(s7)))
+]).
+run(eight_across_calls, [100, 20, 3, 40, 5, 60, 7, 80]).
+run(eight_across_calls, [999, 111, 22, 333, 44, 555, 66, 777]).
+
+% Non-commutative sub(y, x), shl(x, y), L->W copy + uwtof, and w sub -2^31
+func(noncomm_and_widths, export, l, [param(l, tmp(y)), param(l, tmp(x)), param(w, tmp(z))], [
+    block(entry, [], [
+        let(tmp(keep_p), p, copy, [global(sink)]),
+        store(l, const(0), tmp(keep_p)),
+        % x is used heavily before dying at d_sub = sub(y, x), tempting d_sub to reuse x's reg
+        let(tmp(x1), l, add, [tmp(x), const(1)]),
+        let(tmp(x2), l, xor, [tmp(x1), const(7)]),
+        let(tmp(x3), l, add, [tmp(x2), tmp(x)]),
+        let(tmp(d_sub), l, sub, [tmp(y), tmp(x3)]),
+        % shl where shift count dies and destination may reuse shift count's reg
+        let(tmp(sh), l, and, [tmp(d_sub), const(7)]),
+        let(tmp(d_shl), l, shl, [tmp(y), tmp(sh)]),
+        % L -> W truncation followed by uwtof -> d -> l
+        let(tmp(wtrunc), w, copy, [tmp(x)]),
+        let(tmp(fval), d, uwtof, [tmp(wtrunc)]),
+        let(tmp(ival), l, dtosi, [tmp(fval)]),
+        % w subtraction of -2147483648 via leal
+        let(tmp(wmin), w, sub, [tmp(z), const(-2147483648)]),
+        let(tmp(wmin_l), l, ext(uw), [tmp(wmin)]),
+        let(tmp(res1), l, add, [tmp(d_shl), tmp(ival)]),
+        let(tmp(res2), l, add, [tmp(res1), tmp(wmin_l)])
+    ], ret(tmp(res2)))
+]).
+run(noncomm_and_widths, [500, 7, 10]).
+run(noncomm_and_widths, [1000, 1311768464867721221, 2147483648]).

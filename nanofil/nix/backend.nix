@@ -81,6 +81,7 @@ let
   pizlonate = "rocq/backend/tests/pizlonate/*.ir";
   compile = "${edge} ${pizlonate} rocq/backend/tests/compile/*.ir";
   promote = "rocq/backend/tests/promote/*.ir";
+  regs = "rocq/backend/tests/regs/*.ir";
   # zlib, GNU hello and Lua, built through nanofil-cc as their own
   # checks build them, keeping each preprocessed translation unit.
   # None of their flags makes nanofil-cc set NANOFIL_STD or
@@ -107,6 +108,7 @@ let
     tests/par.sh rocq/backend/tests/pizlonate.sh units/*.i | tee pizlonate-packages.log
     tests/par.sh rocq/backend/tests/compile.sh units/*.i | tee compile-packages.log
     COMMAND=compile-promoted tests/par.sh rocq/backend/tests/compile.sh units/*.i | tee compile-promoted-packages.log
+    tests/par.sh rocq/backend/tests/regs.sh units/*.i | tee regs-packages.log
   '';
 in
 pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
@@ -149,6 +151,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/promote.sh ${corpus} ${compile} ${promote} | tee promote.log
           tests/par.sh rocq/backend/tests/compile.sh ${corpus} ${compile} | tee compile.log
           COMMAND=compile-promoted tests/par.sh rocq/backend/tests/compile.sh ${corpus} ${compile} ${promote} | tee compile-promoted.log
+          REGS_GC=1 tests/par.sh rocq/backend/tests/regs.sh ${corpus} ${compile} ${promote} ${regs} | tee regs.log
         ''
         + packages
       else
@@ -162,6 +165,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/promote.sh ${quickAbi} ${compile} ${promote} | tee promote.log
           tests/par.sh rocq/backend/tests/compile.sh ${quickAbi} ${compile} | tee compile.log
           COMMAND=compile-promoted tests/par.sh rocq/backend/tests/compile.sh ${quickAbi} ${compile} ${promote} | tee compile-promoted.log
+          REGS_GC=1 tests/par.sh rocq/backend/tests/regs.sh ${quickAbi} ${compile} ${promote} ${regs} | tee regs.log
         ''
     )
     + ''
@@ -174,6 +178,6 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
       python3 tests/watch.py --label "backend parse/typecheck" -- bash web/rocq/tests/parse.sh rocq/backend/*.v
       mkdir -p $out/bin
       cp rocq/backend/nanofil-backend $out/bin/
-      cp timings.log asm*.log abi.log nfb*.log emit*.log pizlonate*.log promote.log compile*.log read*.log $out/
+      cp timings.log asm*.log abi.log nfb*.log emit*.log pizlonate*.log promote.log compile*.log regs*.log read*.log $out/
     ''
   )

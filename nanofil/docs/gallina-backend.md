@@ -989,6 +989,60 @@ switch, patch Crane, fall back to CertiRocq.
 ported. Gate: difftests and package checks by behaviour, and a
 measured run-time gain over stack homes on the benchmark gate.
 
+*Done.* `Regs.v` (`nanofil-backend compile-allocated`) numbers each
+function's temporaries into `nat` identifiers, recognizes adjacent
+single-use `flight` + `check` accesses and integer `let` + `cmp` +
+`branch` sequences so ephemeral values stay in `%rax` without taking
+a register home, builds closed sub-intervals per block from CFG
+liveness, and colors integer (`w`, `l`) temporaries and pointer (`p`)
+address words in descending `4^depth` natural-loop weight order over
+`%r10`, `%r11`, `%rbx` and `%r12`–`%r15`, preferring a colored phi
+partner's register first so loop induction updates coalesce in place.
+Capability lowers stay in their `lowers[]` frame roots, and any
+temporary live across a call, helper call (`AStorePointer`,
+`ADispatch`, `alloc`, getters, `va_arg`) or `poll` edge takes only
+callee-saved `%rbx` or `%r12`–`%r15`, saved after the stack check and
+restored before every `leave`. Phi edges compile via a parallel-move
+scheduler using `%rax` and cycle-breaker `%rcx` with no shadow slots,
+and scalar operations select directly into assigned registers with
+three-address `lea`, `imm32` operands and narrow loads and stores.
+
+- **Validation and proofs.** Every allocated function is checked
+  before emission by a linear-time Gallina validator (`valid_alloc`).
+  `RegsProof.v` proves interval disjointness and call-point
+  exclusion, forward simulation of `valid_alloc` across instructions,
+  simultaneous definitions, caller-saved call and poll clobbers,
+  callee-saved save/restore preservation and capability root
+  invariance, soundness of the parallel-move ready-peeling and
+  `%rcx` cycle-breaking steps, and modular exactness of 32/64-bit
+  `lea` and `imm32` selection (`-2^31` included), with executable
+  rejection examples.
+- **Behavioural gate.** `compile` and `compile-promoted` keep their
+  byte-identity gates unchanged. `tests/regs.sh` (run with
+  `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` in the `nanofil-backend` check,
+  with `tests/regs/cycles-and-spills.ir`; three planted bugs in
+  call-crossing, cycle breaking and non-commutative `sub` each fail
+  it) checks refusal parity and runtime agreement across the corpus:
+  all 44 `difftest` files, all 9 `run-c` suites, all 228 in-subset
+  `progtest` C programs, GNU hello (74 allocated units), zlib (all 17
+  units), Lua 5.4.7 (all 33 non-`setjmp` units, official suite and GC
+  stress) and SQLite 3.51.2 (all 3,106 functions, matching `filcc`
+  output and database byte for byte, plain and under FUGC
+  verification).
+- **Speed.** On `rx.ir` (36 regex functions), `compile-allocated`
+  emits 28,199 lines (against 45,702 for `compile-promoted` and
+  28,580 for `nanofil -O compile`) in 0.30 s, and a cold cache of 39
+  patterns through `rxc` takes 2.9 s (75 ms a miss, against 4.1 s
+  with `compile-promoted` and 10.2 s with `nanofil -O`). Over 11
+  interleaved trials on the nine benchmark patterns, the allocated
+  code runs at **1.05×** of full Prolog `-O` in the geometric mean
+  (0.78× to 1.17×, matching Prolog's 1.03× ablation for this pass
+  set) and **0.76×** of stack-homed `compile-promoted` on this Xeon
+  orb (0.61× to 0.89×; 6.5× to 22.5× faster than PCRE2's
+  interpreter). On SQLite's amalgamation, lowering, allocation,
+  validation and emission of all 3,106 functions take 4.6 s (against
+  1.9 s for stack homes), writing 2.19M lines in place of 2.58M.
+
 **M8. The Fil-C library.** The Crane output built by filcc as
 `libnanofil` and called in the process by the pcre2 hook, which
 still runs `as` and `ld` and loads with `dlopen`. Gate: the
