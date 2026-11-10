@@ -159,7 +159,9 @@ let judge_module md =
   let name = function
     | IFunc f -> f.fn_name
     | IOutside (n, _) | IData (n, _, _, _) | IAlias (n, _, _) -> n in
-  let rejected =
+  (* Named only for a module valid_items does not accept, or one outside
+     the subset, so a valid module is judged once. *)
+  let rejected = lazy (
     (if unique_names md then [] else [TAtom "unique_names"])
     @ List.filter_map (fun it ->
           let ok = match it with
@@ -167,13 +169,13 @@ let judge_module md =
             | IData (n, lk, al, its) -> valid_data md n lk al its
             | IAlias (n, lk, t) -> valid_alias md n lk t
             | IOutside _ -> true in
-          if ok then None else Some (name it)) md in
+          if ok then None else Some (name it)) md) in
   let outside = List.filter_map (function IOutside (n, _) -> Some n | _ -> None) md in
   let items = TInt (Big_int_Z.big_int_of_int (List.length md)) in
   let verdict =
-    if outside <> [] then TApp ("outside", [items; TList outside; TList rejected])
+    if outside <> [] then TApp ("outside", [items; TList outside; TList (Lazy.force rejected)])
     else if valid_items md then TApp ("valid", [items])
-    else TApp ("invalid", [items; TList rejected]) in
+    else TApp ("invalid", [items; TList (Lazy.force rejected)]) in
   print_endline (show verdict);
   match verdict with TApp ("invalid", _) -> exit 1 | _ -> ()
 

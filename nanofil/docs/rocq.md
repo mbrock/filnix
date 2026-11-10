@@ -346,7 +346,7 @@ which takes the objects from filcc, so their builds still link.
 
 | Part | Valid | Outside | Plain or refused | Invalid |
 | --- | --- | --- | --- | --- |
-| IR fixtures, C tests, programs, cproc, c-testsuite | 602 | 43 | 14 plain, 64 refused (cproc) | 0 |
+| IR fixtures, C tests, programs, cproc, c-testsuite | 631 | 19 | 14 plain, 64 refused (cproc) | 0 |
 | GNU hello | 81 | 0 | 0 | 0 |
 | zlib | 17 | 0 | 0 | 0 |
 | Lua 5.4.7 | 33 | 1 (ldo.c, setjmp) | 0 | 0 |
@@ -354,7 +354,7 @@ which takes the objects from filcc, so their builds still link.
 
 On 16 cores a cold run takes about 5 minutes, nearly all of it
 sqlite3.c's `-O` compile (260 s, with a 4 GB stack, since it overflows
-1 GB). Judging takes 40 s for the corpus and 24 s for SQLite. The
+1 GB). Judging takes 33 s for the corpus and 10 s for SQLite. The
 modules of `tests/c/prog/sqrt-trunc.c` are outside: the IR's `sqrt` is
 not in the model yet.
 
