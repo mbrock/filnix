@@ -425,11 +425,12 @@ let emit () =
   then exit 1
 
 (* The assembly of a checked module, the first term of stdin, as
-   EmitModule.v's module_lines gives it and Asm.v prints it: what
-   `nanofil compile` prints for the module without -O. Exits 3, with
-   no output, for a module the backend does not take whole: one with
-   a function outside the subset or without a plan, or with a form
-   that is not ported. *)
+   EmitModule.v's module_pieces gives it and Asm.v prints it: what
+   `nanofil compile` prints for the module without -O. Each piece is
+   printed before the next is asked for, so its lines die in the
+   minor heap. Exits 3, with its output cut short, for a module the
+   backend does not take whole: one with a function outside the
+   subset or without a plan, or with a form that is not ported. *)
 let whole () =
   let next = reader (In_channel.input_all stdin) in
   let fail fmt = Printf.ksprintf (fun m -> prerr_endline ("nanofil-backend: " ^ m); exit 1) fmt in
@@ -443,23 +444,35 @@ let whole () =
          | None -> fail "the first term is not a module")
     | None -> fail "no module"
   in
-  match timed lower_s (fun () -> module_lines md) with
-  | None -> pass "a function is outside the subset or has no plan"
-  | Some lists ->
-      List.iter (fun ls ->
-          match first_todo ls with
-          | Some what -> pass "not ported: %s" what
-          | None -> ()) lists;
-      set_binary_mode_out stdout true;
-      let text = Buffer.create 65536 in
-      timed print_s (fun () ->
-        List.iter (fun ls ->
-            List.iter (Buffer.add_string text) (rev_lines_parts (List.rev ls) []);
-            Buffer.output_buffer stdout text;
-            Buffer.clear text) lists);
-      if report then
-        Printf.eprintf "nanofil-backend: parse %.3fs decode %.3fs lower and emit %.3fs print %.3fs\n"
-          !parse_s !decode_s !lower_s !print_s
+  set_binary_mode_out stdout true;
+  let text = Buffer.create 65536 in
+  (* A chunk of lines at a time, as in asm above. *)
+  let rec take k rev = function
+    | l :: ls when k > 0 -> take (k - 1) (l :: rev) ls
+    | ls -> (rev, ls)
+  in
+  let rec print = function
+    | [] -> ()
+    | ls ->
+        let rev, rest = take chunk [] ls in
+        List.iter (Buffer.add_string text) (rev_lines_parts rev []);
+        Buffer.output_buffer stdout text;
+        Buffer.clear text;
+        print rest
+  in
+  List.iter (fun piece ->
+      match timed lower_s (fun () -> piece ()) with
+      | None -> pass "a function is outside the subset or has no plan"
+      | Some lists ->
+          List.iter (fun ls ->
+              (match first_todo ls with
+               | Some what -> pass "not ported: %s" what
+               | None -> ());
+              timed print_s (fun () -> print ls)) lists)
+    (timed lower_s (fun () -> module_pieces md));
+  if report then
+    Printf.eprintf "nanofil-backend: parse %.3fs decode %.3fs lower and emit %.3fs print %.3fs\n"
+      !parse_s !decode_s !lower_s !print_s
 
 (* The little-endian words of the file f. *)
 let file_words f =

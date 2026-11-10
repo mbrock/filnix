@@ -25,8 +25,11 @@
 # module's text is `nanofil compile`'s wherever every function is in
 # the subset (rocq/backend/tests/emit.sh), on the same files and the
 # fixtures of rocq/backend/tests/edge, which reach the arms the corpus
-# does not; full=true takes the whole corpus, with and without -O.
-# Then parse.sh reads every backend sentence back (web/rocq).
+# does not; full=true takes the whole corpus, with and without -O,
+# and then every translation unit of zlib, GNU hello and Lua as
+# nanofil-cc preprocesses it (nanofil-cc.nix, hello.nix, lua.nix),
+# where the whole text must be `nanofil cc`'s. Then parse.sh reads
+# every backend sentence back (web/rocq).
 {
   pkgs,
   filcc,
@@ -52,6 +55,30 @@ let
   quickAbi = "${quick} tests/c/fstructs.c tests/c/variadic.c tests/c/prog/structs.c tests/c/prog/memcpy-small.c tests/c/prog/weak-symbols.c tests/c/prog/byval.c";
   corpus = "tests/filc/*.ir tests/c/*.c tests/c/prog/*.c";
   edge = "rocq/backend/tests/edge/*.ir";
+  # zlib, GNU hello and Lua, built through nanofil-cc as their own
+  # checks build them, keeping each preprocessed translation unit.
+  # None of their flags makes nanofil-cc set NANOFIL_STD or
+  # NANOFIL_COMMON, which emit.sh would not know of.
+  cc = import ./nanofil-cc.nix { inherit pkgs filcc; };
+  packages = ''
+    mkdir units zlib hello lua
+    export NANOFIL_KEEP_I=$PWD/units
+    tar -xf ${pkgs.zlib.src} -C zlib --strip-components=1
+    (cd zlib && CC=${filcc}/bin/clang ./configure --static >configure.log &&
+      make -j$NIX_BUILD_CORES CC=${cc} libz.a example minigzip >make.log 2>&1) ||
+      { tail -50 zlib/make.log; exit 1; }
+    tar -xf ${pkgs.hello.src} -C hello --strip-components=1
+    (cd hello && CC=${filcc}/bin/clang ./configure --disable-nls >configure.log 2>&1 &&
+      make -j$NIX_BUILD_CORES CC=${cc} >make.log 2>&1) ||
+      { tail -50 hello/make.log; exit 1; }
+    tar -xf ${pkgs.lua5_4.src} -C lua --strip-components=1
+    make -C lua/src -j$NIX_BUILD_CORES CC=${cc} SYSLIBS="-Wl,-E -ldl" \
+      CFLAGS="-O2 -std=gnu99 -DLUA_USE_LINUX -DLUA_USE_JUMPTABLE=0" all >lua/make.log 2>&1 ||
+      { tail -50 lua/make.log; exit 1; }
+    unset NANOFIL_KEEP_I
+    echo "kept $(ls units | wc -l) translation units of zlib, hello and Lua"
+    tests/par.sh rocq/backend/tests/emit.sh units/*.i | tee emit-packages.log
+  '';
 in
 pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
   {
@@ -88,6 +115,7 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           tests/par.sh rocq/backend/tests/emit.sh ${corpus} ${edge} | tee emit.log
           NANOFIL_OPT=-O tests/par.sh rocq/backend/tests/emit.sh ${corpus} ${edge} | tee emit-O.log
         ''
+        + packages
       else
         ''
           tests/par.sh rocq/backend/tests/asm.sh ${quick} | tee asm.log

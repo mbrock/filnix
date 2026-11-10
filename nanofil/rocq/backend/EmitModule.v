@@ -24,11 +24,19 @@ Definition item_lines (sy : symbols) (it : item) : option (list line) :=
 (** The end of the file: the stack is not executable. *)
 Definition end_lines : list line := [Dir (DSection SNoteGnuStack)].
 
-(** The lists of lines of a module, in the order `module_emit/4`
-    gives them. Nothing if some item or thunk has none. *)
-Definition module_lines (md : module) : option (list (list line)) :=
+(** A module's lists of lines, a piece at a time, in the order
+    `module_emit/4` gives them: a piece for each item, one for all
+    the weak thunks and one for the end of the file. A driver asks
+    for a piece, prints its lists and drops them before it asks for
+    the next, so the lines of a whole module are never all alive.
+    A piece is nothing if its item or a thunk has no lines. *)
+Definition module_pieces (md : module) : list (unit -> option (list (list line))) :=
   let sy := module_symbols md in
-  match all_some (item_lines sy) md, lower_thunks sy md with
-  | Some items, Some ts => Some (items ++ map thunk_lines ts ++ [end_lines])
-  | _, _ => None
-  end.
+  map (fun it _ => option_map (fun ls => [ls]) (item_lines sy it)) md
+  ++ [fun _ => option_map (map thunk_lines) (lower_thunks sy md);
+      fun _ => Some [end_lines]].
+
+(** The lists of lines of a module: every piece's. Nothing if some
+    piece is nothing. *)
+Definition module_lines (md : module) : option (list (list line)) :=
+  option_map (@concat _) (all_some (fun piece => piece tt) (module_pieces md)).

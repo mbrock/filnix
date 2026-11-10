@@ -1,7 +1,9 @@
 # The Gallina backend's check (nanofil/rocq/backend, docs/gallina-backend.md)
 # after each push that changes it or asm.pl, whose text its printer must
 # reproduce. It never blocks a push: a red run is fixed forward on main.
-# workflow_dispatch with full takes the whole corpus, with and without -O.
+# workflow_dispatch with full takes the whole corpus, with and without -O,
+# and the translation units of zlib, GNU hello and Lua; it is about an
+# hour of one core's work.
 name: Nanofil Backend
 
 on:
@@ -15,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       full:
-        description: Compare on the whole corpus, with and without -O
+        description: Compare on the whole corpus, with and without -O, and on zlib, hello and Lua
         type: boolean
         default: false
 
@@ -29,7 +31,7 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       NIX_CONFIG: |
         extra-substituters = https://filc.cachix.org
@@ -54,7 +56,7 @@ jobs:
           ROOT: ${{ steps.select.outputs.root }}
         run: |
           warn=300; limit=900
-          if [ "$ROOT" = nanofil-backend-full ]; then warn=600; limit=1500; fi
+          if [ "$ROOT" = nanofil-backend-full ]; then warn=1800; limit=3300; fi
           python3 nanofil/tests/watch.py --label "$ROOT" --warn-after "$warn" --timeout "$limit" -- \
             nix build -L --no-link --cores 2 ".#checks.x86_64-linux.$ROOT" 2>&1 | tee nanofil-backend.log
       - uses: actions/upload-artifact@v4

@@ -450,6 +450,32 @@ printing and by more than twice for the plans before any emission.
 M3's emission is written with this in mind, with no number or list
 written inside a loop.
 
+**The profile, at the end of M3.** The same tool on
+`nanofil-backend module`, which reads SQLite's module, lowers it,
+emits it and prints it in 8.8 s. As shares of that time:
+
+- Reading the module as terms is 28%, and nearly two thirds of
+  that is the collector. M4's reader takes NFB words and builds
+  the module with no terms between.
+- Building the plans is 24%. Slots are 16%, nearly all of it the
+  first and last touch of each temporary (15%) and the liveness
+  under that (8%); fusing is 5%. This is the part that waits for
+  numbered temporaries.
+- Emitting the functions is 12%: 7% for the instructions' lines
+  and 4% for a function's context, which builds maps keyed by a
+  name's term. Data and thunks do not show.
+- Printing is 12%.
+- The collector is 27% of everything, the minor one 15% and the
+  major one 12%.
+
+Inside the instructions' lines no one form stands out. The leaves
+are string concatenation (17%), the hash and comparison of a name
+(about 40% with the maps' lookups), and list append (10%). So the
+emission's own cost is names again: a slot is found by the term of
+its temporary, and a label is built from strings at each use.
+Numbered temporaries remove the first, and a label kept as parts
+until it is printed removes the second.
+
 ## Milestones
 
 Each ends with its gate green and a short note of what it found.
@@ -550,7 +576,9 @@ an alias's getter. `EmitThunk.v` emits a weak thunk, and
 `rocq/backend/tests/emit.sh` is the gate. It emits each list again
 from the module and compares it, as text, with the reference's.
 Then, without `-O`, it compares what `nanofil-backend module` prints
-for the module with what `nanofil compile` prints for the file.
+for the module with what `nanofil compile` prints for the file. For
+a preprocessed `.i` file the text is `nanofil cc`'s, which is what
+`nanofil-cc` runs on a package's translation units.
 Emission is total: a form that is not ported gives a `todo` line,
 and the gate counts such a list as partial. None is left. The todos
 that remain in the code stand where Prolog itself fails or throws.
@@ -564,12 +592,26 @@ that remain in the code stand where Prolog itself fails or throws.
 - On SQLite all 3106 functions, 1843 data lists and 181 thunks are
   the same, and the whole module is `nanofil compile`'s 135 MB of
   assembly byte for byte.
-- In OCaml, SQLite's plans take 2.9 s and its functions' emission
-  1.6 s. `nanofil-backend module` lowers and emits the whole of it
-  in 6.0 s and prints it in 2.3 s, where Prolog's emission stage
-  takes 20.6 s. The target for lowering and emission is 1.0 s, so
-  they miss it by six times; the profile above says where the
-  plans' time goes, and the emission has none yet.
+- zlib, GNU hello and Lua are built through `nanofil-cc` with each
+  preprocessed translation unit kept, and each unit's text is
+  compared. All 17 units of zlib and all 81 of hello are
+  `nanofil cc`'s text byte for byte, and 33 of Lua's 34. The one
+  left is `ldo.c`, whose `luaD_rawrunprotected` calls `setjmp`;
+  its other lists are the same. The three have 1,481 functions
+  of the subset, 1,327 data lists and 1,385 thunks between them.
+  The full check builds and compares them; it takes six minutes
+  on 16 cores.
+- In OCaml, SQLite's plans take 2.8 s and its functions' emission
+  1.5 s. `nanofil-backend module` lowers and emits the whole of it
+  in 3.9 s and prints it in 1.75 s, within 1.7 GB, where Prolog's
+  emission stage takes 20.6 s. The target for lowering and emission
+  is 1.0 s, so they miss it by four times; the profiles under
+  Performance targets say where the time goes.
+- `EmitModule.v` gives the module as pieces: one per item, one for
+  the weak thunks and one for the end of the file. The driver asks
+  for a piece, prints it and drops it, so a module's lines are
+  never all alive. Before that SQLite took 6.0 s to lower and emit
+  and 2.3 s to print, most of the difference in the collector.
 - With `-O` the lines of 538 corpus functions are the same, with
   all the data and thunks, and the backend refuses 256 when it
   builds their plans. Every one of the 256 has a reuse form
@@ -605,10 +647,12 @@ What it showed:
 
 What remains of M3:
 
-- the functions outside the subset, which wait on the model, `touch`
-  first, and with them the 43 modules that have no whole text;
-- the text of hello, zlib and Lua;
-- the performance target, with a profile of the emission first.
+- the functions outside the subset, which wait on the model: `touch`
+  first, and `setjmp` for Lua's `ldo.c`. With them come the 43
+  modules of the corpus that have no whole text;
+- the performance target. The profile says it is not met by the
+  emission alone: it needs M5's numbered temporaries and M4's
+  reader.
 
 **M4. Pizlonation and a standalone compiler.** `Unchecked.v`,
 `Pizlonate.v` and a Gallina reader for IR text. The pipeline is

@@ -15,7 +15,8 @@
 #
 # Without -O the whole module is then compared as text: what
 # `nanofil-backend module` prints for the checked module must be
-# what `nanofil compile` prints for the file. A module with a
+# what `nanofil compile` prints for the file, or `nanofil cc` for a
+# preprocessed .i file, which is what nanofil-cc runs. A module with a
 # function outside the subset, or with a list that is partial, has
 # no whole text and is reported as `whole none`.
 #
@@ -48,7 +49,8 @@ for f in "$@"; do
     head -c 4000 "$work/err"
     status=1
   else
-    whole= bad=
+    whole= bad= command=compile
+    case $f in *.i) command=cc ;; esac
     if [ -z "${NANOFIL_OPT:-}" ]; then
       code=0
       "$backend" module <"$work/terms" >"$work/ours" 2>"$work/whole-err" || code=$?
@@ -56,8 +58,8 @@ for f in "$@"; do
         whole=", whole none"
       elif [ "$code" != 0 ]; then
         bad="no whole module: $(head -c 300 "$work/whole-err")"
-      elif ! (cd "$src" && "$nanofil" compile "$f" </dev/null) >"$work/theirs" 2>/dev/null; then
-        bad="nanofil compile failed"
+      elif ! (cd "$src" && "$nanofil" "$command" "$f" </dev/null) >"$work/theirs" 2>/dev/null; then
+        bad="nanofil $command failed"
       elif cmp -s "$work/ours" "$work/theirs"; then
         whole=", whole same"
       else

@@ -53,4 +53,4 @@ Set Extraction Output Directory "extraction".
 Extraction "nanofil_backend.ml" dline rev_lines_parts
   decode_module module_symbols lower_function lower_thunks plan_term thunks_term term_eqb
   Nfb.encode Nfb.decode enc_module
-  function_lines data_lines alias_lines thunk_lines end_lines module_lines is_todo first_todo.
+  function_lines data_lines alias_lines thunk_lines end_lines module_pieces module_lines is_todo first_todo.
