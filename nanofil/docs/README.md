@@ -63,6 +63,9 @@ page about it is listed here.
 - [NFB, a bytecode for nanofil IR](nfb.md): an RFC draft for the IR as
   little-endian words, with one encoding per module; the numbers the
   encoder and decoder of [nfb.pl](../src/nfb.pl) assign.
+- [The IR and NFB: a guide](nfb-guide-wonder.md): the IR (modules,
+  blocks, phis, classes, the unchecked and checked stages) and then
+  NFB for a newcomer, with real encoded words from the corpus.
 - [dterm](dterm.md): how these pages draw Prolog and Rocq, and
   documentation as a relation; its [workbench](../web/workbench/)
   sets the same terms side by side.
