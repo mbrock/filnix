@@ -2599,6 +2599,37 @@ also remain separate. The fixture's identity safepoints establish only its
 own stability, not a general native representation law. No interpreter
 transition, trusted libc contract, runtime axiom or Machine theorem changes.
 
+### Campaign 4 milestone 6r: transfer inside the same WP
+
+wp_callback_transfer lifts a proved state-interpretation update into the
+WP of a nonvalue ERun frame. The caller owns the before assertion and
+provides a continuation from the after assertion to the WP of exactly
+that same frame. Unfolding the nonvalue WP exposes the current state
+interpretation; the update consumes the before resources, restores that
+interpretation and supplies the after resources to the continuation.
+The continuation's same-instance WP supplies reducibility and every step
+obligation. Registry, world interpretation, frame, postcondition, mask,
+stuckness and Iris counters do not change. There is no artificial program
+step, extra later credit or claimed progress. A value's WP would not
+expose this state interpretation, so the rule stays restricted to ERun.
+
+The resource control instantiates the rule with hello_callback_transfer
+and the proved stage-sensitive interpretation. It begins with only the
+before-stage ticket, errno and an unrelated name; its continuation uses
+the resulting stdout permission in an actual fclose instruction, then
+returns the closed permission and sampled endpoint errno together with
+the after-stage ticket, opposite open-only permission and unrelated name.
+The close compatibility proof rejects the before branch using owned
+lookups versus freshness and preserves the after lookup. No entry heap
+or assumed admission/restoration premise is exposed to this WP caller.
+
+This is an actual WP-level resource transfer and call/return control,
+not a theorem selecting a registered callback or transporting main's
+exit through Linked/Ending. Those connections, returning diagnostics,
+native representation and full local-teardown composition remain next.
+It establishes partial correctness and resources, not native execution
+or termination. No interpreter, contract or runtime axiom changes.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted

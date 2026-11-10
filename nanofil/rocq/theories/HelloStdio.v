@@ -468,6 +468,22 @@ Proof.
   - rewrite /pts /=. iFrame.
 Qed.
 
+(** Lift a proved state-interpretation transfer at a nonvalue frame.
+    The continuation has the SAME expression and Iris instance: it
+    supplies reducibility and every step obligation. No callback
+    selection, extra program step or progress is inferred here. *)
+Lemma wp_callback_transfer (P Q : iProp Σ) fr Φ :
+  (forall σ, heap_interp wi σ -∗ P ==∗ heap_interp wi σ ∗ Q) ->
+  P -∗ (Q -∗ WP (ERun fr : cexpr) {{ Φ }}) -∗ WP (ERun fr : cexpr) {{ Φ }}.
+Proof.
+  intros Htransfer. iIntros "HP HK".
+  iEval (rewrite wp_unfold /wp_pre /=). iIntros (σ ns κ κs nt) "Hσ".
+  iMod (Htransfer with "Hσ HP") as "[Hσ HQ]".
+  iSpecialize ("HK" with "HQ").
+  iEval (rewrite wp_unfold /wp_pre /=) in "HK".
+  iApply ("HK" $! σ ns κ κs nt with "Hσ").
+Qed.
+
 (** A designated-handle fclose rule, not a dispatcher for arbitrary
     pointers. The consumer keeps its abstract wi and supplies its local
     K premise for the rest of that interpretation, as for conversion. *)
@@ -1037,3 +1053,92 @@ Qed.
 
 End iris.
 End HelloTransferChecks.
+
+(** Consume the entry ticket INSIDE WP, use the resulting permission
+    for an actual fclose instruction and retain all independent frames. *)
+Module HelloTransferWPChecks.
+Module X := HelloTransferChecks.
+Module LG := X.LG.
+Module H := X.H.
+Module P := StreamPermissionChecks.
+Import LG LG.L.
+
+Lemma close_restored : forall m w h m' w' ys,
+  (forall l v, (l, v) ∈ permission_ps P.out P.err (token_handle P.out) ++
+    byte_ps 5120 0 [0; 0; 0; 0] -> h !! l = Some v) ->
+  X.callback_wi m w h ->
+  X.pair_wi m' w' (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) h) ->
+  X.callback_wi m' w' (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) h).
+Proof.
+  intros m w h m' w' ys Hl [_ [[Hs (_ & _ & _ & _ & Hfresh)]|Hs]] Hw.
+  - exfalso.
+    assert (Hin : (PLive (token_base P.out), VLive (token_region P.out)) ∈ X.pair_ps).
+    { apply elem_of_app. left. apply elem_of_cons. left. reflexivity. }
+    specialize (Hfresh _ _ Hin).
+    assert (Hold : h !! PLive (token_base P.out) = Some (VLive (token_region P.out))).
+    { apply Hl, elem_of_app. left. change ((PLive (token_base P.out), VLive (token_region P.out)) ∈
+        open_permission_ps P.out (token_handle P.out)). apply elem_of_cons. left. reflexivity. }
+    congruence.
+  - split; [exact Hw|]. right. rewrite overwrite_app.
+    cbn [closed_ps overwrite fst snd].
+    rewrite lookup_insert_ne; [|discriminate]. rewrite lookup_insert_ne; [|discriminate].
+    rewrite overwrite_out; [exact Hs|].
+    rewrite byte_ps_keys. intros Hin. apply list_elem_of_fmap in Hin as (i & E & _). discriminate E.
+Qed.
+
+Section iris.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Local Instance test_stable : SafepointStable X.callback_wi := X.callback_stable.
+Local Instance test_irisGS : irisGS_gen hlc
+    (nanofil_lang HelloPermissionChecks.registry HelloPermissionChecks.ge) Σ :=
+  nanofil_irisGS HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge.
+
+Example transfer_close_return :
+  pts [(PName X.stage, X.before)] -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗ pts X.unrelated -∗
+  WP (ERun (mkFrame HelloPermissionChecks.stub HelloPermissionChecks.entry_env [] None
+    (Exec (TAtom "body")
+      [Call (CResult (TAtom "r") W) (Global (TAtom "fclose")) [Arg P (Tmp (TAtom "p"))]]
+      (JRet (Tmp (TAtom "r"))))) : language.expr
+    (nanofil_lang HelloPermissionChecks.registry HelloPermissionChecks.ge))
+  {{ result, ∃ n ys, ⌜result = Ret (WInt n) /\ length ys = 4%nat⌝ ∗
+    pts [(PName X.stage, X.after)] ∗ pts (closed_ps P.out) ∗
+    pts (open_permission_ps P.err (token_handle P.err)) ∗
+    pts (byte_ps 5120 0 ys) ∗ pts X.unrelated }}.
+Proof.
+  iIntros "Hstage Herrno Hother".
+  iApply (H.wp_callback_transfer HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge
+    (pts [(PName X.stage, X.before)])
+    (pts [(PName X.stage, X.after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
+      pts (open_permission_ps P.err (token_handle P.err)))%I _ _ with "Hstage [Herrno Hother]").
+  - intros σ. iApply (H.hello_callback_transfer X.callback_wi (fun _ _ => True) P.out P.err 5120 0
+      X.stage X.before X.after X.entry_admitted X.entry_restored).
+    + unfold X.stage. lia.
+    + discriminate.
+    + discriminate.
+    + discriminate.
+    + intros m. exact I.
+  - iIntros "(Hstage & Ho & He)".
+    iApply (H.wp_permission_fclose HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge
+      (fun _ _ => True) (fun _ _ _ _ => False) (fun _ _ _ _ _ => False)
+      P.out P.err 5120 0 (token_handle P.out) [0; 0; 0; 0]
+      HelloPermissionChecks.stub HelloPermissionChecks.entry_env [] (TAtom "body") (TAtom "r")
+      (Tmp (TAtom "p")) [] (JRet (Tmp (TAtom "r"))) _ with "Ho Herrno [Hstage He Hother]").
+    + intros m w h Hw. exact (proj1 Hw).
+    + intros s m w h tr vs s' m' w' ys Hi Hl Hw Hlen Hnew.
+      eapply close_restored; eauto.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + iNext. iIntros (n ys) "%Hgood Ho Herrno". destruct Hgood as [Hn Hys].
+      iApply (wp_ret HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge
+        HelloPermissionChecks.stub _ (TAtom "body") (Tmp (TAtom "r")) W (WInt n));
+        [reflexivity| |].
+      * change (Some (WInt (n mod 2 ^ 32)) = Some (WInt n)).
+        rewrite Z.mod_small; [reflexivity|exact Hn].
+      * iNext. iExists n, ys. iFrame. auto.
+Qed.
+
+End iris.
+End HelloTransferWPChecks.
