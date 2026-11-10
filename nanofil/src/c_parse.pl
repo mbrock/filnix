@@ -992,7 +992,46 @@ designator(Env, D) -->
 block(Env, at(Loc, block(Items))) -->
     loc(Loc),
     punct('{'),
-    block_items(Env, Items).
+    local_labels(Map),
+    block_items(Env, Items0),
+    { Map == [] -> Items = Items0 ; local_rename(Map, Items0, Items) }.
+
+% local_labels(-Map)//: GNU's local label declarations at the start of a
+% block (__label__ a, b;), as glibc's macros declare the labels of their
+% statement expressions. Map pairs each name with a name of its own in
+% this block, made from the declaration's place in the token list
+% (tokens still to read), so each expansion's labels differ.
+local_labels(Map) -->
+    token(id('__label__')), !,
+    tokens_left(K),
+    label_names(Names),
+    expect(';'),
+    { findall(N-New, ( member(N, Names), format(atom(New), '~w..~w', [N, K]) ), Map0) },
+    local_labels(Map1),
+    { append(Map0, Map1, Map) }.
+local_labels([]) --> [].
+
+tokens_left(K, S, S) :- length(S, K).
+
+label_names([L|Ls]) -->
+    token(id(L)), !,
+    ( punct(',') -> label_names(Ls) ; { Ls = [] } ).
+label_names(_) --> parse_error('expected a label name after __label__').
+
+% local_rename(+Map, +T0, -T): T is the block T0 with the labels of Map
+% renamed in its label statements, gotos, &&label and asm goto labels.
+% Inner blocks were renamed first, so their own declarations shadow.
+local_rename(Map, T0, T) :-
+    (   \+ compound(T0) -> T = T0
+    ;   T0 = goto(L) -> local_name(Map, L, L1), T = goto(L1)
+    ;   T0 = label_addr(L) -> local_name(Map, L, L1), T = label_addr(L1)
+    ;   T0 = labels(Ls), is_list(Ls) -> maplist(local_name(Map), Ls, Ls1), T = labels(Ls1)
+    ;   T0 = label(L, S0), atom(L)
+    ->  local_name(Map, L, L1), local_rename(Map, S0, S), T = label(L1, S)
+    ;   T0 =.. [F|As0], maplist(local_rename(Map), As0, As), T =.. [F|As]
+    ).
+
+local_name(Map, L, L1) :- ( memberchk(L-L1, Map) -> true ; L1 = L ).
 
 % block_items(+Env, -Items)//: the items of a block through its '}'.
 block_items(_, []) --> punct('}'), !.
