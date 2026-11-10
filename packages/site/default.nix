@@ -106,6 +106,7 @@ let
       ../../nanofil/web/dterm.css
       ../../nanofil/web/dterm.js
       ../../nanofil/web/concepts.pl
+      ../../nanofil/web/c
       ../../nanofil/web/rocq/rocq_draw.pl
       ../../nanofil/web/rocq/rocq_syntax.pl
       (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil/rocq)
@@ -122,6 +123,7 @@ let
       ../../nanofil/web/rocq
       ../../nanofil/web/concepts.pl
       ../../nanofil/web/dterm_html.pl
+      ../../nanofil/web/c
       (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil)
     ];
   };
