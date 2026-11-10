@@ -1,0 +1,59 @@
+# Manual, bounded trial: no persistent volumes or paid subscription needed.
+# Both machines build the same revision using the same public Nix caches.
+name: Site builder comparison
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NIX_CONFIG: |
+    extra-substituters = https://filc.cachix.org
+    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GitHub 4-core
+            runner: ubuntu-24.04
+          - name: Namespace 16-core
+            runner: nscloud-ubuntu-24.04-amd64-16x32
+    runs-on: ${{ matrix.runner }}
+    # Namespace 16x32 is $0.024/min PAYG: at most $0.72 compute per trial.
+    # No cache-volume label, hence no persistent-volume storage commitment.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Build the same site
+        env:
+          BUILDER: ${{ matrix.name }}
+        run: |
+          set -o pipefail
+          lscpu > machine.txt
+          /usr/bin/time -v -o build-time.txt nix build -L .#site 2>&1 | tee build.log
+          nix path-info ./result > output.txt
+          du -sbL result >> output.txt
+          {
+            echo "### $BUILDER — $GITHUB_SHA"
+            echo '```text'
+            cat build-time.txt output.txt
+            echo '```'
+            echo 'Fresh runner; public Nix substituters; no persistent Nix volume.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-benchmark-${{ matrix.runner }}
+          retention-days: 3
+          path: |
+            machine.txt
+            build-time.txt
+            output.txt
+            build.log
