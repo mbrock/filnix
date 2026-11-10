@@ -332,6 +332,44 @@ Proof.
   rewrite Heq. auto.
 Qed.
 
+(** Match HelloClose's pointer-universal query postcondition. Owned
+    lookups select the actual full handle; the supplied machine gives
+    canonical results. Preserve h, not necessarily native memory, and
+    do not identify physical pending output with the logical FIFO. *)
+Theorem permission_query_frame : forall rep requests wide out err b o spec k p
+    d v s m w trace values s' m' w' h,
+  ((spec = ferror_contract (libc_stream_model rep requests wide) /\ k = W) \/
+   (spec = fpending_contract (libc_stream_model rep requests wide) /\ k = L)) ->
+  agrees m h -> live_disjoint m -> R.ready s m -> stream_tokens_wi rep out err b o m w h ->
+  (forall l v, (l, v) ∈ permission_ps out err p -> h !! l = Some v) ->
+  M.E.invoke spec (CResult d k) [Arg P v] [WPtr p] s m w trace (CallReturn values) s' m' w' ->
+  exists n, values = [WInt n] /\ 0 <= n < 2 ^ (if class_eqb k W then 32 else 64) /\
+    agrees m' h /\ live_disjoint m' /\ R.ready s' m' /\ stream_tokens_wi rep out err b o m' w' h.
+Proof.
+  intros rep requests wide out err b o spec k p d v s m w tr vs s' m' w' h
+    Hwhich Ha Hd Hr Hw Hl Hi.
+  destruct (permission_known _ _ _ _ _ _ _ _ _ Hw Hl) as [Hp _].
+  assert (Hspec : spec = ferror_contract (libc_stream_model rep requests wide) \/
+    spec = fpending_contract (libc_stream_model rep requests wide)) by tauto.
+  pose proof Hi as Hcall. rewrite Hp in Hcall.
+  destruct (A.query_frame rep requests wide out err b o (permission_descriptor out err p)
+    spec (CResult d k) [Arg P v] s m w tr (CallReturn vs) s' m' w' h
+    (permission_selected out err p) Hspec Hcall Ha Hd Hr Hw) as (Ha' & Hd' & Hr' & Hw').
+  assert (Hresult : exists n, vs = [WInt n] /\ 0 <= n < 2 ^ (if class_eqb k W then 32 else 64)).
+  { destruct Hwhich as [[-> ->]|[-> ->]].
+    - destruct (SL.S.S.ferror_invocation libc_world (libc_stream_model rep requests wide)
+        (CResult d W) [Arg P v] [WPtr p] s m w tr (CallReturn vs) s' m' w' Hi)
+        as (born & p0 & info & n & _ & _ & _ & _ & _ & _ & Hend & Hrange & _).
+      injection Hend as ->. exists n. split; [reflexivity|exact Hrange].
+    - destruct (SL.S.S.fpending_invocation libc_world (libc_stream_model rep requests wide)
+        (CResult d L) [Arg P v] [WPtr p] s m w tr (CallReturn vs) s' m' w' Hi)
+        as (born & p0 & info & _ & _ & Hopen & _ & _ & _ & Hend).
+      destruct Hopen as (_ & _ & _ & [_ Hrange] & _).
+      injection Hend as ->. exists (stream_pending info). split; [reflexivity|exact Hrange]. }
+  destruct Hresult as (n & -> & Hn). exists n. split; [reflexivity|]. split; [exact Hn|].
+  exact (conj Ha' (conj Hd' (conj Hr' Hw'))).
+Qed.
+
 (** The actual argument is checked by the permission value before
     selecting the paired frame. The returned token replaces that SAME
     permission key; no fixed pending/FIFO snapshot is needed. *)
@@ -1142,3 +1180,239 @@ Qed.
 
 End iris.
 End HelloTransferWPChecks.
+
+(** Pointer-universal queries on the same callback interpretation and
+    supplied machine. These are logical contract/resource controls. *)
+Module HelloQueryChecks.
+Module X := HelloTransferChecks.
+Module LG := X.LG.
+Module H := X.H.
+Module P := StreamPermissionChecks.
+Module F := LibcStreamChecks.
+Import LG LG.L.
+
+Definition spec g := if name_eqb g (TAtom "ferror") then ferror_contract F.model else fpending_contract F.model.
+Definition registry := libc_stream_registry (fun _ _ => True) (fun _ _ _ _ => False)
+  (fun _ _ _ _ _ => False) (fun _ => None).
+Definition ge := HelloPermissionChecks.ge.
+Definition stub k := mkFunc (TAtom "query-control") (TAtom "local") (RClass k) [] [].
+Definition entry_env p := [(TAtom "p", WPtr p)].
+
+Lemma spec_choice : forall g k,
+  (g = TAtom "__fpending" /\ k = L) \/ (g = TAtom "ferror" /\ k = W) ->
+  (spec g = ferror_contract F.model /\ k = W) \/ (spec g = fpending_contract F.model /\ k = L).
+Proof. intros g k [[-> ->]|[-> ->]]; [right|left]; split; reflexivity. Qed.
+
+Lemma query_restored : forall p m w h m' w',
+  X.callback_wi m w h ->
+  (forall l v, (l, v) ∈ permission_ps P.out P.err p -> h !! l = Some v) ->
+  X.pair_wi m' w' h -> X.callback_wi m' w' h.
+Proof.
+  intros p m w h m' w' [_ [[Hs (_ & _ & _ & _ & Hfresh)]|Hs]] Hl Hw.
+  - exfalso.
+    assert (Hlife : (PLive (token_base (permission_descriptor P.out P.err p)),
+        VLive (token_region (permission_descriptor P.out P.err p))) ∈ permission_ps P.out P.err p).
+    { apply elem_of_cons. left. reflexivity. }
+    assert (Hpair : (PLive (token_base (permission_descriptor P.out P.err p)),
+        VLive (token_region (permission_descriptor P.out P.err p))) ∈ X.pair_ps).
+    { destruct (permission_selected P.out P.err p) as [-> | ->]; apply elem_of_app;
+        [left|right]; apply elem_of_cons; left; reflexivity. }
+    specialize (Hfresh _ _ Hpair). specialize (Hl _ _ Hlife). congruence.
+  - split; [exact Hw|]. right. exact Hs.
+Qed.
+
+Definition query_heap : gmap piece pval :=
+  <[PName X.stage := X.after]> (overwrite X.pair_ps X.entry_heap).
+Definition query_handle (stdout : bool) := if stdout then token_handle P.out else token_handle P.err.
+Definition query_name (error : bool) := if error then TAtom "ferror" else TAtom "__fpending".
+Definition query_class (error : bool) := if error then W else L.
+Definition query_result (error stdout : bool) : Z := if error then (if stdout then 17 else 0)
+  else (if stdout then 7 else 3).
+
+Lemma query_lookups : forall stdout l v,
+  (l, v) ∈ permission_ps P.out P.err (query_handle stdout) -> query_heap !! l = Some v.
+Proof.
+  intros stdout l v Hin. destruct stdout.
+  - change ((l, v) ∈ open_permission_ps P.out (token_handle P.out)) in Hin.
+    apply list_elem_of_In in Hin. destruct Hin as [E|[E|[]]]; injection E as <- <-.
+    all: unfold query_heap, X.pair_ps, X.entry_heap;
+      cbn [open_permission_ps overwrite app fst snd P.out P.err token_base token_key];
+      repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
+  - change ((l, v) ∈ open_permission_ps P.err (token_handle P.err)) in Hin.
+    apply list_elem_of_In in Hin. destruct Hin as [E|[E|[]]]; injection E as <- <-.
+    all: unfold query_heap, X.pair_ps, X.entry_heap;
+      cbn [open_permission_ps overwrite app fst snd P.out P.err token_base token_key];
+      repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
+Qed.
+
+(** Non-one sticky error, rather than normalizing every nonzero result. *)
+Lemma stdout_error_seventeen :
+  H.M.E.invoke (ferror_contract F.model) (CResult (TAtom "r") W) [Arg P (Tmp (TAtom "p"))]
+    [WPtr (token_handle P.out)] InterpRuntime.start conversion_mem (F.world true) []
+    (CallReturn [WInt 17]) InterpRuntime.start conversion_mem (F.world true).
+Proof.
+  destruct (libc_stream_open (fun _ _ => True) (fun _ _ _ _ => False)
+    (fun _ _ _ _ _ => False) conversion_mem (F.world true) (token_handle P.out) F.out_file
+    (F.ready true) eq_refl) as [info Ho].
+  eapply H.SL.S.S.ferror_return with (born := []).
+  - split; [right; eexists; reflexivity|eexists; reflexivity].
+  - exists (token_handle P.out), info. auto.
+  - split; [constructor|]. exists (token_handle P.out), info.
+    split; [reflexivity|]. split; [exact (proj1 (proj2 Ho))|]. split; [exact Ho|].
+    split; [apply libc_stream_frame_refl|].
+    split; [apply libc_stream_delegates_refl; apply F.ready|]. split; [reflexivity|].
+    split; [unfold stream_aux_frame|]; intros; reflexivity.
+  - exists (token_handle P.out), info, 17.
+    split; [reflexivity|]. split; [exact (proj1 (proj2 Ho))|]. split; [exact Ho|].
+    split; [apply libc_stream_frame_refl|].
+    split; [apply libc_stream_delegates_refl; apply F.ready|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [lia|].
+    destruct Ho as (_ & _ & Hstate & _). rewrite Hstate. cbn. split; discriminate.
+Qed.
+
+Lemma query_invocation : forall error stdout,
+  H.M.E.invoke (spec (query_name error)) (CResult (TAtom "r") (query_class error))
+    [Arg P (Tmp (TAtom "p"))] [WPtr (query_handle stdout)]
+    InterpRuntime.start conversion_mem (F.world true) []
+    (CallReturn [WInt (query_result error stdout)]) InterpRuntime.start conversion_mem (F.world true).
+Proof.
+  intros error stdout. destruct error, stdout.
+  - exact stdout_error_seventeen.
+  - apply H.SL.S.ferror_unchanged with (file := F.err_file).
+    + split; [right; eexists; reflexivity|eexists; reflexivity].
+    + apply F.ready.
+    + reflexivity.
+  - apply H.SL.S.fpending_unchanged with (file := F.out_file).
+    + split; [right; eexists; reflexivity|eexists; reflexivity].
+    + apply F.ready.
+    + reflexivity.
+  - apply H.SL.S.fpending_unchanged with (file := F.err_file).
+    + split; [right; eexists; reflexivity|eexists; reflexivity].
+    + apply F.ready.
+    + reflexivity.
+Qed.
+
+(** Both contract/classes on both handles, with current admission and
+    inhabited after-stage ownership. Pending seven differs from FIFO two. *)
+Example query_matrix : forall error stdout,
+  stream_call_pre F.model [WPtr (query_handle stdout)] conversion_mem (F.world true) /\
+  exists n, n = query_result error stdout /\
+    0 <= n < 2 ^ (if class_eqb (query_class error) W then 32 else 64) /\
+    agrees conversion_mem query_heap /\ X.callback_wi conversion_mem (F.world true) query_heap.
+Proof.
+  intros error stdout.
+  destruct X.transfer_endpoint as (Ha & Hw & Hrest).
+  assert (Hwhich : (spec (query_name error) = ferror_contract F.model /\ query_class error = W) \/
+      (spec (query_name error) = fpending_contract F.model /\ query_class error = L)).
+  { destruct error; [left|right]; split; reflexivity. }
+  split.
+  - eapply H.A.permission_admitted; [exact (proj1 Hw)|exact (query_lookups stdout)].
+  - destruct (H.permission_query_frame (fun _ _ => True) (fun _ _ _ _ => False)
+      (fun _ _ _ _ _ => False) P.out P.err 5120 0 (spec (query_name error)) (query_class error)
+      (query_handle stdout) (TAtom "r") (Tmp (TAtom "p")) _ _ _ _ _ _ _ _ query_heap
+      Hwhich Ha HelloErrnoChecks.disjoint HelloErrnoChecks.ready (proj1 Hw)
+      (query_lookups stdout) (query_invocation error stdout)) as (n & Heq & Hn & Ha' & _ & _ & Hpair).
+    injection Heq as <-. exists (query_result error stdout).
+    split; [reflexivity|]. split; [exact Hn|]. split; [exact Ha'|].
+    eapply query_restored; [exact Hw|exact (query_lookups stdout)|exact Hpair].
+Qed.
+
+Section iris.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Local Instance test_stable : SafepointStable X.callback_wi := X.callback_stable.
+Local Instance test_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry X.callback_wi ge.
+
+(** Use the existing contract bridge, with actual outside/unbound facts
+    for this empty ge, not an assumed full Hello linkage. *)
+Example query_return g k p other :
+  (g = TAtom "__fpending" /\ k = L) \/ (g = TAtom "ferror" /\ k = W) ->
+  pts (permission_ps P.out P.err p) -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗
+  pts [(PName X.stage, X.after)] -∗ pts other -∗
+  WP (ERun (mkFrame (stub k) (entry_env p) [] None
+    (Exec (TAtom "body") [Call (CResult (TAtom "r") k) (Global g) [Arg P (Tmp (TAtom "p"))]]
+      (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
+  {{ result, ∃ n, ⌜result = Ret (WInt n) /\ 0 <= n < 2 ^ (if class_eqb k W then 32 else 64)⌝ ∗
+    pts (permission_ps P.out P.err p) ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
+    pts [(PName X.stage, X.after)] ∗ pts other }}.
+Proof.
+  intros Hwhich. iIntros "Ho Herrno Hstage Hother".
+  iApply (H.C.wp_close_contract registry X.callback_wi ge (stub k) (entry_env p) [] (TAtom "body")
+    (TAtom "r") k g [Arg P (Tmp (TAtom "p"))] [] (JRet (Tmp (TAtom "r"))) (spec g) [WPtr p]
+    (permission_ps P.out P.err p ++ byte_ps 5120 0 [0; 0; 0; 0])
+    (fun _ => permission_ps P.out P.err p ++ byte_ps 5120 0 [0; 0; 0; 0])
+    (fun n _ => 0 <= n < 2 ^ (if class_eqb k W then 32 else 64)) with "[Ho Herrno] [Hstage Hother]").
+  - reflexivity.
+  - reflexivity.
+  - destruct Hwhich as [[-> ->]|[-> ->]]; reflexivity.
+  - destruct Hwhich as [[-> ->]|[-> ->]]; reflexivity.
+  - destruct Hwhich as [[-> ->]|[-> ->]]; reflexivity.
+  - destruct Hwhich as [[_ ->]|[_ ->]]; auto.
+  - reflexivity.
+  - destruct Hwhich as [[-> ->]|[-> ->]];
+      (split; [right; eexists; reflexivity|eexists; reflexivity]).
+  - intros m w h Hw Hl.
+    assert (Hpre : stream_call_pre F.model [WPtr p] m w).
+    { eapply H.A.permission_admitted; [exact (proj1 Hw)|].
+      intros l v Hin. apply Hl, elem_of_app. left. exact Hin. }
+    destruct Hwhich as [[-> ->]|[-> ->]]; exact Hpre.
+  - intros s m w h tr vs s' m' w' Ha Hd Hr Hw Hl Hi.
+    assert (Howned : forall l v, (l, v) ∈ permission_ps P.out P.err p -> h !! l = Some v).
+    { intros l v Hin. apply Hl, elem_of_app. left. exact Hin. }
+    destruct (H.permission_query_frame (fun _ _ => True) (fun _ _ _ _ => False)
+      (fun _ _ _ _ _ => False) P.out P.err 5120 0 (spec g) k p (TAtom "r") (Tmp (TAtom "p"))
+      s m w tr vs s' m' w' h (spec_choice g k Hwhich) Ha Hd Hr (proj1 Hw) Howned Hi)
+      as (n & Hvs & Hn & Ha' & Hd' & Hr' & Hpair).
+    exists n, [0; 0; 0; 0]. rewrite (overwrite_id _ h Hl).
+    split; [exact Hvs|]. split; [exact Hn|]. split; [exact Hn|]. split; [reflexivity|].
+    split; [exact Ha'|]. split; [exact Hd'|]. split; [exact Hr'|].
+    eapply query_restored; eauto.
+  - rewrite pts_app. iFrame.
+  - iNext. iIntros (n ys Hn) "Hps". rewrite pts_app. iDestruct "Hps" as "[Ho Herrno]".
+    iApply (wp_ret registry X.callback_wi ge (stub k) _ (TAtom "body") (Tmp (TAtom "r")) k (WInt n));
+      [reflexivity| |].
+    + destruct Hwhich as [[_ ->]|[_ ->]].
+      * change (Some (WInt (n mod 2 ^ 64)) = Some (WInt n)).
+        rewrite Z.mod_small; [reflexivity|exact Hn].
+      * change (Some (WInt (n mod 2 ^ 32)) = Some (WInt n)).
+        rewrite Z.mod_small; [reflexivity|exact Hn].
+    + iNext. iExists n. iFrame. auto.
+Qed.
+
+(** Entry supplies the selected and opposite permissions; the query
+    returns both, along with consumed stage, errno and unrelated name. *)
+Example transfer_query_return (error stdout : bool) :
+  let opposite := if stdout then P.err else P.out in
+  pts [(PName X.stage, X.before)] -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗ pts X.unrelated -∗
+  WP (ERun (mkFrame (stub (query_class error)) (entry_env (query_handle stdout)) [] None
+    (Exec (TAtom "body")
+      [Call (CResult (TAtom "r") (query_class error)) (Global (query_name error)) [Arg P (Tmp (TAtom "p"))]]
+      (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
+  {{ result, ∃ n, ⌜result = Ret (WInt n) /\ 0 <= n < 2 ^ (if class_eqb (query_class error) W then 32 else 64)⌝ ∗
+    pts (permission_ps P.out P.err (query_handle stdout)) ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
+    pts [(PName X.stage, X.after)] ∗ pts (open_permission_ps opposite (token_handle opposite) ++ X.unrelated) }}.
+Proof.
+  intro opposite. iIntros "Hstage Herrno Hother".
+  iApply (H.wp_callback_transfer registry X.callback_wi ge (pts [(PName X.stage, X.before)])
+    (pts [(PName X.stage, X.after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
+      pts (open_permission_ps P.err (token_handle P.err)))%I _ _ with "Hstage [Herrno Hother]").
+  - intros σ. iApply (H.hello_callback_transfer X.callback_wi (fun _ _ => True) P.out P.err 5120 0
+      X.stage X.before X.after X.entry_admitted X.entry_restored).
+    + unfold X.stage. lia.
+    + discriminate.
+    + discriminate.
+    + discriminate.
+    + intros m. exact I.
+  - iIntros "(Hstage & Ho & He)". destruct stdout.
+    + iApply (query_return (query_name error) (query_class error) (query_handle true) _
+        with "Ho Herrno Hstage [He Hother]").
+      * destruct error; [right|left]; split; reflexivity.
+      * rewrite pts_app. iFrame.
+    + iApply (query_return (query_name error) (query_class error) (query_handle false) _
+        with "He Herrno Hstage [Ho Hother]").
+      * destruct error; [right|left]; split; reflexivity.
+      * rewrite pts_app. iFrame.
+Qed.
+
+End iris.
+End HelloQueryChecks.

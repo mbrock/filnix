@@ -2630,6 +2630,41 @@ native representation and full local-teardown composition remain next.
 It establishes partial correctness and resources, not native execution
 or termination. No interpreter, contract or runtime axiom changes.
 
+### Campaign 4 milestone 6s: pointer-universal query binding
+
+permission_query_frame matches HelloClose's ordinary query postcondition
+for ferror/W and __fpending/L. The actual owned pointer, including its
+capability, selects a registered descriptor through permission_known;
+the existing paired query frame restores both stream interpretations,
+and the supplied machine's invocation lemma gives a singleton canonical
+result. ferror may return any canonical nonzero W value for a sticky
+error. __fpending returns the physical L count, not logical FIFO length.
+The authoritative heap is unchanged, but native memory need not be.
+The post-frame theorem needs no four-byte errno-length premise.
+
+The stage-sensitive control proves interpretation compatibility rather
+than assuming it: actual permission ownership contradicts the fresh
+before branch, while the after-stage lookup survives because h is
+unchanged. Four logical invocations cover both queries on both handles,
+including sticky error 17 and physical pending seven versus FIFO two.
+Admission and the endpoint interpretation come from an inhabited entry
+fixture, not an assumed query postcondition. Unknown, wrong-capability
+and closed-permission rejection controls remain in LibcStreamAdapter.
+
+The same-instance entry/query/return WP control consumes the before-stage
+ticket, allocates both open permissions and applies the existing
+HelloClose contract bridge. It returns the selected and opposite stream
+permissions, unchanged owned errno, after-stage ticket and unrelated
+ownership. Its concrete registry and empty fixture genv discharge actual
+outside/unbound facts; it does not pretend to instantiate hello_linked
+for that genv or add a new exported query WP principle.
+
+These are contract/resource controls, not native locking-write executions
+or progress/termination evidence. Returning diagnostic binding, actual
+registered callback selection and main-exit transport, native realization
+and full teardown remain open. No trusted contract, interpreter, runtime
+axiom, Machine theorem or Campaign 3-owned source changes.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted
