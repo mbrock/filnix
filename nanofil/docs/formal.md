@@ -2330,6 +2330,38 @@ and do not yet discharge the complete HelloClose premises or native FILE
 realization. Changed-errno/resource close executions and ghost/world
 coherence remain integration evidence to construct.
 
+### Campaign 4 milestone 6k: world-owned callback observations
+
+[LibcStreamAdapter.v](../rocq/theories/LibcStreamAdapter.v) defines
+snapshot-indexed stream_ps and closed_ps with a separate leading native
+life piece. The VStream ghost value records the exact handle and either
+an open physical count and logical FIFO, or a closed observation. The
+closed observation requires inactive lookup and an empty outstanding
+FIFO, but does not fix orientation, error or the retired physical count;
+it does not assert that a particular fclose execution occurred.
+
+The paired stream_tokens_wi checks current reserved-key values, not a
+fixed entry snapshot. Absent keys impose no snapshot obligation; malformed
+or stale present values are rejected. It requires distinct handle bases
+and keys, fixed stdout/stderr identities, both private-memory frames on
+the life-projected heap, and release separation on the full heap. Its
+SafepointStable proof takes explicit native represented-readiness
+stability. LibcStreamAdapterOn uses the consumer's exact logic instance.
+
+Fresh snapshot allocation uses Iris's authoritative heap and retains an
+already-owned life piece. It proves the selected mirror, not the complete
+callback-entry interpretation. Ownership plus the full interpretation
+derives ordinary stream-call admission without an additional assumed-open
+premise. The full interpretation has a logical fixture with both open
+tokens, native lives and owned errno. Controls independently reject a
+wrong physical count, reversed FIFO, premature closed token and malformed
+value; the physical count is seven while the FIFO has two bytes.
+
+Full query/fclose preservation of the paired interpretation, initial
+life-resource transfer, changed-errno/resource executions, native FILE
+realization and the returning-diagnostic binding remain integration work.
+No HelloClose statement or runtime law changes in this milestone.
+
 ### Reached-call contract packages and remaining integration
 
 [Getopt.v](../rocq/theories/Getopt.v) supplies independently admitted
