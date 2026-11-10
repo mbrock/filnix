@@ -928,8 +928,26 @@ i ≤ j ≤ len. Main reads the result as a wide string with
 
 rpl_mbsrtowcs's entry (start to L28) is not proved yet. It loads the
 greeting pointer through srcp, and the greeting may be a read-only
-literal, which only HelloVersion's `wp_raw_load_literal` can load.
-That rule awaits its Oracle review.
+literal. Logic.v's `wp_raw_load_pointer_in` now loads any pointer,
+read-only literals included. It promotes HelloVersion's
+`wp_raw_load_literal` after Oracle review:
+- the cell may be reached through a read-write or a read-only
+  capability;
+- the life of the object the loaded capability names is any
+  `(PLive xb, VLive xr)` among pieces the caller already owns;
+- capabilities for no object, a function or an external need no life.
+
+Its proof rests on Pieces.v's `aux_holds_kept`: a stored capability
+whose object is not freed is exactly what the slot holds.
+`wp_raw_load_pointer` stays as it is for its callers.
+
+**Stream tokens.** The ghost heap gains a value
+`VStream p pending` for Campaign 4's stream adapter. Its key is a
+name, and `pending` is `Some (count, fifo)` while the stream is open
+and `None` once it is closed. Like a codec, it agrees with every memory,
+and only the world interpretation reads it. It is not a `VName`, so
+`lent_current`, which constrains every `VName` in the heap, says
+nothing about it. A stream's handle keeps its own `PLive` piece.
 
 ## Open questions for mbrock
 

@@ -121,6 +121,12 @@ Proof.
   destruct Hc as [Hc|Hc]; [|discriminate]. injection Hc as <-. congruence.
 Qed.
 
+(** A capability whose object is not freed is exactly what the slot
+    holds: the collector rewrites only freed objects' capabilities. *)
+Lemma aux_holds_kept : forall m a c,
+  aux_holds m a c -> ~ freed_in (m_regions m) c -> m_aux m a = c.
+Proof. intros m a c [E | (Hf & _)] Hn; [exact E | contradiction]. Qed.
+
 (** ## Bytes *)
 
 (** A store of size bytes at a leaves every other byte. *)

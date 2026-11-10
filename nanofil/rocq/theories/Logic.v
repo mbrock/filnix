@@ -135,7 +135,7 @@ Proof.
   { intros b' o P H reg' E L. rewrite Ho in E. destruct (Z.eqb_spec b' b) as [->|Hne].
     - injection E as <-. discriminate L.
     - exact (H reg' E L). }
-  destruct l as [b'|b' o|b' o|k], v as [reg'|y|c| |q t|cd]; cbn [agree_piece] in Ha |- *; try contradiction;
+  destruct l as [b'|b' o|b' o|k], v as [reg'|y|c| |q t|cd|sq sp]; cbn [agree_piece] in Ha |- *; try contradiction;
     try exact I.
   - destruct Ha as [E L]. split; [|exact L]. rewrite Ho. destruct (Z.eqb_spec b' b) as [->|]; [congruence|exact E].
   - exact (Hreg _ Ha).
@@ -667,6 +667,50 @@ Proof.
       rewrite (aux_holds_live _ _ _ (aux_piece_holds _ _ _ _ _ Hlv Hax) Hcf).
       destruct x; reflexivity.
   - iNext. iIntros "(Hl & Hc & Hcap)". iApply ("HK" with "Hl Hc Hcap").
+Qed.
+
+(** A raw pointer load by the plain protocol, as [wp_raw_load_pointer],
+    through a read-write or read-only capability for the cell's object,
+    where the life of the object x's capability names, if any, is among
+    pieces ps the caller already owns: the collector cannot rewrite a
+    capability whose object is live, read-only or not, and capabilities
+    for no object, a function or an external are never rewritten. *)
+Lemma wp_raw_load_pointer_in f e ls l d off args rest j classes p b reg o x ps Φ :
+  op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
+  raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
+  0 <= ptr_addr x < 2 ^ 64 ->
+  (forall xb, ptr_cap x = Obj xb \/ ptr_cap x = Ro xb -> exists xr, (PLive xb, VLive xr) ∈ ps) ->
+  live b reg -∗ pcell b o x -∗ pts ps -∗
+  ▷ (live b reg -∗ pcell b o x -∗ pts ps -∗
+     WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+       (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
+       : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp Ha Hal Hrange Hlife. iIntros "Hl Hc Hps HK".
+  iApply (wp_read_with (live b reg ∗ pcell b o x ∗ pts ps)
+            (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
+                      all_agree m (cell b o (ptr_addr x)) /\ all_agree m ps)
+            _ _ [] with "[$Hl $Hc $Hps] [HK]").
+  - iIntros (σ) "Hσ (Hl & Hc & Hps)".
+    iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (pts_facts with "Hσ Hc") as %([Hax Hcl] & _).
+    iDestruct (pts_facts with "Hσ Hps") as %(Hps & _). iPureIntro. auto.
+  - intros m fuel (Hlv & Hax & Hcl & Hps). destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    assert (Hkept : ~ freed_in (m_regions m) (ptr_cap x)).
+    { intros (xb & xr' & Hcx & Hreg & Hfr). destruct (Hlife xb Hcx) as [xr Hin].
+      destruct (all_agree_elem _ _ _ _ Hps Hin) as [E L].
+      rewrite E in Hreg. injection Hreg as <-. congruence. }
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    apply op_raw_load_pointer.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | exact Hal].
+    + rewrite pointer_load_plain Ha (cell_load m b reg o (ptr_addr x) (b + o) Hlv Hcl eq_refl).
+      rewrite Z.mod_small; [|exact Hrange]. unfold aux_at.
+      rewrite (aux_holds_kept _ _ _ (aux_piece_holds _ _ _ _ _ Hlv Hax) Hkept).
+      destruct x; reflexivity.
+  - iNext. iIntros "(Hl & Hc & Hps)". iApply ("HK" with "Hl Hc Hps").
 Qed.
 
 (** A raw store of the long v', which v reads as, through the proven
