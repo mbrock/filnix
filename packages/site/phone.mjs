@@ -1,6 +1,6 @@
 // No page of the built site scrolls sideways on a phone.
 //
-//   node packages/site/phone.mjs SITE [--all | PAGE.html...] [WIDTH...]
+//   node packages/site/phone.mjs SITE_OR_URL [--all | PAGE.html...] [WIDTH...]
 //
 // Serves SITE (the output of `nix build .#site`) and opens each page in
 // an iframe WIDTH pixels wide (default 320), in one agent-browser page,
@@ -32,8 +32,10 @@ const SAMPLE = [
 ];
 
 const [site, ...rest] = process.argv.slice(2);
-if (!site) throw new Error("Pass the built site's directory");
+if (!site) throw new Error("Pass the built site's directory or deployed URL");
+const remote = /^https?:\/\//.test(site);
 const all = rest.includes("--all");
+if (remote && all) throw new Error("--all requires a local site directory");
 const named = rest.filter((a) => a.endsWith(".html"));
 const widths = rest.filter((a) => /^\d+$/.test(a)).map(Number);
 if (!widths.length) widths.push(320);
@@ -42,16 +44,16 @@ if (!widths.length) widths.push(320);
 const page = (path) => !readFileSync(join(site, path), "utf8").includes('http-equiv="refresh"');
 const html = (dir) => readdirSync(join(site, dir)).filter((f) => f.endsWith(".html"))
   .filter((f) => statSync(join(site, dir, f)).isFile()).sort().map((f) => `${dir}/${f}`);
-const explainers = readdirSync(site).filter((d) => statSync(join(site, d)).isDirectory())
+const explainers = all ? readdirSync(site).filter((d) => statSync(join(site, d)).isDirectory())
   .map((d) => `${d}/index.html`).filter((f) => { try { return statSync(join(site, f)).isFile(); } catch { return false; } })
-  .filter((f) => !/^(docs|nanofil|nix)\//.test(f));
+  .filter((f) => !/^(docs|nanofil|nix)\//.test(f)) : [];
 const pages = all ? ["index.html", ...explainers, ...html("docs"), ...html("nanofil"), ...html("nanofil/docs"),
     ...html("nanofil/rocq"), ...html("nix")].filter(page)
   : named.length ? named : SAMPLE;
 
 const types = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript",
   ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".woff2": "font/woff2" };
-const server = createServer((req, res) => {
+const server = remote ? null : createServer((req, res) => {
   let path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^\/+/, "");
   if (path === "" || path.endsWith("/")) path += "index.html";
   try {
@@ -62,8 +64,22 @@ const server = createServer((req, res) => {
     res.writeHead(404); res.end();
   }
 });
-await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
-const base = `http://127.0.0.1:${server.address().port}`;
+let base;
+if (remote) {
+  // Follow the canonical URL into its immutable release before testing.
+  const response = await fetch(site, { method: "HEAD" });
+  if (!response.ok) throw new Error(`${site}: HTTP ${response.status}`);
+  base = new URL(".", response.url).href.replace(/\/$/, "");
+  for (const path of pages) {
+    const response = await fetch(`${base}/${path}`, { method: "HEAD" });
+    if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) {
+      throw new Error(`${path}: expected deployed HTML, got HTTP ${response.status}`);
+    }
+  }
+} else {
+  await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
+  base = `http://127.0.0.1:${server.address().port}`;
+}
 
 const session = `phone-${process.pid}`;
 // Asynchronously, so this process can serve the pages the browser asks for.
@@ -88,7 +104,7 @@ try {
           frame.style.cssText = "width:${width}px;height:700px;border:0;position:fixed;top:0;left:0";
           const loaded = new Promise((ok) => { frame.onload = ok; });
           state.page = page;
-          frame.src = "/" + page;
+          frame.src = ${JSON.stringify(`${base}/`)} + page;
           document.body.append(frame);
           await within(loaded);
           const doc = frame.contentDocument, win = frame.contentWindow;
@@ -128,6 +144,6 @@ try {
   }
 } finally {
   try { await browser("close"); } catch {}
-  server.close();
+  server?.close();
 }
 process.exit(failed ? 1 : 0);

@@ -1,0 +1,9 @@
+{
+  "name": "filnix-site",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-10",
+  "account_id": "d66b4fdcf8b2d4b0949d7fa3518b9b58",
+  "workers_dev": false,
+  "routes": [{ "pattern": "filnix.org", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "SITE", "bucket_name": "filnix-site" }]
+}

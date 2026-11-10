@@ -16,6 +16,7 @@ on:
       - "nanofil/web/**"
       - "nanofil/rocq/**"
       - "dterm-nix/**"
+      - "deploy/site/**"
       # Every Nix file is a page (dterm-nix), and the option index
       # evaluates the modules.
       - "**.nix"
@@ -40,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check the R2 serving contract
+        run: node --test deploy/site/worker.test.mjs
       - uses: cachix/install-nix-action@v31
       - name: Build the site
         run: |
@@ -92,6 +95,87 @@ jobs:
       - id: deploy
         if: steps.live.outputs.publish == 'true'
         uses: actions/deploy-pages@v4
+
+  # A separate destination during the trial: Pages above stays unchanged.
+  publish-r2:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    concurrency:
+      group: filnix-org
+      cancel-in-progress: false
+    environment:
+      name: filnix-org
+      url: https://filnix.org
+    outputs:
+      promoted: ${{ steps.publish.outputs.promoted }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+      - name: Unpack the same site as Pages
+        run: mkdir _site && tar -xf artifact.tar -C _site
+      - name: Upload, verify and atomically promote the R2 release
+        id: publish
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.FILNIX_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.FILNIX_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          GH_TOKEN: ${{ github.token }}
+        run: bash deploy/site/publish.sh
+
+  deployed-phone:
+    needs: publish-r2
+    if: needs.publish-r2.outputs.promoted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the public release and canonical promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(curl --retry 5 --retry-all-errors --retry-delay 5 -fsS \
+            "https://filnix.org/__releases/$GITHUB_SHA/commit.txt")" = "$GITHUB_SHA"
+          live=$(curl -fsS https://filnix.org/commit.txt)
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$live" --jq .status)
+          # A concurrent newer promotion is fine; a stale one is not.
+          case $status in ahead|identical) ;; *) echo "Unexpected live SHA: $live"; exit 1 ;; esac
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install the browser
+        run: |
+          python3 nanofil/tests/watch.py --label 'Browser install' -- \
+            npm install --global agent-browser@0.38.1
+          python3 nanofil/tests/watch.py --label 'Chromium install' -- \
+            agent-browser install --with-deps
+      - name: Check filnix.org at both phone widths
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label 'Live site at phone widths' -- \
+            node packages/site/phone.mjs https://filnix.org/ 320 390 \
+            2>&1 | tee deployed-phone.log
+      - name: Check the deployed Rocq pages
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label 'Live Rocq phone pages' \
+            --warn-after 300 --timeout 900 -- \
+            node nanofil/web/rocq/tests/layout.mjs \
+            "https://filnix.org/__releases/$GITHUB_SHA" --pages-only 320 390 \
+            2>&1 | tee deployed-rocq-phone.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployed-phone-layout
+          retention-days: 3
+          path: deployed-*.log
+          if-no-files-found: ignore
 
   # The built site at phone widths. It reports and never holds back the
   # publish above: a red run is fixed forward.
