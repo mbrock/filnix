@@ -459,12 +459,9 @@ Definition lower_block (sy : symbols) (r : ret_type) (ret : protocol) (b : fbloc
     one zero word.
 
     The words zeroed are the aux of each cell that holds no pointer,
-    except when a float comes back: then filc_abi.pl zeroes only the
-    aux of the cells of the first float's class, since its test for
-    a float leaves `K` bound to that class when it lists the zeros.
-    So `tuple([l, s])` zeroes `aux(1)` and leaves `aux(0)` as it
-    was. This follows it, to give the same plan; it is reported as a
-    fault of the Prolog compiler (docs/gallina-backend.md, M2). *)
+    whatever else comes back: `tuple([l, s])` zeroes `aux(0)` and
+    `aux(1)`, so no stale aux word of the caller's reaches a result
+    read as a pointer. *)
 Definition adapter_return (r : ret_type) : option adapter_result :=
   let* ret := return_protocol r in
   let* ks := ret_kinds r in
@@ -477,11 +474,7 @@ Definition adapter_return (r : ret_type) : option adapter_result :=
   let zeros := match ks with
                | [] => [SrcData 0; SrcAux 0]
                | _ =>
-                   let zeroed := match find returned_float ks with
-                                 | Some float => class_eqb float
-                                 | None => fun k => negb (class_eqb k P)
-                                 end in
-                   flat_map (fun ik => if zeroed (snd ik) then [SrcAux (fst ik)] else [])
+                   flat_map (fun ik => if class_eqb (snd ik) P then [] else [SrcAux (fst ik)])
                             (indexed 0 ks)
                end in
   Some (mkAdapterResult ret channel (8 * Z.max 1 (Zlength ks)) copies zeros).

@@ -510,13 +510,14 @@ and they are passed over: 535 for `touch`, 12 for `asm_fixed`, 11
 for `fence`, 9 for `setjmp` and 9 for `raw_cas`. On SQLite all 3106
 plans and the thunks are the same, with nothing outside. Found:
 
-- `filc_abi.pl`'s `adapter_return/2` zeroes too few aux words when a
-  tuple with a float comes back. Its test for a float leaves `K`
-  bound to the first float's class, and the list of zeros then keeps
-  only the cells of that class. For `tuple([l, s])` the adapter
-  zeroes `aux(1)` and leaves `aux(0)` as it was. `Abi.v` follows it,
-  to give the same plan, and says so; the fix belongs in Prolog
-  first.
+- `filc_abi.pl`'s `adapter_return/2` zeroed too few aux words when a
+  tuple with a float came back. Its test for a float left `K` bound
+  to the first float's class, and the list of zeros then kept only
+  the cells of that class. For `tuple([l, s])` the adapter zeroed
+  `aux(1)` and left `aux(0)` as it was, which let a caller reading
+  the result as a pointer use a stale capability. Prolog is fixed
+  (21ca173), and `Abi.v`, which had followed it to give the same
+  plan, now zeroes the aux of every cell that holds no pointer.
 - `touch` is the pizlonated `access`, and it keeps a third of the
   corpus's functions out of the gate. It is the first construct to
   ask the model's owner for.
