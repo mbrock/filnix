@@ -17,7 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From iris.program_logic Require Import language weakestpre.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Pieces Heap Language Logic StringLogic MemLogic.
-From Nanofil Require WordBits.
+From Nanofil Require WordBits Symbolic.
 From Glibc Require Import OsBlocks OsWorld FileInv.
 Import ListNotations.
 Open Scope Z_scope.
@@ -103,31 +103,54 @@ Proof.
   apply Z.mod_pos_bound. lia.
 Qed.
 
-(** `c: _IO_ferror`'s test of `c: _IO_FLAGS2_NEED_LOCK` reads bit 7
-    of the 24-bit field `c: _flags2`, sign-extended by a shift left and
-    an arithmetic shift right by 8: bit 7 of the 4 bytes as loaded. *)
+(** A test of bit k, below 24, of the 24-bit field `c: _flags2`: the
+    4 bytes as loaded, sign-extended by a shift left and an arithmetic
+    shift right by 8, then masked by M, 2^k, read bit k of the bytes.
+    `c: _IO_ferror` tests `c: _IO_FLAGS2_NEED_LOCK` (bit 7) this way,
+    `c: _IO_new_file_write` `c: _IO_FLAGS2_NOTCANCEL` (bit 1). *)
+Lemma flags2_mask f2 M k : M = 2 ^ k -> 0 <= k < 24 -> 0 <= f2 < 2 ^ 32 ->
+  Z.land (((sign_extension (2 ^ 32) (2 ^ 31)
+              (((f2 mod 2 ^ 32 * 2 ^ ((8 mod 2 ^ 32) mod 32)) mod 2 ^ 32) mod 2 ^ 32) /
+            2 ^ ((8 mod 2 ^ 32) mod 32)) mod 2 ^ 32) mod 2 ^ 32) (M mod 2 ^ 32) = Z.land f2 M.
+Proof.
+  intros -> Hk H. change ((8 mod 2 ^ 32) mod 32) with 8.
+  rewrite (Z.mod_small (2 ^ k)); [|split; [lia | apply Z.pow_lt_mono_r; lia]].
+  rewrite (Z.mod_small f2); [|lia..]. rewrite !Z.mod_mod; [|lia..].
+  apply Z.bits_inj'. intros i Hi. rewrite !Z.land_spec.
+  destruct (Z.eq_dec i k) as [->|Hne].
+  - f_equal. rewrite Z.mod_pow2_bits_low; [|lia..].
+    rewrite Z.div_pow2_bits; [|lia..]. unfold sign_extension. rewrite Z.mod_mod; [|lia..].
+    assert (Hl : forall l, 0 <= l < 2 ^ 32 -> Z.testbit (l - 2 ^ 32) (k + 8) = Z.testbit l (k + 8)).
+    { intros l Hl. rewrite <- (Z.mod_pow2_bits_low (l - 2 ^ 32) 32 (k + 8)); [|lia..].
+      f_equal. rewrite Zminus_mod Z_mod_same_full Z.sub_0_r !Z.mod_mod; [|lia..]. apply Z.mod_small. exact Hl. }
+    assert (Hb : 0 <= (f2 * 2 ^ 8) mod 2 ^ 32 < 2 ^ 32) by (apply Z.mod_pos_bound; lia).
+    assert (Hm : Z.testbit ((f2 * 2 ^ 8) mod 2 ^ 32) (k + 8) = Z.testbit f2 k).
+    { rewrite (Z.mod_pow2_bits_low _ 32 (k + 8)); [|lia]. rewrite (Z.mul_pow2_bits f2 8 (k + 8)); [|lia].
+      f_equal. lia. }
+    destruct (2 ^ 31 <=? _).
+    + rewrite (Hl _ Hb). exact Hm.
+    + exact Hm.
+  - rewrite Z.pow2_bits_false; [|lia..]. rewrite !andb_false_r. reflexivity.
+Qed.
+
+(** The bitwise or of two 32-bit ints is one. *)
+Lemma lor_lt32 a b : 0 <= a < 2 ^ 32 -> 0 <= b < 2 ^ 32 -> 0 <= Z.lor a b < 2 ^ 32.
+Proof.
+  intros Ha Hb. assert (Hn : 0 <= Z.lor a b) by (apply Z.lor_nonneg; lia).
+  split; [exact Hn|]. destruct (Z.eq_dec (Z.lor a b) 0) as [E|E]; [rewrite E; lia|].
+  apply Z.log2_lt_pow2; [lia|]. rewrite Z.log2_lor; [|lia..].
+  assert (Z.log2 a < 32) by (destruct (Z.eq_dec a 0) as [->|]; [reflexivity | apply Z.log2_lt_pow2; lia]).
+  assert (Z.log2 b < 32) by (destruct (Z.eq_dec b 0) as [->|]; [reflexivity | apply Z.log2_lt_pow2; lia]).
+  lia.
+Qed.
+
+(** `c: _IO_ferror`'s test of `c: _IO_FLAGS2_NEED_LOCK`: [flags2_mask]
+    at bit 7. *)
 Lemma flags2_bit7 f2 : 0 <= f2 < 2 ^ 32 ->
   Z.land (((sign_extension (2 ^ 32) (2 ^ 31)
               (((f2 mod 2 ^ 32 * 2 ^ ((8 mod 2 ^ 32) mod 32)) mod 2 ^ 32) mod 2 ^ 32) /
             2 ^ ((8 mod 2 ^ 32) mod 32)) mod 2 ^ 32) mod 2 ^ 32) (128 mod 2 ^ 32) = Z.land f2 128.
-Proof.
-  intros H. change ((8 mod 2 ^ 32) mod 32) with 8. change (128 mod 2 ^ 32) with 128.
-  rewrite (Z.mod_small f2); [|lia..]. rewrite !Z.mod_mod; [|lia..].
-  apply Z.bits_inj'. intros i Hi. rewrite !Z.land_spec.
-  destruct (Z.eq_dec i 7) as [->|Hne].
-  - f_equal. rewrite Z.mod_pow2_bits_low; [|lia..]. change (2 ^ 8) with (2 ^ 8).
-    rewrite Z.div_pow2_bits; [|lia..]. unfold sign_extension. rewrite Z.mod_mod; [|lia..].
-    assert (Hl : forall l, 0 <= l < 2 ^ 32 -> Z.testbit (l - 2 ^ 32) 15 = Z.testbit l 15).
-    { intros l Hl. rewrite <- (Z.mod_pow2_bits_low (l - 2 ^ 32) 32 15); [|lia..].
-      f_equal. rewrite Zminus_mod Z_mod_same_full Z.sub_0_r !Z.mod_mod; [|lia..]. apply Z.mod_small. exact Hl. }
-    assert (Hb : 0 <= (f2 * 2 ^ 8) mod 2 ^ 32 < 2 ^ 32) by (apply Z.mod_pos_bound; lia).
-    assert (Hm : Z.testbit ((f2 * 2 ^ 8) mod 2 ^ 32) 15 = Z.testbit f2 7).
-    { rewrite (Z.mod_pow2_bits_low _ 32 15); [|lia]. rewrite (Z.mul_pow2_bits f2 8 15); [|lia]. reflexivity. }
-    change (7 + 8) with 15. destruct (2 ^ 31 <=? _).
-    + rewrite (Hl _ Hb). exact Hm.
-    + exact Hm.
-  - change 128 with (2 ^ 7). rewrite Z.pow2_bits_false; [|lia..]. rewrite !andb_false_r. reflexivity.
-Qed.
+Proof. apply (flags2_mask f2 128 7); [reflexivity | lia]. Qed.
 
 (** ## Arithmetic *)
 
@@ -186,13 +209,31 @@ Ltac innermost X :=
 (** Decide a goal of integer tests, such as a branch condition, by
     a case on each test and arithmetic. *)
 Ltac decide_ints :=
-  unwrap;
+  unfold sign_extension; cbv zeta; unwrap;
   repeat match goal with
     | |- context [?x =? ?y] => innermost x; innermost y; destruct (Z.eqb_spec x y); cbn [negb andb orb]
     | |- context [?x <? ?y] => innermost x; innermost y; destruct (Z.ltb_spec x y); cbn [negb andb orb]
     | |- context [?x <=? ?y] => innermost x; innermost y; destruct (Z.leb_spec x y); cbn [negb andb orb]
     end;
   first [reflexivity | exfalso; clear_junk; first [lia | Z.div_mod_to_equations; lia]].
+
+(** ## Values of an environment with an unknown tail *)
+
+(** A value premise of a step, such as `c: map2_option (value_x ge e)
+    classes args = Some xs`: computed when e is known; when e is a
+    run of [put]s over an unknown env, as at a loop's head, each
+    [lookup] is taken through the [put]s ([Symbolic.lookup_after_put])
+    and, past them, from a hypothesis `c: lookup k e = Some x`. *)
+Ltac vx :=
+  first
+    [ reflexivity
+    | cbn -[put];
+      repeat (rewrite Symbolic.lookup_after_put;
+              lazymatch goal with |- context [name_eqb ?a ?b] =>
+                let r := eval vm_compute in (name_eqb a b) in change (name_eqb a b) with r end;
+              cbn beta iota);
+      repeat match goal with H : lookup ?k ?e = Some _ |- context [lookup ?k ?e] => rewrite H end;
+      reflexivity ].
 
 (** ## Steps over a Logic instance *)
 
@@ -202,31 +243,43 @@ Ltac decide_ints :=
 Module LibioStepOn (R : Runtime) (LG0 : LogicSig R).
 Import LG0.
 
+(** The point of the frame the goal's weakest precondition runs, given
+    to the tactic k: the hypotheses, which may hold other frames, are
+    not looked at. *)
+Ltac with_at k :=
+  lazymatch goal with |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ ?a)) _) => k a end.
+
 (** Enter the start block of a frame. *)
-Ltac enter := iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]].
+Ltac enter := iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]].
 
 (** A check, its bounds by arithmetic, with the object's life H. *)
 Ltac chk H :=
-  lazymatch goal with
-  | |- context [Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _] =>
-      iApply (wp_check with H); [reflexivity | reflexivity | reflexivity | ar | ar | ar |]
-  | |- context [Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _] =>
+  with_at ltac:(fun a => lazymatch a with
+  | Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _ =>
+      iApply (wp_check with H); [reflexivity | vx | reflexivity | ar | ar | ar |]
+  | Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _ =>
       iApply (wp_half_check with H);
-        [reflexivity | reflexivity | reflexivity | reflexivity | ar | ar | lia | ar | ar |]
-  | |- context [Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _] =>
-      iApply (wp_renew with H); [reflexivity | reflexivity | reflexivity | reflexivity | ar | ar | ar |]
-  end;
+        [reflexivity | vx | reflexivity | reflexivity | ar | ar | lia | ar | ar |]
+  | Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _ =>
+      iApply (wp_renew with H); [reflexivity | vx | reflexivity | reflexivity | ar | ar | ar |]
+  end);
   iNext; iIntros H.
 
 (** A branch on a closed condition: computed. *)
 Ltac br :=
-  iApply wp_branch; [reflexivity | iNext];
+  iApply wp_branch; [vx | iNext];
   lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
     let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
 
+(** A branch on an unknown condition: both ways, as two goals. *)
+Ltac brc :=
+  iApply wp_branch; [vx | iNext];
+  lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] => destruct (n =? 0) end;
+  cbn [edge_label].
+
 (** A branch whose condition is b, by [decide_ints]. *)
 Ltac brv b :=
-  iApply wp_branch; [reflexivity | iNext];
+  iApply wp_branch; [vx | iNext];
   lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] =>
     let E := fresh "E" in assert (E : (n =? 0) = b) by decide_ints; rewrite E; clear E end;
   cbn [edge_label].
@@ -234,12 +287,12 @@ Ltac brv b :=
 (** One step whose premises reduce: a pure let, a flight, entering a
     block, or a goto. The values stay symbolic. *)
 Ltac st :=
-  lazymatch goal with
-  | |- context [Exec _ (Let _ _ _ _ :: _) _] =>
-      iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; cbn; reflexivity | iNext]
-  | |- context [Exec _ (Flight _ _ _ _ :: _) _] => iApply wp_flight; [reflexivity | reflexivity | reflexivity | iNext]
-  | |- context [Enter _ _] => iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-  | |- context [Exec _ [] (JGoto _)] => iApply wp_goto; iNext
-  end.
+  with_at ltac:(fun a => lazymatch a with
+  | Exec _ (Let _ _ _ _ :: _) _ =>
+      iApply wp_let; [reflexivity | reflexivity | vx | intros ?; cbn; reflexivity | iNext]
+  | Exec _ (Flight _ _ _ _ :: _) _ => iApply wp_flight; [vx | reflexivity | vx | iNext]
+  | Enter _ _ => iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]]
+  | Exec _ [] (JGoto _) => iApply wp_goto; iNext
+  end).
 
 End LibioStepOn.
