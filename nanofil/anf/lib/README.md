@@ -59,7 +59,7 @@ process.
 The call returns 1 when rx.pl would not compile a pattern,
 and `*out` is then the comment that rx.pl prints, such as
 `% m: unsupported: 'Ref'`. It also returns 1 when the terms cannot be
-read and when a function has more than 128 blocks. The stack that a
+read and when a function has more than 160 blocks. The stack that a
 compile needs grows with a function's blocks, as the last section
 says, and its time grows about as their square. So a larger pattern is
 left to PCRE2's interpreter, as rxc leaves a pattern that takes more
@@ -179,7 +179,7 @@ runtime defines. `ANF_BENCH="rx.ir lvm.ir"` also times those files.
 ## Results
 
 All 795 compiles of the IR fixtures (53 fixtures, five commands, three
-rounds) and all 48 of the regex files (16 files, three rounds) give
+rounds) and all 54 of the regex files (18 files, three rounds) give
 what their references give, with both nurseries, and the 28 shared
 objects load. Each check was shown to fail on a planted bug: a rewind
 to word 1 instead of the mark trapped with the small nursery, and
@@ -187,11 +187,11 @@ opening each image as `/proc/self/fd/N` made `--load` report an
 earlier image's handle.
 
 On rx.ir (PCRE2 10.49 compiled to IR, 367 KB), the library takes
-0.92 s for `compile`, 1.27 s for `compile-allocated` and 1.52 s for
+0.93 s for `compile`, 1.24 s for `compile-allocated` and 1.45 s for
 `shared-allocated`, whose shared object is 144 KB. rx.pl makes 1,362
 functions of up to 128 blocks of PCRE2's own tests. Each was compiled
 alone in a new process, where the first call also makes the arena, and
-the regex command took a median of 19 ms and at most 154 ms.
+the regex command took a median of 18 ms and at most 150 ms.
 
 ## The stack
 
@@ -206,14 +206,22 @@ rewrite, rx.ir's shared object needed between 16 and 24 MB of stack,
 and now it needs 4 MB. `compile-allocated` of rx.ir runs on 1 MB.
 
 Order.v's merges, which Crane extracts to loops, are still as deep as
-their lists in the λANF build, and they bound the regex command. Every
-function of up to 133 blocks among PCRE2's tests compiles on a 1 MB
-stack, a function of 248 blocks needs more than 6 MB, and one of 412
-blocks overflows 8 MB. So the command takes functions of up to 128
-blocks, which leaves a compile room on any thread.
+their lists in the λANF build, and they bound the regex command.
+Since compile-allocated's frames hold only what a function spills, a
+level of `merge_steps` takes about 272 bytes instead of about 600, and
+rx.ir's shared object needs 2 MB of stack instead of 4. Every function
+of up to 170 blocks among PCRE2's tests compiles on a 1 MB stack, and
+every one of up to 247 blocks on 2 MB. A function of 248 blocks needs
+more than 2 MB, and one of 412 blocks, which recurses 28,968 deep in
+`merge_steps`, needs between 8 and 12 MB. So the command takes
+functions of up to 160 blocks, which compile on a 1 MB stack, and
+leaves 23 of the 1,391 functions of PCRE2's tests to the interpreter.
 
-Fil-C's `zthread_create2` calls `pthread_create` without attributes,
-so `pthread_attr_setstacksize` has no effect: a thread's stack follows
-`ulimit -s`, or is 2 MB when that is unlimited. A caller that compiles
-large modules on a thread must raise that limit before the thread
-starts.
+A thread's stack under Fil-C is fixed by the stack limit when the
+process starts. Fil-C's `zthread_create2` calls `pthread_create`
+without attributes, so `pthread_attr_setstacksize` has no effect, and
+a `setrlimit` in the process leaves the threads created after it at the
+old size too. A thread gets `ulimit -s` of the shell that started the
+process, or 2 MB when that is unlimited. So a caller cannot run a
+compile on a thread with a larger stack, and the regex command's bound
+on blocks is what keeps a compile within the stack it is given.

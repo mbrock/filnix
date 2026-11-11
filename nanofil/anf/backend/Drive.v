@@ -154,7 +154,7 @@ Fixpoint rx_parts (os : list Rx.outcome) (acc : list term) (why : list string) :
     rx.pl makes of PCRE2's own tests that is within this bound compiles
     on a 1 MB stack. A larger pattern is left to PCRE2's interpreter,
     as rxc leaves one that takes more than 10 seconds. *)
-Definition regex_max_blocks : nat := 128.
+Definition regex_max_blocks : nat := 160.
 
 (** The name and the number of blocks of a function's term. *)
 Definition func_size (f : term) : string * nat :=

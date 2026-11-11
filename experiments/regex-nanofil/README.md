@@ -238,7 +238,7 @@ below under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
   compiles the same pattern many times pays more in process.
 - The functions run as fast as the cached ones.
 - A pattern that rx.pl does not compile stays on the interpreter, and
-  so does one whose function has more than 128 blocks.
+  so does one whose function has more than 160 blocks.
 - Fil-C's `dlclose` leaves a shared object loaded. So the object of
   each pattern compiled, from 13 to 140 KB, stays mapped until the
   process exits, even after the code is freed.
