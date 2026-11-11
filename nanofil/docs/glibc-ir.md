@@ -26,13 +26,10 @@ whose module contains glibc's own code:
 ## The pipeline
 
 1. **glibc's units.** [survey/glibc/capture.nix](../survey/glibc/capture.nix)
-   keeps each preprocessed unit of the staging user glibc. The
-   fixtures here were made with each unit's `.filc_*` module asm
-   dropped, as `run.py --drop-filc-asm` does. Then `nanofil -O`
-   compiles `string/strlen.os` and `io/write.os` like any C file.
-   nanofil on main now reads those directives, which gives glibc's
-   real `__GI_` names; the fixtures have not been regenerated with
-   them yet.
+   keeps each preprocessed unit of the staging user glibc. `nanofil -O`
+   compiles `string/strlen.os` and `io/write.os` like any C file, its
+   `.filc_*` module asm intact, so the IR carries glibc's real
+   aliases and `__GI_` names.
 2. **Linking.** [link.pl](../rocq/scripts/link.pl) links the program's checked
    module with the units' modules from `main`. glibc defines `__strlen`
    and the alias `strlen`, so the linker now reads aliases: an alias is a
@@ -65,7 +62,7 @@ run by hand.
 ## Assumption G1: the proofs are about nanofil's IR of glibc
 
 Every theorem here is about the module that nanofil compiles from
-user glibc's preprocessed units, with `.filc_*` asm dropped. The
+user glibc's preprocessed units, with their `.filc_*` asm. The
 programs these proofs describe run with filcc's `libc.so`, which is
 built from the same sources by filcc's LLVM pass. The theorems carry
 over to a native run only if both compilers give each glibc function
@@ -169,9 +166,10 @@ which needs a 2 GiB buffer, and the log-descriptor assertion.
   then every word through the one holding the NUL. That stays in
   bounds because filcc gives a 13-byte literal a 16-byte object, and
   the model's layout rounds data to 8. `wp_glibc_strlen` states it as
-  its ownership and bounds premise. StringLogic.v's `string` owns
-  bytes through the NUL only, so a caller holding a `string` needs the
-  bytes after it too; no lemma gives them yet.
+  its ownership and bounds premise.
+  [WordString.v](../rocq/glibc/string/WordString.v)'s `word_string`
+  states a C string in those terms, and StrlenWord.v proves the triple
+  over it at any share (`wp_glibc_strlen_ws`).
 - **The libc boundary moves, but no new dispatch is needed.** Linking
   takes care of it, as zsys.md predicted.
 - **`errno` is the first callback.** Naming the handler's effect as a
@@ -187,15 +185,13 @@ which needs a 2 GiB buffer, and the log-descriptor assertion.
 
 ## Next steps
 
-1. Done: `wp_glibc_strlen`. Left: a bridge from StringLogic.v's
-   `string` (bytes through the NUL) to its words, so Campaign 4's
-   `strlen_contract` callers can use it.
-2. The other leaf functions Hello calls that reach no primitive
-   (`strcmp`, `memchr`, the ctype tables), the same way.
-3. `printf` only after these. It pulls in the stdio core of about 357
-   symbols, with its locks, vtables and locale.
-4. Regenerate the fixtures with the `.filc_*` directives kept, now
-   that nanofil reads them, and drop the rewrite in code.sh.
+This spike's steps are done: the strlen triple, the `word_string`
+bridge to it, and the fixtures regenerated with the `.filc_*`
+directives kept. The leaf functions (`strcmp`, `memchr`, the ctype
+tables, malloc), libio and exit, and later `printf`, are milestones of
+the campaign to prove GNU Hello over user glibc (its Campaign Ledger),
+which builds on these files. The leaf fixtures are in
+[rocq/glibc/string](../rocq/glibc/string/code.sh).
 
 ## Decisions this raises
 
