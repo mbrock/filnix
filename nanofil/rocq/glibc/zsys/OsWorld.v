@@ -1,47 +1,53 @@
-(** The OS world of user glibc's calls into libpizlo's `zsys_*`
-    functions ([[external call|contracts]] [OsWrite](OsWrite.v) to
-    [OsThread](OsThread.v), [OsRegistry](OsRegistry.v)), its world
-    interpretation [os_wi], and the lending of `c: errno` to a call.
+(** Userland glibc makes system calls by calling libpizlo's `zsys_*`
+    functions, such as `c: zsys_write`, `c: zsys_fstat`, and
+    `c: zsys_close`. Those functions form the [[external call|contract]]
+    boundary between compiled C code and the Fil-C [[runtime]], collected
+    in [OsRegistry](OsRegistry.v). This module models the thread and
+    file-descriptor state that `zsys_*` calls share and proves the
+    separation-logic rules for calling them.
 
     ## The world
 
-    [os_world] keeps what no Fil-C code of the module owns: the calling
-    thread's `c: errno` cell ([ow_errno]), its thread cookie
-    ([ow_self], what `c: zthread_self_cookie()` returns: user glibc's
-    `c: struct pthread`), libpizlo's log descriptor ([ow_log_fd]) and
-    the descriptors the program uses ([ow_fds], none of them the log
-    descriptor, so `c: check_fd(fd)` never fires). The world is fixed
-    for a run: no contract here changes it, so [os_wi] w0 pins it to w0
-    and a rule can name w0's errno cell and cookie.
+    A `zsys_*` wrapper in libpizlo can read or write four pieces of state
+    outside the caller's own stack and heap buffers, recorded in
+    [os_world]. It can set the calling thread's `c: int errno` variable on
+    error, read the thread cookie that points to userland glibc's
+    `c: struct pthread`, and check file descriptors against libpizlo's
+    internal log descriptor. Every file descriptor that the program passes
+    to a system call is distinct from that log descriptor, so
+    `c: check_fd(fd)` never panics. Because none of the system-call
+    wrappers replace these pointers or descriptor lists, [os_wi] pins the
+    world state to a fixed `w0` for the entire run.
 
-    ## A permanent errno
+    ## Why errno needs no apartness premise
 
-    `c: __thread int errno` (csu/errno.c) is `tls(export)` data, which
-    Run.v's [initial_memory] lays out as a 16-aligned [GlobalData]
-    region with an [Obj] capability ([permanent_errno]). Nothing frees
-    a [GlobalData] object: free ([lifetime_step]) and a call's
-    [local_effect] end only live [Heap] objects, and a safepoint ends
-    none ([collector_live]). So [os_wi] needs no apartness of the errno
-    span from the program's pieces ([roots_apart]), unlike an apartness-based
-    world invariant: it reads only regions and the world, and survives stores
-    ([os_wi_store]), safepoints ([os_wi_stable]), allocations
-    ([os_wi_alloc]), frees ([os_wi_free], [os_wi_lifetime]) and calls
-    of these contracts ([os_call_return]). One clause reads the ghost
-    heap: a life token of errno's object, if the program owns one, is
-    a [GlobalData] one ([errno_life_global]), which is what tells
-    [wp_free]'s premise that a freed heap object is not errno's.
+    In userland glibc, `c: __thread int errno` is exported thread-local
+    data that [Run](../../theories/core/Run.v) places in a 16-byte-aligned
+    global-data region with a writable capability at program start. In
+    Fil-C, global-data regions are never deallocated: `c: free` and
+    external calls only deallocate heap regions, and garbage-collection
+    safepoints do not deallocate any region the program can reach.
 
-    ## Lending errno
+    Because `c: errno` lives in global data and can never be freed by
+    `c: free` or the garbage collector, the world interpretation [os_wi]
+    remains valid across every memory store, heap allocation,
+    deallocation, and safepoint. Callers never have to prove that ordinary
+    heap allocations or deallocations avoid `c: errno`; they only lend the
+    4-byte `c: errno` buffer when making a system call that can write an
+    error code into it.
 
-    The program owns errno as a block: its 4 bytes and the 4 [[aux]]
-    slots at the same offsets ([errno_own], [errno_any]), since
-    ContractFrame.v's [pieces_off] asks of every byte and aux piece at
-    an address the call may write, and Heap.v's [obj_ps] has an aux
-    piece at every offset. A call whose writable roots lie in errno and
-    in other owned blocks ([blk_any]; `c: struct stat`, an ioctl
-    argument) borrows them and hands them back with whatever the call
-    left there ([os_call_return], through Logic.v's
-    [prefix_agrees_out] and Heap.v's [pts_update]). *)
+    ## Borrowing errno and output buffers
+
+    When a `zsys_*` call can write into caller memory, such as setting
+    `c: errno` on failure or filling a `c: struct stat` buffer, the caller
+    lends ownership of those memory blocks from [OsBlocks](OsBlocks.v) for
+    the duration of the call. When the call returns, [os_call_return]
+    updates the borrowed blocks to the bytes and [[aux]] capabilities the
+    call wrote into physical memory and hands them back to the caller,
+    while every other piece the caller owns remains unchanged. From that
+    update, the module derives [wp_os_call] for calls that write output
+    buffers, [wp_os_errno_call] for calls that also set `c: errno`, and
+    [wp_os_noreturn] for calls that exit the process. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -55,59 +61,68 @@ Open Scope Z_scope.
 
 (** ## The world *)
 
-(** What a `zsys_*` call reaches outside the module's Fil-C code. *)
+(** The [os_world] record holds the thread and file-descriptor state
+    outside a C module that `zsys_*` calls read or check. *)
 Record os_world : Type := mkOsWorld {
-  ow_errno : option ptr;  (* the calling thread's `c: int errno` cell, once allocated *)
-  ow_self : ptr;          (* the thread's cookie: user glibc's `c: struct pthread` *)
-  ow_log_fd : option Z;   (* libpizlo's log descriptor, if it logs to a file *)
-  ow_fds : list Z         (* the descriptors the program uses *)
+  ow_errno : option ptr;  (* pointer to the calling thread's `c: int errno` cell, once allocated *)
+  ow_self : ptr;          (* the thread cookie returned by `c: zthread_self_cookie()` (userland glibc's `c: struct pthread`) *)
+  ow_log_fd : option Z;   (* libpizlo's internal log descriptor, if logging to a file *)
+  ow_fds : list Z         (* file descriptors the program uses *)
 }.
 
-(** The 4-byte span of the thread's `c: errno`, if it has one: the
-    writable root every failing call needs (`c: filc_set_errno`). *)
+(** When the calling thread has an `c: errno` pointer, [errno_spans]
+    returns its 4-byte writable span, which every failing system-call
+    wrapper writes through `c: filc_set_errno`. *)
 Definition errno_spans (w : os_world) : list span :=
   match ow_errno w with Some p => [mkSpan p 4] | None => [] end.
 
-(** Errno's cell p is the base of a live, never-freed object: a
-    nonzero, 4-aligned [GlobalData] object of at least 4 bytes, through
-    its [Obj] capability. *)
+(** A pointer satisfies [permanent_errno] when it points through a
+    writable object capability to the base of a live, non-null,
+    4-byte-aligned global-data object of at least 4 bytes. *)
 Definition permanent_errno (m : mem) (p : ptr) : Prop :=
   exists eb reg, p = mkPtr eb (Obj eb) /\ eb <> 0 /\ eb mod 4 = 0 /\ live_at m eb reg /\
     r_kind reg = GlobalData /\ eb + 4 <= r_end reg.
 
-(** The cookie p, if not null, names a registered object. *)
+(** The thread cookie satisfies [self_registered] when, if non-null, any
+    object capability it carries is registered in memory. *)
 Definition self_registered (m : mem) (p : ptr) : Prop :=
   ptr_addr p <> 0 -> forall b, (ptr_cap p = Obj b \/ ptr_cap p = Ro b) ->
     object_region b (m_regions m) <> None.
 
-(** A life token of the object eb in the ghost heap h, if any, is that
-    of a [GlobalData] object. *)
+(** Because `c: errno` is allocated in global data rather than on the
+    heap, `c: free` can never deallocate it. The predicate
+    [errno_life_global] records that any liveness token for the `c: errno`
+    object has global-data kind. *)
 Definition errno_life_global (h : gmap piece pval) (eb : Z) : Prop :=
   forall reg, h !! PLive eb = Some (VLive reg) -> r_kind reg = GlobalData.
 
-(** What the world requires of memory m and ghost heap h. *)
+(** Every `zsys_*` wrapper assumes that the calling thread's `c: errno`
+    variable is writable, its thread cookie is valid, and the program's
+    file descriptors do not collide with libpizlo's log file. The
+    invariant [os_inv] packages those three conditions on memory. *)
 Definition os_inv (m : mem) (w : os_world) (h : gmap piece pval) : Prop :=
   (forall p, ow_errno w = Some p -> permanent_errno m p /\ errno_life_global h (ptr_addr p)) /\
   self_registered m (ow_self w) /\
   Forall (fun fd => ow_log_fd w <> Some fd) (ow_fds w).
 
-(** The world interpretation: the world is w0, and [os_inv] holds. *)
+(** The world interpretation [os_wi] pins the current world to a fixed
+    world `w0` and requires the world invariant [os_inv] to hold. *)
 Definition os_wi (w0 : os_world) (m : mem) (w : os_world) (h : gmap piece pval) : Prop :=
   w = w0 /\ os_inv m w h.
 
-(** The first k bytes of memory m from p's address: what a write of k
-    bytes from p hands the kernel. *)
+(** For a write system call, [os_bytes] reads `k` consecutive bytes
+    starting at pointer `p` from physical memory. *)
 Definition os_bytes (m : mem) (p : ptr) (k : Z) : list Z :=
   map (fun i => m_bytes m (ptr_addr p + Z.of_nat i)) (seq 0 (Z.to_nat k)).
 
-(** libpizlo's `c: filc_check_read(p, n)` passes: a canonical `c: size_t`
-    n, and n bytes readable from p ([readable_bytes]) unless n is 0,
-    which the check skips (`c: if (!bytes) return;`), even for a null
-    pointer. *)
+(** In libpizlo, `c: filc_check_read(p, n)` returns immediately when the
+    byte count `n` is zero, even on a null pointer, and otherwise checks
+    that `n` bytes are readable from `p`. *)
 Definition os_readable (m : mem) (p : ptr) (n : Z) : Prop :=
   0 <= n < 2 ^ 64 /\ (n = 0 \/ readable_bytes m p n).
 
-(** A permanent errno is a writable `c: int` ([errno_cell]). *)
+(** Any pointer that satisfies [permanent_errno] is a valid writable
+    4-byte `c: int` cell in memory. *)
 Lemma permanent_errno_cell m p : permanent_errno m p -> errno_cell m p.
 Proof.
   intros (eb & reg & -> & Hz & H4 & [E L] & _ & He). split; [exact Hz|]. split; [|exact H4].
@@ -117,9 +132,10 @@ Qed.
 
 (** ## What keeps the world interpretation *)
 
-(** [os_inv] survives a change from m to m' and h to h' that keeps
-    every registered object registered, and errno's region and the
-    [GlobalData] kind of its life token. *)
+(** The world invariant checks only that the thread cookie remains a
+    valid allocation and that `c: errno` stays a writable global-data
+    variable. Any memory step that preserves those two facts preserves
+    [os_inv]. *)
 Lemma os_inv_step m m' w h h' :
   (forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None) ->
   (forall eb reg, ow_errno w = Some (mkPtr eb (Obj eb)) -> live_at m eb reg -> r_kind reg = GlobalData ->
@@ -133,8 +149,9 @@ Proof.
   - intros Hz b Hb. exact (Hreg b (Hs Hz b Hb)).
 Qed.
 
-(** Writing pieces ps over h keeps [errno_life_global] when every life
-    token of eb among them is a [GlobalData] one. *)
+(** Because `c: errno` is allocated in global data at program startup,
+    updating other entries in the caller's state never changes
+    `c: errno`'s allocation kind. *)
 Lemma errno_life_overwrite h ps eb :
   (forall reg, (PLive eb, VLive reg) ∈ ps -> r_kind reg = GlobalData) ->
   errno_life_global h eb -> errno_life_global (overwrite ps h) eb.
@@ -144,9 +161,9 @@ Proof.
   - exact (Hg reg Hh).
 Qed.
 
-(** A store, or anything that keeps every region, keeps [os_wi], when
-    the life tokens it writes are those h holds (as Logic.v's store
-    rules write them back): no errno span apartness is needed. *)
+(** Because [os_wi] only checks object bounds and never reads byte
+    values, any memory store preserves [os_wi] without requiring the
+    stored address to be disjoint from `c: errno`. *)
 Lemma os_wi_store w0 m m' w h ps :
   m_regions m' = m_regions m ->
   (forall l v, (l, v) ∈ ps -> match l with PLive _ => h !! l = Some v | _ => True end) ->
@@ -158,8 +175,9 @@ Proof.
     apply errno_life_overwrite; [|exact Hg]. intros reg' Hin. apply (Hg reg'). exact (Hps _ _ Hin).
 Qed.
 
-(** An allocation at a [fresh] base keeps [os_wi]: the new object is
-    none of errno's, since errno's is registered. *)
+(** Allocating a new heap object at an unregistered address preserves
+    [os_wi], because the new object cannot be the already-registered
+    `c: errno` object. *)
 Lemma os_wi_alloc w0 m w h q base :
   fresh m q base -> os_wi w0 m w h -> os_wi w0 (allocated m q base) w (overwrite (obj_ps base q) h).
 Proof.
@@ -172,9 +190,8 @@ Proof.
     apply elem_of_app in Hin as [Hin|Hin]; apply list_elem_of_fmap in Hin as (i & [=] & _).
 Qed.
 
-(** A free of the live heap object b ([wp_free]'s premise) keeps
-    [os_wi]: b is not errno's object, whose life token, if owned, is a
-    [GlobalData] one. *)
+(** Freeing a live heap object preserves [os_wi], because `c: errno` lives
+    in global data and therefore cannot be the heap object being freed. *)
 Lemma os_wi_free w0 m w h b reg rs :
   r_kind reg = Heap -> h !! PLive b = Some (VLive reg) ->
   replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs ->
@@ -191,9 +208,8 @@ Proof.
       rewrite lookup_insert_ne in E1; [exact (Hg reg0 E1) | intros [=]; congruence].
 Qed.
 
-(** Any change of the runtime's free kind ([lifetime_step], with every
-    identity kept, as Runtime.v's [free_lifetime] and [free_keeps_ids]
-    say of every free) keeps [os_wi] with the same ghost heap. *)
+(** A runtime deallocation step can only free heap objects and keeps all
+    object identities registered, so it preserves [os_wi]. *)
 Lemma os_wi_lifetime w0 m m' w h :
   lifetime_step m m' ->
   (forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None) ->
@@ -208,16 +224,16 @@ Qed.
 
 (** ## Over a Logic instance *)
 
-(** The world interpretation over the [[runtime]] R and [LogicSig]
-    LG0: it survives safepoints, and a call of an OS contract hands
-    errno and its other blocks back ([os_call_return]). *)
+(** The functor [OsWorldOn] instantiates the world-invariant stability
+    lemmas and `zsys_*` call rules for a given [[runtime]] and program
+    logic. *)
 Module OsWorldOn (R : Runtime) (LG0 : LogicSig R).
 Module LG := LG0.
 Module L := LG.L.
 Import L LG.
 
-(** A safepoint keeps [os_wi]: it changes no region
-    ([collector_live]) and no ghost heap. *)
+(** A garbage-collection safepoint leaves all reachable regions and the
+    separation-logic state unchanged, so it preserves [os_wi]. *)
 Lemma os_wi_safepoint w0 s m s' m' w h : R.safepoint s m s' m' -> os_wi w0 m w h -> os_wi w0 m' w h.
 Proof.
   intros Hsp Hw. pose proof (R.collector_live _ _ _ _ Hsp) as E.
@@ -225,14 +241,13 @@ Proof.
   apply (os_wi_store w0 m m' w h []); [exact E | |exact Hw]. intros l v Hin. by apply not_elem_of_nil in Hin.
 Qed.
 
-(** [os_wi] is [SafepointStable]. *)
+(** This instance registers [os_wi] as safepoint-stable for the program
+    logic. *)
 Instance os_wi_stable w0 : SafepointStable (os_wi w0).
 Proof. split. intros s m s' m' w h. apply os_wi_safepoint. Qed.
 
-(** Along an [effects] path that releases nothing, from a [[ready]]
-    state, every object of m not born in the call keeps its region:
-    a [local_effect] ends only released or born objects, and an
-    allocation is [fresh]. *)
+(** When an external call releases no existing objects, every object that
+    was already registered before the call keeps its region after the call. *)
 Lemma effects_keep_old sources roots requests s m born0 s' m' born :
   M.E.effects sources roots [] requests s m born0 s' m' born -> R.ready s m ->
   forall b reg, object_region b (m_regions m) = Some reg -> ~ In b born0 ->
@@ -256,8 +271,9 @@ Proof.
     rewrite object_region_allocated. destruct (Z.eqb_spec base b); [contradiction | exact E].
 Qed.
 
-(** A completed call that returned: its precondition held, and a
-    [prefix] that its postcondition accepts reached the end state. *)
+(** When an external call returns values to its caller, its precondition
+    held at entry and its execution trace satisfies the contract's
+    postcondition. *)
 Lemma os_invoke_returned {world} (spec : contract world) r args xs s m w trace values s' m' w' :
   M.E.invoke spec r args xs s m w trace (CallReturn values) s' m' w' ->
   contract_pre spec xs m w /\ exists born, M.E.prefix spec xs s m w born trace s' m' w' /\
@@ -272,16 +288,17 @@ Section rule.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world).
 
-(** What the state interpretation says of the world: it is w0, and
-    [os_inv] holds of the memory. *)
+(** The state interpretation implies that the machine's current world
+    equals `w0` and satisfies [os_inv]. *)
 Lemma os_heap_world σ :
   heap_interp (os_wi w0) σ -∗ ⌜ls_world σ = w0 /\ exists h, os_inv (ls_mem σ) w0 h⌝.
 Proof.
   iIntros "(%h & _ & %Hf)". destruct Hf as (_ & _ & _ & -> & Hi). iPureIntro. eauto.
 Qed.
 
-(** The errno of w0 is a writable `c: int` ([errno_cell]) of the
-    memory of σ, and errno's block lies in its live object. *)
+(** When `w0` has an `c: errno` object, the state interpretation guarantees
+    that `c: errno` is a valid writable 4-byte `c: int` cell in a live
+    object. *)
 Lemma os_heap_errno σ eb :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   heap_interp (os_wi w0) σ -∗ ⌜errno_cell (ls_mem σ) (mkPtr eb (Obj eb)) /\ blk_live (ls_mem σ) (eb, 0, 4)⌝.
@@ -291,9 +308,10 @@ Proof.
   destruct Hp as (eb' & reg & [= <-] & _ & _ & Hl & _ & Hend). exists reg. cbn. split; [exact Hl|lia].
 Qed.
 
-(** In the state of σ, the world is w0, `c: fd` (one of w0's) is not
-    the log descriptor, and w0's errno is a writable `c: int`: what
-    every contract's precondition asks of the world. *)
+(** Before calling a system-call wrapper that takes a file descriptor, the
+    caller must show that the descriptor is not libpizlo's log file and
+    that `c: errno` is writable. The lemma [os_heap_ready] extracts both
+    facts for any allowed descriptor. *)
 Lemma os_heap_ready σ eb fd :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   heap_interp (os_wi w0) σ -∗
@@ -304,8 +322,9 @@ Proof.
   rewrite Forall_forall in Hfd. auto.
 Qed.
 
-(** The writable roots errno's span and spans inside the blocks bl lie
-    in the blocks errno's and bl's. *)
+(** Adding the thread's 4-byte `c: errno` block to the borrowed block list
+    covers all writable spans of a call that writes both `c: errno` and
+    those borrowed buffers. *)
 Lemma errno_roots_out eb bl (extra : list span) w sp a :
   ow_errno w = Some (mkPtr eb (Obj eb)) ->
   (forall sp a, In sp extra -> span_contains sp a -> blk_out bl a) ->
@@ -317,12 +336,10 @@ Proof.
   - exists eb, 0, 4. unfold span_contains in Hs. cbn in Hs. split; [left; reflexivity | lia].
 Qed.
 
-(** The lending frame of a returning call of an OS contract spec that
-    keeps the world and releases nothing, and whose writable roots lie
-    in the owned blocks bl, which lie in live objects: the blocks are
-    handed back, whatever the call left in them, and the state
-    interpretation holds of the call's end state. Every piece the
-    program owns besides them is untouched. *)
+(** When an OS contract returns without freeing existing objects and writes
+    only inside the borrowed buffers, [os_call_return] refreshes the
+    borrowed blocks to their post-call contents and restores the state
+    interpretation while leaving all other caller-owned memory unchanged. *)
 Lemma os_call_return (spec : contract os_world) r args xs σ trace values s' m' w' bl :
   M.E.invoke spec r args xs (ls_rt σ) (ls_mem σ) (ls_world σ) trace (CallReturn values) s' m' w' ->
   w' = ls_world σ -> contract_releases spec xs (ls_mem σ) (ls_world σ) = [] ->
@@ -359,18 +376,19 @@ Qed.
 Section call.
 Context (registry : name -> option (contract os_world)) (ge : genv).
 
-(** The Iris instance for registry and [os_wi] w0. *)
+(** The instance [os_call_irisGS] configures Iris for the language with the
+    OS contract registry and the world interpretation [os_wi]. *)
 Local Instance os_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 
-(** Expressions of the language. *)
+(** The notation [oexpr] abbreviates expressions of the language over the
+    OS contract registry. *)
 Local Notation oexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The rule of a call of an OS contract spec that keeps the world,
-    releases nothing, and writes only the owned blocks bl: given its
-    precondition from Q (with the blocks live), the blocks are lent to
-    the call and handed back holding whatever it left, and every return
-    the contract allows ([R]) goes on. *)
+(** The rule [wp_os_call] proves a call to an OS contract that leaves the
+    world unchanged, frees no objects, and writes only inside the borrowed
+    buffers. The caller lends those buffers before the call and receives
+    them back when the call returns. *)
 Lemma wp_os_call f e ls lab r g args rest j spec xs bl (Q : iProp Σ) (R : list word -> Prop) Φ :
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->
@@ -401,9 +419,10 @@ Proof.
     iModIntro. iExists e'. iSplit; [done|]. iFrame.
 Qed.
 
-(** The same for a call that also writes w0's errno ([errno_spans]):
-    errno is lent with the blocks bl, and comes back holding whatever
-    the call left. The writable roots other than errno's lie in bl. *)
+(** The rule [wp_os_errno_call] proves an OS call that may also write the
+    calling thread's `c: errno` variable in addition to the borrowed
+    buffers. The caller lends [errno_any] alongside the buffers before the
+    call and receives both back when the call returns. *)
 Lemma wp_os_errno_call f e ls lab r g args rest j spec xs eb bl (Q : iProp Σ) (R : list word -> Prop) Φ :
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->
@@ -434,7 +453,10 @@ Proof.
     iApply ("HK" with "[%] HQ [Herr] Hb"); [exact HR | iApply errno_any_blk; iExact "Herr"].
 Qed.
 
-(** A call whose contract allows no return: any postcondition. *)
+(** The rule [wp_os_noreturn] proves a call to an OS contract that never
+    returns, such as `c: zsys_exit_soft` or `c: zsys_exit_hard`. Once the
+    caller establishes the contract's precondition, any postcondition holds
+    vacuously. *)
 Lemma wp_os_noreturn f e ls lab r g args rest j spec xs (Q : iProp Σ) Φ :
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->

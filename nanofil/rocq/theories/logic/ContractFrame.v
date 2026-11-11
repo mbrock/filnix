@@ -1,41 +1,43 @@
-(** The program logic's frame for [[external call|external calls]]
-    (Logic.v, docs/logic.md): what a call through a contract leaves of
-    the ghost heap of Heap.v.
+(** When a C function calls an [[external call|external contract]], the
+    call does not step through IR instructions. Instead, the contract
+    updates memory in two kinds of steps: local effects that write bytes
+    and [[aux]] capability slots only where the call has write authority
+    and free only heap objects the contract is allowed to release, and
+    fresh allocations that create new heap objects. This module proves
+    that every piece of caller memory in [Logic](Logic.v) outside the
+    addresses the call is allowed to touch survives those steps
+    unchanged.
 
-    A call changes memory along an [effects] path of
-    [[campaign|Campaign]] 4 (ExternalCalls.v): [local_effect] segments,
-    which write bytes and [[aux]] slots only where the call has
-    [write_authority] and change an object only by freeing a live heap
-    object it may release or allocated itself, and allocations at a
-    [fresh] base, which join the call's born objects. The program logic
-    owns pieces of memory ([agrees] with a ghost heap h), and asks what
-    of them survives the call.
+    ## Disjoint calls and borrowed buffers
 
-    The premise is separation by address, not by identity: no address
-    of a contract's writable roots lies in a live object that owns a
-    piece of h ([roots_apart]), and the contract releases none of h's
-    identities ([ids_apart]). Then the call's born objects are not the
-    program's, it writes nothing the program owns, and after the whole
-    path h still agrees with memory and live objects are still apart
-    (Logic.v's [effects_agrees], [prefix_agrees] and [invoke_agrees],
-    over the language's own call relations). A world's new
-    roots that a call delegates from its old roots and born objects
-    stay apart as well ([delegates_apart]).
+    Separation at the call boundary is stated by address rather than by
+    object identity. If none of a contract's writable byte spans overlap
+    any live object owned by the caller, and the contract does not free
+    any object the caller owns, then the call cannot write to or deallocate
+    any caller-owned memory. Even if the call allocates new heap objects,
+    each new allocation starts at an unregistered address and cannot
+    overlap an existing live object. Lemma [local_agrees] shows that all
+    caller-owned memory continues to match the separation-logic state
+    after the step, and [delegates_apart] shows that any writable spans
+    the call delegates from its existing spans or new allocations remain
+    disjoint from the caller's objects as well.
 
-    A call may also write blocks the program hands it, such as
-    mbrtowc's output, state and errno cells. Then its roots touch the
-    program's objects only at the addresses of those blocks
-    ([roots_out]), and every piece but the handed-over ones keeps
-    agreeing ([agrees_except], [local_agrees_out]; Logic.v's
-    [effects_agrees_out] and [prefix_agrees_out]).
+    Many library and system calls also write into buffers that the caller
+    passes in, such as an output struct or the calling thread's `c: errno`
+    variable. For those calls, the contract's writable spans overlap the
+    caller's live objects only inside the handed-over address range. As
+    long as every byte and capability slot the caller owns inside that
+    range belongs to the borrowed key set, [local_agrees_out] guarantees
+    that every other piece of caller memory outside the borrowed buffer
+    keeps its value across the step.
 
-    Byte and aux pieces of an object that is not live need only stay
-    registered, and an aux piece of a live one is known up to
-    [aux_holds]; regions of old identities change only by being freed,
-    so a freed capability stays freed and one that traps as freed keeps
-    trapping ([freed_in_step], [traps_as_freed_step]). Released or not,
-    no piece but a life token needs its object kept live; a life token
-    does, which is what [ids_apart] of the releases gives. *)
+    In Fil-C, freeing a heap object sets its upper bound equal to its
+    lower bound so any later dereference of a pointer to that object
+    traps. Because an external call never reuses an existing object's base
+    address and only changes existing regions by freeing live heap
+    objects, [freed_in_step] and [traps_as_freed_step] show that any
+    capability that pointed to a freed object before the call continues
+    to trap as freed after the call. *)
 
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia.
@@ -45,25 +47,25 @@ Open Scope list_scope.
 
 (** ## Separation of a call from the program's pieces *)
 
-(** The address a lies in a live object of m that owns a piece of
-    memory in the ghost heap h. *)
+(** An address falls in [owned_live] when it lies within the bounds of a
+    live object that the caller tracks in the separation-logic state. *)
 Definition owned_live (h : gmap piece pval) (m : mem) (a : Z) : Prop :=
   exists l v reg, h !! l = Some v /\ mem_piece l /\ live_at m (piece_id l) reg /\
     piece_id l <= a < r_end reg.
 
-(** No address of the spans roots lies in a live object owning a piece
-    of h. *)
+(** A call's writable spans satisfy [roots_apart] when none of them cover
+    an address inside a live object owned by the caller. *)
 Definition roots_apart (roots : list span) (h : gmap piece pval) (m : mem) : Prop :=
   forall s a, In s roots -> span_contains s a -> ~ owned_live h m a.
 
-(** None of the identities bs is that of a piece of memory in h. *)
+(** A list of object identities satisfies [ids_apart] when none of those
+    objects own a memory piece in the caller's state. *)
 Definition ids_apart (bs : list Z) (h : gmap piece pval) : Prop :=
   forall b l v, In b bs -> h !! l = Some v -> mem_piece l -> piece_id l <> b.
 
-(** A call whose roots are apart from h and whose born objects are none
-    of h's has no [write_authority] over an address of a live object
-    owning a piece of h: a born live heap object overlapping it would be
-    another live object over the same address. *)
+(** When a call's writable spans and newly allocated objects are disjoint
+    from the caller's state, the call has no write authority over any live
+    address the caller owns, because live objects in memory never overlap. *)
 Lemma owned_not_authority : forall roots born h m a,
   live_disjoint m -> roots_apart roots h m -> ids_apart born h ->
   owned_live h m a -> ~ write_authority roots born m a.
@@ -77,9 +79,9 @@ Qed.
 
 (** ## Steps that keep old identities *)
 
-(** A freed object's capability stays freed across a step that keeps
-    every identity ([ids]) and changes an object only by ending a live
-    one ([region_step]). *)
+(** A capability that points to a freed object continues to point to a
+    freed object after any step that keeps existing object identities
+    registered and only changes regions by freeing live objects. *)
 Lemma freed_in_step : forall m m' c,
   ids m m' -> region_step m m' -> freed_in (m_regions m) c -> freed_in (m_regions m') c.
 Proof.
@@ -89,8 +91,10 @@ Proof.
   - congruence.
 Qed.
 
-(** A capability that traps as a freed one keeps doing so across such
-    a step: its object's region is kept, or emptied. *)
+(** Freeing a heap object empties its bounds so any dereference through
+    its capability traps. If a capability already traps as a freed access,
+    it continues to trap after any step that preserves existing object
+    identities and only frees live regions. *)
 Lemma traps_as_freed_step : forall m m' c,
   ids m m' -> region_step m m' -> traps_as_freed (m_regions m) c -> traps_as_freed (m_regions m') c.
 Proof.
@@ -110,19 +114,21 @@ Qed.
 
 (** ## A call into owned blocks *)
 
-(** Every piece of h but the keys ks agrees with m: a ghost heap whose
-    pieces ks a call may overwrite. *)
+(** When a call is allowed to overwrite a borrowed list of keys,
+    [agrees_except] states that every other piece owned by the caller
+    still matches physical memory. *)
 Definition agrees_except (ks : list piece) (m : mem) (h : gmap piece pval) : Prop :=
   forall l v, h !! l = Some v -> l ∉ ks -> agree_piece m l v.
 
-(** Every address of the spans roots that lies in a live object owning
-    a piece of h is one of the addresses out, which the program hands
-    to the call. *)
+(** When the caller hands an output buffer to a call, [roots_out] states
+    that the call's writable spans overlap the caller's live objects only
+    within the handed-over address range. *)
 Definition roots_out (roots : list span) (h : gmap piece pval) (m : mem) (out : Z -> Prop) : Prop :=
   forall s a, In s roots -> span_contains s a -> owned_live h m a -> out a.
 
-(** No byte or aux piece of h but the keys ks, of a live object of m
-    and in its bounds, lies at an address out. *)
+(** To ensure that no unborrowed caller piece is overwritten, [pieces_off]
+    requires every in-bounds byte and capability slot at a handed-over
+    address to belong to the borrowed key list. *)
 Definition pieces_off (ks : list piece) (h : gmap piece pval) (m : mem) (out : Z -> Prop) : Prop :=
   forall l v, h !! l = Some v -> l ∉ ks ->
     match l with
@@ -130,48 +136,54 @@ Definition pieces_off (ks : list piece) (h : gmap piece pval) (m : mem) (out : Z
     | _ => True
     end.
 
-(** With nothing out, roots that avoid h's live objects. *)
+(** When the caller hands no output addresses to the call, [roots_apart]
+    directly implies [roots_out]. *)
 Lemma roots_out_apart roots h m : roots_apart roots h m -> roots_out roots h m (fun _ => False).
 Proof. intros Hra s a Hin Hs Ho. exact (Hra s a Hin Hs Ho). Qed.
 
 (** ## A local effect *)
 
-(** One [local_effect] of a call, from m to m', against the ghost heap h. *)
+(** This section proves that a single local-effect step of an external call
+    preserves all caller-owned memory outside the borrowed buffers. *)
 Section Local.
 
-(** The call's sources, roots, releases and born objects, the memories
-    before and after, and the ghost heap. *)
+(** The section variables fix the call's readable and writable spans, the
+    objects it may free or allocate, and the memory states before and after
+    the step. *)
 Variables (sources roots : list span) (releases born : list Z) (m m' : mem) (h : gmap piece pval).
 
-(** The step is a [local_effect]. *)
+(** The step from the initial memory to the updated memory is a valid
+    local effect of the external call. *)
 Hypothesis Hl : local_effect sources roots releases born m m'.
 
-(** A live object of m' was live in m with the same region: a local
-    effect only ends objects. *)
+(** Any object that is live after a local-effect step was already live with
+    the same bounds before the step, because a local effect can only free
+    existing objects. *)
 Lemma local_live_back : forall b reg, live_at m' b reg -> live_at m b reg.
 Proof.
   intros b reg [E L]. destruct Hl as (_ & Hr & _).
   destruct (Hr b reg E) as (reg0 & E0 & [-> | (_ & _ & _ & ->)]); [split; assumption | discriminate L].
 Qed.
 
-(** A local effect keeps live objects apart. *)
+(** Because a local effect never creates or enlarges regions, live objects
+    that were disjoint before the step remain disjoint after it. *)
 Lemma local_live_disjoint : live_disjoint m -> live_disjoint m'.
 Proof.
   intros Hd b1 r1 b2 r2 H1 H2. exact (Hd b1 r1 b2 r2 (local_live_back _ _ H1) (local_live_back _ _ H2)).
 Qed.
 
-(** An address of a live owned object of m' was one of m. *)
+(** Any address that lies in a live caller-owned object after the step
+    already lay in that same live object before the step. *)
 Lemma local_owned_back : forall a, owned_live h m' a -> owned_live h m a.
 Proof.
   intros a (l & v & reg & Hh & Hm & Hlive & Ha). exists l, v, reg. split; [exact Hh|].
   split; [exact Hm|]. split; [exact (local_live_back _ _ Hlive) | exact Ha].
 Qed.
 
-(** A local effect keeps every piece of h but the keys ks agreeing,
-    where every root address in an object the program owns is out, no
-    piece of h but ks lies at an address out, and the effect releases
-    none of h's identities and was born with none of them. The program
-    hands the call the pieces ks, at the addresses out. *)
+(** When a call's writable spans touch caller-owned objects only inside a
+    borrowed address range and the call frees no caller-owned objects, a
+    local-effect step leaves every caller piece outside the borrowed buffer
+    matching physical memory. *)
 Lemma local_agrees_out (ks : list piece) (out : Z -> Prop) : live_disjoint m -> agrees_except ks m h ->
   roots_out roots h m out -> pieces_off ks h m out ->
   ids_apart releases h -> ids_apart born h -> agrees_except ks m' h.
@@ -180,8 +192,8 @@ Proof.
   pose proof (Hoff l v Hh Hk) as Hno.
   pose proof (local_effect_kept _ _ _ _ _ _ Hl) as [Hs _].
   pose proof Hl as (Hi & Hr & Hw & _).
-  (* An address of a live object of m owning a piece of h, not out,
-     keeps its byte and aux slot. *)
+  (* Any live address owned in h that does not belong to out keeps both
+     its byte value and its aux capability slot across the step. *)
   assert (Hkeep : forall reg o, mem_piece l -> live_at m (piece_id l) reg -> 0 <= o -> piece_id l + o < r_end reg ->
             ~ out (piece_id l + o) ->
             m_bytes m' (piece_id l + o) = m_bytes m (piece_id l + o) /\
@@ -221,8 +233,9 @@ Proof.
       split; [exact (freed_in_step m m' _ Hi Hs Hf) | exact (traps_as_freed_step m m' _ Hi Hs Ht)].
 Qed.
 
-(** A local effect whose roots are apart from h, that releases none of
-    h's identities and was born with none of them, keeps h agreeing. *)
+(** When a local-effect step borrows no buffers and touches no caller-owned
+    objects, every piece owned by the caller still matches physical memory
+    after the step. *)
 Lemma local_agrees : live_disjoint m -> agrees m h -> roots_apart roots h m ->
   ids_apart releases h -> ids_apart born h -> agrees m' h.
 Proof.
@@ -237,8 +250,8 @@ End Local.
 
 (** ## An allocation *)
 
-(** A live object of m after an allocation at a new base, other than
-    the new object, was live in m with the same region. *)
+(** Allocating a new heap object leaves every other live object at the same
+    region bounds it had before the allocation. *)
 Lemma allocated_live_back : forall m q base b reg,
   base <> b -> live_at (allocated m q base) b reg -> live_at m b reg.
 Proof.
@@ -246,8 +259,9 @@ Proof.
   destruct (Z.eqb_spec base b) as [<-|_]; [contradiction | split; assumption].
 Qed.
 
-(** An address of a live owned object after an allocation at a base
-    that is no object of m was one of m: owned objects are registered. *)
+(** Because every object tracked by the caller is already registered in
+    memory, allocating a new object at an unregistered address does not
+    add any new caller-owned addresses. *)
 Lemma allocated_owned_back : forall m q base h a,
   object_region base (m_regions m) = None -> agrees m h ->
   owned_live h (allocated m q base) a -> owned_live h m a.
@@ -257,8 +271,9 @@ Proof.
   intros E. apply (agree_piece_registered m l v Hm (Ha l v Hh)). rewrite <- E. exact Hn.
 Qed.
 
-(** A base that is no object of m is none of the identities of a ghost
-    heap that agrees with m. *)
+(** An unregistered base address cannot belong to any object the caller
+    already owns, so recording it among the call's newly allocated objects
+    preserves disjointness from the caller's identities. *)
 Lemma unregistered_apart : forall m h base bs,
   object_region base (m_regions m) = None -> agrees m h -> ids_apart bs h -> ids_apart (base :: bs) h.
 Proof.
@@ -269,10 +284,10 @@ Qed.
 
 (** ## Delegated roots *)
 
-(** A world's new roots, delegated in m from the old roots and the
-    born objects ([stdio_delegates]), avoid h's live objects when the
-    old roots do and the born objects are none of h's: every address of
-    a new root is one the call has [write_authority] over. *)
+(** When a call derives new writable world spans from its existing spans
+    and newly allocated objects, every address in the new spans is one the
+    call already had authority to write, so the new spans remain disjoint
+    from the caller's live objects. *)
 Lemma delegates_apart : forall roots born m w h,
   stdio_delegates roots born m w -> roots_apart roots h m -> ids_apart born h -> live_disjoint m ->
   roots_apart (stdio_roots w) h m.

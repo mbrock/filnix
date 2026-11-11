@@ -1,16 +1,29 @@
-(** Blocks of memory a `zsys_*` call borrows from the program
-    ([OsWorld](OsWorld.v)): the bytes and [[aux]] slots of a byte range
-    of one object, owned whatever they hold ([blk_any]), and
-    `c: errno` as such a block ([errno_own], [errno_any]).
+(** System calls such as `c: fstat`, `c: ioctl`, and failing calls that
+    set `c: errno` write their results into memory buffers owned by the
+    caller. This module represents a writable buffer inside an object as
+    a borrowable block in the Iris separation logic for
+    [OsWorld](OsWorld.v). A caller lends its output blocks [blks] to an
+    [[external call]] at entry and receives them back with their updated
+    contents through [blks_return] when the call returns.
 
-    A call's writable roots may touch the program's objects only inside
-    the blocks it borrows: ContractFrame.v's [pieces_off] then holds of
-    the blocks' keys ([blks_pieces_off]), since live objects do not
-    overlap. After the call, each block's pieces are given whatever
-    memory holds there ([blk_return], [blks_return]), through Heap.v's
-    [pts_update], and every other piece keeps its value. A block has an
-    aux piece at every offset, as Heap.v's [obj_ps] has, so the aux
-    slots of `c: errno` are lent with its bytes. *)
+    ## Why a borrowed block includes both bytes and aux slots
+
+    In Fil-C, every allocated object has both a data byte and a shadow
+    [[aux]] capability slot at each byte offset. When an [[external call]]
+    can write to an address range, the frame rule in
+    [ContractFrame](../../theories/logic/ContractFrame.v) requires the
+    caller to account for both the bytes and the capability slots at
+    those addresses. A borrowed block therefore bundles the `n` bytes
+    and `n` capability slots starting at offset `o` of object `b`, and
+    the thread's `c: int errno` variable is simply the 4-byte block at
+    the base of the thread's `c: errno` object.
+
+    Live objects in Fil-C memory never overlap, so a system call that
+    writes only within its borrowed buffers cannot overwrite any other
+    live object owned by the caller. When the call returns, the caller's
+    other buffers still hold their previous values, and [blks_return]
+    updates the borrowed buffers to reflect the bytes and capabilities
+    written by the call without changing any object liveness token. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -23,32 +36,39 @@ Open Scope Z_scope.
 
 (** ## Blocks a call borrows *)
 
-(** A block is a triple (b, o, n): the n bytes from offset o of the
-    object of identity b. Its keys are the byte and aux pieces at those
-    offsets. *)
+(** For a block of length `n` at offset `o` of object `b`, [blk_keys]
+    lists the `n` byte keys and `n` capability-slot keys covering that
+    range. *)
 Definition blk_keys (b o n : Z) : list piece := (PByte b <$> seqZ o n) ++ (PAux b <$> seqZ o n).
 
-(** The keys of a list of blocks. *)
+(** Given a list of borrowed blocks, [blks_keys] concatenates the byte and
+    capability-slot keys of each block in order. *)
 Fixpoint blks_keys (bl : list (Z * Z * Z)) : list piece :=
   match bl with [] => [] | x :: bl' => blk_keys x.1.1 x.1.2 x.2 ++ blks_keys bl' end.
 
-(** The address a is in one of the blocks bl. *)
+(** An address satisfies [blk_out] when it falls within the byte range of
+    at least one block in the borrowed list. *)
 Definition blk_out (bl : list (Z * Z * Z)) (a : Z) : Prop :=
   exists b o n, In (b, o, n) bl /\ b + o <= a < b + o + n.
 
-(** The block x lies inside its object, which is live in m. *)
+(** A block satisfies [blk_live] when its offset and length are
+    non-negative and its byte range lies entirely inside a live object in
+    memory. *)
 Definition blk_live (m : mem) (x : Z * Z * Z) : Prop :=
   exists reg, live_at m x.1.1 reg /\ 0 <= x.1.2 /\ 0 <= x.2 /\ x.1.1 + x.1.2 + x.2 <= r_end reg.
 
-(** The bytes and capabilities of memory m in the block (b, o, n). *)
+(** From physical memory, [blk_bytes] and [blk_caps] read the current byte
+    values and stored capabilities across a block's offset range. *)
 Definition blk_bytes (m : mem) (b o n : Z) : list Z := (fun i => m_bytes m (b + i)) <$> seqZ o n.
 Definition blk_caps (m : mem) (b o n : Z) : list cap := (fun i => m_aux m (b + i)) <$> seqZ o n.
 
-(** The pieces of the block (b, o, n) holding what memory m holds. *)
+(** Pairing each key of a block with its current byte or capability in
+    physical memory produces the piece-value list [blk_now]. *)
 Definition blk_now (m : mem) (b o n : Z) : list (piece * pval) :=
   byte_ps b o (blk_bytes m b o n) ++ aux_ps b o (blk_caps m b o n).
 
-(** Bytes and slots of length n from o have the block's keys. *)
+(** When the byte list and capability list both have length `n`, the keys
+    of their combined pieces equal [blk_keys]. *)
 Lemma blk_ps_keys b o n xs cs :
   0 <= n -> length xs = Z.to_nat n -> length cs = Z.to_nat n ->
   (byte_ps b o xs ++ aux_ps b o cs).*1 = blk_keys b o n.
@@ -56,21 +76,23 @@ Proof.
   intros Hn Hx Hc. rewrite fmap_app byte_ps_keys aux_ps_keys Hx Hc Z2Nat.id; [reflexivity|exact Hn].
 Qed.
 
-(** The block's current pieces have its keys. *)
+(** For any non-negative block length, the keys of [blk_now] equal
+    [blk_keys]. *)
 Lemma blk_now_keys m b o n : 0 <= n -> (blk_now m b o n).*1 = blk_keys b o n.
 Proof.
   intros Hn. apply blk_ps_keys; [exact Hn | |]; unfold blk_bytes, blk_caps;
     rewrite length_fmap length_seqZ; reflexivity.
 Qed.
 
-(** No life token is a block key. *)
+(** A single block's key list contains only byte and capability-slot keys,
+    never an object liveness token. *)
 Lemma blk_keys_live b o n b' : PLive b' ∉ blk_keys b o n.
 Proof.
   intros Hin. apply elem_of_app in Hin as [Hin|Hin]; apply list_elem_of_fmap in Hin as (i & [=] & _).
 Qed.
 
-(** The byte and aux keys at offset o' of a block of bl, o' inside it,
-    are keys of bl. *)
+(** Every offset inside a block in the borrowed list contributes both its
+    byte key and its capability-slot key to [blks_keys]. *)
 Lemma blks_keys_in bl b o n o' :
   In (b, o, n) bl -> o <= o' < o + n -> PByte b o' ∈ blks_keys bl /\ PAux b o' ∈ blks_keys bl.
 Proof.
@@ -81,16 +103,18 @@ Proof.
   - destruct (IH Hin) as [H1 H2]. split; apply elem_of_app; right; assumption.
 Qed.
 
-(** No life token is a key of a list of blocks. *)
+(** Across any list of borrowed blocks, [blks_keys] never includes an
+    object liveness token. *)
 Lemma blks_keys_live bl b' : PLive b' ∉ blks_keys bl.
 Proof.
   induction bl as [|x bl IH]; cbn [blks_keys]; [apply not_elem_of_nil|].
   intros Hin. apply elem_of_app in Hin as [Hin|Hin]; [exact (blk_keys_live _ _ _ _ Hin) | exact (IH Hin)].
 Qed.
 
-(** Every byte or aux piece of a live object at an address in the live
-    blocks bl is a key of bl ([pieces_off] of ContractFrame.v): another
-    live object does not overlap a block's object ([live_disjoint]). *)
+(** Live objects in Fil-C memory do not overlap, so an address inside a
+    live borrowed buffer cannot belong to any other live object. Every
+    in-bounds byte and capability slot at a borrowed address is therefore
+    covered by [blks_keys]. *)
 Lemma blks_pieces_off m h bl :
   live_disjoint m -> Forall (blk_live m) bl -> pieces_off (blks_keys bl) h m (blk_out bl).
 Proof.
@@ -111,31 +135,37 @@ Qed.
 Section own.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** [blk_any] b o n: owning the block (b, o, n), its bytes and aux
-    slots, whatever they hold. *)
+(** The assertion [blk_any] owns all `n` bytes and `n` capability slots of
+    a block starting at offset `o` of object `b`, regardless of the values
+    they currently hold. *)
 Definition blk_any (b o n : Z) : iProp Σ :=
   ∃ xs cs, ⌜length xs = Z.to_nat n /\ length cs = Z.to_nat n⌝ ∗ pts (byte_ps b o xs ++ aux_ps b o cs).
 
-(** [blks] bl: owning every block of bl. *)
+(** The assertion [blks] owns every block in a list of borrowed ranges
+    separately. *)
 Definition blks (bl : list (Z * Z * Z)) : iProp Σ := [∗ list] x ∈ bl, blk_any x.1.1 x.1.2 x.2.
 
-(** Owning no blocks is free. *)
+(** Owning the empty list of blocks requires no resources. *)
 Lemma blks_nil : ⊢ blks [].
 Proof. unfold blks. by rewrite big_sepL_nil. Qed.
 
-(** Owning a list of blocks is owning its first and the rest. *)
+(** Owning a non-empty list of blocks splits into owning the head block
+    and owning the remaining blocks. *)
 Lemma blks_cons b o n bl : blks ((b, o, n) :: bl) ⊣⊢ blk_any b o n ∗ blks bl.
 Proof. unfold blks. by rewrite big_sepL_cons. Qed.
 
-(** [errno_own] eb bs: owning the `c: int errno` at the base of the
-    object eb, its 4 bytes bs and its 4 aux slots, whatever they hold. *)
+(** When a caller tracks the exact 4-byte integer stored in `c: errno`,
+    [errno_own] represents ownership of those four bytes together with
+    their four shadow capability slots. *)
 Definition errno_own (eb : Z) (bs : list Z) : iProp Σ :=
   ∃ cs, ⌜length bs = 4%nat /\ length cs = 4%nat⌝ ∗ pts (byte_ps eb 0 bs ++ aux_ps eb 0 cs).
 
-(** [errno_any] eb: owning `c: errno`, whatever it holds. *)
+(** The assertion [errno_any] represents ownership of the calling thread's
+    `c: errno` variable regardless of the 4 bytes it currently holds. *)
 Definition errno_any (eb : Z) : iProp Σ := ∃ bs, errno_own eb bs.
 
-(** Owning errno is owning the block (eb, 0, 4). *)
+(** Owning the `c: errno` variable with unknown contents is equivalent to
+    owning the 4-byte block at offset 0 of its object. *)
 Lemma errno_any_blk eb : errno_any eb ⊣⊢ blk_any eb 0 4.
 Proof.
   iSplit.
@@ -143,10 +173,9 @@ Proof.
   - iIntros "(%xs & %cs & %Hl & Hp)". iExists xs, cs. iFrame. done.
 Qed.
 
-(** A block handed back: the block's pieces are given what memory m'
-    holds, which they agree with while the block lies in a live object
-    of m' ([blk_live]); every other piece of h keeps its value, and h's
-    other pieces that agreed with m' still do. *)
+(** When an external call finishes, [blk_return] updates a borrowed
+    block's ghost-heap entries to match the bytes and capabilities now in
+    physical memory and hands the updated block back to the caller. *)
 Lemma blk_return h m' b o n K :
   agrees_except (blk_keys b o n ++ K) m' h -> blk_live m' (b, o, n) ->
   gen_heap_interp h -∗ blk_any b o n ==∗
@@ -176,8 +205,9 @@ Proof.
     intros Hin. apply elem_of_app in Hin as [Hin|Hin]; [exact (Hnot Hin) | exact (HK Hin)].
 Qed.
 
-(** Pieces written over h, none of them a life token, leave every life
-    token as it was. *)
+(** Writing new bytes or capabilities into a buffer never frees an object.
+    Updating byte and capability entries in the separation-logic state
+    therefore leaves every object's liveness record unchanged. *)
 Lemma overwrite_live ps h b :
   PLive b ∉ ps.*1 -> overwrite ps h !! PLive b = h !! PLive b.
 Proof.
@@ -186,8 +216,9 @@ Proof.
   rewrite lookup_insert_ne; [exact (IH Hn) | congruence].
 Qed.
 
-(** Every block of bl handed back ([blk_return]), with the life tokens
-    of h unchanged. *)
+(** Across a list of borrowed blocks, [blks_return] refreshes every block
+    to its post-call contents in physical memory while leaving all object
+    liveness tokens unchanged. *)
 Lemma blks_return bl h m' K :
   agrees_except (blks_keys bl ++ K) m' h -> Forall (blk_live m') bl ->
   gen_heap_interp h -∗ blks bl ==∗ ∃ h', gen_heap_interp h' ∗ blks bl ∗
