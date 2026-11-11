@@ -265,30 +265,15 @@ li { margin: 0.25rem 0; }
 hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
 img, video { max-width: 100%; height: auto; }
 
-/* The home page: the claim, three ways in, what to read first, and what
-   changed lately (history.py fills that from git). */
+/* The home page is a plain reading page: what Filnix is, its three
+   parts, and what changed lately (history.py fills that from git). */
 
-main.home { max-width: 72rem; }
-.hero { max-width: 48rem; }
-.hero h1 { font-size: clamp(1.8rem, 4.2vw, 2.7rem); letter-spacing: -0.045em; line-height: 1.08; margin: 0.25rem 0 1.1rem; text-wrap: balance; }
-.lede { font: 400 1.22rem/1.5 var(--prose-font); color: #2d3337; text-align: start; text-wrap: pretty; max-width: 44rem; }
-.actions { list-style: none; padding: 0; margin: 1.4rem 0 0; display: flex; flex-wrap: wrap; gap: 0.6rem; }
-.actions li { margin: 0; }
-.actions a {
-  display: inline-block; padding: 0.5rem 0.85rem; border: 1px solid var(--accent); border-radius: 4px;
-  font: 700 0.92rem/1.2 var(--display-font);
-}
-.actions a::after { content: " →"; }
-.actions a:hover { background: var(--accent); color: var(--paper); text-decoration: none; }
-.home-columns { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 4rem); margin-top: 2.6rem; }
-.home-columns > section > h2 { margin-top: 0; padding-bottom: 0.4rem; border-bottom: 2px solid var(--ink); }
-.home-columns h3 { margin: 1.5rem 0 0.4rem; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.home .more { margin-top: 0.6rem; }
 .reading-list { list-style: none; padding: 0; margin: 0; }
 .reading-list li { margin: 0; padding: 0.5rem 0; border-top: 1px solid var(--rule); }
 .reading-list li > a { font: 700 1rem/1.3 var(--display-font); letter-spacing: -0.01em; }
 .reading-list li > span { display: block; color: #444b50; font-size: 1.02rem; line-height: 1.38; margin-top: 0.1rem; }
 p.small { font: 500 0.85rem/1.45 var(--display-font); color: var(--muted); }
-.lately .more { margin-top: 1rem; }
 
 /* history.py: a document's dates and activity, and the home page's list. */
 /* A label, not prose, also inside a document (hence the specificity). */
@@ -384,7 +369,6 @@ table.metrics td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .section-menu { display: block; }
   .door { padding: 0.4rem 0.45rem; }
   .doors { margin-left: -0.45rem; gap: 0; }
-  .home-columns { grid-template-columns: 1fr; }
   p { text-align: left; }
 }
 

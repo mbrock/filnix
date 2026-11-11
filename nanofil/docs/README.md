@@ -1,10 +1,11 @@
 # nanofil
 
-nanofil is a C compiler written in Prolog that emits Fil-C's memory-safe
-ABI, and an executable account of what that safety consists of: every
-check is a term in its IR, an interpreter gives the IR a meaning, and a
-Rocq model proves that a validated module's checks are enough. Every
-page about it is listed here.
+nanofil is a C compiler written in Prolog. It emits x86-64 code for
+Fil-C's memory-safe ABI, so its objects link with those of filcc. Each of
+Fil-C's checks is an instruction in nanofil's IR, an interpreter defines
+what the IR means, and a Rocq model proves that a module the validator
+accepts never makes an unchecked access. This page lists every document
+about it.
 
 ## Start
 

@@ -16,17 +16,17 @@
   <span class="status-right"><a href="https://github.com/mbrock/filnix">mbrock/filnix</a></span>
 </div></div>
 <main class="page-frame reading wide">
-<h1>Code, read as structure</h1>
-<p class="lede">The site draws filnix's code from its syntax trees rather than its text: Nix bindings as tables, Prolog clauses as terms, Rocq inductive types as tables and relations as inference rules, every name linked to where it is bound. The concepts are the terms the code and the documents share, each explained once.</p>
-<div class="cards">
-  <a class="card-link" href="../nix/"><strong>Nix</strong><span><span data-count="nix"></span> Nix files of filnix: the NixOS and finix modules, the port DSL, ports.nix as a table of steps, and the evaluated option index.</span></a>
-  <a class="card-link" href="../nanofil/src.html"><strong>Prolog: nanofil's source</strong><span><span data-count="prolog"></span> modules of the C compiler, each drawn as terms, with its predicates' documentation and runnable examples.</span></a>
-  <a class="card-link" href="../nanofil/rocq/"><strong>Rocq: the model and its proofs</strong><span><span data-count="rocq"></span> theories of the formal campaign, proofs folded under their statements with their captured states.</span></a>
-  <a class="card-link" href="../nanofil/concepts.html"><strong>Concepts</strong><span><span data-count="concepts"></span> terms the Prolog, the Rocq and the documents share, each explained once and linked from all three.</span></a>
-  <a class="card-link" href="../nanofil/play/"><strong>Compile C in the browser</strong><span>nanofil on SWI-Prolog in WebAssembly, drawing the syntax, IR and assembly it makes.</span></a>
-  <a class="card-link" href="../nanofil/workbench/"><strong>The dterm workbench</strong><span>The same terms drawn side by side under different settings, for tuning how the pages draw.</span></a>
-</div>
-<p>How the drawing works: <a href="../nanofil/docs/dterm.html">dterm, nanofil's source as pages</a>.</p>
+<h1>Code</h1>
+<p>This site renders the repository's Nix, Prolog and Rocq source from their syntax trees rather than as plain text. Nix bindings appear as tables, Prolog clauses as terms, Rocq inductive types as tables and Rocq relations as inference rules. Each name links to the place it is defined.</p>
+<ul class="reading-list">
+  <li><a href="../nix/">Nix</a><span><span data-count="nix"></span> Nix files, including the NixOS and finix modules, the port definitions in ports.nix and an index of the module options.</span></li>
+  <li><a href="../nanofil/src.html">Prolog</a><span>The <span data-count="prolog"></span> modules of nanofil, with each predicate's documentation and examples you can run.</span></li>
+  <li><a href="../nanofil/rocq/">Rocq</a><span>The <span data-count="rocq"></span> files of the formal campaign: the model of nanofil's IR, the soundness proof and the program proofs.</span></li>
+  <li><a href="../nanofil/concepts.html">Concepts</a><span><span data-count="concepts"></span> terms that the Prolog, the Rocq and the documents share. Each is explained once and linked from all three.</span></li>
+  <li><a href="../nanofil/play/">Playground</a><span>nanofil running on SWI-Prolog in WebAssembly. It compiles C you type and shows the syntax tree, IR and assembly.</span></li>
+  <li><a href="../nanofil/workbench/">dterm workbench</a><span>The same terms drawn side by side under different settings, used to tune how these pages are drawn.</span></li>
+</ul>
+<p><a href="../nanofil/docs/dterm.html">dterm</a> explains how the drawing works.</p>
 </main>
 </body>
 </html>

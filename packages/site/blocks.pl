@@ -250,11 +250,12 @@ page(Out, File, Title, Which, Bs) :-
         "</main>\n</body>\n</html>\n" )).
 
 intro(all, N) --> !,
-    el(p, lede, ( "Short authored entries from mbrock and the Amp threads that do the work: ",
-                  "findings, milestones, measurements, questions and replies, newest first. ",
-                  "Each says who wrote it, when, and which files it is about; those files' pages carry it in their margin. ",
-                  esc(N), " so far. ",
-                  el(a, none, [href='https://github.com/mbrock/filnix/blob/main/blocks/README.md'], "How to post one"), "." )).
+    el(p, none, ( "The stream is a list of short dated entries, newest first. mbrock and the Amp threads ",
+                  "working in this repository write them to record findings, milestones, measurements and questions. ",
+                  "Each entry names its author and the files it is about, and those files' pages link back to it. ",
+                  "There are ", esc(N), " so far; ",
+                  el(a, none, [href='https://github.com/mbrock/filnix/blob/main/blocks/README.md'], "blocks/README.md"),
+                  " explains how to write one." )).
 intro(_, N) --> el(p, small, ( esc(N), " ", ( { N =:= 1 } -> "entry" ; "entries" ), ", newest first." )).
 
 filters(Which) -->

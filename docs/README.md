@@ -1,9 +1,10 @@
 # Documentation
 
-Notes on building software with [Fil-C](https://github.com/pizlonator/fil-c)
-through Nix: how to use the results, how the toolchain is maintained, what
-individual ports needed, and how the port campaigns run. The repository's
-[README](../README.md) gives the overview.
+This directory documents how filnix builds software with
+[Fil-C](https://github.com/pizlonator/fil-c) through Nix. It covers how to
+use the results, how the toolchain is maintained, what individual ports
+needed and how the port campaigns run. The repository's
+[README](../README.md) gives an overview of the whole project.
 
 ## Using filnix
 

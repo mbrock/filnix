@@ -116,6 +116,15 @@ This flake replicates these stages as Nix derivations.
 
 - News goes in a block, not at the end of a long document: a bug found, a proof closed, a measurement, a question for mbrock. `scripts/block new KIND SLUG` writes one under `blocks/`, `scripts/block check` checks it, and `blocks/README.md` has the format. Documents say what is true now; update them in place.
 
+### Writing for the site
+
+filnix.org (pages/, docs/, nanofil/docs/, blocks/, and the text in packages/site/) is written the way fil-c.org is: an engineer explaining the project to another engineer.
+
+- Use complete subject–verb–object sentences. No verbless slogan fragments ("Every pointer checked. A whole system in Nix."), no inversions ("Beside the distribution it builds..."), no vague taglines ("Read the code as structure").
+- An index or overview page starts by saying plainly what the thing is ("What is Filnix?"), then lists its parts under ordinary headings with ordinary links. No hero headlines, eyebrow labels, call-to-action buttons or arrows.
+- State only what the repository shows. Say "being proved" or "a design" when that is the state, and put numbers in the build (`data-count`, history.py) rather than in prose.
+- Prose is Equity (`var(--prose-font)`); Public Sans is for headings, labels and chrome, and DM Mono for code. Do not add other fonts.
+
 ### Compiler and Runtime Review
 
 - Before adopting changes to Fil-C compiler semantics, capability tracking, GC, or glibc/runtime behavior, develop the proposed approach and consult Oracle about soundness and alternatives. Give it the relevant code and invariants while leaving room for independent analysis.

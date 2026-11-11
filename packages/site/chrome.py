@@ -25,7 +25,6 @@ import re
 import sys
 
 NAME = "Filnix"
-EYEBROW = "Memory-safe C on Nix"
 # (id, label, path from the site's root)
 # The site's name is the way home.
 DOORS = [
@@ -82,8 +81,7 @@ def band(root, selected):
         for d, label, path in DOORS)
     return (
         '<header class="library"><div class="page-frame library-frame">\n'
-        f'  <div class="library-heading"><p class="eyebrow">{EYEBROW}</p>'
-        f'<h1><a href="{root}index.html">{NAME}</a></h1></div>\n'
+        f'  <div class="library-heading"><h1><a href="{root}index.html">{NAME}</a></h1></div>\n'
         f'  <nav class="doors" aria-label="Sections">\n{doors}  </nav>\n'
         '</div></header>')
 

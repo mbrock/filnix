@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Filnix: memory-safe C, from packages to proofs</title>
-<meta name="description" content="Filnix builds Nixpkgs and a whole NixOS with Fil-C, the memory-safe C and C++, and nanofil, a C compiler in Prolog whose safety checks are proved in Rocq.">
+<title>Filnix</title>
+<meta name="description" content="Filnix is an experimental repository for building Linux software with Fil-C, a small Fil-C compiler called nanofil, and Rocq proofs about nanofil's output and about C programs.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&amp;family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
@@ -16,60 +16,57 @@
   <nav class="crumbs" aria-label="Breadcrumb"><span class="crumb current">Home</span></nav>
   <span class="status-right"><a href="https://github.com/mbrock/filnix">mbrock/filnix</a></span>
 </div></div>
-<main class="page-frame home">
-<section class="hero">
-<h1>Every C pointer checked. A whole Linux system in Nix. A compiler whose checks are proved in Rocq.</h1>
-<p class="lede">Filnix builds Nixpkgs packages, and a complete NixOS userland, with <a href="https://github.com/pizlonator/fil-c">Fil-C</a>, Filip Pizlo's memory-safe C and C++: an out-of-bounds access or a use after free stops the program instead of corrupting its memory. Beside the distribution it builds <a href="nanofil/">nanofil</a>, a C compiler in Prolog that makes each of Fil-C's checks a term in its IR, with a Rocq proof that a validated program never makes an unchecked access.</p>
-<ul class="actions">
-  <li><a href="filc-nixos/">Run a memory-safe NixOS, PHP or BIND</a></li>
-  <li><a href="nanofil/play/">Compile C in the browser</a></li>
-  <li><a href="code/">Read the code as structure</a></li>
-</ul>
-</section>
+<main class="page-frame reading home">
+<h1>What is Filnix?</h1>
 
-<div class="home-columns">
-<section class="canon" aria-labelledby="canon">
-<h2 id="canon">Read first</h2>
+<p>Filnix is an experimental repository for building Linux software with <a href="https://fil-c.org/">Fil-C</a>, Filip Pizlo's memory-safe implementation of C and C++. It also holds nanofil, a small compiler for Fil-C, and a Rocq development that proves properties of nanofil's output and of real C programs.</p>
 
-<h3>Primers</h3>
-<ul class="reading-list">
-  <li><a href="nanofil/filc.html">How Fil-C works</a><span>Capabilities, the collector, safepoints and the libc sandwich, each idea linked to its concept.</span></li>
-  <li><a href="nanofil/iris.html">How Iris works</a><span>From Floyd and Hoare to separation logic and Iris, and nanofil's machine as an Iris language.</span></li>
-  <li><a href="nanofil/guide.html">A guide to nanofil</a><span>One C function through every stage of a compiler written in Prolog.</span></li>
-  <li><a href="nanofil/formal.html">The formal campaign</a><span>Fil-C's checks removed only where a machine-checked proof says they cannot fire.</span></li>
-  <li><a href="nanofil/docs/pizlonation.html">Pizlonation</a><span>Fil-C's checks as terms in the IR: the checked stage's contract.</span></li>
-  <li><a href="nanofil/docs/dterm.html">dterm</a><span>How this site draws Prolog, Rocq, Nix and C from their syntax trees.</span></li>
+<p>Everything is in one repository, <a href="https://github.com/mbrock/filnix">mbrock/filnix</a>, and has three parts.</p>
+
+<h2>Nixpkgs and NixOS on Fil-C</h2>
+
+<p>A Nix overlay and stdenv compile ordinary C and C++ packages from Nixpkgs with Fil-C, including Fil-C's userland glibc, OpenSSH, PHP, BIND, SQLite and Lua. A NixOS module builds a whole bootable system the same way. In these programs an out-of-bounds access or a use after free stops the program with a Fil-C panic instead of corrupting memory.</p>
+
+<ul>
+  <li><a href="filc-nixos/">Fil-C NixOS and finix</a> describes the module, what stays native and what it costs.</li>
+  <li><a href="fil-bind/">Fil-BIND</a> and <a href="php-on-filc/">PHP on Fil-C</a> describe two ported servers and their performance.</li>
+  <li><a href="docs/">The documentation</a> covers installing the results, maintaining the toolchain, individual ports and the build campaigns.</li>
 </ul>
 
-<h3>Systems</h3>
-<ul class="reading-list">
-  <li><a href="filc-nixos/">Fil-C NixOS and finix</a><span>One module makes a whole system's packages Fil-C, systemd and PAM included, and filc-ps proves nothing else runs native.</span></li>
-  <li><a href="fil-bind/">Fil-BIND: BIND 9 in memory-safe C</a><span>The year's CVEs, and what memory safety costs per query.</span></li>
-  <li><a href="php-on-filc/">PHP on Fil-C</a><span>PHP 8.5 and its native extensions without a rewrite, real server costs, and an LLVM JIT.</span></li>
-  <li><a href="docs/determinate-nix-addtrace-race.html">A data race Fil-C found in Determinate Nix</a><span>Parallel evaluation mutating a failed thunk's shared exception.</span></li>
+<h2>nanofil</h2>
+
+<p>nanofil is a C compiler written in SWI-Prolog. It emits x86-64 code for the Fil-C runtime, and its objects link with those of filcc, the clang-based Fil-C compiler. nanofil writes each of Fil-C's capability checks as an explicit instruction in a small intermediate representation, so check elimination and register allocation can be inspected, tested and checked by a validator. Its back end is being rewritten in Rocq and extracted, and a second design compiles extracted Rocq programs themselves to Fil-C.</p>
+
+<ul>
+  <li><a href="nanofil/guide.html">A guide to nanofil</a> follows one C function through every stage of the compiler.</li>
+  <li><a href="nanofil/filc.html">How Fil-C works</a> explains capabilities, the garbage collector and safepoints, the parts of Fil-C that nanofil reproduces.</li>
+  <li><a href="nanofil/lambda-anf.html">λANF on nanofil IR</a> is the design for compiling extracted Rocq programs.</li>
+  <li><a href="nanofil/play/">The playground</a> runs nanofil in the browser and shows the IR and assembly it produces for C you type.</li>
 </ul>
 
-<h3>Compiler and runtime</h3>
-<ul class="reading-list">
-  <li><a href="frame-coloring-o0/">Frame slot coloring at -O0</a><span>48 s to 0.66 s for one function, with identical frames.</span></li>
-  <li><a href="glibc-memcmp-noalloc/">memcmp without the eight heap allocations</a><span>A third of PHP's allocation on WordPress, removed by one ctz.</span></li>
-  <li><a href="docs/zmark-shared.html">zmark_shared: pointers in shared memory</a><span>How PostgreSQL can keep pointers in shared mappings.</span></li>
-  <li><a href="docs/boehm-on-fugc.html">Boehm GC on FUGC</a><span>The libgc API on Fil-C's own collector, and <a href="docs/jemalloc-on-fugc.html">jemalloc</a> beside it.</span></li>
-  <li><a href="docs/pthread-cancellation.html">Thread cancellation</a><span>The two syscall races, across glibc, musl, Cosmopolitan and FreeBSD.</span></li>
-  <li><a href="explainers/">All the explainers</a><span>Misaligned initializers, sealed closures, frame alias scopes and more.</span></li>
-</ul>
-</section>
+<h2>Proofs in Rocq</h2>
 
-<section class="lately" aria-labelledby="lately">
-<h2 id="lately">From the stream</h2>
+<p>The Rocq development defines a small-step semantics for nanofil's IR, a validator proved sound (a module it accepts never makes an unchecked memory access), and an Iris separation logic over the same machine. It is used to prove that particular programs never panic. Small loops over arrays and heap buffers are proved outright. Programs that call libc are proved against a contract for each libc function, and Fil-C's own glibc functions, such as strlen and strcmp, are being proved to meet those contracts. The current target is GNU Hello.</p>
+
+<ul>
+  <li><a href="nanofil/formal.html">The formal campaign</a> states each claim and records what has been proved.</li>
+  <li><a href="nanofil/iris.html">How Iris works</a> introduces separation logic and Iris, and how nanofil's machine is an Iris language.</li>
+  <li><a href="nanofil/docs/zsys.html">Contracts at the zsys_ boundary</a> explores compiling Fil-C's glibc to nanofil IR, so that only the runtime's system-call entry points need trusted contracts.</li>
+</ul>
+
+<h2>This site</h2>
+
+<p>This site is built from the repository. It renders the documentation, the <a href="nix/">Nix</a>, <a href="nanofil/src.html">Prolog</a> and <a href="nanofil/rocq/">Rocq</a> sources (drawn from their syntax trees, with each name linked to its definition), and the <a href="explainers/">explainers</a>, which each describe one change or one system. The <a href="stream/">stream</a> is a dated list of short entries in which mbrock and the Amp threads working in the repository record what they found and finished. Each document shows when it was written and last changed, taken from the git history.</p>
+
+<h2>Recent work</h2>
+
 <div data-stream="latest"><p class="small">Nothing posted yet.</p></div>
 <p class="small more"><a href="stream/">The whole stream</a> · <a href="stream/feed.xml">Atom feed</a></p>
-<h3>Documents written and changed lately</h3>
+
+<h3>Documents changed recently</h3>
 <!-- history.py fills this from git: the documents written and changed most recently. -->
 <div data-history="recent"><p class="small">The site was built without its git history; see <a href="https://github.com/mbrock/filnix/commits/main">the commit log</a>.</p></div>
-<p class="small more"><a href="docs/">Every document</a> · <a href="nanofil/">All of nanofil</a> · <a href="https://github.com/mbrock/filnix/commits/main">Commits</a></p>
-</section>
-</div>
+<p class="small more"><a href="docs/">All documents</a> · <a href="nanofil/">nanofil's documents</a> · <a href="https://github.com/mbrock/filnix/commits/main">Commits</a></p>
 </main>
 </body>
 </html>
