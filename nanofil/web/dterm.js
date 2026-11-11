@@ -221,7 +221,9 @@ document.addEventListener("mouseover", (event) => {
   // Operator chains: the operands of one operator, or of the operators of
   // a conditional, with the spaces around each operator.
   function opOf(o) {
-    for (const c of o.children) if (c.classList.contains("op")) return c.classList.contains("tight") ? null : c;
+    // A C declarator can put pointer stars before the actual infix operator.
+    for (const c of o.children) if (c.classList.contains("op") && !c.classList.contains("c-star"))
+      return c.classList.contains("tight") ? null : c;
     return null;
   }
   const family = (op) => (["->", ";", "*->", "|"].includes(op.title) ? "if" : op.title);
@@ -234,13 +236,19 @@ document.addEventListener("mouseover", (event) => {
   function links(o, fam, out) {
     const op = opOf(o), kids = [...o.childNodes];
     const i = kids.indexOf(op);
-    const els = (a) => a.filter((k) => k.nodeType === 1 && !k.matches(".zbr, .zin, .wb-nbsp"));
-    const [left] = els(kids.slice(0, i)), [right] = els(kids.slice(i + 1));
-    const inner = (x) => x && x.dataset.d === "op" && opOf(x) && family(opOf(x)) === fam;
-    if (inner(left)) links(left, fam, out); else out.push(left);
     const b = skipMarks(op.previousSibling, "previousSibling"), a = skipMarks(op.nextSibling, "nextSibling");
+    // An operand need not be one element: *iov has a star and a name.
+    // Keep all its nodes, excluding only the operator's own separators.
+    const side = (ns) => ns.filter((n) => !(n === b && isSpace(b)) && !(n === a && isSpace(a)) &&
+      !n.matches?.(".zbr, .zin, .wb-nbsp"));
+    const operand = (ns) => {
+      const x = ns.length === 1 && ns[0];
+      if (x?.dataset?.d === "op" && opOf(x) && family(opOf(x)) === fam) links(x, fam, out);
+      else out.push(ns);
+    };
+    operand(side(kids.slice(0, i)));
     out.push({ before: isSpace(b) ? b : null, op, after: isSpace(a) ? a : null });
-    if (inner(right)) links(right, fam, out); else out.push(right);
+    operand(side(kids.slice(i + 1)));
   }
   function chainDoc(o, e, st) {
     const fam = family(opOf(o)), parts = [];
@@ -253,7 +261,7 @@ document.addEventListener("mouseover", (event) => {
       if (!p.op) {
         // Empty tactic/intro alternatives are real zero-width operands,
         // not absent documents for FLUSH to try to evaluate.
-        const d = doc(p, e, st) ?? T(0);
+        const d = CAT(p.map((n) => doc(n, e, st))) ?? T(0);
         flat.push(d);
         cur.push(d);
         continue;
