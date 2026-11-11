@@ -34,19 +34,20 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The rest of block `c: iw_1.L70`, as LibioDoWriteSetp.v proves it
     ([wp_do_write_setp]). *)
-Context (Hsetp_spec : forall fb freg fl bb breg wb wp we be n r e Φ,
+Context (Hsetp_spec : forall fb freg fl bb breg wb wp we be n r e mode Φ,
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk16") e = Some (WPtr (mkPtr (fb + off_buf_base) (Obj fb))) ->
   lookup (TAtom "iw_1.v94") e = Some (WPtr (mkPtr (fb + off_buf_base) (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "iw_1.v67") e = Some (WInt r) ->
-  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
   pcell fb off_write_base wb -∗ pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      pcell fb off_write_base base -∗ pcell fb off_write_ptr base -∗
      pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
@@ -58,25 +59,26 @@ Context (Hsetp_spec : forall fb freg fl bb breg wb wp we be n r e Φ,
     the n bytes written: `c: _IO_setg(fp, base, base, base)`, the
     write base and pointer the base too, and the write end the base
     when `c: _flags` has `c: _IO_LINE_BUF` or `c: _IO_UNBUFFERED`
-    (514), the narrow mode being 0, else the buffer's end. *)
-Lemma wp_do_write_tail fb freg fl bb breg rp re rb wb wp we be n r e from Φ :
+    (514), the narrow mode being 0 or -1, else the buffer's end. *)
+Lemma wp_do_write_tail fb freg fl bb breg rp re rb wb wp we be n r e from mode Φ :
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "iw_1.v67") e = Some (WInt r) ->
-  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      pcell fb off_read_ptr base -∗ pcell fb 16 base -∗ pcell fb 24 base -∗ pcell fb off_write_base base -∗
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L70") (Some from))) : sexpr) {{ Φ }}.
 Proof.
-  intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.
+  intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hmd Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.
   destruct be as [bea bec]. cbn in Hbe, Hbec. subst bec.
   iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".
   st. st. st. norm. chk "Hl".

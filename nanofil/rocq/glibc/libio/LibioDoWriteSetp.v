@@ -60,20 +60,22 @@ Context (Hend_spec : forall fb freg fl bb breg we be n r e from Φ,
 (** The rest of block `c: iw_1.L70` after `c: _IO_setg`, to the
     return: the write base and pointer the base, and the write end the
     base when `c: _flags` has `c: _IO_LINE_BUF` or `c: _IO_UNBUFFERED`
-    (514), the narrow mode being 0, else the buffer's end. *)
-Lemma wp_do_write_setp fb freg fl bb breg wb wp we be n r e Φ :
+    (514), the narrow mode being 0 or -1 (`c: _mode <= 0`), else the
+    buffer's end. *)
+Lemma wp_do_write_setp fb freg fl bb breg wb wp we be n r e mode Φ :
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk16") e = Some (WPtr (mkPtr (fb + off_buf_base) (Obj fb))) ->
   lookup (TAtom "iw_1.v94") e = Some (WPtr (mkPtr (fb + off_buf_base) (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "iw_1.v67") e = Some (WInt r) ->
-  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
   pcell fb off_write_base wb -∗ pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      pcell fb off_write_base base -∗ pcell fb off_write_ptr base -∗
      pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
@@ -81,7 +83,7 @@ Lemma wp_do_write_setp fb freg fl bb breg wb wp we be n r e Φ :
   WP (ERun (mkFrame glibc__IO_new_do_write e [] None
               (Exec (TAtom "iw_1.L70") (skipn 16 (b_insts dw_L70)) (b_jump dw_L70))) : sexpr) {{ Φ }}.
 Proof.
-  intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hv0 Hc0 Hc16 Hv94 Hv4 Hv67. unfold file_size in Hend.
+  intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hmd Hv0 Hc0 Hc16 Hv94 Hv4 Hv67. unfold file_size in Hend.
   destruct be as [bea bec]. cbn in Hbe, Hbec. subst bec.
   iIntros "Hl Hbl Hfl Hmode Hwb Hwp Hwe Hbase Hbend HK".
   cbn [dw_L70 b_insts b_jump skipn].
@@ -92,11 +94,10 @@ Proof.
   iNext. iIntros "Hl Hwp". chk "Hl".
   iApply (wp_raw_store_pointer with "Hl Hwb"); [vx | vx | reflexivity | ar | ar | wi_store |].
   iNext. iIntros "Hl Hwb". st. st. norm. chk "Hl". iDestruct "Hmode" as "[%Hm0 Hmode]". load_int "Hl Hmode".
-  st. br.
-  iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend");
-    try side.
-  iNext. iIntros "Hl Hbl Hfl Hwe Hbase Hbend".
-  iApply ("HK" with "Hl Hbl Hfl [$Hmode //] Hwb Hwp Hwe Hbase Hbend").
+  st. destruct Hmd as [-> | ->]; br.
+  all: iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend"); try side;
+    iNext; iIntros "Hl Hbl Hfl Hwe Hbase Hbend";
+    iApply ("HK" with "Hl Hbl Hfl [$Hmode //] Hwb Hwp Hwe Hbase Hbend").
 Qed.
 
 

@@ -41,17 +41,18 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The end of the call, as LibioDoWriteTail.v proves it
     ([wp_do_write_tail]). *)
-Context (Htail_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e from Φ,
+Context (Htail_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e from mode Φ,
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "iw_1.v67") e = Some (WInt r) ->
-  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      pcell fb off_read_ptr base -∗ pcell fb 16 base -∗ pcell fb 24 base -∗ pcell fb off_write_base base -∗
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
@@ -61,18 +62,19 @@ Context (Htail_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e from 
 
 (** The rest of block `c: iw_1.iw_2.join` once the write returned r of
     the n bytes, to the return. *)
-Lemma wp_do_write_ret fb freg fl bb breg rp re rb wb wp we be n r e Φ :
+Lemma wp_do_write_ret fb freg fl bb breg rp re rb wb wp we be n r e mode Φ :
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "iw_1.v67") e = Some (WInt r) ->
-  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
   bytes fb off_column [0; 0] -∗
-  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      pcell fb off_read_ptr base -∗ pcell fb 16 base -∗ pcell fb 24 base -∗ pcell fb off_write_base base -∗
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗ bytes fb off_column [0; 0] -∗
@@ -80,7 +82,7 @@ Lemma wp_do_write_ret fb freg fl bb breg rp re rb wb wp we be n r e Φ :
   WP (ERun (mkFrame glibc__IO_new_do_write e [] None
               (Exec (TAtom "iw_1.iw_2.join") (skipn 5 (b_insts dw_join)) (b_jump dw_join))) : sexpr) {{ Φ }}.
 Proof.
-  intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.
+  intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hmd Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.
   iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol HK".
   cbn [dw_join b_insts b_jump skipn].
   st. norm. chk "Hl".
