@@ -1,6 +1,7 @@
 # The logic spikes (rocq/spikes, docs/logic.md): the same program proved
-# never to panic by a hand-rolled logic, by Iris on an early language,
-# and by the program logic in theories (Logic.v). Off the main path:
+# never to panic by Iris on an early language and by the program logic
+# in theories (Logic.v). The hand-rolled logic that docs/logic.md
+# compares them with was removed in November 2026. Off the main path:
 # nothing else imports them, and the quick gate and CI do not build
 # this; the program logic itself is in the model.
 #

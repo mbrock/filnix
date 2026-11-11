@@ -34,7 +34,7 @@ Example load_spec ℓ v : ⊢ {{{ ℓ ↦ v }}} ! #ℓ {{{ RET v; ℓ ↦ v }}}.
 
 Recursive data becomes a recursive predicate. The list from p holding xs is null when xs is empty, and otherwise a node owning its cells, separately from the list after it. Since ∗ keeps each node's cells apart from the rest, the predicate excludes cycles and sharing without saying so.
 
-> The model of ∗ is plain set theory: an assertion is a predicate on heap fragments, and P ∗ Q holds of h when h is the disjoint union of an h1 where P holds and an h2 where Q does. nanofil's hand-rolled spike writes exactly that over footprints of identity-keyed pieces (`star` in [Sep.v](../rocq/spikes/Sep.v)). The frame rule is sound because every rule of the language leaves alone what it does not own.
+> The model of ∗ is plain set theory: an assertion is a predicate on heap fragments, and P ∗ Q holds of h when h is the disjoint union of an h1 where P holds and an h2 where Q does. nanofil's hand-rolled spike writes exactly that over footprints of identity-keyed pieces (`star` in [Sep.v](https://github.com/mbrock/filnix/blob/a8083f593eeb47a6e1e919a84f53bbe718e8594f/nanofil/rocq/spikes/Sep.v)). The frame rule is sound because every rule of the language leaves alone what it does not own.
 
 ## Concurrent separation logic
 
@@ -174,7 +174,7 @@ What it does not give for free: a plain WP is partial correctness, so terminatio
 
 Each approach makes a different choice of what is trusted and what is proved about which program.
 
-- **A hand-rolled logic**: assertions as predicates on heaps, with a star and its frame lemmas written for one language, everything proved by hand in Rocq. [Sep.v](../rocq/spikes/Sep.v) is one; its adequacy is [never_panics_by_invariant], but its framing is manual.
+- **A hand-rolled logic**: assertions as predicates on heaps, with a star and its frame lemmas written for one language, everything proved by hand in Rocq. [Sep.v](https://github.com/mbrock/filnix/blob/a8083f593eeb47a6e1e919a84f53bbe718e8594f/nanofil/rocq/spikes/Sep.v) is one; its adequacy is [never_panics_by_invariant], but its framing is manual.
 - **VST**: Andrew Appel's Verifiable C, a higher-order impredicative separation logic for CompCert's Clight with its own step-indexed model, proved sound in Rocq against CompCert's semantics, so its proofs reach the assembly; rebuilt on Iris in 2024. It is a logic for C with C's memory model; nanofil proves programs in its own IR, whose memory is Fil-C's.
 - **CompCert**: Xavier Leroy's verified C compiler, which proves in Rocq that the assembly simulates the source. It proves a translation, not programs; nanofil proves its [[validator]] sound instead ([valid_no_unchecked]) and checks its passes by [[translation-validation|translation validation]].
 - **RefinedC**: refinement types for C built on Iris, with Lithium searching for the typing proof. It is the ownership-types rung of logic.md's ladder: its typing derivations are Iris proofs, so they need no soundness proof of their own.

@@ -26,6 +26,13 @@ const moves = [
     const layer = m && rocqLayer.get(m[1]);
     return layer && `/nanofil/rocq/rocq-theories-${layer}-${m[1]}.html`;
   },
+  // The hand-rolled separation-logic spike (rocq/spikes/Sep.v and
+  // SepListSum.v), removed in November 2026: Sep.v to the program logic
+  // that replaced it, and its list-sum proof to the same proof there.
+  path => ({
+    "/nanofil/rocq/rocq-spikes-Sep.html": "/nanofil/rocq/rocq-theories-logic-Logic.html",
+    "/nanofil/rocq/rocq-spikes-SepListSum.html": "/nanofil/rocq/rocq-spikes-ListSumLogic.html",
+  })[path],
 ];
 
 // moved(path): where the page at a removed canonical path is now, or

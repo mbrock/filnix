@@ -135,6 +135,8 @@ test("a page a restructuring moved redirects to where it lives now", async () =>
   assert.equal(old.headers.get("location"), `https://filnix.org${rocq}rocq-theories-soundness-Machine.html?x=1`);
   assert.equal((await s.fetch(`${rocq}rocq-theories-HelloMain.html`)).headers.get("location"),
     `https://filnix.org${rocq}rocq-theories-hello_contracts-HelloMain.html`);
+  assert.equal((await s.fetch(`${rocq}rocq-spikes-SepListSum.html`)).headers.get("location"),
+    `https://filnix.org${rocq}rocq-spikes-ListSumLogic.html`);
   // A page that exists again under its old name is served, not moved.
   s.add(`${rocq}rocq-theories-Syntax.html`, "flat");
   assert.equal(await (await s.fetch(`${rocq}rocq-theories-Syntax.html`)).text(), "flat");

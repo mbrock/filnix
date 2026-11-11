@@ -491,7 +491,7 @@ role_group(group(
     ( "Retained comparison proofs (", el(code, none, "nanofil-logic-spikes"), ", ",
       el(a, none, [href="../logic.html"], "logic.md"),
       ") verifying the same heap-allocated linked-list program (", el(code, none, "listsum.c"),
-      ") in a hand-rolled separation logic, an early whole-configuration Iris language, and the production ",
+      ") in an early whole-configuration Iris language and in the production ",
       el(code, none, "Logic.v"), " framework." ),
     [ 'nanofil/rocq/spikes' ])).
 role_group(group(
@@ -851,15 +851,11 @@ file_blurb('nanofil/rocq/spikes/IrisLang.v',
 file_blurb('nanofil/rocq/spikes/IrisListSum.v',
     "Logic design spike (experiment 2, comparison proof): proves [never_panics] for `rocq/spikes/listsum.c` in the early [IrisLang](IrisLang.v) / [IrisHeap](IrisHeap.v) prototype, carrying caller continuations explicitly.").
 file_blurb('nanofil/rocq/spikes/ListSum.v',
-    "Logic design spike (shared setup): decodes `rocq/spikes/ListSumCode.v` and defines the `listsum` and `sum` functions, globals, and initial call frames shared by all three `rocq/spikes/listsum.c` comparison proofs.").
+    "Logic design spike (shared setup): decodes `rocq/spikes/ListSumCode.v` and defines the `listsum` and `sum` functions, globals, and initial call frames shared by both `rocq/spikes/listsum.c` comparison proofs.").
 file_blurb('nanofil/rocq/spikes/ListSumCode.v',
     "Logic design spike (generated IR fixture): checked nanofil -O IR ([listsum_term]) of `rocq/spikes/listsum.c`, generated and checked by `rocq/spikes/code.sh`.").
 file_blurb('nanofil/rocq/spikes/ListSumLogic.v',
     "Logic design spike (comparison proof in production logic): proves `rocq/spikes/listsum.c` using the production [Logic](../theories/logic/Logic.v) framework with modular Hoare triples ([wp_call_bind]) and list-segment Löb induction.").
-file_blurb('nanofil/rocq/spikes/Sep.v',
-    "Logic design spike (experiment 1, hand-rolled separation logic): custom separation logic over [[identity]]-keyed memory pieces ([PLive], [PByte], [PAux]), written before adopting Iris (`docs/logic.md`).").
-file_blurb('nanofil/rocq/spikes/SepListSum.v',
-    "Logic design spike (experiment 1, comparison proof): proves [never_panics] for `rocq/spikes/listsum.c` (allocating and summing a heap linked list) using [Sep](Sep.v)'s hand-rolled separation logic.").
 
 %  Gallina compiler backend: rocq/backend/
 file_blurb('nanofil/rocq/backend/Abi.v',

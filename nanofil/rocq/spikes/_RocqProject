@@ -2,8 +2,6 @@
 -R . Spike
 ListSumCode.v
 ListSum.v
-Sep.v
-SepListSum.v
 IrisLang.v
 IrisHeap.v
 IrisListSum.v

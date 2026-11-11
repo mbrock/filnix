@@ -237,7 +237,7 @@ capability (from `collector_live`, `non_moving` and
 chosen: the model's `fresh` lets a new object take a freed one's
 addresses.
 
-| | Hand-rolled ([Sep.v](../rocq/spikes/Sep.v), [SepListSum.v](../rocq/spikes/SepListSum.v)) | Iris 4.5 ([IrisLang.v](../rocq/spikes/IrisLang.v), [IrisHeap.v](../rocq/spikes/IrisHeap.v), [IrisListSum.v](../rocq/spikes/IrisListSum.v)) |
+| | Hand-rolled ([Sep.v](https://github.com/mbrock/filnix/blob/a8083f593eeb47a6e1e919a84f53bbe718e8594f/nanofil/rocq/spikes/Sep.v), [SepListSum.v](https://github.com/mbrock/filnix/blob/a8083f593eeb47a6e1e919a84f53bbe718e8594f/nanofil/rocq/spikes/SepListSum.v)) | Iris 4.5 ([IrisLang.v](../rocq/spikes/IrisLang.v), [IrisHeap.v](../rocq/spikes/IrisHeap.v), [IrisListSum.v](../rocq/spikes/IrisListSum.v)) |
 | --- | --- | --- |
 | Assertions | `fp -> mem -> Prop`, a footprint of pieces and the memory; `star` splits the footprint | `iProp` over `gen_heap piece pval`; the state interpretation ties the ghost heap to `mem` |
 | [Adequacy](concepts/adequacy.md) | none new: `never_panics_by_invariant`, with an invariant of configurations built from the assertions | 174 lines, 2 s: the machine as an Iris `language` and `wp_never_panics`; done in an hour, no dead end |
@@ -324,10 +324,12 @@ encode. The costs to pay first:
    with a `c_gc` contract on Campaign 4's machine; certificates and
    ownership types as fragments; Hello.
 
-The hand-rolled spike stays as the record of the alternative and of
-what the logic must prove about Fil-C's memory, which Pieces.v holds
-for both. Buffer.v remains the last single-invariant proof; BufferLogic.v
-proves the same theorem through the program logic.
+The hand-rolled spike was the record of the alternative and of what
+the logic must prove about Fil-C's memory, which Pieces.v holds for
+both. It was removed from the tree in November 2026; the links in the
+table above go to its last version. Buffer.v remains the last
+single-invariant proof; BufferLogic.v proves the same theorem through
+the program logic.
 
 ## Progress
 

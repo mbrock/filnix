@@ -54,7 +54,7 @@
 
 %  rocq_read_file(+File, -Text, -Rocq): Rocq is rocq(Items, Comments).
 %  The infix notations of the files beside it that it imports are its
-%  operators too (SepListSum.v reads Sep.v's **).
+%  operators too (the removed spike SepListSum.v read Sep.v's **).
 rocq_read_file(File, Text, rocq(Items, Cms)) :-
     read_file_to_string(File, Text, [encoding(utf8)]),
     string_codes(Text, Cs),

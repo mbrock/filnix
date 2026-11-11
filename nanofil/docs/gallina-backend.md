@@ -788,9 +788,10 @@ and separate extraction with no clang-format. It reaches the 2×
 mark natively, and its C++ builds and runs under Fil-C, slowly. It
 is an experiment that no check builds: the checked C++ build is
 still the one on the old pin.
-`rocq/backend/crane/joom-refactor` has the patch to Crane, the
-changes to the backend's Crane files, and `build.sh`, which
-extracts, repairs, compiles and links.
+[`rocq/backend/crane/joom-refactor`](https://github.com/mbrock/filnix/tree/a8083f593eeb47a6e1e919a84f53bbe718e8594f/nanofil/rocq/backend/crane/joom-refactor), removed from the tree
+in November 2026, had the patch to Crane, the changes to the
+backend's Crane files, and `build.sh`, which extracts, repairs,
+compiles and links.
 
 The settings are `Loopify`, `NonAtomicRc` and `SharedVariant`,
 `Format Style "None"` and `Crane Separate Extraction`. A shared
@@ -1499,9 +1500,9 @@ for a faster in-process build.
 branch reached 2 times the OCaml build natively, and its C++,
 extracted file by file, compiles and runs under Fil-C, at 14 times
 the native build's time. It is under
-[Performance targets](#performance-targets) and in
-`rocq/backend/crane/joom-refactor`; the checked build is not
-moved to it.
+[Performance targets](#performance-targets), and its build is in
+the history as [`rocq/backend/crane/joom-refactor`](https://github.com/mbrock/filnix/tree/a8083f593eeb47a6e1e919a84f53bbe718e8594f/nanofil/rocq/backend/crane/joom-refactor); the
+checked build is not moved to it.
 
 **M9. Hybrid `-O`.** Emission of the reuse forms, so Prolog's middle
 end and check passes can feed the extracted backend. This is where
