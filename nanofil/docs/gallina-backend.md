@@ -781,6 +781,145 @@ Why CertiRocq's C stops at ~3.1× natively and ~7.5–8.5× under
   `struct stack_frame frame` into `tinfo->fp = &frame`, which
   prevents the C compiler from tail-call-optimizing recursive loops.
 
+**Crane's `joom/refactor` branch.** One more bounded round, on the
+advice of Crane's author: his `joom/refactor` branch at `fa70df57`,
+the settings of its `libraries/parse-a-lot-bench/CraneExtraction.v`,
+and separate extraction with no clang-format. It reaches the 2×
+mark natively, and its C++ builds and runs under Fil-C, slowly. It
+is an experiment that no check builds: the checked C++ build is
+still the one on the old pin.
+`rocq/backend/crane/joom-refactor` has the patch to Crane, the
+changes to the backend's Crane files, and `build.sh`, which
+extracts, repairs, compiles and links.
+
+The settings are `Loopify`, `NonAtomicRc` and `SharedVariant`,
+`Format Style "None"` and `Crane Separate Extraction`. A shared
+variant is one word: a tag for an alternative with no fields, or
+the address of a counted block that holds the alternative. Copying
+one is a count bump, where the old pin's variant copied its
+storage. As it comes it is written in C++26, so the native
+compiler is clang 21 at `-std=c++2c`.
+
+Best of three on an orb, `compile` and then `compile-allocated`.
+Every build prints the OCaml build's bytes on `rx.ir` and `lvm.ir`
+and passes `crane/tests/same.sh` on the 26 fixtures for `compile`,
+`compile-promoted` and `compile-allocated`: 17 the same, 6 refused
+alike, 3 not taken by either.
+
+- OCaml: `rx.ir` 0.36 and 0.46 s at 56 MB; `lvm.ir` 1.92 and
+  1.85 s at 149 MB.
+- C++ as it is checked (M8): `rx.ir` 0.96 and 1.30 s at 55 MB;
+  `lvm.ir` 4.75 and 4.59 s at 380 MB.
+- The branch, native: `rx.ir` 0.70 and 0.89 s at 41 MB; `lvm.ir`
+  3.56 and 3.28 s at 297 and 283 MB.
+- The branch, under Fil-C: `rx.ir` 9.66 and 12.78 s at 228 MB;
+  `lvm.ir` 51.0 and 45.9 s at 1.2 and 1.1 GB.
+
+So the native build takes 1.9 times the OCaml build's time on
+`rx.ir` and 1.8 to 1.9 on `lvm.ir`, where the checked one takes
+about 2.5 to 2.8, and less memory than the checked one. The OCaml
+figures are this round's run. In others it took 0.34 and 0.41 s,
+and 1.72 and 1.68 s; against those the native build is at 2.1 to
+2.2 on `rx.ir` and 1.9 to 2.1 on `lvm.ir`.
+
+What each setting is worth, natively, on `compile`:
+
+- Without `SharedVariant`, on `std::variant`: 2.30 s on `rx.ir` and
+  7.60 s on `lvm.ir`. A third of that profile is the variant's own
+  machinery.
+- Without `Loopify`: 0.66 s at 99 MB on `rx.ir`, and 5.38 s at
+  520 MB on `lvm.ir`, and it needs an unlimited stack.
+- With `list` mapped to `crane::list` as well, which the benchmark
+  file also does: 1.07 s at 30 MB on `rx.ir` and 5.75 s at 185 MB
+  on `lvm.ir`. Slower, with the least memory. The build measured
+  above leaves it out.
+
+Building is faster too. Extraction takes 13 to 15 s, where the old
+pin takes about two minutes. The 50 files compile in 50 s on 16
+cores, 6 minutes of processor time, the longest in 38 s.
+
+*What the branch still needs from us.* The patch has eight parts
+for the native build:
+
+- the port to Rocq 9.1;
+- a custom match's scrutinee instantiated, as on the old pin;
+- numerals folded at any size: without it `two64` is 0;
+- a string literal written as one `std::string("...", n)`, which
+  also halves the C++ compile time;
+- Loopify's default branch kept, in three files: without it
+  `merge_steps` dropped the prefix it had built, and ten fixtures
+  differed;
+- an eta-expanded function's arguments computed once: without it
+  `proof_pointers` was found again for every block, and `lvm.ir`
+  took over a minute;
+- `#include <atomic>` in `shared_variant.h`;
+- a type alias of a shared variant held as a shared box
+  (`Text.parts`): without it 25 errors of pointer type.
+
+One part of the old patch is fixed upstream (the free variables of
+a switch's default). Five were not carried over, and the gate
+passes without them: the order of assignment in `rc.h`, borrowing
+in eta expansions, early exit from loops, `BoundedNesting` and
+the collected mode.
+
+The output needs three repairs before it compiles, which
+`build.sh` makes with `sed`: a call that two namespaces make
+ambiguous, a receiver type written without its namespace, and a
+global built from a variable template that may be initialized
+after it is read. The last is a real fault and not a matter of
+style: under `SharedVariant` the global copied a null box, and 15
+fixtures threw. The link needs `-z muldefs`, since Crane defines
+functions in headers that are not inline.
+
+*Under Fil-C.* Fil-C's compiler is clang 20.1.8. Two more parts of
+the patch are for it, and the native build is the same bytes with
+them:
+
+- `shared_variant.h` binds an alternative's fields as a pack,
+  which clang 20 does not have. It counts the fields and binds
+  that many names where packs are missing.
+- A shared variant kept its block's address as an integer, which
+  carries no capability: the program stopped in a global
+  constructor with "cannot read pointer with null object". The
+  word is a pointer now, and a slot is swapped a word at a time.
+
+With those the Fil-C build passes the same gate on all three
+commands. Separate extraction is what makes it compile at all: the
+monolithic file of M8 was stopped after 17 minutes and 8.9 GB in
+`computeFrameIndexMap`. The 50 files take 8 minutes on 8 cores
+and 38 minutes of processor time between them; the longest takes
+five and a half minutes, and the largest 2.0 GB. No native file
+takes 40 s, so the compiler is still slow on this code, and the
+time follows the pointers: with the word an integer the same
+files took 18 minutes of processor time, for a program that then
+does not run. Where the compiler spends it was not profiled this
+round.
+
+It runs 14 times slower than the same C++ built natively, and 27
+times slower than the OCaml build, where Fil-C's usual cost is 1.5
+to 4 times:
+
+- By `perf` on `rx.ir`, 78% of the samples are in the runtime and
+  63% in FUGC's marking. The marking is on other cores: the run
+  takes 31 s of processor time in 10 s.
+- A larger heap before the first collection
+  (`FUGC_MIN_THRESHOLD` at 256 MB) cuts the processor time to
+  12 s and the run only to 9.5 s. So nearly all of the run is the
+  program's own thread, where the native build takes 0.7 s.
+- With a first heap of 1 GB the runtime is still a third of the
+  samples, and its largest part, a tenth of all of them, is
+  `filc_object_ensure_aux_ptr_outline`. By its name that gives a
+  block the storage for its pointers' capabilities, and this
+  program makes millions of small blocks that hold pointers;
+  that reading was not checked in the runtime's source.
+- The `std::variant` build of the same branch is slower still
+  under Fil-C: 26.1 and 34.0 s on `rx.ir`.
+
+CertiRocq's C under filcc takes 9.54 and 10.40 s on the same
+input, so the two are about level there, and neither is near the
+4× target for pizlonated code. A process start of the OCaml build
+is still the fastest way to compile a pattern.
+
 ## Milestones
 
 Each ends with its gate green and a short note of what it found.
@@ -1346,6 +1485,14 @@ errors. Lowering CertiRocq's λANF directly to nanofil IR over a
 32-bit integer arena (`docs/lambda-anf.md`) is the next candidate
 for a faster in-process build.
 
+*Crane once more.* A later round on Crane's `joom/refactor`
+branch reached 2 times the OCaml build natively, and its C++,
+extracted file by file, compiles and runs under Fil-C, at 14 times
+the native build's time. It is under
+[Performance targets](#performance-targets) and in
+`rocq/backend/crane/joom-refactor`; the checked build is not
+moved to it.
+
 **M9. Hybrid `-O`.** Emission of the reuse forms, so Prolog's middle
 end and check passes can feed the extracted backend. This is where
 users of `-O` first feel the speed.
@@ -1462,3 +1609,6 @@ otherwise.
    under `filcc -DVERIFFI`), and with static string-literal folding
    and C overrides it reaches 1.06 and 1.32 s natively (3.1 and
    3.2 times OCaml) and 9.54 and 10.40 s under `filcc -DVERIFFI`.
+   Crane's `joom/refactor` branch was measured after that: 0.70
+   and 0.89 s natively, which is the 2 times mark, and 9.66 and
+   12.78 s under Fil-C.

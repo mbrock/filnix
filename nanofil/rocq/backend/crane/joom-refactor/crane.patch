@@ -1,0 +1,900 @@
+diff --git a/src/benchmark.ml b/src/benchmark.ml
+index 52d6adc9..c31d512a 100644
+--- a/src/benchmark.ml
++++ b/src/benchmark.ml
+@@ -157,9 +157,20 @@ let ocaml_callable reference =
+   let _, labels = Table.labels_of_ref reference in
+   let modules, _ = split_last_label labels in
+   let term =
++    let keywords =
++      Extraction_plugin.Ocaml.ocaml_descr.Extraction_plugin.Miniml.keywords
++    in
+     Extraction_plugin.Common.pp_global_name
++      (Extraction_plugin.Common.State.make
++         ~modular:false
++         ~library:false
++         ~keywords
++         ())
+       Extraction_plugin.Common.Term
+-      reference
++      {
++        Extraction_plugin.Miniml.glob = reference;
++        inst = Extraction_plugin.Miniml.InfvInst.empty;
++      }
+   in
+   String.concat "." (List.map Label.to_string modules @ [term])
+ 
+@@ -169,7 +180,12 @@ let ocaml_output expression =
+   let string_ref =
+     Nametab.locate (qualid_of_string "Corelib.Strings.PrimString.string")
+   in
+-  if Extraction_plugin.Table.is_custom string_ref then
++  if Extraction_plugin.Table.is_custom
++       {
++         Extraction_plugin.Miniml.glob = string_ref;
++         inst = Extraction_plugin.Miniml.InfvInst.empty;
++       }
++  then
+     expression
+   else
+     "Pstring.to_string (" ^ expression ^ ")"
+diff --git a/src/common.ml b/src/common.ml
+index 310d08a2..d1161467 100644
+--- a/src/common.ml
++++ b/src/common.ml
+@@ -1588,6 +1588,25 @@ let get_native_char c =
+   in
+   Char.chr (cumul l)
+ 
++(** A byte as it is written inside a C++ character or string literal.
++    Anything but a plain printable character is three octal digits, which
++    is a whole escape, so a digit after it is never read into it. *)
++let cpp_escaped_byte c =
++  let n = Char.code c in
++  if n >= 32 && n < 127 && c <> '\\' && c <> '\'' && c <> '"' && c <> '?'
++  then String.make 1 c
++  else Printf.sprintf "\\%03o" n
++
++(** A string as a C++ [std::string] expression, by its length, so that a
++    zero byte does not end it. *)
++let cpp_string_literal s =
++  let buf = Buffer.create (String.length s + 16) in
++  String.iter (fun c -> Buffer.add_string buf (cpp_escaped_byte c)) s;
++  Printf.sprintf "std::string(\"%s\", %d)" (Buffer.contents buf) (String.length s)
++
++(** A character as a C++ [char] literal. *)
++let cpp_char_literal c = "'" ^ cpp_escaped_byte c ^ "'"
++
+ (** Pretty-print an ascii constructor as a C++ char literal. *)
+ let pp_native_char c = str ("'" ^ Char.escaped (get_native_char c) ^ "'")
+ 
+@@ -1619,7 +1638,8 @@ let check_extract_string () =
+       match lang () with
+       | Cpp -> "string"
+     in
+-    String.equal (find_custom @@ string_type_ref ()) string_type
++    let custom = find_custom @@ string_type_ref () in
++    String.equal custom string_type || String.equal custom "std::string"
+   with Not_found -> false
+ 
+ (** The argument is known to be of type Strings.String.string. Check that it is
+diff --git a/src/common.mli b/src/common.mli
+index 48f45845..82fb0649 100644
+--- a/src/common.mli
++++ b/src/common.mli
+@@ -397,6 +397,10 @@ val is_reserved_at_global_scope : string -> bool
+ 
+ (** Check whether an ML term is an [ascii] constructor application that can be
+     decoded into a native C++ [char] literal. *)
++val cpp_string_literal : string -> string
++val cpp_char_literal : char -> string
++val string_type_ref : unit -> GlobRef.t
++val ascii_type_ref : unit -> GlobRef.t
+ val is_native_char : ml_ast -> bool
+ 
+ (** Decode an [ascii] constructor application into a native [char] value. *)
+diff --git a/src/cpp_ast.ml b/src/cpp_ast.ml
+index 4ffb6ace..238d25b2 100644
+--- a/src/cpp_ast.ml
++++ b/src/cpp_ast.ml
+@@ -264,7 +264,8 @@ let starts_with_doc_comment t =
+     | p :: rest -> (
+       match Pp.repr p with
+       | Ppcmd_empty | Ppcmd_print_break _ -> first_output rest
+-      | Ppcmd_string text -> Some (String.starts_with ~prefix:"///" text)
++      | Ppcmd_string text | Ppcmd_sized_string (_, text) ->
++        Some (String.starts_with ~prefix:"///" text)
+       | Ppcmd_glue parts -> (
+         match first_output parts with Some _ as result -> result | None -> first_output rest )
+       | Ppcmd_box (_, contents) | Ppcmd_tag (_, contents) -> (
+diff --git a/src/cpp_erasure.ml b/src/cpp_erasure.ml
+index ca8a7371..70be35ab 100644
+--- a/src/cpp_erasure.ml
++++ b/src/cpp_erasure.ml
+@@ -784,6 +784,8 @@ let instantiate_foreign (d : settled) : settled =
+     match instantiated_stmt ~boxing s with
+     | Scustom_case (ty, scrut, tyargs, branches, cm) ->
+       let branches = List.map (fun (ps, rty, b) -> (ps, rty, List.map fs b)) branches in
++      (* nanofil: a match inside the scrutinee, as under a lambda there, is instantiated too. *)
++      let scrut = fe scrut in
+       Scustom_case (ty, scrut, tyargs, branches, {cm with cm_pieces = Some (match_pieces cm scrut)})
+     | s -> map_stmt fe fs Fun.id s
+   and fe e = map_expr fe fs Fun.id e in
+diff --git a/src/cpp_name.ml b/src/cpp_name.ml
+index 2b3afdd5..87214b03 100644
+--- a/src/cpp_name.ml
++++ b/src/cpp_name.ml
+@@ -134,7 +134,7 @@ let written doc =
+     match Pp.repr d with
+     | Pp.Ppcmd_empty | Ppcmd_comment _ -> ()
+     | Ppcmd_print_break _ | Ppcmd_force_newline -> Buffer.add_char run ' '
+-    | Ppcmd_string s -> Buffer.add_string run s
++    | Ppcmd_string s | Ppcmd_sized_string (_, s) -> Buffer.add_string run s
+     | Ppcmd_glue ds -> List.iter go ds
+     | Ppcmd_box (_, d) -> go d
+     | Ppcmd_tag (tag, _) when String.equal tag Doc_comments.tag -> ()
+diff --git a/src/extract_env.ml b/src/extract_env.ml
+index 81658a0d..609914f3 100644
+--- a/src/extract_env.ml
++++ b/src/extract_env.ml
+@@ -13,6 +13,7 @@
+ open Miniml
+ open Constr
+ open Declarations
++open Mod_declarations
+ open Names
+ open ModPath
+ open Libnames
+@@ -44,7 +45,7 @@ let environment_until dir_opt =
+       let meb =
+         Modops.destr_nofunctor
+           (MPfile d)
+-          (Global.lookup_module (MPfile d)).mod_type
++          (Mod_declarations.mod_type (Global.lookup_module (MPfile d)))
+       in
+       ( match dir_opt with
+       | Some d' when DirPath.equal d d' -> [(MPfile d, meb)]
+@@ -239,7 +240,7 @@ let expand_mexpr env mp me =
+   let mb, (_, cst), _ =
+     Mod_typing.translate_module state vm_state env mp inl (MExpr ([], me, None))
+   in
+-  (mb.mod_type, mb.mod_delta)
++  ((Mod_declarations.mod_type mb), (Mod_declarations.mod_delta mb))
+ 
+ (** Expands a module type algebraic expression into a full module type body. *)
+ let expand_modtype env mp me =
+@@ -260,10 +261,10 @@ let no_delta = Mod_subst.empty_delta_resolver
+     expression. *)
+ let flatten_modtype env mp me_alg struc_opt =
+   match struc_opt with
+-  | Some me -> (me, no_delta)
++  | Some me -> (me, no_delta mp)
+   | None ->
+     let mtb = expand_modtype env mp me_alg in
+-    (mtb.mod_type, mtb.mod_delta)
++    ((Mod_declarations.mod_type mtb), (Mod_declarations.mod_delta mtb))
+ 
+ (** Ad-hoc update of environment, inspired by [Mod_typing.check_with_aux_def].
+ *)
+@@ -316,11 +317,11 @@ let rec extract_structure_spec env mp reso = function
+     specs
+   | (l, SFBmodule mb) :: msig ->
+     let specs = extract_structure_spec env mp reso msig in
+-    let spec = extract_mbody_spec env mb.mod_mp mb in
++    let spec = extract_mbody_spec env (MPdot (mp, l)) mb in
+     (l, Smodule spec) :: specs
+   | (l, SFBmodtype mtb) :: msig ->
+     let specs = extract_structure_spec env mp reso msig in
+-    let spec = extract_mbody_spec env mtb.mod_mp mtb in
++    let spec = extract_mbody_spec env (MPdot (mp, l)) mtb in
+     (l, Smodtype spec) :: specs
+ 
+ (* From [module_expression] to specifications *)
+@@ -362,7 +363,7 @@ and extract_mexpression_spec env mp1 (me_struct, me_alg) =
+       | _ -> assert false
+     in
+     let mp = MPbound mbid in
+-    let env' = Modops.add_module_type mp mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     MTfunsig
+       ( mbid,
+         extract_mbody_spec env mp mtb,
+@@ -375,7 +376,7 @@ and extract_msignature_spec env mp1 reso = function
+     MTsig (mp1, extract_structure_spec env' mp1 reso struc)
+   | MoreFunctor (mbid, mtb, me) ->
+     let mp = MPbound mbid in
+-    let env' = Modops.add_module_type mp mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     MTfunsig
+       ( mbid,
+         extract_mbody_spec env mp mtb,
+@@ -383,11 +384,11 @@ and extract_msignature_spec env mp1 reso = function
+ 
+ and extract_mbody_spec : 'a. _ -> _ -> 'a generic_module_body -> _ =
+  fun env mp mb ->
+-   match mb.mod_type_alg with
+-   | Some ty -> extract_mexpression_spec env mp (mb.mod_type, ty)
++   match (Mod_declarations.mod_type_alg mb) with
++   | Some ty -> extract_mexpression_spec env mp ((Mod_declarations.mod_type mb), ty)
+    | None ->
+      (* Fall back to expanding the signature *)
+-     extract_msignature_spec env mp mb.mod_delta mb.mod_type
++     extract_msignature_spec env mp (Mod_declarations.mod_delta mb) (Mod_declarations.mod_type mb)
+ 
+ (** Recursively extracts a module structure to ML declarations. When all=false,
+     only extracts needed declarations based on dependency analysis. Evaluation
+@@ -519,7 +520,7 @@ and extract_mexpression access env mp mty = function
+       | NoFunctor _ -> assert false
+     in
+     let mp1 = MPbound mbid in
+-    let env' = Modops.add_module_type mp1 mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     Miniml.MEfunctor
+       ( mbid,
+         extract_mbody_spec env mp1 mtb,
+@@ -531,7 +532,7 @@ and extract_msignature access env mp reso ~all = function
+     Miniml.MEstruct (mp, extract_structure access env' mp reso ~all struc)
+   | MoreFunctor (mbid, mtb, me) ->
+     let mp1 = MPbound mbid in
+-    let env' = Modops.add_module_type mp1 mtb env in
++    let env' = Modops.add_module_parameter mbid mtb env in
+     Miniml.MEfunctor
+       ( mbid,
+         extract_mbody_spec env mp1 mtb,
+@@ -546,26 +547,26 @@ and extract_module access env mp ~all mb =
+      variables. But a Declare Module at toplevel seems legal (cf #2525). For the
+      moment we don't support this situation. *)
+   let impl =
+-    match Declareops.mod_expr mb with
++    match Mod_declarations.mod_expr mb with
+     | Abstract -> error_no_module_expr mp
+-    | Algebraic me -> extract_mexpression access env mp mb.mod_type me
++    | Algebraic me -> extract_mexpression access env mp (Mod_declarations.mod_type mb) me
+     | Struct sign ->
+       (* This module has a signature, otherwise it would be FullStruct. We
+          extract just the elements required by this signature. *)
+-      let () = add_labels mp mb.mod_type in
+-      let sign = Modops.annotate_struct_body sign mb.mod_type in
+-      extract_msignature access env mp mb.mod_delta ~all:false sign
++      let () = add_labels mp (Mod_declarations.mod_type mb) in
++      let sign = Modops.annotate_struct_body sign (Mod_declarations.mod_type mb) in
++      extract_msignature access env mp (Mod_declarations.mod_delta mb) ~all:false sign
+     | FullStruct ->
+-      extract_msignature access env mp mb.mod_delta ~all mb.mod_type
++      extract_msignature access env mp (Mod_declarations.mod_delta mb) ~all (Mod_declarations.mod_type mb)
+   in
+   (* Slight optimization: for modules without explicit signatures ([FullStruct]
+      case), we build the type out of the extracted implementation *)
+   let typ =
+-    match Declareops.mod_expr mb with
++    match Mod_declarations.mod_expr mb with
+     | FullStruct ->
+-      assert (Option.is_empty mb.mod_type_alg);
++      assert (Option.is_empty (Mod_declarations.mod_type_alg mb));
+       mtyp_of_mexpr impl
+-    | Algebraic fae when Option.is_empty mb.mod_type_alg ->
++    | Algebraic fae when Option.is_empty (Mod_declarations.mod_type_alg mb) ->
+       (* For module applications without explicit type, try to infer from
+          functor *)
+       let inferred_alg_type =
+@@ -595,7 +596,7 @@ and extract_module access env mp ~all mb =
+                       in
+                       Some (MENoFunctor (extract_base_from_with me))
+                   in
+-                  match func_mb.mod_type_alg with
++                  match (Mod_declarations.mod_type_alg func_mb) with
+                   | Some alg -> get_functor_return_type alg
+                   | None -> None
+                 with _ -> None )
+@@ -604,7 +605,7 @@ and extract_module access env mp ~all mb =
+         | MEMoreFunctor _ -> None
+       in
+       ( match inferred_alg_type with
+-      | Some alg_ty -> extract_mexpression_spec env mp (mb.mod_type, alg_ty)
++      | Some alg_ty -> extract_mexpression_spec env mp ((Mod_declarations.mod_type mb), alg_ty)
+       | None -> extract_mbody_spec env mp mb )
+     | _ -> extract_mbody_spec env mp mb
+   in
+@@ -625,7 +626,7 @@ let mono_environment ~opaque_access refs mpl =
+           opaque_access
+           env
+           mp
+-          no_delta
++          (no_delta mp)
+           ~all:(Visit.needed_mp_all mp)
+           struc ) )
+     l
+@@ -2358,12 +2359,13 @@ let extraction_library ~opaque_access is_rec CAst.{loc; v = m} =
+     try Nametab.full_name_module q
+     with Not_found -> error_unknown_module ?loc q
+   in
++  let dir_m = dirpath_of_path dir_m in
+   Visit.add_mp_all (MPfile dir_m);
+   let env = Global.env () in
+   let l = List.rev (environment_until (Some dir_m)) in
+   let select l (mp, struc) =
+     if Visit.needed_mp mp then
+-      (mp, extract_structure opaque_access env mp no_delta ~all:true struc) :: l
++      (mp, extract_structure opaque_access env mp (no_delta mp) ~all:true struc) :: l
+     else
+       l
+   in
+diff --git a/src/extraction.ml b/src/extraction.ml
+index a9e2a778..e0fb759b 100644
+--- a/src/extraction.ml
++++ b/src/extraction.ml
+@@ -61,7 +61,7 @@ let type_of env sg c =
+   Retyping.get_type_of ~polyprop:false env sg (Termops.strip_outer_cast sg c)
+ 
+ let sort_of env sg c =
+-  Retyping.get_sort_family_of
++  Retyping.get_sort_quality_of
+     ~polyprop:false
+     env
+     sg
+@@ -93,11 +93,13 @@ type flag = info * scheme
+ (** {2 [flag_of_type] transforms a type [t] into a [flag]. Really important
+     function} *)
+ 
+-let info_of_family = function
+-  | InSProp | InProp -> Logic
+-  | InSet | InType | InQSort -> Info
++let info_of_family =
++  let open UnivGen.QualityOrSet in
++  function
++  | Qual (QConstant QSProp | QConstant QProp) -> Logic
++  | Set | Qual (QConstant QType | QVar _) -> Info
+ 
+-let info_of_sort s = info_of_family (Sorts.family s)
++let info_of_sort s = info_of_family (UnivGen.QualityOrSet.of_sort s)
+ 
+ let rec flag_of_type env sg t : flag =
+   let t = whd_all env sg t in
+@@ -362,9 +364,7 @@ let db_from_sign s =
+ let rec returns_type_sort c =
+   match Constr.kind c with
+   | Sort s -> (
+-    match Sorts.family s with
+-    | Sorts.InType | Sorts.InSet | Sorts.InQSort -> true
+-    | Sorts.InProp | Sorts.InSProp -> false )
++    match info_of_sort s with Info -> true | Logic -> false )
+   | Prod (_, _, body) -> returns_type_sort body
+   | _ -> false
+ 
+@@ -383,7 +383,7 @@ let rec returns_type_sort c =
+     are the one type variable, and a named binder therefore takes the number
+     its name already has. *)
+ let db_from_rel_context env =
+-  let outer_first = List.rev env.env_rel_context.env_rel_ctx in
++  let outer_first = List.rev (Environ.rel_context env) in
+   let seen = ref [] in
+   snd
+     (List.fold_left
+diff --git a/src/loopify.ml b/src/loopify.ml
+index eef36949..9ac60622 100644
+--- a/src/loopify.ml
++++ b/src/loopify.ml
+@@ -507,7 +507,7 @@ let loopify_inner_lambdas ?(tail_only = false) ~tparams ?(outer_env = []) body =
+         ( process_expr scrut,
+           r,
+           List.map (fun (id, body) -> (id, process_stmts body)) branches,
+-          default )
++          Option.map process_stmts default )
+     | Smatch (scrut, branches, default) ->
+       Smatch
+         ( { scrut with sc_expr = process_expr scrut.sc_expr },
+diff --git a/src/loopify_analysis.ml b/src/loopify_analysis.ml
+index 4d1301a1..726eeb7d 100644
+--- a/src/loopify_analysis.ml
++++ b/src/loopify_analysis.ml
+@@ -679,11 +679,14 @@ and collect_stmt check ~in_visitor = function
+   | Swhile (cond, body) | Sfor_range (_, cond, body) ->
+     collect_expr check cond @ collect_stmts check ~in_visitor body
+   | Sblock stmts -> collect_stmts check ~in_visitor stmts
+-  | Sswitch (scrut, _, branches, _) ->
++  | Sswitch (scrut, _, branches, default) ->
+     collect_expr check scrut
+     @ List.concat_map
+         (fun (_, body) -> collect_stmts check ~in_visitor body)
+         branches
++    @ (match default with
++       | Some ss -> collect_stmts check ~in_visitor ss
++       | None -> [])
+   | Scustom_case (_, scrut, _, branches, _) ->
+     collect_expr check scrut
+     @ List.concat_map
+@@ -751,12 +754,15 @@ let rec count_calls_stmts (check : call_checker) stmts =
+         + count_calls_stmts check then_br
+         + count_calls_stmts check else_br
+       | Sblock ss -> count_calls_stmts check ss
+-      | Sswitch (e, _, branches, _) ->
++      | Sswitch (e, _, branches, default) ->
+         count_calls_expr check e
+         + List.fold_left
+             (fun acc (_, body) -> acc + count_calls_stmts check body)
+             0
+             branches
++        + (match default with
++           | Some ss -> count_calls_stmts check ss
++           | None -> 0)
+       | Scustom_case (_, scrut, _, branches, _) ->
+         count_calls_expr check scrut
+         + List.fold_left
+diff --git a/src/loopify_tail.ml b/src/loopify_tail.ml
+index f9cd957b..6568b360 100644
+--- a/src/loopify_tail.ml
++++ b/src/loopify_tail.ml
+@@ -577,7 +577,11 @@ let rec generic_rewrite_stmt ?(aliases = []) ?(derefs = []) trc = function
+   | Sswitch (scrut, r, branches, default) ->
+     let rw = generic_rewrite_stmts ~aliases ~derefs trc in
+     Sswitch
+-      (scrut, r, List.map (fun (id, body) -> (id, rw body)) branches, default)
++      ( scrut, r, List.map (fun (id, body) -> (id, rw body)) branches,
++        (* The default branch returns too: left as it was, its [return]
++           would leave a tail-modulo-cons loop with the list built so far
++           dropped. *)
++        Option.map rw default )
+   | Scustom_case (ty, scrut, tyargs, branches, err) ->
+     let rw = generic_rewrite_stmts ~aliases ~derefs trc in
+     Scustom_case (ty, scrut, tyargs,
+diff --git a/src/pointer_slot.ml b/src/pointer_slot.ml
+index 8ea9fdf8..695856f9 100644
+--- a/src/pointer_slot.ml
++++ b/src/pointer_slot.ml
+@@ -8,6 +8,10 @@ type t = Shared | At_instantiation | Pointer
+ 
+ let rec of_pointee = function
+   | Tglob (r, _, _) when Table.is_shared_variant r -> Shared
++  (* A type alias of a shared variant (a [Definition parts := list string])
++     is held as what it names is. *)
++  | Tglob (r, _, _) when Table.is_shared_variant (Table.type_alias_head r) ->
++    Shared
+   | Tglob (GlobRef.IndRef (kn, _), _, _)
+     when Table.shared_variant () && Common.under_mp_bound (MutInd.modpath kn) ->
+     At_instantiation
+diff --git a/src/structure_analysis.ml b/src/structure_analysis.ml
+index 76caf016..843c7f94 100644
+--- a/src/structure_analysis.ml
++++ b/src/structure_analysis.ml
+@@ -149,7 +149,7 @@ let declared_functor_scope f =
+         | MoreFunctor (mbid, _, body) -> params (MPbound mbid :: acc) body
+         | NoFunctor sign -> (List.rev acc, sign)
+       in
+-      match (Declareops.mod_expr mb, params [] mb.mod_type) with
++      match (Mod_declarations.mod_expr mb, params [] (Mod_declarations.mod_type mb)) with
+       | (FullStruct | Struct _), ((_ :: _ as ps), sign)
+         when List.exists (function _, Declarations.SFBmodtype _ -> true | _ -> false) sign ->
+         Some {Module_plan.functor_ = f; args = ps}
+diff --git a/src/table.ml b/src/table.ml
+index 79d090e3..636b1bbf 100644
+--- a/src/table.ml
++++ b/src/table.ml
+@@ -1356,6 +1356,14 @@ let has_type_alias_body r = Ref.Can.Map.mem r !type_alias_bodies
+ let add_type_alias_body r t =
+   type_alias_bodies := Ref.Can.Map.add r t !type_alias_bodies
+ 
++(* The global a chain of type aliases from [r] ends in: [r] itself when it
++   is no alias, or its body is no applied global. *)
++let rec type_alias_head r =
++  match Ref.Can.Map.find_opt r !type_alias_bodies with
++  | Some (Miniml.Tglob (r', _, _)) when not (GlobRef.CanOrd.equal r r') ->
++    type_alias_head r'
++  | _ -> r
++
+ (* The types [r]'s own definition writes: an inductive's constructor payloads,
+    a type alias's right-hand side.  Folded with [f] over every subterm. *)
+ let fold_type_body_types f r acc =
+@@ -1670,11 +1678,8 @@ let safe_pr_long_global r =
+     | _ -> assert false )
+ 
+ let pr_long_mp mp =
+-  try
+-    let lid = DirPath.repr (Nametab.dirpath_of_module mp) in
+-    str (String.concat "." (List.rev_map Id.to_string lid))
+-  with Not_found ->
+-    str (ModPath.to_string mp)
++  try Libnames.pr_path (Nametab.path_of_module mp)
++  with Not_found -> str (ModPath.to_string mp)
+ 
+ let pr_long_global ref = pr_path (Nametab.path_of_global ref)
+ 
+@@ -4216,7 +4221,7 @@ let extract_numeral r fmt =
+         try Some (Nametab.locate (Libnames.qualid_of_string qstr))
+         with Not_found ->
+           (* Fallback: try in the inductive's own directory *)
+-          let ind_dir = Libnames.dirpath ind_path in
++          let ind_dir = Libnames.pop_dirpath (Libnames.dirpath_of_path ind_path) in
+           let qid = Libnames.make_qualid ind_dir (Names.Id.of_string name) in
+           try Some (Nametab.locate qid) with Not_found -> None)
+         converter_names
+diff --git a/src/table.mli b/src/table.mli
+index 3fb5e0ea..a500fd56 100644
+--- a/src/table.mli
++++ b/src/table.mli
+@@ -660,6 +660,10 @@ val add_type_alias_body : GlobRef.t -> Miniml.ml_type -> unit
+     [r] is a type-level [Definition] rather than a term. *)
+ val has_type_alias_body : GlobRef.t -> bool
+ 
++(** The global a chain of type aliases from [r] ends in; [r] itself when it
++    is not an alias of an applied global. *)
++val type_alias_head : GlobRef.t -> GlobRef.t
++
+ (** [add_ind_class_arg r arg] records that a constructor field type of
+     [r] names the applied instance [arg] -- the same shape
+     {!add_instance_class_shape} records, and read by the same rule.  The Rocq
+diff --git a/src/toolchain.ml b/src/toolchain.ml
+index 40fac134..7d54e41e 100644
+--- a/src/toolchain.ml
++++ b/src/toolchain.ml
+@@ -176,7 +176,7 @@ let compile_ocaml
+      PATH: otherwise a missing ocamlfind slips past this check and fails later
+      with a raw error instead of the friendly [NoOcamloptFound] handled by
+      callers. *)
+-  let ocamlfind = Envars.ocamlfind () in
++  let ocamlfind = Boot.Env.ocamlfind () in
+   if not (Subprocess.executable_available ocamlfind) then
+     raise NoOcamloptFound;
+   let errfile =
+diff --git a/src/translation.ml b/src/translation.ml
+index 5fc99eea..206742db 100644
+--- a/src/translation.ml
++++ b/src/translation.ml
+@@ -2867,6 +2867,12 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
+         | Some e -> e
+         | None -> gen_expr_custom_cons ?expected_ty ~slot env _ty r _ts ) )
+     | None -> gen_expr_custom_cons ?expected_ty ~slot env _ty r _ts )
++  | MLcons (_, _, _) when Common.is_native_string ml_e ->
++    (* filnix: a literal of Stdlib's [string] is one C++ string, not a chain
++       of one-character concatenations run at every use. *)
++    CPPraw (Common.cpp_string_literal (Common.get_native_string ml_e))
++  | MLcons (_, _, _) when Common.is_native_char ml_e ->
++    CPPraw (Common.cpp_char_literal (Common.get_native_char ml_e))
+   | MLcons (ty, r, ts) when is_custom r ->
+     gen_expr_custom_cons ?expected_ty ~slot env ty r ts
+   | MLcons (ty, r, ts)
+@@ -6539,6 +6545,39 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
+               (fun i _ -> (List.nth eta_arg_reads i) (CPPvar (eta_param_id i)))
+               eta_args
+           in
++          (* The closure may be called many times (it is handed to a fold or
++             a map), and Rocq evaluates a partial application's arguments
++             once, where it is built.  An argument that computes something
++             is therefore bound once outside the closure, which captures
++             the result; left in the body it would be computed again on
++             every call. *)
++          let rec eta_arg_is_cheap = function
++            | CPPvar _ | CPPglob _ | CPPstring _ | CPPuint _ | CPPfloat _
++            | CPPthis | CPPlambda _ ->
++              true
++            | CPPmove e | CPPderef e | CPPget (e, _) | CPPget' (e, _, _)
++            | CPPaccess (_, e, _) | CPPnamespace (_, e) | CPPforward (_, e) ->
++              eta_arg_is_cheap e
++            | _ -> false
++          in
++          let eta_hoisted = ref [] in
++          let args =
++            List.mapi
++              (fun i a ->
++                if eta_arg_is_cheap a then a
++                else begin
++                  let id = Id.of_string (Printf.sprintf "_pa%d" i) in
++                  eta_hoisted :=
++                    Sasgn (id, Declare (Tauto, None), a) :: !eta_hoisted;
++                  CPPvar id
++                end )
++              args
++          in
++          let eta_bind_once lam =
++            match List.rev !eta_hoisted with
++            | [] -> lam
++            | decls -> mk_iife None (decls @ [Sreturn (Some lam)])
++          in
+           let call_args = args @ eta_vars in
+           (* The result is the callee's, so it is read off the declaration for
+              the same reason the parameters are: what the call returns is
+@@ -6638,22 +6677,26 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
+             let n = List.length exp_dom in
+             let outer = List.filteri (fun i _ -> i < n) eta_args in
+             let inner = List.filteri (fun i _ -> i >= n) eta_args in
+-            mk_lambda outer None
+-              [ Sreturn
+-                  (Some
+-                     (mk_lambda ~tparams:eta_tparams inner ret_ty body
+-                        ~capture:Closure ) ) ]
+-              ~capture:Closure
+-          | _ when eta_keep_moves ->
++            eta_bind_once
++              (mk_lambda outer None
++                 [ Sreturn
++                     (Some
++                        (mk_lambda ~tparams:eta_tparams inner ret_ty body
++                           ~capture:Closure ) ) ]
++                 ~capture:Closure )
++          | _ when eta_keep_moves && !eta_hoisted = [] ->
+             mk_lambda ~tparams:eta_tparams eta_args ret_ty body ~capture:Immediate
+-          | _ -> (
++          | _ ->
+             (* The arguments are read where the closure is made, and taken
+-               by move there when the plan moves them. *)
+-            match mk_lambda ~tparams:eta_tparams eta_args ret_ty body ~capture:Closure with
+-            | CPPlambda l ->
+-              CPPlambda
+-                {l with cl_moved = moved_names env (Ownership_ir.eta_captures (!tctx).move_plan ml_args)}
+-            | e -> e ) )
++               by move there when the plan moves them.  The bound arguments
++               are locals of the scope that builds the closure, which ends
++               before the closure is called: it copies them. *)
++            eta_bind_once
++              ( match mk_lambda ~tparams:eta_tparams eta_args ret_ty body ~capture:Closure with
++              | CPPlambda l ->
++                CPPlambda
++                  {l with cl_moved = moved_names env (Ownership_ir.eta_captures (!tctx).move_plan ml_args)}
++              | e -> e ) )
+       | _ ->
+         if id_is_typeclass_instance && args = [] then
+           cglob
+diff --git a/src/translation_types.ml b/src/translation_types.ml
+index 1ab18290..57bb7822 100644
+--- a/src/translation_types.ml
++++ b/src/translation_types.ml
+@@ -841,29 +841,26 @@ let render_numeral info (n : Z.t) : cpp_expr =
+     [None] if any node is not a recognized positive constructor.
+     Constructor indices (1-based): xI=[positive_xI_idx], xO=[positive_xO_idx],
+     xH=[positive_xH_idx]. *)
+-let rec try_fold_positive expr : int64 option =
++let rec try_fold_positive expr : Z.t option =
+   match strip_magic expr with
+   | MLcons (_, GlobRef.ConstructRef (_, idx), []) when idx = positive_xH_idx ->
+-    Some 1L
++    Some Z.one
+   | MLcons (_, GlobRef.ConstructRef (_, idx), [inner]) when idx = positive_xI_idx ->
+-    Option.map (fun n -> Int64.add (Int64.mul 2L n) 1L) (try_fold_positive inner)
++    Option.map (fun n -> Z.succ (Z.shift_left n 1)) (try_fold_positive inner)
+   | MLcons (_, GlobRef.ConstructRef (_, idx), [inner]) when idx = positive_xO_idx ->
+-    Option.map (fun n -> Int64.mul 2L n) (try_fold_positive inner)
++    Option.map (fun n -> Z.shift_left n 1) (try_fold_positive inner)
+   | _ -> None
+ 
+ (** Fold a Zpos/Zneg constructor wrapping a positive chain into a rendered
+     numeral string.  [cidx] is the 1-based constructor index of the Z
+     constructor; [inner] is its positive argument.  Returns [None] if [inner]
+-    cannot be folded. *)
++    cannot be folded.  The value is kept at arbitrary precision: an [int64]
++    wraps silently from 2^63 on. *)
+ let try_fold_z_binary info cidx inner : cpp_expr option =
+   Option.map
+     (fun pos_val ->
+-      let z_val =
+-        if cidx = z_pos_idx then pos_val
+-        else if cidx = z_neg_idx then Int64.neg pos_val
+-        else pos_val
+-      in
+-      render_numeral info (Z.of_int64 z_val))
++      let z_val = if cidx = z_neg_idx then Z.neg pos_val else pos_val in
++      render_numeral info z_val)
+     (try_fold_positive inner)
+ 
+ (** Whether [r] is a type family over a value -- [sem : idx -> Type] --
+diff --git a/theories/cpp/obj.h b/theories/cpp/obj.h
+index 49947903..0ca4879e 100644
+--- a/theories/cpp/obj.h
++++ b/theories/cpp/obj.h
+@@ -111,9 +111,10 @@ private:
+     if (!tag_) return nullptr;
+     if (!tag_->inline_) return box_;
+     if (!tag_->counted) return nullptr;
+-    std::uintptr_t w;
+-    std::memcpy(&w, bytes_, sizeof w);
+-    return w != 0 && (w & 1) == 0 ? reinterpret_cast<const shared_block *>(w) : nullptr;
++    const shared_block *p;
++    std::memcpy(&p, bytes_, sizeof p);
++    const std::uintptr_t w = reinterpret_cast<std::uintptr_t>(p);
++    return w != 0 && (w & 1) == 0 ? p : nullptr;
+   }
+   void release() noexcept {
+     if (auto *b = counted_block())
+@@ -158,7 +159,7 @@ public:
+ 
+   void swap(obj &o) noexcept {
+     std::swap(tag_, o.tag_);
+-    unsigned char tmp[sizeof bytes_];
++    alignas(void *) unsigned char tmp[sizeof bytes_];
+     std::memcpy(tmp, bytes_, sizeof bytes_);
+     std::memcpy(bytes_, o.bytes_, sizeof bytes_);
+     std::memcpy(o.bytes_, tmp, sizeof bytes_);
+diff --git a/theories/cpp/shared_variant.h b/theories/cpp/shared_variant.h
+index a9c51438..5767e7b7 100644
+--- a/theories/cpp/shared_variant.h
++++ b/theories/cpp/shared_variant.h
+@@ -29,6 +29,7 @@
+ #ifndef INCLUDED_CRANE_SHARED_VARIANT
+ #define INCLUDED_CRANE_SHARED_VARIANT
+ 
++#include <atomic>
+ #include <cstddef>
+ #include <cstdint>
+ #include <cstring>
+@@ -46,10 +47,79 @@ CRANE_RC_POLICY_BEGIN
+ 
+ // [f] applied to each field of [x], an alternative: a plain aggregate, its
+ // fields bound as a pack (C++26 structured binding packs).
++#if defined(__cpp_structured_bindings) && __cpp_structured_bindings >= 202411L
+ template <class T, class F> void each_field(T &x, F &&f) {
+   auto &[... fields] = x;
+   (f(fields), ...);
+ }
++#else
++// Before structured binding packs: count the aggregate's fields, then bind
++// that many names.
++namespace field_detail {
++struct any {
++  template <class U> operator U &() const noexcept;
++};
++template <class T, class... A> constexpr std::size_t arity(A... a) {
++  if constexpr (requires { T{a..., any{}}; })
++    return arity<T>(a..., any{});
++  else
++    return sizeof...(A);
++}
++} // namespace field_detail
++template <class T, class F> void each_field(T &x, F &&f) {
++  constexpr std::size_t n = field_detail::arity<std::remove_cv_t<T>>();
++  if constexpr (n == 0) { (void)x; (void)f; }
++  else if constexpr (n == 1) { auto &[f0] = x; f(f0); }
++  else if constexpr (n == 2) { auto &[f0, f1] = x; f(f0); f(f1); }
++  else if constexpr (n == 3) { auto &[f0, f1, f2] = x; f(f0); f(f1); f(f2); }
++  else if constexpr (n == 4) { auto &[f0, f1, f2, f3] = x; f(f0); f(f1); f(f2); f(f3); }
++  else if constexpr (n == 5) { auto &[f0, f1, f2, f3, f4] = x; f(f0); f(f1); f(f2); f(f3); f(f4); }
++  else if constexpr (n == 6) { auto &[f0, f1, f2, f3, f4, f5] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); }
++  else if constexpr (n == 7) { auto &[f0, f1, f2, f3, f4, f5, f6] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); }
++  else if constexpr (n == 8) { auto &[f0, f1, f2, f3, f4, f5, f6, f7] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); }
++  else if constexpr (n == 9) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); }
++  else if constexpr (n == 10) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); }
++  else if constexpr (n == 11) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); }
++  else if constexpr (n == 12) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); }
++  else if constexpr (n == 13) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); }
++  else if constexpr (n == 14) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); }
++  else if constexpr (n == 15) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); }
++  else if constexpr (n == 16) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); }
++  else if constexpr (n == 17) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); }
++  else if constexpr (n == 18) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); }
++  else if constexpr (n == 19) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); }
++  else if constexpr (n == 20) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); }
++  else if constexpr (n == 21) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); }
++  else if constexpr (n == 22) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); }
++  else if constexpr (n == 23) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); }
++  else if constexpr (n == 24) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); }
++  else if constexpr (n == 25) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); }
++  else if constexpr (n == 26) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); }
++  else if constexpr (n == 27) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); }
++  else if constexpr (n == 28) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); }
++  else if constexpr (n == 29) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); }
++  else if constexpr (n == 30) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); }
++  else if constexpr (n == 31) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); }
++  else if constexpr (n == 32) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); }
++  else if constexpr (n == 33) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); }
++  else if constexpr (n == 34) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); }
++  else if constexpr (n == 35) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); }
++  else if constexpr (n == 36) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); }
++  else if constexpr (n == 37) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); }
++  else if constexpr (n == 38) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); }
++  else if constexpr (n == 39) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); }
++  else if constexpr (n == 40) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); }
++  else if constexpr (n == 41) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); }
++  else if constexpr (n == 42) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40, f41] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); f(f41); }
++  else if constexpr (n == 43) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40, f41, f42] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); f(f41); f(f42); }
++  else if constexpr (n == 44) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40, f41, f42, f43] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); f(f41); f(f42); f(f43); }
++  else if constexpr (n == 45) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40, f41, f42, f43, f44] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); f(f41); f(f42); f(f43); f(f44); }
++  else if constexpr (n == 46) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40, f41, f42, f43, f44, f45] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); f(f41); f(f42); f(f43); f(f44); f(f45); }
++  else if constexpr (n == 47) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40, f41, f42, f43, f44, f45, f46] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); f(f41); f(f42); f(f43); f(f44); f(f45); f(f46); }
++  else if constexpr (n == 48) { auto &[f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20, f21, f22, f23, f24, f25, f26, f27, f28, f29, f30, f31, f32, f33, f34, f35, f36, f37, f38, f39, f40, f41, f42, f43, f44, f45, f46, f47] = x; f(f0); f(f1); f(f2); f(f3); f(f4); f(f5); f(f6); f(f7); f(f8); f(f9); f(f10); f(f11); f(f12); f(f13); f(f14); f(f15); f(f16); f(f17); f(f18); f(f19); f(f20); f(f21); f(f22); f(f23); f(f24); f(f25); f(f26); f(f27); f(f28); f(f29); f(f30); f(f31); f(f32); f(f33); f(f34); f(f35); f(f36); f(f37); f(f38); f(f39); f(f40); f(f41); f(f42); f(f43); f(f44); f(f45); f(f46); f(f47); }
++  else static_assert(n <= 48, "crane::each_field: too many fields");
++}
++#endif
+ 
+ template <class... Ts> class shared_variant {
+   static_assert(sizeof...(Ts) > 0, "crane::shared_variant: at least one alternative");
+@@ -89,24 +159,28 @@ private:
+ 
+   // 0: moved from, no alternative.  Odd: an alternative with no fields, its
+   // index above the tag bit.  Otherwise the address of a block.
+-  std::uintptr_t w_;
++  // Held as a pointer, not an integer, so that a capability-carrying
++  // implementation (Fil-C) keeps the block's capability with the word.
++  using word = shared_block *;
++  word w_;
+ 
+   static constexpr std::uintptr_t tag(std::size_t i) { return (std::uintptr_t(i) << 1) | 1; }
+-  bool boxed() const { return w_ != 0 && (w_ & 1) == 0; }
+-  const shared_block *hdr() const { return reinterpret_cast<const shared_block *>(w_); }
++  static word tag_word(std::size_t i) { return reinterpret_cast<word>(tag(i)); }
++  std::uintptr_t bits() const { return reinterpret_cast<std::uintptr_t>(w_); }
++  bool boxed() const { return bits() != 0 && (bits() & 1) == 0; }
++  const shared_block *hdr() const { return w_; }
+   template <std::size_t I> block<I> *blk() const {
+     return static_cast<block<I> *>(const_cast<shared_block *>(hdr()));
+   }
+ 
+   template <std::size_t I> bool is() const {
+-    if constexpr (inline_alt<I>) return w_ == tag(I);
++    if constexpr (inline_alt<I>) return bits() == tag(I);
+     else return boxed() && hdr()->destroy == &block<I>::drop;
+   }
+ 
+-  template <std::size_t I, class... A> static std::uintptr_t make(A &&...a) {
+-    if constexpr (inline_alt<I>) return tag(I);
+-    else return reinterpret_cast<std::uintptr_t>(
+-        static_cast<shared_block *>(new block<I>(std::forward<A>(a)...)));
++  template <std::size_t I, class... A> static word make(A &&...a) {
++    if constexpr (inline_alt<I>) return tag_word(I);
++    else return static_cast<shared_block *>(new block<I>(std::forward<A>(a)...));
+   }
+ 
+   void release() {
+@@ -126,7 +200,7 @@ private:
+       on_index([&](auto i) {
+         constexpr std::size_t I = decltype(i)::value;
+         if constexpr (!inline_alt<I>) {
+-          std::uintptr_t fresh = make<I>(std::as_const(blk<I>()->value));
++          word fresh = make<I>(std::as_const(blk<I>()->value));
+           release();
+           w_ = fresh;
+         }
+@@ -148,7 +222,7 @@ public:
+   shared_variant(const shared_variant &o) : w_(o.w_) {
+     if (boxed()) hdr()->retain();
+   }
+-  shared_variant(shared_variant &&o) noexcept : w_(std::exchange(o.w_, 0)) {}
++  shared_variant(shared_variant &&o) noexcept : w_(std::exchange(o.w_, nullptr)) {}
+ 
+   template <class T, class D = std::decay_t<T>,
+             class = std::enable_if_t<(index_of<D>() < sizeof...(Ts))>>
+@@ -176,7 +250,7 @@ public:
+   }
+ 
+   template <std::size_t I, class... A> alt<I> &emplace(A &&...a) {
+-    std::uintptr_t fresh = make<I>(std::forward<A>(a)...);
++    word fresh = make<I>(std::forward<A>(a)...);
+     release();
+     w_ = fresh;
+     return raw<I>();
+@@ -299,6 +373,14 @@ template <class T> class shared_box {
+     return w != 0;
+   }
+   T *ptr() const { return std::launder(reinterpret_cast<T *>(const_cast<unsigned char *>(s_))); }
++  // Whole-word copies, which keep a pointer's capability where a bytewise
++  // swap would not (Fil-C).
++  void swap_word(shared_box &o) noexcept {
++    alignas(void *) unsigned char tmp[sizeof s_];
++    std::memcpy(tmp, s_, sizeof s_);
++    std::memcpy(s_, o.s_, sizeof s_);
++    std::memcpy(o.s_, tmp, sizeof s_);
++  }
+ 
+ public:
+   using element_type = T;
+@@ -323,12 +405,12 @@ public:
+     std::memset(o.s_, 0, sizeof o.s_);
+   }
+   shared_box &operator=(shared_box o) noexcept {
+-    std::swap(s_, o.s_);
++    swap_word(o);
+     return *this;
+   }
+   shared_box &operator=(std::nullptr_t) noexcept {
+     shared_box empty;
+-    std::swap(s_, empty.s_);
++    swap_word(empty);
+     return *this;
+   }
+   ~shared_box() {
+diff --git a/theories/dune b/theories/dune
+index 989b79c8..350972b6 100644
+--- a/theories/dune
++++ b/theories/dune
+@@ -3,4 +3,4 @@
+  (name Crane)
+  (package rocq-crane)
+  (plugins rocq-crane.plugin)
+- (theories Stdlib ITree ExtLib Paco))
++ (theories Stdlib))
