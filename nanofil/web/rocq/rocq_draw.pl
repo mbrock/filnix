@@ -796,7 +796,8 @@ ctor_row(Env, ctor(F-T, C, Bs, Ty)) -->
     el(tr, none, [id=Id],
        ( el(td, bar, "|"),
          el(td, ctor, el(span, "a def", esc(C))),
-         el(td, "ctor-args", el(div, goal, ( binders_(Bs, Env), opt_type(Ty, Env) ))),
+         el(td, "ctor-args", el(div, goal,
+            el(span, "c sig", ['data-d'=args], el(span, "args binders", sig_items(Bs, Ty, Env))))),
          el(td, "ctor-aside", ( { Aside == none } -> [] ; el(span, aside, rocq_prose_inline(Aside)) )) )).
 
 ctor_rule(Env, ctor(F-T, C, Bs, Ty)) -->
@@ -814,7 +815,9 @@ field_row(Env, field(F-T, N, Bs, Ty, D)) -->
     { anchor(N, Id), aside_text(T, Aside) },
     el(tr, none, [id=Id],
        ( el(td, "field-name", el(span, "f def", esc(N))),
-         el(td, "field-type", el(div, goal, ( binders_(Bs, Env), opt_type(Ty, Env), ( { D == none } -> [] ; "\u00A0", defeq, " ", term(D, Env) ) ))),
+         el(td, "field-type", el(div, goal,
+            ( el(span, "c sig", ['data-d'=args], el(span, "args binders", sig_items(Bs, Ty, Env))),
+              ( { D == none } -> [] ; "\u00A0", defeq, " ", term(D, Env) ) ))),
          el(td, "field-aside", ( { Aside == none } -> [] ; el(span, aside, rocq_prose_inline(Aside)) )) )).
 
 axiom_(F, Kw, g(Ns, Ty)) -->

@@ -1,15 +1,17 @@
 // Browser regression check against the generated site, served over HTTP.
-// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765 [--pages-only] [320 390 768 1280]
+// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765 [--pages-only | --declarations-only] [320 390 768 1280]
 // Requires agent-browser; uses the real model, not simplified UI fixtures.
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2];
 if (!base) throw new Error("Pass the generated site's HTTP base URL");
 const pagesOnly = process.argv.includes("--pages-only");
-const args = process.argv.slice(3).filter(a => a !== "--pages-only");
+const declarationsOnly = process.argv.includes("--declarations-only");
+const args = process.argv.slice(3).filter(a => !["--pages-only", "--declarations-only"].includes(a));
 const widths = args.length ? args.map(Number) : [320, 390, 768, 1280];
 if (widths.some(w => ![320, 390, 768, 1280].includes(w))) throw new Error("Unknown test width");
-const detailWidths = pagesOnly ? [] : widths;
+const detailWidths = pagesOnly || declarationsOnly ? [] : widths;
+const sweepWidths = declarationsOnly ? [] : widths;
 let session = `rocq-test-${process.pid}`;
 function browser(...args) {
   try {
@@ -51,12 +53,66 @@ const contextRows = `
 try {
   browser("open", `${base}/nanofil/rocq/index.html`);
   browser("eval", 'localStorage.removeItem("dterm-rocq-layout")');
+  for (const width of widths) {
+    browser("set", "viewport", String(width), "900", "2");
+    for (const page of ["nanofil/poison.html", "nanofil/rocq/rocq-spikes-Poison.html"]) {
+      browser("open", `${base}/${page}`);
+      for (const layout of ["auto", "stack"]) {
+        browser("select", "#rq-layout", layout);
+        check(`
+          for (const id of ['taint', 'word_taint', 'poison_policy']) {
+            const declaration = document.querySelector('#' + id);
+            assert(declaration.getBoundingClientRect().right <= innerWidth + 1,
+              'declaration extends past the viewport: ' + id);
+            assert(declaration.scrollWidth <= declaration.clientWidth + 1,
+              'declaration content overflows: ' + id);
+          }
+          const beside = (row, nameSelector, typeSelector) => {
+            assert(row, 'missing declaration');
+            const name = row.querySelector(nameSelector).getBoundingClientRect();
+            const type = row.querySelector(typeSelector).getBoundingClientRect();
+            assert(type.left >= name.right - 1 && Math.abs(type.top - name.top) < 4,
+              'short declaration split after its name: ' + row.textContent);
+          };
+          for (const name of ['t_branch', 't_index', 't_vartime', 'pol_check_branches'])
+            beside(document.querySelector('#' + name), '.field-name', '.field-type > .goal');
+          beside(document.querySelector('#WTInt'), '.ctor', '.ctor-args > .goal');
+          assert(document.querySelector('#taint .rq-fields').getBoundingClientRect().height < 100,
+            'three boolean fields take more than compact rows');
+          if (innerWidth >= 1280) {
+            const binders = [...document.querySelectorAll('#WTLimit .binder')];
+            assert(Math.abs(binders[0].getBoundingClientRect().top - binders[1].getBoundingClientRect().top) < 4,
+              'constructor arguments wrap despite fitting on desktop');
+          }
+        `);
+      }
+      browser("select", "#rq-layout", "auto");
+    }
+    for (const file of ["Memory", "Syntax"]) {
+      browser("open", `${base}/nanofil/rocq/rocq-theories-core-${file}.html`);
+      check(`${fitsPage}
+        for (const cell of document.querySelectorAll('.field-aside, .ctor-aside'))
+          if (cell.textContent.trim()) assert(cell.getClientRects().length, 'declaration comment hidden');
+        const args = document.querySelector('#Phi .ctor-args');
+        if (args && innerWidth <= 390) {
+          const binders = [...args.querySelectorAll('.binder')];
+          assert(binders.at(-1).getBoundingClientRect().top >= binders[0].getBoundingClientRect().bottom - 1,
+            'long constructor arguments must wrap');
+          assert(args.scrollWidth <= args.clientWidth + 1, 'wrapped constructor arguments overflow');
+          for (const binder of binders)
+            assert(binder.getClientRects().length === 1, 'short binder split instead of wrapping between binders');
+        }
+      `);
+    }
+    console.log(`ok compact declarations, wrapping and comments at ${width}px`);
+  }
+  browser("open", `${base}/nanofil/rocq/index.html`);
   // Discover from the generated index: new theories join the phone gate
   // automatically, instead of silently falling outside a fixed file list.
   const pages = JSON.parse(browser("eval", `[...new Set([...document.querySelectorAll('a[href]')]
     .map(a => a.getAttribute('href')).filter(h => /^[^/]+[.]html$/.test(h) && h !== 'index.html'))]`));
   if (!pages.some(p => p.includes("Machine"))) throw new Error("missing Machine page in index");
-  for (const width of widths.filter(w => w <= 390)) {
+  for (const width of sweepWidths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
     for (const page of ["index.html", ...pages]) {
       console.log(`${new Date().toISOString()} checking ${page}${pagesOnly ? "" : " and its proof steps"} at ${width}px`);
@@ -317,7 +373,7 @@ try {
   session = `rocq-static-${process.pid}`;
   browser("open", "about:blank");
   browser("network", "route", "*", "--abort", "--resource-type", "script");
-  for (const width of widths.filter(w => w <= 390)) {
+  for (const width of sweepWidths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
     for (const page of ["index.html", ...pages]) {
       console.log(`${new Date().toISOString()} checking ${page} without scripts at ${width}px`);

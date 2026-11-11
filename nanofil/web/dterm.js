@@ -498,7 +498,16 @@ document.addEventListener("mouseover", (event) => {
   function schedule() {
     if (raf === null) raf = requestAnimationFrame(run);
   }
-  const inTable = (el) => { const c = el.closest(".cases"); return c && !c.classList.contains("stack"); };
+  const inTable = (el) => {
+    const c = el.closest(".cases");
+    // Aligned declaration tables size their columns from the unbroken
+    // terms. Planning against that exact width would break the longest
+    // row just to leave the printer's safety margin. Flowing rows still
+    // need the printer, at the width CSS gives them.
+    const row = el.closest(".rq-ctors tr, .rq-fields tr");
+    return (c && !c.classList.contains("stack")) ||
+      (row && getComputedStyle(row).display === "table-row");
+  };
   function run() {
     raf = null;
     if (root.dataset.planner === "off") { pending.clear(); restore(); return; }

@@ -367,12 +367,14 @@ pre.rq-raw { font-size: 0.82rem; position: relative; }
 .rq-nav li.type > a { color: var(--ty); }
 .rq-nav li.lemma > a, .rq-nav li.axiom > a { color: var(--lem); }
 
-/* Rows become readable cards, not squeezed columns with lost comments.
-   Variables let the container default and the explicit choice share a layout. */
+/* Narrow declarations flow as compact rows: a name and its type or
+   arguments stay together when they fit, with comments on the next line.
+   Comparison tables keep their labeled cards. */
 :is(table.rq-ctors, table.rq-fields, table.rq-comparison) { display: var(--rq-table, table); }
 :is(table.rq-ctors, table.rq-fields, table.rq-comparison) tbody { display: var(--rq-body, table-row-group); }
 :is(table.rq-ctors, table.rq-fields, table.rq-comparison) tr {
   display: var(--rq-row, table-row); grid-template-columns: minmax(0, 1fr);
+  flex-wrap: wrap; align-items: baseline; column-gap: 0.4em;
   padding-block: var(--rq-row-pad, 0); border-bottom: var(--rq-row-border, 0);
 }
 :is(table.rq-ctors, table.rq-fields, table.rq-comparison) td {
@@ -381,7 +383,12 @@ pre.rq-raw { font-size: 0.82rem; position: relative; }
 }
 table.rq-ctors td.bar { display: var(--rq-bar, table-cell); }
 :is(table.rq-ctors, table.rq-fields) td:is(.ctor, .field-name) { white-space: var(--rq-space, nowrap); }
+:is(table.rq-ctors, table.rq-fields) td { padding: var(--rq-cell-pad, 0.1rem 0.8rem 0.1rem 0); }
+:is(table.rq-ctors, table.rq-fields) td:is(.ctor-args, .field-type) { flex: 1 1 auto; }
 :is(table.rq-ctors, table.rq-fields) td:is(.ctor-aside, .field-aside) { max-width: none; color: var(--muted); }
+:is(table.rq-ctors, table.rq-fields) td:is(.ctor-aside, .field-aside),
+:is(table.rq-ctors, table.rq-fields) tr.note > td { flex-basis: 100%; }
+:is(table.rq-ctors, table.rq-fields) td:empty { display: var(--rq-empty, table-cell); }
 .rq-comparison td::before {
   content: attr(data-label); display: var(--rq-label-display, none); font-size: 0.7rem;
   color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.3rem;
@@ -392,9 +399,8 @@ table.rq-ctors td.bar { display: var(--rq-bar, table-cell); }
 
 @container (max-width: 40rem) {
   :is(table.rq-ctors, table.rq-fields) {
-    --rq-table: block; --rq-body: block; --rq-row: grid; --rq-cell: block;
-    --rq-bar: none; --rq-space: normal; --rq-row-pad: 0.5rem;
-    --rq-row-border: 1px solid var(--rule);
+    --rq-table: block; --rq-body: block; --rq-row: flex; --rq-cell: block;
+    --rq-bar: none; --rq-space: normal; --rq-row-pad: 0.1rem; --rq-cell-pad: 0; --rq-empty: none;
   }
   :is(.dterm-rocq, code.rq) .binder { white-space: normal; }
   .dterm-rocq .cases.stack { padding-inline: 0.2em; margin-left: 0; border: 0; border-radius: 0; }
@@ -414,9 +420,13 @@ html[data-case-layout="stack"] :is(table.rq-ctors, table.rq-fields, table.rq-com
   --rq-bar: none; --rq-space: normal; --rq-row-pad: 0.5rem;
   --rq-row-border: 1px solid var(--rule); --rq-thead: none; --rq-label-display: block;
 }
+html[data-case-layout="stack"] :is(table.rq-ctors, table.rq-fields) {
+  --rq-row: flex; --rq-row-pad: 0.1rem; --rq-cell-pad: 0; --rq-row-border: 0; --rq-empty: none;
+}
 html[data-case-layout="table"] :is(table.rq-ctors, table.rq-fields, table.rq-comparison) {
   --rq-table: block; --rq-body: table-row-group; --rq-row: table-row; --rq-cell: table-cell;
   --rq-bar: table-cell; --rq-space: nowrap; --rq-row-pad: 0;
+  --rq-cell-pad: 0.1rem 0.8rem 0.1rem 0; --rq-empty: table-cell;
   --rq-row-border: 0; --rq-thead: table-header-group; --rq-label-display: none;
   overflow-x: auto;
 }
