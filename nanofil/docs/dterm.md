@@ -471,6 +471,18 @@ sets terms.
   spelling as its title. Integers keep the spelling they were written
   with (`0x1FUL`).
 
+## Paper (November 2026)
+
+[web/typst](../web/typst/README.md) typesets any page dterm draws as a
+PDF with Typst, for print or an e-reader: `dterm-pdf
+nanofil/docs/lambda-anf.md`. Headless Chromium lays the page out at the
+paper's text width, so dterm.js's printer chooses the line breaks for
+paper as it does for a phone; the prose goes to Typst as markup, to be
+set and justified in Source Serif 4, and every drawn block goes as the
+glyphs and bows the printer placed. No layout search runs in Typst,
+whose memoizing evaluator made a Pareto printer written in it
+intractable in luv's wiki.
+
 ## Not yet
 
 - Captions as data (`case/2` in `doc/3`, naming the clauses), so a

@@ -1,0 +1,45 @@
+/* A dterm page at a PDF's measure (typeset.py). The page keeps its own
+   styles; this hides what paper has no use for, gives the content column
+   the PDF's text width and the paper's fonts, so dterm.js plans every term
+   for the page it will be printed on. typeset.py sets --typeset-width,
+   --typeset-body and --typeset-code in CSS px (1px = 0.75pt). */
+
+:root {
+  --display-font: "Public Sans", sans-serif;
+  --mono-font: "JetBrains Mono", monospace;
+  --paper: white;
+  --ribbon: 34em;
+}
+
+html { font-size: var(--typeset-code); background: white; }
+body { margin: 0; min-height: 0; width: var(--typeset-width); }
+
+/* The web's chrome: band, status bar, navigation, hover cards, controls. */
+header.library, .status, nav.toc, .dterm-nav, .rq-layout, footer, .site-footer,
+.sigcard, .card, .concept-card, .wb-controls, .skip-link, aside.xref, .xref-aside,
+script, select, label:has(> select) { display: none !important; }
+
+main, main.page-frame, main.dterm-page, .page-frame {
+  display: block !important;
+  width: var(--typeset-width) !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+article, .dterm, .prose, .dterm .prose, .guide-prose { max-width: none !important; margin-left: 0; margin-right: 0; }
+
+/* Drawn blocks at the code size; prose is set again by Typst. */
+.dterm .prose, .dterm .prose p, .dterm .prose li { font-size: 1rem; }
+.dg { font-size: 1rem; }
+.dg-pipe, .dg-frame { max-width: none; }
+
+/* Fence blocks start at the column's edge: the paper indents them itself. */
+.dterm .prose .prose-terms { margin-left: 0.9em; }
+
+/* Typst sets prose tables as tables, so keep them tables at this width
+   rather than the phone's cards with a label per cell. */
+table.rq-comparison {
+  --rq-table: table !important; --rq-body: table-row-group !important;
+  --rq-row: table-row !important; --rq-cell: table-cell !important;
+  --rq-thead: table-header-group !important; --rq-label-display: none !important;
+}
