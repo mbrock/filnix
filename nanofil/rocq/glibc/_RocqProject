@@ -125,6 +125,7 @@ libio/LibioFlushFpUnlock.v
 libio/LibioFlushClean.v
 libio/LibioFlushStart.v
 libio/LibioFlushTail.v
+libio/LibioFlushInv.v
 libio/LibioFlushBody.v
 libio/LibioFlush.v
 libio/LibioFlushOverCall.v
@@ -234,3 +235,4 @@ hi_atexit/HiAtexitInitial.v
 hi_atexit/HiAtexitInitialAlloc.v
 hi_atexit/HiAtexitInitialStdout.v
 hi_atexit/HiAtexitInitialList.v
+hi_atexit/HiAtexitCleanup.v

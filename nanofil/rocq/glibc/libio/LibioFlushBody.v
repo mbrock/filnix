@@ -22,7 +22,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
-  LibioFlushStart LibioFlushTail.
+  LibioFlushStart LibioFlushTail LibioFlushInv.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -38,37 +38,9 @@ Import FT FT.FS FT.FS.FC FT.FS.FC.FU FT.FS.FC.FU.FL FT.FS.FC.FU.FL.CS FT.FS.FC.F
   FT.FS.FC.FU.FL.CS.SW.FI.ML FT.FS.FC.FU.FL.CS.SW.FI.LG FT.FS.FC.FU.FL.CS.SW.FI.L FT.FS.FC.FU.FL.CS.SW.OW
   FT.FS.FC.FU.FL.CS.SW.FI FT.FS.FC.FU.FL.CS.SW.ST.
 
-Section preds.
-Context `{!gen_heapGS piece pval Σ}.
-
-(** [stream_life] g: the life of the stream g, a 224-byte object, as
-    [file_inv] has it, which every access to the stream needs. *)
-Definition stream_life (g : ptr) : iProp Σ :=
-  ∃ gb greg, ⌜g = mkPtr gb (Obj gb) /\ 0 < gb /\ gb mod 8 = 0 /\ gb + file_size <= r_end greg /\
-              r_end greg <= 2 ^ 63⌝ ∗ live gb greg.
-
-(** [exit_stream] done g: the fields of the narrow stream g that
-    `c: _IO_flush_all` and `c: _IO_unbuffer_all` read, with nothing
-    to flush. `c: _IO_USER_LOCK` is clear and the lock lb free;
-    `c: _flags2` lacks bit 32; the descriptor is not negative; the
-    write pointer is not above the write base and the read pointer
-    not below the read end, all four sharing one capability c, null
-    or a buffer whose life is owned; and the backup base is null.
-    Before `c: _IO_unbuffer_all` (done false) the mode is 0 or -1,
-    and 0 unless `c: _IO_UNBUFFERED` is set, so the buffer is kept;
-    after it (done true) the mode is -1. *)
-Definition exit_stream (done : bool) (g : ptr) : iProp Σ :=
-  ∃ fb fl f2 fd md lb lbreg c breg arp are awb awp,
-    ⌜g = mkPtr fb (Obj fb) /\ 0 <= fl < 2 ^ 32 /\ Z.land fl 32768 = 0 /\ Z.land f2 32 = 0 /\ fd < 2 ^ 31 /\
-     0 <= awp <= awb /\ awb < 2 ^ 64 /\ 0 <= are <= arp /\ arp < 2 ^ 64 /\
-     (if done then md = 2 ^ 32 - 1
-      else (md = 0 \/ md = 2 ^ 32 - 1) /\ (Z.land fl io_unbuffered <> 0 \/ md = 0))⌝ ∗
-    int_cell fb off_flags fl ∗ int_cell fb off_flags2 f2 ∗ int_cell fb off_fileno fd ∗ int_cell fb off_mode md ∗
-    pcell fb off_lock (mkPtr lb (Obj lb)) ∗ lock_state lb lbreg 0 0 null ∗
-    pcell fb 8 (mkPtr arp c) ∗ pcell fb 16 (mkPtr are c) ∗ pcell fb 32 (mkPtr awb c) ∗
-    pcell fb 40 (mkPtr awp c) ∗ live_cap c breg ∗ pcell fb 80 null.
-
-End preds.
+(** The stream predicates retain their public names and definitions
+    without importing the flush proofs into clients that only need ownership. *)
+Include LibioFlushInvOn R LG0.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
