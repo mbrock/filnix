@@ -26,12 +26,13 @@
   repo ? ../../..,
   units ? ./run/units.txt,
   opt ? "-O",
+  pkgs ? import (builtins.getFlake (toString repo)).inputs.nixpkgs {
+    system = "x86_64-linux";
+  },
+  filcc ?
+    (builtins.getFlake (toString repo)).packages.x86_64-linux.filcc-staging,
 }:
 let
-  flake = builtins.getFlake (toString repo);
-  system = "x86_64-linux";
-  pkgs = import flake.inputs.nixpkgs { inherit system; };
-  filcc = flake.packages.${system}.filcc-staging;
   stock = filcc.components.filc-glibc;
   nanofil =
     pkgs.runCommand "nanofil-src" { nativeBuildInputs = [ pkgs.swi-prolog ]; }

@@ -380,6 +380,10 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            nanofil-hello-glibc = import ./nanofil/nix/hello-glibc.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             # Hello's linked checked module, the Iris proof's fixture.
             nanofil-hello-fixture = import ./nanofil/nix/hello-fixture.nix {
               inherit pkgs;
