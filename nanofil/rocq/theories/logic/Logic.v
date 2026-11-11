@@ -1,50 +1,40 @@
-(** The program logic of nanofil's core [[machine]] on the
-    language of Language.v, whose evaluation context is the stack of
-    callers: a ghost heap of pieces as Iris's state interpretation, a
-    small assertion vocabulary over it, and one weakest-precondition
-    rule per instruction form, each the lifted reading of its rule in
-    StepRules.v.
+(** A C proof should describe the object and bytes an instruction
+    uses, without repeating the safety argument for the whole interpreter.
+    This module gives [[iris|Iris]] rules for nanofil instructions,
+    using [[separation-logic|separation logic]] to track ownership of memory and object lifetimes.
+    It builds on [Language](Language.v) for calls and [Heap](Heap.v)
+    for the logical record of memory pieces.
 
-    The ghost heap is Heap.v's: Iris's [gen_heap] from Pieces.v's
-    pieces to their values, which [heap_interp] keeps in agreement with
-    the memory. The vocabulary is [live] (an object's life), [icell] (an
-    8-byte integer in an object), [pcell] (a pointer stored in an
-    object, its address bytes and its [[aux]] capability), [obj] (a new
-    object's pieces) and [live_cap] (the life of the object a
-    capability names, if any); [liveq], [icellq], [pcellq] and
-    [live_capq] are their shares at a fraction, which the reads take
-    ([wp_read_dq] and the raw loads after it). A [[cas]] has a rule per
-    type: [wp_raw_cas_l] over a long cell, [wp_raw_cas_ptr] over a
-    pointer cell, and MemLogic.v's [wp_raw_cas_int] over bytes.
+    Reading a stored pointer requires both its address bytes and the
+    hidden capability that gives the address its authority.
+    A proof must also establish that the containing object remains
+    alive, and a writer needs exclusive permission to change its bytes.
+    The assertion [heap_interp] connects these permissions to actual
+    memory, including the shadow [[aux]] storage, and requires a ready [[runtime]].
 
-    The logic is over Language.v's contract registry and its world of
-    libc state. [heap_interp] also holds a world interpretation wi:
-    what the world requires of the memory, given the program's ghost
-    heap. A [[poll|safepoint]] must keep it ([SafepointStable]), and a
-    rule that writes memory or the ghost heap has a pure premise that
-    the write keeps it ([wp_write], the stores, [wp_alloc]). With
-    [no_contracts] and [no_world] every such premise is trivial, and
-    [closed_irisGS] is the Iris instance of a closed module.
+    External libraries also maintain state in memory, such as stream
+    buffers or errno, whose representation must survive the program's operations.
+    A world interpretation describes that relationship using the current
+    memory, library world, and program-owned pieces.
+    Every write rule requires proof that its update preserves this
+    relationship, and [[poll|safepoints]] must preserve it too.
+    A closed program with no external contracts can use [no_world],
+    which imposes no additional conditions on memory.
 
-    Every rule for a running frame comes from one lifting lemma,
-    [wp_lift_run]. A safepoint and a stall (out of [[fuel]], a refusal
-    trap, an allocation the runtime refuses, an admissible external
-    call) step [ERun fr] to itself, the first changing memory only as
-    [SS.safepoint_shape] allows (no region, by Runtime.v's
-    [collector_live]), which keeps [heap_interp] with the same ghost
-    heap: the lemma closes both by Löb induction, so a rule speaks only
-    of the step its instruction takes. A call is [wp_bind] over the
-    caller ([wp_call_bind]), so a function's specification is an
-    ordinary Hoare triple; a call through a function pointer is the
-    same with the [[fast-generic-convention|generic entry]]'s
-    conversions ([wp_raw_call_bind]). An allocation over Fil-C's limit
-    traps with a refusal, a stall, so [wp_alloc_any] needs no bound on
-    its size. An external call ([wp_external]) asks for
-    its contract's precondition and, after every return the contract
-    allows, for the state interpretation of the call's memory and world.
-    [heap_never_panics] is Language.v's [[adequacy]] with the ghost heap
-    allocated, for a closed module; [heap_labelled_safe] is the
-    labelled machine's, from a ghost heap the caller provides. *)
+    Collection or a permitted stall may intervene before an instruction
+    executes, but each instruction proof should not repeat the argument for these interruptions.
+    The rule [wp_lift_run] handles those cases once, leaving each
+    instruction rule to describe its own execution step and resulting ownership.
+
+    Calling another C function requires the caller to supply the
+    memory and value conditions that the callee needs for safe execution.
+    A [[hoare-triple|Hoare triple]] records those conditions and the
+    promised result, allowing the caller to use the function without repeating its proof.
+
+    Proving individual instructions safe matters only if the complete
+    machine run also avoids panic and respects the promised return property.
+    The final [[adequacy]] theorems establish that connection, carrying
+    the logical guarantees over to the machine's actual executions. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language ectx_language ectxi_language weakestpre lifting
@@ -56,10 +46,15 @@ From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls Ops 
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Pure facts about cells *)
+(** ## Pure facts about cells
 
-(** A cell agrees with a memory where its object is live: its eight
-    bytes lie inside the object's bounds. *)
+    Before reasoning about instruction ownership, we need ordinary facts
+    about the bytes and shadow slots inside a live object.
+    The following lemmas establish cell bounds and show that storing a
+    pointer updates only its address bytes and capability slot. *)
+
+(** An integer cell agreeing with a live object's memory occupies eight
+    bytes entirely within that object's bounds, as [cell_bounds] proves. *)
 Lemma cell_bounds m b reg o x :
   live_at m b reg -> all_agree m (cell b o x) -> 0 <= o /\ b + o + 8 <= r_end reg.
 Proof.
@@ -68,21 +63,24 @@ Proof.
   destruct (H0 reg E L) as (? & _). destruct (H7 reg E L) as (_ & ? & _). lia.
 Qed.
 
-(** An aux piece of a live object holds what the slot holds, up to
-    [aux_holds]. *)
+(** A stored capability may change after its target object is freed,
+    but it must still reject the accesses that the old capability rejected.
+    The lemma [aux_piece_holds] relates an owned shadow entry to its
+    actual slot through [aux_holds], which allows that restricted replacement. *)
 Lemma aux_piece_holds m b reg o c :
   live_at m b reg -> agree_piece m (PAux b o) (VAux c) -> aux_holds m (b + o) c.
 Proof. intros [E L] [_ H]. destruct (H reg E L) as (_ & _ & Hx). exact Hx. Qed.
 
-(** The bytes from a to a + 8, inside the live object b, are inside an
-    object. *)
+(** Every byte of an eight-byte range bounded by a live object's
+    region belongs to an object, as [in_object_live] establishes. *)
 Lemma in_object_live m b reg a :
   live_at m b reg -> b <= a -> a + 8 <= r_end reg -> forall x, a <= x < a + 8 -> in_object m x.
 Proof. intros [E _] H1 H2 x Hx. exists b, reg. split; [exact E | lia]. Qed.
 
-(** A pointer store at offset o of the live object b (aux, then the
-    address bytes): its aux slot and its cell hold the pointer, and
-    nothing else changes. Heap.v's [ptr_store_ok] at any offset. *)
+(** Storing a pointer writes its capability slot and eight address
+    bytes, leaving agreement for all other owned pieces unchanged.
+    The lemma [pcell_store_ok] establishes this update at any offset
+    whose complete address cell lies inside the live object. *)
 Lemma pcell_store_ok m b reg o a c x :
   live_disjoint m -> live_at m b reg -> 0 <= o -> b + o + 8 <= r_end reg -> a = b + o ->
   all_agree (store_bytes (store_aux m a c) a 8 x) ((PAux b o, VAux c) :: cell b o x) /\
@@ -104,11 +102,17 @@ Proof.
     + eapply frame_ok_mono; [|exact Hf]. intros k Hk. cbn. apply elem_of_cons. by right.
 Qed.
 
-(** ## The logic over a runtime *)
+(** ## The logic over a runtime
 
-(** The memory after a free of the live heap object b: the same bytes
-    and aux slots, b's region empty and freed, every other object as it
-    was. Such a change is [kept]. *)
+    Deallocation ends an object's lifetime without overwriting its bytes
+    or shadow slots, so proofs must update lifetime ownership separately.
+    The following facts prepare that update before the logic introduces
+    its runtime requirements and connection between ownership and physical memory. *)
+
+(** Freeing one live heap object empties its bounds and marks it freed,
+    while preserving every byte, shadow slot, and other object's region.
+    The lemma [free_heap_kept] shows that this change satisfies the
+    runtime's restriction on ordinary memory updates. *)
 Lemma free_heap_kept m b reg rs :
   live_at m b reg -> r_kind reg = Heap ->
   replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs ->
@@ -121,10 +125,10 @@ Proof.
   - exists reg'. split; [exact E'|]. left. reflexivity.
 Qed.
 
-(** A free of the live heap object b keeps the agreement of every piece
-    but b's life: other objects keep their regions, b's bytes and aux
-    slots agree vacuously once it is not live, and a capability freed
-    before is freed after. *)
+(** Freeing a heap object preserves agreement for every piece except
+    its lifetime, which must change from live to freed.
+    Its byte and shadow assertions require matching values only while
+    the object is live, so they remain valid without authorizing further access. *)
 Lemma agree_piece_free m b reg rs l v :
   live_at m b reg -> r_kind reg = Heap ->
   replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs ->
@@ -155,7 +159,8 @@ Proof.
     split; [exact (freed_in_step m m' _ Hi Hs Hf) | exact (traps_as_freed_step m m' _ Hi Hs Ht)].
 Qed.
 
-(** Live objects stay apart after a free, which ends one. *)
+(** Ending one object's lifetime cannot make the remaining live objects
+    overlap, as [live_disjoint_free] proves from their previously disjoint regions. *)
 Lemma live_disjoint_free m b rs :
   replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs ->
   live_disjoint m -> live_disjoint (mkMem (m_bytes m) rs (m_aux m)).
@@ -168,7 +173,8 @@ Proof.
   exact (Hd b1 r1 b2 r2 (conj E1 L1) (conj E2 L2)).
 Qed.
 
-(** The ghost heap, the assertions and the rules over the runtime R. *)
+(** The module [Logic] supplies memory ownership and instruction rules
+    for the chosen runtime R and its language of function calls. *)
 Module Logic (R : Runtime).
 Module L := Language R.
 Module SS := SafepointShape R.
@@ -176,66 +182,70 @@ Module P := L.P.
 Module RM := L.RM.
 Import L.
 
-(** The world interpretation wi, what the world of libc state requires
-    of the memory given the program's ghost heap, survives what R does
-    at a [[poll|safepoint]]. Every rule needs it, since a safepoint may
-    come before any step; a class, so that a rule finds it for the wi
-    it is used at. *)
+(** Garbage collection must preserve the relationship between library
+    state and memory, because a safepoint may precede any instruction.
+    The class [SafepointStable] records that requirement for the chosen
+    world interpretation, leaving the external world and ownership map unchanged. *)
 Class SafepointStable {world : Type} (wi : mem -> world -> gmap piece pval -> Prop) : Prop := {
   wi_safepoint : forall s m s' m' w h, R.safepoint s m s' m' -> wi m w h -> wi m' w h
 }.
 
-(** The logic for the contracts of registry over the world type world,
-    with the world interpretation wi. *)
+(** Library calls need consistent assumptions about their permitted
+    effects and the memory holding their private state.
+    The following rules fix one registry of those call contracts and
+    one description of how library state relates to memory and ownership. *)
 Section logic.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi}.
 
-(** The state interpretation of the Iris state σ: the authoritative
-    ghost heap h, which [agrees] with σ's memory, the live objects
-    apart, the runtime ready, and σ's world interpreted by wi in the
-    memory, given h. The [[fuel]] is unconstrained. *)
+(** The logical record of owned pieces must agree with actual memory,
+    whose live objects remain disjoint and whose runtime remains ready.
+    The assertion [heap_interp] combines those requirements with the
+    external-world interpretation, without constraining the remaining execution [[fuel]]. *)
 Definition heap_interp (σ : lstate world) : iProp Σ :=
   ∃ h : gmap piece pval, gen_heap_interp h ∗
     ⌜agrees (ls_mem σ) h /\ live_disjoint (ls_mem σ) /\ R.ready (ls_rt σ) (ls_mem σ) /\
      wi (ls_mem σ) (ls_world σ) h⌝.
 
-(** The Iris instance of the genv ge: [heap_interp] as the state
-    interpretation, no forks to speak of, one later per step. *)
+(** The instance [nanofil_irisGS] connects Iris execution to [heap_interp]
+    for this global environment, with no forked threads or additional step credits. *)
 Local Instance nanofil_irisGS (ge : genv) : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   IrisG _ (fun σ _ _ _ => heap_interp σ) (fun _ => True%I) (fun _ => 0%nat)
         (fun _ _ _ _ => fupd_intro _ _).
 
-(** ## The assertions *)
+(** ## The assertions
 
-(** [live] b reg: owning the life of the object of identity b, which is
-    live with the region reg ([[live]]). *)
+    Instruction rules describe memory through ownership of object
+    lifetimes, integer cells, individual bytes, and stored pointers.
+    The following assertions package those pieces, with fractional
+    variants for readers that do not need exclusive write permission. *)
+
+(** An object's [[live|lifetime]] belongs to the assertion [live], which
+    records its identity b and the region reg while it remains alive. *)
 Definition live (b : Z) (reg : region) : iProp Σ := pts [(PLive b, VLive reg)].
 
-(** [icell] b o v: owning the 8 bytes at offset o of the object b,
-    which hold the 64-bit integer v, little-endian. *)
+(** An eight-byte integer cell belongs to [icell], which records its
+    little-endian value v at offset o within object b. *)
 Definition icell (b o v : Z) : iProp Σ := pts (cell b o v).
 
-(** [ibyte] b o x: owning the byte at offset o of the object b, which
-    holds x. *)
+(** One data byte belongs to [ibyte], which records value x at offset
+    o within object b without owning adjacent bytes. *)
 Definition ibyte (b o x : Z) : iProp Σ := pts [(PByte b o, VByte x)].
 
-(** [pcell] b o x: owning the pointer x stored at offset o of the
-    object b: the 8 bytes of its address and the [[aux]] slot holding
-    its capability. *)
+(** A stored pointer belongs to [pcell], which owns its eight address
+    bytes and the shadow slot holding its [[capability]]. *)
 Definition pcell (b o : Z) (x : ptr) : iProp Σ :=
   pts ((PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)).
 
-(** [obj] b q: owning every piece of the object of identity b just
-    allocated for the request q: its life, a zero byte and an empty aux
-    slot at each offset. *)
+(** A newly allocated object belongs to [obj], including its lifetime,
+    zero-initialized bytes, and empty shadow entries at every offset. *)
 Definition obj (b : Z) (q : alloc_req) : iProp Σ := pts (obj_ps b q).
 
-(** [live_cap] c reg: owning the life of the object c names, with the
-    region reg, if c names one; nothing if c is no capability. A
-    pointer load needs it to know the loaded capability is the one
-    stored ([aux_holds_live]). *)
+(** Loading a pointer exactly requires knowing that its target object
+    has not been freed, so collection cannot rewrite its stored capability.
+    The assertion [live_cap] owns a writable target's lifetime, accepts
+    an empty capability without resources, and rejects other capability forms. *)
 Definition live_cap (c : cap) (reg : region) : iProp Σ :=
   match c with
   | CNone => True
@@ -243,28 +253,31 @@ Definition live_cap (c : cap) (reg : region) : iProp Σ :=
   | _ => False
   end.
 
-(** [liveq] dq b reg: [live] at the fraction dq. *)
+(** Readers can share an object's lifetime through [liveq], whose
+    fraction records their permission without granting exclusive authority to free the object. *)
 Definition liveq (dq : dfrac) (b : Z) (reg : region) : iProp Σ := ptsq dq [(PLive b, VLive reg)].
 
-(** [icellq] dq b o v: [icell] at the fraction dq. *)
+(** Readers can share an eight-byte integer cell through [icellq],
+    retaining its little-endian value without requiring exclusive ownership of its bytes. *)
 Definition icellq (dq : dfrac) (b o v : Z) : iProp Σ := ptsq dq (cell b o v).
 
-(** [pcellq] dq b o x: [pcell] at the fraction dq. *)
+(** Readers can share a stored pointer through [pcellq], retaining
+    fractional ownership of both its address bytes and its shadow capability slot. *)
 Definition pcellq (dq : dfrac) (b o : Z) (x : ptr) : iProp Σ :=
   ptsq dq ((PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)).
 
-(** [live_capq] dq c reg: a share dq of the life of the object c names,
-    read-write or read-only, with the region reg; nothing for a
-    capability of no object, a function or an external symbol, which
-    the collector never rewrites. What a load of a pointer with c needs
-    to know the stored capability is c ([aux_holds_kept]). *)
+(** Shared target-lifetime ownership prevents collection from rewriting
+    a stored object capability, whether that capability is writable or read-only.
+    The assertion [live_capq] requires that share for object capabilities
+    and no resources for empty, function, or external-symbol capabilities. *)
 Definition live_capq (dq : dfrac) (c : cap) (reg : region) : iProp Σ :=
   match c with
   | Obj b | Ro b => liveq dq b reg
   | _ => True
   end.
 
-(** What owned pieces tell about the memory of σ: [owned_facts]. *)
+(** Owned pieces describe real memory values and bounds through
+    [pts_facts], which also supplies live-object separation and the runtime's address-space restriction. *)
 Lemma pts_facts σ ps : heap_interp σ -∗ pts ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
 Proof.
   iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & _).
@@ -273,8 +286,8 @@ Proof.
   apply all_agree_intro. intros l v Hin. apply Ha. apply Hl. exact Hin.
 Qed.
 
-(** What pieces owned at any share tell about the memory of σ:
-    [owned_facts], whose first part is that they agree with it. *)
+(** Even a shared piece records the same memory facts as exclusive
+    ownership, which [ptsq_facts] derives without granting permission to change that piece. *)
 Lemma ptsq_facts σ dq ps : heap_interp σ -∗ ptsq dq ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
 Proof.
   iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & _).
@@ -283,8 +296,8 @@ Proof.
   apply all_agree_intro. intros l v Hin. apply Ha. apply Hl. exact Hin.
 Qed.
 
-(** A capability a [live_capq] covers is not a freed object's in the
-    memory of σ, so a slot holding it holds it exactly. *)
+(** A capability covered by shared target-lifetime ownership cannot
+    name a freed object, so its stored shadow representation remains exact. *)
 Lemma live_capq_facts σ dq c reg : heap_interp σ -∗ live_capq dq c reg -∗ ⌜~ freed_in (m_regions (ls_mem σ)) c⌝.
 Proof.
   iIntros "Hσ H". iAssert (⌜forall b, c = Obj b \/ c = Ro b -> live_at (ls_mem σ) b reg⌝)%I with "[Hσ H]" as %Hl.
@@ -296,8 +309,8 @@ Proof.
     rewrite E' in E. injection E as <-. congruence.
 Qed.
 
-(** The object a [live_cap] names is live in the memory of σ, or the
-    capability is none: what [aux_holds_live] needs. *)
+(** Exclusive target-lifetime ownership establishes either an empty
+    capability or a writable capability naming a live object in actual memory. *)
 Lemma live_cap_facts σ c reg : heap_interp σ -∗ live_cap c reg -∗
   ⌜c = CNone \/ exists b reg, c = Obj b /\ live_at (ls_mem σ) b reg⌝.
 Proof.
@@ -306,8 +319,8 @@ Proof.
   cbn [all_agree agree_piece fst snd] in Hf. eexists _, _. split; [reflexivity | exact (proj1 Hf)].
 Qed.
 
-(** What R does at a safepoint keeps the state interpretation, with
-    the same ghost heap and world. *)
+(** A safepoint preserves the connection between owned pieces and
+    memory, retaining the same logical map and external world despite allowed runtime changes. *)
 Lemma heap_interp_safepoint m s fuel w m' s' :
   R.safepoint s m s' m' ->
   heap_interp (mkLstate m s fuel w) -∗ heap_interp (mkLstate m' s' fuel w).
@@ -322,8 +335,8 @@ Proof.
   - exact (wi_safepoint _ _ _ _ _ _ Hsp Hw).
 Qed.
 
-(** Owned pieces written over the ghost heap with the values it holds
-    leave it as it is. *)
+(** Rewriting a logical map entry with the value it already contains
+    leaves the map unchanged, as [overwrite_id] proves for a piece list. *)
 Lemma overwrite_id ps (h : gmap piece pval) :
   (forall l v, (l, v) ∈ ps -> h !! l = Some v) -> overwrite ps h = h.
 Proof.
@@ -336,14 +349,14 @@ Section wp.
 Context (ge : genv).
 Implicit Types Φ : outcome -> iProp Σ.
 
-(** The expressions of the language of ge. *)
+(** The notation [lexpr] names expressions for the chosen global
+    environment and contract registry, keeping those parameters implicit in instruction rules. *)
 Local Notation lexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The steps of [ERun fr] in σ that move on, to e2 and σ2: a step to
-    the next configuration, an allocation R grants, a return, or an
-    external call's return ([returned_expr]: the frame resumed with the
-    call's memory, runtime state and world, or [EBad]); the cases of
-    [head_step_run_inv] that are neither a stall nor a safepoint. *)
+(** Some language steps execute an instruction or return a result,
+    rather than merely stall or run a safepoint.
+    The predicate [moves] selects ordinary next steps, granted
+    allocations, function returns, and external returns, including incompatible external results. *)
 Definition moves (fr : frame) (σ : lstate world) (e2 : expr) (σ2 : lstate world) : Prop :=
   let c0 := mkConfig fr [] (ls_mem σ) (ls_fuel σ) in
   (exists c', Semantics.step ge c0 = Next c' /\ e2 = conf_expr c' /\
@@ -361,8 +374,8 @@ Definition moves (fr : frame) (σ : lstate world) (e2 : expr) (σ2 : lstate worl
        trace (CallReturn values) s' m' w' /\
      e2 = returned_expr fr spec site values /\ σ2 = mkLstate m' s' (ls_fuel σ) w').
 
-(** A step that [moves] where the frame alone is not stuck is a core
-    one: an external call is stuck to the core [step]. *)
+(** If the core machine is not stuck, any step selected by [moves]
+    must be a core step rather than an external return. *)
 Lemma moves_core fr σ e2 σ2 :
   moves fr σ e2 σ2 ->
   (forall why, Semantics.step ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)) <> Stuck why) ->
@@ -380,15 +393,12 @@ Proof.
   exfalso. exact (Hns _ (external_site_stuck _ _ _ Hs)).
 Qed.
 
-(** The lifting lemma every rule for a running frame comes from. [ERun
-    fr] is safe, given Q, if Q and the state interpretation show fr
-    [proceeds] (it does not [fails], or its external call is
-    admissible), and if, after any step that [moves], they give the
-    state interpretation and the weakest precondition of what follows.
-    A stall (an admissible call's included) leaves the expression and
-    the state as they are; a safepoint leaves the expression and the
-    state interpretation: these cases are closed by Löb induction,
-    keeping Q. *)
+(** To prove an instruction safe, show that it can proceed and that
+    each actual execution step leaves a safe continuation.
+    The rule [wp_lift_run] handles intervening safepoints and stalls
+    itself, preserving the supplied ownership Q through those repeated steps.
+    After any step selected by [moves], the proof must restore the
+    memory interpretation and establish the continuation's [[weakest-precondition|weakest precondition]]. *)
 Lemma wp_lift_run (Q : iProp Σ) fr Φ :
   (forall σ, heap_interp σ -∗ Q -∗ ⌜proceeds registry ge fr σ⌝) ->
   (forall σ, heap_interp σ -∗ Q -∗
@@ -424,14 +434,14 @@ Proof.
   - iDestruct "H" as "[_ [Hσ HQ]]". iModIntro. iFrame "Hσ". iSplitL; [iApply ("IH" with "HQ")|done].
 Qed.
 
-(** A step to the next configuration, with the callers cs' below its
-    frame, that writes memory: owning the pieces ps, and Q, which with
-    the state interpretation shows the memory has the property F, where
-    every memory m with F that those pieces agree with steps to [upd] m,
-    keeping its regions, [kept], agreeing with the new values ps' (the
-    same keys) and changing nothing outside them, and where the write
-    keeps the world interpretation, for a ghost heap that holds ps, with
-    ps' written over it. The new pieces and Q are handed on. *)
+(** A write rule replaces the values of owned pieces while preserving
+    their locations and leaving unrelated pieces valid.
+    The rule [wp_write_with] also carries an additional assertion Q,
+    which can supply memory facts needed to justify the instruction.
+    The caller proves the machine update, unchanged regions, agreement
+    with the new pieces, and preservation of the external-world interpretation.
+    The continuation receives the updated pieces and the additional
+    assertion, with any resulting caller stack surrounding the next frame. *)
 Lemma wp_write_with (Q : iProp Σ) (F : mem -> Prop) ps ps' fr fr' cs' (upd : mem -> mem) Φ :
   ps'.*1 = ps.*1 ->
   (forall σ, heap_interp σ -∗ Q -∗ ⌜F (ls_mem σ)⌝) ->
@@ -473,7 +483,8 @@ Proof.
     + iApply ("HK" with "Hps HQ").
 Qed.
 
-(** [wp_write_with] with nothing more than the pieces ps. *)
+(** When the owned pieces alone justify a write, [wp_write] applies the
+    general write rule without carrying an additional assertion. *)
 Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
   ps'.*1 = ps.*1 ->
   (forall m fuel, owned_facts ps m ->
@@ -491,9 +502,8 @@ Proof.
   iNext. iIntros "Hps _". iApply ("HK" with "Hps").
 Qed.
 
-(** A step to the next configuration, with the callers cs' below its
-    frame, that reads the pieces ps and changes no memory: they are
-    handed back. *)
+(** A read-only step preserves all memory and returns the same owned
+    pieces to its continuation, as [wp_read] packages for instruction proofs. *)
 Lemma wp_read ps fr fr' cs' Φ :
   (forall m fuel, owned_facts ps m ->
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
@@ -506,8 +516,8 @@ Proof.
   - intros m w h Hl Hw. rewrite overwrite_id; [exact Hw | exact Hl].
 Qed.
 
-(** A step to the next configuration, with the callers cs' below its
-    frame, that needs no resource and changes no memory. *)
+(** An instruction needing no owned memory can use [wp_pure_next] when
+    its next configuration is fixed and memory remains unchanged. *)
 Lemma wp_pure_next fr fr' cs' Φ :
   (forall m fuel, Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   ▷ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }} -∗ WP (ERun fr : lexpr) {{ Φ }}.
@@ -517,10 +527,15 @@ Proof.
   - iNext. iIntros "_". iExact "H".
 Qed.
 
-(** ## The rules *)
+(** ## The rules
 
-(** A [let] of a general op o whose arguments read as xs and whose
-    [op_res] is the word w in any memory, leaving it: d is bound to w. *)
+    Each rule connects one instruction to the ownership and ordinary
+    value facts that justify its execution.
+    The continuation receives the resulting register values and any
+    preserved or updated memory ownership, without repeating the shared safepoint argument. *)
+
+(** A general operation whose result is the same in every memory can
+    bind that result directly through [wp_let], without memory ownership. *)
 Lemma wp_let f e ls l d k o args rest j classes xs w Φ :
   general_op o = true -> op_arg_classes o k = Some classes ->
   map2_option (value_x ge e) classes args = Some xs ->
@@ -532,9 +547,10 @@ Proof.
   intros m fuel. exact (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hg Hc Hx (Ho m)).
 Qed.
 
-(** A [[check]] of the pointer p, through the capability of the live
-    object b with the region reg, whose checked bytes lie in its bounds
-    and are aligned: d is bound to p, proven. *)
+(** A pointer [[check]] succeeds when lifetime ownership establishes a
+    live object and the requested bytes satisfy its bounds and alignment.
+    The rule [wp_check] binds the same pointer as proven and returns
+    the lifetime ownership for subsequent instructions. *)
 Lemma wp_check f e ls l d lo hi r al args rest j classes p b reg Φ :
   op_arg_classes (Check lo hi r al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -550,10 +566,10 @@ Proof.
   apply op_check. rewrite Hp. exact (access_obj _ _ _ _ _ _ _ E H1 H2 H3).
 Qed.
 
-(** A [[check]] for reading of the pointer p, through a read-write or
-    read-only capability for the live object b with the region reg,
-    whose checked bytes lie in its bounds and are aligned: d is bound
-    to p, proven. *)
+(** A read check accepts either a writable or read-only object
+    capability when the requested bytes lie within aligned live-object bounds.
+    The rule [wp_check_read] returns the proven pointer and preserves
+    ownership of the enclosing object's lifetime. *)
 Lemma wp_check_read f e ls l d lo hi al args rest j classes p b reg Φ :
   op_arg_classes (Check lo hi Read al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -569,10 +585,10 @@ Proof.
   apply op_check. exact (access_read _ _ _ _ _ _ _ Hp E H1 H2 H3).
 Qed.
 
-(** A [[half_check]] of the pointer p, against the proof p1 of the same
-    capability, at the live object b with the region reg, ending at or
-    below 2^63, whose checked bytes lie in its bounds and are aligned:
-    d is bound to p, proven. *)
+(** A [[half_check|half check]] reuses a proof with the same writable
+    capability while checking a nonempty aligned range within the live object.
+    The rule [wp_half_check] also requires the object's end below or
+    at the signed-address limit, and preserves lifetime ownership. *)
 Lemma wp_half_check f e ls l d bd lo hi r al args rest j classes p1 p b reg Φ :
   op_arg_classes (HalfCheck bd lo hi r al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p1; WPtr p] ->
@@ -591,10 +607,10 @@ Proof.
   exact (op_half_check _ _ _ _ _ _ _ _ _ _ Hp1 Hp E Lv H1 H2 H3 H4 H5).
 Qed.
 
-(** A read half check of the pointer p against the proof p1 of the same
-    capability, an object's or a read-only object's, at the live object
-    b, ending at or below 2^63 and holding the aligned bytes: d is bound
-    to p. Hello's string scans half check read-only literals. *)
+(** A read half check also accepts a read-only capability, as needed
+    when GNU Hello scans string literals using an earlier proof.
+    The rule [wp_half_check_read] requires matching capabilities, live
+    object bounds, alignment, and an object end within the signed-address limit. *)
 Lemma wp_half_check_read f e ls l d bd lo hi al args rest j classes p1 p b reg Φ :
   op_arg_classes (HalfCheck bd lo hi Read al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p1; WPtr p] ->
@@ -613,9 +629,10 @@ Proof.
   exact (op_half_check_read _ _ _ _ _ _ _ _ _ Hp1 Hp E Lv H1 H2 H3 H4 H5).
 Qed.
 
-(** A renew of the pointer p, an object's, against the proof p1 of the
-    same capability, inside the live object b and aligned: d is bound to
-    p. The renews Hello reaches reuse the check of a stack slot. *)
+(** Renewing a pointer proof reuses an earlier proof with the same
+    writable capability while lifetime ownership establishes that the object remains live.
+    The rule [wp_renew] requires the requested range and alignment;
+    GNU Hello uses this operation when reusing a checked stack slot. *)
 Lemma wp_renew f e ls l d lo hi r al args rest j classes p1 p b reg Φ :
   op_arg_classes (Renew lo hi r al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p1; WPtr p] ->
@@ -632,9 +649,8 @@ Proof.
   apply op_renew; [exact Hp1|]. rewrite Hp. exact (access_obj _ _ _ _ _ _ _ E H1 H2 H3).
 Qed.
 
-(** A raw load of a long at offset off from the proven pointer p, which
-    addresses offset o of the live object b, where the cell holds v: d
-    is bound to v modulo 2^64. *)
+(** Loading an owned integer cell through a proven writable pointer
+    returns its low 64 bits and preserves both cell and lifetime ownership. *)
 Lemma wp_raw_load f e ls l d k off args rest j classes p b reg o v Φ :
   op_arg_classes (RawLoad LdL off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -656,10 +672,10 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A raw load of the one-byte narrow type n at offset off from the
-    proven pointer p, through a read-write or read-only capability for
-    the live object b, at offset o, where the byte is x: d is bound to
-    x extended to the class k, y. *)
+(** A one-byte raw load reads an owned byte and extends it according
+    to the narrow type and destination class.
+    The rule [wp_raw_load_byte] accepts writable or read-only capabilities
+    and returns both the byte ownership and the object's lifetime. *)
 Lemma wp_raw_load_byte f e ls l d k n off args rest j classes p b reg o x y Φ :
   op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -683,11 +699,10 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hb]". iApply ("HK" with "Hl Hb").
 Qed.
 
-(** [wp_raw_load] through a read-write or read-only capability: a raw
-    load of a long at offset off from the proven pointer p, which
-    addresses offset o of the live object b, where the cell holds v: d
-    is bound to v modulo 2^64. glibc's strlen reads a string literal's
-    words through its read-only capability. *)
+(** An integer-cell load can also use a read-only capability, as
+    glibc's strlen does when reading whole words from a string literal.
+    The rule [wp_raw_load_read] returns the cell's low 64 bits and
+    preserves the cell and lifetime ownership. *)
 Lemma wp_raw_load_read f e ls l d k off args rest j classes p b reg o v Φ :
   op_arg_classes (RawLoad LdL off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -709,10 +724,10 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A raw load of the narrow type n, of its s bytes, at offset off from
-    the proven pointer p, through a read-write or read-only capability
-    for the live object b, at offset o, where a cell holds v: d is
-    bound to v's low s bytes extended to the class k, y. *)
+(** A narrow load from an owned integer cell reads its low bytes and
+    extends them according to the selected type and destination class.
+    The rule [wp_raw_load_sub_read] preserves the complete cell ownership
+    and accepts either writable or read-only object capabilities. *)
 Lemma wp_raw_load_sub_read f e ls l d k n off args rest j classes p b reg o v y Φ :
   op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -737,10 +752,10 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A step to the next configuration, with the callers cs' below its
-    frame, that changes no memory, where Q, with the state
-    interpretation, shows the memory has the property F, and every
-    memory with F steps there: Q is handed back. *)
+(** A read-only step can use any supplied assertion to establish the
+    memory facts needed for its next configuration.
+    The rule [wp_read_with] preserves that assertion Q and all memory,
+    rather than requiring ownership in one particular piece-list form. *)
 Lemma wp_read_with (Q : iProp Σ) (F : mem -> Prop) fr fr' cs' Φ :
   (forall σ, heap_interp σ -∗ Q -∗ ⌜F (ls_mem σ)⌝) ->
   (forall m fuel, F m -> Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
@@ -759,11 +774,10 @@ Proof.
     iModIntro. iFrame "Hσ". iApply ("HK" with "HQ").
 Qed.
 
-(** A raw pointer load by the plain protocol at offset off from the
-    proven pointer p, which addresses the 8-aligned offset o of the live
-    object b, where the pointer x is stored: d is bound to x, given the
-    life of the object x's capability names, if any ([live_cap]), and
-    x's address in range. *)
+(** A plain pointer load reads both the address and capability from an
+    aligned owned cell, returning exactly the recorded pointer.
+    The rule [wp_raw_load_pointer] also needs target-lifetime ownership
+    and an address within 64 bits, preventing collection from changing the loaded capability. *)
 Lemma wp_raw_load_pointer f e ls l d off args rest j classes p b reg o x reg' Φ :
   op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -797,11 +811,10 @@ Proof.
   - iNext. iIntros "(Hl & Hc & Hcap)". iApply ("HK" with "Hl Hc Hcap").
 Qed.
 
-(** A pure-effect instruction whose result x the world interpretation
-    fixes, given ghost pieces ps the program owns, such as a token that
-    names libc's state: d is bound to x, and ps is handed back. It reads
-    memory the program does not own, libc's cells, without claiming
-    them. *)
+(** An instruction may read library-owned memory when the world
+    interpretation determines its result from tokens already owned by the program.
+    The rule [wp_world_let_with] preserves those tokens and all memory,
+    without incorrectly claiming ownership of the library's private cells. *)
 Lemma wp_world_let_with ps f e ls l d k o args rest j classes xs x Φ :
   general_op o = true -> op_arg_classes o k = Some classes ->
   map2_option (value_x ge e) classes args = Some xs ->
@@ -820,12 +833,10 @@ Proof.
   - iNext. iExact "HK".
 Qed.
 
-(** A raw pointer load by the plain protocol, as [wp_raw_load_pointer],
-    through a read-write or read-only capability for the cell's object,
-    where the life of the object x's capability names, if any, is among
-    pieces ps the caller already owns: the collector cannot rewrite a
-    capability whose object is live, read-only or not, and capabilities
-    for no object, a function or an external are never rewritten. *)
+(** A pointer load can obtain target-lifetime evidence from pieces the
+    caller already owns, accepting writable or read-only cell and target capabilities.
+    The rule [wp_raw_load_pointer_in] prevents collection from changing
+    object capabilities and also handles empty, function, and external capabilities, which collection never rewrites. *)
 Lemma wp_raw_load_pointer_in f e ls l d off args rest j classes p b reg o x ps Φ :
   op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -864,11 +875,15 @@ Proof.
   - iNext. iIntros "(Hl & Hc & Hps)". iApply ("HK" with "Hl Hc Hps").
 Qed.
 
-(** ## Reads at a share *)
+(** ## Reads at a share
 
-(** [wp_read] at any share: a step to the next configuration, with the
-    callers cs' below its frame, that reads the pieces ps, owned at the
-    fraction dq, and changes no memory: they are handed back. *)
+    Reading does not require exclusive ownership because it leaves the
+    stored bytes and capabilities unchanged.
+    The following rules accept fractional shares of object lifetimes
+    and cells, then return those same shares alongside the loaded result. *)
+
+(** A memory-preserving step can use shared piece ownership through
+    [wp_read_dq], returning the same share to the continuation after the step. *)
 Lemma wp_read_dq dq ps fr fr' cs' Φ :
   (forall m fuel, owned_facts ps m ->
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
@@ -879,11 +894,10 @@ Proof.
   iIntros (σ) "Hσ Hps". iApply (ptsq_facts with "Hσ Hps").
 Qed.
 
-(** [wp_raw_load_read] at shares: a raw load of a long at offset off
-    from the proven pointer p, through a read-write or read-only
-    capability for the object b, at offset o, where a share dq1 of b's
-    life and a share dq2 of the cell holding v are owned: d is bound to
-    v modulo 2^64. *)
+(** A shared integer-cell load returns the recorded value's low 64
+    bits while preserving separate shares of the cell and object lifetime.
+    The rule [wp_raw_load_read_dq] accepts either a writable or read-only
+    capability for the cell's enclosing object. *)
 Lemma wp_raw_load_read_dq f e ls l d k off args rest j classes p b reg o v dq1 dq2 Φ :
   op_arg_classes (RawLoad LdL off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -907,12 +921,10 @@ Proof.
   - iNext. iIntros "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** [wp_raw_load_sub_read] at shares: a raw load of the narrow type n,
-    of its s bytes, at offset off from the proven pointer p, through a
-    read-write or read-only capability for the object b, at offset o,
-    where a share dq1 of b's life and a share dq2 of a cell holding v
-    are owned: d is bound to v's low s bytes extended to the class k,
-    y. *)
+(** A narrow load needs only shared ownership of its integer cell and
+    object lifetime, even though it returns an extended register value.
+    The rule [wp_raw_load_sub_read_dq] preserves both shares and accepts
+    writable or read-only access to the cell's object. *)
 Lemma wp_raw_load_sub_read_dq f e ls l d k n off args rest j classes p b reg o v y dq1 dq2 Φ :
   op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -939,11 +951,10 @@ Proof.
   - iNext. iIntros "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A raw pointer load by the plain protocol, as [wp_raw_load_pointer],
-    at shares: through a read-write or read-only capability for the
-    object b, where a share dq1 of b's life, a share dq2 of the pointer
-    cell holding x and, if x's capability names an object, a share dq3
-    of its life ([live_capq]) are owned. d is bound to x. *)
+(** A pointer load needs only shared ownership of its cell, enclosing
+    object lifetime, and any target-object lifetime that protects the stored capability.
+    The rule [wp_raw_load_pointer_dq] returns the exact recorded pointer
+    and all three shares, accepting writable or read-only object capabilities. *)
 Lemma wp_raw_load_pointer_dq f e ls l d off args rest j classes p b reg o x reg' dq1 dq2 dq3 Φ :
   op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -977,14 +988,19 @@ Proof.
   - iNext. iIntros "(Hl & Hc & Hcap)". iApply ("HK" with "Hl Hc Hcap").
 Qed.
 
-(** ## Compare-exchange *)
+(** ## Compare-exchange
 
-(** A raw [[cas]] of a long at offset off from the proven pointer p,
-    which addresses the 8-aligned offset o of the live object b, where
-    the cell holds v, of the longs ev expected and nv new: d is bound
-    to v modulo 2^64, and the cell then holds nv where v and ev agree
-    modulo 2^64, a write that must keep the world interpretation, and
-    still v where they do not. *)
+    Compare-exchange always returns the old value and writes a new
+    value only when the comparison succeeds.
+    The following rules require exclusive ownership of the destination
+    cell, distinguishing integer bit comparisons from pointer address comparisons. *)
+
+(** Integer [[cas|compare-exchange]] compares the stored and expected
+    values modulo 64 bits, replacing the cell only when those bit patterns match.
+    The rule [wp_raw_cas_l] requires an eight-byte-aligned address and
+    proves the external-world condition only for the successful write case.
+    The continuation receives the old value and ownership describing
+    either the new cell contents or the unchanged old contents. *)
 Lemma wp_raw_cas_l f e ls l d k off args rest j classes p b reg o v ev nv Φ :
   op_arg_classes (RawCas CasL off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p; WInt ev; WInt nv] ->
@@ -1030,13 +1046,12 @@ Proof.
     + iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A raw pointer [[cas]] at offset off from the proven pointer p,
-    which addresses the 8-aligned offset o of the live object b, where
-    the pointer x is stored, of the pointers ep expected and np new,
-    given a share of the life of the object x's capability names, if
-    any ([live_capq]): d is bound to x, and the cell then holds np where
-    x's address is ep's, capabilities ignored, a write that must keep
-    the world interpretation, and still x where it is not. *)
+(** Pointer compare-exchange compares addresses alone, ignoring capability
+    differences, and returns the complete old pointer whether the comparison succeeds or fails.
+    On success, [wp_raw_cas_ptr] installs the new address and capability;
+    otherwise, it leaves both parts of the old pointer unchanged.
+    The rule needs an aligned owned cell, shared target-lifetime evidence
+    for the old pointer, and preservation of the world on success. *)
 Lemma wp_raw_cas_ptr f e ls l d off args rest j classes p b reg o x ep np reg' dq Φ :
   op_arg_classes (RawCas CasP off) P = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p; WPtr ep; WPtr np] ->
@@ -1101,10 +1116,10 @@ Proof.
     + iNext. iIntros "(Hl & Hc & Hcap)". iApply ("HK" with "Hl Hc Hcap").
 Qed.
 
-(** A raw store of the long v', which v reads as, through the proven
-    pointer p, which a reads as and which addresses offset o of the live
-    object b at offset off, where the store keeps the world
-    interpretation: the cell there now holds v'. *)
+(** A raw long store replaces an owned integer cell and returns
+    ownership of the updated eight bytes through [wp_raw_store].
+    The caller also supplies the object's lifetime and proves that
+    this update preserves the external-world interpretation. *)
 Lemma wp_raw_store f e ls l off v a rest j p b reg o w w' Φ :
   value_x ge e L v = Some (WInt w') -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o ->
@@ -1132,11 +1147,10 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A raw pointer store by the plain protocol of the pointer xp, which
-    v reads as, through the proven pointer p, which a reads as and
-    which addresses the 8-aligned offset o of the live object b at
-    offset off, where the store keeps the world interpretation: the
-    pointer cell there now holds xp. *)
+(** A plain pointer store replaces both the address bytes and shadow
+    capability of an aligned owned pointer cell.
+    The rule [wp_raw_store_pointer] returns ownership of the newly stored
+    pointer and requires the update to preserve the external-world interpretation. *)
 Lemma wp_raw_store_pointer f e ls l off v a rest j xp p b reg o x Φ :
   value_x ge e P v = Some (WPtr xp) -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
@@ -1174,8 +1188,8 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A call of a free the model runs, `free` or `zgc_free`
-    ([is_free_name] fnm), on null, which v reads as: nothing happens. *)
+(** Freeing null changes no memory for either deallocation symbol
+    recognized by the model, as [wp_free_null_sym] proves from the deallocator's contract. *)
 Lemma wp_free_null_sym fnm f e ls l v rest j Φ :
   is_free_name fnm = true ->
   frees_heap (ge_free ge) -> find_fn ge fnm = None -> lookup fnm (ge_globals ge) = None ->
@@ -1188,13 +1202,12 @@ Proof.
   exact (rule_free_sym _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfnm Hfn Hdata Hx (Hnull m)).
 Qed.
 
-(** A call of a free the model runs, `free` or `zgc_free`
-    ([is_free_name] fnm), on the base pointer of the live heap object b,
-    which v reads as, where the genv's free [frees_heap] (R's does,
-    by [R.free_succeeds]), and where the
-    free keeps the world interpretation: b's life is given up, its
-    token ending as [VFreed] in the ghost heap. Its bytes and aux
-    slots, if still owned, agree vacuously from then on. *)
+(** Freeing a nonnull heap object's base consumes its lifetime
+    ownership and records the object as freed in the logical memory map.
+    The rule [wp_free_sym] covers either recognized deallocation symbol
+    and requires the deallocator's contract plus preservation of the external-world interpretation.
+    Any retained byte or shadow assertions remain valid, but without
+    live-object ownership they cannot justify further accesses to that object. *)
 Lemma wp_free_sym fnm f e ls l v rest j b reg Φ :
   is_free_name fnm = true ->
   frees_heap (ge_free ge) -> find_fn ge fnm = None -> lookup fnm (ge_globals ge) = None ->
@@ -1237,7 +1250,8 @@ Proof.
     + apply (Hwi m w h rs); [apply Hlk; left | exact Hrs | exact Hw].
 Qed.
 
-(** [wp_free_null_sym] for `free`. *)
+(** A call to the ordinary free symbol on null uses [wp_free_null],
+    which specializes the symbol-independent rule without requiring memory ownership. *)
 Lemma wp_free_null f e ls l v rest j Φ :
   frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
   arg_x ge e (Arg P v) = Some (WPtr null) ->
@@ -1246,7 +1260,10 @@ Lemma wp_free_null f e ls l v rest j Φ :
     {{ Φ }}.
 Proof. apply wp_free_null_sym. reflexivity. Qed.
 
-(** [wp_free_sym] for `free`. *)
+(** After freeing a heap object, a caller loses permission to access
+    it because the object is no longer alive.
+    The rule [wp_free] consumes lifetime ownership for the ordinary
+    free symbol, using the more general deallocation rule. *)
 Lemma wp_free f e ls l v rest j b reg Φ :
   frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
   arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> b <> 0 ->
@@ -1258,10 +1275,10 @@ Lemma wp_free f e ls l v rest j b reg Φ :
     {{ Φ }}.
 Proof. apply wp_free_sym. reflexivity. Qed.
 
-(** A raw byte store of the int y, which v reads as, through the proven
-    pointer p, which a reads as and which addresses offset o of the live
-    object b at offset off, where the store keeps the world
-    interpretation: the byte there now holds y's low byte. *)
+(** A raw byte store replaces one owned byte with the integer's low
+    byte and returns the updated ownership through [wp_raw_store_byte].
+    The caller retains the object's lifetime and proves that changing
+    this byte preserves the interpretation of external-library state. *)
 Lemma wp_raw_store_byte f e ls l off v a rest j p b reg o x y Φ :
   value_x ge e W v = Some (WInt y) -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o ->
@@ -1297,13 +1314,12 @@ Proof.
     iApply ("HK" with "[Hl] [Hc]"); iFrame; done.
 Qed.
 
-(** A heap allocation of size bytes, size read as the only argument,
-    from 0 to Fil-C's limit: for every base the runtime may grant, d is
-    bound to the new object's own pointer and its pieces are owned
-    ([obj]); the base is positive, aligned and the object ends within
-    the address space. The allocation of any [fresh] base, with the new
-    object's pieces added to the ghost heap, must keep the world
-    interpretation. A refusal stalls. *)
+(** A successful heap allocation returns ownership of the fresh object
+    and its base pointer, together with positive-base, alignment, and address-space bounds.
+    The rule [wp_alloc] covers nonnegative sizes within Fil-C's limit
+    and every [[fresh]] base that the runtime may choose.
+    Adding the new object's pieces must preserve the external-world
+    interpretation; an allocator refusal stalls without requiring a returning continuation. *)
 Lemma wp_alloc f e ls l d k al args rest j size Φ :
   map2_option (value_x ge e) [L] args = Some [WInt size] -> 0 <= size -> size <= max_allocation_size ->
   (forall m wd h base, fresh m (heap_req al size) base -> wi m wd h ->
@@ -1350,10 +1366,10 @@ Proof.
       cbn [r_end] in Hend. exact Hend.
 Qed.
 
-(** [wp_alloc] for any size from 0 on: over Fil-C's limit the
-    allocation traps with [TooBig], a refusal, which stalls the run
-    ([wp_lift_run]), so the caller need not show the size is in the
-    limit. *)
+(** An oversized allocation ends with a permitted refusal rather than
+    a safety failure, so [wp_alloc_any] needs no upper size bound.
+    Nonnegative sizes that can return still provide fresh-object
+    ownership, while requests beyond Fil-C's limit require no returning continuation. *)
 Lemma wp_alloc_any f e ls l d k al args rest j size Φ :
   map2_option (value_x ge e) [L] args = Some [WInt size] -> 0 <= size ->
   (forall m wd h base, fresh m (heap_req al size) base -> wi m wd h ->
@@ -1377,9 +1393,8 @@ Proof.
       rewrite Hst in E'; try discriminate E'. injection E' as <-. exact Hr.
 Qed.
 
-(** A [[flight]] whose arguments read as xs, whose address [alu]
-    computes as n, and whose capability source gives c: d is bound to
-    the pointer of n and c. *)
+(** A [[flight]] computes its address from integer arguments and takes
+    its capability from a separate source, as [wp_flight] records in the result. *)
 Lemma wp_flight f e ls l d o args lw rest j xs n c Φ :
   map_option (flight_arg_x ge e) args = Some xs -> alu o L xs = Some (WInt n) ->
   flight_cap ge e lw = Some c ->
@@ -1390,14 +1405,16 @@ Proof.
   intros m fuel. exact (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hx Ha Hc).
 Qed.
 
-(** The state interpretation does not read the [[fuel]]. *)
+(** Changing the execution budget leaves memory ownership valid because
+    [heap_interp_fuel] shows that the memory interpretation does not inspect fuel. *)
 Lemma heap_interp_fuel m s fuel fuel' w :
   heap_interp (mkLstate m s fuel w) -∗ heap_interp (mkLstate m s fuel' w).
 Proof. rewrite /heap_interp /=. iIntros "H". iExact "H". Qed.
 
-(** Entering the block l of f, found as b, from the edge from: its phis
-    bind the environment e', and the frame goes on at its instructions.
-    With no [[fuel]] left the run stops there, a stall. *)
+(** Entering a block selects its [[phi|phi arguments]] from the incoming
+    edge and starts its instructions in the resulting environment.
+    The rule [wp_enter] handles exhausted fuel as a permitted stall,
+    so the continuation describes only execution that enters the block. *)
 Lemma wp_enter f e ls l from b e' Φ :
   find_block l (fn_blocks f) = Some b -> phis_env ge (b_phis b) from e = Some e' ->
   ▷ WP (ERun (mkFrame f e' ls None (Exec l (b_insts b) (b_jump b))) : lexpr) {{ Φ }} -∗
@@ -1423,14 +1440,15 @@ Proof.
       iModIntro. iSplitL "Hσ"; [iApply (heap_interp_fuel with "Hσ") | iExact "H"].
 Qed.
 
-(** A goto to the target t, polling or not, enters its block from l. *)
+(** An unconditional jump enters its target block from the current
+    label, with [wp_goto] handling both polling and nonpolling target edges. *)
 Lemma wp_goto f e ls l t Φ :
   ▷ WP (ERun (mkFrame f e ls None (Enter (edge_label t) (Some l))) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l [] (JGoto t))) : lexpr) {{ Φ }}.
 Proof. apply (wp_pure_next _ _ []). intros m fuel. apply rule_goto. Qed.
 
-(** A branch on v, which reads as the integer n, enters t2's block from
-    l if n is 0, else t1's. *)
+(** A conditional branch selects the second target for zero and the
+    first otherwise, as [wp_branch] records using the evaluated integer condition. *)
 Lemma wp_branch f e ls l v t1 t2 n Φ :
   value_x ge e W v = Some (WInt n) ->
   ▷ WP (ERun (mkFrame f e ls None (Enter (edge_label (if n =? 0 then t2 else t1)) (Some l))) : lexpr)
@@ -1441,9 +1459,8 @@ Proof.
   intros m fuel. exact (rule_branch _ _ _ _ _ _ _ _ _ _ _ _ Hv).
 Qed.
 
-(** A return of v, which reads as x at f's return class k, from an
-    invocation with no named locals: the invocation's value is [Ret]
-    x, and the postcondition holds of it. *)
+(** Returning a value from a function with no named stack locals
+    produces that value's outcome once the promised postcondition is established. *)
 Lemma wp_ret f e l v k x Φ :
   fn_ret f = RClass k -> value_x ge e k v = Some x ->
   ▷ Φ (Ret x) -∗ WP (ERun (mkFrame f e [] None (Exec l [] (JRet v))) : lexpr) {{ Φ }}.
@@ -1464,9 +1481,8 @@ Proof.
     iApply (wp_value' _ _ _ (Ret x)). iExact "H".
 Qed.
 
-(** A return from a `void` function, from an invocation with no named
-    locals: the invocation's value is [RetVoid], and the postcondition
-    holds of it. *)
+(** Returning from a void function with no named stack locals produces
+    [RetVoid], provided that the continuation's postcondition holds for that outcome. *)
 Lemma wp_ret_void f e l Φ :
   ▷ Φ RetVoid -∗ WP (ERun (mkFrame f e [] None (Exec l [] JRetVoid)) : lexpr) {{ Φ }}.
 Proof.
@@ -1485,10 +1501,10 @@ Proof.
     iApply (wp_value' _ _ _ RetVoid). iExact "H".
 Qed.
 
-(** A direct call of the function g, defined in the module, with
-    arguments that read as xs and make its frame callee: the callee
-    runs as the callee of the caller, which waits at the rest of its
-    block for the result r. *)
+(** Calling a function defined in the module creates its frame from
+    the evaluated arguments and suspends the caller at its continuation.
+    The rule [wp_call] places that callee beneath a waiting caller
+    that records where to bind the returned result. *)
 Lemma wp_call f e ls l r g args rest j xs gf callee Φ :
   map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
   call_frame gf xs = Some callee ->
@@ -1500,8 +1516,8 @@ Proof.
   intros m fuel. exact (rule_call _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hx Hf Hc).
 Qed.
 
-(** A returned outcome o resumes the caller cf waiting on it, which
-    reads it as pd says: the caller goes on as cf'. *)
+(** An accepted return resumes its waiting caller with the converted
+    result, as [wp_resume] reduces the proof to that caller's continuation. *)
 Lemma wp_resume o cf pd cf' Φ :
   resume cf pd o = Some cf' ->
   ▷ WP (ERun cf' : lexpr) {{ Φ }} -∗ WP (EWait (EEnd o) cf pd : lexpr) {{ Φ }}.
@@ -1514,14 +1530,15 @@ Proof.
   match goal with H : resume cf pd o = Some ?c |- _ => assert (c = cf') as -> by congruence end. iModIntro. iFrame "Hσ". iSplitL; [iExact "H"|done].
 Qed.
 
-(** The caller cf waiting on its callee is an evaluation context. *)
+(** A caller waiting for its callee forms an evaluation context,
+    allowing Iris's binding rule to focus on the callee's execution. *)
 Local Instance wait_ctx cf pd : LanguageCtx (Λ := nanofil_lang registry ge) (fun e => EWait e cf pd).
 Proof. exact (ectxi_lang_ctx_item (Λ := nanofil_ectxi_lang registry ge) (KWait cf pd)). Qed.
 
-(** A direct call, as [wp_call], whose callee's run ends with an
-    outcome the caller resumes with: the callee's weakest precondition
-    is the caller's, through [wp_bind] and [wp_resume]. A caller uses a
-    callee's Hoare triple here. *)
+(** A caller can use the callee's specification and then prove its
+    own continuation for every returned outcome that it accepts.
+    The rule [wp_call_bind] combines these proofs through the waiting
+    caller, so function specifications need not mention the entire caller stack. *)
 Lemma wp_call_bind f e ls l r g args rest j xs gf callee Φ :
   map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
   call_frame gf xs = Some callee ->
@@ -1536,9 +1553,8 @@ Proof.
   iApply (wp_resume _ _ _ _ _ Hr with "H").
 Qed.
 
-(** A [[check]] of the function pointer v, which reads as p, the
-    exact address of a function ([function_check_res]): d is bound to
-    p. *)
+(** Checking a function pointer confirms the exact function address and
+    binds the proven pointer, as [wp_check_function] packages the successful check. *)
 Lemma wp_check_function f e ls l d v rest j p Φ :
   value_x ge e P v = Some (WPtr p) -> function_check_res ge p = Some ok ->
   ▷ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
@@ -1548,10 +1564,10 @@ Proof.
   intros m fuel. exact (rule_check_function _ _ _ _ _ _ _ _ _ _ _ _ _ Hv Hc).
 Qed.
 
-(** A call through the proven function pointer callee, as
-    [rule_raw_call]: the callee frame fr' of the converted arguments
-    runs as the callee of the caller, which waits at the rest of its
-    block for the result r, converting its words as words says. *)
+(** Calling through a proven function pointer converts the arguments
+    for the [[fast-generic-convention|generic entry]] and saves any required return conversion.
+    The rule [wp_raw_call] then runs the constructed callee beneath
+    the suspended caller, preserving extra arguments for a variadic function. *)
 Lemma wp_raw_call f e ls l r callee args rest j p g xs gf ys words fr' Φ :
   value_x ge e F callee = Some (WPtr p) -> ptr_cap p = Fn g -> function_check_res ge p = Some ok ->
   map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
@@ -1565,11 +1581,10 @@ Proof.
   intros m fuel. exact (rule_raw_call _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hv Hp Hc Hx Hf Hcv Hfr).
 Qed.
 
-(** A call through a function pointer, as [wp_raw_call], whose
-    callee's run ends with an outcome the caller resumes with
-    ([wp_resume]), converting the result words as the pending call
-    says: the callee's weakest precondition is the caller's, as
-    [wp_call_bind] for a direct call. *)
+(** An indirect caller can use its callee's specification just like a
+    direct caller, while accounting for argument and result conversions.
+    The rule [wp_raw_call_bind] combines the callee's proof with a
+    continuation for every accepted, converted result. *)
 Lemma wp_raw_call_bind f e ls l r callee args rest j p g xs gf ys words fr' Φ :
   value_x ge e F callee = Some (WPtr p) -> ptr_cap p = Fn g -> function_check_res ge p = Some ok ->
   map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
@@ -1587,24 +1602,24 @@ Proof.
   iApply (wp_resume _ _ _ _ _ Hr with "H").
 Qed.
 
-(** A call of the global g that is not a function of the module, nor
-    global data, nor free: an [external_site], whose contract spec the
-    registry holds, with arguments that read as xs and the contract's
-    ABI. Given Q:
-    - Q and the state interpretation show the contract's precondition,
-      in the memory and the world of the call;
-    - after any return the contract allows from that state (an
-      [M.E.invoke] ending in [CallReturn] values), Q and the state
-      interpretation give, under a modality that may update the ghost
-      heap, the caller's environment e' the site's result binds
-      ([external_env]: a return the site cannot take is ruled out
-      here), the state interpretation of the call's memory, runtime
-      state and world, and the weakest precondition of the rest of the
-      block.
-    The call's exit and resource endings, blocking, and an admissible
-    call with no completed invocation need nothing: they are stalls. A
-    safepoint before the call keeps Q, and the precondition is shown
-    again after it. *)
+(** An [[external-call|external call]] uses a registered contract rather
+    than a function body, provided its arguments and calling convention match.
+    The rule [wp_external] requires the supplied ownership Q to
+    establish the contract's precondition together with the memory interpretation.
+
+    A returning library call may change memory or allocate an object,
+    and its proof must account for every result the contract permits.
+    The proof updates the ownership map to match those effects and
+    reestablishes the relationship between memory and library state.
+    It must then show that the caller accepts the returned words and
+    can safely execute its remaining instructions.
+
+    A call that exits the process, blocks, or refuses a resource does
+    not return, so the proof need not establish a safe continuation.
+    The language represents these permitted endings as stalls, as it
+    does for a permitted call with no completed invocation.
+    A safepoint before the call preserves Q, and the proof establishes
+    the precondition again in the resulting memory. *)
 Lemma wp_external f e ls lab r g args rest j spec xs (Q : iProp Σ) Φ :
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->
@@ -1644,19 +1659,22 @@ End logic.
 
 (** ## A call's whole effect on the ghost heap
 
-    ContractFrame.v's frame for one [local_effect] or allocation,
-    carried along the language's own call relations ([M.E]). *)
+    A library call may perform many writes and allocations, but it
+    must preserve program-owned memory outside the buffers explicitly lent to it.
+    The following lemmas extend the single-effect restrictions from
+    [ContractFrame](ContractFrame.v) across an entire call, retaining ownership of untouched pieces. *)
 
-(** Every piece of memory of h names an object of m. *)
+(** Every memory piece in the logical map must name an already
+    registered object, which [ids_registered] requires even for pieces lent to a call. *)
 Definition ids_registered (h : gmap piece pval) (m : mem) : Prop :=
   forall l v, h !! l = Some v -> mem_piece l -> registered m (piece_id l).
 
-(** Along an [effects] path, a call into blocks the program owns: every
-    piece of h but the keys ks keeps agreeing, where every root address
-    in an object the program owns is out and no piece of h but ks lies
-    at an address out. The pieces ks are the blocks the program hands
-    the call, at the addresses out; they keep only their identities.
-    With nothing out it is [effects_agrees]. *)
+(** A call may write buffers explicitly lent by the program, while
+    every other owned piece must continue to match memory.
+    The theorem [effects_agrees_out] tracks those exceptions through
+    the effect path, retaining their object identities rather than their previous contents.
+    Writable roots must touch program-owned objects only at the lent
+    addresses, and the call may release none of the program's owned identities. *)
 Theorem effects_agrees_out : forall sources roots releases requests s m born0 s' m' born h ks out,
   M.E.effects sources roots releases requests s m born0 s' m' born ->
   R.ready s m -> live_disjoint m -> agrees_except ks m h -> ids_registered h m ->
@@ -1707,11 +1725,12 @@ Proof.
       * exact (Hb b l v Hin Hh Hm).
 Qed.
 
-(** Along an [effects] path from a [[ready]] state, a ghost heap h
-    whose live objects the roots avoid, none of whose identities the
-    call releases or was born with, keeps agreeing with memory; live
-    objects stay apart, the born objects are none of h's, and the roots
-    still avoid h's live objects. born0 is [] at the start of a call. *)
+(** A library cannot disturb the caller's objects if its writable
+    arguments cannot reach them and it has no permission to release them.
+    The theorem [effects_agrees] preserves ownership under those
+    restrictions, keeping live objects disjoint and newly allocated identities separate from existing pieces.
+    Any objects allocated earlier during the call must already be
+    separate; at the start of a call, that list is empty. *)
 Theorem effects_agrees : forall sources roots releases requests s m born0 s' m' born h,
   M.E.effects sources roots releases requests s m born0 s' m' born ->
   R.ready s m -> live_disjoint m -> agrees m h -> roots_apart roots h m ->
@@ -1728,9 +1747,10 @@ Proof.
   split; [exact Hd'|]. split; [exact Hb'|]. intros sp a Hin Hs Ho. exact (Hra' sp a Hin Hs Ho).
 Qed.
 
-(** The same for a whole call [prefix] of the contract spec: its
-    writable roots avoid h's live objects and it releases none of h's
-    identities. *)
+(** A whole contract prefix preserves program ownership when its writes
+    avoid owned live objects and its releases avoid their identities.
+    The corollary [prefix_agrees] also keeps newly allocated objects
+    separate and preserves the separation of writable roots from program objects. *)
 Corollary prefix_agrees : forall world (spec : contract world) xs s m w born trace s' m' w' h,
   M.E.prefix spec xs s m w born trace s' m' w' -> R.ready s m -> live_disjoint m -> agrees m h ->
   roots_apart (contract_writes spec xs m w) h m -> ids_apart (contract_releases spec xs m w) h ->
@@ -1740,10 +1760,10 @@ Proof.
   apply (effects_agrees _ _ _ _ _ _ _ _ _ _ h He Hr Hd Ha Hra Hrel). intros b l v [].
 Qed.
 
-(** The same for a whole call [prefix] of the contract spec into blocks
-    the program owns: every piece of h but ks keeps agreeing, where the
-    contract's writable roots touch the program's objects only at the
-    addresses out. *)
+(** A contract prefix that writes explicitly lent buffers preserves
+    every other owned piece and keeps the lent objects' identities registered.
+    The corollary [prefix_agrees_out] requires writable roots to touch
+    program-owned objects only at those permitted addresses. *)
 Corollary prefix_agrees_out : forall world (spec : contract world) xs s m w born trace s' m' w' h ks out,
   M.E.prefix spec xs s m w born trace s' m' w' -> R.ready s m -> live_disjoint m ->
   agrees_except ks m h -> ids_registered h m ->
@@ -1757,8 +1777,8 @@ Proof.
   auto.
 Qed.
 
-(** The same for a completed call ([invoke]), normal or resource, for
-    the born objects of its prefix. *)
+(** A completed invocation preserves separated program ownership for
+    every permitted ending, with [invoke_agrees] identifying its newly allocated objects as separate too. *)
 Corollary invoke_agrees : forall world (spec : contract world) r args xs s m w trace ending s' m' w' h,
   M.E.invoke spec r args xs s m w trace ending s' m' w' -> R.ready s m -> live_disjoint m -> agrees m h ->
   roots_apart (contract_writes spec xs m w) h m -> ids_apart (contract_releases spec xs m w) h ->
@@ -1770,25 +1790,28 @@ Proof.
   exists born. exact (prefix_agrees _ _ _ _ _ _ _ _ _ _ _ h Hp Hr Hd Ha Hra Hrel).
 Qed.
 
-(** No world: over the world unit, the interpretation that requires
-    nothing of the memory. With [no_contracts] it is the core
-    machine's logic. *)
+(** A program with no external-library state can use [no_world], whose
+    interpretation places no extra requirements on memory or the logical ownership map. *)
 Definition no_world : mem -> unit -> gmap piece pval -> Prop := fun _ _ _ => True.
 
-(** [no_world] survives every safepoint. *)
+(** A closed program has no library state to protect when garbage
+    collection runs, so this additional safepoint obligation is immediate.
+    The instance [no_world_stable] supplies that fact to the instruction
+    rules using the empty interpretation of external state. *)
 Instance no_world_stable : SafepointStable no_world.
 Proof. split. intros s m s' m' w h _ _. exact I. Qed.
 
-(** The Iris instance of a module that calls no external function, in
-    the genv ge: no contracts and no world. *)
+(** A closed module uses [closed_irisGS] to select an empty external
+    contract registry and a world interpretation with no additional memory requirements. *)
 Instance closed_irisGS `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (ge : genv) :
   irisGS_gen hlc (nanofil_lang no_contracts ge) Σ := nanofil_irisGS no_contracts no_world ge.
 
-(** Iris [[adequacy]] with the ghost heap: if, for every admissible
-    input, the entry's frame has a weakest precondition with no
-    contracts under any invariant and ghost heap instance, the module
-    never panics. The initial memory's live objects must not overlap
-    (it holds none for a module with no data). *)
+(** A closed module never panics when its entry proof covers every
+    admitted input without assuming ownership of any initial memory pieces.
+    The theorem [heap_never_panics] allocates an empty logical ownership
+    map and requires the initial memory's live objects to be disjoint.
+    The entry proof must work for every Iris invariant and heap
+    instance, with no external contracts available. *)
 Theorem heap_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     md entry (input : list word -> Prop) globals m f :
   initial_memory md = Some (globals, m) ->
@@ -1811,12 +1834,14 @@ Proof.
   - iApply (Hw Hinv HheapG).
 Qed.
 
-(** Iris [[adequacy]] where the program starts owning the pieces ps of
-    its initial memory, distinct and agreeing with it: if, for every
-    admissible input, owning ps gives the entry's frame a weakest
-    precondition with no contracts under any invariant and ghost heap
-    instance, the module never panics. [heap_never_panics] with ps for
-    its empty ghost heap. *)
+(** A program reading initialized global data needs ownership of those
+    bytes before its entry function can prove the loads safe.
+    The theorem [pieces_never_panics] provides selected initial memory
+    pieces, provided their keys are distinct and their recorded values match memory.
+    The entry proof must cover every admitted input and use no
+    external contracts, while initial live objects must be disjoint.
+    It must also work with every choice of Iris invariant and heap
+    instance, so the result does not depend on a particular logical allocation. *)
 Theorem pieces_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     md entry (input : list word -> Prop) globals m f (ps : list (piece * pval)) :
   initial_memory md = Some (globals, m) ->
@@ -1840,16 +1865,14 @@ Proof.
       [iExact "Hpts" | exact Hn].
 Qed.
 
-(** Iris [[adequacy]] with the ghost heap for the labelled machine
-    (Language.v's [wp_labelled_safe]), with the contracts of registry
-    and the world interpretation wi. From the memory m, the runtime
-    state s and the world w, where R is [[ready]], the live objects are
-    apart, and the caller's initial ghost heap h0 agrees with m and
-    satisfies wi with w: if, under any invariant and ghost heap
-    instance, owning h0's pieces gives a weakest precondition of [ERun
-    fr] with the postcondition φ, then for every fuel the run is
-    [labelled_safe]: no labelled run stops with a [failure_ending], and
-    a top-level return's value satisfies φ. *)
+(** A program using external contracts is safe when its entry proof
+    establishes safe execution and the promised return property from its initial ownership.
+    The theorem [heap_labelled_safe] supplies a logical map matching
+    initial memory, a [[ready]] runtime, disjoint live objects, and a valid external-world interpretation.
+    Given the entry proof for every Iris invariant and heap instance,
+    it excludes failure endings for every execution budget.
+    Whenever a run returns normally at the top level, its returned
+    outcome also satisfies the entry proof's promised postcondition. *)
 Theorem heap_labelled_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     {world : Type} (registry : name -> option (contract world))
     (wi : mem -> world -> gmap piece pval -> Prop)
@@ -1870,10 +1893,10 @@ Qed.
 
 End Logic.
 
-(** The signature of a Logic instance. Two applications of [Logic] have
-    distinct expressions and states, so the layers above it take one
-    instance of this signature, and a program's proof hands them all
-    the same. *)
+(** All higher proof layers must share one program-logic instance so
+    their expressions, states, and assertions refer to the same types.
+    The signature [LogicSig] lets a program supply that instance rather
+    than have each layer construct a distinct one. *)
 Module Type LogicSig (R : Runtime).
 Include Logic R.
 End LogicSig.

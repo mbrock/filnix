@@ -10,9 +10,9 @@
 
     ## What libpizlo runs
 
-    At the pinned revision, `c: zsys_close` combines user-runtime C code
-    in `filc/src/runtime.c` with the native helper `c: zsys_close_impl`
-    in `libpas/src/libpas/filc_runtime.c`:
+    Closing a descriptor crosses two runtime layers before it reaches
+    the host kernel. The following code combines `filc/src/runtime.c`
+    with the native helper from `libpas/src/libpas/filc_runtime.c`.
 
     ```c
     int zsys_close(int fd)
@@ -76,8 +76,9 @@ Open Scope Z_scope.
 
 (** ## The contract
 
-    Before proving separation-logic rules, this first section defines the
-    ABI, precondition, and postcondition of [os_close_contract]. *)
+    A close call accepts any descriptor and may update the calling
+    thread's error cell. The following definitions collect its calling
+    convention and possible results into [os_close_contract]. *)
 
 (** A call site satisfies [os_close_abi] when it passes a single 32-bit
     descriptor and either discards the result or binds it to a 32-bit

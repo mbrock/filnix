@@ -10,8 +10,9 @@
 
     ## What libpizlo runs
 
-    At the pinned revision of `libpas/src/libpas/filc_runtime.c`,
-    `c: zsys_exit_soft` runs the following native wrapper:
+    Process termination leaves Fil-C execution and asks the host C
+    library to end the process. The following wrapper implements soft
+    termination in the pinned `libpas/src/libpas/filc_runtime.c`.
 
     ```c
     void filc_native_zsys_exit_soft(filc_thread* my_thread, int return_code)
@@ -51,9 +52,9 @@ Open Scope Z_scope.
 
 (** ## The contract
 
-    Before proving separation-logic rules, this first section defines the
-    exit status masking, ABI, execution trace, and postcondition of
-    [os_exit_contract]. *)
+    Both exit wrappers end the process with the low byte of the supplied
+    status. The following definitions record that event and collect
+    their shared calling convention into [os_exit_contract]. *)
 
 (** From the 32-bit integer passed to `c: exit`, [exit_status] extracts
     the low 8 bits `bits mod 256` that Linux reports as the process exit

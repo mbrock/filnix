@@ -16,7 +16,7 @@
     behavior, or reaching `unreachable` is a program failure.
 
     This module defines that distinction once for both the closed-module
-    [[machine]] in [Machine](../core/Machine.v) and the contract-aware
+    [[machine]] in [Machine](../soundness/Machine.v) and the contract-aware
     external machine in [ExternalMachine](../external/ExternalMachine.v).
     The predicate [failure] classifies core machine [[outcome|outcomes]],
     [failure_ending] classifies external-machine endings, and

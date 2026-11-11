@@ -1,23 +1,21 @@
-(** The [[validator]] with its [[single-definition|single definitions]]
-    found through a [[name-map|name map]], and the proof that it
-    answers as Validate.v's [valid] does.
+(** A large function can define thousands of temporaries, making
+    repeated scans for duplicate definitions an expensive part of validation.
+    This module speeds up the [[validator]] by counting names once in
+    a [[name-map|name map]], then selecting names that have exactly one definition.
+    It proves that this faster computation gives the same answer as
+    the simpler specification in [Validate](Validate.v).
 
-    [single_definitions] asks, for each definition of a function, how
-    many definitions share its name, and answers by walking the list
-    of all of them: time that grows with the square of their number.
-    Three functions of SQLite have 6,000 to 14,800 definitions, and
-    that walk was 7 of the 18 seconds [valid] took on its module.
-    [single_definitions_fast] counts every name once, in a name map,
-    and then keeps the definitions whose name counts one.
+    The original [[single-definition|single-definition]] computation
+    scans every definition for each name, so its work grows quadratically with the definition count.
+    The function [single_definitions_fast] replaces those repeated scans
+    with map lookups, preserving the original order of the selected definitions.
+    Existing safety proofs continue to use the original specification,
+    while the [[extraction|extracted]] program runs the faster validator.
 
-    [valid] stays the specification: the proofs of the reuse forms
-    read [single_definitions], and nothing in them changes.
-    [valid_fast] is what an [[extraction|extracted]] program runs, and
-    [valid_fast_eq] says the two are one function. The definitions
-    from [stage_sources_fast] down to [valid_fast] repeat Validate.v's
-    with the one name replaced; each equality is proved by unfolding
-    both sides, so a change to one side that the other lacks stops the
-    build here. *)
+    Speeding up validation must not accidentally accept bad programs,
+    reject good ones, or change which modules the model cannot judge.
+    The final theorem [valid_fast_eq] proves that every module receives
+    exactly the original answer, covering all three possible verdicts. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Validate.
@@ -26,22 +24,27 @@ Open Scope string_scope.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Counting definitions *)
+(** ## Counting definitions
 
-(** How many of the definitions ds define the name n: the length
-    [single_definitions] compares with one. *)
+    A temporary can serve as an unambiguous proof source only when its
+    name has exactly one definition in the function.
+    The following functions count definitions by name and filter the
+    original list, retaining both its entries and their order. *)
+
+(** The original duplicate test counts definitions of one name through
+    [def_count], which filters the complete definition list before taking its length. *)
 Definition def_count (n : name) (ds : list (name * def)) : nat :=
   length (filter (fun d' => name_eqb n (fst d')) ds).
 
-(** The map from each name the definitions ds define to how many of
-    them define it, built in one pass over ds. *)
+(** Counting every name in one traversal produces [def_counts], whose
+    map entries record positive counts while absent names have no entry. *)
 Definition def_counts (ds : list (name * def)) : nmap nat :=
   fold_left (fun m d => nm_add (fst d)
                                (match nm_find (fst d) m with Some c => S c | None => 1%nat end)
                                m) ds nm_empty.
 
-(** As [single_definitions]: the temporaries of the function f with
-    exactly one definition, each with it, in the same order. *)
+(** Selecting definitions whose recorded count is one gives
+    [single_definitions_fast], preserving the same entries and order as the original single-definition computation. *)
 Definition single_definitions_fast (f : func) : list (name * def) :=
   let ds := all_defs f in
   let counts := def_counts ds in
@@ -50,8 +53,10 @@ Definition single_definitions_fast (f : func) : list (name * def) :=
                    | None => false
                    end) ds.
 
-(** Counting the definitions ds into a map m adds, to what m held for
-    the name n, the number of them that define n. *)
+(** Extending an existing count map adds each name's new occurrences
+    to its previous count, as [def_counts_fold] proves for the counting traversal.
+    A previously absent name remains absent when the new list contains
+    no definition of that name, rather than acquiring a zero entry. *)
 Lemma def_counts_fold : forall n ds m,
   nm_find n (fold_left (fun m d => nm_add (fst d)
                                           (match nm_find (fst d) m with
@@ -72,8 +77,8 @@ Proof.
     + reflexivity.
 Qed.
 
-(** The map of counts answers, for a name n, the number of definitions
-    of n when there is one, and nothing otherwise. *)
+(** Looking up a defined name returns its exact occurrence count,
+    while [def_counts_find] shows that a name with no definitions has no map entry. *)
 Lemma def_counts_find : forall n ds,
   nm_find n (def_counts ds)
   = if (def_count n ds =? 0)%nat then None else Some (def_count n ds).
@@ -81,8 +86,8 @@ Proof.
   intros n ds. unfold def_counts. rewrite def_counts_fold, nm_find_empty. reflexivity.
 Qed.
 
-(** The single definitions found through the map are those
-    [single_definitions] finds, as one list. *)
+(** Replacing repeated counting scans with map lookups leaves the whole
+    selected definition list unchanged, as [single_definitions_fast_eq] proves for every function. *)
 Theorem single_definitions_fast_eq : forall f,
   single_definitions_fast f = single_definitions f.
 Proof.
@@ -91,9 +96,15 @@ Proof.
   destruct (def_count (fst d) (all_defs f)) as [|c]; reflexivity.
 Qed.
 
-(** ## The validator over them *)
+(** ## Checking functions and modules
 
-(** As [stage_sources], with [single_definitions_fast]. *)
+    Finding unique definitions is only one part of checking whether
+    instructions use values and memory proofs correctly throughout a function.
+    The following functions keep those other checks unchanged while
+    feeding them the faster computation's identical list of unique definitions. *)
+
+(** Collecting reusable proof sources uses [stage_sources_fast] to
+    substitute the faster single-definition list while retaining the original scheduled checks and repeated getters. *)
 Definition stage_sources_fast (md : module) (f : func) (doms : nmap (Z * Z)) : src :=
   if setjmp_func f then mkSrc [] [] [] [] else
   let once := single_definitions_fast f in
@@ -103,11 +114,15 @@ Definition stage_sources_fast (md : module) (f : func) (doms : nmap (Z * Z)) : s
                                                end) (b_insts b)) (fn_blocks f))
         once (ahead_justified f once) (repeated_getters md f doms once).
 
-(** As [stage_func], with [stage_sources_fast]. *)
+(** Checking a function's proof evidence uses [stage_func_fast], which
+    combines the faster source collection with unchanged limit-use and cycle-poll checks. *)
 Definition stage_func_fast (md : module) (f : func) (doms : nmap (Z * Z)) : bool :=
   evidence_pass (stage_sources_fast md f doms) f && limit_reads f && polls_every_cycle f.
 
-(** As [valid_func], with [stage_func_fast]. *)
+(** A valid function must still use correctly typed values, place
+    definitions before their uses, and justify memory accesses with suitable checks.
+    The function [valid_func_fast] retains all those tests while using
+    the faster duplicate count to collect reusable proof sources. *)
 Definition valid_func_fast (md : module) (f : func) : bool :=
   let bs := fn_blocks f in
   let defs := temp_defs f in
@@ -133,7 +148,8 @@ Definition valid_func_fast (md : module) (f : func) : bool :=
       && (negb (module_checked md) || stage_func_fast md f doms)
   end.
 
-(** As [valid_items], with [valid_func_fast]. *)
+(** A module's items pass [valid_items_fast] under the original name,
+    data, and alias checks, while functions use the faster validator. *)
 Definition valid_items_fast (md : module) : bool :=
   unique_names md &&
   forallb (fun it => match it with
@@ -143,13 +159,18 @@ Definition valid_items_fast (md : module) : bool :=
                      | IOutside _ _ => true
                      end) md.
 
-(** As [valid], with [valid_items_fast]: what an extracted program
-    runs. *)
+(** The extracted program calls [valid_fast], which declines unsupported
+    modules and otherwise returns the result of checking every supported module item. *)
 Definition valid_fast (md : module) : option bool :=
   if existsb (fun it => match it with IOutside _ _ => true | _ => false end) md then None
   else Some (valid_items_fast md).
 
-(** ## They are the validator *)
+(** ## Preserving validator verdicts
+
+    A faster implementation must preserve rejection and unsupported
+    answers too, not merely accept the programs that previously passed.
+    The following equalities connect each copied stage to its original,
+    ending with equality of the complete validator functions. *)
 
 Lemma stage_sources_fast_eq : forall md f doms,
   stage_sources_fast md f doms = stage_sources md f doms.
@@ -165,7 +186,8 @@ Proof.
   rewrite stage_sources_fast_eq. reflexivity.
 Qed.
 
-(** One function is judged alike. *)
+(** Every function receives the same Boolean verdict under both
+    implementations, as [valid_func_fast_eq] proves after replacing the faster evidence stage by its specification. *)
 Theorem valid_func_fast_eq : forall md f, valid_func_fast md f = valid_func md f.
 Proof.
   intros md f. unfold valid_func_fast, valid_func.
@@ -195,8 +217,8 @@ Proof.
   apply H.
 Qed.
 
-(** [valid_fast] accepts, refuses and declines to judge exactly the
-    modules [valid] does. *)
+(** Every module receives exactly the original verdict, including an
+    unsupported answer, as [valid_fast_eq] proves by equating the complete validator functions. *)
 Theorem valid_fast_eq : forall md, valid_fast md = valid md.
 Proof.
   intros md. unfold valid_fast, valid. rewrite valid_items_fast_eq. reflexivity.

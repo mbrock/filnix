@@ -9,7 +9,7 @@
 
     ## From interpreter steps to program-logic rules
 
-    Whereas [Steps](../core/Steps.v) works backward from a step that has
+    Whereas [Steps](../soundness/Steps.v) works backward from a step that has
     already occurred, the lemmas here work forward from the current call
     [[frame]] and instruction list. The program logic in [Logic](Logic.v)
     lifts these forward stepping rules directly into

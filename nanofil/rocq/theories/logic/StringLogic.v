@@ -1,29 +1,23 @@
-(** C strings in the program logic of Logic.v, and the triples of the
-    libc string calls derived from [[campaign|Campaign]] 4's contracts.
+(** A C string occupies consecutive bytes through its terminating NUL,
+    and its enclosing object must remain alive while those bytes are read.
+    This module describes that ownership and derives calling rules from
+    the libc string [[external-call|contracts]] used in the earlier
+    [[campaign]]. It uses the program logic of [Logic](Logic.v), rather
+    than proving the string functions' C implementations here.
 
-    [string] p b reg bytes owns a C string: the life of the object b
-    that p's capability names, read-write or read-only, and its bytes
-    from p's offset through the terminating NUL ([byte_ps]). Owning it
-    in an interpreted state gives the contracts' readings of a string,
-    [terminated_length] and [c_string] ([string_facts]). One byte of it
-    can be lent out to a load ([string_byte]).
+    A string assertion owns its object's lifetime and every byte through
+    the terminator, accepting either a writable or a read-only
+    [[capability]]. The assertion [string] supplies both the readable
+    memory required by libc contracts and the contents needed by the
+    caller's proof. A caller can temporarily lend one byte or a suffix,
+    provided that it receives the same ownership back afterward.
 
-    The triples are each contract's precondition read from owned
-    pieces, and its postcondition handed back as owned pieces and
-    bound results:
-    - [wp_strlen] and [wp_strchr], from [strlen_contract] and
-      [strchr_contract]: pure calls, which change no memory and no
-      world ([pure_return]), so the state interpretation holds again
-      with the same ghost heap, over any registry and world;
-    - [wp_puts], from [puts_contract]: a call that writes its world's
-      roots and may allocate, under the world interpretation
-      [stdio_wi]: puts's rep and readiness, and the world's writable
-      roots apart from the program's live objects. After a return,
-      the frame for external calls (Logic.v's [prefix_agrees]) keeps
-      the program's pieces and puts's prefix the world
-      ([puts_return_frame]).
-    Each triple is stated at any call site, so a program uses it as a
-    rule. *)
+    Read-only string calls preserve the caller's memory and the external
+    world, so their rules return the same string ownership. Output
+    requires more care because puts may change stream state and allocate
+    storage while leaving its input string alone. The assertion
+    [stdio_wi] keeps the stream's writable storage separate from objects
+    owned by the program, allowing both sets of state to survive. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -35,20 +29,28 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Byte pieces *)
+(** ## Byte pieces
 
-(** The pieces of the bytes xs from offset o of the object b. *)
+    A string proof must connect a list of expected bytes to the actual
+    memory addresses that a C function reads. The following definitions
+    assign one [piece] to each byte, so ownership can be split and
+    reassembled without losing that connection. *)
+
+(** Each expected byte receives its own object-relative location, which
+    [byte_ps] lists consecutively from offset o in object b. *)
 Definition byte_ps (b o : Z) (xs : list Z) : list (piece * pval) :=
   zip_with (fun i x => (PByte b i, VByte x)) (seqZ o (Z.of_nat (length xs))) xs.
 
-(** The first byte's piece, then the rest's. *)
+(** A nonempty byte sequence separates into its first byte and the
+    remaining sequence, whose starting offset advances by one. *)
 Lemma byte_ps_cons b o x xs : byte_ps b o (x :: xs) = (PByte b o, VByte x) :: byte_ps b (o + 1) xs.
 Proof.
   unfold byte_ps. cbn [length]. rewrite Nat2Z.inj_succ seqZ_cons; [|lia].
   rewrite Z.pred_succ. reflexivity.
 Qed.
 
-(** The i-th piece is the i-th byte's. *)
+(** Looking up byte i in the sequence identifies its owned piece at
+    offset o plus i within the same object. *)
 Lemma byte_ps_lookup b o xs i x :
   xs !! i = Some x -> byte_ps b o xs !! i = Some (PByte b (o + Z.of_nat i), VByte x).
 Proof.
@@ -58,8 +60,8 @@ Proof.
   - rewrite (IH (o + 1) i H). do 3 f_equal. lia.
 Qed.
 
-(** Where the pieces of xs from offset o of the live object b agree,
-    each byte is in the object and holds its value. *)
+(** When the owned bytes agree with a live object's memory, each listed
+    byte lies within the object and contains its expected value. *)
 Lemma byte_ps_agree m b reg o xs i x :
   live_at m b reg -> all_agree m (byte_ps b o xs) -> xs !! i = Some x ->
   m_bytes m (b + (o + Z.of_nat i)) = x /\ 0 <= o + Z.of_nat i /\ b + (o + Z.of_nat i) < r_end reg.
@@ -70,8 +72,8 @@ Proof.
   destruct (Hin reg E Lv) as (Ho & He & Hv). auto.
 Qed.
 
-(** The bytes, nonzero, followed by a NUL, as the memory holds them
-    from a, are a [string_at] a. *)
+(** Consecutive nonzero bytes followed by a NUL form a C string, as
+    [string_at_of] proves from the individual memory readings. *)
 Lemma string_at_of m a bytes :
   Forall (fun x => 0 < x < 256) bytes ->
   (forall i x, (bytes ++ [0]) !! i = Some x -> m_bytes m (a + Z.of_nat i) = x) ->
@@ -85,7 +87,8 @@ Proof.
       replace (a + 1 + Z.of_nat i) with (a + Z.of_nat (S i)) by lia. apply Hb. exact Hx.
 Qed.
 
-(** The pieces of xs ++ ys are xs's, then ys's after them. *)
+(** Concatenating two byte lists concatenates their pieces, with the
+    second list beginning immediately after the first list's final byte. *)
 Lemma byte_ps_app b o xs ys :
   byte_ps b o (xs ++ ys) = byte_ps b o xs ++ byte_ps b (o + Z.of_nat (length xs)) ys.
 Proof.
@@ -94,7 +97,8 @@ Proof.
   replace (o + Z.of_nat (S (length xs))) with (o + 1 + Z.of_nat (length xs)) by lia. reflexivity.
 Qed.
 
-(** The pieces of xs are byte pieces at the offsets from o. *)
+(** The locations in a byte sequence are consecutive byte offsets,
+    independent of the values stored at those locations. *)
 Lemma byte_ps_keys b o xs : (byte_ps b o xs).*1 = PByte b <$> seqZ o (Z.of_nat (length xs)).
 Proof.
   revert o. induction xs as [|x xs IH]; intros o; [reflexivity|].
@@ -102,25 +106,29 @@ Proof.
   cbn [length]. rewrite Nat2Z.inj_succ (seqZ_cons o); [|lia]. rewrite Z.pred_succ. reflexivity.
 Qed.
 
-(** ## Strings *)
+(** ## Strings
 
-(** The shape of a C string at p with contents bytes in the object b
-    with the region reg: p's capability names b, read-write or
-    read-only, at a positive base; the bytes and their NUL lie in the
-    region, which ends within the address space; every byte is
-    nonzero. *)
+    A valid string needs more than matching bytes: its pointer must
+    authorize reads through the terminator within a live object. The
+    following predicates combine these bounds with the byte sequence
+    and connect them to the string contracts' requirements. *)
+
+(** A string pointer must name its enclosing object and leave room for
+    every nonzero byte followed by the terminating NUL.
+    The predicate [string_ok] records these bounds, a positive object
+    base, and an object end within the model's address space. *)
 Definition string_ok (p : ptr) (b : Z) (reg : region) (bytes : list Z) : Prop :=
   (ptr_cap p = Obj b \/ ptr_cap p = Ro b) /\ 0 < b /\ b <= ptr_addr p /\
   ptr_addr p + Z.of_nat (length bytes) + 1 <= r_end reg /\ r_end reg <= 2 ^ 48 /\
   Forall (fun x => 0 < x < 256) bytes.
 
-(** The pieces of the string: its object's life and its bytes from p's
-    offset, NUL included. *)
+(** Owning a string requires its enclosing object's lifetime and all
+    bytes through the terminator, which [string_ps] collects as pieces. *)
 Definition string_ps (p : ptr) (b : Z) (reg : region) (bytes : list Z) : list (piece * pval) :=
   (PLive b, VLive reg) :: byte_ps b (ptr_addr p - b) (bytes ++ [0]).
 
-(** Where the string's pieces agree, the memory holds its bytes and
-    NUL from p. *)
+(** Agreement between the string's pieces and memory determines each
+    byte read from its pointer, including the final NUL byte. *)
 Lemma string_bytes m p b reg bytes :
   string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) ->
   forall i x, (bytes ++ [0]) !! i = Some x -> m_bytes m (ptr_addr p + Z.of_nat i) = x.
@@ -130,8 +138,8 @@ Proof.
   replace (ptr_addr p + Z.of_nat i) with (b + (ptr_addr p - b + Z.of_nat i)) by lia. exact Hv.
 Qed.
 
-(** Where the string's pieces agree, p points at a [terminated_length]
-    string of its length: Campaign 4's reading of a string. *)
+(** A string with owned, matching bytes satisfies [terminated_length],
+    giving length-based contracts a readable range with the expected terminator. *)
 Lemma string_terminated m p b reg bytes :
   string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) ->
   terminated_length m p (Z.of_nat (length bytes)).
@@ -149,8 +157,8 @@ Proof.
     rewrite Nat.sub_diag. reflexivity.
 Qed.
 
-(** Where the string's pieces agree, p points at a [c_string] with
-    contents bytes: puts's reading of a string. *)
+(** The same owned bytes also satisfy [c_string], giving the puts
+    contract both a readable range and the complete string contents. *)
 Lemma string_c_string m p b reg bytes :
   string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) -> c_string m p bytes.
 Proof.
@@ -160,7 +168,8 @@ Proof.
   - apply string_at_of; [exact Hf | exact Hb].
 Qed.
 
-(** No piece of a string is listed twice. *)
+(** Every owned location occurs only once in a string's piece list,
+    so the assertion does not claim the same byte twice. *)
 Lemma string_ps_nodup p b reg bytes : NoDup (string_ps p b reg bytes).*1.
 Proof.
   unfold string_ps. cbn [fmap list_fmap fst]. rewrite byte_ps_keys. apply NoDup_cons_2.
@@ -168,7 +177,8 @@ Proof.
   - apply NoDup_fmap_2; [intros x y E; injection E as ->; reflexivity | apply NoDup_seqZ].
 Qed.
 
-(** Every piece of a string is of its object. *)
+(** The lifetime and byte pieces of a string all refer to the same
+    enclosing object, as [string_ps_id] establishes for ownership reasoning. *)
 Lemma string_ps_id p b reg bytes l v : (l, v) ∈ string_ps p b reg bytes -> piece_id l = b.
 Proof.
   unfold string_ps. rewrite elem_of_cons. intros [H|H]; [injection H as -> _; reflexivity|].
@@ -176,7 +186,8 @@ Proof.
   apply list_elem_of_fmap in H as (o & -> & _). reflexivity.
 Qed.
 
-(** Every piece of a string is a piece of memory. *)
+(** All pieces used to represent a string describe memory, rather than
+    runtime bookkeeping, so memory-preservation rules apply to them. *)
 Lemma string_ps_mem p b reg bytes l v : (l, v) ∈ string_ps p b reg bytes -> mem_piece l.
 Proof.
   unfold string_ps. rewrite elem_of_cons. intros [H|H]; [injection H as -> _; exact I|].
@@ -184,9 +195,10 @@ Proof.
   apply list_elem_of_fmap in H as (o & -> & _). exact I.
 Qed.
 
-(** The suffix of the string p from its i-th byte, at q: the pieces
-    of the string are its life, the bytes before q, and the pieces of
-    the suffix's bytes, which are the string at q's. *)
+(** Splitting a string at byte i separates its preceding bytes from
+    the suffix while retaining the same object lifetime.
+    The lemma [string_ps_suffix] describes both piece lists without
+    duplicating that lifetime when the suffix is lent to a caller. *)
 Lemma string_ps_suffix p b reg bytes i :
   (i <= length bytes)%nat ->
   let q := mkPtr (ptr_addr p + Z.of_nat i) (ptr_cap p) in
@@ -201,7 +213,8 @@ Proof.
     with (ptr_addr p + Z.of_nat i - b) by lia. reflexivity.
 Qed.
 
-(** The suffix of a string from a byte before its NUL is a string. *)
+(** Advancing within a string, including to its terminator, leaves a
+    valid string suffix with the original pointer's object capability. *)
 Lemma string_ok_suffix p b reg bytes i :
   (i <= length bytes)%nat -> string_ok p b reg bytes ->
   string_ok (mkPtr (ptr_addr p + Z.of_nat i) (ptr_cap p)) b reg (drop i bytes).
@@ -211,24 +224,32 @@ Proof.
   apply Forall_drop. exact Hf.
 Qed.
 
-(** ## The stdio world *)
+(** ## The stdio world
 
-(** The world interpretation of a program that calls puts: puts's
-    representation rep and [stdio_ready] of the world w in m, and the
-    world's writable roots apart from the live objects owning pieces
-    of the ghost heap h. *)
+    A puts call may write stream buffers, but it must not overwrite
+    the input string or other storage owned by the caller. The following
+    world condition separates those writable buffers from the caller's
+    objects and requires the stream state to remain ready. *)
+
+(** Stream state must match its representation in memory, be ready for
+    output, and keep its writable storage apart from the program's objects.
+    The predicate [stdio_wi] combines these requirements using the
+    [[ghost-state|ghost heap]] to identify which objects the program owns. *)
 Definition stdio_wi (rep : mem -> stdio_world -> Prop) (m : mem) (w : stdio_world)
     (h : gmap piece pval) : Prop :=
   rep m w /\ stdio_ready m w /\ roots_apart (stdio_roots w) h m.
 
-(** C strings and the string calls over any [[runtime]] R. *)
+(** The module [StringLogicOn] builds string assertions and libc calling
+    rules over an existing program logic for any [[runtime]] R. *)
 Module StringLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module LG := LG0.
 Module L := LG.L.
 Import L LG.
 
-(** A safepoint keeps [stdio_wi] where it keeps rep and readiness: the
-    roots stay apart since no region changes ([collector_live]). *)
+(** Garbage collection preserves the separation between stream storage
+    and program objects because a [[poll|safepoint]] never changes object regions.
+    Preserving stream representation and readiness therefore suffices to
+    preserve the whole condition, as [stdio_wi_safepoint] proves. *)
 Lemma stdio_wi_safepoint (rep : mem -> stdio_world -> Prop) :
   (forall s m s' m' w, R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
      rep m' w /\ stdio_ready m' w) ->
@@ -243,7 +264,8 @@ Proof.
   split; [exact E | exact Hlive].
 Qed.
 
-(** A puts call returns one int. *)
+(** Whenever puts returns normally, its contract supplies exactly one
+    integer result, as [puts_returns_int] establishes for the calling rule. *)
 Lemma puts_returns_int rep requests r args xs s m w trace values s' m' w' :
   M.E.invoke (puts_contract rep requests) r args xs s m w trace (CallReturn values) s' m' w' ->
   exists n, values = [WInt n].
@@ -254,12 +276,12 @@ Proof.
   subst. injection Hend as ->. eauto.
 Qed.
 
-(** After a puts call that returns, from a state interpreted with the
-    ghost heap h, the state is interpreted with h again: puts's prefix
-    keeps the runtime ready, the frame keeps h agreeing and live
-    objects apart, and the prefix gives rep and readiness of the new
-    world, whose roots it delegated from the old roots and its born
-    objects, so they stay apart from h. *)
+(** After puts returns, the caller still owns the same objects and
+    bytes, while the stream representation describes the new output state.
+    The lemma [puts_return_frame] proves this by restricting stream writes
+    to its previous storage and any objects allocated during the call.
+    Those locations remain separate from the caller's objects, and the
+    runtime remains ready for subsequent execution. *)
 Lemma puts_return_frame rep requests r args xs s m w trace values s' m' w' h :
   M.E.invoke (puts_contract rep requests) r args xs s m w trace (CallReturn values) s' m' w' ->
   agrees m h -> live_disjoint m -> R.ready s m -> stdio_wi rep m w h ->
@@ -279,14 +301,13 @@ Qed.
 Section strings.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** [string] p b reg bytes: owning the C string at p with contents
-    bytes, in the object b with the region reg: its life and its bytes
-    through the NUL, of the shape [string_ok]. *)
+(** A caller owns a C string through [string], which combines its
+    pointer bounds with ownership of the object lifetime and terminated bytes. *)
 Definition string (p : ptr) (b : Z) (reg : region) (bytes : list Z) : iProp Σ :=
   ⌜string_ok p b reg bytes⌝ ∗ pts (string_ps p b reg bytes).
 
-(** Owning a string in an interpreted state, p points there at a
-    [terminated_length] string of its length and at a [c_string]. *)
+(** String ownership guarantees that actual memory satisfies both
+    length-based and content-based string contracts, as [string_facts] derives from the shared memory interpretation. *)
 Lemma string_facts {world : Type} (wi : mem -> world -> gmap piece pval -> Prop) σ p b reg bytes :
   heap_interp wi σ -∗ string p b reg bytes -∗
   ⌜terminated_length (ls_mem σ) p (Z.of_nat (length bytes)) /\ c_string (ls_mem σ) p bytes⌝.
@@ -295,8 +316,10 @@ Proof.
   split; [exact (string_terminated _ _ _ _ _ Hok Ha) | exact (string_c_string _ _ _ _ _ Hok Ha)].
 Qed.
 
-(** The string lends its object's life and its i-th byte, x, the NUL
-    for i its length, and takes them back. *)
+(** A string can lend its lifetime and one byte for a load, including
+    the terminator when i equals the string's length.
+    The rule [string_byte] also supplies the means to rebuild full string
+    ownership once the borrower returns both resources unchanged. *)
 Lemma string_byte p b reg bytes i x :
   (bytes ++ [0]) !! i = Some x ->
   string p b reg bytes -∗
@@ -309,8 +332,10 @@ Proof.
   iIntros "[Hl _] [Hb _]". iSplit; [done|]. iFrame "Hl". iApply ("Hk" with "Hb").
 Qed.
 
-(** A string lends the suffix from its i-th byte, before its NUL or
-    at it, as the string at q, and takes it back. *)
+(** A caller can borrow the string beginning at any byte through the
+    terminator, while retaining the bytes before that position.
+    Returning the borrowed suffix restores the original string ownership
+    through [string_suffix], without duplicating the shared object's lifetime. *)
 Lemma string_suffix p b reg bytes i :
   (i <= length bytes)%nat ->
   string p b reg bytes -∗
@@ -324,9 +349,10 @@ Proof.
   - iIntros "[_ Hq]". rewrite big_sepL_cons. iDestruct "Hq" as "[Hl Hsuf]". iSplit; [done|]. iFrame.
 Qed.
 
-(** Where the string's pieces agree, p points at a [bounded_length]
-    string for any bound n: its length, or n if that is shorter.
-    Campaign 4's reading of a string for strncmp. *)
+(** A bounded string read stops at either the terminator or the
+    supplied limit, whichever it reaches first.
+    The lemma [string_bounded] derives this [bounded_length] guarantee
+    from owned bytes, providing the readable range required by strncmp. *)
 Lemma string_bounded m p b reg bytes n :
   string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) -> 0 <= n < 2 ^ 64 ->
   bounded_length m p n (Z.min (Z.of_nat (length bytes)) n).
@@ -344,22 +370,30 @@ Proof.
       apply (Hb (length bytes) 0). rewrite lookup_app_r; [|lia]. rewrite Nat.sub_diag. reflexivity.
 Qed.
 
-(** ## The calls *)
+(** ## The calls
+
+    Read-only libc string calls leave the caller's owned bytes and
+    the external world unchanged when they return.
+    Their rules below turn string ownership into contract preconditions
+    and return that ownership alongside the call's result. *)
 
 Section calls.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
 
-(** The Iris instance of the registry and wi. *)
+(** The instance [string_irisGS] equips these calling rules with the
+    chosen contract registry and the interpretation of external state. *)
 Local Instance string_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
 
-(** The expressions of the language. *)
+(** The notation [sexpr] names expressions in this language, keeping
+    the contract registry implicit in the calling rules below. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A call that changes no memory and no world, from a ready runtime,
-    keeps the state interpretation, with the same ghost heap, whatever
-    the runtime state after it. *)
+(** A read-only call leaves the memory and external world unchanged,
+    although the runtime's private bookkeeping may change during execution.
+    The lemma [pure_return] reestablishes the memory interpretation with
+    the same owned pieces because the contract preserves runtime readiness. *)
 Lemma pure_return {spec : contract world} r args xs (σ : lstate world) trace ending s' :
   M.E.invoke spec r args xs (ls_rt σ) (ls_mem σ) (ls_world σ) trace ending s' (ls_mem σ) (ls_world σ) ->
   heap_interp wi σ -∗ heap_interp wi (mkLstate (ls_mem σ) s' (ls_fuel σ) (ls_world σ)).
@@ -370,8 +404,8 @@ Proof.
   iExists h. iFrame "Hh". iPureIntro. cbn. auto.
 Qed.
 
-(** strlen's triple, from [strlen_contract]: owning the string at p,
-    which v reads as, the call binds d to its length. *)
+(** Calling strlen returns the owned string's length without consuming
+    its ownership, as [wp_strlen] derives from the registered [strlen_contract]. *)
 Lemma wp_strlen f e ls lab d v rest j p b reg bytes Φ :
   registry (TAtom "strlen") = Some (strlen_contract world) ->
   find_fn ge (TAtom "strlen") = None -> lookup (TAtom "strlen") (ge_globals ge) = None ->
@@ -401,18 +435,18 @@ Proof.
     + iFrame "Hσ". iApply ("HK" with "Hs").
 Qed.
 
-(** What strchr finds in the string p with contents bytes for the int
-    c, whose low byte is not the NUL: the first byte equal to it, at
-    offset i, with p's capability, or null if there is none. *)
+(** Searching for a nonzero character returns its first matching byte
+    with the string's capability, or null if no byte matches.
+    The predicate [strchr_found] describes this result after reducing
+    the character argument to its low byte. *)
 Definition strchr_found (p : ptr) (bytes : list Z) (c : Z) (q : ptr) : Prop :=
   (exists i x, bytes !! i = Some x /\ x = c mod 256 /\
      (forall i' x', (i' < i)%nat -> bytes !! i' = Some x' -> x' <> c mod 256) /\
      q = mkPtr (ptr_addr p + Z.of_nat i) (ptr_cap p)) \/
   ((forall i' x', bytes !! i' = Some x' -> x' <> c mod 256) /\ q = mkPtr 0 CNone).
 
-(** strchr's triple, from [strchr_contract]: owning the string at p,
-    which v reads as, the call binds d to what it finds of the int c,
-    which w reads as. *)
+(** Calling strchr preserves string ownership and returns the first
+    matching position or null, as [wp_strchr] proves for a nonzero search byte. *)
 Lemma wp_strchr f e ls lab d v w rest j p b reg bytes c Φ :
   registry (TAtom "strchr") = Some (strchr_contract world) ->
   find_fn ge (TAtom "strchr") = None -> lookup (TAtom "strchr") (ge_globals ge) = None ->
@@ -461,9 +495,10 @@ Proof.
       rewrite (Hb i' x') in Hnone; [exact Hnone|]. by apply lookup_app_l_Some.
 Qed.
 
-(** strcmp's triple, from [strcmp_contract]: owning the strings at p
-    and q, which v and w read as, the call binds d to an int. Which
-    int does not matter to a caller that only branches on it. *)
+(** Calling strcmp preserves both owned strings and returns an integer,
+    but [wp_strcmp] deliberately gives no information about its sign or value.
+    A caller can use this rule when its safety proof handles every
+    result without relying on the strings' relative ordering. *)
 Lemma wp_strcmp f e ls lab d v w rest j p b reg xs q b' reg' ys Φ :
   registry (TAtom "strcmp") = Some (strcmp_contract world) ->
   find_fn ge (TAtom "strcmp") = None -> lookup (TAtom "strcmp") (ge_globals ge) = None ->
@@ -490,9 +525,10 @@ Proof.
     iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Hs Ht").
 Qed.
 
-(** strncmp's triple, from [strncmp_contract]: owning the strings at p
-    and q, which v and w read as, compared up to n bytes, which u reads
-    as, the call binds d to an int. *)
+(** Calling strncmp compares no more than n bytes and preserves both
+    strings, while [wp_strncmp] leaves the returned integer unspecified.
+    The rule therefore supports safety proofs that do not need the
+    comparison's sign or a relation between the string contents. *)
 Lemma wp_strncmp f e ls lab d v w u rest j p b reg xs q b' reg' ys n Φ :
   registry (TAtom "strncmp") = Some (strncmp_contract world) ->
   find_fn ge (TAtom "strncmp") = None -> lookup (TAtom "strncmp") (ge_globals ge) = None ->
@@ -521,10 +557,10 @@ Proof.
     iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Hs Ht").
 Qed.
 
-(** strrchr's triple, from [strrchr_contract]: owning the string at p,
-    which v reads as, the call binds d to null or to a pointer into the
-    string before its NUL, with p's capability, for an int c, which w
-    reads as, whose low byte is not the NUL. *)
+(** Searching backward for a nonzero character returns null or a
+    pointer before the string's terminator, retaining the original capability.
+    The rule [wp_strrchr] preserves string ownership but does not expose
+    which byte matched or whether it was the last match. *)
 Lemma wp_strrchr f e ls lab d v w rest j p b reg bytes c Φ :
   registry (TAtom "strrchr") = Some (strrchr_contract world) ->
   find_fn ge (TAtom "strrchr") = None -> lookup (TAtom "strrchr") (ge_globals ge) = None ->
@@ -566,23 +602,30 @@ Qed.
 
 End calls.
 
-(** ## puts *)
+(** ## puts
+
+    Output changes stream state even though it only reads the caller's
+    input string, so its rule uses the separated stdio world.
+    The following rule returns string ownership and an integer result
+    after accounting for any stream writes and allocations. *)
 
 Section puts.
 Context (rep : mem -> stdio_world -> Prop) (requests : list word -> mem -> stdio_world -> Z -> Z -> Prop)
   (registry : name -> option (contract stdio_world)) `{!SafepointStable (stdio_wi rep)} (ge : genv).
 
-(** The Iris instance of the registry and [stdio_wi]. *)
+(** The instance [puts_irisGS] uses the stdio world condition to keep
+    stream writes separate from memory owned by the caller. *)
 Local Instance puts_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (stdio_wi rep) ge.
 
-(** The expressions of the language. *)
+(** The notation [pexpr] names expressions whose external state follows
+    the stdio world condition, keeping that choice implicit below. *)
 Local Notation pexpr := (language.expr (nanofil_lang registry ge)).
 
-(** puts's triple, from [puts_contract]: owning the string at p, which
-    v reads as, the call binds d to the int it returns, n modulo 2^32,
-    and the string is still owned: puts writes only its world's roots,
-    which [stdio_wi] keeps apart from it. *)
+(** Calling puts preserves the input string because all stream writes
+    remain separate from its storage under [stdio_wi].
+    The rule [wp_puts] returns that ownership and the contract's integer
+    result, wrapped to the 32-bit representation of a C int. *)
 Lemma wp_puts f e ls lab d v rest j p b reg bytes Φ :
   registry (TAtom "puts") = Some (puts_contract rep requests) ->
   find_fn ge (TAtom "puts") = None -> lookup (TAtom "puts") (ge_globals ge) = None ->
@@ -616,7 +659,8 @@ End puts.
 End strings.
 End StringLogicOn.
 
-(** [StringLogicOn] over a Logic instance of its own. *)
+(** The module [StringLogic] creates its own program-logic instance,
+    then supplies the string assertions and calling rules from [StringLogicOn]. *)
 Module StringLogic (R : Runtime).
 Module LG0 := Logic R.
 Include StringLogicOn R LG0.

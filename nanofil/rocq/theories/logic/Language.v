@@ -1,62 +1,37 @@
-(** Nanofil's [[machine]], with the [[external call|external calls]]
-    of a contract registry, as an Iris language whose evaluation
-    context is the stack of callers, and Iris [[adequacy]] as a proof
-    of [never_panics] and of the labelled machine's safety.
+(** A C function should have a specification that its callers can use
+    without repeating the proof of its body. This module presents
+    nanofil's [[machine]] as an [[iris|Iris]] language, separating the
+    running function from the callers waiting for its result.
+    Each suspended caller becomes an evaluation [[context]], allowing
+    a function's [[hoare-triple|Hoare triple]] to return resources to that caller.
 
-    The first logic spike's IrisLang.v made the whole configuration one
-    expression, so a call was just another step and a function could
-    have no specification of its own. Here the callers are Iris's
-    evaluation context, so a call is [wp_bind] and a function's
-    specification is an ordinary Hoare triple that hands resources back
-    to its caller:
-    - an expression is a running [[frame]] ([ERun]), the [[outcome]] an
-      invocation returned ([EEnd], the value), an expression running
-      as the callee of a suspended caller frame ([EWait]), or the bad
-      return of an external call ([EBad]); the one context item [KWait]
-      is that caller;
-    - the Iris state is the memory, the [[runtime]]'s state, the
-      [[fuel]] and the world of libc state the contracts speak of: the
-      machine has one fuel counter for the whole stack, so it belongs
-      to the state, not to a frame;
-    - a head step of [ERun fr] is the [[step]] of fr with no caller.
-      [step_callers] shows that the callers are passive: they change
-      only what a return does, which becomes [hs_return] (the value)
-      and then [hs_resume] (the caller reads it);
-    - an ending that is neither a failure nor a return (running out of
-      fuel, a refusal trap) and an allocation the runtime refuses are
-      stalls: [ERun fr] steps to itself. The machine has stopped without
-      failing, and to Iris that is a run that never ends, which is safe.
-      A failing frame has no head step at all, not even a safepoint.
+    The running [[frame]] supplies the next [[step]], while suspended
+    callers matter only when control returns to them.
+    Memory, [[runtime]] state, and remaining [[fuel]] belong to the
+    shared language state, together with the external library's world.
+    One fuel counter serves the whole stack rather than each function
+    receiving a new execution budget.
 
-    The language is over a world type and a contract registry, the
-    labelled machine's (ExternalMachine.v). A call at an
-    [external_site] is stuck to the core [step]; here it is:
-    - admissible (a contract, arguments that evaluate, its ABI and its
-      precondition): it may return ([hs_call_return], the frame resumed
-      with the call's memory, runtime state and world), and it may also
-      stall ([hs_call_wait]). The stall stands for everything the call
-      does that is not a return: it may block, it may exit the process
-      or end for lack of resources (the labelled machine stops there
-      without failing), and the labelled machine makes no step where an
-      admissible call has no completed invocation. None of these is a
-      failure, and to Iris each is a run that never ends, so a stall is
-      safe; and it makes an admissible call always reducible, whether or
-      not the contract allows any return;
-    - returning words the call site cannot take ([hs_call_bad]): the
-      expression becomes [EBad], which is no value and has no step, so
-      adequacy rules it out;
-    - rejected: no head step, so adequacy rules it out too.
-    With the empty registry ([no_contracts]) no call is admissible and
-    the language is the core machine's.
+    The language distinguishes a safety failure from a permitted end
+    that produces no return, such as resource exhaustion or process exit.
+    It represents such endings by steps back to the same expression,
+    which Iris treats as safe execution that never returns.
+    This encoding does not prove termination or promise that a blocked
+    call will eventually finish.
 
-    [run_reducible], [admissible_reducible] and [head_step_run_inv] say
-    a frame that does not fail, or whose external call is admissible,
-    is always head-reducible, and how. [wp_never_panics] proves
-    Panics.v's [never_panics] from a [NotStuck] weakest precondition of
-    the entry's [ERun] in the language with no contracts, for every
-    fuel; [adequate_labelled] and [wp_labelled_safe] prove that no
-    labelled [[run]] stops with a [failure_ending], and that a returned
-    value satisfies the postcondition. *)
+    An [[external-call|external call]] must have a registered contract,
+    evaluable arguments, a matching calling convention, and a satisfied precondition.
+    An admissible call may return or stall, even when its contract
+    permits no completed invocation at all.
+    A rejected call has no step, and an incompatible return reaches
+    [EBad], which is neither a result nor an expression that can step.
+
+    Finally, [[adequacy]] connects the Iris proof to actual machine
+    runs: no reachable state stops with a safety failure.
+    With no external contracts, [wp_never_panics] establishes the
+    closed program's panic freedom for every execution budget.
+    With contracts, [wp_labelled_safe] also establishes the promised
+    postcondition whenever the program returns normally. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language ectx_language ectxi_language weakestpre adequacy.
@@ -64,29 +39,30 @@ From Stdlib Require Import ZArith Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics Steps
   ExternalCalls ExternalMachine.
 
-(** Nanofil's [[machine]] over the [[runtime]] R, with external calls,
-    as an Iris language with evaluation contexts. *)
+(** The module [Language] presents function calls and external contracts
+    as an Iris language over the chosen runtime R. *)
 Module Language (R : Runtime).
 Module P := Panics R.
 Module RM := P.RM.
 Module M := ExternalMachine R.
 
-(** The [[outcome]] o returns to a caller: a return of one word, of
-    several, or of none. *)
+(** A function can return one word, several words, or no words;
+    [returning] recognizes exactly those three kinds of [[outcome]]. *)
 Definition returning (o : outcome) : Prop :=
   match o with Ret _ | Rets _ | RetVoid => True | _ => False end.
 
-(** Whether an outcome returns is decided by its constructor. *)
+(** Inspecting an outcome's constructor decides whether it represents a
+    return, without inspecting memory or the suspended caller's state. *)
 Lemma returning_dec o : returning o \/ ~ returning o.
 Proof. destruct o; cbn; tauto. Qed.
 
-(** The configuration c' run as the callee of the callers cs: c''s own
-    callers, then cs below them. *)
+(** Running a configuration beneath additional callers appends those
+    callers below its existing stack, which [lift_conf] constructs without changing memory. *)
 Definition lift_conf (cs : list (frame * pending)) (c' : config) : config :=
   mkConfig (c_frame c') (c_callers c' ++ cs) (c_mem c') (c_fuel c').
 
-(** An instruction never stops with a returning outcome: only a jump
-    returns, through [return_step]. *)
+(** Ordinary instructions never produce function returns; only a block's
+    terminating jump can return control through [return_step] to a caller. *)
 Lemma inst_step_stop ge fr m i o :
   inst_step ge fr m i = Some (IStop o) -> ~ returning o.
 Proof.
@@ -97,8 +73,8 @@ Proof.
     cbn; tauto.
 Qed.
 
-(** `doomed_result/5` makes no returning stop of its own: a returning
-    stop after it is the instruction's. *)
+(** Handling a doomed instruction cannot manufacture a returning outcome;
+    any return after [doomed_result] must already have been the instruction's result. *)
 Lemma doomed_result_stop ge fr m i out od o :
   doomed_result ge fr m i out = Some od -> fst od = IStop o -> returning o -> out = IStop o.
 Proof.
@@ -112,8 +88,8 @@ Proof.
       try (injection Hf as <-; cbn in Hr; tauto); auto.
 Qed.
 
-(** A [[step]] that stops at an instruction, after [doomed_result],
-    stops with an outcome that does not return. *)
+(** A stop produced while executing an instruction is not a function
+    return, even after the model handles a doomed result. *)
 Lemma stop_not_returning ge fr m i out od o :
   inst_step ge fr m i = Some out -> doomed_result ge fr m i out = Some od -> fst od = IStop o ->
   ~ returning o.
@@ -122,19 +98,17 @@ Proof.
   exact (inst_step_stop _ _ _ _ _ H1 Hr).
 Qed.
 
-(** A return with no caller ends the run with o once the locals end,
-    and is stuck where they cannot. *)
+(** Returning from the outermost function ends execution after invalidating
+    its stack locals; failure to invalidate them leaves the machine stuck. *)
 Lemma return_nil fr m fuel o :
   return_step (mkConfig fr [] m fuel) o =
   match invalidate_locals (fr_locals fr) m with Some _ => Done o | None => Stuck "return" end.
 Proof. unfold return_step. cbn. destruct (invalidate_locals _ _); reflexivity. Qed.
 
-(** How the step r of a frame with the callers cs (the configuration c)
-    follows from the step r0 of the same frame with none: the same next
-    configuration or allocation with cs below its callers, the same
-    ending where it does not return, the same [return_step] (now to a
-    caller) where it returns and the locals can end, and stuck where
-    r0 is stuck. *)
+(** Adding suspended callers changes how a return resumes execution,
+    but it leaves ordinary steps, allocation requests, and other endings unchanged.
+    The predicate [lifted] describes that correspondence, carrying the
+    extra callers beneath any new frames created by the step. *)
 Definition lifted (cs : list (frame * pending)) (c : config) (r0 r : step_result) : Prop :=
   match r0 with
   | Next c' => r = Next (lift_conf cs c')
@@ -146,13 +120,14 @@ Definition lifted (cs : list (frame * pending)) (c : config) (r0 r : step_result
   | Stuck _ => exists w, r = Stuck w
   end.
 
-(** A tactic: succeed only if the term x contains no match. *)
+(** A proof may need to avoid expanding unresolved case distinctions;
+    the tactic [no_match] succeeds only when its argument contains none. *)
 Ltac no_match x := lazymatch x with context [match _ with _ => _ end] => fail | _ => idtac end.
 
-(** The callers are passive: a [[step]] of the [[frame]] fr with the
-    callers cs is the step of fr alone, related as [lifted] says. Only
-    [return_step] reads the callers; every other part of [step] reads
-    the frame, memory and [[fuel]] and passes the callers along. *)
+(** Suspended callers do not affect a running frame's instructions,
+    allocation requests, or failures; only returning control consults their saved state.
+    The lemma [step_callers] establishes the correspondence needed to
+    treat the caller stack as an evaluation context. *)
 Lemma step_callers ge fr cs m fuel :
   lifted cs (mkConfig fr cs m fuel)
     (Semantics.step ge (mkConfig fr [] m fuel)) (Semantics.step ge (mkConfig fr cs m fuel)).
@@ -182,16 +157,16 @@ Proof.
     | left; split; [eapply stop_not_returning; eassumption | reflexivity] ].
 Qed.
 
-(** A next configuration of fr alone, with cs below its callers, is
-    the next configuration of fr with the callers cs. *)
+(** An ordinary next step under extra callers produces the same
+    configuration, with those callers appended beneath its resulting stack. *)
 Lemma step_callers_next ge fr cs m fuel c' :
   Semantics.step ge (mkConfig fr [] m fuel) = Next c' ->
   Semantics.step ge (mkConfig fr cs m fuel) =
     Next (mkConfig (c_frame c') (c_callers c' ++ cs) (c_mem c') (c_fuel c')).
 Proof. intros E. pose proof (step_callers ge fr cs m fuel) as H. rewrite E in H. exact H. Qed.
 
-(** An allocation of fr alone is the same request with the callers
-    cs, each base's configuration with cs below its callers. *)
+(** Adding suspended callers leaves an allocation request unchanged and
+    carries those callers into the continuation for every possible allocated base. *)
 Lemma step_callers_fresh ge fr cs m fuel q k :
   Semantics.step ge (mkConfig fr [] m fuel) = Fresh q k ->
   exists k', Semantics.step ge (mkConfig fr cs m fuel) = Fresh q k' /\
@@ -199,8 +174,8 @@ Lemma step_callers_fresh ge fr cs m fuel q k :
                                     (c_mem (k base)) (c_fuel (k base)).
 Proof. intros E. pose proof (step_callers ge fr cs m fuel) as H. rewrite E in H. exact H. Qed.
 
-(** An ending of fr alone that does not return is the same ending
-    with any callers. *)
+(** A nonreturning end stops execution with the same outcome regardless
+    of how many callers were waiting for the function. *)
 Lemma step_callers_stop ge fr cs m fuel o :
   Semantics.step ge (mkConfig fr [] m fuel) = Done o -> ~ returning o ->
   Semantics.step ge (mkConfig fr cs m fuel) = Done o.
@@ -209,8 +184,8 @@ Proof.
   destruct H as [[_ H] | [H _]]; [exact H | contradiction].
 Qed.
 
-(** A returning ending of fr alone is, with the callers cs, the
-    return to them, and the locals of fr can end. *)
+(** A return from a standalone frame can invalidate its locals and
+    becomes [return_step] when suspended callers are placed beneath it. *)
 Lemma step_callers_return ge fr cs m fuel o :
   Semantics.step ge (mkConfig fr [] m fuel) = Done o -> returning o ->
   Semantics.step ge (mkConfig fr cs m fuel) = return_step (mkConfig fr cs m fuel) o /\
@@ -220,22 +195,23 @@ Proof.
   destruct H as [[H _] | [_ H]]; [contradiction | exact H].
 Qed.
 
-(** A stuck step of fr alone is stuck with any callers. *)
+(** Suspending additional callers cannot repair a stuck instruction;
+    the running frame remains stuck with any caller stack beneath it. *)
 Lemma step_callers_stuck ge fr cs m fuel w :
   Semantics.step ge (mkConfig fr [] m fuel) = Stuck w ->
   exists w', Semantics.step ge (mkConfig fr cs m fuel) = Stuck w'.
 Proof. intros E. pose proof (step_callers ge fr cs m fuel) as H. rewrite E in H. exact H. Qed.
 
-(** Whether a [[poll|safepoint]] is due reads only the running frame. *)
+(** Whether a [[poll|safepoint]] is due depends only on the running
+    frame, so adding suspended callers does not change that decision. *)
 Lemma safepoint_due_callers ge fr cs m fuel :
   RM.safepoint_due ge (mkConfig fr cs m fuel) = RM.safepoint_due ge (mkConfig fr [] m fuel).
 Proof. reflexivity. Qed.
 
-(** The suspended caller frame cf, which reads its callee's result as
-    pd says, resumed with the callee's returning outcome o: the tail of
-    [return_step] (`call_outcome_result/5`), converting o by pd's
-    convention and binding it in cf's environment. None where the
-    result cannot be read so. *)
+(** A returning function must convert its result to the caller's
+    convention and bind the returned words in the caller's environment.
+    The function [resume] performs those operations on a saved frame,
+    returning no frame when the result cannot be accepted. *)
 Definition resume (cf : frame) (pd : pending) (o : outcome) : option frame :=
   let* o' := match pd_conv pd with
              | None => Some o
@@ -244,9 +220,8 @@ Definition resume (cf : frame) (pd : pending) (o : outcome) : option frame :=
   let* e := returned_env (pd_res pd) o' (fr_env cf) in
   Some (mkFrame (fr_fn cf) e (fr_locals cf) (fr_doomed cf) (fr_at cf)).
 
-(** A return to the caller cf, where the locals of fr end in m', is the
-    caller [resume]d, with the callers below it, or stuck where it
-    cannot resume. *)
+(** After invalidating the callee's locals, a return resumes the nearest
+    caller with its remaining stack, or becomes stuck if result conversion fails. *)
 Lemma return_cons fr cf pd cs m m' fuel o :
   invalidate_locals (fr_locals fr) m = Some m' ->
   return_step (mkConfig fr ((cf, pd) :: cs) m fuel) o =
@@ -261,23 +236,28 @@ Proof.
   destruct (returned_env _ _ _); reflexivity.
 Qed.
 
-(** A return with no caller, where the locals end, ends the run. *)
+(** Once a function's locals have been invalidated, returning with no
+    suspended caller ends execution with the function's returned outcome. *)
 Lemma return_nil_done fr m m' fuel o :
   invalidate_locals (fr_locals fr) m = Some m' ->
   return_step (mkConfig fr [] m fuel) o = Done o.
 Proof. intros E. rewrite return_nil E. reflexivity. Qed.
 
-(** ## External calls *)
+(** ## External calls
 
-(** Whether a configuration is at an [external_site] reads only its
-    running frame: the frame alone is at the same site, in any memory
-    and fuel. *)
+    Calling code outside the module requires a contract rather than
+    another function body that the core machine can execute.
+    The following facts identify such call sites and distinguish an
+    allowed resource refusal from a violation of the caller's obligations. *)
+
+(** The running frame alone determines whether execution has reached an
+    external call site, independently of memory, fuel, or suspended callers. *)
 Lemma external_site_frame ge c m fuel site :
   external_site ge c site -> external_site ge (mkConfig (c_frame c) [] m fuel) site.
 Proof. intros H. exact H. Qed.
 
-(** A frame is at most at one [external_site]: its next instruction
-    fixes every part of the site. *)
+(** A frame's next instruction determines at most one external call
+    site, including the symbol, arguments, result location, and continuation. *)
 Lemma external_site_unique ge c c' site site' :
   c_frame c = c_frame c' -> external_site ge c site -> external_site ge c' site' -> site = site'.
 Proof.
@@ -286,15 +266,15 @@ Proof.
   rewrite Hf Ha' in Ha. injection Ha. intros. subst. reflexivity.
 Qed.
 
-(** A completed call was admissible: its ABI and its precondition
-    hold, whatever its ending. *)
+(** Every completed contract invocation began with a matching calling
+    convention and a satisfied precondition, regardless of how the call ended. *)
 Lemma invoke_admissible {world : Type} (spec : contract world) r args xs s m w trace ending s' m' w' :
   M.E.invoke spec r args xs s m w trace ending s' m' w' ->
   contract_abi spec r args /\ contract_pre spec xs m w.
 Proof. intros H. destruct H; auto. Qed.
 
-(** A call's resource ending is no [failure]: [resource_failure] is
-    out of memory or too big, both refusals. *)
+(** A contract's resource ending reports exhausted memory or an oversized
+    request, both permitted refusals rather than failures of program safety. *)
 Lemma invoke_resource_refusal {world : Type} (spec : contract world) r args xs s m w trace why s' m' w' :
   M.E.invoke spec r args xs s m w trace (CallResource why) s' m' w' -> ~ failure (Trap why).
 Proof.
@@ -306,47 +286,51 @@ Proof.
       unfold resource_reason; auto.
 Qed.
 
-(** A core machine step of the labelled machine's copy of Machine.v is
-    a step of this file's: the two functor instances share their
-    definitions, and only the inductive relation is generative. *)
+(** The labelled machine and this language instantiate the same core
+    machine definitions, so [labelled_core_step] translates a step between their relation instances. *)
 Lemma labelled_core_step ge ms ms' : M.P.I.RM.mstep ge ms ms' -> RM.mstep ge ms ms'.
 Proof.
   intros H. destruct H; [eapply RM.mstep_next | eapply RM.mstep_alloc | eapply RM.mstep_safepoint];
     eassumption.
 Qed.
 
-(** ## The language *)
+(** ## The language
 
-(** An expression: a running invocation [ERun fr]; the outcome [EEnd o]
-    an invocation returned, which is the value; [EWait e cf pd], the
-    expression e running as the callee of the suspended caller frame
-    cf, which reads its result as pd says; or [EBad], an external call
-    that returned words its call site cannot take, which is no value
-    and takes no step. *)
+    Iris needs an expression for the running computation and a separate
+    state for memory, runtime bookkeeping, fuel, and the external world.
+    The expression records suspended callers around the current function,
+    allowing one function's proof to be used inside another function's call. *)
+
+(** An expression records a running frame, a completed outcome, a callee
+    beneath a waiting caller, or an incompatible external return.
+    The type [expr] represents these cases explicitly, keeping [EBad]
+    separate from completed values so a safety proof must exclude it. *)
 Inductive expr : Type :=
 | ERun (fr : frame)
 | EEnd (o : outcome)
 | EWait (e : expr) (cf : frame) (pd : pending)
 | EBad.
 
-(** An evaluation context item: one suspended caller and how it reads
-    its callee's result. *)
+(** A suspended caller stores its saved frame and result convention;
+    [ectx_item] packages those together as one evaluation-context item. *)
 Inductive ectx_item : Type := KWait (cf : frame) (pd : pending).
 
-(** The expression e as the callee of the context item Ki. *)
+(** Placing a callee beneath one suspended caller produces a waiting
+    expression, which [fill_item] constructs without changing the shared machine state. *)
 Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   match Ki with KWait cf pd => EWait e cf pd end.
 
-(** A value is an outcome, written as the ended expression. *)
+(** A completed function outcome becomes a language value through
+    [of_val], which wraps it as an ended expression without further execution. *)
 Definition of_val (o : outcome) : expr := EEnd o.
 
-(** The outcome of an ended expression; None otherwise. *)
+(** Only an ended expression supplies a value through [to_val]; running
+    frames, waiting callers, and bad returns supply no value. *)
 Definition to_val (e : expr) : option outcome :=
   match e with EEnd o => Some o | _ => None end.
 
-(** The Iris state over the world type world: the memory, the
-    runtime's state, the [[fuel]] left, one counter for the whole
-    stack, and the world of libc state the contracts speak of. *)
+(** All frames share memory, runtime bookkeeping, one fuel counter, and
+    an external-library world, which [lstate] collects as the Iris language state. *)
 Record lstate (world : Type) : Type :=
   mkLstate { ls_mem : mem; ls_rt : R.state; ls_fuel : Z; ls_world : world }.
 Arguments mkLstate {world}.
@@ -355,40 +339,43 @@ Arguments ls_rt {world}.
 Arguments ls_fuel {world}.
 Arguments ls_world {world}.
 
-(** The expression e under the callers cs, innermost first. *)
+(** The function [stack_expr] nests an expression beneath suspended
+    callers in stack order, placing the nearest caller around it first. *)
 Fixpoint stack_expr (e : expr) (cs : list (frame * pending)) : expr :=
   match cs with
   | [] => e
   | (cf, pd) :: cs' => stack_expr (EWait e cf pd) cs'
   end.
 
-(** The callers cs as an Iris evaluation context, innermost first. *)
+(** The function [ctx_of] turns each suspended caller into an Iris
+    context item, preserving the stack's innermost-first order for later filling. *)
 Definition ctx_of (cs : list (frame * pending)) : list ectx_item :=
   map (fun '(cf, pd) => KWait cf pd) cs.
 
-(** The expression of the configuration c: its running frame under its
-    callers. *)
+(** A machine configuration becomes a language expression through
+    [conf_expr], which places its running frame beneath the configuration's suspended callers. *)
 Definition conf_expr (c : config) : expr := stack_expr (ERun (c_frame c)) (c_callers c).
 
-(** The Iris state of the configuration c with the runtime state s and
-    the world w. *)
+(** A machine configuration supplies memory and fuel, while [conf_state]
+    adds the runtime bookkeeping and external world needed by the language. *)
 Definition conf_state {world : Type} (c : config) (s : R.state) (w : world) : lstate world :=
   mkLstate (c_mem c) s (c_fuel c) w.
 
-(** The frame fr after its external call at site returned, with the
-    environment e: at the instruction after the call. *)
+(** After an external return, [resumed_frame] installs the updated
+    environment and advances the frame to the instruction following the call. *)
 Definition resumed_frame (fr : frame) (site : call_site) (e : env) : frame :=
   mkFrame (fr_fn fr) e (fr_locals fr) None (Exec (site_label site) (site_rest site) (site_jump site)).
 
-(** [resume_external] resumes the running frame as [resumed_frame]. *)
+(** Resuming an external call updates the running frame exactly as
+    [resumed_frame] specifies, while the surrounding configuration retains its other execution data. *)
 Lemma resume_external_frame c site e m :
   c_frame (resume_external c site e m) = resumed_frame (c_frame c) site e.
 Proof. reflexivity. Qed.
 
-(** What [ERun fr] becomes when its external call at site, of the
-    contract spec, returns the words values: the [resumed_frame] where
-    the site's result takes them ([external_env]), [EBad] where it
-    cannot. *)
+(** Returned words either bind successfully and resume the caller, or
+    produce a bad expression when the call site cannot accept them.
+    The function [returned_expr] makes this distinction visible to Iris,
+    so a safety proof must rule out incompatible results. *)
 Definition returned_expr {world : Type} (fr : frame) (spec : contract world) (site : call_site)
     (values : list word) : expr :=
   match external_env spec site values (fr_env fr) with
@@ -396,50 +383,46 @@ Definition returned_expr {world : Type} (fr : frame) (spec : contract world) (si
   | None => EBad
   end.
 
-(** The empty registry, over the world unit: no external function has
-    a contract, so no external call is admissible. *)
+(** An empty contract registry permits no external call, which
+    [no_contracts] represents using a world with no external-library state. *)
 Definition no_contracts : name -> option (contract unit) := fun _ => None.
 
-(** The language over the registry, whose contracts share the world
-    type world, in the genv ge. *)
+(** The following language steps use a fixed global environment and
+    registry, whose contracts all describe the same external-world type. *)
 Section language.
 Context {world : Type} (registry : name -> option (contract world)) (ge : genv).
 
-(** The frame fr, alone in the memory, fuel and world of σ, is at an
-    [external_site] whose call is [M.admissible]: a contract is
-    registered, the arguments evaluate, the ABI and the precondition
-    hold. *)
+(** An external call is admissible when its contract exists, its
+    arguments evaluate, and its calling convention and precondition are satisfied.
+    The predicate [call_admissible] checks these requirements for the
+    current frame without consulting suspended callers. *)
 Definition call_admissible (fr : frame) (σ : lstate world) : Prop :=
   exists site, external_site ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)) site /\
     M.admissible registry ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)) (ls_world σ) site.
 
-(** The frame fr can go on in σ: alone it does not [fails], or it is at
-    an external call that is admissible. [ERun fr] is head-reducible in
-    σ exactly then ([run_proceeds], [proceeds_reducible]). *)
+(** A running frame can proceed when its core step does not fail or
+    when its next external call satisfies its contract.
+    The predicate [proceeds] captures exactly when the language can
+    supply a step for that frame. *)
 Definition proceeds (fr : frame) (σ : lstate world) : Prop :=
   ~ fails ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)) \/ call_admissible fr σ.
 
-(** A head step, with no observations and no forks. The running frame
-    fr steps as fr alone would ([mkConfig fr [] m fuel]):
-    - [hs_next]: a step that allocates nothing; a call yields the callee
-      with fr suspended as its one caller, an [EWait];
-    - [hs_alloc]: an allocation R grants;
-    - [hs_refused]: an allocation R refuses stalls: the run has stopped
-      with a refusal, which is not a failure;
-    - [hs_return]: a returning ending, once the locals end, is the value;
-    - [hs_stop]: any other ending that is not a [failure] (running out
-      of fuel, a refusal trap) stalls;
-    - [hs_safepoint]: R's action at a due [[poll|safepoint]], only where
-      fr [proceeds], so that a failing frame or a rejected call is never
-      reducible;
-    - [hs_resume]: a returned outcome resumes the caller waiting on it;
-    - [hs_call_return]: an external call whose contract's invocation
-      returns words the call site takes resumes after the call, with
-      the invocation's memory, runtime state and world;
-    - [hs_call_bad]: one that returns words the site cannot take is
-      [EBad];
-    - [hs_call_wait]: an admissible call stalls: it may block, exit,
-      end for lack of resources, or have no completed invocation. *)
+(** One language step executes the running frame or resumes a caller,
+    without emitting observations or creating additional threads.
+    The relation [head_step] follows ordinary machine steps, granted
+    allocations, returns, due safepoints, and contracted external calls.
+
+    Refused allocations and other permitted nonreturning endings step
+    back to the same expression rather than becoming stuck.
+    An admissible external call may likewise stall, representing a
+    blocking call, process exit, resource refusal, or absence of a completed invocation.
+    Safepoints require a frame that can otherwise proceed, so they
+    cannot hide a failing instruction or rejected call.
+
+    A compatible external return resumes execution with the invocation's
+    updated memory, runtime state, and world; an incompatible return produces [EBad].
+    Returning from an internal function first produces an ended value,
+    then a separate step resumes its waiting caller. *)
 Inductive head_step : expr -> lstate world -> list unit -> expr -> lstate world -> list expr -> Prop :=
 | hs_next fr m s fuel w c' :
     Semantics.step ge (mkConfig fr [] m fuel) = Next c' ->
@@ -495,9 +478,10 @@ Inductive head_step : expr -> lstate world -> list unit -> expr -> lstate world 
     contract_pre spec xs m w ->
     head_step (ERun fr) (mkLstate m s fuel w) [] (ERun fr) (mkLstate m s fuel w) [].
 
-(** The context-item language laws: values round-trip, a value takes
-    no step, filling is injective and never makes a value, and a head
-    step of a filled context is [hs_resume], whose callee is a value. *)
+(** The waiting-caller representation must obey Iris's language laws:
+    values cannot step, and placing a caller around an expression cannot create a value.
+    The lemma [nanofil_mixin] also shows that a waiting caller resumes
+    only after its callee has become a value. *)
 Lemma nanofil_mixin : EctxiLanguageMixin of_val to_val fill_item head_step.
 Proof.
   split.
@@ -512,42 +496,46 @@ Qed.
 
 End language.
 
-(** Nanofil's machine with the contracts of registry, in the genv ge,
-    as an Iris language with context items, contexts, and as a plain
-    language. *)
+(** The structure [nanofil_ectxi_lang] packages the machine and contracts
+    as an Iris language whose context items are individual suspended callers. *)
 Canonical Structure nanofil_ectxi_lang {world : Type} (registry : name -> option (contract world))
     (ge : genv) : ectxiLanguage :=
   EctxiLanguage (nanofil_mixin registry ge).
-(** The same language with evaluation contexts. *)
+(** The structure [nanofil_ectx_lang] presents the same execution rules
+    with whole caller contexts rather than individual suspended caller items. *)
 Canonical Structure nanofil_ectx_lang {world : Type} (registry : name -> option (contract world))
     (ge : genv) : ectxLanguage :=
   EctxLanguageOfEctxi (nanofil_ectxi_lang registry ge).
-(** The same language, plain. *)
+(** The structure [nanofil_lang] exposes the same expressions and steps
+    through Iris's basic language interface, without requiring callers to mention contexts. *)
 Canonical Structure nanofil_lang {world : Type} (registry : name -> option (contract world))
     (ge : genv) : language :=
   LanguageOfEctx (nanofil_ectx_lang registry ge).
 
-(** The expression under the callers cs1 then cs2 is under cs1, and
-    that under cs2. *)
+(** Nesting an expression beneath two concatenated caller stacks equals
+    nesting it beneath the first stack and then beneath the second. *)
 Lemma stack_expr_app e cs1 cs2 :
   stack_expr e (cs1 ++ cs2) = stack_expr (stack_expr e cs1) cs2.
 Proof.
   revert e. induction cs1 as [|[cf pd] cs1 IH]; intros e; [reflexivity|]. cbn. apply IH.
 Qed.
 
-(** An expression that is not a value is not one under any callers. *)
+(** A computation that has not returned cannot become a value merely
+    because additional callers are placed around its expression. *)
 Lemma to_val_stack e cs : to_val e = None -> to_val (stack_expr e cs) = None.
 Proof.
   revert e. induction cs as [|[cf pd] cs IH]; intros e H; [exact H|]. cbn. apply IH. reflexivity.
 Qed.
 
-(** Facts of the language with the contracts of registry, in the genv
-    ge. *)
+(** The following facts relate the machine's caller stack to Iris
+    contexts for a fixed global environment and contract registry. *)
 Section facts.
 Context {world : Type} (registry : name -> option (contract world)) (ge : genv).
 
-(** The expression e under the callers cs is Iris's [fill] of their
-    context, [foldl (flip fill_item)], innermost first. *)
+(** Saved callers must resume in the same order whether execution uses
+    a machine stack or Iris's surrounding expression contexts.
+    The lemma [stack_expr_fill] equates these two representations of the
+    running computation, preserving the order of every saved caller. *)
 Lemma stack_expr_fill e cs :
   stack_expr e cs = @ectx_language.fill (nanofil_ectx_lang registry ge) (ctx_of cs) e.
 Proof.
@@ -555,8 +543,8 @@ Proof.
   cbn [stack_expr]. rewrite IH. reflexivity.
 Qed.
 
-(** A head step under the callers cs is an Iris step of the thread
-    pool of that one expression. *)
+(** Executing the current expression beneath any suspended callers gives
+    an Iris execution step for the model's single-threaded pool. *)
 Lemma head_erased cs e1 σ1 e2 σ2 :
   head_step registry ge e1 σ1 [] e2 σ2 [] ->
   @erased_step (nanofil_lang registry ge) ([stack_expr e1 cs], σ1) ([stack_expr e2 cs], σ2).
@@ -567,8 +555,10 @@ Proof.
   exact (Ectx_step' (Λ := nanofil_ectx_lang registry ge) _ _ _ _ _ _ _ H).
 Qed.
 
-(** Where e is not a value and has only values as sub-redexes, e under
-    any callers is reducible only if e is head-reducible. *)
+(** Saved callers cannot execute until the current computation returns,
+    so they cannot provide a missing step for that computation.
+    The lemma [ctx_base_reducible] applies when the current expression
+    has not returned and any child computation has already produced its value. *)
 Lemma ctx_base_reducible cs e σ :
   to_val e = None ->
   (forall Ki e', e = fill_item Ki e' -> is_Some (to_val e')) ->
@@ -587,11 +577,10 @@ Proof.
   rewrite fill_empty in HK. subst e1'. do 4 eexists. exact Hb.
 Qed.
 
-(** The inversion of a head step from [ERun fr] in the state σ: no
-    observations or forks, and one of the cases of [head_step], each
-    stated of fr alone; an external call's return is one case, the
-    frame resumed or [EBad] ([returned_expr]). Weakest-precondition
-    rules are stated per case. *)
+(** Every step of a running frame falls into an ordinary machine,
+    allocation, return, stall, safepoint, or external-call case.
+    The lemma [head_step_run_inv] exposes these alternatives without
+    observations or new threads, allowing instruction proofs to handle each case. *)
 Lemma head_step_run_inv fr σ κ e' σ' efs :
   head_step registry ge (ERun fr) σ κ e' σ' efs ->
   let c0 := mkConfig fr [] (ls_mem σ) (ls_fuel σ) in
@@ -636,8 +625,8 @@ Proof.
     do 2 eexists. eauto.
 Qed.
 
-(** A frame that takes a head step [proceeds]: it does not [fails]
-    alone, or its external call is admissible. *)
+(** A frame that takes a language step either avoids core failure or
+    satisfies its external-call contract, as [run_proceeds] establishes. *)
 Lemma run_proceeds fr σ κ e' σ' efs :
   head_step registry ge (ERun fr) σ κ e' σ' efs -> proceeds registry ge fr σ.
 Proof.
@@ -656,9 +645,8 @@ Proof.
   - right. exact Ha.
 Qed.
 
-(** The language never blocks a frame that does not fail: if fr alone
-    does not [fails] in σ's memory and fuel, [ERun fr] is
-    head-reducible in σ. *)
+(** Any frame whose standalone core step does not fail can take a
+    language step, including a stall for permitted nonreturning endings. *)
 Lemma run_reducible fr σ :
   ~ fails ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)) ->
   @base_reducible (nanofil_ectx_lang registry ge) (ERun fr) σ.
@@ -676,9 +664,8 @@ Proof.
   - contradiction.
 Qed.
 
-(** Nor an admissible external call: [ERun fr] at one is
-    head-reducible, by [hs_call_wait], whether or not the contract
-    allows a return. *)
+(** An admissible external call can always stall, so it can step even
+    when its contract allows no completed return. *)
 Lemma admissible_reducible fr σ :
   call_admissible registry ge fr σ -> @base_reducible (nanofil_ectx_lang registry ge) (ERun fr) σ.
 Proof.
@@ -686,13 +673,16 @@ Proof.
   do 4 eexists. eapply hs_call_wait; eassumption.
 Qed.
 
-(** A frame that [proceeds] is head-reducible. *)
+(** Execution can take another step when an instruction avoids failure
+    or an external call meets its registered contract's precondition.
+    The lemma [proceeds_reducible] supplies that step, including a
+    permitted stall when no returning external invocation is available. *)
 Lemma proceeds_reducible fr σ :
   proceeds registry ge fr σ -> @base_reducible (nanofil_ectx_lang registry ge) (ERun fr) σ.
 Proof. intros [H | H]; [exact (run_reducible _ _ H) | exact (admissible_reducible _ _ H)]. Qed.
 
-(** A returned outcome waiting on a caller is reducible, under any
-    callers, only where the caller [resume]s. *)
+(** Once a callee has returned, further execution requires its waiting
+    caller to accept the outcome, regardless of any outer callers. *)
 Lemma wait_resumes cs o cf pd σ :
   @reducible (nanofil_lang registry ge) (stack_expr (EWait (EEnd o) cf pd) cs) σ ->
   exists cf', resume cf pd o = Some cf'.
@@ -703,7 +693,10 @@ Proof.
   - intros [cf' pd'] e' Heq. cbn in Heq. injection Heq as <- _ _. eexists. reflexivity.
 Qed.
 
-(** A bad return is stuck under any callers. *)
+(** A caller cannot continue after receiving words it cannot accept
+    from an external function, regardless of any other saved callers.
+    The lemma [bad_stuck] shows that wrapping this rejected return in
+    additional caller expressions cannot supply another execution step. *)
 Lemma bad_stuck cs σ : ~ @reducible (nanofil_lang registry ge) (stack_expr EBad cs) σ.
 Proof.
   intros H. apply ctx_base_reducible in H as (κ & e' & σ' & efs & Hs).
@@ -712,8 +705,8 @@ Proof.
   - intros [cf pd] e' Heq. discriminate Heq.
 Qed.
 
-(** Where the expression of the configuration c is not stuck, its
-    running frame [proceeds]. *)
+(** If a configuration's expression is not stuck, its running frame
+    must satisfy [proceeds], even when surrounded by suspended callers. *)
 Lemma conf_reducible c s w :
   @not_stuck (nanofil_lang registry ge) (conf_expr c) (conf_state c s w) ->
   proceeds registry ge (c_frame c) (conf_state c s w).
@@ -729,24 +722,29 @@ Qed.
 
 End facts.
 
-(** ## Adequacy *)
+(** ## Adequacy
 
-(** Adequacy for the run of the frame fr0, with the contracts of
-    registry in the genv ge, from the memory m0, the runtime state s0,
-    the fuel fuel0 and the world w0. *)
+    A proof about Iris expressions is useful only if it also rules
+    out safety failures in actual machine executions.
+    The following simulation follows each machine step beneath its
+    suspended callers, including external returns, and transfers Iris's safety guarantee to those runs. *)
+
+(** The simulation fixes an initial frame, memory, runtime state, fuel,
+    and external world, together with the program environment and contract registry. *)
 Section adequacy.
 Context {world : Type} (registry : name -> option (contract world)) (ge : genv)
   (fr0 : frame) (m0 : mem) (s0 : R.state) (fuel0 : Z) (w0 : world).
 
-(** The configuration c with the runtime state s and the world w is
-    Iris-reachable: its expression and state follow the initial ones by
-    Iris steps. *)
+(** A configuration is reachable in Iris when its expression and shared
+    state follow the initial expression by zero or more execution steps.
+    The predicate [iris_reach] records this connection for the machine
+    configuration, runtime bookkeeping, and external world. *)
 Definition iris_reach (c : config) (s : R.state) (w : world) : Prop :=
   rtc (@erased_step (nanofil_lang registry ge))
     ([ERun fr0], mkLstate m0 s0 fuel0 w0) ([conf_expr c], conf_state c s w).
 
-(** Where Iris adequacy holds, the running frame of every
-    Iris-reachable configuration [proceeds]. *)
+(** Iris's safety guarantee ensures that every reachable running frame
+    can proceed, either through the core machine or an admissible external call. *)
 Lemma reach_proceeds φ c s w :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> proceeds registry ge (c_frame c) (conf_state c s w).
@@ -755,11 +753,10 @@ Proof.
   apply (adequate_not_stuck _ _ _ _ Had _ _ (conf_expr c) eq_refl Hr). left.
 Qed.
 
-(** Every core machine step from an Iris-reachable state reaches an
-    Iris-reachable state, in the same world: a step that allocates
-    nothing, an allocation and a safepoint are one head step under the
-    callers; a return to a caller is two, [hs_return] and then
-    [hs_resume]. *)
+(** Every core machine step from an Iris-reachable state reaches another
+    such state without changing the external world.
+    Ordinary execution, allocation, and safepoints use one language step;
+    returning to a caller uses one step to return and another to resume. *)
 Lemma reach_step φ c s w c' s' :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> RM.mstep ge (c, s) (c', s') -> iris_reach c' s' w.
@@ -800,9 +797,8 @@ Proof.
     exact (head_erased registry ge cs _ _ _ _ (hs_safepoint registry ge fr m s fuel w s' m' Hp Hdue Hsp)).
 Qed.
 
-(** An Iris-reachable configuration whose frame alone does not [fails]
-    does not fail: where its return to a caller is stuck, the returned
-    outcome waiting on that caller is Iris-reachable and stuck. *)
+(** A reachable configuration cannot fail when its standalone frame is
+    safe, because an incompatible caller return would contradict Iris's safety guarantee. *)
 Lemma reach_not_fails φ c s w :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> ~ fails ge (mkConfig (c_frame c) [] (c_mem c) (c_fuel c)) -> ~ fails ge c.
@@ -832,8 +828,8 @@ Proof.
   - exfalso. exact (Hnf I).
 Qed.
 
-(** An Iris-reachable configuration at no external site does not
-    [fails]. *)
+(** Away from an external call site, every reachable configuration
+    avoids core-machine failure, as [reach_core] derives from Iris's safety guarantee. *)
 Lemma reach_core φ c s w :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> (forall site, ~ external_site ge c site) -> ~ fails ge c.
@@ -843,9 +839,8 @@ Proof.
   exfalso. exact (Hns site Hs).
 Qed.
 
-(** A core ending of an Iris-reachable configuration at no external
-    site is no [failure]; a returning one is a top-level return, whose
-    value satisfies φ in some Iris-reachable state. *)
+(** A reachable core ending outside external calls cannot be a failure;
+    a normal return also satisfies the promised postcondition in some language state. *)
 Lemma reach_end φ c s w o :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> (forall site, ~ external_site ge c site) ->
@@ -870,7 +865,8 @@ Proof.
   - destruct Hl as (w'' & Hl). discriminate Hl.
 Qed.
 
-(** An Iris-reachable configuration at no external site is not stuck. *)
+(** A reachable configuration outside an external call site cannot
+    produce a stuck core step, as [reach_stuck] derives from adequacy. *)
 Lemma reach_stuck φ c s w why :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> (forall site, ~ external_site ge c site) ->
@@ -879,8 +875,10 @@ Proof.
   intros Had Hr Hns E. apply (reach_core φ c s w Had Hr Hns). unfold fails. rewrite E. exact I.
 Qed.
 
-(** An external call's return to an Iris-reachable configuration
-    reaches an Iris-reachable one: [hs_call_return] under the callers. *)
+(** When a library returns acceptable words, the caller resumes with
+    the memory and library state produced by that invocation.
+    The lemma [reach_return] extends the corresponding Iris execution
+    path to include this return and its updated runtime state. *)
 Lemma reach_return c s w site spec xs trace values s' m' w' e :
   iris_reach c s w -> external_site ge c site -> registry (site_name site) = Some spec ->
   map_option (arg_x ge (fr_env (c_frame c))) (site_args site) = Some xs ->
@@ -893,8 +891,8 @@ Proof.
            (hs_call_return registry ge fr m s fuel w site spec xs trace values s' m' w' e Hs Hreg Hx Hi He)).
 Qed.
 
-(** An Iris-reachable configuration's external call never returns
-    words its call site cannot take: that would reach [EBad]. *)
+(** A reachable external call cannot return incompatible words under
+    Iris's safety guarantee, since such a return would reach the stuck expression [EBad]. *)
 Lemma reach_bad φ c s w site spec xs trace values s' m' w' :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> external_site ge c site -> registry (site_name site) = Some spec ->
@@ -914,9 +912,8 @@ Proof.
   - exact (bad_stuck registry ge cs _ Hred).
 Qed.
 
-(** No external call of an Iris-reachable configuration is
-    [M.rejected]: its frame [proceeds], and it is at a failing step, so
-    its call is admissible. *)
+(** A reachable external call cannot be rejected: its frame must
+    proceed, and only an admissible contract can permit that step. *)
 Lemma reach_rejected φ c s w site why :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> external_site ge c site -> M.rejected world registry ge c w site why -> False.
@@ -932,9 +929,10 @@ Proof.
     exact (M.admissible_not_rejected world registry ge (mkConfig fr cs m fuel) w site why Hadm Hrej).
 Qed.
 
-(** What adequacy says of a labelled machine state: a running state is
-    Iris-reachable; a stopped one stopped with no [failure_ending], and
-    a returning core ending satisfies φ in some state. *)
+(** A labelled state is good when execution remains Iris-reachable or
+    has stopped safely, with any normal return satisfying the postcondition.
+    The predicate [labelled_good] collects these cases for the simulation
+    of whole machine runs. *)
 Definition labelled_good (φ : outcome -> lstate world -> Prop) (st : M.state world) : Prop :=
   match st with
   | M.Running ms w => iris_reach (fst ms) (snd ms) w
@@ -942,12 +940,10 @@ Definition labelled_good (φ : outcome -> lstate world -> Prop) (st : M.state wo
       ~ failure_ending why /\ forall o, why = CoreEnd o -> returning o -> exists σ, φ o σ
   end.
 
-(** Every labelled step from an Iris-reachable running state reaches a
-    [labelled_good] state: a core step is [reach_step]; an external
-    return is [reach_return]; a core ending is [reach_end]; an exit is
-    no failure, nor a resource ending ([invoke_resource_refusal]), nor
-    a refusal; and a stuck core step, a rejected call and a bad return
-    cannot happen. *)
+(** Every labelled step preserves reachability or stops safely, including
+    external returns, process exit, and permitted resource refusals.
+    The lemma [reach_labelled] excludes stuck instructions, rejected
+    calls, and incompatible results by the earlier simulation facts. *)
 Lemma reach_labelled φ c s w trace st :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> M.step registry ge (M.Running (c, s) w) trace st -> labelled_good φ st.
@@ -974,12 +970,10 @@ Proof.
   - exfalso. eapply reach_bad; eassumption.
 Qed.
 
-(** Adequacy for the labelled machine (ExternalMachine.v): where Iris
-    adequacy holds for [ERun fr0] from m0, s0, fuel0 and w0, every
-    running state of a labelled [[run]] from there is Iris-reachable,
-    and every stopped state stopped with no [failure_ending]; where it
-    stopped with a returning core ending, a top-level return, its value
-    satisfies φ in some state. *)
+(** Iris's safety guarantee covers every labelled machine [[run]] from
+    the initial state, not merely the execution chosen by a particular interpreter.
+    The theorem [adequate_labelled] keeps running states reachable,
+    excludes failure endings, and establishes the postcondition for normal top-level returns. *)
 Theorem adequate_labelled φ :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   forall trace st, M.run registry ge (M.Running (mkConfig fr0 [] m0 fuel0, s0) w0) trace st ->
@@ -1002,15 +996,14 @@ Qed.
 
 End adequacy.
 
-(** With no contracts no call is admissible: a frame [proceeds] only
-    where it does not fail. *)
+(** Without external contracts, no external call is admissible, so a
+    frame that proceeds must avoid failure in the core machine itself. *)
 Lemma proceeds_closed ge fr σ :
   proceeds no_contracts ge fr σ -> ~ fails ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)).
 Proof. intros [H | (site & _ & spec & xs & Hr & _)]; [exact H | unfold no_contracts in Hr; discriminate Hr]. Qed.
 
-(** Where Iris adequacy holds for [ERun fr0] with no contracts, every
-    core machine state the run reaches is Iris-reachable, and none
-    [fails]. *)
+(** With no external contracts, Iris adequacy rules out failure in
+    every reachable core-machine state, as [adequate_no_fails] derives from the simulation. *)
 Lemma adequate_no_fails ge fr0 m0 fuel0 φ :
   @adequate (nanofil_lang no_contracts ge) NotStuck (ERun fr0) (mkLstate m0 R.start fuel0 tt) φ ->
   forall st, RM.mreachable ge (mkConfig fr0 [] m0 fuel0, R.start) st -> ~ fails ge (fst st).
@@ -1027,14 +1020,19 @@ Proof.
   exact (proceeds_closed ge (c_frame c) _ (reach_proceeds _ _ _ _ _ _ _ φ c s tt Had Hr)).
 Qed.
 
-(** [[adequacy|Adequacy]]: Iris adequacy proves [never_panics]. Where
-    the module's initial memory and entry function exist, every
-    admissible input makes the entry's frame, and (where R is ready at
-    its start in that memory) for every fuel and every invariant
-    instance a state interpretation stateI can be allocated that holds
-    of the initial state and gives a [NotStuck] weakest precondition of
-    the entry's [ERun], with no contracts, the module never panics. The
-    later-credit flag hlc is left to the caller. *)
+(** A closed program never panics if its entry function has a safe Iris
+    proof for every admitted input and execution budget.
+    The theorem [wp_never_panics] requires valid initial memory, an
+    entry frame for each input, and a runtime ready to begin execution.
+
+    Memory ownership gives an instruction proof permission to read or
+    write bytes, while the machine itself operates on concrete memory.
+    A [[state-interpretation|state interpretation]] connects these two
+    views, and the proof must establish that connection before execution begins.
+    The entry proof then describes safe execution through a
+    [[weakest-precondition|weakest precondition]], without assuming any particular allocation of Iris invariants.
+    The theorem permits either setting of Iris's later-credit feature,
+    which controls bookkeeping in the proof rather than the program's execution. *)
 Theorem wp_never_panics (hlc : has_lc) Σ `{!invGpreS Σ} md entry (input : list word -> Prop) globals m f :
   initial_memory md = Some (globals, m) ->
   find_fn (P.program_genv md globals) entry = Some (Defined f) ->
@@ -1062,25 +1060,22 @@ Proof.
   exact (adequate_no_fails ge fr m fuel _ Had st Hreach).
 Qed.
 
-(** The labelled machine's safety for the frame fr, with the contracts
-    of registry in the genv ge, from the memory m, the runtime state s,
-    the world w and the fuel fuel: every labelled [[run]] from there
-    that stops, stops with no [failure_ending], and where it stops with
-    a returning core ending, a top-level return, its value satisfies
-    φ. *)
+(** A contracted program is safe when every stopped run avoids a
+    failure ending and every normal top-level return satisfies the promised postcondition.
+    The predicate [labelled_safe] states that guarantee for a fixed
+    initial frame, memory, runtime state, world, and execution budget. *)
 Definition labelled_safe {world : Type} (registry : name -> option (contract world)) (ge : genv)
     (fr : frame) (m : mem) (s : R.state) (w : world) (fuel : Z) (φ : outcome -> Prop) : Prop :=
   forall trace why ms w',
     M.run registry ge (M.Running (mkConfig fr [] m fuel, s) w) trace (M.Stopped why ms w') ->
     ~ failure_ending why /\ forall o, why = CoreEnd o -> returning o -> φ o.
 
-(** [[adequacy|Adequacy]] for the labelled machine: where, for every
-    invariant instance, a state interpretation stateI can be allocated
-    that holds of the initial state (the memory m, the runtime state s,
-    the fuel, the world w) and gives a [NotStuck] weakest precondition
-    of [ERun fr] with the postcondition φ, the run is [labelled_safe].
-    Where R must be [[ready]] in s and m, as for a ghost heap, that is
-    the caller's premise for allocating stateI ([heap_labelled_safe]). *)
+(** An entry proof establishes safe execution and a promised result
+    property whenever the program returns normally at the top level.
+    The theorem [wp_labelled_safe] transfers that proof to complete
+    machine runs, provided ownership describes initial memory for every Iris invariant instance.
+    If establishing this description needs a [[ready]] runtime, the
+    caller must supply readiness among its own initial assumptions. *)
 Theorem wp_labelled_safe (hlc : has_lc) Σ `{!invGpreS Σ} {world : Type}
     (registry : name -> option (contract world)) ge fr m s (w : world) fuel (φ : outcome -> Prop) :
   (forall Hinv : invGS_gen hlc Σ,

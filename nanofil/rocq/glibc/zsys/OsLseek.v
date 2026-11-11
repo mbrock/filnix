@@ -10,8 +10,9 @@
 
     ## What libpizlo runs
 
-    At the pinned revision of `libpas/src/libpas/filc_runtime.c`,
-    `c: zsys_lseek` runs the following native wrapper:
+    Seeking changes a kernel file offset without reading or writing a
+    caller buffer. The following wrapper passes that request to the
+    host in the pinned `libpas/src/libpas/filc_runtime.c`.
 
     ```c
     long filc_native_zsys_lseek(filc_thread* my_thread, int fd, long offset, int whence)
@@ -53,8 +54,9 @@ Open Scope Z_scope.
 
 (** ## The contract
 
-    Before proving separation-logic rules, this first section defines the
-    ABI, precondition, and postcondition of [os_lseek_contract]. *)
+    A seek call may update the thread's error cell but cannot overwrite
+    other caller memory. The following definitions collect its calling
+    convention and possible results into [os_lseek_contract]. *)
 
 (** A call site satisfies [os_lseek_abi] when it passes a 32-bit
     descriptor, a 64-bit byte offset, and a 32-bit `c: whence` flag, and
@@ -126,10 +128,10 @@ Local Instance os_lseek_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
     OS contract registry. *)
 Local Notation zexpr := (language.expr (nanofil_lang registry ge)).
 
-(** When a C function calls `c: zsys_lseek` on a descriptor in the OS
-    world while lending the thread's `c: errno` cell, [wp_zsys_lseek]
-    hands `c: errno` back to the caller and binds the destination register
-    to a new file offset below `2 ^ 63` or `c: -1`. *)
+(** Seeking on a tracked file descriptor borrows the thread's errno
+    cell and returns it with either a file offset or a failure result.
+    The rule [wp_zsys_lseek] binds an offset below the signed 64-bit
+    limit on success, or the all-ones bit pattern representing negative one on failure. *)
 Lemma wp_zsys_lseek f e ls lab d a0 a1 a2 rest j fd off wh eb Φ :
   registry (TAtom "zsys_lseek") = Some os_lseek_contract ->
   find_fn ge (TAtom "zsys_lseek") = None -> lookup (TAtom "zsys_lseek") (ge_globals ge) = None ->

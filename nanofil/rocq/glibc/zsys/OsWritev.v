@@ -11,8 +11,9 @@
 
     ## What libpizlo runs
 
-    At the pinned revision of `libpas/src/libpas/filc_runtime.c`,
-    `c: zsys_writev` runs the following native wrapper:
+    A vector write gathers bytes from several buffers after checking
+    the vector and each buffer. The following wrapper starts that work
+    in the pinned `libpas/src/libpas/filc_runtime.c`.
 
     ```c
     ssize_t filc_native_zsys_writev(filc_thread* my_thread, int fd, filc_ptr user_iov, int iovcnt)
@@ -60,9 +61,9 @@ Open Scope Z_scope.
 
 (** ## The contract
 
-    Before proving separation-logic rules, this first section reads an
-    array of `c: struct iovec` entries from memory, concatenates the bytes
-    they name, and defines the contract [os_writev_contract]. *)
+    A vector write presents several caller buffers as one ordered stream
+    of bytes. The following definitions read the vector, gather those
+    bytes, and describe the permitted effects in [os_writev_contract]. *)
 
 (** For the entry at index i of the vector at `iov`, [iov_entry] reads the
     8-byte `c: iov_base` address, pairs it with the [[capability]] stored

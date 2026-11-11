@@ -16,7 +16,9 @@
     [[capability|capabilities]] in its shadow [[aux]] allocation. Our
     logical map records one [pval] for each owned piece: whether an object
     is live or freed, what byte sits at an offset, or what capability sits
-    in a shadow slot. The map [agrees] with physical memory when every
+    in a shadow slot.
+
+    The map [agrees] with physical memory when every
     recorded value matches what the machine currently stores for that
     object. Because every entry in the map belongs to an object that has
     already been allocated, a [[fresh]] allocation at an unused base address
@@ -24,7 +26,11 @@
 
     ## Preserving agreement across stores and allocations
 
-    In Fil-C, live objects never overlap in address space. When a C
+    A store into one object must leave all other owned memory intact.
+    In Fil-C, live objects never overlap in address space, so their
+    addresses let us establish that separation.
+
+    When a C
     instruction writes an 8-byte integer or a pointer into a live object,
     the store only changes the byte and capability entries at those offsets
     and leaves every other entry in the map matching physical memory.

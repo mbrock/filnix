@@ -22,11 +22,11 @@ Open Scope Z_scope.
 
 (** ## Initial memory layout
 
-    Before the entry function starts, the module's top-level
-    declarations are placed sequentially starting at [data_base] in
-    three passes: [layout] assigns addresses and creates global data
-    regions, [alias_global] resolves symbol aliases, and [contents]
-    writes the initial data bytes and capabilities into memory. *)
+    Before the entry function starts, the runner must assign addresses
+    and populate the module's global data objects. Three passes perform
+    that work: [layout] places declarations, [alias_global] resolves
+    symbol aliases, and [contents] writes the initial bytes and
+    capabilities. *)
 
 (** The constant [data_base] is the starting address `65536` where the
     module's functions and global data objects are placed. *)
@@ -166,15 +166,15 @@ Inductive run_result : Type :=
     functor [Driver] pairs the operational configuration with the
     runtime's private state and steps the configuration to completion. *)
 
-(** Given any [Runtime] module `R`, [Driver] uses `R.alloc` to choose
-    the base address of each allocation and `R.free` to execute calls to
+(** Given any [Runtime] module R, [Driver] uses [R.alloc] to choose
+    the base address of each allocation and [R.free] to execute calls to
     `c: free`. *)
 Module Driver (R : Runtime).
 
 (** Given a global environment and a paired configuration and runtime
     state, [run_step] advances the program by one step. When [step]
     requests a [[fresh]] allocation via [Fresh], [run_step] calls
-    `R.alloc` to obtain a base address, or ends the run with an
+    [R.alloc] to obtain a base address, or ends the run with an
     [OutOfMemory] trap if the allocator refuses the request. *)
 Definition run_step (ge : genv) (s : config * R.state) : (config * R.state) + run_result :=
   let (c, rt) := s in
@@ -189,10 +189,10 @@ Definition run_step (ge : genv) (s : config * R.state) : (config * R.state) + ru
   | Stuck why => inr (Halted why)
   end.
 
-(** Given a binary exponent `p`, [run_steps] runs up to `2 ^ p` steps of
-    [run_step] by recursion on `p`. In practice, the configuration's own
-    block-entry [[fuel]] always terminates the run long before this
-    outer gas limit is reached. *)
+(** A positive budget p lets [run_steps] perform at most p machine
+    steps, stopping early if the driver produces a final result.
+    Recursion follows the budget's binary representation rather than a
+    unary counter, avoiding a call chain whose depth grows with the step limit. *)
 Fixpoint run_steps (ge : genv) (p : positive) (s : config * R.state)
   : (config * R.state) + run_result :=
   match p with

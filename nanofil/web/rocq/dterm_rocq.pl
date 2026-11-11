@@ -541,670 +541,694 @@ count_(N, W) --> " · ", esc(N), "\u00A0", esc(W), "s".
 
 %% Per-file index blurbs
 
-%  rocq/glibc/zsys/
+%  Live campaign: rocq/glibc/zsys/
 file_blurb('nanofil/rocq/glibc/zsys/OsBlocks.v',
-    "Packages contiguous byte ranges and their [[aux]] capability slots as borrowable blocks ([blk_any], [errno_any]) that external calls can overwrite and return.").
+    "This module tracks borrowed buffers and errno storage so syscall contracts can return ownership to their callers.").
 file_blurb('nanofil/rocq/glibc/zsys/OsClose.v',
-    "Trusted contract and weakest-precondition rule for `c: zsys_close`, probed by [zsys-close.c](zsys-close.c).").
+    "This module specifies how libpizlo closes file descriptors and proves the call rule used by glibc.").
 file_blurb('nanofil/rocq/glibc/zsys/OsExit.v',
-    "Non-returning contracts and weakest-precondition rules for `c: zsys_exit_soft` and `c: zsys_exit_hard`, probed by [zsys-exit.c](zsys-exit.c).").
+    "These contracts describe libpizlo's soft and hard process exits, neither of which returns to the caller.").
 file_blurb('nanofil/rocq/glibc/zsys/OsFstat.v',
-    "Trusted contract and weakest-precondition rule for `c: zsys_fstat`, borrowing the caller's 144-byte `c: struct stat` buffer and `c: errno`.").
+    "This contract describes how libpizlo reads file metadata into a borrowed stat buffer and updates errno.").
 file_blurb('nanofil/rocq/glibc/zsys/OsIoctl.v',
-    "Trusted contract and weakest-precondition rule for variadic `c: zsys_ioctl`, audited against `c: filc_call_syscall_with_guarded_ptr`.").
+    "This contract bounds the buffer changes made by libpizlo's guarded ioctl wrapper for supported requests.").
 file_blurb('nanofil/rocq/glibc/zsys/OsLseek.v',
-    "Trusted contract and weakest-precondition rule for `c: zsys_lseek`, probed by [zsys-lseek.c](zsys-lseek.c).").
+    "This module specifies file-offset changes through libpizlo's seek wrapper, including return values and errno updates.").
 file_blurb('nanofil/rocq/glibc/zsys/OsRegistry.v',
-    "Collects the nine `zsys_*` and `c: zthread_self_cookie` contracts together with void-return `c: zmemmove` and `c: zmemset` into [os_registry].").
+    "This registry combines syscall, thread-cookie, and void-returning memory contracts at the boundary between glibc and libpizlo.").
 file_blurb('nanofil/rocq/glibc/zsys/OsThread.v',
-    "Trusted contract and weakest-precondition rule for `c: zthread_self_cookie`, returning the calling thread's `c: struct pthread` pointer.").
+    "This contract returns the current thread's descriptor pointer without changing memory or emitting trace events.").
 file_blurb('nanofil/rocq/glibc/zsys/OsWorld.v',
-    "Defines the shared thread and descriptor state [os_world], its world interpretation [os_wi], and the call rules [wp_os_call], [wp_os_errno_call], and [wp_os_noreturn].").
+    "This module tracks errno, thread state, and descriptors across program steps and calls into libpizlo.").
 file_blurb('nanofil/rocq/glibc/zsys/OsWrite.v',
-    "Trusted contract and weakest-precondition rule for `c: zsys_write`, probed by [zsys-write.c](../zsys-write.c).").
+    "This contract describes writes from a readable caller buffer, including partial output and errno changes.").
 file_blurb('nanofil/rocq/glibc/zsys/OsWritev.v',
-    "Trusted contract and weakest-precondition rule for scatter-gather `c: zsys_writev`, probed by [zsys-writev.c](zsys-writev.c).").
+    "This contract describes how libpizlo gathers readable buffers for a vectored write and reports errors.").
 
-%  rocq/glibc/string/
+%  Live campaign: rocq/glibc/string/
 file_blurb('nanofil/rocq/glibc/string/MallocCode.v',
-    "Generated checked IR ([malloc_term]) of userland glibc's `c: malloc` and `c: free`.").
+    "This generated module supplies the checked IR of glibc's allocator and deallocator to implementation proofs.").
 file_blurb('nanofil/rocq/glibc/string/MemFwdCode.v',
-    "Generated checked IR ([memfwd_term]) of userland glibc's `c: memcpy`, `c: mempcpy`, `c: memset`, `c: strdup`, `c: errno`, and `c: ctype` units.").
-file_blurb('nanofil/rocq/glibc/string/MemFwdLogic.v',
-    "Proves Hoare triples for userland glibc's compiled `c: memcpy`, `c: mempcpy`, `c: memset`, and `c: strdup`.").
-file_blurb('nanofil/rocq/glibc/string/MemchrFirst.v',
-    "Proves the initial unaligned word check at entry to userland glibc's compiled `c: memchr`.").
-file_blurb('nanofil/rocq/glibc/string/MemchrLast.v',
-    "Proves the final partial-word and loop-exit cases of userland glibc's compiled `c: memchr`.").
-file_blurb('nanofil/rocq/glibc/string/MemchrLogic.v',
-    "Assembles the Hoare triple for userland glibc's compiled word-at-a-time `c: memchr`.").
-file_blurb('nanofil/rocq/glibc/string/MemchrLoop.v',
-    "Proves the aligned word-scan loop of userland glibc's compiled `c: memchr`.").
+    "This generated module supplies checked IR for glibc's memory-copying routines and supporting locale and character functions.").
 file_blurb('nanofil/rocq/glibc/string/MemcmpCode.v',
-    "Generated checked IR ([memcmp_term]) of userland glibc's `c: memcmp`.").
+    "This generated module supplies the checked IR of glibc's memcmp implementation to the comparison proof.").
 file_blurb('nanofil/rocq/glibc/string/MemcmpLogic.v',
-    "Proves Hoare triples for userland glibc's compiled `c: memcmp` on fewer than 16 bytes of two objects at any fractional shares.").
+    "This proof covers glibc's memcmp below sixteen bytes, before its capability-less word reads can trap.").
 file_blurb('nanofil/rocq/glibc/string/MemrchrBits.v',
-    "Last-match, leading-zero, and end-mask lemmas for userland glibc's word-at-a-time `c: memrchr`.").
+    "These arithmetic lemmas explain how glibc's reverse byte search finds the last matching byte within a word.").
 file_blurb('nanofil/rocq/glibc/string/MemrchrCode.v',
-    "Generated checked IR ([memrchr_term]) of userland glibc's `c: memrchr`.").
+    "This generated module supplies checked IR for glibc's reverse byte search to the memrchr proofs.").
 file_blurb('nanofil/rocq/glibc/string/MemrchrLogic.v',
-    "Proves Hoare triples for userland glibc's compiled `c: memrchr` over a word window and [word_string].").
+    "This proof verifies glibc's reverse byte search over readable word windows and supplies its caller-facing specification.").
 file_blurb('nanofil/rocq/glibc/string/MemrchrLoop.v',
-    "Proves the downward 8-byte word loop of userland glibc's `c: memrchr` at any fractional share.").
+    "This proof follows glibc's reverse byte search as its loop walks backward through readable eight-byte words.").
 file_blurb('nanofil/rocq/glibc/string/MemrchrMask.v',
-    "Proves the initial masked last-word check of userland glibc's `c: memrchr`.").
+    "This proof handles the last partially searched word before memrchr returns a match or continues backward.").
 file_blurb('nanofil/rocq/glibc/string/StrchrCode.v',
-    "Generated checked IR ([strchr_term]) of userland glibc's `c: strchr`, `c: strchrnul`, `c: strrchr`, `c: memchr`, and `c: strnlen`.").
-file_blurb('nanofil/rocq/glibc/string/StrchrnulLogic.v',
-    "Proves Hoare triples for userland glibc's compiled `c: strchrnul` and `c: strchr` over [word_string] at any fractional share.").
+    "This generated module supplies checked IR for glibc's character searches and bounded string-length routine to their proofs.").
 file_blurb('nanofil/rocq/glibc/string/StrcmpBits.v',
-    "Bitmask comparison and cross-word byte-difference lemmas for userland glibc's word-at-a-time `c: strcmp`.").
+    "These arithmetic lemmas relate glibc's word comparisons and cross-word merges to the first differing string byte.").
 file_blurb('nanofil/rocq/glibc/string/StrcmpCode.v',
-    "Generated checked IR ([strcmp_term]) of userland glibc's `c: strcmp`.").
+    "This generated module supplies the checked IR of glibc's strcmp implementation to the string comparison proofs.").
 file_blurb('nanofil/rocq/glibc/string/StrcmpLogic.v',
-    "Proves the Hoare triple for userland glibc's compiled `c: strcmp` over two [word_string] assertions at any fractional shares.").
+    "This proof verifies glibc's strcmp for readable word-aligned strings, including aliased inputs with fractional ownership.").
 file_blurb('nanofil/rocq/glibc/string/StrcmpLoop.v',
-    "Proves the aligned and unaligned 8-byte word loops of userland glibc's `c: strcmp`.").
+    "These proofs follow the aligned and unaligned word loops used by glibc's string comparison routine.").
 file_blurb('nanofil/rocq/glibc/string/StrlenLoop.v',
-    "Proves the inner word-scan loop and popcount tail of userland glibc's `c: strlen` at any fractional share.").
+    "This proof follows glibc's string-length loop through readable words until it finds the terminating zero byte.").
 file_blurb('nanofil/rocq/glibc/string/StrlenWord.v',
-    "Proves the general Hoare triple for userland glibc's compiled `c: strlen` over a [word_string] at any share.").
+    "This proof verifies glibc's strlen over word-aligned strings with fractional or permanently read-only ownership.").
+file_blurb('nanofil/rocq/glibc/string/StrchrnulLogic.v',
+    "These proofs verify glibc's forward character searches over word-aligned strings while preserving the caller's read permission.").
 file_blurb('nanofil/rocq/glibc/string/StrncmpBits.v',
-    "Bounded-length word comparison and byte-difference lemmas for userland glibc's `c: strncmp`.").
+    "These arithmetic lemmas relate bounded word comparisons to the byte difference that glibc's strncmp returns.").
 file_blurb('nanofil/rocq/glibc/string/StrncmpCode.v',
-    "Generated checked IR ([strncmp_term]) of userland glibc's `c: strncmp`.").
+    "This generated module supplies the checked IR of glibc's strncmp implementation to the bounded comparison proofs.").
 file_blurb('nanofil/rocq/glibc/string/StrncmpLogic.v',
-    "Proves the Hoare triple for userland glibc's compiled `c: strncmp` over two [word_string] assertions at any fractional shares.").
+    "This proof verifies glibc's bounded string comparison over two word-aligned strings with arbitrary read shares.").
 file_blurb('nanofil/rocq/glibc/string/StrncmpLoop.v',
-    "Steps through the unrolled 4-word aligned and unaligned loop bodies of userland glibc's `c: strncmp`.").
+    "These proofs verify the four-word loop steps that glibc's strncmp uses for aligned and unaligned inputs.").
 file_blurb('nanofil/rocq/glibc/string/StrncmpWords.v',
-    "Proves the aligned and unaligned word-loop invariants for userland glibc's `c: strncmp`.").
+    "These invariants track the remaining bytes and readable word windows through glibc's bounded string comparison loops.").
 file_blurb('nanofil/rocq/glibc/string/StrnlenLogic.v',
-    "Proves the Hoare triple for userland glibc's compiled `c: strnlen` via `c: memchr` over [word_string].").
+    "This proof verifies glibc's bounded string-length routine by using its compiled byte search on a readable string.").
 file_blurb('nanofil/rocq/glibc/string/StrrchrLogic.v',
-    "Proves the Hoare triple for userland glibc's compiled `c: strrchr` over [word_string] at any share.").
+    "This proof verifies glibc's last-character search while preserving the caller's fractional ownership of the string.").
 file_blurb('nanofil/rocq/glibc/string/WordString.v',
-    "Defines fractional word-aligned C string ownership [word_string] over the 8-byte words read by glibc's string routines.").
+    "This ownership assertion describes C strings whose surrounding eight-byte words are readable by glibc's word-at-a-time routines.").
 
-%  rocq/glibc/stdlib/
-file_blurb('nanofil/rocq/glibc/stdlib/AllocLogic.v',
-    "Proves Hoare triples for userland glibc's compiled `c: malloc` and `c: free` over `c: zgc_alloc` and `c: zgc_free`.").
-file_blurb('nanofil/rocq/glibc/stdlib/AtexitLogic.v',
-    "Proves Hoare triples for userland glibc's exit-handler registration (`c: atexit` and `c: __cxa_atexit`) over the [exit_funcs_inv] table.").
-file_blurb('nanofil/rocq/glibc/stdlib/LeavesLogic.v',
-    "Proves Hoare triples for userland glibc's compiled `c: errno`, `c: ctype`, locale, and `c: mbsinit` leaf functions.").
-file_blurb('nanofil/rocq/glibc/stdlib/StdlibCode.v',
-    "Generated checked IR ([stdlib_term]) of userland glibc's `c: malloc`, `c: atexit`, `c: errno`, `c: ctype`, and `c: mbsinit` units.").
-
-%  rocq/glibc/libio/
-file_blurb('nanofil/rocq/glibc/libio/ExitRun.v',
-    "Proves Hoare triples for userland glibc's compiled `c: exit` and exit-handler runner over `_IO_cleanup` and `c: zsys_exit_soft`.").
-file_blurb('nanofil/rocq/glibc/libio/ExitRunCode.v',
-    "Generated checked IR ([exit_run_term]) of userland glibc's `__run_exit_handlers` and `c: exit`.").
-file_blurb('nanofil/rocq/glibc/libio/ExitRunLoop.v',
-    "Proves the LIFO handler-execution loop of userland glibc's exit runner by reverse induction on registered handlers.").
-file_blurb('nanofil/rocq/glibc/libio/ExitRunTail.v',
-    "Proves the final step of userland glibc's exit runner, flushing open streams via `_IO_cleanup` before calling `c: zsys_exit_soft`.").
-file_blurb('nanofil/rocq/glibc/libio/FileInv.v',
-    "Defines the 224-byte `c: FILE` layout, the stream invariant [file_inv], the `_IO_list_all` chain invariant, and vtable capability tables.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanup.v',
-    "Proves userland glibc's `_IO_cleanup` over [io_list_inv], flushing and unbuffering open streams at process exit.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupCode.v',
-    "Generated checked IR ([libio_cleanup_term]) of userland glibc's `_IO_cleanup`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupExit.v',
-    "Discharges the `_IO_cleanup` and NPTL cleanup-handler premises for [ExitRunTail](ExitRunTail.v).").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupFpLock.v',
-    "Proves the per-stream lock acquisition step inside `_IO_cleanup`'s unbuffering loop.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupFpUnlock.v',
-    "Proves the per-stream lock release and `_chain` advance ending one pass of `_IO_cleanup`'s loop.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupLock.v',
-    "Proves `list_all_lock` acquisition, head load, and final lock release and cleanup-pop for `_IO_cleanup`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupMode.v',
-    "Proves the backup-area check and `_mode` update inside `_IO_cleanup`'s unbuffering loop.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupPass.v',
-    "Proves one full pass of `_IO_cleanup`'s unbuffering loop over an open stream.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCleanupStart.v',
-    "Proves the `_IO_flush_all` call and cleanup-handler push at entry to `_IO_cleanup`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCloseIt.v',
-    "Proves userland glibc's stream-close helper (`_IO_file_close_maybe_unlink`), which flushes pending output and closes the file descriptor.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCloseItCode.v',
-    "Generated checked IR ([libio_close_it_term]) of userland glibc's `_IO_file_close_maybe_unlink` and `_IO_new_file_close_it`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCloseItEnd.v',
-    "Proves the epilogue of `_IO_file_close_maybe_unlink`, releasing the stream buffer and marking the descriptor closed.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCloseItMid.v',
-    "Proves the middle blocks of `_IO_file_close_maybe_unlink`, dispatching the vtable close method and detaching the buffer.").
-file_blurb('nanofil/rocq/glibc/libio/LibioCloseSteps.v',
-    "Shared symbolic-step lemmas and 32-byte cleanup-frame helpers for `libio` close, unlink, and flush proofs.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputn.v',
-    "Proves userland glibc's `_IO_default_xsputn` and its loop invariant over the vtable overflow method.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBuf.v',
-    "Defines the stream write-buffer state ([wbuf], [wroom]) and vtable overflow premise for string output proofs.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBytes.v',
-    "Proves `_IO_default_xsputn`'s byte-by-byte copy loop for short transfers up to 20 bytes.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnCopy.v',
-    "Proves `c: mempcpy` into a stream buffer at an arbitrary offset over `c: zmemmove`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnRoom.v',
-    "Proves `_IO_default_xsputn`'s bulk buffer fill via `c: mempcpy` for transfers over 20 bytes.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnSmall.v',
-    "Proves `_IO_default_xsputn`'s short-transfer path filling at most 20 bytes of buffer space.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnTail.v',
-    "Proves the end of each `_IO_default_xsputn` round, either calling vtable overflow on the next byte or returning.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoAlloc.v',
-    "Proves userland glibc's `_IO_file_doallocate`, querying `c: fstat` and installing a newly allocated stream buffer.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocBase.v',
-    "Proves `__gnu_dev_major` and defines the fresh-buffer continuation shared by `_IO_file_doallocate` proofs.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocBuf.v',
-    "Proves userland glibc's `_IO_doallocbuf` on a buffered stream, dispatching the vtable `__doallocate` method.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocMode.v',
-    "Proves `_IO_file_doallocate`'s character-device and `c: isatty` check that selects line buffering.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocShort.v',
-    "Proves `_IO_doallocbuf` on an unbuffered stream, installing the one-byte inline `_shortbuf`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocTail.v',
-    "Proves `_IO_file_doallocate`'s buffer allocation via `c: malloc` and installation via `_IO_setb`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoWrite.v',
-    "Proves userland glibc's `_IO_new_do_write`, which flushes a stream buffer through its vtable write method.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteCall.v',
-    "Proves the vtable bounds check and indirect write call inside `_IO_new_do_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteCode.v',
-    "Generated checked IR ([libio_do_write_term]) of userland glibc's `_IO_new_do_write` and `_IO_new_file_overflow`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteEnd.v',
-    "Proves the return path of `_IO_new_do_write`, updating write-end pointers for line-buffered and block-buffered streams.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteRet.v',
-    "Proves the column-tracking return join block of `_IO_new_do_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteSetp.v',
-    "Proves the write-pointer reset (`_IO_setp`) and stream mode check in `_IO_new_do_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteTail.v',
-    "Proves the read-pointer reset (`_IO_setg`) after flushing in `_IO_new_do_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFclose.v',
-    "Proves userland glibc's compiled `c: fclose` on `c: stdout`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFcloseCode.v',
-    "Generated checked IR ([libio_fclose_term]) of userland glibc's `_IO_new_fclose`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFcloseLock.v',
-    "Proves single-threaded stream lock acquisition and release for userland glibc's `c: fclose`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFcloseTail.v',
-    "Proves the stream-unlinking and vtable finish epilogue of `c: fclose` on static `c: stdout`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFinish.v',
-    "Proves userland glibc's vtable finish methods on a closed, unlinked stream.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlush.v',
-    "Proves userland glibc's `_IO_flush_all` by induction over the `_IO_list_all` stream chain.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushBody.v',
-    "Defines the per-stream flush invariant and proves one pass of `_IO_flush_all`'s loop for streams at exit.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushClean.v',
-    "Proves the clean-stream path of `_IO_flush_all` when no buffered output needs flushing.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushCode.v',
-    "Generated checked IR ([libio_flush_term]) of userland glibc's `_IO_flush_all`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushFpLock.v',
-    "Proves per-stream lock acquisition in one pass of `_IO_flush_all`'s loop.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushFpUnlock.v',
-    "Proves per-stream lock release and `_chain` advance ending one pass of `_IO_flush_all`'s loop.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushOver.v',
-    "Proves one pass of `_IO_flush_all` on a stream with pending buffered output.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushOverCall.v',
-    "Proves the vtable check and indirect overflow call inside `_IO_flush_all`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushStart.v',
-    "Proves the cleanup-handler push and `list_all_lock` acquisition at entry to `_IO_flush_all`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFlushTail.v',
-    "Proves the `list_all_lock` release, cleanup-handler pop, and return of `_IO_flush_all`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFputs.v',
-    "Proves userland glibc's compiled `c: fputs` over a [word_string] at any fractional share.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFputsCall.v',
-    "Proves stream orientation and the indirect `xsputn` vtable call inside `c: fputs`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFputsLock.v',
-    "Proves the `c: strlen` call and stream lock acquisition at entry to `c: fputs`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioFputsUnlock.v',
-    "Proves stream lock release and return for userland glibc's `c: fputs`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioGenCode.v',
-    "Generated checked IR ([libiogen_term]) of userland glibc's `__overflow`, `_IO_default_xsputn`, `_IO_unsave_markers`, and `__call_tls_dtors`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioGenLeaves.v',
-    "Proves userland glibc's `__call_tls_dtors` and `_IO_unsave_markers` leaf helpers.").
-file_blurb('nanofil/rocq/glibc/libio/LibioLogic.v',
-    "Shared arithmetic lemmas, function-pointer lookup helpers, and symbolic step tactics for `libio` proofs.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflow.v',
-    "Proves userland glibc's `_IO_new_file_overflow` on a stream with an active write buffer.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowAlloc.v',
-    "Proves userland glibc's `_IO_new_file_overflow` when allocating a stream's buffer on first write.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowAllocSetg.v',
-    "Proves `_IO_new_file_overflow`'s first-write buffer allocation via `_IO_doallocbuf` and read-pointer setup.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowBase.v',
-    "Defines the put-area state and return relation shared across the `_IO_new_file_overflow` proof modules.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowCall.v',
-    "Proves `_IO_new_file_overflow`'s call to `_IO_new_do_write` flushing pending bytes.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowFlush.v',
-    "Proves `_IO_new_file_overflow`'s post-store flush and return of the written byte or `c: EOF`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowFull.v',
-    "Proves `_IO_new_file_overflow` when the write buffer is full and must be flushed before storing the new byte.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowGen.v',
-    "Proves userland glibc's `__overflow`, orienting the stream to byte mode and dispatching the vtable overflow method.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowPut.v',
-    "Proves `_IO_new_file_overflow`'s byte store at `_IO_write_ptr` and newline/unbuffered flush check.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSend.v',
-    "Proves `_IO_new_file_overflow`'s dispatch between flushing on `c: EOF` and storing a character.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetp.v',
-    "Proves the first half of `_IO_new_file_overflow`'s transition into put mode, initializing write pointers.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetpEnd.v',
-    "Proves `_IO_new_file_overflow`'s backup-area check and line-buffered write-end adjustment.").
-file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetpRest.v',
-    "Proves the second half of `_IO_new_file_overflow`'s transition into put mode, setting `_IO_CURRENTLY_PUTTING`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPuts.v',
-    "Proves userland glibc's compiled `c: puts` over a [word_string] at any fractional share and `c: stdout`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsBuf.v',
-    "Proves write-pointer bounds and the direct trailing-newline store in `c: puts`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsCall.v',
-    "Proves the vtable check and indirect `_IO_new_file_xsputn` call inside `c: puts`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsCode.v',
-    "Generated checked IR ([libio_puts_term]) of userland glibc's `c: puts` and `c: fputs`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsInv.v',
-    "Defines the stream state [file_at] and vtable method premises shared by the `c: puts` and `c: fputs` proofs.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsLock.v',
-    "Proves the `c: strlen` call and `c: stdout` lock acquisition at entry to `c: puts`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsMode.v',
-    "Proves the narrow-stream orientation check in `c: puts`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsNl.v',
-    "Proves the trailing newline emission in `c: puts`, either buffered directly or flushed via `__overflow`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioPutsUnlock.v',
-    "Proves `c: stdout` lock release and return for userland glibc's `c: puts`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioRead.v',
-    "Proves userland glibc's compiled `c: __fpending`, `c: ferror`, `_IO_file_close`, and `_IO_file_stat` over [file_inv].").
-file_blurb('nanofil/rocq/glibc/libio/LibioReadCode.v',
-    "Generated checked IR ([libio_read_term]) of userland glibc's `__fpending`, `_IO_ferror`, `_IO_file_close`, `_IO_file_stat`, `_IO_setb`, `_IO_doallocbuf`, `_IO_file_doallocate`, and `_IO_new_file_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioSetb.v',
-    "Proves userland glibc's `_IO_setb`, freeing an owned buffer when `_IO_USER_BUF` is clear and updating buffer pointers.").
-file_blurb('nanofil/rocq/glibc/libio/LibioStdfiles.v',
-    "Proves userland glibc's `_IO_stdfiles_init` constructor, linking `c: stderr`, `c: stdout`, and `c: stdin` into `_IO_list_all`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioStdfilesCode.v',
-    "Generated checked IR ([libiostdfiles_term]) of userland glibc's `_IO_stdfiles_init` constructor.").
-file_blurb('nanofil/rocq/glibc/libio/LibioUnlink.v',
-    "Proves userland glibc's `_IO_un_link`, removing a stream from the global `_IO_list_all` chain.").
-file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkCode.v',
-    "Generated checked IR ([libio_unlink_term]) of userland glibc's `_IO_un_link`, `_IO_new_file_finish`, and `_IO_default_finish`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkLock.v',
-    "Proves the cleanup-push and lock acquisition prefix of `_IO_un_link`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkMid.v',
-    "Proves the doubly-linked `_IO_list_all` pointer splice inside `_IO_un_link`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkTail.v',
-    "Proves the flag-clearing, lock release, and cleanup-pop epilogue of `_IO_un_link`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioWrite.v',
-    "Proves userland glibc's `_IO_new_file_write` and its write-retry loop over `c: write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioWriteCall.v',
-    "Proves a single iteration of `_IO_new_file_write`'s loop calling `c: write` on the remaining byte slice.").
-file_blurb('nanofil/rocq/glibc/libio/LibioWriteCallDq.v',
-    "Proves fractional-share `c: write` calls for `_IO_new_file_write` over shared or read-only caller buffers.").
-file_blurb('nanofil/rocq/glibc/libio/LibioWriteDq.v',
-    "Proves `_IO_new_file_write` over a caller buffer owned at any fractional share, as used by `_IO_new_file_xsputn`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioWriteExit.v',
-    "Proves the loop exit, error-flag path, and byte-count advance of `_IO_new_file_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputn.v',
-    "Proves userland glibc's `_IO_new_file_xsputn`, combining buffered prefix copies, direct block writes, and vtable overflow.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnBase.v',
-    "Defines the stream field invariant, newline scan, and `_IO_default_xsputn` hand-off for `_IO_new_file_xsputn`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnCall.v',
-    "Proves the indirect vtable write call inside `_IO_new_file_xsputn`'s inlined `new_do_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnCode.v',
-    "Generated checked IR ([libio_xsputn_term]) of userland glibc's `_IO_new_file_xsputn`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnDo.v',
-    "Proves `_IO_new_file_xsputn`'s direct-write path bypassing the stream buffer for large transfers.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnEnter.v',
-    "Proves `_IO_new_file_xsputn`'s initial calculation of how many bytes fit in the current write buffer.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFill.v',
-    "Proves `_IO_new_file_xsputn`'s `c: mempcpy` copy of bytes that fit into the stream's write buffer.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFlags.v',
-    "Proves the write-end pointer selection from `_IO_LINE_BUF` and `_IO_UNBUFFERED` inside `_IO_new_file_xsputn`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFlush.v',
-    "Proves `_IO_new_file_xsputn`'s buffer flush through vtable overflow on `c: EOF`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnReset.v',
-    "Proves the `_IO_setg` and `_IO_setp` pointer resets inside `_IO_new_file_xsputn`'s inlined `new_do_write`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnSetp.v',
-    "Proves the write-end store after `new_do_write` and hand-off of remaining bytes in `_IO_new_file_xsputn`.").
-file_blurb('nanofil/rocq/glibc/libio/LibioXsputnWrite.v',
-    "Proves the block-aligned byte count calculation for direct writes in `_IO_new_file_xsputn`.").
-file_blurb('nanofil/rocq/glibc/libio/SysCleanup.v',
-    "Proves userland glibc's NPTL cleanup-handler push (`__libc_cleanup_push_defer`) over `c: zthread_self_cookie`.").
-file_blurb('nanofil/rocq/glibc/libio/SysCleanupPop.v',
-    "Proves userland glibc's NPTL cleanup-handler pop (`__libc_cleanup_pop_restore`), restoring the thread cleanup chain.").
-file_blurb('nanofil/rocq/glibc/libio/SysCode.v',
-    "Generated checked IR ([sys_term]) of userland glibc's syscall wrappers (`c: _exit`, `c: write`, `c: fstat`, `c: lseek`, `c: close`, `c: isatty`) and NPTL cleanup helpers.").
-file_blurb('nanofil/rocq/glibc/libio/SysWrappers.v',
-    "Proves userland glibc's thin syscall wrappers (`c: _exit`, `c: write`, `c: fstat`, `c: lseek`, `c: close`, `c: isatty`) over `rocq/glibc/zsys/`.").
-
-%  rocq/glibc/hello/
+%  Live campaign: rocq/glibc/hello/
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLeaf.v',
-    "Proves GNU Hello's leaf helpers (`mbszero`, `strnlen1`, `streq`, `memeq`) linked against userland glibc.").
+    "These proofs verify GNU Hello's small string and memory helpers against the compiled glibc implementations they call.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcProgCells.v',
-    "Defines the global pointer cells and slash-scanning helpers for GNU Hello's `set_program_name`.").
+    "This module describes the global pointer cells and path tests used when GNU Hello sets its program name.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcProgClosed.v',
-    "Proves GNU Hello's `set_program_name` and `memeq` linked against userland glibc's `c: memrchr` and `c: memcmp` with no remaining callee premises.").
+    "This proof closes GNU Hello's program-name specification by supplying the compiled glibc search and comparison proofs.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcProgLibs.v',
-    "Proves the `\"/.libs/\"` and `\"lt-\"` prefix-stripping path of GNU Hello's `set_program_name` over compiled glibc `c: strncmp`.").
+    "This proof verifies how GNU Hello removes libtool directory and filename prefixes from its program name.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcProgName.v',
-    "Proves the full Hoare triple for GNU Hello's `set_program_name` linked against userland glibc's `c: strrchr` and `c: strncmp`.").
+    "This proof verifies GNU Hello's program-name setup using the compiled glibc string routines that inspect its path.").
 
-%  rocq/glibc/
+%  Live campaign: rocq/glibc/stdlib/
+file_blurb('nanofil/rocq/glibc/stdlib/AllocLogic.v',
+    "These proofs verify glibc's compiled malloc and free wrappers over the runtime's allocation and deallocation contracts.").
+file_blurb('nanofil/rocq/glibc/stdlib/AtexitLogic.v',
+    "These proofs verify how glibc registers exit handlers while maintaining ownership of its callback table.").
+file_blurb('nanofil/rocq/glibc/stdlib/LeavesLogic.v',
+    "These proofs verify glibc's small functions for thread-local errno, character tables, and multibyte conversion state.").
+file_blurb('nanofil/rocq/glibc/stdlib/StdlibCode.v',
+    "This generated module supplies checked IR for glibc's allocation, exit-handler registration, and supporting locale functions.").
+
+%  Live campaign: rocq/glibc/libio/
+file_blurb('nanofil/rocq/glibc/libio/ExitRun.v',
+    "This proof verifies glibc's exit sequence through registered handlers, stream cleanup, and the final runtime exit.").
+file_blurb('nanofil/rocq/glibc/libio/ExitRunCode.v',
+    "This generated module supplies the checked IR of glibc's exit-handler runner and exit entry point.").
+file_blurb('nanofil/rocq/glibc/libio/ExitRunLoop.v',
+    "This proof follows glibc's exit loop as it invokes registered handlers in reverse registration order.").
+file_blurb('nanofil/rocq/glibc/libio/ExitRunTail.v',
+    "This proof verifies the end of glibc's exit sequence after the callback list has been exhausted.").
+file_blurb('nanofil/rocq/glibc/libio/FileInv.v',
+    "These invariants describe glibc's stream fields, buffer ownership, locks, jump tables, and linked list of open streams.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanup.v',
+    "This proof verifies glibc's stream cleanup loop as it visits open streams and disables their buffering state.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupCode.v',
+    "This generated module supplies the checked IR of glibc's stream cleanup routine to its implementation proof.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupExit.v',
+    "This proof supplies the stream-cleanup rule needed at process exit, including the thread cleanup-buffer calls.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupFpLock.v',
+    "This proof verifies how one cleanup iteration records the current stream and acquires its single-threaded lock.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupFpUnlock.v',
+    "This proof verifies how cleanup releases the stream lock and advances to the next open stream.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupLock.v',
+    "These proofs verify how stream cleanup acquires and releases the list lock around its traversal.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupMode.v',
+    "This proof follows cleanup's buffering tests along the path that disables the stream without replacing its buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupPass.v',
+    "This proof combines the steps of one stream-cleanup iteration into the rule used by the loop.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCleanupStart.v',
+    "This proof verifies cleanup's initial flush and thread cleanup-buffer setup before it traverses the stream list.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCloseIt.v',
+    "This proof verifies glibc's stream-close helper as it flushes pending output and closes the file descriptor.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCloseItCode.v',
+    "This generated module supplies checked IR for glibc's file-stream closing helpers to the close proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCloseItEnd.v',
+    "This proof verifies how the stream-close helper clears buffer pointers and marks the stream as closed.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCloseItMid.v',
+    "This proof follows the stream-close helper through its indirect close call and removal of the stream buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioCloseSteps.v',
+    "These shared rules support instruction steps and temporary cleanup frames in glibc's stream lifecycle proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputn.v',
+    "This proof verifies glibc's default string-output loop using the stream jump table's overflow specification.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBuf.v',
+    "These assertions describe a stream's writable buffer space and the overflow behavior required by string output.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBytes.v',
+    "This proof verifies the short byte-copy loop used by glibc's default string-output routine for small writes.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnCopy.v',
+    "This rule verifies copying caller bytes into a stream buffer through libpizlo's memory-move contract.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnRoom.v',
+    "This proof verifies the bulk-copy path that fills available stream-buffer space when more than twenty bytes fit.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnSmall.v',
+    "This proof verifies the small-copy path that fills at most twenty bytes of available stream-buffer space.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnTail.v',
+    "This proof verifies how default string output finishes a round by returning or sending another byte through overflow.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputn.v',
+    "This proof verifies glibc's file string-output routine using specifications for buffered overflow and direct byte writes.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnBase.v',
+    "This module supplies stream-field ownership, newline scanning, and shared call rules for glibc's file string-output proof.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnCall.v',
+    "This proof verifies file string output's indirect write call while preserving the caller's share of the input bytes.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnDo.v',
+    "This proof follows file string output's direct-write path when the stream needs neither appending nor seeking.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnEnter.v',
+    "These proofs verify how file string output counts the bytes that fit, including the line-buffered case.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFill.v',
+    "These proofs verify how file string output copies the fitting input bytes into its stream buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFlags.v',
+    "This proof verifies how file string output chooses the writable end from line-buffering and unbuffered flags.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFlush.v',
+    "This proof verifies how file string output either flushes through the overflow entry or returns immediately.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnReset.v',
+    "This proof verifies the read-area and write-area pointer resets within file string output's inlined write path.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnSetp.v',
+    "This proof verifies the final write-end update before file string output returns or handles remaining bytes.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnWrite.v',
+    "This proof verifies how file string output rounds direct writes to whole blocks for sufficiently large buffers.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAlloc.v',
+    "This proof verifies glibc's file-buffer allocation routine from the file-status query through installation of the new buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocBase.v',
+    "This module supplies device-number arithmetic and fresh-buffer ownership rules shared by the stream-allocation proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocBuf.v',
+    "This proof verifies how a buffered stream requests storage through its jump table's allocation entry.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocMode.v',
+    "This proof follows the character-device and terminal tests that decide whether an allocated stream buffer is line-buffered.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocShort.v',
+    "This proof verifies how an unbuffered stream uses its built-in one-byte buffer instead of allocating storage.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocTail.v',
+    "This proof verifies the final allocation steps that choose a buffer size, allocate storage, and install it.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflow.v',
+    "This proof verifies glibc's file overflow routine when the stream is already writing into its buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowAlloc.v',
+    "This proof verifies glibc's file overflow routine when the stream must first obtain a buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowAllocSetg.v',
+    "This proof follows overflow's initial allocation call and the subsequent setup of the new buffer's read pointers.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowBase.v',
+    "This module describes the write-area state and return values shared by the file overflow proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowCall.v',
+    "This proof verifies the call that sends a stream's pending bytes while file overflow flushes its buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowFlush.v',
+    "This proof verifies overflow's flush after storing a byte and its choice of success or error return.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowFull.v',
+    "This proof verifies how file overflow flushes a full stream buffer before storing the next byte.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowGen.v',
+    "This proof verifies the generic overflow entry that sets byte orientation and dispatches through the stream jump table.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowPut.v',
+    "This proof verifies overflow's byte store and the flush required for unbuffered streams or line-ending newlines.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSend.v',
+    "This proof verifies how overflow distinguishes a flush request from a request to store another byte.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetp.v',
+    "This proof verifies the write-pointer setup when file overflow switches a stream from reading to writing.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetpRest.v',
+    "This proof verifies the read-pointer resets and flag changes that finish a stream's switch to writing.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetpEnd.v',
+    "This proof verifies overflow's backup-area test and the write-end adjustment required for a line-buffered stream.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoWrite.v',
+    "This proof verifies glibc's buffered write helper while preserving the stream fields and jump-table ownership.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteCall.v',
+    "This proof verifies the jump-table check and indirect file-write call made by glibc's buffered write helper.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteCode.v',
+    "This generated module supplies checked IR for glibc's buffered write helper and file overflow routine.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteEnd.v',
+    "This proof verifies the final write-end update for line-buffered and block-buffered streams after a buffered write.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteRet.v',
+    "This proof verifies the buffered write helper's column-tracking join when the current column field is zero.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteSetp.v',
+    "This proof verifies how the buffered write helper resets write pointers and checks the stream's orientation.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteTail.v',
+    "This proof verifies how the buffered write helper resets a stream's read pointers after flushing output.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFclose.v',
+    "This proof verifies glibc's compiled fclose implementation for the standard output stream during program shutdown.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFcloseCode.v',
+    "This generated module supplies the checked IR of glibc's fclose implementation to the stream-close proof.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFcloseLock.v',
+    "These proofs verify how glibc's fclose acquires and releases the stream lock in the single-threaded case.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFcloseTail.v',
+    "This proof follows fclose's final unlink and finish calls for the statically allocated standard output stream.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFinish.v',
+    "These proofs verify the default and file-specific finish entries for a stream already closed and unlinked.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlush.v',
+    "This proof verifies glibc's flush-all routine by following its traversal of the open-stream list.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushBody.v',
+    "This module describes streams open at exit and specifies one iteration of the flush-all loop.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushClean.v',
+    "These proofs verify the flush-all paths that need neither an overflow call nor a synchronization call.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushCode.v',
+    "This generated module supplies the checked IR of glibc's flush-all routine to the stream-list proof.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushFpLock.v',
+    "This proof verifies how a flush iteration records the current stream and acquires its single-threaded lock.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushFpUnlock.v',
+    "This proof verifies how a flush iteration releases its stream lock and advances along the stream list.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushOver.v',
+    "This proof verifies flush-all iterations over streams with buffered output and combines them with already-clean streams.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushOverCall.v',
+    "This proof verifies flush-all's checked jump-table dispatch to the overflow entry that flushes a stream.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushStart.v',
+    "This proof verifies flush-all's cleanup-buffer setup and acquisition of the lock protecting the open-stream list.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFlushTail.v',
+    "This proof verifies how flush-all releases the stream-list lock, restores the cleanup buffer, and returns.").
+file_blurb('nanofil/rocq/glibc/libio/LibioGenCode.v',
+    "This generated module supplies checked IR for generic stream output, marker cleanup, and thread-local destructor calls.").
+file_blurb('nanofil/rocq/glibc/libio/LibioGenLeaves.v',
+    "These proofs verify glibc's thread-local destructor call and stream-marker cleanup under the assumptions of the exit proof.").
+file_blurb('nanofil/rocq/glibc/libio/LibioLogic.v',
+    "This module supplies arithmetic facts, pointer checks, and symbolic execution tactics shared by glibc's stream proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsCode.v',
+    "This generated module supplies checked IR for glibc's puts and fputs routines to the output proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioRead.v',
+    "These proofs verify glibc's stream queries and file close and status helpers over the stream invariant.").
+file_blurb('nanofil/rocq/glibc/libio/LibioReadCode.v',
+    "This generated module supplies checked IR for glibc's stream queries, buffer allocation, and low-level file operations.").
+file_blurb('nanofil/rocq/glibc/libio/LibioSetb.v',
+    "This proof verifies how glibc replaces a stream buffer, freeing the old storage when the stream owns it.").
+file_blurb('nanofil/rocq/glibc/libio/LibioUnlink.v',
+    "This proof verifies how glibc removes a stream from the open-stream list while preserving list ownership.").
+file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkCode.v',
+    "This generated module supplies checked IR for glibc's stream unlinking routine and its file and default finish entries.").
+file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkLock.v',
+    "This proof verifies the cleanup-buffer setup and stream and list locks acquired before unlinking a stream.").
+file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkMid.v',
+    "This proof verifies the pointer updates that splice a stream out of glibc's doubly linked stream list.").
+file_blurb('nanofil/rocq/glibc/libio/LibioUnlinkTail.v',
+    "This proof verifies the final unlink steps that clear the linked flag, release locks, and restore cleanup state.").
+file_blurb('nanofil/rocq/glibc/libio/LibioWrite.v',
+    "This proof verifies glibc's low-level file-write loop, including partial writes and the stream's resulting error state.").
+file_blurb('nanofil/rocq/glibc/libio/LibioWriteCall.v',
+    "This proof verifies how the file-write loop calls the syscall wrapper on the remaining byte slice.").
+file_blurb('nanofil/rocq/glibc/libio/LibioWriteExit.v',
+    "These proofs verify file-write loop exits, stream error flags, and updates to the total number of bytes written.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnCode.v',
+    "This generated module supplies checked IR for glibc's file string-output implementation to the buffered output proofs.").
+file_blurb('nanofil/rocq/glibc/libio/SysCleanup.v',
+    "This proof verifies how glibc pushes a thread cleanup buffer using the descriptor returned by libpizlo.").
+file_blurb('nanofil/rocq/glibc/libio/SysCleanupPop.v',
+    "This proof verifies how glibc pops a thread cleanup buffer and restores the previous cleanup state.").
+file_blurb('nanofil/rocq/glibc/libio/SysCode.v',
+    "This generated module supplies checked IR for glibc's syscall wrappers, terminal query, and thread cleanup-buffer helpers.").
+file_blurb('nanofil/rocq/glibc/libio/SysWrappers.v',
+    "These proofs verify glibc's compiled syscall wrappers against the contracts for their calls into libpizlo.").
+
+%  Live campaign & worked examples: rocq/glibc/
 file_blurb('nanofil/rocq/glibc/GlibcLogic.v',
-    "Shared separation-logic rules and VM-computed step tactics for proofs over compiled userland glibc IR.").
+    "This module supplies shared ownership rules and symbolic execution tactics for proofs of compiled glibc functions.").
+file_blurb('nanofil/rocq/glibc/LenCode.v',
+    "This generated module supplies checked IR for a string-length example linked with glibc's own strlen implementation.").
 file_blurb('nanofil/rocq/glibc/LenLogic.v',
-    "Worked example proving that `len.c` (`c: strlen(\"hello, glibc\")`) linked with compiled glibc `c: strlen` never panics.").
+    "This example proves that measuring a fixed greeting with glibc's compiled strlen never panics, without external contracts.").
+file_blurb('nanofil/rocq/glibc/SayCode.v',
+    "This generated module supplies checked IR for a greeting program linked with glibc's strlen and write implementations.").
 file_blurb('nanofil/rocq/glibc/SayLogic.v',
-    "Worked example proving `say.c` (`c: write(1, msg, strlen(msg))`) linked with compiled glibc `c: strlen` and `c: write` over [OsWrite](zsys/OsWrite.v).").
+    "This example proves safe greeting output through glibc's compiled strlen and write, using libpizlo's write contract.").
 file_blurb('nanofil/rocq/glibc/StrlenBits.v',
-    "Word-level byte extraction, bit-masking, and popcount lemmas for glibc's word-at-a-time string scans.").
+    "These arithmetic lemmas support glibc's word-at-a-time string scans by relating byte extraction, masks, and population counts.").
 file_blurb('nanofil/rocq/glibc/StrlenLogic.v',
-    "Proves the Hoare triple and loop invariant for userland glibc's compiled `c: strlen` over whole-word objects.").
+    "This proof verifies glibc's compiled strlen on whole-word objects for use by the greeting examples.").
 
-%  rocq/theories/core/
+%  Core framework: rocq/theories/core/
 file_blurb('nanofil/rocq/theories/core/Cfg.v',
-    "Control-flow graphs, Cooper–Harvey–Kennedy immediate dominators, and preorder dominator-tree intervals, transcribed from `cfg.pl`.").
+    "This module builds control-flow graphs and computes dominators so the validator can check where definitions are available.").
 file_blurb('nanofil/rocq/theories/core/Extract.v',
-    "OCaml [[extraction]] of the IR decoder, [[interpreter]] semantics, and [[validator]] for the model and validator test drivers.").
+    "This module extracts the IR decoder, interpreter, and validator to OCaml for comparison with the Prolog compiler.").
 file_blurb('nanofil/rocq/theories/core/Ieee.v',
-    "Pure integer-bit-pattern IEEE 754 floating-point arithmetic (`binary32`, `binary64`, and x87 80-bit extended), transcribed from `ieee.pl`.").
+    "This module computes IEEE floating-point operations on integer bit patterns, including single, double, and extended precision.").
 file_blurb('nanofil/rocq/theories/core/Maps.v',
-    "Hash-bucketed finite maps keyed by IR [name] ([[name-map|name_map]]), proved equivalent to association-list [lookup].").
+    "These finite maps speed up name lookups on large modules while preserving the behavior of association lists.").
 file_blurb('nanofil/rocq/theories/core/Memory.v',
-    "Byte memory, object [[region|regions]], [[aux]] capability slots, Fil-C bounds and alignment checks ([access]), and [[fresh]] allocations.").
+    "This module models data bytes, object regions, and shadow capabilities, together with access checks and memory operations.").
 file_blurb('nanofil/rocq/theories/core/Ops.v',
-    "Integer ALU operations, shifts, divisions, conversions, and pointer arithmetic ([op_res]), transcribed from `interp.pl`.").
+    "This module evaluates checked-IR operations, including integer arithmetic, pointer checks, raw memory accesses, and floating-point conversions.").
 file_blurb('nanofil/rocq/theories/core/Run.v',
-    "Builds a module's initial memory and steps a function call to an [[outcome]] under any [Runtime] implementation.").
+    "This runner lays out a module's initial memory and executes a function using an arbitrary runtime implementation.").
 file_blurb('nanofil/rocq/theories/core/Runtime.v',
-    "Axiomatizes the Fil-C allocator, `c: free`, and garbage-collector [[poll|safepoints]] as `Module Type Runtime`, and instantiates it for nanofil's [[interpreter]].").
+    "This module states allocator and collector assumptions and constructs the interpreter runtime that satisfies them.").
 file_blurb('nanofil/rocq/theories/core/Semantics.v',
-    "Small-step operational semantics ([step]) of the [[core subset]] of [[stage|checked IR]] over explicit call stacks and frames.").
+    "This module defines how checked-IR instructions advance execution, including calls, returns, memory accesses, and allocation requests.").
 file_blurb('nanofil/rocq/theories/core/Syntax.v',
-    "Inductive syntax of the [[core subset]] of [[stage|checked IR]] ([inst], [jump], [block], [func], [module]) and its value [[class|classes]].").
+    "This module defines the instructions, blocks, functions, and data declarations that make up a checked-IR module.").
 file_blurb('nanofil/rocq/theories/core/Term.v',
-    "Ground Prolog terms ([term]) used as IR identifier names and as the serialization format between Prolog and Rocq.").
+    "This module represents the ground Prolog terms exchanged between the compiler and the formal model.").
 file_blurb('nanofil/rocq/theories/core/Transport.v',
-    "Decodes Prolog [term] representations into [Syntax](Syntax.v) ASTs and encodes model [[outcome|outcomes]] back to Prolog terms.").
+    "This module decodes Prolog terms into checked IR and encodes execution outcomes for comparison with Prolog.").
 file_blurb('nanofil/rocq/theories/core/ValidFast.v',
-    "Fast [[validator]] implementation ([valid_fast]) using [[name-map|name_map]] for [[single definition|single-definition]] lookup, proved equivalent to [valid].").
+    "This faster validator uses finite name maps and is proved equivalent to the original list-based validator.").
 file_blurb('nanofil/rocq/theories/core/Validate.v',
-    "The [[stage|checked IR]] [[validator]] ([valid]), checking SSA dominance, capability checks, [[reuse]] forms, and scheduled checks.").
+    "This validator checks module structure, definition dominance, capability evidence, and the placement of reused or scheduled checks.").
 file_blurb('nanofil/rocq/theories/core/Values.v',
-    "Run-time values ([cap], [ptr], [word]) pairing addresses with invisible [[capability|capabilities]] across integer and pointer [[class|classes]].").
+    "This module represents runtime words and pointers, keeping a pointer's invisible capability separate from its address.").
 
-%  rocq/theories/soundness/
+%  Core framework: rocq/theories/soundness/
 file_blurb('nanofil/rocq/theories/soundness/Ahead.v',
-    "Formalizes the validator's backward dataflow pass ([ahead_justified]) for hoisted [[check_ahead]] instructions and their pending obligations ([[need]]).").
+    "This module describes the backward analysis that justifies early capability checks by tracking pending access obligations.").
 file_blurb('nanofil/rocq/theories/soundness/Chain.v',
-    "Proves that dominating [[single definition|single definitions]] justify the [[offset-interval|offset intervals]], [[guard chain|guard chains]], and pointer distances used by check reuse.").
+    "This proof connects dominating definitions to the pointer distances and guards that justify reusing capability checks.").
 file_blurb('nanofil/rocq/theories/soundness/Coverage.v',
-    "Proves [covered_access_ok]: any [[raw access]] covered by a passed [[check]] is in bounds and never produces [[unchecked]].").
+    "This proof shows that a raw memory access covered by a successful check cannot fail as unchecked.").
 file_blurb('nanofil/rocq/theories/soundness/Dominance.v',
-    "Proves that [Cfg](../core/Cfg.v)'s preorder dominator-tree interval test implies true control-flow path [[dominance]] from function entry.").
+    "This proof shows that the dominator-tree interval test implies dominance along every control-flow path from entry.").
 file_blurb('nanofil/rocq/theories/soundness/Doomed.v',
-    "Proves that a [[doomed frame]] from a failed early [[check_ahead]] executes only transparent steps until its own access traps, never reaching [[unchecked]].").
+    "This proof shows that a failed early check eventually traps without allowing an intervening unchecked access.").
 file_blurb('nanofil/rocq/theories/soundness/Evidence.v',
-    "Single-instruction soundness of the forward [[evidence pass]], showing that [[live facts]] survive instructions and cover raw accesses.").
+    "This proof shows that each validated instruction preserves usable capability evidence and checks its raw accesses.").
 file_blurb('nanofil/rocq/theories/soundness/Guard.v',
-    "Proves soundness of the [[renew_if]] and [[limit|check_limit]] reuse forms from dominating [[span test|span tests]] and [[guard chain|guard chains]].").
+    "This proof justifies conditional check reuse from earlier span tests, saved bounds, and the guards that connect them.").
 file_blurb('nanofil/rocq/theories/soundness/Identity.v',
-    "Proves object-[[identity]] persistence ([persists]) across runs: allocated regions are never reused at the same base, and freed objects stay freed.").
+    "This proof shows that object identities remain registered throughout execution and that freed objects remain freed.").
 file_blurb('nanofil/rocq/theories/soundness/Interval.v',
-    "Proves soundness of the validator's integer [[offset-interval|offset interval]] analysis ([offset_interval_iv], [iv_sound]).").
+    "This proof shows that the validator's inferred integer intervals contain the offsets computed during execution.").
 file_blurb('nanofil/rocq/theories/soundness/Invariant.v',
-    "States the run-level [[evidence]] invariant ([inv]) across the active frame and waiting callers.").
+    "This module states the execution invariant that tracks valid check evidence in active frames and suspended callers.").
 file_blurb('nanofil/rocq/theories/soundness/Machine.v',
-    "Couples [Semantics](../core/Semantics.v)'s small-step execution to an arbitrary [Runtime] ([mstep]) and proves that allocation readiness ([[ready]]) is preserved.").
+    "This machine connects instruction execution to an arbitrary runtime and proves that every step preserves runtime readiness.").
 file_blurb('nanofil/rocq/theories/soundness/Persistence.v',
-    "Proves that the [[evidence]] invariant [inv] holds across every machine step, so non-doomed frames never perform an [[unchecked]] access.").
+    "This proof preserves the evidence invariant across execution so validated frames never perform an unchecked access.").
 file_blurb('nanofil/rocq/theories/soundness/Renew.v',
-    "Proves soundness of the [[renew]], [[renew_hull]], and [[half check]] reuse forms from dominating earlier checks and pointer distances.").
+    "This proof justifies reused and partial capability checks from earlier checks that dominate the current instruction.").
 file_blurb('nanofil/rocq/theories/soundness/Single.v',
-    "Proves the [[single-definition invariant]] ([sinv]): every dominating single definition still holds the value its instruction computed.").
+    "This proof shows that dominating single definitions retain the values needed to replay pointer and guard calculations.").
 file_blurb('nanofil/rocq/theories/soundness/Sites.v',
-    "Connects [Validate](../core/Validate.v)'s single-definition table and strict-[[ssa|SSA]] site check so each single definition's [[site]] dominates its uses.").
+    "This proof connects the validator's definition-site checks to dominance at every use of a temporary.").
 file_blurb('nanofil/rocq/theories/soundness/Soundness.v',
-    "Proves the main validator soundness theorem ([valid_no_unchecked]): a module accepted by the [[validator]] never steps to [[unchecked]].").
+    "This theorem proves that every module accepted by the validator executes without reaching an unchecked operation.").
 file_blurb('nanofil/rocq/theories/soundness/Steps.v',
-    "Inversion and frame-preservation lemmas for individual [Semantics](../core/Semantics.v) steps.").
+    "These lemmas recover the instruction and frame changes responsible for a particular step of execution.").
 file_blurb('nanofil/rocq/theories/soundness/Walk.v',
-    "Connects the validator's block-by-block fold ([evidence_pass]) to the live capability facts holding at each point inside a block.").
+    "This proof connects the validator's traversal of each block to the capability facts available during execution.").
 
-%  rocq/theories/external/
+%  Core framework: rocq/theories/external/
 file_blurb('nanofil/rocq/theories/external/ExternalCalls.v',
-    "Defines trusted [[external call]] [contract] records (ABI, precondition, writable spans, released objects, postcondition) and memory-effect paths ([effects]).").
+    "These contracts specify external calls through argument requirements, permitted memory changes, released objects, and return conditions.").
 file_blurb('nanofil/rocq/theories/external/ExternalMachine.v',
-    "Extends [Machine](../soundness/Machine.v) with external contract invocations, call traces, and external world state.").
+    "This machine extends core execution with contract-governed external calls, observable call traces, and external world state.").
 file_blurb('nanofil/rocq/theories/external/Shutdown.v',
-    "Models the shutdown protocol for registered `c: atexit` callbacks, `c: stdout` flush obligations, and process exit.").
+    "This protocol tracks exit callbacks and output obligations before handing process termination to the host runtime.").
 file_blurb('nanofil/rocq/theories/external/Startup.v',
-    "Models initial memory layout from the Fil-C launcher (`filc_start_program.c`), with capability-backed `c: argv` and `c: environ` arrays.").
+    "These predicates describe the capability-backed argument and environment arrays that Fil-C's launcher provides before main begins.").
 file_blurb('nanofil/rocq/theories/external/Stdio.v',
-    "Logical `c: stdout` protocol tracking ordered output bytes and stream error state across external calls.").
+    "This protocol tracks required output bytes, delivered prefixes, and stream errors across calls that affect standard output.").
 
-%  rocq/theories/logic/
+%  Core framework: rocq/theories/logic/
 file_blurb('nanofil/rocq/theories/logic/ContractFrame.v',
-    "Proves the separation-logic frame rule for [[external call|external calls]], showing that caller-owned memory outside borrowed buffers survives a call unchanged.").
+    "This proof shows that external calls preserve caller-owned memory outside the buffers and objects they may change.").
 file_blurb('nanofil/rocq/theories/logic/Heap.v',
-    "Instantiates Iris's ghost heap over [Pieces](Pieces.v), defining the state interpretation [heap_interp] and update lemmas for allocations, stores, and frees.").
+    "This module connects logical ownership of memory pieces to physical memory across stores, allocations, and collection.").
 file_blurb('nanofil/rocq/theories/logic/Language.v',
-    "Turns [ExternalMachine](../external/ExternalMachine.v) into an Iris language with the call stack as evaluation context, and proves that Iris [[adequacy]] implies [never_panics].").
+    "This module presents the machine as an Iris language and connects program-logic proofs to execution safety.").
 file_blurb('nanofil/rocq/theories/logic/Logic.v',
-    "Defines the separation-logic assertions ([live], [icell], [pcell], [obj]) and weakest-precondition rules for every checked-IR instruction and external call.").
+    "This program logic provides memory ownership assertions and proof rules for checked-IR instructions and external calls.").
 file_blurb('nanofil/rocq/theories/logic/MemLogic.v',
-    "Defines byte and [[aux]] block assertions in [Logic](Logic.v) and derives Hoare triples for contract-based libc memory calls (`c: memset`, `c: memcpy`, `c: malloc`, `c: free`).").
+    "These rules describe ownership of byte and capability buffers across contract-based memory copying, allocation, and deallocation calls.").
 file_blurb('nanofil/rocq/theories/logic/Panics.v',
-    "Defines the whole-program safety property [never_panics] (no run reaches a capability [[trap]], [[unchecked]] access, or UB) and its invariant proof rule.").
+    "This module distinguishes safety failures from ordinary endings and states what it means for a program never to panic.").
 file_blurb('nanofil/rocq/theories/logic/Pieces.v',
-    "Splits memory into ownable pieces ([PLive], [PByte], [PAux], [PName]) keyed by object [[identity]] and proves basic memory-agreement facts.").
+    "This module divides memory into independently owned pieces keyed by object identity rather than physical address.").
 file_blurb('nanofil/rocq/theories/logic/StepRules.v',
-    "Forward per-instruction stepping lemmas for [Semantics](../core/Semantics.v)'s [step], reducing each instruction from local premises without unfolding the whole function.").
+    "These rules advance individual checked-IR instructions from local premises without unfolding the whole interpreter or memory state.").
 file_blurb('nanofil/rocq/theories/logic/StringLogic.v',
-    "Defines C string ownership ([string]) in [Logic](Logic.v) and derives Hoare triples for contract-based libc string calls (`c: strlen`, `c: strchr`, `c: puts`).").
+    "These ownership assertions and call rules support C strings, suffix borrowing, and contract-based string and output functions.").
 file_blurb('nanofil/rocq/theories/logic/Symbolic.v',
-    "Ltac symbolic-execution tactics that discharge [StepRules](StepRules.v)'s instruction premises over abstract environments and memories.").
+    "These tactics automate instruction steps while keeping the surrounding environments, memory state, and execution fuel abstract.").
 file_blurb('nanofil/rocq/theories/logic/VariadicLogic.v',
-    "Weakest-precondition rules ([wp_snapshot], [wp_va_arg]) for Fil-C's variadic argument [[snapshot]] object and `c: va_arg` reads.").
+    "These rules verify variadic argument snapshots and pointer reads through the cursor stored in a va_list.").
 file_blurb('nanofil/rocq/theories/logic/WordBits.v',
-    "Little-endian 64-bit word byte extraction ([byte_of]), bitmask, shift, and carry-free arithmetic lemmas for word-at-a-time string proofs.").
+    "These arithmetic lemmas relate little-endian bytes, masks, shifts, and carry-free arithmetic for word-at-a-time memory proofs.").
 
-%  rocq/theories/programs/
+%  Worked example programs: rocq/theories/programs/
 file_blurb('nanofil/rocq/theories/programs/Buffer.v',
-    "Proves [never_panics] for `buffer.c` (allocating, filling, and summing a 4-word heap buffer) by a direct 32-point invariant over [Symbolic](../logic/Symbolic.v).").
+    "This example proves safe allocation and repeated summation of a four-element heap buffer using a direct execution invariant.").
+file_blurb('nanofil/rocq/theories/programs/BufferCode.v',
+    "This generated module supplies checked IR for the heap-buffer example to its two alternative safety proofs.").
 file_blurb('nanofil/rocq/theories/programs/BufferLogic.v',
-    "Proves [buffer_never_panics] for `buffer.c` in Iris separation logic ([Logic](../logic/Logic.v)) for direct comparison with [Buffer](Buffer.v).").
+    "This example proves the heap-buffer program safe using separation logic, loop induction, and ownership of individual cells.").
 file_blurb('nanofil/rocq/theories/programs/Composition.v',
-    "Combines the `stdio_world`, stdout byte protocol, and exit-callback registry into one [program_world] for `hi.c`.").
+    "This module combines stream state, output obligations, and exit callbacks for the contract-based greeting program.").
+file_blurb('nanofil/rocq/theories/programs/CountCode.v',
+    "This generated module supplies checked IR for the example that counts character occurrences using a reusable helper.").
 file_blurb('nanofil/rocq/theories/programs/CountLogic.v',
-    "Proves [count_never_panics] for `count.c` in [Logic](../logic/Logic.v), giving helper `next_l` (`c: strchr`) a modular Hoare triple called in a loop.").
+    "This example proves a character-counting loop safe by specifying its helper separately and borrowing string suffixes.").
 file_blurb('nanofil/rocq/theories/programs/Cycle.v',
-    "Proves [never_panics] for `cycle.c` (summing `c: xs[i % 4]` for any trip count `n`) using Floyd inductive assertions and [Symbolic](../logic/Symbolic.v).").
+    "This example proves safe cyclic reads from a four-element global array for any loop trip count.").
+file_blurb('nanofil/rocq/theories/programs/CycleCode.v',
+    "This generated module supplies checked IR for the loop that repeatedly sums a small read-only global array.").
 file_blurb('nanofil/rocq/theories/programs/Hi.v',
-    "Proves `hi.c` (`c: puts(\"hi\")`) against [ExternalCalls](../external/ExternalCalls.v)'s `puts` contract by a direct labelled-machine invariant.").
+    "This example proves a greeting program safe against a trusted puts contract using a direct machine invariant.").
 file_blurb('nanofil/rocq/theories/programs/HiArtifact.v',
-    "Checks that decoding `HiCode.v`'s generated IR yields the exact [hi_module] proved in [Hi](Hi.v).").
+    "This proof checks that the compiler-generated greeting module decodes to the exact module used in its safety proof.").
+file_blurb('nanofil/rocq/theories/programs/HiCode.v',
+    "This generated module supplies checked IR for the small puts greeting used by the example proofs.").
 file_blurb('nanofil/rocq/theories/programs/HiLogic.v',
-    "Proves `hi.c` safe in Iris separation logic ([Logic](../logic/Logic.v)) using [StringLogic](../logic/StringLogic.v)'s [wp_puts] triple.").
+    "This example proves the greeting program safe using separation logic and the library rule for puts.").
 file_blurb('nanofil/rocq/theories/programs/Program.v',
-    "Composes launcher [Startup](../external/Startup.v), [Hi](Hi.v)'s `c: main` execution, and [Shutdown](../external/Shutdown.v) over [Composition](Composition.v).").
+    "This proof composes launcher startup, greeting execution, and shutdown into one contract-based program lifecycle.").
+file_blurb('nanofil/rocq/theories/programs/ScanCode.v',
+    "This generated module supplies checked IR for the string-scanning example that combines length, search, and output calls.").
 file_blurb('nanofil/rocq/theories/programs/ScanLogic.v',
-    "Proves [scan_never_panics] for `scan.c` in [Logic](../logic/Logic.v), chaining `c: strlen`, `c: strchr`, and `c: puts`.").
+    "This example proves safe string scanning and output while retaining permission to read the borrowed suffix afterward.").
+file_blurb('nanofil/rocq/theories/programs/SlotCode.v',
+    "This generated module supplies checked IR for the example whose helper retains a heap buffer across calls.").
 file_blurb('nanofil/rocq/theories/programs/SlotLogic.v',
-    "Proves [slot_never_panics] for `slot.c` in [Logic](../logic/Logic.v), verifying a callee that retains and reallocates a static heap buffer across calls.").
+    "This example verifies a helper that retains, reuses, and grows a heap buffer across repeated calls.").
 file_blurb('nanofil/rocq/theories/programs/Sum.v',
-    "Proves [never_panics] for `sum.c` (summing a 4-element read-only global array) by symbolic execution over [Panics](../logic/Panics.v).").
+    "This example proves that summing a four-element read-only global array never panics, using direct symbolic execution.").
+file_blurb('nanofil/rocq/theories/programs/SumCode.v',
+    "This generated module supplies checked IR for the small global-array sum used in the first closed-module proof.").
 
-%  rocq/theories/hello_contracts/
+%  Old reference proof: rocq/theories/hello_contracts/
 file_blurb('nanofil/rocq/theories/hello_contracts/CallbackLogic.v',
-    "Bridges a Hoare triple for a registered void exit callback (`close_stdout`) to [Linked](Linked.v)'s callback execution step.").
+    "This theorem connects a registered exit callback's program-logic specification to its execution in the shutdown machine.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Diagnostics.v',
-    "External-call contract for gnulib/glibc `c: error` diagnostics, separating status-zero returns from nonzero exit requests.").
+    "This contract distinguishes diagnostics that return normally from diagnostics that request process exit with a nonzero status.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Ending.v',
-    "Intercepts `c: exit` requests at the labelled machine boundary and runs registered exit callbacks before process termination.").
+    "This shutdown model intercepts exit requests and runs registered callbacks before the final host exit.").
 file_blurb('nanofil/rocq/theories/hello_contracts/ExitMemory.v',
-    "Capability-backed memory layout of glibc's `__exit_funcs` callback table for `c: atexit` and `c: __cxa_atexit`.").
+    "This module describes the capability-backed callback registry used to store exit handlers in the contract-based Hello proof.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Formatting.v',
-    "External-call contracts for GNU Hello's formatted output calls (`c: printf`, `c: fprintf`, `c: fputs`, `c: putchar`, `c: wprintf`).").
+    "These contracts specify GNU Hello's formatted output calls and the format-string checks that make them safe.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Getopt.v',
-    "External-call contract for `c: getopt_long`, modeling `c: optarg` and `c: optind` updates in the composite libc world.").
+    "This contract specifies option parsing, including argument-string provenance and updates to the option argument and index cells.").
 file_blurb('nanofil/rocq/theories/hello_contracts/GetoptLogic.v',
-    "Ghost-token ownership ([getopt_ps]) and read rules for `c: optarg` and `c: optind` cells updated by [Getopt](Getopt.v).").
+    "These ownership rules let a caller read the option argument and index cells after option parsing.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloClose.v',
-    "Proves Hoare triples for gnulib's `close_stream` and `close_stdout` exit callback over per-function libc stream contracts.").
+    "These proofs verify GNU Hello's stream-closing helper and standard-output exit callback against the retained libc contracts.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloCode.v',
+    "This generated module supplies GNU Hello's linked checked IR to the reference proof against per-function libc contracts.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloConv.v',
-    "Proves Hoare triples for `c: mbrtowc` and gnulib's `rpl_mbrtowc` and `rpl_mbsrtowcs` wide-character greeting conversion.").
+    "These proofs verify the multibyte-to-wide-character conversions used to prepare GNU Hello's greeting for wide output.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloConvDefs.v',
-    "Shared memory-span lemmas and IR definitions for gnulib's wide-character conversion helpers.").
+    "This module shares memory-span facts and conversion-function definitions between GNU Hello's main and character-conversion proofs.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloDiagnosticChecks.v',
-    "Discharges format-string and literal-argument preconditions for GNU Hello's concrete `c: error` call sites.").
+    "These proofs discharge format-string and literal-argument requirements at GNU Hello's particular diagnostic call sites.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloJoin.v',
-    "Proves GNU Hello's greeting conversion and `c: wprintf` output path and combines it with [HelloMain](HelloMain.v) into [main_spec].").
+    "This proof verifies greeting conversion and wide output, then joins them to the rest of Hello's main function.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloLeaf.v',
-    "Proves Hoare triples for GNU Hello's four gnulib leaf helpers (`mbszero`, `memeq`, `streq`, `strnlen1`).").
+    "These proofs verify GNU Hello's small memory and string wrappers against the retained per-function libc contracts.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloLocale.v',
-    "Proves Hoare triples for gnulib's `setlocale_null` and `hard_locale` wrappers over [LocaleLogic](LocaleLogic.v).").
+    "These proofs verify the locale-query helpers that GNU Hello uses to choose how to convert its greeting.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloMain.v',
-    "Proves GNU Hello's `c: main` from entry through `set_program_name`, `c: setlocale`, and `c: getopt_long` option parsing.").
+    "This proof follows Hello's main function through naming, locale setup, option parsing, and the help and version exits.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloModule.v',
-    "Decodes `HelloCode.v` into [hello_module], checks [valid_fast], and lists the module's internal functions and external symbols.").
+    "This module decodes and validates GNU Hello's generated IR and identifies the functions used by its reference proof.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloName.v',
-    "Proves the Hoare triple for gnulib's `set_program_name` over per-function libc string contracts.").
+    "This proof verifies program-name setup, including path searches, libtool prefix removal, and stores into global pointer cells.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloProgName.v',
-    "Strengthens [HelloName](HelloName.v)'s `set_program_name` triple to preserve full C string ownership of `c: argv[0]` and `program_name`.").
+    "This proof strengthens program-name setup so the caller retains full ownership of the original and selected name strings.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloReach.v',
-    "Verifies that `HelloCode.v`'s linked IR is closed under global symbol and callback-pointer references from `c: main`.").
+    "This check follows global symbols and callback pointers from main to verify that Hello's linked module is closed.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloStdio.v',
-    "Derives Hoare triples for GNU Hello's concrete `c: printf`, `c: fprintf`, `c: fputs`, `c: putchar`, and `c: wprintf` call sites.").
+    "These proofs establish the output-call specifications needed at Hello's concrete call sites using its owned string literals.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloVersion.v',
-    "Proves Hoare triples for GNU Hello's `print_help` and gnulib's `version_etc` functions using [VariadicLogic](../logic/VariadicLogic.v).").
+    "These proofs verify GNU Hello's help and version output, including its variadic version-formatting helpers.").
 file_blurb('nanofil/rocq/theories/hello_contracts/HelloWorld.v',
-    "Constructs the initial [libc_world] witness and entry memory connecting [Startup](../external/Startup.v), [HelloJoin](HelloJoin.v), and [HelloClose](HelloClose.v).").
+    "This module constructs the initial world and memory that connect Hello's startup, main proof, and exit callback.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LentLogic.v',
-    "Ghost-token ownership ([lent]) in [Logic](../logic/Logic.v) for strings lent by the external world, such as `c: setlocale` category names.").
+    "These ownership tokens track strings lent to the program by external library state, including locale category names.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Libc.v',
-    "Assembles the composite per-function libc world ([libc_world]) combining locale, `c: getopt_long`, `c: FILE` streams, `c: errno`, and shutdown state.").
+    "This module combines locale, option parsing, streams, errno, character conversion, and shutdown state into one libc world.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LibcDiagnosticLogic.v',
-    "Hoare triples for returning and non-returning `c: error` diagnostic calls over [Libc](Libc.v).").
+    "These rules verify diagnostic calls that either return normally or request exit through the composite libc world.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LibcErrnoLogic.v',
-    "Hoare triples for `c: FILE` stream calls (`c: fclose`, `c: ferror`, `c: fflush`) that borrow and return `c: errno`.").
+    "These stream-call rules lend the program's errno cell to libc and return ownership after the call.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LibcExit.v',
-    "Non-returning external-call contract for `c: _exit` over [Libc](Libc.v).").
+    "This contract describes immediate process termination through libc without returning to the program or running further instructions.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamAdapter.v',
-    "Transfers stream handle tokens and `c: errno` ownership into the `close_stdout` exit callback.").
+    "This adapter transfers stream-handle tokens and errno ownership from the external world into the standard-output exit callback.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamLogic.v',
-    "Framing lemmas keeping caller-owned memory disjoint from private `c: FILE` stream storage in [LibcStreams](LibcStreams.v).").
+    "These framing rules keep program-owned memory separate from the private stream storage maintained by libc contracts.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamTokens.v',
-    "Ghost token bookkeeping for `c: stdout` and `c: stderr` handles across `close_stdout` callback teardown.").
+    "These tokens track the lifetime of standard-output and standard-error handles while the exit callback closes streams.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreams.v',
-    "Composite `c: stdout` and `c: stderr` stream contracts over [Libc](Libc.v), tying `c: stdout` to [Shutdown](../external/Shutdown.v).").
+    "These stream contracts connect standard output and standard error to the composite world and shutdown's output obligations.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Linked.v',
-    "Models labelled-machine execution of registered void exit callbacks (`close_stdout`) popped from [ExitMemory](ExitMemory.v) at shutdown.").
+    "This machine runs registered void exit callbacks as they are removed from the callback registry during shutdown.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Locale.v',
-    "External-call contract and [locale_world] for `c: setlocale` over glibc's 13 locale categories.").
+    "This contract models locale queries and updates while lending category-name strings from library state to the caller.").
 file_blurb('nanofil/rocq/theories/hello_contracts/LocaleLogic.v',
-    "World interpretation ([locale_wi]) and Hoare triples for `c: setlocale` queries over [Locale](Locale.v).").
+    "These rules connect locale queries to the external world and track ownership of the borrowed name strings.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Streams.v',
-    "External-call contracts for `c: FILE` stream queries (`c: ferror`, `c: fileno`, `c: __freading`) and `c: fclose`.").
+    "These contracts describe stream queries and closing operations through the stream components of the composite libc world.").
 
-%  rocq/spikes/
+%  Program-logic worked example: rocq/spikes/
 file_blurb('nanofil/rocq/spikes/ListSum.v',
-    "Decodes `ListSumCode.v` and sets up the `listsum` and `sum` functions and initial call frames for [ListSumLogic](ListSumLogic.v).").
+    "This module decodes the linked-list example and prepares its functions, globals, and initial frames for the safety proof.").
+file_blurb('nanofil/rocq/spikes/ListSumCode.v',
+    "This generated module supplies checked IR for the example that allocates and sums a linked list.").
 file_blurb('nanofil/rocq/spikes/ListSumLogic.v',
-    "Proves `listsum.c` in [Logic](../theories/logic/Logic.v) with modular Hoare triples ([wp_call_bind]) and list-segment Löb induction.").
-file_blurb('nanofil/rocq/spikes/Poison.v',
-    "Taint-tracking operational semantics for constant-time verification, modeling secret poison propagation and branch/address leak checks.").
-file_blurb('nanofil/rocq/spikes/PoisonSbox.v',
-    "Proves constant-time execution (no secret-dependent branch or memory-address leaks) for an S-box lookup example under [Poison](Poison.v).").
+    "This example proves a linked-list sum safe using modular function specifications and ownership of list segments.").
 
-%  rocq/backend/
+%  Gallina compiler backend: rocq/backend/
 file_blurb('nanofil/rocq/backend/Abi.v',
-    "Lowers checked-IR calls, arguments, returns, and function objects into [Plan](Plan.v) Fil-C ABI actions, matching `filc_abi.pl`.").
+    "This pass lowers calls, arguments, returns, and function objects into the actions required by Fil-C's calling conventions.").
 file_blurb('nanofil/rocq/backend/Asm.v',
-    "Inductive representation of x86-64 assembly lines ([line], [operand]) and AT&T syntax printer matching `asm.pl`.").
+    "This module represents x86-64 assembly lines and prints GNU assembler syntax to match the Prolog printer exactly.").
 file_blurb('nanofil/rocq/backend/AsmTerm.v',
-    "Decodes Prolog assembly-line terms into [Asm](Asm.v) instructions for differential testing of the assembly printer.").
+    "This decoder turns Prolog assembly terms into typed assembly lines so tests can compare the two printers.").
 file_blurb('nanofil/rocq/backend/Compile.v',
-    "Top-level Gallina compilation pipelines ([compile], [compile_allocated]) chaining promotion, copy propagation, pizlonation, validation, ABI lowering, and emission.").
+    "These compilation pipelines combine optimization, capability-check insertion, validation, calling-convention lowering, and stack-based or register-based assembly emission.").
 file_blurb('nanofil/rocq/backend/Copy.v',
-    "Copy and trivial-[[phi]] propagation ([copy_module]) on strict-SSA unchecked IR, matching `copy.pl`.").
+    "This pass propagates copies and trivial phi nodes through unchecked SSA modules to match the Prolog optimizer.").
 file_blurb('nanofil/rocq/backend/Emit.v',
-    "Emits the x86-64 assembly of a function from its ABI [plan] in stack-homed mode (`--registers=stack`).").
+    "This emitter turns a function's calling-convention plan into complete x86-64 assembly with temporaries stored in stack slots.").
 file_blurb('nanofil/rocq/backend/EmitData.v',
-    "Emits x86-64 assembly directives for global data objects, thread-local storage, constructors, and symbol aliases.").
+    "This emitter produces assembly directives for global data, thread-local storage, constructor entries, and symbol aliases.").
 file_blurb('nanofil/rocq/backend/EmitInst.v',
-    "Emits x86-64 assembly for a single fused instruction, inline capability bounds check, or ABI action.").
+    "This emitter translates individual fused instructions, capability checks, and calling-convention actions into stack-based x86-64 assembly.").
 file_blurb('nanofil/rocq/backend/EmitModule.v',
-    "Assembles the complete x86-64 output of a checked module ([module_lines]) across functions, data objects, aliases, and thunks.").
+    "This emitter assembles a checked module's functions, data objects, aliases, and weak-symbol thunks into one assembly output.").
 file_blurb('nanofil/rocq/backend/EmitObject.v',
-    "Emits Fil-C function objects, symbol getters, and generic/variadic calling-convention entry adapters.").
+    "This emitter produces Fil-C function objects, symbol getters, and entry adapters for generic and variadic calls.").
 file_blurb('nanofil/rocq/backend/EmitOps.v',
-    "Selects x86-64 scalar and x87 `c: long double` instructions for the stack-homed emitter, matching `amd64.pl`.").
+    "This module selects x86-64 scalar instructions and x87 extended-precision operations for the stack-based assembly emitter.").
 file_blurb('nanofil/rocq/backend/EmitThunk.v',
-    "Emits x86-64 assembly for weak-symbol resolution thunks from their [Plan](Plan.v) descriptions.").
+    "This emitter turns weak-symbol resolution plans into the x86-64 thunks needed to resolve optional external functions.").
 file_blurb('nanofil/rocq/backend/Escape.v',
-    "Escape analysis ([alloc_classes]) identifying local allocations used only by loads and stores at constant offsets, matching `escape.pl`.").
+    "This analysis finds local allocations whose addresses do not escape and whose accesses use known constant offsets.").
 file_blurb('nanofil/rocq/backend/Extract.v',
-    "Extracts the Gallina backend passes and compilers to OCaml for differential testing.").
+    "This module extracts the Gallina compiler passes to OCaml so tests can compare them with the Prolog backend.").
 file_blurb('nanofil/rocq/backend/FrameSlots.v',
-    "First-fit stack-slot allocator ([temp_slots]) sharing frame slots between non-overlapping temporaries, matching `frame_slots.pl`.").
+    "This allocator reuses stack slots for temporaries whose live intervals do not overlap and whose storage pools match.").
 file_blurb('nanofil/rocq/backend/Fuse.v',
-    "Fuses each capability [[check]] in checked IR with its following raw memory access or call ([fused_blocks]).").
+    "This pass combines each capability check with the following raw memory access or call before assembly emission.").
 file_blurb('nanofil/rocq/backend/IrTerm.v',
-    "Encodes [Syntax](../theories/core/Syntax.v) checked-IR ASTs back to Prolog [term]s, inverting [Transport](../theories/core/Transport.v)'s decoder.").
+    "These encoders turn typed checked-IR syntax back into the Prolog terms consumed by the compiler passes.").
 file_blurb('nanofil/rocq/backend/IrText.v',
-    "Parses nanofil's textual Prolog-clause IR format (`func/5`, `data/4`, `alias/3`, `context/2`), matching `ir_text.pl`.").
+    "This parser reads the compiler's textual Prolog-clause IR format, including functions, data declarations, aliases, and context records.").
 file_blurb('nanofil/rocq/backend/Layout.v',
-    "Stack-frame `%rbp` offset layout, symbol naming ([abi_symbol]), and assembly-line helpers shared by the emitter modules.").
+    "This module supplies stack-frame offsets, symbol names, and assembly constructors shared by the code emitters.").
 file_blurb('nanofil/rocq/backend/Liveness.v',
-    "Backward dataflow liveness analysis ([temp_liveness]) over fused basic blocks, matching `cfg.pl`.").
+    "This backward analysis computes which temporaries remain live at the entry and exit of each fused block.").
 file_blurb('nanofil/rocq/backend/Nfb.v',
-    "Typed NFB bytecode encoder ([encode]) and canonical decoder ([decode]) for [Syntax](../theories/core/Syntax.v) modules.").
+    "This module encodes typed checked-IR modules into NFB bytecode and decodes their canonical binary representation.").
 file_blurb('nanofil/rocq/backend/NfbProof.v',
-    "Proves the top-level NFB bytecode round-trip and canonical decoding theorems ([round_trip], [decode_canonical]).").
+    "These theorems prove that NFB encoding is canonical and that decoding recovers the original checked-IR module.").
 file_blurb('nanofil/rocq/backend/NfbRead.v',
-    "Proves the term-level NFB round-trip theorem ([read_encode_term]): [read_term] inverts [encode_term] on every valid module term.").
+    "This proof shows that reading an encoded valid module term recovers exactly the original Prolog term.").
 file_blurb('nanofil/rocq/backend/NfbTerm.v',
-    "Term-level encoder ([encode_term]) and decoder ([read_term]) for nanofil's binary NFB module bytecode, matching `nfb.pl`.").
+    "This module encodes and reads NFB binary modules at the Prolog-term level to match the Prolog implementation.").
 file_blurb('nanofil/rocq/backend/NfbTotal.v',
-    "Proves that [NfbTerm](NfbTerm.v)'s fuel-bounded bytecode readers never exhaust their word-length fuel budget.").
+    "This proof shows that NFB readers finish within the recursion budget derived from the input's word length.").
 file_blurb('nanofil/rocq/backend/NfbTransport.v',
-    "Proves the AST-to-term half of the NFB round trip ([decode_enc_module]), showing [decode_module] inverts [enc_module].").
+    "This proof shows that decoding the Prolog-term encoding of a typed module recovers its original syntax.").
 file_blurb('nanofil/rocq/backend/Order.v',
-    "Implements Prolog's standard term ordering (`sort/2`, `msort/2`, and `library(ordsets)`) on [Term](../theories/core/Term.v).").
+    "This module implements Prolog's standard term ordering so sorting and ordered sets agree between the two compilers.").
 file_blurb('nanofil/rocq/backend/Pizlonate.v',
-    "Lowers unchecked IR terms to [[stage|checked]] capability IR ([pizlonate_module]), inserting bounds checks, [[flight|flights]], and loop [[poll|polls]].").
+    "This pass inserts capability checks, pointer flights, and loop-backedge collector polls to turn unchecked IR into checked IR.").
 file_blurb('nanofil/rocq/backend/Plan.v',
-    "Data types for a function's Fil-C ABI lowering plan ([plan], [thunk]) before register assignment.").
+    "These types describe a function's storage pools, fused checks, and calling-convention actions before registers are assigned.").
 file_blurb('nanofil/rocq/backend/PlanTerm.v',
-    "Encodes [Plan](Plan.v) ABI plans and weak thunks as Prolog [term]s for differential testing against `filc_abi.pl`.").
+    "These encoders turn calling-convention plans and weak-symbol thunks into Prolog terms for comparison with the Prolog backend.").
 file_blurb('nanofil/rocq/backend/Promote.v',
-    "SSA slot promotion ([promote_module]) turning non-escaping local allocations into temporaries and [[phi]] nodes, matching `promote.pl`.").
+    "This pass replaces non-escaping local memory slots with SSA temporaries and phi nodes to match the Prolog optimizer.").
 file_blurb('nanofil/rocq/backend/Regs.v',
-    "Loop-weighted interval register allocator ([alloc_regs]), allocation validator ([valid_alloc]), parallel-move resolver, and register assembly emitter.").
+    "This module allocates registers, validates the assignment, resolves parallel moves, and emits assembly using the assigned registers.").
 file_blurb('nanofil/rocq/backend/RegsProof.v',
-    "Proves [Regs](Regs.v)'s multi-block register-allocation validator ([valid_alloc]), parallel-move compiler ([compile_pmoves]), and frame/root invariants.").
+    "These proofs justify validated register assignments, parallel-move compilation, and the frame, saved-register, and root-storage invariants.").
 file_blurb('nanofil/rocq/backend/TermCfg.v',
-    "Control-flow graph ([term_cfg]), reverse postorder, and dominance frontiers ([cfg_frontiers]) for unchecked IR terms.").
+    "This module computes control-flow graphs, traversal orders, dominance frontiers, and temporary uses directly from unchecked IR terms.").
 file_blurb('nanofil/rocq/backend/Text.v',
-    "Difference-list string buffer ([parts]) used by the assembly printer to emit `.s` files in linear time.").
+    "This string buffer lets the assembly printer build large outputs without repeatedly copying the text already emitted.").
 
-%  rocq/backend/crane/ & rocq/backend/certirocq/
+%  Gallina compiler backend extraction: rocq/backend/crane/
 file_blurb('nanofil/rocq/backend/crane/CraneExtract.v',
-    "Extracts the Gallina backend ([Compile](../Compile.v) and [IrText](../IrText.v)) to C++ via Crane.").
+    "This module uses Bloomberg's Crane to extract the Gallina compiler backend and IR parser to C++.").
 file_blurb('nanofil/rocq/backend/crane/CraneMap.v',
-    "Maps Rocq integer, natural, character, and string operations onto the C++ `nfrt.h` runtime for Crane extraction.").
+    "These extraction mappings implement Rocq's integer, character, and string operations through the compiler's C++ runtime library.").
 file_blurb('nanofil/rocq/backend/crane/CraneSelfTest.v',
-    "Generates reference values across boundary integer widths to test [CraneMap](CraneMap.v)'s C++ runtime primitives.").
-file_blurb('nanofil/rocq/backend/certirocq/CertiExtract.v',
-    "Compiles the Gallina backend ([Compile](../Compile.v) and [IrText](../IrText.v)) to C via CertiRocq.").
+    "These computed reference values test the extracted C++ runtime primitives at integer-width boundaries against Rocq evaluation.").
 
-%  anf/lower/ & anf/backend/
+%  λANF lowering campaign: anf/lower/ & anf/lower/tests/
 file_blurb('nanofil/anf/lower/AnfExtract.v',
-    "Extracts [AnfLower](AnfLower.v)'s [lower] pass and [IrText](../../rocq/backend/IrText.v) to OCaml for the λANF compiler driver.").
+    "This module extracts the λANF lowering pass and IR text printer to OCaml for the compiler driver.").
 file_blurb('nanofil/anf/lower/AnfLower.v',
-    "Lowers CertiRocq's closure-converted λANF IR to [[stage|checked]] nanofil IR ([lower]) over a 32-bit tagged-word arena.").
-file_blurb('nanofil/anf/lower/Prims.v',
-    "Declares the primitive operations exposed to λANF test programs.").
+    "This pass lowers CertiRocq's closure-converted λANF into checked nanofil IR using an arena of tagged 32-bit words.").
 file_blurb('nanofil/anf/lower/tests/Programs.v',
-    "Benchmark and gate test programs compiled through CertiRocq λANF and lowered to nanofil IR.").
+    "These gate programs exercise λANF lowering with arithmetic, lists, closures, recursion, and larger computations, alongside printer and ordering tests.").
 file_blurb('nanofil/anf/lower/tests/Ref.v',
-    "Extracts the test programs in [Programs](Programs.v) directly to OCaml as the ground-truth reference.").
+    "This module extracts gate programs directly to OCaml to provide reference output for the arena-based compiler tests.").
 file_blurb('nanofil/anf/lower/tests/Show.v',
-    "Serializes test program outputs as byte lists so arena-compiled binaries and OCaml references can be compared byte for byte.").
+    "This module serializes program results as bytes so arena-compiled programs and OCaml references can be compared exactly.").
 file_blurb('nanofil/anf/lower/tests/Tap.v',
-    "Invokes CertiRocq on each test program in [Programs](Programs.v) to dump λANF clauses for [AnfLower](../AnfLower.v).").
+    "This harness asks CertiRocq to print each gate program's λANF representation for input to the lowering pass.").
+
+% These entries arrived while the prose batch was being verified.
 file_blurb('nanofil/anf/backend/Drive.v',
-    "Drives the Gallina backend through CertiRocq's λANF pipeline.").
+    "This driver runs the Gallina compiler backend through CertiRocq's closure conversion and λANF lowering pipeline.").
 file_blurb('nanofil/anf/backend/Tap.v',
-    "Dumps CertiRocq λANF IR for the Gallina backend driver.").
+    "This harness prints the Gallina backend driver's λANF representation for inspection and subsequent compiler stages.").
+file_blurb('nanofil/anf/lower/Prims.v',
+    "This module declares the primitive operations that λANF test programs can call through the lowering pass.").
+file_blurb('nanofil/rocq/backend/certirocq/CertiExtract.v',
+    "This module extracts the Gallina compiler backend and IR text parser to C through CertiRocq.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFputs.v',
+    "This proof verifies glibc's fputs over readable word-aligned strings while preserving the caller's fractional ownership.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFputsCall.v',
+    "This proof checks stream orientation and the indirect output method call inside glibc's fputs implementation.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFputsLock.v',
+    "This proof follows glibc's fputs as it measures the string and acquires the stream lock.").
+file_blurb('nanofil/rocq/glibc/libio/LibioFputsUnlock.v',
+    "This proof follows glibc's fputs as it releases the stream lock and returns to its caller.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPuts.v',
+    "This proof verifies glibc's puts over readable word-aligned strings and the standard output stream.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsBuf.v',
+    "This proof checks buffer bounds before puts writes its trailing newline directly into the stream buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsCall.v',
+    "This proof checks the stream's method table before puts calls its indirect string output method.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsInv.v',
+    "This module describes stream ownership and output method requirements shared by the puts and fputs proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsLock.v',
+    "This proof follows puts as it measures the string and acquires the standard output stream's lock.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsMode.v',
+    "This proof checks that puts uses the standard output stream with the required narrow character orientation.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsNl.v',
+    "This proof follows puts as it emits a trailing newline directly or through the stream's overflow method.").
+file_blurb('nanofil/rocq/glibc/libio/LibioPutsUnlock.v',
+    "This proof follows puts as it releases the standard output stream's lock and returns its result.").
+file_blurb('nanofil/rocq/glibc/libio/LibioStdfiles.v',
+    "This proof verifies how glibc initializes its standard streams and links them into the global stream list.").
+file_blurb('nanofil/rocq/glibc/libio/LibioStdfilesCode.v',
+    "This generated module supplies checked IR for glibc's standard stream constructor to its initialization proof.").
+file_blurb('nanofil/rocq/glibc/libio/LibioWriteCallDq.v',
+    "These call rules let glibc write from caller buffers held with shared or permanently read-only ownership.").
+file_blurb('nanofil/rocq/glibc/libio/LibioWriteDq.v',
+    "This proof verifies glibc's file output loop over caller buffers held with any fractional read permission.").
+file_blurb('nanofil/rocq/glibc/string/MemFwdLogic.v',
+    "These proofs verify glibc's forward memory copying, filling, and string duplication routines through their compiled implementations.").
+file_blurb('nanofil/rocq/glibc/string/MemchrFirst.v',
+    "This proof checks the first unaligned word examined by glibc's compiled forward byte search routine.").
+file_blurb('nanofil/rocq/glibc/string/MemchrLast.v',
+    "This proof handles the final partial word and loop exits in glibc's compiled forward byte search.").
+file_blurb('nanofil/rocq/glibc/string/MemchrLogic.v',
+    "This proof combines the word scanning cases into a caller-facing specification for glibc's compiled memchr.").
+file_blurb('nanofil/rocq/glibc/string/MemchrLoop.v',
+    "This proof follows glibc's forward byte search loop as it scans readable aligned words for a match.").
+file_blurb('nanofil/rocq/spikes/Poison.v',
+    "This model tracks secret data through program execution and detects secret-dependent branches and memory address leaks.").
+file_blurb('nanofil/rocq/spikes/PoisonSbox.v',
+    "This proof checks that an example substitution table lookup avoids secret-dependent branches and memory address leaks.").

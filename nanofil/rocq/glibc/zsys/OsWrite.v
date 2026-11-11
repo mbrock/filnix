@@ -10,8 +10,9 @@
 
     ## What libpizlo runs
 
-    At the pinned revision of `libpas/src/libpas/filc_runtime.c`,
-    `c: zsys_write` runs the following native wrapper:
+    Writing a buffer lends its bytes to the kernel after the runtime
+    checks read permission. The following wrapper implements that
+    boundary in the pinned `libpas/src/libpas/filc_runtime.c`.
 
     ```c
     ssize_t filc_native_zsys_write(filc_thread* my_thread, int fd, filc_ptr buf, size_t size)

@@ -1,41 +1,52 @@
-(** Symbolic execution of the model's [[step]], for proofs that a
-    program never panics from assertions at its points (Cycle.v).
+(** A proof of a C loop describes the values and bounds that hold each
+    time control reaches a particular instruction. This module computes
+    one [[step]] under those assumptions without choosing concrete
+    inputs, memory contents, or execution [[fuel]]. The resulting facts
+    let [never_panics_by_invariant] prove that every reachable state
+    avoids a safety failure.
 
-    A program proof states what holds at each point of its function, as
-    facts about the [[temporary|temporaries]] of the environment: the
-    word a name holds, and a range for an integer. It then shows that
-    one step from any configuration where the facts hold reaches a
-    point where its facts hold, or ends without a failure (Panics.v's
-    [never_panics_by_invariant]). That step is computed here with the
-    environment, the memory and the [[fuel]] left abstract: the
-    reduction stops where it needs a value it does not have, the facts
-    supply it, and an integer comparison is decided by linear
-    arithmetic over the facts' ranges, or split into its two answers
-    when the facts do not decide it.
+    A proof need not know an input's exact value to decide every
+    branch in the program. A known integer range may already determine
+    a comparison; otherwise, the proof keeps both cases and their
+    conditions. It records those values and bounds for named
+    [[temporary|temporaries]] so that later instructions can use them.
 
-    Cycle.v and Buffer.v take each step by its rule from
-    StepRules.v ([take_step]): the step itself is never reduced, only
-    its rule's premises, with the same facts, wraps and comparisons.
+    Instead of running the whole interpreter, a proof can also use one
+    small rule for each instruction from [StepRules](StepRules.v).
 
-    ## Decisions
+    ## Keeping symbolic expressions small
 
-    | Decision | Why |
-    |---|---|
-    | integer arithmetic stays folded on an unknown (`simpl nomatch`, set by each program file, since Rocq exports no such setting) | unfolded, `65552 + x` becomes a match on the bits of x as deep as 65552 is long, which neither a fact nor arithmetic can read; on numbers it still computes |
-    | the step is reduced by `cbn`, not `cbv` | `cbn` leaves a function stuck on an unknown value folded (`i mod 4294967296`, `lookup x e`), where a fact can be rewritten; `cbv` unfolds it into a term no fact matches, and does not finish on a remainder of a variable |
-    | linear arithmetic decides comparisons, with remainders and quotients by constants turned into equations | the bounds a check compares are sums and multiples of the facts' integers; `lia` alone does not know `mod` or `rem` |
-    | a remainder of a value proved in range is the value, and any other remainder an unknown in range | the model wraps every result to its [[class]]; where the facts bound it, the wrap is the identity, and dropping it keeps the terms small; where they do not, as for the input, the range is all a step needs, and each wrap or comparison is then tried once |
-    | an undecided comparison is split, both answers kept | the input is unknown: the comparison with it goes either way, and the facts after it say which | *)
+    Computation must stop when an input remains unknown, so that known
+    facts can still replace the expression. The following choices
+    preserve arithmetic expressions that Rocq's arithmetic tactics can
+    read rather than expand them into matches on integer bits.
+
+    Unknown arithmetic should remain readable until a later assumption
+    supplies the missing value, rather than expand into cases on bits.
+    Each program file therefore sets `simpl nomatch`, since Rocq does
+    not export that setting between modules. The reduction tactics
+    likewise use `cbn` rather than `cbv` to leave unknown expressions
+    intact.
+
+    The model wraps integer results to their register [[class]], but a
+    known range can make that wrap unnecessary. Otherwise, the tactic
+    replaces a remainder by an unknown value with the proper bounds.
+    It translates division into equations only when simpler arithmetic
+    cannot finish the goal, and tries each wrap or comparison once. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Panics StepRules.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Facts about an environment *)
+(** ## Facts about an environment
 
-(** Looking k up after [put] k' v answers v if k is k', and otherwise
-    what it answered before. *)
+    Assigning a temporary changes one environment entry and leaves the
+    other names alone. The following facts describe those updates and
+    record integer bounds that later steps can use. *)
+
+(** Updating an environment changes the named entry but preserves every
+    other lookup, as [lookup_after_put] states for [put]. *)
 Lemma lookup_after_put : forall (A : Type) k k' (v : A) ps,
   lookup k (put k' v ps) = if name_eqb k k' then Some v else lookup k ps.
 Proof.
@@ -46,30 +57,41 @@ Proof.
   - destruct (name_eqb k k0); [reflexivity | exact IH].
 Qed.
 
-(** Looking k up after [put] k answers its new value. *)
+(** Looking up the name just assigned returns its new value, as
+    [lookup_after_put_same] states without assumptions about the old entry. *)
 Lemma lookup_after_put_same : forall (A : Type) k (v : A) ps, lookup k (put k v ps) = Some v.
 Proof. intros A k v ps. rewrite lookup_after_put, term_eqb_refl. reflexivity. Qed.
 
-(** Looking k up after [put] of another name answers what it answered
-    before. *)
+(** Looking up a different name returns its previous value, as
+    [lookup_after_put_other] states when the names compare unequal. *)
 Lemma lookup_after_put_other : forall (A : Type) k k' (v : A) ps,
   name_eqb k k' = false -> lookup k (put k' v ps) = lookup k ps.
 Proof. intros A k k' v ps H. rewrite lookup_after_put, H. reflexivity. Qed.
 
-(** A store of bytes changes no object's region. *)
+(** Writing data bytes leaves every object's region entry unchanged,
+    which [store_bytes_regions] uses to preserve facts about bounds. *)
 Lemma store_bytes_regions : forall m a size x, m_regions (store_bytes m a size x) = m_regions m.
 Proof. reflexivity. Qed.
 
-(** The name x holds an integer word of e that P allows. *)
+(** A proof can describe an integer temporary by its range rather than
+    its exact value. The assertion [int_at] records both the lookup and
+    an arbitrary predicate on that integer. *)
 Definition int_at (e : env) (x : name) (P : Z -> Prop) : Prop :=
   exists v, lookup x e = Some (WInt v) /\ P v.
 
-(** Any integer. *)
+(** Some temporary values need no bounds at all, so [any] accepts every
+    integer without adding a condition to the proof. *)
 Definition any (_ : Z) : Prop := True.
 
-(** ## Arithmetic *)
+(** ## Arithmetic
 
-(** The goal has a remainder or quotient in it. *)
+    Pointer bounds and integer branches usually reduce to linear
+    arithmetic once the proof supplies its known values. The following
+    tactics handle remainders, discard unrelated memory facts, and keep
+    expensive division reasoning out of easy goals. *)
+
+(** The tactic [goal_divides] recognizes goals containing a remainder
+    or quotient, where division equations may help the arithmetic solver. *)
 Ltac goal_divides :=
   match goal with
   | |- context[_ mod _] => idtac
@@ -78,10 +100,10 @@ Ltac goal_divides :=
   | |- context[_ / _] => idtac
   end.
 
-(** Replace each remainder x mod m by a literal m with a new variable
-    in [0, m), everywhere. Cheaper for [lia] than the division equations
-    [Z.to_euclidean_division_equations] gives, and enough wherever the
-    remainder's bounds are all an argument needs. *)
+(** Many goals need only a remainder's bounds, not its relation to the
+    original dividend. The tactic [mod_atoms] replaces remainders by
+    variables between zero and their positive moduli, avoiding full
+    division equations. *)
 Ltac mod_atoms :=
   repeat match goal with
   | |- context[?x mod ?m] =>
@@ -92,13 +114,12 @@ Ltac mod_atoms :=
       let r := fresh "r" in set (r := x mod m) in *; clearbody r
   end.
 
-(** The arithmetic oracle: linear arithmetic over the integers, with
-    the powers of two the model's classes use as numbers, and where
-    the goal divides, with remainders and quotients by constants first
-    turned into equations. Facts about environments and memory are set
-    aside first; they say nothing arithmetic. So are the bodies of
-    local definitions (a function, or a program's computed runs), which
-    the rewriting in every hypothesis below would otherwise walk. *)
+(** The tactic [arith] solves integer goals after removing environment
+    lookups, memory facts, and bodies of local definitions. It tries
+    linear arithmetic first, then remainder bounds, and finally full
+    division equations when the goal contains division. Clearing local
+    bodies avoids walking through a program's computed runs during
+    every rewrite. *)
 Ltac arith :=
   repeat match goal with
   | H : context[lookup _ _] |- _ => clear H
@@ -111,9 +132,9 @@ Ltac arith :=
   try change (2 ^ 64) with 18446744073709551616 in *;
   first [ lia | mod_atoms; lia | goal_divides; Z.to_euclidean_division_equations; lia ].
 
-(** [arith] without the division equations: for the side goals that
-    may well be false (dropping a wrap, deciding a comparison), where
-    a failing attempt should cost little. *)
+(** Attempts to remove a wrap or decide a branch may fail legitimately
+    because the input remains unknown. The tactic [arith_fast] omits
+    division equations so that such attempts stay cheap. *)
 Ltac arith_fast :=
   repeat match goal with
   | H : context[lookup _ _] |- _ => clear H
@@ -126,18 +147,20 @@ Ltac arith_fast :=
   try change (2 ^ 64) with 18446744073709551616 in *;
   first [ lia | mod_atoms; lia ].
 
-(** Fails unless the term t has an `if` in it. *)
+(** The tactic [has_if] succeeds only when the supplied expression
+    contains a conditional that may need deciding before further reduction. *)
 Ltac has_if t := idtac; match t with context[if _ then _ else _] => idtac end.
 
-(** Fails unless the term t has a remainder in it. *)
+(** The tactic [has_mod] succeeds only when the supplied expression
+    contains a remainder that may need simplifying before further reduction. *)
 Ltac has_mod t := idtac; match t with context[_ mod _] => idtac end.
 
-(** Drop the wraps in E, innermost first, once what each wraps holds
-    no other wrap and no undecided comparison: a remainder or quotient
-    of a nonnegative value is Euclid's, and a wrap that arithmetic over
-    the context, without E, proves is the identity goes. A wrap it does
-    not, of the input say, becomes an unknown known to lie between 0
-    and the modulus. So each wrap is tried once. *)
+(** The tactic [drop_wraps] simplifies the equation E from its innermost
+    wraps outward, waiting for nested comparisons and remainders. It
+    removes a wrap when arithmetic proves the value already fits;
+    otherwise, it keeps only the remainder's bounds. It also converts
+    signed remainders and quotients to Euclidean operations when their
+    operands are nonnegative. *)
 Ltac drop_wraps E :=
   repeat match type of E with
   | context[Z.rem ?x ?y] =>
@@ -153,11 +176,10 @@ Ltac drop_wraps E :=
               intros ? E ? ]
   end.
 
-(** Decide the integer comparisons in E: true or false where arithmetic
-    over the context proves it, and otherwise split into its two
-    answers at once, each kept as a fact, so that no comparison is
-    tried twice. A comparison whose operands hold another comparison
-    waits until that one is decided. *)
+(** The tactic [decide_compares] simplifies integer comparisons in E
+    whenever the current arithmetic facts determine their answers.
+    Otherwise, it splits both cases and records the condition, waiting
+    for any nested comparison to finish first. *)
 Ltac decide_compares E :=
   repeat match type of E with
   | context[?a <? ?b] =>
@@ -177,13 +199,16 @@ Ltac decide_compares E :=
             | revert E; destruct (Z.eqb_spec a b); intro E ]
   end.
 
-(** ## The step *)
+(** ## The step
 
-(** Rewrite in E every fact in the context that names a temporary of an
-    environment, the region of an object in a memory, or a block or the
-    return class of the function, which a proof keeps abstract
-    ([block_fact]) so that its whole body is not carried through every
-    step. *)
+    A symbolic step combines interpreter reduction with the values and
+    bounds already known to the proof. The following tactics alternate
+    these operations until they reach a result or need another fact. *)
+
+(** The tactic [use_facts] replaces lookups in E with known temporary
+    values, object regions, function blocks, and return classes.
+    Function facts let the proof avoid carrying the entire function
+    body through each step. *)
 Ltac use_facts E :=
   repeat match goal with
   | H : lookup _ _ = Some _ |- _ => rewrite H in E
@@ -192,11 +217,10 @@ Ltac use_facts E :=
   | H : fn_ret _ = _ |- _ => rewrite H in E
   end.
 
-(** Reduce E as far as the facts and arithmetic allow: `cbn`, keeping
-    a load's and a store's bytes folded, then the definitions `cbn` leaves folded
-    (stuck on an unknown, such as an access check on the memory's
-    regions, or building a record), the facts and the fields they
-    supply, the wraps and the comparisons, until nothing changes. *)
+(** The tactic [reduce] computes E as far as known facts and arithmetic
+    permit while leaving byte loads and stores folded. It unfolds
+    selected operations that get stuck on unknown values, then applies
+    facts and simplifies wraps and comparisons until nothing changes. *)
 Ltac reduce E :=
   repeat progress (
     cbn -[load_bytes store_bytes] in E; rewrite ?store_bytes_regions in E;
@@ -206,14 +230,19 @@ Ltac reduce E :=
     use_facts E; cbn [r_base r_end r_kind r_life ptr_addr ptr_cap] in E;
     drop_wraps E; decide_compares E).
 
-(** Compute E, an equation r = step g c, to a result: reduce it, in
-    every case of the comparisons the facts leave open. *)
+(** Given an equation that names a step's result, [compute_step]
+    reduces it through every branch left open by the assumptions. *)
 Ltac compute_step E := reduce E.
 
-(** ## Facts after a step *)
+(** ## Facts after a step
 
-(** Take apart the facts in the context: conjunctions, existentials,
-    and each case of a disjunction. *)
+    After an instruction runs, the proof must establish its assertions
+    for the next program point. The following tactics unpack old facts
+    and follow environment updates or memory changes to prove the new
+    ones. *)
+
+(** The tactic [facts] unpacks conjunctions and existential witnesses
+    in the assumptions, and splits disjunctions into separate proof cases. *)
 Ltac facts :=
   repeat match goal with
   | H : True |- _ => clear H
@@ -222,10 +251,11 @@ Ltac facts :=
   | H : _ \/ _ |- _ => destruct H
   end.
 
-(** Prove a fact about the configuration after a step: look each name
-    up through the step's [put]s to the facts before it, each object's
-    region through the stores, which change none, and through a new
-    object's, and the ranges as facts or by arithmetic. *)
+(** The tactic [show_facts] proves assertions about the next state by
+    following environment updates back to the known temporary values.
+    It also preserves regions across byte stores, computes newly
+    allocated regions, and proves integer ranges from assumptions or
+    arithmetic. *)
 Ltac show_facts :=
   unfold int_at, any;
   repeat match goal with
@@ -247,36 +277,37 @@ Ltac show_facts :=
   | |- _ => progress cbv beta iota
   end.
 
-(** ## The function, kept abstract *)
+(** ## The function, kept abstract
 
-(** The block l of the function fn, computed once as b, and the fact H
-    that the abstract f, equal to fn by Hf, has it: the step finds a
-    block through H instead of reducing f's body. *)
+    Reducing a whole function body at every instruction repeats work
+    that does not depend on the running state. A proof can instead
+    compute each block once and refer to a small lookup fact. *)
+
+(** A proof can compute a block once and save its lookup without
+    exposing the whole function again. The tactic [block_fact] does
+    this for an abstract function known to equal a concrete one. *)
 Ltac block_fact f fn Hf l b H :=
   pose (b := find_block l (fn_blocks fn)); vm_compute in b;
   assert (H : find_block l (fn_blocks f) = b) by (rewrite Hf; reflexivity).
 
-(** ## A step by its rule
+(** ## Applying instruction rules
 
-    Instead of reducing [step] with the function and the memory inside
-    it, [take_step] names the instruction at the frame's point, rewrites
-    the step with its rule from StepRules.v, and proves the rule's
-    premises one by one ([premise]). Each premise is small: a
-    temporary's value, an op on those words, an access check, a block
-    of the function. The words the premises compute become the rule's
-    result, and a comparison of the input that the facts do not decide
-    is split there ([split_compares]). *)
+    An instruction rule exposes only the values and checks needed for
+    that instruction, rather than the whole interpreter. The following
+    tactics choose the appropriate rule, prove its premises, and split
+    any comparisons that the input facts leave undecided. *)
 
-(** Rewrite in the goal every fact in the context that names a
-    temporary of an environment or the region of an object. *)
+(** The tactic [use_facts_goal] replaces temporary lookups and object
+    region lookups in the goal with values supplied by the assumptions. *)
 Ltac use_facts_goal :=
   repeat match goal with
   | H : lookup _ _ = Some _ |- _ => rewrite H
   | H : object_region _ (m_regions _) = Some _ |- _ => rewrite H
   end.
 
-(** Replace each environment put k v e of the goal, e a variable, by a
-    new variable, with what each name looks up to in it. *)
+(** The tactic [gen_env] gives an updated environment a fresh name
+    while recording its new entry and preserving known lookups of other
+    names. *)
 Ltac gen_env :=
   repeat match goal with
   | |- context[put ?k ?v ?e] =>
@@ -293,9 +324,10 @@ Ltac gen_env :=
       let e' := fresh "e" in set (e' := put k v e) in *; clearbody e'; try clear e
   end.
 
-(** Drop each wrap in the goal that arithmetic over the context proves
-    is the identity, and turn a remainder or quotient of a nonnegative
-    value into Euclid's. A wrap it does not drop stays. *)
+(** The tactic [drop_wraps_goal] removes wraps that known bounds prove
+    unnecessary and converts nonnegative signed division to Euclidean
+    division. Unlike [drop_wraps], it leaves an unknown wrap intact
+    rather than replacing it with a bounded variable. *)
 Ltac drop_wraps_goal :=
   repeat match goal with
   | |- context[Z.rem ?x ?y] => assert_fails (has_if x); rewrite (Z.rem_mod_nonneg x y) by arith_fast
@@ -303,8 +335,9 @@ Ltac drop_wraps_goal :=
   | |- context[?x mod ?m] => assert_fails (has_if x); rewrite (Z.mod_small x m) by arith_fast
   end.
 
-(** Decide each integer comparison in the goal that arithmetic over the
-    context decides; leave the others. *)
+(** The tactic [decide_compares_goal] resolves integer comparisons
+    from the current arithmetic facts and leaves any undecided comparison
+    in the goal. *)
 Ltac decide_compares_goal :=
   repeat match goal with
   | |- context[?a <? ?b] =>
@@ -318,11 +351,10 @@ Ltac decide_compares_goal :=
       first [ rewrite (proj2 (Z.eqb_eq a b)) by arith_fast | rewrite (proj2 (Z.eqb_neq a b)) by arith_fast ]
   end.
 
-(** Decide each integer comparison in the goal, splitting the goal in
-    its two answers where the facts do not decide it, each kept as a
-    fact. A comparison whose operands hold another waits for it. The
-    split is a `case`, which looks at the goal alone, not at the
-    definitions in the context (a program's computed runs, say). *)
+(** The tactic [split_compares] decides known comparisons and creates
+    both proof cases for any comparison that remains unknown. It waits
+    for nested comparisons and uses `case` to avoid traversing large
+    local definitions in the context. *)
 Ltac split_compares :=
   repeat (match goal with
           | |- context[?a <? ?b] =>
@@ -339,17 +371,18 @@ Ltac split_compares :=
                     | case (Z.eqb_spec a b); intro ]
           end; cbv beta iota).
 
-(** Prove a premise lhs = rhs whose right side the proof leaves open:
-    compute lhs by `cbn`, with the facts, the wraps and the comparisons
-    the facts decide, then take rhs to be what it computed. *)
+(** A rule can leave its result unspecified until computation supplies
+    the required value. The tactic [compute_premise] reduces the left
+    side with known facts and unifies the right side with that result. *)
 Ltac compute_premise :=
   repeat progress (cbn -[load_bytes store_bytes]; try unfold sign_extension;
                    use_facts_goal; cbn [ptr_addr ptr_cap]; drop_wraps_goal; decide_compares_goal);
   reflexivity.
 
-(** Prove that an access check passes: through the capability of an
-    object, read-only or not, whose region a fact gives, at an address
-    arithmetic shows in its bounds and aligned (any address is, to 1). *)
+(** The tactic [access_ok] proves a memory access valid from a known
+    object region and arithmetic bounds on the address. It handles
+    writable or read-only object [[capability|capabilities]] and proves
+    the required alignment, including the trivial alignment of one. *)
 Ltac access_ok :=
   cbn [ptr_addr ptr_cap]; unfold raw_address; drop_wraps_goal;
   match goal with
@@ -358,11 +391,10 @@ Ltac access_ok :=
   end;
   first [ eassumption | apply Z.mod_1_r | cbn [r_end]; arith ].
 
-(** Prove one premise of a rule from StepRules.v: by computation for
-    the op's classes, by a fact or computation for a block (a
-    [block_fact]) and the return class, by the lemma of the op for a
-    check, a load and a store, with [access_ok] after it, and otherwise
-    by [compute_premise]. *)
+(** The tactic [premise] discharges one instruction rule's requirement
+    using a known lookup, a memory-operation lemma, or direct computation.
+    Memory operations delegate their bounds and alignment checks to
+    [access_ok], while ordinary expressions use [compute_premise]. *)
 Ltac premise :=
   match goal with
   | |- general_op _ = true => reflexivity
@@ -379,11 +411,11 @@ Ltac premise :=
   | |- _ = _ => compute_premise
   end.
 
-(** Rewrite the step in the goal, at a frame that is not doomed, by
-    the rule of its point: entering a block (out of fuel or not, the
-    fuel split), an allocation, any other let, a [[flight]], a raw
-    store, a goto, a branch, or a return of an invocation with no
-    caller. *)
+(** The tactic [step_by_rule] chooses a forward rule for the current
+    instruction or control-flow point in a frame that is not [[doomed]].
+    It splits the fuel cases when entering a block and handles
+    [[flight|flights]], stores, branches, allocations, and top-level
+    returns. *)
 Ltac step_by_rule :=
   match goal with
   | |- context[step _ (mkConfig (mkFrame _ _ _ None (Enter _ _)) _ _ ?fuel)] =>
@@ -406,6 +438,7 @@ Ltac step_by_rule :=
       erewrite rule_ret by premise; erewrite rule_return_top by premise
   end.
 
-(** Take the step in the goal by its rule ([step_by_rule]), then the
-    jump's target, and split where the step compared the input. *)
+(** The tactic [take_step] applies the instruction rule, computes any
+    jump target, and splits comparisons that remain undecided by the input
+    facts. *)
 Ltac take_step := step_by_rule; cbn [edge_label Z.eqb Pos.eqb]; split_compares.

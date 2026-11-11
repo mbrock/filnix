@@ -63,9 +63,10 @@ Open Scope Z_scope.
 
 (** ## The contract
 
-    Before proving separation-logic rules, this first section records the
-    byte footprints of known terminal-query requests, defines the
-    copy-back span [ioctl_root], and assembles [os_ioctl_contract]. *)
+    A terminal query may copy bytes back through the supplied pointer,
+    with a size that depends on the request. The following definitions
+    describe that copy-back span with [ioctl_root] and collect the
+    call's requirements into [os_ioctl_contract]. *)
 
 (** For the `c: ioctl` request codes that the contract models,
     [ioctl_footprint] gives the number of bytes that the kernel reads or

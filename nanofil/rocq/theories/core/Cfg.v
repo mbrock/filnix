@@ -1,54 +1,44 @@
-(** The control-flow graph (CFG) of a function and its
-    [[dominance|dominators]], transcribed from cfg.pl: `func_cfg/2`,
-    `cfg_idoms/2` (Cooper, Harvey and Kennedy, "A Simple, Fast
-    Dominance Algorithm"), `dom_children/3`, `dom_intervals/3` and
-    `dominates_by_interval/3`. The [[validator]] asks "does A dominate
-    B?" for every use of every [[temporary]], and the dominator tree's
-    preorder intervals answer it in constant time, as they do for
-    ir.pl.
+(** A compiler must ensure that every path to a temporary's use passes
+    through a suitable definition before the value is read.
+    This module builds each function's control-flow graph and computes
+    its [[dominance|dominators]], following the algorithms in cfg.pl.
+    The [[validator]] uses this information to check the placement of
+    [[temporary]] definitions and the proof instructions that justify later memory accesses.
 
-    ## Parts
+    The graph records [[block]] successors and predecessors, and a
+    depth-first traversal orders the reachable blocks for computing immediate dominators.
+    The algorithm follows Cooper, Harvey and Kennedy's "A Simple, Fast
+    Dominance Algorithm", repeatedly refining each block's nearest dominating ancestor.
+    Numbering the resulting tree lets the validator answer each later
+    dominance question by comparing a block number with one ancestor's interval.
 
-    | Gallina | cfg.pl |
-    |---|---|
-    | `jump_succs` | `jump_succs/2` |
-    | `cfg`, `func_cfg` | `func_cfg/2`, `reverse_postorder/6` |
-    | `cfg_idoms` | `cfg_idoms/2`, `label_idoms/5`, `common_dominator/5` |
-    | `dom_children`, `dom_intervals` | the same, `subtree_intervals/6` |
-    | `dominates_by_interval` | the same |
-
-    ## Orders
-
-    cfg.pl keeps a block's successors and predecessors as ordsets,
-    sorted in the standard order of terms. The model keeps a jump's
-    own order and does not sort. That changes the reverse postorder,
-    the order of the sweeps and the preorder numbers, but not the
-    immediate dominators, which are unique, nor the relation
-    `dominates_by_interval` states, which is all ir.pl reads from
-    them.
-
-    ## Fuel
-
-    The Prolog recursions end because each visits a block at most once
-    or walks up a finite tree; the Gallina ones carry [[fuel]] that bounds
-    the same walk, and give no answer if it runs out, which a correct
-    bound never lets happen. The bounds are noted at each. *)
+    The Prolog implementation sorts graph neighbors, while this model
+    preserves each jump's order, so their traversal numbers can differ.
+    The immediate dominators are unique, however, and both numberings
+    describe the same dominance relationship used by the validator.
+    Recursive walks carry explicit [[fuel]] bounds and return no answer
+    if exhausted; the bounds below reflect the graph or tree being traversed. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Maps.
 Import ListNotations.
 Local Open Scope Z_scope.
 
-(** Option binding: `let* x := e in b` is b with x the value of e, or
-    none if e has none. *)
+(** A failed intermediate computation stops the remaining computation,
+    while a successful one binds its result through the following option notation. *)
 Notation "'let*' x ':=' e 'in' b" :=
   (match e with Some x => b | None => None end)
   (at level 200, x name, e at level 100, b at level 200).
 
-(** ## The graph *)
+(** ## The graph
 
-(** As `jump_succs(Jump, Succs)`: the labels the jump j can go to, in
-    its own order, a [[poll|poll edge]]'s included. *)
+    A function's jumps determine which blocks can follow each block
+    and which blocks are reachable from its entry.
+    The graph keeps unreachable predecessors too, because later phi
+    checks must account for every incoming edge, not just the executable ones. *)
+
+(** A jump's possible destination labels come from [jump_succs], which
+    preserves their written order and includes destinations reached through [[poll|poll edges]]. *)
 Definition jump_succs (j : jump) : list name :=
   match j with
   | JGoto t => [edge_label t]
@@ -56,22 +46,21 @@ Definition jump_succs (j : jump) : list name :=
   | _ => []
   end.
 
-(** As `cfg(Entry, Rpo, Succs, Preds)`: a function's control-flow
-    graph, over its [[block]] labels. *)
+(** A function's control-flow graph uses [cfg] to record its entry,
+    reachable traversal order, successor map, and predecessor map over block labels. *)
 Record cfg : Type := mkCfg {
-  cfg_entry : name; (* the entry block's label *)
-  cfg_rpo : list name; (* the labels reachable from the entry, in reverse postorder *)
-  cfg_succs : nmap (list name); (* each block's successors *)
-  cfg_preds : nmap (list name) (* each block's predecessors, unreachable ones included *)
+  cfg_entry : name; (* This label identifies the function's entry block. *)
+  cfg_rpo : list name; (* These reachable labels appear in reverse postorder. *)
+  cfg_succs : nmap (list name); (* This map records each block's successor labels. *)
+  cfg_preds : nmap (list name) (* This map includes unreachable predecessors as well as reachable ones. *)
 }.
 
-(** As `reverse_postorder(Ns, Succs, Seen0, Seen, Post0, Post)`: depth
-    first from each of Ns in turn, a label's successors before the
-    labels after it; Post has the reverse postorder in front of Post0.
-    Along any chain of nested calls, each call but the last takes one
-    element of some list the walk has met (the entry or a block's
-    successors), and the last is on an empty list, so the fuel is two
-    more than the number of edges. *)
+(** Visiting successors before finishing their parent gives a postorder,
+    which [reverse_postorder] reverses by prepending each finished label to the result.
+    Already visited labels are skipped, and each recursive descent
+    consumes an entry or successor-list element before the final empty-list call.
+    The caller therefore supplies two more fuel units than the number
+    of graph edges, covering the entry and final empty-list cases. *)
 Fixpoint reverse_postorder (fuel : nat) (ns : list name) (succs : nmap (list name))
     (seen : nmap unit) (post : list name) : option (nmap unit * list name) :=
   match fuel with
@@ -89,10 +78,10 @@ Fixpoint reverse_postorder (fuel : nat) (ns : list name) (succs : nmap (list nam
       end
   end.
 
-(** As `func_cfg(Blocks, Cfg)`: the graph of the blocks bs, whose entry
-    is the first block; each block's predecessors include unreachable
-    ones. No graph when an edge targets a label that is no block's,
-    where `label_preds/3` fails. *)
+(** The first block supplies the entry for [func_cfg], which builds
+    successor and predecessor maps before ordering the reachable labels.
+    An empty function or a jump to a missing label produces no graph;
+    otherwise, predecessor lists retain incoming edges from unreachable blocks too. *)
 Definition func_cfg (bs : list block) : option cfg :=
   match bs with
   | [] => None
@@ -108,19 +97,22 @@ Definition func_cfg (bs : list block) : option cfg :=
       Some (mkCfg (b_label entry) (snd r) succs preds)
   end.
 
-(** ## Immediate dominators *)
+(** ## Immediate dominators
 
-(** As `labels_numbered(Labels, 0, Pairs)`: each label of ls with its
-    position in the list, from 0. *)
+    A block dominates another block when every entry path to the
+    latter passes through the former, including the block itself.
+    The immediate dominator is the nearest distinct such ancestor;
+    repeated graph sweeps compute these ancestors using the traversal order. *)
+
+(** Comparing traversal positions requires [labels_numbered], which
+    maps each label to its zero-based position in the supplied label list. *)
 Definition labels_numbered (ls : list name) : nmap Z :=
   snd (fold_left (fun acc l => (fst acc + 1, nm_add l (fst acc) (snd acc))) ls (0, nm_empty)).
 
-(** As `common_dominator(Num, Idom, A, B, Common)`: the nearest common
-    dominator of the labels a and b in the tree of immediate
-    dominators idom found so far, num being reverse postorder numbers.
-    Walk up from the later of a and b until they meet. Each step moves
-    one of them to its immediate dominator (idom), earlier in reverse
-    postorder, so twice the number of labels is enough fuel. *)
+(** Two ancestor chains meet at their nearest common dominator when
+    [common_dominator] repeatedly moves the later traversal position toward its parent.
+    Each move reduces one position in reverse postorder, so twice the
+    number of labels bounds the walk before the chains meet. *)
 Fixpoint common_dominator (fuel : nat) (num : nmap Z) (idom : nmap name) (a b : name)
   : option name :=
   match fuel with
@@ -133,10 +125,10 @@ Fixpoint common_dominator (fuel : nat) (num : nmap Z) (idom : nmap name) (a b : 
       else let* b1 := nm_find b idom in common_dominator fuel' num idom a b1
   end.
 
-(** As `label_idoms(Preds, Num, B, Idom0-Changed0, Idom-Changed)`: one
-    step of a sweep, at the label b. Its immediate dominator becomes
-    the [common_dominator] of its predecessors that have one so far,
-    and the flag records whether it changed. *)
+(** One sweep updates a block's parent through [label_idoms], combining
+    predecessors whose dominators have already been recorded in the current map.
+    Their nearest common dominator becomes the new parent, and a flag
+    records whether this update changed the map. *)
 Definition label_idoms (preds : nmap (list name)) (num : nmap Z) (fuel : nat)
     (st : option (nmap name * bool)) (b : name) : option (nmap name * bool) :=
   let* st' := st in
@@ -153,12 +145,10 @@ Definition label_idoms (preds : nmap (list name)) (num : nmap Z) (fuel : nat)
       end
   end.
 
-(** As `idom_fixpoint(Labels, Preds, Num, Idom0, Idom)`: sweeps of
-    [label_idoms] over the labels ls in reverse postorder until one
-    changes nothing. A sweep changes an idom only
-    to a label earlier in reverse postorder, and the sweeps settle
-    within the graph's loop nesting depth plus two (Cooper, Harvey and
-    Kennedy), so one more sweep than labels is enough fuel. *)
+(** Repeated sweeps refine parent choices until an entire sweep leaves
+    them unchanged, which [idom_fixpoint] detects through the accumulated change flag.
+    The computation returns no answer if its sweep budget expires;
+    each sweep also receives a separate bound for walking ancestor chains. *)
 Fixpoint idom_fixpoint (fuel : nat) (ls : list name) (preds : nmap (list name)) (num : nmap Z)
     (cfuel : nat) (idom : nmap name) : option (nmap name) :=
   match fuel with
@@ -169,9 +159,10 @@ Fixpoint idom_fixpoint (fuel : nat) (ls : list name) (preds : nmap (list name)) 
       if changed then idom_fixpoint fuel' ls preds num cfuel idom1 else Some idom1
   end.
 
-(** As `cfg_idoms(Cfg, Idom)`: each reachable label of the graph g but
-    the entry, with its immediate dominator, the nearest block every
-    path from the entry to it passes through. *)
+(** Every path to a reachable block passes through its nearest
+    dominating ancestor, which [cfg_idoms] computes for each block except the entry.
+    The entry temporarily serves as its own parent during computation,
+    but the returned map omits that artificial entry. *)
 Definition cfg_idoms (g : cfg) : option (nmap name) :=
   match cfg_rpo g with
   | [] => None
@@ -180,16 +171,21 @@ Definition cfg_idoms (g : cfg) : option (nmap name) :=
       let num := labels_numbered (cfg_rpo g) in
       let* idom := idom_fixpoint (S (S n)) rest (cfg_preds g) num (S (2 * n))
                                  (nm_add (cfg_entry g) (cfg_entry g) nm_empty) in
-      (* del_assoc(Entry, ...): the entry is its own idom only during the
-         sweeps. *)
+      (* The entry serves as its own parent only during the sweeps. *)
       Some (nm_remove (cfg_entry g) idom)
   end.
 
-(** ## The dominator tree's intervals *)
+(** ## The dominator tree's intervals
 
-(** As `dom_children(Cfg, Idom, Kids)`: each reachable label's children
-    in the [[dominance|dominator tree]], the labels it is the immediate
-    dominator of, in reverse postorder. *)
+    A preorder walk visits each ancestor before all of its descendants,
+    giving every subtree a consecutive range of block numbers.
+    The validator can then test dominance by asking whether one block's
+    number lies inside the other block's subtree interval. *)
+
+(** Walking the dominator tree needs child lists, which [dom_children]
+    builds by grouping reachable labels beneath their recorded immediate dominators.
+    The function processes labels in reverse traversal order and prepends
+    each child, leaving siblings ordered by the original reverse postorder. *)
 Definition dom_children (g : cfg) (idom : nmap name) : option (nmap (list name)) :=
   fold_left (fun acc l =>
                let* kids := acc in
@@ -200,11 +196,10 @@ Definition dom_children (g : cfg) (idom : nmap name) : option (nmap (list name))
                end)
             (rev (cfg_rpo g)) (Some (nm_of_list (map (fun l => (l, [])) (cfg_rpo g)))).
 
-(** As `subtree_intervals(L, Kids, N0, N, Intervals0, Intervals)`:
-    number the subtree at the label l in preorder from n0, giving each
-    label its number and the last number of its subtree, and return the
-    next free number. The tree's depth is at most the number of
-    labels, the fuel. *)
+(** A preorder traversal assigns each label its own number and the
+    last number reached below it, as [subtree_intervals] records in the interval map.
+    The traversal returns the next unused number and consumes fuel by
+    tree depth, which cannot exceed the number of labels. *)
 Fixpoint subtree_intervals (fuel : nat) (kids : nmap (list name)) (l : name) (n0 : Z)
     (ivs : nmap (Z * Z)) : option (Z * nmap (Z * Z)) :=
   match fuel with
@@ -218,27 +213,25 @@ Fixpoint subtree_intervals (fuel : nat) (kids : nmap (list name)) (l : name) (n0
       Some (n, nm_add l (n0, n - 1) ivs1)
   end.
 
-(** As `dom_intervals(Cfg, Idom, Intervals)`: each reachable label's
-    preorder number in the dominator tree and the last one of its
-    subtree, its dominator interval. *)
+(** Building child lists and numbering from the entry gives each
+    reachable label its complete subtree interval through [dom_intervals]. *)
 Definition dom_intervals (g : cfg) (idom : nmap name) : option (nmap (Z * Z)) :=
   let* kids := dom_children g idom in
   let* r := subtree_intervals (S (length (cfg_rpo g))) kids (cfg_entry g) 0 nm_empty in
   Some (snd r).
 
-(** As `dominates_by_interval(Intervals, A, B)`: the label a
-    [[dominance|dominates]] b, both reachable: every path from the
-    entry to b passes through a, which holds when b's preorder number
-    lies in a's interval. A label dominates itself. *)
+(** A reachable block dominates another when the latter's preorder
+    number lies inside its subtree interval, including the ancestor's own number.
+    The function [dominates_by_interval] performs this comparison and
+    returns false if either label has no recorded interval. *)
 Definition dominates_by_interval (ivs : nmap (Z * Z)) (a b : name) : bool :=
   match nm_find a ivs, nm_find b ivs with
   | Some (pa, la), Some (pb, _) => (pa <=? pb) && (pb <=? la)
   | _, _ => false
   end.
 
-(** The dominator intervals of a function's blocks bs: [func_cfg],
-    [cfg_idoms] and [dom_intervals] in turn, as `definitions_dominate/3`
-    and `stage_sources/4` compute them. *)
+(** A validator obtains all block dominance intervals through
+    [block_intervals], which builds the graph, computes immediate dominators, and numbers the resulting tree. *)
 Definition block_intervals (bs : list block) : option (nmap (Z * Z)) :=
   let* g := func_cfg bs in
   let* idom := cfg_idoms g in

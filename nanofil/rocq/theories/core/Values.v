@@ -13,10 +13,12 @@
     [[class]], this module collects all run-time values into a single
     inductive type [word], and checks class compatibility separately.
     An integer word [WInt] holds an integer of class [W] or [L], or the
-    bit pattern of a floating-point value. A pointer word [WPtr] holds
-    a pointer of class [P] or a checked [[proof]] value of class [A] or
-    [F]. A limit word [WLimit] holds an opaque [[limit]] snapshot at
-    class [L].
+    bit pattern of a floating-point value.
+
+    Pointer words preserve both an address and the authority to use
+    it, including the [[proof]] values produced by successful checks.
+    The constructor [WPtr] carries these pointers, while [WLimit]
+    carries an opaque [[limit]] snapshot used for bounds comparisons.
 
     In C, a test harness or caller may occasionally pass a raw integer
     where a pointer parameter is declared. To match the Prolog

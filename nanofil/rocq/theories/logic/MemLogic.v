@@ -1,50 +1,30 @@
-(** Blocks of memory in the program logic of Logic.v, and the triples
-    of libc's memory calls derived from [[campaign|Campaign]] 4's
-    contracts.
+(** Filling or copying a C buffer can change both its bytes and the
+    hidden capabilities attached to pointers stored there.
+    This module describes ownership of both kinds of storage and
+    derives calling rules from the earlier libc [[external-call|contracts]].
+    It uses [Logic](Logic.v) and the string assertions from
+    [StringLogic](StringLogic.v), rather than proving libc's implementations here.
 
-    A block is owned piece by piece: [bytes] b o xs, the bytes xs from
-    offset o of the object b, and [auxes] b o cs, the capabilities cs
-    in its [[aux]] slots from the same offset. A write by libc into a
-    block needs both: memset clears every pointer slot it touches, a
-    copy moves pointer slots, and a pointer slot is an aux piece.
+    Copying a stored pointer must transfer its hidden capability as
+    well as its address bytes, while clearing memory must remove that capability.
+    The assertions [bytes] and [auxes] separately own these data bytes
+    and shadow [[aux]] slots, letting the calling rules describe both changes.
+    A partially copied pointer slot becomes empty, preventing the copy
+    from manufacturing a capability from an incomplete pointer representation.
 
-    Each triple is a contract read as a rule, stated at any call site:
-    - [wp_memset], from [memset_contract]: owning the object's life and
-      a block of n bytes from an 8-aligned offset, with their aux
-      slots, the call fills the bytes with c's low byte and empties
-      every slot that starts in the block ([clear_slots]);
-    - [wp_memcpy], from [memcpy_contract]: owning a destination block
-      and a source block in another object, of the same length, both
-      8-aligned, so in phase, the destination takes the source's bytes,
-      and each of its slots the source's when the copy covers all 8 of
-      its bytes, or empties ([copy_slots]); the source is handed back;
-    - [wp_malloc], from [malloc_contract]: the fresh object's pieces
-      ([obj]); no null case, since the selected malloc refuses with a
-      resource ending, which is not a return;
-    - [wp_strdup], from [strdup_contract]: owning a [string], the call
-      returns a fresh object owning a copy of it as a [string].
-    - [wp_string_copy], from [string_copy_contract], with [wp_strcpy]
-      and [wp_stpcpy] its instances: owning an object's life and bytes,
-      one more than a [string]'s in another object, the call makes them
-      a [string] holding the copy and binds d to the destination or,
-      for stpcpy, its NUL; it keeps every aux slot, so none is owned,
-      and needs no alignment ([copy_string_after]);
-    - [wp_memchr] and [wp_memchr_string], from [memchr_contract]: a
-      search of an owned block, or a search for the NUL of an owned
-      [string] with any bound, since memchr reads only through its
-      first match ([memchr_input_bounded], [nul_found]).
-    Raw accesses to a block's bytes are here too: the 32-bit store
-    [wp_raw_store_w], the integer [[cas]] [wp_raw_cas_int] with its
-    32-bit case [wp_raw_cas_w] (glibc's locks), and the narrow load at a
-    share [wp_raw_load_sub_bytes_dq] ([bytesq]); bytes read back as
-    their little-endian integer [of_bytes] ([bytes_load]).
-    The contracts' exact destination frame ([memset_frame], shared by
-    the copies) keeps every piece outside the written block
-    ([block_frame], through Heap.v's [frame_within]); for strdup, whose
-    writes lie in its fresh object, [frame_other] keeps every other
-    object's pieces. The blocks' offsets are 8-aligned so that the
-    slots a write touches start inside them; the contracts also allow
-    unaligned starts, whose first touched slot begins before them. *)
+    The block-copy rules require eight-byte-aligned bases and offsets,
+    so every touched pointer slot begins inside the owned block.
+    Their contracts also allow unaligned buffers, but these particular
+    ownership rules do not cover a slot beginning before the buffer.
+    Scalar string copies preserve all shadow slots, so their rules
+    require only byte ownership and impose no such alignment condition.
+
+    The remaining rules describe fresh allocation, string duplication,
+    bounded searches, integer loads and stores, and integer [[cas|compare-and-swap]].
+    Each rule returns the caller's untouched ownership and updates only
+    the pieces that the operation is allowed to write.
+    In particular, the malloc contract used here never returns null;
+    allocation failure ends execution with a permitted resource refusal instead. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -56,21 +36,28 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Aux pieces *)
+(** ## Aux pieces
 
-(** The pieces of the aux slots holding cs from offset o of the object
-    b. *)
+    Pointer capabilities live in shadow storage rather than in the
+    data bytes that an ordinary C buffer exposes.
+    The following piece lists track those shadow locations separately,
+    while keeping their offsets aligned with the corresponding byte lists. *)
+
+(** A consecutive list of shadow capabilities becomes one owned piece
+    per offset through [aux_ps], beginning at offset o in object b. *)
 Definition aux_ps (b o : Z) (cs : list cap) : list (piece * pval) :=
   zip_with (fun i c => (PAux b i, VAux c)) (seqZ o (Z.of_nat (length cs))) cs.
 
-(** The first slot's piece, then the rest's. *)
+(** A nonempty shadow-slot list separates into its first capability
+    and the remaining list, whose starting offset advances by one. *)
 Lemma aux_ps_cons b o c cs : aux_ps b o (c :: cs) = (PAux b o, VAux c) :: aux_ps b (o + 1) cs.
 Proof.
   unfold aux_ps. cbn [length]. rewrite Nat2Z.inj_succ seqZ_cons; [|lia].
   rewrite Z.pred_succ. reflexivity.
 Qed.
 
-(** The pieces of cs ++ ds from o are cs's, then ds's after them. *)
+(** Concatenating capability lists concatenates their piece lists, with
+    the second list beginning immediately after the offsets occupied by the first. *)
 Lemma aux_ps_app b o cs ds :
   aux_ps b o (cs ++ ds) = aux_ps b o cs ++ aux_ps b (o + Z.of_nat (length cs)) ds.
 Proof.
@@ -79,7 +66,8 @@ Proof.
   replace (o + Z.of_nat (S (length cs))) with (o + 1 + Z.of_nat (length cs)) by lia. reflexivity.
 Qed.
 
-(** The pieces of n slots holding c, from o. *)
+(** Repeating one capability across n shadow offsets gives the same
+    pieces as assigning that capability separately at every offset. *)
 Lemma aux_ps_replicate b o n c :
   aux_ps b o (replicate n c) = (fun i => (PAux b i, VAux c)) <$> seqZ o (Z.of_nat n).
 Proof.
@@ -88,7 +76,8 @@ Proof.
   rewrite Z.pred_succ. reflexivity.
 Qed.
 
-(** The pieces of n bytes holding x, from o. *)
+(** Repeating one byte across n offsets gives the same pieces as
+    assigning that byte separately at every offset in the range. *)
 Lemma byte_ps_replicate b o n x :
   byte_ps b o (replicate n x) = (fun i => (PByte b i, VByte x)) <$> seqZ o (Z.of_nat n).
 Proof.
@@ -97,7 +86,8 @@ Proof.
   rewrite Z.pred_succ. reflexivity.
 Qed.
 
-(** The pieces of cs are aux pieces at the offsets from o. *)
+(** The locations in a shadow-slot piece list are consecutive object
+    offsets, independent of the capabilities recorded at those locations. *)
 Lemma aux_ps_keys b o cs : (aux_ps b o cs).*1 = PAux b <$> seqZ o (Z.of_nat (length cs)).
 Proof.
   revert o. induction cs as [|c cs IH]; intros o; [reflexivity|].
@@ -105,7 +95,8 @@ Proof.
   cbn [length]. rewrite Nat2Z.inj_succ (seqZ_cons o); [|lia]. rewrite Z.pred_succ. reflexivity.
 Qed.
 
-(** A byte piece of xs is the i-th byte's, at offset o + i. *)
+(** Every piece in a byte list identifies some listed byte and its
+    consecutive object-relative offset, as [byte_ps_elem] establishes. *)
 Lemma byte_ps_elem b o xs l v :
   (l, v) ∈ byte_ps b o xs -> exists i x, xs !! i = Some x /\ l = PByte b (o + Z.of_nat i) /\ v = VByte x.
 Proof.
@@ -114,7 +105,8 @@ Proof.
   injection E as -> ->. eauto.
 Qed.
 
-(** An aux piece of cs is the i-th slot's, at offset o + i. *)
+(** Every piece in a shadow-slot list identifies some listed capability
+    and its consecutive object-relative offset, as [aux_ps_elem] establishes. *)
 Lemma aux_ps_elem b o cs l v :
   (l, v) ∈ aux_ps b o cs -> exists i c, cs !! i = Some c /\ l = PAux b (o + Z.of_nat i) /\ v = VAux c.
 Proof.
@@ -123,30 +115,38 @@ Proof.
   injection E as -> ->. eauto.
 Qed.
 
-(** The i-th slot's piece is among the keys of cs's pieces. *)
+(** Every offset within a capability list has a corresponding shadow
+    piece key, allowing an ownership proof to locate that slot. *)
 Lemma aux_ps_key b o cs i : 0 <= i < Z.of_nat (length cs) -> PAux b (o + i) ∈ (aux_ps b o cs).*1.
 Proof.
   intros Hi. rewrite aux_ps_keys. apply list_elem_of_fmap_2. apply elem_of_seqZ. lia.
 Qed.
 
-(** The i-th byte's piece is among the keys of xs's pieces. *)
+(** Every offset within a byte list has a corresponding byte piece
+    key, allowing an ownership proof to locate that byte. *)
 Lemma byte_ps_key b o xs i : 0 <= i < Z.of_nat (length xs) -> PByte b (o + i) ∈ (byte_ps b o xs).*1.
 Proof.
   intros Hi. rewrite byte_ps_keys. apply list_elem_of_fmap_2. apply elem_of_seqZ. lia.
 Qed.
 
-(** ## Integer stores *)
+(** ## Integer stores
 
-(** The n little-endian bytes of the integer y. *)
+    An integer store writes its least significant byte first in the
+    little-endian memory used by this model.
+    The following representation turns that write into an updated byte
+    list and proves that pieces outside the written range still agree. *)
+
+(** Storing integer y into n bytes writes its low-order bytes in
+    little-endian order, which [le_bytes] constructs as a list. *)
 Definition le_bytes (y : Z) (n : nat) : list Z := (fun i => byte_of y (Z.of_nat i)) <$> seq 0 n.
 
-(** As many bytes as asked for. *)
+(** The integer's magnitude does not affect the encoded list's length;
+    [length_le_bytes] gives exactly the requested number of stored bytes. *)
 Lemma length_le_bytes y n : length (le_bytes y n) = n.
 Proof. unfold le_bytes. rewrite length_fmap length_seq. reflexivity. Qed.
 
-(** A store of the integer y over the bytes xs from offset o of the
-    live object b: afterwards they are y's little-endian bytes, and
-    every piece outside them keeps its agreement. *)
+(** An integer store replaces the owned range with its little-endian
+    bytes and preserves agreement for every piece outside that range. *)
 Lemma store_after m b reg o xs y :
   live_disjoint m -> live_at m b reg -> all_agree m (byte_ps b o xs) ->
   all_agree (store_bytes m (b + o) (Z.of_nat (length xs)) y) (byte_ps b o (le_bytes y (length xs))) /\
@@ -172,22 +172,27 @@ Proof.
     + intros a _. reflexivity.
 Qed.
 
-(** ## Integer values *)
+(** ## Integer values
 
-(** As `le_value(Bytes, U)`: the little-endian integer of the bytes
-    xs. *)
+    Reading a byte range as an integer must reverse the little-endian
+    decomposition used by stores.
+    The following definitions combine the listed bytes and connect that
+    arithmetic value to a load from the actual memory. *)
+
+(** A little-endian byte list represents the first byte plus successive
+    bytes weighted by powers of 256, which [of_bytes] computes. *)
 Definition of_bytes (xs : list Z) : Z := fold_right (fun x acc => x + 256 * acc) 0 xs.
 
-(** The integer of two runs of bytes: the first's, then the second's
-    above it. *)
+(** Concatenating byte lists places the second list's integer above
+    the first list's bytes, shifting its contribution by the first list's length. *)
 Lemma of_bytes_app xs ys : of_bytes (xs ++ ys) = of_bytes xs + 256 ^ Z.of_nat (length xs) * of_bytes ys.
 Proof.
   unfold of_bytes. induction xs as [|x xs IH]; cbn [app fold_right length]; [rewrite Z.pow_0_r; ring|].
   rewrite IH Nat2Z.inj_succ Z.pow_succ_r; [ring | lia].
 Qed.
 
-(** [load_bytes] of n bytes is the little-endian integer of the n
-    bytes of memory from the address a. *)
+(** Loading n consecutive bytes from memory equals combining those
+    same bytes as a little-endian list, as [load_bytes_of_bytes] establishes. *)
 Lemma load_bytes_of_bytes m a n :
   load_bytes m a (Z.of_nat n) = of_bytes ((fun i => m_bytes m (a + Z.of_nat i)) <$> seq 0 n).
 Proof.
@@ -200,8 +205,8 @@ Proof.
   rewrite Nat2Z.inj_succ Z.pow_succ_r; [ring | lia].
 Qed.
 
-(** The bytes xs from offset o of the live object b read back as their
-    little-endian integer. *)
+(** When owned bytes agree with a live object's memory, loading their
+    range returns exactly the little-endian integer represented by the list. *)
 Lemma bytes_load m b reg o xs :
   live_at m b reg -> all_agree m (byte_ps b o xs) ->
   load_bytes m (b + o) (Z.of_nat (length xs)) = of_bytes xs.
@@ -214,14 +219,20 @@ Proof.
   - rewrite lookup_seq_ge; [|lia]. rewrite lookup_ge_None_2; [reflexivity|lia].
 Qed.
 
-(** ## Blocks *)
+(** ## Blocks
 
-(** The pieces of a block: the life of the object b with the region
-    reg, the bytes xs and the aux slots cs from offset o. *)
+    A block combines the enclosing object's lifetime with ownership of
+    its data bytes and the corresponding shadow capability slots.
+    The following facts describe filling and copying such blocks while
+    preserving every owned piece outside the destination. *)
+
+(** A block's piece list includes its object lifetime followed by its
+    byte and shadow-slot lists, which [block_ps] collects at one offset. *)
 Definition block_ps (b : Z) (reg : region) (o : Z) (xs : list Z) (cs : list cap) : list (piece * pval) :=
   (PLive b, VLive reg) :: byte_ps b o xs ++ aux_ps b o cs.
 
-(** Blocks of the same lengths have the same keys. *)
+(** Changing a block's recorded bytes and capabilities leaves its piece
+    locations unchanged when both replacement lists retain their original lengths. *)
 Lemma block_ps_keys b reg o xs cs ys ds :
   length ys = length xs -> length ds = length cs ->
   (block_ps b reg o ys ds).*1 = (block_ps b reg o xs cs).*1.
@@ -230,18 +241,20 @@ Proof.
   rewrite !byte_ps_keys !aux_ps_keys Hy Hd. reflexivity.
 Qed.
 
-(** The slots cs from offset o once memset has touched each: those
-    that start at a multiple of 8 are empty, the rest are as they were.
-    For an object at a multiple of 8, these are the slots the contract
-    clears. *)
+(** Filling bytes clears capabilities at eight-byte-aligned offsets
+    and leaves the other shadow entries unchanged, which [clear_slots] records.
+    When the object base is also aligned, these offsets identify
+    exactly the pointer slots cleared by the contract. *)
 Definition clear_slots (o : Z) (cs : list cap) : list cap :=
   zip_with (fun i c => if i mod 8 =? 0 then CNone else c) (seqZ o (Z.of_nat (length cs))) cs.
 
-(** Clearing keeps the number of slots. *)
+(** Clearing capabilities changes their values without adding or
+    removing entries, so [length_clear_slots] preserves the size of the shadow-slot list. *)
 Lemma length_clear_slots o cs : length (clear_slots o cs) = length cs.
 Proof. unfold clear_slots. rewrite length_zip_with length_seqZ Nat2Z.id. lia. Qed.
 
-(** The i-th cleared slot. *)
+(** Looking up a cleared slot yields an empty capability at an aligned
+    offset and the old capability at any other offset. *)
 Lemma lookup_clear_slots o cs i c :
   clear_slots o cs !! i = Some c ->
   exists c0, cs !! i = Some c0 /\ c = if (o + Z.of_nat i) mod 8 =? 0 then CNone else c0.
@@ -250,10 +263,10 @@ Proof.
   apply lookup_seqZ in Hk as [-> _]. eauto.
 Qed.
 
-(** memset's exact frame ([memset_frame]) on the n bytes xs of the
-    block at offset o of the live object b, at a multiple of 8, with
-    its slots cs, keeps the agreement of every piece outside the
-    block. memset and the copies share it. *)
+(** Writing an aligned block under the contract's destination bounds
+    preserves agreement for every owned piece outside its byte and shadow ranges.
+    The lemma [block_frame] supplies this preservation fact to both
+    memory filling and copying, which share the same write restriction. *)
 Lemma block_frame m m' b reg o xs cs :
   live_disjoint m -> live_at m b reg -> b mod 8 = 0 -> o mod 8 = 0 -> length cs = length xs ->
   all_agree m (byte_ps b o xs ++ aux_ps b o cs) ->
@@ -281,10 +294,10 @@ Proof.
     replace (a - b) with (o + (a - b - o)) by lia. apply aux_ps_key. lia.
 Qed.
 
-(** A memset of the n bytes xs of the block at offset o of the live
-    object b, at a multiple of 8, with its slots cs: afterwards its
-    bytes are c's low byte and its slots [clear_slots], and every piece
-    outside it keeps its agreement ([frame_ok]). *)
+(** Filling an aligned block replaces every byte with the character's
+    low byte and clears each touched pointer capability.
+    The lemma [fill_after] records those updated pieces and preserves
+    agreement for every owned piece outside the block. *)
 Lemma fill_after m m' b reg o xs cs c :
   live_disjoint m -> live_at m b reg -> b mod 8 = 0 -> o mod 8 = 0 -> length cs = length xs ->
   all_agree m (byte_ps b o xs ++ aux_ps b o cs) ->
@@ -337,22 +350,23 @@ Proof.
       apply all_agree_app; split; assumption | split; [exact Hr|]; split; assumption].
 Qed.
 
-(** The slots cs of a destination block after a copy of n bytes from
-    a source block whose slots are ds, both blocks at multiples of 8,
-    so in phase: a slot at a multiple of 8 takes the source's if all 8
-    of its bytes were copied, and empties if only some were; the
-    others are as they were. *)
+(** Copying aligned buffers transfers a pointer capability only when
+    the copy covers all eight bytes of that pointer slot.
+    The function [copy_slots] clears a partially copied slot and leaves
+    shadow entries at unaligned offsets unchanged. *)
 Definition copy_slots (n : Z) (ds cs : list cap) : list cap :=
   zip_with (fun i dc => if i mod 8 =? 0 then (if i + 8 <=? n then fst dc else CNone) else snd dc)
     (seqZ 0 (Z.of_nat (length cs))) (zip ds cs).
 
-(** Copying keeps the number of slots. *)
+(** Copying equally sized shadow lists changes their recorded values
+    without changing the number of destination entries, as [length_copy_slots] proves. *)
 Lemma length_copy_slots n ds cs : length ds = length cs -> length (copy_slots n ds cs) = length cs.
 Proof.
   intros H. unfold copy_slots. rewrite length_zip_with length_seqZ Nat2Z.id length_zip. lia.
 Qed.
 
-(** The i-th copied slot. *)
+(** Each copied shadow entry comes from the source, becomes empty,
+    or stays unchanged according to its alignment and complete byte coverage. *)
 Lemma lookup_copy_slots n ds cs i c :
   copy_slots n ds cs !! i = Some c ->
   exists d0 c0, ds !! i = Some d0 /\ cs !! i = Some c0 /\
@@ -363,10 +377,10 @@ Proof.
   injection E as -> ->. exists x, y. auto.
 Qed.
 
-(** What a copy writes into the slot at offset i of a destination
-    block at b + o, from a source block at b' + o', all at multiples of
-    8, for i a multiple of 8: the source's slot if the copy covers all
-    8 bytes, else nothing ([copy_slot]). *)
+(** At an aligned destination slot, a copy installs the matching source
+    capability only when all eight bytes fit within the copied range.
+    Otherwise, [copy_slot_at] shows that the resulting capability is
+    empty, assuming both buffer addresses and the slot offset are aligned. *)
 Lemma copy_slot_at m b o b' o' c' n i :
   b mod 8 = 0 -> o mod 8 = 0 -> b' mod 8 = 0 -> o' mod 8 = 0 -> 0 <= i -> i mod 8 = 0 ->
   copy_slot m (mkPtr (b + o) (Obj b)) (mkPtr (b' + o') c') n (b + (o + i)) =
@@ -384,11 +398,10 @@ Proof.
     pose proof (Z.mod_pos_bound (b' + (o' + i)) 8 ltac:(lia)). lia.
 Qed.
 
-(** A copy of the n bytes ys of a source block at offset o' of the live
-    object b' into the block at offset o of the live object b, both at
-    multiples of 8: afterwards the destination's bytes are ys and its
-    slots [copy_slots], and every piece outside it keeps its agreement
-    ([block_frame]). *)
+(** An aligned block copy installs the source bytes and the shadow
+    capabilities permitted by complete pointer-slot coverage.
+    The lemma [copy_after] records the new destination pieces and
+    preserves agreement for every piece outside that destination. *)
 Lemma copy_after m m' b reg o xs cs b' reg' o' ys ds c' :
   live_disjoint m -> live_at m b reg -> live_at m b' reg' -> b mod 8 = 0 -> o mod 8 = 0 -> b' mod 8 = 0 -> o' mod 8 = 0 ->
   length ys = length xs -> length cs = length xs -> length ds = length xs ->
@@ -444,9 +457,10 @@ Proof.
       apply memset_touched_spec in Ht as (_ & Ht & _). rewrite Hmod in Ht. contradiction.
 Qed.
 
-(** A change that keeps every region, and every byte and aux slot
-    outside the live object b, keeps the agreement of every piece of
-    another object: [frame_within] with every piece of b as keys. *)
+(** A write confined to one live object leaves every other object's
+    owned pieces valid when all object regions remain unchanged.
+    The lemma [frame_other] turns that address restriction into the
+    agreement needed to preserve unrelated ownership. *)
 Lemma frame_other m m' b reg l v :
   m_regions m' = m_regions m -> live_disjoint m -> live_at m b reg ->
   (forall a, ~ (b <= a < r_end reg) -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a) ->
@@ -463,10 +477,10 @@ Proof.
       exact (Hid I eq_refl).
 Qed.
 
-(** A copy of the string ys at src, with its NUL, over the bytes xs
-    from offset o of the live object b: afterwards those bytes are ys
-    and the NUL, and every piece outside them keeps its agreement
-    ([frame_ok]). A scalar copy keeps every aux slot. *)
+(** A scalar string copy replaces destination bytes through the NUL,
+    preserves every shadow slot, and needs no pointer-slot alignment.
+    The lemma [copy_string_after] records the copied bytes and keeps
+    every owned piece outside the destination byte range valid. *)
 Lemma copy_string_after m m' b reg o xs src b' reg' ys :
   live_disjoint m -> live_at m b reg -> all_agree m (byte_ps b o xs) -> length xs = S (length ys) ->
   string_ok src b' reg' ys -> all_agree m (string_ps src b' reg' ys) ->
@@ -497,9 +511,10 @@ Proof.
     apply H; [lia|]. replace (a - b) with (o + (a - b - o)) by lia. apply byte_ps_key. lia.
 Qed.
 
-(** A block of the bytes xs from offset o of the live object b, in
-    its bounds and each a byte, is [readable_bytes] through b's
-    read-write or read-only capability c, and holds xs. *)
+(** Owned bytes inside a live object's bounds form a readable range
+    through either its writable or read-only capability.
+    The lemma [block_readable] also identifies every byte value when
+    the object fits the address space and all listed values are bytes. *)
 Lemma block_readable m b reg o xs c :
   live_at m b reg -> all_agree m (byte_ps b o xs) -> objects_fit (m_regions m) ->
   c = Obj b \/ c = Ro b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg ->
@@ -517,12 +532,17 @@ Proof.
     rewrite <- (Z2Nat.id i) by lia. rewrite (Hv _ _ Hxi). exact (Forall_lookup_1 _ _ _ _ Hy Hxi).
 Qed.
 
-(** ## Searching a string for its NUL *)
+(** ## Searching a string for its NUL
 
-(** A search for the NUL reads a [bounded_length] string through its
-    NUL when that lies before the bound, and the whole bound
-    otherwise. So [memchr_input] holds for an int c whose low byte is
-    the NUL, with nothing asked of the bytes after the NUL. *)
+    A search for zero stops at the first NUL and need not read the
+    rest of the caller's stated search range.
+    The following facts let a caller use string ownership even when
+    that range extends beyond the string's enclosing object. *)
+
+(** Searching a bounded string for zero reads through its NUL or the
+    bound, whichever comes first, and never requires bytes after a match.
+    The lemma [memchr_input_bounded] turns that readable prefix into the
+    memory-search contract's precondition for a zero low byte. *)
 Lemma memchr_input_bounded m p c n k :
   0 <= c < 2 ^ 32 -> c mod 256 = 0 -> bounded_length m p n k -> memchr_input m p c n.
 Proof.
@@ -537,16 +557,16 @@ Proof.
   - split; [|exact Hnul]. intros i Hi. specialize (Hpos i Hi). lia.
 Qed.
 
-(** What a search for the NUL bounded by n finds in the string at p
-    with contents bytes: its NUL, with p's capability, when the string
-    is shorter than n, and null otherwise. *)
+(** A bounded zero search returns the terminator with the string's
+    capability only when the terminator lies strictly before the bound.
+    The function [nul_found] returns null otherwise, including when the
+    bound equals the number of nonzero string bytes. *)
 Definition nul_found (p : ptr) (bytes : list Z) (n : Z) : ptr :=
   if Z.of_nat (length bytes) <? n then mkPtr (ptr_addr p + Z.of_nat (length bytes)) (ptr_cap p)
   else mkPtr 0 CNone.
 
-(** Where the string's pieces agree, memchr's [memchr_result] for an
-    int whose low byte is the NUL is [nul_found]: no byte before the
-    NUL matches, and the NUL does. *)
+(** No byte before a string's terminator matches zero, so any contracted
+    zero-search result must equal [nul_found] for the supplied bound. *)
 Lemma memchr_result_string m p b reg bytes c n q :
   string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) -> c mod 256 = 0 ->
   memchr_result m p c n q -> q = nul_found p bytes n.
@@ -570,7 +590,8 @@ Proof.
     apply Z.ltb_lt in E. exfalso. apply (Hmiss (Z.of_nat (length bytes))); [lia | exact Hz].
 Qed.
 
-(** The memory and aux triples over any [[runtime]] R. *)
+(** The module [MemLogicOn] builds buffer ownership and memory-call rules
+    over an existing program logic for any chosen [[runtime]] R. *)
 Module MemLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module SL := StringLogicOn R LG0.
 Module LG := SL.LG.
@@ -580,31 +601,37 @@ Import L LG SL.
 Section mem.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** [bytes] b o xs: owning the bytes xs from offset o of the object b. *)
+(** A caller owns consecutive data bytes through [bytes], which records
+    the listed values from offset o within object b. *)
 Definition bytes (b o : Z) (xs : list Z) : iProp Σ := pts (byte_ps b o xs).
 
-(** [bytesq] dq b o xs: [bytes] at the fraction dq. *)
+(** Shared readers use [bytesq] to own a fraction of the same byte
+    range, retaining its recorded values without exclusive write permission. *)
 Definition bytesq (dq : dfrac) (b o : Z) (xs : list Z) : iProp Σ := ptsq dq (byte_ps b o xs).
 
-(** [auxes] b o cs: owning the aux slots holding cs from offset o of
-    the object b. *)
+(** A buffer needs ownership of its hidden pointer capabilities when
+    an operation copies or clears the pointers stored in that buffer.
+    The assertion [auxes] records those capabilities in consecutive
+    shadow entries, beginning at offset o within object b. *)
 Definition auxes (b o : Z) (cs : list cap) : iProp Σ := pts (aux_ps b o cs).
 
-(** A block's pieces are its life, bytes and slots. *)
+(** Owning a block's complete piece list equals owning its object
+    lifetime, its data bytes, and its shadow slots separately. *)
 Lemma block_pts b reg o xs cs : pts (block_ps b reg o xs cs) ⊣⊢ live b reg ∗ bytes b o xs ∗ auxes b o cs.
 Proof. rewrite /block_ps /live /bytes /auxes /pts big_sepL_cons big_sepL_app big_sepL_singleton. done. Qed.
 
-(** Owning the bytes xs ++ ys from offset o is owning xs there and ys
-    after them. *)
+(** Ownership of concatenated byte lists splits into ownership of the
+    first range and the second range immediately following it. *)
 Lemma bytes_app b o xs ys : bytes b o (xs ++ ys) ⊣⊢ bytes b o xs ∗ bytes b (o + Z.of_nat (length xs)) ys.
 Proof. rewrite /bytes byte_ps_app. apply pts_app. Qed.
 
-(** Owning the slots cs ++ ds from offset o is owning cs there and ds
-    after them. *)
+(** Ownership of concatenated shadow lists splits into ownership of the
+    first range and the second range immediately following it. *)
 Lemma auxes_app b o cs ds : auxes b o (cs ++ ds) ⊣⊢ auxes b o cs ∗ auxes b (o + Z.of_nat (length cs)) ds.
 Proof. rewrite /auxes aux_ps_app. apply pts_app. Qed.
 
-(** Owning the bytes xs from o is owning their first n and the rest. *)
+(** Byte ownership can split at any position within the list,
+    separating the first n bytes from the remainder at the advanced offset. *)
 Lemma bytes_take_drop b o xs n : (n <= length xs)%nat ->
   bytes b o xs ⊣⊢ bytes b o (take n xs) ∗ bytes b (o + Z.of_nat n) (drop n xs).
 Proof.
@@ -612,7 +639,8 @@ Proof.
   rewrite E -bytes_app take_drop. done.
 Qed.
 
-(** Owning the slots cs from o is owning their first n and the rest. *)
+(** Shadow-slot ownership can split at any position within the list,
+    separating the first n entries from the remainder at the advanced offset. *)
 Lemma auxes_take_drop b o cs n : (n <= length cs)%nat ->
   auxes b o cs ⊣⊢ auxes b o (take n cs) ∗ auxes b (o + Z.of_nat n) (drop n cs).
 Proof.
@@ -620,8 +648,8 @@ Proof.
   rewrite E -auxes_app take_drop. done.
 Qed.
 
-(** A fresh object's pieces are its life, a zero byte at each offset of
-    its extent and an empty slot at each: a block from offset 0. *)
+(** A fresh object's ownership supplies its lifetime, zero-valued bytes,
+    and empty shadow capabilities across its full extent, as [obj_zero_block] exposes. *)
 Lemma obj_zero_block b q :
   0 <= req_extent q ->
   obj b q ⊣⊢ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗
@@ -631,16 +659,16 @@ Proof.
   rewrite /pts big_sepL_cons big_sepL_app big_sepL_singleton. done.
 Qed.
 
-(** The life of an object and a string's are of different objects:
-    each is owned once. *)
+(** Separately owning an object lifetime and a string's lifetime forces
+    different objects, because the same lifetime cannot be owned twice. *)
 Lemma live_string_ne b reg p b' reg' ys : live b reg -∗ string p b' reg' ys -∗ ⌜b <> b'⌝.
 Proof.
   rewrite /live /string /string_ps /pts !big_sepL_cons. iIntros "[Hl _] [_ [Hs _]]".
   iDestruct (pointsto_ne with "Hl Hs") as %Hne. iPureIntro. intros <-. apply Hne. reflexivity.
 Qed.
 
-(** An object's life and its bytes from offset o, a string and its
-    NUL, are that string. *)
+(** An object's lifetime and its terminated byte sequence form string
+    ownership once the pointer and contents satisfy the string bounds. *)
 Lemma block_string b reg o ys :
   string_ok (mkPtr (b + o) (Obj b)) b reg ys ->
   live b reg -∗ bytes b o (ys ++ [0]) -∗ string (mkPtr (b + o) (Obj b)) b reg ys.
@@ -649,8 +677,10 @@ Proof.
   replace (b + o - b) with o by lia. iIntros "[Hl _] Hx". iSplit; [iPureIntro; exact Hok|]. iFrame.
 Qed.
 
-(** A string lends n of its bytes from its k-th on, before its NUL,
-    as a block, with its object's life, and takes them back. *)
+(** A string can lend a byte window before its terminator, together
+    with its object lifetime, through [string_window].
+    The rule restores the original string ownership when the borrower
+    returns the lifetime and the same byte window. *)
 Lemma string_window p b reg ys k n :
   (k + n <= length ys)%nat ->
   string p b reg ys -∗
@@ -673,18 +703,19 @@ Section calls.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
 
-(** The Iris instance of the registry and wi. *)
+(** The instance [mem_irisGS] equips these memory rules with the chosen
+    contract registry and the interpretation of external-library state. *)
 Local Instance mem_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
 
-(** The expressions of the language. *)
+(** The notation [mexpr] names expressions in this language, keeping
+    the selected contract registry implicit in the memory rules below. *)
 Local Notation mexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A raw store of the 32-bit int y, which v reads as, through the
-    proven pointer p, which a reads as and which addresses offset o of
-    the live object b at offset off, over the four bytes xs there,
-    where the store keeps the world interpretation: they are now y's
-    four little-endian bytes. *)
+(** A raw 32-bit store replaces four owned bytes with the integer's
+    little-endian representation and returns ownership of that updated range.
+    The rule [wp_raw_store_w] requires the object's lifetime and a
+    proof that updating these bytes preserves the external-world interpretation. *)
 Lemma wp_raw_store_w f e ls l off v a rest j p b reg o xs y Φ :
   value_x ge e W v = Some (WInt y) -> value_x ge e A a = Some (WPtr p) ->
   ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> length xs = 4%nat ->
@@ -720,11 +751,10 @@ Proof.
     iApply ("HK" with "Hl Hx").
 Qed.
 
-(** A raw load of the narrow type n, of its s bytes, at offset off
-    from the proven pointer p, through a read-write or read-only
-    capability for the object b, at offset o, where a share dq1 of b's
-    life and a share dq2 of the s bytes bs there are owned: d is bound
-    to bs's little-endian integer extended to the class k, y. *)
+(** A narrow raw load reads owned bytes as a little-endian integer,
+    extends it to the result class, and preserves the byte values.
+    The rule [wp_raw_load_sub_bytes_dq] accepts shared ownership of both
+    the object lifetime and the bytes, through writable or read-only capabilities. *)
 Lemma wp_raw_load_sub_bytes_dq f e ls l d k n off args rest j classes p b reg o bs y dq1 dq2 Φ :
   op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -755,13 +785,12 @@ Proof.
   - iNext. iIntros "[Hl Hb]". iApply ("HK" with "Hl Hb").
 Qed.
 
-(** A raw integer [[cas]] of type t, [CasL] or narrow, of its size
-    bytes at offset off from the proven pointer p, which addresses
-    offset o of the live object b, aligned to size, where the bytes bs
-    are, of the integers ev expected and nv new: d is bound to old, the
-    integer of bs as [cas_old] reads it; the bytes then become nv's
-    where that integer is ev modulo 2^(8 size), a write that must keep
-    the world interpretation, and stay bs where it is not. *)
+(** Integer compare-and-swap returns the old value and writes the new
+    integer only when the stored bytes match the width-wrapped expected value.
+    The rule [wp_raw_cas_int] requires exclusive byte ownership, an
+    address aligned to the access width, and preservation of the world on success.
+    A failed comparison returns the same owned bytes unchanged; this
+    rule covers long and narrow integer accesses, not pointer compare-and-swap. *)
 Lemma wp_raw_cas_int f e ls l d k t off args rest j classes p b reg o bs ev nv old Φ :
   t <> CasP -> length bs = Z.to_nat (cas_bytes t) ->
   op_arg_classes (RawCas t off) k = Some classes ->
@@ -830,11 +859,10 @@ Proof.
       iApply ("HK" with "Hl Hb").
 Qed.
 
-(** [wp_raw_cas_int] for a 32-bit int, as glibc's locks take one
-    (`raw_cas(sw, 0)` or `raw_cas(uw, 0)`): over the four bytes bs at
-    the 4-aligned offset o of the live object b, d is bound to their
-    integer modulo 2^32, and they become nv's where it is ev's modulo
-    2^32. *)
+(** Glibc's locks compare and replace a four-byte integer at an address
+    divisible by four, returning the previous 32-bit value.
+    The rule [wp_raw_cas_w] specializes integer compare-and-swap to that
+    case, accepting either signed or unsigned narrow-word operations. *)
 Lemma wp_raw_cas_w f e ls l d nt off args rest j classes p b reg o bs ev nv Φ :
   nt = Sw \/ nt = Uw -> length bs = 4%nat ->
   op_arg_classes (RawCas (CasNarrow nt) off) W = Some classes ->
@@ -860,13 +888,12 @@ Proof.
   - iNext. rewrite Hs Hlen. iExact "HK".
 Qed.
 
-(** memset's triple, from [memset_contract]: owning the life of the
-    object b, at a multiple of 8, with the region reg, and the block of
-    the bytes xs and the slots cs from the 8-aligned offset o, inside
-    its bounds, where vp reads as the block's pointer, vc as the int c
-    and vn as its length, and where the fill keeps the world
-    interpretation: the call fills the bytes with c's low byte, clears
-    the slots it touches, and binds d to the block's pointer. *)
+(** Calling memset fills an owned block with the character's low byte,
+    clears touched pointer capabilities, and returns the destination pointer.
+    The rule [wp_memset] requires an eight-byte-aligned base and offset,
+    ownership of the bytes and shadow slots, and sufficient object bounds.
+    The caller must also show that this fill preserves the chosen
+    interpretation of external-library state. *)
 Lemma wp_memset f e ls lab d vp vc vn rest j b reg o xs cs c Φ :
   registry (TAtom "memset") = Some (memset_contract world) ->
   find_fn ge (TAtom "memset") = None -> lookup (TAtom "memset") (ge_globals ge) = None ->
@@ -931,12 +958,12 @@ Proof.
     + rewrite block_pts. iDestruct "Hps" as "(Hl & Hx & Hcs)". iApply ("HK" with "Hl Hx Hcs").
 Qed.
 
-(** malloc's triple, from [malloc_contract]: for a size n that v reads
-    as, where an allocation keeps the world interpretation, the call
-    binds d to the base pointer of a fresh heap object of n bytes,
-    rounded up to 16, whose pieces it owns ([obj]). The selected malloc
-    never returns null: a refusal is a resource ending, which is not a
-    return, so the triple has no null case. *)
+(** Calling malloc returns ownership of a fresh heap object whose
+    requested size is rounded up to a multiple of sixteen bytes.
+    The rule [wp_malloc] has no null-return case because this contract
+    treats allocation refusal as a resource ending, not a return.
+    The caller must show that adding the allocated object's owned
+    pieces preserves its interpretation of external-library state. *)
 Lemma wp_malloc f e ls lab d v rest j n Φ :
   registry (TAtom "malloc") = Some (malloc_contract world) ->
   find_fn ge (TAtom "malloc") = None -> lookup (TAtom "malloc") (ge_globals ge) = None ->
@@ -988,15 +1015,12 @@ Proof.
       cbn [r_end] in Hend. exact Hend.
 Qed.
 
-(** memcpy's triple, from [memcpy_contract]: owning the destination
-    block (the bytes xs and slots cs from offset o of the live object b)
-    and the source block (the bytes ys and slots ds from offset o' of
-    the live object b', another object, through the capability c', read-write
-    or read-only), of the same length, all at multiples of 8, where vd,
-    vs and vn read as their pointers and length, and where the copy
-    keeps the world interpretation: the destination's bytes become ys,
-    its slots [copy_slots], and d is bound to the destination pointer.
-    The source is handed back unchanged. *)
+(** Calling memcpy copies bytes and complete pointer capabilities into
+    an owned destination, returns its pointer, and preserves the source ownership.
+    The rule [wp_memcpy] requires distinct objects and equally sized
+    blocks, with both bases and offsets aligned to eight bytes.
+    Partially copied pointer slots become empty, and the caller must
+    show that the destination update preserves the external-world interpretation. *)
 Lemma wp_memcpy f e ls lab d vd vs vn rest j b reg o xs cs b' reg' o' c' ys ds Φ :
   registry (TAtom "memcpy") = Some (memcpy_contract world) ->
   find_fn ge (TAtom "memcpy") = None -> lookup (TAtom "memcpy") (ge_globals ge) = None ->
@@ -1086,12 +1110,12 @@ Proof.
       iApply ("HK" with "Hl Hx Hcs Hl' Hy Hds").
 Qed.
 
-(** strdup's triple, from [strdup_contract]: owning the string at p,
-    which v reads as, in an object at a multiple of 8, the call binds d
-    to the base pointer of a fresh heap object holding a copy of the
-    string, which it owns as a [string] (its life and the copied bytes;
-    the fresh object's other bytes and its aux slots stay unowned), and
-    hands the original back. A refusal is a resource ending. *)
+(** Calling strdup returns an owned string in a fresh heap object and
+    hands the original string back unchanged; allocation refusal does not return.
+    The rule [wp_strdup] requires the source object's base to be
+    eight-byte aligned and the allocation to preserve the external-world interpretation.
+    Its result owns the copied string and object lifetime, but not
+    the fresh object's remaining bytes or shadow slots. *)
 Lemma wp_strdup f e ls lab d v rest j p b reg bytes Φ :
   registry (TAtom "strdup") = Some (strdup_contract world) ->
   find_fn ge (TAtom "strdup") = None -> lookup (TAtom "strdup") (ge_globals ge) = None ->
@@ -1184,16 +1208,14 @@ Proof.
         cbn [r_end reg'] in Hend. split; [left; reflexivity|]. repeat split; try lia. exact Hf.
 Qed.
 
-(** The scalar string copies' triple, from [string_copy_contract]:
-    owning the life of the object b, above 0, and its bytes xs from
-    offset o, one more than the string's, and the string ys at src,
-    where vd reads as the bytes' pointer and vs as src, and where the
-    copy keeps the world interpretation: the bytes become the string
-    and its NUL, a [string] the call hands over, and d is bound to the
-    destination pointer, or for stpcpy ([copy_return]) to its NUL. The
-    source is handed back. The two objects differ, since each life is
-    owned once ([live_string_ne]), so the bytes do not overlap; no aux
-    slot needs owning, since a scalar copy keeps them all. *)
+(** A scalar string copy turns destination byte ownership into an
+    owned string, including its terminator, and preserves the source string.
+    The rule [wp_string_copy] returns either the destination pointer or
+    its terminating NUL pointer, according to the selected copy contract.
+    Owning both object lifetimes forces distinct objects, while preserving
+    every shadow slot removes the need for shadow ownership or alignment.
+    The caller supplies enough destination bytes and proves that the
+    copy preserves its interpretation of external-library state. *)
 Lemma wp_string_copy end_return g f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   registry g = Some (string_copy_contract end_return world) ->
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
@@ -1273,7 +1295,8 @@ Proof.
       * iSplit; [iPureIntro; exact Hok | iExact "Hs"].
 Qed.
 
-(** strcpy's triple: [wp_string_copy], binding d to the destination. *)
+(** Calling strcpy uses the scalar string-copy rule and binds the
+    result to the destination pointer, as [wp_strcpy] specializes the general contract. *)
 Lemma wp_strcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   registry (TAtom "strcpy") = Some (strcpy_contract world) ->
   find_fn ge (TAtom "strcpy") = None -> lookup (TAtom "strcpy") (ge_globals ge) = None ->
@@ -1294,7 +1317,8 @@ Proof.
   iApply (wp_string_copy false (TAtom "strcpy") with "Hl Hx Hs HK"); done.
 Qed.
 
-(** stpcpy's triple: [wp_string_copy], binding d to the copy's NUL. *)
+(** Calling stpcpy uses the scalar string-copy rule but returns the
+    copied terminator's pointer, as [wp_stpcpy] specializes the general contract. *)
 Lemma wp_stpcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   registry (TAtom "stpcpy") = Some (stpcpy_contract world) ->
   find_fn ge (TAtom "stpcpy") = None -> lookup (TAtom "stpcpy") (ge_globals ge) = None ->
@@ -1315,12 +1339,10 @@ Proof.
   iApply (wp_string_copy true (TAtom "stpcpy") with "Hl Hx Hs HK"); done.
 Qed.
 
-(** memcmp's triple, from [memcmp_contract]: owning the bytes xs from
-    offset o of the live object b and the bytes ys, as many, from
-    offset o' of the live object b', through read-write or read-only
-    capabilities, where vp, vq and vn read as their pointers and
-    length, the call binds d to an int. Which int does not matter to a
-    caller that only branches on it. *)
+(** Calling memcmp preserves both owned byte ranges and returns an
+    integer, but [wp_memcmp] does not specify that integer's sign or value.
+    This rule requires equally sized readable ranges and supports
+    safety proofs that handle every comparison result without assuming an ordering. *)
 Lemma wp_memcmp f e ls lab d vp vq vn rest j b reg o xs c b' reg' o' ys c' Φ :
   registry (TAtom "memcmp") = Some (memcmp_contract world) ->
   find_fn ge (TAtom "memcmp") = None -> lookup (TAtom "memcmp") (ge_globals ge) = None ->
@@ -1360,12 +1382,10 @@ Proof.
     iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Hl Hx Hl' Hy").
 Qed.
 
-(** memchr's triple, from [memchr_contract]: owning the bytes xs from
-    offset o of the live object b, through a read-write or read-only
-    capability c, where vp and vn read as their pointer and length,
-    the call binds d to what it finds of the int k, which vk reads as
-    ([strchr_found] of xs: the first byte equal to k's low byte, with
-    c, or null). *)
+(** Calling memchr preserves the owned byte range and returns its first
+    match for the argument's low byte, or null when no match exists.
+    The rule [wp_memchr] retains the input capability in a matching
+    pointer and accepts either writable or read-only access to the range. *)
 Lemma wp_memchr f e ls lab d vp vk vn rest j b reg o xs c k Φ :
   registry (TAtom "memchr") = Some (memchr_contract world) ->
   find_fn ge (TAtom "memchr") = None -> lookup (TAtom "memchr") (ge_globals ge) = None ->
@@ -1410,12 +1430,10 @@ Proof.
       apply Hnone. split; [lia|]. apply lookup_lt_Some in Hx'. lia.
 Qed.
 
-(** memchr's triple on a string, from [memchr_contract]: owning the
-    string at p, which vp reads as, a search for the int k, which vk
-    reads as and whose low byte is the NUL, bounded by n, which vn
-    reads as, binds d to [nul_found] p bytes n. The search reads only
-    through the NUL ([memchr_input_bounded]), so the bound may run
-    past the string's object. *)
+(** Searching an owned string for zero returns its NUL before the
+    bound, or null when the bound excludes that byte.
+    The rule [wp_memchr_string] preserves string ownership and permits
+    a bound beyond the enclosing object because no read follows the first match. *)
 Lemma wp_memchr_string f e ls lab d vp vk vn rest j p b reg bytes k n Φ :
   registry (TAtom "memchr") = Some (memchr_contract world) ->
   find_fn ge (TAtom "memchr") = None -> lookup (TAtom "memchr") (ge_globals ge) = None ->
@@ -1451,7 +1469,8 @@ End calls.
 End mem.
 End MemLogicOn.
 
-(** [MemLogicOn] over a Logic instance of its own. *)
+(** The module [MemLogic] creates its own program-logic instance and
+    supplies the buffer assertions and memory-call rules from [MemLogicOn]. *)
 Module MemLogic (R : Runtime).
 Module LG0 := Logic R.
 Include MemLogicOn R LG0.

@@ -1,29 +1,21 @@
-(** Variadic arguments in the program logic of Logic.v: a variadic
-    callee's argument [[snapshot]], the read of its pointer, and
-    `va_arg` through a va_list cell. Promoted from HelloVersion.v,
-    where `version_etc_va` first needed them.
+(** A C variadic function reads its unnamed arguments through a mutable
+    `c: va_list` cursor into a read-only argument [[snapshot]]. This
+    module supplies [[separation-logic|separation logic]] rules for
+    creating that snapshot and reading pointer or integer arguments
+    without changing the source cells.
 
-    A variadic callee starts at [Snapshot xs l] (Semantics.v's
-    [call_frame]): one step allocates a [[fresh]] object of 8 bytes
-    per argument word, stores each word there ([snapshot_values]: a
-    pointer's address in the bytes and its [[capability]] in the
-    [[aux]] slot, an integer in the bytes), and binds the hidden
-    [va_snapshot] to a read-only pointer to it. [wp_snapshot] hands
-    the caller the new object's pieces with the stored values,
-    [snapshot_ps], computed from empty memory, which freshness makes
-    exact ([snapshot_ps_agree]); [snapshot_ps_cell] and
-    [snapshot_ps_pointer] find one argument's cell among them.
+    Reading an unnamed pointer argument must recover its hidden
+    authority as well as its address, just like a pointer load from ordinary memory.
+    The callee therefore copies argument words into a [[fresh]] object,
+    keeping pointer [[capability|capabilities]] in the corresponding shadow [[aux]] slots.
+    The hidden frame entry [va_snapshot] records a read-only pointer to
+    that copy, which reserves eight bytes for each argument.
 
-    [VaArgs] reads that pointer, frame state only ([wp_va_args]). A
-    `va_arg` is a heap write: it reads the cursor stored in the
-    va_list cell, reads the argument's cell at the cursor rounded up
-    to 8, and stores the advanced cursor back ([wp_va_arg]).
-    [va_cursor_ps] is the va_list cell, whose capability stays the
-    snapshot's; [wp_va_arg_pointer] reads a pointer cell ([pcell]),
-    [wp_va_arg_int] an integer cell ([icell]) at class `w` (its low 4
-    bytes) or `l` (all 8). [zero_cell_prefix] turns a zeroed block of
-    a fresh object into a null pointer cell, as a va_list or argument
-    array starts. *)
+    Reading an argument also writes memory because `c: va_arg` advances
+    the cursor stored in the caller's `c: va_list` cell. The proof must
+    therefore own that cursor separately from the snapshot, which it
+    only reads. The rules below preserve the source cells, update the
+    cursor, and hand both sets of ownership back to the continuation. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -34,10 +26,15 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The snapshot's memory *)
+(** ## The snapshot's memory
 
-(** Snapshot stores at an address depend only on the bytes and
-    capability already at that address, not on other memory. *)
+    Copying argument words into consecutive cells must preserve every
+    earlier argument and all memory outside the snapshot. The following
+    facts establish that property separately for data bytes and shadow
+    capabilities. *)
+
+(** At any given address, [snapshot_values_pointwise] shows that snapshot
+    stores depend only on the byte and capability already stored there. *)
 Lemma snapshot_values_pointwise xs a m1 m2 t :
   m_bytes m1 t = m_bytes m2 t -> m_aux m1 t = m_aux m2 t ->
   m_bytes (snapshot_values xs a m1) t = m_bytes (snapshot_values xs a m2) t /\
@@ -48,8 +45,9 @@ Proof.
     try rewrite Hb; try rewrite Ha; reflexivity.
 Qed.
 
-(** Taking the snapshot changes no address outside its eight-byte
-    argument cells, even for words the snapshot skips. *)
+(** Copying arguments leaves addresses outside their eight-byte cells
+    unchanged, as [snapshot_values_outside] proves even when the copy
+    skips a word. *)
 Lemma snapshot_values_outside xs a m t :
   t < a \/ a + 8 * Z.of_nat (length xs) <= t ->
   m_bytes (snapshot_values xs a m) t = m_bytes m t /\ m_aux (snapshot_values xs a m) t = m_aux m t.
@@ -68,13 +66,14 @@ Proof.
     rewrite Hb Ha; cbn [store_bytes store_aux m_bytes m_aux]; rewrite ?Hbyte ?Haux; split; reflexivity.
 Qed.
 
-(** The integer a snapshot stores in the bytes of the word x's cell: a
-    pointer's address or an integer; none for a word it skips. *)
+(** An argument contributes either an integer or a pointer address to
+    its cell's data bytes. The function [snapshot_bits] extracts those
+    bits and returns no value for a skipped limit word. *)
 Definition snapshot_bits (x : word) : option Z :=
   match x with WPtr p => Some (ptr_addr p) | WInt n => Some n | WLimit _ _ => None end.
 
-(** The bytes of argument i survive all the later snapshot stores: byte
-    j of its cell is byte j of what [snapshot_bits] says it stores. *)
+(** Later argument stores preserve the bytes copied for argument i, as
+    [snapshot_byte] proves for each byte within that argument's cell. *)
 Lemma snapshot_byte xs i x n a m j :
   xs !! i = Some x -> snapshot_bits x = Some n -> 0 <= j < 8 ->
   m_bytes (snapshot_values xs a m) (a + 8 * Z.of_nat i + j) = byte_of n j.
@@ -92,7 +91,9 @@ Proof.
     destruct y; cbn [snapshot_values]; apply IH; assumption.
 Qed.
 
-(** A pointer argument's capability survives all later snapshot stores. *)
+(** Later argument stores also preserve a pointer argument's shadow
+    capability, as [snapshot_pointer_aux] proves independently of the
+    argument's data bytes. *)
 Lemma snapshot_pointer_aux xs i p a m :
   xs !! i = Some (WPtr p) -> m_aux (snapshot_values xs a m) (a + 8 * Z.of_nat i) = ptr_cap p.
 Proof.
@@ -106,11 +107,17 @@ Proof.
     destruct x; cbn [snapshot_values]; apply IH; assumption.
 Qed.
 
-(** ## The snapshot's pieces *)
+(** ## The snapshot's pieces
 
-(** The value of a snapshot piece, computed from empty memory.
-    Freshness makes the real allocated cells start with the same zero
-    bytes and empty capability slots ([snapshot_ps_agree]). *)
+    A program proof owns the new snapshot as separate memory pieces,
+    not as an unrestricted copy of the whole memory. The following
+    definitions compute those pieces from zeroed memory and show that
+    they match the actual fresh allocation. *)
+
+(** The function [snapshot_piece] computes one piece's value after
+    copying the arguments into an initially empty memory. Freshness
+    gives the actual cells the same zero bytes and empty shadow slots,
+    as [snapshot_ps_agree] later proves. *)
 Definition snapshot_piece xs base q (lv : piece * pval) : piece * pval :=
   let m := snapshot_values xs base (allocated empty_mem q base) in
   match lv.1 with
@@ -119,20 +126,22 @@ Definition snapshot_piece xs base q (lv : piece * pval) : piece * pval :=
   | _ => lv
   end.
 
-(** A snapshot owns the keys of its new object ([obj_ps]), with the
-    snapshot's bytes and capabilities. *)
+(** The list [snapshot_ps] pairs every piece key of the new object with
+    its value after copying the argument bytes and capabilities. *)
 Definition snapshot_ps xs base q : list (piece * pval) := snapshot_piece xs base q <$> obj_ps base q.
 
-(** A snapshot's keys are its new object's, so they are distinct
-    ([obj_ps_nodup]). *)
+(** Copying arguments changes piece values without changing their keys,
+    as [snapshot_ps_keys] states so that object-key distinctness still
+    applies. *)
 Lemma snapshot_ps_keys xs base q : (snapshot_ps xs base q).*1 = (obj_ps base q).*1.
 Proof.
   unfold snapshot_ps. rewrite -list_fmap_compose. apply list_fmap_ext.
   intros i [l v] Hi. destruct l; reflexivity.
 Qed.
 
-(** The snapshot's pieces hold argument i's whole cell, of the integer
-    [snapshot_bits] says it stores. *)
+(** The lemma [snapshot_ps_cell] finds argument i's entire eight-byte
+    cell among the snapshot pieces, with the bits supplied by
+    [snapshot_bits]. *)
 Lemma snapshot_ps_cell xs i x n base q :
   xs !! i = Some x -> snapshot_bits x = Some n -> 8 * Z.of_nat (S i) <= req_extent q ->
   forall l v, (l, v) ∈ cell base (8 * Z.of_nat i) n -> (l, v) ∈ snapshot_ps xs base q.
@@ -150,8 +159,9 @@ Proof.
     apply elem_of_seqZ. rewrite Nat2Z.inj_succ in Hextent. lia.
 Qed.
 
-(** The snapshot's pieces hold a pointer argument's whole cell: its
-    aux slot and its address bytes ([pcell]). *)
+(** A pointer argument occupies both address bytes and a shadow slot,
+    which [snapshot_ps_pointer] finds together among the snapshot's
+    pieces. *)
 Lemma snapshot_ps_pointer xs i p base q :
   xs !! i = Some (WPtr p) -> 8 * Z.of_nat (S i) <= req_extent q ->
   forall l v, (l, v) ∈ (PAux base (8 * Z.of_nat i), VAux (ptr_cap p)) ::
@@ -167,7 +177,8 @@ Proof.
     apply elem_of_seqZ. rewrite Nat2Z.inj_succ in Hextent. lia.
 Qed.
 
-(** Each snapshot piece names its fresh object. *)
+(** Every piece in the snapshot belongs to the newly allocated object,
+    as [snapshot_ps_id] states using its base identity. *)
 Lemma snapshot_ps_id xs base q l v : (l, v) ∈ snapshot_ps xs base q -> piece_id l = base.
 Proof.
   unfold snapshot_ps. intros Hin. apply list_elem_of_fmap in Hin as ([k u] & Hkv & Hin).
@@ -175,8 +186,9 @@ Proof.
   subst l. exact (obj_ps_id _ _ _ _ Hin).
 Qed.
 
-(** Every snapshot key is a piece of memory, so a ghost heap that
-    agrees with the old memory owns none of them yet. *)
+(** Every snapshot key describes physical memory rather than an external
+    library name, as [snapshot_ps_mem] establishes for updating the
+    logical heap. *)
 Lemma snapshot_ps_mem xs base q l v : (l, v) ∈ snapshot_ps xs base q -> mem_piece l.
 Proof.
   unfold snapshot_ps. intros Hin. apply list_elem_of_fmap in Hin as ([k u] & Hkv & Hin).
@@ -184,8 +196,8 @@ Proof.
   subst l. exact (obj_ps_mem _ _ _ _ Hin).
 Qed.
 
-(** At a [fresh] base, the computed snapshot pieces agree with the real
-    allocation after its argument stores. *)
+(** At a fresh base, [snapshot_ps_agree] shows that the computed pieces
+    match the actual allocation after all argument stores have run. *)
 Lemma snapshot_ps_agree m xs base q :
   Memory.fresh m q base -> all_agree (snapshot_values xs base (allocated m q base)) (snapshot_ps xs base q).
 Proof.
@@ -213,8 +225,8 @@ Proof.
     + left. exact (proj2 (Hsame i ltac:(lia))).
 Qed.
 
-(** The snapshot's stores keep every piece outside the fresh object's
-    keys ([frame_within], from the exact store range). *)
+(** Creating the snapshot preserves every piece outside its new object's
+    keys, as [snapshot_frame] proves from the range of its stores. *)
 Lemma snapshot_frame m xs base q :
   live_disjoint (allocated m q base) -> 8 * Z.of_nat (length xs) <= req_extent q ->
   frame_ok (obj_ps base q).*1 (allocated m q base) (snapshot_values xs base (allocated m q base)).
@@ -238,9 +250,8 @@ Proof.
     apply list_elem_of_fmap. exists (t - base). split; [reflexivity |]. apply elem_of_seqZ. lia.
 Qed.
 
-(** The step of a nonempty snapshot: it allocates the argument cells,
-    stores the words in them, and binds [va_snapshot] to a read-only
-    pointer to them. *)
+(** For a nonempty argument list, [rule_snapshot] allocates and fills
+    the cells, then binds [va_snapshot] to their read-only pointer. *)
 Lemma rule_snapshot ge f e ls l cs m fuel xs :
   xs <> [] -> forallb snapshot_word xs = true ->
   let q := heap_req 16 (8 * Z.of_nat (length xs)) in
@@ -254,16 +265,23 @@ Proof.
   rewrite Hwords. reflexivity.
 Qed.
 
-(** The pieces of a va_list cell at the object b: its life, the
-    cursor's capability and the cursor's address bytes. A read moves
-    the address and keeps the capability. *)
+(** A `c: va_list` cell owns its object's lifetime, the cursor's
+    capability, and the cursor's address bytes. The list [va_cursor_ps]
+    collects these pieces so that argument reads can advance the
+    address while preserving the capability. *)
 Definition va_cursor_ps b reg (cursor : ptr) : list (piece * pval) :=
   [(PLive b, VLive reg); (PAux b 0, VAux (ptr_cap cursor))] ++ cell b 0 (ptr_addr cursor).
 
-(** ## The rules over a Logic instance *)
+(** ## The rules over a Logic instance
 
-(** The rules for variadic arguments over the [[runtime]] R and the
-    Logic instance LG0. *)
+    A function proof must connect snapshot operations to ownership of
+    the cursor and the argument cells. The following rules do that for
+    any Fil-C [[runtime]] and program logic, while preserving the
+    caller's interpretation of external state. *)
+
+(** The module [VariadicLogicOn] supplies variadic argument rules for
+    the runtime R and its program logic LG0, without choosing a concrete
+    allocator. *)
 Module VariadicLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module LG := LG0.
 Module L := LG.L.
@@ -274,13 +292,18 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
 
-(** The Iris instance of the registry and wi. *)
+(** The instance [variadic_irisGS] connects Iris proofs to execution
+    with the chosen contract registry and the caller's world
+    interpretation. *)
 Local Instance variadic_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** The notation [vexpr] abbreviates the expression type for this
+    contract-aware language, keeping the rule statements below easier to
+    read. *)
 Local Notation vexpr := (language.expr (nanofil_lang registry ge)).
 
-(** Eight zero bytes and empty aux slots from offset o of the object
-    b are a null pointer cell. *)
+(** Eight zero bytes and empty shadow slots describe a null pointer
+    cell, which [zero_cell] constructs from those separate ownership
+    assertions. *)
 Lemma zero_cell b o :
   pts (byte_ps b o (replicate 8 0)) -∗ pts (aux_ps b o (replicate 8 CNone)) -∗ pcell b o null.
 Proof.
@@ -294,10 +317,10 @@ Proof.
   iIntros "Hx [Ha _]". iFrame "Ha Hx".
 Qed.
 
-(** A zeroed block of 8 + n bytes and slots from offset o, as a fresh
-    object's ([obj_zero_block]), starts with a null pointer cell; the
-    rest is handed back. A va_list or an argument array gets its null
-    cells this way, without expanding the block piece by piece. *)
+(** A freshly zeroed block starts with a null pointer cell when it has
+    at least eight bytes. The lemma [zero_cell_prefix] separates that
+    cell from the remaining block without expanding each individual
+    piece, which helps initialize argument arrays. *)
 Lemma zero_cell_prefix b o n :
   pts (byte_ps b o (replicate (8 + n) 0)) -∗ pts (aux_ps b o (replicate (8 + n) CNone)) -∗
   pcell b o null ∗ pts (byte_ps b (o + 8) (replicate n 0)) ∗ pts (aux_ps b (o + 8) (replicate n CNone)).
@@ -306,10 +329,11 @@ Proof.
   iIntros "[Hx Hrest] [Ha Htail]". iFrame "Hrest Htail". iApply (zero_cell with "Hx Ha").
 Qed.
 
-(** Allocating a nonempty variadic snapshot gives its populated pieces
-    ([snapshot_ps]), with the read-only pointer bound in the frame:
-    [rule_snapshot] lifted through [wp_lift_run]. The snapshot must
-    keep the caller's world interpretation. *)
+(** After copying the arguments, the function needs permission to read
+    the new cells without losing its other memory guarantees. The rule
+    [wp_snapshot] gives it those cells and their read-only pointer,
+    provided the allocation preserves the caller's assumptions about
+    external state. *)
 Lemma wp_snapshot f e ls l xs Φ :
   xs <> [] -> forallb snapshot_word xs = true ->
   let q := heap_req 16 (8 * Z.of_nat (length xs)) in
@@ -365,8 +389,9 @@ Proof.
       rewrite snapshot_values_regions object_region_allocated Z.eqb_refl. reflexivity.
 Qed.
 
-(** [VaArgs] reads the snapshot pointer at the offset off, frame state
-    only: [rule_va_args] lifted through [wp_pure_next]. *)
+(** Reading the hidden snapshot pointer changes only frame state, not
+    memory ownership. The rule [wp_va_args] binds that pointer at the
+    requested offset and continues the proof. *)
 Lemma wp_va_args f e ls l d off rest j p Φ :
   lookup va_snapshot e = Some (WPtr p) ->
   ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e)
@@ -374,11 +399,11 @@ Lemma wp_va_args f e ls l d off rest j p Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Let d P VaArgs [Const off] :: rest) j)) : vexpr) {{ Φ }}.
 Proof. intros Hp. apply (wp_pure_next registry wi ge _ _ []). intros m fuel. apply rule_va_args. exact Hp. Qed.
 
-(** A variadic read is a heap write: owning the pieces ps, every memory
-    they agree with reads x by [va_arg_res] and becomes [upd] m, which
-    keeps its regions, agrees with ps' (the same keys) and changes
-    nothing else, keeping the world interpretation: [rule_va_arg]
-    lifted through [wp_write]. *)
+(** Reading a variadic argument also writes the advanced cursor back
+    into its cell. The general rule [wp_va_arg] requires a memory
+    update that preserves regions, unrelated pieces, and the world
+    interpretation. Its continuation receives the updated values for
+    the same owned piece keys. *)
 Lemma wp_va_arg f e ls l d k args rest j p x ps ps' upd Φ :
   map2_option (value_x ge e) [P] args = Some [WPtr p] -> ps'.*1 = ps.*1 ->
   (forall m, owned_facts ps m ->
@@ -395,9 +420,10 @@ Proof.
   split; [exact (rule_va_arg _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hargs Hres) | exact Hrest].
 Qed.
 
-(** A pointer va_arg reads its snapshot cell and advances only the
-    mutable cursor. The source and literal pieces are framed, including
-    when the argument is the terminating null pointer. *)
+(** Reading a pointer argument changes only the mutable cursor, even
+    when that argument is a terminating null pointer. The rule
+    [wp_va_arg_pointer] returns the snapshot cell and all additional
+    source pieces unchanged to the continuation. *)
 Lemma wp_va_arg_pointer f e ls l d args rest j cb cr sb sr off x ps Φ :
   map2_option (value_x ge e) [P] args = Some [WPtr (mkPtr cb (Obj cb))] ->
   cb mod 8 = 0 -> 0 < sb -> 0 <= off -> sb + off + 8 <= r_end sr -> r_end sr <= 2 ^ 48 ->
@@ -518,11 +544,12 @@ Proof.
       rewrite /live /pcell /pts; iFrame; done.
 Qed.
 
-(** An integer va_arg of class `w` or `l` reads the n low bytes (4 or 8)
-    of an integer cell of the snapshot at the cursor cur rounded up to
-    8, and stores the cursor past them, sb + off + n: d is bound to v
-    modulo 2^(8n). Only the va_list cell changes; the snapshot's life
-    and cell are handed back. *)
+(** Reading an integer argument rounds the cursor up to an eight-byte
+    boundary and loads either four or eight low bytes. The rule
+    [wp_va_arg_int] binds those bits at class [W] or [L] and advances
+    the cursor past the bytes read. Only the `c: va_list` cell changes;
+    the continuation receives the snapshot's lifetime and integer cell
+    unchanged. *)
 Lemma wp_va_arg_int f e ls l d k n args rest j cb cr cur sb sr off v Φ :
   (k = W /\ n = 4) \/ (k = L /\ n = 8) ->
   map2_option (value_x ge e) [P] args = Some [WPtr (mkPtr cb (Obj cb))] ->

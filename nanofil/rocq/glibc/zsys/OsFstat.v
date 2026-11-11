@@ -10,8 +10,9 @@
 
     ## What libpizlo runs
 
-    At the pinned revision of `libpas/src/libpas/filc_runtime.c`,
-    `c: zsys_fstat` runs the following native wrapper:
+    A metadata query lends the kernel a writable buffer after the
+    runtime checks its capability. The following wrapper implements
+    that boundary in the pinned `libpas/src/libpas/filc_runtime.c`.
 
     ```c
     int filc_native_zsys_fstat(filc_thread* my_thread, int fd, filc_ptr stat_ptr)
@@ -49,9 +50,9 @@ Open Scope Z_scope.
 
 (** ## The contract
 
-    Before proving separation-logic rules, this first section defines the
-    buffer size, ABI, precondition, writable spans, and postcondition of
-    [os_fstat_contract]. *)
+    A metadata query may overwrite both the destination record and the
+    calling thread's error cell. The following definitions describe
+    those spans and collect the call's requirements into [os_fstat_contract]. *)
 
 (** On x86-64 Linux, `c: sizeof(struct stat)` is 144 bytes, which we name
     [stat_size]. *)

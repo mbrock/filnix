@@ -38,16 +38,17 @@ Open Scope Z_scope.
 
 (** ## What the axioms speak of
 
-    Before stating the [Runtime] module type, we define the predicates
-    on memory and regions that the axioms use to describe how
-    deallocation, program stores, and garbage-collection safepoints may
-    change memory. *)
+    Deallocation, ordinary stores, and garbage collection each change
+    different parts of the program's memory. The following predicates
+    describe those permitted changes before the [Runtime] interface
+    states its requirements for each service. *)
 
-(** A memory transition satisfies [lifetime_step] when every object
-    registered in the new memory was already registered in the old
-    memory with either the exact same region or, for a live heap
-    object, an emptied [Freed] region. In particular, deallocation never
-    creates a new object [[identity]]. *)
+(** Deallocation may end a live heap object's lifetime, but it cannot
+    create an object or change the bounds of an object that remains alive.
+    The predicate [lifetime_step] requires each resulting region to
+    match its previous region or an emptied, freed version of a live heap region.
+    In particular, this update cannot introduce a new object [[identity]]
+    that was absent from the original memory's list of registered objects. *)
 Definition lifetime_step (m m' : mem) : Prop :=
   forall b reg',
     object_region b (m_regions m') = Some reg' ->
@@ -129,7 +130,7 @@ Definition frees_heap (free : word -> mem -> option (res unit * mem)) : Prop :=
     that interact with a running program: the object allocator, the
     `c: free` deallocator, and the garbage collector at
     [[poll|safepoints]]. Both the execution [Driver](Run.v) and the
-    abstract [Machine](Machine.v) are parameterized over any
+    abstract [Machine](../soundness/Machine.v) are parameterized over any
     implementation of [Runtime]. *)
 
 (** Any module of type [Runtime] provides an allocator, a deallocator,
@@ -193,10 +194,10 @@ Module Type Runtime.
       memory state. *)
   Parameter free : word -> mem -> option (res unit * mem).
 
-  (** Calling [free] changes object regions only as permitted by
-      [lifetime_step]: it may empty and mark [Freed] a live heap object,
-      and never registers a new object identity, as checked by
-      `axiom-lifetime.c`. *)
+  (** After deallocation, each remaining object either keeps its old
+      region or is a formerly live heap object with empty, freed bounds.
+      The axiom [free_lifetime] expresses this restriction through
+      [lifetime_step], which native test `axiom-lifetime.c` checks. *)
   Axiom free_lifetime : forall x m r m',
     free x m = Some (r, m') -> lifetime_step m m'.
 
@@ -297,11 +298,10 @@ End Runtime.
 
 (** ## Facts about Memory.v
 
-    To show that the interpreter's deallocator [free_res] from
-    [Memory](Memory.v) satisfies the deallocation axioms of [Runtime],
-    we first prove how [remove_region] and [replace_region] affect
-    region lookups, and then derive each deallocation property for
-    [free_res]. *)
+    The interpreter's deallocator must satisfy the same requirements as
+    any other implementation of the runtime interface. The following
+    lemmas establish those properties for [free_res] by tracking how
+    region removal and replacement affect lookups. *)
 
 (** Removing the region for one base address from a region list leaves
     the lookup result of [object_region] unchanged for every other base

@@ -1,26 +1,25 @@
-(** [[extraction|Extraction]] of the model to OCaml: the decoder
-    ([decode_module]), the [[interpreter]]'s instance of the semantics,
-    and [judge], which the driver (extraction/main.ml) applies to every
-    line `nanofil outcomes` prints, and [judge_valid], which it applies
-    to rocq/scripts/mutants.pl's [[mutant]] verdicts (Transport.v), and the
-    validator itself: Validate.v's [valid_items] and [valid_func], and
-    ValidFast.v's [valid_items_fast], [valid_func_fast] and
-    [valid_fast], which answer as they and [valid] do. Integers
-    become zarith's, strings OCaml's, and [nat] OCaml's `int`: the
-    model's [nat]s count list elements and rounds, and a unary one as
-    large as the [[fuel]] of a big function (before Cfg.v, the square
-    of its block count, a million for Lua's `luaV_execute`) overflowed
-    the stack. *)
+(** Checking compiler output against the Rocq model requires an
+    executable program, rather than evaluating every test inside the proof assistant.
+    This module selects the decoder, execution judge, and
+    [[validator]] functions for [[extraction]] to OCaml, producing the model used by the test driver.
+    The driver compares [[interpreter]] outcomes and [[mutant]]
+    verdicts through the judgments defined in [Transport](Transport.v).
+
+    Extracted integers use Zarith, strings use native OCaml strings,
+    and natural-number counters use machine integers rather than unary lists of successors.
+    Large traversal and execution budgets would otherwise create deep
+    recursive values and overflow the OCaml stack before useful work could finish.
+    The extracted entry points include the original validator and the
+    faster implementation whose identical answers are proved in [ValidFast](ValidFast.v). *)
 
 From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt
   ExtrOcamlNatInt.
 From Nanofil Require Import Term Maps Validate ValidFast Transport.
 
-(** Maps.v's [string_hash] decides which bucket a name goes in, never
-    an answer: a lookup compares the names in its bucket with
-    [name_eqb]. So the extraction may use OCaml's own string hash; the
-    Gallina one goes through eight integer operations per character,
-    which made the validator twice as slow on small functions. *)
+(** A hash collision cannot change a map's answer because bucket
+    lookup still compares complete names before returning their values.
+    Extraction can therefore replace [string_hash] with OCaml's native
+    string hash, avoiding repeated arbitrary-precision arithmetic for each character. *)
 Extract Constant Maps.string_hash =>
   "(fun s h -> Big_int_Z.big_int_of_int
      ((Hashtbl.hash s + 31 * Big_int_Z.int_of_big_int h) land 0xFFFFF))".

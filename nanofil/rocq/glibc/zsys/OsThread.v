@@ -10,8 +10,9 @@
 
     ## What libpizlo runs
 
-    At the pinned revision of `filc/src/runtime.c`,
-    `c: zthread_self_cookie` runs the following user-runtime function:
+    The runtime keeps a cookie that identifies the calling thread to
+    userland glibc. The following function returns that saved pointer
+    in the pinned `filc/src/runtime.c`.
 
     ```c
     void* zthread_self_cookie(void)
@@ -45,8 +46,9 @@ Open Scope Z_scope.
 
 (** ## The contract
 
-    Before proving separation-logic rules, this first section defines the
-    ABI and contract [os_self_contract] for `c: zthread_self_cookie`. *)
+    Reading the thread cookie returns a pointer without changing memory
+    or the OS world. The following definitions collect that promise and
+    the argument-free calling convention into [os_self_contract]. *)
 
 (** A call site satisfies [os_self_abi] when it passes no arguments and
     either discards the result or binds it to a pointer destination
@@ -71,11 +73,10 @@ Definition os_self_contract : contract os_world :=
 
 (** ## Over a Logic instance
 
-    The contract above describes `c: zthread_self_cookie` as a transition
-    on physical memory and the OS world. The functor below connects that
-    contract to a Fil-C [[runtime]] and the program logic, deriving the
-    [[weakest-precondition|weakest-precondition]] rule that callers use
-    in proofs. *)
+    A function that reads its thread cookie must receive the saved
+    pointer without losing ownership of its other memory. The following
+    [[weakest-precondition|weakest precondition]] rule lets its proof
+    continue with that pointer under the same OS world. *)
 
 (** To verify C functions that call `c: zthread_self_cookie`,
     [OsThreadOn] lifts the contract above into a separation-logic proof
