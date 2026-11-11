@@ -1,0 +1,747 @@
+#!/usr/bin/env python3
+"""Judge prose readability and house style across pages, docs, blocks, and code modules.
+
+Usage:
+  scripts/prose-check FILE_OR_DIR...
+  scripts/prose-check --verbose nanofil/rocq/glibc/zsys/OsWorld.v
+  scripts/prose-check pages/index.html pages/explainers/index.html
+
+Checks module preludes (.v, .pl, .nix), HTML pages (pages/), Markdown docs
+(docs/, nanofil/docs/), and stream blocks (blocks/) using deterministic
+structural checks plus TypeSafe's Jev System One API (POST /v1/systemone).
+
+Detects two families of bad writing:
+  1. Landing-page slop: verbless slogan fragments, portentous syntactic
+     inversions, vague taglines, eyebrow labels, and CTA arrow buttons.
+  2. Eyes-glaze-over prelude gibberish: verbless noun-phrase catalog openings,
+     paragraphs stuffed with parenthetical lemma/identifier citations, and
+     unmotivated inside-out proof/implementation plumbing.
+"""
+
+from __future__ import annotations
+
+import argparse
+from concurrent.futures import ThreadPoolExecutor
+from html.parser import HTMLParser
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import urllib.error
+import urllib.request
+import xml.etree.ElementTree as ET
+
+ENDPOINT = "https://api.typesafe.ai/v1/systemone"
+MODEL = os.environ.get("TYPESAFE_MODEL", "jev-1.14.0")
+FAULT_THRESHOLD = 0.65
+READABILITY_FLOOR = 1.15
+
+QUESTIONS = {
+    "verbless_fragment": {
+        "type": "noul",
+        "instructions": {
+            "question": (
+                "Does `passage.text` open with or contain a verbless sentence fragment "
+                "(such as a noun-phrase catalog summary, a participial fragment, or a "
+                "staccato slogan punctuated as a sentence)?"
+            ),
+            "inspect": "`passage.text`",
+            "focus": (
+                "Check whether every sentence has a subject and a finite main verb "
+                "('is', 'defines', 'keeps', 'models', 'proves', 'compiles', 'renders'), "
+                "or whether any sentence is a bare noun phrase with parentheticals or a "
+                "list of nouns ending in a period."
+            ),
+        },
+        "criteria": {
+            "true": {
+                "what": (
+                    "At least one sentence in `passage.text` lacks a finite main verb in "
+                    "its main clause: a noun-phrase catalog label, a participial fragment "
+                    "('X, compiled with Y.'), or a staccato list ('Video, Docker, tarball and NixOS.')."
+                ),
+                "examples": [
+                    "The OS world of user glibc's calls into libpizlo's zsys_* functions (contracts OsWrite to OsThread, OsRegistry), its world interpretation os_wi, and the lending of errno to a call.",
+                    "The program logic's frame for external calls (Logic.v, docs/logic.md): what a call through a contract leaves of the ghost heap of Heap.v.",
+                    "Every C pointer checked. A whole Linux system in Nix.",
+                    "BIND 9.20.30 on Fil-C, the year's CVEs, what it costs. Video, Docker, tarball and NixOS.",
+                ],
+            },
+            "false": {
+                "what": "Every sentence in `passage.text` is a complete grammatical sentence with a subject and a finite main verb.",
+                "examples": [
+                    "Filnix is an experimental repository for building Linux software with Fil-C, Filip Pizlo's memory-safe implementation of C and C++.",
+                    "When user glibc calls a zsys_* function in libpizlo, the call can read and write state outside the C function being proved.",
+                    "Each explainer describes one change or one system for a reader who has not read the code.",
+                ],
+            },
+        },
+    },
+    "identifier_soup": {
+        "type": "noul",
+        "instructions": {
+            "question": (
+                "Is `passage.text` overloaded with parenthetical lemma names, cross-file "
+                "symbol citations, and inline identifiers that make a reader's eyes glaze over?"
+            ),
+            "inspect": ["`passage.text`", "`passage.metrics`"],
+            "focus": (
+                "Look for prose sentences repeatedly interrupted by parenthetical theorem, "
+                "field, or file citations (`(permanent_errno)`, `(lifetime_step)`, "
+                "`(os_wi_store)`, `(os_wi_stable)`) and cross-file plumbing "
+                "(`ContractFrame.v's pieces_off`, `Heap.v's obj_ps`) where plain English "
+                "or a table belongs."
+            ),
+        },
+        "criteria": {
+            "true": {
+                "what": (
+                    "Sentences are cluttered with parenthetical identifier citations and "
+                    "cross-file lemma names so that the paragraph reads like an index dump "
+                    "rather than readable English prose."
+                ),
+                "examples": [
+                    "So os_wi needs no apartness of the errno span from the program's pieces (roots_apart), unlike ZsysWrite.v's fd_wi: it reads only regions and the world, and survives stores (os_wi_store), safepoints (os_wi_stable), allocations (os_wi_alloc), frees (os_wi_free, os_wi_lifetime) and calls of these contracts (os_call_return).",
+                    "The program owns errno as a block: its 4 bytes and the 4 aux slots at the same offsets (errno_own, errno_any), since ContractFrame.v's pieces_off asks of every byte and aux piece at an address the call may write, and Heap.v's obj_ps has an aux piece at every offset.",
+                ],
+            },
+            "false": {
+                "what": (
+                    "Uses plain prose with only the identifiers the sentence directly "
+                    "explains, leaving symbol inventories to a table or the definitions below."
+                ),
+                "examples": [
+                    "In Fil-C's glibc, `__thread int errno` lives in a `GlobalData` region rather than on the heap. Neither `free` nor the garbage collector can ever deallocate a `GlobalData` object.",
+                    "This site renders the repository's Nix, Prolog and Rocq source from their syntax trees rather than as plain text.",
+                ],
+            },
+        },
+    },
+    "inside_out_jargon": {
+        "type": "noul",
+        "instructions": {
+            "question": (
+                "Does `passage.text` jump straight into internal proof plumbing, "
+                "ghost-heap mechanics, or cross-module prerequisites without stating "
+                "the plain idea first?"
+            ),
+            "inspect": "`passage.text`",
+            "focus": (
+                "Judge whether a competent systems engineer opening this page or module "
+                "can tell what problem it solves before hitting internal proof-mode or "
+                "pass-internal jargon."
+            ),
+        },
+        "criteria": {
+            "true": {
+                "what": (
+                    "Assumes the reader already knows every other file's internal lemmas "
+                    "and explains the mechanism inside-out through proof or pass plumbing."
+                ),
+                "examples": [
+                    "One clause reads the ghost heap: a life token of errno's object, if the program owns one, is a GlobalData one (errno_life_global), which is what tells wp_free's premise that a freed heap object is not errno's.",
+                    "The programowns errno as a block: its 4 bytes and the 4 aux slots at the same offsets (errno_own, errno_any), since ContractFrame.v's pieces_off asks of every byte and aux piece at an address the call may write.",
+                ],
+            },
+            "false": {
+                "what": "States what the component, file, or rule does in plain engineering terms before naming the formal representation.",
+                "examples": [
+                    "At -O0, FilPizlonator spent 48 seconds on one 160-block function. This change brings that down to 0.66 seconds, and the stack frames it produces are exactly the same.",
+                    "A packed initializer can put a pointer at byte 1. Fil-C 0.686 aborts clang on it for a global.",
+                ],
+            },
+        },
+    },
+    "rhetorical_slop": {
+        "type": "noul",
+        "instructions": {
+            "question": (
+                "Does `passage.text` use startup landing-page pitch language, portentous "
+                "syntactic inversion, or theatrical em-dash reveals?"
+            ),
+            "inspect": "`passage.text`",
+            "focus": (
+                "Look for preposed inversions ('Beside the distribution it builds...'), "
+                "dramatic adjective triples after an em-dash ('Conservative, sound — and "
+                "... devastating'), or vague promotional taglines ('Read the code as "
+                "structure', 'the likely worst case becomes a crash, not a takeover'). "
+                "Do not flag direct technical statements that use established Fil-C terms "
+                "like 'fanatically compatible'."
+            ),
+        },
+        "criteria": {
+            "true": {
+                "what": "Uses marketing pitch phrasing, vague taglines, literary inversion, or dramatic em-dash reveals.",
+                "examples": [
+                    "Beside the distribution it builds nanofil, a C compiler in Prolog.",
+                    "Conservative, sound — and, for a pass that stores to the frame before nearly every safepoint, devastating for the loads in between.",
+                    "The likely worst case becomes a crash, not a takeover.",
+                ],
+            },
+            "false": {
+                "what": "Uses direct subject-verb-object sentences without theatrical cadence or sales pitch.",
+                "examples": [
+                    "Fil-C is a fanatically compatible memory-safe implementation of C and C++.",
+                    "It also holds nanofil, a small compiler for Fil-C, and a Rocq development that proves properties of nanofil's output.",
+                ],
+            },
+        },
+    },
+    "readability": {
+        "type": "score",
+        "instructions": {
+            "question": "How readable is `passage.text` for an engineer opening this file or page on the wiki?",
+            "inspect": ["`passage.text`", "`passage.metrics`"],
+        },
+        "criteria": [
+            "Eyes glaze over: dense parenthetical identifier soup, unmotivated proof plumbing, or billboard slogan fragments.",
+            "Stiff or cluttered: the technical point is recoverable, but parenthetical lemma lists, participial fragments, or rhetorical flourishes get in the way.",
+            "Clear engineer-to-peer prose: complete, direct sentences that state what the thing is and how it works without parenthetical clutter or hype.",
+        ],
+    },
+}
+
+HEADING_QUESTIONS = {
+    "slogan_heading": {
+        "type": "noul",
+        "instructions": {
+            "question": (
+                "Is `heading.text` a marketing slogan, multi-sentence billboard pitch, "
+                "or cute imperative quip rather than a descriptive title or 'What is X?' question?"
+            ),
+            "inspect": "`heading.text`",
+            "focus": (
+                "Allow descriptive technical titles, including 'Topic: what it is' titles "
+                "('PHP on Fil-C: memory-safe PHP', 'Frame slot coloring at -O0: from cubic to near-linear'). "
+                "Flag multi-sentence billboard slogans, cute imperative quips, or abstract taglines."
+            ),
+        },
+        "criteria": {
+            "true": (
+                "Multi-sentence billboard slogan, cute imperative quip, or abstract tagline "
+                "('Every C pointer checked. A whole Linux system in Nix.', "
+                "'Code, read as structure', 'Sealed closures: call it, don\\'t open it')."
+            ),
+            "false": (
+                "Plain topic title, 'What is X?' question, or descriptive 'System: topic' title "
+                "('What is Filnix?', 'Code', 'Explainers', 'PHP on Fil-C: memory-safe PHP', "
+                "'memcmp without the eight heap allocations', 'Fil-C frame accesses in their own alias scope')."
+            ),
+        },
+    }
+}
+
+
+def compute_metrics(raw_text: str, clean_text: str) -> dict[str, int | float]:
+    words = re.findall(r"\b\w+\b", clean_text)
+    parens = re.findall(r"\([^)]*\)", raw_text)
+    bracket_refs = re.findall(r"\[[^\]\n]+\]", raw_text)
+    code_tokens = re.findall(
+        r"`[^`]+`|\b[a-zA-Z0-9]+_[a-zA-Z0-9_*]+\b|\b[A-Z][A-Za-z0-9_]*\.(?:v|pl|nix|c|h|md)\b",
+        clean_text,
+    )
+    sents = [
+        s.strip()
+        for s in re.split(r'(?<=[.!?])\s+(?=[A-Z0-9"`(\[])', clean_text)
+        if s.strip()
+    ]
+    return {
+        "words": len(words),
+        "sentences": max(1, len(sents)),
+        "words_per_sentence": round(len(words) / max(1, len(sents)), 1),
+        "parentheticals": len(parens),
+        "code_and_symbol_refs": max(len(bracket_refs), len(set(code_tokens))),
+    }
+
+
+def normalize_doc_markup(raw: str) -> str:
+    s = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", raw)
+    s = re.sub(r"\[\[([^\]]+)\]\]", r"\1", s)
+    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
+    s = re.sub(r"\[([^\]]+)\]", r"`\1`", s)
+    s = re.sub(r"`c:\s*([^`]+)`", r"`\1`", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def split_markdown_paragraphs(lines: list[tuple[int, str]], section: str = "prelude") -> list[dict]:
+    items: list[dict] = []
+    in_fence = False
+    buf: list[str] = []
+    start_line = 1
+    current_sec = section
+
+    def flush():
+        nonlocal buf
+        if not buf:
+            return
+        raw = " ".join(buf).strip()
+        buf = []
+        if not raw or raw.startswith("|") or raw.startswith("![["):
+            return
+        clean = normalize_doc_markup(raw)
+        if len(clean.split()) < 4 or (clean.endswith(":") and len(clean.split()) <= 12):
+            return
+        items.append({
+            "line": start_line,
+            "role": "prose",
+            "section": current_sec,
+            "raw": raw,
+            "text": clean,
+        })
+
+    for lineno, line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            flush()
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not stripped:
+            flush()
+            continue
+        if stripped.startswith("|") and stripped.endswith("|"):
+            flush()
+            continue
+        m_head = re.match(r"^(#{1,3}|\*+)\s+(.*)$", stripped)
+        if m_head:
+            flush()
+            title = normalize_doc_markup(m_head.group(2).strip())
+            current_sec = title
+            if m_head.group(1) in ("#", "##", "*"):
+                items.append({
+                    "line": lineno,
+                    "role": "heading",
+                    "section": title,
+                    "raw": stripped,
+                    "text": title,
+                })
+            continue
+        if stripped.startswith(("- ", "* ")) or re.match(r"^\d+\.\s+", stripped):
+            flush()
+            bullet = re.sub(r"^(?:[-*]|\d+\.)\s+", "", stripped)
+            buf = [bullet]
+            start_line = lineno
+            continue
+        if not buf:
+            start_line = lineno
+        buf.append(stripped)
+
+    flush()
+    return items
+
+
+def extract_rocq(path: Path, all_comments: bool = False) -> tuple[list[str], list[dict]]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    # Find the first code sentence outside comments
+    first_code_pos = len(text)
+    pos = 0
+    while pos < len(text):
+        m_ws = re.match(r"\s+", text[pos:])
+        if m_ws:
+            pos += m_ws.end()
+            continue
+        if text.startswith("(*", pos):
+            end = text.find("*)", pos + 2)
+            if end == -1:
+                break
+            pos = end + 2
+            continue
+        first_code_pos = pos
+        break
+
+    items: list[dict] = []
+    for m in re.finditer(r"\(\*\*(?!\*)(.*?)\*\)", text, flags=re.DOTALL):
+        if not all_comments and m.start() >= first_code_pos:
+            break
+        start_line = text.count("\n", 0, m.start()) + 1
+        body = m.group(1)
+        raw_lines = body.splitlines()
+        numbered = []
+        for idx, rline in enumerate(raw_lines):
+            cleaned = re.sub(r"^\s?", "", rline.lstrip())
+            numbered.append((start_line + idx, cleaned))
+        scope = "prelude" if m.start() < first_code_pos else "doc comment"
+        items.extend(split_markdown_paragraphs(numbered, section=scope))
+    return [], items
+
+
+def extract_prolog(path: Path) -> tuple[list[str], list[dict]]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"/\*(.*?)\*/", text, flags=re.DOTALL)
+    if not m or m.start() > 200:
+        return [], []
+    start_line = text.count("\n", 0, m.start()) + 1
+    numbered = [
+        (start_line + i, line.strip())
+        for i, line in enumerate(m.group(1).splitlines())
+    ]
+    return [], split_markdown_paragraphs(numbered, section="module header")
+
+
+def extract_nix(path: Path) -> tuple[list[str], list[dict]]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    numbered = []
+    for idx, line in enumerate(text.splitlines(), start=1):
+        s = line.strip()
+        if s.startswith("#"):
+            numbered.append((idx, re.sub(r"^#+\s?", "", s)))
+        elif not s and numbered:
+            numbered.append((idx, ""))
+        elif numbered:
+            break
+        elif not s:
+            continue
+        else:
+            break
+    return [], split_markdown_paragraphs(numbered, section="file header")
+
+
+def extract_markdown(path: Path) -> tuple[list[str], list[dict]]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    numbered = list(enumerate(text.splitlines(), start=1))
+    return [], split_markdown_paragraphs(numbered, section="document")
+
+
+def extract_block_xml(path: Path) -> tuple[list[str], list[dict]]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    root = ET.fromstring(text)
+    items: list[dict] = []
+
+    def flatten(elem: ET.Element) -> str:
+        parts: list[str] = []
+        if elem.text:
+            parts.append(elem.text)
+        for child in elem:
+            inner = flatten(child)
+            if child.tag in ("c", "ir", "prolog", "sh", "code", "rocq", "nix"):
+                label = inner or child.attrib.get("path", "") or child.attrib.get("attr", "")
+                parts.append(f"`{label}`")
+            else:
+                parts.append(inner)
+            if child.tail:
+                parts.append(child.tail)
+        return "".join(parts)
+
+    for child in root:
+        if child.tag == "title":
+            t = re.sub(r"\s+", " ", flatten(child)).strip()
+            items.append({"line": 1, "role": "heading", "section": "title", "raw": t, "text": t})
+        elif child.tag in ("p", "claim"):
+            for p in ([child] if child.tag == "p" else list(child.findall("p"))):
+                raw = re.sub(r"\s+", " ", flatten(p)).strip()
+                if len(raw.split()) >= 4:
+                    items.append({
+                        "line": 1,
+                        "role": "prose",
+                        "section": child.tag,
+                        "raw": raw,
+                        "text": raw,
+                    })
+    return [], items
+
+
+class PageExtractor(HTMLParser):
+    SKIP_TAGS = {"script", "style", "pre", "svg", "nav", "header", "footer", "table"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.dom_issues: list[str] = []
+        self.items: list[dict] = []
+        self.stack: list[tuple[str, dict[str, str | None]]] = []
+        self.skip_depth = 0
+        self.capture_role: str | None = None
+        self.capture_sec = "page"
+        self.capture_line = 1
+        self.buf: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        ad = dict(attrs)
+        cls = set((ad.get("class") or "").split())
+        lineno = self.getpos()[0]
+
+        if "eyebrow" in cls:
+            self.dom_issues.append(f"line {lineno}: eyebrow label (.eyebrow)")
+        if "hero" in cls:
+            self.dom_issues.append(f"line {lineno}: hero section (.hero)")
+        if "actions" in cls:
+            self.dom_issues.append(f"line {lineno}: CTA actions list (.actions)")
+
+        self.stack.append((tag, ad))
+        if tag in self.SKIP_TAGS or ("meta" in cls and tag == "p"):
+            self.skip_depth += 1
+            return
+        if self.skip_depth > 0:
+            return
+
+        if tag in ("h1", "h2"):
+            self._start_capture("heading", tag, lineno)
+        elif tag == "strong" and self._in_class("card-link"):
+            self._start_capture("heading", "card title", lineno)
+        elif tag == "p" and "small" not in cls and "archived" not in cls:
+            sec = ".sub" if "sub" in cls else "paragraph"
+            self._start_capture("prose", sec, lineno)
+        elif tag == "span" and (self._in_class("card-link") or self._in_class("reading-list")):
+            if "data-count" not in ad:
+                self._start_capture("prose", "list/card span", lineno)
+        elif tag == "code" and self.capture_role:
+            self.buf.append("`")
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.stack:
+            return
+        popped_tag, popped_attrs = self.stack.pop()
+        cls = set((popped_attrs.get("class") or "").split())
+        if popped_tag in self.SKIP_TAGS or ("meta" in cls and popped_tag == "p"):
+            self.skip_depth = max(0, self.skip_depth - 1)
+            return
+        if self.skip_depth > 0:
+            return
+
+        if tag == "code" and self.capture_role:
+            self.buf.append("`")
+        elif (
+            (tag in ("h1", "h2") and self.capture_role == "heading")
+            or (tag == "strong" and self.capture_sec == "card title")
+            or (tag == "p" and self.capture_role == "prose")
+            or (tag == "span" and self.capture_sec == "list/card span" and "data-count" not in popped_attrs)
+        ):
+            raw = re.sub(r"\s+", " ", "".join(self.buf)).strip()
+            self.buf = []
+            role = self.capture_role
+            sec = self.capture_sec
+            line = self.capture_line
+            self.capture_role = None
+            if raw.endswith("→"):
+                self.dom_issues.append(f"line {line}: trailing arrow '→' in {sec}")
+            if role == "heading" and raw:
+                self.items.append({"line": line, "role": "heading", "section": sec, "raw": raw, "text": raw})
+            elif role == "prose" and len(raw.split()) >= 3:
+                self.items.append({"line": line, "role": "prose", "section": sec, "raw": raw, "text": raw})
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth == 0 and self.capture_role:
+            self.buf.append(data)
+
+    def _in_class(self, name: str) -> bool:
+        return any(name in (attrs.get("class") or "").split() for _, attrs in self.stack)
+
+    def _start_capture(self, role: str, sec: str, line: int) -> None:
+        self.capture_role = role
+        self.capture_sec = sec
+        self.capture_line = line
+        self.buf = []
+
+
+def extract_html(path: Path) -> tuple[list[str], list[dict]]:
+    parser = PageExtractor()
+    parser.feed(path.read_text(encoding="utf-8", errors="replace"))
+    return parser.dom_issues, parser.items
+
+
+def extract_file(path: Path, all_comments: bool = False) -> tuple[list[str], list[dict]]:
+    suffix = path.suffix.lower()
+    if suffix == ".v":
+        return extract_rocq(path, all_comments=all_comments)
+    if suffix == ".pl":
+        return extract_prolog(path)
+    if suffix == ".nix":
+        return extract_nix(path)
+    if suffix == ".md":
+        return extract_markdown(path)
+    if suffix == ".xml":
+        return extract_block_xml(path)
+    if suffix in (".html", ".htm"):
+        return extract_html(path)
+    return [], []
+
+
+def evaluate_item(item: dict, api_key: str | None) -> dict:
+    role = item["role"]
+    metrics = compute_metrics(item["raw"], item["text"])
+    result = {**item, "metrics": metrics, "faults": {}, "readability": None}
+
+    if not api_key:
+        return result
+
+    if role == "heading":
+        payload = {
+            "model": MODEL,
+            "state": {"heading": {"text": item["text"], "section": item["section"]}},
+            "questions": HEADING_QUESTIONS,
+        }
+    else:
+        payload = {
+            "model": MODEL,
+            "state": {
+                "passage": {
+                    "section": item["section"],
+                    "text": item["text"],
+                    "metrics": metrics,
+                }
+            },
+            "questions": QUESTIONS,
+        }
+
+    req = urllib.request.Request(
+        ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    answers = data["answers"]
+    if role == "heading":
+        p = answers["slogan_heading"]["noul"]
+        result["faults"] = {"slogan_heading": round(p, 2)}
+        result["readability"] = round(2.0 * (1.0 - p), 2)
+    else:
+        result["faults"] = {
+            "verbless_fragment": round(answers["verbless_fragment"]["noul"], 2),
+            "identifier_soup": round(answers["identifier_soup"]["noul"], 2),
+            "inside_out_jargon": round(answers["inside_out_jargon"]["noul"], 2),
+            "rhetorical_slop": round(answers["rhetorical_slop"]["noul"], 2),
+        }
+        result["readability"] = round(answers["readability"]["score"], 2)
+    return result
+
+
+def diagnose(res: dict) -> list[str]:
+    reasons: list[str] = []
+    f = res["faults"]
+    m = res["metrics"]
+    if f.get("slogan_heading", 0) >= FAULT_THRESHOLD:
+        reasons.append(f"slogan/tagline heading ({f['slogan_heading']:.2f}): state the topic plainly or ask 'What is X?'")
+    if f.get("verbless_fragment", 0) >= FAULT_THRESHOLD:
+        reasons.append(f"verbless fragment ({f['verbless_fragment']:.2f}): give every sentence a subject and finite main verb")
+    if f.get("identifier_soup", 0) >= FAULT_THRESHOLD:
+        reasons.append(
+            f"identifier/parenthetical soup ({f['identifier_soup']:.2f}; "
+            f"{m['parentheticals']} parens, {m['code_and_symbol_refs']} code refs): "
+            "move symbol catalogs into a table or onto the definitions below"
+        )
+    elif m["parentheticals"] >= 5 and res["role"] == "prose":
+        reasons.append(f"heavy parenthetical clutter ({m['parentheticals']} parentheticals in {m['sentences']} sentences)")
+    if f.get("inside_out_jargon", 0) >= FAULT_THRESHOLD:
+        reasons.append(
+            f"inside-out jargon ({f['inside_out_jargon']:.2f}): "
+            "state what problem this solves in plain terms before naming internal lemmas"
+        )
+    if f.get("rhetorical_slop", 0) >= FAULT_THRESHOLD:
+        reasons.append(f"landing-page pitch or rhetorical inversion ({f['rhetorical_slop']:.2f}): use plain subject-verb-object prose")
+    return reasons
+
+
+def collect_targets(paths: list[str]) -> list[Path]:
+    exts = {".v", ".pl", ".nix", ".md", ".xml", ".html"}
+    out: list[Path] = []
+    for raw in paths:
+        p = Path(raw)
+        if p.is_file():
+            out.append(p)
+        elif p.is_dir():
+            for child in sorted(p.rglob("*")):
+                if child.is_file() and child.suffix.lower() in exts and "archive" not in child.parts:
+                    out.append(child)
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("paths", nargs="+", help="Files or directories to check (.v, .pl, .nix, .md, .xml, .html)")
+    ap.add_argument("-v", "--verbose", action="store_true", help="Print every evaluated passage, including clean ones")
+    ap.add_argument("--all-comments", action="store_true", help="For .v files, check body (** ... *) doc comments in addition to the prelude")
+    ap.add_argument("--max-passages", type=int, default=16, help="Maximum passages to check per file (default: 16)")
+    ap.add_argument("--json", action="store_true", help="Emit JSON output")
+    args = ap.parse_args()
+
+    api_key = os.environ.get("TYPESAFE_API_KEY")
+    if not api_key:
+        print("prose-check: TYPESAFE_API_KEY is not set; running structural checks only", file=sys.stderr)
+
+    targets = collect_targets(args.paths)
+    if not targets:
+        print("prose-check: no matching files found", file=sys.stderr)
+        return 2
+
+    all_reports = []
+    any_flagged = False
+
+    for path in targets:
+        dom_issues, items = extract_file(path, all_comments=args.all_comments)
+        items = items[: args.max_passages]
+        if not items and not dom_issues:
+            continue
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            evaluated = list(pool.map(lambda it: evaluate_item(it, api_key), items))
+
+        prose_scores = [r["readability"] for r in evaluated if r["role"] == "prose" and r["readability"] is not None]
+        avg_read = round(sum(prose_scores) / len(prose_scores), 2) if prose_scores else None
+
+        flagged = []
+        for r in evaluated:
+            reasons = diagnose(r)
+            if (
+                not reasons
+                and r["role"] == "prose"
+                and r["readability"] is not None
+                and r["readability"] < READABILITY_FLOOR
+            ):
+                reasons.append(f"low readability score ({r['readability']:.2f}/2.00)")
+            r["reasons"] = reasons
+            if reasons:
+                flagged.append(r)
+
+        if dom_issues or flagged:
+            any_flagged = True
+
+        report = {
+            "file": str(path),
+            "readability_avg": avg_read,
+            "passages_checked": len(evaluated),
+            "passages_flagged": len(flagged),
+            "dom_issues": dom_issues,
+            "passages": evaluated,
+        }
+        all_reports.append(report)
+
+        if args.json:
+            continue
+
+        read_str = f"readability {avg_read:.2f}/2.00" if avg_read is not None else "structural only"
+        status = "FLAGGED" if (dom_issues or flagged) else "OK"
+        print(f"{status:<7} {path} ({read_str}, {len(flagged)}/{len(evaluated)} passages flagged)")
+
+        for issue in dom_issues:
+            print(f"  [chrome] {issue}")
+
+        shown = evaluated if args.verbose else flagged
+        for r in shown:
+            m = r["metrics"]
+            f_str = " ".join(f"{k}={v:.2f}" for k, v in r["faults"].items() if v >= 0.30) or "clean"
+            r_score = f"{r['readability']:.2f}/2.00" if r["readability"] is not None else "n/a"
+            tag = "FLAG" if r["reasons"] else "ok  "
+            print(
+                f"  [{tag}] line {r['line']} ({r['section']}, {r['role']}): "
+                f"read={r_score} [{f_str}] "
+                f"({m['words']}w, {m['sentences']}s, {m['parentheticals']} parens, {m['code_and_symbol_refs']} refs)"
+            )
+            preview = r["text"] if len(r["text"]) <= 180 else r["text"][:177] + "..."
+            print(f"         \"{preview}\"")
+            for reason in r["reasons"]:
+                print(f"         -> {reason}")
+
+    if args.json:
+        print(json.dumps(all_reports, indent=2))
+
+    return 1 if any_flagged else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

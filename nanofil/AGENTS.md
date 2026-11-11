@@ -228,7 +228,12 @@ from Prolog comments, Rocq `(** *)` comments and documents with
 than explaining it again in a module header or a `.v` file, and add one
 when a term needs explaining in more than one place. In the Rocq, give
 each definition, lemma and theorem a short `(** *)` doc in plain words
-just before it, with `[name]` for the Rocq names it uses.
+just before it, with `[name]` for the Rocq names it uses. Keep a `.v`
+or `.pl` file's top header comment in plain, complete sentences that
+state what the module does before naming internal lemmas, and put lemma
+inventories in a table or on the definitions themselves instead of
+stuffing parentheticals into prose; run `scripts/prose-check FILE` to
+check a header or document you wrote.
 
 ## Working alongside other threads
 
