@@ -17,7 +17,9 @@
     collector scans every live [[capability]] at every safepoint, and
     temporaries live across any returning call take only callee-saved
     registers (`%rbx`, `%r12`–`%r15`), saved after the stack check and
-    restored before every `leave`. *)
+    restored before every `leave`. A module's direct calls of its local
+    functions take a private entry that receives two more words in
+    registers, and a function that calls nothing links no Fil-C frame. *)
 
 From Stdlib Require Import String ZArith List Bool Arith.
 From Nanofil Require Import Term Syntax Validate Maps Cfg.
@@ -1698,11 +1700,18 @@ Definition compile_pmoves (ms : list pmove) : list line :=
 
 (** ## Function context and register-aware selection *)
 
+(** [rc_framed] is false for a function that never reaches a
+    safepoint (function_code_allocated decides): it links no Fil-C
+    frame, since no collection, handshake or signal can look at it.
+    [rc_sy] is the module's symbols, which say which direct calls may
+    take the private entry. *)
 Record rctx : Type := mkRCtx {
   rc_cx : ctx;
   rc_reg : nmap hreg;
   rc_class : nmap class;
-  rc_saves : list (hreg * Z)
+  rc_saves : list (hreg * Z);
+  rc_framed : bool;
+  rc_sy : symbols
 }.
 
 Fixpoint place_callee_saves (rs : list hreg) (off : Z) (acc : list (hreg * Z))
@@ -1786,7 +1795,8 @@ Definition build_rctx (p : plan) (names : list name) (cmap : ZMap.t class)
   let phis_map := build_pblocks_phis_map (pl_blocks p) nm_empty in
   let cx := mkCtx (name_text (pl_name p)) slots locals (round16 base) base phis_map in
   mkRCtx cx (build_name_reg_map names O rm nm_empty)
-         (build_name_class_map names O cmap nm_empty) saves.
+         (build_name_class_map names O cmap nm_empty) saves true
+         (mkSymbols nm_empty nm_empty nm_empty).
 
 Definition temp_is_w (rc : rctx) (d : name) : bool :=
   match nm_find d (rc_class rc) with Some W => true | _ => false end.
@@ -1872,6 +1882,10 @@ Definition callee_save_restores (saves : list (hreg * Z)) : list line :=
 Definition rleave_ret (rc : rctx) : list line :=
   callee_save_restores (rc_saves rc) ++ leave_ret.
 
+(** The frame's unlinking, when there is a frame. *)
+Definition rframe_pop (rc : rctx) : list line :=
+  if rc_framed rc then frame_pop (rc_cx rc) else [].
+
 Definition rincoming_word (rc : rctx) (l : location) (w : word) : list line :=
   match w with
   | Wf k (SrcSlot t) =>
@@ -1904,16 +1918,105 @@ Definition rincoming_word (rc : rctx) (l : location) (w : word) : list line :=
   | _ => todo "incoming source"
   end.
 
-Fixpoint rtyped_incoming_acc (rc : rctx) (ws : list word) (ls : list location)
-                             (acc : list line) : list line :=
+(** ## The private direct-call entry
+
+    A function of local linkage that returns in registers has a
+    second entry, `.L<name>..direct`, for this module's direct calls
+    (rprivate_call): the words at stack index 0 and 1, when they have
+    a register form, travel in `%rsi` and `%rax` rather than on the
+    stack, whose slots stay reserved, so every other word is where the
+    fast convention puts it. The fast entry loads those two slots into
+    the two registers and falls into it, and the entry stores them
+    before anything else uses `%rax`. Neither register is a home or
+    carries anything else into an entry: the body never reads the
+    incoming `%rsi`, and `%rax` is the result's flag. *)
+Definition private_reg (w : word) (l : location) : option string :=
+  match l, class_half (word_class w) with
+  | LocStack i, Some _ =>
+      if Z.eqb i 0 then Some "si" else if Z.eqb i 1 then Some "a" else None
+  | _, _ => None
+  end.
+
+Definition private_label (f : string) : string := ".L" ++ f ++ "..direct".
+
+Definition has_private_entry (p : plan) : bool :=
+  is_atom "local" (pl_linkage p)
+  && match pl_return p with Registers => true | Buffer _ => false end.
+
+(** Whether a direct call of f may take its private entry: this
+    module defines f with local linkage (Abi.direct_target has already
+    made it the implementation, so not variadic and not weak). *)
+Definition private_callee (rc : rctx) (f : name) : bool :=
+  match nm_find f (sy_funcs (rc_sy rc)) with
+  | Some fe => is_atom "local" (fe_linkage fe)
+  | None => false
+  end.
+
+(** The fast entry's loads of the private words' stack slots, where
+    `8(%rsp)` is stack word 0 before the frame is made. *)
+Fixpoint private_shim_acc (ws : list word) (ls : list location) (acc : list line) : list line :=
   match ws, ls with
   | w :: ws', l :: ls' =>
-      rtyped_incoming_acc rc ws' ls' (rev_append (rincoming_word rc l w) acc)
+      let cur := match private_reg w l, l with
+                 | Some r, LocStack i => [ins "mov" "q" [mem (eight + eight * i) "rsp"; reg (reg64 r)]]
+                 | _, _ => []
+                 end in
+      private_shim_acc ws' ls' (rev_append cur acc)
   | _, _ => rev' acc
   end.
 
-Definition rtyped_incoming (rc : rctx) (ws : list word) (ls : list location) : list line :=
-  rtyped_incoming_acc rc ws ls [].
+(** The incoming words ws at ls, the private ones only ([private]) or
+    the others only. *)
+Fixpoint rtyped_incoming_acc (rc : rctx) (private : bool) (ws : list word) (ls : list location)
+                             (acc : list line) : list line :=
+  match ws, ls with
+  | w :: ws', l :: ls' =>
+      let cur := match private, private_reg w l with
+                 | true, Some r => rincoming_word rc (LocReg r) w
+                 | true, None => []
+                 | false, _ => rincoming_word rc l w
+                 end in
+      rtyped_incoming_acc rc private ws' ls' (rev_append cur acc)
+  | _, _ => rev' acc
+  end.
+
+Fixpoint rpublic_incoming_acc (rc : rctx) (ws : list word) (ls : list location)
+                              (acc : list line) : list line :=
+  match ws, ls with
+  | w :: ws', l :: ls' =>
+      let cur := match private_reg w l with
+                 | Some _ => []
+                 | None => rincoming_word rc l w
+                 end in
+      rpublic_incoming_acc rc ws' ls' (rev_append cur acc)
+  | _, _ => rev' acc
+  end.
+
+(** The frame offsets of the lowers that the entry's incoming words
+    store, and Emit.lowers_zeroing without the stores to them: no
+    safepoint comes between the zeroing and those stores, so the
+    collector never sees the entries they skip. *)
+Definition incoming_lower_offs (cx : ctx) (ws : list word) : list Z :=
+  flat_map (fun w => match w with
+                     | Wf _ (SrcSlot (KLower t)) =>
+                         match slot cx (KLower t) with Some off => [off] | None => [] end
+                     | _ => [] end) ws.
+
+Fixpoint rlower_entry_stores (fuel : nat) (i base : Z) (skip : list Z) : list line :=
+  match fuel with
+  | O => []
+  | S fuel' =>
+      let d := sixteen + eight * i - base in
+      (if existsb (fun off => Z.eqb (- off) d) skip then []
+       else [ins "mov" "q" [reg "rax"; mem d "rbp"]])
+      ++ rlower_entry_stores fuel' (i + 1) base skip
+  end.
+
+Definition rlowers_zeroing (n base : Z) (skip : list Z) : list line :=
+  match rlower_entry_stores (Z.to_nat n) 0 base skip with
+  | [] => []
+  | ls => ins "xor" "l" [reg "eax"; reg "eax"] :: ls
+  end.
 
 Definition rentry_lines (rc : rctx) (p : plan) : list line :=
   let cx := rc_cx rc in
@@ -1928,19 +2031,27 @@ Definition rentry_lines (rc : rctx) (p : plan) : list line :=
   ++ callee_save_stores (rc_saves rc)
   ++ slot_store cx "rdi" KThread
   ++ match ret with Registers => [] | Buffer _ => slot_store cx "rax" KRetbuf end
-  ++ lowers_zeroing (Zlength (fr_roots (pl_frame p))) base
-  ++ [ins "mov" "q" [mem thread_top_frame "rdi"; reg "rax"];
-      ins "mov" "q" [reg "rax"; mem (- base) "rbp"]]
-  ++ origin_store cx "c"
-  ++ [ins "lea" "q" [mem (- base) "rbp"; reg "rax"];
-      ins "mov" "q" [reg "rax"; mem thread_top_frame "rdi"]]
+  ++ (if has_private_entry p
+      then let '(ls, _, _) := typed_locations (pl_incoming p) ret in
+           rtyped_incoming_acc rc true (pl_incoming p) ls []
+      else [])
+  ++ (if rc_framed rc
+      then rlowers_zeroing (Zlength (fr_roots (pl_frame p))) base
+                           (incoming_lower_offs cx (pl_incoming p))
+           ++ [ins "mov" "q" [mem thread_top_frame "rdi"; reg "rax"];
+               ins "mov" "q" [reg "rax"; mem (- base) "rbp"]]
+           ++ origin_store cx "c"
+           ++ [ins "lea" "q" [mem (- base) "rbp"; reg "rax"];
+               ins "mov" "q" [reg "rax"; mem thread_top_frame "rdi"]]
+      else [])
   ++ (let '(ls, _, _) := typed_locations (pl_incoming p) ret in
-      rtyped_incoming rc (pl_incoming p) ls).
+      if has_private_entry p then rpublic_incoming_acc rc (pl_incoming p) ls []
+      else rtyped_incoming_acc rc false (pl_incoming p) ls []).
 
 (** Exception exit with callee-saved registers restored. *)
 Definition rexc_exit_lines (rc : rctx) (ret : protocol) : list line :=
   let cx := rc_cx rc in
-  frame_pop cx
+  rframe_pop rc
   ++ match ret with
      | Registers => [ins "mov" "b" [imm 1; reg "al"]]
      | Buffer _ => slot_load cx KRetbuf "rax" ++ [ins "mov" "b" [imm 1; mem 0 "rax"]]
@@ -2008,6 +2119,20 @@ Fixpoint build_phi_pmoves_acc (rc : rctx) (from : name) (phis : list phi)
       end
   end.
 
+(** Emit.pollcheck, which puts the frame's origin back to the catching
+    one after the slow path: the runtime leaves the non-catching origin
+    it was passed in the top frame, and a call's catching origin is
+    stored only at the entry (`AOrigin` is no instruction here). *)
+Definition rpollcheck (cx : ctx) (block : name) (tag : string) : list line :=
+  let no_poll := local_label cx block tag "poll" in
+  slot_load cx KThread "rdi"
+  ++ [ins "test" "b" [imm 14; mem thread_state "rdi"];
+      ins0 "jz" [sym no_poll];
+      ins "lea" "q" [rip (origin_label (cx_name cx) "n"); reg "rsi"];
+      ins0 "call" [plt "filc_pollcheck_slow"]]
+  ++ origin_store cx "c"
+  ++ [label no_poll].
+
 Definition redge_moves (rc : rctx) (from : name) (t : target) (tag : string) : list line :=
   let cx := rc_cx rc in
   let phis := match nm_find (edge_label t) (cx_phis cx) with Some ps => ps | None => [] end in
@@ -2016,7 +2141,7 @@ Definition redge_moves (rc : rctx) (from : name) (t : target) (tag : string) : l
     | Some ms => compile_pmoves ms
     | None => todo "phi parallel move"
     end in
-  moves ++ match t with Poll _ => pollcheck cx from tag | To _ => [] end.
+  moves ++ match t with Poll _ => rpollcheck cx from tag | To _ => [] end.
 
 Definition redge (rc : rctx) (from : name) (t : target) (tag : string) : list line :=
   redge_moves rc from t tag ++ [ins0 "jmp" [sym (block_label (rc_cx rc) (edge_label t))]].
@@ -2666,7 +2791,6 @@ Definition rpointer_store_effect (rc : rctx) (b : name) (index : string) (v a : 
       ++ rload rc v L "r9"
   | AtomicWrite =>
       [ins "mov" "q" [reg "rax"; reg "rsi"]; ins "mov" "q" [reg "rcx"; reg "rdx"]]
-      ++ origin_store cx "c"
       ++ slot_load cx KThread "rdi"
       ++ rload rc v L "c"
       ++ rlower_load rc v "r8"
@@ -2756,6 +2880,46 @@ Definition rfast_call (rc : rctx) (r : protocol) (ws : list word) (callee : opti
   ++ rtyped_stack_args_acc rc ws ls []
   ++ rtyped_register_args_acc rc ws ls []
   ++ entry_call (rc_cx rc) r callee pop
+  ++ (if pop >? 0 then [ins "add" "q" [imm pop; reg "rsp"]] else []).
+
+(** A direct call of a function's private entry target with the words
+    ws (see private_reg): the stack words but the private ones, the
+    register words, then the private words into `%rsi` and `%rax`,
+    which nothing after them writes. *)
+Fixpoint rprivate_stack_args_acc (rc : rctx) (ws : list word) (ls : list location)
+                                 (acc : list line) : list line :=
+  match ws, ls with
+  | Wf k s :: ws', l :: ls' =>
+      let cur :=
+        match l, private_reg (Wf k s) l with
+        | LocStack i, None => rword_reg_load rc s "a" ++ [ins "mov" "q" [reg "rax"; mem (eight * i) "rsp"]]
+        | _, _ => []
+        end in
+      rprivate_stack_args_acc rc ws' ls' (rev_append cur acc)
+  | _, _ => rev' acc
+  end.
+
+Fixpoint rprivate_reg_args_acc (rc : rctx) (ws : list word) (ls : list location)
+                               (acc : list line) : list line :=
+  match ws, ls with
+  | Wf k s :: ws', l :: ls' =>
+      let cur := match private_reg (Wf k s) l with
+                 | Some r => rword_reg_load rc s r
+                 | None => []
+                 end in
+      rprivate_reg_args_acc rc ws' ls' (rev_append cur acc)
+  | _, _ => rev' acc
+  end.
+
+Definition rprivate_call (rc : rctx) (ws : list word) (target : string) : list line :=
+  let '(ls, ns, _) := typed_locations ws Registers in
+  let pop := stack_bytes ns in
+  (if pop >? 0 then [ins "sub" "q" [imm pop; reg "rsp"]] else [])
+  ++ rprivate_stack_args_acc rc ws ls []
+  ++ rtyped_register_args_acc rc ws ls []
+  ++ rprivate_reg_args_acc rc ws ls []
+  ++ slot_load (rc_cx rc) KThread "rdi"
+  ++ [ins0 "call" [sym target]]
   ++ (if pop >? 0 then [ins "add" "q" [imm pop; reg "rsp"]] else []).
 
 Fixpoint rreg_slot_stores_acc (rc : rctx) (ks : list key) (rs : list string)
@@ -2924,10 +3088,13 @@ Definition rva_arg_load (rc : rctx) (b : name) (index : string) (k : class) (d :
 Definition raction_lines (rc : rctx) (b : name) (index : string) (a : action) : list line :=
   let cx := rc_cx rc in
   match a with
-  | AOrigin => origin_store cx "c"
+  | AOrigin => []
   | AReserveResult (Buffer n) => [ins "sub" "q" [imm (buffer_bytes n); reg "rsp"]]
   | AReleaseResult (Buffer n) => [ins "add" "q" [imm (buffer_bytes n); reg "rsp"]]
   | AReserveResult Registers | AReleaseResult Registers => []
+  | AInvoke (TImplementation f s) Registers ws =>
+      if private_callee rc f then rprivate_call rc ws (private_label (name_text f))
+      else rfast_call rc Registers ws (Some (target_operand (TImplementation f s)))
   | AInvoke t r ws => rfast_call rc r ws (Some (target_operand t))
   | AResult r c => rfast_result rc r c
   | ACopyFilter _ _ _ _ | ACopyJoin => []
@@ -3129,22 +3296,22 @@ Definition rpjump_lines (rc : rctx) (from : name) (next : option name) (j : pjum
       test_code ++ rselected_branch rc Ne t f from next
   | PJump JUnreachable => [ins0 "jmp" [sym (special_label cx "unreachable")]]
   | PJump _ => todo "a return that is not lowered"
-  | PReturnValue r v p => rret_value rc r v ++ frame_pop cx ++ rsuccess rc p
+  | PReturnValue r v p => rret_value rc r v ++ rframe_pop rc ++ rsuccess rc p
   | PReturnBuffer ws =>
       slot_load cx KRetbuf "rax" ++ rbuffer_words_acc rc ws eight []
       ++ [ins "mov" "b" [imm 0; mem 0 "rax"]]
-      ++ frame_pop cx ++ rleave_ret rc
+      ++ rframe_pop rc ++ rleave_ret rc
   | PReturnTyped ks vs =>
       let ws := typed_return_words ks vs in
       match result_registers (map ret_word_class ws) ["d"; "c"] ["xmm0"; "xmm1"] with
       | Some rs => rtyped_return_loads_acc rc ws rs []
       | None => todo "result registers"
       end
-      ++ frame_pop cx ++ rsuccess rc Registers
+      ++ rframe_pop rc ++ rsuccess rc Registers
   | PReturnRegisters [v1; v2] =>
-      rload rc v1 L "d" ++ rload rc v2 L "c" ++ frame_pop cx ++ rsuccess rc Registers
+      rload rc v1 L "d" ++ rload rc v2 L "c" ++ rframe_pop rc ++ rsuccess rc Registers
   | PReturnRegisters _ => todo "return_registers"
-  | PReturnVoid p => frame_pop cx ++ rsuccess rc p
+  | PReturnVoid p => rframe_pop rc ++ rsuccess rc p
   end.
 
 Definition rejump_lines (rc : rctx) (from : name) (next : option name) (ej : ejump)
@@ -3175,9 +3342,59 @@ Fixpoint reblocks_lines_acc (rc : rctx) (ebs : list eblock) (acc : list line) : 
 
 (** ## Top-level function and module emission *)
 
+(** Whether the body ls can reach a safepoint: whether it calls
+    anything (the runtime's included; the body jumps to no other
+    function). A body that cannot is emitted again without the frame
+    (rc_framed); its failure reporters, which are outside the body,
+    link it first. *)
+Definition lines_reach_safepoint (ls : list line) : bool :=
+  existsb (fun l => match l with
+                    | Ins op _ _ => String.eqb op "call"
+                    | _ => false
+                    end) ls.
+
+(** The frame's linking on a failure path of a function without a
+    frame: the runtime's reporters write their origin into the top
+    frame and print the frames from it, which must be this one. Only
+    `%rdx` and `%rsi` are written; the pointer and its lower are in
+    `%rax` and `%rcx`. *)
+Definition rpanic_link (rc : rctx) : list line :=
+  let cx := rc_cx rc in
+  if rc_framed rc then []
+  else slot_load cx KThread "rsi"
+       ++ [ins "mov" "q" [mem thread_top_frame "rsi"; reg "rdx"];
+           ins "mov" "q" [reg "rdx"; mem (- cx_base cx) "rbp"];
+           ins "lea" "q" [rip (origin_label (cx_name cx) "c"); reg "rdx"];
+           ins "mov" "q" [reg "rdx"; mem (eight - cx_base cx) "rbp"];
+           ins "lea" "q" [mem (- cx_base cx) "rbp"; reg "rdx"];
+           ins "mov" "q" [reg "rdx"; mem thread_top_frame "rsi"]].
+
+(** Emit.check_fail_block and Emit.unreachable_block, which link the
+    frame first when there is none (rpanic_link). *)
+Definition rcheck_fail_block (rc : rctx) (k : check_kind) : list line :=
+  let cx := rc_cx rc in
+  label (check_fail_label cx k)
+  :: rpanic_link rc
+  ++ [ins "mov" "q" [reg "rax"; reg "rdi"];
+      ins "mov" "q" [reg "rcx"; reg "rsi"];
+      ins "lea" "q" [rip (check_origin_label (cx_name cx) k); reg "rdx"];
+      ins0 "call" [plt "filc_optimized_access_check_fail"];
+      ins0 "ud2" []].
+
+Definition runreachable_block (rc : rctx) (bs : list pblock) : list line :=
+  let cx := rc_cx rc in
+  if has_unreachable bs
+  then [label (special_label cx "unreachable")]
+       ++ rpanic_link rc
+       ++ [ins "lea" "q" [rip (unreachable_message_label (cx_name cx)); reg "rdi"];
+           ins "lea" "q" [rip (origin_label (cx_name cx) "n"); reg "rsi"];
+           ins0 "call" [plt "filc_error"];
+           ins0 "ud2" []]
+  else [].
+
 (** Compile [f] and its ABI [plan] [p] with register allocation,
     returning `None` if [valid_alloc] rejects the assignment. *)
-Definition function_code_allocated (f : func) (p : plan) : option (list line) :=
+Definition function_code_allocated (sy : symbols) (f : func) (p : plan) : option (list line) :=
   let bparams := body_params f in
   let '(tmap, cmap, rev_names, _) :=
     number_func_blocks (fn_blocks f)
@@ -3190,21 +3407,31 @@ Definition function_code_allocated (f : func) (p : plan) : option (list line) :=
   let param_tids := names_to_tids tmap (map snd bparams) in
   let va_tid := nm_find va_snapshot tmap in
   let* rm := allocate_regs cmap va_tid param_tids rbs in
-  let rc := build_rctx p names cmap rm in
-  let cx := rc_cx rc in
+  let rcb := build_rctx p names cmap rm in
+  let cx := rc_cx rcb in
+  let rc0 := mkRCtx cx (rc_reg rcb) (rc_class rcb) (rc_saves rcb) true sy in
+  let body0 := reblocks_lines_acc rc0 ebs [] in
+  let '(rc, body) :=
+    if lines_reach_safepoint body0 then (rc0, body0)
+    else let rc := mkRCtx cx (rc_reg rc0) (rc_class rc0) (rc_saves rc0) false sy in
+         (rc, reblocks_lines_acc rc ebs []) in
   let impl := impl_symbol (pl_sig p) (cx_name cx) in
   let bs := pl_blocks p in
   let kinds := access_check_kinds bs in
   Some ([Dir (DSection SText); p2align 4]
         ++ linkage_globl (pl_linkage p) impl
         ++ [Dir (DType (LSym impl) (LSym "function")); label impl]
+        ++ (if has_private_entry p
+            then let '(ls, _, _) := typed_locations (pl_incoming p) (pl_return p) in
+                 private_shim_acc (pl_incoming p) ls [] ++ [label (private_label (cx_name cx))]
+            else [])
         ++ rentry_lines rc p
-        ++ reblocks_lines_acc rc ebs []
+        ++ body
         ++ [label (special_label cx "exc")]
         ++ rexc_exit_lines rc (pl_return p)
-        ++ flat_map (check_fail_block cx) kinds
+        ++ flat_map (rcheck_fail_block rc) kinds
         ++ not_function_block cx bs
-        ++ unreachable_block cx bs
+        ++ runreachable_block rc bs
         ++ [Dir (DSize (LSym impl))]
         ++ function_object_lines cx p impl
         ++ origins cx p kinds
@@ -3215,7 +3442,7 @@ Definition item_code_allocated (sy : symbols) (it : item) : option (list line) :
   match it with
   | IFunc f =>
       let* p := lower_function sy f in
-      function_code_allocated f p
+      function_code_allocated sy f p
   | IOutside _ _ => None
   | IData n lk align items => Some (data_lines n lk align items)
   | IAlias n lk target => Some (alias_lines sy n lk target)

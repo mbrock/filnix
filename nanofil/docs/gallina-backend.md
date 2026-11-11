@@ -1425,6 +1425,19 @@ scheduler using `%rax` and cycle-breaker `%rcx` with no shadow slots,
 and scalar operations select directly into assigned registers with
 three-address `lea`, `imm32` operands and narrow loads and stores.
 
+Calls within a module cost less than the fast convention alone. A
+function of local linkage that returns in registers has a second entry,
+`.L<name>..direct`, which takes the words at stack index 0 and 1 in
+`%rsi` and `%rax`; the module's direct calls of it use that entry, and
+its fast entry loads those two stack slots into the registers and falls
+into it. A function whose body calls nothing never reaches a safepoint,
+so it links no Fil-C frame; its failure blocks link the frame before
+they call the runtime's reporter, which writes its origin into the top
+frame. The catching origin is stored once, at the entry, and the slow
+path of a pollcheck stores it again after `filc_pollcheck_slow` leaves
+the non-catching one there, so calls store no origin. The entry does not
+zero the `lowers[]` entries that its incoming words fill.
+
 - **Validation and proofs.** Every allocated function is checked
   before emission by a linear-time Gallina validator (`valid_alloc`).
   `RegsProof.v` (compiled with an open-assumption gate in the default
