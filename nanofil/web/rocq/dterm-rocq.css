@@ -105,7 +105,7 @@ code.rq .c, code.rq .args, code.rq .arg { white-space: nowrap; }
 
 /* Directives: a quiet line each. */
 .rq-dirs { margin: 0.6rem 0 1rem; font-size: 0.86rem; color: var(--muted); }
-.rq-dir .module { color: var(--atom); }
+.rq-dir .module { color: var(--atom); overflow-wrap: anywhere; }
 .dterm-rocq .clause.rq-module-def { margin: 0.2rem 0; }
 
 /* Headings from (** * Title *). */
@@ -140,6 +140,11 @@ table.rq-ctors tr.note td, table.rq-fields tr.note td { padding-top: 0.4rem; }
 .dterm-rocq .cases { width: max-content; max-width: 100%; }
 .dterm-rocq .cases.ztry { max-width: none; }
 .dterm-rocq .cases.stack { width: auto; grid-template-columns: max-content minmax(0, 1fr); }
+@media (max-width: 700px) {
+  /* The static fallback stacks branches. Let them use the available
+     width instead of sizing a flex item's match from an unbroken result. */
+  html:not(.zp) .dterm-rocq .cases { width: auto; }
+}
 .cases.match { margin-left: 0.6em; }
 /* A match too wide for its table (dterm.js stacks it) is each pattern
    over its result, the result led by ⇒, not a conditional's labels. */
