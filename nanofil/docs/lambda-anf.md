@@ -731,7 +731,7 @@ C++ for it.
 | **Known (M1)** | `zsys_mmap` (`MAP_NORESERVE`, `fugc_destructor_heap`) grants up to **`4 TiB`** in one reservation at **`8 KiB/GiB`** chunk-map overhead (**`+0.37 MiB`** RSS for the full `8 GiB + 4 KiB` arena), `zsys_madvise` (`MADV_DONTNEED`) reclaims `64 MiB` and `256 MiB` major slices immediately while keeping the `arena` capability valid, and [anf/](../anf/) passes 10,000 randomized tree-rewrite steps (1,851 minor GCs in a 256-word nursery) under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` |
 | **Known (M2)** | [AnfLower.v](../anf/lower/AnfLower.v) lowers CertiRocq's `-O 1 --anf-variant 8` λANF of 13 programs (CertiRocq's 11 standalone tests, `Order.v`'s sort, `Asm.v`'s printer) to checked IR that [valid_fast] accepts, turning 5,169 of 8,106 hoisted functions into blocks; linked with [anf/](../anf/), every program prints `ocamlopt`'s bytes, also over a 256-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` (up to 466,493 minor GCs). With unmapped `nat` / `ascii` / `string` on both sides and checks kept, wall time is **`3.2–6.9×`** `ocamlopt` on the six programs that run longer than startup and **`19.8×`** on `vs_hard`; in `order`, the collector takes 0.2% of the samples, `anf_apply2` 8% and CertiRocq's uncurry wrappers 12.5% (§8, M2) |
 | **Known (M3)** | The full Gallina backend (`read_text`, [Compile.compile], [Compile.compile_promoted], [Compile.compile_allocated]) compiles through λANF → [AnfLower.v](../anf/lower/AnfLower.v) → `nanofil-backend compile-allocated` ([anf/backend/](../anf/backend/)), matching `ocamlopt` on **all 159 fixture runs** (53 IR fixtures × 3 commands, default + 4,096-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`). After M3's per-call round (`tuple([l, l])` returns, private local entries, frameless leaf functions, align-1 checks), it runs `rx.ir` in **`0.80 / 1.04 s`** (`89 MB`) vs. `0.22 / 0.29 s` (`57 MB`) in `ocamlopt` (**`3.6×`**) and the 4.4 MB `lvm.ir` in **`14.4 / 9.4 s`** (`422 MB`) vs. `3.3 / 2.4 s` (`279 MB`) (**`4.3× / 3.9×`**), missing the 2× mark; calls/prologues/epilogues take ~23%, spills 12%, bounds checks 11%, arena arithmetic 9%, and the collector **1.5%** (§8, M3) |
-| **Known (M4)** | `libnanofil.so` ([anf/lib/](../anf/lib/)) links the arena-compiled Gallina backend, Gallina x86-64 assembler ([Encode.v](../rocq/backend/Encode.v), byte-identical to GNU `as` on 228 compiles), Gallina ELF shared-object linker ([Elf.v](../rocq/backend/Elf.v)) and Gallina regex compiler ([Rx.v](../anf/rx/Rx.v), byte-identical to [rx.pl](../../experiments/regex-nanofil/rx.pl) on 2,525 files), passing **795 IR compiles** and **48 regex compiles** across both nurseries (`nanofil-anf-lib`). In-process via `memfd_create` + `dlopen`, `pcre2_jit_compile` compiles `hook.c`'s 39 patterns in **`10–141 ms` per pattern** (**`1.6 s` total** vs. `12 s` via `rxc`, zero child processes or disk files) and passes `pcre2test -jit` on `testinput1` and `testinput2` (§8, M4) |
+| **Known (M4)** | `libnanofil.so` ([anf/lib/](../anf/lib/)) links the arena-compiled Gallina backend, Gallina x86-64 assembler ([Encode.v](../rocq/backend/Encode.v), byte-identical to GNU `as` on 228 compiles), Gallina ELF shared-object linker ([Elf.v](../rocq/backend/Elf.v)) and Gallina regex compiler ([Rx.v](../anf/rx/Rx.v), byte-identical to [rx.pl](https://github.com/mbrock/filnix/blob/main/experiments/regex-nanofil/rx.pl) on 2,525 files), passing **795 IR compiles** and **48 regex compiles** across both nurseries (`nanofil-anf-lib`). In-process via `memfd_create` + `dlopen`, `pcre2_jit_compile` compiles `hook.c`'s 39 patterns in **`10–141 ms` per pattern** (**`1.6 s` total** vs. `12 s` via `rxc`, zero child processes or disk files) and passes `pcre2test -jit` on `testinput1` and `testinput2` (§8, M4) |
 
 ## 8. Milestones
 
@@ -1078,7 +1078,7 @@ Results:
   after its recursive call in both builds. Smaller frames and local
   tail-call jumps save stack, but do not remove this pending work at
   each list element. Commit `d2784c6` records the frame reduction;
-  [the frame finding](../../blocks/2026/11/b-2026-11-11-anf-frames.xml)
+  [the frame finding](https://github.com/mbrock/filnix/blob/main/blocks/2026/11/b-2026-11-11-anf-frames.xml)
   and [anf/backend/](../anf/backend/) record the measurements.
 
 **M4. In-process `libnanofil` and three-stage self-hosting.**
@@ -1139,7 +1139,7 @@ The implementation is in [anf/lib/](../anf/lib/) and
 
 - **PCRE2 compiles patterns in-process.**
   [Rx.v](../anf/rx/Rx.v) ports
-  [rx.pl](../../experiments/regex-nanofil/rx.pl) to Gallina and emits
+  [rx.pl](https://github.com/mbrock/filnix/blob/main/experiments/regex-nanofil/rx.pl) to Gallina and emits
   identical bytes on **2,525 files**. Across 1,362 PCRE2 test functions
   of ≤128 blocks, a fresh-process compile takes a **19 ms median** and
   at most 154 ms.
