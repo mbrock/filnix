@@ -56,9 +56,10 @@
    ( exists_file(P) -> assertz(guide_c_drawn) ; true ).
 :- dynamic guide_c_drawn/0.
 :- if(guide_c_drawn).
-:- use_module(c/c_draw, [c_fence//1, c_inline//1, c_inline_auto//1]).
+:- use_module(c/c_draw, [c_fence//1, c_fence//2, c_inline//1, c_inline_auto//1]).
 :- else.
 c_fence(_) --> { fail }.
+c_fence(_, _) --> { fail }.
 c_inline(_) --> { fail }.
 c_inline_auto(_) --> { fail }.
 :- endif.
@@ -395,8 +396,10 @@ gblock(output(Name, Lang, Lines)) -->
     { Lang == "prolog" -> broken("output ~w has no terms in docs/guide/outputs.pl", [Name]) ; true },
     gfence(Lang, Lines).
 
-%  A C fence is drawn by dterm-c from nanofil's own parse (c/c_draw.pl).
+%  A C fence is drawn by dterm-c from nanofil's own parse (c/c_draw.pl);
+%  ```c -O asks for its IR links to open with -O ticked.
 gfence("c", Lines) --> c_fence(Lines), !.
+gfence("c -O", Lines) --> ( c_fence([o], Lines) -> [] ; gfence("c", Lines) ), !.
 gfence(Lang, Lines) -->
     { atomic_list_concat(Lines, '\n', T),
       ( Lang == "" -> C = "fence" ; atom_concat('fence lang-', Lang, C) ) },

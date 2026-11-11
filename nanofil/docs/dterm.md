@@ -452,7 +452,10 @@ sets terms.
   **IR** link to the [playground](../web/play/README.md), which compiles
   the fence and opens that function's checked IR, when the fence
   compiles there by itself: it includes headers, or calls only its own
-  functions.
+  functions. In a document, a fence opened with ```` ```c -O ```` asks
+  for its IR links to open the playground with **-O** ticked, so they
+  show the IR `nanofil -O --inline=none` emits rather than the
+  reference; GitHub still reads the fence as C.
 - Inline, write `` `c: EXPR` ``: the code after `c:` is C, read as an
   expression, a type, a statement or a declaration, whichever reads
   whole, and drawn in the colours of the code with dterm's bows:

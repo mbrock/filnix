@@ -31,7 +31,7 @@
     - what the grammar refused stays as its tokens, marked with the
       parser's reason.
 */
-:- module(c_draw, [c_fence//1, c_inline//1, c_inline_auto//1, c_ready/0]).
+:- module(c_draw, [c_fence//1, c_fence//2, c_inline//1, c_inline_auto//1, c_ready/0]).
 
 :- use_module(library(lists)).
 :- use_module(library(apply)).
@@ -1031,18 +1031,23 @@ line_link(L) -->
 %  its names link to their definitions in the fence, under anchors only
 %  it uses (c1-sum), and each function links to its IR in the
 %  playground when the fence compiles there by itself.
-c_fence(Lines) -->
+c_fence(Lines) --> c_fence([], Lines).
+
+%  c_fence(+Options, +Lines): c_fence//1 with Options: o, for a
+%  ```c -O fence, makes its IR links open the playground with -O ticked.
+c_fence(Options, Lines) -->
     { c_ready, atomic_list_concat(Lines, '\n', T), atom_string(T, Text),
       catch(c_read_text(Text, fence, Unit), _, fail),
       flag(c_fence, N0, N0 + 1), N is N0 + 1, format(atom(P), "c~d-", [N]), nb_setval(c_prefix, P),
-      fence_play(Text, Unit, Play),
+      fence_play(Options, Text, Unit, Play),
       c_set_page(Unit, page, none, Play) }, !,
     el(div, "dterm-c c-fence", c_unit(Unit)),
     { nb_setval(c_prefix, '') }.
 
 %  The playground can compile a fence that includes headers, or whose
-%  calls are all to its own functions.
-fence_play(Text, unit(Items, _, Dirs, _, _), Href) :-
+%  calls are all to its own functions. With option o, its link carries
+%  &O, which ticks the playground's -O (play.js).
+fence_play(Options, Text, unit(Items, _, Dirs, _, _), Href) :-
     findall(N, ( member(I, Items), ( I = item(_, _, fundef(_, _, dcl(some(N), _, _), _)) ; I = fun(_, _, _, dcl(some(N), _, _), _) ) ), Defined),
     (   Defined \== [], \+ member(raw(_, _, _, _), Items),
         (   member(dir(_, _, D), Dirs), sub_string(D, _, _, _, "include") -> true
@@ -1050,7 +1055,8 @@ fence_play(Text, unit(Items, _, Dirs, _, _), Href) :-
         ),
         string_length(Text, L), L =< 24000
     ->  ( nb_current(c_play_root, Root) -> true ; Root = 'play/' ),
-        base64url(Text, B), format(atom(Href), "~w#src=~w&name=example.c", [Root, B])
+        base64url(Text, B), ( memberchk(o, Options) -> O = '&O' ; O = '' ),
+        format(atom(Href), "~w#src=~w&name=example.c~w", [Root, B, O])
     ;   Href = none
     ).
 

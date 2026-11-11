@@ -492,7 +492,7 @@ When a segment's coalesced nursery test `young_idx + max_words > NURSERY_END`
 fires, a self-contained Cheney evacuator copies only live nursery
 survivors into `major_idx` and resets `young_idx = NURSERY_BASE`:
 
-```c
+```c -O
 #include <stddef.h>
 #include <stdint.h>
 

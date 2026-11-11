@@ -133,7 +133,8 @@ async function symbol(name) {
 
 // A C fence that compiles alone (web/c/c_draw.pl) links here with its
 // source in the address: #src=BASE64URL&name=FILE, and &ir=FUNCTION when
-// one of its names is clicked, to open that function's IR once compiled.
+// one of its names is clicked, to open that function's IR once compiled;
+// a ```c -O fence adds &O, which ticks -O for that first compile.
 const linked = new URLSearchParams(location.hash.startsWith("#src=") ? location.hash.slice(1) : "");
 let irFocus = linked.get("ir");
 if (linked.has("src")) {
@@ -182,6 +183,10 @@ $("passes").onchange = $("checks").onchange = () => {
   $("opt").checked = n === optInputs.length;
   $("opt").indeterminate = n > 0 && n < optInputs.length;
 };
+if (linked.has("O")) {
+  $("opt").checked = true;
+  $("opt").onchange();
+}
 
 // Tabs: each pass's output (play_view.pl's pipeline, which replaces the
 // bar's buttons on every compile). The one chosen stays chosen across
