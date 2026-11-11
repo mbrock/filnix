@@ -64,6 +64,7 @@ LibioFclose|_IO_new_fclose
 LibioFlush|__GI__IO_flush_all
 LibioCleanup|_IO_cleanup
 ExitRun|__run_exit_handlers __GI_exit
+LibioStdfiles|glibc_stdfiles#_IO_stdfiles_init
 '
 
 checked() { # checked UNIT OUT: the checked module nanofil-cc compiles UNIT to
@@ -132,7 +133,7 @@ while IFS='|' read -r name fns; do
     printf '  | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []\n'
     printf '  end.\n'
     for f in $fns; do
-      g=glibc_$(echo "$f" | sed 's/^__GI_//')
+      g=glibc_$(echo "$f" | sed 's/^__GI_//; s/#/_/g')
       printf '\n(** glibc'"'"'s `%s`. *)\n' "$f"
       printf 'Definition %s : func := Eval vm_compute in %s_fn "%s".\n' "$g" "$lower" "$f"
     done
