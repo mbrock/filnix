@@ -86,6 +86,10 @@ libio/LibioUnlink.v
 libio/LibioCloseItEnd.v
 libio/LibioCloseItMid.v
 libio/LibioCloseIt.v
+libio/LibioFinish.v
+libio/LibioFcloseTail.v
+libio/LibioFcloseLock.v
+libio/LibioFclose.v
 libio/ExitRunTail.v
 libio/ExitRunLoop.v
 libio/ExitRun.v
