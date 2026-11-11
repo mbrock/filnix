@@ -32,7 +32,8 @@ concurrency:
 jobs:
   check:
     name: Shard ${{ matrix.shard }}/8
-    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    # Namespace alternative after raising shared capacity: nscloud-ubuntu-22.04-amd64-16x32
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
