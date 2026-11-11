@@ -83,28 +83,35 @@ let
     ) closure.${n};
   vo = lib.genAttrs names (
     n:
-    pkgs.runCommand "nanofil-glibc-${n}" { nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ]; } ''
-      set -o pipefail
-      mkdir -p glibc/${dirOf path.${n}}
-      ${link n}
-      cp ${glibc + "/${path.${n}}.v"} glibc/${path.${n}}.v
-      # No Admitted, and no axiom outside a module type.
-      if awk 'skip == "" && /^Module Type [A-Za-z0-9_]/ { skip = $3; sub(/[ .(].*/, "", skip); next }
-        skip != "" { if ($0 ~ "^End " skip "\\.") skip = ""; next }
-        { print FILENAME ":" FNR ": " $0 }' glibc/${path.${n}}.v |
-        grep -wE 'Admitted|Axiom|Axioms|Parameter|Conjecture'; then
-        echo "glibc: no Admitted, and no axiom outside a module type" >&2
-        exit 1
-      fi
-      start=$(date +%s%N)
-      python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
-        rocq c -q -R ${theories} Nanofil -R glibc Glibc glibc/${path.${n}}.v
-      ms=$((($(date +%s%N) - start) / 1000000))
-      mkdir $out
-      cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob $out/
-      printf '@@glibc %4d.%01ds %5d lines %s.v\n' $((ms / 1000)) $((ms % 1000 / 100)) \
-        "$(wc -l <glibc/${path.${n}}.v)" ${path.${n}} >$out/time
-    ''
+    pkgs.runCommand "nanofil-glibc-${n}"
+      {
+        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
+        # More free major-heap space reduces GC during large proof imports,
+        # trading higher peak memory for time without skipping any checking.
+        OCAMLRUNPARAM = "o=200";
+      }
+      ''
+        set -o pipefail
+        mkdir -p glibc/${dirOf path.${n}}
+        ${link n}
+        cp ${glibc + "/${path.${n}}.v"} glibc/${path.${n}}.v
+        # No Admitted, and no axiom outside a module type.
+        if awk 'skip == "" && /^Module Type [A-Za-z0-9_]/ { skip = $3; sub(/[ .(].*/, "", skip); next }
+          skip != "" { if ($0 ~ "^End " skip "\\.") skip = ""; next }
+          { print FILENAME ":" FNR ": " $0 }' glibc/${path.${n}}.v |
+          grep -wE 'Admitted|Axiom|Axioms|Parameter|Conjecture'; then
+          echo "glibc: no Admitted, and no axiom outside a module type" >&2
+          exit 1
+        fi
+        start=$(date +%s%N)
+        python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
+          rocq c -q -R ${theories} Nanofil -R glibc Glibc glibc/${path.${n}}.v
+        ms=$((($(date +%s%N) - start) / 1000000))
+        mkdir $out
+        cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob $out/
+        printf '@@glibc %4d.%01ds %5d lines %s.v\n' $((ms / 1000)) $((ms % 1000 / 100)) \
+          "$(wc -l <glibc/${path.${n}}.v)" ${path.${n}} >$out/time
+      ''
   );
   # The grammar check (web/rocq/tests/parse.sh), one file at a time:
   # reprint it with every subterm in parentheses and compile the reprint
@@ -126,6 +133,8 @@ let
           pkgs.swi-prolog
           pkgs.python3
         ];
+        # Match compilation's GC time/space tradeoff for strict reprints.
+        OCAMLRUNPARAM = "o=200";
       }
       ''
         mkdir -p project/glibc verdicts
