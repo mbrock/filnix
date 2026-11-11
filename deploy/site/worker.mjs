@@ -1,4 +1,4 @@
-import { moved } from "./moves.mjs";
+import { moved, superseded } from "./moves.mjs";
 
 // R2 holds immutable releases/<sha>/ trees. Only current.json is mutable.
 // Canonical pages resolve current.json once. Their resource URLs are pinned
@@ -34,6 +34,10 @@ export default {
         return reply(`${sha}\n`, 200, { "content-type": "text/plain; charset=utf-8" });
       }
       tail = path;
+      if (superseded.has(tail)) {
+        url.pathname = superseded.get(tail);
+        return reply(null, 301, { location: url.href });
+      }
     } else {
       [, sha, tail = "/"] = pinned;
       if (!pinned[2]) {

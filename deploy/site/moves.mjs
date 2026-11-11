@@ -35,3 +35,11 @@ export function moved(path) {
   for (const move of moves) now = move(now) || now;
   return now === path ? null : now;
 }
+
+// Pages the site still publishes but a newer page replaces, so readers go
+// to the replacement. The Worker redirects these before serving them.
+export const superseded = new Map([
+  // ZsysWrite.v's zsys_write contract, restated over os_world by
+  // zsys/OsWrite.v (16a77c83). SayLogic.v still imports ZsysWrite.v.
+  ["/nanofil/rocq/rocq-glibc-ZsysWrite.html", "/nanofil/rocq/rocq-glibc-zsys-OsWrite.html"],
+]);

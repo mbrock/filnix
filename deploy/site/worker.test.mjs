@@ -142,4 +142,11 @@ test("a page a restructuring moved redirects to where it lives now", async () =>
     `${rocq}rocq-glibc-Machine.html`, `${prefix}${rocq}rocq-theories-Machine.html`]) {
     assert.equal((await s.fetch(path)).status, 404, path);
   }
+  // A superseded page redirects even while the site still publishes it,
+  // but its pinned copy is served as published.
+  s.add(`${rocq}rocq-glibc-ZsysWrite.html`, "zsys");
+  const zsys = await s.fetch(`${rocq}rocq-glibc-ZsysWrite.html?x=1`);
+  assert.equal(zsys.status, 301);
+  assert.equal(zsys.headers.get("location"), `https://filnix.org${rocq}rocq-glibc-zsys-OsWrite.html?x=1`);
+  assert.equal(await (await s.fetch(`${prefix}${rocq}rocq-glibc-ZsysWrite.html`)).text(), "zsys");
 });
