@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <ucontext.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -154,6 +155,60 @@ static int compile_locked(int command, const char *ir, size_t ir_len, struct buf
     return o->failed ? NANOFIL_NOMEMORY : (int)code;
 }
 
+/* The compile in progress, which runs on a fiber of its own: the lowered
+ * program is as deep as the Gallina's recursion over the input, and a
+ * caller's stack, whose size Fil-C fixes when the process starts, may
+ * be 2 MB. Fil-C's makecontext allocates the size it is given and
+ * checks the fiber's own stack limit, so a compile too deep for its
+ * fiber stops with a stack overflow, as it would on a thread. The fiber
+ * is made for each call, under the lock, because a Fil-C fiber belongs
+ * to the thread that made it. */
+static ucontext_t caller, fiber;
+static struct {
+    int command, code;
+    const char *ir;
+    size_t ir_len;
+    struct buf *o;
+} job;
+
+static void run_job(void)
+{
+    job.code = compile_locked(job.command, job.ir, job.ir_len, job.o);
+}
+
+/* The fiber's stack size: ANF_FIBER_MB megabytes when that is set, or
+ * 64 MB plus 16 bytes for each byte of the input. lvm.ir, 4.4 MB of IR,
+ * needs 12 MB; the largest regex function within the block cap needs
+ * under 10 MB from a few kilobytes of terms. The size costs address
+ * space, not time: the kernel backs only the pages the compile touches. */
+static size_t fiber_bytes(size_t ir_len)
+{
+    size_t mb = env_words("ANF_FIBER_MB", 0U);
+    return mb ? mb << 20 : ((size_t)64 << 20) + 16U * ir_len;
+}
+
+/* Fil-C's makecontext passes only uc_stack.ss_size to the runtime
+ * (zfiber_context_makecontext), which allocates the stack itself and
+ * frees it when the collector reclaims the context, so no stack buffer
+ * is given here. */
+static int compile_on_fiber(int command, const char *ir, size_t ir_len, struct buf *o)
+{
+    if (getcontext(&fiber) != 0)
+        return NANOFIL_NOMEMORY;
+    job.command = command;
+    job.ir = ir;
+    job.ir_len = ir_len;
+    job.o = o;
+    job.code = NANOFIL_NOMEMORY;
+    fiber.uc_stack.ss_sp = NULL;
+    fiber.uc_stack.ss_size = fiber_bytes(ir_len);
+    fiber.uc_link = &caller;
+    makecontext(&fiber, run_job, 0);
+    if (swapcontext(&caller, &fiber) != 0)
+        job.code = NANOFIL_NOMEMORY;
+    return job.code;
+}
+
 int nanofil_compile_ir(int command, const char *ir, size_t ir_len, char **out, size_t *out_len)
 {
     struct buf o = {NULL, 0, 0, 0};
@@ -166,7 +221,7 @@ int nanofil_compile_ir(int command, const char *ir, size_t ir_len, char **out, s
         code = o.failed ? NANOFIL_NOMEMORY : NANOFIL_REFUSED;
     } else {
         pthread_mutex_lock(&lock);
-        code = compile_locked(command, ir, ir_len, &o);
+        code = compile_on_fiber(command, ir, ir_len, &o);
         pthread_mutex_unlock(&lock);
     }
     if (code == NANOFIL_NOMEMORY) {

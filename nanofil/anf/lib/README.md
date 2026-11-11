@@ -59,11 +59,11 @@ process.
 The call returns 1 when rx.pl would not compile a pattern,
 and `*out` is then the comment that rx.pl prints, such as
 `% m: unsupported: 'Ref'`. It also returns 1 when the terms cannot be
-read and when a function has more than 160 blocks. The stack that a
-compile needs grows with a function's blocks, as the last section
-says, and its time grows about as their square. So a larger pattern is
-left to PCRE2's interpreter, as rxc leaves a pattern that takes more
-than 10 seconds.
+read and when a function has more than 460 blocks. A compile's time
+grows faster than the function: up to 459 blocks the functions of
+PCRE2's tests take at most 3 seconds, and from 521 blocks on they take
+9 to 37 seconds. So a larger pattern is left to PCRE2's interpreter, as
+rxc leaves a pattern that takes more than 10 seconds.
 
 `nanofil_load` writes a shared object to an anonymous file made by
 `memfd_create` and opens it with `dlopen(RTLD_NOW | RTLD_LOCAL)` by a
@@ -122,7 +122,8 @@ those pages back to the kernel with `MADV_DONTNEED`. The call then
 copies the text into the arena as pieces of 1 MB, applies `run` to the
 command and the pieces, and copies each chunk of the stream into one
 malloc'd buffer. A mutex serializes the calls, so any thread may call
-the library, but only one compiles at a time.
+the library, but only one compiles at a time. Each call runs on a fiber
+of its own, as the last section says.
 
 `ANF_SLAB`, `ANF_NURSERY` and `ANF_ROOTS` size the arena as they do
 for `driver.c`.
@@ -179,7 +180,7 @@ runtime defines. `ANF_BENCH="rx.ir lvm.ir"` also times those files.
 ## Results
 
 All 795 compiles of the IR fixtures (53 fixtures, five commands, three
-rounds) and all 54 of the regex files (18 files, three rounds) give
+rounds) and all 57 of the regex files (19 files, three rounds) give
 what their references give, with both nurseries, and the 28 shared
 objects load. Each check was shown to fail on a planted bug: a rewind
 to word 1 instead of the mark trapped with the small nursery, and
@@ -199,29 +200,34 @@ The lowered program recurses as deeply as the Gallina does.
 AnfLower.v turns a tail call into a jump only within a cluster
 ([../lower](../lower/README.md)), so some loops over lists make a
 native call per element. Two of them were rewritten to run in constant
-stack. Encode.v's loop over the lines called itself through its own
-closure, because `step` was inlined into it, and Drive.v cut a shared
-object into parts with the stdlib's `firstn` and `map`. Before the
-rewrite, rx.ir's shared object needed between 16 and 24 MB of stack,
-and now it needs 4 MB. `compile-allocated` of rx.ir runs on 1 MB.
-
-Order.v's merges, which Crane extracts to loops, are still as deep as
-their lists in the λANF build, and they bound the regex command.
-Since compile-allocated's frames hold only what a function spills, a
-level of `merge_steps` takes about 272 bytes instead of about 600, and
-rx.ir's shared object needs 2 MB of stack instead of 4. Every function
-of up to 170 blocks among PCRE2's tests compiles on a 1 MB stack, and
-every one of up to 247 blocks on 2 MB. A function of 248 blocks needs
-more than 2 MB, and one of 412 blocks, which recurses 28,968 deep in
-`merge_steps`, needs between 8 and 12 MB. So the command takes
-functions of up to 160 blocks, which compile on a 1 MB stack, and
-leaves 23 of the 1,391 functions of PCRE2's tests to the interpreter.
+stack: Encode.v's loop over the lines, which called itself through its
+own closure because `step` was inlined into it, and Drive.v's cutting
+of a shared object into parts with the stdlib's `firstn` and `map`.
+Others remain. Order.v's merges take about 272 bytes a level, and the
+validator's `existsb` 256 bytes an element. A function of 412 blocks
+recurses 28,968 deep in `merge_steps` and needs between 8 and 12 MB,
+and lvm.ir needs 12 MB.
 
 A thread's stack under Fil-C is fixed by the stack limit when the
 process starts. Fil-C's `zthread_create2` calls `pthread_create`
 without attributes, so `pthread_attr_setstacksize` has no effect, and
 a `setrlimit` in the process leaves the threads created after it at the
 old size too. A thread gets `ulimit -s` of the shell that started the
-process, or 2 MB when that is unlimited. So a caller cannot run a
-compile on a thread with a larger stack, and the regex command's bound
-on blocks is what keeps a compile within the stack it is given.
+process, or 2 MB when that is unlimited.
+
+So the library runs each compile on a fiber. Fil-C's `makecontext`
+allocates a stack of the size it is given, gives the fiber its own
+stack limit, and the collector scans the fiber. A compile too deep for
+its fiber stops with Fil-C's stack overflow error, as it would on a
+thread. Each call makes its fiber under the library's mutex, because a
+Fil-C fiber belongs to the thread that made it. The fiber's stack is
+64 MB plus 16 bytes for each byte of the input, or `ANF_FIBER_MB`
+megabytes when that is set. Fil-C's `makecontext` reads only
+`uc_stack.ss_size`, so the library passes no buffer of its own. The
+kernel backs only the pages a compile touches, so the size costs
+address space but not time: PCRE2's tests compile in the same time on
+fibers of 2, 64 and 256 MB. The runtime frees a fiber's stack when the
+collector reclaims its context, so finished fibers hold address space
+until the next collection. The gate runs its processes on a 512 KB
+stack, on which rx.ir and the regex fixture of 412 blocks overflow
+without the fiber, and they compile to the OCaml build's bytes on it.

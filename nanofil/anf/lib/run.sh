@@ -98,20 +98,20 @@ for i in "${!fixtures[@]}"; do
   done
 done
 
-# The library runs on its caller's stack, and its direct-style recursion
-# over a module's lists is as deep as they are long; the fixtures need
-# far less than the usual 8 MB, so the gate runs on the stack it is
-# given unless ANF_STACK_KB says otherwise.
-[[ -z ${ANF_STACK_KB:-} ]] || ulimit -s "$ANF_STACK_KB"
+# The library compiles on a fiber of its own, so test_lib runs on a
+# stack of ANF_STACK_KB (512) KB; the OCaml references keep the
+# shell's. Without the fiber, the fixture of 412 blocks in ../rx/tests
+# overflows even 8 MB.
+test_lib() { (ulimit -s "${ANF_STACK_KB:-512}" && exec "$work/test_lib" "$@"); }
 bad=0
 for mode in lib stress; do
   t0=$SECONDS
   status=0
   if [[ $mode == lib ]]; then
-    "$work/test_lib" "$work/lib" "$rounds" "${fixtures[@]}" || status=$?
+    test_lib "$work/lib" "$rounds" "${fixtures[@]}" || status=$?
   else
     ANF_NURSERY=$stress FUGC_SCRIBBLE=1 FUGC_VERIFY=1 \
-      "$work/test_lib" "$work/stress" "$rounds" "${fixtures[@]}" || status=$?
+      test_lib "$work/stress" "$rounds" "${fixtures[@]}" || status=$?
   fi
   [[ $status == 0 ]] || { echo "DIFFER $mode: test_lib exited $status"; bad=$((bad + 1)); }
   for i in "${!fixtures[@]}"; do
@@ -136,7 +136,7 @@ done
 # reference is what experiments/regex-nanofil/rxc does, with Rx.v's
 # extraction (../rx/rx-gallina, which ../rx/run.sh holds to rx.pl) in
 # rx.pl's place: a pattern rx.pl does not compile gives its comments,
-# terms it fails on give status 1, so does a function of more than 160
+# terms it fails on give status 1, so does a function of more than 460
 # blocks (Drive.v's regex_max_blocks), and the rest are the IR's shared
 # object from nanofil-backend.
 if [[ -n ${ANF_REGEX+set} ]]; then
@@ -156,8 +156,8 @@ if ((${#regexes[@]})); then
       echo 1 >"$r.status"
     elif grep '^%' "$work/rref/$i.ir" >"$r.err"; then
       echo 1 >"$r.status"
-    elif awk '/^func\(/ { n = gsub(/block\(/, ""); split(substr($0, 6), a, ","); if (n > 160) {
-               printf "%s has %d blocks, more than the 160 that are compiled in process", a[1], n; exit 1 } }' \
+    elif awk '/^func\(/ { n = gsub(/block\(/, ""); split(substr($0, 6), a, ","); if (n > 460) {
+               printf "%s has %d blocks, more than the 460 that are compiled in process", a[1], n; exit 1 } }' \
            "$work/rref/$i.ir" >"$r.err"; [[ -s $r.err ]]; then
       echo 1 >"$r.status"
     else
@@ -172,10 +172,10 @@ if ((${#regexes[@]})); then
     t0=$SECONDS
     status=0
     if [[ $mode == lib ]]; then
-      "$work/test_lib" --regex "$work/rlib" "$rounds" "${regexes[@]}" || status=$?
+      test_lib --regex "$work/rlib" "$rounds" "${regexes[@]}" || status=$?
     else
       ANF_NURSERY=$stress FUGC_SCRIBBLE=1 FUGC_VERIFY=1 \
-        "$work/test_lib" --regex "$work/rstress" "$rounds" "${regexes[@]}" || status=$?
+        test_lib --regex "$work/rstress" "$rounds" "${regexes[@]}" || status=$?
     fi
     [[ $status == 0 ]] || { echo "DIFFER regex $mode: test_lib exited $status"; bad=$((bad + 1)); }
     for i in "${!regexes[@]}"; do
@@ -205,7 +205,7 @@ for i in "${!regexes[@]}"; do
   [[ $(cat "$work/rref/$i.5.status") == 0 ]] || continue
   runtime_only "$work/rref/$i.5.out" && loadable+=("${regexes[$i]}")
 done
-if FUGC_SCRIBBLE=1 FUGC_VERIFY=1 "$work/test_lib" --load "${loadable[@]}" >"$work/load.log"; then
+if FUGC_SCRIBBLE=1 FUGC_VERIFY=1 test_lib --load "${loadable[@]}" >"$work/load.log"; then
   echo "$(stamp) nanofil_load loaded ${#loadable[@]} shared objects"
 else
   grep -v '^loaded' "$work/load.log"
@@ -215,7 +215,7 @@ echo "$(stamp) $bad differences"
 
 for f in ${ANF_BENCH:-}; do
   for c in 0 2 3; do
-    "$work/test_lib" --time 11 "$f" "$c"
+    test_lib --time 11 "$f" "$c"
   done
 done
 exit $((bad > 0))
