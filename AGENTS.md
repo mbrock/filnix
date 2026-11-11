@@ -112,6 +112,10 @@ The upstream fil-c build process has these stages:
 
 This flake replicates these stages as Nix derivations.
 
+### The stream
+
+- News goes in a block, not at the end of a long document: a bug found, a proof closed, a measurement, a question for mbrock. `scripts/block new KIND SLUG` writes one under `blocks/`, `scripts/block check` checks it, and `blocks/README.md` has the format. Documents say what is true now; update them in place.
+
 ### Compiler and Runtime Review
 
 - Before adopting changes to Fil-C compiler semantics, capability tracking, GC, or glibc/runtime behavior, develop the proposed approach and consult Oracle about soundness and alternatives. Give it the relevant code and invariants while leaving room for independent analysis.

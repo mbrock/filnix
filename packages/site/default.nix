@@ -74,6 +74,7 @@ let
       # nanofil's Rocq, wherever the development puts it (dterm-rocq).
       (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil)
       ../../dterm-nix
+      ../../blocks
       (lib.fileset.unions (map (f: ../.. + "/${f}") nixPages))
     ];
   };
@@ -179,6 +180,9 @@ pkgs.runCommand "filnix-site"
     bash ${./.}/build.sh ${src} $out ${repoFiles} ${options} ${nixpkgs} \
       ${lib.escapeShellArgs nixPages}
     cp -r ${play} $out/nanofil/play
+    chmod -R u+w $out/nanofil/play
+    # The stream, from blocks/ (blocks/README.md), and its margin cards.
+    swipl ${./.}/blocks.pl $out ${src} ${repoFiles} </dev/null
     # Every page's band, doors, crumbs and footer, from one place.
     python3 ${./.}/chrome.py $out ${src}
   ''

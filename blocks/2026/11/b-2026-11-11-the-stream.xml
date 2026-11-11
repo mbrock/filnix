@@ -1,0 +1,21 @@
+<block id="b-2026-11-11-the-stream" kind="note" actor="T-01a1c95e-7658-7511-91f4-33d8aeaf591c" model="anthropic/claude-opus-5-5" created="2026-11-11T08:10:00Z">
+  <title>The stream: short authored entries instead of ever-longer documents</title>
+  <about path="blocks/README.md"/>
+  <about path="packages/site/blocks.pl"/>
+  <tag name="site"/>
+  <p>Most of what threads write here is news, not reference: a bug found, a
+  proof closed, a measurement, a question for mbrock. Until now the only place
+  to put it was a Markdown document, so documents grew long logs in their
+  middles (<a path="nanofil/docs/formal.md">the formal campaign</a> is 3,400
+  lines, most of it milestone notes) and every new note became one more file
+  with the same weight as a guide.</p>
+  <p>A block is one such entry, in its own XML file under <c>blocks/</c>, with
+  an author, a time, what it is about and what it replies to. The site draws
+  them as this stream, as an <a href="https://filnix.org/stream/feed.xml">Atom feed</a>, and in the
+  margin of each page a block is about. <c>scripts/block new KIND SLUG</c>
+  starts one; <a path="blocks/README.md">blocks/README.md</a> has the
+  format.</p>
+  <p>Documents stay for what should be read top to bottom: the guides, the
+  explainers, the primers. Long logs will move into blocks one document at a
+  time, keeping their anchors, once no thread is appending to them.</p>
+</block>

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# scripts/block new KIND SLUG [TITLE]: write blocks/YYYY/MM/b-DATE-SLUG.xml,
+#   a skeleton with its id, time and actor filled in ($AMP_THREAD_ID's
+#   thread, else mbrock), and print its path. Edit it, then check it.
+# scripts/block check: check every block as the site's build does.
+# blocks/README.md describes the format.
+set -euo pipefail
+root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+cd "$root"
+
+swipl() {
+  if command -v swipl >/dev/null; then command swipl "$@"
+  else nix shell --inputs-from . nixpkgs#swi-prolog -c swipl "$@"; fi
+}
+
+case ${1:-} in
+new)
+  kind=${2:?kind: finding, milestone, bench, question, reply or note}
+  slug=${3:?a short slug, such as zsys-errno}
+  title=${4:-TITLE}
+  case $kind in finding | milestone | bench | question | reply | note) ;;
+  *) echo "no kind $kind" >&2; exit 2 ;; esac
+  now=$(date -u +%FT%TZ)
+  id="b-$(date -u +%F)-$slug"
+  dir="blocks/$(date -u +%Y/%m)"
+  file="$dir/$id.xml"
+  [ ! -e "$file" ] || { echo "$file exists" >&2; exit 1; }
+  thread=${AMP_THREAD_ID:-}
+  thread=${thread##*/}
+  actor=${thread:-mbrock}
+  mkdir -p "$dir"
+  cat >"$file" <<EOF
+<block id="$id" kind="$kind" actor="$actor" created="$now">
+  <title>$title</title>
+  <about path="PATH"/>
+  <tag name="TAG"/>
+  <p>...</p>
+</block>
+EOF
+  echo "$file"
+  ;;
+check)
+  files=$(mktemp)
+  trap 'rm -f "$files"' EXIT
+  git ls-files >"$files"
+  swipl packages/site/blocks.pl --check . "$files" </dev/null
+  ;;
+*)
+  sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+  ;;
+esac

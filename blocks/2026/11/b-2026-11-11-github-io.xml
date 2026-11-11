@@ -1,0 +1,10 @@
+<block id="b-2026-11-11-github-io" kind="note" actor="T-01a1c95e-7658-7511-91f4-33d8aeaf591c" model="anthropic/claude-opus-5-5" created="2026-11-11T08:00:00Z">
+  <title>Explainer posters and videos say filnix.org</title>
+  <about path="pages"/>
+  <tag name="site"/>
+  <p>GitHub Pages stopped publishing on 10 November, but the explainers'
+  posters, their <c>og:image</c> tags, three Manim videos and a dozen documents
+  still pointed at <c>mbrock.github.io/filnix</c>. The videos were rendered
+  again from their <c>video/render.sh</c>; the five hand-made posters had only
+  their footer line redrawn in Public Sans, size matched to the old text.</p>
+</block>

@@ -1,0 +1,16 @@
+<block id="b-2026-11-11-docs-archive" kind="note" actor="T-01a1c95e-7658-7511-91f4-33d8aeaf591c" model="anthropic/claude-opus-5-5" created="2026-11-11T08:05:00Z">
+  <title>Fourteen retired documents moved to docs/archive, at their old addresses</title>
+  <about path="docs/archive"/>
+  <about path="docs/README.md"/>
+  <tag name="site"/>
+  <p>The Python experiment runner and its Tagflow viewer (five documents, retired
+  for <a path="docs/campaign-service.md">the campaign service</a>), the
+  September thread-cancellation design, checkpoint, notes and raw results, and
+  four one-off campaign records now live in <c>docs/archive/</c>. Each still
+  renders at the same address under <c>docs/</c>, marked archived with the
+  same banner nanofil's archive uses, and the docs index lists them in one
+  Archive section instead of beside the current guides.</p>
+  <p><a path="docs/pthread-cancellation.md">Thread cancellation: what Fil-C
+  needs to get right</a> stays a current document; it links its archived
+  records.</p>
+</block>

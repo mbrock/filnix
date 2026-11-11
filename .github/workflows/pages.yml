@@ -16,6 +16,7 @@ on:
       - "nanofil/rocq/**"
       - "dterm-nix/**"
       - "deploy/site/**"
+      - "blocks/**"
       # Every Nix file is a page (dterm-nix), and the option index
       # evaluates the modules.
       - "**.nix"
@@ -76,6 +77,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # history.py dates every document from the whole history.
+          fetch-depth: 0
       - name: Check the R2 serving and retention contracts
         run: |
           node --test deploy/site/worker.test.mjs
@@ -99,6 +103,9 @@ jobs:
           # with what is live.
           chmod u+w _site
           echo "$GITHUB_SHA" > _site/commit.txt
+          # Dates and activity under each document's title, the home
+          # page's recent documents, and history.json, from git.
+          python3 packages/site/history.py _site .
           bash deploy/site/equity.sh _site
           python3 deploy/site/prepare.py _site "$GITHUB_SHA"
       # Preserve the tar/name contract for phone checks and recovery of
