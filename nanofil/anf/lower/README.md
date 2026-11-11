@@ -46,7 +46,15 @@ and compiled by `nanofil-backend compile-allocated`.
 
 ## Running the gate
 
-From the repository's root, with Fil-C's clang at `/tmp/filcc` (or
+As a Nix check, run only when asked (it builds CertiRocq, which is not
+in the binary cache, so no workflow and no default
+`scripts/nanofil-checks` run builds it):
+
+```sh
+nix build -L .#checks.x86_64-linux.nanofil-anf-lower
+```
+
+Or by hand, from the repository's root, with Fil-C's clang at `/tmp/filcc` (or
 `FILCC` naming it) and `shell.nix` giving Rocq, CertiRocq with the tap,
 OCaml and `CERTIROCQ_SRC`:
 

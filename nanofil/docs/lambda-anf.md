@@ -880,6 +880,8 @@ kind), each writing its value as bytes, against the same Gallina
 extracted to OCaml with nothing mapped and built by `ocamlopt`. All 13
 print the reference's bytes with the default `2^20`-word nursery and
 again with a 256-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
+The check `nanofil-anf-lower` ([nix/anf-lower.nix](../nix/anf-lower.nix))
+runs the gate on demand; it builds CertiRocq, so no workflow runs it.
 Times are the best of three wall times with a 1 GB stack on both sides,
 process startup included (`clos`, which computes almost nothing, takes
 12 ms against 3 ms):

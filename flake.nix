@@ -376,6 +376,12 @@
             nanofil-backend-crane = import ./nanofil/nix/backend-crane.nix {
               inherit pkgs;
             };
+            # λANF through AnfLower.v against ocamlopt (nanofil/docs/lambda-anf.md,
+            # M2). It builds CertiRocq, so it runs only when asked.
+            nanofil-anf-lower = import ./nanofil/nix/anf-lower.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             nanofil-hello = import ./nanofil/nix/hello.nix {
               inherit pkgs;
               filcc = filcc-staging;
