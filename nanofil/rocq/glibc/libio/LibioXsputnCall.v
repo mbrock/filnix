@@ -80,6 +80,7 @@ Lemma wp_xs_L9 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d fl f2 fd tw
   c' = Obj b' \/ c' = Ro b' -> 0 < b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 < d <= T -> T <= n ->
   Z.land fl io_is_appending = 0 -> Z.land f2 2 = 0 -> In fd (ow_fds w0) -> m = 0 \/ m = 2 ^ 32 - 1 ->
+  xs_flags nb fl -> 0 <= fd < 2 ^ 31 -> Z.land f2 160 = 0 ->
   0 <= fl < 2 ^ 32 -> 0 <= f2 < 2 ^ 32 ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -97,7 +98,7 @@ Lemma wp_xs_L9 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d fl f2 fd tw
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L9") (Some (TAtom "iw_2.L8"))))
         : sexpr) {{ Φ }}.
 Proof.
-  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hd HT Happ Hf2 Hfd Hm Hfl32 Hf2r
+  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hd HT Happ Hf2 Hfd Hm Hflags Hfd31 Hf2160 Hfl32 Hf2r
     Hv0 Hc0 Hc11 Hc14 Hc15 Hv4 Hp5 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwbf Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX Hl' Hys HK".
@@ -142,8 +143,12 @@ Proof.
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hcol"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |].
   iNext. iIntros "Hl Hcol". fbr. fs. fbr.
   iAssert (xos w0 eb X fb nb) with "[Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX]" as "Hos".
-  { iFrame "HX". iExists fl', f2, fd, tw', off', m. iFrame. iPureIntro. split_and!; try assumption.
-    destruct Hpost as [[_ ->] | [_ ->]]; [exact Happ | apply land_err_seen; exact Happ]. }
+  { assert (Happ' : Z.land fl' io_is_appending = 0).
+    { destruct Hpost as [[_ ->] | [_ ->]]; [exact Happ | apply land_err_seen; exact Happ]. }
+    assert (Hflags' : xs_flags nb fl').
+    { destruct Hpost as [[_ ->] | [_ ->]]; [exact Hflags | apply xs_flags_error; exact Hflags]. }
+    iFrame "HX". iExists fl', f2, fd, tw', off', m. iFrame. iPureIntro.
+    tauto. }
   iApply (wp_xs_L70 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb wp we
             dq b' reg' so c' ys T d r with "Hvt Hl Hvtp Hwbf Hos Hl' Hys HK");
     try side.

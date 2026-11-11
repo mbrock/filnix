@@ -74,12 +74,14 @@ Definition nb_end (nb : option (Z * Z)) : ptr :=
 (** p points into the buffer b of sz bytes, or just past it. *)
 Definition in_buf (b sz : Z) (p : ptr) : Prop := ptr_cap p = Obj b /\ b <= ptr_addr p <= b + sz.
 
-(** The facts of a buffer b of sz bytes in the region reg, holding the
-    bytes xs and slots cs, with the write pointer wp and end we. *)
+(** A writable buffer comes from the heap and owns every byte and
+    capability slot in its window. Both write pointers lie inside
+    that window or at its end. Copying must retain the heap origin
+    because closing the stream later frees the buffer. *)
 Definition room_ok (b sz : Z) (reg : region) (xs : list Z) (cs : list cap) (wp we : ptr) : Prop :=
   0 < b /\ b mod 8 = 0 /\ 0 < sz /\ b + sz <= r_end reg /\ r_end reg <= 2 ^ 63 /\
   length xs = Z.to_nat sz /\ length cs = Z.to_nat sz /\ Forall (fun x => 0 <= x < 256) xs /\
-  in_buf b sz wp /\ in_buf b sz we.
+  in_buf b sz wp /\ in_buf b sz we /\ r_kind reg = Heap.
 
 (** The rules over the [[runtime]] R and [LogicSig] LG0. *)
 Module LibioBufOn (R : Runtime) (LG0 : LogicSig R).

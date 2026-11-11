@@ -55,7 +55,7 @@ Lemma wroom_ptrs `{!gen_heapGS piece pval Σ} nb wp we :
 Proof.
   destruct nb as [[b sz] |]; cbn.
   - iIntros "(%reg & %xs & %cs & %Hok & H)". iSplit; [|iExists reg, xs, cs; iFrame; done]. iPureIntro.
-    destruct Hok as (H1 & H2 & H3 & H4 & H5 & _ & _ & _ & [H6 H7] & [H8 H9]). split_and!; first [assumption | lia].
+    destruct Hok as (H1 & H2 & H3 & H4 & H5 & _ & _ & _ & [H6 H7] & [H8 H9] & _). split_and!; first [assumption | lia].
   - iIntros "[-> ->]". iSplit; [|done]. iPureIntro. cbn. split_and!; first [reflexivity | lia].
 Qed.
 

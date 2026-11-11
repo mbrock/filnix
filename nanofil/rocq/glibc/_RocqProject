@@ -214,3 +214,9 @@ hi_atexit/HiAtexitDoAlloc.v
 hi_atexit/HiAtexitOverflowSend.v
 hi_atexit/HiAtexitOverflow.v
 hi_atexit/HiAtexitOverflowAlloc.v
+hi_atexit/HiAtexitOutputState.v
+hi_atexit/HiAtexitBufferedOverflow.v
+hi_atexit/HiAtexitXsputnOverflow.v
+hi_atexit/HiAtexitXsputnRules.v
+hi_atexit/HiAtexitXsputn.v
+hi_atexit/HiAtexitOutputClose.v

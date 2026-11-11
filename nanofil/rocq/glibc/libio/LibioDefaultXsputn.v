@@ -97,7 +97,7 @@ Proof.
   cbn [dx_L16 b_insts b_jump]. fs. fchk "Hl".
   destruct nb as [[b sz] |].
   - iDestruct "Hroom" as (reg xs cs Hok) "(Hbl & Hxs & Hcs)".
-    pose proof Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [Hwc' Hwa] & [Hec Hea]).
+    pose proof Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [Hwc' Hwa] & [Hec Hea] & Hheap).
     destruct wp as [wa wc], we as [ea ec]. cbn in Hwc', Hwa, Hec, Hea. subst wc ec.
     fldp "Hl" "Hwp" "Hbl". fs. fchk "Hl". fldp "Hl" "Hwe" "Hbl". fs. fs. fs.
     destruct (Z_lt_le_dec wa ea) as [Hlt | Hge].

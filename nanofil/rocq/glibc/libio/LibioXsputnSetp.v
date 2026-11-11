@@ -57,7 +57,7 @@ Lemma wroom_reset `{!gen_heapGS piece pval Σ} nb wp we we' :
 Proof.
   intros Hwe. destruct nb as [[b sz] |]; cbn.
   - iIntros "(%reg & %xs & %cs & %Hok & H)". iExists reg, xs, cs. iFrame. iPureIntro.
-    unfold room_ok, in_buf in *. cbn in Hwe. destruct Hok as (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & _ & _).
+    unfold room_ok, in_buf in *. cbn in Hwe. destruct Hok as (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & _ & _ & Hheap).
     destruct Hwe as [-> | ->]; cbn; split_and!; first [assumption | reflexivity | lia].
   - iIntros "_". cbn in Hwe. iPureIntro. destruct Hwe as [-> | ->]; split; reflexivity.
 Qed.

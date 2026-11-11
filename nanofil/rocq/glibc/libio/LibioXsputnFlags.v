@@ -92,6 +92,7 @@ Lemma wp_xs_L122 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d r fl f2 f
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 <= r <= d -> 0 < d <= T -> T <= n ->
   Z.land fl io_is_appending = 0 -> Z.land f2 2 = 0 -> In fd (ow_fds w0) -> m = 0 \/ m = 2 ^ 32 - 1 ->
+  xs_flags nb fl -> 0 <= fd < 2 ^ 31 -> Z.land f2 160 = 0 ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk14") e = Some (WPtr (mkPtr (fb + off_buf_end) (Obj fb))) ->
@@ -111,7 +112,7 @@ Lemma wp_xs_L122 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d r fl f2 f
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L122") (Some (TAtom "iw_2.L70"))))
         : sexpr) {{ Φ }}.
 Proof.
-  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Happ Hf2 Hfd Hm
+  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Happ Hf2 Hfd Hm Hflags Hfd31 Hf2160
     Hv0 Hc0 Hc14 Hc15 Hv114 Hv4 Hp5 Hv67 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hrp Hre Hrb Hwb Hbb Hbe Hwp Hwe Hroom Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX Hl' Hys HK".

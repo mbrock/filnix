@@ -97,7 +97,7 @@ Lemma wp_dx_L44 os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cn
 Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hok Hc' Hb8' Hso Hyend Hyreg Hy Ht Hcnt Hroom Hv0 Hc0 Hv4 Hp7 Hp9 Hp2.
   unfold file_size in Hfend.
-  destruct Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [_ Hwa] & [_ Hea]). cbn in Hwa, Hea.
+  destruct Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [_ Hwa] & [_ Hea] & Hheap). cbn in Hwa, Hea.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [dx_L44 b_insts b_jump]. st.

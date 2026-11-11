@@ -96,7 +96,7 @@ Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Hv0 Hc0 Hc14 Hc15 Hv4 Hp5 Hv67 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp ((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom) (Hxf & HX) Hl' Hys HK".
-  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
+  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
   iDestruct "Hmode" as "[%Hm32 Hmode]".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
   fs. fs. fs. fchk "Hl". ldb "Hbb". fchk "Hl". fstp "Hl" "Hrb". fs. fchk "Hl". ldb "Hbb". fchk "Hl". fstp "Hl" "Hrp".
