@@ -230,3 +230,7 @@ hi_atexit/HiAtexitPutsBuf.v
 hi_atexit/HiAtexitPutsRules.v
 hi_atexit/HiAtexitPutsNl.v
 hi_atexit/HiAtexitPuts.v
+hi_atexit/HiAtexitInitial.v
+hi_atexit/HiAtexitInitialAlloc.v
+hi_atexit/HiAtexitInitialStdout.v
+hi_atexit/HiAtexitInitialList.v
