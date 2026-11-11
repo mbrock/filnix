@@ -498,7 +498,7 @@ its chunks), and a poll on every backward edge.
 ### 9. Check evidence and the validator: check_reuse.pl, ir.pl
 
 After pizlonation, `--checks` selects how much of that naivety to undo
-(`checks_module/3` in main.pl; [docs/m7.md](m7.md)):
+(`checks_module/3` in [checks.pl](../src/checks.pl); [docs/m7.md](m7.md)):
 
 | `--checks=` | Does | Default |
 |---|---|---|
@@ -1156,6 +1156,11 @@ backward edge. Next: [docs/pizlonation.md](pizlonation.md).
 **[check_reuse.pl](../src/check_reuse.pl)**: the evidence passes reuse,
 renew and guard, and their `*_refines/2` checks. Next:
 [docs/m7.md](m7.md).
+
+**[checks.pl](../src/checks.pl)**: the `--checks` selections as
+sequences of those passes (`checks_module/3`), and which one each
+optimization level uses (`opt_checks/2`); the driver and the
+playground both run them from here.
 
 ### Fil-C backend
 

@@ -181,8 +181,8 @@ article(File, Stages) -->
         ->  ir_(ir, File, M), data_(M), symbols_(M)
         ;   []
         ),
-        (   { memberchk(term(check_reuse, R), Stages) }
-        ->  ir_(check_reuse, File, R)
+        (   { memberchk(term(checks, R), Stages) }
+        ->  ir_(checks, File, R)
         ;   []
         ),
         (   { memberchk(text(ir, IR), Stages) }
@@ -293,8 +293,8 @@ source_lines(File, Lines) :-
 
 pipeline_(Stages) -->
     { optimization_steps(Stages, Optimizations),
-      (   memberchk(stage(check_reuse, _, _), Stages)
-      ->  Reuse = [check_reuse-check_reuse-"reused checks"]
+      (   memberchk(stage(checks, _, _), Stages)
+      ->  Reuse = [checks-checks-"checks shared"]
       ;   Reuse = []
       ),
       append([parse-c-"C syntax", lower-lowered-"IR"|Optimizations],
@@ -308,6 +308,7 @@ optimization_steps(Stages, Steps) :-
 
 optimization_output(promote, "promoted IR").
 optimization_output(copy, "copies folded").
+optimization_output(simplify, "simplified").
 optimization_output(local_storage, "local storage").
 
 step_(Stages, Stage-Slot-Label) -->
@@ -324,9 +325,10 @@ pass_name(parse, "parse", "preprocess, lex and parse the C file").
 pass_name(lower, "lower", "lower the typed C syntax to IR").
 pass_name(promote, "promote", "promote_module/2: replace eligible memory slots with SSA temporaries").
 pass_name(copy, "copy", "copy_module/2: substitute copies and simplify trivial phis").
+pass_name(simplify, "simplify", "simplify_module/2: fold constants and identities, share pure values, rebase neighbouring addresses, drop dead code and blocks (docs/perf.md item 8)").
 pass_name(local_storage, "local_storage", "local_storage_module/2: put eligible remaining objects in exact-sized local storage").
 pass_name(pizlonate, "pizlonate", "make Fil-C's checks explicit: a check before every load and store, a pollcheck on every loop").
-pass_name(check_reuse, "check_reuse", "reuse_checks/2: delete a heap check that an earlier proof of the same pointer covers on every path (docs/m7.md)").
+pass_name(checks, "checks", "checks_module/3 as -O runs it (combined): forward reuse, renewal and half checks, each accepted by its refines check, then valid_module/1 (docs/forward.md, docs/half.md)").
 pass_name(backend, "amd64", "compile the checked IR to x86-64 in the Fil-C ABI").
 
 

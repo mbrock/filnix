@@ -168,17 +168,19 @@ $("revert").onclick = () => {
 };
 if (/Mac|iP(hone|ad)/.test(navigator.platform)) $("keys").textContent = "⌘ ↵";
 
-// -O is the all-passes shortcut. A partial selection is mixed; changing
+// -O is the shortcut for every pass and the check passes, as nanofil -O
+// --inline=none selects them. A partial selection is mixed; changing
 // either control takes effect on Compile, just as the old -O did.
 const passInputs = [...$("passes").querySelectorAll("input")];
+const optInputs = [...passInputs, $("check-passes")];
 $("opt").onchange = () => {
-  for (const input of passInputs) input.checked = $("opt").checked;
+  for (const input of optInputs) input.checked = $("opt").checked;
   $("opt").indeterminate = false;
 };
-$("passes").onchange = () => {
-  const n = passInputs.filter((input) => input.checked).length;
-  $("opt").checked = n === passInputs.length;
-  $("opt").indeterminate = n > 0 && n < passInputs.length;
+$("passes").onchange = $("checks").onchange = () => {
+  const n = optInputs.filter((input) => input.checked).length;
+  $("opt").checked = n === optInputs.length;
+  $("opt").indeterminate = n > 0 && n < optInputs.length;
 };
 
 // Tabs: each pass's output (play_view.pl's pipeline, which replaces the
@@ -199,7 +201,7 @@ $("tabs").onclick = (e) => {
   if (b && !b.disabled) show(b.dataset.tab);
 };
 show(tab);
-const irTabs = ["lowered", ...passInputs.map((input) => input.value), "ir", "check_reuse"];
+const irTabs = ["lowered", ...passInputs.map((input) => input.value), "ir", "checks"];
 
 // A link to an IR item (from Data or Symbols) opens the IR tab there.
 document.addEventListener("click", (e) => {
@@ -222,7 +224,7 @@ function compile() {
   $("run").disabled = true;
   state("busy");
   worker.postMessage({ source: source.state.doc.toString(),
-    passes: [...passInputs, $("check-reuse")].filter((input) => input.checked).map((input) => input.value) });
+    passes: optInputs.filter((input) => input.checked).map((input) => input.value) });
 }
 
 worker.onmessage = ({ data }) => {
@@ -250,8 +252,10 @@ worker.onmessage = ({ data }) => {
     show(has(tab) ? tab : has("ir") ? "ir" : [...tabs()].findLast((b) => !b.disabled)?.dataset.tab ?? "c");
     state(failed ? "failed" : "ok");
     if (irFocus && !failed) {
-      show("ir");
-      const el = document.querySelector(`[data-slot="ir"] details.clause[data-name="${CSS.escape(irFocus)}"]`);
+      // The module the backend compiles: after the check passes, if they ran.
+      const t = has("checks") ? "checks" : "ir";
+      show(t);
+      const el = document.querySelector(`[data-slot="${t}"] details.clause[data-name="${CSS.escape(irFocus)}"]`);
       if (el) {
         el.open = true;
         el.scrollIntoView({ block: "start" });

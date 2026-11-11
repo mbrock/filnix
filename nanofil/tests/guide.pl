@@ -89,7 +89,7 @@ optimized(File, M) :-
 checked(File, C) :-
     optimized(File, M), once(pizlonate_module(M, C)), once(valid_module(C)).
 
-% The -O default, --checks=renew, as main.pl's checks_module/3 runs it.
+% The -O default, --checks=renew, as checks.pl's checks_module/3 runs it.
 renewed(File, C) :-
     checked(File, C0),
     once(reuse_checks(C0, C1)), reuse_refines(C0, C1),

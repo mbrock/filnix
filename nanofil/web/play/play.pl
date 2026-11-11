@@ -3,12 +3,13 @@
     play(+File, +Opt, -Stages): Stages lists stage(Name, Seconds, Result)
     for preprocessing, parsing, lowering, validation, each selected
     middle-end pass (Opt is o0, o1, or passes(Names)), pizlonation
-    (Fil-C's checks made explicit), check reuse when Names include
-    check_reuse (docs/m7.md) and the Fil-C backend, and what they
+    (Fil-C's checks made explicit), -O's check passes when Names
+    include checks (checks.pl's checks_module/3 with opt_checks(o1, _))
+    and the Fil-C backend, and what they
     made: term(syntax, Items), term(lowered, M0) (as lowering made it),
     term(Pass, M) for each selected optimization,
-    term(ir, Module) (the checked IR), term(check_reuse, Module) (with
-    covered checks deleted), term(asm, Lines), text(ir, Chars) (the module
+    term(ir, Module) (the checked IR), term(checks, Module) (after the
+    check passes), term(asm, Lines), text(ir, Chars) (the module
     the backend compiled) and
     text(asm, Chars). Stops at the first stage that fails or throws,
     whose Result is then failed or error(E).
@@ -28,7 +29,7 @@
 :- use_module(opt).
 :- use_module(ir_text).
 :- use_module(pizlonate).
-:- use_module(check_reuse).
+:- use_module(checks).
 :- use_module(filc_amd64).
 :- use_module(asm).
 :- use_module(library(lists)).
@@ -76,11 +77,11 @@ stages_lower(Opt, Items, [S, V|Ss]) :-
     ;   V = stage(validate, 0, skipped), Ss = []
     ).
 
-% passes(Names) may also name check_reuse, which runs after pizlonation
-% (docs/m7.md), not in the middle end.
+% passes(Names) may also name checks, -O's check passes, which run after
+% pizlonation, not in the middle end.
 stages_opt(Opt0, M0, Stages) :-
-    (   Opt0 = passes(Names), memberchk(check_reuse, Names)
-    ->  exclude(==(check_reuse), Names, Rest), Opt = passes(Rest), Checks = reuse
+    (   Opt0 = passes(Names), memberchk(checks, Names)
+    ->  exclude(==(checks), Names, Rest), Opt = passes(Rest), opt_checks(o1, Checks)
     ;   Opt = Opt0, Checks = reference
     ),
     optimization_passes(Opt, Passes),
@@ -102,12 +103,12 @@ stages_pizlonate(M, Checks, [S, term(ir, C)|Ss]) :-
     timed(pizlonate, ( pizlonate_module(M, C), valid_module(C) ), S),
     (   ok(S) -> stages_checks(Checks, C, Ss) ; Ss = [] ).
 
-% With reuse, the backend compiles the module check_reuse made, accepted
-% as the cc command accepts it: refinement, then validation.
-stages_checks(reference, C, Ss) :- stages_print(C, Ss).
-stages_checks(reuse, C, [S|Ss]) :-
-    timed(check_reuse, ( reuse_checks(C, R), reuse_refines(C, R), valid_module(R) ), S),
-    (   ok(S) -> Ss = [term(check_reuse, R)|Ss1], stages_print(R, Ss1) ; Ss = [] ).
+% With check passes, the backend compiles the module they made, accepted
+% as the cc command accepts it: each pass's refinement, then validation.
+stages_checks(reference, C, Ss) :- !, stages_print(C, Ss).
+stages_checks(Checks, C, [S|Ss]) :-
+    timed(checks, checks_module(Checks, C, R), S),
+    (   ok(S) -> Ss = [term(checks, R)|Ss1], stages_print(R, Ss1) ; Ss = [] ).
 
 stages_print(C, [P|Ss]) :-
     timed(print_ir, phrase(module_text(C), IR), P),

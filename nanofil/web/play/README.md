@@ -15,7 +15,7 @@ and the page shows, from one `<article>` whose sections it puts in place:
   stands the pass that made it, with its time: parse → **C syntax**
   (`c_parse/2`, the input's own items, not the header declarations) →
   lower → **IR** (as `c_lower.pl` made it) → promote → **promoted IR**
-  → copy → **copies folded** → local_storage → **local storage**
+  → copy → **copies folded** → simplify → **simplified** → local_storage → **local storage**
   → pizlonate → **checked IR** (after
   `pizlonate.pl` has made Fil-C's checks and pollchecks explicit, the
   module the backend compiles; see
@@ -42,19 +42,24 @@ and the page shows, from one `<article>` whose sections it puts in place:
   linkage) and what it calls or uses without defining. A name opens the
   IR tab at its definition.
 
-The three **Optimization passes** checkboxes select promotion, copy
-elimination and local storage independently; **-O** selects all or none
-and shows a mixed state for a partial selection. Press **Compile** to
-apply the selection. Only selected passes add output tabs. If the tab
-being read disappears, the page returns to checked IR. The order stays
-promotion → copy → local storage, with pizlonation always afterwards.
+The four **Optimization passes** checkboxes select promotion, copy
+elimination, simplification and local storage independently; **-O**
+selects them and the check passes, all or none, and shows a mixed state
+for a partial selection: all of them is what `nanofil -O --inline=none`
+compiles, the module its backend gets. Press **Compile** to apply the
+selection. Only selected passes add output tabs. If the tab being read
+disappears, the page returns to checked IR. The order stays promotion →
+copy → simplify → local storage, with pizlonation always afterwards.
 
-**Check evidence → Check reuse** runs `check_reuse:reuse_checks/2` after
-pizlonation ([docs/m7.md](../../docs/m7.md)) and adds a **reused checks**
-tab after checked IR: the module the backend then compiles, accepted by
-`reuse_refines/2` and `valid_module/1` as `cc --checks=reuse` accepts it.
-Accesses there may read an earlier proof in their block; the text and
-assembly tabs show that module.
+**Check evidence → Check passes** runs `-O`'s check passes after
+pizlonation: `checks:checks_module/3` with `opt_checks(o1, Checks)`
+(today `combined`: forward reuse, renewal and half checks;
+[docs/forward.md](../../docs/forward.md), [docs/half.md](../../docs/half.md)),
+each accepted by its refines check and then `valid_module/1`, as `cc -O`
+accepts them. It adds a **checks shared** tab after checked IR: the
+module the backend then compiles, which the text and assembly tabs show.
+A C fence's IR link (`&ir=NAME`) opens that function in this tab when
+the check passes ran, else in checked IR.
 
 The page and compiler share `opt:optimization_passes/2` and
 `opt:optimize_pass/3`; the page records the actual intermediate modules,
@@ -66,10 +71,10 @@ Pass algorithms and the one-check-per-access safety contract are unchanged.
 
 The [semantic campaign](../../docs/campaign.md) gives this view a longer-term
 role: inspect an access's requirements and the evidence that discharges
-them. A future check-reuse pass should expose its real result and reasons
+them. A future check pass should expose its real result and reasons
 here, including obligations left to runtime checks. That evidence must be
 a compiler product, not an analysis independently reconstructed by the UI.
-The reused checks tab shows which proof each access reads, but not yet
+The checks shared tab shows which proof each access reads, but not yet
 why a remaining check was kept; it does not certify transformations.
 
 ```sh

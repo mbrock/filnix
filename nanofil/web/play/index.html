@@ -37,18 +37,19 @@
         <option value="shapes">shapes.c</option>
       </select>
       <button id="revert" class="quiet" type="button" hidden title="Back to the example as it was">Revert</button>
-      <label class="opt" title="Select all middle-end passes, as with -O"><input id="opt" type="checkbox"> -O</label>
+      <label class="opt" title="Select every middle-end pass and the check passes, as with -O --inline=none"><input id="opt" type="checkbox"> -O</label>
       <button id="run" type="submit" disabled>Compile <kbd id="keys">Ctrl ↵</kbd></button>
     </div>
     <fieldset id="passes" class="passes">
       <legend>Optimization passes</legend>
       <label title="Replace eligible memory slots with SSA temporaries"><input type="checkbox" value="promote"> Promotion</label>
       <label title="Substitute copies and simplify trivial phis"><input type="checkbox" value="copy"> Copy elimination</label>
+      <label title="Fold constants and identities, share pure values, rebase neighbouring addresses, drop dead code"><input type="checkbox" value="simplify"> Simplify</label>
       <label title="Put eligible remaining objects in exact-sized local storage"><input type="checkbox" value="local_storage"> Local storage</label>
     </fieldset>
     <fieldset id="checks" class="passes">
       <legend>Check evidence</legend>
-      <label title="Let a heap check's proof cover later scalar accesses through the same pointer in its block (docs/m7.md)"><input id="check-reuse" type="checkbox" value="check_reuse"> Check reuse</label>
+      <label title="-O's check passes: reuse a heap check's proof for later accesses, renew dominated checks, test only the bound an earlier check leaves open (docs/forward.md, docs/half.md)"><input id="check-passes" type="checkbox" value="checks"> Check passes</label>
     </fieldset>
     <div class="code" id="code"></div>
     <div class="foot">
@@ -75,9 +76,10 @@
       <div data-slot="lowered" class="pane"></div>
       <div data-slot="promote" class="pane"></div>
       <div data-slot="copy" class="pane"></div>
+      <div data-slot="simplify" class="pane"></div>
       <div data-slot="local_storage" class="pane"></div>
       <div data-slot="ir" class="pane"></div>
-      <div data-slot="check_reuse" class="pane"></div>
+      <div data-slot="checks" class="pane"></div>
       <div data-slot="irtext" class="pane"></div>
       <div data-slot="asm" class="pane"></div>
     </div>
