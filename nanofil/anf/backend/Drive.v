@@ -1,22 +1,27 @@
 (** # The Gallina backend's driver, for the arena
 
-    Milestone M3 of docs/lambda-anf.md: what rocq/backend's OCaml
-    driver (extraction/main.ml) does for `compile`, `compile-promoted`
-    and `compile-allocated FILE.ir`, written in Gallina, so that
-    CertiRocq's λANF of it, lowered by anf/lower/AnfLower.v, is the
-    whole program but for reading the file and writing the bytes
-    (driver.c).
+    This file is the program that the λANF build of the Gallina backend
+    runs, for milestones M3 and M4 of docs/lambda-anf.md. It does what
+    the OCaml driver of rocq/backend does for the commands `compile`,
+    `compile-promoted`, `compile-allocated`, `shared-allocated` and
+    `object-allocated`. It also compiles the bytecode of PCRE2 patterns
+    with the regex compiler of anf/rx/Rx.v. CertiRocq's λANF of this
+    file, lowered by anf/lower/AnfLower.v, is the whole program. Only
+    reading the input and writing the bytes are left to C, in
+    anf/backend/driver.c and anf/lib/libnanofil.c.
 
-    [run] takes the command and the file's bytes, in pieces, and gives
-    a stream: the parts of the assembly a chunk of lines at a time,
-    then how the run ends, as the OCaml driver ends it: 0, or 1 for a
-    module that is refused (or text that is not read), or 3 for one
-    that is outside the compiler, with what it says. Each chunk is
-    printed before the next is computed, so its lines die young. *)
+    The function [run] takes the command and the input in pieces, and
+    it gives a stream. The stream holds the output a chunk of lines at a
+    time, and then the status that the OCaml driver exits with, with
+    what it says on stderr. The status is 0, or 1 for a module that is
+    refused or a text that is not read, or 3 for a module that is
+    outside the compiler. Each chunk is printed before the next is
+    computed, so its lines die young. *)
 
-From Stdlib Require Import String List Ascii.
+From Stdlib Require Import String List Ascii ZArith NArith.
 From Nanofil Require Import Term.
-From Backend Require Import Text Asm Layout Compile IrText.
+From Backend Require Import Text Asm Layout Compile IrText Encode Elf.
+From AnfBackend Require Rx.
 Import ListNotations.
 
 (** What a run prints: a chunk of parts, then what comes after it; or
@@ -28,7 +33,10 @@ Inductive out : Type :=
 
 (** The command and the IR text, as the pieces of the file's bytes
     (1 MB each, as main.ml reads them): [cmd] 0 is `compile`, 1
-    `compile-promoted`, 2 `compile-allocated`. *)
+    `compile-promoted`, 2 `compile-allocated`, 3 `shared-allocated`
+    (the bytes of the shared object, not a file), 4
+    `object-allocated` and 5 `regex`, whose text is not IR but the
+    terms of experiments/regex-nanofil/pcre2_rx_terms.h. *)
 Record args := mkargs { cmd : nat; input : list string }.
 
 (** The text of the pieces, as IrText.v reads it: each piece a list
@@ -75,8 +83,118 @@ Fixpoint emit_pieces (ps : list (unit -> option (list (list line)))) : out :=
       end
   end.
 
+(** The lines of every piece, last first in front of [acc], or [None]
+    when a function is outside the subset: a loop, as the lines of a
+    module are many. *)
+Fixpoint all_lines_rev (ps : list (unit -> option (list (list line)))) (acc : list line) : option (list line) :=
+  match ps with
+  | [] => Some acc
+  | p :: rest =>
+      match p tt with
+      | Some lists => all_lines_rev rest (fold_left (fun a ls => rev_append ls a) lists acc)
+      | None => None
+      end
+  end.
+
+(** Bytes as the strings of a stream, 4096 bytes to a part. A part is
+    cut with Encode.v's loops, as the stdlib's [firstn] and [map] are
+    as deep as the part is long in the λANF build. *)
+Fixpoint byte_parts (fuel : nat) (bs : list Z) : parts :=
+  match fuel with
+  | O => []
+  | S fuel' =>
+      match bs with
+      | [] => []
+      | _ => string_of_list_ascii (map_tr (fun b => ascii_of_N (Z.to_N b)) (take 4096 bs))
+               :: byte_parts fuel' (skipn 4096 bs)
+      end
+  end.
+
+(** What `shared-allocated` ([shared]) and `object-allocated` give for
+    the compiled module: the object Encode.v makes of its lines, as
+    the bytes of the shared object Elf.v links or as the text of the
+    gate (tests/encode.sh); or why it cannot. Both are main.ml's
+    object_file, message for message. *)
+Definition object_out (shared : bool) (ps : list (unit -> option (list (list line)))) : out :=
+  match all_lines_rev ps [] with
+  | None => Done 3 "a function is outside the subset or has no plan"
+  | Some rev_lines =>
+      match encode_lines false (rev' rev_lines) with
+      | inr why => Done 3 ("no encoding for: " ++ why)
+      | inl o =>
+          if shared then
+            match so_image o with
+            | inl bs => Chunk (byte_parts (length bs) bs) (fun _ => Done 0 "")
+            | inr why => Done 3 ("not linked: " ++ why)
+            end
+          else Chunk (dump_parts o) (fun _ => Done 0 "")
+      end
+  end.
+
+(** The characters of the pieces. *)
+Definition text_of (l : list string) : list ascii :=
+  rev' (fold_left (fun acc s => rev_append (list_ascii_of_string s) acc) l []).
+
+(** The functions among the outcomes, last first in front of [acc],
+    and the comments rx.pl prints for the patterns it does not
+    compile, last first in front of [why]. *)
+Fixpoint rx_parts (os : list Rx.outcome) (acc : list term) (why : list string) : list term * list string :=
+  match os with
+  | [] => (acc, why)
+  | Rx.Func f :: r => rx_parts r (f :: acc) why
+  | Rx.Unsupported nm w :: r => rx_parts r acc (String.concat ""%string ["% "%string; nm; ": unsupported: "%string; w; nl] :: why)
+  | Rx.Failed :: r => rx_parts r acc why
+  end.
+
+(** The most blocks of a function that `regex` compiles. The library
+    runs on its caller's stack, and the λANF build of Order.v's merges
+    makes a native call per element, so the stack a compile needs grows
+    with the function's blocks; so does the time, about as their
+    square, while the program waits in pcre2_jit_compile. Every function
+    rx.pl makes of PCRE2's own tests that is within this bound compiles
+    on a 1 MB stack. A larger pattern is left to PCRE2's interpreter,
+    as rxc leaves one that takes more than 10 seconds. *)
+Definition regex_max_blocks : nat := 128.
+
+(** The name and the number of blocks of a function's term. *)
+Definition func_size (f : term) : string * nat :=
+  match f with
+  | TApp _ [TAtom nm; _; _; _; TList bs] => (nm, length bs)
+  | _ => (""%string, 0)
+  end.
+
+(** What `regex` gives for the terms [cs]: the shared object of the
+    functions Rx.v makes of them, as experiments/regex-nanofil/rxc
+    links rx.pl's; or 1 with rx.pl's comments when it does not compile
+    a pattern, with a reason when rx.pl fails on the terms, or with the
+    first function of more than [regex_max_blocks] blocks; or what
+    compiling the module gives when it is not compiled. *)
+Definition regex_out (cs : list ascii) : out :=
+  let os := Rx.rx_outcomes cs in
+  if existsb (fun o => match o with Rx.Failed => true | _ => false end) os
+  then Done 1 "rx.pl fails on the terms"
+  else
+    match rx_parts os [] [] with
+    | (_, (_ :: _) as why) => Done 1 (String.concat "" (rev' why))
+    | (rfs, []) =>
+        let fs := rev' rfs in
+        match find (fun f => Nat.ltb regex_max_blocks (snd (func_size f))) fs with
+        | Some f =>
+            Done 1 (String.concat "" [fst (func_size f); " has "%string; decimal (Z.of_nat (snd (func_size f)));
+                                      " blocks, more than the "%string; decimal (Z.of_nat regex_max_blocks);
+                                      " that are compiled in process"%string])
+        | None =>
+            match compile_allocated (TApp "module" [TList fs]) with
+            | Refused why => Done 1 why
+            | Outside why => Done 3 why
+            | Pieces ps => object_out true ps
+            end
+        end
+    end.
+
 (** A run of the command on the text. *)
 Definition run (a : args) : out :=
+  if Nat.eqb (cmd a) 5 then regex_out (text_of (input a)) else
   match read_text (chunks (input a)) with
   | None => Done 1 "the IR text is not read"
   | Some m =>
@@ -87,6 +205,9 @@ Definition run (a : args) : out :=
              end) m with
       | Refused why => Done 1 why
       | Outside why => Done 3 why
-      | Pieces ps => emit_pieces ps
+      | Pieces ps =>
+          if Nat.eqb (cmd a) 3 then object_out true ps
+          else if Nat.eqb (cmd a) 4 then object_out false ps
+          else emit_pieces ps
       end
   end.

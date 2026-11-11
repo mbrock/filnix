@@ -34,16 +34,16 @@ echo "work: $work"
 stamp() { date -u +%H:%M:%S; }
 
 [[ -x $backend ]] || make -C "$nanofil/rocq/backend" -j"${NIX_BUILD_CORES:-4}" >"$work/backend.log"
-make -C "$nanofil/rocq/backend" -j"${NIX_BUILD_CORES:-4}" Compile.vo Layout.vo Asm.vo IrText.vo \
+make -C "$nanofil/rocq/backend" -j"${NIX_BUILD_CORES:-4}" Compile.vo Layout.vo Asm.vo IrText.vo Encode.vo Elf.vo \
   ../theories/core/Maps.vo >>"$work/backend.log"
 make -C "$anf/lower" >"$work/anf-lower.log"
 
 echo "$(stamp) the backend's λANF"
-cp "$anf/lower/Prims.v" "$here"/{Drive,Tap}.v "$work/t/"
+cp "$anf/lower/Prims.v" "$anf/rx/Rx.v" "$here"/{Drive,Tap}.v "$work/t/"
 flags=(-w -all -R "$nanofil/rocq/theories" Nanofil -R "$nanofil/rocq/backend" Backend -R . AnfBackend)
 t0=$SECONDS
-(cd "$work/t" && rocq compile "${flags[@]}" Prims.v && rocq compile "${flags[@]}" Drive.v &&
-   rocq compile "${flags[@]}" Tap.v)
+(cd "$work/t" && rocq compile "${flags[@]}" Prims.v && rocq compile "${flags[@]}" Rx.v &&
+   rocq compile "${flags[@]}" Drive.v && rocq compile "${flags[@]}" Tap.v)
 echo "$(stamp) tapped in $((SECONDS - t0)) s"
 
 t0=$SECONDS

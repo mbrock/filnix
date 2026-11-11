@@ -1,11 +1,13 @@
-# libnanofil's gate (docs/lambda-anf.md, M4; anf/lib/run.sh): the
-# Gallina backend through λANF, as anf-backend.nix builds it, linked
-# into the Fil-C shared library libnanofil.so, and called in one process
-# on every IR fixture for compile, compile-promoted and
-# compile-allocated, three rounds over the library's one arena, with the
-# default nursery and a 4096-word one under FUGC_SCRIBBLE=1
-# FUGC_VERIFY=1; each compile must give what the OCaml build of the
-# backend gives. $out has the gate's log and the library.
+# This check is libnanofil's gate (docs/lambda-anf.md, M4;
+# anf/lib/run.sh). It builds the Gallina backend through λANF, as
+# anf-backend.nix does, with the regex compiler of anf/rx, and links it
+# into the Fil-C shared library libnanofil.so. One process then calls
+# the library on every IR fixture with the five IR commands and on every
+# file of anf/rx/tests with the regex command, three rounds over the
+# library's one arena, with the default nursery and with a 4096-word
+# one under FUGC_SCRIBBLE=1 FUGC_VERIFY=1. Each compile must give what
+# the OCaml build gives, and nanofil_load must load each shared object.
+# $out has the gate's log and the library.
 #
 # Run it when you want it: it builds CertiRocq, which is not in the
 # binary cache, and compiling the lowered backend takes about 5 minutes

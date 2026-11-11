@@ -21,11 +21,23 @@
 extern "C" {
 #endif
 
-/* The compilers of `nanofil-backend`, for nanofil_compile_ir's command. */
+/* The commands of `nanofil-backend`, for nanofil_compile_ir's command. */
 enum {
     NANOFIL_COMPILE = 0,           /* `compile`: no optimization, stack homes */
     NANOFIL_COMPILE_PROMOTED = 1,  /* `compile-promoted` */
     NANOFIL_COMPILE_ALLOCATED = 2, /* `compile-allocated`: registers too */
+    NANOFIL_SHARED_ALLOCATED = 3,  /* `shared-allocated`: the assembly of
+                                      compile-allocated, assembled (Encode.v)
+                                      and linked (Elf.v): *out is the bytes
+                                      of a shared object, for nanofil_load */
+    NANOFIL_OBJECT_ALLOCATED = 4,  /* `object-allocated`: the object as text,
+                                      for the gate */
+    NANOFIL_REGEX = 5,             /* the text is not IR but the terms of
+                                      experiments/regex-nanofil/pcre2_rx_terms.h:
+                                      what PCRE2's pcre2_compile made of
+                                      patterns. *out is the shared object
+                                      of their functions (anf/rx/Rx.v, then
+                                      as NANOFIL_SHARED_ALLOCATED) */
 };
 
 /* What nanofil_compile_ir returns. */
@@ -44,6 +56,25 @@ enum {
  * text is followed by a NUL byte that *out_len does not count, and the
  * caller frees it with free(). */
 int nanofil_compile_ir(int command, const char *ir, size_t ir_len, char **out, size_t *out_len);
+
+/* nanofil_compile_ir(NANOFIL_REGEX, terms, terms_len, out, out_len): a
+ * PCRE2 pattern's bytecode, as pcre2_rx_terms.h writes it, compiled to
+ * a shared object whose function rx_NAME matches it. NANOFIL_REFUSED
+ * when a pattern is not compiled: *out is then the comment rx.pl prints
+ * for it ("% m: unsupported: ..."), or says that the terms are not
+ * read. */
+int nanofil_compile_regex(const char *terms, size_t terms_len, char **out, size_t *out_len);
+
+/* Loads the shared object image[0 .. len), as nanofil_compile_ir gives
+ * it for NANOFIL_SHARED_ALLOCATED and NANOFIL_REGEX, into the process:
+ * it writes the bytes to an anonymous file (memfd_create) and opens that
+ * with dlopen(RTLD_NOW | RTLD_LOCAL), so no file is written anywhere.
+ * Each image is a new object, even when an earlier one had the same
+ * bytes. Gives dlopen's handle, for dlsym and dlclose, or NULL: then
+ * dlerror() says why, or, when it says nothing, errno does. Fil-C's
+ * dlclose leaves an object loaded, so the memory of each image stays
+ * mapped until the process exits. */
+void *nanofil_load(const void *image, size_t len);
 
 #ifdef __cplusplus
 }

@@ -12,11 +12,21 @@
  * [run] to the command and the pieces, and copies each chunk of the
  * stream it gives into one malloc'd buffer.
  *
+ * nanofil_load writes a shared object to a memfd and dlopens it by a
+ * /proc/self/fd path of its own; the mapping keeps the file alive after
+ * the descriptor is closed.
+ *
  * ANF_SLAB, ANF_NURSERY and ANF_ROOTS size the arena as for driver.c;
  * ANF_RELEASE (default 2^22 words, 16 MiB) is how far past the mark the
  * major heap may have grown before a call gives its pages back. */
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include "../anf_arena.h"
@@ -150,7 +160,7 @@ int nanofil_compile_ir(int command, const char *ir, size_t ir_len, char **out, s
     int code;
     *out = NULL;
     *out_len = 0;
-    if (command < NANOFIL_COMPILE || command > NANOFIL_COMPILE_ALLOCATED) {
+    if (command < NANOFIL_COMPILE || command > NANOFIL_REGEX) {
         static const char why[] = "no such command";
         put(&o, (const uint8_t *)why, sizeof why - 1U);
         code = o.failed ? NANOFIL_NOMEMORY : NANOFIL_REFUSED;
@@ -166,4 +176,51 @@ int nanofil_compile_ir(int command, const char *ir, size_t ir_len, char **out, s
     *out = o.b;
     *out_len = o.n;
     return code;
+}
+
+int nanofil_compile_regex(const char *terms, size_t terms_len, char **out, size_t *out_len)
+{
+    return nanofil_compile_ir(NANOFIL_REGEX, terms, terms_len, out, out_len);
+}
+
+/* The number of shared objects loaded so far. dlopen gives the object
+ * already loaded under a name instead of opening another, and Fil-C's
+ * dlclose leaves an object loaded, so a descriptor's /proc/self/fd path
+ * names a new image only once: the number of a closed descriptor comes
+ * back. Each image is opened under a name no other has had, its
+ * descriptor's path with the number of the load written in the
+ * directory part, "/." for a 0 bit and "//" for a 1, lowest first, which
+ * the kernel reads as /proc/self/fd itself. */
+static pthread_mutex_t load_lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long long loads;
+
+void *nanofil_load(const void *image, size_t len)
+{
+    int fd = memfd_create("nanofil", MFD_CLOEXEC);
+    if (fd < 0)
+        return NULL;
+    for (size_t at = 0; at < len;) {
+        ssize_t n = write(fd, (const char *)image + at, len - at);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0) {
+            int e = n < 0 ? errno : EIO;
+            close(fd);
+            errno = e;
+            return NULL;
+        }
+        at += (size_t)n;
+    }
+    char path[256] = "/proc/self/fd";
+    size_t at = strlen(path);
+    pthread_mutex_lock(&load_lock);
+    for (unsigned long long k = loads++; k; k >>= 1, at += 2)
+        memcpy(path + at, k & 1U ? "//" : "/.", 2);
+    pthread_mutex_unlock(&load_lock);
+    snprintf(path + at, sizeof path - at, "/%d", fd);
+    void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    int e = errno;
+    close(fd);
+    errno = e;
+    return h;
 }

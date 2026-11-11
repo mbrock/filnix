@@ -5,6 +5,11 @@
  * the file and writing the bytes.
  *
  *   anf-backend compile|compile-promoted|compile-allocated FILE.ir
+ *   anf-backend shared-allocated|object-allocated FILE.ir
+ *   anf-backend regex FILE.pl
+ *
+ * shared-allocated and regex write the shared object's bytes to stdout;
+ * regex reads the terms of experiments/regex-nanofil/pcre2_rx_terms.h.
  *
  * The program's value is the closure of [run]. This reads the file in
  * pieces of 1 MB (ANF_PIECE bytes), as main.ml does, makes [run]'s
@@ -54,13 +59,16 @@ static uint32_t pair(uint32_t *arena, struct anf_state *st, uint32_t ord)
 
 int main(int argc, char **argv)
 {
-    static const char *const cmds[] = {"compile", "compile-promoted", "compile-allocated"};
-    uint32_t cmd = 3U;
-    for (uint32_t i = 0U; argc == 3 && i < 3U; i++)
+    /* As Drive.v numbers them. */
+    static const char *const cmds[] = {"compile",          "compile-promoted", "compile-allocated",
+                                       "shared-allocated", "object-allocated", "regex"};
+    uint32_t cmd = 6U;
+    for (uint32_t i = 0U; argc == 3 && i < 6U; i++)
         if (strcmp(argv[1], cmds[i]) == 0)
             cmd = i;
-    if (cmd == 3U) {
-        fprintf(stderr, "usage: anf-backend compile|compile-promoted|compile-allocated FILE.ir\n");
+    if (cmd == 6U) {
+        fprintf(stderr, "usage: anf-backend compile|compile-promoted|compile-allocated|shared-allocated|"
+                        "object-allocated FILE.ir | anf-backend regex FILE.pl\n");
         return 2;
     }
     FILE *f = fopen(argv[2], "rb");
