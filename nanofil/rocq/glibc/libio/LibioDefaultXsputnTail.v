@@ -147,9 +147,11 @@ Proof.
   { unfold ch. match goal with |- context [?Y mod 256] =>
       pose proof (Z.mod_pos_bound Y 256 ltac:(lia)); set (Z0 := Y mod 256) in * end.
     rewrite (Z.mod_small Z0); [|lia]. rewrite (Z.mod_small Z0); [|lia]. lia. }
-  iApply (Hov with "Hvt Hl Hvtp Hwb Hos"); [reflexivity | exact Hch | exact Hfb | exact Hfal | unfold file_size; lia | exact Hfreg |].
+  iApply (Hov with "Hvt Hl Hvtp Hwb Hos"); [reflexivity | left; exact Hch | exact Hfb | exact Hfal | unfold file_size; lia | exact Hfreg |].
   iNext. iIntros (r nb' wp' we' Hr) "Hl Hvtp Hwb Hos". resume.
-  assert (Hr32 : 0 <= r < 2 ^ 32) by lia. rewrite (Z.mod_small r); [|lia].
+  assert (Hr32 : 0 <= r < 2 ^ 32).
+  { destruct Hr as [-> | ->]; [lia|]. destruct (ch =? 2 ^ 32 - 1); lia. }
+  rewrite (Z.mod_small r); [|lia].
   st. fs. fs.
   destruct (Z.eq_dec r (2 ^ 32 - 1)) as [-> | Hne].
   - (* `c: EOF`: L19 returns n - t. *)
@@ -157,7 +159,7 @@ Proof.
     iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). unwrap2. lia.
   - (* The byte went: L96 runs the loop again on t - 1. *)
-    assert (r = ch) by lia. fbrv true. fs. fs. fs. fs.
+    fbrv true. fs. fs. fs. fs.
     iApply ("IH" with "[%] Hl Hvtp Hwb Hos Hl' Hys HK").
     unfold n in *. split_and!; try (lookups; reflexivity); try lia.
     all: lookups; first [do 3 f_equal; cbn [ptr_addr]; unwrap2; lia | do 2 f_equal; unwrap2; lia].

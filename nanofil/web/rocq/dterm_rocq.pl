@@ -653,7 +653,9 @@ file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBytes.v',
 file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnCopy.v',
     "Live glibc campaign (shared proof support): `memcpy`/`mempcpy` into a stream buffer at any offset ([wp_call_mempcpy_in]), over libpizlo's `c: zmemmove` contract.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnRoom.v',
-    "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L44]) for `_IO_default_xsputn` filling the buffer's room by `__mempcpy` or the byte loop.").
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L44]) for `_IO_default_xsputn` filling the buffer's room, by `__mempcpy` past 20 bytes.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnSmall.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L50]) for `_IO_default_xsputn` filling at most 20 bytes of the buffer's room by the byte loop.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnTail.v',
     "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L22]) for the end of `_IO_default_xsputn`'s round: the jump table's overflow of the next byte, or the return.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDoWrite.v',

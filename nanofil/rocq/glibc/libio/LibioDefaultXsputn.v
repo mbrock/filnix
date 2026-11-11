@@ -53,8 +53,9 @@ Local Arguments Z.opp : simpl nomatch.
 (** The rules over the [[runtime]] R and [LogicSig] LG0. *)
 Module LibioDefaultXsputnOn (R : Runtime) (LG0 : LogicSig R).
 Module RM := LibioDefaultXsputnRoomOn R LG0.
-Import RM RM.TL RM.TL.BY RM.TL.BY.BF RM.TL.BY.BF.CP RM.TL.BY.BF.CP.CS RM.TL.BY.BF.CP.SW RM.TL.BY.BF.CP.SW.FI.ML
-  RM.TL.BY.BF.CP.SW.FI.LG RM.TL.BY.BF.CP.SW.FI.L RM.TL.BY.BF.CP.SW.OW RM.TL.BY.BF.CP.SW.FI RM.TL.BY.BF.CP.SW.ST.
+Import RM RM.SM.TL RM.SM.TL.BY RM.SM.TL.BY.BF RM.SM.TL.BY.BF.CP RM.SM.TL.BY.BF.CP.CS RM.SM.TL.BY.BF.CP.SW
+  RM.SM.TL.BY.BF.CP.SW.FI.ML RM.SM.TL.BY.BF.CP.SW.FI.LG RM.SM.TL.BY.BF.CP.SW.FI.L RM.SM.TL.BY.BF.CP.SW.OW
+  RM.SM.TL.BY.BF.CP.SW.FI RM.SM.TL.BY.BF.CP.SW.ST.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

@@ -97,5 +97,6 @@ libio/LibioDefaultXsputnCopy.v
 libio/LibioDefaultXsputnBuf.v
 libio/LibioDefaultXsputnBytes.v
 libio/LibioDefaultXsputnTail.v
+libio/LibioDefaultXsputnSmall.v
 libio/LibioDefaultXsputnRoom.v
 libio/LibioDefaultXsputn.v

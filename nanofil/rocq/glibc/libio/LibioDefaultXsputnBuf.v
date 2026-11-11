@@ -176,18 +176,23 @@ Local Instance buf_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The call `c: _IO_new_file_overflow(f, ch)` of a byte ch, through
-    the jump table of a narrow stream: over the stream's life, its
-    jump table pointer, its buffer pointers and buffer ([wbuf]) and the
-    rest of it, os fb nb, it returns ch or `c: EOF` with any buffer
-    and pointers. *)
+(** What `c: _IO_new_file_overflow(f, ch)` returns: ch, or 0 when ch
+    is `c: EOF` and the flush succeeded, or `c: EOF` on failure. *)
+Definition ovf_ret (ch r : Z) : Prop := r = 2 ^ 32 - 1 \/ r = (if ch =? 2 ^ 32 - 1 then 0 else ch).
+
+(** The call `c: _IO_new_file_overflow(f, ch)` of a byte ch or of
+    `c: EOF`, through the jump table of a narrow stream: over the
+    stream's life, its jump table pointer, its buffer pointers and
+    buffer ([wbuf]) and the rest of it, os fb nb, it returns as
+    [ovf_ret] says, with any buffer and pointers. *)
 Definition overflow_spec (os : Z -> option (Z * Z) -> iProp Σ) : Prop :=
   forall fr fb freg nb wp we ch vb vreg Φ,
   call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
-  0 <= ch < 256 -> 0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ⊢ vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
     wbuf fb nb wp we -∗ os fb nb -∗
-    ▷ (∀ r nb' wp' we', ⌜r = ch \/ r = 2 ^ 32 - 1⌝ -∗
+    ▷ (∀ r nb' wp' we', ⌜ovf_ret ch r⌝ -∗
        live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
        wbuf fb nb' wp' we' -∗ os fb nb' -∗ Φ (Ret (WInt r))) -∗
     WP (ERun fr : sexpr) {{ Φ }}.

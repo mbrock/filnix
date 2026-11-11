@@ -27,7 +27,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
-  LibioDefaultXsputnBytes LibioDefaultXsputnTail.
+  LibioDefaultXsputnBytes LibioDefaultXsputnTail LibioDefaultXsputnSmall.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -43,9 +43,9 @@ Definition dx_L44 : block := Eval vm_compute in
 
 (** The rules over the [[runtime]] R and [LogicSig] LG0. *)
 Module LibioDefaultXsputnRoomOn (R : Runtime) (LG0 : LogicSig R).
-Module TL := LibioDefaultXsputnTailOn R LG0.
-Import TL TL.BY TL.BY.BF TL.BY.BF.CP TL.BY.BF.CP.CS TL.BY.BF.CP.SW TL.BY.BF.CP.SW.FI.ML TL.BY.BF.CP.SW.FI.LG
-  TL.BY.BF.CP.SW.FI.L TL.BY.BF.CP.SW.OW TL.BY.BF.CP.SW.FI TL.BY.BF.CP.SW.ST.
+Module SM := LibioDefaultXsputnSmallOn R LG0.
+Import SM SM.TL SM.TL.BY SM.TL.BY.BF SM.TL.BY.BF.CP SM.TL.BY.BF.CP.CS SM.TL.BY.BF.CP.SW SM.TL.BY.BF.CP.SW.FI.ML
+  SM.TL.BY.BF.CP.SW.FI.LG SM.TL.BY.BF.CP.SW.FI.L SM.TL.BY.BF.CP.SW.OW SM.TL.BY.BF.CP.SW.FI SM.TL.BY.BF.CP.SW.ST.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -103,35 +103,10 @@ Proof.
   cbn [dx_L44 b_insts b_jump]. st.
   destruct (Z_le_gt_dec cnt 20) as [Hsmall | Hbig].
   - (* L50: at most 20 bytes. *)
-    fbrv true. fs. fs.
-    destruct (Z.eq_dec cnt 0) as [-> | Hcn0].
-    + (* None: L51 at once. *)
-      fbrv true. to_L22.
-      iAssert (wbuf fb (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))) with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
-      { iFrame. iPureIntro. unfold room_ok, in_buf. cbn. split_and!; first [reflexivity | assumption | lia]. }
-      iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
-                dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
-      all: unfold n in *; lk_fin.
-    + (* L65: the byte loop. *)
-      fbrv false. fs. fs. norm. fldp "Hl" "Hwp" "Hbl". fs. fs.
-      iApply (wp_dx_bytes w0 registry ge fb freg b reg sz (wa - b) cnt dq b' reg' so c' ys (n - t)
-                (mkPtr wa (Obj b)) with "[%] Hl Hwp Hbl Hxs Hl' Hys"); try side.
-      { unfold n in *. split_and!; try (lookups; reflexivity); try lia.
-        all: first [assumption | lia | lookups; do 3 f_equal; cbn [ptr_addr]; unfold raw_address; unwrap2; lia]. }
-      iNext. iIntros (e' xs' (Hsame & Hp6 & Hlx' & Hx')) "Hl Hwp Hbl Hxs Hl' Hys".
-      assert (Hv0' : lookup (TAtom "v0") e' = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; [|reflexivity]; lookups; reflexivity).
-      assert (Hc0' : lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (fb + off_write_ptr) (Obj fb)))) by (rewrite Hsame; [|reflexivity]; lookups; reflexivity).
-      assert (Hv4' : lookup (TAtom "v4") e' = Some (WInt n)) by (rewrite Hsame; [|reflexivity]; lookups; reflexivity).
-      assert (Hp7' : lookup (TAtom "pr.7") e' = Some (WInt t)) by (rewrite Hsame; [|reflexivity]; lookups; reflexivity).
-      assert (Hp9' : lookup (TAtom "pr.9") e' = Some (WInt cnt)) by (rewrite Hsame; [|reflexivity]; lookups; reflexivity).
-      clear Hsame. to_L22.
-      iAssert (wbuf fb (Some (b, sz)) (mkPtr (wa + cnt) (Obj b)) (mkPtr ea (Obj b)))
-        with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
-      { replace (b + (wa - b + cnt)) with (wa + cnt) by lia. iFrame. iPureIntro. unfold room_ok, in_buf. cbn.
-        split_and!; first [reflexivity | assumption | lia]. }
-      iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
-                (mkPtr ea (Obj b)) dq b' reg' so c' ys (t - cnt) with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
-      all: unfold n in *; lk_fin.
+    fbrv true.
+    iApply (wp_dx_L50 w0 registry ge os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cnt
+              with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK"); try side.
+    unfold room_ok, in_buf. cbn. split_and!; first [reflexivity | assumption | lia].
   - (* L49: past 20 bytes, `c: __mempcpy`. *)
     assert (Hbig' : 20 < cnt) by lia. fbrv false. fs. fs. norm. fldp "Hl" "Hwp" "Hbl".
     set (ysub := take (Z.to_nat cnt) (drop (Z.to_nat (n - t)) ys)).
