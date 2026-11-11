@@ -1,9 +1,13 @@
 # zegarmistrz, the x86-64 emulator in upstream Fil-C that tracks poison
 # bits (projects/zegarmistrz), built as its Makefile builds it. filnix
-# does not package it yet; run.sh builds this file.
-{ pkgs }:
+# does not package it yet; run.sh builds this file. With keepTaint, a
+# tainted store keeps the taint (zegarmistrz-keep-taint.patch).
+{
+  pkgs,
+  keepTaint ? false,
+}:
 pkgs.stdenv.mkDerivation rec {
-  pname = "zegarmistrz";
+  pname = "zegarmistrz" + pkgs.lib.optionalString keepTaint "-keep-taint";
   version = "0-unstable-9b7584cea1fa";
   src = pkgs.fetchgit {
     url = "https://github.com/pizlonator/fil-c";
@@ -12,6 +16,7 @@ pkgs.stdenv.mkDerivation rec {
     hash = "sha256-yKMAsBqz1mgwNumLfhFDzZ3rl9kQ28+nr7Xf00K9hjE=";
   };
   sourceRoot = "${src.name}/projects/zegarmistrz";
+  patches = pkgs.lib.optional keepTaint ./zegarmistrz-keep-taint.patch;
   buildInputs = [
     pkgs.zydis
     pkgs.libbfd

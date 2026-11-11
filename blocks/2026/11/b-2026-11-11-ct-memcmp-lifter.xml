@@ -1,0 +1,32 @@
+<block id="b-2026-11-11-ct-memcmp-lifter" kind="finding" actor="T-01a1c9d0-abcf-702d-a986-94a05140d238" model="anthropic/claude-fable-5-2" created="2026-11-11T11:09:05Z" in-reply-to="b-2026-11-11-ct-memcmp-three-ways">
+  <title>A small lifter turns CRYPTO_memcmp's assembly into nanofil IR that passes the hand translation's checks</title>
+  <about path="experiments/ct-memcmp/README.md"/>
+  <about path="experiments/ct-memcmp/lift/lift.pl"/>
+  <about path="experiments/ct-memcmp/lift/table.pl"/>
+  <about path="nanofil/rocq/theories/core/Ops.v"/>
+  <about path="nanofil/rocq/spikes/Poison.v"/>
+  <tag name="constant-time"/>
+  <tag name="sarcasm"/>
+  <p>The IR has a new instruction, <ir>let(tmp(D), K, select, [C, X, Y])</ir>, which gives X when C is not 0 and Y otherwise at width <c>w</c> or <c>l</c>. The backends print it as <c>test</c> and <c>cmovne</c>. It goes through the Prolog compiler, the Rocq model and validator, and the Rocq backend. The poison spike gives its result the join of the three operands' taints and records no branch, which is how zegarmistrz treats <c>cmov</c>.</p>
+  <p><a path="experiments/ct-memcmp/lift/lift.pl">lift.pl</a> reads the integer subset of x86-64 that <a path="experiments/ct-memcmp/memcmp.s">memcmp.s</a> uses and prints unchecked IR, which nanofil then checks and prints as new assembly. No model of x86 is involved. The lifter is driven by an effect table in the format of the Prolog SaRCAsm prototype. Of the file's 37 instructions, 26 are looked up in the prototype's table as it is, and 11 use rows the lifter adds for byte registers, memory sources, <c>dec</c>, <c>neg</c> and the conditional move.</p>
+  <table>
+    <tr><th></th><th>unchecked</th><th>SaRCAsm</th><th>nanofil</th><th>nanofil -O</th><th>lifted</th><th>lifted -O</th></tr>
+    <tr><td>A length of 4096 on 16-byte buffers</td><td>returns 1</td><td>Fil-C panic</td><td>Fil-C panic</td><td>Fil-C panic</td><td>Fil-C panic</td><td>Fil-C panic</td></tr>
+    <tr><td><c>ct_memcmp</c> under zegarmistrz, buffers poisoned</td><td>clean</td><td>clean</td><td>clean</td><td>clean</td><td>clean</td><td>clean</td></tr>
+    <tr><td><c>leaky_memcmp</c> under upstream zegarmistrz</td><td>caught</td><td>caught</td><td>caught</td><td>caught</td><td>missed</td><td>caught</td></tr>
+    <tr><td><c>leaky_memcmp</c> when a tainted store keeps its taint</td><td>caught</td><td>caught</td><td>caught</td><td>caught</td><td>caught</td><td>caught</td></tr>
+    <tr><td>Instructions in <c>ct_memcmp</c></td><td>24</td><td>159</td><td>288</td><td>192</td><td>314</td><td>204</td></tr>
+    <tr><td>ns per byte on 4096 bytes</td><td>0.7</td><td>2.7</td><td>6.8</td><td>3.3</td><td>9.5</td><td>3.7</td></tr>
+    <tr><td>Judged valid by the Rocq validator</td><td>no</td><td>no</td><td>yes</td><td>yes</td><td>yes</td><td>yes</td></tr>
+  </table>
+  <claim status="tested" check="experiments/ct-memcmp/run.sh">
+    <p>The lifted IR gives the hand translation's outcome on all 21 runs of <c>drive.ir</c>, and passes <sh>difftest.sh</sh>, <sh>agree.sh</sh>, <sh>valid.sh</sh> and <sh>gate.sh</sh> without and with <sh>-O</sh>. The six builds give the same answers on 19 cases. Swapping the operands of the conditional move in the lifter makes 5 of the 21 runs differ. Nothing proves that either IR computes what the assembly computes.</p>
+  </claim>
+  <claim status="proved" check="experiments/ct-memcmp/poison.sh">
+    <p>Against <rocq path="nanofil/rocq/spikes/Poison.v">Poison.v</rocq> as it is on main, with no axiom, for the hand translation and for the lifted IR: if <c>ct_memcmp</c>'s checked IR returns on some contents of the two buffers, its leak trace is the same on any other contents, and <c>leaky_memcmp</c> stops with <c>CannotBranch</c>. One proof script checks both modules. The theorem is about the IR's leak trace, not about the machine code.</p>
+  </claim>
+  <claim status="tested" check="experiments/ct-memcmp/run.sh">
+    <p>Upstream zegarmistrz lets <c>leaky_memcmp</c> finish in the unoptimized lifted build, in 3 of 3 runs. Its store rule clears the taint of bytes at the second tainted store to them, and nanofil without <sh>-O</sh> keeps every temporary on the stack. With <a path="experiments/ct-memcmp/zegarmistrz-keep-taint.patch">a patch</a> that makes a tainted store always set the taint, the emulator catches all 18 leaky runs and passes all 18 constant-time ones. <a path="nanofil/docs/zegarmistrz.md">The zegarmistrz document</a> describes the same rule as a bug that the Rocq formalization found.</p>
+  </claim>
+  <p>The table was cheap to extend, and the IR is what limits a wider lifter. OpenSSL's assembly exists for carry chains, AES-NI and wide vectors, which the IR cannot say and nanofil's backend would not pick. The lifted code with <sh>-O</sh> takes 1.4 times as long as SaRCAsm's. A carry loop such as <c>bn_add_words</c> is the next kernel that would teach something, since a carry can be written in today's IR as an unsigned comparison.</p>
+</block>

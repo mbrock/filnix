@@ -1,0 +1,41 @@
+A tainted store keeps the taint. As upstream has it, a tainted store sets
+the clear-on-store bit of the bytes it writes, and a tainted store to bytes
+that carry that bit clears the taint, so the second tainted store to one
+stack slot leaves the slot clean. run.sh builds zegarmistrz both ways.
+
+--- a/src/mem.cpp
++++ b/src/mem.cpp
+@@ -328,27 +328,12 @@
+         auto it = g_poison.find(a);
+         uint8_t old = (it == g_poison.end()) ? 0 : it->second;
+         uint8_t nu = old;
+-        if (cb) {
+-            if (old & POISON_CLEAR_BRANCH_ON_STORE)
+-                nu &= ~(uint8_t)POISON_CANNOT_BRANCH;
+-            else
+-                nu |= (uint8_t)(POISON_CANNOT_BRANCH |
+-                                POISON_CLEAR_BRANCH_ON_STORE);
+-        }
+-        if (ci) {
+-            if (old & POISON_CLEAR_INDEX_ON_STORE)
+-                nu &= ~(uint8_t)POISON_CANNOT_INDEX;
+-            else
+-                nu |= (uint8_t)(POISON_CANNOT_INDEX |
+-                                POISON_CLEAR_INDEX_ON_STORE);
+-        }
+-        if (cvt) {
+-            if (old & POISON_CLEAR_VAR_TIME_OP_ON_STORE)
+-                nu &= ~(uint8_t)POISON_CANNOT_VAR_TIME_OP;
+-            else
+-                nu |= (uint8_t)(POISON_CANNOT_VAR_TIME_OP |
+-                                POISON_CLEAR_VAR_TIME_OP_ON_STORE);
+-        }
++        if (cb)
++            nu |= (uint8_t)(POISON_CANNOT_BRANCH | POISON_CLEAR_BRANCH_ON_STORE);
++        if (ci)
++            nu |= (uint8_t)(POISON_CANNOT_INDEX | POISON_CLEAR_INDEX_ON_STORE);
++        if (cvt)
++            nu |= (uint8_t)(POISON_CANNOT_VAR_TIME_OP | POISON_CLEAR_VAR_TIME_OP_ON_STORE);
+         if (nu)
+             g_poison[a] = nu;
+         else if (it != g_poison.end())
