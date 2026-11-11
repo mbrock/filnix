@@ -70,6 +70,9 @@ theories/logic/Heap.v
 theories/logic/ContractFrame.v
 theories/logic/Language.v
 theories/logic/Logic.v
+theories/logic/PoisonModel.v
+theories/logic/PoisonLogic.v
+theories/programs/PoisonHeap.v
 theories/hello_contracts/LibcStreamLogic.v
 theories/logic/StringLogic.v
 theories/logic/MemLogic.v

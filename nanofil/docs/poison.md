@@ -392,25 +392,44 @@ small additions to `ExternalCalls.v`:
   `taint_all` buffer rightly faults with `CannotBranch`, forcing
   constant-time `CRYPTO_memcmp` instead!
 
-### Lifting `Poison.v` into Iris (`PoisonLogic.v`)
+### Heap proofs in Iris
 
-For closed fixed-trip loops like AES `subbytes_ct`, a single concrete
-`vm_compute` run plus [prun_ct_sound] proves universal constant time in
-under a second. For open functions with arbitrary loop bounds (`len`
-blocks), heap-allocated state or helper calls, `Poison.v` lifts cleanly
-into Campaign 7's [[iris|Iris]] separation logic ([Logic.v](../rocq/theories/logic/Logic.v),
-[Heap.v](../rocq/theories/logic/Heap.v)):
+[PoisonModel.v](../rocq/theories/logic/PoisonModel.v) contains the operational
+semantics and two-run soundness proofs. The old spike import path re-exports
+that model, so the AES and memcmp examples keep their existing statements.
+[PoisonLogic.v](../rocq/theories/logic/PoisonLogic.v) adds an [[iris|Iris]]
+logic for heap-using programs without changing Heap.v, Language.v, Logic.v,
+or their clients.
 
-- refine `Heap.v`'s byte and aux pieces from `VByte (v : Z)` and
-  `VAux (c : cap)` to `VByte (v : Z) (pb : poison_byte)` and
-  `VAux (c : cap) (tc : taint)`, keeping `state_interp` synchronized
-  with `(c, ps)`;
-- give each instruction WP rule (`wp_raw_load_byte`, `wp_raw_store_byte`,
-  `wp_check`, `wp_flight`) its [tstep] side condition (`t_index ta = false`,
-  `check_ptr_bounds_taint pol ta tc = None`), which for public pointers
-  (`taint_bot`) simplifies away by computation;
-- adequacy over [prun_ct_sound] then yields **both** [never_panics]
-  and constant-time trace equivalence from a single Hoare triple:
-  public pointers own `taint_bot`, secret buffers own `pb_secret taint_all`,
-  and the frame rule carries untouched secret keys across helper calls
-  for free.
+A byte can hold a secret even when its address is public. The proof tracks
+both its value and the restrictions on using it, with separate records for
+ordinary memory and [[aux]] capability taints. Both records agree with
+physical memory. Reads can borrow a share of that ownership; writes must
+own the entries they change and preserve every other entry. Allocation
+clears byte poison and capability taint throughout the new object. Free
+ends the right to access the object, even if a proof retains its byte records.
+
+Helper calls must carry restrictions along with values, including when a
+caller resumes after a return. The logic supplies rules for these calls,
+byte loads and stores, heap allocation, free, arithmetic, `Select`, block
+entry, and public branches. More general rules let a proof establish a
+read, write, allocation, or pure step directly from the instrumented machine.
+This first logic handles closed IR functions; it does not provide external
+poison contracts, variadic calls, raw calls, or argument snapshots.
+
+[PoisonHeap.v](../rocq/theories/programs/PoisonHeap.v) proves a kernel that
+allocates a scratch object, calls a recursive byte-loop helper, and frees
+the scratch object. The loop scans an arbitrary secret byte list whose
+public length fits in 32 bits. Each iteration uses `Select` on the secret
+byte and writes the result to the same scratch slot. The proof works for
+every such length and byte content, rather than evaluating one fixture.
+Separate negative lemmas show that a secret branch and a secret address
+are rejected.
+
+The same Hoare triple yields reachable-state memory safety, poison-fault
+freedom, and `never_panics` for modules whose initial memory satisfies the
+input ownership premises. It also yields equal finite leakage traces for
+two related inputs under the same deterministic runtime driver. These
+traces describe IR control flow, addresses, and modeled variable-time
+operations. They do not establish native hardware timing or trace equality
+under independently scheduled collectors.
