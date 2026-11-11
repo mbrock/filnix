@@ -1,0 +1,32 @@
+<block id="b-2026-11-11-ct-bn-add-carry-loop" kind="finding" actor="T-01a1c9d0-abcf-702d-a986-94a05140d238" model="anthropic/claude-fable-5-2" created="2026-11-11T11:58:27Z" in-reply-to="b-2026-11-11-ct-memcmp-lifter">
+  <title>The lifter turns bn_add_words's carry loop into nanofil IR with no new instruction</title>
+  <about path="experiments/ct-bn-add/README.md"/>
+  <about path="experiments/ct-bn-add/bn_add.s"/>
+  <about path="experiments/ct-memcmp/lift/lift.pl"/>
+  <about path="nanofil/rocq/spikes/Poison.v"/>
+  <tag name="constant-time"/>
+  <tag name="sarcasm"/>
+  <p><a path="experiments/ct-bn-add/README.md">experiments/ct-bn-add</a> lifts OpenSSL's <c>bn_add_words</c> and <c>bn_sub_words</c>, and a control that branches on the carry, with the lifter of <ref block="b-2026-11-11-ct-memcmp-lifter"/>. The IR has no carry, so one <c>adc</c> becomes two additions, two unsigned comparisons and an <c>or</c>, and the carry goes round the loop as a phi. nanofil prints each comparison as <c>cmp</c> and <c>setb</c>, with no branch. The IR and the Prolog SaRCAsm prototype's effect table are unchanged, and 34 of the file's 47 instructions are looked up in that table as it is.</p>
+  <table>
+    <tr><th></th><th>unchecked</th><th>SaRCAsm</th><th>lifted</th><th>lifted -O</th></tr>
+    <tr><td>A count of 5 on 4-word buffers</td><td>not checked</td><td>Fil-C panic</td><td>Fil-C panic</td><td>Fil-C panic</td></tr>
+    <tr><td><c>bn_add_words</c> and <c>bn_sub_words</c> under zegarmistrz, operands poisoned</td><td>clean</td><td>clean</td><td>clean</td><td>clean</td></tr>
+    <tr><td><c>leaky_add_words</c> under upstream zegarmistrz</td><td>caught</td><td>caught</td><td>missed</td><td>caught</td></tr>
+    <tr><td><c>leaky_add_words</c> when a tainted store keeps its taint</td><td>caught</td><td>caught</td><td>caught</td><td>caught</td></tr>
+    <tr><td>Instructions in <c>bn_add_words</c></td><td>15</td><td>135</td><td>226</td><td>154</td></tr>
+    <tr><td><c>bn_add_words</c>, ns per word on 512 words</td><td>0.5</td><td>45</td><td>11</td><td>4.8 to 5.5</td></tr>
+  </table>
+  <claim status="tested" check="experiments/ct-bn-add/run.sh">
+    <p>The four builds give the same answer on the 18 runs of <c>drive.ir</c> that return, and the lifted IR passes <sh>difftest.sh</sh>, <sh>agree.sh</sh>, <sh>valid.sh</sh> and <sh>gate.sh</sh> without and with <sh>-O</sh>. A lifter that leaves out the second comparison of <c>adc</c> still passes those four checks and fails the comparison with the original assembly. Nothing proves that the lifted IR computes what the assembly computes.</p>
+  </claim>
+  <claim status="proved" check="experiments/ct-bn-add/poison.sh">
+    <p>Against <rocq path="nanofil/rocq/spikes/Poison.v">Poison.v</rocq> as it is on main, with no axiom: if the checked IR of <c>bn_add_words</c> or <c>bn_sub_words</c> returns on some contents of the two operands, its leak trace is the same on any other contents, for any buffer size and count. <c>leaky_add_words</c> stops with <c>CannotBranch</c>. The theorems are about the IR's leak trace, not about the machine code.</p>
+  </claim>
+  <claim status="measured" check="gcc -O2 -o pushf experiments/ct-bn-add/pushf.c &amp;&amp; ./pushf">
+    <p>SaRCAsm's <c>bn_add_words</c> takes 45 ns for each word, 90 times the original, because it keeps <c>adc</c> and saves the flags with <c>pushf</c> and <c>popf</c> around four checks in each iteration. The original loop with four such pairs and no check takes 43 to 45 ns for each word. With <c>lahf</c> and <c>sahf</c> in the same places it takes 6.4 to 6.7 ns.</p>
+  </claim>
+  <claim status="tested" check="experiments/ct-bn-add/run.sh">
+    <p>Upstream zegarmistrz lets <c>leaky_add_words</c> finish in the unoptimized lifted build, in 3 of 3 runs, as it does <c>leaky_memcmp</c>. In both, nanofil without <sh>-O</sh> stores a loaded secret to a stack slot and then stores the condition computed from it to the same slot, and the emulator's store rule clears a slot's taint at the second tainted store.</p>
+  </claim>
+  <p>The next kernel in OpenSSL's file, <c>bn_mul_add_words</c>, needs the high half of a 64-bit product, which the IR's <c>mul</c> does not give. That would be a new IR instruction, and it is worth adding when C needs it and not for the lifter alone.</p>
+</block>

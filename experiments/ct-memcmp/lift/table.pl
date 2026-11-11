@@ -8,9 +8,11 @@ SaRCAsm prototype gives (experiments/sarcasm-prolog/effects.pl):
 
 An instruction the prototype's table covers is looked up there, after
 its mnemonic is given the width suffix that table expects. The rows
-below add the forms memcmp.s uses and the prototype lacks: byte
-registers, a memory source for `xor` and `cmp`, `dec`, `neg` and the
-conditional move. The prototype is frozen and is not changed.
+below add the forms memcmp.s and ../ct-bn-add/bn_add.s use and the
+prototype lacks: byte registers, a memory source for `add`, `xor` and
+`cmp`, `sub`, `dec`, `neg`, the conditional move, `adc` and `sbb`, and
+`lea` on a register that holds an integer. The prototype is frozen and
+is not changed.
 */
 :- module(lift_table, [semantics/2]).
 :- use_module(library(lists)).
@@ -28,11 +30,13 @@ conditional move. The prototype is frozen and is not changed.
 %    | `compare(sub, memory(Address, 1), R)` | a byte compare with memory |
 %    | `unary(dec, R)`, `unary(neg, R)` | |
 %    | `conditional_move(Condition, Source, R)` | |
+%    | `with_carry(K, Source, R)` | `adc` (K is `add`) and `sbb` (K is `sub`): R and Source and CF |
+%    | `offset(Address, R)` | `lea` without an index: R is a pointer if the base is one, else an integer |
 %
 %  and a byte register is written as `write(R, integer, keep_upper)`:
-%  the other 56 bits keep their value. `xor` of a register with itself
-%  is the row of a move of 0 with the flags of `xor`, since it does not
-%  read the register. Throws `error(Reason)` for an instruction outside
+%  the other 56 bits keep their value. `xor` or `sub` of a register
+%  with itself is the row of a move of 0 with the flags of that
+%  instruction, since it does not read the register. Throws `error(Reason)` for an instruction outside
 %  the table, as the prototype does.
 semantics(Instruction, Semantics) :-
     canonical(Instruction, Canonical),
@@ -64,8 +68,10 @@ alias(jnz, jne).
 alias(jz, je).
 alias(cmovnz, cmovne).
 alias(cmovz, cmove).
+alias(jc, jb).
+alias(jnc, jae).
 
-sized(M) :- memberchk(M, [mov, lea, add, xor, or, and, cmp, test, shl, shr, dec, neg, cmovne, cmove]).
+sized(M) :- memberchk(M, [mov, lea, add, sub, adc, sbb, xor, or, and, cmp, test, shl, shr, dec, neg, cmovne, cmove]).
 suffix(8, b).
 suffix(32, l).
 suffix(64, q).
@@ -90,6 +96,16 @@ added_action(instruction(Op, [Source, reg(R)]), binary(K, V, register(Root, W)))
     added_binary(Op, K, W), register(R, Root, W), added_source(Source, W, V).
 added_action(instruction(cmpb, [mem(D, B, I, S), reg(R)]), compare(sub, memory(A, 1), register(Root, 8))) :-
     byte_register(R, Root), sp_effects:address(mem(D, B, I, S), A).
+added_action(instruction(subq, [reg(S), reg(R)]), binary(sub, register(Source, 64), register(Root, 64))) :-
+    register(S, Source, 64), register(R, Root, 64).
+added_action(instruction(Op, [Source, reg(R)]), with_carry(K, V, register(Root, 64))) :-
+    memberchk(Op-K, [adcq-add, sbbq-sub]), register(R, Root, 64),
+    (   Source = reg(S)
+    ->  register(S, Root1, 64), V = register(Root1, 64)
+    ;   added_source(Source, 64, V)
+    ).
+added_action(instruction(leaq, [mem(D, B, none, S), reg(R)]), offset(A, register(Root, 64))) :-
+    register(R, Root, 64), sp_effects:address(mem(D, B, none, S), A).
 added_action(instruction(Op, [reg(R)]), unary(K, register(Root, 64))) :-
     memberchk(Op-K, [decq-dec, negq-neg]), register(R, Root, 64).
 added_action(instruction(Op, [reg(S), reg(R)]), conditional_move(C, register(Source, 64), register(Root, 64))) :-
@@ -120,6 +136,15 @@ added_effects(compare(K, V, R),
     effects(registers([read(R, integer)|Reads], []), memory(Accesses),
             Flags, control(next), may_trap(Traps))) :-
     source_effects(V, Reads, Accesses, Traps), sp_effects:binary_flags(K, Flags).
+added_effects(with_carry(_, V, R),
+    effects(registers([read(R, integer)|Reads], [Write]), memory(Accesses),
+            flags(reads([cf]), defined([cf, pf, af, zf, sf, of]), cleared([]), undefined([]), preserved([])),
+            control(next), may_trap(Traps))) :-
+    source_effects(V, Reads, Accesses, Traps), integer_write(R, Write).
+added_effects(offset(address(Base, _, _, _), R),
+    effects(registers([read(Base, value)], [write(R, same_type_as(Base), replace)]), memory([]),
+            Flags, control(next), may_trap([]))) :-
+    sp_effects:preserve_flags(Flags).
 added_effects(unary(K, R),
     effects(registers([read(R, integer)], [Write]), memory([]),
             Flags, control(next), may_trap([]))) :-
@@ -144,7 +169,7 @@ integer_write(register(R, 64), write(register(R, 64), integer, replace)).
 unary_flags(dec, flags(reads([]), defined([pf, af, zf, sf, of]), cleared([]), undefined([]), preserved([cf]))).
 unary_flags(neg, Flags) :- sp_effects:binary_flags(sub, Flags).
 
-zero_idiom(semantics(binary(xor, R, R), effects(registers(_, Writes), M, F, C, T)),
+zero_idiom(semantics(binary(K, R, R), effects(registers(_, Writes), M, F, C, T)),
            semantics(move(immediate(0), R), effects(registers([], Writes), M, F, C, T))) :-
-    R = register(_, _), !.
+    memberchk(K, [xor, sub]), R = register(_, _), !.
 zero_idiom(Semantics, Semantics).

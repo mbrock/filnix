@@ -96,9 +96,12 @@ it writes. A tainted store to bytes that already carry the clear-on-store
 bit clears the taint bit, so the second tainted store to one stack slot
 leaves the slot clean. nanofil without `-O` keeps every temporary in a
 stack slot, so its code stores tainted values to the stack where the
-other builds keep them in registers. Which store cleans the byte in this
-build has not been traced. The evidence that the store rule is the cause
-is that changing only that rule makes the miss go away.
+other builds keep them in registers. In the loop of `leaky_memcmp` that
+code stores the byte it loaded from the second buffer to `-24(%rbp)`,
+then stores the condition computed from it to the same slot, and then
+loads the slot and branches on it. The second store is the one that
+leaves the slot clean. Changing only the store rule makes the miss go
+away.
 
 `zegarmistrz-keep-taint.patch` makes a tainted store always set the taint.
 With it the emulator catches all 18 `leaky_memcmp` runs and still passes
@@ -142,19 +145,21 @@ operations (`Syntax.v`'s `op`) have none of them either.
 
 ## The lifter
 
-`lift/lift.pl` reads the integer subset of x86-64 that `memcmp.s` uses and
-prints unchecked IR for each function that has a SaRCAsm signature. It is
-about 740 lines of Prolog in three files.
+`lift/lift.pl` reads the integer subset of x86-64 that `memcmp.s` and
+`../ct-bn-add/bn_add.s` use, and prints unchecked IR for each function
+that has a SaRCAsm signature. It is about 910 lines of Prolog in three
+files.
 
 The lifter is driven by an effect table in the format of the Prolog
 SaRCAsm prototype (`experiments/sarcasm-prolog/effects.pl`). A row says
 which registers an instruction reads and writes, which memory it
 accesses, what it does to the flags, and where control goes. The
 prototype is frozen and its table is used as it is. Of the 37
-instructions in `memcmp.s`, 26 are looked up in the prototype's table.
-The other 11 use rows that `lift/table.pl` adds for forms the prototype
+instructions in `memcmp.s`, 22 are looked up in the prototype's table.
+The other 15 use rows that `lift/table.pl` adds for forms the prototype
 lacks: byte registers, a memory source for `xor`, `or` and `cmp`, `dec`,
-`neg` and the conditional move.
+`neg`, the conditional move, and a `lea` whose result is a pointer or an
+integer as its base register is.
 
 From the rows the lifter builds the IR as follows.
 
@@ -167,8 +172,11 @@ From the rows the lifter builds the IR as follows.
   lifter refuses 32-bit registers.
 - The zero flag is remembered as the two values whose difference it
   tests, and becomes a `cmp` where a branch or a conditional move reads
-  it. It does not cross a block boundary. Only `e` and `ne` are
-  translated.
+  it. It does not cross a block boundary.
+- The carry flag is remembered as the unsigned comparisons that set it,
+  and becomes a temporary where an instruction reads it. A block that is
+  entered with a carry something reads gets a phi for it.
+- The conditions `e`, `ne`, `b` and `ae` are translated.
 
 Nothing in the lifter has to be trusted for memory safety, because
 nanofil inserts the checks afterwards and validates the result. A wrong
@@ -268,17 +276,17 @@ times as long as SaRCAsm's and 5.7 times as long as the original.
 
 A wider lifter is worth building one instruction family at a time, when
 there is a kernel that needs the family and the IR can say it. The table
-is cheap to extend: this kernel needed 11 added rows. The IR is what
-limits it. OpenSSL's assembly exists for carry chains (`adc`, `adcx`,
-`adox`, `mulx`), AES-NI, carry-less multiply and wide vectors. The IR has
-no carry and none of those instructions, and nanofil's backend would not
-pick them. For that code SaRCAsm, which keeps the instructions, remains
-the way to ship it.
+is cheap to extend: 15 of this kernel's 37 instructions use added rows.
+The IR is what limits it. OpenSSL's assembly exists for carry chains
+(`adc`, `adcx`, `adox`, `mulx`), AES-NI, carry-less multiply and wide
+vectors. The IR has no carry and none of those instructions, and
+nanofil's backend would not pick them. For that code SaRCAsm, which keeps
+the instructions, remains the way to ship it.
 
-The next kernel that would teach something is a carry loop such as
-`bn_add_words`. A carry can be written in today's IR as an unsigned
-comparison of the sum with an operand, which nanofil prints as `setb` and
-not as a branch, so the lifter could translate `adc` and `sbb` without a
-new instruction. That would show how much the missing carry costs and
-whether the poison rules accept the result. Vectors and AES-NI should
-wait until the IR has them for C's sake.
+`../ct-bn-add` lifts one such loop, `bn_add_words`, without a new
+instruction. A carry is written in today's IR as an unsigned comparison
+of the sum with an operand, which nanofil prints as `setb` and not as a
+branch. The lifted loop passes the same checks and has the same kind of
+theorem, and with `-O` it takes about 10 times as long as the original.
+Wide multiplies, vectors and AES-NI should wait until the IR has them for
+C's sake.

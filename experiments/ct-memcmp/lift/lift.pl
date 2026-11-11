@@ -2,17 +2,17 @@
 
     swipl lift.pl FILE.s >FILE.ir
 
-reads the integer subset of x86-64 that memcmp.s uses and prints
-nanofil's unchecked IR for each function that has a SaRCAsm signature.
+reads the integer subset of x86-64 that memcmp.s and
+../ct-bn-add/bn_add.s use and prints nanofil's unchecked IR for each function that has a SaRCAsm signature.
 nanofil then inserts the checks, validates the result and emits its own
 assembly, so nothing here has to be trusted for memory safety: a wrong
 row in the table gives a wrong answer, never an unchecked access.
 
 The lifter is driven by the effect table of table.pl. A row's register
 reads and writes say which registers must hold what on entry and what
-they hold afterwards, its flags say whether ZF is available to a later
-branch or conditional move, its control says where the block ends, and
-its action says which IR instruction computes the value.
+they hold afterwards, its flags say whether ZF and CF are available to
+a later instruction, its control says where the block ends, and its
+action says which IR instructions compute the value.
 
   - A register is a temporary named after it and the source line that
     wrote it. Each block starts with a phi for every register that has
@@ -24,7 +24,13 @@ its action says which IR instruction computes the value.
   - A byte write to a 64-bit integer keeps the other 56 bits.
   - ZF is remembered as the two values whose difference it tests, and
     becomes a `cmp` where a branch or conditional move reads it. It
-    does not cross a block boundary. Only `e` and `ne` are translated.
+    does not cross a block boundary.
+  - CF is remembered as the unsigned comparisons that are true when it
+    is set, and becomes a 0 or 1 in a temporary where `adc`, `sbb` or a
+    branch reads it. A block that reads the CF it is entered with has
+    a phi for it, and each block before it computes the temporary.
+  - The conditions translated are `e` and `ne` (ZF) and `b` and `ae`
+    (CF).
   - A conditional move is a `select`.
 */
 :- module(lift, [lift_file/2, print_functions/1]).
@@ -89,7 +95,8 @@ lift_function(source(Name, Linkage, Result, Args, Body), func(Name, Linkage, Cla
     blocks(start, Body, Blocks0),
     check_blocks(Name, Blocks0),
     entry_types(Blocks0, Types, Ins),
-    maplist(translate_block(Ins), Blocks0, Blocks1),
+    carry_in(Blocks0, Carries),
+    maplist(translate_block(Ins, Carries), Blocks0, Blocks1),
     maplist(with_phis(Ins, Blocks1), Blocks1, Blocks2),
     remove_dead_phis(Blocks2, Blocks3),
     remove_trivial_phis(Blocks3, Blocks).
@@ -219,26 +226,85 @@ meet(A, B, M) :-
 meet_type(T, T, T) :- !.
 meet_type(integer(_), integer(_), integer(8)).
 
+%  ## The blocks that are entered with a carry
+
+% carry_in(+Blocks, -Names): the blocks that read CF as it is on entry,
+% themselves or in a block they go on to: the least fixpoint.
+carry_in(Blocks, Names) :- carry_in_(Blocks, [], Names).
+
+carry_in_(Blocks, Names0, Names) :-
+    findall(N,
+            ( member(block(N, Items, exit(_, Exit, Succs)), Blocks),
+              pairs_values(Items, Sems0),
+              ( Exit == fallthrough -> Sems = Sems0 ; append(Sems0, [Exit], Sems) ),
+              carry_use(Sems, Use),
+              (   Use == reads
+              ->  true
+              ;   Use == passes, member(S, Succs), memberchk(S, Names0)
+              ->  true
+              ) ),
+            Names1),
+    ( Names1 == Names0 -> Names = Names0 ; carry_in_(Blocks, Names1, Names) ).
+
+% carry_use(+Rows, -Use): whether the rows read the CF they start with
+% (`reads`), leave it as it was (`passes`), or change it first (`kills`).
+carry_use([], passes).
+carry_use([semantics(_, effects(_, _, flags(reads(Reads), _, _, _, preserved(Preserved)), _, _))|Sems], Use) :-
+    (   memberchk(cf, Reads)
+    ->  Use = reads
+    ;   memberchk(cf, Preserved)
+    ->  carry_use(Sems, Use)
+    ;   Use = kills
+    ).
+
 %  ## Translation
 
-% translate_block(+Ins, +Block, -Translated): Translated is
+% translate_block(+Ins, +Carries, +Block, -Translated): Translated is
 % block(Name, Registers, Instructions, Line-Terminator, Env): the
 % registers that get a phi, and the environment at the end. An
-% environment pairs a register with val(Operand, Type).
-translate_block(Ins, block(Name, Items, Exit), block(Name, Registers, Insts, Term, Env)) :-
+% environment pairs a register with val(Operand, Type). The carry a
+% block is entered with, or leaves to a block of Carries, is the
+% register `cf`, a 64-bit integer.
+%
+% The flags between two instructions are fl(Zf, Cf). Zf is `none` or
+% zf(Width, A, B): ZF is set when the low Width bits of A and B are
+% equal. Cf is `none`, known(V) for a V that is 0 or 1, or below(Pairs):
+% CF is set when A is below B, unsigned, for some A-B of Pairs.
+translate_block(Ins, Carries, block(Name, Items, Exit), block(Name, Registers, Insts, Term, Env)) :-
     memberchk(Name-Types, Ins),
-    ( Name == start -> Suffix = 0, Registers = [] ; Suffix = Name, Registers = Types ),
+    ( Name == start -> Suffix = 0, Registers0 = [] ; Suffix = Name, Registers0 = Types ),
     maplist({Suffix}/[R-T, R-val(tmp(V), T)]>>temporary(R, Suffix, V), Types, Env0),
-    phrase(( items(Items, Env0, none, Env, Zf), terminator(Exit, Env, Zf, Term) ), Insts).
+    (   Name \== start, memberchk(Name, Carries)
+    ->  temporary(cf, Name, Carry),
+        Cf0 = known(tmp(Carry)),
+        append(Registers0, [cf-integer(64)], Registers)
+    ;   Cf0 = none,
+        Registers = Registers0
+    ),
+    Exit = exit(Line, _, Succs),
+    phrase(( items(Items, Env0, fl(none, Cf0), Env1, F1),
+             terminator(Exit, Env1, F1, F, Term),
+             carry_out(Succs, Carries, Line, F, Env1, Env) ),
+           Insts).
 
-items([], E, Z, E, Z) --> [].
-items([L-semantics(Action, effects(registers(Reads, Writes), _, Flags, _, _))|Items], E0, Z0, E, Z) -->
+items([], E, F, E, F) --> [].
+items([L-semantics(Action, effects(registers(Reads, Writes), _, Flags, _, _))|Items], E0, F0, E, F) -->
     { maplist(check_read(E0, L), Reads),
-      check_flag_reads(Flags, Z0, L) },
-    translation(Action, L, E0, Z0, Value, Zf),
+      check_flag_reads(Flags, F0, L) },
+    translation(Action, L, E0, F0, Value, Computed),
     { foldl(write_env(Value), Writes, E0, E1),
-      next_zf(Flags, Zf, Z0, L, Z1) },
-    items(Items, E1, Z1, E, Z).
+      next_flags(Flags, Computed, F0, L, F1) },
+    items(Items, E1, F1, E, F).
+
+% carry_out(+Successors, +Carries, +Line, +Flags, +Env0, -Env)//: the
+% carry in a temporary, as the register `cf` of Env, when a successor
+% is entered with it.
+carry_out(Succs, Carries, L, fl(_, Cf), E0, E) -->
+    (   { member(S, Succs), memberchk(S, Carries) }
+    ->  carry(Cf, L, V),
+        { E = [cf-val(V, integer(64))|E0] }
+    ;   { E = E0 }
+    ).
 
 check_read(E, L, read(register(R, W), Kind)) :-
     ( memberchk(R-val(_, T), E) -> true ; T = undefined ),
@@ -253,22 +319,32 @@ readable(pointer, 64, pointer).
 readable(value, 64, integer(64)).
 readable(value, 64, pointer).
 
-check_flag_reads(flags(reads(Reads), _, _, _, _), Z, L) :-
-    (   Reads == []
-    ->  true
-    ;   Reads == [zf]
-    ->  ( Z == none -> throw(error(at(L, unavailable_flag(zf)))) ; true )
-    ;   throw(error(at(L, unsupported_flags(Reads))))
-    ).
+check_flag_reads(flags(reads(Reads), _, _, _, _), fl(Z, C), L) :-
+    forall(member(Flag, Reads),
+           (   memberchk(Flag-Held, [zf-Z, cf-C])
+           ->  ( Held == none -> throw(error(at(L, unavailable_flag(Flag)))) ; true )
+           ;   throw(error(at(L, unsupported_flags(Reads))))
+           )).
 
-% next_zf(+Flags, +Zf, +Z0, +Line, -Z): ZF after an instruction whose
-% action computes it as Zf, by the row's partition of the flags.
-next_zf(flags(_, defined(Defined), _, _, preserved(Preserved)), Zf, Z0, L, Z) :-
+% next_flags(+Flags, +Computed, +F0, +Line, -F): the flags after an
+% instruction whose action computes them as Computed, by the row's
+% partition of the flags. A CF the action has no recipe for is
+% unavailable to the instructions after it.
+next_flags(flags(_, defined(Defined), cleared(Cleared), _, preserved(Preserved)),
+           fl(Zf, Cf), fl(Z0, C0), L, fl(Z, C)) :-
     (   memberchk(zf, Defined)
     ->  ( Zf == none -> throw(error(at(L, missing_flag_recipe))) ; Z = Zf )
     ;   memberchk(zf, Preserved)
     ->  Z = Z0
     ;   Z = none
+    ),
+    (   memberchk(cf, Defined)
+    ->  C = Cf
+    ;   memberchk(cf, Cleared)
+    ->  C = known(const(0))
+    ;   memberchk(cf, Preserved)
+    ->  C = C0
+    ;   C = none
     ).
 
 write_env(Value, Write, E0, E) :-
@@ -276,23 +352,24 @@ write_env(Value, Write, E0, E) :-
     exclude([R-_]>>(R == Register), E0, E1),
     ( Type == none -> E = E1 ; E = [Register-val(Value, Type)|E1] ).
 
-% translation(+Action, +Line, +Env, +Zf0, -Value, -Zf)//: the IR
+% translation(+Action, +Line, +Env, +Flags0, -Value, -Flags)//: the IR
 % instructions of Action; Value is what its register write stores and
-% Zf is zf(Width, A, B): ZF is set when the low Width bits of A and B
-% are equal.
-translation(Action, L, E, Z, Value, Zf) --> action(Action, L, E, Z, Value, Zf), !.
+% Flags are the ZF and CF it computes, which next_flags/5 keeps for the
+% flags the row says it defines.
+translation(Action, L, E, F0, Value, F) --> action(Action, L, E, F0, Value, F), !.
 translation(Action, L, _, _, _, _) --> { throw(error(at(L, no_translation(Action)))) }.
 
-% A move's Zf is read only for `xor` of a register with itself.
-action(move(immediate(N), _), _, _, _, V, zf(64, V, const(0))) -->
+% A move's flags are read only for `xor` or `sub` of a register with
+% itself.
+action(move(immediate(N), _), _, _, _, V, fl(zf(64, V, const(0)), known(const(0)))) -->
     { constant(N, V) }.
-action(copy(S, _), _, E, _, V, none) -->
+action(copy(S, _), _, E, _, V, fl(none, none)) -->
     { value(S, E, V) }.
-action(load(A, 8, register(R, 64)), L, E, _, tmp(T), none) -->
+action(load(A, 8, register(R, 64)), L, E, _, tmp(T), fl(none, none)) -->
     address(A, L, E, P),
     { temporary(R, L, T) },
     [L-let(tmp(T), l, load(l), [P])].
-action(load(A, 1, register(R, 8)), L, E, _, tmp(T), none) -->
+action(load(A, 1, register(R, 8)), L, E, _, tmp(T), fl(none, none)) -->
     address(A, L, E, P),
     { temporary(R, L, T) },
     (   { memberchk(R-val(Old, integer(64)), E) }
@@ -302,33 +379,74 @@ action(load(A, 1, register(R, 8)), L, E, _, tmp(T), none) -->
          L-let(tmp(T), l, or, [tmp(H), tmp(M)])]
     ;   [L-let(tmp(T), l, load(ub), [P])]
     ).
-action(pointer_offset(address(B, immediate(0), 1, Offset), register(R, 64)), L, E, _, tmp(T), none) -->
-    { value(B, E, P), temporary(R, L, T) },
-    [L-let(tmp(T), p, add, [P, const(Offset)])].
+action(store(A, 8, S), L, E, _, none, fl(none, none)) -->
+    address(A, L, E, P),
+    source(S, L, E, V),
+    [L-store(l, V, P)].
+action(offset(address(register(B, 64), immediate(0), 1, Offset), register(R, 64)), L, E, _, tmp(T), fl(none, none)) -->
+    { memberchk(B-val(V, Type), E), temporary(R, L, T),
+      ( Type == pointer -> Class = p ; Class = l ) },
+    [L-let(tmp(T), Class, add, [V, const(Offset)])].
 % A byte `xor` or `or` with a zero-extended source leaves the other 56
 % bits as they were, so it is the 64-bit operation.
-action(binary(K, S, register(R, W)), L, E, _, tmp(T), zf(W, tmp(T), const(0))) -->
-    { ( W =:= 64 -> memberchk(K, [add, and, or, xor]) ; memberchk(K, [or, xor]) ),
+action(binary(K, S, register(R, W)), L, E, _, tmp(T), fl(zf(W, tmp(T), const(0)), Cf)) -->
+    { ( W =:= 64 -> memberchk(K, [add, sub, and, or, xor]) ; memberchk(K, [or, xor]) ),
       value(register(R, W), E, Old), temporary(R, L, T) },
     source(S, L, E, V0),
     low(W, S, V0, L, V),
-    [L-let(tmp(T), l, K, [Old, V])].
-action(compare(sub, S, register(R, W)), L, E, _, none, zf(W, Old, V)) -->
+    [L-let(tmp(T), l, K, [Old, V])],
+    { binary_carry(K, Old, V, tmp(T), Cf) }.
+action(with_carry(K, S, register(R, 64)), L, E, fl(_, Cf0), tmp(T), fl(zf(64, tmp(T), const(0)), below(Pairs))) -->
+    { value(register(R, 64), E, Old), temporary(R, L, T), temporary(t, L, T1) },
+    carry(Cf0, L, C),
+    source(S, L, E, V),
+    [L-let(tmp(T1), l, K, [Old, V]),
+     L-let(tmp(T), l, K, [tmp(T1), C])],
+    { with_carry_pairs(K, Old, V, tmp(T1), C, tmp(T), Pairs) }.
+action(compare(sub, S, register(R, W)), L, E, _, none, fl(zf(W, Old, V), Cf)) -->
     { value(register(R, W), E, Old) },
-    source(S, L, E, V).
-action(shift(K, Count, register(R, 64)), L, E, _, tmp(T), zf(64, tmp(T), const(0))) -->
+    source(S, L, E, V),
+    { W =:= 64 -> Cf = below([Old-V]) ; Cf = none }.
+action(shift(K, Count, register(R, 64)), L, E, _, tmp(T), fl(zf(64, tmp(T), const(0)), none)) -->
     { memberchk(K, [shl, shr]), value(register(R, 64), E, Old), temporary(R, L, T) },
     [L-let(tmp(T), l, K, [Old, const(Count)])].
-action(unary(dec, register(R, 64)), L, E, _, tmp(T), zf(64, tmp(T), const(0))) -->
+action(unary(dec, register(R, 64)), L, E, _, tmp(T), fl(zf(64, tmp(T), const(0)), none)) -->
     { value(register(R, 64), E, Old), temporary(R, L, T) },
     [L-let(tmp(T), l, sub, [Old, const(1)])].
-action(unary(neg, register(R, 64)), L, E, _, tmp(T), zf(64, tmp(T), const(0))) -->
+% neg sets CF unless the operand is 0.
+action(unary(neg, register(R, 64)), L, E, _, tmp(T), fl(zf(64, tmp(T), const(0)), below([const(0)-Old]))) -->
     { value(register(R, 64), E, Old), temporary(R, L, T) },
     [L-let(tmp(T), l, neg, [Old])].
-action(conditional_move(C, S, register(R, 64)), L, E, Z, tmp(T), none) -->
-    condition(C, Z, L, Cond),
+action(conditional_move(C, S, register(R, 64)), L, E, F0, tmp(T), fl(none, none)) -->
+    condition(C, F0, L, Cond, _),
     { value(S, E, V), value(register(R, 64), E, Old), temporary(R, L, T) },
     [L-let(tmp(T), l, select, [Cond, V, Old])].
+
+% binary_carry(+K, +Old, +V, +Result, -Cf): CF after the 64-bit Result
+% of Old K V. A sum wrapped if it is below an addend; a difference
+% borrowed if the subtrahend is above. `and`, `or` and `xor` clear CF,
+% which their rows say.
+binary_carry(add, Old, _, Sum, below([Sum-Old])) :- !.
+binary_carry(sub, Old, V, _, below([Old-V])) :- !.
+binary_carry(_, _, _, _, none).
+
+% with_carry_pairs(+K, +Old, +V, +First, +C, +Result, -Pairs): CF after
+% Result = (Old K V) K C, where First = Old K V: either step can wrap,
+% and at most one does.
+with_carry_pairs(add, Old, _, First, _, Sum, [First-Old, Sum-First]).
+with_carry_pairs(sub, Old, V, First, C, _, [Old-V, First-C]).
+
+% carry(+Cf, +Line, -V)//: V is CF as a 64-bit 0 or 1.
+carry(none, L, _) --> { throw(error(at(L, unavailable_flag(cf)))) }.
+carry(known(V), _, V) --> [].
+carry(below([A-B]), L, tmp(T)) --> !,
+    { temporary(cf, L, T) },
+    [L-let(tmp(T), l, cmp(ult, l), [A, B])].
+carry(below([A1-B1, A2-B2]), L, tmp(T)) -->
+    { temporary(cf1, L, T1), temporary(cf2, L, T2), temporary(cf, L, T) },
+    [L-let(tmp(T1), l, cmp(ult, l), [A1, B1]),
+     L-let(tmp(T2), l, cmp(ult, l), [A2, B2]),
+     L-let(tmp(T), l, or, [tmp(T1), tmp(T2)])].
 
 source(immediate(N), _, _, V) --> { constant(N, V) }.
 source(register(S, W), _, E, V) --> { value(register(S, W), E, V) }.
@@ -347,18 +465,30 @@ low(8, register(_, _), V0, L, tmp(B)) -->
     { temporary(b, L, B) },
     [L-let(tmp(B), l, and, [V0, const(255)])].
 
-address(address(Base, immediate(0), 1, Offset), L, E, P) --> !,
+% The address Base + Index * Scale + Offset.
+address(address(Base, Index, Scale, Offset), L, E, P) -->
     { value(Base, E, P0) },
+    (   { Index == immediate(0) }
+    ->  { P1 = P0 }
+    ;   { value(Index, E, I0), temporary(q, L, Q), P1 = tmp(Q) },
+        (   { Scale =:= 1 }
+        ->  { I = I0 }
+        ;   { temporary(i, L, X), I = tmp(X), Shift is msb(Scale) },
+            [L-let(tmp(X), l, shl, [I0, const(Shift)])]
+        ),
+        [L-let(tmp(Q), p, add, [P0, I])]
+    ),
     (   { Offset =:= 0 }
-    ->  { P = P0 }
+    ->  { P = P1 }
     ;   { temporary(a, L, A), P = tmp(A) },
-        [L-let(tmp(A), p, add, [P0, const(Offset)])]
+        [L-let(tmp(A), p, add, [P1, const(Offset)])]
     ).
-address(Address, L, _, _) --> { throw(error(at(L, no_translation(Address)))) }.
 
-condition(C, zf(W, A, B), L, tmp(T)) -->
-    { ( memberchk(C-Rel, [e-eq, ne-ne]) -> true ; throw(error(at(L, unsupported_condition(C)))) ),
-      temporary(c, L, T) },
+% condition(+C, +Flags0, +Line, -Cond, -Flags)//: Cond is not 0 when
+% the condition C holds. Flags are Flags0 with the carry in the
+% temporary this made for it, if it made one.
+condition(C, fl(zf(W, A, B), Cf), L, tmp(T), fl(zf(W, A, B), Cf)) -->
+    { memberchk(C-Rel, [e-eq, ne-ne]), !, temporary(c, L, T) },
     (   { W =:= 64 }
     ->  [L-let(tmp(T), w, cmp(Rel, l), [A, B])]
     ;   { temporary(x, L, X), temporary(z, L, Z) },
@@ -366,17 +496,22 @@ condition(C, zf(W, A, B), L, tmp(T)) -->
          L-let(tmp(Z), l, and, [tmp(X), const(255)]),
          L-let(tmp(T), w, cmp(Rel, l), [tmp(Z), const(0)])]
     ).
+condition(C, fl(Z, Cf), L, tmp(T), fl(Z, known(V))) -->
+    { memberchk(C-Rel, [b-ne, ae-eq]), !, temporary(c, L, T) },
+    carry(Cf, L, V),
+    [L-let(tmp(T), w, cmp(Rel, l), [V, const(0)])].
+condition(C, _, L, _, _) --> { throw(error(at(L, unsupported_condition(C)))) }.
 
-terminator(exit(L, fallthrough, [Next]), _, _, L-goto(Next)) --> !.
-terminator(exit(L, semantics(Action, effects(registers(Reads, _), _, Flags, _, _)), Succs), E, Z, L-Term) -->
+terminator(exit(L, fallthrough, [Next]), _, F, F, L-goto(Next)) --> !.
+terminator(exit(L, semantics(Action, effects(registers(Reads, _), _, Flags, _, _)), Succs), E, F0, F, L-Term) -->
     { maplist(check_read(E, L), Reads),
-      check_flag_reads(Flags, Z, L) },
+      check_flag_reads(Flags, F0, L) },
     (   { Action = branch(C, _) }
-    ->  condition(C, Z, L, Cond),
+    ->  condition(C, F0, L, Cond, F),
         { Succs = [Then, Else], Term = branch(Cond, Then, Else) }
     ;   { Action = jump(_) }
-    ->  { Succs = [Target], Term = goto(Target) }
-    ;   { Action = return(R), value(R, E, V), Term = ret(V) }
+    ->  { Succs = [Target], Term = goto(Target), F = F0 }
+    ;   { Action = return(R), value(R, E, V), Term = ret(V), F = F0 }
     ).
 
 value(register(R, _), E, V) :- memberchk(R-val(V, _), E).
@@ -408,7 +543,7 @@ successor(branch(_, _, B), B).
 remove_dead_phis(Blocks0, Blocks) :-
     findall(X,
             ( member(block(_, _, Insts, _-Term), Blocks0),
-              (   member(_-let(_, _, _, Args), Insts), member(tmp(X), Args)
+              (   member(_-Inst, Insts), operands(Inst, Args), member(tmp(X), Args)
               ;   sub_term(Sub, Term), nonvar(Sub), Sub = tmp(X)
               ) ),
             Roots0),
@@ -417,6 +552,9 @@ remove_dead_phis(Blocks0, Blocks) :-
     maplist({Live}/[block(N, Phis0, I, T), block(N, Phis, I, T)]>>
                 include({Live}/[phi(tmp(V), _, _)]>>memberchk(V, Live), Phis0, Phis),
             Blocks0, Blocks).
+
+operands(let(_, _, _, Args), Args).
+operands(store(_, Value, Pointer), [Value, Pointer]).
 
 live(Blocks, Live0, Live) :-
     findall(X,

@@ -1,0 +1,123 @@
+% Drivers for the lifted bn_add.s, so that nanofil's interpreter, its
+% native code and the Rocq model can run the kernels: run.sh appends
+% this file to the lifted IR. drive_K(Size, N, A0, AStep, B0, BStep)
+% allocates r, a and b of Size words, fills a with A0, A0 + AStep, ...
+% and b likewise, and returns the carry K(r, a, b, N) gives folded with
+% the N words of r.
+
+run(drive_add, [4, 4, 3, 5, 7, 11]).
+run(drive_add, [4, 4, -1, 0, 1, -1]).
+run(drive_add, [4, 4, -1, 0, -1, 0]).
+run(drive_add, [4, 4, -1, 0, 1, 0]).
+run(drive_add, [8, 8, -3, 1, 1, 1]).
+run(drive_add, [4, 0, 1, 1, 1, 1]).
+run(drive_add, [4, 1, -1, 0, 1, 0]).
+run(drive_add, [4, 5, 1, 1, 1, 1]).
+run(drive_sub, [4, 4, 3, 5, 7, 11]).
+run(drive_sub, [4, 4, 0, 0, 1, -1]).
+run(drive_sub, [4, 4, 0, 0, -1, 0]).
+run(drive_sub, [4, 4, 7, 11, 3, 5]).
+run(drive_sub, [8, 8, 1, 1, -3, 1]).
+run(drive_sub, [4, 0, 1, 1, 1, 1]).
+run(drive_sub, [4, 5, 1, 1, 1, 1]).
+run(drive_leaky, [4, 4, 3, 5, 7, 11]).
+run(drive_leaky, [4, 4, -1, 0, 1, -1]).
+run(drive_leaky, [4, 4, -1, 0, -1, 0]).
+run(drive_leaky, [8, 8, -3, 1, 1, 1]).
+run(drive_leaky, [4, 0, 1, 1, 1, 1]).
+run(drive_leaky, [4, 5, 1, 1, 1, 1]).
+
+func(fill, local, void, [param(p, tmp(buf)), param(l, tmp(n)), param(l, tmp(first)), param(l, tmp(step))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(i), l, [start-const(0), body-tmp(i1)]),
+        phi(tmp(x), l, [start-tmp(first), body-tmp(x1)])
+    ], [
+        let(tmp(c), w, cmp(slt, l), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        let(tmp(o), l, shl, [tmp(i), const(3)]),
+        let(tmp(q), p, add, [tmp(buf), tmp(o)]),
+        store(l, tmp(x), tmp(q)),
+        let(tmp(x1), l, add, [tmp(x), tmp(step)]),
+        let(tmp(i1), l, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [], ret)
+]).
+
+% The three buffers, as a pointer to r, a and b.
+func(operands, local, p, [param(l, tmp(size)), param(l, tmp(a0)), param(l, tmp(astep)), param(l, tmp(b0)), param(l, tmp(bstep))], [
+    block(start, [], [
+        let(tmp(bytes), l, shl, [tmp(size), const(3)]),
+        let(tmp(three), p, alloc(8), [const(24)]),
+        let(tmp(r), p, alloc(8), [tmp(bytes)]),
+        let(tmp(a), p, alloc(8), [tmp(bytes)]),
+        let(tmp(b), p, alloc(8), [tmp(bytes)]),
+        call(void, global(fill), [arg(p, tmp(a)), arg(l, tmp(size)), arg(l, tmp(a0)), arg(l, tmp(astep))]),
+        call(void, global(fill), [arg(p, tmp(b)), arg(l, tmp(size)), arg(l, tmp(b0)), arg(l, tmp(bstep))]),
+        store(p, tmp(r), tmp(three)),
+        let(tmp(second), p, add, [tmp(three), const(8)]),
+        store(p, tmp(a), tmp(second)),
+        let(tmp(third), p, add, [tmp(three), const(16)]),
+        store(p, tmp(b), tmp(third))
+    ], ret(tmp(three)))
+]).
+
+% carry, then for each word of r: h = h * 1000003 + word.
+func(fold, local, l, [param(p, tmp(r)), param(l, tmp(n)), param(l, tmp(carry))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(i), l, [start-const(0), body-tmp(i1)]),
+        phi(tmp(h), l, [start-tmp(carry), body-tmp(h1)])
+    ], [
+        let(tmp(c), w, cmp(slt, l), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        let(tmp(o), l, shl, [tmp(i), const(3)]),
+        let(tmp(q), p, add, [tmp(r), tmp(o)]),
+        let(tmp(x), l, load(l), [tmp(q)]),
+        let(tmp(m), l, mul, [tmp(h), const(1000003)]),
+        let(tmp(h1), l, add, [tmp(m), tmp(x)]),
+        let(tmp(i1), l, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [], ret(tmp(h)))
+]).
+
+func(drive_add, export, l, [param(l, tmp(size)), param(l, tmp(n)), param(l, tmp(a0)), param(l, tmp(astep)), param(l, tmp(b0)), param(l, tmp(bstep))], [
+    block(start, [], [
+        call(result(tmp(three), p), global(operands), [arg(l, tmp(size)), arg(l, tmp(a0)), arg(l, tmp(astep)), arg(l, tmp(b0)), arg(l, tmp(bstep))]),
+        let(tmp(r), p, load(p), [tmp(three)]),
+        let(tmp(second), p, add, [tmp(three), const(8)]),
+        let(tmp(a), p, load(p), [tmp(second)]),
+        let(tmp(third), p, add, [tmp(three), const(16)]),
+        let(tmp(b), p, load(p), [tmp(third)]),
+        call(result(tmp(carry), l), global(bn_add_words), [arg(p, tmp(r)), arg(p, tmp(a)), arg(p, tmp(b)), arg(l, tmp(n))]),
+        call(result(tmp(h), l), global(fold), [arg(p, tmp(r)), arg(l, tmp(n)), arg(l, tmp(carry))])
+    ], ret(tmp(h)))
+]).
+
+func(drive_sub, export, l, [param(l, tmp(size)), param(l, tmp(n)), param(l, tmp(a0)), param(l, tmp(astep)), param(l, tmp(b0)), param(l, tmp(bstep))], [
+    block(start, [], [
+        call(result(tmp(three), p), global(operands), [arg(l, tmp(size)), arg(l, tmp(a0)), arg(l, tmp(astep)), arg(l, tmp(b0)), arg(l, tmp(bstep))]),
+        let(tmp(r), p, load(p), [tmp(three)]),
+        let(tmp(second), p, add, [tmp(three), const(8)]),
+        let(tmp(a), p, load(p), [tmp(second)]),
+        let(tmp(third), p, add, [tmp(three), const(16)]),
+        let(tmp(b), p, load(p), [tmp(third)]),
+        call(result(tmp(carry), l), global(bn_sub_words), [arg(p, tmp(r)), arg(p, tmp(a)), arg(p, tmp(b)), arg(l, tmp(n))]),
+        call(result(tmp(h), l), global(fold), [arg(p, tmp(r)), arg(l, tmp(n)), arg(l, tmp(carry))])
+    ], ret(tmp(h)))
+]).
+
+func(drive_leaky, export, l, [param(l, tmp(size)), param(l, tmp(n)), param(l, tmp(a0)), param(l, tmp(astep)), param(l, tmp(b0)), param(l, tmp(bstep))], [
+    block(start, [], [
+        call(result(tmp(three), p), global(operands), [arg(l, tmp(size)), arg(l, tmp(a0)), arg(l, tmp(astep)), arg(l, tmp(b0)), arg(l, tmp(bstep))]),
+        let(tmp(r), p, load(p), [tmp(three)]),
+        let(tmp(second), p, add, [tmp(three), const(8)]),
+        let(tmp(a), p, load(p), [tmp(second)]),
+        let(tmp(third), p, add, [tmp(three), const(16)]),
+        let(tmp(b), p, load(p), [tmp(third)]),
+        call(result(tmp(carry), l), global(leaky_add_words), [arg(p, tmp(r)), arg(p, tmp(a)), arg(p, tmp(b)), arg(l, tmp(n))]),
+        call(result(tmp(h), l), global(fold), [arg(p, tmp(r)), arg(l, tmp(n)), arg(l, tmp(carry))])
+    ], ret(tmp(h)))
+]).
