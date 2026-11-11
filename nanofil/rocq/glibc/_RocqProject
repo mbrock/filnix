@@ -42,3 +42,7 @@ string/MemchrFirst.v
 string/MemchrLogic.v
 string/StrnlenLogic.v
 hello/HelloGlibcLeaf.v
+libio/ExitRunCode.v
+libio/ExitRunTail.v
+libio/ExitRunLoop.v
+libio/ExitRun.v
