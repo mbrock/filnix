@@ -628,6 +628,60 @@ file_blurb('nanofil/rocq/glibc/hello/HelloGlibcProgLibs.v',
     "This proof verifies how GNU Hello removes libtool directory and filename prefixes from its program name.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcProgName.v',
     "This proof verifies GNU Hello's program-name setup using the compiled glibc string routines that inspect its path.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcXmalloc.v',
+    "GNU Hello's xmalloc uses the concrete glibc allocation proof.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainStreams.v',
+    "Concrete exit-stream predicates remain visible without exporting the flush proof modules.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainAlloc.v',
+    "The idle allocator predicate remains visible without exporting the allocation proofs.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcDebts.v',
+    "GNU Hello's remaining M4 and M6 obligations use concrete stream, string and OS resources.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsT.v',
+    "Link and object-layout facts connect GNU Hello to the proved glibc implementations.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsStr.v',
+    "Concrete glibc proofs discharge Hello's string, zeroing and errno calls.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainNameSearch.v',
+    "Sealed reverse-search and byte-comparison proofs support program-name selection.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsName.v',
+    "Hello's program-name call stores the selected suffixes in its global cells.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsSys.v',
+    "Concrete allocation, deallocation and exit-registration proofs discharge Hello's system calls.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsCleanup.v',
+    "The concrete stream-cleanup proof consumes the state left by Hello's close callback.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsExit.v',
+    "The concrete exit proof invokes Hello's registered callback and cleans up the streams.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainLibs.v',
+    "The completed library record combines concrete proofs, leaving only the explicit HelloDebts.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainLibsCalls.v',
+    "The sealed string and program-name call group keeps library composition within its compile budget.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainWitness.v',
+    "A concrete finite heap supplies three empty streams and the idle allocator without overlapping ownership.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainWitnessIO.v',
+    "The stream list, thread fields, errno and read-only stream resources coexist with the concrete stream and allocator fixture.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainSteps.v',
+    "Shared call and memory rules support the proof of Hello's main function.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainStart.v',
+    "Hello initializes its name, locale, greeting state and exit callback before the option loop.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainDispatch.v',
+    "The option-loop invariant supplies the resources required by each dispatch branch.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainLoop.v',
+    "Hello's option loop preserves its resources and safely dispatches to the proved branches.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainVersion.v',
+    "Hello's version branch prints its version and exits through the registered callback.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainHelpEnd.v',
+    "The help branch finishes its output and exits without returning to main.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainHelp.v',
+    "Hello's help branch uses the explicit output obligations and concrete library proofs.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainOperands.v',
+    "Hello checks remaining operands and either exits or proceeds to the greeting.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainTail.v',
+    "The greeting's final branches release their buffers and exit safely.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainGreet.v',
+    "Hello selects narrow or wide output and composes it with the final branches.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainFull.v',
+    "The complete main triple joins initialization, option parsing and every exit branch.").
+file_blurb('nanofil/rocq/glibc/hello/HelloGlibcJoin.v',
+    "Heap adequacy gives hello_never_panics under the concrete initial resources and explicit M4 and M6 obligations.").
 
 %  Live campaign: rocq/glibc/stdlib/
 file_blurb('nanofil/rocq/glibc/stdlib/AllocLogic.v',
