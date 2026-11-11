@@ -12,8 +12,10 @@ From Glibc Require Import OsBlocks OsWorld FileInv LibioDefaultXsputnBuf LibioXs
 From stdpp Require Import list.
 Import ListNotations.
 Open Scope Z_scope.
-Import HPI HPI.CS.SW.FI HPI.CS.SW.FI.ML HPI.CS.SW.FI.LG HPI.CS.SW.FI.L HPI.CS.SW.OW.
-Import HXB HXB.DX.RM.SM.TL.BY.BF.
+Import HP.PN.PB.PM.PC.PU.PL.
+Import PI PI.CS.SW.FI PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L PI.CS.SW.OW.
+Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
+Import XB XB.DX.RM.SM.TL.BY.BF.
 
 (** Stdout's static object contains the complete FILE and jump pointer. *)
 Definition hi_stdout_reg : region := mkRegion 69808 70032 GlobalData Live.

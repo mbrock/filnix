@@ -13,11 +13,12 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrap
   LibioCloseSteps LibioDefaultXsputnBuf HiAtexitBase HiAtexitGe HiAtexitOutputState.
 Import ListNotations.
 Open Scope Z_scope.
-Import HXB HXB.DX.RM.SM.TL.BY.BF HXB.DX.RM.SM.TL.BY.BF.CP
-  HXB.DX.RM.SM.TL.BY.BF.CP.CS HXB.DX.RM.SM.TL.BY.BF.CP.CS.SW
-  HXB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.ML HXB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.LG
-  HXB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.L HXB.DX.RM.SM.TL.BY.BF.CP.CS.SW.OW
-  HXB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI HXB.DX.RM.SM.TL.BY.BF.CP.CS.SW.ST.
+Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
+Import XB XB.DX.RM.SM.TL.BY.BF XB.DX.RM.SM.TL.BY.BF.CP
+  XB.DX.RM.SM.TL.BY.BF.CP.CS XB.DX.RM.SM.TL.BY.BF.CP.CS.SW
+  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.ML XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.LG
+  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.L XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.OW
+  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.ST.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

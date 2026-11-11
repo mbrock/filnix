@@ -15,7 +15,8 @@ From Glibc Require Import OsWorld OsRegistry FileInv WordString LibioPuts LibioP
   HiAtexitPutsXsputn HiAtexitPutsNl HiAtexitPutsOverflow HiAtexitPutsRules.
 Import ListNotations.
 Open Scope Z_scope.
-Import HPI HPI.CS.SW.FI HPI.CS.SW.FI.ML HPI.CS.SW.FI.LG HPI.CS.SW.FI.L.
+Import HP.PN.PB.PM.PC.PU.PL.
+Import PI PI.CS.SW.FI PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L.
 
 (** Proof-mode searches keep the stream and allocator resources
     folded instead of expanding their memory layouts. *)

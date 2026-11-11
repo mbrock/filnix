@@ -11,14 +11,16 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioDefaultXsputnBuf LibioXsputnBase LibioPutsInv HiAtexitBase HiAtexitOutputState.
+From Glibc Require Export HiAtexitPutsRules.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The stream views use the same interpreter logic as output. *)
-Module HPI := LibioPutsInvOn InterpRuntime HLG.
-Import HPI HPI.CS HPI.CS.SW HPI.CS.SW.FI.ML HPI.CS.SW.FI.LG HPI.CS.SW.FI.L
-  HPI.CS.SW.OW HPI.CS.SW.FI HPI.CS.SW.ST.
-Import HXB HXB.DX.RM.SM.TL.BY.BF.
+(** The stream views reuse the instance checked for the puts rule. *)
+Import HP.PN.PB.PM.PC.PU.PL.
+Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
+  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
+Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
+Import XB XB.DX.RM.SM.TL.BY.BF.
 
 Section streams.
 Context `{!gen_heapGS piece pval Σ}.

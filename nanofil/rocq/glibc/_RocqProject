@@ -263,3 +263,7 @@ hi_atexit/HiAtexitInitialAlloc.v
 hi_atexit/HiAtexitInitialStdout.v
 hi_atexit/HiAtexitInitialList.v
 hi_atexit/HiAtexitCleanup.v
+hi_atexit/HiAtexitExitEnv.v
+hi_atexit/HiAtexitInitialExit.v
+hi_atexit/HiAtexitExit.v
+hi_atexit/HiAtexitMain.v
