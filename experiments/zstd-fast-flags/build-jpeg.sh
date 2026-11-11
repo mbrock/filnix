@@ -3,10 +3,10 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-work=${1:?usage: build-jpeg.sh WORKDIR}
+work=${1:?usage: build-jpeg.sh WORKDIR [EXPRESSION]}
 mkdir -p "$work"
 work=$(realpath "$work")
-expr=$here/default.nix
+expr=${2:-$here/default.nix}
 build() { nix build --impure -f "$expr" "$1" --no-link --print-out-paths; }
 export FILC_CC=$(build filcc)/bin/clang
 export REAL_NASM=$(build pkgs.nasm)/bin/nasm
