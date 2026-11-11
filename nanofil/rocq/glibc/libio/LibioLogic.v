@@ -159,7 +159,9 @@ Ltac arith := cbn [ptr_addr ptr_cap]; unfold raw_address; unwrap; clear_junk;
 (** An address fact about FileInv.v's offsets, by arithmetic. *)
 Ltac ar := unfold off_cleanup, off_cleanup_jmp, off_cancelhandling, off_lk_lock, off_lk_cnt, off_lk_owner,
   off_flags, off_read_ptr, off_write_base, off_write_ptr, off_write_end, off_buf_base, off_buf_end,
-  off_chain, off_fileno, off_flags2, off_lock, off_wide, off_prevchain, off_mode, off_vtable, off_ptr; arith.
+  off_chain, off_fileno, off_flags2, off_lock, off_wide, off_prevchain, off_mode, off_vtable, off_ptr,
+  off_old_offset, off_column, off_shortbuf, off_offset, off_codecvt, off_freeres_list, off_freeres_buf,
+  off_total_written; arith.
 
 (** Write each address of the goal's environment without wraps. *)
 Ltac norm := cbn [ptr_addr ptr_cap]; unwrap.

@@ -20,10 +20,14 @@
     | 8 to 96 | the twelve buffer pointers, `c: _IO_read_ptr` to `c: _markers` | [pcell] each |
     | 104 | `c: _chain` | [pcell], by [io_list_inv] |
     | 112, 116 | `c: _fileno`, `c: _flags2` (24 bits) and `c: _short_backupbuf` | 4 [bytes] each |
+    | 120 | `c: _old_offset` | [icell] |
+    | 128 | `c: _cur_column`, `c: _vtable_offset`, `c: _shortbuf` (131) and padding | 8 [bytes] |
     | 136 | `c: _lock` | [pcell] |
-    | 160 | `c: _wide_data` | [pcell] |
+    | 144 | `c: _offset` | [icell] |
+    | 152 to 176 | `c: _codecvt`, `c: _wide_data`, `c: _freeres_list`, `c: _freeres_buf` | [pcell] each |
     | 184 | `c: _prevchain` | [pcell], by [io_list_inv] |
     | 192 | `c: int _mode` | 4 [bytes] |
+    | 200 | `c: _total_written` | [icell] |
     | 216 | the jump table pointer of `c: struct _IO_FILE_plus` | [pcell] |
 
     `c: _IO_lock_t` is `c: { int lock; int cnt; void *owner; }`; the
@@ -63,10 +67,18 @@ Definition off_buf_end : Z := 64.
 Definition off_chain : Z := 104.
 Definition off_fileno : Z := 112.
 Definition off_flags2 : Z := 116.
+Definition off_old_offset : Z := 120.
+Definition off_column : Z := 128.      (* `c: _cur_column`, `c: _vtable_offset`, `c: _shortbuf` at 131, padding *)
+Definition off_shortbuf : Z := 131.
 Definition off_lock : Z := 136.
+Definition off_offset : Z := 144.
+Definition off_codecvt : Z := 152.
 Definition off_wide : Z := 160.
+Definition off_freeres_list : Z := 168.
+Definition off_freeres_buf : Z := 176.
 Definition off_prevchain : Z := 184.
 Definition off_mode : Z := 192.
+Definition off_total_written : Z := 200.
 Definition off_vtable : Z := 216.
 (** The offsets in `c: struct pthread`. *)
 Definition off_cleanup : Z := 776.
@@ -274,9 +286,16 @@ Record fstate : Type := mkFstate {
   fs_ptrs : list ptr;    (* the twelve pointers from offset 8 *)
   fs_fileno : Z;
   fs_flags2 : Z;         (* the 4 bytes at 116 *)
+  fs_old_offset : Z;
+  fs_column : list Z;    (* the 8 bytes at 128, `c: _shortbuf` among them *)
   fs_lock : ptr;
+  fs_offset : Z;
+  fs_codecvt : ptr;
   fs_wide : ptr;
+  fs_freeres_list : ptr;
+  fs_freeres_buf : ptr;
   fs_mode : Z;           (* `c: _mode`'s bits *)
+  fs_total : Z;          (* `c: _total_written` *)
   fs_vtable : ptr
 }.
 
@@ -290,8 +309,13 @@ Definition file_fields (fb : Z) (st : fstate) : iProp Σ :=
   int_cell fb off_flags (fs_flags st) ∗
   ([∗ list] i ↦ p ∈ fs_ptrs st, pcell fb (off_ptr i) p) ∗
   int_cell fb off_fileno (fs_fileno st) ∗ int_cell fb off_flags2 (fs_flags2 st) ∗
-  pcell fb off_lock (fs_lock st) ∗ pcell fb off_wide (fs_wide st) ∗
-  int_cell fb off_mode (fs_mode st) ∗ pcell fb off_vtable (fs_vtable st).
+  icell fb off_old_offset (fs_old_offset st) ∗
+  ⌜length (fs_column st) = 8%nat⌝ ∗ bytes fb off_column (fs_column st) ∗
+  pcell fb off_lock (fs_lock st) ∗ icell fb off_offset (fs_offset st) ∗
+  pcell fb off_codecvt (fs_codecvt st) ∗ pcell fb off_wide (fs_wide st) ∗
+  pcell fb off_freeres_list (fs_freeres_list st) ∗ pcell fb off_freeres_buf (fs_freeres_buf st) ∗
+  int_cell fb off_mode (fs_mode st) ∗ icell fb off_total_written (fs_total st) ∗
+  pcell fb off_vtable (fs_vtable st).
 
 (** The buffer pointers of a stream with the buffer nb, as glibc
     leaves them between calls: none, or the base and end of the
