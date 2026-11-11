@@ -1,13 +1,15 @@
-(** The triple of `c: _IO_setb` (LibioReadCode.v), which sets a
-    stream's buffer: it frees the old one when the stream owns it,
-    stores the new base and end, and sets `c: _IO_USER_BUF` when the
-    caller keeps the new buffer.
+(** `c: _IO_setb` (LibioReadCode.v) sets a stream's buffer. It frees
+    the old buffer when the stream owns it, stores the new base and
+    end, and sets `c: _IO_USER_BUF` when the caller keeps the new
+    buffer.
 
-    The old base is null, as when `c: _IO_doallocbuf` or
-    `c: _IO_file_doallocate` installs a first buffer, or a heap buffer
-    the stream owns, `c: _IO_USER_BUF` clear, as when
-    `c: _IO_new_file_close_it` drops it: [old_base]. `c: free` is the
-    model's free of a heap object ([heap_fns]). *)
+    The proof covers two kinds of old buffer. Either the old base is
+    null, as when a stream gets its first buffer, or it is a heap
+    buffer that the stream owns, as when a stream is closed
+    ([old_base]). The call of `c: free` is assumed as a rule,
+    [free_rule]. [heap_free_rule] proves the rule when `c: free` is
+    the model's own ([heap_fns]); a program that links glibc's
+    `c: free` proves it from that function's triple. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -61,11 +63,36 @@ Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hheap : heap_fns ge).
 
+(** The Iris instance for registry and [os_wi] w0. *)
 Local Instance setb_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** The call `c: free(p)` at any call site, p the own pointer of the
+    live heap object b: b's life is given up and the rest of the block
+    runs. *)
+Definition free_rule : Prop := forall f e ls l v rest j b reg Φ,
+  arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> 0 < b < 2 ^ 64 ->
+  live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : sexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global (TAtom "free")) [Arg P v] :: rest) j)) : sexpr)
+    {{ Φ }}.
+
+(** Where `c: free` is the model's free of a heap object, [free_rule]
+    holds: the model frees b, and [os_wi] keeps no piece of a heap
+    object. *)
+Lemma heap_free_rule : heap_fns ge -> free_rule.
+Proof.
+  intros (Hfh & Hff & Hfd & _) f e ls l v rest j b reg Φ Hx Hk Hb. iIntros "Hbl HK".
+  iApply (wp_free_sym _ _ _ (TAtom "free") with "Hbl"); [reflexivity | exact Hfh | exact Hff | exact Hfd | exact Hx |
+    exact Hk | lia | |].
+  { intros m wd h rs Hh Hrs Hw. exact (os_wi_free w0 m wd h b reg rs Hk Hh Hrs Hw). }
+  iExact "HK".
+Qed.
+
+(** The call of `c: free` is [free_rule]'s. *)
+Context (Hfree : free_rule).
 
 (** [old_base] fl ob: the old base ob is null, or a live heap buffer
     the stream owns, `c: _IO_USER_BUF` clear in fl. *)
@@ -125,6 +152,9 @@ Proof.
   iIntros "Hl [%Hf Hfl] Hb He HK". st. setb_tail a fl.
 Qed.
 
+(** `c: _IO_setb(fp, b, eb, a)`, the old base [old_base]: the old
+    buffer freed if the stream owned it, the new base and end stored,
+    and the flags [setb_flags]. *)
 Lemma wp_glibc__IO_setb fr fb freg fl ob oe nb ne a Φ :
   call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
@@ -145,10 +175,8 @@ Proof.
     iNext. iIntros "Hl Hb Hbl". st. st. brv false. st. chk "Hl". load_int "Hl Hfl". st. st. st.
     unfold io_user_buf in Huser. st. brv false. st. st.
     iApply (wp_raw_load_pointer with "Hl Hb Hbl"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hb Hbl". destruct Hheap as (Hfh & Hff & Hfd & _).
-    iApply (wp_free_sym _ _ _ (TAtom "free") with "Hbl"); [reflexivity | exact Hfh | exact Hff | exact Hfd | reflexivity |
-      exact Hk | lia | |].
-    { intros m wd h rs Hh Hrs Hw. exact (os_wi_free w0 m wd h bb breg rs Hk Hh Hrs Hw). }
+    iNext. iIntros "Hl Hb Hbl".
+    iApply (Hfree with "Hbl"); [reflexivity | exact Hk | lia |].
     iNext. st.
     iApply (wp_setb_tail with "Hl [$Hfl //] Hb He HK"); try side.
   Unshelve. exact freg.
