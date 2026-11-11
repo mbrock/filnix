@@ -177,14 +177,17 @@ Local Instance pn_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanof
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** HelloGlibcLeaf.v's [memcmp_spec], over this file's byte pieces: a
-    call triple for the function at `memcmp` that returns an int that
-    is 0 just when the bytes are equal. *)
+    call triple for the function at `memcmp` that, on fewer than 16
+    bytes, returns an int that is 0 just when they are equal.
+    Only fewer than 16 bytes: from 16 bytes on glibc's own memcmp
+    reads words through pointers it rebuilds from integers, which have
+    no capability, so it traps (MemcmpLogic.v's header). *)
 Definition memcmp_spec : Prop :=
   exists F, find_fn ge (TAtom "memcmp") = Some (Defined F) /\
   (forall p q n, is_Some (call_frame F [WPtr p; WPtr q; WInt n])) /\
   forall fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ,
     call_frame F [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length xs))] = Some fr ->
-    (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> length ys = length xs ->
+    (length xs < 16)%nat -> (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> length ys = length xs ->
     0 <= o -> 0 <= o' -> b + o + Z.of_nat (length xs) <= r_end reg ->
     b' + o' + Z.of_nat (length xs) <= r_end reg' -> r_end reg <= 2 ^ 48 -> r_end reg' <= 2 ^ 48 ->
     Forall (fun x => 0 <= x < 256) xs -> Forall (fun x => 0 <= x < 256) ys ->
@@ -255,9 +258,9 @@ Qed.
 (** ## The calls and the stores *)
 
 (** HelloGlibcLeaf.v's [memeq_glibc] over this file's [memcmp_spec],
-    for pointers q and q' that name the bytes: `memeq` returns 1 just
-    when the n bytes are equal, and 0 otherwise. *)
-Lemma memeq_call (Hcmp : memcmp_spec) dq1 dq2 q q' n b reg o xs b' reg' o' ys Φ : 0 < b ->
+    for pointers q and q' that name fewer than 16 bytes: `memeq` returns
+    1 just when the n bytes are equal, and 0 otherwise. *)
+Lemma memeq_call (Hcmp : memcmp_spec) dq1 dq2 q q' n b reg o xs b' reg' o' ys Φ : 0 < b -> (length xs < 16)%nat ->
   ptr_addr q = b + o -> ptr_addr q' = b' + o' -> n = Z.of_nat (length xs) ->
   (ptr_cap q = Obj b \/ ptr_cap q = Ro b) -> (ptr_cap q' = Obj b' \/ ptr_cap q' = Ro b') -> length ys = length xs ->
   0 <= o -> 0 <= o' -> b + o + Z.of_nat (length xs) <= r_end reg ->
@@ -269,13 +272,13 @@ Lemma memeq_call (Hcmp : memcmp_spec) dq1 dq2 q q' n b reg o xs b' reg' o' ys Φ
   WP (ERun (invocation memeq_fn [WPtr q; WPtr q'; WInt n]) : gexpr) {{ Φ }}.
 Proof.
   destruct Hcmp as (F & HF & Hfr & Hspec). destruct q as [a c], q' as [a' c']. cbn [ptr_addr ptr_cap].
-  intros Hb0 -> -> -> Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HΦ". rewrite memeq_entry.
+  intros Hb0 H16 -> -> -> Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HΦ". rewrite memeq_entry.
   assert (Hn : Z.of_nat (length xs) < 2 ^ 64) by lia.
   destruct (Hfr (mkPtr (b + o) c) (mkPtr (b' + o') c') (Z.of_nat (length xs))) as [fr Hfr'].
   iApply wp_enter; [exact find_e_start | reflexivity |]. iNext. cbn [b_insts b_jump e_start].
   iApply (wp_call_bind with "[-]"); [cbn; rewrite (Z.mod_small (Z.of_nat (length xs))); [reflexivity | lia]
     | exact HF | exact Hfr' |]. iNext.
-  iApply (Hspec with "Hl Hx Hl' Hy"); [exact Hfr' | exact Hc | exact Hc' | exact Hly | exact Ho | exact Ho'
+  iApply (Hspec with "Hl Hx Hl' Hy"); [exact Hfr' | exact H16 | exact Hc | exact Hc' | exact Hly | exact Ho | exact Ho'
     | exact Hend | exact Hend' | exact Hr | exact Hr' | exact Hx | exact Hy |].
   iIntros (k Hk) "Hl Hx Hl' Hy". iExists _. iSplit; [done|]. iNext.
   iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext].

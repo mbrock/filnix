@@ -27,6 +27,8 @@ string/StrcmpLoop.v
 string/StrcmpLogic.v
 string/StrncmpCode.v
 string/MemcmpCode.v
+string/MemrchrCode.v
+string/MemcmpLogic.v
 string/StrchrCode.v
 string/MemFwdCode.v
 string/MallocCode.v
@@ -41,6 +43,10 @@ string/MemchrFirst.v
 string/MemchrLogic.v
 string/StrnlenLogic.v
 string/StrrchrLogic.v
+string/MemrchrBits.v
+string/MemrchrLoop.v
+string/MemrchrMask.v
+string/MemrchrLogic.v
 string/StrchrnulLogic.v
 string/StrncmpBits.v
 string/StrncmpLoop.v
@@ -50,6 +56,7 @@ hello/HelloGlibcLeaf.v
 hello/HelloGlibcProgCells.v
 hello/HelloGlibcProgLibs.v
 hello/HelloGlibcProgName.v
+hello/HelloGlibcProgClosed.v
 libio/SysCode.v
 libio/LibioReadCode.v
 libio/LibioDoWriteCode.v

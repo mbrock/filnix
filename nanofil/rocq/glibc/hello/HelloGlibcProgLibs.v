@@ -120,7 +120,7 @@ Proof.
                                     WPtr lp; WInt 7])); [word_premise | exact Hmemeq | reflexivity |].
     iNext.
     iApply (memeq_call Hcmp dq DfracDiscarded _ _ 7 b1 reg1 _ _ b2 reg2 _ _ with "Hl1 Hx1 Hl2 Hx2");
-      [lia | reflexivity | cbn; lia | rewrite length_take length_drop; lia | exact Hc1 | exact Hc2
+      [lia | rewrite length_take; lia | reflexivity | cbn; lia | rewrite length_take length_drop; lia | exact Hc1 | exact Hc2
       | rewrite length_take length_drop; unfold libs_bytes; cbn [length]; lia | lia | lia | rewrite length_take length_drop; lia
       | rewrite length_take length_drop; lia | exact Hr1 | exact Hr2
       | apply Forall_take, Forall_drop; eapply Forall_impl; [exact Hch | intros x Hx; cbn in Hx; lia]
