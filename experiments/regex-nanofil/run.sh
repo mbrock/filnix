@@ -15,6 +15,12 @@
 #                         Rocq (compile-allocated: promotion, copy
 #                         propagation, selected branches and register
 #                         allocation): here and in rxc
+#   LIBNANOFIL=DIR ./run.sh
+#                         then also the hook built in-process
+#                         (PCRE2_RX_NANOFIL), linked with the libnanofil.so
+#                         and nanofil.h in DIR (nanofil/anf/lib), run
+#                         under FUGC_SCRIBBLE=1 FUGC_VERIFY=1 by hook.c and
+#                         by pcre2test -jit on PCRE2's testinput1 and 2
 #
 # Needs nix, GNU as, and the PCRE2 source and Fil-C build that
 # ../pcre2-sljit-llvm/run.sh leaves in $WORK. SWIPL and TPL name the
@@ -118,3 +124,35 @@ echo "empty cache:"
 PCRE2_RX_COMPILER=$here/rxc ./hook "$BUDGET"
 echo "full cache, no compiler:"
 ./hook 0 | tail -n 1
+
+[ -n "${LIBNANOFIL:-}" ] || exit 0
+
+# In-process: no cache, no compiler to run. The source is patched again
+# so that this tree has the current hook.
+inproc=$WORK/build/filc-rx-nanofil
+rm -rf "$WORK/pcre2-rxn"
+cp -r "$WORK/pcre2-match" "$WORK/pcre2-rxn"
+patch -s -d "$WORK/pcre2-rxn" -p1 <"$here/pcre2-rx-hook.patch"
+cp "$here/pcre2_rx_inc.h" "$here/pcre2_rx_terms.h" "$WORK/pcre2-rxn/src/"
+mkdir -p "$inproc"
+(cd "$inproc" &&
+  { [ -e Makefile ] || "$WORK/pcre2-rxn/configure" --disable-shared --disable-jit CC="$filcc" \
+      CFLAGS="-O2 -DPCRE2_RX_NANOFIL -I$LIBNANOFIL" \
+      LIBS="-L$LIBNANOFIL -lnanofil -Wl,-rpath,$LIBNANOFIL" >configure.log; } &&
+  make -j"$(nproc)" libpcre2-8.la pcre2test >make.log 2>&1)
+"$filcc" -O2 -I"$inproc/src" -I"$here/../pcre2-sljit-llvm" -I"$here" -o hook-nanofil "$here/hook.c" \
+  "$inproc/.libs/libpcre2-8.a" -L"$LIBNANOFIL" -lnanofil -Wl,-rpath,"$LIBNANOFIL"
+unset PCRE2_RX_CACHE PCRE2_RX_COMPILER
+echo "in-process:"
+FUGC_SCRIBBLE=1 FUGC_VERIFY=1 ./hook-nanofil "$BUDGET"
+
+# PCRE2's own tests through pcre2_jit_compile. testinput2 loads custom
+# tables, which the hook leaves to the interpreter; its output is held
+# to the same build's with the JIT off.
+tests=$WORK/pcre2-rxn/testdata
+FUGC_SCRIBBLE=1 FUGC_VERIFY=1 "$inproc/pcre2test" -q -jit "$tests/testinput1" testoutput1.jit
+cmp testoutput1.jit "$tests/testoutput1" && echo "pcre2test -jit testinput1: same as testoutput1"
+LC_ALL=C grep -a -v '^#loadtables' "$tests/testinput2" >testinput2
+"$inproc/pcre2test" -q testinput2 testoutput2.nojit || true
+FUGC_SCRIBBLE=1 FUGC_VERIFY=1 "$inproc/pcre2test" -q -jit testinput2 testoutput2.jit || true
+cmp testoutput2.jit testoutput2.nojit && echo "pcre2test -jit testinput2: same as without the JIT"

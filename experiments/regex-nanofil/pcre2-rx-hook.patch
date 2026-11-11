@@ -78,7 +78,7 @@ diff -ru a/src/pcre2_jit_compile.c b/src/pcre2_jit_compile.c
  #ifdef SUPPORT_JIT
    return executable_allocator_is_working ? 0 : PCRE2_ERROR_NOMEMORY;
 +#elif defined SUPPORT_FILC_RX
-+  return rx_cache() != NULL ? 0 : PCRE2_ERROR_JIT_UNSUPPORTED;
++  return rx_available() ? 0 : PCRE2_ERROR_JIT_UNSUPPORTED;
  #else
    return PCRE2_ERROR_JIT_UNSUPPORTED;
  #endif

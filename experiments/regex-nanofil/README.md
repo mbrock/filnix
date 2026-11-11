@@ -214,13 +214,42 @@ patch, so it is faster than the "Fil-C interpreter" column below.
 - A pattern known to be unsupported costs about 0.12 ms per
   `pcre2_jit_compile`.
 
+### In process
+
+The hook can also compile a pattern in the process that asked for it.
+It does so when the library is built with `PCRE2_RX_NANOFIL` defined
+and linked with [libnanofil](../../nanofil/anf/lib/README.md). `pcre2_jit_compile` writes
+the terms as before, and `nanofil_compile_regex` turns them into a
+shared object. That call runs [Rx.v](../../nanofil/anf/rx/Rx.v), the
+Gallina port of `rx.pl`, and then the Gallina backend, assembler and
+linker, all compiled to Fil-C through λANF. `nanofil_load` loads the
+shared object from a memfd. There is no cache directory, no compiler
+to run and no environment variable, and nothing is written to disk.
+`LIBNANOFIL=DIR ./run.sh` builds this library and runs the checks
+below under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
+
+- `hook.c` compiles 39 of its 41 patterns, as with the cache, and all
+  of them agree with the interpreter.
+- `pcre2test -jit testinput1` gives exactly `testoutput1`, and
+  `testinput2` gives what the build without the JIT gives.
+- `pcre2_jit_compile` takes from 10 to 141 ms for one of the 39
+  patterns, and 1.6 s for all of them, where rxc takes 12 s on an
+  empty cache. A cache hit costs less than 1 ms, so a program that
+  compiles the same pattern many times pays more in process.
+- The functions run as fast as the cached ones.
+- A pattern that rx.pl does not compile stays on the interpreter, and
+  so does one whose function has more than 128 blocks.
+- Fil-C's `dlclose` leaves a shared object loaded. So the object of
+  each pattern compiled, from 13 to 140 KB, stays mapped until the
+  process exits, even after the code is freed.
+
 ### Open
 
 - Where the cache lives and who fills it: per user on first use, as here,
   or a system directory filled when a package is built.
 - The compiler is a checkout of this repository plus SWI-Prolog, `as` and
   `ld`. A packaged one would be a saved state, or Trealla at the cost
-  under [Trealla](#trealla).
+  under [Trealla](#trealla). In process, it is libnanofil.
 - The key should cover the compiler's version once one is shipped.
 - Conditions, recursion, backreferences and the backtracking verbs are the
   unsupported opcodes that PCRE2's tests use most.

@@ -32,7 +32,14 @@
    Without PCRE2_RX_CACHE the library behaves as one built with
    --disable-jit. A cache directory belongs to one compiler: the key
    covers the bytecode and this file's interface, not the version of
-   rx.pl or nanofil. */
+   rx.pl or nanofil.
+
+   Built with PCRE2_RX_NANOFIL defined and linked with libnanofil
+   (nanofil/anf/lib), the library compiles in its own process instead:
+   nanofil_compile_regex turns the terms into a shared object in
+   memory, and nanofil_load loads it from a memfd. There is no cache
+   directory, no compiler to run and no environment variable, and the
+   JIT is always available. */
 
 #include <dlfcn.h>
 #include <errno.h>
@@ -45,6 +52,10 @@
 #include <unistd.h>
 
 #include "pcre2_rx_terms.h"
+
+#ifdef PCRE2_RX_NANOFIL
+#include "nanofil.h"
+#endif
 
 /* Bump when the terms or the function's contract change. */
 #define RX_INTERFACE 2
@@ -74,6 +85,16 @@ static const char *rx_cache(void)
     if ((st.st_uid != geteuid() && st.st_uid != 0) || (st.st_mode & (S_IWGRP | S_IWOTH)) != 0)
         return NULL;
     return dir;
+}
+
+/* Whether pcre2_jit_compile can give a pattern a function. */
+static int rx_available(void)
+{
+#ifdef PCRE2_RX_NANOFIL
+    return 1;
+#else
+    return rx_cache() != NULL;
+#endif
 }
 
 /* Two FNV-1a hashes of the text. A collision cannot load the wrong
@@ -173,6 +194,36 @@ static rx_executable *rx_load(const char *path, pcre2_memctl *memctl)
     return rx;
 }
 
+#ifdef PCRE2_RX_NANOFIL
+/* The function for these terms, compiled and loaded in this process. */
+static rx_executable *rx_build(const char *text, size_t length, pcre2_memctl *memctl)
+{
+    char *image = NULL;
+    size_t size = 0;
+    rx_executable *rx;
+    rx_function *match;
+    void *handle;
+    if (nanofil_compile_regex(text, length, &image, &size) != NANOFIL_OK) {
+        free(image);
+        return NULL;
+    }
+    handle = nanofil_load(image, size);
+    free(image);
+    if (handle == NULL)
+        return NULL;
+    match = (rx_function *)dlsym(handle, "rx_m");
+    rx = match == NULL ? NULL : memctl->malloc(sizeof *rx, memctl->memory_data);
+    if (rx == NULL) {
+        dlclose(handle);
+        return NULL;
+    }
+    rx->handle = handle;
+    rx->match = match;
+    rx->size = size;
+    return rx;
+}
+#endif
+
 /* The function for these terms: from the cache, or compiled into it. */
 static rx_executable *rx_find(const char *dir, const char *text, size_t length, pcre2_memctl *memctl)
 {
@@ -217,7 +268,7 @@ static int rx_compile(pcre2_real_code *re, uint32_t options)
     char *text = NULL;
     size_t length = 0;
     FILE *f;
-    if (dir == NULL)
+    if (!rx_available())
         return PCRE2_ERROR_JIT_BADOPTION;
     if ((re->flags & PCRE2_NOJIT) != 0 || (options & PCRE2_JIT_COMPLETE) == 0 || re->executable_jit != NULL ||
         rx_unsupported(NULL, re) != 0)
@@ -231,7 +282,12 @@ static int rx_compile(pcre2_real_code *re, uint32_t options)
         free(text);
         return PCRE2_ERROR_NOMEMORY;
     }
+#ifdef PCRE2_RX_NANOFIL
+    (void)dir;
+    re->executable_jit = rx_build(text, length, &re->memctl);
+#else
     re->executable_jit = rx_find(dir, text, length, &re->memctl);
+#endif
     free(text);
     return 0;
 }
