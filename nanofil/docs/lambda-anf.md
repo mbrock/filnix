@@ -95,46 +95,51 @@ build prints identical assembly bytes:
 | Crane C++ (M8 `rc.h`) | 0.96 s / 4.75 s | 1.30 s / 4.59 s | 55 / 382 MB |
 | Crane C++ (M8 `libgc`) | 1.01 s / 5.07 s | 1.50 s / 4.82 s | 79 / 436 MB |
 | Crane C++ (256 MB heap) | 0.76 s / — | 1.01 s / — | 285 MB / — |
-| CertiRocq C (`clang -O1`, raw) | 8.89 s / 48.95 s | 13.77 s / 91.42 s | 185 / 1065 MB |
-| CertiRocq C (`clang -O1`, folded + `overrides.c`) | 1.06 s / 8.07 s | 1.32 s / 6.66 s | 101 / 648 MB |
-| CertiRocq C (`filcc -DVERIFFI`, raw) | 165.4 s / — | — | 994 MB / — |
-| CertiRocq C (`filcc -DVERIFFI`, folded + `overrides.c`) | 9.54 s / — | 10.40 s / — | 512 / 433 MB |
+| Crane `joom/refactor` (native) | 0.70 s / 3.56 s | 0.89 s / 3.28 s | 41 / 297 MB |
+| Crane `joom/refactor` (`filcc`) | 9.66 s / 51.0 s | 12.78 s / 45.9 s | 228 / 1200 MB |
+| CertiRocq C (`clang`, raw) | 8.89 s / 48.95 s | 13.77 s / 91.42 s | 185 / 1065 MB |
+| CertiRocq C (`clang`, folded) | 1.06 s / 8.07 s | 1.32 s / 6.66 s | 101 / 648 MB |
+| CertiRocq C (`filcc`, raw) | 165.4 s / — | — | 994 MB / — |
+| CertiRocq C (`filcc`, folded) | 9.54 s / — | 10.40 s / — | 512 / 433 MB |
 
-### What M6 and M8 actually found on Crane C++
+### What M6, M8, and `joom/refactor` found on Crane C++
 
-Bloomberg's Crane extracts the backend to 36,106 lines of C++23. The
-M6 and M8 profiles in [gallina-backend.md](gallina-backend.md) rule out
-any single switch closing the 2.8–3.1× gap to `ocamlopt`:
+Bloomberg's Crane extracts the backend to C++ ([gallina-backend.md](gallina-backend.md)).
+Across M6, M8, and a follow-up round on Crane's `joom/refactor` branch
+(`fa70df57`, 50 separately extracted C++26 files with `Loopify`,
+`NonAtomicRc`, and `SharedVariant`):
 
-- **Reference counting costs copies as well as destruction.** At M6
-  (`2.40 s` on `rx.ir`), `perf record` found about 15% of time in
-  freeing reference-counted `Term` trees (emptying `~Term` by hand
-  dropped `rx.ir` to `2.05 s` and `lvm.ir` from `8.36 s` to `7.22 s`),
-  another 15% copying and moving `Term` variants, and 7% in `memmove`.
+- **Reference counting and `SharedVariant` reach ~2× natively.** At M6
+  (`2.40 s` on `rx.ir`), `perf record` found ~15% of time in freeing
+  reference-counted `Term` trees (`2.40 s → 2.05 s` when `~Term` was
+  emptied), ~15% copying/moving `Term` variants, and 7% in `memmove`.
   M8's `FastVariant`, `BoxedFields`, `BoundedNesting` and early-exit
-  `Loopify` brought `rx.ir` down to `0.96 s`, and stalled there.
-- **24-byte `Term` values and recursion.** Even with `Set Crane GC`
-  making all 52 inductives trivially copyable and trivially
-  destructible, `Term` stays 24 bytes — wider than the 16-byte register
-  threshold of the x86-64 SysV ABI. Of the 12 recursive functions
-  `Loopify` declined, `clang` turned no more into loops under `CRANE_GC`
-  than under reference counts: five kept self-calls in both builds, six
-  were inlined, and one had none.
-- **General-purpose non-moving GC drowns in tiny allocations.** On
-  `rx.ir`, `compile` makes **17.65 million allocations**, 14 million of
-  them 32 bytes or smaller. Under native Boehm `libgc` (after clearing
-  stale variant bytes so the live heap stayed near 30 MB rather than
-  174 MB), **65–70%** of wall time was inside `libgc` itself, leaving
-  about **0.30 s** of mutator work — essentially the whole runtime of
-  the `ocamlopt` build (`0.34 s`). Even with a 256 MB initial heap and
-  only four collections, `libgc` took 48% of the time in allocation.
-- **`filcc` did not finish compiling the C++ unit.** When the `CRANE_GC`
-  build was handed to `filcc` against Fil-C's `boehmgc` (FUGC behind
-  Boehm's API), compilation did not finish: after 17 CPU minutes (and
-  three minutes at `-O1`) at **8.9 GB** RSS, 98% of samples were in the
-  Fil-C pass's `computeFrameIndexMap`. The build was stopped without
-  establishing why `computeFrameIndexMap` blew up on that unit, so
-  nothing is measured of FUGC's runtime speed on Crane's output.
+  `Loopify` brought `rx.ir` to `0.96 / 1.30 s`, and `joom/refactor`'s
+  one-word `SharedVariant` reaches **`0.70 / 0.89 s` at `41 MB`** on
+  `rx.ir` (`3.56 / 3.28 s` at `297 / 283 MB` on `lvm.ir`, vs. `0.36 /
+  0.46 s` and `1.92 / 1.85 s` in that round's `ocamlopt` run; native
+  extraction takes `13–15 s` and 16-core `clang -O2` takes `50 s`).
+- **24-byte `Term` values and recursion on the M8 pin.** Under M8's
+  `Set Crane GC`, all 52 inductives became trivially copyable and
+  trivially destructible, while `Term` stayed 24 bytes — wider than the
+  16-byte register threshold of the x86-64 SysV ABI. Of the 12 recursive
+  functions `Loopify` declined, `clang` turned no more into loops under
+  `CRANE_GC` than under reference counts (five kept self-calls in both
+  builds, six were inlined, one had none).
+- **Non-moving collectors drown in tiny functional allocations — both in `libgc` and in FUGC.**
+  On `rx.ir`, `compile` makes **17.65 million allocations**, 14 million
+  of them 32 bytes or smaller. Under native Boehm `libgc` (`1.01 s`),
+  **65–70%** of wall time was inside `libgc` (48% even with a 256 MB
+  initial heap), leaving ~**0.30 s** of mutator work. On M8's monolithic
+  36k-line C++ file, `filcc` stopped in `FilPizlonator`'s
+  `computeFrameIndexMap` at **8.9 GB** / 17 CPU minutes (cause not
+  established). Splitting into 50 files on `joom/refactor` lets `filcc
+  -std=c++2c -O2` finish in 8 minutes wall (38 CPU minutes, largest file
+  2.0 GB) and run cleanly — at **`9.66 / 12.78 s` (`228 MB`) on `rx.ir`**
+  and **`51.0 / 45.9 s` (`1.2 / 1.1 GB`) on `lvm.ir`**, essentially tied
+  with folded CertiRocq C under `filcc` (`9.54 / 10.40 s`). By `perf` on
+  `rx.ir`, **78% of samples are in the Fil-C runtime and 63% in FUGC
+  marking**: the collector, not the generated C++, dominates.
 
 ### Why `ocamlopt` runs in 0.34 s — and why it cannot be `libnanofil`
 
@@ -688,7 +693,7 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 | Status | Claim and basis / measurement needed |
 |---|---|
 | **Known** | `ocamlopt` compiles `rx.ir` in `0.26–0.34 s` (`56–60 MB`); Crane C++ mutator work is `~0.30 s` alongside `65–70%` in `libgc` over 17.65M allocations ([gallina-backend.md](gallina-backend.md), M6/M8) |
-| **Known** | `filcc` hit 8.9 GB / 17 min in `computeFrameIndexMap` on Crane's monolithic 36k-line C++; stopped without diagnosing the pass or measuring FUGC at run time (M8) |
+| **Known** | Crane `joom/refactor` (`SharedVariant`, 50 C++ files) reaches **`0.70 / 0.89 s`** (`41 MB`) natively on `rx.ir`, and compiles under `filcc` in 8 min wall (38 CPU min; monolithic M8 stopped at 8.9 GB in `computeFrameIndexMap`), running `rx.ir` in **`9.66 / 12.78 s`** (`228 MB`) and `lvm.ir` in **`51.0 / 45.9 s`** (`1.2 / 1.1 GB`) — 78% in the Fil-C runtime, **63% in FUGC marking** ([gallina-backend.md](gallina-backend.md)) |
 | **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: raw native `clang -O1` takes `8.89–13.77 s` on `rx.ir` (`165.4 s` / `994 MB` under `filcc -DVERIFFI`), while static string folding + `overrides.c` brings native C to **`1.06–1.32 s`** on `rx.ir` (`6.19–8.07 s` on `lvm.ir`) and `filcc -DVERIFFI -O1` (`143 s` build) to **`9.54 s` / `8.39 s` / `10.40 s`** (`424–512 MB`) on `rx.ir` ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
 | **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
