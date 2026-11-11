@@ -23,6 +23,9 @@ string/WordString.v
 string/StrlenLoop.v
 string/StrlenWord.v
 string/StrcmpCode.v
+string/StrcmpBits.v
+string/StrcmpLoop.v
+string/StrcmpLogic.v
 string/StrncmpCode.v
 string/MemcmpCode.v
 string/StrchrCode.v
