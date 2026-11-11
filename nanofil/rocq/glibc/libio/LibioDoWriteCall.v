@@ -62,18 +62,19 @@ Context (Hfw_spec : forall fr fb freg fl f2 fd tw off b reg o xs eb Φ,
 
 (** The rest of the block once the write returned, as
     LibioDoWriteRet.v proves it ([wp_do_write_ret]). *)
-Context (Hret_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e Φ,
+Context (Hret_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e mode Φ,
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "iw_1.v67") e = Some (WInt r) ->
-  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
   bytes fb off_column [0; 0] -∗
-  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      pcell fb off_read_ptr base -∗ pcell fb 16 base -∗ pcell fb 24 base -∗ pcell fb off_write_base base -∗
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗ bytes fb off_column [0; 0] -∗
@@ -83,7 +84,7 @@ Context (Hret_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e Φ,
 
 (** Block `c: iw_1.L9` of `c: _IO_new_do_write` on: the jump table
     validated, its write slot called, and the end of the call. *)
-Lemma wp_do_write_call fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb vreg e from Φ :
+Lemma wp_do_write_call fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb vreg e from mode Φ :
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
@@ -93,6 +94,7 @@ Lemma wp_do_write_call fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v2") e = Some (WPtr wb) -> lookup (TAtom "v4") e = Some (WInt n) ->
   vtables_ro ge vb vreg -∗
@@ -100,19 +102,19 @@ Lemma wp_do_write_call fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb
   icell fb off_total_written tw -∗ icell fb off_offset off -∗ live bb breg -∗ bytes bb i xs -∗ errno_any eb -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 wb -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   ▷ (∀ r fl' tw' off', ⌜fw_post n fl r fl' /\ 0 <= fl' < 2 ^ 32⌝ -∗
      live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
      icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ live bb breg -∗ bytes bb i xs -∗ errno_any eb -∗
      pcell fb off_read_ptr base -∗ pcell fb 16 base -∗ pcell fb 24 base -∗ pcell fb off_write_base base -∗
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl' 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-     bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+     bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L9") (Some from))) : sexpr) {{ Φ }}.
 Proof.
   intros n wb base Hn0 Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr Happ He Hb Hi Hbend Hbreg Hy
-    Hbe Hbec Hv0 Hc0 Hv2 Hv4.
+    Hbe Hbec Hmd Hv0 Hc0 Hv2 Hv4.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp HK".
   unfold file_size in Hend. unfold io_is_appending in Happ.
   iPoseProof (vtables_slot ge vb vreg slot_write "_IO_new_file_write" with "Hvt") as "#Hsw"; [cbn; tauto|].
