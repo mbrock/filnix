@@ -419,17 +419,29 @@ an invocation exists. FILE readiness is structural, not a native FILE
 decoder; the synthetic descriptor's binding to actual private libc
 storage and the thread's errno remains a trusted linking obligation.
 
-Next, prove live-disjointness/runtime readiness and allocate this joint
-bundle in Iris; construct a compatible ordinary selected endpoint and
-discharge full admission; then prove safepoint, program-store and
-selected-call restoration before applying `main_to_version`. In
-particular pointer-store restoration needs agreement and physical
-disjointness, not private identity exclusion alone. Those global heap
-facts can be included explicitly in the concrete `wi`, or passed through
-the generic store callbacks in coordination with Campaign 3. Endpoint
-errno must be resampled, not frozen. No closed version theorem, native
-adequacy, new runtime axiom or Machine change is claimed by this entry
-milestone.
+**Concrete geometry milestone:** the same image now has proved
+`entry_live_disjoint` and `entry_ready` at the interpreter's actual
+initial allocator state. The concrete `wi` includes heap agreement,
+live-object disjointness and an existential allocator-readiness witness.
+`owned_pointer_geometry` derives a program-owned pointer cell's live
+object and bounds from agreement. `owned_pointer_store_private` proves
+that its store changes neither bytes nor capability slots in any
+readable private interval, using readiness to exclude nonempty reads
+from freed objects. `owned_pointer_store_parser` preserves both decoded
+Fresh and Finished predicates, including initialized/continuation words;
+`owned_pointer_store_heap` rebuilds agreement and preserves disjointness
+and readiness. These are proved memory facts, not assumed restoration
+fields. The existential readiness witness is not asserted to equal the
+current machine state's allocator.
+
+Next, finish transporting the other native observations and ghost
+inventories to close the whole `Kpstore` premise; allocate the joint bundle
+in Iris; construct a compatible ordinary selected endpoint and discharge
+full admission; then prove safepoint and selected-call restoration before
+applying `main_to_version`. Endpoint errno must be resampled, not frozen.
+The geometry milestone does not prove the existence of an ordinary
+invocation or establish full `wi` restoration. No closed version theorem, native
+adequacy, new runtime axiom or Machine change is claimed.
 
 Fil-C's own layering helps: libc is pizlonated C, the runtime's syscall
 wrappers check buffer capabilities before the kernel sees raw addresses,

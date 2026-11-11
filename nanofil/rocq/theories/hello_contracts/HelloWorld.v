@@ -7,8 +7,8 @@ From stdpp Require Import list.
 From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   ExternalCalls ExternalMachine Startup Locale Stdio Shutdown Getopt Libc LibcStreams
-  Pieces Heap ContractFrame StringLogic MemLogic LentLogic LocaleLogic GetoptLogic
-  HelloModule HelloLeaf HelloName HelloReach HelloMain HelloStdio.
+  Machine StepRules Pieces Heap ContractFrame StringLogic MemLogic LentLogic LocaleLogic GetoptLogic
+  HelloModule HelloLeaf HelloName HelloReach HelloMain HelloStdio Logic.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -143,8 +143,12 @@ Definition private_sources (w : libc_world) : list span :=
 (** One composite interpretation. Current ghost names observe the same
     payload as physical locale/parser/FILE readiness. Native pools must
     stay apart from the program, but getopt's public argv writes are
-    intentionally not classified as private roots. *)
+    intentionally not classified as private roots. Agreement and physical
+    disjointness prevent fictitious owned cells from targeting native
+    storage in the store callbacks, which receive no separate geometry. *)
 Definition wi (m : mem) (w : libc_world) (h : gmap piece pval) : Prop :=
+  agrees m h /\ live_disjoint m /\
+  (exists next, InterpRuntime.ready next m) /\
   native_at m w /\
   Forall (fun source => cap_private h (ptr_cap (span_ptr source))) (private_sources w) /\
   ids_apart (locale_owned (libc_locale (fst w)) ++
@@ -153,6 +157,158 @@ Definition wi (m : mem) (w : libc_world) (h : gmap piece pval) : Prop :=
   names_current (libc_locale (fst w)) h /\ codec_current (libc_locale (fst w)) h /\
   getopt_current (libc_getopt_view w) h.
 
+(** Agreement supplies the actual live object and bounds of a cell.
+    This is the geometry absent from the old identity-only interpretation.
+    No alignment assumption is needed for the store's memory frame. *)
+Lemma owned_pointer_geometry b reg o x m w h :
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) -> h !! l = Some v) ->
+  wi m w h -> live_at m b reg /\ 0 <= o /\ b + o + 8 <= r_end reg.
+Proof.
+  intros Hlookup (Ha & _).
+  assert (Hall : all_agree m ([(PLive b, VLive reg)] ++
+    (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x))).
+  { apply all_agree_intro. intros l v Hin. exact (Ha l v (Hlookup l v Hin)). }
+  destruct Hall as [Hl [_ Hcell]]. split; [exact Hl|].
+  exact (cell_bounds _ _ _ _ _ Hl Hcell).
+Qed.
+
+(** A private object's readable interval cannot overlap a program-owned
+    cell. Readability alone does not imply liveness: the allocator's
+    readiness additionally rules out nonempty reads from freed objects. *)
+Lemma owned_private_read_apart b reg o x m w h p n al a :
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) -> h !! l = Some v) ->
+  wi m w h -> cap_private h (ptr_cap p) ->
+  access_res m (ptr_addr p) (ptr_cap p) n Read al = Some ok ->
+  ptr_addr p <= a < ptr_addr p + n -> ~ (b + o <= a < b + o + 8).
+Proof.
+  intros Hlookup Hw Hprivate Hread Hinside Hstore.
+  destruct (owned_pointer_geometry _ _ _ _ _ _ _ Hlookup Hw) as (Hl & Ho & He).
+  destruct Hw as (_ & Hd & [next [_ [Hregions _]]] & _).
+  assert (Hlife : h !! PLive b = Some (VLive reg)).
+  { apply Hlookup. apply elem_of_cons. by left. }
+  destruct p as [pa pc]. cbn [ptr_addr ptr_cap] in *.
+  destruct pc as [|base|base|f|f]; try discriminate Hread.
+  all: match type of Hread with
+  | access_res _ _ ?c _ _ _ = _ =>
+    destruct (access_region m pa c base n Read al ltac:(auto) Hread)
+      as (other & Hr & Hlo & Hhi)
+  end.
+  all: assert (Hlive : r_life other = Live).
+  all: try (destruct (r_life other) eqn:Hlive; [reflexivity|];
+    destruct (Hregions _ _ Hr) as (_ & _ & Hempty); specialize (Hempty Hlive); lia).
+  all: assert (Hne : base <> b).
+  all: try (intro E; subst base; exact (Hprivate b ltac:(auto) b (PLive b) (VLive reg)
+    ltac:(by left) Hlife I eq_refl)).
+  all: destruct (Hd base other b reg (conj Hr Hlive) Hl Hne); lia.
+Qed.
+
+(** Both address bytes and capability slots inside any readable private
+    object survive the store. This includes interior reads, and does not
+    mistake equality of object identities for physical non-overlap. *)
+Lemma owned_pointer_store_private b reg o x xp m w h p n al a :
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) -> h !! l = Some v) ->
+  wi m w h -> cap_private h (ptr_cap p) ->
+  access_res m (ptr_addr p) (ptr_cap p) n Read al = Some ok ->
+  ptr_addr p <= a < ptr_addr p + n ->
+  let m' := store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp) in
+  m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a.
+Proof.
+  intros Hlookup Hw Hprivate Hread Hin m'.
+  pose proof (owned_private_read_apart _ _ _ _ _ _ _ _ _ _ _
+    Hlookup Hw Hprivate Hread Hin) as Hapart.
+  split.
+  - unfold m', store_bytes, store_aux; cbn [m_bytes].
+    destruct ((b + o <=? a) && (a <? b + o + 8)) eqn:E; [|reflexivity].
+    apply andb_true_iff in E as [Elo Ehi].
+    apply Z.leb_le in Elo. apply Z.ltb_lt in Ehi. exfalso. apply Hapart. lia.
+  - unfold m', store_bytes, store_aux; cbn [m_aux].
+    destruct (Z.eqb_spec a (b + o)); [exfalso; apply Hapart; lia|reflexivity].
+Qed.
+
+(** In particular, the store cannot initialize, reset or advance the
+    identified private parser. Both decoded phases are preserved, not
+    merely the public optind observation. *)
+Lemma owned_pointer_store_parser b reg o x xp m w h :
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) -> h !! l = Some v) ->
+  wi m w h ->
+  let m' := store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp) in
+  (getopt_parser_fresh parser m' (libc_getopt_view w) <->
+   getopt_parser_fresh parser m (libc_getopt_view w)) /\
+  (parser_finished m' (libc_getopt_view w) <-> parser_finished m (libc_getopt_view w)).
+Proof.
+  intros Hlookup Hw m'.
+  pose proof Hw as (_ & _ & _ & (_ & (_ & _ & Hphase) & _) & Hprivate & _).
+  assert (Hcap : cap_private h (ptr_cap parser)).
+  { rewrite List.Forall_forall in Hprivate.
+    apply (Hprivate (mkSpan parser 56)). unfold private_sources.
+    do 3 (apply in_or_app; right). apply in_or_app; left. by left. }
+  assert (Hstorage : getopt_parser_storage parser m (libc_getopt_view w)).
+  { destruct Hphase as [[Hs _]|[Hs _]]; exact Hs. }
+  pose proof Hstorage as Hstorage_old.
+  destruct Hstorage as (Hroot & (Hsize & Hlive & Hread & Hbytes) & Hwrite & Hread8).
+  assert (Hcontents : forall a, ptr_addr parser <= a < ptr_addr parser + 56 ->
+    m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a).
+  { intros a Ha. exact (owned_pointer_store_private _ _ _ _ _ _ _ _ _ _ _ _
+      Hlookup Hw Hcap Hread Ha). }
+  assert (Hload : forall off n, 0 <= off -> 0 <= n -> off + n <= 56 ->
+    load_bytes m' (ptr_addr parser + off) n = load_bytes m (ptr_addr parser + off) n).
+  { intros off n Ho Hn Hend. apply load_bytes_agree; [exact Hn|].
+    intros i Hi. exact (proj1 (Hcontents (ptr_addr parser + off + i) ltac:(lia))). }
+  assert (Hstorage : getopt_parser_storage parser m' (libc_getopt_view w)).
+  { split; [exact Hroot|]. split; [|split; [exact Hwrite|exact Hread8]].
+    split; [exact Hsize|]. split; [exact Hlive|]. split; [exact Hread|].
+    intros i Hi. rewrite (proj1 (Hcontents (ptr_addr parser + i) ltac:(lia))). exact (Hbytes i Hi). }
+  assert (Hstorage_iff : getopt_parser_storage parser m' (libc_getopt_view w) <->
+    getopt_parser_storage parser m (libc_getopt_view w)).
+  { split; intros _; [exact Hstorage_old|exact Hstorage]. }
+  split.
+  - unfold getopt_parser_fresh. rewrite Hstorage_iff (Hload 24 4 ltac:(lia) ltac:(lia) ltac:(lia)).
+    reflexivity.
+  - assert (Hslot : pointer_slot m' (ptr_addr parser + 32) null <->
+      pointer_slot m (ptr_addr parser + 32) null).
+    { unfold pointer_slot. rewrite (Hload 32 8 ltac:(lia) ltac:(lia) ltac:(lia)).
+      rewrite (proj2 (Hcontents (ptr_addr parser + 32) ltac:(lia))). reflexivity. }
+    unfold parser_finished. rewrite Hstorage_iff Hslot
+      (Hload 24 4 ltac:(lia) ltac:(lia) ltac:(lia))
+      (Hload 40 4 ltac:(lia) ltac:(lia) ltac:(lia))
+      (Hload 44 4 ltac:(lia) ltac:(lia) ltac:(lia))
+      (Hload 48 4 ltac:(lia) ltac:(lia) ltac:(lia)). reflexivity.
+Qed.
+
+(** The pointer store rebuilds heap agreement and preserves both physical
+    disjointness and an actual allocator-readiness witness. This proves
+    the geometry part of Kpstore, rather than assuming a restoration law. *)
+Lemma owned_pointer_store_heap b reg o x xp m w h :
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) -> h !! l = Some v) ->
+  wi m w h ->
+  let m' := store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp) in
+  let h' := overwrite ([(PLive b, VLive reg)] ++
+      (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h in
+  agrees m' h' /\ live_disjoint m' /\ (exists next, InterpRuntime.ready next m').
+Proof.
+  intros Hlookup Hw m' h'.
+  destruct (owned_pointer_geometry _ _ _ _ _ _ _ Hlookup Hw) as (Hl & Ho & He).
+  destruct Hw as (Ha & Hd & [next Hr] & _).
+  destruct (pcell_store_ok m b reg o (b + o) (ptr_cap xp) (ptr_addr xp)
+    Hd Hl Ho He eq_refl) as [Hnew Hframe].
+  split.
+  - intros l v Hlv. apply lookup_overwrite in Hlv as [Hin|[Hout Hlv]].
+    + apply (all_agree_elem m' ([(PLive b, VLive reg)] ++
+        (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) l v); [|exact Hin].
+      split; [apply (live_at_regions m); [reflexivity|exact Hl]|exact Hnew].
+    + apply Hframe; [|exact (Ha l v Hlv)]. intro Hin. apply Hout.
+      apply elem_of_cons. by right.
+  - split; [exact (live_disjoint_regions m m' eq_refl Hd)|].
+    exists next. eapply InterpRuntime.ready_kept; [exact Hr|].
+    exact (pointer_store_effects_kept _ _ _ _ _
+      (in_object_live m b reg (b + o) Hl ltac:(lia) He) (pointer_store_plain m (b + o) xp)).
+Qed.
+
 (** The initial ghost token rules out the finished cutpoint by its
     public optind, exposing the actual decoded fresh private storage. *)
 Lemma first_call_fresh : forall m w h,
@@ -160,7 +316,7 @@ Lemma first_call_fresh : forall m w h,
   (forall l v, (l, v) ∈ getopt_ps null 1 -> h !! l = Some v) ->
   getopt_parser_fresh parser m (libc_getopt_view w).
 Proof.
-  intros m w h (Hnative & _ & _ & _ & _ & Hcurrent) Htoken.
+  intros m w h (_ & _ & _ & Hnative & _ & _ & _ & _ & Hcurrent) Htoken.
   destruct Hnative as (_ & (_ & _ & [Hfresh|Hfinished]) & _); [exact Hfresh|].
   assert (Hin : (PName getopt_key, VGetopt null 1) ∈ getopt_ps null 1)
     by constructor.
@@ -457,6 +613,63 @@ Proof.
   - rewrite lookup_empty in Hempty. discriminate.
 Qed.
 
+(** A looked-up region occurs in the physical inventory under its own
+    base, even when the inventory has not been sorted. *)
+Local Lemma region_lookup_member rs b reg : object_region b rs = Some reg ->
+  In reg rs /\ r_base reg = b.
+Proof.
+  induction rs as [|r rs IH]; cbn [object_region]; [discriminate|].
+  destruct (Z.eqb_spec (r_base r) b) as [E|E].
+  - intros [= <-]. split; [left; reflexivity|exact E].
+  - intros H. destruct (IH H) as [Hin Hb]. split; [right; exact Hin|exact Hb].
+Qed.
+
+(** All live regions of the combined native, linked and launch image
+    are physically disjoint, not merely distinct identities. *)
+Lemma entry_live_disjoint : live_disjoint entry_memory.
+Proof.
+  assert (Hcheck : forallb (fun r => forallb (fun q =>
+    (r_base r =? r_base q) || (r_end r <=? r_base q) || (r_end q <=? r_base r))
+    (m_regions entry_memory)) (m_regions entry_memory) = true)
+    by (vm_compute; reflexivity).
+  rewrite forallb_forall in Hcheck.
+  intros b r c q [Hr _] [Hq _] Hne.
+  destruct (region_lookup_member _ _ _ Hr) as [Hrin Hrb].
+  destruct (region_lookup_member _ _ _ Hq) as [Hqin Hqb].
+  specialize (Hcheck r Hrin). rewrite forallb_forall in Hcheck.
+  specialize (Hcheck q Hqin). rewrite Hrb Hqb in Hcheck.
+  repeat rewrite orb_true_iff in Hcheck.
+  destruct Hcheck as [[He|He]|He];
+    [apply Z.eqb_eq in He; contradiction|left; apply Z.leb_le; exact He|
+     right; apply Z.leb_le; exact He].
+Qed.
+
+(** The interpreter allocator can start above the entire entry image:
+    every region fits below Next and all storage above Next is virgin. *)
+Lemma entry_ready : InterpRuntime.ready InterpRuntime.start entry_memory.
+Proof.
+  assert (Hcheck : forallb (fun r =>
+    (0 <=? r_base r) && (r_base r <? 4294967296) && (r_end r <=? 4294967296) &&
+    match r_life r with Live => true | Freed => false end)
+    (m_regions entry_memory) = true) by (vm_compute; reflexivity).
+  split; [vm_compute; split; congruence|]. split.
+  - intros b reg Hr. destruct (region_lookup_member _ _ _ Hr) as [Hin Hb].
+    rewrite forallb_forall in Hcheck. specialize (Hcheck reg Hin).
+    repeat rewrite andb_true_iff in Hcheck.
+    destruct Hcheck as (((Hlo & Hhi) & Hend) & Hlive).
+    apply Z.leb_le in Hlo. apply Z.ltb_lt in Hhi. apply Z.leb_le in Hend.
+    rewrite Hb in Hlo Hhi. split; [split; assumption|]. split; [exact Hend|].
+    destruct (r_life reg); [discriminate|discriminate Hlive].
+  - intros a Ha. change (4294967296 <= a) in Ha. split.
+    + rewrite entry_bytes_unwritten.
+      * destruct (Z.ltb_spec a 131072); [lia|reflexivity].
+      * repeat (apply List.Forall_cons; [cbn [fst snd]; lia|]). constructor.
+    + Local Opaque hello_literal_memory.
+      cbn [entry_memory image_pointers fold_right fst snd m_aux image_seed].
+      image_bounds; reflexivity.
+Qed.
+Local Transparent hello_literal_memory.
+
 (** Every initial locale name is a readable aligned C string. *)
 Lemma entry_locale_ready : locale_ready (fun _ _ => True) entry_memory entry_locale.
 Proof.
@@ -592,7 +805,9 @@ Theorem entry_inhabited : wi entry_memory entry_world entry_heap /\
   agrees entry_memory entry_heap /\ NoDup (map fst entry_pieces).
 Proof.
   split.
-  - split; [exact entry_native|]. split; [exact entry_private|].
+  - split; [exact entry_agrees|]. split; [exact entry_live_disjoint|].
+    split; [exists InterpRuntime.start; exact entry_ready|].
+    split; [exact entry_native|]. split; [exact entry_private|].
     split; [intros b l v []; contradiction|]. exact entry_current.
   - split; [exact entry_agrees|exact entry_keys_unique].
 Qed.
