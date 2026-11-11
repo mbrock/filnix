@@ -13,8 +13,9 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrap
   HiAtexitBase HiAtexitGe HiAtexitFclose HiAtexitCloseStdout HiAtexitOutputClose HiAtexitStdout.
 Import ListNotations.
 Open Scope Z_scope.
-Import HPI HPI.CS HPI.CS.SW HPI.CS.SW.FI.ML HPI.CS.SW.FI.LG HPI.CS.SW.FI.L
-  HPI.CS.SW.OW HPI.CS.SW.FI HPI.CS.SW.ST.
+Import HP.PN.PB.PM.PC.PU.PL.
+Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
+  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
 Import HFC.FU.FT.
 
 Section rules.

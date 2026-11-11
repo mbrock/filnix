@@ -14,8 +14,10 @@ Import ListNotations.
 Open Scope Z_scope.
 
 (** The byte borrowing rules use the interpreter's memory logic. *)
-Module HSB := HXB.DX.RM.SM.TL.BY.BF.
-Import HSB HSB.CP HSB.CP.CS HSB.CP.CS.SW HSB.CP.CS.SW.FI.ML HSB.CP.CS.SW.FI.LG HSB.CP.CS.SW.FI.L.
+Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
+Import XB.DX.RM.SM.TL.BY.BF XB.DX.RM.SM.TL.BY.BF.CP XB.DX.RM.SM.TL.BY.BF.CP.CS
+  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.ML
+  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.LG XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.L.
 
 (** The byte pieces owned by a word window are exactly the pieces
     owned by its flattened byte sequence. *)

@@ -16,9 +16,11 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrap
 Import ListNotations.
 Open Scope Z_scope.
 
-Import HPI HPI.CS HPI.CS.SW HPI.CS.SW.FI.ML HPI.CS.SW.FI.LG HPI.CS.SW.FI.L
-  HPI.CS.SW.OW HPI.CS.SW.FI HPI.CS.SW.ST.
-Import HXB HXB.DX.RM.SM.TL.BY.BF.
+Import HP.PN.PB.PM.PC.PU.PL.
+Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
+  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
+Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
+Import XB XB.DX.RM.SM.TL.BY.BF.
 Local Opaque HiAtexitFns.hi_ge.
 
 Section rules.

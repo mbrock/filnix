@@ -10,15 +10,17 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioSetb LibioOverflowBase LibioOverflowAllocSetg LibioDefaultXsputnBuf LibioXsputnBase HiAtexitBase.
+From Glibc Require Export HiAtexitXsputnRules HiAtexitOverflowRules.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The string-output state uses the common interpreter logic. *)
-Module HXB := LibioXsputnBaseOn InterpRuntime HLG.
-(** The overflow state uses the same interpreter logic. *)
-Module HOB := LibioOverflowBaseOn InterpRuntime HLG.
-Import HOB HOB.SW HOB.SW.FI.ML HOB.SW.FI.LG HOB.SW.FI.L HOB.SW.OW HOB.SW.FI HOB.SW.ST.
-Import HXB HXB.DX.RM.SM.TL.BY.BF.
+(** The string-output state reuses the instance already checked for
+    its entry rule, rather than copying the same proof modules again. *)
+Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
+(** The overflow state also reuses its existing checked instance. *)
+Import HOG.OB HOG.OB.SW HOG.OB.SW.FI.ML HOG.OB.SW.FI.LG HOG.OB.SW.FI.L
+  HOG.OB.SW.OW HOG.OB.SW.FI HOG.OB.SW.ST.
+Import XB XB.DX.RM.SM.TL.BY.BF.
 
 (** Buffer allocation clears the user-buffer bit and sets the writing
     bit. Those changes preserve stdout's fixed flags. *)

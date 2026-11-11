@@ -15,8 +15,10 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode Libi
   HiAtexitOutputState HiAtexitXsputnRules HiAtexitXsputnOverflow HiAtexitGe HiAtexitFns.
 Import ListNotations.
 Open Scope Z_scope.
-Import HOB HOB.SW HOB.SW.FI.ML HOB.SW.FI.LG HOB.SW.FI.L HOB.SW.OW HOB.SW.FI HOB.SW.ST.
-Import HXB HXB.DX.RM.SM.TL.BY.BF.
+Import HOG.OB HOG.OB.SW HOG.OB.SW.FI.ML HOG.OB.SW.FI.LG HOG.OB.SW.FI.L
+  HOG.OB.SW.OW HOG.OB.SW.FI HOG.OB.SW.ST.
+Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
+Import XB XB.DX.RM.SM.TL.BY.BF.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
