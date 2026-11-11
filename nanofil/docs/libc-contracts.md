@@ -52,18 +52,19 @@ proves delivery, and hard exit requires no flush or empty pending list.
 The native probes are finite counterexample evidence for these trusted
 specifications, **not universal native satisfaction proofs**. Rocq
 derives application-only nonfailure and the witnessed terminal step
-from the predicates. Conditional puts/shutdown composition is proved in
-`Selected.v`; native lifecycle satisfaction and coverage remain separate
+from the predicates. Conditional puts/shutdown composition was proved in
+`Selected.v` (removed in November 2026, below); native lifecycle satisfaction and coverage remain separate
 obligations.
 
 ## Trusted selected shutdown boundary
 
 `Selected R.selected_contract` and `Selected R.boundary` in
-[Selected.v](../rocq/theories/programs/Selected.v) name the trusted lifecycle segment
-interface for the [pin below](#pin-notation-and-common-obligations). It is
+[Selected.v](https://github.com/mbrock/filnix/blob/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/theories/programs/Selected.v) named the trusted lifecycle segment
+interface for the [pin below](#pin-notation-and-common-obligations). It was
 parameterized by the actual native representation, selection and footprint
-specifications. The logical `SelectedChecks.specs` is **not** that pinned
-native instance. No new Rocq axiom or native implementation theorem is added.
+specifications. The logical `SelectedChecks.specs` was **not** that pinned
+native instance. No proof used the interface, and Selected.v was removed in
+November 2026; this section records the obligations it named.
 
 The selected boundary owes three separate obligations:
 

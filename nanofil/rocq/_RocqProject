@@ -46,7 +46,6 @@ theories/external/Startup.v
 theories/hello_contracts/Getopt.v
 theories/external/Shutdown.v
 theories/hello_contracts/ExitMemory.v
-theories/external/Libio.v
 theories/hello_contracts/Streams.v
 theories/hello_contracts/Formatting.v
 theories/hello_contracts/Linked.v
@@ -66,7 +65,6 @@ theories/logic/Symbolic.v
 theories/programs/Cycle.v
 theories/programs/Buffer.v
 theories/programs/HiArtifact.v
-theories/programs/Selected.v
 theories/logic/Pieces.v
 theories/logic/Heap.v
 theories/logic/ContractFrame.v

@@ -378,8 +378,8 @@ index_page(Pages) -->
                          el(a, none, [href="../docs/zsys.html"], "zsys.md"),
                          "). Earlier whole-program work proved GNU Hello against per-function libc contracts (",
                          el(code, none, "rocq/theories/hello_contracts/"),
-                         ", kept as a compiled reference proof) and compared three separation-logic designs on ",
-                         el(code, none, "listsum.c"), " (", el(code, none, "rocq/spikes/"),
+                         ", kept as a compiled reference proof) and proved ",
+                         el(code, none, "listsum.c"), " through the program logic as a worked example (", el(code, none, "rocq/spikes/"),
                          "). Generated IR fixture files (", el(code, none, "*Code.v"), ", written by ",
                          el(code, none, "rocq/scripts/gallina.pl"), ") are omitted from this index." )),
                     el(h2, "prose-h", "Start here"),
@@ -487,23 +487,21 @@ role_group(group(
     [ 'nanofil/rocq/hello_contracts',
       'nanofil/rocq/theories/hello_contracts' ])).
 role_group(group(
-    "Program-logic design spikes",
-    ( "Retained comparison proofs (", el(code, none, "nanofil-logic-spikes"), ", ",
-      el(a, none, [href="../logic.html"], "logic.md"),
-      ") verifying the same heap-allocated linked-list program (", el(code, none, "listsum.c"),
-      ") in an early whole-configuration Iris language and in the production ",
-      el(code, none, "Logic.v"), " framework." ),
+    "Program-logic worked example",
+    ( "A heap-allocated linked-list program (", el(code, none, "listsum.c"),
+      ") proved through the production ", el(code, none, "Logic.v"), " framework (",
+      el(code, none, "nanofil-logic-spikes"), ", ", el(a, none, [href="../logic.html"], "logic.md"),
+      "). The design spikes it was compared with are in the git history." ),
     [ 'nanofil/rocq/spikes' ])).
 role_group(group(
     "Gallina compiler backend and λANF lowering",
     ( "Separate compiler workstreams: the Gallina IR-to-x86-64 compiler backend and NFB bytecode round-trip proofs (",
       el(a, none, [href="../docs/gallina-backend.html"], "gallina-backend.md"), ", ",
       el(a, none, [href="../docs/nfb.html"], "nfb.md"),
-      "), its C++ (Crane) and experimental C (CertiRocq) extractions, and the CertiRocq λANF-to-IR lowering pass (",
+      "), its C++ (Crane) extraction, and the CertiRocq λANF-to-IR lowering pass (",
       el(a, none, [href="../lambda-anf.html"], "lambda-anf.md"), ")." ),
     [ 'nanofil/rocq/backend',
       'nanofil/rocq/backend/crane',
-      'nanofil/rocq/backend/certirocq',
       'nanofil/anf/lower',
       'nanofil/anf/lower/tests' ])).
 
@@ -690,8 +688,6 @@ file_blurb('nanofil/rocq/theories/external/ExternalCalls.v',
     "Core external-call framework: trusted [[external call]] [contract] records (ABI signature, precondition, writable spans, released objects, and postcondition) and finite memory-effect paths ([effects]).").
 file_blurb('nanofil/rocq/theories/external/ExternalMachine.v',
     "Core external-call framework: labelled operational [[machine]] ([ExternalMachine]) extending [Machine](../soundness/Machine.v) with external contract invocations, call traces, and world state.").
-file_blurb('nanofil/rocq/theories/external/Libio.v',
-    "Core external-call framework: [[capability]]-backed memory view of userland glibc's pinned `c: FILE` stdout object and its private buffer and lock spans.").
 file_blurb('nanofil/rocq/theories/external/Shutdown.v',
     "Core external-call framework: logical shutdown protocol for registered `c: atexit` / `__cxa_atexit` / `c: on_exit` callbacks, stdout flush obligations, and soft or hard host-exit handoff.").
 file_blurb('nanofil/rocq/theories/external/Startup.v',
@@ -756,8 +752,6 @@ file_blurb('nanofil/rocq/theories/programs/ScanCode.v',
     "Worked example program (generated IR fixture): checked nanofil -O IR ([scan_term]) of `rocq/theories/programs/scan.c`, generated and checked by `rocq/scripts/programs.sh`.").
 file_blurb('nanofil/rocq/theories/programs/ScanLogic.v',
     "Worked example program (example theorem): proves [scan_never_panics] for `rocq/theories/programs/scan.c` in [Logic](../logic/Logic.v), chaining contract triples for `c: strlen`, `c: strchr`, and `c: puts` and reading the string suffix after `c: puts` returns.").
-file_blurb('nanofil/rocq/theories/programs/Selected.v',
-    "Worked example program (contract-era lifecycle adapter): links [HiArtifact](HiArtifact.v) and [Program](Program.v) into whole-lifecycle execution theorems over selected startup, `c: main`, and shutdown segments.").
 file_blurb('nanofil/rocq/theories/programs/SlotCode.v',
     "Worked example program (generated IR fixture): checked nanofil -O IR ([slot_term]) of `rocq/theories/programs/slot.c`, generated and checked by `rocq/scripts/programs.sh`.").
 file_blurb('nanofil/rocq/theories/programs/SlotLogic.v',
@@ -841,19 +835,13 @@ file_blurb('nanofil/rocq/theories/hello_contracts/LocaleLogic.v',
 file_blurb('nanofil/rocq/theories/hello_contracts/Streams.v',
     "Old Hello reference proof (trusted libc contract): contracts for `c: FILE` stream queries (`c: ferror`, `c: fileno`, `__freading`) and `c: fclose` over projections of the composite libc world.").
 
-%  Program-logic design spikes: rocq/spikes/
-file_blurb('nanofil/rocq/spikes/IrisHeap.v',
-    "Logic design spike (experiment 2, early Iris prototype): ghost piece heap and step rules for [IrisLang](IrisLang.v), whose reusable heap definitions were promoted to [Heap](../theories/logic/Heap.v).").
-file_blurb('nanofil/rocq/spikes/IrisLang.v',
-    "Logic design spike (experiment 2, early Iris prototype): first Iris `language` instantiation where an entire machine configuration is one expression, superseded by [Language](../theories/logic/Language.v)'s callers-stack evaluation context.").
-file_blurb('nanofil/rocq/spikes/IrisListSum.v',
-    "Logic design spike (experiment 2, comparison proof): proves [never_panics] for `rocq/spikes/listsum.c` in the early [IrisLang](IrisLang.v) / [IrisHeap](IrisHeap.v) prototype, carrying caller continuations explicitly.").
+%  Program-logic worked example: rocq/spikes/
 file_blurb('nanofil/rocq/spikes/ListSum.v',
-    "Logic design spike (shared setup): decodes `rocq/spikes/ListSumCode.v` and defines the `listsum` and `sum` functions, globals, and initial call frames shared by both `rocq/spikes/listsum.c` comparison proofs.").
+    "Worked example (shared setup): decodes `rocq/spikes/ListSumCode.v` and defines the `listsum` and `sum` functions, globals, and initial call frames used by [ListSumLogic](ListSumLogic.v).").
 file_blurb('nanofil/rocq/spikes/ListSumCode.v',
-    "Logic design spike (generated IR fixture): checked nanofil -O IR ([listsum_term]) of `rocq/spikes/listsum.c`, generated and checked by `rocq/spikes/code.sh`.").
+    "Worked example (generated IR fixture): checked nanofil -O IR ([listsum_term]) of `rocq/spikes/listsum.c`, generated and checked by `rocq/spikes/code.sh`.").
 file_blurb('nanofil/rocq/spikes/ListSumLogic.v',
-    "Logic design spike (comparison proof in production logic): proves `rocq/spikes/listsum.c` using the production [Logic](../theories/logic/Logic.v) framework with modular Hoare triples ([wp_call_bind]) and list-segment Löb induction.").
+    "Worked example (program logic): proves `rocq/spikes/listsum.c` using the production [Logic](../theories/logic/Logic.v) framework with modular Hoare triples ([wp_call_bind]) and list-segment Löb induction.").
 
 %  Gallina compiler backend: rocq/backend/
 file_blurb('nanofil/rocq/backend/Abi.v',
@@ -927,15 +915,13 @@ file_blurb('nanofil/rocq/backend/TermCfg.v',
 file_blurb('nanofil/rocq/backend/Text.v',
     "Gallina compiler backend: difference-list string buffer ([parts]) used by the assembly printer to emit large `.s` files without quadratic string concatenation.").
 
-%  Gallina compiler backend extractions: rocq/backend/crane/ & certirocq/
+%  Gallina compiler backend extraction: rocq/backend/crane/
 file_blurb('nanofil/rocq/backend/crane/CraneExtract.v',
     "Gallina compiler backend (C++ extraction): extracts the Gallina backend ([Compile](../Compile.v) and [IrText](../IrText.v)) to C++ via Bloomberg's Crane (`rocq/backend/crane/Makefile`, `docs/gallina-backend.md`).").
 file_blurb('nanofil/rocq/backend/crane/CraneMap.v',
     "Gallina compiler backend (C++ extraction): maps Rocq [Z], [N], [positive], [nat], [ascii], and `string` types and operations onto the C++ `rocq/backend/crane/nfrt.h` runtime for Crane extraction.").
 file_blurb('nanofil/rocq/backend/crane/CraneSelfTest.v',
     "Gallina compiler backend (C++ extraction test): generates `vm_compute` reference values ([expected]) across boundary integer widths to test [CraneMap](CraneMap.v)'s C++ runtime primitives (`rocq/backend/crane/selftest.cpp`).").
-file_blurb('nanofil/rocq/backend/certirocq/CertiExtract.v',
-    "Gallina compiler backend (CertiRocq C extraction experiment): compiles the Gallina backend entry points to C via CertiRocq with `--anf-variant 8` (`nanofil/nix/backend-certirocq.nix`, `docs/gallina-backend.md`).").
 
 %  λANF lowering campaign: anf/lower/ & anf/lower/tests/
 file_blurb('nanofil/anf/lower/AnfExtract.v',

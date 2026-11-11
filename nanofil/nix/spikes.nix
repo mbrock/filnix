@@ -1,7 +1,7 @@
-# The logic spikes (rocq/spikes, docs/logic.md): the same program proved
-# never to panic by Iris on an early language and by the program logic
-# in theories (Logic.v). The hand-rolled logic that docs/logic.md
-# compares them with was removed in November 2026. Off the main path:
+# The list-sum worked example (rocq/spikes, docs/logic.md): listsum.c
+# proved never to panic through the program logic in theories
+# (Logic.v). The hand-rolled and early Iris spikes that docs/logic.md
+# compares it with were removed in November 2026. Off the main path:
 # nothing else imports them, and the quick gate and CI do not build
 # this; the program logic itself is in the model.
 #

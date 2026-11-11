@@ -2,7 +2,7 @@
 
 **nanofil**
 
-An obligation is something a proof leaves to be shown or trusted elsewhere, named rather than assumed away. A realization obligation is the trusted claim that native code realizes a logical model: that pinned libc's FILE, buffering and dispatch behave as Stdio.v's protocol and Libio.v's memory view say.
+An obligation is something a proof leaves to be shown or trusted elsewhere, named rather than assumed away. A realization obligation is the trusted claim that native code realizes a logical model: that pinned libc's FILE, buffering and dispatch behave as Stdio.v's protocol says.
 
 The formal documents use the word in four senses:
 

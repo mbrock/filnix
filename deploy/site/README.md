@@ -95,8 +95,7 @@ a manual benchmark.
 - `moves.mjs` redirects pages a restructuring moved (301), so old links keep
   working; the Worker asks it only for a canonical path that is not found.
   When a change renames or moves pages, add a move there and a test case, then
-  deploy the Worker. Its `superseded` list redirects a page the site still
-  publishes, when a newer page replaces it but the old file is still imported.
+  deploy the Worker.
 - `python3 -m unittest discover -s tests -p 'test_site_*.py'` checks publication
   resource pinning and retention.
 - `node packages/site/phone.mjs https://filnix.org/ 320 390` checks live pages.

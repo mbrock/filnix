@@ -2,7 +2,4 @@
 -R . Spike
 ListSumCode.v
 ListSum.v
-IrisLang.v
-IrisHeap.v
-IrisListSum.v
 ListSumLogic.v

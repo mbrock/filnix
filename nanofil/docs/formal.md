@@ -640,7 +640,7 @@ construction/readiness remain open, so this still does not close `hi.c`.
 
 ### Campaign 4, milestone 3c: selected native stdout memory
 
-[Libio.v](../rocq/theories/external/Libio.v) supplies a **partial memory view**
+[Libio.v](https://github.com/mbrock/filnix/blob/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/theories/external/Libio.v) (removed in November 2026) supplied a **partial memory view**
 for the pinned x86-64 byte stdout file backend. It binds the actual
 `_IO_buf_base`, `_IO_buf_end` and `_lock` slots' address bytes and aux to
 explicit FILE, lock, errno and heap-buffer capabilities. Whole-root and
@@ -1128,7 +1128,7 @@ native trap. The new rules add no axioms and leave Machine/Runtime alone.
 
 ### Campaign 4 milestone 4k: selected lifecycle segment contracts
 
-`Selected.v` separates memory/world-indexed `libc_valid` from exact
+[Selected.v](https://github.com/mbrock/filnix/blob/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/theories/programs/Selected.v) (removed in November 2026) separated memory/world-indexed `libc_valid` from exact
 allocator readiness. Every selected lifecycle action specifies capability
 sources, writable spans, owned heap releases, allocation requests, finite
 prefixes and its documented panic set. These permissions are independent:
@@ -2105,7 +2105,7 @@ machine inside each contract module does not make those types equal.
 ExternalMachineSig, which includes the complete existing machine
 signature without adding assumptions or changing transitions. Contract
 clients pass their **actual exported machine** to LocaleOn, StartupOn,
-LibioOn, ExitPopOn, ExitUnlinkOn, LibcOn, StreamsOn and FormattingOn.
+ExitPopOn, ExitUnlinkOn, LibcOn, StreamsOn and FormattingOn.
 Each reuses that machine's E module;
 its existing theorem names and statements are otherwise unchanged.
 For example, an Iris locale client that reaches Logic as LG instantiates
@@ -2113,7 +2113,7 @@ LocaleOn R LG.L.M and can apply setlocale_query_invocation and
 setlocale_invocation directly to LG.L.M.E.invoke hypotheses. It must not
 instantiate a sibling ExternalMachine R instead.
 
-The existing Locale, Startup, Libio, ExitPop, ExitUnlink, Libc, Streams and
+The existing Locale, Startup, ExitPop, ExitUnlink, Libc, Streams and
 Formatting module names remain standalone wrappers for clients that do not share an existing
 machine. The project orders their files after ExternalMachine. This is
 module plumbing only: no core/runtime axiom, contract precondition,

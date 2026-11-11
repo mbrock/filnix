@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <sys/stat.h>
 #include "libc-probe.h"
-// Libio.v's selected x86-64 Fil-C memory view depends on these offsets.
+// The pinned x86-64 Fil-C FILE layout that Libio.v (removed November 2026) modelled.
 _Static_assert(sizeof(FILE) == 216 && _Alignof(FILE) == 8, "FILE layout");
 _Static_assert(offsetof(FILE, _IO_buf_base) == 56 && offsetof(FILE, _IO_buf_end) == 64, "buffer slots");
 _Static_assert(offsetof(FILE, _shortbuf) == 131 && offsetof(FILE, _lock) == 136, "embedded buffer and lock");

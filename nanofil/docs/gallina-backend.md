@@ -714,7 +714,7 @@ FUGC's speed on this program, and a pizlonated library of Crane's
 output would need that pass looked at first. The build was
 stopped and that was not followed up.
 
-**The CertiRocq C build (`rocq/backend/certirocq`).** CertiRocq
+**The CertiRocq C build ([`rocq/backend/certirocq`](https://github.com/mbrock/filnix/tree/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/backend/certirocq), removed in November 2026).** CertiRocq
 (`nix/certirocq.nix`, commit `943b52ae` patched against Rocq 9.1.1
 and `MetaRocq` `1.5.1-9.1`) compiles the same six entry points
 (`read_text`, `compile`, `compile_promoted`, `compile_allocated`,
@@ -1493,7 +1493,7 @@ learnt are under [Performance targets](#performance-targets).
 Crane's C++ is not taken further. The check and the C++ build
 stay as they are, held to the same bytes, and `rxc` stays on the
 OCaml build. What the library is built from is open: CertiRocq's C
-(`rocq/backend/certirocq`, `nix/backend-certirocq.nix`) has now
+([`rocq/backend/certirocq`](https://github.com/mbrock/filnix/tree/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/backend/certirocq), since removed) has now
 been measured on the same input as well. With static literal
 folding and C overrides it reaches 1.06 and 1.32 s on `rx.ir`
 (3.1 and 3.2 times OCaml, matching Crane), and unlike Crane its
@@ -1622,7 +1622,7 @@ otherwise.
    the speed after. *Agreed, and done:* the attempt stopped at
    about 3 times, with counted references and with a collector,
    and Crane's C++ is not taken further. CertiRocq's C
-   (`rocq/backend/certirocq`) was then built and measured on the
+   ([`rocq/backend/certirocq`](https://github.com/mbrock/filnix/tree/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/backend/certirocq), since removed) was then built and measured on the
    same input: raw it takes 8.89 and 13.77 s on `rx.ir` (165.4 s
    under `filcc -DVERIFFI`), and with static string-literal folding
    and C overrides it reaches 1.06 and 1.32 s natively (3.1 and

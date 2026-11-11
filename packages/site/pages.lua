@@ -15,7 +15,7 @@ end
 local rules = {
   -- nanofil/web/dterm.pl: nanofil/src/c_types.pl is nanofil/c_types.html.
   { "^nanofil/src/([%w_]+)%.pl$", function(m) return "nanofil/" .. m .. ".html" end },
-  -- dterm-rocq: nanofil/rocq/glibc/ZsysWrite.v is nanofil/rocq/rocq-glibc-ZsysWrite.html.
+  -- dterm-rocq: nanofil/rocq/glibc/zsys/OsWrite.v is nanofil/rocq/rocq-glibc-zsys-OsWrite.html.
   { "^nanofil/(.+)%.v$", function(p) return "nanofil/rocq/" .. dashed(p) .. ".html" end },
   -- dterm-nix: nanofil/nix/check.nix is nix/nanofil-nix-check.html.
   { "^(.+)%.nix$", function(p) return "nix/" .. dashed(p) .. ".html" end },

@@ -1,7 +1,8 @@
 # CertiRocq (https://github.com/CertiCoq/certicoq), Rocq's verified
 # compiler from Gallina through MetaRocq erasure and LambdaANF to
-# CompCert Clight C, built for the Gallina backend
-# (rocq/backend/certirocq, docs/gallina-backend.md, M8).
+# CompCert Clight C. certirocq-anf.nix adds the λANF tap for the
+# λANF lowering gate (docs/lambda-anf.md); it was first built for a C
+# build of the Gallina backend (docs/gallina-backend.md, M8).
 #
 # Pinned to commit 943b52ae and patched (certirocq-nanofil.patch) so
 # it builds against Rocq 9.1.1 and nixpkgs' cached MetaRocq 1.5.1-9.1
@@ -26,14 +27,14 @@ let
         system = pkgs.stdenv.hostPlatform.system;
         config.allowUnfree = true;
       }).coqPackages_9_1.compcert.overrideAttrs
-      (old: {
-        outputs = [
-          "out"
-          "lib"
-        ];
-        buildPhase = "make depend && make -j$NIX_BUILD_CORES export/Clightdefs.vo cfrontend/Csyntax.vo common/Globalenvs.vo";
-        installPhase = "mkdir -p $out $lib/lib/coq/9.1/user-contrib/compcert; for d in lib common x86_64 x86 cfrontend export; do mkdir -p $lib/lib/coq/9.1/user-contrib/compcert/$d; cp -f $d/*.v $d/*.vo $d/*.glob $lib/lib/coq/9.1/user-contrib/compcert/$d/ 2>/dev/null || true; done";
-      })
+        (old: {
+          outputs = [
+            "out"
+            "lib"
+          ];
+          buildPhase = "make depend && make -j$NIX_BUILD_CORES export/Clightdefs.vo cfrontend/Csyntax.vo common/Globalenvs.vo";
+          installPhase = "mkdir -p $out $lib/lib/coq/9.1/user-contrib/compcert; for d in lib common x86_64 x86 cfrontend export; do mkdir -p $lib/lib/coq/9.1/user-contrib/compcert/$d; cp -f $d/*.v $d/*.vo $d/*.glob $lib/lib/coq/9.1/user-contrib/compcert/$d/ 2>/dev/null || true; done";
+        })
     ).lib;
 in
 pkgs.stdenv.mkDerivation {

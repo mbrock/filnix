@@ -284,11 +284,11 @@ The mixin asks three laws: a value round-trips through `of_val` and `to_val`, an
 
 ## nanofil's machine in Iris
 
-nanofil's campaign is now a property of whole programs ([formal.md](formal.md)): [never_panics] says that no run of a module, from any admissible input, with any [[fuel]] and anything the runtime does, reaches a state that [fails]. Campaign 3 already proves that a validated module never makes an [[unchecked]] access; never_panics asks that no check fails either. A check's success depends on facts about the heap (this field points to a live 16-byte object), which belong to whoever owns the object, so the logic is a separation logic. The two spikes prove the same theorem twice, once in a hand-rolled logic and once in Iris; [logic.md](logic.md) compares them and recommends Iris. This section reads the Iris one.
+nanofil's campaign is now a property of whole programs ([formal.md](formal.md)): [never_panics] says that no run of a module, from any admissible input, with any [[fuel]] and anything the runtime does, reaches a state that [fails]. Campaign 3 already proves that a validated module never makes an [[unchecked]] access; never_panics asks that no check fails either. A check's success depends on facts about the heap (this field points to a live 16-byte object), which belong to whoever owns the object, so the logic is a separation logic. The two spikes prove the same theorem twice, once in a hand-rolled logic and once in Iris; [logic.md](logic.md) compares them and recommends Iris. This section reads the Iris one, the first instantiation of Iris for nanofil. Its files were removed in November 2026 and are linked at their last version; the program logic grew from them in [Language.v](../rocq/theories/logic/Language.v), [Heap.v](../rocq/theories/logic/Heap.v) and [Logic.v](../rocq/theories/logic/Logic.v), and [ListSumLogic.v](../rocq/spikes/ListSumLogic.v) proves the same program there.
 
 ### The machine as a language
 
-[IrisLang.v](../rocq/spikes/IrisLang.v) wraps the machine. An expression is a configuration without its memory, or the [[outcome]] a run ended with; the Iris state is the memory with the runtime's state:
+[IrisLang.v](https://github.com/mbrock/filnix/blob/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/spikes/IrisLang.v) wraps the machine. An expression is a configuration without its memory, or the [[outcome]] a run ended with; the Iris state is the memory with the runtime's state:
 
 ```rocq
 Inductive expr : Type :=
@@ -343,7 +343,7 @@ The postcondition is `True`: never_panics is a safety property, so what a run re
 
 ### Resources keyed by identity
 
-What can a proof own in Fil-C's memory? [Pieces.v](../rocq/theories/logic/Pieces.v), shared by both spikes, answers: an object's life, one byte, or one [[aux]] slot, each named by the object's [[identity]] and an offset:
+What can a proof own in Fil-C's memory? [Pieces.v](../rocq/theories/logic/Pieces.v), shared by both spikes and kept by the program logic, answers: an object's life, one byte, or one [[aux]] slot, each named by the object's [[identity]] and an offset:
 
 ```rocq
 Inductive piece : Type :=
@@ -354,7 +354,7 @@ Inductive piece : Type :=
 
 Keying by identity is forced, not chosen. In the model a new object may cover addresses a freed object once had ([fresh]), so an address may belong to two objects in turn, but an identity never does ([free_keeps_ids]). An assertion about address a would be about whichever object is there; an assertion about identity b stays about one object for its whole life, and after it.
 
-[IrisHeap.v](../rocq/spikes/IrisHeap.v) gives each piece a value, puts the pieces in Iris's gen_heap, and defines the state interpretation: the authoritative ghost heap agrees with the memory, live objects do not overlap, and the runtime is [[ready]]. [pts] owns a list of pieces with their values:
+[IrisHeap.v](https://github.com/mbrock/filnix/blob/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/spikes/IrisHeap.v) gives each piece a value, puts the pieces in Iris's gen_heap, and defines the state interpretation: the authoritative ghost heap agrees with the memory, live objects do not overlap, and the runtime is [[ready]]. [pts] owns a list of pieces with their values:
 
 ```rocq
 Inductive pval : Type := VLive (reg : region) | VByte (v : Z) | VAux (c : cap).
@@ -413,7 +413,7 @@ long listsum(int n) {
 }
 ```
 
-In checked IR, `sum` checks each node's value field, half-checks and loads the next pointer with its capability from the aux, and polls on the loop's back edge; `listsum` allocates each node on the collected heap and stores through checked pointers. A node owns its life as a 16-byte heap object, the aux slot of its next pointer, and the bytes of both fields; the list is a recursive predicate, with the pointer's own capability and alignment as pure facts ([IrisListSum.v](../rocq/spikes/IrisListSum.v)):
+In checked IR, `sum` checks each node's value field, half-checks and loads the next pointer with its capability from the aux, and polls on the loop's back edge; `listsum` allocates each node on the collected heap and stores through checked pointers. A node owns its life as a 16-byte heap object, the aux slot of its next pointer, and the bytes of both fields; the list is a recursive predicate, with the pointer's own capability and alignment as pure facts ([IrisListSum.v](https://github.com/mbrock/filnix/blob/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/spikes/IrisListSum.v)):
 
 ```rocq
 Definition node_ps (b : Z) (nx : ptr) (x : Z) : list (piece * pval) :=

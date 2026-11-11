@@ -32,6 +32,20 @@ const moves = [
   path => ({
     "/nanofil/rocq/rocq-spikes-Sep.html": "/nanofil/rocq/rocq-theories-logic-Logic.html",
     "/nanofil/rocq/rocq-spikes-SepListSum.html": "/nanofil/rocq/rocq-spikes-ListSumLogic.html",
+    // glibc/ZsysWrite.v's zsys_write contract, restated over os_world by
+    // glibc/zsys/OsWrite.v, which its last importers moved to.
+    "/nanofil/rocq/rocq-glibc-ZsysWrite.html": "/nanofil/rocq/rocq-glibc-zsys-OsWrite.html",
+  })[path],
+  // Sources kept only because documents cited them, removed in November
+  // 2026: each page goes to the nearest current one. The theories' pages
+  // follow the layer move above first.
+  path => ({
+    "/nanofil/rocq/rocq-theories-external-Libio.html": "/nanofil/rocq/rocq-theories-external-Stdio.html",
+    "/nanofil/rocq/rocq-theories-programs-Selected.html": "/nanofil/rocq/rocq-theories-programs-HiArtifact.html",
+    "/nanofil/rocq/rocq-spikes-IrisLang.html": "/nanofil/rocq/rocq-theories-logic-Language.html",
+    "/nanofil/rocq/rocq-spikes-IrisHeap.html": "/nanofil/rocq/rocq-theories-logic-Heap.html",
+    "/nanofil/rocq/rocq-spikes-IrisListSum.html": "/nanofil/rocq/rocq-spikes-ListSumLogic.html",
+    "/nanofil/rocq/rocq-backend-certirocq-CertiExtract.html": "/nanofil/rocq/rocq-backend-Extract.html",
   })[path],
 ];
 
@@ -42,11 +56,3 @@ export function moved(path) {
   for (const move of moves) now = move(now) || now;
   return now === path ? null : now;
 }
-
-// Pages the site still publishes but a newer page replaces, so readers go
-// to the replacement. The Worker redirects these before serving them.
-export const superseded = new Map([
-  // ZsysWrite.v's zsys_write contract, restated over os_world by
-  // zsys/OsWrite.v (16a77c83). SayLogic.v still imports ZsysWrite.v.
-  ["/nanofil/rocq/rocq-glibc-ZsysWrite.html", "/nanofil/rocq/rocq-glibc-zsys-OsWrite.html"],
-]);
