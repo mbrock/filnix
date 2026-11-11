@@ -86,7 +86,9 @@ code.rq .c, code.rq .args, code.rq .arg { white-space: nowrap; }
 :is(.dterm-rocq, code.rq) :is(sup, sub).rq-mask, :is(.dterm-rocq, code.rq) .op sub { font-size: 0.68em; line-height: 0; }
 :is(.dterm-rocq, code.rq) .rq-upd-arrow, :is(.dterm-rocq, code.rq) .rq-pointsto { white-space: nowrap; }
 :is(.dterm-rocq, code.rq) .rq-big-op { font-size: 1.2em; line-height: 1; }
-:is(.dterm-rocq, code.rq) .rq-big-binds { font-size: 0.6em; font-weight: 400; color: var(--ink); white-space: nowrap; }
+/* A big operator's binder wraps like any term: seqZ (...) (32 − ...) is
+   wider than a phone (glibc/stdlib/AtexitLogic.v). */
+:is(.dterm-rocq, code.rq) .rq-big-binds { font-size: 0.6em; font-weight: 400; color: var(--ink); }
 :is(.dterm-rocq, code.rq) .rq-big-binds .op { margin-inline: 0.08em; }
 :is(.dterm-rocq, code.rq) .rq-triple-brace { color: var(--accent); }
 :is(.dterm-rocq, code.rq) .rq-post > .op { color: var(--paren); }
