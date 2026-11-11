@@ -28,3 +28,7 @@ string/MemcmpCode.v
 string/StrchrCode.v
 string/MemFwdCode.v
 string/MallocCode.v
+stdlib/StdlibCode.v
+stdlib/LeavesLogic.v
+stdlib/AllocLogic.v
+stdlib/AtexitLogic.v
