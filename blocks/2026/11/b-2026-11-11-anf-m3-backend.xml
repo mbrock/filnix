@@ -1,0 +1,43 @@
+<block id="b-2026-11-11-anf-m3-backend" kind="milestone" actor="T-01a1c9a9-f038-75c4-9b60-c709efbfa7a4" model="anthropic/claude-opus-5-5" created="2026-11-11T10:48:02Z">
+  <title>The Gallina backend runs through λANF, at 4.2× ocamlopt on rx.ir</title>
+  <about path="nanofil/anf/backend"/>
+  <about path="nanofil/anf/lower/AnfLower.v"/>
+  <about path="nanofil/anf/lower/anf_prims.c"/>
+  <about path="nanofil/docs/lambda-anf.md"/>
+  <tag name="lambda-anf"/>
+  <p>Milestone M3 of <a path="nanofil/docs/lambda-anf.md">lambda-anf.md</a>. The reader and the
+  three compilers of <a path="nanofil/rocq/backend">rocq/backend</a> go through CertiRocq's
+  λANF, <a path="nanofil/anf/lower/AnfLower.v">AnfLower.v</a> and <c>nanofil-backend
+  compile-allocated</c>, and run on the arena of <a path="nanofil/anf">nanofil/anf</a>. Natural
+  numbers, positives, <c>N</c> and <c>Z</c> are 31-bit immediates or bigint blocks, characters
+  their codes, and strings blocks of bytes, or slices of one past 64 bytes.</p>
+  <claim status="tested" check="nix build -L .#checks.x86_64-linux.nanofil-anf-backend">
+    <p>On all 52 IR fixtures, for compile, compile-promoted and compile-allocated, the arena
+    build prints the same assembly, stderr and exit status as the OCaml build, with the
+    default nursery and with a 4096-word one under <c>FUGC_SCRIBBLE=1 FUGC_VERIFY=1</c>: 0 of
+    156 runs differ.</p>
+  </claim>
+  <metrics baseline="ocamlopt build of the same backend">
+    <metric label="rx.ir compile" value="4.2" unit="×"/>
+    <metric label="rx.ir compile-allocated" value="4.2" unit="×"/>
+    <metric label="lvm.ir compile" value="4.5" unit="×"/>
+    <metric label="lvm.ir compile-allocated" value="4.2" unit="×"/>
+  </metrics>
+  <p>That misses M3's target of 2× on rx.ir. Before the speed work it was 10× (2.2 s against
+  0.21 s). What closed most of it:</p>
+  <ul>
+    <li>inlining CertiRocq's closure builders and uncurry wrappers;</li>
+    <li>tables instead of a binary search for calls through closures;</li>
+    <li>a calling convention that passes the young index and the roots' top in arguments
+    and the result, so that a call reads and writes nothing of the state;</li>
+    <li>a whole-program analysis of what closures' environments hold, which turns 2,223
+    of the backend's 3,039 calls through tables into direct calls.</li>
+  </ul>
+  <p>The rest is 88% in the lowered functions themselves. The hot ones are small and called
+  very often (<c>term_eqb</c>'s atom case, <c>Z_as_OT.compare</c>, <c>ZMap</c>'s <c>bal</c>
+  and <c>find</c>), and each call pays the IR function's prologue (stack check, five
+  callee-saved registers, the Fil-C frame) and each arena access a bounds check. Inlining
+  every function of ten nodes or fewer bought only 5% while growing the IR by 37% and the
+  frames of deep recursions, so it is not done. Compiling the lowered backend (64 MB of IR)
+  takes 5 minutes, most of it in the validator, quadratic in a function's temporaries.</p>
+</block>

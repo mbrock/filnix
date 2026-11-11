@@ -1,5 +1,5 @@
 /* The slow path of the nursery test in modules lowered by AnfLower.v
- * (nanofil/docs/lambda-anf.md, M2).
+ * (nanofil/docs/lambda-anf.md, M2 and M3).
  *
  * A stretch of lowered code that allocates `words` words tests
  * young_idx + words > nursery_end once at its head. When it fails, the
@@ -17,19 +17,18 @@ void anf_lower_reserve(uint32_t *arena, struct anf_state *st, uint32_t words)
         anf_oom();
 }
 
-/* Reserves `words` words of the major heap for the constants of a
- * lowered program's body, which runs once: they are written there and
- * never move, as no collection evacuates the major heap. Gives the
- * first word's index, or refuses (anf_oom) when the major heap is
- * full. */
-uint32_t anf_lower_major(uint32_t *arena, struct anf_state *st, uint32_t words)
+/* Copies the pool of a lowered program's constants (AnfLower.v's
+ * pool_item: its number of words, then the words) to the major heap from
+ * word 1 on, where the constants' values point; a collection never moves
+ * them. The program's entry calls it first, on a fresh arena. */
+void anf_lower_pool(uint32_t *arena, struct anf_state *st, const uint32_t *pool)
 {
-    (void)arena;
-    if (words > st->major_limit - st->major_idx)
+    uint32_t n = pool[0];
+    if (st->major_idx != 1U || n > st->major_limit - 1U)
         anf_oom();
-    uint32_t idx = st->major_idx;
-    st->major_idx = idx + words;
+    for (uint32_t i = 0U; i < n; i++)
+        arena[1U + i] = pool[1U + i];
+    st->major_idx = 1U + n;
     if (st->major_idx > st->major_hwm)
         st->major_hwm = st->major_idx;
-    return idx;
 }

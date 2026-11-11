@@ -26,9 +26,9 @@ drvs=$(nix eval --json .#checks.x86_64-linux --apply \
   'cs: builtins.mapAttrs (_: c: c.drvPath)
          (builtins.removeAttrs cs (builtins.filter
            (n: builtins.substring 0 7 n != "nanofil") (builtins.attrNames cs)))')
-# The mutation campaign and the λANF gate (which builds CertiRocq) run
+# The mutation campaign and the λANF gates (which build CertiRocq) run
 # only when named.
-[ ${#names[@]} -gt 0 ] || mapfile -t names < <(jq -r 'keys[] | select(. != "nanofil-rocq-full" and . != "nanofil-anf-lower")' <<<"$drvs")
+[ ${#names[@]} -gt 0 ] || mapfile -t names < <(jq -r 'keys[] | select(. != "nanofil-rocq-full" and . != "nanofil-anf-lower" and . != "nanofil-anf-backend")' <<<"$drvs")
 
 log=${NANOFIL_CHECKS_LOG:-.amp/in/nanofil-checks.log}
 mkdir -p "$(dirname "$log")"

@@ -8,7 +8,9 @@ int zsys_madvise(void *addr, size_t len, int advice);
 #define ANF_MAP_NORESERVE (0x02 | 0x20 | 0x4000)
 #define ANF_MADV_DONTNEED 4
 
-void anf_oom(void) {
+/* Not inlined: clang -O2 drops the alloca of an inlined copy, and the
+   bound tests that call it then fall through. */
+__attribute__((noinline)) void anf_oom(void) {
     volatile char *p = (volatile char *)__builtin_alloca((1ULL << 48) - 1ULL);
     *p = 0;
 }

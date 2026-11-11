@@ -1,6 +1,6 @@
 --- a/theories/Compiler/pipeline.v
 +++ b/theories/Compiler/pipeline.v
-@@ -146,6 +146,127 @@
+@@ -146,16 +146,148 @@
  Definition compile (opts : Options) (p : Template.Ast.Env.program) :=
    run_pipeline _ _ opts p pipeline.
  
@@ -10,7 +10,10 @@
 +    (closure conversion and hoisting included) as Prolog clauses, which
 +    nanofil's AnfLower.v reads:
 +
-+    - `anf_ctor(Tag, IndTag, Arity, Ordinal, Name)` for each constructor;
++    - `anf_ctor(Tag, IndTag, Arity, Ordinal, Name, IndName)` for each
++      constructor;
++    - `anf_prim(Prim, Target, Arity, Alloc, Constant)` for each constant
++      realized in the target ([Extract Constants]), which [Eprim] names;
 +    - `anf_ftag(FunTag, Arity)` for each function tag;
 +    - `anf_name(Var, Name)` for each named function;
 +    - `anf_body(Exp)`, the program, one functor per [exp] form:
@@ -110,15 +113,22 @@
 +    | Fnil => []
 +    end.
 +
-+  (** The clauses of the program [e] with its constructor, function tag
-+      and name environments. *)
-+  Definition anf_clauses (cenv : ctor_env) (fenv : fun_env) (nenv : name_env) (e : exp) : string :=
++  (** The clauses of the program [e] with its primitives (the constants
++      realized in the target, [Extract Constants]), and its constructor,
++      function tag and name environments. *)
++  Definition anf_clauses (prims : list (primitive * positive)) (cenv : ctor_env) (fenv : fun_env)
++    (nenv : name_env) (e : exp) : string :=
 +    show_tree
 +      (fold_right App Emp
 +         (map (fun '(t, i) =>
 +                 "anf_ctor(" +++ anf_pos t +++ "," +++ anf_pos (ctor_ind_tag i) +++ "," +++ show_binnat (ctor_arity i)
-+                   +++ "," +++ show_binnat (ctor_ordinal i) +++ "," +++ anf_name_of (ctor_name i) +++ ")."
-+                   +++ anf_newline) (M.elements cenv)
++                   +++ "," +++ show_binnat (ctor_ordinal i) +++ "," +++ anf_name_of (ctor_name i) +++ ","
++                   +++ anf_name_of (ctor_ind_name i) +++ ")." +++ anf_newline) (M.elements cenv)
++          ++ map (fun '(pr, p) =>
++                    "anf_prim(" +++ anf_pos p +++ "," +++ anf_quote (prim_target pr) +++ ","
++                      +++ show_binnat (BinNat.N.of_nat (prim_arity pr)) +++ ","
++                      +++ (if prim_alloc pr then Str "true" else Str "false") +++ ","
++                      +++ anf_quote (string_of_kername (prim_name pr)) +++ ")." +++ anf_newline) prims
 +          ++ map (fun '(t, (a, _)) => "anf_ftag(" +++ anf_pos t +++ "," +++ show_binnat a +++ ")." +++ anf_newline)
 +                 (M.elements fenv)
 +          ++ anf_fun_names nenv e
@@ -128,12 +138,18 @@
  Definition show_IR (opts : Options) (p : Template.Ast.Env.program) : (error string * string) :=
    let genv := fst p in
    let ir_term p :=
-@@ -156,6 +277,6 @@
+       '(prims, next_id) <- register_prims next_id genv.(Ast.Env.declarations) ;;
+-      CertiRocq_pipeline next_id prims false p
++      r <- CertiRocq_pipeline next_id prims false p ;;
++      ret (prims, r)
+   in
+   let (perr, log) := run_pipeline _ _ opts p ir_term in
    match perr with
-   | Ret p =>
+-  | Ret p =>
++  | Ret (prims, p) =>
      let '(pr, cenv, _, _, nenv, fenv, _,  e) := p in
 -    (Ret (cps_show.show_exp nenv cenv false e), log)
-+    (Ret (anf_clauses cenv fenv nenv e), log)
++    (Ret (anf_clauses prims cenv fenv nenv e), log)
    | Err s => (Err s, log)
    end.
 --- a/plugins/manifests/plugin-manifest

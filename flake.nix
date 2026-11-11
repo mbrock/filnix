@@ -387,6 +387,12 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            # The Gallina backend itself through λANF, against its OCaml
+            # build (M3). As nanofil-anf-lower, only when asked.
+            nanofil-anf-backend = import ./nanofil/nix/anf-backend.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             nanofil-hello = import ./nanofil/nix/hello.nix {
               inherit pkgs;
               filcc = filcc-staging;

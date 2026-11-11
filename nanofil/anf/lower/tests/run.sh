@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# M2's gate (docs/lambda-anf.md): each program of Programs.v goes
+# M2's and M3's gate (docs/lambda-anf.md): each program of Programs.v goes
 # through CertiRocq's λANF (-O 1 --anf-variant 8) and its tap
-# (nix/certirocq-anf-tap.patch), AnfLower.v (../anf-lower), and
+# (nix/certirocq-anf-tap.patch), with the stdlib's constants that
+# ../Prims.v registers left as primitives, AnfLower.v (../anf-lower), and
 # `nanofil-backend compile-allocated` (ValidFast.valid_fast, then
-# Regs.v), is linked with the arena of nanofil/anf, and must print the
+# Regs.v), is linked with the arena of nanofil/anf and the primitives
+# (../anf_prims.c), and must print the
 # bytes that the same program extracted to OCaml and built by ocamlopt
 # prints: once with the default nursery, and once with a nursery of
 # ANF_STRESS_NURSERY words (256) under FUGC_SCRIBBLE=1 FUGC_VERIFY=1,
@@ -25,7 +27,7 @@ filcc=${FILCC:-/tmp/filcc/bin/clang}
 backend=${NANOFIL_BACKEND:-$nanofil/rocq/backend/nanofil-backend}
 stress=${ANF_STRESS_NURSERY:-256}
 : "${CERTIROCQ_SRC:?the CertiRocq source, for its tests/lib}"
-programs=${ANF_PROGRAMS:-demo1 demo2 list_sum vs_easy vs_hard binom color clos rec_clos rec_clos2 sha_fast order asm}
+programs=${ANF_PROGRAMS:-demo1 demo2 list_sum vs_easy vs_hard binom color clos rec_clos rec_clos2 sha_fast order asm selftest}
 work=${ANF_WORK:-$(mktemp -d)}
 mkdir -p "$work"
 echo "work: $work"
@@ -41,23 +43,25 @@ chmod u+w "$work/lib"/*.v
 (cd "$work/lib" && for f in Binom Color vs sha256; do
    rocq compile -w -all -R . CertiRocq.Tests.lib "$f.v"
  done)
-cp "$here"/{Show,Programs,Tap,Ref}.v "$work/t/"
+cp "$here"/{Show,Programs,Tap,Ref}.v "$lower/Prims.v" "$work/t/"
 flags=(-w -all -R "$work/lib" CertiRocq.Tests.lib -R "$nanofil/rocq/theories" Nanofil
        -R "$nanofil/rocq/backend" Backend -R . AnfTests)
 (cd "$work/t" && rocq compile "${flags[@]}" Show.v && rocq compile "${flags[@]}" Programs.v)
 t0=$SECONDS
-(cd "$work/t" && rocq compile "${flags[@]}" Tap.v)
+(cd "$work/t" && rocq compile "${flags[@]}" Prims.v && rocq compile "${flags[@]}" Tap.v)
 echo "$(stamp) tapped in $((SECONDS - t0)) s"
 
 echo "$(stamp) the OCaml reference"
 # One extraction per program (Ref.v), so that each reference computes
 # its own program only: OCaml evaluates a module's values when it
 # loads. The .mli extraction writes for Color's FMapPositive is not
-# OCaml (an unbound 'A); the .ml alone is.
+# OCaml (an unbound 'A); the .ml alone is. The self-test's reference
+# is selftest_vm, its value as vm_compute computed it.
 (cd "$work/t" && rocq compile "${flags[@]}" Ref.v && rm -f ref_*.mli &&
    for p in $programs; do
-     printf 'let rec go = function\n  | Ref_%s.Nil -> ()\n  | Ref_%s.Cons (b, r) -> print_char (Char.chr (Obj.magic b : int)); go r\nlet () = go Ref_%s.%s_out\n' \
-       "$p" "$p" "$p" "$p" >"main_$p.ml"
+     v=${p}_out; [[ $p == selftest ]] && v=selftest_vm
+     printf 'let rec go = function\n  | Ref_%s.Nil -> ()\n  | Ref_%s.Cons (b, r) -> print_char (Char.chr (Obj.magic b : int)); go r\nlet () = go Ref_%s.%s\n' \
+       "$p" "$p" "$p" "$v" >"main_$p.ml"
      ocamlfind ocamlopt -w -a -O3 "ref_$p.ml" "main_$p.ml" -o "ref_$p" 2>/dev/null ||
        ocamlfind ocamlopt -w -a "ref_$p.ml" "main_$p.ml" -o "ref_$p"
    done)
@@ -65,6 +69,7 @@ echo "$(stamp) the OCaml reference"
 echo "$(stamp) the runtime"
 "$filcc" -O2 -c -I"$nanofil/anf" -o "$work/anf_arena.o" "$nanofil/anf/anf_arena.c"
 "$filcc" -O2 -c -o "$work/rt.o" "$lower/anf_lower_rt.c"
+"$filcc" -O2 -c -o "$work/prims.o" "$lower/anf_prims.c"
 "$filcc" -O2 -c -o "$work/driver.o" "$lower/driver.c"
 
 # Direct-style code recurses as deep as the lists it builds (List.app,
@@ -96,7 +101,7 @@ for p in $programs; do
     echo "$p: nanofil-backend refuses: $(cat "$work/$p.backend.err")"; bad=$((bad + 1)); continue
   fi
   as -o "$work/$p.o" "$work/$p.s"
-  "$filcc" -o "$work/$p" "$work/driver.o" "$work/rt.o" "$work/anf_arena.o" "$work/$p.o"
+  "$filcc" -o "$work/$p" "$work/driver.o" "$work/rt.o" "$work/prims.o" "$work/anf_arena.o" "$work/$p.o"
   (ulimit -s "$big_stack"; "$work/t/ref_$p" >"$work/$p.ref")
   verdict=same
   (ulimit -s "$big_stack"; "$work/$p" >"$work/$p.out" 2>"$work/$p.err") || verdict="EXIT $?"

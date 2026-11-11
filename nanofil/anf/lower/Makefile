@@ -9,7 +9,7 @@ FLAGS = -R ../../rocq/theories Nanofil -R $(BACKEND) Backend -R . Anf
 all: anf-lower
 
 backend:
-	$(MAKE) -C $(BACKEND) Text.vo Order.vo IrText.vo
+	$(MAKE) -C $(BACKEND) Text.vo Order.vo IrText.vo ../theories/core/Maps.vo
 
 AnfLower.vo: AnfLower.v backend
 	rocq compile $(FLAGS) AnfLower.v
