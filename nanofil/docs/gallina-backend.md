@@ -1427,31 +1427,47 @@ three-address `lea`, `imm32` operands and narrow loads and stores.
 
 - **Validation and proofs.** Every allocated function is checked
   before emission by a linear-time Gallina validator (`valid_alloc`).
-  `RegsProof.v` proves kernel-checked results (all closed under the
-  global context): interval disjointness (`ivals_disjoint_sound`) and
-  call-point exclusion (`ivals_hit_points_sound`) on well-formed
-  interval lists; live-only preservation of `state_agrees` over
-  registers and shared physical frame slots across caller-saved call
-  and poll clobbers (`clobber_preserves_agrees`,
-  `poll_edge_clobber_sound`), single- and multi-destination writes
-  (`write_mach_step_sound`, `write_mach_list_sound`) and one abstract
-  instruction step (`check_rinst_step_sound`); modular exactness of
-  32/64-bit `lea` and `imm32` selection (`imm32_congruent`,
-  `imm32_add_mod_sound`, `imm32_sub_lea_w_sound`,
-  `imm32_sub_lea_l_sound`, `-2^31` included); whole-scheduler
-  soundness and fuel sufficiency of `compile_pmoves` over emitted
-  x86-64 move/lea instructions (`compile_pmoves_sound`,
-  `compile_pmoves_no_todo`, covering no-op deletion under canonical
-  source widths, ready peeling, pigeonhole `%rcx` scratch freshness
-  across multiple disjoint cycles, `%rax` slot-move scratch, and
-  global symbol addresses); concrete `build_rctx` callee-save slot
-  disjointness, register coverage, `callee_save_stores` /
-  `callee_save_restores` round-trip, and `lowers[]` GC root slot
-  placement (`build_rctx_save_slots_disjoint`,
-  `build_rctx_used_callee_saved`, `build_rctx_callee_saves_sound`,
-  `build_rctx_root_lower_slot`, `lower_key_never_hreg`); and
-  executable `valid_alloc` rejection examples. Validator-to-CFG
-  simulation and native x86 body semantics are not yet proved there.
+  `RegsProof.v` (compiled with an open-assumption gate in the default
+  backend build) proves kernel-checked results, all closed under the
+  global context:
+  - *Validator forward simulation (`valid_alloc_sound`,
+    `valid_alloc_classes_eligible`, `check_rblocks_trace_sound`,
+    `rblock_liveness_sound`, `check_rinsts_rev_sound`,
+    `eblocks_to_r_wf`).* Over `state_agrees` relating live temporaries
+    to hardware registers and shared physical frame slots (`Z -> Z`
+    indexed by `slot_of`, allowing expired spill-slot reuse as in
+    `ex_shared_spill_slot` and `ex_valid_alloc_loop`), any register map
+    accepted by `valid_alloc` on a well-formed `rblock` CFG maps only
+    `W`, `L` and `P` temporaries, keeps mapped parameters in distinct
+    registers, requires every entry-live mapped temporary to belong to
+    `param_tids`, and preserves operand and jump reads along every
+    multi-block execution trace from block `0` (across
+    multi-definitions, caller-saved call clobbers, simultaneous `phi`
+    updates and `poll` back-edges) whenever unmapped writes satisfy
+    `cfg_trace_slot_ok`.
+  - *Whole-scheduler parallel moves (`compile_pmoves_sound`,
+    `compile_pmoves_no_todo`).* For any well-formed parallel-move list
+    with distinct non-scratch destinations and canonical source widths,
+    `compile_pmoves` never exhausts its `2n + 1` fuel or emits `todo`,
+    keeps `%rcx` unread before every cycle break across arbitrary
+    disjoint cycles, and emits x86-64 `mov`/`movabs`/`lea` lines whose
+    sequential execution produces `simul_pmoves` on every allocatable
+    register and frame slot under any global symbol map.
+  - *Concrete frame, callee-save and root separation
+    (`build_rctx_save_slots_disjoint`, `build_rctx_used_callee_saved`,
+    `build_rctx_callee_saves_sound`, `build_rctx_root_lower_slot`,
+    `lower_key_never_hreg`),* interval and ordset primitives
+    (`ivals_disjoint_sound`, `ivals_hit_points_sound`,
+    `ivals_union_sound`), modular `lea`/`imm32` selection
+    (`imm32_congruent`, `imm32_add_mod_sound`, `imm32_sub_lea_w_sound`,
+    `imm32_sub_lea_l_sound`), and executable `valid_alloc` acceptance
+    and rejection examples.
+  - *Outside `RegsProof.v`.* Extraction of `rblock` use/def/call
+    metadata from fused instructions (`pinst_uses`, `pinst_defs`,
+    `pinst_call`, `build_eblock`), discharge of `cfg_trace_slot_ok`
+    from `FrameSlots.temp_slots`, and machine semantics for non-move
+    x86-64 body instructions are not mechanized; they are guarded by
+    `tests/regs.sh` under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
 - **Behavioural gate.** `compile` and `compile-promoted` keep their
   byte-identity gates unchanged. `tests/regs.sh` (run with
   `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` in the `nanofil-backend` check,

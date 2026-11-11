@@ -1,24 +1,34 @@
-(** # Invariants, parallel-move soundness and frame proofs for Regs.v
+(** # Soundness proofs for Regs.v: validator, parallel moves and frame layout
 
-    Kernel-checked proofs for the interval primitives, live
-    register-and-frame-slot state updates, 3-address immediate
-    selection, whole-scheduler parallel moves and concrete frame
-    separation in Regs.v (M7 of docs/gallina-backend.md):
+    Kernel-checked proofs for the executable allocation validator
+    ([valid_alloc]), parallel-move compiler ([compile_pmoves]), concrete
+    frame/save/root separation ([build_rctx]), interval primitives and
+    3-address immediate selection in Regs.v (M7 of
+    docs/gallina-backend.md):
 
-    1. **Interval and call-point tests** ([hreg_eqb_spec],
-       [ivals_disjoint_sound], [ivals_hit_points_sound]): under
-       [ivals_wf] and [pts_wf], disjoint interval lists share no program
-       point, and an interval list that misses the sorted call points
-       contains none of them.
-    2. **Live-only register and shared-slot state steps**
-       ([clobber_preserves_agrees], [poll_edge_clobber_sound],
-       [write_mach_step_sound], [write_mach_list_sound],
-       [check_rinst_step_sound]): [state_agrees] relates live
-       temporaries to hardware registers and physical shared frame slots
-       (`Z -> Z` indexed by `slot_of`, allowing expired spill-slot reuse
-       as in [ex_shared_spill_slot]), across caller-saved clobbers,
-       single and simultaneous destination writes, and one abstract
-       instruction step.
+    1. **Interval and ordset primitives** ([hreg_eqb_spec],
+       [ivals_disjoint_sound], [ivals_hit_points_sound],
+       [ivals_union_sound], [nset_union_spec], [nset_sub_spec],
+       [nset_of_list_spec]): under [ivals_wf], [pts_wf] and [nset_wf],
+       the sorted interval tests and [nat] ordset operations agree with
+       set membership.
+    2. **Validator forward simulation over multi-block CFGs**
+       ([valid_alloc_sound], [valid_alloc_classes_eligible],
+       [check_rblocks_trace_sound], [rblock_liveness_sound],
+       [check_rinsts_rev_sound], [check_rinst_multi_sound],
+       [eblocks_to_r_wf]): [state_agrees] relates live temporaries to
+       hardware registers and shared physical frame slots (`Z -> Z`
+       indexed by `slot_of`, allowing expired spill-slot reuse as in
+       [ex_shared_spill_slot] and [ex_valid_alloc_loop]). Whenever
+       [valid_alloc] accepts `(cmap, param_tids, rbs, rm)` on a
+       well-formed [rblock] CFG, every mapped temporary has class `W`,
+       `L` or `P`, no two mapped parameters share a hardware register,
+       every entry-live mapped temporary belongs to `param_tids`, and any
+       multi-block execution trace from block `0` (across
+       multi-definitions, caller-saved call clobbers, simultaneous
+       [[phi]] edge updates and `Poll` back-edge clobbers) reads identical
+       operands and jump inputs to abstract temporary execution whenever
+       unmapped writes satisfy [cfg_trace_slot_ok].
     3. **3-address `lea` and immediate selection** ([imm32_congruent],
        [imm32_add_mod_sound], [imm32_sub_lea_w_sound],
        [imm32_sub_lea_l_sound]): [integer_immediate] and negated `lea`
@@ -41,11 +51,20 @@
        root and aliased frame slot, cover every callee-saved register in
        `rm`, restore all five callee-saved registers via
        [callee_save_stores] and [callee_save_restores], and keep pointer
-       lowers in concrete `lowers[]` GC root slots. *)
+       lowers in concrete `lowers[]` GC root slots.
+    6. **Scope boundary**: `RegsProof.v` proves the verification,
+       scheduling and frame-layout kernels above. It does not prove
+       whole-function x86-64 lowering of [function_code_allocated]
+       against `Nanofil.Semantics`: extraction of [rblock] metadata from
+       fused instructions ([pinst_uses], [pinst_defs], [pinst_call],
+       [build_eblock]), discharge of [cfg_trace_slot_ok] from
+       `FrameSlots.temp_slots`, and machine semantics for non-move body
+       instructions remain outside this file and are checked by the
+       differential and FUGC gates (`tests/regs.sh`). *)
 
 From Stdlib Require Import String ZArith List Bool Arith Lia SetoidList.
 From Nanofil Require Import Term Syntax Maps.
-From Backend Require Import Asm Plan PlanTerm Layout Emit Regs.
+From Backend Require Import Asm Order Plan PlanTerm Layout Emit Regs.
 Import ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -218,6 +237,515 @@ Theorem ivals_hit_points_sound : forall ivs pts p,
 Proof.
   intros ivs pts p Hwi Hwp Hhit Hin Hpt. unfold ivals_hit_points in Hhit.
   eapply ivals_hit_points_fuel_sound; [exact Hwi | exact Hwp | exact Hhit | exact Hin | exact Hpt].
+Qed.
+
+(** [nat_leb] reflects `<=` on [nat]. *)
+Lemma nat_leb_spec : forall a b, nat_leb a b = true <-> (a <= b)%nat.
+Proof.
+  intros a b. unfold nat_leb.
+  destruct (Nat.compare_spec a b); split; intro Hc; try discriminate; lia.
+Qed.
+
+(** [nat_leb] returns `false` iff `(b < a)%nat`. *)
+Lemma nat_leb_false_spec : forall a b, nat_leb a b = false <-> (b < a)%nat.
+Proof.
+  intros a b. unfold nat_leb.
+  destruct (Nat.compare_spec a b); split; intro Hc; try discriminate; lia.
+Qed.
+
+(** [nat_max] equals `Nat.max`. *)
+Lemma nat_max_spec : forall a b, nat_max a b = Nat.max a b.
+Proof.
+  intros a b. unfold nat_max.
+  destruct (nat_ltb a b) eqn:E.
+  - apply nat_ltb_spec in E. lia.
+  - apply nat_ltb_false_spec in E. lia.
+Qed.
+
+(** Membership in `in_ivals` distributes over list concatenation. *)
+Lemma in_ivals_app : forall p xs ys,
+  in_ivals p (xs ++ ys) <-> in_ivals p xs \/ in_ivals p ys.
+Proof.
+  intros p xs ys. induction xs as [|[a b] xs' IH]; simpl.
+  - tauto.
+  - rewrite IH. tauto.
+Qed.
+
+(** Appending an interval strictly after every element of `xs` preserves [ivals_wf]. *)
+Lemma ivals_wf_snoc : forall xs bound a b,
+  ivals_wf bound xs ->
+  (bound <= a)%nat ->
+  (a <= b)%nat ->
+  (forall u v, In (u, v) xs -> (S v <= a)%nat) ->
+  ivals_wf bound (xs ++ [(a, b)]).
+Proof.
+  induction xs as [|[u v] xs' IH]; intros bound a b Hwf Hba Hab Hall; simpl in *.
+  - split; [exact Hba | split; [exact Hab | exact I]].
+  - destruct Hwf as [Hbu [Huv Hwf']].
+    pose proof (Hall u v (or_introl eq_refl)) as Hva.
+    split; [exact Hbu | split; [exact Huv |]].
+    apply IH; [exact Hwf' | exact Hva | exact Hab |].
+    intros u' v' Hin'. apply (Hall u' v'). right. exact Hin'.
+Qed.
+
+(** Reversed well-formedness invariant on [ivals_union_acc]'s accumulator. *)
+Definition ivals_acc_wf (lim : nat) (acc : list ival) : Prop :=
+  ivals_wf O (rev acc) /\
+  match acc with
+  | [] => True
+  | (a0, _) :: _ =>
+      (a0 <= lim)%nat /\
+      (forall u v, In (u, v) (tl acc) -> (S v <= a0)%nat)
+  end.
+
+(** Pushing interval `(a, b)` with `lim <= a <= b` onto `acc` preserves
+    [ivals_acc_wf] at new limit `a` and adds `[a, b]` to `rev acc`. *)
+Lemma ival_push_acc_sound : forall lim a b acc,
+  ivals_acc_wf lim acc ->
+  (lim <= a)%nat ->
+  (a <= b)%nat ->
+  ivals_acc_wf a (ival_push_acc (a, b) acc) /\
+  (forall p, in_ivals p (rev (ival_push_acc (a, b) acc)) <->
+             in_ivals p (rev acc) \/ ((a <= p)%nat /\ (p <= b)%nat)).
+Proof.
+  intros lim a b [|[a0 b0] acc'] [Hwf Hlim] Hla Hab.
+  - simpl. split.
+    + split; [split; [lia | split; [exact Hab | exact I]] | split; [lia | intros u v []]].
+    + intro p. simpl. tauto.
+  - destruct Hlim as [Ha0 Hall]. simpl in Hall.
+    cbn [ival_push_acc fst snd].
+    destruct (nat_leb a (S b0)) eqn:Ele.
+    + apply nat_leb_spec in Ele.
+      rewrite nat_max_spec.
+      assert (Hwf_tl : ivals_wf O (rev acc')).
+      { clear -Hwf. simpl in Hwf. revert Hwf. generalize O.
+        induction (rev acc') as [|[u v] l IH]; intros bnd Hwf; simpl in *; [exact I|].
+        destruct Hwf as [H1 [H2 H3]]. split; [exact H1 | split; [exact H2 | exact (IH (S v) H3)]]. }
+      split.
+      * split.
+        -- simpl. apply ivals_wf_snoc; [exact Hwf_tl | lia | lia |].
+           intros u v Hin. apply (Hall u v). apply in_rev. exact Hin.
+        -- split; [lia | exact Hall].
+      * intro p. simpl. rewrite !in_ivals_app. simpl.
+        assert (Hmerge : ((a0 <= p)%nat /\ (p <= Nat.max b0 b)%nat) <->
+                         ((a0 <= p)%nat /\ (p <= b0)%nat) \/ ((a <= p)%nat /\ (p <= b)%nat)) by lia.
+        tauto.
+    + apply nat_leb_false_spec in Ele.
+      assert (Hb0 : (a0 <= b0)%nat).
+      { clear -Hwf. simpl in Hwf. revert Hwf. generalize O.
+        induction (rev acc') as [|[u v] l IH]; intros bnd Hwf; simpl in *.
+        - exact (proj1 (proj2 Hwf)).
+        - exact (IH (S v) (proj2 (proj2 Hwf))). }
+      split.
+      * split.
+        -- change (rev ((a, b) :: (a0, b0) :: acc')) with (rev ((a0, b0) :: acc') ++ [(a, b)]).
+           apply ivals_wf_snoc; [exact Hwf | lia | exact Hab |].
+           intros u v Hin. simpl in Hin.
+           apply in_app_or in Hin. destruct Hin as [Hin' | [Heq | []]].
+           ++ apply in_rev in Hin'. pose proof (Hall u v Hin'). lia.
+           ++ injection Heq as <- <-. lia.
+        -- split; [lia |].
+           intros u v [Heq | Hin']; [injection Heq as <- <-; lia | pose proof (Hall u v Hin'); lia].
+      * intro p. change (rev ((a, b) :: (a0, b0) :: acc')) with (rev ((a0, b0) :: acc') ++ [(a, b)]).
+        rewrite in_ivals_app. simpl. tauto.
+Qed.
+
+(** Fuel induction for [ivals_union_acc]. *)
+Lemma ivals_union_acc_sound : forall fuel xs ys bx by0 lim acc,
+  (length xs + length ys <= fuel)%nat ->
+  ivals_wf bx xs ->
+  ivals_wf by0 ys ->
+  (lim <= bx)%nat ->
+  (lim <= by0)%nat ->
+  ivals_acc_wf lim acc ->
+  ivals_wf O (ivals_union_acc fuel xs ys acc) /\
+  (forall p, in_ivals p (ivals_union_acc fuel xs ys acc) <->
+             in_ivals p (rev acc) \/ in_ivals p xs \/ in_ivals p ys).
+Proof.
+  induction fuel as [|fuel' IH]; intros xs ys bx by0 lim acc Hfuel Hwx Hwy Hlx Hly Hacc.
+  - destruct xs, ys; simpl in Hfuel; try lia.
+    simpl. unfold rev'. rewrite <- rev_alt.
+    split; [exact (proj1 Hacc) | intro p; simpl; tauto].
+  - destruct xs as [|[a1 b1] xs'], ys as [|[a2 b2] ys'].
+    + simpl. unfold rev'. rewrite <- rev_alt.
+      split; [exact (proj1 Hacc) | intro p; simpl; tauto].
+    + cbn [ivals_union_acc]. simpl in Hwx, Hwy, Hfuel.
+      destruct Hwy as [Hby [Hab2 Hwy']].
+      destruct (ival_push_acc_sound lim a2 b2 acc Hacc ltac:(lia) Hab2) as [Hacc' Hiff'].
+      destruct (IH [] ys' a2 (S b2) a2 (ival_push_acc (a2, b2) acc)
+                  ltac:(simpl; lia) I Hwy' ltac:(lia) ltac:(lia) Hacc') as [Hwf_end Hiff_end].
+      split; [exact Hwf_end|].
+      intro p. rewrite Hiff_end, Hiff'. simpl. tauto.
+    + cbn [ivals_union_acc]. simpl in Hwx, Hwy, Hfuel.
+      destruct Hwx as [Hbx [Hab1 Hwx']].
+      destruct (ival_push_acc_sound lim a1 b1 acc Hacc ltac:(lia) Hab1) as [Hacc' Hiff'].
+      destruct (IH xs' [] (S b1) a1 a1 (ival_push_acc (a1, b1) acc)
+                  ltac:(simpl; lia) Hwx' I ltac:(lia) ltac:(lia) Hacc') as [Hwf_end Hiff_end].
+      split; [exact Hwf_end|].
+      intro p. rewrite Hiff_end, Hiff'. simpl. tauto.
+    + cbn [ivals_union_acc]. simpl in Hwx, Hwy, Hfuel.
+      destruct Hwx as [Hbx [Hab1 Hwx']].
+      destruct Hwy as [Hby [Hab2 Hwy']].
+      destruct (nat_leb a1 a2) eqn:Ele.
+      * apply nat_leb_spec in Ele.
+        destruct (ival_push_acc_sound lim a1 b1 acc Hacc ltac:(lia) Hab1) as [Hacc' Hiff'].
+        destruct (IH xs' ((a2, b2) :: ys') (S b1) a2 a1 (ival_push_acc (a1, b1) acc)
+                    ltac:(simpl; lia) Hwx'
+                    (conj (Nat.le_refl a2) (conj Hab2 Hwy'))
+                    ltac:(lia) Ele Hacc') as [Hwf_end Hiff_end].
+        split; [exact Hwf_end|].
+        intro p. rewrite Hiff_end, Hiff'. simpl. tauto.
+      * apply nat_leb_false_spec in Ele.
+        destruct (ival_push_acc_sound lim a2 b2 acc Hacc ltac:(lia) Hab2) as [Hacc' Hiff'].
+        destruct (IH ((a1, b1) :: xs') ys' a1 (S b2) a2 (ival_push_acc (a2, b2) acc)
+                    ltac:(simpl; lia)
+                    (conj (Nat.le_refl a1) (conj Hab1 Hwx'))
+                    Hwy' ltac:(lia) ltac:(lia) Hacc') as [Hwf_end Hiff_end].
+        split; [exact Hwf_end|].
+        intro p. rewrite Hiff_end, Hiff'. simpl. tauto.
+Qed.
+
+(** [ivals_union] preserves [ivals_wf] and computes the exact point-set union. *)
+Theorem ivals_union_sound : forall xs ys,
+  ivals_wf O xs ->
+  ivals_wf O ys ->
+  ivals_wf O (ivals_union xs ys) /\
+  (forall p, in_ivals p (ivals_union xs ys) <-> in_ivals p xs \/ in_ivals p ys).
+Proof.
+  intros xs ys Hwx Hwy. unfold ivals_union.
+  destruct (ivals_union_acc_sound (length xs + length ys) xs ys O O O []
+              (Nat.le_refl _) Hwx Hwy (Nat.le_refl O) (Nat.le_refl O) (conj I I))
+    as [Hwf Hiff].
+  split; [exact Hwf | intro p; rewrite Hiff; simpl; tauto].
+Qed.
+
+(** Non-strictly sorted [list nat] predicate for merge sort [Order.msort]. *)
+Fixpoint le_wf (bound : nat) (xs : list nat) : Prop :=
+  match xs with
+  | [] => True
+  | x :: xs' => (bound <= x)%nat /\ le_wf x xs'
+  end.
+
+(** Weakening the lower bound of [le_wf]. *)
+Lemma le_wf_weaken : forall xs b1 b2,
+  (b1 <= b2)%nat -> le_wf b2 xs -> le_wf b1 xs.
+Proof.
+  destruct xs as [|x xs']; intros b1 b2 Hle Hwf; simpl in *; [exact I|].
+  destruct Hwf as [H1 H2]. split; [lia | exact H2].
+Qed.
+
+(** Weakening the lower bound of [pts_wf]. *)
+Lemma pts_wf_weaken : forall xs b1 b2,
+  (b1 <= b2)%nat -> pts_wf b2 xs -> pts_wf b1 xs.
+Proof.
+  destruct xs as [|x xs']; intros b1 b2 Hle Hwf; simpl in *; [exact I|].
+  destruct Hwf as [H1 H2]. split; [lia | exact H2].
+Qed.
+
+(** [Order.merge_steps] preserves [le_wf] and computes list union when fuel suffices. *)
+Lemma merge_steps_nat_spec : forall n xs ys b,
+  (length xs + length ys <= n)%nat ->
+  le_wf b xs -> le_wf b ys ->
+  le_wf b (merge_steps Nat.compare n xs ys) /\
+  (forall z, In z (merge_steps Nat.compare n xs ys) <-> In z xs \/ In z ys).
+Proof.
+  induction n as [|n' IH]; intros xs ys b Hlen Hwx Hwy.
+  - destruct xs, ys; simpl in *; try lia.
+    split; [exact I | intro z; tauto].
+  - destruct xs as [|x xs'], ys as [|y ys']; simpl in *.
+    + split; [exact I | intro z; tauto].
+    + split; [exact Hwy | intro z; tauto].
+    + split; [exact Hwx | intro z; tauto].
+    + destruct Hwx as [Hbx Hwx']. destruct Hwy as [Hby Hwy'].
+      destruct (Nat.compare_spec x y) as [Heq | Hlt | Hgt].
+      * subst y.
+        destruct (IH xs' (x :: ys') x ltac:(simpl; lia) Hwx' (conj (Nat.le_refl x) Hwy'))
+          as [Hwf Hiff].
+        split; [split; [exact Hbx | exact Hwf] | intro z; simpl; rewrite Hiff; simpl; tauto].
+      * destruct (IH xs' (y :: ys') x ltac:(simpl; lia) Hwx' (conj (Nat.lt_le_incl x y Hlt) Hwy'))
+          as [Hwf Hiff].
+        split; [split; [exact Hbx | exact Hwf] | intro z; simpl; rewrite Hiff; simpl; tauto].
+      * destruct (IH (x :: xs') ys' y ltac:(simpl; lia) (conj (Nat.lt_le_incl y x Hgt) Hwx') Hwy')
+          as [Hwf Hiff].
+        split; [split; [exact Hby | exact Hwf] | intro z; simpl; rewrite Hiff; simpl; tauto].
+Qed.
+
+(** [Order.merge] preserves [le_wf] and computes list union. *)
+Lemma merge_nat_spec : forall xs ys,
+  le_wf O xs -> le_wf O ys ->
+  le_wf O (merge Nat.compare xs ys) /\
+  (forall z, In z (merge Nat.compare xs ys) <-> In z xs \/ In z ys).
+Proof.
+  intros xs ys Hx Hy. unfold merge.
+  exact (merge_steps_nat_spec (length xs + length ys) xs ys O (Nat.le_refl _) Hx Hy).
+Qed.
+
+(** Well-formedness of a merge-sort run stack. *)
+Fixpoint run_stack_wf (st : list (option (list nat))) : Prop :=
+  match st with
+  | [] => True
+  | None :: st' => run_stack_wf st'
+  | Some r :: st' => le_wf O r /\ run_stack_wf st'
+  end.
+
+(** Membership across a merge-sort run stack. *)
+Fixpoint in_run_stack (z : nat) (st : list (option (list nat))) : Prop :=
+  match st with
+  | [] => False
+  | None :: st' => in_run_stack z st'
+  | Some r :: st' => In z r \/ in_run_stack z st'
+  end.
+
+(** [Order.push_run] preserves [run_stack_wf] and adds `run`'s elements. *)
+Lemma push_run_nat_spec : forall st run,
+  run_stack_wf st -> le_wf O run ->
+  run_stack_wf (push_run Nat.compare st run) /\
+  (forall z, in_run_stack z (push_run Nat.compare st run) <-> in_run_stack z st \/ In z run).
+Proof.
+  induction st as [|[r'|] st' IH]; intros run Hst Hrun; simpl in *.
+  - split; [split; [exact Hrun | exact I] | intro z; tauto].
+  - destruct Hst as [Hr' Hst'].
+    destruct (merge_nat_spec r' run Hr' Hrun) as [Hm_wf Hm_in].
+    destruct (IH (merge Nat.compare r' run) Hst' Hm_wf) as [Hp_wf Hp_in].
+    split; [exact Hp_wf | intro z; rewrite Hp_in, Hm_in; tauto].
+  - split; [split; [exact Hrun | exact Hst] | intro z; tauto].
+Qed.
+
+(** [Order.merge_runs] merges a well-formed stack into a sorted list. *)
+Lemma merge_runs_nat_spec : forall st,
+  run_stack_wf st ->
+  le_wf O (merge_runs Nat.compare st) /\
+  (forall z, In z (merge_runs Nat.compare st) <-> in_run_stack z st).
+Proof.
+  induction st as [|[r|] st' IH]; intro Hst; simpl in *.
+  - split; [exact I | intro z; tauto].
+  - destruct Hst as [Hr Hst'].
+    destruct (IH Hst') as [Hm_wf Hm_in].
+    destruct (merge_nat_spec (merge_runs Nat.compare st') r Hm_wf Hr) as [Hwf Hiff].
+    split; [exact Hwf | intro z; rewrite Hiff, Hm_in; tauto].
+  - exact (IH Hst).
+Qed.
+
+(** [Order.dedup] turns [le_wf] into strict [pts_wf] while preserving membership. *)
+Lemma dedup_nat_spec : forall xs b,
+  le_wf b xs ->
+  pts_wf b (dedup Nat.compare xs) /\
+  (forall z, In z (dedup Nat.compare xs) <-> In z xs).
+Proof.
+  induction xs as [|x [|y ys] IH]; intros b Hle; simpl in *.
+  - split; [exact I | intro z; tauto].
+  - destruct Hle as [Hbx _].
+    split; [split; [exact Hbx | exact I] | intro z; tauto].
+  - destruct Hle as [Hbx [Hxy Hys]].
+    destruct (Nat.compare_spec x y) as [Heq | Hlt | Hgt].
+    + subst y.
+      destruct (IH b (conj Hbx Hys)) as [Hwf Hiff].
+      split; [exact Hwf | intro z; rewrite Hiff; simpl; intuition congruence].
+    + destruct (IH (S x) (conj Hlt Hys)) as [Hwf Hiff].
+      split; [split; [exact Hbx | exact Hwf] | intro z; simpl; rewrite Hiff; simpl; tauto].
+    + lia.
+Qed.
+
+(** [nset_of_list] produces a strictly sorted [pts_wf] ordset with identical elements. *)
+Theorem nset_of_list_spec : forall xs,
+  pts_wf O (nset_of_list xs) /\
+  (forall z, In z (nset_of_list xs) <-> In z xs).
+Proof.
+  intro xs. unfold nset_of_list, sort, msort.
+  assert (Hfold : forall l st,
+            run_stack_wf st ->
+            run_stack_wf (fold_left (fun s x => push_run Nat.compare s [x]) l st) /\
+            (forall z, in_run_stack z (fold_left (fun s x => push_run Nat.compare s [x]) l st) <->
+                       in_run_stack z st \/ In z l)).
+  { induction l as [|x l' IH]; intros st Hst; simpl.
+    - split; [exact Hst | intro z; tauto].
+    - assert (Hx : le_wf O [x]) by (simpl; split; [lia | exact I]).
+      destruct (push_run_nat_spec st [x] Hst Hx) as [Hst1 Hin1].
+      destruct (IH _ Hst1) as [Hst2 Hin2].
+      split; [exact Hst2 | intro z; rewrite Hin2, Hin1; simpl; tauto]. }
+  destruct (Hfold xs [] I) as [Hst Hin_st].
+  destruct (merge_runs_nat_spec _ Hst) as [Hm_wf Hm_in].
+  destruct (dedup_nat_spec _ O Hm_wf) as [Hd_wf Hd_in].
+  split; [exact Hd_wf | intro z; rewrite Hd_in, Hm_in, Hin_st; simpl; tauto].
+Qed.
+
+(** [nset_eqb] reflects list equality on [list nat]. *)
+Theorem nset_eqb_spec : forall xs ys,
+  nset_eqb xs ys = true <-> xs = ys.
+Proof.
+  induction xs as [|x xs' IH]; intros [|y ys']; simpl;
+    try (split; [discriminate | discriminate]).
+  - split; reflexivity.
+  - destruct (nat_eqb x y) eqn:Exy.
+    + apply nat_eqb_spec in Exy. subst y.
+      rewrite IH. split; [intro H; subst; reflexivity | intro H; injection H as ->; reflexivity].
+    + split; [discriminate | intro H; injection H as -> _; rewrite (proj2 (nat_eqb_spec y y) eq_refl) in Exy; discriminate].
+Qed.
+
+(** Appending a strictly greater element to a [pts_wf] list preserves [pts_wf]. *)
+Lemma pts_wf_snoc : forall xs b x,
+  pts_wf b xs ->
+  (b <= x)%nat ->
+  (forall y, In y xs -> (S y <= x)%nat) ->
+  pts_wf b (xs ++ [x]).
+Proof.
+  induction xs as [|u xs' IH]; intros b x Hwf Hbx Hall; simpl in *.
+  - split; [exact Hbx | exact I].
+  - destruct Hwf as [Hbu Hwf'].
+    split; [exact Hbu |].
+    apply IH; [exact Hwf' | exact (Hall u (or_introl eq_refl)) |].
+    intros y Hy. apply Hall. right. exact Hy.
+Qed.
+
+(** Accumulator invariant for [nset_union_acc] and [nset_sub_acc]. *)
+Definition nset_acc_wf (lim : nat) (acc : list nat) : Prop :=
+  pts_wf O (rev acc) /\ (forall y, In y acc -> (S y <= lim)%nat).
+
+(** Extending `acc` with `x >= lim` preserves [nset_acc_wf] at `S x`. *)
+Lemma nset_acc_push : forall lim x acc,
+  nset_acc_wf lim acc ->
+  (lim <= x)%nat ->
+  nset_acc_wf (S x) (x :: acc).
+Proof.
+  intros lim x acc [Hwf Hall] Hlx. split.
+  - simpl. apply pts_wf_snoc; [exact Hwf | lia |].
+    intros y Hy. apply in_rev in Hy. pose proof (Hall y Hy). lia.
+  - intros y [<- | Hy]; [lia | pose proof (Hall y Hy); lia].
+Qed.
+
+(** Appending a sorted suffix `ys` with bound `>= lim` onto `rev acc` preserves `pts_wf O`. *)
+Lemma nset_acc_finish : forall ys lim acc,
+  nset_acc_wf lim acc ->
+  pts_wf lim ys ->
+  pts_wf O (rev_append acc ys).
+Proof.
+  induction ys as [|y ys' IH]; intros lim acc Hacc Hwy; simpl in *.
+  - rewrite rev_append_rev, app_nil_r. exact (proj1 Hacc).
+  - destruct Hwy as [Hly Hwy'].
+    change (rev_append acc (y :: ys')) with (rev_append (y :: acc) ys').
+    apply (IH (S y) (y :: acc) (nset_acc_push lim y acc Hacc Hly) Hwy').
+Qed.
+
+(** Fuel induction for [nset_union_acc]. *)
+Lemma nset_union_acc_spec : forall fuel xs ys bx by0 lim acc,
+  (length xs + length ys <= fuel)%nat ->
+  pts_wf bx xs -> pts_wf by0 ys ->
+  (lim <= bx)%nat -> (lim <= by0)%nat ->
+  nset_acc_wf lim acc ->
+  pts_wf O (nset_union_acc fuel xs ys acc) /\
+  (forall z, In z (nset_union_acc fuel xs ys acc) <-> In z acc \/ In z xs \/ In z ys).
+Proof.
+  induction fuel as [|fuel' IH]; intros xs ys bx by0 lim acc Hfuel Hwx Hwy Hlx Hly Hacc.
+  - destruct xs, ys; simpl in Hfuel; try lia.
+    simpl. rewrite rev_append_rev, app_nil_r.
+    split; [exact (proj1 Hacc) | intro z; rewrite <- in_rev; simpl; tauto].
+  - destruct xs as [|x xs'], ys as [|y ys'].
+    + simpl. rewrite rev_append_rev, app_nil_r.
+      split; [exact (proj1 Hacc) | intro z; rewrite <- in_rev; simpl; tauto].
+    + cbn [nset_union_acc].
+      split; [exact (nset_acc_finish (y :: ys') lim acc Hacc (pts_wf_weaken _ lim by0 Hly Hwy))|].
+      intro z. rewrite rev_append_rev, in_app_iff, <- in_rev. simpl; tauto.
+    + cbn [nset_union_acc].
+      split; [exact (nset_acc_finish (x :: xs') lim acc Hacc (pts_wf_weaken _ lim bx Hlx Hwx))|].
+      intro z. rewrite rev_append_rev, in_app_iff, <- in_rev. simpl; tauto.
+    + cbn [nset_union_acc]. simpl in Hwx, Hwy, Hfuel.
+      destruct Hwx as [Hbx Hwx']. destruct Hwy as [Hby Hwy'].
+      destruct (Nat.compare_spec x y) as [Heq | Hlt | Hgt].
+      * subst y.
+        destruct (IH xs' ys' (S x) (S x) (S x) (x :: acc)
+                    ltac:(lia) Hwx' Hwy' (Nat.le_refl _) (Nat.le_refl _)
+                    (nset_acc_push lim x acc Hacc ltac:(lia))) as [Hwf Hiff].
+        split; [exact Hwf | intro z; rewrite Hiff; simpl; intuition congruence].
+      * destruct (IH xs' (y :: ys') (S x) y (S x) (x :: acc)
+                    ltac:(simpl; lia) Hwx' (conj (Nat.le_refl y) Hwy')
+                    (Nat.le_refl _) Hlt
+                    (nset_acc_push lim x acc Hacc ltac:(lia))) as [Hwf Hiff].
+        split; [exact Hwf | intro z; rewrite Hiff; simpl; tauto].
+      * destruct (IH (x :: xs') ys' x (S y) (S y) (y :: acc)
+                    ltac:(simpl; lia) (conj (Nat.le_refl x) Hwx') Hwy'
+                    Hgt (Nat.le_refl _)
+                    (nset_acc_push lim y acc Hacc ltac:(lia))) as [Hwf Hiff].
+        split; [exact Hwf | intro z; rewrite Hiff; simpl; tauto].
+Qed.
+
+(** [nset_union] preserves [pts_wf] and computes exact set union. *)
+Theorem nset_union_spec : forall xs ys,
+  pts_wf O xs -> pts_wf O ys ->
+  pts_wf O (nset_union xs ys) /\
+  (forall z, In z (nset_union xs ys) <-> In z xs \/ In z ys).
+Proof.
+  intros xs ys Hx Hy. unfold nset_union.
+  destruct (nset_union_acc_spec (length xs + length ys) xs ys O O O []
+              (Nat.le_refl _) Hx Hy (Nat.le_refl O) (Nat.le_refl O)
+              (conj I (fun _ H => False_ind _ H))) as [Hwf Hiff].
+  split; [exact Hwf | intro z; rewrite Hiff; simpl; tauto].
+Qed.
+
+(** Fuel induction for [nset_sub_acc]. *)
+Lemma nset_sub_acc_spec : forall fuel xs ys bx by0 lim acc,
+  (length xs + length ys <= fuel)%nat ->
+  pts_wf bx xs -> pts_wf by0 ys ->
+  (lim <= bx)%nat ->
+  nset_acc_wf lim acc ->
+  pts_wf O (nset_sub_acc fuel xs ys acc) /\
+  (forall z, In z (nset_sub_acc fuel xs ys acc) <-> In z acc \/ (In z xs /\ ~ In z ys)).
+Proof.
+  induction fuel as [|fuel' IH]; intros xs ys bx by0 lim acc Hfuel Hwx Hwy Hlx Hacc.
+  - destruct xs, ys; simpl in Hfuel; try lia.
+    simpl. unfold rev'. rewrite <- rev_alt.
+    split; [exact (proj1 Hacc) | intro z; rewrite <- in_rev; simpl; tauto].
+  - destruct xs as [|x xs'], ys as [|y ys'].
+    + simpl. unfold rev'. rewrite <- rev_alt.
+      split; [exact (proj1 Hacc) | intro z; rewrite <- in_rev; simpl; tauto].
+    + simpl. unfold rev'. rewrite <- rev_alt.
+      split; [exact (proj1 Hacc) | intro z; rewrite <- in_rev; simpl; tauto].
+    + cbn [nset_sub_acc].
+      split; [exact (nset_acc_finish (x :: xs') lim acc Hacc (pts_wf_weaken _ lim bx Hlx Hwx))|].
+      intro z. rewrite rev_append_rev, in_app_iff, <- in_rev. simpl. tauto.
+    + cbn [nset_sub_acc]. simpl in Hwx, Hwy, Hfuel.
+      destruct Hwx as [Hbx Hwx']. destruct Hwy as [Hby Hwy'].
+      destruct (Nat.compare_spec x y) as [Heq | Hlt | Hgt].
+      * subst y.
+        destruct (IH xs' ys' (S x) (S x) lim acc ltac:(lia) Hwx' Hwy' ltac:(lia) Hacc)
+          as [Hwf Hiff].
+        split; [exact Hwf|].
+        intro z. rewrite Hiff. split.
+        -- intros [Ha | [Hx' Hny]]; [left; exact Ha | right; split; [right; exact Hx'|]].
+           intros [<- | Hy']; [pose proof (in_pts_ge_bound xs' (S x) x Hwx' Hx'); lia | contradiction].
+        -- intros [Ha | [[<- | Hx'] Hny]]; [left; exact Ha | exfalso; apply Hny; left; reflexivity |].
+           right; split; [exact Hx' | intro Hy'; apply Hny; right; exact Hy'].
+      * destruct (IH xs' (y :: ys') (S x) y (S x) (x :: acc)
+                    ltac:(simpl; lia) Hwx' (conj (Nat.le_refl y) Hwy') (Nat.le_refl _)
+                    (nset_acc_push lim x acc Hacc ltac:(lia))) as [Hwf Hiff].
+        split; [exact Hwf|].
+        intro z. rewrite Hiff. simpl. split.
+        -- intros [[<- | Ha] | [Hx' Hny]]; [| left; exact Ha | right; split; [right; exact Hx' | exact Hny]].
+           right. split; [left; reflexivity|].
+           intros [<- | Hy']; [lia | pose proof (in_pts_ge_bound ys' (S y) x Hwy' Hy'); lia].
+        -- intros [Ha | [[<- | Hx'] Hny]]; [left; right; exact Ha | left; left; reflexivity |].
+           right; split; [exact Hx' | exact Hny].
+      * destruct (IH (x :: xs') ys' x (S y) lim acc
+                    ltac:(simpl; lia) (conj (Nat.le_refl x) Hwx') Hwy' ltac:(lia) Hacc)
+          as [Hwf Hiff].
+        split; [exact Hwf|].
+        intro z. rewrite Hiff. simpl. split.
+        -- intros [Ha | [Hx Hny]]; [left; exact Ha | right; split; [exact Hx|]].
+           intros [<- | Hy']; [|contradiction].
+           destruct Hx as [<- | Hx']; [lia | pose proof (in_pts_ge_bound xs' (S x) y Hwx' Hx'); lia].
+        -- intros [Ha | [Hx Hny]]; [left; exact Ha | right; split; [exact Hx | intro Hy'; apply Hny; right; exact Hy']].
+Qed.
+
+(** [nset_sub] preserves [pts_wf] and computes exact set difference. *)
+Theorem nset_sub_spec : forall xs ys,
+  pts_wf O xs -> pts_wf O ys ->
+  pts_wf O (nset_sub xs ys) /\
+  (forall z, In z (nset_sub xs ys) <-> In z xs /\ ~ In z ys).
+Proof.
+  intros xs ys Hx Hy. unfold nset_sub.
+  destruct (nset_sub_acc_spec (length xs + length ys) xs ys O O O []
+              (Nat.le_refl _) Hx Hy (Nat.le_refl O)
+              (conj I (fun _ H => False_ind _ H))) as [Hwf Hiff].
+  split; [exact Hwf | intro z; rewrite Hiff; simpl; tauto].
 Qed.
 
 (** ## 2. Live register and shared-slot state preservation *)
@@ -550,6 +1078,1630 @@ Proof.
       * destruct (hreg_callee_saved ru); [exact (IH Hcd) | discriminate].
       * exact (IH Hcd).
     + exact Hagree_mid.
+Qed.
+
+(** Lookup in [ZMap] corresponds to pair membership in [ZMap.elements]. *)
+Lemma zmap_find_in_elements : forall (A : Type) (k : Z) (v : A) (m : ZMap.t A),
+  ZMap.find k m = Some v <-> In (k, v) (ZMap.elements m).
+Proof.
+  intros A k v m.
+  rewrite <- ZF.find_mapsto_iff, ZF.elements_mapsto_iff, InA_alt.
+  split.
+  - intros [[k' v'] [[Hk Hv] Hin]]. simpl in Hk, Hv. subst. exact Hin.
+  - intros Hin. exists (k, v). split; [split; reflexivity | exact Hin].
+Qed.
+
+(** Domain unit map built by [valid_alloc] from `ZMap.elements rm`. *)
+Definition rm_dom_map (rm : ZMap.t hreg) : ZMap.t unit :=
+  rm_domain_acc (ZMap.elements rm) (ZMap.empty unit).
+
+(** Helper for [rm_domain_acc] lookups. *)
+Lemma rm_domain_acc_find : forall els m k,
+  ZMap.find k (rm_domain_acc els m) = Some tt <->
+  ZMap.find k m = Some tt \/ (exists r, In (k, r) els).
+Proof.
+  induction els as [|[k0 r0] els' IH]; intros m k; simpl.
+  - split; [intro H; left; exact H | intros [H | [r []]]; exact H].
+  - rewrite IH.
+    destruct (Z.eq_dec k0 k) as [-> | Hneq].
+    + rewrite ZF.add_eq_o by reflexivity.
+      split; [intros _; right; exists r0; left; reflexivity | intros _; left; reflexivity].
+    + rewrite ZF.add_neq_o by exact Hneq.
+      split.
+      * intros [Hm | [r Hin]]; [left; exact Hm | right; exists r; right; exact Hin].
+      * intros [Hm | [r [Heq | Hin]]]; [left; exact Hm | injection Heq as -> _; contradiction | right; exists r; exact Hin].
+Qed.
+
+(** `t` is in `rm_dom_map rm` iff `t` is mapped to some register in `rm`. *)
+Lemma rm_dom_find : forall rm t,
+  zmap_find_nat t (rm_dom_map rm) = Some tt <-> zmap_find_nat t rm <> None.
+Proof.
+  intros rm t. unfold rm_dom_map, zmap_find_nat.
+  rewrite rm_domain_acc_find, ZF.empty_o.
+  split.
+  - intros [H | [r Hin]]; [discriminate|].
+    apply zmap_find_in_elements in Hin. congruence.
+  - intro Hnn. destruct (ZMap.find (Z.of_nat t) rm) as [r|] eqn:E; [|contradiction].
+    right. exists r. apply zmap_find_in_elements. exact E.
+Qed.
+
+(** Predicate tested by [filter_keep_acc]. *)
+Definition keep_pred (keep : option (ZMap.t unit)) (x : nat) : bool :=
+  match keep with
+  | None => true
+  | Some km => match zmap_find_nat x km with Some _ => true | None => false end
+  end.
+
+(** Characterization of [filter_keep_acc]. *)
+Lemma filter_keep_acc_eq : forall keep xs acc,
+  filter_keep_acc keep xs acc = rev acc ++ filter (keep_pred keep) xs.
+Proof.
+  intros keep xs. induction xs as [|x xs' IH]; intro acc; simpl.
+  - unfold rev'. rewrite <- rev_alt, app_nil_r. reflexivity.
+  - change (match keep with None => true | Some km => match zmap_find_nat x km with Some _ => true | None => false end end)
+      with (keep_pred keep x).
+    destruct (keep_pred keep x).
+    + rewrite IH. simpl. rewrite <- app_assoc. reflexivity.
+    + apply IH.
+Qed.
+
+(** Filtering by `Some (rm_dom_map rm)` keeps exactly the `rm`-mapped elements of `xs`. *)
+Lemma filter_keep_dom_iff : forall rm xs t,
+  In t (filter_keep_acc (Some (rm_dom_map rm)) xs []) <->
+  In t xs /\ zmap_find_nat t rm <> None.
+Proof.
+  intros rm xs t. rewrite filter_keep_acc_eq. simpl.
+  rewrite filter_In. unfold keep_pred. split.
+  - intros [Hin Hk]. split; [exact Hin|].
+    destruct (zmap_find_nat t (rm_dom_map rm)) as [[]|] eqn:Ed; [|discriminate].
+    apply rm_dom_find. exact Ed.
+  - intros [Hin Hnn]. split; [exact Hin|].
+    apply rm_dom_find in Hnn. rewrite Hnn. reflexivity.
+Qed.
+
+(** Membership in [live_without_list]. *)
+Lemma live_without_list_in : forall ds live t,
+  In t (live_without_list ds live) <-> In t live /\ ~ In t ds.
+Proof.
+  induction ds as [|d ds' IH]; intros live t; simpl.
+  - tauto.
+  - unfold live_without. rewrite filter_In, IH.
+    destruct (Nat.eqb_spec t d) as [-> | Hneq]; simpl; intuition congruence.
+Qed.
+
+(** Every `rm`-mapped temporary in `need` belongs to `live`. *)
+Definition mapped_incl (rm : ZMap.t hreg) (need live : list nat) : Prop :=
+  forall t, zmap_find_nat t rm <> None -> In t need -> In t live.
+
+(** No unmapped write `d` in `ds` shares a physical slot with a distinct
+    unmapped temporary `t <> d` in `live`. *)
+Definition unmapped_slot_ok (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                            (ds live : list nat) : Prop :=
+  forall d t, In d ds -> In t live -> t <> d ->
+    zmap_find_nat d rm = None -> zmap_find_nat t rm = None ->
+    slot_of d <> slot_of t.
+
+(** [all_callee_saved] transfers from `live` to `need` under [mapped_incl]. *)
+Lemma all_callee_saved_incl : forall rm need live,
+  all_callee_saved rm live = true ->
+  mapped_incl rm need live ->
+  all_callee_saved rm need = true.
+Proof.
+  intros rm need live Hcs Hincl.
+  induction need as [|x need' IH]; simpl; [reflexivity|].
+  destruct (zmap_find_nat x rm) as [rx|] eqn:Ex.
+  - assert (Hx_live : In x live).
+    { apply Hincl; [congruence | left; reflexivity]. }
+    rewrite (all_callee_saved_spec rm live x rx Hcs Hx_live Ex).
+    apply IH. intros t Hnn Ht. apply Hincl; [exact Hnn | right; exact Ht].
+  - apply IH. intros t Hnn Ht. apply Hincl; [exact Hnn | right; exact Ht].
+Qed.
+
+(** [no_dup_hregs] on `u` plus [unmapped_slot_ok] establishes [list_no_collision]. *)
+Lemma no_dup_plus_slot_no_collision : forall rm slot_of ds live u,
+  no_dup_hregs rm u = true ->
+  (forall d, In d ds -> zmap_find_nat d rm <> None -> In d u) ->
+  mapped_incl rm live u ->
+  unmapped_slot_ok rm slot_of ds live ->
+  list_no_collision rm slot_of ds live.
+Proof.
+  intros rm slot_of ds. induction ds as [|d ds' IH]; intros live u Hnd Hds Hlive Hus; simpl.
+  - exact I.
+  - split.
+    + split.
+      * intros r t Ht Hneq Hd_r Ht_r.
+        apply live_without_list_in in Ht.
+        assert (Hd_u : In d u) by (apply Hds; [left; reflexivity | congruence]).
+        assert (Ht_u : In t u) by (apply Hlive; [congruence | exact (proj1 Ht)]).
+        eapply no_dup_hregs_inj; [exact Hnd | exact Ht_u | exact Hd_u | exact Hneq | exact Ht_r | exact Hd_r].
+      * intros t Ht Hneq Hd_n Ht_n Hslot_eq.
+        apply live_without_list_in in Ht.
+        eapply Hus; [left; reflexivity | exact (proj1 Ht) | exact Hneq | exact Hd_n | exact Ht_n | exact Hslot_eq].
+    + apply (IH live u Hnd).
+      * intros d' Hd' Hnn. apply Hds; [right; exact Hd' | exact Hnn].
+      * exact Hlive.
+      * intros d' t Hd' Ht Hneq Hd_n Ht_n.
+        apply Hus; [right; exact Hd' | exact Ht | exact Hneq | exact Hd_n | exact Ht_n].
+Qed.
+
+(** Decompose [check_rinsts_rev] across `xs ++ ys` when `Some` is returned. *)
+Lemma check_rinsts_rev_app_some : forall rm keep xs ys live out,
+  check_rinsts_rev rm keep (xs ++ ys) live = Some out ->
+  exists mid,
+    check_rinsts_rev rm keep xs live = Some mid /\
+    check_rinsts_rev rm keep ys mid = Some out.
+Proof.
+  intros rm keep xs. induction xs as [|ri xs' IH]; intros ys live out H; simpl in *.
+  - exists live. split; [reflexivity | exact H].
+  - destruct (negb (no_dup_hregs rm _)); [discriminate|].
+    destruct (negb match ri_call ri with RCallAfterReads => _ | _ => true end); [discriminate|].
+    destruct (negb (_ && no_dup_hregs rm _)); [discriminate|].
+    exact (IH ys _ out H).
+Qed.
+
+(** Abstract execution parameters for one [rinst] (pure/helper evaluation
+    `ie_eval` and caller-saved clobber witnesses `ie_arb1`, `ie_arb2`). *)
+Record inst_exec : Type := mkInstExec {
+  ie_eval : list Z -> list Z;
+  ie_arb1 : hreg -> Z;
+  ie_arb2 : hreg -> Z
+}.
+
+(** `ie` produces one output word per destination in `ri_defs ri`. *)
+Definition inst_exec_wf (ri : rinst) (ie : inst_exec) : Prop :=
+  forall xs, length (ie_eval ie xs) = length (ri_defs ri).
+
+(** Abstract temporary-environment transition for `ri` under `ie`. *)
+Definition abs_step_rinst (ri : rinst) (ie : inst_exec) (tenv : nat -> Z) : nat -> Z :=
+  write_abs_list tenv (ri_defs ri) (ie_eval ie (map tenv (ri_uses ri))).
+
+(** Machine state at the point `ri` reads its operands. *)
+Definition mach_pre_rinst (ri : rinst) (ie : inst_exec) (ms : mach_state) : mach_state :=
+  pre_call_state (ri_call ri) (ie_arb1 ie) ms.
+
+(** Machine state transition for `ri` under `ie`. *)
+Definition mach_step_rinst (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                           (ri : rinst) (ie : inst_exec) (ms : mach_state) : mach_state :=
+  let ms_pre := mach_pre_rinst ri ie ms in
+  write_mach_list rm slot_of
+    (post_call_state (ri_call ri) (ie_arb2 ie) ms_pre)
+    (ri_defs ri)
+    (ie_eval ie (map (read_mach rm slot_of ms_pre) (ri_uses ri))).
+
+(** Single multi-definition instruction step discharged directly from
+    [check_rinsts_rev] acceptance on `Some (rm_dom_map rm)`. *)
+Theorem check_rinst_multi_sound : forall rm slot_of ri ie live_after live_before need_after tenv ms,
+  pts_wf O live_after ->
+  check_rinsts_rev rm (Some (rm_dom_map rm)) [ri] live_after = Some live_before ->
+  inst_exec_wf ri ie ->
+  mapped_incl rm need_after live_after ->
+  unmapped_slot_ok rm slot_of (ri_defs ri) need_after ->
+  state_agrees rm slot_of (ri_uses ri ++ live_without_list (ri_defs ri) need_after) tenv ms ->
+  pts_wf O live_before /\
+  mapped_incl rm (ri_uses ri ++ live_without_list (ri_defs ri) need_after) live_before /\
+  map (read_mach rm slot_of (mach_pre_rinst ri ie ms)) (ri_uses ri) = map tenv (ri_uses ri) /\
+  state_agrees rm slot_of need_after (abs_step_rinst ri ie tenv) (mach_step_rinst rm slot_of ri ie ms).
+Proof.
+  intros rm slot_of ri ie live_after live_before need_after tenv ms
+         Hwf_la Hchk Hiewf Hincl_after Hus Hagree.
+  cbn [check_rinsts_rev] in Hchk. cbv zeta in Hchk.
+  set (ds := nset_of_list (filter_keep_acc (Some (rm_dom_map rm)) (ri_defs ri) [])) in *.
+  set (us := nset_of_list (filter_keep_acc (Some (rm_dom_map rm)) (ri_uses ri) [])) in *.
+  destruct (nset_of_list_spec (filter_keep_acc (Some (rm_dom_map rm)) (ri_defs ri) []))
+    as [Hwf_ds Hin_ds].
+  destruct (nset_of_list_spec (filter_keep_acc (Some (rm_dom_map rm)) (ri_uses ri) []))
+    as [Hwf_us Hin_us].
+  fold ds in Hwf_ds, Hin_ds. fold us in Hwf_us, Hin_us.
+  destruct (no_dup_hregs rm (nset_union live_after ds)) eqn:End1; [|discriminate].
+  cbn [negb] in Hchk.
+  set (live_mid := nset_sub live_after ds) in *.
+  destruct (nset_sub_spec live_after ds Hwf_la Hwf_ds) as [Hwf_mid Hin_mid].
+  fold live_mid in Hwf_mid, Hin_mid.
+  destruct (match ri_call ri with RCallAfterReads => all_callee_saved rm live_mid | _ => true end)
+    eqn:Ecall1; [|discriminate].
+  cbn [negb] in Hchk.
+  destruct (nset_union_spec live_mid us Hwf_mid Hwf_us) as [Hwf_bef Hin_bef].
+  destruct (match ri_call ri with RCallDuringReads => all_callee_saved rm (nset_union live_mid us) | _ => true end
+            && no_dup_hregs rm (nset_union live_mid us)) eqn:Ecall2; [|discriminate].
+  cbn [negb] in Hchk. injection Hchk as <-.
+  apply Bool.andb_true_iff in Ecall2. destruct Ecall2 as [Ecall2 End2].
+  set (need_mid := live_without_list (ri_defs ri) need_after).
+  set (need_before := ri_uses ri ++ need_mid).
+  assert (Hincl_mid : mapped_incl rm need_mid live_mid).
+  { intros t Hnn Ht. apply Hin_mid.
+    unfold need_mid in Ht. apply live_without_list_in in Ht.
+    split; [apply (Hincl_after t Hnn (proj1 Ht))|].
+    intro Hds. apply Hin_ds, filter_keep_dom_iff in Hds. exact (proj2 Ht (proj1 Hds)). }
+  assert (Hincl_bef : mapped_incl rm need_before (nset_union live_mid us)).
+  { intros t Hnn Ht. apply Hin_bef.
+    unfold need_before in Ht. apply in_app_or in Ht. destruct Ht as [Hu | Hm].
+    - right. apply Hin_us, filter_keep_dom_iff. split; [exact Hu | exact Hnn].
+    - left. exact (Hincl_mid t Hnn Hm). }
+  split; [exact Hwf_bef | split; [exact Hincl_bef |]].
+  assert (Hagree_pre : state_agrees rm slot_of need_before tenv (mach_pre_rinst ri ie ms)).
+  { unfold mach_pre_rinst, pre_call_state.
+    destruct (ri_call ri) eqn:Erc; try exact Hagree.
+    apply clobber_preserves_agrees; [exact (all_callee_saved_incl rm need_before _ Ecall2 Hincl_bef) | exact Hagree]. }
+  assert (Hargs : map (read_mach rm slot_of (mach_pre_rinst ri ie ms)) (ri_uses ri) = map tenv (ri_uses ri)).
+  { apply map_ext_in. intros u Hu. apply Hagree_pre. unfold need_before. apply in_or_app. left. exact Hu. }
+  split; [exact Hargs|].
+  unfold abs_step_rinst, mach_step_rinst. cbv zeta. rewrite Hargs.
+  destruct (nset_union_spec live_after ds Hwf_la Hwf_ds) as [_ Hin_u1].
+  assert (Hnc : list_no_collision rm slot_of (ri_defs ri) need_after).
+  { eapply (no_dup_plus_slot_no_collision rm slot_of (ri_defs ri) need_after (nset_union live_after ds) End1).
+    - intros d Hd Hnn. apply Hin_u1. right. apply Hin_ds, filter_keep_dom_iff. split; assumption.
+    - intros t Hnn Ht. apply Hin_u1. left. exact (Hincl_after t Hnn Ht).
+    - exact Hus. }
+  apply write_mach_list_sound; [symmetry; apply Hiewf | exact Hnc |].
+  assert (Hagree_mid : state_agrees rm slot_of need_mid tenv (mach_pre_rinst ri ie ms)).
+  { intros t Ht. apply Hagree_pre. unfold need_before. apply in_or_app. right. exact Ht. }
+  unfold post_call_state. destruct (ri_call ri) eqn:Erc.
+  - exact Hagree_mid.
+  - apply clobber_preserves_agrees; [exact (all_callee_saved_incl rm need_mid live_mid Ecall1 Hincl_mid) | exact Hagree_mid].
+  - apply clobber_preserves_agrees; [|exact Hagree_mid].
+    apply (all_callee_saved_incl rm need_mid (nset_union live_mid us) Ecall2).
+    intros t Hnn Ht. apply Hin_bef. left. exact (Hincl_mid t Hnn Ht).
+Qed.
+
+(** Backward semantic liveness across an instruction list `ris`. *)
+Fixpoint insts_need (ris : list rinst) (need_end : list nat) : list nat :=
+  match ris with
+  | [] => need_end
+  | ri :: ris' => ri_uses ri ++ live_without_list (ri_defs ri) (insts_need ris' need_end)
+  end.
+
+(** Physical frame-slot non-interference across `ris`. *)
+Fixpoint insts_slot_ok (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                       (ris : list rinst) (need_end : list nat) : Prop :=
+  match ris with
+  | [] => True
+  | ri :: ris' =>
+      unmapped_slot_ok rm slot_of (ri_defs ri) (insts_need ris' need_end) /\
+      insts_slot_ok rm slot_of ris' need_end
+  end.
+
+(** Output-length well-formedness of an instruction trace `ies` for `ris`. *)
+Fixpoint insts_exec_wf (ris : list rinst) (ies : list inst_exec) : Prop :=
+  match ris, ies with
+  | [], [] => True
+  | ri :: ris', ie :: ies' => inst_exec_wf ri ie /\ insts_exec_wf ris' ies'
+  | _, _ => False
+  end.
+
+(** Abstract block-body execution over `ris`. *)
+Fixpoint run_insts_abs (ris : list rinst) (ies : list inst_exec) (tenv : nat -> Z) : nat -> Z :=
+  match ris, ies with
+  | ri :: ris', ie :: ies' => run_insts_abs ris' ies' (abs_step_rinst ri ie tenv)
+  | _, _ => tenv
+  end.
+
+(** Register-and-shared-slot block-body execution over `ris`. *)
+Fixpoint run_insts_mach (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                        (ris : list rinst) (ies : list inst_exec) (ms : mach_state) : mach_state :=
+  match ris, ies with
+  | ri :: ris', ie :: ies' =>
+      run_insts_mach rm slot_of ris' ies' (mach_step_rinst rm slot_of ri ie ms)
+  | _, _ => ms
+  end.
+
+(** Every instruction in `ris` reads identical operand values in
+    `mach_state` and `tenv`. *)
+Fixpoint insts_reads_agree (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                           (ris : list rinst) (ies : list inst_exec)
+                           (tenv : nat -> Z) (ms : mach_state) : Prop :=
+  match ris, ies with
+  | [], [] => True
+  | ri :: ris', ie :: ies' =>
+      map (read_mach rm slot_of (mach_pre_rinst ri ie ms)) (ri_uses ri) = map tenv (ri_uses ri) /\
+      insts_reads_agree rm slot_of ris' ies'
+        (abs_step_rinst ri ie tenv) (mach_step_rinst rm slot_of ri ie ms)
+  | _, _ => False
+  end.
+
+(** Forward simulation of [check_rinsts_rev] across a full block body
+    `ris` with simultaneous multi-definitions, caller-saved call clobbers
+    and shared physical frame slots. *)
+Theorem check_rinsts_rev_sound : forall ris ies rm slot_of live_end live0 need_end tenv0 ms0,
+  pts_wf O live_end ->
+  check_rinsts_rev rm (Some (rm_dom_map rm)) (rev' ris) live_end = Some live0 ->
+  insts_exec_wf ris ies ->
+  mapped_incl rm need_end live_end ->
+  insts_slot_ok rm slot_of ris need_end ->
+  pts_wf O live0 /\
+  mapped_incl rm (insts_need ris need_end) live0 /\
+  (state_agrees rm slot_of (insts_need ris need_end) tenv0 ms0 ->
+   insts_reads_agree rm slot_of ris ies tenv0 ms0 /\
+   state_agrees rm slot_of need_end (run_insts_abs ris ies tenv0)
+                (run_insts_mach rm slot_of ris ies ms0)).
+Proof.
+  induction ris as [|ri ris' IH]; intros [|ie ies'] rm slot_of live_end live0 need_end tenv0 ms0
+    Hwf_end Hchk Hiewf Hincl Hus; simpl in Hiewf; try contradiction.
+  - simpl in Hchk. injection Hchk as <-.
+    split; [exact Hwf_end | split; [exact Hincl | intro Hag; split; [exact I | exact Hag]]].
+  - destruct Hiewf as [Hie Hies']. destruct Hus as [Hus1 Hus'].
+    unfold rev' in Hchk. rewrite <- rev_alt in Hchk. simpl in Hchk.
+    destruct (check_rinsts_rev_app_some rm (Some (rm_dom_map rm)) (rev ris') [ri] live_end live0 Hchk)
+      as [live_mid [Erest Hchk1]].
+    rewrite rev_alt in Erest; fold (rev' ris') in Erest.
+    destruct (IH ies' rm slot_of live_end live_mid need_end
+                 (abs_step_rinst ri ie tenv0) (mach_step_rinst rm slot_of ri ie ms0)
+                 Hwf_end Erest Hies' Hincl Hus')
+      as [Hwf_mid [Hincl_mid Hrun_rest]].
+    (* Derive pts_wf O live0 and mapped_incl without needing state_agrees yet *)
+    destruct (check_rinst_multi_sound rm slot_of ri ie live_mid live0 (insts_need ris' need_end)
+                (fun _ => 0) (mkMach (fun _ => 0) (fun _ => 0))
+                Hwf_mid Hchk1 Hie Hincl_mid Hus1 (fun _ _ => ltac:(unfold read_mach; destruct (zmap_find_nat _ rm); reflexivity)))
+      as [Hwf0 [Hincl0 _]].
+    split; [exact Hwf0 | split; [exact Hincl0 |]].
+    intro Hag0.
+    destruct (check_rinst_multi_sound rm slot_of ri ie live_mid live0 (insts_need ris' need_end)
+                tenv0 ms0 Hwf_mid Hchk1 Hie Hincl_mid Hus1 Hag0)
+      as [_ [_ [Hargs Hag_mid]]].
+    destruct (Hrun_rest Hag_mid) as [Hreads' Hag_end].
+    simpl. split; [split; [exact Hargs | exact Hreads'] | exact Hag_end].
+Qed.
+
+(** Synchronization invariant between `defs` map and `kill` list in [rblock_gen_kill]. *)
+Definition defs_kill_sync (defs : ZMap.t unit) (kill : list nat) : Prop :=
+  forall t, zmap_find_nat t defs <> None <-> In t kill.
+
+(** [gk_defs_step] preserves [defs_kill_sync] and appends `ds` to `kill`. *)
+Lemma gk_defs_step_spec : forall ds defs kill,
+  defs_kill_sync defs kill ->
+  defs_kill_sync (fst (gk_defs_step ds defs kill)) (snd (gk_defs_step ds defs kill)) /\
+  (forall t, In t (snd (gk_defs_step ds defs kill)) <-> In t kill \/ In t ds).
+Proof.
+  induction ds as [|d ds' IH]; intros defs kill Hsync; simpl.
+  - split; [exact Hsync | intro t; tauto].
+  - assert (Hsync1 : defs_kill_sync (zmap_add_nat d tt defs) (d :: kill)).
+    { intro t. unfold zmap_find_nat, zmap_add_nat.
+      destruct (Nat.eq_dec t d) as [-> | Hneq].
+      - rewrite ZF.add_eq_o by reflexivity. split; [intros _; left; reflexivity | intros _; discriminate].
+      - rewrite ZF.add_neq_o by lia. rewrite (Hsync t). simpl. intuition congruence. }
+    destruct (IH (zmap_add_nat d tt defs) (d :: kill) Hsync1) as [Hs2 Hi2].
+    split; [exact Hs2 | intro t; rewrite Hi2; simpl; intuition congruence].
+Qed.
+
+(** [gk_uses_step] adds elements of `us` that are absent from `defs`. *)
+Lemma gk_uses_step_spec : forall us defs gen t,
+  defs_kill_sync defs [] \/ True ->
+  (In t (gk_uses_step us defs gen) <->
+   In t gen \/ (In t us /\ zmap_find_nat t defs = None)).
+Proof.
+  induction us as [|u us' IH]; intros defs gen t _; simpl.
+  - tauto.
+  - destruct (zmap_find_nat u defs) as [[]|] eqn:Eu.
+    + rewrite (IH defs gen t (or_intror I)).
+      split; [intros [Hg | [Hu Hn]]; [left; exact Hg | right; split; [right; exact Hu | exact Hn]] |].
+      intros [Hg | [[<- | Hu] Hn]]; [left; exact Hg | congruence | right; split; assumption].
+    + rewrite (IH defs (u :: gen) t (or_intror I)). simpl.
+      split.
+      * intros [[<- | Hg] | [Hu Hn]];
+          [right; split; [left; reflexivity | exact Eu] | left; exact Hg | right; split; [right; exact Hu | exact Hn]].
+      * intros [Hg | [[<- | Hu] Hn]]; [left; right; exact Hg | left; left; reflexivity | right; split; assumption].
+Qed.
+
+(** Monotonicity of [gk_insts_step] in `gen` and `kill`. *)
+Lemma gk_insts_step_mono : forall keep ris defs gen kill,
+  defs_kill_sync defs kill ->
+  defs_kill_sync (fst (fst (gk_insts_step keep ris defs gen kill)))
+                 (snd (gk_insts_step keep ris defs gen kill)) /\
+  (forall t, In t gen -> In t (snd (fst (gk_insts_step keep ris defs gen kill)))) /\
+  (forall t, In t kill -> In t (snd (gk_insts_step keep ris defs gen kill))).
+Proof.
+  intros keep ris. induction ris as [|ri ris' IH]; intros defs gen kill Hsync; simpl.
+  - split; [exact Hsync | split; auto].
+  - set (us := filter_keep_acc keep (ri_uses ri) []).
+    set (ds := filter_keep_acc keep (ri_defs ri) []).
+    set (gen1 := gk_uses_step us defs gen).
+    pose proof (gk_defs_step_spec ds defs kill Hsync) as [Hsync1 Hkill1].
+    destruct (gk_defs_step ds defs kill) as [defs1 kill1]; simpl in Hsync1, Hkill1.
+    destruct (IH defs1 gen1 kill1 Hsync1) as [Hsync_end [Hgen_m Hkill_m]].
+    split; [exact Hsync_end | split].
+    + intros t Ht. apply Hgen_m. unfold gen1.
+      apply (proj2 (gk_uses_step_spec us defs gen t (or_intror I))). left. exact Ht.
+    + intros t Ht. apply Hkill_m. apply Hkill1. left. exact Ht.
+Qed.
+
+(** Backward [check_rinsts_rev] output is contained in `kill \/ gen2 \/ (lout \ kill_end)`. *)
+Lemma check_rinsts_rev_gk_incl : forall ris rm keep lout juses_raw defs gen kill live_cur,
+  pts_wf O lout ->
+  defs_kill_sync defs kill ->
+  check_rinsts_rev rm keep (rev' ris) (nset_union lout (nset_of_list juses_raw)) = Some live_cur ->
+  pts_wf O live_cur /\
+  (forall t, In t live_cur ->
+     In t kill \/
+     In t (gk_uses_step juses_raw
+             (fst (fst (gk_insts_step keep ris defs gen kill)))
+             (snd (fst (gk_insts_step keep ris defs gen kill)))) \/
+     (In t lout /\ ~ In t (snd (gk_insts_step keep ris defs gen kill)))).
+Proof.
+  induction ris as [|ri ris' IH]; intros rm keep lout juses_raw defs gen kill live_cur Hlout Hsync Hchk.
+  - simpl in Hchk |- *. injection Hchk as <-.
+    destruct (nset_of_list_spec juses_raw) as [Hwf_j Hin_j].
+    destruct (nset_union_spec lout (nset_of_list juses_raw) Hlout Hwf_j) as [Hwf_u Hin_u].
+    split; [exact Hwf_u|].
+    intros t Ht. apply Hin_u in Ht.
+    destruct (zmap_find_nat t defs) as [[]|] eqn:Ed.
+    + left. apply (Hsync t). congruence.
+    + assert (Hnk : ~ In t kill) by (intro Hk; apply (Hsync t) in Hk; congruence).
+      destruct Ht as [Hlo | Hj].
+      * right; right; split; [exact Hlo | exact Hnk].
+      * right; left. apply Hin_j in Hj.
+        apply (proj2 (gk_uses_step_spec juses_raw defs gen t (or_intror I))).
+        right; split; [exact Hj | exact Ed].
+  - unfold rev' in Hchk; rewrite <- rev_alt in Hchk; simpl in Hchk.
+    destruct (check_rinsts_rev_app_some rm keep (rev ris') [ri] (nset_union lout (nset_of_list juses_raw)) live_cur Hchk)
+      as [live_after [Erest Hchk1]].
+    rewrite rev_alt in Erest; fold (rev' ris') in Erest.
+    cbn [gk_insts_step].
+    set (us_raw := filter_keep_acc keep (ri_uses ri) []).
+    set (ds_raw := filter_keep_acc keep (ri_defs ri) []).
+    set (gen1 := gk_uses_step us_raw defs gen).
+    pose proof (gk_defs_step_spec ds_raw defs kill Hsync) as [Hsync1 Hkill1].
+    destruct (gk_defs_step ds_raw defs kill) as [defs1 kill1] eqn:Edk; simpl in Hsync1, Hkill1.
+    destruct (IH rm keep lout juses_raw defs1 gen1 kill1 live_after Hlout Hsync1 Erest)
+      as [Hwf_after Hincl_after].
+    cbn [check_rinsts_rev] in Hchk1; cbv zeta in Hchk1.
+    fold ds_raw us_raw in Hchk1.
+    destruct (nset_of_list_spec ds_raw) as [Hwf_ds Hin_ds].
+    destruct (nset_of_list_spec us_raw) as [Hwf_us Hin_us].
+    destruct (negb (no_dup_hregs rm _)); [discriminate|].
+    destruct (negb match ri_call ri with RCallAfterReads => _ | _ => true end); [discriminate|].
+    destruct (negb (_ && no_dup_hregs rm _)); [discriminate|].
+    injection Hchk1 as <-.
+    destruct (nset_sub_spec live_after (nset_of_list ds_raw) Hwf_after Hwf_ds) as [Hwf_mid Hin_mid].
+    destruct (nset_union_spec _ (nset_of_list us_raw) Hwf_mid Hwf_us) as [Hwf_cur Hin_cur].
+    split; [exact Hwf_cur|].
+    intros t Ht.
+    destruct (zmap_find_nat t defs) as [[]|] eqn:Ed.
+    + left. apply (Hsync t). congruence.
+    + assert (Hnk : ~ In t kill) by (intro Hk; apply (Hsync t) in Hk; congruence).
+      apply Hin_cur in Ht. destruct Ht as [Hmid | Hus].
+      * apply Hin_mid in Hmid. destruct Hmid as [Haft Hnds].
+        assert (Hnk1 : ~ In t kill1).
+        { intro Hk1. apply Hkill1 in Hk1. destruct Hk1 as [Hk | Hd];
+            [contradiction | apply Hnds, Hin_ds; exact Hd]. }
+        destruct (Hincl_after t Haft) as [Hk1 | [Hg2 | Hlo]];
+          [contradiction | right; left; exact Hg2 | right; right; exact Hlo].
+      * apply Hin_us in Hus.
+        right; left.
+        destruct (gk_insts_step_mono keep ris' defs1 gen1 kill1 Hsync1) as [_ [Hgen_m _]].
+        apply (proj2 (gk_uses_step_spec juses_raw _ _ t (or_intror I))).
+        left. apply Hgen_m. unfold gen1.
+        apply (proj2 (gk_uses_step_spec us_raw defs gen t (or_intror I))).
+        right; split; [exact Hus | exact Ed].
+Qed.
+
+(** Connecting [check_rinsts_rev] directly to [rblock_gen_kill]. *)
+Lemma rblock_gen_kill_live_after_phis : forall rm keep rb lout live_after_phis,
+  pts_wf O lout ->
+  check_rinsts_rev rm keep (rev' (rb_insts rb))
+    (nset_union lout (nset_of_list (filter_keep_acc keep (rb_jump_uses rb) [])))
+    = Some live_after_phis ->
+  pts_wf O live_after_phis /\
+  (forall t, In t live_after_phis ->
+     In t (rblock_phi_defs_acc keep (rb_phis rb) []) \/
+     In t (nset_union (fst (rblock_gen_kill keep rb))
+                      (nset_sub lout (snd (rblock_gen_kill keep rb))))).
+Proof.
+  intros rm keep rb lout live_after_phis Hlout Hchk.
+  unfold rblock_gen_kill.
+  set (pdefs := rblock_phi_defs_acc keep (rb_phis rb) []).
+  assert (Hempty_sync : defs_kill_sync (ZMap.empty unit) []).
+  { intro t. unfold zmap_find_nat. rewrite ZF.empty_o. simpl. split; [congruence | contradiction]. }
+  pose proof (gk_defs_step_spec pdefs (ZMap.empty unit) [] Hempty_sync) as [Hsync0 Hkill0].
+  destruct (gk_defs_step pdefs (ZMap.empty unit) []) as [defs0 kill0]; simpl in Hsync0, Hkill0.
+  set (juses := filter_keep_acc keep (rb_jump_uses rb) []).
+  destruct (check_rinsts_rev_gk_incl (rb_insts rb) rm keep lout juses defs0 [] kill0
+              live_after_phis Hlout Hsync0 Hchk) as [Hwf Hincl].
+  destruct (gk_insts_step keep (rb_insts rb) defs0 [] kill0) as [[defs1 gen1] kill1]; simpl in Hincl |- *.
+  set (gen2 := gk_uses_step juses defs1 gen1) in *.
+  destruct (nset_of_list_spec gen2) as [Hwf_g Hin_g].
+  destruct (nset_of_list_spec kill1) as [Hwf_k Hin_k].
+  destruct (nset_sub_spec lout (nset_of_list kill1) Hlout Hwf_k) as [Hwf_sub Hin_sub].
+  destruct (nset_union_spec (nset_of_list gen2) (nset_sub lout (nset_of_list kill1)) Hwf_g Hwf_sub)
+    as [_ Hin_u].
+  split; [exact Hwf|].
+  intros t Ht.
+  destruct (Hincl t Ht) as [Hk0 | [Hg2 | [Hlo Hnk1]]].
+  - left. apply Hkill0 in Hk0. destruct Hk0 as [[] | Hp]; exact Hp.
+  - right. apply Hin_u. left. apply Hin_g. exact Hg2.
+  - right. apply Hin_u. right. apply Hin_sub.
+    split; [exact Hlo | intro Hk; apply Hnk1, Hin_k; exact Hk].
+Qed.
+
+(** Every block index in `rbs` equals its sequential position starting at `idx`. *)
+Fixpoint rblocks_indexed (idx : nat) (rbs : list rblock) : Prop :=
+  match rbs with
+  | [] => True
+  | rb :: rbs' => rb_idx rb = idx /\ rblocks_indexed (S idx) rbs'
+  end.
+
+(** Every successor index of `rb` is `< n`. *)
+Definition rblock_succs_in_range (n : nat) (rb : rblock) : Prop :=
+  Forall (fun sp => (fst sp < n)%nat) (rb_succs rb).
+
+(** The entry block (if any) has no phi nodes. *)
+Definition rblocks_entry_no_phis (rbs : list rblock) : Prop :=
+  match rbs with
+  | [] => True
+  | rb0 :: _ => rb_phis rb0 = []
+  end.
+
+(** Structural well-formedness of a numbered CFG `rbs`. *)
+Definition rblocks_wf (rbs : list rblock) : Prop :=
+  rblocks_indexed O rbs /\
+  Forall (rblock_succs_in_range (length rbs)) rbs /\
+  rblocks_entry_no_phis rbs.
+
+(** Under [rblocks_indexed], every `rb` in `rbs` has `rb_idx rb >= idx`. *)
+Lemma rblocks_indexed_ge : forall rbs idx rb,
+  rblocks_indexed idx rbs -> In rb rbs -> (idx <= rb_idx rb)%nat.
+Proof.
+  induction rbs as [|r0 rbs' IH]; intros idx rb Hind Hin; simpl in *; [contradiction|].
+  destruct Hind as [Hidx Hind']. destruct Hin as [<- | Hin'].
+  - lia.
+  - specialize (IH (S idx) rb Hind' Hin'). lia.
+Qed.
+
+(** Under [rblocks_indexed], `nth_error` determines `In` and `rb_idx`. *)
+Lemma rblocks_indexed_nth : forall rbs idx k rb,
+  rblocks_indexed idx rbs ->
+  nth_error rbs k = Some rb ->
+  In rb rbs /\ rb_idx rb = (idx + k)%nat.
+Proof.
+  induction rbs as [|r0 rbs' IH]; intros idx [|k'] rb Hind Hnth; simpl in *; try discriminate.
+  - destruct Hind as [Hidx _]. injection Hnth as <-. split; [left; reflexivity | lia].
+  - destruct Hind as [_ Hind'].
+    destruct (IH (S idx) k' rb Hind' Hnth) as [Hin Hidx].
+    split; [right; exact Hin | lia].
+Qed.
+
+(** [build_rb_map] leaves keys `< idx` untouched when `rblocks_indexed idx rbs`. *)
+Lemma build_rb_map_lt : forall rbs idx k m,
+  rblocks_indexed idx rbs ->
+  (k < idx)%nat ->
+  zmap_find_nat k (build_rb_map rbs m) = zmap_find_nat k m.
+Proof.
+  induction rbs as [|rb rbs' IH]; intros idx k m Hind Hlt; simpl in *; [reflexivity|].
+  destruct Hind as [Hidx Hind'].
+  rewrite (IH (S idx) k _ Hind' ltac:(lia)).
+  unfold zmap_find_nat, zmap_add_nat. rewrite ZF.add_neq_o by lia. reflexivity.
+Qed.
+
+(** [build_rb_map] maps every block in `rbs` at its `rb_idx`. *)
+Lemma build_rb_map_in : forall rbs idx m rb,
+  rblocks_indexed idx rbs ->
+  In rb rbs ->
+  zmap_find_nat (rb_idx rb) (build_rb_map rbs m) = Some rb.
+Proof.
+  induction rbs as [|r0 rbs' IH]; intros idx m rb Hind Hin; simpl in *; [contradiction|].
+  destruct Hind as [Hidx Hind']. destruct Hin as [<- | Hin'];
+    [|exact (IH (S idx) _ rb Hind' Hin')].
+  rewrite (build_rb_map_lt rbs' (S idx) (rb_idx r0) _ Hind' ltac:(lia)).
+  unfold zmap_find_nat, zmap_add_nat. rewrite ZF.add_eq_o by reflexivity. reflexivity.
+Qed.
+
+(** [build_gk_map] leaves keys `< idx` untouched. *)
+Lemma build_gk_map_lt : forall keep rbs idx k m,
+  rblocks_indexed idx rbs ->
+  (k < idx)%nat ->
+  zmap_find_nat k (build_gk_map keep rbs m) = zmap_find_nat k m.
+Proof.
+  intros keep rbs. induction rbs as [|rb rbs' IH]; intros idx k m Hind Hlt; simpl in *; [reflexivity|].
+  destruct Hind as [Hidx Hind'].
+  rewrite (IH (S idx) k _ Hind' ltac:(lia)).
+  unfold zmap_find_nat, zmap_add_nat. rewrite ZF.add_neq_o by lia. reflexivity.
+Qed.
+
+(** [build_gk_map] maps every block in `rbs` to [rblock_gen_kill]. *)
+Lemma build_gk_map_in : forall keep rbs idx m rb,
+  rblocks_indexed idx rbs ->
+  In rb rbs ->
+  zmap_find_nat (rb_idx rb) (build_gk_map keep rbs m) = Some (rblock_gen_kill keep rb).
+Proof.
+  intros keep rbs. induction rbs as [|r0 rbs' IH]; intros idx m rb Hind Hin; simpl in *; [contradiction|].
+  destruct Hind as [Hidx Hind']. destruct Hin as [<- | Hin'];
+    [|exact (IH (S idx) _ rb Hind' Hin')].
+  rewrite (build_gk_map_lt keep rbs' (S idx) (rb_idx r0) _ Hind' ltac:(lia)).
+  unfold zmap_find_nat, zmap_add_nat. rewrite ZF.add_eq_o by reflexivity. reflexivity.
+Qed.
+
+(** [build_out_across_maps] leaves keys `< idx` untouched. *)
+Lemma build_out_across_lt : forall keep rbm live_in rbs idx k outs across,
+  rblocks_indexed idx rbs ->
+  (k < idx)%nat ->
+  zmap_find_nat k (fst (build_out_across_maps keep rbm live_in rbs outs across)) = zmap_find_nat k outs.
+Proof.
+  intros keep rbm live_in rbs.
+  induction rbs as [|rb rbs' IH]; intros idx k outs across Hind Hlt; simpl in *; [reflexivity|].
+  destruct Hind as [Hidx Hind'].
+  destruct (succs_live_out keep rbm live_in (rb_idx rb) (rb_succs rb) [] []) as [o a].
+  rewrite (IH (S idx) k _ _ Hind' ltac:(lia)).
+  unfold zmap_find_nat, zmap_add_nat. rewrite ZF.add_neq_o by lia. reflexivity.
+Qed.
+
+(** [build_out_across_maps] stores `fst (succs_live_out ...)` at `rb_idx rb`. *)
+Lemma build_out_across_in : forall keep rbm live_in rbs idx outs across rb,
+  rblocks_indexed idx rbs ->
+  In rb rbs ->
+  zmap_find_nat (rb_idx rb) (fst (build_out_across_maps keep rbm live_in rbs outs across)) =
+  Some (fst (succs_live_out keep rbm live_in (rb_idx rb) (rb_succs rb) [] [])).
+Proof.
+  intros keep rbm live_in rbs.
+  induction rbs as [|r0 rbs' IH]; intros idx outs across rb Hind Hin; simpl in *; [contradiction|].
+  destruct Hind as [Hidx Hind']. destruct Hin as [<- | Hin'].
+  - destruct (succs_live_out keep rbm live_in (rb_idx r0) (rb_succs r0) [] []) as [o a]; simpl.
+    rewrite (build_out_across_lt keep rbm live_in rbs' (S idx) (rb_idx r0) _ _ Hind' ltac:(lia)).
+    unfold zmap_find_nat, zmap_add_nat. rewrite ZF.add_eq_o by reflexivity. reflexivity.
+  - destruct (succs_live_out keep rbm live_in (rb_idx r0) (rb_succs r0) [] []) as [o a].
+    exact (IH (S idx) _ _ rb Hind' Hin').
+Qed.
+
+(** Every ordset entry in `m` satisfies `pts_wf O`. *)
+Definition zmap_pts_wf (m : ZMap.t (list nat)) : Prop :=
+  forall k, pts_wf O (nset_at k m).
+
+(** [rblock_phi_edge_uses_acc] returns a [pts_wf] ordset containing all kept edge sources. *)
+Lemma rblock_phi_edge_uses_spec : forall keep bi phis acc,
+  pts_wf O (rblock_phi_edge_uses_acc keep bi phis acc) /\
+  (forall t,
+     In t (rblock_phi_edge_uses_acc keep bi phis acc) <->
+     In t acc \/
+     (exists d ps, In (d, ps) phis /\ lookup_phi_edge_src bi ps = Some t /\
+                   In t (filter_keep_acc keep [t] []))).
+Proof.
+  intros keep bi phis. induction phis as [|[d ps] phis' IH]; intro acc; simpl.
+  - destruct (nset_of_list_spec acc) as [Hwf Hin].
+    split; [exact Hwf | intro t; rewrite Hin; split; [left; exact H | intros [Ha | [? [? [[] _]]]]; exact Ha]].
+  - destruct (lookup_phi_edge_src bi ps) as [tid|] eqn:El.
+    + destruct (IH (rev_append (filter_keep_acc keep [tid] []) acc)) as [Hwf Hin].
+      split; [exact Hwf|].
+      intro t. rewrite Hin, rev_append_rev, in_app_iff, <- in_rev.
+      split.
+      * intros [[Hk | Ha] | [d' [ps' [Hp [Hl Hk']]]]].
+        -- right. exists d, ps.
+           assert (Heqt : t = tid).
+           { rewrite filter_keep_acc_eq in Hk; simpl in Hk.
+             destruct (keep_pred keep tid); simpl in Hk;
+               [destruct Hk as [<- | []]; reflexivity | contradiction]. }
+           subst tid. split; [left; reflexivity | split; [exact El | exact Hk]].
+        -- left. exact Ha.
+        -- right. exists d', ps'. split; [right; exact Hp | split; assumption].
+      * intros [Ha | [d' [ps' [[Heq | Hp] [Hl Hk]]]]].
+        -- left; right; exact Ha.
+        -- injection Heq as <- <-. rewrite El in Hl. injection Hl as ->.
+           left; left; exact Hk.
+        -- right. exists d', ps'. split; [exact Hp | split; assumption].
+    + destruct (IH acc) as [Hwf Hin].
+      split; [exact Hwf | intro t; rewrite Hin; split].
+      * intros [Ha | [d' [ps' [Hp Hl]]]]; [left; exact Ha | right; exists d', ps'; split; [right; exact Hp | exact Hl]].
+      * intros [Ha | [d' [ps' [[Heq | Hp] [Hl Hk]]]]];
+          [left; exact Ha | injection Heq as _ <-; congruence | right; exists d', ps'; split; [exact Hp | split; assumption]].
+Qed.
+
+(** [rblock_phi_defs_acc] returns a [pts_wf] ordset containing all kept phi destinations. *)
+Lemma rblock_phi_defs_spec : forall keep phis acc,
+  pts_wf O (rblock_phi_defs_acc keep phis acc) /\
+  (forall t,
+     In t (rblock_phi_defs_acc keep phis acc) <->
+     In t acc \/ (In t (map fst phis) /\ In t (filter_keep_acc keep [t] []))).
+Proof.
+  intros keep phis. induction phis as [|[d ps] phis' IH]; intro acc; simpl.
+  - destruct (nset_of_list_spec acc) as [Hwf Hin].
+    split; [exact Hwf | intro t; rewrite Hin; tauto].
+  - destruct (IH (rev_append (filter_keep_acc keep [d] []) acc)) as [Hwf Hin].
+    split; [exact Hwf|].
+    intro t. rewrite Hin, rev_append_rev, in_app_iff, <- in_rev.
+    split.
+    + intros [[Hk | Ha] | [Hm Hk]].
+      * assert (Heqt : t = d).
+        { rewrite filter_keep_acc_eq in Hk; simpl in Hk.
+          destruct (keep_pred keep d); simpl in Hk;
+            [destruct Hk as [<- | []]; reflexivity | contradiction]. }
+        subst d. right. split; [left; reflexivity | exact Hk].
+      * left; exact Ha.
+      * right. split; [right; exact Hm | exact Hk].
+    + intros [Ha | [[<- | Hm] Hk]];
+        [left; right; exact Ha | left; left; exact Hk | right; split; assumption].
+Qed.
+
+(** [succs_live_out] preserves `pts_wf O` and includes every successor's
+    `live_in` and phi edge uses. *)
+Lemma succs_live_out_spec : forall succs keep rbm live_in bi out across,
+  zmap_pts_wf live_in ->
+  pts_wf O out ->
+  pts_wf O (fst (succs_live_out keep rbm live_in bi succs out across)) /\
+  (forall t, In t out -> In t (fst (succs_live_out keep rbm live_in bi succs out across))) /\
+  (forall si is_poll t, In (si, is_poll) succs ->
+     In t (nset_at si live_in) ->
+     In t (fst (succs_live_out keep rbm live_in bi succs out across))) /\
+  (forall si is_poll srb t, In (si, is_poll) succs ->
+     zmap_find_nat si rbm = Some srb ->
+     In t (rblock_phi_edge_uses_acc keep bi (rb_phis srb) []) ->
+     In t (fst (succs_live_out keep rbm live_in bi succs out across))).
+Proof.
+  induction succs as [|[s0 p0] succs' IH]; intros keep rbm live_in bi out across Hlin Hout; simpl.
+  - split; [exact Hout | split; [auto | split; intros; contradiction]].
+  - set (euses := match zmap_find_nat s0 rbm with
+                  | Some srb => rblock_phi_edge_uses_acc keep bi (rb_phis srb) []
+                  | None => []
+                  end).
+    assert (Hwf_eu : pts_wf O euses).
+    { unfold euses. destruct (zmap_find_nat s0 rbm) as [srb|];
+        [exact (proj1 (rblock_phi_edge_uses_spec keep bi (rb_phis srb) [])) | exact I]. }
+    destruct (nset_union_spec out (nset_at s0 live_in) Hout (Hlin s0)) as [Hwf_u1 Hin_u1].
+    destruct (nset_union_spec (nset_union out (nset_at s0 live_in)) euses Hwf_u1 Hwf_eu)
+      as [Hwf_u2 Hin_u2].
+    destruct (IH keep rbm live_in bi _ (nset_union across (nset_at s0 live_in)) Hlin Hwf_u2)
+      as [Hwf_f [Hmono [Hsin Heu]]].
+    split; [exact Hwf_f | split; [|split]].
+    + intros t Ht. apply Hmono, Hin_u2; left; apply Hin_u1; left; exact Ht.
+    + intros si is_poll t [Heq | Hin'] Ht.
+      * injection Heq as <- _. apply Hmono, Hin_u2; left; apply Hin_u1; right; exact Ht.
+      * exact (Hsin si is_poll t Hin' Ht).
+    + intros si is_poll srb t [Heq | Hin'] Hrbm Ht.
+      * injection Heq as <- _. apply Hmono, Hin_u2; right.
+        unfold euses. rewrite Hrbm. exact Ht.
+      * exact (Heu si is_poll srb t Hin' Hrbm Ht).
+Qed.
+
+(** Once `changed = true`, [rlive_round_blocks] always returns `(_, true)`. *)
+Lemma rlive_round_blocks_true : forall rev_rbs keep rbm gkm live_in,
+  snd (rlive_round_blocks keep rbm gkm rev_rbs live_in true) = true.
+Proof.
+  induction rev_rbs as [|rb rest IH]; intros keep rbm gkm live_in; simpl; [reflexivity|].
+  destruct (succs_live_out keep rbm live_in (rb_idx rb) (rb_succs rb) [] []) as [out a].
+  destruct (zmap_find_nat (rb_idx rb) gkm) as [[gen kill]|]; [|apply IH].
+  destruct (nset_eqb _ _); apply IH.
+Qed.
+
+(** Every block step of [rlive_round_blocks] preserves [zmap_pts_wf] when
+    `gkm` entries are [pts_wf]. *)
+Lemma rlive_round_blocks_wf : forall rev_rbs keep rbm gkm live_in changed,
+  (forall k gen kill, zmap_find_nat k gkm = Some (gen, kill) -> pts_wf O gen /\ pts_wf O kill) ->
+  zmap_pts_wf live_in ->
+  zmap_pts_wf (fst (rlive_round_blocks keep rbm gkm rev_rbs live_in changed)).
+Proof.
+  induction rev_rbs as [|rb rest IH]; intros keep rbm gkm live_in changed Hgkm Hwf; simpl; [exact Hwf|].
+  pose proof (proj1 (succs_live_out_spec (rb_succs rb) keep rbm live_in (rb_idx rb) [] [] Hwf I)) as Hout.
+  destruct (succs_live_out keep rbm live_in (rb_idx rb) (rb_succs rb) [] []) as [out a]; simpl in Hout.
+  destruct (zmap_find_nat (rb_idx rb) gkm) as [[gen kill]|] eqn:Eg; [|exact (IH _ _ _ _ _ Hgkm Hwf)].
+  destruct (Hgkm (rb_idx rb) gen kill Eg) as [Hgen Hkill].
+  destruct (nset_eqb _ _); [exact (IH _ _ _ _ _ Hgkm Hwf)|].
+  apply IH; [exact Hgkm|].
+  intro k. unfold nset_at, zmap_find_nat, zmap_add_nat.
+  destruct (Nat.eq_dec k (rb_idx rb)) as [-> | Hneq].
+  - rewrite ZF.add_eq_o by reflexivity.
+    destruct (nset_sub_spec out kill Hout Hkill) as [Hsub _].
+    exact (proj1 (nset_union_spec gen (nset_sub out kill) Hgen Hsub)).
+  - rewrite ZF.add_neq_o by lia. exact (Hwf k).
+Qed.
+
+(** When [rlive_round_blocks] returns `(live_in, false)` from `false`, the map
+    was unchanged and every block's equation holds. *)
+Lemma rlive_round_blocks_unchanged : forall rev_rbs keep rbm gkm lin0 live_in,
+  rlive_round_blocks keep rbm gkm rev_rbs lin0 false = (live_in, false) ->
+  lin0 = live_in /\
+  (forall rb gen kill, In rb rev_rbs ->
+     zmap_find_nat (rb_idx rb) gkm = Some (gen, kill) ->
+     nset_at (rb_idx rb) live_in =
+     nset_union gen (nset_sub (fst (succs_live_out keep rbm live_in (rb_idx rb) (rb_succs rb) [] [])) kill)).
+Proof.
+  induction rev_rbs as [|rb rest IH]; intros keep rbm gkm lin0 live_in H; simpl in *.
+  - injection H as ->. split; [reflexivity | intros rb gen kill []].
+  - pose proof (rlive_round_blocks_true rest keep rbm gkm) as Htrue.
+    destruct (succs_live_out keep rbm lin0 (rb_idx rb) (rb_succs rb) [] []) as [out a] eqn:Eout.
+    destruct (zmap_find_nat (rb_idx rb) gkm) as [[gen kill]|] eqn:Eg.
+    + destruct (nset_eqb (nset_at (rb_idx rb) lin0) (nset_union gen (nset_sub out kill))) eqn:Eeq.
+      * destruct (IH keep rbm gkm lin0 live_in H) as [<- Hall].
+        apply nset_eqb_spec in Eeq.
+        split; [reflexivity|].
+        intros rb' g' k' [<- | Hin'] Eg'.
+        -- rewrite Eg in Eg'; injection Eg' as <- <-. rewrite Eout; simpl. exact Eeq.
+        -- exact (Hall rb' g' k' Hin' Eg').
+      * pose proof (Htrue (zmap_add_nat (rb_idx rb) (nset_union gen (nset_sub out kill)) lin0)) as Ht.
+        rewrite H in Ht; simpl in Ht; discriminate.
+    + destruct (IH keep rbm gkm lin0 live_in H) as [<- Hall].
+      split; [reflexivity|].
+      intros rb' g' k' [<- | Hin'] Eg'; [congruence | exact (Hall rb' g' k' Hin' Eg')].
+Qed.
+
+(** [rlive_rounds] preserves [zmap_pts_wf] and, when `snd = false`, yields a
+    fixed point of [rlive_round_blocks]. *)
+Lemma rlive_rounds_fixed : forall fuel keep rbm gkm rev_rbs init live_in,
+  (forall k gen kill, zmap_find_nat k gkm = Some (gen, kill) -> pts_wf O gen /\ pts_wf O kill) ->
+  zmap_pts_wf init ->
+  zmap_pts_wf (fst (rlive_rounds fuel keep rbm gkm rev_rbs init)) /\
+  (rlive_rounds fuel keep rbm gkm rev_rbs init = (live_in, false) ->
+   rlive_round_blocks keep rbm gkm rev_rbs live_in false = (live_in, false)).
+Proof.
+  induction fuel as [|fuel' IH]; intros keep rbm gkm rev_rbs init live_in Hgkm Hwf; simpl.
+  - split.
+    + exact (rlive_round_blocks_wf rev_rbs keep rbm gkm init false Hgkm Hwf).
+    + intro H.
+      destruct (rlive_round_blocks_unchanged rev_rbs keep rbm gkm init live_in H) as [-> _].
+      exact H.
+  - destruct (IH keep rbm gkm rev_rbs init (fst (rlive_rounds fuel' keep rbm gkm rev_rbs init)) Hgkm Hwf)
+      as [Hwf1 Hfix1].
+    destruct (rlive_rounds fuel' keep rbm gkm rev_rbs init) as [m1 [|]] eqn:Er1; simpl in *.
+    + destruct (IH keep rbm gkm rev_rbs m1 live_in Hgkm Hwf1) as [Hwf2 Hfix2].
+      split; [exact Hwf2 | exact Hfix2].
+    + split; [exact Hwf1 | intro H; injection H as ->; exact (Hfix1 eq_refl)].
+Qed.
+
+Local Opaque rlive_rounds.
+
+(** Soundness of converged [rblock_liveness] over any indexed CFG `rbs`. *)
+Theorem rblock_liveness_sound : forall keep rbs live_in live_out across,
+  rblocks_indexed O rbs ->
+  rblock_liveness keep rbs = Some (live_in, live_out, across) ->
+  zmap_pts_wf live_in /\
+  zmap_pts_wf live_out /\
+  (forall rb si is_poll t,
+     In rb rbs -> In (si, is_poll) (rb_succs rb) ->
+     In t (nset_at si live_in) -> In t (nset_at (rb_idx rb) live_out)) /\
+  (forall rb si is_poll srb t,
+     In rb rbs -> In (si, is_poll) (rb_succs rb) ->
+     In srb rbs -> rb_idx srb = si ->
+     In t (rblock_phi_edge_uses_acc keep (rb_idx rb) (rb_phis srb) []) ->
+     In t (nset_at (rb_idx rb) live_out)) /\
+  (forall rm rb live_after_phis,
+     In rb rbs ->
+     check_rinsts_rev rm keep (rev' (rb_insts rb))
+       (nset_union (nset_at (rb_idx rb) live_out)
+                   (nset_of_list (filter_keep_acc keep (rb_jump_uses rb) [])))
+       = Some live_after_phis ->
+     pts_wf O live_after_phis /\
+     (forall t, In t live_after_phis ->
+        In t (rblock_phi_defs_acc keep (rb_phis rb) []) \/
+        In t (nset_at (rb_idx rb) live_in))).
+Proof.
+  intros keep rbs live_in live_out across Hind Hlv.
+  unfold rblock_liveness in Hlv.
+  set (rbm := build_rb_map rbs (ZMap.empty rblock)) in *.
+  set (gkm := build_gk_map keep rbs (ZMap.empty (list nat * list nat))) in *.
+  assert (Hgkm_wf : forall k gen kill, zmap_find_nat k gkm = Some (gen, kill) -> pts_wf O gen /\ pts_wf O kill).
+  { intros k gen kill Hfind.
+    assert (Hgen_gkm : forall bs m,
+              (forall k0 g0 k1, zmap_find_nat k0 m = Some (g0, k1) -> pts_wf O g0 /\ pts_wf O k1) ->
+              forall k0 g0 k1, zmap_find_nat k0 (build_gk_map keep bs m) = Some (g0, k1) ->
+                pts_wf O g0 /\ pts_wf O k1).
+    { induction bs as [|b bs' IHb]; intros m Hm k0 g0 k1 Hf; simpl in *; [exact (Hm k0 g0 k1 Hf)|].
+      eapply IHb; [|exact Hf].
+      intros k' g' kl' Hf'. unfold zmap_find_nat, zmap_add_nat in Hf'.
+      destruct (Z.eq_dec (Z.of_nat (rb_idx b)) (Z.of_nat k')) as [Heq | Hneq].
+      - rewrite ZF.add_eq_o in Hf' by exact Heq.
+        unfold rblock_gen_kill in Hf'.
+        destruct (gk_defs_step _ _ _), (gk_insts_step _ _ _ _ _).
+        destruct p. injection Hf' as <- <-.
+        split; [exact (proj1 (nset_of_list_spec _)) | exact (proj1 (nset_of_list_spec _))].
+      - rewrite ZF.add_neq_o in Hf' by exact Hneq. exact (Hm k' g' kl' Hf'). }
+    eapply (Hgen_gkm rbs (ZMap.empty _) _ k gen kill Hfind).
+    Unshelve. intros k0 g0 k1 Hf0. unfold zmap_find_nat in Hf0; rewrite ZF.empty_o in Hf0; discriminate. }
+  assert (Hempty_wf : zmap_pts_wf (ZMap.empty (list nat))).
+  { intro k. unfold nset_at, zmap_find_nat. rewrite ZF.empty_o. exact I. }
+  pose proof (rlive_rounds_fixed 40 keep rbm gkm (rev' rbs) (ZMap.empty (list nat)) live_in
+                Hgkm_wf Hempty_wf) as [Hwf_r Hfix_r].
+  destruct (rlive_rounds 40 keep rbm gkm (rev' rbs) (ZMap.empty (list nat)))
+    as [lin_res [|]] eqn:Erounds; [discriminate|].
+  cbn [fst] in Hwf_r.
+  destruct (build_out_across_maps keep rbm lin_res rbs (ZMap.empty (list nat)) (ZMap.empty (list nat)))
+    as [outs_res across_res] eqn:Eouts.
+  cbv zeta in Hlv; injection Hlv as -> -> ->.
+  pose proof (Hfix_r eq_refl) as Hround_ok.
+  destruct (rlive_round_blocks_unchanged (rev' rbs) keep rbm gkm live_in live_in Hround_ok)
+    as [_ Heq_blocks].
+  assert (Hlout_wf : zmap_pts_wf live_out).
+  { assert (Hgen_out : forall bs outs acr0,
+              zmap_pts_wf outs ->
+              zmap_pts_wf (fst (build_out_across_maps keep rbm live_in bs outs acr0))).
+    { induction bs as [|b bs' IHb]; intros outs acr0 Ho; simpl; [exact Ho|].
+      pose proof (proj1 (succs_live_out_spec (rb_succs b) keep rbm live_in (rb_idx b) [] [] Hwf_r I)) as Hob.
+      destruct (succs_live_out keep rbm live_in (rb_idx b) (rb_succs b) [] []) as [o a]; simpl in Hob.
+      apply IHb. intro k. unfold nset_at, zmap_find_nat, zmap_add_nat.
+      destruct (Z.eq_dec (Z.of_nat (rb_idx b)) (Z.of_nat k)) as [Heq | Hneq].
+      - rewrite ZF.add_eq_o by exact Heq. exact Hob.
+      - rewrite ZF.add_neq_o by exact Hneq. exact (Ho k). }
+    pose proof (Hgen_out rbs (ZMap.empty _) (ZMap.empty _) Hempty_wf) as Hwfo.
+    rewrite Eouts in Hwfo; exact Hwfo. }
+  assert (Hlout_of : forall rb, In rb rbs ->
+            nset_at (rb_idx rb) live_out =
+            fst (succs_live_out keep rbm live_in (rb_idx rb) (rb_succs rb) [] [])).
+  { intros rb Hrb.
+    pose proof (build_out_across_in keep rbm live_in rbs O (ZMap.empty _) (ZMap.empty _) rb Hind Hrb) as Ho.
+    rewrite Eouts in Ho; simpl in Ho. unfold nset_at. rewrite Ho. reflexivity. }
+  split; [exact Hwf_r | split; [exact Hlout_wf | split; [|split]]].
+  - intros rb si is_poll t Hrb Hsucc Ht.
+    rewrite (Hlout_of rb Hrb).
+    destruct (succs_live_out_spec (rb_succs rb) keep rbm live_in (rb_idx rb) [] [] Hwf_r I)
+      as [_ [_ [Hsin _]]].
+    exact (Hsin si is_poll t Hsucc Ht).
+  - intros rb si is_poll srb t Hrb Hsucc Hsrb <- Ht.
+    rewrite (Hlout_of rb Hrb).
+    pose proof (build_rb_map_in rbs O (ZMap.empty _) srb Hind Hsrb) as Hrbm_s.
+    destruct (succs_live_out_spec (rb_succs rb) keep rbm live_in (rb_idx rb) [] [] Hwf_r I)
+      as [_ [_ [_ Heu]]].
+    exact (Heu (rb_idx srb) is_poll srb t Hsucc Hrbm_s Ht).
+  - intros rm rb live_after_phis Hrb Hchk.
+    destruct (rblock_gen_kill_live_after_phis rm keep rb (nset_at (rb_idx rb) live_out)
+                live_after_phis (Hlout_wf (rb_idx rb)) Hchk) as [Hwf_lap Hincl_lap].
+    split; [exact Hwf_lap|].
+    assert (Hin_rev : In rb (rev' rbs)).
+    { unfold rev'. rewrite <- rev_alt. apply in_rev. rewrite rev_involutive. exact Hrb. }
+    pose proof (build_gk_map_in keep rbs O (ZMap.empty _) rb Hind Hrb) as Hgkm_rb.
+    pose proof (Heq_blocks rb (fst (rblock_gen_kill keep rb)) (snd (rblock_gen_kill keep rb))
+                  Hin_rev ltac:(rewrite <- surjective_pairing; exact Hgkm_rb)) as Hlin_eq.
+    rewrite <- (Hlout_of rb Hrb) in Hlin_eq.
+    intros t Ht. rewrite Hlin_eq. exact (Hincl_lap t Ht).
+Qed.
+
+Local Opaque rblock_liveness.
+
+(** Entry block of `ebs` (if any) has no phi nodes. *)
+Definition eblocks_entry_no_phis (ebs : list eblock) : Prop :=
+  match ebs with
+  | [] => True
+  | eb0 :: _ => eb_phis eb0 = []
+  end.
+
+(** [number_eblocks_labels] produces block indices `< idx + length ebs`. *)
+Lemma number_eblocks_labels_bound : forall ebs idx m,
+  (forall lbl bi, nm_find lbl m = Some bi -> (bi < idx)%nat) ->
+  forall lbl bi, nm_find lbl (number_eblocks_labels ebs idx m) = Some bi ->
+    (bi < idx + length ebs)%nat.
+Proof.
+  induction ebs as [|eb ebs' IH]; intros idx m Hm lbl bi Hfind; simpl in *.
+  - pose proof (Hm lbl bi Hfind). lia.
+  - destruct (nm_mem (eb_label eb) m).
+    + pose proof (IH (S idx) m (fun l b H => ltac:(pose proof (Hm l b H); lia)) lbl bi Hfind). lia.
+    + assert (Hm' : forall l b, nm_find l (nm_add (eb_label eb) idx m) = Some b -> (b < S idx)%nat).
+      { intros l b Hf. rewrite nm_find_add in Hf.
+        destruct (name_eqb l (eb_label eb)); [injection Hf as <-; lia | pose proof (Hm l b Hf); lia]. }
+      pose proof (IH (S idx) _ Hm' lbl bi Hfind). lia.
+Qed.
+
+(** [targets_to_succs_acc] keeps all target indices `< n`. *)
+Lemma targets_to_succs_bound : forall ts bmap n acc,
+  (forall lbl bi, nm_find lbl bmap = Some bi -> (bi < n)%nat) ->
+  Forall (fun sp => (fst sp < n)%nat) acc ->
+  Forall (fun sp => (fst sp < n)%nat) (targets_to_succs_acc bmap ts acc).
+Proof.
+  induction ts as [|t ts' IH]; intros bmap n acc Hbmap Hacc; simpl.
+  - unfold rev'. rewrite <- rev_alt. apply Forall_rev. exact Hacc.
+  - destruct (nm_find (edge_label t) bmap) as [bi|] eqn:Eb.
+    + apply IH; [exact Hbmap | constructor; [simpl; exact (Hbmap (edge_label t) bi Eb) | exact Hacc]].
+    + apply IH; assumption.
+Qed.
+
+(** Pure recursive specification of [eblocks_to_r_acc]. *)
+Fixpoint eblocks_to_r_list (tmap bmap : nmap nat) (idx : nat) (ebs : list eblock) : list rblock :=
+  match ebs with
+  | [] => []
+  | eb :: ebs' =>
+      mkRBlock idx
+        (targets_to_succs_acc bmap (ejump_targets (eb_jump eb)) [])
+        (phis_to_r_acc tmap bmap (eb_phis eb) [])
+        (einsts_to_r_acc tmap (eb_insts eb) [])
+        (names_to_tids tmap (ejump_uses (eb_jump eb)))
+      :: eblocks_to_r_list tmap bmap (S idx) ebs'
+  end.
+
+(** [eblocks_to_r_acc] equals `rev acc ++ eblocks_to_r_list`. *)
+Lemma eblocks_to_r_acc_eq : forall ebs tmap bmap idx acc,
+  eblocks_to_r_acc tmap bmap idx ebs acc = rev acc ++ eblocks_to_r_list tmap bmap idx ebs.
+Proof.
+  induction ebs as [|eb ebs' IH]; intros tmap bmap idx acc; simpl.
+  - unfold rev'. rewrite <- rev_alt, app_nil_r. reflexivity.
+  - rewrite IH. simpl. rewrite <- app_assoc. reflexivity.
+Qed.
+
+(** Numbering `ebs` via [number_eblocks_labels] and [eblocks_to_r_acc]
+    produces a CFG satisfying [rblocks_wf] whenever the entry block has no phis. *)
+Theorem eblocks_to_r_wf : forall tmap ebs,
+  eblocks_entry_no_phis ebs ->
+  rblocks_wf (eblocks_to_r_acc tmap (number_eblocks_labels ebs O nm_empty) O ebs []).
+Proof.
+  intros tmap ebs Hentry.
+  set (bmap := number_eblocks_labels ebs O nm_empty).
+  rewrite eblocks_to_r_acc_eq; simpl.
+  assert (Hbmap : forall lbl bi, nm_find lbl bmap = Some bi -> (bi < length ebs)%nat).
+  { intros lbl bi Hf.
+    apply (number_eblocks_labels_bound ebs O nm_empty
+             (fun l b H => ltac:(rewrite nm_find_empty in H; discriminate)) lbl bi Hf). }
+  assert (Hlen : forall l idx, length (eblocks_to_r_list tmap bmap idx l) = length l).
+  { induction l as [|x l' IH]; intro idx; simpl; [reflexivity | f_equal; apply IH]. }
+  assert (Hind : forall l idx, rblocks_indexed idx (eblocks_to_r_list tmap bmap idx l)).
+  { induction l as [|x l' IH]; intro idx; simpl; [exact I | split; [reflexivity | apply IH]]. }
+  assert (Hsuccs : forall l idx,
+            Forall (rblock_succs_in_range (length ebs)) (eblocks_to_r_list tmap bmap idx l)).
+  { induction l as [|x l' IH]; intro idx; simpl; [constructor|].
+    constructor.
+    - unfold rblock_succs_in_range; simpl.
+      apply (targets_to_succs_bound _ bmap (length ebs) [] Hbmap (Forall_nil _)).
+    - apply IH. }
+  unfold rblocks_wf. rewrite Hlen.
+  split; [apply Hind | split; [apply Hsuccs |]].
+  destruct ebs as [|eb0 ebs']; simpl in *; [exact I | rewrite Hentry; reflexivity].
+Qed.
+
+(** Extract raw phi destination IDs of a block. *)
+Definition phi_defs_raw (phis : list (nat * list (nat * option nat))) : list nat :=
+  map fst phis.
+
+(** Extract raw temporary IDs read by `phis` on edge from `bi`. *)
+Fixpoint phi_edge_uses_raw (bi : nat) (phis : list (nat * list (nat * option nat))) : list nat :=
+  match phis with
+  | [] => []
+  | (_, ps) :: phis' =>
+      match lookup_phi_edge_src bi ps with
+      | Some u => u :: phi_edge_uses_raw bi phis'
+      | None => phi_edge_uses_raw bi phis'
+      end
+  end.
+
+(** Evaluate simultaneous phi right-hand sides on edge from `bi`, using
+    `cval idx` for non-temporary (constant or global) incoming values. *)
+Fixpoint eval_phis_abs (bi : nat) (cval : nat -> Z) (tenv : nat -> Z)
+                       (idx : nat) (phis : list (nat * list (nat * option nat))) : list Z :=
+  match phis with
+  | [] => []
+  | (_, ps) :: phis' =>
+      let v := match lookup_phi_edge_src bi ps with
+               | Some u => tenv u
+               | None => cval idx
+               end in
+      v :: eval_phis_abs bi cval tenv (S idx) phis'
+  end.
+
+(** Abstract simultaneous phi update on edge from `bi`. *)
+Definition step_phis_abs (bi : nat) (cval : nat -> Z) (tenv : nat -> Z)
+                         (phis : list (nat * list (nat * option nat))) : nat -> Z :=
+  write_abs_list tenv (phi_defs_raw phis) (eval_phis_abs bi cval tenv O phis).
+
+(** Machine state after simultaneous phi moves and optional slow-path `Poll` clobber. *)
+Definition step_edge_mach (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                          (bi : nat) (is_poll : bool) (cval : nat -> Z)
+                          (poll_arb : hreg -> Z) (ms : mach_state)
+                          (phis : list (nat * list (nat * option nat))) : mach_state :=
+  let ms_phi :=
+    write_mach_list rm slot_of ms (phi_defs_raw phis)
+      (eval_phis_abs bi cval (read_mach rm slot_of ms) O phis) in
+  if is_poll then clobber_call poll_arb ms_phi else ms_phi.
+
+(** [eval_phis_abs] produces `length phis` values and agrees whenever
+    [state_agrees] holds on [phi_edge_uses_raw]. *)
+Lemma eval_phis_agree : forall phis rm slot_of bi cval idx tenv ms,
+  state_agrees rm slot_of (phi_edge_uses_raw bi phis) tenv ms ->
+  length (eval_phis_abs bi cval tenv idx phis) = length (phi_defs_raw phis) /\
+  eval_phis_abs bi cval (read_mach rm slot_of ms) idx phis = eval_phis_abs bi cval tenv idx phis.
+Proof.
+  induction phis as [|[d ps] phis' IH]; intros rm slot_of bi cval idx tenv ms Hag; simpl in *.
+  - split; reflexivity.
+  - destruct (lookup_phi_edge_src bi ps) as [u|].
+    + assert (Hu : read_mach rm slot_of ms u = tenv u) by (apply Hag; left; reflexivity).
+      assert (Hag' : state_agrees rm slot_of (phi_edge_uses_raw bi phis') tenv ms)
+        by (intros t Ht; apply Hag; right; exact Ht).
+      destruct (IH rm slot_of bi cval (S idx) tenv ms Hag') as [Hlen Heq].
+      split; [f_equal; exact Hlen | rewrite Hu, Heq; reflexivity].
+    + destruct (IH rm slot_of bi cval (S idx) tenv ms Hag) as [Hlen Heq].
+      split; [f_equal; exact Hlen | rewrite Heq; reflexivity].
+Qed.
+
+(** One block-to-block step in a numbered CFG execution trace. *)
+Record cfg_edge_step : Type := mkEdgeStep {
+  ces_ies      : list inst_exec;
+  ces_succ     : nat;
+  ces_poll     : bool;
+  ces_phi_cval : nat -> Z;
+  ces_poll_arb : hreg -> Z
+}.
+
+(** Structural validity of a multi-block execution trace `(tr, exit_ies)`
+    starting at block index `bi` in `rbs`. *)
+Fixpoint cfg_trace_valid (rbs : list rblock) (bi : nat)
+                         (tr : list cfg_edge_step) (exit_ies : list inst_exec) : Prop :=
+  match tr with
+  | [] =>
+      match nth_error rbs bi with
+      | Some rb => insts_exec_wf (rb_insts rb) exit_ies
+      | None => False
+      end
+  | es :: tr' =>
+      match nth_error rbs bi with
+      | Some rb =>
+          insts_exec_wf (rb_insts rb) (ces_ies es) /\
+          In (ces_succ es, ces_poll es) (rb_succs rb) /\
+          cfg_trace_valid rbs (ces_succ es) tr' exit_ies
+      | None => False
+      end
+  end.
+
+(** Exact semantic live-in temporaries needed at block `bi` (after phis)
+    along `(tr, exit_ies)`. *)
+Fixpoint cfg_trace_need (rbs : list rblock) (bi : nat) (tr : list cfg_edge_step) : list nat :=
+  match tr with
+  | [] =>
+      match nth_error rbs bi with
+      | Some rb => insts_need (rb_insts rb) (rb_jump_uses rb)
+      | None => []
+      end
+  | es :: tr' =>
+      match nth_error rbs bi, nth_error rbs (ces_succ es) with
+      | Some rb, Some srb =>
+          let next_need := cfg_trace_need rbs (ces_succ es) tr' in
+          let exit_need :=
+            rb_jump_uses rb
+            ++ phi_edge_uses_raw bi (rb_phis srb)
+            ++ live_without_list (phi_defs_raw (rb_phis srb)) next_need in
+          insts_need (rb_insts rb) exit_need
+      | _, _ => []
+      end
+  end.
+
+(** Physical frame-slot non-interference for unmapped writes along `(tr, exit_ies)`. *)
+Fixpoint cfg_trace_slot_ok (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                           (rbs : list rblock) (bi : nat) (tr : list cfg_edge_step) : Prop :=
+  match tr with
+  | [] =>
+      match nth_error rbs bi with
+      | Some rb => insts_slot_ok rm slot_of (rb_insts rb) (rb_jump_uses rb)
+      | None => True
+      end
+  | es :: tr' =>
+      match nth_error rbs bi, nth_error rbs (ces_succ es) with
+      | Some rb, Some srb =>
+          let next_need := cfg_trace_need rbs (ces_succ es) tr' in
+          let exit_need :=
+            rb_jump_uses rb
+            ++ phi_edge_uses_raw bi (rb_phis srb)
+            ++ live_without_list (phi_defs_raw (rb_phis srb)) next_need in
+          insts_slot_ok rm slot_of (rb_insts rb) exit_need /\
+          unmapped_slot_ok rm slot_of (phi_defs_raw (rb_phis srb)) next_need /\
+          cfg_trace_slot_ok rm slot_of rbs (ces_succ es) tr'
+      | _, _ => True
+      end
+  end.
+
+(** Complete observational agreement along `(tr, exit_ies)`: every
+    instruction operand read and every block-exit jump read in `mach_state`
+    equals its abstract value in `tenv`. *)
+Fixpoint cfg_trace_agrees (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                          (rbs : list rblock) (bi : nat)
+                          (tr : list cfg_edge_step) (exit_ies : list inst_exec)
+                          (tenv : nat -> Z) (ms : mach_state) : Prop :=
+  match tr with
+  | [] =>
+      match nth_error rbs bi with
+      | Some rb =>
+          let tenv_end := run_insts_abs (rb_insts rb) exit_ies tenv in
+          let ms_end := run_insts_mach rm slot_of (rb_insts rb) exit_ies ms in
+          insts_reads_agree rm slot_of (rb_insts rb) exit_ies tenv ms /\
+          map (read_mach rm slot_of ms_end) (rb_jump_uses rb) = map tenv_end (rb_jump_uses rb)
+      | None => False
+      end
+  | es :: tr' =>
+      match nth_error rbs bi, nth_error rbs (ces_succ es) with
+      | Some rb, Some srb =>
+          let tenv_end := run_insts_abs (rb_insts rb) (ces_ies es) tenv in
+          let ms_end := run_insts_mach rm slot_of (rb_insts rb) (ces_ies es) ms in
+          let tenv_next := step_phis_abs bi (ces_phi_cval es) tenv_end (rb_phis srb) in
+          let ms_next :=
+            step_edge_mach rm slot_of bi (ces_poll es) (ces_phi_cval es)
+              (ces_poll_arb es) ms_end (rb_phis srb) in
+          insts_reads_agree rm slot_of (rb_insts rb) (ces_ies es) tenv ms /\
+          map (read_mach rm slot_of ms_end) (rb_jump_uses rb) = map tenv_end (rb_jump_uses rb) /\
+          cfg_trace_agrees rm slot_of rbs (ces_succ es) tr' exit_ies tenv_next ms_next
+      | _, _ => False
+      end
+  end.
+
+(** Extract single-block acceptance facts from [check_rblocks]. *)
+Lemma check_rblocks_in : forall rbs rm keep rbm live_in live_out rb,
+  check_rblocks rm keep rbm live_in live_out rbs = true ->
+  In rb rbs ->
+  exists live_after_phis,
+    check_succs_polls rm keep rbm live_in (rb_succs rb) = true /\
+    check_rinsts_rev rm keep (rev' (rb_insts rb))
+      (nset_union (nset_at (rb_idx rb) live_out)
+                  (nset_of_list (filter_keep_acc keep (rb_jump_uses rb) [])))
+      = Some live_after_phis /\
+    no_dup_hregs rm (nset_union live_after_phis (rblock_phi_defs_acc keep (rb_phis rb) [])) = true.
+Proof.
+  induction rbs as [|r0 rbs' IH]; intros rm keep rbm live_in live_out rb Hchk Hin; simpl in *; [contradiction|].
+  destruct (negb _) eqn:Ehead; [discriminate|].
+  apply Bool.negb_false_iff in Ehead.
+  apply Bool.andb_true_iff in Ehead. destruct Ehead as [_ Hpolls].
+  destruct (check_rinsts_rev rm keep (rev' (rb_insts r0)) _) as [lap0|] eqn:Erev; [|discriminate].
+  destruct (no_dup_hregs rm (nset_union lap0 _)) eqn:Endp; [|discriminate].
+  destruct Hin as [<- | Hin'].
+  - exists lap0. split; [exact Hpolls | split; [exact Erev | exact Endp]].
+  - exact (IH rm keep rbm live_in live_out rb Hchk Hin').
+Qed.
+
+(** Extract successor header checks from [check_succs_polls]. *)
+Lemma check_succs_polls_in : forall succs rm keep rbm live_in si is_poll srb,
+  check_succs_polls rm keep rbm live_in succs = true ->
+  In (si, is_poll) succs ->
+  zmap_find_nat si rbm = Some srb ->
+  no_dup_hregs rm (nset_union (nset_at si live_in) (rblock_phi_defs_acc keep (rb_phis srb) [])) = true /\
+  (is_poll = true ->
+   all_callee_saved rm (nset_union (nset_at si live_in) (rblock_phi_defs_acc keep (rb_phis srb) [])) = true).
+Proof.
+  induction succs as [|[s0 p0] succs' IH]; intros rm keep rbm live_in si is_poll srb Hchk Hin Hrbm;
+    simpl in *; [contradiction|].
+  destruct (no_dup_hregs rm _ && _) eqn:Eok; [|discriminate].
+  destruct Hin as [Heq | Hin'].
+  - injection Heq as <- <-. rewrite Hrbm in Eok.
+    apply Bool.andb_true_iff in Eok. destruct Eok as [Hnd Hp].
+    split; [exact Hnd | intros ->; exact Hp].
+  - exact (IH rm keep rbm live_in si is_poll srb Hchk Hin' Hrbm).
+Qed.
+
+(** Single-block instruction simulation when `rm` is empty. *)
+Lemma empty_rm_insts_sound : forall ris ies rm slot_of ne tenv ms,
+  (forall t, zmap_find_nat t rm = None) ->
+  insts_exec_wf ris ies ->
+  insts_slot_ok rm slot_of ris ne ->
+  state_agrees rm slot_of (insts_need ris ne) tenv ms ->
+  insts_reads_agree rm slot_of ris ies tenv ms /\
+  state_agrees rm slot_of ne (run_insts_abs ris ies tenv) (run_insts_mach rm slot_of ris ies ms).
+Proof.
+  induction ris as [|ri ris' IHr]; intros [|ie ies'] rm slot_of ne t0 m0 Hempty Hwf Hus0 Hag0;
+    simpl in *; try contradiction.
+  - split; [exact I | exact Hag0].
+  - destruct Hwf as [Hie Hies']. destruct Hus0 as [Hus1 Hus'].
+    assert (Hag_pre : state_agrees rm slot_of
+                        (ri_uses ri ++ live_without_list (ri_defs ri) (insts_need ris' ne))
+                        t0 (mach_pre_rinst ri ie m0)).
+    { unfold mach_pre_rinst, pre_call_state; destruct (ri_call ri); try exact Hag0.
+      apply clobber_preserves_agrees; [|exact Hag0].
+      clear -Hempty; induction (ri_uses ri ++ _) as [|x xs IHx]; simpl;
+        [reflexivity | rewrite Hempty; exact IHx]. }
+    assert (Hargs : map (read_mach rm slot_of (mach_pre_rinst ri ie m0)) (ri_uses ri) = map t0 (ri_uses ri))
+      by (apply map_ext_in; intros u Hu; apply Hag_pre, in_or_app; left; exact Hu).
+    assert (Hag_step : state_agrees rm slot_of (insts_need ris' ne)
+                         (abs_step_rinst ri ie t0)
+                         (mach_step_rinst rm slot_of ri ie m0)).
+    { unfold abs_step_rinst, mach_step_rinst; cbv zeta; rewrite Hargs.
+      apply write_mach_list_sound; [symmetry; apply Hie | |].
+      - eapply (no_dup_plus_slot_no_collision rm slot_of (ri_defs ri) _ [] eq_refl);
+          [intros d _ Hnn; exfalso; exact (Hnn (Hempty d))
+          | intros t Hnn _; exfalso; exact (Hnn (Hempty t))
+          | exact Hus1].
+      - assert (Hag_mid : state_agrees rm slot_of
+                            (live_without_list (ri_defs ri) (insts_need ris' ne))
+                            t0 (mach_pre_rinst ri ie m0))
+          by (intros t Ht; apply Hag_pre, in_or_app; right; exact Ht).
+        unfold post_call_state; destruct (ri_call ri); [exact Hag_mid | |];
+          (apply clobber_preserves_agrees; [|exact Hag_mid];
+           clear -Hempty; induction (live_without_list _ _) as [|x xs IHx]; simpl;
+             [reflexivity | rewrite Hempty; exact IHx]). }
+    destruct (IHr ies' rm slot_of ne _ _ Hempty Hies' Hus' Hag_step) as [Hrd' Hag'].
+    split; [split; [exact Hargs | exact Hrd'] | exact Hag'].
+Qed.
+
+(** Multi-block trace simulation when `rm` is empty (`forall t, zmap_find_nat t rm = None`). *)
+Lemma empty_rm_trace_sound : forall tr exit_ies rm slot_of rbs bi tenv ms,
+  (forall t, zmap_find_nat t rm = None) ->
+  cfg_trace_valid rbs bi tr exit_ies ->
+  cfg_trace_slot_ok rm slot_of rbs bi tr ->
+  state_agrees rm slot_of (cfg_trace_need rbs bi tr) tenv ms ->
+  cfg_trace_agrees rm slot_of rbs bi tr exit_ies tenv ms.
+Proof.
+  induction tr as [|es tr' IH]; intros exit_ies rm slot_of rbs bi tenv ms Hempty Hval Hus Hag;
+    simpl in *.
+  - destruct (nth_error rbs bi) as [rb|]; [|contradiction].
+    destruct (empty_rm_insts_sound (rb_insts rb) exit_ies rm slot_of (rb_jump_uses rb)
+                tenv ms Hempty Hval Hus Hag) as [Hrd Hag_end].
+    split; [exact Hrd | apply map_ext_in; intros u Hu; exact (Hag_end u Hu)].
+  - destruct (nth_error rbs bi) as [rb|]; [|contradiction].
+    destruct Hval as [Hiewf [Hsucc Hval']].
+    assert (Hsrb_ex : exists srb, nth_error rbs (ces_succ es) = Some srb).
+    { destruct (nth_error rbs (ces_succ es)) as [srb|] eqn:Es; [exists srb; reflexivity|].
+      destruct tr'; simpl in Hval'; rewrite Es in Hval'; contradiction. }
+    destruct Hsrb_ex as [srb Esrb]; rewrite Esrb in *.
+    destruct Hus as [Hus_insts [Hus_phis Hus']].
+    set (next_need := cfg_trace_need rbs (ces_succ es) tr') in *.
+    set (exit_need := rb_jump_uses rb ++ phi_edge_uses_raw bi (rb_phis srb)
+                      ++ live_without_list (phi_defs_raw (rb_phis srb)) next_need) in *.
+    destruct (empty_rm_insts_sound (rb_insts rb) (ces_ies es) rm slot_of exit_need
+                tenv ms Hempty Hiewf Hus_insts Hag) as [Hrd Hag_end].
+    set (tenv_end := run_insts_abs (rb_insts rb) (ces_ies es) tenv) in *.
+    set (ms_end := run_insts_mach rm slot_of (rb_insts rb) (ces_ies es) ms) in *.
+    split; [exact Hrd | split].
+    + apply map_ext_in; intros u Hu; apply Hag_end, in_or_app; left; exact Hu.
+    + apply (IH exit_ies rm slot_of rbs (ces_succ es) _ _ Hempty Hval' Hus').
+      assert (Hag_peu : state_agrees rm slot_of (phi_edge_uses_raw bi (rb_phis srb)) tenv_end ms_end).
+      { intros u Hu; apply Hag_end, in_or_app; right; apply in_or_app; left; exact Hu. }
+      destruct (eval_phis_agree (rb_phis srb) rm slot_of bi (ces_phi_cval es) O tenv_end ms_end Hag_peu)
+        as [Hplen Hpeq].
+      unfold step_phis_abs, step_edge_mach; cbv zeta; rewrite Hpeq.
+      assert (Hag_phi : state_agrees rm slot_of next_need
+                          (write_abs_list tenv_end (phi_defs_raw (rb_phis srb))
+                             (eval_phis_abs bi (ces_phi_cval es) tenv_end O (rb_phis srb)))
+                          (write_mach_list rm slot_of ms_end (phi_defs_raw (rb_phis srb))
+                             (eval_phis_abs bi (ces_phi_cval es) tenv_end O (rb_phis srb)))).
+      { apply write_mach_list_sound; [symmetry; exact Hplen | |].
+        - eapply (no_dup_plus_slot_no_collision rm slot_of _ _ [] eq_refl);
+            [intros d _ Hnn; exfalso; exact (Hnn (Hempty d)) | intros t Hnn _; exfalso; exact (Hnn (Hempty t)) | exact Hus_phis].
+        - intros t Ht; apply Hag_end, in_or_app; right; apply in_or_app; right; exact Ht. }
+      destruct (ces_poll es); [|exact Hag_phi].
+      apply clobber_preserves_agrees; [|exact Hag_phi].
+      clear -Hempty; induction (cfg_trace_need rbs (ces_succ es) tr') as [|x xs IHx];
+        simpl; [reflexivity | rewrite Hempty; exact IHx].
+Qed.
+
+(** Header live-plus-phi-defs ordset checked at entry to block `bi`. *)
+Definition rblock_header_set (rm : ZMap.t hreg) (rbs : list rblock)
+                             (live_in : ZMap.t (list nat)) (bi : nat) : list nat :=
+  nset_union (nset_at bi live_in)
+    (match nth_error rbs bi with
+     | Some rb => rblock_phi_defs_acc (Some (rm_dom_map rm)) (rb_phis rb) []
+     | None => []
+     end).
+
+(** Multi-block CFG + phi + poll trace simulation from [check_rblocks]
+    and converged [rblock_liveness]. *)
+Theorem check_rblocks_trace_sound :
+  forall tr exit_ies rm slot_of rbs live_in live_out across bi,
+  rblocks_indexed O rbs ->
+  rblock_liveness (Some (rm_dom_map rm)) rbs = Some (live_in, live_out, across) ->
+  check_rblocks rm (Some (rm_dom_map rm)) (build_rb_map rbs (ZMap.empty rblock))
+    live_in live_out rbs = true ->
+  cfg_trace_valid rbs bi tr exit_ies ->
+  cfg_trace_slot_ok rm slot_of rbs bi tr ->
+  mapped_incl rm (cfg_trace_need rbs bi tr) (rblock_header_set rm rbs live_in bi) /\
+  (forall tenv ms,
+     state_agrees rm slot_of (cfg_trace_need rbs bi tr) tenv ms ->
+     cfg_trace_agrees rm slot_of rbs bi tr exit_ies tenv ms).
+Proof.
+  induction tr as [|es tr' IH];
+    intros exit_ies rm slot_of rbs live_in live_out across bi Hind Hlv Hchk Hval Hus;
+    unfold rblock_header_set.
+  - set (dom := Some (rm_dom_map rm)) in *.
+    set (rbm := build_rb_map rbs (ZMap.empty rblock)) in *.
+    destruct (rblock_liveness_sound dom rbs live_in live_out across Hind Hlv)
+      as [Hwf_lin [Hwf_lout [_ [_ Hlap_incl]]]].
+    simpl in Hval, Hus |- *.
+    destruct (nth_error rbs bi) as [rb|] eqn:Erb; [|contradiction].
+    destruct (rblocks_indexed_nth rbs O bi rb Hind Erb) as [Hrb_in Hrb_idx]; simpl in Hrb_idx.
+    destruct (check_rblocks_in rbs rm dom rbm live_in live_out rb Hchk Hrb_in)
+      as [lap [_ [Erev _]]].
+    destruct (Hlap_incl rm rb lap Hrb_in Erev) as [Hwf_lap Hlap_hdr].
+    set (juses := nset_of_list (filter_keep_acc dom (rb_jump_uses rb) [])) in *.
+    destruct (nset_of_list_spec (filter_keep_acc dom (rb_jump_uses rb) [])) as [Hwf_ju Hin_ju].
+    destruct (nset_union_spec (nset_at (rb_idx rb) live_out) juses (Hwf_lout _) Hwf_ju)
+      as [Hwf_lend Hin_lend].
+    assert (Hincl_end : mapped_incl rm (rb_jump_uses rb) (nset_union (nset_at (rb_idx rb) live_out) juses)).
+    { intros t Hnn Ht. apply Hin_lend. right. apply Hin_ju, filter_keep_dom_iff. split; assumption. }
+    destruct (check_rinsts_rev_sound (rb_insts rb) exit_ies rm slot_of _ lap (rb_jump_uses rb)
+                (fun _ => 0) (mkMach (fun _ => 0) (fun _ => 0))
+                Hwf_lend Erev Hval Hincl_end Hus)
+      as [_ [Hincl0 _]].
+    destruct (nset_union_spec (nset_at bi live_in) (rblock_phi_defs_acc dom (rb_phis rb) [])
+                (Hwf_lin bi) (proj1 (rblock_phi_defs_spec dom (rb_phis rb) [])))
+      as [_ Hin_hdr].
+    split.
+    + intros t Hnn Ht. apply Hin_hdr. rewrite <- Hrb_idx.
+      destruct (Hlap_hdr t (Hincl0 t Hnn Ht)); [right | left]; assumption.
+    + intros tenv ms Hag.
+      destruct (check_rinsts_rev_sound (rb_insts rb) exit_ies rm slot_of _ lap (rb_jump_uses rb)
+                  tenv ms Hwf_lend Erev Hval Hincl_end Hus)
+        as [_ [_ Hrun]].
+      destruct (Hrun Hag) as [Hrd Hag_end].
+      split; [exact Hrd | apply map_ext_in; intros u Hu; exact (Hag_end u Hu)].
+  - set (dom := Some (rm_dom_map rm)) in *.
+    set (rbm := build_rb_map rbs (ZMap.empty rblock)) in *.
+    destruct (rblock_liveness_sound dom rbs live_in live_out across Hind Hlv)
+      as [Hwf_lin [Hwf_lout [Hlout_lin [Hlout_peu Hlap_incl]]]].
+    simpl in Hval, Hus |- *.
+    destruct (nth_error rbs bi) as [rb|] eqn:Erb; [|contradiction].
+    destruct Hval as [Hiewf [Hsucc Hval']].
+    assert (Hsrb_ex : exists srb, nth_error rbs (ces_succ es) = Some srb).
+    { destruct (nth_error rbs (ces_succ es)) as [srb|] eqn:Es; [exists srb; reflexivity|].
+      destruct tr'; simpl in Hval'; rewrite Es in Hval'; contradiction. }
+    destruct Hsrb_ex as [srb Esrb]; rewrite Esrb in *.
+    destruct Hus as [Hus_insts [Hus_phis Hus']].
+    destruct (rblocks_indexed_nth rbs O bi rb Hind Erb) as [Hrb_in Hrb_idx]; simpl in Hrb_idx.
+    destruct (rblocks_indexed_nth rbs O (ces_succ es) srb Hind Esrb) as [Hsrb_in Hsrb_idx]; simpl in Hsrb_idx.
+    destruct (IH exit_ies rm slot_of rbs live_in live_out across (ces_succ es)
+                Hind Hlv Hchk Hval' Hus')
+      as [Hincl_next Hrun_next].
+    unfold rblock_header_set in Hincl_next; rewrite Esrb in Hincl_next.
+    set (next_need := cfg_trace_need rbs (ces_succ es) tr') in *.
+    set (exit_need := rb_jump_uses rb ++ phi_edge_uses_raw bi (rb_phis srb)
+                      ++ live_without_list (phi_defs_raw (rb_phis srb)) next_need) in *.
+    destruct (check_rblocks_in rbs rm dom rbm live_in live_out rb Hchk Hrb_in)
+      as [lap [Hpolls [Erev _]]].
+    destruct (Hlap_incl rm rb lap Hrb_in Erev) as [Hwf_lap Hlap_hdr].
+    set (juses := nset_of_list (filter_keep_acc dom (rb_jump_uses rb) [])) in *.
+    destruct (nset_of_list_spec (filter_keep_acc dom (rb_jump_uses rb) [])) as [Hwf_ju Hin_ju].
+    destruct (nset_union_spec (nset_at (rb_idx rb) live_out) juses (Hwf_lout _) Hwf_ju)
+      as [Hwf_lend Hin_lend].
+    destruct (nset_union_spec (nset_at (ces_succ es) live_in)
+                (rblock_phi_defs_acc dom (rb_phis srb) [])
+                (Hwf_lin _) (proj1 (rblock_phi_defs_spec dom (rb_phis srb) [])))
+      as [_ Hin_shdr].
+    assert (Hincl_exit : mapped_incl rm exit_need (nset_union (nset_at (rb_idx rb) live_out) juses)).
+    { intros t Hnn Ht. apply Hin_lend.
+      unfold exit_need in Ht. apply in_app_or in Ht; destruct Ht as [Hju | Ht'];
+        [right; apply Hin_ju, filter_keep_dom_iff; split; assumption|].
+      left. apply in_app_or in Ht'; destruct Ht' as [Hpeu | Hpass].
+      - eapply (Hlout_peu rb (ces_succ es) (ces_poll es) srb t Hrb_in Hsucc Hsrb_in Hsrb_idx).
+        rewrite Hrb_idx.
+        apply (proj2 (rblock_phi_edge_uses_spec dom bi (rb_phis srb) [])).
+        right.
+        assert (Hex_phi : exists d ps, In (d, ps) (rb_phis srb) /\ lookup_phi_edge_src bi ps = Some t).
+        { clear -Hpeu. induction (rb_phis srb) as [|[d ps] phis' IHp]; simpl in *; [contradiction|].
+          destruct (lookup_phi_edge_src bi ps) as [u|] eqn:El.
+          - destruct Hpeu as [<- | Hp']; [exists d, ps; split; [left; reflexivity | exact El]|].
+            destruct (IHp Hp') as [d' [ps' [H1 H2]]]; exists d', ps'; split; [right; exact H1 | exact H2].
+          - destruct (IHp Hpeu) as [d' [ps' [H1 H2]]]; exists d', ps'; split; [right; exact H1 | exact H2]. }
+        destruct Hex_phi as [d [ps [Hdp Hlk]]].
+        exists d, ps. split; [exact Hdp | split; [exact Hlk |]].
+        apply filter_keep_dom_iff; split; [left; reflexivity | exact Hnn].
+      - apply live_without_list_in in Hpass; destruct Hpass as [Hnn_next Hnot_pdef].
+        pose proof (Hincl_next t Hnn Hnn_next) as Hshdr.
+        apply Hin_shdr in Hshdr; destruct Hshdr as [Hlin_s | Hpdef_s].
+        + exact (Hlout_lin rb (ces_succ es) (ces_poll es) t Hrb_in Hsucc Hlin_s).
+        + apply (proj2 (rblock_phi_defs_spec dom (rb_phis srb) [])) in Hpdef_s.
+          destruct Hpdef_s as [[] | [Hmp _]]; contradiction. }
+    destruct (check_rinsts_rev_sound (rb_insts rb) (ces_ies es) rm slot_of _ lap exit_need
+                (fun _ => 0) (mkMach (fun _ => 0) (fun _ => 0))
+                Hwf_lend Erev Hiewf Hincl_exit Hus_insts)
+      as [_ [Hincl0 _]].
+    destruct (nset_union_spec (nset_at bi live_in) (rblock_phi_defs_acc dom (rb_phis rb) [])
+                (Hwf_lin bi) (proj1 (rblock_phi_defs_spec dom (rb_phis rb) [])))
+      as [_ Hin_hdr].
+    split.
+    + intros t Hnn Ht. apply Hin_hdr. rewrite <- Hrb_idx.
+      destruct (Hlap_hdr t (Hincl0 t Hnn Ht)); [right | left]; assumption.
+    + intros tenv ms Hag.
+      destruct (check_rinsts_rev_sound (rb_insts rb) (ces_ies es) rm slot_of _ lap exit_need
+                  tenv ms Hwf_lend Erev Hiewf Hincl_exit Hus_insts)
+        as [_ [_ Hrun]].
+      destruct (Hrun Hag) as [Hrd Hag_end].
+      set (tenv_end := run_insts_abs (rb_insts rb) (ces_ies es) tenv) in *.
+      set (ms_end := run_insts_mach rm slot_of (rb_insts rb) (ces_ies es) ms) in *.
+      split; [exact Hrd | split].
+      * apply map_ext_in; intros u Hu; apply Hag_end, in_or_app; left; exact Hu.
+      * apply Hrun_next.
+        pose proof (build_rb_map_in rbs O (ZMap.empty _) srb Hind Hsrb_in) as Hrbm_s.
+        rewrite Hsrb_idx in Hrbm_s.
+        destruct (check_succs_polls_in (rb_succs rb) rm dom rbm live_in
+                    (ces_succ es) (ces_poll es) srb Hpolls Hsucc Hrbm_s)
+          as [Hnd_hdr Hcs_hdr].
+        assert (Hag_peu : state_agrees rm slot_of (phi_edge_uses_raw bi (rb_phis srb)) tenv_end ms_end).
+        { intros u Hu; apply Hag_end, in_or_app; right; apply in_or_app; left; exact Hu. }
+        destruct (eval_phis_agree (rb_phis srb) rm slot_of bi (ces_phi_cval es) O tenv_end ms_end Hag_peu)
+          as [Hplen Hpeq].
+        unfold step_phis_abs, step_edge_mach; cbv zeta; rewrite Hpeq.
+        assert (Hag_phi : state_agrees rm slot_of next_need
+                            (write_abs_list tenv_end (phi_defs_raw (rb_phis srb))
+                               (eval_phis_abs bi (ces_phi_cval es) tenv_end O (rb_phis srb)))
+                            (write_mach_list rm slot_of ms_end (phi_defs_raw (rb_phis srb))
+                               (eval_phis_abs bi (ces_phi_cval es) tenv_end O (rb_phis srb)))).
+        { apply write_mach_list_sound; [symmetry; exact Hplen | |].
+          - eapply (no_dup_plus_slot_no_collision rm slot_of _ _ _ Hnd_hdr).
+            + intros d Hd Hnn. apply Hin_shdr. right.
+              apply (proj2 (rblock_phi_defs_spec dom (rb_phis srb) [])).
+              right; split; [exact Hd | apply filter_keep_dom_iff; split; [left; reflexivity | exact Hnn]].
+            + exact Hincl_next.
+            + exact Hus_phis.
+          - intros t Ht; apply Hag_end, in_or_app; right; apply in_or_app; right; exact Ht. }
+        destruct (ces_poll es) eqn:Ep; [|exact Hag_phi].
+        apply clobber_preserves_agrees; [|exact Hag_phi].
+        exact (all_callee_saved_incl rm next_need _ (Hcs_hdr eq_refl) Hincl_next).
+Qed.
+
+(** Every temporary mapped by an accepted `rm` has class `W`, `L` or `P` in `cmap`. *)
+Theorem valid_alloc_classes_eligible : forall cmap param_tids rbs rm t r,
+  valid_alloc cmap param_tids rbs rm = true ->
+  zmap_find_nat t rm = Some r ->
+  zmap_find_nat t cmap = Some W \/ zmap_find_nat t cmap = Some L \/ zmap_find_nat t cmap = Some P.
+Proof.
+  intros cmap param_tids rbs rm t r Hval Hrm.
+  unfold valid_alloc in Hval.
+  apply zmap_find_in_elements in Hrm.
+  destruct (ZMap.elements rm) as [|p0 els'] eqn:Eels; [contradiction|].
+  destruct (classes_eligible (p0 :: els') cmap) eqn:Eel; [|discriminate].
+  clear -Hrm Eel.
+  unfold zmap_find_nat.
+  induction (p0 :: els') as [|[k0 r0] rest IH]; simpl in *; [contradiction|].
+  destruct (ZMap.find k0 cmap) as [[| | | | | | |]|] eqn:Ek; try discriminate;
+    (destruct Hrm as [Heq | Hrm']; [injection Heq as <- _; rewrite Ek; auto | exact (IH Eel Hrm')]).
+Qed.
+
+(** Top-level validator forward simulation theorem ([valid_alloc]): for
+    any well-formed numbered CFG `rbs` and register assignment `rm`
+    accepted by [valid_alloc], and any execution trace `(tr, exit_ies)`
+    from entry block `0` whose unmapped writes do not share a physical
+    frame slot with simultaneously live unmapped temporaries:
+    1. no two mapped parameters share a hardware register;
+    2. every entry-live temporary needed by the trace (mapped or unmapped)
+       belongs to `param_tids` (mapped temporaries discharged by [valid_alloc]);
+    3. starting from any `(tenv0, ms0)` agreeing on `param_tids`, every
+       instruction operand read and every block-exit jump read along the
+       entire multi-block trace (across multi-definitions, call clobbers,
+       simultaneous phi moves and `Poll` back-edges) agrees with abstract
+       temporary execution. *)
+Theorem valid_alloc_sound :
+  forall cmap param_tids rbs rm slot_of tr exit_ies,
+  rblocks_wf rbs ->
+  valid_alloc cmap param_tids rbs rm = true ->
+  cfg_trace_valid rbs O tr exit_ies ->
+  cfg_trace_slot_ok rm slot_of rbs O tr ->
+  (forall t, zmap_find_nat t rm = None -> In t (cfg_trace_need rbs O tr) -> In t param_tids) ->
+  no_dup_hregs rm (nset_of_list (filter_keep_acc (Some (rm_dom_map rm)) param_tids [])) = true /\
+  (forall t, In t (cfg_trace_need rbs O tr) -> In t param_tids) /\
+  (forall tenv0 ms0,
+     state_agrees rm slot_of param_tids tenv0 ms0 ->
+     cfg_trace_agrees rm slot_of rbs O tr exit_ies tenv0 ms0).
+Proof.
+  intros cmap param_tids rbs rm slot_of tr exit_ies [Hind [_ Hentry_nophi]] Hval Htr Hus Hunmap_in.
+  unfold valid_alloc in Hval.
+  destruct (ZMap.elements rm) as [|p0 els'] eqn:Eels.
+  - (* Empty `rm`: no temporary is mapped to a register *)
+    assert (Hempty : forall t, zmap_find_nat t rm = None).
+    { intro t. unfold zmap_find_nat.
+      destruct (ZMap.find (Z.of_nat t) rm) as [r|] eqn:Ef; [|reflexivity].
+      apply zmap_find_in_elements in Ef. rewrite Eels in Ef; contradiction. }
+    assert (Hnd_ps : no_dup_hregs rm (nset_of_list (filter_keep_acc (Some (rm_dom_map rm)) param_tids [])) = true).
+    { unfold no_dup_hregs.
+      induction (nset_of_list _) as [|x xs IH]; simpl; [reflexivity | rewrite Hempty; exact IH]. }
+    assert (Hin_ps : forall t, In t (cfg_trace_need rbs O tr) -> In t param_tids).
+    { intros t Ht. exact (Hunmap_in t (Hempty t) Ht). }
+    split; [exact Hnd_ps | split; [exact Hin_ps |]].
+    intros tenv0 ms0 Hag0.
+    apply (empty_rm_trace_sound tr exit_ies rm slot_of rbs O tenv0 ms0 Hempty Htr Hus).
+    intros t Ht. exact (Hag0 t (Hin_ps t Ht)).
+  - (* Non-empty `rm`: full dataflow liveness and `check_rblocks` verified *)
+    cbv zeta in Hval.
+    destruct (classes_eligible (p0 :: els') cmap); [|discriminate].
+    cbn [negb] in Hval.
+    assert (Edom : rm_domain_acc (p0 :: els') (ZMap.empty unit) = rm_dom_map rm).
+    { unfold rm_dom_map. rewrite Eels. reflexivity. }
+    rewrite Edom in Hval.
+    destruct (rblock_liveness (Some (rm_dom_map rm)) rbs) as [[[live_in live_out] across]|] eqn:Elv;
+      [|discriminate].
+    destruct rbs as [|rb0 rbs'] eqn:Erbs.
+    + simpl in Htr; destruct tr; contradiction.
+    + simpl in Hind, Hentry_nophi. destruct Hind as [Hidx0 Hind'].
+      rewrite Hidx0 in Hval.
+      set (ps := nset_of_list (filter_keep_acc (Some (rm_dom_map rm)) param_tids [])) in *.
+      destruct (nset_sub (nset_at O live_in) ps) eqn:Esub; [|discriminate].
+      apply Bool.andb_true_iff in Hval. destruct Hval as [Hnd_ps Hchk_blocks].
+      destruct (check_rblocks_trace_sound tr exit_ies rm slot_of (rb0 :: rbs')
+                  live_in live_out across O (conj Hidx0 Hind') Elv Hchk_blocks Htr Hus)
+        as [Hincl_entry Hrun].
+      unfold rblock_header_set in Hincl_entry; simpl in Hincl_entry.
+      rewrite Hentry_nophi in Hincl_entry; simpl in Hincl_entry.
+      destruct (rblock_liveness_sound (Some (rm_dom_map rm)) (rb0 :: rbs') live_in live_out across
+                  (conj Hidx0 Hind') Elv) as [Hwf_lin _].
+      destruct (nset_of_list_spec (filter_keep_acc (Some (rm_dom_map rm)) param_tids []))
+        as [Hwf_ps Hin_ps].
+      fold ps in Hwf_ps, Hin_ps.
+      destruct (nset_sub_spec (nset_at O live_in) ps (Hwf_lin O) Hwf_ps) as [_ Hin_sub].
+      destruct (nset_union_spec (nset_at O live_in) (nset_of_list []) (Hwf_lin O) (proj1 (nset_of_list_spec [])))
+        as [_ Hin_u0].
+      assert (Hall_in_params : forall t, In t (cfg_trace_need (rb0 :: rbs') O tr) -> In t param_tids).
+      { intros t Ht.
+        destruct (zmap_find_nat t rm) as [r|] eqn:Erm; [|exact (Hunmap_in t Erm Ht)].
+        assert (Hnn : zmap_find_nat t rm <> None) by congruence.
+        pose proof (Hincl_entry t Hnn Ht) as Hu0.
+        apply Hin_u0 in Hu0.
+        destruct Hu0 as [Hlin0 | Hnil].
+        - destruct (in_dec Nat.eq_dec t ps) as [Hps | Hnps].
+          + apply Hin_ps, filter_keep_dom_iff in Hps. exact (proj1 Hps).
+          + exfalso. assert (Hin_s : In t (nset_sub (nset_at O live_in) ps))
+              by (apply Hin_sub; split; assumption).
+            rewrite Esub in Hin_s; exact Hin_s.
+        - apply (proj2 (nset_of_list_spec [])) in Hnil; contradiction. }
+      split; [exact Hnd_ps | split; [exact Hall_in_params |]].
+      intros tenv0 ms0 Hag0.
+      apply Hrun. intros t Ht. exact (Hag0 t (Hall_in_params t Ht)).
 Qed.
 
 (** ## 3. Soundness of 3-address `lea` and immediate selection *)
@@ -1854,17 +4006,6 @@ Qed.
 
 (** ## 5. Concrete [build_rctx] frame separation, callee-saves and root slots *)
 
-(** Lookup in [ZMap] corresponds to pair membership in [ZMap.elements]. *)
-Lemma zmap_find_in_elements : forall (A : Type) (k : Z) (v : A) (m : ZMap.t A),
-  ZMap.find k m = Some v <-> In (k, v) (ZMap.elements m).
-Proof.
-  intros A k v m.
-  rewrite <- ZF.find_mapsto_iff, ZF.elements_mapsto_iff, InA_alt.
-  split.
-  - intros [[k' v'] [[Hk Hv] Hin]]. simpl in Hk, Hv. subst. exact Hin.
-  - intros Hin. exists (k, v). split; [split; reflexivity | exact Hin].
-Qed.
-
 (** [key_term] is injective, so distinct frame [key]s never collide in [nmap]. *)
 Lemma key_term_inj : forall k1 k2,
   key_term k1 = key_term k2 -> k1 = k2.
@@ -2422,3 +4563,86 @@ Definition ex_rb_float : rblock :=
 Example ex_rejects_float :
   valid_alloc ex_cmap2 [2%nat] [ex_rb_float] (ex_rm1 2%nat HRbx) = false.
 Proof. reflexivity. Qed.
+
+(** Non-vacuity witness for [valid_alloc_sound]: a 2-block loop CFG with
+    mapped parameters/phis (`0 -> HRbx`, `1, 2 -> HR13` reusing `HR13`
+    once `1` dies), a call inside the loop (`RCallAfterReads`), a `Poll`
+    back-edge (`1 -> 1`), and two unmapped temporaries (`3` and `4`)
+    sharing physical frame slot `-8`. *)
+Definition ex_loop_cmap : ZMap.t class :=
+  zmap_add_nat 0%nat L (zmap_add_nat 1%nat L (zmap_add_nat 2%nat L
+    (zmap_add_nat 3%nat L (zmap_add_nat 4%nat L (ZMap.empty class))))).
+
+Definition ex_loop_rm : ZMap.t hreg :=
+  zmap_add_nat 0%nat HRbx (zmap_add_nat 1%nat HR13 (zmap_add_nat 2%nat HR13 (ZMap.empty hreg))).
+
+Definition ex_loop_rb0 : rblock :=
+  mkRBlock 0%nat [(1%nat, false)] [] [mkRInst [3%nat] [4%nat] RCallNone] [4%nat].
+
+Definition ex_loop_rb1 : rblock :=
+  mkRBlock 1%nat [(1%nat, true)]
+    [(1%nat, [(0%nat, Some 0%nat); (1%nat, Some 2%nat)])]
+    [mkRInst [1%nat; 0%nat] [2%nat] RCallAfterReads]
+    [2%nat].
+
+Definition ex_loop_rbs : list rblock := [ex_loop_rb0; ex_loop_rb1].
+
+Definition ex_loop_slot (t : nat) : Z := -8.
+
+Definition ex_add_ie : inst_exec :=
+  mkInstExec (fun vs => [fold_left Z.add vs 0]) (fun _ => 99) (fun _ => 77).
+
+Definition ex_loop_trace : list cfg_edge_step :=
+  [mkEdgeStep [ex_add_ie] 1%nat false (fun _ => 0) (fun _ => 55);
+   mkEdgeStep [ex_add_ie] 1%nat true (fun _ => 0) (fun _ => 55)].
+
+Example ex_valid_alloc_loop : forall tenv0 ms0,
+  valid_alloc ex_loop_cmap [0%nat; 3%nat] ex_loop_rbs ex_loop_rm = true /\
+  (state_agrees ex_loop_rm ex_loop_slot [0%nat; 3%nat] tenv0 ms0 ->
+   cfg_trace_agrees ex_loop_rm ex_loop_slot ex_loop_rbs 0%nat
+     ex_loop_trace [ex_add_ie] tenv0 ms0).
+Proof.
+  intros tenv0 ms0.
+  assert (Hval : valid_alloc ex_loop_cmap [0%nat; 3%nat] ex_loop_rbs ex_loop_rm = true)
+    by (vm_compute; reflexivity).
+  split; [exact Hval|].
+  intro Hag0.
+  assert (Hwf : rblocks_wf ex_loop_rbs).
+  { unfold rblocks_wf, rblock_succs_in_range, ex_loop_rbs, ex_loop_rb0, ex_loop_rb1.
+    simpl. split; [auto | split; [|reflexivity]].
+    constructor; [constructor; [simpl; lia | constructor] |
+                  constructor; [constructor; [simpl; lia | constructor] | constructor]]. }
+  assert (Htr : cfg_trace_valid ex_loop_rbs 0%nat ex_loop_trace [ex_add_ie]).
+  { unfold ex_loop_rbs, ex_loop_trace, ex_loop_rb0, ex_loop_rb1, ex_add_ie.
+    simpl. repeat split; auto. }
+  assert (Hus : cfg_trace_slot_ok ex_loop_rm ex_loop_slot ex_loop_rbs 0%nat ex_loop_trace).
+  { unfold ex_loop_rbs, ex_loop_trace, ex_loop_rb0, ex_loop_rb1.
+    cbn [cfg_trace_slot_ok cfg_trace_need nth_error insts_slot_ok insts_need
+         rb_insts rb_phis rb_jump_uses ces_succ ces_ies ri_defs ri_uses
+         phi_defs_raw phi_edge_uses_raw lookup_phi_edge_src live_without_list
+         live_without app unmapped_slot_ok].
+    repeat split; intros d t Hd Ht Hdm Htm Hneq;
+      cbn [In] in Hd, Ht;
+      destruct Hd as [<- | Hd]; try contradiction;
+      repeat (destruct Ht as [<- | Ht];
+              [try contradiction; vm_compute in Hdm; try discriminate; vm_compute in Htm; try discriminate
+              |]);
+      try contradiction. }
+  assert (Hunm : forall t, zmap_find_nat t ex_loop_rm = None ->
+                   In t (cfg_trace_need ex_loop_rbs 0%nat ex_loop_trace) ->
+                   In t [0%nat; 3%nat]).
+  { intros t Hrm Hin.
+    unfold ex_loop_rbs, ex_loop_trace, ex_loop_rb0, ex_loop_rb1 in Hin.
+    cbn [cfg_trace_need nth_error insts_need rb_insts rb_phis rb_jump_uses
+         ces_succ ri_defs ri_uses phi_defs_raw phi_edge_uses_raw
+         lookup_phi_edge_src live_without_list live_without app In] in Hin.
+    repeat (destruct Hin as [<- | Hin];
+            [first [left; reflexivity | right; left; reflexivity
+                   | vm_compute in Hrm; discriminate]
+            |]);
+      contradiction. }
+  destruct (valid_alloc_sound ex_loop_cmap [0%nat; 3%nat] ex_loop_rbs ex_loop_rm
+              ex_loop_slot ex_loop_trace [ex_add_ie] Hwf Hval Htr Hus Hunm)
+    as [_ [_ Hsim]].
+  exact (Hsim tenv0 ms0 Hag0).
+Qed.

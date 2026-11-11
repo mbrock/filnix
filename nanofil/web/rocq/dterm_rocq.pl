@@ -971,7 +971,7 @@ file_blurb('nanofil/rocq/backend/Promote.v',
 file_blurb('nanofil/rocq/backend/Regs.v',
     "Gallina compiler backend: loop-weighted interval register allocator ([alloc_regs]), executable allocation validator ([valid_alloc]), parallel-move [[phi]] resolver, and direct register assembly emitter (`docs/gallina-backend.md`, M7).").
 file_blurb('nanofil/rocq/backend/RegsProof.v',
-    "Gallina compiler backend (soundness proof): machine-checked soundness proofs for [Regs](Regs.v)'s interval disjointness tests, allocation validator ([valid_alloc]), and parallel-move compiler.").
+    "Gallina compiler backend (allocator proofs): kernel-checked proofs for [Regs](Regs.v)'s [valid_alloc] multi-block CFG trace simulation, [compile_pmoves] parallel-move compiler, and [build_rctx] frame/save/root invariants.").
 file_blurb('nanofil/rocq/backend/TermCfg.v',
     "Gallina compiler backend: control-flow graph ([term_cfg]), reverse postorder, dominance frontiers ([cfg_frontiers]), and def/use sets for unchecked IR represented as [Term](../theories/core/Term.v) terms.").
 file_blurb('nanofil/rocq/backend/Text.v',

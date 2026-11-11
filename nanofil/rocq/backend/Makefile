@@ -22,7 +22,7 @@ words:
 # Every theorem, lemma and corollary in RegsProof.v must be closed
 # under the global context (no transitive dependence on Runtime axioms).
 .regs-assumptions: words RegsProof.vo
-	@thms=$$(awk '/^(Theorem|Lemma|Corollary)[[:space:]]+[A-Za-z0-9_'\'']+/ { sub(/:/, "", $$2); print $$2 }' RegsProof.v); \
+	@thms=$$(awk '/^(Theorem|Lemma|Corollary|Example)[[:space:]]+[A-Za-z0-9_'\'']+/ { sub(/:/, "", $$2); print $$2 }' RegsProof.v); \
 	[ -n "$$thms" ] || { echo "backend: no theorems found in RegsProof.v" >&2; exit 1; }; \
 	out=$$({ echo "From Backend Require Import RegsProof."; \
 	         for t in $$thms; do echo "Print Assumptions $$t."; done; } \
