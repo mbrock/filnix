@@ -167,6 +167,7 @@ kind_event(additive, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(alu, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(shift, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(neg, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
+kind_event(select, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(copy, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(ptoi, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).
 kind_event(itop, Ins, Addrs, Event) :- ins_escape(Ins, Addrs, Event).

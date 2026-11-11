@@ -103,6 +103,7 @@ Definition alu (o : op) (k : class) (xs : list word) : option word :=
   | Mul, [WInt x; WInt y] => let* m := modulus k in Some (WInt ((x * y) mod m))
   | Neg, [WInt x] => let* m := modulus k in Some (WInt ((- x) mod m))
   | Copy, [x] => Some x
+  | Select, [WInt c; WInt x; WInt y] => Some (WInt (if c =? 0 then y else x))
   | And, [WInt x; WInt y] => Some (WInt (Z.land x y))
   | Or, [WInt x; WInt y] => Some (WInt (Z.lor x y))
   | Xor, [WInt x; WInt y] => Some (WInt (Z.lxor x y))
@@ -608,7 +609,7 @@ Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option o
       Some (OpRes (raw_res (fst rm)) (snd rm))
   | (Add | Sub), _, _ => pure (additive_res k o xs)
   | (Mul | Div | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl
-     | Neg | Copy | Ptoi | Itop | Cmp _ _ | Ext _), _, _ => pure (alu o k xs)
+     | Neg | Copy | Select | Ptoi | Itop | Cmp _ _ | Ext _), _, _ => pure (alu o k xs)
   | _, _, _ => None
   end.
 

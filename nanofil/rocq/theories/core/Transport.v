@@ -150,7 +150,8 @@ Definition dop (t : term) : option op :=
       else if a == "or" then Some Or else if a == "xor" then Some Xor
       else if a == "sar" then Some Sar else if a == "shr" then Some Shr
       else if a == "shl" then Some Shl else if a == "neg" then Some Neg
-      else if a == "copy" then Some Copy else if a == "ptoi" then Some Ptoi
+      else if a == "copy" then Some Copy else if a == "select" then Some Select
+      else if a == "ptoi" then Some Ptoi
       else if a == "itop" then Some Itop
       else if a == "truncd" then Some Truncd else if a == "truncx" then Some Truncx
       else if a == "stosi" then Some (FloatToInt Single Signed)

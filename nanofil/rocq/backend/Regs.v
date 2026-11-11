@@ -2467,6 +2467,12 @@ Definition rint_op_into (rc : rctx) (o : op) (k : class) (args : list value)
                     ins "movzb" "l" [reg "al"; reg dst32]]
             | None => todo "cmp condition"
             end
+      | Select, [c; x; y] =>
+          (* As EmitOps.v has it: y in `%rax`, x in `%rcx`, the choice
+             in `%edx`; no home register is one of these. *)
+          rload rc y k "a" ++ rload rc x k "c" ++ rload rc c W "d"
+          ++ [ins "test" "l" [reg "edx"; reg "edx"]; ins "cmovne" "q" [reg "rcx"; reg "rax"]]
+          ++ (if String.eqb dst64 "rax" then [] else [ins "mov" suf [reg (reg_name "a" half); reg dst]])
       | Div, _ =>
           rdivision rc Signed false k args
           ++ (if String.eqb dst64 "rax" then [] else [ins "mov" suf [reg (reg_name "a" half); reg dst]])

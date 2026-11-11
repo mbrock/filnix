@@ -1020,6 +1020,7 @@ kind_res(additive, Op, K, _, Xs, S, Res, S) :- additive_res(K, Op, Xs, Res).
 kind_res(alu, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(shift, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(neg, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
+kind_res(select, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(copy, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(ptoi, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
 kind_res(itop, Op, K, _, Xs, S, Res, S) :- alu(Op, K, Xs, Res).
@@ -1324,6 +1325,13 @@ alu(sub, K, [X, Y], val(R)) :- modulus(K, M), int_is(R, (X - Y) mod M).
 alu(mul, K, [X, Y], val(R)) :- modulus(K, M), int_is(R, (X * Y) mod M).
 alu(neg, K, [X], val(R)) :- modulus(K, M), int_is(R, (-X) mod M).
 alu(copy, _, [X], val(X)).
+% A select: an unknown choice gives both cases as solutions, as an
+% unknown divisor does.
+alu(select, _, [C, X, Y], val(R)) :-
+    (   integer(C) -> ( C =:= 0 -> R = Y ; R = X )
+    ;   C #= 0, R = Y
+    ;   C #\= 0, R = X
+    ).
 alu(and, _, [X, Y], val(R)) :- int_is(R, X /\ Y).
 alu(or, _, [X, Y], val(R)) :- int_is(R, X \/ Y).
 alu(xor, _, [X, Y], val(R)) :- int_is(R, xor(X, Y)).

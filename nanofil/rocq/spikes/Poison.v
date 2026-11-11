@@ -404,9 +404,10 @@ Inductive poison_reason : Type :=
 | CannotVarTimeOp.
 
 (** Variable-latency classification of an IR [op] at result class [k].
-    Integer arithmetic, bitwise logic, shifts, `mul` and integer `cmp`
-    (emitted as `cmp + setcc + movzbl` in EmitOps.v) are in Intel's DOIT
-    guaranteed constant-time set (`None`). *)
+    Integer arithmetic, bitwise logic, shifts, `mul`, integer `cmp`
+    (emitted as `cmp + setcc + movzbl` in EmitOps.v) and `select`
+    (emitted as `test + cmovne`) are in Intel's DOIT guaranteed
+    constant-time set (`None`). *)
 Definition op_vartime_class (o : op) (k : class) : option vartime_mode :=
   match o with
   | Div | Udiv | Rem | Urem => Some VTKnown
@@ -567,11 +568,13 @@ Definition check_ptr_bounds_taint (pol : poison_policy) (ta tc : taint)
   else None.
 
 (** Pure scalar ALU and float operations handled uniformly through
-    [op_arg_classes]. *)
+    [op_arg_classes]. `select` is one of them: its result carries the
+    join of the taints of its condition and of both values, and it is
+    not a branch, as zegarmistrz treats `cmov`. *)
 Definition pure_scalar_op (o : op) : bool :=
   match o with
   | Add | Sub | Mul | Div | Udiv | Rem | Urem | And | Or | Xor
-  | Sar | Shr | Shl | Neg | Cmp _ _ | Ext _
+  | Sar | Shr | Shl | Neg | Select | Cmp _ _ | Ext _
   | ExtF _ | Truncd | Truncx | FloatToInt _ _ | IntToFloat _ _ | Cast | Sqrt => true
   | _ => false
   end.
@@ -1783,6 +1786,30 @@ Proof.
     right; right; left. repeat eexists.
 Qed.
 
+(** Shape lemma for three or more scalar arguments, the arity of
+    `select`: the first three of each list are [WInt] values. *)
+Lemma scalar_args_three : forall wts x1 y1 z1 xs1 xs2 ts,
+  Forall2 (fun wt p => word_rel wt (fst p) (snd p)) wts
+    (combine (x1 :: y1 :: z1 :: xs1) xs2) ->
+  map_option scalar_wt wts = Some ts ->
+  length (x1 :: y1 :: z1 :: xs1) = length xs2 ->
+  exists a1 b1 c1 a2 b2 c2 xs2',
+    x1 = WInt a1 /\ y1 = WInt b1 /\ z1 = WInt c1 /\
+    xs2 = WInt a2 :: WInt b2 :: WInt c2 :: xs2' /\ length xs1 = length xs2'.
+Proof.
+  intros wts x1 y1 z1 xs1 [|x2 [|y2 [|z2 xs2]]] ts Hfor Hsc Hlen; cbn in *;
+    try discriminate Hlen.
+  inversion Hfor as [|wt1 p1 wts1 ps1 Hw1 Hfor2]; subst.
+  inversion Hfor2 as [|wt2 p2 wts2 ps2 Hw2 Hfor3]; subst.
+  inversion Hfor3 as [|wt3 p3 wts3 ps3 Hw3 Hfor4]; subst.
+  destruct wt1 as [t1| |]; try discriminate Hsc. cbn in Hsc.
+  destruct wt2 as [t2| |]; try discriminate Hsc. cbn in Hsc.
+  destruct wt3 as [t3| |]; try discriminate Hsc.
+  destruct x1, x2; try contradiction Hw1. destruct y1, y2; try contradiction Hw2.
+  destruct z1, z2; try contradiction Hw3.
+  repeat eexists. lia.
+Qed.
+
 (** `map2_option` preserves list length. *)
 Lemma map2_option_len : forall (A B C : Type) (f : A -> B -> option C) xs ys zs,
   map2_option f xs ys = Some zs -> length zs = length xs.
@@ -1868,10 +1895,18 @@ Proof.
         end;
         eexists n1, _; (split; [reflexivity | split; [reflexivity | split; [reflexivity | intros _; exact Hall]]]).
     + destruct xs1 as [|x1 [|y1 [|z1 xs1']]]; cbn in Hge3; try lia.
-      destruct x1, y1; exfalso;
-        destruct o; try discriminate Hpure; destruct k; try congruence;
-        cbv beta iota zeta delta [op_res op_res_int float_integer float_arithmetic additive_res alu] in Hop1;
-        cbn in Hop1; try destruct (fmt_of _); cbn in Hop1; discriminate Hop1.
+      destruct (scalar_args_three wts x1 y1 z1 xs1' xs2 ts Hfor Hsc Hlen)
+        as (a1 & b1 & c1 & a2 & b2 & c2 & xs2' & -> & -> & -> & -> & Hlen').
+      destruct o; try discriminate Hpure;
+        try solve [exfalso; destruct k; try congruence;
+          cbv beta iota zeta delta [op_res op_res_int float_integer float_arithmetic additive_res alu] in Hop1;
+          cbn in Hop1; try destruct (fmt_of _); cbn in Hop1; discriminate Hop1].
+      (* `select`, the one operation of three arguments *)
+      destruct xs1' as [|? ?]; [|exfalso; destruct k; try congruence; cbn in Hop1; discriminate Hop1].
+      destruct xs2' as [|? ?]; [|discriminate Hlen'].
+      exists n1, (if a2 =? 0 then c2 else b2).
+      split; [reflexivity | split; [reflexivity | split; [|intros _; exact Hall]]].
+      destruct k; try congruence; reflexivity.
 Qed.
 
 (** `Flight`'s address `alu o L` on related `WInt` argument lists: if
@@ -1914,7 +1949,17 @@ Proof.
           destruct ck; cbn in Halu1 |- *; try discriminate Halu1
         end;
         eexists _; (split; [reflexivity | intros _; exact Hall]).
-    + exfalso. destruct x1, y1; destruct o; cbn in Halu1; discriminate Halu1.
+    + destruct (Hw1 x1 (or_introl eq_refl)) as (zx1 & ->).
+      destruct (Hw1 y1 (or_intror (or_introl eq_refl))) as (zy1 & ->).
+      destruct (Hw1 z1 (or_intror (or_intror (or_introl eq_refl)))) as (zz1 & ->).
+      destruct (Hw2 x2 (or_introl eq_refl)) as (zx2 & ->).
+      destruct (Hw2 y2 (or_intror (or_introl eq_refl))) as (zy2 & ->).
+      destruct (Hw2 z2 (or_intror (or_intror (or_introl eq_refl)))) as (zz2 & ->).
+      destruct xs1' as [|? ?]; [|exfalso; destruct o; cbn in Halu1; discriminate Halu1].
+      destruct xs2' as [|? ?]; [|discriminate Hlen].
+      (* `select`, the one operation of three arguments *)
+      destruct o; cbn in Halu1 |- *; try discriminate Halu1.
+      eexists _; split; [reflexivity | intros _; exact Hall].
 Qed.
 
 (** Capabilities related under a taint other than [taint_all] are equal. *)

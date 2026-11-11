@@ -219,7 +219,7 @@ Definition escaping_op (o : term) : bool :=
   | TAtom a =>
       existsb (String.eqb a)
               ["add"; "sub"; "mul"; "div"; "udiv"; "rem"; "urem"; "and"; "or"; "xor";
-               "sar"; "shr"; "shl"; "neg"; "copy"; "ptoi"; "itop"; "va_args"; "va_arg"]
+               "sar"; "shr"; "shl"; "neg"; "select"; "copy"; "ptoi"; "itop"; "va_args"; "va_arg"]
   | TApp g [x] =>
       if g == "setjmp" then is_atom "setjmp" x || is_atom "_setjmp" x || is_atom "sigsetjmp" x
       else if g == "ext" then

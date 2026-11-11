@@ -1042,6 +1042,7 @@ operand_roles(setz, none, [dst(8)]).
 operand_roles(setnz, none, [dst(8)]).
 operand_roles(setb, none, [dst(8)]).
 operand_roles(cmovb, q, [src(64), srcdst(64)]).
+operand_roles(cmovne, q, [src(64), srcdst(64)]).
 operand_roles(setbe, none, [dst(8)]).
 operand_roles(seta, none, [dst(8)]).
 operand_roles(setae, none, [dst(8)]).

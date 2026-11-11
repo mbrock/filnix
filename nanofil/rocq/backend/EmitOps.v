@@ -552,6 +552,9 @@ Definition compute_op (cx : ctx) (o : op) (k : class) (args : list value) : list
         | Some half => load cx x k "a" ++ [ins "neg" (class_suffix half) [reg (reg_name "a" half)]]
         | None => todo "neg class"
         end
+    | Select, [c; x; y] =>
+        load cx y k "a" ++ load cx x k "c" ++ load cx c W "d"
+        ++ [ins "test" "l" [reg "edx"; reg "edx"]; ins "cmovne" "q" [reg "rcx"; reg "rax"]]
     | Add, _ => alu cx "add" k args
     | Sub, _ => alu cx "sub" k args
     | Mul, _ => alu cx "imul" k args

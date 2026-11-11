@@ -350,7 +350,7 @@ arg_number(K, const(N), X) :- modulus(K, M), X is N mod M.
 % folds like any other.
 foldable(Op) :-
     op_kind(Op, Kind),
-    memberchk(Kind, [additive, alu, shift, neg, copy, cmp, ext]),
+    memberchk(Kind, [additive, alu, shift, neg, select, copy, cmp, ext]),
     ( Op = cmp(_, CK) -> int_class(CK) ; true ).
 
 commutative(add). commutative(mul). commutative(and). commutative(or). commutative(xor).
@@ -560,7 +560,7 @@ removable(let(tmp(_), K, Op, Args)) :-
 % allows to disappear; Fil-C does not trap there.)
 pure_op(Op, _) :-
     op_kind(Op, Kind),
-    memberchk(Kind, [additive, shift, neg, copy, ptoi, itop, cmp, ext,
+    memberchk(Kind, [additive, shift, neg, select, copy, ptoi, itop, cmp, ext,
                      float_convert, int_to_float, float_to_int, cast]), !.
 pure_op(Op, _) :-
     memberchk(Op, [mul, and, or, xor]).

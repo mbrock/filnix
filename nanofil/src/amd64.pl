@@ -419,6 +419,15 @@ compute_op(neg, K, [X], Ctx) -->
     { att_suffix(K, S),
       reg_name(a, K, A) },
     [ins(neg, S, [reg(A)])].
+% A select is a conditional move, never a branch: both values are
+% loaded, and the 64-bit cmovne keeps a w result zero-extended because
+% both of its operands are.
+compute_op(select, K, [C, X, Y], Ctx) -->
+    load(Y, K, a, Ctx),
+    load(X, K, c, Ctx),
+    load(C, w, d, Ctx),
+    [ins(test, l, [reg(edx), reg(edx)]),
+     ins(cmovne, q, [reg(rcx), reg(rax)])].
 compute_op(add, K, Args, Ctx) --> alu(add, K, Args, Ctx).
 compute_op(sub, K, Args, Ctx) --> alu(sub, K, Args, Ctx).
 compute_op(mul, K, Args, Ctx) --> alu(imul, K, Args, Ctx).

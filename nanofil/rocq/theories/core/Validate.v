@@ -368,6 +368,7 @@ Definition op_result_ok (o : op) (k : class) : bool :=
   | Mul | Div => int_class k || float_class k
   | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl => int_class k
   | Neg => int_class k || float_class k
+  | Select => int_class k
   | Ptoi => class_eqb k L
   | Itop => class_eqb k P
   | Cmp _ ck => if float_class ck then class_eqb k W else int_class k

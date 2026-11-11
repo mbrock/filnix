@@ -414,6 +414,7 @@ Definition forms : list form :=
       mkForm 63 (plet (PC "atomic_load" [PA "p"]) [PH 2]) (flet [FOpnd 2]);
       mkForm 64 (plet (PC "cas" [PH 2]) [PH 3; PH 4; PH 5])
         (flet [FEnum ECas 2; FOpnd 3; FOpnd 4; FOpnd 5]);
+      mkForm 65 (plet (PA "select") [PH 2; PH 3; PH 4]) (flet [FOpnd 2; FOpnd 3; FOpnd 4]);
       range_form 80 "check" 1;
       mkForm 81 (plet (PC "check_ahead" [PH 2; PH 3; PH 4; PH 5; PH 6]) [PH 7])
         (flet [FI64 2; FI64 3; FEnum ERights 4; FU32 5; FI64 6; FOpnd 7]);

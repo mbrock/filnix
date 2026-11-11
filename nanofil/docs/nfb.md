@@ -286,6 +286,7 @@ The tables give the layout after the header. "K" is a class word, "opnd" an oper
 | `setjmp(Kind)` | K, kind, opnd, opnd |
 | `atomic_load(p)` | K, opnd |
 | `cas(T)` | K, load type, opnd, opnd, opnd |
+| `select` | K, opnd, opnd, opnd |
 
 ### Ops of `let`, checked stage
 
@@ -661,6 +662,7 @@ the draft's layouts; a `let` writes its result class first.
 | `0x3E` | `setjmp(Kind)` | K, kind, operand, operand |
 | `0x3F` | `atomic_load(p)` | K, operand |
 | `0x40` | `cas(T)` | K, cas type, operand ×3 |
+| `0x41` | `select` | K, operand ×3 |
 | `0x50` | `check` | K, range, operand |
 | `0x51` | `check_ahead` | K, range, `AHi` as i64, operand |
 | `0x52` | `renew` | K, range, operand, operand |

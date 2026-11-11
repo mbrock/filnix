@@ -150,7 +150,7 @@ Definition enc_op (o : op) : term :=
   | Rem => TAtom "rem" | Urem => TAtom "urem"
   | And => TAtom "and" | Or => TAtom "or" | Xor => TAtom "xor"
   | Sar => TAtom "sar" | Shr => TAtom "shr" | Shl => TAtom "shl"
-  | Neg => TAtom "neg" | Copy => TAtom "copy"
+  | Neg => TAtom "neg" | Copy => TAtom "copy" | Select => TAtom "select"
   | Ptoi => TAtom "ptoi" | Itop => TAtom "itop"
   | Cmp c k => TApp "cmp" [enc_cond c; eclass k]
   | Ext t => TApp "ext" [enc_narrow t]
@@ -356,7 +356,7 @@ Proof. reflexivity. Qed.
 (** Every op that is an atom, the float conversions among them. *)
 Example atom_ops_read_back :
   reads_back dop enc_op
-    [Add; Sub; Mul; Div; Udiv; Rem; Urem; And; Or; Xor; Sar; Shr; Shl; Neg; Copy; Ptoi; Itop;
+    [Add; Sub; Mul; Div; Udiv; Rem; Urem; And; Or; Xor; Sar; Shr; Shl; Neg; Copy; Select; Ptoi; Itop;
      Truncd; Truncx; Cast; Sqrt; CheckFunction; VaArgs; VaArg;
      FloatToInt Single Signed; FloatToInt Single Unsigned;
      FloatToInt Double Signed; FloatToInt Double Unsigned;

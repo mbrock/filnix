@@ -108,6 +108,7 @@ kind_base(additive, Op, Args, D, K, Defs, value(D)) :-
 kind_base(alu, _, _, D, _, _, value(D)).
 kind_base(shift, _, _, D, _, _, value(D)).
 kind_base(neg, _, _, D, _, _, value(D)).
+kind_base(select, _, _, D, _, _, value(D)).
 kind_base(copy, _, [V], D, K, Defs, Base) :- copy_base(V, D, K, Defs, Base).
 kind_base(ptoi, _, _, D, _, _, value(D)).
 kind_base(itop, _, _, D, _, _, value(D)).

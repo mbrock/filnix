@@ -1918,6 +1918,8 @@ kind_inst(shift, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
 kind_inst(neg, K, Op, Args, D, _, _, Ctx) -->
     integer_inst(Op, K, Args, D, Ctx).
+kind_inst(select, K, Op, Args, D, _, _, Ctx) -->
+    integer_inst(Op, K, Args, D, Ctx).
 kind_inst(copy, K, Op, Args, D, _, _, Ctx) -->
     copy_inst(K, Op, Args, D, Ctx).
 % A span test (docs/m7.md, round 5): 1 when P0's lower is not null and

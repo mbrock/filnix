@@ -141,6 +141,7 @@
     | `udiv` `rem` `urem` `and` `or` `xor` | `w` `l` | `[K, K]` | |
     | `sar` `shr` `shl` | `w` `l` | `[K, w]` | the count is read at `w` |
     | `neg` | `w` `l` `s` `d` | `[K]` | |
+    | `select` | `w` `l` | `[w, K, K]`: C, X, Y | X if C is not 0, else Y; both are evaluated and the choice is not a branch |
     | `copy` | any | `[K]` | |
     | `cmp(Cond, K1)` | `w` `l`; `w` when K1 is a float | `[K1, K1]` | Cond for K1 `w` or `l`: `eq` `ne` `sle` `slt` `sge` `sgt` `ule` `ult` `uge` `ugt`; for `s` or `d`: `eq` `ne` `le` `lt` `ge` `gt` `o` `uo` |
     | `ext(T)` | `l` for `sw` `uw`; `w` or `l` for `sh` `uh` `sb` `ub` | `[w]` | extend the low bytes |
@@ -506,6 +507,7 @@ kind_arity(alu, 2).
 kind_arity(shift, 2).
 kind_arity(cmp, 2).
 kind_arity(neg, 1).
+kind_arity(select, 3).
 kind_arity(copy, 1).
 kind_arity(ptoi, 1).
 kind_arity(itop, 1).
@@ -674,6 +676,7 @@ data_align(Align) :- between(0, 12, E), Align is 1 << E.
 %    alu       mul div udiv rem urem and or xor: binary, integer only
 %    shift     sar shr shl: the count is read at w
 %    neg copy ptoi itop  each its own kind; copy may be of class p
+%    select    a choice between two integers by a third
 %    cmp ext load alloc  compounds
 %    check ld   the checked stage: a check and a raw load
 
@@ -691,6 +694,7 @@ op_kind(sar, shift).
 op_kind(shr, shift).
 op_kind(shl, shift).
 op_kind(neg, neg).
+op_kind(select, select).
 op_kind(copy, copy).
 op_kind(ptoi, ptoi).
 op_kind(itop, itop).
@@ -2704,6 +2708,7 @@ kind_result_ok(alu, Op, _, K) :-
     ( int_class(K) ; memberchk(Op, [mul, div]), float_class(K) ).
 kind_result_ok(shift, _, _, K) :- int_class(K).
 kind_result_ok(neg, _, _, K) :- numeric_class(K).
+kind_result_ok(select, _, _, K) :- int_class(K).
 kind_result_ok(copy, _, _, K) :- any_class(K).
 kind_result_ok(ptoi, _, filc, l).
 kind_result_ok(itop, _, filc, p).
@@ -2780,6 +2785,7 @@ kind_arg_classes(additive, _, K, _, Classes) :-
 kind_arg_classes(alu, _, K, _, [K, K]).
 kind_arg_classes(shift, _, K, _, [K, w]).
 kind_arg_classes(neg, _, K, _, [K]).
+kind_arg_classes(select, _, K, _, [w, K, K]).
 kind_arg_classes(copy, _, K, _, [K]).
 kind_arg_classes(ptoi, _, _, _, [p]).
 kind_arg_classes(itop, _, _, _, [l]).

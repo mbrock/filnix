@@ -1,0 +1,93 @@
+% select under the register allocator (Regs.v): its three operands in
+% home registers across a loop, the result written over the register of
+% an operand that dies there, a choice that is the w result of a cmp, a
+% w select between a constant and a temporary whose result an l use
+% reads zero-extended, enough live values that some operands are
+% spilled, and a select that chooses the offset of a load, which makes
+% this a Fil-C module, as compile-allocated needs.
+
+% The sum of min(i * step, cap) for i below n, without a branch on the
+% comparison.
+func(capped_sum, export, l, [param(l, tmp(n)), param(l, tmp(step)), param(l, tmp(cap))], [
+    block(entry, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(i), l, [entry-const(0), body-tmp(i1)]),
+        phi(tmp(v), l, [entry-const(0), body-tmp(v1)]),
+        phi(tmp(acc), l, [entry-const(0), body-tmp(acc1)])
+    ], [
+        let(tmp(more), w, cmp(slt, l), [tmp(i), tmp(n)])
+    ], branch(tmp(more), body, done)),
+    block(body, [], [
+        let(tmp(under), w, cmp(slt, l), [tmp(v), tmp(cap)]),
+        let(tmp(m), l, select, [tmp(under), tmp(v), tmp(cap)]),
+        let(tmp(acc1), l, add, [tmp(acc), tmp(m)]),
+        let(tmp(v1), l, add, [tmp(v), tmp(step)]),
+        let(tmp(i1), l, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [], ret(tmp(acc)))
+]).
+run(capped_sum, [0, 3, 10]).
+run(capped_sum, [6, 3, 10]).
+run(capped_sum, [6, -3, 10]).
+run(capped_sum, [4, 5, -7]).
+
+% The choice is an l read at w, so 4294967296 chooses the third value.
+% The first select's result takes the place of x, which dies there; the
+% w select chooses between -5 and the choice itself.
+func(overwrite, export, l, [param(l, tmp(c)), param(l, tmp(x)), param(l, tmp(y))], [
+    block(start, [], [
+        let(tmp(cw), w, copy, [tmp(c)]),
+        let(tmp(x1), l, select, [tmp(cw), tmp(x), tmp(y)]),
+        let(tmp(nz), w, cmp(ne, l), [tmp(c), const(0)]),
+        let(tmp(rw), w, select, [tmp(nz), const(-5), tmp(cw)]),
+        let(tmp(rl), l, ext(uw), [tmp(rw)]),
+        let(tmp(s), l, add, [tmp(x1), tmp(rl)]),
+        let(tmp(t), l, add, [tmp(s), tmp(y)])
+    ], ret(tmp(t)))
+]).
+run(overwrite, [0, 7, 9]).
+run(overwrite, [1, 7, 9]).
+run(overwrite, [4294967296, 7, 9]).
+run(overwrite, [-1, 18446744073709551615, 3]).
+
+% Eight values live across the selects, more than there are home
+% registers, so some operands come from the frame.
+func(crowded, export, l,
+     [param(l, tmp(v1)), param(l, tmp(v2)), param(l, tmp(v3)), param(l, tmp(v4)),
+      param(l, tmp(v5)), param(l, tmp(v6)), param(l, tmp(v7)), param(l, tmp(v8))], [
+    block(start, [], [
+        let(tmp(c1), w, cmp(ult, l), [tmp(v1), tmp(v2)]),
+        let(tmp(a), l, select, [tmp(c1), tmp(v3), tmp(v4)]),
+        let(tmp(c2), w, cmp(ult, l), [tmp(v5), tmp(v6)]),
+        let(tmp(b), l, select, [tmp(c2), tmp(v7), tmp(v8)]),
+        let(tmp(c3), w, cmp(ult, l), [tmp(a), tmp(b)]),
+        let(tmp(m), l, select, [tmp(c3), tmp(b), tmp(a)]),
+        let(tmp(s1), l, add, [tmp(v1), tmp(v2)]),
+        let(tmp(s2), l, add, [tmp(s1), tmp(v3)]),
+        let(tmp(s3), l, add, [tmp(s2), tmp(v4)]),
+        let(tmp(s4), l, add, [tmp(s3), tmp(v5)]),
+        let(tmp(s5), l, add, [tmp(s4), tmp(v6)]),
+        let(tmp(s6), l, add, [tmp(s5), tmp(v7)]),
+        let(tmp(s7), l, add, [tmp(s6), tmp(v8)]),
+        let(tmp(m1), l, mul, [tmp(m), const(1000)]),
+        let(tmp(r), l, add, [tmp(s7), tmp(m1)])
+    ], ret(tmp(r)))
+]).
+run(crowded, [1, 2, 30, 40, 5, 6, 70, 80]).
+run(crowded, [2, 1, 30, 40, 5, 6, 70, 80]).
+run(crowded, [1, 2, 30, 40, 6, 5, 70, 80]).
+run(crowded, [2, 1, 30, 40, 6, 5, 70, 20]).
+
+% The select chooses the offset of the load, which traps when the choice
+% puts it past the end of the allocation.
+func(reach, export, l, [param(w, tmp(c)), param(l, tmp(v))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(l, tmp(v), tmp(p)),
+        let(tmp(off), l, select, [tmp(c), const(16), const(0)]),
+        let(tmp(q), p, add, [tmp(p), tmp(off)]),
+        let(tmp(r), l, load(l), [tmp(q)])
+    ], ret(tmp(r)))
+]).
+run(reach, [0, 41]).
+run(reach, [1, 41]).

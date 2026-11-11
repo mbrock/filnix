@@ -123,3 +123,22 @@ func(jnzl, export, w, [param(l, tmp(a))], [
     block(yes, [], [], ret(const(1))),
     block(no, [], [], ret(const(0)))
 ]).
+
+% A select reads its choice at w, so only the low 32 bits of an l choose,
+% and it chooses whole values: an l with its high bits set, and a w
+% between a negative constant and a temporary.
+run(selects, [0, 7, 9]).
+run(selects, [1, 7, 9]).
+run(selects, [4294967296, 7, 9]).
+run(selects, [-1, 18446744073709551615, 3]).
+run(selects, [2147483648, 0, 18446744073709551615]).
+func(selects, export, l, [param(l, tmp(c)), param(l, tmp(x)), param(l, tmp(y))], [
+    block(start, [], [
+        let(tmp(cw), w, copy, [tmp(c)]),
+        let(tmp(r), l, select, [tmp(cw), tmp(x), tmp(y)]),
+        let(tmp(nz), w, cmp(ne, l), [tmp(c), const(0)]),
+        let(tmp(rw), w, select, [tmp(nz), const(-5), tmp(cw)]),
+        let(tmp(rl), l, ext(uw), [tmp(rw)]),
+        let(tmp(s), l, add, [tmp(r), tmp(rl)])
+    ], ret(tmp(s)))
+]).

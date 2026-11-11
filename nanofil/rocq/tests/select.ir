@@ -1,0 +1,35 @@
+% A select in a Fil-C function, for the model's agreement with the
+% interpreter and for the validator's gate (rocq/scripts/agree.sh and
+% valid.sh; docs/rocq.md). The choice is read at w, so 4294967296
+% chooses the third argument. One select takes a value just loaded
+% through a check, and the other chooses the offset of a later load,
+% which traps when the choice puts it out of bounds.
+run(pick, [0, 7, 9]).
+run(pick, [1, 7, 9]).
+run(pick, [4294967296, 7, 9]).
+run(pick, [-1, 18446744073709551615, 3]).
+func(pick, export, l, [param(l, tmp(c)), param(l, tmp(x)), param(l, tmp(y))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(l, tmp(x), tmp(p)),
+        let(tmp(x1), l, load(l), [tmp(p)]),
+        let(tmp(cw), w, copy, [tmp(c)]),
+        let(tmp(r), l, select, [tmp(cw), tmp(x1), tmp(y)]),
+        let(tmp(nz), w, cmp(ne, l), [tmp(c), const(0)]),
+        let(tmp(rw), w, select, [tmp(nz), const(-5), tmp(cw)]),
+        let(tmp(rl), l, ext(uw), [tmp(rw)]),
+        let(tmp(s), l, add, [tmp(r), tmp(rl)])
+    ], ret(tmp(s)))
+]).
+
+run(reach, [0]).
+run(reach, [1]).
+func(reach, export, l, [param(w, tmp(c))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(8), [const(16)]),
+        store(l, const(41), tmp(p)),
+        let(tmp(off), l, select, [tmp(c), const(16), const(0)]),
+        let(tmp(q), p, add, [tmp(p), tmp(off)]),
+        let(tmp(v), l, load(l), [tmp(q)])
+    ], ret(tmp(v)))
+]).

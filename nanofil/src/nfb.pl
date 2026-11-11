@@ -119,6 +119,8 @@ nfb_form(0x3E, let(tmp(D), K, setjmp(J), [A, B]),
 nfb_form(0x3F, let(tmp(D), K, atomic_load(p), [A]), [def(D), class(K), opnd(A)]).
 nfb_form(0x40, let(tmp(D), K, cas(T), [A, B, C]),
          [def(D), class(K), enum(cas, T), opnd(A), opnd(B), opnd(C)]).
+nfb_form(0x41, let(tmp(D), K, select, [A, B, C]),
+         [def(D), class(K), opnd(A), opnd(B), opnd(C)]).
 nfb_form(0x50, let(tmp(D), K, check(Lo, Hi, R, Al), [P]),
          [def(D), class(K), i64(Lo), i64(Hi), enum(rights, R), u32(Al), opnd(P)]).
 nfb_form(0x51, let(tmp(D), K, check_ahead(Lo, Hi, R, Al, AHi), [P]),

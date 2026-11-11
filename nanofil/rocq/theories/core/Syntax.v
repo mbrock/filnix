@@ -237,6 +237,7 @@ Inductive setjmp_kind : Type := SjSetjmp | SjUnderscore | SjSig.
 Inductive op : Type :=
 | Add | Sub | Mul | Div | Udiv | Rem | Urem | And | Or | Xor
 | Sar | Shr | Shl | Neg | Copy | Ptoi | Itop
+| Select (* the second of three integers if the first, a `w`, is not 0, else the third *)
 | Cmp (c : cond) (k : class) (* 1 if two values of class k compare by c, else 0 *)
 | Ext (t : narrow) (* the low bytes of a `w`, extended by t *)
 (* The float conversions: `ext(s)` and `ext(d)` name their source
@@ -438,6 +439,7 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   | Mul | Div | Udiv | Rem | Urem | And | Or | Xor => Some [k; k]
   | Sar | Shr | Shl => Some [k; W]
   | Neg | Copy => Some [k]
+  | Select => Some [W; k; k]
   | Ptoi => Some [P]
   | Itop => Some [L]
   | Cmp _ ck => Some [ck; ck]

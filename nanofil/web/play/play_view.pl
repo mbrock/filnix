@@ -378,6 +378,7 @@ gloss(op, op:shr, "shr", "shift right, filling with zeros (unsigned)").
 gloss(op, op:sar, "sar", "shift right, keeping the sign (signed)").
 gloss(op, op:neg, "neg", "negate").
 gloss(op, op:copy, "copy", "the value itself; of a global, a pointer to it").
+gloss(op, op:select, "select", "the second value if the first, a w, is not 0, else the third").
 gloss(op, cmp/2, "cmp(Cond, Class)", "compare two Class values: 1 if Cond holds, else 0").
 gloss(op, ext/1, "ext(Type)", "widen a Type value to the result's class").
 gloss(op, op:truncd, "truncd", "double to single").

@@ -302,7 +302,7 @@ Definition let_lines (cx : ctx) (b : name) (index : string) (d : name) (k : clas
         | W | L | Single | Double => integer_inst cx o k args d
         | _ => todo "class"
         end
-    | Mul | Div | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl | Neg
+    | Mul | Div | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl | Neg | Select
     | Cmp _ _ | Ext _ | ExtF _ | Truncd | Truncx | FloatToInt _ _ | IntToFloat _ _ | Cast =>
         integer_inst cx o k args d
     | Ptoi =>
