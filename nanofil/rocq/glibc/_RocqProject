@@ -28,3 +28,4 @@ string/MemcmpCode.v
 string/StrchrCode.v
 string/MemFwdCode.v
 string/MallocCode.v
+string/MemFwdLogic.v
