@@ -31,7 +31,11 @@
     heap: the lemma closes both by Löb induction, so a rule speaks only
     of the step its instruction takes. A call is [wp_bind] over the
     caller ([wp_call_bind]), so a function's specification is an
-    ordinary Hoare triple. An external call ([wp_external]) asks for
+    ordinary Hoare triple; a call through a function pointer is the
+    same with the [[fast-generic-convention|generic entry]]'s
+    conversions ([wp_raw_call_bind]). An allocation over Fil-C's limit
+    traps with a refusal, a stall, so [wp_alloc_any] needs no bound on
+    its size. An external call ([wp_external]) asks for
     its contract's precondition and, after every return the contract
     allows, for the state interpretation of the call's memory and world.
     [heap_never_panics] is Language.v's [[adequacy]] with the ghost heap
@@ -609,6 +613,60 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hb]". iApply ("HK" with "Hl Hb").
 Qed.
 
+(** [wp_raw_load] through a read-write or read-only capability: a raw
+    load of a long at offset off from the proven pointer p, which
+    addresses offset o of the live object b, where the cell holds v: d
+    is bound to v modulo 2^64. glibc's strlen reads a string literal's
+    words through its read-only capability. *)
+Lemma wp_raw_load_read f e ls l d k off args rest j classes p b reg o v Φ :
+  op_arg_classes (RawLoad LdL off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + o ->
+  live b reg -∗ icell b o v -∗
+  ▷ (live b reg -∗ icell b o v -∗
+     WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp Ha. iIntros "Hl Hc HK".
+  iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]").
+  - intros m fuel (Hf & _). apply all_agree_app in Hf as [[Hlv _] Hcl]. cbn [agree_piece fst snd] in Hlv.
+    destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    rewrite (op_raw_load m k p off).
+    + rewrite Ha (cell_load m b reg o v (b + o) Hlv Hcl eq_refl). reflexivity.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+  - rewrite pts_app. iFrame.
+  - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+Qed.
+
+(** A raw load of the narrow type n, of its s bytes, at offset off from
+    the proven pointer p, through a read-write or read-only capability
+    for the live object b, at offset o, where a cell holds v: d is
+    bound to v's low s bytes extended to the class k, y. *)
+Lemma wp_raw_load_sub_read f e ls l d k n off args rest j classes p b reg o v y Φ :
+  op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  extended n k (v mod 2 ^ (8 * fst (narrow_type n))) = Some y ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + o ->
+  live b reg -∗ icell b o v -∗
+  ▷ (live b reg -∗ icell b o v -∗
+     WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof.
+  intros Hc Hx Hy Hp Ha. iIntros "Hl Hc HK".
+  assert (Hs : 0 <= fst (narrow_type n) <= 8) by (destruct n; cbn; lia).
+  iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]").
+  - intros m fuel (Hf & _). apply all_agree_app in Hf as [[Hlv _] Hcl]. cbn [agree_piece fst snd] in Hlv.
+    destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    rewrite (op_raw_load_narrow m k n p off).
+    + rewrite Ha (cell_load_low m b reg o v (b + o) _ Hlv Hcl eq_refl Hs) Hy. reflexivity.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+  - rewrite pts_app. iFrame.
+  - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+Qed.
+
 (** A step to the next configuration, with the callers cs' below its
     frame, that changes no memory, where Q, with the state
     interpretation, shows the memory has the property F, and every
@@ -960,6 +1018,33 @@ Proof.
       cbn [r_end] in Hend. exact Hend.
 Qed.
 
+(** [wp_alloc] for any size from 0 on: over Fil-C's limit the
+    allocation traps with [TooBig], a refusal, which stalls the run
+    ([wp_lift_run]), so the caller need not show the size is in the
+    limit. *)
+Lemma wp_alloc_any f e ls l d k al args rest j size Φ :
+  map2_option (value_x ge e) [L] args = Some [WInt size] -> 0 <= size ->
+  (forall m wd h base, fresh m (heap_req al size) base -> wi m wd h ->
+     wi (allocated m (heap_req al size) base) wd (overwrite (obj_ps base (heap_req al size)) h)) ->
+  ▷ (∀ base, ⌜0 < base /\ base mod req_align (heap_req al size) = 0 /\
+              base + req_extent (heap_req al size) <= 2 ^ 48⌝ -∗ obj base (heap_req al size) -∗
+       WP (ERun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j)) : lexpr)
+         {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hx Hs0 Hwi. iIntros "HK".
+  destruct (Z_le_gt_dec size max_allocation_size) as [Hs | Hs];
+    [iApply (wp_alloc with "HK"); assumption|].
+  pose proof (fun m fuel => rule_alloc_too_big ge f e ls l d k al args rest j [] m fuel size Hx
+    ltac:(lia)) as Hst.
+  iApply (wp_lift_run with "HK").
+  - iIntros (σ) "_ _". iPureIntro. left. unfold fails. rewrite Hst. cbn. intros H. apply H. by right.
+  - iIntros (σ) "_ _". iNext. iIntros (e2 σ2 Hm). exfalso.
+    destruct (moves_core _ _ _ _ Hm ltac:(intros ?; rewrite Hst; discriminate))
+      as [(c' & E' & _) | [(q & kk & base & s' & E' & _) | (o & m' & E' & Hr & _)]];
+      rewrite Hst in E'; try discriminate E'. injection E' as <-. exact Hr.
+Qed.
+
 (** A [[flight]] whose arguments read as xs, whose address [alu]
     computes as n, and whose capability source gives c: d is bound to
     the pointer of n and c. *)
@@ -1115,6 +1200,57 @@ Proof.
   intros Hx Hf Hc. iIntros "H". iApply (wp_call with "[H]"); [exact Hx|exact Hf|exact Hc|].
   iNext. iApply (wp_bind (fun ex => EWait ex (mkFrame f e ls None (Exec l rest j)) (mkPending r None))
                    NotStuck ⊤ (ERun callee : lexpr)).
+  iApply (wp_mono with "H"). iIntros (o) "H". iDestruct "H" as (cf') "[%Hr H]".
+  iApply (wp_resume _ _ _ _ _ Hr with "H").
+Qed.
+
+(** A [[check]] of the function pointer v, which reads as p, the
+    exact address of a function ([function_check_res]): d is bound to
+    p. *)
+Lemma wp_check_function f e ls l d v rest j p Φ :
+  value_x ge e P v = Some (WPtr p) -> function_check_res ge p = Some ok ->
+  ▷ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d F CheckFunction [v] :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hv Hc. apply (wp_pure_next _ _ []).
+  intros m fuel. exact (rule_check_function _ _ _ _ _ _ _ _ _ _ _ _ _ Hv Hc).
+Qed.
+
+(** A call through the proven function pointer callee, as
+    [rule_raw_call]: the callee frame fr' of the converted arguments
+    runs as the callee of the caller, which waits at the rest of its
+    block for the result r, converting its words as words says. *)
+Lemma wp_raw_call f e ls l r callee args rest j p g xs gf ys words fr' Φ :
+  value_x ge e F callee = Some (WPtr p) -> ptr_cap p = Fn g -> function_check_res ge p = Some ok ->
+  map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
+  indirect_call_conv gf r args xs = Some (Converted ys words) ->
+  call_frame gf (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else [])) = Some fr' ->
+  ▷ WP (EWait (ERun fr') (mkFrame f e ls None (Exec l rest j)) (mkPending r words) : lexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hv Hp Hc Hx Hf Hcv Hfr.
+  apply (wp_pure_next _ fr' [(mkFrame f e ls None (Exec l rest j), mkPending r words)]).
+  intros m fuel. exact (rule_raw_call _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hv Hp Hc Hx Hf Hcv Hfr).
+Qed.
+
+(** A call through a function pointer, as [wp_raw_call], whose
+    callee's run ends with an outcome the caller resumes with
+    ([wp_resume]), converting the result words as the pending call
+    says: the callee's weakest precondition is the caller's, as
+    [wp_call_bind] for a direct call. *)
+Lemma wp_raw_call_bind f e ls l r callee args rest j p g xs gf ys words fr' Φ :
+  value_x ge e F callee = Some (WPtr p) -> ptr_cap p = Fn g -> function_check_res ge p = Some ok ->
+  map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
+  indirect_call_conv gf r args xs = Some (Converted ys words) ->
+  call_frame gf (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else [])) = Some fr' ->
+  ▷ WP (ERun fr' : lexpr) {{ o, ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending r words) o
+                                         = Some cf'⌝ ∗ ▷ WP (ERun cf' : lexpr) {{ Φ }} }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hv Hp Hc Hx Hf Hcv Hfr. iIntros "H".
+  iApply (wp_raw_call with "[H]"); [exact Hv|exact Hp|exact Hc|exact Hx|exact Hf|exact Hcv|exact Hfr|].
+  iNext. iApply (wp_bind (fun ex => EWait ex (mkFrame f e ls None (Exec l rest j)) (mkPending r words))
+                   NotStuck ⊤ (ERun fr' : lexpr)).
   iApply (wp_mono with "H"). iIntros (o) "H". iDestruct "H" as (cf') "[%Hr H]".
   iApply (wp_resume _ _ _ _ _ Hr with "H").
 Qed.
@@ -1341,6 +1477,35 @@ Proof.
   - iExists ∅. iFrame "Hh". iPureIntro. split; [|split; [exact Hd | split; [exact Hready | exact I]]].
     intros l v Hl. rewrite lookup_empty in Hl. discriminate.
   - iApply (Hw Hinv HheapG).
+Qed.
+
+(** Iris [[adequacy]] where the program starts owning the pieces ps of
+    its initial memory, distinct and agreeing with it: if, for every
+    admissible input, owning ps gives the entry's frame a weakest
+    precondition with no contracts under any invariant and ghost heap
+    instance, the module never panics. [heap_never_panics] with ps for
+    its empty ghost heap. *)
+Theorem pieces_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    md entry (input : list word -> Prop) globals m f (ps : list (piece * pval)) :
+  initial_memory md = Some (globals, m) ->
+  find_fn (P.program_genv md globals) entry = Some (Defined f) ->
+  live_disjoint m -> all_agree m ps -> NoDup ps.*1 ->
+  (forall xs, input xs -> exists fr, call_frame f xs = Some fr /\
+     forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+       pts ps ⊢ WP (ERun fr : language.expr (nanofil_lang no_contracts (P.program_genv md globals)))
+                  {{ _, True }}) ->
+  P.never_panics md entry input.
+Proof.
+  intros Hm Hf Hd Ha Hn Hwp. apply (L.wp_never_panics HasNoLc Σ md entry input globals m f Hm Hf).
+  intros xs Hxs. destruct (Hwp xs Hxs) as (fr & Hfr & Hw). exists fr. split; [exact Hfr|].
+  intros Hready fuel Hinv.
+  iMod (gen_heap_init (list_to_map ps : gmap piece pval)) as (HheapG) "(Hh & Hpts & _)".
+  iModIntro. iExists (heap_interp no_world).
+  iSplitL "Hh".
+  - iExists _. iFrame "Hh". iPureIntro. split; [|split; [exact Hd | split; [exact Hready | exact I]]].
+    intros l v Hl. exact (all_agree_elem _ _ _ _ Ha (elem_of_list_to_map_2 _ _ _ Hl)).
+  - iApply (Hw Hinv HheapG). rewrite /pts -(big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v));
+      [iExact "Hpts" | exact Hn].
 Qed.
 
 (** Iris [[adequacy]] with the ghost heap for the labelled machine

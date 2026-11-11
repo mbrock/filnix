@@ -440,67 +440,12 @@ Proof.
   apply (@bool_decide_eq_true _ (@NoDup_dec piece eqp _)). vm_compute. reflexivity.
 Qed.
 
-(** A finite certificate checks the unique registered region rather than
-    expanding a universally quantified region once per literal byte.
-    Exact aux equality is sufficient for the weaker collector-aware
-    agreement. This checker is only a proof device for the model image. *)
-Local Definition checked_piece (m : mem) (l : piece) (v : pval) : Prop :=
-  match l, v with
-  | PLive b, VLive reg => live_at m b reg
-  | PByte b o, VByte x =>
-    match object_region b (m_regions m) with
-    | Some reg => r_life reg = Live -> 0 <= o /\ b + o < r_end reg /\ m_bytes m (b + o) = x
-    | None => False
-    end
-  | PAux b o, VAux c =>
-    match object_region b (m_regions m) with
-    | Some reg => r_life reg = Live -> 0 <= o /\ b + o < r_end reg /\ m_aux m (b + o) = c
-    | None => False
-    end
-  | PName _, VName _ _ | PName _, VCodec _ | PName _, VGetopt _ _ => True
-  | _, _ => False
-  end.
-
-(** The finite certificate implies the public heap agreement predicate. *)
-Local Lemma checked_piece_sound m l v : checked_piece m l v -> agree_piece m l v.
-Proof.
-  destruct l, v; cbn [checked_piece agree_piece]; try tauto.
-  - destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|tauto].
-    intros H. split; [unfold registered; congruence|].
-    intros reg' E' Hlive. rewrite E in E'. injection E' as <-. exact (H Hlive).
-  - destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|tauto].
-    intros H. split; [unfold registered; congruence|].
-    intros reg' E' Hlive. rewrite E in E'. injection E' as <-.
-    destruct (H Hlive) as (Ho & Hb & Ha). repeat split; try assumption. left. exact Ha.
-Qed.
-
-(** All operations in a certificate have transparent finite decisions. *)
-Local Instance checked_piece_dec m l v : Decision (checked_piece m l v).
-Proof.
-  pose (eqr := (ltac:(intros x y; change ({x = y} + {x <> y});
-    decide equality; try apply Z.eq_dec; decide equality) : EqDecision region)).
-  pose (eql := (ltac:(intros x y; change ({x = y} + {x <> y});
-    decide equality) : EqDecision life)).
-  pose (eqt := (ltac:(intros x y; change ({x = y} + {x <> y});
-    destruct (term_eqb x y) eqn:E;
-      [left; apply term_eqb_eq; exact E |
-       right; intros ->; rewrite term_eqb_refl in E; discriminate]) : EqDecision term)).
-  pose (eqc := (ltac:(intros x y; change ({x = y} + {x <> y});
-    decide equality; first [apply eqt | apply Z.eq_dec]) : EqDecision cap)).
-  destruct l, v; cbn [checked_piece]; try apply _;
-    destruct (object_region b (m_regions m)); apply _.
-Defined.
-
-(** Every piece in the single initial resource bundle agrees. *)
+(** Every piece in the single initial resource bundle agrees.
+    Heap.v's [checked_piece] certificate checks the unique registered
+    region of each piece by computation, rather than expanding a
+    universally quantified region once per literal byte. *)
 Lemma entry_pieces_agree : all_agree entry_memory entry_pieces.
-Proof.
-  assert (Hcheck : forallb (fun lv => bool_decide (checked_piece entry_memory lv.1 lv.2))
-    entry_pieces = true) by (vm_compute; reflexivity).
-  apply all_agree_intro. intros l v Hin. apply checked_piece_sound.
-  rewrite forallb_forall in Hcheck.
-  apply (bool_decide_eq_true_1 (checked_piece entry_memory l v)).
-  apply (Hcheck (l, v)). clear Hcheck. induction Hin; cbn; auto.
-Qed.
+Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
 
 Local Opaque entry_pieces.
 

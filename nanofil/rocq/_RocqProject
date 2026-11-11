@@ -75,6 +75,8 @@ theories/logic/Logic.v
 theories/hello_contracts/LibcStreamLogic.v
 theories/logic/StringLogic.v
 theories/logic/MemLogic.v
+theories/logic/WordBits.v
+theories/logic/VariadicLogic.v
 theories/hello_contracts/LentLogic.v
 theories/hello_contracts/LocaleLogic.v
 theories/programs/BufferLogic.v

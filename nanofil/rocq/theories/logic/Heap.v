@@ -186,6 +186,70 @@ Proof.
   - apply IH. intros l' v' Hin. apply H. apply elem_of_cons. by right.
 Qed.
 
+(** A piece certificate a finite memory image can decide: the
+    registered region b names, once found, stands for every region
+    [agree_piece] quantifies over, and an aux slot's exact capability
+    for the collector-aware [aux_holds]. A proof device for fixed
+    memory images, such as a launch's. *)
+Definition checked_piece (m : mem) (l : piece) (v : pval) : Prop :=
+  match l, v with
+  | PLive b, VLive reg => live_at m b reg
+  | PByte b o, VByte x =>
+    match object_region b (m_regions m) with
+    | Some reg => r_life reg = Live -> 0 <= o /\ b + o < r_end reg /\ m_bytes m (b + o) = x
+    | None => False
+    end
+  | PAux b o, VAux c =>
+    match object_region b (m_regions m) with
+    | Some reg => r_life reg = Live -> 0 <= o /\ b + o < r_end reg /\ m_aux m (b + o) = c
+    | None => False
+    end
+  | PName _, VName _ _ | PName _, VCodec _ | PName _, VGetopt _ _ => True
+  | _, _ => False
+  end.
+
+(** A certified piece agrees with the memory. *)
+Lemma checked_piece_sound m l v : checked_piece m l v -> agree_piece m l v.
+Proof.
+  destruct l, v; cbn [checked_piece agree_piece]; try tauto.
+  - destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|tauto].
+    intros H. split; [unfold registered; congruence|].
+    intros reg' E' Hlive. rewrite E in E'. injection E' as <-. exact (H Hlive).
+  - destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|tauto].
+    intros H. split; [unfold registered; congruence|].
+    intros reg' E' Hlive. rewrite E in E'. injection E' as <-.
+    destruct (H Hlive) as (Ho & Hb & Ha). repeat split; try assumption. left. exact Ha.
+Qed.
+
+(** [checked_piece] is decided by computation: every decision in it is
+    transparent, so [vm_compute] runs it on a memory image. *)
+Instance checked_piece_dec m l v : Decision (checked_piece m l v).
+Proof.
+  pose (eqr := (ltac:(intros x y; change ({x = y} + {x <> y});
+    decide equality; try apply Z.eq_dec; decide equality) : EqDecision region)).
+  pose (eql := (ltac:(intros x y; change ({x = y} + {x <> y});
+    decide equality) : EqDecision life)).
+  pose (eqt := (ltac:(intros x y; change ({x = y} + {x <> y});
+    destruct (term_eqb x y) eqn:E;
+      [left; apply term_eqb_eq; exact E |
+       right; intros ->; rewrite term_eqb_refl in E; discriminate]) : EqDecision term)).
+  pose (eqc := (ltac:(intros x y; change ({x = y} + {x <> y});
+    decide equality; first [apply eqt | apply Z.eq_dec]) : EqDecision cap)).
+  destruct l, v; cbn [checked_piece]; try apply _;
+    destruct (object_region b (m_regions m)); apply _.
+Defined.
+
+(** A list of pieces each of which the computed check certifies agrees
+    with the memory: [all_agree] of a memory image by [vm_compute]. *)
+Lemma checked_pieces_all_agree m ps :
+  forallb (fun lv => bool_decide (checked_piece m lv.1 lv.2)) ps = true -> all_agree m ps.
+Proof.
+  intros Hcheck. apply all_agree_intro. intros l v Hin. apply checked_piece_sound.
+  rewrite forallb_forall in Hcheck.
+  apply (bool_decide_eq_true_1 (checked_piece m l v)).
+  apply (Hcheck (l, v)). clear Hcheck. induction Hin; cbn; auto.
+Qed.
+
 (** A cell agrees when each of its eight bytes does. *)
 Lemma all_agree_cell m b o x :
   all_agree m (cell b o x) <-> forall i, 0 <= i < 8 -> agree_piece m (PByte b (o + i)) (VByte (byte_of x i)).
@@ -341,6 +405,19 @@ Proof.
   rewrite stored_bytes_value; [|lia]. reflexivity.
 Qed.
 
+(** The low n bytes, n at most 8, of a cell of the live object b read
+    back as its value modulo 2^(8n): a narrow read of the cell. *)
+Lemma cell_load_low m b reg o x a n :
+  live_at m b reg -> all_agree m (cell b o x) -> a = b + o -> 0 <= n <= 8 ->
+  load_bytes m a n = x mod 2 ^ (8 * n).
+Proof.
+  intros [E L] Hc -> Hn. rewrite all_agree_cell in Hc.
+  rewrite (load_bytes_agree m (store_bytes m (b + o) n x) (b + o) n); [|lia|].
+  - rewrite stored_bytes_value; [|lia]. rewrite Z.pow_mul_r; [reflexivity|lia|lia].
+  - intros i Hi. rewrite stored_byte; [|exact Hi]. destruct (Hc i ltac:(lia)) as [_ Hin].
+    destruct (Hin reg E L) as (_ & _ & Hb). replace (b + o + i) with (b + (o + i)); [exact Hb|lia].
+Qed.
+
 (** An 8-byte store at offset o of the live object b: its cell holds
     the new value, and nothing else changes. *)
 Lemma cell_store_ok m b reg o a x :
@@ -400,6 +477,10 @@ Proof.
       * left. apply elem_of_cons. by right.
       * right. split; [|exact Hh]. apply not_elem_of_cons. split; [congruence|exact Hn].
 Qed.
+
+(** Writing two lists of pieces is writing the second, then the first. *)
+Lemma overwrite_app ps qs h : overwrite (ps ++ qs) h = overwrite ps (overwrite qs h).
+Proof. induction ps as [|[l v] ps IH]; cbn; [reflexivity | rewrite IH; reflexivity]. Qed.
 
 (** Every piece of a new object at base names base. *)
 Lemma obj_ps_id base q l v : (l, v) ∈ obj_ps base q -> piece_id l = base.
@@ -520,6 +601,20 @@ Proof.
     iDestruct "Hps" as "[Hl Hps]".
     iMod (IH ps' Hk with "Hh Hps") as "[Hh Hps]".
     iMod (gen_heap_update with "Hh Hl") as "[Hh Hl]". iModIntro. iFrame.
+Qed.
+
+(** Owned pieces have distinct keys: owning one key twice is
+    impossible ([pointsto_ne]). *)
+Lemma pts_keys_nodup ps : pts ps -∗ ⌜NoDup ps.*1⌝.
+Proof.
+  induction ps as [|[l v] ps IH]; [iIntros "_"; iPureIntro; constructor |].
+  rewrite /pts big_sepL_cons. iIntros "[Hl Hps]".
+  iDestruct (IH with "Hps") as %Hnd.
+  destruct (decide (l ∈ ps.*1)) as [Hin | Hnot].
+  - apply list_elem_of_fmap in Hin as ([k u] & Hkey & Hin). cbn in Hkey. subst k.
+    iDestruct (big_sepL_elem_of _ _ _ Hin with "Hps") as "Hk".
+    iDestruct (pointsto_ne with "Hl Hk") as %Hne. contradiction.
+  - iPureIntro. apply NoDup_cons. auto.
 Qed.
 
 (** Pieces with distinct keys, none in the heap, can be allocated. *)

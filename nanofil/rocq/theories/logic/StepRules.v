@@ -500,3 +500,159 @@ Lemma store_res_long : forall m a c v,
   access_res m a c 8 Write 1 = Some ok ->
   store_res Wl m a c (WInt v) = Some (ok, store_bytes m a 8 v).
 Proof. intros m a c v H. cbn - [access_res store_bytes]. rewrite H. reflexivity. Qed.
+
+(** A raw load of the narrow type n, of s bytes, at offset off from the
+    proven pointer p, whose read access passes: the s bytes there,
+    extended to the class k. [op_raw_load_byte] for every width. *)
+Lemma op_raw_load_narrow : forall m k n p off,
+  access_res m (raw_address (ptr_addr p) off) (ptr_cap p) (fst (narrow_type n)) Read 1 = Some ok ->
+  op_res (RawLoad (LdNarrow n) off) k [WPtr p] m =
+  option_map (fun y => OpRes (RVal y) m)
+    (extended n k (load_bytes m (raw_address (ptr_addr p) off) (fst (narrow_type n)))).
+Proof.
+  intros m k n p off H.
+  assert (E : op_res (RawLoad (LdNarrow n) off) k [WPtr p] m =
+              op_res_int (RawLoad (LdNarrow n) off) k [WPtr p] m) by (destruct k; reflexivity).
+  rewrite E. cbn - [access_res raw_address load_bytes narrow_type extended]. unfold int_load_res.
+  rewrite H. destruct (extended n k _); reflexivity.
+Qed.
+
+(** ## Allocations Fil-C refuses *)
+
+(** A heap allocation of size bytes, size read as the only argument and
+    over Fil-C's limit: the run stops with the [TooBig] trap, a refusal
+    (Panics.v), not a failure. *)
+Lemma rule_alloc_too_big : forall ge f e ls l d k al args rest j cs m fuel size,
+  map2_option (value_x ge e) [L] args = Some [WInt size] ->
+  max_allocation_size < size ->
+  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) cs m fuel) =
+  Done (Trap TooBig).
+Proof.
+  intros ge f e ls l d k al args rest j cs m fuel size Hx Hs.
+  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) m
+                 (Let d k (Alloc al) args) = Some (IStop (Trap TooBig))).
+  { destruct k; cbn - [map2_option max_allocation_size]; rewrite Hx; cbn - [max_allocation_size];
+      replace (max_allocation_size <? size) with true by (symmetry; apply Z.ltb_lt; exact Hs);
+      reflexivity. }
+  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (destruct k; reflexivity).
+  reflexivity.
+Qed.
+
+(** ## Calls through function pointers *)
+
+(** A [[check]] of the function pointer v, which reads as p, the exact
+    address of a function ([function_check_res]): d is bound to p. *)
+Lemma rule_check_function : forall ge f e ls l d v rest j cs m fuel p,
+  value_x ge e P v = Some (WPtr p) -> function_check_res ge p = Some ok ->
+  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d F CheckFunction [v] :: rest) j)) cs m fuel) =
+  Next (mkConfig (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) cs m fuel).
+Proof.
+  intros ge f e ls l d v rest j cs m fuel p Hv Hc.
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue (put d (WPtr p) e) ls m)).
+  - cbn [inst_step fr_env fr_locals]. rewrite Hv. cbn - [function_check_res]. rewrite Hc. reflexivity.
+  - apply doomed_result_continue. reflexivity.
+Qed.
+
+(** A call through the proven function pointer callee, which reads as
+    p, the exact address of the module's function g, defined as gf,
+    with arguments that read as xs: they are converted to gf's
+    parameters through the [[fast-generic-convention|generic entry]]
+    ([indirect_call_conv]), a variadic gf also gets the rest of xs as
+    they are, and the frame callee of those words runs on top while the
+    caller waits at the rest of its block, reading the result as r and
+    converting its words as words says. *)
+Lemma rule_raw_call : forall ge f e ls l r callee args rest j cs m fuel p g xs gf ys words fr',
+  value_x ge e F callee = Some (WPtr p) -> ptr_cap p = Fn g -> function_check_res ge p = Some ok ->
+  map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
+  indirect_call_conv gf r args xs = Some (Converted ys words) ->
+  call_frame gf (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else [])) = Some fr' ->
+  step ge (mkConfig (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) cs m fuel) =
+  Next (mkConfig fr' ((mkFrame f e ls None (Exec l rest j), mkPending r words) :: cs) m fuel).
+Proof.
+  intros ge f e ls l r callee args rest j cs m fuel p g xs gf ys words fr' Hv Hp Hc Hx Hf Hcv Hfr.
+  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) m
+                 (RawCall r callee args) =
+               Some (ICall gf (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else []))
+                       (mkPending r words))).
+  { cbn - [value_x map_option function_check_res find_fn indirect_call_conv].
+    rewrite Hv, Hx. cbn - [function_check_res find_fn indirect_call_conv].
+    rewrite Hc. cbn - [find_fn indirect_call_conv]. rewrite Hp, Hf, Hcv. reflexivity. }
+  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_call; reflexivity).
+  cbn [inst_next c_frame fr_fn fr_env fr_locals c_callers c_mem c_fuel]. rewrite Hfr. reflexivity.
+Qed.
+
+(** ## Variadic arguments *)
+
+(** Reading the hidden variadic snapshot p at the offset off: d is
+    bound to p moved by off, with p's capability. The pointer is frame
+    state, not a heap resource. *)
+Lemma rule_va_args : forall ge f e ls l d off rest j cs m fuel p,
+  lookup va_snapshot e = Some (WPtr p) ->
+  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d P VaArgs [Const off] :: rest) j)) cs m fuel) =
+  Next (mkConfig
+    (mkFrame f (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e)
+      ls None (Exec l rest j)) cs m fuel).
+Proof.
+  intros ge f e ls l d off rest j cs m fuel p Hp.
+  apply (rule_inst ge f e ls l (Let d P VaArgs [Const off]) rest j cs m fuel
+    (IContinue (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e) ls m)).
+  - cbn [inst_step fr_env fr_locals]. rewrite Hp. reflexivity.
+  - apply doomed_result_continue. reflexivity.
+Qed.
+
+(** A variadic read of class k through the va_list p, whose
+    [va_arg_res] is x in the memory m': d is bound to x, in m'. The
+    cursor at p is memory, not frame state. *)
+Lemma rule_va_arg : forall ge f e ls l d k args rest j cs m fuel p x m',
+  map2_option (value_x ge e) [P] args = Some [WPtr p] ->
+  va_arg_res k p m = Some (RVal x, m') ->
+  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d k VaArg args :: rest) j)) cs m fuel) =
+  Next (mkConfig (mkFrame f (put d x e) ls None (Exec l rest j)) cs m' fuel).
+Proof.
+  intros ge f e ls l d k args rest j cs m fuel p x m' Hargs Hread.
+  apply rule_let with (classes := [P]) (xs := [WPtr p]); [reflexivity | reflexivity | exact Hargs |].
+  cbn [op_res]. rewrite Hread. reflexivity.
+Qed.
+
+(** Rounding an 8-aligned address up to 8 leaves it. *)
+Lemma round8_aligned : forall a, a mod 8 = 0 -> (a + 8 - 1) / 8 * 8 = a.
+Proof.
+  intros a Hal. pose proof (Z.div_mod a 8 ltac:(lia)) as Hdiv. rewrite Hal in Hdiv.
+  replace (a + 8 - 1) with (7 + (a / 8) * 8) by lia.
+  rewrite Z.div_add by lia. replace (7 / 8) with 0 by reflexivity. lia.
+Qed.
+
+(** A pointer va_arg through the va_list p whose cursor, the address a
+    and capability c stored at p, is 8-aligned: both reads pass, the
+    cursor's [Wl] store makes m', and the result is the pointer x whose
+    address and capability m' holds at a, even where the store
+    overlaps a's cell. *)
+Lemma va_arg_pointer : forall m p a c m' x,
+  access_res m (ptr_addr p) (ptr_cap p) 8 Read 8 = Some ok ->
+  load_bytes m (ptr_addr p) 8 = a -> aux_at m (ptr_addr p) = c ->
+  a mod 8 = 0 -> access_res m a c 8 Read 8 = Some ok ->
+  store_res Wl m (ptr_addr p) (ptr_cap p) (WInt (a + 8)) = Some (ok, m') ->
+  load_bytes m' a 8 = ptr_addr x -> aux_at m' a = ptr_cap x ->
+  va_arg_res P p m = Some (RVal (WPtr x), m').
+Proof.
+  intros m p a c m' x Hp Ha Hc Hal Hcell Hstore Haddr Hcap.
+  unfold va_arg_res. rewrite Hp, Ha, Hc. cbn [va_cell class_width width_bytes ptr_addr ptr_cap].
+  rewrite (round8_aligned a Hal), Hcell, Hstore, Haddr, Hcap. destruct x. reflexivity.
+Qed.
+
+(** An integer va_arg of class k, whose cell is n bytes at an 8-aligned
+    address ([va_cell]), through the va_list p whose cursor cur rounds
+    up to a: both reads pass, the cursor's [Wl] store of a + n makes
+    m', and the result is the n bytes m' holds at a. *)
+Lemma va_arg_int : forall m k w n p cur c a m',
+  k <> P -> class_width k = Some w -> va_cell k = Some (n, 8) ->
+  access_res m (ptr_addr p) (ptr_cap p) 8 Read 8 = Some ok ->
+  load_bytes m (ptr_addr p) 8 = cur -> aux_at m (ptr_addr p) = c ->
+  (cur + 8 - 1) / 8 * 8 = a -> access_res m a c n Read 8 = Some ok ->
+  store_res Wl m (ptr_addr p) (ptr_cap p) (WInt (a + n)) = Some (ok, m') ->
+  va_arg_res k p m = Some (RVal (WInt (load_bytes m' a (width_bytes w))), m').
+Proof.
+  intros m k w n p cur c a m' Hk Hw Hcl Hp Hcur Hc Ha Hcell Hstore.
+  unfold va_arg_res. rewrite Hp, Hcur, Hc, Hcl, Hw. cbn [ptr_addr ptr_cap].
+  rewrite Ha, Hcell, Hstore. destruct k; try reflexivity. contradiction.
+Qed.
