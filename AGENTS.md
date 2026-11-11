@@ -124,7 +124,7 @@ filnix.org (pages/, docs/, nanofil/docs/, blocks/, the text in packages/site/, a
 - An index or overview page starts by saying plainly what the thing is ("What is Filnix?"), then lists its parts under ordinary headings with ordinary links. No hero headlines, eyebrow labels, call-to-action buttons or arrows.
 - A code module's header (`(** ... *)` in Rocq, `/* ... */` in Prolog, `# ...` in Nix) is the lede of its page on the site. Start with complete sentences saying what problem the file solves, and put lists of lemma, field or predicate names in a table or on the definitions themselves rather than stuffing parenthetical citations (`(os_wi_store)`, `(os_wi_stable)`, `(errno_own, errno_any)`) into long paragraphs.
 - State only what the repository shows. Say "being proved" or "a design" when that is the state, and put numbers in the build (`data-count`, history.py) rather than in prose.
-- Prose is Equity (`var(--prose-font)`); Public Sans is for headings, labels and chrome, and DM Mono for code. Do not add other fonts.
+- Web prose, headings, labels and drawn terms use Public Sans; code uses DM Mono. PDFs keep Equity for prose. Do not add other fonts.
 - After writing or editing a page, document, block or module header, run `scripts/prose-check FILE...` (`-v` to see every paragraph's score) to get a Jev readability and slop check on each passage.
 
 ### Compiler and Runtime Review

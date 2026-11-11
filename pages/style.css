@@ -1,17 +1,8 @@
 /* The Filnix wiki: the docs, the explainers and the landing page share this
    stylesheet. It follows the luv workshop wiki (luv.swa.sh): Public Sans,
    a library band with doors, a black status bar, and a justified measure.
-   Prose is set in Equity, headings and drawn code in Public Sans, code in
-   DM Mono. Equity is licensed for filnix.org, not public: the publish step
-   adds fonts/equity/ (deploy/site/equity.sh), and without it prose falls
-   back to Georgia. */
-
-@font-face { font-family: "Equity"; font-style: normal; font-weight: 400; font-display: swap;
-  src: url("fonts/equity/equity-regular.woff2") format("woff2"); }
-@font-face { font-family: "Equity"; font-style: italic; font-weight: 400; font-display: swap;
-  src: url("fonts/equity/equity-italic.woff2") format("woff2"); }
-@font-face { font-family: "Equity"; font-style: normal; font-weight: 700; font-display: swap;
-  src: url("fonts/equity/equity-bold.woff2") format("woff2"); }
+   Prose, headings and drawn terms use Public Sans; code uses DM Mono.
+   Equity is reserved for the PDFs (nanofil/web/typst/). */
 
 :root {
   color-scheme: light;
@@ -24,8 +15,8 @@
   --accent: #9a3248;
   --code-bg: #f4f1ea;
   --display-font: "Public Sans", helvetica, arial, sans-serif;
-  --prose-font: "Equity", Georgia, serif;
-  --prose-size: 1.12rem;     /* Equity's x-height is smaller than Public Sans's */
+  --prose-font: var(--display-font);
+  --prose-size: 1rem;
   --mono-font: "DM Mono", ui-monospace, "SF Mono", menlo, consolas, "DejaVu Sans Mono", monospace;
   --gutter: clamp(1rem, 4vw, 3rem);
   --measure: 68ch;

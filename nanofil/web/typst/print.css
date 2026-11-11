@@ -6,6 +6,7 @@
 
 :root {
   --display-font: "Public Sans", sans-serif;
+  --prose-font: "Equity OT A", "Source Serif 4", serif;
   --mono-font: "DM Mono", monospace;
   --paper: white;
   --ribbon: 34em;
@@ -30,6 +31,8 @@ article, .dterm, .prose, .dterm .prose, .guide-prose { max-width: none !importan
 
 /* Drawn blocks at the code size; prose is set again by Typst. */
 .dterm .prose, .dterm .prose p, .dterm .prose li { font-size: 1rem; }
+/* Keep the paper's inline terms scaled for its serif prose. */
+.dterm .prose code.term { font-size: 0.86em; }
 .dg { font-size: 1rem; }
 .dg-pipe, .dg-frame { max-width: none; }
 

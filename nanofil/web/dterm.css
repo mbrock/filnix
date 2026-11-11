@@ -79,8 +79,8 @@ article.dterm h2 {
   letter-spacing: 0;
 }
 .dterm .prose h4.prose-h { margin-top: 1.1rem; font-size: 0.92rem; color: var(--muted); }
-/* A term in prose is set in the code's sans, scaled to the serif's x-height. */
-.dterm .prose code.term { font: inherit; font-family: var(--display-font); font-size: 0.86em; background: none; padding: 0; }
+/* Inline terms use the same sans as prose; print.css handles PDF sizing. */
+.dterm .prose code.term { font: inherit; font-family: var(--display-font); font-size: 0.96em; background: none; padding: 0; }
 :is(.prose, article.doc) :is(.clause, .dg, .dterm-rocq, .dterm-c, .prose-terms, table) { font-family: var(--display-font); }
 .dterm .prose code.term .c, .dterm .prose code.term .args, .dterm .prose code.term .arg { white-space: nowrap; }
 table.prose-table {
