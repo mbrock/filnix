@@ -41,4 +41,13 @@ string/MemchrLoop.v
 string/MemchrFirst.v
 string/MemchrLogic.v
 string/StrnlenLogic.v
+string/StrrchrLogic.v
+string/StrchrnulLogic.v
+string/StrncmpBits.v
+string/StrncmpLoop.v
+string/StrncmpWords.v
+string/StrncmpLogic.v
 hello/HelloGlibcLeaf.v
+hello/HelloGlibcProgCells.v
+hello/HelloGlibcProgLibs.v
+hello/HelloGlibcProgName.v
