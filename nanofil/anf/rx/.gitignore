@@ -1,0 +1,11 @@
+# Built by the Makefile: the compiled theories, the extraction and ./rx-gallina.
+*.vo
+*.vok
+*.vos
+*.glob
+.*.aux
+extraction/
+main.cmi
+main.cmx
+main.o
+rx-gallina

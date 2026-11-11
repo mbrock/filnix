@@ -1,0 +1,7 @@
+#!/bin/sh
+# collect TERMS OUTPUT: a compiler for experiments/regex-nanofil's hook
+# that compiles nothing. The hook has stored the pattern's terms as
+# KEY.pl in its cache before it runs this, which is all that run.sh's
+# corpus needs; it then reads the pattern as unsupported.
+echo "% m: unsupported: collect" >"$2"
+exit 1
