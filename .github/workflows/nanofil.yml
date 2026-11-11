@@ -70,7 +70,7 @@ jobs:
           SHARD: ${{ matrix.shard }}/8
         run: |
           set -o pipefail
-          nix build -L --no-link --print-out-paths --impure --expr \
+          nix build -L --rebuild --no-link --print-out-paths --impure --expr \
             "(builtins.getFlake (toString ./.)).lib.x86_64-linux.nanofil-check { shard = \"$SHARD\"; }" \
             2>&1 | tee nanofil.log
       - name: Publish the shard's output
