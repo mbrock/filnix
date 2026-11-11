@@ -74,11 +74,11 @@ dual-substrate compiler:
   copy, and compile straight through [Compile.compile_allocated] without
   invoking `clang` or `FilPizlonator`.
 
-> Milestones M0 ([bench/arena/](../bench/arena/)), M1
-> ([anf/](../anf/)), M2 ([anf/lower/](../anf/lower/)) and M3
-> ([anf/backend/](../anf/backend/)) are built and measured; M4 and M5
-> remain ahead. Section 7 separates what is measured in this repository
-> from the remaining hypotheses.
+> Milestones M0–M3 are built and measured. M4 now provides
+> [an in-process compiler library](../anf/lib/), including
+> [a Gallina regex compiler](../anf/rx/).
+> M4's three-stage bootstrap and M5's proofs remain ahead. Section 7
+> separates the measurements from the remaining hypotheses.
 
 ## 1. Why routing Gallina through C++ or C hurts
 
@@ -438,7 +438,8 @@ instructions sharing that proof:
 let(tmp(idx64), l, ext(uw), [tmp(yg)]).
 let(tmp(off), l, shl, [tmp(idx64), const(2)]).
 flight(tmp(dst), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))).
-let(tmp(a), a, check(0, 12, write, 4), [tmp(dst)]). % covers header + 2 fields
+% The check covers the header and both fields.
+let(tmp(a), a, check(0, 12, write, 4), [tmp(dst)]).
 raw_store(w, 0, const(2048), tmp(a)).               % header: arity 2, ordinal 0
 raw_store(w, 4, tmp(h), tmp(a)).                    % field 0
 raw_store(w, 8, tmp(tl), tmp(a)).                   % field 1
@@ -689,15 +690,33 @@ Definition arena_bounds (base len : Z) (mj yg nb ne : Z) : Prop :=
 
 ### The C FFI boundary for `libnanofil`
 
-At the module boundary, a Gallina library compiled via λANF → Nanofil IR
-exposes ordinary Fil-C entry points — for example
-`c: int nanofil_compile_nfb(const uint8_t *in_buf, size_t in_len, uint8_t **out_buf, size_t *out_len)` —
-whose input and output buffers are standard Fil-C `p` capabilities. A
-thin wrapper copies `in_buf` into a packed byte block in the private
-arena, runs the pure `w`-word compiler, copies the emitted assembly or
-object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
-`major_idx` (or `MADV_DONTNEED`s the major slice). Neither `clang` nor
-`filc++` ever compiles generated C or C++ for the compiler itself.
+Programs call the Gallina compiler through three Fil-C entry points,
+declared in [nanofil.h](../anf/lib/nanofil.h). Their input and output
+buffers use ordinary `p` capabilities:
+
+```c
+int nanofil_compile_ir(int command, const char *ir, size_t ir_len,
+                       char **out, size_t *out_len);
+int nanofil_compile_regex(const char *terms, size_t terms_len,
+                          char **out, size_t *out_len);
+void *nanofil_load(const void *image, size_t len);
+```
+
+On the first call, `libnanofil` initializes one persistent process-wide
+arena and runs the compiler's entry point once. A collection moves its
+closure and constants to the major heap, and the library records that
+heap's length as a mark. Each later call rewinds to the mark with
+`anf_arena_rewind`. If the heap grew more than 16 MiB past the mark,
+the rewind also returns those pages to the kernel with `MADV_DONTNEED`.
+A mutex serializes calls, so threads share the arena without compiling
+concurrently.
+
+Each call copies input into the arena in 1 MB pieces and copies output
+back into a buffer that the caller frees. Shared-object output passes
+through the Gallina assembler in [Encode.v](../rocq/backend/Encode.v)
+and linker in [Elf.v](../rocq/backend/Elf.v). The compiler runs as
+native Fil-C code; neither `clang` nor `filc++` compiles generated C or
+C++ for it.
 
 ## 7. Knowns, hypotheses, and what needs measuring
 
@@ -708,10 +727,11 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 | **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: raw native `clang -O1` takes `8.89–13.77 s` on `rx.ir` (`165.4 s` / `994 MB` under `filcc -DVERIFFI`), while static string folding + `overrides.c` brings native C to **`1.06–1.32 s`** on `rx.ir` (`6.19–8.07 s` on `lvm.ir`) and `filcc -DVERIFFI -O1` (`143 s` build) to **`9.54 s` / `8.39 s` / `10.40 s`** (`424–512 MB`) on `rx.ir` ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
 | **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
-| **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump. M2 lowers joins and loops this way, but 3 of its 13 gate programs (`rec_clos`, `rec_clos2`, `asm`) still overflow 8 MB through direct-style non-tail recursion over 50k–100k-element lists (`List.app`, `String.append`), and M3's gate runs with a 1 GB stack (`ulimit -s 1048576`) for the same reason |
+| **Known (stack)** | Joins and intra-cluster tail loops use constant stack, but list recursion still makes stack use grow with the input. On `lvm.ir`, `existsb` accounts for **43,831 of 43,841** deepest frames because CertiRocq evaluates `orb`'s second argument before the call; OCaml's short-circuit `(||)` makes that recursion a tail call. `Order.v`'s `merge_steps` conses after recursion. Filtering unused frame slots (`d2784c6`) reduced mean frames **483 → 159 bytes** and `lvm.ir` stack **15.0 → 12.1 MiB**, without changing speed (§8, M3). M4's earlier loop rewrites brought `rx.ir` to **1 MB** for `compile-allocated` and **4 MB** for `shared-allocated`; they do not establish a fixed stack bound for larger inputs |
 | **Known (M1)** | `zsys_mmap` (`MAP_NORESERVE`, `fugc_destructor_heap`) grants up to **`4 TiB`** in one reservation at **`8 KiB/GiB`** chunk-map overhead (**`+0.37 MiB`** RSS for the full `8 GiB + 4 KiB` arena), `zsys_madvise` (`MADV_DONTNEED`) reclaims `64 MiB` and `256 MiB` major slices immediately while keeping the `arena` capability valid, and [anf/](../anf/) passes 10,000 randomized tree-rewrite steps (1,851 minor GCs in a 256-word nursery) under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` |
 | **Known (M2)** | [AnfLower.v](../anf/lower/AnfLower.v) lowers CertiRocq's `-O 1 --anf-variant 8` λANF of 13 programs (CertiRocq's 11 standalone tests, `Order.v`'s sort, `Asm.v`'s printer) to checked IR that [valid_fast] accepts, turning 5,169 of 8,106 hoisted functions into blocks; linked with [anf/](../anf/), every program prints `ocamlopt`'s bytes, also over a 256-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` (up to 466,493 minor GCs). With unmapped `nat` / `ascii` / `string` on both sides and checks kept, wall time is **`3.2–6.9×`** `ocamlopt` on the six programs that run longer than startup and **`19.8×`** on `vs_hard`; in `order`, the collector takes 0.2% of the samples, `anf_apply2` 8% and CertiRocq's uncurry wrappers 12.5% (§8, M2) |
 | **Known (M3)** | The full Gallina backend (`read_text`, [Compile.compile], [Compile.compile_promoted], [Compile.compile_allocated]) compiles through λANF → [AnfLower.v](../anf/lower/AnfLower.v) → `nanofil-backend compile-allocated` ([anf/backend/](../anf/backend/)), matching `ocamlopt` on **all 159 fixture runs** (53 IR fixtures × 3 commands, default + 4,096-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`). After M3's per-call round (`tuple([l, l])` returns, private local entries, frameless leaf functions, align-1 checks), it runs `rx.ir` in **`0.80 / 1.04 s`** (`89 MB`) vs. `0.22 / 0.29 s` (`57 MB`) in `ocamlopt` (**`3.6×`**) and the 4.4 MB `lvm.ir` in **`14.4 / 9.4 s`** (`422 MB`) vs. `3.3 / 2.4 s` (`279 MB`) (**`4.3× / 3.9×`**), missing the 2× mark; calls/prologues/epilogues take ~23%, spills 12%, bounds checks 11%, arena arithmetic 9%, and the collector **1.5%** (§8, M3) |
+| **Known (M4)** | `libnanofil.so` ([anf/lib/](../anf/lib/)) links the arena-compiled Gallina backend, Gallina x86-64 assembler ([Encode.v](../rocq/backend/Encode.v), byte-identical to GNU `as` on 228 compiles), Gallina ELF shared-object linker ([Elf.v](../rocq/backend/Elf.v)) and Gallina regex compiler ([Rx.v](../anf/rx/Rx.v), byte-identical to [rx.pl](../../experiments/regex-nanofil/rx.pl) on 2,525 files), passing **795 IR compiles** and **48 regex compiles** across both nurseries (`nanofil-anf-lib`). In-process via `memfd_create` + `dlopen`, `pcre2_jit_compile` compiles `hook.c`'s 39 patterns in **`10–141 ms` per pattern** (**`1.6 s` total** vs. `12 s` via `rxc`, zero child processes or disk files) and passes `pcre2test -jit` on `testinput1` and `testinput2` (§8, M4) |
 
 ## 8. Milestones
 
@@ -894,21 +914,42 @@ Times are the best of three wall times with a 1 GB stack on both sides,
 process startup included (`clos`, which computes almost nothing, takes
 12 ms against 3 ms):
 
-| Program | Hoisted fns | Blocks | Fids | Asm lines | Output bytes | GCs | GCs (256 words) | Arena | `ocamlopt` | Ratio | 8 MB stack |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| `demo1` | 405 | 390 | 1 | 28,039 | 4,301 | 0 | 639 | 11 ms | 3 ms | startup | ok |
-| `demo2` | 411 | 392 | 4 | 25,273 | 1,101 | 0 | 173 | 11 ms | 3 ms | startup | ok |
-| `list_sum` | 148 | 88 | 14 | 48,963 | 3 | 0 | 46 | 12 ms | 3 ms | startup | ok |
-| `vs_easy` | 1,984 | 1,119 | 495 | 622,854 | 4 | 0 | 220 | 12 ms | 3 ms | startup | ok |
-| `vs_hard` | 1,970 | 1,118 | 490 | 636,405 | 4 | 52 | 215,176 | 277 ms | 14 ms | **19.8×** | ok |
-| `binom` | 229 | 138 | 27 | 98,085 | 4 | 0 | 291 | 17 ms | 6 ms | startup | ok |
-| `color` | 491 | 245 | 107 | 302,934 | 9 | 9 | 40,949 | 63 ms | 13 ms | 4.8× | ok |
-| `clos` | 161 | 93 | 19 | 53,279 | 1 | 0 | 1 | 12 ms | 3 ms | startup | ok |
-| `rec_clos` | 161 | 91 | 15 | 57,954 | 100,001 | 23 | 108,064 | 125 ms | 27 ms | 4.6× | arena overflows |
-| `rec_clos2` | 162 | 92 | 15 | 56,957 | 400,001 | 59 | 258,067 | 272 ms | 84 ms | 3.2× | both overflow |
-| `sha_fast` | 560 | 276 | 120 | 243,571 | 112 | 8 | 35,116 | 79 ms | 18 ms | 4.4× | ok |
-| `order` | 724 | 571 | 36 | 136,807 | 33,841 | 112 | 466,493 | 687 ms | 99 ms | 6.9× | ok |
-| `asm` | 700 | 556 | 37 | 184,551 | 138,451 | 34 | 146,080 | 232 ms | 51 ms | 4.5× | arena overflows |
+The first table records the lowered programs' size and output.
+
+| Program | Hoisted fns | Blocks | Fids | Asm lines | Output bytes |
+|---|---:|---:|---:|---:|---:|
+| `demo1` | 405 | 390 | 1 | 28,039 | 4,301 |
+| `demo2` | 411 | 392 | 4 | 25,273 | 1,101 |
+| `list_sum` | 148 | 88 | 14 | 48,963 | 3 |
+| `vs_easy` | 1,984 | 1,119 | 495 | 622,854 | 4 |
+| `vs_hard` | 1,970 | 1,118 | 490 | 636,405 | 4 |
+| `binom` | 229 | 138 | 27 | 98,085 | 4 |
+| `color` | 491 | 245 | 107 | 302,934 | 9 |
+| `clos` | 161 | 93 | 19 | 53,279 | 1 |
+| `rec_clos` | 161 | 91 | 15 | 57,954 | 100,001 |
+| `rec_clos2` | 162 | 92 | 15 | 56,957 | 400,001 |
+| `sha_fast` | 560 | 276 | 120 | 243,571 | 112 |
+| `order` | 724 | 571 | 36 | 136,807 | 33,841 |
+| `asm` | 700 | 556 | 37 | 184,551 | 138,451 |
+
+The second records collections, wall time, and the 8 MB stack test.
+The two GC columns use the default and 256-word nurseries, respectively.
+
+| Program | GCs | GCs (256 words) | Arena | `ocamlopt` | Ratio | 8 MB stack |
+|---|---:|---:|---:|---:|---:|---|
+| `demo1` | 0 | 639 | 11 ms | 3 ms | startup | ok |
+| `demo2` | 0 | 173 | 11 ms | 3 ms | startup | ok |
+| `list_sum` | 0 | 46 | 12 ms | 3 ms | startup | ok |
+| `vs_easy` | 0 | 220 | 12 ms | 3 ms | startup | ok |
+| `vs_hard` | 52 | 215,176 | 277 ms | 14 ms | **19.8×** | ok |
+| `binom` | 0 | 291 | 17 ms | 6 ms | startup | ok |
+| `color` | 9 | 40,949 | 63 ms | 13 ms | 4.8× | ok |
+| `clos` | 0 | 1 | 12 ms | 3 ms | startup | ok |
+| `rec_clos` | 23 | 108,064 | 125 ms | 27 ms | 4.6× | arena overflows |
+| `rec_clos2` | 59 | 258,067 | 272 ms | 84 ms | 3.2× | both overflow |
+| `sha_fast` | 8 | 35,116 | 79 ms | 18 ms | 4.4× | ok |
+| `order` | 112 | 466,493 | 687 ms | 99 ms | 6.9× | ok |
+| `asm` | 34 | 146,080 | 232 ms | 51 ms | 4.5× | arena overflows |
 
 - **Fail-first.** Leaving the reloaded roots unbound after a call (the
   values from before the call stay in use) makes the 256-word runs of
@@ -1016,15 +1057,113 @@ Results:
   the IR by 37% and slowing `rec_clos2` by 1.8× (wider recursive
   frames), so it is not landed.
 
+- **Smaller frames do not make recursion constant-stack.**
+  `Regs.v` used to reserve a plain frame slot for every temporary,
+  including those held in registers. Keeping only slots that this mode
+  uses reduced the mean frame from **483 to 159 bytes** and the largest
+  from **84 KB to 512 bytes**. The body of `Order.v`'s `merge_steps`
+  shrank from **544 to 208 bytes**. The emitted code is otherwise the
+  same apart from frame offsets, and speed is unchanged. The 159-run
+  equivalence gate still passes.
+
+  Smaller frames reduced the stack needed for `lvm.ir` from **15.0 to
+  12.1 MiB**, but the stack still grows with the input. At maximum
+  depth, **43,831 of 43,841 frames** belong to `existsb`, at 256 bytes
+  each. That function tests list elements recursively. CertiRocq
+  evaluates its recursive call before combining the result with `orb`.
+  OCaml extraction instead uses short-circuit `(||)`, making that call
+  a tail call.
+
+  The other measured source is `merge_steps`, which builds a list cell
+  after its recursive call in both builds. Smaller frames and local
+  tail-call jumps save stack, but do not remove this pending work at
+  each list element. Commit `d2784c6` records the frame reduction;
+  [the frame finding](../../blocks/2026/11/b-2026-11-11-anf-frames.xml)
+  and [anf/backend/](../anf/backend/) record the measurements.
+
 **M4. In-process `libnanofil` and three-stage self-hosting.**
-Link the arena-compiled Gallina backend behind `nanofil_compile_nfb` /
-`nanofil_compile_ir` as a pure Fil-C shared library (`libnanofil.so`),
-wire `rxc` to call it in-process without spawning `nanofil-backend`, and
-run a three-stage bootstrap: stage 1 (`ocamlopt` build) compiles the
-λANF of the backend + `AnfLower.v` to stage 2 (Fil-C ELF), which
-compiles the same NFB/λANF input to stage 3 assembly. Gate: stage 2 and
-stage 3 assembly are byte-identical; `rxc` passes all 39 hook patterns
-under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` with recorded cold-miss latency.
+
+Link the arena-compiled Gallina backend as a pure Fil-C shared library
+(`libnanofil.so`) so programs can compile IR and regex bytecode
+in-process without spawning `nanofil-backend`.
+
+The remaining bootstrap must show that the compiler can rebuild itself.
+Stage 1 is the OCaml build. It compiles the λANF of the backend and
+lowerer to stage 2, a Fil-C executable. Stage 2 then compiles the same
+input to stage 3 assembly. The gate requires byte-identical stage-2 and
+stage-3 assembly, plus all 39 hook patterns passing under
+`FUGC_SCRIBBLE=1` and `FUGC_VERIFY=1` with recorded cold-miss latency.
+
+*The in-process library is built; the three-stage bootstrap remains open.*
+The implementation is in [anf/lib/](../anf/lib/) and
+[anf/rx/](../anf/rx/). Its on-demand check is
+`nix build -L .#checks.x86_64-linux.nanofil-anf-lib`.
+
+- **The library compiles and loads code without a child process.**
+  The interface in §6 provides five IR commands: `compile`,
+  `compile-promoted`, `compile-allocated`, `object-allocated`, and
+  `shared-allocated`. The last assembles and links directly in Gallina
+  through [Encode.v](../rocq/backend/Encode.v) and
+  [Elf.v](../rocq/backend/Elf.v). The assembler matches GNU `as`
+  **byte-for-byte on 228 compiles**.
+
+  The loader uses `memfd_create` and `dlopen`, with no disk files.
+  It gives each image a unique spelling of its `/proc/self/fd` path,
+  using `/.` and `//`. Otherwise, reusing a closed descriptor's number
+  could make `dlopen` return an earlier image's handle.
+
+  The gate matches the reference on **all 795 IR compiles** and
+  **all 48 regex compiles**. It runs 53 IR fixtures with five commands
+  for three rounds, and 16 regex files for three rounds. Both the
+  default and 4,096-word nurseries pass under
+  `FUGC_SCRIBBLE=1` and `FUGC_VERIFY=1`, and all 28 loadable shared objects
+  load.
+
+  Two planted bugs show that the gate detects broken state reuse.
+  Rewinding to word 1 instead of the saved mark fails with the small
+  nursery. Opening every image as plain `/proc/self/fd/N` fails the load
+  gate by returning an earlier image's handle.
+
+  Rewriting list loops in `Encode.v` and `Drive.v` reduced the stack
+  needed for `rx.ir`'s shared object from 16–24 MB to 4 MB. M4 measured
+  these library times on the 367 KB input:
+
+| Command | Time | Stack |
+|---|---:|---:|
+| `compile` | 0.92 s | — |
+| `compile-allocated` | 1.27 s | 1 MB |
+| `shared-allocated` | 1.52 s | 4 MB |
+
+  The shared object is 144 KB. These are M4 library measurements,
+  distinct from the M3 command timings above.
+
+- **PCRE2 compiles patterns in-process.**
+  [Rx.v](../anf/rx/Rx.v) ports
+  [rx.pl](../../experiments/regex-nanofil/rx.pl) to Gallina and emits
+  identical bytes on **2,525 files**. Across 1,362 PCRE2 test functions
+  of ≤128 blocks, a fresh-process compile takes a **19 ms median** and
+  at most 154 ms.
+
+  Linked into PCRE2 with `PCRE2_RX_NANOFIL`, the library compiles 39 of
+  `hook.c`'s 41 patterns, and all 39 agree with the interpreter.
+  Compilation takes **10–141 ms per pattern**, or **1.6 s total**,
+  versus 12 s with a cold `rxc` cache. It also passes `pcre2test -jit`
+  on `testinput1` and `testinput2` under
+  `FUGC_SCRIBBLE=1` and `FUGC_VERIFY=1`.
+
+- **Stack growth and image lifetime still limit the library.**
+  `nanofil_compile_regex` refuses functions over 128
+  blocks, leaving larger patterns on PCRE2's interpreter. Before the
+  frame-slot reduction recorded under M3, functions of ≤133 blocks fit
+  in a 1 MB stack, 248 blocks needed >6 MB, and 412 blocks overflowed
+  8 MB. That last run was 13,351 frames deep in `merge_steps`.
+  Its smaller frame now saves stack, but the recursion still grows with
+  the input; those earlier block-count measurements are not new limits
+  measured after `d2784c6`, and the library retains the 128-block cap.
+  Fil-C's `dlclose` does not unload shared objects, so each compiled
+  pattern image (13–140 KB) stays mapped until exit. And Fil-C's
+  `zthread_create2` ignores `pthread_attr_setstacksize`, sizing thread
+  stacks from `ulimit -s` (or 2 MB when unlimited).
 
 **M5. `never_panics`, Campaign 5 check erasure, and λANF simulation.**
 Prove `arena_bounds` + `live` preservation in [Logic.v](../rocq/theories/logic/Logic.v)
