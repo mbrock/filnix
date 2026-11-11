@@ -46,8 +46,8 @@ units='libio/__fpending.os libio/ferror.os libio/filedoalloc.os libio/fileops.os
 libio/genops.os libio/iofclose.os libio/iofputs.os libio/ioputs.os libio/stdfiles.os
 libio/stdio.os libio/vtables.os termios/isatty_nostatus.os io/write.os io/lseek64.os
 io/fstat64.os io/close_nocancel.os io/close_nocancel_nostatus.os posix/_exit.os
-stdlib/exit.os stdlib/cxa_atexit.os stdlib/atexit.oS nptl/libc-cleanup.os
-misc/single_threaded.os csu/errno.os misc/makedev.os io/write_nocancel.os'
+stdlib/exit.os stdlib/cxa_atexit.os stdlib/atexit.oS stdlib/cxa_thread_atexit_impl.os
+nptl/libc-cleanup.os misc/single_threaded.os csu/errno.os misc/makedev.os io/write_nocancel.os'
 roots='puts fputs __fpending ferror fclose exit atexit _exit __close_nocancel_nostatus'
 
 # NAME|FUNCTIONS (printed and decoded, in link order).
@@ -55,6 +55,7 @@ fixtures='
 Sys|__GI__exit __GI___libc_write __GI___write_nocancel __GI___fstat64 __lseek64 __GI___close_nocancel __GI___close_nocancel_nostatus __isatty_nostatus __GI___libc_cleanup_push_defer __GI___libc_cleanup_pop_restore
 LibioRead|__fpending _IO_ferror __gnu_dev_major __GI__IO_file_stat __GI__IO_file_close __GI__IO_setb __GI__IO_doallocbuf __GI__IO_file_doallocate _IO_new_file_write
 LibioDoWrite|_IO_new_do_write _IO_new_file_overflow
+LibioGen|__GI___overflow __GI__IO_default_xsputn __GI__IO_unsave_markers __GI___call_tls_dtors
 LibioXsputn|_IO_new_file_xsputn
 LibioPuts|__GI__IO_puts __GI__IO_fputs
 LibioUnlink|__GI__IO_un_link _IO_new_file_finish __GI__IO_default_finish
