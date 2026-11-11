@@ -93,12 +93,6 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Lemma bytes_le_eq b o x y n : x = y -> bytes b o (le_bytes x n) -∗ bytes b o (le_bytes y n).
 Proof. intros ->. auto. Qed.
 
-(** What `c: _IO_new_file_write` leaves: r of the n bytes written,
-    all of them with the flags as they were, or fewer after a failed
-    call, which set `c: _IO_ERR_SEEN`. *)
-Definition fw_post (n fl r fl' : Z) : Prop :=
-  (r = n /\ fl' = fl) \/ (0 <= r < n /\ fl' = Z.lor fl io_err_seen).
-
 (** The pieces a write of the bytes xs reads, as one list. *)
 Lemma live_bytes_pts b reg o xs : live b reg -∗ bytes b o xs -∗ pts ([(PLive b, VLive reg)] ++ byte_ps b o xs).
 Proof. iIntros "Hl Hb". rewrite pts_app. iFrame. Qed.

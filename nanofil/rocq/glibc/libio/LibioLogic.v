@@ -16,7 +16,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From iris.program_logic Require Import language weakestpre.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
-  Pieces Heap Language Logic StringLogic MemLogic.
+  Pieces Heap Language Logic StringLogic MemLogic StepRules ExternalCalls ExternalMachine.
 From Nanofil Require WordBits Symbolic.
 From Glibc Require Import OsBlocks OsWorld FileInv.
 Import ListNotations.
@@ -184,7 +184,8 @@ Ltac ar := unfold off_cleanup, off_cleanup_jmp, off_cancelhandling, off_lk_lock,
   off_flags, off_read_ptr, off_write_base, off_write_ptr, off_write_end, off_buf_base, off_buf_end,
   off_chain, off_fileno, off_flags2, off_lock, off_wide, off_prevchain, off_mode, off_vtable, off_ptr,
   off_old_offset, off_column, off_shortbuf, off_offset, off_codecvt, off_freeres_list, off_freeres_buf,
-  off_total_written; arith.
+  off_total_written, vt_file, vt_wfile, slot_finish, slot_overflow, slot_xsputn, slot_doallocate, slot_write,
+  slot_close, slot_stat; arith.
 
 (** Write each address of the goal's environment without wraps. *)
 Ltac norm := cbn [ptr_addr ptr_cap]; unwrap.
@@ -209,7 +210,7 @@ Ltac innermost X :=
 (** Decide a goal of integer tests, such as a branch condition, by
     a case on each test and arithmetic. *)
 Ltac decide_ints :=
-  unfold sign_extension; cbv zeta; unwrap;
+  unfold sign_extension, vt_file, vt_wfile; cbv zeta; unwrap;
   repeat match goal with
     | |- context [?x =? ?y] => innermost x; innermost y; destruct (Z.eqb_spec x y); cbn [negb andb orb]
     | |- context [?x <? ?y] => innermost x; innermost y; destruct (Z.ltb_spec x y); cbn [negb andb orb]
@@ -224,16 +225,62 @@ Ltac decide_ints :=
     run of [put]s over an unknown env, as at a loop's head, each
     [lookup] is taken through the [put]s ([Symbolic.lookup_after_put])
     and, past them, from a hypothesis `c: lookup k e = Some x`. *)
+(** A lookup past a [put] of another name. *)
+Lemma lookup_put_miss {A : Type} k k' (v : A) e r :
+  name_eqb k k' = false -> lookup k e = r -> lookup k (put k' v e) = r.
+Proof. intros H <-. apply Symbolic.lookup_after_put_other. exact H. Qed.
+
+(** Prove `c: lookup k E = r`, r found: through E's [put]s, each of
+    another name by computation, to the [put] of k or, past them, to a
+    hypothesis. The proof applies one small lemma per [put], so its
+    size does not grow with the goal's. *)
+Ltac lk_prove :=
+  first [ apply Symbolic.lookup_after_put_same
+        | eapply lookup_put_miss; [vm_compute; reflexivity | lk_prove]
+        | eassumption ].
+
 Ltac vx :=
   first
     [ reflexivity
     | cbn -[put];
-      repeat (rewrite Symbolic.lookup_after_put;
-              lazymatch goal with |- context [name_eqb ?a ?b] =>
-                let r := eval vm_compute in (name_eqb a b) in change (name_eqb a b) with r end;
-              cbn beta iota);
-      repeat match goal with H : lookup ?k ?e = Some _ |- context [lookup ?k ?e] => rewrite H end;
+      repeat match goal with
+        |- context [lookup ?k ?E] =>
+          let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H
+        end;
       reflexivity ].
+
+(** What `c: _IO_new_file_write` leaves: r of the n bytes written,
+    all of them with the flags as they were, or fewer after a failed
+    call, which set `c: _IO_ERR_SEEN`. *)
+Definition fw_post (n fl r fl' : Z) : Prop :=
+  (r = n /\ fl' = fl) \/ (0 <= r < n /\ fl' = Z.lor fl io_err_seen).
+
+(** ## Functions of the genv *)
+
+(** The genv ge defines the function gf as n, at the pointer its
+    symbol n holds, whose capability is that function's. *)
+Definition ge_fn (ge : genv) (n : string) (gf : func) : Prop :=
+  exists a, lookup (TAtom n) (ge_globals ge) = Some (mkPtr a (Fn (TAtom n))) /\
+            find_fn ge (TAtom n) = Some (Defined gf) /\ 0 <= a < 2 ^ 64.
+
+(** Such a function's pointer passes `c: check_function`. *)
+Lemma ge_fn_check ge n gf : ge_fn ge n gf -> function_check_res ge (sym_ptr ge n) = Some ok.
+Proof.
+  intros (a & Hl & _ & _). unfold sym_ptr, function_check_res. rewrite Hl. cbn. rewrite Hl. cbn.
+  rewrite Z.eqb_refl. reflexivity.
+Qed.
+
+(** Its pointer's capability names it. *)
+Lemma ge_fn_cap ge n gf : ge_fn ge n gf -> ptr_cap (FileInv.sym_ptr ge n) = Fn (TAtom n).
+Proof. intros (a & Hl & _ & _). unfold sym_ptr. rewrite Hl. reflexivity. Qed.
+
+(** Its pointer is a canonical address. *)
+Lemma ge_fn_addr ge n gf : ge_fn ge n gf -> 0 <= ptr_addr (sym_ptr ge n) < 2 ^ 64.
+Proof. intros (a & Hl & _ & Ha). unfold sym_ptr. rewrite Hl. exact Ha. Qed.
+
+(** It is the function [find_fn] finds. *)
+Lemma ge_fn_find ge n gf : ge_fn ge n gf -> find_fn ge (TAtom n) = Some (Defined gf).
+Proof. intros (a & _ & Hf & _). exact Hf. Qed.
 
 (** ## Steps over a Logic instance *)
 
@@ -295,4 +342,35 @@ Ltac st :=
   | Exec _ [] (JGoto _) => iApply wp_goto; iNext
   end).
 
+(** ## A check at a share *)
+
+Import LG0.L.
+
+Section rules.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context {world : Type} (registry : name -> option (contract world))
+  (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
+
+Local Instance step_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** [wp_check_read] at a share: a [[check]] for reading of the pointer
+    p, through a read-write or read-only capability for the object b of
+    which a share of the life is owned. *)
+Lemma wp_check_read_dq f e ls l d lo hi al args rest j classes p b reg dq Φ :
+  op_arg_classes (Check lo hi Read al) A = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> b <= raw_address (ptr_addr p) lo ->
+  raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg -> raw_address (ptr_addr p) lo mod al = 0 ->
+  liveq dq b reg -∗
+  ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : sexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp H1 H2 H3. apply (wp_read_dq registry wi ge dq _ _ _ []).
+  intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
+  apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+  apply op_check. exact (access_read _ _ _ _ _ _ _ Hp E H1 H2 H3).
+Qed.
+
+End rules.
 End LibioStepOn.

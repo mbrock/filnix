@@ -61,6 +61,13 @@ Module OW := OWr.OW.
 Module ST := LibioStepOn R LG0.
 Import FI.ML FI.LG FI.L OW FI ST.
 
+(** A signed 32-bit load of an owned [int_cell]'s bytes, H naming the
+    object's life and the bytes. *)
+Ltac load_int H :=
+  iApply (wp_raw_load_sub_bytes_dq with H);
+    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | ar |];
+  iNext; iIntros H.
+
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
