@@ -32,7 +32,7 @@ concurrency:
 jobs:
   check:
     name: Shard ${{ matrix.shard }}/8
-    runs-on: ubuntu-24.04
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
     timeout-minutes: 60
     strategy:
       fail-fast: false
