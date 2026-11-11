@@ -66,6 +66,26 @@ int anf_arena_reset(uint32_t *arena, struct anf_state *st, uint32_t madvise_thre
     return 0;
 }
 
+int anf_arena_rewind(uint32_t *arena, struct anf_state *st, uint32_t mark,
+                     uint32_t madvise_threshold_words) {
+    if (mark < 1U || mark > st->major_idx)
+        return -1;
+    st->young_idx = st->nursery_base;
+    st->major_idx = mark;
+    st->root_sp = 0U;
+    if (st->major_hwm > mark && st->major_hwm - mark > madvise_threshold_words) {
+        size_t lo = ((size_t)mark * 4ULL + 4095ULL) & ~(size_t)4095U;
+        size_t hi = ((size_t)st->major_hwm * 4ULL + 4095ULL) & ~(size_t)4095U;
+        size_t major_page_limit = ((size_t)st->nursery_base * 4ULL) & ~(size_t)4095U;
+        if (hi > major_page_limit)
+            hi = major_page_limit;
+        if (hi > lo && zsys_madvise((uint8_t *)arena + lo, hi - lo, ANF_MADV_DONTNEED) != 0)
+            return -1;
+        st->major_hwm = mark;
+    }
+    return 0;
+}
+
 int anf_arena_destroy(uint32_t *arena, struct anf_state *st) {
     int r1 = arena ? zsys_munmap(arena, (size_t)st->slab_bytes) : 0;
     int r2 = st ? zsys_munmap(st, (size_t)st->state_bytes) : 0;

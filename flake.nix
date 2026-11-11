@@ -393,6 +393,12 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            # That backend as libnanofil.so, called in one process (M4).
+            # As nanofil-anf-lower, only when asked.
+            nanofil-anf-lib = import ./nanofil/nix/anf-lib.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+            };
             nanofil-hello = import ./nanofil/nix/hello.nix {
               inherit pkgs;
               filcc = filcc-staging;

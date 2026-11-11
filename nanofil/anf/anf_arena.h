@@ -71,6 +71,13 @@ void anf_oom(void);
 int anf_arena_init(uint32_t **arena_out, struct anf_state **st_out,
                    uint32_t slab_words, uint32_t nursery_words, uint32_t root_cap);
 int anf_arena_reset(uint32_t *arena, struct anf_state *st, uint32_t madvise_threshold_words);
+/* Back to the state when the major heap was mark words long, with an
+   empty nursery and no roots: what a program put below mark, such as
+   its constants, stays. The pages above mark go back to the kernel
+   (MADV_DONTNEED) when the heap had grown more than
+   madvise_threshold_words past it. -1 for a mark past the major heap. */
+int anf_arena_rewind(uint32_t *arena, struct anf_state *st, uint32_t mark,
+                     uint32_t madvise_threshold_words);
 int anf_arena_destroy(uint32_t *arena, struct anf_state *st);
 
 void anf_minor_gc(uint32_t *arena, uint32_t *roots, struct anf_state *st);

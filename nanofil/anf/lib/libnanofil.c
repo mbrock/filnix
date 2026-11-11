@@ -1,0 +1,169 @@
+/* libnanofil's entry points (nanofil.h) around the program that
+ * anf/backend/Drive.v's [run] is, as anf/backend/driver.c runs it, but
+ * in the caller's process, and many times over one arena.
+ *
+ * The program's value is the closure of [run] (anf_main, on a fresh
+ * arena, which also copies the constants' pool to the bottom of the
+ * major heap). The first call makes the arena, runs anf_main and
+ * collects once with the closure as a root, so that the closure is in
+ * the major heap too, and keeps the length of the major heap then as
+ * the mark that every later call rewinds to (anf_arena_rewind). A call
+ * copies the text into the arena as pieces of ANF_PIECE bytes, applies
+ * [run] to the command and the pieces, and copies each chunk of the
+ * stream it gives into one malloc'd buffer.
+ *
+ * ANF_SLAB, ANF_NURSERY and ANF_ROOTS size the arena as for driver.c;
+ * ANF_RELEASE (default 2^22 words, 16 MiB) is how far past the mark the
+ * major heap may have grown before a call gives its pages back. */
+#include <pthread.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include "../anf_arena.h"
+#include "nanofil.h"
+
+uint32_t anf_main(uint32_t *arena, struct anf_state *st);
+uint32_t anf_apply2(uint32_t *arena, struct anf_state *st, uint32_t fid, uint32_t a, uint32_t b);
+const uint8_t *anf_str_bytes(const uint32_t *arena, uint32_t s, uint32_t *len);
+
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static int made; /* 0 not yet, 1 made, -1 could not be made */
+static uint32_t *arena;
+static struct anf_state *st;
+static uint32_t run_closure, mark, release_words, piece_bytes;
+
+static uint32_t env_words(const char *name, uint32_t dflt)
+{
+    const char *s = getenv(name);
+    return s ? (uint32_t)strtoul(s, NULL, 0) : dflt;
+}
+
+static int make(void)
+{
+    if (anf_arena_init(&arena, &st, env_words("ANF_SLAB", 1U << 28),
+                       env_words("ANF_NURSERY", ANF_DEFAULT_NURSERY), env_words("ANF_ROOTS", 1U << 24)))
+        return -1;
+    anf_root_push(st, anf_main(arena, st));
+    anf_minor_gc(arena, anf_roots(st), st);
+    run_closure = anf_root_pop(st);
+    mark = st->major_idx;
+    release_words = env_words("ANF_RELEASE", 1U << 22);
+    piece_bytes = env_words("ANF_PIECE", 1U << 20);
+    return 1;
+}
+
+static uint32_t apply(uint32_t clo, uint32_t arg)
+{
+    uint32_t idx = ANF_IDX(clo);
+    return anf_apply2(arena, st, arena[idx + 1U], arena[idx + 2U], arg);
+}
+
+/* A block of two scanned fields, the ordinal ord, from the values on top
+ * of the shadow roots (a under b), which it pops. */
+static uint32_t pair(uint32_t ord)
+{
+    uint32_t idx = anf_alloc_words(arena, st, 3U);
+    uint32_t b = anf_root_pop(st), a = anf_root_pop(st);
+    arena[idx] = ANF_HDR(2U, ANF_ST_SCAN, ord);
+    arena[idx + 1U] = a;
+    arena[idx + 2U] = b;
+    return ANF_BOX(idx);
+}
+
+/* A growing buffer for the output. */
+struct buf {
+    char *b;
+    size_t n, cap;
+    int failed;
+};
+
+static void put(struct buf *o, const uint8_t *p, size_t n)
+{
+    if (o->failed)
+        return;
+    if (o->cap - o->n < n + 1U) {
+        size_t cap = o->cap ? o->cap : 1U << 16;
+        while (cap - o->n < n + 1U)
+            cap *= 2U;
+        char *b = realloc(o->b, cap);
+        if (!b) {
+            o->failed = 1;
+            return;
+        }
+        o->b = b;
+        o->cap = cap;
+    }
+    if (n)
+        memcpy(o->b + o->n, p, n);
+    o->n += n;
+    o->b[o->n] = 0;
+}
+
+static int compile_locked(int command, const char *ir, size_t ir_len, struct buf *o)
+{
+    if (made == 0)
+        made = make();
+    if (made < 0 || ir_len > 0xFFFFFFFFULL)
+        return NANOFIL_NOMEMORY;
+    if (anf_arena_rewind(arena, st, mark, release_words))
+        return NANOFIL_NOMEMORY;
+
+    /* The pieces, last first, consed onto nil. */
+    anf_root_push(st, ANF_IMM(0U));
+    for (size_t end = ir_len; end > 0;) {
+        size_t start = (end - 1U) / piece_bytes * piece_bytes;
+        uint32_t s = anf_bytes_from_buf(arena, st, (const uint8_t *)ir + start, (uint32_t)(end - start));
+        uint32_t l = anf_root_pop(st);
+        anf_root_push(st, s);
+        anf_root_push(st, l);
+        anf_root_push(st, pair(0U));
+        end = start;
+    }
+    uint32_t input = anf_root_pop(st);
+    anf_root_push(st, ANF_IMM((uint32_t)command));
+    anf_root_push(st, input);
+    uint32_t out = apply(run_closure, pair(0U));
+
+    /* Done (ordinal 0) or Chunk (ordinal 1). */
+    while (ANF_HDR_ORD(arena[ANF_IDX(out)]) == 1U) {
+        for (uint32_t ps = arena[ANF_IDX(out) + 1U]; !ANF_IS_IMM(ps); ps = arena[ANF_IDX(ps) + 2U]) {
+            uint32_t len;
+            const uint8_t *b = anf_str_bytes(arena, arena[ANF_IDX(ps) + 1U], &len);
+            put(o, b, len);
+        }
+        out = apply(arena[ANF_IDX(out) + 2U], ANF_IMM(0U));
+    }
+    uint32_t code = ANF_IMM_U31(arena[ANF_IDX(out) + 1U]);
+    if (code != 0U) {
+        uint32_t len;
+        const uint8_t *b = anf_str_bytes(arena, arena[ANF_IDX(out) + 2U], &len);
+        o->n = 0;
+        put(o, b, len);
+    }
+    put(o, NULL, 0);
+    return o->failed ? NANOFIL_NOMEMORY : (int)code;
+}
+
+int nanofil_compile_ir(int command, const char *ir, size_t ir_len, char **out, size_t *out_len)
+{
+    struct buf o = {NULL, 0, 0, 0};
+    int code;
+    *out = NULL;
+    *out_len = 0;
+    if (command < NANOFIL_COMPILE || command > NANOFIL_COMPILE_ALLOCATED) {
+        static const char why[] = "no such command";
+        put(&o, (const uint8_t *)why, sizeof why - 1U);
+        code = o.failed ? NANOFIL_NOMEMORY : NANOFIL_REFUSED;
+    } else {
+        pthread_mutex_lock(&lock);
+        code = compile_locked(command, ir, ir_len, &o);
+        pthread_mutex_unlock(&lock);
+    }
+    if (code == NANOFIL_NOMEMORY) {
+        free(o.b);
+        return code;
+    }
+    *out = o.b;
+    *out_len = o.n;
+    return code;
+}
