@@ -1,3 +1,5 @@
+import { moved } from "./moves.mjs";
+
 // R2 holds immutable releases/<sha>/ trees. Only current.json is mutable.
 // Canonical pages resolve current.json once. Their resource URLs are pinned
 // at publication, so promotion cannot mix assets from different releases.
@@ -67,6 +69,12 @@ export default {
       if (!tail.endsWith("/") && await env.SITE.head(`${key}/index.html`)) {
         url.pathname += "/";
         return reply(null, 308, { location: url.href });
+      }
+      // A page a restructuring moved (moves.mjs), so old links still work.
+      const now = !pinned && moved(tail);
+      if (now) {
+        url.pathname = now;
+        return reply(null, 301, { location: url.href });
       }
       return reply("Not found", 404);
     }

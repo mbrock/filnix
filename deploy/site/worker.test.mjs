@@ -36,6 +36,7 @@ function site() {
   } };
   return {
     promote(value) { current = value; },
+    add(path, body) { files.set(`releases/${current}${path}`, body); },
     expire(value) {
       for (const key of files.keys()) if (key.startsWith(`releases/${value}/`)) files.delete(key);
     },
@@ -124,4 +125,21 @@ test("conditional requests distinguish not-modified from failed preconditions", 
   assert.equal((await s.fetch(path, { headers: { "if-unmodified-since": "Tue, 10 Nov 2026 08:00:00 GMT" } })).status, 412);
   assert.equal((await s.fetch(path, { method: "PUT", body: "no" })).status, 405);
   assert.equal((await s.fetch("/%00")).status, 400);
+});
+
+test("a page a restructuring moved redirects to where it lives now", async () => {
+  const s = site(), rocq = "/nanofil/rocq/";
+  s.add(`${rocq}rocq-theories-soundness-Machine.html`, "machine");
+  const old = await s.fetch(`${rocq}rocq-theories-Machine.html?x=1`);
+  assert.equal(old.status, 301);
+  assert.equal(old.headers.get("location"), `https://filnix.org${rocq}rocq-theories-soundness-Machine.html?x=1`);
+  assert.equal((await s.fetch(`${rocq}rocq-theories-HelloMain.html`)).headers.get("location"),
+    `https://filnix.org${rocq}rocq-theories-hello_contracts-HelloMain.html`);
+  // A page that exists again under its old name is served, not moved.
+  s.add(`${rocq}rocq-theories-Syntax.html`, "flat");
+  assert.equal(await (await s.fetch(`${rocq}rocq-theories-Syntax.html`)).text(), "flat");
+  for (const path of [`${rocq}rocq-theories-Nowhere.html`, `${rocq}rocq-theories-soundness-Walk.html`,
+    `${rocq}rocq-glibc-Machine.html`, `${prefix}${rocq}rocq-theories-Machine.html`]) {
+    assert.equal((await s.fetch(path)).status, 404, path);
+  }
 });

@@ -85,6 +85,10 @@ generated-input producer; the comparison workflow remains a manual benchmark.
 ## Operations
 
 - `node --test deploy/site/worker.test.mjs` checks the public serving contract.
+- `moves.mjs` redirects pages a restructuring moved (301), so old links keep
+  working; the Worker asks it only for a canonical path that is not found.
+  When a change renames or moves pages, add a move there and a test case, then
+  deploy the Worker.
 - `python3 -m unittest discover -s tests -p 'test_site_*.py'` checks publication
   resource pinning and retention.
 - `node packages/site/phone.mjs https://filnix.org/ 320 390` checks live pages.
