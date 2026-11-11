@@ -186,7 +186,8 @@ Definition ovf_ret (ch r : Z) : Prop := r = 2 ^ 32 - 1 \/ r = (if ch =? 2 ^ 32 -
     `c: EOF`, through the jump table of a narrow stream: over the
     stream's life, its jump table pointer, its buffer pointers and
     buffer ([wbuf]) and the rest of it, os fb nb, it returns as
-    [ovf_ret] says, with any buffer and pointers. *)
+    [ovf_ret] says. It leaves an allocated buffer even when output
+    fails, so callers can retain that fact without assuming success. *)
 Definition overflow_spec (os : Z -> option (Z * Z) -> iProp Σ) : Prop :=
   forall fr fb freg nb wp we ch vb vreg Φ,
   call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
@@ -194,7 +195,7 @@ Definition overflow_spec (os : Z -> option (Z * Z) -> iProp Σ) : Prop :=
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ⊢ vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
     wbuf fb nb wp we -∗ os fb nb -∗
-    ▷ (∀ r nb' wp' we', ⌜ovf_ret ch r⌝ -∗
+    ▷ (∀ r nb' wp' we', ⌜ovf_ret ch r /\ nb' <> None⌝ -∗
        live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
        wbuf fb nb' wp' we' -∗ os fb nb' -∗ Φ (Ret (WInt r))) -∗
     WP (ERun fr : sexpr) {{ Φ }}.

@@ -131,7 +131,7 @@ Proof.
       split_and!; first [reflexivity | assumption | lia]. }
     iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
               (mkPtr ea (Obj b)) dq b' reg' so c' ys (t - cnt) with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
-    all: unfold n in *; lk_fin.
+    all: unfold n in *; first [intros _; discriminate | lk_fin].
 Qed.
 
 End rules.

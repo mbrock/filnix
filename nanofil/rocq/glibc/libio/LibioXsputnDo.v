@@ -83,7 +83,7 @@ Lemma wp_xs_L168 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
-  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> nb <> None ->
   c' = Obj b' \/ c' = Ro b' -> 0 < b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 <= d <= T -> T <= n ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -100,7 +100,7 @@ Lemma wp_xs_L168 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d e Φ :
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L168") (b_insts xs_L168) (b_jump xs_L168)))
         : sexpr) {{ Φ }}.
 Proof.
-  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hd HT
+  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hnb Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hd HT
     Hv0 Hc0 Hc11 Hc14 Hc15 Hv4 Hp5 Hv174 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwbf Hos Hl' Hys HK".

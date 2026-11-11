@@ -101,7 +101,8 @@ Proof.
   destruct (Z.eq_dec n 0) as [Hn0 | Hn0].
   { (* No bytes: L12 returns 0. *)
     fbrv false. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HX] Hl' Hys"). right. rewrite Zmod_0_l. unfold n. lia. }
+    iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HX] Hl' Hys").
+    split; [right; rewrite Zmod_0_l; unfold n; lia | intros Hpos; lia]. }
   fbrv true. fs.
   iDestruct "Hxf" as (fl f2 fd tw off m Hfs) "(Hfl & Hrest)". iDestruct "Hfl" as "[%Hfl32 Hfl]".
   assert (H512 : 0 <= Z.land fl 512 < 2 ^ 32) by (apply land_lt32; lia).

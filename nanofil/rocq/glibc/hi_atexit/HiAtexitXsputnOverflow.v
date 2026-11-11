@@ -57,7 +57,7 @@ Proof.
       fr eb fb freg vb vreg bb sz wp we ch with "Hvt Hl Hvtp Hwb Hxf");
       try assumption.
     iNext. iIntros (r wp' we' Hr) "Hl Hvtp Hwb Hxf".
-    iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HM]"). exact Hr.
+    iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HM]"). split; [exact Hr | discriminate].
   - iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160))
       "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
     iDestruct "Hwb" as "((Hrp & Hre & Hrb & Hwb & Hbase & Hbend) & Hwp & Hwe & [%Hwp %Hwe])".
@@ -83,7 +83,7 @@ Proof.
     change (Z.land fl' io_is_appending = 0) in Happ'.
     iAssert (xfields w0 eb fb (Some (bb, sz))) with "[Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr]" as "Hxf".
     { iExists fl', f2, fd, tw', off', m. iFrame. iPureIntro. tauto. }
-    iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HM]"). exact Hr.
+    iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HM]"). split; [exact Hr | discriminate].
 Qed.
 
 End rules.
