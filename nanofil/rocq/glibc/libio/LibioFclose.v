@@ -74,11 +74,12 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_file_close_maybe_unlink`'s triple, as LibioCloseIt.v's
     [wp_glibc__IO_file_close_maybe_unlink] states it. *)
-Definition close_it_spec : Prop := forall fr fb freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg Φ,
+Definition close_it_spec : Prop :=
+  forall fr fb freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg md Φ,
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr -> 0 < n ->
+  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> Z.land f2 32 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 -> Z.land fl io_no_writes = 0 ->
@@ -86,13 +87,14 @@ Definition close_it_spec : Prop := forall fr fb freg fl f2 fd tw off bb breg i x
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> r_kind breg = Heap ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
+  md = 0 \/ md = 2 ^ 32 - 1 ->
   vtables_ro ge vb vreg -∗
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
   icell fb off_total_written tw -∗ icell fb off_offset off -∗ live bb breg -∗ bytes bb i xs -∗ errno_any eb -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 wb -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr (mkPtr (bb + i + n) (Obj bb)) -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  bytes fb off_column [0; 0] -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   pcell fb 80 null -∗ pcell fb 96 null -∗
   ▷ (∀ r fl' k tw', ⌜fw_post n fl r fl' /\ (k = 0 \/ k = 2 ^ 32 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags (closed_flags fl') -∗ int_cell fb off_flags2 f2 -∗
@@ -100,7 +102,7 @@ Definition close_it_spec : Prop := forall fr fb freg fl f2 fd tw off bb breg i x
      errno_any eb -∗
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
-     bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+     bytes fb off_column [0; 0] -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb 80 null -∗ pcell fb 96 null -∗
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -111,7 +113,8 @@ Context (Hci : close_it_spec) (Hunl_spec : unlink_spec w0 registry ge)
 
 (** `c: fclose(stdout)` (`c: _IO_new_fclose`), stdout ge's
     `c: _IO_2_1_stdout_`, the stream fb of the list pre ++ fb :: post,
-    open, narrow (mode 0), linked, its lock free, with n pending bytes
+    open, un-oriented or narrow (`c: _mode` md 0 or -1, as `c: puts`
+    leaves it), linked, its lock free, with n pending bytes, none or some,
     xs at offset i of its heap buffer bb: the bytes go to
     `c: _IO_new_do_write`, r of them written ([fw_post]); the
     descriptor is closed, k the result; the buffer is given up; the
@@ -120,7 +123,7 @@ Context (Hci : close_it_spec) (Hunl_spec : unlink_spec w0 registry ge)
     `c: _offset` -1; stdout is not freed; the result is k if not 0,
     else `c: _IO_new_do_write`'s. *)
 Lemma wp_glibc__IO_new_fclose_stdout fr pre post fb freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg
-    lb lbreg sb sreg fcp pin Φ :
+    lb lbreg sb sreg fcp pin md Φ :
   let n := Z.of_nat (length xs) in
   let fp := mkPtr fb (Obj fb) in
   let wb := mkPtr (bb + i) (Obj bb) in
@@ -129,7 +132,7 @@ Lemma wp_glibc__IO_new_fclose_stdout fr pre post fb freg fl f2 fd tw off bb breg
   lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some fp ->
   lookup (TAtom "_IO_2_1_stdin_") (ge_globals ge) = Some pin -> ptr_addr pin <> fb -> 0 <= ptr_addr pin < 2 ^ 64 ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
-  0 < n -> 0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> Z.land f2 32 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 -> Z.land fl io_no_writes = 0 ->
   Z.land fl io_currently_putting <> 0 -> Z.land fl io_user_buf = 0 -> has fl io_user_lock = false ->
@@ -137,13 +140,14 @@ Lemma wp_glibc__IO_new_fclose_stdout fr pre post fb freg fl f2 fd tw off bb breg
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> r_kind breg = Heap ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 < lb ->
+  md = 0 \/ md = 2 ^ 32 - 1 ->
   vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
   icell fb off_total_written tw -∗ icell fb off_offset off -∗ live bb breg -∗ bytes bb i xs -∗ errno_any eb -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 wb -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr (mkPtr (bb + i + n) (Obj bb)) -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  bytes fb off_column [0; 0] -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   pcell fb 72 null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
   pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
@@ -154,7 +158,7 @@ Lemma wp_glibc__IO_new_fclose_stdout fr pre post fb freg fl f2 fd tw off bb breg
      icell fb off_total_written tw' -∗ icell fb off_offset (2 ^ 64 - 1) -∗ errno_any eb -∗
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
-     bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+     bytes fb off_column [0; 0] -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb 72 null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
      pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗
      io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
@@ -162,8 +166,8 @@ Lemma wp_glibc__IO_new_fclose_stdout fr pre post fb freg fl f2 fd tw off bb breg
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros n fp wb base Hfr Hgout Hgin Hin Hinr Hfc Hfcr Hn0 Hfb Hfal Hfend Hfreg Hf22 Hf232 Hf2r Hfd Hfdr Hfl Happ
-    Hnw Hcp Hub Hul Hlnk Hfb8 He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hlb. subst fp wb base.
+  intros n fp wb base Hfr Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hf22 Hf232 Hf2r Hfd Hfdr Hfl Happ
+    Hnw Hcp Hub Hul Hlnk Hfb8 He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hlb Hmd. subst fp wb base.
   iIntros "#Hvt #Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp
     H72 H80 H96 Hlp Hlk Hio Hlives HK".
   unfold file_size in Hfend.
@@ -179,7 +183,7 @@ Proof.
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   iApply wp_call_bind; [vx | exact Hcif | reflexivity |]. iNext.
   iApply (Hci with "Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp
-            H80 H96"); try side.
+            H80 H96"); try side; try exact Hmd.
   iNext. iIntros (r fl' k tw' [Hpost Hk]) "Hl Hfl Hfl2 Hfd Htw Hoff Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol
     Hmode Hvtp H80 H96". resume.
   iDestruct "Hfl2" as "[%Hf2r' Hfl2]".
@@ -196,7 +200,7 @@ Proof.
   assert (Hcu2 : has (closed_flags fl') io_user_lock = false).
   { unfold has, io_user_lock. rewrite closed_user_lock. reflexivity. }
   cbn [edge_label]. iApply (wp_fclose_L101 w0 registry ge Hunl Hdf Hff Hunl_spec Hunl_unlinked
-               with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 [-]"); try side.
+               with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 [-]"); try side; try exact Hmd.
   iNext. iIntros "Htcb Hl Hfl Hlp Hlk Hio Hlives Hlinks Hfd Hmode Hvtp Hbb H80 H96".
   iSpecialize ("HK" $! r fl' k tw' with "[%]"); [exact (conj Hpost Hk)|].
   assert (Hpr : 0 <= (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k) < 2 ^ 32).
