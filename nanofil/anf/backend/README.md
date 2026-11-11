@@ -59,15 +59,15 @@ function's temporaries (the largest has 66,000).
 All 159 runs (53 fixtures, three commands) print what `nanofil-backend`
 prints, with both nurseries. The table gives the times on the two large
 inputs of [lambda-anf.md](../../docs/lambda-anf.md): the best of 15
-interleaved runs for rx.ir and the median of four for lvm.ir. Both builds
-print the same assembly.
+interleaved runs for rx.ir and the median of two interleaved runs for
+lvm.ir. Both builds print the same assembly.
 
 | input | command | arena | ocamlopt | ratio |
 | --- | --- | ---: | ---: | ---: |
-| rx.ir (367 KB) | compile | 0.80 s | 0.22 s | 3.6× |
-| rx.ir | compile-allocated | 1.04 s | 0.29 s | 3.6× |
-| lvm.ir (4.4 MB) | compile | 14.4 s | 3.3 s | 4.3× |
-| lvm.ir | compile-allocated | 9.4 s | 2.4 s | 3.9× |
+| rx.ir (367 KB) | compile | 0.75 s | 0.23 s | 3.3× |
+| rx.ir | compile-allocated | 0.95 s | 0.29 s | 3.3× |
+| lvm.ir (4.4 MB) | compile | 13.7 s | 3.4 s | 4.0× |
+| lvm.ir | compile-allocated | 8.3 s | 2.6 s | 3.2× |
 
 Times on this orb vary by about 10% from run to run. The arena peaks at
 89 MB on rx.ir and 422 MB on lvm.ir, against 57 MB and 279 MB. Without
@@ -89,16 +89,19 @@ have become cheaper:
   the roots that the incoming arguments fill. A frame holds slots only
   for what the function spills, so the mean frame is 159 bytes instead
   of 483.
+- `AnfLower.v` inlines `orb`, `andb` and the like, so `existsb` and
+  `forallb` stop at the first element that decides them, as in OCaml.
+  Before, they walked every list to its end. A PCRE2 function of 521
+  blocks went from 7.1 s to 2.7 s in compile-allocated, against
+  0.57 s in the OCaml build.
 
 Both builds need a stack that grows with the input, and run.sh gives
-them 1 GB. On lvm.ir the arena build needs 12.1 MiB, and 15.0 MiB with
-the frames of 4a2ef2a. At the deepest point, 43,831 of its 43,841
-frames belong to the body of `existsb`, at 256 bytes a frame.
-CertiRocq evaluates `orb` strictly, so `f a || existsb f l` makes the
-recursive call before `orb`. The OCaml extraction turns `orb` into
-`(||)`, which makes that call a tail call. Order.v's `merge_steps` is
-the other deep recursion: it conses after its recursive call in both
-builds, and a frame of its body takes 208 bytes.
+them 1 GB. On lvm.ir the arena build needs 9.9 MiB. It needed 15.0 MiB
+with the frames of 4a2ef2a, and 12.1 MiB while `existsb` still walked
+whole lists ([../lower](../lower/README.md) explains why it did). At
+the deepest point, 44,101 of its 44,111 frames now belong to the body
+of `app`, at 208 bytes a frame. `app` and Order.v's `merge_steps`
+cons after their recursive calls in both builds.
 
 Where the rest goes, on rx.ir: 86% of the time is in the lowered
 functions, 4% in the string primitives, 1.5% in the collector. The

@@ -2110,6 +2110,15 @@ Definition zm_list {A : Type} (k : Z) (m : ZMap.t (list A)) : list A :=
     names, and computes the live variables again. The curried call is
     then one direct call, and the closure is never built.
 
+    CertiRocq evaluates every argument before a call, so `orb` and
+    `andb` do not short-circuit: `existsb` calls itself on the rest of
+    the list before it tests the head, and walks the whole list as deep
+    as it is long. [simplify] therefore also inlines a tail call of a
+    small case function ([inline_case]) and moves a call into the one
+    arm of the case after it that reads its result ([sink]). `existsb`
+    and `forallb` then stop where OCaml's `(||)` and `(&&)` stop, and
+    their recursive call is a tail call, which becomes a loop.
+
     CertiRocq also passes each global function to the functions that
     call it, as a closure in their environments. The closures' and the
     environments' tags are the tap's anonymous ones: no constructor of
@@ -2313,6 +2322,93 @@ Fixpoint inline_call (d : nat) (fns : ZMap.t (list Z * exp)) (g ft : Z) (ys : li
   | _, _ => ([], TCall g ft ys, s)
   end.
 
+(** Whether the arms are those of a small case function, such as
+    `orb`, `andb` or `negb`: at most four, each binding at most two
+    constructors or projections before it halts. An arm that calls
+    another function is a join point of the caller's cluster, which
+    the inlining would split off as a function of its own. *)
+Definition small_arms (arms : list (Z * exp)) : bool :=
+  (length arms <=? 4)%nat
+  && forallb (fun a => straight 2 (snd a)
+                       && (fix halts (e : exp) : bool :=
+                             match e with
+                             | Econstr _ _ _ e' | Eproj _ _ _ _ e' => halts e'
+                             | Ehalt _ => true
+                             | _ => false
+                             end) (snd a)) arms.
+
+(** The tail call of g with ys, when g's body is a case of a small
+    case function ([small_arms]): the case, its arms' bodies renamed
+    and their projections of known constructors folded, and only the
+    arm of a known scrutinee. CertiRocq evaluates both of `orb`'s and
+    `andb`'s arguments before the call, so `f a || existsb f l` calls
+    `existsb` before it tests `f a`; with the case inlined, [dce] moves
+    that call into the one arm that reads it. *)
+Definition inline_case (fns : ZMap.t (list Z * exp)) (g : Z) (ys : list Z) (s : simp)
+  : option (exp * simp) :=
+  match ZMap.find g fns with
+  | Some (xs, Ecase x arms) =>
+      if small_arms arms && Nat.eqb (length xs) (length ys) then
+        let sub := fold_left (fun m p => ZMap.add (fst p) (snd p) m) (combine xs ys) (ZMap.empty Z) in
+        let x := sv s (match ZMap.find x sub with Some y => y | None => x end) in
+        let kt := match ZMap.find x (sm_con s) with Some (t, _) => Some t | None => None end in
+        let arm (s : simp) (e1 : exp) : exp * simp :=
+          let '(bs, tl, next) := inst e1 sub (sm_next s) in
+          let '(bs, s) := simp_binds bs (s_from next s) in
+          match tl with
+          | THalt v => (wrap bs (Ehalt (sv s v)), s)
+          | TCall h ht zs => (wrap bs (Eapp (sv s h) ht (svs s zs)), s)
+          end in
+        match kt with
+        | Some t =>
+            match find (fun a => fst a =? t) arms with
+            | Some (_, e1) => Some (arm s e1)
+            | None => None
+            end
+        | None =>
+            let '(arms, s) := fold_left (fun acc a =>
+                                           let '(l, s) := acc in
+                                           let (e1, s) := arm s (snd a) in ((fst a, e1) :: l, s))
+                                        arms ([], s) in
+            Some (Ecase x (rev arms), s)
+        end
+      else None
+  | _ => None
+  end.
+
+(** Whether the variable x occurs in e. Binders are unique, so this is
+    whether e reads it. *)
+Fixpoint occurs (x : Z) (e : exp) : bool :=
+  match e with
+  | Econstr _ _ ys e' | Eprim _ _ ys _ e' => existsb (Z.eqb x) ys || occurs x e'
+  | Ecase y arms =>
+      (y =? x) || (fix go (l : list (Z * exp)) : bool :=
+                     match l with [] => false | (_, e1) :: l' => occurs x e1 || go l' end) arms
+  | Eproj _ _ _ y e' => (y =? x) || occurs x e'
+  | Eletapp _ f _ ys _ e' => (f =? x) || existsb (Z.eqb x) ys || occurs x e'
+  | Efun _ e' | Eprim_val _ e' => occurs x e'
+  | Eapp f _ ys => (f =? x) || existsb (Z.eqb x) ys
+  | Ehalt y => y =? x
+  end.
+
+(** The call of g that binds x, then e. When e is a case on another
+    variable and one arm alone reads x, the call moves into that arm.
+    A Gallina function is pure and total, so the call may run on that
+    arm's path only, and when the arm returns its value it becomes a
+    tail call. With [inline_case], `existsb` and `forallb` stop at the
+    first element that decides them, as OCaml's `(||)` and `(&&)` do,
+    and loop instead of recursing. [dce] computes the live variables
+    again. *)
+Definition sink (x g gt : Z) (zs live : list Z) (e : exp) : exp :=
+  let call e1 := Eletapp x g gt zs live e1 in
+  match e with
+  | Ecase y arms =>
+      if negb (y =? x) && (length (filter (fun a => occurs x (snd a)) arms) =? 1)%nat
+      then Ecase y (map (fun a => if occurs x (snd a) then (fst a, call (snd a)) else a) arms)
+      else call e
+  | _ => call e
+  end.
+
 (** The expression e simplified. *)
 Fixpoint simp_exp (fns : ZMap.t (list Z * exp)) (e : exp) (s : simp) : exp * simp :=
   match e with
@@ -2350,13 +2446,17 @@ Fixpoint simp_exp (fns : ZMap.t (list Z * exp)) (e : exp) (s : simp) : exp * sim
       let '(bs, tl, s) := inline_call inline_depth fns (sv s f) ft (svs s ys) s in
       match tl with
       | THalt v => let (e', s) := simp_exp fns e' (s_sub x v s) in (wrap bs e', s)
-      | TCall g gt zs => let (e', s) := simp_exp fns e' s in (wrap bs (Eletapp x g gt zs live e'), s)
+      | TCall g gt zs => let (e', s) := simp_exp fns e' s in (wrap bs (sink x g gt zs live e'), s)
       end
   | Eapp f ft ys =>
       let '(bs, tl, s) := inline_call inline_depth fns (sv s f) ft (svs s ys) s in
       match tl with
       | THalt v => (wrap bs (Ehalt v), s)
-      | TCall g gt zs => (wrap bs (Eapp g gt zs), s)
+      | TCall g gt zs =>
+          match inline_case fns g zs s with
+          | Some (e, s) => (wrap bs e, s)
+          | None => (wrap bs (Eapp g gt zs), s)
+          end
       end
   | Eprim_val x e' => let (e', s) := simp_exp fns e' s in (Eprim_val x e', s)
   | Eprim x p ys live e' => let (e', s) := simp_exp fns e' s in (Eprim x p (svs s ys) live e', s)

@@ -1,0 +1,43 @@
+<block id="b-2026-11-11-anf-orb" kind="finding" actor="T-01a1c9a9-f038-75c4-9b60-c709efbfa7a4" model="anthropic/claude-opus-5-5" created="2026-11-11T18:40:00Z" in-reply-to="b-2026-11-11-anf-frames">
+  <title>existsb walked whole lists in the λANF build, because orb did not short-circuit</title>
+  <about path="nanofil/anf/lower/AnfLower.v"/>
+  <about path="nanofil/anf/lower/README.md"/>
+  <tag name="lambda-anf"/>
+  <p>The libnanofil thread found that regex functions above about 500 blocks took far longer
+  in the λANF build of the backend than in the OCaml one: 9 seconds against 0.6 for a function
+  of 521 blocks. The profile pointed at the validator's <c>evidence_meet</c>, <c>fact_eqb</c>
+  and <c>existsb</c>. The validator itself was not the cause. 81% of the time went to
+  <c>existsb</c>, which never stopped at a match.</p>
+  <p>Gallina's <c>existsb f (a :: l)</c> is <c>f a || existsb f l</c>. OCaml's extraction
+  makes <c>||</c> its lazy operator, so the call on the rest of the list runs only when
+  <c>f a</c> is false, and it is a tail call. CertiRocq evaluates every argument before a call,
+  so the λANF build called <c>existsb</c> on the rest first, every time, and walked every list
+  to its end, recursing once per element. A membership test that OCaml answers at the first
+  element costs the whole list here.</p>
+  <p>The fix makes the lowered code skip a call whose result the taken branch never reads. The
+  simplifier of <a path="nanofil/anf/lower/AnfLower.v">AnfLower.v</a> now inlines a tail call of
+  a small case function such as <c>orb</c>, <c>andb</c> or <c>negb</c>, whose arms only halt.
+  It then moves a call into the one arm of the case after it that reads the call's result. A
+  Gallina function is pure and total, so the call can run on that arm's path alone. In the
+  backend, ten recursive functions become loops, among them <c>existsb</c> and
+  <c>forallb</c>.</p>
+  <p>The arms must only halt. A first version also inlined case functions whose arms call
+  others. It split the body of <c>merge_steps</c> in two, which used 496 bytes of stack per
+  element instead of 288.</p>
+  <claim status="tested" check="nix build -L .#checks.x86_64-linux.nanofil-anf-backend">
+    <p>On all 53 IR fixtures, for compile, compile-promoted and compile-allocated, the arena
+    build prints the same assembly, stderr and exit status as the OCaml build: 0 of 159 runs
+    differ.</p>
+  </claim>
+  <metrics baseline="the λANF build at d2784c6, compile-allocated">
+    <metric label="PCRE2 function of 521 blocks" value="2.7" unit="s" delta="−4.4"/>
+    <metric label="PCRE2 function of 412 blocks" value="1.9" unit="s" delta="−0.3"/>
+    <metric label="rx.ir compile-allocated" value="3.3" unit="× ocamlopt" delta="−0.3"/>
+    <metric label="lvm.ir compile-allocated" value="3.2" unit="× ocamlopt" delta="−0.7"/>
+    <metric label="stack needed for lvm.ir" value="9.9" unit="MiB" delta="−2.2"/>
+  </metrics>
+  <p>The function of 521 blocks still takes about five times as long as in the OCaml build. The
+  two builds now do the same work, and the rest of the gap is the cost of each call. The
+  deepest recursion on lvm.ir is now <c>app</c>, which conses after its recursive call, as
+  <c>merge_steps</c> does.</p>
+</block>

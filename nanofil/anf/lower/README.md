@@ -29,7 +29,13 @@ itself goes through it ([../backend](../backend/README.md)).
   builders and uncurry wrappers, are inlined four deep; projections and
   cases of a known constructor are folded; and the constructors and
   functions no one reads are dropped. So a curried call is one direct
-  call. CertiRocq passes the global functions around as closures in
+  call. A tail call of a small case function, such as `orb` or `andb`,
+  is inlined too, and a call whose result only one arm of the case
+  after it reads moves into that arm. CertiRocq evaluates a call's
+  arguments first, so without this `existsb f l` walked all of l,
+  recursing once per element, where OCaml's `(||)` stops at the first
+  match; with it, `existsb` and `forallb` stop there and are loops.
+  CertiRocq passes the global functions around as closures in
   environments. The closures' and environments' tags are the anonymous
   ones of the tap, which only the program builds, so when every record
   of a tag holds the same function, or a closure of it, in a field, a
