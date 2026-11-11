@@ -34,4 +34,6 @@ Escape.v
 Promote.v
 Compile.v
 IrText.v
+Encode.v
+Elf.v
 Extract.v

@@ -545,6 +545,47 @@ let compile_file ?(mode = `Plain) f =
   | Some m -> compile_term ~mode m
   | None -> prerr_endline "nanofil-backend: the IR text is not read"; exit 1
 
+(* `object FILE.ir`, `object-promoted` and `object-allocated`: the
+   compiler as `compile` and the others, then the object Encode.v
+   makes of its lines, printed as Encode.dump_parts does, which is how
+   tests/objdump.py prints GNU as's object of the same text
+   (tests/encode.sh). Exits 3, as for a module outside the compiler,
+   when a line has no encoding. With NANOFIL_GAS=2.46, code is padded
+   as GNU as 2.46 pads it. `shared FILE.ir OUT.so` and the others
+   write the shared object Elf.v links from it instead. *)
+let object_file ?(mode = `Plain) ?shared f =
+  let outside why = prerr_endline ("nanofil-backend: " ^ why); exit 3 in
+  match read_text (file_text f) with
+  | None -> prerr_endline "nanofil-backend: the IR text is not read"; exit 1
+  | Some m ->
+      let compiled = match mode with
+        | `Plain -> compile m
+        | `Promoted -> compile_promoted m
+        | `Allocated -> compile_allocated m in
+      (match compiled with
+       | Refused why -> prerr_endline ("nanofil-backend: " ^ why); exit 1
+       | Outside why -> outside why
+       | Pieces ps ->
+           let lists = List.concat_map (fun p ->
+               match p () with
+               | None -> outside "a function is outside the subset or has no plan"
+               | Some lists -> lists) ps in
+           (match timed print_s (fun () -> encode_lines (Sys.getenv_opt "NANOFIL_GAS" = Some "2.46") (List.concat lists)) with
+            | Inl o ->
+                (match shared with
+                 | None ->
+                     set_binary_mode_out stdout true;
+                     List.iter print_string (dump_parts o)
+                 | Some out ->
+                     (match so_image o with
+                      | Inl bytes ->
+                          let oc = open_out_bin out in
+                          List.iter (fun b -> output_byte oc (Big_int_Z.int_of_big_int b)) bytes;
+                          close_out oc
+                      | Inr why -> outside ("not linked: " ^ why)))
+            | Inr why -> outside ("no encoding for: " ^ why)));
+      if report then Printf.eprintf "nanofil-backend: encode %.3fs\n" !print_s
+
 (* The gate of the reader (tests/read.sh). Stdin is what `nanofil
    read-each FILE...` prints: for each file `read(Module)`, or
    `refused` where Prolog throws. For each file in turn, prints
@@ -748,6 +789,12 @@ let () =
      branches and whole-function register allocation (compile_allocated
      in Compile.v, Regs.v). *)
   | [| _; "compile-allocated"; f |] -> big_minor_heap (); compile_file ~mode:`Allocated f
+  | [| _; "object"; f |] -> big_minor_heap (); object_file f
+  | [| _; "object-promoted"; f |] -> big_minor_heap (); object_file ~mode:`Promoted f
+  | [| _; "object-allocated"; f |] -> big_minor_heap (); object_file ~mode:`Allocated f
+  | [| _; "shared"; f; out |] -> big_minor_heap (); object_file ~shared:out f
+  | [| _; "shared-promoted"; f; out |] -> big_minor_heap (); object_file ~mode:`Promoted ~shared:out f
+  | [| _; "shared-allocated"; f; out |] -> big_minor_heap (); object_file ~mode:`Allocated ~shared:out f
   (* `compile-nfb FILE.nfb`: as `compile`, the module read from the NFB
      `nanofil encode-input` writes, by NfbTerm.v's read_term
      (read_encode_term in NfbRead.v); tests/nfb-compile.sh holds it to

@@ -43,7 +43,14 @@
 # (rocq/backend/tests/compile.sh), on the same files and the fixtures
 # of rocq/backend/tests/compile; full=true takes the whole corpus and
 # the translation units; the files it does not take are exactly
-# those rocq/backend/tests/compile/none.txt names. And
+# those rocq/backend/tests/compile/none.txt names. Encode.v assembles
+# what each of the three compilers makes of the IR fixtures into the
+# object GNU as makes of its text, every section's bytes, relocation
+# and symbol (rocq/backend/tests/encode.sh), against the Fil-C
+# toolchain's GNU as (2.43.1) and nixpkgs' (2.46); and Elf.v links the
+# fixtures with C drivers into shared objects that the drivers, linked
+# against them, run as they run against GNU as's objects
+# (rocq/backend/tests/shared.sh). And
 # `nanofil-backend compile-promoted`, which promotes, propagates
 # copies and selects branches, prints what `nanofil compile-promoted`
 # prints, on the same files and the fixtures of
@@ -175,9 +182,14 @@ pkgs.runCommandCC (if full then "nanofil-backend-full" else "nanofil-backend")
           rocq/backend/tests/read.sh --cases | tee read-cases-$piece.log
       done
       python3 tests/watch.py --label "read fixtures" -- rocq/backend/tests/read.sh tests/filc/*.ir ${compile} | tee read.log
+      AS=${filcc}/bin/as tests/par.sh rocq/backend/tests/encode.sh tests/filc/*.ir ${compile} ${promote} ${regs} | tee encode.log
+      NANOFIL_GAS=2.46 AS=${pkgs.binutils-unwrapped}/bin/as \
+        tests/par.sh rocq/backend/tests/encode.sh tests/filc/*.ir ${compile} ${promote} ${regs} | tee encode-2.46.log
+      AS=${filcc}/bin/as python3 tests/watch.py --label "shared objects" -- \
+        rocq/backend/tests/shared.sh tests/filc/*.ir | tee encode-shared.log
       python3 tests/watch.py --label "backend parse/typecheck" -- bash web/rocq/tests/parse.sh rocq/backend/*.v
       mkdir -p $out/bin
       cp rocq/backend/nanofil-backend $out/bin/
-      cp timings.log asm*.log abi.log nfb*.log emit*.log pizlonate*.log promote.log compile*.log regs*.log read*.log $out/
+      cp timings.log asm*.log abi.log nfb*.log emit*.log pizlonate*.log promote.log compile*.log regs*.log read*.log encode*.log $out/
     ''
   )
