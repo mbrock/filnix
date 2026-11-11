@@ -34,3 +34,4 @@ string/MemchrLoop.v
 string/MemchrFirst.v
 string/MemchrLogic.v
 string/StrnlenLogic.v
+hello/HelloGlibcLeaf.v
