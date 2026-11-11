@@ -242,9 +242,11 @@ Record HelloDebts : Type := mkHelloDebts {
       [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ arg_ro (WPtr q))%I
       (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ hd_priv ∗ names)%I;
-  hd_error_conv : forall n,
+  hd_error_conv : forall n (E : iProp Σ),
+    fn_triple (TAtom "exit") [WInt 1]
+      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ E)%I (fun _ => False)%I ->
     fn_triple (TAtom "error") [WInt 1; WInt n; WPtr (sym_ptr ge "hello#str.82")]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names)%I (fun _ => False)%I;
+      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ E)%I (fun _ => False)%I;
   hd_mbsrtowcs : forall bd b4 b6 g gs,
     let n := 4 * (Z.of_nat (length gs) + 1) in
     fn_triple (TAtom "rpl_mbsrtowcs")

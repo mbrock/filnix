@@ -111,7 +111,7 @@ Proof.
   iNext. iIntros (k Hk) "(%ws & %Hw & Hio & Hpv & Hwb)".
   st.
   destruct (Z.eq_dec k (2 ^ 64 - 1)) as [-> | Hk1].
-  - br. iApply (join_fail w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn"). iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
+  - br. iApply (join_fail w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX"). iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
   - br. iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact (Hw Hk1) |].
     iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
 Qed.
