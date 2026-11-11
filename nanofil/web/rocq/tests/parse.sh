@@ -248,6 +248,27 @@ Definition aliased (l : list nat) : nat :=
 Definition named : nat := @fst nat bool (pair (A:=nat) (B:=bool) 1 true).
 Definition paired : list nat := map (fun '(a, b) => a + b) [(1, 2); (3, 4)].
 Definition digits : positive := (xH)~0~1.
+Module Type Value.
+  Parameter value : nat.
+End Value.
+Module Left : Value.
+  Definition value := 2.
+End Left.
+Module Right : Value.
+  Definition value := 5.
+End Right.
+Module Type Sum (A B : Value).
+  Parameter total : nat.
+  Parameter correct : total = A.value + B.value.
+End Sum.
+Module Applied : Sum Left Right.
+  Definition total := Left.value + Right.value.
+  Lemma correct : total = Left.value + Right.value.
+  Proof. reflexivity. Qed.
+End Applied.
+Module Alias := Applied.
+Example applied_total : Alias.total = Left.value + Right.value.
+Proof. exact Alias.correct. Qed.
 ROCQ
 set -- "$@" "$tmp/terms/Terms.v"
 

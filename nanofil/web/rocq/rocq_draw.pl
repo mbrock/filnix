@@ -703,7 +703,9 @@ item_(block(module(F-_, Kind, n(_, N), Bs, Open), Body, End)) --> !,
     el(section, "rq-module", [id=Q],
        ( el(div, "clause rq-module-head",
             el(div, head, ( line_link(F), kw(KwS), " ", el(span, "module-name", esc(N)), binders_(Bs, []),
-                            ( { Open = open(Sig) } -> "\u00A0", el(span, "op wide colon", ":"), " ", name_ref(Sig, Env) ; [] ) ))),
+                            ( { Open = open(Sig) -> Args = [] ; Open = open(Sig, Args) } ->
+                                "\u00A0", el(span, "op wide colon", ":"), " ", name_ref(Sig, Env), seq(Args, module_arg)
+                            ; [] ) ))),
          { nb_setval(rq_mod, Mod1) },
          el(div, "rq-module-body", rocq_items(Body)),
          { nb_setval(rq_mod, Mod0) },
