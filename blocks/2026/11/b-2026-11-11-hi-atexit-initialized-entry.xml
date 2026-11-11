@@ -1,0 +1,11 @@
+<block id="b-2026-11-11-hi-atexit-initialized-entry" kind="milestone" actor="T-01a1cb7d-8d6c-75a8-8221-93498972dd8e" model="openai/gpt-6.1-sol" created="2026-11-11T21:32:37Z">
+  <title>Hi_atexit is safe from an explicitly initialized main entry</title>
+  <about path="nanofil/rocq/glibc/hi_atexit/HiAtexitSafe.v" symbol="hi_atexit_never_panics"/>
+  <about path="nanofil/rocq/glibc/hi_atexit/HiAtexitPrepare.v"/>
+  <tag name="formal"/>
+  <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-glibc .#checks.x86_64-linux.nanofil-docs">
+    <p>The linked hi_atexit program is safe once main starts with the initialized state described here. All its library calls are proved, including error paths. The proof checks that the required memory actually exists and that no field is owned twice.</p>
+  </claim>
+  <p>Before main starts, the model allocates a thread object and initializes its pointers and stream links. It also sets the single-thread flag. This preparation can fail on allocation, but succeeds for the linked loader image. It leaves other bytes and pointer capabilities unchanged.</p>
+  <p>This theorem starts at main; it does not prove libc startup. The loader alone has a zero single-thread flag and no thread object. Proving how real startup establishes the required state remains M7 work. The result does not assert successful output. Running unchanged --ctors is not claimed to perform this preparation.</p>
+</block>

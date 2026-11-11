@@ -240,3 +240,13 @@ hi_atexit/HiAtexitExitEnv.v
 hi_atexit/HiAtexitInitialExit.v
 hi_atexit/HiAtexitExit.v
 hi_atexit/HiAtexitMain.v
+hi_atexit/HiAtexitWorld.v
+hi_atexit/HiAtexitImage.v
+hi_atexit/HiAtexitPrepare.v
+hi_atexit/HiAtexitPrepareFrame.v
+hi_atexit/HiAtexitEntryMemory.v
+hi_atexit/HiAtexitEntryList.v
+hi_atexit/HiAtexitEntryFields.v
+hi_atexit/HiAtexitEntryImage.v
+hi_atexit/HiAtexitEntryOwn.v
+hi_atexit/HiAtexitSafe.v
