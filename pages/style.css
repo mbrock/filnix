@@ -167,17 +167,17 @@ main.with-toc {
 
 .toc ul { list-style: none; margin: 0; padding: 0; }
 .toc ul ul { padding-left: 0.8rem; }
-.toc li { margin: 0.3rem 0; }
+.toc li { margin: 0.3rem 0; font: inherit; }
 .toc a { color: var(--ink); opacity: 0.8; }
 .toc a:hover { color: var(--accent); opacity: 1; text-decoration: none; }
 
 /* A record kept as written: one banner style for every archived page. */
-p.archived {
+:is(article.doc, main) p.archived {
   margin: 0 0 1.5rem;
   padding: 0.7rem 1rem;
   border-radius: 6px;
   background: var(--code-bg);
-  font: 500 0.92rem/1.45 var(--display-font);
+  font: 400 1.02rem/1.45 var(--prose-font);
   text-align: start;
 }
 
@@ -234,6 +234,18 @@ p { margin: 0 0 1.1rem; text-align: justify; text-align-last: start; hyphens: au
   line-height: 1.42;
 }
 :is(article.doc, .prose) :is(li, dd, blockquote) :is(p, li, dd, dt) { font-size: inherit; }
+/* Every other page's prose too: the home page, the explainers, the
+   stream, the Explainers and Code pages. :where keeps this rule weaker
+   than any class that sets its own font, so labels, captions and code
+   stay as they are; what is a label here says so below. */
+:where(main.reading, main.home, main.with-toc) :where(p, li, dd, dt, blockquote, figcaption) {
+  font-family: var(--prose-font);
+  font-size: var(--prose-size);
+  line-height: 1.42;
+}
+:where(main.reading, main.home, main.with-toc) :where(li, dd, blockquote) :where(p, li, dd, dt) { font-size: inherit; }
+/* The explainers' captions and notes are sentences too. */
+:where(main.explainer) :where(.cap, .note, figcaption) { font-family: var(--prose-font); }
 
 code, pre { font-family: var(--mono-font); font-size: 0.85em; }
 code { color: color-mix(in srgb, var(--ink) 80%, var(--accent)); }
@@ -259,7 +271,7 @@ img, video { max-width: 100%; height: auto; }
 main.home { max-width: 72rem; }
 .hero { max-width: 48rem; }
 .hero h1 { font-size: clamp(1.8rem, 4.2vw, 2.7rem); letter-spacing: -0.045em; line-height: 1.08; margin: 0.25rem 0 1.1rem; text-wrap: balance; }
-.lede { font: 400 1.12rem/1.5 var(--display-font); color: #2d3337; text-align: start; text-wrap: pretty; max-width: 44rem; }
+.lede { font: 400 1.22rem/1.5 var(--prose-font); color: #2d3337; text-align: start; text-wrap: pretty; max-width: 44rem; }
 .actions { list-style: none; padding: 0; margin: 1.4rem 0 0; display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .actions li { margin: 0; }
 .actions a {
@@ -273,17 +285,18 @@ main.home { max-width: 72rem; }
 .home-columns h3 { margin: 1.5rem 0 0.4rem; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
 .reading-list { list-style: none; padding: 0; margin: 0; }
 .reading-list li { margin: 0; padding: 0.5rem 0; border-top: 1px solid var(--rule); }
-.reading-list li > a { font-weight: 700; letter-spacing: -0.01em; }
-.reading-list li > span { display: block; color: #444b50; font-size: 0.88rem; line-height: 1.4; margin-top: 0.1rem; }
-.small { font-size: 0.85rem; color: var(--muted); }
+.reading-list li > a { font: 700 1rem/1.3 var(--display-font); letter-spacing: -0.01em; }
+.reading-list li > span { display: block; color: #444b50; font-size: 1.02rem; line-height: 1.38; margin-top: 0.1rem; }
+p.small { font: 500 0.85rem/1.45 var(--display-font); color: var(--muted); }
 .lately .more { margin-top: 1rem; }
 
 /* history.py: a document's dates and activity, and the home page's list. */
-.doc-history { font: 500 0.82rem/1.45 var(--display-font); color: var(--muted); margin: -0.9rem 0 1.4rem; text-align: start; }
+/* A label, not prose, also inside a document (hence the specificity). */
+:is(article.doc, .prose, main) p.doc-history { font: 500 0.82rem/1.45 var(--display-font); color: var(--muted); margin: -0.9rem 0 1.4rem; text-align: start; }
 .doc-history a { color: inherit; text-decoration: underline; text-decoration-color: var(--rule); }
 .doc-history .busy { color: var(--accent); }
 .recent { list-style: none; padding: 0; margin: 0; }
-.recent li { display: grid; grid-template-columns: 3.6rem minmax(0, 1fr); gap: 0 0.6rem; padding: 0.45rem 0; border-top: 1px solid var(--rule); }
+.recent li { font: 500 1rem/1.4 var(--display-font); display: grid; grid-template-columns: 3.6rem minmax(0, 1fr); gap: 0 0.6rem; padding: 0.45rem 0; border-top: 1px solid var(--rule); }
 .recent .when { font: 500 0.78rem/1.6 var(--mono-font); color: var(--muted); }
 .recent .what a { font-weight: 700; letter-spacing: -0.01em; }
 .recent .note { display: block; font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
@@ -331,6 +344,7 @@ table.metrics td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Blocks about a page, under its title (packages/site/chrome.py). */
 .about-blocks { margin: 0 0 1.4rem; padding: 0.6rem 0.9rem; border: 1px solid var(--rule); border-radius: 6px; font: 500 0.85rem/1.4 var(--display-font); }
 .about-blocks p { margin: 0 0 0.3rem; color: var(--muted); text-align: start; }
+:is(article.doc, .prose, main) .about-blocks :is(p, li) { font: inherit; }
 .about-blocks ul { list-style: none; margin: 0; padding: 0; }
 .about-blocks li { margin: 0.2rem 0; }
 .about-blocks li span { color: var(--muted); margin-left: 0.5rem; font-size: 0.8rem; }
@@ -354,7 +368,8 @@ table.metrics td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .card-link:hover { border-color: var(--accent); text-decoration: none; }
 .card-link img { display: block; width: 100%; margin-bottom: 0.7rem; border-radius: 3px; border: 1px solid var(--rule); }
 .card-link strong { display: block; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
-.card-link span { display: block; margin-top: 0.35rem; color: var(--accent); font-size: 0.88rem; line-height: 1.35; }
+.card-link span { display: block; margin-top: 0.35rem; color: #444b50; font: 400 1.02rem/1.38 var(--prose-font); }
+.card-link span span { display: inline; margin: 0; font: inherit; }
 
 .site-footer { border-top: 1px solid var(--rule); color: var(--muted); font: 500 0.82rem/1.4 var(--display-font); }
 .site-footer .page-frame { padding-top: 1rem; padding-bottom: 3rem; }
