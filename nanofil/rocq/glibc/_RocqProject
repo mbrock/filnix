@@ -202,3 +202,10 @@ hi_atexit/HiAtexitTerm.v
 hi_atexit/HiAtexitModule.v
 hi_atexit/HiAtexitValid.v
 hi_atexit/HiAtexitFns.v
+hi_atexit/HiAtexitGe.v
+hi_atexit/HiAtexitBase.v
+hi_atexit/HiAtexitDoWrite.v
+hi_atexit/HiAtexitSetb.v
+hi_atexit/HiAtexitCloseIt.v
+hi_atexit/HiAtexitFclose.v
+hi_atexit/HiAtexitCloseStdout.v
