@@ -175,7 +175,10 @@ unprototyped_inst(_, Inst, [Inst], N, N).
 %  compileModuleAsm): blank lines vanish, and `.symver L, V` becomes
 %  `.symver pizlonated_L, pizlonated_V`, versioning the symbol of L's
 %  getter, as filcc's objects do (docs/abi-findings.md, *Top-level
-%  asm*), and `.filc_globl N` becomes `.globl pizlonated_N`. The other
+%  asm*). A default version uses its IR alias's getter and `, remove`:
+%  the version supplies the unversioned name at link time, without a
+%  second definition from the getter. `.filc_globl N` becomes
+%  `.globl pizlonated_N`. The other
 %  Fil-C directives (.filc_rename, .filc_alias, .filc_weak_alias and
 %  .filc_weak) change the module's symbols instead and leave no line
 %  (module_asm_symbols/4). filcc crashes on any other text; nanofil
@@ -196,7 +199,10 @@ module_asm_lines(Items, Pairs) :-
 module_asm_line(Loc-L, Lines) :-
     module_asm_directive(Loc-L, D),
     (   D = symver(LA, VA)
-    ->  format(atom(Line), '.symver pizlonated_~w, pizlonated_~w', [LA, VA]),
+    ->  (   filc_directive(D, alias(_, Name, export))
+        ->  format(atom(Line), '.symver pizlonated_~w, pizlonated_~w, remove', [Name, VA])
+        ;   format(atom(Line), '.symver pizlonated_~w, pizlonated_~w', [LA, VA])
+        ),
         Lines = [Line]
     ;   D = globl(N)
     ->  format(atom(Line), '.globl pizlonated_~w', [N]),
@@ -251,11 +257,19 @@ ma_rest([_|Cs], Rest) :- ma_rest(Cs, Rest).
 % filc_directives(+Items, -Ds): Ds are the Loc-D symbol directives of
 % the unit's top-level asm, in source order, as FilPizlonator runs them
 % after the module is built (compileModuleAsm): rename, alias, weak and
-% globl.
+% globl. GNU as also exports the unversioned name of a default (@@)
+% symbol version; compat (@) versions do not define that name.
 filc_directives(Items, Ds) :-
     module_asm_lines(Items, Pairs),
-    findall(Loc-D, ( member(Loc-L, Pairs), module_asm_directive(Loc-L, D),
-                     D \= none, D \= symver(_, _) ), Ds).
+    findall(Loc-D, ( member(Loc-L, Pairs), module_asm_directive(Loc-L, D0),
+                     filc_directive(D0, D) ), Ds).
+
+filc_directive(symver(L, V), alias(L, Name, export)) :-
+    atom_chars(V, Cs), append(Ns, ['@', '@'|Ver], Cs),
+    Ns = [_|_], Ver = [_|_],
+    \+ memberchk('@', Ns), \+ memberchk('@', Ver),
+    atom_chars(Name, Ns), Name \== L.
+filc_directive(D, D) :- D \= none, D \= symver(_, _).
 
 /* Fil-C's symbol directives, as FilPizlonator's compileModuleAsm runs
    them on the finished module, one after another (glibc's
@@ -3638,6 +3652,15 @@ lower_node(val(_, call(val(_, decay(fun(_, id(zreturn)))), [X])), Ctx, v(const(0
     lower(X, Ctx, V0),
     convert(V0, ptr(void), v(V, _)),
     term(ret(V)).
+% libpizlo's allocator, as FilPizlonator's one-argument void* intrinsic.
+% Do not redirect zgc_free to free: glibc's free itself calls zgc_free.
+lower_node(val(ptr(void), call(val(_, decay(fun(_, id(zgc_alloc)))), [Size])), Ctx, v(Addr, ptr(void))) -->
+    env(Env), { lookup_ordinary(Env, zgc_alloc, fn(_, zgc_alloc, _)) }, !,
+    lower(Size, Ctx, V0),
+    % Size is already elaborated and checked, unlike __builtin_alloca's
+    % syntax operand (which needs assign_convert's assignment check).
+    converted(V0, ulong, v(N, _)),
+    let(p, alloc(16), [N], Addr).
 lower_node(val(_, call(XF, XArgs)), Ctx, R) --> !,         % 6.5.2.2
     callee(XF, Ctx, Callee0, func(RetType, Ps, _)),
     {   Ps == unspecified

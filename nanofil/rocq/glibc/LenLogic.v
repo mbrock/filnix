@@ -4,7 +4,7 @@
 
     `main` returns `strlen(msg)` for the 13-byte literal "hello, glibc".
     No contract describes strlen here: the linked module defines
-    `__strlen`, glibc's word-at-a-time scan, and the weak alias
+    `__strlen`, glibc's word-at-a-time scan, and the exported alias
     `strlen` that names it, so the call is an ordinary direct call
     ([wp_call_bind]) and the proof walks glibc's own IR. The module
     calls nothing outside itself; the registry is empty.

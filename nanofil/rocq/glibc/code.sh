@@ -2,11 +2,10 @@
 # The glibc spike's programs (docs/glibc-ir.md) linked with nanofil's IR
 # of the user glibc units they reach. For each line of the table below:
 # compile the program and each glibc unit (from the capture of
-# survey/glibc/capture.nix, its .filc_* module asm dropped as
-# survey/glibc/run.py --drop-filc-asm does) with nanofil -O, link the
-# checked modules from main with rocq/scripts/link.pl, print the result as
-# Gallina with rocq/scripts/gallina.pl, and compare it with the committed
-# rocq/glibc/NAMECode.v.
+# survey/glibc/capture.nix, with its .filc_* module asm intact) with
+# nanofil -O, link the checked modules from main with rocq/scripts/link.pl,
+# print the result as Gallina with rocq/scripts/gallina.pl, and compare it
+# with the committed rocq/glibc/NAMECode.v.
 #
 #   FILCC=.../clang rocq/glibc/code.sh [--update] [GLIBC_PP]
 #
@@ -42,13 +41,7 @@ while read -r name program units; do
   specs=("$lower=$work/$lower.term")
   for u in $units; do
     obj=$(basename "$u" .os)
-    python3 -I - "$pp/$u.i" "$work/$obj.i" <<'EOF'
-import re, sys
-FILC_ASM = re.compile(rb'\b(?:__asm__|__asm|asm)\s*\(\s*"\.filc_[^)]*\)\s*;')
-text = open(sys.argv[1], 'rb').read()
-open(sys.argv[2], 'wb').write(FILC_ASM.sub(lambda m: b"\n" * m.group(0).count(b"\n"), text))
-EOF
-    checked "$work/$obj.i" "$work/glibc_$obj.term"
+    checked "$pp/$u.i" "$work/glibc_$obj.term"
     specs+=("glibc_$obj=$work/glibc_$obj.term")
   done
   (cd "$nf" && swipl rocq/scripts/link.pl main "${specs[@]}") >"$work/$lower.linked"

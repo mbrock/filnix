@@ -109,5 +109,5 @@ Definition len_term : term :=
             TApp "let" [TApp "tmp" [TAtom "v44"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v42"]]];
             TApp "let" [TApp "tmp" [TAtom "v46"]; TAtom "l"; TAtom "sub"; TList [TApp "tmp" [TAtom "v44"]; TApp "tmp" [TAtom "v4"]]]];
           TApp "ret" [TApp "tmp" [TAtom "v46"]]]]];
-    TApp "alias" [TAtom "strlen"; TAtom "weak"; TAtom "__strlen"]
+    TApp "alias" [TAtom "strlen"; TAtom "export"; TAtom "__strlen"]
   ]].

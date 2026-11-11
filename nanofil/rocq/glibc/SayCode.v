@@ -111,12 +111,12 @@ Definition say_term : term :=
             TApp "let" [TApp "tmp" [TAtom "v44"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v42"]]];
             TApp "let" [TApp "tmp" [TAtom "v46"]; TAtom "l"; TAtom "sub"; TList [TApp "tmp" [TAtom "v44"]; TApp "tmp" [TAtom "v4"]]]];
           TApp "ret" [TApp "tmp" [TAtom "v46"]]]]];
-    TApp "alias" [TAtom "strlen"; TAtom "weak"; TAtom "__strlen"];
-    TApp "func" [TAtom "__libc_write"; TAtom "export"; TAtom "l"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "param" [TAtom "l"; TApp "tmp" [TAtom "v4"]]];
+    TApp "alias" [TAtom "strlen"; TAtom "export"; TAtom "__strlen"];
+    TApp "func" [TAtom "__GI___libc_write"; TAtom "export"; TAtom "l"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "param" [TAtom "l"; TApp "tmp" [TAtom "v4"]]];
       TList [
         TApp "block" [TAtom "start"; TList [];
           TList [
             TApp "call" [TApp "result" [TApp "tmp" [TAtom "v9"]; TAtom "l"]; TApp "global" [TAtom "zsys_write"]; TList [TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "arg" [TAtom "l"; TApp "tmp" [TAtom "v4"]]]]];
           TApp "ret" [TApp "tmp" [TAtom "v9"]]]]];
-    TApp "alias" [TAtom "write"; TAtom "export"; TAtom "__libc_write"]
+    TApp "alias" [TAtom "write"; TAtom "weak"; TAtom "__GI___libc_write"]
   ]].

@@ -576,15 +576,17 @@ local_pointer(ctx(_, _, _, _, filc, Locals), Name, Off, ptr(A, obj(Base))) :-
     ; throw(nanofil_error('local access before allocation')) ),
     A is Base + Off.
 
-% Only libc free's ordinary signature is modeled. Resolution comes first:
-% an in-module function or data symbol is handled above. Other
-% signatures and external calls are explicit gaps, not silently failed
-% relations or guessed libc effects.
-external_call_outcome(filc, _, free, Res, Args, Xs,
-                      s(Mem0, Fuel), Out, s(Mem, Fuel)) :- !,
+% Only free and libpizlo zgc_free's ordinary signature is modeled.
+% Resolution comes first: an in-module function or data symbol is handled
+% above. Other signatures and external calls are explicit gaps, not
+% silently failed relations or guessed libc effects.
+external_call_outcome(filc, _, F, Res, Args, Xs,
+                      s(Mem0, Fuel), Out, s(Mem, Fuel)) :-
+    memberchk(F, [free, zgc_free]), !,
     (   Res == void, Args = [arg(p, _)], Xs = [P]
     ->  free_res(P, Mem0, Freed, Mem), free_outcome(Freed, Out)
-    ;   throw(nanofil_error('interpreter supports only void free(p)'))
+    ;   format(atom(Msg), 'interpreter supports only void ~w(p)', [F]),
+        throw(nanofil_error(Msg))
     ).
 external_call_outcome(_, _, F, _, _, _, _, _, _) :-
     format(atom(Msg), 'cannot interpret a call to external ~w', [F]),
