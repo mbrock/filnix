@@ -3,7 +3,7 @@
 dterm-nix draws Nix files as web pages the way nanofil's
 [dterm](../nanofil/docs/dterm.md) draws Prolog: by what the code is, not
 how it was typed. The pages are on the Filnix wiki at
-[mbrock.github.io/filnix/nix](https://mbrock.github.io/filnix/nix/).
+[filnix.org/nix](https://filnix.org/nix/).
 
 | File | What it does |
 |---|---|

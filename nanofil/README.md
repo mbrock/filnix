@@ -110,7 +110,7 @@ the formal campaign's soundness of checking says a valid module never
 reaches the first, while a program that never panics avoids the second. Keeping access
 safety separate from behavior preservation is the basis for future work.
 
-The [playground](https://mbrock.github.io/filnix/nanofil/play/) exposes
+The [playground](https://filnix.org/nanofil/play/) exposes
 the actual intermediate IR for independently selected promotion, copy
 elimination and local storage. It is a view of the compiler's computations,
 not a second implementation. Explaining why an obligation is discharged
@@ -213,7 +213,7 @@ allocates scalar registers ([docs/perf.md](docs/perf.md)).
   page lists them, including the archive ([docs/archive](docs/archive)):
   M1 and M2, the original handoff and other records of finished work.
 - [AGENTS.md](AGENTS.md): tools, tests and conventions for working on it.
-- The wiki's [nanofil pages](https://mbrock.github.io/filnix/nanofil/):
+- The wiki's [nanofil pages](https://filnix.org/nanofil/):
   the source drawn as terms by [web/dterm.pl](web/dterm.pl) (SWI-Prolog),
   built with the site, `nix build .#site`.
 - [docs/dterm.md](docs/dterm.md): where dterm comes from, and `doc/3`,

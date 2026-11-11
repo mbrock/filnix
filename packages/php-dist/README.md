@@ -41,10 +41,10 @@ using their own character sets and locales.
 
 - No JIT in this distribution: native OPcache and PCRE machine-code JITs
   are disabled. OPcache itself works. The experimental checked LLVM JIT is
-  a separate staging build; see the [PHP guide](https://mbrock.github.io/filnix/docs/php.html).
+  a separate staging build; see the [PHP guide](https://filnix.org/docs/php.html).
 - Each FPM worker has a private opcache. Workers share what the master
   cached before forking; `opcache_reset()` affects only the calling worker.
-- More CPU and memory than ordinary PHP. The [server measurements](https://mbrock.github.io/filnix/docs/php.html#the-jit-on-real-applications)
+- More CPU and memory than ordinary PHP. The [server measurements](https://filnix.org/docs/php.html#the-jit-on-real-applications)
   separate warmed page latency, throughput and startup costs; there is no
   universal slowdown factor or production capacity guarantee.
 - PHP allocates each value with malloc instead of from Zend's 2 MiB chunks,

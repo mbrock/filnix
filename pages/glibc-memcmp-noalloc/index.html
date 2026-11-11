@@ -6,7 +6,7 @@
 <title>memcmp without the eight heap allocations · Fil-C</title>
 <meta property="og:title" content="Stop glibc's generic memcmp from heap-allocating on every call">
 <meta property="og:description" content="memcmp_bytes took &a and &b, so Fil-C put eight locals on the GC heap in the prologue of every memcmp and bcmp call — a third of all allocation in PHP serving WordPress. One ctz removes them.">
-<meta property="og:image" content="https://mbrock.github.io/filnix/glibc-memcmp-noalloc/poster.png">
+<meta property="og:image" content="https://filnix.org/glibc-memcmp-noalloc/poster.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,18 +44,9 @@ pre .del { color: #a8282f; } pre .add { color: #2e7a3a; } pre .c { color: var(--
 </style>
 </head>
 <body>
-<header class="library"><div class="page-frame library-frame">
-  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
-  <nav class="doors">
-    <a class="door" href="../docs/">Docs</a>
-    <a class="door selected" href="../index.html#explainers">Explainers</a>
-    <a class="door" href="../nix/">Nix</a>
-    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
-    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
-  </nav>
-</div></header>
+<header class="library"><!-- the site's band: packages/site/chrome.py --></header>
 <div class="status"><div class="page-frame status-frame">
-  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">glibc memcmp without allocations</span></nav>
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../explainers/">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">glibc memcmp without allocations</span></nav>
   <span class="status-right"><a href="https://github.com/mbrock/fil-c/commit/a5d5dbcd90bdaeb391ba64f2ff6f3ce14cab676e">a5d5dbc</a></span>
 </div></div>
 <main class="page-frame reading explainer">

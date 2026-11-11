@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explainers · Filnix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&amp;family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="library"><!-- the site's band: packages/site/chrome.py --></header>
+<div class="status"><div class="page-frame status-frame">
+  <nav class="crumbs" aria-label="Breadcrumb"><span class="crumb current">Explainers</span></nav>
+  <span class="status-right"><a href="https://github.com/mbrock/filnix/blob/main/pages/explainers/index.html">pages/explainers/index.html</a></span>
+</div></div>
+<main class="page-frame reading wide">
+<h1>Explainers</h1>
+<p class="lede">One change or one system per page, told for someone who has not read the code: what was wrong or missing, what changed, what it costs, and how to try it. Most have a short video and a reproducer.</p>
+<div class="cards">
+  <a class="card-link" href="../fil-bind/"><img src="../fil-bind/poster.png" alt=""><strong>Fil-BIND: BIND 9 in memory-safe C</strong><span>BIND 9.20.30 on Fil-C, the year's CVEs, what it costs. Video, Docker, tarball and NixOS.</span></a>
+  <a class="card-link" href="../php-on-filc/"><img src="../php-on-filc/poster.png" alt=""><strong>PHP on Fil-C: memory-safe PHP</strong><span>PHP 8.5 and its native extensions, without a rewrite. Real server performance, security tradeoffs, and an experimental LLVM JIT. Docker, tarball, Nix and NixOS.</span></a>
+  <a class="card-link" href="../filc-nixos/"><img src="../filc-nixos/poster.png" alt=""><strong>Fil-C NixOS: a memory-safe NixOS and finix</strong><span>A whole system whose packages are Fil-C builds, systemd and PAM included: one module, what it costs, and how filc-ps proves nothing else runs native.</span></a>
+  <a class="card-link" href="../misaligned-initializers/"><img src="../misaligned-initializers/poster.png" alt=""><strong>Misaligned pointers in global and thread-local initializers</strong><span>A clang assertion and silent shadow corruption in Fil-C 0.686, and a compile error instead. Video and reproducers.</span></a>
+  <a class="card-link" href="../frame-coloring-o0/"><img src="../frame-coloring-o0/poster.png" alt=""><strong>Frame slot coloring at -O0: from cubic to near-linear</strong><span>48 s to 0.66 s for one function, with identical frames. Video and interactive model.</span></a>
+  <a class="card-link" href="../glibc-memcmp-noalloc/"><img src="../glibc-memcmp-noalloc/poster.png" alt=""><strong>memcmp without the eight heap allocations</strong><span>&amp;a and &amp;b put eight heap objects in every memcmp call — a third of PHP's allocation on WordPress. One ctz removes them.</span></a>
+  <a class="card-link" href="../sealed-closures/"><img src="../sealed-closures/poster.png" alt=""><strong>Sealed closures: call it, don't open it</strong><span>A staging proof of concept: closures whose callers cannot read, replace or rebind their data, and the inliner bypass review found.</span></a>
+  <a class="card-link" href="../frame-alias-scope/"><img src="../frame-alias-scope/poster.png" alt=""><strong>Fil-C frame accesses in their own alias scope</strong><span>Escaped frames make LLVM reload one upper bound 14 times instead of 2. One alias scope, with calls deliberately left out.</span></a>
+</div>
+<p class="small">An older snapshot, kept as written: <a href="../nanofil-status/">nanofil: where it stood, October 2026</a>.</p>
+</main>
+</body>
+</html>

@@ -3,63 +3,72 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Filnix wiki</title>
+<title>Filnix: memory-safe C, from packages to proofs</title>
+<meta name="description" content="Filnix builds Nixpkgs and a whole NixOS with Fil-C, the memory-safe C and C++, and nanofil, a C compiler in Prolog whose safety checks are proved in Rocq.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&amp;family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="library"><div class="page-frame library-frame">
-  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="index.html">Filnix wiki</a></h1></div>
-  <nav class="doors">
-    <a class="door" href="docs/">Docs</a>
-    <a class="door" href="#explainers">Explainers</a>
-    <a class="door" href="nix/">Nix</a>
-    <a class="door" href="nanofil/">nanofil</a>
-    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
-    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
-  </nav>
-</div></header>
+<header class="library"><!-- the site's band: packages/site/chrome.py --></header>
 <div class="status"><div class="page-frame status-frame">
   <nav class="crumbs" aria-label="Breadcrumb"><span class="crumb current">Home</span></nav>
   <span class="status-right"><a href="https://github.com/mbrock/filnix">mbrock/filnix</a></span>
 </div></div>
-<main class="page-frame reading">
-<h1>Memory-safe Nix packages</h1>
-<p>Filnix builds Nixpkgs packages with <a href="https://github.com/pizlonator/fil-c">Fil-C</a>, the memory-safe implementation of C and C++. A memory error in a Fil-C program stops it with a panic instead of corrupting memory. This wiki collects how to use the results, how the toolchain is maintained, what individual ports needed, and how the port campaigns run.</p>
+<main class="page-frame home">
+<section class="hero">
+<h1>Every C pointer checked. A whole Linux system in Nix. A compiler whose checks are proved in Rocq.</h1>
+<p class="lede">Filnix builds Nixpkgs packages, and a complete NixOS userland, with <a href="https://github.com/pizlonator/fil-c">Fil-C</a>, Filip Pizlo's memory-safe C and C++: an out-of-bounds access or a use after free stops the program instead of corrupting its memory. Beside the distribution it builds <a href="nanofil/">nanofil</a>, a C compiler in Prolog that makes each of Fil-C's checks a term in its IR, with a Rocq proof that a validated program never makes an unchecked access.</p>
+<ul class="actions">
+  <li><a href="filc-nixos/">Run a memory-safe NixOS, PHP or BIND</a></li>
+  <li><a href="nanofil/play/">Compile C in the browser</a></li>
+  <li><a href="code/">Read the code as structure</a></li>
+</ul>
+</section>
 
-<h2>Docs</h2>
-<div class="cards">
-  <a class="card-link" href="docs/index.html#using-filnix"><strong>Using filnix</strong><span>/opt/fil, a relocatable root, NixOS services, PHP</span></a>
-  <a class="card-link" href="docs/index.html#compiler-and-toolchain"><strong>Compiler and toolchain</strong><span>Dev shell, pins, findings to report upstream</span></a>
-  <a class="card-link" href="docs/index.html#notes-on-ports"><strong>Notes on ports</strong><span>Boehm GC and jemalloc on FUGC, Guile, GTK, Ruby</span></a>
-  <a class="card-link" href="docs/index.html#thread-cancellation"><strong>Thread cancellation</strong><span>What Fil-C's glibc needs to get right</span></a>
-  <a class="card-link" href="docs/index.html#port-campaigns"><strong>Port campaigns</strong><span>Runner, caches, audits and repairs</span></a>
-  <a class="card-link" href="nix/"><strong>filnix, read as Nix</strong><span>The NixOS and finix modules and the port DSL drawn as structure: bindings as tables, options with their descriptions, names linked to where they are bound.</span></a>
-</div>
+<div class="home-columns">
+<section class="canon" aria-labelledby="canon">
+<h2 id="canon">Read first</h2>
 
-<h2 id="nanofil">nanofil</h2>
-<div class="cards">
-  <a class="card-link" href="nanofil/guide.html"><strong>A guide to nanofil</strong><span>A C compiler in Prolog that emits Fil-C code: one C function through every stage, the ideas to hold, a map of the modules and where to start a change.</span></a>
-  <a class="card-link" href="nanofil/play/"><strong>Compile C in the browser</strong><span>nanofil on SWI-Prolog in WebAssembly, drawing the syntax, IR and assembly it makes.</span></a>
-  <a class="card-link" href="nanofil/filc.html"><strong>How Fil-C works</strong><span>Capabilities, the collector, safepoints and the libc sandwich, each idea linked to its concept.</span></a>
-  <a class="card-link" href="nanofil/iris.html"><strong>How Iris works</strong><span>From Hoare logic to Iris, how it is built in Rocq, and nanofil's machine as an Iris language.</span></a>
-  <a class="card-link" href="nanofil/formal.html"><strong>The formal campaign</strong><span>Fil-C's checks removed only where a machine-checked proof says they cannot fire: checked IR in Rocq, the runtime as axioms, certificates replayed by an extracted checker.</span></a>
-  <a class="card-link" href="nanofil/rocq/"><strong>The model, read as Rocq</strong><span>The Rocq development drawn as structure: inductive types as tables, relations as inference rules, proofs folded under them with their states.</span></a>
-  <a class="card-link" href="nanofil/"><strong>All of nanofil</strong><span>Every page: the source read as Prolog, the concepts, the program logic, the campaign notes, contracts, measurements and the archive.</span></a>
-</div>
+<h3>Primers</h3>
+<ul class="reading-list">
+  <li><a href="nanofil/filc.html">How Fil-C works</a><span>Capabilities, the collector, safepoints and the libc sandwich, each idea linked to its concept.</span></li>
+  <li><a href="nanofil/iris.html">How Iris works</a><span>From Floyd and Hoare to separation logic and Iris, and nanofil's machine as an Iris language.</span></li>
+  <li><a href="nanofil/guide.html">A guide to nanofil</a><span>One C function through every stage of a compiler written in Prolog.</span></li>
+  <li><a href="nanofil/formal.html">The formal campaign</a><span>Fil-C's checks removed only where a machine-checked proof says they cannot fire.</span></li>
+  <li><a href="nanofil/docs/pizlonation.html">Pizlonation</a><span>Fil-C's checks as terms in the IR: the checked stage's contract.</span></li>
+  <li><a href="nanofil/docs/dterm.html">dterm</a><span>How this site draws Prolog, Rocq, Nix and C from their syntax trees.</span></li>
+</ul>
 
-<h2 id="explainers">Explainers</h2>
-<div class="cards">
-  <a class="card-link" href="fil-bind/"><img src="fil-bind/poster.png" alt=""><strong>Fil-BIND: BIND 9 in memory-safe C</strong><span>BIND 9.20.30 on Fil-C, the year's CVEs, what it costs. Video, Docker, tarball and NixOS.</span></a>
-  <a class="card-link" href="php-on-filc/"><img src="php-on-filc/poster.png" alt=""><strong>PHP on Fil-C: memory-safe PHP</strong><span>PHP 8.5 and its native extensions, without a rewrite. Real server performance, security tradeoffs, and an experimental LLVM JIT. Docker, tarball, Nix and NixOS.</span></a>
-  <a class="card-link" href="filc-nixos/"><img src="filc-nixos/poster.png" alt=""><strong>Fil-C NixOS: a memory-safe NixOS and finix</strong><span>A whole system whose packages are Fil-C builds, systemd and PAM included: one module, what it costs, and how filc-ps proves nothing else runs native.</span></a>
-  <a class="card-link" href="misaligned-initializers/"><img src="misaligned-initializers/poster.png" alt=""><strong>Misaligned pointers in global and thread-local initializers</strong><span>A clang assertion and silent shadow corruption in Fil-C 0.686, and a compile error instead. Video and reproducers.</span></a>
-  <a class="card-link" href="frame-coloring-o0/"><img src="frame-coloring-o0/poster.png" alt=""><strong>Frame slot coloring at -O0: from cubic to near-linear</strong><span>48 s to 0.66 s for one function, with identical frames. Video and interactive model.</span></a>
-  <a class="card-link" href="glibc-memcmp-noalloc/"><img src="glibc-memcmp-noalloc/poster.png" alt=""><strong>memcmp without the eight heap allocations</strong><span>&amp;a and &amp;b put eight heap objects in every memcmp call — a third of PHP's allocation on WordPress. One ctz removes them.</span></a>
-  <a class="card-link" href="sealed-closures/"><img src="sealed-closures/poster.png" alt=""><strong>Sealed closures: call it, don't open it</strong><span>A staging proof of concept: closures whose callers cannot read, replace or rebind their data, and the inliner bypass review found.</span></a>
-  <a class="card-link" href="frame-alias-scope/"><img src="frame-alias-scope/poster.png" alt=""><strong>Fil-C frame accesses in their own alias scope</strong><span>Escaped frames make LLVM reload one upper bound 14 times instead of 2. One alias scope, with calls deliberately left out.</span></a>
+<h3>Systems</h3>
+<ul class="reading-list">
+  <li><a href="filc-nixos/">Fil-C NixOS and finix</a><span>One module makes a whole system's packages Fil-C, systemd and PAM included, and filc-ps proves nothing else runs native.</span></li>
+  <li><a href="fil-bind/">Fil-BIND: BIND 9 in memory-safe C</a><span>The year's CVEs, and what memory safety costs per query.</span></li>
+  <li><a href="php-on-filc/">PHP on Fil-C</a><span>PHP 8.5 and its native extensions without a rewrite, real server costs, and an LLVM JIT.</span></li>
+  <li><a href="docs/determinate-nix-addtrace-race.html">A data race Fil-C found in Determinate Nix</a><span>Parallel evaluation mutating a failed thunk's shared exception.</span></li>
+</ul>
+
+<h3>Compiler and runtime</h3>
+<ul class="reading-list">
+  <li><a href="frame-coloring-o0/">Frame slot coloring at -O0</a><span>48 s to 0.66 s for one function, with identical frames.</span></li>
+  <li><a href="glibc-memcmp-noalloc/">memcmp without the eight heap allocations</a><span>A third of PHP's allocation on WordPress, removed by one ctz.</span></li>
+  <li><a href="docs/zmark-shared.html">zmark_shared: pointers in shared memory</a><span>How PostgreSQL can keep pointers in shared mappings.</span></li>
+  <li><a href="docs/boehm-on-fugc.html">Boehm GC on FUGC</a><span>The libgc API on Fil-C's own collector, and <a href="docs/jemalloc-on-fugc.html">jemalloc</a> beside it.</span></li>
+  <li><a href="docs/pthread-cancellation.html">Thread cancellation</a><span>The two syscall races, across glibc, musl, Cosmopolitan and FreeBSD.</span></li>
+  <li><a href="explainers/">All the explainers</a><span>Misaligned initializers, sealed closures, frame alias scopes and more.</span></li>
+</ul>
+</section>
+
+<section class="lately" aria-labelledby="lately">
+<h2 id="lately">From the stream</h2>
+<div data-stream="latest"><p class="small">Nothing posted yet.</p></div>
+<p class="small more"><a href="stream/">The whole stream</a> · <a href="stream/feed.xml">Atom feed</a></p>
+<h3>Documents written and changed lately</h3>
+<!-- history.py fills this from git: the documents written and changed most recently. -->
+<div data-history="recent"><p class="small">The site was built without its git history; see <a href="https://github.com/mbrock/filnix/commits/main">the commit log</a>.</p></div>
+<p class="small more"><a href="docs/">Every document</a> · <a href="nanofil/">All of nanofil</a> · <a href="https://github.com/mbrock/filnix/commits/main">Commits</a></p>
+</section>
 </div>
 </main>
 </body>

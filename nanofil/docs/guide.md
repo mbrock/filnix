@@ -1017,7 +1017,7 @@ A refactoring must leave the snapshot unchanged.
 The 31 modules of `nanofil/src`, in pipeline order. Each module's
 header is the full statement of what it owns. These paragraphs say
 where it sits and what to read next. On the
-[Pages site](https://mbrock.github.io/filnix/nanofil/) each module is
+[wiki](https://filnix.org/nanofil/) each module is
 drawn as terms, with its predicates' documentation.
 
 ### Driver

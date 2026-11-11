@@ -246,6 +246,6 @@ class Explainer(Scene):
         self.play(t.animate.set_value(48), run_time=4.0, rate_func=linear)
         same = T("Same slots in all 44,006 functions", 34, GRN, bold=True).move_to([0, -1.7, 0])
         self.play(FadeIn(same, shift=UP * 0.2))
-        url = T("mbrock.github.io/filnix/frame-coloring-o0", 26, ACC).move_to([0, -3.2, 0])
+        url = T("filnix.org/frame-coloring-o0", 26, ACC).move_to([0, -3.2, 0])
         self.play(FadeIn(url))
         self.wait(2.5)

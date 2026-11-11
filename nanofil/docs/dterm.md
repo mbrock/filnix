@@ -2,7 +2,7 @@
 
 dterm draws nanofil's Prolog as web pages
 ([web/dterm.pl](../web/dterm.pl), published with the Filnix wiki at
-[mbrock.github.io/filnix/nanofil](https://mbrock.github.io/filnix/nanofil/)).
+[filnix.org/nanofil](https://filnix.org/nanofil/)).
 This file records where it comes from, what it does, and the change it
 asks of how nanofil is written: **documentation is a relation of the
 module, `doc/3`, and its examples are tests.**
@@ -249,7 +249,7 @@ space, so the browser draws exactly the plan. `html[data-planner=off]`
 shows the text unbroken; the workbench's *Line breaks* knob compares the
 two, and its *ribbon* and *hang* knobs tune the printer.
 
-The [workbench](https://mbrock.github.io/filnix/nanofil/workbench/)
+The [workbench](https://filnix.org/nanofil/workbench/)
 (`web/workbench/`) sets representative terms twice, under presets or
 any knob (paren ink, stroke, bow and spacing, bracket style, comma ink
 and weight, operator spacing, the ribbon and hang, v2's layout), at phone,
@@ -370,7 +370,7 @@ wrong.
 
 [dterm-nix](https://github.com/mbrock/filnix/tree/main/dterm-nix) draws
 filnix's Nix the same way, on the wiki at
-[mbrock.github.io/filnix/nix](https://mbrock.github.io/filnix/nix/): a
+[filnix.org/nix](https://filnix.org/nix/): a
 Nix grammar written as a DCG reads each file into terms with positions
 and comments, attribute sets and `let` become tables of bindings, and
 dterm.js breaks the inline terms as it breaks Prolog's. It shares
@@ -383,7 +383,7 @@ option index from evaluating the NixOS and finix modules.
 
 [web/rocq](../web/rocq/README.md), dterm-rocq, draws the formal
 campaign's Rocq ([formal.md](formal.md)) the same way, on the wiki at
-[mbrock.github.io/filnix/nanofil/rocq](https://mbrock.github.io/filnix/nanofil/rocq/):
+[filnix.org/nanofil/rocq](https://filnix.org/nanofil/rocq/):
 a Rocq grammar written as a DCG reads each `.v` file into terms with
 positions and comments; inductive types become tables of constructors,
 step relations and theorems inference rules with their proofs folded

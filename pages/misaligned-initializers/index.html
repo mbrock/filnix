@@ -6,7 +6,7 @@
 <title>Misaligned pointers in global and thread-local initializers · Fil-C</title>
 <meta property="og:title" content="Misaligned pointers in Fil-C global and thread-local initializers">
 <meta property="og:description" content="A packed initializer with a pointer at byte 1 aborts clang for a global and silently corrupts shadow capabilities for a thread-local. The fix turns both into a compile error.">
-<meta property="og:image" content="https://mbrock.github.io/filnix/misaligned-initializers/poster.png">
+<meta property="og:image" content="https://filnix.org/misaligned-initializers/poster.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,18 +35,9 @@ pre .del { color: #a8282f; } pre .add { color: #2e7a3a; } pre .c { color: var(--
 </style>
 </head>
 <body>
-<header class="library"><div class="page-frame library-frame">
-  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
-  <nav class="doors">
-    <a class="door" href="../docs/">Docs</a>
-    <a class="door selected" href="../index.html#explainers">Explainers</a>
-    <a class="door" href="../nix/">Nix</a>
-    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
-    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
-  </nav>
-</div></header>
+<header class="library"><!-- the site's band: packages/site/chrome.py --></header>
 <div class="status"><div class="page-frame status-frame">
-  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Misaligned pointers in initializers</span></nav>
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../explainers/">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Misaligned pointers in initializers</span></nav>
   <span class="status-right"><a href="https://github.com/mbrock/fil-c/commit/b987d40b6303a4ea549ecefe8092339052cfb98b">b987d40</a></span>
 </div></div>
 <main class="page-frame reading explainer">

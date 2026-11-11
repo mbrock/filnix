@@ -184,6 +184,6 @@ class Explainer(Scene):
         ).arrange(DOWN, buff=0.25, aligned_edge=LEFT).move_to([0, -1.4, 0])
         self.play(LaggedStart(*[FadeIn(o, shift=RIGHT * 0.2) for o in ok], lag_ratio=0.5), run_time=1.6)
         self.wait(1.6)
-        url = T("mbrock.github.io/filnix/misaligned-initializers", 24, ACC).move_to([0, -3.3, 0])
+        url = T("filnix.org/misaligned-initializers", 24, ACC).move_to([0, -3.3, 0])
         self.play(FadeIn(url))
         self.wait(2.5)

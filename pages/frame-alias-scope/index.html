@@ -6,7 +6,7 @@
 <title>Fil-C frame accesses in their own alias scope · Fil-C</title>
 <meta property="og:title" content="Put Fil-C frame accesses in their own alias scope">
 <meta property="og:description" content="Every Fil-C frame escapes into the thread's frame list, so LLVM must assume frame stores may alias anything — and object header loads are reloaded 14 times where 2 would do. One alias scope, with calls deliberately left out, fixes it.">
-<meta property="og:image" content="https://mbrock.github.io/filnix/frame-alias-scope/poster.png">
+<meta property="og:image" content="https://filnix.org/frame-alias-scope/poster.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,18 +38,9 @@ pre .del { color: #a8282f; } pre .add { color: #2e7a3a; } pre .c { color: var(--
 </style>
 </head>
 <body>
-<header class="library"><div class="page-frame library-frame">
-  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
-  <nav class="doors">
-    <a class="door" href="../docs/">Docs</a>
-    <a class="door selected" href="../index.html#explainers">Explainers</a>
-    <a class="door" href="../nix/">Nix</a>
-    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
-    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
-  </nav>
-</div></header>
+<header class="library"><!-- the site's band: packages/site/chrome.py --></header>
 <div class="status"><div class="page-frame status-frame">
-  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../index.html#explainers">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Frame alias scope</span></nav>
+  <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../explainers/">Explainers</a><span class="crumb-sep">›</span><span class="crumb current">Frame alias scope</span></nav>
   <span class="status-right"><a href="https://github.com/mbrock/fil-c/commit/0a2f0f6d40e23239e021caf2b1fd79e5d95d9a35">0a2f0f6</a></span>
 </div></div>
 <main class="page-frame reading explainer">

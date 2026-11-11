@@ -4,7 +4,7 @@ dterm-rocq draws nanofil's Rocq the way [dterm](../../docs/dterm.md)
 draws its Prolog and [dterm-nix](../../../dterm-nix/README.md) draws
 filnix's Nix: by what the code is, not how it was typed. The pages are on
 the Filnix wiki at
-[mbrock.github.io/filnix/nanofil/rocq](https://mbrock.github.io/filnix/nanofil/rocq/),
+[filnix.org/nanofil/rocq](https://filnix.org/nanofil/rocq/),
 one per file of the model in [nanofil/rocq](../../rocq/), and the Rocq
 written in [formal.md](../../docs/formal.md) is drawn the same way on
 `nanofil/formal.html`.

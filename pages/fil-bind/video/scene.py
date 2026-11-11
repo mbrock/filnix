@@ -225,7 +225,7 @@ class Explainer(Scene):
         name = T("Fil-BIND", 120, GRN, bold=True).move_to([0, 1.3, 0])
         tag = T("a research build of BIND 9 in memory-safe C", 36, MUTED).next_to(name, DOWN, 0.35)
         pull = M("docker pull ghcr.io/mbrock/filnix-bind:9.20.30", 32, INK).move_to([0, -1.2, 0])
-        url = T("mbrock.github.io/filnix/fil-bind", 34, ACC, bold=True).move_to([0, -2.4, 0])
+        url = T("filnix.org/fil-bind", 34, ACC, bold=True).move_to([0, -2.4, 0])
         self.play(FadeIn(name, scale=0.9), run_time=0.7)
         self.play(FadeIn(tag))
         self.play(FadeIn(pull), FadeIn(url))

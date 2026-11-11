@@ -28,24 +28,14 @@ td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
-<header class="library"><div class="page-frame library-frame">
-  <div class="library-heading"><p class="eyebrow">Fil-C on Nix</p><h1><a href="../index.html">Filnix wiki</a></h1></div>
-  <nav class="doors">
-    <a class="door" href="../docs/">Docs</a>
-    <a class="door" href="../index.html#explainers">Explainers</a>
-    <a class="door" href="../nix/">Nix</a>
-    <a class="door selected" href="../nanofil/">nanofil</a>
-    <a class="door" href="https://nix.swa.sh/">Campaigns</a>
-    <a class="door" href="https://github.com/mbrock/filnix">Source</a>
-  </nav>
-</div></header>
+<header class="library"><!-- the site's band: packages/site/chrome.py --></header>
 <div class="status"><div class="page-frame status-frame">
   <nav class="crumbs" aria-label="Breadcrumb"><a class="crumb" href="../nanofil/">nanofil</a><span class="crumb-sep">›</span><a class="crumb" href="../nanofil/index.html#archive">Archive</a><span class="crumb-sep">›</span><span class="crumb current">Where it stands, October 2026</span></nav>
   <span class="status-right"><a href="https://github.com/mbrock/filnix/tree/main/nanofil">nanofil/</a></span>
 </div></div>
 <main class="page-frame reading explainer">
 
-<p class="note">Archived: a snapshot from October 2026, kept as written. nanofil has moved on (it now requires Fil-C 0.687); <a href="../nanofil/">nanofil's page</a> lists what is current.</p>
+<p class="archived">Archived: a snapshot from October 2026, kept as written. nanofil has moved on (it now requires Fil-C 0.687); <a href="../nanofil/">nanofil's page</a> lists what is current.</p>
 <p class="meta">nanofil at main · SWI-Prolog 10 · Fil-C 0.686 reference · October 2026</p>
 <h1>nanofil: where it stands</h1>
 <p class="sub">nanofil is a C compiler written in Prolog that emits <a href="https://github.com/pizlonator/fil-c">Fil-C</a> code: x86-64 assembly in which every pointer carries a capability, every access is checked, and the collector sees every pointer. Its objects link with filcc's, the clang-based Fil-C compiler. This page says what it can do today and what it costs, as far as we have measured.</p>

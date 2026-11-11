@@ -160,6 +160,7 @@ pkgs.runCommand "filnix-site"
   {
     nativeBuildInputs = [
       pkgs.pandoc
+      pkgs.python3
       swipl
     ];
     passthru = {
@@ -178,4 +179,6 @@ pkgs.runCommand "filnix-site"
     bash ${./.}/build.sh ${src} $out ${repoFiles} ${options} ${nixpkgs} \
       ${lib.escapeShellArgs nixPages}
     cp -r ${play} $out/nanofil/play
+    # Every page's band, doors, crumbs and footer, from one place.
+    python3 ${./.}/chrome.py $out ${src}
   ''

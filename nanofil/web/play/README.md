@@ -2,7 +2,7 @@
 
 nanofil compiles C in a web page, on SWI-Prolog 10.1.19 in WebAssembly,
 and the page draws what it made with dterm. It is published with the wiki
-at [nanofil/play/](https://mbrock.github.io/filnix/nanofil/play/), in the
+at [nanofil/play/](https://filnix.org/nanofil/play/), in the
 wiki's palette and stylesheets. Paste C, press Compile (or Ctrl+Enter),
 and the page shows, from one `<article>` whose sections it puts in place:
 
