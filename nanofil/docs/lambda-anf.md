@@ -74,9 +74,10 @@ dual-substrate compiler:
   copy, and compile straight through [Compile.compile_allocated] without
   invoking `clang` or `FilPizlonator`.
 
-> Nothing below is built yet. Section 7 separates what is already
-> measured in this repository from what is a design hypothesis and what
-> M0 must measure against CertiRocq's own C backend.
+> Milestones M0 ([bench/arena/](../bench/arena/)) and M1
+> ([anf/](../anf/)) are built and measured; M2–M5 remain ahead. Section 7
+> separates what is measured in this repository from the remaining
+> hypotheses.
 
 ## 1. Why routing Gallina through C++ or C hurts
 
@@ -279,9 +280,11 @@ words are written. Under Fil-C, `mmap` routes through `zsys_mmap`
 with `aux = NULL`, and `c: madvise(arena, major_bytes, MADV_DONTNEED)`
 routes through `zsys_madvise` to release physical major pages in `O(1)`
 between independent compiler invocations while keeping the capability
-valid. (How large a single `FILC_OBJECT_FLAG_MMAP` reservation
-`verse_heap` comfortably grants — 512 MiB, 2 GiB, or the full 8 GiB — is
-an M1 check.)
+valid. M1 verified that `verse_heap` skips zeroing `FILC_OBJECT_FLAG_MMAP`
+payloads and touches only one 4-byte chunk-map word per 512 KiB chunk
+(**8 KiB/GiB**), granting single reservations up to **4 TiB** in
+`fugc_destructor_heap` and adding only **+0.37 MiB** RSS for the full
+`8 GiB + 4 KiB` arena.
 
 ### Uniform 32-bit tagged words (`w`) and block headers
 
@@ -682,7 +685,7 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 | **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
 | **Hypothesis** | Scaling from M0's kernels to full `Compile.compile` on `rx.ir` stays within `1.5–2×` of `ocamlopt` once CFG join recovery and mapped 31-bit `Z` / `nat` / packed `string` are in place (tested in M3) |
 | **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump |
-| **To measure** | Max practical `zsys_mmap` `MAP_NORESERVE` reservation size and `zsys_madvise` RSS behavior under `fugc_destructor_heap` on orbs and `swa` (M1) |
+| **Known (M1)** | `zsys_mmap` (`MAP_NORESERVE`, `fugc_destructor_heap`) grants up to **`4 TiB`** in one reservation at **`8 KiB/GiB`** chunk-map overhead (**`+0.37 MiB`** RSS for the full `8 GiB + 4 KiB` arena), `zsys_madvise` (`MADV_DONTNEED`) reclaims `64 MiB` and `256 MiB` major slices immediately while keeping the `arena` capability valid, and [anf/](../anf/) passes 10,000 randomized tree-rewrite steps (1,851 minor GCs in a 256-word nursery) under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` |
 
 ## 8. Milestones
 
@@ -752,6 +755,57 @@ under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` so evacuation runs every few
 hundred constructors, plus `OutOfMemory` boundary tests. Gate: zero
 panics or memory mismatches across 10,000 randomized tree-rewrite steps;
 measured RSS of `MAP_NORESERVE` and `MADV_DONTNEED`.
+
+*Done* ([anf/](../anf/)). `anf_arena.c` (`anf_arena_init`,
+`anf_arena_reset`, `anf_arena_destroy`, `anf_minor_gc`, inline shadow
+`roots[]` at `st + 1` so neither `arena` nor `st` allocates an `aux`
+table, `ANF_ST_BYTES` no-scan byte blocks, canonical 31-bit /
+base-`2^32` `ANF_ST_BIGINT` `Z` helpers, and `anf_oom` lowering
+`__builtin_alloca((1ULL << 48) - 1)` to a core `alloc(16)` that every
+runtime refuses with [OutOfMemory]) compiles cleanly through both Prolog
+`nanofil -O` and `nanofil-backend compile-allocated` ([valid_fast] +
+[Regs.valid_alloc], byte-identical on `compile`, `compile-promoted` and
+`compile-nfb`). Under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` over a **256-word
+nursery**, `test_arena.c` passes a `28^2`-pair differential `Z` suite
+spanning `0` through `2^192` (49 minor GCs), adversarial `ANF_ST_BYTES`
+blocks containing raw nursery-pointer-lookalike words (22 minor GCs),
+**10,000 randomized algebraic tree-rewrite steps** with DAG diamond
+sharing and mid-run `MADV_DONTNEED` resets (**1,851 minor GCs**, 63,658
+words promoted, zero panics or mismatches), and `SIGTRAP` [OutOfMemory]
+boundary checks (major exhaustion, oversized allocation, shadow root
+overflow); five planted bugs (omitted forwarding marker, scanning
+`ANF_ST_BYTES` or `ANF_ST_BIGINT` payloads, `-2^30` normalization
+off-by-one, and omitted `major_limit` check) each fail immediately.
+Orb RSS lifecycle on the full `8 GiB + 4 KiB` (`2^33 + 4096` B) arena
+(`probe_mmap.c`, under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`):
+
+| Stage (`8 GiB + 4 KiB` slab) | `VmRSS` | `ΔRSS` | `AnonDirty` |
+|---|---:|---:|---:|
+| Process baseline | 29.04 MiB | +0.00 MiB | 8.29 MiB |
+| `anf_arena_init` (`+1 MiB` roots) | 29.41 MiB | **+0.37 MiB** | 8.41 MiB |
+| Fault `4 MiB` nursery + guard | 33.24 MiB | +4.20 MiB | 12.78 MiB |
+| Fault `64 MiB` in `major` | 97.43 MiB | +68.40 MiB | 76.80 MiB |
+| `MADV_DONTNEED` reset (`64 MiB`) | 33.47 MiB | **+4.44 MiB** | 12.81 MiB |
+| Fault `256 MiB` in `major` | 289.47 MiB | +260.43 MiB | 268.84 MiB |
+| `MADV_DONTNEED` reset (`256 MiB`) | 33.51 MiB | **+4.48 MiB** | 12.85 MiB |
+| After 5 FUGC cycles (arena live) | 33.66 MiB | +4.63 MiB | 13.26 MiB |
+
+Two runtime details from `libpas` explain these numbers and guide M2–M4:
+
+- **`8 KiB/GiB` chunk-map cost up to `4 TiB`.** In `verse_heap`,
+  `finish_allocate_large` skips `pas_zero_memory` on
+  `FILC_OBJECT_FLAG_MMAP` allocations and records one 4-byte
+  `verse_heap_chunk_map_entry` per 512 KiB chunk (`8 KiB/GiB` of virtual
+  span: measured `+0.61 MiB` RSS at `16 GiB`, `+2.50 MiB` at `256 GiB`,
+  `+8.51 MiB` at `1 TiB`, `+32.51 MiB` at `4 TiB`).
+- **Keep one persistent module arena; reset with `MADV_DONTNEED`.** While
+  `arena` is live, FUGC never touches its payload even under
+  `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`. Because `fugc_destructor_heap` joins
+  `fugc_scribble_set` when `FUGC_SCRIBBLE=1`, however, sweeping a *dead*
+  (unmapped/unreachable) `MMAP` object calls `c: memset(start, 0xac, size)` across its
+  full virtual length; keeping a single module-lifetime `8 GiB` arena and
+  releasing promoted pages via `anf_arena_reset` (`zsys_madvise`) avoids
+  dead-slab scribbling while reclaiming physical RAM in `O(1)`.
 
 **M2. Core λANF → Nanofil IR compiler with CFG join recovery.**
 Write `AnfLower.v` in Gallina, tapping CertiRocq's λANF pipeline after
