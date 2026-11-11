@@ -1,5 +1,6 @@
-(** Triples for user glibc's `c: __libc_cleanup_push_defer` and
-    `c: __libc_cleanup_pop_restore` (SysCode.v, nptl/libc-cleanup.c)
+(** Triples for user glibc's `c: __libc_cleanup_push_defer` here and
+    `c: __libc_cleanup_pop_restore` in SysCleanupPop.v (SysCode.v,
+    nptl/libc-cleanup.c)
     over FileInv.v's [tcb_cleanup_inv]: libio's
     `c: _IO_cleanup_region_start_noarg` pushes a cleanup buffer on the
     caller's stack around the walks of the stream list, and pops it
@@ -84,43 +85,6 @@ Proof.
   - iExists tb, treg, jb. iFrame. iPureIntro. unfold off_cancelhandling. repeat split; try reflexivity; lia.
   - iSplit; [iPureIntro; lia|]. iExact "Hct".
   Unshelve. exact treg.
-Qed.
-
-(** `c: __libc_cleanup_pop_restore(buffer)` after
-    [wp_glibc___libc_cleanup_push_defer] of the same buffer, its
-    `c: __prev` null and `c: __canceltype` 0: the thread's
-    `c: cleanup` is null again, and since the canceltype is deferred
-    the call returns at once, [tcb_cleanup_inv] restored. *)
-Lemma wp_glibc___libc_cleanup_pop_restore fr bb breg bo Φ :
-  call_frame glibc___libc_cleanup_pop_restore [WPtr (mkPtr (bb + bo) (Obj bb))] = Some fr ->
-  0 < bb -> 0 <= bo -> (bb + bo) mod 8 = 0 -> bb + bo + 32 <= r_end breg -> r_end breg <= 2 ^ 63 ->
-  tcb_pushed (ow_self w0) (mkPtr (bb + bo) (Obj bb)) -∗ live bb breg -∗ pcell bb (bo + 24) null -∗
-  int_cell bb (bo + 16) 0 -∗
-  ▷ (tcb_cleanup_inv (ow_self w0) -∗ live bb breg -∗ pcell bb (bo + 24) null -∗ int_cell bb (bo + 16) 0 -∗
-     Φ RetVoid) -∗
-  WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
-  intros Hfr Hbb Hbo Hal Hend Hbreg. injection Hfr as <-.
-  iIntros "(%tb & %treg & %jb & %Ht & Htl & Hcl & Hjb & Hch) Hbl Hpv [%Hct0 Hct] HK".
-  destruct Ht as (Hself & Htb & Htal & Htend & Htreg). enter.
-  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [rewrite Hself; cbn; lia|]. iNext.
-  unfold off_cancelhandling in Htend. rewrite Hself. st. st. norm. chk "Hbl".
-  iApply (wp_raw_load_pointer with "Hbl Hpv [//]"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hbl Hpv _". chk "Htl".
-  iApply (wp_raw_store_pointer with "Htl Hcl"); [reflexivity | reflexivity | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Htl Hcl". st. norm. chk "Htl".
-  iDestruct "Hch" as "[%Hch0 Hch]".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hch"); [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-    left; reflexivity | ar |].
-  iNext. iIntros "Htl Hch". st. norm. chk "Hbl".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hct"); [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-    left; reflexivity | ar |].
-  iNext. iIntros "Hbl Hct". st. closed_ints. br. st. closed_ints. br. st.
-  iApply wp_ret_void. iNext.
-  iApply ("HK" with "[Htl Hcl Hjb Hch] Hbl Hpv [Hct]").
-  - iExists tb, treg, jb. iFrame. iPureIntro. unfold off_cancelhandling. repeat split; try reflexivity; lia.
-  - iSplit; [iPureIntro; lia|]. iExact "Hct".
-  Unshelve. exact breg.
 Qed.
 
 End rules.

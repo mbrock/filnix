@@ -19,7 +19,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
-  LibioLogic SysWrappers.
+  LibioLogic SysWrappers LibioDoWriteRet.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -60,9 +60,9 @@ Context (Hfw_spec : forall fr fb freg fl f2 fd tw off b reg o xs eb Φ,
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}).
 
-(** The end of the call, as LibioDoWriteTail.v proves it
-    ([wp_do_write_tail]). *)
-Context (Htail_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e from Φ,
+(** The rest of the block once the write returned, as
+    LibioDoWriteRet.v proves it ([wp_do_write_ret]). *)
+Context (Hret_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e Φ,
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
@@ -72,13 +72,14 @@ Context (Htail_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e from 
   live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
+  bytes fb off_column [0; 0] -∗
   ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
      pcell fb off_read_ptr base -∗ pcell fb 16 base -∗ pcell fb 24 base -∗ pcell fb off_write_base base -∗
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
-     pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
+     pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗ bytes fb off_column [0; 0] -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L70") (Some from))) : sexpr) {{ Φ }}).
-
+  WP (ERun (mkFrame glibc__IO_new_do_write e [] None
+              (Exec (TAtom "iw_1.iw_2.join") (skipn 5 (b_insts dw_join)) (b_jump dw_join))) : sexpr) {{ Φ }}).
 
 (** Block `c: iw_1.L9` of `c: _IO_new_do_write` on: the jump table
     validated, its write slot called, and the end of the call. *)
@@ -139,12 +140,9 @@ Proof.
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   assert (Hr : 0 <= r <= n) by (destruct Hpost as [[-> _] | [? _]]; lia).
   rewrite (Z.mod_small r (2 ^ 64)); [|lia].
-  st. norm. chk "Hl".
-  iApply (wp_raw_load_sub_bytes_dq with "Hl Hcol"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |].
-  iNext. iIntros "Hl Hcol". br. st. br.
-  iApply (Htail_spec with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
+  iApply (Hret_spec with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol");
     try side.
-  iNext. iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend".
+  iNext. iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol".
   iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp").
   split; [exact Hpost | exact Hfl'].
 Qed.

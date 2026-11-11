@@ -10,7 +10,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioDoWriteCode FileInv LibioLogic SysWrappers.
+From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioDoWriteCode FileInv LibioLogic SysWrappers LibioDoWriteSetp.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -32,25 +32,27 @@ Local Instance do_write_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) 
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The last blocks, as LibioDoWriteEnd.v proves them
-    ([wp_do_write_end]). *)
-Context (Hend_spec : forall fb freg fl bb breg we be n r e from Φ,
+(** The rest of block `c: iw_1.L70`, as LibioDoWriteSetp.v proves it
+    ([wp_do_write_setp]). *)
+Context (Hsetp_spec : forall fb freg fl bb breg wb wp we be n r e Φ,
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
   0 < bb < 2 ^ 63 -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb -> 0 <= r <= n -> n < 2 ^ 63 ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk16") e = Some (WPtr (mkPtr (fb + off_buf_base) (Obj fb))) ->
-  lookup (TAtom "iw_1.v114") e = Some (WPtr (mkPtr (fb + off_write_end) (Obj fb))) ->
+  lookup (TAtom "iw_1.v94") e = Some (WPtr (mkPtr (fb + off_buf_base) (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "iw_1.v67") e = Some (WInt r) ->
-  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗
-  pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗
+  live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+  pcell fb off_write_base wb -∗ pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗
+  pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
+  ▷ (live fb freg -∗ live bb breg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 0 -∗
+     pcell fb off_write_base base -∗ pcell fb off_write_ptr base -∗
      pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L122") (Some from))) : sexpr) {{ Φ }}).
-
+  WP (ERun (mkFrame glibc__IO_new_do_write e [] None
+              (Exec (TAtom "iw_1.L70") (skipn 16 (b_insts dw_L70)) (b_jump dw_L70))) : sexpr) {{ Φ }}).
 
 (** Block `c: iw_1.L70` of `c: _IO_new_do_write` to its return, r of
     the n bytes written: `c: _IO_setg(fp, base, base, base)`, the
@@ -89,18 +91,10 @@ Proof.
   iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
   iNext. iIntros "Hl Hbase Hbl". chk "Hl".
   iApply (wp_raw_store_pointer with "Hl Hre"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hre". st. st. norm. chk "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hbase Hbl". chk "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hwp"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hwp". chk "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hwb"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hwb". st. st. norm. chk "Hl". iDestruct "Hmode" as "[%Hm0 Hmode]". load_int "Hl Hmode".
-  st. br.
-  iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend");
-    try side.
-  iNext. iIntros "Hl Hbl Hfl Hwe Hbase Hbend".
-  iApply ("HK" with "Hl Hbl Hfl [$Hmode //] Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend").
+  iNext. iIntros "Hl Hre".
+  iApply (Hsetp_spec with "Hl Hbl Hfl Hmode Hwb Hwp Hwe Hbase Hbend"); try side.
+  iNext. iIntros "Hl Hbl Hfl Hmode Hwb Hwp Hwe Hbase Hbend".
+  iApply ("HK" with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend").
 Qed.
 
 

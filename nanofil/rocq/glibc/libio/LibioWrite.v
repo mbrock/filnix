@@ -20,7 +20,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
-  SysWrappers LibioWriteExit LibioWriteCall.
+  SysWrappers LibioWriteExit.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,20 +31,79 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The triples over the [[runtime]] R and [LogicSig] LG0. *)
 Module LibioWriteOn (R : Runtime) (LG0 : LogicSig R).
-Module WC := LibioWriteCallOn R LG0.
-Module WE := WC.WE.
-Module SW := WE.SW.
-Import WC WE SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+Module SW := SysWrappersOn R LG0.
+Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write)).
 
 Local Instance write_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** The loop's exit, as LibioWriteExit.v proves it ([wp_file_write_exit]). *)
+Context (Hexit : forall fb freg off n t e from Φ,
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= t <= n -> n < 2 ^ 63 ->
+  lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v4") e = Some (WInt n) ->
+  lookup (TAtom "pr.2") e = Some (WInt t) ->
+  live fb freg -∗ icell fb off_offset off -∗
+  ▷ (∀ off', live fb freg -∗ icell fb off_offset off' -∗ Φ (Ret (WInt (n - t)))) -∗
+  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}).
+
+(** A failed call's block, as LibioWriteExit.v proves it ([wp_file_write_err]). *)
+Context (Herr_spec : forall fb freg fl off n t e from Φ,
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= t <= n -> n < 2 ^ 63 ->
+  0 <= fl < 2 ^ 32 ->
+  lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v4") e = Some (WInt n) ->
+  lookup (TAtom "pr.2") e = Some (WInt t) ->
+  lookup (TAtom "chk0") e = Some (WPtr (mkPtr (fb + off_flags2) (Obj fb))) ->
+  live fb freg -∗ int_cell fb off_flags fl -∗ icell fb off_offset off -∗
+  ▷ (∀ off', live fb freg -∗ int_cell fb off_flags (Z.lor fl io_err_seen) -∗ icell fb off_offset off' -∗
+     Φ (Ret (WInt (n - t)))) -∗
+  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L38") (Some from))) : sexpr) {{ Φ }}).
+
+(** The block after a call that wrote, as LibioWriteExit.v proves it
+    ([wp_file_write_next]). *)
+Context (Hnext : forall fb freg tw t k p e from Φ,
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= k <= t -> t < 2 ^ 63 ->
+  0 <= ptr_addr p -> ptr_addr p + k < 2 ^ 64 ->
+  lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v37") e = Some (WInt k) ->
+  lookup (TAtom "pr.2") e = Some (WInt t) -> lookup (TAtom "pr.1") e = Some (WPtr p) ->
+  lookup (TAtom "chk0") e = Some (WPtr (mkPtr (fb + off_flags2) (Obj fb))) ->
+  live fb freg -∗ icell fb off_total_written tw -∗
+  ▷ (∀ e' tw', ⌜lookup (TAtom "v0") e' = lookup (TAtom "v0") e /\
+                 lookup (TAtom "v4") e' = lookup (TAtom "v4") e /\
+                 lookup (TAtom "pr.2") e' = Some (WInt (t - k)) /\
+                 lookup (TAtom "pr.1") e' = Some (WPtr (mkPtr (ptr_addr p + k) (ptr_cap p)))⌝ -∗
+       live fb freg -∗ icell fb off_total_written tw' -∗
+       WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
+             : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L40") (Some from))) : sexpr) {{ Φ }}).
+
+(** The call of `c: __write`, as LibioWriteCall.v proves it
+    ([wp_file_write_call]). *)
+Context (Hcall : forall fb freg f2 fd b reg o xs eb t e Φ,
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) ->
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
+  0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
+  Forall (fun x => 0 <= x < 256) xs -> 0 < t <= Z.of_nat (length xs) ->
+  lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
+  lookup (TAtom "pr.2") e = Some (WInt t) ->
+  lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b + o + (Z.of_nat (length xs) - t)) (Obj b))) ->
+  live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ live b reg -∗ bytes b o xs -∗
+  errno_any eb -∗
+  ▷ (∀ e' k, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v4" \/ x = TAtom "pr.1" \/ x = TAtom "pr.2" ->
+                lookup x e' = lookup x e) /\
+              lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (fb + off_flags2) (Obj fb))) /\
+              lookup (TAtom "v36") e' = Some (WInt k) /\
+              ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
+     live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ live b reg -∗ bytes b o xs -∗
+     errno_any eb -∗
+     WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
+           : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}).
 
 (** The loop of `c: _IO_new_file_write(fp, data, n)` at its head, t of
     the n bytes xs at offset o of b left to write. *)
@@ -72,11 +131,11 @@ Proof.
   iLöb as "IH". iIntros (e t tw off (Hv0 & Hv4 & Ht & Hp & Htr)) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
   cbn [fw_L8 b_insts b_jump]. st. destruct (Z.eq_dec t 0) as [-> | Ht0].
-  { brv true. iApply (wp_file_write_exit w0 registry ge with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
+  { brv true. iApply (Hexit with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
     rewrite Z.sub_0_r. iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
     split; [left; split; reflexivity | exact Hflr]. }
   brv false.
-  iApply (wp_file_write_call w0 registry ge Hreg Hext Hwrite fb freg f2 fd b reg o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
+  iApply (Hcall fb freg f2 fd b reg o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
     try wside.
   iNext. iIntros (e' k (Hsame & Hc0 & Hk36 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
   pose proof (Hsame (TAtom "v0") ltac:(auto)) as Hv0'. pose proof (Hsame (TAtom "v4") ltac:(auto)) as Hv4'.
@@ -89,13 +148,13 @@ Proof.
   clear Hsame Hv0' Hv4' Hp'' Ht'' Hv0 Hv4 Hp Ht.
   st. st. st. destruct Hk as [Hk | ->].
   2: { brv false.
-       iApply (wp_file_write_err w0 registry ge with "Hl [$Hfl //] Hoff");
+       iApply (Herr_spec with "Hl [$Hfl //] Hoff");
          try wside.
        iNext. iIntros (off') "Hl Hfl Hoff".
        iApply ("HK" $! _ (Z.lor fl io_err_seen) with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
        split; [right; split; [lia | reflexivity] | apply lor_lt32; unfold io_err_seen; lia]. }
   destruct Hk as [[Hk0 Hkn] Hk31]. try (rewrite Z.mod_small in Hkn; [|lia]). brv true.
-  iApply (wp_file_write_next w0 registry ge fb freg tw t k (mkPtr (b + o + (Z.of_nat (length xs) - t)) (Obj b))
+  iApply (Hnext fb freg tw t k (mkPtr (b + o + (Z.of_nat (length xs) - t)) (Obj b))
             with "Hl Htw");
     try wside.
   iNext. iIntros (e2 tw' (Hv02 & Hv42 & Ht2 & Hp2)) "Hl Htw".

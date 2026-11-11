@@ -248,6 +248,23 @@ Ltac side :=
   | _ => first [done | lia | unfold file_size; lia | unfold io_is_appending; lia | cbn; lia | lk_prove]
   end.
 
+(** Each [lookup] of the goal taken through its [put]s and, past them,
+    from a hypothesis. *)
+Ltac lookups :=
+  repeat (rewrite Symbolic.lookup_after_put;
+          match goal with |- context [?c] => lazymatch c with name_eqb _ _ =>
+            let r := eval vm_compute in c in change c with r end end;
+          cbn beta iota);
+  repeat match goal with H : lookup ?k ?e = Some _ |- context [lookup ?k ?e] => rewrite H end.
+
+(** A pure premise of a write-loop rule, the [side] of LibioLogic.v with
+    [lookups] for environments past the call. *)
+Ltac wside :=
+  lazymatch goal with
+  | |- environments.envs_entails _ _ => fail
+  | _ => first [done | unfold file_size; lia | lia | cbn; lia | lookups; first [reflexivity | do 2 f_equal; arith]]
+  end.
+
 Ltac vx :=
   first
     [ reflexivity
