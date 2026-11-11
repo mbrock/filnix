@@ -188,11 +188,31 @@ Proof.
           | match goal with E : store_res _ _ _ _ _ = Some _ |- _ => exact (store_res_kept _ _ _ _ _ _ _ E) end ].
 Qed.
 
-(** An op changes memory only by `va_arg`: an integer op leaves it as
-    it is. *)
-Lemma op_res_int_mem : forall o k xs m r m', op_res_int o k xs m = Some (OpRes r m') -> m' = m.
+(** A [[cas]] ([cas_res], `cas_res/9`) is kept and changes no region:
+    it writes, the bytes and for a pointer its capability, only after
+    its access check passed, inside the bytes that check covered. *)
+Lemma cas_res_kept : forall t k m a c e n r m',
+  cas_res t k m a c e n = Some (r, m') -> kept m m' /\ m_regions m' = m_regions m.
 Proof.
-  unfold op_res_int. intros o k xs m r m' H. destruct o; cases H; inversion H; auto.
+  unfold cas_res. intros t k m a c e n r m' H. cases H; inversion H; subst;
+    try (split; [apply kept_refl | reflexivity]).
+  all: match goal with E : access_res _ _ _ _ _ _ = Some (RVal _) |- _ =>
+         pose proof (access_in _ _ _ _ _ _ _ E) as Hin end.
+  all: try (split; [apply store_bytes_kept; exact Hin | reflexivity]).
+  match goal with E : pointer_store_effects _ _ _ _ = Some _ |- _ =>
+    split; [exact (pointer_store_effects_kept _ _ _ _ _ Hin E)
+           | cbn in E; injection E as <-; reflexivity] end.
+Qed.
+
+(** An integer op changes memory only by a [[cas]], which is kept and
+    changes no region; every other one leaves memory as it is. *)
+Lemma op_res_int_kept : forall o k xs m r m',
+  op_res_int o k xs m = Some (OpRes r m') -> kept m m' /\ m_regions m' = m_regions m.
+Proof.
+  unfold op_res_int. intros o k xs m r m' H. destruct o; cases H; inversion H; subst;
+    try (split; [apply kept_refl | reflexivity]).
+  match goal with E : cas_res _ _ _ _ _ _ _ = Some ?rm |- _ =>
+    destruct rm; exact (cas_res_kept _ _ _ _ _ _ _ _ _ E) end.
 Qed.
 
 (** An op that gives a result changes memory as [kept] allows. *)
@@ -202,7 +222,7 @@ Proof.
   destruct o; cases H; inversion H; subst;
     first [ apply kept_refl
           | match goal with E : op_res_int _ _ _ _ = Some _ |- _ =>
-              rewrite (op_res_int_mem _ _ _ _ _ _ E); apply kept_refl end
+              exact (proj1 (op_res_int_kept _ _ _ _ _ _ E)) end
           | match goal with E : va_arg_res _ _ _ = Some ?rm |- _ =>
               destruct rm; exact (va_arg_res_kept _ _ _ _ _ E) end ].
 Qed.

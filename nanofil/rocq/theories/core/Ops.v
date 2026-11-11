@@ -318,6 +318,53 @@ Definition store_res (w : width) (m : mem) (a : Z) (c : cap) (x : word)
   | _, _ => None
   end.
 
+(** ## Compare-exchange *)
+
+(** As `cas_res(T, K, E, N, A, Cap, S0, Res, S)`: the [[cas]] of type t
+    at class k, of the Expected word e and the New word n, at the
+    address a through the capability c. First the access check of its
+    [cas_bytes], with write rights and aligned to its width, even when
+    the compare fails; a failed check leaves memory as it was. Then old,
+    the bytes at a, is compared with e: for [CasP] by address only, the
+    capabilities ignored, as Fil-C's filc_strong_cas_ptr does, and n's
+    [[lower]] then address are written when they are equal
+    (`pointer_store_effect/5`'s `lower_write` and `address_write`); for
+    an integer type with e's low bytes, and n's bytes are written when
+    they are equal, the [[aux]] left alone. The result is old: a
+    pointer with the capability stored at a, or the bytes extended as
+    `load(T)` extends them. None where the interpreter fails: an e or,
+    when it is written, an n of the wrong form. *)
+Definition cas_res (t : cas_type) (k : class) (m : mem) (a : Z) (c : cap) (e n : word)
+  : option (res word * mem) :=
+  let size := cas_bytes t in
+  let* chk := access_res m a c size Write size in
+  match chk with
+  | RTrap why => Some (RTrap why, m)
+  | RUnchecked why => Some (RUnchecked why, m)
+  | RVal _ =>
+      let u := load_bytes m a size in
+      match t, e with
+      | CasP, WPtr ep =>
+          let old := WPtr (mkPtr u (aux_at m a)) in
+          if u =? ptr_addr ep then
+            match n with
+            | WPtr np => let* m' := pointer_store_effects a np m [LowerWrite; AddressWrite] in
+                         Some (RVal old, m')
+            | _ => None
+            end
+          else Some (RVal old, m)
+      | CasL, WInt ev | CasNarrow _, WInt ev =>
+          let* old := match t with CasNarrow nt => extended nt k u | _ => Some (WInt u) end in
+          if u =? ev mod 2 ^ (8 * size) then
+            match n with
+            | WInt nv => Some (RVal old, store_bytes m a size nv)
+            | _ => None
+            end
+          else Some (RVal old, m)
+      | _, _ => None
+      end
+  end.
+
 (** ## Variadic arguments *)
 
 (** The width a store of a value of class k writes, as
@@ -556,6 +603,9 @@ Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option o
       | RVal _ => let* x := pointer_load_effects m b es in Some (OpRes (RVal (WPtr x)) m)
       | RTrap why | RUnchecked why => Some (OpRes (RUnchecked why) m)
       end
+  | RawCas t off, _, [WPtr p; e; n] =>
+      let* rm := cas_res t k m (raw_address (ptr_addr p) off) (ptr_cap p) e n in
+      Some (OpRes (raw_res (fst rm)) (snd rm))
   | (Add | Sub), _, _ => pure (additive_res k o xs)
   | (Mul | Div | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl
      | Neg | Copy | Ptoi | Itop | Cmp _ _ | Ext _), _, _ => pure (alu o k xs)

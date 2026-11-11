@@ -360,7 +360,8 @@ Definition any_class (k : class) : bool := negb (proof_class k).
     [[class]] k. Arithmetic gives an integer or float class as the op
     allows; conversions give the class they convert to; a [[check]] or reuse
     form gives an access [[proof]] (`a`), `check_function` a function proof
-    (`f`), a [[span_test|span test]] a word and a [[limit]] a long. *)
+    (`f`), a [[span_test|span test]] a word and a [[limit]] a long; a raw
+    load or a raw [[cas]] gives the class `load(T)` gives. *)
 Definition op_result_ok (o : op) (k : class) : bool :=
   match o with
   | Add | Sub | Copy => any_class k
@@ -393,6 +394,9 @@ Definition op_result_ok (o : op) (k : class) : bool :=
   | RawLoad LdX _ => class_eqb k Extended
   | RawLoad (LdNarrow _) _ => int_class k
   | RawLoadPointer _ _ => class_eqb k P
+  | RawCas CasL _ => class_eqb k L
+  | RawCas CasP _ => class_eqb k P
+  | RawCas (CasNarrow _) _ => int_class k
   | VaArgs => class_eqb k P
   | VaArg => any_class k
   | Setjmp _ => class_eqb k W
@@ -726,24 +730,28 @@ Definition evidence_meet (sets : list (list fact)) : list fact :=
 (** ## Accesses *)
 
 (** What a [[raw-access|raw access]] reads or writes, `raw_access/5`'s X: a
-    load type, a store width, or a pointer. *)
-Inductive access_type : Type := XLoad (t : load_type) | XWidth (w : width) | XPtr.
+    load type, a store width, a pointer, or `cas(T)`, a [[cas]] of type
+    t. *)
+Inductive access_type : Type :=
+  XLoad (t : load_type) | XWidth (w : width) | XPtr | XCas (t : cas_type).
 
 (** As `raw_access/5`: the instruction i as a [[raw-access|raw access]]: the
     proof q it goes through, what it moves, its offset from q's pointer and
-    the [[rights]] it needs (read for a load, write for a store). *)
+    the [[rights]] it needs (read for a load, write for a store or a
+    [[cas]], which writes even when its compare fails). *)
 Definition raw_access (i : inst) : option (name * access_type * Z * rights) :=
   match i with
   | Let _ _ (RawLoad t off) [Tmp q] => Some (q, XLoad t, off, Read)
   | RawStore w off _ (Tmp q) => Some (q, XWidth w, off, Write)
   | Let _ _ (RawLoadPointer off _) [Tmp q] => Some (q, XPtr, off, Read)
   | RawStorePointer off _ (Tmp q) _ => Some (q, XPtr, off, Write)
+  | Let _ _ (RawCas t off) (Tmp q :: _) => Some (q, XCas t, off, Write)
   | _ => None
   end.
 
 (** As `access_size_align/3`, its first solution: the bytes an access of
     type x moves, and the alignment its address needs: 8 for a pointer, 8
-    for an 80-bit float, 1 for the rest. *)
+    for an 80-bit float, a [[cas]]'s own width for a cas, 1 for the rest. *)
 Definition access_size_align (x : access_type) : Z * Z :=
   match x with
   | XLoad (LdL | LdD) => (8, 1)
@@ -753,6 +761,7 @@ Definition access_size_align (x : access_type) : Z * Z :=
   | XWidth Wp | XPtr => (8, 8)
   | XWidth Wx => (10, 8)
   | XWidth w => (width_bytes w, 1)
+  | XCas t => (cas_bytes t, cas_bytes t)
   end.
 
 (** As `rights_allow/2`: [[rights]] have serve an access that needs need;
@@ -779,7 +788,8 @@ Inductive storage : Type := Heap' | Local'.
 
 (** As `access_storage_effects/2`: the access i declares the effects of its
     storage s. A scalar access always does; a pointer access must declare
-    the heap's, the local's or the atomic effects. *)
+    the heap's, the local's or the atomic effects; a [[cas]] is the heap's
+    only. *)
 Definition storage_effects (i : inst) (s : storage) : bool :=
   match i, s with
   | Let _ _ (RawLoad _ _) _, _ | RawStore _ _ _ _, _ => true
@@ -789,6 +799,7 @@ Definition storage_effects (i : inst) (s : storage) : bool :=
   | RawStorePointer _ _ _ es, Heap' =>
       effects_eqb es store_effects || effects_eqb es atomic_store_effects
   | RawStorePointer _ _ _ es, Local' => effects_eqb es local_store_effects
+  | Let _ _ (RawCas _ _) _, Heap' => true
   | _, _ => false
   end.
 
@@ -804,13 +815,15 @@ Definition proof_use (i : inst) (q : name) (lo hi : Z) (r : rights) (al : Z) : b
 (** As `reusing_access/2`: whether the access i, of type x, may read a
     [[live-fact|live]] proof that is not its own check's: a scalar access,
     or a heap pointer load, which reads [[aux]] and box words only. A
-    pointer store may exit while ensuring the aux, and keeps its own check. *)
+    pointer store may exit while ensuring the aux, and a [[cas]] is
+    atomic; both keep their own check. *)
 Definition reusing_access (i : inst) (x : access_type) : bool :=
   match x with
   | XPtr => match i with
             | Let _ P (RawLoadPointer _ es) _ => effects_eqb es load_effects
             | _ => false
             end
+  | XCas _ => false
   | _ => true
   end.
 
@@ -1762,13 +1775,14 @@ Definition stage_func (md : module) (f : func) (doms : nmap (Z * Z)) : bool :=
 (** ## The stage *)
 
 (** Whether the op o is a word only the checked [[stage]] uses: a [[check]],
-    a reuse form, a [[span_test|span test]], a [[limit]] or a raw load (the
-    `let` clauses of `checked_inst/1`). *)
+    a reuse form, a [[span_test|span test]], a [[limit]], a raw load or a
+    raw [[cas]] (the `let` clauses of `checked_inst/1`). *)
 Definition checked_op (o : op) : bool :=
   match o with
   | Check _ _ _ _ | CheckAhead _ _ _ _ _ | Renew _ _ _ _ | RenewHull _ _ _ _
   | HalfCheck _ _ _ _ _ | SpanTest _ _ | RenewIf _ _ _ _ | Limit _ | CheckLimit _ _ _ _
-  | CheckLocal _ _ _ _ _ | CheckFunction | RawLoad _ _ | RawLoadPointer _ _ => true
+  | CheckLocal _ _ _ _ _ | CheckFunction | RawLoad _ _ | RawLoadPointer _ _
+  | RawCas _ _ => true
   | _ => false
   end.
 

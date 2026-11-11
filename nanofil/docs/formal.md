@@ -93,12 +93,13 @@ the reuse vocabulary: `renew`,
 `check_limit(Lo, Hi, Rights, Align)`, and
 `check_ahead(Lo, Hi, Rights, Align, AHi)`. Since added: the float
 classes `s`, `d` and `x`, with [ieee.pl](../src/ieee.pl) transcribed as
-Ieee.v, variadic functions (`va_args`, `va_arg`), `touch`, and
+Ieee.v, variadic functions (`va_args`, `va_arg`), `touch`, `raw_cas`
+(2026-11-11), and
 `setjmp`: its validation is ir.pl's (a zero SaveMask but for
 `sigsetjmp`, no locals, and no reuse form in its function), but the
 second return is not modelled, so its step is stuck as the
 interpreter's is and no theorem follows a `longjmp`. Deferred: vectors,
-`cas` and atomics, `asm_fixed`, plain mode.
+the unchecked `cas` and the other atomics, `asm_fixed`, plain mode.
 
 The theorem is always relative. Its hypotheses are the runtime axioms
 (Campaign 2) and the libc contracts (Campaign 4), and every certificate

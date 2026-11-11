@@ -155,7 +155,7 @@ Proof.
   destruct o; cases H; inversion H; subst;
     first [ reflexivity
           | match goal with E : op_res_int _ _ _ _ = Some _ |- _ =>
-              rewrite (op_res_int_mem _ _ _ _ _ _ E); reflexivity end
+              exact (proj2 (op_res_int_kept _ _ _ _ _ _ E)) end
           | match goal with E : va_arg_res _ _ _ = Some ?rm |- _ =>
               destruct rm; exact (va_arg_res_regions _ _ _ _ _ E) end ].
 Qed.

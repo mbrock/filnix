@@ -332,6 +332,13 @@ Proof.
   - (* raw_load_pointer: its check traps. *)
     destruct (Ha Read 8) as [w Hw]. simpl in Hw. rewrite Hw in Hst.
     destruct k; discriminate Hst.
+  - (* raw_cas: its check traps, which `raw_res` makes unchecked. *)
+    destruct (Ha Write (cas_bytes t)) as [w Hw]. cbn [fst access_size_align] in Hw.
+    destruct l as [|v1 [|v2 [|v3 l]]]; cbn -[cas_res raw_address value_x] in Hst;
+      try (destruct (value_x ge (fr_env fr) k v1); cbn -[cas_res raw_address value_x] in Hst);
+      try (destruct (value_x ge (fr_env fr) k v2); cbn -[cas_res raw_address value_x] in Hst);
+      try discriminate Hst.
+    rewrite (cas_res_trap _ _ _ _ _ _ _ _ Hw) in Hst. discriminate Hst.
   - (* raw_store: the store's check traps. *)
     destruct (width_value_class w); simpl in Hst; try discriminate Hst.
     destruct (value_x _ _ _ _) as [x|]; simpl in Hst; try discriminate Hst.
@@ -507,6 +514,19 @@ Proof.
   unfold va_arg_res. intros k p m p0 r H Hr. cases H; injection H as <-; discriminate Hr.
 Qed.
 
+(** A [[cas]]'s own failure is its access check's, so it is never an
+    alias or a wrong limit. *)
+Lemma cas_reason : forall t k m a c e n r m' why,
+  cas_res t k m a c e n = Some (r, m') -> raw_res r = RUnchecked why -> why <> Alias /\ why <> WhyLimit.
+Proof.
+  unfold cas_res. intros t k m a c e n r m' why H Hr. cbv zeta in H.
+  destruct (access_res _ _ _ _ _ _) as [chk|] eqn:Ea; [|discriminate H]. cbv beta iota in H.
+  destruct chk.
+  - cases H; inversion H; subst; discriminate Hr.
+  - injection H as <- _. injection Hr as <-. exact (access_res_reason _ _ _ _ _ _ _ Ea).
+  - exact (False_ind _ (access_res_checked _ _ _ _ _ _ _ Ea _ eq_refl)).
+Qed.
+
 (** Only a renew, a renew over a hull, a half check and a
     `check_limit`, at the proof [[class]] A with their operand counts,
     find an alias or a wrong limit: no other op o answers
@@ -546,6 +566,8 @@ Proof.
               destruct (int_load_reason _ _ _ _ _ _ _ E H3); destruct Hr; contradiction end).
   all: try (match goal with E : va_arg_res _ _ _ = Some ?p0, H3 : fst ?p0 = RUnchecked _ |- _ =>
               exact (va_arg_reason _ _ _ _ _ E H3) end).
+  all: try (match goal with E : cas_res _ _ _ _ _ _ _ = Some ?p0, H3 : raw_res (fst ?p0) = RUnchecked _ |- _ =>
+              destruct p0; destruct (cas_reason _ _ _ _ _ _ _ _ _ _ E H3); destruct Hr; contradiction end).
   all: try (match goal with Ea : access_res _ _ _ _ _ _ = Some ?x, E : renew_res ?x _ _ = Some (RUnchecked _) |- _ =>
               destruct (renew_res_not_alias _ _ _ _ (access_res_checked _ _ _ _ _ _ _ Ea) E) as [E' | [(w' & E') | E']];
               try discriminate E'; injection E' as ->; destruct Hr; discriminate end).
@@ -957,7 +979,7 @@ Qed.
 
 (** A [[raw access]] is of 1 to 16 bytes. *)
 Lemma access_size_small : forall x, 0 < fst (access_size_align x) <= 16.
-Proof. intros [[| | | | t] | w |]; try destruct t; try destruct w; simpl; lia. Qed.
+Proof. intros [[| | | | t] | w | | [| | t]]; try destruct t; try destruct w; simpl; lia. Qed.
 
 (** An access check's trap is never `trap(early)`, which only a
     `check_ahead` gives. *)
