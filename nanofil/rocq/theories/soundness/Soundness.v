@@ -75,15 +75,17 @@ Proof.
 Qed.
 
 (** An instruction i's result is [[unchecked]] only as a `let` of an
-    [unchecked_op], a raw store, a raw call, or a call of `free` that
-    the runtime's free ([ge_free]) answered so (`inst_result/5`). *)
+    [unchecked_op], a raw store, a raw call, or a call of `free` or
+    `zgc_free` ([is_free_name]) that the runtime's free ([ge_free])
+    answered so (`inst_result/5`). *)
 Lemma inst_unchecked_source : forall ge fr m i w,
   inst_step ge fr m i = Some (IStop (Unchecked w)) ->
   (exists q k o args, i = Let q k o args /\ unchecked_op o = true) \/
   (exists wd off v a, i = RawStore wd off v a) \/
   (exists off v a es, i = RawStorePointer off v a es) \/
   (exists r cl args, i = RawCall r cl args) \/
-  (exists r args x m', i = Call r (Global free_name) args /\ ge_free ge x m = Some (RUnchecked w, m')).
+  (exists r g args x m', i = Call r (Global g) args /\ is_free_name g = true /\
+     ge_free ge x m = Some (RUnchecked w, m')).
 Proof.
   intros ge fr m i w H.
   destruct i as [q k o args | d o args lw | wd off v a | off v a es | r cl args | r cl args | x size | file line | tq].
@@ -113,9 +115,9 @@ Proof.
     destruct (map_option _ args) as [xs|]; [|discriminate H]. simpl in H.
     destruct (find_fn ge g) as [[gf | g']|]; try discriminate H.
     unfold external_call in H. destruct (lookup g (ge_globals ge)); [discriminate H|].
-    destruct (negb (name_eqb g free_name)) eqn:En; [discriminate H|].
-    apply negb_false_iff, name_eqb_true in En. subst g.
-    cases H. injection H as <-. subst. do 4 eexists. split; [reflexivity | eassumption].
+    destruct (negb (is_free_name g)) eqn:En; [discriminate H|].
+    apply negb_false_iff in En.
+    cases H. injection H as <-. subst. do 5 eexists. split; [reflexivity | split; eassumption].
   - right. right. right. left. do 3 eexists. reflexivity.
   - exfalso. simpl in H. cases H.
   - exfalso. simpl in H. discriminate H.
@@ -271,7 +273,7 @@ Proof.
                   Hmd Hge Hfree Hin Hcf H0 Hreach Ed Ha) as Hacc.
     destruct (inst_unchecked_source _ _ _ _ _ Hi)
       as [(q & kc & o & args & -> & Ho) | [(wd & off & v & a & ->) | [(off & v & a & es & ->) |
-          [(r & cl & args & ->) | (r & args & x & m' & -> & Hf)]]]].
+          [(r & cl & args & ->) | (r & g & args & x & m' & -> & _ & Hf)]]]].
     + destruct o; try discriminate Ho.
       all: first
         [ exact (Hacc (or_introl (Hraw ltac:(left; do 5 eexists; reflexivity))) Hi)

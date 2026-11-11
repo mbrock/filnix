@@ -281,7 +281,7 @@ Qed.
     the category k is one. d is bound to p. *)
 Lemma wp_lent_query f e ls lab d g args rest j spec xs k p t Φ :
   registry g = Some spec -> contract_returns spec = RClass P ->
-  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   map_option (arg_x ge e) args = Some xs -> contract_abi spec (CResult d P) args ->
   (forall m w h, wi m w h -> h !! PName k = Some (VName p t) -> contract_pre spec xs m w) ->
   (forall s m w h trace ending s' m' w', wi m w h -> h !! PName k = Some (VName p t) ->
@@ -321,7 +321,7 @@ Qed.
 Lemma wp_lend f e ls lab d g args rest j spec xs ks old gs
     (Rq : ptr -> (Z -> ptr * list Z) -> list (piece * pval) -> Prop) (Q : iProp Σ) Φ :
   registry g = Some spec -> contract_returns spec = RClass P ->
-  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   map_option (arg_x ge e) args = Some xs -> contract_abi spec (CResult d P) args ->
   Forall (fun k => PName k ∉ gs.*1) ks ->
   (forall σ, heap_interp wi σ -∗ Q -∗ ⌜contract_pre spec xs (ls_mem σ) (ls_world σ)⌝) ->

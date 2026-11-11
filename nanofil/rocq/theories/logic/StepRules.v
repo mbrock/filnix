@@ -210,10 +210,29 @@ Proof.
   cbn [inst_next c_frame fr_fn fr_env fr_locals c_callers c_mem c_fuel]. rewrite Hc. reflexivity.
 Qed.
 
-(** A call of libc's `void free(p)`, a name the module neither defines
-    nor holds as data, whose argument v reads as x, where the genv's
-    free frees x without a trap and leaves the memory m': the frame
-    goes on in m' ([external_call]). *)
+(** A call of a free the model runs, libc's `void free(p)` or
+    libpizlo's `void zgc_free(p)` ([is_free_name] fnm), a name the
+    module neither defines nor holds as data, whose argument v reads as
+    x, where the genv's free frees x without a trap and leaves the
+    memory m': the frame goes on in m' ([external_call]). *)
+Lemma rule_free_sym : forall ge fnm f e ls l v rest j cs m fuel x m',
+  is_free_name fnm = true ->
+  find_fn ge fnm = None -> lookup fnm (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some x -> ge_free ge x m = Some (ok, m') ->
+  step ge (mkConfig (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j))
+             cs m fuel) =
+  Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
+Proof.
+  intros ge fnm f e ls l v rest j cs m fuel x m' Hn Hf Hd Hx Hfree.
+  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j))
+                 m (Call CVoid (Global fnm) [Arg P v]) = Some (IContinue e ls m')).
+  { cbn - [arg_x find_fn lookup ge_free is_free_name]. rewrite Hx, Hf. unfold external_call. rewrite Hd, Hn.
+    cbn - [ge_free]. rewrite Hfree. reflexivity. }
+  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_continue; reflexivity).
+  reflexivity.
+Qed.
+
+(** [rule_free_sym] for libc's `void free(p)`. *)
 Lemma rule_free : forall ge f e ls l v rest j cs m fuel x m',
   find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
   arg_x ge e (Arg P v) = Some x -> ge_free ge x m = Some (ok, m') ->
@@ -222,12 +241,7 @@ Lemma rule_free : forall ge f e ls l v rest j cs m fuel x m',
   Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
 Proof.
   intros ge f e ls l v rest j cs m fuel x m' Hf Hd Hx Hfree.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j))
-                 m (Call CVoid (Global free_name) [Arg P v]) = Some (IContinue e ls m')).
-  { cbn - [arg_x find_fn lookup ge_free]. rewrite Hx, Hf. unfold external_call. rewrite Hd.
-    cbn - [ge_free]. rewrite Hfree. reflexivity. }
-  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_continue; reflexivity).
-  reflexivity.
+  exact (rule_free_sym ge free_name f e ls l v rest j cs m fuel x m' eq_refl Hf Hd Hx Hfree).
 Qed.
 
 (** ## Blocks and jumps *)
@@ -515,6 +529,63 @@ Proof.
               op_res_int (RawLoad (LdNarrow n) off) k [WPtr p] m) by (destruct k; reflexivity).
   rewrite E. cbn - [access_res raw_address load_bytes narrow_type extended]. unfold int_load_res.
   rewrite H. destruct (extended n k _); reflexivity.
+Qed.
+
+(** ## Compare-exchange *)
+
+(** The old value an integer [[cas]] of type t at class k gives for the
+    bytes u it compared: u for [CasL], u extended as a load of the
+    narrow type extends it ([cas_res]). *)
+Definition cas_old (t : cas_type) (k : class) (u : Z) : option word :=
+  match t with CasNarrow nt => extended nt k u | _ => Some (WInt u) end.
+
+(** A raw integer [[cas]] of type t, [CasL] or narrow, at offset off
+    from the proven pointer p, whose write access of its [cas_bytes],
+    aligned to them, passes, with the integers ev expected and nv new:
+    the result is old, the bytes there as [cas_old] reads them; they
+    become nv's low bytes where they equal ev's, and memory stays
+    otherwise. *)
+Lemma op_raw_cas_int : forall m t k p off ev nv old,
+  t <> CasP ->
+  access_res m (raw_address (ptr_addr p) off) (ptr_cap p) (cas_bytes t) Write (cas_bytes t) = Some ok ->
+  cas_old t k (load_bytes m (raw_address (ptr_addr p) off) (cas_bytes t)) = Some old ->
+  op_res (RawCas t off) k [WPtr p; WInt ev; WInt nv] m =
+  Some (OpRes (RVal old)
+    (if load_bytes m (raw_address (ptr_addr p) off) (cas_bytes t) =? ev mod 2 ^ (8 * cas_bytes t)
+     then store_bytes m (raw_address (ptr_addr p) off) (cas_bytes t) nv else m)).
+Proof.
+  intros m t k p off ev nv old Ht H Ho.
+  assert (E : op_res (RawCas t off) k [WPtr p; WInt ev; WInt nv] m =
+              op_res_int (RawCas t off) k [WPtr p; WInt ev; WInt nv] m) by (destruct k; reflexivity).
+  rewrite E. cbn - [access_res raw_address load_bytes store_bytes cas_bytes extended].
+  unfold cas_res. rewrite H. cbn - [raw_address load_bytes store_bytes cas_bytes extended].
+  destruct t as [| |nt]; [| contradiction |]; cbn [cas_old] in Ho; [injection Ho as <- | rewrite Ho];
+    cbn - [raw_address load_bytes store_bytes cas_bytes]; destruct (_ =? _); reflexivity.
+Qed.
+
+(** A raw pointer [[cas]] at offset off from the proven pointer p, whose
+    8-byte write access, 8-aligned, passes, with the pointers ep
+    expected and np new: the result is the pointer of the 8 bytes there
+    and the capability stored there; np's [[lower]] then address are written
+    where those bytes equal ep's address, capabilities ignored, and
+    memory stays otherwise. *)
+Lemma op_raw_cas_ptr : forall m k p off ep np,
+  access_res m (raw_address (ptr_addr p) off) (ptr_cap p) 8 Write 8 = Some ok ->
+  op_res (RawCas CasP off) k [WPtr p; WPtr ep; WPtr np] m =
+  Some (OpRes (RVal (WPtr (mkPtr (load_bytes m (raw_address (ptr_addr p) off) 8)
+                               (aux_at m (raw_address (ptr_addr p) off)))))
+    (if load_bytes m (raw_address (ptr_addr p) off) 8 =? ptr_addr ep
+     then store_bytes (store_aux m (raw_address (ptr_addr p) off) (ptr_cap np))
+            (raw_address (ptr_addr p) off) 8 (ptr_addr np)
+     else m)).
+Proof.
+  intros m k p off ep np H.
+  assert (E : op_res (RawCas CasP off) k [WPtr p; WPtr ep; WPtr np] m =
+              op_res_int (RawCas CasP off) k [WPtr p; WPtr ep; WPtr np] m) by (destruct k; reflexivity).
+  rewrite E. cbn - [access_res raw_address load_bytes store_bytes store_aux aux_at].
+  unfold cas_res. cbn - [access_res raw_address load_bytes store_bytes store_aux aux_at].
+  rewrite H. cbn - [raw_address load_bytes store_bytes store_aux aux_at].
+  destruct (_ =? _); reflexivity.
 Qed.
 
 (** ## Allocations Fil-C refuses *)

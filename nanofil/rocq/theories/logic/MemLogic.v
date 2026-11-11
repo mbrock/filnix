@@ -33,6 +33,11 @@
       search of an owned block, or a search for the NUL of an owned
       [string] with any bound, since memchr reads only through its
       first match ([memchr_input_bounded], [nul_found]).
+    Raw accesses to a block's bytes are here too: the 32-bit store
+    [wp_raw_store_w], the integer [[cas]] [wp_raw_cas_int] with its
+    32-bit case [wp_raw_cas_w] (glibc's locks), and the narrow load at a
+    share [wp_raw_load_sub_bytes_dq] ([bytesq]); bytes read back as
+    their little-endian integer [of_bytes] ([bytes_load]).
     The contracts' exact destination frame ([memset_frame], shared by
     the copies) keeps every piece outside the written block
     ([block_frame], through Heap.v's [frame_within]); for strdup, whose
@@ -165,6 +170,48 @@ Proof.
       destruct (Hbyte (Z.to_nat (a - b - o)) ltac:(lia)) as (_ & H1 & H2).
       apply H; [lia|]. replace (a - b) with (o + (a - b - o)) by lia. apply byte_ps_key. lia.
     + intros a _. reflexivity.
+Qed.
+
+(** ## Integer values *)
+
+(** As `le_value(Bytes, U)`: the little-endian integer of the bytes
+    xs. *)
+Definition of_bytes (xs : list Z) : Z := fold_right (fun x acc => x + 256 * acc) 0 xs.
+
+(** The integer of two runs of bytes: the first's, then the second's
+    above it. *)
+Lemma of_bytes_app xs ys : of_bytes (xs ++ ys) = of_bytes xs + 256 ^ Z.of_nat (length xs) * of_bytes ys.
+Proof.
+  unfold of_bytes. induction xs as [|x xs IH]; cbn [app fold_right length]; [rewrite Z.pow_0_r; ring|].
+  rewrite IH Nat2Z.inj_succ Z.pow_succ_r; [ring | lia].
+Qed.
+
+(** [load_bytes] of n bytes is the little-endian integer of the n
+    bytes of memory from the address a. *)
+Lemma load_bytes_of_bytes m a n :
+  load_bytes m a (Z.of_nat n) = of_bytes ((fun i => m_bytes m (a + Z.of_nat i)) <$> seq 0 n).
+Proof.
+  unfold load_bytes. rewrite Nat2Z.id.
+  replace (of_bytes _) with (0 * 256 ^ Z.of_nat n + of_bytes ((fun i => m_bytes m (a + Z.of_nat i)) <$> seq 0 n))
+    by ring.
+  generalize 0 as acc. induction n as [|n IH]; intros acc; [change (Z.of_nat 0) with 0; cbn; ring|].
+  cbn -[Z.of_nat Z.add Z.mul Z.pow seq]. rewrite IH seq_S fmap_app of_bytes_app length_fmap length_seq.
+  cbn [fmap list_fmap Nat.add]. unfold of_bytes at 3. cbn [fold_right].
+  rewrite Nat2Z.inj_succ Z.pow_succ_r; [ring | lia].
+Qed.
+
+(** The bytes xs from offset o of the live object b read back as their
+    little-endian integer. *)
+Lemma bytes_load m b reg o xs :
+  live_at m b reg -> all_agree m (byte_ps b o xs) ->
+  load_bytes m (b + o) (Z.of_nat (length xs)) = of_bytes xs.
+Proof.
+  intros Hl Hx. rewrite load_bytes_of_bytes. f_equal. apply list_eq. intros i.
+  rewrite list_lookup_fmap. destruct (decide (i < length xs)%nat) as [Hi|Hi].
+  - rewrite lookup_seq_lt; [|exact Hi]. destruct (lookup_lt_is_Some_2 xs i Hi) as [x Hxi]. rewrite Hxi.
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hl Hx Hxi) as (Hv & _ & _). cbn. f_equal.
+    rewrite <- Hv. f_equal. lia.
+  - rewrite lookup_seq_ge; [|lia]. rewrite lookup_ge_None_2; [reflexivity|lia].
 Qed.
 
 (** ## Blocks *)
@@ -536,6 +583,9 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 (** [bytes] b o xs: owning the bytes xs from offset o of the object b. *)
 Definition bytes (b o : Z) (xs : list Z) : iProp Σ := pts (byte_ps b o xs).
 
+(** [bytesq] dq b o xs: [bytes] at the fraction dq. *)
+Definition bytesq (dq : dfrac) (b o : Z) (xs : list Z) : iProp Σ := ptsq dq (byte_ps b o xs).
+
 (** [auxes] b o cs: owning the aux slots holding cs from offset o of
     the object b. *)
 Definition auxes (b o : Z) (cs : list cap) : iProp Σ := pts (aux_ps b o cs).
@@ -668,6 +718,146 @@ Proof.
   - iNext. iIntros "H".
     iDestruct (pts_app [(PLive b, VLive reg)] (byte_ps b o (le_bytes y 4)) with "H") as "[Hl Hx]".
     iApply ("HK" with "Hl Hx").
+Qed.
+
+(** A raw load of the narrow type n, of its s bytes, at offset off
+    from the proven pointer p, through a read-write or read-only
+    capability for the object b, at offset o, where a share dq1 of b's
+    life and a share dq2 of the s bytes bs there are owned: d is bound
+    to bs's little-endian integer extended to the class k, y. *)
+Lemma wp_raw_load_sub_bytes_dq f e ls l d k n off args rest j classes p b reg o bs y dq1 dq2 Φ :
+  op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  length bs = Z.to_nat (fst (narrow_type n)) -> extended n k (of_bytes bs) = Some y ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + o ->
+  liveq dq1 b reg -∗ bytesq dq2 b o bs -∗
+  ▷ (liveq dq1 b reg -∗ bytesq dq2 b o bs -∗
+     WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : mexpr)
+    {{ Φ }}.
+Proof.
+  intros Hc Hx Hlen Hy Hp Ha. iIntros "Hl Hb HK".
+  assert (Hn : Z.of_nat (length bs) = fst (narrow_type n)) by (rewrite Hlen; destruct n; reflexivity).
+  iApply (wp_read_with _ _ _ (liveq dq1 b reg ∗ bytesq dq2 b o bs)
+            (fun m => live_at m b reg /\ all_agree m (byte_ps b o bs)) _ _ [] with "[$Hl $Hb] [HK]").
+  - iIntros (σ) "Hσ [Hl Hb]".
+    iDestruct (ptsq_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (ptsq_facts with "Hσ Hb") as %(Hbs & _). iPureIntro. auto.
+  - intros m fuel (Hlv & Hbs).
+    destruct (lookup_lt_is_Some_2 bs 0 ltac:(destruct n; cbn in Hlen; lia)) as [x0 H0].
+    destruct (lookup_lt_is_Some_2 bs (length bs - 1) ltac:(destruct n; cbn in Hlen; lia)) as [x1 H1].
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H0) as (_ & Hlo & _).
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H1) as (_ & _ & Hhi).
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    rewrite (op_raw_load_narrow m k n p off).
+    + rewrite Ha -Hn (bytes_load m b reg o bs Hlv Hbs) Hy. reflexivity.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+  - iNext. iIntros "[Hl Hb]". iApply ("HK" with "Hl Hb").
+Qed.
+
+(** A raw integer [[cas]] of type t, [CasL] or narrow, of its size
+    bytes at offset off from the proven pointer p, which addresses
+    offset o of the live object b, aligned to size, where the bytes bs
+    are, of the integers ev expected and nv new: d is bound to old, the
+    integer of bs as [cas_old] reads it; the bytes then become nv's
+    where that integer is ev modulo 2^(8 size), a write that must keep
+    the world interpretation, and stay bs where it is not. *)
+Lemma wp_raw_cas_int f e ls l d k t off args rest j classes p b reg o bs ev nv old Φ :
+  t <> CasP -> length bs = Z.to_nat (cas_bytes t) ->
+  op_arg_classes (RawCas t off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p; WInt ev; WInt nv] ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod cas_bytes t = 0 ->
+  cas_old t k (of_bytes bs) = Some old ->
+  (of_bytes bs = ev mod 2 ^ (8 * cas_bytes t) -> forall m wd h,
+     (forall l v, (l, v) ∈ (PLive b, VLive reg) :: byte_ps b o bs -> h !! l = Some v) -> wi m wd h ->
+     wi (store_bytes m (b + o) (cas_bytes t) nv) wd
+       (overwrite ((PLive b, VLive reg) :: byte_ps b o (le_bytes nv (length bs))) h)) ->
+  live b reg -∗ bytes b o bs -∗
+  ▷ (live b reg -∗
+     bytes b o (if of_bytes bs =? ev mod 2 ^ (8 * cas_bytes t) then le_bytes nv (length bs) else bs) -∗
+     WP (ERun (mkFrame f (put d old e) ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawCas t off) args :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Ht Hlen Hc Hx Hp Ha Hal Hold Hwi. iIntros "Hl Hb HK".
+  assert (Hsz : 0 < cas_bytes t) by (destruct t as [| |[]]; cbn; lia).
+  assert (Hn : Z.of_nat (length bs) = cas_bytes t) by lia.
+  assert (Hop : forall m, live_at m b reg -> all_agree m (byte_ps b o bs) ->
+    op_res (RawCas t off) k [WPtr p; WInt ev; WInt nv] m =
+    Some (OpRes (RVal old)
+      (if of_bytes bs =? ev mod 2 ^ (8 * cas_bytes t) then store_bytes m (b + o) (cas_bytes t) nv else m))).
+  { intros m Hlv Hbs.
+    assert (Hld : load_bytes m (b + o) (cas_bytes t) = of_bytes bs)
+      by (rewrite <- Hn; exact (bytes_load m b reg o bs Hlv Hbs)).
+    destruct (lookup_lt_is_Some_2 bs 0 ltac:(lia)) as [x0 H0].
+    destruct (lookup_lt_is_Some_2 bs (length bs - 1) ltac:(lia)) as [x1 H1].
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H0) as (_ & Hlo & _).
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H1) as (_ & _ & Hhi).
+    rewrite (op_raw_cas_int m t k p off ev nv old Ht).
+    - rewrite Ha Hld. reflexivity.
+    - rewrite Hp Ha. apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | exact Hal].
+    - rewrite Ha Hld. exact Hold. }
+  destruct (of_bytes bs =? ev mod 2 ^ (8 * cas_bytes t)) eqn:Eq.
+  - iApply (wp_write _ _ _ ((PLive b, VLive reg) :: byte_ps b o bs)
+              ((PLive b, VLive reg) :: byte_ps b o (le_bytes nv (length bs)))
+              _ _ [] (fun m => store_bytes m (b + o) (cas_bytes t) nv) with "[Hl Hb] [HK]");
+      [cbn [fmap list_fmap fst]; rewrite !byte_ps_keys length_le_bytes; reflexivity | |
+       exact (Hwi (proj1 (Z.eqb_eq _ _) Eq)) |
+       rewrite /live /bytes /pts !big_sepL_cons big_sepL_nil; iFrame; iDestruct "Hl" as "[$ _]" |].
+    + intros m fuel (Hf & Hd & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [Hlv Hbs].
+      destruct (store_after m b reg o bs nv Hd Hlv Hbs) as [Hag Hfr]. rewrite Hn in Hag Hfr.
+      destruct (lookup_lt_is_Some_2 bs 0 ltac:(lia)) as [x0 H0].
+      destruct (lookup_lt_is_Some_2 bs (length bs - 1) ltac:(lia)) as [x1 H1].
+      destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H0) as (_ & Hlo & _).
+      destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H1) as (_ & _ & Hhi).
+      split; [|split; [reflexivity|split; [|split]]].
+      * apply rule_let with (classes := classes) (xs := [WPtr p; WInt ev; WInt nv]);
+          [reflexivity | exact Hc | exact Hx |]. rewrite (Hop m Hlv Hbs); rewrite ?Eq; reflexivity.
+      * apply store_bytes_kept. intros a' Ha'. exists b, reg. split; [exact (proj1 Hlv)|lia].
+      * cbn [all_agree agree_piece fst snd]. split; [exact Hlv | exact Hag].
+      * intros l' v' Hn' Ha'. apply Hfr; [|exact Ha'].
+        intros Hin. apply Hn'. cbn [fmap list_fmap fst]. apply elem_of_cons. right.
+        rewrite byte_ps_keys length_le_bytes. rewrite byte_ps_keys in Hin. exact Hin.
+    + iNext. iIntros "H".
+      iDestruct (pts_app [(PLive b, VLive reg)] (byte_ps b o (le_bytes nv (length bs))) with "H") as "[Hl Hb]".
+      iApply ("HK" with "Hl Hb").
+  - iApply (wp_read _ _ _ ((PLive b, VLive reg) :: byte_ps b o bs) _ _ [] with "[Hl Hb] [HK]").
+    + intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [Hlv Hbs].
+      apply rule_let with (classes := classes) (xs := [WPtr p; WInt ev; WInt nv]);
+        [reflexivity | exact Hc | exact Hx |]. rewrite (Hop m Hlv Hbs); rewrite ?Eq; reflexivity.
+    + rewrite /live /bytes /pts !big_sepL_cons big_sepL_nil. iFrame. iDestruct "Hl" as "[$ _]".
+    + iNext. iIntros "H".
+      iDestruct (pts_app [(PLive b, VLive reg)] (byte_ps b o bs) with "H") as "[Hl Hb]".
+      iApply ("HK" with "Hl Hb").
+Qed.
+
+(** [wp_raw_cas_int] for a 32-bit int, as glibc's locks take one
+    (`raw_cas(sw, 0)` or `raw_cas(uw, 0)`): over the four bytes bs at
+    the 4-aligned offset o of the live object b, d is bound to their
+    integer modulo 2^32, and they become nv's where it is ev's modulo
+    2^32. *)
+Lemma wp_raw_cas_w f e ls l d nt off args rest j classes p b reg o bs ev nv Φ :
+  nt = Sw \/ nt = Uw -> length bs = 4%nat ->
+  op_arg_classes (RawCas (CasNarrow nt) off) W = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p; WInt ev; WInt nv] ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 4 = 0 ->
+  (of_bytes bs = ev mod 2 ^ 32 -> forall m wd h,
+     (forall l v, (l, v) ∈ (PLive b, VLive reg) :: byte_ps b o bs -> h !! l = Some v) -> wi m wd h ->
+     wi (store_bytes m (b + o) 4 nv) wd (overwrite ((PLive b, VLive reg) :: byte_ps b o (le_bytes nv 4)) h)) ->
+  live b reg -∗ bytes b o bs -∗
+  ▷ (live b reg -∗ bytes b o (if of_bytes bs =? ev mod 2 ^ 32 then le_bytes nv 4 else bs) -∗
+     WP (ERun (mkFrame f (put d (WInt (of_bytes bs mod 2 ^ 32)) e) ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d W (RawCas (CasNarrow nt) off) args :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hnt Hlen Hc Hx Hp Ha Hal Hwi. iIntros "Hl Hb HK".
+  assert (Hs : cas_bytes (CasNarrow nt) = 4) by (destruct Hnt as [-> | ->]; reflexivity).
+  iApply (wp_raw_cas_int _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (WInt (of_bytes bs mod 2 ^ 32))
+            with "Hl Hb [HK]"); [discriminate | rewrite Hs; exact Hlen | exact Hc | exact Hx | exact Hp |
+                                exact Ha | rewrite Hs; exact Hal | | |].
+  - unfold cas_old, extended, extension. cbn [modulus]. destruct Hnt as [-> | ->]; [|by rewrite Z.mod_mod].
+    unfold sign_extension. destruct (_ <=? _); [|by rewrite Z.mod_mod]. f_equal. f_equal.
+    rewrite Zminus_mod Z_mod_same_full Z.sub_0_r !Z.mod_mod; lia.
+  - rewrite Hs Hlen. exact Hwi.
+  - iNext. rewrite Hs Hlen. iExact "HK".
 Qed.
 
 (** memset's triple, from [memset_contract]: owning the life of the
@@ -1006,7 +1196,7 @@ Qed.
     slot needs owning, since a scalar copy keeps them all. *)
 Lemma wp_string_copy end_return g f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   registry g = Some (string_copy_contract end_return world) ->
-  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   arg_x ge e (Arg P vd) = Some (WPtr (mkPtr (b + o) (Obj b))) -> arg_x ge e (Arg P vs) = Some (WPtr src) ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> length xs = S (length ys) ->
   (forall m m' wd h, string_copy_result m (mkPtr (b + o) (Obj b)) src (Z.of_nat (length ys) + 1) m' ->

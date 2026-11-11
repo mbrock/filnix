@@ -20,11 +20,14 @@
     ([obj_ps_agree]) and which keeps the old ones
     ([agree_piece_allocated]). [pts] ps owns the pieces ps;
     [pts_lookup], [pts_update] and [pts_alloc] read, write and allocate
-    them against the authoritative heap. Nothing here is about one
-    runtime or one language. *)
+    them against the authoritative heap. [ptsq] dq ps owns them at the
+    fraction dq, which is enough to read them ([ptsq_lookup]); [pts] is
+    its whole share. Nothing here is about one runtime or one
+    language. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
+From iris.bi.lib Require Import fractional.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls Pieces.
 Open Scope Z_scope.
@@ -632,6 +635,54 @@ Proof.
       - exfalso. apply Hn. exact (list_elem_of_fmap_2 fst _ (l, v') Hin).
       - rewrite (Hfr l v) in Hh; [discriminate|]. apply elem_of_cons. by left. }
     iModIntro. rewrite /pts /=. iFrame.
+Qed.
+
+(** ## Fractions of pieces *)
+
+(** Ownership of each piece of the list ps with its value, at the
+    fraction dq of Iris's [dfrac]: shares of one piece may be held
+    apart, to read it, and the whole writes it. *)
+Definition ptsq (dq : dfrac) (ps : list (piece * pval)) : iProp Σ :=
+  [∗ list] lv ∈ ps, pointsto (fst lv) dq (snd lv).
+
+(** [pts] is [ptsq] of the whole. *)
+Lemma pts_ptsq ps : pts ps ⊣⊢ ptsq (DfracOwn 1) ps.
+Proof. reflexivity. Qed.
+
+(** A share of two lists of pieces is a share of each. *)
+Lemma ptsq_app dq ps qs : ptsq dq (ps ++ qs) ⊣⊢ ptsq dq ps ∗ ptsq dq qs.
+Proof. by rewrite /ptsq big_sepL_app. Qed.
+
+(** A share of q1 + q2 is a share of q1 and a share of q2. *)
+Lemma ptsq_split q1 q2 ps :
+  ptsq (DfracOwn (q1 + q2)) ps ⊣⊢ ptsq (DfracOwn q1) ps ∗ ptsq (DfracOwn q2) ps.
+Proof.
+  rewrite /ptsq -big_sepL_sep. apply big_sepL_proper. intros _ lv _.
+  exact (@fractional _ (fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) _ q1 q2).
+Qed.
+
+(** Any share can be given up for good, leaving a duplicable read-only
+    share. *)
+Lemma ptsq_persist dq ps : ptsq dq ps ==∗ □ ptsq DfracDiscarded ps.
+Proof.
+  induction ps as [|lv ps IH]; rewrite /ptsq /=; iIntros "H"; [by iModIntro|].
+  iDestruct "H" as "[Hl H]". iMod (pointsto_persist with "Hl") as "#Hl".
+  iMod (IH with "H") as "#H". iModIntro. iModIntro. iFrame "#".
+Qed.
+
+(** A read-only share is persistent. *)
+Instance ptsq_persistent ps : Persistent (ptsq DfracDiscarded ps).
+Proof. rewrite /ptsq. apply _. Qed.
+
+(** Pieces owned at any share are in the authoritative heap. *)
+Lemma ptsq_lookup h dq ps : gen_heap_interp h -∗ ptsq dq ps -∗ ⌜forall l v, (l, v) ∈ ps -> h !! l = Some v⌝.
+Proof.
+  induction ps as [|[l v] ps IH]; iIntros "Hh Hps".
+  - iPureIntro. intros l v Hin. by apply not_elem_of_nil in Hin.
+  - rewrite /ptsq /=. iDestruct "Hps" as "[Hl Hps]".
+    iDestruct (gen_heap_valid with "Hh Hl") as %Hl.
+    iDestruct (IH with "Hh Hps") as %Hps. iPureIntro.
+    intros l' v' Hin. apply elem_of_cons in Hin as [[= -> ->] | Hin]; auto.
 Qed.
 
 End pts.

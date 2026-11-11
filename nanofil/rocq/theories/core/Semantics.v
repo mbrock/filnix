@@ -508,23 +508,31 @@ Definition width_value_class (w : width) : option class :=
   | Wx => Some Extended
   end.
 
-(** The name of libc's `free`, the one [[external call]] the model
-    runs. *)
+(** The name of libc's `free`, an [[external call]] the model runs. *)
 Definition free_name : name := TAtom "free".
+
+(** The name of libpizlo's `zgc_free`, which glibc's own free calls:
+    the model runs it as it runs `free`. *)
+Definition zgc_free_name : name := TAtom "zgc_free".
+
+(** The name f is one of the frees the model runs, [free_name] or
+    [zgc_free_name] (`external_call_outcome/9`'s `[free, zgc_free]`). *)
+Definition is_free_name (f : name) : bool := name_eqb f free_name || name_eqb f zgc_free_name.
 
 (** A call of a name f the module does not define as a function:
     `inst_result/5`'s call of `global(F)`. Data the module defines is
     not a function, and the call traps, as native code's function check
     does. Otherwise it is `external_call_outcome/9`: only libc's
-    `void free(p)` is modeled, through the [[runtime]]'s free, the
-    genv's [ge_free]; any other external call is stuck until
-    Campaign 4 gives it a [[external-call|contract]]. *)
+    `void free(p)` and libpizlo's `void zgc_free(p)` ([is_free_name])
+    are modeled, through the [[runtime]]'s free, the genv's [ge_free];
+    any other external call is stuck until Campaign 4 gives it a
+    [[external-call|contract]]. *)
 Definition external_call (ge : genv) (f : name) (r : call_result) (args : list arg)
     (xs : list word) (e : env) locals (m : mem) : option inst_out :=
   match lookup f (ge_globals ge) with
   | Some _ => Some (IStop (Trap NotAFunction))
   | None =>
-      if negb (name_eqb f free_name) then None
+      if negb (is_free_name f) then None
       else match r, args, xs with
            | CVoid, [Arg P _], [x] =>
                let* rm := ge_free ge x m in

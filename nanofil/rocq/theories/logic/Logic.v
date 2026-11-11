@@ -11,7 +11,11 @@
     8-byte integer in an object), [pcell] (a pointer stored in an
     object, its address bytes and its [[aux]] capability), [obj] (a new
     object's pieces) and [live_cap] (the life of the object a
-    capability names, if any).
+    capability names, if any); [liveq], [icellq], [pcellq] and
+    [live_capq] are their shares at a fraction, which the reads take
+    ([wp_read_dq] and the raw loads after it). A [[cas]] has a rule per
+    type: [wp_raw_cas_l] over a long cell, [wp_raw_cas_ptr] over a
+    pointer cell, and MemLogic.v's [wp_raw_cas_int] over bytes.
 
     The logic is over Language.v's contract registry and its world of
     libc state. [heap_interp] also holds a world interpretation wi:
@@ -239,6 +243,27 @@ Definition live_cap (c : cap) (reg : region) : iProp Σ :=
   | _ => False
   end.
 
+(** [liveq] dq b reg: [live] at the fraction dq. *)
+Definition liveq (dq : dfrac) (b : Z) (reg : region) : iProp Σ := ptsq dq [(PLive b, VLive reg)].
+
+(** [icellq] dq b o v: [icell] at the fraction dq. *)
+Definition icellq (dq : dfrac) (b o v : Z) : iProp Σ := ptsq dq (cell b o v).
+
+(** [pcellq] dq b o x: [pcell] at the fraction dq. *)
+Definition pcellq (dq : dfrac) (b o : Z) (x : ptr) : iProp Σ :=
+  ptsq dq ((PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)).
+
+(** [live_capq] dq c reg: a share dq of the life of the object c names,
+    read-write or read-only, with the region reg; nothing for a
+    capability of no object, a function or an external symbol, which
+    the collector never rewrites. What a load of a pointer with c needs
+    to know the stored capability is c ([aux_holds_kept]). *)
+Definition live_capq (dq : dfrac) (c : cap) (reg : region) : iProp Σ :=
+  match c with
+  | Obj b | Ro b => liveq dq b reg
+  | _ => True
+  end.
+
 (** What owned pieces tell about the memory of σ: [owned_facts]. *)
 Lemma pts_facts σ ps : heap_interp σ -∗ pts ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
 Proof.
@@ -246,6 +271,29 @@ Proof.
   iDestruct (pts_lookup with "Hh Hps") as %Hl. iPureIntro.
   split; [|split; [exact Hd | exact (R.address_space _ _ Hr)]].
   apply all_agree_intro. intros l v Hin. apply Ha. apply Hl. exact Hin.
+Qed.
+
+(** What pieces owned at any share tell about the memory of σ:
+    [owned_facts], whose first part is that they agree with it. *)
+Lemma ptsq_facts σ dq ps : heap_interp σ -∗ ptsq dq ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
+Proof.
+  iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & _).
+  iDestruct (ptsq_lookup with "Hh Hps") as %Hl. iPureIntro.
+  split; [|split; [exact Hd | exact (R.address_space _ _ Hr)]].
+  apply all_agree_intro. intros l v Hin. apply Ha. apply Hl. exact Hin.
+Qed.
+
+(** A capability a [live_capq] covers is not a freed object's in the
+    memory of σ, so a slot holding it holds it exactly. *)
+Lemma live_capq_facts σ dq c reg : heap_interp σ -∗ live_capq dq c reg -∗ ⌜~ freed_in (m_regions (ls_mem σ)) c⌝.
+Proof.
+  iIntros "Hσ H". iAssert (⌜forall b, c = Obj b \/ c = Ro b -> live_at (ls_mem σ) b reg⌝)%I with "[Hσ H]" as %Hl.
+  - destruct c as [|b|b|g|n]; cbn [live_capq];
+      try (iPureIntro; intros b' [Hc|Hc]; discriminate Hc);
+      iDestruct (ptsq_facts with "Hσ H") as %([Hlv _] & _); iPureIntro;
+      intros b' [Hc|Hc]; inversion Hc; subst; exact Hlv.
+  - iPureIntro. intros (b & reg' & Hc & E & L). destruct (Hl b Hc) as [E' L'].
+    rewrite E' in E. injection E as <-. congruence.
 Qed.
 
 (** The object a [live_cap] names is live in the memory of σ, or the
@@ -377,30 +425,34 @@ Proof.
 Qed.
 
 (** A step to the next configuration, with the callers cs' below its
-    frame, that writes memory: owning the pieces ps, where every memory
-    m those pieces agree with steps to [upd] m, keeping its regions,
-    [kept], agreeing with the new values ps' (the same keys) and
-    changing nothing outside them, and where the write keeps the world
-    interpretation, for a ghost heap that holds ps, with ps' written
-    over it. The new pieces are handed on. *)
-Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
+    frame, that writes memory: owning the pieces ps, and Q, which with
+    the state interpretation shows the memory has the property F, where
+    every memory m with F that those pieces agree with steps to [upd] m,
+    keeping its regions, [kept], agreeing with the new values ps' (the
+    same keys) and changing nothing outside them, and where the write
+    keeps the world interpretation, for a ghost heap that holds ps, with
+    ps' written over it. The new pieces and Q are handed on. *)
+Lemma wp_write_with (Q : iProp Σ) (F : mem -> Prop) ps ps' fr fr' cs' (upd : mem -> mem) Φ :
   ps'.*1 = ps.*1 ->
-  (forall m fuel, owned_facts ps m ->
+  (forall σ, heap_interp σ -∗ Q -∗ ⌜F (ls_mem σ)⌝) ->
+  (forall m fuel, owned_facts ps m -> F m ->
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' (upd m) fuel) /\
      m_regions (upd m) = m_regions m /\ kept m (upd m) /\
      all_agree (upd m) ps' /\ frame_ok ps'.*1 m (upd m)) ->
   (forall m w h, (forall l v, (l, v) ∈ ps -> h !! l = Some v) -> wi m w h ->
      wi (upd m) w (overwrite ps' h)) ->
-  pts ps -∗ ▷ (pts ps' -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
+  pts ps -∗ Q -∗ ▷ (pts ps' -∗ Q -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
 Proof.
-  intros Hk Hs Hwi. iIntros "Hps HK". iCombine "Hps HK" as "H".
+  intros Hk HF Hs Hwi. iIntros "Hps HQ HK". iCombine "Hps HQ HK" as "H".
   iApply (wp_lift_run with "H").
-  - iIntros (σ) "Hσ [Hps _]". iDestruct (pts_facts with "Hσ Hps") as %Hf. iPureIntro.
-    destruct (Hs _ (ls_fuel σ) Hf) as (E & _). left. unfold fails. rewrite E. auto.
-  - iIntros ([m s fuel w]) "Hσ [Hps HK]". iDestruct (pts_facts with "Hσ Hps") as %Hf.
+  - iIntros (σ) "Hσ [Hps [HQ _]]". iDestruct (pts_facts with "Hσ Hps") as %Hf.
+    iDestruct (HF with "Hσ HQ") as %HFm. iPureIntro.
+    destruct (Hs _ (ls_fuel σ) Hf HFm) as (E & _). left. unfold fails. rewrite E. auto.
+  - iIntros ([m s fuel w]) "Hσ [Hps [HQ HK]]". iDestruct (pts_facts with "Hσ Hps") as %Hf.
+    iDestruct (HF with "Hσ HQ") as %HFm.
     cbn [ls_mem ls_rt ls_fuel ls_world] in *.
-    destruct (Hs m fuel Hf) as (E & Hreg & Hkept & Hag & Hfr). iNext. iIntros (e2 σ2 Hm).
+    destruct (Hs m fuel Hf HFm) as (E & Hreg & Hkept & Hag & Hfr). iNext. iIntros (e2 σ2 Hm).
     destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite E; discriminate))
       as [(c' & E' & -> & ->) | [(q & k & b & s' & E' & _) | (o & m' & E' & _)]];
       cbn [ls_mem ls_fuel ls_rt] in E'; rewrite E in E'; try discriminate E'.
@@ -418,7 +470,25 @@ Proof.
       * exact (live_disjoint_regions _ _ Hreg Hd).
       * exact (R.ready_kept _ _ _ Hr Hkept).
       * exact (Hwi m w h Hl Hw).
-    + iApply ("HK" with "Hps").
+    + iApply ("HK" with "Hps HQ").
+Qed.
+
+(** [wp_write_with] with nothing more than the pieces ps. *)
+Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
+  ps'.*1 = ps.*1 ->
+  (forall m fuel, owned_facts ps m ->
+     Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' (upd m) fuel) /\
+     m_regions (upd m) = m_regions m /\ kept m (upd m) /\
+     all_agree (upd m) ps' /\ frame_ok ps'.*1 m (upd m)) ->
+  (forall m w h, (forall l v, (l, v) ∈ ps -> h !! l = Some v) -> wi m w h ->
+     wi (upd m) w (overwrite ps' h)) ->
+  pts ps -∗ ▷ (pts ps' -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
+  WP (ERun fr : lexpr) {{ Φ }}.
+Proof.
+  intros Hk Hs Hwi. iIntros "Hps HK".
+  iApply (wp_write_with True (fun _ => True) ps ps' fr fr' cs' upd with "Hps [//] [HK]");
+    [exact Hk | auto | intros m fuel Hf _; exact (Hs m fuel Hf) | exact Hwi |].
+  iNext. iIntros "Hps _". iApply ("HK" with "Hps").
 Qed.
 
 (** A step to the next configuration, with the callers cs' below its
@@ -794,6 +864,243 @@ Proof.
   - iNext. iIntros "(Hl & Hc & Hps)". iApply ("HK" with "Hl Hc Hps").
 Qed.
 
+(** ## Reads at a share *)
+
+(** [wp_read] at any share: a step to the next configuration, with the
+    callers cs' below its frame, that reads the pieces ps, owned at the
+    fraction dq, and changes no memory: they are handed back. *)
+Lemma wp_read_dq dq ps fr fr' cs' Φ :
+  (forall m fuel, owned_facts ps m ->
+     Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
+  ptsq dq ps -∗ ▷ (ptsq dq ps -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
+  WP (ERun fr : lexpr) {{ Φ }}.
+Proof.
+  intros Hs. apply (wp_read_with _ (owned_facts ps)); [|exact Hs].
+  iIntros (σ) "Hσ Hps". iApply (ptsq_facts with "Hσ Hps").
+Qed.
+
+(** [wp_raw_load_read] at shares: a raw load of a long at offset off
+    from the proven pointer p, through a read-write or read-only
+    capability for the object b, at offset o, where a share dq1 of b's
+    life and a share dq2 of the cell holding v are owned: d is bound to
+    v modulo 2^64. *)
+Lemma wp_raw_load_read_dq f e ls l d k off args rest j classes p b reg o v dq1 dq2 Φ :
+  op_arg_classes (RawLoad LdL off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + o ->
+  liveq dq1 b reg -∗ icellq dq2 b o v -∗
+  ▷ (liveq dq1 b reg -∗ icellq dq2 b o v -∗
+     WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp Ha. iIntros "Hl Hc HK".
+  iApply (wp_read_with (liveq dq1 b reg ∗ icellq dq2 b o v)
+            (fun m => live_at m b reg /\ all_agree m (cell b o v)) _ _ [] with "[$Hl $Hc] [HK]").
+  - iIntros (σ) "Hσ [Hl Hc]".
+    iDestruct (ptsq_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (ptsq_facts with "Hσ Hc") as %(Hcl & _). iPureIntro. auto.
+  - intros m fuel (Hlv & Hcl). destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    rewrite (op_raw_load m k p off).
+    + rewrite Ha (cell_load m b reg o v (b + o) Hlv Hcl eq_refl). reflexivity.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+  - iNext. iIntros "[Hl Hc]". iApply ("HK" with "Hl Hc").
+Qed.
+
+(** [wp_raw_load_sub_read] at shares: a raw load of the narrow type n,
+    of its s bytes, at offset off from the proven pointer p, through a
+    read-write or read-only capability for the object b, at offset o,
+    where a share dq1 of b's life and a share dq2 of a cell holding v
+    are owned: d is bound to v's low s bytes extended to the class k,
+    y. *)
+Lemma wp_raw_load_sub_read_dq f e ls l d k n off args rest j classes p b reg o v y dq1 dq2 Φ :
+  op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  extended n k (v mod 2 ^ (8 * fst (narrow_type n))) = Some y ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + o ->
+  liveq dq1 b reg -∗ icellq dq2 b o v -∗
+  ▷ (liveq dq1 b reg -∗ icellq dq2 b o v -∗
+     WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof.
+  intros Hc Hx Hy Hp Ha. iIntros "Hl Hc HK".
+  assert (Hs : 0 <= fst (narrow_type n) <= 8) by (destruct n; cbn; lia).
+  iApply (wp_read_with (liveq dq1 b reg ∗ icellq dq2 b o v)
+            (fun m => live_at m b reg /\ all_agree m (cell b o v)) _ _ [] with "[$Hl $Hc] [HK]").
+  - iIntros (σ) "Hσ [Hl Hc]".
+    iDestruct (ptsq_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (ptsq_facts with "Hσ Hc") as %(Hcl & _). iPureIntro. auto.
+  - intros m fuel (Hlv & Hcl). destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    rewrite (op_raw_load_narrow m k n p off).
+    + rewrite Ha (cell_load_low m b reg o v (b + o) _ Hlv Hcl eq_refl Hs) Hy. reflexivity.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+  - iNext. iIntros "[Hl Hc]". iApply ("HK" with "Hl Hc").
+Qed.
+
+(** A raw pointer load by the plain protocol, as [wp_raw_load_pointer],
+    at shares: through a read-write or read-only capability for the
+    object b, where a share dq1 of b's life, a share dq2 of the pointer
+    cell holding x and, if x's capability names an object, a share dq3
+    of its life ([live_capq]) are owned. d is bound to x. *)
+Lemma wp_raw_load_pointer_dq f e ls l d off args rest j classes p b reg o x reg' dq1 dq2 dq3 Φ :
+  op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
+  raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
+  0 <= ptr_addr x < 2 ^ 64 ->
+  liveq dq1 b reg -∗ pcellq dq2 b o x -∗ live_capq dq3 (ptr_cap x) reg' -∗
+  ▷ (liveq dq1 b reg -∗ pcellq dq2 b o x -∗ live_capq dq3 (ptr_cap x) reg' -∗
+     WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+       (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
+       : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp Ha Hal Hrange. iIntros "Hl Hc Hcap HK".
+  iApply (wp_read_with (liveq dq1 b reg ∗ pcellq dq2 b o x ∗ live_capq dq3 (ptr_cap x) reg')
+            (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
+                      all_agree m (cell b o (ptr_addr x)) /\ ~ freed_in (m_regions m) (ptr_cap x))
+            _ _ [] with "[$Hl $Hc $Hcap] [HK]").
+  - iIntros (σ) "Hσ (Hl & Hc & Hcap)".
+    iDestruct (ptsq_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (ptsq_facts with "Hσ Hc") as %([Hax Hcl] & _).
+    iDestruct (live_capq_facts with "Hσ Hcap") as %Hkept. iPureIntro. auto.
+  - intros m fuel (Hlv & Hax & Hcl & Hkept). destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    apply op_raw_load_pointer.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | exact Hal].
+    + rewrite pointer_load_plain Ha (cell_load m b reg o (ptr_addr x) (b + o) Hlv Hcl eq_refl).
+      rewrite Z.mod_small; [|exact Hrange]. unfold aux_at.
+      rewrite (aux_holds_kept _ _ _ (aux_piece_holds _ _ _ _ _ Hlv Hax) Hkept).
+      destruct x; reflexivity.
+  - iNext. iIntros "(Hl & Hc & Hcap)". iApply ("HK" with "Hl Hc Hcap").
+Qed.
+
+(** ## Compare-exchange *)
+
+(** A raw [[cas]] of a long at offset off from the proven pointer p,
+    which addresses the 8-aligned offset o of the live object b, where
+    the cell holds v, of the longs ev expected and nv new: d is bound
+    to v modulo 2^64, and the cell then holds nv where v and ev agree
+    modulo 2^64, a write that must keep the world interpretation, and
+    still v where they do not. *)
+Lemma wp_raw_cas_l f e ls l d k off args rest j classes p b reg o v ev nv Φ :
+  op_arg_classes (RawCas CasL off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p; WInt ev; WInt nv] ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
+  (v mod 2 ^ 64 = ev mod 2 ^ 64 -> forall m wd h,
+     (forall l v', (l, v') ∈ [(PLive b, VLive reg)] ++ cell b o v -> h !! l = Some v') ->
+     wi m wd h -> wi (store_bytes m (b + o) 8 nv) wd (overwrite ([(PLive b, VLive reg)] ++ cell b o nv) h)) ->
+  live b reg -∗ icell b o v -∗
+  ▷ (live b reg -∗ icell b o (if v mod 2 ^ 64 =? ev mod 2 ^ 64 then nv else v) -∗
+     WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawCas CasL off) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp Ha Hal Hwi. iIntros "Hl Hc HK".
+  assert (Hop : forall m, live_at m b reg -> all_agree m (cell b o v) ->
+    op_res (RawCas CasL off) k [WPtr p; WInt ev; WInt nv] m =
+    Some (OpRes (RVal (WInt (v mod 2 ^ 64)))
+      (if v mod 2 ^ 64 =? ev mod 2 ^ 64 then store_bytes m (b + o) 8 nv else m))).
+  { intros m Hlv Hcl. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    rewrite (op_raw_cas_int m CasL k p off ev nv (WInt (v mod 2 ^ 64))); [| discriminate | |].
+    - rewrite Ha (cell_load m b reg o v (b + o) Hlv Hcl eq_refl). reflexivity.
+    - rewrite Hp Ha. apply (access_obj _ _ reg); [exact (proj1 Hlv) | cbn; lia | cbn; lia | exact Hal].
+    - rewrite Ha (cell_load m b reg o v (b + o) Hlv Hcl eq_refl). reflexivity. }
+  destruct (v mod 2 ^ 64 =? ev mod 2 ^ 64) eqn:Eq.
+  - iApply (wp_write ([(PLive b, VLive reg)] ++ cell b o v) ([(PLive b, VLive reg)] ++ cell b o nv)
+              _ _ [] (fun m => store_bytes m (b + o) 8 nv) with "[Hl Hc] [HK]");
+      [reflexivity | | exact (Hwi (proj1 (Z.eqb_eq _ _) Eq)) | rewrite pts_app; iFrame |].
+    + intros m fuel (Hf & Hd & _). apply all_agree_app in Hf as [[Hlv _] Hcl].
+      cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+      destruct (cell_store_ok m b reg o (b + o) nv Hd Hlv Ho He eq_refl) as [Hcs Hfr].
+      split; [|split; [reflexivity|split; [|split]]].
+      * apply rule_let with (classes := classes) (xs := [WPtr p; WInt ev; WInt nv]);
+          [reflexivity | exact Hc | exact Hx |]. rewrite (Hop m Hlv Hcl); rewrite ?Eq; reflexivity.
+      * apply store_bytes_kept. exact (in_object_live _ _ _ (b + o) Hlv ltac:(lia) ltac:(lia)).
+      * apply all_agree_app. split; [|exact Hcs]. cbn [all_agree agree_piece fst snd].
+        split; [apply (live_at_regions m); [reflexivity|exact Hlv] | exact I].
+      * eapply frame_ok_mono; [|exact Hfr]. intros key Hin. rewrite fmap_app. apply elem_of_app. by right.
+    + iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+  - iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]").
+    + intros m fuel (Hf & _). apply all_agree_app in Hf as [[Hlv _] Hcl]. cbn [agree_piece fst snd] in Hlv.
+      apply rule_let with (classes := classes) (xs := [WPtr p; WInt ev; WInt nv]);
+        [reflexivity | exact Hc | exact Hx |]. rewrite (Hop m Hlv Hcl); rewrite ?Eq; reflexivity.
+    + rewrite pts_app. iFrame.
+    + iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
+Qed.
+
+(** A raw pointer [[cas]] at offset off from the proven pointer p,
+    which addresses the 8-aligned offset o of the live object b, where
+    the pointer x is stored, of the pointers ep expected and np new,
+    given a share of the life of the object x's capability names, if
+    any ([live_capq]): d is bound to x, and the cell then holds np where
+    x's address is ep's, capabilities ignored, a write that must keep
+    the world interpretation, and still x where it is not. *)
+Lemma wp_raw_cas_ptr f e ls l d off args rest j classes p b reg o x ep np reg' dq Φ :
+  op_arg_classes (RawCas CasP off) P = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p; WPtr ep; WPtr np] ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
+  0 <= ptr_addr x < 2 ^ 64 ->
+  (ptr_addr x = ptr_addr ep -> forall m wd h,
+     (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) ->
+        h !! l = Some v) ->
+     wi m wd h ->
+     wi (store_bytes (store_aux m (b + o) (ptr_cap np)) (b + o) 8 (ptr_addr np)) wd
+       (overwrite ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap np)) :: cell b o (ptr_addr np)) h)) ->
+  live b reg -∗ pcell b o x -∗ live_capq dq (ptr_cap x) reg' -∗
+  ▷ (live b reg -∗ pcell b o (if ptr_addr x =? ptr_addr ep then np else x) -∗ live_capq dq (ptr_cap x) reg' -∗
+     WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d P (RawCas CasP off) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof.
+  intros Hc Hx Hp Ha Hal Hrange Hwi. iIntros "Hl Hc Hcap HK".
+  assert (Hop : forall m, live_at m b reg -> agree_piece m (PAux b o) (VAux (ptr_cap x)) ->
+    all_agree m (cell b o (ptr_addr x)) -> ~ freed_in (m_regions m) (ptr_cap x) ->
+    op_res (RawCas CasP off) P [WPtr p; WPtr ep; WPtr np] m =
+    Some (OpRes (RVal (WPtr x))
+      (if ptr_addr x =? ptr_addr ep
+       then store_bytes (store_aux m (b + o) (ptr_cap np)) (b + o) 8 (ptr_addr np) else m))).
+  { intros m Hlv Hax Hcl Hkept. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+    rewrite op_raw_cas_ptr.
+    - rewrite Ha (cell_load m b reg o (ptr_addr x) (b + o) Hlv Hcl eq_refl) Z.mod_small; [|exact Hrange].
+      unfold aux_at. rewrite (aux_holds_kept _ _ _ (aux_piece_holds _ _ _ _ _ Hlv Hax) Hkept).
+      destruct x; reflexivity.
+    - rewrite Hp Ha. apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | exact Hal]. }
+  destruct (ptr_addr x =? ptr_addr ep) eqn:Eq.
+  - iApply (wp_write_with (live_capq dq (ptr_cap x) reg') (fun m => ~ freed_in (m_regions m) (ptr_cap x))
+              ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x))
+              ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap np)) :: cell b o (ptr_addr np))
+              _ _ [] (fun m => store_bytes (store_aux m (b + o) (ptr_cap np)) (b + o) 8 (ptr_addr np))
+              with "[Hl Hc] Hcap [HK]");
+      [reflexivity | | | exact (Hwi (proj1 (Z.eqb_eq _ _) Eq)) | rewrite pts_app; iFrame |].
+    + iIntros (σ) "Hσ Hcap". iApply (live_capq_facts with "Hσ Hcap").
+    + intros m fuel (Hf & Hd & _) Hkept. apply all_agree_app in Hf as [[Hlv _] [Hax Hcl]].
+      cbn [agree_piece fst snd] in Hlv. destruct (cell_bounds _ _ _ _ _ Hlv Hcl) as [Ho He].
+      destruct (pcell_store_ok m b reg o (b + o) (ptr_cap np) (ptr_addr np) Hd Hlv Ho He eq_refl)
+        as [Hcs Hfr].
+      assert (Hin := in_object_live _ _ _ (b + o) Hlv ltac:(lia) ltac:(lia)).
+      split; [|split; [reflexivity|split; [|split]]].
+      * apply rule_let with (classes := classes) (xs := [WPtr p; WPtr ep; WPtr np]);
+          [reflexivity | exact Hc | exact Hx |]. rewrite (Hop m Hlv Hax Hcl Hkept); rewrite ?Eq; reflexivity.
+      * exact (pointer_store_effects_kept _ _ _ _ _ Hin (pointer_store_plain m (b + o) np)).
+      * apply all_agree_app. split; [|exact Hcs]. cbn [all_agree agree_piece fst snd].
+        split; [apply (live_at_regions m); [reflexivity|exact Hlv] | exact I].
+      * eapply frame_ok_mono; [|exact Hfr]. intros key Hin'. rewrite fmap_app. apply elem_of_app. by right.
+    + iNext. iIntros "H Hcap". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc Hcap").
+  - iApply (wp_read_with (live b reg ∗ pcell b o x ∗ live_capq dq (ptr_cap x) reg')
+              (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
+                        all_agree m (cell b o (ptr_addr x)) /\ ~ freed_in (m_regions m) (ptr_cap x))
+              _ _ [] with "[$Hl $Hc $Hcap] [HK]").
+    + iIntros (σ) "Hσ (Hl & Hc & Hcap)".
+      iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _).
+      iDestruct (pts_facts with "Hσ Hc") as %([Hax Hcl] & _).
+      iDestruct (live_capq_facts with "Hσ Hcap") as %Hkept. iPureIntro. auto.
+    + intros m fuel (Hlv & Hax & Hcl & Hkept).
+      apply rule_let with (classes := classes) (xs := [WPtr p; WPtr ep; WPtr np]);
+        [reflexivity | exact Hc | exact Hx |]. rewrite (Hop m Hlv Hax Hcl Hkept); rewrite ?Eq; reflexivity.
+    + iNext. iIntros "(Hl & Hc & Hcap)". iApply ("HK" with "Hl Hc Hcap").
+Qed.
+
 (** A raw store of the long v', which v reads as, through the proven
     pointer p, which a reads as and which addresses offset o of the live
     object b at offset off, where the store keeps the world
@@ -867,44 +1174,48 @@ Proof.
   - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** A call of `free` on null, which v reads as: nothing happens. *)
-Lemma wp_free_null f e ls l v rest j Φ :
-  frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+(** A call of a free the model runs, `free` or `zgc_free`
+    ([is_free_name] fnm), on null, which v reads as: nothing happens. *)
+Lemma wp_free_null_sym fnm f e ls l v rest j Φ :
+  is_free_name fnm = true ->
+  frees_heap (ge_free ge) -> find_fn ge fnm = None -> lookup fnm (ge_globals ge) = None ->
   arg_x ge e (Arg P v) = Some (WPtr null) ->
   ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
-  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j)) : lexpr)
     {{ Φ }}.
 Proof.
-  intros [Hnull _] Hfn Hdata Hx. apply (wp_pure_next _ _ []). intros m fuel.
-  exact (rule_free _ _ _ _ _ _ _ _ _ _ _ _ _ Hfn Hdata Hx (Hnull m)).
+  intros Hfnm [Hnull _] Hfn Hdata Hx. apply (wp_pure_next _ _ []). intros m fuel.
+  exact (rule_free_sym _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfnm Hfn Hdata Hx (Hnull m)).
 Qed.
 
-(** A call of `free` on the base pointer of the live heap object b,
+(** A call of a free the model runs, `free` or `zgc_free`
+    ([is_free_name] fnm), on the base pointer of the live heap object b,
     which v reads as, where the genv's free [frees_heap] (R's does,
     by [R.free_succeeds]), and where the
     free keeps the world interpretation: b's life is given up, its
     token ending as [VFreed] in the ghost heap. Its bytes and aux
     slots, if still owned, agree vacuously from then on. *)
-Lemma wp_free f e ls l v rest j b reg Φ :
-  frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+Lemma wp_free_sym fnm f e ls l v rest j b reg Φ :
+  is_free_name fnm = true ->
+  frees_heap (ge_free ge) -> find_fn ge fnm = None -> lookup fnm (ge_globals ge) = None ->
   arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> b <> 0 ->
   (forall m wd h rs, h !! PLive b = Some (VLive reg) ->
      replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs -> wi m wd h ->
      wi (mkMem (m_bytes m) rs (m_aux m)) wd (overwrite [(PLive b, VFreed)] h)) ->
   live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
-  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j)) : lexpr)
     {{ Φ }}.
 Proof.
-  intros [_ Hfh] Hfn Hdata Hx Hk Hb Hwi. iIntros "Hl HK". iCombine "Hl HK" as "H".
+  intros Hfnm [_ Hfh] Hfn Hdata Hx Hk Hb Hwi. iIntros "Hl HK". iCombine "Hl HK" as "H".
   iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [Hl _]". iDestruct (pts_facts with "Hσ Hl") as %(Hf & _). iPureIntro.
     cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [Hlv _].
     destruct (Hfh _ _ _ Hlv Hk Hb) as (rs & _ & Hfree). left. unfold fails.
-    rewrite (rule_free _ _ _ _ _ _ _ _ [] _ (ls_fuel σ) _ _ Hfn Hdata Hx Hfree). auto.
+    rewrite (rule_free_sym _ _ _ _ _ _ _ _ _ [] _ (ls_fuel σ) _ _ Hfnm Hfn Hdata Hx Hfree). auto.
   - iIntros ([m s fuel w]) "Hσ [Hl HK]". iDestruct (pts_facts with "Hσ Hl") as %(Hf & _).
     cbn [ls_mem ls_rt ls_fuel ls_world all_agree agree_piece fst snd] in *. destruct Hf as [Hlv _].
     destruct (Hfh _ _ _ Hlv Hk Hb) as (rs & Hrs & Hfree).
-    pose proof (rule_free ge f e ls l v rest j [] m fuel _ _ Hfn Hdata Hx Hfree) as E.
+    pose proof (rule_free_sym ge fnm f e ls l v rest j [] m fuel _ _ Hfnm Hfn Hdata Hx Hfree) as E.
     iNext. iIntros (e2 σ2 Hm).
     destruct (moves_core _ _ _ _ Hm ltac:(intros ?; cbn [ls_mem ls_fuel]; rewrite E; discriminate))
       as [(c' & E' & -> & ->) | [(q & k & b' & s' & E' & _) | (o & m' & E' & _)]];
@@ -925,6 +1236,27 @@ Proof.
     + exact (R.ready_kept _ _ _ Hr (free_heap_kept _ _ _ _ Hlv Hk Hrs)).
     + apply (Hwi m w h rs); [apply Hlk; left | exact Hrs | exact Hw].
 Qed.
+
+(** [wp_free_null_sym] for `free`. *)
+Lemma wp_free_null f e ls l v rest j Φ :
+  frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr null) ->
+  ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof. apply wp_free_null_sym. reflexivity. Qed.
+
+(** [wp_free_sym] for `free`. *)
+Lemma wp_free f e ls l v rest j b reg Φ :
+  frees_heap (ge_free ge) -> find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> b <> 0 ->
+  (forall m wd h rs, h !! PLive b = Some (VLive reg) ->
+     replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs -> wi m wd h ->
+     wi (mkMem (m_bytes m) rs (m_aux m)) wd (overwrite [(PLive b, VFreed)] h)) ->
+  live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
+    {{ Φ }}.
+Proof. apply wp_free_sym. reflexivity. Qed.
 
 (** A raw byte store of the int y, which v reads as, through the proven
     pointer p, which a reads as and which addresses offset o of the live
@@ -1274,7 +1606,7 @@ Qed.
     safepoint before the call keeps Q, and the precondition is shown
     again after it. *)
 Lemma wp_external f e ls lab r g args rest j spec xs (Q : iProp Σ) Φ :
-  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->
   (forall σ, heap_interp σ -∗ Q -∗ ⌜contract_pre spec xs (ls_mem σ) (ls_world σ)⌝) ->
   Q -∗

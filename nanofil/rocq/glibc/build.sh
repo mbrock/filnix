@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Compile the glibc spike's proofs (docs/glibc-ir.md) in _RocqProject's
-# order against compiled model theories, printing each file's time, and
-# refuse Admitted or any axiom. Needs rocq, stdlib, std++ and Iris on
-# ROCQPATH.
+# order, paths relative to this directory and subdirectories allowed,
+# against compiled model theories, printing each file's time, and refuse
+# Admitted or any axiom in any .v file here. Needs rocq, stdlib, std++
+# and Iris on ROCQPATH. nix/glibc.nix builds the same files one
+# derivation each.
 #
 #   rocq/glibc/build.sh [THEORIES]   # default: ../theories, compiled
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 theories=${1:-$here/../theories}
 cd "$here"
-if grep -nwE 'Admitted|Axiom|Axioms|Parameter|Conjecture' *.v; then
+if find . -name '*.v' -print0 | sort -z | xargs -0 grep -nwE 'Admitted|Axiom|Axioms|Parameter|Conjecture'; then
   echo "glibc: no Admitted and no axioms" >&2
   exit 1
 fi

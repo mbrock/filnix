@@ -158,7 +158,7 @@ Qed.
     Local bridge for promotion to Logic.v. *)
 Lemma wp_close_contract f e ls lab d k g args rest j spec xs ps
     (after : list Z -> list (piece * pval)) (good : Z -> list Z -> Prop) Φ :
-  find_fn ge g = None -> lookup g (ge_globals ge) = None -> name_eqb g free_name = false ->
+  find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> contract_returns spec = RClass k ->
   (k = W \/ k = L) -> map_option (arg_x ge e) args = Some xs ->
   contract_abi spec (CResult d k) args ->

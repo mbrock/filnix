@@ -41,9 +41,10 @@ Record call_site : Type := mkCallSite {
     external call site: its [[frame]] is not [[doomed]], its next
     instruction is a direct call of site's global name, and that name is
     neither a function of the module (defined or outside the
-    [[core subset]], [find_fn]), nor global data, nor free. This
-    preserves core dispatch precedence: free remains the runtime's
-    operation. In particular a doomed call cannot use this rule to
+    [[core subset]], [find_fn]), nor global data, nor a free the model
+    runs ([is_free_name]: free or zgc_free). This preserves core
+    dispatch precedence: both frees remain the runtime's operation, and
+    no contract can be registered over either. In particular a doomed call cannot use this rule to
     escape [Ahead]. *)
 Definition external_site (ge : genv) (c : config) (site : call_site) : Prop :=
   let fr := c_frame c in
@@ -51,7 +52,7 @@ Definition external_site (ge : genv) (c : config) (site : call_site) : Prop :=
   fr_at fr = Exec (site_label site)
     (Call (site_result site) (Global (site_name site)) (site_args site) :: site_rest site) (site_jump site) /\
   find_fn ge (site_name site) = None /\ lookup (site_name site) (ge_globals ge) = None /\
-  name_eqb (site_name site) free_name = false.
+  is_free_name (site_name site) = false.
 
 (** The [[outcome]] a call's returned words xs make under the declared
     return type ty: [RetVoid] for void, [Ret] for a scalar, [Rets] for
@@ -764,9 +765,13 @@ Definition data_ge : genv := mkGenv [] [(symbol, hello_ptr)] InterpRuntime.free.
 Definition free_config : config :=
   mkConfig (with_point (c_frame (test_config CVoid))
     (Exec label [Call CVoid (Global free_name) args] JRetVoid)) test_callers hello_mem 41.
+(** The test frame about to call zgc_free. *)
+Definition zgc_free_config : config :=
+  mkConfig (with_point (c_frame (test_config CVoid))
+    (Exec label [Call CVoid (Global zgc_free_name) args] JRetVoid)) test_callers hello_mem 41.
 
-(** Calls of a defined, outside or data name, and of free, stay core
-    calls: every step there is silent. *)
+(** Calls of a defined, outside or data name, and of free or zgc_free,
+    stay core calls: every step there is silent. *)
 Example dispatch_stays_core : forall trace st,
   (M.step (registry (test_contract RVoid True True True)) defined_ge
       (M.Running (test_config CVoid, InterpRuntime.start) tt) trace st \/
@@ -775,11 +780,18 @@ Example dispatch_stays_core : forall trace st,
    M.step (registry (test_contract RVoid True True True)) data_ge
       (M.Running (test_config CVoid, InterpRuntime.start) tt) trace st \/
    M.step (registry (test_contract RVoid True True True)) test_ge
-      (M.Running (free_config, InterpRuntime.start) tt) trace st) -> trace = [].
+      (M.Running (free_config, InterpRuntime.start) tt) trace st \/
+   M.step (registry (test_contract RVoid True True True)) test_ge
+      (M.Running (zgc_free_config, InterpRuntime.start) tt) trace st) -> trace = [].
 Proof.
-  intros trace st [H | [H | [H | H]]]; eapply M.non_external_silent; try exact H;
+  intros trace st [H | [H | [H | [H | H]]]]; eapply M.non_external_silent; try exact H;
     intros site Hsite; pose proof (external_site_stuck _ _ _ Hsite) as Hstuck; discriminate Hstuck.
 Qed.
+
+(** A call of zgc_free runs the runtime's free, as a call of free does:
+    the core step there is not stuck. *)
+Example zgc_free_runs : Semantics.step test_ge zgc_free_config <> Stuck "instruction".
+Proof. discriminate. Qed.
 
 (** A puts whose allocation is refused stops as [OutOfMemory] with its
     event and its write to the libc state retained. *)
