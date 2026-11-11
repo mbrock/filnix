@@ -234,6 +234,10 @@ page), is dropped when it is made. The printer takes the fewest lines,
 then the least bad; if nothing fits it lets the ribbon go, but keeps the
 available width. If no plan fits even then, the term keeps its natural
 wrapping markup rather than forcing an oversized no-break layout.
+The same fallback applies after 100,000 candidate combinations in a
+search: even a small term's frontier can otherwise freeze a page while
+sorting millions of layouts. An exhausted search never chooses from a
+partial frontier.
 
 A conditional is a table only while it fits and every branch is one
 goal; otherwise it is a stack whose IF, THEN and ELSE share one column,

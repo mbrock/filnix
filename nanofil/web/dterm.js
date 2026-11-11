@@ -58,6 +58,7 @@ document.addEventListener("mouseover", (event) => {
   const SAFETY = 3; // canvas and the page disagree by a pixel or so
   const EPS = 0.5; // widths this close are the same width
   const MAX_NODES = 8000; // bigger terms flow as text
+  const MAX_COMBINATIONS = 100000; // small terms can still have huge frontiers
   const NBSP = "\u00a0";
   const root = document.documentElement;
   const ctx = document.createElement("canvas").getContext("2d");
@@ -307,6 +308,7 @@ document.addEventListener("mouseover", (event) => {
     return out;
   }
   function evaluate(n, E) {
+    if (E.remaining < 0) return [];
     let r = E.memo.get(n.id);
     if (!r) E.memo.set(n.id, (r = step(n, E)));
     return r;
@@ -323,6 +325,8 @@ document.addEventListener("mouseover", (event) => {
         for (const kid of n.kids.slice(1)) {
           if (!F.length) return F;
           const G = [], K = evaluate(kid, E);
+          E.remaining -= F.length * K.length;
+          if (E.remaining < 0) return [];
           for (const x of F) for (const y of K) {
             const m = { h: x.h + y.h, mw: Math.max(x.mw, x.lw + y.mw), lw: x.lw + y.lw, b: x.b + y.b, u: false, r: [x.r, y.r] };
             if (valid(m, E)) G.push(m);
@@ -355,7 +359,11 @@ document.addEventListener("mouseover", (event) => {
   function plan(t) {
     const tries = [[t.W, t.R], [t.W, Infinity]];
     for (const [W, R] of tries) {
-      const F = evaluate(t.doc, { W, R, memo: new Map() });
+      const E = { W, R, memo: new Map(), remaining: MAX_COMBINATIONS };
+      const F = evaluate(t.doc, E);
+      // Do not select a partial frontier or retry the same costly search
+      // without the ribbon: keep the term's natural wrapping instead.
+      if (E.remaining < 0) return null;
       if (!F.length) continue;
       let best = F[0];
       for (const c of F) {
