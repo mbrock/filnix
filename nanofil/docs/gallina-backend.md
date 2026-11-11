@@ -1427,24 +1427,31 @@ three-address `lea`, `imm32` operands and narrow loads and stores.
 
 - **Validation and proofs.** Every allocated function is checked
   before emission by a linear-time Gallina validator (`valid_alloc`).
-  `RegsProof.v` proves local kernel-checked lemmas (all closed under
-  the global context): interval disjointness (`ivals_disjoint_sound`)
-  and call-point exclusion (`ivals_hit_points_sound`) on well-formed
-  interval lists, live-only preservation of `state_agrees` over
+  `RegsProof.v` proves kernel-checked results (all closed under the
+  global context): interval disjointness (`ivals_disjoint_sound`) and
+  call-point exclusion (`ivals_hit_points_sound`) on well-formed
+  interval lists; live-only preservation of `state_agrees` over
   registers and shared physical frame slots across caller-saved call
   and poll clobbers (`clobber_preserves_agrees`,
   `poll_edge_clobber_sound`), single- and multi-destination writes
   (`write_mach_step_sound`, `write_mach_list_sound`) and one abstract
-  instruction step (`check_rinst_step_sound`), the algebraic save and
-  restore round-trip (`callee_saves_restore_sound`) and non-register
-  lookup of `KLower` keys (`lower_key_never_hreg`), one-step
-  parallel-move source preservation (`ready_pmove_step_sound`,
-  `cycle_break_step_sound`), and modular exactness of 32/64-bit `lea`
-  and `imm32` selection (`imm32_congruent`, `imm32_add_mod_sound`,
-  `imm32_sub_lea_w_sound`, `imm32_sub_lea_l_sound`, `-2^31` included),
-  plus executable `valid_alloc` rejection examples. Full validator-to-CFG
-  simulation, whole-scheduler `compile_pmoves` correctness, concrete
-  frame separation and native x86 semantics are not yet proved there.
+  instruction step (`check_rinst_step_sound`); modular exactness of
+  32/64-bit `lea` and `imm32` selection (`imm32_congruent`,
+  `imm32_add_mod_sound`, `imm32_sub_lea_w_sound`,
+  `imm32_sub_lea_l_sound`, `-2^31` included); whole-scheduler
+  soundness and fuel sufficiency of `compile_pmoves` over emitted
+  x86-64 move/lea instructions (`compile_pmoves_sound`,
+  `compile_pmoves_no_todo`, covering no-op deletion under canonical
+  source widths, ready peeling, pigeonhole `%rcx` scratch freshness
+  across multiple disjoint cycles, `%rax` slot-move scratch, and
+  global symbol addresses); concrete `build_rctx` callee-save slot
+  disjointness, register coverage, `callee_save_stores` /
+  `callee_save_restores` round-trip, and `lowers[]` GC root slot
+  placement (`build_rctx_save_slots_disjoint`,
+  `build_rctx_used_callee_saved`, `build_rctx_callee_saves_sound`,
+  `build_rctx_root_lower_slot`, `lower_key_never_hreg`); and
+  executable `valid_alloc` rejection examples. Validator-to-CFG
+  simulation and native x86 body semantics are not yet proved there.
 - **Behavioural gate.** `compile` and `compile-promoted` keep their
   byte-identity gates unchanged. `tests/regs.sh` (run with
   `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` in the `nanofil-backend` check,
