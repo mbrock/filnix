@@ -1,8 +1,8 @@
-(** This file proves the triple of `c: _IO_new_file_overflow` (LibioOverflowBase.v
-    describes the function) on the first call, when the stream is
-    neither putting nor buffered: the stream gets a buffer, switches to
-    putting, and takes the byte
-    ([wp_glibc__IO_new_file_overflow_alloc]). *)
+(** The first overflow of a stream allocates its buffer, switches it to
+    writing, and sends the requested byte. This file proves the whole
+    function from the proof of its allocation block. The result retains
+    the fresh buffer's alignment, heap ownership and empty capability
+    slots, which later copies and stream closure need. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -50,8 +50,11 @@ Context (HL33 : forall fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 w
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base null -∗
   pcell fb off_write_ptr wp0 -∗ pcell fb off_write_end we0 -∗ pcell fb off_buf_base null -∗
   pcell fb off_buf_end oe -∗ Mres -∗
-  ▷ (∀ r bb breg sz k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ 0 < sz <= 8192 /\ ovf_alloc_flags fl fl'⌝ -∗
-     live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗ Mres -∗
+  ▷ (∀ r bb breg sz k' we' xs' fl' tw' off',
+     ⌜ovf_ret ch r /\ 0 < sz <= 8192 /\ ovf_alloc_flags fl fl' /\
+       r_kind breg = Heap /\ bb mod 16 = 0 /\ r_end breg <= 2 ^ 48⌝ -∗
+     live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
+     auxes bb 0 (replicate (Z.to_nat sz) CNone) -∗ Mres -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}).
 
@@ -70,8 +73,11 @@ Lemma wp_glibc__IO_new_file_overflow_alloc fr fb freg ch f2 fd eb mode vb vreg f
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base null -∗
   pcell fb off_write_ptr wp0 -∗ pcell fb off_write_end we0 -∗ pcell fb off_buf_base null -∗
   pcell fb off_buf_end oe -∗ Mres -∗
-  ▷ (∀ r bb breg sz k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ 0 < sz <= 8192 /\ ovf_alloc_flags fl fl'⌝ -∗
-     live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗ Mres -∗
+  ▷ (∀ r bb breg sz k' we' xs' fl' tw' off',
+     ⌜ovf_ret ch r /\ 0 < sz <= 8192 /\ ovf_alloc_flags fl fl' /\
+       r_kind breg = Heap /\ bb mod 16 = 0 /\ r_end breg <= 2 ^ 48⌝ -∗
+     live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
+     auxes bb 0 (replicate (Z.to_nat sz) CNone) -∗ Mres -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.

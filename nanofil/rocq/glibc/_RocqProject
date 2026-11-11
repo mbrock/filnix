@@ -209,3 +209,8 @@ hi_atexit/HiAtexitSetb.v
 hi_atexit/HiAtexitCloseIt.v
 hi_atexit/HiAtexitFclose.v
 hi_atexit/HiAtexitCloseStdout.v
+hi_atexit/HiAtexitAlloc.v
+hi_atexit/HiAtexitDoAlloc.v
+hi_atexit/HiAtexitOverflowSend.v
+hi_atexit/HiAtexitOverflow.v
+hi_atexit/HiAtexitOverflowAlloc.v

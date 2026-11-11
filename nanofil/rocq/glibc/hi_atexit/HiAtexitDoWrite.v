@@ -98,4 +98,13 @@ Definition hi_do_write_mode :=
           (HDT.wp_do_write_tail w0 registry ge
              (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
 
+(** Overflow flushes from the buffer's base; the same proved blocks
+    establish that case without a callee hypothesis. *)
+Definition hi_do_write_base :=
+  HDW.wp_glibc__IO_new_do_write_base w0 registry ge
+    (HDC.wp_do_write_call w0 registry ge Hfw hi_file_write
+       (HDR.wp_do_write_ret w0 registry ge
+          (HDT.wp_do_write_tail w0 registry ge
+             (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
+
 End rules.

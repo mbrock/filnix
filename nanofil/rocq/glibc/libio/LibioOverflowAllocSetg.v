@@ -1,8 +1,8 @@
-(** This file proves block `c: L33` of `c: _IO_new_file_overflow`
-    (LibioOverflowBase.v describes the function), reached on the first
-    call, when the stream has no buffer: `c: _IO_doallocbuf` installs
-    one, as LibioDoAllocBuf.v proves, and `c: _IO_setg` points the
-    read pointers at its base ([wp_ovf_L33]). *)
+(** A stream's first overflow allocates a buffer and points its read
+    pointers at the buffer's base. This file proves that part of the
+    function and then uses the proof of the write-pointer resets.
+    The caller keeps the buffer's alignment, heap ownership and empty
+    capability slots so it can copy into the buffer or free it later. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -67,7 +67,7 @@ Context (Hdab : forall fr fb freg fl fd eb oe vb vreg Φ,
      ∀ fl1 bb sz, ⌜(fl1 = fl \/ fl1 = Z.lor fl io_line_buf) /\ 0 < sz <= 8192 /\ 0 < bb /\ bb + sz <= 2 ^ 48⌝ -∗
      live fb freg -∗ int_cell fb off_flags (setb_flags fl1 1) -∗ int_cell fb off_fileno fd -∗
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
-     (∃ breg, ⌜r_kind breg = Heap /\ bb + sz <= r_end breg /\ r_end breg <= 2 ^ 48⌝ ∗
+     (∃ breg, ⌜r_kind breg = Heap /\ bb + sz <= r_end breg /\ r_end breg <= 2 ^ 48 /\ bb mod 16 = 0⌝ ∗
        live bb breg ∗ bytes bb 0 (replicate (Z.to_nat sz) 0) ∗ auxes bb 0 (replicate (Z.to_nat sz) CNone)) -∗
      errno_any eb -∗ Mres -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}).
@@ -109,8 +109,11 @@ Lemma wp_ovf_L33 fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 we0 oe 
   pcell fb off_read_ptr rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb off_write_base null -∗
   pcell fb off_write_ptr wp0 -∗ pcell fb off_write_end we0 -∗ pcell fb off_buf_base null -∗
   pcell fb off_buf_end oe -∗ Mres -∗
-  ▷ (∀ r bb breg sz k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ 0 < sz <= 8192 /\ ovf_alloc_flags fl fl'⌝ -∗
-     live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗ Mres -∗
+  ▷ (∀ r bb breg sz k' we' xs' fl' tw' off',
+     ⌜ovf_ret ch r /\ 0 < sz <= 8192 /\ ovf_alloc_flags fl fl' /\
+       r_kind breg = Heap /\ bb mod 16 = 0 /\ r_end breg <= 2 ^ 48⌝ -∗
+     live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
+     auxes bb 0 (replicate (Z.to_nat sz) CNone) -∗ Mres -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}.
 Proof.
@@ -120,7 +123,7 @@ Proof.
   iApply wp_call_bind; [vx | exact Hdabf | reflexivity |]. iNext.
   iApply (Hdab with "Hvt Hl [$Hflb //] Hfd Herr Hbase Hbend Hvtp HM"); try first [reflexivity | side].
   iNext. iIntros "Hvtp". iIntros (fl1 bb sz (Hfl1 & Hsz & Hbb & Hbbe)) "Hl Hflb Hfd Hbase Hbend Hnb Herr HM".
-  iDestruct "Hnb" as (breg) "(%Hbr & Hbl & Hxs & _)". destruct Hbr as (Hbk' & Hbe & Hbreg).
+  iDestruct "Hnb" as (breg) "(%Hbr & Hbl & Hxs & Haux)". destruct Hbr as (Hbk' & Hbe & Hbreg & Hb16).
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   adv. iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
   iNext. iIntros "Hl Hbase Hbl". adv.
@@ -141,7 +144,8 @@ Proof.
   iApply (HL35 with "Hvt Hl [$Hf2 $Hfd $Herr $Hcol $Hmode $Hvtp] Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
     try first [side | lk_prove | rewrite length_replicate; lia | apply Forall_replicate; lia].
   iNext. iIntros (r k' we' xs' fl' tw' off' [Hr Hfl']) "Hl Hfx Hst".
-  iApply ("HK" with "[%] Hl Hfx Hst HM"). split; [exact Hr | split; [exact Hsz | exists fl1; tauto]].
+  iApply ("HK" with "[%] Hl Hfx Hst Haux HM").
+  split; [exact Hr|]. split; [exact Hsz|]. split; [exists fl1; tauto|]. tauto.
 Qed.
 
 End rules.

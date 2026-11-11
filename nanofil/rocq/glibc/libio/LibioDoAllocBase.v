@@ -107,10 +107,10 @@ Ltac brk E :=
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** A fresh heap object at bb of at least sz zero bytes, with no
-    capabilities stored in it, as `c: malloc` returns it. *)
+(** A fresh heap object starts at a 16-byte-aligned address and holds
+    at least sz zero bytes with no capabilities stored in it. *)
 Definition new_buf (bb sz : Z) : iProp Σ :=
-  ∃ breg, ⌜r_kind breg = Heap /\ bb + sz <= r_end breg /\ r_end breg <= 2 ^ 48⌝ ∗
+  ∃ breg, ⌜r_kind breg = Heap /\ bb + sz <= r_end breg /\ r_end breg <= 2 ^ 48 /\ bb mod 16 = 0⌝ ∗
     live bb breg ∗ bytes bb 0 (replicate (Z.to_nat sz) 0) ∗ auxes bb 0 (replicate (Z.to_nat sz) CNone).
 
 (** What `c: _IO_file_doallocate` leaves: the flags, made line-buffered
