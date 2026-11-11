@@ -1426,14 +1426,24 @@ three-address `lea`, `imm32` operands and narrow loads and stores.
 
 - **Validation and proofs.** Every allocated function is checked
   before emission by a linear-time Gallina validator (`valid_alloc`).
-  `RegsProof.v` proves interval disjointness and call-point
-  exclusion, forward simulation of `valid_alloc` across instructions,
-  simultaneous definitions, caller-saved call and poll clobbers,
-  callee-saved save/restore preservation and capability root
-  invariance, soundness of the parallel-move ready-peeling and
-  `%rcx` cycle-breaking steps, and modular exactness of 32/64-bit
-  `lea` and `imm32` selection (`-2^31` included), with executable
-  rejection examples.
+  `RegsProof.v` proves local kernel-checked lemmas (all closed under
+  the global context): interval disjointness (`ivals_disjoint_sound`)
+  and call-point exclusion (`ivals_hit_points_sound`) on well-formed
+  interval lists, live-only preservation of `state_agrees` over
+  registers and shared physical frame slots across caller-saved call
+  and poll clobbers (`clobber_preserves_agrees`,
+  `poll_edge_clobber_sound`), single- and multi-destination writes
+  (`write_mach_step_sound`, `write_mach_list_sound`) and one abstract
+  instruction step (`check_rinst_step_sound`), the algebraic save and
+  restore round-trip (`callee_saves_restore_sound`) and non-register
+  lookup of `KLower` keys (`lower_key_never_hreg`), one-step
+  parallel-move source preservation (`ready_pmove_step_sound`,
+  `cycle_break_step_sound`), and modular exactness of 32/64-bit `lea`
+  and `imm32` selection (`imm32_congruent`, `imm32_add_mod_sound`,
+  `imm32_sub_lea_w_sound`, `imm32_sub_lea_l_sound`, `-2^31` included),
+  plus executable `valid_alloc` rejection examples. Full validator-to-CFG
+  simulation, whole-scheduler `compile_pmoves` correctness, concrete
+  frame separation and native x86 semantics are not yet proved there.
 - **Behavioural gate.** `compile` and `compile-promoted` keep their
   byte-identity gates unchanged. `tests/regs.sh` (run with
   `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` in the `nanofil-backend` check,

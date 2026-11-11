@@ -10,12 +10,31 @@
 FLAGS = -R ../theories Nanofil -R . Backend
 SOURCES = $(shell grep '\.v$$' _RocqProject)
 
-all: nanofil-backend
+PROOFS = RegsProof.vo NfbProof.vo NfbTotal.vo
+
+all: nanofil-backend RegsProof.vo .regs-assumptions
 
 # No Admitted and no axioms, in any backend file.
 words:
 	@if grep -nwE 'Admitted|Axiom|Axioms|Parameter|Conjecture' $(SOURCES); then \
 	  echo "backend: no Admitted and no axioms" >&2; exit 1; fi
+
+# Every theorem, lemma and corollary in RegsProof.v must be closed
+# under the global context (no transitive dependence on Runtime axioms).
+.regs-assumptions: words RegsProof.vo
+	@thms=$$(awk '/^(Theorem|Lemma|Corollary)[[:space:]]+[A-Za-z0-9_'\'']+/ { sub(/:/, "", $$2); print $$2 }' RegsProof.v); \
+	[ -n "$$thms" ] || { echo "backend: no theorems found in RegsProof.v" >&2; exit 1; }; \
+	out=$$({ echo "From Backend Require Import RegsProof."; \
+	         for t in $$thms; do echo "Print Assumptions $$t."; done; } \
+	       | rocq repl -q $(FLAGS) 2>&1 | sed -E 's/^(Rocq < )+//'); \
+	if printf '%s\n' "$$out" | grep -vE '^(Welcome|Skipping|\[Loading|Fetching opaque|Closed under the global context$$|[[:space:]]*$$)' >&2; then \
+	  echo "backend: RegsProof.v has open assumptions or Print Assumptions errors" >&2; exit 1; fi; \
+	closed=$$(printf '%s\n' "$$out" | grep -c '^Closed under the global context$$'); \
+	expected=$$(printf '%s\n' "$$thms" | wc -w); \
+	[ "$$closed" -eq "$$expected" ] || { echo "backend: closed $$closed != expected $$expected" >&2; exit 1; }
+	@touch $@
+
+proofs: words $(PROOFS) .regs-assumptions
 
 # What each file imports, the model's files included. rocq dep warns
 # about the libraries of model files the backend does not import.
@@ -36,9 +55,9 @@ nanofil-backend: words Extract.vo extraction/main.ml
 	  nanofil_backend.mli nanofil_backend.ml main.ml -o ../nanofil-backend
 
 clean:
-	rm -f .deps *.vo *.vok *.vos *.glob .*.aux nanofil-backend
+	rm -f .deps .regs-assumptions *.vo *.vok *.vos *.glob .*.aux nanofil-backend
 	rm -f extraction/nanofil_backend.ml extraction/nanofil_backend.mli extraction/*.cm* extraction/*.o
 
-.PHONY: all words clean
+.PHONY: all words proofs clean
 
 -include .deps

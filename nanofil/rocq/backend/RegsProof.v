@@ -1,32 +1,35 @@
-(** # Soundness proofs for Regs.v
+(** # Local invariants and step lemmas for Regs.v
 
-    Machine-checked invariants of the Gallina register allocator,
-    validator, parallel-move compiler and 3-address selection in
-    Regs.v (M7 of docs/gallina-backend.md):
+    Kernel-checked lemmas for the interval primitives, live
+    register-and-frame-slot state updates, parallel-move transformations
+    and 3-address immediate selection in Regs.v (M7 of
+    docs/gallina-backend.md):
 
     1. **Interval and call-point tests** ([hreg_eqb_spec],
-       [ivals_disjoint_sound], [ivals_hit_points_sound]): disjoint
-       interval lists share no program point, and an interval list
-       that misses the sorted call points contains none of them.
-    2. **Allocation validator simulation** ([check_rinst_step_sound],
-       [check_rinsts_rev_sound], [poll_edge_clobber_sound],
-       [callee_saves_restore_sound], [lower_key_never_hreg]): any
-       register map accepted by [check_rinsts_rev] and
-       [check_succs_polls] preserves temporary values across
-       instructions, simultaneous definitions, caller-saved register
-       clobbers (`%r10`, `%r11`) at calls and poll edges, restores
-       all five callee-saved registers (`%rbx`, `%r12`–`%r15`) on
-       exit, and keeps capability lowers in stack root slots.
-    3. **Parallel moves** ([ready_pmove_step_sound],
-       [cycle_break_step_sound]): peeling an unread destination or
-       saving a cycle head into `%rcx` preserves the simultaneous
-       assignment of all non-scratch locations.
-    4. **3-address `lea` and immediate selection**
-       ([imm32_add_mod_sound], [imm32_sub_lea_w_sound],
-       [imm32_sub_lea_l_sound]): signed 32-bit immediates and negated
-       `lea` displacements compute the exact modular sum and
-       difference at both 32-bit (`w`, including `-2^31`) and 64-bit
-       (`l`) widths. *)
+       [ivals_disjoint_sound], [ivals_hit_points_sound]): under
+       [ivals_wf] and [pts_wf], disjoint interval lists share no program
+       point, and an interval list that misses the sorted call points
+       contains none of them.
+    2. **Live-only register and shared-slot state steps**
+       ([clobber_preserves_agrees], [poll_edge_clobber_sound],
+       [write_mach_step_sound], [write_mach_list_sound],
+       [check_rinst_step_sound], [callee_saves_restore_sound],
+       [lower_key_never_hreg]): [state_agrees] relates live temporaries
+       to hardware registers and physical shared frame slots (`Z -> Z`
+       indexed by `slot_of`, allowing expired spill-slot reuse as in
+       [ex_shared_spill_slot]), and is preserved across caller-saved
+       clobbers (`%r10`, `%r11`), non-colliding single and simultaneous
+       destination writes, and one abstract instruction step.
+    3. **Parallel-move transformations** ([ready_pmove_step_sound],
+       [cycle_break_step_sound]): parameterized over global symbol
+       addresses `sym_env`, peeling an unread destination or saving a
+       cycle head into fresh `PmCycleTmp` (`%rcx`) preserves abstract
+       move sources.
+    4. **3-address `lea` and immediate selection** ([imm32_congruent],
+       [imm32_add_mod_sound], [imm32_sub_lea_w_sound],
+       [imm32_sub_lea_l_sound]): [integer_immediate] and negated `lea`
+       displacements compute the exact modular sum and difference at
+       both 32-bit (`w`, including `-2^31`) and 64-bit (`l`) widths. *)
 
 From Stdlib Require Import String ZArith List Bool Arith Lia.
 From Nanofil Require Import Term Syntax Maps.
@@ -204,33 +207,45 @@ Proof.
   eapply ivals_hit_points_fuel_sound; [exact Hwi | exact Hwp | exact Hhit | exact Hin | exact Hpt].
 Qed.
 
-(** ## 2. Validator soundness and forward simulation *)
+(** ## 2. Live register and shared-slot state preservation *)
 
-(** Concrete register+slot state for a function body. *)
+(** Register file and physical stack-frame slots (indexed by frame
+    offset `Z`, which disjoint lifetimes in FrameSlots.v may share). *)
 Record mach_state : Type := mkMach {
   ms_reg : hreg -> Z;
-  ms_slot : nat -> Z
+  ms_slot : Z -> Z
 }.
 
-Definition read_mach (rm : ZMap.t hreg) (ms : mach_state) (t : nat) : Z :=
+(** Read temporary `t` from its assigned [hreg] in `rm` or from its
+    physical frame slot `slot_of t`. *)
+Definition read_mach (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                     (ms : mach_state) (t : nat) : Z :=
   match zmap_find_nat t rm with
   | Some r => ms_reg ms r
-  | None => ms_slot ms t
+  | None => ms_slot ms (slot_of t)
   end.
 
-Definition write_mach (rm : ZMap.t hreg) (ms : mach_state) (t : nat) (v : Z) : mach_state :=
+(** Write value `v` to temporary `t`'s assigned [hreg] in `rm` or to
+    its physical frame slot `slot_of t`. *)
+Definition write_mach (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                      (ms : mach_state) (t : nat) (v : Z) : mach_state :=
   match zmap_find_nat t rm with
   | Some r => mkMach (fun r' => if hreg_eqb r' r then v else ms_reg ms r') (ms_slot ms)
-  | None => mkMach (ms_reg ms) (fun t' => if Nat.eqb t' t then v else ms_slot ms t')
+  | None => mkMach (ms_reg ms) (fun off => if Z.eqb off (slot_of t) then v else ms_slot ms off)
   end.
 
-Fixpoint write_mach_list (rm : ZMap.t hreg) (ms : mach_state) (ds : list nat) (vs : list Z)
+(** Write a list of destinations `ds` and values `vs` sequentially to
+    registers and physical frame slots. *)
+Fixpoint write_mach_list (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                         (ms : mach_state) (ds : list nat) (vs : list Z)
   : mach_state :=
   match ds, vs with
-  | d :: ds', v :: vs' => write_mach_list rm (write_mach rm ms d v) ds' vs'
+  | d :: ds', v :: vs' => write_mach_list rm slot_of (write_mach rm slot_of ms d v) ds' vs'
   | _, _ => ms
   end.
 
+(** Write a list of destinations `ds` and values `vs` to the abstract
+    temporary environment `tenv`. *)
 Fixpoint write_abs_list (tenv : nat -> Z) (ds : list nat) (vs : list Z) : nat -> Z :=
   match ds, vs with
   | d :: ds', v :: vs' =>
@@ -240,18 +255,34 @@ Fixpoint write_abs_list (tenv : nat -> Z) (ds : list nat) (vs : list Z) : nat ->
 
 (** A call clobbers caller-saved registers (`%r10`, `%r11`) with
     arbitrary values `arb` while preserving callee-saved registers and
-    stack slots. *)
+    physical stack slots. *)
 Definition clobber_call (arb : hreg -> Z) (ms : mach_state) : mach_state :=
   mkMach (fun r => if hreg_callee_saved r then ms_reg ms r else arb r) (ms_slot ms).
 
-(** State agreement on all temporaries in `live` (for mapped
-    temporaries under `dom = Some km`, and unconditionally on unmapped
-    temporaries). *)
-Definition state_agrees (rm : ZMap.t hreg) (live : list nat)
+(** Live-only state agreement: every temporary `t` in `live` reads as
+    `tenv t` in `ms` under `rm` and `slot_of`. Dead temporaries need
+    not retain their values in shared physical slots. *)
+Definition state_agrees (rm : ZMap.t hreg) (slot_of : nat -> Z) (live : list nat)
                         (tenv : nat -> Z) (ms : mach_state) : Prop :=
-  (forall t, zmap_find_nat t rm = None -> ms_slot ms t = tenv t) /\
-  (forall t, In t live -> read_mach rm ms t = tenv t).
+  forall t, In t live -> read_mach rm slot_of ms t = tenv t.
 
+(** Witness that dead unmapped `0` (abstract value `1`) and live
+    unmapped `1` (abstract value `2`) can share physical frame offset
+    `16` while satisfying [state_agrees] on `[1]`. *)
+Definition ex_shared_slot_of (_ : nat) : Z := 16.
+Definition ex_shared_tenv (t : nat) : Z := if Nat.eqb t 0%nat then 1 else 2.
+Definition ex_shared_ms : mach_state :=
+  mkMach (fun _ => 0) (fun off => if Z.eqb off 16 then 2 else 0).
+
+(** Shared physical spill slots satisfy [state_agrees] once an earlier
+    occupant is dead. *)
+Example ex_shared_spill_slot :
+  state_agrees (ZMap.empty hreg) ex_shared_slot_of [1%nat] ex_shared_tenv ex_shared_ms.
+Proof.
+  intros t [<- | []]. reflexivity.
+Qed.
+
+(** [hreg_in_list] reflects list membership [In]. *)
 Lemma hreg_in_list_spec : forall r rs,
   hreg_in_list r rs = true <-> In r rs.
 Proof.
@@ -262,6 +293,8 @@ Proof.
     + rewrite IH. split; [right; exact H | intros [Heq | Hin]; [subst; rewrite hreg_eqb_refl in E; discriminate | exact Hin]].
 Qed.
 
+(** No temporary in `ts` maps to a register already present in `seen`
+    when [no_dup_hregs_acc] accepts. *)
 Lemma no_dup_hregs_acc_disjoint : forall rm ts seen t1 r,
   no_dup_hregs_acc rm ts seen = true ->
   In t1 ts -> In r seen -> zmap_find_nat t1 rm = Some r -> False.
@@ -280,18 +313,18 @@ Proof.
       * eapply IH; [exact Hnd | exact Hin' | exact Hseen | exact Hrm].
 Qed.
 
-(** When [no_dup_hregs] holds on a duplicate-free list `ts`, distinct
-    elements in `ts` never map to the same [hreg]. *)
+(** When [no_dup_hregs] accepts `ts`, distinct temporaries in `ts`
+    never map to the same [hreg]. *)
 Lemma no_dup_hregs_inj : forall rm ts,
-  NoDup ts -> no_dup_hregs rm ts = true ->
+  no_dup_hregs rm ts = true ->
   forall t1 t2 r, In t1 ts -> In t2 ts -> t1 <> t2 ->
   zmap_find_nat t1 rm = Some r -> zmap_find_nat t2 rm = Some r -> False.
 Proof.
-  unfold no_dup_hregs. intros rm ts Hndup.
+  unfold no_dup_hregs. intros rm ts.
   assert (Hgen : forall seen, no_dup_hregs_acc rm ts seen = true ->
             forall t1 t2 r, In t1 ts -> In t2 ts -> t1 <> t2 ->
             zmap_find_nat t1 rm = Some r -> zmap_find_nat t2 rm = Some r -> False).
-  { induction Hndup as [|t ts' Hnotin Hndup' IH]; intros seen Hacc t1 t2 r Hin1 Hin2 Hneq Hr1 Hr2; simpl in *.
+  { induction ts as [|t ts' IH]; intros seen Hacc t1 t2 r Hin1 Hin2 Hneq Hr1 Hr2; simpl in *.
     - contradiction.
     - destruct (zmap_find_nat t rm) as [rt|] eqn:Ert.
       + destruct (hreg_in_list rt seen) eqn:Ein; [discriminate|].
@@ -308,6 +341,8 @@ Proof.
   intros Hacc. eapply Hgen; exact Hacc.
 Qed.
 
+(** Every mapped temporary in a list accepted by [all_callee_saved]
+    holds a callee-saved register. *)
 Lemma all_callee_saved_spec : forall rm ts t r,
   all_callee_saved rm ts = true ->
   In t ts -> zmap_find_nat t rm = Some r ->
@@ -324,141 +359,174 @@ Proof.
 Qed.
 
 (** Clobbering caller-saved registers preserves [state_agrees] on any
-    set `ts` accepted by [all_callee_saved]. *)
-Theorem clobber_preserves_agrees : forall rm ts tenv ms arb,
+    live list `ts` accepted by [all_callee_saved]. *)
+Theorem clobber_preserves_agrees : forall rm slot_of ts tenv ms arb,
   all_callee_saved rm ts = true ->
-  state_agrees rm ts tenv ms ->
-  state_agrees rm ts tenv (clobber_call arb ms).
+  state_agrees rm slot_of ts tenv ms ->
+  state_agrees rm slot_of ts tenv (clobber_call arb ms).
 Proof.
-  intros rm ts tenv ms arb Hcs [Hslot Hlive]. split.
-  - intros t Hnone. simpl. apply Hslot. exact Hnone.
-  - intros t Hin. unfold read_mach in *.
-    specialize (Hlive t Hin).
-    destruct (zmap_find_nat t rm) as [r|] eqn:Er; simpl.
-    + rewrite (all_callee_saved_spec rm ts t r Hcs Hin Er). exact Hlive.
-    + exact Hlive.
+  intros rm slot_of ts tenv ms arb Hcs Hlive t Hin.
+  specialize (Hlive t Hin). unfold read_mach in *.
+  destruct (zmap_find_nat t rm) as [r|] eqn:Er; simpl.
+  - rewrite (all_callee_saved_spec rm ts t r Hcs Hin Er). exact Hlive.
+  - exact Hlive.
 Qed.
 
-(** Corollary for poll edges: when [check_succs_polls] accepts a
-    `Poll` edge to block `si`, `filc_pollcheck_slow` clobbering
-    caller-saved registers preserves every live-in and phi-defined
-    temporary of `si`. *)
-Theorem poll_edge_clobber_sound : forall rm header_live tenv ms arb,
+(** Poll-edge corollary: when `header_live` is accepted by
+    [all_callee_saved], a slow-path poll clobbering caller-saved
+    registers preserves [state_agrees] on `header_live`. *)
+Theorem poll_edge_clobber_sound : forall rm slot_of header_live tenv ms arb,
   all_callee_saved rm header_live = true ->
-  state_agrees rm header_live tenv ms ->
-  state_agrees rm header_live tenv (clobber_call arb ms).
+  state_agrees rm slot_of header_live tenv ms ->
+  state_agrees rm slot_of header_live tenv (clobber_call arb ms).
 Proof.
   intros. apply clobber_preserves_agrees; assumption.
 Qed.
 
-(** No other temporary `t <> d` in `live` shares `d`'s assigned
-    register in `rm`. *)
-Definition dest_no_collision (rm : ZMap.t hreg) (d : nat) (live : list nat) : Prop :=
-  forall r t, In t live -> t <> d ->
-    zmap_find_nat d rm = Some r -> zmap_find_nat t rm = Some r -> False.
+(** Temporary `d`'s home (register in `rm`, or physical slot in
+    `slot_of` when unmapped) collides with no other temporary `t <> d`
+    in `live`. *)
+Definition dest_no_collision (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                             (d : nat) (live : list nat) : Prop :=
+  (forall r t, In t live -> t <> d ->
+     zmap_find_nat d rm = Some r -> zmap_find_nat t rm = Some r -> False) /\
+  (forall t, In t live -> t <> d ->
+     zmap_find_nat d rm = None -> zmap_find_nat t rm = None ->
+     slot_of d = slot_of t -> False).
 
-(** Writing temporary `d` preserves every other temporary `t <> d`
-    whose register does not collide with `d`'s, and sets `d` to `v`. *)
-Theorem write_mach_step_sound : forall rm live tenv ms d v,
-  dest_no_collision rm d live ->
-  state_agrees rm (filter (fun t => negb (Nat.eqb t d)) live) tenv ms ->
-  state_agrees rm live (fun t => if Nat.eqb t d then v else tenv t) (write_mach rm ms d v).
-Proof.
-  intros rm live tenv ms d v Hdisj [Hslot Hlive]. split.
-  - intros t Hnone. unfold write_mach.
-    destruct (zmap_find_nat d rm) as [rd|] eqn:Erd; simpl.
-    + destruct (Nat.eqb t d) eqn:Etd.
-      * apply Nat.eqb_eq in Etd. subst t. rewrite Hnone in Erd. discriminate.
-      * apply Hslot. exact Hnone.
-    + destruct (Nat.eqb t d) eqn:Etd; [reflexivity | apply Hslot; exact Hnone].
-  - intros t Hin. unfold read_mach, write_mach.
-    destruct (Nat.eqb t d) eqn:Etd.
-    + apply Nat.eqb_eq in Etd. subst t.
-      destruct (zmap_find_nat d rm) as [rd|] eqn:Erd; simpl.
-      * rewrite hreg_eqb_refl. reflexivity.
-      * rewrite Nat.eqb_refl. reflexivity.
-    + assert (Hin_filt : In t (filter (fun x => negb (Nat.eqb x d)) live)).
-      { apply filter_In. split; [exact Hin | rewrite Etd; reflexivity]. }
-      specialize (Hlive t Hin_filt). unfold read_mach in Hlive.
-      destruct (zmap_find_nat d rm) as [rd|] eqn:Erd;
-      destruct (zmap_find_nat t rm) as [rt|] eqn:Ert; simpl.
-      * destruct (hreg_eqb rt rd) eqn:Er.
-        -- apply hreg_eqb_spec in Er. subst rt.
-           exfalso. apply Nat.eqb_neq in Etd.
-           eapply Hdisj; [exact Hin | exact Etd | exact Erd | exact Ert].
-        -- exact Hlive.
-      * exact Hlive.
-      * exact Hlive.
-      * rewrite Etd. exact Hlive.
-Qed.
-
-(** Helper predicates and state steps for [check_rinst_step_sound],
-    stated at top level so the theorem renders as an inference rule
-    without nested `let` or `match` blocks. *)
+(** Filter `live` down to temporaries distinct from `d`. *)
 Definition live_without (d : nat) (live : list nat) : list nat :=
   filter (fun t => negb (Nat.eqb t d)) live.
 
+(** Update `tenv` at temporary `d` to `v`. *)
 Definition tenv_set (tenv : nat -> Z) (d : nat) (v : Z) (t : nat) : Z :=
   if Nat.eqb t d then v else tenv t.
 
+(** Writing temporary `d` preserves every other temporary `t <> d` in
+    `live` whose home does not collide with `d`'s, and sets `d` to `v`. *)
+Theorem write_mach_step_sound : forall rm slot_of live tenv ms d v,
+  dest_no_collision rm slot_of d live ->
+  state_agrees rm slot_of (live_without d live) tenv ms ->
+  state_agrees rm slot_of live (tenv_set tenv d v) (write_mach rm slot_of ms d v).
+Proof.
+  intros rm slot_of live tenv ms d v [Hreg Hslot] Hlive t Hin.
+  unfold read_mach, write_mach, tenv_set.
+  destruct (Nat.eqb t d) eqn:Etd.
+  - apply Nat.eqb_eq in Etd. subst t.
+    destruct (zmap_find_nat d rm) as [rd|]; simpl.
+    + rewrite hreg_eqb_refl. reflexivity.
+    + rewrite Z.eqb_refl. reflexivity.
+  - assert (Hin_filt : In t (live_without d live)).
+    { unfold live_without. apply filter_In. split; [exact Hin | rewrite Etd; reflexivity]. }
+    specialize (Hlive t Hin_filt). unfold read_mach in Hlive.
+    apply Nat.eqb_neq in Etd.
+    destruct (zmap_find_nat d rm) as [rd|] eqn:Erd;
+    destruct (zmap_find_nat t rm) as [rt|] eqn:Ert; simpl.
+    + destruct (hreg_eqb rt rd) eqn:Er; [|exact Hlive].
+      apply hreg_eqb_spec in Er. subst rt.
+      exfalso. eapply Hreg; [exact Hin | exact Etd | reflexivity | exact Ert].
+    + exact Hlive.
+    + exact Hlive.
+    + destruct (Z.eqb (slot_of t) (slot_of d)) eqn:Es; [|exact Hlive].
+      apply Z.eqb_eq in Es.
+      exfalso. eapply Hslot; [exact Hin | exact Etd | reflexivity | exact Ert | symmetry; exact Es].
+Qed.
+
+(** Filter `live` down to temporaries not in `ds`. *)
+Fixpoint live_without_list (ds : list nat) (live : list nat) : list nat :=
+  match ds with
+  | [] => live
+  | d :: ds' => live_without d (live_without_list ds' live)
+  end.
+
+(** Pairwise and live non-collision across a multi-definition list `ds`. *)
+Fixpoint list_no_collision (rm : ZMap.t hreg) (slot_of : nat -> Z)
+                           (ds : list nat) (live : list nat) : Prop :=
+  match ds with
+  | [] => True
+  | d :: ds' =>
+      dest_no_collision rm slot_of d (live_without_list ds' live) /\
+      list_no_collision rm slot_of ds' live
+  end.
+
+(** Simultaneous / sequential multi-destination writes [write_mach_list]
+    and [write_abs_list] preserve [state_agrees] on `live` when
+    [list_no_collision] holds and `length ds = length vs`. *)
+Theorem write_mach_list_sound : forall ds vs rm slot_of live tenv ms,
+  length ds = length vs ->
+  list_no_collision rm slot_of ds live ->
+  state_agrees rm slot_of (live_without_list ds live) tenv ms ->
+  state_agrees rm slot_of live (write_abs_list tenv ds vs)
+               (write_mach_list rm slot_of ms ds vs).
+Proof.
+  induction ds as [|d ds' IH]; intros [|v vs'] rm slot_of live tenv ms Hlen Hnc Hagree;
+    simpl in *; try discriminate.
+  - exact Hagree.
+  - injection Hlen as Hlen'. destruct Hnc as [Hd Hds'].
+    apply IH; [exact Hlen' | exact Hds' |].
+    apply write_mach_step_sound; [exact Hd | exact Hagree].
+Qed.
+
+(** Mid-instruction call safety condition for [RCallAfterReads]. *)
 Definition call_mid_ok (rm : ZMap.t hreg) (call : rcall) (live_mid : list nat) : Prop :=
   match call with
   | RCallAfterReads => all_callee_saved rm live_mid = true
   | _ => True
   end.
 
+(** Pre-read call safety condition for [RCallDuringReads]. *)
 Definition call_pre_ok (rm : ZMap.t hreg) (call : rcall) (live_before : list nat) : Prop :=
   match call with
   | RCallDuringReads => all_callee_saved rm live_before = true
   | _ => True
   end.
 
+(** Machine state after any helper call that precedes operand reads. *)
 Definition pre_call_state (call : rcall) (arb : hreg -> Z) (ms : mach_state) : mach_state :=
   match call with
   | RCallDuringReads => clobber_call arb ms
   | _ => ms
   end.
 
+(** Machine state after any call that follows operand reads. *)
 Definition post_call_state (call : rcall) (arb : hreg -> Z) (ms : mach_state) : mach_state :=
   match call with
   | RCallNone => ms
   | RCallAfterReads | RCallDuringReads => clobber_call arb ms
   end.
 
-(** Complete one-instruction simulation theorem: reading inputs `uses`,
-    clobbering caller-saved registers according to `call`, and writing
-    destination `d` preserves [state_agrees] whenever [no_dup_hregs]
-    and [all_callee_saved] hold as checked by [check_rinsts_rev]. *)
+(** Single-destination abstract instruction step: under
+    [dest_no_collision], [call_mid_ok] and [call_pre_ok], operand reads
+    agree with `tenv` and writing `d` preserves [state_agrees] on
+    `live_after`. *)
 Theorem check_rinst_step_sound :
-  forall rm live_after d uses call f arb1 arb2 tenv ms,
-  dest_no_collision rm d live_after ->
+  forall rm slot_of live_after d uses call f arb1 arb2 tenv ms,
+  dest_no_collision rm slot_of d live_after ->
   call_mid_ok rm call (live_without d live_after) ->
   call_pre_ok rm call (uses ++ live_without d live_after) ->
-  state_agrees rm (uses ++ live_without d live_after) tenv ms ->
-  map (read_mach rm (pre_call_state call arb1 ms)) uses = map tenv uses /\
-  state_agrees rm live_after
+  state_agrees rm slot_of (uses ++ live_without d live_after) tenv ms ->
+  map (read_mach rm slot_of (pre_call_state call arb1 ms)) uses = map tenv uses /\
+  state_agrees rm slot_of live_after
     (tenv_set tenv d (f (map tenv uses)))
-    (write_mach rm
+    (write_mach rm slot_of
       (post_call_state call arb2 (pre_call_state call arb1 ms))
-      d (f (map (read_mach rm (pre_call_state call arb1 ms)) uses))).
+      d (f (map (read_mach rm slot_of (pre_call_state call arb1 ms)) uses))).
 Proof.
-  intros rm live_after d uses call f arb1 arb2 tenv ms Hnodup Hca Hcd Hagree.
+  intros rm slot_of live_after d uses call f arb1 arb2 tenv ms Hnodup Hca Hcd Hagree.
   set (live_mid := live_without d live_after) in *.
   set (live_before := uses ++ live_mid) in *.
   set (ms_pre := pre_call_state call arb1 ms).
-  assert (Hagree_pre : state_agrees rm live_before tenv ms_pre).
+  assert (Hagree_pre : state_agrees rm slot_of live_before tenv ms_pre).
   { unfold ms_pre, pre_call_state. destruct call; try exact Hagree.
     apply clobber_preserves_agrees; [exact Hcd | exact Hagree]. }
-  assert (Hargs : map (read_mach rm ms_pre) uses = map tenv uses).
+  assert (Hargs : map (read_mach rm slot_of ms_pre) uses = map tenv uses).
   { apply map_ext_in. intros u Hu.
-    destruct Hagree_pre as [_ Hlb]. apply Hlb.
-    unfold live_before. apply in_or_app. left. exact Hu. }
+    apply Hagree_pre. unfold live_before. apply in_or_app. left. exact Hu. }
   split; [exact Hargs|].
-  rewrite Hargs. unfold tenv_set.
+  rewrite Hargs.
   apply write_mach_step_sound; [exact Hnodup|].
-  assert (Hagree_mid : state_agrees rm live_mid tenv ms_pre).
-  { destruct Hagree_pre as [Hs Hlb]. split; [exact Hs|].
-    intros t Ht. apply Hlb. unfold live_before. apply in_or_app. right. exact Ht. }
+  assert (Hagree_mid : state_agrees rm slot_of live_mid tenv ms_pre).
+  { intros t Ht. apply Hagree_pre. unfold live_before. apply in_or_app. right. exact Ht. }
   unfold post_call_state. destruct call.
   - exact Hagree_mid.
   - apply clobber_preserves_agrees; [exact Hca | exact Hagree_mid].
@@ -471,36 +539,33 @@ Proof.
     + exact Hagree_mid.
 Qed.
 
-(** Callee-saved save and restore invariant: every callee-saved
-    register `r` is restored to its caller entry value `entry_regs r`,
-    whether `r` was saved and restored from its dedicated save slot
-    (because [rm] used `r`) or untouched throughout the body (because
-    [rm] never assigned `r` and every call preserves callee-saved
-    registers). *)
+(** Idealized register-indexed save map for `used`. *)
 Definition exec_saves (used : list hreg) (entry_regs : hreg -> Z) (save_mem : hreg -> Z)
   : hreg -> Z :=
   fun r => if hreg_in_list r used then entry_regs r else save_mem r.
 
+(** Idealized register-indexed restore map for `used`. *)
 Definition exec_restores (used : list hreg) (save_mem : hreg -> Z) (body_regs : hreg -> Z)
   : hreg -> Z :=
   fun r => if hreg_in_list r used then save_mem r else body_regs r.
 
+(** Algebraic round-trip identity on register-indexed maps: every
+    register `r` in `used` is restored from `exec_saves`, and every
+    other register keeps `body_regs r = entry_regs r`. *)
 Theorem callee_saves_restore_sound :
   forall (used : list hreg) (entry_regs body_regs save_mem0 : hreg -> Z) (r : hreg),
-  hreg_callee_saved r = true ->
   (hreg_in_list r used = false -> body_regs r = entry_regs r) ->
   exec_restores used (exec_saves used entry_regs save_mem0) body_regs r = entry_regs r.
 Proof.
-  intros used entry_regs body_regs save_mem0 r _ Huntouched.
+  intros used entry_regs body_regs save_mem0 r Huntouched.
   unfold exec_restores, exec_saves.
   destruct (hreg_in_list r used) eqn:Ein.
   - reflexivity.
   - apply Huntouched. reflexivity.
 Qed.
 
-(** Capability root invariant: `KLower k` is never mapped to an
-    allocatable register [PmReg], so pointer lowers stay in their
-    `lowers[]` GC root slots. *)
+(** Lookup of `KLower k` in [key_pm_loc] never returns a register
+    location [PmReg]. *)
 Theorem lower_key_never_hreg : forall rc k r,
   key_pm_loc rc (KLower k) <> Some (PmReg r).
 Proof.
@@ -508,21 +573,26 @@ Proof.
   destruct (slot (rc_cx rc) (KLower k)); intro H; discriminate.
 Qed.
 
-(** ## 3. Parallel-move soundness *)
+(** ## 3. Parallel-move step transformations *)
 
-(** Abstract valuation of parallel-move locations. *)
-Definition eval_pm_src (env : pm_loc -> Z) (half : bool) (s : pm_src) : Z :=
+(** Abstract valuation of parallel-move sources under global symbol
+    addresses `sym_env` and location state `env`. *)
+Definition eval_pm_src (sym_env : string -> Z) (env : pm_loc -> Z)
+                       (half : bool) (s : pm_src) : Z :=
   let m := if half then two32 else two64 in
   match s with
   | PsLoc l => env l mod m
   | PsConst n => n mod m
-  | PsGlobal _ => 0
+  | PsGlobal g => sym_env g mod m
   end.
 
-Definition exec_pmove_abs (env : pm_loc -> Z) (m : pmove) : pm_loc -> Z :=
-  let v := eval_pm_src env (pmv_half m) (pmv_src m) in
+(** Execute one abstract parallel move `m` against `sym_env` and `env`. *)
+Definition exec_pmove_abs (sym_env : string -> Z) (env : pm_loc -> Z)
+                          (m : pmove) : pm_loc -> Z :=
+  let v := eval_pm_src sym_env env (pmv_half m) (pmv_src m) in
   fun l => if pm_loc_eqb l (pmv_dst m) then v else env l.
 
+(** Reflexivity of [pm_loc_eqb]. *)
 Lemma pm_loc_eqb_refl : forall l, pm_loc_eqb l l = true.
 Proof.
   destruct l as [r | off |]; simpl.
@@ -531,6 +601,7 @@ Proof.
   - reflexivity.
 Qed.
 
+(** [pm_loc_eqb] reflects equality on [pm_loc]. *)
 Lemma pm_loc_eqb_spec : forall a b, pm_loc_eqb a b = true <-> a = b.
 Proof.
   intros a b. destruct a as [r1 | o1 |], b as [r2 | o2 |]; simpl;
@@ -540,12 +611,14 @@ Proof.
   - split; reflexivity.
 Qed.
 
-Lemma loc_not_read_eval_unchanged : forall env m m',
+(** Executing `m` leaves the evaluated source of `m'` unchanged when
+    `m'` does not read `pmv_dst m`. *)
+Lemma loc_not_read_eval_unchanged : forall sym_env env m m',
   loc_read_in_pmoves (pmv_dst m) [m'] = false ->
-  eval_pm_src (exec_pmove_abs env m) (pmv_half m') (pmv_src m')
-  = eval_pm_src env (pmv_half m') (pmv_src m').
+  eval_pm_src sym_env (exec_pmove_abs sym_env env m) (pmv_half m') (pmv_src m')
+  = eval_pm_src sym_env env (pmv_half m') (pmv_src m').
 Proof.
-  intros env m m' Hnr. simpl in Hnr.
+  intros sym_env env m m' Hnr. simpl in Hnr.
   unfold eval_pm_src, exec_pmove_abs.
   destruct (pmv_src m') as [l' | n | g]; try reflexivity.
   destruct (pm_loc_eqb l' (pmv_dst m)) eqn:E.
@@ -554,17 +627,18 @@ Proof.
 Qed.
 
 (** Ready-move peeling step: if `m`'s destination is not read by any
-    other move `m'` in `rest`, executing `m` now establishes `m`'s
-    final target value and leaves every source in `rest` unchanged. *)
-Theorem ready_pmove_step_sound : forall env m rest,
+    move `m'` in `rest`, executing `m` establishes `m`'s target value
+    and leaves every source in `rest` unchanged. *)
+Theorem ready_pmove_step_sound : forall sym_env env m rest,
   loc_read_in_pmoves (pmv_dst m) rest = false ->
-  exec_pmove_abs env m (pmv_dst m) = eval_pm_src env (pmv_half m) (pmv_src m) /\
+  exec_pmove_abs sym_env env m (pmv_dst m)
+    = eval_pm_src sym_env env (pmv_half m) (pmv_src m) /\
   (forall m', In m' rest ->
-     eval_pm_src (exec_pmove_abs env m) (pmv_half m') (pmv_src m')
-     = eval_pm_src env (pmv_half m') (pmv_src m')) /\
-  (forall l, l <> pmv_dst m -> exec_pmove_abs env m l = env l).
+     eval_pm_src sym_env (exec_pmove_abs sym_env env m) (pmv_half m') (pmv_src m')
+     = eval_pm_src sym_env env (pmv_half m') (pmv_src m')) /\
+  (forall l, l <> pmv_dst m -> exec_pmove_abs sym_env env m l = env l).
 Proof.
-  intros env m rest Hnr. split; [|split].
+  intros sym_env env m rest Hnr. split; [|split].
   - unfold exec_pmove_abs. rewrite pm_loc_eqb_refl. reflexivity.
   - intros m' Hin. induction rest as [|r0 rs IH]; simpl in *.
     + contradiction.
@@ -578,14 +652,11 @@ Proof.
     apply pm_loc_eqb_spec in E. contradiction.
 Qed.
 
-(** Cycle-breaking step: saving `old` into `PmCycleTmp` (`%rcx`) and
-    rewriting reads of `old` to `PmCycleTmp` preserves the target value
-    of every move (provided `PmCycleTmp` was not previously read) and
-    eliminates all reads of `old`, making `old` immediately ready on
-    the next step. *)
+(** Save location `old` into `PmCycleTmp` (`%rcx`) in abstract state `env`. *)
 Definition save_cycle_abs (env : pm_loc -> Z) (old : pm_loc) : pm_loc -> Z :=
   fun l => if pm_loc_eqb l PmCycleTmp then env old else env l.
 
+(** Rewrite `old` to `PmCycleTmp` in a single [pmove] without dropping no-ops. *)
 Definition subst_one_pmove (old : pm_loc) (m : pmove) : pmove :=
   let src' :=
     match pmv_src m with
@@ -594,22 +665,26 @@ Definition subst_one_pmove (old : pm_loc) (m : pmove) : pmove :=
     end in
   mkPMove (pmv_half m) (pmv_src_w m) (pmv_dst m) src'.
 
+(** Move `m` does not read `PmCycleTmp`. *)
 Definition no_cycle_tmp_src (m : pmove) : Prop :=
   match pmv_src m with
   | PsLoc PmCycleTmp => False
   | _ => True
   end.
 
-Theorem cycle_break_step_sound : forall env old m,
+(** Single-move cycle-breaking step: saving `old` into fresh
+    `PmCycleTmp` and rewriting reads of `old` preserves `m`'s evaluated
+    source and eliminates `m`'s read of `old`. *)
+Theorem cycle_break_step_sound : forall sym_env env old m,
   old <> PmCycleTmp ->
   no_cycle_tmp_src m ->
-  eval_pm_src (save_cycle_abs env old)
+  eval_pm_src sym_env (save_cycle_abs env old)
               (pmv_half (subst_one_pmove old m))
               (pmv_src (subst_one_pmove old m))
-  = eval_pm_src env (pmv_half m) (pmv_src m) /\
+  = eval_pm_src sym_env env (pmv_half m) (pmv_src m) /\
   loc_read_in_pmoves old [subst_one_pmove old m] = false.
 Proof.
-  intros env old m Hnot_tmp Hno_tmp.
+  intros sym_env env old m Hnot_tmp Hno_tmp.
   unfold no_cycle_tmp_src in Hno_tmp.
   unfold save_cycle_abs, subst_one_pmove, eval_pm_src. simpl.
   destruct (pmv_src m) as [l | n | g].

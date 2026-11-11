@@ -8,7 +8,7 @@
     assigns integer (`w`, `l`) temporaries and pointer (`p`) address
     words to the seven allocatable general registers (`%r10`, `%r11`,
     `%rbx`, `%r12`–`%r15`), checks the assignment with an executable
-    validator ([valid_alloc], proved sound in RegsProof.v), resolves
+    validator ([valid_alloc]; local invariants in RegsProof.v), resolves
     [[phi]] edges by parallel moves without shadow slots, and selects
     scalar and address operations straight into their assigned
     registers.
