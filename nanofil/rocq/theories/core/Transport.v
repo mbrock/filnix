@@ -6,7 +6,7 @@
 
     Decoding is partial in one deliberate way: a function that uses
     anything outside the [[core subset]] (a vector class, `store`,
-    [[cas]], `setjmp`, [[asm_fixed]] ...) decodes to
+    an unchecked [[cas]], `setjmp`, [[asm_fixed]] ...) decodes to
     [IOutside Name Term]. It keeps its address and its term (the
     [[validator]] reads its signature), so calls to it and pointers to
     it behave as the interpreter's do, but running it is stuck. *)
@@ -84,6 +84,13 @@ Definition dload_type (t : term) : option load_type :=
   if a == "l" then Some LdL else if a == "s" then Some LdS
   else if a == "d" then Some LdD else if a == "x" then Some LdX
   else let* n := dnarrow t in Some (LdNarrow n).
+
+(** The type of a [[cas]]: `l`, `p`, or a narrow width
+    (`cas_type/1`). *)
+Definition dcas_type (t : term) : option cas_type :=
+  let* a := datom t in
+  if a == "l" then Some CasL else if a == "p" then Some CasP
+  else let* n := dnarrow t in Some (CasNarrow n).
 
 (** A comparison's condition: equality, signed and unsigned integer
     order, float order, and whether two floats are ordered or not. *)
@@ -211,6 +218,9 @@ Definition dop (t : term) : option op :=
       else if f == "raw_load" then
         match xs with [ty; off] => let* ty' := dload_type ty in let* off' := dz off in
                                    Some (RawLoad ty' off') | _ => None end
+      else if f == "raw_cas" then
+        match xs with [ty; off] => let* ty' := dcas_type ty in let* off' := dz off in
+                                   Some (RawCas ty' off') | _ => None end
       else if f == "raw_load_pointer" then
         match xs with [off; es] => let* off' := dz off in let* es' := deffects es in
                                    Some (RawLoadPointer off' es') | _ => None end

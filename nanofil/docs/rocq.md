@@ -76,14 +76,15 @@ comparisons and conversions; `check`, `check_ahead` (with the doomed state of
 and named locals, `check_function` with `raw_call` (including the
 generic entry's argument and result conversions), `raw_load`,
 `raw_load_pointer`, `raw_store`, `raw_store_pointer` with their effect
-lists, `flight`, poll edges, direct `call`, libc `free`, and variadic
+lists, `raw_cas` (each right after its own check), `flight`, poll edges, direct `call`, libc `free`, and variadic
 functions (`va_args`, `va_arg`, the entry snapshot and the extra
 arguments of a call through the generic entry), `touch`, which
 uses a vector check's proof and does nothing else, and `setjmp`, which
 the validator judges as ir.pl does (a zero SaveMask but for
 `sigsetjmp`, no locals and no reuse sources in its function) and whose
 step is stuck, since interp.pl refuses it. What is left out is
-vectors, `store`, `cas` and atomics, and `asm_fixed`.
+vectors, `store`, the unchecked `cas` and the other atomics, and
+`asm_fixed`.
 A function that uses anything else decodes to `IOutside`. It keeps its address,
 its `fn` capability and its term (so the validator can read its
 signature and its calls), but running or calling it is stuck, and the

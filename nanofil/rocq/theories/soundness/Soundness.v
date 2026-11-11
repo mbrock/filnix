@@ -22,7 +22,7 @@
 
     | Source | Run theorem |
     |---|---|
-    | a raw load, store or call | Chain.v's [run_access_checked] |
+    | a raw load, store, cas or call | Chain.v's [run_access_checked] |
     | a renew, a renew over a hull, a half check | Renew.v's [run_reuse_checked] |
     | a `renew_if`, a `check_limit` | Guard.v's [run_guard_checked] |
     | a frame a `check_ahead` doomed | Doomed.v's [run_doomed_checked] |
@@ -44,15 +44,15 @@ Open Scope Z_scope.
 
 (** ## Where unchecked comes from *)
 
-(** The ops o whose result may be [[unchecked]]: a raw load, whose
-    access the check before it covers (`raw_res/2`), or a
+(** The ops o whose result may be [[unchecked]]: a raw load or a raw
+    [[cas]], whose access the check before it covers (`raw_res/2`), or a
     [[reuse|reuse form]] (renew, renew over a hull, half check,
     `renew_if`, `check_limit`), whose source or limit may not be the
     one the pass took. *)
 Definition unchecked_op (o : op) : bool :=
   match o with
-  | RawLoad _ _ | RawLoadPointer _ _ | Renew _ _ _ _ | RenewHull _ _ _ _ | HalfCheck _ _ _ _ _
-  | RenewIf _ _ _ _ | CheckLimit _ _ _ _ => true
+  | RawLoad _ _ | RawLoadPointer _ _ | RawCas _ _ | Renew _ _ _ _ | RenewHull _ _ _ _
+  | HalfCheck _ _ _ _ _ | RenewIf _ _ _ _ | CheckLimit _ _ _ _ => true
   | _ => false
   end.
 
@@ -124,7 +124,7 @@ Qed.
 
 (** ## Raw accesses go through a temporary *)
 
-(** A raw load or store i of a function of a [checked_module] md reads
+(** A raw load, store or [[cas]] i of a function of a [checked_module] md reads
     its address from a [[temporary]], so the validator saw it as a
     [[raw access]] ([raw_access] is not None, `raw_access/5`):
     `valid_use/3` reads no global at the proof [[class]] `a` and no
@@ -134,12 +134,13 @@ Lemma raw_tmp : forall md f b i,
   (exists q k t off args, i = Let q k (RawLoad t off) args) \/
   (exists q k off es args, i = Let q k (RawLoadPointer off es) args) \/
   (exists wd off v a, i = RawStore wd off v a) \/
-  (exists off v a es, i = RawStorePointer off v a es) ->
+  (exists off v a es, i = RawStorePointer off v a es) \/
+  (exists q k t off args, i = Let q k (RawCas t off) args) ->
   raw_access i <> None.
 Proof.
   intros md f b i Hmd Hin Hb Hi Hr. destruct (inst_valid _ _ _ _ Hmd Hin Hb Hi) as [cls Hvi].
   destruct Hr as [(q & k & t & off & args & ->) | [(q & k & off & es & args & ->) |
-                  [(wd & off & v & a & ->) | (off & v & a & es & ->)]]].
+                  [(wd & off & v & a & ->) | [(off & v & a & es & ->) | (q & k & t & off & args & ->)]]]].
   - destruct k; destruct args as [|[n | n | g] [|v2 args]]; simpl in Hvi;
       repeat match goal with H : (_ && _) = true |- _ => apply andb_true_iff in H as [? ?] end;
       try discriminate; simpl; discriminate.
@@ -151,6 +152,9 @@ Proof.
     simpl. discriminate.
   - simpl in Hvi. apply andb_true_iff in Hvi as [_ Hvi].
     destruct a as [n | n | g]; simpl in Hvi; try discriminate Hvi. simpl. discriminate.
+  - destruct k; destruct args as [|[n | n | g] args]; simpl in Hvi;
+      repeat match goal with H : (_ && _) = true |- _ => apply andb_true_iff in H as [? ?] end;
+      try discriminate; simpl; discriminate.
 Qed.
 
 (** ## A step that is not doomed *)
@@ -272,6 +276,7 @@ Proof.
       all: first
         [ exact (Hacc (or_introl (Hraw ltac:(left; do 5 eexists; reflexivity))) Hi)
         | exact (Hacc (or_introl (Hraw ltac:(right; left; do 5 eexists; reflexivity))) Hi)
+        | exact (Hacc (or_introl (Hraw ltac:(do 4 right; do 5 eexists; reflexivity))) Hi)
         | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
                    Hreach Ed Ha ltac:(left; do 7 eexists; reflexivity) Hi)
         | exact (GD.G.run_reuse_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
@@ -283,7 +288,7 @@ Proof.
         | exact (GD.run_guard_checked ge md f xs fr m fuel s0 c s l _ rest j w Hmd Hge Hfree Hin Hcf H0
                    Hreach Ed Ha ltac:(right; do 7 eexists; reflexivity) Hi) ].
     + exact (Hacc (or_introl (Hraw ltac:(right; right; left; do 4 eexists; reflexivity))) Hi).
-    + exact (Hacc (or_introl (Hraw ltac:(right; right; right; do 4 eexists; reflexivity))) Hi).
+    + exact (Hacc (or_introl (Hraw ltac:(right; right; right; left; do 4 eexists; reflexivity))) Hi).
     + exact (Hacc (or_intror (ex_intro _ r (ex_intro _ cl (ex_intro _ args eq_refl)))) Hi).
     + rewrite Hfree in Hf. exact (R.free_checked _ _ _ _ Hf).
 Qed.

@@ -1,0 +1,219 @@
+% Checked IR that runs raw_cas(T, Off), each right after the heap check
+% that covers it (rocq/scripts/agree.sh): a compare that succeeds and one
+% that fails at l, sw (at w and l), uw, ub at an offset, and p, whose
+% compare reads addresses only, at an Expected with no capability and
+% with another object's. Each returns old and what the slot holds after.
+% A cas whose check traps (misaligned, out of bounds, freed) stops there.
+
+% l: 5 is stored; Expected e, New 9.
+run(cas_l, [5]).
+run(cas_l, [6]).
+run(cas_l, [-1]).
+func(cas_l, export, tuple([l, l]), [param(l, tmp(e))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(c0), a, check(0, 8, write, 8), [tmp(p)]),
+        raw_store(l, 0, const(5), tmp(c0)),
+        let(tmp(c1), a, check(0, 8, write, 8), [tmp(p)]),
+        let(tmp(old), l, raw_cas(l, 0), [tmp(c1), tmp(e), const(9)]),
+        let(tmp(c2), a, check(0, 8, read, 1), [tmp(p)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c2)])
+    ], rets([tmp(old), tmp(v)]))
+]).
+
+% sw at l: -2 is stored as a word; Expected e at l compares its low 4
+% bytes, so -2 and 4294967294 both match; old is sign-extended.
+run(cas_sw, [-2]).
+run(cas_sw, [4294967294]).
+run(cas_sw, [2]).
+func(cas_sw, export, tuple([l, l]), [param(l, tmp(e))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(c0), a, check(4, 8, write, 4), [tmp(p)]),
+        raw_store(w, 4, const(-2), tmp(c0)),
+        let(tmp(c1), a, check(4, 8, write, 4), [tmp(p)]),
+        let(tmp(old), l, raw_cas(sw, 4), [tmp(c1), tmp(e), const(-7)]),
+        let(tmp(c2), a, check(0, 8, read, 1), [tmp(p)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c2)])
+    ], rets([tmp(old), tmp(v)]))
+]).
+
+% sw at w: old is the word's bits.
+run(cas_sw_w, [-2]).
+run(cas_sw_w, [3]).
+func(cas_sw_w, export, w, [param(w, tmp(e))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(c0), a, check(0, 4, write, 4), [tmp(p)]),
+        raw_store(w, 0, const(-2), tmp(c0)),
+        let(tmp(c1), a, check(0, 4, write, 4), [tmp(p)]),
+        let(tmp(old), w, raw_cas(sw, 0), [tmp(c1), tmp(e), const(1)])
+    ], ret(tmp(old)))
+]).
+
+% uw at w: 3 is stored, New 4; old is zero-extended at l.
+run(cas_uw, [3]).
+run(cas_uw, [4]).
+func(cas_uw, export, tuple([l, l]), [param(w, tmp(e))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(c0), a, check(0, 16, write, 16), [tmp(p)]),
+        raw_store(w, 8, const(3), tmp(c0)),
+        let(tmp(c1), a, check(8, 12, write, 4), [tmp(p)]),
+        let(tmp(o), w, raw_cas(uw, 8), [tmp(c1), tmp(e), const(4)]),
+        let(tmp(old), l, ext(uw), [tmp(o)]),
+        let(tmp(c2), a, check(8, 16, read, 1), [tmp(p)]),
+        let(tmp(v), l, raw_load(l, 8), [tmp(c2)])
+    ], rets([tmp(old), tmp(v)]))
+]).
+
+% ub at offset 3: 255 is stored; Expected 511 matches in its low byte.
+run(cas_ub, [255]).
+run(cas_ub, [511]).
+run(cas_ub, [254]).
+func(cas_ub, export, tuple([l, l]), [param(w, tmp(e))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(c0), a, check(0, 16, write, 1), [tmp(p)]),
+        raw_store(b, 3, const(255), tmp(c0)),
+        let(tmp(c1), a, check(0, 16, write, 1), [tmp(p)]),
+        let(tmp(o), w, raw_cas(ub, 3), [tmp(c1), tmp(e), const(4660)]),
+        let(tmp(old), l, ext(uw), [tmp(o)]),
+        let(tmp(c2), a, check(0, 8, read, 1), [tmp(p)]),
+        let(tmp(v), l, raw_load(l, 0), [tmp(c2)])
+    ], rets([tmp(old), tmp(v)]))
+]).
+
+% p: the slot holds q; Expected e has q's address plus k, without a
+% capability, and New is r. With k = 0 the addresses match and r
+% replaces q though e's capability differs. Each pointer is read through,
+% so the result shows whose capability came back: q holds 11, r 22.
+run(cas_p, [0]).
+run(cas_p, [8]).
+func(cas_p, export, tuple([l, l]), [param(l, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(q), p, alloc(16), [const(16)]),
+        let(tmp(r), p, alloc(16), [const(16)]),
+        let(tmp(cq), a, check(0, 8, write, 1), [tmp(q)]),
+        raw_store(l, 0, const(11), tmp(cq)),
+        let(tmp(cr), a, check(0, 8, write, 1), [tmp(r)]),
+        raw_store(l, 0, const(22), tmp(cr)),
+        let(tmp(c0), a, check(0, 8, write, 8), [tmp(p)]),
+        raw_store_pointer(0, tmp(q), tmp(c0), [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write]),
+        flight(tmp(e), add, [address(tmp(q)), tmp(k)], none),
+        let(tmp(c1), a, check(0, 8, write, 8), [tmp(p)]),
+        let(tmp(old), p, raw_cas(p, 0), [tmp(c1), tmp(e), tmp(r)]),
+        let(tmp(c2), a, check(0, 8, read, 8), [tmp(p)]),
+        let(tmp(v), p, raw_load_pointer(0, [aux_read, lower_resolve, address_read]), [tmp(c2)]),
+        let(tmp(c3), a, check(0, 8, read, 1), [tmp(v)]),
+        let(tmp(x), l, raw_load(l, 0), [tmp(c3)]),
+        let(tmp(c4), a, check(0, 8, read, 1), [tmp(old)]),
+        let(tmp(y), l, raw_load(l, 0), [tmp(c4)])
+    ], rets([tmp(y), tmp(x)]))
+]).
+
+% p, Expected with another object's capability (r's) at q's address
+% plus k: the capability is ignored here too.
+run(cas_p_other, [0]).
+run(cas_p_other, [16]).
+func(cas_p_other, export, l, [param(l, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(q), p, alloc(16), [const(16)]),
+        let(tmp(r), p, alloc(16), [const(16)]),
+        let(tmp(cq), a, check(0, 8, write, 1), [tmp(q)]),
+        raw_store(l, 0, const(11), tmp(cq)),
+        let(tmp(cr), a, check(0, 8, write, 1), [tmp(r)]),
+        raw_store(l, 0, const(22), tmp(cr)),
+        let(tmp(c0), a, check(8, 16, write, 8), [tmp(p)]),
+        raw_store_pointer(8, tmp(q), tmp(c0), [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write]),
+        flight(tmp(e), add, [address(tmp(q)), tmp(k)], lower(tmp(r))),
+        let(tmp(c1), a, check(8, 16, write, 8), [tmp(p)]),
+        let(tmp(old), p, raw_cas(p, 8), [tmp(c1), tmp(e), tmp(r)]),
+        let(tmp(c2), a, check(8, 16, read, 8), [tmp(p)]),
+        let(tmp(v), p, raw_load_pointer(8, [aux_read, lower_resolve, address_read]), [tmp(c2)]),
+        let(tmp(c3), a, check(0, 8, read, 1), [tmp(v)]),
+        let(tmp(x), l, raw_load(l, 0), [tmp(c3)])
+    ], ret(tmp(x)))
+]).
+
+% p, Expected null (const(0)) on a fresh slot, New q: it succeeds, and
+% the slot then reads as q, which holds 11.
+run(cas_p_null, []).
+func(cas_p_null, export, tuple([l, l]), [], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(q), p, alloc(16), [const(16)]),
+        let(tmp(cq), a, check(0, 8, write, 1), [tmp(q)]),
+        raw_store(l, 0, const(11), tmp(cq)),
+        let(tmp(c1), a, check(0, 8, write, 8), [tmp(p)]),
+        let(tmp(old), p, raw_cas(p, 0), [tmp(c1), const(0), tmp(q)]),
+        let(tmp(c2), a, check(0, 8, read, 8), [tmp(p)]),
+        let(tmp(v), p, raw_load_pointer(0, [aux_read, lower_resolve, address_read]), [tmp(c2)]),
+        let(tmp(c3), a, check(0, 8, read, 1), [tmp(v)]),
+        let(tmp(x), l, raw_load(l, 0), [tmp(c3)]),
+        let(tmp(a0), l, ptoi, [tmp(old)])
+    ], rets([tmp(a0), tmp(x)]))
+]).
+
+% l over a pointer slot: the slot holds q; a cas of q's address for r's
+% writes the bytes and leaves the aux, so the slot then reads as r's
+% address with q's capability, and reading through it is out of q's
+% bounds (with no capability it would be a null trap). With k nonzero
+% the compare fails and the slot still reads as q.
+run(cas_l_aux, [0]).
+run(cas_l_aux, [1]).
+func(cas_l_aux, export, l, [param(l, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        let(tmp(q), p, alloc(16), [const(16)]),
+        let(tmp(r), p, alloc(16), [const(16)]),
+        let(tmp(cq), a, check(0, 8, write, 1), [tmp(q)]),
+        raw_store(l, 0, const(11), tmp(cq)),
+        let(tmp(c0), a, check(0, 8, write, 8), [tmp(p)]),
+        raw_store_pointer(0, tmp(q), tmp(c0), [aux_ensure, lower_barrier, rooted_reload, lower_write, address_write]),
+        let(tmp(qa), l, ptoi, [tmp(q)]),
+        let(tmp(e), l, add, [tmp(qa), tmp(k)]),
+        let(tmp(ra), l, ptoi, [tmp(r)]),
+        let(tmp(c1), a, check(0, 8, write, 8), [tmp(p)]),
+        let(tmp(old), l, raw_cas(l, 0), [tmp(c1), tmp(e), tmp(ra)]),
+        let(tmp(c2), a, check(0, 8, read, 8), [tmp(p)]),
+        let(tmp(v), p, raw_load_pointer(0, [aux_read, lower_resolve, address_read]), [tmp(c2)]),
+        let(tmp(c3), a, check(0, 8, read, 1), [tmp(v)]),
+        let(tmp(x), l, raw_load(l, 0), [tmp(c3)])
+    ], ret(tmp(x)))
+]).
+
+% A cas's check traps before it: misaligned (off 2 for a word), out of
+% bounds (off 16), or freed (k nonzero); at off 0 the compare of 6 with
+% the zeroed word fails.
+run(cas_trap, [0, 0]).
+run(cas_trap, [2, 0]).
+run(cas_trap, [16, 0]).
+run(cas_trap, [0, 1]).
+func(cas_trap, export, w, [param(l, tmp(off)), param(w, tmp(k))], [
+    block(start, [], [
+        let(tmp(p), p, alloc(16), [const(16)]),
+        flight(tmp(a), add, [address(tmp(p)), tmp(off)], lower(tmp(p)))
+    ], branch(tmp(k), freeing, swapping)),
+    block(freeing, [], [
+        call(void, global(free), [arg(p, tmp(p))])
+    ], goto(swapping)),
+    block(swapping, [], [
+        let(tmp(c1), a, check(0, 4, write, 4), [tmp(a)]),
+        let(tmp(old), w, raw_cas(uw, 0), [tmp(c1), const(6), const(8)])
+    ], ret(tmp(old)))
+]).
+
+% A read-only object refuses a cas's write check, even one whose
+% compare would fail.
+run(cas_ro, []).
+data(ro_word, ro(local), 8, [item(l, const(3))]).
+func(cas_ro, export, l, [], [
+    block(start, [], [
+        let(tmp(p), p, copy, [global(ro_word)]),
+        let(tmp(c), a, check(0, 8, write, 8), [tmp(p)]),
+        let(tmp(old), l, raw_cas(l, 0), [tmp(c), const(4), const(5)])
+    ], ret(tmp(old)))
+]).

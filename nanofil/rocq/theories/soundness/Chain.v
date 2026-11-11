@@ -181,8 +181,9 @@ Qed.
     address modulo 2^64 is aligned as the address is. *)
 Lemma access_align_divides : forall x, (snd (access_size_align x) | 2 ^ 64).
 Proof.
-  intros [[| | | | t] | w |]; try destruct w; simpl;
-    first [ exists (2 ^ 64); reflexivity | exists (2 ^ 61); reflexivity ].
+  intros [[| | | | t] | w | | [| | t]]; try destruct w; try destruct t; simpl;
+    first [ exists (2 ^ 64); reflexivity | exists (2 ^ 61); reflexivity
+          | exists (2 ^ 62); reflexivity | exists (2 ^ 63); reflexivity ].
 Qed.
 
 (** An access between two passed checks of one [[capability]] c, at

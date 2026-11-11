@@ -21,9 +21,10 @@
 
     The mutations aim at what the validator decides. In a function: a
     check deleted or moved from its access, a check narrowed or its
-    rights or alignment changed, a raw access moved, a poll edge
-    removed, a free inserted between evidence and its use, a reuse form
-    given another proof. A data object: its alignment, its linkage, an
+    rights or alignment changed, a raw access moved, a cas given another
+    type, a poll edge removed, a free inserted between evidence and its
+    use, a reuse form given another proof, a cas's own check deleted
+    and another proof read instead. A data object: its alignment, its linkage, an
     item of each shape the validator looks at, deleted or renamed. An
     alias: its linkage, target and name, or deleted. And a data object
     or an alias inserted. At most 150 per item are kept, evenly spaced.
@@ -231,6 +232,13 @@ block_mutant(Is, J, F, Id, Is1, J) :-
     other_proof(F, Q1, Q2),
     Id = reprove(I, Q2),
     nth0(I, Is1, let(D, a, Op, [tmp(Q2)|Args]), Rest).
+% A cas reads another proof, its own check deleted: a scalar raw access
+% could reuse a live proof there, a cas may not (reusing_access/2).
+block_mutant(Is, J, F, reuse_cas(I, Q2), Is1, J) :-
+    append(Pre, [let(tmp(Q1), a, _, _), let(D, K, raw_cas(T, Off), [tmp(Q1)|Args])|Post], Is),
+    length(Pre, I),
+    other_proof(F, Q1, Q2),
+    append(Pre, [let(D, K, raw_cas(T, Off), [tmp(Q2)|Args])|Post], Is1).
 block_mutant(Is, J, _, unpoll, Is, J1) :-
     jump_unpolled(J, J1).
 
@@ -246,6 +254,13 @@ inst_mutant(let(D, K, raw_load(T, Off), Args), off(Dlt), let(D, K, raw_load(T, O
     member(Dlt, [-1, 1]), Off1 is Off + Dlt.
 inst_mutant(raw_store(W, Off, V, A), off(Dlt), raw_store(W, Off1, V, A)) :-
     member(Dlt, [-1, 1]), Off1 is Off + Dlt.
+% A cas moved off its width's alignment or out of its check, or given
+% another type: another width (still covered when narrower) or another
+% class (refused unless load(T) allows the result class).
+inst_mutant(let(D, K, raw_cas(T, Off), Args), off(Dlt), let(D, K, raw_cas(T, Off1), Args)) :-
+    member(Dlt, [-1, 1, 4]), Off1 is Off + Dlt.
+inst_mutant(let(D, K, raw_cas(T, Off), Args), cas_type(T1), let(D, K, raw_cas(T1, Off), Args)) :-
+    member(T1, [l, p, sw, uh, ub]), T1 \== T.
 
 check_mutant(Op, Id, Op1) :-
     Op =.. [Name|Xs], check_bounds(Name, Pre, Xs, Lo, Hi, R, Al, Post),

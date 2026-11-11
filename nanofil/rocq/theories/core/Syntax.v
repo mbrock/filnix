@@ -5,16 +5,17 @@
 
     The subset is formal.md's: [[mode|filc mode]], the checked stage,
     the integer and pointer [[class|classes]], [[check]] and its
-    [[reuse]] vocabulary, the `raw_*` [[raw-access|accesses]],
+    [[reuse]] vocabulary, the `raw_*` [[raw-access|accesses]] (the
+    checked [[cas]], `raw_cas`, among them),
     [[flight]], [[poll|poll edges]], `call`, `raw_call` and `free`, and
     named locals, `touch` (a vector access's check, whose proof it uses
     without accessing anything); and, for the Lua suite, the float
     classes with their conversions (Ieee.v) and variadic functions
     (`va_args`, `va_arg`); and `setjmp`, whose syntax and validation
     are ir.pl's while its step is stuck, as the interpreter refuses it.
-    Vectors, [[cas]] and atomics, [[asm_fixed]] and plain mode are
-    deferred: a function that uses them is [IOutside], which has an
-    address but no body (Transport.v decides).
+    Vectors, the unchecked `cas` and atomics, [[asm_fixed]] and plain
+    mode are deferred: a function that uses them is [IOutside], which
+    has an address but no body (Transport.v decides).
 
     ## Items, blocks and instructions
 
@@ -147,6 +148,20 @@ Definition narrow_type (t : narrow) : Z * signedness :=
     instead. *)
 Inductive load_type : Type := LdL | LdS | LdD | LdX | LdNarrow (t : narrow).
 
+(** As `cas_type/1`: the type of a [[cas]], what it compares and
+    writes: [CasL] for `l`, [CasP] for a pointer `p`, or a narrow
+    type. *)
+Inductive cas_type : Type := CasL | CasP | CasNarrow (t : narrow).
+
+(** As `cas_bytes/2`: the bytes a cas of type t compares and writes,
+    which are also the alignment its address needs
+    (`access_size_align(cas(T), Size, Size)`). *)
+Definition cas_bytes (t : cas_type) : Z :=
+  match t with
+  | CasL | CasP => 8
+  | CasNarrow n => fst (narrow_type n)
+  end.
+
 (** ## Ops *)
 
 (** A comparison's Cond: `eq` and `ne` at any numeric class, the signed
@@ -216,8 +231,9 @@ Inductive setjmp_kind : Type := SjSetjmp | SjUnderscore | SjSig.
     constructor per functor in the core subset, with the functor's
     parameters as its arguments. The arithmetic and conversions come
     first, then the [[alloc]], the checks of the checked stage and
-    their [[reuse]] forms, the [[raw-access|raw loads]], the
-    variadic ops and `setjmp`. What each reads is [op_arg_classes]. *)
+    their [[reuse]] forms, the [[raw-access|raw loads]] and the raw
+    [[cas]], the variadic ops and `setjmp`. What each reads is
+    [op_arg_classes]. *)
 Inductive op : Type :=
 | Add | Sub | Mul | Div | Udiv | Rem | Urem | And | Or | Xor
 | Sar | Shr | Shl | Neg | Copy | Ptoi | Itop
@@ -247,6 +263,7 @@ Inductive op : Type :=
 | CheckFunction (* trap unless the pointer is a function's exact address *)
 | RawLoad (t : load_type) (off : Z) (* a non-pointer load at the proven address plus off *)
 | RawLoadPointer (off : Z) (es : list effect) (* a pointer load at the proven address plus off, by the protocol es *)
+| RawCas (t : cas_type) (off : Z) (* a [[cas]] of type t at the proven address plus off: its Expected and New are the other two arguments *)
 (* `va_args` takes a variadic function's entry argument snapshot at a
    byte offset; `va_arg` loads the next argument through a va_list. *)
 | VaArgs
@@ -450,6 +467,7 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   | CheckFunction => Some [P]
   | RawLoad _ _ => Some [A]
   | RawLoadPointer _ _ => Some [A]
+  | RawCas _ _ => Some [A; k; k] (* kind_arg_classes(raw_cas, _, K, filc, [a, K, K]) *)
   | VaArgs => Some [L]
   | VaArg => Some [P]
   | Setjmp _ => match k with W => Some [P; W] | _ => None end (* kind_arg_classes(setjmp, _, w, filc, [p, w]) *)

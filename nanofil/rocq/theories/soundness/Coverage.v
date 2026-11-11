@@ -142,7 +142,7 @@ Qed.
 (** Every raw access type x reads or writes some bytes, at a positive
     alignment (`access_size_align/3`). *)
 Lemma access_size_align_pos : forall x, 0 < fst (access_size_align x) /\ 0 < snd (access_size_align x).
-Proof. intros [[| | | | t] | w |]; try destruct t; try destruct w; simpl; lia. Qed.
+Proof. intros [[| | | | t] | w | | [| | t]]; try destruct t; try destruct w; simpl; lia. Qed.
 
 (** Where objects fit the address space and the [[validator]] accepts
     the instruction i as an access through q covered by the check of p
@@ -192,6 +192,24 @@ Proof.
   destruct w, x; simpl in Ha, H; try discriminate H; rewrite Ha in H; injection H as <- _; reflexivity.
 Qed.
 
+(** A [[cas]] ([cas_res], `cas_res/9`) whose access check, at its
+    width and with write rights, passes gives a value, not a trap or
+    `unchecked`, whether its compare succeeds or not. *)
+Lemma cas_res_checked : forall t k m a c e n rr m',
+  access_res m a c (fst (access_size_align (XCas t))) Write (snd (access_size_align (XCas t))) = Some ok ->
+  cas_res t k m a c e n = Some (rr, m') -> exists x, rr = RVal x.
+Proof.
+  unfold cas_res. intros t k m a c e n rr m' Ha H. cbn [fst snd access_size_align] in Ha.
+  cbv zeta in H. rewrite Ha in H. cbv beta iota in H. cases H; inversion H; subst; eauto.
+Qed.
+
+(** A [[cas]] whose access check traps traps with it, leaving memory
+    as it was. *)
+Lemma cas_res_trap : forall t k m a c e n why,
+  access_res m a c (cas_bytes t) Write (cas_bytes t) = Some (RTrap why) ->
+  cas_res t k m a c e n = Some (RTrap why, m).
+Proof. unfold cas_res. intros t k m a c e n why Ha. cbv zeta. rewrite Ha. reflexivity. Qed.
+
 (** ## The raw access instruction *)
 
 (** A raw access instruction i whose own access check passes, at the
@@ -223,6 +241,13 @@ Proof.
     simpl in Ha; rewrite Ha in Hst.
     destruct k; try discriminate Hst.
     destruct (pointer_load_effects _ _ _); discriminate Hst.
+  - (* raw_cas: its check is the one that passed, so the cas gives old. *)
+    destruct l as [|v1 [|v2 [|v3 l]]]; cbn -[cas_res raw_address value_x] in Hst;
+      try (destruct (value_x ge (fr_env fr) k v1); cbn -[cas_res raw_address value_x] in Hst);
+      try (destruct (value_x ge (fr_env fr) k v2); cbn -[cas_res raw_address value_x] in Hst);
+      try discriminate Hst.
+    destruct (cas_res _ _ _ _ _ _ _) as [[rr m']|] eqn:Ec; [|discriminate Hst].
+    destruct (cas_res_checked _ _ _ _ _ _ _ _ _ Ha Ec) as [x' ->]. discriminate Hst.
   - (* raw_store: the store succeeds. *)
     destruct (width_value_class w); simpl in Hst; try discriminate Hst.
     destruct (value_x _ _ _ _); simpl in Hst; try discriminate Hst.
