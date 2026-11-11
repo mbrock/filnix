@@ -1,0 +1,151 @@
+--- a/theories/Compiler/pipeline.v
++++ b/theories/Compiler/pipeline.v
+@@ -146,6 +146,127 @@
+ Definition compile (opts : Options) (p : Template.Ast.Env.program) :=
+   run_pipeline _ _ opts p pipeline.
+ 
++(** * The λANF tap of nanofil (nanofil/docs/lambda-anf.md, M2)
++
++    [show_IR] writes the program's λANF after the whole λANF pipeline
++    (closure conversion and hoisting included) as Prolog clauses, which
++    nanofil's AnfLower.v reads:
++
++    - `anf_ctor(Tag, IndTag, Arity, Ordinal, Name)` for each constructor;
++    - `anf_ftag(FunTag, Arity)` for each function tag;
++    - `anf_name(Var, Name)` for each named function;
++    - `anf_body(Exp)`, the program, one functor per [exp] form:
++      `constr(X, T, Ys, E)`, `case(X, [arm(T, E)])`,
++      `proj(X, T, N, Y, E)`, `letapp(X, F, FT, Ys, E)`,
++      `fun([def(F, FT, Xs, E)], E)`, `app(F, FT, Ys)`,
++      `prim_val(X, Text, E)`, `prim(X, P, Ys, E)` and `halt(X)`. *)
++From CertiRocq.LambdaANF Require Import term cps_show.
++From CertiRocq.Common Require Import AstCommon.
++
++Section AnfTap.
++  Local Open Scope bs_scope.
++
++  Local Coercion Str : string >-> string_tree.
++  Local Infix "+++" := App (at level 100).
++
++  (** A quoted atom of the bytes [s], with its quote and backslash
++      escaped. *)
++  Fixpoint anf_quote_bytes (s : String.t) : string_tree :=
++    match s with
++    | String.EmptyString => Emp
++    | String.String b s' =>
++        (if Byte.eqb b Byte.x27 then Str "\'"
++         else if Byte.eqb b Byte.x5c then Str "\\"
++         else Str (String.String b String.EmptyString)) +++ anf_quote_bytes s'
++    end.
++
++  Definition anf_quote (s : String.t) : string_tree := "'" +++ anf_quote_bytes s +++ "'".
++
++  Definition anf_name_of (n : BasicAst.name) : string_tree :=
++    match n with nNamed s => anf_quote s | nAnon => "'_'" end.
++
++  Definition anf_pos (x : positive) : string_tree := Str (show_pos x).
++
++  Fixpoint anf_seq (ts : list string_tree) : string_tree :=
++    match ts with
++    | [] => Emp
++    | [t] => t
++    | t :: ts' => t +++ "," +++ anf_seq ts'
++    end.
++
++  Definition anf_vars (xs : list positive) : string_tree := "[" +++ anf_seq (map anf_pos xs) +++ "]".
++
++  Fixpoint anf_exp (e : exp) : string_tree :=
++    match e with
++    | Econstr x t ys e' =>
++        "constr(" +++ anf_pos x +++ "," +++ anf_pos t +++ "," +++ anf_vars ys +++ "," +++ anf_exp e' +++ ")"
++    | Ecase x arms =>
++        "case(" +++ anf_pos x +++ ",[" +++
++          anf_seq ((fix go (l : list (ctor_tag * exp)) : list string_tree :=
++                      match l with
++                      | [] => []
++                      | (t, e') :: l' => ("arm(" +++ anf_pos t +++ "," +++ anf_exp e' +++ ")") :: go l'
++                      end) arms) +++ "])"
++    | Eproj x t n y e' =>
++        "proj(" +++ anf_pos x +++ "," +++ anf_pos t +++ "," +++ show_binnat n +++ "," +++ anf_pos y +++ ","
++          +++ anf_exp e' +++ ")"
++    | Eletapp x f ft ys e' =>
++        "letapp(" +++ anf_pos x +++ "," +++ anf_pos f +++ "," +++ anf_pos ft +++ "," +++ anf_vars ys +++ ","
++          +++ anf_exp e' +++ ")"
++    | Efun fds e' => "fun([" +++ anf_seq (anf_defs fds) +++ "]," +++ anf_exp e' +++ ")"
++    | Eapp f ft ys => "app(" +++ anf_pos f +++ "," +++ anf_pos ft +++ "," +++ anf_vars ys +++ ")"
++    | Eprim_val x p e' =>
++        "prim_val(" +++ anf_pos x +++ "," +++ anf_quote (string_of_prim p) +++ "," +++ anf_exp e' +++ ")"
++    | Eprim x p ys e' =>
++        "prim(" +++ anf_pos x +++ "," +++ anf_pos p +++ "," +++ anf_vars ys +++ "," +++ anf_exp e' +++ ")"
++    | Ehalt x => "halt(" +++ anf_pos x +++ ")"
++    end
++  with anf_defs (fds : fundefs) : list string_tree :=
++    match fds with
++    | Fcons f ft xs e' fds' =>
++        ("def(" +++ anf_pos f +++ "," +++ anf_pos ft +++ "," +++ anf_vars xs +++ "," +++ anf_exp e' +++ ")")
++          :: anf_defs fds'
++    | Fnil => []
++    end.
++
++  Definition anf_newline : string := String.String Byte.x0a String.EmptyString.
++
++  (** The function names of the fundefs anywhere in [e]. *)
++  Fixpoint anf_fun_names (nenv : name_env) (e : exp) : list string_tree :=
++    match e with
++    | Econstr _ _ _ e' | Eproj _ _ _ _ e' | Eletapp _ _ _ _ e'
++    | Eprim_val _ _ e' | Eprim _ _ _ e' => anf_fun_names nenv e'
++    | Ecase _ arms =>
++        (fix go (l : list (ctor_tag * exp)) : list string_tree :=
++           match l with [] => [] | (_, e') :: l' => (anf_fun_names nenv e' ++ go l')%list end) arms
++    | Efun fds e' => (anf_fun_names_defs nenv fds ++ anf_fun_names nenv e')%list
++    | Eapp _ _ _ | Ehalt _ => []
++    end
++  with anf_fun_names_defs (nenv : name_env) (fds : fundefs) : list string_tree :=
++    match fds with
++    | Fcons f _ _ e' fds' =>
++        (match M.get f nenv with
++        | Some (nNamed s) => ["anf_name(" +++ anf_pos f +++ "," +++ anf_quote s +++ ")." +++ anf_newline]
++        | _ => []
++        end ++ anf_fun_names nenv e' ++ anf_fun_names_defs nenv fds')%list
++    | Fnil => []
++    end.
++
++  (** The clauses of the program [e] with its constructor, function tag
++      and name environments. *)
++  Definition anf_clauses (cenv : ctor_env) (fenv : fun_env) (nenv : name_env) (e : exp) : string :=
++    show_tree
++      (fold_right App Emp
++         (map (fun '(t, i) =>
++                 "anf_ctor(" +++ anf_pos t +++ "," +++ anf_pos (ctor_ind_tag i) +++ "," +++ show_binnat (ctor_arity i)
++                   +++ "," +++ show_binnat (ctor_ordinal i) +++ "," +++ anf_name_of (ctor_name i) +++ ")."
++                   +++ anf_newline) (M.elements cenv)
++          ++ map (fun '(t, (a, _)) => "anf_ftag(" +++ anf_pos t +++ "," +++ show_binnat a +++ ")." +++ anf_newline)
++                 (M.elements fenv)
++          ++ anf_fun_names nenv e
++          ++ ["anf_body(" +++ anf_exp e +++ ")." +++ anf_newline])%list).
++End AnfTap.
++
+ Definition show_IR (opts : Options) (p : Template.Ast.Env.program) : (error string * string) :=
+   let genv := fst p in
+   let ir_term p :=
+@@ -156,6 +277,6 @@
+   match perr with
+   | Ret p =>
+     let '(pr, cenv, _, _, nenv, fenv, _,  e) := p in
+-    (Ret (cps_show.show_exp nenv cenv false e), log)
++    (Ret (anf_clauses cenv fenv nenv e), log)
+   | Err s => (Err s, log)
+   end.
+--- a/plugins/manifests/plugin-manifest
++++ b/plugins/manifests/plugin-manifest
+@@ -153,10 +153,8 @@
+ 
+ List_util
+ Monad0
+-MonadState
+ OrdersEx
+ POrderedType
+-StateMonad
+ OptionMonad :: plugin
+ Monad_utils :: plugin
+ Utils

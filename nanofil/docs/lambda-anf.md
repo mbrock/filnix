@@ -74,8 +74,9 @@ dual-substrate compiler:
   copy, and compile straight through [Compile.compile_allocated] without
   invoking `clang` or `FilPizlonator`.
 
-> Milestones M0 ([bench/arena/](../bench/arena/)) and M1
-> ([anf/](../anf/)) are built and measured; M2–M5 remain ahead. Section 7
+> Milestones M0 ([bench/arena/](../bench/arena/)), M1
+> ([anf/](../anf/)) and M2 ([anf/lower/](../anf/lower/)) are built and
+> measured; M3–M5 remain ahead. Section 7
 > separates what is measured in this repository from the remaining
 > hypotheses.
 
@@ -402,17 +403,19 @@ stays cached in a local `w` temporary between calls) and `param(w, tmp(Xi))`
 for its λANF parameters. Following `LambdaANF_to_Clight_stack.max_allocs`,
 all `Econstr` allocations along a call-free segment coalesce into **one**
 nursery bound test `young_idx + max_words > NURSERY_END` at the head of
-the segment:
+the segment (in [AnfLower.v](../anf/lower/AnfLower.v), at most `seg_cap`
+= 128 words, so any test fits an empty nursery; a longer segment tests
+again when it has used them):
 
 | λANF form | Nanofil IR lowering (`arena : p`, values at class `w`) |
 |---|---|
 | `Econstr` (0-ary) | Bind `tmp(x)` at `w` to immediate `const(2 * ord + 1)`, continue with `e` |
-| `Econstr` (`k`-ary) | Bump `idx = young_idx` by `k + 1`; `flight` + one `check(0, 4*(k+1), write, 4)` + `raw_store`s for header `(k << 10) \| ord` and `y1..yk`; bind `tmp(x)` to `idx << 1` |
-| `Eproj` | Shift `idx = shr(y, 1)`, scale `4 * idx` at class `l`, `flight` + `check` + `raw_load(uw, 4*(i+1))` into `tmp(x)` |
+| `Econstr` (`k`-ary) | Bump `idx = young_idx` by `k + 1`; `raw_store`s for header `(k << 10) \| ord` and `y1..yk` through one `flight` + `check(0, 4*reserved, write, 4)` that covers every word the segment reserved, shared by its later constructors; bind `tmp(x)` to `idx << 1`. A constant of the program body is stored once in the major heap (`anf_lower_major`) instead |
+| `Eproj` | Shift `idx = shr(y, 1)`, scale `4 * idx` at class `l`, `flight` + `check` + `touch` + `raw_load(uw, 4*(i+1))` into `tmp(x)`; a run of projections from one block shares the check |
 | `Ecase` | Test `and(x, 1)`: immediate chain switches on `shr(x, 1)`; boxed chain loads `hdr = arena[x >> 1]` once and branches on `and(hdr, 255)`; local `Efun` join arms merge at a `block` with `phi` |
 | `Eapp` (local) | Intra-CFG `goto(poll(L_f))` feeding `L_f`'s entry `phi`s (polls every cycle, zero stack growth) |
-| `Eapp` (call) | Known `f`: `call` `global(F)` then `ret`. Closure `v`: load `fid` from field 0 of `v`, dispatch `ft`'s switch table |
-| `Eletapp` | Push boxed temporaries in `FV(e) \ {x}` onto `state`'s `w` root stack, flush `young_idx`, `call` `f`, reload `young_idx` and spilled `FV(e)` (updated if GC ran), continue with `e` |
+| `Eapp` (call) | Known `f`: `call` `global(F)` then `ret`. Closure code `v` (the odd fid immediate projected from the closure record): `call` `anf_applyN(v, ...)`, a binary search on the fid ending in a direct call |
+| `Eletapp` | Push boxed temporaries in `FV(e) \ {x}` onto `state`'s `w` root stack, flush `young_idx`, `call` `f`, reload `young_idx` and spilled `FV(e)` (updated if GC ran), continue with `e`; `Eletapp(x, f, ys, Ehalt x)` is a tail `Eapp` |
 | `Eprim_val` / `Eprim` | Tagged 31-bit operations on `w` (e.g. `add`: `add(a, b - 1)` with 64-bit `l` overflow check when lowering `Z`) |
 | `Ehalt` | Flush `young_idx` to `state`, `ret(tmp(x))` |
 
@@ -698,8 +701,9 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
 | **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
 | **Hypothesis** | Scaling from M0's kernels to full `Compile.compile` on `rx.ir` stays within `1.5–2×` of `ocamlopt` once CFG join recovery and mapped 31-bit `Z` / `nat` / packed `string` are in place (tested in M3) |
-| **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump |
+| **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump. M2 lowers joins and loops this way, but 3 of its 13 gate programs (`rec_clos`, `rec_clos2`, `asm`) still overflow 8 MB through direct-style non-tail recursion over 50k–100k-element lists (`List.app`, `String.append`), where `ocamlopt` overflows on `rec_clos2` only; whether `rx.ir` fits is M3's to measure |
 | **Known (M1)** | `zsys_mmap` (`MAP_NORESERVE`, `fugc_destructor_heap`) grants up to **`4 TiB`** in one reservation at **`8 KiB/GiB`** chunk-map overhead (**`+0.37 MiB`** RSS for the full `8 GiB + 4 KiB` arena), `zsys_madvise` (`MADV_DONTNEED`) reclaims `64 MiB` and `256 MiB` major slices immediately while keeping the `arena` capability valid, and [anf/](../anf/) passes 10,000 randomized tree-rewrite steps (1,851 minor GCs in a 256-word nursery) under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` |
+| **Known (M2)** | [AnfLower.v](../anf/lower/AnfLower.v) lowers CertiRocq's `-O 1 --anf-variant 8` λANF of 13 programs (CertiRocq's 11 standalone tests, `Order.v`'s sort, `Asm.v`'s printer) to checked IR that [valid_fast] accepts, turning 5,169 of 8,106 hoisted functions into blocks; linked with [anf/](../anf/), every program prints `ocamlopt`'s bytes, also over a 256-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` (up to 466,493 minor GCs). With unmapped `nat` / `ascii` / `string` on both sides and checks kept, wall time is **`3.2–6.9×`** `ocamlopt` on the six programs that run longer than startup and **`19.8×`** on `vs_hard`; in `order`, the collector takes 0.2% of the samples, `anf_apply2` 8% and CertiRocq's uncurry wrappers 12.5% (§8, M2) |
 
 ## 8. Milestones
 
@@ -831,6 +835,92 @@ checks, and emit checked [Syntax.module] items validated by [valid_fast]
 and lowered by [Compile.compile_allocated]. Gate: CertiRocq's standalone
 programs and `rocq/backend/Asm.v` + `Order.v` match `ocamlopt` byte for
 byte.
+
+*Done* ([anf/lower/](../anf/lower/)). CertiRocq is tapped where `show_IR`
+gets the result of `CertiRocq_pipeline`, after its whole λANF pipeline
+under `-O 1 --anf-variant 8` (closure conversion, hoisting,
+dead-parameter elimination and duplicate merging included):
+[certirocq-anf-tap.patch](../nix/certirocq-anf-tap.patch), applied by
+[certirocq-anf.nix](../nix/certirocq-anf.nix) on top of
+[certirocq.nix](../nix/certirocq.nix), makes `CertiRocq Show IR` write
+the program as Prolog clauses (`anf_ctor(T, I, Arity, Ord, Name)` from
+`ctor_env`, `anf_ftag(T, Arity)`, `anf_name(F, Name)`, `anf_body(E)`).
+[AnfLower.v](../anf/lower/AnfLower.v)
+(1,247 lines of Gallina, extracted to `anf-lower`) reads them and writes
+a checked module that `nanofil-backend compile-allocated` judges with
+[valid_fast] and allocates with [Regs.v](../rocq/backend/Regs.v); nothing
+in `ir.pl`, `Syntax.v`, `Validate.v` or the toolchain changed.
+
+- **Join recovery.** A hoisted function that is never a value, never
+  called by `Eletapp`, and all of whose tail callers lie in one cluster
+  becomes a block of that cluster's IR function, with its parameters and
+  the cached `young_idx` in its head's phis; a jump back to the same or
+  an earlier body is `goto(poll(L))`. On the gate, 5,169 of 8,106
+  hoisted functions become blocks.
+- **Closures.** Functions used as values get dense fids (by arity, then
+  name); a closure's code is its fid immediate, and a call through it
+  goes to `anf_applyN`, a binary search on the fid ending in a direct
+  `call`.
+- **Allocation and roots.** One nursery test per call-free segment (at
+  most 128 words), whose slow path spills the live values to `roots[]`
+  and calls `anf_lower_reserve` ([anf_lower_rt.c](../anf/lower/anf_lower_rt.c),
+  `anf_minor_gc`); one write check covers the segment's reserved words;
+  around each `Eletapp` the live values go to `roots[]` and come back.
+  The program body's closed constants are stored once in the major
+  heap, which shrank `color`'s `anf_main` from 8.5 MB to 2.8 MB of IR
+  (`compile-allocated`: 21 s, 221 MB).
+- `Eprim_val` and `Eprim` (primitive integers, floats and strings) are
+  refused as M3 work; no gate program uses them.
+
+The gate ([tests/run.sh](../anf/lower/tests/run.sh), in
+[shell.nix](../anf/lower/shell.nix)'s environment) runs CertiRocq's 11
+standalone test programs, `order` (`Order.msort` / `sort` on 1,500
+random terms) and `asm` (`Asm.v`'s printer on 300 groups of every line
+kind), each writing its value as bytes, against the same Gallina
+extracted to OCaml with nothing mapped and built by `ocamlopt`. All 13
+print the reference's bytes with the default `2^20`-word nursery and
+again with a 256-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
+Times are the best of three wall times with a 1 GB stack on both sides,
+process startup included (`clos`, which computes almost nothing, takes
+12 ms against 3 ms):
+
+| Program | Hoisted fns | Blocks | Fids | Asm lines | Output bytes | GCs | GCs (256 words) | Arena | `ocamlopt` | Ratio | 8 MB stack |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `demo1` | 405 | 390 | 1 | 28,039 | 4,301 | 0 | 639 | 11 ms | 3 ms | startup | ok |
+| `demo2` | 411 | 392 | 4 | 25,273 | 1,101 | 0 | 173 | 11 ms | 3 ms | startup | ok |
+| `list_sum` | 148 | 88 | 14 | 48,963 | 3 | 0 | 46 | 12 ms | 3 ms | startup | ok |
+| `vs_easy` | 1,984 | 1,119 | 495 | 622,854 | 4 | 0 | 220 | 12 ms | 3 ms | startup | ok |
+| `vs_hard` | 1,970 | 1,118 | 490 | 636,405 | 4 | 52 | 215,176 | 277 ms | 14 ms | **19.8×** | ok |
+| `binom` | 229 | 138 | 27 | 98,085 | 4 | 0 | 291 | 17 ms | 6 ms | startup | ok |
+| `color` | 491 | 245 | 107 | 302,934 | 9 | 9 | 40,949 | 63 ms | 13 ms | 4.8× | ok |
+| `clos` | 161 | 93 | 19 | 53,279 | 1 | 0 | 1 | 12 ms | 3 ms | startup | ok |
+| `rec_clos` | 161 | 91 | 15 | 57,954 | 100,001 | 23 | 108,064 | 125 ms | 27 ms | 4.6× | arena overflows |
+| `rec_clos2` | 162 | 92 | 15 | 56,957 | 400,001 | 59 | 258,067 | 272 ms | 84 ms | 3.2× | both overflow |
+| `sha_fast` | 560 | 276 | 120 | 243,571 | 112 | 8 | 35,116 | 79 ms | 18 ms | 4.4× | ok |
+| `order` | 724 | 571 | 36 | 136,807 | 33,841 | 112 | 466,493 | 687 ms | 99 ms | 6.9× | ok |
+| `asm` | 700 | 556 | 37 | 184,551 | 138,451 | 34 | 146,080 | 232 ms | 51 ms | 4.5× | arena overflows |
+
+- **Fail-first.** Leaving the reloaded roots unbound after a call (the
+  values from before the call stay in use) makes the 256-word runs of
+  `demo1` and `binom` trap and that of `order` fail.
+- **The gap is calls, not collection.** In `order`, `perf` puts 0.2% of
+  the samples in `anf_minor_gc`, 8% in `anf_apply2` and 12.5% in
+  CertiRocq's `y_wrapper` uncurry wrappers; the hottest function (24%)
+  makes a known call that returns a closure and applies it through
+  `anf_apply2`, a curried call that `-O 1 --anf-variant 8` leaves in
+  place, and every `Eletapp` stores `young_idx`
+  and pushes and pops its roots through two checks on `st` and two on
+  `roots[]`. `vs_hard` allocates about 33× OCaml's minor words (52
+  collections of the `2^20`-word nursery against 1.62M `minor_words`),
+  with 13% of its samples in `anf_apply2` and most of the rest in the
+  `y_known` / `y_wrapper` wrappers; that the extra words are the
+  wrappers' closures is an inference, not measured.
+- **Stack.** Joins and loops take no stack, but `rec_clos`, `rec_clos2`
+  and `asm` recurse directly over 50k–100k-element lists (`List.app`,
+  `String.append`) and overflow the default 8 MB stack, where `ocamlopt`
+  overflows on `rec_clos2` only.
+- **Build cost.** Tapping all 13 programs takes 19 s; `anf-lower` takes
+  5 s and 156 MB on `color`.
 
 **M3. Stdlib mappings (`Z`, `nat`, `ascii`, `string`) and `Compile.compile`.**
 Map `ascii` to immediate `w` tags, `string` to packed arena byte blocks,

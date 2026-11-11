@@ -1,0 +1,11 @@
+# Built by the Makefile: the compiled theories, the extraction and ./anf-lower.
+*.vo
+*.vok
+*.vos
+*.glob
+.*.aux
+extraction/
+main.cmi
+main.cmx
+main.o
+anf-lower
