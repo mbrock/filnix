@@ -3,8 +3,7 @@
 Notes on building software with [Fil-C](https://github.com/pizlonator/fil-c)
 through Nix: how to use the results, how the toolchain is maintained, what
 individual ports needed, and how the port campaigns run. The repository's
-[README](../README.md) gives the overview. These pages are also published at
-<https://mbrock.github.io/filnix/docs/>.
+[README](../README.md) gives the overview.
 
 ## Using filnix
 
@@ -79,13 +78,8 @@ individual ports needed, and how the port campaigns run. The repository's
 
 - [Thread cancellation: what Fil-C needs to get right](pthread-cancellation.md):
   the explanation; start here.
-- [Proposed cancellation semantics for Fil-C glibc](pthread-cancellation-design.md)
-- [Fil-C cancellation implementation checkpoint](pthread-cancellation-implementation.md)
-- [Thread cancellation: research notes](pthread-cancellation-notes.md): the
-  source audit and experiment record.
-- Raw results: [glibc comparison](pthread-cancellation-results.txt) and
-  [implementation](pthread-cancellation-implementation-results.txt) (plain
-  text).
+- Its design, implementation checkpoint, research notes and raw results
+  are in the [archive](#archive).
 
 ## Port campaigns
 
@@ -98,16 +92,29 @@ individual ports needed, and how the port campaigns run. The repository's
   port campaigns and the cache publishers.
 - [Publishing campaign builds](binary-caches.md): the two public binary
   caches.
-- [Selecting packages to try with Fil-C](package-inventory.md)
-- [Fil-C port version audit](port-version-audit.md)
 - [Shared-library campaign repairs](shared-library-unblocks.md)
-- [Focused repairs after the shared-cancellation campaign](campaign-repairs-20260915.md)
-- [Campaign failure review, October 6, 2026](campaign-failure-review.md)
 
-### Earlier experiment runner
+## Archive
 
-- [Filnix experiment runner and dashboard](experiment-architecture.md)
-- [Archived Python campaign operations](experiment-operations.md)
-- [Experiment failure triage](experiment-triage.md)
-- [The Tagflow campaign viewer](dashboard-architecture.md)
-- [Campaign monitor: design tightening](dashboard-design-tightening.md)
+Records of finished or retired work, kept as written at their old
+addresses. What still holds has moved into the documents above.
+
+- Thread cancellation, September 2026:
+  [proposed semantics for Fil-C glibc](archive/pthread-cancellation-design.md),
+  the [implementation checkpoint](archive/pthread-cancellation-implementation.md),
+  the [research notes](archive/pthread-cancellation-notes.md) (source audit
+  and experiments), and raw results for the
+  [glibc comparison](archive/pthread-cancellation-results.txt) and the
+  [implementation](archive/pthread-cancellation-implementation-results.txt).
+- Port campaigns, September and October 2026:
+  [selecting packages to try](archive/package-inventory.md), the
+  [port version audit](archive/port-version-audit.md),
+  [focused repairs after the shared-cancellation campaign](archive/campaign-repairs-20260915.md)
+  and the [campaign failure review of October 6](archive/campaign-failure-review.md).
+- The Python experiment runner, retired for the
+  [campaign service](campaign-service.md):
+  [its architecture](archive/experiment-architecture.md),
+  [operations](archive/experiment-operations.md),
+  [failure triage](archive/experiment-triage.md),
+  [the Tagflow viewer](archive/dashboard-architecture.md) and
+  [the monitor's design tightening](archive/dashboard-design-tightening.md).

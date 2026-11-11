@@ -90,7 +90,7 @@ DConf and Duktape failures found through GTK's shared inputs. AT-SPI now links
 the systemd libraries without the full tool closure; GTK4 omits its optional
 GStreamer video backend. Both GTK versions build and pass the Broadway consumer
 check; the original dependency blockers are
-absent from the replacement toolkit graphs. See [gtk-ports.md](gtk-ports.md)
+absent from the replacement toolkit graphs. See [gtk-ports.md](../gtk-ports.md)
 for version choices, limitations and reproducible consumer checks.
 
 Observed checks include 60 introspection tests, 14 DConf tests, six libproxy

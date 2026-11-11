@@ -497,7 +497,7 @@ package versions remain explicit in `ports.nix`; extraction does not silently
 change their source archives or claim that every new version builds.
 
 The shared runtime/glibc cancellation patches and test evidence are described
-in [the implementation checkpoint](pthread-cancellation-implementation.md).
+in [the implementation checkpoint](archive/pthread-cancellation-implementation.md).
 LLVM build and install both honor `NIX_BUILD_CORES` through an explicit Ninja
 job limit. The compiler bootstrap is rebuilt for this source update.
 
@@ -562,7 +562,7 @@ ports/extract-patch.sh boost-filc "$HOME/fil-c"
 The generated patch is an input, not a port declaration. Wire it into the actual
 package attribute in `ports.nix`, check source-version compatibility and patch
 order, and test the result. Merely adding a `ports/patches.nix` inventory entry
-does not change a derivation. Use the [version audit](port-version-audit.md) to
+does not change a derivation. Use the [version audit](archive/port-version-audit.md) to
 compare the active declarations with Nixpkgs and the selected upstream tree.
 
 ## Projeny ports

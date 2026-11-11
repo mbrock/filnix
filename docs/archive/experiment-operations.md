@@ -1,7 +1,7 @@
 # Archived Python campaign operations
 
 The canonical dashboard now uses the native runner. See
-[port campaign operations](port-campaign-operations.md). The Python controller,
+[port campaign operations](../port-campaign-operations.md). The Python controller,
 viewer, classification and retention units are retired; the instructions below
 describe the preserved historical campaigns.
 
@@ -11,7 +11,7 @@ The dashboard is **https://nix.swa.sh/**. It is read-only. The active campaign i
 **Fil-C 0.686 · integrated ports · main c940a48** (`390c9340-6650-4458-99df-b113b3a6d3ce`),
 started on 2026-09-30 at source `c940a48134a332211d80b09791b592c762267bd4` on
 `main`. It builds the 14,647 attributes of the
-[26.05 inventory](../experiments/package-inventory-2605/README.md) with the
+[26.05 inventory](../../experiments/package-inventory-2605/README.md) with the
 Fil-C 0.686 toolchain and integrated package repairs from an immutable source.
 The earlier
 campaigns, including **Fil-C b6dd634 · shared cancellation**
@@ -165,7 +165,7 @@ cannot import it. Coordinate classifier stop/replay for any controller restart.
 Successful campaign outputs and their reference closures are published in the
 background to Cachix and <https://nix.swa.sh/cache>. Each cache has independent
 receipts and retries; upload failures do not change build outcomes. See
-[binary cache operations](binary-caches.md) for client configuration, status,
+[binary cache operations](../binary-caches.md) for client configuration, status,
 installation, and restore verification.
 
 ## Responsibilities

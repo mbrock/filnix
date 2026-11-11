@@ -6,7 +6,7 @@ start cleanup only after returning to an unwind-capable Fil-C frame. A completed
 operation must keep its result; an interruptible wait must not lose its wakeup.
 
 This is a design proposal, dated September 14, 2026, following the
-[comparison report](pthread-cancellation.md). It is not an implemented fix or a
+[comparison report](../pthread-cancellation.md). It is not an implemented fix or a
 claim that Fil-C passes the proposed tests. The existing results cover native
 libcs; the private Filnix `pause()` fix covers a much smaller problem.
 
@@ -46,7 +46,7 @@ returns; it does not generally require rolling back all side effects. A request
 that races with completion may remain pending. In particular, cancellation is
 not a transaction that can undo a file creation, network effect, or consumed
 input. See [POSIX cancellation][posix-cancel] and the report's
-[standards discussion](pthread-cancellation.md#what-posix-requiresand-what-its-issue-numbers-mean).
+[standards discussion](../pthread-cancellation.md#what-posix-requiresand-what-its-issue-numbers-mean).
 
 The contract concerns valid API use and defined interruption behavior. Fil-C
 must still enforce memory safety for invalid inputs; cancellation support must
@@ -144,7 +144,7 @@ and resembles musl's exception for close. The generic path's own comment
 error reporting for now; do not silently translate close errors as part of the
 cancellation change. This does **not** claim conformance to POSIX Issue 8's
 newer `EINTR`/`EINPROGRESS` descriptor-state contract, described in the
-[comparison report](pthread-cancellation.md). That is a separate ABI decision.
+[comparison report](../pthread-cancellation.md). That is a separate ABI decision.
 
 Each additional syscall needs this same review. For example, an interrupted
 `connect()` may leave a connection attempt in progress. “Cancelable interruption”
@@ -336,7 +336,7 @@ Keep hand-maintained changes separate from generated upstream port patches.
    Promote the matched toolchain only after the applicable semantic gates pass;
    application passes alone do not discharge the callback or async requirements.
 
-The six existing [differential cases](../tests/pthread-cancel-differential.c)
+The six existing [differential cases](../../tests/pthread-cancel-differential.c)
 give a concrete initial oracle:
 
 | Case | Required observation for the proposal |

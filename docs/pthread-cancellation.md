@@ -27,14 +27,14 @@ the latest upstream version. Tests of ordinary, non-Fil-C glibc 2.44 do not tell
 us whether Fil-C's port behaves the same way. That distinction matters below.
 
 The explanation comes first. Exact source revisions, test output, and commands
-are in the [research notes](pthread-cancellation-notes.md). Those notes separate
+are in the [research notes](archive/pthread-cancellation-notes.md). Those notes separate
 what was tested from what was learned by reading source code.
 
-The follow-up [implementation proposal](pthread-cancellation-design.md) defines
+The follow-up [implementation proposal](archive/pthread-cancellation-design.md) defines
 a candidate Fil-C/glibc contract, runtime and compiler responsibilities, and
 acceptance tests. It is a proposed design, not an implemented general fix.
 
-The [implementation checkpoint](pthread-cancellation-implementation.md) records
+The [implementation checkpoint](archive/pthread-cancellation-implementation.md) records
 the resulting native runtime/glibc patches, executed Fil-C tests and remaining
 coverage gaps.
 
@@ -247,7 +247,7 @@ the handler a second time. Returning from the application handler restores the
 older signal mask—the set of signals blocked before that handler started—and
 lets the pending signal be delivered against the underlying syscall. musl's [original design
 explanation][musl-design] describes why this is needed. The research notes give
-the [mask and requeue details](pthread-cancellation-notes.md#musl-and-cosmopolitan-keep-the-cancellation-signal-pending).
+the [mask and requeue details](archive/pthread-cancellation-notes.md#musl-and-cosmopolitan-keep-the-cancellation-signal-pending).
 
 **This looks like a missed-wakeup bug in modern glibc, not proof that its whole
 cancellation design is wrong.** It has not been confirmed by upstream. The POSIX
@@ -310,7 +310,7 @@ The [2024 close specification][posix-close] also changed the portable error
 rules: `EINTR` means the descriptor remains open, while `EINPROGRESS` means it
 is closed. The older standard left its state after `EINTR` unspecified. Do not
 assume those newer rules describe every existing OS implementation. The
-[research notes](pthread-cancellation-notes.md#close-requires-an-explicit-ownership-policy)
+[research notes](archive/pthread-cancellation-notes.md#close-requires-an-explicit-ownership-policy)
 trace the libc policies and the standards discussion.
 
 ### Disabling cancellation does not always prevent an interruption
@@ -367,7 +367,7 @@ normally and leave cancellation pending. Cosmopolitan has more than one
 implementation of condition waits, selected by configuration and mutex
 properties. Its simpler fallback does not establish how the default path behaves.
 
-These are [source findings about cleanup](pthread-cancellation-notes.md#cleanup-includes-more-than-pthread-callbacks).
+These are [source findings about cleanup](archive/pthread-cancellation-notes.md#cleanup-includes-more-than-pthread-callbacks).
 We did not run a cross-libc C++ test or a condition-variable stress test. musl
 and Cosmopolitan also have a non-POSIX “masked cancellation” extension that lets
 some operations report an error instead of exiting; the notes explain its use
@@ -383,7 +383,7 @@ just because it arrived before the thread went to sleep.
 libthr also wraps application signal handlers: for deferred cancellation it
 temporarily disables cancellation, restores the old setting when the handler
 returns, and checks again. A handler that jumps out with `longjmp()` complicates
-that restoration. These [FreeBSD source findings](pthread-cancellation-notes.md#freebsd-uses-kernel-support-to-avoid-missed-wakeups)
+that restoration. These [FreeBSD source findings](archive/pthread-cancellation-notes.md#freebsd-uses-kernel-support-to-avoid-missed-wakeups)
 show an alternative to relying only on instruction addresses. We did not run
 FreeBSD, and its design cannot simply be copied into a Linux libc.
 
@@ -415,7 +415,7 @@ That changes where the cancellation decision can be made:
 The port also retains cancellation-marker names as empty C functions. Calling
 those functions before and after an operation does not make their addresses
 mark the syscall's instruction range, as native glibc's assembly labels do.
-The [source audit](pthread-cancellation-notes.md#the-244-port-still-bypasses-native-glibcs-syscall-cancellation-checks)
+The [source audit](archive/pthread-cancellation-notes.md#the-244-port-still-bypasses-native-glibcs-syscall-cancellation-checks)
 documents this and the runtime paths. **We have not executed Fil-C 2.44's
 cancellation behavior.** The source findings explain why the version bump alone
 does not settle it; they are not a replacement for testing the port.
@@ -459,8 +459,8 @@ accounting for what the thread has already done and what it can safely abandon.
 The [test program](../tests/pthread-cancel-differential.c) ran six scenarios
 20 times on each of five Linux x86-64 builds: glibc 2.36, 2.41, and 2.44,
 musl 1.2.6, and Cosmopolitan 4.0.2. That is **600 recorded executions**, all on
-kernel `6.1.158+`. The [counted results](pthread-cancellation-results.txt) preserve
-the observations; the [full comparison table](pthread-cancellation-notes.md#what-the-six-tests-found)
+kernel `6.1.158+`. The [counted results](archive/pthread-cancellation-results.txt) preserve
+the observations; the [full comparison table](archive/pthread-cancellation-notes.md#what-the-six-tests-found)
 maps them to case numbers.
 
 The tests arrange particular timings; they do not measure how often a problem
@@ -469,8 +469,8 @@ build record names the libc packages but does not retain enough compiler and
 archive information to reconstruct every binary exactly. Source-only findings
 and newer source snapshots must not be mistaken for tested builds.
 
-For verification, use the [build and run instructions](pthread-cancellation-notes.md#reproducing-the-native-comparison)
-and [exact source revisions](pthread-cancellation-notes.md#source-versions-we-read).
+For verification, use the [build and run instructions](archive/pthread-cancellation-notes.md#reproducing-the-native-comparison)
+and [exact source revisions](archive/pthread-cancellation-notes.md#source-versions-we-read).
 The worker eventually calls `pthread_testcancel()` after any rescue, so its final
 `canceled=1` result alone says nothing about whether cancellation happened at the
 right time. The notes explain which output fields distinguish the behaviors.

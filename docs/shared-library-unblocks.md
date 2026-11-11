@@ -403,7 +403,7 @@ and the installed GStreamer fake-source/fake-sink pipeline runs to completion.
 The following private-libc investigation records the implementation before
 `46be74e`. Its private wrapper and pause-only patches were removed in that
 commit. For the current shared-runtime implementation and commands, see
-[pthread cancellation implementation](pthread-cancellation-implementation.md).
+[pthread cancellation implementation](archive/pthread-cancellation-implementation.md).
 The historical commands below require the earlier source revision.
 
 That cancellation investigation used a separate libc derivation, leaving the shared

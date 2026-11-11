@@ -9,7 +9,7 @@ the dashboard now includes a live dependency map.
 The application should make the experiment easy to operate and interesting to
 watch: what is building, what now works, which test suites ran, and which shared
 problem is holding other packages back. Its first input is the existing
-[13,772-attribute selection](../experiments/package-inventory/inputs.json).
+[13,772-attribute selection](../../experiments/package-inventory/inputs.json).
 
 ## The proposed system
 
@@ -301,7 +301,7 @@ Keep administrative actions on the local CLI for the first release.
 
 The checkout already has a Perl 5.40 port, Python 3.12 with package overrides,
 Ruby 3.3 and gem adaptations, and Lua/Python/Perl environments in
-[`demo.nix`](../demo.nix). Tcl and Trealla are also included in the world package
+[`demo.nix`](../../demo.nix). Tcl and Trealla are also included in the world package
 list. LuaJIT is currently marked broken separately from ordinary Lua.
 
 The first campaign keeps the existing input manifest unchanged. Later, add

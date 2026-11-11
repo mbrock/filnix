@@ -20,7 +20,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$out/docs"
 cp -r "$src/pages/." "$out/"
 # pages/style.css (copied above) is shared by the docs and the pages.
-cp "$src"/docs/*.txt "$out/docs/"
+cp "$src"/docs/*.txt "$src"/docs/archive/*.txt "$out/docs/"
 
 # The code pages come first: a document's link to a code file goes to its
 # page when $SITE has one, else to GitHub (pages.lua).
@@ -61,6 +61,30 @@ for md in "$src"/docs/*.md; do
   pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
     --template "$here/template.html" --lua-filter "$here/links.lua" \
     -V source="$name.md" "${args[@]}" -o "$out/docs/$html.html" "$md"
+done
+
+# docs/archive/NAME.md, retired or finished records, renders beside the
+# others as docs/NAME.html, where it always was, marked archived; README.md
+# lists each one in its Archive section.
+for md in "$src"/docs/archive/*.md; do
+  name=$(basename "$md" .md)
+  echo "$(date -u +%FT%TZ) site: render docs/archive/$name.md"
+  grep -q "](archive/$name.md" "$src/docs/README.md" || {
+    echo "docs/archive/$name.md is not linked from docs/README.md" >&2
+    exit 1
+  }
+  [ ! -e "$src/docs/$name.md" ] || {
+    echo "docs/archive/$name.md and docs/$name.md would both be $name.html" >&2
+    exit 1
+  }
+  args=()
+  if [ "$(grep -c '^## ' "$md")" -ge 4 ]; then
+    args+=(--toc --toc-depth=3)
+  fi
+  pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
+    --template "$here/template.html" --lua-filter "$here/links.lua" \
+    -M archived=true -V source="archive/$name.md" "${args[@]}" \
+    -o "$out/docs/$name.html" "$md"
 done
 
 # The dterm workbench: the samples drawn by dterm, set side by side.

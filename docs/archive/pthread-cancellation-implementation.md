@@ -6,11 +6,11 @@ are currently enabled only by the experimental **staging** toolchain
 (`163fae598eaf249b74065b0156f3a7e7ba8c0e5a`) does **not** apply them.
 `runtime/libpizlo.nix` and `runtime/filc-glibc.nix` are the authoritative switches.
 Staging has additional compiler changes; selecting it is not equivalent to
-adding cancellation to the release. See [upstream updates](upstream-updates.md).
+adding cancellation to the release. See [upstream updates](../upstream-updates.md).
 
 This is an experimental implementation, not complete POSIX cancellation.
 Arbitrary asynchronous cancellation and unwinding out of an application signal
-handler remain open. The [comparison report](pthread-cancellation.md) and
+handler remain open. The [comparison report](../pthread-cancellation.md) and
 [design proposal](pthread-cancellation-design.md) explain the compatibility
 choices. Three patches supply the implementation:
 

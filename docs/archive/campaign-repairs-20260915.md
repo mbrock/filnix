@@ -187,7 +187,7 @@ separate porting task, not evidence that the underlying TPM operation failed.
 success where its injected hash failure should be reported. The remaining work
 is not uniformly a pointer-conversion fix.
 
-The [September 19 TPM2 repair](tpm2.md) resolves these failures: the package now
+The [September 19 TPM2 repair](../tpm2.md) resolves these failures: the package now
 builds with 256 tests passing, the same 11 upstream skips, and no failures.
 
 ### Opus: retained diagnostic evidence

@@ -1,7 +1,7 @@
 # Thread cancellation: research notes
 
 This is the detailed source audit and experiment record. Start with
-[Thread cancellation: what Fil-C needs to get right](pthread-cancellation.md)
+[Thread cancellation: what Fil-C needs to get right](../pthread-cancellation.md)
 for the explanation; use these notes to check a finding or reproduce the tests.
 
 Investigated **2026-09-14**. These are research findings and recommendations,
@@ -72,7 +72,7 @@ replace the host libc. The original compiler versions and archive checksums were
 not retained, so the record identifies the tested libc versions but is not
 enough to reconstruct the exact builds.
 
-The [probe source](../tests/pthread-cancel-differential.c) and
+The [probe source](../../tests/pthread-cancel-differential.c) and
 [counted output](pthread-cancellation-results.txt) are checked in. Output is
 grouped using `sort | uniq -c`, not listed in time order. We did not run FreeBSD,
 test C++ unwinding, or run this comparison under Fil-C.
@@ -526,7 +526,7 @@ be copied unchanged to Linux. Darwin, Bionic, and other libcs are not covered.
 
 ### Upstream has upgraded to 2.44; the local pin has not
 
-At the investigated baseline, [the upstream manifest](../lib/filc-upstream.json)
+At the investigated baseline, [the upstream manifest](../../lib/filc-upstream.json)
 selects `projects/user-glibc-2.40/` and `projects/yolo-glibc-2.40/`. Upstream
 Fil-C's later `deluge` head, [b6dd63481f79][filc-new-rev], instead builds
 `projects/user-glibc-2.44/` and `projects/yolo-glibc-2.44/`, as confirmed by the
@@ -596,8 +596,8 @@ change does not update Filnix's dependency pin.
 
 At the [investigated baseline][filnix-baseline], the
 [isolated test derivation](https://github.com/mbrock/filnix/blob/32bf7f5e1e229a2be47bbc2ab048d985e30dc9f5/tests/pipewire-cancellation.nix) applies the
-[signal-reservation patch](../patches/glibc-filc-cancellation-signals.patch) and
-[pause cancellation patch](../patches/glibc-filc-pause-cancel.patch) to a private
+[signal-reservation patch](../../patches/glibc-filc-cancellation-signals.patch) and
+[pause cancellation patch](../../patches/glibc-filc-pause-cancel.patch) to a private
 2.40-based libc without changing the shared Fil-C toolchain. These patches have
 not been ported or tested against upstream Fil-C's new 2.44 sources as part of
 this investigation.
@@ -608,8 +608,8 @@ through `sigsuspend()`. It then starts forced unwind from an ordinary libc frame
 rather than the native signal callback. It temporarily uses asynchronous
 cancelability while that destination is live.
 
-The existing [C probe](../tests/pthread-cancel.c) and
-[C++ frame](../tests/pthread-cancel-cxx.cc) exercise cooperative, pending,
+The existing [C probe](../../tests/pthread-cancel.c) and
+[C++ frame](../../tests/pthread-cancel-cxx.cc) exercise cooperative, pending,
 racing, blocked, disabled, and signal-only pause scenarios, including cleanup
 and mask checks. Those tests are distinct from the native differential probe
 in this document and were not rerun as part of this investigation. Their
