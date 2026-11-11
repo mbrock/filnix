@@ -1,0 +1,87 @@
+% Drivers for memcmp.ir, so that nanofil's interpreter, its native code
+% and the Rocq model can run the kernels: run.sh appends this file to
+% memcmp.ir. drive_K(Size, Len, At) allocates two Size-byte buffers,
+% fills both with the same bytes, changes byte At of the second when
+% 0 <= At < Size, and returns K(a, b, Len).
+
+run(drive_ct, [16, 16, -1]).
+run(drive_ct, [16, 16, 0]).
+run(drive_ct, [16, 16, 8]).
+run(drive_ct, [16, 16, 15]).
+run(drive_ct, [16, 0, 3]).
+run(drive_ct, [32, 5, -1]).
+run(drive_ct, [32, 5, 4]).
+run(drive_ct, [32, 5, 5]).
+run(drive_ct, [32, 17, 16]).
+run(drive_ct, [32, 32, 31]).
+run(drive_ct, [16, 17, -1]).
+run(drive_ct, [32, 33, 2]).
+run(drive_ct, [8, 16, -1]).
+run(drive_leaky, [16, 16, -1]).
+run(drive_leaky, [16, 16, 0]).
+run(drive_leaky, [16, 16, 15]).
+run(drive_leaky, [16, 0, 3]).
+run(drive_leaky, [32, 5, 4]).
+run(drive_leaky, [32, 5, 5]).
+run(drive_leaky, [16, 17, -1]).
+run(drive_leaky, [16, 17, 2]).
+
+func(fill, local, void, [param(p, tmp(buf)), param(l, tmp(n))], [
+    block(start, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(i), l, [start-const(0), body-tmp(i1)])
+    ], [
+        let(tmp(c), w, cmp(slt, l), [tmp(i), tmp(n)])
+    ], branch(tmp(c), body, done)),
+    block(body, [], [
+        let(tmp(q), p, add, [tmp(buf), tmp(i)]),
+        let(tmp(x), l, mul, [tmp(i), const(37)]),
+        let(tmp(y), l, add, [tmp(x), const(11)]),
+        store(b, tmp(y), tmp(q)),
+        let(tmp(i1), l, add, [tmp(i), const(1)])
+    ], goto(loop)),
+    block(done, [], [], ret)
+]).
+
+func(buffers, local, p, [param(l, tmp(size)), param(l, tmp(at))], [
+    block(start, [], [
+        let(tmp(pair), p, alloc(8), [const(16)]),
+        let(tmp(a), p, alloc(8), [tmp(size)]),
+        let(tmp(b), p, alloc(8), [tmp(size)]),
+        call(void, global(fill), [arg(p, tmp(a)), arg(l, tmp(size))]),
+        call(void, global(fill), [arg(p, tmp(b)), arg(l, tmp(size))]),
+        store(p, tmp(a), tmp(pair)),
+        let(tmp(slot), p, add, [tmp(pair), const(8)]),
+        store(p, tmp(b), tmp(slot)),
+        let(tmp(lo), w, cmp(sge, l), [tmp(at), const(0)]),
+        let(tmp(hi), w, cmp(slt, l), [tmp(at), tmp(size)]),
+        let(tmp(in), w, and, [tmp(lo), tmp(hi)])
+    ], branch(tmp(in), change, done)),
+    block(change, [], [
+        let(tmp(q), p, add, [tmp(b), tmp(at)]),
+        let(tmp(old), w, load(ub), [tmp(q)]),
+        let(tmp(new), w, xor, [tmp(old), const(128)]),
+        store(b, tmp(new), tmp(q))
+    ], goto(done)),
+    block(done, [], [], ret(tmp(pair)))
+]).
+
+func(drive_ct, export, w, [param(l, tmp(size)), param(l, tmp(len)), param(l, tmp(at))], [
+    block(start, [], [
+        call(result(tmp(pair), p), global(buffers), [arg(l, tmp(size)), arg(l, tmp(at))]),
+        let(tmp(a), p, load(p), [tmp(pair)]),
+        let(tmp(slot), p, add, [tmp(pair), const(8)]),
+        let(tmp(b), p, load(p), [tmp(slot)]),
+        call(result(tmp(r), w), global(ct_memcmp), [arg(p, tmp(a)), arg(p, tmp(b)), arg(l, tmp(len))])
+    ], ret(tmp(r)))
+]).
+
+func(drive_leaky, export, w, [param(l, tmp(size)), param(l, tmp(len)), param(l, tmp(at))], [
+    block(start, [], [
+        call(result(tmp(pair), p), global(buffers), [arg(l, tmp(size)), arg(l, tmp(at))]),
+        let(tmp(a), p, load(p), [tmp(pair)]),
+        let(tmp(slot), p, add, [tmp(pair), const(8)]),
+        let(tmp(b), p, load(p), [tmp(slot)]),
+        call(result(tmp(r), w), global(leaky_memcmp), [arg(p, tmp(a)), arg(p, tmp(b)), arg(l, tmp(len))])
+    ], ret(tmp(r)))
+]).

@@ -1,0 +1,74 @@
+% memcmp.s translated to nanofil's unchecked IR by hand, one IR
+% instruction per machine instruction where the IR has one. The number
+% before each line is the instruction's number in memcmp.s. A register
+% is a temporary named after it with a version suffix; README.md lists
+% what the IR could not say directly.
+
+func(ct_memcmp, export, w, [param(p, tmp(rdi0)), param(p, tmp(rsi0)), param(l, tmp(rdx0))], [
+    block(start, [], [
+        %  1, 2: rax and r10 are the constant 0 from here.
+        let(tmp(zf3), w, cmp(eq, l), [tmp(rdx0), const(0)])             %  3
+    ], branch(tmp(zf3), no_data, not_empty)),                           %  4
+    block(not_empty, [], [
+        let(tmp(nz5), w, cmp(ne, l), [tmp(rdx0), const(16)])            %  5
+    ], branch(tmp(nz5), loop_cmp, fast16)),                             %  6
+    block(fast16, [], [
+        let(tmp(r10_7), l, load(l), [tmp(rdi0)]),                       %  7
+        let(tmp(a8), p, add, [tmp(rdi0), const(8)]),                    %  8
+        let(tmp(r11_8), l, load(l), [tmp(a8)]),                         %  8
+        %  9: rdx is the constant 1 from here.
+        let(tmp(m10), l, load(l), [tmp(rsi0)]),                         % 10
+        let(tmp(r10_10), l, xor, [tmp(r10_7), tmp(m10)]),               % 10
+        let(tmp(b8), p, add, [tmp(rsi0), const(8)]),                    % 11
+        let(tmp(m11), l, load(l), [tmp(b8)]),                           % 11
+        let(tmp(r11_11), l, xor, [tmp(r11_8), tmp(m11)]),               % 11
+        let(tmp(r10_12), l, or, [tmp(r10_10), tmp(r11_11)]),            % 12
+        let(tmp(nz12), w, cmp(ne, l), [tmp(r10_12), const(0)])          % 12, 13
+    ], ret(tmp(nz12))),                                                 % 14
+    block(loop_cmp, [
+        phi(tmp(rdi), p, [not_empty-tmp(rdi0), loop_cmp-tmp(rdi16)]),
+        phi(tmp(rsi), p, [not_empty-tmp(rsi0), loop_cmp-tmp(rsi18)]),
+        phi(tmp(rdx), l, [not_empty-tmp(rdx0), loop_cmp-tmp(rdx20)]),
+        phi(tmp(al), l, [not_empty-const(0), loop_cmp-tmp(al19)])
+    ], [
+        let(tmp(r10b15), l, load(ub), [tmp(rdi)]),                      % 15
+        let(tmp(rdi16), p, add, [tmp(rdi), const(1)]),                  % 16
+        let(tmp(m17), l, load(ub), [tmp(rsi)]),                         % 17
+        let(tmp(r10b17), l, xor, [tmp(r10b15), tmp(m17)]),              % 17
+        let(tmp(rsi18), p, add, [tmp(rsi), const(1)]),                  % 18
+        let(tmp(al19), l, or, [tmp(al), tmp(r10b17)]),                  % 19
+        let(tmp(rdx20), l, sub, [tmp(rdx), const(1)]),                  % 20
+        let(tmp(nz20), w, cmp(ne, l), [tmp(rdx20), const(0)])           % 20
+    ], branch(tmp(nz20), loop_cmp, tail)),                              % 21
+    block(tail, [], [
+        let(tmp(rax22), l, neg, [tmp(al19)]),                           % 22
+        let(tmp(rax23), l, shr, [tmp(rax22), const(63)])                % 23
+    ], goto(no_data)),
+    block(no_data, [
+        phi(tmp(rax), l, [start-const(0), tail-tmp(rax23)])
+    ], [], ret(tmp(rax)))                                               % 24
+]).
+
+func(leaky_memcmp, export, w, [param(p, tmp(rdi0)), param(p, tmp(rsi0)), param(l, tmp(rdx0))], [
+    block(start, [], [
+        %  1: rax is the constant 0 from here.
+        let(tmp(zf2), w, cmp(eq, l), [tmp(rdx0), const(0)])             %  2
+    ], branch(tmp(zf2), done, loop)),                                   %  3
+    block(loop, [
+        phi(tmp(rdi), p, [start-tmp(rdi0), next-tmp(rdi7)]),
+        phi(tmp(rsi), p, [start-tmp(rsi0), next-tmp(rsi8)]),
+        phi(tmp(rdx), l, [start-tmp(rdx0), next-tmp(rdx9)])
+    ], [
+        let(tmp(r10b4), l, load(ub), [tmp(rdi)]),                       %  4
+        let(tmp(m5), l, load(ub), [tmp(rsi)]),                          %  5
+        let(tmp(ne5), w, cmp(ne, l), [tmp(r10b4), tmp(m5)])             %  5
+    ], branch(tmp(ne5), diff, next)),                                   %  6
+    block(next, [], [
+        let(tmp(rdi7), p, add, [tmp(rdi), const(1)]),                   %  7
+        let(tmp(rsi8), p, add, [tmp(rsi), const(1)]),                   %  8
+        let(tmp(rdx9), l, sub, [tmp(rdx), const(1)]),                   %  9
+        let(tmp(nz9), w, cmp(ne, l), [tmp(rdx9), const(0)])             %  9
+    ], branch(tmp(nz9), loop, done)),                                   % 10
+    block(done, [], [], ret(const(0))),                                 % 11
+    block(diff, [], [], ret(const(1)))                                  % 12, 13
+]).

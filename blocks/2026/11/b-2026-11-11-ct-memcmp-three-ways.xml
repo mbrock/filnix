@@ -1,0 +1,27 @@
+<block id="b-2026-11-11-ct-memcmp-three-ways" kind="finding" actor="T-01a1c9d0-abcf-702d-a986-94a05140d238" model="anthropic/claude-fable-5-2" created="2026-11-11T09:46:49Z">
+  <title>OpenSSL's CRYPTO_memcmp unchecked, through SaRCAsm and through nanofil: all three are clean under zegarmistrz</title>
+  <about path="experiments/ct-memcmp/README.md"/>
+  <about path="experiments/ct-memcmp/memcmp.s"/>
+  <about path="experiments/ct-memcmp/memcmp.ir"/>
+  <tag name="constant-time"/>
+  <tag name="sarcasm"/>
+  <p><a path="experiments/ct-memcmp/README.md">experiments/ct-memcmp</a> takes OpenSSL's hand-written <c>CRYPTO_memcmp</c> for x86-64 and runs it three ways under Fil-C: unchecked, through Fil-C's assembler SaRCAsm, and as a hand translation into nanofil's IR that nanofil prints as new assembly. A control, <c>leaky_memcmp</c>, leaves at the first difference. No model of x86 is involved, and nothing proves that the translation computes what the assembly computes; 19 cases compare them.</p>
+  <table>
+    <tr><th></th><th>unchecked</th><th>SaRCAsm</th><th>nanofil</th><th>nanofil -O</th></tr>
+    <tr><td>A length of 4096 on 16-byte buffers</td><td>returns 1</td><td>Fil-C panic</td><td>Fil-C panic</td><td>Fil-C panic</td></tr>
+    <tr><td><c>ct_memcmp</c> under zegarmistrz, buffers poisoned</td><td>clean</td><td>clean</td><td>clean</td><td>clean</td></tr>
+    <tr><td><c>leaky_memcmp</c> under zegarmistrz</td><td>caught</td><td>caught</td><td>caught</td><td>caught</td></tr>
+    <tr><td>The author's instructions are the ones that run</td><td>yes</td><td>yes, with checks</td><td>no</td><td>no</td></tr>
+    <tr><td>Instructions in <c>ct_memcmp</c></td><td>24</td><td>159</td><td>288</td><td>192</td></tr>
+    <tr><td>ns per byte on 4096 bytes</td><td>0.7</td><td>2.6</td><td>6.4</td><td>3.3</td></tr>
+    <tr><td>Judged valid by the Rocq validator</td><td>no</td><td>no</td><td>yes</td><td>yes</td></tr>
+  </table>
+  <claim status="tested" check="experiments/ct-memcmp/run.sh">
+    <p>The four builds give the same answers on 19 cases. Under zegarmistrz, with every byte of both buffers poisoned, <c>ct_memcmp</c> finishes in 12 of 12 runs and <c>leaky_memcmp</c> stops with cannot-branch in 12 of 12. The Fil-C checks that SaRCAsm and nanofil add branch on pointers and bounds, never on a loaded byte, so they do not trip the emulator. The IR passes <sh>difftest.sh</sh>, <sh>agree.sh</sh>, <sh>valid.sh</sh> and <sh>gate.sh</sh> without and with <sh>-O</sh>.</p>
+  </claim>
+  <claim status="proved" check="experiments/ct-memcmp/poison.sh POISON.v">
+    <p>Under the poison spike's rules, if <c>ct_memcmp</c>'s checked IR returns on some contents of the two buffers, its leak trace is the same on any other contents, for any buffer size and length. The spike's <c>Poison.v</c> is not on main yet, so this was checked against a copy of the file from the thread finishing it, and should be run again when it lands. The theorem is about the IR's leak trace, not about the machine code that nanofil's backend prints.</p>
+  </claim>
+  <p>The translation was mechanical except in two places. The IR has no select, so <c>cmovnz</c> could be written without a branch only because its operands are the constants 0 and 1, and the byte registers needed an argument about their upper bits. The IR also has no carry, rotate, wide multiply or vector operations, which this kernel does not use and most of OpenSSL's assembly does.</p>
+  <p>A lifter for the integer subset this kernel uses looks worth building, with a select added to the IR. A general one does not yet: the re-emitted code is 1.3 times slower than SaRCAsm's and 5 times slower than the original, and SaRCAsm remains the way to ship assembly that needs its exact instructions.</p>
+</block>
