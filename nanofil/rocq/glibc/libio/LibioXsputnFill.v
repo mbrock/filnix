@@ -104,7 +104,7 @@ Proof.
   iIntros "#Hvt Hl Hvtp (Hwc & Hwp & Hwe & Hroom) Hos Hl' Hys HK".
   destruct nb as [[b sz] |]; [| iDestruct "Hroom" as %[-> ->]; cbn in Hroom; lia].
   iDestruct "Hroom" as (reg xs cs Hok) "(Hbl & Hxs & Hcs)".
-  pose proof Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [Hwc' Hwa] & [Hec Hea]).
+  pose proof Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [Hwc' Hwa] & [Hec Hea] & Hheap).
   destruct wp as [wa wc]. cbn in Hwc', Hwa, Hroom. subst wc.
   cbn [xs_L101 b_insts b_jump]. fs. fchk "Hl". fldp "Hl" "Hwp" "Hbl".
   set (ysub := take (Z.to_nat c) ys).

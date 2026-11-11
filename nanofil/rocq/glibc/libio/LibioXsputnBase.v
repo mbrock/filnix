@@ -78,6 +78,34 @@ Definition xs_L178 : block := Eval vm_compute in
 Definition xs_scan_names : list name :=
   map TAtom ["pr.14"; "v56"; "v57"; "v58"; "v63"; "chk4"; "v64"; "v65"; "v68"; "v70"; "v71"; "pr.10"; "pr.6"].
 
+(** A buffered output stream keeps the standard file flags except for
+    the error, line-buffering and writing bits. It starts writing when
+    it obtains a buffer. Naming this relation lets callers recover the
+    overflow premises after the flags have been existentially hidden. *)
+Definition xs_flags (nb : option (Z * Z)) (fl : Z) : Prop :=
+  Z.land fl (Z.lnot 2592) = 4222427268 /\
+  match nb with None => Z.land fl 2048 = 0 | Some _ => Z.land fl 2048 <> 0 end.
+
+(** Setting the error bit preserves the buffer's writing state and
+    every fixed flag. A failed write therefore keeps the output invariant. *)
+Lemma xs_flags_error nb fl : xs_flags nb fl -> xs_flags nb (Z.lor fl io_err_seen).
+Proof.
+  intros [Hfixed Hput]. unfold xs_flags. rewrite !Z.land_lor_distr_l.
+  change (Z.land io_err_seen (Z.lnot 2592)) with 0.
+  change (Z.land io_err_seen 2048) with 0.
+  rewrite !Z.lor_0_r. split; assumption.
+Qed.
+
+(** A fixed flag mask can be read from the output invariant. The
+    premise excludes the three bits that output may change. *)
+Lemma xs_flags_mask nb fl mask :
+  Z.land (Z.lnot 2592) mask = mask -> xs_flags nb fl ->
+  Z.land fl mask = Z.land 4222427268 mask.
+Proof.
+  intros Hmask [Hfixed _]. apply (f_equal (fun f => Z.land f mask)) in Hfixed.
+  rewrite -Z.land_assoc Hmask in Hfixed. exact Hfixed.
+Qed.
+
 (** The rules over the [[runtime]] R and [LogicSig] LG0. *)
 Module LibioXsputnBaseOn (R : Runtime) (LG0 : LogicSig R).
 Module DX := LibioDefaultXsputnOn R LG0.
@@ -89,23 +117,23 @@ Import DX DX.RM DX.RM.SM.TL DX.RM.SM.TL.BY DX.RM.SM.TL.BY.BF DX.RM.SM.TL.BY.BF.C
 Section defs.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** [xfields] w0 eb fb: the fields of the stream fb that
-    `c: _IO_new_file_xsputn` and its `c: new_do_write` read or write
-    beside [wbuf]: the flags, without `c: _IO_IS_APPENDING`; the
-    `c: _flags2`, descriptor, `c: _total_written` and `c: _offset` the
-    write uses, the descriptor open in w0; the `c: _cur_column`, 0; the
-    mode, narrow (0 or -1); and the thread's errno eb. *)
-Definition xfields (w0 : os_world) (eb fb : Z) : iProp Σ :=
+(** String output owns the fields that overflow and direct writes
+    use beside the buffer. The flags satisfy the buffered-output
+    relation, the descriptor is open and fits a signed int, and the
+    cancellation and lock bits are clear. The column is zero and the
+    mode is narrow. The predicate also owns the thread's errno cell. *)
+Definition xfields (w0 : os_world) (eb fb : Z) (nb : option (Z * Z)) : iProp Σ :=
   ∃ fl f2 fd tw off m, ⌜Z.land fl io_is_appending = 0 /\ Z.land f2 2 = 0 /\ In fd (ow_fds w0) /\
-                        (m = 0 \/ m = 2 ^ 32 - 1)⌝ ∗
+                        (m = 0 \/ m = 2 ^ 32 - 1) /\ xs_flags nb fl /\
+                        0 <= fd < 2 ^ 31 /\ Z.land f2 160 = 0⌝ ∗
     int_cell fb off_flags fl ∗ int_cell fb off_flags2 f2 ∗ int_cell fb off_fileno fd ∗
     icell fb off_total_written tw ∗ icell fb off_offset off ∗ bytes fb off_column [0; 0] ∗
     int_cell fb off_mode m ∗ errno_any eb.
 
-(** [xos] w0 eb X fb nb: the rest of the stream that the overflow
-    reads, [xfields] and any other X of the stream and its buffer. *)
+(** Overflow keeps the output fields together with the caller's
+    remaining resources for this stream and buffer. *)
 Definition xos (w0 : os_world) (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (nb : option (Z * Z))
-    : iProp Σ := xfields w0 eb fb ∗ X fb nb.
+    : iProp Σ := xfields w0 eb fb nb ∗ X fb nb.
 
 (** A run of bytes at a share is its first j bytes and the rest. *)
 Lemma bytesq_split dq b o ys (j : nat) : (j <= length ys)%nat ->

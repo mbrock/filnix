@@ -115,7 +115,7 @@ Proof.
   iDestruct "Hwbf" as "((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom)".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
   iDestruct "Hos" as "(Hxf & HX)".
-  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
+  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
   iDestruct "Hfl" as "[%Hfl32 Hfl]". iDestruct "Hfl2" as "[%Hf2r Hfl2]".
   (* iw_2.start: not appending. *)
   fchk "Hl". fldi "Hl" "Hfl". fs. unfold io_is_appending in Happ. fbrv true.
