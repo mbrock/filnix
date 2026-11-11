@@ -17,6 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From iris.program_logic Require Import language weakestpre.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Pieces Heap Language Logic StringLogic MemLogic.
+From Nanofil Require WordBits.
 From Glibc Require Import OsBlocks OsWorld FileInv.
 Import ListNotations.
 Open Scope Z_scope.
@@ -68,6 +69,65 @@ Ltac wi_store :=
   let Hh := fresh "Hh" in let Hw := fresh "Hw" in
   intros ? ? ? Hh Hw; eapply os_wi_store_life; [reflexivity | | exact Hh | exact Hw];
   first [apply no_life_cell | apply no_life_byte_ps | apply no_life_pcell | apply no_life_byte].
+
+(** ## A `c: int`'s bytes *)
+
+(** The four bytes of an int below 2^32 read back as it. *)
+Lemma of_bytes_int x : 0 <= x < 2 ^ 32 -> of_bytes (le_bytes x 4) = x.
+Proof.
+  intros Hx. transitivity (x mod 2 ^ (8 * (3 + 1))); [| apply Z.mod_small; exact Hx].
+  rewrite WordBits.low_step; [|lia]. change (8 * 3) with (8 * (2 + 1)).
+  rewrite WordBits.low_step; [|lia]. change (8 * 2) with (8 * (1 + 1)).
+  rewrite WordBits.low_step; [|lia]. change (8 * 1) with (8 * (0 + 1)).
+  rewrite WordBits.low_step; [|lia]. rewrite Z.mul_0_r Z.pow_0_r Z.mod_1_r. cbn -[byte_of].
+  change (Z.of_nat 0) with 0. change (Z.of_nat 1) with 1. change (Z.of_nat 2) with 2. change (Z.of_nat 3) with 3. lia.
+Qed.
+
+(** A signed 32-bit load of an int's bytes, at class [W], is its bits. *)
+Lemma load_sw_int x : 0 <= x < 2 ^ 32 -> extended Sw W (of_bytes (le_bytes x 4)) = Some (WInt x).
+Proof.
+  intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. f_equal. f_equal. unfold sign_extension.
+  rewrite (Z.mod_small x); [|exact Hx]. destruct (2 ^ 31 <=? x) eqn:E.
+  - apply Z.leb_le in E. rewrite Zminus_mod Z_mod_same_full Z.sub_0_r !Z.mod_mod; [|lia..].
+    apply Z.mod_small. exact Hx.
+  - apply Z.mod_small. exact Hx.
+Qed.
+
+(** A mask of a nonnegative integer by a 32-bit one is a 32-bit int. *)
+Lemma land_lt32 a b : 0 <= a -> 0 <= b < 2 ^ 32 -> 0 <= Z.land a b < 2 ^ 32.
+Proof.
+  intros Ha Hb. split; [apply Z.land_nonneg; lia|].
+  assert (Hl : Z.log2 b < 32).
+  { destruct (Z.eq_dec b 0) as [->|Hne]; [reflexivity|]. apply Z.log2_lt_pow2; lia. }
+  rewrite <- (Z.land_ones_low b 32); [|lia | exact Hl]. rewrite Z.land_assoc Z.land_ones; [|lia].
+  apply Z.mod_pos_bound. lia.
+Qed.
+
+(** `c: _IO_ferror`'s test of `c: _IO_FLAGS2_NEED_LOCK` reads bit 7
+    of the 24-bit field `c: _flags2`, sign-extended by a shift left and
+    an arithmetic shift right by 8: bit 7 of the 4 bytes as loaded. *)
+Lemma flags2_bit7 f2 : 0 <= f2 < 2 ^ 32 ->
+  Z.land (((sign_extension (2 ^ 32) (2 ^ 31)
+              (((f2 mod 2 ^ 32 * 2 ^ ((8 mod 2 ^ 32) mod 32)) mod 2 ^ 32) mod 2 ^ 32) /
+            2 ^ ((8 mod 2 ^ 32) mod 32)) mod 2 ^ 32) mod 2 ^ 32) (128 mod 2 ^ 32) = Z.land f2 128.
+Proof.
+  intros H. change ((8 mod 2 ^ 32) mod 32) with 8. change (128 mod 2 ^ 32) with 128.
+  rewrite (Z.mod_small f2); [|lia..]. rewrite !Z.mod_mod; [|lia..].
+  apply Z.bits_inj'. intros i Hi. rewrite !Z.land_spec.
+  destruct (Z.eq_dec i 7) as [->|Hne].
+  - f_equal. rewrite Z.mod_pow2_bits_low; [|lia..]. change (2 ^ 8) with (2 ^ 8).
+    rewrite Z.div_pow2_bits; [|lia..]. unfold sign_extension. rewrite Z.mod_mod; [|lia..].
+    assert (Hl : forall l, 0 <= l < 2 ^ 32 -> Z.testbit (l - 2 ^ 32) 15 = Z.testbit l 15).
+    { intros l Hl. rewrite <- (Z.mod_pow2_bits_low (l - 2 ^ 32) 32 15); [|lia..].
+      f_equal. rewrite Zminus_mod Z_mod_same_full Z.sub_0_r !Z.mod_mod; [|lia..]. apply Z.mod_small. exact Hl. }
+    assert (Hb : 0 <= (f2 * 2 ^ 8) mod 2 ^ 32 < 2 ^ 32) by (apply Z.mod_pos_bound; lia).
+    assert (Hm : Z.testbit ((f2 * 2 ^ 8) mod 2 ^ 32) 15 = Z.testbit f2 7).
+    { rewrite (Z.mod_pow2_bits_low _ 32 15); [|lia]. rewrite (Z.mul_pow2_bits f2 8 15); [|lia]. reflexivity. }
+    change (7 + 8) with 15. destruct (2 ^ 31 <=? _).
+    + rewrite (Hl _ Hb). exact Hm.
+    + exact Hm.
+  - change 128 with (2 ^ 7). rewrite Z.pow2_bits_false; [|lia..]. rewrite !andb_false_r. reflexivity.
+Qed.
 
 (** ## Arithmetic *)
 
