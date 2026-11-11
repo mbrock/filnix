@@ -6,7 +6,7 @@
     `write(1, msg, strlen(msg))`. Both calls run glibc's own IR:
     `strlen` is `__strlen`'s word-at-a-time scan, taken by StrlenLogic.v's
     triple [wp_glibc_strlen], and
-    `write` is the alias of `__libc_write`, whose body calls libpizlo's
+    `write` is the weak alias of `__GI___libc_write`, whose body calls libpizlo's
     `zsys_write` and returns what it returns. The linked module defines
     everything but `zsys_write`, so that one name is the registry's,
     with the trusted contract of ZsysWrite.v; the rest is proved.
@@ -32,7 +32,7 @@ Open Scope list_scope.
 (** ## The module *)
 
 (** The checked module: say.c's `main` and its literal, glibc's
-    `__strlen` and `__libc_write` with their aliases ([say_term]). *)
+    `__strlen` and `__GI___libc_write` with their aliases ([say_term]). *)
 Definition say_module : module :=
   match decode_module say_term with Some md => md | None => [] end.
 
@@ -51,9 +51,9 @@ Definition msg_reg : region := mkRegion msg_base (msg_base + 16) GlobalData Live
 
 (** The module's symbols, as laying it out places them. *)
 Definition say_globals : list (name * ptr) :=
-  [(TAtom "write", mkPtr 65600 (Fn (TAtom "__libc_write")));
+  [(TAtom "write", mkPtr 65600 (Fn (TAtom "__GI___libc_write")));
    (TAtom "strlen", mkPtr 65584 (Fn (TAtom "__strlen")));
-   (TAtom "__libc_write", mkPtr 65600 (Fn (TAtom "__libc_write")));
+   (TAtom "__GI___libc_write", mkPtr 65600 (Fn (TAtom "__GI___libc_write")));
    (TAtom "__strlen", mkPtr 65584 (Fn (TAtom "__strlen")));
    (TAtom "say#msg", msg_ptr);
    (TAtom "main", mkPtr 65536 (Fn (TAtom "main")))].
@@ -73,8 +73,8 @@ Definition say_fn (n : string) : func :=
 Definition main_fn : func := Eval vm_compute in say_fn "main".
 (** glibc's `__strlen`. *)
 Definition strlen_fn : func := Eval vm_compute in say_fn "__strlen".
-(** glibc's `__libc_write`. *)
-Definition write_fn : func := Eval vm_compute in say_fn "__libc_write".
+(** glibc's `__GI___libc_write`. *)
+Definition write_fn : func := Eval vm_compute in say_fn "__GI___libc_write".
 
 (** ## The literal's pieces *)
 
@@ -151,7 +151,7 @@ Definition say_ge : genv := mkGenv say_module say_globals R.free.
 Lemma find_strlen : find_fn say_ge (TAtom "strlen") = Some (Defined strlen_fn).
 Proof. vm_compute. reflexivity. Qed.
 
-(** A call of `write` runs `__libc_write`. *)
+(** A call of `write` runs `__GI___libc_write`. *)
 Lemma find_write : find_fn say_ge (TAtom "write") = Some (Defined write_fn).
 Proof. vm_compute. reflexivity. Qed.
 

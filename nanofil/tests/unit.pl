@@ -4925,6 +4925,25 @@ test(runtime_atom_is_not_a_compound) :-
 label_shape(label(_, _), compound).
 label_shape(label, atom).
 
+% Only @@ defaults export an unversioned alias, and repeated aliases
+% coalesce. Neither a compat version, a self version nor a third @ may
+% invent an IR alias. Assembly still exports the default version.
+test(symver_default_aliases) :-
+    c_tokens("int f(int x) { return x + 13; } int api(int);
+              __asm__(\".symver f, api@@V1\");
+              __asm__(\".filc_alias f, api\");
+              __asm__(\".symver f, api@@V1\");
+              __asm__(\".symver f, compat@V1\");
+              __asm__(\".symver f, bogus@@@V1\");
+              __asm__(\".symver f, f@@V1\");
+              int probe(void) { return api(5); }", 'symver.c', Ts),
+    c_parse(Ts, C), c_module(C, M), valid_module(M), M = module(Is),
+    findall(A, member(alias(A, export, f), Is), [api]),
+    module_fn_args_outcome(M, probe, [], ret(18)),
+    c_toplevel_asm(C, Lines),
+    memberchk('.symver pizlonated_api, pizlonated_api@@V1, remove', Lines),
+    memberchk('.symver pizlonated_f, pizlonated_compat@V1', Lines).
+
 % c_file_module(+File, -Module): Module is the valid module of the C
 % in File, lexed without preprocessing.
 c_file_module(F, M) :-
