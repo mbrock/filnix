@@ -60,7 +60,7 @@ try {
     ? [] : widths;
   for (const width of declarationWidths) {
     browser("set", "viewport", String(width), "900", "2");
-    for (const page of ["nanofil/poison.html", "nanofil/rocq/rocq-spikes-Poison.html"]) {
+    for (const page of ["nanofil/poison.html", "nanofil/rocq/rocq-theories-logic-PoisonModel.html"]) {
       browser("open", `${base}/${page}`);
       for (const layout of ["auto", "stack"]) {
         browser("select", "#rq-layout", layout);
