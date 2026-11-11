@@ -1,0 +1,217 @@
+Subject: Validate the locale archive header and records before use
+Origin: Filnix
+Upstream-Status: Not submitted
+
+_nl_load_locale_from_archive trusts the offsets, lengths and counts
+stored in the locale-archive file: it maps the file, reads the locarhead
+fields directly, and follows name_offset, locrec_offset and every
+record offset into the mapping without checking them against the
+mapping's length.  A truncated or inconsistent archive then reads
+past the mapping, which Fil-C stops with a safety trap, or never
+terminates: the hash probe loop stops only on an empty slot, and a
+full hash table with no matching entry has none.  The 32-bit sums
+wrap, too: a record with offset 0xffffff00 and len 0x100 passes the
+check that is meant to bound it.
+
+The loader now checks that the mapping holds the whole archive header,
+that the head tables fit in it (summed in 64 bits, and narrowed to
+size_t only after the page round-up), that the probe loop probes at
+most namehash_size slots, that a name_offset lies inside the string
+table and its name is NUL-terminated there, that a locrec_offset
+holds the whole struct locrecent and is aligned for the direct field
+accesses, and that offset + len stays inside the mapping as a 64-bit
+sum.  Every failure takes the existing close_and_out path, so a
+corrupt archive reads as a clean "locale not found".
+
+The regression check is the locarch check of
+nanofil/survey/glibc/regress.nix (regress/locarch.c), which writes
+truncated, inconsistent and non-terminating archives and locale files
+and expects setlocale to fail cleanly instead of trapping or hanging.
+
+--- a/locale/loadarchive.c	2026-11-11 14:27:20.974120829 +0000
++++ b/locale/loadarchive.c	2026-11-11 14:27:20.978120887 +0000
+@@ -66,8 +66,8 @@
+ struct archmapped
+ {
+   void *ptr;
+-  uint32_t from;
+-  uint32_t len;
++  size_t from;
++  size_t len;
+   struct archmapped *next;
+ };
+ static struct archmapped *archmapped;
+@@ -112,14 +112,15 @@
+    large enough if localedef adds data to the file in place.  However,
+    doing that would permute the header fields while we are accessing
+    them and thus not be safe anyway, so we don't allow for that.  */
+-static inline off_t
++static inline uint64_t
+ calculate_head_size (const struct locarhead *h)
+ {
+-  off_t namehash_end = (h->namehash_offset
+-			+ h->namehash_size * sizeof (struct namehashent));
+-  off_t string_end =  h->string_offset + h->string_used;
+-  off_t locrectab_end = (h->locrectab_offset
+-			 + h->locrectab_used * sizeof (struct locrecent));
++  uint64_t namehash_end = ((uint64_t) h->namehash_offset
++			   + h->namehash_size * sizeof (struct namehashent));
++  uint64_t string_end = ((uint64_t) h->string_offset
++			 + h->string_used);
++  uint64_t locrectab_end = ((uint64_t) h->locrectab_offset
++			    + h->locrectab_used * sizeof (struct locrecent));
+   return MAX (namehash_end, MAX (string_end, locrectab_end));
+ }
+ 
+@@ -147,6 +148,8 @@
+   unsigned long int hval;
+   size_t idx;
+   size_t incr;
++  size_t probes;
++  uint64_t string_end;
+   struct range ranges[__LC_LAST - 1];
+   int nranges;
+   int cnt;
+@@ -194,7 +197,8 @@
+   if (archmapped == NULL)
+     {
+       void *result;
+-      size_t headsize, mapsize;
++      uint64_t headsize;
++      size_t mapsize;
+ 
+       /* We do this early as a sign that we have tried to open the archive.
+ 	 If headmap.ptr remains null, that's an indication that we tried
+@@ -228,6 +232,11 @@
+       if (result == MAP_FAILED)
+ 	goto close_and_out;
+ 
++      /* The file must at least hold the archive header whose fields
++	 the code below reads directly.  */
++      if (__glibc_unlikely (mapsize < sizeof (struct locarhead)))
++	goto close_and_out;
++
+       /* Check whether the file is large enough for the sizes given in
+ 	 the header.  Theoretically an archive could be so large that
+ 	 just the header fails to fit in our initial mapping window.  */
+@@ -241,7 +250,13 @@
+ 
+ 	  /* Freakishly long header.  */
+ 	  /* XXX could use mremap when available */
+-	  mapsize = (headsize + ps - 1) & ~(ps - 1);
++	  {
++	    uint64_t newsize = (headsize + ps - 1) & ~(uint64_t) (ps - 1);
++	    if (__glibc_unlikely (newsize != (size_t) newsize))
++	      /* The rounded-up size does not fit in size_t here.  */
++	      goto close_and_out;
++	    mapsize = newsize;
++	  }
+ 	  result = __mmap64 (NULL, mapsize, PROT_READ, MAP_FILE|MAP_COPY,
+ 			     fd, 0);
+ 	  if (result == MAP_FAILED)
+@@ -280,15 +295,33 @@
+   idx = hval % head->namehash_size;
+   incr = 1 + hval % (head->namehash_size - 2);
+ 
++  /* The end of the string table, which calculate_head_size has already
++     checked to lie inside the mapping.  Hash entries point their
++     name_offset there, and names are NUL-terminated there, so both
++     facts bound every strcmp below.  */
++  string_end = (uint64_t) head->string_offset + head->string_used;
++
+   /* If the name_offset field is zero this means this is a
+-     deleted entry and therefore no entry can be found.  */
++     deleted entry and therefore no entry can be found.  A corrupt
++     archive can also have no empty entry at all, in which case the
++     probing below would otherwise never terminate.  */
++  probes = head->namehash_size;
+   while (1)
+     {
++      if (__glibc_unlikely (probes-- == 0))
++	/* Every slot has been probed.  */
++	goto close_and_out;
++
+       if (namehashtab[idx].name_offset == 0)
+ 	/* Not found.  */
+ 	goto close_and_out;
+ 
+       if (namehashtab[idx].hashval == hval
++	  && __glibc_likely (namehashtab[idx].name_offset
++			     >= head->string_offset)
++	  && __glibc_likely (namehashtab[idx].name_offset < string_end)
++	  && memchr (headmap.ptr + namehashtab[idx].name_offset, '\0',
++		     string_end - namehashtab[idx].name_offset) != NULL
+ 	  && strcmp (name, headmap.ptr + namehashtab[idx].name_offset) == 0)
+ 	/* Found the entry.  */
+ 	break;
+@@ -302,6 +335,15 @@
+   if (namehashtab[idx].locrec_offset == 0)
+     goto close_and_out;
+ 
++  /* The locale record must lie entirely inside the mapping, and be
++     aligned for the direct struct accesses below.  */
++  if (__glibc_unlikely
++      ((uint64_t) namehashtab[idx].locrec_offset + sizeof *locrec
++       > headmap.len
++       || (namehashtab[idx].locrec_offset & (__alignof__ (*locrec) - 1))
++       != 0))
++    goto close_and_out;
++
+   locrec = (struct locrecent *) (headmap.ptr + namehashtab[idx].locrec_offset);
+ 
+   if (sizeof (void *) > 4 /* || headmap.len == archive_stat.st_size */)
+@@ -311,8 +353,8 @@
+       for (cnt = 0; cnt < __LC_LAST; ++cnt)
+ 	if (cnt != LC_ALL)
+ 	  {
+-	    if (locrec->record[cnt].offset + locrec->record[cnt].len
+-		> headmap.len)
++	    if ((uint64_t) locrec->record[cnt].offset
++		+ locrec->record[cnt].len > headmap.len)
+ 	      /* The archive locrectab contains bogus offsets.  */
+ 	      goto close_and_out;
+ 	    results[cnt].addr = headmap.ptr + locrec->record[cnt].offset;
+@@ -342,14 +384,14 @@
+ 	{
+ 	  int upper;
+ 	  size_t from;
+-	  size_t to;
++	  uint64_t to;
+ 	  void *addr;
+ 	  struct archmapped *newp;
+ 
+ 	  /* Determine whether the appropriate page is already mapped.  */
+ 	  while (mapped != NULL
+ 		 && (mapped->from + mapped->len
+-		     <= ranges[cnt].from + ranges[cnt].len))
++		     <= (uint64_t) ranges[cnt].from + ranges[cnt].len))
+ 	    {
+ 	      last = mapped;
+ 	      mapped = mapped->next;
+@@ -358,7 +400,7 @@
+ 	  /* Do we have a match?  */
+ 	  if (mapped != NULL
+ 	      && mapped->from <= ranges[cnt].from
+-	      && (ranges[cnt].from + ranges[cnt].len
++	      && ((uint64_t) ranges[cnt].from + ranges[cnt].len
+ 		  <= mapped->from + mapped->len))
+ 	    {
+ 	      /* Yep, already loaded.  */
+@@ -378,11 +420,14 @@
+ 	  upper = cnt;
+ 	  do
+ 	    {
+-	      to = ranges[upper].from + ranges[upper].len;
+-	      if (to > (size_t) archive_stat.st_size)
++	      to = (uint64_t) ranges[upper].from + ranges[upper].len;
++	      if (to > (uint64_t) archive_stat.st_size)
+ 		/* The archive locrectab contains bogus offsets.  */
+ 		goto close_and_out;
+-	      to = (to + ps - 1) & ~(ps - 1);
++	      to = (to + ps - 1) & ~(uint64_t) (ps - 1);
++	      if (__glibc_unlikely (to - from != (size_t) (to - from)))
++		/* The window is too large to map on this platform.  */
++		goto close_and_out;
+ 
+ 	      /* If a range is already mmaped in, stop.	 */
+ 	      if (mapped != NULL && ranges[upper].from >= mapped->from)

@@ -1,0 +1,21 @@
+<block id="b-2026-11-11-glibc-locale-validation" kind="finding" actor="T-01a1caca-a859-754d-91d5-680f2e4a8304" model="zhipuai/glm-5.3" created="2026-11-11T15:44:02Z">
+  <title>Two bug classes in user glibc's own source: block pointers cast to long int, and a locale loader that trusts the archive</title>
+  <about path="nanofil/survey/glibc/patches/filc-glibc-string-pointers.patch"/>
+  <about path="nanofil/survey/glibc/patches/filc-glibc-loadarchive-validate.patch"/>
+  <about path="nanofil/survey/glibc/regress.nix"/>
+  <tag name="glibc"/>
+  <tag name="memory-safety"/>
+  <p>Both live in the source filnix's stock glibc builds from, so the fixes are three patch files (<c>Upstream-Status: Not submitted</c>, ready to send upstream) applied by a separate <a path="nanofil/survey/glibc/mixed.nix">mixed build</a>: the stock derivation and its store path stay untouched. First, <c>string/memcmp.c</c> and <c>string/wordcopy.c</c> pass their block pointers to the alignment helpers as <c>long int</c>, and Fil-C drops a pointer's capability at the cast, so a memcmp of 16 bytes or more stops with "cannot read pointer with null object" whenever the helpers are not inlined first: under filcc <c>-O0</c>, and under nanofil at any level. filcc <c>-O2</c> only works because LLVM happens to inline the helpers. The pointers now travel as <c>op_t *</c>; passing <c>uintptr_t</c> instead traps the same way, because the callee still rebuilds a pointer from an integer. Second, <c>locale/loadarchive.c</c> and <c>loadlocale.c</c> follow the offsets, lengths and counts stored in the locale-archive and category files without bounding them: a full hash table with no match spins the probe loop forever, and the other cases read past the mapping.</p>
+  <table>
+    <tr><th>locarch mode (regress/locarch.c)</th><th>stock glibc</th><th>patched glibc</th></tr>
+    <tr><td>control and a well-formed archive</td><td>load</td><td>load, same values</td></tr>
+    <tr><td>hash table with no empty slot</td><td>spin (exit 124)</td><td>refuses, exit 0</td></tr>
+    <tr><td>six more corrupt archives and files</td><td>filc safety trap (exit 133)</td><td>refuses, exit 0</td></tr>
+    <tr><td>memcmp and wordcopy units, filcc -O0</td><td>trap (exit 133)</td><td>all checks passed</td></tr>
+  </table>
+  <claim status="tested" check="nix build -L -f nanofil/survey/glibc/regress.nix units locarch-stock locarch">
+    <p>The units check compiles both string units out of each source tree with filcc -O0 and links them into a driver: the stock units trap, the patched ones pass at -O0 and -O2. The locarch check runs nine crafted archives and category files against a glibc's own libc.so; the matrix above is its verdict for stock and patched. CI runs the units check on every push to nanofil's glibc paths (.github/workflows/nanofil-glibc.yml).</p>
+  </claim>
+  <p>One harness lesson cost a day of chasing: a program's arguments can choose which archive file the loader reads, but the loader itself comes from whichever libc.so the process maps, so a test must swap the library (LD_LIBRARY_PATH, verified with LD_DEBUG) before it tests a patched glibc. regress.nix's locarch check now refuses to run unless the intended libc.so was really mapped.</p>
+  <p>The Rocq campaign's fixtures stay captures of the unpatched units: capture.nix's <c>patches ? []</c> parameter opts in the three patches per capture, and locale/code.sh and MemcmpCode.v will opt in when the campaign regenerates them, so all 155 compiled rocq/glibc files stay cache-hit until then.</p>
+</block>

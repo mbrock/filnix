@@ -1,0 +1,920 @@
+Subject: Keep glibc string block pointers as pointers, not long int
+Origin: Filnix
+Upstream-Status: Not submitted
+
+Fil-C drops a pointer's capability the moment it is cast to an
+integer, so a pointer that crosses a call as a long int arrives dead:
+the callee rebuilds a pointer from the integer and any load through it
+stops the program with "filc safety error: cannot read pointer with
+null object".  string/memcmp.c passes its block pointers to the static
+alignment helpers that way, so memcmp of OP_T_THRES (16) bytes or more
+traps whenever the helpers are not inlined first: with filcc -O0, and
+with nanofil, which does not inline them.  filcc -O2 happens to inline
+memcmp_common_alignment and memcmp_not_common_alignment, which is why
+the release glibc worked.  This source already finds the first
+differing byte in memcmp_bytes arithmetically instead of through
+pointers rebuilt from long int, so the two helpers are the remaining
+sites that cast.
+
+string/wordcopy.c has the same pattern in all four _wordcopy_*
+helpers, and sysdeps/generic/memcopy.h declares them, and its
+WORD_COPY_* macros pass block pointers, as long int.  On x86_64 this
+glibc has no caller of the wordcopy helpers left (memcpy and memmove
+no longer use WORD_COPY_*), so nothing traps through them today, but
+the declarations still force every pointer through an integer.
+
+The pointers now travel as op_t pointers, and the integer arithmetic
+that remains, the alignment tests and the word rounding, stays inside
+one function on uintptr_t casts of them.  Passing uintptr_t itself
+across the call traps just the same way, so the parameter types are
+pointers.
+
+The regression check is the units check of
+nanofil/survey/glibc/regress.nix, which compiles both units with filcc
+-O0 and runs nanofil/survey/glibc/regress/driver.c: unpatched it traps
+(exit 133), patched it prints "all checks passed".
+
+--- a/string/memcmp.c
++++ b/string/memcmp.c
+@@ -24,6 +24,8 @@
+ # include <string.h>
+ #endif
+ 
++#include <stdint.h>
++
+ #undef memcmp
+ 
+ #ifndef MEMCMP
+@@ -98,13 +100,20 @@
+ }
+ #endif
+ 
+-static int memcmp_common_alignment (long, long, size_t) __THROW;
++/* The block pointers travel as pointers, not as long int: Fil-C drops the
++   capability when a pointer crosses a call as an integer, so the helpers
++   would read through pointers rebuilt from integers and trap.  Integer
++   arithmetic on the pointers stays within one function, on uintptr_t
++   casts of them.  */
++static int memcmp_common_alignment (const op_t *, const op_t *,
++				    size_t) __THROW;
+ 
+ /* memcmp_common_alignment -- Compare blocks at SRCP1 and SRCP2 with LEN `op_t'
+    objects (not LEN bytes!).  Both SRCP1 and SRCP2 should be aligned for
+    memory operations on `op_t's.  */
+ static int
+-memcmp_common_alignment (long int srcp1, long int srcp2, size_t len)
++memcmp_common_alignment (const op_t *srcp1, const op_t *srcp2,
++			 size_t len)
+ {
+   op_t a0, a1;
+   op_t b0, b1;
+@@ -113,30 +122,30 @@
+     {
+     default: /* Avoid warning about uninitialized local variables.  */
+     case 2:
+-      a0 = ((op_t *) srcp1)[0];
+-      b0 = ((op_t *) srcp2)[0];
+-      srcp1 -= 2 * OPSIZ;
+-      srcp2 -= 2 * OPSIZ;
++      a0 = srcp1[0];
++      b0 = srcp2[0];
++      srcp1 -= 2;
++      srcp2 -= 2;
+       len += 2;
+       goto do1;
+     case 3:
+-      a1 = ((op_t *) srcp1)[0];
+-      b1 = ((op_t *) srcp2)[0];
+-      srcp1 -= OPSIZ;
+-      srcp2 -= OPSIZ;
++      a1 = srcp1[0];
++      b1 = srcp2[0];
++      srcp1 -= 1;
++      srcp2 -= 1;
+       len += 1;
+       goto do2;
+     case 0:
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	return 0;
+-      a0 = ((op_t *) srcp1)[0];
+-      b0 = ((op_t *) srcp2)[0];
++      a0 = srcp1[0];
++      b0 = srcp2[0];
+       goto do3;
+     case 1:
+-      a1 = ((op_t *) srcp1)[0];
+-      b1 = ((op_t *) srcp2)[0];
+-      srcp1 += OPSIZ;
+-      srcp2 += OPSIZ;
++      a1 = srcp1[0];
++      b1 = srcp2[0];
++      srcp1 += 1;
++      srcp2 += 1;
+       len -= 1;
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	goto do0;
+@@ -145,31 +154,31 @@
+ 
+   do
+     {
+-      a0 = ((op_t *) srcp1)[0];
+-      b0 = ((op_t *) srcp2)[0];
++      a0 = srcp1[0];
++      b0 = srcp2[0];
+       if (a1 != b1)
+ 	return CMP_LT_OR_GT (a1, b1);
+ 
+     do3:
+-      a1 = ((op_t *) srcp1)[1];
+-      b1 = ((op_t *) srcp2)[1];
++      a1 = srcp1[1];
++      b1 = srcp2[1];
+       if (a0 != b0)
+ 	return CMP_LT_OR_GT (a0, b0);
+ 
+     do2:
+-      a0 = ((op_t *) srcp1)[2];
+-      b0 = ((op_t *) srcp2)[2];
++      a0 = srcp1[2];
++      b0 = srcp2[2];
+       if (a1 != b1)
+ 	return CMP_LT_OR_GT (a1, b1);
+ 
+     do1:
+-      a1 = ((op_t *) srcp1)[3];
+-      b1 = ((op_t *) srcp2)[3];
++      a1 = srcp1[3];
++      b1 = srcp2[3];
+       if (a0 != b0)
+ 	return CMP_LT_OR_GT (a0, b0);
+ 
+-      srcp1 += 4 * OPSIZ;
+-      srcp2 += 4 * OPSIZ;
++      srcp1 += 4;
++      srcp2 += 4;
+       len -= 4;
+     }
+   while (len != 0);
+@@ -182,13 +191,15 @@
+   return 0;
+ }
+ 
+-static int memcmp_not_common_alignment (long, long, size_t) __THROW;
++static int memcmp_not_common_alignment (const op_t *, const op_t *,
++					 size_t) __THROW;
+ 
+ /* memcmp_not_common_alignment -- Compare blocks at SRCP1 and SRCP2 with LEN
+    `op_t' objects (not LEN bytes!).  SRCP2 should be aligned for memory
+    operations on `op_t', but SRCP1 *should be unaligned*.  */
+ static int
+-memcmp_not_common_alignment (long int srcp1, long int srcp2, size_t len)
++memcmp_not_common_alignment (const op_t *srcp1, const op_t *srcp2,
++				  size_t len)
+ {
+   op_t a0, a1, a2, a3;
+   op_t b0, b1, b2, b3;
+@@ -198,45 +209,45 @@
+   /* Calculate how to shift a word read at the memory operation
+      aligned srcp1 to make it aligned for comparison.  */
+ 
+-  shl = 8 * (srcp1 % OPSIZ);
++  shl = 8 * ((uintptr_t) srcp1 % OPSIZ);
+   shr = 8 * OPSIZ - shl;
+ 
+   /* Make SRCP1 aligned by rounding it down to the beginning of the `op_t'
+      it points in the middle of.  */
+-  srcp1 &= -OPSIZ;
++  srcp1 = (const op_t *) ((uintptr_t) srcp1 & -OPSIZ);
+ 
+   switch (len % 4)
+     {
+     default: /* Avoid warning about uninitialized local variables.  */
+     case 2:
+-      a1 = ((op_t *) srcp1)[0];
+-      a2 = ((op_t *) srcp1)[1];
+-      b2 = ((op_t *) srcp2)[0];
+-      srcp1 -= 1 * OPSIZ;
+-      srcp2 -= 2 * OPSIZ;
++      a1 = srcp1[0];
++      a2 = srcp1[1];
++      b2 = srcp2[0];
++      srcp1 -= 1;
++      srcp2 -= 2;
+       len += 2;
+       goto do1;
+     case 3:
+-      a0 = ((op_t *) srcp1)[0];
+-      a1 = ((op_t *) srcp1)[1];
+-      b1 = ((op_t *) srcp2)[0];
+-      srcp2 -= 1 * OPSIZ;
++      a0 = srcp1[0];
++      a1 = srcp1[1];
++      b1 = srcp2[0];
++      srcp2 -= 1;
+       len += 1;
+       goto do2;
+     case 0:
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	return 0;
+-      a3 = ((op_t *) srcp1)[0];
+-      a0 = ((op_t *) srcp1)[1];
+-      b0 = ((op_t *) srcp2)[0];
+-      srcp1 += 1 * OPSIZ;
++      a3 = srcp1[0];
++      a0 = srcp1[1];
++      b0 = srcp2[0];
++      srcp1 += 1;
+       goto do3;
+     case 1:
+-      a2 = ((op_t *) srcp1)[0];
+-      a3 = ((op_t *) srcp1)[1];
+-      b3 = ((op_t *) srcp2)[0];
+-      srcp1 += 2 * OPSIZ;
+-      srcp2 += 1 * OPSIZ;
++      a2 = srcp1[0];
++      a3 = srcp1[1];
++      b3 = srcp2[0];
++      srcp1 += 2;
++      srcp2 += 1;
+       len -= 1;
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	goto do0;
+@@ -245,35 +256,35 @@
+ 
+   do
+     {
+-      a0 = ((op_t *) srcp1)[0];
+-      b0 = ((op_t *) srcp2)[0];
++      a0 = srcp1[0];
++      b0 = srcp2[0];
+       x = MERGE(a2, shl, a3, shr);
+       if (x != b3)
+ 	return CMP_LT_OR_GT (x, b3);
+ 
+     do3:
+-      a1 = ((op_t *) srcp1)[1];
+-      b1 = ((op_t *) srcp2)[1];
++      a1 = srcp1[1];
++      b1 = srcp2[1];
+       x = MERGE(a3, shl, a0, shr);
+       if (x != b0)
+ 	return CMP_LT_OR_GT (x, b0);
+ 
+     do2:
+-      a2 = ((op_t *) srcp1)[2];
+-      b2 = ((op_t *) srcp2)[2];
++      a2 = srcp1[2];
++      b2 = srcp2[2];
+       x = MERGE(a0, shl, a1, shr);
+       if (x != b1)
+ 	return CMP_LT_OR_GT (x, b1);
+ 
+     do1:
+-      a3 = ((op_t *) srcp1)[3];
+-      b3 = ((op_t *) srcp2)[3];
++      a3 = srcp1[3];
++      b3 = srcp2[3];
+       x = MERGE(a1, shl, a2, shr);
+       if (x != b2)
+ 	return CMP_LT_OR_GT (x, b2);
+ 
+-      srcp1 += 4 * OPSIZ;
+-      srcp2 += 4 * OPSIZ;
++      srcp1 += 4;
++      srcp2 += 4;
+       len -= 4;
+     }
+   while (len != 0);
+@@ -292,18 +303,18 @@
+ {
+   op_t a0;
+   op_t b0;
+-  long int srcp1 = (long int) s1;
+-  long int srcp2 = (long int) s2;
++  const byte *srcp1 = (const byte *) s1;
++  const byte *srcp2 = (const byte *) s2;
+   op_t res;
+ 
+   if (len >= OP_T_THRES)
+     {
+       /* There are at least some bytes to compare.  No need to test
+ 	 for LEN == 0 in this alignment loop.  */
+-      while (srcp2 % OPSIZ != 0)
++      while ((uintptr_t) srcp2 % OPSIZ != 0)
+ 	{
+-	  a0 = ((byte *) srcp1)[0];
+-	  b0 = ((byte *) srcp2)[0];
++	  a0 = srcp1[0];
++	  b0 = srcp2[0];
+ 	  srcp1 += 1;
+ 	  srcp2 += 1;
+ 	  res = a0 - b0;
+@@ -316,10 +327,12 @@
+ 	 SRCP1 alignment determines if we can do a simple,
+ 	 aligned compare or need to shuffle bits.  */
+ 
+-      if (srcp1 % OPSIZ == 0)
+-	res = memcmp_common_alignment (srcp1, srcp2, len / OPSIZ);
++      if ((uintptr_t) srcp1 % OPSIZ == 0)
++	res = memcmp_common_alignment ((const op_t *) srcp1, (const op_t *) srcp2,
++				       len / OPSIZ);
+       else
+-	res = memcmp_not_common_alignment (srcp1, srcp2, len / OPSIZ);
++	res = memcmp_not_common_alignment ((const op_t *) srcp1, (const op_t *) srcp2,
++					   len / OPSIZ);
+       if (res != 0)
+ 	return res;
+ 
+@@ -332,8 +345,8 @@
+   /* There are just a few bytes to compare.  Use byte memory operations.  */
+   while (len != 0)
+     {
+-      a0 = ((byte *) srcp1)[0];
+-      b0 = ((byte *) srcp2)[0];
++      a0 = srcp1[0];
++      b0 = srcp2[0];
+       srcp1 += 1;
+       srcp2 += 1;
+       res = a0 - b0;
+--- a/string/wordcopy.c
++++ b/string/wordcopy.c
+@@ -18,7 +18,14 @@
+ 
+ /* BE VERY CAREFUL IF YOU CHANGE THIS CODE...!  */
+ 
++/* DSTP and SRCP travel as pointers, not as long int: Fil-C drops the
++   capability when a pointer crosses a call as an integer, so these
++   helpers would read and write through pointers rebuilt from integers
++   and trap.  The pointers stay op_t pointers and integer arithmetic
++   happens inside one function, on uintptr_t casts of them.  */
++
+ #include <stddef.h>
++#include <stdint.h>
+ #include <libc-diag.h>
+ /* Compiling with -O1 might warn that 'a2' and 'a3' may be used
+    uninitialized.  There are only two ways to arrive at labels 'do4', 'do3'
+@@ -39,60 +46,60 @@
+ #endif
+ 
+ void
+-WORDCOPY_FWD_ALIGNED (long int dstp, long int srcp, size_t len)
++WORDCOPY_FWD_ALIGNED (op_t *dstp, const op_t *srcp, size_t len)
+ {
+   op_t a0, a1;
+ 
+   switch (len % 8)
+     {
+     case 2:
+-      a0 = ((op_t *) srcp)[0];
+-      srcp -= 6 * OPSIZ;
+-      dstp -= 7 * OPSIZ;
++      a0 = srcp[0];
++      srcp -= 6;
++      dstp -= 7;
+       len += 6;
+       goto do1;
+     case 3:
+-      a1 = ((op_t *) srcp)[0];
+-      srcp -= 5 * OPSIZ;
+-      dstp -= 6 * OPSIZ;
++      a1 = srcp[0];
++      srcp -= 5;
++      dstp -= 6;
+       len += 5;
+       goto do2;
+     case 4:
+-      a0 = ((op_t *) srcp)[0];
+-      srcp -= 4 * OPSIZ;
+-      dstp -= 5 * OPSIZ;
++      a0 = srcp[0];
++      srcp -= 4;
++      dstp -= 5;
+       len += 4;
+       goto do3;
+     case 5:
+-      a1 = ((op_t *) srcp)[0];
+-      srcp -= 3 * OPSIZ;
+-      dstp -= 4 * OPSIZ;
++      a1 = srcp[0];
++      srcp -= 3;
++      dstp -= 4;
+       len += 3;
+       goto do4;
+     case 6:
+-      a0 = ((op_t *) srcp)[0];
+-      srcp -= 2 * OPSIZ;
+-      dstp -= 3 * OPSIZ;
++      a0 = srcp[0];
++      srcp -= 2;
++      dstp -= 3;
+       len += 2;
+       goto do5;
+     case 7:
+-      a1 = ((op_t *) srcp)[0];
+-      srcp -= 1 * OPSIZ;
+-      dstp -= 2 * OPSIZ;
++      a1 = srcp[0];
++      srcp -= 1;
++      dstp -= 2;
+       len += 1;
+       goto do6;
+ 
+     case 0:
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	return;
+-      a0 = ((op_t *) srcp)[0];
+-      srcp -= 0 * OPSIZ;
+-      dstp -= 1 * OPSIZ;
++      a0 = srcp[0];
++      srcp -= 0;
++      dstp -= 1;
+       goto do7;
+     case 1:
+-      a1 = ((op_t *) srcp)[0];
+-      srcp -=-1 * OPSIZ;
+-      dstp -= 0 * OPSIZ;
++      a1 = srcp[0];
++      srcp += 1;
++      dstp -= 0;
+       len -= 1;
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	goto do0;
+@@ -102,37 +109,37 @@
+   do
+     {
+     do8:
+-      a0 = ((op_t *) srcp)[0];
++      a0 = srcp[0];
+       /* Compiling with -O1 may warn that 'a1' may be used uninitialized.
+ 	 There are only two ways to arrive at label 'do8' and they are via a
+ 	 do-while loop iteration or directly via the earlier switch 'case 1:'
+ 	 case. The switch case always sets 'a1' and all previous loop
+ 	 iterations will also have set 'a1' before the use.  */
+-      ((op_t *) dstp)[0] = a1;
++      dstp[0] = a1;
+     do7:
+-      a1 = ((op_t *) srcp)[1];
+-      ((op_t *) dstp)[1] = a0;
++      a1 = srcp[1];
++      dstp[1] = a0;
+     do6:
+-      a0 = ((op_t *) srcp)[2];
+-      ((op_t *) dstp)[2] = a1;
++      a0 = srcp[2];
++      dstp[2] = a1;
+     do5:
+-      a1 = ((op_t *) srcp)[3];
+-      ((op_t *) dstp)[3] = a0;
++      a1 = srcp[3];
++      dstp[3] = a0;
+     do4:
+-      a0 = ((op_t *) srcp)[4];
+-      ((op_t *) dstp)[4] = a1;
++      a0 = srcp[4];
++      dstp[4] = a1;
+     do3:
+-      a1 = ((op_t *) srcp)[5];
+-      ((op_t *) dstp)[5] = a0;
++      a1 = srcp[5];
++      dstp[5] = a0;
+     do2:
+-      a0 = ((op_t *) srcp)[6];
+-      ((op_t *) dstp)[6] = a1;
++      a0 = srcp[6];
++      dstp[6] = a1;
+     do1:
+-      a1 = ((op_t *) srcp)[7];
+-      ((op_t *) dstp)[7] = a0;
++      a1 = srcp[7];
++      dstp[7] = a0;
+ 
+-      srcp += 8 * OPSIZ;
+-      dstp += 8 * OPSIZ;
++      srcp += 8;
++      dstp += 8;
+       len -= 8;
+     }
+   while (len != 0);
+@@ -140,7 +147,7 @@
+   /* This is the right position for do0.  Please don't move
+      it into the loop.  */
+  do0:
+-  ((op_t *) dstp)[0] = a1;
++  dstp[0] = a1;
+ }
+ 
+ /* _wordcopy_fwd_dest_aligned -- Copy block beginning at SRCP to
+@@ -153,7 +160,7 @@
+ #endif
+ 
+ void
+-WORDCOPY_FWD_DEST_ALIGNED (long int dstp, long int srcp, size_t len)
++WORDCOPY_FWD_DEST_ALIGNED (op_t *dstp, const op_t *srcp, size_t len)
+ {
+   op_t a0, a1, a2, a3;
+   int sh_1, sh_2;
+@@ -161,43 +168,43 @@
+   /* Calculate how to shift a word read at the memory operation
+      aligned srcp to make it aligned for copy.  */
+ 
+-  sh_1 = 8 * (srcp % OPSIZ);
++  sh_1 = 8 * ((uintptr_t) srcp % OPSIZ);
+   sh_2 = 8 * OPSIZ - sh_1;
+ 
+   /* Make SRCP aligned by rounding it down to the beginning of the `op_t'
+      it points in the middle of.  */
+-  srcp &= -OPSIZ;
++  srcp = (const op_t *) ((uintptr_t) srcp & -OPSIZ);
+ 
+   switch (len % 4)
+     {
+     case 2:
+-      a1 = ((op_t *) srcp)[0];
+-      a2 = ((op_t *) srcp)[1];
+-      srcp -= 1 * OPSIZ;
+-      dstp -= 3 * OPSIZ;
++      a1 = srcp[0];
++      a2 = srcp[1];
++      srcp -= 1;
++      dstp -= 3;
+       len += 2;
+       goto do1;
+     case 3:
+-      a0 = ((op_t *) srcp)[0];
+-      a1 = ((op_t *) srcp)[1];
+-      srcp -= 0 * OPSIZ;
+-      dstp -= 2 * OPSIZ;
++      a0 = srcp[0];
++      a1 = srcp[1];
++      srcp -= 0;
++      dstp -= 2;
+       len += 1;
+       goto do2;
+     case 0:
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	return;
+-      a3 = ((op_t *) srcp)[0];
+-      a0 = ((op_t *) srcp)[1];
+-      srcp -=-1 * OPSIZ;
+-      dstp -= 1 * OPSIZ;
++      a3 = srcp[0];
++      a0 = srcp[1];
++      srcp += 1;
++      dstp -= 1;
+       len += 0;
+       goto do3;
+     case 1:
+-      a2 = ((op_t *) srcp)[0];
+-      a3 = ((op_t *) srcp)[1];
+-      srcp -=-2 * OPSIZ;
+-      dstp -= 0 * OPSIZ;
++      a2 = srcp[0];
++      a3 = srcp[1];
++      srcp += 2;
++      dstp -= 0;
+       len -= 1;
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	goto do0;
+@@ -207,20 +214,20 @@
+   do
+     {
+     do4:
+-      a0 = ((op_t *) srcp)[0];
+-      ((op_t *) dstp)[0] = MERGE (a2, sh_1, a3, sh_2);
++      a0 = srcp[0];
++      dstp[0] = MERGE (a2, sh_1, a3, sh_2);
+     do3:
+-      a1 = ((op_t *) srcp)[1];
+-      ((op_t *) dstp)[1] = MERGE (a3, sh_1, a0, sh_2);
++      a1 = srcp[1];
++      dstp[1] = MERGE (a3, sh_1, a0, sh_2);
+     do2:
+-      a2 = ((op_t *) srcp)[2];
+-      ((op_t *) dstp)[2] = MERGE (a0, sh_1, a1, sh_2);
++      a2 = srcp[2];
++      dstp[2] = MERGE (a0, sh_1, a1, sh_2);
+     do1:
+-      a3 = ((op_t *) srcp)[3];
+-      ((op_t *) dstp)[3] = MERGE (a1, sh_1, a2, sh_2);
++      a3 = srcp[3];
++      dstp[3] = MERGE (a1, sh_1, a2, sh_2);
+ 
+-      srcp += 4 * OPSIZ;
+-      dstp += 4 * OPSIZ;
++      srcp += 4;
++      dstp += 4;
+       len -= 4;
+     }
+   while (len != 0);
+@@ -228,7 +235,7 @@
+   /* This is the right position for do0.  Please don't move
+      it into the loop.  */
+  do0:
+-  ((op_t *) dstp)[0] = MERGE (a2, sh_1, a3, sh_2);
++  dstp[0] = MERGE (a2, sh_1, a3, sh_2);
+ }
+ 
+ /* _wordcopy_bwd_aligned -- Copy block finishing right before
+@@ -241,60 +248,60 @@
+ #endif
+ 
+ void
+-WORDCOPY_BWD_ALIGNED (long int dstp, long int srcp, size_t len)
++WORDCOPY_BWD_ALIGNED (op_t *dstp, const op_t *srcp, size_t len)
+ {
+   op_t a0, a1;
+ 
+   switch (len % 8)
+     {
+     case 2:
+-      srcp -= 2 * OPSIZ;
+-      dstp -= 1 * OPSIZ;
+-      a0 = ((op_t *) srcp)[1];
++      srcp -= 2;
++      dstp -= 1;
++      a0 = srcp[1];
+       len += 6;
+       goto do1;
+     case 3:
+-      srcp -= 3 * OPSIZ;
+-      dstp -= 2 * OPSIZ;
+-      a1 = ((op_t *) srcp)[2];
++      srcp -= 3;
++      dstp -= 2;
++      a1 = srcp[2];
+       len += 5;
+       goto do2;
+     case 4:
+-      srcp -= 4 * OPSIZ;
+-      dstp -= 3 * OPSIZ;
+-      a0 = ((op_t *) srcp)[3];
++      srcp -= 4;
++      dstp -= 3;
++      a0 = srcp[3];
+       len += 4;
+       goto do3;
+     case 5:
+-      srcp -= 5 * OPSIZ;
+-      dstp -= 4 * OPSIZ;
+-      a1 = ((op_t *) srcp)[4];
++      srcp -= 5;
++      dstp -= 4;
++      a1 = srcp[4];
+       len += 3;
+       goto do4;
+     case 6:
+-      srcp -= 6 * OPSIZ;
+-      dstp -= 5 * OPSIZ;
+-      a0 = ((op_t *) srcp)[5];
++      srcp -= 6;
++      dstp -= 5;
++      a0 = srcp[5];
+       len += 2;
+       goto do5;
+     case 7:
+-      srcp -= 7 * OPSIZ;
+-      dstp -= 6 * OPSIZ;
+-      a1 = ((op_t *) srcp)[6];
++      srcp -= 7;
++      dstp -= 6;
++      a1 = srcp[6];
+       len += 1;
+       goto do6;
+ 
+     case 0:
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	return;
+-      srcp -= 8 * OPSIZ;
+-      dstp -= 7 * OPSIZ;
+-      a0 = ((op_t *) srcp)[7];
++      srcp -= 8;
++      dstp -= 7;
++      a0 = srcp[7];
+       goto do7;
+     case 1:
+-      srcp -= 9 * OPSIZ;
+-      dstp -= 8 * OPSIZ;
+-      a1 = ((op_t *) srcp)[8];
++      srcp -= 9;
++      dstp -= 8;
++      a1 = srcp[8];
+       len -= 1;
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	goto do0;
+@@ -304,33 +311,33 @@
+   do
+     {
+     do8:
+-      a0 = ((op_t *) srcp)[7];
++      a0 = srcp[7];
+       /* Check the comment on WORDCOPY_FWD_ALIGNED.  */
+-      ((op_t *) dstp)[7] = a1;
++      dstp[7] = a1;
+     do7:
+-      a1 = ((op_t *) srcp)[6];
+-      ((op_t *) dstp)[6] = a0;
++      a1 = srcp[6];
++      dstp[6] = a0;
+     do6:
+-      a0 = ((op_t *) srcp)[5];
+-      ((op_t *) dstp)[5] = a1;
++      a0 = srcp[5];
++      dstp[5] = a1;
+     do5:
+-      a1 = ((op_t *) srcp)[4];
+-      ((op_t *) dstp)[4] = a0;
++      a1 = srcp[4];
++      dstp[4] = a0;
+     do4:
+-      a0 = ((op_t *) srcp)[3];
+-      ((op_t *) dstp)[3] = a1;
++      a0 = srcp[3];
++      dstp[3] = a1;
+     do3:
+-      a1 = ((op_t *) srcp)[2];
+-      ((op_t *) dstp)[2] = a0;
++      a1 = srcp[2];
++      dstp[2] = a0;
+     do2:
+-      a0 = ((op_t *) srcp)[1];
+-      ((op_t *) dstp)[1] = a1;
++      a0 = srcp[1];
++      dstp[1] = a1;
+     do1:
+-      a1 = ((op_t *) srcp)[0];
+-      ((op_t *) dstp)[0] = a0;
++      a1 = srcp[0];
++      dstp[0] = a0;
+ 
+-      srcp -= 8 * OPSIZ;
+-      dstp -= 8 * OPSIZ;
++      srcp -= 8;
++      dstp -= 8;
+       len -= 8;
+     }
+   while (len != 0);
+@@ -338,7 +345,7 @@
+   /* This is the right position for do0.  Please don't move
+      it into the loop.  */
+  do0:
+-  ((op_t *) dstp)[7] = a1;
++  dstp[7] = a1;
+ }
+ 
+ /* _wordcopy_bwd_dest_aligned -- Copy block finishing right
+@@ -351,7 +358,7 @@
+ #endif
+ 
+ void
+-WORDCOPY_BWD_DEST_ALIGNED (long int dstp, long int srcp, size_t len)
++WORDCOPY_BWD_DEST_ALIGNED (op_t *dstp, const op_t *srcp, size_t len)
+ {
+   op_t a0, a1, a2, a3;
+   int sh_1, sh_2;
+@@ -359,43 +366,43 @@
+   /* Calculate how to shift a word read at the memory operation
+      aligned srcp to make it aligned for copy.  */
+ 
+-  sh_1 = 8 * (srcp % OPSIZ);
++  sh_1 = 8 * ((uintptr_t) srcp % OPSIZ);
+   sh_2 = 8 * OPSIZ - sh_1;
+ 
+   /* Make srcp aligned by rounding it down to the beginning of the op_t
+      it points in the middle of.  */
+-  srcp &= -OPSIZ;
+-  srcp += OPSIZ;
++  srcp = (const op_t *) ((uintptr_t) srcp & -OPSIZ);
++  srcp += 1;
+ 
+   switch (len % 4)
+     {
+     case 2:
+-      srcp -= 3 * OPSIZ;
+-      dstp -= 1 * OPSIZ;
+-      a2 = ((op_t *) srcp)[2];
+-      a1 = ((op_t *) srcp)[1];
++      srcp -= 3;
++      dstp -= 1;
++      a2 = srcp[2];
++      a1 = srcp[1];
+       len += 2;
+       goto do1;
+     case 3:
+-      srcp -= 4 * OPSIZ;
+-      dstp -= 2 * OPSIZ;
+-      a3 = ((op_t *) srcp)[3];
+-      a2 = ((op_t *) srcp)[2];
++      srcp -= 4;
++      dstp -= 2;
++      a3 = srcp[3];
++      a2 = srcp[2];
+       len += 1;
+       goto do2;
+     case 0:
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	return;
+-      srcp -= 5 * OPSIZ;
+-      dstp -= 3 * OPSIZ;
+-      a0 = ((op_t *) srcp)[4];
+-      a3 = ((op_t *) srcp)[3];
++      srcp -= 5;
++      dstp -= 3;
++      a0 = srcp[4];
++      a3 = srcp[3];
+       goto do3;
+     case 1:
+-      srcp -= 6 * OPSIZ;
+-      dstp -= 4 * OPSIZ;
+-      a1 = ((op_t *) srcp)[5];
+-      a0 = ((op_t *) srcp)[4];
++      srcp -= 6;
++      dstp -= 4;
++      a1 = srcp[5];
++      a0 = srcp[4];
+       len -= 1;
+       if (OP_T_THRES <= 3 * OPSIZ && len == 0)
+ 	goto do0;
+@@ -405,20 +412,20 @@
+   do
+     {
+     do4:
+-      a3 = ((op_t *) srcp)[3];
+-      ((op_t *) dstp)[3] = MERGE (a0, sh_1, a1, sh_2);
++      a3 = srcp[3];
++      dstp[3] = MERGE (a0, sh_1, a1, sh_2);
+     do3:
+-      a2 = ((op_t *) srcp)[2];
+-      ((op_t *) dstp)[2] = MERGE (a3, sh_1, a0, sh_2);
++      a2 = srcp[2];
++      dstp[2] = MERGE (a3, sh_1, a0, sh_2);
+     do2:
+-      a1 = ((op_t *) srcp)[1];
+-      ((op_t *) dstp)[1] = MERGE (a2, sh_1, a3, sh_2);
++      a1 = srcp[1];
++      dstp[1] = MERGE (a2, sh_1, a3, sh_2);
+     do1:
+-      a0 = ((op_t *) srcp)[0];
+-      ((op_t *) dstp)[0] = MERGE (a1, sh_1, a2, sh_2);
++      a0 = srcp[0];
++      dstp[0] = MERGE (a1, sh_1, a2, sh_2);
+ 
+-      srcp -= 4 * OPSIZ;
+-      dstp -= 4 * OPSIZ;
++      srcp -= 4;
++      dstp -= 4;
+       len -= 4;
+     }
+   while (len != 0);
+@@ -426,5 +433,5 @@
+   /* This is the right position for do0.  Please don't move
+      it into the loop.  */
+  do0:
+-  ((op_t *) dstp)[3] = MERGE (a0, sh_1, a1, sh_2);
++  dstp[3] = MERGE (a0, sh_1, a1, sh_2);
+ }
+--- a/sysdeps/generic/memcopy.h
++++ b/sysdeps/generic/memcopy.h
+@@ -40,6 +40,7 @@
+ #include <sys/cdefs.h>
+ #include <endian.h>
+ #include <pagecopy.h>
++#include <stdint.h>
+ 
+ /* The macros defined in this file are:
+ 
+@@ -109,14 +110,14 @@
+    the assumption that DST_BP is aligned on an OPSIZ multiple.  If
+    not all bytes could be easily copied, store remaining number of bytes
+    in NBYTES_LEFT, otherwise store 0.  */
+-extern void _wordcopy_fwd_aligned (long int, long int, size_t)
++extern void _wordcopy_fwd_aligned (op_t *, const op_t *, size_t)
+   attribute_hidden __THROW;
+-extern void _wordcopy_fwd_dest_aligned (long int, long int, size_t)
++extern void _wordcopy_fwd_dest_aligned (op_t *, const op_t *, size_t)
+   attribute_hidden __THROW;
+ #define WORD_COPY_FWD(dst_bp, src_bp, nbytes_left, nbytes)		      \
+   do									      \
+     {									      \
+-      if (src_bp % OPSIZ == 0)						      \
++      if ((uintptr_t) (src_bp) % OPSIZ == 0)				      \
+ 	_wordcopy_fwd_aligned (dst_bp, src_bp, (nbytes) / OPSIZ);	      \
+       else								      \
+ 	_wordcopy_fwd_dest_aligned (dst_bp, src_bp, (nbytes) / OPSIZ);	      \
+@@ -131,14 +132,14 @@
+    DST_END_PTR is aligned on an OPSIZ multiple.  If not all bytes could be
+    easily copied, store remaining number of bytes in NBYTES_REMAINING,
+    otherwise store 0.  */
+-extern void _wordcopy_bwd_aligned (long int, long int, size_t)
++extern void _wordcopy_bwd_aligned (op_t *, const op_t *, size_t)
+   attribute_hidden __THROW;
+-extern void _wordcopy_bwd_dest_aligned (long int, long int, size_t)
++extern void _wordcopy_bwd_dest_aligned (op_t *, const op_t *, size_t)
+   attribute_hidden __THROW;
+ #define WORD_COPY_BWD(dst_ep, src_ep, nbytes_left, nbytes)		      \
+   do									      \
+     {									      \
+-      if (src_ep % OPSIZ == 0)						      \
++      if ((uintptr_t) (src_ep) % OPSIZ == 0)				      \
+ 	_wordcopy_bwd_aligned (dst_ep, src_ep, (nbytes) / OPSIZ);	      \
+       else								      \
+ 	_wordcopy_bwd_dest_aligned (dst_ep, src_ep, (nbytes) / OPSIZ);	      \

@@ -1,17 +1,21 @@
-# User glibc with some of its units compiled by nanofil, and programs
-# run against it and against the stock one (docs/zsys.md, *Running
-# nanofil's glibc*). By hand, not CI: the glibc build takes a while.
+# This file builds user glibc with some of its units compiled by
+# nanofil, and runs programs against it and against the stock one
+# (docs/zsys.md, *Running nanofil's glibc*). It runs by hand, not in
+# CI, because the glibc build takes a while.
 #
 #   nix build -f nanofil/survey/glibc/mixed.nix check -o /tmp/glibc-mixed-check
 #   nix build -f nanofil/survey/glibc/mixed.nix glibc -o /tmp/glibc-mixed
 #
-# glibc is the staging toolchain's own filc-glibc, rebuilt with one
-# change: CC is a wrapper that, for each unit named in units (paths
-# under the build directory, such as string/strlen.os), compiles the
-# preprocessed unit with nanofil (opt, -O by default) and assembles it
-# with GNU as over filcc's object; every other compile is filcc's. The
-# units may be ordinary .c files or the syscall stubs make-syscalls.sh
-# pipes in on stdin.
+# glibc is the staging toolchain's own filc-glibc, rebuilt with two
+# changes: its source carries the Fil-C fixes in patches/ (pointer-
+# carrying string units, locale loader input validation; the stock
+# derivation and its store path stay untouched, and capture.nix keeps
+# its captures of the unpatched units), and CC is a wrapper that, for
+# each unit named in units (paths under the build directory, such as
+# string/strlen.os), compiles the preprocessed unit with nanofil (opt,
+# -O by default) and assembles it with GNU as over filcc's object;
+# every other compile is filcc's. The units may be ordinary .c files
+# or the syscall stubs make-syscalls.sh pipes in on stdin.
 # glibc's own make then links libc.so from them. Each unit nanofil
 # compiles is listed in $out/nanofil/compiled, any it fails on (which
 # keep filcc's object) in $out/nanofil/failed.
@@ -25,6 +29,12 @@
 {
   repo ? ../../..,
   units ? ./run/units.txt,
+  # The Fil-C fixes, applied over the stock derivation's own patches.
+  glibcPatches ? [
+    ./patches/filc-glibc-string-pointers.patch
+    ./patches/filc-glibc-loadarchive-validate.patch
+    ./patches/filc-glibc-loadlocale-validate.patch
+  ],
   opt ? "-O",
   pkgs ? import (builtins.getFlake (toString repo)).inputs.nixpkgs {
     system = "x86_64-linux";
@@ -105,6 +115,7 @@ let
   '';
   glibc = stock.overrideAttrs (old: {
     pname = "filc-glibc-nanofil";
+    patches = (old.patches or [ ]) ++ glibcPatches;
     nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.swi-prolog ];
     preConfigure = old.preConfigure + ''
       export GLIBC_MIXED_CC="$CC"
@@ -147,7 +158,7 @@ let
       ${pkgs.lib.concatMapStrings (
         a: "printf '%s\\n' ${pkgs.lib.escapeShellArg "hello ${a}"}\n"
       ) hellos}
-      for p in strings stdio floats malloc sys; do echo $p; done
+      for p in strings stdio floats malloc sys mem16; do echo $p; done
       for a in "" 3 a q; do echo "exit $a"; done
     } >invocations
     run() {

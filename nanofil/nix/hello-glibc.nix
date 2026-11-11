@@ -1,7 +1,11 @@
-# GNU Hello and its reached user glibc compiled by nanofil -O, together.
-# The mixed builder falls back to filcc on failure; this check forbids
-# that, checks the exact unit set (including libc_nonshared's atexit),
-# and verifies which libc the loader actually maps.
+# This check builds GNU Hello and the user glibc it reaches with
+# nanofil -O, together.  The mixed builder falls back to filcc on
+# failure; this check forbids that, checks the exact unit set
+# (including libc_nonshared's atexit), and verifies which libc the
+# loader actually maps. The glibc it builds
+# carries the Fil-C source fixes (mixed.nix's glibcPatches), so the
+# regression programs run against it too: mem16 for the string units,
+# locarch for the locale loader.
 {
   pkgs,
   filcc,
@@ -116,11 +120,28 @@ pkgs.runCommandCC "nanofil-hello-glibc" { inherit src; } ''
   FUGC_SCRIBBLE=1 FUGC_VERIFY=1 run_all >$out/nanofil-gc.out
   diff -u ${reference}/ref.out $out/nanofil-gc.out
   echo "matches filcc on ''${#invocations[@]} invocations, plain and GC-verified"
+
+  # The Fil-C source fixes, through this glibc's own libc.so: the
+  # 16-byte string calls (its memcmp unit is nanofil's), and the locale
+  # loader's harness, whose nine modes must all load or refuse cleanly
+  # (regress.nix's locarch-stock holds the unpatched picture).
+  ${filcc}/bin/clang -O1 -fno-builtin -o mem16 ${../survey/glibc/run/mem16.c}
+  ${filcc}/bin/clang -O1 -fno-builtin -o locarch ${../survey/glibc/regress/locarch.c}
+  ./mem16 >$out/mem16.out
+  grep -q '^eq: 1 1 1$' $out/mem16.out && grep -q '^copies: 12 1 1 1$' $out/mem16.out ||
+    { cat $out/mem16.out; exit 1; }
+  modes="control archive-valid archive-loop archive-nonul archive-name-oob archive-locrec-oob archive-record-wrap file-idx-eof file-nonul"
+  for m in $modes; do
+    mkdir -p work/$m
+    timeout 30 ./locarch ${glibc}/lib/locale work/$m $m >$out/locarch-$m.out 2>&1 ||
+      { echo "locarch mode $m failed:"; cat $out/locarch-$m.out; exit 1; }
+  done
+  echo "mem16 and all 9 locarch modes clean against this glibc"
   make check CC=${cc} >$out/check.log 2>&1 ||
     { cat $out/check.log test-suite.log; exit 1; }
   FUGC_SCRIBBLE=1 FUGC_VERIFY=1 make check CC=${cc} >$out/check-gc.log 2>&1 ||
     { cat $out/check-gc.log test-suite.log; exit 1; }
   cat $out/check.log $out/check-gc.log
-  echo "321 glibc units, $compiled/$objects Hello objects, 0 failures; 24 invocations and both make checks agree" |
+  echo "321 glibc units, $compiled/$objects Hello objects, 0 failures; 24 invocations, both make checks, mem16 and 9 locarch modes agree" |
     tee $out/verdict
 ''

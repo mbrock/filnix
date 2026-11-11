@@ -1,5 +1,6 @@
-# User glibc's translation units, as filcc compiled them, for the
-# by-hand experiment of compiling them with nanofil (docs/zsys.md).
+# This file captures user glibc's translation units as filcc compiled
+# them, for the by-hand experiment of compiling them with nanofil
+# (docs/zsys.md).
 #
 #   nix build -f nanofil/survey/glibc/capture.nix -o /tmp/glibc-pp
 #
@@ -10,8 +11,14 @@
 # command. OBJ is the object's path under the build directory, such as
 # string/strlen.os. The compile itself is unchanged, so the glibc built
 # is the toolchain's. The output holds only the captures.
+#
+# The captures stay of the unpatched units by default: the Rocq glibc
+# proofs are built from them (nanofil/nix/glibc.nix), and regenerating
+# their fixtures is the glibc campaign's call. Pass patches to capture
+# the patched source instead, for example the three in patches/.
 {
   repo ? ../../..,
+  patches ? [ ],
 }:
 let
   flake = builtins.getFlake (toString repo);
@@ -73,6 +80,7 @@ let
 in
 glibc.overrideAttrs (old: {
   pname = "filc-glibc-pp";
+  patches = (old.patches or [ ]) ++ patches;
   preConfigure = old.preConfigure + ''
     export CC="${wrap} $CC"
   '';

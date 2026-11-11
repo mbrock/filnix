@@ -1,0 +1,58 @@
+Subject: Check locale file string and word offsets against the file size
+Origin: Filnix
+Upstream-Status: Not submitted
+
+_nl_intern_locale_data checks each index of a locale file's strindex
+array only with idx > filesize, which admits idx == filesize and any
+word whose four bytes then read past the end of the mapped file; a
+string index is stored without checking that a NUL terminates the
+string inside the file.  Under Fil-C the out-of-bounds read stops the
+program with a safety trap.
+
+Every index must now be strictly inside the file, a string must be
+NUL-terminated within the file (memchr bounded by filesize - idx), and
+a word's four bytes must fit (idx + sizeof (uint32_t) <= filesize).
+A bad file fails with EINVAL, which the loader reports as a clean
+failure to load the locale.
+
+The regression check is the locarch check of
+nanofil/survey/glibc/regress.nix (regress/locarch.c), the same harness
+that checks the archive loader.
+
+--- a/locale/loadlocale.c	2026-11-11 14:27:20.978120887 +0000
++++ b/locale/loadlocale.c	2026-11-11 14:27:20.982120945 +0000
+@@ -172,7 +172,11 @@
+   for (cnt = 0; cnt < newdata->nstrings; ++cnt)
+     {
+       size_t idx = filedata->strindex[cnt];
+-      if (__glibc_unlikely (idx > (size_t) newdata->filesize))
++      /* Every value must lie strictly inside the file: a word needs
++	 its four bytes, and a string must be NUL-terminated within
++	 the file, or the readers of the value read past the mapped
++	 region.  */
++      if (__glibc_unlikely (idx >= (size_t) newdata->filesize))
+ 	{
+ 	puntdata:
+ 	  free (newdata);
+@@ -211,10 +215,19 @@
+ 	   && cnt >= (sizeof (_nl_value_type_LC_CTYPE)
+ 		      / sizeof (_nl_value_type_LC_CTYPE[0])))
+ 	  || __builtin_expect (_nl_value_types[category][cnt] != word, 1))
+-	newdata->values[cnt].string = newdata->filedata + idx;
++	{
++	  /* The string must be NUL-terminated within the file.  */
++	  if (__glibc_unlikely
++	      (memchr ((const char *) filedata + idx, '\0',
++		       (size_t) newdata->filesize - idx) == NULL))
++	    goto puntdata;
++	  newdata->values[cnt].string = newdata->filedata + idx;
++	}
+       else
+ 	{
+-	  if (!LOCFILE_ALIGNED_P (idx))
++	  if (!LOCFILE_ALIGNED_P (idx)
++	      || __glibc_unlikely (idx + sizeof (uint32_t)
++				   > (size_t) newdata->filesize))
+ 	    goto puntdata;
+ 	  newdata->values[cnt].word =
+ 	    *((const uint32_t *) (newdata->filedata + idx));
