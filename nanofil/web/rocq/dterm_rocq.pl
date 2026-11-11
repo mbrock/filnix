@@ -674,6 +674,44 @@ file_blurb('nanofil/rocq/glibc/libio/LibioCloseItMid.v',
     "Live glibc campaign (implementation proof): middle block proof for `_IO_file_close_maybe_unlink`, dispatching vtable `__close` and calling `_IO_setb(fp, NULL, NULL, 0)`.").
 file_blurb('nanofil/rocq/glibc/libio/LibioCloseSteps.v',
     "Live glibc campaign (shared proof support): entailment-style step lemmas and fresh 32-byte cleanup-frame helpers for `libio` close, unlink, flush, and cleanup proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAlloc.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_file_doallocate]) for userland glibc's compiled `_IO_file_doallocate`, from its vtable `__stat` call to the installed buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocBase.v',
+    "Live glibc campaign (shared proof support): the `__gnu_dev_major` arithmetic ([dev_major]), its Hoare triple ([wp_glibc___gnu_dev_major]), and the fresh-buffer continuation ([doalloc_k], [new_buf]) shared by the `_IO_file_doallocate` proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocBuf.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_doallocbuf_alloc]) for userland glibc's compiled `_IO_doallocbuf` on a buffered stream, dispatching vtable `__doallocate`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocMode.v',
+    "Live glibc campaign (implementation proof): `_IO_file_doallocate`'s character-device test, through `__gnu_dev_major` and `__isatty_nostatus`, that decides whether the stream is line-buffered.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocShort.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_doallocbuf_short]) for `_IO_doallocbuf` on an unbuffered stream, which installs the one-byte `_shortbuf`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDoAllocTail.v',
+    "Live glibc campaign (implementation proof): `_IO_file_doallocate`'s tail blocks, choosing the buffer size from `st_blksize`, setting `_IO_LINE_BUF`, calling `malloc`, and installing the buffer with `_IO_setb`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflow.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_new_file_overflow]) for userland glibc's compiled `_IO_new_file_overflow` on a stream already putting into its buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowAlloc.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_new_file_overflow_alloc]) for userland glibc's compiled `_IO_new_file_overflow` on a stream without a buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowAllocSetg.v',
+    "Live glibc campaign (implementation proof): `_IO_new_file_overflow`'s first-call allocation ([wp_ovf_L33]) through `_IO_doallocbuf`, then `_IO_setg` of the new buffer.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowBase.v',
+    "Live glibc campaign (shared proof support): the put-area state ([ovf_state], [ovf_fixed]) and return relation ([ovf_ret]) of the `_IO_new_file_overflow` proofs, with byte-focus lemmas and step tactics.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowCall.v',
+    "Live glibc campaign (implementation proof): `_IO_new_do_write` of the k pending bytes of an [ovf_state] ([wp_ovf_do_write]), as `_IO_new_file_overflow` flushes them.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowFlush.v',
+    "Live glibc campaign (implementation proof): `_IO_new_file_overflow`'s flush after a stored byte ([wp_ovf_L264]), returning the byte or `EOF`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowFull.v',
+    "Live glibc campaign (implementation proof): `_IO_new_file_overflow` on a full buffer ([wp_ovf_L196]), flushing it before storing the byte.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowGen.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc___overflow]) for userland glibc's compiled `__overflow`, orienting the stream narrow and dispatching vtable `__overflow`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowPut.v',
+    "Live glibc campaign (implementation proof): `_IO_new_file_overflow`'s byte store at `_IO_write_ptr` ([wp_ovf_L198]), flushing an unbuffered stream or a line-buffered one at a newline.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSend.v',
+    "Live glibc campaign (implementation proof): `_IO_new_file_overflow`'s dispatch on its argument ([wp_ovf_L18]), flushing the buffer for `EOF` and storing a byte otherwise.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetp.v',
+    "Live glibc campaign (implementation proof): the first half of `_IO_new_file_overflow`'s switch to putting ([wp_ovf_L113]), setting the write pointers from the read pointer and the buffer's end.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetpRest.v',
+    "Live glibc campaign (implementation proof): the second half of `_IO_new_file_overflow`'s switch to putting ([wp_ovf_L113_rest]), resetting the read pointers, setting `_IO_CURRENTLY_PUTTING`, and testing `_mode`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioOverflowSetpEnd.v',
+    "Live glibc campaign (implementation proof): `_IO_new_file_overflow`'s backup-area test ([wp_ovf_L35]) and line-buffered write-end reset ([wp_ovf_L162]).").
 file_blurb('nanofil/rocq/glibc/libio/LibioDoWrite.v',
     "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_new_do_write]) for userland glibc's compiled `_IO_new_do_write` over [file_inv] and `__io_vtables`.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteCall.v',
