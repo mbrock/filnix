@@ -106,7 +106,9 @@ doc_label(guide, "the guide") :- !.
 doc_label(formal, "the formal campaign") :- !.
 doc_label(filc, "How Fil-C works") :- !.
 doc_label(iris, "How Iris works") :- !.
+doc_label(zegarmistrz, "How zegarmistrz works") :- !.
 doc_label(logic, "A program logic") :- !.
+doc_label(poison, "Poison and constant time") :- !.
 doc_label('lambda-anf', "Lambda-ANF on nanofil IR") :- !.
 doc_label('nfb-guide-argon', "NFB guide (Argon)") :- !.
 doc_label('nfb-guide-wonder', "NFB guide (Wonder)") :- !.

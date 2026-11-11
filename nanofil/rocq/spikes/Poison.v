@@ -1237,7 +1237,7 @@ Definition implicit_leak_cfg (sec : Z) : config :=
   mkConfig (mkFrame implicit_leak_fn [(TAtom "sec", WInt sec)] [] None (Enter (TAtom "entry") None))
            [] implicit_leak_mem 10.
 
-(** Starting poison state with `sec` tainted **only** with `cannot_index`
+(** Starting poison state with `sec` tainted only with `cannot_index`
     (`cannot_branch = false`). *)
 Definition implicit_leak_ps_index_only : pstate :=
   mkPState [(TAtom "sec", WTInt taint_index)] [] (fun _ => pb_clean) (fun _ => taint_bot).
@@ -2050,7 +2050,7 @@ Qed.
     [pol_default] and [pol_strict]), and with `ge_free ge = free_res`,
     if `(c1, c2)` satisfy [ct_rel] under [ps] and
     `pstep pol ge c1 ps = PNext c1' ps'`, then:
-    1. `(c1, c2)` emit the **exact same [leak_event]** (`leak_of pol ge c1 = leak_of pol ge c2`),
+    1. `(c1, c2)` emit the exact same [leak_event] (`leak_of pol ge c1 = leak_of pol ge c2`),
     2. `pstep pol ge c2 ps = PNext c2' ps'` for a matching `c2'`, and
     3. `ct_rel c1' c2' ps'` holds again. *)
 Theorem pstep_ct_sound : forall pol ge c1 c2 ps c1' ps',

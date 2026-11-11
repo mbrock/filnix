@@ -20,6 +20,9 @@ about it.
   and the libc sandwich, the memory-safe C nanofil targets.
 - [How Iris works](iris.md): from Hoare logic to Iris, how it is built
   in Rocq, and nanofil's machine as an Iris language.
+- [How zegarmistrz works](zegarmistrz.md): secret-poison tracking for
+  constant-time cryptography, Fil-C's OpenSSL assembly modes, and one
+  tainted run as a universal proof.
 - [Concepts](concepts/): each term the Prolog, the Rocq and these
   documents share, explained once.
 
@@ -56,6 +59,9 @@ about it.
 - [A spike: proofs that link user glibc's IR](glibc-ir.md): two
   programs proved with glibc's own strlen and write in the module, and
   libpizlo's zsys_write as the one contract.
+- [Poison and constant time in Rocq](poison.md): zegarmistrz's poison
+  rules over checked IR, the double-store sanitizer bug, two-run
+  constant-time noninterference, and the AES S-box spikes.
 
 ## The compiler
 

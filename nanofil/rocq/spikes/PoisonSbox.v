@@ -30,10 +30,10 @@
        while index poison still catches it
        ([subbytes_table_erased_branch_misses],
        [subbytes_table_erased_index_traps]);
-    3. on `subbytes_ct`, running **one** reference input (`0^16`,
+    3. on `subbytes_ct`, running one reference input (`0^16`,
        `0^16`) with both `in` and `rk` marked [taint_all] (`0x4C`)
        under [pol_strict] finishes cleanly ([subbytes_ct_ref_runs]),
-       and [prun_ct_sound] lifts that single poisoned run to **every**
+       and [prun_ct_sound] lifts that single poisoned run to every
        pair of 16-byte inputs and round keys: all 2^512 pairs emit the
        exact same instruction-level leakage trace
        ([subbytes_ct_constant_time]) and finish without trapping;
@@ -195,7 +195,7 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** 2. With `rk` poisoned `cannot-branch` only ([taint_branch], `0x04`)
     under [pol_strict] (`pol_check_branches = true`), `subbytes_table`
-    traps **one step earlier** (step 19), inside Fil-C's `Check` on
+    traps one step earlier (step 19), inside Fil-C's `Check` on
     `sbox + (in[0] ^ rk[0])`, with `PTrap CannotBranch` — matching
     native `zegarmistrz`'s `cmp + jb/ja` fault on the bounds check. *)
 Theorem subbytes_table_traps_cannot_branch :
@@ -206,7 +206,7 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** 3. Once bounds checks are statically discharged ([pol_erased],
     `pol_check_branches = false`), `cannot-branch` alone (`0x04`)
-    **misses** the pure table-index leak: all 16 iterations run to
+    misses the pure table-index leak: all 16 iterations run to
     `PDone RetVoid []`. *)
 Theorem subbytes_table_erased_branch_misses :
   prun pol_erased sbox_ge 500
@@ -308,9 +308,9 @@ Proof.
   intros inp rk. exact (sbox_cfg_on_rel (sbox_fn "subbytes_ct") sbox_mem sbox_ct_fuel inp rk).
 Qed.
 
-(** **Main spike theorem (`subbytes_ct_constant_time`)**: one concrete
+(** Main spike theorem (`subbytes_ct_constant_time`): one concrete
     [taint_all] run ([subbytes_ct_ref_runs]) plus [prun_ct_sound]
-    establishes **universal 2-run constant-time noninterference** across
+    establishes universal 2-run constant-time noninterference across
     all pairs of 16-byte plaintexts and 16-byte round keys (`2^256 *
     2^256 = 2^512` input pairs): every input pair runs without any
     Fil-C trap or poison fault under [pol_strict] and emits the exact
