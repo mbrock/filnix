@@ -53,7 +53,12 @@ const contextRows = `
 try {
   browser("open", `${base}/nanofil/rocq/index.html`);
   browser("eval", 'localStorage.removeItem("dterm-rocq-layout")');
-  for (const width of widths) {
+  // The pages-only navigation fixture has no declaration controls. Keep
+  // declaration checks mandatory in the full and declarations-only modes.
+  browser("open", `${base}/nanofil/poison.html`);
+  const declarationWidths = pagesOnly && !JSON.parse(browser("eval", '!!document.querySelector("#rq-layout")'))
+    ? [] : widths;
+  for (const width of declarationWidths) {
     browser("set", "viewport", String(width), "900", "2");
     for (const page of ["nanofil/poison.html", "nanofil/rocq/rocq-spikes-Poison.html"]) {
       browser("open", `${base}/${page}`);
