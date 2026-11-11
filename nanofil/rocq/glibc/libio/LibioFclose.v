@@ -93,7 +93,7 @@ Definition close_it_spec : Prop := forall fr fb freg fl f2 fd tw off bb breg i x
   pcell fb off_write_ptr (mkPtr (bb + i + n) (Obj bb)) -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
   bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
-  pcell fb 72 null -∗ pcell fb 96 null -∗
+  pcell fb 80 null -∗ pcell fb 96 null -∗
   ▷ (∀ r fl' k tw', ⌜fw_post n fl r fl' /\ (k = 0 \/ k = 2 ^ 32 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags (closed_flags fl') -∗ int_cell fb off_flags2 f2 -∗
      int_cell fb off_fileno (2 ^ 32 - 1) -∗ icell fb off_total_written tw' -∗ icell fb off_offset (2 ^ 64 - 1) -∗
@@ -101,7 +101,7 @@ Definition close_it_spec : Prop := forall fr fb freg fl f2 fd tw off bb breg i x
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
-     pcell fb 72 null -∗ pcell fb 96 null -∗
+     pcell fb 80 null -∗ pcell fb 96 null -∗
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 
@@ -179,9 +179,9 @@ Proof.
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   iApply wp_call_bind; [vx | exact Hcif | reflexivity |]. iNext.
   iApply (Hci with "Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp
-            H72 H96"); try side.
+            H80 H96"); try side.
   iNext. iIntros (r fl' k tw' [Hpost Hk]) "Hl Hfl Hfl2 Hfd Htw Hoff Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol
-    Hmode Hvtp H72 H96". resume.
+    Hmode Hvtp H80 H96". resume.
   iDestruct "Hfl2" as "[%Hf2r' Hfl2]".
   fs. fchk "Hl". fldi "Hl" "Hfl2". fs. fs. fs. fldi "Hl" "Hfl2". fs. fs. fs. fchk "Hl". fsti "Hl" "Hfl2". fs.
   iAssert (∃ f2', int_cell fb off_flags2 f2')%I with "[Hfl2]" as "Hfl2".

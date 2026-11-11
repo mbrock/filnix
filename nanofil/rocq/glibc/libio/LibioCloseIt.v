@@ -106,7 +106,7 @@ Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i 
   pcell fb off_write_ptr (mkPtr (bb + i + n) (Obj bb)) -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
   bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
-  pcell fb 72 null -∗ pcell fb 96 null -∗
+  pcell fb 80 null -∗ pcell fb 96 null -∗
   ▷ (∀ r fl' k tw', ⌜fw_post n fl r fl' /\ (k = 0 \/ k = 2 ^ 32 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags (closed_flags fl') -∗ int_cell fb off_flags2 f2 -∗
      int_cell fb off_fileno (2 ^ 32 - 1) -∗ icell fb off_total_written tw' -∗ icell fb off_offset (2 ^ 64 - 1) -∗
@@ -114,13 +114,13 @@ Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i 
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
-     pcell fb 72 null -∗ pcell fb 96 null -∗
+     pcell fb 80 null -∗ pcell fb 96 null -∗
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros n wb base Hfr. injection Hfr as <-. intros Hn0 Hfb Hfal Hfend Hfreg Hf22 Hf232 Hf2r Hfd Hfdr Hfl Happ Hnw
     Hcp Hub He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec.
-  iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp H72 H96 HK".
+  iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp H80 H96 HK".
   unfold file_size in Hfend. pose proof Hnw as Hnw'. pose proof Hcp as Hcp'.
   unfold io_no_writes in Hnw'. unfold io_currently_putting in Hcp'.
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
@@ -154,15 +154,15 @@ Proof.
     by (destruct (r =? Z.of_nat (length xs)); reflexivity).
   rewrite Ep3. try rewrite Ep3.
   iApply (CM.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
-            with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H72 H96");
+            with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
     first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try side].
   { iRight. iExists bb, breg. iFrame "Hbl". iPureIntro. split_and!; try done; try lia.
     destruct Hpost as [(_ & ->) | (_ & ->)]; [exact Hub|].
     rewrite Z.land_lor_distr_l. rewrite Hub. reflexivity. }
-  iNext. iIntros (k Hk) "Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H72 H96".
+  iNext. iIntros (k Hk) "Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H80 H96".
   try rewrite Ep3. try rewrite Ep3.
   iApply ("HK" $! r fl' k tw' with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol Hmode Hvtp
-            H72 H96").
+            H80 H96").
   split; [exact Hpost | exact Hk].
 Qed.
 
