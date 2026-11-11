@@ -131,7 +131,7 @@ Proof. intro b. reflexivity. Qed.
 
     # A directory no capture replayed is drawn too, without states; a
     # file the capture of its own directory lacks is refused by name.
-    plain = "Lemma plain : True.\nProof. exact I. Qed.\n"
+    plain = "Lemma plain : true = false -> False.\nProof. intros [=]. Qed.\n"
     for name in ["nanofil/rocq/other/Plain.v", "nanofil/rocq/Missing.v"]:
         (root / name).parent.mkdir(exist_ok=True)
         (root / name).write_text(plain)

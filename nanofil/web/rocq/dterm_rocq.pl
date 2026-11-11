@@ -256,9 +256,13 @@ source_page(File0, Head, Items, Groups) -->
 %  its text the lede.
 lede_(cm(_, _, Text, _)) -->
     { comment_prose_lines(Text, Lines0),
-      ( comment_heading(Text, _, Title), Lines0 = [_|Lines] -> true ; Title = none, Lines = Lines0 ) },
+      header_title(Text, Lines0, Title, Lines) },
     ( { Title == none } -> [] ; el(p, "rq-subtitle", esc(Title)) ),
     rocq_prose(Lines).
+
+header_title(Text, [_|Lines], Title, Lines) :- comment_heading(Text, _, Title), !.
+header_title(_, [First|Lines], Title, Lines) :- string_concat("# ", Title0, First), !, split_string(Title0, "", " ", [Title]).
+header_title(_, Lines, none, Lines).
 
 crumbs(Title) -->
     el(a, crumb, [href="../../index.html"], "Wiki"), el(span, "crumb-sep", "›"),
@@ -271,13 +275,15 @@ page_head(Items, Text, Cms, Head, Body) :-
     (   Items = [I|_], first_offset(I, From) -> true ; string_length(Text, From) ),
     partition([cm(O, _, _, _)]>>(O < From), Cms, Head, Body).
 
-%  The first sentence of a file's header, for the index.
+%  The index blurb of a file, or the first sentence of its header when
+%  a new file has no explicit blurb yet.
 :- dynamic page_summary/3.
 
 summarize(File, Text, Head) :-
     split_string(Text, "\n", "", Ls), length(Ls, NL),
-    (   Head = [cm(_, _, T, _)|_], comment_prose_lines(T, Lines0),
-        ( comment_heading(T, _, _), Lines0 = [_|Lines] -> true ; Lines = Lines0 ),
+    (   file_blurb(File, Sum) -> true
+    ;   Head = [cm(_, _, T, _)|_], comment_prose_lines(T, Lines0),
+        header_title(T, Lines0, _, Lines),
         blocks(Lines, [p(P)|_])
     ->  ( sub_string(P, B, _, _, ". "), B > 20 -> B1 is B + 1, sub_string(P, 0, B1, _, Sum) ; Sum = P )
     ;   Sum = ""
@@ -349,24 +355,171 @@ index_page(Pages) -->
                     el(a, crumb, [href="../index.html"], "nanofil"), el(span, "crumb-sep", "›"),
                     el(span, "crumb current", "Rocq") ),
           el(article, "dterm dterm-rocq rq-index",
-             ( el(h1, "source-title", "nanofil's formal model, read as Rocq"),
+             ( el(h1, "source-title", "nanofil's Rocq model and proofs"),
                el(div, "prose lede",
-                  el(p, none, ( "The Rocq side of ", el(a, none, [href="../formal.html"], "the formal campaign"),
-                                ", drawn by what it is rather than how it was typed: inductive types as tables of their ",
-                                "constructors, relations as inference rules, theorems as their statement over a ",
-                                "folded proof, ", el(code, none, "match"), " as a table of patterns. Each name links to its ",
-                                "definition, and the Prolog a definition transcribes links to its page. Drawn by ",
-                                el(a, none, [href="https://github.com/mbrock/filnix/tree/main/nanofil/web/rocq"], "dterm-rocq"),
-                                ", after ", el(a, none, [href="../src.html"], "nanofil's dterm"), "." ))),
-               { findall(D, ( member(page(F, _, _, _), Pages), file_directory_name(F, D) ), Ds0), sort(Ds0, Ds) },
-               seq(Ds, file_dir(Pages)) ))).
+                  ( el(p, none,
+                       ( "This directory contains the Rocq formalization and proofs for ",
+                         el(a, none, [href="../index.html"], "nanofil"), " (",
+                         el(a, none, [href="../formal.html"], "the formal campaign"),
+                         "). It defines an executable small-step semantics and validator for nanofil's checked capability IR (",
+                         el(code, none, "rocq/theories/core/"),
+                         "), proves that a module the validator accepts never makes an unchecked memory access under the Fil-C runtime axioms (",
+                         el(a, none, [href="rocq-theories-soundness-Soundness.html"], "Soundness.v"),
+                         "), and builds an Iris separation logic for proving that compiled C programs never panic (",
+                         el(code, none, "rocq/theories/logic/"),
+                         "). It also includes a Gallina x86-64 compiler backend and NFB bytecode round-trip proofs (",
+                         el(code, none, "rocq/backend/"), ") and a λANF-to-IR lowering pass (",
+                         el(code, none, "anf/lower/"), ")." )),
+                    el(p, none,
+                       ( "The active whole-program campaign (", el(code, none, "rocq/glibc/"), ", ",
+                         el(a, none, [href="../docs/glibc-ir.html"], "glibc-ir.md"),
+                         ") links C programs against userland glibc compiled to nanofil IR and pushes trusted contracts down to libpizlo's ",
+                         el(code, none, "zsys_*"), " syscall and runtime boundary (",
+                         el(a, none, [href="../docs/zsys.html"], "zsys.md"),
+                         "). Earlier whole-program work proved GNU Hello against per-function libc contracts (",
+                         el(code, none, "rocq/theories/hello_contracts/"),
+                         ", kept as a compiled reference proof) and compared three separation-logic designs on ",
+                         el(code, none, "listsum.c"), " (", el(code, none, "rocq/spikes/"),
+                         "). Generated IR fixture files (", el(code, none, "*Code.v"), ", written by ",
+                         el(code, none, "rocq/scripts/gallina.pl"), ") are omitted from this index." )),
+                    el(h2, "prose-h", "Start here"),
+                    el(ul, none,
+                       ( el(li, none,
+                            ( el(strong, none, "Live GNU Hello over userland glibc ("), el(code, none, "rocq/glibc/"), el(strong, none, "): "),
+                              "Start with ", el(a, none, [href="rocq-glibc-zsys-OsWorld.html"], "OsWorld.v"), " and ",
+                              el(a, none, [href="rocq-glibc-zsys-OsRegistry.html"], "OsRegistry.v"), " for the audited ",
+                              el(code, none, "zsys_*"), " syscall boundary and ", el(code, none, "errno"), " lending, ",
+                              el(a, none, [href="rocq-glibc-string-WordString.html"], "WordString.v"), ", ",
+                              el(a, none, [href="rocq-glibc-string-StrlenWord.html"], "StrlenWord.v"), ", and ",
+                              el(a, none, [href="rocq-glibc-string-StrcmpLogic.html"], "StrcmpLogic.v"),
+                              " for fractional word-aligned string ownership, ", el(code, none, "strlen"), ", and ", el(code, none, "strcmp"), ", and ",
+                              el(a, none, [href="rocq-glibc-stdlib-AllocLogic.html"], "AllocLogic.v"), ", ",
+                              el(a, none, [href="rocq-glibc-stdlib-AtexitLogic.html"], "AtexitLogic.v"), ", and ",
+                              el(a, none, [href="rocq-glibc-stdlib-LeavesLogic.html"], "LeavesLogic.v"), " for ",
+                              el(code, none, "malloc"), ", ", el(code, none, "free"), ", ", el(code, none, "atexit"),
+                              ", and TLS/locale leaf triples. ",
+                              el(a, none, [href="rocq-glibc-LenLogic.html"], "LenLogic.v"), " (", el(code, none, "len.c"), ") and ",
+                              el(a, none, [href="rocq-glibc-SayLogic.html"], "SayLogic.v"), " (", el(code, none, "say.c"), ", ",
+                              el(code, none, "write(1, msg, strlen(msg))"),
+                              ") are small end-to-end worked proofs over compiled glibc IR." )),
+                         el(li, none,
+                            ( el(strong, none, "Core IR model and validator soundness ("),
+                              el(code, none, "rocq/theories/core/"), el(strong, none, ", "),
+                              el(code, none, "rocq/theories/soundness/"), el(strong, none, "): "),
+                              "Read ", el(a, none, [href="rocq-theories-core-Syntax.html"], "Syntax.v"), ", ",
+                              el(a, none, [href="rocq-theories-core-Semantics.html"], "Semantics.v"), ", ",
+                              el(a, none, [href="rocq-theories-core-Runtime.html"], "Runtime.v"), ", and ",
+                              el(a, none, [href="rocq-theories-core-Validate.html"], "Validate.v"),
+                              " for the checked IR and validator, then ",
+                              el(a, none, [href="rocq-theories-soundness-Machine.html"], "Machine.v"), " and ",
+                              el(a, none, [href="rocq-theories-soundness-Soundness.html"], "Soundness.v"), " (",
+                              el(code, none, "valid_no_unchecked"),
+                              ") for the proof that validated IR never steps to ", el(code, none, "unchecked"), "." )),
+                         el(li, none,
+                            ( el(strong, none, "Iris program logic ("),
+                              el(code, none, "rocq/theories/logic/"), el(strong, none, ", "),
+                              el(code, none, "rocq/theories/external/"), el(strong, none, "): "),
+                              "Read ", el(a, none, [href="rocq-theories-logic-Panics.html"], "Panics.v"), ", ",
+                              el(a, none, [href="rocq-theories-logic-Pieces.html"], "Pieces.v"), ", ",
+                              el(a, none, [href="rocq-theories-logic-Heap.html"], "Heap.v"), ", ",
+                              el(a, none, [href="rocq-theories-logic-Language.html"], "Language.v"), ", and ",
+                              el(a, none, [href="rocq-theories-logic-Logic.html"], "Logic.v"), " (",
+                              el(a, none, [href="../logic.html"], "the program logic"), "), with ",
+                              el(a, none, [href="rocq-theories-external-ExternalCalls.html"], "ExternalCalls.v"), " and ",
+                              el(a, none, [href="rocq-theories-logic-ContractFrame.html"], "ContractFrame.v"),
+                              " for external-call contracts and framing." )),
+                         el(li, none,
+                            ( el(strong, none, "Worked examples, reference Hello proof, and compiler backend: "),
+                              "Standalone C program proofs are in ", el(code, none, "rocq/theories/programs/"), " (",
+                              el(a, none, [href="rocq-theories-programs-Sum.html"], "Sum.v"), ", ",
+                              el(a, none, [href="rocq-theories-programs-BufferLogic.html"], "BufferLogic.v"), ", ",
+                              el(a, none, [href="rocq-theories-programs-CountLogic.html"], "CountLogic.v"), ", ",
+                              el(a, none, [href="rocq-theories-programs-SlotLogic.html"], "SlotLogic.v"),
+                              "), the contract-based GNU Hello reference proof is in ",
+                              el(code, none, "rocq/theories/hello_contracts/"), " (",
+                              el(a, none, [href="rocq-theories-hello_contracts-HelloMain.html"], "HelloMain.v"), ", ",
+                              el(a, none, [href="rocq-theories-hello_contracts-HelloJoin.html"], "HelloJoin.v"),
+                              "), and the Gallina compiler backend and NFB bytecode proofs are in ",
+                              el(code, none, "rocq/backend/"), " (",
+                              el(a, none, [href="rocq-backend-Compile.html"], "Compile.v"), ", ",
+                              el(a, none, [href="rocq-backend-Regs.html"], "Regs.v"), ", ",
+                              el(a, none, [href="rocq-backend-RegsProof.html"], "RegsProof.v"), ", ",
+                              el(a, none, [href="rocq-backend-NfbProof.html"], "NfbProof.v"), ")." )) )) )),
+               { findall(D, ( member(page(F, _, _, _), Pages), file_directory_name(F, D) ), Ds0), sort(Ds0, Ds),
+                 findall(G, role_group(G), Groups),
+                 findall(GD, ( member(group(_, _, GDs), Groups), member(GD, GDs) ), Known0), sort(Known0, Known),
+                 subtract(Ds, Known, Extra) },
+               seq(Groups, index_group(Pages, Ds)),
+               seq(Extra, file_dir(Pages)) ))).
 
-%  A directory's files, each its name, its size and its header's first
-%  sentence, the sentence drawn as the page draws it.
+role_group(group(
+    "Live campaign: GNU Hello over userland glibc",
+    ( "Active proof campaign (", el(code, none, "nanofil-glibc"), ", ",
+      el(a, none, [href="../docs/glibc-ir.html"], "glibc-ir.md"),
+      ") proving userland glibc compiled to nanofil IR over audited libpizlo ",
+      el(code, none, "zsys_*"), " syscall contracts (",
+      el(a, none, [href="../docs/zsys.html"], "zsys.md"), ")." ),
+    [ 'nanofil/rocq/glibc/zsys',
+      'nanofil/rocq/glibc/string',
+      'nanofil/rocq/glibc/stdlib',
+      'nanofil/rocq/glibc' ])).
+role_group(group(
+    "Core framework: IR model, validator soundness, external calls, and Iris program logic",
+    ( "Shared foundation (", el(code, none, "nanofil-rocq"), ", ",
+      el(a, none, [href="../formal.html"], "formal.md"), ", ",
+      el(a, none, [href="../logic.html"], "logic.md"),
+      "): the checked-IR semantics and validator, the ", el(code, none, "valid_no_unchecked"),
+      " soundness theorem, the external-call boundary, and the Iris separation logic used by all program proofs." ),
+    [ 'nanofil/rocq/theories/core',
+      'nanofil/rocq/theories/soundness',
+      'nanofil/rocq/theories/external',
+      'nanofil/rocq/theories/logic' ])).
+role_group(group(
+    "Worked example programs",
+    "Standalone C program proofs demonstrating invariants, loops, heap allocation, helper specifications, persistent callee state, and contract-era hi.c lifecycle composition.",
+    [ 'nanofil/rocq/theories/programs' ])).
+role_group(group(
+    "Reference proof: GNU Hello over per-function libc contracts",
+    ( "Retained Campaign 4/7 reference proof of GNU Hello 2.12.3 against per-function libc contracts (",
+      el(a, none, [href="../docs/libc-contracts.html"], "libc-contracts.md"),
+      "), kept compiled and gated while the ", el(code, none, "rocq/glibc/"),
+      " campaign replaces those libc contracts with compiled userland glibc IR." ),
+    [ 'nanofil/rocq/hello_contracts',
+      'nanofil/rocq/theories/hello_contracts' ])).
+role_group(group(
+    "Program-logic design spikes",
+    ( "Retained comparison proofs (", el(code, none, "nanofil-logic-spikes"), ", ",
+      el(a, none, [href="../logic.html"], "logic.md"),
+      ") verifying the same heap-allocated linked-list program (", el(code, none, "listsum.c"),
+      ") in a hand-rolled separation logic, an early whole-configuration Iris language, and the production ",
+      el(code, none, "Logic.v"), " framework." ),
+    [ 'nanofil/rocq/spikes' ])).
+role_group(group(
+    "Gallina compiler backend and λANF lowering",
+    ( "Separate compiler workstreams: the Gallina IR-to-x86-64 compiler backend and NFB bytecode round-trip proofs (",
+      el(a, none, [href="../docs/gallina-backend.html"], "gallina-backend.md"), ", ",
+      el(a, none, [href="../docs/nfb.html"], "nfb.md"),
+      "), its C++ (Crane) and experimental C (CertiRocq) extractions, and the CertiRocq λANF-to-IR lowering pass (",
+      el(a, none, [href="../lambda-anf.html"], "lambda-anf.md"), ")." ),
+    [ 'nanofil/rocq/backend',
+      'nanofil/rocq/backend/crane',
+      'nanofil/rocq/backend/certirocq',
+      'nanofil/anf/lower',
+      'nanofil/anf/lower/tests' ])).
+
+index_group(Pages, Ds, group(Title, Note, GroupDirs)) -->
+    { include([D]>>memberchk(D, Ds), GroupDirs, Present) },
+    (   { Present == [] } -> []
+    ;   el(h2, "rq-sec", esc(Title)),
+        el(p, "rq-group-note", Note),
+        seq(Present, file_dir(Pages))
+    ).
+
+%  A directory's files, each its name, its size and its blurb.
 file_dir(Pages, Dir) -->
     { ( atom_concat('nanofil/', R, Dir) -> true ; R = Dir ),
       atom_concat('https://github.com/mbrock/filnix/tree/main/', Dir, Src) },
-    el(h2, "rq-dir", el(a, none, [href=Src], ( esc(R), "/" ))),
+    el(h3, "rq-dir", el(a, none, [href=Src], ( esc(R), "/" ))),
     el(dl, "rq-files", seq(Pages, file_row(Dir))).
 
 file_row(Dir, page(F, _, Items, _)) --> { file_directory_name(F, Dir) }, !,
@@ -383,3 +536,423 @@ file_row(_, _) --> [].
 count_(0, _) --> !, [].
 count_(1, W) --> !, " · 1\u00A0", esc(W).
 count_(N, W) --> " · ", esc(N), "\u00A0", esc(W), "s".
+
+%% Per-file index blurbs
+
+%  Live campaign: rocq/glibc/zsys/
+file_blurb('nanofil/rocq/glibc/zsys/OsBlocks.v',
+    "Live glibc campaign (reusable separation-logic support): borrowed memory block ranges `(b, o, n)` ([blk_any], [blks]) covering byte and [[aux]] pieces, thread `c: errno` ownership ([errno_own], [errno_any]), and post-call block return lemmas ([blk_return], [blks_return]).").
+file_blurb('nanofil/rocq/glibc/zsys/OsClose.v',
+    "Live glibc campaign (trusted syscall contract): libpizlo boundary [[external call|contract]] and WP rule for `c: int zsys_close(int fd)` over [os_world], audited against `c: zsys_close` and probed by [zsys-close.c](zsys-close.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsExit.v',
+    "Live glibc campaign (trusted syscall contract): non-returning libpizlo boundary [[external call|contracts]] and WP rules for `c: void zsys_exit_soft(int code)` and `c: void zsys_exit_hard(int code)` over [os_world], probed by [zsys-exit.c](zsys-exit.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsFstat.v',
+    "Live glibc campaign (trusted syscall contract): libpizlo boundary [[external call|contract]] and WP rule for `c: int zsys_fstat(int fd, struct stat *st)` over [os_world], borrowing the 144-byte `c: struct stat` buffer and `c: errno`, probed by [zsys-fstat.c](zsys-fstat.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsIoctl.v',
+    "Live glibc campaign (trusted syscall contract): libpizlo boundary [[external call|contract]] and WP rule for variadic `c: int zsys_ioctl(int fd, int request, ...)` over [os_world], audited against `c: filc_call_syscall_with_guarded_ptr` and probed by [zsys-ioctl.c](zsys-ioctl.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsLseek.v',
+    "Live glibc campaign (trusted syscall contract): libpizlo boundary [[external call|contract]] and WP rule for `c: long zsys_lseek(int fd, long offset, int whence)` over [os_world], probed by [zsys-lseek.c](zsys-lseek.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsRegistry.v',
+    "Live glibc campaign (contract registry): combined external-call registry [os_registry] assembling the nine `zsys_*` and `c: zthread_self_cookie` contracts plus void-site `c: zmemmove` and `c: zmemset` contracts ([void_only]), probed by [zsys-mem.c](zsys-mem.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsThread.v',
+    "Live glibc campaign (trusted runtime contract): libpizlo boundary [[external call|contract]] and WP rule for `c: void *zthread_self_cookie(void)` returning the thread's `c: struct pthread` pointer [ow_self], probed by [zsys-thread.c](zsys-thread.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsWorld.v',
+    "Live glibc campaign (OS boundary framework): the [os_world] state (`c: errno` cell, thread cookie, log descriptor, and allowed descriptors), world interpretation [os_wi], stability lemmas across stores, allocations, frees, and safepoints, and generic WP call rules ([wp_os_call], [wp_os_errno_call], [wp_os_noreturn]).").
+file_blurb('nanofil/rocq/glibc/zsys/OsWrite.v',
+    "Live glibc campaign (trusted syscall contract): libpizlo boundary [[external call|contract]] and WP rule for `c: long zsys_write(int fd, const void *buf, size_t size)` over [os_world], audited against `c: filc_native_zsys_write` and probed by [zsys-write.c](../zsys-write.c).").
+file_blurb('nanofil/rocq/glibc/zsys/OsWritev.v',
+    "Live glibc campaign (trusted syscall contract): libpizlo boundary [[external call|contract]] and WP rule for `c: long zsys_writev(int fd, const struct iovec *iov, int iovcnt)` over [os_world], audited against `c: filc_native_zsys_writev` and probed by [zsys-writev.c](zsys-writev.c).").
+
+%  Live campaign: rocq/glibc/string/
+file_blurb('nanofil/rocq/glibc/string/MallocCode.v',
+    "Live glibc campaign (generated IR fixture): checked nanofil -O IR ([malloc_term]) of userland glibc's `malloc/malloc.os` (`c: malloc` and `c: free`), generated by `rocq/glibc/string/code.sh` as proof input.").
+file_blurb('nanofil/rocq/glibc/string/MemFwdCode.v',
+    "Live glibc campaign (generated IR fixture): checked nanofil -O IR ([memfwd_term]) of userland glibc's `memcpy`, `mempcpy`, `memset`, `strdup`, `errno`, `mbsinit`, `wctype`, and `ctype` units, generated by `rocq/glibc/string/code.sh` as proof input.").
+file_blurb('nanofil/rocq/glibc/string/MemcmpCode.v',
+    "Live glibc campaign (generated IR fixture): checked nanofil -O IR ([memcmp_term]) of userland glibc's `string/memcmp.os`, generated by `rocq/glibc/string/code.sh` as proof input for `c: memcmp`.").
+file_blurb('nanofil/rocq/glibc/string/StrchrCode.v',
+    "Live glibc campaign (generated IR fixture): checked nanofil -O IR ([strchr_term]) of userland glibc's `strchr`, `strchrnul`, `strrchr`, `memchr`, and `strnlen` units, generated by `rocq/glibc/string/code.sh` as proof input.").
+file_blurb('nanofil/rocq/glibc/string/StrcmpBits.v',
+    "Live glibc campaign (reusable arithmetic library): byte-difference specification ([strcmp_res]), comparison bitmask lemmas ([cmp_mask]), and cross-word [merge] facts for userland glibc's word-at-a-time `c: strcmp`.").
+file_blurb('nanofil/rocq/glibc/string/StrcmpCode.v',
+    "Live glibc campaign (generated IR fixture): checked nanofil -O IR ([strcmp_term]) of userland glibc's `string/strcmp.os`, generated by `rocq/glibc/string/code.sh` as proof input for `c: strcmp`.").
+file_blurb('nanofil/rocq/glibc/string/StrcmpLogic.v',
+    "Live glibc campaign (implementation proof): general Hoare triple ([wp_glibc_strcmp_ws], [wp_call_glibc_strcmp]) for userland glibc's compiled `c: strcmp` (`__GI_strcmp`) over two [word_string]s at any fractional shares, aliased or not.").
+file_blurb('nanofil/rocq/glibc/string/StrcmpLoop.v',
+    "Live glibc campaign (implementation proof): loop proofs ([aligned_loop], [unaligned_loop]) for userland glibc's word-at-a-time `c: strcmp` over aligned and unaligned 8-byte word windows at arbitrary fractional shares.").
+file_blurb('nanofil/rocq/glibc/string/StrlenLoop.v',
+    "Live glibc campaign (implementation proof): induction proof ([loop_spec_dq]) for the inner word-scan loop of userland glibc's `__strlen` at any fractional share `dq`, factoring the 16-step popcount chain ([tail_chain]) for [StrlenWord](StrlenWord.v).").
+file_blurb('nanofil/rocq/glibc/string/StrlenWord.v',
+    "Live glibc campaign (implementation proof): general Hoare triple ([wp_glibc_strlen_ws], [wp_call_glibc_strlen]) for userland glibc's compiled `__strlen` over a [word_string] at any fractional or persistent read-only share.").
+file_blurb('nanofil/rocq/glibc/string/StrncmpCode.v',
+    "Live glibc campaign (generated IR fixture): checked nanofil -O IR ([strncmp_term]) of userland glibc's `string/strncmp.os`, generated by `rocq/glibc/string/code.sh` as proof input for `c: strncmp`.").
+file_blurb('nanofil/rocq/glibc/string/WordString.v',
+    "Live glibc campaign (reusable separation-logic predicate): fractional word-aligned C string ownership [word_string] `dq p s` over the 8-byte words read by glibc's word-at-a-time string routines, with splitting, read-only persistence, and suffix-borrowing lemmas.").
+
+%  Live campaign: rocq/glibc/stdlib/
+file_blurb('nanofil/rocq/glibc/stdlib/AllocLogic.v',
+    "Live glibc campaign (implementation proof): Hoare triples for userland glibc's compiled `c: malloc` ([wp_glibc_malloc]) and `c: free` ([wp_glibc_free], [wp_glibc_free_null]) over [tcache_idle] and the runtime's `c: zgc_alloc` and `c: zgc_free`.").
+file_blurb('nanofil/rocq/glibc/stdlib/AtexitLogic.v',
+    "Live glibc campaign (implementation proof): Hoare triples for userland glibc's compiled exit-handler registration (`__new_exitfn`, `__internal_atexit`, `__cxa_atexit`, and `c: atexit`) over the [exit_funcs_inv] slot-table invariant.").
+file_blurb('nanofil/rocq/glibc/stdlib/LeavesLogic.v',
+    "Live glibc campaign (implementation proof): Hoare triples for userland glibc's compiled TLS, locale, and multibyte leaf functions (`__errno_location`, `__ctype_b_loc`, `__ctype_get_mb_cur_max`, and `c: mbsinit`).").
+file_blurb('nanofil/rocq/glibc/stdlib/StdlibCode.v',
+    "Live glibc campaign (generated IR fixture): checked nanofil -O IR ([stdlib_term]) of userland glibc's `malloc`, `cxa_atexit`, `atexit`, `errno`, `mbsinit`, `wcfuncs`, `ctype/ctype-info.os`, and `mb_cur_max` units, generated by `rocq/glibc/stdlib/code.sh`.").
+
+%  Live campaign & worked examples: rocq/glibc/
+file_blurb('nanofil/rocq/glibc/GlibcLogic.v',
+    "Live glibc campaign (shared proof support): common separation-logic rules and tactics over [Logic](../theories/logic/Logic.v) for compiled glibc IR proofs, including read-only capability raw word loads ([wp_raw_load_read]), initial-memory piece [[adequacy]], and VM-computed step tactics.").
+file_blurb('nanofil/rocq/glibc/LenCode.v',
+    "Worked example on userland glibc (generated IR fixture): checked nanofil -O IR ([len_term]) of `rocq/glibc/len.c` linked with userland glibc's `string/strlen.os`, generated by `rocq/glibc/code.sh` and imported by [LenLogic](LenLogic.v) and [StrlenLogic](StrlenLogic.v).").
+file_blurb('nanofil/rocq/glibc/LenLogic.v',
+    "Worked example on userland glibc (example theorem): proves that `rocq/glibc/len.c` (`c: strlen(\"hello, glibc\")`) linked with userland glibc's compiled `strlen` never panics ([len_never_panics]) with zero external contracts.").
+file_blurb('nanofil/rocq/glibc/SayCode.v',
+    "Worked example on userland glibc (generated IR fixture): checked nanofil -O IR ([say_term]) of `rocq/glibc/say.c` linked with userland glibc's `string/strlen.os` and `io/write.os`, generated by `rocq/glibc/code.sh`.").
+file_blurb('nanofil/rocq/glibc/SayLogic.v',
+    "Worked example on userland glibc (example theorem): proves safe execution ([say_logic_safe]) of `rocq/glibc/say.c`, which calls `c: write(1, msg, strlen(msg))` for `\"hello, glibc\\n\"` using compiled userland glibc `strlen` and `write` over [ZsysWrite](ZsysWrite.v).").
+file_blurb('nanofil/rocq/glibc/StrlenBits.v',
+    "Live glibc campaign (reusable arithmetic library): 64-bit word byte-extraction, bit-masking, and popcount lemmas for userland glibc's word-at-a-time string scans and 16-byte pointer alignment.").
+file_blurb('nanofil/rocq/glibc/StrlenLogic.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc_strlen]) and loop proof ([loop_spec]) for userland glibc's compiled `__strlen` over whole-word objects, used by [LenLogic](LenLogic.v), [SayLogic](SayLogic.v), and [StrlenLoop](string/StrlenLoop.v).").
+file_blurb('nanofil/rocq/glibc/ZsysWrite.v',
+    "Live glibc campaign (trusted syscall contract): initial boundary [[external call|contract]] ([zsys_write_contract]) and WP rule for libpizlo's `c: long zsys_write(int fd, const void *buf, size_t size)`, paired with [zsys-write.c](zsys-write.c) and used by [SayLogic](SayLogic.v).").
+
+%  Core framework: rocq/theories/core/
+file_blurb('nanofil/rocq/theories/core/Cfg.v',
+    "Core framework: control-flow graphs ([func_cfg]), Cooper–Harvey–Kennedy immediate dominators ([cfg_idoms]), and preorder dominator-tree intervals ([dominates_by_interval]), transcribed from cfg.pl.").
+file_blurb('nanofil/rocq/theories/core/Extract.v',
+    "Core framework: OCaml [[extraction]] of the IR decoder, [[interpreter]] semantics, and [[validator]] ([judge], [judge_valid], [valid_fast]) for the model and validator test drivers (`rocq/extraction/main.ml`).").
+file_blurb('nanofil/rocq/theories/core/Ieee.v',
+    "Core framework: pure integer-bit-pattern IEEE 754 floating-point arithmetic (`binary32`, `binary64`, and x87 80-bit extended, round-to-nearest ties-to-even), transcribed from ieee.pl.").
+file_blurb('nanofil/rocq/theories/core/Maps.v',
+    "Core framework: hash-bucketed finite maps keyed by [name] ([[name-map|name_map]]), providing fast lookups proved equivalent to association-list [lookup] on large IR modules.").
+file_blurb('nanofil/rocq/theories/core/Memory.v',
+    "Core framework: byte memory, object [[region|regions]], capability shadow space ([[aux]]), Fil-C bounds/alignment/permission checks ([access]), and [[fresh]] allocation predicates, transcribed from interp.pl.").
+file_blurb('nanofil/rocq/theories/core/Ops.v',
+    "Core framework: integer ALU operations, shifts, divisions, conversions, and pointer arithmetic ([op_res]), transcribed from interp.pl with Fil-C's total division semantics.").
+file_blurb('nanofil/rocq/theories/core/Run.v',
+    "Core framework: whole-module execution ([Driver]), building a module's initial global and function memory and stepping a function call to an [[outcome]] under any [[runtime]] [Runtime].").
+file_blurb('nanofil/rocq/theories/core/Runtime.v',
+    "Core framework: the [Runtime] module type axiomatizing the Fil-C allocator, `c: free`, and garbage-collector [[poll|safepoints]], together with [InterpRuntime], its proof-checked instantiation for nanofil's [[interpreter]].").
+file_blurb('nanofil/rocq/theories/core/Semantics.v',
+    "Core framework: small-step operational semantics ([step], [step_rel]) of the [[core subset]] of [[stage|checked IR]] over explicit call stacks and frames, transcribed from interp.pl.").
+file_blurb('nanofil/rocq/theories/core/Syntax.v',
+    "Core framework: inductive syntax of the [[core subset]] of [[stage|checked IR]] ([inst], [jump], [block], [func], [module]) and its value [[class|classes]], transcribed from ir.pl.").
+file_blurb('nanofil/rocq/theories/core/Term.v',
+    "Core framework: ground Prolog terms ([term]: integers, atoms, compounds, and lists) used as IR identifier names and as the serialization format between the Prolog compiler and the Rocq model.").
+file_blurb('nanofil/rocq/theories/core/Transport.v',
+    "Core framework: [[transport]] decoders ([decode_module]) from Prolog [term]s to [Syntax](Syntax.v) ASTs and encoders of model [[outcome|outcomes]] back to Prolog terms for differential and [[mutant]] testing.").
+file_blurb('nanofil/rocq/theories/core/ValidFast.v',
+    "Core framework: fast [[validator]] implementation ([valid_fast]) using [[name-map|name_map]] for [[single definition|single-definition]] counting on large functions, proved equivalent ([valid_fast_iff]) to [Validate](Validate.v)'s [valid].").
+file_blurb('nanofil/rocq/theories/core/Validate.v',
+    "Core framework: the [[stage|checked IR]] [[validator]] ([valid], [valid_func], [valid_data]), transcribed from ir.pl's `valid_module/1` to check SSA dominance, capability checks, [[reuse]] forms, and scheduled checks.").
+file_blurb('nanofil/rocq/theories/core/Values.v',
+    "Core framework: run-time values ([cap], [ptr], [word]), tracking invisible [[capability|capabilities]] alongside addresses across integer and pointer [[class|classes]] as in interp.pl.").
+
+%  Core framework: rocq/theories/soundness/
+file_blurb('nanofil/rocq/theories/soundness/Ahead.v',
+    "Core framework (soundness): formalizes the validator's backward dataflow pass ([ahead_justified]) for hoisted [[check_ahead]] instructions and the pending fault obligations ([[need]]) they create.").
+file_blurb('nanofil/rocq/theories/soundness/Chain.v',
+    "Core framework (soundness): proves that dominant [[single definition|single definitions]] justify the pointer [[offset-interval|offset intervals]], [[guard chain|guard chains]], and pointer distances used by the validator's [[reuse]] rules.").
+file_blurb('nanofil/rocq/theories/soundness/Coverage.v',
+    "Core framework (soundness): proves the coverage lemma ([covered_access_ok]): any [[raw access]] covered by a passed [[check]] (`covered_access/6`) is in bounds and never produces [[unchecked]].").
+file_blurb('nanofil/rocq/theories/soundness/Dominance.v',
+    "Core framework (soundness): proves that [Cfg](../core/Cfg.v)'s preorder dominator-tree interval test ([dominates_by_interval]) implies true control-flow path [[dominance]] from function entry.").
+file_blurb('nanofil/rocq/theories/soundness/Doomed.v',
+    "Core framework (soundness): proves that a [[doomed frame]] created by a failed early [[check_ahead]] executes only [[ahead-transparent]] steps until its own access check traps, never reaching [[unchecked]].").
+file_blurb('nanofil/rocq/theories/soundness/Evidence.v',
+    "Core framework (soundness): single-instruction soundness of the validator's forward [[evidence pass]] ([checked_inst_rest]), showing that [[live facts]] ([fact_holds]) survive instructions and cover raw accesses.").
+file_blurb('nanofil/rocq/theories/soundness/Guard.v',
+    "Core framework (soundness): proves soundness of the [[renew_if]] and `check_limit` [[reuse]] forms from dominant [[span test|span tests]] and [[guard chain|guard chains]].").
+file_blurb('nanofil/rocq/theories/soundness/Identity.v',
+    "Core framework (soundness): proves object-[[identity]] persistence ([persists]) across machine runs—allocated regions are never forgotten or re-allocated at the same base, and freed objects stay [Freed].").
+file_blurb('nanofil/rocq/theories/soundness/Interval.v',
+    "Core framework (soundness): inductive specification ([iv]) and soundness proof ([offset_interval_iv], [iv_sound]) for the validator's integer [[offset-interval|offset interval]] analysis ([oi]).").
+file_blurb('nanofil/rocq/theories/soundness/Invariant.v',
+    "Core framework (soundness): states the combined run-level [[evidence]] invariant ([inv]) over active frames and waiting callers, together with the per-step preservation lemmas proved in [Persistence](Persistence.v).").
+file_blurb('nanofil/rocq/theories/soundness/Machine.v',
+    "Core framework (soundness): couples [Semantics](../core/Semantics.v)'s small-step execution to an arbitrary [Runtime] ([[machine]], [mstep], [run]) and proves that runtime allocation readiness ([[ready]]) is preserved across every step.").
+file_blurb('nanofil/rocq/theories/soundness/Persistence.v',
+    "Core framework (soundness): proves that the run-level [[evidence]] invariant ([inv]) holds across every machine step of a validated module, so non-doomed frames never perform an [[unchecked]] access ([run_access_not_unchecked]).").
+file_blurb('nanofil/rocq/theories/soundness/Renew.v',
+    "Core framework (soundness): proves soundness of the [[renew]], [[renew_hull]], and [[half check]] capability-check [[reuse]] forms from dominant earlier checks and pointer distances.").
+file_blurb('nanofil/rocq/theories/soundness/Single.v',
+    "Core framework (soundness): proves the run-level [[single-definition invariant]] ([sinv]): every replayable single definition whose site dominates the current program point still holds the value its instruction computed.").
+file_blurb('nanofil/rocq/theories/soundness/Sites.v',
+    "Core framework (soundness): connects [Validate](../core/Validate.v)'s single-definition list ([all_defs]) and strict-[[ssa|SSA]] site check ([temp_sites]) so a single definition's [[site]] dominates every point where its name is read.").
+file_blurb('nanofil/rocq/theories/soundness/Soundness.v',
+    "Core framework (soundness theorem): assembles Campaign 3's main theorem ([valid_no_unchecked]): if the [[validator]] accepts a module, no [[run]] of it from a [[ready]] state ever steps to [[unchecked]].").
+file_blurb('nanofil/rocq/theories/soundness/Steps.v',
+    "Core framework (soundness): inversion and frame-preservation lemmas for individual [Semantics](../core/Semantics.v) steps ([step_snapshot], [step_enter], [step_exec_cons], [return_step_next]).").
+file_blurb('nanofil/rocq/theories/soundness/Walk.v',
+    "Core framework (soundness): connects the validator's block-by-block fold ([evidence_pass]) to the live capability facts holding at each reachable point inside a block ([walks], [relies]).").
+
+%  Core framework: rocq/theories/external/
+file_blurb('nanofil/rocq/theories/external/ExternalCalls.v',
+    "Core external-call framework: trusted [[external call]] [contract] records (ABI signature, precondition, writable spans, released objects, and postcondition) and finite memory-effect paths ([effects]).").
+file_blurb('nanofil/rocq/theories/external/ExternalMachine.v',
+    "Core external-call framework: labelled operational [[machine]] ([ExternalMachine]) extending [Machine](../soundness/Machine.v) with external contract invocations, call traces, and world state.").
+file_blurb('nanofil/rocq/theories/external/Libio.v',
+    "Core external-call framework: [[capability]]-backed memory view of userland glibc's pinned `c: FILE` stdout object and its private buffer and lock spans.").
+file_blurb('nanofil/rocq/theories/external/Shutdown.v',
+    "Core external-call framework: logical shutdown protocol for registered `c: atexit` / `__cxa_atexit` / `c: on_exit` callbacks, stdout flush obligations, and soft or hard host-exit handoff.").
+file_blurb('nanofil/rocq/theories/external/Startup.v',
+    "Core external-call framework: entry memory predicates for the Fil-C program launcher (`filc/src/filc_start_program.c`), describing [[capability]]-backed `c: argv` and `c: environ` arrays before `c: main`.").
+file_blurb('nanofil/rocq/theories/external/Stdio.v',
+    "Core external-call framework: logical stdout protocol tracking ordered output byte obligations, delivery prefixes, and stream error state across external calls.").
+
+%  Core framework: rocq/theories/logic/
+file_blurb('nanofil/rocq/theories/logic/ContractFrame.v',
+    "Core Iris program logic: framing lemmas ([prefix_agrees_out], [pieces_off]) proving that program-owned memory pieces disjoint from an [[external call]] contract's writable spans and released objects survive the call unchanged.").
+file_blurb('nanofil/rocq/theories/logic/Heap.v',
+    "Core Iris program logic: instantiates Iris's [gen_heap] over [Pieces](Pieces.v)'s [piece] and [pval], defining the state interpretation [heap_interp] and ghost-heap update lemmas for allocations, stores, and frees.").
+file_blurb('nanofil/rocq/theories/logic/Language.v',
+    "Core Iris program logic: instantiates Iris's `language` over [ExternalMachine](../external/ExternalMachine.v) with the caller stack as evaluation context ([wp_call_bind]), and proves Iris [[adequacy]] implying [never_panics].").
+file_blurb('nanofil/rocq/theories/logic/Logic.v',
+    "Core Iris program logic: the main separation-logic functor ([Logic], [LogicSig]), defining points-to assertions ([live], [icell], [pcell], [obj], [bytes], [auxes]) and weakest-precondition rules for every instruction and external call.").
+file_blurb('nanofil/rocq/theories/logic/MemLogic.v',
+    "Core Iris program logic: byte and [[aux]] block assertions in [Logic](Logic.v) and Hoare triples for contract-based libc memory calls (`c: memset`, `c: memcpy`, `c: memmove`, `c: malloc`, `c: calloc`, `c: free`).").
+file_blurb('nanofil/rocq/theories/logic/Panics.v',
+    "Core Iris program logic: defines the whole-program safety property [never_panics] (no [[run]] reaches a capability [[trap]], [[unchecked]] access, UB, `unreachable`, or missing contract) and the invariant proof rule [never_panics_by_invariant].").
+file_blurb('nanofil/rocq/theories/logic/Pieces.v',
+    "Core Iris program logic: the memory resource model ([piece]: object life [PLive], byte [PByte], [[aux]] slot [PAux], and lent-string token [PName]) keyed by object [[identity]], plus memory-agreement lemmas ([agrees]).").
+file_blurb('nanofil/rocq/theories/logic/StepRules.v',
+    "Core Iris program logic: forward per-instruction symbolic step lemmas for [Semantics](../core/Semantics.v)'s [step], reducing each instruction form from local premises without unfolding the whole module or memory.").
+file_blurb('nanofil/rocq/theories/logic/StringLogic.v',
+    "Core Iris program logic: C string ownership ([string], [string_suffix], [string_byte]) in [Logic](Logic.v) and Hoare triples for contract-based libc string and output calls (`c: strlen`, `c: strcmp`, `c: strncmp`, `c: strchr`, `c: strrchr`, `c: memchr`, `c: memcmp`, `c: puts`).").
+file_blurb('nanofil/rocq/theories/logic/Symbolic.v',
+    "Core Iris program logic: Ltac symbolic-execution automation that discharges [StepRules](StepRules.v)'s instruction premises over abstract environments, memories, and [[fuel]].").
+file_blurb('nanofil/rocq/theories/logic/VariadicLogic.v',
+    "Core Iris program logic: weakest-precondition rules ([wp_snapshot], [wp_va_arg]) for Fil-C's variadic argument [[snapshot]] object ([Snapshot]) and `c: va_arg` pointer reads.").
+file_blurb('nanofil/rocq/theories/logic/WordBits.v',
+    "Core Iris program logic: general 64-bit little-endian byte extraction ([byte_of]), bitmask, shift, and carry-free addition/subtraction lemmas for word-at-a-time string and memory proofs, promoted from [StrlenBits](../../glibc/StrlenBits.v).").
+
+%  Worked example programs: rocq/theories/programs/
+file_blurb('nanofil/rocq/theories/programs/Buffer.v',
+    "Worked example program (example theorem): proves [never_panics] for `rocq/theories/programs/buffer.c` (allocating a 4-long heap buffer, filling it, and summing `c: p[i % 4]` up to `n`) by direct 32-point invariant over [Symbolic](../logic/Symbolic.v).").
+file_blurb('nanofil/rocq/theories/programs/BufferCode.v',
+    "Worked example program (generated IR fixture): checked nanofil -O IR ([buffer_term]) of `rocq/theories/programs/buffer.c`, generated and checked by `rocq/scripts/programs.sh`.").
+file_blurb('nanofil/rocq/theories/programs/BufferLogic.v',
+    "Worked example program (example theorem): proves [buffer_never_panics] for `rocq/theories/programs/buffer.c` in the Iris separation logic of [Logic](../logic/Logic.v) using Löb induction and per-cell heap ownership, contrasting with [Buffer](Buffer.v).").
+file_blurb('nanofil/rocq/theories/programs/Composition.v',
+    "Worked example program (contract-era lifecycle adapter): couples the capability-backed `stdio_world`, logical stdout protocol, and exit-callback registry into one [program_world] for `tests/c/prog/hi.c`.").
+file_blurb('nanofil/rocq/theories/programs/CountCode.v',
+    "Worked example program (generated IR fixture): checked nanofil -O IR ([count_term]) of `rocq/theories/programs/count.c`, generated and checked by `rocq/scripts/programs.sh`.").
+file_blurb('nanofil/rocq/theories/programs/CountLogic.v',
+    "Worked example program (example theorem): proves [count_never_panics] for `rocq/theories/programs/count.c` in [Logic](../logic/Logic.v), giving helper `next_l` (`c: strchr` for `'l'`) a reusable Hoare triple and calling it in a loop with suffix borrowing.").
+file_blurb('nanofil/rocq/theories/programs/Cycle.v',
+    "Worked example program (example theorem): proves [never_panics] for `rocq/theories/programs/cycle.c` (summing `c: xs[i % 4]` from a read-only global array for any trip count `n`) using Floyd inductive assertions and [Symbolic](../logic/Symbolic.v).").
+file_blurb('nanofil/rocq/theories/programs/CycleCode.v',
+    "Worked example program (generated IR fixture): checked nanofil -O IR ([cycle_term]) of `rocq/theories/programs/cycle.c`, generated and checked by `rocq/scripts/programs.sh`.").
+file_blurb('nanofil/rocq/theories/programs/Hi.v',
+    "Worked example program (contract-era example theorem): proves safety of `tests/c/prog/hi.c` calling `c: puts` against [ExternalCalls](../external/ExternalCalls.v)'s trusted `puts` contract by direct labelled-machine invariant.").
+file_blurb('nanofil/rocq/theories/programs/HiArtifact.v',
+    "Worked example program (contract-era adapter): proves ([hi_generated_module]) that decoding `rocq/theories/programs/HiCode.v`'s generated `hi_term` yields the exact [hi_module] proved in [Hi](Hi.v).").
+file_blurb('nanofil/rocq/theories/programs/HiCode.v',
+    "Worked example program (generated IR fixture): checked nanofil -O IR ([hi_term]) of `tests/c/prog/hi.c` (`c: puts(\"hi\")`), generated and checked by `rocq/scripts/programs.sh`.").
+file_blurb('nanofil/rocq/theories/programs/HiLogic.v',
+    "Worked example program (example theorem): proves `tests/c/prog/hi.c` safe in the Iris separation logic of [Logic](../logic/Logic.v) using [StringLogic](../logic/StringLogic.v)'s [wp_puts] triple, contrasting with [Hi](Hi.v).").
+file_blurb('nanofil/rocq/theories/programs/Program.v',
+    "Worked example program (contract-era lifecycle adapter): composes launcher [Startup](../external/Startup.v), [Hi](Hi.v)'s `c: main` execution, and [Shutdown](../external/Shutdown.v) over the coupled [program_world] of [Composition](Composition.v).").
+file_blurb('nanofil/rocq/theories/programs/ScanCode.v',
+    "Worked example program (generated IR fixture): checked nanofil -O IR ([scan_term]) of `rocq/theories/programs/scan.c`, generated and checked by `rocq/scripts/programs.sh`.").
+file_blurb('nanofil/rocq/theories/programs/ScanLogic.v',
+    "Worked example program (example theorem): proves [scan_never_panics] for `rocq/theories/programs/scan.c` in [Logic](../logic/Logic.v), chaining contract triples for `c: strlen`, `c: strchr`, and `c: puts` and reading the string suffix after `c: puts` returns.").
+file_blurb('nanofil/rocq/theories/programs/Selected.v',
+    "Worked example program (contract-era lifecycle adapter): links [HiArtifact](HiArtifact.v) and [Program](Program.v) into whole-lifecycle execution theorems over selected startup, `c: main`, and shutdown segments.").
+file_blurb('nanofil/rocq/theories/programs/SlotCode.v',
+    "Worked example program (generated IR fixture): checked nanofil -O IR ([slot_term]) of `rocq/theories/programs/slot.c`, generated and checked by `rocq/scripts/programs.sh`.").
+file_blurb('nanofil/rocq/theories/programs/SlotLogic.v',
+    "Worked example program (example theorem): proves [slot_never_panics] for `rocq/theories/programs/slot.c` in [Logic](../logic/Logic.v), verifying a `quotearg`-style callee (`fill`) that retains, reuses, and reallocates a static heap buffer across calls.").
+file_blurb('nanofil/rocq/theories/programs/Sum.v',
+    "Worked example program (example theorem): the first closed-module [never_panics] proof, verifying `rocq/theories/programs/sum.c` (summing a 4-element read-only global array) by symbolic execution over [Panics](../logic/Panics.v).").
+file_blurb('nanofil/rocq/theories/programs/SumCode.v',
+    "Worked example program (generated IR fixture): checked nanofil -O IR ([sum_term]) of `rocq/theories/programs/sum.c`, generated and checked by `rocq/scripts/programs.sh`.").
+
+%  Old reference proof: rocq/theories/hello_contracts/
+file_blurb('nanofil/rocq/theories/hello_contracts/CallbackLogic.v',
+    "Old Hello reference proof (separation-logic support): Iris [[adequacy]] theorem ([wp_callback_adequate]) bridging a Hoare triple for a registered void exit callback (`close_stdout`) to [Linked](Linked.v)'s callback execution step.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Diagnostics.v',
+    "Old Hello reference proof (trusted libc contract): contract boundary for gnulib/glibc `c: error` diagnostics, distinguishing status-zero returns from nonzero soft-exit requests.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Ending.v',
+    "Old Hello reference proof (lifecycle model): intercepts `c: exit` requests at the labelled machine boundary and sequences registered exit callbacks before terminal host exit.").
+file_blurb('nanofil/rocq/theories/hello_contracts/ExitMemory.v',
+    "Old Hello reference proof (lifecycle model): capability-backed memory layout of userland glibc's `__exit_funcs` callback registry (`c: struct exit_function_list`) for `c: atexit` and `__cxa_atexit`.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Formatting.v',
+    "Old Hello reference proof (trusted libc contract): contracts for GNU Hello's formatted output calls (`c: printf`, `c: fprintf`, `c: fputs`, `c: putchar`, `c: wprintf`) and format-string validation.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Getopt.v',
+    "Old Hello reference proof (trusted libc contract): safety contract for `c: getopt_long`, modeling `c: optarg` and `c: optind` updates and argument-string provenance in the composite libc world.").
+file_blurb('nanofil/rocq/theories/hello_contracts/GetoptLogic.v',
+    "Old Hello reference proof (separation-logic support): ghost-token ownership ([getopt_ps]) and read rules for `c: optarg` and `c: optind` cells updated by [Getopt](Getopt.v)'s `c: getopt_long` contract.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloClose.v',
+    "Old Hello reference proof (function proofs): Hoare triples for gnulib's `close_stream` and `close_stdout` exit callback over [LibcStreamAdapter](LibcStreamAdapter.v) and [LibcDiagnosticLogic](LibcDiagnosticLogic.v).").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloCode.v',
+    "Old Hello reference proof (generated IR fixture): linked checked nanofil -O IR ([hello_term], 32 reachable functions and data objects) of GNU Hello 2.12.3, generated and checked by `rocq/scripts/hello-fixture.sh`.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloConv.v',
+    "Old Hello reference proof (function proofs): Hoare triples for `c: mbrtowc` and gnulib's `rpl_mbrtowc` and `rpl_mbsrtowcs` wide-character greeting conversion in [Logic](../logic/Logic.v).").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloConvDefs.v',
+    "Old Hello reference proof (conversion support): pure memory-span lemmas and IR definitions for gnulib's `rpl_mbrtowc` and `rpl_mbsrtowcs`, factored out so [HelloMain](HelloMain.v) and [HelloConv](HelloConv.v) compile in parallel.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloDiagnosticChecks.v',
+    "Old Hello reference proof (separation-logic support): discharges the format-string and literal-argument preconditions for GNU Hello's concrete `c: error` diagnostic call sites.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloJoin.v',
+    "Old Hello reference proof (main proof, part 2): proves GNU Hello's greeting conversion and `c: wprintf` output path from the greeting join block and combines it with [HelloMain](HelloMain.v) into the full `c: main` triple ([main_spec]).").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloLeaf.v',
+    "Old Hello reference proof (function proofs): Hoare triples for GNU Hello's four gnulib leaf wrappers (`mbszero`, `memeq`, `streq`, and `strnlen1`) in [Logic](../logic/Logic.v).").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloLocale.v',
+    "Old Hello reference proof (function proofs): Hoare triples for gnulib's `setlocale_null_unlocked`, `setlocale_null_r_unlocked`, `setlocale_null_r`, and `hard_locale` over [LocaleLogic](LocaleLogic.v).").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloMain.v',
+    "Old Hello reference proof (main proof, part 1): proves GNU Hello's `c: main` from entry through `set_program_name`, `c: setlocale`, `c: getopt_long` option parsing, and `--help` / `--version` exits up to the greeting join block ([main_to_join]).").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloModule.v',
+    "Old Hello reference proof (module setup): decodes `rocq/theories/hello_contracts/HelloCode.v`'s `hello_term` into [hello_module], checks [valid_fast] ([hello_valid]), and catalogs the module's internal functions and external libc symbols.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloName.v',
+    "Old Hello reference proof (function proof): Hoare triple for gnulib's `set_program_name` in [Logic](../logic/Logic.v), covering `c: strrchr`, `\"/.libs/\"` and `\"lt-\"` prefix stripping, and global pointer stores.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloProgName.v',
+    "Old Hello reference proof (function proof): strengthens [HelloName](HelloName.v)'s `set_program_name` triple to preserve full C string ownership of `c: argv[0]` and `program_name`.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloReach.v',
+    "Old Hello reference proof (reachability check): verifies that `rocq/theories/hello_contracts/HelloCode.v`'s linked `hello_term` is closed under global symbol and callback-pointer references from `c: main`.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloStdio.v',
+    "Old Hello reference proof (separation-logic support): Hoare triples for GNU Hello's concrete `c: printf`, `c: fprintf`, `c: fputs`, `c: putchar`, and `c: wprintf` call sites from program-owned string literals.").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloVersion.v',
+    "Old Hello reference proof (function proofs): Hoare triples for GNU Hello's `print_help` and gnulib's `version_etc_arn`, `version_etc_va`, and `version_etc` using [VariadicLogic](../logic/VariadicLogic.v).").
+file_blurb('nanofil/rocq/theories/hello_contracts/HelloWorld.v',
+    "Old Hello reference proof (whole-program assembly): constructs a concrete initial [libc_world] witness and entry memory geometry connecting launcher [Startup](../external/Startup.v), [HelloJoin](HelloJoin.v)'s [main_spec], and [HelloClose](HelloClose.v)'s `close_stdout` callback.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LentLogic.v',
+    "Old Hello reference proof (separation-logic support): ghost-token ownership ([lent]) in [Logic](../logic/Logic.v) for strings lent by the external world, such as `c: setlocale` category names.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Libc.v',
+    "Old Hello reference proof (trusted libc boundary): assembles the composite libc world ([libc_world]) combining locale, `c: getopt_long`, `c: FILE` streams, `c: errno`, `c: mbrtowc`, and shutdown state.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcDiagnosticLogic.v',
+    "Old Hello reference proof (separation-logic support): Hoare triples for returning and non-returning `c: error` diagnostic calls over [Libc](Libc.v)'s composite world.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcErrnoLogic.v',
+    "Old Hello reference proof (separation-logic support): Hoare triples for `c: FILE` stream calls (`c: fclose`, `c: ferror`, `c: fflush`) that borrow and return program-owned `c: errno` bytes.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcExit.v',
+    "Old Hello reference proof (trusted libc contract): non-returning external-call contract for `c: _exit` over [Libc](Libc.v)'s composite libc world.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamAdapter.v',
+    "Old Hello reference proof (separation-logic support): world-interpretation adapter transferring stream handle tokens and `c: errno` ownership into the `close_stdout` exit callback.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamLogic.v',
+    "Old Hello reference proof (separation-logic support): world-interpretation framing lemmas keeping program-owned memory pieces separate from private `c: FILE` stream storage in [LibcStreams](LibcStreams.v).").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamTokens.v',
+    "Old Hello reference proof (separation-logic support): ghost life-token bookkeeping for `c: stdout` and `c: stderr` handles across `close_stdout` callback teardown.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreams.v',
+    "Old Hello reference proof (trusted libc boundary): composite `c: stdout` and `c: stderr` stream contracts over [Libc](Libc.v)'s [libc_world], tying `c: stdout` to [Shutdown](../external/Shutdown.v)'s output obligations.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Linked.v',
+    "Old Hello reference proof (lifecycle model): labelled-machine execution of registered void exit callbacks (`close_stdout`) popped from [ExitMemory](ExitMemory.v) during shutdown.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Locale.v',
+    "Old Hello reference proof (trusted libc contract): contract boundary and [locale_world] for `c: setlocale` over glibc's 13 locale categories, lending category name strings to the caller.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LocaleLogic.v',
+    "Old Hello reference proof (separation-logic support): world interpretation ([locale_wi]) and Hoare triples for `c: setlocale` queries over [Locale](Locale.v) and [LentLogic](LentLogic.v).").
+file_blurb('nanofil/rocq/theories/hello_contracts/Streams.v',
+    "Old Hello reference proof (trusted libc contract): contracts for `c: FILE` stream queries (`c: ferror`, `c: fileno`, `__freading`) and `c: fclose` over projections of the composite libc world.").
+
+%  Program-logic design spikes: rocq/spikes/
+file_blurb('nanofil/rocq/spikes/IrisHeap.v',
+    "Logic design spike (experiment 2, early Iris prototype): ghost piece heap and step rules for [IrisLang](IrisLang.v), whose reusable heap definitions were promoted to [Heap](../theories/logic/Heap.v).").
+file_blurb('nanofil/rocq/spikes/IrisLang.v',
+    "Logic design spike (experiment 2, early Iris prototype): first Iris `language` instantiation where an entire machine configuration is one expression, superseded by [Language](../theories/logic/Language.v)'s callers-stack evaluation context.").
+file_blurb('nanofil/rocq/spikes/IrisListSum.v',
+    "Logic design spike (experiment 2, comparison proof): proves [never_panics] for `rocq/spikes/listsum.c` in the early [IrisLang](IrisLang.v) / [IrisHeap](IrisHeap.v) prototype, carrying caller continuations explicitly.").
+file_blurb('nanofil/rocq/spikes/ListSum.v',
+    "Logic design spike (shared setup): decodes `rocq/spikes/ListSumCode.v` and defines the `listsum` and `sum` functions, globals, and initial call frames shared by all three `rocq/spikes/listsum.c` comparison proofs.").
+file_blurb('nanofil/rocq/spikes/ListSumCode.v',
+    "Logic design spike (generated IR fixture): checked nanofil -O IR ([listsum_term]) of `rocq/spikes/listsum.c`, generated and checked by `rocq/spikes/code.sh`.").
+file_blurb('nanofil/rocq/spikes/ListSumLogic.v',
+    "Logic design spike (comparison proof in production logic): proves `rocq/spikes/listsum.c` using the production [Logic](../theories/logic/Logic.v) framework with modular Hoare triples ([wp_call_bind]) and list-segment Löb induction.").
+file_blurb('nanofil/rocq/spikes/Sep.v',
+    "Logic design spike (experiment 1, hand-rolled separation logic): custom separation logic over [[identity]]-keyed memory pieces ([PLive], [PByte], [PAux]), written before adopting Iris (`docs/logic.md`).").
+file_blurb('nanofil/rocq/spikes/SepListSum.v',
+    "Logic design spike (experiment 1, comparison proof): proves [never_panics] for `rocq/spikes/listsum.c` (allocating and summing a heap linked list) using [Sep](Sep.v)'s hand-rolled separation logic.").
+
+%  Gallina compiler backend: rocq/backend/
+file_blurb('nanofil/rocq/backend/Abi.v',
+    "Gallina compiler backend: Fil-C ABI lowering pass ([lower_function], [lower_thunks]), translating checked-IR calls, arguments, returns, and function objects into [Plan](Plan.v) ABI actions to match filc_abi.pl.").
+file_blurb('nanofil/rocq/backend/Asm.v',
+    "Gallina compiler backend: inductive representation of x86-64 assembly lines ([line], [operand]) and GNU `as` (AT&T syntax) printer matching asm.pl byte for byte.").
+file_blurb('nanofil/rocq/backend/AsmTerm.v',
+    "Gallina compiler backend: decodes nanofil's asm-terms Prolog line terms into [Asm](Asm.v) assembly lines ([dline]) for differential testing of the assembly printer (`rocq/backend/tests/asm.sh`).").
+file_blurb('nanofil/rocq/backend/Compile.v',
+    "Gallina compiler backend: top-level Gallina compilation pipelines ([compile], [compile_promoted], [compile_allocated]) chaining promotion, copy propagation, pizlonation, validation, ABI lowering, and stack or register emission.").
+file_blurb('nanofil/rocq/backend/Copy.v',
+    "Gallina compiler backend: copy and trivial-[[phi]] propagation ([copy_module]) on strict-SSA unchecked IR terms, matching copy.pl.").
+file_blurb('nanofil/rocq/backend/Emit.v',
+    "Gallina compiler backend: emits the complete x86-64 assembly of a function from its ABI [plan] in stack-homed mode (`--registers=stack`), matching filc_amd64.pl's `function//2`.").
+file_blurb('nanofil/rocq/backend/EmitData.v',
+    "Gallina compiler backend: emits x86-64 assembly directives for global data objects, thread-local storage, constructor init entries, and symbol aliases, matching filc_amd64.pl.").
+file_blurb('nanofil/rocq/backend/EmitInst.v',
+    "Gallina compiler backend: emits x86-64 assembly for a single fused instruction, inline capability bounds check, or ABI action in the stack-homed backend.").
+file_blurb('nanofil/rocq/backend/EmitModule.v',
+    "Gallina compiler backend: assembles the x86-64 output of a whole checked module ([module_lines]) across functions, data objects, aliases, and weak thunks.").
+file_blurb('nanofil/rocq/backend/EmitObject.v',
+    "Gallina compiler backend: emits Fil-C function objects, symbol getters, and generic/variadic calling-convention entry adapters.").
+file_blurb('nanofil/rocq/backend/EmitOps.v',
+    "Gallina compiler backend: x86-64 scalar and x87 `c: long double` instruction selection for the stack-homed emitter, matching amd64.pl and filc_amd64.pl.").
+file_blurb('nanofil/rocq/backend/EmitThunk.v',
+    "Gallina compiler backend: emits x86-64 assembly for weak-symbol resolution thunks from their [Plan](Plan.v) [thunk] descriptions.").
+file_blurb('nanofil/rocq/backend/Escape.v',
+    "Gallina compiler backend: escape analysis ([alloc_classes]) on unchecked IR terms, identifying local [[alloc]] instructions used only by loads and stores at known constant offsets, matching escape.pl.").
+file_blurb('nanofil/rocq/backend/Extract.v',
+    "Gallina compiler backend: OCaml extraction of the Gallina backend passes and compilers for the backend differential test driver (`rocq/backend/extraction/main.ml`).").
+file_blurb('nanofil/rocq/backend/FrameSlots.v',
+    "Gallina compiler backend: first-fit stack-slot allocator ([temp_slots]) over temporary live intervals, sharing frame slots between non-overlapping temporaries of the same pool to match frame_slots.pl.").
+file_blurb('nanofil/rocq/backend/Fuse.v',
+    "Gallina compiler backend: fuses each capability [[check]] in checked IR with its following raw memory access or call ([fused_blocks]), matching filc_amd64.pl's `fused_blocks/5`.").
+file_blurb('nanofil/rocq/backend/IrTerm.v',
+    "Gallina compiler backend: total encoders from [Syntax](../theories/core/Syntax.v) checked-IR ASTs back to Prolog [term]s, inverting [Transport](../theories/core/Transport.v)'s decoders.").
+file_blurb('nanofil/rocq/backend/IrText.v',
+    "Gallina compiler backend: parser for nanofil's textual Prolog-clause IR format (`func/5`, `data/4`, `alias/3`, `context/2`), matching ir_text.pl.").
+file_blurb('nanofil/rocq/backend/Layout.v',
+    "Gallina compiler backend: stack-frame `%rbp` offset layout, symbol naming ([abi_symbol]), and assembly-line constructors shared by the `Emit*.v` modules.").
+file_blurb('nanofil/rocq/backend/Liveness.v',
+    "Gallina compiler backend: backward dataflow liveness analysis ([temp_liveness]) over fused basic blocks, computing live-in and live-out temporary ordsets to match cfg.pl.").
+file_blurb('nanofil/rocq/backend/Nfb.v',
+    "Gallina compiler backend (NFB bytecode): typed NFB bytecode encoder ([encode]) and canonical decoder ([decode]) for [Syntax](../theories/core/Syntax.v) checked-IR modules (`docs/nfb.md`).").
+file_blurb('nanofil/rocq/backend/NfbProof.v',
+    "Gallina compiler backend (NFB proof): top-level NFB bytecode theorems ([round_trip], [decode_canonical], [decode_identity]), proving canonical encoding and exact round-trip decoding of [Syntax](../theories/core/Syntax.v) modules.").
+file_blurb('nanofil/rocq/backend/NfbRead.v',
+    "Gallina compiler backend (NFB proof): proves the term-level NFB round-trip theorem ([read_encode_term]): [NfbTerm](NfbTerm.v)'s [read_term] inverts [encode_term] on every valid module term.").
+file_blurb('nanofil/rocq/backend/NfbTerm.v',
+    "Gallina compiler backend (NFB bytecode): Gallina encoder ([encode_term]) and decoder ([read_term]) for nanofil's binary module bytecode (`docs/nfb.md`) at the Prolog [term] level, matching nfb.pl.").
+file_blurb('nanofil/rocq/backend/NfbTotal.v',
+    "Gallina compiler backend (NFB proof): proves that [NfbTerm](NfbTerm.v)'s fuel-bounded bytecode readers never exhaust their word-length fuel budget ([sections_fuel], [blocks_fuel]).").
+file_blurb('nanofil/rocq/backend/NfbTransport.v',
+    "Gallina compiler backend (NFB proof): proves the AST-to-term half of the NFB round trip ([decode_enc_module]): [Transport](../theories/core/Transport.v)'s [decode_module] inverts [Nfb](Nfb.v)'s [enc_module].").
+file_blurb('nanofil/rocq/backend/Order.v',
+    "Gallina compiler backend: implements Prolog's standard term ordering (`sort/2`, `msort/2`, and `library(ordsets)`) on [Term](../theories/core/Term.v) so backend passes match the Prolog compiler's ordering.").
+file_blurb('nanofil/rocq/backend/Pizlonate.v',
+    "Gallina compiler backend: lowers unchecked IR terms to [[stage|checked]] capability IR ([pizlonate_module]), inserting capability bounds checks, [[flight|flights]], and back-edge GC [[poll|polls]] to match pizlonate.pl.").
+file_blurb('nanofil/rocq/backend/Plan.v',
+    "Gallina compiler backend: data types for a function's Fil-C ABI lowering plan ([plan], [thunk]), representing frame slot pools, fused checks, and ABI call/return actions before register assignment.").
+file_blurb('nanofil/rocq/backend/PlanTerm.v',
+    "Gallina compiler backend: encodes [Plan](Plan.v) ABI plans ([plan_term]) and weak thunks ([thunks_term]) as Prolog [term]s for differential testing against filc_abi.pl (`rocq/backend/tests/abi.sh`).").
+file_blurb('nanofil/rocq/backend/Promote.v',
+    "Gallina compiler backend: SSA slot promotion ([promote_module], pruned SSA) on unchecked IR terms, promoting non-escaping local allocations ([Escape](Escape.v)) into temporaries and [[phi]] nodes to match promote.pl.").
+file_blurb('nanofil/rocq/backend/Regs.v',
+    "Gallina compiler backend: loop-weighted interval register allocator ([alloc_regs]), executable allocation validator ([valid_alloc]), parallel-move [[phi]] resolver, and direct register assembly emitter (`docs/gallina-backend.md`, M7).").
+file_blurb('nanofil/rocq/backend/RegsProof.v',
+    "Gallina compiler backend (soundness proof): machine-checked soundness proofs for [Regs](Regs.v)'s interval disjointness tests, allocation validator ([valid_alloc]), and parallel-move compiler.").
+file_blurb('nanofil/rocq/backend/TermCfg.v',
+    "Gallina compiler backend: control-flow graph ([term_cfg]), reverse postorder, dominance frontiers ([cfg_frontiers]), and def/use sets for unchecked IR represented as [Term](../theories/core/Term.v) terms.").
+file_blurb('nanofil/rocq/backend/Text.v',
+    "Gallina compiler backend: difference-list string buffer ([parts]) used by the assembly printer to emit large `.s` files without quadratic string concatenation.").
+
+%  Gallina compiler backend extractions: rocq/backend/crane/ & certirocq/
+file_blurb('nanofil/rocq/backend/crane/CraneExtract.v',
+    "Gallina compiler backend (C++ extraction): extracts the Gallina backend ([Compile](../Compile.v) and [IrText](../IrText.v)) to C++ via Bloomberg's Crane (`rocq/backend/crane/Makefile`, `docs/gallina-backend.md`).").
+file_blurb('nanofil/rocq/backend/crane/CraneMap.v',
+    "Gallina compiler backend (C++ extraction): maps Rocq [Z], [N], [positive], [nat], [ascii], and `string` types and operations onto the C++ `rocq/backend/crane/nfrt.h` runtime for Crane extraction.").
+file_blurb('nanofil/rocq/backend/crane/CraneSelfTest.v',
+    "Gallina compiler backend (C++ extraction test): generates `vm_compute` reference values ([expected]) across boundary integer widths to test [CraneMap](CraneMap.v)'s C++ runtime primitives (`rocq/backend/crane/selftest.cpp`).").
+file_blurb('nanofil/rocq/backend/certirocq/CertiExtract.v',
+    "Gallina compiler backend (CertiRocq C extraction experiment): compiles the Gallina backend entry points to C via CertiRocq with `--anf-variant 8` (`nanofil/nix/backend-certirocq.nix`, `docs/gallina-backend.md`).").
+
+%  λANF lowering campaign: anf/lower/ & anf/lower/tests/
+file_blurb('nanofil/anf/lower/AnfExtract.v',
+    "λANF lowering campaign: extracts `anf/lower/AnfLower.v`'s [lower] and [IrText](../../rocq/backend/IrText.v) to OCaml for the λANF compiler driver (`anf/lower/main.ml`).").
+file_blurb('nanofil/anf/lower/AnfLower.v',
+    "λANF lowering campaign: lowers CertiRocq's closure-converted λANF IR (`-O 1 --anf-variant 8`) to [[stage|checked]] nanofil IR ([lower]) over a 32-bit tagged-word arena (`docs/lambda-anf.md`, M2).").
+file_blurb('nanofil/anf/lower/tests/Programs.v',
+    "λANF lowering campaign (gate test suite): M2 gate test programs ([demo1_out], [demo2_out], [list_sum_out], [vs_easy_out], [vs_hard_out], [binom_out], [color_out], [clos_out], [rec_clos_out], [sha_fast_out], plus [Asm](../../../rocq/backend/Asm.v) and [Order](../../../rocq/backend/Order.v) tests).").
+file_blurb('nanofil/anf/lower/tests/Ref.v',
+    "λANF lowering campaign (gate test reference): extracts each gate program in `anf/lower/tests/Programs.v` directly to OCaml so its output bytes serve as the ground-truth reference for the arena build.").
+file_blurb('nanofil/anf/lower/tests/Show.v',
+    "λANF lowering campaign (gate test support): serializes test program results as byte lists ([out]) so arena-compiled binaries and OCaml reference programs can be compared byte for byte.").
+file_blurb('nanofil/anf/lower/tests/Tap.v',
+    "λANF lowering campaign (gate test harness): invokes `CertiRocq Show IR -O 1 --anf-variant 8` on each gate program in `anf/lower/tests/Programs.v` to dump λANF clauses for [lower].").
