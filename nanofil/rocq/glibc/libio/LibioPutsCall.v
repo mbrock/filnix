@@ -39,8 +39,11 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 Context (vb : Z) (vreg : region) (Rx : iProp Σ).
+Context (F : ptr -> Z -> option Z -> iProp Σ).
+Context (G : list Z -> ptr -> Z -> option Z -> iProp Σ).
+Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context (Hxs : xsputn_spec w0 registry ge vb Rx).
+Context (Hxs : xsputn_spec_for w0 registry ge F G Rx).
 
 (** The Iris instance for registry and [os_wi] w0. *)
 Local Instance puts_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
@@ -53,16 +56,16 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     held once: the jump table is checked, its `c: xsputn` slot called
     on the string, and block `c: L163` reached, its flag `c: v179`
     whatever the count makes it. *)
-Lemma wp_puts_L162 e p dq s so soreg fb Φ :
+Lemma wp_puts_L162_for e p dq s so soreg fb Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "v0") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WInt (Z.of_nat (length s))) ->
   lookup (TAtom "v12") e = Some (WPtr fp) -> lookup (TAtom "chk1") e = Some (WPtr fp) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) -> so mod 8 = 0 -> so + 8 <= r_end soreg ->
   vtables_ro ge vb vreg -∗ live so soreg -∗ pcell so 0 fp -∗
-  file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+  F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
   ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v12" \/ x = TAtom "chk1" ->
                 lookup x e' = lookup x e) /\ lookup (TAtom "v179") e' = Some (WInt c)⌝ -∗
-     live so soreg -∗ pcell so 0 fp -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗
+     live so soreg -∗ pcell so 0 fp -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗
      word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_puts e' [] None (Exec (TAtom "L163") [] pu_j163)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L162") (Some (TAtom "L121")))) : sexpr) {{ Φ }}.
@@ -70,7 +73,7 @@ Proof.
   intros fp Hv0 Hv6 Hv12 Hc1 Hgso Hsoal Hsoend. subst fp.
   iIntros "#Hvt Hso Hsoc Hf Hstr HRx HK".
   iDestruct (word_string_len with "Hstr") as %Hlen.
-  iDestruct (file_at_open with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
+  iDestruct (Hopen with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.
   unfold file_size in Hfend.
   rewrite (mode_vtable_narrow _ _ Hmv); [|lia].
@@ -108,4 +111,12 @@ Proof.
 Qed.
 
 End rules.
+
+(** Generic streams use the same call proof without adding stdout's
+    stronger buffer and flag requirements to their predicate. *)
+Definition wp_puts_L162 `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
+    w0 registry ge vb vreg Rx Hxs_fn (Hxs : xsputn_spec w0 registry ge vb Rx) :=
+  wp_puts_L162_for w0 registry ge vb vreg Rx (file_at vb (ow_self w0))
+    (fun _ => file_at vb (ow_self w0)) (file_at_open vb (ow_self w0)) Hxs_fn Hxs.
+
 End LibioPutsCallOn.
