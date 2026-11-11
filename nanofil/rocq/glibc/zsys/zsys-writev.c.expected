@@ -1,0 +1,14 @@
+full 12 12 1
+nullzero 10 10 1
+empty 0 0
+write0 0 0
+partial 1 1 1
+ebadf -1 1 1 1 1 1 1
+einval -1 1 0
+oob-entry 1 0
+oob-array 1 0
+negative 1 0
+misaligned 1 0
+ro-array 8 8 1
+freed 1 0
+logfd 1

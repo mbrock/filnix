@@ -1,0 +1,9 @@
+set/cur/end 5 8 10 1
+big 1
+near-max 1
+espipe -1 1
+einval -1 1 -1 1 4
+ebadf -1 1 1 1 1
+arity 1
+logfd 1
+otherfd 0

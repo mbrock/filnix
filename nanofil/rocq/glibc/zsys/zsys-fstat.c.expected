@@ -1,0 +1,9 @@
+size 144
+pipe 0 1 1 1
+stack 0 1 1 1
+odd 0 1 1 1
+ebadf -1 1 1 1 1
+ptrslot 0 1 1
+short 1
+readonly 1
+null 1

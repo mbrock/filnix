@@ -1,0 +1,12 @@
+move 1 1
+overlap 1
+ptr-move 1 1
+ptr-part 0
+set 1 1
+ptr-set 1 0
+void-ret 1 0 1 0 1
+unchanged 1 1 1
+oob-move 1
+oob-src 1
+ro-set 1
+null-set 1

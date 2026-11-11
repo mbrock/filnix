@@ -8,3 +8,14 @@ LenLogic.v
 ZsysWrite.v
 SayCode.v
 SayLogic.v
+zsys/OsBlocks.v
+zsys/OsWorld.v
+zsys/OsWrite.v
+zsys/OsWritev.v
+zsys/OsFstat.v
+zsys/OsIoctl.v
+zsys/OsLseek.v
+zsys/OsClose.v
+zsys/OsExit.v
+zsys/OsThread.v
+zsys/OsRegistry.v

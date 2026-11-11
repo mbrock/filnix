@@ -1,0 +1,12 @@
+tty 0 1 1 1
+big 0 1 1
+enotty -1 1 1 1 1 1
+tcgets 0 1
+nullfault -1 1
+short-pipe -1 1
+short-tty 1
+ro-tty 1
+ro-pipe 0
+request 1 1
+intarg 0 1 -1 1 -1 1
+inbounds 1 1 1
