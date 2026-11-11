@@ -260,7 +260,7 @@ Ltac a2 := unfold off_cleanup, off_cleanup_jmp, off_cancelhandling, off_lk_lock,
   off_old_offset, off_column, off_shortbuf, off_offset, off_codecvt, off_freeres_list, off_freeres_buf,
   off_total_written, vt_file, vt_wfile, slot_finish, slot_overflow, slot_xsputn, slot_doallocate, slot_write,
   slot_close, slot_stat;
-  cbn [ptr_addr ptr_cap]; unfold raw_address; rewrite ?Z.add_0_r; unwrap2;
+  cbn [ptr_addr ptr_cap]; unfold raw_address; rewrite ?Z.add_0_r; clear_junk; unwrap2;
   first [lia | apply Z.mod_1_r | Z.div_mod_to_equations; lia].
 
 (** One step whose premises reduce, applied as an entailment: a pure
@@ -322,13 +322,23 @@ Ltac fldp Hl Hc Hk :=
 Ltac fldn Hl Hc :=
   rule2 Hl Hc ltac:(eapply wp_raw_load_null; inst; [reflexivity | vx | reflexivity | a2 | a2]).
 
+(** A 64-bit store over the [icell] Hc, the life Hl. *)
+Ltac fstl Hl Hc :=
+  rule2 Hl Hc ltac:(eapply wp_raw_store; inst; [vx | vx | reflexivity | a2 | wi_store]).
+
 (** A pointer store: the base's life Hl and the cell Hc. *)
 Ltac fstp Hl Hc :=
   rule2 Hl Hc ltac:(eapply wp_raw_store_pointer; inst; [vx | vx | reflexivity | a2 | a2 | wi_store]).
 
 (** A side premise of a block lemma: a hypothesis, a lookup through
     the environment's [put]s, or arithmetic. *)
-Ltac side := first [eassumption | lk_prove | unfold file_size; lia].
+Ltac side :=
+  lazymatch goal with
+  | |- environments.envs_entails _ _ => fail
+  | |- call_frame _ _ = _ => reflexivity
+  | |- lookup _ _ = _ => lk_prove
+  | |- _ => first [assumption | unfold file_size; lia | Z.div_mod_to_equations; lia | a2]
+  end.
 
 (** The rest of a caller after a callee's triple: resume it. *)
 Ltac resume := iExists _; iSplit; [iPureIntro; reflexivity|]; iNext; cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
