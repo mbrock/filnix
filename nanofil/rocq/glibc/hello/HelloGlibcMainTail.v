@@ -76,12 +76,13 @@ Proof.
   cbn. rewrite (Z.mod_small n); [|lia]. iApply ("HK" with "[//] HQ").
 Qed.
 
-(** Conversion failure reads errno and calls fatal error reporting, which never returns. *)
+(** Conversion failure passes the owned handler state to fatal error reporting.
+    The existing exit triple supplies its nonreturning continuation. *)
 Lemma join_fail e Ψ :
-  hello_ro ge o -∗ io -∗ names o -∗
+  hello_ro ge o -∗ io -∗ names o -∗ X -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "L34") (Some (TAtom "iw_1.join")))) : gexpr) {{ Ψ }}.
 Proof.
-  iIntros "#Hro [Hio Hpv] Hn". pose proof (hy_eb_at _ _ Hy) as (He0 & Hee & Her).
+  iIntros "#Hro [Hio Hpv] Hn HX". pose proof (hy_eb_at _ _ Hy) as (He0 & Hee & Her).
   iPoseProof "Hro" as "(_ & _ & _ & _ & _ & _ & #Hel & _)".
   st.
   iApply (wp_call_ptr w0 ge _ _ _ (fun q => ⌜q = mkPtr (ho_eb o) (Obj (ho_eb o))⌝)%I with "[]");
@@ -97,8 +98,10 @@ Proof.
     [reflexivity | vx | exact Hb4 | reflexivity | left; reflexivity | arith |].
   iNext. iIntros "_ Hb".
   st_global (hy_lits _ _ Hy "hello#str.82" ltac:(cbn; tauto)).
-  iApply (wp_call_never with "[-]"); [eapply (hd_error_conv _ _ _ D) | vx |].
-  iSplitR; [iExact "Hro"|]. iSplitR "Hpv Hn"; [|iSplitL "Hpv"; [iExact "Hpv" | iExact "Hn"]].
+  iApply (wp_call_never with "[-]");
+    [eapply (hd_error_conv _ _ _ D _ X); exact (hl_exit _ _ _ _ _ _ Lb 1) | vx |].
+  iSplitR; [iExact "Hro"|].
+  iSplitR "Hpv Hn HX"; [|iSplitL "Hpv"; [iExact "Hpv" | iSplitL "Hn"; [iExact "Hn" | iExact "HX"]]].
   iSplitL "Hfo"; [iExact "Hfo"|]. iSplitL "Hfe"; [iExact "Hfe"|]. iSplitL "Hfi"; [iExact "Hfi"|].
   iSplitL "Hls"; [iExact "Hls"|]. iSplitL "Htc"; [iExact "Htc"|].
   iExists bs, cs. iSplit; [iPureIntro; split; assumption|]. rewrite pts_app. iSplitL "Hb"; [iExact "Hb" | iExact "Ha"].
