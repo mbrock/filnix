@@ -1,0 +1,1121 @@
+% M0 benchmark kernels in hand-lowered checked Nanofil IR over a single
+% 32-bit `w` arena (`arena : p`, `roots : p`, `st : p`).
+%
+% Validated by `ValidFast.valid_fast` (`= Validate.valid`) and compiled by
+% `nanofil-backend compile-allocated` (`Regs.v`).
+%
+% State layout in `st` (7 `w` words = 28 bytes):
+%   +0  young_idx
+%   +4  major_idx
+%   +8  nursery_base
+%   +12 nursery_end
+%   +16 major_limit
+%   +20 root_sp
+%   +24 gc_count
+%
+% Shared tagged-word representation (docs/lambda-anf.md):
+%   bit 0 = 1: `(val << 1) | 1` immediate (constants, 31-bit ints)
+%   bit 0 = 0: `idx << 1` boxed block at `arena[idx]` (`idx > 0`)
+%   header `arena[idx]`: `(arity << 10) | (st_kind << 8) | ordinal`
+%   broken heart: `0xFFFFFFFF` at `arena[idx]`, `dst` at `arena[idx + 1]`
+
+% ---------------------------------------------------------------------------
+% Cheney minor collector
+% ---------------------------------------------------------------------------
+
+func(evacuate_word, local, w,
+     [param(p, tmp(arena)), param(p, tmp(st)), param(w, tmp(w0))], [
+    block(entry, [], [
+        let(tmp(is_imm), w, and, [tmp(w0), const(1)])
+    ], branch(tmp(is_imm), ret_same, chk_nursery)),
+    block(chk_nursery, [], [
+        let(tmp(idx), w, shr, [tmp(w0), const(1)]),
+        let(tmp(ast0), a, check(0, 12, read, 4), [tmp(st)]),
+        touch(tmp(ast0)),
+        let(tmp(nb), w, raw_load(uw, 8), [tmp(ast0)]),
+        let(tmp(is_old), w, cmp(ult, w), [tmp(idx), tmp(nb)])
+    ], branch(tmp(is_old), ret_same, read_hdr)),
+    block(read_hdr, [], [
+        let(tmp(idx64), l, ext(uw), [tmp(idx)]),
+        let(tmp(off), l, shl, [tmp(idx64), const(2)]),
+        flight(tmp(src), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
+        let(tmp(asrc), a, check(0, 8, read, 4), [tmp(src)]),
+        let(tmp(hdr), w, raw_load(uw, 0), [tmp(asrc)]),
+        let(tmp(is_fwd), w, cmp(eq, w), [tmp(hdr), const(4294967295)])
+    ], branch(tmp(is_fwd), forwarded, copy_init)),
+    block(forwarded, [], [
+        let(tmp(afwd), a, check(0, 8, read, 4), [tmp(src)]),
+        touch(tmp(afwd)),
+        let(tmp(fwd_dst), w, raw_load(uw, 4), [tmp(afwd)]),
+        let(tmp(res_fwd), w, shl, [tmp(fwd_dst), const(1)])
+    ], ret(tmp(res_fwd))),
+    block(copy_init, [], [
+        let(tmp(arity), w, shr, [tmp(hdr), const(10)]),
+        let(tmp(words), w, add, [tmp(arity), const(1)]),
+        let(tmp(ast1), a, check(0, 8, write, 4), [tmp(st)]),
+        touch(tmp(ast1)),
+        let(tmp(dst), w, raw_load(uw, 4), [tmp(ast1)]),
+        let(tmp(new_mj), w, add, [tmp(dst), tmp(words)]),
+        raw_store(w, 4, tmp(new_mj), tmp(ast1)),
+        let(tmp(dst64), l, ext(uw), [tmp(dst)]),
+        let(tmp(doff), l, shl, [tmp(dst64), const(2)]),
+        flight(tmp(dp0), add, [address(tmp(arena)), tmp(doff)], lower(tmp(arena))),
+        let(tmp(adp0), a, check(0, 4, write, 4), [tmp(dp0)]),
+        raw_store(w, 0, tmp(hdr), tmp(adp0))
+    ], goto(copy_loop)),
+    block(copy_loop, [
+        phi(tmp(i), w, [copy_init-const(1), copy_body-tmp(i_next)])
+    ], [
+        let(tmp(more), w, cmp(ule, w), [tmp(i), tmp(arity)])
+    ], branch(tmp(more), copy_body, finish_evac)),
+    block(copy_body, [], [
+        let(tmp(si), w, add, [tmp(idx), tmp(i)]),
+        let(tmp(si64), l, ext(uw), [tmp(si)]),
+        let(tmp(soff), l, shl, [tmp(si64), const(2)]),
+        flight(tmp(sp), add, [address(tmp(arena)), tmp(soff)], lower(tmp(arena))),
+        let(tmp(asp), a, check(0, 4, read, 4), [tmp(sp)]),
+        let(tmp(val), w, raw_load(uw, 0), [tmp(asp)]),
+        let(tmp(di), w, add, [tmp(dst), tmp(i)]),
+        let(tmp(di64), l, ext(uw), [tmp(di)]),
+        let(tmp(dioff), l, shl, [tmp(di64), const(2)]),
+        flight(tmp(dp), add, [address(tmp(arena)), tmp(dioff)], lower(tmp(arena))),
+        let(tmp(adp), a, check(0, 4, write, 4), [tmp(dp)]),
+        raw_store(w, 0, tmp(val), tmp(adp)),
+        let(tmp(i_next), w, add, [tmp(i), const(1)])
+    ], goto(poll(copy_loop))),
+    block(finish_evac, [], [
+        let(tmp(atomb), a, check(0, 8, write, 4), [tmp(src)]),
+        raw_store(w, 0, const(4294967295), tmp(atomb)),
+        raw_store(w, 4, tmp(dst), tmp(atomb)),
+        let(tmp(res_new), w, shl, [tmp(dst), const(1)])
+    ], ret(tmp(res_new))),
+    block(ret_same, [], [], ret(tmp(w0)))
+]).
+
+func(minor_gc, export, void,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st))], [
+    block(entry, [], [
+        let(tmp(ast0), a, check(0, 24, read, 4), [tmp(st)]),
+        touch(tmp(ast0)),
+        let(tmp(scan0), w, raw_load(uw, 4), [tmp(ast0)]),
+        let(tmp(rsp), w, raw_load(uw, 20), [tmp(ast0)])
+    ], goto(root_loop)),
+    block(root_loop, [
+        phi(tmp(r), w, [entry-const(0), root_body-tmp(r_next)])
+    ], [
+        let(tmp(rmore), w, cmp(ult, w), [tmp(r), tmp(rsp)])
+    ], branch(tmp(rmore), root_body, scan_head)),
+    block(root_body, [], [
+        let(tmp(r64), l, ext(uw), [tmp(r)]),
+        let(tmp(roff), l, shl, [tmp(r64), const(2)]),
+        flight(tmp(rp), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots))),
+        let(tmp(arp0), a, check(0, 4, read, 4), [tmp(rp)]),
+        let(tmp(rw0), w, raw_load(uw, 0), [tmp(arp0)]),
+        call(result(tmp(rw1), w), global(evacuate_word),
+             [arg(p, tmp(arena)), arg(p, tmp(st)), arg(w, tmp(rw0))]),
+        let(tmp(arp1), a, check(0, 4, write, 4), [tmp(rp)]),
+        raw_store(w, 0, tmp(rw1), tmp(arp1)),
+        let(tmp(r_next), w, add, [tmp(r), const(1)])
+    ], goto(poll(root_loop))),
+    block(scan_head, [
+        phi(tmp(scan), w, [root_loop-tmp(scan0), scan_adv-tmp(scan_next)])
+    ], [
+        let(tmp(ast1), a, check(0, 8, read, 4), [tmp(st)]),
+        touch(tmp(ast1)),
+        let(tmp(mj), w, raw_load(uw, 4), [tmp(ast1)]),
+        let(tmp(smore), w, cmp(ult, w), [tmp(scan), tmp(mj)])
+    ], branch(tmp(smore), scan_obj, done)),
+    block(scan_obj, [], [
+        let(tmp(sc64), l, ext(uw), [tmp(scan)]),
+        let(tmp(scoff), l, shl, [tmp(sc64), const(2)]),
+        flight(tmp(op), add, [address(tmp(arena)), tmp(scoff)], lower(tmp(arena))),
+        let(tmp(aop), a, check(0, 4, read, 4), [tmp(op)]),
+        let(tmp(hdr), w, raw_load(uw, 0), [tmp(aop)]),
+        let(tmp(arity), w, shr, [tmp(hdr), const(10)]),
+        let(tmp(kind), w, and, [tmp(hdr), const(768)]),
+        let(tmp(is_scanned), w, cmp(eq, w), [tmp(kind), const(0)])
+    ], branch(tmp(is_scanned), field_loop, scan_adv)),
+    block(field_loop, [
+        phi(tmp(fi), w, [scan_obj-const(1), field_body-tmp(fi_next)])
+    ], [
+        let(tmp(fmore), w, cmp(ule, w), [tmp(fi), tmp(arity)])
+    ], branch(tmp(fmore), field_body, scan_adv)),
+    block(field_body, [], [
+        let(tmp(fidx), w, add, [tmp(scan), tmp(fi)]),
+        let(tmp(f64), l, ext(uw), [tmp(fidx)]),
+        let(tmp(foff), l, shl, [tmp(f64), const(2)]),
+        flight(tmp(fp), add, [address(tmp(arena)), tmp(foff)], lower(tmp(arena))),
+        let(tmp(afp0), a, check(0, 4, read, 4), [tmp(fp)]),
+        let(tmp(fw0), w, raw_load(uw, 0), [tmp(afp0)]),
+        call(result(tmp(fw1), w), global(evacuate_word),
+             [arg(p, tmp(arena)), arg(p, tmp(st)), arg(w, tmp(fw0))]),
+        let(tmp(afp1), a, check(0, 4, write, 4), [tmp(fp)]),
+        raw_store(w, 0, tmp(fw1), tmp(afp1)),
+        let(tmp(fi_next), w, add, [tmp(fi), const(1)])
+    ], goto(poll(field_loop))),
+    block(scan_adv, [], [
+        let(tmp(words), w, add, [tmp(arity), const(1)]),
+        let(tmp(scan_next), w, add, [tmp(scan), tmp(words)])
+    ], goto(poll(scan_head))),
+    block(done, [], [
+        let(tmp(ast2), a, check(0, 28, write, 4), [tmp(st)]),
+        touch(tmp(ast2)),
+        let(tmp(nb), w, raw_load(uw, 8), [tmp(ast2)]),
+        let(tmp(gc0), w, raw_load(uw, 24), [tmp(ast2)]),
+        let(tmp(gc1), w, add, [tmp(gc0), const(1)]),
+        raw_store(w, 0, tmp(nb), tmp(ast2)),
+        raw_store(w, 24, tmp(gc1), tmp(ast2))
+    ], ret)
+]).
+
+% ---------------------------------------------------------------------------
+% Kernel 1: list_build, list_sum, bench_list
+% ---------------------------------------------------------------------------
+
+func(list_build, export, w,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(n0)), param(w, tmp(seed0))], [
+    block(entry, [], [
+        let(tmp(ast0), a, check(0, 16, read, 4), [tmp(st)]),
+        let(tmp(yg0), w, raw_load(uw, 0), [tmp(ast0)]),
+        let(tmp(ne), w, raw_load(uw, 12), [tmp(ast0)])
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(n), w, [entry-tmp(n0), alloc_cell-tmp(n1)]),
+        phi(tmp(s), w, [entry-tmp(seed0), alloc_cell-tmp(s1)]),
+        phi(tmp(acc), w, [entry-const(1), alloc_cell-tmp(acc1)]),
+        phi(tmp(yg), w, [entry-tmp(yg0), alloc_cell-tmp(yg2)])
+    ], [
+        let(tmp(done_p), w, cmp(eq, w), [tmp(n), const(0)])
+    ], branch(tmp(done_p), finish, check_cap)),
+    block(check_cap, [], [
+        let(tmp(need), w, add, [tmp(yg), const(3)]),
+        let(tmp(full), w, cmp(ugt, w), [tmp(need), tmp(ne)])
+    ], branch(tmp(full), slow_gc, fast_ok)),
+    block(fast_ok, [], [], goto(alloc_cell)),
+    block(slow_gc, [], [
+        let(tmp(ast1), a, check(0, 24, write, 4), [tmp(st)]),
+        raw_store(w, 0, tmp(yg), tmp(ast1)),
+        let(tmp(sp), w, raw_load(uw, 20), [tmp(ast1)]),
+        let(tmp(sp1), w, add, [tmp(sp), const(1)]),
+        raw_store(w, 20, tmp(sp1), tmp(ast1)),
+        let(tmp(sp64), l, ext(uw), [tmp(sp)]),
+        let(tmp(roff), l, shl, [tmp(sp64), const(2)]),
+        flight(tmp(rp), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots))),
+        let(tmp(arp0), a, check(0, 4, write, 4), [tmp(rp)]),
+        raw_store(w, 0, tmp(acc), tmp(arp0)),
+        call(void, global(minor_gc),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st))]),
+        let(tmp(arp1), a, check(0, 4, read, 4), [tmp(rp)]),
+        let(tmp(acc_gc), w, raw_load(uw, 0), [tmp(arp1)]),
+        let(tmp(ast2), a, check(0, 24, write, 4), [tmp(st)]),
+        let(tmp(yg_gc), w, raw_load(uw, 0), [tmp(ast2)]),
+        raw_store(w, 20, tmp(sp), tmp(ast2))
+    ], goto(alloc_cell)),
+    block(alloc_cell, [
+        phi(tmp(acc_cur), w, [fast_ok-tmp(acc), slow_gc-tmp(acc_gc)]),
+        phi(tmp(yg_cur), w, [fast_ok-tmp(yg), slow_gc-tmp(yg_gc)])
+    ], [
+        let(tmp(sm), w, mul, [tmp(s), const(1664525)]),
+        let(tmp(s1), w, add, [tmp(sm), const(1013904223)]),
+        let(tmp(vraw), w, and, [tmp(s1), const(1023)]),
+        let(tmp(vsh), w, shl, [tmp(vraw), const(1)]),
+        let(tmp(vtag), w, or, [tmp(vsh), const(1)]),
+        let(tmp(yg64), l, ext(uw), [tmp(yg_cur)]),
+        let(tmp(off), l, shl, [tmp(yg64), const(2)]),
+        flight(tmp(dst), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
+        let(tmp(adst), a, check(0, 12, write, 4), [tmp(dst)]),
+        raw_store(w, 0, const(2048), tmp(adst)),
+        raw_store(w, 4, tmp(vtag), tmp(adst)),
+        raw_store(w, 8, tmp(acc_cur), tmp(adst)),
+        let(tmp(acc1), w, shl, [tmp(yg_cur), const(1)]),
+        let(tmp(yg2), w, add, [tmp(yg_cur), const(3)]),
+        let(tmp(n1), w, sub, [tmp(n), const(1)])
+    ], goto(poll(loop))),
+    block(finish, [], [
+        let(tmp(astf), a, check(0, 4, write, 4), [tmp(st)]),
+        raw_store(w, 0, tmp(yg), tmp(astf))
+    ], ret(tmp(acc)))
+]).
+
+func(list_sum, export, w,
+     [param(p, tmp(arena)), param(w, tmp(xs0)), param(w, tmp(acc0))], [
+    block(entry, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(xs), w, [entry-tmp(xs0), step-tmp(tl)]),
+        phi(tmp(acc), w, [entry-tmp(acc0), step-tmp(acc1)])
+    ], [
+        let(tmp(tag), w, and, [tmp(xs), const(1)])
+    ], branch(tmp(tag), done, step)),
+    block(step, [], [
+        let(tmp(idx), w, shr, [tmp(xs), const(1)]),
+        let(tmp(idx64), l, ext(uw), [tmp(idx)]),
+        let(tmp(off), l, shl, [tmp(idx64), const(2)]),
+        flight(tmp(cell), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
+        let(tmp(a), a, check(0, 12, read, 4), [tmp(cell)]),
+        touch(tmp(a)),
+        let(tmp(h), w, raw_load(uw, 4), [tmp(a)]),
+        let(tmp(tl), w, raw_load(uw, 8), [tmp(a)]),
+        let(tmp(h0), w, sub, [tmp(h), const(1)]),
+        let(tmp(acc1), w, add, [tmp(acc), tmp(h0)])
+    ], goto(poll(loop))),
+    block(done, [], [], ret(tmp(acc)))
+]).
+
+func(bench_list, export, l,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(len)), param(w, tmp(rounds))], [
+    block(entry, [], [
+        call(result(tmp(keep), w), global(list_build),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(len)), arg(w, const(42))]),
+        let(tmp(ast0), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast0)),
+        let(tmp(sp), w, raw_load(uw, 20), [tmp(ast0)]),
+        let(tmp(sp1), w, add, [tmp(sp), const(1)]),
+        raw_store(w, 20, tmp(sp1), tmp(ast0)),
+        let(tmp(sp64), l, ext(uw), [tmp(sp)]),
+        let(tmp(roff), l, shl, [tmp(sp64), const(2)]),
+        flight(tmp(rp), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots))),
+        let(tmp(arp0), a, check(0, 4, write, 4), [tmp(rp)]),
+        raw_store(w, 0, tmp(keep), tmp(arp0))
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(r), w, [entry-const(0), body-tmp(r1)]),
+        phi(tmp(tot), l, [entry-const(0), body-tmp(tot1)])
+    ], [
+        let(tmp(more), w, cmp(ult, w), [tmp(r), tmp(rounds)])
+    ], branch(tmp(more), body, done)),
+    block(body, [], [
+        let(tmp(seed), w, add, [tmp(r), const(1000)]),
+        call(result(tmp(xs), w), global(list_build),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(len)), arg(w, tmp(seed))]),
+        call(result(tmp(s1t), w), global(list_sum),
+             [arg(p, tmp(arena)), arg(w, tmp(xs)), arg(w, const(1))]),
+        let(tmp(arp1), a, check(0, 4, read, 4), [tmp(rp)]),
+        let(tmp(keep_cur), w, raw_load(uw, 0), [tmp(arp1)]),
+        call(result(tmp(s2t), w), global(list_sum),
+             [arg(p, tmp(arena)), arg(w, tmp(keep_cur)), arg(w, const(1))]),
+        let(tmp(s1), w, shr, [tmp(s1t), const(1)]),
+        let(tmp(s2), w, shr, [tmp(s2t), const(1)]),
+        let(tmp(s12), w, add, [tmp(s1), tmp(s2)]),
+        let(tmp(s12l), l, ext(uw), [tmp(s12)]),
+        let(tmp(tot1), l, add, [tmp(tot), tmp(s12l)]),
+        let(tmp(r1), w, add, [tmp(r), const(1)])
+    ], goto(poll(loop))),
+    block(done, [], [
+        let(tmp(ast1), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast1)),
+        raw_store(w, 20, tmp(sp), tmp(ast1))
+    ], ret(tmp(tot)))
+]).
+
+% ---------------------------------------------------------------------------
+% Kernel 2: term_build, term_eqb, bench_term
+% ---------------------------------------------------------------------------
+
+func(term_build, export, w,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(depth)), param(w, tmp(seed)), param(w, tmp(flip))], [
+    block(entry, [], [
+        let(tmp(is_leaf), w, cmp(eq, w), [tmp(depth), const(0)])
+    ], branch(tmp(is_leaf), leaf_chk, node)),
+    block(leaf_chk, [], [
+        let(tmp(ast0), a, check(0, 16, read, 4), [tmp(st)]),
+        let(tmp(yg0), w, raw_load(uw, 0), [tmp(ast0)]),
+        let(tmp(ne0), w, raw_load(uw, 12), [tmp(ast0)]),
+        let(tmp(need0), w, add, [tmp(yg0), const(2)]),
+        let(tmp(full0), w, cmp(ugt, w), [tmp(need0), tmp(ne0)])
+    ], branch(tmp(full0), leaf_gc, leaf_ok)),
+    block(leaf_ok, [], [], goto(leaf_alloc)),
+    block(leaf_gc, [], [
+        call(void, global(minor_gc),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st))]),
+        let(tmp(ast0g), a, check(0, 4, read, 4), [tmp(st)]),
+        let(tmp(yg0g), w, raw_load(uw, 0), [tmp(ast0g)])
+    ], goto(leaf_alloc)),
+    block(leaf_alloc, [
+        phi(tmp(ygl), w, [leaf_ok-tmp(yg0), leaf_gc-tmp(yg0g)])
+    ], [
+        let(tmp(ord), w, and, [tmp(seed), const(1)]),
+        let(tmp(hdrl), w, or, [const(1024), tmp(ord)]),
+        let(tmp(sv), w, shr, [tmp(seed), const(1)]),
+        let(tmp(pv), w, add, [tmp(sv), tmp(flip)]),
+        let(tmp(pvsh), w, shl, [tmp(pv), const(1)]),
+        let(tmp(ptag), w, or, [tmp(pvsh), const(1)]),
+        let(tmp(ygl64), l, ext(uw), [tmp(ygl)]),
+        let(tmp(loff), l, shl, [tmp(ygl64), const(2)]),
+        flight(tmp(lp), add, [address(tmp(arena)), tmp(loff)], lower(tmp(arena))),
+        let(tmp(alp), a, check(0, 8, write, 4), [tmp(lp)]),
+        raw_store(w, 0, tmp(hdrl), tmp(alp)),
+        raw_store(w, 4, tmp(ptag), tmp(alp)),
+        let(tmp(ygl1), w, add, [tmp(ygl), const(2)]),
+        let(tmp(astl), a, check(0, 4, write, 4), [tmp(st)]),
+        raw_store(w, 0, tmp(ygl1), tmp(astl)),
+        let(tmp(resl), w, shl, [tmp(ygl), const(1)])
+    ], ret(tmp(resl))),
+    block(node, [], [
+        let(tmp(d1), w, sub, [tmp(depth), const(1)]),
+        let(tmp(sm), w, mul, [tmp(seed), const(3)]),
+        let(tmp(s0u), w, add, [tmp(sm), const(1)]),
+        let(tmp(s0), w, and, [tmp(s0u), const(65535)]),
+        let(tmp(s1u), w, add, [tmp(sm), const(2)]),
+        let(tmp(s1), w, and, [tmp(s1u), const(65535)]),
+        let(tmp(s2u), w, add, [tmp(sm), const(3)]),
+        let(tmp(s2), w, and, [tmp(s2u), const(65535)]),
+        let(tmp(astn0), a, check(0, 24, read, 4), [tmp(st)]),
+        touch(tmp(astn0)),
+        let(tmp(sp), w, raw_load(uw, 20), [tmp(astn0)]),
+        let(tmp(sp64), l, ext(uw), [tmp(sp)]),
+        let(tmp(roff), l, shl, [tmp(sp64), const(2)]),
+        flight(tmp(rslot), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots))),
+        call(result(tmp(c0_0), w), global(term_build),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(d1)), arg(w, tmp(s0)), arg(w, const(0))]),
+        let(tmp(ar0), a, check(0, 4, write, 4), [tmp(rslot)]),
+        raw_store(w, 0, tmp(c0_0), tmp(ar0)),
+        let(tmp(sp1), w, add, [tmp(sp), const(1)]),
+        let(tmp(astn1), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astn1)),
+        raw_store(w, 20, tmp(sp1), tmp(astn1)),
+        call(result(tmp(c1_0), w), global(term_build),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(d1)), arg(w, tmp(s1)), arg(w, const(0))]),
+        let(tmp(ar1), a, check(0, 8, write, 4), [tmp(rslot)]),
+        touch(tmp(ar1)),
+        raw_store(w, 4, tmp(c1_0), tmp(ar1)),
+        let(tmp(sp2), w, add, [tmp(sp), const(2)]),
+        let(tmp(astn2), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astn2)),
+        raw_store(w, 20, tmp(sp2), tmp(astn2)),
+        call(result(tmp(c2_0), w), global(term_build),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(d1)), arg(w, tmp(s2)), arg(w, tmp(flip))]),
+        let(tmp(astn3), a, check(0, 16, read, 4), [tmp(st)]),
+        let(tmp(ygn0), w, raw_load(uw, 0), [tmp(astn3)]),
+        let(tmp(nen0), w, raw_load(uw, 12), [tmp(astn3)]),
+        let(tmp(needn), w, add, [tmp(ygn0), const(12)]),
+        let(tmp(fulln), w, cmp(ugt, w), [tmp(needn), tmp(nen0)])
+    ], branch(tmp(fulln), node_gc, node_ok)),
+    block(node_ok, [], [], goto(node_alloc)),
+    block(node_gc, [], [
+        let(tmp(ar2), a, check(0, 12, write, 4), [tmp(rslot)]),
+        touch(tmp(ar2)),
+        raw_store(w, 8, tmp(c2_0), tmp(ar2)),
+        let(tmp(sp3), w, add, [tmp(sp), const(3)]),
+        let(tmp(astn4), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astn4)),
+        raw_store(w, 20, tmp(sp3), tmp(astn4)),
+        call(void, global(minor_gc),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st))]),
+        let(tmp(ar3), a, check(0, 12, read, 4), [tmp(rslot)]),
+        touch(tmp(ar3)),
+        let(tmp(c2_gc), w, raw_load(uw, 8), [tmp(ar3)]),
+        let(tmp(astn5), a, check(0, 4, read, 4), [tmp(st)]),
+        let(tmp(ygn_gc), w, raw_load(uw, 0), [tmp(astn5)])
+    ], goto(node_alloc)),
+    block(node_alloc, [
+        phi(tmp(c2), w, [node_ok-tmp(c2_0), node_gc-tmp(c2_gc)]),
+        phi(tmp(ygn), w, [node_ok-tmp(ygn0), node_gc-tmp(ygn_gc)])
+    ], [
+        let(tmp(ar4), a, check(0, 8, read, 4), [tmp(rslot)]),
+        let(tmp(c0), w, raw_load(uw, 0), [tmp(ar4)]),
+        let(tmp(c1), w, raw_load(uw, 4), [tmp(ar4)]),
+        let(tmp(ygn64), l, ext(uw), [tmp(ygn)]),
+        let(tmp(noff), l, shl, [tmp(ygn64), const(2)]),
+        flight(tmp(np), add, [address(tmp(arena)), tmp(noff)], lower(tmp(arena))),
+        let(tmp(anp), a, check(0, 48, write, 4), [tmp(np)]),
+        raw_store(w, 0, const(2048), tmp(anp)),
+        raw_store(w, 4, tmp(c2), tmp(anp)),
+        raw_store(w, 8, const(1), tmp(anp)),
+        let(tmp(l2), w, shl, [tmp(ygn), const(1)]),
+        let(tmp(ygp3), w, add, [tmp(ygn), const(3)]),
+        raw_store(w, 12, const(2048), tmp(anp)),
+        raw_store(w, 16, tmp(c1), tmp(anp)),
+        raw_store(w, 20, tmp(l2), tmp(anp)),
+        let(tmp(l1), w, shl, [tmp(ygp3), const(1)]),
+        let(tmp(ygp6), w, add, [tmp(ygn), const(6)]),
+        raw_store(w, 24, const(2048), tmp(anp)),
+        raw_store(w, 28, tmp(c0), tmp(anp)),
+        raw_store(w, 32, tmp(l1), tmp(anp)),
+        let(tmp(l0), w, shl, [tmp(ygp6), const(1)]),
+        let(tmp(ygp9), w, add, [tmp(ygn), const(9)]),
+        let(tmp(fn0), w, and, [tmp(seed), const(255)]),
+        let(tmp(fnsh), w, shl, [tmp(fn0), const(1)]),
+        let(tmp(fntag), w, or, [tmp(fnsh), const(1)]),
+        raw_store(w, 36, const(2050), tmp(anp)),
+        raw_store(w, 40, tmp(fntag), tmp(anp)),
+        raw_store(w, 44, tmp(l0), tmp(anp)),
+        let(tmp(ygp12), w, add, [tmp(ygn), const(12)]),
+        let(tmp(astn6), a, check(0, 24, write, 4), [tmp(st)]),
+        raw_store(w, 0, tmp(ygp12), tmp(astn6)),
+        raw_store(w, 20, tmp(sp), tmp(astn6)),
+        let(tmp(resn), w, shl, [tmp(ygp9), const(1)])
+    ], ret(tmp(resn)))
+]).
+
+func(term_eqb, export, w,
+     [param(p, tmp(arena)), param(w, tmp(a)), param(w, tmp(b))], [
+    block(entry, [], [
+        let(tmp(ia), w, shr, [tmp(a), const(1)]),
+        let(tmp(ia64), l, ext(uw), [tmp(ia)]),
+        let(tmp(oa), l, shl, [tmp(ia64), const(2)]),
+        flight(tmp(pa), add, [address(tmp(arena)), tmp(oa)], lower(tmp(arena))),
+        let(tmp(apa), a, check(0, 8, read, 4), [tmp(pa)]),
+        let(tmp(hda), w, raw_load(uw, 0), [tmp(apa)]),
+        let(tmp(va), w, raw_load(uw, 4), [tmp(apa)]),
+        let(tmp(ib), w, shr, [tmp(b), const(1)]),
+        let(tmp(ib64), l, ext(uw), [tmp(ib)]),
+        let(tmp(ob), l, shl, [tmp(ib64), const(2)]),
+        flight(tmp(pb), add, [address(tmp(arena)), tmp(ob)], lower(tmp(arena))),
+        let(tmp(apb), a, check(0, 8, read, 4), [tmp(pb)]),
+        let(tmp(hdb), w, raw_load(uw, 0), [tmp(apb)]),
+        let(tmp(vb), w, raw_load(uw, 4), [tmp(apb)]),
+        let(tmp(ta), w, and, [tmp(hda), const(255)]),
+        let(tmp(tb), w, and, [tmp(hdb), const(255)]),
+        let(tmp(teq), w, cmp(eq, w), [tmp(ta), tmp(tb)])
+    ], branch(tmp(teq), same_tag, ret_false)),
+    block(same_tag, [], [
+        let(tmp(veq), w, cmp(eq, w), [tmp(va), tmp(vb)])
+    ], branch(tmp(veq), same_f0, ret_false)),
+    block(same_f0, [], [
+        let(tmp(is_leaf), w, cmp(ult, w), [tmp(ta), const(2)])
+    ], branch(tmp(is_leaf), ret_true, comp_args)),
+    block(comp_args, [], [
+        let(tmp(apa2), a, check(0, 12, read, 4), [tmp(pa)]),
+        touch(tmp(apa2)),
+        let(tmp(xs0), w, raw_load(uw, 8), [tmp(apa2)]),
+        let(tmp(apb2), a, check(0, 12, read, 4), [tmp(pb)]),
+        touch(tmp(apb2)),
+        let(tmp(ys0), w, raw_load(uw, 8), [tmp(apb2)])
+    ], goto(list_loop)),
+    block(list_loop, [
+        phi(tmp(xs), w, [comp_args-tmp(xs0), list_step-tmp(xs1)]),
+        phi(tmp(ys), w, [comp_args-tmp(ys0), list_step-tmp(ys1)])
+    ], [
+        let(tmp(xodd), w, and, [tmp(xs), const(1)]),
+        let(tmp(yodd), w, and, [tmp(ys), const(1)]),
+        let(tmp(any_nil), w, or, [tmp(xodd), tmp(yodd)])
+    ], branch(tmp(any_nil), list_end, list_step)),
+    block(list_step, [], [
+        let(tmp(ix), w, shr, [tmp(xs), const(1)]),
+        let(tmp(ix64), l, ext(uw), [tmp(ix)]),
+        let(tmp(ox), l, shl, [tmp(ix64), const(2)]),
+        flight(tmp(px), add, [address(tmp(arena)), tmp(ox)], lower(tmp(arena))),
+        let(tmp(apx), a, check(0, 12, read, 4), [tmp(px)]),
+        touch(tmp(apx)),
+        let(tmp(hx), w, raw_load(uw, 4), [tmp(apx)]),
+        let(tmp(xs1), w, raw_load(uw, 8), [tmp(apx)]),
+        let(tmp(iy), w, shr, [tmp(ys), const(1)]),
+        let(tmp(iy64), l, ext(uw), [tmp(iy)]),
+        let(tmp(oy), l, shl, [tmp(iy64), const(2)]),
+        flight(tmp(py), add, [address(tmp(arena)), tmp(oy)], lower(tmp(arena))),
+        let(tmp(apy), a, check(0, 12, read, 4), [tmp(py)]),
+        touch(tmp(apy)),
+        let(tmp(hy), w, raw_load(uw, 4), [tmp(apy)]),
+        let(tmp(ys1), w, raw_load(uw, 8), [tmp(apy)]),
+        call(result(tmp(heq), w), global(term_eqb),
+             [arg(p, tmp(arena)), arg(w, tmp(hx)), arg(w, tmp(hy))]),
+        let(tmp(ok), w, cmp(eq, w), [tmp(heq), const(3)])
+    ], branch(tmp(ok), poll(list_loop), ret_false)),
+    block(list_end, [], [
+        let(tmp(end_eq), w, cmp(eq, w), [tmp(xs), tmp(ys)])
+    ], branch(tmp(end_eq), ret_true, ret_false)),
+    block(ret_true, [], [], ret(const(3))),
+    block(ret_false, [], [], ret(const(1)))
+]).
+
+func(bench_term, export, l,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(depth)), param(w, tmp(rounds))], [
+    block(entry, [], [
+        call(result(tmp(base), w), global(term_build),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(depth)), arg(w, const(7)), arg(w, const(0))]),
+        let(tmp(ast0), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast0)),
+        let(tmp(sp), w, raw_load(uw, 20), [tmp(ast0)]),
+        let(tmp(sp1), w, add, [tmp(sp), const(1)]),
+        raw_store(w, 20, tmp(sp1), tmp(ast0)),
+        let(tmp(sp64), l, ext(uw), [tmp(sp)]),
+        let(tmp(roff), l, shl, [tmp(sp64), const(2)]),
+        flight(tmp(rp), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots))),
+        let(tmp(arp0), a, check(0, 4, write, 4), [tmp(rp)]),
+        raw_store(w, 0, tmp(base), tmp(arp0))
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(r), w, [entry-const(0), body_done-tmp(r1)]),
+        phi(tmp(tot), l, [entry-const(0), body_done-tmp(tot3)])
+    ], [
+        let(tmp(more), w, cmp(ult, w), [tmp(r), tmp(rounds)])
+    ], branch(tmp(more), body, done)),
+    block(body, [], [
+        let(tmp(flip), w, and, [tmp(r), const(1)]),
+        call(result(tmp(t), w), global(term_build),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(depth)), arg(w, const(7)), arg(w, tmp(flip))]),
+        let(tmp(arp1), a, check(0, 4, read, 4), [tmp(rp)]),
+        let(tmp(base_cur), w, raw_load(uw, 0), [tmp(arp1)]),
+        call(result(tmp(e1w), w), global(term_eqb),
+             [arg(p, tmp(arena)), arg(w, tmp(base_cur)), arg(w, tmp(t))]),
+        call(result(tmp(e2w), w), global(term_eqb),
+             [arg(p, tmp(arena)), arg(w, tmp(t)), arg(w, tmp(t))]),
+        let(tmp(e1b), w, cmp(eq, w), [tmp(e1w), const(3)]),
+        let(tmp(e2b), w, cmp(eq, w), [tmp(e2w), const(3)]),
+        let(tmp(e1l), l, ext(uw), [tmp(e1b)]),
+        let(tmp(e2l), l, ext(uw), [tmp(e2b)]),
+        let(tmp(tot1), l, mul, [tmp(tot), const(131)]),
+        let(tmp(e1m), l, mul, [tmp(e1l), const(17)]),
+        let(tmp(tot2), l, add, [tmp(tot1), tmp(e1m)]),
+        let(tmp(tot3), l, add, [tmp(tot2), tmp(e2l)]),
+        let(tmp(r1), w, add, [tmp(r), const(1)])
+    ], goto(body_done)),
+    block(body_done, [], [], goto(poll(loop))),
+    block(done, [], [
+        let(tmp(ast1), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast1)),
+        raw_store(w, 20, tmp(sp), tmp(ast1))
+    ], ret(tmp(tot)))
+]).
+
+% ---------------------------------------------------------------------------
+% Kernel 3: persistent AVL map (avl_height, avl_mk, avl_bal, avl_insert,
+%           avl_lookup, avl_build_n, bench_avl)
+% ---------------------------------------------------------------------------
+
+func(avl_height, local, w,
+     [param(p, tmp(arena)), param(w, tmp(t))], [
+    block(entry, [], [
+        let(tmp(is_leaf), w, and, [tmp(t), const(1)])
+    ], branch(tmp(is_leaf), leaf, node)),
+    block(leaf, [], [], ret(const(0))),
+    block(node, [], [
+        let(tmp(idx), w, shr, [tmp(t), const(1)]),
+        let(tmp(idx64), l, ext(uw), [tmp(idx)]),
+        let(tmp(off), l, shl, [tmp(idx64), const(2)]),
+        flight(tmp(np), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
+        let(tmp(anp), a, check(0, 24, read, 4), [tmp(np)]),
+        touch(tmp(anp)),
+        let(tmp(ht), w, raw_load(uw, 20), [tmp(anp)]),
+        let(tmp(h), w, shr, [tmp(ht), const(1)])
+    ], ret(tmp(h)))
+]).
+
+func(avl_mk, local, w,
+     [param(p, tmp(arena)), param(p, tmp(st)),
+      param(w, tmp(l)), param(w, tmp(k)), param(w, tmp(v)), param(w, tmp(r))], [
+    block(entry, [], [
+        let(tmp(llf), w, and, [tmp(l), const(1)])
+    ], branch(tmp(llf), hl_zero, hl_node)),
+    block(hl_zero, [], [], goto(chk_r)),
+    block(hl_node, [], [
+        let(tmp(il), w, shr, [tmp(l), const(1)]),
+        let(tmp(il64), l, ext(uw), [tmp(il)]),
+        let(tmp(ol), l, shl, [tmp(il64), const(2)]),
+        flight(tmp(pl), add, [address(tmp(arena)), tmp(ol)], lower(tmp(arena))),
+        let(tmp(apl), a, check(0, 24, read, 4), [tmp(pl)]),
+        touch(tmp(apl)),
+        let(tmp(htl), w, raw_load(uw, 20), [tmp(apl)]),
+        let(tmp(hl_n), w, shr, [tmp(htl), const(1)])
+    ], goto(chk_r)),
+    block(chk_r, [
+        phi(tmp(hl), w, [hl_zero-const(0), hl_node-tmp(hl_n)])
+    ], [
+        let(tmp(rlf), w, and, [tmp(r), const(1)])
+    ], branch(tmp(rlf), hr_zero, hr_node)),
+    block(hr_zero, [], [], goto(cmp_h)),
+    block(hr_node, [], [
+        let(tmp(ir), w, shr, [tmp(r), const(1)]),
+        let(tmp(ir64), l, ext(uw), [tmp(ir)]),
+        let(tmp(or0), l, shl, [tmp(ir64), const(2)]),
+        flight(tmp(pr), add, [address(tmp(arena)), tmp(or0)], lower(tmp(arena))),
+        let(tmp(apr), a, check(0, 24, read, 4), [tmp(pr)]),
+        touch(tmp(apr)),
+        let(tmp(htr), w, raw_load(uw, 20), [tmp(apr)]),
+        let(tmp(hr_n), w, shr, [tmp(htr), const(1)])
+    ], goto(cmp_h)),
+    block(cmp_h, [
+        phi(tmp(hr), w, [hr_zero-const(0), hr_node-tmp(hr_n)])
+    ], [
+        let(tmp(ge), w, cmp(uge, w), [tmp(hl), tmp(hr)])
+    ], branch(tmp(ge), take_l, take_r)),
+    block(take_l, [], [], goto(alloc_n)),
+    block(take_r, [], [], goto(alloc_n)),
+    block(alloc_n, [
+        phi(tmp(hm), w, [take_l-tmp(hl), take_r-tmp(hr)])
+    ], [
+        let(tmp(h), w, add, [tmp(hm), const(1)]),
+        let(tmp(hsh), w, shl, [tmp(h), const(1)]),
+        let(tmp(htag), w, or, [tmp(hsh), const(1)]),
+        let(tmp(ast), a, check(0, 4, write, 4), [tmp(st)]),
+        let(tmp(yg), w, raw_load(uw, 0), [tmp(ast)]),
+        let(tmp(yg1), w, add, [tmp(yg), const(6)]),
+        raw_store(w, 0, tmp(yg1), tmp(ast)),
+        let(tmp(yg64), l, ext(uw), [tmp(yg)]),
+        let(tmp(off), l, shl, [tmp(yg64), const(2)]),
+        flight(tmp(np), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
+        let(tmp(anp), a, check(0, 24, write, 4), [tmp(np)]),
+        raw_store(w, 0, const(5120), tmp(anp)),
+        raw_store(w, 4, tmp(l), tmp(anp)),
+        raw_store(w, 8, tmp(k), tmp(anp)),
+        raw_store(w, 12, tmp(v), tmp(anp)),
+        raw_store(w, 16, tmp(r), tmp(anp)),
+        raw_store(w, 20, tmp(htag), tmp(anp)),
+        let(tmp(res), w, shl, [tmp(yg), const(1)])
+    ], ret(tmp(res)))
+]).
+
+func(avl_bal, local, w,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(l0)), param(w, tmp(k)), param(w, tmp(v)), param(w, tmp(r0))], [
+    block(entry, [], [
+        let(tmp(ast0), a, check(0, 16, read, 4), [tmp(st)]),
+        let(tmp(yg0), w, raw_load(uw, 0), [tmp(ast0)]),
+        let(tmp(ne0), w, raw_load(uw, 12), [tmp(ast0)]),
+        let(tmp(need), w, add, [tmp(yg0), const(18)]),
+        let(tmp(full), w, cmp(ugt, w), [tmp(need), tmp(ne0)])
+    ], branch(tmp(full), do_gc, no_gc)),
+    block(no_gc, [], [], goto(after_gc)),
+    block(do_gc, [], [
+        let(tmp(astg0), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astg0)),
+        let(tmp(sp), w, raw_load(uw, 20), [tmp(astg0)]),
+        let(tmp(sp2), w, add, [tmp(sp), const(2)]),
+        raw_store(w, 20, tmp(sp2), tmp(astg0)),
+        let(tmp(sp64), l, ext(uw), [tmp(sp)]),
+        let(tmp(roff), l, shl, [tmp(sp64), const(2)]),
+        flight(tmp(rp), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots))),
+        let(tmp(arp0), a, check(0, 8, write, 4), [tmp(rp)]),
+        raw_store(w, 0, tmp(l0), tmp(arp0)),
+        raw_store(w, 4, tmp(r0), tmp(arp0)),
+        call(void, global(minor_gc),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st))]),
+        let(tmp(arp1), a, check(0, 8, read, 4), [tmp(rp)]),
+        let(tmp(lg), w, raw_load(uw, 0), [tmp(arp1)]),
+        let(tmp(rg), w, raw_load(uw, 4), [tmp(arp1)]),
+        let(tmp(astg1), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astg1)),
+        raw_store(w, 20, tmp(sp), tmp(astg1))
+    ], goto(after_gc)),
+    block(after_gc, [
+        phi(tmp(l), w, [no_gc-tmp(l0), do_gc-tmp(lg)]),
+        phi(tmp(r), w, [no_gc-tmp(r0), do_gc-tmp(rg)])
+    ], [
+        let(tmp(bllf), w, and, [tmp(l), const(1)])
+    ], branch(tmp(bllf), bhl_zero, bhl_node)),
+    block(bhl_zero, [], [], goto(bchk_r)),
+    block(bhl_node, [], [
+        let(tmp(bil), w, shr, [tmp(l), const(1)]),
+        let(tmp(bil64), l, ext(uw), [tmp(bil)]),
+        let(tmp(bol), l, shl, [tmp(bil64), const(2)]),
+        flight(tmp(bpl), add, [address(tmp(arena)), tmp(bol)], lower(tmp(arena))),
+        let(tmp(bapl), a, check(0, 24, read, 4), [tmp(bpl)]),
+        touch(tmp(bapl)),
+        let(tmp(bhtl), w, raw_load(uw, 20), [tmp(bapl)]),
+        let(tmp(bhl_n), w, shr, [tmp(bhtl), const(1)])
+    ], goto(bchk_r)),
+    block(bchk_r, [
+        phi(tmp(hl), w, [bhl_zero-const(0), bhl_node-tmp(bhl_n)])
+    ], [
+        let(tmp(brlf), w, and, [tmp(r), const(1)])
+    ], branch(tmp(brlf), bhr_zero, bhr_node)),
+    block(bhr_zero, [], [], goto(bcmp_h)),
+    block(bhr_node, [], [
+        let(tmp(bir), w, shr, [tmp(r), const(1)]),
+        let(tmp(bir64), l, ext(uw), [tmp(bir)]),
+        let(tmp(bor0), l, shl, [tmp(bir64), const(2)]),
+        flight(tmp(bpr), add, [address(tmp(arena)), tmp(bor0)], lower(tmp(arena))),
+        let(tmp(bapr), a, check(0, 24, read, 4), [tmp(bpr)]),
+        touch(tmp(bapr)),
+        let(tmp(bhtr), w, raw_load(uw, 20), [tmp(bapr)]),
+        let(tmp(bhr_n), w, shr, [tmp(bhtr), const(1)])
+    ], goto(bcmp_h)),
+    block(bcmp_h, [
+        phi(tmp(hr), w, [bhr_zero-const(0), bhr_node-tmp(bhr_n)])
+    ], [
+        let(tmp(hr2), w, add, [tmp(hr), const(2)]),
+        let(tmp(lheavy), w, cmp(ugt, w), [tmp(hl), tmp(hr2)])
+    ], branch(tmp(lheavy), left_heavy, check_rheavy)),
+    block(check_rheavy, [], [
+        let(tmp(hl2), w, add, [tmp(hl), const(2)]),
+        let(tmp(rheavy), w, cmp(ugt, w), [tmp(hr), tmp(hl2)])
+    ], branch(tmp(rheavy), right_heavy, balanced)),
+    block(left_heavy, [], [
+        let(tmp(il), w, shr, [tmp(l), const(1)]),
+        let(tmp(il64), l, ext(uw), [tmp(il)]),
+        let(tmp(ol), l, shl, [tmp(il64), const(2)]),
+        flight(tmp(pl), add, [address(tmp(arena)), tmp(ol)], lower(tmp(arena))),
+        let(tmp(apl), a, check(0, 20, read, 4), [tmp(pl)]),
+        touch(tmp(apl)),
+        let(tmp(ll), w, raw_load(uw, 4), [tmp(apl)]),
+        let(tmp(lk), w, raw_load(uw, 8), [tmp(apl)]),
+        let(tmp(lv), w, raw_load(uw, 12), [tmp(apl)]),
+        let(tmp(lr), w, raw_load(uw, 16), [tmp(apl)]),
+        call(result(tmp(hll), w), global(avl_height),
+             [arg(p, tmp(arena)), arg(w, tmp(ll))]),
+        call(result(tmp(hlr), w), global(avl_height),
+             [arg(p, tmp(arena)), arg(w, tmp(lr))]),
+        let(tmp(lsingle), w, cmp(uge, w), [tmp(hll), tmp(hlr)])
+    ], branch(tmp(lsingle), left_single, left_double)),
+    block(left_single, [], [
+        call(result(tmp(ls_r), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(lr)), arg(w, tmp(k)), arg(w, tmp(v)), arg(w, tmp(r))]),
+        call(result(tmp(ls_res), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(ll)), arg(w, tmp(lk)), arg(w, tmp(lv)), arg(w, tmp(ls_r))])
+    ], ret(tmp(ls_res))),
+    block(left_double, [], [
+        let(tmp(ilr), w, shr, [tmp(lr), const(1)]),
+        let(tmp(ilr64), l, ext(uw), [tmp(ilr)]),
+        let(tmp(olr), l, shl, [tmp(ilr64), const(2)]),
+        flight(tmp(plr), add, [address(tmp(arena)), tmp(olr)], lower(tmp(arena))),
+        let(tmp(aplr), a, check(0, 20, read, 4), [tmp(plr)]),
+        touch(tmp(aplr)),
+        let(tmp(lrl), w, raw_load(uw, 4), [tmp(aplr)]),
+        let(tmp(lrk), w, raw_load(uw, 8), [tmp(aplr)]),
+        let(tmp(lrv), w, raw_load(uw, 12), [tmp(aplr)]),
+        let(tmp(lrr), w, raw_load(uw, 16), [tmp(aplr)]),
+        call(result(tmp(ld_l), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(ll)), arg(w, tmp(lk)), arg(w, tmp(lv)), arg(w, tmp(lrl))]),
+        call(result(tmp(ld_r), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(lrr)), arg(w, tmp(k)), arg(w, tmp(v)), arg(w, tmp(r))]),
+        call(result(tmp(ld_res), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(ld_l)), arg(w, tmp(lrk)), arg(w, tmp(lrv)), arg(w, tmp(ld_r))])
+    ], ret(tmp(ld_res))),
+    block(right_heavy, [], [
+        let(tmp(ir), w, shr, [tmp(r), const(1)]),
+        let(tmp(ir64), l, ext(uw), [tmp(ir)]),
+        let(tmp(or0), l, shl, [tmp(ir64), const(2)]),
+        flight(tmp(pr), add, [address(tmp(arena)), tmp(or0)], lower(tmp(arena))),
+        let(tmp(apr), a, check(0, 20, read, 4), [tmp(pr)]),
+        touch(tmp(apr)),
+        let(tmp(rl), w, raw_load(uw, 4), [tmp(apr)]),
+        let(tmp(rk), w, raw_load(uw, 8), [tmp(apr)]),
+        let(tmp(rv), w, raw_load(uw, 12), [tmp(apr)]),
+        let(tmp(rr), w, raw_load(uw, 16), [tmp(apr)]),
+        call(result(tmp(hrr), w), global(avl_height),
+             [arg(p, tmp(arena)), arg(w, tmp(rr))]),
+        call(result(tmp(hrl), w), global(avl_height),
+             [arg(p, tmp(arena)), arg(w, tmp(rl))]),
+        let(tmp(rsingle), w, cmp(uge, w), [tmp(hrr), tmp(hrl)])
+    ], branch(tmp(rsingle), right_single, right_double)),
+    block(right_single, [], [
+        call(result(tmp(rs_l), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(l)), arg(w, tmp(k)), arg(w, tmp(v)), arg(w, tmp(rl))]),
+        call(result(tmp(rs_res), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(rs_l)), arg(w, tmp(rk)), arg(w, tmp(rv)), arg(w, tmp(rr))])
+    ], ret(tmp(rs_res))),
+    block(right_double, [], [
+        let(tmp(irl), w, shr, [tmp(rl), const(1)]),
+        let(tmp(irl64), l, ext(uw), [tmp(irl)]),
+        let(tmp(orl), l, shl, [tmp(irl64), const(2)]),
+        flight(tmp(prl), add, [address(tmp(arena)), tmp(orl)], lower(tmp(arena))),
+        let(tmp(aprl), a, check(0, 20, read, 4), [tmp(prl)]),
+        touch(tmp(aprl)),
+        let(tmp(rll), w, raw_load(uw, 4), [tmp(aprl)]),
+        let(tmp(rlk), w, raw_load(uw, 8), [tmp(aprl)]),
+        let(tmp(rlv), w, raw_load(uw, 12), [tmp(aprl)]),
+        let(tmp(rlr), w, raw_load(uw, 16), [tmp(aprl)]),
+        call(result(tmp(rd_l), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(l)), arg(w, tmp(k)), arg(w, tmp(v)), arg(w, tmp(rll))]),
+        call(result(tmp(rd_r), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(rlr)), arg(w, tmp(rk)), arg(w, tmp(rv)), arg(w, tmp(rr))]),
+        call(result(tmp(rd_res), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(rd_l)), arg(w, tmp(rlk)), arg(w, tmp(rlv)), arg(w, tmp(rd_r))])
+    ], ret(tmp(rd_res))),
+    block(balanced, [], [
+        call(result(tmp(b_res), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, tmp(l)), arg(w, tmp(k)), arg(w, tmp(v)), arg(w, tmp(r))])
+    ], ret(tmp(b_res)))
+]).
+
+func(avl_insert, export, w,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(t)), param(w, tmp(k)), param(w, tmp(v))], [
+    block(entry, [], [
+        let(tmp(is_leaf), w, and, [tmp(t), const(1)])
+    ], branch(tmp(is_leaf), ins_leaf, ins_node)),
+    block(ins_leaf, [], [
+        let(tmp(ast0), a, check(0, 16, read, 4), [tmp(st)]),
+        let(tmp(yg0), w, raw_load(uw, 0), [tmp(ast0)]),
+        let(tmp(ne0), w, raw_load(uw, 12), [tmp(ast0)]),
+        let(tmp(need0), w, add, [tmp(yg0), const(6)]),
+        let(tmp(full0), w, cmp(ugt, w), [tmp(need0), tmp(ne0)])
+    ], branch(tmp(full0), leaf_gc, leaf_ok)),
+    block(leaf_ok, [], [], goto(leaf_done)),
+    block(leaf_gc, [], [
+        call(void, global(minor_gc),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st))])
+    ], goto(leaf_done)),
+    block(leaf_done, [], [
+        call(result(tmp(lres), w), global(avl_mk),
+             [arg(p, tmp(arena)), arg(p, tmp(st)),
+              arg(w, const(1)), arg(w, tmp(k)), arg(w, tmp(v)), arg(w, const(1))])
+    ], ret(tmp(lres))),
+    block(ins_node, [], [
+        let(tmp(idx), w, shr, [tmp(t), const(1)]),
+        let(tmp(idx64), l, ext(uw), [tmp(idx)]),
+        let(tmp(off), l, shl, [tmp(idx64), const(2)]),
+        flight(tmp(np), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
+        let(tmp(anp), a, check(0, 24, read, 4), [tmp(np)]),
+        touch(tmp(anp)),
+        let(tmp(l), w, raw_load(uw, 4), [tmp(anp)]),
+        let(tmp(nk), w, raw_load(uw, 8), [tmp(anp)]),
+        let(tmp(nv), w, raw_load(uw, 12), [tmp(anp)]),
+        let(tmp(r), w, raw_load(uw, 16), [tmp(anp)]),
+        let(tmp(ht), w, raw_load(uw, 20), [tmp(anp)]),
+        let(tmp(keq), w, cmp(eq, w), [tmp(k), tmp(nk)])
+    ], branch(tmp(keq), replace_here, go_branch)),
+    block(replace_here, [], [
+        let(tmp(astr0), a, check(0, 16, read, 4), [tmp(st)]),
+        let(tmp(ygr0), w, raw_load(uw, 0), [tmp(astr0)]),
+        let(tmp(ner0), w, raw_load(uw, 12), [tmp(astr0)]),
+        let(tmp(needr), w, add, [tmp(ygr0), const(6)]),
+        let(tmp(fullr), w, cmp(ugt, w), [tmp(needr), tmp(ner0)])
+    ], branch(tmp(fullr), rep_gc, rep_ok)),
+    block(rep_ok, [], [], goto(rep_alloc)),
+    block(rep_gc, [], [
+        let(tmp(astr1), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astr1)),
+        let(tmp(spr), w, raw_load(uw, 20), [tmp(astr1)]),
+        let(tmp(spr2), w, add, [tmp(spr), const(2)]),
+        raw_store(w, 20, tmp(spr2), tmp(astr1)),
+        let(tmp(spr64), l, ext(uw), [tmp(spr)]),
+        let(tmp(rroff), l, shl, [tmp(spr64), const(2)]),
+        flight(tmp(rrp), add, [address(tmp(roots)), tmp(rroff)], lower(tmp(roots))),
+        let(tmp(arr0), a, check(0, 8, write, 4), [tmp(rrp)]),
+        raw_store(w, 0, tmp(l), tmp(arr0)),
+        raw_store(w, 4, tmp(r), tmp(arr0)),
+        call(void, global(minor_gc),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st))]),
+        let(tmp(arr1), a, check(0, 8, read, 4), [tmp(rrp)]),
+        let(tmp(l_rg), w, raw_load(uw, 0), [tmp(arr1)]),
+        let(tmp(r_rg), w, raw_load(uw, 4), [tmp(arr1)]),
+        let(tmp(astr2), a, check(0, 24, write, 4), [tmp(st)]),
+        let(tmp(yg_rg), w, raw_load(uw, 0), [tmp(astr2)]),
+        raw_store(w, 20, tmp(spr), tmp(astr2))
+    ], goto(rep_alloc)),
+    block(rep_alloc, [
+        phi(tmp(lrp), w, [rep_ok-tmp(l), rep_gc-tmp(l_rg)]),
+        phi(tmp(rrp2), w, [rep_ok-tmp(r), rep_gc-tmp(r_rg)]),
+        phi(tmp(ygrp), w, [rep_ok-tmp(ygr0), rep_gc-tmp(yg_rg)])
+    ], [
+        let(tmp(ygrp1), w, add, [tmp(ygrp), const(6)]),
+        let(tmp(astr3), a, check(0, 4, write, 4), [tmp(st)]),
+        raw_store(w, 0, tmp(ygrp1), tmp(astr3)),
+        let(tmp(ygrp64), l, ext(uw), [tmp(ygrp)]),
+        let(tmp(rpoff), l, shl, [tmp(ygrp64), const(2)]),
+        flight(tmp(rnp), add, [address(tmp(arena)), tmp(rpoff)], lower(tmp(arena))),
+        let(tmp(arnp), a, check(0, 24, write, 4), [tmp(rnp)]),
+        raw_store(w, 0, const(5120), tmp(arnp)),
+        raw_store(w, 4, tmp(lrp), tmp(arnp)),
+        raw_store(w, 8, tmp(k), tmp(arnp)),
+        raw_store(w, 12, tmp(v), tmp(arnp)),
+        raw_store(w, 16, tmp(rrp2), tmp(arnp)),
+        raw_store(w, 20, tmp(ht), tmp(arnp)),
+        let(tmp(rpres), w, shl, [tmp(ygrp), const(1)])
+    ], ret(tmp(rpres))),
+    block(go_branch, [], [
+        let(tmp(astb0), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astb0)),
+        let(tmp(spb), w, raw_load(uw, 20), [tmp(astb0)]),
+        let(tmp(spb1), w, add, [tmp(spb), const(1)]),
+        raw_store(w, 20, tmp(spb1), tmp(astb0)),
+        let(tmp(spb64), l, ext(uw), [tmp(spb)]),
+        let(tmp(rboff), l, shl, [tmp(spb64), const(2)]),
+        flight(tmp(rbp), add, [address(tmp(roots)), tmp(rboff)], lower(tmp(roots))),
+        let(tmp(klt), w, cmp(ult, w), [tmp(k), tmp(nk)])
+    ], branch(tmp(klt), go_left, go_right)),
+    block(go_left, [], [
+        let(tmp(arbl0), a, check(0, 4, write, 4), [tmp(rbp)]),
+        raw_store(w, 0, tmp(r), tmp(arbl0)),
+        call(result(tmp(nl), w), global(avl_insert),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(l)), arg(w, tmp(k)), arg(w, tmp(v))]),
+        let(tmp(arbl1), a, check(0, 4, read, 4), [tmp(rbp)]),
+        let(tmp(r_saved), w, raw_load(uw, 0), [tmp(arbl1)]),
+        let(tmp(astbl), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astbl)),
+        raw_store(w, 20, tmp(spb), tmp(astbl)),
+        call(result(tmp(res_l), w), global(avl_bal),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(nl)), arg(w, tmp(nk)), arg(w, tmp(nv)), arg(w, tmp(r_saved))])
+    ], ret(tmp(res_l))),
+    block(go_right, [], [
+        let(tmp(arbr0), a, check(0, 4, write, 4), [tmp(rbp)]),
+        raw_store(w, 0, tmp(l), tmp(arbr0)),
+        call(result(tmp(nr), w), global(avl_insert),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(r)), arg(w, tmp(k)), arg(w, tmp(v))]),
+        let(tmp(arbr1), a, check(0, 4, read, 4), [tmp(rbp)]),
+        let(tmp(l_saved), w, raw_load(uw, 0), [tmp(arbr1)]),
+        let(tmp(astbr), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(astbr)),
+        raw_store(w, 20, tmp(spb), tmp(astbr)),
+        call(result(tmp(res_r), w), global(avl_bal),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(l_saved)), arg(w, tmp(nk)), arg(w, tmp(nv)), arg(w, tmp(nr))])
+    ], ret(tmp(res_r)))
+]).
+
+func(avl_lookup, export, w,
+     [param(p, tmp(arena)), param(w, tmp(t0)), param(w, tmp(k))], [
+    block(entry, [], [], goto(loop)),
+    block(loop, [
+        phi(tmp(t), w, [entry-tmp(t0), go_l-tmp(l), go_r-tmp(r)])
+    ], [
+        let(tmp(is_leaf), w, and, [tmp(t), const(1)])
+    ], branch(tmp(is_leaf), not_found, step)),
+    block(step, [], [
+        let(tmp(idx), w, shr, [tmp(t), const(1)]),
+        let(tmp(idx64), l, ext(uw), [tmp(idx)]),
+        let(tmp(off), l, shl, [tmp(idx64), const(2)]),
+        flight(tmp(np), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
+        let(tmp(anp), a, check(0, 20, read, 4), [tmp(np)]),
+        touch(tmp(anp)),
+        let(tmp(l), w, raw_load(uw, 4), [tmp(anp)]),
+        let(tmp(nk), w, raw_load(uw, 8), [tmp(anp)]),
+        let(tmp(nv), w, raw_load(uw, 12), [tmp(anp)]),
+        let(tmp(r), w, raw_load(uw, 16), [tmp(anp)]),
+        let(tmp(keq), w, cmp(eq, w), [tmp(k), tmp(nk)])
+    ], branch(tmp(keq), found, cmp_dir)),
+    block(cmp_dir, [], [
+        let(tmp(klt), w, cmp(ult, w), [tmp(k), tmp(nk)])
+    ], branch(tmp(klt), go_l, go_r)),
+    block(go_l, [], [], goto(poll(loop))),
+    block(go_r, [], [], goto(poll(loop))),
+    block(found, [], [], ret(tmp(nv))),
+    block(not_found, [], [], ret(const(1)))
+]).
+
+func(avl_build_n, local, w,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(nkeys)), param(w, tmp(seed0))], [
+    block(entry, [], [
+        let(tmp(ast0), a, check(0, 24, read, 4), [tmp(st)]),
+        touch(tmp(ast0)),
+        let(tmp(sp), w, raw_load(uw, 20), [tmp(ast0)]),
+        let(tmp(sp1), w, add, [tmp(sp), const(1)]),
+        let(tmp(sp64), l, ext(uw), [tmp(sp)]),
+        let(tmp(roff), l, shl, [tmp(sp64), const(2)]),
+        flight(tmp(rp), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots)))
+    ], goto(loop)),
+    block(loop, [
+        phi(tmp(i), w, [entry-const(0), body-tmp(i1)]),
+        phi(tmp(s), w, [entry-tmp(seed0), body-tmp(s1)]),
+        phi(tmp(t), w, [entry-const(1), body-tmp(t1)])
+    ], [
+        let(tmp(more), w, cmp(ult, w), [tmp(i), tmp(nkeys)])
+    ], branch(tmp(more), body, done)),
+    block(body, [], [
+        let(tmp(sm), w, mul, [tmp(s), const(1664525)]),
+        let(tmp(s1), w, add, [tmp(sm), const(1013904223)]),
+        let(tmp(ksh0), w, shr, [tmp(s1), const(16)]),
+        let(tmp(kraw), w, and, [tmp(ksh0), const(4095)]),
+        let(tmp(ksh), w, shl, [tmp(kraw), const(1)]),
+        let(tmp(ktag), w, or, [tmp(ksh), const(1)]),
+        let(tmp(i1), w, add, [tmp(i), const(1)]),
+        let(tmp(vsh), w, shl, [tmp(i1), const(1)]),
+        let(tmp(vtag), w, or, [tmp(vsh), const(1)]),
+        let(tmp(arp), a, check(0, 4, write, 4), [tmp(rp)]),
+        raw_store(w, 0, tmp(t), tmp(arp)),
+        let(tmp(ast1), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast1)),
+        raw_store(w, 20, tmp(sp1), tmp(ast1)),
+        call(result(tmp(t1), w), global(avl_insert),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(t)), arg(w, tmp(ktag)), arg(w, tmp(vtag))])
+    ], goto(poll(loop))),
+    block(done, [], [
+        let(tmp(ast2), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast2)),
+        raw_store(w, 20, tmp(sp), tmp(ast2))
+    ], ret(tmp(t)))
+]).
+
+func(bench_avl, export, l,
+     [param(p, tmp(arena)), param(p, tmp(roots)), param(p, tmp(st)),
+      param(w, tmp(nkeys)), param(w, tmp(rounds))], [
+    block(entry, [], [
+        call(result(tmp(base), w), global(avl_build_n),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(nkeys)), arg(w, const(99))]),
+        let(tmp(ast0), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast0)),
+        let(tmp(sp), w, raw_load(uw, 20), [tmp(ast0)]),
+        let(tmp(sp1), w, add, [tmp(sp), const(1)]),
+        raw_store(w, 20, tmp(sp1), tmp(ast0)),
+        let(tmp(sp64), l, ext(uw), [tmp(sp)]),
+        let(tmp(roff), l, shl, [tmp(sp64), const(2)]),
+        flight(tmp(rp), add, [address(tmp(roots)), tmp(roff)], lower(tmp(roots))),
+        let(tmp(arp0), a, check(0, 4, write, 4), [tmp(rp)]),
+        raw_store(w, 0, tmp(base), tmp(arp0))
+    ], goto(rloop)),
+    block(rloop, [
+        phi(tmp(r), w, [entry-const(0), r_end-tmp(r1)]),
+        phi(tmp(tot), l, [entry-const(0), r_end-tmp(tot1)])
+    ], [
+        let(tmp(rmore), w, cmp(ult, w), [tmp(r), tmp(rounds)])
+    ], branch(tmp(rmore), r_build, done)),
+    block(r_build, [], [
+        let(tmp(rm), w, mul, [tmp(r), const(977)]),
+        let(tmp(rseed), w, add, [tmp(rm), const(1)]),
+        call(result(tmp(t), w), global(avl_build_n),
+             [arg(p, tmp(arena)), arg(p, tmp(roots)), arg(p, tmp(st)),
+              arg(w, tmp(nkeys)), arg(w, tmp(rseed))]),
+        let(tmp(arp1), a, check(0, 4, read, 4), [tmp(rp)]),
+        let(tmp(base_cur), w, raw_load(uw, 0), [tmp(arp1)])
+    ], goto(q1_loop)),
+    block(q1_loop, [
+        phi(tmp(k1), w, [r_build-const(0), q1_body-tmp(k1_next)]),
+        phi(tmp(sum1), w, [r_build-const(0), q1_body-tmp(sum1_next)])
+    ], [
+        let(tmp(q1more), w, cmp(ult, w), [tmp(k1), const(4096)])
+    ], branch(tmp(q1more), q1_body, q2_loop)),
+    block(q1_body, [], [
+        let(tmp(k1sh), w, shl, [tmp(k1), const(1)]),
+        let(tmp(k1tag), w, or, [tmp(k1sh), const(1)]),
+        call(result(tmp(v1t), w), global(avl_lookup),
+             [arg(p, tmp(arena)), arg(w, tmp(t)), arg(w, tmp(k1tag))]),
+        let(tmp(v1), w, shr, [tmp(v1t), const(1)]),
+        let(tmp(sum1_next), w, add, [tmp(sum1), tmp(v1)]),
+        let(tmp(k1_next), w, add, [tmp(k1), const(1)])
+    ], goto(poll(q1_loop))),
+    block(q2_loop, [
+        phi(tmp(k2), w, [q1_loop-const(0), q2_body-tmp(k2_next)]),
+        phi(tmp(sum2), w, [q1_loop-tmp(sum1), q2_body-tmp(sum2_next)])
+    ], [
+        let(tmp(q2more), w, cmp(ult, w), [tmp(k2), const(1024)])
+    ], branch(tmp(q2more), q2_body, r_end)),
+    block(q2_body, [], [
+        let(tmp(k2x4), w, shl, [tmp(k2), const(2)]),
+        let(tmp(k2sh), w, shl, [tmp(k2x4), const(1)]),
+        let(tmp(k2tag), w, or, [tmp(k2sh), const(1)]),
+        call(result(tmp(v2t), w), global(avl_lookup),
+             [arg(p, tmp(arena)), arg(w, tmp(base_cur)), arg(w, tmp(k2tag))]),
+        let(tmp(v2), w, shr, [tmp(v2t), const(1)]),
+        let(tmp(sum2_next), w, add, [tmp(sum2), tmp(v2)]),
+        let(tmp(k2_next), w, add, [tmp(k2), const(1)])
+    ], goto(poll(q2_loop))),
+    block(r_end, [], [
+        let(tmp(sum2l), l, ext(uw), [tmp(sum2)]),
+        let(tmp(tot1), l, add, [tmp(tot), tmp(sum2l)]),
+        let(tmp(r1), w, add, [tmp(r), const(1)])
+    ], goto(poll(rloop))),
+    block(done, [], [
+        let(tmp(ast1), a, check(0, 24, write, 4), [tmp(st)]),
+        touch(tmp(ast1)),
+        raw_store(w, 20, tmp(sp), tmp(ast1))
+    ], ret(tmp(tot)))
+]).

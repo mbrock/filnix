@@ -439,7 +439,8 @@ func(list_sum, local, w,
         let(tmp(idx64), l, ext(uw), [tmp(idx)]),
         let(tmp(off), l, shl, [tmp(idx64), const(2)]),
         flight(tmp(cell), add, [address(tmp(arena)), tmp(off)], lower(tmp(arena))),
-        let(tmp(a), a, check(4, 12, read, 4), [tmp(cell)]),
+        let(tmp(a), a, check(0, 12, read, 4), [tmp(cell)]),
+        touch(tmp(a)),
         let(tmp(h), w, raw_load(uw, 4), [tmp(a)]),
         let(tmp(tl), w, raw_load(uw, 8), [tmp(a)]),
         let(tmp(h0), w, sub, [tmp(h), const(1)]),
@@ -452,8 +453,9 @@ func(list_sum, local, w,
 Notice what [Regs.v](../rocq/backend/Regs.v) ([Regs.valid_alloc])
 already makes of this function without any new compiler pass:
 
-- Both field reads (`+4` and `+8`) share **one** `check(4, 12, read, 4)`
-  under M7's forward [[evidence]] rules ([m7.md](m7.md), [stage_func]),
+- Both field reads (`+4` and `+8`) share **one** `check(0, 12, read, 4)`
+  (fused through `touch(tmp(a))` at offset `0`, as [Fuse.v](../rocq/backend/Fuse.v)
+  expects) under M7's forward [[evidence]] rules ([m7.md](m7.md), [stage_func]),
   because `raw_load(uw, 4)` is [evidence_preserving].
 - `xs` and `acc` are integer `w` phis; `Regs.v` colors phi partners into
   the same callee-saved/scratch GPRs (`%r10`, `%r11`, `%rbx`,
@@ -677,7 +679,8 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 | **Known** | `filcc` hit 8.9 GB / 17 min in `computeFrameIndexMap` on Crane's monolithic 36k-line C++; stopped without diagnosing the pass or measuring FUGC at run time (M8) |
 | **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: native `clang -O1` takes `8.89–13.77 s` on `rx.ir` and `48.95–91.42 s` (`1,065 MB`) on `lvm.ir`, needing `ulimit -s unlimited` because `&frame` blocks tail calls; `filcc -DVERIFFI -O1` builds in `176.3 s` and runs `rx.ir` `compile` in **`165.4 s` / `994 MB`** (18.6× native C, ~500× OCaml) because every `value` is a `void *` capability ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
-| **Hypothesis** | With CFG join recovery, intra-CFG tail loops, and mapped 31-bit `Z` / `nat` / packed `string`, the 32-bit `w` arena runs within `1.2–2×` of `ocamlopt` on `rx.ir` — eliminating both the 30× unmapped-type tax of native CertiRocq C and the 18.6× `void *` capability tax of `-DVERIFFI` |
+| **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
+| **Hypothesis** | Scaling from M0's kernels to full `Compile.compile` on `rx.ir` stays within `1.5–2×` of `ocamlopt` once CFG join recovery and mapped 31-bit `Z` / `nat` / packed `string` are in place (tested in M3) |
 | **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump |
 | **To measure** | Max practical `zsys_mmap` `MAP_NORESERVE` reservation size and `zsys_madvise` RSS behavior under `fugc_destructor_heap` on orbs and `swa` (M1) |
 
@@ -695,6 +698,51 @@ Nanofil IR over the 32-bit arena, compiled by
 `nanofil-backend compile-allocated`, both with standard `check`s and
 with hoisted `span_test` / raw loads. Gate: difftest parity and `perf stat`
 instruction + L1/L2 miss counts against `ocamlopt` and `filcc`.
+
+*Done* ([bench/arena/](../bench/arena/)). `kernels.ir` (1,060 lines of
+checked IR: `evacuate_word`, `minor_gc`, `list_build`, `list_sum`,
+`term_build`, `term_eqb`, and persistent `FMapAVL`-shaped `avl_insert`,
+`avl_bal` and `avl_lookup`) validates with [valid_fast], allocates with
+[Regs.v](../rocq/backend/Regs.v), passes `difftest.sh` (`interp.pl` vs.
+native Fil-C over a 64-word nursery forcing evacuations mid-recursion; a
+planted un-reloaded `roots[]` bug fails immediately), and passes a
+1,024-word nursery stress run (47,434 minor GCs) under
+`FUGC_SCRIBBLE=1 FUGC_VERIFY=1`. Median wall times over 7 interleaved
+CPU-pinned rounds on an orb (`scale = 3`: 24.6M `Cons` cells, 11.8M
+`Term` blocks, 7.2M 24-byte `AVL` nodes; hardware PMU counters are
+masked in the orb VM and can be collected on `swa`):
+
+| Mode | `list_sum` | `term_eqb` | `avl` | Geomean | RSS |
+|---|---:|---:|---:|---:|---:|
+| `ocamlopt -O2` | 150.7 ms | 106.1 ms | 169.1 ms | **1.00×** | 9.5 MB |
+| `c-arena-native` (`gcc -O2`) | 168.1 ms | 104.3 ms | 161.7 ms | **1.02×** | 19.3 MB |
+| `c-arena-filcc` (`filcc -O2`) | 234.8 ms | 170.0 ms | 299.8 ms | **1.64×** | 46.7 MB |
+| `arena-ir-erased` (`Regs.v`, no checks) | 236.3 ms | 179.0 ms | 309.0 ms | **1.69×** | 46.7 MB |
+| `arena-ir-checked` (`Regs.v`, today) | 266.4 ms | 221.2 ms | 354.1 ms | **1.98×** | 46.7 MB |
+| `filc-veriffi` (`void *` nursery) | 472.8 ms | 337.2 ms | 328.3 ms | **2.69×** | 99.8 MB |
+| `filc-fugc` (per-node `malloc`) | 1082.4 ms | 1071.2 ms | 937.7 ms | **7.38×** | 35.9 MB |
+
+Four findings shape M1–M5:
+
+- **Within 2× of `ocamlopt` today, with zero IR or backend changes.**
+  `arena-ir-checked` hits **1.98×** (`1.77×` to `2.09×`) using existing
+  `check(0, Size, Rights, 4)` + `touch` + `FReused` field sharing.
+- **Check erasure buys 15% (`1.98× → 1.69×`) and matches `filcc -O2` (`1.64×`).**
+  Stripping the 96 inline check blocks (`erase_checks.py`: `list_sum`
+  loop `36 → 24` x86-64 instructions, `list_build` `49 → 35`,
+  `avl_lookup` `49 → 37`) brings `Regs.v` within 3% of Clang/LLVM `-O2`
+  on the same arena. The remaining `1.02× → 1.69×` gap over native C is
+  Fil-C's `poll` safepoints on loop back-edges and Pizderson frame
+  push/pop on recursive calls (`term_eqb`, `avl_insert`).
+- **FUGC per-node allocation is 7.38× (`10.10×` on `term_eqb`).** This
+  supplies the runtime figure M8 could not measure on Crane: allocating
+  tens of millions of short-lived 16–48 B functional nodes through
+  `malloc` + FUGC is dominated by per-object allocation, `ensure_aux`
+  and concurrent marking.
+- **Even with mapped C ints, a `void *` nursery costs 2.69× and 2× RSS.**
+  Isolating `-DVERIFFI` from CertiRocq's unary-`nat`/`Ascii` bloat still
+  leaves a 1.6× runtime and 2.1× memory penalty over the 32-bit `w`
+  arena from dual-space `intval` + `aux` writes and FUGC barriers.
 
 **M1. The arena and Cheney collector as a verified-clean Fil-C module.**
 Implement `anf_arena_init` (`zsys_mmap` / `zsys_madvise`), `minor_gc`,
