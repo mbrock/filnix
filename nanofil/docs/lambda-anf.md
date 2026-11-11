@@ -9,7 +9,7 @@ routing through OCaml, C++, or pointer-punning C.
 
 Two names in the sketch this page grew from need separating up front:
 
-- **Nanofil IR** ([ir.pl](../src/ir.pl), [Syntax.v](../rocq/theories/Syntax.v))
+- **Nanofil IR** ([ir.pl](../src/ir.pl), [Syntax.v](../rocq/theories/core/Syntax.v))
   is the compiler's representation: ground `module(Items)` terms of
   functions, basic [[block|blocks]], phis, instructions and data, in
   either the `unchecked` or `checked` [[stage]].
@@ -86,7 +86,7 @@ x86-64 emitter from Rocq. M6 and M8 measured two extraction targets on
 the 36-function regex module `rx.ir` and on Lua's `lvm.ir`, where every
 build prints identical assembly bytes:
 
-| Build | `compile` (`rx` / `lvm`) | `compile-allocated` | Peak RSS |
+| Build | `compile` (`rx` / `lvm`) | `compile-allocated` | Peak RSS (`rx` / `lvm`) |
 |---|---|---|---|
 | Prolog (`nanofil`) | 1.27 s / 2.87 s | — | 43 / 162 MB |
 | OCaml (`ocamlopt`) | 0.34 s / 1.72 s | 0.41 s / 1.68 s | 56 / 149 MB |
@@ -94,7 +94,8 @@ build prints identical assembly bytes:
 | Crane C++ (M8 `rc.h`) | 0.96 s / 4.75 s | 1.30 s / 4.59 s | 55 / 382 MB |
 | Crane C++ (M8 `libgc`) | 1.01 s / 5.07 s | 1.50 s / 4.82 s | 79 / 436 MB |
 | Crane C++ (256 MB heap) | 0.76 s / — | 1.01 s / — | 285 MB / — |
-| CertiRocq C (`clang -O1`) | 8.89 s / *(running)* | 13.77 s / — | 185 MB (`rx`) |
+| CertiRocq C (`clang -O1`) | 8.89 s / 48.95 s | 13.77 s / 91.42 s | 185 / 1065 MB |
+| CertiRocq C (`filcc -DVERIFFI`) | 165.4 s / — | — | 994 MB / — |
 
 ### What M6 and M8 actually found on Crane C++
 
@@ -147,47 +148,56 @@ miss.
 
 Before building a new backend, a companion experiment
 ([CertiRocq C build of the Gallina backend](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc))
-is testing CertiRocq's existing λANF-to-Clight C pipeline on the same
-`rocq/backend` entry points. Its findings already settle several
-questions:
+tested CertiRocq's λANF-to-Clight C pipeline end-to-end on all six
+`rocq/backend` entry points (`read_text`, [Compile.compile],
+[Compile.compile_promoted], [Compile.compile_allocated],
+`rev_lines_parts`, `first_todo`), both natively and under `filcc`:
 
-- **CertiRocq's default inliner hangs on `Compile.compile`.** At `-O 1`,
-  `Inline/shrink loop` (`inline_shrink_loop`) runs past three minutes on
-  [Compile.compile] before being killed. Passing `--anf-variant 8` to
-  skip that loop lets codegen finish (`125 s` at `-O 1`, `66 s` at
-  `-O 0`), emitting **3.05M lines of C** for `compile` alone (and
-  **3.82M lines** across **21,175+ functions** for the full entry bundle,
-  with single functions reaching 28,294 lines and over 3,500
-  `c: register value` locals).
-- **Native `clang -O1` matches OCaml byte-for-byte — at 34–44× its time.**
-  Sharded and built with native `clang -O1` (after fixing a `bool`
-  tag-order mismatch between `Loader.v` and generated glue), the
-  CertiRocq C binary overflows Linux's default 8 MB stack on `rx.ir`.
-  Under `ulimit -s unlimited` it prints assembly **byte-for-byte
-  identical** to `ocamlopt` across `compile` (`8.89 s`, `185 MB`),
-  `compile-promoted` (`12.28 s`, `137 MB`) and `compile-allocated`
-  (`13.77 s`, `137 MB`) — 34 to 44 times OCaml's wall time before any
-  Fil-C overhead.
-- **Why `--anf-variant 8` is slow, and why that bears directly on λANF → IR.**
-  Without inlining, every non-tail `match` continuation becomes a
-  hoisted C function (`f_case_*`) with shadow-stack framing; and without
-  stdlib type mappings (`Extract.v` uses zarith, `CraneMap.v` uses
-  `nf::Z`, `uint64_t` and `std::string`), `Z` / `positive` / `N` stay
-  heap-allocated bit trees, `nat` stays unary Peano cells, and every
-  `Ascii.ascii` literal allocates a 9-word block of 8 booleans (19,616
-  sites). Any λANF → Nanofil IR compiler that leaves continuations as
-  calls and numbers/strings unmapped will pay that same tax regardless
-  of how fast its arena is.
-- **The Fil-C impedance in CertiRocq's C runtime.** CertiRocq's
-  `values.h` and `gc_stack.c` pun integers and pointers
-  (`c: ((intnat)x) & 1`), index block headers negatively
-  (`c: ((header_t *)val)[-1]`), and store C function pointers in field 0
-  of 2-word heap closure blocks; meanwhile `LambdaANF_to_Clight_stack.v`
-  types every generated `val` local as `c: void *`. Under `filcc`, every
-  `c: void *` local is a `p` flight pointer tracked by `FilPizlonator`,
-  and storing function pointers into the nursery slab triggers `aux`
-  allocation and store barriers. Compiling those shards under `filcc` is
-  the sibling thread's next test.
+- **CertiRocq's default inliner hangs; `--anf-variant 8` emits 3.89M lines.**
+  At default `-O 1`, `inline_shrink_loop` stalls past 200 s before and
+  after closure conversion. Passing `--anf-variant 8` skips those two
+  loops while keeping `shrink_err`, `uncurry_top`, `inline_uncurry`,
+  `lambda_lift`, `closure_conversion_hoist`, `DPE` and
+  `merge_dup_funs`, finishing in **157 s** at `-O 1`
+  (`65 s` at `-O 0`) with zero changes to `rocq/backend/*.v` and
+  emitting **3,892,446 lines of Clight C** (135 MB, ~21k functions; split
+  into 16 shards, `clang -O1` builds it in 19.3 s).
+- **Native `clang -O1` is byte-identical at 29–61× OCaml's time, and cannot tail-call.**
+  Because CertiRocq's stack-frame GC links a local
+  `c: struct stack_frame frame` into `tinfo->fp`
+  (`c: tinfo->fp = &frame`), the C compiler cannot tail-call-optimize
+  even genuine Gallina tail loops (such as `IrText`'s byte reader on a
+  367 kB chunk), overflowing an 8 MB C stack on `rx.ir`. Under
+  `ulimit -s unlimited` (and after fixing a `Loader.v` vs.
+  `Generate Glue` `bool` tag inversion), native C matches `ocamlopt`
+  byte-for-byte across `rx.ir` (`8.89 s` `compile`, `12.28 s`
+  `compile-promoted`, `13.77 s` `compile-allocated`; `0.26–0.33 s` in
+  OCaml on the same orb) and `lvm.ir` (`48.95 s`, `48.89 s`, `91.42 s`
+  at up to **1,065 MB** RSS, vs. `1.50–1.74 s` and `213–231 MB` in
+  OCaml). The 29–61× gap comes from unmapped `nat` (unary `O | S n`),
+  9-word `Ascii` blocks, 3-word string `cons` cells, and un-inlined
+  `f_case_*` continuations.
+- **Under `filcc`, default `intnat` panics and `-DVERIFFI` runs in 165.4 s / 994 MB on `rx.ir`.**
+  Sharded into 16 files, CertiRocq's C avoids `FilPizlonator`'s
+  `computeFrameIndexMap` blowup (`54.1 s` wall, `1.15 GB` RSS in default
+  mode; `176.3 s` wall, `1.96 GB` RSS under `-DVERIFFI`). Default
+  `c: typedef intnat value` traps immediately at run time
+  (`cannot read pointer with null object`) because casting pointers
+  through `intnat` strips capabilities. Compiling with `-DVERIFFI`
+  (`c: typedef void *value`, plus three `(intnat)` casts on generated
+  tag bit-ops) **runs cleanly and prints byte-identical assembly without
+  modifying `gc_stack.c`**: each generation `space` is one `malloc`
+  array of `c: void *` slots, so `$alloc + 1` keeps the generation's
+  capability (`[-1]` header reads stay in bounds), odd immediates and
+  headers sit as null-capability `c: void *` words, closure code
+  pointers preserve their function capabilities in `aux`, and Cheney
+  copying copies both payload and `aux`. Paying for `c: void *` on every
+  functional word, however, costs **18.6× native CertiRocq C** (**165.4 s
+  wall, 994 MB RSS** on `rx.ir` `compile` — roughly **500× `ocamlopt`**):
+  every immediate, header, constructor field, Cheney copy and local
+  becomes a dual-space `intval` + `aux` pointer operation tracked
+  simultaneously by `gc_stack.c`, Pizderson frames, and FUGC's store
+  barrier.
 
 ## 2. What Fil-C capabilities actually cost on functional heaps
 
@@ -410,7 +420,7 @@ let(tmp(x), w, shl, [tmp(yg), const(1)]).           % even-tagged boxed index
 
 Walking that list in tail-recursive `list_sum` (`Nil` immediate `1`, `h`
 at `+4`, `tl` at `+8`) uses nothing outside
-[Syntax.v](../rocq/theories/Syntax.v)'s core subset today:
+[Syntax.v](../rocq/theories/core/Syntax.v)'s core subset today:
 
 ```prolog
 % Checked Nanofil IR for tail-recursive list_sum(arena, xs, acc).
@@ -547,14 +557,14 @@ Two regimes need distinguishing:
   major compaction pass run from the same `roots[]` stack when
   `major_idx + (young_idx - nursery_base) > major_limit`. If even the 8 GiB
   addressable limit is exceeded, the runtime traps with `OutOfMemory` —
-  which [Panics.v](../rocq/theories/Panics.v) classifies as a [refusal],
+  which [Panics.v](../rocq/theories/logic/Panics.v) classifies as a [refusal],
   not a safety failure.
 
 ## 6. IR extensions, `Semantics.v`, `Logic.v`, and the validator
 
 ### Does `call` have or need a tail form?
 
-In [ir.pl](../src/ir.pl) and [Syntax.v](../rocq/theories/Syntax.v) today,
+In [ir.pl](../src/ir.pl) and [Syntax.v](../rocq/theories/core/Syntax.v) today,
 `call(Res, Callee, Args)` and `raw_call(Res, Callee, Args)` are ordinary
 block instructions ([Syntax.inst]), **not** block-ending jumps
 ([Syntax.jump]); every Fil-C function pushes a Pizderson root frame on
@@ -603,11 +613,11 @@ Refinement: MetaRocq λ□ ─▶ LambdaANF.eval ─▶ step_rel simulation ─�
    ever reaches an [[unchecked]] access: a bug in `anf_lower` or in
    `minor_gc` can at worst trigger a clean Fil-C [[trap]], never memory
    corruption, even inside an untrusted C host process.
-2. **Proving `[never_panics]` in [Logic.v](../rocq/theories/Logic.v) without the full heap graph.**
+2. **Proving `[never_panics]` in [Logic.v](../rocq/theories/logic/Logic.v) without the full heap graph.**
    In today's validator, live check evidence is cleared at every
    `poll(L)` edge and `call`, because arbitrary C code might `free` a
-   heap object. In [Logic.v](../rocq/theories/Logic.v), however,
-   [Runtime.v](../rocq/theories/Runtime.v)'s axiom [collector_live]
+   heap object. In [Logic.v](../rocq/theories/logic/Logic.v), however,
+   [Runtime.v](../rocq/theories/core/Runtime.v)'s axiom [collector_live]
    guarantees that no safepoint ever frees a live region, and a pure
    λANF module never calls `free`. Even better, **spatial safety of
    `Eproj` does not depend on the GC graph invariant**: for any 32-bit
@@ -641,7 +651,7 @@ Definition arena_bounds (base len : Z) (mj yg nb ne : Z) : Prop :=
 4. **Functional correctness (`LambdaANF.eval` to [step_rel]).**
    Proving that the lowered IR computes the same result as Gallina uses
    the full representation relation — linking CertiRocq's big-step
-   `bstep_cost` (`LambdaANF/eval.v`) to [Semantics.v](../rocq/theories/Semantics.v)'s
+   `bstep_cost` (`LambdaANF/eval.v`) to [Semantics.v](../rocq/theories/core/Semantics.v)'s
    small-step [step_rel] through Cheney's graph isomorphism on
    `arena[]`. Together with a verified backend simulation from `step_rel`
    to `Asm.v`, this closes the self-hosting loop noted at the end of
@@ -663,12 +673,12 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 
 | Status | Claim and basis / measurement needed |
 |---|---|
-| **Known** | `ocamlopt` compiles `rx.ir` in `0.34 s` (`56 MB`); Crane C++ mutator work is `~0.30 s` alongside `65–70%` in `libgc` over 17.65M allocations ([gallina-backend.md](gallina-backend.md), M6/M8) |
-| **Known** | `filcc` hit 8.9 GB / 17 min in `computeFrameIndexMap` on Crane's 36k-line C++; stopped without diagnosing the pass or measuring FUGC at run time (M8) |
-| **Known** | CertiRocq C (`--anf-variant 8`, `clang -O1`) matches OCaml byte-for-byte on `rx.ir` in `8.89–13.77 s` (`137–185 MB`, needing `ulimit -s unlimited`), 34–44× OCaml due to un-inlined `f_case_*` continuations and unmapped `Z` / `nat` / `ascii`; `filcc` build still under test ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
+| **Known** | `ocamlopt` compiles `rx.ir` in `0.26–0.34 s` (`56–60 MB`); Crane C++ mutator work is `~0.30 s` alongside `65–70%` in `libgc` over 17.65M allocations ([gallina-backend.md](gallina-backend.md), M6/M8) |
+| **Known** | `filcc` hit 8.9 GB / 17 min in `computeFrameIndexMap` on Crane's monolithic 36k-line C++; stopped without diagnosing the pass or measuring FUGC at run time (M8) |
+| **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: native `clang -O1` takes `8.89–13.77 s` on `rx.ir` and `48.95–91.42 s` (`1,065 MB`) on `lvm.ir`, needing `ulimit -s unlimited` because `&frame` blocks tail calls; `filcc -DVERIFFI -O1` builds in `176.3 s` and runs `rx.ir` `compile` in **`165.4 s` / `994 MB`** (18.6× native C, ~500× OCaml) because every `value` is a `void *` capability ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
-| **Hypothesis** | With CFG join recovery and mapped 31-bit `Z` / `nat` / packed `string`, the 32-bit `w` arena runs within `1.2–2×` of `ocamlopt` on `rx.ir` — 4× density and zero barriers help, while explicit `arena` indexing and bounds checks (until Campaign 5) push back |
-| **Hypothesis** | Once local join `Efun`s and tail loops lower to CFG `block` + `phi` (eliminating the stack overflow seen in `--anf-variant 8` C), remaining cross-function call depth stays small without a new `tail_call` jump |
+| **Hypothesis** | With CFG join recovery, intra-CFG tail loops, and mapped 31-bit `Z` / `nat` / packed `string`, the 32-bit `w` arena runs within `1.2–2×` of `ocamlopt` on `rx.ir` — eliminating both the 30× unmapped-type tax of native CertiRocq C and the 18.6× `void *` capability tax of `-DVERIFFI` |
+| **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump |
 | **To measure** | Max practical `zsys_mmap` `MAP_NORESERVE` reservation size and `zsys_madvise` RSS behavior under `fugc_destructor_heap` on orbs and `swa` (M1) |
 
 ## 8. Milestones
@@ -676,16 +686,15 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 Each milestone ends with a runnable gate and a recorded measurement, on
 the pattern of [gallina-backend.md](gallina-backend.md).
 
-**M0. Baseline against CertiRocq C, and a hand-lowered arena probe.**
-Record the [CertiRocq C thread's](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)
-compile times and runtime numbers (native `clang` and, if it compiles
-and runs, `filcc`) on `IrText.read_text` and `Compile.compile` (`rx.ir`).
-Beside it, write three representative recursive kernels (`list_sum`,
-`term_eqb`, AVL lookup + insert) directly in Nanofil IR over the 32-bit
-arena, compiled by `nanofil-backend compile-allocated`, both with
-standard `check`s and with hoisted `span_test` / raw loads. Gate:
-difftest parity and `perf stat` instruction + L1/L2 miss counts against
-`ocamlopt` and `filcc`.
+**M0. Hand-lowered arena probe against `ocamlopt` and `filcc -DVERIFFI`.**
+With the [CertiRocq C baseline](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)
+in hand (`8.89 s` native C and `165.4 s` / `994 MB` under
+`filcc -DVERIFFI` on `rx.ir`), write three representative recursive
+kernels (`list_sum`, `term_eqb`, AVL lookup + insert) directly in
+Nanofil IR over the 32-bit arena, compiled by
+`nanofil-backend compile-allocated`, both with standard `check`s and
+with hoisted `span_test` / raw loads. Gate: difftest parity and `perf stat`
+instruction + L1/L2 miss counts against `ocamlopt` and `filcc`.
 
 **M1. The arena and Cheney collector as a verified-clean Fil-C module.**
 Implement `anf_arena_init` (`zsys_mmap` / `zsys_madvise`), `minor_gc`,
@@ -729,12 +738,12 @@ stage 3 assembly are byte-identical; `rxc` passes all 39 hook patterns
 under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` with recorded cold-miss latency.
 
 **M5. `never_panics`, Campaign 5 check erasure, and λANF simulation.**
-Prove `arena_bounds` + `live` preservation in [Logic.v](../rocq/theories/Logic.v)
+Prove `arena_bounds` + `live` preservation in [Logic.v](../rocq/theories/logic/Logic.v)
 to establish [never_panics] for lowered modules ([Logic.heap_never_panics]),
 discharge the arena `check`s through Campaign 5's certificate gate so
 `Eproj` and `Econstr` emit single `movl` instructions with
 [valid_no_unchecked] intact, and prove forward simulation from
-`LambdaANF.eval` to [Semantics.v](../rocq/theories/Semantics.v)'s
+`LambdaANF.eval` to [Semantics.v](../rocq/theories/core/Semantics.v)'s
 [step_rel].
 
 ## Decisions wanted
