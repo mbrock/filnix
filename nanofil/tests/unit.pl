@@ -1910,6 +1910,56 @@ test(simplify) :-
     func_named(M, narrow, func(_, _, _, _, [block(s, [], NI, _)])),
     findall(Op, member(let(_, _, Op, _), NI), [alloc(4), load(uh), ext(sh), add]).
 
+% Simplify rebases &a[i + c] on &a[i] in the same block (simplify.pl,
+% rebased_op/7) only where the offset is exact modulo 2^64. Each function
+% returns &a[j] - &a[i] as an l, worked by hand: lrebase's (2^62 + 1) << 2
+% wraps to 4 as 2^62 << 2 wraps to 0, so 4; uwrap's x + 1 wraps to 0 at w
+% for x = 2^32 - 1, so 0 - 4(2^32 - 1) = 2^64 - 17179869180; urange's x =
+% w >> 1 is at most 2^31 - 1, so x + 1 cannot wrap (4), but x + 2^31 + 1
+% can: 0 - 4(2^31 - 1) = 2^64 - 8589934588; sneg's ext(sb) value minus 1
+% stays in range at sw, so -4.
+test(simplify_rebase) :-
+    Elems = [K, X, J, O, Q, E]>>(
+        E = [let(tmp(J), l, K, [tmp(X)]), let(tmp(O), l, shl, [tmp(J), const(2)]),
+             let(tmp(Q), p, add, [tmp(p), tmp(O)])]),
+    Diff = [let(tmp(n1), l, ptoi, [tmp(q1)]), let(tmp(n2), l, ptoi, [tmp(q2)]),
+            let(tmp(r), l, sub, [tmp(n2), tmp(n1)])],
+    Wrap = [Name, Ext, Pre, X2Op, X2C, F]>>(
+        call(Elems, Ext, x, e1, o1, q1, E1),
+        call(Elems, Ext, x2, e2, o2, q2, E2),
+        append([[let(tmp(p), p, itop, [tmp(a)])], Pre, E1,
+                [let(tmp(x2), w, X2Op, [tmp(x), const(X2C)])], E2, Diff], Is),
+        F = func(Name, export, l, [param(l, tmp(a)), param(w, tmp(b))],
+                 [block(s, [], Is, ret(tmp(r)))])),
+    LRebase = func(lrebase, export, l, [param(l, tmp(a)), param(l, tmp(i))], [block(s, [], [
+        let(tmp(p), p, itop, [tmp(a)]),
+        let(tmp(o1), l, shl, [tmp(i), const(2)]),
+        let(tmp(q1), p, add, [tmp(p), tmp(o1)]),
+        let(tmp(i2), l, add, [tmp(i), const(1)]),
+        let(tmp(o2), l, mul, [tmp(i2), const(4)]),
+        let(tmp(q2), p, add, [tmp(p), tmp(o2)])|Diff], ret(tmp(r)))]),
+    call(Wrap, uwrap, ext(uw), [let(tmp(x), w, copy, [tmp(b)])], add, 1, UWrap),
+    call(Wrap, urange1, ext(uw), [let(tmp(x), w, shr, [tmp(b), const(1)])], add, 1, URange1),
+    call(Wrap, urange2, ext(uw), [let(tmp(x), w, shr, [tmp(b), const(1)])], add, 2147483649, URange2),
+    call(Wrap, sneg, ext(sw), [let(tmp(x), w, ext(sb), [tmp(b)])], sub, 1, SNeg),
+    ir_module([LRebase, UWrap, URange1, URange2, SNeg], M0),
+    optimize(passes([simplify]), M0, M), once(valid_module(M)),
+    Runs = [lrebase-[4096, 4611686018427387904]-ret(4),
+            uwrap-[4096, 4294967295]-ret(18446744056529682436),
+            urange1-[4096, 4294967295]-ret(4),
+            urange2-[4096, 4294967295]-ret(18446744065119617028),
+            sneg-[4096, 128]-ret(18446744073709551612)],
+    forall(member(Fn-Args-Out, Runs),
+           ( module_fn_args_outcome(M0, Fn, Args, Out0), Out0 == Out,
+             module_fn_args_outcome(M, Fn, Args, Out1), Out1 == Out )),
+    Rebased = [Fn, Op, N]>>(
+        func_named(M, Fn, func(_, _, _, _, [block(s, [], Is, _)])),
+        memberchk(let(tmp(q2), p, Op, [tmp(q1), const(N)]), Is)),
+    call(Rebased, lrebase, add, 4), call(Rebased, urange1, add, 4), call(Rebased, sneg, sub, 4),
+    forall(member(Fn, [uwrap, urange2]),
+           ( func_named(M, Fn, func(_, _, _, _, [block(s, [], Is, _)])),
+             memberchk(let(tmp(q2), p, add, [tmp(p), _]), Is) )).
+
 % Simplify's source contexts: a removed instruction's site goes, and an
 % appended block's sites move into its predecessor at its offset.
 test(simplify_contexts) :-

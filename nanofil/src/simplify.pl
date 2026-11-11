@@ -33,6 +33,7 @@
     | `(a C b) == 0` to `a C' b` | C an integer condition, C' its negation |
     | `branch(b == 0, L1, L2)` to `branch(b, L2, L1)` | b a boolean |
     | a pure operation already computed in a dominating block to that value | same class, operation and operands (commutative operands in either order) |
+    | `p + t1` to `q + (c1 - c)`, `&a[i + 1]` to `&a[i] + 4` | `q = p + t` earlier in the block, the offsets' linear forms `k + c` and `k + c1` share `k` (rebased_op/7): exact modulo 2^64, and through a `w` index's extension only where its range rules out the wrap |
     | `branch(c, L1, L2)` to `goto` | c constant, or L1 = L2 |
 
     Then blocks no longer reachable go, with their phi edges; copies and
@@ -158,7 +159,7 @@ trivial_phis(Cx, func(N, L, R, Ps, Blocks0), Rs0, func(N, L, R, Ps, Blocks), Rs)
 % |---|---|
 % | Reps | assoc Temp -> the value that replaces it (a same-class temp or a w/l constant) |
 % | Bools | assoc Temp -> K-Temp pairs equal to it, each 0 or 1 |
-% | Defs | assoc Temp -> cmp(Cond, K, A, B) for an integer comparison, not(B) for `B == 0` of a boolean B, or narrow(T) for a load or extension of narrow type T |
+% | Defs | assoc Temp -> cmp(Cond, K, A, B) for an integer comparison, not(B) for `B == 0` of a boolean B, or narrow(T) for a load or extension of narrow type T; and lin(Temp), range(Temp) and wsum(Temp) for rebasing (offset_facts/6) |
 % | Out | assoc Label -> the rewritten block |
 % | Folded | true once a branch became a goto |
 
@@ -233,14 +234,18 @@ fold_inst(let(tmp(D), K, Op0, Args0), I, L, Cx, Avail0, Avail, St0, St) :- !,
         ( replacement(Cx, K, V, Rep) -> put_assoc(D, Reps0, Rep, Reps) ; Reps = Reps0 ),
         ( boolean(Bools0, K, V) -> put_assoc(D, Bools0, [K-D], Bools) ; Bools = Bools0 ),
         Avail = Avail0, Defs = Defs0
-    ;   R = op(Op, Args),
-        (   numbered(K, Op, Args, L, Key), get_assoc(Key, Avail0, E)
+    ;   R = op(Op1, Args2),
+        (   based(K, Op1, Args2, L, Cx, Defs0, Base0) -> Base = Base0 ; Base = none ),
+        once(rebased_op(K, Op1, Args2, L, Base, Avail0, Found)),
+        (   Found = same(E)
         ->  I = let(tmp(D), K, copy, [tmp(E)]),
             put_assoc(D, Reps0, tmp(E), Reps),
             ( get_assoc(E, Bools0, Eq) -> put_assoc(D, Bools0, [K-D|Eq], Bools) ; Bools = Bools0 ),
-            Avail = Avail0, Defs = Defs0
-        ;   I = let(tmp(D), K, Op, Args), Reps = Reps0,
-            ( numbered(K, Op, Args, L, Key) -> put_assoc(Key, Avail0, D, Avail) ; Avail = Avail0 ),
+            based_avail(Base, E, Avail0, Avail), Defs = Defs0
+        ;   Found = op(Op, Args),
+            I = let(tmp(D), K, Op, Args), Reps = Reps0,
+            foldl(numbered_avail(K, L, D), [Op1-Args2, Op-Args], Avail0, Avail1),
+            based_avail(Base, D, Avail1, Avail),
             facts(D, K, Op, Args, Bools0, Defs0, Bools, Defs)
         )
     ),
@@ -272,13 +277,14 @@ facts(D, K, Op, Args, Bools0, Defs0, Bools, Defs) :-
     ),
     (   Op = cmp(eq, CK), int_class(CK), Args = [tmp(B), const(Z)], zero(CK, Z),
         get_assoc(B, Bools0, _)
-    ->  put_assoc(D, Defs0, not(B), Defs)
+    ->  put_assoc(D, Defs0, not(B), Defs1)
     ;   Op = cmp(C, CK), int_class(CK), Args = [A, B]
-    ->  put_assoc(D, Defs0, cmp(C, CK, A, B), Defs)
+    ->  put_assoc(D, Defs0, cmp(C, CK, A, B), Defs1)
     ;   ( Op = load(T) ; Op = ext(T) ), fits(T, T)
-    ->  put_assoc(D, Defs0, narrow(T), Defs)
-    ;   Defs = Defs0
-    ).
+    ->  put_assoc(D, Defs0, narrow(T), Defs1)
+    ;   Defs1 = Defs0
+    ),
+    offset_facts(D, K, Op, Args, Defs1, Defs).
 
 % fits(?T, ?T2): every value of the narrow type T is one of T2, so
 % extending a T value as T2 gives it back.
@@ -426,6 +432,122 @@ numbered(K, Op, Args, L, K-Op-Key) :-
     pure_op(Op, K), Op \== copy,
     (   commutative(Op), int_class(K) -> msort(Args, Key0) ; Key0 = Args ),
     (   K == p, memberchk(const(_), Args) -> Key = Key0-L ; Key = Key0 ).
+
+numbered_avail(K, L, D, Op-Args, Avail0, Avail) :-
+    (   numbered(K, Op, Args, L, Key) -> put_assoc(Key, Avail0, D, Avail) ; Avail = Avail0 ).
+
+%% Rebasing an element's address on its neighbour's
+%
+% `&a[i + 1]` is `a + ((i + 1) << 2)`, which nothing relates to `&a[i]`,
+% `a + (i << 2)`: two flights from `a`, whose checks the check passes
+% cannot share. At class `l` the offset's linear form, Key + C (lin/4),
+% is exact modulo 2^64, as pointer arithmetic is, so the second address
+% is `&a[i] + 4` with `&a[i]`'s capability, and check_reuse.pl relates
+% the two (base_of/4). A `w` index is extended first: `ext(uw)` of
+% `i + c` is `ext(uw)(i) + c` only when i's range (range/4) rules out
+% the wrap, and likewise `ext(sw)` for the signed one.
+%
+% Within a block L, Avail maps based(L, P, Key) to D-C for the first
+% `D = P + T` with T's form Key + C, or the value that replaced it. A
+% later `P + T1` of the same Key becomes `D + (C1 - C)` (`D - ...` for a
+% negative distance). Only within the block, as numbered/5 keeps a
+% field's address: a base shared down the dominator tree stays live
+% across it.
+
+% based(+K, +Op, +Args, +L, +Cx, +Defs, -Base): Op(Args) at class K is
+% a pointer plus a class-l temp whose linear form is Key + C; Base is
+% based(L, P, Key)-C.
+based(p, add, [tmp(P), tmp(T)], L, cx(Classes, _), Defs, based(L, P, Key)-C) :-
+    get_assoc(T, Classes, l),
+    lin(Defs, T, Key, C).
+
+% rebased_op(+K, +Op0, +Args0, +L, +Base, +Avail, -Found): Found is
+% same(E) when the value is E's, computed already, or op(Op, Args), the
+% operation to keep: Op0(Args0), or its rebasing on a neighbour.
+rebased_op(K, Op0, Args0, L, _, Avail, same(E)) :-
+    numbered(K, Op0, Args0, L, Key), get_assoc(Key, Avail, E).
+rebased_op(K, _, _, L, Bk-C, Avail, Found) :-
+    get_assoc(Bk, Avail, B-C0),
+    Dist is (C - C0) mod (1 << 64),
+    (   Dist =:= 0 -> Found = same(B)
+    ;   (   Dist < 1 << 63 -> Op = add, Args = [tmp(B), const(Dist)]
+        ;   Op = sub, N is (1 << 64) - Dist, Args = [tmp(B), const(N)]
+        ),
+        (   numbered(K, Op, Args, L, Key), get_assoc(Key, Avail, E)
+        ->  Found = same(E)
+        ;   Found = op(Op, Args)
+        )
+    ).
+rebased_op(_, Op, Args, _, _, _, op(Op, Args)).
+
+% based_avail(+Base, +D, +Avail0, -Avail): the block's first address of
+% Base's form is D's.
+based_avail(Bk-C, D, Avail0, Avail) :-
+    \+ get_assoc(Bk, Avail0, _), !,
+    put_assoc(Bk, Avail0, D-C, Avail).
+based_avail(_, _, Avail, Avail).
+
+% lin(+Defs, +T, -Key, -C): the class-l temp T is Key + C modulo 2^64.
+lin(Defs, T, Key, C) :-
+    (   get_assoc(lin(T), Defs, Key-C) -> true ; Key = v(T), C = 0 ).
+
+% lin_op(+Op, +Args, +Defs, -Key, -C): Op(Args) at class l is Key + C
+% modulo 2^64.
+lin_op(add, [tmp(A), const(N)], Defs, Key, C) :-
+    lin(Defs, A, Key, C0), C is (C0 + N) mod (1 << 64).
+lin_op(sub, [tmp(A), const(N)], Defs, Key, C) :-
+    lin(Defs, A, Key, C0), C is (C0 - N) mod (1 << 64).
+lin_op(shl, [tmp(A), const(N)], Defs, shl(Key0, S), C) :-
+    S is N mod 64, S > 0,
+    lin(Defs, A, Key0, C0), C is (C0 << S) mod (1 << 64).
+lin_op(mul, [tmp(A), const(N)], Defs, mul(Key0, M), C) :-
+    M is N mod (1 << 64),
+    lin(Defs, A, Key0, C0), C is (C0 * M) mod (1 << 64).
+lin_op(ext(uw), [tmp(B)], Defs, Key, C) :-
+    (   get_assoc(wsum(B), Defs, Y-C), range(Defs, Y, Lo, Hi),
+        Lo >= 0, Hi + C =< 0xFFFFFFFF
+    ->  Key = ext(uw, Y)
+    ;   Key = ext(uw, B), C = 0
+    ).
+lin_op(ext(sw), [tmp(B)], Defs, Key, C) :-
+    (   get_assoc(wsum(B), Defs, Y-C0), range(Defs, Y, Lo, Hi),
+        ( C0 >= 1 << 31 -> S is C0 - (1 << 32) ; S = C0 ),
+        Lo + S >= -(1 << 31), Hi + S =< (1 << 31) - 1
+    ->  Key = ext(sw, Y), C is S mod (1 << 64)
+    ;   Key = ext(sw, B), C = 0
+    ).
+
+% range(+Defs, +Y, -Lo, -Hi): the class-w temp Y, read as signed, is in
+% [Lo, Hi].
+range(Defs, Y, Lo, Hi) :-
+    (   get_assoc(range(Y), Defs, Lo-Hi) -> true
+    ;   get_assoc(Y, Defs, narrow(T)), narrow_range(T, Lo, Hi)
+    ).
+
+narrow_range(ub, 0, 255).
+narrow_range(uh, 0, 65535).
+narrow_range(sb, -128, 127).
+narrow_range(sh, -32768, 32767).
+
+% offset_facts(+D, +K, +Op, +Args, +Defs0, -Defs): what the kept
+% definition D = Op(Args) tells rebasing: a class-l value's linear form
+% (lin_op/5), a class-w value's range or its sum of a temp and a
+% constant.
+offset_facts(D, l, Op, Args, Defs0, Defs) :-
+    lin_op(Op, Args, Defs0, Key, C), !,
+    put_assoc(lin(D), Defs0, Key-C, Defs).
+offset_facts(D, w, shr, [_, const(N)], Defs0, Defs) :-
+    S is N mod 32, S > 0, !,
+    Hi is (1 << (32 - S)) - 1,
+    put_assoc(range(D), Defs0, 0-Hi, Defs).
+offset_facts(D, w, and, [_, const(N)], Defs0, Defs) :-
+    M is N mod (1 << 32), M < 1 << 31, !,
+    put_assoc(range(D), Defs0, 0-M, Defs).
+offset_facts(D, w, add, [tmp(Y), const(N)], Defs0, Defs) :- !,
+    C is N mod (1 << 32), put_assoc(wsum(D), Defs0, Y-C, Defs).
+offset_facts(D, w, sub, [tmp(Y), const(N)], Defs0, Defs) :- !,
+    C is (-N) mod (1 << 32), put_assoc(wsum(D), Defs0, Y-C, Defs).
+offset_facts(_, _, _, _, Defs, Defs).
 
 % removable(+Inst): Inst defines a temp by a pure operation. A copy of a
 % symbol in a Fil-C module calls its getter, which stays.
