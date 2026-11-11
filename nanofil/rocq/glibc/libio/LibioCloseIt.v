@@ -44,9 +44,11 @@ Local Instance close_it_top_irisGS : irisGS_gen hlc (nanofil_lang registry ge) �
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** `c: _IO_new_do_write`'s triple, as LibioDoWrite.v's
-    [wp_glibc__IO_new_do_write] states it. *)
-Definition do_write_spec : Prop := forall fr fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb vreg Φ,
+(** `c: _IO_new_do_write`'s triple for some bytes, as LibioDoWrite.v's
+    [wp_glibc__IO_new_do_write_mode] states it: the stream's mode is 0
+    or -1. *)
+Definition do_write_spec : Prop :=
+  forall fr fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb vreg mode Φ,
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
@@ -56,42 +58,53 @@ Definition do_write_spec : Prop := forall fr fb freg fl f2 fd tw off bb breg i x
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
+  (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   vtables_ro ge vb vreg -∗
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
   icell fb off_total_written tw -∗ icell fb off_offset off -∗ live bb breg -∗ bytes bb i xs -∗ errno_any eb -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 wb -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr wp -∗ pcell fb off_write_end we -∗ pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   ▷ (∀ r fl' tw' off', ⌜fw_post n fl r fl' /\ 0 <= fl' < 2 ^ 32⌝ -∗
      live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
      icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ live bb breg -∗ bytes bb i xs -∗ errno_any eb -∗
      pcell fb off_read_ptr base -∗ pcell fb 16 base -∗ pcell fb 24 base -∗ pcell fb off_write_base base -∗
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl' 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-     bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+     bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 
-(** The callees' triples: [do_write_spec], and LibioCloseItMid.v's
-    `c: _IO_file_close`, `c: _IO_setb` and `c: _IO_unsave_markers`. *)
-Context (Hdw : do_write_spec).
+(** `c: _IO_new_do_write(fp, data, 0)`'s triple, as LibioDoWrite.v's
+    [wp_glibc__IO_new_do_write_zero] states it: nothing to write, 0 at
+    once. *)
+Definition do_write_zero_spec : Prop := forall fr fp data Φ,
+  call_frame glibc__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
+  ▷ Φ (Ret (WInt 0)) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+
+(** The callees' triples: [do_write_spec] and [do_write_zero_spec],
+    and LibioCloseItMid.v's `c: _IO_file_close`, `c: _IO_setb` and
+    `c: _IO_unsave_markers`. *)
+Context (Hdw : do_write_spec) (Hdw0 : do_write_zero_spec).
 Context (Hclose : CM.close_spec w0 registry ge).
 Context (Hsetb_spec : setb_spec w0 registry ge).
 Context (fum : func) (Hfum : find_fn ge (TAtom "__GI__IO_unsave_markers") = Some (Defined fum)).
 Context (Hum : CM.unsave_spec w0 registry ge fum).
 
-(** `c: _IO_file_close_maybe_unlink(fp, 0)` of an open narrow stream
-    (mode 0) whose n pending bytes xs sit at offset i of its heap
-    buffer bb: `c: _IO_new_do_write` writes r of them ([fw_post]); the
+(** `c: _IO_file_close_maybe_unlink(fp, 0)` of an open stream,
+    un-oriented or narrow (`c: _mode` md 0 or -1), whose n pending
+    bytes xs, none or some, sit at offset i of its heap buffer bb:
+    `c: _IO_new_do_write` writes r of them ([fw_post]); the
     descriptor is closed, k the result; the buffer is given up; every
     buffer pointer is null; the flags are [closed_flags], the
     descriptor and offset -1; the result is k if not 0, else
     `c: _IO_new_do_write`'s. *)
-Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg Φ :
+Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg md Φ :
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr -> 0 < n ->
+  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> Z.land f2 32 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 -> Z.land fl io_no_writes = 0 ->
@@ -99,13 +112,14 @@ Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i 
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> r_kind breg = Heap ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
+  md = 0 \/ md = 2 ^ 32 - 1 ->
   vtables_ro ge vb vreg -∗
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
   icell fb off_total_written tw -∗ icell fb off_offset off -∗ live bb breg -∗ bytes bb i xs -∗ errno_any eb -∗
   pcell fb off_read_ptr rp -∗ pcell fb 16 wb -∗ pcell fb 24 rb -∗ pcell fb off_write_base wb -∗
   pcell fb off_write_ptr (mkPtr (bb + i + n) (Obj bb)) -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
-  bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  bytes fb off_column [0; 0] -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   pcell fb 80 null -∗ pcell fb 96 null -∗
   ▷ (∀ r fl' k tw', ⌜fw_post n fl r fl' /\ (k = 0 \/ k = 2 ^ 32 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags (closed_flags fl') -∗ int_cell fb off_flags2 f2 -∗
@@ -113,13 +127,13 @@ Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i 
      errno_any eb -∗
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
-     bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+     bytes fb off_column [0; 0] -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb 80 null -∗ pcell fb 96 null -∗
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros n wb base Hfr. injection Hfr as <-. intros Hn0 Hfb Hfal Hfend Hfreg Hf22 Hf232 Hf2r Hfd Hfdr Hfl Happ Hnw
-    Hcp Hub He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec.
+  intros n wb base Hfr. injection Hfr as <-. intros Hfb Hfal Hfend Hfreg Hf22 Hf232 Hf2r Hfd Hfdr Hfl Happ Hnw
+    Hcp Hub He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hmd.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp H80 H96 HK".
   unfold file_size in Hfend. pose proof Hnw as Hnw'. pose proof Hcp as Hcp'.
   unfold io_no_writes in Hnw'. unfold io_currently_putting in Hcp'.
@@ -128,12 +142,15 @@ Proof.
   assert (0 <= fd < 2 ^ 32) by lia. assert (0 <= 0 < 2 ^ 32) by lia.
   assert (0 <= Z.land fl 8 < 2 ^ 32) by (rewrite Hnw'; lia).
   assert (0 <= Z.land fl 2048 < 2 ^ 32) by (apply land_lt32; lia).
-  iDestruct "Hfd" as "[_ Hfd]". iDestruct "Hfl" as "[_ Hfl]". iDestruct "Hmode" as "[_ Hmode]".
+  iDestruct "Hfd" as "[_ Hfd]". iDestruct "Hfl" as "[_ Hfl]". iDestruct "Hmode" as "[%Hmr Hmode]".
   (* start, L7, L23, L24, L16: open, writable, putting, narrow. *)
   fs. fs. fchk "Hl". fldi "Hl" "Hfd". fs. fbrv true.
   fs. fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrv false.
   fs. fldi "Hl" "Hfl". fs. fs. fs. fs. fbrv false.
-  fs. fs. fchk "Hl". fldi "Hl" "Hmode". fs. fbr.
+  fs. fs. fchk "Hl". fldi "Hl" "Hmode". fs.
+  assert (Esx : (sign_extension (2 ^ 32) (2 ^ 31) (md mod 2 ^ 32) <=? sign_extension (2 ^ 32) (2 ^ 31) (0 mod 2 ^ 32))
+                = true) by (destruct Hmd as [-> | ->]; reflexivity).
+  rewrite Esx. clear Esx. fbr.
   (* L31: `c: _IO_do_write(fp, write_base, write_ptr - write_base)`. *)
   fs. fs. fchk "Hl". fldp "Hl" "Hwb" "Hbl". fs. fldp "Hl" "Hwp" "Hbl". fldp "Hl" "Hwb" "Hbl". fs. fs. fs.
   assert (E50 : ((bb + i + n) mod 2 ^ 64 - (bb + i) mod 2 ^ 64) mod 2 ^ 64 = n).
@@ -142,10 +159,23 @@ Proof.
   rewrite E50. clear E50.
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   iAssert (int_cell fb off_fileno fd) with "[Hfd]" as "Hfd"; [iSplit; [done | iExact "Hfd"]|].
-  iAssert (int_cell fb off_mode 0) with "[Hmode]" as "Hmode"; [iSplit; [done | iExact "Hmode"]|].
+  iAssert (int_cell fb off_mode md) with "[Hmode]" as "Hmode"; [iSplit; [done | iExact "Hmode"]|].
   iApply wp_call_bind; [vx | exact Hdwf | reflexivity |]. iNext. rewrite (Z.mod_small n (2 ^ 64)); [|lia].
+  destruct (Z.eq_dec n 0) as [Hn0 | Hn0].
+  { (* No pending bytes: `c: _IO_new_do_write` returns 0 at once, and L18 runs. *)
+    assert (Hl0 : Z.of_nat (length xs) = 0) by exact Hn0.
+    assert (Hxs0 : xs = []) by (destruct xs; [reflexivity | cbn [length] in Hl0; lia]). subst xs.
+    iApply Hdw0; [reflexivity |]. iNext. resume. fs.
+    iApply (CM.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
+              with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
+      first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try side; try exact Hmd].
+    { iRight. iExists bb, breg. iFrame "Hbl". iPureIntro. split_and!; try done; try lia. }
+    iNext. iIntros (k Hk) "Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H80 H96".
+    iApply ("HK" $! 0 fl k tw with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol Hmode Hvtp
+              H80 H96").
+    split; [left; split; reflexivity | exact Hk]. }
   iApply (Hdw with "Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp");
-    try side.
+    try side; try exact Hmd; try lia.
   iNext. iIntros (r fl' tw' off' [Hpost Hfl']) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase
     Hbend Hcol Hmode Hvtp". resume. fs.
   (* L18 to the return. *)
@@ -155,7 +185,7 @@ Proof.
   rewrite Ep3. try rewrite Ep3.
   iApply (CM.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
             with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
-    first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try side].
+    first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try side; try exact Hmd].
   { iRight. iExists bb, breg. iFrame "Hbl". iPureIntro. split_and!; try done; try lia.
     destruct Hpost as [(_ & ->) | (_ & ->)]; [exact Hub|].
     rewrite Z.land_lor_distr_l. rewrite Hub. reflexivity. }

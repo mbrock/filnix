@@ -103,8 +103,9 @@ Qed.
 (** Block `c: L101` of `c: _IO_new_fclose(fp)` for stdout, entered
     from `c: L99` with the close's result p1 in `c: v107`: the stream
     lock lb, held by this thread, is released, and block `c: L8` runs
-    as [wp_fclose_L8] says. *)
-Lemma wp_fclose_L101 e p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin Φ :
+    as [wp_fclose_L8] says, the stream un-oriented or narrow
+    (`c: _mode` md 0 or -1). *)
+Lemma wp_fclose_L101 e p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin md Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "v0") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
   lookup (TAtom "v107") e = Some (WInt p1) -> 0 <= p1 < 2 ^ 32 ->
@@ -114,23 +115,24 @@ Lemma wp_fclose_L101 e p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin �
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_user_lock = false -> has fl io_linked = true -> 0 < lb ->
+  md = 0 \/ md = 2 ^ 32 - 1 ->
   vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
   lock_state lb lbreg 1 0 (ow_self w0) -∗
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
-  int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
   ▷ (tcb_cleanup_inv (ow_self w0) -∗ live fb freg -∗ int_cell fb off_flags (Z.land fl 4294967167) -∗
      pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗
      io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗
-     int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode 0 -∗
+     int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗
      pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
   WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L101") (Some (TAtom "L99")))) : sexpr)
     {{ Φ }}.
 Proof.
-  intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb. subst fp.
+  intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd. subst fp.
   iIntros "#Hvt #Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK".
   unfold file_size in Hfend.
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).
@@ -156,7 +158,7 @@ Proof.
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   rewrite (Z.mod_small p1 (2 ^ 32)); [|lia].
   iApply (wp_fclose_L8 w0 registry ge Hunl Hdf Hff Hunl_spec Hunl_unlinked
-            with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK"); try side.
+            with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK"); try side; try exact Hmd.
 Qed.
 
 End rules.
