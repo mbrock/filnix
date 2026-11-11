@@ -64,8 +64,7 @@ jobs:
               # Zero local/remote builders: a cache miss fails instead of
               # silently doing prover work. Include downloads in the timing.
               nix build -L --no-link --print-out-paths --max-jobs 0 --builders "" \
-                .#site.proofStates .#site.spikeStates .#site.rocqPages \
-                .#site.prologPages
+                .#site.rocqPages .#site.prologPages
             fi
             nix build -L .#site
           ' 2>&1 | tee build.log

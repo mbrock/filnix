@@ -348,9 +348,11 @@ A proof-mode goal is drawn as Iris prints it: under Rocq's context and a
 double rule, the persistent hypotheses (named in italics) over a rule
 marked □, the spatial ones over a rule marked ∗, then the goal.
 
-`capture.nix` caches execution independently of CSS/JS. The site requires
-its output and embeds the rendered states in HTML; the reader needs
-neither a server nor a running prover. With `spikes = true` it replays only
+`capture.nix` caches execution independently of CSS/JS. The site no
+longer uses it: since 2026-11-11 filnix.org draws proofs as written,
+without states, because capturing them took minutes of every publish.
+With `--states`, the renderer embeds the rendered states in HTML; the
+reader needs neither a server nor a running prover. With `spikes = true` it replays only
 the logic spikes, which need std++ and Iris, against the theories they
 import (`capture.py --replay spikes/`); `--states` is given once per
 capture. A file in a directory no capture replayed (`rocq/backend`) is

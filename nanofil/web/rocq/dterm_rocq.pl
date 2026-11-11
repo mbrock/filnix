@@ -106,11 +106,12 @@ page_worker(Out, Claims, Pages, _, Pid) :-
     ;   Pid = Pid0
     ).
 
-%  Draw one page; if it fails or throws, name it and its error, mark the
-%  run failed, and go on to the next page.
+%  Draw one page; if it fails, throws or loops, name it and its error,
+%  mark the run failed, and go on to the next page. The longest page
+%  takes seconds, so two minutes is a drawing that never ends.
 draw_or_report(Out, Page) :-
     Page = page(File, _, _, _),
-    (   catch(write_source_page(Out, Page), E, true)
+    (   catch(call_with_time_limit(120, write_source_page(Out, Page)), E, true)
     ->  (   var(E) -> true
         ;   print_message(error, E),
             format(user_error, "dterm-rocq: ~w: not drawn, it raised the error above~n", [File]),

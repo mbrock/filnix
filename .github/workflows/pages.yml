@@ -108,7 +108,7 @@ jobs:
         run: |
           set -o pipefail
           nix build --no-link --print-out-paths --max-jobs 0 \
-            .#site.proofStates .#site.spikeStates .#site.rocqPages .#site.prologPages | cachix push filc
+            .#site.rocqPages .#site.prologPages | cachix push filc
       # Retain the recovery format, but upload it after publication.
       - name: Package the published site
         run: tar -C _site -cf "$RUNNER_TEMP/artifact.tar" .

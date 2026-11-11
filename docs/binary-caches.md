@@ -38,18 +38,16 @@ workflows add `https://nix.swa.sh/cache` as a substituter for them, and
 
 ## Site generated artifacts
 
-The site workflow publishes `site.proofStates`, `site.spikeStates`,
-`site.rocqPages` and `site.prologPages` to `filc.cachix.org` from trusted
-`main` builds, using a cache-scoped write credential. Other branches can
-read the public cache without that credential. Consumers request the exact
-Nix output paths, not a mutable bundle of the latest generated pages or
-proof results.
+The site workflow publishes `site.rocqPages` and `site.prologPages` to
+`filc.cachix.org` from trusted `main` builds, using a cache-scoped write
+credential. Other branches can read the public cache without that
+credential. Consumers request the exact Nix output paths, not a mutable
+bundle of the latest generated pages.
 
-Unrelated site Markdown edits preserve these outputs. Rocq theories,
-capture tools or their dependencies invalidate the corresponding proof captures;
-the renderer also depends on the Prolog index, concept text and rendering
-assets. A cache miss, including eviction, rebuilds the required version
-rather than silently displaying stale states. These outputs are not an
+Unrelated site Markdown edits preserve these outputs. Rocq and Prolog
+sources, the concept text and the renderers invalidate them. A cache miss,
+including eviction, redraws the required version (under a minute) rather
+than silently displaying stale pages. These outputs are not an
 additional toolchain pre-push gate.
 
 The Prolog pages also survive edits to unrelated `docs/`, `pages/` and Nix

@@ -1240,6 +1240,7 @@ intro_pattern(_, ip_rewrite(Op)) -->
     { ( Op == '->' -> G = '→' ; G = '←' ) }, el(span, "op rq-rewrite", [title=Op], esc(G)).
 intro_pattern(_, ip_auto(K)) --> el(span, "v anon", esc(K)).
 intro_pattern(_, ip_fresh(n(_, N))) --> el(span, "rq-meta", ( "?", var_(N) )).
+intro_pattern(_, ip_inj([])) --> !, el(span, "l rq-pattern", el(span, op, "=")).
 intro_pattern(Env, ip_inj(Ps)) --> el(span, "l rq-pattern", ( el(span, op, "="), " ", intro_items(Ps, Env) )).
 intro_pattern(Env, ip_and(Ps)) -->
     el(span, "paren rq-pattern rq-intro-and", tactic_chain(Ps, '&', intro_operand, Env)).

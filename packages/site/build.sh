@@ -27,7 +27,7 @@ cp "$src"/docs/*.txt "$src"/docs/archive/*.txt "$out/docs/"
 export SITE=$out
 mkdir -p "$out/nanofil"
 # Rendered in independent derivations, with the same complete cross-file
-# indexes and real proof states. Assembly never substitutes a fixture.
+# indexes. Assembly never substitutes a fixture.
 cp -r "${PROLOG_PAGES:?the site needs rendered Prolog pages}/." "$out/nanofil/"
 cp -r "${ROCQ_PAGES:?the site needs rendered Rocq pages}" "$out/nanofil/rocq"
 
