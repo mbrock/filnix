@@ -926,7 +926,10 @@ Fixpoint fresh_n (n : nat) (s : st) : list Z * st :=
 
 Definition i_let (d : term) (k : string) (o : term) (args : list term) : term :=
   TApp "let" [tmpv d; TAtom k; o; TList args].
-Definition o_check (lo hi : Z) (r : string) : term := TApp "check" [TInt lo; TInt hi; TAtom r; TInt 4].
+(** A [[check]] of the bytes lo up to hi at alignment 1: arena and
+    state words are 4-aligned by construction (anf_arena.h), and an
+    integer access needs no more, so the check tests no alignment. *)
+Definition o_check (lo hi : Z) (r : string) : term := TApp "check" [TInt lo; TInt hi; TAtom r; TInt 1].
 Definition o_load (off : Z) : term := TApp "raw_load" [TAtom "uw"; TInt off].
 Definition i_store (off : Z) (v a : term) : term := TApp "raw_store" [TAtom "w"; TInt off; v; tmpv a].
 Definition i_flight (d base off : term) : term :=
@@ -1082,6 +1085,17 @@ Definition addr_of_idx (idx : term) (s : st) : list term * term * st :=
     i_let (tname k2) "l" (TAtom "shl") [tmpv (tname k1); cst 2];
     i_flight (tname k3) t_arena (tmpv (tname k2))], tname k3, s).
 
+(** The instructions that make the pointer to the block whose word is
+    w, and the pointer's temporary: arena + 2 w, which is the arena's word
+    w >> 1 when w is a block's (even) word. *)
+Definition addr_of_word (w : term) (s : st) : list term * term * st :=
+  let (k1, s) := fresh s in
+  let (k2, s) := fresh s in
+  let (k3, s) := fresh s in
+  ([i_let (tname k1) "l" (TApp "ext" [TAtom "uw"]) [w];
+    i_let (tname k2) "l" (TAtom "shl") [tmpv (tname k1); cst 1];
+    i_flight (tname k3) t_arena (tmpv (tname k2))], tname k3, s).
+
 (** The instructions that store the values vs in the function's frame
     of shadow roots (at fr, from roots[sp] on), and those that read
     them back into fresh temporaries after a call, which a collection
@@ -1124,23 +1138,33 @@ Definition around_gc (vs : list term) (call : term) (yg : term) (s : st)
                    i_let (tname yg') "w" (o_load 0) [tmpv (tname q1)]] ++ pop,
    vs', tmpv (tname yg'), s).
 
+(** What a lowered function returns: two 64-bit words, its value and
+    the young index, in `%rdx` and `%rcx`. *)
+Definition t_ret2 : term := TApp "tuple" [TList [TAtom "l"; TAtom "l"]].
+
+(** The jump that returns the words vs. *)
+Definition j_rets (vs : list term) : term := TApp "rets" [TList vs].
+
 (** A call of a lowered function: the callee g with the arguments args
     after the young index, the roots' top and the nursery's end, its
-    result in a 64-bit temporary, the young index above the value.
-    The instruction, and that temporary. *)
-Definition lcall (g : term) (yg spn : term) (args : list term) (s : st) : term * Z * st :=
-  let (rl, s) := fresh s in
-  (TApp "call" [TApp "result" [tmpv (tname rl); TAtom "l"]; g;
-                TList (a_p t_arena :: a_p t_st :: map a_w (yg :: spn :: t_ne :: args))], rl, s).
+    value and the young index in two 64-bit temporaries. The
+    instruction, and those temporaries. *)
+Definition lcall (g : term) (yg spn : term) (args : list term) (s : st) : term * (Z * Z) * st :=
+  let (rv, s) := fresh s in
+  let (ry, s) := fresh s in
+  (TApp "call" [TApp "tuple" [TList [TApp "result" [tmpv (tname rv); TAtom "l"];
+                                     TApp "result" [tmpv (tname ry); TAtom "l"]]]; g;
+                TList (a_p t_arena :: a_p t_st :: map a_w (yg :: spn :: t_ne :: args))], (rv, ry), s).
 
-(** The instructions that split the result rl of a lowered function
-    into its value, into r, and the young index; and that index. *)
-Definition split_result (rl r : Z) (s : st) : list term * term * st :=
-  let (kh, s) := fresh s in
+(** The return of the results rl of a tail call. *)
+Definition j_rets_of (rl : Z * Z) : term := j_rets [tmpv (tname (fst rl)); tmpv (tname (snd rl))].
+
+(** The instructions that take the results rl of a lowered function
+    as its value, into r, and the young index; and that index. *)
+Definition split_result (rl : Z * Z) (r : Z) (s : st) : list term * term * st :=
   let (yg', s) := fresh s in
-  ([i_let (tname r) "w" (TAtom "copy") [tmpv (tname rl)];
-    i_let (tname kh) "l" (TAtom "shr") [tmpv (tname rl); cst 32];
-    i_let (tname yg') "w" (TAtom "copy") [tmpv (tname kh)]], tmpv (tname yg'), s).
+  ([i_let (tname r) "w" (TAtom "copy") [tmpv (tname (fst rl))];
+    i_let (tname yg') "w" (TAtom "copy") [tmpv (tname (snd rl))]], tmpv (tname yg'), s).
 
 (** The instructions of a call of a lowered function g with args, its
     value into r, whose live values vs go to the frame and come back:
@@ -1154,17 +1178,14 @@ Definition around_lcall (vs : list term) (r : Z) (g : term) (args : list term) (
   let '(split, yg', s) := split_result rl r s in
   (top ++ push ++ call :: split ++ pop, vs', yg', s).
 
-(** The instructions that return the value v with the young index yg
-    above it, and the 64-bit temporary that holds both. *)
+(** The instructions that widen the value v and the young index yg
+    for a return, and the jump that returns them. *)
 Definition pack_result (yg v : term) (s : st) : list term * term * st :=
   let (k1, s) := fresh s in
   let (k2, s) := fresh s in
-  let (k3, s) := fresh s in
-  let (k4, s) := fresh s in
-  ([i_let (tname k1) "l" (TApp "ext" [TAtom "uw"]) [yg];
-    i_let (tname k2) "l" (TAtom "shl") [tmpv (tname k1); cst 32];
-    i_let (tname k3) "l" (TApp "ext" [TAtom "uw"]) [v];
-    i_let (tname k4) "l" (TAtom "or") [tmpv (tname k2); tmpv (tname k3)]], tmpv (tname k4), s).
+  ([i_let (tname k1) "l" (TApp "ext" [TAtom "uw"]) [v];
+    i_let (tname k2) "l" (TApp "ext" [TAtom "uw"]) [yg]],
+   j_rets [tmpv (tname k1); tmpv (tname k2)], s).
 
 (** The words the expression e allocates in the nursery before its
     first call, on its longest path: neither constants nor the
@@ -1269,12 +1290,11 @@ Fixpoint chain (v : term) (cases : list (Z * term)) (b : bc) (s : st) : st :=
 Definition box_dispatch (v : term) (boxes : list (Z * term)) (b : bc) (s : st) : st :=
   match boxes with
   | _ :: _ :: _ =>
-      let (ki, s) := fresh s in
-      let '(is, p, s) := addr_of_idx (tmpv (tname ki)) s in
+      let '(is, p, s) := addr_of_word v s in
       let (kq, s) := fresh s in
       let (kh, s) := fresh s in
       let (ko, s) := fresh s in
-      let b := b_emit ([i_let (tname ki) "w" (TAtom "shr") [v; cst 1]] ++ is ++
+      let b := b_emit (is ++
                        [i_let (tname kq) "a" (o_check 0 4 "read") [tmpv p];
                         i_let (tname kh) "w" (o_load 0) [tmpv (tname kq)];
                         i_let (tname ko) "w" (TAtom "and") [tmpv (tname kh); cst 255]]) b in
@@ -1400,16 +1420,6 @@ Definition fast_slow (is : list term) (ok v : term) (f : string) (args : list te
   let s := finish (b_emit [i_rt kc f args] (b_next (lname ls) [] b)) (j_goto (lname lj)) s in
   let s := add_edge (lname lj) (lname ls) [tv kc] s in
   (b_next (lname lj) [tname kr] b, tv kr, s).
-
-(** The instructions that make the pointer to the block whose word is
-    w, and the pointer's temporary. *)
-Definition addr_of_word (w : term) (s : st) : list term * term * st :=
-  let (k1, s) := fresh s in
-  let (k2, s) := fresh s in
-  let (k3, s) := fresh s in
-  ([i_let (tname k1) "l" (TApp "ext" [TAtom "uw"]) [w];
-    i_let (tname k2) "l" (TAtom "shl") [tmpv (tname k1); cst 1];
-    i_flight (tname k3) t_arena (tmpv (tname k2))], tname k3, s).
 
 (** `String.eqb a b`, 0 or 1, told from the words when it can be: the
     same word; an empty string, an immediate, and another; two blocks
@@ -1818,10 +1828,9 @@ Fixpoint gen (c : cl) (e : exp) (b : bc) (s : st) {struct e} : res st :=
       | Some q => gen c e' (b_bind x (tmpv (tname kx)) (b_emit [load q] b)) s
       | None =>
           let hi := 4 * (Z.max n (proj_max y e') + 2) in
-          let (ki, s) := fresh s in
-          let '(is, p, s) := addr_of_idx (tmpv (tname ki)) s in
+          let '(is, p, s) := addr_of_word vy s in
           let (kq, s) := fresh s in
-          let is := [i_let (tname ki) "w" (TAtom "shr") [vy; cst 1]] ++ is ++
+          let is := is ++
                     [i_let (tname kq) "a" (o_check 0 hi "read") [tmpv p];
                      TApp "touch" [tmpv (tname kq)]; load (tname kq)] in
           gen c e' (b_prove vy (tname kq) hi (b_bind x (tmpv (tname kx)) (b_emit is b))) s
@@ -1860,16 +1869,16 @@ Fixpoint gen (c : cl) (e : exp) (b : bc) (s : st) {struct e} : res st :=
           else
             let? (pre, g, args, s) := callee c b f vs s in
             let '(call, rl, s) := lcall g (b_yg b) t_sp args s in
-            Ok (finish (b_emit (pre ++ [call]) b) (j_ret (tmpv (tname rl))) s)
+            Ok (finish (b_emit (pre ++ [call]) b) (j_rets_of rl) s)
       | None =>
           let? (pre, g, args, s) := callee c b f vs s in
           let '(call, rl, s) := lcall g (b_yg b) t_sp args s in
-          Ok (finish (b_emit (pre ++ [call]) b) (j_ret (tmpv (tname rl))) s)
+          Ok (finish (b_emit (pre ++ [call]) b) (j_rets_of rl) s)
       end
   | Ehalt x =>
       let? v := val_of c b x in
-      let '(is, k, s) := pack_result (b_yg b) v s in
-      Ok (finish (b_emit is b) (j_ret k) s)
+      let '(is, j, s) := pack_result (b_yg b) v s in
+      Ok (finish (b_emit is b) j s)
   | Efun _ _ => Err "a nested Efun"
   | Eprim x p ys live e' =>
       if ZMap.mem x (cl_kv c) then gen c e' b s
@@ -1943,11 +1952,20 @@ Definition block_term (s : st) (pb : pblock) : term :=
 
 (** The function term named name with the w parameters ps and the
     blocks of s. *)
-Definition func_term (name linkage rk : string) (ps : list term) (s : st) : term :=
-  TApp "func" [TAtom name; TAtom linkage; TAtom rk;
+Definition func_term (name linkage : string) (rk : term) (ps : list term) (s : st) : term :=
+  TApp "func" [TAtom name; TAtom linkage; rk;
                TList (TApp "param" [TAtom "p"; t_arena] :: TApp "param" [TAtom "p"; t_st]
                       :: map (fun p => TApp "param" [TAtom "w"; tmpv p]) ps);
                TList (map (block_term s) (rev (s_blocks s)))].
+
+(** Whether the term x occurs in t. *)
+Fixpoint mentions (x t : term) : bool :=
+  term_eqb x t ||
+  match t with
+  | TApp _ ts | TList ts => (fix go (l : list term) : bool :=
+                               match l with [] => false | u :: l' => mentions x u || go l' end) ts
+  | _ => false
+  end.
 
 (** The IR function of the cluster of root, named name, whose
     parameters are xs and body body, with the absorbed functions
@@ -1960,13 +1978,6 @@ Definition gen_cluster (c : cl) (name linkage : string) (root : Z) (xs : list Z)
   let (k1, s) := fresh s in
   let (k2, s) := fresh s in
   let (k3, s) := fresh s in
-  let entry := mkbc (TAtom "entry") [] [] (ZMap.empty term) (cst 0) [] root 0 0 None in
-  (* The frame of shadow roots starts at roots[sp], at st + 64 + 4 sp. *)
-  let entry := b_emit [i_let (tname k1) "l" (TApp "ext" [TAtom "uw"]) [t_sp];
-                       i_let (tname k2) "l" (TAtom "shl") [tmpv (tname k1); cst 2];
-                       i_let (tname k3) "l" (TAtom "add") [tmpv (tname k2); cst 64];
-                       i_flight (TAtom "fr") t_st (tmpv (tname k3))] entry in
-  let s := finish entry (j_goto (head_label root)) s in
   let s := add_edge (head_label root) (TAtom "entry")
              (tmpv (tname k0) :: map (fun k => tmpv (tname k)) ps) s in
   let? s := gen_body c root 0 root xs body s in
@@ -1975,7 +1986,19 @@ Definition gen_cluster (c : cl) (name linkage : string) (root : Z) (xs : list Z)
                  let? (s, seg) := acc in
                  let? s := gen_body c root seg (fd_f fd) (fd_xs fd) (fd_body fd) s in
                  Ok (s, seg + 1)) members (Ok (s, 1)) in
-  Ok (func_term name linkage "l" (tname k0 :: TAtom "sp" :: TAtom "ne" :: map tname ps) s).
+  (* The frame of shadow roots starts at roots[sp], at st + 64 + 4 sp,
+     computed at the entry when a block spills to it. *)
+  let uses_fr := existsb (fun pb => existsb (mentions t_fr) (pb_insts pb)) (s_blocks s) in
+  let entry := mkpb (TAtom "entry") []
+                 (if uses_fr
+                  then [i_let (tname k1) "l" (TApp "ext" [TAtom "uw"]) [t_sp];
+                        i_let (tname k2) "l" (TAtom "shl") [tmpv (tname k1); cst 2];
+                        i_let (tname k3) "l" (TAtom "add") [tmpv (tname k2); cst 64];
+                        i_flight (TAtom "fr") t_st (tmpv (tname k3))]
+                  else [])
+                 (j_goto (head_label root)) in
+  let s := mkst (s_next s) (s_blocks s ++ [entry]) (s_edges s) in
+  Ok (func_term name linkage t_ret2 (tname k0 :: TAtom "sp" :: TAtom "ne" :: map tname ps) s).
 
 (** A function that C calls, `name(arena, st, ...)` with the w
     parameters ps, which reads the young index, the nursery's end and
@@ -1997,7 +2020,7 @@ Definition c_entry (name : string) (ps : list term) (is : list term) (g : term) 
               ++ [i_let (tname q1) "a" (o_check 0 24 "write") [t_st];
                   i_store 0 yg' (tname q1); i_store 20 t_sp (tname q1)] in
   let s := mkst (s_next s) (mkpb (TAtom "entry") [] body (j_ret (tmpv (tname r))) :: s_blocks s) (s_edges s) in
-  func_term name "export" "w" ps s.
+  func_term name "export" (TAtom "w") ps s.
 
 (** `anf_main(arena, st)`, which C calls on a fresh arena: it copies the
     pool to the major heap's first words, where its constants' values
@@ -2526,19 +2549,19 @@ Definition lower (cs : list term) : res (term * counts) :=
     it: the constant is a block of the pool, `[2048, 1, 1]` after the
     pool's length, which the entry copies to word 1 of the major heap
     (`anf_lower_pool`), so the program, `anf_run`, has two blocks, the
-    entry and the body, which returns the word `1 << 1` below its
-    young index. *)
+    entry and the body, which returns the word `1 << 1` and its young
+    index. *)
 Example lower_constant :
   match lower [TApp "anf_ctor" [TInt 1; TInt 1; TInt 0; TInt 0; TAtom "Nil"];
                TApp "anf_ctor" [TInt 2; TInt 1; TInt 2; TInt 0; TAtom "Cons"];
                TApp "anf_body" [TApp "constr" [TInt 5; TInt 1; TList [];
                  TApp "constr" [TInt 6; TInt 2; TList [TInt 5; TInt 5]; TApp "halt" [TInt 6]]]]] with
   | Ok (TApp "module" [TList [TApp "func" [TAtom "anf_main"; _; _; _; _];
-                              TApp "func" [TAtom "anf_run"; _; _; _; TList [_; TApp "block" [_; _; TList is; TApp "ret" [_]]]];
+                              TApp "func" [TAtom "anf_run"; _; _; _; TList [_; TApp "block" [_; _; TList is; TApp "rets" [_]]]];
                               TApp "data" [TAtom "anf_pool"; _; _; TList items]]], _) =>
-      Some (last (flat_map (fun i => match i with
-                                     | TApp "let" [_; TAtom "l"; TApp "ext" [_]; TList [a]] => [a]
-                                     | _ => [] end) is) (cst 0),
+      Some (hd (cst 0) (flat_map (fun i => match i with
+                                          | TApp "let" [_; TAtom "l"; TApp "ext" [_]; TList [a]] => [a]
+                                          | _ => [] end) is),
             map (fun i => match i with TApp "item" [_; TApp "const" [TInt w]] => w | _ => -1 end) items)
   | _ => None
   end = Some (TApp "const" [TInt 2], [3; 2048; 1; 1]).

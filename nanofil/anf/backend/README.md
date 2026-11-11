@@ -56,31 +56,53 @@ function's temporaries (the largest has 66,000).
 
 ## Results
 
-All 156 runs (52 fixtures, three commands) print what `nanofil-backend`
-prints, with both nurseries. On the two large inputs of
-[lambda-anf.md](../../docs/lambda-anf.md), best of seven runs for rx.ir
-and one for lvm.ir, with the same assembly as the OCaml build:
+All 159 runs (53 fixtures, three commands) print what `nanofil-backend`
+prints, with both nurseries. The table gives the times on the two large
+inputs of [lambda-anf.md](../../docs/lambda-anf.md): the best of 15
+interleaved runs for rx.ir and the median of four for lvm.ir. Both builds
+print the same assembly.
 
 | input | command | arena | ocamlopt | ratio |
 | --- | --- | ---: | ---: | ---: |
-| rx.ir (367 KB) | compile | 0.97 s | 0.23 s | 4.2× |
-| rx.ir | compile-allocated | 1.24 s | 0.30 s | 4.2× |
-| lvm.ir (4.4 MB) | compile | 15.7 s | 3.5 s | 4.5× |
-| lvm.ir | compile-allocated | 11.0 s | 2.6 s | 4.2× |
+| rx.ir (367 KB) | compile | 0.80 s | 0.22 s | 3.6× |
+| rx.ir | compile-allocated | 1.04 s | 0.29 s | 3.6× |
+| lvm.ir (4.4 MB) | compile | 14.4 s | 3.3 s | 4.3× |
+| lvm.ir | compile-allocated | 9.4 s | 2.4 s | 3.9× |
 
-The arena peaks at 89 MB on rx.ir and 423 MB on lvm.ir, against 57 MB
-and 279 MB. Without the simplification, the tables, the calling
-convention and the closure facts of `AnfLower.v`, the same runs took
-2.2 s, 2.9 s, 43.8 s and 26.8 s.
+Times on this orb vary by about 10% from run to run. The arena peaks at
+89 MB on rx.ir and 422 MB on lvm.ir, against 57 MB and 279 MB. Without
+the simplification, the tables, the calling convention and the closure
+facts of `AnfLower.v`, the same runs took 2.2 s, 2.9 s, 43.8 s and
+26.8 s. M3 as first pushed (3a14460) took 0.90 s, 1.22 s, 15.4 s and
+11.0 s in the same runs. Since then, calls between lowered functions
+have become cheaper:
 
-Where the rest goes, on rx.ir: 88% of the time is in the lowered
+- `AnfLower.v` returns a lowered function's value and the young index
+  in two registers instead of one packed word. It finds a block from its
+  word with one shift instead of two, and it builds the frame of shadow
+  roots only in a function that spills to it. Its arena checks ask for
+  alignment 1, so the backend emits no alignment test.
+- `Regs.v` gives each local function a private entry for the module's
+  direct calls, which takes two more words in registers. A function that
+  calls nothing links no Fil-C frame. The entry stores the catching
+  origin once, where every call used to store it, and it does not zero
+  the roots that the incoming arguments fill.
+
+Where the rest goes, on rx.ir: 86% of the time is in the lowered
 functions, 4% in the string primitives, 1.5% in the collector. The
 hottest functions are small and called very often (the atom case of
 `term_eqb`, `Z_as_OT.compare`, `ZMap`'s `bal`, `find` and `create`,
-`gt_le_dec`), each 3 to 14 times slower than its ocamlopt build: every
-call pays the IR function's prologue and epilogue (the stack check, five
-callee-saved registers, the Fil-C frame, arguments past the sixth on the
-stack) and every arena access a bounds check. Inlining every function of
+`gt_le_dec`).
+
+Calls, prologues and epilogues take about 23% of all the time. A call
+still pays for the stack check, up to five callee-saved registers and
+the Fil-C frame. It also passes the nursery's end and the arguments on
+the stack, because the arena and the state take the four argument
+registers of the fast convention. Bounds checks take another 11%, spills
+12% and arena address arithmetic 9%. The spills come from register
+pressure: the arena, the state, the young index, the roots' top and the
+nursery's end are live through every function and compete for the seven
+register homes. Inlining every function of
 ten nodes or fewer, with join points for the rest of the caller, made
 rx.ir only 5% faster, made the IR 37% bigger and the frames of deep
 recursions bigger (the rec_clos2 program of [../lower](../lower/README.md)

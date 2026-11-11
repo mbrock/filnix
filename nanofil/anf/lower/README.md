@@ -44,8 +44,8 @@ itself goes through it ([../backend](../backend/README.md)).
   the function from the table of its arity (`anf_fnsN`) and calls it
   through the pointer. A lowered function takes the arena,
   the state, the young index, the roots' top and the nursery's end,
-  and returns its value with the young index above it in one 64-bit
-  word, so a call between lowered functions reads and writes nothing of
+  and returns its value and the young index in two registers, so a call
+  between lowered functions reads and writes nothing of
   the state; only a call that may collect (`anf_lower_reserve`, a
   primitive that allocates) stores the young index and the roots' top.
   One nursery test at the head of each stretch without a call reserves
