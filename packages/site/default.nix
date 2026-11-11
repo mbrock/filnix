@@ -87,6 +87,7 @@ let
     "filc"
     "iris"
     "logic"
+    "lambda-anf"
     "nfb-guide-argon"
     "nfb-guide-wonder"
     "nfb-guide-wonderful"

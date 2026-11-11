@@ -40,6 +40,10 @@ page about it is listed here.
 - [The Gallina backend](gallina-backend.md): the plan for a nanofil IR
   compiler written in Gallina and extracted, first to OCaml, then to
   C++ and a Fil-C library.
+- [λANF on nanofil IR](lambda-anf.md): lowering MetaRocq and
+  CertiRocq's λANF directly to nanofil IR over a 32-bit integer arena,
+  so pure Gallina modules share the checked IR and backend without C++
+  or per-cell capabilities.
 - [Campaign 7: trap-obligation census](trap-census.md) and
   [native libc contracts](libc-contracts.md): what a whole program
   (Hello) needs proved, and the libc boundary it relies on.
