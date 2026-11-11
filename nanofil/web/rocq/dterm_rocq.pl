@@ -644,6 +644,18 @@ file_blurb('nanofil/rocq/glibc/libio/LibioCloseItMid.v',
     "Live glibc campaign (implementation proof): middle block proof for `_IO_file_close_maybe_unlink`, dispatching vtable `__close` and calling `_IO_setb(fp, NULL, NULL, 0)`.").
 file_blurb('nanofil/rocq/glibc/libio/LibioCloseSteps.v',
     "Live glibc campaign (shared proof support): entailment-style step lemmas and fresh 32-byte cleanup-frame helpers for `libio` close, unlink, flush, and cleanup proofs.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputn.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_default_xsputn]) and Löb loop invariant ([wp_dx_loop]) for userland glibc's compiled `_IO_default_xsputn`, over the jump table's overflow ([overflow_spec]).").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBuf.v',
+    "Live glibc campaign (reusable separation-logic invariant): a stream's write side ([wbuf], [wroom]) and the jump-table overflow premise ([overflow_spec]) for the string output functions.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBytes.v',
+    "Live glibc campaign (implementation proof): Löb proof ([wp_dx_bytes]) of `_IO_default_xsputn`'s byte-by-byte copy of at most 20 bytes.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnCopy.v',
+    "Live glibc campaign (shared proof support): `memcpy`/`mempcpy` into a stream buffer at any offset ([wp_call_mempcpy_in]), over libpizlo's `c: zmemmove` contract.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnRoom.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L44]) for `_IO_default_xsputn` filling the buffer's room by `__mempcpy` or the byte loop.").
+file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnTail.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L22]) for the end of `_IO_default_xsputn`'s round: the jump table's overflow of the next byte, or the return.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDoWrite.v',
     "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_new_do_write]) for userland glibc's compiled `_IO_new_do_write` over [file_inv] and `__io_vtables`.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteCall.v',

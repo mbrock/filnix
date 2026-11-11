@@ -93,3 +93,9 @@ libio/LibioFclose.v
 libio/ExitRunTail.v
 libio/ExitRunLoop.v
 libio/ExitRun.v
+libio/LibioDefaultXsputnCopy.v
+libio/LibioDefaultXsputnBuf.v
+libio/LibioDefaultXsputnBytes.v
+libio/LibioDefaultXsputnTail.v
+libio/LibioDefaultXsputnRoom.v
+libio/LibioDefaultXsputn.v
