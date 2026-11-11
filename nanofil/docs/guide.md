@@ -937,7 +937,7 @@ reaches `unchecked` in the interpreter) was first an argument made in
 [docs/pizlonation.md](pizlonation.md) and [docs/m7.md](m7.md) and
 tested by mutation; it is now proved in Rocq
 ([soundness](concepts/soundness.md), `valid_no_unchecked` in
-[Soundness.v](../rocq/theories/Soundness.v)) for the core subset, under
+[Soundness.v](../rocq/theories/soundness/Soundness.v)) for the core subset, under
 the runtime axioms, of Validate.v's transcription of the rule. That the
 transcription is the rule is checked by agreement with `valid_module/1`
 on every core-subset mutant of the corpus, not proved. That the emitted assembly

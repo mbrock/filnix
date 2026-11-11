@@ -10,4 +10,4 @@ A step moves a [[frame|configuration]] on by one thing: entering a block (its ph
 
 The [[machine]] adds the runtime's steps, allocation and safepoint, on top of these.
 
-Defined in [Semantics.v](../../rocq/theories/Semantics.v).
+Defined in [Semantics.v](../../rocq/theories/core/Semantics.v).

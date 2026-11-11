@@ -5,7 +5,7 @@ runtime that the Rocq model takes as given, stated at the runtime's
 interface, each with a native test that would fail if the fact were
 stated in the obvious stronger way the runtime does not promise. In
 Rocq the page is `Module Type Runtime` in
-[Runtime.v](../rocq/theories/Runtime.v), line for line with the table
+[Runtime.v](../rocq/theories/core/Runtime.v), line for line with the table
 below; [rocq.md](rocq.md) describes the rest of the model.
 
 Read against the staging Fil-C the toolchain pins: mbrock/fil-c at
@@ -145,7 +145,7 @@ The [libc contracts](libc-contracts.md#trusted-entry-and-host-boundaries)
 are a separate part of the trusted base, not extra `Runtime` axioms.
 This includes launcher/libc/TLS initialization and host-exit completion,
 under the same policy as ordinary libc calls. In
-[HiArtifact.v](../rocq/theories/HiArtifact.v),
+[HiArtifact.v](../rocq/theories/programs/HiArtifact.v),
 `HiProgram R.trusted_entry_contract` specifies successful entry images
 with their exact allocator state, and `HiProgram R.trusted_host_contract`
 requires an explicit completion witness at the exact handoff snapshot.
@@ -155,7 +155,7 @@ Their native probes are respectively
 
 The [selected shutdown boundary](libc-contracts.md#trusted-selected-shutdown-boundary)
 is named by `Selected R.selected_contract` and `Selected R.boundary` in
-[Selected.v](../rocq/theories/Selected.v). Its trusted obligations include
+[Selected.v](../rocq/theories/programs/Selected.v). Its trusted obligations include
 independent native action/callback admission, segment satisfaction under the
 declared effects/control/observations, and coverage of finite normal,
 unfinished and resource behavior. Host projection may not hide modeled callback

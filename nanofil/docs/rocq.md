@@ -15,6 +15,23 @@ discharges; the Nix check fails otherwise, and `Print Assumptions` of
 `judge` is closed. Each file is a transcription of
 the interpreter and cites the predicate it copies.
 
+The theories sit in `rocq/theories/`, one directory per layer; a file
+imports only from its own layer and the layers above it in this list:
+
+| Directory | What it holds |
+| --- | --- |
+| `core/` | Campaigns 1 and 2: terms, syntax, values, memory, ops, semantics, runs, the runtime's module type, the CFG, the validator, transport and extraction; exactly the theories the extracted driver needs |
+| `soundness/` | Campaign 3: the machine of a runtime, its invariants and `valid_no_unchecked` |
+| `external/` | Campaign 4's external-call boundary, launcher entry, stdout and shutdown |
+| `logic/` | the Iris program logic and Campaign 7's `never_panics` |
+| `programs/` | the small programs proved never to panic, with their C sources and generated `…Code.v` modules |
+| `hello_contracts/` | GNU Hello against per-function libc contracts, and the contracts only it uses; kept as a reference |
+
+`-R theories Nanofil` names every file by its base name
+(`From Nanofil Require Import Syntax`), so base names stay unique under
+`theories/`; `nix/rocq.nix` fails otherwise. The scripts that check the
+model against the Prolog and generate its fixtures are in `rocq/scripts/`.
+
 | File | Transcribes | Contents |
 | --- | --- | --- |
 | `Term.v` | ground Prolog terms | names (temporaries, labels, symbols) as terms compared by `==`, and `term_eqb_eq`, that `==` is equality; `char_code/2` |
@@ -139,7 +156,7 @@ per mode/program.
 
 `nanofil outcomes FILE` (main.pl, a new command) prints the checked
 module that `difftest` would compare, then `interp:run/5`'s outcome on
-each run line, as terms. [rocq/agree.sh](../rocq/agree.sh) pipes that
+each run line, as terms. [rocq/scripts/agree.sh](../rocq/scripts/agree.sh) pipes that
 output into the extracted model. The model decodes the module, runs
 every line, and prints `agree`, `disagree`, `outside` or `stuck_both`
 for each; the script fails on any disagreement.
@@ -154,7 +171,7 @@ modules are Fil-C ones, and 1,291 of their 2,400 runs trap.
 | --- | --- | --- | --- |
 | filc fixtures and C tests, with and without `-O` (each `--checks` mode) | 488 | 0 | 0 |
 | the gen modules, with and without `-O` (each mode) | 2,400 | 0 | 0 |
-| Lua's own functions (`rocq/lua.sh`, with and without `-O`, each mode) | 27 | 0 | 0 |
+| Lua's own functions (`rocq/scripts/lua.sh`, with and without `-O`, each mode) | 27 | 0 | 0 |
 | `rocq/tests/reuse.ir` (`renew_if`, `renew_hull`, each with and without a free) | 4 | 0 | 0 |
 | `rocq/tests/snapshot.ir` (the variadic snapshot read, written, empty, freed) | 5 | 0 | 0 |
 | `rocq/tests/floats.ir` (ties to even, a float read through the generic entry) | 3 | 0 | 0 |
@@ -204,7 +221,7 @@ and lstring.c, as Lua's onelua.c does, and runs the functions of theirs
 that need neither a state nor libc on the path taken: integer and float
 arithmetic (`luaO_rawarith`), integer numerals (`luaO_str2num`), the
 string hash, UTF-8 escapes and `luaO_ceillog2`.
-[rocq/lua.sh](../rocq/lua.sh) preprocesses it against the Lua source
+[rocq/scripts/lua.sh](../rocq/scripts/lua.sh) preprocesses it against the Lua source
 `nix/lua.nix` builds, with the same flags.
 
 Every reuse form is reached by the check passes over the corpus, but
@@ -266,9 +283,9 @@ memoises successes but not failures under a depth limit of 32;
 `op_interval/9` commits after its heads, so `and` with a constant
 tries its left operand first.
 
-The gate is [rocq/valid.sh](../rocq/valid.sh). For each file,
+The gate is [rocq/scripts/valid.sh](../rocq/scripts/valid.sh). For each file,
 `nanofil outcomes` prints the checked module, and
-[rocq/mutants.pl](../rocq/mutants.pl) prints, for each item, the item
+[rocq/scripts/mutants.pl](../rocq/scripts/mutants.pl) prints, for each item, the item
 as it is and up to 150 mutants. A function's: a check deleted or moved,
 a check's bounds, rights or alignment changed, a raw access's offset
 moved by one, a free inserted between evidence and its use, a reuse
@@ -302,7 +319,7 @@ over 169 of them agreed on all 73,330 verdicts it could judge.
 | filc fixtures, C tests and gen modules, without `-O` (each `--checks` mode) | 64,589–68,260 | 253–256 | 0 |
 | the same with `-O` | 45,541–48,193 | 253–256 | 0 |
 | the 16 `tests/c/prog` programs (reference checks) | 9,505 | 3,012 | 0 |
-| Lua's own functions, `rocq/lua.sh` (reference checks) | 6,345 | 0 | 0 |
+| Lua's own functions, `rocq/scripts/lua.sh` (reference checks) | 6,345 | 0 | 0 |
 | `rocq/tests/reuse.ir`, `snapshot.ir`, `floats.ir`, `dominance.ir`, `interval.ir` (reference checks) | 111, 145, 46, 41, 30 | 0 | 0 |
 
 The counts were measured before the mutants for the three data
@@ -330,7 +347,7 @@ alias of data allowed; and an `extern(weak)` declaration with items.
 ### On what the compiler emits
 
 The mutation gate asks whether the model agrees with `valid_module/1`.
-[rocq/gate.sh](../rocq/gate.sh) asks the question the theorem answers:
+[rocq/scripts/gate.sh](../rocq/scripts/gate.sh) asks the question the theorem answers:
 is every checked module `nanofil -O` gives its backend one the model's
 `valid` accepts? Then Soundness.v's `valid_no_unchecked` covers it:
 no run of it takes an [[unchecked]] step, whatever check pass made it. `nanofil checked-terms` prints the module, after the

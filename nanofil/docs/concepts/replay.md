@@ -10,4 +10,4 @@ A [[single-definition|single definition]] replays at a point when its name holds
 
 On the Prolog side this is the dominance argument of m7.md's round 4, cited in the comments of `ir:same_pointer/3` and `ir:lower_chain/3`: every definition on a chain dominates the point and was computed from its operands' current values.
 
-Defined in [Single.v](../../rocq/theories/Single.v).
+Defined in [Single.v](../../rocq/theories/soundness/Single.v).

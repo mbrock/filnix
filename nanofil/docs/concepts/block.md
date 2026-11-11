@@ -10,4 +10,4 @@ A block is a labelled straight line of a function: [[phi|phis]], then instructio
 
 The subtlety: labels must be unique ([no_dups], checked by [valid_func]). The successor map keeps the last block of a label while the machine runs the first, so with a duplicate the proofs about [[dominance]] would speak of a different graph from the one that runs.
 
-Defined in ir.pl's header and [Syntax.v](../../rocq/theories/Syntax.v).
+Defined in ir.pl's header and [Syntax.v](../../rocq/theories/core/Syntax.v).

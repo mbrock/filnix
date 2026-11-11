@@ -22,7 +22,7 @@ const SAMPLE = [
   "index.html", "nanofil/index.html", "nanofil/src.html",
   "nanofil/main.html", "nanofil/filc_amd64.html", "nanofil/c_lower.html",
   "nanofil/c_types.html", "nanofil/ir.html", "nanofil/amd64_regs_check.html",
-  "nanofil/rocq/index.html", "nanofil/rocq/rocq-theories-Machine.html",
+  "nanofil/rocq/index.html", "nanofil/rocq/rocq-theories-soundness-Machine.html",
   "nix/index.html", "nix/options.html", "nix/flake.html",
   "nix/compiler-libcxx.html", "nix/ports-overlay.html",
   "nix/ports-determinate-nix.html", "nix/build-filc.html",

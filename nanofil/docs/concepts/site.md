@@ -10,4 +10,4 @@ A site is where a temporary is defined: `param` for a parameter, or `at(L, I)` f
 
 The subtlety: the proofs use the validator's own sites rather than a second notion of position, so `site_dominates` is exactly the order the run-level invariants are stated in.
 
-See [rocq.md, Where a name is defined](../rocq.md#where-a-name-is-defined) and [Sites.v](../../rocq/theories/Sites.v).
+See [rocq.md, Where a name is defined](../rocq.md#where-a-name-is-defined) and [Sites.v](../../rocq/theories/soundness/Sites.v).

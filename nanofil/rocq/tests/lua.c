@@ -1,4 +1,4 @@
-/* Lua's own functions for the Rocq model's outcome gate (rocq/lua.sh,
+/* Lua's own functions for the Rocq model's outcome gate (rocq/scripts/lua.sh,
    docs/rocq.md). Lua 5.4.7's lctype.c, lobject.c and lstring.c are
    included as one translation unit, as Lua's onelua.c does, and each
    entry below calls a function of theirs that needs no lua_State and

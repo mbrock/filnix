@@ -46,7 +46,7 @@ let
         # The usual entry points reach valid_items but not the option-valued
         # valid. Extract that existing definition too, without editing a .v.
         buildPhase = old.buildPhase + ''
-          { cat theories/Extract.v
+          { cat theories/core/Extract.v
             echo 'From Nanofil Require Import Validate.'
             echo 'Extraction "nanofil_model.ml" term_eqb decode_module judge judge_valid valid.'
           } | rocq repl -quiet -Q theories Nanofil

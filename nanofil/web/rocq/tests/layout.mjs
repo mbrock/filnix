@@ -62,8 +62,8 @@ try {
       console.log(`${new Date().toISOString()} checking ${page}${pagesOnly ? "" : " and its proof steps"} at ${width}px`);
       browser("open", `${base}/nanofil/rocq/${page}`);
       check(fitsPage);
-      if (page === "rocq-theories-Evidence.html") check(`
-        assert(document.querySelector('#phis_env_agree a[href="rocq-theories-Term.html#lookup"]'),
+      if (page === "rocq-theories-soundness-Evidence.html") check(`
+        assert(document.querySelector('#phis_env_agree a[href="rocq-theories-core-Term.html#lookup"]'),
           "Evidence regression needs the full cross-link index");
       `);
       // A fresh narrow load can wrap differently from dterm's resize plan.

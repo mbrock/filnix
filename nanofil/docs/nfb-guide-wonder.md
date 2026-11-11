@@ -16,7 +16,7 @@ claim matters, it names the file that states it: the IR's grammar and
 validator are [ir.pl](../src/ir.pl), the bytecode relation is
 [nfb.pl](../src/nfb.pl), the RFC and the table of assigned numbers are
 [nfb.md](nfb.md), and the Gallina side is
-[Syntax.v](../rocq/theories/Syntax.v),
+[Syntax.v](../rocq/theories/core/Syntax.v),
 [NfbTerm.v](../rocq/backend/NfbTerm.v) and
 [Nfb.v](../rocq/backend/Nfb.v).
 
@@ -574,7 +574,7 @@ Checked IR is that test, written as data:
 
 The formal claim is deliberately narrower than "nanofil is proved".
 For the **core subset** of checked filc IR — the subset
-[Syntax.v](../rocq/theories/Syntax.v) transcribes — the Rocq
+[Syntax.v](../rocq/theories/core/Syntax.v) transcribes — the Rocq
 development proves [valid_no_unchecked]: a module the model's
 validator accepts never reaches an `unchecked` outcome, under stated
 axioms about the Fil-C runtime (allocation is fresh, objects do not
@@ -1129,7 +1129,7 @@ has two representations of a module and NFB sits between them:
   `read_term : list Z -> option (term * bool)` (the boolean: whether
   NAMES was present).
 - [Nfb.v](../rocq/backend/Nfb.v) works at the level of
-  [Syntax.v](../rocq/theories/Syntax.v)'s inductives. `encode` is
+  [Syntax.v](../rocq/theories/core/Syntax.v)'s inductives. `encode` is
   [encode_term] of [enc_module], where the `IrTerm.v` encoders write
   a Syntax module as the very term Prolog would print; `decode` is
   the converse — `read_term`, then `Transport.v`'s [decode_module]

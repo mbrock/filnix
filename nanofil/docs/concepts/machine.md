@@ -16,4 +16,4 @@ interp.pl has no counterpart: it is one runtime, built in. ExternalMachine.v ext
 
 The subtlety: the runtime acts before the instruction, so the instruction runs on what the runtime left, as native code runs after its pollcheck.
 
-Defined in [Machine.v](../../rocq/theories/Machine.v); see [rocq.md, Campaign 3: the machine of a runtime](../rocq.md#campaign-3-the-machine-of-a-runtime).
+Defined in [Machine.v](../../rocq/theories/soundness/Machine.v); see [rocq.md, Campaign 3: the machine of a runtime](../rocq.md#campaign-3-the-machine-of-a-runtime).

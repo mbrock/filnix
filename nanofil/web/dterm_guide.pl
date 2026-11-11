@@ -701,8 +701,8 @@ nix_page(Path, Page) :-
     file_name_extension(B, nix, B0), file_name_extension(B, html, Page).
 
 %  rocq_page(+Path, -Page): the dterm-rocq page of a .v file a link from
-%  nanofil/docs names: ../rocq/theories/Values.v is
-%  rocq-theories-Values.html, in the site's nanofil/rocq/.
+%  nanofil/docs names: ../rocq/theories/core/Values.v is
+%  rocq-theories-core-Values.html, in the site's nanofil/rocq/.
 rocq_page(Path, Page) :-
     atomic_list_concat(Parts0, '/', Path),
     append([nanofil, docs], Parts0, Parts1),
@@ -1067,21 +1067,27 @@ link_from(Name, Href, Label, Where) :-
         ( guide_broken(M) -> true ; assertz(guide_broken(M)) )
     ).
 
-%  index_rocq(+Dir): the Rocq model's .v files in Dir: their names, for
-%  [name] in the documents and concepts, and their [[name]] links.
+%  index_rocq(+Dir): the Rocq model's .v files under Dir, in its
+%  subdirectories too: their names, for [name] in the documents and
+%  concepts, and their [[name]] links.
 index_rocq(Dir) :-
-    directory_files(Dir, Es0), msort(Es0, Es),
-    findall(F, ( member(E, Es), file_name_extension(_, v, E), directory_file_path(Dir, E, F) ), Fs),
+    rocq_files(Dir, Fs0), msort(Fs0, Fs),
     maplist(read_rocq, Fs, Rs),
     forall(member(r(_, Page, Items, _), Rs), rocq_draw:rocq_index_items(Page, Page, Items)),
     forall(member(R, Rs), rocq_concept_links(R)).
+
+rocq_files(Dir, Fs) :-
+    directory_files(Dir, Es),
+    findall(F, ( member(E, Es), \+ sub_atom(E, 0, _, _, '.'), directory_file_path(Dir, E, P),
+                 (   exists_directory(P) -> rocq_files(P, Sub), member(F, Sub)
+                 ;   file_name_extension(_, v, E), F = P ) ), Fs).
 
 read_rocq(F, r(F, Page, Items, Cms)) :-
     rocq_read_file(F, _, rocq(Items, Cms)),
     rocq_page_name(F, Page).
 
-%  rocq_page_name(+Path, -Page): .../nanofil/rocq/theories/X.v is
-%  rocq-theories-X, as dterm-rocq names it.
+%  rocq_page_name(+Path, -Page): .../nanofil/rocq/theories/core/X.v is
+%  rocq-theories-core-X, as dterm-rocq names it.
 rocq_page_name(F, Page) :-
     (   sub_atom(F, B, _, _, 'rocq/'), \+ ( sub_atom(F, B2, _, _, 'rocq/'), B2 > B )
     ->  sub_atom(F, B, _, 0, Rel)

@@ -4,8 +4,8 @@
 # compile the program and each glibc unit (from the capture of
 # survey/glibc/capture.nix, its .filc_* module asm dropped as
 # survey/glibc/run.py --drop-filc-asm does) with nanofil -O, link the
-# checked modules from main with rocq/link.pl, print the result as
-# Gallina with rocq/gallina.pl, and compare it with the committed
+# checked modules from main with rocq/scripts/link.pl, print the result as
+# Gallina with rocq/scripts/gallina.pl, and compare it with the committed
 # rocq/glibc/NAMECode.v.
 #
 #   FILCC=.../clang rocq/glibc/code.sh [--update] [GLIBC_PP]
@@ -51,8 +51,8 @@ EOF
     checked "$work/$obj.i" "$work/glibc_$obj.term"
     specs+=("glibc_$obj=$work/glibc_$obj.term")
   done
-  (cd "$nf" && swipl rocq/link.pl main "${specs[@]}") >"$work/$lower.linked"
-  (cd "$nf" && swipl rocq/gallina.pl "$lower" "$program with user glibc's $units, linked by rocq/link.pl" \
+  (cd "$nf" && swipl rocq/scripts/link.pl main "${specs[@]}") >"$work/$lower.linked"
+  (cd "$nf" && swipl rocq/scripts/gallina.pl "$lower" "$program with user glibc's $units, linked by rocq/scripts/link.pl" \
      rocq/glibc/code.sh <"$work/$lower.linked") >"$work/${name}Code.v"
   target="$here/${name}Code.v"
   if [ -n "$update" ]; then

@@ -1,5 +1,5 @@
 % A temporary defined twice in one block, the second time from itself,
-% for the validator's gate (rocq/valid.sh; docs/rocq.md). A definition
+% for the validator's gate (rocq/scripts/valid.sh; docs/rocq.md). A definition
 % dominates a use in its own block only when it comes strictly before
 % it (site_dominates/4's I0 < I). The mutant that deletes the first
 % definition leaves `let(tmp(a), w, add, [tmp(a), tmp(k)])` using the

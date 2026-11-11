@@ -179,8 +179,8 @@ jobs:
           python3 nanofil/tests/watch.py --label 'Live Rocq smoke test' -- \
             node packages/site/phone.mjs \
             "https://filnix.org/__releases/$GITHUB_SHA/" \
-            nanofil/rocq/index.html nanofil/rocq/rocq-theories-Machine.html \
-            nanofil/rocq/rocq-theories-Evidence.html nanofil/rocq/rocq-backend-EmitModule.html \
+            nanofil/rocq/index.html nanofil/rocq/rocq-theories-soundness-Machine.html \
+            nanofil/rocq/rocq-theories-soundness-Evidence.html nanofil/rocq/rocq-backend-EmitModule.html \
             nanofil/rocq/rocq-glibc-ZsysWrite.html 320 390 \
             2>&1 | tee deployed-rocq-phone.log
       - uses: actions/upload-artifact@v4

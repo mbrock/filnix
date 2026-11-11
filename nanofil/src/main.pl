@@ -10,7 +10,7 @@
     | `compile FILE` | read, validate, print x86-64 assembly |
     | `cc FILE` | compile C (`.c`, or preprocessed `.i`) to Fil-C assembly |
     | `cc-ir FILE` | compile C, print the IR (unchecked; the Fil-C backend's input is pizlonated) |
-    | `checked-terms FILE` | print, without its context items, the checked module `cc` (a C file) or `compile` (a Fil-C IR file) gives the backend, as a term (rocq/gate.sh) |
+    | `checked-terms FILE` | print, without its context items, the checked module `cc` (a C file) or `compile` (a Fil-C IR file) gives the backend, as a term (rocq/scripts/gate.sh) |
     | `tokens FILE` | print C token terms, without locations |
     | `run FILE FN ARG...` | interpret FN on integer arguments |
     | `difftest FILE OUTDIR` | write `OUTDIR/expected.txt`, `OUTDIR/harness.c` and `OUTDIR/mode` for the file's `run(Fn, Args)` facts |

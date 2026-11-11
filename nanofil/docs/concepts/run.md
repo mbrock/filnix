@@ -10,4 +10,4 @@ A run is the execution of one function of a module from its initial memory, step
 
 The subtlety: two bounds. The run's own fuel counts blocks entered and ends with `out_of_fuel`, which proves nothing; the extracted driver's gas, taken by [run_steps] in halves up to 2^60 steps, is never the limit in practice. Campaign 7 quantifies over reached states so that neither plays a part.
 
-Defined in [Run.v](../../rocq/theories/Run.v) and [Machine.v](../../rocq/theories/Machine.v).
+Defined in [Run.v](../../rocq/theories/core/Run.v) and [Machine.v](../../rocq/theories/soundness/Machine.v).

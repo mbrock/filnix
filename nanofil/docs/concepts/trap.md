@@ -10,4 +10,4 @@ A trap is a Fil-C check failing, which upstream calls a Fil-C panic or safety er
 
 The subtlety: Campaign 7 does not count every trap as a panic. It counts `too_big` and `out_of_memory` as resource endings ([formal.md, What counts as a panic](../formal.md#what-counts-as-a-panic)).
 
-Defined in [Memory.v](../../rocq/theories/Memory.v) and interp.pl's header.
+Defined in [Memory.v](../../rocq/theories/core/Memory.v) and interp.pl's header.

@@ -14,7 +14,7 @@ model, and reads the Iris spike.
 
 Campaign 3 is already a program logic, with one fixed assertion language
 (the validator's facts), facts derived automatically, and adequacy proved
-once ([valid_no_unchecked](../rocq/theories/Soundness.v)). never_panics
+once ([valid_no_unchecked](../rocq/theories/soundness/Soundness.v)). never_panics
 needs that assertion language opened so each program brings its own
 facts, while keeping one adequacy theorem. The facts that keep a check
 from failing are about the heap's shape (this field points to a live
@@ -44,12 +44,12 @@ types, then hand proofs, each a fragment of the one below, so Campaigns
 
 | Piece | Where | Is, in the proposal's terms |
 | --- | --- | --- |
-| `never_panics`, `fails`, `failure_ending` | [Panics.v](../rocq/theories/Panics.v) | the safety property; `fails` already counts stuck, `UB`, `unreachable` and every non-refusal trap as one thing |
+| `never_panics`, `fails`, `failure_ending` | [Panics.v](../rocq/theories/logic/Panics.v) | the safety property; `fails` already counts stuck, `UB`, `unreachable` and every non-refusal trap as one thing |
 | `never_panics_by_invariant` | Panics.v | the [adequacy](concepts/adequacy.md) of the simplest logic: one global invariant of configurations, every step safe and back in it, every fresh base, and a due safepoint keeping it |
-| `compute_step`, `block_fact`, `show_facts` | [Symbolic.v](../rocq/theories/Symbolic.v) | symbolic execution of one step with the environment, memory and fuel abstract; the work a wp rule per instruction would do once |
-| `cycle_never_panics` | [Cycle.v](../rocq/theories/Cycle.v) | Floyd assertions at each of 19 points; a loop of any trip count |
-| `buffer_never_panics` | [Buffer.v](../rocq/theories/Buffer.v) | a heap object at any fresh base; `holds_buffer` is `meta b 32 Heap` and `live b` written as one non-separating fact; it once took `safepoint_keeps_live`, the instance premise the proposal asks for, which Runtime.v's `collector_live` now makes a lemma |
-| `valid_no_unchecked` | [Soundness.v](../rocq/theories/Soundness.v) | Campaign 3: no run of a valid module that starts ready reaches `unchecked`, over every runtime; stuck past any external call but free |
+| `compute_step`, `block_fact`, `show_facts` | [Symbolic.v](../rocq/theories/logic/Symbolic.v) | symbolic execution of one step with the environment, memory and fuel abstract; the work a wp rule per instruction would do once |
+| `cycle_never_panics` | [Cycle.v](../rocq/theories/programs/Cycle.v) | Floyd assertions at each of 19 points; a loop of any trip count |
+| `buffer_never_panics` | [Buffer.v](../rocq/theories/programs/Buffer.v) | a heap object at any fresh base; `holds_buffer` is `meta b 32 Heap` and `live b` written as one non-separating fact; it once took `safepoint_keeps_live`, the instance premise the proposal asks for, which Runtime.v's `collector_live` now makes a lemma |
+| `valid_no_unchecked` | [Soundness.v](../rocq/theories/soundness/Soundness.v) | Campaign 3: no run of a valid module that starts ready reaches `unchecked`, over every runtime; stuck past any external call but free |
 | ExternalCalls.v, ExternalMachine.v, Hi.v, Program.v | Campaign 4 | relational libc contracts with writable roots (a hand-rolled frame), a labelled machine, hi.c's body safety under `stdio_stable` |
 
 So the degenerate logic and its adequacy exist, and three programs are
@@ -227,7 +227,7 @@ lemma of Pieces.v from Runtime.v's `collector_live` (a safepoint
 changes no region), so the theorem holds for every runtime; `Print
 Assumptions` of the interpreter's corollary is closed for both.
 
-They share [Pieces.v](../rocq/theories/Pieces.v), the resource model:
+They share [Pieces.v](../rocq/theories/logic/Pieces.v), the resource model:
 pieces keyed by [identity](concepts/identity.md) (an object's life,
 one byte, one aux slot at an offset), the global fact that live objects
 are disjoint, and `safepoint_shape`: a safepoint keeps every region
@@ -336,20 +336,20 @@ tradition. Steps 1 to 4 above are done, and step 5 is under way:
 
 | Step | Where | Result |
 | --- | --- | --- |
-| 1, step lemmas | [StepRules.v](../rocq/theories/StepRules.v), on the main build | one forward rule per instruction form and jump; Cycle.v 13 s to 4.4 s and Buffer.v 23 s to 7.4 s through Symbolic.v's `take_step` |
-| 2, the language | [Language.v](../rocq/theories/Language.v) | an `ectxi_language` whose context is the callers stack; fuel in the state; a return to a caller is two Iris steps; endings that are neither failures nor returns stall; `wp_never_panics` proves Panics.v's `never_panics` |
-| 2, the rules | [Logic.v](../rocq/theories/Logic.v), [Heap.v](../rocq/theories/Heap.v) | the identity-keyed ghost heap (Heap.v) and its state interpretation; one lifting lemma closes safepoints and stalls by Löb; a weakest-precondition rule per instruction (`wp_check`, `wp_raw_load_pointer`, `wp_alloc`, `wp_call_bind`, ...) |
+| 1, step lemmas | [StepRules.v](../rocq/theories/logic/StepRules.v), on the main build | one forward rule per instruction form and jump; Cycle.v 13 s to 4.4 s and Buffer.v 23 s to 7.4 s through Symbolic.v's `take_step` |
+| 2, the language | [Language.v](../rocq/theories/logic/Language.v) | an `ectxi_language` whose context is the callers stack; fuel in the state; a return to a caller is two Iris steps; endings that are neither failures nor returns stall; `wp_never_panics` proves Panics.v's `never_panics` |
+| 2, the rules | [Logic.v](../rocq/theories/logic/Logic.v), [Heap.v](../rocq/theories/logic/Heap.v) | the identity-keyed ghost heap (Heap.v) and its state interpretation; one lifting lemma closes safepoints and stalls by Löb; a weakest-precondition rule per instruction (`wp_check`, `wp_raw_load_pointer`, `wp_alloc`, `wp_call_bind`, ...) |
 | 2, the list sum | [ListSumLogic.v](../rocq/spikes/ListSumLogic.v) | `sum`'s triple `{{{ lst p xs }}} sum {{{ RET Ret (list_sum xs); lst p xs }}}` hands the list back and states the result; `listsum` uses it through `wp_call_bind`; 14 s, against 38 s for the spike on the old language |
 | 3, rendering | dterm-rocq (another thread) | Iris notation and proof-mode states on the site |
 | 4, the main build | [_RocqProject](../rocq/_RocqProject), nix/rocq.nix | Pieces.v, Heap.v, Language.v and Logic.v are part of the model, built and parse-checked by the quick gate with stdpp and Iris from the pinned nixpkgs; they add about 13 s of compile time off the critical path. The list-sum examples stay in spikes/ |
-| 5, a program in the main build | [BufferLogic.v](../rocq/theories/BufferLogic.v) | `buffer_never_panics` again, through the logic: the allocation's `obj` splits into `live` and four cells, each loop is a Löb induction carrying them, each check lends `live` back for a step and each access takes the one cell it reaches (`cells_at`). Without `live` in the sum loop, or with three cells, the proof fails. Needs no new rule: `buffer` has no named locals and checks only class `a`. 14 s, after `arith` learned to treat a remainder by a constant as a bounded variable before reaching for division equations (`mod_atoms`, `arith_fast` for side goals that may be false): BufferLogic.v 24 s to 18 s to 14 s, Cycle.v 6.3 s to 3.9 s, Buffer.v 10.4 s to 6.6 s and ListSumLogic.v 17.5 s to 13.1 s |
-| 6, contracts | [Language.v](../rocq/theories/Language.v), [Logic.v](../rocq/theories/Logic.v), [ContractFrame.v](../rocq/theories/ContractFrame.v) | the language takes a contract registry and a world: an admissible external call returns through Campaign 4's `invoke`, returns badly (`EBad`, never safe) or stalls (blocking, exit, resources); `adequate_labelled` and `heap_labelled_safe` prove the labelled machine's safety (no `failure_ending`, a return satisfies the postcondition) from a WP; `wp_external` is the call rule; the state interpretation gains a world interpretation `wi`, kept at safepoints (`SafepointStable`). The frame for a call: if a contract's writable roots share no address with the program's live owned objects and it releases none of them, the ghost heap still agrees after the whole effects path (`prefix_agrees`), and roots the call delegates stay apart (`delegates_apart`). Separation is by address, not identity, a premise of the program's theorem rather than of `puts_pre` (Campaign 4 agreed: formal.md promises no blanket input immutability) |
-| 6, hi.c | [HiLogic.v](../rocq/theories/HiLogic.v) | `hi_logic_safe` for every runtime and `interp_hi_logic_safe` from Hi.v's fixture, closed. The program owns its literal as a `string`; the world interpretation is `stdio_wi` (puts's rep, `stdio_ready`, the world's roots apart from the program's objects); puts is `wp_puts` from StringLogic.v; main is six tactic lines. No new rule was needed: main has no named locals and no check |
-| 7, strings | [StringLogic.v](../rocq/theories/StringLogic.v) | `string p b reg bytes`: the life of the object p's capability names, read-write or read-only, and its bytes through the NUL; owning it gives Campaign 4's `terminated_length` and `c_string` (`string_facts`), lends a suffix (`string_suffix`) or one byte (`string_byte`). Triples derived from the contracts, each stated at any call site: `wp_strlen` and `wp_strchr` (pure calls: memory and world unchanged, `pure_return`) over any registry and world, `wp_puts` under `stdio_wi` (the frame keeps the string through puts's writes). New rules: `wp_check_read`, a read check through an `Obj` or `Ro` capability, and `wp_raw_load_byte`, a one-byte load |
-| 7, a read after a call | [ScanLogic.v](../rocq/theories/ScanLogic.v), [scan.c](../rocq/programs/scan.c) | `scan(s)` takes `strlen(s)`, finds the first `l` with `strchr`, prints the rest with `puts`, then reads the byte after the `l` through strchr's pointer: three calls and a read after the last one. `scan_logic_safe` for every runtime and `interp_scan_logic_safe` on Hi.v's fixture ("hello"), closed. The proof (`scan_spec`) is 43 lines: one rule per instruction, the three triples, and the facts that make the read safe: strchr's hit is before the NUL because `l` is not 0, so the byte after it is in the string the frame kept through puts. Still no named locals, so `wp_ret` needed nothing new |
-| 7, a helper in a loop | [CountLogic.v](../rocq/theories/CountLogic.v), [count.c](../rocq/programs/count.c) | `next_l` is strchr for `l`, with its own triple (`next_l_spec`, 13 lines, from `wp_strchr`); `count_l` calls it once and then in a loop on the suffix past each hit, reading the byte each hit lands on. Both calls use the triple through `wp_call_bind`; the loop is a Löb induction at the head (`count_loop`, 46 lines) carrying the string and "the pointer is null or before the NUL" (`found_from`), re-established from the callee's postcondition on the suffix (`found_next`). `count_logic_safe` and `interp_count_logic_safe` (two `l`s in "hello"), closed; 5.3 s. No new rule: no named locals, so `wp_ret` is still the one without them. `gen_env` moved to Symbolic.v for both loop proofs |
-| 7, writes, malloc and free | [MemLogic.v](../rocq/theories/MemLogic.v), [Logic.v](../rocq/theories/Logic.v), [Heap.v](../rocq/theories/Heap.v) | a block of memory is owned piece by piece: `bytes b o xs` and `auxes b o cs`, its bytes and its aux slots. `wp_memset` from `memset_contract`: the block's bytes become c's low byte and every slot starting in it is emptied (`clear_slots`). `wp_memcpy` from `memcpy_contract`: a destination block and a source block in another object, both 8-aligned and so in phase; the destination takes the source's bytes, each full slot takes the source's capability and a partial one empties (`copy_slots`, `copy_after`); the source comes back unchanged. The contracts' exact destination frame keeps every other piece (`block_frame`, through Heap.v's `frame_within` for writes inside one live object). Blocks start at a multiple of 8, so the slots a write touches start inside them. `wp_strdup` from `strdup_contract`: owning a `string`, the call returns a fresh object owning a copy as a `string` (its other bytes and its slots unowned); its writes lie in the fresh object, so `frame_other` keeps the rest. `wp_string_copy` from `string_copy_contract`, with `wp_strcpy` and `wp_stpcpy` its instances: owning a destination's `live` and `bytes`, one more than a `string`'s in another object, the bytes become a `string` with the copy, d is bound to the destination or, for stpcpy, its NUL, and the source comes back; no slot is owned, since a scalar copy keeps every aux slot, and no alignment is needed (`copy_string_after`). `wp_malloc` from `malloc_contract`: the fresh object's pieces (`obj`), no null case, since the selected malloc refuses with a resource ending. Logic.v's `wp_free` gives up a heap object's `live`, whose ghost token ends as `VFreed` (the ghost heap cannot delete a key), and `wp_free_null`; both take `frees_heap` of the genv's free, which every runtime's free meets by Runtime.v's axiom `free_succeeds` (since 2026-11-09; the interpreter's `free_res_succeeds`). `wp_raw_store_byte` is new for a one-byte store |
-| 7, a callee owning memory | [SlotLogic.v](../rocq/theories/SlotLogic.v), [slot.c](../rocq/programs/slot.c) | `fill(c, n)` keeps one heap buffer in its static `slot`, with its size in `slot_size`: if n does not fit it frees the buffer and mallocs n + 1 bytes, then memsets n bytes, writes the NUL and returns the buffer. The module invariant `slot_inv` owns both statics and the `buffer` they describe (null and 0, or a live heap object with all its bytes and slots). `fill_spec` takes the invariant and returns `lent`: the n filled bytes and a wand that, given them back, returns the invariant, so the caller cannot keep them across its next call. `use` calls `fill` three times (grow, reuse, grow) and reads the buffer after each. `slot_logic_safe` for every runtime, with no premise since `free_succeeds` became an axiom, `interp_slot_logic_safe` from the module's initial memory, closed; 14.8 s. Still no named locals: nanofil keeps `fill`'s and `use`'s locals in temporaries |
+| 5, a program in the main build | [BufferLogic.v](../rocq/theories/programs/BufferLogic.v) | `buffer_never_panics` again, through the logic: the allocation's `obj` splits into `live` and four cells, each loop is a Löb induction carrying them, each check lends `live` back for a step and each access takes the one cell it reaches (`cells_at`). Without `live` in the sum loop, or with three cells, the proof fails. Needs no new rule: `buffer` has no named locals and checks only class `a`. 14 s, after `arith` learned to treat a remainder by a constant as a bounded variable before reaching for division equations (`mod_atoms`, `arith_fast` for side goals that may be false): BufferLogic.v 24 s to 18 s to 14 s, Cycle.v 6.3 s to 3.9 s, Buffer.v 10.4 s to 6.6 s and ListSumLogic.v 17.5 s to 13.1 s |
+| 6, contracts | [Language.v](../rocq/theories/logic/Language.v), [Logic.v](../rocq/theories/logic/Logic.v), [ContractFrame.v](../rocq/theories/logic/ContractFrame.v) | the language takes a contract registry and a world: an admissible external call returns through Campaign 4's `invoke`, returns badly (`EBad`, never safe) or stalls (blocking, exit, resources); `adequate_labelled` and `heap_labelled_safe` prove the labelled machine's safety (no `failure_ending`, a return satisfies the postcondition) from a WP; `wp_external` is the call rule; the state interpretation gains a world interpretation `wi`, kept at safepoints (`SafepointStable`). The frame for a call: if a contract's writable roots share no address with the program's live owned objects and it releases none of them, the ghost heap still agrees after the whole effects path (`prefix_agrees`), and roots the call delegates stay apart (`delegates_apart`). Separation is by address, not identity, a premise of the program's theorem rather than of `puts_pre` (Campaign 4 agreed: formal.md promises no blanket input immutability) |
+| 6, hi.c | [HiLogic.v](../rocq/theories/programs/HiLogic.v) | `hi_logic_safe` for every runtime and `interp_hi_logic_safe` from Hi.v's fixture, closed. The program owns its literal as a `string`; the world interpretation is `stdio_wi` (puts's rep, `stdio_ready`, the world's roots apart from the program's objects); puts is `wp_puts` from StringLogic.v; main is six tactic lines. No new rule was needed: main has no named locals and no check |
+| 7, strings | [StringLogic.v](../rocq/theories/logic/StringLogic.v) | `string p b reg bytes`: the life of the object p's capability names, read-write or read-only, and its bytes through the NUL; owning it gives Campaign 4's `terminated_length` and `c_string` (`string_facts`), lends a suffix (`string_suffix`) or one byte (`string_byte`). Triples derived from the contracts, each stated at any call site: `wp_strlen` and `wp_strchr` (pure calls: memory and world unchanged, `pure_return`) over any registry and world, `wp_puts` under `stdio_wi` (the frame keeps the string through puts's writes). New rules: `wp_check_read`, a read check through an `Obj` or `Ro` capability, and `wp_raw_load_byte`, a one-byte load |
+| 7, a read after a call | [ScanLogic.v](../rocq/theories/programs/ScanLogic.v), [scan.c](../rocq/theories/programs/scan.c) | `scan(s)` takes `strlen(s)`, finds the first `l` with `strchr`, prints the rest with `puts`, then reads the byte after the `l` through strchr's pointer: three calls and a read after the last one. `scan_logic_safe` for every runtime and `interp_scan_logic_safe` on Hi.v's fixture ("hello"), closed. The proof (`scan_spec`) is 43 lines: one rule per instruction, the three triples, and the facts that make the read safe: strchr's hit is before the NUL because `l` is not 0, so the byte after it is in the string the frame kept through puts. Still no named locals, so `wp_ret` needed nothing new |
+| 7, a helper in a loop | [CountLogic.v](../rocq/theories/programs/CountLogic.v), [count.c](../rocq/theories/programs/count.c) | `next_l` is strchr for `l`, with its own triple (`next_l_spec`, 13 lines, from `wp_strchr`); `count_l` calls it once and then in a loop on the suffix past each hit, reading the byte each hit lands on. Both calls use the triple through `wp_call_bind`; the loop is a Löb induction at the head (`count_loop`, 46 lines) carrying the string and "the pointer is null or before the NUL" (`found_from`), re-established from the callee's postcondition on the suffix (`found_next`). `count_logic_safe` and `interp_count_logic_safe` (two `l`s in "hello"), closed; 5.3 s. No new rule: no named locals, so `wp_ret` is still the one without them. `gen_env` moved to Symbolic.v for both loop proofs |
+| 7, writes, malloc and free | [MemLogic.v](../rocq/theories/logic/MemLogic.v), [Logic.v](../rocq/theories/logic/Logic.v), [Heap.v](../rocq/theories/logic/Heap.v) | a block of memory is owned piece by piece: `bytes b o xs` and `auxes b o cs`, its bytes and its aux slots. `wp_memset` from `memset_contract`: the block's bytes become c's low byte and every slot starting in it is emptied (`clear_slots`). `wp_memcpy` from `memcpy_contract`: a destination block and a source block in another object, both 8-aligned and so in phase; the destination takes the source's bytes, each full slot takes the source's capability and a partial one empties (`copy_slots`, `copy_after`); the source comes back unchanged. The contracts' exact destination frame keeps every other piece (`block_frame`, through Heap.v's `frame_within` for writes inside one live object). Blocks start at a multiple of 8, so the slots a write touches start inside them. `wp_strdup` from `strdup_contract`: owning a `string`, the call returns a fresh object owning a copy as a `string` (its other bytes and its slots unowned); its writes lie in the fresh object, so `frame_other` keeps the rest. `wp_string_copy` from `string_copy_contract`, with `wp_strcpy` and `wp_stpcpy` its instances: owning a destination's `live` and `bytes`, one more than a `string`'s in another object, the bytes become a `string` with the copy, d is bound to the destination or, for stpcpy, its NUL, and the source comes back; no slot is owned, since a scalar copy keeps every aux slot, and no alignment is needed (`copy_string_after`). `wp_malloc` from `malloc_contract`: the fresh object's pieces (`obj`), no null case, since the selected malloc refuses with a resource ending. Logic.v's `wp_free` gives up a heap object's `live`, whose ghost token ends as `VFreed` (the ghost heap cannot delete a key), and `wp_free_null`; both take `frees_heap` of the genv's free, which every runtime's free meets by Runtime.v's axiom `free_succeeds` (since 2026-11-09; the interpreter's `free_res_succeeds`). `wp_raw_store_byte` is new for a one-byte store |
+| 7, a callee owning memory | [SlotLogic.v](../rocq/theories/programs/SlotLogic.v), [slot.c](../rocq/theories/programs/slot.c) | `fill(c, n)` keeps one heap buffer in its static `slot`, with its size in `slot_size`: if n does not fit it frees the buffer and mallocs n + 1 bytes, then memsets n bytes, writes the NUL and returns the buffer. The module invariant `slot_inv` owns both statics and the `buffer` they describe (null and 0, or a live heap object with all its bytes and slots). `fill_spec` takes the invariant and returns `lent`: the n filled bytes and a wand that, given them back, returns the invariant, so the caller cannot keep them across its next call. `use` calls `fill` three times (grow, reuse, grow) and reads the buffer after each. `slot_logic_safe` for every runtime, with no premise since `free_succeeds` became an axiom, `interp_slot_logic_safe` from the module's initial memory, closed; 14.8 s. Still no named locals: nanofil keeps `fill`'s and `use`'s locals in temporaries |
 
 **hi.c, the logic against Hi.v's hand proof.** The same body, the same
 contract, the same fixture:
@@ -469,12 +469,12 @@ proved through the Iris logic as scan, count and slot were. Campaign 4
 writes the libc contracts, the entry and exit's callbacks; this
 campaign writes the triples and the program's proof.
 
-**The program.** [HelloModule.v](../rocq/theories/HelloModule.v) reads
+**The program.** [HelloModule.v](../rocq/theories/hello_contracts/HelloModule.v) reads
 Hello as one checked module, `hello_module`. Its fixture,
-[HelloCode.v](../rocq/theories/HelloCode.v), is what
-[link.pl](../rocq/link.pl) makes of the 81 checked terms of the real
+[HelloCode.v](../rocq/theories/hello_contracts/HelloCode.v), is what
+[link.pl](../rocq/scripts/link.pl) makes of the 81 checked terms of the real
 build, regenerated and compared by the flake check
-`nanofil-hello-fixture` (`rocq/hello-fixture.sh`):
+`nanofil-hello-fixture` (`rocq/scripts/hello-fixture.sh`):
 
 - each object's `local` names become `OBJECT#NAME`, because objects
   reuse them (closeout.o and hello.o both have a `str.54`);
@@ -485,7 +485,7 @@ build, regenerated and compared by the flake check
   claim about the link that no Rocq lemma states yet.
 
 Every object was valid alone, and the link is valid too
-(`hello_valid`). That needed one fix to [gallina.pl](../rocq/gallina.pl): a byte from 128 to
+(`hello_valid`). That needed one fix to [gallina.pl](../rocq/scripts/gallina.pl): a byte from 128 to
 255 in a string now prints as its two UTF-8 bytes, as Term.v's
 `char_code` reads it. Before the fix, gettext_quote's `‘` decoded to an
 unknown item and the link was `Some false`. HelloCode.v compiles in
@@ -540,15 +540,15 @@ does.
 7. `never_panics` of the linked module from the entry.
 
 **Milestone 2.** New libc triples:
-- [StringLogic.v](../rocq/theories/StringLogic.v) adds `wp_strcmp`,
+- [StringLogic.v](../rocq/theories/logic/StringLogic.v) adds `wp_strcmp`,
   `wp_strncmp` and `wp_strrchr`.
-- [MemLogic.v](../rocq/theories/MemLogic.v) adds `wp_memcmp` and
+- [MemLogic.v](../rocq/theories/logic/MemLogic.v) adds `wp_memcmp` and
   `wp_memchr` over blocks read through read-write or read-only
   capabilities (`block_readable`), and `string_window`, which lends n
   bytes of a string as a block.
 - Logic.v gains `wp_ret_void` for `void` functions.
 
-[HelloLeaf.v](../rocq/theories/HelloLeaf.v) (12 s, 7 s of which is
+[HelloLeaf.v](../rocq/theories/hello_contracts/HelloLeaf.v) (12 s, 7 s of which is
 laying out the module's 115 symbols) proves `mbszero_spec`,
 `memeq_spec`, `streq_spec` and `strnlen1_spec`. They hold in any genv
 that links Hello (`hello_linked`): its module is `hello_module`, its
@@ -558,7 +558,7 @@ the contracts, so the same triples serve the whole program over
 Campaign 4's world. A caller binds them through `wp_call_bind` at
 `invocation f xs`, the frame `call_frame` makes.
 
-[HelloName.v](../rocq/theories/HelloName.v) (15 s) proves
+[HelloName.v](../rocq/theories/hello_contracts/HelloName.v) (15 s) proves
 `set_program_name_spec` on every path:
 - The function owns argv[0] as a string, the two literals "/.libs/"
   and "lt-", and three cells: Hello's `program_name` and libc's
@@ -593,7 +593,7 @@ mbrtowc, errno and composite-world contracts. New in the logic:
   the 4-byte store with which rpl_mbrtowc's fallback writes `c: *pwc`.
   It also adds `bytes_app`, `auxes_app` and `obj_zero_block`, which
   read a fresh object as a block.
-- [HelloLeaf.v](../rocq/theories/HelloLeaf.v) adds `xmalloc_spec`:
+- [HelloLeaf.v](../rocq/theories/hello_contracts/HelloLeaf.v) adds `xmalloc_spec`:
   the selected malloc never returns null, so `xalloc_die` is dead.
 - MemLogic.v adds `wp_memchr_string`, a search for the NUL in an
   owned string with any bound. Campaign 4's memchr reads only through
@@ -617,7 +617,7 @@ valued `VName p t`. It names no memory: `mem_piece` is false for it,
 The world interpretation ties it to the world. An Oracle review chose
 this over a world-indexed state interpretation, which would have
 changed `heap_interp` and about 23 proof sites.
-[LentLogic.v](../rocq/theories/LentLogic.v) (4 s) reads such a string
+[LentLogic.v](../rocq/theories/hello_contracts/LentLogic.v) (4 s) reads such a string
 through `lent k p t`, a persistent token. It carries what holds of the
 lent value from the moment it is lent: p is not null, t ends before
 2^64, and t's bytes are not NUL. It needs one fact of the world
@@ -639,7 +639,7 @@ the state after the call. What the call must keep of the state, its
 frame and wi of the renamed heap, is the triple's premise, for the
 contract and the world interpretation to discharge.
 
-[LocaleLogic.v](../rocq/theories/LocaleLogic.v) gives the world
+[LocaleLogic.v](../rocq/theories/hello_contracts/LocaleLogic.v) gives the world
 interpretation of a program that calls setlocale, `locale_wi`, over
 Campaign 4's `locale_world`:
 - the world is `locale_ready`;
@@ -685,7 +685,7 @@ Two findings went back to Campaign 4:
   itself, and LocaleLogic instantiates `LocaleOn R L.M`, so
   `locale_wi_query` now uses `setlocale_query_invocation` directly.
 
-[HelloLocale.v](../rocq/theories/HelloLocale.v) (17 s) proves
+[HelloLocale.v](../rocq/theories/hello_contracts/HelloLocale.v) (17 s) proves
 `setlocale_null_unlocked`, `setlocale_null_r_unlocked` on both of its
 paths, `setlocale_null_r` and `hard_locale`:
 - If the name fits in the buffer, it is copied with its NUL and the
@@ -721,7 +721,7 @@ own pieces in their own files and hand them over for integration
 here. Each is generic in the registry and the world interpretation,
 and takes as Context premises the contracts that Campaign 4's
 packages are still landing.
-- [HelloProgName.v](../rocq/theories/HelloProgName.v) (5a34c2f)
+- [HelloProgName.v](../rocq/theories/hello_contracts/HelloProgName.v) (5a34c2f)
   strengthens HelloName's `set_program_name` triple, which only knew
   capabilities, to bounded suffixes of the owned argv[0] string.
   `set_program_name_string_spec` lends the chosen `program_name`
@@ -730,7 +730,7 @@ packages are still landing.
   zero from strncmp means equal bounded lengths, so comparing with
   "lt-" for three bytes justifies advancing three without crossing
   the NUL.
-- [CallbackLogic.v](../rocq/theories/CallbackLogic.v) (9a11a87)
+- [CallbackLogic.v](../rocq/theories/hello_contracts/CallbackLogic.v) (9a11a87)
   connects a handler's weakest precondition to Linked's void-callback
   endpoint. `callback_wp_safe` rules out failure endings for every
   labelled run. `callback_wp_return` gives the handler's
@@ -738,7 +738,7 @@ packages are still landing.
   the current world, before ReturnCallback. It rests on
   `heap_exact_adequacy`, an adequacy that keeps the final state,
   where `heap_labelled_safe` forgets it.
-- [HelloReach.v](../rocq/theories/HelloReach.v) (c37f796) checks
+- [HelloReach.v](../rocq/theories/hello_contracts/HelloReach.v) (c37f796) checks
   reference closure of the linked image. From main, static
   reachability follows global addresses and initializer symbols,
   including callbacks. Every reachable reference is a module function,
@@ -750,7 +750,7 @@ packages are still landing.
   proves `hello_linked`. The proof is about the image we run. That
   the linker's pruning kept every reachable definition of the
   original objects is trusted, checked by the linker's own traversal.
-- [HelloVersion.v](../rocq/theories/HelloVersion.v) (471c501,
+- [HelloVersion.v](../rocq/theories/hello_contracts/HelloVersion.v) (471c501,
   dac4525) proves `proper_name`, the identity, and the help footer
   `emit_bug_reporting_address`. The footer's literals stay owned by
   the program; stdout is the world's cell. Its four output calls take
@@ -768,7 +768,7 @@ packages are still landing.
   are world-frame premises (`Kversion_*`), and the output contracts
   are raw premises like the footer's.
 
-- [HelloClose.v](../rocq/theories/HelloClose.v) (2a1f328) proves
+- [HelloClose.v](../rocq/theories/hello_contracts/HelloClose.v) (2a1f328) proves
   `close_stream` and `close_stdout`. `close_stream` consumes a usable
   stream, follows the pending, error and fclose decisions (EBADF
   included), and returns 0 or EOF, handing back the four errno bytes.
@@ -807,7 +807,7 @@ Conventions the pieces share:
 program owns: the wide character, the conversion state and errno.
 Its roots therefore meet the program's objects, and the external
 call frame, which needed roots apart from every owned object, did not
-apply. [ContractFrame.v](../rocq/theories/ContractFrame.v) now has a
+apply. [ContractFrame.v](../rocq/theories/logic/ContractFrame.v) now has a
 frame for calls into owned blocks (54dc057): `agrees_except`,
 `roots_out` and `pieces_off` say that the roots touch owned objects
 only at the addresses the program hands over, and that no other piece
@@ -816,7 +816,7 @@ lies there. `local_agrees_out` and Logic.v's `effects_agrees_out` and
 `local_agrees` and `effects_agrees` are now the case where nothing is
 handed over, with the same statements as before.
 
-[HelloConv.v](../rocq/theories/HelloConv.v) proves `wp_mbrtowc` over
+[HelloConv.v](../rocq/theories/hello_contracts/HelloConv.v) proves `wp_mbrtowc` over
 Campaign 4's `libc_world`, using `LibcOn R L.M`. The program hands
 over the three cells as whole blocks (life, bytes and aux slots) and
 lends the source bytes. The call gives the blocks back holding
@@ -974,7 +974,7 @@ instance. Campaign 4's
 StreamFrameLogic has the same signature, so its `…On` modules take
 the same instance.
 
-**Main's start block.** [HelloMain.v](../rocq/theories/HelloMain.v)
+**Main's start block.** [HelloMain.v](../rocq/theories/hello_contracts/HelloMain.v)
 applies every `…On` functor to one `Logic R`. Its world is libc's, and
 its world interpretation wi stays abstract. Each section premise is
 what one call needs of wi, so a concrete interpretation discharges
@@ -1020,7 +1020,7 @@ permuted, and a world-justified read of libc's cells.
 rewrites both at every call. A ghost value, `VGetopt optarg optind`
 under the name key 64, stands for what getopt last left there. Like
 the codec and stream tokens, it agrees with every memory.
-[GetoptLogic.v](../rocq/theories/GetoptLogic.v) ties it to the world
+[GetoptLogic.v](../rocq/theories/hello_contracts/GetoptLogic.v) ties it to the world
 through one premise on wi: the world's getopt state is in memory at
 the two cells (Campaign 4's `getopt_state_at`), and the token is
 current (`getopt_current`). Logic.v's `wp_world_let_with` is an
@@ -1038,7 +1038,7 @@ post would claim the cells never change. Campaign 4 also confirmed that
 the registry can be fixed per launch after startup fixes argv, which
 `getopt_contract`'s input needs.
 
-**getopt_long's call.** [HelloMain.v](../rocq/theories/HelloMain.v)'s
+**getopt_long's call.** [HelloMain.v](../rocq/theories/hello_contracts/HelloMain.v)'s
 `wp_main_getopt` is the call main makes, with
 `libc_getopt_refined_contract (hello_input av sargs) … transition` in
 the registry. That is Campaign 4's safety contract with a `transition`
@@ -1199,11 +1199,11 @@ with pr.2 clear and optind at argc, and is left to one continuation.
 The version and help paths use up the literals and the program's
 name cells. The greeting needs neither.
 
-**The greeting.** [HelloJoin.v](../rocq/theories/HelloJoin.v) proves
+**The greeting.** [HelloJoin.v](../rocq/theories/hello_contracts/HelloJoin.v) proves
 `iw_1.join` and composes it with the rest. It is a file of its own so
 that HelloMain does not wait for HelloConv: the two compile side by
 side, and HelloJoin after both. HelloMain takes only HelloConv's pure
-part, [HelloConvDefs.v](../rocq/theories/HelloConvDefs.v).
+part, [HelloConvDefs.v](../rocq/theories/hello_contracts/HelloConvDefs.v).
 - `xmalloc_spec`: malloc's contract has no null return, as running out
   of memory is a resource ending. So xmalloc's call of `xalloc_die`,
   and the `abort` behind it, is never reached, and `exit_failure` is

@@ -10,4 +10,4 @@ Transport is the crossing between Prolog terms and the model: decoding a checked
 
 [judge] and [judge_valid] are built on it; see [[extraction]].
 
-Defined in [Transport.v](../../rocq/theories/Transport.v).
+Defined in [Transport.v](../../rocq/theories/core/Transport.v).

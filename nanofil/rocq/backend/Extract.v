@@ -44,7 +44,7 @@ From Backend Require Import Text Asm AsmTerm Order Abi PlanTerm Layout Emit Emit
   EmitModule Regs Nfb Pizlonate Promote Copy Compile IrText.
 
 (** The hash that picks a name's bucket becomes OCaml's string hash,
-    as in the model's extraction (theories/Extract.v): a lookup
+    as in the model's extraction (theories/core/Extract.v): a lookup
     compares the names in the bucket, so the hash decides no answer,
     and the Gallina one took a fifth of the time of SQLite's plans. *)
 Extract Constant Maps.string_hash =>

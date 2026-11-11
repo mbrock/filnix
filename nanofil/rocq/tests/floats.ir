@@ -1,5 +1,5 @@
 % Checked IR for float behaviour the corpus does not reach
-% (rocq/agree.sh): rounding a tie to the even neighbour, and an integer
+% (rocq/scripts/agree.sh): rounding a tie to the even neighbour, and an integer
 % word read as a float through a function's generic entry.
 
 % 2^24 + 1 is halfway between the singles 2^24 and 2^24 + 2: the tie

@@ -10,4 +10,4 @@ A configuration is the whole state of a run in the model: the running frame, the
 
 The subtlety: the proofs speak of every frame, not only the running one. The [[single-definition|single-definition invariant]] holds in each [[parked|waiting caller]] too, and a waiting caller is never doomed.
 
-Defined in [Semantics.v](../../rocq/theories/Semantics.v); see [rocq.md, Decisions](../rocq.md#decisions).
+Defined in [Semantics.v](../../rocq/theories/core/Semantics.v); see [rocq.md, Decisions](../rocq.md#decisions).

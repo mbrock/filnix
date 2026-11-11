@@ -10,4 +10,4 @@ The global environment is what every [[step]] of a run reads but never changes: 
 
 The subtlety: the theorems ask `ge_free ge = R.free` and `ge_module ge = md` explicitly, because a genv could pair a module with any free; [valid_no_unchecked] is stated for the genv a run of R would build.
 
-Defined in [Semantics.v](../../rocq/theories/Semantics.v).
+Defined in [Semantics.v](../../rocq/theories/core/Semantics.v).

@@ -1,5 +1,5 @@
 % Checked IR that reaches a variadic callee's entry argument snapshot
-% directly (rocq/agree.sh), as C cannot: va_args points into it. It
+% directly (rocq/scripts/agree.sh), as C cannot: va_args points into it. It
 % holds every argument, the fixed ones first, and is read-only, so a
 % store through it traps; a call with no arguments at all has a null
 % snapshot. And free frees it, after which a renew of an earlier proof

@@ -22,7 +22,7 @@ let
     fileset = pkgs.lib.fileset.unions [
       ../src
       ../bin
-      ../rocq/gallina.pl
+      ../rocq/scripts/gallina.pl
       ../rocq/spikes
       ../web/rocq/rocq_syntax.pl
       ../web/rocq/tests/parse.sh

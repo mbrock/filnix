@@ -12,7 +12,7 @@ async function checkNavigation(overflow) {
     response.writeHead(200, { "Content-Type": "text/html" });
     response.write('<!doctype html><meta name="viewport" content="width=device-width"><body>');
     if (request.url.endsWith("index.html")) {
-      response.end('<a href="rocq-theories-Machine.html">Machine</a>');
+      response.end('<a href="rocq-theories-soundness-Machine.html">Machine</a>');
       return;
     }
     const finish = () => response.end(overflow ? '<div style="width:669px">late overflow</div>' : "fits");

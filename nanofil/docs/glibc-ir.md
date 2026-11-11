@@ -33,7 +33,7 @@ whose module contains glibc's own code:
    nanofil on main now reads those directives, which gives glibc's
    real `__GI_` names; the fixtures have not been regenerated with
    them yet.
-2. **Linking.** [link.pl](../rocq/link.pl) links the program's checked
+2. **Linking.** [link.pl](../rocq/scripts/link.pl) links the program's checked
    module with the units' modules from `main`. glibc defines `__strlen`
    and the alias `strlen`, so the linker now reads aliases: an alias is a
    definition, reaching it reaches its target, a weak declaration

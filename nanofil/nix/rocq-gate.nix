@@ -1,5 +1,5 @@
 # The extracted Rocq validator as a gate on the compiler's -O products
-# (rocq/gate.sh, docs/rocq.md): every checked module nanofil -O gives
+# (rocq/scripts/gate.sh, docs/rocq.md): every checked module nanofil -O gives
 # its backend, for the IR and C corpus (tests/, cproc, c-testsuite) and
 # for each translation unit of GNU hello, zlib, Lua and SQLite, goes to
 # the model's --module mode, which judges it as Validate.v's [valid]
@@ -35,7 +35,7 @@ let
       ../src
       ../bin
       ../tests
-      ../rocq/gate.sh
+      ../rocq/scripts/gate.sh
     ];
   };
   sources = import ./corpus.nix { inherit pkgs; };
@@ -109,7 +109,7 @@ let
         export NANOFIL_STATE=$TMPDIR/nanofil.state
         mkdir $out
         start=$SECONDS status=0
-        tests/par.sh rocq/gate.sh ${files} >$out/log 2>&1 || status=1
+        tests/par.sh rocq/scripts/gate.sh ${files} >$out/log 2>&1 || status=1
         grep -h '^@@nanofil-gate ' $out/log >$out/verdicts || true
         awk '{ n[$2]++ } END { for (v in n) printf "${name} %s %d\n", v, n[v] }' $out/verdicts | sort >$out/summary
         cat $out/summary

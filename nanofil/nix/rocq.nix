@@ -10,12 +10,12 @@
 # agrees with interp:run/5 on every run line of rocq/tests, the Fil-C
 # IR fixtures, the C tests and Fil-C modules from tests/gen.pl, the
 # last three with and without -O and under every --checks mode
-# (rocq/agree.sh), and Lua's own functions (rocq/lua.sh); and that its
+# (rocq/scripts/agree.sh), and Lua's own functions (rocq/scripts/lua.sh); and that its
 # validator reaches ir:valid_module/1's verdict on mutants of every checked module
 # in the same matrix, and of the tests/c/prog programs with aliases and
-# weak, thread-local or constructor data (rocq/valid.sh). Both check that
+# weak, thread-local or constructor data (rocq/scripts/valid.sh). Both check that
 # the modules the program proofs are about are what nanofil makes today
-# (rocq/programs.sh). The program logic (Language.v, Logic.v) is built on
+# (rocq/scripts/programs.sh). The program logic (Language.v, Logic.v) is built on
 # Iris, so the model and the parse check take stdpp and Iris from the
 # same nixpkgs; the extracted driver does not use them.
 {
@@ -40,9 +40,22 @@ let
   # file and its importers and nothing else; every other object comes from
   # the store or a cache. Imports are read here from the sources' From
   # Nanofil Require sentences; deps below checks them against rocq dep.
-  names = map (lib.removeSuffix ".v") (
-    lib.filter (lib.hasSuffix ".v") (lib.attrNames (builtins.readDir theories))
-  );
+  # Theories sit in one directory per layer (core, soundness, ...) but are
+  # named by base name, as From Nanofil Require names them; two files
+  # with one base name would make those imports ambiguous.
+  paths = map (
+    p: lib.removeSuffix ".v" (lib.removePrefix "${toString theories}/" (toString p))
+  ) (lib.filter (lib.hasSuffix ".v") (lib.filesystem.listFilesRecursive theories));
+  path = lib.listToAttrs (map (p: lib.nameValuePair (baseNameOf p) p) paths);
+  names =
+    let
+      ns = map baseNameOf paths;
+    in
+    assert lib.assertMsg (lib.length ns == lib.length (lib.unique ns))
+      "rocq.nix: two theories share a base name: ${
+        toString (lib.filter (n: lib.count (m: m == n) ns > 1) (lib.unique ns))
+      }";
+    ns;
   imports = lib.genAttrs names (
     n:
     lib.unique (
@@ -57,7 +70,7 @@ let
           lib.filter builtins.isList (
             builtins.split
               "From[[:space:]]+Nanofil[[:space:]]+Require[[:space:]]+((Import|Export)[[:space:]]+)?([^.]*)\\."
-              (builtins.readFile (theories + "/${n}.v"))
+              (builtins.readFile (theories + "/${path.${n}}.v"))
           )
         )
     )
@@ -65,24 +78,26 @@ let
   closure = lib.genAttrs names (
     n: lib.unique (lib.concatMap (d: closure.${d} ++ [ d ]) imports.${n})
   );
-  # link N: the objects of everything N imports, under theories/.
+  # link N: the objects of everything N imports, under theories/ at
+  # their own paths, since an object records its logical path
+  # (Nanofil.core.Syntax).
   link =
     n:
     lib.concatMapStrings (
-      d: "ln -s ${vo.${d}}/${d}.vo theories/${d}.vo\n"
+      d: "mkdir -p theories/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo theories/${path.${d}}.vo\n"
     ) closure.${n};
   vo = lib.genAttrs names (
     n:
     pkgs.runCommand "nanofil-rocq-${n}"
       { nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ]; }
       ''
-        mkdir theories extraction
+        mkdir -p theories/${dirOf path.${n}} extraction
         ${link n}
-        cp ${theories + "/${n}.v"} theories/${n}.v
-        python3 ${watch} --label "Rocq compile ${n}.v" --warn-after 120 --timeout 900 -- \
-          rocq c -q -R theories Nanofil theories/${n}.v
+        cp ${theories + "/${path.${n}}.v"} theories/${path.${n}}.v
+        python3 ${watch} --label "Rocq compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
+          rocq c -q -R theories Nanofil theories/${path.${n}}.v
         mkdir $out
-        cp theories/${n}.vo theories/${n}.glob $out/
+        cp theories/${path.${n}}.vo theories/${path.${n}}.glob $out/
         # Extract.v writes the OCaml model.
         if [ -n "$(ls extraction)" ]; then cp -r extraction $out/; fi
       ''
@@ -109,15 +124,15 @@ let
     pkgs.runCommand "nanofil-rocq-reprint-${n}"
       { nativeBuildInputs = parseInputs; }
       ''
-        mkdir -p project/theories verdicts
+        mkdir -p project/theories/${dirOf path.${n}} verdicts
         echo "-R theories Nanofil" >project/_RocqProject
         (
           cd project
           ${link n}
         )
-        cp ${theories + "/${n}.v"} project/theories/${n}.v
-        PARSE_TMP=$PWD/verdicts PARSE_IN_PLACE=1 python3 ${watch} --label "Rocq reprint ${n}.v" \
-          --warn-after 120 --timeout 900 -- bash ${parseSrc}/web/rocq/tests/parse.sh --check 0 "$PWD/project/theories/${n}.v"
+        cp ${theories + "/${path.${n}}.v"} project/theories/${path.${n}}.v
+        PARSE_TMP=$PWD/verdicts PARSE_IN_PLACE=1 python3 ${watch} --label "Rocq reprint ${path.${n}}.v" \
+          --warn-after 120 --timeout 900 -- bash ${parseSrc}/web/rocq/tests/parse.sh --check 0 "$PWD/project/theories/${path.${n}}.v"
         grep -q '^ok' verdicts/verdict-0
         mkdir $out
         cp verdicts/verdict-0 $out/verdict
@@ -172,9 +187,10 @@ let
   objects = pkgs.runCommand "nanofil-rocq-objects" { } ''
     mkdir -p $out/share/rocq/theories
     cp ${theorySrc}/rocq/_RocqProject $out/share/rocq/
-    cp ${theorySrc}/rocq/theories/*.v $out/share/rocq/theories/
+    cp -r ${theorySrc}/rocq/theories/. $out/share/rocq/theories/
+    chmod -R u+w $out/share/rocq/theories
     ${lib.concatMapStrings (
-      n: "cp ${vo.${n}}/${n}.vo ${vo.${n}}/${n}.glob $out/share/rocq/theories/\n"
+      n: "cp ${vo.${n}}/${n}.vo ${vo.${n}}/${n}.glob $out/share/rocq/theories/${dirOf path.${n}}/\n"
     ) names}
   '';
   # The model: every theory compiled, no Admitted or stray Axiom, imports
@@ -201,16 +217,17 @@ let
         # InterpRuntime discharges; no Admitted anywhere.
         if grep -rnw Admitted theories ||
           grep -rnwE 'Axiom|Axioms|Parameter|Conjecture' --exclude=Runtime.v theories ||
-          sed '/^Module Type Runtime\./,/^End Runtime\./d' theories/Runtime.v |
+          sed '/^Module Type Runtime\./,/^End Runtime\./d' theories/core/Runtime.v |
           grep -nwE 'Axiom|Axioms|Parameter|Conjecture'; then
           echo "rocq: no Admitted, and no Axiom outside the runtime module type" >&2
           exit 1
         fi
         # The per-file derivations import what rocq dep says each file needs.
-        rocq dep -R theories Nanofil theories/*.v |
-          awk '{ split($1, t, /[\/.]/); d = ""
-            for (i = 2; i <= NF; i++) if ($i ~ /^theories\/.*\.vo$/) { split($i, s, /[\/.]/); if (s[2] != t[2]) d = d " " s[2] }
-            print t[2] ":" d }' |
+        rocq dep -R theories Nanofil $(find theories -name '*.v' | sort) |
+          awk 'function base(p,  a, k) { k = split(p, a, "/"); sub(/\..*/, "", a[k]); return a[k] }
+            { t = base($1); d = ""
+            for (i = 2; i <= NF; i++) if ($i ~ /^theories\/.*\.vo$/) { s = base($i); if (s != t) d = d " " s }
+            print t ":" d }' |
           while read -r line; do
             f=''${line%%:*}; set -- ''${line#*:}
             printf '%s:%s\n' "$f" "$(printf ' %s' $(printf '%s\n' "$@" | sort -u))"
@@ -234,7 +251,7 @@ let
         echo "@@nanofil-rocq ${toString (builtins.length names)} theories compiled"
         mkdir -p $out/bin $out/share/rocq/theories $out/share/rocq/extraction
         cp ${driver}/bin/nanofil-model $out/bin/
-        cp theories/*.v $out/share/rocq/theories/
+        cp -r theories/. $out/share/rocq/theories/
         cp _RocqProject $out/share/rocq/
         cp ${../rocq/extraction/main.ml} $out/share/rocq/extraction/main.ml
       '';
@@ -246,14 +263,13 @@ let
       ../src
       ../bin
       ../tests
-      ../rocq/agree.sh
-      ../rocq/valid.sh
-      ../rocq/lua.sh
-      ../rocq/mutants.pl
+      ../rocq/scripts/agree.sh
+      ../rocq/scripts/valid.sh
+      ../rocq/scripts/lua.sh
+      ../rocq/scripts/mutants.pl
       ../rocq/tests
-      ../rocq/programs.sh
-      ../rocq/gallina.pl
-      ../rocq/programs
+      ../rocq/scripts/programs.sh
+      ../rocq/scripts/gallina.pl
     ];
   };
   # The corpus reads the extracted driver (Extract.v's imports, a few of
@@ -290,8 +306,8 @@ let
           bin/nanofil --save-state "$TMPDIR/nanofil.state"
           export NANOFIL_STATE=$TMPDIR/nanofil.state
           # The modules the program proofs are about are nanofil's current
-          # products (rocq/programs.sh, Panics.v).
-          python3 tests/watch.py --label "Rocq program fixtures" -- bash rocq/programs.sh
+          # products (rocq/scripts/programs.sh, Panics.v).
+          python3 tests/watch.py --label "Rocq program fixtures" -- bash rocq/scripts/programs.sh
           mark programs
         ''
         + (
@@ -300,9 +316,9 @@ let
               # A deliberately small, stable smoke corpus: every hand-written model
               # fixture plus ordinary checked IR, long doubles and data/aliases.
               export NANOFIL_CHECKS=reference NANOFIL_JOBS=$NIX_BUILD_CORES NANOFIL_MUTANTS=0
-              tests/par.sh rocq/agree.sh rocq/tests/*.ir tests/filc/basic.ir tests/c/ldouble.c tests/c/prog/alias.c \
+              tests/par.sh rocq/scripts/agree.sh rocq/tests/*.ir tests/filc/basic.ir tests/c/ldouble.c tests/c/prog/alias.c \
                 | tee "$TMPDIR/quick-outcomes.log"
-              tests/par.sh rocq/valid.sh rocq/tests/*.ir tests/filc/basic.ir tests/c/ldouble.c tests/c/prog/alias.c \
+              tests/par.sh rocq/scripts/valid.sh rocq/tests/*.ir tests/filc/basic.ir tests/c/ldouble.c tests/c/prog/alias.c \
                 | tee "$TMPDIR/quick-valid.log"
               mkdir -p $out
               cp "$TMPDIR"/quick-*.log $out/
@@ -313,7 +329,7 @@ let
               python3 tests/watch.py --label "mutant partition coverage" -- bash rocq/tests/partitions.sh
               # Hand-written checked IR (rocq/tests) goes in as written: the check
               # passes take pizlonate's output, never renew_hull or renew_if.
-              NANOFIL_CHECKS=reference NANOFIL_JOBS=$NIX_BUILD_CORES tests/par.sh rocq/agree.sh rocq/tests/*.ir
+              NANOFIL_CHECKS=reference NANOFIL_JOBS=$NIX_BUILD_CORES tests/par.sh rocq/scripts/agree.sh rocq/tests/*.ir
               # Forty Fil-C modules of ten random functions (tests/gen.pl's filc
               # mode), which trap often and reach every reuse form, join the
               # matrix below.
@@ -327,7 +343,7 @@ let
               # is judged on the whole module.
               mkdir luasrc
               tar -xf ${pkgs.lua5_4.src} -C luasrc --strip-components=1
-              rocq/lua.sh luasrc/src >lua.ir
+              rocq/scripts/lua.sh luasrc/src >lua.ir
               mark prepare
               # Modes are independent, just as in the validator matrix below. Keep
               # each mode's complete log and propagate any failing xargs child.
@@ -339,14 +355,14 @@ let
                 set -o pipefail
                 opt=$0; [ "$opt" = plain ] && opt=
                 t0=$(date +%s)
-                NANOFIL_OPT=$opt NANOFIL_CHECKS=$1 NANOFIL_JOBS=1 tests/par.sh rocq/agree.sh tests/filc/*.ir tests/c/*.c gen/*.ir lua.ir \
+                NANOFIL_OPT=$opt NANOFIL_CHECKS=$1 NANOFIL_JOBS=1 tests/par.sh rocq/scripts/agree.sh tests/filc/*.ir tests/c/*.c gen/*.ir lua.ir \
                   2>&1 | tee "$TMPDIR/agree-$0-$1.log" | grep --line-buffered "^@@nanofil-" \
                   || { echo "### agree NANOFIL_OPT=$opt NANOFIL_CHECKS=$1"; cat "$TMPDIR/agree-$0-$1.log"; exit 1; }
                 echo "agree NANOFIL_OPT=$opt NANOFIL_CHECKS=$1: $(grep -c "^/" "$TMPDIR/agree-$0-$1.log") files agree ($(( $(date +%s) - t0 ))s)"'
               mark outcomes
               # The validator against ir:valid_module/1 on mutants of every checked
-              # module (rocq/valid.sh, rocq/mutants.pl), in every mode at once.
-              NANOFIL_CHECKS=reference NANOFIL_JOBS=$NIX_BUILD_CORES tests/par.sh rocq/valid.sh rocq/tests/*.ir
+              # module (rocq/scripts/valid.sh, rocq/scripts/mutants.pl), in every mode at once.
+              NANOFIL_CHECKS=reference NANOFIL_JOBS=$NIX_BUILD_CORES tests/par.sh rocq/scripts/valid.sh rocq/tests/*.ir
               # (xargs drops empty words, so "plain" stands for no -O.)
               for opt in plain -O; do
                 for checks in reference reuse renew guard hoist schedule half forward combined hull getter extended; do
@@ -356,7 +372,7 @@ let
                 set -o pipefail
                 opt=$0; [ "$opt" = plain ] && opt=
                 t0=$(date +%s)
-                NANOFIL_OPT=$opt NANOFIL_CHECKS=$1 NANOFIL_JOBS=1 tests/par.sh rocq/valid.sh tests/filc/*.ir tests/c/*.c gen/*.ir \
+                NANOFIL_OPT=$opt NANOFIL_CHECKS=$1 NANOFIL_JOBS=1 tests/par.sh rocq/scripts/valid.sh tests/filc/*.ir tests/c/*.c gen/*.ir \
                   2>&1 | tee "$TMPDIR/valid-$0-$1.log" | grep --line-buffered "^@@nanofil-" \
                   || { echo "### valid NANOFIL_OPT=$opt NANOFIL_CHECKS=$1"; cat "$TMPDIR/valid-$0-$1.log"; exit 1; }
                 echo "valid NANOFIL_OPT=$opt NANOFIL_CHECKS=$1: $(grep -c "^/" "$TMPDIR/valid-$0-$1.log") files agree ($(( $(date +%s) - t0 ))s)"'
@@ -370,14 +386,14 @@ let
                 $(grep -L '^// cflags:' tests/c/prog/*.c) >prog.list
               xargs -P "$NIX_BUILD_CORES" -n 1 bash -c '
                 set -o pipefail
-                NANOFIL_CHECKS=reference NANOFIL_JOBS=1 tests/par.sh rocq/valid.sh "$0" 2>&1 \
+                NANOFIL_CHECKS=reference NANOFIL_JOBS=1 tests/par.sh rocq/scripts/valid.sh "$0" 2>&1 \
                   | tee "$TMPDIR/prog-$$.log" | grep --line-buffered "^@@nanofil-" \
                   || { echo "### valid $0"; cat "$TMPDIR/prog-$$.log"; exit 1; }' <prog.list
               # Lua's whole-module mutant generation alone takes minutes on one
               # core. Once the other programs finish, share its independent item
               # partitions across the available cores, without nested matrix fanout.
               NANOFIL_CHECKS=reference NANOFIL_JOBS=1 NANOFIL_MUTANT_JOBS=$NIX_BUILD_CORES \
-                tests/par.sh rocq/valid.sh lua.ir | tee "$TMPDIR/prog-lua.log"
+                tests/par.sh rocq/scripts/valid.sh lua.ir | tee "$TMPDIR/prog-lua.log"
               echo "valid tests/c/prog and lua.ir: $(($(wc -l <prog.list) + 1)) modules agree"
               mark validator-programs
               mkdir -p $out

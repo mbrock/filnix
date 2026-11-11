@@ -14,7 +14,7 @@ an unimplemented call as success.
 The trusted libc boundary includes the pinned launcher, libc/TLS
 initialization and host-exit completion (mbrock's decision), not only
 functions called after main begins. These are **named specifications**
-in [HiArtifact.v](../rocq/theories/HiArtifact.v), not proved native
+in [HiArtifact.v](../rocq/theories/programs/HiArtifact.v), not proved native
 implementations or new global Rocq axioms:
 
 | Trusted contract | Successful observation / guarantee | Native counterexample probe |
@@ -59,7 +59,7 @@ obligations.
 ## Trusted selected shutdown boundary
 
 `Selected R.selected_contract` and `Selected R.boundary` in
-[Selected.v](../rocq/theories/Selected.v) name the trusted lifecycle segment
+[Selected.v](../rocq/theories/programs/Selected.v) name the trusted lifecycle segment
 interface for the [pin below](#pin-notation-and-common-obligations). It is
 parameterized by the actual native representation, selection and footprint
 specifications. The logical `SelectedChecks.specs` is **not** that pinned
@@ -250,7 +250,7 @@ alias after free. strnlen additionally stops at short-object NULs with
 SIZE_MAX, handles unaligned high bytes (128 and 255) through the end of
 an explicitly aligned 16-byte allocation, and permits
 zero-count live writable/read-only one-past pointers. Its Rocq contract
-in [ExternalCalls.v](../rocq/theories/ExternalCalls.v) requires readability
+in [ExternalCalls.v](../rocq/theories/external/ExternalCalls.v) requires readability
 only through the consumed bytes (including an early NUL), not the entire
 maximum; zero count still requires live authority. The contract is pure,
 nonallocating and independently inhabited, not a native termination proof.
@@ -563,7 +563,7 @@ Native satisfaction, private-errno separation and repeated-setter
 representation closure remain independent obligations.
 These finite probes pass both ordinary and -O
 native comparisons; the conversion endpoint contract is in
-[Libc.v](../rocq/theories/Libc.v), while errno lookup is modeled below. `get_gconv_fcts` may
+[Libc.v](../rocq/theories/hello_contracts/Libc.v), while errno lookup is modeled below. `get_gconv_fcts` may
 initialize caches, acquire locks, allocate and clean up internal objects.
 The contract exposes those permissions while retaining
 effective locale names/text/codec and
@@ -631,7 +631,7 @@ Sources: `locale/setlocale.c`, `nl_langinfo.c`, `ctype/ctype-info.c`
 (table offset 128), `wcsmbs/mbrtowc.c`, `mbrtoc32.c`, `mbsinit.c`,
 and `wctype/`. Returned locale data is not promised writable or immortal.
 
-[Locale.v](../rocq/theories/Locale.v) gives `setlocale` an additive trusted
+[Locale.v](../rocq/theories/hello_contracts/Locale.v) gives `setlocale` an additive trusted
 Rocq contract with exact W/P-to-P ABI and a nonnull current-name invariant.
 Its `locale_names_aligned` readiness fact states that each current name's
 Obj/Ro object base is divisible by eight, including after setters.
@@ -743,7 +743,7 @@ never panics.
 | `program_invocation_name` | initialized entry; caller preserves a valid borrowed string if replacing cell | readable/writable pointer cell to borrowed NUL string derived from argv[0], or empty fallback if absent; no independent allocation/ownership promise | R,W on access |
 | `program_invocation_short_name` | same | borrowed basename pointer, may alias inside full name's object | R,W on access |
 
-`errno_location_contract` in [ExternalCalls.v](../rocq/theories/ExternalCalls.v)
+`errno_location_contract` in [ExternalCalls.v](../rocq/theories/external/ExternalCalls.v)
 requires an independent thread representation, an exact cell projection,
 and live nonnull writable four-byte storage whose address is four-aligned.
 The no-argument P/discarded ABI exports only that pointer and capability,

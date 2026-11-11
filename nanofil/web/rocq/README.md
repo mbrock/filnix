@@ -362,7 +362,7 @@ worker per core (up to 8) to draw the pages. To preview with local tools:
 python3 nanofil/tests/watch.py --label 'Proof capture' -- \
   python3 nanofil/web/rocq/capture.py nanofil/rocq /tmp/proof-states.json
 swipl nanofil/web/rocq/dterm_rocq.pl OUT . --prolog=nanofil/src \
-  --states=/tmp/proof-states.json nanofil/rocq/theories/*.v
+  --states=/tmp/proof-states.json $(find nanofil/rocq/theories -name '*.v')
 python3 nanofil/web/rocq/tests/capture.py
 ```
 

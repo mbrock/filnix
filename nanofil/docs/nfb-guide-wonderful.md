@@ -24,7 +24,7 @@ Fil-C, or Rocq. Where another document is the authority, it says so:
 [nfb.pl](../src/nfb.pl) is the Prolog encoder and decoder, and
 [nfb.md](nfb.md) is the NFB RFC with the appendix of assigned
 numbers. The Rocq side lives in
-[Syntax.v](../rocq/theories/Syntax.v) and
+[Syntax.v](../rocq/theories/core/Syntax.v) and
 [the backend's Nfb files](../rocq/backend/Nfb.v). For a walk through
 the whole compiler, read [the guide](guide.md); for Fil-C itself,
 [How Fil-C works](filc.md).
@@ -649,7 +649,7 @@ wrong, and the distinction *is* the safety claim:
 "Soundness of checking" is the statement that a module the validator
 accepts never reaches `unchecked`. For the model's *core subset*
 (§19) this is proved in Rocq as [valid_no_unchecked]
-([Soundness.v](../rocq/theories/Soundness.v)), under explicit axioms
+([Soundness.v](../rocq/theories/soundness/Soundness.v)), under explicit axioms
 about the Fil-C runtime, each backed by a native test
 ([formal.md](formal.md), [runtime-axioms.md](runtime-axioms.md)).
 The proof is of the Rocq validator's transcription of the rule; that
@@ -1374,7 +1374,7 @@ backend extracted from it.
   below 2^32; ids, ordering, and canonicalization follow nfb.pl
   exactly, including naming by integer ids when NAMES is absent.
 - [Nfb.v](../rocq/backend/Nfb.v) lifts that to
-  [Syntax.v](../rocq/theories/Syntax.v) modules. `encode` first
+  [Syntax.v](../rocq/theories/core/Syntax.v) modules. `encode` first
   renders a Syntax module as the term ir.pl would print
   ([enc_module], built from IrTerm.v's per-instruction encoders),
   then writes that term as words with NfbTerm. `decode` goes the
@@ -1383,7 +1383,7 @@ backend extracted from it.
   as in Prolog, the words are accepted only if `encode` writes the
   same words back (NAMES if present; CONTEXT and tool sections
   aside).
-- [Syntax.v](../rocq/theories/Syntax.v) itself is a transcription
+- [Syntax.v](../rocq/theories/core/Syntax.v) itself is a transcription
   of ir.pl into inductive types — one constructor per IR functor
   (`Let`, `Flight`, `RawStore`, `Call`, ...; classes `W L P A F
   Single Double Extended`; `module` as a list of `item`s) — but only
@@ -1401,7 +1401,7 @@ and its term (the validator can still read its signature), but it
 has no modelled body, and running it in the model is stuck.
 Transport.v makes that decision. Names, in the model, remain ground
 terms compared structurally (`name := term` in
-[Term.v](../rocq/theories/Term.v)), so NFB's dense ids do not yet
+[Term.v](../rocq/theories/core/Term.v)), so NFB's dense ids do not yet
 speed up the model's maps; an id-indexed form proved to correspond
 to the Syntax module is the RFC's suggested path, and is the model
 owner's decision (open question 8).
@@ -1454,7 +1454,7 @@ implementations.
 | the safety theorem and the Rocq campaign | [formal.md](formal.md), [rocq.md](rocq.md) |
 | NFB as a specification, with every assigned number | [nfb.md](nfb.md) (appendix), `nfb_form/3` in [nfb.pl](../src/nfb.pl) |
 | NFB in Gallina | [NfbTerm.v](../rocq/backend/NfbTerm.v), [Nfb.v](../rocq/backend/Nfb.v) |
-| the model NFB decodes into | [Syntax.v](../rocq/theories/Syntax.v), [Transport.v](../rocq/theories/Transport.v) |
+| the model NFB decodes into | [Syntax.v](../rocq/theories/core/Syntax.v), [Transport.v](../rocq/theories/core/Transport.v) |
 | the backend `libnanofil` plan NFB serves | [gallina-backend.md](gallina-backend.md) |
 
 To summarize the whole guide in four sentences. The IR is a small,

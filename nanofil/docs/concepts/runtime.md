@@ -10,4 +10,4 @@ The runtime is what Fil-C does around one thread's program, natively libpizlo.so
 
 The subtlety: the model has one thread and no collector, and its [safepoint] action changes no region ([collector_live]): Fil-C's runtime never frees an object by itself. A signal handler or another thread that frees is the program's code; in the model installing a handler or starting a thread is a call to an external with no contract, which ends the run. Natively, [[retention]] and [non_moving] make another thread's free between a check and its access read retained bytes or trap.
 
-Defined in [Runtime.v](../../rocq/theories/Runtime.v); the axioms with their tests and sources are [runtime-axioms.md](../runtime-axioms.md).
+Defined in [Runtime.v](../../rocq/theories/core/Runtime.v); the axioms with their tests and sources are [runtime-axioms.md](../runtime-axioms.md).

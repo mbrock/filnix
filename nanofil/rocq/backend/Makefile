@@ -19,8 +19,10 @@ words:
 
 # What each file imports, the model's files included. rocq dep warns
 # about the libraries of model files the backend does not import.
-.deps: _RocqProject $(SOURCES) $(wildcard ../theories/*.v)
-	rocq dep $(FLAGS) ../theories/*.v $(SOURCES) >$@ 2>/dev/null
+MODEL = $(shell find ../theories -name '*.v' | sort)
+
+.deps: _RocqProject $(SOURCES) $(MODEL)
+	rocq dep $(FLAGS) $(MODEL) $(SOURCES) >$@ 2>/dev/null
 
 %.vo: %.v
 	@start=$$(date +%s%N); rocq compile $(FLAGS) $< && \

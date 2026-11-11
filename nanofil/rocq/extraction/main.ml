@@ -1,7 +1,7 @@
 (* The driver of the extracted model: reads the terms `nanofil outcomes
    FILE` prints (main.pl's outcomes/3) from stdin, decodes the first as
    the checked module, and judges each following line (Transport.v's
-   judge). With --valid it reads rocq/mutants.pl's output instead and
+   judge). With --valid it reads rocq/scripts/mutants.pl's output instead and
    judges each verdict (judge_valid). Prints one judgment per line and a summary, and exits 1 if
    any line disagrees. With --module it judges only the module, the
    first term (judge_module below).
@@ -148,7 +148,7 @@ let rec print (b : Buffer.t) (t : term) : unit =
 let show t = let b = Buffer.create 64 in print b t; Buffer.contents b
 
 (* --module: the model's verdict on the module itself, as Validate.v's
-   [valid] gives it (rocq/gate.sh): outside when an item is outside the
+   [valid] gives it (rocq/scripts/gate.sh): outside when an item is outside the
    core subset, else [valid_items], run as ValidFast.v's
    [valid_items_fast] and [valid_func_fast], proved equal to them.
    Prints one term, valid(Items), invalid(Items, Rejected) or outside(Items, Outside, Rejected), where

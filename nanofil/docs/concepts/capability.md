@@ -18,4 +18,4 @@ A pointer pairs it with an address: a [[flight-pointer|flight pointer]], `ptr(Ad
 
 The access check (`interp:cap_access_res/7`, [cap_access_res]) tests null, bounds, read-only, then alignment. A function's capability has zero size, so every access through it is out of bounds; an external symbol's is stuck.
 
-Defined in [Values.v](../../rocq/theories/Values.v) and interp.pl's header; see [guide.md, Address is not authority](../guide.md#address-is-not-authority).
+Defined in [Values.v](../../rocq/theories/core/Values.v) and interp.pl's header; see [guide.md, Address is not authority](../guide.md#address-is-not-authority).

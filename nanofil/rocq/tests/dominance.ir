@@ -1,6 +1,6 @@
 % An irreducible control-flow graph whose immediate dominators take more
 % than one sweep of cfg_idoms/2 to settle, for the validator's gate
-% (rocq/valid.sh; docs/rocq.md). Over the blocks in this order, one
+% (rocq/scripts/valid.sh; docs/rocq.md). Over the blocks in this order, one
 % sweep in the model's reverse postorder makes b3 the idom of b2, though
 % b1 -> b2 reaches b2 without b3; only the next sweep moves it to b0.
 %

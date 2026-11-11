@@ -1,5 +1,5 @@
 % Checked IR that runs the reuse vocabulary the corpus's checked output
-% does not reach (rocq/agree.sh): renew_if after a span test, and
+% does not reach (rocq/scripts/agree.sh): renew_if after a span test, and
 % renew_hull from two earlier proofs, each with a free through the same
 % object between the evidence and its reuse when k is nonzero, so the
 % renewal's flag test traps.

@@ -49,10 +49,10 @@
       without one).
     - `c: FILC_DUMP_ERRNOS` is unset, so a failing call logs nothing.
     - [log_fd] is libpizlo's log descriptor, and [StreamBytes] (from
-      [ExternalCalls.v](../theories/ExternalCalls.v)) records bytes the
+      [ExternalCalls.v](../theories/external/ExternalCalls.v)) records bytes the
       kernel accepted for `c: fd`, not bytes buffered by stdio.
 
-    Over a [Logic](../theories/Logic.v) instance, [fd_wi] ties
+    Over a [Logic](../theories/logic/Logic.v) instance, [fd_wi] ties
     [fd_world] to the ghost heap and [wp_zsys_write] gives the rule for
     a caller owning the buffer's pieces. *)
 

@@ -2,7 +2,7 @@
 
 An exploration, not a campaign. Today the formal campaign trusts glibc
 through a contract per libc function: Campaign 4 writes them in
-[ExternalCalls.v](../rocq/theories/ExternalCalls.v), [Libc.v](../rocq/theories/Libc.v)
+[ExternalCalls.v](../rocq/theories/external/ExternalCalls.v), [Libc.v](../rocq/theories/hello_contracts/Libc.v)
 and their siblings ([libc-contracts.md](libc-contracts.md)), and
 Campaign 3 uses them through `wp_external` ([logic.md](logic.md)). That
 continues as it is, for Hello and the campaigns in flight.
@@ -154,15 +154,15 @@ is a list of the invariants that proof needs, not of the contracts.
 ### Machine and ExternalMachine
 
 No new dispatch is needed. `external_site` in
-[ExternalMachine.v](../rocq/theories/ExternalMachine.v) already takes
+[ExternalMachine.v](../rocq/theories/external/ExternalMachine.v) already takes
 any direct call of a name the module does not define, that is not
 global data and not `free`, to the registry. Link glibc's IR into the
-module, as [link.pl](../rocq/link.pl) links Hello's objects, and
+module, as [link.pl](../rocq/scripts/link.pl) links Hello's objects, and
 `printf` becomes a function `find_fn` finds. What is left unresolved is
 exactly libpizlo's names, so the registry maps `zsys_read` and its kin
 to contracts.
 
-The `contract` record of [ExternalCalls.v](../rocq/theories/ExternalCalls.v)
+The `contract` record of [ExternalCalls.v](../rocq/theories/external/ExternalCalls.v)
 fits a native wrapper field by field. For `zsys_read(fd, buf, size)`:
 
 | Field | `zsys_read` |
@@ -224,7 +224,7 @@ process exit.
 
 ### The Iris logic
 
-`wp_external` in [Logic.v](../rocq/theories/Logic.v) stays the rule for
+`wp_external` in [Logic.v](../rocq/theories/logic/Logic.v) stays the rule for
 a call of a primitive. glibc's functions get triples proven over their
 IR, as `mbszero_spec` and `rpl_mbsrtowcs_spec` are over Hello's.
 

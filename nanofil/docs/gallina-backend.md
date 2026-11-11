@@ -111,7 +111,7 @@ In `nanofil/rocq/theories`, on Rocq 9.1 with stdpp and Iris:
   `judge_valid` to OCaml, with zarith integers and native strings.
   `extraction/main.ml` reads Prolog canonical terms by hand, and
   `make` links `nanofil-model`.
-- `rocq/gallina.pl` prints a checked module as a Gallina `term` for
+- `rocq/scripts/gallina.pl` prints a checked module as a Gallina `term` for
   the `NAMECode.v` fixtures.
 
 The syntax covers the checked stage only. It has no unchecked `load`
@@ -509,7 +509,7 @@ The validator is the model's, and nine proof files of the program
 logic read `single_definitions`, so the repair is not this
 campaign's to make alone. Decision 6 below is about it.
 
-*The first repair.* `theories/ValidFast.v` counts every definition
+*The first repair.* `theories/core/ValidFast.v` counts every definition
 in one pass into a map, and its `valid_fast` is `valid` with the
 single definitions taken from that count. `valid_fast_eq` proves
 `valid_fast md = valid md` for every module, so `valid` stays the

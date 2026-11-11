@@ -6,7 +6,7 @@ That design lets three tools share a single contract:
 
 1. **The compiler** ([`src/`](../src/)) lowers C to an *unchecked* IR, optimizes it, translates it into a *checked* IR where every bounds check, capability projection, and garbage-collector safepoint is explicit ([`pizlonate.pl`](../src/pizlonate.pl)), optionally reuses check evidence ([`check_reuse.pl`](../src/check_reuse.pl)), validates the result ([`ir.pl`](../src/ir.pl)), and emits Fil-C x86-64 assembly ([`filc_amd64.pl`](../src/filc_amd64.pl)).
 2. **The relational interpreter** ([`interp.pl`](../src/interp.pl)) executes any IR module at any stage and distinguishes a normal Fil-C runtime panic (`trap(Reason)`) from a compiler bug where a raw access ran without valid check coverage (`unchecked(Reason)`).
-3. **The Rocq model and backend** ([`rocq/theories/`](../rocq/theories/), [`rocq/backend/`](../rocq/backend/)) transcribe the checked IR's syntax ([`Syntax.v`](../rocq/theories/Syntax.v)), small-step semantics ([`Semantics.v`](../rocq/theories/Semantics.v)), and validator ([`Validate.v`](../rocq/theories/Validate.v)), prove that no validated module ever executes an unchecked access ([`Soundness.v`](../rocq/theories/Soundness.v)'s [valid_no_unchecked]), and compile the checked IR to assembly in Gallina.
+3. **The Rocq model and backend** ([`rocq/theories/`](../rocq/theories/), [`rocq/backend/`](../rocq/backend/)) transcribe the checked IR's syntax ([`Syntax.v`](../rocq/theories/core/Syntax.v)), small-step semantics ([`Semantics.v`](../rocq/theories/core/Semantics.v)), and validator ([`Validate.v`](../rocq/theories/core/Validate.v)), prove that no validated module ever executes an unchecked access ([`Soundness.v`](../rocq/theories/soundness/Soundness.v)'s [valid_no_unchecked]), and compile the checked IR to assembly in Gallina.
 
 Historically, the only concrete syntax for a nanofil module was canonical Prolog terms (`module(Items)`). **NFB** (*nanofil bytecode*, specified in [`nfb.md`](nfb.md) and implemented in [`nfb.pl`](../src/nfb.pl), [`NfbTerm.v`](../rocq/backend/NfbTerm.v), and [`Nfb.v`](../rocq/backend/Nfb.v)) gives that same IR a canonical binary representation: a flat stream of little-endian 32-bit words inside a sectioned container.
 
@@ -251,7 +251,7 @@ That split explains why `raw_load_pointer` and `raw_store_pointer` carry an expl
 
 Why turn checks into explicit IR instructions instead of simply emitting check assembly inside every `load` and `store`? Because nanofil optimizes checks (`check_reuse.pl`) and proves those optimizations sound in Rocq.
 
-To state what it means for a check optimization to be sound, both [`interp.pl`](../src/interp.pl) and [`Semantics.v`](../rocq/theories/Semantics.v) evaluate capabilities on *both* checks and raw accesses, but give failures different outcomes:
+To state what it means for a check optimization to be sound, both [`interp.pl`](../src/interp.pl) and [`Semantics.v`](../rocq/theories/core/Semantics.v) evaluate capabilities on *both* checks and raw accesses, but give failures different outcomes:
 
 | Instruction kind | Capability permits access | Capability forbids access |
 | --- | --- | --- |
@@ -260,9 +260,9 @@ To state what it means for a check optimization to be sound, both [`interp.pl`](
 
 An `unchecked(Reason)` outcome can never happen in valid unchecked IR. In checked IR, it represents a **soundness bug in the compiler**.
 
-The validator (`ir:valid_module/1` in Prolog, [Validate.valid] in Rocq) statically checks that every raw access and every reuse form in a checked module is backed by valid evidence. Campaign 3's main theorem, [valid_no_unchecked] in [`Soundness.v`](../rocq/theories/Soundness.v), proves:
+The validator (`ir:valid_module/1` in Prolog, [Validate.valid] in Rocq) statically checks that every raw access and every reuse form in a checked module is backed by valid evidence. Campaign 3's main theorem, [valid_no_unchecked] in [`Soundness.v`](../rocq/theories/soundness/Soundness.v), proves:
 
-> For any runtime satisfying the Fil-C runtime axioms ([`Runtime.v`](../rocq/theories/Runtime.v)), if [Validate.valid] accepts a checked module, no execution starting from a ready state ever reaches `Unchecked r`.
+> For any runtime satisfying the Fil-C runtime axioms ([`Runtime.v`](../rocq/theories/core/Runtime.v)), if [Validate.valid] accepts a checked module, no execution starting from a ready state ever reaches `Unchecked r`.
 
 ### Safepoints, `free`, and check-reuse evidence
 
@@ -659,7 +659,7 @@ Record form : Type := mkForm { f_code : Z; f_pat : pat; f_fields : list lfield }
 
 Why does the Gallina backend have both `NfbTerm.v` (operating on `Term.term`) and `Nfb.v` (operating on `Syntax.module`)?
 
-The Rocq model's [`Syntax.v`](../rocq/theories/Syntax.v) defines typed inductive ASTs (`class`, `op`, `inst`, `jump`, `block`, `func`, `item`) for the **core subset** of checked Fil-C IR—the subset covered by `Semantics.v`, `Validate.v`, and `Soundness.v`. Functions that use features outside that subset (such as unchecked `load`/`store`, `cas`, `setjmp`, `asm_fixed`, or vector `touch`) are represented in `Syntax.module` by the constructor:
+The Rocq model's [`Syntax.v`](../rocq/theories/core/Syntax.v) defines typed inductive ASTs (`class`, `op`, `inst`, `jump`, `block`, `func`, `item`) for the **core subset** of checked Fil-C IR—the subset covered by `Semantics.v`, `Validate.v`, and `Soundness.v`. Functions that use features outside that subset (such as unchecked `load`/`store`, `cas`, `setjmp`, `asm_fixed`, or vector `touch`) are represented in `Syntax.module` by the constructor:
 
 ```rocq
 | IOutside (n : name) (t : term)

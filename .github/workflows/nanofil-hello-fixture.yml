@@ -1,11 +1,11 @@
-# The Hello fixture check: rocq/theories/HelloCode.v, the module the Iris
+# The Hello fixture check: rocq/theories/hello_contracts/HelloCode.v, the module the Iris
 # proof of GNU Hello is about, must be what link.pl and gallina.pl make of
 # a real nanofil-hello-O build (nanofil/nix/hello-fixture.nix). It pins
 # the compiler-chosen names the proofs use. It runs only when the
 # compiler, the toolchain or the fixture's own inputs change: the same
 # files as the check's Nix source, so a re-run with unchanged inputs
 # substitutes the cached result. It never blocks a push: a red run is
-# fixed forward on main (rocq/hello-fixture.sh --update, then the proofs).
+# fixed forward on main (rocq/scripts/hello-fixture.sh --update, then the proofs).
 name: Nanofil Hello fixture
 
 on:
@@ -22,10 +22,10 @@ on:
       - "nanofil/src/**"
       - "nanofil/bin/**"
       - nanofil/bench/trap-checked.pl
-      - nanofil/rocq/link.pl
-      - nanofil/rocq/gallina.pl
-      - nanofil/rocq/hello-fixture.sh
-      - nanofil/rocq/theories/HelloCode.v
+      - nanofil/rocq/scripts/link.pl
+      - nanofil/rocq/scripts/gallina.pl
+      - nanofil/rocq/scripts/hello-fixture.sh
+      - nanofil/rocq/theories/hello_contracts/HelloCode.v
       - nanofil/nix/hello.nix
       - nanofil/nix/hello-fixture.nix
       - nanofil/nix/nanofil-cc.nix

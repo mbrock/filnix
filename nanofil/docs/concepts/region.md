@@ -10,4 +10,4 @@ An object is one allocation a [[capability]] can name, its bytes what upstream c
 
 The subtlety: a live zero-sized object also has End = Base, so empty bounds do not mean freed. Only the converse holds, freed implies empty ([freed_empty]), and [freed_bounds] asks it of every [[ready]] memory.
 
-Defined in [Memory.v](../../rocq/theories/Memory.v) and interp.pl's Memory section.
+Defined in [Memory.v](../../rocq/theories/core/Memory.v) and interp.pl's Memory section.

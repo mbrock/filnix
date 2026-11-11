@@ -11,4 +11,4 @@ The subtlety: the hash decides only speed, never an answer. A lookup compares na
 
 Why not simpler: Term.v's association lists are linear, and a function of a thousand blocks asks millions of questions; a tree keyed by positives was thirty times slower once extracted.
 
-Defined in [Maps.v](../../rocq/theories/Maps.v).
+Defined in [Maps.v](../../rocq/theories/core/Maps.v).
