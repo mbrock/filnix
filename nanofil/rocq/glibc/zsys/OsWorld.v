@@ -1,15 +1,18 @@
 (** Userland glibc makes system calls by calling libpizlo's `zsys_*`
     functions, such as `c: zsys_write`, `c: zsys_fstat`, and
-    `c: zsys_close`. Those functions form the [[external call|contract]]
-    boundary between compiled C code and the Fil-C [[runtime]], collected
-    in [OsRegistry](OsRegistry.v). This module models the thread and
-    file-descriptor state that `zsys_*` calls share and proves the
-    separation-logic rules for calling them.
+    `c: zsys_close`. Those functions sit at the [[external call|contract]]
+    boundary between compiled C code and the Fil-C [[runtime]], and their
+    individual contracts are collected in [OsRegistry](OsRegistry.v). This
+    module defines the thread and file-descriptor state [os_world] that
+    those contracts share, proves that its world interpretation [os_wi]
+    survives ordinary memory and runtime steps, and derives the
+    [[separation-logic|separation-logic]] rules for calling `zsys_*`
+    functions.
 
     ## The world
 
     A `zsys_*` wrapper in libpizlo can read or write four pieces of state
-    outside the caller's own stack and heap buffers, recorded in
+    outside the caller's own stack and heap buffers, which we record in
     [os_world]. It can set the calling thread's `c: int errno` variable on
     error, read the thread cookie that points to userland glibc's
     `c: struct pthread`, and check file descriptors against libpizlo's
@@ -23,10 +26,11 @@
 
     In userland glibc, `c: __thread int errno` is exported thread-local
     data that [Run](../../theories/core/Run.v) places in a 16-byte-aligned
-    global-data region with a writable capability at program start. In
-    Fil-C, global-data regions are never deallocated: `c: free` and
-    external calls only deallocate heap regions, and garbage-collection
-    safepoints do not deallocate any region the program can reach.
+    global-data [[region]] with a writable [[capability]] at program
+    start. In Fil-C, global-data regions are never deallocated: `c: free`
+    and external calls only deallocate heap regions, and
+    garbage-collection [[poll|safepoints]] do not deallocate any region
+    the program can reach.
 
     Because `c: errno` lives in global data and can never be freed by
     `c: free` or the garbage collector, the world interpretation [os_wi]
@@ -59,7 +63,11 @@ From Glibc Require Import OsBlocks.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The world *)
+(** ## The world
+
+    Before introducing separation-logic assertions, this first section
+    defines the record [os_world] and the invariant [os_inv] that describes
+    what a valid world requires of memory. *)
 
 (** The [os_world] record holds the thread and file-descriptor state
     outside a C module that `zsys_*` calls read or check. *)
@@ -70,9 +78,10 @@ Record os_world : Type := mkOsWorld {
   ow_fds : list Z         (* file descriptors the program uses *)
 }.
 
-(** When the calling thread has an `c: errno` pointer, [errno_spans]
-    returns its 4-byte writable span, which every failing system-call
-    wrapper writes through `c: filc_set_errno`. *)
+(** When a system call fails, libpizlo stores the error number into the
+    calling thread's `c: errno` variable through `c: filc_set_errno`.
+    [errno_spans] returns the 4-byte writable span of that variable when
+    one is present. *)
 Definition errno_spans (w : os_world) : list span :=
   match ow_errno w with Some p => [mkSpan p 4] | None => [] end.
 
@@ -97,9 +106,10 @@ Definition errno_life_global (h : gmap piece pval) (eb : Z) : Prop :=
   forall reg, h !! PLive eb = Some (VLive reg) -> r_kind reg = GlobalData.
 
 (** Every `zsys_*` wrapper assumes that the calling thread's `c: errno`
-    variable is writable, its thread cookie is valid, and the program's
-    file descriptors do not collide with libpizlo's log file. The
-    invariant [os_inv] packages those three conditions on memory. *)
+    variable is a permanent global-data object, its thread cookie is
+    registered, and none of the program's file descriptors collide with
+    libpizlo's log file. The invariant [os_inv] combines those three
+    conditions. *)
 Definition os_inv (m : mem) (w : os_world) (h : gmap piece pval) : Prop :=
   (forall p, ow_errno w = Some p -> permanent_errno m p /\ errno_life_global h (ptr_addr p)) /\
   self_registered m (ow_self w) /\
@@ -115,9 +125,11 @@ Definition os_wi (w0 : os_world) (m : mem) (w : os_world) (h : gmap piece pval) 
 Definition os_bytes (m : mem) (p : ptr) (k : Z) : list Z :=
   map (fun i => m_bytes m (ptr_addr p + Z.of_nat i)) (seq 0 (Z.to_nat k)).
 
-(** In libpizlo, `c: filc_check_read(p, n)` returns immediately when the
-    byte count `n` is zero, even on a null pointer, and otherwise checks
-    that `n` bytes are readable from `p`. *)
+(** Before reading `n` bytes from a user pointer `p`, libpizlo calls
+    `c: filc_check_read(p, n)`. When `n` is zero, `c: filc_check_read`
+    returns early (`c: if (!bytes) return;`) without inspecting `p`, so a
+    zero-length write such as `c: write(fd, NULL, 0)` succeeds even on a
+    null pointer. Otherwise `n` bytes must be readable from `p`. *)
 Definition os_readable (m : mem) (p : ptr) (n : Z) : Prop :=
   0 <= n < 2 ^ 64 /\ (n = 0 \/ readable_bytes m p n).
 
@@ -130,11 +142,18 @@ Proof.
   cbn. apply (access_obj _ _ reg _ _ Write); [exact E | lia | lia | apply Z.mod_1_r].
 Qed.
 
-(** ## What keeps the world interpretation *)
+(** ## What keeps the world interpretation
 
-(** The world invariant checks only that the thread cookie remains a
-    valid allocation and that `c: errno` stays a writable global-data
-    variable. Any memory step that preserves those two facts preserves
+    In Iris, the [[state-interpretation|state interpretation]] must hold
+    before and after every step of the program. Whenever a C function
+    stores to memory, allocates a heap object, or calls `c: free`,
+    [Logic](../../theories/logic/Logic.v) asks us to show that [os_wi]
+    still holds after the step. The lemmas in this section prove that
+    [os_wi] survives all of those steps automatically. *)
+
+(** The world invariant checks only that registered objects stay
+    registered and that `c: errno` keeps its global-data region and
+    liveness kind. Any step that preserves those two facts preserves
     [os_inv]. *)
 Lemma os_inv_step m m' w h h' :
   (forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None) ->
@@ -161,7 +180,7 @@ Proof.
   - exact (Hg reg Hh).
 Qed.
 
-(** Because [os_wi] only checks object bounds and never reads byte
+(** Because [os_wi] only checks object regions and never reads byte
     values, any memory store preserves [os_wi] without requiring the
     stored address to be disjoint from `c: errno`. *)
 Lemma os_wi_store w0 m m' w h ps :
@@ -175,9 +194,9 @@ Proof.
     apply errno_life_overwrite; [|exact Hg]. intros reg' Hin. apply (Hg reg'). exact (Hps _ _ Hin).
 Qed.
 
-(** Allocating a new heap object at an unregistered address preserves
-    [os_wi], because the new object cannot be the already-registered
-    `c: errno` object. *)
+(** Allocating a new heap object at a [[fresh]] unregistered address
+    preserves [os_wi], because the new object cannot be the
+    already-registered `c: errno` object. *)
 Lemma os_wi_alloc w0 m w h q base :
   fresh m q base -> os_wi w0 m w h -> os_wi w0 (allocated m q base) w (overwrite (obj_ps base q) h).
 Proof.
@@ -222,7 +241,13 @@ Proof.
     [reflexivity | congruence].
 Qed.
 
-(** ## Over a Logic instance *)
+(** ## Over a Logic instance
+
+    The stability lemmas above are pure facts about memory transitions.
+    The functor below connects them to a Fil-C [[runtime]] and the program
+    logic of [Logic](../../theories/logic/Logic.v), giving the
+    [[weakest-precondition|weakest-precondition]] rules for `zsys_*`
+    calls. *)
 
 (** The functor [OsWorldOn] instantiates the world-invariant stability
     lemmas and `zsys_*` call rules for a given [[runtime]] and program
@@ -232,8 +257,8 @@ Module LG := LG0.
 Module L := LG.L.
 Import L LG.
 
-(** A garbage-collection safepoint leaves all reachable regions and the
-    separation-logic state unchanged, so it preserves [os_wi]. *)
+(** A garbage-collection [[poll|safepoint]] leaves all reachable regions
+    and the separation-logic state unchanged, so it preserves [os_wi]. *)
 Lemma os_wi_safepoint w0 s m s' m' w h : R.safepoint s m s' m' -> os_wi w0 m w h -> os_wi w0 m' w h.
 Proof.
   intros Hsp Hw. pose proof (R.collector_live _ _ _ _ Hsp) as E.
@@ -246,8 +271,10 @@ Qed.
 Instance os_wi_stable w0 : SafepointStable (os_wi w0).
 Proof. split. intros s m s' m' w h. apply os_wi_safepoint. Qed.
 
-(** When an external call releases no existing objects, every object that
-    was already registered before the call keeps its region after the call. *)
+(** If an external call's [effects] path starts from a [[ready]] runtime
+    state and frees no existing objects, then every object that was
+    already registered before the call keeps its exact region after the
+    call. *)
 Lemma effects_keep_old sources roots requests s m born0 s' m' born :
   M.E.effects sources roots [] requests s m born0 s' m' born -> R.ready s m ->
   forall b reg, object_region b (m_regions m) = Some reg -> ~ In b born0 ->
@@ -284,6 +311,8 @@ Proof.
   subst. split; [exact Hpre|]. exists born. auto.
 Qed.
 
+(** This section fixes the initial OS world `w0` for a run and proves the
+    call-return and weakest-precondition lemmas for `zsys_*` calls. *)
 Section rule.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world).
@@ -373,6 +402,9 @@ Proof.
   - intros eb' reg _ [E _] _ Hg. split; [exact (Hkeep _ _ E)|]. intros reg' E'. rewrite Hlv in E'. exact (Hg _ E').
 Qed.
 
+(** Finally, we fix a contract `registry` and a [[genv|global environment]]
+    `ge` to state the three [[weakest-precondition|weakest-precondition]]
+    rules that individual `zsys_*` contract files apply. *)
 Section call.
 Context (registry : name -> option (contract os_world)) (ge : genv).
 
@@ -385,10 +417,10 @@ Local Instance os_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
     OS contract registry. *)
 Local Notation oexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The rule [wp_os_call] proves a call to an OS contract that leaves the
-    world unchanged, frees no objects, and writes only inside the borrowed
-    buffers. The caller lends those buffers before the call and receives
-    them back when the call returns. *)
+(** When a C function calls an OS contract that leaves the world unchanged,
+    frees no objects, and writes only inside borrowed buffers, [wp_os_call]
+    lets the caller lend those buffers before the call and receive them
+    back for every return value the contract allows. *)
 Lemma wp_os_call f e ls lab r g args rest j spec xs bl (Q : iProp Σ) (R : list word -> Prop) Φ :
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->
@@ -419,10 +451,10 @@ Proof.
     iModIntro. iExists e'. iSplit; [done|]. iFrame.
 Qed.
 
-(** The rule [wp_os_errno_call] proves an OS call that may also write the
-    calling thread's `c: errno` variable in addition to the borrowed
-    buffers. The caller lends [errno_any] alongside the buffers before the
-    call and receives both back when the call returns. *)
+(** Most `zsys_*` wrappers can also set the calling thread's `c: errno` on
+    failure. [wp_os_errno_call] works like [wp_os_call], except the caller
+    also lends [errno_any] before the call and receives it back alongside
+    the borrowed buffers when the call returns. *)
 Lemma wp_os_errno_call f e ls lab r g args rest j spec xs eb bl (Q : iProp Σ) (R : list word -> Prop) Φ :
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->
@@ -453,10 +485,11 @@ Proof.
     iApply ("HK" with "[%] HQ [Herr] Hb"); [exact HR | iApply errno_any_blk; iExact "Herr"].
 Qed.
 
-(** The rule [wp_os_noreturn] proves a call to an OS contract that never
-    returns, such as `c: zsys_exit_soft` or `c: zsys_exit_hard`. Once the
-    caller establishes the contract's precondition, any postcondition holds
-    vacuously. *)
+(** Some calls, such as `c: zsys_exit_soft` and `c: zsys_exit_hard`,
+    terminate the process and never return. Once the caller establishes
+    the contract's precondition, [wp_os_noreturn] proves the call for any
+    postcondition, because control never reaches the instructions after
+    the call. *)
 Lemma wp_os_noreturn f e ls lab r g args rest j spec xs (Q : iProp Σ) Φ :
   find_fn ge g = None -> lookup g (ge_globals ge) = None -> is_free_name g = false ->
   registry g = Some spec -> map_option (arg_x ge e) args = Some xs -> contract_abi spec r args ->

@@ -1,43 +1,42 @@
 (** When a C function calls an [[external call|external contract]], the
     call does not step through IR instructions. Instead, the contract
-    updates memory in two kinds of steps: local effects that write bytes
-    and [[aux]] capability slots only where the call has write authority
-    and free only heap objects the contract is allowed to release, and
-    fresh allocations that create new heap objects. This module proves
-    that every piece of caller memory in [Logic](Logic.v) outside the
-    addresses the call is allowed to touch survives those steps
-    unchanged.
+    changes physical memory in a series of steps
+    ([ExternalCalls](../external/ExternalCalls.v)). A [local_effect] step
+    writes bytes and [[aux]] capability slots within the address spans the
+    call is allowed to touch, and may free heap objects the contract is
+    allowed to release. A fresh allocation step creates a new heap object
+    at an unregistered [[fresh]] address.
+
+    In the program logic ([Logic](Logic.v)), a proof tracks the memory
+    pieces the caller owns in a side map ([[ghost-state|ghost state]])
+    that must match physical memory between steps. This module proves the
+    [[separation-logic|frame rule]] for external calls: every piece of
+    caller memory outside the addresses and objects the call is allowed to
+    touch still matches physical memory when the call finishes.
 
     ## Disjoint calls and borrowed buffers
 
-    Separation at the call boundary is stated by address rather than by
-    object identity. If none of a contract's writable byte spans overlap
-    any live object owned by the caller, and the contract does not free
-    any object the caller owns, then the call cannot write to or deallocate
-    any caller-owned memory. Even if the call allocates new heap objects,
-    each new allocation starts at an unregistered address and cannot
-    overlap an existing live object. Lemma [local_agrees] shows that all
-    caller-owned memory continues to match the separation-logic state
-    after the step, and [delegates_apart] shows that any writable spans
-    the call delegates from its existing spans or new allocations remain
-    disjoint from the caller's objects as well.
+    The simplest case is an external call that does not write into any
+    caller-owned object, such as `c: puts` or `c: write`, which only read
+    the caller's string. For such a call, we state separation by physical
+    address rather than by object [[identity]]: none of the contract's
+    writable byte spans may overlap a live object owned by the caller, and
+    the contract may not free any object the caller owns. Even if the call
+    allocates new heap objects internally, each new allocation starts at
+    an unregistered address and cannot overlap an existing live object.
+    Under those two conditions, [local_agrees] shows that all caller-owned
+    memory still matches physical memory after each step.
 
-    Many library and system calls also write into buffers that the caller
-    passes in, such as an output struct or the calling thread's `c: errno`
-    variable. For those calls, the contract's writable spans overlap the
-    caller's live objects only inside the handed-over address range. As
-    long as every byte and capability slot the caller owns inside that
-    range belongs to the borrowed key set, [local_agrees_out] guarantees
-    that every other piece of caller memory outside the borrowed buffer
-    keeps its value across the step.
-
-    In Fil-C, freeing a heap object sets its upper bound equal to its
-    lower bound so any later dereference of a pointer to that object
-    traps. Because an external call never reuses an existing object's base
-    address and only changes existing regions by freeing live heap
-    objects, [freed_in_step] and [traps_as_freed_step] show that any
-    capability that pointed to a freed object before the call continues
-    to trap as freed after the call. *)
+    Many library and system calls also write results into buffers that the
+    caller passes in, such as `c: fstat`'s `c: struct stat` buffer or the
+    calling thread's `c: errno` variable. During such a call, the bytes
+    inside the borrowed buffer change in physical memory while the
+    caller's map still holds their old pre-call values. We describe that
+    intermediate state with [agrees_except], which says that every piece
+    the caller owns outside the borrowed buffer still matches physical
+    memory. Lemma [local_agrees_out] proves that a local-effect step
+    preserves [agrees_except], so the caller can refresh the borrowed
+    buffer to its new memory values once the call returns. *)
 
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia.
@@ -45,7 +44,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalC
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Separation of a call from the program's pieces *)
+(** ## Separation of a call from the program's pieces
+
+    A contract specifies which memory addresses it may overwrite in two
+    ways: a list of writable byte spans that existed before the call, and
+    a list of objects that the call allocated itself. To show that a call
+    leaves the caller's memory alone, we first define when an address
+    belongs to a live object owned by the caller, and when the call's
+    writable spans and new allocations avoid those objects. *)
 
 (** An address falls in [owned_live] when it lies within the bounds of a
     live object that the caller tracks in the separation-logic state. *)
@@ -63,9 +69,11 @@ Definition roots_apart (roots : list span) (h : gmap piece pval) (m : mem) : Pro
 Definition ids_apart (bs : list Z) (h : gmap piece pval) : Prop :=
   forall b l v, In b bs -> h !! l = Some v -> mem_piece l -> piece_id l <> b.
 
-(** When a call's writable spans and newly allocated objects are disjoint
-    from the caller's state, the call has no write authority over any live
-    address the caller owns, because live objects in memory never overlap. *)
+(** If a call's writable spans and newly allocated objects are both apart
+    from the caller's state, then the call has no write authority over any
+    live address the caller owns. This is because any live heap object
+    allocated by the call has an identity the caller does not own, and
+    live objects in memory never overlap. *)
 Lemma owned_not_authority : forall roots born h m a,
   live_disjoint m -> roots_apart roots h m -> ids_apart born h ->
   owned_live h m a -> ~ write_authority roots born m a.
@@ -77,7 +85,17 @@ Proof.
     destruct (Hd (piece_id l) reg0 base reg Hlive (conj E L) Hb); lia.
 Qed.
 
-(** ## Steps that keep old identities *)
+(** ## Steps that keep old identities
+
+    In Fil-C, freeing a heap object sets its upper bound equal to its
+    lower bound and marks its [[region]] as freed, so any later
+    dereference of a capability to that object traps. In [Heap](Heap.v),
+    a capability slot in a live object may hold either its original
+    capability or, if that capability pointed to a freed object, any
+    capability that traps as freed. The two lemmas below show that once a
+    capability points to a freed object—or traps as freed—it keeps doing
+    so across any step that preserves existing object identities and only
+    changes existing regions by freeing live objects. *)
 
 (** A capability that points to a freed object continues to point to a
     freed object after any step that keeps existing object identities
@@ -112,7 +130,13 @@ Proof.
     cbn [r_end]; rewrite Hempty; reflexivity.
 Qed.
 
-(** ## A call into owned blocks *)
+(** ## A call into owned blocks
+
+    When a caller lends an output buffer to an external call, the call's
+    writable spans overlap the caller's live objects inside that buffer.
+    To keep the rest of the caller's memory intact, we name the set of
+    handed-over physical addresses and the list of borrowed keys that
+    cover those addresses. *)
 
 (** When a call is allowed to overwrite a borrowed list of keys,
     [agrees_except] states that every other piece owned by the caller
@@ -141,7 +165,12 @@ Definition pieces_off (ks : list piece) (h : gmap piece pval) (m : mem) (out : Z
 Lemma roots_out_apart roots h m : roots_apart roots h m -> roots_out roots h m (fun _ => False).
 Proof. intros Hra s a Hin Hs Ho. exact (Hra s a Hin Hs Ho). Qed.
 
-(** ## A local effect *)
+(** ## A local effect
+
+    We now combine these conditions for a single local-effect step of an
+    external call. The main theorem of this section is [local_agrees_out],
+    which handles a call that may write into borrowed buffers;
+    [local_agrees] then follows when no buffers are borrowed. *)
 
 (** This section proves that a single local-effect step of an external call
     preserves all caller-owned memory outside the borrowed buffers. *)
@@ -156,9 +185,10 @@ Variables (sources roots : list span) (releases born : list Z) (m m' : mem) (h :
     local effect of the external call. *)
 Hypothesis Hl : local_effect sources roots releases born m m'.
 
-(** Any object that is live after a local-effect step was already live with
-    the same bounds before the step, because a local effect can only free
-    existing objects. *)
+(** Any object that is live after a local-effect step was already live
+    with the exact same bounds before the step. This is because a local
+    effect can only free existing objects; it never creates or resizes
+    them. *)
 Lemma local_live_back : forall b reg, live_at m' b reg -> live_at m b reg.
 Proof.
   intros b reg [E L]. destruct Hl as (_ & Hr & _).
@@ -172,8 +202,8 @@ Proof.
   intros Hd b1 r1 b2 r2 H1 H2. exact (Hd b1 r1 b2 r2 (local_live_back _ _ H1) (local_live_back _ _ H2)).
 Qed.
 
-(** Any address that lies in a live caller-owned object after the step
-    already lay in that same live object before the step. *)
+(** Consequently, any address that lies in a live caller-owned object
+    after the step already lay in that same live object before the step. *)
 Lemma local_owned_back : forall a, owned_live h m' a -> owned_live h m a.
 Proof.
   intros a (l & v & reg & Hh & Hm & Hlive & Ha). exists l, v, reg. split; [exact Hh|].
@@ -248,7 +278,12 @@ Qed.
 
 End Local.
 
-(** ## An allocation *)
+(** ## An allocation
+
+    Besides local-effect steps, an external call can allocate new heap
+    objects at [[fresh]] base addresses. Because every object owned by the
+    caller is already registered in memory, a newly allocated object at an
+    unregistered address cannot collide with any object the caller owns. *)
 
 (** Allocating a new heap object leaves every other live object at the same
     region bounds it had before the allocation. *)
@@ -282,7 +317,11 @@ Proof.
   - exact (Hb b l v Hin Hh Hm).
 Qed.
 
-(** ## Delegated roots *)
+(** ## Delegated roots
+
+    Some stateful libc calls, such as `c: stdio` operations, update the
+    world's writable spans to include buffers they allocated or touched
+    during the call. *)
 
 (** When a call derives new writable world spans from its existing spans
     and newly allocated objects, every address in the new spans is one the
