@@ -32,7 +32,7 @@ concurrency:
 jobs:
   check:
     name: Shard ${{ matrix.shard }}/8
-    runs-on: ubuntu-24.04
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -63,7 +63,7 @@ jobs:
           skipPush: true
       - name: Require cached staging toolchain, never rebuild LLVM here
         run: |
-          grep 'core file' "/proc/$(pgrep -o nix-daemon)/limits"
+          grep 'core file' "/proc/$(pgrep -o nix-daemon || echo $$)/limits"
           python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
       - name: Check
         env:
