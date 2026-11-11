@@ -534,6 +534,38 @@ c_file_module(File, Module, AsmLines, Attributes) :-
     release_stacks,
     once(valid_module(Module)).
 
+% A default `.symver pizlonated_L, pizlonated_Name@@Ver` line already
+% exports pizlonated_Name in GNU as, as filcc emits it without a second
+% getter; keep the alias in the IR module, and drop it from native
+% emission unless `.filc_alias` also defined it.
+without_symver_aliases(AsmLines, module(Items0), module(Items)) :-
+    symver_default_names(AsmLines, Names),
+    (   Names == [] -> Items = Items0
+    ;   drop_symver_items(Items0, Names, Items)
+    ).
+
+symver_default_names([], []).
+symver_default_names([Line|Lines], Names) :-
+    atom_chars(Line, Cs),
+    (   append(".symver pizlonated_", Rest, Cs),
+        append(LCs, [',', ' '|After], Rest),
+        append("pizlonated_", VCs, After),
+        append(NCs, ['@', '@'|Ver], VCs),
+        NCs = [_|_], Ver = [_|_],
+        \+ memberchk('@', NCs), \+ memberchk('@', Ver),
+        LCs \== NCs
+    ->  atom_chars(Name, NCs), Names = [Name|Names1]
+    ;   Names = Names1
+    ),
+    symver_default_names(Lines, Names1).
+
+drop_symver_items([], _, []).
+drop_symver_items([alias(N, _, _)|Is0], Names, Is) :-
+    memberchk(N, Names), !,
+    drop_symver_items(Is0, Names, Is).
+drop_symver_items([I|Is0], Names, [I|Is]) :-
+    drop_symver_items(Is0, Names, Is).
+
 % c_file_tokens(+File, -Tokens): Tokens are the C tokens of File. A .i
 % file is already preprocessed; anything else goes through c_pp with the
 % predefined macros and include paths of $FILCC (default filcc).
@@ -588,7 +620,8 @@ command(Opt0, Registers, Checks, [cc, File]) :- !,
     release_stacks,
     once(optimize(Opt, Module0, Module)),
     release_stacks,
-    mode_print_asm(filc, Registers, Checks, Module),
+    without_symver_aliases(AsmLines, Module, EmitModule),
+    mode_print_asm(filc, Registers, Checks, EmitModule),
     forall(member(Line, AsmLines), format("~w~n", [Line])).
 command(Opt0, _, Checks, ['checked-terms', File]) :- !,
     (   ( atom_concat(_, '.c', File) ; atom_concat(_, '.i', File) )

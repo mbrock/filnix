@@ -175,10 +175,7 @@ unprototyped_inst(_, Inst, [Inst], N, N).
 %  compileModuleAsm): blank lines vanish, and `.symver L, V` becomes
 %  `.symver pizlonated_L, pizlonated_V`, versioning the symbol of L's
 %  getter, as filcc's objects do (docs/abi-findings.md, *Top-level
-%  asm*). A default version uses its IR alias's getter and `, remove`:
-%  the version supplies the unversioned name at link time, without a
-%  second definition from the getter. `.filc_globl N` becomes
-%  `.globl pizlonated_N`. The other
+%  asm*), and `.filc_globl N` becomes `.globl pizlonated_N`. The other
 %  Fil-C directives (.filc_rename, .filc_alias, .filc_weak_alias and
 %  .filc_weak) change the module's symbols instead and leave no line
 %  (module_asm_symbols/4). filcc crashes on any other text; nanofil
@@ -199,10 +196,7 @@ module_asm_lines(Items, Pairs) :-
 module_asm_line(Loc-L, Lines) :-
     module_asm_directive(Loc-L, D),
     (   D = symver(LA, VA)
-    ->  (   filc_directive(D, alias(_, Name, export))
-        ->  format(atom(Line), '.symver pizlonated_~w, pizlonated_~w, remove', [Name, VA])
-        ;   format(atom(Line), '.symver pizlonated_~w, pizlonated_~w', [LA, VA])
-        ),
+    ->  format(atom(Line), '.symver pizlonated_~w, pizlonated_~w', [LA, VA]),
         Lines = [Line]
     ;   D = globl(N)
     ->  format(atom(Line), '.globl pizlonated_~w', [N]),

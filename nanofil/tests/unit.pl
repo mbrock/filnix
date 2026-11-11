@@ -4941,7 +4941,7 @@ test(symver_default_aliases) :-
     findall(A, member(alias(A, export, f), Is), [api]),
     module_fn_args_outcome(M, probe, [], ret(18)),
     c_toplevel_asm(C, Lines),
-    memberchk('.symver pizlonated_api, pizlonated_api@@V1, remove', Lines),
+    memberchk('.symver pizlonated_f, pizlonated_api@@V1', Lines),
     memberchk('.symver pizlonated_f, pizlonated_compat@V1', Lines).
 
 % c_file_module(+File, -Module): Module is the valid module of the C
