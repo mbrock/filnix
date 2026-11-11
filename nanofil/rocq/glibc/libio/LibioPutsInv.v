@@ -127,13 +127,11 @@ Proof.
   iIntros "Hl". iExists fb, freg, st, nb, vt. iFrame "Hl Hf Hk Hb". iPureIntro. exact Hp.
 Qed.
 
-(** What the lock and the mode take from a [file_at] stream fp: its
-    life, `c: _flags` fl with `c: _IO_USER_LOCK` clear, the pointer to
-    its lock lb and the lock, `c: _mode` and the jump table pointer;
-    the stream comes back at any mode the same table allows and any
-    lock state. *)
-Lemma file_at_open vb self fp mode held :
-  file_at vb self fp mode held ⊢
+(** Taking the lock and choosing narrow output leave the buffer alone.
+    This view lets those steps return the caller's full stream state,
+    including any buffer facts needed for a later close. *)
+Definition file_open (vb : Z) (self : ptr) (F : ptr -> Z -> option Z -> iProp Σ)
+    (fp : ptr) (mode : Z) (held : option Z) : iProp Σ :=
   ∃ fb freg fl lb vt_off, ⌜fp = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\
        r_end freg <= 2 ^ 63 /\ 0 <= fl < 2 ^ 32 /\ has fl io_user_lock = false /\ mode_vtable mode vt_off⌝ ∗
     live fb freg ∗ int_cell fb off_flags fl ∗ pcell fb off_lock (mkPtr lb (Obj lb)) ∗
@@ -142,7 +140,12 @@ Lemma file_at_open vb self fp mode held :
     (∀ mode' held', ⌜mode_vtable mode' vt_off⌝ -∗ live fb freg -∗ int_cell fb off_flags fl -∗
        pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_inv self (mkPtr lb (Obj lb)) held' -∗
        int_cell fb off_mode mode' -∗ pcell fb off_vtable (mkPtr (vb + vt_off) (Ro vb)) -∗
-       file_at vb self fp mode' held').
+       F fp mode' held').
+
+(** The generic stream predicate supports locking and orientation
+    without restricting its descriptor, flags or buffer to stdout's. *)
+Lemma file_at_open vb self fp mode held :
+  file_at vb self fp mode held ⊢ file_open vb self (file_at vb self) fp mode held.
 Proof.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   destruct Hp as (-> & Hal & Hfb & Hend & Hreg & Hok & Hm & Hmv & Hvt & Hbok).
@@ -159,6 +162,30 @@ Proof.
     fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable]. rewrite Hlb Hvt.
   iSplitR; [iPureIntro; unfold flags_ok in *; cbn [fs_flags fs_flags2]; tauto|].
   iFrame "Hl Hb Hk Hfl Hps Hfd Hf2 Hold Hcol Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htot Hvtp". iSplit; done.
+Qed.
+
+(** Unlocking touches neither the mode nor the buffer. This view
+    exposes only the resources it needs and returns the caller's
+    predicate with the new lock state. *)
+Definition file_lock_open (self fp : ptr) (F : option Z -> iProp Σ) (held : option Z) : iProp Σ :=
+  ∃ fb freg fl lb, ⌜fp = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\
+       r_end freg <= 2 ^ 63 /\ 0 <= fl < 2 ^ 32 /\ has fl io_user_lock = false⌝ ∗
+    live fb freg ∗ int_cell fb off_flags fl ∗ pcell fb off_lock (mkPtr lb (Obj lb)) ∗
+    lock_inv self (mkPtr lb (Obj lb)) held ∗
+    (∀ held', live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
+       lock_inv self (mkPtr lb (Obj lb)) held' -∗ F held').
+
+(** A generic stream supplies the lock-only view while framing its
+    mode, jump table and buffer unchanged. *)
+Lemma file_at_lock vb self fp mode held :
+  file_at vb self fp mode held ⊢ file_lock_open self fp (file_at vb self fp mode) held.
+Proof.
+  iIntros "Hf".
+  iDestruct (file_at_open with "Hf") as (fb freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
+  destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hflr & Hul & Hmv).
+  iExists fb, freg, fl, lb. iFrame "Hl Hfl Hlp Hlk". iSplitR; [iPureIntro; tauto|].
+  iIntros (held') "Hl Hfl Hlp Hlk".
+  iApply ("Hcl" with "[//] Hl Hfl Hlp Hlk Hmd Hvtp").
 Qed.
 
 (** What the newline of `c: puts` takes from a [file_at] stream fp: its
@@ -239,17 +266,23 @@ Proof.
   - done.
 Qed.
 
-(** `c: _IO_new_file_xsputn(fp, p, n)`'s triple as `c: puts` and
-    `c: fputs` call it through the jump table, with the stream's lock
-    held once and its mode -1: any count comes back, with the stream at
-    the same mode and lock, the string, and the resources Rx the call
-    needs besides (errno, the allocator). *)
-Definition xsputn_spec (vb : Z) (Rx : iProp Σ) : Prop := forall fr fp p dq s Φ,
+(** The string-output call returns the source and the caller's other
+    resources. Its postcondition may depend on the input string, so
+    nonempty output can establish buffer allocation even when the
+    returned count indicates failure. Generic callers keep the same
+    stream predicate before and after the call. *)
+Definition xsputn_spec_for (F : ptr -> Z -> option Z -> iProp Σ)
+    (G : list Z -> ptr -> Z -> option Z -> iProp Σ) (Rx : iProp Σ) : Prop := forall fr fp p dq s Φ,
   call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr p; WInt (Z.of_nat (length s))] = Some fr ->
-  file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
-  ▷ (∀ r, ⌜0 <= r < 2 ^ 64⌝ -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+  F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+  ▷ (∀ r, ⌜0 <= r < 2 ^ 64⌝ -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
+
+(** Existing callers keep the same stream resources before and after
+    string output. This definition retains that original interface. *)
+Definition xsputn_spec (vb : Z) (Rx : iProp Σ) : Prop :=
+  xsputn_spec_for (file_at vb (ow_self w0)) (fun _ => file_at vb (ow_self w0)) Rx.
 
 (** `c: __overflow(fp, '\n')`'s triple as `c: puts` calls it on a full
     buffer, with the stream's lock held once and its mode -1: any

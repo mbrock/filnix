@@ -247,3 +247,13 @@ hi_atexit/HiAtexitXsputnOverflow.v
 hi_atexit/HiAtexitXsputnRules.v
 hi_atexit/HiAtexitXsputn.v
 hi_atexit/HiAtexitOutputClose.v
+hi_atexit/HiAtexitStdout.v
+hi_atexit/HiAtexitStringBytes.v
+hi_atexit/HiAtexitPutsXsputn.v
+hi_atexit/HiAtexitStdoutClose.v
+hi_atexit/HiAtexitOverflowRules.v
+hi_atexit/HiAtexitPutsOverflow.v
+hi_atexit/HiAtexitPutsBuf.v
+hi_atexit/HiAtexitPutsRules.v
+hi_atexit/HiAtexitPutsNl.v
+hi_atexit/HiAtexitPuts.v

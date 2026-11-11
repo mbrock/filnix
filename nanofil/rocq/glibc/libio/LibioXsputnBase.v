@@ -117,18 +117,23 @@ Import DX DX.RM DX.RM.SM.TL DX.RM.SM.TL.BY DX.RM.SM.TL.BY.BF DX.RM.SM.TL.BY.BF.C
 Section defs.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** String output owns the fields that overflow and direct writes
-    use beside the buffer. The flags satisfy the buffered-output
-    relation, the descriptor is open and fits a signed int, and the
-    cancellation and lock bits are clear. The column is zero and the
-    mode is narrow. The predicate also owns the thread's errno cell. *)
-Definition xfields (w0 : os_world) (eb fb : Z) (nb : option (Z * Z)) : iProp Σ :=
-  ∃ fl f2 fd tw off m, ⌜Z.land fl io_is_appending = 0 /\ Z.land f2 2 = 0 /\ In fd (ow_fds w0) /\
+(** String output needs an open descriptor and flags that allow
+    writing and later closing the stream. These fields retain those
+    facts alongside the output count, offset and thread error cell.
+    The column stays zero, and the mode allows only byte output. *)
+Definition xfields_body (w0 : os_world) (eb fb : Z) (nb : option (Z * Z)) (fl f2 fd tw off m : Z) : iProp Σ :=
+  ⌜Z.land fl io_is_appending = 0 /\ Z.land f2 2 = 0 /\ In fd (ow_fds w0) /\
                         (m = 0 \/ m = 2 ^ 32 - 1) /\ xs_flags nb fl /\
                         0 <= fd < 2 ^ 31 /\ Z.land f2 160 = 0⌝ ∗
     int_cell fb off_flags fl ∗ int_cell fb off_flags2 f2 ∗ int_cell fb off_fileno fd ∗
     icell fb off_total_written tw ∗ icell fb off_offset off ∗ bytes fb off_column [0; 0] ∗
     int_cell fb off_mode m ∗ errno_any eb.
+
+(** The string-output invariant hides the field values. Callers that
+    must orient a stream can instead keep its mode explicit in the
+    same field ownership predicate. *)
+Definition xfields (w0 : os_world) (eb fb : Z) (nb : option (Z * Z)) : iProp Σ :=
+  ∃ fl f2 fd tw off m, xfields_body w0 eb fb nb fl f2 fd tw off m.
 
 (** Overflow keeps the output fields together with the caller's
     remaining resources for this stream and buffer. *)
