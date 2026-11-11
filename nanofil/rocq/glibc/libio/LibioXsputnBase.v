@@ -1,0 +1,285 @@
+(** The state, the premises and the last blocks of
+    `c: _IO_new_file_xsputn(f, s, n)` (LibioXsputnCode.v), the jump
+    table's string output of a narrow stream:
+
+    ```
+    if (n <= 0) return 0;
+    if ((f->_flags & _IO_LINE_BUF) && (f->_flags & _IO_CURRENTLY_PUTTING))
+      { count = f->_IO_buf_end - f->_IO_write_ptr;
+        if (count >= n) scan s[0..n) backwards for '\n' ... }
+    else if (f->_IO_write_end > f->_IO_write_ptr)
+      count = f->_IO_write_end - f->_IO_write_ptr;
+    copy min (count, n) bytes into the buffer; to_do = n - that;
+    if (to_do + must_flush > 0)
+      { if (_IO_OVERFLOW (f, EOF) == EOF) return to_do == 0 ? EOF : n - to_do;
+        block = f->_IO_buf_end - f->_IO_buf_base;
+        do_write = to_do - (block >= 128 ? to_do % block : 0);
+        if (do_write) { count = new_do_write (f, s, do_write); to_do -= count;
+                        if (count < do_write) return n - to_do; }
+        if (to_do) to_do -= _IO_default_xsputn (f, s + do_write, to_do);
+      }
+    return n - to_do;
+    ```
+
+    The stream is LibioDefaultXsputnBuf.v's: its life, its jump table
+    pointer and its write side [wbuf], and a rest that the overflow
+    reads, here [xos]: the fields the function and `c: new_do_write`
+    read or write ([xfields]) and any other predicate X of the stream
+    and its buffer. The fields keep what LibioDoWriteCall.v asks of
+    `c: new_do_write`: no `c: _IO_IS_APPENDING`, `c: _cur_column` 0 and
+    a narrow mode, 0 or -1, which `c: puts` sets.
+
+    The source is n bytes ys of an object b' at any share dq, read-only
+    like a string literal, so the jump table's write must take a share:
+    [fwq_spec] is LibioWrite.v's [wp_glibc__IO_new_file_write] over
+    [liveq] and [bytesq] instead of [live] and [bytes], a premise here.
+
+    | Name | Part |
+    |---|---|
+    | [xfields], [xos] | the stream's fields beside [wbuf] |
+    | [fwq_spec] | the jump table's write of bytes at a share |
+    | [xs_post] | what the function leaves |
+    | [wp_xs_scan] | the newline scan, blocks `c: L50` to `c: L59` |
+    | [wp_xs_L178] | `c: _IO_default_xsputn` of the rest and the return | *)
+
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+From iris.program_logic Require Import language weakestpre.
+From Stdlib Require Import String ZArith List Lia.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
+  ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
+From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
+  LibioDefaultXsputnTail LibioDefaultXsputn.
+Import ListNotations.
+Open Scope Z_scope.
+
+Local Arguments Z.add : simpl nomatch.
+Local Arguments Z.sub : simpl nomatch.
+Local Arguments Z.mul : simpl nomatch.
+Local Arguments Z.opp : simpl nomatch.
+
+(** Block `c: L50` of `c: _IO_new_file_xsputn`, the scan's head, after its phi. *)
+Definition xs_L50 : block := Eval vm_compute in
+  match find_block (TAtom "L50") (fn_blocks glibc__IO_new_file_xsputn) with
+  | Some b => b | None => mkBlock (TAtom "L50") [] [] JRetVoid end.
+
+(** Block `c: L20`, after its phis: the count and the flush flag. *)
+Definition xs_L20 : block := Eval vm_compute in
+  match find_block (TAtom "L20") (fn_blocks glibc__IO_new_file_xsputn) with
+  | Some b => b | None => mkBlock (TAtom "L20") [] [] JRetVoid end.
+
+(** Block `c: L178`, after its phi: the bytes left. *)
+Definition xs_L178 : block := Eval vm_compute in
+  match find_block (TAtom "L178") (fn_blocks glibc__IO_new_file_xsputn) with
+  | Some b => b | None => mkBlock (TAtom "L178") [] [] JRetVoid end.
+
+(** The names the scan binds, with the two phis of `c: L20`. *)
+Definition xs_scan_names : list name :=
+  map TAtom ["pr.14"; "v56"; "v57"; "v58"; "v63"; "chk4"; "v64"; "v65"; "v68"; "v70"; "v71"; "pr.10"; "pr.6"].
+
+(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
+Module LibioXsputnBaseOn (R : Runtime) (LG0 : LogicSig R).
+Module DX := LibioDefaultXsputnOn R LG0.
+Import DX DX.RM DX.RM.SM.TL DX.RM.SM.TL.BY DX.RM.SM.TL.BY.BF DX.RM.SM.TL.BY.BF.CP DX.RM.SM.TL.BY.BF.CP.CS
+  DX.RM.SM.TL.BY.BF.CP.SW DX.RM.SM.TL.BY.BF.CP.SW.FI.ML DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
+  DX.RM.SM.TL.BY.BF.CP.SW.FI.L DX.RM.SM.TL.BY.BF.CP.SW.OW DX.RM.SM.TL.BY.BF.CP.SW.FI
+  DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Section defs.
+Context `{!gen_heapGS piece pval Σ}.
+
+(** [xfields] w0 eb fb: the fields of the stream fb that
+    `c: _IO_new_file_xsputn` and its `c: new_do_write` read or write
+    beside [wbuf]: the flags, without `c: _IO_IS_APPENDING`; the
+    `c: _flags2`, descriptor, `c: _total_written` and `c: _offset` the
+    write uses, the descriptor open in w0; the `c: _cur_column`, 0; the
+    mode, narrow (0 or -1); and the thread's errno eb. *)
+Definition xfields (w0 : os_world) (eb fb : Z) : iProp Σ :=
+  ∃ fl f2 fd tw off m, ⌜Z.land fl io_is_appending = 0 /\ Z.land f2 2 = 0 /\ In fd (ow_fds w0) /\
+                        (m = 0 \/ m = 2 ^ 32 - 1)⌝ ∗
+    int_cell fb off_flags fl ∗ int_cell fb off_flags2 f2 ∗ int_cell fb off_fileno fd ∗
+    icell fb off_total_written tw ∗ icell fb off_offset off ∗ bytes fb off_column [0; 0] ∗
+    int_cell fb off_mode m ∗ errno_any eb.
+
+(** [xos] w0 eb X fb nb: the rest of the stream that the overflow
+    reads, [xfields] and any other X of the stream and its buffer. *)
+Definition xos (w0 : os_world) (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (nb : option (Z * Z))
+    : iProp Σ := xfields w0 eb fb ∗ X fb nb.
+
+(** A run of bytes at a share is its first j bytes and the rest. *)
+Lemma bytesq_split dq b o ys (j : nat) : (j <= length ys)%nat ->
+  bytesq dq b o ys ⊣⊢ bytesq dq b o (take j ys) ∗ bytesq dq b (o + Z.of_nat j) (drop j ys).
+Proof.
+  intros H. rewrite -{1}(take_drop j ys) /bytesq byte_ps_app ptsq_app length_take_le; [done | lia].
+Qed.
+
+End defs.
+
+Section rules.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+(** The registry holds `c: zmemmove`'s contract, and the genv's
+    `c: __GI_memcpy`, `c: __GI_mempcpy` and
+    `c: __GI__IO_default_xsputn` are glibc's. *)
+Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
+  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
+  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
+
+(** The Iris instance for registry and [os_wi] w0. *)
+Local Instance xs_base_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry (os_wi w0) ge.
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** `c: _IO_new_file_write(fp, data, n)` of the n bytes xs at offset o
+    of an object b owned at any share dq, through a read-write or
+    read-only capability: [wp_glibc__IO_new_file_write] of
+    LibioWrite.v, which takes the bytes whole, with the share. *)
+Definition fwq_spec : Prop :=
+  forall fr fb freg fl f2 fd tw off dq b reg o c xs eb Φ,
+  call_frame glibc__IO_new_file_write
+    [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) c); WInt (Z.of_nat (length xs))] = Some fr ->
+  (c = Obj b \/ c = Ro b) ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
+  0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
+  Forall (fun x => 0 <= x < 256) xs ->
+  ⊢ live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
+    icell fb off_total_written tw -∗ icell fb off_offset off -∗ liveq dq b reg -∗ bytesq dq b o xs -∗
+    errno_any eb -∗
+    ▷ (∀ r fl' tw' off', ⌜fw_post (Z.of_nat (length xs)) fl r fl' /\ 0 <= fl' < 2 ^ 32⌝ -∗
+       live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
+       icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ liveq dq b reg -∗ bytesq dq b o xs -∗
+       errno_any eb -∗ Φ (Ret (WInt r))) -∗
+    WP (ERun fr : sexpr) {{ Φ }}.
+
+(** What `c: _IO_new_file_xsputn(f, s, n)` leaves: r, `c: EOF` as a
+    `c: size_t` or a count of at most n, the stream with any buffer and
+    its rest, and the source back. *)
+Definition xs_post (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb n : Z)
+    (dq : dfrac) (b' : Z) (reg' : region) (so : Z) (ys : list Z)
+    (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
+  ∀ r nb' wp' we', ⌜r = 2 ^ 64 - 1 \/ 0 <= r <= n⌝ -∗ live fb freg -∗
+    pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗ wbuf fb nb' wp' we' -∗ xos w0 eb X fb nb' -∗
+    liveq dq b' reg' -∗ bytesq dq b' so ys -∗ Φ (Ret (WInt r)).
+
+(** A byte other than a newline, loaded signed and widened, is not
+    the newline's code. *)
+Lemma sb_ne_nl z : 0 <= z < 256 -> z <> 10 ->
+  ((sign_extension 256 128 (z + 0) mod 2 ^ 32) mod 2 ^ 32 =? 10 mod 2 ^ 32) = false.
+Proof.
+  intros Hz H10. unfold sign_extension. rewrite Z.add_0_r (Z.mod_small z 256); [|lia].
+  apply Z.eqb_neq. destruct (128 <=? z); Z.div_mod_to_equations; lia.
+Qed.
+
+(** The newline scan, blocks `c: L50` to `c: L59`, at the head with p
+    at offset i of the n bytes ys from offset so of b': it reads back
+    from p for a `c: '\n'` and enters `c: L20` with count cnt0 and no
+    flush when none is found, or with the count up to and including the
+    last one and a flush. *)
+Lemma wp_xs_scan dq b' reg' so c' ys cnt0 :
+  let n := Z.of_nat (length ys) in
+  c' = Obj b' \/ c' = Ro b' -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
+  Forall (fun y => 0 <= y < 256) ys -> 0 <= cnt0 < 2 ^ 63 ->
+  ⊢ ∀ e i Φ, ⌜lookup (TAtom "v2") e = Some (WPtr (mkPtr (b' + so) c')) /\
+      lookup (TAtom "pr.14") e = Some (WPtr (mkPtr (b' + so + i) c')) /\
+      lookup (TAtom "v39") e = Some (WInt cnt0) /\ 0 <= i <= n⌝ -∗
+    liveq dq b' reg' -∗ bytesq dq b' so ys -∗
+    (∀ e' cnt mf, ⌜same_out xs_scan_names e e' /\ lookup (TAtom "pr.10") e' = Some (WInt cnt) /\
+         lookup (TAtom "pr.6") e' = Some (WInt mf) /\ ((mf = 0 /\ cnt = cnt0) \/ (mf = 1 /\ 1 <= cnt <= n))⌝ -∗
+       liveq dq b' reg' -∗ bytesq dq b' so ys -∗
+       WP (ERun (mkFrame glibc__IO_new_file_xsputn e' [] None (Exec (TAtom "L20") (b_insts xs_L20) (b_jump xs_L20)))
+             : sexpr) {{ Φ }}) -∗
+    WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L50") (b_insts xs_L50) (b_jump xs_L50)))
+          : sexpr) {{ Φ }}.
+Proof.
+  intros n Hc' Hso Hyend Hyreg Hy Hcr.
+  iLöb as "IH". iIntros (e i Φ (Hv2 & Hp14 & Hv39 & Hi)) "Hl' Hys HK".
+  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  cbn [xs_L50 b_insts b_jump]. fs. fs. fs.
+  destruct (Z.eq_dec i 0) as [-> | Hi0].
+  - (* p is s: no newline; L20 from L50. *)
+    fbrv true. fs.
+    iApply ("HK" $! _ cnt0 0 with "[%] Hl' Hys").
+    split; [same_tac|]. split_and!; [lookups; unwrap2; reflexivity | lookups; reflexivity | left; split; reflexivity].
+  - fbrv false. fs. fs.
+    set (j := Z.to_nat (i - 1)).
+    destruct (lookup_lt_is_Some_2 ys j ltac:(lia)) as [y Hyj].
+    pose proof (Forall_lookup_1 _ _ _ _ Hy Hyj) as Hyr.
+    iDestruct (bytesq_at _ _ _ _ j y Hyj with "Hys") as "[Hy1 Hyb]".
+    iApply (wp_check_read_dq with "Hl'");
+      [reflexivity | vx | exact Hc' | cbn; unfold raw_address; unwrap2; lia | cbn; unfold raw_address; unwrap2; lia
+      | apply Z.mod_1_r |].
+    iNext. iIntros "Hl'".
+    iApply (wp_raw_load_sub_bytes_dq with "Hl' Hy1");
+      [reflexivity | vx | reflexivity | reflexivity | exact Hc' | cbn; unfold raw_address; unwrap2; lia |].
+    iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hys". fs.
+    destruct (Z.eq_dec y 10) as [-> | Hy10].
+    + (* A newline at j: L59, the count j + 1, then L20. *)
+      fbrv false. fs. fs. fs. fs. fs. fs.
+      iApply ("HK" $! _ i 1 with "[%] Hl' Hys").
+      split; [same_tac|]. split_and!; [|lookups; reflexivity|right; split; [reflexivity | lia]].
+      lookups. do 2 f_equal. cbn [ptr_addr]. unfold raw_address. unwrap2. lia.
+    + eapply step_wand; [eapply wp_branch; inst; vx |].
+      rewrite (sb_ne_nl y Hyr Hy10). change ((if false then 1 else 0) mod 2 ^ 32 =? 0) with true.
+      cbn [edge_label]. fs.
+      iApply ("IH" $! _ (i - 1) with "[%] Hl' Hys [HK]").
+      * split_and!; [lookups; reflexivity | | lookups; reflexivity | lia | lia].
+        lookups. do 3 f_equal. cbn [ptr_addr]. unfold raw_address. unwrap2. lia.
+      * iIntros (e' cnt mf (Hsame & Hp10 & Hp6 & Hc)) "Hl' Hys".
+        iApply ("HK" $! e' cnt mf with "[%] Hl' Hys"). split_and!; try assumption.
+        eapply same_out_trans; [|exact Hsame]. same_tac.
+Qed.
+
+(** Block `c: L178` on, t bytes left past s, d of them just written:
+    `c: _IO_default_xsputn` of the t bytes from s + d, when there are
+    any, and the return of n less those it left. *)
+Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
+  let n := Z.of_nat (length ys) in
+  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
+  Forall (fun y => 0 <= y < 256) ys -> 0 <= t -> 0 <= d -> t + d <= n ->
+  lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v4") e = Some (WInt n) ->
+  lookup (TAtom "pr.3") e = Some (WInt t) -> lookup (TAtom "v175") e = Some (WInt d) ->
+  lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b' + so + (n - t - d)) c')) ->
+  vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
+  ▷ xs_post eb X fb freg vb n dq b' reg' so ys Φ -∗
+  WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L178") (b_insts xs_L178) (b_jump xs_L178)))
+        : sexpr) {{ Φ }}.
+Proof.
+  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy Ht Hd Htd Hv0 Hv4 Hp3 Hv175 Hp1.
+  iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
+  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  cbn [xs_L178 b_insts b_jump]. fs.
+  destruct (Z.eq_dec t 0) as [-> | Ht0].
+  - (* Nothing left: L122 returns n. *)
+    fbrv true. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). unwrap2. lia.
+  - fbrv false. fs. fs.
+    set (j := Z.to_nat (n - t)).
+    iEval (rewrite (bytesq_split dq b' so ys j); [|lia]) in "Hys". iDestruct "Hys" as "[Hys1 Hys2]".
+    assert (Hlj : Z.of_nat (length (drop j ys)) = t) by (rewrite length_drop; lia).
+    iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ ([WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b' + (so + Z.of_nat j)) c'); WInt (Z.of_nat (length (drop j ys)))]));
+      [| exact Hdxf | reflexivity |].
+    { cbn -[put]. lookups. rewrite Hlj. do 5 f_equal; unfold j; unwrap2; lia. }
+    iNext.
+    iApply (wp_glibc__IO_default_xsputn w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy _ (xos w0 eb X) fb freg vb
+              vreg nb wp we dq b' reg' (so + Z.of_nat j) c' (drop j ys) with "Hvt Hl Hvtp Hwb Hos Hl' Hys2");
+      [reflexivity | exact Hov | exact Hfo | exact Hfb | exact Hfal | exact Hfend | exact Hfreg | exact Hc' | exact Hb8'
+      | lia | lia | exact Hyreg | apply Forall_drop; exact Hy |].
+    iNext. iIntros (k nb' wp' we' Hk) "Hl Hvtp Hwb Hos Hl' Hys2". resume.
+    rewrite Hlj in Hk. rewrite (Z.mod_small k); [|lia].
+    fs. fs. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' [Hys1 Hys2]"); [unwrap2; lia|].
+    iApply (bytesq_split dq b' so ys j); [lia|]. iFrame.
+Qed.
+
+End rules.
+End LibioXsputnBaseOn.

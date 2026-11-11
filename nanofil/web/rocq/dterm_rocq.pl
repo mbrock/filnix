@@ -658,6 +658,28 @@ file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnSmall.v',
     "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L50]) for `_IO_default_xsputn` filling at most 20 bytes of the buffer's room by the byte loop.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnTail.v',
     "Live glibc campaign (implementation proof): Hoare triple ([wp_dx_L22]) for the end of `_IO_default_xsputn`'s round: the jump table's overflow of the next byte, or the return.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputn.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_new_file_xsputn]) for userland glibc's compiled `_IO_new_file_xsputn` over the stream's write side, the jump table's overflow ([overflow_spec]) and a write of bytes at a share ([fwq_spec]).").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnBase.v',
+    "Live glibc campaign (reusable separation-logic invariant): The stream's fields beside the write side ([xfields], [xos]), the share-taking write premise ([fwq_spec]), the newline scan ([wp_xs_scan]) and the hand-off to `_IO_default_xsputn` ([wp_xs_L178]).").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnCall.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_xs_L9]) for the jump table's write in `_IO_new_file_xsputn`'s inlined `new_do_write`, on the caller's bytes at their share.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnDo.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_xs_L168]) for `_IO_new_file_xsputn`'s direct write: not appending, no seek, then the jump table's write or the rest.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnEnter.v',
+    "Live glibc campaign (implementation proof): Hoare triples ([wp_xs_L18], [wp_xs_L19]) for `_IO_new_file_xsputn`'s count of the bytes that fit, line-buffered or not.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFill.v',
+    "Live glibc campaign (implementation proof): Hoare triples ([wp_xs_L20], [wp_xs_L101]) for `_IO_new_file_xsputn` copying the bytes that fit into the buffer by `__mempcpy`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFlags.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_xs_L122]) for the write end `new_do_write` chooses from `_IO_LINE_BUF | _IO_UNBUFFERED`, for any buffer ([wroom_cap]).").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnFlush.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_xs_L96]) for `_IO_new_file_xsputn`'s flush through the jump table's overflow of `EOF`, or its return.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnReset.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_xs_L70]) for `_IO_setg` and `_IO_setp` in `_IO_new_file_xsputn`'s inlined `new_do_write`.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnSetp.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_xs_L117]) for the write end's store after `new_do_write` and the return or the hand-off of the rest.").
+file_blurb('nanofil/rocq/glibc/libio/LibioXsputnWrite.v',
+    "Live glibc campaign (implementation proof): Hoare triple ([wp_xs_L132]) for the direct write's count of `_IO_new_file_xsputn`: whole blocks of the buffer's size when it is at least 128.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDoWrite.v',
     "Live glibc campaign (implementation proof): Hoare triple ([wp_glibc__IO_new_do_write]) for userland glibc's compiled `_IO_new_do_write` over [file_inv] and `__io_vtables`.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDoWriteCall.v',

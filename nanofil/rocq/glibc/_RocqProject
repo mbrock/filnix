@@ -100,3 +100,14 @@ libio/LibioDefaultXsputnTail.v
 libio/LibioDefaultXsputnSmall.v
 libio/LibioDefaultXsputnRoom.v
 libio/LibioDefaultXsputn.v
+libio/LibioXsputnBase.v
+libio/LibioXsputnSetp.v
+libio/LibioXsputnFlags.v
+libio/LibioXsputnReset.v
+libio/LibioXsputnCall.v
+libio/LibioXsputnDo.v
+libio/LibioXsputnWrite.v
+libio/LibioXsputnFlush.v
+libio/LibioXsputnFill.v
+libio/LibioXsputnEnter.v
+libio/LibioXsputn.v
