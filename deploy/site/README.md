@@ -35,6 +35,14 @@ and browser checks remain on free GitHub runners. The previous cold 16-core
 comparison cost about $0.14 per complete job at $0.024/minute; cached producers
 and coalesced pushes cost less, but real proof growth can increase runtime.
 
+Equity, mbrock's licensed typeface for prose, is not in the repository.
+Its three OTFs are in this bucket under `private/fonts/equity/`, a key the
+Worker never serves (it maps only `releases/` and `current.json`). The
+build job's `equity.sh` reads them with the same credentials, converts
+them to the WOFF2 files `style.css` loads (`fonts/equity/`) and sets each
+nanofil document as a PDF beside its page; the OTFs never enter the
+site. Without the credentials the site builds as before, with Georgia.
+
 The Actions `filnix-org` environment shows deployment status and its public URL.
 Local phone checks remain independent of publication. `deployed-phone`
 also checks the public site at 320 and 390 pixels and every deployed Rocq page.

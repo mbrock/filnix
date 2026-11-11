@@ -59,7 +59,7 @@ article.dterm h2 {
 }
 
 .dterm .prose { max-width: 44rem; }
-.dterm .prose p { margin: 0 0 0.55rem; text-align: left; hyphens: manual; }
+.dterm .prose p { margin: 0 0 0.8em; text-align: left; hyphens: manual; }
 .dterm .prose p:last-child, .dterm .prose :is(ul, ol):last-child { margin-bottom: 0; }
 .dterm .prose :is(ul, ol) { margin: 0.2rem 0 0.6rem; }
 .dterm .prose pre {
@@ -79,7 +79,9 @@ article.dterm h2 {
   letter-spacing: 0;
 }
 .dterm .prose h4.prose-h { margin-top: 1.1rem; font-size: 0.92rem; color: var(--muted); }
-.dterm .prose code.term { font: inherit; font-size: 0.96em; background: none; padding: 0; }
+/* A term in prose is set in the code's sans, scaled to the serif's x-height. */
+.dterm .prose code.term { font: inherit; font-family: var(--display-font); font-size: 0.86em; background: none; padding: 0; }
+:is(.prose, article.doc) :is(.clause, .dg, .dterm-rocq, .dterm-c, .prose-terms, table) { font-family: var(--display-font); }
 .dterm .prose code.term .c, .dterm .prose code.term .args, .dterm .prose code.term .arg { white-space: nowrap; }
 table.prose-table {
   display: table;

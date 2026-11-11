@@ -51,8 +51,7 @@
   // The paper's families: what each CSS family list is set in.
   function family(cs) {
     const first = cs.fontFamily.split(",")[0].trim().replace(/^["']|["']$/g, "");
-    if (/mono|consol|menlo|courier/i.test(first)) return "JetBrains Mono";
-    if (/serif/i.test(first) && !/sans/i.test(first)) return "Source Serif 4";
+    if (/mono|consol|menlo|courier/i.test(first)) return "DM Mono";
     return "Public Sans";
   }
 
@@ -343,8 +342,10 @@
       if (fill && fill !== base.fill && (inCode || !n.parentElement.closest("a"))) look.push(`fill: ${fill}`);
       if (inCode) {
         look.push(`font: (${tstr(family(cs))}, "DejaVu Sans")`);
+        // Sans and mono beside the prose serif are scaled to its x-height
+        // (dterm.typ's sans-x and mono-x).
         const ratio = parseFloat(cs.fontSize) / base.size;
-        if (Math.abs(ratio - 1) > 0.01) look.push(`size: ${ratio.toFixed(3)}em`);
+        look.push(`size: ${ratio.toFixed(3)}em * ${family(cs) === "DM Mono" ? "mono-x" : "sans-x"}`, "hyphenate: false");
       }
       const w = Math.round(parseFloat(cs.fontWeight));
       if (w !== base.weight) look.push(`weight: ${w}`);
@@ -365,8 +366,8 @@
     const side = (s) => (parseFloat(cs[`border${s}Width`]) || 0) > 0 && cs[`border${s}Style`] !== "none" && colour(cs[`border${s}Color`], o);
     if (code && n.parentElement && (side("Left") || side("Right"))) {
       const sq = cs.backgroundImage.includes("linear-gradient") || n.classList.contains("l");
-      const glyph = (g, s) => `#text(fill: ${colour(cs[`border${s}Color`], o)}, font: "Public Sans", weight: 300, ${tstr(g)});`;
-      const pad = `#h(${((parseFloat(cs.paddingLeft) || 0) / base.size).toFixed(3)}em);${WJ}`;
+      const glyph = (g, s) => `#text(fill: ${colour(cs[`border${s}Color`], o)}, font: ("Public Sans", "DejaVu Sans"), size: sans-x * 1em, weight: 300, ${tstr(g)});`;
+      const pad = `${WJ}#h(${((parseFloat(cs.paddingLeft) || 0) / base.size).toFixed(3)}em);${WJ}`;
       body = (side("Left") ? glyph(sq ? "[" : "(", "Left") + pad : "") + body + (side("Right") ? pad + glyph(sq ? "]" : ")", "Right") : "");
     }
     // Margins (a Rocq application's gap after its head) and the padding of
@@ -375,8 +376,8 @@
     if (code) {
       const glyphs = n.parentElement && (side("Left") || side("Right"));
       const l = em(cs.marginLeft) + (glyphs ? 0 : em(cs.paddingLeft)), r = em(cs.marginRight) + (glyphs ? 0 : em(cs.paddingRight));
-      if (l > 0.01) body = `#h(${l.toFixed(3)}em);${WJ}` + body;
-      if (r > 0.01) body += `#h(${r.toFixed(3)}em);${WJ}`;
+      if (l > 0.01) body = `${WJ}#h(${l.toFixed(3)}em);${WJ}` + body;
+      if (r > 0.01) body += `${WJ}#h(${r.toFixed(3)}em);${WJ}`;
     }
     const bg = code && !inCode && colour(cs.backgroundColor, o);
     if (bg) body = `#highlight(fill: ${bg}, radius: 1.5pt, extent: 0.8pt)[${body}];`;

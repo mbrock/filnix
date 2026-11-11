@@ -85,7 +85,13 @@ jobs:
         run: |
           nix build -L --no-link --max-jobs 0 --builders "" \
             .#site.proofStates .#site.spikeStates .#site.rocqPages .#site.prologPages
+      # Equity is licensed, not public (deploy/site/equity.sh): its webfonts
+      # and the documents' PDFs are added here, before pinning.
       - name: Build the site
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.FILNIX_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.FILNIX_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
         run: |
           nix build -L .#site
           cp -rL result _site
@@ -93,6 +99,7 @@ jobs:
           # with what is live.
           chmod u+w _site
           echo "$GITHUB_SHA" > _site/commit.txt
+          bash deploy/site/equity.sh _site
           python3 deploy/site/prepare.py _site "$GITHUB_SHA"
       # Preserve the tar/name contract for phone checks and recovery of
       # both old and new runs, without calling the GitHub Pages service.

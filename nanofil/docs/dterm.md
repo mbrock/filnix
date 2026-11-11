@@ -478,10 +478,12 @@ PDF with Typst, for print or an e-reader: `dterm-pdf
 nanofil/docs/lambda-anf.md`. Headless Chromium lays the page out at the
 paper's text width, so dterm.js's printer chooses the line breaks for
 paper as it does for a phone; the prose goes to Typst as markup, to be
-set and justified in Source Serif 4, and every drawn block goes as the
+set and justified in Equity, and every drawn block goes as the
 glyphs and bows the printer placed. No layout search runs in Typst,
 whose memoizing evaluator made a Pareto printer written in it
-intractable in luv's wiki.
+intractable in luv's wiki. On the wiki, prose is Equity too, headings
+and terms Public Sans and code DM Mono; each document links its PDF,
+made when the site is published (deploy/site/equity.sh).
 
 ## Not yet
 

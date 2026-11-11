@@ -10,7 +10,7 @@ let
   fonts = [
     pkgs.public-sans
     pkgs.source-serif
-    pkgs.jetbrains-mono
+    pkgs.dm-mono
     pkgs.dejavu_fonts
   ];
 in
@@ -24,7 +24,15 @@ pkgs.writeShellApplication {
     pkgs.coreutils
   ];
   text = ''
-    export TYPESET_FONTS=${pkgs.lib.concatMapStringsSep ":" (f: "${f}/share/fonts") fonts}
-    exec bash nanofil/web/typst/pdf.sh "$@"
+    # EQUITY_FONTS, a directory with the licensed Equity OTFs, sets prose
+    # in Equity; without it, prose is Source Serif 4.
+    export TYPESET_FONTS=''${EQUITY_FONTS:+$EQUITY_FONTS:}${
+      pkgs.lib.concatMapStringsSep ":" (f: "${f}/share/fonts") fonts
+    }
+    case "''${1:-}" in
+      # A page already drawn, in the wiki's layout (deploy/site/equity.sh).
+      *.html) exec python3 nanofil/web/typst/typeset.py "$@" ;;
+      *) exec bash nanofil/web/typst/pdf.sh "$@" ;;
+    esac
   '';
 }

@@ -1101,7 +1101,7 @@ shell(Title, Crumbs, Main) -->
     "<title>", esc(Title), " · Nix · Filnix wiki</title>\n",
     "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n",
     "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n",
-    "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap\">\n",
+    "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&amp;family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap\">\n",
     "<link rel=\"stylesheet\" href=\"../style.css\">\n",
     "<link rel=\"stylesheet\" href=\"../nanofil/dterm.css\">\n",
     "<link rel=\"stylesheet\" href=\"dterm-nix.css\">\n",

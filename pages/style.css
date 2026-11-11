@@ -1,6 +1,17 @@
 /* The Filnix wiki: the docs, the explainers and the landing page share this
    stylesheet. It follows the luv workshop wiki (luv.swa.sh): Public Sans,
-   a library band with doors, a black status bar, and a justified measure. */
+   a library band with doors, a black status bar, and a justified measure.
+   Prose is set in Equity, headings and drawn code in Public Sans, code in
+   DM Mono. Equity is licensed for filnix.org, not public: the publish step
+   adds fonts/equity/ (deploy/site/equity.sh), and without it prose falls
+   back to Georgia. */
+
+@font-face { font-family: "Equity"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("fonts/equity/equity-regular.woff2") format("woff2"); }
+@font-face { font-family: "Equity"; font-style: italic; font-weight: 400; font-display: swap;
+  src: url("fonts/equity/equity-italic.woff2") format("woff2"); }
+@font-face { font-family: "Equity"; font-style: normal; font-weight: 700; font-display: swap;
+  src: url("fonts/equity/equity-bold.woff2") format("woff2"); }
 
 :root {
   color-scheme: light;
@@ -13,7 +24,9 @@
   --accent: #9a3248;
   --code-bg: #f4f1ea;
   --display-font: "Public Sans", helvetica, arial, sans-serif;
-  --mono-font: ui-monospace, "SF Mono", menlo, consolas, "DejaVu Sans Mono", monospace;
+  --prose-font: "Equity", Georgia, serif;
+  --prose-size: 1.12rem;     /* Equity's x-height is smaller than Public Sans's */
+  --mono-font: "DM Mono", ui-monospace, "SF Mono", menlo, consolas, "DejaVu Sans Mono", monospace;
   --gutter: clamp(1rem, 4vw, 3rem);
   --measure: 68ch;
   --workspace-max: 100rem;
@@ -173,6 +186,15 @@ h4 { font-size: 1rem; margin: 1.6rem 0 0.4rem; font-weight: 700; }
 .doc h3, .doc h4 { font-size: 1rem; margin: 1.6rem 0 0.4rem; font-weight: 700; letter-spacing: 0; }
 
 p { margin: 0 0 1.1rem; text-align: justify; text-align-last: start; hyphens: auto; }
+
+/* Documents' prose: the docs, and the prose dterm draws (documents,
+   module ledes, comments). What dterm draws inside it stays sans. */
+:is(article.doc, .prose) :is(p, li, dd, dt, blockquote, figcaption) {
+  font-family: var(--prose-font);
+  font-size: var(--prose-size);
+  line-height: 1.42;
+}
+:is(article.doc, .prose) :is(li, dd, blockquote) :is(p, li, dd, dt) { font-size: inherit; }
 
 code, pre { font-family: var(--mono-font); font-size: 0.85em; }
 code { color: color-mix(in srgb, var(--ink) 80%, var(--accent)); }

@@ -8,6 +8,11 @@
 #let accent = rgb("#9a3248")
 #let rule = rgb("#cfc8bc")
 
+// Public Sans terms and DM Mono code set inside prose, scaled so their
+// x-height sits with the serif's rather than towering over it.
+#let sans-x = 0.86
+#let mono-x = 0.9
+
 // A run of glyphs, its baseline at (x, y). w is the width the browser
 // measured; the box is a little wider so the same font never wraps it.
 #let R(x, y, w, s, t) = place(top + left, dx: x * 1pt, dy: y * 1pt,
@@ -83,14 +88,14 @@
   title: none, source: none, url: none,
   paper: (width: 157.8mm, height: 210.4mm),
   margin: (top: 13mm, right: 12mm, bottom: 15mm, left: 12mm),
-  body-size: 10pt, grey: false, body,
+  body-size: 11pt, prose-font: ("Source Serif 4",), grey: false, body,
 ) = {
   let hue = if grey { ink } else { accent }
   set document(title: title)
   set page(width: paper.width, height: paper.height, margin: margin,
     header: context {
       if here().page() > 1 {
-        set text(font: "Public Sans", size: 6.8pt, fill: muted, weight: 500)
+        set text(font: ("Public Sans", "DejaVu Sans"), size: 6.8pt, fill: muted, weight: 500)
         title.split(":").first()
         h(1fr)
         let hs = query(selector(heading.where(level: 1)).before(here()))
@@ -98,18 +103,18 @@
       }
     },
     footer: context {
-      set text(font: "Public Sans", size: 6.8pt, fill: muted, weight: 500)
+      set text(font: ("Public Sans", "DejaVu Sans"), size: 6.8pt, fill: muted, weight: 500)
       h(1fr)
       counter(page).display()
       h(1fr)
     })
-  set text(font: ("Source Serif 4", "DejaVu Sans"), size: body-size, fill: ink,
+  set text(font: (..prose-font, "DejaVu Sans"), size: body-size, fill: ink,
     lang: "en", number-width: "proportional", hyphenate: true)
-  set par(justify: true, leading: 0.58em, spacing: 0.78em, linebreaks: "optimized")
+  set par(justify: true, leading: 0.6em, spacing: 1.05em, linebreaks: "optimized")
   show link: set text(fill: if grey { ink } else { hue.darken(10%) })
-  set list(indent: 0.4em, body-indent: 0.5em, spacing: 0.62em, marker: text(fill: muted, [•]))
-  set enum(indent: 0.2em, body-indent: 0.5em, spacing: 0.62em)
-  show heading: set text(font: "Public Sans", fill: ink, hyphenate: false)
+  set list(indent: 0.4em, body-indent: 0.5em, spacing: 0.75em, marker: text(fill: muted, [•]))
+  set enum(indent: 0.2em, body-indent: 0.5em, spacing: 0.75em)
+  show heading: set text(font: ("Public Sans", "DejaVu Sans"), fill: ink, hyphenate: false)
   show heading: set par(justify: false)
   show heading.where(level: 1): it => {
     set text(size: body-size * 1.3, weight: 800, tracking: -0.02em)
@@ -129,13 +134,13 @@
   block(below: 1.4em, {
     set par(justify: false)
     if source != none {
-      text(font: "Public Sans", size: 7pt, weight: 700, fill: hue, tracking: 0.06em, source)
+      text(font: ("Public Sans", "DejaVu Sans"), size: 7pt, weight: 700, fill: hue, tracking: 0.06em, source)
       v(0.3em)
     }
-    text(font: "Public Sans", size: body-size * 1.9, weight: 800, tracking: -0.035em, hyphenate: false, title)
+    text(font: ("Public Sans", "DejaVu Sans"), size: body-size * 1.9, weight: 800, tracking: -0.035em, hyphenate: false, title)
     if url != none {
       v(0.15em)
-      text(font: "Public Sans", size: 7pt, fill: muted, link(url, url))
+      text(font: ("Public Sans", "DejaVu Sans"), size: 7pt, fill: muted, link(url, url))
     }
   })
   body

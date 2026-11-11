@@ -36,12 +36,13 @@ HERE = Path(__file__).resolve().parent
 PT_PER_PX = 0.75
 
 # Paper: width, height, margins (top, right, bottom, left) in mm, and the
-# sizes of prose and of drawn terms in pt. The reMarkable 1 and 2 screen
+# sizes of prose (in Equity; Source Serif 4 is set a little smaller) and of
+# drawn terms in pt. The reMarkable 1 and 2 screen
 # is 157.8 x 210.4 mm at 226 dpi; a page of exactly that shape fills it.
 PROFILES = {
-    "remarkable": dict(w=157.8, h=210.4, m=(13, 12, 15, 12), body=10.0, code=8.6, grey=True),
-    "a5": dict(w=148, h=210, m=(16, 15, 18, 15), body=9.6, code=8.2, grey=False),
-    "a4": dict(w=210, h=297, m=(25, 32, 28, 32), body=10.6, code=9.0, grey=False),
+    "remarkable": dict(w=157.8, h=210.4, m=(13, 12, 15, 12), body=11.4, code=8.8, grey=True),
+    "a5": dict(w=148, h=210, m=(16, 15, 18, 15), body=10.8, code=8.4, grey=False),
+    "a4": dict(w=210, h=297, m=(25, 32, 28, 32), body=11.6, code=9.2, grey=False),
 }
 MM = 72 / 25.4
 
@@ -115,11 +116,16 @@ class Chrome:
         shutil.rmtree(self.profile, ignore_errors=True)
 
 
+def equity(dirs):
+    """Whether the licensed Equity family is among the font directories."""
+    return any(p.name.startswith("Equity") for d in dirs for p in Path(d).rglob("*.otf"))
+
+
 def font_dirs():
     dirs = [d for d in os.environ.get("TYPESET_FONTS", "").split(":") if d]
     if not dirs:
         sys.exit("typeset: set TYPESET_FONTS to the font directories (Public Sans, "
-                 "Source Serif 4, JetBrains Mono); typeset.nix does")
+                 "Source Serif 4, DM Mono, and optionally Equity); typeset.nix does")
     return dirs
 
 
@@ -191,7 +197,7 @@ def main():
     ap.add_argument("-o", "--output", type=Path)
     ap.add_argument("--profile", default="remarkable", choices=sorted(PROFILES))
     ap.add_argument("--typ", type=Path, help="also keep the Typst source here")
-    ap.add_argument("--base", default="https://mbrock.github.io/filnix/",
+    ap.add_argument("--base", default="https://filnix.org/",
                     help="the wiki's URL, for links out of the PDF")
     ap.add_argument("--site", type=Path, help="the wiki's root directory (default: guessed)")
     a = ap.parse_args()
@@ -200,6 +206,10 @@ def main():
     rel = page.relative_to(site).as_posix()
     p = PROFILES[a.profile]
     out = extract(page, a.profile, a.base.rstrip("/") + "/" + rel)
+    if equity(font_dirs()):
+        body, prose = p["body"], '("Equity OT A", "Source Serif 4")'
+    else:
+        body, prose = round(p["body"] * 0.92, 2), '("Source Serif 4",)'
     title = out["title"]
     source = rel.removesuffix(".html").replace("/", " · ")
     head = (f'#import "{(HERE / "dterm.typ").as_posix()}": *\n'
@@ -209,7 +219,8 @@ def main():
             f"  url: {typst_str(a.base.rstrip('/') + '/' + rel)},\n"
             f"  paper: (width: {p['w']}mm, height: {p['h']}mm),\n"
             f"  margin: (top: {p['m'][0]}mm, right: {p['m'][1]}mm, bottom: {p['m'][2]}mm, left: {p['m'][3]}mm),\n"
-            f"  body-size: {p['body']}pt,\n"
+            f"  body-size: {body}pt,\n"
+            f"  prose-font: {prose},\n"
             f"  grey: {'true' if p['grey'] else 'false'},\n"
             f")\n\n")
     typ = head + out["typst"]
