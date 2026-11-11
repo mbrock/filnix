@@ -62,13 +62,17 @@ import json, os, sys
 from pathlib import Path
 batch = json.load(open(sys.argv[sys.argv.index("--delete") + 1][7:]))["Objects"]
 assert len(batch) <= 1000
+assert sys.argv[sys.argv.index("--output") + 1] == "json"
 if os.environ.get("FAIL_DELETE"):
     print(json.dumps({"Errors": [{"Code": "AccessDenied"}]}))
 else:
     state = Path(os.environ["BUCKET_STATE"])
     remove = {o["Key"] for o in batch}
     state.write_text(json.dumps([k for k in json.loads(state.read_text()) if k not in remove]))
-    print("{}")
+    print(os.environ.get("DELETE_RESPONSE", "{}"))
+    if os.environ.get("DELETE_EXIT"):
+        print("endpoint failure", file=sys.stderr)
+        sys.exit(int(os.environ["DELETE_EXIT"]))
 ''')
             aws.chmod(0o755)
             current = "a" * 40
@@ -91,8 +95,49 @@ else:
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn(b"AccessDenied", failed.stderr)
             self.assertEqual(json.loads(state.read_text()), initial)
-            subprocess.run(command, env=env, capture_output=True, check=True)
-            self.assertEqual(sorted(json.loads(state.read_text())), sorted(protected))
+            for response in ["{}", "", " \n"]:
+                with self.subTest(response=response):
+                    state.write_text(json.dumps(initial))
+                    run = subprocess.run(command, env={**env, "DELETE_RESPONSE": response},
+                                         capture_output=True, text=True)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual(sorted(json.loads(state.read_text())), sorted(protected))
+                    log = [json.loads(line) for line in run.stdout.splitlines()]
+                    self.assertEqual([row["completed"] for row in log if "completed" in row], [1000, 7])
+                    self.assertEqual([item["Key"] for row in log for item in row.get("requested", [])],
+                                     sorted(o["Key"] for o in objects[:1007]))
+            # A response can fail after the endpoint has already deleted some
+            # objects. Stop before batch two, and preserve the evidence needed
+            # to reconcile state rather than silently retrying the request.
+            for response, code, message in [
+                ("not JSON", "0", "invalid JSON"),
+                ("[]", "0", "invalid response"),
+                ("null", "0", "invalid response"),
+                ('{"Errors": null}', "0", "invalid response"),
+                ('{"Errors": [{"Code": "AccessDenied"}]}', "0", "AccessDenied"),
+                ("", "65", "failed"),
+            ]:
+                with self.subTest(response=response, code=code):
+                    state.write_text(json.dumps(initial))
+                    run = subprocess.run(command, env={**env, "DELETE_RESPONSE": response,
+                                                       "DELETE_EXIT": code},
+                                         capture_output=True, text=True)
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertIn(message, run.stderr)
+                    remaining = sorted(o["Key"] for o in objects[:1007])[1000:] + protected
+                    self.assertEqual(sorted(json.loads(state.read_text())), sorted(remaining))
+                    log = [json.loads(line) for line in run.stdout.splitlines()]
+                    requests = [row for row in log if "requested" in row]
+                    self.assertEqual(len(requests), 1)
+                    self.assertEqual([item["Key"] for item in requests[0]["requested"]],
+                                     sorted(o["Key"] for o in objects[:1007])[:1000])
+                    responses = [row for row in log if "returncode" in row]
+                    self.assertEqual(len(responses), 1)
+                    self.assertEqual(responses[0]["returncode"], int(code))
+                    self.assertEqual(responses[0]["stdout"], response + "\n")
+                    if code != "0":
+                        self.assertIn("endpoint failure", responses[0]["stderr"])
+                    self.assertFalse(any("completed" in row for row in log))
 
     def test_invalid_current_cannot_authorize_deletion(self):
         run = subprocess.run(["python3", str(PRUNE), "/nonexistent", "not-a-sha",

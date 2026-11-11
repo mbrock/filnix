@@ -34,22 +34,39 @@ def main():
     keys = sorted(o["Key"] for sha, objects in releases.items()
                   if sha not in keep and newest[sha] < cutoff for o in objects)
     print(json.dumps({"delete": keys if args.dry_run else len(keys), "retained_releases": len(releases) -
-                      sum(sha not in keep and date < cutoff for sha, date in newest.items())}))
+                      sum(sha not in keep and date < cutoff for sha, date in newest.items())}), flush=True)
     if args.dry_run:
         return
     for start in range(0, len(keys), 1000):
         batch = {"Objects": [{"Key": key} for key in keys[start:start + 1000]], "Quiet": True}
+        number = start // 1000 + 1
+        # Record the exact request before any side effects, including a failure
+        # or interrupted response. Do not retry an uncertain batch here.
+        print(json.dumps({"batch": number, "requested": batch["Objects"]}), flush=True)
         with tempfile.NamedTemporaryFile(mode="w") as payload:
             json.dump(batch, payload)
             payload.flush()
             result = subprocess.run(
                 ["aws", "--endpoint-url", args.endpoint_url, "s3api", "delete-objects",
-                 "--bucket", args.bucket, "--delete", f"file://{payload.name}"],
-                check=True, capture_output=True, text=True)
+                 "--bucket", args.bucket, "--delete", f"file://{payload.name}", "--output", "json"],
+                capture_output=True, text=True)
+        print(json.dumps({"batch": number, "returncode": result.returncode,
+                          "stdout": result.stdout, "stderr": result.stderr}), flush=True)
+        if result.returncode:
+            raise SystemExit(f"R2 retention batch {number} failed; inspect the logged response before retrying")
         # S3 multi-delete can return HTTP success with individual failures.
-        errors = json.loads(result.stdout).get("Errors", [])
+        # AWS CLI emits no output for an empty quiet-success response, even
+        # with --output json. Nonempty invalid output is not evidence of success.
+        try:
+            response = json.loads(result.stdout) if result.stdout.strip() else {}
+        except json.JSONDecodeError:
+            raise SystemExit(f"R2 retention batch {number} returned invalid JSON; inspect the log before retrying")
+        if not isinstance(response, dict) or not isinstance(response.get("Errors", []), list):
+            raise SystemExit(f"R2 retention batch {number} returned an invalid response; inspect the log before retrying")
+        errors = response.get("Errors", [])
         if errors:
             raise SystemExit(f"R2 retention failed: {errors}")
+        print(json.dumps({"batch": number, "completed": len(batch["Objects"])}), flush=True)
 
 
 if __name__ == "__main__":
