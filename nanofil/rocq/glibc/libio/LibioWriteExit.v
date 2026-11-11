@@ -75,10 +75,18 @@ Ltac resume_ret := iExists _; iSplit; [iPureIntro; reflexivity|]; iNext; cbn [fr
     from a hypothesis. *)
 Ltac lookups :=
   repeat (rewrite Symbolic.lookup_after_put;
-          lazymatch goal with |- context [name_eqb ?a ?b] =>
-            let r := eval vm_compute in (name_eqb a b) in change (name_eqb a b) with r end;
+          match goal with |- context [?c] => lazymatch c with name_eqb _ _ =>
+            let r := eval vm_compute in c in change c with r end end;
           cbn beta iota);
   repeat match goal with H : lookup ?k ?e = Some _ |- context [lookup ?k ?e] => rewrite H end.
+
+(** A pure premise of a write-loop rule, the [side] of LibioLogic.v with
+    [lookups] for environments past the call. *)
+Ltac wside :=
+  lazymatch goal with
+  | |- environments.envs_entails _ _ => fail
+  | _ => first [done | unfold file_size; lia | lia | cbn; lia | lookups; first [reflexivity | do 2 f_equal; arith]]
+  end.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -139,7 +147,7 @@ Proof.
   st. chk "Hl". load_int "Hl Hfl". st. chk "Hl".
   iApply (wp_raw_store_w with "Hl Hfl"); [vx | vx | reflexivity | ar | reflexivity | wi_store |].
   iNext. iIntros "Hl Hfl". st.
-  iApply (wp_file_write_exit with "Hl Hoff"); [first [done | unfold file_size; lia | lia | lookups; reflexivity]..|].
+  iApply (wp_file_write_exit with "Hl Hoff"); try wside.
   iNext. iIntros (off') "Hl Hoff".
   assert (Hor : 0 <= Z.lor fl 32 < 2 ^ 32) by (apply lor_lt32; lia).
   iApply ("HK" with "Hl [Hfl] Hoff"). iSplit; [done|]. iApply (bytes_le_eq with "Hfl"). change (32 mod 2 ^ 32) with 32.

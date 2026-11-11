@@ -41,7 +41,7 @@ Proof.
   intros H. assert (Hn : 0 <= Z.lor fl 1) by (apply Z.lor_nonneg; lia).
   assert (Hp : 0 < Z.lor fl 1).
   { destruct (Z.eq_dec (Z.lor fl 1) 0) as [E|E]; [apply Z.lor_eq_0_iff in E; lia | lia]. }
-  split; [exact Hn|]. apply Z.log2_lt_pow2; [exact Hp|]. rewrite Z.log2_lor; [|lia..].
+  split; [exact Hn|]. apply Z.log2_lt_pow2; [exact Hp|]. rewrite Z.log2_lor; [|lia|lia].
   destruct (Z.eq_dec fl 0) as [->|Hne]; [reflexivity|].
   assert (Z.log2 fl < 32) by (apply Z.log2_lt_pow2; lia). change (Z.log2 1) with 0. lia.
 Qed.

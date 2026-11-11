@@ -98,7 +98,7 @@ Proof.
   iNext. iIntros "Hl Hwb". st. st. norm. chk "Hl". iDestruct "Hmode" as "[%Hm0 Hmode]". load_int "Hl Hmode".
   st. br.
   iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend");
-    [first [done | lia | unfold file_size; lia | cbn; lia | lk_prove] ..|].
+    try side.
   iNext. iIntros "Hl Hbl Hfl Hwe Hbase Hbend".
   iApply ("HK" with "Hl Hbl Hfl [$Hmode //] Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend").
 Qed.

@@ -136,7 +136,7 @@ Proof.
   iApply (OWr.wp_zsys_write w0 registry ge with "Hps Herr"); sides.
   iNext. iIntros (k Hk) "Hps Herr".
   assert (Hk' : 0 <= k < 2 ^ 64) by lia.
-  iApply wp_ret; [reflexivity | reflexivity |]. rewrite !(Z.mod_small k); [|lia..].
+  iApply wp_ret; [reflexivity | reflexivity |]. rewrite !(Z.mod_small k); [|lia|lia].
   iNext. iApply ("HK" with "[%] Hps Herr"). exact Hk.
 Qed.
 
@@ -179,7 +179,7 @@ Proof.
     sides.
   iNext. iIntros (k Hk) "Herr".
   assert (Hk' : 0 <= k < 2 ^ 64) by lia.
-  iApply wp_ret; [reflexivity | reflexivity |]. rewrite !(Z.mod_small k); [|lia..].
+  iApply wp_ret; [reflexivity | reflexivity |]. rewrite !(Z.mod_small k); [|lia|lia].
   iNext. iApply ("HK" with "[%] Herr"). exact Hk.
 Qed.
 
@@ -240,7 +240,7 @@ Proof.
   replace ((44 + 15) / 16 * 16) with 48 by reflexivity.
   iApply (OIo.wp_zsys_ioctl w0 registry ge _ _ _ _ _ _ _ _ _ _ fd 2150388778 44 base _ 0 eb
             with "Hl [Hb] Herr"); sides.
-  - cbn. rewrite Z.add_0_r !Z.mod_small; [reflexivity | lia..].
+  - cbn. rewrite Z.add_0_r !Z.mod_small; [reflexivity | lia | lia].
   - cbn. lia.
   - unfold OIo.ioctl_n. cbn [r_end]. rewrite Z.add_0_r. replace (Z.min (base + 48 - base) 128) with 48 by lia.
     iExact "Hb".

@@ -79,7 +79,7 @@ Proof.
        [reflexivity | reflexivity | reflexivity | ar | ar | exact Hwb |]);
     iNext; iIntros "Hl Hwb Hc"; st; st; st; rewrite -Hcap;
     (iApply wp_ret; [reflexivity | reflexivity |]); iNext; cbn;
-    rewrite (Z.mod_small (ptr_addr wp)); [|lia..]; rewrite (Z.mod_small (ptr_addr wb)); [|lia..];
+    rewrite (Z.mod_small (ptr_addr wp)); [|lia]; rewrite (Z.mod_small (ptr_addr wb)); [|lia];
     rewrite Z.mod_mod; [|lia]; iApply ("HK" with "Hl [Hmode] Hwp Hwb Hc"); (iSplit; [iPureIntro; lia | iExact "Hmode"]).
 Qed.
 

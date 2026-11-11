@@ -134,7 +134,7 @@ Proof.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hfw) | apply (ge_fn_check _ _ _ Hfw) | vx |
     apply (ge_fn_find _ _ _ Hfw) | reflexivity | reflexivity |].
   iNext. rewrite (Z.mod_small n (2 ^ 64)); [|lia].
-  iApply (Hfw_spec with "Hl [$Hfl //] Hfl2 Hfd Htw Hoff Hbl Hxs Herr"); [reflexivity | first [done | lia | unfold file_size; lia] ..|].
+  iApply (Hfw_spec with "Hl [$Hfl //] Hfl2 Hfd Htw Hoff Hbl Hxs Herr"); try side.
   iNext. iIntros (r fl' tw' off' [Hpost Hfl']) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   assert (Hr : 0 <= r <= n) by (destruct Hpost as [[-> _] | [? _]]; lia).
@@ -143,7 +143,7 @@ Proof.
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hcol"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |].
   iNext. iIntros "Hl Hcol". br. st. br.
   iApply (Htail_spec with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
-    [first [done | lia | unfold file_size; lia | cbn; lia | lk_prove] ..|].
+    try side.
   iNext. iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend".
   iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp").
   split; [exact Hpost | exact Hfl'].

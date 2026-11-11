@@ -72,12 +72,12 @@ Proof.
   iLöb as "IH". iIntros (e t tw off (Hv0 & Hv4 & Ht & Hp & Htr)) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
   cbn [fw_L8 b_insts b_jump]. st. destruct (Z.eq_dec t 0) as [-> | Ht0].
-  { brv true. iApply (wp_file_write_exit w0 registry ge with "Hl Hoff"); [first [done | unfold file_size; lia | lia | lookups; reflexivity]..|]. iNext. iIntros (off') "Hl Hoff".
+  { brv true. iApply (wp_file_write_exit w0 registry ge with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
     rewrite Z.sub_0_r. iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
     split; [left; split; reflexivity | exact Hflr]. }
   brv false.
   iApply (wp_file_write_call w0 registry ge Hreg Hext Hwrite fb freg f2 fd b reg o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
-    [first [done | unfold file_size; lia | lia | lookups; reflexivity] ..|].
+    try wside.
   iNext. iIntros (e' k (Hsame & Hc0 & Hk36 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
   pose proof (Hsame (TAtom "v0") ltac:(auto)) as Hv0'. pose proof (Hsame (TAtom "v4") ltac:(auto)) as Hv4'.
   pose proof (Hsame (TAtom "pr.1") ltac:(auto)) as Hp''. pose proof (Hsame (TAtom "pr.2") ltac:(auto)) as Ht''.
@@ -90,14 +90,14 @@ Proof.
   st. st. st. destruct Hk as [Hk | ->].
   2: { brv false.
        iApply (wp_file_write_err w0 registry ge with "Hl [$Hfl //] Hoff");
-         [first [done | unfold file_size; lia | lia | lookups; reflexivity]..|].
+         try wside.
        iNext. iIntros (off') "Hl Hfl Hoff".
        iApply ("HK" $! _ (Z.lor fl io_err_seen) with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
        split; [right; split; [lia | reflexivity] | apply lor_lt32; unfold io_err_seen; lia]. }
   destruct Hk as [[Hk0 Hkn] Hk31]. try (rewrite Z.mod_small in Hkn; [|lia]). brv true.
   iApply (wp_file_write_next w0 registry ge fb freg tw t k (mkPtr (b + o + (Z.of_nat (length xs) - t)) (Obj b))
             with "Hl Htw");
-    [first [done | unfold file_size; lia | lia | cbn; lia | lookups; first [reflexivity | do 2 f_equal; arith]]..|].
+    try wside.
   iNext. iIntros (e2 tw' (Hv02 & Hv42 & Ht2 & Hp2)) "Hl Htw".
   iApply ("IH" $! _ (t - k) _ off with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK").
   split_and!; [rewrite Hv02; lookups; reflexivity | rewrite Hv42; lookups; reflexivity | exact Ht2 | | lia | lia].

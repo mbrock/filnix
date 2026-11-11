@@ -113,7 +113,7 @@ Proof.
   iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
   iNext. iIntros "Hl Hwb Hbl". st. st. st. brv true.
   iApply (Hcall_spec with "Hvt Hl [$Hfl //] Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp HK");
-    [first [done | lia | unfold file_size; lia | unfold io_is_appending; lia | lk_prove] ..].
+    try side.
 Qed.
 
 End rules.
