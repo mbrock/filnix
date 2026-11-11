@@ -86,10 +86,6 @@ Definition sm_add {A : Type} (s : string) (v : A) (m : smap A) : smap A :=
 Definition sm_of_list {A : Type} (l : list (string * A)) : smap A :=
   fold_left (fun m p => sm_add (fst p) (snd p) m) l sm_empty.
 
-(** The bindings of a map, in no order. *)
-Definition sm_elements {A : Type} (m : smap A) : list (string * A) :=
-  flat_map snd (ZMap.elements m).
-
 (** ## Bytes *)
 
 Definition byte (n : Z) : Z := Z.land n 255.
@@ -109,6 +105,92 @@ Definition fits8 (n : Z) : bool := (-128 <=? n) && (n <=? 127).
 Definition fits32 (n : Z) : bool := (-2147483648 <=? n) && (n <=? 2147483647).
 
 Definition zlen {A : Type} (l : list A) : Z := Z.of_nat (length l).
+
+(** Loops over lists, in constant stack. A section or a shared object
+    is a list of tens of thousands of bytes, and libnanofil runs on
+    its caller's stack, where a recursion as deep as the list is long
+    does not fit. *)
+Definition map_tr {A B : Type} (f : A -> B) (l : list A) : list B :=
+  rev' (fold_left (fun acc x => f x :: acc) l []).
+
+Definition filter_tr {A : Type} (f : A -> bool) (l : list A) : list A :=
+  rev' (fold_left (fun acc x => if f x then x :: acc else acc) l []).
+
+Definition flat_map_tr {A B : Type} (f : A -> list B) (l : list A) : list B :=
+  rev' (fold_left (fun acc x => rev_append (f x) acc) l []).
+
+(** [n] zeros in front of [acc]. *)
+Fixpoint zeros_onto (n : nat) (acc : list Z) : list Z :=
+  match n with
+  | O => acc
+  | S n' => zeros_onto n' (0 :: acc)
+  end.
+
+Definition zeros (n : Z) : list Z := zeros_onto (Z.to_nat n) [].
+
+(** The first [n] elements of [l]. *)
+Fixpoint take_rev {A : Type} (n : nat) (l : list A) (acc : list A) : list A :=
+  match n, l with
+  | S n', x :: r => take_rev n' r (x :: acc)
+  | _, _ => acc
+  end.
+
+Definition take {A : Type} (n : nat) (l : list A) : list A := rev' (take_rev n l []).
+
+(** The concatenation of [chunks], which are in reverse order. *)
+Definition join_rev (chunks : list (list Z)) : list Z :=
+  rev' (fold_left (fun acc c => rev_append c acc) (rev' chunks) []).
+
+(** A stable merge sort. [merge_onto] merges [l1] and [l2], [l1]'s
+    first among equals, after the reversed [acc]; its fuel is their
+    total length. *)
+Fixpoint merge_onto {A : Type} (le : A -> A -> bool) (fuel : nat) (l1 l2 acc : list A) : list A :=
+  match fuel with
+  | O => rev_append acc (l1 ++ l2)
+  | S fuel' =>
+      match l1, l2 with
+      | [], _ => rev_append acc l2
+      | _, [] => rev_append acc l1
+      | x :: r1, y :: r2 =>
+          if le x y then merge_onto le fuel' r1 l2 (x :: acc) else merge_onto le fuel' l1 r2 (y :: acc)
+      end
+  end.
+
+Definition merge {A : Type} (le : A -> A -> bool) (l1 l2 : list A) : list A :=
+  merge_onto le (length l1 + length l2) l1 l2 [].
+
+(** Merges the runs pairwise, in order, in front of the reversed [acc]. *)
+Fixpoint merge_pairs_onto {A : Type} (le : A -> A -> bool) (runs acc : list (list A)) : list (list A) :=
+  match runs with
+  | a :: b :: r => merge_pairs_onto le r (merge le a b :: acc)
+  | _ => rev_append acc runs
+  end.
+
+(** Merges the runs pairwise until one is left; fuel bounds the
+    rounds. *)
+Fixpoint merge_all {A : Type} (le : A -> A -> bool) (fuel : nat) (runs : list (list A)) : list A :=
+  match fuel with
+  | O => concat runs
+  | S fuel' =>
+      match runs with
+      | [] => []
+      | [a] => a
+      | _ => merge_all le fuel' (merge_pairs_onto le runs [])
+      end
+  end.
+
+Definition sort {A : Type} (le : A -> A -> bool) (l : list A) : list A :=
+  merge_all le (length l) (map_tr (fun x => [x]) l).
+
+Definition str_le (a b : string) : bool :=
+  match String.compare a b with Gt => false | _ => true end.
+
+(** The bindings of a map, by name. The order of the buckets is no
+    answer to give: the OCaml extraction hashes names with OCaml's own
+    hash (theories/core/Extract.v). *)
+Definition sm_elements {A : Type} (m : smap A) : list (string * A) :=
+  sort (fun a b => str_le (fst a) (fst b))
+       (rev' (fold_left (fun acc b => rev_append (snd b) acc) (ZMap.elements m) [])).
 
 (** ## Registers and operands *)
 
@@ -997,7 +1079,7 @@ Definition lit_int (a : lit) : option Z := match a with LInt n => Some n | LSym 
 Definition data_item (n : Z) (e : expr) : option item :=
   match flat e with
   | Some (None, v) => Some (IBytes (le_bytes (Z.to_nat n) v) [])
-  | Some (Some s, a) => Some (IBytes (repeat 0 (Z.to_nat n)) [mkfix 0 n (XAbs n) s a n])
+  | Some (Some s, a) => Some (IBytes (zeros n) [mkfix 0 n (XAbs n) s a n])
   | None => None
   end.
 
@@ -1076,11 +1158,28 @@ Definition step (st : pstate) (l : line) : pstate + string :=
       end
   end.
 
-Fixpoint steps (st : pstate) (ls : list line) : pstate + string :=
-  match ls with
-  | [] => inl st
-  | l :: r => match step st l with inl st' => steps st' r | inr w => inr w end
+(** At most [n] of the lines, and the lines left. *)
+Fixpoint steps_n (n : nat) (st : pstate) (ls : list line) : (pstate * list line) + string :=
+  match n, ls with
+  | S n', l :: r => match step st l with inl st' => steps_n n' st' r | inr w => inr w end
+  | _, _ => inl (st, ls)
   end.
+
+(** The lines, in runs of 256. In the λANF build, [step] is inlined in
+    the loop over the lines, which then calls itself through its own
+    closure, a native frame per line; a run bounds those, and the loop
+    over the runs is a loop. The fuel is the number of lines. *)
+Fixpoint steps_runs (fuel : nat) (st : pstate) (ls : list line) : pstate + string :=
+  match fuel, ls with
+  | S fuel', _ :: _ =>
+      match steps_n 256 st ls with
+      | inl (st', r) => steps_runs fuel' st' r
+      | inr w => inr w
+      end
+  | _, _ => inl st
+  end.
+
+Definition steps (st : pstate) (ls : list line) : pstate + string := steps_runs (length ls) st ls.
 
 (** ## Placing the items *)
 
@@ -1275,7 +1374,7 @@ Fixpoint last_end (fs : list frag) (st : ZMap.t frst) (i : Z) : Z :=
   end.
 
 Definition lay (syms : smap sym) (c : sec) (labels : smap place) : laid * smap place :=
-  let its := map (settle syms (c_name c)) (rev' (c_items c)) in
+  let its := map_tr (settle syms (c_name c)) (rev' (c_items c)) in
   let (fs, labels') := frags (c_name c) 0 0 [] its labels [] in
   let st0 := initial fs 0 0 0 (ZMap.empty _) in
   let st := relax (S (S (count_jumps fs))) fs labels' st0 in
@@ -1388,7 +1487,7 @@ Definition nops (rest_first : bool) (n : Z) : list Z :=
   else if rest_first then rest_bytes ++ elevens else elevens ++ rest_bytes.
 
 Definition pad (rest_first nop data : bool) (n : Z) : list Z :=
-  if negb nop then repeat 0 (Z.to_nat n)
+  if negb nop then zeros n
   else if n <=? 0 then []
   else if data then 144 :: nops rest_first (n - 1)
   else nops rest_first n.
@@ -1404,7 +1503,7 @@ Fixpoint emit_items (rf keep : bool) (syms : smap sym) (labels : smap place) (la
       | IBytes bs fx =>
           let (bs', rs') := fix_item syms labels lays cur addr bs fx rs in
           emit_items rf keep syms labels lays cur r f fs (addr + zlen bs) (bs' :: out) rs'
-      | IZero n => emit_items rf keep syms labels lays cur r f fs (addr + n) ((if keep then repeat 0 (Z.to_nat n) else []) :: out) rs
+      | IZero n => emit_items rf keep syms labels lays cur r f fs (addr + n) ((if keep then zeros n else []) :: out) rs
       | IJump cc s a _ =>
           let target := match sym_where syms labels lays s with Some (_, v) => v + a | None => 0 end in
           let bs := match cc, f_long fs with
@@ -1477,7 +1576,7 @@ Definition symbols (syms : smap sym) (labels : smap place) (lays : list laid) (g
         [mkosym s (if s_weak y then 2 else 1) ty vis None 0 0]
     end in
   (if got then [mkosym "_GLOBAL_OFFSET_TABLE_" 1 0 0 None 0 0] else [])
-  ++ flat_map one (sm_elements syms).
+  ++ flat_map_tr one (sm_elements syms).
 
 (** Every symbol a relocation names, so an undefined one is in the
     table even when nothing else mentions it. *)
@@ -1490,11 +1589,6 @@ Definition note_refs (syms : smap sym) (its : list item) : smap sym :=
                | IJump _ s _ _ => match sm_find s m with Some _ => m | None => sm_add s no_sym m end
                | _ => m
                end) its syms.
-
-(** The concatenation of [chunks], which are in reverse order: a
-    loop, so a section of any size takes constant stack. *)
-Definition join_rev (chunks : list (list Z)) : list Z :=
-  fold_left (fun acc c => c ++ acc) chunks [].
 
 (** The object GNU as makes of [ls], or the text of a line it has no
     encoding for here; [rest_first] pads code as GNU as 2.46 does. *)
@@ -1517,7 +1611,7 @@ Definition encode_lines (rest_first : bool) (ls : list line) : obj + string :=
         (mkosec (c_name c) (c_type c) (c_flags c) (c_align c) (ly_size l)
                 (if c_type c =? 8 then [] else join_rev out), rev' rs) in
       let done := map one lays in
-      inl (mkobj (map fst done) (flat_map snd done) (symbols syms labels lays (p_got st)))
+      inl (mkobj (map fst done) (flat_map_tr snd done) (symbols syms labels lays (p_got st)))
   end.
 
 (** ## The text the gate compares *)
@@ -1537,48 +1631,6 @@ Fixpoint hex_lines (bs : list Z) (n : nat) (cur : list string) (k : parts) : par
       | S n' => hex_lines r n' (hex2 b :: cur) k
       end
   end.
-
-Fixpoint insert {A : Type} (le : A -> A -> bool) (x : A) (l : list A) : list A :=
-  match l with
-  | [] => [x]
-  | y :: r => if le x y then x :: l else y :: insert le x r
-  end.
-
-Fixpoint merge {A : Type} (le : A -> A -> bool) (l1 : list A) : list A -> list A :=
-  match l1 with
-  | [] => fun l2 => l2
-  | x :: r1 =>
-      fix m2 (l2 : list A) : list A :=
-        match l2 with
-        | [] => l1
-        | y :: r2 => if le x y then x :: merge le r1 l2 else y :: m2 r2
-        end
-  end.
-
-(** Merges the runs pairwise until one is left; fuel bounds the
-    rounds. *)
-Fixpoint merge_pairs {A : Type} (le : A -> A -> bool) (runs : list (list A)) : list (list A) :=
-  match runs with
-  | a :: b :: r => merge le a b :: merge_pairs le r
-  | _ => runs
-  end.
-
-Fixpoint merge_all {A : Type} (le : A -> A -> bool) (fuel : nat) (runs : list (list A)) : list A :=
-  match fuel with
-  | O => concat runs
-  | S fuel' =>
-      match runs with
-      | [] => []
-      | [a] => a
-      | _ => merge_all le fuel' (merge_pairs le runs)
-      end
-  end.
-
-Definition sort {A : Type} (le : A -> A -> bool) (l : list A) : list A :=
-  merge_all le (length l) (map (fun x => [x]) l).
-
-Definition str_le (a b : string) : bool :=
-  match String.compare a b with Gt => false | _ => true end.
 
 Definition type_name (t : Z) : string :=
   if t =? 8 then "NOBITS" else if t =? 14 then "INIT_ARRAY" else if t =? 15 then "FINI_ARRAY" else "PROGBITS".

@@ -111,7 +111,7 @@ Fixpoint plan (syms : smap osym) (rs : list oreloc) (n : needs) : needs + string
 (** The symbols the object defines for others: global or weak, and
     not hidden. *)
 Definition exports (o : obj) : list osym :=
-  filter (fun y => match oy_sec y with
+  filter_tr (fun y => match oy_sec y with
                    | Some _ => negb (oy_bind y =? 0) && negb (oy_vis y =? 2)
                    | None => false
                    end) (ob_syms o).
@@ -172,7 +172,7 @@ Fixpoint strtab_rev (names : list string) (off : Z) (acc : list (list Z)) (offs 
   end.
 
 Definition strtab (names : list string) : list Z * smap Z :=
-  let (acc, offs) := strtab_rev names 1 [[0]] sm_empty in (concat (rev' acc), offs).
+  let (acc, offs) := strtab_rev names 1 [[0]] sm_empty in (join_rev acc, offs).
 
 Definition name_off (offs : smap Z) (s : string) : Z :=
   match sm_find s offs with Some n => n | None => 0 end.
@@ -190,29 +190,35 @@ Fixpoint patch_rev (fuel : nat) (bs : list Z) (pos : Z) (patches : list (Z * lis
       | (at_, v) :: rest =>
           let skip := Z.to_nat (at_ - pos) in
           let n := length v in
-          patch_rev fuel' (skipn (skip + n) bs) (at_ + Z.of_nat n) rest (v :: firstn skip bs :: acc)
+          patch_rev fuel' (skipn (skip + n) bs) (at_ + Z.of_nat n) rest (v :: take skip bs :: acc)
       end
   end.
 
 Definition apply_patches (fuel : nat) (bs : list Z) (pos : Z) (patches : list (Z * list Z)) : list Z :=
   join_rev (patch_rev fuel bs pos patches []).
 
+(** The numbers 0 to [n] - 1, in front of [acc]. *)
+Fixpoint upto_onto (n : nat) (acc : list Z) : list Z :=
+  match n with
+  | O => acc
+  | S n' => upto_onto n' (Z.of_nat n' :: acc)
+  end.
+
 (** The SysV hash table of the symbols [names], index 1 on. *)
 Definition hash_table (names : list string) : list Z :=
   let n := zlen names + 1 in
   let nb := Z.max 1 (zlen names) in
-  let '(buckets, chains) :=
-    fold_left (fun (acc : ZMap.t Z * ZMap.t Z) p =>
-                 let '(bk, ch) := acc in
-                 let i := fst p in
-                 let b := elf_hash (snd p) mod nb in
+  let '(_, buckets, chains) :=
+    fold_left (fun (acc : Z * ZMap.t Z * ZMap.t Z) name =>
+                 let '(i, bk, ch) := acc in
+                 let b := elf_hash name mod nb in
                  let head := match ZMap.find b bk with Some h => h | None => 0 end in
-                 (ZMap.add b i bk, ZMap.add i head ch))
-              (numbered 1 names) (ZMap.empty _, ZMap.empty _) in
+                 (i + 1, ZMap.add b i bk, ZMap.add i head ch))
+              names (1, ZMap.empty _, ZMap.empty _) in
   let get m i := match ZMap.find i m with Some v => v | None => 0 end in
   le4 nb ++ le4 n
-    ++ flat_map (fun i => le4 (get buckets i)) (map Z.of_nat (seq 0 (Z.to_nat nb)))
-    ++ flat_map (fun i => le4 (get chains i)) (map Z.of_nat (seq 0 (Z.to_nat n))).
+    ++ flat_map_tr (fun i => le4 (get buckets i)) (upto_onto (Z.to_nat nb) [])
+    ++ flat_map_tr (fun i => le4 (get chains i)) (upto_onto (Z.to_nat n) []).
 
 (** The init or fini arrays in the order the linker puts them: by
     priority, then the one without. *)
@@ -280,24 +286,24 @@ Definition so_image (o : obj) : list Z + string :=
   let bss_size := match sec_named ".bss" with Some s => os_size s | None => 0 end in
   let nstub := zlen (n_stubs nd) in
   let ngot := zlen (n_got nd) in
-  let nrel := zlen (filter (fun r => or_type r =? 1) (ob_relocs o)) + ngot in
+  let nrel := zlen (filter_tr (fun r => or_type r =? 1) (ob_relocs o)) + ngot in
   let ndyn := 9 + (if zlen init_bytes =? 0 then 0 else 2) + (if zlen fini_bytes =? 0 then 0 else 2) in
   let nsym := 1 + zlen dyn_names in
   (* The sections, in the order they are placed; the contents of those
      whose bytes depend on addresses are filled once they are placed. *)
   let layout :=
     [mkout ".hash" 5 2 8 4 ".dynsym" 0 0 (hash_table dyn_names) 0;
-     mkout ".dynsym" 11 2 8 24 ".dynstr" 1 0 (repeat 0 (Z.to_nat (24 * nsym))) 0;
+     mkout ".dynsym" 11 2 8 24 ".dynstr" 1 0 (zeros (24 * nsym)) 0;
      mkout ".dynstr" 3 2 1 0 "" 0 0 dynstr 0;
-     mkout ".rela.dyn" 4 2 8 24 ".dynsym" 0 0 (repeat 0 (Z.to_nat (24 * nrel))) 0;
+     mkout ".rela.dyn" 4 2 8 24 ".dynsym" 0 0 (zeros (24 * nrel)) 0;
      mkout ".rodata" 1 2 (sec_align ".rodata") 0 "" 0 0 (sec_bytes ".rodata") 0;
      mkout ".text" 1 6 (sec_align ".text") 0 "" 0 1 (sec_bytes ".text") 0;
-     mkout ".plt" 1 6 16 8 "" 0 1 (repeat 0 (Z.to_nat (8 * nstub))) 0;
+     mkout ".plt" 1 6 16 8 "" 0 1 (zeros (8 * nstub)) 0;
      mkout ".data.rel.ro" 1 3 (sec_align ".data.rel.ro") 0 "" 0 2 (sec_bytes ".data.rel.ro") 0;
      mkout ".init_array" 14 3 8 8 "" 0 2 init_bytes 0;
      mkout ".fini_array" 15 3 8 8 "" 0 2 fini_bytes 0;
-     mkout ".got" 1 3 8 8 "" 0 2 (repeat 0 (Z.to_nat (8 * ngot))) 0;
-     mkout ".dynamic" 6 3 8 16 ".dynstr" 0 2 (repeat 0 (Z.to_nat (16 * ndyn))) 0;
+     mkout ".got" 1 3 8 8 "" 0 2 (zeros (8 * ngot)) 0;
+     mkout ".dynamic" 6 3 8 16 ".dynstr" 0 2 (zeros (16 * ndyn)) 0;
      mkout ".data" 1 3 (Z.max 8 (sec_align ".data")) 0 "" 0 3 (sec_bytes ".data") 0;
      mkout ".bss" 8 3 (sec_align ".bss") 0 "" 0 3 [] bss_size] in
   let layout := filter (fun q => negb (q_len q =? 0) || existsb (String.eqb (q_name q))
@@ -327,7 +333,7 @@ Definition so_image (o : obj) : list Z + string :=
   (* The bytes each relocation writes, by section, and the load-time
      relocations. *)
   let fixes :=
-    map (fun r =>
+    map_tr (fun r =>
            let p := sec_addr (or_sec r) + or_off r in
            let t := or_type r in
            let v := target r in
@@ -340,7 +346,7 @@ Definition so_image (o : obj) : list Z + string :=
              else match v with Some x => le8 (x + or_add r) | None => le8 0 end in
            (or_sec r, (or_off r, field))) (ob_relocs o) in
   let data_rels :=
-    flat_map (fun r =>
+    flat_map_tr (fun r =>
                 if or_type r =? 1 then
                   let p := sec_addr (or_sec r) + or_off r in
                   match target r with
@@ -349,13 +355,13 @@ Definition so_image (o : obj) : list Z + string :=
                   end
                 else []) (ob_relocs o) in
   let got_rels :=
-    map (fun s =>
+    map_tr (fun s =>
            match sym_value s with
            | Some x => rela (got_slot s) 8 0 x
            | None => rela (got_slot s) 6 (dynidx s) 0
            end) (n_got nd) in
   let patched n :=
-    let ps := map snd (filter (fun f => String.eqb (fst f) n) fixes) in
+    let ps := map_tr snd (filter_tr (fun f => String.eqb (fst f) n) fixes) in
     apply_patches (length ps) (sec_bytes n) 0 ps in
   let array_bytes base offs total :=
     (* the sections at their offsets, with the padding between them *)
@@ -366,10 +372,10 @@ Definition so_image (o : obj) : list Z + string :=
               offs [] in
   let dynsym :=
     repeat 0 24
-    ++ flat_map (fun s => sym_entry (name_off offs s)
+    ++ flat_map_tr (fun s => sym_entry (name_off offs s)
                             (match sm_find s syms with Some y => mkosym s (oy_bind y) (oy_type y) 0 None 0 0
                                                   | None => mkosym s 1 0 0 None 0 0 end) 0 0) (n_imports nd)
-    ++ flat_map (fun y => sym_entry (name_off offs (oy_name y)) y
+    ++ flat_map_tr (fun y => sym_entry (name_off offs (oy_name y)) y
                             (match oy_sec y with Some c => shndx c | None => 0 end)
                             (match sym_value (oy_name y) with Some v => v | None => 0 end)) exps in
   let stubs :=
@@ -385,7 +391,7 @@ Definition so_image (o : obj) : list Z + string :=
   let content (q : outsec) : list Z :=
     let n := q_name q in
     if String.eqb n ".dynsym" then dynsym
-    else if String.eqb n ".rela.dyn" then join_rev (rev' (data_rels ++ got_rels))
+    else if String.eqb n ".rela.dyn" then join_rev (rev' (rev_append (rev' data_rels) got_rels))
     else if String.eqb n ".plt" then stubs
     else if String.eqb n ".dynamic" then dynamic
     else if String.eqb n ".init_array" then array_bytes ".init_array" init_offs (zlen init_bytes)
@@ -400,7 +406,7 @@ Definition so_image (o : obj) : list Z + string :=
                  let '(chunks, len) := acc in
                  if q_type q =? 8 then acc
                  else let c := content q in
-                      (c :: repeat 0 (Z.to_nat (a (q_name q) - len)) :: chunks, a (q_name q) + zlen c))
+                      (c :: zeros (a (q_name q) - len) :: chunks, a (q_name q) + zlen c))
               layout ([], 0) in
   let '(shstr, shoffs) := strtab (shnames ++ [".shstrtab"]) in
   let shstr_off := file_end in
@@ -444,7 +450,7 @@ Definition so_image (o : obj) : list Z + string :=
     ++ shdr (name_off shoffs ".shstrtab") 3 0 0 shstr_off (zlen shstr) 0 0 1 0 in
   let head := ehdr ++ phdrs in
   let body := join_rev body_rev in
-  inl (join_rev [shdrs; repeat 0 (Z.to_nat (shoff - (shstr_off + zlen shstr))); shstr;
+  inl (join_rev [shdrs; zeros (shoff - (shstr_off + zlen shstr)); shstr;
                  skipn (Z.to_nat (zlen head)) body; head])
   end
   end.
