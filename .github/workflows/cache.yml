@@ -2,7 +2,7 @@
 # hosted runner. Its core job requires scripts/ship-outputs.txt (the compiler
 # and curated baseline) in public caches with their whole closures. The
 # campaign publishes the wider scripts/ci-outputs.txt distribution set.
-# The separate artifact job uses the cached compiler and substitutes
+# The scheduled artifact job uses the cached compiler and substitutes
 # the PHP and /opt/fil tarballs and the image (max-jobs = 0 forbids local
 # builds). From main it publishes the image to ghcr.io and keeps the PHP
 # tarball as a workflow artifact; releases are release.yml.
@@ -14,7 +14,8 @@ name: Binary cache
 # Skip pushes that cannot change the toolchain or baseline: the same
 # rule as the pre-push hook's foundations_unaffected (scripts/git-hooks/
 # lib.sh). This workflow itself still triggers, and the nightly schedule
-# checks everything regardless.
+# checks everything regardless. Distribution tests run only twice daily
+# or on demand, never on ordinary pushes or pull requests.
 on:
   push:
     branches: [main]
@@ -39,11 +40,11 @@ on:
       - "!**.md"
   workflow_dispatch:
   schedule:
-    - cron: "17 6 * * *"
+    - cron: "17 5,17 * * *"
 
 concurrency:
-  group: cache-${{ github.ref }}
-  cancel-in-progress: true
+  group: cache-${{ github.ref }}-${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -61,6 +62,7 @@ jobs:
   cache:
     name: Toolchain and baseline are cached
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Shipping and publication contracts
@@ -83,8 +85,10 @@ jobs:
 
   distribution:
     name: Distribution readiness
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: cache
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       ready: ${{ steps.check.outputs.ready }}
     steps:
@@ -118,6 +122,7 @@ jobs:
     needs: distribution
     if: needs.distribution.outputs.ready == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write

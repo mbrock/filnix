@@ -1,0 +1,11 @@
+<block id="b-2026-11-11-lighter-ci" kind="milestone" actor="T-01a1c980-536c-7571-9f91-c2d2b26ae1e9" created="2026-11-11T08:15:00Z">
+  <title>Smoke on push, full checks twice daily</title>
+  <about path=".github/workflows/nanofil.yml"/>
+  <about path=".github/workflows/pages.yml"/>
+  <tag name="ci"/>
+  <p>Main averaged 55 commits per day over the last two complete weeks. Compiler pushes now select 40 default-path smoke steps on one runner, including every program under plain and optimized GC stress. The complete 324-step matrix runs twice daily or on demand. Rocq, Gate, glibc, backend and documentation checks remain narrowly triggered on push.</p>
+  <claim status="tested" check="nix build -L .#checks.x86_64-linux.nanofil-smoke">
+    <p>All 40 smoke steps passed on four pinned CPUs in 13 minutes 56 seconds including dependency setup. The complete suite's step definitions are unchanged.</p>
+  </claim>
+  <p>Site publication builds and uploads on one GitHub runner, without browser gates or artifact handoffs. Browser sweeps, snapshot retention and distribution tests run twice daily. This trades immediate alternate-mode and exhaustive browser feedback for substantially less per-push work; native ABI and GC smoke and the campaign's proof gates stay on push.</p>
+</block>

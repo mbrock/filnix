@@ -1,6 +1,4 @@
-# Publishes the site built by .#site (packages/site): pages/ as is and docs/
-# rendered with pandoc, which substitutes from cache.nixos.org.
-# Cloudflare R2 + the Worker serve filnix.org; no GitHub Pages deployment.
+# One runner builds and publishes; no artifact handoff or browser gate.
 name: Site
 
 on:
@@ -20,87 +18,60 @@ on:
       # Every Nix file is a page (dterm-nix), and the option index
       # evaluates the modules.
       - "**.nix"
-      - ".github/workflows/pages.yml"
+      - flake.lock
+      - .github/workflows/pages.yml
   workflow_dispatch:
-
-# The playground's build needs filcc-staging, which campaigns publish to
-# filc.cachix.org.
-env:
-  NIX_CONFIG: |
-    extra-substituters = https://filc.cachix.org
-    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
 
 permissions:
   contents: read
 
-jobs:
-  # One cold producer finishes and seeds the shared cache; newer pushes
-  # coalesce into the newest pending producer rather than duplicating proofs
-  # or repeatedly cancelling the only run that can make them available.
-  generated:
-    name: Prepare and cache generated pages
-    if: github.ref == 'refs/heads/main'
-    # Proof capture is CPU-bound. Keep cheap assembly on GitHub, but use
-    # the measured faster machine for the one shared cold producer.
-    runs-on: nscloud-ubuntu-22.04-amd64-16x32
-    timeout-minutes: 30
-    concurrency:
-      group: site-generated-main
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
-      # Only publish these exact Nix outputs, not a mutable "latest" bundle
-      # or every store path produced by the runner. No PR/branch gets a key.
-      - name: Install the site cache publisher
-        uses: cachix/cachix-action@v16
-        with:
-          name: filc
-          skipPush: true
-      - name: Prepare and immediately cache proof states
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
-        run: |
-          set -o pipefail
-          nix build -L --no-link --print-out-paths \
-            .#site.proofStates .#site.spikeStates | cachix push filc
-      - name: Prepare and cache rendered pages
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
-        run: |
-          set -o pipefail
-          nix build --no-link --print-out-paths \
-            .#site.rocqPages .#site.prologPages | cachix push filc
+# A cold build finishes and seeds the shared cache. Keep only the latest
+# pending push. Share the lock with recovery and scheduled retention.
+concurrency:
+  group: filnix-org
+  cancel-in-progress: false
 
-  build:
-    needs: generated
-    runs-on: ubuntu-latest
+env:
+  NIX_CONFIG: |
+    extra-substituters = https://filc.cachix.org
+    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+    builders =
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment:
+      name: filnix-org
+      url: https://filnix.org
     steps:
       - uses: actions/checkout@v4
         with:
           # history.py dates every document from the whole history.
           fetch-depth: 0
-      - name: Check the R2 serving and retention contracts
+      - name: Check serving and publication contracts
         run: |
           node --test deploy/site/worker.test.mjs
           python3 -m unittest discover -s tests -p 'test_site_*.py'
       - uses: cachix/install-nix-action@v31
-      - name: Fetch exact generated pages (never rebuild proofs here)
+      - uses: cachix/cachix-action@v16
+        with:
+          name: filc
+          skipPush: true
+      - name: Require cached toolchain foundations
         run: |
-          nix build -L --no-link --max-jobs 0 --builders "" \
-            .#site.proofStates .#site.spikeStates .#site.rocqPages .#site.prologPages
-      # Equity is licensed, not public (deploy/site/equity.sh): its webfonts
-      # and the documents' PDFs are added here, before pinning.
-      - name: Build the site
+          python3 scripts/ci-cache-check.py \
+            packages.x86_64-linux.filcc-staging packages.x86_64-linux.site-swipl
+      - name: Build the complete site
+        run: nix build -L --max-jobs auto --cores 0 .#site
+      - name: Prepare the release
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.FILNIX_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.FILNIX_R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          nix build -L .#site
           cp -rL result _site
-          # The commit it was built from, for the publish job to compare
-          # with what is live.
           chmod u+w _site
           echo "$GITHUB_SHA" > _site/commit.txt
           # Dates and activity under each document's title, the home
@@ -108,163 +79,41 @@ jobs:
           python3 packages/site/history.py _site .
           bash deploy/site/equity.sh _site
           python3 deploy/site/prepare.py _site "$GITHUB_SHA"
-      # Preserve the tar/name contract for phone checks and recovery of
-      # both old and new runs, without calling the GitHub Pages service.
-      - name: Package the site
-        run: tar -C _site -cf "$RUNNER_TEMP/artifact.tar" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: github-pages
-          path: ${{ runner.temp }}/artifact.tar
-          retention-days: 3
-
-  # The sole publisher. It serializes promotions and rejects stale builds.
-  publish-r2:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    concurrency:
-      group: filnix-org
-      cancel-in-progress: false
-    environment:
-      name: filnix-org
-      url: https://filnix.org
-    outputs:
-      promoted: ${{ steps.publish.outputs.promoted }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: github-pages
-      - name: Unpack the built site
-        run: mkdir _site && tar -xf artifact.tar -C _site
-      - name: Upload, verify and atomically promote the R2 release
+      - name: Publish the release
         id: publish
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.FILNIX_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.FILNIX_R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           GH_TOKEN: ${{ github.token }}
-        run: bash deploy/site/publish.sh
-
-  deployed-phone:
-    needs: publish-r2
-    # Even a retention failure after promotion must not skip live checks.
-    if: always() && needs.publish-r2.outputs.promoted == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check the public release and canonical promotion
+        run: |
+          aws configure set default.s3.max_concurrent_requests 32
+          bash deploy/site/publish.sh
+      - name: Check the live release
+        if: steps.publish.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$(curl --retry 5 --retry-all-errors --retry-delay 5 -fsS \
+          test "$(curl --retry 5 --retry-all-errors --retry-delay 2 -fsS \
             "https://filnix.org/__releases/$GITHUB_SHA/commit.txt")" = "$GITHUB_SHA"
           live=$(curl -fsS https://filnix.org/commit.txt)
           status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$live" --jq .status)
-          # A concurrent newer promotion is fine; a stale one is not.
           case $status in ahead|identical) ;; *) echo "Unexpected live SHA: $live"; exit 1 ;; esac
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - name: Install the browser
-        run: |
-          python3 nanofil/tests/watch.py --label 'Browser install' -- \
-            npm install --global agent-browser@0.38.1
-          python3 nanofil/tests/watch.py --label 'Chromium install' -- \
-            agent-browser install --with-deps
-      - name: Check filnix.org at both phone widths
+      # Publication is already live. Cache only exact generated outputs,
+      # not the toolchain or a mutable latest bundle, for subsequent pushes.
+      - name: Cache generated pages
+        if: ${{ !cancelled() }}
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           set -o pipefail
-          python3 nanofil/tests/watch.py --label 'Live site at phone widths' -- \
-            node packages/site/phone.mjs https://filnix.org/ 320 390 \
-            2>&1 | tee deployed-phone.log
-      # The artifact job below exhaustively checks every Rocq page, with
-      # and without scripts. After promotion, smoke-test that immutable
-      # release instead of repeating the full sweep over the network.
-      - name: Smoke-test the deployed Rocq pages
-        run: |
-          set -o pipefail
-          python3 nanofil/tests/watch.py --label 'Live Rocq smoke test' -- \
-            node packages/site/phone.mjs \
-            "https://filnix.org/__releases/$GITHUB_SHA/" \
-            nanofil/rocq/index.html nanofil/rocq/rocq-theories-soundness-Machine.html \
-            nanofil/rocq/rocq-theories-soundness-Evidence.html nanofil/rocq/rocq-backend-EmitModule.html \
-            nanofil/rocq/rocq-glibc-ZsysWrite.html 320 390 \
-            2>&1 | tee deployed-rocq-phone.log
+          nix build --no-link --print-out-paths --max-jobs 0 \
+            .#site.proofStates .#site.spikeStates .#site.rocqPages .#site.prologPages | cachix push filc
+      # Retain the recovery format, but upload it after publication.
+      - name: Package the published site
+        run: tar -C _site -cf "$RUNNER_TEMP/artifact.tar" .
       - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: deployed-phone-layout
-          retention-days: 3
-          path: deployed-*.log
-          if-no-files-found: ignore
-
-  # The built site at phone widths. It reports and never holds back the
-  # publish above: a red run is fixed forward.
-  phone:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
         with:
           name: github-pages
-      - name: Unpack the deployed site
-        run: mkdir _site && tar -xf artifact.tar -C _site
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - name: Install the browser
-        run: |
-          python3 nanofil/tests/watch.py --label 'Browser install' -- \
-            npm install --global agent-browser@0.38.1
-          python3 nanofil/tests/watch.py --label 'Chromium install' -- \
-            agent-browser install --with-deps
-      - name: Check the widest pages at phone width
-        run: |
-          set -o pipefail
-          python3 nanofil/tests/watch.py --label 'Pages at 320px' -- \
-            node packages/site/phone.mjs _site 320 2>&1 | tee site-phone.log
-      - name: Check delayed browser navigation
-        run: |
-          set -o pipefail
-          python3 nanofil/tests/watch.py --label 'Rocq delayed navigation' -- \
-            node nanofil/web/rocq/tests/navigation.mjs 2>&1 | tee rocq-phone-navigation.log
-      - name: Check every Rocq page at phone widths
-        run: |
-          set -o pipefail
-          # Match the Worker's immutable resource paths in this local copy.
-          mkdir -p _site/__releases
-          ln -s .. "_site/__releases/$GITHUB_SHA"
-          python3 -m http.server 8765 --bind 127.0.0.1 --directory _site >/tmp/rocq-http.log 2>&1 &
-          server=$!
-          trap 'kill "$server"' EXIT
-          curl --retry 10 --retry-connrefused --retry-delay 1 --silent --fail \
-            http://127.0.0.1:8765/nanofil/rocq/index.html -o /dev/null
-          pids=()
-          for width in 320 390; do
-            (
-              python3 nanofil/tests/watch.py --label "Rocq phone pages ${width}px" \
-                --warn-after 300 --timeout 1200 -- \
-                node nanofil/web/rocq/tests/layout.mjs http://127.0.0.1:8765 --pages-only "$width" \
-                2>&1 | tee "rocq-phone-${width}.log"
-            ) &
-            pids+=("$!")
-          done
-          failed=0
-          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
-          exit "$failed"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: rocq-phone-layout
-          path: |
-            rocq-phone-*.log
-            site-phone.log
-          if-no-files-found: ignore
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 3

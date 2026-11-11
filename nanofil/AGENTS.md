@@ -44,7 +44,8 @@ nanofil/tests/guide.sh [--check]               # regenerate (or check) the outpu
 swipl nanofil/tests/docs.pl -- nanofil/src     # every module has a header and every export PlDoc
 (cd nanofil && swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md docs/logic.md docs/lambda-anf.md docs/nfb-guide-argon.md docs/nfb-guide-wonder.md docs/nfb-guide-wonderful.md src --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes --rocq=rocq/backend --rocq=rocq/glibc)  # the documents', concepts' and [[concept]] references resolve
 (cd nanofil/src && ../bin/nanofil --script ../tests/gen.pl SEED COUNT </dev/null) >gen.ir  # random IR corpus
-nix build .#checks.x86_64-linux.nanofil        # everything, in one build (about 45 min); CI runs it in 8 shards after each push that changes src, bin or tests
+nix build .#checks.x86_64-linux.nanofil-smoke  # default-path native/differential/GC coverage; CI on compiler pushes
+nix build .#checks.x86_64-linux.nanofil        # all modes and matrices; CI twice daily or on demand (allow several hours)
 nix build .#checks.x86_64-linux.nanofil-docs   # the documents' references and the guide's outputs (about a minute)
 nix build .#checks.x86_64-linux.nanofil-rocq   # quick: every theory (one derivation each), model, small corpus
 nix build .#checks.x86_64-linux.nanofil-rocq-parse # grammar round trip of every theory (web/rocq/tests/parse.sh)
@@ -72,12 +73,14 @@ changes (seconds once the model is cached; a theory edit recompiles that
 theory and its importers), `nanofil-rocq-parse` for changes to
 `web/rocq/rocq_syntax.pl`, `reprint.pl` or `parse.sh`, and a package check for frontend or backend changes.
 Then push with `scripts/ship` (nanofil-only pushes skip the cache gate)
-and keep working. After the push, CI runs `checks.nanofil` split into 8
-shards (.github/workflows/nanofil.yml, only when src, bin or tests
-change), the docs check, quick Rocq and the site. If one
-of your runs goes red, fix it forward. To see the whole check on a
-branch before pushing, run the Nanofil workflow on it with
-`workflow_dispatch`, or build one shard locally:
+and keep working. After the push, CI runs `checks.nanofil-smoke`
+(.github/workflows/nanofil.yml, only for compiler/check inputs), with
+separate narrowly triggered docs, backend, quick Rocq, Gate, glibc and
+site checks. The full compiler suite, full backend/Crane, browser sweeps
+and distribution checks run twice daily or on demand; the deliberate
+Rocq mutation campaign stays opt-in. If one of your runs goes red, fix
+it forward. To see the whole compiler check on a branch before pushing,
+run the Nanofil workflow with `workflow_dispatch`, or build a shard locally:
 `nix build -L --impure --expr '(builtins.getFlake (toString ./.)).lib.x86_64-linux.nanofil-check { shard = "3/8"; }'`.
 Steps live in `nix/check.nix`'s `steps` function; give each a unique
 label, since labels select a step's shard, and refresh

@@ -314,6 +314,11 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
+            nanofil-smoke = import ./nanofil/nix/check.nix {
+              inherit pkgs;
+              filcc = filcc-staging;
+              smoke = true;
+            };
             nanofil-rocq = import ./nanofil/nix/rocq.nix {
               inherit pkgs;
               filcc = filcc-staging;

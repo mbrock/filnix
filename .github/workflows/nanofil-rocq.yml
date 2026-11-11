@@ -14,6 +14,8 @@ on:
       # The Gallina backend has its own check (nanofil-backend.yml);
       # nothing in the quick gate reads it.
       - "!nanofil/rocq/backend/**"
+      # The glibc campaign has its own incremental compile/probe check.
+      - "!nanofil/rocq/glibc/**"
       - "nanofil/src/**"
       - "nanofil/bin/**"
       - nanofil/nix/rocq.nix

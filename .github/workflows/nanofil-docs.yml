@@ -1,6 +1,6 @@
 # The documents' references and the guide's outputs (checks.nanofil-docs,
 # nanofil/nix/docs.nix) after each push that changes nanofil: about a
-# minute, apart from the compiler shards (nanofil.yml), which documents
+# minute, apart from the compiler smoke check (nanofil.yml), which documents
 # and theories no longer rerun. It never blocks a push.
 name: Nanofil docs
 

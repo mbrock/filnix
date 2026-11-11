@@ -4,7 +4,7 @@
 # propagation, the Fil-C ABI and emission, and asm.pl. Keep this list to
 # those. It never blocks a push:
 # a red run is fixed forward on main.
-# The crane job holds the same Gallina, extracted to C++ by Crane
+# Twice daily and on demand, the crane job holds the same Gallina, extracted to C++ by Crane
 # (nanofil/nix/backend-crane.nix), to the same outputs on the IR
 # fixtures. Extracting and compiling the C++ takes minutes on one
 # translation unit, which is why it is a job of its own.
@@ -30,6 +30,8 @@ on:
       - nanofil/src/pizlonate.pl
       - nanofil/src/promote.pl
       - .github/workflows/nanofil-backend.yml
+  schedule:
+    - cron: "17 5,17 * * *"
   workflow_dispatch:
     inputs:
       full:
@@ -41,8 +43,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: nanofil-backend-${{ github.ref }}
-  cancel-in-progress: true
+  group: nanofil-backend-${{ github.ref }}-${{ github.event_name == 'push' && 'quick' || 'full' }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   backend:
@@ -58,7 +60,7 @@ jobs:
       - name: Select the quick check or the whole corpus
         id: select
         env:
-          FULL: ${{ inputs.full }}
+          FULL: ${{ inputs.full || github.event_name == 'schedule' }}
         run: |
           if [ "$FULL" = true ]; then root=nanofil-backend-full; else root=nanofil-backend; fi
           echo "root=$root" >> "$GITHUB_OUTPUT"
@@ -83,7 +85,7 @@ jobs:
           path: nanofil-backend.log
 
   crane:
-    if: ${{ !inputs.full }}
+    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:

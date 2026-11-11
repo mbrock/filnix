@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Pin a complete site's resources, but not navigation, before publication."""
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import html
 from html.parser import HTMLParser
+from itertools import repeat
 from pathlib import Path
 import re
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -56,16 +58,22 @@ class Page(HTMLParser):
         return "".join(parts)
 
 
+def prepare_page(path, root, sha):
+    source = path.read_text()
+    result = Page(source, path.relative_to(root).as_posix(), sha).render()
+    if result != source:
+        # Site artifacts originate in the read-only Nix store.
+        path.chmod(path.stat().st_mode | 0o200)
+        path.write_text(result)
+
+
 def prepare(root, sha):
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Expected a full release commit SHA")
-    for path in root.rglob("*.html"):
-        source = path.read_text()
-        result = Page(source, path.relative_to(root).as_posix(), sha).render()
-        if result != source:
-            # Site artifacts originate in the read-only Nix store.
-            path.chmod(path.stat().st_mode | 0o200)
-            path.write_text(result)
+    # HTML parsing is CPU-bound; each worker owns a different file. Keep
+    # resource pinning byte-identical without serializing hundreds of pages.
+    with ProcessPoolExecutor(max_workers=4) as pool:
+        list(pool.map(prepare_page, root.rglob("*.html"), repeat(root), repeat(sha)))
 
 
 if __name__ == "__main__":

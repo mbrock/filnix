@@ -10,6 +10,7 @@ on:
   push:
     branches: [main]
     paths:
+      - flake.nix
       - flake.lock
       - "nanofil/src/**"
       - "nanofil/bin/**"

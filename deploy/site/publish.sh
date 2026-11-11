@@ -8,7 +8,7 @@ aws_args=(--endpoint-url "https://d66b4fdcf8b2d4b0949d7fa3518b9b58.r2.cloudflare
 
 # A failed read (other than an absent object) stops publication. In
 # particular, a temporary network/auth failure cannot erase a newer release.
-aws "${aws_args[@]}" s3api list-objects-v2 --bucket "$bucket" --output json > bucket.json
+aws "${aws_args[@]}" s3api list-objects-v2 --bucket "$bucket" --prefix current.json --output json > bucket.json
 if python3 -c 'import json,sys; sys.exit(not any(o["Key"]=="current.json" for o in json.load(open("bucket.json")).get("Contents",[])))'; then
   aws "${aws_args[@]}" s3 cp "s3://$bucket/current.json" current.json --no-progress
   live=$(python3 -c 'import json; print(json.load(open("current.json"))["sha"])')
@@ -22,14 +22,12 @@ if python3 -c 'import json,sys; sys.exit(not any(o["Key"]=="current.json" for o 
   esac
 fi
 
-# R2 storage is metered, not capped at the old trial's 8 GiB. Retention
-# runs only after a complete new release has been verified and promoted.
+# Only inventory this upload on the fast path. Whole-bucket retention is
+# scheduled separately under the same promotion lock.
 python3 - <<'PY'
-import json
 from pathlib import Path
-old = sum(o["Size"] for o in json.load(open("bucket.json")).get("Contents", []))
 new = sum(p.stat().st_size for p in Path("_site").rglob("*") if p.is_file())
-print(f"Existing {old:,} bytes; this release {new:,} bytes")
+print(f"This release {new:,} bytes")
 PY
 
 aws "${aws_args[@]}" s3 sync _site "s3://$bucket/$prefix" --no-progress
@@ -53,9 +51,4 @@ aws "${aws_args[@]}" s3 cp current.json "s3://$bucket/current.json" \
   --content-type application/json --cache-control no-store --no-progress
 echo "promoted=true" >> "$GITHUB_OUTPUT"
 echo "Published https://filnix.org/ (release $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
-
-# A fresh inventory includes this release. This job holds the promotion
-# lock; pruning never races a different promotion. Keep the live SHA,
-# newest five snapshots and a 24-hour grace for readers/browser checks.
-aws "${aws_args[@]}" s3api list-objects-v2 --bucket "$bucket" --output json > bucket.json
-python3 deploy/site/prune.py bucket.json "$GITHUB_SHA" --bucket "$bucket" "${aws_args[@]}"
+echo "@@site-live $(date -u +%FT%TZ) $GITHUB_SHA"

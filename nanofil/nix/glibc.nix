@@ -1,8 +1,8 @@
 # The glibc spike (rocq/glibc, docs/glibc-ir.md): programs linked with
 # nanofil's IR of user glibc units, proved through the program logic,
-# with libpizlo's zsys_write as the one trusted contract. Off the main
-# path: nothing else imports these files, and neither the quick gate
-# nor CI builds this.
+# with libpizlo's zsys_write as the one trusted contract. Off the model's
+# import path; its own push check (.github/workflows/nanofil-glibc.yml)
+# compiles and caches each changed file and its importers.
 #
 #   nix build -L .#checks.x86_64-linux.nanofil-glibc
 #

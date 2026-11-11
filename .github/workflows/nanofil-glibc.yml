@@ -1,0 +1,71 @@
+# The glibc campaign stays incremental and on push, beside Rocq and Gate.
+name: Nanofil glibc
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - "nanofil/rocq/glibc/**"
+      - "nanofil/rocq/theories/**"
+      - nanofil/nix/glibc.nix
+      - nanofil/nix/rocq.nix
+      - nanofil/tests/watch.py
+      - nanofil/web/rocq/rocq_syntax.pl
+      - nanofil/web/rocq/tests/parse.sh
+      - nanofil/web/rocq/tests/reprint.pl
+      - toolchain.nix
+      - "toolchain/**"
+      - "compiler/**"
+      - "runtime/**"
+      - .github/workflows/nanofil-glibc.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nanofil-glibc-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NIX_CONFIG: |
+    extra-substituters = https://filc.cachix.org
+    extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+    builders =
+
+jobs:
+  glibc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: filc
+          skipPush: true
+      - name: Require the cached staging toolchain
+        run: python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
+      - name: Compile, reprint and probe glibc contracts
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 1800 -- \
+            nix build -L --no-link --keep-going --max-jobs auto --cores 0 \
+            .#checks.x86_64-linux.nanofil-glibc 2>&1 | tee nanofil-glibc.log
+      - name: Cache completed objects and verdicts
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
+        run: |
+          { nix eval --raw .#checks.x86_64-linux.nanofil-glibc --apply 'g: builtins.concatStringsSep "\n"
+              (map (d: d.outPath) (builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ [ g.probes g ]))'; echo; } |
+            while read -r p; do [ -e "$p" ] && echo "$p"; done | cachix push filc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nanofil-glibc-log
+          path: nanofil-glibc.log
+          retention-days: 3

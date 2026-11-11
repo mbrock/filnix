@@ -1,13 +1,13 @@
 # filnix.org hosting
 
 The **Site** workflow (`.github/workflows/pages.yml`) builds and publishes only
-to Cloudflare R2. Its `publish-r2` job verifies object paths/sizes and
+to Cloudflare R2. Its single build/publish job verifies object paths/sizes and
 `commit.txt`, then atomically replaces `current.json`. Concurrent publication
 is serialized; an older build cannot replace a newer live commit. Upload
 failures leave the previous release live. There is no GitHub Pages deployment,
 Pages setup action or Pages/OIDC write permission. The artifact retains its
-historical `github-pages` name and `artifact.tar` format so phone checks and
-manual recovery work for both old and new runs; it is a normal Actions artifact.
+historical `github-pages` name and `artifact.tar` format so
+manual recovery works for both old and new runs; it is a normal Actions artifact.
 
 `filnix-site` is a private Standard R2 bucket. `worker.mjs` is its only public
 front end, bound as `SITE`. The Worker serves canonical paths directly from
@@ -22,18 +22,15 @@ It streams downloads, supports HEAD, conditional and range requests, and caches
 immutable release responses up to Cloudflare's ordinary 512 MiB object limit.
 `/commit.txt` reports the canonical release without caching.
 
-The Site workflow first prepares the four exact generated-page outputs and
-publishes them to Cachix. This producer is serialized: one active run finishes,
-with only the newest pending run kept. Proof captures are uploaded before the
-renderers, not after the whole site. Site assembly depends on this job and
-fetches these outputs with local/remote builders disabled, so it cannot silently
-recompile proofs. A cache miss or failed upload is visible in the prerequisite.
-The unrelated Binary cache workflow checks toolchain foundations; Site does
-not wait for its distribution/image jobs. The producer uses Namespace 16 CPU /
-32 GiB (no persistent volume), with a 30-minute timeout; ordinary site assembly
-and browser checks remain on free GitHub runners. The previous cold 16-core
-comparison cost about $0.14 per complete job at $0.024/minute; cached producers
-and coalesced pushes cost less, but real proof growth can increase runtime.
+The Site workflow builds, prepares and publishes on one GitHub Ubuntu runner,
+without artifact handoffs or browser gates. One active run finishes and seeds
+the cache; only the newest pending push is kept. Cached staging Fil-C and
+site SWI-Prolog are required, so CI never compiles LLVM. Exact generated-page
+outputs substitute when unchanged; a cache miss builds the actual current
+proof captures and pages, never a stale latest bundle. After the release is
+live, those four outputs go to Cachix and the recovery artifact is uploaded.
+The job has a 40-minute timeout and does not wait for Binary cache or its
+distribution/image jobs. Cold proof edits can still be slower than prose edits.
 
 Equity, mbrock's licensed typeface for prose, is not in the repository.
 Its three OTFs are in this bucket under `private/fonts/equity/`, a key the
@@ -44,8 +41,11 @@ nanofil document as a PDF beside its page; the OTFs never enter the
 site. Without the credentials the site builds as before, with Georgia.
 
 The Actions `filnix-org` environment shows deployment status and its public URL.
-Local phone checks remain independent of publication. `deployed-phone`
-also checks the public site at 320 and 390 pixels and every deployed Rocq page.
+Local phone checks remain independent of publication. The separate **Site
+checks** workflow runs twice daily (05:17 and 17:17 UTC) or on demand. It pins
+the live release, checks phone pages at 320 and 390 pixels, delayed browser
+navigation and every deployed Rocq page. Publication itself checks the live
+immutable and canonical commit endpoints immediately after promotion.
 
 ## Credentials and costs
 
@@ -57,18 +57,17 @@ adding credentials to this repository. Worker deployments are separate administr
 operations using `wrangler.jsonc` or the Cloudflare connection, not this token.
 
 R2 is metered with a free allowance, not a hard quota. The old **8 GiB trial
-cap is removed**. After successful promotion, the serialized publisher deletes
+cap is removed**. Twice daily, a retention job sharing the promotion lock deletes
 only snapshots older than 24 hours, except the newest five and current release.
 It uses each tree's youngest object so partial uploads also get a grace period.
-Other bucket keys are untouched. Cleanup errors fail visibly but do not undo
-promotion or skip deployed checks. `prune.py --dry-run` emits the deletion plan.
+Other bucket keys are untouched. Cleanup errors fail visibly in Site checks,
+independently of publication. `prune.py --dry-run` emits the deletion plan.
 Expired snapshot page bookmarks redirect to the equivalent canonical path;
 expired assets return 404 rather than mixing in another release's bytes. Missing
 pages inside retained snapshots still return 404. The retained copies remain
 byte-immutable. At $0.015/GB-month, 100 GB retained is about $1.50/month before
-the allowance; operations/Workers requests are separately metered. No persistent
-Namespace volume is enabled; the prerequisite's timeout bounds a single producer
-to about $0.72 of compute at the listed rate, excluding rounding/teardown.
+the allowance; operations/Workers requests are separately metered. Between
+cleanups storage can grow for up to twelve hours of pushes.
 
 The manual `Site builder comparison` workflow builds one revision on GitHub
 4-core and Namespace, both on Ubuntu 22.04 with the same public Nix
@@ -87,8 +86,8 @@ not established.
 The Namespace GitHub App must be
 connected to this repository; an authenticated MCP session alone is not that
 connection. This first comparison measures fresh runners, not persistent-store
-caching. Following approval for ongoing operation, Namespace runs the serialized
-generated-input producer; the comparison workflow remains a manual benchmark.
+caching. The publisher now uses GitHub runners; the comparison workflow remains
+a manual benchmark.
 
 ## Operations
 

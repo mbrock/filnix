@@ -1,0 +1,88 @@
+# Browser checks are off the publish path; retention takes its lock twice a day.
+name: Site checks
+
+on:
+  schedule:
+    - cron: "17 5,17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    concurrency:
+      group: site-browser
+      cancel-in-progress: false
+    steps:
+      - name: Select the immutable live release
+        id: live
+        run: |
+          sha=$(curl --retry 5 --retry-all-errors -fsS https://filnix.org/commit.txt)
+          [[ $sha =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "url=https://filnix.org/__releases/$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.live.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install the browser
+        run: |
+          npm install --global agent-browser@0.38.1
+          agent-browser install --with-deps
+      - name: Check site pages at both phone widths
+        env:
+          SITE: ${{ steps.live.outputs.url }}
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label 'Phone pages' --timeout 900 -- \
+            node packages/site/phone.mjs "$SITE/" 320 390 2>&1 | tee site-phone.log
+      - name: Check delayed browser navigation
+        run: |
+          python3 nanofil/tests/watch.py --label 'Rocq navigation' -- \
+            node nanofil/web/rocq/tests/navigation.mjs
+      - name: Check every Rocq page at both phone widths
+        env:
+          SITE: ${{ steps.live.outputs.url }}
+        run: |
+          set -o pipefail
+          for width in 320 390; do
+            python3 nanofil/tests/watch.py --label "Rocq pages ${width}px" --timeout 1200 -- \
+              node nanofil/web/rocq/tests/layout.mjs "$SITE" --pages-only "$width" \
+              2>&1 | tee "rocq-phone-${width}.log"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-browser-logs
+          path: |
+            site-phone.log
+            rocq-phone-*.log
+          retention-days: 3
+
+  retention:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: filnix-org
+    # Match Site and recovery. Read current.json only after taking the lock.
+    concurrency:
+      group: filnix-org
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retain the current, newest five and all recent snapshots
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.FILNIX_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.FILNIX_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          endpoint=https://d66b4fdcf8b2d4b0949d7fa3518b9b58.r2.cloudflarestorage.com
+          aws --endpoint-url "$endpoint" s3 cp s3://filnix-site/current.json current.json --no-progress
+          sha=$(python3 -c 'import json; print(json.load(open("current.json"))["sha"])')
+          aws --endpoint-url "$endpoint" s3api list-objects-v2 \
+            --bucket filnix-site --prefix releases/ --output json > bucket.json
+          python3 deploy/site/prune.py bucket.json "$sha" --endpoint-url "$endpoint"

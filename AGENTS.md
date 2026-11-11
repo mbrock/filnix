@@ -59,7 +59,7 @@ This is an experimental project: keep agents working, not waiting.
 - `main` is the integration branch. Commit and push verified, scoped work to it yourself with `scripts/ship` as soon as it is coherent; there is no lander, receipt, hold or queue. Push small commits often rather than batching up a long branch.
 - `scripts/ship` rebases onto `origin/main` and pushes; if main moved meanwhile it rebases and pushes again. Resolve a rebase conflict preserving both sides' intent, then run it again.
 - Before pushing, run the checks for what you changed (the relevant unit tests, a targeted `nix build`, a screenshot for UI). Do not run the whole suite for every change and do not wait on CI before continuing.
-- After the push, CI runs the rest: the sharded nanofil check, quick Rocq, the site and its phone-width checks, and the cache job. None of them blocks a push. If a run your commit triggered goes red, fix forward on main; if you notice someone else's red run, tell them or fix it.
+- After the push, CI runs the nanofil smoke check, narrowly triggered proof/backend/docs checks, the site publisher and the foundation cache check. Full compiler matrices, browser sweeps and distribution tests run twice daily or on demand. Rocq, Gate and nanofil-glibc stay on push for the glibc campaign. None blocks a push. If a run your commit triggered goes red, fix forward on main; if you notice someone else's red run, tell them or fix it.
 - The one pre-push gate is the toolchain cache: `scripts/ship` and the pre-push hook require the outputs in `scripts/ship-outputs.txt` (filcc, filcc-staging, baseline, site-swipl) in Cachix + cache.nixos.org before main moves, because otherwise every orb and CI job compiles LLVM. Pushes touching only `nanofil/` (except `nanofil/web/play/swipl.nix`), `docs/`, `pages/`, `.github/` or Markdown skip it. A toolchain, port or nixpkgs change that misses the cache is published from swa (`scripts/ship` there, or `scripts/ship --publish-only --rev REV` for a pushed branch); an orb cannot publish, so push such work as a branch and ask mbrock or a thread on runner swa.
 - Keep commits limited to your own work. No force-pushing main, no `--no-verify`, and no deployments or releases unless asked.
 - Releases (`scripts/release`, which tags `origin/main` and triggers `.github/workflows/release.yml`) publish to GitHub and ghcr.io; cut one only when the user asks. Wider distributions in `scripts/ci-outputs.txt` and ports are campaign work; follow `docs/port-campaign-operations.md`.
@@ -124,7 +124,7 @@ This flake replicates these stages as Nix derivations.
 ### Nanofil checks
 
 - Long checks print timestamped progress through `nanofil/tests/watch.py`, which also kills a step that hangs. Keep that, and keep logs.
-- A check that has become slow is worth fixing (split, cache, or fix the algorithm), but slowness is not a reason to block anyone: CI runs the full sets after the push. `nanofil-rocq-full` (the mutation campaign) runs only when asked, via `workflow_dispatch` on the Nanofil Rocq workflow or `nix build .#checks.x86_64-linux.nanofil-rocq-full`.
+- A check that has become slow is worth fixing (split, cache, or fix the algorithm), but slowness is not a reason to block anyone: CI runs smoke on push and the full compiler suite twice daily or on demand. `nanofil-rocq-full` (the mutation campaign) remains opt-in, via `workflow_dispatch` on the Nanofil Rocq workflow or `nix build .#checks.x86_64-linux.nanofil-rocq-full`.
 
 ### NixOS and finix: the whole system is the product
 

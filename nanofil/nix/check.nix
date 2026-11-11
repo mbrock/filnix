@@ -19,21 +19,78 @@
 # shard = "I/N" the derivation runs shard I of N (1-based), a fixed
 # split of the step list balanced by tests/check-times.tsv, and keeps
 # going past a failing step; the N shards together run every step once
-# (.github/workflows/nanofil.yml runs them side by side). Each step prints
-# a "@@nanofil-step ok|FAIL SECONDS LABEL" line for aggregation.
+# (sharding remains available for local/on-demand use). With smoke = true
+# the same harness runs named default-path coverage; CI runs that on push
+# and the complete check twice daily and on demand. Each step prints a
+# "@@nanofil-step ok|FAIL SECONDS LABEL" line for aggregation.
 {
   pkgs,
   filcc,
   withTrealla ? false,
   shard ? null,
+  smoke ? false,
 }:
+assert !(smoke && shard != null);
 let
   trealla = import ./trealla.nix { inherit pkgs; };
   corpus = import ./corpus.nix { inherit pkgs; };
   shardName = builtins.replaceStrings [ "/" ] [ "-of-" ] shard;
+  # Deliberate coverage, not a timing-balanced fraction of the full plan.
+  # Keep plain and default -O differential/native paths, then ALL whole
+  # programs under GC stress in both modes. The other 33 whole-program
+  # configurations, corpora and exhaustive bounds/proof matrices stay full.
+  smokeSteps = [
+    "check watchdog"
+    "unit"
+    "Trealla backend parity"
+    "slow-call native ABI"
+    "docs"
+    "difftest float SSE2"
+    "difftest fixtures+gen1"
+    "difftest backend"
+    "difftest filc/*.ir"
+    "run-c interop gc float"
+    "variadic+float gc-stress"
+    "setjmp gc-stress"
+    "pointer+exception gc-stress"
+    "actual ensure-aux exits"
+    "difftest c/*.c"
+    "reject"
+    "arith slice"
+    "bounds edges split plain"
+    "bounds edges split -O"
+    "memcpy"
+    "checks"
+    "run-c gc gc-stress"
+    "-O difftest float SSE2"
+    "-O difftest fixtures+gen1"
+    "-O difftest backend"
+    "-O difftest filc, c, big1"
+    "-O run-c interop gc float"
+    "-O variadic+float gc-stress"
+    "-O setjmp gc-stress"
+    "-O pointer+exception gc-stress"
+    "-O actual ensure-aux exits"
+    "-O run-c gc gc-stress"
+  ]
+  ++
+    pkgs.lib.concatMap
+      (
+        mode:
+        map (part: "${mode} [${toString part}/4]") [
+          1
+          2
+          3
+          4
+        ]
+      )
+      [
+        "progtest gc-stress"
+        "-O progtest gc-stress"
+      ];
   # The compiler, its driver and its tests: the documents and the Rocq
   # theories have their own checks (docs.nix, rocq.nix), so editing them
-  # leaves this derivation, and CI's eight shards, unchanged.
+  # leaves this derivation unchanged.
   src = pkgs.lib.fileset.toSource {
     root = ../.;
     fileset = pkgs.lib.fileset.unions [
@@ -44,7 +101,14 @@ let
   };
 in
 pkgs.runCommandCC
-  (if shard == null then "nanofil-check" else "nanofil-check-${shardName}")
+  (
+    if smoke then
+      "nanofil-smoke"
+    else if shard == null then
+      "nanofil-check"
+    else
+      "nanofil-check-${shardName}"
+  )
   {
     nativeBuildInputs = [
       pkgs.swi-prolog
@@ -105,12 +169,11 @@ pkgs.runCommandCC
     chmod -R u+w nanofil
     cd nanofil
     patchShebangs tests bin
-    # Wall-clock limits that catch hangs, not slowness: CI runs a shard on
-    # 4 vCPUs that eight parallel compiles share (bounds edges), where a
-    # 30 s compile takes over 60 s and a step that takes 2 minutes on an
-    # orb takes over 5. Below tests/par.sh's 300 s per file, so a compile
-    # timeout is reported as such.
+    # Wall-clock limits that catch hangs, not slowness: on shared CI CPUs
+    # a 30 s compile can take over 60 s. Below tests/par.sh's 300 s per
+    # file, so a compile timeout is reported as such.
     export COMPILE_TIMEOUT=240 PROG_TIMEOUT=60
+    ${pkgs.lib.optionalString smoke "export NANOFIL_JOBS=4"}
     # Commands run from a saved state (bin/nanofil); scripts still load
     # src/, so both paths are tested.
     bin/nanofil --save-state "$TMPDIR/nanofil.state"
@@ -479,6 +542,24 @@ pkgs.runCommandCC
       exit 1
     fi
     echo "@@nanofil-steps $(wc -l <"$TMPDIR/steps") $(sha256sum <"$TMPDIR/steps" | cut -c1-16)"
+    ${pkgs.lib.optionalString smoke ''
+      selected=$TMPDIR/selected
+      cp ${
+        pkgs.writeText "nanofil-smoke-steps" (
+          pkgs.lib.concatStringsSep "\n" smokeSteps + "\n"
+        )
+      } "$selected"
+      # withTrealla remains an explicit opt-in, including in smoke mode.
+      ${pkgs.lib.optionalString withTrealla ''
+        grep '^trealla: ' "$TMPDIR/steps" >>"$selected"
+      ''}
+      if grep -Fxv -f "$TMPDIR/steps" "$selected"; then
+        echo "nanofil smoke: unknown step labels above" >&2
+        exit 1
+      fi
+      echo "@@nanofil-smoke $(wc -l <"$selected") steps"
+      cat "$selected"
+    ''}
     ${pkgs.lib.optionalString (shard != null) ''
       selected=$TMPDIR/selected
       tests/check-plan.sh ${shard} <"$TMPDIR/steps" >"$selected"
