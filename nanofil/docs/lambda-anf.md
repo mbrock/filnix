@@ -95,8 +95,10 @@ build prints identical assembly bytes:
 | Crane C++ (M8 `rc.h`) | 0.96 s / 4.75 s | 1.30 s / 4.59 s | 55 / 382 MB |
 | Crane C++ (M8 `libgc`) | 1.01 s / 5.07 s | 1.50 s / 4.82 s | 79 / 436 MB |
 | Crane C++ (256 MB heap) | 0.76 s / — | 1.01 s / — | 285 MB / — |
-| CertiRocq C (`clang -O1`) | 8.89 s / 48.95 s | 13.77 s / 91.42 s | 185 / 1065 MB |
-| CertiRocq C (`filcc -DVERIFFI`) | 165.4 s / — | — | 994 MB / — |
+| CertiRocq C (`clang -O1`, raw) | 8.89 s / 48.95 s | 13.77 s / 91.42 s | 185 / 1065 MB |
+| CertiRocq C (`clang -O1`, folded + `overrides.c`) | 1.06 s / 8.07 s | 1.32 s / 6.66 s | 101 / 648 MB |
+| CertiRocq C (`filcc -DVERIFFI`, raw) | 165.4 s / — | — | 994 MB / — |
+| CertiRocq C (`filcc -DVERIFFI`, folded + `overrides.c`) | 9.54 s / — | 10.40 s / — | 512 / 433 MB |
 
 ### What M6 and M8 actually found on Crane C++
 
@@ -163,42 +165,49 @@ tested CertiRocq's λANF-to-Clight C pipeline end-to-end on all six
   (`65 s` at `-O 0`) with zero changes to `rocq/backend/*.v` and
   emitting **3,892,446 lines of Clight C** (135 MB, ~21k functions; split
   into 16 shards, `clang -O1` builds it in 19.3 s).
-- **Native `clang -O1` is byte-identical at 29–61× OCaml's time, and cannot tail-call.**
+- **Raw native `clang -O1` is byte-identical at 29–61× OCaml's time; static string folding and C overrides bring it to 3.1×.**
   Because CertiRocq's stack-frame GC links a local
   `c: struct stack_frame frame` into `tinfo->fp`
   (`c: tinfo->fp = &frame`), the C compiler cannot tail-call-optimize
   even genuine Gallina tail loops (such as `IrText`'s byte reader on a
   367 kB chunk), overflowing an 8 MB C stack on `rx.ir`. Under
   `ulimit -s unlimited` (and after fixing a `Loader.v` vs.
-  `Generate Glue` `bool` tag inversion), native C matches `ocamlopt`
+  `Generate Glue` `bool` tag inversion), raw native C matches `ocamlopt`
   byte-for-byte across `rx.ir` (`8.89 s` `compile`, `12.28 s`
   `compile-promoted`, `13.77 s` `compile-allocated`; `0.26–0.33 s` in
   OCaml on the same orb) and `lvm.ir` (`48.95 s`, `48.89 s`, `91.42 s`
   at up to **1,065 MB** RSS, vs. `1.50–1.74 s` and `213–231 MB` in
-  OCaml). The 29–61× gap comes from unmapped `nat` (unary `O | S n`),
-  9-word `Ascii` blocks, 3-word string `cons` cells, and un-inlined
-  `f_case_*` continuations.
-- **Under `filcc`, default `intnat` panics and `-DVERIFFI` runs in 165.4 s / 994 MB on `rx.ir`.**
+  OCaml). Folding the 28,793 `Ascii` and 28,791 `String` literal
+  allocations into 3,425 static nodes (`split_nb.py`) and overriding hot
+  stdlib, map and reader loops in C (`overrides.c`) eliminates the stack
+  overflow and brings native CertiRocq C to **`1.06 s`, `1.12 s` and
+  `1.32 s`** (`90–101 MB` RSS) on `rx.ir` (**3.1–3.2× OCaml**, matching
+  Crane's `0.96 / 1.30 s`) and **`8.07 s`, `6.19 s` and `6.66 s`**
+  (`640–648 MB` RSS) on `lvm.ir`.
+- **Under `filcc`, default `intnat` panics and `-DVERIFFI` runs `rx.ir` in 165.4 s raw and 9.54 s folded.**
   Sharded into 16 files, CertiRocq's C avoids `FilPizlonator`'s
   `computeFrameIndexMap` blowup (`54.1 s` wall, `1.15 GB` RSS in default
-  mode; `176.3 s` wall, `1.96 GB` RSS under `-DVERIFFI`). Default
-  `c: typedef intnat value` traps immediately at run time
-  (`cannot read pointer with null object`) because casting pointers
-  through `intnat` strips capabilities. Compiling with `-DVERIFFI`
-  (`c: typedef void *value`, plus three `(intnat)` casts on generated
-  tag bit-ops) **runs cleanly and prints byte-identical assembly without
-  modifying `gc_stack.c`**: each generation `space` is one `malloc`
-  array of `c: void *` slots, so `$alloc + 1` keeps the generation's
-  capability (`[-1]` header reads stay in bounds), odd immediates and
-  headers sit as null-capability `c: void *` words, closure code
-  pointers preserve their function capabilities in `aux`, and Cheney
-  copying copies both payload and `aux`. Paying for `c: void *` on every
-  functional word, however, costs **18.6× native CertiRocq C** (**165.4 s
-  wall, 994 MB RSS** on `rx.ir` `compile` — roughly **500× `ocamlopt`**):
-  every immediate, header, constructor field, Cheney copy and local
-  becomes a dual-space `intval` + `aux` pointer operation tracked
-  simultaneously by `gc_stack.c`, Pizderson frames, and FUGC's store
-  barrier.
+  mode; `176.3 s` wall raw and `143 s` folded, `1.96 GB` RSS under
+  `-DVERIFFI`). Default `c: typedef intnat value` traps immediately at
+  run time (`cannot read pointer with null object`) because casting
+  pointers through `intnat` strips capabilities. Compiling with
+  `-DVERIFFI` (`c: typedef void *value`, plus three `(intnat)` casts on
+  generated tag bit-ops) **runs cleanly and prints byte-identical
+  assembly without modifying `gc_stack.c`**: each generation `space` is
+  one `malloc` array of `c: void *` slots, so `$alloc + 1` keeps the
+  generation's capability (`[-1]` header reads stay in bounds), odd
+  immediates and headers sit as null-capability `c: void *` words,
+  closure code pointers preserve their function capabilities in `aux`,
+  and Cheney copying copies both payload and `aux`. On raw C, paying for
+  `c: void *` on every functional word costs **18.6× native CertiRocq C**
+  (**165.4 s wall, 994 MB RSS** on `rx.ir` `compile`). With static
+  string folding and `overrides.c`, `filcc -DVERIFFI` runs `rx.ir` in
+  **`9.54 s` (`512 MB`)** for `compile`, **`8.39 s` (`424 MB`)** for
+  `compile-promoted` and **`10.40 s` (`433 MB`)** for
+  `compile-allocated` — a **17.3× speedup** under Fil-C, and **7.5–8.5×
+  native folded CertiRocq C** because every remaining `value` word is a
+  dual-space `intval` + `aux` pointer operation tracked by `gc_stack.c`,
+  Pizderson frames, and FUGC's store barrier.
 
 ## 2. What Fil-C capabilities actually cost on functional heaps
 
@@ -680,7 +689,7 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 |---|---|
 | **Known** | `ocamlopt` compiles `rx.ir` in `0.26–0.34 s` (`56–60 MB`); Crane C++ mutator work is `~0.30 s` alongside `65–70%` in `libgc` over 17.65M allocations ([gallina-backend.md](gallina-backend.md), M6/M8) |
 | **Known** | `filcc` hit 8.9 GB / 17 min in `computeFrameIndexMap` on Crane's monolithic 36k-line C++; stopped without diagnosing the pass or measuring FUGC at run time (M8) |
-| **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: native `clang -O1` takes `8.89–13.77 s` on `rx.ir` and `48.95–91.42 s` (`1,065 MB`) on `lvm.ir`, needing `ulimit -s unlimited` because `&frame` blocks tail calls; `filcc -DVERIFFI -O1` builds in `176.3 s` and runs `rx.ir` `compile` in **`165.4 s` / `994 MB`** (18.6× native C, ~500× OCaml) because every `value` is a `void *` capability ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
+| **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: raw native `clang -O1` takes `8.89–13.77 s` on `rx.ir` (`165.4 s` / `994 MB` under `filcc -DVERIFFI`), while static string folding + `overrides.c` brings native C to **`1.06–1.32 s`** on `rx.ir` (`6.19–8.07 s` on `lvm.ir`) and `filcc -DVERIFFI -O1` (`143 s` build) to **`9.54 s` / `8.39 s` / `10.40 s`** (`424–512 MB`) on `rx.ir` ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
 | **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
 | **Hypothesis** | Scaling from M0's kernels to full `Compile.compile` on `rx.ir` stays within `1.5–2×` of `ocamlopt` once CFG join recovery and mapped 31-bit `Z` / `nat` / packed `string` are in place (tested in M3) |

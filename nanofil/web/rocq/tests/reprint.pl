@@ -36,7 +36,7 @@ main :-
 
 %  Commands that are copied as text on purpose.
 copied(K) :- memberchk(K, ['Check', 'Compute', 'Print', 'Eval', 'Search', 'About', 'Locate',
-                           'Extraction', 'Extract', 'Crane', 'Recursive', 'Next', 'Obligation', 'Opaque', 'Transparent']).
+                           'Extraction', 'Extract', 'Crane', 'CertiRocq', 'Recursive', 'Next', 'Obligation', 'Opaque', 'Transparent']).
 
 raws(Items, Raws) :-
     findall(raw(P, K), ( sub_item(Items, raw(P, K)), \+ copied(K) ), Raws).

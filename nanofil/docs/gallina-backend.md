@@ -714,6 +714,73 @@ FUGC's speed on this program, and a pizlonated library of Crane's
 output would need that pass looked at first. The build was
 stopped and that was not followed up.
 
+**The CertiRocq C build (`rocq/backend/certirocq`).** CertiRocq
+(`nix/certirocq.nix`, commit `943b52ae` patched against Rocq 9.1.1
+and `MetaRocq` `1.5.1-9.1`) compiles the same six entry points
+(`read_text`, `compile`, `compile_promoted`, `compile_allocated`,
+`rev_lines_parts` and `first_todo`) with zero changes to the
+backend's `.v` files. Its default `-O 1` pipeline (`--anf-variant 0`)
+stalls in `inline_shrink_loop` past 200 s before and after closure
+conversion. With `--anf-variant 8` (which skips `inline_shrink_loop`
+while keeping `Shrink`, `Uncurry`, `Inline uncurry wrappers`,
+`Lambda lift`, `Closure conversion and hoisting`, `Dead param elim`
+and `Merge duplicate functions`), `CertiRocq Compile -O 1
+--anf-variant 8` finishes in 157 s (`65 s` at `-O 0`) and emits
+3,892,446 lines of Clight C (135 MB, 23,970 functions).
+
+Best of three on an orb, `compile`, `compile-promoted` and
+`compile-allocated`; every build prints the same bytes on the 52
+IR fixtures, the 40 corpus `.ir` files, `rx.ir` and `lvm.ir`:
+
+- Raw CertiRocq C (16 shards, `gcc -O1`, 19.3 s compile, needing
+  `ulimit -s unlimited`): `rx.ir` 8.89, 12.28 and 13.77 s at
+  185, 137 and 137 MB; `lvm.ir` 48.95, 48.89 and 91.42 s at 819,
+  771 and 1,065 MB.
+- With static string-literal folding (`split_nb.py`: 28,793 `Ascii`
+  and 28,791 `String` runtime allocations folded into 3,425 static
+  nodes, removing ~850k lines of C; `gcc -O1 -j16` builds in 9.8 s)
+  and C overrides (`overrides.c`) for hot stdlib, map and reader
+  loops: `rx.ir` **1.06, 1.12 and 1.32 s** at 101, 91 and 90 MB
+  (3.1 to 3.2 times the OCaml build's 0.34 / 0.41 s mark, matching
+  Crane's 0.96 / 1.30 s, with the default 8 MB stack); `lvm.ir`
+  **8.07, 6.19 and 6.66 s** at 648, 641 and 640 MB.
+- Built with `filcc` (`-DVERIFFI -O1 -j16`): sharded into 16 files,
+  CertiRocq's C has no `computeFrameIndexMap` blowup (`mem2reg`
+  promotes its destructor-free `register value` locals to SSA
+  registers, leaving only `value root[K]` on the frame). Default
+  `typedef intnat value` compiles in 54.1 s (1.15 GB RSS) and traps
+  immediately at run time (`cannot read pointer with null object`)
+  because casting pointers through `intnat` strips capabilities.
+  With `-DVERIFFI` (`typedef void * value`, plus `(intnat)` casts on
+  the three emitted tag-switch patterns), `filcc` builds in 143 s
+  (1.96 GB max RSS) and runs cleanly without changing `gc_stack.c`:
+  on `rx.ir`, the raw build takes 165.4 s at 994 MB (`compile`), and
+  the folded + overridden build takes **9.54, 8.39 and 10.40 s** at
+  512, 424 and 433 MB (a 17.3× speedup over raw `-DVERIFFI`, and
+  7.5 to 8.5× native folded CertiRocq C because every `value` word
+  carries a 16-byte Fil-C capability in `void *` slots).
+
+Why CertiRocq's C stops at ~3.1× natively and ~7.5–8.5× under
+`filcc`:
+
+- Without primitive mappings, every character of every string
+  literal in `nb.c` allocates a 9-word `Ascii` block and a 3-word
+  `String` cell at run time, `nat` is unary Peano `O | S n`, and
+  `Maps.string_hash` runs 20-bit binary long division per character
+  (84,488 minor/major GC calls and 44.3 GB of nursery traffic on
+  `rx.ir` `compile` before folding and `overrides.c`).
+- Top-level non-function `Definition`s become `let` bindings in
+  `body()` rather than globals in `gfuns`, so functions that
+  reference more than `--c-args 5` constants/parameters or a
+  constant across more than `max_push = 1` call (`IrText.read_step`
+  with 31 character constants, `Maps.hash_step`, `ZMap.Raw.create`,
+  `ZMap.Raw.bal`) fail to lambda-lift (7,675 of 23,970 functions),
+  and `inline_uncurry` runs one pass so 3+-argument functions
+  allocate intermediate curried closures.
+- Every function with a non-tail call or GC check links a local
+  `struct stack_frame frame` into `tinfo->fp = &frame`, which
+  prevents the C compiler from tail-call-optimizing recursive loops.
+
 ## Milestones
 
 Each ends with its gate green and a short note of what it found.
@@ -1268,8 +1335,16 @@ was started did not finish compiling. The figures and what was
 learnt are under [Performance targets](#performance-targets).
 Crane's C++ is not taken further. The check and the C++ build
 stay as they are, held to the same bytes, and `rxc` stays on the
-OCaml build. What the library is built from is open: CertiRocq's
-C is being tried on the same input, as its own piece of work.
+OCaml build. What the library is built from is open: CertiRocq's C
+(`rocq/backend/certirocq`, `nix/backend-certirocq.nix`) has now
+been measured on the same input as well. With static literal
+folding and C overrides it reaches 1.06 and 1.32 s on `rx.ir`
+(3.1 and 3.2 times OCaml, matching Crane), and unlike Crane its
+16 shards compile cleanly under `filcc -DVERIFFI -O1` in 143 s
+and run `rx.ir` in 9.54, 8.39 and 10.40 s without Fil-C safety
+errors. Lowering CertiRocq's λANF directly to nanofil IR over a
+32-bit integer arena (`docs/lambda-anf.md`) is the next candidate
+for a faster in-process build.
 
 **M9. Hybrid `-O`.** Emission of the reuse forms, so Prolog's middle
 end and check passes can feed the extracted backend. This is where
@@ -1381,5 +1456,9 @@ otherwise.
    it is, to learn first what filcc makes of Crane's C++, and take
    the speed after. *Agreed, and done:* the attempt stopped at
    about 3 times, with counted references and with a collector,
-   and Crane's C++ is not taken further. CertiRocq's C is being
-   tried on the same input as its own piece of work.
+   and Crane's C++ is not taken further. CertiRocq's C
+   (`rocq/backend/certirocq`) was then built and measured on the
+   same input: raw it takes 8.89 and 13.77 s on `rx.ir` (165.4 s
+   under `filcc -DVERIFFI`), and with static string-literal folding
+   and C overrides it reaches 1.06 and 1.32 s natively (3.1 and
+   3.2 times OCaml) and 9.54 and 10.40 s under `filcc -DVERIFFI`.
