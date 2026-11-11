@@ -1,7 +1,7 @@
 // The second glibc spike program: main writes a string to standard
 // output with glibc's own write, whose IR calls libpizlo's zsys_write,
 // after measuring it with glibc's own strlen. Both come from nanofil's
-// IR of user glibc; only zsys_write is a contract (ZsysWrite.v).
+// IR of user glibc; only zsys_write is a contract (zsys/OsWrite.v).
 // Proved safe, with that contract, in rocq/glibc/SayLogic.v (say_logic_safe).
 #include <string.h>
 #include <unistd.h>

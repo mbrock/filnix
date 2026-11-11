@@ -5,27 +5,26 @@
     `main` writes the literal "hello, glibc\n" to descriptor 1 with
     `write(1, msg, strlen(msg))`. Both calls run glibc's own IR:
     `strlen` is `__strlen`'s word-at-a-time scan, taken by StrlenLogic.v's
-    triple [wp_glibc_strlen], and
-    `write` is the weak alias of `__GI___libc_write`, whose body calls libpizlo's
-    `zsys_write` and returns what it returns. The linked module defines
-    everything but `zsys_write`, so that one name is the registry's,
-    with the trusted contract of ZsysWrite.v; the rest is proved.
+    triple [wp_glibc_strlen], and `write` is the weak alias of
+    `__GI___libc_write`, whose body calls libpizlo's `zsys_write` and
+    returns what it returns. The linked module defines everything but
+    `zsys_write`, so that one name is the registry's, with the trusted
+    contract of [OsWrite](zsys/OsWrite.v); the rest is proved.
 
-    The world is ZsysWrite.v's [fd_world], interpreted by [fd_wi] for
-    descriptor 1: errno a writable int apart from the literal, and
-    descriptor 1 not libpizlo's log. ZsysWrite.v names what the world
-    is trusted to be: the thread's own allocated errno, glibc's errno
-    handler registered, no errno logging. [say_logic_safe] is the
-    labelled machine's safety of `main` from any such memory and world
-    holding the literal, with the result 0. *)
+    The world is [OsWorld](zsys/OsWorld.v)'s [os_world], interpreted by
+    [os_wi]: `c: errno` a [permanent_errno] global cell apart from the
+    literal, and descriptor 1 in [ow_fds] (none of them libpizlo's log).
+    [say_logic_safe] is the labelled machine's safety of `main` from any
+    such memory and world holding the literal, with the result 0. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  StepRules ExternalCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic.
-From Glibc Require Import SayCode GlibcLogic ZsysWrite StrlenLogic.
+  StepRules ExternalCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic
+  StringLogic MemLogic.
+From Glibc Require Import SayCode GlibcLogic OsBlocks OsWorld OsWrite StrlenLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -84,11 +83,11 @@ Definition msg_w0 : Z := 7430988242233353576.
     layout's rounding adds. *)
 Definition msg_w1 : Z := 44617066860.
 
-(** The pieces the program owns: the literal's life and its two words. *)
+(** The pieces of the literal: its life and its two words. *)
 Definition msg_ps : list (piece * pval) :=
   [(PLive msg_base, VLive msg_reg)] ++ cell msg_base 0 msg_w0 ++ cell msg_base 8 msg_w1.
 
-(** The pieces' keys are distinct. *)
+(** The literal pieces' keys are distinct. *)
 Lemma msg_ps_nodup : NoDup msg_ps.*1.
 Proof.
   cbn. repeat (apply NoDup_cons_2;
@@ -97,18 +96,52 @@ Proof.
   apply NoDup_nil_2.
 Qed.
 
-(** Every piece is of the literal's object. *)
+(** Every piece of [msg_ps] belongs to the literal's object. *)
 Lemma msg_ps_id l v : (l, v) ∈ msg_ps -> piece_id l = msg_base.
 Proof.
   intros H. apply list_elem_of_In in H. cbn in H.
   repeat destruct H as [H|H]; first [injection H as <- _; reflexivity | contradiction].
 Qed.
 
-(** Where the pieces agree, the literal's 13 bytes are readable through
-    its capability: what zsys_write's precondition asks of the buffer. *)
-Lemma msg_readable m : all_agree m msg_ps -> readable_bytes m msg_ptr 13.
+(** The initial ghost pieces of `say.c`: the literal and the 4-byte
+    `c: errno` block at eb. *)
+Definition say_ps (m : mem) (eb : Z) : list (piece * pval) :=
+  msg_ps ++ blk_now m eb 0 4.
+
+(** When eb is apart from [msg_base], the keys of [say_ps] are distinct. *)
+Lemma say_ps_nodup m eb : eb <> msg_base -> NoDup (say_ps m eb).*1.
 Proof.
-  intros Ha. unfold msg_ps in Ha. apply all_agree_app in Ha as [[Hl _] Ha].
+  intros Hne. unfold say_ps. rewrite fmap_app blk_now_keys; [|lia].
+  apply NoDup_app; split; [exact msg_ps_nodup|]. split.
+  - intros k H1 H2. apply list_elem_of_fmap in H1 as ([l v] & -> & Hin).
+    pose proof (msg_ps_id l v Hin) as Hid. cbn [fst] in *.
+    apply elem_of_app in H2 as [H2|H2]; apply list_elem_of_fmap in H2 as (i & -> & _);
+      cbn [piece_id] in Hid; congruence.
+  - cbn. repeat (apply NoDup_cons_2;
+      [ intros H; apply list_elem_of_In in H; cbn in H;
+        repeat destruct H as [H|H]; first [discriminate | injection H; lia | exact H] |]).
+    apply NoDup_nil_2.
+Qed.
+
+(** The 4-byte `c: errno` block [blk_now] agrees with m when eb is a
+    [permanent_errno]. *)
+Lemma errno_blk_agree m eb :
+  permanent_errno m (mkPtr eb (Obj eb)) -> all_agree m (blk_now m eb 0 4).
+Proof.
+  intros (eb' & reg & [= <-] & _ & _ & [E Lv] & _ & Hend).
+  assert (Hreg : registered m eb) by (unfold registered; congruence).
+  cbn [blk_now blk_bytes blk_caps seqZ Z.to_nat Pos.to_nat fmap list_fmap byte_ps aux_ps app all_agree agree_piece fst snd].
+  repeat (split; [split; [exact Hreg | intros reg' E' _; rewrite E in E'; injection E' as <-;
+                          split; [lia | split; [lia | first [reflexivity | left; reflexivity]]]] |]).
+  exact I.
+Qed.
+
+(** Where [msg_ps] agrees with m, the literal's 13 bytes pass
+    [os_readable] through its capability. *)
+Lemma msg_readable m : all_agree m msg_ps -> os_readable m msg_ptr 13.
+Proof.
+  intros Ha. split; [lia|]. right.
+  unfold msg_ps in Ha. apply all_agree_app in Ha as [[Hl _] Ha].
   apply all_agree_app in Ha as [H0 H1]. rewrite all_agree_cell in H0. rewrite all_agree_cell in H1.
   cbn [agree_piece fst snd] in Hl. destruct Hl as [E Lv].
   split; [lia|]. split; [exists msg_base, msg_reg; auto|]. split.
@@ -127,8 +160,8 @@ Qed.
 
 (** The registry: zsys_write's contract alone; everything else the
     program calls is in the module. *)
-Definition say_registry (symbol : name) : option (contract fd_world) :=
-  if name_eqb symbol (TAtom "zsys_write") then Some zsys_write_contract else None.
+Definition say_registry (symbol : name) : option (contract os_world) :=
+  if name_eqb symbol (TAtom "zsys_write") then Some os_write_contract else None.
 
 (** `main` called with no arguments. *)
 Definition main_entry : frame := mkFrame main_fn [] [] None (Enter (TAtom "start") None).
@@ -139,10 +172,10 @@ Definition main_entry : frame := mkFrame main_fn [] [] None (Enter (TAtom "start
 Module SayLogic (R : Runtime).
 Module LG := Logic R.
 Module GL := GlibcLogicOn R LG.
-Module ZW := ZsysWriteOn R LG.
+Module OW := OsWriteOn R LG.
 Module SO := StrlenOn R LG.
 Module L := LG.L.
-Import L LG GL ZW.
+Import L LG GL OW OW.OW.
 
 (** The linked genv: the module, its symbols, R's free. *)
 Definition say_ge : genv := mkGenv say_module say_globals R.free.
@@ -157,11 +190,11 @@ Proof. vm_compute. reflexivity. Qed.
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context (w0 : os_world).
 
-(** The Iris instance of say.c: zsys_write's contract and [fd_wi] for
-    descriptor 1. *)
+(** The Iris instance of say.c: zsys_write's contract and [os_wi] w0. *)
 Local Instance say_irisGS : irisGS_gen hlc (nanofil_lang say_registry say_ge) Σ :=
-  nanofil_irisGS say_registry (fd_wi [1]) say_ge.
+  nanofil_irisGS say_registry (os_wi w0) say_ge.
 
 (** The expressions of say.c's language. *)
 Local Notation sexpr := (language.expr (nanofil_lang say_registry say_ge)).
@@ -174,7 +207,7 @@ Lemma strlen_msg_spec Φ :
     {{ Φ }}.
 Proof.
   iIntros "Hps HΦ". rewrite /msg_ps !pts_app. iDestruct "Hps" as "(Hl & H0 & H1)".
-  iApply (SO.wp_glibc_strlen say_registry (fd_wi [1]) say_ge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 13
+  iApply (SO.wp_glibc_strlen say_registry (os_wi w0) say_ge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 13
             with "Hl [H0 H1]").
   - right. reflexivity.
   - vm_compute. reflexivity.
@@ -189,21 +222,22 @@ Proof.
     iApply "HΦ". iFrame.
 Qed.
 
-(** `main`, owning the literal, returns 0: glibc's strlen measures it,
-    glibc's write hands it to zsys_write for descriptor 1, whatever
-    that returns, and the pieces are still owned. *)
-Lemma main_spec :
-  pts msg_ps -∗ WP (ERun main_entry : sexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
+(** `main`, owning the literal and `c: errno`, returns 0: glibc's
+    strlen measures it, and glibc's write hands it to zsys_write for
+    descriptor 1. *)
+Lemma main_spec eb :
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In 1 (ow_fds w0) ->
+  pts msg_ps -∗ errno_any eb -∗ WP (ERun main_entry : sexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
 Proof.
-  iIntros "Hps". repeat step.
+  intros He Hfd. iIntros "Hps Herr". repeat step.
   iApply wp_call_bind; [side | exact find_strlen | side |]. iNext.
   iApply (strlen_msg_spec with "Hps"). iIntros "Hps".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. norm_env.
   iApply wp_call_bind; [side | exact find_write | side |]. iNext.
   step.
-  iApply (wp_zsys_write [1] say_registry say_ge with "Hps");
-    [reflexivity | side | side | side | left; reflexivity | exact msg_readable |].
-  iNext. iIntros (k _) "Hps".
+  iApply (wp_zsys_write w0 say_registry say_ge with "Hps Herr");
+    [reflexivity | side | side | side | exact He | exact Hfd | exact msg_readable |].
+  iNext. iIntros (k _) "Hps Herr".
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. done.
@@ -212,30 +246,38 @@ Qed.
 End wp.
 
 (** `main` is safe: from a ready runtime, live objects apart, a memory
-    holding the literal as [msg_ps] says, and a world whose errno is a
-    writable int outside the literal's object and whose log
-    descriptor, if any, is not 1, with any fuel, no labelled run stops
-    with a [failure_ending], and a run that returns returns 0. By
-    [heap_labelled_safe] from [main_spec], the ghost heap starting with
-    the literal's pieces. *)
-Theorem say_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} m s w fuel :
+    holding the literal as [msg_ps] says, and an [os_world] w whose
+    `c: errno` is a [permanent_errno] at eb apart from [msg_base],
+    whose cookie is [self_registered], and whose descriptors [ow_fds]
+    contain 1 and exclude [ow_log_fd], with any fuel, no labelled run
+    stops with a [failure_ending], and a run that returns returns 0. *)
+Theorem say_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} m s w eb fuel :
   R.ready s m -> live_disjoint m -> all_agree m msg_ps ->
-  errno_cell m (errno_ptr w) -> log_fd w <> Some 1 ->
-  (forall a, span_contains (errno_span w) a -> ~ (msg_base <= a < msg_base + 16)) ->
+  ow_errno w = Some (mkPtr eb (Obj eb)) -> permanent_errno m (mkPtr eb (Obj eb)) ->
+  self_registered m (ow_self w) -> In 1 (ow_fds w) ->
+  Forall (fun fd => ow_log_fd w <> Some fd) (ow_fds w) -> eb <> msg_base ->
   labelled_safe say_registry say_ge main_entry m s w fuel (fun o => o = Ret (WInt 0)).
 Proof.
-  intros Hr Hd Ha Hw Hlog Hapart.
-  apply (heap_labelled_safe Σ say_registry (fd_wi [1]) say_ge main_entry m s w (list_to_map msg_ps)).
+  intros Hr Hd Ha He Hpe Hself Hfd Hlog Hne.
+  apply (heap_labelled_safe Σ say_registry (os_wi w) say_ge main_entry m s w (list_to_map (say_ps m eb))).
   - exact Hr.
   - exact Hd.
-  - intros l v Hl. exact (all_agree_elem _ _ _ _ Ha (elem_of_list_to_map_2 _ _ _ Hl)).
-  - split; [exact Hw|]. split; [|constructor; [exact Hlog | constructor]].
-    intros sp a Hin Hs (l & v & reg & Hl & _ & [E _] & Hb). destruct Hin as [<-|[]].
-    apply elem_of_list_to_map_2 in Hl. rewrite (msg_ps_id _ _ Hl) in E, Hb.
-    unfold msg_ps in Ha. apply all_agree_app in Ha as [[[E' _] _] _].
-    cbn [fst snd] in E'. rewrite E' in E. injection E as <-. exact (Hapart a Hs Hb).
-  - intros HinvG HheapG. rewrite big_sepM_list_to_map; [|exact msg_ps_nodup].
-    iIntros "Hps". iApply (main_spec with "Hps").
+  - intros l v Hl. apply (all_agree_elem m (say_ps m eb)).
+    + apply all_agree_app. split; [exact Ha | exact (errno_blk_agree m eb Hpe)].
+    + exact (elem_of_list_to_map_2 _ _ _ Hl).
+  - split; [reflexivity|]. split; [|split; [exact Hself | exact Hlog]].
+    intros p Hp. rewrite He in Hp. injection Hp as <-. split; [exact Hpe|].
+    intros reg Hl. apply elem_of_list_to_map_2 in Hl.
+    apply elem_of_app in Hl as [Hl|Hl].
+    + exfalso. pose proof (msg_ps_id _ _ Hl) as Hid. cbn [piece_id] in Hid. exact (Hne Hid).
+    + exfalso. apply elem_of_app in Hl as [Hl|Hl];
+        [apply byte_ps_elem in Hl as (? & ? & _ & [=] & _) |
+         apply aux_ps_elem in Hl as (? & ? & _ & [=] & _)].
+  - intros HinvG HheapG. rewrite big_sepM_list_to_map; [|exact (say_ps_nodup m eb Hne)].
+    iIntros "Hps". iDestruct (pts_app msg_ps (blk_now m eb 0 4) with "Hps") as "[Hps Hb]".
+    iApply (main_spec w eb He Hfd with "Hps [Hb]").
+    iExists (blk_bytes m eb 0 4), (blk_caps m eb 0 4). iFrame "Hb".
+    iPureIntro. split; reflexivity.
 Qed.
 
 End SayLogic.

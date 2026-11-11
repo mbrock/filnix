@@ -22,8 +22,8 @@
     a [GlobalData] object: free ([lifetime_step]) and a call's
     [local_effect] end only live [Heap] objects, and a safepoint ends
     none ([collector_live]). So [os_wi] needs no apartness of the errno
-    span from the program's pieces ([roots_apart]), unlike ZsysWrite.v's
-    [fd_wi]: it reads only regions and the world, and survives stores
+    span from the program's pieces ([roots_apart]), unlike an apartness-based
+    world invariant: it reads only regions and the world, and survives stores
     ([os_wi_store]), safepoints ([os_wi_stable]), allocations
     ([os_wi_alloc]), frees ([os_wi_free], [os_wi_lifetime]) and calls
     of these contracts ([os_call_return]). One clause reads the ghost

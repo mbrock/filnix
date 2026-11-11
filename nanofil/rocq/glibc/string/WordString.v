@@ -37,7 +37,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic ZsysWrite.
+From Glibc Require Import StrlenBits StrlenLogic OsWorld.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -184,7 +184,7 @@ Qed.
 Lemma str_shape_bytes m p b reg ws s : str_shape p b reg ws s -> live_at m b reg ->
   all_agree m (words_ps b (wstart p - b) ws) ->
   (forall n, 0 <= n <= Z.of_nat (length s) + 1 -> readable_bytes m p n) /\
-  bytes_at m p (Z.of_nat (length s)) = s.
+  os_bytes m p (Z.of_nat (length s)) = s.
 Proof.
   intros Hs Hlv Ha. pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hl Hw Hby Hch].
   pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)) as Hk. unfold wstart in Hf.
@@ -209,7 +209,7 @@ Proof.
   - intros n Hn. destruct Hlv as [Er Lv]. split; [lia|]. split; [eauto|]. split.
     + apply (access_read _ b reg); [exact Hc | exact Er | lia | lia | apply Z.mod_1_r].
     + intros i Hi. replace i with (Z.of_nat (Z.to_nat i)) by lia. apply Hr. lia.
-  - unfold bytes_at. rewrite Nat2Z.id. apply list_eq. intros i.
+  - unfold os_bytes. rewrite Nat2Z.id. apply list_eq. intros i.
     destruct (Nat.lt_ge_cases i (length s)) as [Hi|Hi].
     + rewrite list_lookup_fmap lookup_seq_lt; [|exact Hi]. cbn. rewrite (Hm i ltac:(lia)).
       rewrite lookup_app_l; [reflexivity | exact Hi].
@@ -450,7 +450,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     through p and its bytes are s ([str_shape_bytes]). *)
 Lemma word_string_readable σ dq p s : heap_interp wi σ -∗ word_string dq p s -∗
   ⌜(forall n, 0 <= n <= Z.of_nat (length s) + 1 -> readable_bytes (ls_mem σ) p n) /\
-   bytes_at (ls_mem σ) p (Z.of_nat (length s)) = s⌝.
+   os_bytes (ls_mem σ) p (Z.of_nat (length s)) = s⌝.
 Proof.
   iIntros "Hσ (%b & %reg & %ws & %Hs & Hl & Hw)".
   iDestruct (ptsq_facts with "Hσ Hl") as %([Hlv _] & _).

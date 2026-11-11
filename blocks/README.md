@@ -18,7 +18,7 @@ as the site's build does (`packages/site/blocks.pl`).
        actor="T-01a1c712-4d90-7211-a001-998877665544" model="anthropic/claude-opus-5-5"
        created="2026-11-11T05:48:12Z" in-reply-to="b-2026-11-10-zsys-boundary">
   <title>Hello's write path proved through user glibc's strlen and zsys_write</title>
-  <about path="nanofil/rocq/glibc/ZsysWrite.v"/>
+  <about path="nanofil/rocq/glibc/zsys/OsWrite.v"/>
   <tag name="formal"/>
   <p>A <concept ref="capability">capability</concept> ... <c>*__errno_location()</c> ...</p>
   <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-rocq">

@@ -1,8 +1,7 @@
 (** A trusted [[external call|contract]] at libpizlo's boundary:
     `c: long zsys_write(int fd, const void *buf, size_t size)`, over the
     [os_world] of [OsWorld](OsWorld.v). Its native counterexample probe
-    is [zsys-write.c](../zsys-write.c) (ZsysWrite.v's, whose contract
-    this one restates over [os_world]).
+    is [zsys-write.c](../zsys-write.c).
 
     ## What libpizlo runs
 

@@ -1,4 +1,4 @@
-// Native counterexample probe for zsys_write_contract (rocq/glibc/ZsysWrite.v,
+// Native counterexample probe for os_write_contract (rocq/glibc/zsys/OsWrite.v,
 // docs/glibc-ir.md), built by filcc and run natively by rocq/glibc/probe.sh,
 // which compares its output with zsys-write.c.expected. Each case checks
 // one clause of the trusted contract against libpizlo at the pin:

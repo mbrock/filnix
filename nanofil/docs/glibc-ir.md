@@ -128,8 +128,8 @@ call of `zsys_write`, and walks it with `step`.
 
 ## The zsys_write contract
 
-[ZsysWrite.v](../rocq/glibc/ZsysWrite.v) is the one new trusted
-contract. At the pin, libpizlo's `filc_native_zsys_write` asserts fd
+[OsWrite.v](../rocq/glibc/zsys/OsWrite.v) is the trusted `zsys_write`
+contract over [OsWorld.v](../rocq/glibc/zsys/OsWorld.v). At the pin, libpizlo's `filc_native_zsys_write` asserts fd
 is not its log descriptor. It then checks that the buffer is readable
 for `size` bytes, makes the system call, and on failure stores errno
 through user glibc's errno handler. The contract follows those steps:

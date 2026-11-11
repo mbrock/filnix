@@ -5,9 +5,6 @@ LenCode.v
 StrlenBits.v
 StrlenLogic.v
 LenLogic.v
-ZsysWrite.v
-SayCode.v
-SayLogic.v
 zsys/OsBlocks.v
 zsys/OsWorld.v
 zsys/OsWrite.v
@@ -19,6 +16,8 @@ zsys/OsClose.v
 zsys/OsExit.v
 zsys/OsThread.v
 zsys/OsRegistry.v
+SayCode.v
+SayLogic.v
 string/WordString.v
 string/StrlenLoop.v
 string/StrlenWord.v
