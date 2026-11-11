@@ -1,42 +1,55 @@
-(** Run-time values, transcribed from interp.pl:
-    [[capability|capabilities]], pointers and the [[word|words]] a
-    [[temporary]] holds.
+(** In Fil-C, a pointer at run time is not a bare 64-bit integer
+    address. Instead, every pointer carries an address together with an
+    invisible [[capability]] that records which memory object, if any,
+    the pointer is allowed to access. This module defines the run-time
+    values that [[temporary|temporaries]] hold during execution:
+    capabilities [cap], pointers [ptr], and run-time words [word].
 
     ![[capability]]
 
     ## Words
 
-    Values are a sum type over [[class|classes]] (formal.md's
-    decision): well classedness is a boolean fact about a word, not an
-    index of its type.
+    Rather than indexing the type of run-time values by their IR
+    [[class]], this module collects all run-time values into a single
+    inductive type [word], and checks class compatibility separately.
+    An integer word [WInt] holds an integer of class [W] or [L], or the
+    bit pattern of a floating-point value. A pointer word [WPtr] holds
+    a pointer of class [P] or a checked [[proof]] value of class [A] or
+    [F]. A limit word [WLimit] holds an opaque [[limit]] snapshot at
+    class [L].
 
-    | Gallina | interp.pl | Classes |
-    |---|---|---|
-    | `WInt n` | an integer | `w`, `l`; also `p`, an integer argument with no pointer term |
-    | `WPtr p` | `ptr(Addr, Cap)` | `p`, `a`, `f` |
-    | `WLimit c size` | `limit(Cap, Size)` | `l`: a limit's opaque snapshot |
-
-    The integer at class `p` is interp.pl's defaulty case for main.pl's
-    canonical arguments (`class_arg/2`): the model keeps it, and every
-    operation that needs a pointer is stuck on it, as the interpreter
-    fails there. *)
+    In C, a test harness or caller may occasionally pass a raw integer
+    where a pointer parameter is declared. To match the Prolog
+    [[interpreter]], [word_at_class] permits an integer word at the
+    pointer class so the entry call can begin, and any instruction that
+    dereferences or checks that integer as a pointer is then stuck. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** A [[capability]], what a pointer carries beside its address: which
-    object, if any, it may access. An object's is its identity, the
-    base of its region, and holds no bounds of its own. *)
-Inductive cap : Type :=
-| CNone (* `none`: no object, a null or forged pointer *)
-| Obj (base : Z) (* `obj(Base)`: the writable object of identity base *)
-| Ro (base : Z) (* `ro(Base)`: the read-only object of identity base *)
-| Fn (f : name) (* `fn(F)`: the function f of the module *)
-| External (n : name). (* `ext(N)`: the symbol n, defined outside the module *)
+(** ## Capabilities, pointers, and words
 
-(** Equality of capabilities. *)
+    At run time, every temporary holds a [word], and every pointer word
+    pairs an integer address with a [cap]. This section defines those
+    types and the functions that coerce a word to a target class or
+    read its raw address. *)
+
+(** A [cap] is the [[capability]] that a pointer carries beside its
+    integer address to identify which memory object, if any, the pointer
+    may access. An object capability records only the object's
+    [[identity]]—the base address of its [[region]]—and leaves the
+    object's current bounds in memory rather than in the pointer itself. *)
+Inductive cap : Type :=
+| CNone (* a null or forged pointer with no target object *)
+| Obj (base : Z) (* a writable object identified by its base address *)
+| Ro (base : Z) (* a read-only object identified by its base address *)
+| Fn (f : name) (* a function defined in the current module *)
+| External (n : name). (* a symbol defined outside the current module *)
+
+(** The function [cap_eqb] tests whether two capabilities name the same
+    object or symbol with the same access rights. *)
 Definition cap_eqb (c c' : cap) : bool :=
   match c, c' with
   | CNone, CNone => true
@@ -45,23 +58,25 @@ Definition cap_eqb (c c' : cap) : bool :=
   | _, _ => false
   end.
 
-(** As `ptr(Addr, Cap)`: a pointer, an address and its capability,
-    which move together as one indivisible pair, the pair a [[flight]]
-    builds. *)
+(** A [ptr] pairs a 64-bit integer address with its [[capability]] as a
+    single indivisible value, which is the pair that a [[flight]]
+    instruction constructs. *)
 Record ptr : Type := mkPtr { ptr_addr : Z; ptr_cap : cap }.
 
-(** A [[word]], the value a temporary holds at run time; the table at
-    the top of the page gives the classes each form is at. *)
+(** A [word] is the run-time value that a [[temporary]] holds during
+    execution: an integer or floating-point bit pattern, a pointer or
+    checked [[proof]], or an opaque [[limit]] snapshot. *)
 Inductive word : Type :=
-| WInt (n : Z) (* an integer, or a float's bit pattern *)
-| WPtr (p : ptr) (* a pointer, or a proof of class `a` or `f` *)
-| WLimit (c : cap) (size : Z). (* `limit(Cap, Size)`: a [[limit]]'s opaque snapshot *)
+| WInt (n : Z) (* an integer, or the bit pattern of a floating-point value *)
+| WPtr (p : ptr) (* a pointer of class P, or a checked proof of class A or F *)
+| WLimit (c : cap) (size : Z). (* an opaque [[limit]] snapshot of a capability and access size *)
 
-(** As `word_at_class(K, X0, X)`: the word x taken at class k. An
-    integer is cut to the low 32, 64 or 80 bits of the class (a float
-    word is its bit pattern, an integer); a pointer or proof word is
-    itself, and a limit stays a limit at `l`. Any other mismatch is the
-    interpreter's type error, here no word. *)
+(** Given an IR [[class]] and a run-time [word], [word_at_class]
+    truncates or checks the word to fit that class. Integer and
+    floating-point bit patterns are reduced modulo the bit width of the
+    class, pointers and proofs pass through unchanged at classes [P],
+    [A], and [F], and a limit snapshot remains valid at class [L]. Any
+    other combination is a run-time class mismatch and returns `None`. *)
 Definition word_at_class (k : class) (x : word) : option word :=
   match k, x with
   | W, WInt n => Some (WInt (n mod 2 ^ 32))
@@ -74,8 +89,9 @@ Definition word_at_class (k : class) (x : word) : option word :=
   | _, _ => None
   end.
 
-(** As `pointer_address(X, A)`: the address of a pointer word x, or the
-    integer held at `p` itself; a limit has none. *)
+(** Given a run-time [word], [pointer_address] extracts the integer
+    address from a pointer word or returns a raw integer word directly,
+    and returns `None` for a limit snapshot. *)
 Definition pointer_address (x : word) : option Z :=
   match x with
   | WPtr p => Some (ptr_addr p)

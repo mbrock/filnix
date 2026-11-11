@@ -1,28 +1,45 @@
-(** Ground Prolog terms, the shape every nanofil product has before
-    it means anything: an integer, an atom, a compound of a name and
+(** In Nanofil, the Prolog compiler and the formal Rocq model exchange
+    intermediate-representation modules, identifier names, and run
+    outcomes as ground Prolog terms. Every ground Prolog term is an
+    integer, an atom, a compound term with a functor name and
     arguments, or a proper list.
 
-    The model uses them twice. The names of nanofil's intermediate
-    representation (IR), its [[temporary|temporaries]], [[block]]
-    labels, symbols and named locals, are ground terms, compared only
-    for equality, as ir.pl says: "Temps are ground names". And a module or
-    an [[outcome]] crosses between Prolog and the [[extraction|extracted]]
-    model as a term, which Transport.v [[transport|decodes]] into the
-    syntax of Syntax.v and encodes back. *)
+    This module defines the inductive type [term] for those ground
+    terms, proves that its boolean equality test [term_eqb] matches
+    Rocq equality, and provides association-list maps keyed by names.
+    In the formal model, [term] serves two roles. First, all names in
+    the intermediate representation—[[temporary|temporaries]],
+    [[block]] labels, global symbols, and named local variables—are
+    ground terms that the semantics compares only for equality. Second,
+    when a compiled module or an [[outcome]] crosses between Prolog and
+    the [[extraction|extracted]] model, [Transport](Transport.v)
+    [[transport|decodes]] the raw term into the syntax of
+    [Syntax](Syntax.v) and encodes the result back. *)
 
 From Stdlib Require Import String ZArith List Bool Ascii.
 Import ListNotations.
 
-(** A ground Prolog term, one constructor per form. A proper list is
-    its own form rather than nested `'[|]'/2` compounds, so that
-    decoding a list of blocks or instructions is a map. *)
-Inductive term : Type :=
-| TInt (n : Z) (* the integer n *)
-| TAtom (a : string) (* the atom a, `[]` included *)
-| TApp (f : string) (args : list term) (* the compound `f(A1, ..., An)`, with at least one argument *)
-| TList (ts : list term). (* the proper list `[T1, ..., Tn]` *)
+(** ## Ground terms and structural equality
 
-(** Term equality, structural, as Prolog's `==/2` on ground terms. *)
+    Before a Prolog term is decoded into an instruction or value, it
+    has only its syntactic tree structure. This section defines that
+    tree structure and its decidable equality test so that later
+    modules can compare terms and use them as map keys. *)
+
+(** The inductive type [term] represents a ground Prolog term with one
+    constructor for each syntactic form. Proper lists use their own
+    [TList] constructor rather than nested two-argument list compounds
+    so that decoding a list of blocks or instructions is a direct list
+    map. *)
+Inductive term : Type :=
+| TInt (n : Z) (* an integer literal *)
+| TAtom (a : string) (* an atom, including the empty list atom *)
+| TApp (f : string) (args : list term) (* a compound term with a functor name and one or more arguments *)
+| TList (ts : list term). (* a proper list of terms *)
+
+(** The function [term_eqb] tests whether two ground terms are
+    structurally identical, matching Prolog's `==/2` comparison on
+    ground terms. *)
 Fixpoint term_eqb (t u : term) : bool :=
   let fix list_eqb (ts us : list term) : bool :=
     match ts, us with
@@ -38,8 +55,9 @@ Fixpoint term_eqb (t u : term) : bool :=
   | _, _ => false
   end.
 
-(** [term_eqb] is sound: two terms t and u it calls equal are the same
-    term, so a name found by comparing is the very name asked for. *)
+(** When [term_eqb] returns `true`, the two terms are propositionally
+    equal, so a lookup that matches a key by [term_eqb] finds that
+    exact term. *)
 Lemma term_eqb_eq : forall t u, term_eqb t u = true -> t = u.
 Proof.
   fix IH 1. intros t u H.
@@ -54,8 +72,7 @@ Proof.
     apply andb_true_iff in Hl as [H1 H2]. f_equal; [apply IH; exact H1 | apply IHl; exact H2].
 Qed.
 
-(** Every term t is [term_eqb]-equal to itself, as Prolog's `==/2`
-    holds of a term and itself. *)
+(** Every ground term compares equal to itself under [term_eqb]. *)
 Lemma term_eqb_refl : forall t, term_eqb t t = true.
 Proof.
   fix IH 1. intros t. destruct t as [n | a | f ts | ts]; simpl.
@@ -66,34 +83,46 @@ Proof.
   - induction ts as [|t ts IHl]; simpl; auto. rewrite IH. exact IHl.
 Qed.
 
-(** A name of the IR: a [[temporary]], a [[block]] label, a symbol or a
-    named local, any ground term. *)
+(** ## Identifiers and association lists
+
+    In the intermediate representation, every identifier is a ground
+    Prolog term, and environments map those identifiers to values or
+    definitions. This section defines the [name] alias and the basic
+    lookup and update operations on association lists. *)
+
+(** An IR [name] identifies a [[temporary]], a [[block]] label, a
+    global symbol, or a named local variable, and is represented as an
+    arbitrary ground [term]. *)
 Definition name := term.
 
-(** Equality of names, which is [term_eqb]. *)
+(** The function [name_eqb] compares two IR names for structural
+    equality using [term_eqb]. *)
 Definition name_eqb : name -> name -> bool := term_eqb.
 
-(** As `memberchk(Key-V, Pairs)`: the value of the first pair of the
-    association list ps whose key is k, if any. Prolog's library(assoc)
-    and the association lists here agree on every lookup: a key is put
-    once, or replaced. *)
+(** Given a key and an association list, [lookup] returns the value
+    from the first pair whose key matches, or `None` when no pair
+    matches. Because updates always place the new binding at the front
+    and remove any older binding for the same key, [lookup] agrees with
+    Prolog's association-list lookup on every query. *)
 Fixpoint lookup {A : Type} (k : name) (ps : list (name * A)) : option A :=
   match ps with
   | [] => None
   | (k', v) :: ps' => if name_eqb k k' then Some v else lookup k ps'
   end.
 
-(** As `put_assoc(Key, Assoc0, V, Assoc)`: the association list ps
-    with k now mapped to v, in front, and k's old pair dropped. *)
+(** Given a key, a value, and an association list, [put] places the new
+    key-value pair at the front and filters out any existing entry for
+    that key. *)
 Definition put {A : Type} (k : name) (v : A) (ps : list (name * A))
   : list (name * A) :=
   (k, v) :: filter (fun p => negb (name_eqb k (fst p))) ps.
 
 Local Open Scope Z_scope.
 
-(** The code of t, a one-character atom, as `char_code/2` gives it, for
-    the codes 0 to 2047: one byte below 128, or a two-byte UTF-8
-    sequence. Any other term, or an atom of another code, has none. *)
+(** When a Prolog string literal is exported as a list of one-character
+    atoms, [char_code] decodes each atom into its Unicode code point in
+    the range 0 to 2047. It accepts a single ASCII byte below 128 or a
+    two-byte UTF-8 sequence, and returns `None` for any other term. *)
 Definition char_code (t : term) : option Z :=
   match t with
   | TAtom (String c EmptyString) =>

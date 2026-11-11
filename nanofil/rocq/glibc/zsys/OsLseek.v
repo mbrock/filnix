@@ -1,11 +1,17 @@
-(** A trusted [[external call|contract]] at libpizlo's boundary:
-    `c: long zsys_lseek(int fd, long offset, int whence)`, over the
-    [os_world] of [OsWorld](OsWorld.v). Its native counterexample probe
-    is [zsys-lseek.c](zsys-lseek.c).
+(** When userland glibc repositions the file offset of an open descriptor,
+    it calls libpizlo's `c: long zsys_lseek(int fd, long offset, int whence)`
+    wrapper. That wrapper sits at the [[external call|contract]] boundary
+    between compiled C code and the Fil-C [[runtime]]. This module defines
+    the contract [os_lseek_contract] for `c: zsys_lseek` over the shared
+    state [os_world] from [OsWorld](OsWorld.v), and derives its
+    [[separation-logic|separation-logic]] call rules. Its runtime checks
+    and corner cases are tested against native Fil-C in
+    [zsys-lseek.c](zsys-lseek.c).
 
     ## What libpizlo runs
 
-    At the pin (libpas/src/libpas/filc_runtime.c:8819):
+    At the pinned revision of `libpas/src/libpas/filc_runtime.c`,
+    `c: zsys_lseek` runs the following native wrapper:
 
     ```c
     long filc_native_zsys_lseek(filc_thread* my_thread, int fd, long offset, int whence)
@@ -21,12 +27,19 @@
     }
     ```
 
-    No pointer argument: `c: check_fd(fd)` asserts `c: fd` is not the log
-    descriptor, and a failing call stores native errno through user
-    glibc's errno handler ([errno_spans], the only writable root). A
-    Linux offset is a nonnegative `c: off_t`, so a success is below 2^63;
-    a failure is `c: -1`. Nothing is observed ([StreamBytes] records
-    bytes, not file positions). *)
+    Because `c: zsys_lseek` takes no pointer arguments, it performs no
+    capability checks on caller buffers. Instead, `c: check_fd(fd)`
+    asserts that the descriptor is not libpizlo's internal log descriptor
+    [ow_log_fd], and the wrapper passes the descriptor, offset, and
+    `c: whence` value directly to the host `c: lseek` system call.
+
+    If the kernel returns a negative result, `c: filc_set_errno` stores
+    the host error number into userland glibc's thread-local `c: errno`
+    cell, which is the only caller memory the wrapper can overwrite. On
+    Linux, a resulting file offset is a non-negative 64-bit signed integer
+    below `2 ^ 63`, and failure returns `c: -1` as `2 ^ 64 - 1`. Because
+    our trace model records written stream bytes rather than file offsets,
+    `c: zsys_lseek` emits no trace events. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -38,24 +51,32 @@ From Glibc Require Import OsBlocks OsWorld.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The contract *)
+(** ## The contract
 
-(** `c: long zsys_lseek(int fd, long offset, int whence)`: [W], [L],
-    [W] to [L], or a discarded result. *)
+    Before proving separation-logic rules, this first section defines the
+    ABI, precondition, and postcondition of [os_lseek_contract]. *)
+
+(** A call site satisfies [os_lseek_abi] when it passes a 32-bit
+    descriptor, a 64-bit byte offset, and a 32-bit `c: whence` flag, and
+    either discards the result or binds it to a 64-bit destination
+    register. *)
 Definition os_lseek_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d L) /\ exists fd off wh, args = [Arg W fd; Arg L off; Arg W wh].
 
-(** Precondition: `c: fd` is not the log descriptor, and errno is a
-    writable `c: int`. Any offset and whence are admitted: the kernel
-    rejects bad ones with `c: EINVAL`. *)
+(** At call entry, [os_lseek_pre] requires that the file descriptor is not
+    libpizlo's log descriptor and that the thread's `c: errno` pointer
+    names a writable 4-byte `c: int` cell. Any offset and `c: whence`
+    integer are allowed, because the kernel rejects invalid values cleanly
+    with `c: EINVAL`. *)
 Definition os_lseek_pre (xs : list word) (m : mem) (w : os_world) : Prop :=
   exists fd off wh e, xs = [WInt fd; WInt off; WInt wh] /\
     ow_log_fd w <> Some fd /\ ow_errno w = Some e /\ errno_cell m e.
 
-(** The contract: [RClass] [L], errno as the only writable root; no
-    sources, releases, allocations, observations or resource endings;
-    the new offset (below 2^63) or `c: -1`. Its only check,
-    `c: check_fd`, is an assertion, not a capability panic. *)
+(** The contract [os_lseek_contract] packages these predicates for a call
+    returning a 64-bit integer. It lists `c: errno` as the only writable
+    memory span, emits no trace events, allocates and frees no objects,
+    and returns either a new file offset below `2 ^ 63` or `c: -1` as
+    `2 ^ 64 - 1`. *)
 Definition os_lseek_contract : contract os_world :=
   mkContract os_world (RClass L) os_lseek_abi os_lseek_pre
     (fun _ _ _ => []) (fun _ _ w => errno_spans w) (fun _ _ _ => [])
@@ -65,16 +86,25 @@ Definition os_lseek_contract : contract os_world :=
        exists k, ((0 <= k < 2 ^ 63) \/ k = 2 ^ 64 - 1) /\ ending = CallReturn [WInt k])
     (fun _ => False) (fun why => In why [ArgumentSize; ReturnSize]).
 
-(** ## Over a Logic instance *)
+(** ## Over a Logic instance
 
-(** The rule for `c: zsys_lseek(fd, offset, whence)` over the
-    [[runtime]] R and [LogicSig] LG0. *)
+    The contract above describes `c: zsys_lseek` as a relation on physical
+    memory and the OS world. The functor below connects that contract to a
+    Fil-C [[runtime]] and the program logic of
+    [Logic](../../theories/logic/Logic.v), deriving the
+    [[weakest-precondition|weakest-precondition]] rules that callers use
+    in proofs. *)
+
+(** To verify C functions that call `c: zsys_lseek`, [OsLseekOn] lifts the
+    contract above into separation-logic proof rules for a given
+    [[runtime]] and program logic. *)
 Module OsLseekOn (R : Runtime) (LG0 : LogicSig R).
 Module OW := OsWorldOn R LG0.
 Import OW OW.L OW.LG.
 
-(** A returning call keeps the world and yields an offset below 2^63
-    or `c: -1`. *)
+(** When an invocation of [os_lseek_contract] returns to its caller, it
+    leaves the OS world unchanged and yields either a non-negative file
+    offset below `2 ^ 63` or `c: -1`. *)
 Lemma os_lseek_returns r args xs s m w trace values s' m' w' :
   M.E.invoke os_lseek_contract r args xs s m w trace (CallReturn values) s' m' w' ->
   w' = w /\ exists k, values = [WInt k] /\ ((0 <= k < 2 ^ 63) \/ k = 2 ^ 64 - 1).
@@ -87,16 +117,19 @@ Section rule.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 
-(** The Iris instance for registry and [os_wi] w0. *)
+(** The instance [os_lseek_irisGS] configures Iris for the language with
+    the OS contract registry and the world interpretation [os_wi]. *)
 Local Instance os_lseek_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 
-(** Expressions of the language. *)
+(** The notation [zexpr] abbreviates expressions of the language over the
+    OS contract registry. *)
 Local Notation zexpr := (language.expr (nanofil_lang registry ge)).
 
-(** `c: zsys_lseek(fd, off, wh)` with `c: fd` among w0's descriptors and
-    errno owned: errno comes back holding whatever the call left, and
-    d is bound to an offset below 2^63 or `c: -1`. *)
+(** When a C function calls `c: zsys_lseek` on a descriptor in the OS
+    world while lending the thread's `c: errno` cell, [wp_zsys_lseek]
+    hands `c: errno` back to the caller and binds the destination register
+    to a new file offset below `2 ^ 63` or `c: -1`. *)
 Lemma wp_zsys_lseek f e ls lab d a0 a1 a2 rest j fd off wh eb Φ :
   registry (TAtom "zsys_lseek") = Some os_lseek_contract ->
   find_fn ge (TAtom "zsys_lseek") = None -> lookup (TAtom "zsys_lseek") (ge_globals ge) = None ->
@@ -124,8 +157,9 @@ Proof.
     iApply ("HK" with "[%] Herr"). exact Hk.
 Qed.
 
-(** The same, lending errno holding bs: it comes back holding whatever
-    the call left. *)
+(** A caller that tracks the exact four bytes stored in `c: errno` before
+    calling `c: zsys_lseek` can lend that cell directly through
+    [wp_zsys_lseek_lend] and receive the updated cell back after the call. *)
 Lemma wp_zsys_lseek_lend f e ls lab d a0 a1 a2 rest j fd off wh eb bs Φ :
   registry (TAtom "zsys_lseek") = Some os_lseek_contract ->
   find_fn ge (TAtom "zsys_lseek") = None -> lookup (TAtom "zsys_lseek") (ge_globals ge) = None ->

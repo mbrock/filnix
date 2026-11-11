@@ -1,69 +1,50 @@
-(** The [[core-subset|core subset]] of the [[stage|checked IR]],
-    transcribed from ir.pl: its grammar as inductive types, one
-    constructor per functor of the intermediate representation (IR),
-    and the small tables of facts the semantics reads.
+(** After Nanofil lowers C source code into static single-assignment
+    blocks, its safety passes insert explicit capability checks before
+    every memory access and function call to produce the
+    [[stage|checked IR]]. This module defines the abstract syntax of the
+    [[core-subset|core subset]] of that checked IR as inductive types,
+    together with the classification tables that the operational
+    semantics and the translation [[validator]] share.
 
-    The subset is formal.md's: [[mode|filc mode]], the checked stage,
-    the integer and pointer [[class|classes]], [[check]] and its
-    [[reuse]] vocabulary, the `raw_*` [[raw-access|accesses]] (the
-    checked [[cas]], `raw_cas`, among them),
-    [[flight]], [[poll|poll edges]], `call`, `raw_call` and `free`, and
-    named locals, `touch` (a vector access's check, whose proof it uses
-    without accessing anything); and, for the Lua suite, the float
-    classes with their conversions (Ieee.v) and variadic functions
-    (`va_args`, `va_arg`); and `setjmp`, whose syntax and validation
-    are ir.pl's while its step is stuck, as the interpreter refuses it.
-    Vectors, the unchecked `cas` and atomics, [[asm_fixed]] and plain
-    mode are deferred: a function that uses them is [IOutside], which
-    has an address but no body (Transport.v decides).
-
-    ## Items, blocks and instructions
-
-    | Gallina | ir.pl |
-    |---|---|
-    | `IFunc f` | `func(Name, Linkage, Ret, Params, Blocks)` |
-    | `IOutside n t` | a `func` named n outside the core subset, kept as its term t |
-    | `IData n lk al items` | `data(Name, Linkage, Align, Items)` |
-    | `IAlias n lk t` | `alias(Name, Linkage, Target)` |
-    | `Phi d k pairs` | `phi(tmp(D), K, [Pred-Value])` |
-    | `Let d k o args` | `let(tmp(D), K, Op, Args)` |
-    | `Flight d o args lower` | `flight(tmp(D), Op, Args, Lower)` |
-    | `RawStore w off v a` | `raw_store(Width, Off, Value, Addr)` |
-    | `RawStorePointer off v a es` | `raw_store_pointer(Off, Value, Addr, Effects)` |
-    | `Call r callee args` | `call(Res, Callee, [arg(K, Value)])` |
-    | `RawCall r callee args` | `raw_call(Res, Callee, Args)` |
-    | `LocalAlloc x size` | `local_alloc(Name, Size)` |
-    | `Loc file line` | `loc(File, Line)` |
-    | `Touch q` | `touch(tmp(Q))` | *)
+    In [[mode|filc mode]], the core subset covers 32-bit and 64-bit
+    integers, pointers, IEEE floating-point numbers, capability
+    [[check|checks]] and their [[reuse]] forms,
+    [[raw-access|raw memory accesses]] including compare-and-exchange,
+    [[flight]] instructions, [[poll|poll edges]], function calls, named
+    stack locals, and variadic arguments. A compiled [module] is an
+    ordered list of top-level functions, global data definitions, and
+    symbol aliases, where each function body is a list of basic
+    [[block|blocks]] made of entry [[phi]] nodes, sequential
+    instructions, and a terminating control-flow jump. Functions that
+    use features outside the core subset, such as vector operations or
+    inline assembly, receive an address via [IOutside] without decoding
+    their bodies. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Classes and widths *)
+(** ## Classes and widths
 
-(** As `class(K, Kind, Bits)`: the [[class]] of a value, one letter in
-    ir.pl. Besides the integer, pointer and float classes there are the
-    two [[proof]] classes of the checked stage, whose values are
-    pointers a check has cleared.
+    Every temporary and instruction result in the IR carries a register
+    [[class]] that determines its bit width and whether it holds an
+    integer, a pointer, a floating-point bit pattern, or a checked
+    [[proof]]. Memory instructions also specify a storage [width] or a
+    [narrow] integer type when reading or writing fewer than eight
+    bytes. *)
 
-    | Class | ir.pl | Value |
-    |---|---|---|
-    | [W] | `w` | a 32-bit integer |
-    | [L] | `l` | a 64-bit integer |
-    | [P] | `p` | a pointer: an address with its [[capability]] |
-    | [A] | `a` | a proven address, the result of a check |
-    | [F] | `f` | a proven function, the result of `check_function` |
-    | [Single] | `s` | an IEEE binary32 float, held as its 32-bit pattern |
-    | [Double] | `d` | an IEEE binary64 float, held as its 64-bit pattern |
-    | [Extended] | `x` | an x87 extended float, held as its 80-bit pattern |
-
-    [Extended] is C's `long double`, never a parameter, result, call
-    argument or [[phi]]. *)
+(** Every value in the checked IR has a register [class]. The classes
+    [W] and [L] hold 32-bit and 64-bit integers, [P] holds a pointer
+    with its [[capability]], [A] and [F] hold checked address and
+    function [[proof|proofs]], and [Single], [Double], and [Extended]
+    hold 32-bit, 64-bit, and 80-bit IEEE floating-point bit patterns.
+    The 80-bit [Extended] class represents C's `c: long double` inside
+    expressions, and never appears as a function parameter, return
+    value, call argument, or [[phi]] node. *)
 Inductive class : Type := W | L | P | A | F | Single | Double | Extended.
 
-(** Equality of classes. *)
+(** The function [class_eqb] tests whether two IR classes are identical. *)
 Definition class_eqb (k k' : class) : bool :=
   match k, k' with
   | W, W | L, L | P, P | A, A | F, F
@@ -71,19 +52,19 @@ Definition class_eqb (k k' : class) : bool :=
   | _, _ => false
   end.
 
-(** As `float_class(K)`: whether the class k is a float class, `s`,
-    `d` or `x`. *)
+(** The predicate [float_class] returns `true` when a class is one of
+    the three floating-point classes [Single], [Double], or [Extended]. *)
 Definition float_class (k : class) : bool :=
   match k with Single | Double | Extended => true | _ => false end.
 
-(** As `int_class(K)`: whether the class k is an integer class, `w` or
-    `l`. *)
+(** The predicate [int_class] returns `true` when a class is one of the
+    two integer classes [W] or [L]. *)
 Definition int_class (k : class) : bool :=
   match k with W | L => true | _ => false end.
 
-(** As `modulus(K, Mod)`: the values of class k are the integers from 0
-    up to Mod - 1, a float's being its bit pattern; a [P] value's
-    address has the modulus of [L]. The proof classes have none. *)
+(** For any numeric or pointer class, [modulus] returns the power-of-two
+    bound on its unsigned bit pattern, or `None` for the proof classes
+    [A] and [F]. *)
 Definition modulus (k : class) : option Z :=
   match k with
   | W | Single => Some (2 ^ 32)
@@ -92,8 +73,8 @@ Definition modulus (k : class) : option Z :=
   | A | F => None
   end.
 
-(** As `class_bits(K, Bits)`: the width in bits of an integer class
-    k. *)
+(** For an integer class, [class_bits] returns its bit width, which is
+    32 for [W] and 64 for [L], or `None` for non-integer classes. *)
 Definition class_bits (k : class) : option Z :=
   match k with
   | W => Some 32
@@ -101,9 +82,9 @@ Definition class_bits (k : class) : option Z :=
   | _ => None
   end.
 
-(** As `half_modulus(K, Half)`: half the [modulus] of an integer class
-    k; the values from Half up to Mod - 1 are the negative ones when
-    read as signed, in two's complement. *)
+(** For an integer class, [half_modulus] returns the sign-bit threshold
+    at which unsigned values begin to represent negative numbers in
+    two's complement. *)
 Definition half_modulus (k : class) : option Z :=
   match k with
   | W => Some (2 ^ 31)
@@ -111,30 +92,33 @@ Definition half_modulus (k : class) : option Z :=
   | _ => None
   end.
 
-(** The width of a store or of a data item, what size of value it
-    writes: [Wb] and [Wh] are ir.pl's `b` and `h`, a byte and a 16-bit
-    halfword, and the others are the classes `w` `l` `p` `s` `d` `x`. *)
+(** A storage [width] specifies how many bytes a memory store or static
+    data initializer writes, ranging from a single byte [Wb] or 16-bit
+    halfword [Wh] up to a full integer, pointer, or floating-point
+    value. *)
 Inductive width : Type := Wb | Wh | Ww | Wl | Wp | Ws | Wd | Wx.
 
-(** As `width_bytes(Width, Size)`: the bytes a width w writes; an x87
-    extended float takes 10. *)
+(** Given a storage [width], [width_bytes] returns the number of bytes
+    written to memory, including 10 bytes for an x87 extended float
+    [Wx]. *)
 Definition width_bytes (w : width) : Z :=
   match w with
   | Wb => 1 | Wh => 2 | Ww => 4 | Wl => 8 | Wp => 8
   | Ws => 4 | Wd => 8 | Wx => 10
   end.
 
-(** A narrow integer type, the T of a narrow load and of `ext(T)`:
-    ir.pl's `sw` `uw` `sh` `uh` `sb` `ub`, a signed or unsigned word (4
-    bytes), halfword (2) or byte (1). *)
+(** A [narrow] integer type specifies the byte width and signedness of a
+    sub-word memory load or integer extension, covering signed and
+    unsigned 4-byte words, 2-byte halfwords, and single bytes. *)
 Inductive narrow : Type := Sw | Uw | Sh | Uh | Sb | Ub.
 
-(** Whether an integer is read as signed, in two's complement, or as
-    unsigned. *)
+(** A [signedness] tag records whether an integer operation interprets
+    bit patterns as two's-complement [Signed] numbers or [Unsigned]
+    numbers. *)
 Inductive signedness : Type := Signed | Unsigned.
 
-(** As `narrow_type(T, Bytes, Signedness)`: the size in bytes and the
-    signedness of the narrow type t. *)
+(** Given a [narrow] integer type, [narrow_type] returns its size in
+    bytes paired with its [signedness]. *)
 Definition narrow_type (t : narrow) : Z * signedness :=
   match t with
   | Sw => (4, Signed) | Uw => (4, Unsigned)
@@ -142,66 +126,71 @@ Definition narrow_type (t : narrow) : Z * signedness :=
   | Sb => (1, Signed) | Ub => (1, Unsigned)
   end.
 
-(** The type of a [[raw-access|raw load]]: [LdL] for `l`, [LdS], [LdD]
-    and [LdX] for the float classes `s` `d` `x`, or a narrow type. This
-    is `load_type/1` without `p`, which [RawLoadPointer] reads
-    instead. *)
+(** A [load_type] describes the representation read by a non-pointer
+    [[raw-access|raw load]], which may be a 64-bit integer, a
+    floating-point value, or a narrow integer. Pointer loads use
+    [RawLoadPointer] instead so they can specify their capability-reading
+    protocol. *)
 Inductive load_type : Type := LdL | LdS | LdD | LdX | LdNarrow (t : narrow).
 
-(** As `cas_type/1`: the type of a [[cas]], what it compares and
-    writes: [CasL] for `l`, [CasP] for a pointer `p`, or a narrow
-    type. *)
+(** A [cas_type] specifies the width and kind of value that a raw
+    [[cas|compare-and-exchange]] compares and writes: a 64-bit integer
+    [CasL], a pointer [CasP], or a narrow integer [CasNarrow]. *)
 Inductive cas_type : Type := CasL | CasP | CasNarrow (t : narrow).
 
-(** As `cas_bytes/2`: the bytes a cas of type t compares and writes,
-    which are also the alignment its address needs
-    (`access_size_align(cas(T), Size, Size)`). *)
+(** Given a [cas_type], [cas_bytes] returns the number of bytes that the
+    compare-and-exchange accesses, which is also its required address
+    alignment. *)
 Definition cas_bytes (t : cas_type) : Z :=
   match t with
   | CasL | CasP => 8
   | CasNarrow n => fst (narrow_type n)
   end.
 
-(** ## Ops *)
+(** ## Ops
 
-(** A comparison's Cond: `eq` and `ne` at any numeric class, the signed
-    and unsigned orders at `w` and `l`, and `le` `lt` `ge` `gt` `o`
-    (ordered) and `uo` (unordered) at a float class. *)
+    An operation in a [Let] instruction computes an arithmetic result,
+    allocates an object, performs or reuses a capability check, or
+    executes a raw load or compare-and-exchange. This section defines
+    the operation codes and the auxiliary types that describe comparison
+    conditions, access rights, bounds, and pointer memory protocols. *)
+
+(** A [cond] specifies the relational test performed by a comparison
+    operation: equality and inequality on any numeric class, signed and
+    unsigned orderings on integers, and ordered or unordered comparisons
+    on floating-point numbers. *)
 Inductive cond : Type :=
 | Eq | Ne | Sle | Slt | Sge | Sgt | Ule | Ult | Uge | Ugt
 | Le | Lt | Ge | Gt | Ord | Unord.
 
-(** The [[rights]] an access asks for: to read, or to write, which a
-    read-only object refuses. *)
+(** The [rights] type specifies whether a memory check requests [Read]
+    access or [Write] access, which a read-only capability rejects. *)
 Inductive rights : Type := Read | Write.
 
-(** Equality of rights. *)
+(** The function [rights_eqb] tests whether two access-rights tags are
+    equal. *)
 Definition rights_eqb (r r' : rights) : bool :=
   match r, r' with Read, Read | Write, Write => true | _, _ => false end.
 
-(** Which end of an object's bounds a [[half_check|half check]] tests
-    natively, ir.pl's `upper` or `lower`; an earlier check proves the
-    other. *)
+(** A [bound] tag selects which end of an object's range a
+    [[half_check|half check]] tests at run time—either the [Upper] bound
+    or the [Lower] bound—when an earlier check already established the
+    other end. *)
 Inductive bound : Type := Upper | Lower.
 
-(** One step of the protocol by which a pointer load or store moves an
-    address and its capability, as `pointer_memory_effects/2` lists
-    them:
-
-    - a heap load reads the [[aux]] word ([AuxRead]), resolves the
-      [[lower]] from it ([LowerResolve]), then reads the address
-      ([AddressRead]);
-    - a heap store makes sure the aux exists ([AuxEnsure]), applies the
-      collector's barrier to the stored lower ([LowerBarrier]), reloads
-      its destination from a [[root]] ([RootedReload]), then writes
-      the lower ([LowerWrite]) before the address ([AddressWrite]);
-    - [AtomicRead] and [AtomicWrite] are Fil-C's atomic pointer
-      helpers, each a whole protocol. *)
+(** In Fil-C, loading or storing a pointer in memory touches both the
+    8-byte primary address and the capability slot in [[aux]]. An
+    [effect] names one atomic step of that multi-step protocol: reading
+    or ensuring the aux slot, resolving or writing the [[lower]] bound,
+    applying the garbage collector's write barrier, reloading from a
+    [[root]], reading or writing the primary address, or calling an
+    atomic helper. *)
 Inductive effect : Type :=
 | AuxRead | LowerResolve | AddressRead | AtomicRead
 | AuxEnsure | LowerBarrier | RootedReload | LowerWrite | AddressWrite | AtomicWrite.
 
-(** Equality of effects. *)
+(** The function [effect_eqb] tests whether two pointer-protocol steps
+    are identical. *)
 Definition effect_eqb (e e' : effect) : bool :=
   match e, e' with
   | AuxRead, AuxRead | LowerResolve, LowerResolve | AddressRead, AddressRead
@@ -211,133 +200,152 @@ Definition effect_eqb (e e' : effect) : bool :=
   | _, _ => false
   end.
 
-(** Equality of two effect lists, step by step. *)
+(** The function [effects_eqb] tests whether two pointer-protocol effect
+    lists have the same length and matching steps at every position. *)
 Definition effects_eqb (es es' : list effect) : bool :=
   (length es =? length es')%nat && forallb (fun p => effect_eqb (fst p) (snd p)) (combine es es').
 
-(** As `pointer_memory_effects(load, Effects)`: the protocol of a heap
-    pointer load, one of the two that [evidence_preserving] accepts. *)
+(** A standard heap pointer load runs the three-step protocol
+    [load_effects], which reads the [[aux]] slot, resolves the [[lower]]
+    capability, and reads the 8-byte address. A pointer load from a
+    named stack local runs the shorter protocol [local_load_effects],
+    which reads the stack local's aux capability and 8-byte address
+    directly. *)
 Definition load_effects : list effect := [AuxRead; LowerResolve; AddressRead].
-(** As `pointer_memory_effects(local_load, Effects)`: the protocol of a
-    pointer load from a named local, whose explicit stack aux has no
-    atomic box, so there is no lower to resolve. *)
 Definition local_load_effects : list effect := [AuxRead; AddressRead].
 
-(** Which of the three returns-twice calls a `setjmp(Kind)` is:
-    `setjmp`, `'_setjmp'` or `sigsetjmp` (`op_kind/2`). *)
+(** A [setjmp_kind] distinguishes the three C returns-twice functions
+    `c: setjmp`, `c: _setjmp`, and `c: sigsetjmp`. *)
 Inductive setjmp_kind : Type := SjSetjmp | SjUnderscore | SjSig.
 
-(** An operation, the Op of a `let` (ir.pl's Ops table): one
-    constructor per functor in the core subset, with the functor's
-    parameters as its arguments. The arithmetic and conversions come
-    first, then the [[alloc]], the checks of the checked stage and
-    their [[reuse]] forms, the [[raw-access|raw loads]] and the raw
-    [[cas]], the variadic ops and `setjmp`. What each reads is
-    [op_arg_classes]. *)
+(** An [op] is the operation performed by a [Let] instruction in the
+    core subset. It includes integer and floating-point arithmetic and
+    conversions, heap [[alloc|allocation]], capability [[check|checks]]
+    and their [[reuse]] forms, [[raw-access|raw loads]] and raw [[cas]],
+    variadic argument operations, and `c: setjmp`. The function
+    [op_arg_classes] specifies the argument classes that each operation
+    expects. *)
 Inductive op : Type :=
 | Add | Sub | Mul | Div | Udiv | Rem | Urem | And | Or | Xor
 | Sar | Shr | Shl | Neg | Copy | Ptoi | Itop
-| Select (* the second of three integers if the first, a `w`, is not 0, else the third *)
-| Cmp (c : cond) (k : class) (* 1 if two values of class k compare by c, else 0 *)
-| Ext (t : narrow) (* the low bytes of a `w`, extended by t *)
-(* The float conversions: `ext(s)` and `ext(d)` name their source
-   class; `stosi` is `FloatToInt Single Signed`, `dtoui` is
-   `FloatToInt Double Unsigned`; `swtof` is `IntToFloat W Signed`, `ultof`
-   is `IntToFloat L Unsigned`. *)
-| ExtF (k : class) (* widen a float of class k *)
+| Select (* chooses the second argument when the first is nonzero, and the third when it is zero *)
+| Cmp (c : cond) (k : class) (* returns 1 when two values of class k satisfy condition c, and 0 otherwise *)
+| Ext (t : narrow) (* sign- or zero-extends the low bytes of a 32-bit word according to t *)
+(* Floating-point conversions name their source or target format and
+   signedness explicitly. *)
+| ExtF (k : class) (* widens a floating-point value from class k to a wider format *)
 | Truncd | Truncx
-| FloatToInt (k : class) (sg : signedness) (* a float of class k to an integer, truncated *)
-| IntToFloat (k : class) (sg : signedness) (* an integer of class k to the nearest float *)
-| Cast (* the same bits at the other class: `w` and `s`, `l` and `d` *)
-| Sqrt (* the square root of a float, rounded to nearest *)
-| Alloc (align : Z) (* a new zeroed heap object of the `l` size read *)
-| Check (lo hi : Z) (r : rights) (align : Z) (* [[check]] of a pointer P: trap unless P may access from P+lo up to P+hi *)
-| CheckAhead (lo hi : Z) (r : rights) (align ahi : Z) (* a check whose bytes from ahi up to hi are for a later access: [[check_ahead]] *)
-| Renew (lo hi : Z) (r : rights) (align : Z) (* reuse a dominating check's bounds: [[renew]] *)
-| RenewHull (lo hi : Z) (r : rights) (align : Z) (* a renew whose bounds two earlier proofs cover: [[renew_hull]] *)
-| HalfCheck (b : bound) (lo hi : Z) (r : rights) (align : Z) (* a check that tests only the bound b: [[half_check]] *)
-| SpanTest (lo hi : Z) (* 1 if the pointer's object holds the span, else 0: [[span_test]] *)
-| RenewIf (lo hi : Z) (r : rights) (align : Z) (* a check whose bounds a passing span test proves: [[renew_if]] *)
-| Limit (size : Z) (* an opaque snapshot of the pointer's bounds: [[limit]] *)
-| CheckLimit (lo hi : Z) (r : rights) (align : Z) (* a check of the bounds against a limit: [[limit|check_limit]] *)
-| CheckLocal (x : name) (off bytes : Z) (r : rights) (align : Z) (* prove an access to the named local x *)
-| CheckFunction (* trap unless the pointer is a function's exact address *)
-| RawLoad (t : load_type) (off : Z) (* a non-pointer load at the proven address plus off *)
-| RawLoadPointer (off : Z) (es : list effect) (* a pointer load at the proven address plus off, by the protocol es *)
-| RawCas (t : cas_type) (off : Z) (* a [[cas]] of type t at the proven address plus off: its Expected and New are the other two arguments *)
-(* `va_args` takes a variadic function's entry argument snapshot at a
-   byte offset; `va_arg` loads the next argument through a va_list. *)
+| FloatToInt (k : class) (sg : signedness) (* truncates a floating-point value of class k toward zero as a signed or unsigned integer *)
+| IntToFloat (k : class) (sg : signedness) (* converts a signed or unsigned integer of class k to the nearest floating-point value *)
+| Cast (* reinterprets the bit pattern between 32-bit int/float or 64-bit int/double *)
+| Sqrt (* computes the IEEE square root of a floating-point value, rounded to nearest *)
+| Alloc (align : Z) (* allocates a new zeroed heap object of the given alignment and size *)
+| Check (lo hi : Z) (r : rights) (align : Z) (* [[check]] that a pointer can access offsets lo through hi with rights r and alignment align *)
+| CheckAhead (lo hi : Z) (r : rights) (align ahi : Z) (* [[check_ahead]] that checks lo..ahi for the current access and ahi..hi for a later access *)
+| Renew (lo hi : Z) (r : rights) (align : Z) (* [[renew]] that reuses a dominating check's bounds *)
+| RenewHull (lo hi : Z) (r : rights) (align : Z) (* [[renew_hull]] whose span lies between two earlier checked spans *)
+| HalfCheck (b : bound) (lo hi : Z) (r : rights) (align : Z) (* [[half_check]] that tests only bound b at run time *)
+| SpanTest (lo hi : Z) (* [[span_test]] that returns 1 if the pointer's object covers lo..hi, and 0 otherwise *)
+| RenewIf (lo hi : Z) (r : rights) (align : Z) (* [[renew_if]] guarded by a passing span test *)
+| Limit (size : Z) (* [[limit]] that captures an opaque snapshot of a pointer's bounds for accesses of size bytes *)
+| CheckLimit (lo hi : Z) (r : rights) (align : Z) (* [[limit|check_limit]] that checks an access against a captured limit *)
+| CheckLocal (x : name) (off bytes : Z) (r : rights) (align : Z) (* proves an in-bounds access to the named stack local x *)
+| CheckFunction (* traps unless the pointer is the exact entry address of a function *)
+| RawLoad (t : load_type) (off : Z) (* loads a non-pointer value of type t from a proven address plus off *)
+| RawLoadPointer (off : Z) (es : list effect) (* loads a pointer from a proven address plus off using protocol es *)
+| RawCas (t : cas_type) (off : Z) (* executes a [[cas]] of type t at a proven address plus off *)
+(* Variadic operations snapshot the entry arguments or read the next
+   argument from a va_list cursor. *)
 | VaArgs
 | VaArg
-(* `setjmp(Kind)` saves its caller's context into the buffer it reads
-   and returns 0, and returns again, nonzero, when a `longjmp` restores
-   it (docs/setjmp.md). *)
+(* A setjmp operation records the syntax of a returns-twice call so the
+   validator can inspect functions that mention it. *)
 | Setjmp (kind : setjmp_kind).
 
-(** ## Values, instructions and jumps *)
+(** ## Values, instructions and jumps
 
-(** A value an instruction reads (ir.pl's Values table). *)
+    Inside a basic block, instructions read [value] operands, compute
+    new temporaries or perform memory stores and calls as [inst] steps,
+    and finish with a [jump] terminator that transfers control to the
+    next block or returns from the function. This section defines those
+    instruction-level syntax trees and the structure of blocks and
+    functions. *)
+
+(** An instruction operand [value] is a [[temporary]] name, an integer
+    or floating-point bit-pattern constant, or the address of a module
+    symbol. *)
 Inductive value : Type :=
-| Tmp (n : name) (* `tmp(N)`, a [[temporary]], defined once *)
-| Const (n : Z) (* `const(N)`, an integer; at a float class, its bit pattern *)
-| Global (s : name). (* `global(S)`, the address of the function or data object s *)
+| Tmp (n : name) (* a [[temporary]] variable, which is assigned at most once in SSA form *)
+| Const (n : Z) (* an integer constant, or the bit pattern of a floating-point constant *)
+| Global (s : name). (* the pointer constant for a function or global data object *)
 
-(** An argument of a [[flight]]'s address computation: an `l` value, or
-    `address(P)`, the address bits of the pointer P. *)
+(** A [flight_arg] is an operand to the address calculation of a
+    [[flight]] instruction: either a 64-bit integer [FValue] or the
+    extracted address bits [FAddress] of a pointer. *)
 Inductive flight_arg : Type := FValue (v : value) | FAddress (p : value).
 
-(** A flight's Lower, where its capability comes from: `none`, or
-    `lower(P)`, exactly the capability of the pointer P. *)
+(** A [flight_lower] specifies where a [[flight]] instruction obtains
+    the [[capability]] for the pointer it builds: either [LowerNone] for
+    a capability-free pointer, or [LowerOf] to copy the capability of an
+    existing pointer operand. *)
 Inductive flight_lower : Type := LowerNone | LowerOf (p : value).
 
-(** A call's Res, where its results go. *)
+(** A [call_result] specifies where a function call places its return
+    value: nowhere for a void call [CVoid], into a single typed
+    temporary [CResult], or into a list of temporaries [CTuple] for a
+    multi-word return. *)
 Inductive call_result : Type :=
-| CVoid (* `void`: none *)
-| CResult (d : name) (k : class) (* `result(tmp(D), K)`: the temporary d, of class k *)
-| CTuple (rs : list (name * class)). (* `tuple([result(tmp(D1), K1), ...])`: a pair of results *)
+| CVoid (* a call with no return value *)
+| CResult (d : name) (k : class) (* a single return value written to temporary d at class k *)
+| CTuple (rs : list (name * class)). (* a multi-word return value written to a list of typed temporaries *)
 
-(** As `arg(K, Value)`: a call's argument, the value v passed at class
-    k. *)
+(** An [arg] pairs a call argument [value] with the register [class] at
+    which the caller passes it. *)
 Inductive arg : Type := Arg (k : class) (v : value).
 
-(** An instruction of a block, in the core subset; the table at the
-    top of the page gives each one's ir.pl term. The raw forms do no
-    checking of their own: they read a proof of class [A] or [F]. *)
+(** An [inst] is a single non-terminating instruction inside a basic
+    [[block]]. The raw memory and call forms [RawStore],
+    [RawStorePointer], and [RawCall] perform no capability check of
+    their own; instead, they consume a [[proof]] temporary of class [A]
+    or [F] produced by an earlier check. *)
 Inductive inst : Type :=
-| Let (d : name) (k : class) (o : op) (args : list value) (* d, of class k, is o of args *)
-| Flight (d : name) (o : op) (args : list flight_arg) (lower : flight_lower) (* the pointer d: the address o computes, with the capability lower names *)
-| RawStore (w : width) (off : Z) (v a : value) (* store v at the proven address a plus off *)
-| RawStorePointer (off : Z) (v a : value) (es : list effect) (* store the pointer v there, by the protocol es *)
-| Call (r : call_result) (callee : value) (args : list arg) (* call callee, a symbol or a pointer *)
-| RawCall (r : call_result) (callee : value) (args : list arg) (* call the proven function callee, of class [F] *)
-| LocalAlloc (x : name) (size : Z) (* declare the named local x, of size zeroed bytes *)
-| Loc (file : term) (line : Z) (* a source position; does nothing *)
-| Touch (q : name). (* `touch(tmp(Q))`: use the proof q of the check just before it, and do nothing else *)
+| Let (d : name) (k : class) (o : op) (args : list value) (* evaluates operation o on args and binds temporary d at class k *)
+| Flight (d : name) (o : op) (args : list flight_arg) (lower : flight_lower) (* builds pointer d from the address computed by o and the capability selected by lower *)
+| RawStore (w : width) (off : Z) (v a : value) (* stores non-pointer value v of width w at proven address a plus off *)
+| RawStorePointer (off : Z) (v a : value) (es : list effect) (* stores pointer v at proven address a plus off using protocol es *)
+| Call (r : call_result) (callee : value) (args : list arg) (* checks and calls callee with args, storing the result in r *)
+| RawCall (r : call_result) (callee : value) (args : list arg) (* calls proven function callee of class F with args *)
+| LocalAlloc (x : name) (size : Z) (* allocates a zeroed stack local x of size bytes for the current invocation *)
+| Loc (file : term) (line : Z) (* records a source file and line number without changing execution state *)
+| Touch (q : name). (* consumes the proof temporary q from a preceding vector check without accessing memory *)
 
-(** A jump's target: `L`, or `poll(L)`, a [[poll|pollcheck]] on the
-    edge before going to L. *)
+(** A jump [target] names the destination block label of a control-flow
+    edge, either as a direct jump [To] or with a garbage-collection
+    [[poll|pollcheck]] on the edge via [Poll]. *)
 Inductive target : Type := To (l : name) | Poll (l : name).
 
-(** As `edge_label(T, L)`: the label a target t goes to, polling or
-    not. *)
+(** Given a jump [target], [edge_label] extracts the destination block
+    label regardless of whether the edge performs a pollcheck. *)
 Definition edge_label (t : target) : name := match t with To l | Poll l => l end.
 
-(** The jump that ends a block (ir.pl's Jumps table). *)
+(** A [jump] is the control-flow terminator that ends a basic [[block]]:
+    an unconditional jump, a conditional branch, a function return, or
+    an unreachable trap. *)
 Inductive jump : Type :=
-| JGoto (t : target) (* `goto(L)` *)
-| JBranch (v : value) (t1 t2 : target) (* to t1 if v is nonzero, else to t2 *)
-| JRet (v : value) (* `ret(V)`: return v *)
-| JRets (vs : list value) (* `rets([V1, V2])`: return a tuple *)
-| JRetVoid (* `ret`, from a `void` function *)
-| JUnreachable. (* stop the program, a trap instruction *)
+| JGoto (t : target) (* jumps unconditionally to target t *)
+| JBranch (v : value) (t1 t2 : target) (* jumps to t1 when v is nonzero, and to t2 when v is zero *)
+| JRet (v : value) (* returns a single value v from the current function *)
+| JRets (vs : list value) (* returns a tuple of values vs from the current function *)
+| JRetVoid (* returns from a void function *)
+| JUnreachable. (* traps immediately if control reaches this point *)
 
-(** As `phi(tmp(D), K, [Pred-Value])`: a [[phi]] at the head of a block,
-    defining d, of class k, as the value paired with the block control
-    came from. *)
+(** A [phi] node sits at the entry of a basic [[block]] and binds a
+    temporary of a given class to the operand paired with whichever
+    predecessor block control arrived from. *)
 Inductive phi : Type := Phi (d : name) (k : class) (pairs : list (name * value)).
 
-(** As `block(Label, Phis, Insts, Jump)`: a [[block]], its phis, then
-    its instructions, then the one jump that ends it. *)
+(** A [block] is a labeled basic block consisting of its entry [[phi]]
+    nodes, its sequential body instructions, and its terminating [jump]. *)
 Record block : Type := mkBlock {
   b_label : name;
   b_phis : list phi;
@@ -345,54 +353,70 @@ Record block : Type := mkBlock {
   b_jump : jump
 }.
 
-(** A function's Ret: a class, `void`, or `tuple([K1, K2])`. *)
+(** A [ret_type] specifies the return signature of a function: a single
+    value class [RClass], no return value [RVoid], or a multi-word
+    tuple of classes [RTuple]. *)
 Inductive ret_type : Type :=
 | RClass (k : class)
 | RVoid
-| RTuple (ks : list class). (* two words, a struct of 9 to 16 bytes *)
+| RTuple (ks : list class). (* a two-word struct return of 9 to 16 bytes *)
 
-(** As `func(Name, Linkage, Ret, Params, Blocks)`: a function. *)
+(** A [func] record represents a compiled function in the core subset,
+    giving its symbol name, linkage term, return signature, typed
+    parameter list, and basic blocks with the entry block first. *)
 Record func : Type := mkFunc {
   fn_name : name;
-  fn_linkage : term; (* `export`, `local` or `weak`, kept as its term *)
+  fn_linkage : term; (* linkage atom such as export, local, or weak *)
   fn_ret : ret_type;
-  fn_params : list (class * name); (* each a class and a temporary *)
-  fn_blocks : list block (* the entry block first *)
+  fn_params : list (class * name); (* parameter classes paired with their temporary names *)
+  fn_blocks : list block (* basic blocks of the function, starting with the entry block *)
 }.
 
-(** As `variadic_func(Func)`: whether the function f takes the entry
-    argument snapshot of a variadic function, which it does with a
-    `va_args` anywhere in its blocks. *)
+(** A function satisfies [variadic_func] when any block in its body
+    contains a [VaArgs] instruction, which tells call setup to allocate
+    a snapshot of the extra call arguments on entry. *)
 Definition variadic_func (f : func) : bool :=
   existsb (fun b => existsb (fun i => match i with
                                       | Let _ P VaArgs _ => true
                                       | _ => false
                                       end) (b_insts b)) (fn_blocks f).
 
-(** ## Data *)
+(** ## Data
 
-(** A data object's Linkage (ir.pl's Data section). [LExport],
-    [LLocal] and [LWeak] are `export`, `local` and `weak`; [LRo] l is
-    `ro(L)`, read-only data, and [LTls] l is `tls(L)`, an object each
-    thread has its own instance of, both of the inner linkage l. *)
+    Besides functions, a compiled module can declare global and
+    thread-local data objects initialized with constants, byte strings,
+    symbol pointers, or zero padding. This section defines the linkage
+    kinds and initializer items for static data, along with their byte
+    size calculations. *)
+
+(** A [linkage] tag describes the visibility and storage kind of a
+    global data declaration. Exported, module-local, and weak writable
+    objects use [LExport], [LLocal], and [LWeak]; read-only and
+    thread-local objects wrap an inner linkage in [LRo] or [LTls];
+    constructor/destructor entries and external weak declarations use
+    [LInit] and [LExternWeak]; and unrecognized linkage terms use
+    [LOther] so the validator can reject them. *)
 Inductive linkage : Type :=
 | LExport | LLocal | LWeak
 | LRo (l : term) | LTls (l : term)
-| LInit (which prio : term) (* `init(ctor or dtor, Priority)`: a constructor or destructor table entry, not an object *)
-| LExternWeak (* `extern(weak)`: a weak declaration of a symbol defined elsewhere, not an object *)
-| LOther (t : term). (* any other Linkage term: `valid_module/1` rejects it, so only the validator meets it *)
+| LInit (which prio : term) (* a constructor or destructor table entry rather than a data object *)
+| LExternWeak (* a weak declaration of a symbol defined elsewhere *)
+| LOther (t : term). (* an unrecognized linkage term that module validation rejects *)
 
-(** A data Item, a piece of a data object's initial contents.
-    `item(l, sym(Name, Off))` is plain mode's, outside the subset;
-    `item(p, sym(Name, Off))` is [Sym]. *)
+(** A [data_item] represents one piece of a global data object's static
+    initializer: a fixed-width integer constant, a raw byte string, an
+    8-byte symbol pointer with an offset, a run of zero bytes, or an
+    unrecognized term that module validation rejects. *)
 Inductive data_item : Type :=
-| Item (w : width) (n : Z) (* `item(W, const(N))`: n at width w *)
-| Str (codes : list Z) (* `item(b, str(Chars))`: the bytes themselves *)
-| Sym (s : name) (off : Z) (* a pointer to s plus off, with the capability of s *)
-| Zero (n : Z) (* `zero(N)`: n zero bytes *)
-| ItemOther (t : term). (* any other term, kept as it is: `valid_module/1` rejects it (`data_item_shape/1`), so only the validator meets it *)
+| Item (w : width) (n : Z) (* an integer constant n written at storage width w *)
+| Str (codes : list Z) (* a sequence of literal byte values *)
+| Sym (s : name) (off : Z) (* a pointer to symbol s plus byte offset off, carrying the capability of s *)
+| Zero (n : Z) (* a span of n zero bytes *)
+| ItemOther (t : term). (* an unrecognized initializer term that module validation rejects *)
 
-(** As `item_size(Item, Size0, Size)`: the bytes a data item takes. *)
+(** Given a single [data_item], [item_size] returns the number of bytes
+    it occupies in a static data object, and [items_size] sums those
+    byte counts across a list of initializer items. *)
 Definition item_size (it : data_item) : Z :=
   match it with
   | Item w _ => width_bytes w
@@ -402,30 +426,41 @@ Definition item_size (it : data_item) : Z :=
   | ItemOther _ => 0
   end.
 
-(** The bytes a list of data items takes, the size of the object they
-    make. *)
 Definition items_size (its : list data_item) : Z :=
   fold_left (fun s it => s + item_size it) its 0.
 
 
-(** ## Modules *)
+(** ## Modules
 
-(** An item of a module; the table at the top of the page gives each
-    one's ir.pl term. *)
+    A compiled translation unit is a sequence of top-level function,
+    data, and alias declarations. This section packages those top-level
+    declarations into the [item] and [module] types. *)
+
+(** A top-level [item] in a module is a function in the core subset, a
+    function outside the core subset kept as its raw term, a global data
+    object, or a symbol alias. *)
 Inductive item : Type :=
-| IFunc (f : func) (* a function of the core subset *)
-| IOutside (n : name) (t : term) (* a function outside it: an address, no body *)
-| IData (n : name) (lk : linkage) (align : Z) (items : list data_item) (* a data object *)
-| IAlias (n : name) (lk : term) (target : name). (* a second symbol n for the function or data object target *)
+| IFunc (f : func) (* a function whose body is in the core subset *)
+| IOutside (n : name) (t : term) (* a function outside the core subset, given an address but no decoded body *)
+| IData (n : name) (lk : linkage) (align : Z) (items : list data_item) (* a global or thread-local data object *)
+| IAlias (n : name) (lk : term) (target : name). (* an alias symbol n that resolves to the same pointer as target *)
 
-(** A module, as `module(Items)`: its items in order. *)
+(** A [module] is the ordered list of top-level items that make up a
+    compiled translation unit. *)
 Definition module := list item.
 
-(** ## Facts about instructions *)
+(** ## Facts about instructions
 
-(** As `op_arg_classes(Op, K, filc, Classes)`: the classes at which
-    the op o reads its arguments when its result has class k; none
-    where o cannot have a result of class k. *)
+    Both the operational semantics and the translation [[validator]]
+    need to know which operand classes an operation expects, which
+    instructions preserve prior check [[evidence]], and which local
+    stack objects a function allocates. This section defines those
+    shared syntactic queries over instructions and functions. *)
+
+(** Given an operation and its result class, [op_arg_classes] returns
+    the list of register classes at which the operation reads its
+    arguments in [[mode|filc mode]], or `None` when the operation cannot
+    produce a result of that class. *)
 Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   match o with
   | Add | Sub =>
@@ -475,14 +510,16 @@ Definition op_arg_classes (o : op) (k : class) : option (list class) :=
   | Setjmp _ => match k with W => Some [P; W] | _ => None end (* kind_arg_classes(setjmp, _, w, filc, [p, w]) *)
   end.
 
-(** Whether the value v is a symbol's address, a [Global]. *)
+(** The predicate [is_global] returns `true` when an operand [value] is
+    a [Global] symbol reference. *)
 Definition is_global (v : value) : bool :=
   match v with Global _ => true | _ => false end.
 
-(** As `evidence_preserving(Inst)`: the instruction i reaches no
-    [[poll|safepoint]] and cannot free an object or change its bounds
-    or rights, so the [[evidence]] of checks before it still holds
-    after it. *)
+(** An instruction satisfies [evidence_preserving] when it cannot hit a
+    garbage-collection [[poll|safepoint]] and cannot free any object or
+    alter object bounds or access rights. Across any such instruction,
+    the [[validator]] can safely keep all check [[evidence]] established
+    earlier in the block. *)
 Definition evidence_preserving (i : inst) : bool :=
   match i with
   | Loc _ _ => true
@@ -506,10 +543,12 @@ Definition evidence_preserving (i : inst) : bool :=
   | _ => false
   end.
 
-(** As `ahead_transparent(Inst)`: the instruction i may come between a
-    [[check_ahead]] and the access whose [[need]] it checks early. It
-    is [evidence_preserving], and not a division, whose fault would end
-    the program otherwise than a Fil-C [[trap]]. *)
+(** An instruction satisfies [ahead_transparent] when it can safely
+    appear between a [[check_ahead]] instruction and the later memory
+    access whose [[need]] that check verified early. Every
+    [[ahead_transparent|ahead-transparent]] instruction preserves check
+    evidence and excludes integer divisions, which on hardware could
+    fault before control reaches the checked access. *)
 Definition ahead_transparent (i : inst) : bool :=
   evidence_preserving i &&
   match i with
@@ -517,10 +556,11 @@ Definition ahead_transparent (i : inst) : bool :=
   | _ => true
   end.
 
-(** As `setjmp_func/1`: the function f calls `setjmp` somewhere,
-    reachable or not. Its second return is a control edge the blocks do
-    not show (docs/setjmp.md), so the validator refuses what would need
-    it. *)
+(** A function satisfies [setjmp_func] when any block in its body
+    contains a [Setjmp] instruction. Because a second return from
+    `c: setjmp` transfers control along an edge that is invisible in the
+    block graph, the [[validator]] refuses optimizations that rely on
+    ordinary dominance in such functions. *)
 Definition setjmp_func (f : func) : bool :=
   existsb (fun b => existsb (fun i => match i with
                                       | Let _ _ (Setjmp _) _ => true
@@ -528,8 +568,9 @@ Definition setjmp_func (f : func) : bool :=
                                       end) (b_insts b))
           (fn_blocks f).
 
-(** As `local_objects(Func, Objects)`: the named locals the function f
-    declares, each with its size, in instruction order. *)
+(** Given a function, [local_objects] collects all named stack locals
+    declared by [LocalAlloc] instructions across its blocks, paired with
+    their byte sizes in instruction order. *)
 Definition local_objects (f : func) : list (name * Z) :=
   flat_map (fun b => flat_map (fun i => match i with
                                         | LocalAlloc x size => [(x, size)]

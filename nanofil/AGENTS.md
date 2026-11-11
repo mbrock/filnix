@@ -218,22 +218,41 @@ pages run them again and mark each ✓ or ✗.
   check when a module lacks a header or an export lacks its doc
   ([docs/guide.md](docs/guide.md), Conventions).
 
-## Concepts
+## Concepts and literate Rocq prose
 
-A term a reader may not know (a capability, a renew, a doomed frame)
-is explained once, in [docs/concepts/ID.md](docs/concepts/), and linked
-from Prolog comments, Rocq `(** *)` comments and documents with
-`[[name]]` or `[[name|text]]`; a line `![[name]]` draws it in place
-([docs/dterm.md](docs/dterm.md), Concept nodes). Link a concept rather
-than explaining it again in a module header or a `.v` file, and add one
-when a term needs explaining in more than one place. In the Rocq, give
-each definition, lemma and theorem a short `(** *)` doc in plain words
-just before it, with `[name]` for the Rocq names it uses. Keep a `.v`
-or `.pl` file's top header comment in plain, complete sentences that
-state what the module does before naming internal lemmas, and put lemma
-inventories in a table or on the definitions themselves instead of
-stuffing parentheticals into prose; run `scripts/prose-check FILE` to
-check a header or document you wrote.
+A term a reader may not know (a capability, a renew, a doomed frame,
+separation logic, ghost state) is explained once, in
+[docs/concepts/ID.md](docs/concepts/), and linked from Prolog comments,
+Rocq `(** *)` comments and documents with `[[name]]` or `[[name|text]]`;
+a line `![[name]]` draws it in place ([docs/dterm.md](docs/dterm.md),
+Concept nodes). Link a concept rather than explaining it again in a
+module header or a `.v` file, and add one when a term needs explaining
+in more than one place.
+
+In Rocq `.v` files ([rocq/glibc/zsys/OsBlocks.v](rocq/glibc/zsys/OsBlocks.v),
+[rocq/theories/logic/ContractFrame.v](rocq/theories/logic/ContractFrame.v),
+and [rocq/glibc/zsys/OsWorld.v](rocq/glibc/zsys/OsWorld.v) are the
+exemplars):
+
+- Write the top prelude, every `(** ## Section *)` introduction, and
+  every definition/lemma `(** ... *)` comment in complete
+  subject–verb–object sentences that can be read out loud, with
+  outside-in motivation before naming internal Rocq identifiers.
+- Open every `(** ## Section *)` with 2–3 sentences orienting the
+  reader (why the section's definitions or lemmas exist, and how they
+  connect to the surrounding proof) and linking the relevant
+  `[[concept]]` nodes.
+- Connect helper lemmas to the theorem that uses them so a reader
+  browsing top-to-bottom sees why each step is there.
+- Put field, constructor and lemma descriptions on the definitions
+  themselves rather than stuffing parenthetical symbol lists into the
+  prelude or using Markdown pipe tables inside `.v` comments (pipe
+  tables containing `code.rq` collapse into narrow cards inside `.lede`).
+- Do not use `*italics*` or `_italics_` in `.v` comments (`rocq_draw.pl`
+  does not parse Markdown emphasis), and do not wrap single-letter bound
+  variables in `[...]` or backticks.
+- Run `../scripts/prose-check -v --all-comments --max-passages 64 FILE.v`
+  to check every comment passage in a `.v` file.
 
 ## Working alongside other threads
 

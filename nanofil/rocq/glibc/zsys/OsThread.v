@@ -1,12 +1,17 @@
-(** A trusted [[external call|contract]] at libpizlo's boundary:
-    `c: void *zthread_self_cookie(void)`, over the [os_world] of
-    [OsWorld](OsWorld.v). Its native counterexample probe is
-    [zsys-thread.c](zsys-thread.c).
+(** When userland glibc accesses thread-local state such as the current
+    thread's `c: struct pthread` descriptor, it calls libpizlo's
+    `c: void *zthread_self_cookie(void)` function. That function sits at
+    the [[external call|contract]] boundary between compiled C code and
+    the Fil-C [[runtime]]. This module defines the contract
+    [os_self_contract] for `c: zthread_self_cookie` over the shared state
+    [os_world] from [OsWorld](OsWorld.v), and derives its
+    [[separation-logic|separation-logic]] call rule. Its runtime behavior
+    is tested against native Fil-C in [zsys-thread.c](zsys-thread.c).
 
     ## What libpizlo runs
 
-    It is pizlonated code of libpizlo's user runtime
-    (filc/src/runtime.c:711):
+    At the pinned revision of `filc/src/runtime.c`,
+    `c: zthread_self_cookie` runs the following user-runtime function:
 
     ```c
     void* zthread_self_cookie(void)
@@ -15,14 +20,18 @@
     }
     ```
 
-    `c: zthread_get_cookie` (libpas/src/libpas/filc_runtime.c) loads the
-    thread's `c: cookie_ptr`, which user glibc's thread setup stored
-    with `c: zthread_set_self_cookie`: the thread's `c: struct pthread`,
-    with its capability. The call writes, allocates and observes
-    nothing, and returns that pointer ([ow_self]). The world is trusted
-    to hold the cookie user glibc stored, nonnull once its startup has
-    run (the precondition asks for a nonnull one); [os_wi] keeps it a
-    registered object. *)
+    During thread startup, userland glibc stores the address of the
+    calling thread's `c: struct pthread` descriptor into the runtime's
+    thread structure. When the program later calls
+    `c: zthread_self_cookie`, `c: zthread_get_cookie` reads that stored
+    pointer back from the runtime.
+
+    The wrapper takes no arguments, writes and allocates no memory, and
+    emits no trace events. It simply returns the thread cookie pointer
+    recorded in [ow_self] together with its [[capability]]. Once userland
+    glibc's startup has completed, that cookie is non-null, and the world
+    interpretation [os_wi] keeps its object identity registered in memory
+    across every program step. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -34,18 +43,22 @@ From Glibc Require Import OsBlocks OsWorld.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The contract *)
+(** ## The contract
 
-(** `c: void *zthread_self_cookie(void)`: no arguments, [P], or a
-    discarded result. *)
+    Before proving separation-logic rules, this first section defines the
+    ABI and contract [os_self_contract] for `c: zthread_self_cookie`. *)
+
+(** A call site satisfies [os_self_abi] when it passes no arguments and
+    either discards the result or binds it to a pointer destination
+    register. *)
 Definition os_self_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d P) /\ args = [].
 
-(** The contract: [RClass] [P]; precondition no arguments and a
-    nonnull cookie; the cookie's own capability as the only source (a
-    zero-length span, as ExternalCalls.v's [errno_location_contract]);
-    no roots, releases, allocations, observations or resource endings;
-    memory and world unchanged, returning the cookie. *)
+(** A call to `c: zthread_self_cookie` reads the thread cookie from the
+    OS world without modifying memory or allocating objects. The contract
+    [os_self_contract] requires that the cookie is non-null, exposes its
+    [[capability]] through a zero-length source span, and returns the
+    cookie pointer to the caller. *)
 Definition os_self_contract : contract os_world :=
   mkContract os_world (RClass P) os_self_abi
     (fun xs _ w => xs = [] /\ ptr_addr (ow_self w) <> 0)
@@ -56,15 +69,23 @@ Definition os_self_contract : contract os_world :=
        ending = CallReturn [WPtr (ow_self w)])
     (fun _ => False) (fun why => In why [ArgumentSize; ReturnSize]).
 
-(** ## Over a Logic instance *)
+(** ## Over a Logic instance
 
-(** The rule for `c: zthread_self_cookie()` over the [[runtime]] R and
-    [LogicSig] LG0. *)
+    The contract above describes `c: zthread_self_cookie` as a transition
+    on physical memory and the OS world. The functor below connects that
+    contract to a Fil-C [[runtime]] and the program logic, deriving the
+    [[weakest-precondition|weakest-precondition]] rule that callers use
+    in proofs. *)
+
+(** To verify C functions that call `c: zthread_self_cookie`,
+    [OsThreadOn] lifts the contract above into a separation-logic proof
+    rule for a given [[runtime]] and program logic. *)
 Module OsThreadOn (R : Runtime) (LG0 : LogicSig R).
 Module OW := OsWorldOn R LG0.
 Import OW OW.L OW.LG.
 
-(** A returning call keeps the world and returns its cookie. *)
+(** When an invocation of [os_self_contract] returns to its caller, it
+    leaves the OS world unchanged and yields the thread cookie [ow_self]. *)
 Lemma os_self_returns r args xs s m w trace values s' m' w' :
   M.E.invoke os_self_contract r args xs s m w trace (CallReturn values) s' m' w' ->
   w' = w /\ values = [WPtr (ow_self w)].
@@ -77,15 +98,19 @@ Section rule.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 
-(** The Iris instance for registry and [os_wi] w0. *)
+(** The instance [os_self_irisGS] configures Iris for the language with
+    the OS contract registry and the world interpretation [os_wi]. *)
 Local Instance os_self_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 
-(** Expressions of the language. *)
+(** The notation [zexpr] abbreviates expressions of the language over the
+    OS contract registry. *)
 Local Notation zexpr := (language.expr (nanofil_lang registry ge)).
 
-(** `c: zthread_self_cookie()` with w0's cookie nonnull: d is bound to
-    the cookie, and nothing is owned or changed. *)
+(** When a C function calls `c: zthread_self_cookie()` in an OS world
+    whose thread cookie is non-null, [wp_zthread_self_cookie] binds the
+    destination register to [ow_self] without requiring or modifying any
+    caller-owned memory. *)
 Lemma wp_zthread_self_cookie f e ls lab d rest j Φ :
   registry (TAtom "zthread_self_cookie") = Some os_self_contract ->
   find_fn ge (TAtom "zthread_self_cookie") = None ->

@@ -1,60 +1,53 @@
-(** The [[runtime|runtime as axioms]]: Campaign 2's module type
-    [Runtime], and the [[interpreter]]'s instance of it
-    ([formal.md](../../../docs/formal.md),
-    [runtime-axioms.md](../../../docs/runtime-axioms.md), which gives each
-    axiom's source in the runtime).
+(** A C program compiled by Nanofil runs alongside the Fil-C
+    [[runtime]], which allocates new objects, deallocates heap objects
+    when the program calls `c: free`, and runs the FUGC garbage
+    collector at [[poll|safepoints]]. Rather than hard-coding a single
+    allocator into the operational semantics, this module specifies what
+    the formal model assumes of any Fil-C runtime as the module type
+    [Runtime], and constructs the reference instance [InterpRuntime]
+    used by the Prolog [[interpreter]].
 
-    The model of the [[stage|checked IR]] is about one thread's
-    program. What the Fil-C runtime does around that program, where it
-    puts a new object, what free does to an object's header, what the
-    collector may do at a [[poll|safepoint]], is not the model's to
-    decide. [Runtime] states those facts as one page of axioms, read against the staging Fil-C
-    the toolchain pins (mbrock/fil-c at
-    `18b6663a2785c8eba6cc2a544a7711e19fc448c7`, the `coreRev` of
-    lib/filc-staging.json). Each axiom about Fil-C has a native test in
-    tests/c/prog/axiom-*.c that fails if it is stated in the obvious
-    stronger way that the runtime does not promise.
+    Each axiom in [Runtime] is checked against the pinned Fil-C runtime
+    and paired with a native regression test under
+    `tests/c/prog/axiom-*.c` that would fail if the axiom promised more
+    than the real runtime guarantees.
 
     ## One thread's view
 
-    The model is one thread's. At a safepoint the collector acts, and
-    what the program sees change there, the [safepoint] relation, is
-    the collector's rewriting of stored capabilities to freed objects
-    and nothing else: no region changes ([collector_live]). Fil-C's
-    runtime never frees an object by itself. Only code the program
-    brings in does: a signal handler it installed, which Fil-C runs
-    only at pollchecks (tests/c/prog/axiom-safepoint.c), or a thread
-    it started. Both are the program's code, not the runtime's, and a
-    module that installs a handler or starts a thread calls an
-    external with no contract, which ends its run in the model; a
-    handler is to be verified as program code of its own. The model
-    takes a run to be the program's whole execution after the trusted
-    entry, with no handler installed and no other program thread when
-    it starts: a constructor, a preloaded library or a native caller
-    that installed one is outside it. A pointer store's aux exit is a
-    native safepoint inside a check and its access, which the
-    [[validator]] keeps facts across, so a handler a program installs
-    could free a checked object there; a verified handler must not
-    free an object whose check is in flight. Another
-    thread is outside the model: its writes are ([non_moving] lets no
-    byte change at a safepoint), and so are its frees, which natively
-    show at any check, not only at a safepoint
-    (tests/c/prog/axiom-threads.c). For a threaded program, native
-    safety rests on Fil-C's own argument, not on the theorems proved
-    over this module type: every check traps on a freed object, and an
-    access whose check passed before the free reads retained memory
-    ([retention]). *)
+    The formal model describes the execution of a single program
+    thread. When that thread reaches a garbage-collection
+    [[poll|safepoint]], the collector may run; in the model, its visible
+    effect is the [safepoint] relation, which can replace stored
+    [[aux]] capabilities that point to already-freed objects with a
+    capability that traps on every access, while leaving all object
+    [[region|regions]] and data bytes unchanged.
+
+    The Fil-C runtime never frees a live object on its own. An object's
+    lifetime ends only when the program itself calls `c: free`, returns
+    from a function with stack locals, or runs program-installed code
+    such as a signal handler or another thread. Signal handlers run
+    only at pollchecks, and concurrent threads are outside this
+    single-threaded model; for multi-threaded programs, safety rests on
+    Fil-C's hardware-level capability checks and memory [[retention]]
+    of freed objects until collection. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## What the axioms speak of *)
+(** ## What the axioms speak of
 
-(** How the [[runtime]]'s free may change objects, from memory m to m':
-    every [[identity]] of m' was one of m, unchanged, or a live heap
-    object now freed, its bounds empty. No identity appears. *)
+    Before stating the [Runtime] module type, we define the predicates
+    on memory and regions that the axioms use to describe how
+    deallocation, program stores, and garbage-collection safepoints may
+    change memory. *)
+
+(** A memory transition satisfies [lifetime_step] when every object
+    registered in the new memory was already registered in the old
+    memory with either the exact same region or, for a live heap
+    object, an emptied [Freed] region. In particular, deallocation never
+    creates a new object [[identity]]. *)
 Definition lifetime_step (m m' : mem) : Prop :=
   forall b reg',
     object_region b (m_regions m') = Some reg' ->
@@ -63,44 +56,45 @@ Definition lifetime_step (m m' : mem) : Prop :=
       (reg' = reg \/
        (r_kind reg = Heap /\ r_life reg = Live /\ reg' = mkRegion b b Heap Freed)).
 
-(** The [[capability]] c is that of an object freed in the
-    [[region|regions]] rs. *)
+(** A [[capability]] satisfies [freed_in] for a region list when it
+    names an object region whose lifetime state is [Freed]. *)
 Definition freed_in (rs : list region) (c : cap) : Prop :=
   exists b reg,
     (c = Obj b \/ c = Ro b) /\ object_region b rs = Some reg /\ r_life reg = Freed.
 
-(** Every nonempty access through the capability c, in the regions rs,
-    [[trap|traps]] out of bounds, as every access to a freed object
-    does. The collector's free singleton is such a capability. *)
+(** A [[capability]] satisfies [traps_as_freed] for a region list when
+    every positive-size memory access through it traps with
+    [OutOfBounds], just as any access to a freed object does. The
+    garbage collector's free-singleton capability satisfies this
+    predicate. *)
 Definition traps_as_freed (rs : list region) (c : cap) : Prop :=
   forall a size r align, 0 < size -> cap_access_res c rs a size r align = Some (RTrap OutOfBounds).
 
-(** Every object of the regions rs lies between 0 and 2^48, native
-    Fil-C's address space (`PAS_ADDRESS_BITS`); a native address is
-    unsigned, so no object starts below 0. An address inside one never
-    wraps (`raw_address/3`), and two addresses of one object are less
-    than 2^63 apart, so a near offset between them does not wrap either
-    (`hull_covered/7`). A lower [[half check]] compares its address,
-    read signed, with the object's base (`half_bound/6`), so an address
-    that wrapped below 0 fails it. *)
+(** A region list satisfies [objects_fit] when every registered object
+    starts at a non-negative address and ends at or below `2 ^ 48`,
+    which is the 48-bit address space of Fil-C's native allocator.
+    Within that bound, addresses inside an object never wrap around
+    `2 ^ 64`, and a wrapped negative address always fails the signed
+    lower-bound test of a [[half_check|half check]]. *)
 Definition objects_fit (rs : list region) : Prop :=
   forall b reg, object_region b rs = Some reg -> 0 <= b /\ r_end reg <= 2 ^ 48.
 
-(** Every freed object of the regions rs is empty. Free and the end of
-    an invocation end an object's life and empty its bounds together
-    ([lifetime_step], [region_step]). *)
+(** A region list satisfies [freed_empty] when every region marked
+    [Freed] has its end address equal to its base address, giving it
+    zero byte extent. *)
 Definition freed_empty (rs : list region) : Prop :=
   forall b reg, object_region b rs = Some reg -> r_life reg = Freed -> r_end reg = b.
 
-(** The address a is inside the current bounds of an object of the
-    memory m. *)
+(** An address satisfies [in_object] when it falls within the current
+    byte bounds of some registered object in memory. *)
 Definition in_object (m : mem) (a : Z) : Prop :=
   exists b reg, object_region b (m_regions m) = Some reg /\ b <= a < r_end reg.
 
-(** How the program may change objects, from memory m to m': every
-    [[identity]] of m' was one of m, unchanged, or live and now ended,
-    its bounds empty: a free, or the end of an invocation's locals.
-    Unlike [lifetime_step], an object of any kind may end. *)
+(** A memory transition satisfies [region_step] when every object in the
+    new memory existed in the old memory either unchanged or with its
+    formerly [Live] region emptied and marked [Freed]. Unlike
+    [lifetime_step], [region_step] allows both heap objects and stack
+    locals to end their lifetimes. *)
 Definition region_step (m m' : mem) : Prop :=
   forall b reg',
     object_region b (m_regions m') = Some reg' ->
@@ -108,18 +102,20 @@ Definition region_step (m m' : mem) : Prop :=
       object_region b (m_regions m) = Some reg /\
       (reg' = reg \/ (r_life reg = Live /\ reg' = mkRegion b b (r_kind reg) Freed)).
 
-(** What the program itself may do to memory between allocations, from
-    m to m': end objects ([region_step]), and write bytes and stored
-    capabilities only inside objects' bounds. *)
+(** When a program executes ordinary stores and returns between
+    allocations, it writes only inside the bounds of existing objects
+    and ends only existing object lifetimes. The predicate [kept]
+    combines [region_step] with the requirement that bytes and shadow
+    [[aux]] slots outside registered objects remain unchanged. *)
 Definition kept (m m' : mem) : Prop :=
   region_step m m' /\
   forall a, ~ in_object m a -> m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a.
 
-(** What a free that succeeds does: on the null pointer, nothing; on
-    the base pointer of a live heap object at an address other than 0,
-    it empties and frees that object's region and changes no other
-    region, no byte and no stored capability. The axiom
-    [free_succeeds] says the runtime's free does so. *)
+(** A deallocation function satisfies [frees_heap] when calling it on
+    the null pointer succeeds without changing memory, and calling it on
+    the base pointer of a non-null live [Heap] object empties and frees
+    that object's region while leaving all other regions, bytes, and
+    shadow capabilities unchanged. *)
 Definition frees_heap (free : word -> mem -> option (res unit * mem)) : Prop :=
   (forall m, free (WPtr (mkPtr 0 CNone)) m = Some (ok, m)) /\
   forall m b reg, object_region b (m_regions m) = Some reg /\ r_life reg = Live ->
@@ -127,48 +123,48 @@ Definition frees_heap (free : word -> mem -> option (res unit * mem)) : Prop :=
     exists rs, replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs /\
       free (WPtr (mkPtr b (Obj b))) m = Some (ok, mkMem (m_bytes m) rs (m_aux m)).
 
-(** ## The module type *)
+(** ## The module type
 
-(** What the model assumes of the Fil-C [[runtime]]: its allocator, its
-    free, and what its collector may do at a [[poll|safepoint]]. A runtime is any module with these parts that
-    proves these axioms; Run.v's [Driver] and Machine.v's [Machine] run
-    over any of them. *)
+    The module type [Runtime] axiomatizes the three runtime services
+    that interact with a running program: the object allocator, the
+    `c: free` deallocator, and the garbage collector at
+    [[poll|safepoints]]. Both the execution [Driver](Run.v) and the
+    abstract [Machine](Machine.v) are parameterized over any
+    implementation of [Runtime]. *)
+
+(** Any module of type [Runtime] provides an allocator, a deallocator,
+    and a safepoint relation that satisfy the memory-safety axioms
+    below. *)
 Module Type Runtime.
 
-  (** The runtime's own state, which the program never reads: the
-      interpreter's Next. *)
+  (** The type [state] represents the runtime's private allocator and
+      collector bookkeeping, which the program never reads directly. *)
   Parameter state : Type.
 
-  (** The runtime's state when a run starts. *)
+  (** The constant [start] is the initial runtime state at the
+      beginning of a program run. *)
   Parameter start : state.
 
-  (** The runtime in state s is [[ready]] to allocate in the memory m:
-      its bookkeeping agrees with m, so a new object will be [fresh]
-      there. For the interpreter, every object lies below Next and
-      nothing above it has been written. *)
+  (** The predicate [ready] states that the runtime's internal
+      bookkeeping agrees with the current memory state, so the allocator
+      can choose a [[fresh]] base address for the next allocation. *)
   Parameter ready : state -> mem -> Prop.
 
-  (** The base of a new object for the request q, and the state after
-      it; None when the runtime cannot hold the object, which ends the
-      run with `trap(out_of_memory)`. *)
+  (** Given the current runtime state and an allocation request, [alloc]
+      either returns a new base address paired with the updated runtime
+      state, or returns `None` when the allocator is out of memory. *)
   Parameter alloc : state -> alloc_req -> option (Z * state).
 
-  (** The allocator gives each new object an address no other object
-      uses. Where the runtime in state s is ready in memory m, a
-      request q with a positive alignment and an extent of at least 0
-      that [alloc] grants gets a [fresh] base: a new [[identity]],
-      aligned, overlapping no object, ending at or below 2^64, reading
-      as zero with no stored capability; and the runtime is ready in
-      the memory with the new object. The model needs it so that a new
-      object cannot alias an old one, and so the step relation's
-      choice of any fresh base covers every runtime.
-
-      Natively a freed object's address can be a new object's once
-      nothing names the old one; the model never reuses an identity,
-      because a capability never dies in it. The two agree on whether
-      each access through a capability the program still holds traps,
-      not on its address bits after a collection. Native test:
-      `axiom-fresh.c`. *)
+  (** Whenever the runtime is [ready] in memory and [alloc] grants an
+      allocation request with positive alignment and non-negative
+      extent, the returned base address satisfies [fresh] and the
+      updated runtime state remains [ready] in the [allocated] memory.
+      Although native Fil-C can reuse a physical address after the
+      garbage collector proves no capability can reach the old object,
+      the formal model keeps every capability alive forever and gives
+      each allocation a distinct [[identity]]; native test
+      `axiom-fresh.c` checks that a new allocation never aliases a
+      reachable live object. *)
   Axiom fresh_allocation : forall s m q base s',
     ready s m ->
     0 < req_align q ->
@@ -176,164 +172,140 @@ Module Type Runtime.
     alloc s q = Some (base, s') ->
     fresh m q base /\ ready s' (allocated m q base).
 
-  (** Every object lies in native Fil-C's address space: where the
-      runtime in state s is ready in memory m, every object of m lies
-      between 0 and 2^48 ([objects_fit]). The model needs it so that no
-      address inside an object wraps and a wrapped address fails a
-      lower [[half check]]; an allocation the runtime cannot hold is
-      refused, a trap. Native test: `axiom-address.c`. *)
+  (** Whenever the runtime is [ready] in a memory state, every
+      registered object lies within the 48-bit native address space
+      described by [objects_fit], as checked by native test
+      `axiom-address.c`. *)
   Axiom address_space : forall s m, ready s m -> objects_fit (m_regions m).
 
-  (** No freed object of a memory m the runtime is ready in has bounds
-      ([freed_empty]). Every free and the end of every invocation empty
-      them ([lifetime_step], [region_step]), so it constrains only the
-      memory a run starts in. It is about the runtime's own
-      bookkeeping, not Fil-C, so it has no native test. *)
+  (** Whenever the runtime is [ready] in a memory state, every [Freed]
+      object in that memory has empty bounds as required by
+      [freed_empty]. *)
   Axiom freed_bounds : forall s m, ready s m -> freed_empty (m_regions m).
 
-  (** The program's own changes keep the runtime ready: if it is ready
-      in m, and m' is m after the program wrote inside objects and
-      ended some ([kept]), it is ready in m'. With
-      [fresh_allocation] and [safepoint_ready] this makes [ready] hold
-      in every state of a run (Machine.v). No native test: it is about
-      the runtime's own bookkeeping. *)
+  (** When the runtime is [ready] in memory and the program modifies
+      memory between allocations according to [kept], the runtime
+      remains [ready] in the updated memory. *)
   Axiom ready_kept : forall s m m', ready s m -> kept m m' -> ready s m'.
 
-  (** Free of a pointer word: its result, and the memory after it. This
-      is what a call of libc's `free` runs, the genv's [ge_free]. *)
+  (** The function [free] executes a call to `c: free` on a pointer word
+      and a memory state, returning a partial result and the updated
+      memory state. *)
   Parameter free : word -> mem -> option (res unit * mem).
 
-  (** Free changes an object's bounds only by emptying a live heap
-      object's, for every alias at once, and makes no new identity
-      ([lifetime_step]). The model needs it so that a capability the
-      program holds keeps its meaning across a free except for the
-      freed object, whose every access then traps. Native test:
+  (** Calling [free] changes object regions only as permitted by
+      [lifetime_step]: it may empty and mark [Freed] a live heap object,
+      and never registers a new object identity, as checked by
       `axiom-lifetime.c`. *)
   Axiom free_lifetime : forall x m r m',
     free x m = Some (r, m') -> lifetime_step m m'.
 
-  (** Free changes no byte and no stored capability: a freed object's
-      memory is retained while anything can name it. Machine.v uses it
-      to show a free keeps the program's other memory; natively it is
-      also what lets an access whose check passed before another
-      thread's free read the same bytes. Native test: `axiom-retention.c`. *)
+  (** Calling [free] leaves all data bytes and shadow [[aux]]
+      capabilities unchanged, as checked by `axiom-retention.c`. Because
+      freed memory is [[retention|retained]] while any capability can
+      still name it, a raw access whose check passed before a concurrent
+      free still reads valid bytes. *)
   Axiom retention : forall x m r m',
     free x m = Some (r, m') -> m_bytes m' = m_bytes m /\ m_aux m' = m_aux m.
 
-  (** Free reclaims nothing: every [[identity]] before it is one after
-      it, the freed object's too. Only the collector reclaims, at a
-      safepoint ([rooting]), and natively only of objects nothing can
-      name, whose regions the model keeps. With [fresh_allocation] this keeps a later
-      allocation from taking a freed object's base. Native test:
-      `axiom-identity.c`. *)
+  (** Calling [free] never removes an object [[identity]] from the
+      region list; even the freed object's identity remains registered
+      with empty bounds, as checked by `axiom-identity.c`. *)
   Axiom free_keeps_ids : forall x m r m',
     free x m = Some (r, m') ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
 
-  (** Free frees or [[trap|traps]]; it never goes on having done
-      something else, so it never answers [[unchecked]], which the
-      model keeps for a broken pass. Native test: `axiom-free.c`. *)
+  (** Calling [free] either succeeds or stops the program with a safety
+      [[trap]], and never produces an [[unchecked]] fault, as checked by
+      `axiom-free.c`. *)
   Axiom free_checked : forall x m w m', free x m <> Some (RUnchecked w, m').
 
-  (** Free succeeds where a program frees what it owns: on the null
-      pointer it does nothing, and on the base pointer of a live heap
-      object it frees that object as [frees_heap] says. [free_lifetime],
-      [retention] and [free_keeps_ids] bound what any free may change;
-      this says that such a free returns, so that a program logic can
-      prove a call of free goes on (Logic.v's [wp_free]). The pointer
-      carries the object's [Obj] capability, not a read-only one. The
-      model's heap objects are what the IR's alloc makes (malloc-like
-      calls, and the address-taken locals, VLAs and allocas nanofil
-      leaves on the heap), what the malloc and strdup contracts make,
-      and the startup argv and environ objects; natively each is an
-      ordinary collected object, which free returns on. Free of a
-      global, an mmap'd object, an interior pointer or a freed object
-      traps. Native test: `axiom-free-succeeds.c`. *)
+  (** By [free_succeeds], calling [free] on a null pointer or on the
+      base pointer of a live heap object always succeeds as specified by
+      [frees_heap], as checked by `axiom-free-succeeds.c`. Calls to
+      `c: free` on a global object, an interior pointer, or an
+      already-freed object trap instead. *)
   Axiom free_succeeds : frees_heap free.
 
-  (** The runtime may act at the instruction i: the collector's
-      handshake, a pollcheck callback, or a signal handler the program
-      installed. Another thread's effects are outside the model (the
-      header's One thread's view). *)
+  (** The predicate [at_safepoint] tests whether the runtime may perform
+      a garbage-collection handshake or pollcheck callback at a given
+      instruction. *)
   Parameter at_safepoint : inst -> bool.
 
-  (** The runtime acts only at instructions that are not
-      `evidence_preserving/1`: calls, polls, alloc and the rest. The
-      model needs it because the [[validator]] keeps [[evidence]]
-      across every other instruction, which would be unsound if the
-      runtime could free or rewrite memory there. Native test:
-      `axiom-safepoint.c`. *)
+  (** In Fil-C, the garbage collector and signal handlers run only at
+      explicit poll points such as function calls, allocations, pointer
+      stores, and poll edges, as checked by `axiom-safepoint.c`. The
+      axiom [safepoints] states that any instruction where the runtime
+      may act has [evidence_preserving] equal to `false`, so the
+      [[validator]] can safely keep check [[evidence]] across all other
+      instructions. *)
   Axiom safepoints : forall i,
     at_safepoint i = true -> evidence_preserving i = false.
 
-  (** What the program may find changed when it reaches a
-      [[poll|safepoint]] with the runtime in state s and memory m: the
-      runtime's state s' and memory m' after the collector acted. *)
+  (** The relation [safepoint] relates the runtime state and memory
+      before a garbage-collection [[poll|safepoint]] to the runtime
+      state and memory after the collector has acted. *)
   Parameter safepoint : state -> mem -> state -> mem -> Prop.
 
-  (** At a safepoint no [[region]] changes: the collector frees no
-      object, live or freed, and no identity appears. Natively the
-      collector reclaims objects nothing can name; the model keeps
-      their regions, as [fresh_allocation] explains. Only the program
-      frees, by [free] or by code it brought in (a signal handler, a
-      thread), and that is not the runtime's action. The model needs
-      it so that an object live before a poll is live after it with
-      the same bounds. Native test: `axiom-collector-live.c`. *)
+  (** At a safepoint, the garbage collector leaves the region list
+      [m_regions] completely unchanged, as checked by
+      `axiom-collector-live.c`. Any object that was live before a poll
+      remains live with the exact same bounds after the poll. *)
   Axiom collector_live : forall s m s' m',
     safepoint s m s' m' -> m_regions m' = m_regions m.
 
-  (** At a safepoint, as at a free, an object's bounds change only by
-      a live heap object's being freed, and no identity appears
-      ([lifetime_step]); at a safepoint none changes at all
-      ([collector_live]). *)
+  (** Because the garbage collector never alters any object's bounds or
+      lifetime state at a safepoint, every safepoint transition also
+      satisfies [lifetime_step]. *)
   Lemma safepoint_lifetime : forall s m s' m',
     safepoint s m s' m' -> lifetime_step m m'.
   Proof.
     intros s m s' m' H b reg' E. rewrite (collector_live s m s' m' H) in E. eauto.
   Qed.
 
-  (** At a safepoint no byte moves or changes: the collector writes no
-      object's contents and no address word. The model needs it so that
-      the bytes a check passed stay readable, unchanged, until the
-      program next looks at the header. Native test:
+  (** At a safepoint, the garbage collector neither moves objects nor
+      modifies primary data bytes [m_bytes], as checked by
       `axiom-nonmoving.c`. *)
   Axiom non_moving : forall s m s' m',
     safepoint s m s' m' -> m_bytes m' = m_bytes m.
 
-  (** At a safepoint each stored [[capability]] (in the [[aux]]) stays,
-      or, if its object was freed, becomes one that traps as a freed
-      object does: the collector's free singleton. The model needs it
-      so that a pointer loaded back after a collection behaves as the
-      one stored, reading or trapping alike. Native test:
-      `axiom-aux.c`. *)
+  (** At a safepoint, each stored [[capability]] in [m_aux] either
+      remains unchanged or, if it pointed to an already-freed object, is
+      replaced by the collector's free-singleton capability that
+      satisfies [traps_as_freed], as checked by `axiom-aux.c`. *)
   Axiom aux_round_trip : forall s m s' m',
     safepoint s m s' m' ->
     forall a, m_aux m' a = m_aux m a \/
               (freed_in (m_regions m') (m_aux m a) /\
                traps_as_freed (m_regions m') (m_aux m' a)).
 
-  (** At a safepoint the collector reclaims no [[identity]] the program
-      can name: every object of m is still one of m'. The model needs
-      it because a capability never dies in the model, so the object it
-      names must stay. It follows from [collector_live]. Native test:
+  (** Because [collector_live] preserves the region list across a
+      safepoint, every object [[identity]] registered before the
+      safepoint remains registered after it, matching
       `axiom-rooting.c`. *)
   Lemma rooting : forall s m s' m',
     safepoint s m s' m' ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
   Proof. intros s m s' m' H b. rewrite (collector_live s m s' m' H). auto. Qed.
 
-  (** The runtime's actions at a safepoint keep it [[ready]]. With
-      [fresh_allocation] and [ready_kept] this makes [ready] hold in
-      every state of a run (Machine.v). No native test: it is about the
-      runtime's own bookkeeping. *)
+  (** Whenever the runtime is [ready] before a safepoint, its actions
+      during the safepoint leave it [ready] in the resulting memory
+      state. *)
   Axiom safepoint_ready : forall s m s' m', safepoint s m s' m' -> ready s m -> ready s' m'.
 
 End Runtime.
 
-(** ## Facts about Memory.v *)
+(** ## Facts about Memory.v
 
-(** Removing the object at base from the regions rs leaves every other
-    base b's object as it was. *)
+    To show that the interpreter's deallocator [free_res] from
+    [Memory](Memory.v) satisfies the deallocation axioms of [Runtime],
+    we first prove how [remove_region] and [replace_region] affect
+    region lookups, and then derive each deallocation property for
+    [free_res]. *)
+
+(** Removing the region for one base address from a region list leaves
+    the lookup result of [object_region] unchanged for every other base
+    address. *)
 Lemma object_region_remove : forall b base rs,
   b <> base -> object_region b (remove_region base rs) = object_region b rs.
 Proof.
@@ -344,9 +316,10 @@ Proof.
   - simpl. destruct (Z.eqb (r_base r) b); auto.
 Qed.
 
-(** If replacing the object at base by the region r, whose base is
-    base, gives rs', then the object at base in rs' is r and every
-    other object is as in rs. *)
+(** When [replace_region] replaces the region for a base address with a
+    new region of that same base address, looking up that base returns
+    the new region and looking up any other base returns its previous
+    region. *)
 Lemma object_region_replace : forall base r rs rs' b,
   replace_region base r rs = Some rs' -> r_base r = base ->
   object_region b rs' = if Z.eqb b base then Some r else object_region b rs.
@@ -361,9 +334,10 @@ Proof.
     + apply object_region_remove; auto.
 Qed.
 
-(** What Memory.v's [free_res] (`free_res/4`) may do: change nothing,
-    or free one live heap object, emptying its bounds, and change
-    nothing else. *)
+(** Whenever [free_res] returns a result on a word and memory state, it
+    either leaves memory completely unchanged or replaces a single live
+    [Heap] region with an empty [Freed] region while keeping all bytes
+    and shadow capabilities intact. *)
 Lemma free_res_frees : forall x m r m',
   free_res x m = Some (r, m') ->
   m' = m \/
@@ -389,8 +363,9 @@ Proof.
       simpl; auto.
 Qed.
 
-(** [free_res] changes objects only as [lifetime_step] allows: the
-    interpreter's proof of [free_lifetime]. *)
+(** Deallocating a pointer with [free_res] only empties the bounds of a
+    live heap object and never creates a new object, so the transition
+    satisfies [lifetime_step]. *)
 Lemma free_res_lifetime : forall x m r m',
   free_res x m = Some (r, m') -> lifetime_step m m'.
 Proof.
@@ -402,8 +377,8 @@ Proof.
     + exists reg'. auto.
 Qed.
 
-(** Every [[identity]] before a [free_res] is one after it: the
-    interpreter's proof of [free_keeps_ids]. *)
+(** Deallocating a pointer with [free_res] never removes a registered
+    object identity from the region list. *)
 Lemma free_res_keeps_ids : forall x m r m',
   free_res x m = Some (r, m') ->
   forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
@@ -412,8 +387,8 @@ Proof.
   rewrite (object_region_replace _ _ _ _ b Hr eq_refl). destruct (Z.eqb b base); [discriminate | exact Hb].
 Qed.
 
-(** [free_res] (`free_res/4`) answers ok or a [[trap]], never
-    [[unchecked]]: the interpreter's proof of [free_checked]. *)
+(** Deallocating a pointer with [free_res] always returns either [ok] or
+    a safety trap, and never returns an unchecked fault. *)
 Lemma free_res_checked : forall x m w m', free_res x m <> Some (RUnchecked w, m').
 Proof.
   intros x m w m' H. unfold free_res, cap_free_res, object_free_res in H.
@@ -423,16 +398,17 @@ Proof.
   all: injection H as H; discriminate H.
 Qed.
 
-(** [free_res] changes no byte and no stored capability: the
-    interpreter's proof of [retention]. *)
+(** Deallocating a pointer with [free_res] leaves all primary data bytes
+    and shadow capability slots unchanged. *)
 Lemma free_res_retention : forall x m r m',
   free_res x m = Some (r, m') -> m_bytes m' = m_bytes m /\ m_aux m' = m_aux m.
 Proof.
   intros x m r m' H. destruct (free_res_frees x m r m' H) as [-> | (_ & _ & _ & _ & _ & _ & Hb & Ha)]; auto.
 Qed.
 
-(** [free_res] frees null and a live heap object's base as
-    [frees_heap] says: the interpreter's proof of [free_succeeds]. *)
+(** Deallocating a null pointer or the base pointer of a live heap
+    object with [free_res] always succeeds as described by
+    [frees_heap]. *)
 Lemma free_res_succeeds : frees_heap free_res.
 Proof.
   split; [reflexivity|]. intros m b reg [Ereg Hlive] Hk Hb.
@@ -441,9 +417,18 @@ Proof.
   unfold replace_region. rewrite Ereg. reflexivity.
 Qed.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
 
-(** a, rounded up to a multiple of a positive align, is at least a. *)
+    We now construct [InterpRuntime], the concrete instance of [Runtime]
+    that implements the monotone bump allocator and single-threaded
+    deallocator of the Prolog [[interpreter]]. Constructing
+    [InterpRuntime] proves that the [Runtime] axioms are mutually
+    consistent and provides the runtime used by the extracted reference
+    runner. *)
+
+(** Rounding an address up to a positive alignment with [align_up] never
+    decreases the address, and always produces a multiple of that
+    alignment. *)
 Lemma align_up_ge : forall a align, 0 < align -> a <= align_up a align.
 Proof.
   intros a align H. unfold align_up.
@@ -451,52 +436,46 @@ Proof.
   pose proof (Z.mod_pos_bound (a + align - 1) align H). nia.
 Qed.
 
-(** a, rounded up to a multiple of a positive align, is a multiple of
-    align. *)
 Lemma align_up_mod : forall a align, 0 < align -> align_up a align mod align = 0.
 Proof. intros a align H. unfold align_up. apply Z.mod_mul. lia. Qed.
 
-(** The [[interpreter]]'s runtime: interp.pl's allocator
-    (`alloc_base/6`), free as Memory.v states it ([free_res]), and no
-    other thread or collector. It proves every axiom, so the module
-    type is consistent; the extracted model is [Driver InterpRuntime]
-    (Transport.v). It is left unsealed, so that what it does can be
-    read off it; Transport.v's [Driver InterpRuntime] and
-    Persistence.v's [Persistence InterpRuntime] check it against
-    [Runtime]. *)
+(** The module [InterpRuntime] implements [Runtime] using the
+    interpreter's monotone next-allocation cursor, the deallocator
+    [free_res], and a no-op garbage collector at safepoints. *)
 Module InterpRuntime.
 
-  (** interp.pl's Next. *)
+  (** In [InterpRuntime], the private runtime [state] is the
+      next-allocation address cursor, which begins at [start] above the
+      static data segment and stays at or below the 48-bit limit
+      [address_end]. *)
   Definition state := Z.
-
-  (** As `stack_base/1`: allocations start at 2^32, above the data. *)
   Definition start : state := 2 ^ 32.
-
-  (** As `address_space/2`: Next stays at or below 2^48, libpas's
-      address space (`PAS_ADDRESS_BITS`). *)
   Definition address_end : Z := 2 ^ 48.
 
-  (** The interpreter, its Next being next, is [[ready]] in m: every
-      object lies between 0 and Next, empty if freed, Next is within the
-      address space, and nothing at or above Next has been written. *)
+  (** The interpreter's runtime cursor satisfies [ready] in memory when
+      it lies between 0 and [address_end], every registered object lies
+      below the cursor with empty bounds if freed, and all memory at or
+      above the cursor holds zero bytes and [CNone] capabilities. *)
   Definition ready (next : state) (m : mem) : Prop :=
     0 < next <= address_end /\
     (forall b reg, object_region b (m_regions m) = Some reg ->
        0 <= b < next /\ r_end reg <= next /\ (r_life reg = Freed -> r_end reg = b)) /\
     (forall a, next <= a -> m_bytes m a = 0 /\ m_aux m a = CNone).
 
-  (** As `alloc_base/6`: the base is Next rounded up to the request's
-      alignment; Next then moves past the object, rounded up to 16, and
-      a 16-byte gap. Where that would pass the address space's end, the
-      runtime is out of memory. *)
+  (** Given the current cursor and an allocation request, [alloc] rounds
+      the cursor up to the requested alignment for the new object's
+      base, advances the cursor past the 16-byte-rounded object extent
+      plus a 16-byte gap, and succeeds when the new cursor does not
+      exceed [address_end]. *)
   Definition alloc (next : state) (q : alloc_req) : option (Z * state) :=
     let base := align_up next (req_align q) in
     let next' := base + align_up (req_extent q) 16 + 16 in
     if next' <=? address_end then Some (base, next') else None.
 
-  (** The interpreter's allocator gives a [fresh] base and stays ready:
-      everything at or above Next is unwritten and owned by no object,
-      and the new object lies there. *)
+  (** Because all memory at or above the cursor is unwritten and owned
+      by no existing object, placing a new allocation there produces a
+      [fresh] base address and preserves [ready] for the advanced
+      cursor. *)
   Lemma fresh_allocation : forall s m q base s',
     ready s m ->
     0 < req_align q ->
@@ -524,19 +503,21 @@ Module InterpRuntime.
       + intros a Hr. apply Hbytes. lia.
   Qed.
 
-  (** Objects lie between 0 and Next, which is within 2^48. *)
+  (** Because every registered object lies below the cursor and the
+      cursor is at most `2 ^ 48`, all objects lie within the 48-bit
+      address space and every freed object has empty bounds. *)
   Lemma address_space : forall s m, ready s m -> objects_fit (m_regions m).
   Proof.
     intros next m (Hpos & Hobj & _) b reg E. destruct (Hobj _ _ E) as (? & ? & _). unfold address_end in *. lia.
   Qed.
 
-  (** A freed object of a memory the interpreter is ready in is empty,
-      as [ready] says. *)
   Lemma freed_bounds : forall s m, ready s m -> freed_empty (m_regions m).
   Proof. intros next m (_ & Hobj & _) b reg E. exact (proj2 (proj2 (Hobj _ _ E))). Qed.
 
-  (** Objects stay below Next as they end, and the program writes only
-      inside them. *)
+  (** When the program modifies memory within existing objects and ends
+      object lifetimes according to [kept], all objects remain below the
+      cursor and memory at or above the cursor stays unwritten,
+      preserving [ready]. *)
   Lemma ready_kept : forall s m m', ready s m -> kept m m' -> ready s m'.
   Proof.
     intros next m m' (Hpos & Hobj & Hbytes) (Hreg & Hout). split; [lia|]. split.
@@ -549,48 +530,34 @@ Module InterpRuntime.
       destruct (Hout a Hn) as [-> ->]. apply Hbytes. auto.
   Qed.
 
-  (** Memory.v's free, the pinned runtime's as the interpreter has it. *)
+  (** To deallocate a heap object, the interpreter calls [free_res],
+      which satisfies all five deallocation properties proved above. *)
   Definition free := free_res.
-
-  (** Free empties only a live heap object's bounds:
-      [free_res_lifetime]. *)
   Definition free_lifetime := free_res_lifetime.
-  (** Free changes no byte and no stored capability:
-      [free_res_retention]. *)
   Definition retention := free_res_retention.
-  (** Free reclaims no identity: [free_res_keeps_ids]. *)
   Definition free_keeps_ids := free_res_keeps_ids.
-  (** Free never answers unchecked: [free_res_checked]. *)
   Definition free_checked := free_res_checked.
-  (** Free succeeds on null and a live heap base: [free_res_succeeds]. *)
   Definition free_succeeds := free_res_succeeds.
 
-  (** The interpreter's runtime may act wherever the compiler does not
-      promise that it cannot. *)
+  (** In the single-threaded interpreter, potential safepoints are the
+      instructions that do not preserve check evidence, and the garbage
+      collector performs no memory changes at a safepoint. *)
   Definition at_safepoint (i : inst) : bool := negb (evidence_preserving i).
 
-  (** A safepoint of the interpreter's runtime is not evidence
-      preserving, by its definition. *)
   Lemma safepoints : forall i, at_safepoint i = true -> evidence_preserving i = false.
   Proof. unfold at_safepoint. intros i H. destruct (evidence_preserving i); auto. Qed.
 
-  (** No other thread and no collector: nothing changes at a safepoint. *)
   Definition safepoint (s : state) (m : mem) (s' : state) (m' : mem) : Prop := s' = s /\ m' = m.
 
-  (** Nothing changes at a safepoint, so no region does. *)
   Lemma collector_live : forall s m s' m', safepoint s m s' m' -> m_regions m' = m_regions m.
   Proof. intros s m s' m' [_ ->]. reflexivity. Qed.
 
-  (** Nothing changes at a safepoint, so no object does. *)
   Lemma safepoint_lifetime : forall s m s' m', safepoint s m s' m' -> lifetime_step m m'.
   Proof. intros s m s' m' [_ ->] b reg' H. exists reg'. auto. Qed.
 
-  (** Nothing changes at a safepoint, so no byte does. *)
   Lemma non_moving : forall s m s' m', safepoint s m s' m' -> m_bytes m' = m_bytes m.
   Proof. intros s m s' m' [_ ->]. reflexivity. Qed.
 
-  (** Nothing changes at a safepoint, so every stored capability
-      stays. *)
   Lemma aux_round_trip : forall s m s' m',
     safepoint s m s' m' ->
     forall a, m_aux m' a = m_aux m a \/
@@ -598,13 +565,11 @@ Module InterpRuntime.
                traps_as_freed (m_regions m') (m_aux m' a)).
   Proof. intros s m s' m' [_ ->] a. auto. Qed.
 
-  (** Nothing changes at a safepoint, so no identity is reclaimed. *)
   Lemma rooting : forall s m s' m',
     safepoint s m s' m' ->
     forall b, object_region b (m_regions m) <> None -> object_region b (m_regions m') <> None.
   Proof. intros s m s' m' [_ ->]. auto. Qed.
 
-  (** Nothing changes at a safepoint, so the runtime stays ready. *)
   Lemma safepoint_ready : forall s m s' m', safepoint s m s' m' -> ready s m -> ready s' m'.
   Proof. intros s m s' m' [-> ->]. auto. Qed.
 

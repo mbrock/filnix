@@ -1,119 +1,144 @@
-(** Memory and Fil-C's access check, transcribed from interp.pl's
-    Memory section.
+(** In Fil-C, memory consists of three parts: the primary data bytes at
+    every address, the list of allocated object [[region|regions]] that
+    record each object's bounds and lifetime, and the shadow [[aux]] map
+    that holds a pointer [[capability]] at every 8-byte-aligned address
+    where a pointer was stored. This module defines that memory state
+    [mem], the capability [[access]] check [access_res], little-endian
+    byte loads and stores, deallocation via [free_res], and the
+    [[fresh]] allocation predicate.
 
-    Memory is `mem(Bytes, Regions, Next, Aux)` in the interpreter. Here
-    it is bytes, [[region|regions]] and [[aux]]; Next, the
-    interpreter's next allocation address, is not part of the state. An
-    allocation instead takes any base that is [[fresh]] for the memory
-    (formal.md's decision): the interpreter's monotone Next is one such
-    choice (the `alloc` of Runtime.v's [InterpRuntime]), and nothing
-    may rely on it. Which bases a [[runtime]] may choose, and what it
-    may do to memory at a [[poll|safepoint]], are Runtime.v's module
-    type; this file states the interpreter's memory and its free.
+    A region's bounds run from its base address—which also serves as the
+    object's [[identity]]—up to its end address. Only deallocation
+    changes an existing region's bounds: freeing a heap object or ending
+    a stack frame sets the region's end equal to its base and marks the
+    region as [Freed], while leaving all data bytes and stored
+    capabilities in place. Because every pointer capability names its
+    target object by identity and looks up the region's current bounds
+    on each access, every alias to a freed object sees empty bounds and
+    traps immediately.
 
-    A region's bounds run from its base up to its end. Only free
-    changes them, to empty: the end becomes the base and the region
-    becomes freed. Bytes and aux stay as they were; every alias reads
-    the region's current bounds. *)
+    Unlike the Prolog [[interpreter]], which threads a monotone
+    next-allocation cursor inside the memory record, [mem] does not fix
+    how the allocator chooses addresses. Instead, an allocation may use
+    any base address that satisfies [fresh], and [Runtime](Runtime.v)
+    axiomatizes the allocator, deallocator, and garbage-collection
+    [[poll|safepoint]] behavior around [mem]. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Reasons and partial results *)
+(** ## Reasons and partial results
 
-(** The reason of a `trap(Why)` or an `unchecked(Why)`, interp.pl's
-    Why:
+    When an instruction checks a pointer, accesses memory, or calls a
+    function, it can either produce a value, stop the program with a
+    Fil-C safety [[trap]], or—if a compiler pass emitted an invalid raw
+    access or check reuse—fail as [[unchecked]]. This section defines
+    the failure [reason] codes and the partial-result wrapper [res] that
+    operations and memory checks return. *)
 
-    - the access check's: [NullCapability], [OutOfBounds],
-      [Misaligned], [Readonly];
-    - a call's: [NotAFunction], [ArgumentSize] (fewer arguments than
-      the callee's parameters), [ReturnSize] (the caller expects more
-      result words than the callee returns);
-    - free's: [InvalidFree], [DoubleFree];
-    - an allocation's (`alloc_res/6`): [TooBig], [OutOfMemory];
-    - the [[unchecked]] reasons of the [[reuse]] vocabulary, which only
-      a broken pass produces: [Alias], a renew of another object;
-      [Span], a renew whose source does not cover the access; [Half], a
-      half check whose bound taken as known is false; [WhyLimit],
-      interp.pl's `limit`, a [CheckLimit] whose limit does not match. *)
+(** A [reason] explains why a safety check trapped or why an invalid raw
+    access was flagged as [[unchecked]]. Memory access checks report
+    [NullCapability], [OutOfBounds], [Misaligned], or [Readonly];
+    function calls report [NotAFunction], [ArgumentSize], or
+    [ReturnSize]; deallocation reports [InvalidFree] or [DoubleFree];
+    and heap allocation reports [TooBig] or [OutOfMemory]. The [[reuse]]
+    forms report [Alias], [Span], [Half], or [WhyLimit] when a broken
+    pass reuses a check whose premises fail, while [Early] and [Ahead]
+    distinguish a [[check_ahead]] that trapped early on bytes needed
+    only by a later access. *)
 Inductive reason : Type :=
 | NullCapability | OutOfBounds | Misaligned | Readonly | NotAFunction
 | ArgumentSize | ReturnSize | InvalidFree | DoubleFree
 | TooBig | OutOfMemory
 | Alias | Span | Half | WhyLimit
-| Early (r : reason) (* `early(Why)`: a [[check_ahead]] trapped with r for bytes a later access needs *)
-| Ahead (r : reason). (* `ahead(Why)`: a [[doomed]] run did not reach that access *)
+| Early (r : reason) (* a [[check_ahead]] trapped with r on bytes that only a later access needs *)
+| Ahead (r : reason). (* a [[doomed]] run terminated before reaching the access that needed those bytes *)
 
-(** A partial result, interp.pl's Res. The interpreter's `ub(Why)`
-    comes only from float conversions and plain mode, both outside the
-    core subset. *)
+(** A partial result [res] wraps the outcome of an operation or memory
+    check: either a normal value [RVal], a safety trap [RTrap] with its
+    [reason], or an [[unchecked]] fault [RUnchecked] when a
+    [[raw-access|raw access]] or check reuse violates its capability. *)
 Inductive res (X : Type) : Type :=
-| RVal (x : X) (* `val(X)`, or `ok` when X is unit *)
-| RTrap (r : reason) (* `trap(Why)`: a Fil-C check failed, a [[trap]] *)
-| RUnchecked (r : reason). (* `unchecked(Why)`: a [[raw-access|raw access]] its capability does not allow *)
+| RVal (x : X) (* a normal result value, or ok when X is unit *)
+| RTrap (r : reason) (* a Fil-C safety check failed with reason r, causing a [[trap]] *)
+| RUnchecked (r : reason). (* a [[raw-access|raw access]] or check reuse failed without trapping *)
 
 Arguments RVal {X} x.
 Arguments RTrap {X} r.
 Arguments RUnchecked {X} r.
 
-(** Success with nothing to return, interp.pl's `ok`. *)
+(** The notation [ok] abbreviates a successful [res] that carries the
+    unit value. *)
 Notation ok := (RVal tt).
 
-(** ## Regions and memory *)
+(** ## Regions and memory
 
-(** Where an object lives: on the stack (a named local, gone when its
-    invocation ends), on the heap, or in global data. Only a heap
-    object may be passed to free. *)
+    Every allocated object in Fil-C has a [region] entry in memory that
+    tracks where the object starts, where it ends, whether it lives on
+    the stack, on the heap, or in global data, and whether it is still
+    live. This section defines the [region] and [mem] records and the
+    helper functions that look up or update an object's region by its
+    base [[identity]]. *)
+
+(** An object's storage [kind] records whether it lives on the [Stack]
+    as a named local for the current invocation, on the [Heap], or in
+    [GlobalData]. Only a [Heap] object can be deallocated by `c: free`. *)
 Inductive kind : Type := Stack | Heap | GlobalData.
 
-(** Equality of kinds. *)
+(** The function [kind_eqb] tests whether two storage kinds are equal. *)
 Definition kind_eqb (k k' : kind) : bool :=
   match k, k' with
   | Stack, Stack | Heap, Heap | GlobalData, GlobalData => true
   | _, _ => false
   end.
 
-(** Whether an object is live or has been freed. *)
+(** A [life] tag records whether an allocated object is currently [Live]
+    or has been [Freed]. *)
 Inductive life : Type := Live | Freed.
 
-(** As `region(Base, End, Kind, Life)`: an object of memory, the
-    [[region]] its capability names by its base. *)
+(** A [region] describes one allocated object in memory, recording its
+    base address, its current end address, its storage [kind], and its
+    [life] state. *)
 Record region : Type := mkRegion {
-  r_base : Z; (* the first address, also the object's [[identity]] *)
-  r_end : Z; (* one past the last byte; the base again once freed *)
+  r_base : Z; (* first byte address of the object, which also serves as its [[identity]] *)
+  r_end : Z; (* address one past the last byte, or equal to r_base once freed *)
   r_kind : kind;
   r_life : life
 }.
 
-(** The memory, interp.pl's `mem(Bytes, Regions, Next, Aux)` without
-    Next. *)
+(** The [mem] record holds the complete memory state: the byte map
+    [m_bytes], the list of object regions [m_regions], and the shadow
+    capability map [m_aux]. *)
 Record mem : Type := mkMem {
-  m_bytes : Z -> Z; (* the byte at each address; 0 where nothing was written, since Fil-C zeroes allocations *)
-  m_regions : list region; (* the objects, one region per identity *)
-  m_aux : Z -> cap (* the capability a pointer store left at each 8-aligned slot, [CNone] elsewhere *)
+  m_bytes : Z -> Z; (* byte value at each address, defaulting to 0 in unwritten memory *)
+  m_regions : list region; (* registered objects, with one region per object identity *)
+  m_aux : Z -> cap (* capability stored at each 8-byte-aligned aux slot, or [CNone] elsewhere *)
 }.
 
-(** As `object_region(Base, Rs, Region)`: the first region of the list
-    rs whose identity is base. Capabilities refer to registered
-    identities; an unregistered base is outside the model. *)
+(** Given an object's base [[identity]] and a region list,
+    [object_region] returns the first region with that base address, or
+    `None` if no such object is registered. *)
 Fixpoint object_region (base : Z) (rs : list region) : option region :=
   match rs with
   | [] => None
   | r :: rs' => if Z.eqb (r_base r) base then Some r else object_region base rs'
   end.
 
-(** The regions rs without the first one of identity base. *)
+(** Given an object's base address and a region list, [remove_region]
+    drops the first region with that base address and keeps all other
+    regions in order. *)
 Fixpoint remove_region (base : Z) (rs : list region) : list region :=
   match rs with
   | [] => []
   | r' :: rs' => if Z.eqb (r_base r') base then rs' else r' :: remove_region base rs'
   end.
 
-(** As `select(Region, Rs0, Rest)` on the first region of identity
-    base, with that region replaced by r at the front, as free and the
-    end of an invocation do; none if no region has that identity. *)
+(** When `c: free` or function return ends an object's lifetime,
+    [replace_region] replaces the first region of that base address with
+    an updated region at the front of the list, or returns `None` if the
+    base address is not registered. *)
 Definition replace_region (base : Z) (r : region) (rs : list region)
   : option (list region) :=
   match object_region base rs with
@@ -121,31 +146,39 @@ Definition replace_region (base : Z) (r : region) (rs : list region)
   | Some _ => Some (r :: remove_region base rs)
   end.
 
-(** ## The access check *)
+(** ## The access check
 
-(** As `aligned_res(A, Align, Res)`: [ok] if the address a is a
-    multiple of align, else a [Misaligned] trap. *)
+    Before any load or store runs, Fil-C checks the pointer's
+    [[capability]] against the region table to verify that the pointer
+    targets a live object, the accessed byte span lies within the
+    object's bounds, the capability permits the requested [[rights]],
+    and the address is properly aligned. This section defines that check
+    in the exact order used by the Fil-C runtime. *)
+
+(** Given a byte address and a required alignment, [aligned_res] returns
+    [ok] when the address is a multiple of the alignment, and traps with
+    [Misaligned] otherwise. *)
 Definition aligned_res (a align : Z) : res unit :=
   if Z.eqb (a mod align) 0 then ok else RTrap Misaligned.
 
-(** As `readonly_access_res(Kind, A, Align, Res)`: the last steps of
-    the access check in bounds of a read-only object: a write traps
-    [Readonly], and a read checks the alignment. *)
+(** Once a pointer into a read-only object passes its bounds check,
+    [readonly_access_res] traps with [Readonly] on a write and checks
+    address alignment on a read. *)
 Definition readonly_access_res (r : rights) (a align : Z) : res unit :=
   match r with
   | Read => aligned_res a align
   | Write => RTrap Readonly
   end.
 
-(** As `cap_access_res(Cap, Rs, A, Size, Kind, Align, Res)`: Fil-C's
-    access check of size bytes at the address a, with the rights r and
-    the alignment align, through the capability c among the regions
-    rs. The trap reasons come in the backend's order: a null
-    capability, then the bounds, then the read-only flag for a write,
-    then the alignment. A function's capability has zero size, so every
-    access through it is out of bounds. An external symbol's capability
-    gives no answer: the interpreter cannot follow it, and neither does
-    the model. *)
+(** Given a [[capability]], a region list, a byte span, requested
+    [[rights]], and an alignment, [cap_access_res] runs Fil-C's
+    capability [[access]] check. It checks trap conditions in the
+    runtime's order: first a null capability, then the object's lower
+    and upper bounds, then read-only permissions on a write, and finally
+    address alignment. A function capability has zero byte extent so
+    every memory access through it traps with [OutOfBounds], whereas an
+    external symbol capability has no region in the module and returns
+    `None`. *)
 Definition cap_access_res (c : cap) (rs : list region) (a size : Z)
     (r : rights) (align : Z) : option (res unit) :=
   match c with
@@ -170,24 +203,31 @@ Definition cap_access_res (c : cap) (rs : list region) (a size : Z)
       end
   end.
 
-(** As `access_res(Mem, A, Cap, Size, Kind, Align, Res)`: the access
-    check [cap_access_res] against the regions of the memory m. *)
+(** The function [access_res] runs [cap_access_res] against the region
+    list of a memory state [mem]. *)
 Definition access_res (m : mem) (a : Z) (c : cap) (size : Z) (r : rights)
     (align : Z) : option (res unit) :=
   cap_access_res c (m_regions m) a size r align.
 
-(** As `raw_address(A, Off, B)`: the address a plus the constant off,
-    modulo 2^64. *)
+(** Given a base address and a signed byte offset, [raw_address]
+    computes the effective 64-bit address modulo `2 ^ 64`. *)
 Definition raw_address (a off : Z) : Z := (a + off) mod 2 ^ 64.
 
-(** ## Bytes *)
+(** ## Bytes
 
-(** As `le_bytes(N, X, Bytes)`, byte i of them: the i-th lowest byte of
-    x, counting from 0, little-endian. *)
+    Multi-byte integers and pointer addresses are stored in primary
+    memory in little-endian byte order, while pointer capabilities are
+    stored alongside them in the shadow [[aux]] map. This section
+    defines the functions that read and write little-endian byte
+    sequences and shadow capability slots. *)
+
+(** Given an integer and a zero-based byte index, [byte_of] extracts
+    that byte in little-endian order. *)
 Definition byte_of (x i : Z) : Z := (x / 2 ^ (8 * i)) mod 256.
 
-(** As `le_value(Bytes, U)` of the size bytes at the address a: their
-    little-endian integer. *)
+(** Given a memory state, a starting address, and a byte count,
+    [load_bytes] reads that many consecutive bytes and assembles them
+    into an unsigned little-endian integer. *)
 Definition load_bytes (m : mem) (a size : Z) : Z :=
   let fix go (n : nat) (acc : Z) :=
     match n with
@@ -196,32 +236,44 @@ Definition load_bytes (m : mem) (a size : Z) : Z :=
     end in
   go (Z.to_nat size) 0.
 
-(** As `written_bytes(Xs, A, Bytes0, Bytes)`: the memory m with the
-    size low bytes of x written at the address a, little-endian. *)
+(** Given a memory state, a starting address, a byte count, and an
+    integer value, [store_bytes] writes the low bytes of the integer
+    into primary memory in little-endian order and leaves regions and
+    [[aux]] slots unchanged. *)
 Definition store_bytes (m : mem) (a size x : Z) : mem :=
   let old := m_bytes m in
   mkMem (fun b => if (a <=? b) && (b <? a + size) then byte_of x (b - a) else old b)
         (m_regions m) (m_aux m).
 
-(** As `stored_aux(cap(C), A, Aux0, Aux)`: the memory m whose [[aux]]
-    slot at the address a now holds the capability c. *)
+(** Given a memory state, an address, and a [[capability]], [store_aux]
+    updates the shadow [[aux]] slot at that address to hold the new
+    capability. *)
 Definition store_aux (m : mem) (a : Z) (c : cap) : mem :=
   let old := m_aux m in
   mkMem (m_bytes m) (m_regions m) (fun b => if Z.eqb b a then c else old b).
 
-(** The capability a pointer store left at the address a, or [CNone]
-    (`get_assoc(A, Aux, C) -> true ; C = none`). *)
+(** Given a memory state and an address, [aux_at] reads the
+    [[capability]] stored in the shadow [[aux]] slot at that address,
+    which is [CNone] if no pointer was stored there. *)
 Definition aux_at (m : mem) (a : Z) : cap := m_aux m a.
 
-(** ## Free *)
+(** ## Free
 
-(** As `object_free_res(Base, A, Mem0, Res, Mem)`: free of the address
-    a through a capability of the object of identity base. Address 0
-    is a no-op even with an object's [[lower]]. Otherwise it traps
-    [InvalidFree] unless the object is on the heap and a is its base,
-    and [DoubleFree] if it is freed already; else its region becomes
-    empty and freed. Kind and address are validated before the free
-    flag, as Fil-C's object_for_deallocate precedes free_impl. *)
+    In Fil-C, freeing a heap object does not reclaim its address or
+    erase its data bytes; instead, it marks the object's [[region]] as
+    [Freed] and collapses its upper bound to its base address so that
+    any later access through any alias traps. This section defines the
+    interpreter's deallocation functions for object capabilities,
+    general capabilities, and run-time words. *)
+
+(** Given an object's base [[identity]], a pointer address, and a memory
+    state, [object_free_res] implements `c: free` for a pointer carrying
+    an object capability. Passing address 0 is a no-op even when the
+    pointer still carries an object's [[lower]] capability. For any
+    nonzero address, it traps with [InvalidFree] unless the target is a
+    [Heap] object and the address equals its base, traps with
+    [DoubleFree] if the object is already [Freed], and otherwise
+    replaces the object's region with an empty [Freed] region. *)
 Definition object_free_res (base a : Z) (m : mem) : option (res unit * mem) :=
   if Z.eqb a 0 then Some (ok, m) else
   match object_region base (m_regions m) with
@@ -239,10 +291,11 @@ Definition object_free_res (base a : Z) (m : mem) : option (res unit * mem) :=
            end
   end.
 
-(** As `cap_free_res(Cap, A, Mem0, Res, Mem)`: free of the address a
-    through any capability c. One with no object, or a function's,
-    frees only address 0, as a no-op, and traps [InvalidFree]
-    otherwise; an external symbol's gives no answer. *)
+(** Given any [[capability]] and address, [cap_free_res] dispatches
+    `c: free` by capability kind: null and function capabilities succeed
+    as a no-op at address 0 and trap with [InvalidFree] at any nonzero
+    address, object capabilities run [object_free_res], and external
+    capabilities return `None`. *)
 Definition cap_free_res (c : cap) (a : Z) (m : mem) : option (res unit * mem) :=
   match c with
   | External _ => None
@@ -250,10 +303,11 @@ Definition cap_free_res (c : cap) (a : Z) (m : mem) : option (res unit * mem) :=
   | Obj base | Ro base => object_free_res base a m
   end.
 
-(** As `free_res(P, Mem0, Res, Mem)`: the pinned runtime's free of the
-    word x. An integer held at `p` has no capability. Runtime.v proves
-    that it changes a region only as the lifetime axiom allows
-    ([free_lifetime]). *)
+(** Given a run-time [word] and a memory state, [free_res] runs
+    `c: free` on a pointer word or treats a raw integer word as having
+    [CNone] capability. In [Runtime](Runtime.v), the interpreter's
+    runtime uses [free_res] and proves that it satisfies the
+    deallocation axioms. *)
 Definition free_res (x : word) (m : mem) : option (res unit * mem) :=
   match x with
   | WInt a => cap_free_res CNone a m
@@ -261,30 +315,30 @@ Definition free_res (x : word) (m : mem) : option (res unit * mem) :=
   | WLimit _ _ => None
   end.
 
-(** ## Allocation *)
+(** ## Allocation
 
-(** What an [[alloc|allocation]] asks for: alignment, extent (the
-    object's size in bytes) and kind, `alloc_base/6`'s Align, Extent
-    and Kind. *)
+    When the program allocates a heap block or a named stack local, the
+    allocator chooses a [[fresh]] base address that does not overlap any
+    existing object and whose bytes and shadow capability slots are all
+    zeroed. This section defines allocation requests, the [fresh]
+    predicate, and the helper functions that add a newly allocated
+    region to memory. *)
+
+(** An [alloc_req] packages the three parameters of an
+    [[alloc|allocation]]: the required byte alignment [req_align], the
+    byte size [req_extent], and the storage kind [req_kind]. *)
 Record alloc_req : Type := mkReq {
   req_align : Z;
   req_extent : Z;
   req_kind : kind
 }.
 
-(** The address base may be the identity and address of a new object
-    of the request q in the memory m: a [[fresh|fresh base]]. It is a
-    positive, aligned address; it is no object's identity, live or
-    freed; the new bytes overlap no object's current bounds; they end
-    at or below 2^64 (Runtime.v's [address_space] then bounds them by
-    2^48, native's address space); and they read as zero with no
-    stored capability, as Fil-C's allocations do. The interpreter
-    never reuses an address; the model allows any choice that
-    satisfies this. Runtime.v's [fresh_allocation] asks every
-    runtime's choice to satisfy it.
-
-    Objects are what [object_region] finds, as everywhere else: a
-    region behind another of the same identity is no object. *)
+(** A base address satisfies [fresh] for an allocation request in a
+    memory state when it can serve as the address and [[identity]] of
+    the new object. Specifically, the base must be positive, aligned to
+    [req_align], unregistered in [m_regions], disjoint from the current
+    bounds of every existing object, bounded by `2 ^ 64`, and backed by
+    zero bytes and [CNone] capability slots across its entire extent. *)
 Definition fresh (m : mem) (q : alloc_req) (base : Z) : Prop :=
   0 < base /\
   base mod req_align q = 0 /\
@@ -295,26 +349,30 @@ Definition fresh (m : mem) (q : alloc_req) (base : Z) : Prop :=
   (forall a, base <= a < base + req_extent q ->
              m_bytes m a = 0 /\ m_aux m a = CNone).
 
-(** The address a rounded up to a multiple of align. *)
+(** Given an address and a positive alignment, [align_up] rounds the
+    address up to the next multiple of that alignment. *)
 Definition align_up (a align : Z) : Z := (a + align - 1) / align * align.
 
-(** The memory m after allocating the request q at base: the same bytes
-    and aux, with the new object's region, live, in front. *)
+(** Given a memory state, an allocation request, and a chosen base
+    address, [allocated] prepends the new [Live] region to [m_regions]
+    while keeping all bytes and shadow capabilities unchanged. *)
 Definition allocated (m : mem) (q : alloc_req) (base : Z) : mem :=
   mkMem (m_bytes m)
         (mkRegion base (base + req_extent q) (req_kind q) Live :: m_regions m)
         (m_aux m).
 
-(** As `max_allocation_size/1`: Fil-C refuses a heap object of more
-    bytes (FILC_MAX_ALLOCATION_SIZE, 2^48 - 1). *)
+(** The constant [max_allocation_size] is the maximum byte size
+    `2 ^ 48 - 1` that Fil-C permits for a single heap allocation. *)
 Definition max_allocation_size : Z := 2 ^ 48 - 1.
 
-(** As `alloc_extent/4` and `alloc_align/3` in filc mode: the request
-    of a heap object of size bytes at the alignment align. Its bounds
-    are its size rounded up to 16, at an alignment of at least 16. *)
+(** Given a requested alignment and byte size, [heap_req] constructs the
+    [Heap] allocation request in [[mode|filc mode]], enforcing an
+    alignment of at least 16 and rounding the byte extent up to a
+    multiple of 16. *)
 Definition heap_req (align size : Z) : alloc_req :=
   mkReq (Z.max align 16) ((size + 15) / 16 * 16) Heap.
 
-(** The request of a named local of size bytes: exact size, 16-aligned,
-    on the stack. *)
+(** Given a byte size, [local_req] constructs the [Stack] allocation
+    request for a named local variable with 16-byte alignment and exact
+    byte extent. *)
 Definition local_req (size : Z) : alloc_req := mkReq 16 size Stack.

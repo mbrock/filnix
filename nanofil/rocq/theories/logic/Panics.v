@@ -1,34 +1,46 @@
-(** Campaign 7's property, [never_panics]: no [[run]] of a program
-    from any admissible input ever reaches a failure
-    ([formal.md, Campaign 7](../../../docs/formal.md#campaign-7-a-program-that-never-panics)).
+(** In Fil-C, capability checks catch every out-of-bounds access,
+    use-after-free, or type violation by trapping before an invalid memory
+    operation can run. When we verify a C function or program in
+    [[campaign|Campaign]] 7
+    ([formal.md](../../../docs/formal.md#campaign-7-a-program-that-never-panics)),
+    we prove a stronger guarantee: for every admissible input, the program
+    never triggers a safety [[trap]] or undefined behavior at all.
 
-    A failure is what formal.md's panic table rules out: a Fil-C
-    [[trap]] that is a capability check failing (a panic, in Filip's
-    meaning), an [[unchecked]] access, undefined behaviour, an
-    `unreachable` reached, or a step that leaves the model. A refusal
-    (`out_of_memory`, `too_big`), a return, running out of [[fuel]] and
-    a process exit are not failures, and neither is a run that never
-    ends: the property speaks of every state a run reaches, not of how
-    it ends.
+    Not every way a run can stop is a bug in the program. A C program can
+    return normally, exit the process, or run out of execution [[fuel]] in
+    our step-indexed model. The allocator can also refuse an allocation
+    because the machine is out of memory or because the requested size
+    exceeds Fil-C's 48-bit allocation limit. Those resource refusals are
+    normal outcomes that C's `c: malloc` reports by returning null, whereas
+    a capability check failure, an [[unchecked]] memory access, undefined
+    behavior, or reaching `unreachable` is a program failure.
 
-    This file owns the one classification of endings that both the core
-    [[machine]] and Campaign 4's labelled machine use: [failure] for a
-    core [[outcome]], [failure_ending] for an ExternalMachine.v ending.
-    The program statement [never_panics] is over Machine.v's machine
-    for a closed module, one with no external calls; a program that
-    calls libc is stated over the labelled machine with the same
-    [failure_ending].
+    This module defines that distinction once for both the closed-module
+    [[machine]] in [Machine](../core/Machine.v) and the contract-aware
+    external machine in [ExternalMachine](../external/ExternalMachine.v).
+    The predicate [failure] classifies core machine [[outcome|outcomes]],
+    [failure_ending] classifies external-machine endings, and
+    [never_panics] states the whole-program safety theorem for a closed
+    module over any Fil-C [[runtime]].
 
     ## Decisions
 
-    | Decision | Why |
-    |---|---|
-    | every runtime R, as a functor argument | the proof may not depend on where objects are placed or when the runtime refuses an allocation (formal.md's statement) |
-    | the run starts ready, an antecedent | until the heap starts above the module's data ([rocq.md](../../../docs/rocq.md)), as in Campaign 3 |
-    | every fuel, and every state reached | divergence and `out_of_fuel` are allowed; fuel plays no part |
-    | an allocation with a negative extent is a failure | the machine has no step there, so the run left the model |
-    | the module's initial memory and its entry function must exist, and every admissible input must make a frame | otherwise there is no run to speak of, and the program would hold vacuously |
-    | no premise about the runtime's safepoints | a safepoint changes no region (Runtime.v's [collector_live]): Fil-C's collector frees nothing, and a signal handler or a thread that could is the program's code; a module that installs one calls an external with no contract, which ends its run as a failure | *)
+    The theorem [never_panics] is parameterized over any implementation of
+    the [Runtime] interface so that a program proof cannot depend on where
+    the allocator places objects or when it refuses an allocation. It
+    quantifies over every fuel supply and every reachable state rather than
+    only final outcomes, so a diverging loop or a run that exhausts its
+    fuel still satisfies the theorem as long as no reachable state fails.
+
+    To prevent the property from holding vacuously when a module fails to
+    initialize, [never_panics] requires that the module's initial memory
+    and entry function exist and that every admissible input builds a valid
+    initial call [[frame]]. By contrast, it requires no extra assumption
+    about garbage-collection [[poll|safepoints]]. By the runtime interface
+    in [Runtime](../core/Runtime.v), a safepoint never frees a live
+    [[region]], and a module that tried to install an unmodeled signal
+    handler or thread would call an external function with no contract and
+    fail immediately. *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
@@ -36,19 +48,26 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Failures *)
+(** ## Failures
 
-(** A [[trap]] reason that is a refusal, not a panic: the runtime
-    would not hold an allocation (`out_of_memory`), or the request is
-    over 2^48 - 1 bytes (`too_big`), which C's `malloc` would answer
-    with null. These are mbrock's decisions in formal.md's panic table,
-    and ExternalCalls.v's [resource_reason] for a call ([refusal_resource]). *)
+    When a step of the machine stops, we must distinguish normal endings
+    and resource refusals from genuine safety failures. This section
+    classifies trap reasons, core outcomes, configurations, and
+    external-machine endings, and defines what it means for a single step
+    to preserve a configuration invariant without failing. *)
+
+(** In Fil-C, an allocation can trap either because the runtime has no room
+    for the object or because the requested size exceeds 2^48 - 1 bytes.
+    The predicate [refusal] identifies these two resource-exhaustion trap
+    reasons so that we can treat them as benign allocation refusals rather
+    than program panics. *)
 Definition refusal (why : reason) : Prop := why = OutOfMemory \/ why = TooBig.
 
-(** The [[outcome]] o is a failure: a trap that is not a [refusal]
-    (every capability check, [Early] traps of a [[check_ahead]]
-    included), an [[unchecked]] access, undefined behaviour, or
-    `unreachable` reached. Returns and [OutOfFuel] are not. *)
+(** A core machine [[outcome]] satisfies [failure] when the program hits a
+    non-refusal [[trap]], performs an [[unchecked]] access, triggers
+    undefined behavior, or executes `unreachable`. Every capability check
+    and [[check_ahead]] failure is a non-refusal trap, whereas normal
+    function returns and running out of [[fuel]] are not failures. *)
 Definition failure (o : outcome) : Prop :=
   match o with
   | Trap why => ~ refusal why
@@ -56,12 +75,11 @@ Definition failure (o : outcome) : Prop :=
   | Ret _ | Rets _ | RetVoid | OutOfFuel => False
   end.
 
-(** The configuration c fails in the genv ge: its [[step]] ends in a
-    [failure], is stuck (the run left the model: an external call, code
-    outside the [[core subset]], an ill-formed word), or asks for an
-    allocation with a negative extent, which the machine cannot take.
-    An allocation the runtime refuses is not a failure: it ends the run
-    with `trap(out_of_memory)`, a refusal. *)
+(** A machine configuration satisfies [fails] when its next [[step]]
+    produces a [failure] outcome, gets stuck outside the [[core subset]]
+    model, or requests a heap allocation with a negative byte size. If the
+    runtime refuses a valid allocation request, the machine ends with an
+    out-of-memory refusal rather than failing here. *)
 Definition fails (ge : genv) (c : config) : Prop :=
   match step ge c with
   | Done o => failure o
@@ -70,9 +88,11 @@ Definition fails (ge : genv) (c : config) : Prop :=
   | Next _ => False
   end.
 
-(** The labelled machine's ending why is a failure: a core [failure], a
-    stuck core step, or a contract violation at a call. A process exit
-    is not. *)
+(** In the external machine of
+    [ExternalMachine](../external/ExternalMachine.v), a run can also stop
+    at an [[external call]]. An ending satisfies [failure_ending] when it
+    comes from a core [failure], a stuck core step, or a contract violation
+    at a call boundary, whereas a normal process exit is not a failure. *)
 Definition failure_ending (why : ending) : Prop :=
   match why with
   | CoreEnd o => failure o
@@ -81,18 +101,24 @@ Definition failure_ending (why : ending) : Prop :=
   | ContractViolation _ _ => True
   end.
 
-(** A refusal is a resource ending of a call, and back. *)
+(** In [ExternalCalls](../external/ExternalCalls.v), an external call that
+    runs out of memory or exceeds the allocation limit stops with one of
+    the same two trap reasons. Lemma [refusal_resource] records that
+    [refusal] and [resource_reason] are equivalent. *)
 Lemma refusal_resource : forall why, refusal why <-> resource_reason why.
 Proof. intros why. unfold refusal, resource_reason. tauto. Qed.
 
-(** A trap that ends a call for lack of resources is not a failure. *)
+(** Consequently, any trap caused by a resource refusal during an external
+    call is never classified as a [failure]. *)
 Lemma resource_not_failure : forall why, resource_reason why -> ~ failure (Trap why).
 Proof. intros why H Hf. apply Hf, refusal_resource, H. Qed.
 
-(** The step result r, of a configuration in the memory m, is safe for
-    the invariant inv: a next configuration in inv, an ending that is
-    not a [failure], or an allocation with a nonnegative extent whose
-    every [fresh] base in m gives a configuration in inv. Never stuck. *)
+(** To prove that a program never fails by induction over its execution, we
+    check one step at a time against a configuration invariant. A step
+    result satisfies [safe_step] when it never gets stuck, avoids any
+    [failure] outcome, preserves the invariant on a normal step, and
+    preserves the invariant for every [[fresh]] base address on a
+    non-negative allocation request. *)
 Definition safe_step (inv : config -> Prop) (m : mem) (r : step_result) : Prop :=
   match r with
   | Next c' => inv c'
@@ -101,24 +127,31 @@ Definition safe_step (inv : config -> Prop) (m : mem) (r : step_result) : Prop :
   | Stuck _ => False
   end.
 
-(** ## The property *)
+(** ## The property
 
-(** The property over any [[runtime]] R. *)
+    A program proof should hold regardless of how the underlying allocator
+    chooses addresses or schedules garbage collection. This section
+    parameterizes the whole-program safety property [never_panics] over an
+    arbitrary [Runtime] implementation and proves the invariant rule used
+    to establish it. *)
+
+(** The functor [Panics] defines [never_panics] and its invariant proof
+    rule for any implementation of the Fil-C [Runtime] interface. *)
 Module Panics (R : Runtime).
 Module RM := Machine R.
 
-(** The genv of the module md with its globals, whose free is R's. *)
+(** Given a module and its initialized global variables, [program_genv]
+    builds the [[genv|global environment]] that pairs the module's
+    definitions with the runtime's deallocator. *)
 Definition program_genv (md : module) (globals : list (name * ptr)) : genv :=
   mkGenv md globals R.free.
 
-(** The closed module md never panics when its function entry is called
-    with any arguments xs that input admits: its initial memory exists
-    and the entry is a function of the [[core subset]]; every admissible
-    xs makes the entry's [[frame]]; and, where R is [[ready]] in the
-    initial memory at its start, no state a run reaches from that call,
-    with any fuel, [fails]. A run is Machine.v's: any fresh base R
-    grants, and anything R does at a [[poll|safepoint]]. This is
-    `run/5`'s start ([Driver]'s [run]). *)
+(** A closed C module satisfies [never_panics] at an entry function when
+    its global memory initializes cleanly, the entry function is defined in
+    the module, and every admissible argument list builds a valid initial
+    call [[frame]]. Starting from that call in a [[ready]] runtime state, no
+    state reachable across any number of instructions, [[fresh]] heap
+    allocations, or garbage-collection [[poll|safepoints]] ever fails. *)
 Definition never_panics (md : module) (entry : name) (input : list word -> Prop) : Prop :=
   exists globals m f,
     initial_memory md = Some (globals, m) /\
@@ -130,13 +163,12 @@ Definition never_panics (md : module) (entry : name) (input : list word -> Prop)
            RM.mreachable (program_genv md globals) (mkConfig fr [] m fuel, R.start) st ->
            ~ fails (program_genv md globals) (fst st)).
 
-(** The proof rule for [never_panics]: an invariant inv of
-    configurations that holds where every admissible call starts, whose
-    every [step] is [safe_step], and that what R does at a due
-    [[poll|safepoint]] keeps, where R is [[ready]]. Then no state a run
-    reaches [fails]. Readiness is what makes an allocation's base
-    [fresh] (R's [fresh_allocation]); the invariant is the program's
-    own, as Cycle.v's and Buffer.v's assertions at each point. *)
+(** Instead of reasoning about multi-step traces directly, a proof can
+    establish [never_panics] by exhibiting a configuration invariant. Lemma
+    [never_panics_by_invariant] shows that if the invariant holds at every
+    admissible initial call frame, every single step from a [[ready]] state
+    satisfies [safe_step], and every due [[poll|safepoint]] preserves the
+    invariant, then the module never panics. *)
 Lemma never_panics_by_invariant : forall md entry input globals m f (inv : config -> Prop),
   initial_memory md = Some (globals, m) ->
   find_fn (program_genv md globals) entry = Some (Defined f) ->

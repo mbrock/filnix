@@ -1,29 +1,38 @@
-(** The ghost heap of the program logic (Logic.v): what each piece of
-    memory holds, when a ghost heap of pieces agrees with the memory, and
-    the ownership of a list of pieces in Iris's [gen_heap]. Taken from
-    the logic spike's IrisHeap.v, which keeps the parts about its own
-    language of whole configurations.
+(** When a C function writes through a pointer into a struct or array, a
+    proof should only have to update its record of that buffer without
+    re-checking every other variable in the program. To make that local
+    reasoning sound, we pair the machine's physical memory with a logical
+    map that records the contents of each memory [piece] from
+    [Pieces](Pieces.v). This module defines the values stored in that map,
+    proves that stores, allocations, and garbage collection leave untouched
+    entries valid, and packages map entries as
+    [[separation-logic|separation-logic]] ownership assertions for
+    [Logic](Logic.v).
 
-    The ghost heap is Iris's [gen_heap] from Pieces.v's [piece] to a
-    [pval]: an object's life with its region, a byte, or a capability in
-    an aux slot. It [agrees] with a memory when a life token names a
-    live object, and a byte or aux piece names a registered object and,
-    while that object is live, is inside its bounds and holds what the
-    memory holds there, an aux slot up to the collector's rewriting of
-    dead capabilities ([agree_piece]). Since every piece names a
-    registered object, a fresh base has no pieces yet.
+    ## How the logical map matches physical memory
 
-    The lemmas say what keeps agreement: a [[poll|safepoint]]
-    ([agree_piece_safepoint]), a store into a live object, which keeps
-    every piece it does not write ([frame_ok], [cell_store_ok],
-    [ptr_store_ok]), and an allocation, whose new pieces agree
-    ([obj_ps_agree]) and which keeps the old ones
-    ([agree_piece_allocated]). [pts] ps owns the pieces ps;
-    [pts_lookup], [pts_update] and [pts_alloc] read, write and allocate
-    them against the authoritative heap. [ptsq] dq ps owns them at the
-    fraction dq, which is enough to read them ([ptsq_lookup]); [pts] is
-    its whole share. Nothing here is about one runtime or one
-    language. *)
+    In Fil-C, an allocated object has bounds and liveness in the region
+    table, data bytes in primary memory, and pointer
+    [[capability|capabilities]] in its shadow [[aux]] allocation. Our
+    logical map records one [pval] for each owned piece: whether an object
+    is live or freed, what byte sits at an offset, or what capability sits
+    in a shadow slot. The map [agrees] with physical memory when every
+    recorded value matches what the machine currently stores for that
+    object. Because every entry in the map belongs to an object that has
+    already been allocated, a [[fresh]] allocation at an unused base address
+    never collides with any existing entry in the map.
+
+    ## Preserving agreement across stores and allocations
+
+    In Fil-C, live objects never overlap in address space. When a C
+    instruction writes an 8-byte integer or a pointer into a live object,
+    the store only changes the byte and capability entries at those offsets
+    and leaves every other entry in the map matching physical memory.
+    Likewise, allocating a new object at a fresh address or running a
+    garbage-collection [[poll|safepoint]] preserves all existing entries. On
+    top of that map, [pts] represents exclusive ownership of a list of
+    pieces for reading and writing, while [ptsq] splits ownership into
+    read-only shares. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -33,34 +42,33 @@ From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls Piec
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Pieces and their values *)
+(** ## Pieces and their values
 
-(** What a piece holds: an object's life with its region, a byte, the
-    capability in an aux slot, or, for a life token, the end of the
-    object's life: a [free] turns a [VLive] token into [VFreed], since
-    the ghost heap has no way to give a piece up. A name holds the
-    pointer p and the text t of the string the world lends; the
-    memory has nothing to say about it, and the world interpretation
-    ties it to the world. A codec, under a name key, holds the world's
-    multibyte codec, which the memory has nothing to say about either.
-    A stream, under a name key, holds a FILE handle p and, while it is
-    open, its physical pending count and logical FIFO, or nothing once
-    it is closed: libc's state, which only the world interpretation
-    reads. A getopt token, under a name key, holds getopt's optarg and
-    optind, which the world interpretation ties to libc's cells. An
-    open-only stream permission records its handle but freezes neither
-    pending bytes nor the protocol; the world interpretation requires
-    that handle to remain open. *)
+    Each entry in the separation-logic state pairs a [piece] key from
+    [Pieces](Pieces.v) with the value recorded for that piece. This section
+    defines the value type [pval] and registers the decidable-equality and
+    countability instances that Iris's map library requires for piece keys. *)
+
+(** A [pval] records what a [piece] currently holds in the separation-logic
+    state. For memory pieces, [VLive] holds a live object's [[region]],
+    [VFreed] marks an object that has been deallocated by `c: free`, [VByte]
+    holds a single byte, and [VAux] holds a shadow [[capability]]. For
+    non-memory [PName] keys, the remaining constructors record external
+    library state—such as a borrowed string, a multibyte codec, a `c: FILE`
+    stream, or `c: getopt` state—that the world interpretation ties to the
+    external world. *)
 Inductive pval : Type :=
   VLive (reg : region) | VByte (v : Z) | VAux (c : cap) | VFreed | VName (p : ptr) (t : list Z)
   | VCodec (c : term) | VStream (p : ptr) (pending : option (Z * list Z))
   | VGetopt (optarg : ptr) (optind : Z) | VStreamOpen (p : ptr).
 
-(** Pieces have decidable equality. *)
+(** To use [piece] as the key type of a finite map, we first show that
+    equality on pieces is decidable. *)
 Instance piece_eq_dec : EqDecision piece.
 Proof. solve_decision. Qed.
 
-(** Pieces are countable, by an injection into sums of integers. *)
+(** To store piece keys in a finite map, we also show that the [piece] type
+    is countable by encoding each constructor as a tagged integer pair. *)
 Instance piece_countable : Countable piece.
 Proof.
   refine (inj_countable'
@@ -79,22 +87,35 @@ Proof.
   by intros [].
 Qed.
 
-(** ## Agreement with the memory *)
+(** ## Agreement with the memory
 
-(** The object of identity b is registered in m, live or freed. *)
+    An assertion in separation logic is only useful if the values recorded
+    in the [[ghost-state|ghost heap]] match the actual bytes, capabilities,
+    and regions in physical memory. This section defines piece-by-piece
+    agreement between the ghost heap and physical memory, along with helper
+    operations for 8-byte cells, map updates, and newly allocated objects. *)
+
+(** An object identity satisfies [registered] when it has an entry in the
+    memory's region table, whether that object is currently live or has
+    already been freed. *)
 Definition registered (m : mem) (b : Z) : Prop := object_region b (m_regions m) <> None.
 
-(** While the object b is live in m, offset o is inside its bounds and
-    P holds. *)
+(** When an object is freed in Fil-C, its region bounds collapse so later
+    accesses trap, even though assertions may still hold leftover byte or
+    capability pieces for it. The helper [in_live] requires a byte offset to
+    lie within the object's bounds and satisfy a property only while the
+    object remains live. *)
 Definition in_live (m : mem) (b o : Z) (P : Prop) : Prop :=
   forall reg, object_region b (m_regions m) = Some reg -> r_life reg = Live ->
     0 <= o /\ b + o < r_end reg /\ P.
 
-(** The piece l with the value v agrees with the memory m: a life token
-    names a live object with its region, or, ended, a registered one; a byte or aux piece names a
-    registered object and, while it is live, is inside its bounds and
-    holds the memory's byte, or the capability up to [aux_holds]; a
-    name, a codec, a stream or a getopt token agrees with every memory. *)
+(** A single piece and its recorded value satisfy [agree_piece] when they
+    match physical memory. A live token must name a live object with that
+    exact region, a freed token must name a registered object, and a byte or
+    capability piece must name a registered object and match the byte or
+    capability at that offset while the object is live. Non-memory [PName]
+    entries represent external world state and therefore agree with any
+    memory. *)
 Definition agree_piece (m : mem) (l : piece) (v : pval) : Prop :=
   match l, v with
   | PLive b, VLive reg => live_at m b reg
@@ -109,71 +130,93 @@ Definition agree_piece (m : mem) (l : piece) (v : pval) : Prop :=
   | _, _ => False
   end.
 
-(** Every piece of the ghost heap h agrees with the memory m. *)
+(** The entire separation-logic map satisfies [agrees] when every piece
+    recorded in the map satisfies [agree_piece] in the current physical
+    memory. *)
 Definition agrees (m : mem) (h : gmap piece pval) : Prop :=
   forall l v, h !! l = Some v -> agree_piece m l v.
 
-(** Every piece of the list ps agrees with the memory m. *)
+(** For a concrete list of piece-value pairs, [all_agree] checks that every
+    entry in the list satisfies [agree_piece] in memory. *)
 Fixpoint all_agree (m : mem) (ps : list (piece * pval)) : Prop :=
   match ps with
   | [] => True
   | lv :: ps' => agree_piece m lv.1 lv.2 /\ all_agree m ps'
   end.
 
-(** What owning the pieces ps tells a step about the memory m: they
-    agree with it, live objects do not overlap, and every object fits
-    the address space. *)
+(** Before stepping a C instruction that reads or writes a buffer, we need
+    three facts about physical memory: the buffer's pieces match memory,
+    live objects do not overlap, and every object fits in the 64-bit address
+    space. The predicate [owned_facts] bundles those three conditions
+    together. *)
 Definition owned_facts (ps : list (piece * pval)) (m : mem) : Prop :=
   all_agree m ps /\ live_disjoint m /\ objects_fit (m_regions m).
 
-(** From m to m', every piece whose key is not among ks keeps agreeing:
-    a step that writes only the pieces ks. *)
+(** When a memory store updates a known list of piece keys, [frame_ok]
+    states that every piece outside that modified key list continues to
+    agree with the new memory. *)
 Definition frame_ok (ks : list piece) (m m' : mem) : Prop :=
   forall l v, l ∉ ks -> agree_piece m l v -> agree_piece m' l v.
 
-(** The eight byte pieces of the little-endian x at offset o of the
-    object b. *)
+(** In 64-bit C code, an 8-byte integer or pointer address at offset o of
+    object b spans eight consecutive byte pieces. The helper [cell] pairs
+    those eight byte keys with the little-endian bytes of the 64-bit integer
+    x. *)
 Definition cell (b o x : Z) : list (piece * pval) :=
   map (fun i => (PByte b (o + i), VByte (byte_of x i))) [0; 1; 2; 3; 4; 5; 6; 7].
 
-(** The ghost heap h with the pieces ps written over it, the first of a
-    key winning. *)
+(** When a step allocates or updates a list of pieces, [overwrite] inserts
+    each piece-value pair into the separation-logic map, with earlier
+    entries in the list taking precedence. *)
 Fixpoint overwrite (ps : list (piece * pval)) (h : gmap piece pval) : gmap piece pval :=
   match ps with
   | [] => h
   | lv :: ps' => <[lv.1 := lv.2]> (overwrite ps' h)
   end.
 
-(** The pieces of a new object of the request q at base: its life, a
-    zero byte and an empty aux slot at each offset. *)
+(** When the allocator creates a new object at a base address, [obj_ps]
+    builds its initial piece list: a live token for its region, together
+    with a zero byte and an empty capability slot at every byte offset. *)
 Definition obj_ps (base : Z) (q : alloc_req) : list (piece * pval) :=
   (PLive base, VLive (mkRegion base (base + req_extent q) (req_kind q) Live)) ::
   ((fun i => (PByte base i, VByte 0)) <$> seqZ 0 (req_extent q)) ++
   ((fun i => (PAux base i, VAux CNone)) <$> seqZ 0 (req_extent q)).
 
-(** ## Facts about agreement *)
+(** ## Facts about agreement
 
-(** A byte store keeps every region. *)
+    Whenever a C instruction reads or writes memory, allocates a heap
+    object, or passes a garbage-collection [[poll|safepoint]], the proof
+    must re-establish agreement between the separation-logic map and
+    physical memory. This section proves that stores, allocations, and
+    safepoints preserve agreement for all untouched pieces, and provides a
+    computable check for verifying initial memory images. *)
+
+(** Writing data bytes into memory leaves the region table unchanged. *)
 Lemma regions_store_bytes m a s x : m_regions (store_bytes m a s x) = m_regions m.
 Proof. reflexivity. Qed.
 
-(** An aux store keeps every region. *)
+(** Writing a capability into shadow memory leaves the region table
+    unchanged. *)
 Lemma regions_store_aux m a c : m_regions (store_aux m a c) = m_regions m.
 Proof. reflexivity. Qed.
 
-(** A byte store keeps every aux slot. *)
+(** Writing data bytes into primary memory leaves all shadow capability
+    slots unchanged. *)
 Lemma aux_store_bytes m a s x : m_aux (store_bytes m a s x) = m_aux m.
 Proof. reflexivity. Qed.
 
-(** An aux store changes only its own slot. *)
+(** Writing a capability into shadow memory updates the slot at the target
+    address and leaves every other shadow slot unchanged. *)
 Lemma aux_store_aux m a c a' : m_aux (store_aux m a c) a' = if a' =? a then c else m_aux m a'.
 Proof. reflexivity. Qed.
 
-(** [all_agree] of two lists is [all_agree] of each. *)
+(** A concatenated list of piece-value pairs satisfies [all_agree] if and
+    only if both sublists satisfy [all_agree]. *)
 Lemma all_agree_app m ps qs : all_agree m (ps ++ qs) <-> all_agree m ps /\ all_agree m qs.
 Proof. induction ps as [|lv ps IH]; cbn; [tauto|]. rewrite IH. tauto. Qed.
 
-(** A piece of a list that agrees agrees. *)
+(** If a list of piece-value pairs satisfies [all_agree], then every
+    individual entry in the list satisfies [agree_piece]. *)
 Lemma all_agree_elem m ps l v : all_agree m ps -> (l, v) ∈ ps -> agree_piece m l v.
 Proof.
   induction ps as [|[l' v'] ps IH]; cbn; intros H Hin.
@@ -181,7 +224,8 @@ Proof.
   - apply elem_of_cons in Hin as [[= -> ->] | Hin]; [tauto|]. apply IH; tauto.
 Qed.
 
-(** A list agrees if each of its pieces does. *)
+(** Conversely, if every entry in a list of piece-value pairs satisfies
+    [agree_piece], then the whole list satisfies [all_agree]. *)
 Lemma all_agree_intro m ps : (forall l v, (l, v) ∈ ps -> agree_piece m l v) -> all_agree m ps.
 Proof.
   induction ps as [|[l v] ps IH]; cbn; intros H; [done|]. split.
@@ -189,11 +233,11 @@ Proof.
   - apply IH. intros l' v' Hin. apply H. apply elem_of_cons. by right.
 Qed.
 
-(** A piece certificate a finite memory image can decide: the
-    registered region b names, once found, stands for every region
-    [agree_piece] quantifies over, and an aux slot's exact capability
-    for the collector-aware [aux_holds]. A proof device for fixed
-    memory images, such as a launch's. *)
+(** To verify a fixed initial memory image by computation, we need a
+    decidable version of [agree_piece] that avoids quantifying over
+    arbitrary regions or collector rewrites. The predicate [checked_piece]
+    looks up the object's unique region directly and checks for exact
+    capability equality in shadow memory. *)
 Definition checked_piece (m : mem) (l : piece) (v : pval) : Prop :=
   match l, v with
   | PLive b, VLive reg => live_at m b reg
@@ -211,7 +255,8 @@ Definition checked_piece (m : mem) (l : piece) (v : pval) : Prop :=
   | _, _ => False
   end.
 
-(** A certified piece agrees with the memory. *)
+(** Any piece that passes the computable [checked_piece] test also satisfies
+    the general [agree_piece] relation. *)
 Lemma checked_piece_sound m l v : checked_piece m l v -> agree_piece m l v.
 Proof.
   destruct l, v; cbn [checked_piece agree_piece]; try tauto.
@@ -224,8 +269,9 @@ Proof.
     destruct (H Hlive) as (Ho & Hb & Ha). repeat split; try assumption. left. exact Ha.
 Qed.
 
-(** [checked_piece] is decided by computation: every decision in it is
-    transparent, so [vm_compute] runs it on a memory image. *)
+(** Because [checked_piece] only inspects finite records and integer
+    comparisons, it is decidable by computation on any concrete memory
+    image. *)
 Instance checked_piece_dec m l v : Decision (checked_piece m l v).
 Proof.
   pose (eqr := (ltac:(intros x y; change ({x = y} + {x <> y});
@@ -242,8 +288,9 @@ Proof.
     destruct (object_region b (m_regions m)); apply _.
 Defined.
 
-(** A list of pieces each of which the computed check certifies agrees
-    with the memory: [all_agree] of a memory image by [vm_compute]. *)
+(** When a program starts from a concrete initial memory image, checking
+    each entry of a piece list by computation suffices to show that the
+    entire list matches physical memory. *)
 Lemma checked_pieces_all_agree m ps :
   forallb (fun lv => bool_decide (checked_piece m lv.1 lv.2)) ps = true -> all_agree m ps.
 Proof.
@@ -253,7 +300,8 @@ Proof.
   apply (Hcheck (l, v)). clear Hcheck. induction Hin; cbn; auto.
 Qed.
 
-(** A cell agrees when each of its eight bytes does. *)
+(** An 8-byte [cell] agrees with memory if and only if each of its eight
+    little-endian byte pieces agrees with memory. *)
 Lemma all_agree_cell m b o x :
   all_agree m (cell b o x) <-> forall i, 0 <= i < 8 -> agree_piece m (PByte b (o + i)) (VByte (byte_of x i)).
 Proof.
@@ -264,7 +312,8 @@ Proof.
   - intros H. repeat (split; [apply H; lia|]). exact I.
 Qed.
 
-(** Byte i of a cell is one of its keys. *)
+(** Each of the eight byte offsets of an 8-byte [cell] appears in the cell's
+    key list. *)
 Lemma cell_keys b o x i : 0 <= i < 8 -> PByte b (o + i) ∈ (cell b o x).*1.
 Proof.
   intros Hi. apply list_elem_of_In. unfold cell. cbn.
@@ -273,22 +322,29 @@ Proof.
     repeat (first [left; reflexivity | right]).
 Qed.
 
-(** A piece of memory that agrees names a registered object. *)
+(** Any memory piece that matches physical memory belongs to an object that
+    has already been allocated and registered in the region table. *)
 Lemma agree_piece_registered m l v : mem_piece l -> agree_piece m l v -> registered m (piece_id l).
 Proof.
   destruct l as [b|b o|b o|k], v as [reg|x|c| |q t|cd|sq sp|ga gi|op]; cbn; unfold live_at, registered; try tauto.
   intros _ [E _]. congruence.
 Qed.
 
-(** A live object stays live while regions are kept. *)
+(** Any step that leaves the region table unchanged preserves every live
+    object and its bounds. *)
 Lemma live_at_regions m m' b reg : m_regions m' = m_regions m -> live_at m b reg -> live_at m' b reg.
 Proof. unfold live_at. intros ->. auto. Qed.
 
-(** Live objects stay apart while regions are kept. *)
+(** Because the byte bounds of live objects come from the region table, any
+    memory step that leaves the region table unchanged keeps all live
+    objects non-overlapping. *)
 Lemma live_disjoint_regions m m' : m_regions m' = m_regions m -> live_disjoint m -> live_disjoint m'.
 Proof. intros E Hd b1 r1 b2 r2. unfold live_at. rewrite E. apply Hd. Qed.
 
-(** What a safepoint may do keeps a piece's agreement. *)
+(** At a garbage-collection [[poll|safepoint]], the collector preserves
+    regions and data bytes and only sweeps dead capabilities according to
+    [aux_moves]. Every piece that agreed with memory before the safepoint
+    therefore continues to agree after it. *)
 Lemma agree_piece_safepoint m m' l v :
   same_regions m m' -> m_bytes m' = m_bytes m -> aux_moves m m' -> agree_piece m l v -> agree_piece m' l v.
 Proof.
@@ -301,14 +357,18 @@ Proof.
     exact (aux_holds_moves m m' (b + o) c Hr Ha Hx).
 Qed.
 
-(** Two live objects' addresses differ. *)
+(** Because distinct live objects never overlap in memory, an in-bounds byte
+    address of one live object can never equal an in-bounds byte address of
+    another live object. *)
 Lemma live_apart m b reg b' reg' a a' :
   live_disjoint m -> live_at m b reg -> live_at m b' reg' -> b <> b' ->
   b <= a < r_end reg -> b' <= a' < r_end reg' -> a <> a'.
 Proof. intros Hd H H' Hne Ha Ha'. destruct (Hd b reg b' reg' H H' Hne); lia. Qed.
 
-(** An 8-byte store inside the live object b, whose bytes are among
-    the keys ks, keeps every other piece's agreement. *)
+(** Because live objects in Fil-C never overlap, writing an 8-byte integer
+    into a live object only alters those eight byte offsets. Every recorded
+    piece outside those eight byte keys therefore continues to match
+    physical memory after the store. *)
 Lemma frame_store_bytes ks m b reg o a x :
   live_disjoint m -> live_at m b reg -> 0 <= o -> b + o + 8 <= r_end reg -> a = b + o ->
   (forall i, 0 <= i < 8 -> PByte b (o + i) ∈ ks) ->
@@ -330,8 +390,9 @@ Proof.
   - unfold registered, in_live, aux_holds in *. rewrite !regions_store_bytes aux_store_bytes. exact Ha.
 Qed.
 
-(** An aux store inside the live object b, whose slot is among the keys
-    ks, keeps every other piece's agreement. *)
+(** Writing a pointer capability into a shadow slot of a live object only
+    alters that single offset in shadow memory. Every recorded piece outside
+    that capability key therefore continues to match physical memory. *)
 Lemma frame_store_aux ks m b reg o a c :
   live_disjoint m -> live_at m b reg -> 0 <= o -> b + o < r_end reg -> a = b + o -> PAux b o ∈ ks ->
   frame_ok ks m (store_aux m a c).
@@ -353,11 +414,10 @@ Proof.
     rewrite Hne. exact Hx.
 Qed.
 
-(** A change that keeps every region and writes bytes and aux slots
-    only inside the live object b, at offsets whose pieces are among
-    the keys ks, keeps every other piece's agreement: a byte or aux
-    slot of another live object lies outside b, since live objects do
-    not overlap. *)
+(** More generally, if a memory operation preserves all object regions and
+    only modifies bytes and capabilities at listed offsets inside one live
+    object, then every recorded piece outside that list still matches
+    physical memory. *)
 Lemma frame_within ks m m' b reg :
   m_regions m' = m_regions m -> live_disjoint m -> live_at m b reg ->
   (forall a, (b <= a < r_end reg -> PByte b (a - b) ∉ ks) -> m_bytes m' a = m_bytes m a) ->
@@ -386,16 +446,20 @@ Proof.
     exact Hn.
 Qed.
 
-(** Framing composes. *)
+(** If two consecutive memory updates each preserve agreement outside a key
+    list, their composition also preserves agreement outside that key list. *)
 Lemma frame_ok_trans ks m1 m2 m3 : frame_ok ks m1 m2 -> frame_ok ks m2 m3 -> frame_ok ks m1 m3.
 Proof. intros H1 H2 l v Hn Ha. apply H2, H1; assumption. Qed.
 
-(** Framing over fewer keys frames over more. *)
+(** If a memory update preserves agreement outside a smaller list of
+    modified keys, it also preserves agreement outside any larger key list
+    that contains them. *)
 Lemma frame_ok_mono ks ks' m m' : (forall l, l ∈ ks -> l ∈ ks') -> frame_ok ks m m' -> frame_ok ks' m m'.
 Proof. intros Hs H l v Hn Ha. apply H; [|exact Ha]. intros Hin. apply Hn, Hs, Hin. Qed.
 
-(** The eight bytes of a cell of the live object b read back as its
-    value modulo 2^64. *)
+(** When all eight byte pieces of a [cell] inside a live object agree with
+    memory, loading 8 bytes from that offset returns the cell's 64-bit
+    integer value modulo 2^64. *)
 Lemma cell_load m b reg o x a :
   live_at m b reg -> all_agree m (cell b o x) -> a = b + o -> load_bytes m a 8 = x mod 2 ^ 64.
 Proof.
@@ -408,8 +472,9 @@ Proof.
   rewrite stored_bytes_value; [|lia]. reflexivity.
 Qed.
 
-(** The low n bytes, n at most 8, of a cell of the live object b read
-    back as its value modulo 2^(8n): a narrow read of the cell. *)
+(** Loading the first n bytes (for n at most 8) from an agreeing 8-byte
+    [cell] inside a live object returns the low n bytes of the cell's
+    integer value. *)
 Lemma cell_load_low m b reg o x a n :
   live_at m b reg -> all_agree m (cell b o x) -> a = b + o -> 0 <= n <= 8 ->
   load_bytes m a n = x mod 2 ^ (8 * n).
@@ -421,8 +486,9 @@ Proof.
     destruct (Hin reg E L) as (_ & _ & Hb). replace (b + o + i) with (b + (o + i)); [exact Hb|lia].
 Qed.
 
-(** An 8-byte store at offset o of the live object b: its cell holds
-    the new value, and nothing else changes. *)
+(** Writing an 8-byte integer at an in-bounds offset of a live object makes
+    the updated [cell] agree with the new memory while preserving agreement
+    for every piece outside those eight byte keys. *)
 Lemma cell_store_ok m b reg o a x :
   live_disjoint m -> live_at m b reg -> 0 <= o -> b + o + 8 <= r_end reg -> a = b + o ->
   all_agree (store_bytes m a 8 x) (cell b o x) /\ frame_ok (cell b o x).*1 m (store_bytes m a 8 x).
@@ -437,9 +503,11 @@ Proof.
     intros i Hi. apply cell_keys, Hi.
 Qed.
 
-(** A pointer store (aux then address bytes, at offset 0) into the live
-    object b: its aux slot and first cell hold the pointer, and nothing
-    else changes. *)
+(** In Fil-C, storing a pointer writes its capability into the shadow slot
+    and its 8-byte address into primary memory. When performed at offset 0
+    of a live object of at least 8 bytes, that store makes the shadow slot
+    and 8-byte cell agree with the new pointer while leaving all other
+    pieces unchanged. *)
 Lemma ptr_store_ok m b reg a c x :
   live_disjoint m -> live_at m b reg -> b + 8 <= r_end reg -> a = b ->
   m_regions (store_bytes (store_aux m a c) a 8 x) = m_regions m /\
@@ -467,8 +535,9 @@ Proof.
       right. exact Hin.
 Qed.
 
-(** A key of [overwrite] ps h comes from ps, or from h when ps does not
-    name it. *)
+(** Looking up a key in an overwritten map either finds a new pair from the
+    written list or, when the key does not appear in that list, returns its
+    previous value from the map. *)
 Lemma lookup_overwrite ps h l v :
   overwrite ps h !! l = Some v -> (l, v) ∈ ps \/ (l ∉ ps.*1 /\ h !! l = Some v).
 Proof.
@@ -481,11 +550,13 @@ Proof.
       * right. split; [|exact Hh]. apply not_elem_of_cons. split; [congruence|exact Hn].
 Qed.
 
-(** Writing two lists of pieces is writing the second, then the first. *)
+(** Overwriting a map with the concatenation of two piece lists is the same
+    as overwriting with the second list and then the first. *)
 Lemma overwrite_app ps qs h : overwrite (ps ++ qs) h = overwrite ps (overwrite qs h).
 Proof. induction ps as [|[l v] ps IH]; cbn; [reflexivity | rewrite IH; reflexivity]. Qed.
 
-(** Every piece of a new object at base names base. *)
+(** Every piece created by [obj_ps] for a newly allocated object has that
+    object's base address as its identity. *)
 Lemma obj_ps_id base q l v : (l, v) ∈ obj_ps base q -> piece_id l = base.
 Proof.
   unfold obj_ps. intros Hin. apply elem_of_cons in Hin as [[= -> ->] | Hin]; [reflexivity|].
@@ -493,7 +564,8 @@ Proof.
     reflexivity.
 Qed.
 
-(** A new object's pieces are pieces of memory. *)
+(** Every piece created by [obj_ps] for a newly allocated object is a memory
+    piece rather than a ghost name. *)
 Lemma obj_ps_mem base q l v : (l, v) ∈ obj_ps base q -> mem_piece l.
 Proof.
   unfold obj_ps. intros Hin. apply elem_of_cons in Hin as [[= -> ->] | Hin]; [exact I|].
@@ -501,7 +573,8 @@ Proof.
     exact I.
 Qed.
 
-(** The keys of a new object's pieces are distinct. *)
+(** The initial piece list [obj_ps] of a newly allocated object contains no
+    duplicate piece keys. *)
 Lemma obj_ps_nodup base q : NoDup (obj_ps base q).*1.
 Proof.
   unfold obj_ps. pose proof (NoDup_seqZ 0 (req_extent q)) as Hl. revert Hl.
@@ -515,8 +588,8 @@ Proof.
     + apply NoDup_fmap_2_strong; [|exact Hl]. intros i j _ _ Hij. by injection Hij.
 Qed.
 
-(** Each piece of a new object at a [fresh] base agrees with the memory
-    after the allocation. *)
+(** When a new object is allocated at a [[fresh]] base address, every
+    initial piece in [obj_ps] agrees with the post-allocation memory. *)
 Lemma obj_ps_agree m q base l v :
   Memory.fresh m q base -> 0 <= req_extent q -> (l, v) ∈ obj_ps base q -> agree_piece (allocated m q base) l v.
 Proof.
@@ -532,7 +605,9 @@ Proof.
     + left. exact Ha.
 Qed.
 
-(** A freed capability stays freed after an allocation at a new base. *)
+(** Allocating a new object at an unregistered base address leaves all
+    existing regions unchanged, so any capability that pointed to a freed
+    object before the allocation still points to a freed object afterward. *)
 Lemma freed_in_allocated m q base c :
   object_region base (m_regions m) = None -> freed_in (m_regions m) c -> freed_in (m_regions (allocated m q base)) c.
 Proof.
@@ -540,8 +615,9 @@ Proof.
   rewrite object_region_allocated. destruct (Z.eqb_spec base b) as [<-|]; [congruence|exact E].
 Qed.
 
-(** A capability that traps as a freed one still does after an
-    allocation at a new base. *)
+(** Likewise, if dereferencing a capability already trapped like a freed
+    object before a new allocation at an unused base address, it continues
+    to trap after the allocation. *)
 Lemma traps_as_freed_allocated m q base c :
   object_region base (m_regions m) = None -> traps_as_freed (m_regions m) c ->
   traps_as_freed (m_regions (allocated m q base)) c.
@@ -552,7 +628,10 @@ Proof.
     specialize (H a size r align Hs); unfold cap_access_res in H; rewrite Hn in H; discriminate.
 Qed.
 
-(** An allocation at a new base keeps every old piece's agreement. *)
+(** Allocating a new object at an unused base address leaves every
+    previously allocated object's bounds, bytes, and capabilities untouched.
+    Every recorded piece from before the allocation therefore still matches
+    physical memory. *)
 Lemma agree_piece_allocated m q base l v :
   object_region base (m_regions m) = None -> agree_piece m l v -> agree_piece (allocated m q base) l v.
 Proof.
@@ -571,19 +650,33 @@ Proof.
     split; [exact (freed_in_allocated _ _ _ _ Hn Hf) | exact (traps_as_freed_allocated _ _ _ _ Hn Ht)].
 Qed.
 
-(** ## Owning pieces *)
+(** ## Owning pieces
 
+    Passing a global memory map explicitly through every lemma would force
+    each function proof to mention all of memory. Using [[iris|Iris]]
+    [[separation-logic|separation logic]], we instead let each part of a
+    proof claim exclusive ownership of just the pieces it uses. Because two
+    assertions joined with `∗` always own disjoint piece keys, a function
+    that owns the pieces of a buffer can read and write that buffer locally
+    while knowing that all other owned buffers remain unchanged. *)
+
+(** This section defines the ownership assertion [pts] for exclusive
+    read-write access to a list of pieces, and [ptsq] for shared read-only
+    access. *)
 Section pts.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** Ownership of each piece of the list ps with its value. *)
+(** The assertion [pts] claims exclusive ownership of every piece-value pair
+    in the list, giving full permission to read and update each piece. *)
 Definition pts (ps : list (piece * pval)) : iProp Σ := [∗ list] lv ∈ ps, pointsto (fst lv) (DfracOwn 1) (snd lv).
 
-(** Owning two lists of pieces is owning their concatenation. *)
+(** Exclusive ownership of a concatenated piece list splits into separate
+    ownership of the two sublists. *)
 Lemma pts_app ps qs : pts (ps ++ qs) ⊣⊢ pts ps ∗ pts qs.
 Proof. by rewrite /pts big_sepL_app. Qed.
 
-(** Owned pieces are in the authoritative heap. *)
+(** When a caller owns a list of pieces with [pts], each piece in that list
+    is guaranteed to have its recorded value in the current memory map. *)
 Lemma pts_lookup h ps : gen_heap_interp h -∗ pts ps -∗ ⌜forall l v, (l, v) ∈ ps -> h !! l = Some v⌝.
 Proof.
   induction ps as [|[l v] ps IH]; iIntros "Hh Hps".
@@ -594,7 +687,9 @@ Proof.
     intros l' v' Hin. apply elem_of_cons in Hin as [[= -> ->] | Hin]; auto.
 Qed.
 
-(** Owned pieces can be given new values with the same keys. *)
+(** Because [pts] grants exclusive ownership of its piece keys, the owner
+    can update those entries in the memory map to new values after a store
+    without affecting any other owned pieces. *)
 Lemma pts_update h ps ps' : ps'.*1 = ps.*1 ->
   gen_heap_interp h -∗ pts ps ==∗ gen_heap_interp (overwrite ps' h) ∗ pts ps'.
 Proof.
@@ -606,8 +701,9 @@ Proof.
     iMod (gen_heap_update with "Hh Hl") as "[Hh Hl]". iModIntro. iFrame.
 Qed.
 
-(** Owned pieces have distinct keys: owning one key twice is
-    impossible ([pointsto_ne]). *)
+(** Because exclusive ownership of a single key cannot be duplicated in
+    separation logic, any list of pieces owned by [pts] has pairwise
+    distinct keys. *)
 Lemma pts_keys_nodup ps : pts ps -∗ ⌜NoDup ps.*1⌝.
 Proof.
   induction ps as [|[l v] ps IH]; [iIntros "_"; iPureIntro; constructor |].
@@ -620,7 +716,9 @@ Proof.
   - iPureIntro. apply NoDup_cons. auto.
 Qed.
 
-(** Pieces with distinct keys, none in the heap, can be allocated. *)
+(** When a new object is allocated with a list of distinct piece keys that
+    are not yet in the memory map, [pts_alloc] adds those entries to the map
+    and hands back exclusive ownership [pts] of the new object. *)
 Lemma pts_alloc h ps : NoDup ps.*1 -> (forall l v, (l, v) ∈ ps -> h !! l = None) ->
   gen_heap_interp h ==∗ gen_heap_interp (overwrite ps h) ∗ pts ps.
 Proof.
@@ -637,23 +735,32 @@ Proof.
     iModIntro. rewrite /pts /=. iFrame.
 Qed.
 
-(** ## Fractions of pieces *)
+(** ## Fractions of pieces
 
-(** Ownership of each piece of the list ps with its value, at the
-    fraction dq of Iris's [dfrac]: shares of one piece may be held
-    apart, to read it, and the whole writes it. *)
+    Some memory objects, such as string literals or shared lookup tables,
+    are read by many parts of a program and never modified. Iris's
+    fractional permissions let a proof split ownership of a piece list into
+    smaller read-only shares or discard write permission permanently so that
+    the assertion can be freely duplicated. *)
+
+(** The assertion [ptsq] claims ownership of each piece-value pair in a list
+    at a given fractional permission. Any fraction is sufficient to read the
+    pieces, while the full fraction is required to update them. *)
 Definition ptsq (dq : dfrac) (ps : list (piece * pval)) : iProp Σ :=
   [∗ list] lv ∈ ps, pointsto (fst lv) dq (snd lv).
 
-(** [pts] is [ptsq] of the whole. *)
+(** Full exclusive ownership [pts] is definitionally equal to fractional
+    ownership [ptsq] with the whole fraction 1. *)
 Lemma pts_ptsq ps : pts ps ⊣⊢ ptsq (DfracOwn 1) ps.
 Proof. reflexivity. Qed.
 
-(** A share of two lists of pieces is a share of each. *)
+(** Fractional ownership of a concatenated list of pieces splits into
+    fractional ownership of each sublist at the same fraction. *)
 Lemma ptsq_app dq ps qs : ptsq dq (ps ++ qs) ⊣⊢ ptsq dq ps ∗ ptsq dq qs.
 Proof. by rewrite /ptsq big_sepL_app. Qed.
 
-(** A share of q1 + q2 is a share of q1 and a share of q2. *)
+(** Ownership of a piece list at a sum of two fractions splits into two
+    separate assertions for the two component fractions. *)
 Lemma ptsq_split q1 q2 ps :
   ptsq (DfracOwn (q1 + q2)) ps ⊣⊢ ptsq (DfracOwn q1) ps ∗ ptsq (DfracOwn q2) ps.
 Proof.
@@ -661,8 +768,9 @@ Proof.
   exact (@fractional _ (fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) _ q1 q2).
 Qed.
 
-(** Any share can be given up for good, leaving a duplicable read-only
-    share. *)
+(** Any fractional share of a piece list can be permanently frozen by
+    discarding its write permission, which yields a persistent, freely
+    duplicable read-only assertion. *)
 Lemma ptsq_persist dq ps : ptsq dq ps ==∗ □ ptsq DfracDiscarded ps.
 Proof.
   induction ps as [|lv ps IH]; rewrite /ptsq /=; iIntros "H"; [by iModIntro|].
@@ -670,11 +778,15 @@ Proof.
   iMod (IH with "H") as "#H". iModIntro. iModIntro. iFrame "#".
 Qed.
 
-(** A read-only share is persistent. *)
+(** Once write permission for a piece list has been discarded, the resulting
+    read-only assertion is persistent, so any number of functions can share
+    and copy it freely. *)
 Instance ptsq_persistent ps : Persistent (ptsq DfracDiscarded ps).
 Proof. rewrite /ptsq. apply _. Qed.
 
-(** Pieces owned at any share are in the authoritative heap. *)
+(** Even a fractional or read-only share of a piece list in [ptsq]
+    guarantees that every piece in the list holds its recorded value in the
+    memory map. *)
 Lemma ptsq_lookup h dq ps : gen_heap_interp h -∗ ptsq dq ps -∗ ⌜forall l v, (l, v) ∈ ps -> h !! l = Some v⌝.
 Proof.
   induction ps as [|[l v] ps IH]; iIntros "Hh Hps".

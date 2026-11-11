@@ -122,10 +122,11 @@ filnix.org (pages/, docs/, nanofil/docs/, blocks/, the text in packages/site/, a
 
 - Use complete subject–verb–object sentences. No verbless slogan fragments ("Every pointer checked. A whole system in Nix."), no inversions ("Beside the distribution it builds..."), no vague taglines ("Read the code as structure").
 - An index or overview page starts by saying plainly what the thing is ("What is Filnix?"), then lists its parts under ordinary headings with ordinary links. No hero headlines, eyebrow labels, call-to-action buttons or arrows.
-- A code module's header (`(** ... *)` in Rocq, `/* ... */` in Prolog, `# ...` in Nix) is the lede of its page on the site. Start with complete sentences saying what problem the file solves, and put lists of lemma, field or predicate names in a table or on the definitions themselves rather than stuffing parenthetical citations (`(os_wi_store)`, `(os_wi_stable)`, `(errno_own, errno_any)`) into long paragraphs.
+- A code module's header (`(** ... *)` in Rocq, `/* ... */` in Prolog, `# ...` in Nix) is the lede of its page on the site. Start with complete sentences saying what problem the file solves, and put lemma, field or predicate descriptions on the definitions themselves rather than stuffing parenthetical citations (`(os_wi_store)`, `(os_wi_stable)`, `(errno_own, errno_any)`) into long paragraphs.
+- In Rocq `.v` files (`nanofil/rocq/glibc/zsys/OsBlocks.v`, `nanofil/rocq/theories/logic/ContractFrame.v`, and `nanofil/rocq/glibc/zsys/OsWorld.v` are the exemplars), write preludes, section introductions, and per-item `(** ... *)` comments as literate prose that can be read out loud: complete subject–verb–object sentences, outside-in motivation before naming internal symbols, a 2–3 sentence orientation paragraph after every `(** ## Section *)` heading, `[[concept]]` links where separation-logic or Fil-C ideas are introduced, and no Markdown `*italics*` or pipe tables inside `.v` comments.
 - State only what the repository shows. Say "being proved" or "a design" when that is the state, and put numbers in the build (`data-count`, history.py) rather than in prose.
 - Web prose, headings, labels and drawn terms use Public Sans; code uses DM Mono. PDFs keep Equity for prose. Do not add other fonts.
-- After writing or editing a page, document, block or module header, run `scripts/prose-check FILE...` (`-v` to see every paragraph's score) to get a Jev readability and slop check on each passage.
+- After writing or editing a page, document, block or module, run `scripts/prose-check FILE...` (`-v --all-comments --max-passages 64` for `.v` files) to get a Jev readability and slop check on every passage.
 
 ### Compiler and Runtime Review
 
