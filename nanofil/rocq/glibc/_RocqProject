@@ -35,3 +35,10 @@ stdlib/StdlibCode.v
 stdlib/LeavesLogic.v
 stdlib/AllocLogic.v
 stdlib/AtexitLogic.v
+string/MemFwdLogic.v
+string/MemchrLast.v
+string/MemchrLoop.v
+string/MemchrFirst.v
+string/MemchrLogic.v
+string/StrnlenLogic.v
+hello/HelloGlibcLeaf.v

@@ -1,0 +1,174 @@
+(** Two blocks of glibc's own `__memchr` (StrchrCode.v's [glibc_memchr])
+    at any share of the words it reads, after the first word's test,
+    for MemchrLogic.v:
+    [memchr_hit], a match in the first word, and [memchr_next], none,
+    which returns null if the first word is the last and otherwise
+    loads the next word and goes on in MemchrLoop.v's loop. *)
+
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+From iris.program_logic Require Import language weakestpre.
+From Stdlib Require Import String ZArith Lia.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
+  StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast MemchrLoop.
+Open Scope Z_scope.
+Open Scope list_scope.
+
+(** The first word's mask, from the byte k, of the word w xor'd with
+    [rep] c: 128 just in its bytes c's from k on, moved down by k. *)
+Lemma first_hit_byte w c a i : 0 <= a -> 0 <= i ->
+  byte_of (first_shift (Z.lxor w (rep c)) a) i =
+  if i + a mod 8 <? 8 then (if byte_of w (i + a mod 8) =? c mod 256 then 128 else 0) else 0.
+Proof.
+  intros Ha Hi. rewrite first_shift_byte; [|lia|lia]. destruct (Z.ltb_spec (i + a mod 8) 8); [|reflexivity].
+  pose proof (Z.mod_pos_bound a 8 ltac:(lia)).
+  destruct (Z.eqb_spec (byte_of (Z.lxor w (rep c)) (i + a mod 8)) 0) as [E|E];
+    destruct (Z.eqb_spec (byte_of w (i + a mod 8)) (c mod 256)) as [E'|E']; try reflexivity.
+  - exfalso. apply E'. apply xor_zero; [lia | exact E].
+  - exfalso. apply E. apply xor_zero; [lia | exact E'].
+Qed.
+
+(** Arithmetic on addresses and words, the wraps that are the identity
+    dropped. *)
+Ltac ar := cbn [ptr_addr ptr_cap extension]; unfold raw_address;
+  change (2 ^ 64) with 18446744073709551616 in *; change (2 ^ 48) with 281474976710656 in *;
+  change (2 ^ 32) with 4294967296 in *;
+  repeat match goal with |- context [?x mod 18446744073709551616] =>
+    rewrite (Z.mod_small x 18446744073709551616); [|lia] end;
+  first [lia | Z.div_mod_to_equations; lia].
+
+(** Name the integer the temporary name holds v. *)
+Ltac si name v :=
+  match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by first [reflexivity | ar] end.
+(** Look a temporary up below the puts, by H or the put of it. *)
+Ltac lk H := repeat (rewrite lookup_after_put_other; [|reflexivity]);
+  first [rewrite lookup_after_put_same; reflexivity | exact H].
+(** Name the address of the pointer the temporary name holds v. *)
+Ltac sp name v :=
+  match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by first [reflexivity | ar] end.
+
+(** The first word over the [[runtime]] R and the Logic instance LG0. *)
+Module MemchrFirstOn (R : Runtime) (LG0 : LogicSig R).
+Module MO := MemchrLoopOn R LG0.
+Module ML := MO.ML.
+Module WS := ML.WS.
+Module LG := LG0.
+Module L := LG.L.
+Import L LG WS ML MO.
+
+Section rules.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context {world : Type} (registry : name -> option (contract world))
+  (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
+(** The Iris instance of the registry and wi. *)
+Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
+(** The expressions of the language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** One step whose premises reduce, as MemchrLast.v's. *)
+Ltac st :=
+  first
+    [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
+    | iApply wp_flight; [vx | reflexivity | vx | iNext]
+    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
+    | iApply wp_goto; iNext ].
+
+(** The first word's match, at byte j of the mask m (128 in the bytes
+    matched, the first at j), entered with iw_5.v12 m: it returns p + j
+    when that is at or before the search's end E, and null after. *)
+Lemma memchr_hit e from m j a c0 E Φ :
+  0 <= m < 2 ^ 64 -> (forall i, 0 <= i < 8 -> byte_of m i = 0 \/ byte_of m i = 128) ->
+  0 <= j < 8 -> byte_of m j = 128 -> (forall i, 0 <= i < j -> byte_of m i = 0) ->
+  0 <= a <= 2 ^ 48 -> 0 <= E < 2 ^ 64 ->
+  lookup (TAtom "iw_5.v12") e = Some (WInt m) -> lookup (TAtom "v0") e = Some (WPtr (mkPtr a c0)) ->
+  lookup (TAtom "v40") e = Some (WInt E) ->
+  Φ (Ret (WPtr (hit_ptr (mkPtr a c0) (if a + j <=? E then Some (Z.to_nat j) else None)))) -∗
+  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "iw_6.start") from)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hmr H01 Hj Hb Hlow Ha HE H12 H0 H40. iIntros "HK".
+  assert (Hm0 : (m =? 0) = false).
+  { apply Z.eqb_neq. intros E'. rewrite E' in Hb. unfold byte_of in Hb. rewrite Z.div_0_l in Hb; [discriminate|].
+    apply Z.pow_nonzero; lia. }
+  iApply wp_enter; [reflexivity | by destruct from |]. iNext. cbn [b_insts b_jump].
+  st. iApply wp_branch; [reflexivity|]. iNext.
+  rewrite (Z.mod_small m (2 ^ 64) Hmr) Zmod_0_l Hm0. close_if.
+  do 16 (st; gen_top). set_tail "iw_6.iw_1.iw_1.v22" m.
+  rewrite (tail_first m j Hmr H01 ltac:(lia) Hb Hlow).
+  st. st. si "iw_6.iw_1.iw_1.v23" (8 * j + 7).
+  st. change (2 ^ ((3 mod 2 ^ 32) mod 32)) with 8. si "iw_6.iw_1.v27" j. st. si "v59" j. st. sp "v60" (a + j).
+  st. si "v66" (a + j).
+  st. iApply wp_branch; [reflexivity|]. iNext.
+  rewrite (Z.mod_small (a + j) (2 ^ 64)); [|zl]. rewrite (Z.mod_small E (2 ^ 64)); [|zl].
+  destruct (Z.leb_spec (a + j) E) as [Hle|Hle].
+  - replace ((if a + j <=? E then 1 else 0) mod 2 ^ 32 =? 0) with false
+      by (rewrite (proj2 (Z.leb_le _ _) Hle); reflexivity).
+    cbn [edge_label]. st. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+    cbn [hit_ptr ptr_addr ptr_cap].
+    rewrite Z2Nat.id; [|lia]. iExact "HK".
+  - replace ((if a + j <=? E then 1 else 0) mod 2 ^ 32 =? 0) with true
+      by (rewrite (proj2 (Z.leb_gt _ _) Hle); reflexivity).
+    cbn [edge_label]. st. st. st. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+    iExact "HK".
+Qed.
+
+(** No match in the first word, from the 8-aligned A, entered at L52:
+    null when it is the last word, and otherwise the next word loaded
+    and MemchrLoop.v's loop from A + 8 with its search r. *)
+Lemma memchr_next dq b reg w ws A c0 c1 e from c E r Φ :
+  (c0 = Obj b \/ c0 = Ro b) -> 0 < b -> b <= A -> A mod 8 = 0 ->
+  A + 8 * Z.of_nat (List.length (w :: ws)) <= r_end reg -> r_end reg <= 2 ^ 48 ->
+  Forall (fun w => 0 <= w < 2 ^ 64) ws -> A <= E < 2 ^ 64 ->
+  lookup (TAtom "v19") e = Some (WPtr (mkPtr A c0)) -> lookup (TAtom "chk0") e = Some (WPtr (mkPtr A c0)) ->
+  lookup (TAtom "v43") e = Some (WPtr (mkPtr (E - E mod 8) c1)) ->
+  lookup (TAtom "iw_1.v7") e = Some (WInt (rep c)) -> lookup (TAtom "v40") e = Some (WInt E) ->
+  (E < A + 8 -> r = None) -> (A + 8 <= E -> ws <> [] /\ loop_hit (wbytes ws) (c mod 256) (A + 8) E r) ->
+  liveq dq b reg -∗ ptsq dq (words_ps b (A - b) (w :: ws)) -∗
+  (liveq dq b reg -∗ ptsq dq (words_ps b (A - b) (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr (mkPtr (A + 8) c0) r)))) -∗
+  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L52") from)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hc Hb0 HbA Hal Hend Hreg Hr HE H19 Hchk H43 H7 H40 Hlast Hnext. iIntros "Hl Hps HK".
+  cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
+  pose proof (Nat2Z.is_nonneg (List.length ws)) as Hws.
+  pose proof (Z.mod_pos_bound E 8 ltac:(lia)) as HE8.
+  iApply wp_enter; [reflexivity | by destruct from |]. iNext. cbn [b_insts b_jump].
+  st. st. st. iApply wp_branch; [reflexivity|]. iNext. cbn [ptr_addr].
+  rewrite (Z.mod_small A (2 ^ 64)); [|zl]. rewrite (Z.mod_small (E - E mod 8) (2 ^ 64)); [|zl].
+  destruct (Z.eqb_spec A (E - E mod 8)) as [HA|HA].
+  - (* The word is the last. *)
+    rewrite Hlast; [|lia]. change ((if true then 1 else 0) mod 2 ^ 32 =? 0) with false. cbn [edge_label].
+    st. iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply ("HK" with "Hl Hps").
+  - change ((if false then 1 else 0) mod 2 ^ 32 =? 0) with true. cbn [edge_label].
+    assert (Hnx : A + 8 <= E) by (clear -Hal HA HE HE8; zl).
+    destruct (Hnext Hnx) as (Hws' & Hhit'). destruct ws as [|w1 ws]; [done|].
+    apply Forall_cons_1 in Hr as [Hw1 Hr'].
+    st. st. sp "v82" (A + 8).
+    cbn [words_ps]. rewrite !ptsq_app. iDestruct "Hps" as "(Hw & Hw1 & Hps)".
+    iApply (wp_half_check_read_dq with "Hl").
+    { reflexivity. } { vx. } { reflexivity. } { exact Hc. } { ar. } { cbn [List.length] in Hend; ar. }
+    { lia. } { zl. } { apply Z.mod_1_r. }
+    iNext. iIntros "Hl".
+    iApply (wp_raw_load_read_dq with "Hl Hw1"); [reflexivity | reflexivity | exact Hc | ar |].
+    iNext. iIntros "Hl Hw1". rewrite (Z.mod_small w1 (2 ^ 64) Hw1). st.
+    iApply (memchr_loop _ _ _ dq b reg w1 ws (A - b + 8) _ (Some (TAtom "L74")) (mkPtr (A + 8) c0) c E r
+              with "Hl [Hw1 Hps] [Hw HK]").
+    * exact Hc.
+    * lia.
+    * exact Hb0.
+    * replace (b + (A - b + 8)) with (A + 1 * 8) by ring. rewrite Z_mod_plus_full. exact Hal.
+    * cbn. lia.
+    * cbn [List.length] in Hend |- *. lia.
+    * exact Hreg.
+    * constructor; [exact Hw1 | exact Hr'].
+    * zl.
+    * reflexivity.
+    * lk H43.
+    * lk H7.
+    * lk H40.
+    * replace (b + (A - b + 8)) with (A + 8) by ring. exact Hhit'.
+    * cbn [words_ps]. rewrite ptsq_app. replace (A - b + 8 + 8) with (A - b + 8 + 8) by ring. iFrame.
+    * iIntros "Hl Hps". iApply ("HK" with "Hl"). cbn [words_ps]. rewrite !ptsq_app. iFrame.
+Qed.
+
+End rules.
+End MemchrFirstOn.
