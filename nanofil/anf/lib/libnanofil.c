@@ -178,8 +178,8 @@ static void run_job(void)
 
 /* The fiber's stack size: ANF_FIBER_MB megabytes when that is set, or
  * 64 MB plus 16 bytes for each byte of the input. lvm.ir, 4.4 MB of IR,
- * needs 12 MB; the largest regex function within the block cap needs
- * under 10 MB from a few kilobytes of terms. The size costs address
+ * needs at most 12 MB; the largest regex function within the block cap
+ * compiles on 16 MB from a few kilobytes of terms. The size costs address
  * space, not time: the kernel backs only the pages the compile touches. */
 static size_t fiber_bytes(size_t ir_len)
 {

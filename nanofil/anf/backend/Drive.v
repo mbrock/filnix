@@ -149,12 +149,12 @@ Fixpoint rx_parts (os : list Rx.outcome) (acc : list term) (why : list string) :
 (** This number bounds the blocks of a function that `regex` compiles.
     A program waits in pcre2_jit_compile while the library compiles,
     and a compile's time grows faster than its function. The functions
-    that rx.pl makes of PCRE2's tests compile in at most 3 seconds when
-    they have up to 459 blocks. From 521 blocks on they take 9 to 37
-    seconds, most of it in the validator's meet of live facts. rxc stops
-    rx.pl and nanofil-backend after 10 seconds, and this bound plays the
-    same part: a larger pattern stays on PCRE2's interpreter. *)
-Definition regex_max_blocks : nat := 460.
+    that rx.pl makes of PCRE2's tests compile in at most 5 seconds when
+    they have up to 609 blocks. The next ones, of 830 to 1,029 blocks,
+    take 6 to 13 seconds. rxc stops rx.pl and nanofil-backend after 10
+    seconds, and this bound plays the same part: a larger pattern stays
+    on PCRE2's interpreter. *)
+Definition regex_max_blocks : nat := 620.
 
 (** The name and the number of blocks of a function's term. *)
 Definition func_size (f : term) : string * nat :=

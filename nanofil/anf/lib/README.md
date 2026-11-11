@@ -59,11 +59,12 @@ process.
 The call returns 1 when rx.pl would not compile a pattern,
 and `*out` is then the comment that rx.pl prints, such as
 `% m: unsupported: 'Ref'`. It also returns 1 when the terms cannot be
-read and when a function has more than 460 blocks. A compile's time
-grows faster than the function: up to 459 blocks the functions of
-PCRE2's tests take at most 3 seconds, and from 521 blocks on they take
-9 to 37 seconds. So a larger pattern is left to PCRE2's interpreter, as
-rxc leaves a pattern that takes more than 10 seconds.
+read and when a function has more than 620 blocks. A compile's time
+grows faster than the function: up to 609 blocks the functions of
+PCRE2's tests take at most 5 seconds, and the next ones, of 830 to
+1,029 blocks, take 6 to 13 seconds. So a larger pattern is left to
+PCRE2's interpreter, as rxc leaves a pattern that takes more than 10
+seconds.
 
 `nanofil_load` writes a shared object to an anonymous file made by
 `memfd_create` and opens it with `dlopen(RTLD_NOW | RTLD_LOCAL)` by a
@@ -203,10 +204,10 @@ native call per element. Two of them were rewritten to run in constant
 stack: Encode.v's loop over the lines, which called itself through its
 own closure because `step` was inlined into it, and Drive.v's cutting
 of a shared object into parts with the stdlib's `firstn` and `map`.
-Others remain. Order.v's merges take about 272 bytes a level, and the
-validator's `existsb` 256 bytes an element. A function of 412 blocks
-recurses 28,968 deep in `merge_steps` and needs between 8 and 12 MB,
-and lvm.ir needs 12 MB.
+Others remain. Order.v's merges cons after their recursive call and take
+about 288 bytes a level. A function of 412 blocks recurses 28,968 deep
+in `merge_steps` and needs between 8 and 9 MB, and one of 609 blocks
+compiles on 16 MB.
 
 A thread's stack under Fil-C is fixed by the stack limit when the
 process starts. Fil-C's `zthread_create2` calls `pthread_create`

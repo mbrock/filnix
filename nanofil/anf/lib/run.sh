@@ -136,7 +136,7 @@ done
 # reference is what experiments/regex-nanofil/rxc does, with Rx.v's
 # extraction (../rx/rx-gallina, which ../rx/run.sh holds to rx.pl) in
 # rx.pl's place: a pattern rx.pl does not compile gives its comments,
-# terms it fails on give status 1, so does a function of more than 460
+# terms it fails on give status 1, so does a function of more than 620
 # blocks (Drive.v's regex_max_blocks), and the rest are the IR's shared
 # object from nanofil-backend.
 if [[ -n ${ANF_REGEX+set} ]]; then
@@ -156,8 +156,8 @@ if ((${#regexes[@]})); then
       echo 1 >"$r.status"
     elif grep '^%' "$work/rref/$i.ir" >"$r.err"; then
       echo 1 >"$r.status"
-    elif awk '/^func\(/ { n = gsub(/block\(/, ""); split(substr($0, 6), a, ","); if (n > 460) {
-               printf "%s has %d blocks, more than the 460 that are compiled in process", a[1], n; exit 1 } }' \
+    elif awk '/^func\(/ { n = gsub(/block\(/, ""); split(substr($0, 6), a, ","); if (n > 620) {
+               printf "%s has %d blocks, more than the 620 that are compiled in process", a[1], n; exit 1 } }' \
            "$work/rref/$i.ir" >"$r.err"; [[ -s $r.err ]]; then
       echo 1 >"$r.status"
     else
