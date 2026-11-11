@@ -123,6 +123,12 @@ Proof.
   intros t l H. pose proof dnarrow_enc. unfold dload_type, datom in H. repeat dstep H. all: close.
 Qed.
 
+(** A [[cas]] type is read from its own atom only. *)
+Lemma dcas_type_enc : forall t c, dcas_type t = Some c -> enc_cas_type c = t.
+Proof.
+  intros t c H. pose proof dnarrow_enc. unfold dcas_type, datom in H. repeat dstep H. all: close.
+Qed.
+
 (** A condition is read from its own atom only. *)
 Lemma dcond_enc : forall t c, dcond t = Some c -> enc_cond c = t.
 Proof. intros t c H. unfold dcond, datom in H. repeat dstep H. all: close. Qed.
@@ -159,7 +165,7 @@ Lemma dop_enc : forall t o, dop t = Some o -> enc_op o = t.
 Proof.
   intros t o H. pose proof dz_enc. pose proof dclass_enc. pose proof drights_enc.
   pose proof dbound_enc. pose proof dnarrow_enc. pose proof dload_type_enc.
-  pose proof dcond_enc. pose proof deffects_enc.
+  pose proof dcas_type_enc. pose proof dcond_enc. pose proof deffects_enc.
   unfold dop, dcheck4 in H. repeat dstep H. all: close.
 Qed.
 

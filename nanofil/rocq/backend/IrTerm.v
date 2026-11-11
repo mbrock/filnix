@@ -69,6 +69,15 @@ Definition enc_load_type (t : load_type) : term :=
   | LdNarrow n => enc_narrow n
   end.
 
+(** As ir.pl writes the type of a [[cas]]: `l`, `p`, or a narrow
+    type. *)
+Definition enc_cas_type (t : cas_type) : term :=
+  match t with
+  | CasL => TAtom "l"
+  | CasP => TAtom "p"
+  | CasNarrow n => enc_narrow n
+  end.
+
 (** As ir.pl writes a comparison's Cond: `eq`, `ne`, the signed and
     unsigned integer orders `sle` to `ugt`, the float orders `le` `lt`
     `ge` `gt`, `o` (ordered) or `uo` (unordered). *)
@@ -179,6 +188,7 @@ Definition enc_op (o : op) : term :=
   | CheckFunction => TAtom "check_function"
   | RawLoad t off => TApp "raw_load" [enc_load_type t; TInt off]
   | RawLoadPointer off es => TApp "raw_load_pointer" [TInt off; enc_effects es]
+  | RawCas t off => TApp "raw_cas" [enc_cas_type t; TInt off]
   | VaArgs => TAtom "va_args"
   | VaArg => TAtom "va_arg"
   | Setjmp kind =>
