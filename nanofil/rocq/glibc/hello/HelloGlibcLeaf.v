@@ -12,7 +12,9 @@
       take any function at that name with a call triple ([strcmp_spec],
       [memcmp_spec]) whose result is 0 just when the strings, or the
       bytes, are equal, as glibc's own strcmp's will be; [streq_glibc]
-      and [memeq_glibc] return 1 just when they are equal.
+      and [memeq_glibc] return 1 just when they are equal. memcmp's
+      triple is for fewer than 16 bytes, which glibc's own memcmp meets
+      (HelloGlibcProgClosed.v).
 
     The genv links Hello with glibc: its functions at `memset` and
     `memchr` are glibc's, and the registry holds OsRegistry.v's
@@ -70,14 +72,17 @@ Definition strcmp_spec : Prop :=
 
 (** A call triple for the function at `memcmp`: on as many bytes xs and
     ys of two live objects at any shares, through read-write or
-    read-only capabilities, n their count, it returns an int that is 0
-    just when they are equal, and hands them back. *)
+    read-only capabilities, n their count, below 16, it returns an int
+    that is 0 just when they are equal, and hands them back.
+    Only fewer than 16 bytes: from 16 bytes on glibc's own memcmp
+    reads words through pointers it rebuilds from integers, which have
+    no capability, so it traps (MemcmpLogic.v's header). *)
 Definition memcmp_spec : Prop :=
   exists F, find_fn ge (TAtom "memcmp") = Some (Defined F) /\
   (forall p q n, is_Some (call_frame F [WPtr p; WPtr q; WInt n])) /\
   forall fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ,
     call_frame F [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length xs))] = Some fr ->
-    (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> length ys = length xs ->
+    (length xs < 16)%nat -> (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> length ys = length xs ->
     0 <= o -> 0 <= o' -> b + o + Z.of_nat (length xs) <= r_end reg ->
     b' + o' + Z.of_nat (length xs) <= r_end reg' -> r_end reg <= 2 ^ 48 -> r_end reg' <= 2 ^ 48 ->
     Forall (fun x => 0 <= x < 256) xs -> Forall (fun x => 0 <= x < 256) ys ->
@@ -170,9 +175,9 @@ Proof.
 Qed.
 
 (** `memeq`'s triple, from any [memcmp_spec]: on as many bytes xs and
-    ys of two live objects at any shares, n their count, it returns 1
-    just when they are equal, and 0 otherwise. *)
-Lemma memeq_glibc (Hcmp : memcmp_spec) dq1 dq2 b reg o c xs b' reg' o' c' ys Φ : 0 < b ->
+    ys of two live objects at any shares, n their count, below 16, it
+    returns 1 just when they are equal, and 0 otherwise. *)
+Lemma memeq_glibc (Hcmp : memcmp_spec) dq1 dq2 b reg o c xs b' reg' o' c' ys Φ : 0 < b -> (length xs < 16)%nat ->
   (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> length ys = length xs ->
   0 <= o -> 0 <= o' -> b + o + Z.of_nat (length xs) <= r_end reg ->
   b' + o' + Z.of_nat (length xs) <= r_end reg' -> r_end reg <= 2 ^ 48 -> r_end reg' <= 2 ^ 48 ->
@@ -184,13 +189,13 @@ Lemma memeq_glibc (Hcmp : memcmp_spec) dq1 dq2 b reg o c xs b' reg' o' c' ys Φ 
         : gexpr) {{ Φ }}.
 Proof.
   destruct Hcmp as (F & HF & Hfr & Hspec).
-  intros Hb0 Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HΦ". rewrite memeq_entry.
+  intros Hb0 H16 Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HΦ". rewrite memeq_entry.
   assert (Hn : Z.of_nat (length xs) < 2 ^ 64) by lia.
   destruct (Hfr (mkPtr (b + o) c) (mkPtr (b' + o') c') (Z.of_nat (length xs))) as [fr Hfr'].
   iApply wp_enter; [exact find_e_start | reflexivity |]. iNext. cbn [b_insts b_jump e_start].
   iApply (wp_call_bind with "[-]"); [cbn; rewrite (Z.mod_small (Z.of_nat (length xs))); [reflexivity | lia]
     | exact HF | exact Hfr' |]. iNext.
-  iApply (Hspec with "Hl Hx Hl' Hy"); [exact Hfr' | exact Hc | exact Hc' | exact Hly | exact Ho | exact Ho'
+  iApply (Hspec with "Hl Hx Hl' Hy"); [exact Hfr' | exact H16 | exact Hc | exact Hc' | exact Hly | exact Ho | exact Ho'
     | exact Hend | exact Hend' | exact Hr | exact Hr' | exact Hx | exact Hy |].
   iIntros (k Hk) "Hl Hx Hl' Hy". iExists _. iSplit; [done|]. iNext.
   pst. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
