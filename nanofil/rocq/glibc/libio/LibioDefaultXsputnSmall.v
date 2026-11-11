@@ -82,7 +82,7 @@ Proof.
     { iFrame. iPureIntro. unfold room_ok, in_buf. cbn. split_and!; first [reflexivity | assumption | lia]. }
     iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
               dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
-    all: unfold n in *; lk_fin.
+    all: unfold n in *; first [intros _; discriminate | lk_fin].
   + (* L65: the byte loop. *)
     fbrv false. fs. fs. norm. fldp "Hl" "Hwp" "Hbl". fs. fs.
     iApply (wp_dx_bytes w0 registry ge fb freg b reg sz (wa - b) cnt dq b' reg' so c' ys (n - t)
@@ -102,7 +102,7 @@ Proof.
       split_and!; first [reflexivity | assumption | lia]. }
     iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
               (mkPtr ea (Obj b)) dq b' reg' so c' ys (t - cnt) with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
-    all: unfold n in *; lk_fin.
+    all: unfold n in *; first [intros _; discriminate | lk_fin].
 Qed.
 
 End rules.

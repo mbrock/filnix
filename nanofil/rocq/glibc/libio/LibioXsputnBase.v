@@ -186,13 +186,14 @@ Definition fwq_spec : Prop :=
        errno_any eb -∗ Φ (Ret (WInt r))) -∗
     WP (ERun fr : sexpr) {{ Φ }}.
 
-(** What `c: _IO_new_file_xsputn(f, s, n)` leaves: r, `c: EOF` as a
-    `c: size_t` or a count of at most n, the stream with any buffer and
-    its rest, and the source back. *)
+(** String output returns either EOF or a count no greater than n.
+    A nonempty input leaves an allocated buffer even when output
+    fails. The stream's remaining resources and the source are returned
+    to the caller. *)
 Definition xs_post (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb n : Z)
     (dq : dfrac) (b' : Z) (reg' : region) (so : Z) (ys : list Z)
     (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
-  ∀ r nb' wp' we', ⌜r = 2 ^ 64 - 1 \/ 0 <= r <= n⌝ -∗ live fb freg -∗
+  ∀ r nb' wp' we', ⌜(r = 2 ^ 64 - 1 \/ 0 <= r <= n) /\ (0 < n -> nb' <> None)⌝ -∗ live fb freg -∗
     pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗ wbuf fb nb' wp' we' -∗ xos w0 eb X fb nb' -∗
     liveq dq b' reg' -∗ bytesq dq b' so ys -∗ Φ (Ret (WInt r)).
 
@@ -270,7 +271,7 @@ Qed.
 Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
-  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> nb <> None ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 <= t -> 0 <= d -> t + d <= n ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v4") e = Some (WInt n) ->
@@ -282,14 +283,14 @@ Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L178") (b_insts xs_L178) (b_jump xs_L178)))
         : sexpr) {{ Φ }}.
 Proof.
-  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy Ht Hd Htd Hv0 Hv4 Hp3 Hv175 Hp1.
+  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Ht Hd Htd Hv0 Hv4 Hp3 Hv175 Hp1.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [xs_L178 b_insts b_jump]. fs.
   destruct (Z.eq_dec t 0) as [-> | Ht0].
   - (* Nothing left: L122 returns n. *)
     fbrv true. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). unwrap2. lia.
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [right; unwrap2; lia | intros _; exact Hnb].
   - fbrv false. fs. fs.
     set (j := Z.to_nat (n - t)).
     iEval (rewrite (bytesq_split dq b' so ys j); [|lia]) in "Hys". iDestruct "Hys" as "[Hys1 Hys2]".
@@ -302,10 +303,11 @@ Proof.
               vreg nb wp we dq b' reg' (so + Z.of_nat j) c' (drop j ys) with "Hvt Hl Hvtp Hwb Hos Hl' Hys2");
       [reflexivity | exact Hov | exact Hfo | exact Hfb | exact Hfal | exact Hfend | exact Hfreg | exact Hc' | exact Hb8'
       | lia | lia | exact Hyreg | apply Forall_drop; exact Hy |].
-    iNext. iIntros (k nb' wp' we' Hk) "Hl Hvtp Hwb Hos Hl' Hys2". resume.
+    iNext. iIntros (k nb' wp' we' [Hk Hprogress]) "Hl Hvtp Hwb Hos Hl' Hys2". resume.
     rewrite Hlj in Hk. rewrite (Z.mod_small k); [|lia].
     fs. fs. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' [Hys1 Hys2]"); [unwrap2; lia|].
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' [Hys1 Hys2]").
+    { split; [right; unwrap2; lia | intros _; apply Hprogress; rewrite Hlj; lia]. }
     iApply (bytesq_split dq b' so ys j); [lia|]. iFrame.
 Qed.
 

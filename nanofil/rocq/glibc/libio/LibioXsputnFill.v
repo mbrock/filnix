@@ -126,7 +126,7 @@ Proof.
   iApply (wp_xs_L96 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg
             (Some (b, sz)) (mkPtr (wa + c) (Obj b)) we dq b' reg' so c' ys (n - c) mf
             with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
-  all: unfold n in *; try lia. all: lk_fin.
+  all: unfold n in *; try lia; try (intros _; discriminate). all: lk_fin.
 Qed.
 
 (** Block `c: L20` on, cnt bytes of room from the write pointer and
@@ -163,7 +163,7 @@ Proof.
     fbrv true. fs.
     iApply (wp_xs_L96 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys n mf with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
-    all: unfold n in *; try lia. all: lk_fin.
+    all: unfold n in *; try lia; try (intros Hlt; lia). all: lk_fin.
   - fbrv false. fs. fs.
     destruct (Z_lt_le_dec (Z.of_nat (length ys)) cnt) as [Hlt | Hle].
     + (* More room than bytes: all n. *)

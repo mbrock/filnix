@@ -90,7 +90,7 @@ Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; u
 Lemma wp_xs_L117 eb X fb freg vb vreg nb we we' dq b' reg' so c' ys T d r e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
-  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> nb <> None ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 <= r <= d -> 0 < d <= T -> T <= n ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -107,7 +107,7 @@ Lemma wp_xs_L117 eb X fb freg vb vreg nb we we' dq b' reg' so c' ys T d r e Φ :
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "iw_2.L117") (b_insts xs_L117) (b_jump xs_L117)))
         : sexpr) {{ Φ }}.
 Proof.
-  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Hv0 Hc0 Hv114 Hv136 Hv4 Hp5 Hv67 Hv175 Hp1.
+  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Hv0 Hc0 Hv114 Hv136 Hv4 Hp5 Hv67 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hroom Hos Hl' Hys HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
@@ -121,7 +121,7 @@ Proof.
     all: unfold n in *; try lia. all: lk_fin.
   - (* Fewer: L188 returns n - (T - r). *)
     fbrv false. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). unwrap2. lia.
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [right; unwrap2; lia | intros _; exact Hnb].
 Qed.
 
 End rules.

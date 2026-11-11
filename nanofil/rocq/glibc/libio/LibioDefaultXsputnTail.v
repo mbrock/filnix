@@ -59,22 +59,25 @@ Local Instance dx_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** What `c: _IO_default_xsputn(f, s, n)` leaves: the count k it
-    wrote, at most n, the stream with any buffer and its rest os, and
-    the source back. *)
+(** Default string output returns a count between zero and n, together
+    with the stream and source resources. A nonempty input leaves an
+    allocated buffer even when the count is zero. *)
 Definition dx_post (os : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb n : Z) (dq : dfrac)
     (b' : Z) (reg' : region) (so : Z) (ys : list Z) (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
-  ∀ k nb' wp' we', ⌜0 <= k <= n⌝ -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  ∀ k nb' wp' we', ⌜0 <= k <= n /\ (0 < n -> nb' <> None)⌝ -∗ live fb freg -∗
+    pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
     wbuf fb nb' wp' we' -∗ os fb nb' -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗ Φ (Ret (WInt k)).
 
-(** The loop's head with t of the n bytes ys from offset so of b' left
-    to write, s past the others: the triple [wp_dx_loop] proves. *)
+(** The loop keeps t bytes left to write and advances the source past
+    the others. Once it has consumed any input, it retains the fact
+    that the stream has a buffer. *)
 Definition dx_loop (os : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb : Z) (vreg : region)
     (dq : dfrac) (b' : Z) (reg' : region) (so : Z) (c' : cap) (ys : list Z) (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
   let n := Z.of_nat (length ys) in
   ∀ e t nb wp we, ⌜lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) /\
       lookup (TAtom "v4") e = Some (WInt n) /\ lookup (TAtom "pr.7") e = Some (WInt t) /\
-      lookup (TAtom "pr.2") e = Some (WPtr (mkPtr (b' + (so + (n - t))) c')) /\ 0 <= t <= n⌝ -∗
+      lookup (TAtom "pr.2") e = Some (WPtr (mkPtr (b' + (so + (n - t))) c')) /\ 0 <= t <= n /\
+      (t < n -> nb <> None)⌝ -∗
     live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗ wbuf fb nb wp we -∗ os fb nb -∗
     liveq dq b' reg' -∗ bytesq dq b' so ys -∗ ▷ dx_post os fb freg vb n dq b' reg' so ys Φ -∗
     WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L16") (b_insts dx_L16) (b_jump dx_L16)))
@@ -89,7 +92,7 @@ Lemma wp_dx_L22 os fb freg vb vreg nb wp we dq b' reg' so c' ys t e Φ :
   overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   c' = Obj b' \/ c' = Ro b' -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
-  Forall (fun y => 0 <= y < 256) ys -> 0 <= t <= n ->
+  Forall (fun y => 0 <= y < 256) ys -> 0 <= t <= n -> (t < n -> nb <> None) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (fb + off_write_ptr) (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "pr.8") e = Some (WInt t) ->
@@ -101,7 +104,7 @@ Lemma wp_dx_L22 os fb freg vb vreg nb wp we dq b' reg' so c' ys t e Φ :
   WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L22") (b_insts dx_L22) (b_jump dx_L22)))
         : sexpr) {{ Φ }}.
 Proof.
-  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hso Hyend Hyreg Hy Ht Hv0 Hc0 Hv4 Hp8 Hp3. unfold file_size in Hfend.
+  intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hso Hyend Hyreg Hy Ht Hprogress Hv0 Hc0 Hv4 Hp8 Hp3. unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [dx_L22 b_insts b_jump]. st.
@@ -109,7 +112,7 @@ Proof.
   { (* No byte left: L100, then L19 returns n. *)
     fbrv false. fs. fbr. fs. fs.
     iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). unwrap2. lia. }
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [unwrap2; lia|]. exact Hprogress. }
   fbrv true.
   (* L99: the jump table, checked against `c: __io_vtables`. *)
   iPoseProof (vtables_slot ge vb vreg slot_overflow "_IO_new_file_overflow" with "Hvt") as "#Hsw"; [cbn; tauto|].
@@ -148,7 +151,7 @@ Proof.
       pose proof (Z.mod_pos_bound Y 256 ltac:(lia)); set (Z0 := Y mod 256) in * end.
     rewrite (Z.mod_small Z0); [|lia]. rewrite (Z.mod_small Z0); [|lia]. lia. }
   iApply (Hov with "Hvt Hl Hvtp Hwb Hos"); [reflexivity | left; exact Hch | exact Hfb | exact Hfal | unfold file_size; lia | exact Hfreg |].
-  iNext. iIntros (r nb' wp' we' Hr) "Hl Hvtp Hwb Hos". resume.
+  iNext. iIntros (r nb' wp' we' [Hr Hnb]) "Hl Hvtp Hwb Hos". resume.
   assert (Hr32 : 0 <= r < 2 ^ 32).
   { destruct Hr as [-> | ->]; [lia|]. destruct (ch =? 2 ^ 32 - 1); lia. }
   rewrite (Z.mod_small r); [|lia].
@@ -157,11 +160,11 @@ Proof.
   - (* `c: EOF`: L19 returns n - t. *)
     fbrv false. fs. fs.
     iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). unwrap2. lia.
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [unwrap2; lia|]. intros _. exact Hnb.
   - (* The byte went: L96 runs the loop again on t - 1. *)
     fbrv true. fs. fs. fs. fs.
     iApply ("IH" with "[%] Hl Hvtp Hwb Hos Hl' Hys HK").
-    unfold n in *. split_and!; try (lookups; reflexivity); try lia.
+    unfold n in *. split_and!; try (lookups; reflexivity); try lia; try (intros _; exact Hnb).
     all: lookups; first [do 3 f_equal; cbn [ptr_addr]; unwrap2; lia | do 2 f_equal; unwrap2; lia].
 Qed.
 

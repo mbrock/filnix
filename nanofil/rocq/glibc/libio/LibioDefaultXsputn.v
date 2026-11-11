@@ -91,7 +91,7 @@ Lemma wp_dx_loop os fb freg vb vreg dq b' reg' so c' ys Φ :
 Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy. unfold file_size in Hfend.
   iIntros "#Hvt". iLöb as "IH". iEval (unfold dx_loop; cbv zeta).
-  iIntros (e t nb wp we (Hv0 & Hv4 & Hp7 & Hp2 & Ht)) "Hl Hvtp Hwb Hos Hl' Hys HK".
+  iIntros (e t nb wp we (Hv0 & Hv4 & Hp7 & Hp2 & Ht & Hprogress)) "Hl Hvtp Hwb Hos Hl' Hys HK".
   iDestruct "Hwb" as "(Hwc & Hwp & Hwe & Hroom)".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [dx_L16 b_insts b_jump]. fs. fchk "Hl".
@@ -119,7 +119,7 @@ Proof.
       { iFrame. iPureIntro. exact Hok. }
       iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
                 dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
-      all: lk_fin.
+      all: first [intros _; discriminate | lk_fin].
   - (* No buffer yet: both pointers null, no room; L22. *)
     iDestruct "Hroom" as %[-> ->].
     fldn "Hl" "Hwp". fs. fchk "Hl". fldn "Hl" "Hwe". fs. fs. fs. fbrv true. fs.
@@ -151,7 +151,7 @@ Proof.
   destruct (Z.eq_dec n 0) as [Hn0 | Hn0].
   - (* Nothing to write: L10 returns 0. *)
     fbrv false. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). rewrite Zmod_0_l. lia.
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). rewrite Zmod_0_l. split; lia.
   - fbrv true. fs.
     iPoseProof (wp_dx_loop os fb freg vb vreg dq b' reg' so c' ys Φ with "Hvt") as "Hloop"; try assumption.
     iEval (unfold dx_loop; cbv zeta) in "Hloop".

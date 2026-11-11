@@ -82,7 +82,7 @@ Lemma wp_xs_L96 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T mf e Φ :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   c' = Obj b' \/ c' = Ro b' -> 0 < b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
-  Forall (fun y => 0 <= y < 256) ys -> 0 <= T <= n -> mf = 0 \/ mf = 1 ->
+  Forall (fun y => 0 <= y < 256) ys -> 0 <= T <= n -> (T < n -> nb <> None) -> mf = 0 \/ mf = 1 ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "pr.5") e = Some (WInt T) ->
@@ -94,7 +94,7 @@ Lemma wp_xs_L96 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T mf e Φ :
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L96") (b_insts xs_L96) (b_jump xs_L96)))
         : sexpr) {{ Φ }}.
 Proof.
-  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy HT Hmf Hv0 Hc0 Hv4 Hp5 Hp6 Hp1.
+  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy HT Hprogress Hmf Hv0 Hc0 Hv4 Hp5 Hp6 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
   cbn [xs_L96 b_insts b_jump]. fs. fs. fs.
@@ -102,7 +102,7 @@ Proof.
   { (* Nothing left, no flush: L122 returns n. *)
     assert (T = 0) by lia. assert (mf = 0) by lia. subst T mf.
     fbrv true. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). unwrap2. lia. }
+    iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [right; unwrap2; lia | exact Hprogress]. }
   assert (Htm' : 0 < T + mf) by lia. clear Htm.
   assert (Hse : sign_extension (2 ^ 32) (2 ^ 31) (mf mod 2 ^ 32) = mf) by (destruct Hmf as [-> | ->]; reflexivity).
   assert (Hmf' : 0 <= mf <= 1) by lia. rewrite Hse. fbrv false.
@@ -129,7 +129,7 @@ Proof.
   iNext.
   iApply (Hov with "Hvt Hl Hvtp Hwb Hos"); [reflexivity | right; reflexivity | exact Hfb | exact Hfal
     | unfold file_size; lia | exact Hfreg |].
-  iNext. iIntros (r nb' wp' we' Hr) "Hl Hvtp Hwb Hos". resume.
+  iNext. iIntros (r nb' wp' we' [Hr Hnb]) "Hl Hvtp Hwb Hos". resume.
   assert (Hr32 : r = 2 ^ 32 - 1 \/ r = 0) by (destruct Hr as [-> | ->]; [left | right]; reflexivity).
   rewrite (Z.mod_small r); [|lia]. fs.
   destruct Hr32 as [-> | ->].
@@ -137,9 +137,9 @@ Proof.
     fbrv false. fs. fs.
     destruct (Z.eq_dec T 0) as [-> | HT0].
     + fbrv false. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-      iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). left. reflexivity.
+      iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [left; reflexivity | intros _; exact Hnb].
     + fbrv true. fs. fs. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
-      iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). right. unwrap2. lia.
+      iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [right; unwrap2; lia | intros _; exact Hnb].
   - (* The flush went: L132. *)
     fbrv true.
     iApply (wp_xs_L132 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb' wp' we'
