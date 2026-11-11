@@ -1438,6 +1438,14 @@ path of a pollcheck stores it again after `filc_pollcheck_slow` leaves
 the non-catching one there, so calls store no origin. The entry does not
 zero the `lowers[]` entries that its incoming words fill.
 
+A frame holds only what the function spills. The plan gives every
+temporary a slot, which compile mode needs; `rplain_keys` keeps the slot
+of a temporary only when it has no register home, keeps a pool slot only
+when some key aliased to it needs one, and drops the shadows of phis,
+which this mode does not use. In the λANF build of the backend, the
+mean frame went from 483 to 159 bytes and the largest from 84 KB to
+512 bytes.
+
 - **Validation and proofs.** Every allocated function is checked
   before emission by a linear-time Gallina validator (`valid_alloc`).
   `RegsProof.v` (compiled with an open-assumption gate in the default

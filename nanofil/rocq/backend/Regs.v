@@ -1780,13 +1780,38 @@ Fixpoint build_pblocks_phis_map (bs : list pblock) (m : nmap (list phi)) : nmap 
   | b :: bs' => build_pblocks_phis_map bs' (nm_add (pb_label b) (pb_phis b) m)
   end.
 
+(** Whether the allocated code keeps the key [k] in the frame: a
+    temporary only when it has no register home in [nreg], a phi's
+    shadow never (edges are parallel moves here), anything else always. *)
+Definition rkey_needs_slot (nreg : nmap hreg) (k : key) : bool :=
+  match k with
+  | KTmp n => match nm_find n nreg with Some _ => false | None => true end
+  | KShadow _ => false
+  | _ => true
+  end.
+
+(** The plain keys of [fr] that get a slot under register allocation.
+    The plan gives every temporary a slot, as compile mode needs; here
+    a pool slot stays only when some key aliased to it needs one, so a
+    function's frame holds only what it spills. *)
+Definition rplain_keys (nreg : nmap hreg) (fr : frame) : list key :=
+  let used := fold_left (fun m a => if rkey_needs_slot nreg (fst a)
+                                    then nm_add (key_term (snd a)) tt m else m)
+                        (fr_aliases fr) nm_empty in
+  filter (fun k => match k with
+                   | KStorage _ _ =>
+                       match nm_find (key_term k) used with Some _ => true | None => false end
+                   | _ => rkey_needs_slot nreg k
+                   end) (fr_plain fr).
+
 (** Build the frame layout and [rctx] for [p], adding save slots for
     the callee-saved registers that [rm] uses. *)
 Definition build_rctx (p : plan) (names : list name) (cmap : ZMap.t class)
                       (rm : ZMap.t hreg) : rctx :=
   let fr := pl_frame p in
   let '(slots1, locals, plain_bytes0) :=
-    fold_left plain_slot (fr_plain fr) (nm_empty, nm_empty, 0) in
+    fold_left plain_slot (rplain_keys (build_name_reg_map names O rm nm_empty) fr)
+              (nm_empty, nm_empty, 0) in
   let used_cs := collect_used_cs_acc callee_saved_hregs (ZMap.elements rm) [] in
   let '(saves, plain_bytes) := place_callee_saves used_cs plain_bytes0 [] in
   let base := plain_bytes + sixteen + eight * Zlength (fr_roots fr) in

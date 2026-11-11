@@ -86,7 +86,19 @@ have become cheaper:
   direct calls, which takes two more words in registers. A function that
   calls nothing links no Fil-C frame. The entry stores the catching
   origin once, where every call used to store it, and it does not zero
-  the roots that the incoming arguments fill.
+  the roots that the incoming arguments fill. A frame holds slots only
+  for what the function spills, so the mean frame is 159 bytes instead
+  of 483.
+
+Both builds need a stack that grows with the input, and run.sh gives
+them 1 GB. On lvm.ir the arena build needs 12.1 MiB, and 15.0 MiB with
+the frames of 4a2ef2a. At the deepest point, 43,831 of its 43,841
+frames belong to the body of `existsb`, at 256 bytes a frame.
+CertiRocq evaluates `orb` strictly, so `f a || existsb f l` makes the
+recursive call before `orb`. The OCaml extraction turns `orb` into
+`(||)`, which makes that call a tail call. Order.v's `merge_steps` is
+the other deep recursion: it conses after its recursive call in both
+builds, and a frame of its body takes 208 bytes.
 
 Where the rest goes, on rx.ir: 86% of the time is in the lowered
 functions, 4% in the string primitives, 1.5% in the collector. The

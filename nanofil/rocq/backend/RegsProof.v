@@ -4041,6 +4041,16 @@ Definition key_local_nonneg (k : key) : Prop :=
 Definition frame_locals_nonneg (fr : frame) : Prop :=
   Forall key_local_nonneg (fr_plain fr).
 
+(** [rplain_keys] keeps a subset of `fr_plain fr`, so its locals too
+    have non-negative size. *)
+Lemma rplain_keys_nonneg : forall nreg fr,
+  frame_locals_nonneg fr -> Forall key_local_nonneg (rplain_keys nreg fr).
+Proof.
+  intros nreg fr H. unfold rplain_keys, frame_locals_nonneg in *.
+  apply Forall_forall. intros k Hk. apply filter_In in Hk.
+  exact (proj1 (Forall_forall _ _) H k (proj1 Hk)).
+Qed.
+
 (** Folding [plain_slot] keeps all plain-slot offsets in `(0, off1]`. *)
 Lemma plain_slot_bounds : forall ks slots0 locals0 off0,
   Forall key_local_nonneg ks ->
@@ -4231,9 +4241,10 @@ Proof.
   intros p names cmap rm r save_off Hloc Hin.
   unfold build_rctx in *.
   set (fr := pl_frame p) in *.
-  pose proof (plain_slot_bounds (fr_plain fr) nm_empty nm_empty 0 Hloc ltac:(lia)
+  pose proof (plain_slot_bounds (rplain_keys (build_name_reg_map names O rm nm_empty) fr) nm_empty nm_empty 0
+                (rplain_keys_nonneg _ _ Hloc) ltac:(lia)
                 (fun t o H => ltac:(rewrite nm_find_empty in H; discriminate))) as Hpl.
-  destruct (fold_left plain_slot (fr_plain fr) (nm_empty, nm_empty, 0))
+  destruct (fold_left plain_slot (rplain_keys (build_name_reg_map names O rm nm_empty) fr) (nm_empty, nm_empty, 0))
     as [[slots1 locals] plain_bytes0] eqn:Epl.
   cbn [fst snd] in Hpl. destruct Hpl as [Hpb0_nonneg Hsl1].
   set (used_cs := collect_used_cs_acc callee_saved_hregs (ZMap.elements rm) []) in *.
@@ -4290,7 +4301,7 @@ Theorem build_rctx_used_callee_saved : forall p names cmap rm t r,
 Proof.
   intros p names cmap rm t r Hrm Hcs.
   unfold build_rctx.
-  destruct (fold_left plain_slot (fr_plain (pl_frame p)) (nm_empty, nm_empty, 0))
+  destruct (fold_left plain_slot (rplain_keys (build_name_reg_map names O rm nm_empty) (pl_frame p)) (nm_empty, nm_empty, 0))
     as [[slots1 locals] plain_bytes0].
   rewrite place_callee_saves_spec.
   destruct (fold_left (lower_slot _) (fr_roots (pl_frame p)) (slots1, 0)) as [slots2 _].
@@ -4396,7 +4407,7 @@ Theorem build_rctx_callee_saves_sound : forall sym_env p names cmap rm st_entry,
 Proof.
   intros sym_env p names cmap rm st_entry Hcan_e.
   unfold build_rctx.
-  destruct (fold_left plain_slot (fr_plain (pl_frame p)) (nm_empty, nm_empty, 0))
+  destruct (fold_left plain_slot (rplain_keys (build_name_reg_map names O rm nm_empty) (pl_frame p)) (nm_empty, nm_empty, 0))
     as [[slots1 locals] plain_bytes0].
   rewrite place_callee_saves_spec.
   destruct (fold_left (lower_slot _) (fr_roots (pl_frame p)) (slots1, 0)) as [slots2 _].
@@ -4474,9 +4485,10 @@ Proof.
   intros p names cmap rm d rk Hloc Hnd_r Hnd_a Hin_r Hin_a.
   unfold build_rctx.
   set (fr := pl_frame p) in *.
-  pose proof (plain_slot_bounds (fr_plain fr) nm_empty nm_empty 0 Hloc ltac:(lia)
+  pose proof (plain_slot_bounds (rplain_keys (build_name_reg_map names O rm nm_empty) fr) nm_empty nm_empty 0
+                (rplain_keys_nonneg _ _ Hloc) ltac:(lia)
                 (fun t o H => ltac:(rewrite nm_find_empty in H; discriminate))) as [Hpb0 _].
-  destruct (fold_left plain_slot (fr_plain fr) (nm_empty, nm_empty, 0))
+  destruct (fold_left plain_slot (rplain_keys (build_name_reg_map names O rm nm_empty) fr) (nm_empty, nm_empty, 0))
     as [[slots1 locals] plain_bytes0].
   set (used_cs := collect_used_cs_acc callee_saved_hregs (ZMap.elements rm) []).
   rewrite place_callee_saves_spec. cbn [rev app].
