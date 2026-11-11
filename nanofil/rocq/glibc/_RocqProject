@@ -33,3 +33,4 @@ string/MemchrLast.v
 string/MemchrLoop.v
 string/MemchrFirst.v
 string/MemchrLogic.v
+string/StrnlenLogic.v
