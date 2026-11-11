@@ -1,0 +1,43 @@
+--- a/lib/decompress/huf_decompress.c
++++ b/lib/decompress/huf_decompress.c
+@@ -713,7 +713,19 @@
+ 
+ #if ZSTD_ENABLE_ASM_X86_64_BMI2
+ 
+-HUF_ASM_DECL void HUF_decompress4X1_usingDTable_internal_fast_asm_loop(HUF_DecompressFastArgs* args) ZSTDLIB_HIDDEN;
++#include <stdfil.h>
++static void HUF_decompress4X1_usingDTable_internal_fast_asm_loop(HUF_DecompressFastArgs* args)
++{
++    HUF_DecompressFastArgs saved = *args;
++    int i;
++    zunsafe_fast_call("HUF_decompress4X1_usingDTable_internal_fast_asm_loop", args);
++    for (i = 0; i < 4; ++i) {
++        args->ip[i] = saved.ip[i] +
++            ((intptr_t)(uintptr_t)args->ip[i] - (intptr_t)(uintptr_t)saved.ip[i]);
++        args->op[i] = saved.op[i] +
++            ((intptr_t)(uintptr_t)args->op[i] - (intptr_t)(uintptr_t)saved.op[i]);
++    }
++}
+ 
+ #endif
+ 
+@@ -1516,7 +1528,18 @@
+ 
+ #if ZSTD_ENABLE_ASM_X86_64_BMI2
+ 
+-HUF_ASM_DECL void HUF_decompress4X2_usingDTable_internal_fast_asm_loop(HUF_DecompressFastArgs* args) ZSTDLIB_HIDDEN;
++static void HUF_decompress4X2_usingDTable_internal_fast_asm_loop(HUF_DecompressFastArgs* args)
++{
++    HUF_DecompressFastArgs saved = *args;
++    int i;
++    zunsafe_fast_call("HUF_decompress4X2_usingDTable_internal_fast_asm_loop", args);
++    for (i = 0; i < 4; ++i) {
++        args->ip[i] = saved.ip[i] +
++            ((intptr_t)(uintptr_t)args->ip[i] - (intptr_t)(uintptr_t)saved.ip[i]);
++        args->op[i] = saved.op[i] +
++            ((intptr_t)(uintptr_t)args->op[i] - (intptr_t)(uintptr_t)saved.op[i]);
++    }
++}
+ 
+ #endif
+ 
