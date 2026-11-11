@@ -5,17 +5,25 @@
 % dropped. Transport.v's decode_module turns it into the module.
 %
 %   (cd src && ../bin/nanofil -O outcomes FILE.ir </dev/null) |
-%     swipl rocq/scripts/gallina.pl NAME SOURCE [CHECKER] >rocq/theories/programs/NAMECode.v
+%     swipl rocq/scripts/gallina.pl [--chunk] NAME SOURCE [CHECKER] >rocq/theories/programs/NAMECode.v
 %
 % The output is a fixture: rocq/scripts/programs.sh regenerates it and fails
 % when nanofil's checked module has changed.
+%
+% With --chunk, a list of more than 64 terms inside an item (a data
+% item's initializer, such as a locale table's thousands) is printed as
+% a balanced tree of `app` over lists of at most 64, so neither Rocq's
+% parser nor parse.sh nests one `cons` per element. The term is the
+% same list. Without it the output is as before, byte for byte.
 
 :- initialization(main, main).
 
 main :-
     % The terms' atoms are UTF-8, whatever the locale (a Nix build has none).
     set_stream(user_input, encoding(utf8)),
-    current_prolog_flag(argv, [Name, Source|Rest]),
+    current_prolog_flag(argv, Argv),
+    (   select('--chunk', Argv, Args) -> nb_setval(chunk, true) ; Args = Argv, nb_setval(chunk, false) ),
+    Args = [Name, Source|Rest],
     ( Rest = [Checker] -> true ; Checker = 'rocq/scripts/programs.sh' ),
     read_term(user_input, T, []),
     (   T = module(Items0)
@@ -68,11 +76,21 @@ gallina(T) :- integer(T), !,
     ( T < 0 -> format("TInt (~d)", [T]) ; format("TInt ~d", [T]) ).
 gallina(T) :- T == [], !, format("TList []").
 gallina(T) :- is_list(T), !,
-    format("TList ["), list(T), format("]").
+    (   nb_getval(chunk, true), length(T, N), N > 64
+    ->  format("TList "), chunked(N, T)
+    ;   format("TList ["), list(T), format("]")
+    ).
 gallina(T) :- atom(T), !, atom_gallina(T).
 gallina(T) :- compound(T), !,
     compound_name_arguments(T, F, As),
     format("TApp "), string_lit(F), format(" ["), list(As), format("]").
+
+% chunked(+N, +Ts): the N terms Ts as [...] when N =< 64, else as
+% (app Left Right) of their halves, each half split the same way.
+chunked(N, Ts) :- N =< 64, !, format("["), list(Ts), format("]").
+chunked(N, Ts) :-
+    L is N // 2, R is N - L, length(Ls, L), append(Ls, Rs, Ts),
+    format("(app "), chunked(L, Ls), format(" "), chunked(R, Rs), format(")").
 
 list([]).
 list([X|Xs]) :- gallina(X), ( Xs == [] -> true ; format("; ") ), list(Xs).

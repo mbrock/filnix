@@ -19,3 +19,12 @@ zsys/OsClose.v
 zsys/OsExit.v
 zsys/OsThread.v
 zsys/OsRegistry.v
+string/WordString.v
+string/StrlenLoop.v
+string/StrlenWord.v
+string/StrcmpCode.v
+string/StrncmpCode.v
+string/MemcmpCode.v
+string/StrchrCode.v
+string/MemFwdCode.v
+string/MallocCode.v
