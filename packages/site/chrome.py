@@ -17,7 +17,8 @@ For each page it
 - sets the blocks about a page (SITE/stream/about.tsv, from blocks.pl)
   in that page's margin, under its title;
 - fills <span data-count="KEY"></span> with a count of the site's code
-  pages (counts()), and fails if a key has none.
+  pages (counts()), and fails if a key has none;
+- fails if any page contains U+FFFD, text a renderer decoded wrongly.
 """
 import html
 import os
@@ -178,6 +179,7 @@ def main(site, src):
     number = counts(site, src)
     about = margins(site)
     n = 0
+    garbled = []
     for dirpath, _, files in os.walk(site):
         for f in files:
             if not f.endswith(".html"):
@@ -186,6 +188,8 @@ def main(site, src):
             rel = os.path.relpath(path, site)
             with open(path, encoding="utf-8") as fh:
                 text = fh.read()
+            if "\ufffd" in text:
+                garbled.append(rel)
             new = fill(dress(rel, text, about.get(rel, ())), number)
             if rel == "index.html" and stream:
                 new = re.sub(r'(<div data-stream="latest">).*?(</div>)',
@@ -196,6 +200,11 @@ def main(site, src):
                     fh.write(new)
                 n += 1
     print(f"chrome: dressed {n} pages", file=sys.stderr)
+    # U+FFFD in a page means a renderer read UTF-8 as something else, as
+    # SWI-Prolog does without a locale unless a file says :- encoding(utf8).
+    if garbled:
+        sys.exit("chrome: U+FFFD (text decoded with the wrong encoding) in "
+                 + ", ".join(sorted(garbled)[:10]))
 
 
 if __name__ == "__main__":

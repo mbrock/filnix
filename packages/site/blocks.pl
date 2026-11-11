@@ -23,6 +23,9 @@
     FILES lists the repository's paths, for <about> and links.
 */
 :- module(blocks, []).
+% The Nix sandbox has no locale: without this, SWI-Prolog reads this
+% file's non-ASCII text (the bylines' middle dots) as U+FFFD.
+:- encoding(utf8).
 :- use_module(library(sgml)).
 :- use_module(library(lists)).
 :- use_module(library(apply)).
@@ -295,7 +298,7 @@ actor(_, B) -->
     { B.thread \== '', thread_url(U), atom_concat(U, B.thread, Href), sub_atom(B.thread, 0, 10, _, Short) },
     !,
     ( { B.actor == B.thread } -> "Amp" ; esc(B.actor) ),
-    " in ", el(a, none, [href=Href], ( "thread ", esc(Short), "…" )).
+    " in ", el(a, none, [href=Href, title=B.thread], ( "thread ", esc(Short) )).
 actor(_, B) --> esc(B.actor).
 
 footline(Root, B) -->
