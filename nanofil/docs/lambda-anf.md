@@ -75,17 +75,18 @@ dual-substrate compiler:
   invoking `clang` or `FilPizlonator`.
 
 > Milestones M0 ([bench/arena/](../bench/arena/)), M1
-> ([anf/](../anf/)) and M2 ([anf/lower/](../anf/lower/)) are built and
-> measured; M3–M5 remain ahead. Section 7
-> separates what is measured in this repository from the remaining
-> hypotheses.
+> ([anf/](../anf/)), M2 ([anf/lower/](../anf/lower/)) and M3
+> ([anf/backend/](../anf/backend/)) are built and measured; M4 and M5
+> remain ahead. Section 7 separates what is measured in this repository
+> from the remaining hypotheses.
 
 ## 1. Why routing Gallina through C++ or C hurts
 
 [The Gallina backend](gallina-backend.md) already extracts nanofil's
 reader, pizlonator, validator, promotion pass, register allocator and
-x86-64 emitter from Rocq. M6 and M8 measured two extraction targets on
-the 36-function regex module `rx.ir` and on Lua's `lvm.ir`, where every
+x86-64 emitter from Rocq. M6, M8, Crane's `joom/refactor`, CertiRocq's C
+backend, and M3 of this campaign measured the extraction targets on the
+36-function regex module `rx.ir` and on Lua's `lvm.ir`, where every
 build prints identical assembly bytes:
 
 | Build | `compile` (`rx` / `lvm`) | `compile-allocated` | Peak RSS (`rx` / `lvm`) |
@@ -102,6 +103,13 @@ build prints identical assembly bytes:
 | CertiRocq C (`clang`, folded) | 1.06 s / 8.07 s | 1.32 s / 6.66 s | 101 / 648 MB |
 | CertiRocq C (`filcc`, raw) | 165.4 s / — | — | 994 MB / — |
 | CertiRocq C (`filcc`, folded) | 9.54 s / — | 10.40 s / — | 512 / 433 MB |
+| **λANF → IR** (M3, Fil-C) | **0.97 s** / **15.7 s**† | **1.24 s** / **11.0 s**† | **89** / **423 MB**† |
+
+> † M3's run uses the 4.4 MB packaged `lvm.ir` (3.5 MB in the earlier
+> rows). Paired on the same orb and input, `ocamlopt` takes `0.23 /
+> 0.30 s` (`57 MB`) on `rx.ir` and `3.5 / 2.6 s` (`279 MB`) on `lvm.ir`,
+> putting M3 at **4.2–4.5× `ocamlopt`** and **8–10× faster under Fil-C**
+> than either Crane `joom/refactor` or folded CertiRocq C.
 
 ### What M6, M8, and `joom/refactor` found on Crane C++
 
@@ -700,10 +708,10 @@ object bytes out into a fresh Fil-C buffer, and resets `young_idx` and
 | **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: raw native `clang -O1` takes `8.89–13.77 s` on `rx.ir` (`165.4 s` / `994 MB` under `filcc -DVERIFFI`), while static string folding + `overrides.c` brings native C to **`1.06–1.32 s`** on `rx.ir` (`6.19–8.07 s` on `lvm.ir`) and `filcc -DVERIFFI -O1` (`143 s` build) to **`9.54 s` / `8.39 s` / `10.40 s`** (`424–512 MB`) on `rx.ir` ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
 | **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
-| **Hypothesis** | Scaling from M0's kernels to full `Compile.compile` on `rx.ir` stays within `1.5–2×` of `ocamlopt` once CFG join recovery and mapped 31-bit `Z` / `nat` / packed `string` are in place (tested in M3) |
-| **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump. M2 lowers joins and loops this way, but 3 of its 13 gate programs (`rec_clos`, `rec_clos2`, `asm`) still overflow 8 MB through direct-style non-tail recursion over 50k–100k-element lists (`List.app`, `String.append`), where `ocamlopt` overflows on `rec_clos2` only; whether `rx.ir` fits is M3's to measure |
+| **Hypothesis** | Lowering local join `Efun`s and tail loops to `goto(poll(L))` + `phi` (with no `&frame` address-taking on the native stack) eliminates the 8 MB stack overflow seen in CertiRocq C without adding a cross-function `tail_call` jump. M2 lowers joins and loops this way, but 3 of its 13 gate programs (`rec_clos`, `rec_clos2`, `asm`) still overflow 8 MB through direct-style non-tail recursion over 50k–100k-element lists (`List.app`, `String.append`), and M3's gate runs with a 1 GB stack (`ulimit -s 1048576`) for the same reason |
 | **Known (M1)** | `zsys_mmap` (`MAP_NORESERVE`, `fugc_destructor_heap`) grants up to **`4 TiB`** in one reservation at **`8 KiB/GiB`** chunk-map overhead (**`+0.37 MiB`** RSS for the full `8 GiB + 4 KiB` arena), `zsys_madvise` (`MADV_DONTNEED`) reclaims `64 MiB` and `256 MiB` major slices immediately while keeping the `arena` capability valid, and [anf/](../anf/) passes 10,000 randomized tree-rewrite steps (1,851 minor GCs in a 256-word nursery) under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` |
 | **Known (M2)** | [AnfLower.v](../anf/lower/AnfLower.v) lowers CertiRocq's `-O 1 --anf-variant 8` λANF of 13 programs (CertiRocq's 11 standalone tests, `Order.v`'s sort, `Asm.v`'s printer) to checked IR that [valid_fast] accepts, turning 5,169 of 8,106 hoisted functions into blocks; linked with [anf/](../anf/), every program prints `ocamlopt`'s bytes, also over a 256-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` (up to 466,493 minor GCs). With unmapped `nat` / `ascii` / `string` on both sides and checks kept, wall time is **`3.2–6.9×`** `ocamlopt` on the six programs that run longer than startup and **`19.8×`** on `vs_hard`; in `order`, the collector takes 0.2% of the samples, `anf_apply2` 8% and CertiRocq's uncurry wrappers 12.5% (§8, M2) |
+| **Known (M3)** | The full Gallina backend (`read_text`, [Compile.compile], [Compile.compile_promoted], [Compile.compile_allocated]) compiles through λANF → [AnfLower.v](../anf/lower/AnfLower.v) → `nanofil-backend compile-allocated` ([anf/backend/](../anf/backend/)), matching `ocamlopt` on **all 156 fixture runs** (52 IR fixtures × 3 commands, default + 4,096-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`). It runs `rx.ir` in **`0.97 / 1.24 s`** (`89 MB`) vs. `0.23 / 0.30 s` (`57 MB`) in `ocamlopt` (**`4.2×`**) and the 4.4 MB `lvm.ir` in **`15.7 / 11.0 s`** (`423 MB`) vs. `3.5 / 2.6 s` (`279 MB`) (**`4.5× / 4.2×`**), down from `10×` and `13×` before M3's lowering optimizations, missing the 2× mark; 88% of time is in small lowered functions' call prologues and arena bounds checks, and **1.5%** in the collector (§8, M3) |
 
 ## 8. Milestones
 
@@ -934,6 +942,60 @@ and [Compile.compile_allocated] to a Fil-C binary via `nanofil-backend`.
 Gate: byte-identical assembly on all 376 C corpus units and 38 IR
 fixtures, and runtime on `rx.ir` within 2× of `ocamlopt` (or the gap
 profiled to instruction level).
+
+*Equivalence done; speed at 4.2–4.5× OCaml, missing the 2× target*
+([anf/backend/](../anf/backend/), [anf/lower/](../anf/lower/); on-demand
+check `nix build -L .#checks.x86_64-linux.nanofil-anf-backend`).
+[Prims.v](../anf/lower/Prims.v) and [anf_prims.c](../anf/lower/anf_prims.c)
+map `nat`, `positive`, `N` and `Z` to 31-bit immediates or bigint
+blocks, `ascii` to its byte code, and `string` to packed byte blocks
+(with zero-copy slices past 64 bytes so byte-by-byte matching does not
+copy, and inline two-word `String.eqb`), plus the backend's own string
+helpers (`Maps.string_hash`, `Order.atom_compare`,
+`IrText.string_of_rev`), held by `selftest` across `2^30`, `2^31`,
+`2^32` and `2^64` (all 14 lower-gate programs pass, 0 differing).
+`AnfLower.v` also simplifies 4-deep constructor/projection wrappers so
+curried calls collapse to one direct call, resolves single-target
+closure/environment tag fields to direct calls (leaving 816 table calls
+of 3,039 through `anf_fnsN` pointer tables), and passes
+`(arena, st, young_idx, root_sp, nursery_end)` in parameters while
+returning `(young_idx << 32) | val` in one 64-bit word so inter-function
+calls never touch `st`.
+
+- **Equivalence gate.** Across all 52 IR fixtures (`tests/filc` and
+  `rocq/backend/tests`) × `compile`, `compile-promoted` and
+  `compile-allocated`, **0 of 156 runs differ** in stdout, stderr or
+  exit status from `ocamlopt`, both with the default nursery and with a
+  4,096-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
+- **Speed and memory** (best of 7 on `rx.ir`, 1 run on the 4,433,538 B
+  packaged `lvm.ir`, identical assembly emitted):
+
+| Input | Command | Arena | `ocamlopt` | Ratio | RSS |
+|---|---|---:|---:|---:|---:|
+| `rx.ir` (367 KB) | `compile` | **0.97 s** | 0.23 s | **4.2×** | 89 / 57 MB |
+| `rx.ir` (367 KB) | `compile-allocated` | **1.24 s** | 0.30 s | **4.2×** | 89 / 57 MB |
+| `lvm.ir` (4.4 MB) | `compile` | **15.7 s** | 3.5 s | **4.5×** | 423 / 279 MB |
+| `lvm.ir` (4.4 MB) | `compile-allocated` | **11.0 s** | 2.6 s | **4.2×** | 423 / 279 MB |
+
+  Before M3's simplification, table dispatch, register-state convention
+  and closure facts, the same four runs took `2.2 s`, `2.9 s`, `43.8 s`
+  and `26.8 s` (`10–13×`).
+- **Build cost.** Tapping takes 2 min (21.6 MB of λANF); `anf-lower`
+  takes 38 s and 1.1 GB (18,487 hoisted functions → 3,089 IR functions,
+  64 MB of IR); `nanofil-backend compile-allocated` takes ~5 min and
+  1.4 GB, dominated by quadratic validator lookups on functions of up to
+  66,000 temporaries.
+- **Where the 4.2× gap is, and what was rejected.** On `rx.ir`, **88%**
+  of samples are in the lowered functions, **4%** in string primitives,
+  and **1.5%** in the collector. The hottest functions (`term_eqb`'s
+  atom arm, `Z_as_OT.compare`, `ZMap`'s `bal`/`find`/`create`,
+  `gt_le_dec`) are tiny and called very often: each call pays a full
+  Fil-C function prologue/epilogue (stack check, 5 callee-saved
+  registers, Pizderson frame, stack arguments past the 6th) and each
+  arena access a bounds check. Blindly inlining functions of ≤10 nodes
+  with join points gained only 5% on `rx.ir` while growing the IR by
+  37% and slowing `rec_clos2` by 1.8× (wider recursive frames), so it is
+  not landed.
 
 **M4. In-process `libnanofil` and three-stage self-hosting.**
 Link the arena-compiled Gallina backend behind `nanofil_compile_nfb` /
