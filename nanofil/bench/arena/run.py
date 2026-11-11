@@ -189,7 +189,9 @@ def main():
             "filc-veriffi": os.path.join(work, "filc-veriffi"),
             "filc-fugc": os.path.join(work, "filc-fugc"),
         }
-        subprocess.check_call([ocamlopt, "-O2", "unix.cmxa", os.path.join(HERE, "bench_ocaml.ml"), "-o", bins["ocamlopt"]], env=env)
+        ml_copy = os.path.join(work, "bench_ocaml.ml")
+        shutil.copyfile(os.path.join(HERE, "bench_ocaml.ml"), ml_copy)
+        subprocess.check_call([ocamlopt, "-O2", "unix.cmxa", ml_copy, "-o", bins["ocamlopt"]], env=env)
         subprocess.check_call([filcc, "-O2", os.path.join(HERE, "driver.c"), o_checked, "-o", bins["arena-ir-checked"]], env=env)
         subprocess.check_call([filcc, "-O2", os.path.join(HERE, "driver.c"), o_erased, "-o", bins["arena-ir-erased"]], env=env)
         subprocess.check_call([filcc, "-O2", os.path.join(HERE, "bench_c_arena.c"), "-o", bins["c-arena-filcc"]], env=env)
