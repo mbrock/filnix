@@ -179,6 +179,21 @@ Ltac closed_ints :=
       let v := eval vm_compute in X in tryif constr_eq X v then fail else change X with v
     end.
 
+(** The term X holds no integer test. *)
+Ltac innermost X :=
+  lazymatch X with context [_ =? _] => fail | context [_ <? _] => fail | context [_ <=? _] => fail | _ => idtac end.
+
+(** Decide a goal of integer tests, such as a branch condition, by
+    a case on each test and arithmetic. *)
+Ltac decide_ints :=
+  unwrap;
+  repeat match goal with
+    | |- context [?x =? ?y] => innermost x; innermost y; destruct (Z.eqb_spec x y); cbn [negb andb orb]
+    | |- context [?x <? ?y] => innermost x; innermost y; destruct (Z.ltb_spec x y); cbn [negb andb orb]
+    | |- context [?x <=? ?y] => innermost x; innermost y; destruct (Z.leb_spec x y); cbn [negb andb orb]
+    end;
+  first [reflexivity | exfalso; clear_junk; first [lia | Z.div_mod_to_equations; lia]].
+
 (** ## Steps over a Logic instance *)
 
 (** The step tactics over the [[runtime]] R and [LogicSig] LG0: each
@@ -192,10 +207,15 @@ Ltac enter := iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts 
 
 (** A check, its bounds by arithmetic, with the object's life H. *)
 Ltac chk H :=
-  first [ iApply (wp_check with H); [reflexivity | reflexivity | reflexivity | ar | ar | ar |]
-        | iApply (wp_half_check with H);
-            [reflexivity | reflexivity | reflexivity | reflexivity | ar | ar | lia | ar | ar |]
-        | iApply (wp_renew with H); [reflexivity | reflexivity | reflexivity | reflexivity | ar | ar | ar |] ];
+  lazymatch goal with
+  | |- context [Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _] =>
+      iApply (wp_check with H); [reflexivity | reflexivity | reflexivity | ar | ar | ar |]
+  | |- context [Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _] =>
+      iApply (wp_half_check with H);
+        [reflexivity | reflexivity | reflexivity | reflexivity | ar | ar | lia | ar | ar |]
+  | |- context [Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _] =>
+      iApply (wp_renew with H); [reflexivity | reflexivity | reflexivity | reflexivity | ar | ar | ar |]
+  end;
   iNext; iIntros H.
 
 (** A branch on a closed condition: computed. *)
@@ -204,13 +224,22 @@ Ltac br :=
   lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
     let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
 
+(** A branch whose condition is b, by [decide_ints]. *)
+Ltac brv b :=
+  iApply wp_branch; [reflexivity | iNext];
+  lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] =>
+    let E := fresh "E" in assert (E : (n =? 0) = b) by decide_ints; rewrite E; clear E end;
+  cbn [edge_label].
+
 (** One step whose premises reduce: a pure let, a flight, entering a
     block, or a goto. The values stay symbolic. *)
 Ltac st :=
-  first
-    [ iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; cbn; reflexivity | iNext]
-    | iApply wp_flight; [reflexivity | reflexivity | reflexivity | iNext]
-    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-    | iApply wp_goto; iNext ].
+  lazymatch goal with
+  | |- context [Exec _ (Let _ _ _ _ :: _) _] =>
+      iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; cbn; reflexivity | iNext]
+  | |- context [Exec _ (Flight _ _ _ _ :: _) _] => iApply wp_flight; [reflexivity | reflexivity | reflexivity | iNext]
+  | |- context [Enter _ _] => iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
+  | |- context [Exec _ [] (JGoto _)] => iApply wp_goto; iNext
+  end.
 
 End LibioStepOn.
