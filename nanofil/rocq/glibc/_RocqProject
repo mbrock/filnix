@@ -287,3 +287,4 @@ getopt/GetoptCode07.v
 getopt/GetoptTerm.v
 getopt/GetoptModule.v
 getopt/GetoptState.v
+getopt/GetoptInitial.v
