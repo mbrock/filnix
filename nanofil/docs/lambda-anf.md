@@ -1105,9 +1105,13 @@ The implementation is in [anf/lib/](../anf/lib/) and
   **byte-for-byte on 228 compiles**.
 
   The loader uses `memfd_create` and `dlopen`, with no disk files.
-  It gives each image a unique spelling of its `/proc/self/fd` path,
-  using `/.` and `//`. Otherwise, reusing a closed descriptor's number
-  could make `dlopen` return an earlier image's handle.
+  Because Fil-C's `dlclose` leaves loaded objects mapped, `nanofil_load`
+  keeps a content-keyed cache (`ded56a6`, 64-bit hash + byte comparison
+  against a page-sharing read-only mapping of the anonymous file) and
+  returns an already-loaded object's handle when given identical bytes,
+  even after `dlclose`. Each *new* image gets a unique spelling of its
+  `/proc/self/fd` path (`/.` and `//`) so reused descriptor numbers
+  never make `dlopen` alias two distinct images.
 
   The gate matches the reference on **all 795 IR compiles** and
   **all 57 regex compiles** (53 IR fixtures × 5 commands × 3 rounds, and
@@ -1156,7 +1160,11 @@ The implementation is in [anf/lib/](../anf/lib/) and
   before `5aeb3f5`), while `830–1,029`-block patterns take `6–13 s`
   (down from `37 s`, dominated by the validator) and stay on PCRE2's
   interpreter. Fil-C's `dlclose` still does not unload shared objects,
-  so each compiled pattern image (13–140 KB) stays mapped until exit.
+  so each *distinct* compiled pattern image (13–140 KB) stays mapped
+  until exit; recompiling the same pattern hits `nanofil_load`'s content
+  cache (0 new executable regions across 20 recompiles in the PCRE2
+  hook, against 20 before `ded56a6`), though the compile itself still
+  runs each time.
 
 **M5. `never_panics`, Campaign 5 check erasure, and λANF simulation.**
 Prove `arena_bounds` + `live` preservation in [Logic.v](../rocq/theories/logic/Logic.v)
