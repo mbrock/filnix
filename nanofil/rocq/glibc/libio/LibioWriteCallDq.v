@@ -129,6 +129,29 @@ Proof.
   iNext. iApply ("HK" with "[%] Hps Herr"). exact Hk.
 Qed.
 
+(** The noncanceling wrapper calls the same OS write contract directly.
+    It preserves fractional source ownership and errno ownership without
+    inspecting or changing the caller's cancellation state. *)
+Lemma wp_glibc___write_nocancel_dq fr fd p n eb dq ps Φ :
+  call_frame glibc___write_nocancel [WInt fd; WPtr p; WInt n] = Some fr ->
+  0 <= fd < 2 ^ 32 -> 0 <= n < 2 ^ 64 ->
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
+  (forall m, all_agree m ps -> os_readable m p n) ->
+  ptsq dq ps -∗ errno_any eb -∗
+  ▷ (∀ k, ⌜(0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1⌝ -∗ ptsq dq ps -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+Proof.
+  intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". enter.
+  iApply (wp_zsys_write_dq with "Hps Herr");
+    [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
+    | apply (ext_data ge Hext); cbn; tauto | cbn; repeat (rewrite Z.mod_small; [|lia]); reflexivity
+    | exact He | exact Hin | exact Hrd |].
+  iNext. iIntros (k Hk) "Hps Herr".
+  assert (Hk' : 0 <= k < 2 ^ 64) by lia.
+  iApply wp_ret; [reflexivity | reflexivity |]. rewrite !(Z.mod_small k); [|lia|lia].
+  iNext. iApply ("HK" with "[%] Hps Herr"). exact Hk.
+Qed.
+
 (** The life and bytes of a share, as one list of pieces. *)
 Lemma liveq_bytesq_ptsq dq b reg o xs :
   liveq dq b reg -∗ bytesq dq b o xs -∗ ptsq dq ([(PLive b, VLive reg)] ++ byte_ps b o xs).
