@@ -62,7 +62,8 @@ Proof.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   iApply (HWD.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite
     fr fb freg fl f2 fd tw off dq' b reg c o xs eb with
-    "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); assumption.
+    "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try assumption.
+  left. exact Hf2.
 Qed.
 
 (** Writing a string preserves the stream's fields, its heap buffer

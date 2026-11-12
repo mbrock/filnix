@@ -85,7 +85,7 @@ Proof.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   iApply (HWD.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite fr fb freg fl f2 fd tw off
             (DfracOwn 1) b reg (Obj b) o xs eb with "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK");
-    try assumption. left. reflexivity.
+    try assumption; first [left; assumption | left; reflexivity].
 Qed.
 
 (** LibioDoWrite.v's [wp_glibc__IO_new_do_write_mode] with its call

@@ -186,6 +186,7 @@ libio/LibioXsputn.v
 libio/LibioStdfilesCode.v
 libio/LibioStdfiles.v
 libio/LibioWriteCallDq.v
+libio/LibioWriteJoinDq.v
 libio/LibioWriteDq.v
 libio/LibioPutsInv.v
 libio/LibioPutsLock.v

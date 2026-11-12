@@ -1,16 +1,12 @@
-(** `c: _IO_new_file_write` (LibioReadCode.v) writes the bytes it is
-    given with `c: __write` until all are written or a call fails. This
-    file proves it for bytes the caller owns only in part and may name
-    through a read-only pointer ([wp_glibc__IO_new_file_write_dq]), as
-    `c: _IO_new_file_xsputn` passes the string of `c: fputs` or
-    `c: puts`. LibioWrite.v proves it for bytes owned whole.
+(** A file write may consume only part of its input or fail. This file
+    proves that the captured glibc write loop safely retries the remaining
+    bytes and preserves the caller's share of the input. It also allows
+    a read-only input pointer.
 
-    The proof is LibioWrite.v's Löb induction over the head of the
-    loop, block `c: L8` ([wp_file_write_loop_dq]). It uses
-    LibioWriteExit.v's blocks for the exit, a failed call and a call
-    that wrote, and LibioWriteCallDq.v's call of `c: __write`. Only that
-    call reads the bytes, and it only reads them, so the share comes
-    back unchanged. *)
+    The stream's NOTCANCEL flag selects the ordinary or noncanceling
+    syscall wrapper. LibioWriteJoinDq.v supplies both proved branches,
+    and LibioWriteExit.v supplies the exit and accounting steps. The
+    loop preserves the flag and the input share even when a write fails. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
-  SysWrappers LibioWriteExit LibioWriteCallDq.
+  SysWrappers LibioWriteExit LibioWriteCallDq LibioWriteJoinDq.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,8 +26,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The triples over the [[runtime]] R and [LogicSig] LG0. *)
 Module LibioWriteDqOn (R : Runtime) (LG0 : LogicSig R).
-Module WC := LibioWriteCallDqOn R LG0.
-Import WC WC.WE WC.WE.SW WC.WE.SW.FI.ML WC.WE.SW.FI.LG WC.WE.SW.FI.L WC.WE.SW.OW WC.WE.SW.FI WC.WE.SW.ST.
+Module WJ := LibioWriteJoinDqOn R LG0.
+Module WC := WJ.WC.
+Import WJ WC WC.WE WC.WE.SW WC.WE.SW.FI.ML WC.WE.SW.FI.LG WC.WE.SW.FI.L WC.WE.SW.OW WC.WE.SW.FI WC.WE.SW.ST.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -52,7 +49,9 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     [wp_file_write_loop] at a share. *)
 Lemma wp_file_write_loop_dq fb freg fl f2 fd dq b reg c o xs eb Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
+  (Z.land f2 2 = 0 \/
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> c = Obj b \/ c = Ro b ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs ->
@@ -78,9 +77,9 @@ Proof.
     rewrite Z.sub_0_r. iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
     split; [left; split; reflexivity | exact Hflr]. }
   brv false.
-  iApply (wp_file_write_call_dq w0 registry ge Hreg Hext Hwrite fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
+  iApply (wp_file_write_join_dq w0 registry ge Hreg Hext Hwrite fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
     try wside.
-  iNext. iIntros (e' k (Hsame & Hc0 & Hk36 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
+  iNext. iIntros (e' k (Hsame & Hc0 & Hk37 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
   pose proof (Hsame (TAtom "v0") ltac:(auto)) as Hv0'. pose proof (Hsame (TAtom "v4") ltac:(auto)) as Hv4'.
   pose proof (Hsame (TAtom "pr.1") ltac:(auto)) as Hp''. pose proof (Hsame (TAtom "pr.2") ltac:(auto)) as Ht''.
   assert (Hv0n : lookup (TAtom "v0") e' = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hv0'; lookups; reflexivity).
@@ -89,7 +88,7 @@ Proof.
     by (rewrite Hp''; lookups; reflexivity).
   assert (Htn : lookup (TAtom "pr.2") e' = Some (WInt t)) by (rewrite Ht''; lookups; reflexivity).
   clear Hsame Hv0' Hv4' Hp'' Ht'' Hv0 Hv4 Hp Ht.
-  st. st. st. destruct Hk as [Hk | ->].
+  cbn [fw_L16 b_insts b_jump]. st. destruct Hk as [Hk | ->].
   2: { brv false.
        iApply ((wp_file_write_err w0 registry ge) with "Hl [$Hfl //] Hoff");
          try wside.
@@ -106,15 +105,17 @@ Proof.
   rewrite Hp2. cbn [ptr_addr ptr_cap]. do 3 f_equal. lia.
 Qed.
 
-(** `c: _IO_new_file_write(fp, data, n)` of the n bytes xs at offset o
-    of the object b, owned at the share dq and read through a pointer
-    of either capability c of b, through `c: __write` on the stream's
-    `c: _fileno`: r of them written, [fw_post], and the share back. *)
+(** The complete write preserves the source share and exact flags2
+    through either syscall branch. A set NOTCANCEL bit requires the
+    captured noncanceling wrapper. The result allows short writes and
+    failure, as described by [fw_post]. *)
 Lemma wp_glibc__IO_new_file_write_dq fr fb freg fl f2 fd tw off dq b reg c o xs eb Φ :
   call_frame glibc__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) c); WInt (Z.of_nat (length xs))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
+  (Z.land f2 2 = 0 \/
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> c = Obj b \/ c = Ro b ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs ->
