@@ -313,3 +313,6 @@ getopt/GetoptIdlePath.v
 getopt/GetoptReturn.v
 getopt/GetoptScanEnd.v
 getopt/GetoptScan.v
+getopt/GetoptCursor.v
+getopt/GetoptLongOnly.v
+getopt/GetoptDispatch.v
