@@ -103,13 +103,14 @@ build prints identical assembly bytes:
 | CertiRocq C (`clang`, folded) | 1.06 s / 8.07 s | 1.32 s / 6.66 s | 101 / 648 MB |
 | CertiRocq C (`filcc`, raw) | 165.4 s / — | — | 994 MB / — |
 | CertiRocq C (`filcc`, folded) | 9.54 s / — | 10.40 s / — | 512 / 433 MB |
-| **λANF → IR** (M3, Fil-C) | **0.80 s** / **14.4 s**† | **1.04 s** / **9.4 s**† | **89** / **422 MB**† |
+| **λANF → IR** (M3, Fil-C) | **0.75 s** / **13.7 s**† | **0.95 s** / **8.3 s**† | **89** / **422 MB**† |
 
 > † M3's run uses the 4.4 MB packaged `lvm.ir` (3.5 MB in the earlier
 > rows). Paired in interleaved runs on the same orb and input, `ocamlopt`
-> takes `0.22 / 0.29 s` (`57 MB`) on `rx.ir` and `3.3 / 2.4 s` (`279 MB`)
-> on `lvm.ir`, putting M3 at **3.6–4.3× `ocamlopt`** and **10–12× faster
-> under Fil-C** than either Crane `joom/refactor` or folded CertiRocq C.
+> takes `0.23 / 0.29 s` (`57 MB`) on `rx.ir` and `3.4 / 2.6 s` (`279 MB`)
+> on `lvm.ir`, putting M3 at **3.2–4.0× `ocamlopt`** (**3.3×** on `rx.ir`,
+> **11–13× faster under Fil-C** than either Crane `joom/refactor` or
+> folded CertiRocq C).
 
 ### What M6, M8, and `joom/refactor` found on Crane C++
 
@@ -727,11 +728,11 @@ C++ for it.
 | **Known** | CertiRocq C (`--anf-variant 8`, 16 shards) matches OCaml byte-for-byte: raw native `clang -O1` takes `8.89–13.77 s` on `rx.ir` (`165.4 s` / `994 MB` under `filcc -DVERIFFI`), while static string folding + `overrides.c` brings native C to **`1.06–1.32 s`** on `rx.ir` (`6.19–8.07 s` on `lvm.ir`) and `filcc -DVERIFFI -O1` (`143 s` build) to **`9.54 s` / `8.39 s` / `10.40 s`** (`424–512 MB`) on `rx.ir` ([CertiRocq C thread](https://ampcode.com/threads/T-01a1c7da-3aaf-76c0-bea7-1603749ae0bc)) |
 | **Known** | `Regs.v` reaches `1.05×` of Prolog `-O` on regex code and compiles `rx.ir` in `0.30 s` (M7) |
 | **Known (M0)** | On `list_sum`, `term_eqb` and persistent `avl` ([bench/arena/](../bench/arena/)), `nanofil-backend compile-allocated` over the 32-bit `w` arena runs at **`1.98×` `ocamlopt` today** (checked IR) and **`1.69×` with check erasure** (matching `filcc -O2` C arena's `1.64×`), vs. **`2.69×`** for a `void *` `-DVERIFFI` nursery and **`7.38×`** for per-node `malloc` + FUGC |
-| **Known (stack)** | Joins and intra-cluster tail loops use constant stack, but list recursion still makes stack use grow with the input. On `lvm.ir`, `existsb` accounts for **43,831 of 43,841** deepest frames because CertiRocq evaluates `orb`'s second argument before the call; OCaml's short-circuit `(||)` makes that recursion a tail call. `Order.v`'s `merge_steps` conses after recursion. Filtering unused frame slots (`d2784c6`) reduced mean frames **483 → 159 bytes** and `lvm.ir` stack **15.0 → 12.1 MiB**, without changing speed (§8, M3). M4's earlier loop rewrites brought `rx.ir` to **1 MB** for `compile-allocated` and **4 MB** for `shared-allocated`; they do not establish a fixed stack bound for larger inputs |
+| **Known (stack)** | Joins and intra-cluster tail loops use constant stack; spilling only used frame slots (`d2784c6`, mean frame **483 → 159 B**) and inlining `orb` / `andb` into short-circuit arms (`5aeb3f5`, turning `existsb` and `forallb` into loops as in OCaml) brought `lvm.ir`'s stack **15.0 → 12.1 → 9.9 MiB**. The deepest remaining recursion on `lvm.ir` is `app` (**44,101 of 44,111** frames at 208 B, consing after recursion as `Order.v`'s `merge_steps` does). In `libnanofil.so` (`7f7251d`), each compile runs on a `makecontext` fiber of `64 MB + 16 B` per input byte, so callers pass on a **512 KB** process stack (§8, M3–M4) |
 | **Known (M1)** | `zsys_mmap` (`MAP_NORESERVE`, `fugc_destructor_heap`) grants up to **`4 TiB`** in one reservation at **`8 KiB/GiB`** chunk-map overhead (**`+0.37 MiB`** RSS for the full `8 GiB + 4 KiB` arena), `zsys_madvise` (`MADV_DONTNEED`) reclaims `64 MiB` and `256 MiB` major slices immediately while keeping the `arena` capability valid, and [anf/](../anf/) passes 10,000 randomized tree-rewrite steps (1,851 minor GCs in a 256-word nursery) under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` |
 | **Known (M2)** | [AnfLower.v](../anf/lower/AnfLower.v) lowers CertiRocq's `-O 1 --anf-variant 8` λANF of 13 programs (CertiRocq's 11 standalone tests, `Order.v`'s sort, `Asm.v`'s printer) to checked IR that [valid_fast] accepts, turning 5,169 of 8,106 hoisted functions into blocks; linked with [anf/](../anf/), every program prints `ocamlopt`'s bytes, also over a 256-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1` (up to 466,493 minor GCs). With unmapped `nat` / `ascii` / `string` on both sides and checks kept, wall time is **`3.2–6.9×`** `ocamlopt` on the six programs that run longer than startup and **`19.8×`** on `vs_hard`; in `order`, the collector takes 0.2% of the samples, `anf_apply2` 8% and CertiRocq's uncurry wrappers 12.5% (§8, M2) |
-| **Known (M3)** | The full Gallina backend (`read_text`, [Compile.compile], [Compile.compile_promoted], [Compile.compile_allocated]) compiles through λANF → [AnfLower.v](../anf/lower/AnfLower.v) → `nanofil-backend compile-allocated` ([anf/backend/](../anf/backend/)), matching `ocamlopt` on **all 159 fixture runs** (53 IR fixtures × 3 commands, default + 4,096-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`). After M3's per-call round (`tuple([l, l])` returns, private local entries, frameless leaf functions, align-1 checks), it runs `rx.ir` in **`0.80 / 1.04 s`** (`89 MB`) vs. `0.22 / 0.29 s` (`57 MB`) in `ocamlopt` (**`3.6×`**) and the 4.4 MB `lvm.ir` in **`14.4 / 9.4 s`** (`422 MB`) vs. `3.3 / 2.4 s` (`279 MB`) (**`4.3× / 3.9×`**), missing the 2× mark; calls/prologues/epilogues take ~23%, spills 12%, bounds checks 11%, arena arithmetic 9%, and the collector **1.5%** (§8, M3) |
-| **Known (M4)** | `libnanofil.so` ([anf/lib/](../anf/lib/)) links the arena-compiled Gallina backend, Gallina x86-64 assembler ([Encode.v](../rocq/backend/Encode.v), byte-identical to GNU `as` on 228 compiles), Gallina ELF shared-object linker ([Elf.v](../rocq/backend/Elf.v)) and Gallina regex compiler ([Rx.v](../anf/rx/Rx.v), byte-identical to [rx.pl](https://github.com/mbrock/filnix/blob/main/experiments/regex-nanofil/rx.pl) on 2,525 files), passing **795 IR compiles** and **48 regex compiles** across both nurseries (`nanofil-anf-lib`). In-process via `memfd_create` + `dlopen`, `pcre2_jit_compile` compiles `hook.c`'s 39 patterns in **`10–141 ms` per pattern** (**`1.6 s` total** vs. `12 s` via `rxc`, zero child processes or disk files) and passes `pcre2test -jit` on `testinput1` and `testinput2` (§8, M4) |
+| **Known (M3)** | The full Gallina backend (`read_text`, [Compile.compile], [Compile.compile_promoted], [Compile.compile_allocated]) compiles through λANF → [AnfLower.v](../anf/lower/AnfLower.v) → `nanofil-backend compile-allocated` ([anf/backend/](../anf/backend/)), matching `ocamlopt` on **all 159 fixture runs** (53 IR fixtures × 3 commands, default + 4,096-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`). After the per-call and short-circuit `orb`/`andb` rounds (`4a2ef2a`, `5aeb3f5`), it runs `rx.ir` in **`0.75 / 0.95 s`** (`89 MB`) vs. `0.23 / 0.29 s` (`57 MB`) in `ocamlopt` (**`3.3×`**) and the 4.4 MB `lvm.ir` in **`13.7 / 8.3 s`** (`422 MB`) vs. `3.4 / 2.6 s` (`279 MB`) (**`4.0× / 3.2×`**), missing the 2× mark; calls/prologues/epilogues take ~23%, spills 12%, bounds checks 11%, arena arithmetic 9%, and the collector **1.5%** (§8, M3) |
+| **Known (M4)** | `libnanofil.so` ([anf/lib/](../anf/lib/)) links the arena-compiled Gallina backend, Gallina x86-64 assembler ([Encode.v](../rocq/backend/Encode.v), byte-identical to GNU `as` on 228 compiles), Gallina ELF shared-object linker ([Elf.v](../rocq/backend/Elf.v)) and Gallina regex compiler ([Rx.v](../anf/rx/Rx.v), byte-identical to [rx.pl](https://github.com/mbrock/filnix/blob/main/experiments/regex-nanofil/rx.pl) on 2,525 files), running each compile on a `makecontext` fiber (`64 MB + 16 B/byte`, up to **620 blocks** per regex in <5 s) and passing **795 IR compiles** and **57 regex compiles** on a **512 KB** process stack across both nurseries (`nanofil-anf-lib`). In-process via `memfd_create` + `dlopen`, `pcre2_jit_compile` compiles `hook.c`'s 39 patterns in **`1,488 ms` total** (vs. `12 s` via `rxc`) and passes `pcre2test -jit` on `testinput1` and `testinput2` (§8, M4) |
 
 ## 8. Milestones
 
@@ -984,7 +985,7 @@ Gate: byte-identical assembly on all 376 C corpus units and 38 IR
 fixtures, and runtime on `rx.ir` within 2× of `ocamlopt` (or the gap
 profiled to instruction level).
 
-*Equivalence done; speed at 3.6–4.3× OCaml, missing the 2× target*
+*Equivalence done; speed at 3.2–4.0× OCaml, missing the 2× target*
 ([anf/backend/](../anf/backend/), [anf/lower/](../anf/lower/); on-demand
 check `nix build -L .#checks.x86_64-linux.nanofil-anf-backend`).
 [Prims.v](../anf/lower/Prims.v) and [anf_prims.c](../anf/lower/anf_prims.c)
@@ -996,8 +997,8 @@ helpers (`Maps.string_hash`, `Order.atom_compare`,
 `IrText.string_of_rev`), held by `selftest` across `2^30`, `2^31`,
 `2^32` and `2^64` (all 14 lower-gate programs pass, 0 differing).
 
-Two optimization rounds in `AnfLower.v` and `Regs.v` brought the ratio
-from `10–13×` to `4.1–4.6×` and then to **`3.6–4.3×`**:
+Three optimization rounds in `AnfLower.v` and `Regs.v` brought the ratio
+from `10–13×` to `4.1–4.6×`, `3.6–4.3×`, and then **`3.2–4.0×`**:
 
 - **Simplification, closure resolution, and register state.** `AnfLower.v`
   simplifies 4-deep constructor/projection wrappers so curried calls
@@ -1017,6 +1018,12 @@ from `10–13×` to `4.1–4.6×` and then to **`3.6–4.3×`**:
   functions that make no calls, writes the catching origin once in the
   prologue, and skips zeroing `lowers[]` slots overwritten by incoming
   parameters.
+- **Short-circuit booleans (`5aeb3f5`).** `AnfLower.v` inlines `orb`,
+  `andb` and their kin and sinks the recursive call into the arm that
+  needs it, so `existsb` and `forallb` stop at the first deciding
+  element and compile to loops as in OCaml; a 521-block PCRE2 function
+  went from `7.1 s` to **`2.7 s`** in `compile-allocated` (`ocamlopt`:
+  `0.57 s`).
 
 Results:
 
@@ -1026,25 +1033,25 @@ Results:
   exit status from `ocamlopt`, both with the default nursery and with a
   4,096-word nursery under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
 - **Speed and memory** (best of 15 interleaved runs on `rx.ir`, median
-  of 4 on the 4,433,538 B packaged `lvm.ir`, identical assembly emitted):
+  of 2 interleaved runs on the 4,433,538 B packaged `lvm.ir`, identical
+  assembly emitted):
 
 | Input | Command | Arena | `ocamlopt` | Ratio | RSS |
 |---|---|---:|---:|---:|---:|
-| `rx.ir` (367 KB) | `compile` | **0.80 s** | 0.22 s | **3.6×** | 89 / 57 MB |
-| `rx.ir` (367 KB) | `compile-allocated` | **1.04 s** | 0.29 s | **3.6×** | 89 / 57 MB |
-| `lvm.ir` (4.4 MB) | `compile` | **14.4 s** | 3.3 s | **4.3×** | 422 / 279 MB |
-| `lvm.ir` (4.4 MB) | `compile-allocated` | **9.4 s** | 2.4 s | **3.9×** | 422 / 279 MB |
+| `rx.ir` (367 KB) | `compile` | **0.75 s** | 0.23 s | **3.3×** | 89 / 57 MB |
+| `rx.ir` (367 KB) | `compile-allocated` | **0.95 s** | 0.29 s | **3.3×** | 89 / 57 MB |
+| `lvm.ir` (4.4 MB) | `compile` | **13.7 s** | 3.4 s | **4.0×** | 422 / 279 MB |
+| `lvm.ir` (4.4 MB) | `compile-allocated` | **8.3 s** | 2.6 s | **3.2×** | 422 / 279 MB |
 
   Before M3's optimizations the four runs took `2.2 s`, `2.9 s`, `43.8 s`
-  and `26.8 s` (`10–13×`), and before the per-call round `0.90 s`,
-  `1.22 s`, `15.4 s` and `11.0 s` (`4.1–4.6×`) in the same interleaved
-  runs.
+  and `26.8 s` (`10–13×`), and `0.90 s`, `1.22 s`, `15.4 s` and `11.0 s`
+  (`4.1–4.6×`) as first pushed (`3a14460`).
 - **Build cost.** Tapping takes 2 min (21.6 MB of λANF); `anf-lower`
   takes 38 s and 1.1 GB (18,487 hoisted functions → 3,089 IR functions,
   64 MB of IR); `nanofil-backend compile-allocated` takes ~5 min and
   1.4 GB, dominated by quadratic validator lookups on functions of up to
   66,000 temporaries.
-- **Where the 3.6× gap is, and what was rejected.** On `rx.ir`, **86%**
+- **Where the 3.3× gap is, and what was rejected.** On `rx.ir`, **86%**
   of samples are in the lowered functions, **4%** in string primitives,
   and **1.5%** in the collector. Inside the lowered code, **calls,
   prologues and epilogues take ~23%** (stack check, up to 5 callee-saved
@@ -1056,30 +1063,20 @@ Results:
   of ≤10 nodes with join points gained only 5% on `rx.ir` while growing
   the IR by 37% and slowing `rec_clos2` by 1.8× (wider recursive
   frames), so it is not landed.
-
-- **Smaller frames do not make recursion constant-stack.**
-  `Regs.v` used to reserve a plain frame slot for every temporary,
-  including those held in registers. Keeping only slots that this mode
-  uses reduced the mean frame from **483 to 159 bytes** and the largest
-  from **84 KB to 512 bytes**. The body of `Order.v`'s `merge_steps`
-  shrank from **544 to 208 bytes**. The emitted code is otherwise the
-  same apart from frame offsets, and speed is unchanged. The 159-run
-  equivalence gate still passes.
-
-  Smaller frames reduced the stack needed for `lvm.ir` from **15.0 to
-  12.1 MiB**, but the stack still grows with the input. At maximum
-  depth, **43,831 of 43,841 frames** belong to `existsb`, at 256 bytes
-  each. That function tests list elements recursively. CertiRocq
-  evaluates its recursive call before combining the result with `orb`.
-  OCaml extraction instead uses short-circuit `(||)`, making that call
-  a tail call.
-
-  The other measured source is `merge_steps`, which builds a list cell
-  after its recursive call in both builds. Smaller frames and local
-  tail-call jumps save stack, but do not remove this pending work at
-  each list element. Commit `d2784c6` records the frame reduction;
-  [the frame finding](https://github.com/mbrock/filnix/blob/main/blocks/2026/11/b-2026-11-11-anf-frames.xml)
-  and [anf/backend/](../anf/backend/) record the measurements.
+- **Frame slots, `existsb`, and remaining `app` / `merge_steps` stack depth.**
+  Keeping frame slots in `Regs.v` only for temporaries a function
+  actually spills (`d2784c6`,
+  [frame block](https://github.com/mbrock/filnix/blob/main/blocks/2026/11/b-2026-11-11-anf-frames.xml))
+  cut the mean frame from **483 to 159 bytes** (largest **84 KB → 512 B**,
+  `Order.v`'s `merge_steps` **544 → 208 B**) and lowered `lvm.ir`'s peak
+  stack from **15.0 to 12.1 MiB**; short-circuiting `orb`/`andb`
+  (`5aeb3f5`,
+  [orb block](https://github.com/mbrock/filnix/blob/main/blocks/2026/11/b-2026-11-11-anf-orb.xml))
+  turned `existsb` (previously 43,831 of 43,841 deepest frames) into a
+  loop and brought `lvm.ir` down to **9.9 MiB**. At maximum depth on
+  `lvm.ir`, **44,101 of 44,111 frames** now belong to `app` (208 bytes
+  each), which conses after its recursive call in both builds just as
+  `merge_steps` does.
 
 **M4. In-process `libnanofil` and three-stage self-hosting.**
 
@@ -1113,9 +1110,9 @@ The implementation is in [anf/lib/](../anf/lib/) and
   could make `dlopen` return an earlier image's handle.
 
   The gate matches the reference on **all 795 IR compiles** and
-  **all 48 regex compiles**. It runs 53 IR fixtures with five commands
-  for three rounds, and 16 regex files for three rounds. Both the
-  default and 4,096-word nurseries pass under
+  **all 57 regex compiles** (53 IR fixtures × 5 commands × 3 rounds, and
+  19 regex files × 3 rounds), running on a **512 KB** process stack.
+  Both the default and 4,096-word nurseries pass under
   `FUGC_SCRIBBLE=1` and `FUGC_VERIFY=1`, and all 28 loadable shared objects
   load.
 
@@ -1124,46 +1121,42 @@ The implementation is in [anf/lib/](../anf/lib/) and
   nursery. Opening every image as plain `/proc/self/fd/N` fails the load
   gate by returning an earlier image's handle.
 
-  Rewriting list loops in `Encode.v` and `Drive.v` reduced the stack
-  needed for `rx.ir`'s shared object from 16–24 MB to 4 MB. M4 measured
-  these library times on the 367 KB input:
-
-| Command | Time | Stack |
-|---|---:|---:|
-| `compile` | 0.92 s | — |
-| `compile-allocated` | 1.27 s | 1 MB |
-| `shared-allocated` | 1.52 s | 4 MB |
-
-  The shared object is 144 KB. These are M4 library measurements,
-  distinct from the M3 command timings above.
+  On the 367 KB `rx.ir` input, `libnanofil` takes **`0.93 s`** for
+  `compile`, **`1.24 s`** for `compile-allocated` and **`1.45 s`** for
+  `shared-allocated` (producing a 144 KB `.so`).
 
 - **PCRE2 compiles patterns in-process.**
   [Rx.v](../anf/rx/Rx.v) ports
   [rx.pl](https://github.com/mbrock/filnix/blob/main/experiments/regex-nanofil/rx.pl) to Gallina and emits
   identical bytes on **2,525 files**. Across 1,362 PCRE2 test functions
-  of ≤128 blocks, a fresh-process compile takes a **19 ms median** and
-  at most 154 ms.
+  of ≤128 blocks, a fresh-process compile takes an **18 ms median** and
+  at most 150 ms.
 
-  Linked into PCRE2 with `PCRE2_RX_NANOFIL`, the library compiles 39 of
-  `hook.c`'s 41 patterns, and all 39 agree with the interpreter.
-  Compilation takes **10–141 ms per pattern**, or **1.6 s total**,
-  versus 12 s with a cold `rxc` cache. It also passes `pcre2test -jit`
-  on `testinput1` and `testinput2` under
-  `FUGC_SCRIBBLE=1` and `FUGC_VERIFY=1`.
+  Linked into PCRE2 with `PCRE2_RX_NANOFIL` (even on a **512 KB** process
+  stack), the library compiles 39 of `hook.c`'s 41 patterns, and all 39
+  agree with the interpreter. Compilation takes **1,488 ms total** across
+  the 39 patterns (`10–141 ms` each), versus 12 s with a cold `rxc`
+  cache, and passes `pcre2test -jit` on `testinput1` and `testinput2`
+  under `FUGC_SCRIBBLE=1` and `FUGC_VERIFY=1`.
 
-- **Stack growth and image lifetime still limit the library.**
-  `nanofil_compile_regex` refuses functions over 128
-  blocks, leaving larger patterns on PCRE2's interpreter. Before the
-  frame-slot reduction recorded under M3, functions of ≤133 blocks fit
-  in a 1 MB stack, 248 blocks needed >6 MB, and 412 blocks overflowed
-  8 MB. That last run was 13,351 frames deep in `merge_steps`.
-  Its smaller frame now saves stack, but the recursion still grows with
-  the input; those earlier block-count measurements are not new limits
-  measured after `d2784c6`, and the library retains the 128-block cap.
-  Fil-C's `dlclose` does not unload shared objects, so each compiled
-  pattern image (13–140 KB) stays mapped until exit. And Fil-C's
-  `zthread_create2` ignores `pthread_attr_setstacksize`, sizing thread
-  stacks from `ulimit -s` (or 2 MB when unlimited).
+- **`makecontext` fibers isolate host thread stacks; compile time sets the 620-block cap.**
+  Under Fil-C, a thread's stack is fixed when the process starts
+  (`zthread_create2` ignores `pthread_attr_setstacksize`, using
+  `ulimit -s` or 2 MB when unlimited). Since `7f7251d` and `f7b6769`,
+  `libnanofil` runs each compile on a `makecontext` fiber of **`64 MB +
+  16 B` per input byte** (`ANF_FIBER_MB` overrides it). Fil-C's
+  `makecontext` reads only `uc_stack.ss_size`, allocates and demand-pages
+  the fiber stack itself, enforces that fiber's stack limit, and lets
+  FUGC scan it, so the size costs virtual address space and zero time
+  (2, 64 and 256 MB fibers compile PCRE2's tests at identical speed, and
+  a 512 KB host stack compiles both `rx.ir` and 412-block patterns).
+  `nanofil_compile_regex` now caps patterns at **620 blocks** to bound
+  compile time rather than stack: every PCRE2 function up to 609 blocks
+  compiles in under **5 s** (`521` blocks takes `3.1 s`, down from `9 s`
+  before `5aeb3f5`), while `830–1,029`-block patterns take `6–13 s`
+  (down from `37 s`, dominated by the validator) and stay on PCRE2's
+  interpreter. Fil-C's `dlclose` still does not unload shared objects,
+  so each compiled pattern image (13–140 KB) stays mapped until exit.
 
 **M5. `never_panics`, Campaign 5 check erasure, and λANF simulation.**
 Prove `arena_bounds` + `live` preservation in [Logic.v](../rocq/theories/logic/Logic.v)
