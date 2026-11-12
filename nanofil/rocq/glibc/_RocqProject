@@ -310,3 +310,6 @@ getopt/GetoptIdleThree.v
 getopt/GetoptDash.v
 getopt/GetoptDashTest.v
 getopt/GetoptIdlePath.v
+getopt/GetoptReturn.v
+getopt/GetoptScanEnd.v
+getopt/GetoptScan.v

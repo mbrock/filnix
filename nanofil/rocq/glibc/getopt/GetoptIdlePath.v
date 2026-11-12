@@ -73,7 +73,8 @@ Lemma wp_getopt_idle ks e fr0 n i o f l b r av ar ps pdd sdd Φ :
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   live b r -∗ int_cell b 0 i -∗ int_cell b 40 o -∗ int_cell b 44 f -∗ int_cell b 48 l -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ word_string DfracDiscarded pdd sdd -∗
-  (∀ e' ps' i' f' l', ⌜Permutation ps ps' /\ keeps ks e e' /\ 0 <= f' <= l' /\ l' <= i' <= n /\ i <= i'⌝ -∗
+  (∀ e' ps' i' f' l', ⌜Permutation ps ps' /\ keeps ks e e' /\ 0 <= f' <= l' /\ l' <= i' <= n /\ i <= i' /\
+       lookup (TAtom "chk23") e' = Some (WPtr (mkPtr (b + 48) (Obj b)))⌝ -∗
      live b r -∗ int_cell b 0 i' -∗ int_cell b 40 o -∗ int_cell b 44 f' -∗ int_cell b 48 l' -∗
      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None
@@ -102,26 +103,33 @@ Proof.
       | kin Hk1' Hv0 | kin Hk1' Hv2 | kin Hk1' Hv12 | kin Hk1' Hc2 | exact H23
       | lia | lia | exact Hlen1 | lia | lia | lia | lia | lia | lia | lia | lia |].
     iIntros (e2 i2 (Hk2 & Hi2)) "Hl Hi Hla Ha Hc #Hs2". apply keeps_app in Hk2 as [Hk2 Hk2'].
-    iApply (DT.wp_getopt_dash_end w0 registry ge ks e2 i2 n f1 i2 b r av ar ps1 pdd sdd
+    iApply (DT.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e2 i2 n f1 i2 b r av ar ps1 pdd sdd
               with "Hl Hi Hf Hla Ha Hc Hs2 Hdd [Ho HK]");
-      [ exact Hkx3 | exact Hkd | exact Hkt | exact Hg | exact Hdd
+      [ apply avoids_app_r; [exact Hkx3 | vm_compute; reflexivity]
+      | apply avoids_app_r; [exact Hkd | vm_compute; reflexivity]
+      | apply avoids_app_r; [exact Hkt | vm_compute; reflexivity] | exact Hg | exact Hdd
       | kin2 Hk2' Hk1' Hv0 | kin2 Hk2' Hk1' Hv2 | kin2 Hk2' Hk1' Hv12 | kin2 Hk2' Hk1' Hc0
       | kin2 Hk2' Hk1' Hc2 | kin Hk2' H23
       | lia | lia | lia | lia | exact Hlen1 | lia | lia | lia | lia | lia | lia | lia | lia |].
     iIntros (e3 ps3 i3 f3 l3 (Hp3 & Hk3 & Hord)) "Hl Hi Hf Hla Ha Hc Hs3".
+    apply keeps_app in Hk3 as [Hk3 Hk3'].
     iApply ("HK" with "[%] Hl Hi Ho Hf Hla Ha Hc Hs3").
-    split; [by rewrite Hp1|]. split; [|lia].
-    eapply keeps_trans; [eapply keeps_trans; [exact Hk1 | exact Hk2] | exact Hk3].
+    split; [by rewrite Hp1|]. split; [eapply keeps_trans; [eapply keeps_trans; [exact Hk1 | exact Hk2] | exact Hk3]|].
+    split; [lia|]. split; [lia|]. split; [lia|]. kin2 Hk3' Hk2' H23.
   - iIntros (e1 l1 (Hk1 & _ & Hl1 & H23 & _)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
     apply keeps_app in Hk1 as [Hk1 Hk1'].
-    iApply (DT.wp_getopt_dash_end w0 registry ge ks e1 i n f l1 b r av ar ps pdd sdd
+    iApply (DT.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e1 i n f l1 b r av ar ps pdd sdd
               with "Hl Hi Hf Hla Ha Hc Hs1 Hdd [Ho HK]");
-      [ exact Hkx3 | exact Hkd | exact Hkt | exact Hg | exact Hdd
+      [ apply avoids_app_r; [exact Hkx3 | vm_compute; reflexivity]
+      | apply avoids_app_r; [exact Hkd | vm_compute; reflexivity]
+      | apply avoids_app_r; [exact Hkt | vm_compute; reflexivity] | exact Hg | exact Hdd
       | kin Hk1' Hv0 | kin Hk1' Hv2 | kin Hk1' Hv12 | kin Hk1' Hc0 | kin Hk1' Hc2 | exact H23
       | lia | lia | lia | lia | exact Hlen | lia | lia | lia | lia | lia | lia | lia | lia |].
     iIntros (e3 ps3 i3 f3 l3 (Hp3 & Hk3 & Hord)) "Hl Hi Hf Hla Ha Hc Hs3".
+    apply keeps_app in Hk3 as [Hk3 Hk3'].
     iApply ("HK" with "[%] Hl Hi Ho Hf Hla Ha Hc Hs3").
-    split; [exact Hp3|]. split; [eapply keeps_trans; [exact Hk1 | exact Hk3] | lia].
+    split; [exact Hp3|]. split; [eapply keeps_trans; [exact Hk1 | exact Hk3]|].
+    split; [lia|]. split; [lia|]. split; [lia|]. kin Hk3' H23.
 Qed.
 
 End path.
