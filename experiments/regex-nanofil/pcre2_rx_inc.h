@@ -37,9 +37,10 @@
    Built with PCRE2_RX_NANOFIL defined and linked with libnanofil
    (nanofil/anf/lib), the library compiles in its own process instead:
    nanofil_compile_regex turns the terms into a shared object in
-   memory, and nanofil_load loads it from a memfd. There is no cache
-   directory, no compiler to run and no environment variable, and the
-   JIT is always available. */
+   memory, and nanofil_load loads it from a memfd, or gives the object
+   it loaded for the same bytes before. There is no cache directory, no
+   compiler to run and no environment variable, and the JIT is always
+   available. */
 
 #include <dlfcn.h>
 #include <errno.h>

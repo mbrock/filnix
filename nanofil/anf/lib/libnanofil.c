@@ -14,7 +14,8 @@
  *
  * nanofil_load writes a shared object to a memfd and dlopens it by a
  * /proc/self/fd path of its own; the mapping keeps the file alive after
- * the descriptor is closed.
+ * the descriptor is closed. It gives an image it has loaded before the
+ * object already loaded.
  *
  * ANF_SLAB, ANF_NURSERY and ANF_ROOTS size the arena as for driver.c;
  * ANF_RELEASE (default 2^22 words, 16 MiB) is how far past the mark the
@@ -238,22 +239,50 @@ int nanofil_compile_regex(const char *terms, size_t terms_len, char **out, size_
     return nanofil_compile_ir(NANOFIL_REGEX, terms, terms_len, out, out_len);
 }
 
-/* The number of shared objects loaded so far. dlopen gives the object
- * already loaded under a name instead of opening another, and Fil-C's
- * dlclose leaves an object loaded, so a descriptor's /proc/self/fd path
- * names a new image only once: the number of a closed descriptor comes
- * back. Each image is opened under a name no other has had, its
- * descriptor's path with the number of the load written in the
- * directory part, "/." for a 0 bit and "//" for a 1, lowest first, which
- * the kernel reads as /proc/self/fd itself. */
+/* The shared objects loaded so far, newest first. Fil-C's dlopen has no
+ * dlclose (zsys_dlopen), so an object stays loaded until the process
+ * exits, and nanofil_load gives an image with the bytes of one loaded
+ * before that object's handle instead of loading another. An entry keeps
+ * its image as a read-only mapping of the object's memfd, which shares
+ * the file's pages, so the comparison costs address space but no memory.
+ *
+ * dlopen gives the object already loaded under a name instead of opening
+ * another, and the number of a closed descriptor comes back, so a
+ * descriptor's /proc/self/fd path names a new image only once. Each
+ * image is opened under a name no other has had, its descriptor's path
+ * with the number of the load written in the directory part, "/." for a
+ * 0 bit and "//" for a 1, lowest first, which the kernel reads as
+ * /proc/self/fd itself. */
+struct loaded {
+    struct loaded *next;
+    uint64_t hash;
+    size_t len;
+    const void *bytes;
+    void *handle;
+};
 static pthread_mutex_t load_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct loaded *loaded;
 static unsigned long long loads;
 
-void *nanofil_load(const void *image, size_t len)
+/* FNV-1a, to pass over most entries without comparing their bytes. */
+static uint64_t image_hash(const void *image, size_t len)
 {
-    int fd = memfd_create("nanofil", MFD_CLOEXEC);
-    if (fd < 0)
+    uint64_t h = 0xcbf29ce484222325u;
+    for (size_t i = 0; i < len; i++)
+        h = (h ^ ((const uint8_t *)image)[i]) * 0x100000001b3u;
+    return h;
+}
+
+/* Loads an image that no entry holds and adds its entry, under
+ * load_lock. */
+static void *load_new(const void *image, size_t len, uint64_t hash)
+{
+    struct loaded *l = malloc(sizeof *l);
+    int fd = l ? memfd_create("nanofil", MFD_CLOEXEC) : -1;
+    if (fd < 0) {
+        free(l);
         return NULL;
+    }
     for (size_t at = 0; at < len;) {
         ssize_t n = write(fd, (const char *)image + at, len - at);
         if (n < 0 && errno == EINTR)
@@ -261,21 +290,51 @@ void *nanofil_load(const void *image, size_t len)
         if (n <= 0) {
             int e = n < 0 ? errno : EIO;
             close(fd);
+            free(l);
             errno = e;
             return NULL;
         }
         at += (size_t)n;
     }
+    void *bytes = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
+    if (bytes == MAP_FAILED) {
+        int e = errno;
+        close(fd);
+        free(l);
+        errno = e;
+        return NULL;
+    }
     char path[256] = "/proc/self/fd";
     size_t at = strlen(path);
-    pthread_mutex_lock(&load_lock);
     for (unsigned long long k = loads++; k; k >>= 1, at += 2)
         memcpy(path + at, k & 1U ? "//" : "/.", 2);
-    pthread_mutex_unlock(&load_lock);
     snprintf(path + at, sizeof path - at, "/%d", fd);
     void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     int e = errno;
     close(fd);
+    if (!h) {
+        munmap(bytes, len);
+        free(l);
+        errno = e;
+        return NULL;
+    }
+    *l = (struct loaded){loaded, hash, len, bytes, h};
+    loaded = l;
+    return h;
+}
+
+void *nanofil_load(const void *image, size_t len)
+{
+    uint64_t hash = image_hash(image, len);
+    void *h = NULL;
+    pthread_mutex_lock(&load_lock);
+    for (struct loaded *l = loaded; l && !h; l = l->next)
+        if (l->hash == hash && l->len == len && memcmp(l->bytes, image, len) == 0)
+            h = l->handle;
+    if (!h)
+        h = load_new(image, len, hash);
+    int e = errno;
+    pthread_mutex_unlock(&load_lock);
     errno = e;
     return h;
 }

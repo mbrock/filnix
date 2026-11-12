@@ -76,19 +76,29 @@ looks up the module's functions with `dlsym` and closes the handle with
 
 Fil-C does not unload a shared object. Its `dlclose` returns 0 and
 leaves the object in place, and the runtime's sources say that
-unloading would first need the collector to allocate globals. This has
-two consequences. Every image that a process loads stays in memory
-until the process exits, which is 13 to 140 KB for one pattern. And
-`dlopen` returns an object that is already loaded when it is asked for
-a name that the object has, without opening the file. A closed
-descriptor's number is used again, so when a second image was opened
-as `/proc/self/fd/3`, it got the first image's object. In the PCRE2
-hook that ran one pattern's function on another pattern's match data,
-and the function's own Fil-C bounds check stopped it. Now each image is
-opened under a name that no earlier image had. The library writes the
-number of the load into the directory part of the path, `/.` for a 0
-bit and `//` for a 1, and the kernel reads that as `/proc/self/fd`
-itself. The names run `/proc/self/fd/3`, `/proc/self/fd///3`,
+unloading would first need the collector to allocate globals. So every
+object that a process loads stays in memory until the process exits,
+which is 13 to 140 KB for one pattern. `nanofil_load` therefore keeps
+the objects it has loaded and gives an image with the bytes of one of
+them that object's handle again, whether or not it was closed, instead
+of loading another. A program that compiles the same pattern many times
+keeps one copy of its code, though the compile itself runs each time.
+The library compares an image with a read-only mapping of the earlier
+object's anonymous file, which shares the file's pages and so costs no
+memory, and a 64-bit hash of the bytes passes over the other objects.
+
+A new image also needs a name that no earlier image had, or it gets an
+earlier image's object. When `dlopen` is asked for a name that a loaded
+object has, it returns that object without opening the file, and the
+kernel gives a closed descriptor's number to the next file a process
+opens. So a second image opened as `/proc/self/fd/3` got the first
+image's object. In the PCRE2 hook that ran one pattern's function on
+another pattern's match data, and the function's own Fil-C bounds check
+stopped it.
+
+To give each image such a name, the library writes the number of the
+load into the directory part of the path, `/.` for a 0 bit and `//` for
+a 1, and the kernel reads that as `/proc/self/fd` itself. The names run `/proc/self/fd/3`, `/proc/self/fd///3`,
 `/proc/self/fd/.///3` and so on.
 
 The loaded code is native code. Nothing at load time checks that it
@@ -176,17 +186,22 @@ extraction of Rx.v in rx.pl's place, which [../rx/run.sh](../rx/run.sh)
 holds to rx.pl. The gate runs once with the default nursery and once
 with a nursery of 4,096 words under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
 Then `nanofil_load` loads every shared object whose imports the Fil-C
-runtime defines. `ANF_BENCH="rx.ir lvm.ir"` also times those files.
+runtime defines, and loads each image again: it must get the handle it
+got before, and the process must map nothing more that is executable.
+`ANF_BENCH="rx.ir lvm.ir"` also times those files.
 
 ## Results
 
 All 795 compiles of the IR fixtures (53 fixtures, five commands, three
 rounds) and all 57 of the regex files (19 files, three rounds) give
 what their references give, with both nurseries, and the 28 shared
-objects load. Each check was shown to fail on a planted bug: a rewind
-to word 1 instead of the mark trapped with the small nursery, and
-opening each image as `/proc/self/fd/N` made `--load` report an
-earlier image's handle.
+objects load and load again as the objects they were. Each check was
+shown to fail on a planted bug. A rewind to word 1 instead of the mark
+trapped with the small nursery. Opening each image as
+`/proc/self/fd/N`, and a cache that compared only the length of an
+image, made `--load` report a different image's handle. A cache that
+never matched made `--load` report every image loaded again as not
+reused, with one more executable region for each.
 
 On rx.ir (PCRE2 10.49 compiled to IR, 367 KB), the library takes
 0.93 s for `compile`, 1.24 s for `compile-allocated` and 1.45 s for

@@ -13,7 +13,8 @@
 # a nursery of ANF_STRESS_NURSERY words (4096) under FUGC_SCRIBBLE=1
 # FUGC_VERIFY=1. The same for the regex command on each file of
 # PCRE2 pattern terms in ANF_REGEX. nanofil_load must then load each
-# shared object whose imports the runtime defines. Then, for each
+# shared object whose imports the runtime defines, and give each image
+# loaded again the object it loaded before. Then, for each
 # FILE.ir in ANF_BENCH, the time of the first compile in a process and
 # the best of ten after it.
 #
@@ -194,7 +195,8 @@ fi
 
 # nanofil_load must load every shared object whose imports the Fil-C
 # runtime defines (the others import functions of the fixture's C
-# driver, which this process lacks).
+# driver, which this process lacks), and give each image loaded again
+# the object it loaded before.
 runtime_only() { ! readelf --dyn-syms -W "$1" | awk '$7 == "UND" && $8 != "" {print $8}' | grep -qv '^filc_'; }
 loadable=()
 for i in "${!fixtures[@]}"; do
@@ -206,7 +208,7 @@ for i in "${!regexes[@]}"; do
   runtime_only "$work/rref/$i.5.out" && loadable+=("${regexes[$i]}")
 done
 if FUGC_SCRIBBLE=1 FUGC_VERIFY=1 test_lib --load "${loadable[@]}" >"$work/load.log"; then
-  echo "$(stamp) nanofil_load loaded ${#loadable[@]} shared objects"
+  echo "$(stamp) nanofil_load loaded ${#loadable[@]} shared objects; $(tail -1 "$work/load.log")"
 else
   grep -v '^loaded' "$work/load.log"
   bad=$((bad + 1))

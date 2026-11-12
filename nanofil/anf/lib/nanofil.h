@@ -69,11 +69,12 @@ int nanofil_compile_regex(const char *terms, size_t terms_len, char **out, size_
  * it for NANOFIL_SHARED_ALLOCATED and NANOFIL_REGEX, into the process:
  * it writes the bytes to an anonymous file (memfd_create) and opens that
  * with dlopen(RTLD_NOW | RTLD_LOCAL), so no file is written anywhere.
- * Each image is a new object, even when an earlier one had the same
- * bytes. Gives dlopen's handle, for dlsym and dlclose, or NULL: then
- * dlerror() says why, or, when it says nothing, errno does. Fil-C's
- * dlclose leaves an object loaded, so the memory of each image stays
- * mapped until the process exits. */
+ * Gives dlopen's handle, for dlsym and dlclose, or NULL: then dlerror()
+ * says why, or, when it says nothing, errno does. Fil-C's dlclose leaves
+ * an object loaded, so each object stays mapped until the process exits.
+ * An image with the same bytes as one loaded before gives that object's
+ * handle again, whether or not it was closed, and loads nothing: a
+ * program that compiles the same pattern again maps no more memory. */
 void *nanofil_load(const void *image, size_t len);
 
 #ifdef __cplusplus

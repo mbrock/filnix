@@ -241,7 +241,12 @@ below under `FUGC_SCRIBBLE=1 FUGC_VERIFY=1`.
   so does one whose function has more than 620 blocks.
 - Fil-C's `dlclose` leaves a shared object loaded. So the object of
   each pattern compiled, from 13 to 140 KB, stays mapped until the
-  process exits, even after the code is freed.
+  process exits, even after the code is freed. `nanofil_load` gives the
+  same pattern compiled again the object it already loaded, so a
+  process maps each distinct pattern's object once. `hook.c` compiles
+  its first pattern 20 times again and checks that none of them maps
+  code; without the reuse, each mapped an object of its own. Each of
+  those compiles still takes as long as the first.
 
 ### Open
 

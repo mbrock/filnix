@@ -6,7 +6,9 @@
    start character: with ovectors of several sizes, with match options
    and limits the compiled function does not handle or runs into, through
    pcre2_jit_match, and through pcre2_substitute. Then time the find-all
-   loop of pats.h's patterns with both.
+   loop of pats.h's patterns with both. Last, compile the first pattern
+   20 times again, as a program does that compiles its patterns per
+   request, and check that none of those compiles maps code.
 
    PCRE2_RX_CACHE and PCRE2_RX_COMPILER must be set as pcre2_rx_inc.h
    says. The `ms` column is the time pcre2_jit_compile took: with an
@@ -141,6 +143,56 @@ static void timed(enum how how, pcre2_code *re, const char *subj, size_t len, do
     pcre2_match_data_free(md);
 }
 
+/* The executable regions of the process: one for each shared object
+   loaded, since Fil-C maps nothing else executable. */
+static int exec_regions(void)
+{
+    FILE *f = fopen("/proc/self/maps", "r");
+    char line[4096], perms[8];
+    int n = 0;
+    while (f && fgets(line, sizeof line, f))
+        n += sscanf(line, "%*s %7s", perms) == 1 && perms[2] == 'x';
+    if (f)
+        fclose(f);
+    return n;
+}
+
+/* A program that compiles its patterns per request compiles the same
+   pattern many times. Each copy of a pattern that main has compiled
+   already is compiled here, given to pcre2_jit_compile, matched against
+   the interpreter from the start of the subject and freed. It returns 1
+   when a copy gets no function or answers otherwise, or when the
+   compiles map anything executable, which they would if each loaded an
+   object of its own. */
+static int recompiled(const struct pat *pat, const char *subj, int times)
+{
+    int err, regions = exec_regions(), bad = 0;
+    PCRE2_SIZE eo, len = strlen(subj);
+    double ms = 0;
+    pcre2_code *in = pcre2_compile((PCRE2_SPTR)pat->re, PCRE2_ZERO_TERMINATED, pat->opts, &err, &eo, NULL);
+    pcre2_match_data *a = pcre2_match_data_create_from_pattern(in, NULL), *b = pcre2_match_data_create_from_pattern(in, NULL);
+    PCRE2_SIZE *ova = pcre2_get_ovector_pointer(a), *ovb = pcre2_get_ovector_pointer(b);
+    int rcb = pcre2_match(in, (PCRE2_SPTR)subj, len, 0, 0, b, NULL);
+    for (int i = 0; i < times; i++) {
+        pcre2_code *rx = pcre2_compile((PCRE2_SPTR)pat->re, PCRE2_ZERO_TERMINATED, pat->opts, &err, &eo, NULL);
+        size_t size = 0;
+        double t0 = now();
+        int rc = pcre2_jit_compile(rx, PCRE2_JIT_COMPLETE);
+        ms += (now() - t0) * 1e3;
+        pcre2_pattern_info(rx, PCRE2_INFO_JITSIZE, &size);
+        int rca = pcre2_match(rx, (PCRE2_SPTR)subj, len, 0, 0, a, NULL);
+        bad += rc != 0 || size == 0 || rca != rcb || (rca > 0 && (ova[0] != ovb[0] || ova[1] != ovb[1]));
+        pcre2_code_free(rx);
+    }
+    int more = exec_regions() - regions;
+    printf("%s compiled again %d times in %.0f ms: %d differ, %d executable regions mapped\n", pat->name, times, ms,
+           bad, more);
+    pcre2_match_data_free(a);
+    pcre2_match_data_free(b);
+    pcre2_code_free(in);
+    return bad || more;
+}
+
 int main(int argc, char **argv)
 {
     double budget = argc > 1 ? atof(argv[1]) : 0.3, compile_ms = 0;
@@ -229,5 +281,7 @@ int main(int argc, char **argv)
         pcre2_code_free(in);
     }
     printf("%d patterns compiled, pcre2_jit_compile took %.0f ms in all\n", compiled, compile_ms);
+    if (argc <= 2 && recompiled(&pats[0], html, 20))
+        status = 1;
     return status;
 }
