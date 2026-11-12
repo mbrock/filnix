@@ -288,3 +288,5 @@ getopt/GetoptTerm.v
 getopt/GetoptModule.v
 getopt/GetoptState.v
 getopt/GetoptInitial.v
+getopt/GetoptBytes.v
+getopt/GetoptInitialize.v
