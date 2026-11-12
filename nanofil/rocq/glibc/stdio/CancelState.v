@@ -109,5 +109,63 @@ Proof.
   iApply ("HK" with "Htl [Hcb]"). iSplit; [iPureIntro; lia|iAssumption].
 Qed.
 
+(** A nested diagnostic saves the already-disabled state rather than pretending
+    that cancellation was enabled. This path neither CASes nor unwinds. *)
+Lemma wp_cancel_disabled_save fr tb treg sb sreg so prior Φ :
+  call_frame glibc___pthread_setcancelstate
+    [WInt 1; WPtr (mkPtr (sb + so) (Obj sb))] = Some fr ->
+  ow_self w0 = mkPtr tb (Obj tb) ->
+  0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
+  0 < sb -> 0 <= so -> sb + so + 4 <= r_end sreg -> r_end sreg <= 2 ^ 63 ->
+  live tb treg -∗ int_cell tb 792 1 -∗ live sb sreg -∗ int_cell sb so prior -∗
+  ▷ (live tb treg -∗ int_cell tb 792 1 -∗ live sb sreg -∗ int_cell sb so 1 -∗
+     Φ (Ret (WInt 0))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
+Proof.
+  intros Hfr Hself Htb Htal Htend Htreg Hsb Hso Hsend Hsreg. injection Hfr as <-.
+  iIntros "Htl [%Hch Hcb] Hsl [%Hprior Hsave] HK".
+  enter. st. closed_ints. br. st. st. st. st. closed_ints. br. st.
+  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side;
+    [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
+  st. norm. chk "Htl".
+  iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
+    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
+     left; reflexivity | ar |].
+  iNext. iIntros "Htl Hcb". st. st. st. closed_ints. br.
+  st. st. st. st. st. st. st.
+  brv false. st. st. closed_ints. br. st. chk "Hsl".
+  iApply (wp_raw_store_w with "Hsl Hsave");
+    [reflexivity | reflexivity | reflexivity | ar | reflexivity | wi_store |].
+  iNext. iIntros "Hsl Hsave". st. st. st. closed_ints. br. st.
+  iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply ("HK" with "Htl [Hcb] Hsl [Hsave]").
+  - iSplit; [iPureIntro; lia|iAssumption].
+  - iSplit; [iPureIntro; lia|iAssumption].
+Qed.
+
+(** Returning from a nested diagnostic leaves cancellation disabled for the
+    outer diagnostic, without touching an old-state slot. *)
+Lemma wp_cancel_keep_disabled fr tb treg Φ :
+  call_frame glibc___pthread_setcancelstate [WInt 1; WPtr null] = Some fr ->
+  ow_self w0 = mkPtr tb (Obj tb) ->
+  0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
+  live tb treg -∗ int_cell tb 792 1 -∗
+  ▷ (live tb treg -∗ int_cell tb 792 1 -∗ Φ (Ret (WInt 0))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+Proof.
+  intros Hfr Hself Htb Htal Htend Htreg. injection Hfr as <-.
+  iIntros "Htl [%Hch Hcb] HK".
+  enter. st. closed_ints. br. st. st. st. st. closed_ints. br. st.
+  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side;
+    [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
+  st. norm. chk "Htl".
+  iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
+    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
+     left; reflexivity | ar |].
+  iNext. iIntros "Htl Hcb". st. st. st. closed_ints. br.
+  st. st. st. st. st. st. st. closed_ints. br. st. st. closed_ints. br. st.
+  iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply ("HK" with "Htl [Hcb]"). iSplit; [iPureIntro; lia|iAssumption].
+Qed.
+
 End rules.
 End CancelStateOn.
