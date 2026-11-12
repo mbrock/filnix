@@ -277,3 +277,13 @@ hi_atexit/HiAtexitEntryFields.v
 hi_atexit/HiAtexitEntryImage.v
 hi_atexit/HiAtexitEntryOwn.v
 hi_atexit/HiAtexitSafe.v
+getopt/GetoptCode01.v
+getopt/GetoptCode02.v
+getopt/GetoptCode03.v
+getopt/GetoptCode04.v
+getopt/GetoptCode05.v
+getopt/GetoptCode06.v
+getopt/GetoptCode07.v
+getopt/GetoptTerm.v
+getopt/GetoptModule.v
+getopt/GetoptState.v
