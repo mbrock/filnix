@@ -290,3 +290,5 @@ getopt/GetoptState.v
 getopt/GetoptInitial.v
 getopt/GetoptBytes.v
 getopt/GetoptInitialize.v
+getopt/GetoptColon.v
+getopt/GetoptEntry.v
