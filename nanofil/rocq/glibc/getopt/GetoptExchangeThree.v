@@ -1,0 +1,66 @@
+(** Glibc's scanner inlines its exchange routine twice. This file
+    proves the outer loop of the second copy with the script that proves
+    the first. *)
+
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+From iris.program_logic Require Import language weakestpre.
+From stdpp Require Import list.
+From Stdlib Require Import String ZArith Lia.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
+  ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+  GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptSwap3Lower GetoptSwap3Upper.
+Import ListNotations.
+Open Scope Z_scope.
+
+Local Arguments Z.add : simpl nomatch.
+Local Arguments Z.sub : simpl nomatch.
+Local Arguments Z.mul : simpl nomatch.
+Local Arguments Z.opp : simpl nomatch.
+
+(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
+Module GetoptExchange3On (R : Runtime) (LG0 : LogicSig R).
+(** The first copy's module supplies the outer-loop script. *)
+Module O := GetoptExchange2On R LG0.
+(** This module proves the lower swap loop of the second copy. *)
+Module SL3 := GetoptSwap3LowerOn R LG0.
+(** This module proves the upper swap loop of the second copy. *)
+Module SU3 := GetoptSwap3UpperOn R LG0.
+Import O O.SL.X O.SL.X.I O.SL.X.I.S O.SL.X.I.S.FI O.SL.X.I.S.FI.ML O.SL.X.I.S.FI.LG O.SL.X.I.S.FI.L
+  O.SL.X.I.ST O.SL.X.I.GB O.SL.X.A.
+
+Section exchange.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+(** The OS interpretation survives the scanner's safepoints. *)
+Local Instance xchg_stable : SafepointStable (os_wi w0) := SL3.X.I.OW.os_wi_stable w0.
+(** The program logic uses the caller's registry and OS interpretation. *)
+Local Instance xchg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry (os_wi w0) ge.
+(** This notation selects expressions of the linked language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** The outer loop keeps 0 <= bot <= mid <= top <= n: each swap run
+    shrinks the longer block by the length of the shorter one. *)
+Lemma wp_x3_loop ks e bot mid top av ar n ps Φ :
+  avoids ks x3_outer = true ->
+  lookup (TAtom "iw_3.pr.1") e = Some (WInt bot) -> lookup (TAtom "iw_3.pr.3") e = Some (WInt top) ->
+  lookup (TAtom "iw_3.v11") e = Some (WInt mid) ->
+  lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
+  0 <= bot <= mid -> mid <= top -> top <= n < 2 ^ 31 ->
+  Z.of_nat (List.length ps) = n ->
+  0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗
+  (∀ e' ps', ⌜Permutation ps ps' /\ keeps ks e e'⌝ -∗
+     live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗
+     WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "iw_3.L18") (Some (TAtom "iw_3.L23")))) : gexpr)
+       {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc_getopt_internal_r e [] None
+              (Exec (TAtom "iw_3.L16") (b_insts x3_blk16) (b_jump x3_blk16))) : gexpr) {{ Φ }}.
+Proof. x_outer (SL3.wp_x3_lower w0 registry ge) (SU3.wp_x3_upper w0 registry ge)
+  (TAtom "iw_3.pr.1") (TAtom "iw_3.pr.3") (TAtom "iw_3.v11") ks e bot mid top av ar n ps. Qed.
+
+End exchange.
+End GetoptExchange3On.
