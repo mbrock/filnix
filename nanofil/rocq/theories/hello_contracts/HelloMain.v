@@ -13,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia Permutation.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
-  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
+  ExternalCalls LibcCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic LibcStringLogic MemLogic LibcMemLogic
   LentLogic Locale LocaleLogic Libc HelloModule HelloLeaf HelloLocale HelloConvDefs HelloName
   HelloProgName Startup Getopt GetoptLogic HelloVersion.
 Open Scope Z_scope.

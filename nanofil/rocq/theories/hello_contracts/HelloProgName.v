@@ -6,7 +6,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
-  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
+  ExternalCalls LibcCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic LibcStringLogic MemLogic LibcMemLogic
   HelloModule HelloLeaf HelloName.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -41,6 +41,7 @@ Qed.
 
 (** String-valued program-name reasoning over any [[runtime]]. *)
 Module HelloProgNameOn (R : Runtime) (LG0 : LogicSig R).
+Module CE := LibcCallsOn R LG0.L.M.
 Module HN := HelloNameOn R LG0.
 (** Import the existing module paths rather than copying their nested
     signatures into another chain of aliases. *)
@@ -100,7 +101,7 @@ Proof.
     split; [exact (string_bounded _ _ _ _ _ _ Hok Ha Hn) | exact (string_bounded _ _ _ _ _ _ Hok' Ha' Hn)].
   - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ [[%Hok Hs] [%Hok' Ht]]".
     iDestruct (pts_facts with "Hσ Hs") as %(Ha & _). iDestruct (pts_facts with "Hσ Ht") as %(Ha' & _).
-    destruct (M.E.strncmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+    destruct (CE.strncmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
       as (_ & -> & -> & p' & q' & n' & bits & Hx & Hresult & He).
     injection Hx as <- <- <-. injection He as ->.
     assert (Hlength : bits = 0 -> Z.min (Z.of_nat (length xs)) n = Z.min (Z.of_nat (length ys)) n).

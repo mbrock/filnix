@@ -2,8 +2,8 @@
     are proved at reached calls, not assumed from invocation existence. *)
 
 From Stdlib Require Import String ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity
-  ExternalCalls Startup Stdio Shutdown ExternalMachine Hi Composition Panics.
+From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics Identity
+  ExternalCalls LibcCalls Startup Stdio Shutdown ExternalMachine Hi Composition Panics.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

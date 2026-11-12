@@ -12,7 +12,7 @@
     coverage remain trusted obligations, not new runtime axioms. *)
 
 From Stdlib Require Import String ZArith List Bool Lia Permutation.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls Startup ExternalMachine.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls LibcCalls Startup ExternalMachine.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

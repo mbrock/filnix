@@ -7,7 +7,7 @@
     [[obligation|obligations]]. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls ExternalMachine Startup Stdio Shutdown.
+From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls LibcCalls ExternalMachine Startup Stdio Shutdown.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

@@ -5,7 +5,7 @@
     independent obligations; there are no new runtime axioms. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls ExternalMachine.
+From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics Identity ExternalCalls LibcCalls ExternalMachine.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

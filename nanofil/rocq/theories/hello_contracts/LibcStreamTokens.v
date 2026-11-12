@@ -3,9 +3,9 @@
     it never deletes authoritative Iris resources. *)
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls
+From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls LibcCalls
   ExternalMachine Stdio Shutdown Streams Formatting Libc LibcStreams Pieces Heap
-  ContractFrame Logic StringLogic LentLogic LibcStreamLogic LibcErrnoLogic.
+  ContractFrame Logic StringLogic LibcStringLogic LentLogic LibcStreamLogic LibcErrnoLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 

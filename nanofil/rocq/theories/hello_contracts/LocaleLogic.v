@@ -38,7 +38,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  StepRules ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic Locale
+  StepRules ExternalCalls LibcCalls ExternalMachine Pieces Heap ContractFrame Language Logic Locale
   LentLogic.
 Open Scope Z_scope.
 Open Scope list_scope.

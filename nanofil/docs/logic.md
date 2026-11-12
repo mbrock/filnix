@@ -1,5 +1,18 @@
 # A program logic for never_panics
 
+The libc-contract examples on this page are retained reference proofs.
+Their string and output triples now live in
+[LibcStringLogic.v](../rocq/theories/hello_contracts/LibcStringLogic.v), and their
+allocation, copying, and search triples live in
+[LibcMemLogic.v](../rocq/theories/hello_contracts/LibcMemLogic.v).
+
+[StringLogic.v](../rocq/theories/logic/StringLogic.v) and
+[MemLogic.v](../rocq/theories/logic/MemLogic.v) keep the shared ownership
+assertions and instruction rules used by the live glibc campaign.
+
+The historical line counts and timings below describe the modules before
+this split, when those assertions and libc triples were in the same files.
+
 November 2026. The brief for the campaign after formal.md's Campaign 7
 proofs of single programs ([formal.md, Campaign 7](formal.md#campaign-7-a-program-that-never-panics)).
 It records a proposal mbrock received from another Fable instance, what
@@ -543,12 +556,13 @@ does.
 7. `never_panics` of the linked module from the entry.
 
 **Milestone 2.** New libc triples:
-- [StringLogic.v](../rocq/theories/logic/StringLogic.v) adds `wp_strcmp`,
+- [LibcStringLogic.v](../rocq/theories/hello_contracts/LibcStringLogic.v) retains `wp_strcmp`,
   `wp_strncmp` and `wp_strrchr`.
-- [MemLogic.v](../rocq/theories/logic/MemLogic.v) adds `wp_memcmp` and
+- [LibcMemLogic.v](../rocq/theories/hello_contracts/LibcMemLogic.v) retains `wp_memcmp` and
   `wp_memchr` over blocks read through read-write or read-only
-  capabilities (`block_readable`), and `string_window`, which lends n
-  bytes of a string as a block.
+  capabilities. Their shared helpers `block_readable` and `string_window`,
+  which lends n bytes of a string as a block, remain in
+  [MemLogic.v](../rocq/theories/logic/MemLogic.v).
 - Logic.v gains `wp_ret_void` for `void` functions.
 
 [HelloLeaf.v](../rocq/theories/hello_contracts/HelloLeaf.v) (12 s, 7 s of which is
@@ -598,7 +612,7 @@ mbrtowc, errno and composite-world contracts. New in the logic:
   read a fresh object as a block.
 - [HelloLeaf.v](../rocq/theories/hello_contracts/HelloLeaf.v) adds `xmalloc_spec`:
   the selected malloc never returns null, so `xalloc_die` is dead.
-- MemLogic.v adds `wp_memchr_string`, a search for the NUL in an
+- LibcMemLogic.v retains `wp_memchr_string`, a search for the NUL in an
   owned string with any bound. Campaign 4's memchr reads only through
   its first match (25073c1), so the bound may run past the string's
   object; `memchr_input_bounded` reads the admission off the string's

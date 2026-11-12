@@ -6,8 +6,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run
-  ExternalCalls ExternalMachine Stdio Shutdown Streams Formatting Libc LibcStreams LibcExit
-  Pieces Heap ContractFrame Logic StringLogic LentLogic LibcStreamLogic LibcErrnoLogic
+  ExternalCalls LibcCalls ExternalMachine Stdio Shutdown Streams Formatting Libc LibcStreams LibcExit
+  Pieces Heap ContractFrame Logic StringLogic LibcStringLogic LentLogic LibcStreamLogic LibcErrnoLogic
   LibcStreamTokens LibcStreamAdapter LibcDiagnosticLogic
   HelloModule HelloLeaf HelloVersion HelloClose.
 Import ListNotations.

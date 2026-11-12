@@ -36,8 +36,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  StepRules ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic
-  MemLogic.
+  StepRules ExternalCalls LibcCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic LibcStringLogic
+  MemLogic LibcMemLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -206,7 +206,8 @@ Qed.
 
 (** The triples over any [[runtime]] R. *)
 Module LentLogicOn (R : Runtime) (LG0 : LogicSig R).
-Module ML := MemLogicOn R LG0.
+Module CE := LibcCallsOn R LG0.L.M.
+Module ML := LibcMemLogicOn R LG0.
 Module SL := ML.SL.
 Module LG := ML.LG.
 Module L := LG.L.
@@ -387,7 +388,7 @@ Proof.
   - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ Hk'".
     iDestruct (lent_facts with "Hσ Hk'") as %(h & _ & _ & Hr & Hs & _).
     pose proof (SLen.c_string_length _ _ _ _ Hr Hs) as Ht.
-    destruct (M.E.strlen_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+    destruct (CE.strlen_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
       as (_ & -> & -> & p' & n & Hx & Hn & He). injection Hx as <-. injection He as ->.
     rewrite (terminated_length_unique _ _ _ _ Hn Ht).
     iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w]. iModIntro.
@@ -424,7 +425,7 @@ Proof.
     + exact (terminated_bounded _ _ _ _ (SLen.c_string_length _ _ _ _ Hr Hs) Hn).
     + exact (string_bounded _ _ _ _ _ _ Hok' Ha' Hn).
   - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ [_ Ht]".
-    destruct (M.E.strncmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
+    destruct (CE.strncmp_invocation _ _ _ _ _ _ _ _ _ _ _ _ Hinv)
       as (_ & -> & -> & p' & q' & n' & bits & Hx & _ & He). injection He as ->.
     iDestruct (pure_return with "Hσ") as "Hσ"; [exact Hinv|]. destruct σ as [m s fuel w0]. iModIntro.
     iExists _. iSplit; [iPureIntro; reflexivity|]. iFrame "Hσ". iApply ("HK" with "Ht").

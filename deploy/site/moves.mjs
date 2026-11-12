@@ -47,6 +47,11 @@ const moves = [
     "/nanofil/rocq/rocq-spikes-IrisListSum.html": "/nanofil/rocq/rocq-spikes-ListSumLogic.html",
     "/nanofil/rocq/rocq-backend-certirocq-CertiExtract.html": "/nanofil/rocq/rocq-backend-Extract.html",
   })[path],
+  // The legacy libc-contract protocols moved beside Hello in November 2026.
+  path => ({
+    "/nanofil/rocq/rocq-theories-external-Stdio.html": "/nanofil/rocq/rocq-theories-hello_contracts-Stdio.html",
+    "/nanofil/rocq/rocq-theories-external-Shutdown.html": "/nanofil/rocq/rocq-theories-hello_contracts-Shutdown.html",
+  })[path],
 ];
 
 // moved(path): where the page at a removed canonical path is now, or

@@ -4,7 +4,7 @@
     shutdown stdout. Physical buffering and ownership are separate.
     These are trusted libc contracts, not a native adequacy proof. *)
 From Stdlib Require Import ZArith List Bool Lia.
-From Nanofil Require Import Syntax Values Memory Runtime ExternalCalls ExternalMachine Stdio.
+From Nanofil Require Import Syntax Values Memory Runtime ExternalCalls LibcCalls ExternalMachine Stdio.
 Import ListNotations.
 Open Scope Z_scope.
 

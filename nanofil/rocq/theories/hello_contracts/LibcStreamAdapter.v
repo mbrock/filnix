@@ -4,9 +4,9 @@
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls
+From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls LibcCalls
   ExternalMachine Stdio Shutdown Streams Libc LibcStreams Pieces Heap ContractFrame
-  Logic StringLogic LentLogic LibcStreamLogic LibcErrnoLogic LibcStreamTokens.
+  Logic StringLogic LibcStringLogic LentLogic LibcStreamLogic LibcErrnoLogic LibcStreamTokens.
 Open Scope Z_scope.
 Open Scope list_scope.
 

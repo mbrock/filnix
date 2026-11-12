@@ -5,7 +5,7 @@
     Translated formats outside this grammar need a further contract or a
     proved translation restriction, not an invented successful parse. *)
 From Stdlib Require Import ZArith List Bool Lia.
-From Nanofil Require Import Syntax Values Memory Runtime ExternalCalls ExternalMachine Stdio Streams.
+From Nanofil Require Import Syntax Values Memory Runtime ExternalCalls LibcCalls ExternalMachine Stdio Streams.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

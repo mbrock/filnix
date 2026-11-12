@@ -4,7 +4,7 @@
     remain trusted premises, not consequences of writable addresses.
     Closed handles retain identity and protocol, but grant no authority. *)
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls
+From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls LibcCalls
   ExternalMachine Locale Stdio Shutdown Streams Formatting Libc.
 Import ListNotations.
 Open Scope Z_scope.

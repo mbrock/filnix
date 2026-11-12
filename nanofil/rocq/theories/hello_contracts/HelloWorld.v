@@ -6,8 +6,8 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list.
 From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
-  ExternalCalls ExternalMachine Startup Locale Stdio Shutdown Getopt Libc LibcStreams
-  Machine StepRules Pieces Heap ContractFrame StringLogic MemLogic LentLogic LocaleLogic GetoptLogic
+  ExternalCalls LibcCalls ExternalMachine Startup Locale Stdio Shutdown Getopt Libc LibcStreams
+  Machine StepRules Pieces Heap ContractFrame StringLogic LibcStringLogic MemLogic LibcMemLogic LentLogic LocaleLogic GetoptLogic
   HelloModule HelloLeaf HelloName HelloReach HelloMain HelloStdio Logic.
 Import ListNotations.
 Open Scope Z_scope.

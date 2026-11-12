@@ -5,6 +5,24 @@ nanofil's foundation; read that first. The campaign below is a plan,
 and each campaign ends with a note in `docs/` that says what it found;
 the table below says what is built.
 
+The earlier campaign assumed contracts for individual libc functions.
+The old Hello proof still compiles and remains available as a reference.
+The live campaign instead proves glibc bodies and places its trusted
+boundary at zsys calls into the runtime.
+
+The milestones below record the original module layout. These files now
+hold the legacy contracts and proofs:
+
+- The old function contracts now live in [LibcCalls.v](../rocq/theories/hello_contracts/LibcCalls.v), apart from the shared call framework.
+- Their interpreter tests remain compiled in [LibcCallFixtures.v](../rocq/theories/hello_contracts/LibcCallFixtures.v).
+- The rules for calling string and output functions now live in [LibcStringLogic.v](../rocq/theories/hello_contracts/LibcStringLogic.v).
+- The rules for allocating, copying, and searching memory now live in [LibcMemLogic.v](../rocq/theories/hello_contracts/LibcMemLogic.v).
+- The machine's libc examples now live in [ExternalMachineFixtures.v](../rocq/theories/hello_contracts/ExternalMachineFixtures.v).
+- The startup examples remain compiled in [StartupFixtures.v](../rocq/theories/hello_contracts/StartupFixtures.v).
+
+The shared call framework and ownership predicates remain in the live
+foundation. Its zsys boundary does not depend on these legacy contracts.
+
 Routine pushes prioritize iteration: the relevant Rocq gate builds the
 model, runs parse.sh and compares base verdicts on a small corpus without
 mutations. The full multi-mode mutation matrix is deliberate evidence
@@ -602,7 +620,7 @@ prefix coverage/adequacy remain necessary before `never_panics`.
 
 ### Campaign 4, milestone 3b: ordered stdout obligations
 
-[Stdio.v](../rocq/theories/external/Stdio.v) defines a finite logical stdout
+[Stdio.v](../rocq/theories/hello_contracts/Stdio.v) defines a finite logical stdout
 protocol, not a native FILE layout. Acceptance appends output
 obligations; descriptor acceptance and output-error discard each consume
 an exact prefix. A zero-progress output error leaves the obligations
@@ -802,7 +820,7 @@ trap-freedom is claimed.
 
 ### Campaign 4, milestone 4c: shutdown lifecycle and main return
 
-[Shutdown.v](../rocq/theories/external/Shutdown.v) gives the serialized lifecycle
+[Shutdown.v](../rocq/theories/hello_contracts/Shutdown.v) gives the serialized lifecycle
 of the selected user-glibc's exit path. Its TLS destructor hook is empty
 at this pin. Registrations are distinct instances, even for the same
 function: pop-before-call records the consumed token, successful dynamic
@@ -1338,7 +1356,7 @@ termination or unconditional native `never_panics` theorem is claimed.
 
 ### Campaign 4 milestone 4q: the bounded strnlen contract kind
 
-`ExternalCalls.v` adds a pure `strnlen_contract` over any logical world.
+`LibcCalls.v` retains a pure `strnlen_contract` over any logical world.
 Its `bounded_length` premise requires a canonical size_t maximum, a live
 Obj/Ro capability, and readability only through the first NUL before that
 maximum, or exactly the maximum bytes if all are nonzero. A NUL at byte n

@@ -5,7 +5,7 @@
     silently settled by _exit. *)
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Values Memory Runtime Ops Semantics
-  ExternalCalls ExternalMachine Startup Stdio Shutdown Ending Libc.
+  ExternalCalls LibcCalls ExternalMachine Startup Stdio Shutdown Ending Libc.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

@@ -25,9 +25,9 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Stdlib Require String.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic
-  StringLogic ScanCode Hi HiLogic.
+From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
+  StepRules Symbolic ExternalCalls LibcCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic
+  StringLogic LibcStringLogic ScanCode Hi HiLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -112,7 +112,7 @@ Ltac addr_premise := cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; arith.
 
 (** `scan` over any [[runtime]] R. *)
 Module ScanLogic (R : Runtime).
-Module SL := StringLogic R.
+Module SL := LibcStringLogic R.
 Module LG := SL.LG.
 Module L := LG.L.
 Import L LG SL.

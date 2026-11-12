@@ -14,7 +14,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules
-  ExternalCalls ExternalMachine Pieces Heap Language Logic Startup Getopt.
+  ExternalCalls LibcCalls ExternalMachine Pieces Heap Language Logic Startup Getopt.
 Open Scope Z_scope.
 Open Scope list_scope.
 

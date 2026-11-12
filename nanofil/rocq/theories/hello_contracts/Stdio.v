@@ -14,7 +14,7 @@
     step cannot mint write authority or establish [effects]. *)
 
 From Stdlib Require Import ZArith List Bool Lia.
-From Nanofil Require Import Values Memory ExternalCalls.
+From Nanofil Require Import LibcCallFixtures Values Memory ExternalCalls LibcCalls.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

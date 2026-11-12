@@ -3,7 +3,7 @@
     this equality connects that artifact to the source-shaped body. *)
 
 From Stdlib Require Import String ZArith List.
-From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls
+From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls LibcCalls
   Startup Stdio Shutdown ExternalMachine Composition Panics HiCode Hi Transport Program.
 Import ListNotations.
 Open Scope Z_scope.

@@ -6,7 +6,7 @@
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine
-  Identity ExternalCalls Startup Stdio Shutdown ExitMemory Walk ExternalMachine.
+  Identity ExternalCalls LibcCalls Startup Stdio Shutdown ExitMemory Walk ExternalMachine.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

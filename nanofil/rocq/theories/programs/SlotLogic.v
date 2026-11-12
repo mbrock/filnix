@@ -35,8 +35,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic
-  StringLogic MemLogic SlotCode HiLogic.
+  StepRules Symbolic ExternalCalls LibcCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic
+  StringLogic LibcStringLogic MemLogic LibcMemLogic SlotCode HiLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -176,7 +176,7 @@ Qed.
 
 (** `slot.c` over any [[runtime]] R. *)
 Module SlotLogic (R : Runtime).
-Module ML := MemLogic R.
+Module ML := LibcMemLogic R.
 Module SL := ML.SL.
 Module LG := ML.LG.
 Module L := LG.L.

@@ -3,8 +3,8 @@
     the native launcher or libc. The body ignores all launcher words. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
-  Machine ExternalCalls Startup Stdio Shutdown ExternalMachine.
+From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics Run
+  Machine ExternalCalls LibcCalls Startup Stdio Shutdown ExternalMachine.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

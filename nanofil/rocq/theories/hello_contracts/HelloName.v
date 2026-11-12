@@ -26,7 +26,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
-  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
+  ExternalCalls LibcCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic LibcStringLogic MemLogic LibcMemLogic
   HelloModule HelloLeaf.
 Open Scope Z_scope.
 Open Scope list_scope.

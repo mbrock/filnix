@@ -3,9 +3,9 @@
     close. Query frames restore those bytes without a ghost update. *)
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls
+From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls LibcCalls
   ExternalMachine Stdio Shutdown Streams Formatting Libc LibcStreams Pieces Heap
-  ContractFrame Logic StringLogic MemLogic LentLogic LocaleLogic LibcStreamLogic HelloClose.
+  ContractFrame Logic StringLogic LibcStringLogic MemLogic LibcMemLogic LentLogic LocaleLogic LibcStreamLogic HelloClose.
 Open Scope Z_scope.
 Open Scope list_scope.
 

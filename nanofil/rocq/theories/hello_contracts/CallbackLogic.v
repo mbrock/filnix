@@ -7,7 +7,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre adequacy.
 From Stdlib Require Import ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Machine
-  ExternalCalls ExternalMachine Shutdown Linked Pieces Heap Panics Language Logic.
+  ExternalCalls LibcCalls ExternalMachine Shutdown Linked Pieces Heap Panics Language Logic.
 Import ListNotations.
 Open Scope Z_scope.
 

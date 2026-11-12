@@ -4,9 +4,9 @@
     sources or future release rights. *)
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import String ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls
+From Nanofil Require Import Term Syntax Values Memory Runtime Identity ExternalCalls LibcCalls
   ExternalMachine Stdio Shutdown Streams Formatting Diagnostics Libc LibcStreams
-  Pieces Heap ContractFrame Logic StringLogic LentLogic LibcStreamLogic
+  Pieces Heap ContractFrame Logic StringLogic LibcStringLogic LentLogic LibcStreamLogic
   LibcErrnoLogic LibcStreamTokens LibcStreamAdapter.
 Import ListNotations.
 Open Scope Z_scope.

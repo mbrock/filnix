@@ -26,7 +26,7 @@ theories/soundness/Interval.v
 theories/soundness/Sites.v
 theories/soundness/Identity.v
 theories/external/ExternalCalls.v
-theories/external/Stdio.v
+theories/hello_contracts/Stdio.v
 theories/soundness/Coverage.v
 theories/soundness/Evidence.v
 theories/soundness/Walk.v
@@ -44,7 +44,7 @@ theories/external/ExternalMachine.v
 theories/hello_contracts/Locale.v
 theories/external/Startup.v
 theories/hello_contracts/Getopt.v
-theories/external/Shutdown.v
+theories/hello_contracts/Shutdown.v
 theories/hello_contracts/ExitMemory.v
 theories/hello_contracts/Streams.v
 theories/hello_contracts/Formatting.v
@@ -107,3 +107,9 @@ theories/hello_contracts/HelloMain.v
 theories/hello_contracts/HelloJoin.v
 theories/hello_contracts/HelloWorld.v
 theories/core/Extract.v
+theories/hello_contracts/LibcCallFixtures.v
+theories/hello_contracts/LibcCalls.v
+theories/hello_contracts/LibcMemLogic.v
+theories/hello_contracts/LibcStringLogic.v
+theories/hello_contracts/ExternalMachineFixtures.v
+theories/hello_contracts/StartupFixtures.v

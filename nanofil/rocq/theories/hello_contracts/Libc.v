@@ -6,7 +6,7 @@
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
-  ExternalCalls ExternalMachine Locale Stdio Shutdown Getopt.
+  ExternalCalls LibcCalls ExternalMachine Locale Stdio Shutdown Getopt.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -377,7 +377,7 @@ Definition mbrtowc_contract valid audit rep
 
 (** Consumer lemmas share the supplied machine's exact call relations. *)
 Module LibcOn (R : Runtime) (M : ExternalMachineSig R).
-Module E := M.E.
+Module E := LibcCallsOn R M.
 
 (** The existing TLS lookup contract with the exact composite projection.
     It exports the cell's capability, never ownership of its four bytes. *)

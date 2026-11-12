@@ -9,7 +9,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run StepRules Symbolic
-  ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic MemLogic
+  ExternalCalls LibcCalls ExternalMachine Pieces Heap ContractFrame Language Logic StringLogic LibcStringLogic MemLogic LibcMemLogic
   HelloModule HelloLeaf.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -49,6 +49,7 @@ Proof. reflexivity. Qed.
 
 (** The stream helper over any [[runtime]]. *)
 Module HelloCloseOn (R : Runtime) (LG0 : LogicSig R).
+Module CE := LibcCallsOn R LG0.L.M.
 Module HL := HelloLeafOn R LG0.
 Module ML := HL.ML.
 Module SL := ML.SL.
@@ -97,7 +98,7 @@ Proof.
     iPureIntro. split; [reflexivity|]. apply Hrep with h. exact (proj2 (proj2 (proj2 Hσ))).
   - done.
   - iNext. iIntros (σ tr vs s' m' w' Hi) "Hσ _".
-    destruct (M.E.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hi)
+    destruct (CE.errno_location_invocation _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hi)
       as (_ & _ & _ & _ & _ & -> & -> & -> & He).
     injection He as ->.
     iDestruct "Hσ" as (h) "[Hh %Hσ]".

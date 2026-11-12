@@ -481,11 +481,11 @@ role_group(group(
     "Standalone C program proofs demonstrating invariants, loops, heap allocation, helper specifications, persistent callee state, and contract-era hi.c lifecycle composition.",
     [ 'nanofil/rocq/theories/programs' ])).
 role_group(group(
-    "Reference proof: GNU Hello over per-function libc contracts",
-    ( "Retained Campaign 4/7 reference proof of GNU Hello 2.12.3 against per-function libc contracts (",
+    "Legacy libc contracts and reference Hello proof",
+    ( "This layer keeps the earlier libc contracts, their fixtures and calling rules, and the reference proof of GNU Hello 2.12.3 (",
       el(a, none, [href="../docs/libc-contracts.html"], "libc-contracts.md"),
-      "), kept compiled and gated while the ", el(code, none, "rocq/glibc/"),
-      " campaign replaces those libc contracts with compiled userland glibc IR." ),
+      "). They remain compiled and gated while the ", el(code, none, "rocq/glibc/"),
+      " campaign proves compiled userland glibc IR." ),
     [ 'nanofil/rocq/hello_contracts',
       'nanofil/rocq/theories/hello_contracts' ])).
 role_group(group(
@@ -979,15 +979,11 @@ file_blurb('nanofil/rocq/theories/soundness/Walk.v',
 
 %  Core framework: rocq/theories/external/
 file_blurb('nanofil/rocq/theories/external/ExternalCalls.v',
-    "These contracts specify external calls through argument requirements, permitted memory changes, released objects, and return conditions.").
+    "This framework describes external-call effects and preserves readiness; its fill and copy contracts also support the glibc campaign.").
 file_blurb('nanofil/rocq/theories/external/ExternalMachine.v',
     "This machine extends core execution with contract-governed external calls, observable call traces, and external world state.").
-file_blurb('nanofil/rocq/theories/external/Shutdown.v',
-    "This protocol tracks exit callbacks and output obligations before handing process termination to the host runtime.").
 file_blurb('nanofil/rocq/theories/external/Startup.v',
     "These predicates describe the capability-backed argument and environment arrays that Fil-C's launcher provides before main begins.").
-file_blurb('nanofil/rocq/theories/external/Stdio.v',
-    "This protocol tracks required output bytes, delivered prefixes, and stream errors across calls that affect standard output.").
 
 %  Core framework: rocq/theories/logic/
 file_blurb('nanofil/rocq/theories/logic/ContractFrame.v',
@@ -999,7 +995,7 @@ file_blurb('nanofil/rocq/theories/logic/Language.v',
 file_blurb('nanofil/rocq/theories/logic/Logic.v',
     "This program logic provides memory ownership assertions and proof rules for checked-IR instructions and external calls.").
 file_blurb('nanofil/rocq/theories/logic/MemLogic.v',
-    "These rules describe ownership of byte and capability buffers across contract-based memory copying, allocation, and deallocation calls.").
+    "These assertions own byte and capability buffers, with instruction rules for integer loads, stores, and compare-and-swap.").
 file_blurb('nanofil/rocq/theories/logic/Panics.v',
     "This module distinguishes safety failures from ordinary endings and states what it means for a program never to panic.").
 file_blurb('nanofil/rocq/theories/logic/Pieces.v',
@@ -1007,7 +1003,7 @@ file_blurb('nanofil/rocq/theories/logic/Pieces.v',
 file_blurb('nanofil/rocq/theories/logic/StepRules.v',
     "These rules advance individual checked-IR instructions from local premises without unfolding the whole interpreter or memory state.").
 file_blurb('nanofil/rocq/theories/logic/StringLogic.v',
-    "These ownership assertions and call rules support C strings, suffix borrowing, and contract-based string and output functions.").
+    "These ownership assertions describe C strings and let callers borrow individual bytes or suffixes.").
 file_blurb('nanofil/rocq/theories/logic/Symbolic.v',
     "These tactics automate instruction steps while keeping the surrounding environments, memory state, and execution fuel abstract.").
 file_blurb('nanofil/rocq/theories/logic/VariadicLogic.v',
@@ -1056,6 +1052,22 @@ file_blurb('nanofil/rocq/theories/programs/SumCode.v',
     "This generated module supplies checked IR for the small global-array sum used in the first closed-module proof.").
 
 %  Old reference proof: rocq/theories/hello_contracts/
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcCalls.v',
+    "These retained libc contracts specify string, allocation, errno, and output calls for the earlier Hello proof and examples.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcCallFixtures.v',
+    "These interpreter fixtures test admitted calls and rejected boundary cases for the retained libc contracts.").
+file_blurb('nanofil/rocq/theories/hello_contracts/ExternalMachineFixtures.v',
+    "These retained fixtures check external-call dispatch, return channels, rejection, and event order using the libc examples.").
+file_blurb('nanofil/rocq/theories/hello_contracts/StartupFixtures.v',
+    "These retained fixtures check launcher arguments, environment arrays, and exposed pointer cells using the libc examples.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcStringLogic.v',
+    "These rules derive string and output call triples from the retained libc contracts and shared string ownership assertions.").
+file_blurb('nanofil/rocq/theories/hello_contracts/LibcMemLogic.v',
+    "These rules derive allocation, copying, and search call triples from the retained libc contracts and shared buffer assertions.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Shutdown.v',
+    "This retained protocol tracks exit callbacks and output obligations before handing process termination to the host runtime.").
+file_blurb('nanofil/rocq/theories/hello_contracts/Stdio.v',
+    "This retained protocol tracks required output bytes, delivered prefixes, and stream errors across standard-output calls.").
 file_blurb('nanofil/rocq/theories/hello_contracts/CallbackLogic.v',
     "This theorem connects a registered exit callback's program-logic specification to its execution in the shutdown machine.").
 file_blurb('nanofil/rocq/theories/hello_contracts/Diagnostics.v',

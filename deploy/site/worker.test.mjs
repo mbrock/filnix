@@ -139,9 +139,17 @@ test("a page a restructuring moved redirects to where it lives now", async () =>
     `https://filnix.org${rocq}rocq-spikes-ListSumLogic.html`);
   assert.equal((await s.fetch(`${rocq}rocq-glibc-ZsysWrite.html?x=1`)).headers.get("location"),
     `https://filnix.org${rocq}rocq-glibc-zsys-OsWrite.html?x=1`);
-  // A flat page from before the layers follows both moves.
+  // A flat page from before the layers follows all subsequent moves.
   assert.equal((await s.fetch(`${rocq}rocq-theories-Libio.html`)).headers.get("location"),
-    `https://filnix.org${rocq}rocq-theories-external-Stdio.html`);
+    `https://filnix.org${rocq}rocq-theories-hello_contracts-Stdio.html`);
+  for (const name of ["Stdio", "Shutdown"]) {
+    for (const layer of ["", "external-"]) {
+      const moved = await s.fetch(`${rocq}rocq-theories-${layer}${name}.html?x=1`);
+      assert.equal(moved.status, 301);
+      assert.equal(moved.headers.get("location"),
+        `https://filnix.org${rocq}rocq-theories-hello_contracts-${name}.html?x=1`);
+    }
+  }
   // A page that exists again under its old name is served, not moved.
   s.add(`${rocq}rocq-theories-Syntax.html`, "flat");
   assert.equal(await (await s.fetch(`${rocq}rocq-theories-Syntax.html`)).text(), "flat");

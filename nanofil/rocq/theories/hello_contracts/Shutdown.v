@@ -4,7 +4,7 @@
     In particular, a handoff does not itself emit [ProcessExit]. *)
 
 From Stdlib Require Import ZArith List Bool Lia Sorting.Permutation.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics ExternalCalls Startup Stdio.
+From Nanofil Require Import Term Syntax Values Memory Ops Semantics ExternalCalls LibcCalls Startup Stdio.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

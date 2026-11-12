@@ -3,8 +3,8 @@
     not a FILE implementation or a native coverage proof. *)
 
 From Stdlib Require Import String ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
-  ExternalCalls Stdio Shutdown ExternalMachine Hi.
+From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics
+  ExternalCalls LibcCalls Stdio Shutdown ExternalMachine Hi.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

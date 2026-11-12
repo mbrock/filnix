@@ -6,9 +6,9 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run ExternalCalls ExternalMachine
+From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run ExternalCalls LibcCalls ExternalMachine
   Stdio Shutdown Streams Formatting Libc LibcStreams Pieces Heap ContractFrame Logic
-  StringLogic MemLogic LentLogic Locale LibcStreamLogic LibcErrnoLogic LibcStreamTokens
+  StringLogic LibcStringLogic MemLogic LibcMemLogic LentLogic Locale LibcStreamLogic LibcErrnoLogic LibcStreamTokens
   LibcStreamAdapter LibcDiagnosticLogic HelloModule HelloLeaf HelloReach HelloStdio.
 Import ListNotations.
 Open Scope Z_scope.

@@ -3,7 +3,7 @@
     program pieces is explicit and propagated, not assumed at return. *)
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls
+From Nanofil Require Import Term Syntax Values Memory Runtime ExternalCalls LibcCalls
   ExternalMachine Stdio Shutdown Streams Formatting Libc LibcStreams
   Pieces Heap ContractFrame Logic.
 Open Scope Z_scope.

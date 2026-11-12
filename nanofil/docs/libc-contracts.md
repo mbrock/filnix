@@ -1,5 +1,13 @@
 # Native libc contracts for Campaign 7
 
+This document records the earlier per-function libc-contract approach,
+which is retained as a reference rather than the current campaign direction.
+The specifications now live in
+[LibcCalls.v](../rocq/theories/hello_contracts/LibcCalls.v), beside the old Hello
+proof. [LibcCallFixtures.v](../rocq/theories/hello_contracts/LibcCallFixtures.v)
+keeps their interpreter tests. The live glibc campaign proves library bodies
+and uses the shared external-call framework at its zsys boundary.
+
 This is the trusted external-call boundary for `hi.c` and the **56
 distinct libc names** in the [Hello census](trap-census.md), plus `puts`
 and the all-object `fcntl` obligation. It is a specification with native
@@ -251,7 +259,7 @@ alias after free. strnlen additionally stops at short-object NULs with
 SIZE_MAX, handles unaligned high bytes (128 and 255) through the end of
 an explicitly aligned 16-byte allocation, and permits
 zero-count live writable/read-only one-past pointers. Its Rocq contract
-in [ExternalCalls.v](../rocq/theories/external/ExternalCalls.v) requires readability
+in [LibcCalls.v](../rocq/theories/hello_contracts/LibcCalls.v) requires readability
 only through the consumed bytes (including an early NUL), not the entire
 maximum; zero count still requires live authority. The contract is pure,
 nonallocating and independently inhabited, not a native termination proof.
@@ -744,7 +752,7 @@ never panics.
 | `program_invocation_name` | initialized entry; caller preserves a valid borrowed string if replacing cell | readable/writable pointer cell to borrowed NUL string derived from argv[0], or empty fallback if absent; no independent allocation/ownership promise | R,W on access |
 | `program_invocation_short_name` | same | borrowed basename pointer, may alias inside full name's object | R,W on access |
 
-`errno_location_contract` in [ExternalCalls.v](../rocq/theories/external/ExternalCalls.v)
+`errno_location_contract` in [LibcCalls.v](../rocq/theories/hello_contracts/LibcCalls.v)
 requires an independent thread representation, an exact cell projection,
 and live nonnull writable four-byte storage whose address is four-aligned.
 The no-argument P/discarded ABI exports only that pointer and capability,
