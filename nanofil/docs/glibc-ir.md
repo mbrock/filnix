@@ -189,7 +189,7 @@ This spike's steps are done: the strlen triple, the `word_string`
 bridge to it, and the fixtures regenerated with the `.filc_*`
 directives kept. The leaf functions (`strcmp`, `memchr`, the ctype
 tables, malloc), libio and exit, and later `printf`, are milestones of
-the campaign to prove GNU Hello over user glibc (its Campaign Ledger),
+the campaign to prove GNU Hello over user glibc ([hello-glibc.md](hello-glibc.md)),
 which builds on these files. The leaf fixtures are in
 [rocq/glibc/string](../rocq/glibc/string/code.sh).
 

@@ -59,6 +59,9 @@ about it.
 - [A spike: proofs that link user glibc's IR](glibc-ir.md): two
   programs proved with glibc's own strlen and write in the module, and
   libpizlo's zsys_write as the one contract.
+- [Proving GNU Hello over userland glibc](hello-glibc.md): sixteen
+  concrete surprises in glibc, Fil-C and our specifications that
+  turned up while proving the real C library code.
 - [Poison and constant time in Rocq](poison.md): zegarmistrz's poison
   rules over checked IR, the double-store sanitizer bug, two-run
   constant-time noninterference, and the AES S-box spikes.

@@ -8,7 +8,8 @@ the table below says what is built.
 The earlier campaign assumed contracts for individual libc functions.
 The old Hello proof still compiles and remains available as a reference.
 The live campaign instead proves glibc bodies and places its trusted
-boundary at zsys calls into the runtime.
+boundary at zsys calls into the runtime; [hello-glibc.md](hello-glibc.md)
+collects sixteen concrete surprises that turned up in glibc along the way.
 
 The milestones below record the original module layout. These files now
 hold the legacy contracts and proofs:
