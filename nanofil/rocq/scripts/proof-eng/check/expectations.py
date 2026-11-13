@@ -58,6 +58,8 @@ class Expectations:
             old = 'Glibc.' + file[:-2].replace('/', '.') + '.' + name
             new = 'Glibc.' + target[0][:-2].replace('/', '.') + '.' + target[1]
             text = re.sub(r"(?<![\w.'])" + re.escape(old) + r"(?![\w'])", new, text)
+            universe = Path(file).stem + '.' + name
+            text = re.sub(r"(?<![\w.'])" + re.escape(universe) + r"(?=\.u\d+(?![\w.']))", new, text)
         return text
 
     def accepts(self, difference):

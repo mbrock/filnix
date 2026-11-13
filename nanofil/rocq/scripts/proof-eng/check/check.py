@@ -70,6 +70,8 @@ class Tree:
         self.signatures = {}
         self.abstract_runtimes = set()
         self.scopes = {}
+        self.includes = {}
+        self.implementations = {}
         for rel, path in self.files.items():
             base = 'Glibc.' + rel[:-2].replace('/', '.')
             self.modules[path.stem] = base
@@ -79,6 +81,9 @@ class Tree:
                 declared = re.fullmatch(rf'Declare Module\s+({IDENT})\s*:\s*Runtime', sentence)
                 if declared:
                     self.abstract_runtimes.add('.'.join([base] + stack + [declared[1]]))
+                included = re.fullmatch(rf'Include\s+({PATH})(?:\s+.*)?', sentence, re.S)
+                if included:
+                    self.includes.setdefault('.'.join([base] + stack), []).append(included[1])
                 m = re.match(rf'Module\s+(?:(Type|Export|Import)\s+)?({IDENT})(.*)', sentence, re.S)
                 if m:
                     kind, name, tail = m.groups()
@@ -94,11 +99,49 @@ class Tree:
                             self.functors[full] = params
                             if re.fullmatch(r'\s*\(R : Runtime\)(?: \(LG0 : LogicSig R\))?', tail):
                                 self.flattened.add(full)
+                        signature = re.search(rf'(?:^|\))\s*:\s*({PATH})', tail)
+                        if signature:
+                            self.implementations[full] = signature[1]
                         stack.append(name)
                 elif re.match(rf'End\s+{IDENT}$', sentence):
                     name = sentence.split()[1]
                     if stack and stack[-1] == name:
                         stack.pop()
+        # Include exports are manifest module members, not arbitrary names
+        # imported into the surrounding namespace. Resolve only those members.
+        members = {}
+        for rel, path in self.files.items():
+            glob = path.with_suffix('.glob')
+            if not glob.exists():
+                continue
+            for kind, scope, name in re.findall(r'^(\w+) \d+:\d+ (\S+) (\S+)$', glob.read_text(), re.M):
+                if kind not in ('var', 'ax', 'sec'):
+                    full = self.scopes[rel] + ('.' + scope if scope != '<>' else '')
+                    if kind in ('mod', 'modtype') and '.' in name:
+                        parent, name = name.rsplit('.', 1)
+                        full += '.' + parent
+                    members.setdefault(full, set()).add(name)
+        targets = {}
+        for owner, includes in self.includes.items():
+            resolved = [f for inc in includes for f in self.functors if f.endswith('.' + inc)]
+            resolved += [self.modules[inc] for inc in includes if inc in self.modules]
+            if len(includes) == len(resolved) == 1:
+                targets[owner] = resolved[0]
+        for _ in range(len(targets) + 1):
+            for owner, target in targets.items():
+                members.setdefault(owner, set()).update(members.get(target, ()))
+        for owner, target in targets.items():
+            for name in members.get(target, ()):
+                self.aliases.setdefault(owner + '.' + name, ('', target + '.' + name))
+        self.signature_targets = {s: t for s, t in targets.items() if s in self.signatures}
+        for signature in self.signatures:
+            witnesses = {targets[impl] for impl, sig in self.implementations.items()
+                         if impl in targets and signature.endswith('.' + sig)}
+            if len(witnesses) == 1:
+                self.signature_targets[signature] = witnesses.pop()
+        for signature, target in self.signature_targets.items():
+            for name in members.get(signature, ()):
+                self.aliases.setdefault(signature + '.' + name, ('', target + '.' + name))
 
     def declarations(self, rel, extra=()):
         path = self.files[rel]
@@ -138,6 +181,7 @@ class Tree:
                  'Module PER := InterpRuntime.' if concrete else 'Declare Module PER : Runtime.',
                  'Module PELG := Logic PER.']
         roots = {}
+        parameters = {}
         names = {}
         for name, scope, spec in decls:
             full = base + ('.' + scope if scope else '')
@@ -157,6 +201,9 @@ class Tree:
                             typ = re.sub(PATH, lambda m: bindings.get(m[0], self.module_types.get(m[0], m[0])), typ)
                             arg = f'PEArg{len(roots)}_{len(args)}'
                             setup.append(f'Declare Module {arg} : {typ}.')
+                            signature = typ.split()[0]
+                            if signature in self.signature_targets:
+                                parameters[arg] = signature
                         args.append(arg)
                         bindings[param] = arg
                     instance = 'PE' + str(len(roots))
@@ -172,13 +219,15 @@ class Tree:
             if key in names:
                 raise ValueError('duplicate declaration identity: ' + key)
             names[key] = (q, spec)
-        return setup, names, {v: k for k, v in roots.items()}
+        return setup, names, {v: k for k, v in roots.items()} | parameters
 
     def normalize(self, text, instances, concrete=False):
         # Resolve only known module aliases. Never remove arbitrary qualifiers.
         aliases = dict(self.aliases)
         for instance, full in instances.items():
             aliases['PECheck.' + instance] = ('', full)
+            if '.' not in instance and not instance.startswith('PE'):
+                aliases[instance] = ('', full)
         aliases['PECheck.PELG'] = ('', '@LogicConcrete' if concrete else '@LogicAbstract')
         aliases['PECheck.PER'] = ('', 'Nanofil.core.Runtime.InterpRuntime' if concrete else '@RuntimeAbstract')
         alias_order = sorted(aliases, key=len, reverse=True)
@@ -201,7 +250,7 @@ class Tree:
             return full
         @lru_cache(maxsize=None)
         def expand(token, seen=()):
-            if not token.startswith(('Glibc.', 'PECheck.')):
+            if not token.startswith(('Glibc.', 'PECheck.')) and token.split('.')[0] not in instances:
                 return token
             if token in seen:
                 raise ValueError('cyclic alias: ' + token)
@@ -270,14 +319,30 @@ class Tree:
             return token
         # Strings are Gallina literals, not paths (even when they contain dots).
         chunks = re.split(r'("(?:[^"]|"")*")', text)
+        flattened_order = sorted(self.flattened, key=len, reverse=True)
+        @lru_cache(maxsize=None)
+        def canonical(token):
+            # Rocq prints universe identifiers without the logical root.
+            # Qualify only identifiers belonging to this tree's known files.
+            head, dot, rest = token.partition('.')
+            if head in self.modules and re.search(r'\.u\d+$', token):
+                token = self.modules[head] + dot + rest
+            token = expand(token)
+            # An unresolved external alias may stop expansion before its
+            # enclosing wrapper is removed. Remove only a recorded wrapper.
+            for full in flattened_order:
+                if token.startswith(full + '.'):
+                    token = full.rsplit('.', 1)[0] + token[len(full):]
+                    break
+            return token
         for i in range(0, len(chunks), 2):
-            chunks[i] = re.sub(PATH, lambda m: expand(m[0]), chunks[i])
+            chunks[i] = re.sub(PATH, lambda m: canonical(m[0]), chunks[i])
             chunks[i] = re.sub(r'\s+', ' ', chunks[i])
         return ''.join(chunks).strip()
 
 
-def run_probe(tree, rel, decls, out, plugin, inside=False):
-    setup, names, instances = tree.probe(rel, decls)
+def run_probe(tree, rel, decls, out, plugin, inside=False, concrete=False):
+    setup, names, instances = tree.probe(rel, decls, concrete=concrete)
     commands = setup + [f'Declare ML Module "{plugin.name}".',
                         'Set Printing All.', 'Set Printing Universes.', 'Set Printing Width 1000000.',
                         'Set Printing Depth 1000000.']
@@ -322,6 +387,18 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
             script.write_text('\n'.join(settings) + '\n' + source)
             extra = ['-R', tmp, 'Glibc']
             instances = {}
+            for full, params in tree.functors.items():
+                if full.startswith(tree.scopes[rel] + '.'):
+                    for param, typ in params:
+                        if typ == 'Runtime':
+                            instances[param] = 'Nanofil.core.Runtime.InterpRuntime' if concrete else '@RuntimeAbstract'
+                        elif typ.startswith('LogicSig '):
+                            instances[param] = '@LogicConcrete' if concrete else '@LogicAbstract'
+                        signature = tree.module_types.get(typ.split()[0])
+                        if signature in tree.signature_targets:
+                            if param in instances and instances[param] != signature:
+                                raise ValueError('ambiguous signature parameter: ' + param)
+                            instances[param] = signature
         env = dict(os.environ)
         env['OCAMLPATH'] = str(plugin.parent) + ':' + env.get('OCAMLPATH', '')
         cmd = ['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
@@ -331,7 +408,7 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
         (out / (rel.replace('/', '__') + '.log')).write_text(p.stdout)
         if p.returncode:
             if not inside and 'was not found in the current environment' in p.stdout:
-                return run_probe(tree, rel, decls, out, plugin, inside=True)
+                return run_probe(tree, rel, decls, out, plugin, inside=True, concrete=concrete)
             raise ValueError(f'probe compiler exited {p.returncode}: {p.stdout[-1200:]}')
     if any(spec == 'auto' for _, _, spec in decls):
         classified = []
@@ -343,7 +420,7 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
                     raise ValueError('missing or ambiguous sort classification: ' + name)
                 spec = data
             classified.append((name, scope, spec))
-        return run_probe(tree, rel, classified, out, plugin, inside=inside)
+        return run_probe(tree, rel, classified, out, plugin, inside=inside, concrete=concrete)
     result = {}
     for index, name in enumerate(names):
         match = re.search(rf'PE_BEGIN_{index}\n(.*?)PE_END_{index}', p.stdout, re.S)
@@ -353,7 +430,7 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
         if re.search(r'\.\.\.|…', raw):
             raise ValueError('truncated printed statement: ' + name)
         raw = raw.split('\n     :', 1)[1].strip() if '\n     :' in raw else raw.split(' : ', 1)[1].strip()
-        result[name] = {'raw': raw, 'normalized': tree.normalize(raw, instances)}
+        result[name] = {'raw': raw, 'normalized': tree.normalize(raw, instances, concrete=concrete)}
         q = names[name][0]
         instance = q.split('.')[0]
         params = tree.functors.get(instances.get(instance), [])
@@ -363,6 +440,21 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
 
 def compare(args):
     before, after = Tree(args.before), Tree(args.after)
+    abstract = Tree(args.abstract_after) if args.abstract_after else None
+    interpreter_closure = set()
+    if abstract:
+        interpreter_closure = {rel for rel, path in before.files.items()
+                               if re.search(r'\bInterpRuntime\b', uncomment(path.read_text()))}
+        dependencies = {}
+        for rel, path in before.files.items():
+            glob = path.with_suffix('.glob')
+            references = set(re.findall(r'^R\d+:\d+ (Glibc\.[\w.]+)', glob.read_text(), re.M)) if glob.exists() else set()
+            dependencies[rel] = {f for f, scope in before.scopes.items() if scope in references}
+        while True:
+            more = {f for f, deps in dependencies.items() if deps & interpreter_closure}
+            if more <= interpreter_closure:
+                break
+            interpreter_closure.update(more)
     rules = Expectations(args.expectations)
     out = Path(args.output).resolve()
     plugin = Path(args.plugin).resolve()
@@ -375,17 +467,27 @@ def compare(args):
         files = [f for f in files if f in args.files]
     if not files:
         raise ValueError('no files selected')
-    results = {'mode': args.mode, 'files': {}, 'errors': [], 'differences': []}
+    results = {'mode': args.mode, 'files': {}, 'errors': [], 'differences': [], 'runtime_by_file': {}}
     def check_file(rel):
         sides = []
         errors = []
-        for label, tree in [('before', before), ('after', after)]:
+        candidate = after
+        concrete = False
+        if abstract:
+            if rel in abstract.files and abstract.files[rel].with_suffix('.vo').exists():
+                candidate = abstract
+            elif rel in interpreter_closure:
+                concrete = True
+            else:
+                return rel, [None, None], ['abstract build failed outside interpreter closure: ' + rel]
+        results['runtime_by_file'][rel] = 'concrete' if concrete else 'abstract'
+        for label, tree in [('before', before), ('after', candidate)]:
             if rel not in tree.files:
                 sides.append({})
                 continue
             try:
                 decls = tree.declarations(rel, rules.names(rel))
-                sides.append(run_probe(tree, rel, decls, out / label, plugin) if decls else {})
+                sides.append(run_probe(tree, rel, decls, out / label, plugin, concrete=concrete) if decls else {})
             except (ValueError, subprocess.TimeoutExpired, OSError) as e:
                 errors.append(f'{label}/{rel}: {e}')
                 sides.append(None)
@@ -406,24 +508,33 @@ def compare(args):
                 entry['normalized'] = rules.canonical(entry['normalized'])
                 key = rules.identity((rel, name))
                 if key in inventories[i]:
-                    results['errors'].append(f'duplicate canonical declaration: {key}')
+                    identical_move = (i == 0 and (rel, name) in rules.moves and
+                                      all(origin in rules.moves for origin in origins.get(key, ())) and
+                                      inventories[i][key]['normalized'] == entry['normalized'])
+                    if not identical_move:
+                        results['errors'].append(f'nonidentical or unlisted duplicate canonical declaration: {key} from {rel}:{name}')
                 inventories[i][key] = entry
                 if i == 0:
-                    origins[key] = (rel, name)
+                    origins.setdefault(key, []).append((rel, name))
     left, right = inventories
+    for source in rules.moves:
+        target = rules.identity(source)
+        if (not args.files or source[0] in files or target[0] in files) and source not in origins.get(target, ()):
+            results['errors'].append(f'reviewed move source absent: {source[0]}:{source[1]}')
     protected = {name for group in json.loads((HERE / 'audit-contracts.json').read_text()).values() for name in group}
     observed = set()
     for key in sorted(set(left) | set(right)):
         rel, name = key
-        origin = origins.get(key, key)
-        if origin[0] in blocked[0] or rel in blocked[1]:
+        sources = origins.get(key, [key])
+        origin = sources[0]
+        if any(source[0] in blocked[0] for source in sources) or rel in blocked[1]:
             continue
         a, b = left.get(key), right.get(key)
         moved = origin != key and a is not None and b is not None
         if a is None or b is None or a['normalized'] != b['normalized'] or moved:
             d = {'file': rel, 'name': name,
                  'kind': 'added' if a is None else 'removed' if b is None else 'moved' if moved else 'changed',
-                 'before': a, 'after': b, 'origin': list(origin)}
+                 'before': a, 'after': b, 'origin': list(origin), 'origins': [list(s) for s in sources]}
             d['accepted'] = rules.accepts(d) and name not in protected
             results['differences'].append(d)
             observed.add(key)
@@ -434,6 +545,8 @@ def compare(args):
     lines = []
     for d in results['differences']:
         lines += [f"{'ACCEPTED' if d['accepted'] else 'UNEXPECTED'} {d['kind'].upper()} {d['file']}:{d['name']}"]
+        if d['kind'] == 'moved':
+            lines += ['  from: ' + ', '.join(f'{f}:{n}' for f, n in d['origins'])]
         for side in ['before', 'after']:
             value = d[side]
             lines += [f"  {side}:", textwrap.fill(value['normalized'] if value else '<absent>',
@@ -462,4 +575,5 @@ if __name__ == '__main__':
     p.add_argument('--expectations', default=str(HERE / 'expected-statement-changes'))
     p.add_argument('--jobs', type=int, default=4)
     p.add_argument('--files', nargs='+')
+    p.add_argument('--abstract-after', help='prefer compiled abstract files; allow concrete fallback only in the interpreter dependency closure')
     raise SystemExit(compare(p.parse_args()))

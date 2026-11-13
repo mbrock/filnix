@@ -11,6 +11,28 @@ HERE = Path(__file__).resolve().parent
 
 
 class Checks(unittest.TestCase):
+    def test_abstract_preference_and_restricted_fallback(self):
+        with tempfile.TemporaryDirectory(prefix='runtime-selection-') as tmp:
+            root = Path(tmp)
+            trees = [root / name for name in ('before', 'concrete', 'abstract')]
+            source = 'From Nanofil Require Import Runtime. Module R := InterpRuntime. Lemma target : True. Proof. exact I. Qed.\n'
+            def compile(tree, text):
+                tree.mkdir(exist_ok=True)
+                (tree / 'Toy.v').write_text(text)
+                subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                                '-R', str(tree), 'Glibc', str(tree / 'Toy.v')], check=True, capture_output=True)
+            for tree in trees:
+                compile(tree, source)
+            compile(trees[2], 'Lemma target : False -> False. Proof. auto. Qed.\n')
+            command = ['python3', str(HERE / 'check.py'), 'statements', str(trees[0]), str(trees[1]),
+                       '--abstract-after', str(trees[2]), '--plugin', os.environ['PE_CHECK_PLUGIN'],
+                       '--expectations', str(root / 'none'), '--output', str(root / 'report')]
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+            (trees[2] / 'Toy.vo').unlink()
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            compile(trees[0], 'Lemma target : True. Proof. exact I. Qed.\n')
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+
     def test_statement_binding_runtime_and_axiom_mutations(self):
         plugin = os.environ['PE_CHECK_PLUGIN']
         with tempfile.TemporaryDirectory(prefix='proof-check-test-') as tmp:
@@ -65,6 +87,28 @@ class Checks(unittest.TestCase):
             compile(before, abstract)
             compile(after, abstract.replace('A.ready', 'B.ready'))
             self.assertEqual([d['name'] for d in compare(1)['differences']], ['target'])
+            included = (prelude + 'Module General (R : Runtime). Definition bound : Prop := True. End General.\n'
+                        'Module Copy (R : Runtime). Include General R.\n'
+                        'Lemma target : bound. Proof. exact I. Qed. End Copy.\n')
+            flat = 'Definition bound : Prop := True. Lemma target : bound. Proof. exact I. Qed.\n'
+            compile(before, included)
+            compile(after, flat)
+            compare(0)
+            signature_include = (prelude + 'Module General (R : Runtime). Definition bound : Prop := True. End General.\n'
+                                 'Module Type Sig (R : Runtime). Include General R. End Sig.\n'
+                                 'Module Copy (R : Runtime) (D : Sig R). Lemma target : D.bound. Proof. exact I. Qed. End Copy.\n')
+            compile(before, signature_include)
+            compare(0)
+            opaque_signature = (prelude + 'Module General (R : Runtime). Definition bound : Prop := True. End General.\n'
+                                'Module Type Sig (R : Runtime). Parameter bound : Prop. Parameter bound_true : bound. End Sig.\n'
+                                'Module Witness (R : Runtime) : Sig R. Include General R. Definition bound_true : bound := I. End Witness.\n'
+                                'Module Copy (R : Runtime) (D : Sig R). Lemma target : D.bound. Proof. exact D.bound_true. Qed. End Copy.\n')
+            compile(before, opaque_signature)
+            self.assertTrue(any(d['name'] == 'target' for d in compare(1)['differences']))
+            compile(before, signature_include)
+            compile(after, 'Module Other. Definition bound : Prop := True. End Other.\n' +
+                    flat.replace('target : bound', 'target : Other.bound'))
+            self.assertTrue(any(d['name'] == 'target' for d in compare(1)['differences']))
             sealed = ('Module Type S. Parameter exposed : True. End S.\n'
                       'Module Hidden : S. Lemma target : True. Proof. exact I. Qed.\n'
                       'Definition exposed := target.\nEnd Hidden.\n')
@@ -117,6 +161,26 @@ class Checks(unittest.TestCase):
             moves = root / 'moves.txt'
             moves.write_text('moved\tToy.v\ttarget\tRenamed.v\ttarget\n')
             self.assertTrue(compare(0, moves)['differences'][0]['accepted'])
+            # Both reviewed sources must equal the destination, including
+            # the universe that moves with a polymorphic declaration.
+            polymorphic = 'Lemma target (A : Type) (x : A) : x = x. Proof. reflexivity. Qed.\n'
+            compile(before, polymorphic)
+            for tree, name in [(before, 'Other'), (after, 'Renamed')]:
+                path = tree / (name + '.v')
+                path.write_text(polymorphic)
+                subprocess.run(['rocq', 'c', '-q', '-R', str(tree), 'Glibc', str(path)], check=True)
+            moves.write_text(moves.read_text() + 'moved\tOther.v\ttarget\tRenamed.v\ttarget\n')
+            self.assertEqual(len(compare(0, moves)['differences'][0]['origins']), 2)
+            moves.write_text('moved\tToy.v\ttarget\tRenamed.v\ttarget\n')
+            self.assertTrue(any(not d['accepted'] for d in compare(1, moves)['differences']))
+            moves.write_text(moves.read_text() + 'moved\tOther.v\ttarget\tRenamed.v\ttarget\n')
+            (before / 'Other.v').write_text('Lemma target (A : Type) (x : A) : True. Proof. exact I. Qed.\n')
+            subprocess.run(['rocq', 'c', '-q', '-R', str(before), 'Glibc', str(before / 'Other.v')], check=True)
+            failed = subprocess.run(['python3', str(HERE / 'check.py'), 'statements', str(before), str(after),
+                                     '--plugin', plugin, '--output', str(root / 'bad-merge'),
+                                     '--expectations', str(moves)], capture_output=True, text=True)
+            self.assertEqual(failed.returncode, 1)
+            self.assertTrue(json.loads((root / 'bad-merge/report.json').read_text())['errors'])
             print('PASS: comments and reviewed moves accepted; changed proposition, binding, runtime, axiom, and unapproved edits rejected')
 
 

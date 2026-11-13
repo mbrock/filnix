@@ -55,12 +55,20 @@ Source `nanofil/rocq/scripts/proof-eng/env.sh`, then build the printer plugin:
 ```sh
 bash nanofil/rocq/scripts/proof-eng/check/plugin.sh /tmp/check-tools/plugin
 python3 nanofil/rocq/scripts/proof-eng/check/check.py statements BEFORE AFTER \
-  --plugin /tmp/check-tools/plugin --output /tmp/statement-report
+  --abstract-after ABSTRACT_AFTER --plugin /tmp/check-tools/plugin --output /tmp/statement-report
 ```
 
 Both trees must contain their compiled `.vo` and `.glob` files. The checker
 rejects `.glob` files whose source digest is stale. `--files GlibcLogic.v`
 restricts a diagnostic run; the full command never restricts coverage.
+
+The full command builds a second candidate with `PE_RUNTIME=abstract`. It uses
+that candidate for every file that compiles there. A missing abstract object
+may fall back to the concrete candidate only if the original file depends on
+an interpreter-specific file. The checker derives those dependencies from
+compiled references and instantiates the original functor with `InterpRuntime`
+for that comparison. It records the choice for each file. A failure elsewhere
+in the abstract build is an error, not permission to change the runtime.
 
 The source selects lemmas, theorems, corollaries, and definitions explicitly
 returning `Prop`. Rocq's `.glob` supplies their module scopes. Each probe
@@ -80,12 +88,16 @@ qualifiers. Thus two imported definitions with the same short name remain
 different, even if the statement's source text is identical. Unknown aliases
 remain qualified. Differences in unresolved paths or universe names can require
 review; this is a conservative comparison, not a decision procedure for logical
-equivalence. A changed statement is never automatically allowlisted.
+equivalence. A changed statement is never automatically allowlisted. Removed
+wrappers come from the file's module declarations. Included members come from
+compiled export records. A signature parameter can refer to a flat file only
+when its concrete definitions come from that file through an `Include` or a
+signature-checked implementation. Opaque signature parameters stay distinct.
 
 `report.json` retains raw and normalized statements, module parameters, and
 errors. `report.txt` lists each changed, added, or removed statement with its
-file, name, and both normalized statements. A partial build produces useful
-comparisons for the files that compiled, but its overall verdict remains FAIL.
+file, name, and both normalized statements. Missing or stale objects in the
+selected trees fail the overall check, even when other files compare equal.
 
 ## Reproduce and compare the campaign audits
 
@@ -140,8 +152,11 @@ moved	oldfile.v	old_name	newfile.v	new_name
 
 Lines starting with `#` hold rationale and stage-specific source guards. The
 checker rewrites only the exact full references named by move rows and still
-compares each moved declaration's type and proposition body. An unchanged move
-can pass without a statement exemption. Other changes require an exact pair of
+compares each moved declaration's type and proposition body. Several sources
+may move to one destination only when every source is listed, present, and
+equal to the destination. The declaration's universe names move with it.
+Proof aliases are compared by type rather than by proof body. An unchanged
+move can pass without a statement exemption. Other changes require an exact pair of
 elaborated statements in the companion `.elaborated.json` file. Audited query
 names cannot be exempted. The report prints every accepted change and both types.
 
