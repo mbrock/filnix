@@ -1,13 +1,13 @@
-(** glibc's own `__GI_strrchr` (StrchrCode.v's [glibc_strrchr]) over a
-    [word_string] (WordString.v) at any share.
+(** In C, `c: strrchr(p, c)` returns a pointer to the last occurrence
+    of `c mod 256` in the string at `p`, including its terminating NUL
+    byte, or null if `c mod 256` does not appear. Glibc's `__GI_strrchr`
+    computes the string's length with `__GI_strlen` and then searches
+    `length s + 1` bytes backwards with `__GI___memrchr`.
 
-    strrchr(p, c) calls glibc's strlen and then `__GI___memrchr` on the
-    string and its NUL. memrchr is not among the captured units
-    (StrchrCode.v links it by name only), so the triple takes any
-    function at that name with a call triple ([memrchr_spec]) that finds
-    the last byte c mod 256 of the bytes ([last_byte]).
-    [wp_glibc_strrchr_ws] is the triple for a frame of strrchr, and
-    [wp_call_glibc_strrchr] for a call of it. *)
+    Because `c: memrchr` is compiled in a separate file, this module
+    assumes its backward-search contract as a hypothesis. That lets us
+    verify `c: strrchr` on any shared string independently of how
+    `c: memrchr` is implemented. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,17 +19,20 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrlenWor
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The index of the last byte c of bs, counting from i, after acc. *)
+(** Helper [last_from] scans byte list bs from index i, updating acc
+    whenever an element equals target byte c. *)
 Fixpoint last_from (c : Z) (i : nat) (bs : list Z) (acc : option nat) : option nat :=
   match bs with
   | [] => acc
   | b :: bs' => last_from c (S i) bs' (if Z.eqb b c then Some i else acc)
   end.
 
-(** The index of the last byte c of bs, if any. *)
+(** Function [last_byte] returns the index of the last occurrence of
+    byte c in bs, or `None` if c is absent. *)
 Definition last_byte (c : Z) (bs : list Z) : option nat := last_from c 0 bs None.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the `strrchr` specifications over a
+    [[runtime]] R and a program logic instance LG0. *)
 Module StrrchrLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module SW := StrlenWordOn R LG0.
 Module WS := SW.WS.
@@ -41,15 +44,18 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A call triple for the function at `__GI___memrchr` on a string: for
-    the string s at p at any share, memrchr(p, c, length s + 1) returns
-    the pointer to the last byte c mod 256 of s and its NUL, or null,
-    and hands the string back. *)
+(** Because `__GI___memrchr` is linked by name from another translation
+    unit, [memrchr_spec] abstracts its call contract: on a [word_string]
+    at any share, searching `length s + 1` bytes returns the last
+    `c mod 256` or null and restores the string. *)
 Definition memrchr_spec : Prop :=
   exists F, find_fn ge (TAtom "__GI___memrchr") = Some (Defined F) /\
   (forall p c n, is_Some (call_frame F [WPtr p; WInt c; WInt n])) /\
@@ -59,9 +65,9 @@ Definition memrchr_spec : Prop :=
       (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0])))))) -∗
       WP (ERun fr : gexpr) {{ Φ }}.
 
-(** glibc's strrchr of the string s at p for c: it returns the pointer
-    to the last byte c mod 256 of s and its NUL, or null, and hands the
-    string back. *)
+(** Executing a call [[frame]] of [glibc_strrchr] on a [word_string] at
+    any share returns a pointer to the last matching byte from
+    [last_byte], or null, and restores the string. *)
 Lemma wp_glibc_strrchr_ws (Hm : memrchr_spec) dq p s c Φ :
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) -> 0 <= c < 2 ^ 32 ->
   word_string dq p s -∗
@@ -91,11 +97,10 @@ Proof.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply ("HK" with "Hs").
 Qed.
 
-(** A call of glibc's strrchr, in any module whose function at the
-    called name g is glibc's `__GI_strrchr`, at `__GI_strlen` glibc's
-    strlen and at `__GI___memrchr` one with [memrchr_spec], on a string
-    at any share: the caller resumes with the last c's pointer, or null,
-    and the string. *)
+(** When a caller invokes `c: strrchr(p, c)` in a module providing
+    `__GI_strlen` and [memrchr_spec], [wp_call_glibc_strrchr] resumes
+    the caller with the last matching byte or null and restores the
+    string. *)
 Lemma wp_call_glibc_strrchr (Hm : memrchr_spec) f e ls l r g args rest j dq p s c cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt c] -> 0 <= c < 2 ^ 32 ->
   find_fn ge g = Some (Defined glibc_strrchr) ->

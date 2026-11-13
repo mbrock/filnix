@@ -1,34 +1,26 @@
-(** C strings as glibc's word-at-a-time string functions read them
-    (docs/glibc-ir.md): [word_string] dq p s owns, at the share dq, the
-    whole aligned 8-byte words from the word that holds p's first byte
-    through the word that holds the string's NUL, every byte of each,
-    including bytes before p and past the NUL. glibc's strlen, strchr
-    and strcmp read exactly those words (StrlenBits.v), so a triple for
-    them takes a [word_string], not a byte span.
+(** Glibc's string routines such as `c: strlen`, `c: strchr`, and
+    `c: strcmp` scan memory in aligned 8-byte words rather than one byte
+    at a time. Because each load reads an entire word, those functions
+    also touch padding bytes before the string's first byte and after
+    its NUL terminator. To verify them, this module defines [word_string],
+    which owns the aligned word window from the word holding p's first
+    byte through the word holding the NUL byte.
 
-    - [wwin] dq b reg wo ws is the window: a share of the life of the
-      object b and of the words ws from its offset wo ([words_ps]).
-    - [str_shape] p b reg ws s says ws is the tight window of the string
-      s at p: p names b, read-write or read-only, b is 8-aligned, the
-      window lies in b's region, has as many words as the string and its
-      NUL span, its words are 64-bit, its bytes from p are s and a NUL,
-      and s has no NUL.
+    A string window combines the object's liveness token with its word
+    pieces in [wwin], while [str_shape] checks that the window fits
+    inside an 8-byte aligned [[region]], holds valid 64-bit words, and
+    encodes the bytes of s followed by a NUL. Because callers often
+    pass the same string twice or read string literals concurrently,
+    windows can split into fractional shares and convert to a
+    [[persistent-proposition|persistent]] read-only form.
 
-    A share splits and joins ([word_string_split]), and can be given up
-    for a persistent read-only one ([word_string_persist]), as string
-    literals and aliased arguments (`c: strcmp(p, p)`) need. A pointer
-    into a string owns the string's tail ([word_string_suffix]), and a
-    share of it can be lent out and taken back ([word_string_borrow]).
-    In any memory that agrees with the ghost heap the string's bytes are
-    readable through p and are s ([str_shape_bytes]), what a contract
-    such as zsys_write asks of a buffer. A literal of a module's initial
-    memory is a [word_string] from its pieces ([word_string_literal]).
-
-    Why a lent share and not the same share: a [word_string] dq p' s2
-    with dq whole may write the bytes of its first word before p', which
-    belong to the parent's prefix, so a wand giving back the parent
-    from any such string does not hold. A lent fraction is joined back
-    by agreement with the part kept ([wwin_agree]). *)
+    Advancing a pointer into a string produces ownership of the string's
+    tail, and a caller can lend a fraction of that tail and take it back
+    with a [[magic-wand|magic wand]]. Lending only a fraction rather than
+    the whole share is essential, because an exclusive owner of the tail
+    could overwrite bytes before the tail pointer in the shared first
+    word. Keeping a fraction behind lets [wwin_agree] verify that the
+    returned words still match the original string. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -41,13 +33,21 @@ From Glibc Require Import StrlenBits StrlenLogic OsWorld.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The shape of a string *)
+(** ## The shape of a string
 
-(** The address of the 8-aligned word that holds p's byte. *)
+    Before claiming ownership of a string's words in separation logic,
+    we must state the pure geometric invariants that relate a C pointer
+    p, its underlying object b, and the list of 64-bit words ws. Here we
+    define that shape invariant and provide a boolean decision procedure
+    so concrete string literals can be checked by computation. *)
+
+(** [wstart] computes the 8-byte aligned base address of the word that
+    contains pointer p. *)
 Definition wstart (p : ptr) : Z := ptr_addr p - ptr_addr p mod 8.
 
-(** The words ws of the object b with the region reg are the tight
-    window of the string s at p (see the header). *)
+(** Record [str_shape] states that the 64-bit words ws form the tight
+    aligned window of string s at pointer p inside object b and region
+    reg. *)
 Record str_shape (p : ptr) (b : Z) (reg : region) (ws s : list Z) : Prop := {
   ss_cap : ptr_cap p = Obj b \/ ptr_cap p = Ro b;
   ss_base : 0 < b;
@@ -61,10 +61,12 @@ Record str_shape (p : ptr) (b : Z) (reg : region) (ws s : list Z) : Prop := {
   ss_chars : Forall (fun c => 0 < c < 256) s
 }.
 
-(** The pointer n bytes past p, with p's capability. *)
+(** [ptr_add] advances pointer p by n bytes while preserving its
+    [[capability]]. *)
 Definition ptr_add (p : ptr) (n : Z) : ptr := mkPtr (ptr_addr p + n) (ptr_cap p).
 
-(** [str_shape] as a computation, for a fixed image. *)
+(** [str_shape_b] evaluates all fields of [str_shape] as a computable
+    boolean test for concrete literals and memory images. *)
 Definition str_shape_b (p : ptr) (b : Z) (reg : region) (ws s : list Z) : bool :=
   match ptr_cap p with Obj b' | Ro b' => b' =? b | _ => false end && (0 <? b) && (b mod 8 =? 0) &&
   (b <=? ptr_addr p) && (wstart p + 8 * Z.of_nat (length ws) <=? r_end reg) && (r_end reg <=? 2 ^ 48) &&
@@ -73,7 +75,10 @@ Definition str_shape_b (p : ptr) (b : Z) (reg : region) (ws s : list Z) : bool :
   bool_decide (take (S (length s)) (drop (Z.to_nat (ptr_addr p mod 8)) (wbytes ws)) = s ++ [0]) &&
   forallb (fun c => (0 <? c) && (c <? 256)) s.
 
-(** [str_shape_b] decides [str_shape]: a literal's shape by [vm_compute]. *)
+(** Concrete string literals in a compiled module have fixed bytes and
+    bounds, so we can check their shape by computation rather than
+    writing manual inequalities. Lemma [str_shape_b_sound] turns a
+    passing boolean check into a [str_shape] proof. *)
 Lemma str_shape_b_sound p b reg ws s : str_shape_b p b reg ws s = true -> str_shape p b reg ws s.
 Proof.
   unfold str_shape_b. intros H. repeat rewrite andb_true_iff in H.
@@ -87,24 +92,33 @@ Proof.
     rewrite forallb_forall in Hch. specialize (Hch c Hin). lia.
 Qed.
 
-(** ## Words and their pieces *)
+(** ## Words and their pieces
 
-(** The bytes of two runs of words are each's in turn. *)
+    Splitting a string at a suffix or agreeing between two fractional
+    shares requires reasoning about how word lists map to flat byte
+    lists and separation-logic piece keys. These structural lemmas
+    connect [wbytes], [words_ps], and [first_zero] across appends and
+    drops. *)
+
+(** Appending two word lists concatenates their little-endian byte
+    sequences, as [wbytes_app] proves. *)
 Lemma wbytes_app ws1 ws2 : wbytes (ws1 ++ ws2) = wbytes ws1 ++ wbytes ws2.
 Proof. apply flat_map_app. Qed.
 
-(** The words ws have 8 bytes each. *)
+(** [wbytes_length] confirms that ws expands to 8 bytes per 64-bit word. *)
 Lemma wbytes_length ws : length (wbytes ws) = (8 * length ws)%nat.
 Proof. induction ws as [|w ws IH]; [reflexivity|]. rewrite wbytes_cons length_app IH. cbn. lia. Qed.
 
-(** The bytes of the words after the first j are the bytes after 8j. *)
+(** Dropping the first j words from ws drops the first 8 * j bytes from
+    its byte list, as [wbytes_drop] proves. *)
 Lemma wbytes_drop j ws : wbytes (drop j ws) = drop (8 * j) (wbytes ws).
 Proof.
   revert ws. induction j as [|j IH]; intros [|w ws]; try reflexivity.
   - cbn [drop]. rewrite IH wbytes_cons drop_app_ge; [|cbn; lia]. cbn [length map idx8]. f_equal. lia.
 Qed.
 
-(** The pieces of two runs of words are each's in turn. *)
+(** Appending two word lists splits their piece list at offset
+    8 * length ws1, as [words_ps_app] proves. *)
 Lemma words_ps_app b o ws1 ws2 :
   words_ps b o (ws1 ++ ws2) = words_ps b o ws1 ++ words_ps b (o + 8 * Z.of_nat (length ws1)) ws2.
 Proof.
@@ -113,7 +127,8 @@ Proof.
   - rewrite IH -app_assoc. do 3 f_equal. lia.
 Qed.
 
-(** The keys of the pieces of words are byte keys, one per offset. *)
+(** [words_ps_keys] shows that the piece keys of ws from offset o form
+    contiguous byte keys for object b. *)
 Lemma words_ps_keys b o ws : (words_ps b o ws).*1 = PByte b <$> seqZ o (8 * Z.of_nat (length ws)).
 Proof.
   revert o. induction ws as [|w ws IH]; intros o; [reflexivity|].
@@ -123,12 +138,15 @@ Proof.
   repeat (apply (f_equal2 cons); [f_equal; lia|]). reflexivity.
 Qed.
 
-(** Two runs of words of one length have the same keys. *)
+(** Two word lists of the same length generate the exact same piece
+    keys at offset o, as [words_ps_keys_eq] records. *)
 Lemma words_ps_keys_eq b o ws1 ws2 : length ws1 = length ws2 ->
   (words_ps b o ws1).*1 = (words_ps b o ws2).*1.
 Proof. intros H. by rewrite !words_ps_keys H. Qed.
 
-(** Runs of 64-bit words with the same pieces are the same. *)
+(** Because each 64-bit word is uniquely determined by its eight bytes,
+    [words_ps_inj] proves that equal piece lists come from equal word
+    lists. *)
 Lemma words_ps_inj b o ws1 ws2 :
   Forall (fun w => 0 <= w < 2 ^ 64) ws1 -> Forall (fun w => 0 <= w < 2 ^ 64) ws2 ->
   words_ps b o ws1 = words_ps b o ws2 -> ws1 = ws2.
@@ -141,8 +159,8 @@ Proof.
   rewrite -(of_bytes_byte_of w1 R1) -(of_bytes_byte_of w2 R2). cbn. congruence.
 Qed.
 
-(** Byte i of the words ws is the piece at offset o + i of their
-    pieces from o. *)
+(** [words_ps_elem] connects byte i of `wbytes ws` to the corresponding
+    byte piece at offset o + i in [words_ps]. *)
 Lemma words_ps_elem b o ws (i : nat) x :
   wbytes ws !! i = Some x -> (PByte b (o + Z.of_nat i), VByte x) ∈ words_ps b o ws.
 Proof.
@@ -154,7 +172,8 @@ Proof.
     replace (o + Z.of_nat i) with (o + 8 + Z.of_nat (i - 8)) by lia. exact (IH _ _ H).
 Qed.
 
-(** The first zero of the string's bytes from p is at its length. *)
+(** [str_shape_first_zero] proves that the first zero byte reachable from
+    pointer p in a well-shaped window sits at index `length s`. *)
 Lemma str_shape_first_zero p b reg ws s : str_shape p b reg ws s ->
   first_zero (drop (Z.to_nat (ptr_addr p mod 8)) (wbytes ws)) (length s).
 Proof.
@@ -167,20 +186,24 @@ Proof.
     rewrite Forall_forall in Hc. specialize (Hc 0 Hz). lia.
 Qed.
 
-(** The string's bytes, at the pointer i bytes in, i at most its length:
-    the window's byte, which is s's byte or the NUL. *)
+(** For any offset i up to the string length, [str_shape_byte] extracts
+    the string byte or its terminating NUL from the window's byte list. *)
 Lemma str_shape_byte p b reg ws s (i : nat) : str_shape p b reg ws s -> (i <= length s)%nat ->
   wbytes ws !! (Z.to_nat (ptr_addr p mod 8) + i)%nat = (s ++ [0]) !! i.
 Proof.
   intros Hs Hi. rewrite -(ss_bytes _ _ _ _ _ Hs) lookup_take_lt; [|lia]. by rewrite lookup_drop.
 Qed.
 
-(** ## Readable bytes *)
+(** ## Readable bytes
 
-(** In a memory m where the object b is live with the region reg and
-    the window's pieces agree, the string's bytes and its NUL are
-    readable through p, and its bytes are s. What a contract that reads
-    a buffer, such as zsys_write's [readable_bytes], asks. *)
+    External system-call contracts such as `zsys_write` check physical
+    memory readability rather than word-window ownership. When a
+    window's pieces agree with physical memory m, the next lemma bridges
+    [str_shape] to [readable_bytes] and [os_bytes]. *)
+
+(** Whenever object b is live in memory m and the window's pieces agree
+    with m, [str_shape_bytes] proves that all bytes of s and its NUL
+    terminator are readable through p and match s. *)
 Lemma str_shape_bytes m p b reg ws s : str_shape p b reg ws s -> live_at m b reg ->
   all_agree m (words_ps b (wstart p - b) ws) ->
   (forall n, 0 <= n <= Z.of_nat (length s) + 1 -> readable_bytes m p n) /\
@@ -216,23 +239,34 @@ Proof.
     + rewrite list_lookup_fmap lookup_seq_ge; [|exact Hi]. symmetry. by apply lookup_ge_None.
 Qed.
 
-(** ## Windows and strings *)
+(** ## Windows and strings
+
+    Wrapping [wwin] and [str_shape] in an existential separation-logic
+    predicate gives callers an abstract string resource that hides the
+    underlying base address and padding words. The lemmas in this
+    section show how to split a string into fractional shares, re-join
+    two shares by agreement, and freeze a string into a persistent
+    read-only resource. *)
 
 Section word_string.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** [wwin] dq b reg wo ws: a share dq of the life of the object b, live
-    with the region reg (Logic.v's [liveq]), and of the 64-bit words ws
-    from its offset wo. *)
+(** Word-at-a-time string routines need shared read access to both the
+    object's liveness token and its aligned 64-bit words. Predicate
+    [wwin] bundles fractional ownership dq of both resources starting at
+    offset wo. *)
 Definition wwin (dq : dfrac) (b : Z) (reg : region) (wo : Z) (ws : list Z) : iProp Σ :=
   ptsq dq [(PLive b, VLive reg)] ∗ ptsq dq (words_ps b wo ws).
 
-(** [word_string] dq p s: a share dq of the tight window of the string s
-    at p ([str_shape]). *)
+(** Callers of string routines should not have to track the underlying
+    object base address or padding words directly. Predicate
+    [word_string] existentially hides those witnesses behind pointer p
+    and string s. *)
 Definition word_string (dq : dfrac) (p : ptr) (s : list Z) : iProp Σ :=
   ∃ b reg ws, ⌜str_shape p b reg ws s⌝ ∗ wwin dq b reg (wstart p - b) ws.
 
-(** Shares of pieces with the same keys hold the same values. *)
+(** Two fractional piece maps with identical keys must hold identical
+    values, as [ptsq_agree] proves. *)
 Lemma ptsq_agree dq1 dq2 ps1 ps2 : ps1.*1 = ps2.*1 -> ptsq dq1 ps1 -∗ ptsq dq2 ps2 -∗ ⌜ps1 = ps2⌝.
 Proof.
   revert ps2. induction ps1 as [|[l1 v1] ps1 IH]; intros [|[l2 v2] ps2] Hk; try discriminate Hk.
@@ -241,24 +275,28 @@ Proof.
     iDestruct (pointsto_agree with "H1 H2") as %<-. by iDestruct (IH _ Hk with "Hs1 Hs2") as %<-.
 Qed.
 
-(** A window splits into shares and joins back. *)
+(** [wwin_split] splits a fractional window into two smaller shares and
+    joins them back together. *)
 Lemma wwin_split q1 q2 b reg wo ws :
   wwin (DfracOwn (q1 + q2)) b reg wo ws ⊣⊢ wwin (DfracOwn q1) b reg wo ws ∗ wwin (DfracOwn q2) b reg wo ws.
 Proof. rewrite /wwin !ptsq_split. iSplit; [iIntros "[[$ $] [$ $]]" | iIntros "[[$ $] [$ $]]"]. Qed.
 
-(** Any share of a window can be given up for a read-only one. *)
+(** Any share of a window can be frozen into a persistent read-only
+    window by [wwin_persist]. *)
 Lemma wwin_persist dq b reg wo ws : wwin dq b reg wo ws ==∗ □ wwin DfracDiscarded b reg wo ws.
 Proof.
   iIntros "[Hl Hw]". iMod (ptsq_persist with "Hl") as "#Hl". iMod (ptsq_persist with "Hw") as "#Hw".
   iModIntro. iModIntro. iFrame "#".
 Qed.
 
-(** A read-only window is persistent. *)
+(** Once a window becomes read-only, multiple calls can share it freely
+    without splitting fractions again. Instance [wwin_persistent] marks
+    a read-only window as [[persistent-proposition|persistent]]. *)
 Global Instance wwin_persistent b reg wo ws : Persistent (wwin DfracDiscarded b reg wo ws).
 Proof. rewrite /wwin. apply _. Qed.
 
-(** Two windows of one object, offset and length agree: one region,
-    one run of words. *)
+(** Two fractional windows of the same object, offset, and word count
+    must share the same region and word values, as [wwin_agree] proves. *)
 Lemma wwin_agree dq1 dq2 b reg1 reg2 wo ws1 ws2 : length ws1 = length ws2 ->
   Forall (fun w => 0 <= w < 2 ^ 64) ws1 -> Forall (fun w => 0 <= w < 2 ^ 64) ws2 ->
   wwin dq1 b reg1 wo ws1 -∗ wwin dq2 b reg2 wo ws2 -∗ ⌜reg1 = reg2 /\ ws1 = ws2⌝.
@@ -269,8 +307,9 @@ Proof.
   iPureIntro. split; [congruence | exact (words_ps_inj _ _ _ _ H1 H2 Ew)].
 Qed.
 
-(** Two shapes of one string at one pointer name one object and have
-    windows of one length. *)
+(** Two shapes for the same string s at the same pointer p must name the
+    same object and span the same number of words, as [str_shape_same]
+    verifies. *)
 Lemma str_shape_same p b1 b2 reg1 reg2 ws1 ws2 s :
   str_shape p b1 reg1 ws1 s -> str_shape p b2 reg2 ws2 s -> b1 = b2 /\ length ws1 = length ws2.
 Proof.
@@ -278,7 +317,8 @@ Proof.
   destruct Hc1 as [E1|E1], Hc2 as [E2|E2]; rewrite E1 in E2; congruence.
 Qed.
 
-(** A string splits into shares and joins back. *)
+(** [word_string_split] splits a [word_string] into two fractional
+    shares and recombines them using [wwin_agree]. *)
 Lemma word_string_split q1 q2 p s :
   word_string (DfracOwn (q1 + q2)) p s ⊣⊢ word_string (DfracOwn q1) p s ∗ word_string (DfracOwn q2) p s.
 Proof.
@@ -292,26 +332,38 @@ Proof.
     iExists b, reg, ws. iSplit; [done|]. rewrite wwin_split. iFrame.
 Qed.
 
-(** Any share of a string can be given up for a read-only one. *)
+(** Any share of a string can be frozen into a persistent read-only
+    string by [word_string_persist]. *)
 Lemma word_string_persist dq p s : word_string dq p s ==∗ □ word_string DfracDiscarded p s.
 Proof.
   iIntros "(%b & %reg & %ws & %Hs & Hw)". iMod (wwin_persist with "Hw") as "#Hw".
   iModIntro. iModIntro. iExists b, reg, ws. by iFrame "#".
 Qed.
 
-(** A read-only string is persistent. *)
+(** Once a string becomes read-only, callers can duplicate it across
+    aliased arguments such as `c: strcmp(p, p)`. Instance
+    [word_string_persistent] marks a read-only string as persistent. *)
 Global Instance word_string_persistent p s : Persistent (word_string DfracDiscarded p s).
 Proof. rewrite /word_string. apply _. Qed.
 
-(** A string's window: [word_string] from its witnesses. *)
+(** When a proof constructs a window and a shape witness separately, it
+    needs to pack them into the abstract string predicate. Lemma
+    [word_string_intro] combines both into [word_string]. *)
 Lemma word_string_intro dq p b reg ws s :
   str_shape p b reg ws s -> wwin dq b reg (wstart p - b) ws -∗ word_string dq p s.
 Proof. iIntros (Hs) "Hw". iExists b, reg, ws. by iFrame. Qed.
 
-(** ## Pointers into strings *)
+(** ## Pointers into strings
 
-(** The tail s2 of the string s1 ++ s2 at p, at p advanced past s1, has
-    the window of the words from the one holding its first byte. *)
+    C callers often advance a pointer into the middle of a string, for
+    example to inspect a suffix after skipping a prefix. When we advance
+    p past prefix s1, we drop the leading words before the tail s2 and
+    either forget them permanently or lend a fraction of the tail so we
+    can restore the whole string afterward. *)
+
+(** Advancing pointer p past prefix s1 shifts the window start to the
+    word holding the first byte of tail s2, as [str_shape_suffix]
+    proves. *)
 Lemma str_shape_suffix p b reg ws s1 s2 :
   str_shape p b reg ws (s1 ++ s2) ->
   let j := Z.to_nat ((ptr_addr p mod 8 + Z.of_nat (length s1)) / 8) in
@@ -346,9 +398,9 @@ Proof.
   - apply Forall_app in Hch. tauto.
 Qed.
 
-(** A pointer advanced into a string owns the string's tail, at the
-    string's share. The prefix's words are given up: for a read-only
-    string, nothing is lost. *)
+(** [word_string_suffix] weakens ownership of `s1 ++ s2` at pointer p to
+    ownership of the tail s2 at the advanced pointer, discarding any
+    leading words. *)
 Lemma word_string_suffix dq p s1 s2 :
   word_string dq p (s1 ++ s2) ⊢ word_string dq (ptr_add p (Z.of_nat (length s1))) s2.
 Proof.
@@ -360,10 +412,10 @@ Proof.
   rewrite (ss_len _ _ _ _ _ Hs) length_app Nat2Z.inj_add. apply Z.div_le_mono; lia.
 Qed.
 
-(** A share q1 of the tail of a string, lent to a pointer advanced
-    into it: the wand takes any share q1 of that tail back and gives the
-    whole string. Agreement with the share q2 kept shows the tail came
-    back with the same words ([wwin_agree]). *)
+(** A caller that passes a suffix pointer into a helper function still
+    needs to recover the full string once that helper returns. Lemma
+    [word_string_borrow] lends a fractional share q1 of the tail s2 and
+    returns a [[magic-wand|magic wand]] that restores the full string. *)
 Lemma word_string_borrow q1 q2 p s1 s2 :
   word_string (DfracOwn (q1 + q2)) p (s1 ++ s2) ⊢
   word_string (DfracOwn q1) (ptr_add p (Z.of_nat (length s1))) s2 ∗
@@ -396,15 +448,21 @@ Proof.
     rewrite /wwin Hsp ptsq_app; iFrame.
 Qed.
 
-(** ## Literals *)
+(** ## Literals
 
-(** The pieces of a literal at the base b of its object: its life and
-    its words from offset 0. *)
+    String literals in a module's initial memory are laid out 16-byte
+    aligned and rounded up to whole 8-byte words. Here we package a
+    literal's liveness token and words into [lit_ps], prove its keys
+    are distinct, and turn it into an exclusive [word_string] that can
+    then be frozen with [word_string_persist]. *)
+
+(** [lit_ps] collects the liveness token and aligned word pieces for a
+    string literal at base address b. *)
 Definition lit_ps (b : Z) (reg : region) (ws : list Z) : list (piece * pval) :=
   (PLive b, VLive reg) :: words_ps b 0 ws.
 
-(** A literal's pieces have distinct keys, as [pieces_never_panics]
-    asks. *)
+(** [lit_ps_nodup] proves that all piece keys in [lit_ps] are distinct,
+    as required when initializing the program logic heap. *)
 Lemma lit_ps_nodup b reg ws : NoDup (lit_ps b reg ws).*1.
 Proof.
   cbn [lit_ps fmap list_fmap fst]. rewrite (words_ps_keys b 0 ws). apply NoDup_cons. split.
@@ -412,13 +470,10 @@ Proof.
   - apply NoDup_fmap_2; [intros x y E; congruence | apply NoDup_seqZ].
 Qed.
 
-(** A literal of a module's initial memory, owned as its pieces
-    [lit_ps] with a read-only pointer to its base: a whole share of a
-    string. Its shape is [str_shape_b] by [vm_compute], its pieces agree
-    with the image by Heap.v's [checked_pieces_all_agree]; Run.v lays
-    each data item out 16-aligned and rounded up to 8 bytes, so a
-    literal's words are whole. The share can then be made persistent
-    ([word_string_persist]). *)
+(** At program startup, string literals begin as raw byte and liveness
+    pieces in initial memory. Lemma [word_string_literal] converts those
+    initial pieces [lit_ps] into a full [word_string] whenever the
+    literal satisfies [str_shape]. *)
 Lemma word_string_literal b reg ws s :
   str_shape (mkPtr b (Ro b)) b reg ws s -> pts (lit_ps b reg ws) ⊢ word_string (DfracOwn 1) (mkPtr b (Ro b)) s.
 Proof.
@@ -429,9 +484,15 @@ Qed.
 
 End word_string.
 
-(** ## Over a Logic instance *)
+(** ## Over a Logic instance
 
-(** Reading strings over the [[runtime]] R and the Logic instance LG. *)
+    The final two lemmas connect [word_string] back to the program logic
+    over an arbitrary [[runtime]] R and logic instance LG0. They allow
+    callers to extract physical memory readability for external calls
+    and to discharge read checks using a fractional liveness token. *)
+
+(** The module [WordStringOn] lifts string readability and fractional
+    read checks into an arbitrary [[runtime]] R and logic instance LG0. *)
 Module WordStringOn (R : Runtime) (LG0 : LogicSig R).
 Module LG := LG0.
 Module L := LG.L.
@@ -441,13 +502,17 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** Every Iris proof needs a state interpretation linking memory and
+    world state to the operational semantics. [rules_irisGS] builds that
+    instance from [registry], [wi], and [ge]. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** [gexpr] abbreviates the expression type of the parameterized
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** In the memory of σ, a string's bytes and its NUL are readable
-    through p and its bytes are s ([str_shape_bytes]). *)
+(** [word_string_readable] extracts from [heap_interp] and [word_string]
+    that every byte of s and its NUL terminator is readable in state σ
+    and matches s. *)
 Lemma word_string_readable σ dq p s : heap_interp wi σ -∗ word_string dq p s -∗
   ⌜(forall n, 0 <= n <= Z.of_nat (length s) + 1 -> readable_bytes (ls_mem σ) p n) /\
    os_bytes (ls_mem σ) p (Z.of_nat (length s)) = s⌝.
@@ -457,9 +522,10 @@ Proof.
   iDestruct (ptsq_facts with "Hσ Hw") as %(Ha & _). iPureIntro. exact (str_shape_bytes _ _ _ _ _ _ Hs Hlv Ha).
 Qed.
 
-(** [wp_check_read] at a share: a [[check]] for reading of the pointer
-    p, through a read-write or read-only capability for the object b of
-    which a share of the life is owned. *)
+(** Reading through a pointer only requires shared ownership of the
+    target object's liveness token. Lemma [wp_check_read_dq] verifies a
+    read [[check]] using a fractional share dq of [liveq] and binds the
+    checked pointer to d. *)
 Lemma wp_check_read_dq f e ls l d lo hi al args rest j classes p b reg dq Φ :
   op_arg_classes (Check lo hi Read al) A = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->

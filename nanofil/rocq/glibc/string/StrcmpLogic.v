@@ -1,18 +1,15 @@
-(** glibc's own `strcmp` (`__GI_strcmp`, StrcmpCode.v) over two
-    [word_string]s (WordString.v) at any shares, aliased or not:
-    [wp_glibc_strcmp_ws] for a frame of it, and [wp_call_glibc_strcmp]
-    for a call of any module whose function at the called name is it.
-    The caller gets StrcmpBits.v's [strcmp_res] and both strings back.
+(** In C, `c: strcmp` can receive pointers at arbitrary byte alignments,
+    and the two pointers may even alias the same string. To use 64-bit
+    word comparisons safely, glibc's `__GI_strcmp`
+    ([StrcmpCode](StrcmpCode.v)) first compares individual bytes until
+    the first pointer reaches an 8-byte boundary, then switches to the
+    aligned or unaligned word loops in [StrcmpLoop](StrcmpLoop.v).
 
-    glibc's strcmp first compares bytes until the first string's
-    pointer is 8-aligned ([byte_loop]), each read through the string's
-    window ([wp_win_byte]); a NUL in the first string or a difference
-    returns their difference ([strcmp_res_stop]). It then reads the
-    first string's word and tests the second string's alignment
-    ([after_bytes]): an aligned second string goes to StrcmpLoop.v's
-    [aligned_loop]; an unaligned one has its first word's bytes from
-    the pointer, padded with 0xff, tested for a NUL, and goes to
-    [unaligned_loop] or, with one, to the last comparison [fin_c]. *)
+    Two `c: strcmp` callers might pass pointers into the same string
+    buffer or into read-only memory. This module proves the byte-level
+    prologue, the alignment dispatch, and the entry specifications for
+    `c: strcmp` so callers can share strings, recover their read
+    permissions, and obtain [strcmp_res]. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -24,15 +21,16 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpCod
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** Module [StrcmpLogicOn] packages the `c: strcmp` entry triples over a
+    given [[runtime]] R and logic instance LG0. *)
 Module StrcmpLogicOn (R : Runtime) (LG0 : LogicSig R).
-(** The word loops over R and LG0. *)
+(** Module [SL] provides the aligned and unaligned word-loop proofs. *)
 Module SL := StrcmpLoopOn R LG0.
-(** The loops' strings' windows. *)
+(** Module [WS] provides the word-window string representation. *)
 Module WS := SL.WS.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance LG0. *)
 Module LG := LG0.
-(** The language of the Logic instance. *)
+(** Module [L] provides the nanofil language definition for LG. *)
 Module L := LG.L.
 Import L LG WS SL.
 
@@ -40,36 +38,45 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** Instance [rules_irisGS] builds the [[iris]] machine semantics from
+    the external registry and world invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** Notation [gexpr] abbreviates expressions in the instantiated language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** StrcmpLoop.v's steps, for this section: a let, its value whole. *)
+(** Tactic [sl] steps past a `let` instruction while keeping its bound
+    value symbolic. *)
 Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A flight. *)
+(** Tactic [sf] steps past a capability `flight` check instruction. *)
 Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
-(** Entering the block a frame is entering. *)
+(** Tactic [en] enters the target basic block of a pending frame jump. *)
 Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] steps through a `goto` terminator and immediately enters
+    its destination block. *)
 Ltac sg := eapply (s_goto registry wi ge); en.
-(** A branch, its condition left whole. *)
+(** Tactic [sb] steps past a conditional `branch` instruction without
+    evaluating its condition. *)
 Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
-(** A let that reads the temporary n below the puts, which H gives. *)
+(** Tactic [slk] steps past a `let` instruction that reads an earlier
+    variable n whose value is given by H. *)
 Ltac slk n H := eapply (s_let registry wi ge); [reflexivity | reflexivity |
   cbn [map2_option value_x]; repeat (rewrite (lookup_after_put_other _ (TAtom n)); [|reflexivity]);
   rewrite H; reflexivity | intros ?; reflexivity |].
-(** Replace the integer the temporary name holds by v, proved by tac. *)
+(** Tactic [norm] rewrites the integer held by [[temporary]] name to v
+    using tactic tac. *)
 Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** Tactic [normt] normalizes the integer in the newest local variable
+    to v using tactic tac. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
-(** Replace the address of the pointer the temporary name holds by v. *)
+(** Tactic [normp] rewrites the address of the pointer held by
+    [[temporary]] name to v using linear arithmetic. *)
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
-(** The arithmetic of the shapes Hs1 and Hs2 of the two strings, and
-    the agreement of their bytes. *)
+(** To avoid repeating boilerplate at the start of each proof, tactic
+    [facts] extracts the address bounds, word lengths, and
+    byte-agreement properties from both strings. *)
 Ltac facts Hs1 Hs2 :=
   destruct (shape_facts _ _ _ _ _ Hs1) as (B1 & S1 & M1 & P1 & K1 & E1 & R1 & N1 & C1);
   destruct (shape_facts _ _ _ _ _ Hs2) as (B2 & S2 & M2 & P2 & K2 & E2 & R2 & N2 & C2);
@@ -77,12 +84,19 @@ Ltac facts Hs1 Hs2 :=
   pose proof (ss_chars _ _ _ _ _ Hs1) as H1; pose proof (sbyte_agree _ _ _ _ _ Hs1) as A1;
   pose proof (sbyte_agree _ _ _ _ _ Hs2) as A2.
 
-(** ## From the byte loop to the word loops *)
+(** ## From the byte loop to the word loops
 
-(** The byte loop has ended at c, where the first string's bytes start
-    its word Q1: pr.1 and pr.2 are q1 and q2, c bytes into the strings,
-    whose bytes before c agree and are not 0. glibc reads the first
-    string's word and goes on by the second's alignment. *)
+    Once the byte prologue aligns the first string's pointer to an
+    8-byte boundary, glibc loads the first 64-bit word and checks the
+    low bits of the second pointer. If the second pointer is also
+    aligned, control enters [aligned_loop]. Otherwise, glibc shifts the
+    second string's partial first word into place, pads the missing
+    high bytes with `0xff`, and either enters [unaligned_loop] or jumps
+    to [fin_c] if those initial bytes already contain a NUL. *)
+
+(** Lemma [after_bytes] verifies the transition at offset c after the
+    byte loop aligns p1 to word Q1, dispatching to [aligned_loop],
+    [unaligned_loop], or [fin_c]. *)
 Lemma after_bytes dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c Q1 q1 q2 z1 z2 z3 e Φ :
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= c -> ptr_addr p1 mod 8 + c = 8 * Q1 ->
   same_upto (sbyte p1 ws1) (sbyte p2 ws2) c ->
@@ -152,15 +166,21 @@ Proof.
       eapply (fin_c registry wi ge _ _ _ _ jj); [lia | exact Hst' | exact Hsj |]. rewrite -Hres. iApply ("HK" with "W1 W2").
 Qed.
 
-(** ## The byte loop *)
+(** ## The byte loop
 
-(** The byte loop's block. *)
+    When the first string pointer p1 is not 8-byte aligned, glibc steps
+    byte by byte until it reaches the next word boundary, at most seven
+    bytes away. Each iteration loads one byte from both strings, returns
+    immediately on a NUL or mismatch, and otherwise increments the
+    offset i toward the alignment count in v8. *)
+
+(** Constant [blk10] extracts the entry basic block `L10` of the byte
+    comparison loop from `__GI_strcmp`. *)
 Definition blk10 : block := Eval vm_compute in blk "L10".
 
-(** The byte loop at i, at most the bytes n8 to the first string's
-    word boundary, which v8 holds: pr.1 and pr.2 are q1 and q2, i bytes
-    into the strings, whose bytes before i agree and are not 0. strcmp
-    returns [strcmp_res] and hands both windows back. *)
+(** Lemma [byte_loop] proves by induction on the remaining alignment
+    bytes that starting at offset i returns [strcmp_res] and restores
+    both string windows. *)
 Lemma byte_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 i q1 q2 e Φ :
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= i <= (- ptr_addr p1) mod 8 ->
   same_upto (sbyte p1 ws1) (sbyte p2 ws2) i ->
@@ -217,10 +237,16 @@ Proof.
         iApply ("HK" with "W1 W2").
 Qed.
 
-(** ## The triples *)
+(** ## The triples
 
-(** glibc's strcmp from its entry, with v0 and v2 bound to p1 and p2
-    in either order, as a frame or a call binds them. *)
+    We now assemble the prologue and word loops into the function-level
+    contract for `c: strcmp`. Direct frame execution and C function
+    calls bind the formal parameters `v0` and `v2` in opposite list
+    orders, so [strcmp_entry] handles both orders once and exposes the
+    public [[hoare-triple|Hoare triples]] below. *)
+
+(** Lemma [strcmp_entry] verifies `__GI_strcmp` from its entry block
+    for either parameter-binding order of p1 and p2. *)
 Lemma strcmp_entry dq1 dq2 p1 p2 s1 s2 e Φ :
   e = [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2)] \/ e = [(TAtom "v2", WPtr p2); (TAtom "v0", WPtr p1)] ->
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
@@ -238,8 +264,9 @@ Proof.
        [iApply (word_string_intro _ _ _ _ _ _ Hs1 with "W1") | iApply (word_string_intro _ _ _ _ _ _ Hs2 with "W2")]).
 Qed.
 
-(** glibc's strcmp of two strings at any shares, aliased or not: it
-    returns [strcmp_res] and hands both strings back. *)
+(** Theorem [wp_glibc_strcmp_ws] proves the standalone specification of
+    `__GI_strcmp` over two [word_string] permissions at arbitrary
+    shares. *)
 Lemma wp_glibc_strcmp_ws dq1 dq2 p1 p2 s1 s2 Φ :
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
@@ -247,9 +274,9 @@ Lemma wp_glibc_strcmp_ws dq1 dq2 p1 p2 s1 s2 Φ :
              (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof. apply strcmp_entry. left. reflexivity. Qed.
 
-(** A call of glibc's strcmp, in any module whose function at the
-    called name g is glibc's `__GI_strcmp`, on two strings at any
-    shares: the caller resumes with [strcmp_res] and both strings. *)
+(** Theorem [wp_call_glibc_strcmp] lets any caller invoke `__GI_strcmp`
+    by name g, returning [strcmp_res] and both [word_string]
+    permissions. *)
 Lemma wp_call_glibc_strcmp f e ls l r g args rest j dq1 dq2 p1 p2 s1 s2 cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p1; WPtr p2] -> find_fn ge g = Some (Defined glibc_strcmp) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WInt (strcmp_res s1 s2))) = Some cf' ->

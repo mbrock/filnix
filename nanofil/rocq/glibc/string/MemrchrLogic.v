@@ -1,20 +1,14 @@
-(** This file proves that glibc's own memrchr finds the last byte c
-    among n bytes, so StrrchrLogic.v's strrchr no longer needs that as
-    a premise.
+(** This module proves that glibc's `__memrchr` finds the last byte
+    matching `c mod 256` within `n` bytes starting at `p`, discharging
+    the `memrchr_spec` premise that [StrrchrLogic] previously left
+    abstract.
 
-    memrchr(p, c, n) returns null when n is 0. Otherwise it reads the
-    word that holds the last of the n bytes and marks the bytes in it
-    that equal c. When the end of the n bytes is not 8-aligned, it
-    clears the marks at and after the end. MemrchrMask.v proves the
-    rest of the function from there. The answer is StrrchrLogic.v's
-    [last_byte] of the n bytes.
-
-    | Name | What it states |
-    | --- | --- |
-    | [memrchr_win] | the whole function over a window of words at any share |
-    | [wp_glibc_memrchr_ws] | the triple over a [word_string] and its NUL |
-    | [glibc_memrchr_spec] | StrrchrLogic.v's [memrchr_spec] of `__GI___memrchr` |
-    *)
+    When n is zero, `c: memrchr` returns null immediately. Otherwise it
+    loads the word containing the final byte, marks lanes matching c,
+    and clears any marks at or past the end offset when the end is not
+    8-aligned. From there, [MemrchrMask] and [MemrchrLoop] finish the
+    scan. The theorems below cover a word window, a [word_string], and
+    the contract needed by `c: strrchr`. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -27,21 +21,22 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBit
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the whole-function `memrchr` specifications
+    over a [[runtime]] R and a program logic instance LG0. *)
 Module MemrchrLogicOn (R : Runtime) (LG0 : LogicSig R).
-(** The loop. *)
+(** Module [RL] provides the backward word-loop invariant. *)
 Module RL := MemrchrLoopOn R LG0.
-(** The step rules of the proof mode. *)
+(** Module [SL] supplies the step rules for symbolic execution. *)
 Module SL := RL.SL.
-(** Strings' windows. *)
+(** Module [WS] provides word-window and fractional read helpers. *)
 Module WS := SL.WS.
-(** The last word's blocks. *)
+(** Module [MM] handles the final-word mask and join block. *)
 Module MM := MemrchrMaskOn R LG0.
-(** strrchr's triple, whose premise [memrchr_spec] is proved here. *)
+(** Module [SR] defines the [memrchr_spec] interface used by `strrchr`. *)
 Module SR := StrrchrLogicOn R LG0.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance. *)
 Module LG := LG0.
-(** The language of the Logic instance. *)
+(** Module [L] re-exports the core logic definitions. *)
 Module L := LG.L.
 Import L LG WS SL.
 
@@ -49,51 +44,67 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** This instance equips the nanofil language with a program-logic
+    state interpretation built from the contract registry and world
+    invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A let, its value left whole. *)
+(** Tactic [sl] advances one pure `let` instruction while keeping its
+    result expression symbolic. *)
 Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A let, its integer named. *)
+(** Tactic [sn] advances one `let` instruction and names its integer
+    result in the context. *)
 Ltac sn := eapply (s_letn registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |];
   let x := fresh "x" in let E := fresh "E" in intros x E.
-(** A flight. *)
+(** Tactic [sf] advances one [[flight]] instruction in the proof mode. *)
 Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
-(** Entering a block. *)
+(** Tactic [en] steps into the target block and exposes its instructions
+    and terminator. *)
 Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] follows an unconditional `goto` and immediately enters the
+    destination block. *)
 Ltac sg := eapply (s_goto registry wi ge); en.
-(** A branch, its condition left whole. *)
+(** Tactic [sb] advances one conditional `branch` while keeping its
+    condition expression symbolic. *)
 Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
-(** Read the temporaries of the frame's environment below its puts by
-    the hypotheses about them there, then compute the rest. *)
+(** To resolve IR temporary arguments during symbolic execution, [vx]
+    looks up each temporary in the environment hypotheses and evaluates
+    the remaining argument expressions. *)
 Ltac vx :=
   cbn [map2_option map_option flight_arg_x flight_cap arg_x];
   repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
     match goal with H : lookup n _ = Some ?x |- _ =>
       rewrite (value_x_tmp g E k n x); [|look H] end end;
   reflexivity.
-(** A let that may read the environment below the puts. *)
+(** Tactic [sl'] advances one `let` instruction whose arguments are
+    resolved via [vx]. *)
 Ltac sl' := eapply (s_let registry wi ge); [reflexivity | reflexivity | vx | intros ?; reflexivity |].
-(** A flight that may read the environment below the puts. *)
+(** Tactic [sf'] advances one [[flight]] instruction whose arguments are
+    resolved via [vx]. *)
 Ltac sf' := eapply (s_flight registry wi ge); [vx | reflexivity | vx |].
-(** A branch that may read the environment below the puts. *)
+(** Tactic [sb'] advances one `branch` instruction whose arguments are
+    resolved via [vx]. *)
 Ltac sb' := eapply (s_branch registry wi ge); [vx|].
-(** Look a temporary up below the puts, by its put or a hypothesis. *)
+(** To resolve a temporary lookup in the environment during a proof,
+    [lk] skips newer `put` bindings until it finds a matching
+    hypothesis. *)
 Ltac lk := repeat (rewrite lookup_after_put_other; [|reflexivity]);
   first [rewrite lookup_after_put_same; reflexivity | eassumption].
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** To keep intermediate integers readable, [normt] rewrites the
+    integer in the newest temporary to `v` using tactic `tac`. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
-(** Replace the address of the pointer the temporary name holds by v. *)
+(** Tactic [normp] rewrites the address of the pointer stored in
+    temporary `name` to `v` by arithmetic. *)
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
 
-(** glibc's memrchr of the n bytes from a, k into the 8-aligned word of
-    the window ws: it returns what [last_hit] finds and hands the
-    window back. *)
+(** Executing [glibc_memrchr] on n bytes starting at offset k in a
+    shared word window `ws` returns [hit_ptr] for [last_hit] and
+    restores the window [wwin]. *)
 Lemma memrchr_win dq b reg ws a cp c (k n : nat) e r Φ :
   0 < b -> (cp = Obj b \/ cp = Ro b) -> b mod 8 = 0 -> b <= a - Z.of_nat k -> a mod 8 = Z.of_nat k ->
   a - Z.of_nat k + 8 * Z.of_nat (List.length ws) <= r_end reg -> r_end reg <= 2 ^ 48 ->
@@ -154,9 +165,9 @@ Proof.
     destruct (_ <? _); reflexivity.
 Qed.
 
-(** glibc's memrchr of the string s at p and its NUL, at any share, as
-    a call binds it: it returns the pointer to the last byte c mod 256
-    of them, or null, and hands the string back. *)
+(** Executing a call [[frame]] of [glibc_memrchr] over a [word_string]
+    and its NUL terminator at any share returns a pointer to the last
+    byte matching `c mod 256`, or null, and restores the string. *)
 Lemma wp_glibc_memrchr_ws fr dq p s c Φ : 0 <= c < 2 ^ 32 ->
   call_frame glibc_memrchr [WPtr p; WInt c; WInt (Z.of_nat (List.length s) + 1)] = Some fr ->
   word_string dq p s -∗
@@ -178,8 +189,9 @@ Proof.
   - iIntros "Hw". iApply "HK". iExists b, reg, ws. iSplit; [done|]. unfold wstart. cbn [ptr_addr]. rewrite Hk. iExact "Hw".
 Qed.
 
-(** glibc's own memrchr at `__GI___memrchr` meets StrrchrLogic.v's
-    [memrchr_spec], so glibc's strrchr needs no premise about it. *)
+(** Because `c: strrchr` delegates its backward scan to `c: memrchr`,
+    [glibc_memrchr_spec] packages the frame specification above into the
+    [SR.memrchr_spec] contract. *)
 Lemma glibc_memrchr_spec :
   find_fn ge (TAtom "__GI___memrchr") = Some (Defined glibc_memrchr) -> SR.memrchr_spec registry wi ge.
 Proof.

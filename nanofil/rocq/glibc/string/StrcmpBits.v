@@ -1,26 +1,16 @@
-(** The byte and bit facts glibc's word-at-a-time `strcmp`
-    (StrcmpCode.v) rests on, for StrcmpLogic.v's triple over
-    [word_string]s (WordString.v).
+(** In C, `c: strcmp` compares two NUL-terminated byte strings and
+    returns zero when they match, or the difference between the first pair
+    of bytes that differ. To run fast, glibc's implementation
+    ([StrcmpCode](StrcmpCode.v)) reads aligned 64-bit [[word]] chunks instead
+    of stepping one byte at a time. When the second string is unaligned,
+    glibc loads two consecutive words and shifts them together with `MERGE`
+    to line up the bytes.
 
-    - [strcmp_res] is the answer on byte lists: 0 for equal strings,
-      else the difference of the first bytes of s1 and s2, each with its
-      NUL, that differ, as glibc computes it in a 32-bit `int`;
-      [strcmp_res_zero] says it is 0 exactly for equal strings.
-    - [strcmp_res_stop] reads it off any two byte functions that agree
-      with the strings through their NULs, at the first index where the
-      first is 0 or they differ: every return of strcmp is such a stop.
-    - [bt] ws i is byte i of the words ws, so a string's bytes from p are
-      [bt] from p's offset in its word ([str_bt]).
-    - [cmp_mask] is the mask glibc's `find_zero_ne_all` (string-fzc.h)
-      makes of two words, as nanofil's IR computes it: 128 in each byte
-      where the first word's is 0 or the two differ ([cmp_mask_byte]),
-      and its population count finds the first such byte
-      ([cmp_mask_first]).
-    - [merge] is glibc's `MERGE` of two words for an unaligned second
-      string: its bytes are the words' bytes from an offset
-      ([merge_byte], [bt_merge]).
-    - [loop_mask] (StrlenBits.v), glibc's `has_zero`, is 0 exactly for
-      a word with no zero byte ([loop_mask_zero]). *)
+    Proving that word-at-a-time code matches the byte-by-byte C contract
+    requires bridging 64-bit bitmasks back to individual bytes. This
+    module defines the byte-level specification [strcmp_res] and proves
+    the arithmetic, bitmask, and [[word]]-window facts needed by the
+    `c: strcmp` loop and entry proofs. *)
 
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia List Bool.
@@ -29,11 +19,18 @@ From Glibc Require Import StrlenBits StrlenLogic WordString.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The answer on byte lists *)
+(** ## The answer on byte lists
 
-(** strcmp's answer for the strings s1 and s2, without their NULs: the
-    difference, modulo 2^32, of the first bytes of s1 ++ [0] and
-    s2 ++ [0] that differ, or 0 if none do. *)
+    Before reasoning about 64-bit words, we need a pure specification of
+    what `c: strcmp` returns on two byte lists. This section defines
+    [strcmp_res] recursively and introduces [agree_str], [same_upto], and
+    [stop_at] so the loop proofs can read the final return value off any
+    pair of byte functions that match the strings up to their first
+    difference or NUL terminator. *)
+
+(** Given two byte lists s1 and s2 without trailing NULs, [strcmp_res]
+    returns 0 if they are equal, or the difference modulo 2^32 between
+    the first differing bytes of s1 ++ [0] and s2 ++ [0]. *)
 Fixpoint strcmp_res (s1 s2 : list Z) : Z :=
   match s1, s2 with
   | [], [] => 0
@@ -42,12 +39,13 @@ Fixpoint strcmp_res (s1 s2 : list Z) : Z :=
   | c1 :: _, [] => (c1 - 0) mod 2 ^ 32
   end.
 
-(** A difference of two bytes, not 0, is not 0 modulo 2^32. *)
+(** The difference between two distinct byte values c1 and c2 never wraps
+    around to 0 modulo 2^32. *)
 Lemma byte_diff_nonzero c1 c2 : 0 <= c1 < 256 -> 0 <= c2 < 256 -> c1 <> c2 -> (c1 - c2) mod 2 ^ 32 <> 0.
 Proof. intros H1 H2 Hne E. apply Z.mod_divide in E; [|lia]. destruct E as [k Hk]. nia. Qed.
 
-(** For strings of nonzero bytes, the answer is 0 exactly when the
-    strings are equal. *)
+(** When s1 and s2 contain only nonzero bytes, [strcmp_res] returns 0 if
+    and only if the two lists are identical. *)
 Lemma strcmp_res_zero s1 s2 :
   Forall (fun c => 0 < c < 256) s1 -> Forall (fun c => 0 < c < 256) s2 -> (strcmp_res s1 s2 = 0 <-> s1 = s2).
 Proof.
@@ -63,21 +61,23 @@ Proof.
       intros E. injection E as E _. contradiction.
 Qed.
 
-(** The functions f1 and f2 agree with the strings s1 and s2 through
-    their NULs. *)
+(** A function f satisfies [agree_str] for a string s when f j equals
+    byte j of s ++ [0] at every index through the NUL terminator. *)
 Definition agree_str (f : Z -> Z) (s : list Z) : Prop :=
   forall j, 0 <= j <= Z.of_nat (length s) -> f j = nth (Z.to_nat j) (s ++ [0]) 0.
 
-(** The bytes before c agree and are not 0: what strcmp has seen. *)
+(** The predicate [same_upto] holds at index c when f1 and f2 agree on
+    every byte before c and none of those bytes is zero. *)
 Definition same_upto (f1 f2 : Z -> Z) (c : Z) : Prop :=
   forall j, 0 <= j < c -> f1 j = f2 j /\ f1 j <> 0.
 
-(** Where f1 is 0 or f1 and f2 differ: strcmp stops there. *)
+(** A comparison reaches [stop_at] at index i when f1 i is zero or f1 i
+    differs from f2 i. *)
 Definition stop_at (f1 f2 : Z -> Z) (i : Z) : Prop := f1 i = 0 \/ f1 i <> f2 i.
 
-(** At the first stop i of byte functions that agree with the strings,
-    strings of nonzero bytes, the answer is the difference of their bytes
-    at i. *)
+(** Whenever f1 and f2 agree with strings s1 and s2 through their NULs
+    and first stop at index i, [strcmp_res] equals their byte difference
+    at i modulo 2^32. *)
 Lemma strcmp_res_stop s1 s2 f1 f2 i :
   Forall (fun c => c <> 0) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> 0 <= i -> same_upto f1 f2 i ->
   stop_at f1 f2 i -> strcmp_res s1 s2 = (f1 i - f2 i) mod 2 ^ 32.
@@ -108,8 +108,8 @@ Proof.
         { unfold stop_at in *. replace (i - 1 + 1) with i by lia. exact Hst. }
 Qed.
 
-(** A byte function that agrees with the string s and is not 0 below c
-    reaches no further than s's NUL: c is at most s's length. *)
+(** A byte function that agrees with string s and stays nonzero below c
+    cannot extend past the NUL byte, so c is at most the length of s. *)
 Lemma nonzero_len f s c : agree_str f s -> (forall j, 0 <= j < c -> f j <> 0) -> c <= Z.of_nat (length s).
 Proof.
   intros A H. destruct (Z.le_gt_cases c (Z.of_nat (length s))) as [Hc|Hc]; [exact Hc|].
@@ -117,7 +117,8 @@ Proof.
   rewrite Nat2Z.id app_nth2; [|lia]. rewrite Nat.sub_diag. reflexivity.
 Qed.
 
-(** What strcmp has seen lies inside both strings. *)
+(** When f1 and f2 satisfy [same_upto] through index c, that prefix
+    stays within the lengths of both s1 and s2. *)
 Lemma same_upto_len f1 f2 s1 s2 c : agree_str f1 s1 -> agree_str f2 s2 -> same_upto f1 f2 c ->
   c <= Z.of_nat (length s1) /\ c <= Z.of_nat (length s2).
 Proof.
@@ -126,8 +127,8 @@ Proof.
   - apply (nonzero_len f2 s2 c A2). intros j Hj. destruct (H j Hj). congruence.
 Qed.
 
-(** A stop exists at or before any index where f1 is 0 or the two differ,
-    among indices from c: the first one. *)
+(** If f1 and f2 agree and stay nonzero before c, and stop at z, then
+    there exists a first stopping index i between c and z. *)
 Lemma first_stop f1 f2 c z : 0 <= c <= z -> stop_at f1 f2 z -> same_upto f1 f2 c ->
   exists i, c <= i <= z /\ stop_at f1 f2 i /\ same_upto f1 f2 i.
 Proof.
@@ -147,22 +148,31 @@ Proof.
   - exists i. split; [lia|]. auto.
 Qed.
 
-(** ## Bytes of a window *)
+(** ## Bytes of a window
 
-(** Word q of the words ws, or 0 past them. *)
+    In Fil-C memory, each string lives inside an 8-byte-aligned window
+    of 64-bit words rather than a raw byte array. To compare byte
+    positions against word loads, we need functions that extract
+    individual bytes from a list of 64-bit words and connect those reads
+    to the string's NUL-terminated bytes. *)
+
+(** Function [wrd] returns word q from the list ws, or 0 if q lies past
+    the end of the list. *)
 Definition wrd (ws : list Z) (q : Z) : Z := nth (Z.to_nat q) ws 0.
 
-(** Byte i of the words ws, little-endian, in order. *)
+(** Function [bt] extracts byte i from the 64-bit word list ws in
+    little-endian order. *)
 Definition bt (ws : list Z) (i : Z) : Z := byte_of (wrd ws (i / 8)) (i mod 8).
 
-(** Byte j of the word q of ws is [bt] ws (8q + j). *)
+(** Byte j of word q in ws equals [bt] at byte index 8 * q + j. *)
 Lemma bt_word ws q j : 0 <= q -> 0 <= j < 8 -> byte_of (wrd ws q) j = bt ws (8 * q + j).
 Proof.
   intros Hq Hj. unfold bt. replace ((8 * q + j) / 8) with q by (Z.div_mod_to_equations; lia).
   replace ((8 * q + j) mod 8) with j by (Z.div_mod_to_equations; lia). reflexivity.
 Qed.
 
-(** [bt] is the window's byte list [wbytes] read at i. *)
+(** Indexing into the flattened window byte list [wbytes] at i returns
+    [bt] ws i whenever i lies inside the window. *)
 Lemma wbytes_bt ws i : 0 <= i < 8 * Z.of_nat (length ws) -> wbytes ws !! Z.to_nat i = Some (bt ws i).
 Proof.
   revert i. induction ws as [|w ws IH]; intros i Hi; cbn [length] in Hi; [lia|].
@@ -176,8 +186,9 @@ Proof.
       by (pose proof (Z.div_pos (i - 8) 8); lia). reflexivity.
 Qed.
 
-(** A string's bytes from p, through its NUL, are its window's bytes
-    from p's offset in its word. *)
+(** When a string at pointer p satisfies [str_shape], reading [bt] from
+    p's offset inside its first word agrees with the string through its
+    NUL terminator. *)
 Lemma str_bt p b reg ws s : str_shape p b reg ws s -> agree_str (fun j => bt ws (ptr_addr p mod 8 + j)) s.
 Proof.
   intros Hs j Hj. pose proof (str_shape_byte p b reg ws s (Z.to_nat j) Hs ltac:(lia)) as E.
@@ -188,10 +199,16 @@ Proof.
   rewrite <- E. reflexivity.
 Qed.
 
-(** ## The words' masks *)
+(** ## The words' masks
 
-(** A word's bytes are all nonzero exactly when its [loop_mask], glibc's
-    `has_zero`, is 0. *)
+    In the fast loop, glibc checks whether a 64-bit word contains any NUL
+    byte by computing `has_zero`, which we model as [loop_mask]
+    ([StrlenBits](StrlenBits.v)). These helper lemmas establish when
+    [loop_mask] is zero or nonzero and show that any two distinct 64-bit
+    words must differ in at least one byte. *)
+
+(** The zero-detection mask [loop_mask] of a 64-bit word w is 0 if and
+    only if all eight bytes of w are nonzero. *)
 Lemma loop_mask_zero w : 0 <= w < 2 ^ 64 -> (loop_mask w = 0 <-> forall j, 0 <= j < 8 -> byte_of w j <> 0).
 Proof.
   intros Hw. split.
@@ -204,7 +221,8 @@ Proof.
     intros k Hk. apply H, Hk.
 Qed.
 
-(** Word q of the 64-bit words ws is in range. *)
+(** Every word returned by [wrd] lies in the unsigned 64-bit range
+    whenever all elements of ws do. *)
 Lemma wrd_range ws q : Forall (fun w => 0 <= w < 2 ^ 64) ws -> 0 <= wrd ws q < 2 ^ 64.
 Proof.
   intros H. unfold wrd. destruct (Nat.lt_ge_cases (Z.to_nat q) (length ws)) as [Hq|Hq].
@@ -212,7 +230,8 @@ Proof.
   - rewrite nth_overflow; [lia | exact Hq].
 Qed.
 
-(** For a decidable P, every index below n has P or one lacks it. *)
+(** For any decidable predicate P on indices below n, either every index
+    satisfies P or some index below n violates it. *)
 Lemma idx_dec (P : Z -> Prop) (dec : forall j, {P j} + {~ P j}) (n : nat) :
   (forall j, 0 <= j < Z.of_nat n -> P j) \/ exists j, 0 <= j < Z.of_nat n /\ ~ P j.
 Proof.
@@ -224,7 +243,8 @@ Proof.
   - right. destruct IH as (j & Hj & H). exists j. split; [lia | exact H].
 Qed.
 
-(** Two different 64-bit words differ in a byte. *)
+(** Any two distinct 64-bit words x and y differ in at least one byte
+    position below 8. *)
 Lemma words_differ x y : 0 <= x < 2 ^ 64 -> 0 <= y < 2 ^ 64 -> x <> y ->
   exists t, 0 <= t < 8 /\ byte_of x t <> byte_of y t.
 Proof.
@@ -234,7 +254,8 @@ Proof.
   - destruct H as (t & Ht & H). exists t. split; [cbn in Ht; lia | exact H].
 Qed.
 
-(** A 64-bit word whose [loop_mask] is not 0 has a zero byte. *)
+(** Whenever [loop_mask] w is nonzero for a 64-bit word w, some byte of
+    w is zero. *)
 Lemma loop_mask_has_zero w : 0 <= w < 2 ^ 64 -> loop_mask w <> 0 -> exists j, 0 <= j < 8 /\ byte_of w j = 0.
 Proof.
   intros Hw Hm. destruct (idx_dec (fun j => byte_of w j <> 0) (fun j => match Z.eq_dec (byte_of w j) 0 with left e => right (fun h => h e) | right n => left n end) 8) as [H|H].
@@ -242,7 +263,8 @@ Proof.
   - destruct H as (j & Hj & H). exists j. split; [cbn in Hj; lia | lia].
 Qed.
 
-(** An or of 64-bit words is a 64-bit word. *)
+(** Bitwise OR of two 64-bit unsigned words produces a 64-bit unsigned
+    word. *)
 Lemma lor_range a b : 0 <= a < 2 ^ 64 -> 0 <= b < 2 ^ 64 -> 0 <= Z.lor a b < 2 ^ 64.
 Proof.
   intros Ha Hb. assert (E : Z.lor a b mod 2 ^ 64 = Z.lor a b).
@@ -252,11 +274,16 @@ Proof.
   rewrite -E. apply Z.mod_pos_bound. lia.
 Qed.
 
-(** ## The comparison mask *)
+(** ## The comparison mask
 
-(** glibc's `find_zero_ne_all` (string-fzc.h) on the words x and y, as
-    nanofil's IR computes it, every read wrapped: 128 in each byte where
-    x's is 0 or x's and y's differ, else 0 ([cmp_mask_byte]). *)
+    When two words differ or contain a NUL byte, glibc calls
+    `find_zero_ne_all` to mark every stopping byte with bit 7 set
+    (`0x80`). This section defines [cmp_mask] to match the wrapped 64-bit
+    arithmetic that nanofil's IR emits, and verifies byte-by-byte that
+    each byte of [cmp_mask] equals 128 exactly at stopping positions. *)
+
+(** Function [cmp_mask] computes glibc's `find_zero_ne_all` bitmask on
+    words x and y using explicit 64-bit modular arithmetic. *)
 Definition cmp_mask (x y : Z) : Z :=
   Z.land
     (Z.lor
@@ -272,7 +299,8 @@ Definition cmp_mask (x y : Z) : Z :=
           (-1 mod 2 ^ 64) mod 2 ^ 64) mod 2 ^ 64)
     (9259542123273814144 mod 2 ^ 64).
 
-(** A byte of a word's low seven bits plus 127 does not carry. *)
+(** Masking each byte to its low seven bits and adding 127 never carries
+    across byte boundaries. *)
 Lemma add_ones7 z i : 0 <= i < 8 -> byte_of (Z.land z ones7 mod 2 ^ 64 + ones7) i = Z.land (byte_of z i) 127 + 127.
 Proof.
   intros Hi. rewrite byte_of_add; [| |lia].
@@ -281,8 +309,9 @@ Proof.
     pose proof (land127 (byte_of z j) (byte_of_range z j)). lia.
 Qed.
 
-(** The comparison mask's byte, on two bytes, checked on all 65536
-    pairs. *)
+(** Exhaustive evaluation confirms that the byte-level formula of
+    [cmp_mask] yields 128 when b1 is 0 or differs from b2, and 0
+    otherwise. *)
 Lemma cmp_on_bytes b1 b2 : 0 <= b1 < 256 -> 0 <= b2 < 256 ->
   Z.land (Z.lor (Z.lor (Z.land (Z.lxor b1 b2) 127 + 127) (Z.lxor b1 b2))
             (Z.lxor (Z.lor (Z.land b1 127 + 127) b1) 255)) 128 =
@@ -296,8 +325,8 @@ Proof.
   exact (all_bytes (P b1) (all_bytes _ H b1 H1) b2 H2).
 Qed.
 
-(** Byte i of the comparison mask: 128 where x's byte is 0 or differs
-    from y's, else 0. *)
+(** Byte i of [cmp_mask] x y equals 128 when byte i of x is 0 or
+    differs from byte i of y, and 0 otherwise. *)
 Lemma cmp_mask_byte x y i : 0 <= i < 8 ->
   byte_of (cmp_mask x y) i = if (byte_of x i =? 0) || negb (byte_of x i =? byte_of y i) then 128 else 0.
 Proof.
@@ -311,25 +340,33 @@ Proof.
   apply cmp_on_bytes; apply byte_of_range.
 Qed.
 
-(** The comparison mask is a 64-bit word. *)
+(** The value of [cmp_mask] x y always fits in an unsigned 64-bit word. *)
 Lemma cmp_mask_range x y : 0 <= cmp_mask x y < 2 ^ 64.
 Proof. unfold cmp_mask. apply land_range; [apply Z.mod_pos_bound; lia | vm_compute; split; congruence]. Qed.
 
-(** ## Words of an unaligned string *)
+(** ## Words of an unaligned string
 
-(** The word lo shifted down o bytes, as nanofil's IR computes it: its
-    bytes from o, then zeros. *)
+    When the first string's pointer is 8-byte aligned and the second
+    string's pointer sits at byte offset o inside its word, glibc
+    combines two consecutive words lo and hi using `MERGE`. This section
+    models that shift-right-and-shift-left combination with [shd], [shu],
+    and [merge], and proves that byte u of [merge] lo hi o equals byte
+    u + o of the concatenated pair. *)
+
+(** Function [shd] shifts word lo down by o bytes to place its high
+    8 - o bytes at the bottom of a 64-bit word. *)
 Definition shd (lo o : Z) : Z := (lo mod 2 ^ 64 / 2 ^ (((8 * o) mod 2 ^ 32) mod 64)) mod 2 ^ 64.
 
-(** The word hi shifted up 8 - o bytes, as nanofil's IR computes it:
-    zeros, then its first o bytes. *)
+(** Function [shu] shifts word hi up by 8 - o bytes to place its low o
+    bytes at the top of a 64-bit word. *)
 Definition shu (hi o : Z) : Z := ((hi mod 2 ^ 64 * 2 ^ (((64 - 8 * o) mod 2 ^ 32) mod 64)) mod 2 ^ 64) mod 2 ^ 64.
 
-(** glibc's `MERGE` (strcmp.c) of the words lo and hi for a string at
-    offset o of its word: the eight bytes from byte o of lo on. *)
+(** Function [merge] models glibc's `MERGE` macro by combining [shd] lo o
+    and [shu] hi o with bitwise OR. *)
 Definition merge (lo hi o : Z) : Z := Z.lor (shd lo o) (shu hi o).
 
-(** A shift up by k whole bytes moves byte i - k to byte i. *)
+(** Multiplying z by 2^(8 * k) shifts every byte upward by k positions
+    and fills the low k bytes with zero. *)
 Lemma byte_of_mul_pow z k i : 0 <= k -> 0 <= i ->
   byte_of (z * 2 ^ (8 * k)) i = if i <? k then 0 else byte_of z (i - k).
 Proof.
@@ -345,7 +382,8 @@ Proof.
     + rewrite -Z.pow_add_r; [f_equal; lia | lia | lia].
 Qed.
 
-(** Byte u of lo shifted down o bytes. *)
+(** Byte u of [shd] lo o equals byte u + o of lo when u + o < 8, and 0
+    otherwise. *)
 Lemma shd_byte lo o u : 0 <= o < 8 -> 0 <= u < 8 ->
   byte_of (shd lo o) u = if u + o <? 8 then byte_of lo (u + o) else 0.
 Proof.
@@ -355,7 +393,8 @@ Proof.
   - apply byte_of_high; [apply Z.mod_pos_bound; lia | lia].
 Qed.
 
-(** Byte u of hi shifted up 8 - o bytes. *)
+(** Byte u of [shu] hi o equals 0 when u + o < 8, and byte u + o - 8 of
+    hi otherwise. *)
 Lemma shu_byte hi o u : 0 < o < 8 -> 0 <= u < 8 ->
   byte_of (shu hi o) u = if u + o <? 8 then 0 else byte_of hi (u + o - 8).
 Proof.
@@ -366,7 +405,8 @@ Proof.
   rewrite byte_of_mod64; [|lia]. f_equal. lia.
 Qed.
 
-(** Byte u of [merge] lo hi o: byte u + o of the bytes of lo then hi. *)
+(** Byte u of [merge] lo hi o equals byte u + o of lo when u + o < 8,
+    and byte u + o - 8 of hi otherwise. *)
 Lemma merge_byte lo hi o u : 0 < o < 8 -> 0 <= u < 8 ->
   byte_of (merge lo hi o) u = if u + o <? 8 then byte_of lo (u + o) else byte_of hi (u + o - 8).
 Proof.
@@ -374,20 +414,28 @@ Proof.
   destruct (u + o <? 8); [apply Z.lor_0_r | apply Z.lor_0_l].
 Qed.
 
-(** [merge] is a 64-bit word. *)
+(** The result of [merge] lo hi o always lies in the unsigned 64-bit
+    range. *)
 Lemma merge_range lo hi o : 0 <= merge lo hi o < 2 ^ 64.
 Proof. apply lor_range; apply Z.mod_pos_bound; lia. Qed.
 
-(** ## Arithmetic of the IR *)
+(** ## Arithmetic of the IR
 
-(** The low three bits of an address: an and with 7. *)
+    When glibc checks pointer alignment, extends loaded bytes, or extracts
+    a byte from a word by shifting, nanofil's IR wraps each intermediate
+    value to 32 or 64 bits. The lemmas in this section simplify those
+    IR-level bitmasks and extensions back to clean integer arithmetic. *)
+
+(** Masking a 64-bit integer x with 7 extracts its low three bits, which
+    equals x mod 8. *)
 Lemma land7 x : 0 <= x < 2 ^ 64 -> Z.land (x mod 2 ^ 64) (7 mod 2 ^ 64) = x mod 8.
 Proof.
   intros H. rewrite (Z.mod_small x); [|lia]. change (7 mod 2 ^ 64) with (Z.ones 3).
   rewrite Z.land_ones; [reflexivity|lia].
 Qed.
 
-(** The bytes from a to its next 8-aligned address: -a and 7. *)
+(** Negating a 64-bit address a and masking with 7 computes (-a) mod 8,
+    the number of bytes from a to the next 8-byte boundary. *)
 Lemma neg_land7 a : 0 <= a < 2 ^ 64 -> Z.land ((- (a mod 2 ^ 64)) mod 2 ^ 64 mod 2 ^ 64) (7 mod 2 ^ 64) = (- a) mod 8.
 Proof.
   intros H. rewrite (Z.mod_small a); [|lia]. rewrite Zmod_mod. change (7 mod 2 ^ 64) with (Z.ones 3).
@@ -395,7 +443,8 @@ Proof.
   apply Znumtheory.Zmod_div_mod; [lia | lia | exists (2 ^ 61); reflexivity].
 Qed.
 
-(** A byte loaded signed into a `w` and extended unsigned is the byte. *)
+(** Loading a byte with sign extension and then truncating with unsigned
+    byte extension recovers the original byte value c. *)
 Lemma sb_ub c : 0 <= c < 256 -> extension Ub ((extension Sb c mod 2 ^ 32) mod 2 ^ 32) mod 2 ^ 32 = c.
 Proof.
   intros H. apply Z.eqb_eq.
@@ -403,7 +452,8 @@ Proof.
            ltac:(vm_compute; reflexivity) c H).
 Qed.
 
-(** A small `w` counter, extended signed to an `l`, is itself. *)
+(** Sign-extending a nonnegative 31-bit counter c from 32 bits to 64
+    bits leaves c unchanged. *)
 Lemma sext_small c : 0 <= c < 2 ^ 31 -> extension Sw (c mod 2 ^ 32) mod 2 ^ 64 = c.
 Proof.
   intros H. rewrite (Z.mod_small c); [|lia]. cbn [extension]. unfold sign_extension.
@@ -411,8 +461,8 @@ Proof.
   symmetry. apply Z.leb_gt. lia.
 Qed.
 
-(** Byte j of x, as the IR takes it: x shifted down 8j bits, extended
-    unsigned from its low byte. *)
+(** Shifting a 64-bit word x down by 8 * j bits and taking its unsigned
+    low byte yields byte j of x. *)
 Lemma ub_shift x j : 0 <= j < 8 ->
   extension Ub ((x mod 2 ^ 64 / 2 ^ (((8 * j) mod 2 ^ 32) mod 64)) mod 2 ^ 32) mod 2 ^ 32 = byte_of x j.
 Proof.
@@ -422,10 +472,16 @@ Proof.
   apply Z.mod_small. pose proof (Z.mod_pos_bound (x mod 2 ^ 64 / 2 ^ (8 * j)) 256). lia.
 Qed.
 
-(** ## A string's window *)
+(** ## A string's window
 
-(** The arithmetic of a string's shape: its object, its window's start
-    and end, and its length inside the window. *)
+    To verify word-aligned loads in the loop, we need to relate a
+    pointer's byte offset in the string to its 8-byte word index in the
+    window. This section unpacks [str_shape] into linear arithmetic
+    bounds and translates string offsets into aligned [wrd] reads or
+    unaligned [merge] reads. *)
+
+(** Lemma [shape_facts] unpacks [str_shape] into the address, alignment,
+    window length, and capability bounds needed by the loop invariants. *)
 Lemma shape_facts p b reg ws s : str_shape p b reg ws s ->
   0 < b /\ b <= wstart p /\ wstart p mod 8 = 0 /\ ptr_addr p = wstart p + ptr_addr p mod 8 /\
   0 <= ptr_addr p mod 8 < 8 /\ wstart p + 8 * Z.of_nat (length ws) <= r_end reg /\ r_end reg <= 2 ^ 48 /\
@@ -441,13 +497,14 @@ Proof.
   repeat split; try lia. exact Hc.
 Qed.
 
-(** Bytes c to c + 7 of a string at offset k of its window, where k + c
-    = 8q, are word q's. *)
+(** When string offset k + c lands at word boundary 8 * q, byte u after
+    c equals byte u of word q in ws. *)
 Lemma bt_at ws k c q u : k + c = 8 * q -> 0 <= q -> 0 <= u < 8 -> bt ws (k + (c + u)) = byte_of (wrd ws q) u.
 Proof. intros E Hq Hu. rewrite (bt_word ws q u Hq Hu). f_equal. lia. Qed.
 
-(** Bytes c to c + 7 of a string at offset k of its window, where
-    k + c = 8q + o: [merge] of words q and q + 1. *)
+(** An unaligned string spans two consecutive words in memory. When
+    offset k + c lands at byte offset o inside word q, [merge] combines
+    words q and q + 1 so its byte u matches the window byte at k + c + u. *)
 Lemma bt_merge ws k c q o u : k + c = 8 * q + o -> 0 <= q -> 0 < o < 8 -> 0 <= u < 8 ->
   bt ws (k + (c + u)) = byte_of (merge (wrd ws q) (wrd ws (q + 1)) o) u.
 Proof.
@@ -456,11 +513,17 @@ Proof.
   - rewrite (bt_word ws (q + 1) (u + o - 8)); [|lia|lia]. f_equal. lia.
 Qed.
 
-(** ## Returns *)
+(** ## Returns
 
-(** Where the bytes of x and y are a string's from c, a first stop below
-    n of them is the first stop of the strings: strcmp's answer is the
-    difference of their bytes there. *)
+    Once a loop iteration finds a zero byte or a mismatch, glibc either
+    computes the final return value or advances by eight bytes to the
+    next word pair. This section turns a word-level zero or mismatch
+    into the byte-level answer [strcmp_res], or extends the matching
+    prefix across all eight bytes. *)
+
+(** When words x and y match the strings from offset c and stop within n
+    bytes, [word_stop] finds the first stopping byte j and equates
+    [strcmp_res] to their byte difference at j. *)
 Lemma word_stop s1 s2 f1 f2 c x y n :
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> 0 <= c -> same_upto f1 f2 c ->
   n <= 8 -> (forall u, 0 <= u < n -> f1 (c + u) = byte_of x u /\ f2 (c + u) = byte_of y u) ->
@@ -481,8 +544,9 @@ Proof.
   - unfold stop_at in *. rewrite E1 E2. exact Hstj.
 Qed.
 
-(** Where both strings' bytes from c are those of one word with a zero
-    byte, the strings are equal: strcmp's answer is 0. *)
+(** When both strings match word x from offset c and x has a zero byte
+    according to [loop_mask], both strings terminate together and
+    [strcmp_res] is 0. *)
 Lemma word_zero s1 s2 f1 f2 c x :
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> 0 <= c -> same_upto f1 f2 c ->
   0 <= x < 2 ^ 64 -> (forall u, 0 <= u < 8 -> f1 (c + u) = byte_of x u /\ f2 (c + u) = byte_of x u) ->
@@ -494,8 +558,8 @@ Proof.
   - rewrite Z.sub_diag. reflexivity.
 Qed.
 
-(** Where the strings' bytes from c are those of x and y, equal and not
-    0, strcmp has seen 8 more bytes. *)
+(** When words x and y agree on all eight bytes from offset c with no
+    zero byte, [same_upto] extends from c to c + 8. *)
 Lemma word_same f1 f2 c x y : 0 <= c -> same_upto f1 f2 c ->
   (forall u, 0 <= u < 8 -> f1 (c + u) = byte_of x u /\ f2 (c + u) = byte_of y u) ->
   (forall u, 0 <= u < 8 -> byte_of x u = byte_of y u /\ byte_of x u <> 0) -> same_upto f1 f2 (c + 8).
@@ -505,8 +569,9 @@ Proof.
   rewrite F1 F2. apply Hxy. lia.
 Qed.
 
-(** At the first stop j of the bytes of x and y, the comparison mask's
-    population count ([tail]) is 8j + 7, and the mask is not 0. *)
+(** If j is the first stopping byte between words x and y, then
+    [cmp_mask] x y is nonzero and its trailing bit count [tail] equals
+    8 * j + 7. *)
 Lemma cmp_mask_first x y j : 0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
   tail (cmp_mask x y) = 8 * j + 7 /\ cmp_mask x y <> 0.
 Proof.
@@ -525,13 +590,16 @@ Proof.
   - intros E. rewrite E in Hat. unfold byte_of in Hat. rewrite Z.div_0_l in Hat; [discriminate | apply Z.pow_nonzero; lia].
 Qed.
 
-(** Byte j of the string at p whose window is ws. *)
+(** Function [sbyte] reads byte j of the string at pointer p from its
+    word window ws. *)
 Definition sbyte (p : ptr) (ws : list Z) (j : Z) : Z := bt ws (ptr_addr p mod 8 + j).
 
-(** A string's bytes through its NUL are [sbyte]'s. *)
+(** For any string satisfying [str_shape], [sbyte] agrees with the
+    string through its NUL terminator. *)
 Lemma sbyte_agree p b reg ws s : str_shape p b reg ws s -> agree_str (sbyte p ws) s.
 Proof. exact (str_bt p b reg ws s). Qed.
 
-(** The word lo shifted down o bytes is a 64-bit word. *)
+(** Reducing [shd] lo o modulo 2^64 leaves it unchanged because [shd]
+    already returns a 64-bit unsigned word. *)
 Lemma shd_mod lo o : shd lo o mod 2 ^ 64 = shd lo o.
 Proof. apply Zmod_mod. Qed.

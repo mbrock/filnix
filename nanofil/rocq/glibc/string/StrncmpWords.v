@@ -1,15 +1,15 @@
-(** The word loops of glibc's own `strncmp` (`__GI_strncmp`,
-    StrncmpCode.v) over two strings' windows (WordString.v) at any
-    shares, for StrncmpLogic.v's triple over [word_string]s.
+(** Once `c: strncmp` aligns the first string pointer to an 8-byte
+    boundary, it compares 64-bit words while counting down the remaining
+    byte limit r. If the second pointer is also aligned, [aligned_loop]
+    loads one word from each string per iteration; otherwise,
+    [unaligned_loop] shifts and combines consecutive words from the
+    second string with [merge].
 
-    As strcmp's (StrcmpLoop.v), once the first string's pointer is
-    8-aligned glibc compares whole words: of both strings when the
-    second is aligned too ([aligned_loop]), else of the first against
-    [merge]s of the second's words ([unaligned_loop]). It also counts
-    the bytes left, r: a word pair with r at most 8, or with a
-    difference, goes to StrncmpLoop.v's last comparisons ([fin_a],
-    [fin_b], [fin_c]); equal words with a zero and more than 8 bytes
-    left return 0 ([word_zero_n]). *)
+    Because `c: strncmp` must never compare past the byte limit r, each
+    iteration exits to the final comparison epilogues when r drops to
+    eight or fewer bytes, or when the current word pair differs. When
+    two equal words contain a zero byte and more than eight bytes
+    remain, the loop returns zero immediately via [word_zero_n]. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -22,17 +22,19 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrncmpCo
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The loops over the [[runtime]] R and the Logic instance LG0. *)
+(** Module [StrncmpWordsOn] proves the word-comparison loops of
+    `c: strncmp` over a given [[runtime]] R and logic instance LG0. *)
 Module StrncmpWordsOn (R : Runtime) (LG0 : LogicSig R).
-(** The last comparisons over R and LG0. *)
+(** Module [SN] provides the final comparison epilogue lemmas for
+    `c: strncmp`. *)
 Module SN := StrncmpLoopOn R LG0.
-(** StrcmpLoop.v's steps and reads. *)
+(** Module [SL] provides the shared stepping and window-read lemmas. *)
 Module SL := SN.SL.
-(** Strings' windows. *)
+(** Module [WS] provides the word-window string representation. *)
 Module WS := SL.WS.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance LG0. *)
 Module LG := LG0.
-(** Its language. *)
+(** Module [L] provides the nanofil language definition for LG. *)
 Module L := LG.L.
 Import L LG WS SL.
 
@@ -40,34 +42,43 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** Instance [rules_irisGS] builds the [[iris]] machine semantics from
+    the external registry and world invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** Notation [gexpr] abbreviates expressions in the instantiated language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** StrcmpLoop.v's steps: a let, its value whole. *)
+(** Tactic [sl] steps past a `let` instruction while keeping its bound
+    value symbolic. *)
 Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A let that reads the abstract environment ([vxf]). *)
+(** Tactic [sv] steps past a `let` instruction after resolving its
+    operand variables from the environment. *)
 Ltac sv := eapply (s_let registry wi ge); [reflexivity | reflexivity | vxf | intros ?; reflexivity |].
-(** A flight. *)
+(** Tactic [sf] steps past a capability `flight` check instruction. *)
 Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
-(** Entering the block a frame is entering. *)
+(** Tactic [en] enters the target basic block of a pending frame jump. *)
 Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] steps through a `goto` terminator and immediately enters
+    its destination block. *)
 Ltac sg := eapply (s_goto registry wi ge); en.
-(** A branch, its condition left whole. *)
+(** Tactic [sb] steps past a conditional `branch` instruction without
+    evaluating its condition. *)
 Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
-(** Replace the integer the temporary name holds by v, proved by tac. *)
+(** Tactic [norm] rewrites the integer held by variable name to v using
+    tactic tac. *)
 Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** Tactic [normt] normalizes the integer in the newest local variable
+    to v using tactic tac. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
-(** Replace the address of the pointer the temporary name holds by v. *)
+(** Tactic [normp] rewrites the address of the pointer held by variable
+    name to v using linear arithmetic. *)
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
-(** The arithmetic of the shapes Hs1 and Hs2 of the two strings, and
-    the agreement of their bytes. *)
+(** To avoid repeating boilerplate at the start of each loop proof,
+    tactic [facts] extracts the address bounds and byte-agreement
+    hypotheses from both strings. *)
 Ltac facts Hs1 Hs2 :=
   destruct (shape_facts _ _ _ _ _ Hs1) as (B1 & S1 & M1 & P1 & K1 & E1 & R1 & N1 & C1);
   destruct (shape_facts _ _ _ _ _ Hs2) as (B2 & S2 & M2 & P2 & K2 & E2 & R2 & N2 & C2);
@@ -75,14 +86,13 @@ Ltac facts Hs1 Hs2 :=
   pose proof (ss_chars _ _ _ _ _ Hs1) as H1; pose proof (sbyte_agree _ _ _ _ _ Hs1) as A1;
   pose proof (sbyte_agree _ _ _ _ _ Hs2) as A2.
 
-(** The aligned loop's block. *)
+(** Constant [blk12] holds the header block of the aligned word loop in
+    `__GI_strncmp`. *)
 Definition blk12 : block := Eval vm_compute in SN.nblk "iw_1.L12".
 
-(** The aligned loop: both strings' bytes from c start words, Q1 and
-    Q2 of their windows, read as pr.3 and pr.5, pr.1 and pr.2 point
-    past them, and r bytes are left, pr.4; their bytes before c agree
-    and are not 0. strncmp returns [strncmp_res] (c + r) and hands both
-    windows back. *)
+(** Lemma [aligned_loop] proves by induction on the remaining words of
+    the first string that comparing aligned 64-bit words up to r bytes
+    returns [strncmp_res] (c + r) and restores both windows. *)
 Lemma aligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c r Q1 Q2 e Φ :
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= c -> 0 < r < 2 ^ 64 ->
   ptr_addr p1 mod 8 + c = 8 * Q1 -> ptr_addr p2 mod 8 + c = 8 * Q2 -> same_upto (sbyte p1 ws1) (sbyte p2 ws2) c ->
@@ -146,15 +156,14 @@ Proof.
     iApply ("HK" with "W1 W2").
 Qed.
 
-(** The unaligned loop's block. *)
+(** Constant [blk46] holds the header block of the unaligned word loop in
+    `__GI_strncmp`. *)
 Definition blk46 : block := Eval vm_compute in SN.nblk "iw_2.L46".
 
-(** The unaligned loop: the first string's bytes from c start its word
-    Q1, read as pr.4, the second's are at offset o of its word Q2, read
-    as pr.8, and are not 0 to that word's end; pr.1 and pr.2 point past
-    them, r bytes are left, pr.6, and v16, v20 and v76 hold o's shifts
-    and o. Their bytes before c agree and are not 0. strncmp returns
-    [strncmp_res] (c + r). *)
+(** When the second string is unaligned, each iteration merges two
+    consecutive words from it to compare against one word from the first
+    string. Lemma [unaligned_loop] proves that this loop returns
+    [strncmp_res] (c + r) and restores both windows. *)
 Lemma unaligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c o r Q1 Q2 e Φ :
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= c -> 0 < o < 8 -> 0 < r < 2 ^ 64 ->
   ptr_addr p1 mod 8 + c = 8 * Q1 -> ptr_addr p2 mod 8 + c = 8 * Q2 + o -> same_upto (sbyte p1 ws1) (sbyte p2 ws2) c ->

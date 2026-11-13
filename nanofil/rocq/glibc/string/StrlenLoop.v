@@ -1,16 +1,14 @@
-(** The loop block of glibc's own `__strlen` (StrlenLogic.v's
-    [loop_spec]) at any share of the words it reads: [loop_spec_dq], by
-    induction on the words, for StrlenWord.v's triple over a
-    [word_string].
+(** After checking the first aligned word, glibc's `__strlen` scans
+    subsequent 8-byte [[word|words]] one at a time until it finds one
+    containing a zero byte. This module proves the loop invariant
+    [loop_spec_dq] by induction over the remaining words, at any
+    ownership share of the memory it reads, so that [StrlenWord] can
+    verify whole calls to `c: strlen`.
 
-    The last word's popcount, glibc's index of the NUL, runs sixteen
-    steps whose values double in size. Naming each value as it is made
-    ([gen_top]) and reading the count off the named chain
-    ([tail_chain], [set_tail]) keeps the proof terms small: the loop's
-    proof is checked in about 6 s, against 11 s for StrlenLogic.v's with
-    the values left whole. The tactics here are shared with
-    StrlenWord.v; [st], which names Logic.v's rules, is each functor's
-    own. *)
+    To locate the NUL byte inside the final word, `__strlen` runs a
+    sixteen-step population count. The proof names each intermediate
+    bit-twiddling value so the calculation stays readable and fast to
+    check, and [StrlenWord] reuses the same helper tactics. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -22,9 +20,9 @@ From Glibc Require Import StrlenBits StrlenLogic WordString.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The popcount glibc's strlen runs on its last word, as the chain of
-    the sixteen values it names (the IR's constants still wrapped): its
-    last value is [tail] r. *)
+(** When `__strlen` finds a zero byte in a word, it isolates the lowest
+    matching bit and counts the trailing bits to locate the byte index.
+    This lemma equates the sixteen-step wrapped IR chain with [tail] r. *)
 Lemma tail_chain r x x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 :
   x = - (r mod 2 ^ 64) mod 2 ^ 64 ->
   x0 = Z.land (r mod 2 ^ 64) (x mod 2 ^ 64) ->
@@ -52,21 +50,24 @@ Proof.
   reflexivity.
 Qed.
 
-(** Replace the temporary name's popcount value, named by [gen_top],
-    by [tail] r, and drop the chain. *)
+(** To keep proof terms small after a sixteen-step population count,
+    [set_tail] collapses the final temporary to `[tail] r` and discards
+    the intermediate variable chain. *)
 Ltac set_tail name r :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] =>
     let H := fresh in assert (H : X = tail r) by (eapply tail_chain; eassumption); rewrite H; clear H;
     repeat match goal with H : ?x = _ |- _ => is_var x; clear H end end.
 
-(** Drop each wrap to 64 or 32 bits that arithmetic shows the identity. *)
+(** Tactic [unwrap] removes 64-bit and 32-bit modulo wraps when linear
+    arithmetic shows the value already fits in range. *)
 Ltac unwrap :=
   repeat match goal with
     | |- context [?x mod 2 ^ 64] => rewrite (Z.mod_small x (2 ^ 64)); [|lia]
     | |- context [?x mod 2 ^ 32] => rewrite (Z.mod_small x (2 ^ 32)); [|lia]
     end.
 
-(** Keep only arithmetic hypotheses, so lia does not read the rest. *)
+(** Tactic [clear_junk] discards non-arithmetic hypotheses from the
+    context so that `lia` does not waste time scanning them. *)
 Ltac clear_junk :=
   repeat match goal with
     H : ?T |- _ =>
@@ -76,39 +77,47 @@ Ltac clear_junk :=
       | _ => clear H
       end
     end.
-(** Compute each closed shift factor 2 ^ (n mod m). *)
+(** Tactic [pow_closed] evaluates closed power-of-two shift factors by
+    computation before handing the goal to `lia`. *)
 Ltac pow_closed :=
   repeat match goal with |- context [2 ^ (?n mod ?m)] =>
     let v := fresh "v" in let Ev := fresh "Ev" in
     remember (2 ^ (n mod m)) as v eqn:Ev; vm_compute in Ev; subst v end.
-(** An address or integer fact, by arithmetic. *)
+(** Tactic [arith] normalizes pointer and address projections, strips
+    non-arithmetic hypotheses, and solves linear or division goals. *)
 Ltac arith := cbn [ptr_addr ptr_cap extension]; unfold raw_address; clear_junk; pow_closed; unwrap;
   first [lia | Z.div_mod_to_equations; lia].
 
-(** A branch whose condition is closed: computed. *)
+(** Tactic [close_if] simplifies a conditional branch edge once its
+    boolean condition reduces to `true` or `false`. *)
 Ltac close_if :=
   match goal with |- context [edge_label (if ?c then _ else _)] =>
     first [change c with true | change c with false]
   end; cbn [edge_label].
 
-(** The v4 lookup through the puts of a block, to the frame's e. *)
+(** Tactic [look] resolves a lookup in the environment by skipping over
+    newer `put` bindings until it reaches hypothesis H. *)
 Ltac look H := repeat (rewrite lookup_after_put_other; [|reflexivity]); exact H.
 
-(** Name the integer the temporary name holds v, by computation or arithmetic. *)
+(** Tactic [set_int] normalizes the integer stored in temporary `name`
+    to `v` by computation or [arith]. *)
 Ltac set_int name v :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by first [reflexivity | arith] end.
-(** Name the address of the pointer the temporary name holds v. *)
+(** Tactic [set_ptr] normalizes the address stored in pointer temporary
+    `name` to `v` by computation or [arith]. *)
 Ltac set_ptr name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by first [reflexivity | arith] end.
 
-(** Name the value the newest temporary holds, unless it is a numeral
-    or a variable, so the popcount's values stay small. *)
+(** Tactic [gen_top] binds the newest temporary's integer expression to
+    a fresh variable unless it is already a constant or variable, keeping
+    the population-count terms small. *)
 Ltac gen_top :=
   try match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] =>
     lazymatch X with Z0 => fail | Zpos _ => fail | Zneg _ => fail | _ => idtac end;
     tryif is_var X then fail else (let x := fresh "x" in let E := fresh "E" in remember X as x eqn:E) end.
 
-(** The loop over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the `c: strlen` word-loop proof over a
+    [[runtime]] R and a program logic instance LG0. *)
 Module StrlenLoopOn (R : Runtime) (LG0 : LogicSig R).
 Module WS := WordStringOn R LG0.
 Module LG := LG0.
@@ -119,13 +128,17 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** This instance equips the nanofil language with a program-logic
+    state interpretation built from the contract registry and world
+    invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** One step whose premises reduce: a pure let, a flight, entering a
-    block, or a goto. The values stay symbolic. *)
+(** Tactic [st] advances the symbolic execution by one pure `let`,
+    `flight`, block entry, or `goto` step whose premises reduce by
+    computation. *)
 Ltac st :=
   first
     [ iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext]
@@ -133,15 +146,19 @@ Ltac st :=
     | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
     | iApply wp_goto; iNext ].
 
-(** The loop's block, L28: load the next word and test it for a zero. *)
+(** Block `L28` is the main word loop of [glibc_strlen]: it advances to
+    the next 8-byte word, checks read access, loads the word, and tests
+    whether it contains a zero byte. *)
 Definition strlen_blk28 : block := Eval vm_compute in
   match find_block (TAtom "L28") (fn_blocks glibc_strlen) with
   | Some b => b | None => mkBlock (TAtom "L28") [] [] JUnreachable end.
 
-(** The loop, entered with pr.1 the previous word's pointer q and v4
-    the string's address a, owning the words ws from offset o of the
-    8-aligned word b + o on, whose first zero byte is t bytes in:
-    strlen returns b + o + t - a, the pieces handed back. *)
+(** This lemma proves the word-loop invariant for `__strlen`: starting
+    from an 8-aligned offset o with the previous word pointer in `pr.1`
+    and the string start address a in `v4`, the loop scans the remaining
+    words ws until it finds the first zero byte t bytes in, returns the
+    distance from a to that NUL byte, and restores the live [[region]]
+    and word pieces. *)
 Lemma loop_spec_dq dq b reg c a ws o e from t q Φ :
   (c = Obj b \/ c = Ro b) -> 0 <= o -> 8 <= b + o -> (b + o) mod 8 = 0 -> 0 <= a <= b + o ->
   b + o + 8 * Z.of_nat (List.length ws) <= r_end reg -> r_end reg <= 2 ^ 48 ->

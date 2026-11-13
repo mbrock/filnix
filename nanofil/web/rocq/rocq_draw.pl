@@ -803,7 +803,8 @@ item_(module(F-T, Kind, n(_, N), Bs, defined([M|As]))) --> !,
 %  Print Assumptions lt_spec, Extract Constant Z.of_nat => "…": the
 %  keywords, then each word of the arguments, a name linked to its
 %  definition and foreign code in the code face. A string of several
-%  lines at the end is a block under the command.
+%  lines at the end is a block under the command, its later lines without
+%  the indent they share (dterm_html.pl's dedent/2).
 item_(cmd(F-T, Kws, Toks)) --> !,
     { atomic_list_concat(Kws, ' ', Kw), cmd_words(Toks, Ws0),
       (   append(Ws, [[t(str(_), SF, ST)]], Ws0), src_text(SF-ST, S), sub_string(S, _, _, _, "\n")
@@ -846,13 +847,6 @@ cmd_tok(t(num(_), F, T)) --> !, { src_text(F-T, N) }, el(span, n, esc(N)).
 cmd_tok(t(str(_), F, T)) --> !, { src_text(F-T, S) }, el(span, "s rq-code", esc(S)).
 cmd_tok(t(sym('=>'), _, _)) --> !, el(span, "op wide", [title="=>"], "⇒").
 cmd_tok(t(_, F, T)) --> { src_text(F-T, S) }, el(span, op, esc(S)).
-
-%  The lines after a string's first lose the indent they share, so its
-%  code sits under the opening quote.
-dedent(Ls, Ds) :-
-    findall(N, ( member(L, Ls), string_codes(L, Cs), append(Sp, [C|_], Cs), C \== 0' , maplist(==(0' ), Sp), length(Sp, N) ), Ns),
-    ( min_list(Ns, M) -> true ; M = 0 ),
-    maplist([L, D]>>( string_length(L, Len), ( Len >= M -> sub_string(L, M, _, 0, D0) ; D0 = "" ), string_concat(" ", D0, D) ), Ls, Ds).
 
 module_kw(module_type, "Module Type").
 module_kw(module, "Module").

@@ -1,13 +1,15 @@
-(** glibc's own `__memchr` (StrchrCode.v's [glibc_memchr]) at any share
-    of the words it reads: [wp_glibc_memchr_dq] for a frame of it, and
-    [wp_call_glibc_memchr] for a call of any module whose function at the
-    called name is it. memchr(p, c, n) returns the first byte c mod 256
-    of the n bytes from p, [hit_ptr] of what [loop_hit] finds up to the
-    search's end [memchr_end] (the last of the n bytes, saturated at the
-    top of the address space as glibc's own is), or null.
+(** Glibc's `__memchr` implements `c: memchr(p, c, n)` by returning null
+    immediately when `n` is zero and otherwise computing a saturated end
+    address `memchr_end` so pointer arithmetic cannot wrap past the top
+    of memory. It then loads the 8-byte [[word]] containing `p`, shifts
+    away any bytes before `p`, and delegates to [MemchrFirst] and
+    [MemchrLoop].
 
-    The entry blocks are here; [memchr_first] is the first word's test,
-    MemchrFirst.v the blocks after it, and MemchrLoop.v the loop. *)
+    This module proves [wp_glibc_memchr_dq] for a call [[frame]] of
+    `__memchr` at any ownership share of the object it reads. Because
+    the specification works for fractional and persistent shares alike,
+    higher-level proofs such as [StrnlenLogic] can invoke `__memchr` on
+    borrowed or shared strings. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,11 +22,12 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCod
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The search's end of memchr(p, c, n) from the address a: the last of
-    the n bytes, or the top of the address space past it. *)
+(** Function [memchr_end] computes the inclusive end address of a
+    search of n bytes from address a, saturating at `2 ^ 64 - 1`. *)
 Definition memchr_end (a n : Z) : Z := Z.min (a + n - 1) (2 ^ 64 - 1).
 
-(** The repeated byte of c, as glibc's memchr computes it. *)
+(** Multiplying the zero-extended low byte of c by `0x0101010101010101`
+    produces `[rep] c` in the IR. *)
 Lemma rep_ext c : 0 <= c < 2 ^ 32 ->
   ((extension Uw ((extension Ub (c mod 2 ^ 32) mod 2 ^ 32) mod 2 ^ 32) mod 2 ^ 64) mod 2 ^ 64
    * (72340172838076673 mod 2 ^ 64)) mod 2 ^ 64 = rep c.
@@ -35,7 +38,8 @@ Proof.
   rewrite (Z.mod_small (c mod 256) (2 ^ 64)); [|lia]. rewrite (Z.mod_small (c mod 256) (2 ^ 64)); [reflexivity|lia].
 Qed.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the entry-block and whole-function rules for
+    `__memchr` over a [[runtime]] R and a program logic instance LG0. *)
 Module MemchrLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module MF := MemchrFirstOn R LG0.
 Module MO := MF.MO.
@@ -49,12 +53,17 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** One step whose premises reduce, as MemchrLast.v's. *)
+(** To step past pure instructions without manual boilerplate, [st]
+    advances one pure `let`, [[flight]], block entry, or `goto` step
+    whose premises reduce. *)
 Ltac st :=
   first
     [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
@@ -62,16 +71,16 @@ Ltac st :=
     | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
     | iApply wp_goto; iNext ].
 
-(** The block that has the search's end, iw_2.L6. *)
+(** Block `iw_2.L6` receives the saturated end address E, aligns it to an
+    8-byte boundary, and tests the first word starting at byte offset k. *)
 Definition memchr_blk_end : block := Eval vm_compute in
   match find_block (TAtom "iw_2.L6") (fn_blocks glibc_memchr) with
   | Some b => b | None => mkBlock (TAtom "iw_2.L6") [] [] JUnreachable end.
 
 
-(** The first word w, from the string's byte k at p, entered with
-    iw_2.v14 the search's end E, owning w and the words ws after it from
-    the 8-aligned word that holds p's byte: it returns what [loop_hit]
-    finds from p, the pieces handed back. *)
+(** Entering `iw_2.L6` with end address E in `iw_2.v14`, [memchr_first]
+    computes the match mask for the first word w, shifts past its k
+    leading bytes, and branches to [memchr_hit] or [memchr_next]. *)
 Lemma memchr_first dq b reg w ws a c0 (k : nat) e from c E r Φ :
   (c0 = Obj b \/ c0 = Ro b) -> 0 < b -> b mod 8 = 0 -> b <= a - Z.of_nat k -> a mod 8 = Z.of_nat k ->
   a - Z.of_nat k + 8 * Z.of_nat (List.length (w :: ws)) <= r_end reg -> r_end reg <= 2 ^ 48 ->
@@ -168,10 +177,10 @@ Proof.
 Qed.
 
 
-(** glibc's memchr of the n bytes from p for c: owning the life of the
-    8-aligned object b and the words ws of it from the word that holds
-    p's byte, inside its region, it returns the pointer to the first c
-    mod 256 that [loop_hit] finds, or null, and hands the pieces back. *)
+(** To verify `c: memchr` at any ownership share, [wp_glibc_memchr_dq]
+    steps through [glibc_memchr] on n bytes starting at p. It returns
+    the earliest matching pointer or null, and restores the live
+    [[region]] and word pieces. *)
 Lemma wp_glibc_memchr_dq dq p c n b reg ws r e Φ :
   (ptr_cap p = Obj b \/ ptr_cap p = Ro b) -> 0 < b -> b mod 8 = 0 -> b <= ptr_addr p ->
   wstart p + 8 * Z.of_nat (List.length ws) <= r_end reg -> r_end reg <= 2 ^ 48 ->

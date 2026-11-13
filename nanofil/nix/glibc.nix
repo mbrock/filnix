@@ -120,11 +120,19 @@ let
           exit 1
         fi
         start=$(date +%s%N)
-        python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
-          rocq c -q -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v
+        # Keep the watchdog's status through capture, including failed compiles.
+        if python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
+          rocq c -q -time -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v | tee sentence-timings.log; then
+          status=0
+        else
+          status=$?
+        fi
         ms=$((($(date +%s%N) - start) / 1000000))
+        python3 ${../tests/rocq_time.py} glibc/${path.${n}}.v sentence-timings.log || \
+          echo "warning: Rocq sentence timing reporter failed" >&2
+        if [ "$status" -ne 0 ]; then exit "$status"; fi
         mkdir $out
-        cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob $out/
+        cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob sentence-timings.log $out/
         printf '@@glibc %4d.%01ds %5d lines %s.v\n' $((ms / 1000)) $((ms % 1000 / 100)) \
           "$(wc -l <glibc/${path.${n}}.v)" ${path.${n}} >$out/time
       ''
@@ -182,6 +190,24 @@ let
     mkdir $out
     cp log $out/
   '';
+  timingTestSrc = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../tests/rocq_time.py
+      ../tests/watch.py
+      ../tests/rocq_time_test.py
+      ./glibc.nix
+    ];
+  };
+  timingTests =
+    pkgs.runCommand "nanofil-glibc-timing-tests"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        set -o pipefail
+        mkdir $out
+        python3 ${timingTestSrc}/tests/rocq_time_test.py -v 2>&1 | tee $out/log
+        touch $out/passed
+      '';
   glibcSrc = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.fileFilter (f: f.hasExt "v") glibc;
@@ -196,11 +222,13 @@ pkgs.runCommand "nanofil-glibc"
         reprint
         probes
         model
+        timingTests
         ;
     };
   }
   ''
     set -o pipefail
+    test -f ${timingTests}/passed
     # The dependency guard needs sources, not the aggregate model objects.
     # Check both namespaces, including imports through another Glibc file.
     cp -r ${glibcSrc}/rocq/glibc glibc
@@ -241,6 +269,10 @@ pkgs.runCommand "nanofil-glibc"
     cat ${
       lib.concatMapStringsSep " " (n: "${vo.${n}}/time") names
     } | tee $out/timings.log
+    mkdir $out/sentence-timings
+    ${lib.concatMapStrings (
+      n: "cp ${vo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
+    ) names}
     cat ${
       lib.concatMapStringsSep " " (n: "${reprint.${n}}/verdict") names
     } | tee $out/verdicts

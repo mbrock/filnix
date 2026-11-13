@@ -1,21 +1,26 @@
-(** rocq/glibc/say.c, linked with nanofil's IR of user glibc's
-    string/strlen.c and io/write.c, through the program logic of
-    Logic.v (docs/glibc-ir.md).
+(** A small C program that writes a greeting to standard output still
+    exercises both userland glibc and a system-call boundary. Here we
+    link `c: say.c` with the intermediate representation of userland
+    glibc's `c: string/strlen.c` and `c: io/write.c`, and prove safety
+    through the program logic in [Logic](Logic.v).
 
-    `main` writes the literal "hello, glibc\n" to descriptor 1 with
-    `write(1, msg, strlen(msg))`. Both calls run glibc's own IR:
-    `strlen` is `__strlen`'s word-at-a-time scan, taken by StrlenLogic.v's
-    triple [wp_glibc_strlen], and `write` is the weak alias of
-    `__GI___libc_write`, whose body calls libpizlo's `zsys_write` and
-    returns what it returns. The linked module defines everything but
-    `zsys_write`, so that one name is the registry's, with the trusted
-    contract of [OsWrite](zsys/OsWrite.v); the rest is proved.
+    In `c: say.c`, `c: main` writes the 14-byte literal `"hello, glibc\n"`
+    to file descriptor 1 with `c: write(1, msg, strlen(msg))`. Both calls
+    step through glibc's own IR: `c: strlen` resolves to `__strlen` and
+    uses [wp_glibc_strlen], while `c: write` calls `__GI___libc_write`,
+    which forwards to `zsys_write`. Only `zsys_write` crosses outside
+    the module, so its trusted contract from [OsWrite](zsys/OsWrite.v)
+    is the only entry in the [[runtime]] registry.
 
-    The world is [OsWorld](zsys/OsWorld.v)'s [os_world], interpreted by
-    [os_wi]: `c: errno` a [permanent_errno] global cell apart from the
-    literal, and descriptor 1 in [ow_fds] (none of them libpizlo's log).
-    [say_logic_safe] is the labelled machine's safety of `main` from any
-    such memory and world holding the literal, with the result 0. *)
+    Because `zsys_write` writes bytes to a file descriptor and may
+    update `c: errno` on failure, the proof must track both the thread's
+    error cell and the open descriptors. We represent that
+    operating-system state with [os_world] from [OsWorld](zsys/OsWorld.v)
+    and connect it to memory through [os_wi]. In any valid state,
+    `c: errno` is a permanent global cell separate from the literal, and
+    file descriptor 1 is open without colliding with the runtime log.
+    Theorem [say_logic_safe] proves that `c: main` never fails from such
+    a state and returns 0 when it finishes. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -28,27 +33,38 @@ From Glibc Require Import SayCode GlibcLogic OsBlocks OsWorld OsWrite StrlenLogi
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The module *)
+(** ## The module
 
-(** The checked module: say.c's `main` and its literal, glibc's
-    `__strlen` and `__GI___libc_write` with their aliases ([say_term]). *)
+    The compiled fixture [say_term] links `c: main`, its string literal,
+    glibc's `__strlen`, and `__GI___libc_write` together with their
+    exported aliases. We decode that module, record the base addresses
+    and [[capability]] descriptors assigned by layout, and extract the
+    three defined functions we verify. *)
+
+(** [say_module] holds the decoded IR module for `c: say.c` linked with
+    glibc's `c: strlen` and `c: write`. *)
 Definition say_module : module :=
   match decode_module say_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [say_module]. *)
+(** [say_decodes] verifies by computation that [say_term] decodes to
+    [say_module]. *)
 Lemma say_decodes : decode_module say_term = Some say_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The address of the literal `msg`, renamed `say#msg` by link.pl. *)
+(** [msg_base] is the base address assigned to the string literal `msg`,
+    which `c: link.pl` renames to `say#msg`. *)
 Definition msg_base : Z := 65552.
 
-(** The literal's capability, read-only. *)
+(** [msg_ptr] pairs [msg_base] with a read-only [[capability]] for the
+    literal object. *)
 Definition msg_ptr : ptr := mkPtr msg_base (Ro msg_base).
 
-(** The literal's region: its 14 bytes rounded up to 16. *)
+(** [msg_reg] describes the literal's 16-byte global [[region]],
+    rounding its 14 bytes up to two 8-byte words. *)
 Definition msg_reg : region := mkRegion msg_base (msg_base + 16) GlobalData Live.
 
-(** The module's symbols, as laying it out places them. *)
+(** [say_globals] lists the module's global symbols and their initial
+    pointers as produced by module layout. *)
 Definition say_globals : list (name * ptr) :=
   [(TAtom "write", mkPtr 65600 (Fn (TAtom "__GI___libc_write")));
    (TAtom "strlen", mkPtr 65584 (Fn (TAtom "__strlen")));
@@ -57,37 +73,49 @@ Definition say_globals : list (name * ptr) :=
    (TAtom "say#msg", msg_ptr);
    (TAtom "main", mkPtr 65536 (Fn (TAtom "main")))].
 
-(** Laying out the module gives [say_globals]. *)
+(** [say_layout] checks by computation that laying out [say_module]
+    produces [say_globals]. *)
 Lemma say_layout : option_map fst (initial_memory say_module) = Some say_globals.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The function named n of the module, or an empty one. *)
+(** [say_fn] looks up a defined function named n in [say_module],
+    falling back to an empty stub when missing. *)
 Definition say_fn (n : string) : func :=
   match find_direct (TAtom n) say_module with
   | Some (Defined f) => f
   | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []
   end.
 
-(** say.c's `main`. *)
+(** [main_fn] is the decoded body of `c: main` from `c: say.c`. *)
 Definition main_fn : func := Eval vm_compute in say_fn "main".
-(** glibc's `__strlen`. *)
+(** [strlen_fn] is the decoded body of glibc's `__strlen`. *)
 Definition strlen_fn : func := Eval vm_compute in say_fn "__strlen".
-(** glibc's `__GI___libc_write`. *)
+(** [write_fn] is the decoded body of glibc's `__GI___libc_write`. *)
 Definition write_fn : func := Eval vm_compute in say_fn "__GI___libc_write".
 
-(** ## The literal's pieces *)
+(** ## The literal's pieces
 
-(** The literal's first word, "hello, g", little-endian. *)
+    A separation-logic proof tracks individual memory cells rather than a
+    whole memory image. Before stepping through `c: main`, we spell out
+    the literal's two 64-bit words and combine them with the caller's
+    4-byte `c: errno` cell. We then verify that all piece keys are
+    distinct, match initial memory, and satisfy the readability
+    condition that `zsys_write` requires. *)
+
+(** [msg_w0] encodes the first eight bytes `"hello, g"` as a
+    little-endian 64-bit integer. *)
 Definition msg_w0 : Z := 7430988242233353576.
-(** Its second word, "libc\n" and the NUL, then the two zero bytes the
-    layout's rounding adds. *)
+(** [msg_w1] encodes `"libc\n"`, the terminating NUL byte, and the two
+    zero padding bytes added by 8-byte alignment. *)
 Definition msg_w1 : Z := 44617066860.
 
-(** The pieces of the literal: its life and its two words. *)
+(** [msg_ps] collects the literal's liveness token and its two aligned
+    words. *)
 Definition msg_ps : list (piece * pval) :=
   [(PLive msg_base, VLive msg_reg)] ++ cell msg_base 0 msg_w0 ++ cell msg_base 8 msg_w1.
 
-(** The literal pieces' keys are distinct. *)
+(** [msg_ps_nodup] proves that no two entries in [msg_ps] share the same
+    piece key. *)
 Lemma msg_ps_nodup : NoDup msg_ps.*1.
 Proof.
   cbn. repeat (apply NoDup_cons_2;
@@ -96,19 +124,22 @@ Proof.
   apply NoDup_nil_2.
 Qed.
 
-(** Every piece of [msg_ps] belongs to the literal's object. *)
+(** Every piece in [msg_ps] belongs to the literal's object at
+    [msg_base], as [msg_ps_id] proves. *)
 Lemma msg_ps_id l v : (l, v) ∈ msg_ps -> piece_id l = msg_base.
 Proof.
   intros H. apply list_elem_of_In in H. cbn in H.
   repeat destruct H as [H|H]; first [injection H as <- _; reflexivity | contradiction].
 Qed.
 
-(** The initial ghost pieces of `say.c`: the literal and the 4-byte
-    `c: errno` block at eb. *)
+(** [say_ps] combines the literal's pieces with the 4-byte `c: errno`
+    block at base eb in memory m. *)
 Definition say_ps (m : mem) (eb : Z) : list (piece * pval) :=
   msg_ps ++ blk_now m eb 0 4.
 
-(** When eb is apart from [msg_base], the keys of [say_ps] are distinct. *)
+(** A separation-logic heap cannot contain duplicate keys for the same
+    memory cell. Whenever `c: errno` lives in a different object eb from
+    [msg_base], [say_ps_nodup] proves that [say_ps] has distinct keys. *)
 Lemma say_ps_nodup m eb : eb <> msg_base -> NoDup (say_ps m eb).*1.
 Proof.
   intros Hne. unfold say_ps. rewrite fmap_app blk_now_keys; [|lia].
@@ -123,8 +154,10 @@ Proof.
     apply NoDup_nil_2.
 Qed.
 
-(** The 4-byte `c: errno` block [blk_now] agrees with m when eb is a
-    [permanent_errno]. *)
+(** A thread's `c: errno` cell must match physical memory before
+    execution begins. Whenever eb holds a permanent `c: errno` object in
+    memory m, [errno_blk_agree] shows that its 4-byte block agrees with
+    m. *)
 Lemma errno_blk_agree m eb :
   permanent_errno m (mkPtr eb (Obj eb)) -> all_agree m (blk_now m eb 0 4).
 Proof.
@@ -136,8 +169,9 @@ Proof.
   exact I.
 Qed.
 
-(** Where [msg_ps] agrees with m, the literal's 13 bytes pass
-    [os_readable] through its capability. *)
+(** An external write call checks that all 13 bytes of the greeting lie
+    inside a live readable region. Lemma [msg_readable] proves
+    [os_readable] for [msg_ptr] whenever [msg_ps] agrees with memory m. *)
 Lemma msg_readable m : all_agree m msg_ps -> os_readable m msg_ptr 13.
 Proof.
   intros Ha. split; [lia|]. right.
@@ -156,19 +190,32 @@ Proof.
       unfold byte_of. apply Z.mod_pos_bound. lia.
 Qed.
 
-(** ## The contracts *)
+(** ## The contracts
 
-(** The registry: zsys_write's contract alone; everything else the
-    program calls is in the module. *)
+    Because `c: strlen` and `c: write` are defined inside [say_module],
+    the only external symbol in the program is `zsys_write`. We place its
+    contract in the module's registry and build the entry [[frame]] for
+    `c: main`. *)
+
+(** [say_registry] maps `zsys_write` to [os_write_contract] and leaves
+    all other symbol names unbound. *)
 Definition say_registry (symbol : name) : option (contract os_world) :=
   if name_eqb symbol (TAtom "zsys_write") then Some os_write_contract else None.
 
-(** `main` called with no arguments. *)
+(** [main_entry] constructs the initial call frame that enters `c: main`
+    with no arguments. *)
 Definition main_entry : frame := mkFrame main_fn [] [] None (Enter (TAtom "start") None).
 
-(** ## Over any runtime *)
+(** ## Over any runtime
 
-(** The proof over the [[runtime]] R. *)
+    Because `zsys_write` is the only external call, the safety proof
+    works over any Fil-C [[runtime]] R that implements its contract.
+    Inside [SayLogic], we establish a specification for `c: strlen` on
+    the literal, step through `c: main` and `c: write`, and conclude
+    with a safety theorem for any ready runtime state. *)
+
+(** The module [SayLogic] verifies `c: say.c` over an arbitrary runtime
+    R. *)
 Module SayLogic (R : Runtime).
 Module LG := Logic R.
 Module GL := GlibcLogicOn R LG.
@@ -177,14 +224,17 @@ Module SO := StrlenOn R LG.
 Module L := LG.L.
 Import L LG GL OW OW.OW.
 
-(** The linked genv: the module, its symbols, R's free. *)
+(** [say_ge] builds the [[genv|global environment]] from [say_module],
+    [say_globals], and R's free-list relation. *)
 Definition say_ge : genv := mkGenv say_module say_globals R.free.
 
-(** A call of `strlen` runs `__strlen`. *)
+(** [find_strlen] confirms that looking up `c: strlen` in [say_ge]
+    resolves to [strlen_fn]. *)
 Lemma find_strlen : find_fn say_ge (TAtom "strlen") = Some (Defined strlen_fn).
 Proof. vm_compute. reflexivity. Qed.
 
-(** A call of `write` runs `__GI___libc_write`. *)
+(** [find_write] confirms that looking up `c: write` in [say_ge]
+    resolves through the weak alias to [write_fn]. *)
 Lemma find_write : find_fn say_ge (TAtom "write") = Some (Defined write_fn).
 Proof. vm_compute. reflexivity. Qed.
 
@@ -192,15 +242,17 @@ Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world).
 
-(** The Iris instance of say.c: zsys_write's contract and [os_wi] w0. *)
+(** [say_irisGS] supplies the Iris [[state-interpretation]] for
+    [say_module] using [say_registry] and the OS world w0. *)
 Local Instance say_irisGS : irisGS_gen hlc (nanofil_lang say_registry say_ge) Σ :=
   nanofil_irisGS say_registry (os_wi w0) say_ge.
 
-(** The expressions of say.c's language. *)
+(** [sexpr] abbreviates the expression type of `c: say.c`'s language. *)
 Local Notation sexpr := (language.expr (nanofil_lang say_registry say_ge)).
 
-(** glibc's strlen, called with the literal, owning its pieces:
-    [wp_glibc_strlen] with its two words, returning 13. *)
+(** Calling `c: strlen` on `"hello, glibc\n"` returns 13 and restores
+    ownership of [msg_ps]. Lemma [strlen_msg_spec] proves this by
+    applying [wp_glibc_strlen] to the literal's two words. *)
 Lemma strlen_msg_spec Φ :
   pts msg_ps -∗ (pts msg_ps -∗ Φ (Ret (WInt 13))) -∗
   WP (ERun (mkFrame strlen_fn [(TAtom "v0", WPtr msg_ptr)] [] None (Enter (TAtom "start") None)) : sexpr)
@@ -222,9 +274,10 @@ Proof.
     iApply "HΦ". iFrame.
 Qed.
 
-(** `main`, owning the literal and `c: errno`, returns 0: glibc's
-    strlen measures it, and glibc's write hands it to zsys_write for
-    descriptor 1. *)
+(** When the program owns the literal's pieces [msg_ps] and the thread's
+    `c: errno` cell at eb, `c: main` measures the greeting with
+    `c: strlen`, passes it to `zsys_write` on descriptor 1, and returns
+    0, as [main_spec] proves. *)
 Lemma main_spec eb :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In 1 (ow_fds w0) ->
   pts msg_ps -∗ errno_any eb -∗ WP (ERun main_entry : sexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
@@ -245,12 +298,12 @@ Qed.
 
 End wp.
 
-(** `main` is safe: from a ready runtime, live objects apart, a memory
-    holding the literal as [msg_ps] says, and an [os_world] w whose
-    `c: errno` is a [permanent_errno] at eb apart from [msg_base],
-    whose cookie is [self_registered], and whose descriptors [ow_fds]
-    contain 1 and exclude [ow_log_fd], with any fuel, no labelled run
-    stops with a [failure_ending], and a run that returns returns 0. *)
+(** Running `c: main` never reaches a failure state and always returns 0
+    when it terminates, provided the runtime is ready, live objects are
+    disjoint, initial memory holds [msg_ps], and the OS world w supplies
+    a valid `c: errno`, a registered self pointer, and file descriptor 1
+    separate from the log descriptor. Theorem [say_logic_safe] proves
+    this via [heap_labelled_safe]. *)
 Theorem say_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} m s w eb fuel :
   R.ready s m -> live_disjoint m -> all_agree m msg_ps ->
   ow_errno w = Some (mkPtr eb (Obj eb)) -> permanent_errno m (mkPtr eb (Obj eb)) ->
@@ -282,5 +335,6 @@ Qed.
 
 End SayLogic.
 
-(** The theorem for the interpreter's runtime. *)
+(** [InterpSayLogic] instantiates [SayLogic] with the interpreter's
+    runtime. *)
 Module InterpSayLogic := SayLogic InterpRuntime.

@@ -32,14 +32,14 @@ Definition hi_prepared_memory : mem := hi_entry_mem hi_entry_saved_jmp.
     its listed value in the prepared memory. *)
 Lemma hi_entry_agree : all_agree hi_prepared_memory hi_entry_ps.
 Proof.
-  apply checked_pieces_all_agree. vm_compute. reflexivity.
+  apply checked_pieces_all_agree. vm_cast_no_check (eq_refl true).
 Qed.
 
 (** Every owned key is unique across the complete image. In particular,
     the stream list does not duplicate stdout's or the other streams'
     object tokens. *)
 Lemma hi_entry_nodup : NoDup hi_entry_ps.*1.
-Proof. apply hi_unique_sound. vm_compute. reflexivity. Qed.
+Proof. apply hi_unique_sound. vm_cast_no_check (eq_refl true). Qed.
 
 (** Combining the listed fields into one heap preserves their
     agreement with physical memory. *)

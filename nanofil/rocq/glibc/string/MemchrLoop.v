@@ -1,7 +1,10 @@
-(** The word loop of glibc's own `__memchr` (StrchrCode.v's
-    [glibc_memchr]) at any share of the words it reads, by induction on
-    the words: [memchr_loop], with MemchrLast.v's [memchr_last] for the
-    last word. MemchrLogic.v's triple enters it after the first word. *)
+(** After testing the first aligned word, glibc's `__memchr` steps
+    through subsequent 8-byte [[word|words]] one at a time until it
+    finds a matching byte or reaches the word containing the end of the
+    search range. This module proves the loop invariant [memchr_loop] at
+    any ownership share, handing off the final word to [MemchrLast]'s
+    [memchr_last] so that [MemchrFirst] and [MemchrLogic] can verify the
+    whole function. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +16,9 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCod
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The loop over the [[runtime]] R and the Logic instance LG0. *)
+(** To keep the loop proof independent of a specific runtime
+    implementation, [MemchrLoopOn] parameterizes it over a [[runtime]] R
+    and program logic instance LG0. *)
 Module MemchrLoopOn (R : Runtime) (LG0 : LogicSig R).
 Module ML := MemchrLastOn R LG0.
 Module WS := ML.WS.
@@ -25,12 +30,17 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** One step whose premises reduce, as MemchrLast.v's. *)
+(** To step past pure instructions without manual boilerplate, [st]
+    advances one pure `let`, [[flight]], block entry, or `goto` step
+    whose premises reduce. *)
 Ltac st :=
   first
     [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
@@ -38,11 +48,12 @@ Ltac st :=
     | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
     | iApply wp_goto; iNext ].
 
-(** The loop, entered with pr.1 the pointer q to the word w, at the
-    8-aligned offset o of the object b, and pr.2 the word, owning w and
-    the words ws after it, with v78 the address of the last word, the
-    one holding the end E (v40), and iw_1.v7 [rep] c: it returns what
-    [loop_hit] finds from q, the pieces handed back. *)
+(** To verify the main search loop over any number of words,
+    [memchr_loop_ind] proves by Löb induction that starting at 8-aligned
+    word pointer q in block `L84`, `__memchr` either finds a match in q,
+    advances to the next word, or delegates the final word to
+    [memchr_last]. It returns [hit_ptr] and restores the live [[region]]
+    and word pieces. *)
 Lemma memchr_loop_ind (dq : dfrac) (b : Z) (reg : region) (c E : Z) (Φ : outcome -> iProp Σ) :
   0 < b -> r_end reg <= 2 ^ 48 ->
   ⊢ ∀ (w : Z) (ws : list Z) (o : Z) (e : list (name * word)) (from : option name) (q : ptr) (r : option nat),
@@ -117,7 +128,9 @@ Proof.
       rewrite Hq Nat2Z.inj_sub; [|exact H8]. f_equal. cbn [ptr_addr]. lia.
 Qed.
 
-(** The loop, as [memchr_loop_ind] with its premises in Rocq. *)
+(** Lemma [memchr_loop] wraps [memchr_loop_ind] with ordinary Rocq
+    premises so callers can apply the loop rule directly without Iris
+    magic-wand currying. *)
 Lemma memchr_loop dq b reg w ws o e from q c E r Φ :
   (ptr_cap q = Obj b \/ ptr_cap q = Ro b) -> 0 <= o -> 0 < b -> (b + o) mod 8 = 0 -> ptr_addr q = b + o ->
   b + o + 8 * Z.of_nat (List.length (w :: ws)) <= r_end reg -> r_end reg <= 2 ^ 48 ->

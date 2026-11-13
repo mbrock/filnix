@@ -1,9 +1,10 @@
-(** Two blocks of glibc's own `__memchr` (StrchrCode.v's [glibc_memchr])
-    at any share of the words it reads, after the first word's test,
-    for MemchrLogic.v:
-    [memchr_hit], a match in the first word, and [memchr_next], none,
-    which returns null if the first word is the last and otherwise
-    loads the next word and goes on in MemchrLoop.v's loop. *)
+(** Once glibc's `__memchr` computes the match mask for the first aligned
+    word and shifts away any bytes before `p`, control branches on
+    whether a candidate byte matched. This module proves [memchr_hit]
+    for a match in the first word, which still checks whether the match
+    lies within the `n`-byte bound, and [memchr_next] for the no-match
+    path, which either returns null or loads the next word and enters
+    [MemchrLoop]'s loop. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,8 +16,9 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCod
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The first word's mask, from the byte k, of the word w xor'd with
-    [rep] c: 128 just in its bytes c's from k on, moved down by k. *)
+(** Shifting the match mask of the first word down by `a mod 8` bytes
+    places 128 in lane i whenever lane `i + a mod 8` of w matches
+    `c mod 256`, and zero in lanes past the word boundary. *)
 Lemma first_hit_byte w c a i : 0 <= a -> 0 <= i ->
   byte_of (first_shift (Z.lxor w (rep c)) a) i =
   if i + a mod 8 <? 8 then (if byte_of w (i + a mod 8) =? c mod 256 then 128 else 0) else 0.
@@ -29,8 +31,8 @@ Proof.
   - exfalso. apply E. apply xor_zero; [lia | exact E'].
 Qed.
 
-(** Arithmetic on addresses and words, the wraps that are the identity
-    dropped. *)
+(** Tactic [ar] unfolds pointer and address projections, strips
+    64-bit wraps that fit in range, and solves linear or division goals. *)
 Ltac ar := cbn [ptr_addr ptr_cap extension]; unfold raw_address;
   change (2 ^ 64) with 18446744073709551616 in *; change (2 ^ 48) with 281474976710656 in *;
   change (2 ^ 32) with 4294967296 in *;
@@ -38,17 +40,21 @@ Ltac ar := cbn [ptr_addr ptr_cap extension]; unfold raw_address;
     rewrite (Z.mod_small x 18446744073709551616); [|lia] end;
   first [lia | Z.div_mod_to_equations; lia].
 
-(** Name the integer the temporary name holds v. *)
+(** To keep integer expressions in the environment readable, [si]
+    rewrites the integer stored in temporary `name` to `v`. *)
 Ltac si name v :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by first [reflexivity | ar] end.
-(** Look a temporary up below the puts, by H or the put of it. *)
+(** Tactic [lk] resolves a lookup in the environment by skipping over
+    newer `put` bindings until it reaches hypothesis H. *)
 Ltac lk H := repeat (rewrite lookup_after_put_other; [|reflexivity]);
   first [rewrite lookup_after_put_same; reflexivity | exact H].
-(** Name the address of the pointer the temporary name holds v. *)
+(** Tactic [sp] normalizes the address stored in pointer temporary
+    `name` to `v` by computation or [ar]. *)
 Ltac sp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by first [reflexivity | ar] end.
 
-(** The first word over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the first-word branch rules for `memchr` over
+    a [[runtime]] R and a program logic instance LG0. *)
 Module MemchrFirstOn (R : Runtime) (LG0 : LogicSig R).
 Module MO := MemchrLoopOn R LG0.
 Module ML := MO.ML.
@@ -61,12 +67,17 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** One step whose premises reduce, as MemchrLast.v's. *)
+(** To step past pure instructions without manual boilerplate, [st]
+    advances one pure `let`, [[flight]], block entry, or `goto` step
+    whose premises reduce. *)
 Ltac st :=
   first
     [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
@@ -74,9 +85,11 @@ Ltac st :=
     | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
     | iApply wp_goto; iNext ].
 
-(** The first word's match, at byte j of the mask m (128 in the bytes
-    matched, the first at j), entered with iw_5.v12 m: it returns p + j
-    when that is at or before the search's end E, and null after. *)
+(** When the first word contains a matching byte, `__memchr` counts
+    trailing bits in the shifted mask to locate the matching byte index
+    and checks whether it falls within the search bound. Lemma
+    [memchr_hit] verifies that path, returning the matching pointer when
+    in bounds and null otherwise. *)
 Lemma memchr_hit e from m j a c0 E Φ :
   0 <= m < 2 ^ 64 -> (forall i, 0 <= i < 8 -> byte_of m i = 0 \/ byte_of m i = 128) ->
   0 <= j < 8 -> byte_of m j = 128 -> (forall i, 0 <= i < j -> byte_of m i = 0) ->
@@ -112,9 +125,11 @@ Proof.
     iExact "HK".
 Qed.
 
-(** No match in the first word, from the 8-aligned A, entered at L52:
-    null when it is the last word, and otherwise the next word loaded
-    and MemchrLoop.v's loop from A + 8 with its search r. *)
+(** When the first word holds no match, `__memchr` checks whether the
+    first word is also the last; if so it returns null, and otherwise it
+    loads the next word and enters the word loop. Lemma [memchr_next]
+    proves this transition from block `L52` into [memchr_loop], restoring
+    all memory pieces at the end. *)
 Lemma memchr_next dq b reg w ws A c0 c1 e from c E r Φ :
   (c0 = Obj b \/ c0 = Ro b) -> 0 < b -> b <= A -> A mod 8 = 0 ->
   A + 8 * Z.of_nat (List.length (w :: ws)) <= r_end reg -> r_end reg <= 2 ^ 48 ->

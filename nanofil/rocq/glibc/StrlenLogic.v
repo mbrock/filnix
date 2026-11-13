@@ -1,33 +1,29 @@
-(** A triple for glibc's own `__strlen`, as nanofil compiles user
-    glibc's string/strlen.c (docs/glibc-ir.md): for any string, not one
-    literal, over any registry and world, so a program linked with
-    glibc's strlen uses it as a rule at its call.
+(** A C program compiled against userland glibc calls `__strlen`
+    directly instead of relying on an external specification for
+    `c: strlen`. Here we prove a general [[hoare-triple|Hoare triple]]
+    for glibc's `__strlen` over any [[runtime]] registry and OS world,
+    so any linked program can use it at its call sites.
 
-    glibc's strlen reads whole aligned 8-byte words: first the word
-    holding the string's first byte, its bytes before the string masked
-    off by a shift, then each next word until one holds a zero byte
-    (StrlenBits.v). Every word it reads is a whole word of the
-    string's object, so the triple's precondition is about words, not
-    bytes:
+    Glibc's `c: strlen` reads whole aligned 8-byte words rather than
+    individual bytes. It loads the aligned word holding the string's
+    first byte, shifts off any bytes before the string pointer, and then
+    loops over subsequent words until [StrlenBits](StrlenBits.v)'s mask
+    detects a zero byte.
 
-    - the capability names the object b, read-write or read-only, and b
-      is 8-aligned;
-    - the caller owns the life of b and the words ws from the word that
-      holds the first byte, through the word that holds the NUL, every
-      byte of each, including bytes past the NUL ([words_ps]);
-    - those words lie inside b's region.
+    Because every load reads an entire 8-byte word, the specification
+    requires word-level ownership rather than just the string's prefix.
+    The pointer's [[capability]] must grant read-write or read-only
+    access to an 8-byte aligned object b. The caller must also own b's
+    liveness token and all aligned words ws from the starting word
+    through the word containing the NUL terminator, lying inside b's
+    [[region]].
 
-    This is the whole-word rounding glibc's strlen depends on. A string
-    whose NUL is the last byte of an object that ends mid-word does not
-    meet it, and on such an object glibc's strlen would read past the
-    end. Fil-C rounds every object up to a whole word, as filcc gives a
-    13-byte literal a 16-byte object, and the model's layout rounds
-    data to 8 (docs/glibc-ir.md, Findings). The result is the index of
-    the first zero byte from the string's start ([first_zero]).
-
-    [loop_spec] is the loop block, for any number of words, by
-    induction on them; [wp_glibc_strlen] is the entry block, whose NUL
-    is in the first word or the loop finds it. *)
+    If a string's NUL byte sat in a partial trailing word, a word-sized
+    load would read past the object's bounds. Fil-C avoids that hazard
+    by rounding every object up to a multiple of 8 bytes. Under those
+    conditions, [wp_glibc_strlen] proves that `__strlen` returns the
+    index of the first zero byte by delegating later words to
+    [loop_spec]. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -39,7 +35,8 @@ From Glibc Require Import LenCode GlibcLogic StrlenBits.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** glibc's `__strlen`, as the linked fixture of len.c holds it. *)
+(** [glibc_strlen] extracts the decoded IR body of glibc's `__strlen`
+    from the linked `c: len.c` fixture. *)
 Definition glibc_strlen : func := Eval vm_compute in
   match find_direct (TAtom "__strlen")
           (match decode_module len_term with Some md => md | None => [] end) with
@@ -47,35 +44,41 @@ Definition glibc_strlen : func := Eval vm_compute in
   | _ => mkFunc (TAtom "__strlen") (TAtom "export") (RClass L) [] []
   end.
 
-(** The pieces of the 64-bit words ws from offset o of the object b. *)
+(** [words_ps] builds the [[ghost-state|ghost pieces]] for a list of
+    64-bit words ws starting at offset o of object b. *)
 Fixpoint words_ps (b o : Z) (ws : list Z) : list (piece * pval) :=
   match ws with [] => [] | w :: ws => cell b o w ++ words_ps b (o + 8) ws end.
 
-(** The bytes of the words ws, little-endian, in order. *)
+(** [wbytes] flattens a list of 64-bit words ws into its little-endian
+    byte sequence. *)
 Definition wbytes (ws : list Z) : list Z := flat_map (fun w => map (byte_of w) idx8) ws.
 
-(** The first zero of the bytes bs is at n. *)
+(** [first_zero] holds when index n is the first position in byte list
+    bs that contains zero. *)
 Definition first_zero (bs : list Z) (n : nat) : Prop :=
   bs !! n = Some 0 /\ forall u, (u < n)%nat -> bs !! u <> Some 0.
 
-(** The bytes of the words w :: ws are w's eight, then ws's. *)
+(** [wbytes_cons] splits the byte list of w :: ws into the eight bytes
+    of w followed by the bytes of ws. *)
 Lemma wbytes_cons w ws : wbytes (w :: ws) = map (byte_of w) idx8 ++ wbytes ws.
 Proof. reflexivity. Qed.
 
-(** Byte i below 8 of w :: ws is w's byte i. *)
+(** For any index i below 8, [wbytes_head] looks up byte i of w :: ws
+    directly in the leading word w. *)
 Lemma wbytes_head w ws (i : nat) : (i < 8)%nat -> wbytes (w :: ws) !! i = Some (byte_of w (Z.of_nat i)).
 Proof.
   intros Hi. rewrite wbytes_cons lookup_app_l; [|rewrite length_map; cbn; lia].
   do 8 (destruct i as [|i]; [reflexivity|]). lia.
 Qed.
 
-(** Byte 8 + i of w :: ws is byte i of ws. *)
+(** [wbytes_tail] shifts lookups at offset 8 + i in w :: ws past the
+    first word into ws. *)
 Lemma wbytes_tail w ws (i : nat) : wbytes (w :: ws) !! (8 + i)%nat = wbytes ws !! i.
 Proof. rewrite wbytes_cons lookup_app_r; [|rewrite length_map; cbn; lia]. rewrite length_map. f_equal. cbn. lia. Qed.
 
-(** Where the first zero of the bytes of w :: ws from k, k below 8,
-    is at n, and k + n is inside w: byte k + n of w is zero and its
-    bytes from k before it are not. *)
+(** When the first zero byte from offset k falls inside the first word w
+    at k + n, [first_zero_in] extracts that byte k + n is zero and all
+    preceding bytes from k are nonzero. *)
 Lemma first_zero_in w ws k n : (k < 8)%nat -> first_zero (drop k (wbytes (w :: ws))) n -> (k + n < 8)%nat ->
   byte_of w (Z.of_nat (k + n)) = 0 /\ forall i, (k <= i < k + n)%nat -> byte_of w (Z.of_nat i) <> 0.
 Proof.
@@ -84,9 +87,9 @@ Proof.
   replace (k + (i - k))%nat with i by lia. rewrite E. reflexivity.
 Qed.
 
-(** Where the first zero of the bytes of w :: ws from k is at n, and
-    k + n is past w: w's bytes from k are nonzero, and the first zero
-    of ws's bytes is at k + n - 8. *)
+(** When the first zero byte from offset k lies past the first word w,
+    [first_zero_past] shows that every byte of w from k onward is
+    nonzero and shifts [first_zero] to ws. *)
 Lemma first_zero_past w ws k n : (k < 8)%nat -> first_zero (drop k (wbytes (w :: ws))) n -> (8 <= k + n)%nat ->
   (forall i, (k <= i < 8)%nat -> byte_of w (Z.of_nat i) <> 0) /\ first_zero (wbytes ws) (k + n - 8).
 Proof.
@@ -100,12 +103,13 @@ Proof.
       replace (k + (8 + u - k))%nat with (8 + u)%nat by lia. rewrite wbytes_tail. exact E.
 Qed.
 
-(** A temporary's value at class k is what the environment holds for it,
-    taken at k. *)
+(** [value_x_tmp] evaluates a temporary operand at register class k by
+    reading its entry from the local environment e. *)
 Lemma value_x_tmp ge e k n x : lookup n e = Some x -> value_x ge e k (Tmp n) = word_at_class k x.
 Proof. intros H. cbn. rewrite H. reflexivity. Qed.
 
-(** The triple over the [[runtime]] R and the Logic instance LG0. *)
+(** The module [StrlenOn] proves the `__strlen` specification over an
+    arbitrary [[runtime]] R and logic instance LG0. *)
 Module StrlenOn (R : Runtime) (LG0 : LogicSig R).
 Module GL := GlibcLogicOn R LG0.
 Module LG := LG0.
@@ -116,13 +120,15 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** [rules_irisGS] supplies the Iris [[state-interpretation]] for
+    [registry], [wi], and [ge]. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** [gexpr] abbreviates the expression type of the parameterized
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** One step whose premises reduce: a pure let, a flight, entering a
-    block, or a goto. The values stay symbolic. *)
+(** The tactic [st] advances the proof by one symbolic IR step—either a
+    pure let binding, a [[flight]], a block entry, or a jump. *)
 Ltac st :=
   first
     [ iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext]
@@ -130,14 +136,16 @@ Ltac st :=
     | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
     | iApply wp_goto; iNext ].
 
-(** Drop each wrap to 64 or 32 bits that arithmetic shows the identity. *)
+(** The tactic [unwrap] removes 64-bit and 32-bit modulo wraps whenever
+    `lia` can prove the operand is already in range. *)
 Ltac unwrap :=
   repeat match goal with
     | |- context [?x mod 2 ^ 64] => rewrite (Z.mod_small x (2 ^ 64)); [|lia]
     | |- context [?x mod 2 ^ 32] => rewrite (Z.mod_small x (2 ^ 32)); [|lia]
     end.
 
-(** Keep only arithmetic hypotheses, so lia does not read the rest. *)
+(** The tactic [clear_junk] discards non-arithmetic hypotheses from the
+    context so `lia` runs quickly on the remaining bounds. *)
 Ltac clear_junk :=
   repeat match goal with
     H : ?T |- _ =>
@@ -147,40 +155,51 @@ Ltac clear_junk :=
       | _ => clear H
       end
     end.
-(** Compute each closed shift factor 2 ^ (n mod m). *)
+(** The tactic [pow_closed] evaluates closed shift multipliers of the
+    form `2 ^ (n mod m)` by computation. *)
 Ltac pow_closed :=
   repeat match goal with |- context [2 ^ (?n mod ?m)] =>
     let v := fresh "v" in let Ev := fresh "Ev" in
     remember (2 ^ (n mod m)) as v eqn:Ev; vm_compute in Ev; subst v end.
-(** An address or integer fact, by arithmetic. *)
+(** Address arithmetic and bounds checks leave integer side conditions
+    at every step. The tactic [arith] strips non-arithmetic hypotheses,
+    evaluates closed shift powers, removes redundant modulo wraps, and
+    solves the remaining inequalities with `lia`. *)
 Ltac arith := cbn [ptr_addr ptr_cap extension]; unfold raw_address; clear_junk; pow_closed; unwrap;
   first [lia | Z.div_mod_to_equations; lia].
 
-(** A branch whose condition is closed: computed. *)
+(** The tactic [close_if] reduces a branch target when its boolean
+    condition evaluates to true or false. *)
 Ltac close_if :=
   match goal with |- context [edge_label (if ?c then _ else _)] =>
     first [change c with true | change c with false]
   end; cbn [edge_label].
 
-(** The v4 lookup through the puts of a block, to the frame's e. *)
+(** The tactic [look] resolves the lookup of `v4` in the environment
+    after earlier temporary assignments in the block. *)
 Ltac look H := repeat (rewrite lookup_after_put_other; [|reflexivity]); exact H.
 
-(** Name the integer the temporary name holds v, by computation or arithmetic. *)
+(** The tactic [set_int] rewrites the integer stored in temporary `name`
+    to its symbolic expression v. *)
 Ltac set_int name v :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by first [reflexivity | arith] end.
-(** Name the address of the pointer the temporary name holds v. *)
+(** The tactic [set_ptr] rewrites the address of the pointer stored in
+    temporary `name` to its symbolic expression v. *)
 Ltac set_ptr name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by first [reflexivity | arith] end.
 
-(** The loop's block, L28: load the next word and test it for a zero. *)
+(** [blk28] extracts the main loop block `L28` of `__strlen`, which
+    loads the next aligned word and tests it for a zero byte. *)
 Definition blk28 : block := Eval vm_compute in
   match find_block (TAtom "L28") (fn_blocks glibc_strlen) with
   | Some b => b | None => mkBlock (TAtom "L28") [] [] JUnreachable end.
 
-(** The loop, entered with pr.1 the previous word's pointer q and v4
-    the string's address a, owning the words ws from offset o of the
-    8-aligned word b + o on, whose first zero byte is t bytes in:
-    strlen returns b + o + t - a, the pieces handed back. *)
+(** Each iteration of `__strlen`'s loop loads the next aligned 8-byte
+    word and stops when [loop_mask] detects a zero byte. Here `pr.1`
+    holds the previous word's pointer, `v4` holds the string's start
+    address a, and ws holds the remaining words at offset o. By
+    induction on ws, [loop_spec] proves that `L28` returns b + o + t - a
+    and restores all owned pieces. *)
 Lemma loop_spec b reg c a ws o e from t q Φ :
   (c = Obj b \/ c = Ro b) -> 0 <= o -> 8 <= b + o -> (b + o) mod 8 = 0 -> 0 <= a <= b + o ->
   b + o + 8 * Z.of_nat (List.length ws) <= r_end reg -> r_end reg <= 2 ^ 48 ->
@@ -258,10 +277,11 @@ Proof.
       iApply ("HK" with "Hl [$Hw $Hps]").
 Qed.
 
-(** glibc's strlen of p: owning the life of the 8-aligned object b and
-    the words ws of it from the word that holds p's byte, inside its
-    region, whose first zero byte from p is n bytes in, the call
-    returns n and hands the pieces back. *)
+(** Calling `__strlen` on a pointer p to an 8-byte aligned object b
+    returns the byte offset of its first NUL terminator. Provided the
+    caller owns b's liveness token and the aligned words ws starting at
+    p's word inside b's region, [wp_glibc_strlen] proves that `__strlen`
+    returns n and restores all owned pieces. *)
 Lemma wp_glibc_strlen p b reg ws n Φ :
   (ptr_cap p = Obj b \/ ptr_cap p = Ro b) -> 0 < b -> b mod 8 = 0 -> b <= ptr_addr p ->
   ptr_addr p - ptr_addr p mod 8 + 8 * Z.of_nat (List.length ws) <= r_end reg -> r_end reg <= 2 ^ 48 ->

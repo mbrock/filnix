@@ -1,31 +1,24 @@
-(** Triples for user glibc's `atexit` registration (docs/glibc-ir.md):
-    `__new_exitfn`, `__internal_atexit`, `__cxa_atexit` and `atexit`,
-    over any registry, world and genv that binds their symbols, so a
-    program linked with them uses each as a rule at its call.
+(** Glibc stores `c: atexit` handlers in a linked list of 32-slot
+    blocks, beginning with a statically allocated `initial` block.
+    This module proves [[hoare-triple|Hoare triples]] for
+    `__new_exitfn`, `__internal_atexit`, `__cxa_atexit`, and `c: atexit`
+    over any [[runtime]] registry, world, and
+    [[genv|global environment]] that binds their symbols.
 
-    glibc keeps the exit handlers in a list of blocks of 32 slots,
-    `__exit_funcs`, which starts as the static block `initial`. A
-    registration takes `__exit_funcs_lock` by a compare-and-swap from 0
-    to 1, takes the slot after the last used one ([wp_new_exitfn]:
-    `__exit_funcs_done` must be 0, and the block's `idx` and
-    `__new_exitfn_called` go up by one), fills it with the flavor
-    `ef_cxa` (4), the function, its argument and its DSO handle, and
-    releases the lock by a compare-and-swap from 1 to 0. Single
-    threaded, the lock is free, so neither the wait nor the wake runs.
+    To register a handler, `__internal_atexit` acquires
+    `__exit_funcs_lock` with an atomic [[cas|compare-and-swap]],
+    reserves the next slot through `__new_exitfn`, writes the function
+    pointer, argument, and DSO handle, and releases the lock. Because
+    our model is single-threaded, the lock is always free, so neither
+    the contention wait path nor the wake path runs.
 
-    [exit_funcs_inv] owns that state while `initial` is the only block
-    and holds k registered entries ([entry]) and 32 - k spare slots
-    ([spare]). For k below 32 and a function pointer at a nonzero
-    address (every module function's is, since data starts at
-    [data_base]):
-
-    - [wp_glibc_cxa_atexit]: `__cxa_atexit (fn, arg, dso)` appends the
-      entry (fn, arg, dso) and returns 0;
-    - [wp_glibc_atexit]: `atexit (fn)` is `__cxa_atexit (fn, null,
-      null)`.
-
-    The writes are to the lock, the counter and `initial`, which the
-    world interpretation must not read ([wi_ignores]). *)
+    When fewer than 32 exit handlers have been registered, glibc keeps
+    all entries inside that single static buffer. In [exit_funcs_inv],
+    we package the lock, shutdown flag, call counter, and static buffer
+    together so [wp_glibc_cxa_atexit] and [wp_glibc_atexit] can append
+    an entry and return 0. Because registration modifies the lock,
+    counter, and static buffer, any external world must satisfy
+    [wi_ignores] for those three objects. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -37,54 +30,63 @@ From Glibc Require Import StdlibCode GlibcLogic LeavesLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** glibc's `__new_exitfn`. *)
+(** [new_exitfn_fn] is the decoded IR body of glibc's `__new_exitfn`. *)
 Definition new_exitfn_fn : func := Eval vm_compute in stdlib_fn "__new_exitfn".
-(** glibc's `__internal_atexit`. *)
+(** [internal_atexit_fn] is the decoded IR body of glibc's
+    `__internal_atexit`. *)
 Definition internal_atexit_fn : func := Eval vm_compute in stdlib_fn "__internal_atexit".
-(** glibc's `__GI___cxa_atexit`. *)
+(** [cxa_atexit_fn] is the decoded IR body of glibc's
+    `__GI___cxa_atexit`. *)
 Definition cxa_atexit_fn : func := Eval vm_compute in stdlib_fn "__GI___cxa_atexit".
-(** glibc's `atexit`. *)
+(** [atexit_fn] is the decoded IR body of glibc's `c: atexit`. *)
 Definition atexit_fn : func := Eval vm_compute in stdlib_fn "atexit".
 
-(** The frame of a call of `__new_exitfn` on p. *)
+(** [new_exitfn_frame] states the initial call [[frame]] constructed
+    when calling `__new_exitfn` with pointer p. *)
 Lemma new_exitfn_frame p :
   call_frame new_exitfn_fn [WPtr p] =
   Some (mkFrame new_exitfn_fn [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** The frame of a call of `__internal_atexit` on f, a, d and l. *)
+(** [internal_atexit_frame] states the initial call [[frame]]
+    constructed when calling `__internal_atexit` with f, a, d, and l. *)
 Lemma internal_atexit_frame f a d l :
   call_frame internal_atexit_fn [WPtr f; WPtr a; WPtr d; WPtr l] =
   Some (mkFrame internal_atexit_fn [(TAtom "v6", WPtr l); (TAtom "v4", WPtr d); (TAtom "v2", WPtr a);
                                     (TAtom "v0", WPtr f)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** The frame of a call of `__cxa_atexit` on f, a and d. *)
+(** [cxa_atexit_frame] states the initial call [[frame]] constructed
+    when calling `__cxa_atexit` with f, a, and d. *)
 Lemma cxa_atexit_frame f a d :
   call_frame cxa_atexit_fn [WPtr f; WPtr a; WPtr d] =
   Some (mkFrame cxa_atexit_fn [(TAtom "v4", WPtr d); (TAtom "v2", WPtr a); (TAtom "v0", WPtr f)] [] None
           (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** The lock's bytes after it is taken. *)
+(** Acquiring `__exit_funcs_lock` with an atomic compare-and-swap
+    replaces four zero bytes with 1, as [lock_take] evaluates. *)
 Lemma lock_take : (if of_bytes [0; 0; 0; 0] =? 0 mod 2 ^ 32 then le_bytes 1 4 else [0; 0; 0; 0]) = [1; 0; 0; 0].
 Proof. reflexivity. Qed.
 
-(** The lock's bytes after it is released. *)
+(** Releasing the mutex stores zero back into the four-byte lock word
+    when its current value is 1. Lemma [lock_release] evaluates that
+    conditional write to four zero bytes. *)
 Lemma lock_release : (if of_bytes [1; 0; 0; 0] =? 1 mod 2 ^ 32 then le_bytes 0 4 else [1; 0; 0; 0]) = [0; 0; 0; 0].
 Proof. reflexivity. Qed.
 
-(** The genv defines `__new_exitfn`, `__internal_atexit` and
-    `__cxa_atexit` (the alias of `__GI___cxa_atexit`) as these
-    functions. *)
+(** The global environment must resolve `__new_exitfn`,
+    `__internal_atexit`, and the `__cxa_atexit` alias to the decoded
+    functions above. Predicate [exit_fns] packages those three bindings. *)
 Definition exit_fns (ge : genv) : Prop :=
   find_fn ge (TAtom "__new_exitfn") = Some (Defined new_exitfn_fn) /\
   find_fn ge (TAtom "__internal_atexit") = Some (Defined internal_atexit_fn) /\
   find_fn ge (TAtom "__cxa_atexit") = Some (Defined cxa_atexit_fn).
 
-(** The objects of the exit handler state: `__exit_funcs_lock`,
-    `__exit_funcs_done`, `__new_exitfn_called`, `__exit_funcs` and
-    the block `initial`, each by its identity and region. *)
+(** Exit handler registration touches five global or static objects: the
+    lock, the shutdown flag, the call counter, the list head, and the
+    `initial` block. Record [exit_objs] pairs each object's base address
+    with its [[region]]. *)
 Record exit_objs : Type := mkExitObjs {
   xo_lock : Z; xo_lock_reg : region;
   xo_done : Z; xo_done_reg : region;
@@ -93,9 +95,11 @@ Record exit_objs : Type := mkExitObjs {
   xo_init : Z; xo_init_reg : region
 }.
 
-(** The objects lie below 2^64, the lock and `initial` below 2^63 as
-    half checks ask, each cell aligned as its accesses check, and
-    `initial` holds its 1040 bytes. *)
+(** Each exit-handler object must satisfy the alignment and address
+    bounds checked by glibc's instructions. Predicate [exit_layout]
+    requires every object to lie below 2^64, keeps the lock and
+    `initial` below 2^63 for [[half_check|half checks]], and reserves
+    1040 bytes for `initial`. *)
 Definition exit_layout (x : exit_objs) : Prop :=
   0 <= xo_lock x /\ xo_lock x mod 4 = 0 /\ xo_lock x + 4 <= r_end (xo_lock_reg x) <= 2 ^ 63 /\
   0 <= xo_done x /\ xo_done x + 1 <= r_end (xo_done_reg x) <= 2 ^ 64 /\
@@ -103,14 +107,19 @@ Definition exit_layout (x : exit_objs) : Prop :=
   0 <= xo_funcs x /\ xo_funcs x mod 8 = 0 /\ xo_funcs x + 8 <= r_end (xo_funcs_reg x) <= 2 ^ 64 /\
   0 < xo_init x /\ xo_init x mod 8 = 0 /\ xo_init x + 1040 <= r_end (xo_init_reg x) <= 2 ^ 63.
 
-(** The genv binds the four globals to the objects, writable. *)
+(** The compiled functions look up four global variables by symbol name
+    in the global environment. Predicate [exit_globals] checks that
+    those four symbols map to writable pointers for the objects in x. *)
 Definition exit_globals (ge : genv) (x : exit_objs) : Prop :=
   lookup (TAtom "__exit_funcs_lock") (ge_globals ge) = Some (mkPtr (xo_lock x) (Obj (xo_lock x))) /\
   lookup (TAtom "__exit_funcs_done") (ge_globals ge) = Some (mkPtr (xo_done x) (Obj (xo_done x))) /\
   lookup (TAtom "__new_exitfn_called") (ge_globals ge) = Some (mkPtr (xo_called x) (Obj (xo_called x))) /\
   lookup (TAtom "__exit_funcs") (ge_globals ge) = Some (mkPtr (xo_funcs x) (Obj (xo_funcs x))).
 
-(** Every piece of ps is a piece of the object b. *)
+(** When a proof writes only to a single object b, the world
+    interpretation needs to know that every modified piece key belongs
+    to b. Lemma [ids_of] turns a `Forall` check over the piece list ps
+    into that universal property. *)
 Lemma ids_of (b : Z) (ps : list (piece * pval)) :
   Forall (fun lv => piece_id lv.1 = b) ps -> forall l, l ∈ ps.*1 -> piece_id l = b.
 Proof.
@@ -118,10 +127,12 @@ Proof.
   rewrite Forall_forall in H. exact (H (l', v) Hin).
 Qed.
 
-(** Show a list of pieces names only one object. *)
+(** The tactic [ids] proves that every key in a concrete piece list
+    belongs to the same object by applying [ids_of]. *)
 Ltac ids := apply ids_of; cbn; repeat constructor.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** The module [AtexitOn] proves the `c: atexit` specifications over an
+    arbitrary [[runtime]] R and logic instance LG0. *)
 Module AtexitOn (R : Runtime) (LG0 : LogicSig R).
 Module GL := GlibcLogicOn R LG0.
 Module ML := MemLogicOn R LG0.
@@ -136,36 +147,47 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** Every Iris proof needs a state interpretation linking memory and
+    world state to the operational semantics. [atexit_irisGS] builds
+    that instance from [registry], [wi], and [ge]. *)
 Local Instance atexit_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** [gexpr] abbreviates the expression type of the parameterized
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The world interpretation does not read the object b, ending at e:
-    a write of bytes, or of bytes and an aux slot, inside it, with
-    pieces of b written over the ghost heap, keeps it. *)
+(** Modifying glibc's internal exit-handler globals must not invalidate
+    the caller's [[state-interpretation|world interpretation]]. Predicate
+    [wi_ignores] states that [wi] is preserved by any byte or pointer
+    store inside object b up to bound e. *)
 Definition wi_ignores (b e : Z) : Prop :=
   forall m wd h ps a n x c, b <= a -> a + n <= e -> (forall l, l ∈ ps.*1 -> piece_id l = b) -> wi m wd h ->
     wi (store_bytes m a n x) wd (overwrite ps h) /\ wi (store_bytes (store_aux m a c) a n x) wd (overwrite ps h).
 
-(** The world interpretation ignores the lock, the counter and
-    `initial`, the objects a registration writes. *)
+(** Registering an exit handler writes to three global objects: the
+    lock, the call counter, and the static handler block. Predicate
+    [exit_wi] ensures that the caller's world invariant ignores all
+    three. *)
 Definition exit_wi (x : exit_objs) : Prop :=
   wi_ignores (xo_lock x) (r_end (xo_lock_reg x)) /\ wi_ignores (xo_called x) (r_end (xo_called_reg x)) /\
   wi_ignores (xo_init x) (r_end (xo_init_reg x)).
 
-(** A write's world premise, from [wi_ignores] H of its object. *)
+(** Each store instruction in the proof must show that the world
+    interpretation ignores the modified object. The tactic [ign]
+    discharges that side condition from hypothesis H. *)
 Ltac ign H :=
   let m := fresh "m" in let wd := fresh "wd" in let h := fresh "h" in let Hw := fresh "Hw" in
   intros m wd h ? Hw;
   first [ refine (proj1 (H m wd h _ _ _ _ CNone _ _ _ Hw)); [lia | lia | ids]
         | refine (proj2 (H m wd h _ _ _ _ _ _ _ _ Hw)); [lia | lia | ids] ].
 
-(** Close the instance premise a rule's eapply leaves. *)
+(** Applying a step rule creates a side condition showing that the world
+    stays valid across garbage-collection safepoints. The tactic [inst]
+    closes that [SafepointStable] obligation by typeclass search. *)
 Ltac inst := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
 
-(** One step whose premises reduce, by the instruction it runs: a pure
-    let, a flight, entering a block, or a goto. *)
+(** The tactic [st] advances the proof by one symbolic IR step,
+    dispatching on whether the frame sits at a let binding, a
+    [[flight]], a block entry, or a jump. *)
 Ltac st :=
   lazymatch goal with
   | |- environments.envs_entails _ (wp _ _ (ERun (mkFrame _ _ _ _ ?pos)) _) =>
@@ -181,17 +203,23 @@ Ltac st :=
       end
   end.
 
-(** A let copying the global s, bound to p in the genv by Hs. *)
+(** Functions in this file load global addresses such as
+    `__exit_funcs_lock` and `__new_exitfn_called`. The tactic
+    [st_global] steps past a global pointer load using its binding
+    hypothesis Hs. *)
 Ltac st_global Hs :=
   eapply step_wand;
     [eapply wp_let; inst;
        [reflexivity | reflexivity | cbn [map2_option value_x]; rewrite Hs; reflexivity | intros ?; reflexivity] |].
 
-(** A branch, its condition simplified. *)
+(** The tactic [br] steps across a conditional branch and immediately
+    simplifies its boolean condition. *)
 Ltac br := eapply step_wand; [eapply wp_branch; inst; reflexivity |]; decide_branch.
 
-(** The end of `__new_exitfn` from the block L121, slot k taken:
-    marking it `ef_us`, counting the call, returning the slot. *)
+(** Both branches of `__new_exitfn` finish by claiming the chosen slot
+    and updating the global call counter. The tactic [tail58] steps
+    through that shared tail block `L121`, marks slot k in use, and
+    returns its pointer. *)
 Ltac tail58 k c Hc Hgcl Hwib Hwcl :=
   st;
   rule1 "Hil" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]);
@@ -207,28 +235,34 @@ Ltac tail58 k c Hc Hgcl Hwib Hwcl :=
   rule2 "Hcl" "Hcc" ltac:(eapply wp_raw_store; inst; [reflexivity | reflexivity | reflexivity | arith | ign Hwcl]);
   st; st; iApply wp_ret; [reflexivity | reflexivity |]; nx; simp.
 
-(** A slot of `initial` at offset o: its flavor v, function x,
-    argument y and DSO handle z. *)
+(** Each slot in an `exit_function_list` block holds a 32-byte record at
+    offset o. Predicate [slot] owns the flavor integer v together with
+    the function pointer x, argument pointer y, and DSO handle z. *)
 Definition slot (b o v : Z) (x y z : ptr) : iProp Σ :=
   icell b o v ∗ pcell b (o + 8) x ∗ pcell b (o + 16) y ∗ pcell b (o + 24) z.
 
-(** A registered entry: a slot of flavor `ef_cxa` (4) holding the
-    function, argument and DSO handle of e. *)
+(** A registered C++ exit handler fills one 32-byte slot with flavor 4
+    (`ef_cxa`). Predicate [entry] instantiates [slot] with that flavor
+    and the handler tuple e. *)
 Definition entry (b o : Z) (e : ptr * ptr * ptr) : iProp Σ := slot b o 4 e.1.1 e.1.2 e.2.
 
-(** A spare slot, holding anything. *)
+(** An unused slot in `initial` may contain arbitrary bytes and
+    pointers before it is claimed. Predicate [spare] existentially
+    quantifies over its four fields. *)
 Definition spare (b o : Z) : iProp Σ := ∃ v x y z, slot b o v x y z.
 
-(** The block `initial` at b, the only block, with the entries ents:
-    its life, its null `next`, its `idx` the number of entries, the
-    entries in its first slots and the rest spare. *)
+(** A single static array holds up to 32 exit handlers before glibc
+    needs to allocate another block on the heap. Predicate [exit_block]
+    owns that static block, its null link pointer, its entry count, the
+    registered entries, and the remaining spare slots. *)
 Definition exit_block (b : Z) (reg : region) (ents : list (ptr * ptr * ptr)) : iProp Σ :=
   live b reg ∗ pcell b 0 null ∗ icell b 8 (Z.of_nat (List.length ents)) ∗
   ([∗ list] i ↦ e ∈ ents, entry b (16 + 32 * Z.of_nat i) e) ∗
   ([∗ list] i ∈ seqZ (Z.of_nat (List.length ents)) (32 - Z.of_nat (List.length ents)), spare b (16 + 32 * i)).
 
-(** The spare slots from k, below 32, are slot k's and those from
-    k + 1. *)
+(** Claiming the next free handler slot requires peeling off the head of
+    the remaining spare-slot list. Lemma [spares_cons] splits slot k
+    from the spare slots starting at k + 1 whenever k is below 32. *)
 Lemma spares_cons b k :
   0 <= k < 32 ->
   ([∗ list] i ∈ seqZ k (32 - k), spare b (16 + 32 * i)) ⊣⊢
@@ -238,11 +272,11 @@ Proof.
   replace (Z.succ k) with (k + 1) by lia. replace (Z.pred (32 - k)) with (32 - (k + 1)) by lia. done.
 Qed.
 
-(** `__new_exitfn (&__exit_funcs)`, `__exit_funcs` holding `initial`
-    with k = |ents| entries, k below 32, `__exit_funcs_done` 0 and
-    `__new_exitfn_called` c: it takes slot k, marking it `ef_us` (1),
-    raises `idx` to k + 1 and the counter by one, and returns the
-    slot's pointer. *)
+(** Calling `__new_exitfn` reserves the next slot in `initial` whenever
+    fewer than 32 entries are registered and shutdown has not begun.
+    Lemma [wp_new_exitfn] marks slot k with flavor `ef_us` (1),
+    increments `idx` and `__new_exitfn_called`, and returns a pointer to
+    slot k. *)
 Lemma wp_new_exitfn x ents c Φ :
   exit_layout x -> exit_globals ge x -> exit_wi x -> (List.length ents < 32)%nat -> 0 <= c < 2 ^ 64 ->
   live (xo_done x) (xo_done_reg x) ∗ ibyte (xo_done x) 0 0 ∗
@@ -319,10 +353,10 @@ Proof.
     iFrame "Hfl0 Hy Hz Hw".
 Qed.
 
-(** The exit handler state with the entries ents registered and the
-    counter `__new_exitfn_called` at c: the lock free (0), the exit not
-    begun (`__exit_funcs_done` 0), `__exit_funcs` holding `initial`,
-    and `initial` the only block, holding ents. *)
+(** Callers of `c: atexit` need a single invariant that tracks all
+    global and static exit-handler state between calls. Predicate
+    [exit_funcs_inv] owns the free lock, the shutdown flag, the call
+    counter, the list head, and `initial`. *)
 Definition exit_funcs_inv (x : exit_objs) (ents : list (ptr * ptr * ptr)) (c : Z) : iProp Σ :=
   ⌜(List.length ents <= 32)%nat /\ 0 <= c < 2 ^ 64⌝ ∗
   live (xo_lock x) (xo_lock_reg x) ∗ bytes (xo_lock x) 0 [0; 0; 0; 0] ∗
@@ -331,7 +365,9 @@ Definition exit_funcs_inv (x : exit_objs) (ents : list (ptr * ptr * ptr)) (c : Z
   live (xo_funcs x) (xo_funcs_reg x) ∗ pcell (xo_funcs x) 0 (mkPtr (xo_init x) (Obj (xo_init x))) ∗
   exit_block (xo_init x) (xo_init_reg x) ents.
 
-(** `initial` with the entry e filled in after ents. *)
+(** Once `__internal_atexit` fills in the newly claimed slot, we must
+    fold that slot back into the list of registered entries. Lemma
+    [exit_block_snoc] reassembles [exit_block] for `ents ++ [e]`. *)
 Lemma exit_block_snoc b reg ents e :
   live b reg ∗ pcell b 0 null ∗ icell b 8 (Z.of_nat (List.length ents) + 1) ∗
   ([∗ list] i ↦ e' ∈ ents, entry b (16 + 32 * Z.of_nat i) e') ∗ entry b (16 + 32 * Z.of_nat (List.length ents)) e ∗
@@ -344,13 +380,16 @@ Proof.
   iIntros "($ & $ & $ & $ & $ & $)".
 Qed.
 
-(** A compare-and-swap's world premise, from [wi_ignores] H of its
-    object. *)
+(** Acquiring or releasing the mutex updates the lock word in memory, so
+    the step rule asks why the caller's world invariant stays valid. The
+    tactic [cas_ign] discharges that obligation from hypothesis H. *)
 Ltac cas_ign H := intros _; ign H.
 
-(** `__internal_atexit (fn, arg, dso, &__exit_funcs)`, fn at a nonzero
-    address, with k = |ents| below 32: under the lock, it appends the
-    entry (fn, arg, dso) and counts the call, and returns 0. *)
+(** Calling `__internal_atexit` with a non-null function pointer fnp,
+    argument argp, and DSO handle dsop acquires the lock, claims a slot
+    from `__new_exitfn`, writes the entry, releases the lock, and
+    returns 0. Theorem [wp_internal_atexit] proves this specification
+    and updates [exit_funcs_inv] with the new entry. *)
 Lemma wp_internal_atexit x ents c fnp argp dsop Φ :
   exit_layout x -> exit_globals ge x -> exit_wi x -> (List.length ents < 32)%nat ->
   0 < ptr_addr fnp < 2 ^ 64 -> find_fn ge (TAtom "__new_exitfn") = Some (Defined new_exitfn_fn) ->
@@ -420,9 +459,10 @@ Proof.
   iFrame "Hil Hnext Hidx Hents Hspares". iFrame "Hf Hy Hz Hw".
 Qed.
 
-(** `__cxa_atexit (fn, arg, dso)`, fn at a nonzero address, with
-    k = |ents| below 32: it appends the entry (fn, arg, dso), counts
-    the call, and returns 0. *)
+(** Calling `__cxa_atexit` supplies `&__exit_funcs` implicitly and
+    delegates to `__internal_atexit`. Theorem [wp_glibc_cxa_atexit]
+    proves that registering a non-null handler appends the entry
+    `(fnp, argp, dsop)` to [exit_funcs_inv] and returns 0. *)
 Lemma wp_glibc_cxa_atexit x ents c fnp argp dsop Φ :
   exit_layout x -> exit_globals ge x -> exit_wi x -> exit_fns ge -> (List.length ents < 32)%nat ->
   0 < ptr_addr fnp < 2 ^ 64 ->
@@ -440,9 +480,10 @@ Proof.
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iApply ("HΦ" with "Hinv").
 Qed.
 
-(** `atexit (fn)`, fn at a nonzero address, with k = |ents| below 32:
-    `__cxa_atexit (fn, null, null)`, appending the entry (fn, null,
-    null) and returning 0. *)
+(** Calling `c: atexit` is a thin wrapper that calls `__cxa_atexit`
+    with null argument and DSO pointers. Theorem [wp_glibc_atexit]
+    proves that registering a non-null handler fnp appends
+    `(fnp, null, null)` to [exit_funcs_inv] and returns 0. *)
 Lemma wp_glibc_atexit x ents c fnp Φ :
   exit_layout x -> exit_globals ge x -> exit_wi x -> exit_fns ge -> (List.length ents < 32)%nat ->
   0 < ptr_addr fnp < 2 ^ 64 ->

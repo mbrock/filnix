@@ -1,32 +1,32 @@
-(** Triples for user glibc's `malloc` and `free` (docs/glibc-ir.md),
-    over any registry, world and genv that binds their symbols, so a
-    program linked with them uses each as a rule at its call.
+(** Userland glibc in Fil-C keeps ptmalloc's tcache fast path at the
+    entry of `c: malloc`, while routing actual heap allocation and
+    deallocation to the runtime primitives `zgc_alloc` and `zgc_free`.
+    This module proves [[hoare-triple|Hoare triples]] for `c: malloc`
+    and `c: free` over any [[runtime]] registry, world, and
+    [[genv|global environment]] that binds their symbols.
 
-    Fil-C's glibc keeps ptmalloc's tcache prelude in `malloc` but
-    allocates with the runtime: `__libc_malloc2` is `zgc_alloc`, an
-    [Alloc] 16 of the request, and `free` is `zgc_free`. The prelude
-    rounds the request n to a chunk size nb (2^64 - 1 above 2^63), and
-    below `mp_.tcache_max_bytes` (1041, `mp_` + 120) reads the tcache
-    bin of index (nb - 32) / 16, always below 64 there, through the
-    thread's `tcache`, which points to the read-only, zeroed
-    `__tcache_dummy`: the bin, at 152 + 8 index, is null, so every
-    request falls through to `__libc_malloc2`. [tcache_idle] owns
-    shares of exactly what the prelude reads:
+    In `c: malloc`, the prelude rounds the requested byte count up to an
+    aligned chunk size and checks whether it fits below the tcache limit
+    in `mp_.tcache_max_bytes`. When it fits, `c: malloc` reads the
+    corresponding bin through the thread's `tcache` pointer, which
+    points to the read-only, zeroed `__tcache_dummy` object. Because
+    every bin in that dummy table holds null, every request falls
+    through to `__libc_malloc2`, which calls `zgc_alloc`.
 
-    - [wp_glibc_malloc]: for any n below 2^64, keeping [tcache_idle],
-      the call returns a fresh object's own pointer, 16-aligned, owning
-      its pieces ([obj] of [heap_req] 16 n), or stalls when the
-      runtime refuses ([wp_alloc_any]);
-    - [wp_glibc_free] and [wp_glibc_free_null]: `free` of a live heap
-      object's own pointer gives up its life; of null, nothing
-      ([wp_free_sym], [wp_free_null_sym] for `zgc_free`). *)
+    Callers only need shared read access to those tcache globals because
+    `c: malloc` never modifies them. Theorem [wp_glibc_malloc]
+    preserves that [tcache_idle] invariant and returns a fresh
+    16-aligned object for any size below 2^64. Likewise, [wp_glibc_free]
+    releases a live heap object, and [wp_glibc_free_null] ignores a null
+    pointer. *)
 
 From Stdlib Require Import ZArith Lia.
 From Glibc Require Import StrlenBits.
 Open Scope Z_scope.
 
-(** Rounding a 64-bit size down to a multiple of 16, as malloc's
-    `request2size` does: an and with ~15. *)
+(** Glibc's `c: request2size` rounds a chunk size down to a multiple of
+    16 by masking off the low four bits. Lemma [land_align16] proves
+    that this bitwise conjunction with `~15` equals a - a mod 16. *)
 Lemma land_align16 a : 0 <= a < 2 ^ 64 -> Z.land a 18446744073709551600 = a - a mod 16.
 Proof.
   intros Ha. change 18446744073709551600 with (Z.lxor (Z.ones 64) (Z.ones 4)).
@@ -53,14 +53,19 @@ From Glibc Require Import StdlibCode GlibcLogic StrlenBits LeavesLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** glibc's `__GI___libc_malloc`. *)
+(** [malloc_fn] extracts the decoded IR body of glibc's
+    `__GI___libc_malloc`. *)
 Definition malloc_fn : func := Eval vm_compute in stdlib_fn "__GI___libc_malloc".
-(** malloc.c's `__libc_malloc2`, renamed `malloc#__libc_malloc2` by link.pl. *)
+(** [malloc2_fn] extracts the decoded IR body of `__libc_malloc2`,
+    which `c: link.pl` renames to `malloc#__libc_malloc2`. *)
 Definition malloc2_fn : func := Eval vm_compute in stdlib_fn "malloc#__libc_malloc2".
-(** glibc's `__GI___libc_free`. *)
+(** [free_fn] extracts the decoded IR body of glibc's
+    `__GI___libc_free`. *)
 Definition free_fn : func := Eval vm_compute in stdlib_fn "__GI___libc_free".
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** The module [AllocOn] proves the `c: malloc` and `c: free`
+    specifications over an arbitrary [[runtime]] R and logic instance
+    LG0. *)
 Module AllocOn (R : Runtime) (LG0 : LogicSig R).
 Module GL := GlibcLogicOn R LG0.
 Module LV := LeavesOn R LG0.
@@ -74,16 +79,22 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** Every Iris proof needs a state interpretation linking memory and
+    world state to the operational semantics. [alloc_irisGS] builds that
+    instance from [registry], [wi], and [ge]. *)
 Local Instance alloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** [gexpr] abbreviates the expression type of the parameterized
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** Close the instance premise a rule's eapply leaves. *)
+(** Applying a step rule creates a side condition showing that the world
+    stays valid across garbage-collection safepoints. The tactic [inst]
+    closes that [SafepointStable] obligation by typeclass search. *)
 Ltac inst := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
 
-(** One step whose premises reduce, by the instruction it runs: a pure
-    let, a flight, entering a block, or a goto. *)
+(** The tactic [st] advances the proof by one symbolic IR step,
+    dispatching on whether the frame sits at a let binding, a
+    [[flight]], a block entry, or a jump. *)
 Ltac st :=
   lazymatch goal with
   | |- environments.envs_entails _ (wp _ _ (ERun (mkFrame _ _ _ _ ?pos)) _) =>
@@ -99,23 +110,30 @@ Ltac st :=
       end
   end.
 
-(** A let copying the global s, bound to p in the genv by Hs. *)
+(** Functions in the prelude read global variables such as `mp_` and
+    `tcache` before dereferencing them. The tactic [st_global] steps
+    past a global pointer load using its binding hypothesis Hs. *)
 Ltac st_global Hs :=
   eapply step_wand;
     [eapply wp_let; inst;
        [reflexivity | reflexivity | cbn [map2_option value_x]; rewrite Hs; reflexivity | intros ?; reflexivity] |].
 
-(** A branch, its condition simplified. *)
+(** The tactic [br] steps across a conditional branch and immediately
+    simplifies its boolean condition. *)
 Ltac br := eapply step_wand; [eapply wp_branch; inst; reflexivity |]; decide_branch.
 
-(** `malloc`'s requests of a heap object of n bytes, kept in the world
-    interpretation: what [wp_alloc_any] asks of each. *)
+(** Allocating a fresh 16-aligned heap object of n bytes must preserve
+    the [[state-interpretation|world interpretation]] [wi]. Predicate
+    [alloc_keeps] states that preservation condition as required by
+    [wp_alloc_any]. *)
 Definition alloc_keeps (n : Z) : Prop :=
   forall m wd h base, fresh m (heap_req 16 n) base -> wi m wd h ->
     wi (allocated m (heap_req 16 n) base) wd (overwrite (obj_ps base (heap_req 16 n)) h).
 
-(** `__libc_malloc2` of n: `zgc_alloc`, a fresh 16-aligned object of
-    n bytes, or a stall. *)
+(** Calling `__libc_malloc2` with size n below 2^64 delegates directly
+    to `zgc_alloc`. Whenever [alloc_keeps] holds, [wp_libc_malloc2]
+    proves that the call either stalls or returns a fresh 16-aligned
+    object owning its pieces. *)
 Lemma wp_libc_malloc2 n Φ :
   0 <= n < 2 ^ 64 -> alloc_keeps n ->
   (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
@@ -130,9 +148,10 @@ Proof.
   iApply ("HΦ" with "[%] Hobj"). exact Hb.
 Qed.
 
-(** `free` of the own pointer of the live heap object b: `zgc_free`,
-    which the model runs, where the genv's free [frees_heap] and the
-    free keeps the world interpretation: b's life is given up. *)
+(** Calling `c: free` on a non-null pointer to a live heap object b
+    delegates to `zgc_free`. Provided the global environment models
+    heap deallocation with [frees_heap] and freeing b preserves [wi],
+    [wp_glibc_free] consumes b's liveness token and returns void. *)
 Lemma wp_glibc_free b reg Φ :
   frees_heap (ge_free ge) -> find_fn ge zgc_free_name = None -> lookup zgc_free_name (ge_globals ge) = None ->
   r_kind reg = Heap -> b <> 0 ->
@@ -149,7 +168,9 @@ Proof.
   nx. iApply wp_ret_void. nx. iExact "HΦ".
 Qed.
 
-(** `free` of null: `zgc_free` of null, which does nothing. *)
+(** Calling `c: free` on a null pointer passes null to `zgc_free`, which
+    is a no-op. Lemma [wp_glibc_free_null] proves that the call returns
+    void without requiring any heap ownership. *)
 Lemma wp_glibc_free_null Φ :
   frees_heap (ge_free ge) -> find_fn ge zgc_free_name = None -> lookup zgc_free_name (ge_globals ge) = None ->
   Φ RetVoid -∗
@@ -160,12 +181,10 @@ Proof.
   nx. iApply wp_ret_void. nx. iExact "HΦ".
 Qed.
 
-(** The tcache prelude's state while no chunk is cached, owned at the
-    share dq: `mp_` (at mp_b, region mp_reg), whose
-    `tcache_max_bytes` at 120 is 1041; the thread's `tcache` (at tc_b)
-    pointing to the read-only `__tcache_dummy` (at dummy_b); and the
-    dummy's 64 small bins from 152 on, all null. The objects lie below
-    2^64 and the pointer cells are 8-aligned. *)
+(** Because `c: malloc` only reads the tcache globals, callers can share
+    read access to them without giving up exclusive ownership. Predicate
+    [tcache_idle] bundles fractional shares of `mp_`, `tcache`, and the
+    64 null bins in `__tcache_dummy`. *)
 Definition tcache_idle (dq : dfrac) (mp_b tc_b dummy_b : Z) (mp_reg tc_reg dummy_reg : region) : iProp Σ :=
   ⌜0 <= mp_b /\ mp_b + 128 <= r_end mp_reg <= 2 ^ 64 /\ 0 <= tc_b /\ tc_b mod 8 = 0 /\
    tc_b + 8 <= r_end tc_reg <= 2 ^ 64 /\ 0 <= dummy_b /\ dummy_b mod 8 = 0 /\
@@ -174,15 +193,17 @@ Definition tcache_idle (dq : dfrac) (mp_b tc_b dummy_b : Z) (mp_reg tc_reg dummy
   liveq dq tc_b tc_reg ∗ pcellq dq tc_b 0 (mkPtr dummy_b (Ro dummy_b)) ∗
   liveq dq dummy_b dummy_reg ∗ [∗ list] i ∈ seqZ 0 64, pcellq dq dummy_b (152 + 8 * i) null.
 
-(** `__libc_malloc2`'s frame for the request n. *)
+(** [malloc2_frame] states the initial call [[frame]] constructed when
+    entering `__libc_malloc2` with request size n. *)
 Lemma malloc2_frame n :
   call_frame malloc2_fn [WInt n] =
   Some (mkFrame malloc2_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** The call of `__libc_malloc2` that ends the prelude, at the block
-    L7, given the share of the tcache state back: its triple, then the
-    return of its result. *)
+(** Every branch of `c: malloc`'s tcache prelude ends at block `L7`,
+    which calls `__libc_malloc2` and returns its result. The tactic
+    [l7] steps through that call using [wp_libc_malloc2] and restores
+    [tcache_idle] to the caller. *)
 Ltac l7 n Hn Hk Hm2 :=
   st;
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WInt n] malloc2_fn _);
@@ -193,8 +214,9 @@ Ltac l7 n Hn Hk Hm2 :=
   iApply wp_ret; [reflexivity | reflexivity |]; nx;
   iApply ("HΦ" with "[%] Hobj [-]"); [assumption | rewrite /tcache_idle; iFrame; iPureIntro; lia].
 
-(** The prelude's join, where the chunk size is known: the read of
-    `mp_.tcache_max_bytes` and the comparison with it. *)
+(** After computing the chunk size, the tcache prelude reads
+    `mp_.tcache_max_bytes` and compares it with the request. The tactic
+    [join] steps through that global read and its comparison branch. *)
 Ltac join Hmp :=
   st; st_global Hmp; st;
   rule1 "Hmpl" ltac:(eapply wp_check_read_dq; inst;
@@ -202,13 +224,16 @@ Ltac join Hmp :=
   rule2 "Hmpl" "Hmpc" ltac:(eapply wp_raw_load_read_dq; inst;
     [reflexivity | reflexivity | left; reflexivity | arith]); st; br.
 
-(** The bin i's index is in the 64 small bins. *)
+(** [seqZ_bin] confirms that any small-bin index i below 64 appears at
+    position i in `seqZ 0 64`. *)
 Lemma seqZ_bin i : 0 <= i < 64 -> seqZ 0 64 !! Z.to_nat i = Some i.
 Proof. intros Hi. rewrite lookup_seqZ_lt; [f_equal; lia | lia]. Qed.
 
-(** The small bin i's read, from the block L26: the index's bound
-    check, `tcache`'s pointer to the dummy, and the bin's null pointer,
-    the bins handed back. *)
+(** Small allocations check whether a cached chunk is waiting in the
+    thread's dummy tcache table before falling back to the runtime
+    allocator. The tactic [l26] steps through block `L26` to verify the
+    bin bounds check, load the `tcache` pointer, read the null bin
+    entry, and restore the remaining bins. *)
 Ltac l26 i Htc dq dummy_reg :=
   st; st; st; st; br; st; st_global Htc;
   rule1 "Htcl" ltac:(eapply wp_check_read_dq; inst;
@@ -224,11 +249,11 @@ Ltac l26 i Htc dq dummy_reg :=
     [reflexivity | reflexivity | right; reflexivity | arith | arith | arith | by cbn |];
   nx; iIntros "Hdl Hbin _"; iDestruct ("Hbins" with "Hbin") as "Hbins"; st; st; st; br.
 
-(** `malloc` of any n below 2^64, where the genv binds `malloc#mp_`,
-    `tcache` and `malloc#__libc_malloc2` to these objects and
-    function, and the allocation keeps the world interpretation: with
-    the tcache idle, it returns a fresh 16-aligned object's own
-    pointer, owning the object, the tcache handed back. *)
+(** Calling `c: malloc` with any size n below 2^64 either stalls or
+    returns a fresh 16-aligned heap object. Theorem [wp_glibc_malloc]
+    proves this specification and restores [tcache_idle] across every
+    path through the prelude, provided the global environment binds the
+    tcache globals and [alloc_keeps] holds. *)
 Lemma wp_glibc_malloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
   0 <= n < 2 ^ 64 -> alloc_keeps n ->
   lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp_b (Obj mp_b)) ->

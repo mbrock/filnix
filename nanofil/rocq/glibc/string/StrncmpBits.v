@@ -1,18 +1,15 @@
-(** The byte facts glibc's word-at-a-time `strncmp` (StrncmpCode.v)
-    rests on, beyond StrcmpBits.v's, for StrncmpLogic.v's triple over
-    [word_string]s (WordString.v).
+(** In C, `c: strncmp` behaves like `c: strcmp` except that it compares
+    at most n bytes and returns zero if the strings match up to that
+    limit. Truncating both strings to their first n bytes reduces the
+    byte-level specification of `c: strncmp` directly to [strcmp_res]
+    ([StrcmpBits](StrcmpBits.v)).
 
-    - [strncmp_res] n s1 s2 is the answer on byte lists: StrcmpBits.v's
-      [strcmp_res] of the first n bytes of each string. A byte function
-      cut at n ([cut]) agrees with the cut string ([agree_cut]), so a
-      first stop below n gives the difference of the bytes there
-      ([strncmp_stop]), and no stop below n gives 0 ([strncmp_same]).
-    - glibc's last comparison of two words x and y, n - c bytes left
-      and the strings' bytes from c those of x and y through L of
-      them, finds their first stop j by the comparison mask
-      ([cmp_mask_first], [cmp_mask_none]) and returns 0 when the count
-      ends at or before it, else the difference there ([fin_stop],
-      [fin_none]). *)
+    The word loops in `c: strncmp` also need a boundary check on exit:
+    if a mismatch or NUL occurs at byte j inside the final 64-bit word,
+    the function must still return zero whenever the remaining byte
+    count r runs out at or before j. This module defines [strncmp_res]
+    and proves the bounded exit lemmas for that final word
+    comparison. *)
 
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia List Bool.
@@ -21,18 +18,27 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrcmpBits.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The answer on byte lists *)
+(** ## The answer on byte lists
 
-(** strncmp's answer for the strings s1 and s2 and the count n: strcmp's
-    of their first n bytes. *)
+    We specify `c: strncmp` on two strings s1 and s2 with limit n by
+    taking the first n bytes of each list and calling [strcmp_res]. To
+    reuse the byte-function lemmas from [StrcmpBits](StrcmpBits.v),
+    [cut] zeroes out any byte function from index n onward, which lets
+    [strncmp_stop] and [strncmp_same] read the result from any functions
+    that agree with the strings. *)
+
+(** Function [strncmp_res] computes the `c: strncmp` return value for
+    strings s1 and s2 with limit n by calling [strcmp_res] on their
+    first n bytes. *)
 Definition strncmp_res (n : Z) (s1 s2 : list Z) : Z :=
   strcmp_res (take (Z.to_nat n) s1) (take (Z.to_nat n) s2).
 
-(** The byte function f cut at n: 0 from n on. *)
+(** Function [cut] truncates a byte function f at index n by returning
+    f j for j < n and 0 from index n onward. *)
 Definition cut (n : Z) (f : Z -> Z) (j : Z) : Z := if j <? n then f j else 0.
 
-(** A byte function that agrees with a string, cut at n, agrees with its
-    first n bytes. *)
+(** Whenever f agrees with string s through its NUL terminator, [cut] n f
+    agrees with the first n bytes of s. *)
 Lemma agree_cut f s n : 0 <= n -> agree_str f s -> agree_str (cut n f) (take (Z.to_nat n) s).
 Proof.
   intros Hn A j Hj. rewrite length_take in Hj. unfold cut. destruct (Z.ltb_spec j n) as [Hjn|Hjn].
@@ -44,8 +50,9 @@ Proof.
     rewrite E app_nth2; [|lia]. rewrite Nat.sub_diag. reflexivity.
 Qed.
 
-(** At a first stop i below n of byte functions that agree with the
-    strings, strncmp's answer is the difference of their bytes at i. *)
+(** When f1 and f2 agree with strings s1 and s2 and first stop at index
+    i below n, [strncmp_res] equals their byte difference at i modulo
+    2^32. *)
 Lemma strncmp_stop s1 s2 f1 f2 n i :
   Forall (fun c => 0 < c < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> 0 <= i < n ->
   same_upto f1 f2 i -> stop_at f1 f2 i -> strncmp_res n s1 s2 = (f1 i - f2 i) mod 2 ^ 32.
@@ -59,7 +66,8 @@ Proof.
   - unfold stop_at, cut. replace (i <? n) with true by (symmetry; apply Z.ltb_lt; lia). exact Hst.
 Qed.
 
-(** With no stop below n, strncmp's answer is 0. *)
+(** When f1 and f2 agree with strings s1 and s2 and have no stop below
+    n, [strncmp_res] returns 0. *)
 Lemma strncmp_same s1 s2 f1 f2 n :
   Forall (fun c => 0 < c < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> 0 <= n ->
   same_upto f1 f2 n -> strncmp_res n s1 s2 = 0.
@@ -73,9 +81,17 @@ Proof.
   - left. unfold cut. rewrite Z.ltb_irrefl. reflexivity.
 Qed.
 
-(** ## The last comparison of two words *)
+(** ## The last comparison of two words
 
-(** Two words have a first stop below 8, or none. *)
+    When a word loop exits—either because a word pair stops early or
+    because at most eight bytes remain—glibc compares the last pair of
+    words x and y against the remaining byte count r. The predicate
+    [last_cmp] captures the exact invariants at that exit, and
+    [fin_stop] and [fin_none] compute the resulting [strncmp_res] value
+    depending on whether x and y stop before r expires. *)
+
+(** Every pair of 64-bit words x and y either has a first stopping byte
+    j below 8 or agrees on all eight nonzero bytes. *)
 Lemma word_first_stop x y :
   (exists j, 0 <= j < 8 /\ stop_at (byte_of x) (byte_of y) j /\ same_upto (byte_of x) (byte_of y) j) \/
   same_upto (byte_of x) (byte_of y) 8.
@@ -89,24 +105,24 @@ Proof.
     exists j. split; [cbn in Hu; lia|]. auto.
 Qed.
 
-(** The comparison mask of two words with no stop is 0. *)
+(** When words x and y match on all eight nonzero bytes, [cmp_mask] x y
+    equals 0. *)
 Lemma cmp_mask_none x y : same_upto (byte_of x) (byte_of y) 8 -> cmp_mask x y = 0.
 Proof.
   intros Hs. apply zero_word; [apply cmp_mask_range|]. intros i Hi. rewrite cmp_mask_byte; [|exact Hi].
   destruct (Hs i Hi) as [E N]. rewrite (proj2 (Z.eqb_neq _ _) N) E Z.eqb_refl. reflexivity.
 Qed.
 
-(** What glibc's last comparison sees: the strings' bytes from c agree
-    and are not 0 before c, and are those of x and y through L bytes;
-    r bytes are left, and either they end within the L bytes or x and
-    y have a stop there. *)
+(** Predicate [last_cmp] records that f1 and f2 match before c, match x
+    and y for L bytes from c, and either exhaust the remaining count r
+    within L bytes or stop inside L. *)
 Definition last_cmp (f1 f2 : Z -> Z) (c x y L r : Z) : Prop :=
   0 <= c /\ same_upto f1 f2 c /\ 0 <= L <= 8 /\ 0 < r /\
   (forall u, 0 <= u < L -> f1 (c + u) = byte_of x u /\ f2 (c + u) = byte_of y u) /\
   (r <= L \/ exists u, 0 <= u < L /\ stop_at (byte_of x) (byte_of y) u).
 
-(** The bytes the count reaches before x and y's first stop j agree
-    with x's and y's. *)
+(** Every byte that the remaining count reaches before the first stop of
+    x and y falls inside the L compared bytes. *)
 Lemma last_cmp_below f1 f2 c x y L r j : last_cmp f1 f2 c x y L r -> same_upto (byte_of x) (byte_of y) j ->
   forall u, 0 <= u < Z.min r j -> u < L.
 Proof.
@@ -115,8 +131,9 @@ Proof.
   exfalso. destruct (Hs u' ltac:(lia)) as [E N]. destruct Hst; contradiction.
 Qed.
 
-(** glibc's last comparison, where x and y first stop at j: 0 when the
-    count ends at or before j, else the difference of their bytes at j. *)
+(** When x and y first stop at byte j, [fin_stop] returns 0 if the
+    remaining count r is at most j, and the byte difference at j
+    otherwise. *)
 Lemma fin_stop s1 s2 f1 f2 c x y L r j :
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> last_cmp f1 f2 c x y L r ->
   0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
@@ -140,8 +157,8 @@ Proof.
     + unfold stop_at. rewrite F1 F2. exact Hst.
 Qed.
 
-(** glibc's last comparison, where x and y have no stop: the count ends
-    within the 8 bytes, and the answer is 0. *)
+(** When words x and y have no zero or differing byte, the remaining
+    count ends within eight bytes and the answer is 0. *)
 Lemma fin_none s1 s2 f1 f2 c x y L r :
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> last_cmp f1 f2 c x y L r ->
   same_upto (byte_of x) (byte_of y) 8 -> r <= 8 /\ strncmp_res (c + r) s1 s2 = 0.
@@ -158,8 +175,8 @@ Proof.
   replace (c + (i - c)) with i in F1, F2 by lia. rewrite F1 F2. apply Hs. lia.
 Qed.
 
-(** Where both strings' bytes from c are those of one word x with a
-    zero byte, and more than 8 bytes are left, strncmp's answer is 0. *)
+(** When both strings match word x from offset c, x contains a zero byte,
+    and more than eight bytes remain, [strncmp_res] returns 0. *)
 Lemma word_zero_n s1 s2 f1 f2 c x r :
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> 0 <= c -> same_upto f1 f2 c ->
   0 <= x < 2 ^ 64 -> (forall u, 0 <= u < 8 -> f1 (c + u) = byte_of x u /\ f2 (c + u) = byte_of x u) ->
