@@ -49,14 +49,14 @@ Local Ltac load_self H :=
   iNext; iIntros H.
 
 (** Full inline storage switches to staging while preserving the FILE end.
-    The count bound excludes wrap, and the caller retains all character bytes. *)
+    The count wraps modulo 2^64, and the caller retains all character bytes. *)
 Lemma wp_printf_buffer_flush_inline_full fr bb breg fb freg bo used written oldwp Φ :
   call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= bo -> 0 <= used -> fb + bo + used <= r_end freg ->
   fb + bo + used <> bb + 176 -> fb + bo + used <> bb + 49 ->
-  0 <= written -> written + used < 2 ^ 64 ->
+  0 <= written < 2 ^ 64 ->
   live bb breg -∗ live fb freg -∗
   pcell bb 40 (mkPtr fb (Obj fb)) -∗ pcell fb 40 oldwp -∗
   pcell fb 48 (mkPtr (fb + bo + used) (Obj fb)) -∗
@@ -69,11 +69,11 @@ Lemma wp_printf_buffer_flush_inline_full fr bb breg fb freg bo used written oldw
      pcell fb 48 (mkPtr (fb + bo + used) (Obj fb)) -∗
      pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 8 (mkPtr (bb + 48) (Obj bb)) -∗
-     pcell bb 16 (mkPtr (bb + 49) (Obj bb)) -∗ icell bb 24 (written + used) -∗
+     pcell bb 16 (mkPtr (bb + 49) (Obj bb)) -∗ icell bb 24 ((written + used) mod 2 ^ 64) -∗
      Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hbo Hused Hde
-    Hstage Hsingle Hw Htotal. injection Hfr as <-.
+    Hstage Hsingle Hw. injection Hfr as <-.
   iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend Hw HK".
   enter. fs. fchk "Hb".
   iApply (wp_raw_load_read_dq with "Hb Hw");
@@ -97,6 +97,7 @@ Proof.
   replace (bb + 48 + 1) with (bb + 49) by lia.
   iApply ("HK" with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend [Hw]").
   replace (fb + bo + used - (fb + bo)) with used by lia.
+  iEval (rewrite Z.mod_mod; [|lia]) in "Hw".
   iExact "Hw".
 Qed.
 

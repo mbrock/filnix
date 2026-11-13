@@ -1601,13 +1601,38 @@ becomes statable.
   backend build fails if any lemma in these files depends on an
   axiom.
 
-  The theorem has limits. The model does not yet describe memory or
-  branches, so the instructions that load the operands and store the
-  result are outside it. The meaning of each instruction is copied by
-  hand from the processor manuals, and the assembler that turns the
-  lines into bytes is trusted. A simulation from `step_rel` needs
-  byte memory first, together with a relation between the stack frame
-  and the IR's capability storage.
+  The second instance covers a whole IR instruction, including the
+  loads of its operands and the store of its result. `Amd64Memory.v`
+  adds byte memory with little-endian reads and writes. `Amd64Step.v`
+  gives the load and the store their effect, and it treats an access
+  to unmapped memory as a fault. `Amd64Frame.v` defines when a machine
+  state represents an IR environment: the eight-byte slot of each
+  live temporary that is bound to an integer holds that integer.
+  `Amd64DivisionStep.v` states the theorem,
+  `division_instruction_correct`, on the lines that `let_lines` in
+  `EmitInst.v` emits for a division. If the IR has a step for the
+  instruction, then the lines load both operands from the frame,
+  divide, and store the result without a fault, and the final state
+  represents the IR's new environment. The code changes only the
+  three scratch registers, the flags and the slot of the destination.
+  `Amd64Layout.v` proves that the frame which `plan_ctx` builds puts
+  every slot inside the frame at a multiple of eight bytes, which is
+  the layout that the theorem assumes.
+
+  These two theorems do not yet show that a compiled function
+  behaves as its IR does. The second theorem compares the frame with
+  the IR only for temporaries that hold integers, so it says nothing
+  about a slot that holds a pointer or the capability of a pointer.
+  The machine model has no branches or calls. The theorem is told
+  which temporaries are live, and nothing yet connects that set to
+  the liveness analysis that assigns the slots. It also assumes that
+  the frame is at most 2^31 bytes long.
+
+  Two parts are trusted. The meaning of each instruction is copied
+  by hand from the processor manuals, and nothing checks the
+  assembler that turns the lines into bytes. The next step toward a
+  simulation from `step_rel` is to compare capability slots and the
+  IR's memory as well.
 - **Proved passes instead of checked ones.** A register allocator or
   a check-reuse pass with a refinement theorem needs no translation
   checker at compile time, which is where half of `-O` goes.

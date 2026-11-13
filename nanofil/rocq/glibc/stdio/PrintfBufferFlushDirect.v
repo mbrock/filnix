@@ -41,7 +41,7 @@ Local Ltac load_pointer H :=
   iNext; iIntros H.
 
 (** Available space keeps the direct buffer selected. The count records the
-    newly published span, with an explicit bound excluding integer wrap. *)
+    newly published span modulo 2^64, including unsigned wraparound. *)
 Lemma wp_printf_buffer_flush_direct fr bb breg fb freg db dreg bo used eo written dqd oldwp Φ :
   call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
@@ -49,7 +49,7 @@ Lemma wp_printf_buffer_flush_direct fr bb breg fb freg db dreg bo used eo writte
   0 < db -> 0 <= bo -> 0 <= used -> bo + used < eo ->
   db + eo <= r_end dreg -> r_end dreg <= 2 ^ 63 ->
   db + eo <> bb + 176 -> db + eo <> bb + 49 ->
-  0 <= written -> written + used < 2 ^ 64 ->
+  0 <= written < 2 ^ 64 ->
   live bb breg -∗ live fb freg -∗ liveq dqd db dreg -∗
   pcell bb 40 (mkPtr fb (Obj fb)) -∗ pcell fb 40 oldwp -∗
   pcell fb 48 (mkPtr (db + eo) (Obj db)) -∗
@@ -62,11 +62,11 @@ Lemma wp_printf_buffer_flush_direct fr bb breg fb freg db dreg bo used eo writte
      pcell fb 48 (mkPtr (db + eo) (Obj db)) -∗
      pcell bb 0 (mkPtr (db + bo + used) (Obj db)) -∗
      pcell bb 8 (mkPtr (db + bo + used) (Obj db)) -∗
-     pcell bb 16 (mkPtr (db + eo) (Obj db)) -∗ icell bb 24 (written + used) -∗
+     pcell bb 16 (mkPtr (db + eo) (Obj db)) -∗ icell bb 24 ((written + used) mod 2 ^ 64) -∗
      Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hdb Hbo Hused Hspace Hde Hdr
-    Hstage Hsingle Hw Htotal. injection Hfr as <-.
+    Hstage Hsingle Hw. injection Hfr as <-.
   iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend Hw HK".
   enter. fs. fchk "Hb".
   iApply (wp_raw_load_read_dq with "Hb Hw");
@@ -87,6 +87,7 @@ Proof.
   iApply wp_ret_void. iNext. norm.
   iApply ("HK" with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend [Hw]").
   replace (db + bo + used - (db + bo)) with used by lia.
+  iEval (rewrite Z.mod_mod; [|lia]) in "Hw".
   iExact "Hw".
 Qed.
 

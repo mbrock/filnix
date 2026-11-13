@@ -3,27 +3,33 @@
     a mnemonic string with operand strings, which is enough to print
     it but says nothing about what it computes. Here each instruction
     is a typed term, and the function [step] says how it changes the
-    registers and flags of a [machine].
+    registers, the flags and the memory of a [machine].
 
     The model follows the Intel and AMD instruction references for
     each result, each flag and each fault. It covers the instruction
-    forms that the first theorem about emitted code needs, together
-    with the other members of the same families: moves and extending
-    moves, two-operand arithmetic and logic, negation and complement,
-    `setcc`, sign extension of the accumulator, and division.
+    forms that the theorems about emitted code need, together with
+    the other members of the same families: moves and extending moves,
+    loads and stores of a frame slot, two-operand arithmetic and
+    logic, negation and complement, `setcc`, sign extension of the
+    accumulator, and division.
 
     An instruction form outside the model does not execute as a
     no-operation. The function [step] returns the fault [Unmodeled]
     for it, so a theorem that a sequence runs to completion also shows
     that the model covers every instruction in the sequence.
 
+    A load or a store reads or writes ordinary bytes, as the processor
+    does. It checks only that the bytes are mapped, and it makes no
+    capability check. The checks that Fil-C requires are separate
+    instructions that the compiler emits, and a theorem about them
+    belongs to the relation between this machine and the IR.
+
     Execution here is of a straight-line list of instructions. The
-    model has no instruction pointer, labels or branches yet, and no
-    memory operands. These need a code layout and byte memory, which
-    are the next additions. *)
+    model has no instruction pointer, labels or branches yet. These
+    need a code layout, which is the next addition. *)
 
 From Stdlib Require Import ZArith List Bool Lia.
-From Backend Require Import Amd64Word Amd64Machine.
+From Backend Require Import Amd64Word Amd64Memory Amd64Machine.
 Import ListNotations.
 Local Open Scope Z_scope.
 
@@ -40,6 +46,15 @@ Local Open Scope Z_scope.
 Inductive source : Type :=
 | SImm (n : Z) (* an immediate, reduced to the operand size when it is read *)
 | SReg (r : gpr). (* the low part of a register at the operand size *)
+
+(** An [address] is a memory operand of the form `d(%b)`: the content
+    of the base register b plus the constant displacement d. The
+    backend addresses every frame slot in this form. The forms with an
+    index register and a scale are outside the model. *)
+Record address : Type := mkAddress {
+  address_base : gpr; (* the register that holds the base address *)
+  address_displacement : Z (* the constant that is added to the base *)
+}.
 
 (** A [binary] operation combines a source with a destination
     register. The operations `cmp` and `test` compute the result of
@@ -67,6 +82,10 @@ Inductive condition : Type :=
 Inductive instr : Type :=
 | IMov (z : size) (a : source) (d : gpr)
   (* `mov`: copies the source to the destination at size z *)
+| ILoad (z : size) (a : address) (d : gpr)
+  (* `mov` from memory: copies the z bytes at the address a to the register d *)
+| IStore (z : size) (r : gpr) (a : address)
+  (* `mov` to memory: copies the z part of the register r to the bytes at a *)
 | IMovzx (za zd : size) (a d : gpr)
   (* `movzb`, `movzw`: zero-extends the za part of a into the zd part of d *)
 | IMovsx (za zd : size) (a d : gpr)
@@ -87,11 +106,14 @@ Inductive instr : Type :=
     An instruction either completes and leaves a new state, or it
     stops the program. This section defines the two ways in which the
     model stops: a fault that the processor raises, and an instruction
-    form that the model does not describe. *)
+    form that the model does not describe. The processor reports an
+    access to unmapped memory as a page fault or a general protection
+    fault, and the model has one fault for both. *)
 
 (** A [fault] is a reason why an instruction does not complete. *)
 Inductive fault : Type :=
 | DivideError (* the processor's divide error, raised by `div` and `idiv` *)
+| MemoryFault (* a load or a store touched a byte that is not mapped *)
 | Unmodeled. (* the instruction form has no semantics in this model *)
 
 (** An [outcome] is the result of executing one instruction or a
@@ -179,6 +201,22 @@ Definition source_value (z : size) (a : source) (s : machine) : Z :=
   | SReg r => get_reg z r s
   end.
 
+(** The function [effective_address] computes the address that a
+    memory operand denotes in the state s. The processor adds the
+    displacement to the 64-bit content of the base register and keeps
+    the low 64 bits of the sum. *)
+Definition effective_address (a : address) (s : machine) : Z :=
+  wrap S64 (get_reg S64 (address_base a) s + address_displacement a).
+
+(** The function [accessible] decides whether every byte of an access
+    of the size z at the address p is mapped in the state s. The bytes
+    of an access are the addresses from p upward, and the model does
+    not wrap them at the top of the address space. An access that
+    crosses that boundary is therefore accessible only in a state that
+    maps addresses beyond 64 bits, which no real state does. *)
+Definition accessible (z : size) (p : Z) (s : machine) : bool :=
+  all_mapped (size_bytes z) (mapped s) p.
+
 (** The function [binary_value] computes the result pattern of a
     binary operation at the size z, where d is the destination's value
     and a is the source's value. *)
@@ -227,10 +265,22 @@ Definition binary_writes (o : binary) : bool :=
     havoc h. An extending move whose source is not narrower than its
     destination, and a sign extension or division at the byte size,
     are outside the model. A division stops with [DivideError] where
-    [divide_words] reports one. *)
+    [divide_words] reports one. A load or a store stops with
+    [MemoryFault] when a byte of its access is not mapped. A load
+    writes its register by the rule of [set_reg], so a 32-bit load
+    clears the upper half of its destination. *)
 Definition step (h : havoc) (i : instr) (s : machine) : outcome :=
   match i with
   | IMov z a d => Next (set_reg z d (source_value z a s) s)
+  | ILoad z a d =>
+      let p := effective_address a s in
+      if accessible z p s then Next (set_reg z d (read_at z (bytes s) p) s)
+      else Fault MemoryFault
+  | IStore z r a =>
+      let p := effective_address a s in
+      if accessible z p s
+      then Next (set_bytes (write_at z (bytes s) p (get_reg z r s)) s)
+      else Fault MemoryFault
   | IMovzx za zd a d =>
       if size_ltb za zd then Next (set_reg zd d (get_reg za a s) s)
       else Fault Unmodeled
@@ -452,7 +502,9 @@ Qed.
     change. *)
 Definition writes (i : instr) : list gpr :=
   match i with
-  | IMov _ _ d | IMovzx _ _ _ d | IMovsx _ _ _ d | IUnary _ _ d | ISet _ d => [d]
+  | IMov _ _ d | ILoad _ _ d | IMovzx _ _ _ d | IMovsx _ _ _ d | IUnary _ _ d
+  | ISet _ d => [d]
+  | IStore _ _ _ => []
   | IBinary o _ _ d => if binary_writes o then [d] else []
   | IExtend _ => [RDX]
   | IDivide _ _ _ => [RAX; RDX]
@@ -508,4 +560,158 @@ Proof.
     | |- context [match ?o with UNeg => _ | UNot => _ end] => destruct o
     | |- context [match ?q with Some _ => _ | None => _ end] => destruct q
     end; reflexivity.
+Qed.
+
+(** ## Facts about memory
+
+    Only a store changes the content of memory, and no instruction
+    changes which addresses are mapped. These lemmas state both facts
+    for one step and for a sequence. A proof about code that computes
+    in registers uses them to carry the frame's content across that
+    code. *)
+
+(** The function [stores] says whether an instruction may change the
+    content of memory. *)
+Definition stores (i : instr) : bool :=
+  match i with
+  | IStore _ _ _ => true
+  | _ => false
+  end.
+
+(** An instruction does not change which addresses are mapped. *)
+Lemma step_mapped (h : havoc) (i : instr) (s s' : machine) :
+  step h i s = Next s' -> mapped s' = mapped s.
+Proof.
+  intro E; destruct i; cbn [step] in E;
+    repeat match type of E with
+    | context [if ?b then _ else _] => destruct b eqn:?
+    | context [match ?z with S8 => _ | _ => _ end] => destruct z
+    | context [match ?o with UNeg => _ | UNot => _ end] => destruct o
+    | context [match ?q with Some _ => _ | None => _ end] => destruct q
+    end;
+    inversion E; subst;
+    repeat first [rewrite mapped_set_reg | rewrite mapped_set_flags |
+                  rewrite mapped_set_bytes];
+    reflexivity.
+Qed.
+
+(** A sequence does not change which addresses are mapped. *)
+Lemma runs_mapped (code : list instr) (s s' : machine) :
+  runs code s (Next s') -> mapped s' = mapped s.
+Proof.
+  intro H; remember (Next s') as result eqn:E.
+  induction H; inversion E; subst.
+  - reflexivity.
+  - transitivity (mapped s'0).
+    + apply IHruns; reflexivity.
+    + eapply step_mapped; eassumption.
+Qed.
+
+(** An instruction that is not a store does not change the content of
+    memory. *)
+Lemma step_bytes (h : havoc) (i : instr) (s s' : machine) :
+  step h i s = Next s' -> stores i = false -> bytes s' = bytes s.
+Proof.
+  intros E H; destruct i; cbn [stores] in H; try discriminate;
+    cbn [step] in E;
+    repeat match type of E with
+    | context [if ?b then _ else _] => destruct b eqn:?
+    | context [match ?z with S8 => _ | _ => _ end] => destruct z
+    | context [match ?o with UNeg => _ | UNot => _ end] => destruct o
+    | context [match ?q with Some _ => _ | None => _ end] => destruct q
+    end;
+    inversion E; subst;
+    repeat first [rewrite bytes_set_reg | rewrite bytes_set_flags];
+    reflexivity.
+Qed.
+
+(** A sequence without a store does not change the content of
+    memory. *)
+Lemma runs_bytes (code : list instr) (s s' : machine) :
+  runs code s (Next s') ->
+  (forall i, In i code -> stores i = false) ->
+  bytes s' = bytes s.
+Proof.
+  intro H; remember (Next s') as result eqn:E.
+  induction H; inversion E; subst; intro Hnone.
+  - reflexivity.
+  - transitivity (bytes s'0).
+    + apply IHruns; [reflexivity | intros j Hj; apply Hnone; right; exact Hj].
+    + eapply step_bytes; [eassumption | apply Hnone; left; reflexivity].
+Qed.
+
+(** A fragment without a store leaves the memory as it found it. This
+    lemma adds that fact to whatever relation the fragment establishes,
+    so a theorem that was proved about registers alone extends to a
+    state with memory. *)
+Lemma establishes_memory (P : machine -> Prop) (code : list instr)
+    (Q : machine -> machine -> Prop) :
+  establishes P code Q ->
+  (forall i, In i code -> stores i = false) ->
+  establishes P code
+    (fun s s' => Q s s' /\ bytes s' = bytes s /\ mapped s' = mapped s).
+Proof.
+  intros H Hnone s o HP Hr.
+  destruct (H _ _ HP Hr) as [t [E HQ]].
+  exists t; split; [exact E | split; [exact HQ | split]].
+  - eapply runs_bytes; [rewrite <- E; exact Hr | exact Hnone].
+  - eapply runs_mapped; rewrite <- E; exact Hr.
+Qed.
+
+(** ## Facts about loads and stores
+
+    These lemmas describe one load and one store as fragments, in the
+    form that [establishes_app] composes. Each has the precondition
+    that the bytes of its access are mapped, and each says exactly
+    what the instruction changes. *)
+
+(** A load from accessible memory completes. It leaves the bytes that
+    it read in its destination register, and it changes neither
+    another register nor the memory. *)
+Lemma load_spec (z : size) (a : address) (d : gpr) :
+  establishes (fun s => accessible z (effective_address a s) s = true)
+    [ILoad z a d]
+    (fun s s' =>
+       s' = set_reg z d (read_at z (bytes s) (effective_address a s)) s).
+Proof.
+  intros s o HP Hr.
+  apply runs_cons_inv in Hr; destruct Hr as [h [[t [E Hr]] | [f [E ->]]]].
+  - cbn [step] in E; rewrite HP in E; inversion E; subst t.
+    eexists; split; [apply runs_nil_inv; exact Hr | reflexivity].
+  - cbn [step] in E; rewrite HP in E; discriminate.
+Qed.
+
+(** A store to accessible memory completes. It writes the low part of
+    its register to the bytes of its access, and it changes neither a
+    register nor a flag. *)
+Lemma store_spec (z : size) (r : gpr) (a : address) :
+  establishes (fun s => accessible z (effective_address a s) s = true)
+    [IStore z r a]
+    (fun s s' =>
+       s' = set_bytes
+              (write_at z (bytes s) (effective_address a s) (get_reg z r s)) s).
+Proof.
+  intros s o HP Hr.
+  apply runs_cons_inv in Hr; destruct Hr as [h [[t [E Hr]] | [f [E ->]]]].
+  - cbn [step] in E; rewrite HP in E; inversion E; subst t.
+    eexists; split; [apply runs_nil_inv; exact Hr | reflexivity].
+  - cbn [step] in E; rewrite HP in E; discriminate.
+Qed.
+
+(** A load from memory that is not accessible stops with a memory
+    fault, under every havoc. *)
+Lemma load_faults (h : havoc) (z : size) (a : address) (d : gpr) (s : machine) :
+  accessible z (effective_address a s) s = false ->
+  step h (ILoad z a d) s = Fault MemoryFault.
+Proof.
+  intro H; cbn [step]; rewrite H; reflexivity.
+Qed.
+
+(** A store to memory that is not accessible stops with a memory
+    fault, under every havoc. *)
+Lemma store_faults (h : havoc) (z : size) (r : gpr) (a : address) (s : machine) :
+  accessible z (effective_address a s) s = false ->
+  step h (IStore z r a) s = Fault MemoryFault.
+Proof.
+  intro H; cbn [step]; rewrite H; reflexivity.
 Qed.
