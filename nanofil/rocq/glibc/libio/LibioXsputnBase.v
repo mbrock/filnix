@@ -48,7 +48,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnTail LibioDefaultXsputn.
 Import ListNotations.
@@ -168,17 +168,19 @@ Local Instance xs_base_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** `c: _IO_new_file_write(fp, data, n)` of the n bytes xs at offset o
-    of an object b owned at any share dq, through a read-write or
-    read-only capability: [wp_glibc__IO_new_file_write] of
-    LibioWrite.v, which takes the bytes whole, with the share. *)
+(** The stream's write function borrows the source bytes instead of owning
+    them exclusively. It returns that share and the exact cancellation flags
+    even if the write fails. A set NOTCANCEL bit requires the captured
+    noncanceling wrapper. The result still permits partial writes and failure. *)
 Definition fwq_spec : Prop :=
   forall fr fb freg fl f2 fd tw off dq b reg o c xs eb Φ,
   call_frame glibc__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) c); WInt (Z.of_nat (length xs))] = Some fr ->
   (c = Obj b \/ c = Ro b) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
+  (Z.land f2 2 = 0 \/
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs ->

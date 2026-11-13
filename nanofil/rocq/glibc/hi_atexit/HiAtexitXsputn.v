@@ -53,8 +53,10 @@ Local Instance hi_xsputn_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The kernel only reads a string literal, so its shared life and
-    bytes return unchanged from the proved write function. *)
+(** A write may accept only part of the borrowed bytes or fail.
+    Both syscall branches return the caller's source share and keep its
+    cancellation flags unchanged. The noncanceling branch requires the
+    captured wrapper. *)
 Lemma hi_file_write_dq : fwq_spec w0 registry ge.
 Proof.
   intros fr fb freg fl f2 fd tw off dq' b reg o c xs eb Φ Hfr Hc Hfb Hal Hend Hregend Hf2 Hf2r Hfd Hfl Heb
@@ -63,7 +65,6 @@ Proof.
   iApply (HWD.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite
     fr fb freg fl f2 fd tw off dq' b reg c o xs eb with
     "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try assumption.
-  left. exact Hf2.
 Qed.
 
 (** Writing a string preserves the stream's fields, its heap buffer

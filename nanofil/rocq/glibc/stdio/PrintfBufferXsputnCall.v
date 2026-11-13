@@ -2,9 +2,9 @@
     function pointer. The array contains raw bytes and need not end in NUL.
     The caller compares the returned count with the requested count.
 
-    This rule starts after the pointer loads. It checks the function pointer
-    and calls the captured file-xsputn body under an explicit callee contract.
-    That contract returns the borrowed bytes even when the count differs. *)
+    Printf must recover its staging bytes even when the stream accepts fewer
+    bytes than requested. This proof checks and invokes the loaded function
+    pointer. The caller still supplies the proof of the called function. *)
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -46,8 +46,9 @@ Definition printf_xsputn_call_spec : Prop := forall fr fp bb breg dq xs Φ,
 Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hcall : printf_xsputn_call_spec).
 
-(** The checked pointer names the captured file-xsputn function. Its result
-    reaches the count comparison without assuming complete acceptance. *)
+(** Printf compares the returned count after calling the stream operation.
+    This rule checks which function it calls, but the caller must prove that
+    function returns the borrowed bytes and stream resources. *)
 Lemma wp_printf_xsputn_call e fp bb breg dq xs Φ :
   0 < bb -> bb mod 8 = 0 -> Z.of_nat (length xs) <= 128 ->
   bb + 48 + Z.of_nat (length xs) <= r_end breg -> r_end breg <= 2 ^ 63 ->
