@@ -143,8 +143,19 @@ for f in files:
             if w in file_by_mod:
                 for name in outer[file_by_mod[w]] & referenced:
                     visible[name] = w
+    # A real nested namespace or a sealed interface still exports its
+    # aliases as fields. Keep those shallow aliases, pointing at flat files.
+    retained_aliases = set()
+    lifted = {h[1] for h in HDR.finditer(s)}
+    for h in re.finditer(r'^Module (?:Type )?(\w+)([^\n]*)', code, re.M):
+        if h[1] in lifted or ':=' in h[2]: continue
+        end = re.search(r'^End ' + h[1] + r'\.', code[h.end():], re.M)
+        if end is None: raise ValueError(f'{f}: unclosed module {h[1]}')
+        body = code[h.end():h.end() + end.start()]
+        retained_aliases.update(m[1] for m in ALIAS.finditer(body))
+        retained_aliases.update(m[1] for m in PATHALIAS.finditer(body))
     def alias_line(m):
-        if m.group(1) in ns[f]: return ''
+        if m.group(1) in ns[f] and m.group(1) not in retained_aliases: return ''
         return m.group(0)
     hdr_names = [m.group(1) for m in HDR.finditer(s)]
     s = HDR.sub('From Glibc Require Import Fix.\n', s, count=1)
@@ -191,6 +202,21 @@ for f in files:
         elif comps[0] not in file_by_mod: used.add(new[0])
         return '.'.join(new) if new else m.group(0)
     s = TOK.sub(tok, s)
+    def retained_alias(m):
+        target = functor_file.get(m[2])
+        if target is None: return m[0]
+        used.add(mod[target])
+        return 'Module ' + m[1] + ' := ' + mod[target] + '.\n'
+    s = ALIAS.sub(retained_alias, s)
+    def module_args(m):
+        def arg(a):
+            name = a[0]
+            if name not in ns[f] or name in retained_aliases: return name
+            target = mod[ns[f][name]]
+            used.add(target)
+            return target
+        return m[1] + re.sub(r"(?<![\w.'])\w+(?![\w.'])", arg, m[2]) + '.'
+    s = re.sub(r'^(Module \w+ := )(.+)\.$', module_args, s, flags=re.M)
     def include(m):
         target = functor_file.get(m[1])
         if target is None: return m[0]
@@ -221,6 +247,32 @@ open(os.path.join(dst, 'Fix.v'), 'w').write(
 project = os.path.join(dst, '_RocqProject')
 if os.path.exists(project):
     s = open(project).read()
-    if 'Fix.v\n' not in s:
-        s = re.sub(r'(?m)^(?=\S+\.v$)', 'Fix.v\n', s, count=1)
-        open(project, 'w').write(s)
+    paths = dict(mod)
+    paths['Fix.v'] = 'Fix'
+    by_name = {n: p for p, n in paths.items()}
+    deps = {}
+    for p in paths:
+        code = code_only(open(os.path.join(dst, p)).read())
+        deps[p] = {by_name[n] for r in re.finditer(
+            r'From Glibc Require\s+(?:(?:Import|Export)\s+)?([^.]*)\.', code)
+            for n in r[1].split()}
+    ordered = []
+    while deps:
+        ready = sorted(p for p, ds in deps.items() if not ds)
+        if not ready: raise ValueError(f'cyclic file imports: {deps}')
+        ordered.extend(ready)
+        for p in ready: del deps[p]
+        for ds in deps.values(): ds.difference_update(ready)
+    directives = [line for line in s.splitlines() if not line.endswith('.v')]
+    open(project, 'w').write('\n'.join(directives + ordered) + '\n')
+build = os.path.join(dst, 'build.sh')
+if os.path.exists(build):
+    s = open(build).read()
+    old = "xargs -0 grep -nwE 'Admitted|Axiom|Axioms|Parameter|Conjecture'"
+    new = """xargs -0 awk '
+  skip == "" && /^Module Type [A-Za-z0-9_]/ { skip = $3; sub(/[ .(].*/, "", skip); next }
+  skip != "" { if ($0 ~ "^End " skip "\\\\.") skip = ""; next }
+  { print FILENAME ":" FNR ": " $0 }' |
+  grep -wE 'Admitted|Axiom|Axioms|Parameter|Conjecture'"""
+    if old not in s: raise ValueError('unrecognized build.sh assumption audit')
+    open(build, 'w').write(s.replace(old, new))
