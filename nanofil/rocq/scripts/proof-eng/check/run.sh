@@ -24,6 +24,16 @@ git -C "$repo" diff -- nanofil/rocq/scripts/proof-eng >"$out/pipeline.diff"
 mkdir "$out/source"
 git -C "$repo" archive "$revision" nanofil/rocq/glibc | tar -x -C "$out/source"
 before=$out/source/nanofil/rocq/glibc
+cp -r "$before" "$out/name-gate-tree"
+if python3 -I "$here/../stages/10-flatten.py" "$out/name-gate-tree" \
+    --name-report "$out/flatten-names.json" >"$out/name-gate.log" 2>&1; then
+  echo 'PASS name-gate' | tee -a "$out/verdicts.txt"
+else
+  echo "FAIL name-gate (see $out/name-gate.log and flatten-names.json)" | tee -a "$out/verdicts.txt"
+  { printf '# Cutover blocked by duplicate names\n\n```json\n'; cat "$out/flatten-names.json"; printf '\n```\n'; } >"$out/cutover-packet.md"
+  exit 1
+fi
+rm -rf "$out/name-gate-tree"
 "$here/../materialize.sh" "$out/worktree" >"$out/materialize.log" 2>&1
 after=$out/worktree/nanofil/rocq/glibc
 # materialize.sh starts from branch HEAD; replace only its glibc input with
@@ -58,7 +68,9 @@ if [ -z "${PE_AUDIT_LAYOUT:-}" ]; then
   run audit-layout bash "$here/prepare-layout.sh" "$before" "$layout"
 fi
 run after-audits python3 "$here/audit.py" "$after" --layout "$layout" --output "$out/after-audits"
-run audit-comparison python3 "$here/compare-audits.py" "$out/before-audits/report.json" "$out/after-audits/report.json"
+run hello-abstract bash "$here/hello-abstract.sh" "$before" "$out/hello-abstract"
+run audit-comparison python3 "$here/compare-audits.py" "$out/before-audits/report.json" "$out/after-audits/report.json" \
+  --hello-abstract "$out/hello-abstract/audit/report.json"
 run glibc nix build -L --no-link --keep-going --max-jobs "$jobs" "$out/worktree#checks.x86_64-linux.nanofil-glibc"
 run glibc-units nix build -L --no-link -f "$out/worktree/nanofil/survey/glibc/regress.nix" units
 run docs nix build -L --no-link "$out/worktree#checks.x86_64-linux.nanofil-docs"
@@ -80,6 +92,8 @@ echo "Cutover exit status: $status" | tee -a "$out/verdicts.txt"
 {
   printf '\n## Local cutover verdicts\n\n```text\n'
   cat "$out/revisions.txt" "$out/verdicts.txt"
+  printf '```\n\n## Flattened-name inventory\n\n```json\n'
+  cat "$out/flatten-names.json"
   printf '```\n\n## Complete statement differences\n\n```text\n'
   cat "$out/statements/report.txt"
   printf '```\n'

@@ -119,9 +119,12 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('tree', type=Path)
     p.add_argument('--layout', type=Path, default=HERE / 'layouts/original')
-    p.add_argument('--contracts', type=Path, default=HERE / 'audit-contracts.json')
+    p.add_argument('--contracts', type=Path)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--groups', nargs='+')
     a = p.parse_args()
-    results = audit(a.tree, a.layout, json.loads(a.contracts.read_text()), a.output.resolve(), a.groups)
+    contracts = a.contracts or (a.layout / 'contracts.json')
+    if not contracts.exists() and a.contracts is None:
+        contracts = HERE / 'audit-contracts.json'
+    results = audit(a.tree, a.layout, json.loads(contracts.read_text()), a.output.resolve(), a.groups)
     raise SystemExit(not results or not all(r['pass'] for r in results.values()))

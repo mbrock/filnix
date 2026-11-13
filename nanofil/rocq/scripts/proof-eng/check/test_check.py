@@ -74,6 +74,12 @@ class Checks(unittest.TestCase):
             compile(after, sealed.replace('target : True', 'target : True /\\ True')
                     .replace('exact I.', 'split; exact I.').replace('exposed := target', 'exposed := proj1 target'))
             self.assertEqual([d['name'] for d in compare(1)['differences']], ['Hidden.target'])
+            signature = 'Module Type S. Section spec. Parameter target : True. End spec. End S.\n'
+            compile(before, signature)
+            compile(after, signature.replace(': True.', ': True /\\ True.'))
+            parameters = root / 'parameters.txt'
+            parameters.write_text('changed\tToy.v\tS.target\n')
+            self.assertEqual([d['name'] for d in compare(1, parameters)['differences']], ['S.target'])
             layout = root / 'layout'
             layout.mkdir()
             (layout / 'toy.v').write_text('From Glibc Require Import Toy.\nPrint Assumptions target.\n')

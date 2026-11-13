@@ -113,10 +113,18 @@ class Tree:
         if not digest or digest[1] != hashlib.md5(path.read_bytes()).hexdigest():
             raise ValueError('stale .glob: source digest differs')
         found = []
-        for m in re.finditer(r'^(prf|def) \d+:\d+ (\S+) (\S+)$', glob.read_text(), re.M):
+        for m in re.finditer(r'^(prf|def|var|ax) \d+:\d+ (\S+) (\S+)$', glob.read_text(), re.M):
             kind, scope, name = m.groups()
-            if name in expected or name in specs or name in extra:
-                found.append((name, '' if scope == '<>' else scope, name in specs or (kind == 'def' and name in extra)))
+            if kind in ('var', 'ax'):
+                # .glob includes the enclosing Section in a signature's
+                # Parameter scope; the exported module field does not.
+                full = self.scopes[rel] + '.' + scope
+                owners = [s for s in self.signatures if full == s or full.startswith(s + '.')]
+                if owners:
+                    scope = max(owners, key=len)[len(self.scopes[rel]) + 1:]
+            explicit = name in extra or (scope + '.' + name) in extra
+            if (kind in ('prf', 'def') and (name in expected or name in specs)) or explicit:
+                found.append((name, '' if scope == '<>' else scope, name in specs or (kind == 'def' and explicit)))
         missing = set(expected) - {n for n, _, _ in found}
         if missing:
             raise ValueError('declarations absent from .glob: ' + ', '.join(sorted(missing)))

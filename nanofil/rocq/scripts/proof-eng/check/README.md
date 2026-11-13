@@ -13,6 +13,11 @@ the current pipeline to main's glibc sources, and makes a materialized worktree.
 It builds both proof trees and prints a verdict for each check. It checks main
 again at the end and fails if main advanced during the run.
 
+Before rewriting the tree, it runs stage 10's duplicate-name check on a copy
+and saves `flatten-names.json` in the packet. The check rejects a new name that
+several files export if any file uses that name without a module prefix.
+The compiled-statement check still runs separately.
+
 `PE_JOBS` controls compilation concurrency and defaults to eight.
 `PE_QUERY_JOBS` controls statement queries and defaults to two. The original
 Hello audit can consume substantial memory, so campaign audits run sequentially.
@@ -84,11 +89,12 @@ comparisons for the files that compiled, but its overall verdict remains FAIL.
 
 ## Reproduce and compare the campaign audits
 
-`audit-contracts.json` names the campaign's queries and their permitted
-assumptions. An empty list requires Closed. The general Hello theorem instead
-requires exactly the twelve named `AuditRuntime` assumptions; an unexpectedly
-Closed specialization fails that contract. Its separate statement comparison
-also checks the theorem's hypotheses, including the Hello obligations.
+`audit-contracts.json` lists the assumptions each campaign query may use.
+An empty list means that Rocq must print "Closed under the global context".
+Hello has two checks until the runtime design is chosen. With `InterpRuntime`,
+it must print Closed. With an abstract runtime, it must retain its original
+statement and twelve runtime assumptions, including their types. Comparing all
+statements still reports the loss of runtime generality as a change.
 
 `layouts/original/` contains the lead's original query files, including the
 regression proofs and count-wrap controls inside those queries. A layout is data:
@@ -106,17 +112,20 @@ python3 nanofil/rocq/scripts/proof-eng/check/audit.py BEFORE \
 bash nanofil/rocq/scripts/proof-eng/check/prepare-layout.sh BEFORE /tmp/flat-layout
 python3 nanofil/rocq/scripts/proof-eng/check/audit.py AFTER \
   --layout /tmp/flat-layout --output /tmp/audit-after
+bash nanofil/rocq/scripts/proof-eng/check/hello-abstract.sh BEFORE /tmp/hello-abstract
 python3 nanofil/rocq/scripts/proof-eng/check/compare-audits.py \
-  /tmp/audit-before/report.json /tmp/audit-after/report.json
+  /tmp/audit-before/report.json /tmp/audit-after/report.json \
+  --hello-abstract /tmp/hello-abstract/audit/report.json
 ```
 
 The layout generator applies the pipeline to copies of the original queries.
 Those generated queries are a starting point, not an assertion that the new
 layout supports the audit. A failed query prevents a passing verdict. Set
 `PE_AUDIT_LAYOUT` for the complete command to use a reviewed layout instead.
-If runtime generality moves into a typeclass, its revised statement and audit
-contract need explicit review; do not silently turn the general Hello audit
-into a concrete-runtime Closed audit.
+The generated concrete layout supplies `contracts.json` with Hello's Closed
+expectation. `hello-abstract.sh` builds only Hello's dependency closure and uses
+the original twelve-assumption contract. A typeclass design needs a separately
+reviewed contract; these checks do not anticipate that decision.
 
 ## Review intentional statement changes
 
