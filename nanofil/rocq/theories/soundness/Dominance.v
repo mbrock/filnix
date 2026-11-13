@@ -653,17 +653,17 @@ Qed.
 
 (** ### What the fixpoint satisfies *)
 
-(** Once the immediate-dominator loop stops changing, the resulting
-    parent map M satisfies the invariants collected in [idoms_ok].
-    Before the entry's self-parent is removed, the entry maps to itself,
-    every other block in reverse postorder has a parent that is an
-    ancestor of its active predecessors, and only blocks in reverse
-    postorder appear in M.
+(** When the immediate-dominator loop stops changing, the resulting parent
+    map links every reachable block to its immediate dominator. Before the
+    final step removes the entry block's self-loop, the entry maps to
+    itself, every other block in reverse postorder has a parent that is a
+    common ancestor of its active predecessors, and only blocks in reverse
+    postorder appear in the map.
 
-    To show that the fixpoint finds nearest common ancestors, we also
-    record two structural facts. Every parent in M equals the meet of
-    its predecessors, and the reverse postorder has no duplicates while
-    placing each non-entry block after a predecessor. *)
+    To prove that those parents are the nearest common ancestors, this
+    record also tracks two structural facts: every parent equals the meet
+    of its predecessors, and the reverse postorder contains no duplicates
+    while placing each non-entry block after at least one predecessor. *)
 Record idoms_ok (g : cfg) (M : nmap name) : Prop := {
   idoms_entry : nm_find (cfg_entry g) M = Some (cfg_entry g);
   idoms_meet : forall b, In b (cfg_rpo g) -> b <> cfg_entry g ->

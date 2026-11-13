@@ -369,9 +369,11 @@ Qed.
 
 (** ## Points
 
-    To relate a frame's execution state to block dominance, we map
-    instruction suffixes back to their numeric indices within the block.
-    At function entry, no instruction dominates the entry point yet. *)
+    As a function steps through the instructions of a basic block, its
+    frame holds the remaining suffix of the block's instruction list. This
+    section maps that remaining suffix back to the numeric index of the
+    current instruction so we can ask which earlier definitions in the
+    block precede the current point. *)
 
 (** Where dropping k elements of l, with k at most l's length, leaves
     nothing, k is l's length. *)
@@ -411,9 +413,10 @@ Qed.
     single-definition operands, and in any memory that persists from the
     original one. *)
 
-(** A [replays] fact remains valid in any new environment e' that agrees
-    with e on the defined name n and its single-definition operands, as
-    well as in any memory m' that persists from m. *)
+(** If an instruction's result can be replayed in the current environment
+    and memory, it can still be replayed in any later environment that
+    keeps the same values for the defined variable and its operands, and
+    in any later memory where allocated objects persist. *)
 Lemma replays_change : forall ge once e e' m m' n i,
   replays ge once e m n i -> lookup n e' = lookup n e ->
   (forall a, In a (inst_uses i) -> once_has once a = true -> lookup a e' = lookup a e) ->
@@ -739,7 +742,7 @@ Proof.
   - destruct (doomed_result_fresh _ _ _ _ _ _ Ew H) as [-> | (e & w & ->)]; [right; auto | left; simpl; discriminate].
 Qed.
 
-(** ## Every step keeps the invariant
+(** ## Preservation of the single-definition invariant
 
     We now prove that every transition of the abstract machine preserves
     [sinv]. The proof proceeds case by case over snapshots, block
