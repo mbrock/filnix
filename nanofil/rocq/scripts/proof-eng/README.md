@@ -13,6 +13,13 @@ nanofil/rocq/scripts/proof-eng/one.sh /tmp/pe/glibc libio/LibioPutsNl.v -time
 
 `apply.sh` copies the tree, runs every program in `stages/` in name order on the copy, and then copies `overlay/` over it. `build.sh` compiles the copy with make and writes times and failures to `/tmp/pe/glibc.build/`.
 
+The workflows run on `main` only, so the Nix gates of the branch run by hand on a scratch worktree that holds the output:
+
+```sh
+nanofil/rocq/scripts/proof-eng/materialize.sh /tmp/pe-wt
+nix build -L /tmp/pe-wt#checks.x86_64-linux.nanofil-glibc
+```
+
 ## Stages
 
 A stage is one program that takes the tree as its argument and rewrites it in place. The number in its name fixes the order.
