@@ -58,7 +58,25 @@ Lemma division_step_inversion (ge : Semantics.genv) (fr : Semantics.frame)
     /\ out = Semantics.IContinue (put d (Values.WInt w) (Semantics.fr_env fr))
                (Semantics.fr_locals fr) m.
 Proof.
-Admitted.
+  intro Hk. destruct k; try discriminate; destruct sg, remainder;
+    cbn [division_op Semantics.inst_step op_arg_classes Semantics.map2_option];
+    destruct (Semantics.value_x ge (Semantics.fr_env fr) _ x) as [vx|] eqn:Ex;
+    cbn; try discriminate;
+    destruct (Semantics.value_x ge (Semantics.fr_env fr) _ y) as [vy|] eqn:Ey;
+    cbn; try discriminate;
+    destruct vx, vy;
+    cbn [Ops.op_res Ops.op_res_int Ops.alu]; try discriminate;
+    intro H;
+    repeat match type of H with
+    | context [match ?v with Some _ => _ | None => _ end] =>
+        destruct v eqn:?; try discriminate
+    end;
+    inversion H; subst;
+    do 3 eexists; repeat split; eauto;
+    cbn [division_op Ops.alu]; repeat match goal with
+    | E : ?v = Some _ |- context [?v] => rewrite E
+    end; reflexivity.
+Qed.
 
 (** ## The emitted lines
 
@@ -78,14 +96,23 @@ Lemma let_lines_division (cx : ctx) (b : name) (index : string) (sg : signedness
   = load cx x k "a" ++ load cx y k "c"
     ++ division_lines sg remainder k ++ slot_store cx "rax" (KTmp d).
 Proof.
-Admitted.
+  intro Hk. destruct k; try discriminate; destruct sg, remainder;
+    cbn [division_op let_lines x87_op]; unfold integer_inst;
+    cbn [compute_op float_compute sse_class];
+    rewrite division_split with (z := z) by exact Hk;
+    repeat rewrite app_assoc; reflexivity.
+Qed.
 
 (** No instruction of the register part of a division is a store. *)
 Lemma division_code_stores_nothing (sg : signedness) (remainder : bool) (z : size)
     (i : instr) :
   In i (division_code sg remainder z) -> stores i = false.
 Proof.
-Admitted.
+  destruct sg, remainder; unfold division_code, zero_divisor_code,
+    minus_one_divisor_code, divide_code, result_code;
+    cbn [app In]; intros H; repeat destruct H as [H | H];
+    try contradiction; subst i; reflexivity.
+Qed.
 
 (** The register part of a division computes the IR's result in
     `%rax`, and it leaves the memory and the set of mapped addresses
@@ -99,7 +126,10 @@ Lemma division_code_keeps_memory (sg : signedness) (remainder : bool) (k : class
        division_result_in_rax sg remainder k z s s'
        /\ bytes s' = bytes s /\ mapped s' = mapped s).
 Proof.
-Admitted.
+  intro Hk. apply establishes_memory.
+  - apply division_code_correct; exact Hk.
+  - intros i Hi. eapply division_code_stores_nothing; exact Hi.
+Qed.
 
 (** ## The fragments on a frame
 
@@ -118,7 +148,11 @@ Lemma frame_kept (cx : ctx) (live : name -> Prop) (e : Semantics.env)
   frame_placed cx s /\ represents cx live e s ->
   frame_placed cx s' /\ represents cx live e s'.
 Proof.
-Admitted.
+  intros Hlayout Hbp Hbytes Hmapped [Hplaced Hrep]. split.
+  - eapply frame_placed_preserved; eassumption.
+  - eapply represents_same_frame; try eassumption.
+    intros a _. rewrite Hbytes. reflexivity.
+Qed.
 
 (** The two loads of a division are inside the model and never fault.
     They leave the first operand in `%rax` and the second in `%rcx`,
@@ -141,7 +175,26 @@ Lemma operands_loaded_spec (cx : ctx) (ge : Semantics.genv) (live : name -> Prop
             /\ (forall r, r <> RAX -> r <> RCX -> regs s' r = regs s r)
             /\ bytes s' = bytes s /\ mapped s' = mapped s).
 Proof.
-Admitted.
+  intros Hk Hlayout Henc Hpx Hpy Hlx Hly Hx Hy.
+  destruct (load_operand_spec cx ge live e k z x a "a" RAX
+    Hk Hlayout Henc names_rax Hpx Hlx Hx) as [ca [Da Sa]].
+  destruct (load_operand_spec cx ge live e k z y b "c" RCX
+    Hk Hlayout Henc names_rcx Hpy Hly Hy) as [cc [Dc Sc]].
+  exists (ca ++ cc). split.
+  - apply decode_lines_app; assumption.
+  - eapply establishes_weaken.
+    + eapply establishes_app; [exact Sa | exact Sc |].
+      intros s t HP [_ [Hr [Hb Hm]]].
+      eapply frame_kept; try eassumption. apply Hr; discriminate.
+    + intros s HP; exact HP.
+    + intros s u _ [t [[Ha [Ra [Ba Ma]]] [Hc [Rc [Bc Mc]]]]].
+      repeat split.
+      * rewrite Rc by discriminate. exact Ha.
+      * exact Hc.
+      * intros r Hra Hrc. rewrite Rc by exact Hrc. apply Ra; exact Hra.
+      * rewrite Bc, Ba. reflexivity.
+      * rewrite Mc, Ma. reflexivity.
+Qed.
 
 (** ## The whole instruction
 
@@ -198,7 +251,63 @@ Theorem division_instruction_correct (cx : ctx) (ge : Semantics.genv)
                  (put d (Values.WInt w) (Semantics.fr_env fr)) s'
             /\ instruction_keeps off s s').
 Proof.
-Admitted.
+  intros Hk Hlayout Henc Hpx Hpy Hlx Hly Hd Hstep.
+  destruct (division_step_inversion ge fr m sg remainder k z d x y out Hk Hstep)
+    as [a [c [w [Hx [Hy [Halu Hout]]]]]].
+  destruct (operands_loaded_spec cx ge live (Semantics.fr_env fr) k z x y a c
+    Hk Hlayout Henc Hpx Hpy Hlx Hly Hx Hy) as [cl [Dl Sl]].
+  destruct (store_slot_spec cx live (Semantics.fr_env fr) d off "rax" RAX
+    Hlayout Henc eq_refl Hd) as [cs [Ds Ss]].
+  assert (Sp : establishes
+    (fun s => frame_placed cx s /\ represents cx live (Semantics.fr_env fr) s)
+    (cl ++ division_code sg remainder z)
+    (fun s u =>
+      (frame_placed cx u /\ represents cx live (Semantics.fr_env fr) u)
+      /\ regs u RAX = w /\ scratch_only s u
+      /\ bytes u = bytes s /\ mapped u = mapped s)).
+  { eapply establishes_weaken.
+    - eapply establishes_app.
+      + exact Sl.
+      + apply division_code_keeps_memory; exact Hk.
+      + intros; exact I.
+    - intros s HP; exact HP.
+    - intros s u HP [t [[Ha [Hc [Hr [Hb Hm]]]] [[Hresult Hscratch] [Hb' Hm']]]].
+      assert (Ht : frame_placed cx t /\ represents cx live (Semantics.fr_env fr) t).
+      { eapply frame_kept; try eassumption. apply Hr; discriminate. }
+      split.
+      + eapply frame_kept; try eassumption.
+        apply Hscratch; discriminate.
+      + split.
+        * unfold get_reg in Hresult. rewrite Ha, Hc in Hresult.
+          rewrite (wrap_small z a (value_x_range ge (Semantics.fr_env fr) k z x a Hk Hx)),
+            (wrap_small z c (value_x_range ge (Semantics.fr_env fr) k z y c Hk Hy))
+            in Hresult.
+          rewrite Halu in Hresult. injection Hresult; auto.
+        * split.
+          -- intros r Hra Hrc Hrd. rewrite Hscratch by assumption.
+             apply Hr; assumption.
+          -- split; [rewrite Hb', Hb | rewrite Hm', Hm]; reflexivity. }
+  exists w, ((cl ++ division_code sg remainder z) ++ cs).
+  split; [exact Hout |]. split.
+  - rewrite let_lines_division with (z := z) by exact Hk.
+    repeat rewrite app_assoc. apply decode_lines_app; [|exact Ds].
+    apply decode_lines_app; [exact Dl | apply division_lines_decode; exact Hk].
+  - eapply establishes_weaken.
+    + eapply establishes_app; [exact Sp | exact Ss |].
+      intros s u _ [HP _]. exact HP.
+    + intros s HP; exact HP.
+    + intros s v _ [u [[[Hu Hrep] [Hrax [Hr [Hb Hm]]]] [Hnew [Rv [Mv Bv]]]]].
+      split.
+      * eapply frame_placed_preserved; [exact Hu | apply Rv | exact Mv].
+      * split; [rewrite Hrax in Hnew; exact Hnew |].
+        unfold instruction_keeps. split.
+        -- intros r Hra Hrc Hrd. rewrite Rv. apply Hr; assumption.
+        -- split; [rewrite Mv, Hm; reflexivity |].
+           assert (Haddr : slot_address off u = slot_address off s).
+           { unfold slot_address. rewrite Hr by discriminate. reflexivity. }
+           intros addr Houtside. rewrite Bv; [rewrite Hb; reflexivity |].
+           rewrite Haddr. exact Houtside.
+Qed.
 
 (** This corollary states the same result without the relation
     [establishes]. Every execution of the emitted lines from a state
@@ -228,7 +337,15 @@ Corollary division_instruction_never_faults (cx : ctx) (ge : Semantics.genv)
     /\ represents cx (live_after cx live d) e' s'
     /\ instruction_keeps off s s'.
 Proof.
-Admitted.
+  intros Hk Hlayout Henc Hpx Hpy Hlx Hly Hd Hstep Hdecode Hplaced Hrep Hrun.
+  destruct (division_instruction_correct cx ge fr m live b index sg remainder k z
+    d off x y out Hk Hlayout Henc Hpx Hpy Hlx Hly Hd Hstep)
+    as [w [code' [Hout [Hdecode' Hcorrect]]]].
+  rewrite Hdecode in Hdecode'. injection Hdecode' as E; subst code'.
+  destruct (Hcorrect s o (conj Hplaced Hrep) Hrun) as [s' [Ho [Hp [Hr Hkeep]]]].
+  exists (put d (Values.WInt w) (Semantics.fr_env fr)), s'.
+  exact (conj Hout (conj Ho (conj Hp (conj Hr Hkeep)))).
+Qed.
 
 (** ## Executions on a concrete frame
 
