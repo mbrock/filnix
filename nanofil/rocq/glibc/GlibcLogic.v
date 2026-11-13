@@ -1,16 +1,26 @@
-(** What the proofs of programs linked with user glibc's IR share
-    (docs/glibc-ir.md): a raw load through a read-only capability,
-    Iris [[adequacy]] for a program that starts owning pieces of its
-    initial memory, and tactics that take a step whose values are all
-    known by computing it.
+(** When a C program is compiled together with user-space glibc functions
+    as module IR, a proof steps through glibc's instructions using the
+    same [[separation-logic]] rules from [Logic](../theories/logic/Logic.v)
+    that it uses for the program's own code. This module collects the
+    shared proof rule, [[adequacy]] theorem, and step-automation tactics
+    used by proofs of programs linked with user-space glibc.
 
-    glibc's functions are module code here, so their runs are walked
-    with Logic.v's rules like the program's own. When the program's
-    data is fixed, as a literal is, every value of such a run is a
-    numeral: [step] takes the next instruction by its rule, every
-    premise computed by the virtual machine, and [norm_env] keeps the
-    frame's environment a list of numerals, so values do not grow into
-    the expressions that made them. *)
+    ## Stepping through glibc on concrete data
+
+    String routines in glibc, such as `c: strlen`, load whole 64-bit
+    words from string literals that carry read-only
+    [[capability|capabilities]]. Rule [wp_raw_load_read] extends raw
+    64-bit loads to work through both read-write and read-only
+    capabilities, and theorem [pieces_never_panics] proves adequacy for
+    programs whose initial memory already holds global literals at entry.
+
+    When a program runs on fixed input data such as a constant string,
+    every intermediate value in the [[frame]] environment reduces to a
+    concrete integer or pointer. The [step] tactic applies the next
+    instruction's proof rule, solves its pure premises by virtual-machine
+    computation, and uses [norm_env] to evaluate the updated environment
+    into concrete literals so symbolic expressions do not build up across
+    steps. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,26 +31,40 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Over a Logic instance *)
+(** ## Over a Logic instance
 
-(** The shared rules and tactics over the [[runtime]] R and the Logic instance LG. *)
+    Every program proof instantiates the separation logic over a concrete
+    [[runtime]] and shares that instance across library modules. This
+    section parameterizes the user-glibc tactics and proof rules over an
+    arbitrary [Runtime] and [LogicSig] instance so any program proof can
+    import them directly. *)
+
+(** The functor [GlibcLogicOn] packages the shared tactics, read-only load
+    rule, and adequacy theorem over a runtime and program-logic instance. *)
 Module GlibcLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module LG := LG0.
 Module L := LG.L.
 Module P := LG.P.
 Import L LG.
 
-(** ## Tactics *)
+(** ## Tactics
 
-(** An equation whose right side may be unknown: the left side
-    computed, the right side made it, and the two checked by the
-    virtual machine, so the kernel checks it the same way. *)
+    When a proof steps through glibc IR on concrete inputs, every
+    instruction's operands and branch conditions evaluate to constants.
+    This section defines tactics that discharge pure instruction premises
+    by virtual-machine computation and keep the frame environment
+    normalized after each step. *)
+
+(** To solve an equality goal whose right-hand side may still be an
+    existential variable, [vm_eq] computes the left-hand side with the
+    virtual machine, unifies the right-hand side with that normal form,
+    and closes the equation by computation. *)
 Ltac vm_eq :=
   match goal with |- ?l = ?r => let v := eval vm_compute in l in unify r v end;
   vm_compute; reflexivity.
 
-(** A pure premise of a step, all of whose values are known: by
-    computation. *)
+(** When a step rule asks for a pure fact about concrete numbers or
+    pointers, [side] proves that fact by running the virtual machine. *)
 Ltac side :=
   lazymatch goal with
   | |- forall _ : mem, _ => intros ?; vm_eq
@@ -49,20 +73,26 @@ Ltac side :=
   | |- _ = _ => vm_eq
   end.
 
-(** Replace the environment e of the goal by e', which the virtual
-    machine shows equal. *)
+(** To keep a frame's environment from accumulating unevaluated updates,
+    [replace_env] proves by computation that the current environment
+    equals a normalized environment and rewrites the goal to use the
+    normalized form. *)
 Ltac replace_env e e' :=
   assert (Henv : e = e') by (vm_compute; reflexivity); try rewrite Henv; clear Henv.
 
-(** Compute the environment of the goal's frame to a list of numerals. *)
+(** After an instruction updates a [[temporary]] variable, [norm_env]
+    evaluates the frame's environment with the virtual machine and
+    replaces it in place with a list of concrete values. *)
 Ltac norm_env :=
   match goal with
   | |- context [mkFrame ?f ?e ?ls ?d ?pt] => let e' := eval vm_compute in e in replace_env e e'
   end.
 
-(** One step of a block by its rule, or fail: a pure let, a flight, a
-    branch, a goto, or entering a block, whose instructions are then
-    unfolded. *)
+(** When a function executes on concrete values, [step] advances the
+    current basic block by one instruction and normalizes the resulting
+    frame environment. It handles pure bindings, pointer-arithmetic
+    [[flight]] instructions, conditional branches, unconditional jumps,
+    and block entries. *)
 Ltac step :=
   first
     [ iApply wp_let; [side | side | side | side | iNext; norm_env]
@@ -76,17 +106,19 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
 
-(** The Iris instance of the registry and wi. *)
+(** Inside this section, [rules_irisGS] registers the Iris program-logic
+    instance for the active contract registry and world interpretation. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
 
-(** The expressions of the language. *)
+(** The notation [gexpr] abbreviates an Iris language expression for the
+    current contract registry and global environment. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** [wp_raw_load] through a read-write or read-only capability: a raw
-    load of a long at offset off from the proven pointer p, which
-    addresses offset o of the live object b, where the cell holds v: d
-    is bound to v modulo 2^64. glibc's strlen reads a string literal's
-    words through its read-only capability. *)
+(** String functions in glibc, such as `c: strlen`, read 8-byte words
+    from constant string literals whose pointers carry read-only
+    [[capability|capabilities]]. Rule [wp_raw_load_read] steps a 64-bit
+    raw load through a read-write or read-only capability and binds the
+    destination variable to the loaded 64-bit integer. *)
 Lemma wp_raw_load_read f e ls l d k off args rest j classes p b reg o v Φ :
   op_arg_classes (RawLoad LdL off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [WPtr p] ->
@@ -110,12 +142,12 @@ Qed.
 
 End rules.
 
-(** Iris [[adequacy]] where the program starts owning the pieces ps of
-    its initial memory, distinct and agreeing with it: if, for every
-    admissible input, owning ps gives the entry's frame a weakest
-    precondition with no contracts under any invariant and ghost heap
-    instance, the module never panics. [heap_never_panics] with ps for
-    its empty ghost heap. *)
+(** A program that contains global constants or string literals begins
+    execution with those objects already allocated in initial memory.
+    Theorem [pieces_never_panics] proves [[adequacy]] for such a module:
+    if owning a list of distinct initial memory pieces suffices to prove
+    the weakest precondition of the entry function for every admissible
+    input, then the program never panics. *)
 Theorem pieces_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     md entry (input : list word -> Prop) globals m f (ps : list (piece * pval)) :
   initial_memory md = Some (globals, m) ->
@@ -141,13 +173,18 @@ Qed.
 
 End GlibcLogicOn.
 
-(** The resources the proofs use: invariants and the ghost heap. *)
+(** When a program proof finishes, it closes its logical assumptions by
+    supplying a state bundle that tracks invariants and memory ownership.
+    The definition [glibcΣ] packages both of those components for
+    user-glibc proofs. *)
 Definition glibcΣ : gFunctors := #[invΣ; gen_heapΣ piece pval].
 
-(** [glibcΣ] has invariants. *)
+(** The instance [glibcΣ_inv] registers invariant support inside the
+    [glibcΣ] resource bundle. *)
 Instance glibcΣ_inv : invGpreS glibcΣ.
 Proof. apply subG_invΣ. apply _. Qed.
 
-(** [glibcΣ] has the ghost heap of pieces. *)
+(** The instance [glibcΣ_heap] registers memory-ownership support inside
+    the [glibcΣ] resource bundle. *)
 Instance glibcΣ_heap : gen_heapGpreS piece pval glibcΣ.
 Proof. apply subG_gen_heapGpreS. apply _. Qed.

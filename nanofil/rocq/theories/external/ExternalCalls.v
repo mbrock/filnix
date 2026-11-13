@@ -1,8 +1,29 @@
-(** External calls describe permitted memory effects and observable events.
-    This framework preserves runtime readiness and object identities across
-    each call. The glibc campaign also uses its byte-fill and copy contracts;
-    the older libc specifications live in
-    [LibcCalls](../hello_contracts/LibcCalls.v). *)
+(** When a compiled C module calls across an [[external call]] boundary,
+    such as libpizlo's `zsys_*` system calls, `c: zmemset`, or
+    `c: zmemmove` in `rocq/glibc/zsys/`, execution does not step through
+    intermediate-representation instructions inside the callee. Instead,
+    each external function is specified by a [contract] that states its
+    calling-convention ABI, its entry precondition, the byte spans it may
+    read or overwrite, the heap objects it may release or allocate, and
+    the postcondition that links its return value and observable events
+    to the updated memory state.
+
+    To reason about external calls without changing the core [Runtime] or
+    [Machine] semantics, the functor [ExternalCalls] bounds what a call
+    can do to memory through three relations. An [effects] path chains
+    authorized byte and [[aux]] capability writes with fresh heap
+    allocations, a [prefix] pairs an effects path with intermediate
+    observable events, and [invoke] completes a call either normally or
+    with an allocation failure while preserving runtime [[ready|readiness]]
+    and existing object [[identity|identities]].
+
+    In addition to the general contract framework, this module defines
+    the bounded string scan predicates, the thread-local [errno_cell]
+    predicate, and the memory-fill and memory-copy contracts
+    [memset_contract], [memcpy_contract], [mempcpy_contract], and
+    [memmove_contract] shared with the glibc verification campaign. The
+    older C standard library specifications for the standalone hello
+    proofs live in [LibcCalls](../hello_contracts/LibcCalls.v). *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine Identity.
@@ -10,24 +31,34 @@ Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Authority and footprints *)
+(** ## Authority and footprints
 
-(** A span: a pointer span_ptr, whose [[capability]] is the authority,
-    and the number of bytes span_size from its address. Contracts name
-    the memory a call may read capabilities from or write as spans. *)
+    When an external function runs, it may read pointer capabilities from
+    caller buffers, overwrite byte ranges and their shadow [[aux]] slots,
+    or free heap objects passed to it. Before defining a full call
+    contract, this section defines memory spans, write authority,
+    available capabilities, and single allocation-free memory segments in
+    [local_effect]. These definitions ensure that every memory change
+    authorized by a contract obeys the same invariants as ordinary
+    program instructions. *)
+
+(** An external call contract names each buffer range it may read or
+    overwrite as a [span], which pairs a base pointer [span_ptr] carrying
+    the caller's [[capability]] with a byte length [span_size]. *)
 Record span : Type := mkSpan { span_ptr : ptr; span_size : Z }.
 
-(** Address a lies in span s: from the span's address up to, but not
-    including, that address plus its size. *)
+(** The predicate [span_contains] holds when address a falls within the
+    half-open byte interval starting at the address of s and extending
+    for [span_size] bytes. *)
 Definition span_contains (s : span) (a : Z) : Prop :=
   ptr_addr (span_ptr s) <= a < ptr_addr (span_ptr s) + span_size s.
 
-(** Span s is writable in memory m: its size is nonnegative, and its
-    pointer carries an explicit [Obj] [[capability]] for a live
-    [[region|object]] that permits writing all its bytes ([access_res]
-    with [Write]), even when the size is zero. The life test matters for
-    zero-length spans of freed objects, which the access check alone
-    would pass. *)
+(** For a call to overwrite a caller buffer, [writable_span] requires a
+    nonnegative byte length and a pointer whose [Obj] [[capability]]
+    names a live [[region|object]] and passes [access_res] with [Write]
+    permission across the entire span. Checking that the target object is
+    live rules out zero-length spans into freed objects, which a bounds
+    check alone would otherwise accept. *)
 Definition writable_span (m : mem) (s : span) : Prop :=
   0 <= span_size s /\
   exists base reg,
@@ -35,27 +66,28 @@ Definition writable_span (m : mem) (s : span) : Prop :=
     object_region base (m_regions m) = Some reg /\ r_life reg = Live /\
     access_res m (ptr_addr (span_ptr s)) (Obj base) (span_size s) Write 1 = Some ok.
 
-(** A call may write address a of memory m if a lies in one of the
-    contract's writable roots (each a [writable_span]), or inside a live
-    heap object whose base is in born, the objects this call allocated.
-    Born objects belong to this call; old objects require an explicit
-    root supplied by the contract. Writes to the [[aux]] use the same
-    roots but need not have the same byte footprint (a partial memset,
-    for instance). *)
+(** During an external call, [write_authority] permits modifying address
+    a in memory m when a lies either inside one of the contract's
+    writable root spans or inside a live heap object allocated by the
+    call itself and recorded in born. Newly allocated objects belong to
+    the call automatically, whereas existing caller objects can only be
+    modified through a [writable_span] listed in the contract's roots.
+    Both data byte stores and [[aux]] capability updates draw their write
+    permission from this same set of addresses. *)
 Definition write_authority (roots : list span) (born : list Z) (m : mem) (a : Z) : Prop :=
   (exists s, In s roots /\ writable_span m s /\ span_contains s a) \/
   (exists base reg, In base born /\ object_region base (m_regions m) = Some reg /\
     r_kind reg = Heap /\ r_life reg = Live /\ base <= a < r_end reg).
 
-(** Capability c is one a call with readable spans sources and born
-    objects born may store in memory m: no capability ([CNone]); a
-    source pointer's own capability, copied; one loaded from a complete
-    eight-byte pointer slot inside a source, read through that source's
-    capability (the [[aux]] entry [m_aux] at the slot); or [Obj] or [Ro]
-    of an object this call allocated. In particular, [Ro] never becomes
-    [Obj] merely because their address bits coincide. Contracts copying
-    parts of pointers (the runtime's smidgens) must extend this
-    complete-slot rule first. *)
+(** An external call cannot forge a pointer [[capability]] out of raw
+    integer bits or upgrade a read-only [Ro] capability into a writable
+    [Obj] capability. The predicate [available_cap] restricts any
+    capability c that a call stores into memory m or returns to the
+    caller to four sources: the empty capability [CNone], the capability
+    carried by one of the contract's readable source pointers, a
+    capability loaded from an aligned eight-byte slot inside a readable
+    source span via [m_aux], or an [Obj] or [Ro] capability for a heap
+    object in born that the call allocated itself. *)
 Definition available_cap (sources : list span) (born : list Z) (m : mem) (c : cap) : Prop :=
   c = CNone \/
   (exists s, In s sources /\ c = ptr_cap (span_ptr s)) \/
@@ -64,8 +96,11 @@ Definition available_cap (sources : list span) (born : list Z) (m : mem) (c : ca
     access_res m a (ptr_cap (span_ptr s)) 8 Read 8 = Some ok /\ c = m_aux m a) \/
   (exists base, In base born /\ (c = Obj base \/ c = Ro base)).
 
-(** Every address a call has [write_authority] over lies inside some
-    object of the memory ([in_object]); [local_effect_kept] needs this. *)
+(** Every address that a call has [write_authority] to modify belongs
+    either to a checked writable span or to a live heap allocation, so
+    it always lies inside a registered object in memory. This ensures
+    that an external call never writes to unallocated addresses outside
+    all objects. *)
 Lemma write_authority_in : forall roots born m a,
   write_authority roots born m a -> in_object m a.
 Proof.
@@ -75,16 +110,12 @@ Proof.
   - exists base, reg. auto.
 Qed.
 
-(** One allocation-free segment of a call's memory effect, from m to m':
-    - every object of m is still an object of m' ([ids]);
-    - each object of m' is as it was in m or, if its base is in releases
-      or born and it was a live heap object, freed with empty bounds;
-    - bytes and [[aux]] entries outside [write_authority] are unchanged;
-    - every changed stored capability is [available_cap] from sources.
-
-    Byte and [[shadow]] footprints are independent, but every changed
-    cell needs write authority, and a changed stored capability needs a
-    source. Release permissions are separate from write permissions. *)
+(** Between heap allocations, an external call changes memory in
+    single steps described by [local_effect]. Such a step keeps all
+    registered objects registered, frees only live heap objects that
+    the call has permission to release, leaves all bytes and capability
+    slots outside the call's writable addresses untouched, and writes
+    only capabilities that the call already holds. *)
 Definition local_effect (sources roots : list span) (releases born : list Z) (m m' : mem) : Prop :=
   ids m m' /\
   (forall b reg', object_region b (m_regions m') = Some reg' ->
@@ -95,9 +126,12 @@ Definition local_effect (sources roots : list span) (releases born : list Z) (m 
     m_bytes m' a = m_bytes m a /\ m_aux m' a = m_aux m a) /\
   (forall a, m_aux m' a = m_aux m a \/ available_cap sources born m (m_aux m' a)).
 
-(** A [local_effect] is a change the program itself may make to memory
-    ([kept]), so the [[runtime]] stays [[ready]] across it by the
-    runtime axiom [ready_kept]. *)
+(** The core runtime invariant requires every memory transition to leave
+    existing object identities intact and to modify bytes only inside
+    registered objects, as captured by [kept]. Lemma [local_effect_kept]
+    proves that any [local_effect] satisfies [kept], which allows
+    [effects_preserve] to maintain [[runtime]] [[ready|readiness]] across
+    each segment via [ready_kept]. *)
 Lemma local_effect_kept : forall sources roots releases born m m',
   local_effect sources roots releases born m m' -> kept m m'.
 Proof.
@@ -108,15 +142,19 @@ Proof.
   - intros a Hout. apply Hw. intros Ha. apply Hout. eapply write_authority_in; eauto.
 Qed.
 
-(** Changing nothing is a [local_effect]. *)
+(** A step that leaves memory completely unchanged is always a valid
+    [local_effect] because it frees no objects and modifies no bytes or
+    capabilities. *)
 Lemma local_effect_refl : forall sources roots releases born m,
   local_effect sources roots releases born m m.
 Proof.
   intros. split; [apply ids_refl|]. split; [intros b reg E; exists reg; auto |]. auto.
 Qed.
 
-(** Storing the n bytes of x at address a is a [local_effect], if the
-    call has [write_authority] over each of those n addresses. *)
+(** When a call has [write_authority] over every byte from address a
+    through a + n - 1, [local_store_bytes] shows that storing the n-byte
+    integer value x at address a with [store_bytes] forms a valid
+    [local_effect]. *)
 Lemma local_store_bytes : forall sources roots releases born m a n x,
   (forall b, a <= b < a + n -> write_authority roots born m b) ->
   local_effect sources roots releases born m (store_bytes m a n x).
@@ -130,9 +168,13 @@ Proof.
     apply Z.leb_le in E1. apply Z.ltb_lt in E2. lia.
 Qed.
 
-(** Construction facts shared by native buffer setup and entry vectors.
-    Writing a pointer requires a capability source as well as writable
-    bytes. These are ordinary model stores, not additional axioms. *)
+(** When an external call writes a full pointer p to an eight-byte slot
+    at address a, it stores both the address bytes and the pointer's
+    capability. Lemma [local_store_pointer] proves that this combined
+    update is a [local_effect] whenever the eight bytes have
+    [write_authority] and the pointer's capability satisfies
+    [available_cap], while the helper lemmas immediately below establish
+    that [load_bytes] reads back the stored bytes. *)
 Lemma local_store_pointer : forall sources roots releases born m a p,
   (forall b, a <= b < a + 8 -> write_authority roots born m b) ->
   available_cap sources born m (ptr_cap p) ->
@@ -198,8 +240,12 @@ Proof.
     ring.
 Qed.
 
-(** A fresh allocation cannot shadow an already registered identity or
-    invalidate a capability-backed root of the caller. *)
+(** When an external call allocates a fresh heap object at an
+    unregistered base address, existing caller objects and their
+    capabilities must remain valid. Lemma [allocated_old_region] and the
+    two lemmas following it show that [allocated] preserves every
+    previously registered region, every passing [access_res] check, and
+    every [writable_span] from the pre-allocation memory. *)
 Lemma allocated_old_region : forall m q base old reg,
   object_region base (m_regions m) = None ->
   object_region old (m_regions m) = Some reg ->
@@ -233,35 +279,47 @@ Proof.
   eapply allocated_old_access; eauto.
 Qed.
 
-(** ## Events and contract results *)
+(** ## Events and contract results
 
-(** An observation an [[external call]] makes: [StreamBytes] stream
-    bytes, bytes that stdio accepted for the stream with descriptor
-    number stream (possibly only into its buffer, not a kernel write),
-    or [ProcessExit] status, the end of the process. *)
+    Besides modifying memory, an external call can emit observable stream
+    output, terminate the process, return result words to its caller, or
+    stop when an allocation request fails. This section defines those
+    observable events and call endings, checks that returned pointer
+    words carry only capabilities available to the call, and packages the
+    complete specification of an external function in the [contract]
+    record. *)
+
+(** An [event] records a single externally observable action performed
+    during a call. The constructor [StreamBytes] records a list of bytes
+    accepted for an output stream descriptor, while [ProcessExit] records
+    that the call terminated the process with a given exit status. *)
 Inductive event : Type :=
 | StreamBytes (stream : Z) (bytes : list Z)
 | ProcessExit (status : Z).
 
-(** How a completed call ends: returning the [[word|words]] values,
-    exiting the process with status, or a resource ending with the
-    [[trap]] reason why. *)
+(** When an external call finishes, [call_end] classifies how it
+    terminates. A call either returns a list of result [[word|words]] to
+    its caller with [CallReturn], exits the process with [CallExit], or
+    halts on an allocation failure with [CallResource]. *)
 Inductive call_end : Type :=
 | CallReturn (values : list word)
 | CallExit (status : Z)
 | CallResource (why : reason).
 
-(** A resource reason: out of memory, or a request too big. These are
-    the only [[trap]] reasons a call within its contract may end with,
-    and they are not capability panics; [puts_contract] allows both. *)
+(** Even when a caller satisfies a function's entry precondition, an
+    external call that allocates memory can still fail if the allocator
+    cannot satisfy its request. The predicate [resource_reason] restricts
+    those legitimate resource [[trap]] reasons to [OutOfMemory] and
+    [TooBig], distinguishing them from capability safety panics. *)
 Definition resource_reason (why : reason) : Prop :=
   why = OutOfMemory \/ why = TooBig.
 
-(** The words values fit the declared return type ty: none for void,
-    one word already at its [[class]] for a scalar, one per class for a
-    tuple. Keep the declared return shape: an empty or singleton tuple
-    is not a void or scalar return. The machine adapter must use this
-    signature, not [words_outcome]'s list-length convention. *)
+(** When an external call returns, the returned word list must match the
+    callee's declared [ret_type]. The predicate [return_shape] requires
+    an empty list for [RVoid], a single word matching its register
+    [[class]] for [RClass], and a word list matching each element class
+    in order for [RTuple], keeping void and scalar returns distinct from
+    empty or singleton tuples. *)
 Definition return_shape (ty : ret_type) (values : list word) : Prop :=
   match ty with
   | RVoid => values = []
@@ -269,10 +327,12 @@ Definition return_shape (ty : ret_type) (values : list word) : Prop :=
   | RTuple ks => Forall2 (fun k x => word_at_class k x = Some x) ks values
   end.
 
-(** A returned [[word]] x carries only authority the call had: the
-    capability of a pointer, or of a [[limit]] word, is [available_cap]
-    from the sources and born objects in the final memory m; an integer
-    needs none. *)
+(** Just as a call may only store capabilities permitted by
+    [available_cap] into memory, any pointer or [[limit]] [[word]] it
+    returns in a register must also carry a capability from the call's
+    sources or newly allocated objects. The predicate [word_authority]
+    enforces that check on pointer and limit words while placing no
+    restriction on plain integer words. *)
 Definition word_authority (sources : list span) (born : list Z) (m : mem) (x : word) : Prop :=
   match x with
   | WPtr p => available_cap sources born m (ptr_cap p)
@@ -280,16 +340,17 @@ Definition word_authority (sources : list span) (born : list Z) (m : mem) (x : w
   | WInt _ => True
   end.
 
-(** The [[external call|contract]] of one libc function, over a logical
-    world of libc state. It separates, in order: the declared return
-    type; the ABI premise on the call's result and argument syntax; the
-    caller's precondition on the argument words, memory and world; the
-    readable capability sources, writable roots and heap bases it may
-    release; the allocation requests (alignment, size) it may make; its
-    finite observable prefixes; its postcondition for normal endings;
-    the reasons it may end for lack of resources; and its panic set.
-    The panic set documents checks reachable outside the premises; it
-    does not grant a transition when a premise fails. *)
+(** A [contract] specifies the complete boundary behavior of one external
+    function over an abstract state type world. Its fields record the
+    declared return type [contract_returns], the call-site syntax check
+    [contract_abi], the entry precondition [contract_pre], the readable
+    spans [contract_sources], the writable spans [contract_writes], the
+    releasable heap bases [contract_releases], and the permitted
+    allocation requests [contract_requests]. The remaining fields specify
+    valid intermediate states in [contract_prefix], completed outcomes in
+    [contract_post], allowed allocator failure reasons in
+    [contract_resource], and documented safety trap reasons outside the
+    precondition in [contract_panics]. *)
 Record contract (world : Type) : Type := mkContract {
   contract_returns : ret_type;
   contract_abi : call_result -> list arg -> Prop;
@@ -316,13 +377,28 @@ Arguments contract_post {world}.
 Arguments contract_resource {world}.
 Arguments contract_panics {world}.
 
-(** ## Bounded string scans *)
+(** ## Bounded string scans
 
-(** The first NUL is at offset k before the bound n, or all n bytes
-    are nonzero and k=n. Only the consumed interval is readable; an
-    early NUL does not require n readable bytes or address+n to fit.
-    Even a zero-length scan requires a live object capability, allowing
-    one-past but not null, expired or forged pointers. *)
+    Many external functions either scan a byte buffer up to a terminating
+    NUL byte or overwrite a contiguous byte range while clearing any
+    pointer capabilities stored in its [[aux]] slots. This section
+    defines bounded and NUL-terminated string scan lengths alongside
+    full-span byte readability, and then builds the memory-fill
+    specification [memset_contract] used by `c: memset` and libpizlo's
+    `c: zmemset`. Because overwriting even one byte of a pointer
+    invalidates the whole eight-byte pointer slot in Fil-C,
+    [memset_contract] widens its write permission hull to include any
+    partially touched capability slot while keeping byte writes inside
+    the caller's exact range. *)
+
+(** When a bounded string scan such as `c: strnlen` inspects at most n
+    bytes starting at pointer p, it stops either at the first NUL byte at
+    offset k < n or after reading n nonzero bytes with k = n. The
+    predicate [bounded_length] requires p to carry a live object
+    [[capability]] and demands read permission only across the consumed
+    prefix of length k (plus the terminating NUL byte when k < n), so
+    an early NUL byte makes the call valid even if the full bound n
+    extends past the end of the object. *)
 Definition bounded_length (m : mem) (p : ptr) (n k : Z) : Prop :=
   0 <= n < 2 ^ 64 /\ 0 <= k <= n /\
   (exists base reg, (ptr_cap p = Obj base \/ ptr_cap p = Ro base) /\
@@ -331,7 +407,10 @@ Definition bounded_length (m : mem) (p : ptr) (n k : Z) : Prop :=
   (forall i, 0 <= i < k -> 0 < m_bytes m (ptr_addr p + i) < 256) /\
   (k < n -> m_bytes m (ptr_addr p + k) = 0).
 
-(** The first NUL, or the exhausted bound, uniquely fixes the result. *)
+(** Because every byte before offset k is nonzero and any byte at offset
+    k < n is NUL, [bounded_length_unique] shows that [bounded_length]
+    determines a unique scan length k for any memory m, pointer p, and
+    bound n. *)
 Lemma bounded_length_unique : forall m p n left right,
   bounded_length m p n left -> bounded_length m p n right -> left = right.
 Proof.
@@ -341,21 +420,28 @@ Proof.
   - specialize (Hbytesl right ltac:(lia)). rewrite Hnulr in Hbytesl by lia. lia.
 Qed.
 
-(** An unbounded string terminates strictly before SIZE_MAX. The sentinel
-    is a logical bound, not permission to read SIZE_MAX bytes: only the
-    first k nonzero bytes and their NUL are required through p's live
-    object capability. An exhausted nonterminated span is not a string. *)
+(** An unbounded string scan such as `c: strlen` requires a terminating
+    NUL byte to appear at some offset k strictly below `SIZE_MAX`
+    (2^64 - 1). The predicate [terminated_length] defines that scan as a
+    [bounded_length] up to 2^64 - 1 with k < 2^64 - 1, requiring read
+    authority only through the first NUL byte at offset k rather than
+    across `SIZE_MAX` bytes. *)
 Definition terminated_length (m : mem) (p : ptr) (k : Z) : Prop :=
   bounded_length m p (2 ^ 64 - 1) k /\ k < 2 ^ 64 - 1.
 
-(** The first NUL uniquely fixes strlen's integer result, not just its sign. *)
+(** Because a C string stops at its first NUL byte, any pointer p has
+    at most one NUL-terminated length k in memory m under
+    [terminated_length]. *)
 Lemma terminated_length_unique : forall m p left right,
   terminated_length m p left -> terminated_length m p right -> left = right.
 Proof. intros m p left right [Hl _] [Hr _]. eapply bounded_length_unique; eauto. Qed.
 
-(** The read footprint is one identity's region (including life) and
-    bytes at offsets 0 through k. Agreement on those pieces suffices;
-    unrelated objects, bytes and every auxiliary slot may change. *)
+(** Whether [terminated_length] holds at pointer p with length k depends
+    only on the region of p's target object and the data bytes at offsets
+    0 through k. Lemma [terminated_length_agree] shows that if two
+    memories agree on that object region and those k + 1 bytes, any
+    [terminated_length] in the first memory holds with the same length in
+    the second. *)
 Lemma terminated_length_agree : forall m m' p k,
   (forall base, ptr_cap p = Obj base \/ ptr_cap p = Ro base ->
     object_region base (m_regions m') = object_region base (m_regions m)) ->
@@ -375,9 +461,12 @@ Proof.
       * intros Hlt. rewrite Hbytes by lia. apply Hnul. exact Hlt.
 Qed.
 
-(** A canonical size_t count of well-formed bytes is readable through
-    one live object capability. Zero count still needs live authority,
-    possibly one-past. This is a full-span premise, not an early-stop scan. *)
+(** Unlike a NUL-terminated scan that stops early, a memory copy or
+    fixed-length write reads all n bytes starting at pointer p. The
+    predicate [readable_bytes] requires a canonical 64-bit length n, a
+    live [Obj] or [Ro] capability on p, passing [access_res] read
+    permission across all n bytes, and well-formed byte values in `0..255`
+    at every offset, including when n is zero. *)
 Definition readable_bytes (m : mem) (p : ptr) (n : Z) : Prop :=
   0 <= n < 2 ^ 64 /\
   (exists base reg, (ptr_cap p = Obj base \/ ptr_cap p = Ro base) /\
@@ -385,7 +474,10 @@ Definition readable_bytes (m : mem) (p : ptr) (n : Z) : Prop :=
   access_res m (ptr_addr p) (ptr_cap p) n Read 1 = Some ok /\
   (forall i, 0 <= i < n -> 0 <= m_bytes m (ptr_addr p + i) < 256).
 
-(** A shorter prefix retains the same live capability and byte domain. *)
+(** Because capability bounds checks are downward closed on nonnegative
+    lengths, [readable_bytes_prefix] shows that if n bytes are readable
+    at pointer p under [readable_bytes], any shorter prefix of k <= n
+    bytes is also readable. *)
 Lemma readable_bytes_prefix : forall m p n k,
   readable_bytes m p n -> 0 <= k <= n -> readable_bytes m p k.
 Proof.
@@ -399,8 +491,11 @@ Proof.
   all: rewrite Hlo, (proj2 (Z.leb_le (ptr_addr p + k) (r_end reg)) ltac:(lia)); exact Ha.
 Qed.
 
-(** Every smaller consumed prefix is a readable byte span, including
-    its witnessed NUL when present. No byte after that NUL is needed. *)
+(** A bounded string scan checks read permission up through its consumed
+    prefix, including the terminating NUL byte when k < n. Lemma
+    [bounded_prefix_readable] shows that any byte count up to that
+    consumed extent satisfies [readable_bytes], without requiring any
+    bytes after the NUL terminator to be readable. *)
 Lemma bounded_prefix_readable : forall m p n k count,
   bounded_length m p n k ->
   0 <= count <= k + (if k <? n then 1 else 0) -> readable_bytes m p count.
@@ -426,8 +521,10 @@ Proof.
       destruct Hiend as [-> Hkn]. rewrite Hnul by exact Hkn. lia.
 Qed.
 
-(** The complete string including its NUL is a readable byte span.
-    Only the consumed extent is required, without runtime readiness. *)
+(** Since a NUL-terminated string of length k always has k < 2^64 - 1,
+    [terminated_length_readable] specializes [bounded_prefix_readable] to
+    show that the k + 1 bytes of the string and its NUL terminator
+    satisfy [readable_bytes]. *)
 Lemma terminated_length_readable : forall m p k,
   terminated_length m p k -> readable_bytes m p (k + 1).
 Proof.
@@ -436,14 +533,19 @@ Proof.
   rewrite Hlt. destruct Hlength as (_ & Hk & _). lia.
 Qed.
 
-(** The aligned pointer slot at a intersects a nonempty byte fill.
-    Its start can precede p; a slot starting at the exclusive endpoint
-    is not touched. The positive-count guard makes empty fills empty. *)
+(** In Fil-C, pointer capabilities live in eight-byte-aligned [[aux]]
+    slots, so overwriting even a single byte inside an eight-byte word
+    must clear the capability stored for that slot. The boolean test
+    [memset_touched] returns `true` when a positive byte count n causes
+    the filled byte range at p to overlap the eight-byte-aligned slot
+    starting at address a. *)
 Definition memset_touched (p : ptr) (n a : Z) : bool :=
   (0 <? n) && (a mod 8 =? 0) && (a <? ptr_addr p + n) && (ptr_addr p <? a + 8).
 
-(** The boolean footprint states precisely positive count, slot
-    alignment and overlap of the two half-open intervals. *)
+(** Lemma [memset_touched_spec] rewrites the boolean test
+    [memset_touched] into the equivalent arithmetic conjunction: the fill
+    count n is positive, the slot address a is eight-byte aligned, and the
+    filled byte range overlaps the eight-byte slot at a. *)
 Lemma memset_touched_spec : forall p n a,
   memset_touched p n a = true <->
   0 < n /\ a mod 8 = 0 /\ a < ptr_addr p + n /\ ptr_addr p < a + 8.
@@ -452,25 +554,32 @@ Proof.
   rewrite Z.eqb_eq. repeat rewrite Z.ltb_lt. tauto.
 Qed.
 
-(** Permission hull, not the byte footprint: round the start down
-    to include a partially touched auxiliary slot, but do not round
-    the end up. Empty fills retain the original zero-size pointer. *)
+(** When `c: memset` starts at an address that is not a multiple of
+    eight, the first eight-byte [[aux]] capability slot it overlaps
+    begins at the preceding eight-byte boundary. To give the call
+    permission to clear that slot's capability, [memset_root] rounds a
+    nonempty span's start address down to an eight-byte boundary while
+    keeping the original end address. *)
 Definition memset_root (p : ptr) (n : Z) : span :=
   if n =? 0 then mkSpan p 0 else
   mkSpan (mkPtr (ptr_addr p - ptr_addr p mod 8) (ptr_cap p)) (n + ptr_addr p mod 8).
 
-(** Independent admission: canonical int and size_t, live writable
-    destination bytes, and an eight-aligned object base for positive
-    counts. The base restriction matches native object-relative aux
-    rounding to the model's absolute slots; it is not a runtime axiom.
-    Zero-count live Obj admission is conservative: native returns
-    before checking even null, Ro or expired pointers at zero count. *)
+(** A call to `c: memset` is admissible under [memset_domain] when the
+    fill value c fits in 32 bits, the byte count n fits in 64 bits, the
+    n destination bytes at p form a [writable_span], and for positive n
+    the target object's base address is a multiple of eight. Because
+    every Fil-C object starts at an eight-byte-aligned base, rounding
+    an in-bounds destination address down to an eight-byte boundary
+    never steps before the start of the object. *)
 Definition memset_domain (m : mem) (p : ptr) (c n : Z) : Prop :=
   0 <= c < 2 ^ 32 /\ 0 <= n < 2 ^ 64 /\ writable_span m (mkSpan p n) /\
   (n = 0 \/ exists base, ptr_cap p = Obj base /\ base mod 8 = 0).
 
-(** Ordinary writable bytes and the explicit base alignment derive
-    the hull's authority; callers need not assume a second span. *)
+(** When `c: memset` fills a positive number of bytes inside an
+    eight-byte-aligned object, rounding the destination address down
+    to an eight-byte boundary never steps before the start of that
+    object. The widened span [memset_root] is therefore writable
+    whenever the caller's destination buffer is writable. *)
 Lemma memset_root_writable : forall m p c n,
   memset_domain m p c n -> writable_span m (memset_root p n).
 Proof.
@@ -500,8 +609,10 @@ Proof.
     rewrite Hstart, Hend. unfold aligned_res. rewrite Z.mod_1_r. reflexivity.
 Qed.
 
-(** Every written byte lies in the permission hull, including for
-    unaligned destinations; an empty byte interval has no members. *)
+(** Rounding the start of a nonempty destination range down to an
+    eight-byte boundary only enlarges the interval on the left, so
+    every byte address in the caller's destination range also lies
+    inside [memset_root]. *)
 Lemma memset_byte_in_root : forall p n a,
   span_contains (mkSpan p n) a -> span_contains (memset_root p n) a.
 Proof.
@@ -511,8 +622,11 @@ Proof.
   - pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)). lia.
 Qed.
 
-(** Each touched auxiliary slot start also lies in the hull, even
-    when it precedes the first written byte. *)
+(** When an eight-byte capability slot overlaps a nonempty `c: memset`
+    range, that slot begins at or after the preceding eight-byte
+    boundary and before the end of the fill range. Its aligned start
+    address therefore lies inside [memset_root], giving the call
+    permission to clear the slot's capability. *)
 Lemma memset_aux_in_root : forall p n a,
   memset_touched p n a = true -> span_contains (memset_root p n) a.
 Proof.
@@ -524,32 +638,40 @@ Proof.
     pose proof (Z.div_mod a 8 ltac:(lia)). lia.
 Qed.
 
-(** Exact frame for every accepted prefix: retain all regions,
-    all bytes outside the requested interval and all auxiliary entries
-    outside touched slots. The hull grants no extra byte writes. *)
+(** Even though [memset_root] widens the contract's write permission down
+    to the nearest eight-byte boundary so it can clear a partially
+    overwritten capability slot, the call must not alter data bytes
+    before `ptr_addr p`. The frame relation [memset_frame] states that a
+    memory step preserves all object regions, leaves every data byte
+    outside `mkSpan p n` unchanged, and leaves every [[aux]] slot where
+    [memset_touched] is `false` unchanged. *)
 Definition memset_frame (m : mem) (p : ptr) (n : Z) (m' : mem) : Prop :=
   m_regions m' = m_regions m /\
   (forall a, ~ span_contains (mkSpan p n) a -> m_bytes m' a = m_bytes m a) /\
   (forall a, memset_touched p n a = false -> m_aux m' a = m_aux m a).
 
-(** Completion fills every requested byte with the same low byte and
-    clears every touched slot, preserving the independent exact frame. *)
+(** When a `c: memset` call finishes, [memset_result] states that every
+    byte in the destination buffer holds the low byte of c, every
+    overlapped capability slot is cleared, and all other bytes,
+    capability slots, and object regions remain unchanged. *)
 Definition memset_result (m : mem) (p : ptr) (c n : Z) (m' : mem) : Prop :=
   memset_frame m p n m' /\
   (forall a, span_contains (mkSpan p n) a -> m_bytes m' a = c mod 256) /\
   (forall a, memset_touched p n a = true -> m_aux m' a = CNone).
 
-(** A logical result witness, not an implementation of native libc.
-    Return m directly at zero count, avoiding extensionality assumptions.
-    At positive counts byte repetition is not a little-endian store. *)
+(** To show that [memset_result] is satisfiable for any valid input,
+    [memset_memory] constructs the exact post-call memory state directly,
+    returning the original memory m unchanged when n is zero and updating
+    the filled byte range and touched [[aux]] slots when n is positive. *)
 Definition memset_memory (m : mem) (p : ptr) (c n : Z) : mem :=
   if n =? 0 then m else
   mkMem (fun a => if (ptr_addr p <=? a) && (a <? ptr_addr p + n)
                  then c mod 256 else m_bytes m a)
     (m_regions m) (fun a => if memset_touched p n a then CNone else m_aux m a).
 
-(** The witness meets the exact byte and auxiliary result without
-    assuming coverage, readiness or an eventual native return. *)
+(** Lemma [memset_memory_result] proves that the witness memory
+    [memset_memory] satisfies all three clauses of [memset_result] for
+    any memory m, pointer p, fill value c, and byte count n. *)
 Lemma memset_memory_result : forall m p c n,
   memset_result m p c n (memset_memory m p c n).
 Proof.
@@ -571,9 +693,10 @@ Proof.
       * intros a H. simpl. rewrite H. reflexivity.
 Qed.
 
-(** Every exact framed effect is a legal allocation-free segment:
-    changed cells lie in the writable hull and changed capabilities
-    are only CNone. This proves authority, not native satisfaction. *)
+(** A `c: memset` call overwrites bytes and capability slots only
+    within its widened writable span and clears each touched
+    capability slot rather than storing a new pointer. Filling memory
+    according to [memset_result] is therefore a valid [local_effect]. *)
 Lemma memset_result_local : forall m p c n m',
   memset_domain m p c n -> memset_result m p c n m' ->
   local_effect [mkSpan p 0] [memset_root p n] [] [] m m'.
@@ -596,18 +719,19 @@ Proof.
       * left. apply Haux. exact Ha.
 Qed.
 
-(** Memset's ABI is P/W/L to P, with a discarded result permitted.
-    It is distinct from searches' P/W and copies' P/P/L signatures. *)
+(** A call instruction matches [memset_abi] when it passes a
+    destination pointer, a 32-bit fill value, and a 64-bit byte count,
+    and either discards the return value or binds the returned pointer. *)
 Definition memset_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d P) /\
   exists p c n, args = [Arg P p; Arg W c; Arg L n].
 
-(** Trusted nonallocating memset with an exact byte/aux frame. The
-    zero-size source permits returning the original pointer capability,
-    not importing slots. The widened root is permission only. No events,
-    ownership transfer, release, resource ending or exit are admitted.
-    Native coverage across internal collector safepoints is uninstantiated;
-    unrelated freed-capability rewrites are not hidden in this frame. *)
+(** The specification [memset_contract] packages the calling
+    convention, precondition, writable span, and postcondition for
+    `c: memset` and libpizlo's `c: zmemset`. It records a zero-length
+    readable span on the destination pointer so the call may return
+    that pointer's capability, uses [memset_root] as its writable
+    span, performs no allocations or frees, and emits no events. *)
 Definition memset_contract (world : Type) : contract world :=
   mkContract world (RClass P) memset_abi
     (fun xs m _ => exists p c n, xs = [WPtr p; WInt c; WInt n] /\ memset_domain m p c n)
@@ -622,32 +746,56 @@ Definition memset_contract (world : Type) : contract world :=
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
 
-(** ## Snapshot copies and partial pointer words *)
+(** ## Snapshot copies and partial pointer words
 
-(** A complete destination word maps to a complete aligned source
-    word. Partial smidgens and out-of-phase transfers do not compose
-    pointer authority. Slot alignment itself comes from the touched set. *)
+    When `c: memcpy` or `c: memmove` copies bytes between buffers in
+    Fil-C, an eight-byte destination slot preserves a pointer
+    [[capability]] only when it receives all eight bytes from a single
+    eight-byte-aligned slot in the source buffer. Any destination slot
+    that is only partially overwritten or receives bytes from an
+    unaligned source offset has its capability cleared. This section
+    models byte copies from a snapshot of the initial memory so that
+    disjoint and overlapping copies share one specification. *)
+
+(** When a byte copy of length n from source s to destination d touches
+    an eight-byte destination slot at address a, that slot preserves a
+    pointer [[capability]] only if all eight of its bytes come from a
+    single eight-byte-aligned slot in the source buffer. The boolean test
+    [copy_full_slot] checks that the eight-byte slot at a lies completely
+    inside the destination range and that the corresponding source
+    address `ptr_addr s + (a - ptr_addr d)` is a multiple of eight. *)
 Definition copy_full_slot (d s : ptr) (n a : Z) : bool :=
   (ptr_addr d <=? a) && (a + 8 <=? ptr_addr d + n) &&
   ((ptr_addr s + (a - ptr_addr d)) mod 8 =? 0).
 
-(** The exact capability for a touched destination slot, from the
-    original memory snapshot. A partial or out-of-phase word is cleared.
-    Native lower/box correspondence remains a representation obligation. *)
+(** For each eight-byte destination slot at address a touched by a copy,
+    [copy_slot] computes the [[capability]] that must appear in [m_aux]
+    after the call. When [copy_full_slot] holds, the slot receives the
+    capability stored in the initial memory m at the corresponding source
+    slot `ptr_addr s + (a - ptr_addr d)`, and otherwise it is cleared to
+    [CNone] because partial or misaligned pointer copies never preserve
+    capabilities in Fil-C. *)
 Definition copy_slot (m : mem) (d s : ptr) (n a : Z) : cap :=
   if copy_full_slot d s n a then m_aux m (ptr_addr s + (a - ptr_addr d)) else CNone.
 
-(** Both operands have independent live authority; positive counts
-    require aligned object bases, not aligned operand addresses. memcpy
-    and mempcpy require disjoint byte ranges; memmove permits overlap.
-    Adjacent byte intervals may share a partial auxiliary word. *)
+(** A byte copy of n bytes from source s to destination d is admissible
+    under [copy_domain] when the destination satisfies [memset_domain],
+    the source satisfies [readable_bytes] with an eight-byte-aligned
+    object base for positive n, and the byte intervals either are
+    disjoint or have `overlap = true` as in `c: memmove`. Even when the
+    byte ranges are disjoint, adjacent source and destination buffers may
+    still share an eight-byte [[aux]] slot if their boundary is not
+    eight-byte aligned. *)
 Definition copy_domain (overlap : bool) (m : mem) (d s : ptr) (n : Z) : Prop :=
   memset_domain m d 0 n /\ readable_bytes m s n /\
   (n = 0 \/ exists base, (ptr_cap s = Obj base \/ ptr_cap s = Ro base) /\ base mod 8 = 0) /\
   (overlap = true \/ n = 0 \/ ptr_addr d + n <= ptr_addr s \/ ptr_addr s + n <= ptr_addr d).
 
-(** Read authority for each complete aligned source word follows
-    from full-span input readability, not from an auxiliary-cell lookup. *)
+(** When n bytes starting at pointer p are readable under
+    [readable_bytes], any eight-byte-aligned word completely inside that
+    range lies in the same live object and has eight-byte read
+    permission. This gives a copy call authority to read the
+    capability stored in that source slot. *)
 Lemma readable_bytes_slot : forall m p n a,
   readable_bytes m p n -> ptr_addr p <= a -> a + 8 <= ptr_addr p + n -> a mod 8 = 0 ->
   access_res m a (ptr_cap p) 8 Read 8 = Some ok.
@@ -663,8 +811,10 @@ Proof.
   all: rewrite Hstart, Hend; simpl; unfold aligned_res; rewrite Halign; reflexivity.
 Qed.
 
-(** A specified copied capability is available through a complete
-    original source slot, or is CNone. Destination authority is separate. *)
+(** When a copy reads from a valid source buffer, the capability
+    selected by [copy_slot] for any destination slot is either copied
+    from a complete aligned pointer slot in the source buffer or
+    cleared, so the call always has permission to store it. *)
 Lemma copy_slot_authority : forall m d s n a,
   readable_bytes m s n ->
   available_cap [mkSpan s n; mkSpan d 0] [] m (copy_slot m d s n a).
@@ -681,16 +831,20 @@ Proof.
   - left. reflexivity.
 Qed.
 
-(** Snapshot bytes and exact touched-slot capabilities, with the
-    independent destination-only frame shared with byte fills. *)
+(** When a byte copy of n bytes from s to d finishes, [copy_result]
+    states that memory outside the destination range satisfies
+    [memset_frame], each byte in the destination range equals the
+    corresponding byte from the initial source buffer, and each
+    touched destination capability slot equals [copy_slot]. *)
 Definition copy_result (m : mem) (d s : ptr) (n : Z) (m' : mem) : Prop :=
   memset_frame m d n m' /\
   (forall a, span_contains (mkSpan d n) a ->
     m_bytes m' a = m_bytes m (ptr_addr s + (a - ptr_addr d))) /\
   (forall a, memset_touched d n a = true -> m_aux m' a = copy_slot m d s n a).
 
-(** Observable cells of any completed snapshot, not only its chosen
-    witness. Outside-range byte and auxiliary frames are independent. *)
+(** Combining the inside-range updates and outside-range frame of
+    [copy_result] determines the exact byte value and capability slot
+    at every address in the post-call memory. *)
 Lemma copy_result_cells : forall m d s n m' a,
   copy_result m d s n m' ->
   m_bytes m' a = (if (ptr_addr d <=? a) && (a <? ptr_addr d + n)
@@ -706,17 +860,20 @@ Proof.
   - destruct (memset_touched d n a) eqn:H; [apply Hslots|apply Ha]; exact H.
 Qed.
 
-(** One logical snapshot witness, including for overlapping moves.
-    Empty copies return the original memory; self-copies of partial
-    words still clear metadata and are not a blanket no-op. *)
+(** Just as [memset_memory] witnesses the post-state of a byte fill,
+    [copy_memory] constructs the post-state memory of a byte copy directly
+    from the pre-state snapshot m, returning m unchanged when n is zero
+    even if a positive self-copy would have cleared a partially touched
+    capability slot. *)
 Definition copy_memory (m : mem) (d s : ptr) (n : Z) : mem :=
   if n =? 0 then m else
   mkMem (fun a => if (ptr_addr d <=? a) && (a <? ptr_addr d + n)
     then m_bytes m (ptr_addr s + (a - ptr_addr d)) else m_bytes m a)
     (m_regions m) (fun a => if memset_touched d n a then copy_slot m d s n a else m_aux m a).
 
-(** The snapshot witness satisfies the exact copy relation, without
-    any claim that native libc terminates or realizes every prefix. *)
+(** Lemma [copy_memory_result] proves that the explicit snapshot memory
+    [copy_memory] satisfies [copy_result] for any initial memory m,
+    destination d, source s, and count n. *)
 Lemma copy_memory_result : forall m d s n, copy_result m d s n (copy_memory m d s n).
 Proof.
   intros m d s n. unfold copy_memory. destruct (n =? 0) eqn:E.
@@ -737,9 +894,10 @@ Proof.
       * intros a H. simpl. rewrite H. reflexivity.
 Qed.
 
-(** Every specified snapshot result is an authorized local effect.
-    Only destination cells change; imported caps come from original
-    complete source words, never from fragments or the result memory. *)
+(** A byte copy overwrites bytes and capability slots only inside the
+    destination buffer's writable span and copies capabilities only
+    from complete aligned words in the source buffer. Copying memory
+    according to [copy_result] is therefore a valid [local_effect]. *)
 Lemma copy_result_local : forall overlap m d s n m',
   copy_domain overlap m d s n -> copy_result m d s n m' ->
   local_effect [mkSpan s n; mkSpan d 0] [memset_root d n] [] [] m m'.
@@ -761,22 +919,28 @@ Proof.
       * left. apply Ha. exact H.
 Qed.
 
-(** The shared byte-copy ABI: destination, source, count, with a
-    discarded result or a pointer result. *)
+(** A call instruction matches [copy_abi] when it passes a destination
+    pointer, a source pointer, and a 64-bit byte count, and either
+    discards the return value or binds the returned pointer. *)
 Definition copy_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d P) /\
   exists d s n, args = [Arg P d; Arg P s; Arg L n].
 
-(** Copy APIs differ only in overlap admission and destination/end
-    return. The end retains the destination's exact capability. *)
+(** While `c: memcpy` and `c: memmove` return the original destination
+    pointer d, `c: mempcpy` returns a pointer to the byte immediately
+    following the copied range. The helper [copy_return] selects between
+    `mkPtr (ptr_addr d + n) (ptr_cap d)` and d according to the boolean
+    flag `end_return`, keeping the destination's capability in both cases. *)
 Definition copy_return (end_return : bool) (d : ptr) (n : Z) : ptr :=
   if end_return then mkPtr (ptr_addr d + n) (ptr_cap d) else d.
 
-(** Conditional logical byte-copy contract. Metadata allocation can
-    fail or exit/re-enter even for small native copies: resource and
-    collector prefix coverage, and lower/box correspondence, remain
-    uninstantiated. No application-visible allocation is invented for
-    that internal storage. The shared relation includes partial words. *)
+(** The specification [copy_contract] defines the external call
+    contract for the byte-copy family, parameterized by whether the
+    source and destination ranges may overlap and whether the call
+    returns the start or the end of the destination range. Its readable
+    spans cover the n-byte source buffer and a zero-length span on the
+    destination pointer so the call can both copy source capabilities
+    and return the destination capability. *)
 Definition copy_contract (overlap end_return : bool) (world : Type) : contract world :=
   mkContract world (RClass P) copy_abi
     (fun xs m _ => exists d s n, xs = [WPtr d; WPtr s; WInt n] /\ copy_domain overlap m d s n)
@@ -791,36 +955,47 @@ Definition copy_contract (overlap end_return : bool) (world : Type) : contract w
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
 
-(** memcpy returns its destination and requires nonoverlapping bytes. *)
+(** Specializing [copy_contract] with `overlap = false` and
+    `end_return = false` gives [memcpy_contract], which requires disjoint
+    source and destination ranges and returns the destination pointer d. *)
 Definition memcpy_contract := copy_contract false false.
-(** mempcpy has the same effect but returns the destination endpoint. *)
+(** Specializing [copy_contract] with `overlap = false` and
+    `end_return = true` gives [mempcpy_contract], which requires disjoint
+    ranges and returns `ptr_addr d + n` with the destination's capability. *)
 Definition mempcpy_contract := copy_contract false true.
-(** memmove uses the same original snapshot with overlapping ranges. *)
+(** Specializing [copy_contract] with `overlap = true` and
+    `end_return = false` gives [memmove_contract], which permits
+    overlapping buffers and is used with `void_only` in `OsRegistry.v` to
+    specify libpizlo's `c: zmemmove`. *)
 Definition memmove_contract := copy_contract true false.
 
-(** The represented thread supplies a live, nonnull writable int cell.
-    Alignment is of its address, not merely of its containing object. *)
+(** When a system call fails, libpizlo writes a 32-bit error code into
+    the calling thread's `c: errno` variable. The predicate [errno_cell]
+    requires the `c: errno` pointer p to have a nonzero, four-byte-aligned
+    address and to form a four-byte [writable_span] in memory m. *)
 Definition errno_cell (m : mem) (p : ptr) : Prop :=
   ptr_addr p <> 0 /\ writable_span m (mkSpan p 4) /\ ptr_addr p mod 4 = 0.
 
 (** ## Memory paths over any runtime
 
-    A call changes memory through a finite sequence of authorized effects.
-    Each step preserves readiness and the identities of existing objects. *)
+    While an external call is running, it can alternate between local
+    memory writes and fresh heap allocations answered by the
+    [[runtime]] allocator. This section chains those steps into finite
+    paths over any [Runtime] implementation and proves that every
+    in-flight prefix and completed call preserves runtime
+    [[ready|readiness]] and existing object [[identity|identities]]. *)
 
-(** The call relations over any [[runtime]] R, whose allocator answers
-    each request the contract makes. *)
+(** The functor [ExternalCalls] parameterizes the multi-step effect,
+    prefix, and invocation relations over any [Runtime] implementation R
+    whose allocator answers the call's heap allocation requests. *)
 Module ExternalCalls (R : Runtime).
 
-(** A finite path of a call's memory effects, from runtime state s,
-    memory m and born list born (the bases this call allocated) to s',
-    m' and born': [local_effect] segments, and successful allocations
-    of requests the contract allows, of at most [max_allocation_size]
-    bytes, each adding the new base to born. Each allocation extends
-    the call's private authority. It cannot claim an existing object's
-    identity: [fresh_allocation] proves that from readiness. The list
-    is historical, so freed identities never become available for
-    reuse. *)
+(** While an external call is running, it can alternate between
+    modifying existing buffers and allocating new heap objects. The
+    inductive relation [effects] chains those steps from an initial
+    runtime and memory state to a final state, recording each newly
+    allocated heap base in born so later steps of the call can
+    initialize or free that object without touching caller memory. *)
 Inductive effects (sources roots : list span) (releases : list Z) (requests : Z -> Z -> Prop)
     : R.state -> mem -> list Z -> R.state -> mem -> list Z -> Prop :=
 | effects_refl : forall s m born, effects sources roots releases requests s m born s m born
@@ -834,11 +1009,11 @@ Inductive effects (sources roots : list span) (releases : list Z) (requests : Z 
     effects sources roots releases requests s1 (allocated m (heap_req align size) base) (base :: born) s' m' born' ->
     effects sources roots releases requests s m born s' m' born'.
 
-(** If the [[runtime]] is [[ready]] in state s and memory m, it is ready
-    at the end of an [effects] path, and every object of m
-    [[identity|persists]] into m'. This is a prefix theorem as well as
-    an endpoint theorem: every finite prefix is itself an effects
-    derivation. *)
+(** Every local memory write and every fresh heap allocation along an
+    [effects] path preserves the invariants of a [[ready]] runtime and
+    keeps existing objects registered. By induction on the path, any
+    sequence of authorized call effects starting from a ready state
+    ends in a ready state where every initial object [[identity|persists]]. *)
 Theorem effects_preserve : forall sources roots releases requests s m born s' m' born',
   effects sources roots releases requests s m born s' m' born' -> R.ready s m ->
   R.ready s' m' /\ persists m m'.
@@ -856,33 +1031,31 @@ Proof.
     eapply persists_trans; [apply allocated_persists; exact (proj1 (proj2 (proj2 (proj2 Hf)))) | exact Hp].
 Qed.
 
-(** A finite observed prefix of a call of the contract spec on argument
-    words xs: an [effects] path from s and m, with the contract's
-    sources, roots, releases and requests and no born objects yet, to
-    s', m' and born, where the contract's prefix relation accepts the
-    observations trace and the new world w'. Prefixes do not require an
-    eventual return: a blocking call may have these finite
-    observations. Concrete prefix coverage is trusted, not established
-    by the structural preservation theorem. *)
+(** Before an external call returns, or while a blocking call is still
+    in flight, [prefix] describes any finite intermediate stage of its
+    execution. A valid prefix consists of an [effects] path starting from
+    an empty born list together with an event trace and updated world w'
+    accepted by the contract's [contract_prefix] relation. *)
 Definition prefix {world : Type} (spec : contract world) xs s m w born trace s' m' w' : Prop :=
   effects (contract_sources spec xs m w) (contract_writes spec xs m w)
     (contract_releases spec xs m w) (contract_requests spec xs m w) s m [] s' m' born /\
   contract_prefix spec xs m w born trace m' w'.
 
-(** A call [prefix] from a [[ready]] state keeps the runtime ready and
-    every object [[identity|persisting]]. *)
+(** Any in-flight call [prefix] starting from a [[ready]] runtime and
+    memory state keeps the runtime ready and preserves all existing
+    object [[identity|identities]]. *)
 Theorem prefix_preserve : forall world (spec : contract world) xs s m w born trace s' m' w',
   prefix spec xs s m w born trace s' m' w' -> R.ready s m ->
   R.ready s' m' /\ persists m m'.
 Proof. intros world spec xs s m w born trace s' m' w' [He _] Hr. eapply effects_preserve; eauto. Qed.
 
-(** Why an allocation the contract requests may fail in runtime state
-    s: [OutOfMemory] when the runtime refuses a request of legal size,
-    [TooBig] when the size exceeds [max_allocation_size]
-    (`max_allocation_size/1`). Compare the original requested size,
-    BEFORE [heap_req] rounds it up, exactly as Ops.v does. A legal size
-    2^48-1 has extent 2^48, and may be refused by a runtime, but is not
-    TooBig. *)
+(** When an external call requests a heap allocation permitted by its
+    contract, [resource_failure] explains how that request can fail in
+    runtime state s. Either the requested byte size is at most
+    [max_allocation_size] and `R.alloc` returns `None`, producing
+    [OutOfMemory] via [failure_oom], or the requested size before
+    [heap_req] rounding exceeds [max_allocation_size], producing [TooBig]
+    via [failure_big]. *)
 Inductive resource_failure (requests : Z -> Z -> Prop) (s : R.state) : reason -> Prop :=
 | failure_oom : forall align size,
     requests align size -> 0 <= size <= max_allocation_size ->
@@ -891,20 +1064,19 @@ Inductive resource_failure (requests : Z -> Z -> Prop) (s : R.state) : reason ->
     requests align size -> max_allocation_size < size ->
     resource_failure requests s TooBig.
 
-(** A completed call of the contract spec, with call result r, argument
-    syntax args and argument words xs, from runtime state s, memory m
-    and world w, observing trace and ending as ending. In both rules the
-    ABI and the precondition hold and a [prefix] reaches the end state.
-    - Normal: the postcondition holds and the ending is not a resource
-      ending; returned values have the declared [return_shape] and only
-      the call's authority ([word_authority]); an exit ends the trace
-      with its [ProcessExit].
-    - Resource: a requested allocation fails ([resource_failure]) for a
-      reason the contract allows.
+(** The inductive relation [invoke] defines when a completed external
+    call transitions from an initial runtime state, memory, and world
+    to a final state with an event trace and a [call_end] outcome. In
+    both cases, the call site must match the contract's ABI, the entry
+    state must satisfy the precondition, and the memory transition must
+    form a valid [prefix].
 
-    No rule turns a failed precondition into success or a native trap.
-    The future machine wrapper must check admissibility even when no
-    invoke derivation exists; absence of behavior is not adequacy. *)
+    A normal completion satisfies the contract's postcondition, returns
+    words that match the declared return type and carry only
+    capabilities available to the call, and records a trailing exit
+    event whenever the call exits the process. A resource completion
+    stops when a permitted allocation request fails in the allocator
+    with a [resource_failure] reason that the contract allows. *)
 Inductive invoke {world : Type} (spec : contract world) (r : call_result) (args : list arg)
     (xs : list word) (s : R.state) (m : mem) (w : world)
     : list event -> call_end -> R.state -> mem -> world -> Prop :=
@@ -924,16 +1096,20 @@ Inductive invoke {world : Type} (spec : contract world) (r : call_result) (args 
     resource_failure (contract_requests spec xs m w) s' why -> contract_resource spec why ->
     invoke spec r args xs s m w trace (CallResource why) s' m' w'.
 
-(** Every completed call, normal or resource, is a [prefix] ending in
-    the same state, for some list of born objects. *)
+(** Every completed external call, whether it finishes normally or
+    stops on an allocation failure, reaches its final state through a
+    valid [prefix] for some list of newly allocated objects. *)
 Theorem invoke_prefix : forall world (spec : contract world) r args xs s m w trace ending s' m' w',
   invoke spec r args xs s m w trace ending s' m' w' ->
   exists born, prefix spec xs s m w born trace s' m' w'.
 Proof. intros. destruct H; eauto. Qed.
 
-(** A completed call from a [[ready]] state keeps the runtime ready and
-    every object [[identity|persisting]]; the labelled machine's
-    [step_ready] and [step_persists] rest on this. *)
+(** Combining [invoke_prefix] with [effects_preserve], [invoke_preserve]
+    proves that every completed external call from a [[ready]] state
+    keeps the runtime ready and preserves every pre-existing object
+    [[identity]]. The labelled machine in `ExternalMachine.v` relies on
+    this theorem to prove its step-level readiness and persistence
+    invariants. *)
 Theorem invoke_preserve : forall world (spec : contract world) r args xs s m w trace ending s' m' w',
   invoke spec r args xs s m w trace ending s' m' w' -> R.ready s m ->
   R.ready s' m' /\ persists m m'.
@@ -943,16 +1119,18 @@ Proof.
   eapply effects_preserve; eauto.
 Qed.
 
-(** The largest legal size, rounded by [heap_req], reserves 2^48
-    bytes. Boundary checks use the caller's size, not the rounded
-    extent. *)
+(** The largest legal allocation request asks for one byte less than
+    2^48 bytes, and rounding that request up to a 16-byte boundary
+    with [heap_req] reserves an extent of 2^48 bytes. *)
 Example rounded_maximum_extent :
   req_extent (heap_req 16 max_allocation_size) = 2 ^ 48.
 Proof. reflexivity. Qed.
 
-(** An allocation of the largest legal size is an [effects] step when
-    the runtime grants it. Successful allocation remains conditional on
-    the runtime's answer. *)
+(** Because [effects_alloc] checks the caller's unrounded size against
+    [max_allocation_size] before passing the rounded request to `R.alloc`,
+    [rounded_maximum_allocation] shows that an allocation of
+    [max_allocation_size] bytes forms a valid [effects] step whenever the
+    runtime grants it. *)
 Example rounded_maximum_allocation : forall s m base s',
   R.alloc s (heap_req 16 max_allocation_size) = Some (base, s') ->
   effects [] [] [] (fun align size => align = 16 /\ size = max_allocation_size)
@@ -962,8 +1140,9 @@ Proof.
     [split; reflexivity | unfold max_allocation_size; lia | exact Ha | constructor].
 Qed.
 
-(** A request of the largest legal size never fails as [TooBig], even
-    though its rounded extent is 2^48. *)
+(** Even though a request for [max_allocation_size] bytes rounds up to an
+    extent of 2^48 bytes, [rounded_maximum_not_too_big] shows that it can
+    never fail with [TooBig] under [resource_failure]. *)
 Example rounded_maximum_not_too_big : forall s,
   ~ resource_failure (fun align size => align = 16 /\ size = max_allocation_size) s TooBig.
 Proof.
@@ -971,7 +1150,9 @@ Proof.
   destruct Hreq as [_ ->]. lia.
 Qed.
 
-(** A request of 2^48 bytes fails as [TooBig] in any runtime state. *)
+(** Once a contract requests 2^48 bytes, the unrounded size exceeds
+    [max_allocation_size], and [oversized_request] shows that the request
+    fails with [TooBig] in every runtime state s. *)
 Example oversized_request : forall s,
   resource_failure (fun align size => align = 16 /\ size = 2 ^ 48) s TooBig.
 Proof.
@@ -979,9 +1160,10 @@ Proof.
     [split; reflexivity | unfold max_allocation_size; lia].
 Qed.
 
-(** Any exact memset result gives an actual returning invocation from
-    independent admission. Its finite path has one authorized segment,
-    no allocation and no state change in the runtime. *)
+(** Whenever a `c: memset` call site and its arguments are valid and
+    the updated memory satisfies [memset_result], the call completes
+    under [memset_contract] and returns the destination pointer without
+    allocating memory or emitting events. *)
 Theorem memset_return : forall world r args p c n s m m' (w : world),
   memset_abi r args -> memset_domain m p c n -> memset_result m p c n m' ->
   invoke (memset_contract world) r args [WPtr p; WInt c; WInt n] s m w
@@ -1005,9 +1187,9 @@ Proof.
   - intros status Hbad. discriminate.
 Qed.
 
-(** Input-only premises construct a completed effect, not merely a
-    postcondition witness. This is logical nonvacuity, not a native
-    coverage or termination theorem. *)
+(** Whenever a `c: memset` call passes a valid destination buffer, fill
+    byte, and length, the call can finish in the updated memory
+    [memset_memory] and return the destination pointer. *)
 Theorem memset_admitted : forall world r args p c n s m (w : world),
   memset_abi r args -> memset_domain m p c n ->
   invoke (memset_contract world) r args [WPtr p; WInt c; WInt n] s m w
@@ -1016,9 +1198,10 @@ Proof.
   intros. apply memset_return; [assumption|assumption|apply memset_memory_result].
 Qed.
 
-(** Every completion extracts the original admitted arguments, exact
-    destination pointer, byte/aux effect, empty trace and unchanged
-    world. Resource and exit completions are excluded. *)
+(** When a call governed by [memset_contract] finishes, it emits no
+    events, leaves the external world unchanged, returns the
+    destination pointer, and updates memory according to
+    [memset_result]. *)
 Theorem memset_invocation : forall world r args xs s m (w : world) trace ending s' m' w',
   invoke (memset_contract world) r args xs s m w trace ending s' m' w' ->
   trace = [] /\ w' = w /\
@@ -1036,9 +1219,12 @@ Proof.
   - contradiction.
 Qed.
 
-(** Zero-count completions preserve all bytes, regions and auxiliary
-    entries, not just the constructed witness. No extensionality axiom
-    is needed for this pointwise public-call result. *)
+(** When `c: memset` or `c: zmemset` is called with a byte count of zero,
+    no byte lies inside `mkSpan p 0` and no [[aux]] slot is touched under
+    [memset_touched]. Theorem [memset_zero_invocation] uses
+    [memset_invocation] to show that any completed zero-length call
+    returns p and leaves every region, data byte, and capability slot in
+    m' equal to its value in m. *)
 Theorem memset_zero_invocation : forall world r args p c s m (w : world) trace ending s' m' w',
   invoke (memset_contract world) r args [WPtr p; WInt c; WInt 0] s m w
     trace ending s' m' w' ->
@@ -1054,8 +1240,10 @@ Proof.
   - apply Ha. reflexivity.
 Qed.
 
-(** Any permitted snapshot result constructs a real returning call,
-    using original source authority even when byte ranges overlap. *)
+(** Whenever a byte-copy call site and its operands are valid and the
+    updated memory satisfies [copy_result], the call completes under
+    [copy_contract] in a single local-effect step and returns the
+    specified destination pointer. *)
 Theorem copy_completed : forall overlap end_return world r args d src n s m m' (w : world),
   copy_abi r args -> copy_domain overlap m d src n -> copy_result m d src n m' ->
   invoke (copy_contract overlap end_return world) r args [WPtr d; WPtr src; WInt n] s m w
@@ -1078,16 +1266,19 @@ Proof.
   - intros status Hbad. discriminate.
 Qed.
 
-(** Independent inputs construct a snapshot invocation. This proves
-    nonvacuity, not native success, resource coverage or termination. *)
+(** Every valid byte-copy call site and input state can complete in the
+    explicit snapshot memory [copy_memory], showing that
+    [copy_contract] is satisfiable for all admissible operands. *)
 Theorem copy_admitted : forall overlap end_return world r args d src n s m (w : world),
   copy_abi r args -> copy_domain overlap m d src n ->
   invoke (copy_contract overlap end_return world) r args [WPtr d; WPtr src; WInt n] s m w
     [] (CallReturn [WPtr (copy_return end_return d n)]) s (copy_memory m d src n) w.
 Proof. intros. apply copy_completed; [assumption|assumption|apply copy_memory_result]. Qed.
 
-(** Every completion retains the admitted operands and exact snapshot
-    result, including the API's chosen destination/end provenance. *)
+(** When a call governed by [copy_contract] finishes, it emits no
+    events, leaves the external world unchanged, updates the
+    destination buffer according to [copy_result], and returns the
+    destination or end pointer. *)
 Theorem copy_invocation : forall overlap end_return world r args xs s m (w : world)
     trace ending s' m' w',
   invoke (copy_contract overlap end_return world) r args xs s m w trace ending s' m' w' ->
@@ -1107,9 +1298,12 @@ Proof.
   - contradiction.
 Qed.
 
-(** In a ready memory the mathematical destination endpoint stays in
-    its object or one-past, below 2^64. No modular wrap or extra bound
-    axiom is needed for mempcpy's result. *)
+(** In a [[ready]] memory state, every registered object lies inside the
+    48-bit [[address-space|address space]] below 2^48. Theorem
+    [copy_endpoint] uses `R.address_space` to show that when [copy_domain]
+    holds, the endpoint `ptr_addr d + n` returned by `c: mempcpy` stays
+    within the destination object's bounds (including one-past-the-end)
+    and fits in a canonical 64-bit address without modular wraparound. *)
 Theorem copy_endpoint : forall overlap s m d src n,
   R.ready s m -> copy_domain overlap m d src n ->
   exists base reg, ptr_cap d = Obj base /\ object_region base (m_regions m) = Some reg /\
@@ -1126,8 +1320,11 @@ Proof.
   exists base, reg. split; [exact Hcap|]. split; [exact Hr|]. repeat split; try assumption; lia.
 Qed.
 
-(** Readiness bounds only the consumed interval. A huge unused maximum
-    need not fit in the address space, and is not part of this bound. *)
+(** In a [[ready]] memory state, every registered object lies inside the
+    48-bit address space. Because [bounded_length] checks read
+    permission across the consumed prefix of a string scan, both the
+    start address and the end of that consumed prefix fit below 2^48,
+    even when the caller's maximum bound n is much larger. *)
 Lemma bounded_length_extent : forall s m p n k,
   R.ready s m -> bounded_length m p n k ->
   0 <= ptr_addr p /\ ptr_addr p + k + (if k <? n then 1 else 0) <= 2 ^ 48.
@@ -1143,8 +1340,10 @@ Proof.
     apply Z.leb_le in Hlo; apply Z.leb_le in Hhi; lia.
 Qed.
 
-(** The consumed extent includes the terminating byte and fits in the
-    address space whenever the runtime starts ready. *)
+(** Since a NUL-terminated string of length k always consumes k + 1 bytes
+    including its terminating NUL, [terminated_length_extent] specializes
+    [bounded_length_extent] to show that `ptr_addr p + k + 1 <= 2 ^ 48`
+    in any [[ready]] memory state. *)
 Lemma terminated_length_extent : forall s m p k,
   R.ready s m -> terminated_length m p k ->
   0 <= ptr_addr p /\ ptr_addr p + k + 1 <= 2 ^ 48.
@@ -1155,8 +1354,11 @@ Proof.
   rewrite Hlt in Hextent. exact Hextent.
 Qed.
 
-(** A ready readable byte span's entire interval fits in the address space;
-    unlike [bounded_length_extent], this includes the full maximum. *)
+(** Unlike a bounded string scan that may stop before its maximum bound,
+    [readable_bytes] checks read permission across all n bytes, so
+    [readable_bytes_extent] proves that the entire n-byte interval
+    starting at `ptr_addr p` fits within `0..2^48` in any [[ready]]
+    memory state. *)
 Lemma readable_bytes_extent : forall s m p n,
   R.ready s m -> readable_bytes m p n ->
   0 <= ptr_addr p /\ ptr_addr p + n <= 2 ^ 48.
@@ -1175,28 +1377,37 @@ End ExternalCalls.
 
 (** ## C-string contents
 
-    A C string contains nonzero bytes followed by a NUL within readable memory.
-    These predicates connect its byte list to the position of that terminator. *)
+    Higher-level contracts and separation-logic proofs often describe a C
+    string by the mathematical list of its nonzero character bytes rather
+    than by the numeric offset of its terminating NUL byte. This final
+    section defines the list-based predicates [string_at] and [c_string]
+    and proves in [StringLengths] that, in any [[ready]] memory state, a
+    readable list string is equivalent to a [terminated_length] scan
+    whose NUL byte lies strictly below `SIZE_MAX`. *)
 
-(** The memory m holds the nonzero bytes bytes from address a on,
-    followed by a NUL byte. *)
+(** Given a memory m, a start address a, and a list of character codes
+    bytes, the recursive predicate [string_at] holds when memory stores
+    each byte of the list at consecutive addresses starting at a, with
+    every byte in `1..255`, followed immediately by a terminating NUL
+    byte `0`. *)
 Fixpoint string_at (m : mem) (a : Z) (bytes : list Z) : Prop :=
   match bytes with
   | [] => m_bytes m a = 0
   | b :: rest => 0 < b < 256 /\ m_bytes m a = b /\ string_at m (a + 1) rest
   end.
 
-(** Pointer p points at a C string with contents bytes in memory m:
-    its capability permits reading the bytes and the terminating NUL
-    ([access_res] with [Read]), and [string_at] holds there, so the
-    first NUL is within a readable capability. There is no bound on the
-    length in the contract; examples' short strings are fixtures. *)
+(** A pointer p points to a valid C string with character list bytes
+    under [c_string] when its [[capability]] grants read permission
+    across the characters and their terminating NUL byte and
+    [string_at] holds at p's address. *)
 Definition c_string (m : mem) (p : ptr) (bytes : list Z) : Prop :=
   access_res m (ptr_addr p) (ptr_cap p) (Z.of_nat (length bytes) + 1) Read 1 = Some ok /\
   string_at m (ptr_addr p) bytes.
 
-(** A list string has nonzero byte contents before its length and a NUL
-    exactly at that length. No authority is inferred from total memory. *)
+(** By induction on the byte list, [string_at_length] translates the
+    recursive predicate [string_at] into indexed byte lookups: every
+    offset i before `length bytes` holds a nonzero byte in `1..255`, and
+    the offset `length bytes` holds the terminating NUL byte `0`. *)
 Lemma string_at_length : forall bytes m a,
   string_at m a bytes ->
   (forall i, 0 <= i < Z.of_nat (length bytes) -> 0 < m_bytes m (a + i) < 256) /\
@@ -1216,8 +1427,10 @@ Proof.
         (a + 1 + Z.of_nat (length rest)) by lia. exact Hnul.
 Qed.
 
-(** Finite nonzero bytes ending in NUL construct their list representation.
-    This constructive enumeration is a proof, not a native scan algorithm. *)
+(** Conversely, if every offset before count holds a nonzero byte in
+    `1..255` and offset count holds `0`, [string_at_exists] constructs the
+    unique list of bytes of length count that satisfies [string_at] at
+    address a. *)
 Lemma string_at_exists : forall count m a,
   (forall i, 0 <= i < Z.of_nat count -> 0 < m_bytes m (a + i) < 256) ->
   m_bytes m (a + Z.of_nat count) = 0 ->
@@ -1234,8 +1447,9 @@ Proof.
       split; [|auto]. replace a with (a + 0) by lia. apply Hbytes. lia.
 Qed.
 
-(** Terminated-length authority constructs a checked list string without
-    readiness; the reverse direction below needs ready-memory facts. *)
+(** Any pointer whose NUL-terminated scan length is k under
+    [terminated_length] points to a valid [c_string] whose character
+    list has length k. *)
 Lemma terminated_length_string : forall m p k,
   terminated_length m p k ->
   exists bytes, c_string m p bytes /\ k = Z.of_nat (length bytes).
@@ -1251,13 +1465,19 @@ Proof.
     split; [split; [rewrite Hlength; exact Ha|exact Hstring]|lia].
 Qed.
 
-(** Ready-memory facts connect strlen's explicit lifetime and canonical
-    result to the unchanged list-string domain used by puts. *)
+(** While converting [terminated_length] into a [c_string] in
+    [terminated_length_string] needs no runtime assumptions, the reverse
+    direction must show that the target object is live and that the
+    string length k is strictly less than `SIZE_MAX`. The functor
+    [StringLengths] proves that reverse direction over any [Runtime] R
+    using the [[ready]] memory invariants. *)
 Module StringLengths (R : Runtime).
 
-(** A checked list string is live under readiness: freed objects have
-    empty bounds. Its positive extent fits in 2^48, so the first NUL is
-    strictly before SIZE_MAX, not an extra practical length restriction. *)
+(** In Fil-C, freed objects have zero-length bounds and every object
+    fits inside the 48-bit address space. Because a valid C string
+    under [c_string] has at least one readable byte for its NUL
+    terminator, its object must still be live and its length is always
+    less than `SIZE_MAX`. *)
 Lemma c_string_length : forall s m p bytes,
   R.ready s m -> c_string m p bytes ->
   terminated_length m p (Z.of_nat (length bytes)).
@@ -1294,8 +1514,9 @@ Proof.
     + auto.
 Qed.
 
-(** Under readiness, terminated lengths and checked list strings are
-    equivalent. This does not strengthen puts on arbitrary model memories. *)
+(** In any [[ready]] memory state, a pointer has NUL-terminated scan
+    length k under [terminated_length] if and only if it points to a
+    valid [c_string] of length k. *)
 Theorem terminated_length_c_string : forall s m p k,
   R.ready s m ->
   (terminated_length m p k <->

@@ -1,19 +1,32 @@
-(** [[campaign|Campaign]] 4's guarded, labelled extension of Machine.v
-    ([milestone 2](../../../docs/formal.md#campaign-4-milestone-2-guarded-machine-integration)):
-    a [[machine]] whose steps carry the [[external call]] events of
-    ExternalCalls.v.
+(** When a compiled C module calls a system-call wrapper or runtime helper
+    that is not defined in the module itself, the core [[machine]] in
+    [Machine](../soundness/Machine.v) halts on the unresolved symbol. This
+    module extends that machine with a contract registry, such as the
+    `zsys_*` table in `OsRegistry.v`, and labels each transition with the
+    observable events from [ExternalCalls](ExternalCalls.v). Ordinary IR
+    instructions, heap allocations, and garbage-collection
+    [[poll|safepoints]] continue to run silently without emitting events.
 
-    Existing machine steps are silent and unchanged. A direct call of
-    an unresolved, non-data name other than free can invoke a registered
-    contract, only in a frame that is not [[doomed]]. A completed call
-    carries its observations and exact runtime/memory/world snapshot.
+    When an active [[frame]] that is not [[doomed]] reaches a direct call to
+    an unresolved symbol ([external_site]), the machine looks up that
+    symbol's [[external-call|contract]] in the registry and steps through
+    [E.invoke]. A call that returns binds its result words in the caller's
+    environment and resumes at the next instruction, whereas a call that
+    exits the process or exhausts memory stops the machine in that final
+    state. If a call site has no registered contract, passes ill-typed
+    arguments, violates the contract's precondition, or receives an
+    incompatible return value, the machine halts with a [ContractViolation]
+    so that specification failures are never confused with Fil-C capability
+    [[trap|traps]].
 
-    Contract violations are specification failures, NOT native traps.
-    Coverage and caller admissibility are checked independently of an
-    invocation's existence. Admissible contracts may still have no
-    completed invocation: native coverage, blocking/divergence and
-    independent external prefixes remain obligations, not safety claims.
-    This extension is relational; the extracted driver is unchanged. *)
+    Because an external call can overwrite memory, allocate new heap objects,
+    and advance the [[runtime]] state before returning to compiled C code,
+    external returns must preserve [[campaign|Campaign]] 3's [[validator]]
+    invariants. The final section proves that returning from a valid external
+    call keeps the runtime [[ready]], preserves object [[identity]], and
+    maintains both the [[evidence]] invariant and the
+    [[single-definition|single-definition]] invariant over every finite
+    [run]. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine
@@ -22,12 +35,18 @@ Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Dispatch and the return channel *)
+(** ## Dispatch and the return channel
 
-(** A direct call about to run: its [[block]] label, the call's result
-    (where the returned words go), the called global's name, the
-    argument syntax, and the instructions and jump that follow it in
-    the block. *)
+    Before coupling external calls to a runtime, we define when a frame is
+    poised at an external call instruction and how the call's returned words
+    flow back into the caller's environment. This section also defines the
+    stopping conditions of the labelled machine and proves in
+    [external_site_stuck] that ordinary IR execution never competes with
+    external contract dispatch. *)
+
+(** The record [call_site] packages the syntax of a direct call instruction
+    together with its surrounding [[block]] label and the instructions and
+    jump that follow the call when it returns. *)
 Record call_site : Type := mkCallSite {
   site_label : name;
   site_result : call_result;
@@ -37,15 +56,13 @@ Record call_site : Type := mkCallSite {
   site_jump : jump
 }.
 
-(** In the global environment ge, the configuration c is at the
-    external call site: its [[frame]] is not [[doomed]], its next
-    instruction is a direct call of site's global name, and that name is
-    neither a function of the module (defined or outside the
-    [[core subset]], [find_fn]), nor global data, nor a free the model
-    runs ([is_free_name]: free or zgc_free). This preserves core
-    dispatch precedence: both frees remain the runtime's operation, and
-    no contract can be registered over either. In particular a doomed call cannot use this rule to
-    escape [Ahead]. *)
+(** A configuration c sits at an [external_site] when its active [[frame]] is
+    not [[doomed]], its next instruction calls a global symbol directly, and
+    that symbol is neither a function in the module, a global data object,
+    nor a runtime deallocation (`c: free` or `c: zgc_free`). Requiring an
+    undoomed frame prevents a doomed [[check_ahead]] path from escaping
+    through an external contract, while excluding `c: free` keeps
+    deallocation under the core runtime rules. *)
 Definition external_site (ge : genv) (c : config) (site : call_site) : Prop :=
   let fr := c_frame c in
   fr_doomed fr = None /\
@@ -54,10 +71,12 @@ Definition external_site (ge : genv) (c : config) (site : call_site) : Prop :=
   find_fn ge (site_name site) = None /\ lookup (site_name site) (ge_globals ge) = None /\
   is_free_name (site_name site) = false.
 
-(** The [[outcome]] a call's returned words xs make under the declared
-    return type ty: [RetVoid] for void, [Ret] for a scalar, [Rets] for
-    any tuple; none when void or scalar gets the wrong number of words.
-    The declared shape, not list length, selects the return channel. *)
+(** When an external contract finishes, [external_outcome] packages its
+    returned word list into a core [[outcome]] according to the contract's
+    declared return type: [RetVoid] for a void return, [Ret] for a single
+    scalar word, and [Rets] for a multi-word tuple. If a void or scalar
+    contract produces the wrong number of words, [external_outcome] returns
+    `None` so the machine can report a return-channel mismatch. *)
 Definition external_outcome (ty : ret_type) (xs : list word) : option outcome :=
   match ty, xs with
   | RVoid, [] => Some RetVoid
@@ -66,7 +85,8 @@ Definition external_outcome (ty : ret_type) (xs : list word) : option outcome :=
   | _, _ => None
   end.
 
-(** Words of the declared [return_shape] always make an outcome. *)
+(** Any word list that satisfies a contract's declared [return_shape]
+    converts to a valid [[outcome]] under [external_outcome]. *)
 Lemma external_outcome_total : forall ty xs,
   return_shape ty xs -> exists o, external_outcome ty xs = Some o.
 Proof.
@@ -76,41 +96,46 @@ Proof.
   - eexists. reflexivity.
 Qed.
 
-(** The caller's environment e with the words xs a call of the contract
-    spec returned bound as the site's result reads them
-    ([returned_env], as `call_outcome_result/5`); none if the declared
-    return channel and the site's result do not fit. *)
+(** When an external call returns a list of words, [external_env] converts
+    those words with [external_outcome] and binds them to the destination
+    [[temporary]] names at the call site via [returned_env]. It returns
+    `None` when the returned words do not match the call site's result
+    binding. *)
 Definition external_env {world : Type} (spec : contract world) (site : call_site)
     (xs : list word) (e : env) : option env :=
   let* o := external_outcome (contract_returns spec) xs in
   returned_env (site_result site) o e.
 
-(** The [[frame|configuration]] after an external call returns: the same
-    function, locals, callers and [[fuel]], with environment e and
-    memory m, at the instruction after the call. *)
+(** After an external call returns an updated environment e and memory m,
+    [resume_external] advances the active frame past the call instruction
+    while keeping the caller's function, stack locals, waiting callers, and
+    remaining [[fuel]]. *)
 Definition resume_external (c : config) (site : call_site) (e : env) (m : Memory.mem) : config :=
   let fr := c_frame c in
   mkConfig (mkFrame (fr_fn fr) e (fr_locals fr) None
     (Exec (site_label site) (site_rest site) (site_jump site))) (c_callers c) m (c_fuel c).
 
-(** How a call site fails its contract: no contract is registered for
-    the name, an argument does not evaluate, the ABI or the precondition
-    does not hold, or the returned words do not fit the call's result.
-    These are specification failures, not Fil-C [[trap|traps]]. *)
+(** A [violation] classifies how a call site can fail its contract: the
+    callee has no registered contract, an argument fails to evaluate, the
+    call site violates the contract's ABI or precondition, or the returned
+    words do not fit the caller's destination binding. These failures mark a
+    broken specification rather than a runtime capability [[trap]]. *)
 Inductive violation : Type := MissingContract | BadArguments | BadABI | BadPrecondition | BadReturn.
 
-(** Why the labelled machine stopped: a core [[outcome]], a stuck core
-    step with its diagnostic, a process exit with its status from an
-    external call, or a contract violation at the call of symbol. *)
+(** An [ending] records why the labelled machine stopped: a normal or
+    trapping core [[outcome]], a stuck core instruction with its diagnostic
+    message, a process exit triggered by an external call, or a
+    [ContractViolation] at an external call site. *)
 Inductive ending : Type :=
 | CoreEnd (o : outcome)
 | CoreStuck (diagnostic : string)
 | ExternalExit (status : Z)
 | ContractViolation (symbol : name) (why : violation).
 
-(** At an [external_site], the core [Semantics.step] is stuck on the
-    instruction, so no core continuation or allocation can compete with
-    contract dispatch. Runtime safepoints ([[poll]]) remain. *)
+(** When a configuration is poised at an [external_site], the core
+    instruction step [Semantics.step] returns `Stuck "instruction"`, which
+    ensures in [external_core_safepoint] that no core instruction or
+    allocation step can fire in place of contract dispatch. *)
 Lemma external_site_stuck : forall ge c site,
   external_site ge c site -> Semantics.step ge c = Stuck "instruction".
 Proof.
@@ -120,11 +145,18 @@ Proof.
   rewrite Hfn. unfold external_call. rewrite Hdata, Hfree. reflexivity.
 Qed.
 
-(** ## The labelled machine *)
+(** ## The labelled machine
 
-(** The labelled machine over any [[runtime]] R, with the call relations
-    (E), the evidence invariant (P) and the [[single definition]]
-    invariant (S) instantiated at R. *)
+    The functor [ExternalMachine] pairs the core machine over a [[runtime]] R
+    with a logical world shared by all registered external contracts. This
+    section defines when a call site is [admissible] or [rejected], gives the
+    labelled [step] and multi-step [run] relations, and proves in
+    [step_ready] and [step_persists] that every step preserves runtime
+    readiness and existing object identities. *)
+
+(** For any [[runtime]] implementation R, the module [ExternalMachine]
+    combines the external-call semantics of [ExternalCalls] with the
+    run-level validator invariants over R. *)
 Module ExternalMachine (R : Runtime).
 
 Module E := ExternalCalls R.
@@ -132,17 +164,15 @@ Module P := Persistence R.
 Module S := Single R.
 Import P.I P.I.RM.
 
-(** A core machine step ([mstep]) is also a step of the copy of the
-    machine inside the single-definition functor. The two invariant
-    functors instantiate the same core machine, but its inductive
-    relation is generative; copy only its constructors. *)
+(** Two modules that instantiate the core machine over the same runtime
+    define the same step relation with separate constructors. This helper
+    converts a core machine step from one module instance to the other. *)
 Lemma single_core_step : forall ge ms ms', mstep ge ms ms' -> S.ID.RM.mstep ge ms ms'.
 Proof. intros ge ms ms' H. destruct H; [eapply S.ID.RM.mstep_next | eapply S.ID.RM.mstep_alloc | eapply S.ID.RM.mstep_safepoint]; eauto. Qed.
 
-(** At an [external_site], the only core machine step is a safepoint
-    ([[poll]]): it is due there, the runtime acts on memory, and the
-    call point stays in place. A contract's precondition is then checked
-    in the post-safepoint state. *)
+(** By [external_site_stuck], the only core machine step that can fire at an
+    [external_site] is a garbage-collection [[poll|safepoint]], which updates
+    memory in place and leaves the configuration at the same call site. *)
 Lemma external_core_safepoint : forall ge c s c' s' site,
   external_site ge c site -> mstep ge (c, s) (c', s') ->
   safepoint_due ge c = true /\ exists m', c' = with_mem c m' /\ R.safepoint s (c_mem c) s' m'.
@@ -152,31 +182,32 @@ Proof.
   inversion H; subst; try congruence. eauto.
 Qed.
 
-(** Everything below is over one type world of logical libc state,
-    shared by all registered contracts. *)
+(** Within this section, the type variable world represents the external
+    library or operating-system state shared by all contracts in a registry. *)
 Section World.
 Variable world : Type.
 
-(** A labelled machine state: a core machine state (configuration and
-    runtime state) and the world, either running or stopped with an
-    [ending]. *)
+(** A labelled machine [state] pairs the core machine state and the external
+    world, and is either [Running] or [Stopped] with a terminal [ending]. *)
 Inductive state : Type :=
 | Running (machine : mstate) (w : world)
 | Stopped (why : ending) (machine : mstate) (w : world).
 
-(** The core machine state inside st. *)
+(** The projection [machine_of] extracts the underlying core machine state
+    from either a running or a stopped labelled state. *)
 Definition machine_of (st : state) : mstate :=
   match st with Running ms _ | Stopped _ ms _ => ms end.
 
-(** The [[runtime]] is [[ready]] in st's machine state. *)
+(** A labelled state satisfies [state_ready] when the [[runtime]] is [[ready]]
+    in its underlying core machine state. *)
 Definition state_ready (st : state) : Prop := ready_state (machine_of st).
 
-(** The call at site is admissible under the registry (each name's
-    contract, if any) in configuration c and world w: a contract is
-    registered, the arguments evaluate to words xs, and the ABI and the
-    precondition hold. These obligations are at the call site, not
-    conditional on there being an invoke derivation. Negating pre does
-    not grant a libc trap. *)
+(** An external call site is [admissible] when the registry provides a
+    contract for the callee, the call arguments evaluate to words, and both
+    the contract's ABI check and its precondition hold in the current memory
+    and world. Admissibility is checked directly at the call site before any
+    invocation runs, so failing a precondition is a contract violation rather
+    than a runtime trap. *)
 Definition admissible (registry : name -> option (contract world)) (ge : genv)
     (c : config) (w : world) (site : call_site) : Prop :=
   exists spec xs,
@@ -184,10 +215,11 @@ Definition admissible (registry : name -> option (contract world)) (ge : genv)
     map_option (arg_x ge (fr_env (c_frame c))) (site_args site) = Some xs /\
     contract_abi spec (site_result site) (site_args site) /\ contract_pre spec xs (c_mem c) w.
 
-(** Why the call at site is rejected, checked in order: no registered
-    contract, an argument that does not evaluate, a false ABI premise,
-    or a false precondition. Each is the [violation] of the same name;
-    a bad return is caught after the call, by [step_bad_return]. *)
+(** The inductive predicate [rejected] classifies why a call site fails
+    [admissible], checking in order for a missing contract, unevaluable
+    arguments, a broken ABI premise, or a violated precondition. Return-type
+    mismatches after a call finishes are caught separately by
+    [step_bad_return]. *)
 Inductive rejected (registry : name -> option (contract world)) (ge : genv)
     (c : config) (w : world) (site : call_site) : violation -> Prop :=
 | reject_missing : registry (site_name site) = None -> rejected registry ge c w site MissingContract
@@ -205,21 +237,24 @@ Inductive rejected (registry : name -> option (contract world)) (ge : genv)
     contract_abi spec (site_result site) (site_args site) ->
     ~ contract_pre spec xs (c_mem c) w -> rejected registry ge c w site BadPrecondition.
 
-(** One labelled [[step]] under the registry, with its events:
-    - a core machine step ([mstep]), silent;
-    - a core terminal, stuck step or allocation refusal, where no
-      external call is due, stopping with the configuration as it was;
-    - a completed call at an [external_site]: a return resumes at the
-      next instruction with the call's memory, runtime state and world
-      ([resume_external]), an exit or resource ending stops with them;
-    - a [rejected] call, or a return the site's result cannot take,
-      stopping with a [ContractViolation]. *)
+(** The relation [step] defines one transition of the labelled machine under
+    a contract registry and records the observable events emitted during the
+    step. Ordinary core machine steps, normal returns, core traps, stuck
+    instructions, and allocation refusals run when no external call is due
+    and emit an empty event trace.
+
+    At an external call site, the machine invokes the callee's registered
+    contract and records the events that the call emits. A returning call
+    resumes at the next instruction in the updated memory and world, whereas
+    a process exit, an allocation failure, or a broken contract stops the
+    machine. *)
 Inductive step (registry : name -> option (contract world)) (ge : genv)
     : state -> list event -> state -> Prop :=
 | step_core : forall ms ms' w,
     mstep ge ms ms' -> step registry ge (Running ms w) [] (Running ms' w)
-(** Core terminals retain an observation snapshot. Done contains no
-    final memory: e.g. a top-level return discards its invalidated locals. *)
+(** When a core execution finishes without an external call, the stopped
+    state keeps the final configuration and runtime snapshot alongside the
+    terminal outcome. *)
 | step_core_end : forall c s w o,
     (forall site, ~ external_site ge c site) ->
     Semantics.step ge c = Done o ->
@@ -264,10 +299,9 @@ Inductive step (registry : name -> option (contract world)) (ge : genv)
     step registry ge (Running (c, s) w) trace
       (Stopped (ContractViolation (site_name site) BadReturn) (with_mem c m', s') w').
 
-(** A finite labelled [[run]]: a sequence of steps whose events are
-    concatenated in order. Completed calls are atomic here. [prefix]
-    remains independent: this is not yet a native prefix or totality
-    semantics. *)
+(** The multi-step relation [run] chains a finite sequence of labelled [step]
+    transitions and concatenates their event traces in order. Each completed
+    external call appears as a single atomic step in this trace. *)
 Inductive run (registry : name -> option (contract world)) (ge : genv)
     : state -> list event -> state -> Prop :=
 | run_refl : forall st, run registry ge st [] st
@@ -275,18 +309,18 @@ Inductive run (registry : name -> option (contract world)) (ge : genv)
     step registry ge st trace mid -> run registry ge mid tail last ->
     run registry ge st (trace ++ tail) last.
 
-(** No running state reached from start can step to a
-    [ContractViolation]. Safety against specification failures is about
-    EVERY reached state, not merely the ending a chosen path happens to
-    take. A safepoint that later repairs pre cannot erase an earlier
-    rejection. *)
+(** A starting state satisfies [no_violation] when no running state reachable
+    from it via [run] can take a [step] to a [ContractViolation]. Every
+    reachable state must avoid contract violations on every possible step,
+    even if another branch such as a runtime safepoint could also fire at the
+    same state. *)
 Definition no_violation (registry : name -> option (contract world)) (ge : genv) (start : state) : Prop :=
   forall prefix ms w trace symbol why ms' w',
     run registry ge start prefix (Running ms w) ->
     ~ step registry ge (Running ms w) trace (Stopped (ContractViolation symbol why) ms' w').
 
-(** Where there is [no_violation] from start, no external call reached
-    from it is [rejected]. *)
+(** If a starting state satisfies [no_violation], then no [external_site]
+    reached during a [run] from that state can be [rejected]. *)
 Lemma no_violation_rejected : forall registry ge start prefix c s w site why,
   no_violation registry ge start -> run registry ge start prefix (Running (c, s) w) ->
   external_site ge c site -> ~ rejected registry ge c w site why.
@@ -295,25 +329,29 @@ Proof.
   exact (Hsafe _ _ _ _ _ _ _ _ Hrun (step_rejected _ _ _ _ _ _ _ Hsite Hbad)).
 Qed.
 
-(** A stopped state does not step. *)
+(** Once the labelled machine reaches a [Stopped] state, it cannot take any
+    further [step]. *)
 Lemma stopped_no_step : forall registry ge why ms w trace st,
   ~ step registry ge (Stopped why ms w) trace st.
 Proof. intros registry ge why ms w trace st H. inversion H. Qed.
 
-(** Where no external call is due, a step observes nothing. *)
+(** Any labelled [step] from a configuration that is not at an
+    [external_site] is a core transition and emits an empty event trace. *)
 Lemma non_external_silent : forall registry ge c s w trace st,
   (forall site, ~ external_site ge c site) -> step registry ge (Running (c, s) w) trace st -> trace = [].
 Proof. intros registry ge c s w trace st Hnone H. inversion H; subst; try reflexivity; exfalso; eapply Hnone; eauto. Qed.
 
-(** A step that stops with [[unchecked|Unchecked]] why is the old core's
-    own ending: external calls never produce it. This does not prove
-    arbitrary frees or [[doomed]] runs safe. *)
+(** A labelled [step] can stop with an [[unchecked]] outcome only when the
+    underlying core semantics [Semantics.step] produces that outcome directly,
+    because external contract invocations never manufacture unchecked
+    outcomes. *)
 Lemma unchecked_is_core : forall registry ge c s w trace ms' w' why,
   step registry ge (Running (c, s) w) trace (Stopped (CoreEnd (Unchecked why)) ms' w') ->
   Semantics.step ge c = Done (Unchecked why).
 Proof. intros registry ge c s w trace ms' w' why H. inversion H; subst; assumption. Qed.
 
-(** An [admissible] call is not [rejected]. *)
+(** When an external call site satisfies [admissible], it cannot be
+    [rejected] for any contract violation. *)
 Lemma admissible_not_rejected : forall registry ge c w site why,
   admissible registry ge c w site -> ~ rejected registry ge c w site why.
 Proof.
@@ -321,8 +359,9 @@ Proof.
   destruct H; try congruence.
 Qed.
 
-(** A labelled step keeps the [[runtime]] [[ready]], where the global
-    environment's free is the runtime's. *)
+(** Every labelled [step] preserves [state_ready], because core machine steps
+    and external contract invocations via [E.invoke_preserve] both keep the
+    [[runtime]] [[ready]]. *)
 Theorem step_ready : forall registry ge st trace st',
   ge_free ge = R.free -> step registry ge st trace st' -> state_ready st -> state_ready st'.
 Proof.
@@ -331,8 +370,8 @@ Proof.
   all: exact (proj1 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
 Qed.
 
-(** From a ready state, every object of the memory before a labelled
-    step [[identity|persists]] into the memory after it. *)
+(** Starting from a [state_ready] state, every object registered in memory
+    before a labelled [step] [[identity|persists]] in memory after the step. *)
 Theorem step_persists : forall registry ge st trace st',
   ge_free ge = R.free -> step registry ge st trace st' -> state_ready st ->
   persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))).
@@ -343,12 +382,20 @@ Proof.
   all: exact (proj2 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
 Qed.
 
-(** ## Continuations and Campaign 3 *)
+(** ## Continuations and Campaign 3
 
-(** Resuming after an external call keeps the [[evidence]] invariant
-    [inv] of a module md: the call kills the frame's live facts, so the
-    frame is [parked] there ([call_parked]) and resumes with any result
-    and memory ([parked_resume]). *)
+    When an external call returns to compiled IR code, the caller continues
+    executing instructions that rely on Campaign 3's [[validator]] invariants.
+    This section proves that resuming from an external call preserves both the
+    [[evidence]] invariant [inv] and the [[single-definition|single-definition]]
+    invariant [sinv], culminating in [run_preserve] for arbitrary multi-step
+    runs. *)
+
+(** A compiler cannot assume that capabilities checked before an external
+    call remain valid after the call returns, so the validator clears all
+    live capability facts at every call instruction. Because the caller frame
+    carries no live facts across the call, resuming after the call returns
+    preserves the [[evidence]] invariant [inv] in the new memory state. *)
 Lemma resume_inv : forall ge md c s site e m' s',
   external_site ge c site -> inv ge md (c, s) -> inv ge md (resume_external c site e m', s').
 Proof.
@@ -359,8 +406,9 @@ Proof.
     (call_parked _ _ _ _ _ _ _ _ _ _ Hfr Hd Ha)).
 Qed.
 
-(** Binding a call's returned values changes no [[temporary]] a but the
-    names the site's result defines ([result_names]). *)
+(** Binding the return values of an external call with [external_env] updates
+    only the destination [[temporary]] names listed in [result_names] and
+    leaves every other temporary in the caller's environment unchanged. *)
 Lemma external_env_other : forall (spec : contract world) site values old e a,
   external_env spec site values old = Some e -> ~ In a (result_names (site_result site)) ->
   lookup a e = lookup a old.
@@ -370,10 +418,11 @@ Proof.
   exact (returned_env_other _ _ _ _ _ H Ha).
 Qed.
 
-(** Resuming after an external call keeps the [[single definition]]
-    invariant [sinv] of a [checked_module] md, where the call's memory
-    m' [[identity|persists]] from the old: the result names are its only
-    new definitions, and waiting callers keep their scopes. *)
+(** When an external call returns, it binds only the result temporaries of
+    the call instruction and leaves every earlier temporary in the caller's
+    frame untouched. As long as all objects that existed before the call
+    [[identity|persist]] in the post-call memory, resuming after the call
+    preserves the [[single-definition|single-definition]] invariant [sinv]. *)
 Lemma resume_sinv : forall ge md c site (spec : contract world) values e m',
   checked_module md -> external_site ge c site ->
   external_env spec site values (fr_env (c_frame c)) = Some e ->
@@ -399,20 +448,23 @@ Proof.
     + intros n Hrp. discriminate Hrp.
 Qed.
 
-(** The [[evidence]] invariant [inv] of a running state; nothing of a
-    stopped one. Terminal snapshots retain memory and readiness, not
-    active-frame facts. Only a returned call has a caller continuation
-    to re-establish. *)
+(** A running machine must maintain the compiler's live capability facts in
+    every active stack frame, whereas a stopped machine executes no further
+    instructions. The predicate [evidence_inv] therefore requires [inv] on
+    running states and holds trivially on stopped states. *)
 Definition evidence_inv (ge : genv) (md : module) (st : state) : Prop :=
   match st with Running ms _ => inv ge md ms | Stopped _ _ _ => True end.
 
-(** The [[single definition]] invariant [sinv] of a running state's
-    configuration; nothing of a stopped one. *)
+(** A running machine must also keep every single-definition temporary equal
+    to the value computed at its definition site, whereas a stopped machine
+    needs no frame invariant. The predicate [single_inv] therefore requires
+    [sinv] on running states and holds trivially on stopped states. *)
 Definition single_inv (ge : genv) (md : module) (st : state) : Prop :=
   match st with Running ms _ => sinv ge md (fst ms) | Stopped _ _ _ => True end.
 
-(** A labelled step from a ready state keeps [evidence_inv] of the
-    environment's [checked_module] md. *)
+(** Every step of the labelled machine from a ready state preserves the
+    [[evidence]] invariant [evidence_inv], whether the machine runs a silent
+    core instruction or returns from an external call. *)
 Theorem step_inv : forall registry ge md st trace st',
   ge_module ge = md -> checked_module md ->
   step registry ge st trace st' -> state_ready st -> evidence_inv ge md st -> evidence_inv ge md st'.
@@ -422,8 +474,9 @@ Proof.
   - eapply resume_inv; eauto.
 Qed.
 
-(** A labelled step from a ready state keeps [single_inv] of the
-    environment's [checked_module] md, where its free is the runtime's. *)
+(** Every step of the labelled machine from a ready state preserves the
+    [[single-definition|single-definition]] invariant [single_inv] across
+    both core instructions and external calls. *)
 Theorem step_sinv : forall registry ge md st trace st',
   ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   step registry ge st trace st' -> state_ready st -> single_inv ge md st -> single_inv ge md st'.
@@ -433,11 +486,10 @@ Proof.
   - eapply resume_sinv; eauto. exact (proj2 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
 Qed.
 
-(** The four structural guarantees for every finite labelled [run] of
-    a [checked_module] md, from a state that has them: the runtime stays
-    [[ready]], objects [[identity|persist]], and [evidence_inv] and
-    [single_inv] hold at the end. No completeness or absence of contract
-    violations follows from them. *)
+(** Over any finite [run] of a validated module from a ready starting state,
+    the runtime remains [[ready]], every object allocated along the way keeps
+    its [[identity]], and both the evidence invariant and the
+    single-definition invariant continue to hold. *)
 Theorem run_preserve : forall registry ge md st trace st',
   ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   run registry ge st trace st' -> state_ready st -> evidence_inv ge md st -> single_inv ge md st ->
@@ -463,10 +515,10 @@ Arguments step {world}.
 Arguments run {world}.
 End ExternalMachine.
 
-(** Accept an existing machine instance rather than instantiate a sibling
-    functor. In particular its inductive [E.invoke], [E.effects], [step]
-    and [run] types remain the caller's exact types. This signature adds
-    no runtime assumptions and changes no transition or theorem. *)
+(** Client modules such as [Startup](Startup.v) parameterize over
+    [ExternalMachineSig] so that they share the caller's exact
+    [ExternalMachine] instance rather than generating a duplicate copy of its
+    inductive [step] and [run] relations. *)
 Module Type ExternalMachineSig (R : Runtime).
 Include ExternalMachine R.
 End ExternalMachineSig.

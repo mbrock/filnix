@@ -1,15 +1,26 @@
-(** [[transport|Transport]] between Prolog terms and the model:
-    decoding a [[stage|checked]] module that nanofil printed
-    (`nanofil outcomes FILE`, main.pl's `outcomes/3`) into the syntax
-    of Syntax.v, and encoding the model's [[outcome]] as the term
-    `interp:run/5` would give, so the two can be compared with `==`.
+(** When Nanofil compiles a C program or generates a [[mutant]] test
+    case, it prints the resulting [[stage|checked]]
+    intermediate-representation module and its expected run outcomes
+    as ground Prolog terms. To run the formal model or the translation
+    [[validator]] on those printed terms, we must convert between
+    untyped ground [term] trees and the typed syntax and run-time
+    values of the formal semantics.
 
-    Decoding is partial in one deliberate way: a function that uses
-    anything outside the [[core subset]] (a vector class, `store`,
-    an unchecked [[cas]], `setjmp`, [[asm_fixed]] ...) decodes to
-    [IOutside Name Term]. It keeps its address and its term (the
-    [[validator]] reads its signature), so calls to it and pointers to
-    it behave as the interpreter's do, but running it is stuck. *)
+    This module defines that [[transport]] layer in three parts. The
+    decoder [decode_module] parses a Prolog module term into a typed
+    [module], the encoder [eoutcome] formats a run [outcome] back as a
+    Prolog term, and the test harnesses [judge] and [judge_valid]
+    compare the extracted model against the Prolog [[interpreter]] and
+    validator.
+
+    Decoding is partial in one deliberate way: when a function uses an
+    instruction or type outside the [[core-subset|core subset]], such
+    as vector arithmetic, an unchecked [[cas]], or [[asm_fixed]],
+    [ditem] wraps the function in [IOutside] instead of rejecting the
+    module. The function keeps its symbol address and its raw term so
+    that pointers to it and validator signature checks behave just as
+    they do in the Prolog compiler, while any attempt to step into its
+    body halts as outside the core subset. *)
 
 From Stdlib Require Import String ZArith List Bool Ascii.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Runtime Run Validate ValidFast.
@@ -17,29 +28,45 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
-(** String equality, written as Prolog's `==`. *)
+(** The local notation `a == b` abbreviates boolean string equality
+    `String.eqb a b`. *)
 Local Notation "a == b" := (String.eqb a b) (at level 70).
 
-(** ## Decoding *)
+(** ## Decoding
 
-(** The integer the term t is. *)
+    The functions in this section parse ground Prolog [term] trees
+    into the inductive syntax of the formal model, returning `None`
+    whenever a term does not belong to the [[core-subset|core subset]].
+    Smaller decoders extract integers, atoms, lists, classes, and
+    operands before [dop], [dinst], [dblock], and [decode_module]
+    assemble full instructions, basic blocks, functions, and top-level
+    modules. *)
+
+(** Given a ground [term], [dz] extracts its integer value when the
+    term is a [TInt] literal and returns `None` otherwise. *)
 Definition dz (t : term) : option Z := match t with TInt n => Some n | _ => None end.
 
-(** The name of the atom t. *)
+(** Given a ground [term], [datom] extracts its string name when the
+    term is a [TAtom] and returns `None` otherwise. *)
 Definition datom (t : term) : option string := match t with TAtom a => Some a | _ => None end.
 
-(** The elements of the list t. *)
+(** Given a ground [term], [dlist] extracts its element list when the
+    term is a proper list [TList] and returns `None` otherwise. *)
 Definition dlist (t : term) : option (list term) := match t with TList ts => Some ts | _ => None end.
 
-(** The arguments of t when it is the compound f/n. *)
+(** Given a functor name, an expected arity, and a ground [term],
+    [dapp] returns the argument list when the term is a compound
+    [TApp] with that functor and argument count, and returns `None`
+    otherwise. *)
 Definition dapp (f : string) (n : nat) (t : term) : option (list term) :=
   match t with
   | TApp g xs => if (g == f) && (length xs =? n)%nat then Some xs else None
   | _ => None
   end.
 
-(** The [[class]] an atom names: `w`, `l`, `p`, `a`, `f`, `s`, `d` or
-    `x`. *)
+(** Given a ground [term], [dclass] decodes one of the eight IR
+    register [[class]] atoms into the corresponding [class]
+    constructor, or returns `None` for any other term. *)
 Definition dclass (t : term) : option class :=
   let* a := datom t in
   if a == "w" then Some W else if a == "l" then Some L else if a == "p" then Some P
@@ -47,11 +74,15 @@ Definition dclass (t : term) : option class :=
   else if a == "s" then Some Single else if a == "d" then Some Double
   else if a == "x" then Some Extended else None.
 
-(** The name of the [[temporary]] `tmp(N)`. *)
+(** Given a ground [term], [dtmp] extracts the identifier [name] from
+    a compound [[temporary]] term, or returns `None` if the term has
+    any other shape. *)
 Definition dtmp (t : term) : option name :=
   let* xs := dapp "tmp" 1 t in match xs with [n] => Some n | _ => None end.
 
-(** An IR value: a temporary, an integer constant, or a global symbol. *)
+(** Given a ground [term], [dvalue] decodes an IR operand into a [Tmp]
+    temporary, a [Const] integer literal, or a [Global] symbol
+    reference. *)
 Definition dvalue (t : term) : option value :=
   match t with
   | TApp "tmp" [n] => Some (Tmp n)
@@ -60,40 +91,46 @@ Definition dvalue (t : term) : option value :=
   | _ => None
   end.
 
-(** The access [[rights]] `read` or `write`. *)
+(** Given a ground [term], [drights] decodes the atom `read` or
+    `write` into the access [[rights]] value [Read] or [Write]. *)
 Definition drights (t : term) : option rights :=
   let* a := datom t in
   if a == "read" then Some Read else if a == "write" then Some Write else None.
 
-(** The bound a [[half check]] tests: `upper` or `lower`. *)
+(** Given a ground [term], [dbound] decodes the atom `upper` or
+    `lower` into the [bound] tested by a [[half_check|half check]]. *)
 Definition dbound (t : term) : option bound :=
   let* a := datom t in
   if a == "upper" then Some Upper else if a == "lower" then Some Lower else None.
 
-(** A narrow integer width with its signedness: `sw`, `uw`, `sh`, `uh`,
-    `sb` or `ub` (signed or unsigned word, half or byte). *)
+(** Given a ground [term], [dnarrow] decodes a narrow integer width
+    atom for a signed or unsigned word, halfword, or byte into its
+    [narrow] constructor. *)
 Definition dnarrow (t : term) : option narrow :=
   let* a := datom t in
   if a == "sw" then Some Sw else if a == "uw" then Some Uw
   else if a == "sh" then Some Sh else if a == "uh" then Some Uh
   else if a == "sb" then Some Sb else if a == "ub" then Some Ub else None.
 
-(** The type a raw load reads: `l`, `s`, `d`, `x`, or a narrow width. *)
+(** Given a ground [term], [dload_type] decodes the type tag of a
+    [[raw-access|raw load]] into a 64-bit integer, floating-point, or
+    narrow integer [load_type]. *)
 Definition dload_type (t : term) : option load_type :=
   let* a := datom t in
   if a == "l" then Some LdL else if a == "s" then Some LdS
   else if a == "d" then Some LdD else if a == "x" then Some LdX
   else let* n := dnarrow t in Some (LdNarrow n).
 
-(** The type of a [[cas]]: `l`, `p`, or a narrow width
-    (`cas_type/1`). *)
+(** Given a ground [term], [dcas_type] decodes the operand type of a
+    raw [[cas|compare-and-exchange]] into a 64-bit integer, pointer,
+    or narrow integer [cas_type]. *)
 Definition dcas_type (t : term) : option cas_type :=
   let* a := datom t in
   if a == "l" then Some CasL else if a == "p" then Some CasP
   else let* n := dnarrow t in Some (CasNarrow n).
 
-(** A comparison's condition: equality, signed and unsigned integer
-    order, float order, and whether two floats are ordered or not. *)
+(** Given a ground [term], [dcond] decodes a relational comparison
+    atom into its integer or floating-point [cond] constructor. *)
 Definition dcond (t : term) : option cond :=
   let* a := datom t in
   if a == "eq" then Some Eq else if a == "ne" then Some Ne
@@ -105,8 +142,10 @@ Definition dcond (t : term) : option cond :=
   else if a == "ge" then Some Ge else if a == "gt" then Some Gt
   else if a == "o" then Some Ord else if a == "uo" then Some Unord else None.
 
-(** One memory effect of a raw pointer load or store, such as reading
-    the [[aux]] or resolving the [[lower]]. *)
+(** Given a ground [term], [deffect] decodes a single memory-effect
+    atom of a raw pointer load or store, such as reading the shadow
+    [[aux]] slot or resolving the [[lower]] capability, into an
+    [effect]. *)
 Definition deffect (t : term) : option effect :=
   let* a := datom t in
   if a == "aux_read" then Some AuxRead else if a == "lower_resolve" then Some LowerResolve
@@ -116,20 +155,24 @@ Definition deffect (t : term) : option effect :=
   else if a == "address_write" then Some AddressWrite else if a == "atomic_write" then Some AtomicWrite
   else None.
 
-(** A list of memory effects. *)
+(** Given a ground [term], [deffects] decodes a Prolog list of
+    memory-effect atoms into a list of [effect] values. *)
 Definition deffects (t : term) : option (list effect) :=
   let* ts := dlist t in map_option deffect ts.
 
-(** The width of a store or a data item: `b`, `h`, `w`, `l`, `p`, `s`,
-    `d` or `x`. *)
+(** Given a ground [term], [dwidth] decodes a storage-width atom for
+    an integer, pointer, or floating-point width into a [width]
+    constructor. *)
 Definition dwidth (t : term) : option width :=
   let* a := datom t in
   if a == "b" then Some Wb else if a == "h" then Some Wh else if a == "w" then Some Ww
   else if a == "l" then Some Wl else if a == "p" then Some Wp else if a == "s" then Some Ws
   else if a == "d" then Some Wd else if a == "x" then Some Wx else None.
 
-(** The four bounds arguments `(Lo, Hi, Rights, Align)` of a
-    [[check]], given to k to make the op. *)
+(** Given a list of four Prolog argument terms and an operation
+    constructor, [dcheck4] decodes the lower offset, upper offset,
+    access [[rights]], and alignment of a capability [[check]] and
+    applies the constructor to them. *)
 Definition dcheck4 (xs : list term) (k : Z -> Z -> rights -> Z -> op) : option op :=
   match xs with
   | [lo; hi; r; al] =>
@@ -138,8 +181,11 @@ Definition dcheck4 (xs : list term) (k : Z -> Z -> rights -> Z -> op) : option o
   | _ => None
   end.
 
-(** An Op of ir.pl's table, in the [[core subset]]: arithmetic,
-    conversions, comparisons, checks, raw loads and the rest. *)
+(** Given a ground [term], [dop] decodes an IR operation of the
+    [[core-subset|core subset]] into an [op] value, covering
+    arithmetic, conversions, comparisons, allocations, capability
+    [[check|checks]] and their [[reuse]] forms, and raw loads, or
+    returns `None` for operations outside the subset. *)
 Definition dop (t : term) : option op :=
   match t with
   | TAtom a =>
@@ -229,16 +275,19 @@ Definition dop (t : term) : option op :=
   | _ => None
   end.
 
-(** An argument of a [[flight]]: `address(V)`, a pointer's address, or
-    a plain value. *)
+(** Given a ground [term], [dflight_arg] decodes a [[flight]] operand
+    into either a pointer address projection [FAddress] or a plain
+    value [FValue]. *)
 Definition dflight_arg (t : term) : option flight_arg :=
   match t with
   | TApp "address" [v] => let* v' := dvalue v in Some (FAddress v')
   | _ => let* v := dvalue t in Some (FValue v)
   end.
 
-(** A flight's capability source: `none`, or `lower(V)`, the [[lower]]
-    of the pointer V. *)
+(** Given a ground [term], [dflight_lower] decodes the capability
+    source of a [[flight]] instruction into [LowerNone] when no
+    capability is attached or [LowerOf] when copied from a pointer's
+    [[lower]]. *)
 Definition dflight_lower (t : term) : option flight_lower :=
   match t with
   | TAtom "none" => Some LowerNone
@@ -246,14 +295,16 @@ Definition dflight_lower (t : term) : option flight_lower :=
   | _ => None
   end.
 
-(** One result `result(tmp(D), K)` of a call: the temporary it binds
-    and its class. *)
+(** Given a ground [term], [dresult] decodes a single call-result
+    compound into the destination [[temporary]] name and its register
+    [class]. *)
 Definition dresult (t : term) : option (name * class) :=
   let* xs := dapp "result" 2 t in
   match xs with [d; k] => let* d' := dtmp d in let* k' := dclass k in Some (d', k') | _ => None end.
 
-(** How a call reads its result: `void`, a `tuple` of results, or one
-    result. *)
+(** Given a ground [term], [dcall_result] decodes a call's return
+    binding into [CVoid] for a void call, [CTuple] for a multi-word
+    return, or [CResult] for a single returned temporary. *)
 Definition dcall_result (t : term) : option call_result :=
   match t with
   | TAtom "void" => Some CVoid
@@ -261,15 +312,19 @@ Definition dcall_result (t : term) : option call_result :=
   | _ => let* r := dresult t in Some (CResult (fst r) (snd r))
   end.
 
-(** A call argument `arg(K, V)`: a value and its class. *)
+(** Given a ground [term], [darg] decodes a call-argument compound
+    into an [Arg] pairing its register [class] and operand [value]. *)
 Definition darg (t : term) : option arg :=
   let* xs := dapp "arg" 2 t in
   match xs with [k; v] => let* k' := dclass k in let* v' := dvalue v in Some (Arg k' v') | _ => None end.
 
-(** A list of call arguments. *)
+(** Given a ground [term], [dargs] decodes a Prolog list of call
+    arguments into a list of [arg] values. *)
 Definition dargs (t : term) : option (list arg) := let* ts := dlist t in map_option darg ts.
 
-(** An instruction of the [[core subset]]; None for any other. *)
+(** Given a ground [term], [dinst] decodes a single IR instruction in
+    the [[core-subset|core subset]] into an [inst], or returns `None`
+    when the instruction uses an operation or form outside the subset. *)
 Definition dinst (t : term) : option inst :=
   match t with
   | TApp "let" [d; k; o; TList args] =>
@@ -302,16 +357,19 @@ Definition dinst (t : term) : option inst :=
   | _ => None
   end.
 
-(** A jump target: `poll(L)`, a [[poll|poll edge]] to L, or a plain
-    label. *)
+(** Given a ground [term], [dtarget] decodes a jump target into a
+    [[poll|poll edge]] [Poll] when wrapped in a poll compound and a
+    plain block label [To] otherwise. *)
 Definition dtarget (t : term) : option target :=
   match t with
   | TApp "poll" [l] => Some (Poll l)
   | _ => Some (To t)
   end.
 
-(** The jump that ends a block: goto, branch, return of one or several
-    values or of none, or unreachable. *)
+(** Given a ground [term], [djump] decodes the control-flow jump at
+    the end of a basic [[block]] into an unconditional [JGoto], a
+    conditional [JBranch], a return [JRet], [JRets], or [JRetVoid], or
+    [JUnreachable]. *)
 Definition djump (t : term) : option jump :=
   match t with
   | TApp "goto" [l] => let* l' := dtarget l in Some (JGoto l')
@@ -325,13 +383,16 @@ Definition djump (t : term) : option jump :=
   | _ => None
   end.
 
-(** One `L-V` pair of a phi: a predecessor's label and the value for
-    the edge from it. *)
+(** Given a ground [term], [dpair] decodes a predecessor-value pair of
+    a [[phi]] node into the predecessor block label and the incoming
+    [value] for that edge. *)
 Definition dpair (t : term) : option (name * value) :=
   let* xs := dapp "-" 2 t in
   match xs with [l; v] => let* v' := dvalue v in Some (l, v') | _ => None end.
 
-(** A [[phi]] `phi(tmp(D), K, Pairs)`. *)
+(** Given a ground [term], [dphi] decodes a phi compound term into a
+    [Phi] node with its destination temporary, register [class], and
+    incoming edge pairs. *)
 Definition dphi (t : term) : option phi :=
   match t with
   | TApp "phi" [d; k; TList pairs] =>
@@ -340,7 +401,9 @@ Definition dphi (t : term) : option phi :=
   | _ => None
   end.
 
-(** A [[block]] `block(L, Phis, Insts, Jump)`, every part decoded. *)
+(** Given a ground [term], [dblock] decodes a basic-block compound
+    into a [block] record when all of its phi nodes, instructions, and
+    terminating jump belong to the core subset. *)
 Definition dblock (t : term) : option block :=
   match t with
   | TApp "block" [l; TList phis; TList insts; j] =>
@@ -349,8 +412,9 @@ Definition dblock (t : term) : option block :=
   | _ => None
   end.
 
-(** A function's return type: `void`, a `tuple` of classes `l`, `p`,
-    `s` or `d`, or one class `w`, `l`, `p`, `s` or `d`. *)
+(** Given a ground [term], [dret] decodes a function's return-type
+    specification into [RVoid], a multi-word [RTuple], or a single
+    return class [RClass]. *)
 Definition dret (t : term) : option ret_type :=
   match t with
   | TAtom "void" => Some RVoid
@@ -362,21 +426,26 @@ Definition dret (t : term) : option ret_type :=
          match k with W | L | P | Single | Double => Some (RClass k) | _ => None end
   end.
 
-(** A parameter `param(K, tmp(D))`: its class and temporary. *)
+(** Given a ground [term], [dparam] decodes a parameter declaration
+    compound into the parameter's register [class] and temporary
+    [name]. *)
 Definition dparam (t : term) : option (class * name) :=
   let* xs := dapp "param" 2 t in
   match xs with [k; d] => let* k' := dclass k in let* d' := dtmp d in Some (k', d') | _ => None end.
 
-(** A function from the arguments of its `func(N, Lk, R, Ps, Bs)` term;
-    None if any part is outside the [[core subset]]. *)
+(** Given the five subterms of a function declaration compound,
+    [dfunc] decodes the return type, parameter list, and basic blocks
+    into a [func] record, or returns `None` if any part lies outside
+    the [[core-subset|core subset]]. *)
 Definition dfunc (n lk r ps bs : term) : option func :=
   let* r' := dret r in
   let* ps' := let* ts := dlist ps in map_option dparam ts in
   let* bs' := let* ts := dlist bs in map_option dblock ts in
   Some (mkFunc n lk r' ps' bs').
 
-(** An item's linkage; one the model does not know is kept as its
-    term. *)
+(** Given a ground [term], [dlinkage] decodes a top-level item's
+    linkage specification into a [linkage] value, wrapping any linkage
+    form the model does not distinguish in [LOther]. *)
 Definition dlinkage (t : term) : option linkage :=
   match t with
   | TAtom "export" => Some LExport
@@ -389,9 +458,10 @@ Definition dlinkage (t : term) : option linkage :=
   | _ => Some (LOther t)
   end.
 
-(** One item of a data object: a string of bytes, a pointer to a
-    symbol plus an offset, a constant of a width, or zero bytes; any
-    other is kept as its term. *)
+(** Given a ground [term], [ddata_item] decodes a static initializer
+    entry of a global data definition into a byte string [Str], a
+    symbol-plus-offset pointer [Sym], a fixed-width integer [Item], a
+    zero run [Zero], or an uninterpreted [ItemOther]. *)
 Definition ddata_item (t : term) : option data_item :=
   match t with
   | TApp "item" [TAtom "b"; TApp "str" [TList cs]] =>
@@ -403,9 +473,12 @@ Definition ddata_item (t : term) : option data_item :=
   | _ => Some (ItemOther t)
   end.
 
-(** An item of the module: a function, outside the [[core subset]] if
-    [dfunc] fails, data or an alias; Some None for an explanatory
-    `context(_, _)` item ([[context]]). *)
+(** Given a ground [term], [ditem] decodes a top-level module entry
+    into a function, a global data definition [IData], or a symbol
+    alias [IAlias]. Functions that fail [dfunc] are preserved as
+    [IOutside] so they still receive an address and signature, while
+    explanatory [[context]] entries return `Some None` so
+    [decode_module] drops them. *)
 Definition ditem (t : term) : option (option item) :=
   match t with
   | TApp "func" [n; lk; r; ps; bs] =>
@@ -421,7 +494,9 @@ Definition ditem (t : term) : option (option item) :=
   | _ => None
   end.
 
-(** The module `module(Items)`, its context items dropped. *)
+(** Given a ground [term] representing a top-level module compound,
+    [decode_module] decodes every item with [ditem] and drops any
+    [[context]] annotations to produce a [module]. *)
 Definition decode_module (t : term) : option module :=
   match t with
   | TApp "module" [TList items] =>
@@ -430,10 +505,18 @@ Definition decode_module (t : term) : option module :=
   | _ => None
   end.
 
-(** ## Encoding *)
+(** ## Encoding
 
-(** A [[capability]] as the interpreter writes it: `none`, `obj(B)`,
-    `ro(B)`, `fn(F)` or `ext(N)`. *)
+    After the model steps a function to completion, we format its
+    final [outcome] back into the exact Prolog term representation
+    that the reference [[interpreter]] prints. This section defines
+    the term encoders for capabilities, run-time words, trap reasons,
+    and outcomes. *)
+
+(** Given a pointer [[capability]] [cap], [ecap] encodes it as the
+    Prolog atom or compound term written by the reference interpreter,
+    tagging object bases, read-only bases, functions, and external
+    symbols with their respective functors. *)
 Definition ecap (c : cap) : term :=
   match c with
   | CNone => TAtom "none"
@@ -443,8 +526,10 @@ Definition ecap (c : cap) : term :=
   | External n => TApp "ext" [n]
   end.
 
-(** A [[word]] as the interpreter writes it: an integer,
-    `ptr(Addr, Cap)` or `limit(Cap, Size)`. *)
+(** Given a run-time [word], [eword] encodes an integer as a [TInt], a
+    pointer as a `ptr` compound of its address and encoded capability,
+    and a limit snapshot as a `limit` compound of its capability and
+    size. *)
 Definition eword (x : word) : term :=
   match x with
   | WInt n => TInt n
@@ -452,8 +537,9 @@ Definition eword (x : word) : term :=
   | WLimit c size => TApp "limit" [ecap c; TInt size]
   end.
 
-(** A [[trap|trap reason]] as the interpreter writes it, an atom, or
-    `early(R)` and `ahead(R)` around another. *)
+(** Given a failure [reason], [ereason] encodes it as the lowercase
+    Prolog atom or nested `early` or `ahead` compound term reported by
+    the reference interpreter. *)
 Fixpoint ereason (r : reason) : term :=
   match r with
   | NullCapability => TAtom "null_capability"
@@ -475,7 +561,9 @@ Fixpoint ereason (r : reason) : term :=
   | Ahead r' => TApp "ahead" [ereason r']
   end.
 
-(** The [[outcome]] as `interp:run/5` writes it. *)
+(** Given a run [outcome], [eoutcome] encodes it as the Prolog term
+    produced by the reference interpreter so that [judge] can compare
+    the two outcomes with [term_eqb]. *)
 Definition eoutcome (o : outcome) : term :=
   match o with
   | Ret x => TApp "ret" [eword x]
@@ -488,25 +576,32 @@ Definition eoutcome (o : outcome) : term :=
   | OutOfFuel => TAtom "out_of_fuel"
   end.
 
-(** ## Judging a line *)
+(** ## Judging a line
 
-(** The run halted because it left the [[core subset]]. *)
+    The differential testing harnesses compare the extracted Rocq
+    model against the Prolog [[interpreter]] and [[validator]] line by
+    line. This section instantiates the reference runner [Model] and
+    defines [judge] for execution outcome lines and [judge_valid] for
+    [[mutant]] validation verdicts. *)
+
+(** Given a halt label string, [is_outside] returns `true` when the
+    runner halted because execution reached a function or instruction
+    outside the [[core-subset|core subset]]. *)
 Definition is_outside (why : string) : bool := why == "outside the core subset".
 
-(** The model the gates run: the driver with the interpreter's runtime
-    ([Driver InterpRuntime]). *)
+(** The module [Model] instantiates the execution functor [Driver]
+    with [InterpRuntime] to form the executable reference runner that
+    [judge] calls on each test case. *)
 Module Model := Driver InterpRuntime.
 
-(** The model's run of the module md on one `outcome(Fn, Args, Fuel,
-    Outcome)` or `error(Fn, Args, Fuel, E)` line that `outcomes/3`
-    printed, compared with the interpreter's:
-
-    | Judgment | Means |
-    |---|---|
-    | `agree(Outcome)` | the model and the interpreter have the same outcome |
-    | `disagree(Model, Prolog)` | they differ: a finding, presumed the model's fault |
-    | `outside(Fn, Why)` | the run leaves the core subset, so it is not compared |
-    | `stuck_both(Fn, Why)` | the interpreter threw or failed, and the model is stuck too | *)
+(** Given a decoded [module] and an outcome or error line printed by
+    the compiler's outcome runner, [judge] executes the entry function
+    in [Model.run] and compares the encoded result with the
+    interpreter's expected term. It returns `agree` when both produce
+    the same outcome, `outside` when the run halts on a feature
+    outside the [[core-subset|core subset]], `stuck_both` when both
+    the interpreter and the model halt with an error, and `disagree`
+    whenever their results differ. *)
 Definition judge (md : module) (line : term) : term :=
   match line with
   | TApp "outcome" [fn; TList args; TInt fuel; expected] =>
@@ -535,9 +630,11 @@ Definition judge (md : module) (line : term) : term :=
   | _ => TApp "bad_line" [line]
   end.
 
-(** The module with its item at index i (0-based, without contexts)
-    replaced by the items xs: none deletes it, one replaces it, the
-    new item and then the old one insert before it. *)
+(** Given a zero-based item index, a replacement list of items, and a
+    [module], [splice_at] replaces the item at that index with the
+    replacement list, which deletes the item when the list is empty,
+    replaces it when the list has one element, and inserts before it
+    when the old item follows the new one. *)
 Fixpoint splice_at (i : nat) (xs : list item) (md : module) : module :=
   match i, md with
   | O, _ :: rest => app xs rest
@@ -546,11 +643,14 @@ Fixpoint splice_at (i : nat) (xs : list item) (md : module) : module :=
   | S _, [] => []
   end.
 
-(** A validity verdict as rocq/scripts/mutants.pl writes it: `valid` or
-    `invalid`. *)
+(** Given a boolean validity result, [everdict] encodes `true` as the
+    atom `valid` and `false` as the atom `invalid` to match the output
+    of `mutants.pl`. *)
 Definition everdict (b : bool) : term := TAtom (if b then "valid" else "invalid").
 
-(** The term t mentions `global(N)`, for the name n. *)
+(** Given a symbol [name] and a ground [term], [mentions] returns
+    `true` when the term contains a `global` compound referring to
+    that symbol. *)
 Fixpoint mentions (n : name) (t : term) : bool :=
   match t with
   | TApp "global" [m] => term_eqb m n
@@ -558,17 +658,19 @@ Fixpoint mentions (n : name) (t : term) : bool :=
   | _ => false
   end.
 
-(** Whether two function signatures are the same: parameters, return
-    and variadicity. *)
+(** Given two function signatures, [sig_eqb] returns `true` when they
+    have the exact same parameter classes, return type, and
+    variadicity flag. *)
 Definition sig_eqb (a b : sig) : bool :=
   ((length (sig_params a) =? length (sig_params b))%nat
    && forallb (fun p => term_eqb (fst p) (snd p)) (combine (sig_params a) (sig_params b)))
   && term_eqb (sig_ret a) (sig_ret b) && Bool.eqb (sig_variadic a) (sig_variadic b).
 
-(** A [[mutant]] f of the function fn that changes its signature, in a
-    module md where a function outside the [[core subset]] refers to
-    it: what that function may now pass or read cannot be judged by
-    the model. *)
+(** Given a [module], a function name, and a mutated [func],
+    [unjudged_callers] returns `true` when the mutation changes the
+    function's signature and some [IOutside] function in the module
+    references that function name, since the model cannot check
+    whether the outside caller still matches the new signature. *)
 Definition unjudged_callers (md : module) (fn : name) (f : func) : bool :=
   match func_sig fn md, func_sig fn [IFunc f] with
   | Some old, Some new =>
@@ -577,17 +679,19 @@ Definition unjudged_callers (md : module) (fn : name) (f : func) : bool :=
   | _, _ => false
   end.
 
-(** The name an item defines. *)
+(** Given a top-level module [item], [defined_name] returns the symbol
+    [name] that the item defines. *)
 Definition defined_name (it : item) : name :=
   match it with
   | IFunc f => fn_name f
   | IOutside n _ | IData n _ _ _ | IAlias n _ _ => n
   end.
 
-(** A change, removing the items olds and adding news, to a data object
-    or an alias that a function outside the core subset refers to by
-    the old or the new name: whether that function is still valid
-    cannot be judged by the model. *)
+(** Given a [module] and the lists of removed and added items in a
+    mutation, [unjudged_users] returns `true` when an [IOutside]
+    function in the module references any of the affected item names,
+    since the model cannot check whether that outside function remains
+    valid after the change. *)
 Definition unjudged_users (md : module) (olds news : list item) : bool :=
   let names := map defined_name (app olds news) in
   existsb (fun it => match it with
@@ -595,24 +699,20 @@ Definition unjudged_users (md : module) (olds news : list item) : bool :=
                      | _ => false
                      end) md.
 
-(** The model's [[validator]] on one `verdict(Name, At, Id, Change, V)`
-    line that rocq/scripts/mutants.pl printed, compared with
-    `ir:valid_module/1`'s verdict V. It makes the Change, `replace(Item)`,
-    `delete` or `insert(Item)` before it, to the module's item at index
-    At, and judges [valid_items] of the whole module (a [[mutant]] can
-    change what its callers may pass it): `agree(Name, Id, V)`,
-    `disagree(Name, Id, Model, Prolog)` or `outside(Name, Id)`. A
-    mutant is outside when it is outside the core subset, when it
-    changes a function's signature and a function outside the subset
-    refers to it, or when it changes data or an alias that a function
-    outside the subset refers to by name. It runs [valid_items_fast],
-    which is [valid_items] by [valid_items_fast_eq]. *)
+(** Given a decoded [module] and a mutant verdict line from the
+    mutation generator, [judge_valid] applies the item change at the
+    specified index with [splice_at] and runs the fast translation
+    [[validator]] [valid_items_fast] on the mutated module. If the
+    mutation introduces or affects an [IOutside] function in a way the
+    model cannot check, [judge_valid] returns `outside`; otherwise it
+    compares [everdict] against the Prolog validator's verdict and
+    returns `agree` or `disagree`. *)
 Definition judge_valid (md : module) (line : term) : term :=
   match line with
   | TApp "verdict" [nm; TInt at_; id; change; expected] =>
       let i := Z.to_nat at_ in
       let old := firstn 1 (skipn i md) in
-      (* What replaces the item, what is removed and what is added. *)
+      (* Decode the mutation into the replacement splice list, the removed items, and the added items. *)
       let new :=
         match change with
         | TApp "replace" [t] => let* it := ditem t in let* it := it in Some ([it], old, [it])

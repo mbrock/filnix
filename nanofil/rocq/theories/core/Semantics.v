@@ -1,36 +1,30 @@
-(** The [[step|small-step]] semantics of the [[core subset]] of the
-    [[stage|checked IR]], transcribed from the [[interpreter]]'s `run/5`
-    (interp.pl).
+(** When a compiled C program runs in the [[stage|checked IR]],
+    execution moves from basic [[block]] to basic block, evaluating
+    instructions, checking pointer capabilities, allocating and
+    freeing memory, and calling functions until the entry call
+    finishes with an [[outcome]]. In the Prolog [[interpreter]], block
+    evaluation is a big-step relation that runs the rest of the
+    function and any nested calls inside a single step. To state and
+    prove invariants that must hold between every pair of execution
+    steps, this module defines a [[step|small-step]] operational
+    semantics over an explicit machine [config].
 
-    The interpreter is a big-step relation over [[block|blocks]]:
-    `block_outcome/7` runs a block and everything after it, and a call
-    runs its callee to an [[outcome]] inside the instruction. The model
-    takes the same steps one at a time over an explicit
-    [[configuration]] (formal.md's decision: small-step, not interaction
-    trees), so that Campaign 3's invariants can be stated between any
-    two steps.
+    A machine [config] records four pieces of state: the running
+    invocation [c_frame], the stack of suspended caller frames
+    [c_callers] paired with how each caller reads its callee's return
+    value, the current memory state [c_mem], and the remaining block
+    [[fuel]] [c_fuel]. Each transition of [step] either takes the
+    entry argument snapshot of a variadic function, enters a basic
+    block by spending one unit of fuel and evaluating its [[phi]]
+    nodes, executes a single instruction in [inst_step], or takes the
+    block's terminating jump in [jump_step].
 
-    ## The configuration
-
-    | Part | Is | interp.pl |
-    |---|---|---|
-    | [c_frame] | the running invocation | the `ctx(...)` term, Env and the block being run |
-    | [c_callers] | the suspended callers, each with how it reads the result | Prolog's own stack |
-    | [c_mem] | memory | `s(Mem, Fuel)`'s Mem, less Next |
-    | [c_fuel] | blocks left to run | `s(Mem, Fuel)`'s Fuel |
-
-    ## Outcomes
-
-    | Gallina | interp.pl |
-    |---|---|
-    | [Ret x] | `ret(V)` |
-    | [Rets xs] | `rets([X1, X2])` |
-    | [RetVoid] | `ret` |
-    | [Unreachable] | `unreachable` |
-    | [UB why] | `ub(Reason)`: here only `float_conversion`, an invalid float-to-integer conversion |
-    | [Trap why] | `trap(Reason)` |
-    | [Unchecked why] | `unchecked(Reason)` |
-    | [OutOfFuel] | `out_of_fuel` | *)
+    When the outermost function finishes or a check fails, execution
+    stops with an [outcome]. A run can return zero or more words, reach
+    an unreachable jump, trigger undefined behavior on an out-of-range
+    float-to-integer conversion, stop with a Fil-C safety [[trap]],
+    fault as [[unchecked]] when a raw access violates its capability,
+    or run out of block [[fuel]]. *)
 
 From Stdlib Require Import String ZArith List Bool Relations.
 From Nanofil Require Import Term Syntax Values Memory Ops.
@@ -38,10 +32,12 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
-(** How a run ends (the table above): a return of one [[word]], of
-    several, or of none; an `unreachable` jump reached; undefined
-    behaviour; a [[trap]] with its reason; an [[unchecked]] access,
-    which only a broken pass produces; or no [[fuel]] left. *)
+(** An [outcome] describes how a program run terminates. Normal
+    returns produce one [word] with [Ret], several words with [Rets],
+    or no value with [RetVoid], while abnormal terminations report an
+    [Unreachable] jump, undefined behavior [UB], a safety [[trap]]
+    [Trap], an [[unchecked]] fault [Unchecked], or exhausted [[fuel]]
+    [OutOfFuel]. *)
 Inductive outcome : Type :=
 | Ret (x : word)
 | Rets (xs : list word)
@@ -52,25 +48,32 @@ Inductive outcome : Type :=
 | Unchecked (why : reason)
 | OutOfFuel.
 
-(** ## The prepared module *)
+(** ## The prepared module
 
-(** A function the module names: one with a body in the [[core subset]],
-    or one outside it, kept only by its name n. *)
+    Before execution begins, the runner lays out the module's
+    functions and global data objects in memory and builds the global
+    environment [genv]. This section defines [fn_def] and [genv] along
+    with the symbol lookup functions that resolve direct function
+    names and symbol aliases. *)
+
+(** A function definition [fn_def] in a module is either a [Defined]
+    function whose body lies inside the [[core-subset|core subset]] or
+    an [Outside] function kept only by its symbol name. *)
 Inductive fn_def : Type := Defined (f : func) | Outside (n : name).
 
-(** The global environment: the module ready to run
-    (`module_prepared/2`'s Fns and Globals, each global's name with its
-    pointer), and the [[runtime]]'s free that a call of libc's `free`
-    runs: Memory.v's [free_res] in the interpreter, [R.free] of a
-    [Runtime] R (Run.v's [Driver], Machine.v). *)
+(** The global environment [genv] holds the decoded [module], the
+    global symbol table mapping each top-level name to its allocated
+    [ptr], and the [[runtime]] deallocator [ge_free] invoked when the
+    program calls `c: free`. *)
 Record genv : Type := mkGenv {
   ge_module : module;
   ge_globals : list (name * ptr);
   ge_free : word -> mem -> option (res unit * mem)
 }.
 
-(** The function or outside function of the module items named n,
-    not looking through aliases. *)
+(** Given a symbol [name] and a module's item list, [find_direct]
+    searches for a [Defined] or [Outside] function with that exact
+    name without following symbol aliases. *)
 Fixpoint find_direct (n : name) (items : module) : option fn_def :=
   match items with
   | [] => None
@@ -79,8 +82,9 @@ Fixpoint find_direct (n : name) (items : module) : option fn_def :=
   | _ :: rest => find_direct n rest
   end.
 
-(** The target of the alias named n among the module items, if there
-    is one. *)
+(** Given a symbol [name] and a module's item list, [find_alias]
+    returns the target symbol name if the module declares an [IAlias]
+    with that name, and `None` otherwise. *)
 Fixpoint find_alias (n : name) (items : module) : option name :=
   match items with
   | [] => None
@@ -88,25 +92,37 @@ Fixpoint find_alias (n : name) (items : module) : option name :=
   | _ :: rest => find_alias n rest
   end.
 
-(** The function a call of the name n runs, as `get_assoc(F, Fns, Fn)`
-    finds it in the prepared module's Fns: a function by its own name,
-    or an alias of one by the alias's name. *)
+(** Given the global environment and a symbol [name], [find_fn] looks
+    up the function that a direct call to that name executes, checking
+    [find_direct] first and following a single alias via [find_alias]
+    if needed. *)
 Definition find_fn (ge : genv) (n : name) : option fn_def :=
   match find_direct n (ge_module ge) with
   | Some d => Some d
   | None => let* t := find_alias n (ge_module ge) in find_direct t (ge_module ge)
   end.
 
-(** ## Values *)
+(** ## Values
 
-(** An environment: each [[temporary]] assigned so far, with its
-    [[word]]. *)
+    When an instruction evaluates its operands, it reads temporary
+    variables from the current frame's local environment, reduces
+    integer constants modulo their register class width, and resolves
+    global symbols to their pointers in the global environment. This
+    section defines the local environment [env], the operand evaluator
+    [value_x], and the helpers that evaluate call and [[flight]]
+    arguments. *)
+
+(** An environment [env] is an association list mapping each
+    [[temporary]] assigned so far in the current function invocation
+    to its run-time [word]. *)
 Definition env := list (name * word).
 
-(** As `value_x/5`: the IR value v read at [[class]] k in the
-    environment e. A constant at `p` is a pointer with no
-    [[capability]]; a symbol the module does not define is
-    `ptr(0, ext(Name))`, a pointer with an external capability. *)
+(** Given the global environment, the current frame's [env], a
+    register [[class]], and an IR [value], [value_x] evaluates the
+    operand to a run-time [word] at that class. Integer constants at
+    the pointer class carry [CNone], while global symbols not defined
+    in the module resolve to address zero with an [External]
+    [[capability]]. *)
 Definition value_x (ge : genv) (e : env) (k : class) (v : value) : option word :=
   match v with
   | Tmp n => let* x := lookup n e in word_at_class k x
@@ -123,15 +139,18 @@ Definition value_x (ge : genv) (e : env) (k : class) (v : value) : option word :
       end
   end.
 
-(** f applied to every element of xs, or None if it fails on any. *)
+(** Given a partial function and a list, [map_option] applies the
+    function to each element in order and returns the list of results,
+    or returns `None` if any element fails. *)
 Fixpoint map_option {X Y : Type} (f : X -> option Y) (xs : list X) : option (list Y) :=
   match xs with
   | [] => Some []
   | x :: xs' => let* y := f x in let* ys := map_option f xs' in Some (y :: ys)
   end.
 
-(** f applied to the elements of xs and ys pairwise, or None if it
-    fails on any pair or the lists differ in length. *)
+(** Given a two-argument partial function and two lists, [map2_option]
+    applies the function pairwise to corresponding elements, or
+    returns `None` if the lists differ in length or any pair fails. *)
 Fixpoint map2_option {X Y Z : Type} (f : X -> Y -> option Z) (xs : list X) (ys : list Y)
   : option (list Z) :=
   match xs, ys with
@@ -140,13 +159,17 @@ Fixpoint map2_option {X Y Z : Type} (f : X -> Y -> option Z) (xs : list X) (ys :
   | _, _ => None
   end.
 
-(** As `arg_x/4`: a call argument's value read at its own [[class]]. *)
+(** Given the global environment, a local [env], and a call argument
+    [arg], [arg_x] evaluates the argument's operand at its declared
+    register [[class]] using [value_x]. *)
 Definition arg_x (ge : genv) (e : env) (a : arg) : option word :=
   match a with Arg k v => value_x ge e k v end.
 
-(** As `flight_arg_x/4`: an argument of a [[flight]]'s address
-    computation. An address projection takes the low 64 bits of a
-    pointer's address; any other argument is read at class `l`. *)
+(** Given the global environment, a local environment, and a
+    [[flight]] operand, [flight_arg_x] evaluates the operand for an
+    address calculation. An address projection [FAddress] extracts the
+    low 64 bits of a pointer's integer address, whereas a plain value
+    [FValue] reads a 64-bit integer operand. *)
 Definition flight_arg_x (ge : genv) (e : env) (a : flight_arg) : option word :=
   match a with
   | FAddress v =>
@@ -155,9 +178,10 @@ Definition flight_arg_x (ge : genv) (e : env) (a : flight_arg) : option word :=
   | FValue v => value_x ge e L v
   end.
 
-(** As `flight_cap/4`: the [[capability]] a [[flight]] gives its
-    pointer. A [[lower]] source copies its pointer's capability, and so
-    the object's [[identity]]; none gives no capability. *)
+(** Given the global environment, a local environment, and a
+    [[flight]] capability source, [flight_cap] returns [CNone] when no
+    capability is attached and copies the source pointer's
+    [[capability]] for [LowerOf], preserving its object [[identity]]. *)
 Definition flight_cap (ge : genv) (e : env) (lw : flight_lower) : option cap :=
   match lw with
   | LowerNone => Some CNone
@@ -166,25 +190,32 @@ Definition flight_cap (ge : genv) (e : env) (lw : flight_lower) : option cap :=
       match x with WPtr p => Some (ptr_cap p) | _ => None end
   end.
 
-(** ## Frames and configurations *)
+(** ## Frames and configurations
 
-(** Where a [[frame]] is in its function:
-    - [Snapshot xs l]: a variadic callee about to take the snapshot of
-      its arguments xs, an allocation, before entering its entry block l;
-    - [Enter l from]: about to run [[block]] l, entered from the block
-      from (None for the entry); entering costs one unit of [[fuel]],
-      and with none left the run is [OutOfFuel], as `block_outcome/7` says;
-    - [Exec l insts j]: inside block l, with the instructions insts and
-      then the jump j left to run. *)
+    Because the small-step semantics takes one instruction or
+    control-flow step at a time, it represents the call stack
+    explicitly as a running [frame] and a list of suspended callers
+    inside a [config]. This section defines the program counter
+    [point], the invocation [frame], the caller continuation
+    [pending], and the initial frame constructor [call_frame]. *)
+
+(** A [point] records where execution currently sits inside a function
+    invocation. A variadic callee begins at [Snapshot] to copy its
+    arguments into a read-only memory block before entering its entry
+    block; [Enter] stands at the start of a basic [[block]] before
+    spending one unit of [[fuel]] and binding [[phi]] nodes; and
+    [Exec] steps through the remaining instructions and terminating
+    jump of a block. *)
 Inductive point : Type :=
 | Snapshot (xs : list word) (l : name)
 | Enter (l : name) (from : option name)
 | Exec (l : name) (insts : list inst) (j : jump).
 
-(** One invocation of a function: the function, its environment of
-    [[temporary|temporaries]], each named local with its object's base
-    once allocated, the reason it is [[doomed]] if an early
-    [[check_ahead]] failed, and where it is. *)
+(** A [frame] represents one active function invocation. It holds the
+    function definition, the local temporary environment, the named
+    stack locals with their base addresses once allocated, any active
+    [[doomed]] trap reason from an early [[check_ahead]], and the
+    current execution [point]. *)
 Record frame : Type := mkFrame {
   fr_fn : func;
   fr_env : env;
@@ -193,19 +224,20 @@ Record frame : Type := mkFrame {
   fr_at : point
 }.
 
-(** How a suspended caller reads its callee's [[outcome]]: the call's
-    Res, the temporaries it binds, and for a call through the
-    [[fast-generic-convention|generic entry]] the caller's and callee's
-    word [[class|classes]] (`indirect_call_conv/7`'s
-    `conv(CallerWords, CalleeWords)`). *)
+(** A [pending] record tells a suspended caller how to receive its
+    callee's return value, storing the call site's [call_result]
+    binding and, for an indirect call through the
+    [[fast-generic-convention|generic entry]], the caller and callee
+    word classes used to convert the returned words. *)
 Record pending : Type := mkPending {
   pd_res : call_result;
   pd_conv : option (list class * list class)
 }.
 
-(** A [[configuration]]: the running [[frame]], the suspended callers
-    innermost first, each with how it reads the result, the memory, and
-    the [[fuel]] left (the table above). *)
+(** A machine configuration [config] packages the complete execution
+    state between steps: the currently running [frame], the stack of
+    suspended callers innermost first, the current memory [mem], and
+    the remaining block [[fuel]]. *)
 Record config : Type := mkConfig {
   c_frame : frame;
   c_callers : list (frame * pending);
@@ -213,16 +245,19 @@ Record config : Type := mkConfig {
   c_fuel : Z
 }.
 
-(** The frame fr moved to the point pt, all else kept. *)
+(** Given a [frame] and a new execution [point], [with_point] returns
+    the same frame positioned at that point with its environment,
+    locals, and doom state unchanged. *)
 Definition with_point (fr : frame) (pt : point) : frame :=
   mkFrame (fr_fn fr) (fr_env fr) (fr_locals fr) (fr_doomed fr) pt.
 
-(** The new frame of a function f called with the words xs, as
-    `call_outcome/8` starts it: parameters bound to the first arguments
-    as they are, each local declared and not yet allocated, at the
-    entry block; a variadic callee first takes the snapshot of all its
-    arguments (`entry_snapshot/6`). None if there are fewer arguments
-    than parameters or f has no blocks. *)
+(** Given a called [func] and the list of argument words passed to it,
+    [call_frame] builds the callee's initial [frame] with its
+    parameter temporaries bound to the leading arguments and its
+    declared stack locals unallocated. A variadic function starts at
+    [Snapshot] to record all of its arguments in memory, whereas a
+    fixed-arity function starts directly at [Enter] on its entry
+    block. *)
 Definition call_frame (f : func) (xs : list word) : option frame :=
   let params := fn_params f in
   if (length xs <? length params)%nat then None else
@@ -236,17 +271,25 @@ Definition call_frame (f : func) (xs : list word) : option frame :=
                      else Enter (b_label b) None))
   end.
 
-(** ## The entry argument snapshot *)
+(** ## The entry argument snapshot
 
-(** The name of the environment's hidden entry that holds the pointer
-    to a variadic callee's argument snapshot, which `va_args` reads. *)
+    Entering and leaving a function or a basic block involves three
+    pieces of frame housekeeping: storing a variadic call's arguments
+    into a read-only snapshot block, binding incoming [[phi]] nodes
+    when entering a block, and emptying stack-local regions when a
+    function returns. This section defines those helpers so [step] and
+    [return_step] can manage frame lifetimes and block entry. *)
+
+(** The constant [va_snapshot] is the hidden environment key where a
+    variadic function stores the read-only pointer to its entry
+    argument snapshot for `va_args` to read. *)
 Definition va_snapshot : name := TApp "hidden" [TAtom "va_snapshot"].
 
-(** As `snapshot_values/5`: the memory m with the argument words xs
-    stored from address a on, 8 bytes apart, each as `p` if it is a
-    pointer (its address in the bytes, its [[capability]] in the
-    [[aux]]), else as `l`. The stores are into a [[fresh]] object of 8
-    bytes per argument, so their checks pass. *)
+(** Given a list of argument words, a starting byte address, and a
+    memory state, [snapshot_values] writes the arguments sequentially
+    at 8-byte strides into a newly allocated snapshot block, storing
+    both the address bytes and the shadow [[aux]] [[capability]] for
+    each pointer argument. *)
 Fixpoint snapshot_values (xs : list word) (a : Z) (m : mem) : mem :=
   match xs with
   | [] => m
@@ -256,21 +299,27 @@ Fixpoint snapshot_values (xs : list word) (a : Z) (m : mem) : mem :=
   | _ :: rest => snapshot_values rest (a + 8) m
   end.
 
-(** The words `snapshot_values/5` can store: integers and pointers. *)
+(** Given a run-time [word], [snapshot_word] returns `true` when the
+    word is an integer or pointer that [snapshot_values] can store in
+    a variadic argument snapshot, and `false` for a limit snapshot. *)
 Definition snapshot_word (x : word) : bool :=
   match x with WInt _ | WPtr _ => true | _ => false end.
 
-(** The [[block]] labelled l among bs. *)
+(** Given a target block label and a list of basic blocks,
+    [find_block] returns the first [block] with that label, or `None`
+    if no block matches. *)
 Fixpoint find_block (l : name) (bs : list block) : option block :=
   match bs with
   | [] => None
   | b :: bs' => if name_eqb (b_label b) l then Some b else find_block l bs'
   end.
 
-(** As `phis_env/6`: the environment after a block's [[phi|phis]],
-    entered from the block from. Each phi reads its value for the edge
-    from that predecessor in the environment e0 as it was on entry, so
-    they all bind at once. An entry block (from None) has no phis. *)
+(** Given the global environment, a block's [[phi]] list, the
+    predecessor label from which the block was entered, and the
+    environment on entry, [phis_env] evaluates every phi node's
+    incoming operand in the pre-entry environment so that all phi
+    temporaries bind simultaneously. Entering the function's entry
+    block has no predecessor and requires an empty phi list. *)
 Definition phis_env (ge : genv) (phis : list phi) (from : option name) (e0 : env)
   : option env :=
   match from with
@@ -286,9 +335,12 @@ Definition phis_env (ge : genv) (phis : list phi) (from : option name) (e0 : env
                    end) phis (Some e0)
   end.
 
-(** As `invalidate_locals/3`: an invocation's named locals end with it.
-    Their [[identity|identities]], bytes and [[aux]] stay; their bounds
-    become empty, so any later access through them traps. *)
+(** Given a frame's list of named stack locals and the current memory
+    state, [invalidate_locals] ends the lifetime of every allocated
+    local when the function returns. Each local's object [[identity]],
+    data bytes, and shadow capabilities remain in memory, while its
+    region bounds become empty and its state becomes [Freed] so any
+    later access through a dangling stack pointer traps. *)
 Definition invalidate_locals (locals : list (name * option Z)) (m : mem) : option mem :=
   fold_left (fun acc l =>
                let* m := acc in
@@ -305,12 +357,22 @@ Definition invalidate_locals (locals : list (name * option Z)) (m : mem) : optio
                    end
                end) locals (Some m).
 
-(** ## Calls *)
+(** ## Calls
 
-(** As `function_check_res/3`: the pointer p designates a function
-    only with that function's [[capability]] at its exact callable
-    address; otherwise the check traps. A pointer with an external
-    capability has no answer here. *)
+    A direct call in Checked IR invokes a known symbol whose signature
+    the validator has checked, whereas an indirect [RawCall] jumps
+    through a checked function pointer using Fil-C's
+    [[fast-generic-convention|fast generic calling convention]]. This
+    section defines the function-pointer check [function_check_res],
+    the word-class conversions for indirect arguments and return
+    values, and the environment update [returned_env] when a call
+    returns. *)
+
+(** Given the global environment and a pointer, [function_check_res]
+    checks whether the pointer carries a function [[capability]] [Fn]
+    at that function's exact symbol address, trapping with
+    [NotAFunction] on any other internal capability or mismatched
+    offset and returning `None` for an external symbol capability. *)
 Definition function_check_res (ge : genv) (p : ptr) : option (res unit) :=
   match ptr_cap p with
   | Fn f =>
@@ -322,8 +384,9 @@ Definition function_check_res (ge : genv) (p : ptr) : option (res unit) :=
   | _ => Some (RTrap NotAFunction)
   end.
 
-(** As `result_words/2`: the [[class|classes]] of the words a call site
-    reads. *)
+(** Given a call site's [call_result], [result_words] returns the list
+    of register [[class|classes]] of the words that the caller reads
+    from the return value. *)
 Definition result_words (r : call_result) : list class :=
   match r with
   | CVoid => []
@@ -331,8 +394,8 @@ Definition result_words (r : call_result) : list class :=
   | CTuple rs => map snd rs
   end.
 
-(** As `return_words(Ret, Ks)` in interp.pl: the [[class|classes]] of
-    the words a function returns. *)
+(** Given a function's [ret_type], [return_words] returns the list of
+    register [[class|classes]] of the words that the function returns. *)
 Definition return_words (t : ret_type) : list class :=
   match t with
   | RVoid => []
@@ -340,12 +403,16 @@ Definition return_words (t : ret_type) : list class :=
   | RClass k => [k]
   end.
 
-(** The kinds of word a call passes or returns: integer, pointer,
-    single float and double float. *)
+(** The inductive type [word_kind] groups the register classes that
+    can cross a function call into four storage kinds: integer words
+    [IntWord], pointer words [PtrWord], 32-bit floats [SingleWord],
+    and 64-bit floats [DoubleWord]. *)
 Inductive word_kind : Type := IntWord | PtrWord | SingleWord | DoubleWord.
 
-(** As `word_class/2`: the kind of word a [[class]] k is. Classes w
-    and l are the same word; p, s and d are each their own. *)
+(** Given an IR [[class]], [word_class] maps both [W] and [L] to
+    [IntWord], maps [P], [Single], and [Double] to their respective
+    word kinds, and returns `None` for classes that cannot be passed
+    or returned directly. *)
 Definition word_class (k : class) : option word_kind :=
   match k with
   | W | L => Some IntWord
@@ -355,15 +422,17 @@ Definition word_class (k : class) : option word_kind :=
   | _ => None
   end.
 
-(** Whether two word kinds are the same. *)
+(** The function [word_kind_eqb] tests whether two call [word_kind]
+    values are identical. *)
 Definition word_kind_eqb (a b : word_kind) : bool :=
   match a, b with
   | IntWord, IntWord | PtrWord, PtrWord | SingleWord, SingleWord | DoubleWord, DoubleWord => true
   | _, _ => false
   end.
 
-(** The `->` condition of `indirect_call_conv/7`: both lists of words
-    have word classes, and the same ones. *)
+(** Given two lists of register classes, [same_words] returns `true`
+    when both lists have the same length and matching [word_class]
+    kinds at every position. *)
 Definition same_words (ks ks' : list class) : bool :=
   match map_option word_class ks, map_option word_class ks' with
   | Some cs, Some cs' =>
@@ -371,10 +440,13 @@ Definition same_words (ks ks' : list class) : bool :=
   | _, _ => false
   end.
 
-(** As `generic_word/4`: the word x written at [[class]] from and read
-    at class to through the [[fast-generic-convention|generic entry]].
-    An integer read as a pointer has no [[capability]]; a pointer read
-    as an integer or a float is its address. *)
+(** Given a source class, a target class, and a run-time [word],
+    [generic_word] converts the word across a mismatch between caller
+    and callee signatures under the
+    [[fast-generic-convention|generic calling convention]]. Reading an
+    integer or float bit pattern as a pointer produces a pointer with
+    [CNone], while reading a pointer as an integer or float extracts
+    its raw 64-bit address. *)
 Definition generic_word (from to : class) (x : word) : option word :=
   match from, to with
   | (W | L | Single | Double), (W | L) => Some x
@@ -386,19 +458,19 @@ Definition generic_word (from to : class) (x : word) : option word :=
   | _, _ => None
   end.
 
-(** What converting a call through a function pointer gives: a
-    [[trap]], or the converted arguments ys and, if the result words
-    need converting too, the caller's and callee's word classes. *)
+(** A [conv] value represents the result of checking and converting
+    arguments for an indirect call: either a safety trap [ConvTrap] on
+    an argument or return size mismatch, or [Converted] with the
+    converted argument words and any return-value conversion classes. *)
 Inductive conv : Type :=
 | ConvTrap (why : reason)
 | Converted (ys : list word) (words : option (list class * list class)).
 
-(** As `indirect_call_conv/7`: a call through a pointer to f, reading
-    its result as r, with arguments args whose values are xs. It traps
-    if the caller passes fewer arguments than f has parameters or reads
-    more result words than f returns; otherwise each argument is read
-    as f's parameter through the
-    [[fast-generic-convention|generic entry]] ([generic_word]). *)
+(** Given a target [func], a call site's [call_result], the call
+    arguments, and their evaluated words, [indirect_call_conv] checks
+    that the caller passes enough arguments for the callee's
+    parameters and does not read more return words than the callee
+    provides, then converts each parameter word with [generic_word]. *)
 Definition indirect_call_conv (f : func) (r : call_result) (args : list arg) (xs : list word)
   : option conv :=
   let params := map fst (fn_params f) in
@@ -414,8 +486,9 @@ Definition indirect_call_conv (f : func) (r : call_result) (args : list arg) (xs
     Some (Converted ys (if same_words caller_words callee_words then None
                         else Some (caller_words, callee_words))).
 
-(** As `outcome_words/2`: the words a returning [[outcome]] returns;
-    None for one that does not return. *)
+(** Given a run [outcome], [outcome_words] extracts the list of
+    returned words when the outcome is a normal return, and returns
+    `None` for any non-returning outcome. *)
 Definition outcome_words (o : outcome) : option (list word) :=
   match o with
   | RetVoid => Some []
@@ -424,7 +497,9 @@ Definition outcome_words (o : outcome) : option (list word) :=
   | _ => None
   end.
 
-(** The returning outcome that returns the words ys. *)
+(** Given a list of returned words, [words_outcome] packages them back
+    into [RetVoid] when empty, [Ret] for a single word, or [Rets] for
+    two or more words. *)
 Definition words_outcome (ys : list word) : outcome :=
   match ys with
   | [] => RetVoid
@@ -432,10 +507,11 @@ Definition words_outcome (ys : list word) : outcome :=
   | _ => Rets ys
   end.
 
-(** As `converted_outcome/4`: the callee's outcome o as a call site
-    that reads the word classes caller reads it, each word converted
-    from the callee's class by [generic_word]. An outcome that does not
-    return passes unchanged. *)
+(** Given the caller's expected return classes, the callee's declared
+    return classes, and a callee [outcome], [converted_outcome]
+    converts each returned word from the callee's class to the
+    caller's class with [generic_word], leaving non-returning outcomes
+    unchanged. *)
 Definition converted_outcome (caller callee : list class) (o : outcome) : option outcome :=
   match outcome_words o with
   | None => Some o
@@ -447,8 +523,10 @@ Definition converted_outcome (caller callee : list class) (o : outcome) : option
       Some (words_outcome ys)
   end.
 
-(** As `call_outcome_result/5` for a returning outcome o: the caller's
-    environment e with the returned words bound as its Res r reads them. *)
+(** Given a call site's [call_result], a returning [outcome], and the
+    caller's [env], [returned_env] coerces each returned word to its
+    destination class with [word_at_class] and binds the call's
+    destination temporaries in the caller's environment. *)
 Definition returned_env (r : call_result) (o : outcome) (e : env) : option env :=
   match o, r with
   | Ret x, CResult d k => let* y := word_at_class k x in Some (put d y e)
@@ -464,13 +542,22 @@ Definition returned_env (r : call_result) (o : outcome) (e : env) : option env :
   | _, _ => None
   end.
 
-(** ## Instructions *)
+(** ## Instructions
 
-(** What one instruction does: continue with an environment, locals
-    and memory; stop with an [[outcome]]; call a function with the
-    words xs, the caller to read the result as pd says; allocate for
-    the request q, going on as k says of the new base; or call a
-    function outside the [[core subset]]. *)
+    Each instruction inside a basic block either updates the current
+    frame and memory, stops the run with an outcome, transfers control
+    into a called function, or requests a [[fresh]] address from the
+    allocator. This section defines the instruction result type
+    [inst_out], the single-instruction evaluator [inst_step], and the
+    [[doomed]] transition [doomed_result] for early [[check_ahead]]
+    failures. *)
+
+(** An [inst_out] describes the immediate effect of executing a single
+    instruction: continuing to the next instruction with [IContinue],
+    stopping the run with [IStop], invoking a defined function with
+    [ICall], requesting a [[fresh]] allocation base with [IFresh], or
+    halting on a call to a function outside the
+    [[core-subset|core subset]] with [ICallOutside]. *)
 Inductive inst_out : Type :=
 | IContinue (e : env) (locals : list (name * option Z)) (m : mem)
 | IStop (o : outcome)
@@ -478,8 +565,10 @@ Inductive inst_out : Type :=
 | IFresh (q : alloc_req) (k : Z -> env * list (name * option Z) * mem)
 | ICallOutside (f : name).
 
-(** As `res_result/5`: an operation's result r bound to the temporary
-    d, or its [[trap]] or [[unchecked]] reason as the outcome. *)
+(** Given a destination temporary name, a partial operation result
+    [res], and the current environment, locals, and memory, [bind_res]
+    binds the temporary and continues on [RVal], or stops the run with
+    [Trap] or [Unchecked] on failure. *)
 Definition bind_res (d : name) (r : res word) (e : env) locals (m : mem) : inst_out :=
   match r with
   | RVal x => IContinue (put d x e) locals m
@@ -487,8 +576,10 @@ Definition bind_res (d : name) (r : res word) (e : env) locals (m : mem) : inst_
   | RUnchecked why => IStop (Unchecked why)
   end.
 
-(** As `store_res_result/4`: a store's result r, going on with nothing
-    bound, or its trap or unchecked reason as the outcome. *)
+(** Given a partial unit result from a memory store and the current
+    environment, locals, and memory, [store_out] continues with the
+    updated memory on [RVal] and stops with [Trap] or [Unchecked] on
+    failure. *)
 Definition store_out (r : res unit) (e : env) locals (m : mem) : inst_out :=
   match r with
   | RVal _ => IContinue e locals m
@@ -496,8 +587,9 @@ Definition store_out (r : res unit) (e : env) locals (m : mem) : inst_out :=
   | RUnchecked why => IStop (Unchecked why)
   end.
 
-(** As `width_value_class/2` (filc_amd64.pl): the [[class]] at which a
-    raw store of width w reads the value it stores. *)
+(** Given a memory store [width], [width_value_class] returns the
+    register [[class]] at which a [RawStore] evaluates its value
+    operand before truncating and writing the bytes. *)
 Definition width_value_class (w : width) : option class :=
   match w with
   | Wb | Wh | Ww => Some W
@@ -508,25 +600,25 @@ Definition width_value_class (w : width) : option class :=
   | Wx => Some Extended
   end.
 
-(** The name of libc's `free`, an [[external call]] the model runs. *)
+(** The constant [free_name] is the symbol name of the standard C
+    deallocator `c: free`, which the semantics executes directly as a
+    built-in [[external call]]. *)
 Definition free_name : name := TAtom "free".
 
-(** The name of libpizlo's `zgc_free`, which glibc's own free calls:
-    the model runs it as it runs `free`. *)
+(** The constant [zgc_free_name] is the symbol name of libpizlo's
+    `c: zgc_free` deallocator, which the semantics executes in the
+    same way as [free_name]. *)
 Definition zgc_free_name : name := TAtom "zgc_free".
 
-(** The name f is one of the frees the model runs, [free_name] or
-    [zgc_free_name] (`external_call_outcome/9`'s `[free, zgc_free]`). *)
+(** Given a symbol [name], [is_free_name] returns `true` when the
+    symbol is either [free_name] or [zgc_free_name]. *)
 Definition is_free_name (f : name) : bool := name_eqb f free_name || name_eqb f zgc_free_name.
 
-(** A call of a name f the module does not define as a function:
-    `inst_result/5`'s call of `global(F)`. Data the module defines is
-    not a function, and the call traps, as native code's function check
-    does. Otherwise it is `external_call_outcome/9`: only libc's
-    `void free(p)` and libpizlo's `void zgc_free(p)` ([is_free_name])
-    are modeled, through the [[runtime]]'s free, the genv's [ge_free];
-    any other external call is stuck until Campaign 4 gives it a
-    [[external-call|contract]]. *)
+(** Given a call to a symbol not defined as a function in the module,
+    [external_call] traps with [NotAFunction] if the symbol names a
+    global data object, runs `ge_free` from the global environment
+    when the symbol satisfies [is_free_name] with a single pointer
+    argument, and returns `None` for any other external symbol. *)
 Definition external_call (ge : genv) (f : name) (r : call_result) (args : list arg)
     (xs : list word) (e : env) locals (m : mem) : option inst_out :=
   match lookup f (ge_globals ge) with
@@ -546,10 +638,11 @@ Definition external_call (ge : genv) (f : name) (r : call_result) (args : list a
            end
   end.
 
-(** As `inst_result/5` for the [[core subset]]: what the instruction i
-    does in the frame fr with memory m. None where the interpreter
-    throws or fails, such as a [[temporary]] read before it is
-    assigned or an access through an external capability. *)
+(** Given the global environment, the active [frame], the current
+    memory state, and an instruction in the
+    [[core-subset|core subset]], [inst_step] evaluates the instruction
+    to an [inst_out], or returns `None` when an operand is unassigned
+    or ill-classed or accesses an external capability. *)
 Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst_out :=
   let e := fr_env fr in
   let locals := fr_locals fr in
@@ -657,8 +750,8 @@ Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst
                       match cv with
                       | ConvTrap why => Some (IStop (Trap why))
                       | Converted ys words =>
-                          (* a variadic callee gets the extra arguments
-                             unconverted after its parameters *)
+                          (* A variadic callee receives any extra arguments
+                             unconverted after its fixed parameters. *)
                           let extra := if variadic_func gf
                                        then skipn (length (fn_params gf)) xs else [] in
                           Some (ICall gf (ys ++ extra) (mkPending r words))
@@ -673,14 +766,15 @@ Definition inst_step (ge : genv) (fr : frame) (m : mem) (i : inst) : option inst
       end
   end.
 
-(** As `doomed_result/5`: an instruction's result out, adjusted for
-    [[doomed|doom]], with the frame's doom after it. A [[check_ahead]]
-    whose early bytes fail yields its pointer and dooms the run
-    (docs/schedule.md). From then on it must reach, through
-    [[ahead-transparent]] instructions only, an access whose reference
-    check fails: an [[unchecked]] [[raw access]] there is the program's
-    [[trap]], made early. A [[renew]] of another object (alias) or a
-    wrong [[limit]] stays a broken pass. *)
+(** Given the global environment, the active [frame], memory, the
+    executed instruction, and its raw [inst_out], [doomed_result]
+    updates the result and the frame's [[doomed]] state. When a
+    [[check_ahead]] fails only on its lookahead bytes with [Early],
+    the instruction still binds the checked pointer and marks the
+    frame as doomed with that trap reason; when a later
+    [[raw-access|raw access]] in that doomed frame fails its
+    capability check, [doomed_result] turns that fault into the
+    deferred [Early] [[trap]]. *)
 Definition doomed_result (ge : genv) (fr : frame) (m : mem) (i : inst) (out : inst_out)
   : option (inst_out * option reason) :=
   match i, out with
@@ -697,38 +791,43 @@ Definition doomed_result (ge : genv) (fr : frame) (m : mem) (i : inst) (out : in
   | _, _ => Some (out, fr_doomed fr)
   end.
 
-(** ## Steps *)
+(** ## Steps
 
-(** What one [[step]] gives:
-    - [Next c], the next [[configuration]];
-    - [Done o], the run's [[outcome]];
-    - [Fresh q k], an allocation of the request q, whose next
-      configuration is [k base] for any base [fresh] in the memory
-      ([step_rel] makes that choice nondeterministic);
-    - [Stuck why], where the interpreter throws or fails (a call to an
-      external symbol, an access through an external capability, a
-      temporary read before it is assigned, an ill-classed word); the
-      step relation has no step there. *)
+    We now combine frame entry, instruction execution, control-flow
+    jumps, and function return into the single-step evaluator [step].
+    This section defines the step outcome type [step_result] and the
+    helper transitions for returns, edges, jumps, and instructions
+    that [step] dispatches on. *)
+
+(** A [step_result] is the outcome of taking one small [[step]] from a
+    machine configuration: advancing to a new configuration with
+    [Next], finishing the run with [Done], requesting a [[fresh]]
+    allocation base with [Fresh], or halting with [Stuck] when
+    execution reaches an unmodeled external symbol or an ill-formed
+    state. *)
 Inductive step_result : Type :=
 | Next (c : config)
 | Done (o : outcome)
 | Fresh (q : alloc_req) (k : Z -> config)
 | Stuck (why : string).
 
-(** The step result r, or stuck with the label why where there is
-    none. *)
+(** Given a diagnostic label and an optional [step_result], [or_stuck]
+    unwraps a present result and turns `None` into [Stuck] with that
+    label. *)
 Definition or_stuck (why : string) (r : option step_result) : step_result :=
   match r with Some s => s | None => Stuck why end.
 
-(** The configuration after the frame fr, in memory m, moved on. *)
+(** Given a configuration, an updated [frame], a memory state, and a
+    remaining fuel count, [continue_at] builds the next [config] while
+    keeping the suspended caller stack unchanged. *)
 Definition continue_at (c : config) (fr : frame) (m : mem) (fuel : Z) : config :=
   mkConfig fr (c_callers c) m fuel.
 
-(** The end of the running invocation of the configuration c with the
-    returning outcome o (`call_outcome/8` after `block_outcome/7`, then
-    the caller's `call_outcome_result/5`): its locals end, and the
-    caller, if any, reads the result and goes on; with no caller, o is
-    the run's outcome. *)
+(** Given the current configuration and a returning [outcome],
+    [return_step] invalidates the returning frame's stack locals with
+    [invalidate_locals] and either finishes the run with [Done] when
+    the caller stack is empty, or converts and binds the return value
+    in the top caller frame and resumes that caller. *)
 Definition return_step (c : config) (o : outcome) : step_result :=
   let fr := c_frame c in
   or_stuck "return" (
@@ -746,9 +845,11 @@ Definition return_step (c : config) (o : outcome) : step_result :=
                              callers m (c_fuel c)))
     end).
 
-(** As `edge_outcome/7`: taking the edge from the block from to the
-    target t. A [[poll|poll edge]] reached while [[doomed]] means the
-    early check was not anticipated, an [[unchecked]] outcome. *)
+(** Given a configuration, the current block label, and a jump
+    [target], [edge_step] transitions the active frame to [Enter] at
+    the target block, or stops with an [[unchecked]] [Ahead] fault if
+    a [[doomed]] frame reaches a [[poll|poll edge]] before the
+    anticipated access. *)
 Definition edge_step (c : config) (from : name) (t : target) : step_result :=
   let fr := c_frame c in
   match t, fr_doomed fr with
@@ -757,9 +858,13 @@ Definition edge_step (c : config) (from : name) (t : target) : step_result :=
                               (c_mem c) (c_fuel c))
   end.
 
-(** As `result_outcome/6` and `jump_outcome/7`: the step of the jump j
-    that ends block l, a goto, a branch on a word, or a return. A
-    doomed frame may not return: its early check was not anticipated. *)
+(** Given the global environment, the current configuration, the
+    current block label, and the block's terminating [jump],
+    [jump_step] takes an unconditional or conditional branch with
+    [edge_step] or returns from the function with [return_step]. If
+    the frame is currently [[doomed]], attempting to return or execute
+    [JUnreachable] before the anticipated access fails stops with an
+    [[unchecked]] [Ahead] fault. *)
 Definition jump_step (ge : genv) (c : config) (l : name) (j : jump) : step_result :=
   let fr := c_frame c in
   let e := fr_env fr in
@@ -791,10 +896,13 @@ Definition jump_step (ge : genv) (c : config) (l : name) (j : jump) : step_resul
   | _, JUnreachable => Done Unreachable
   end.
 
-(** The step after an instruction's result out in block l, with the
-    instructions rest and the jump j left and the doom doomed after it:
-    on in the block, the outcome, into a callee (the caller suspended
-    on top of c's callers), or an allocation. *)
+(** Given the current configuration, the enclosing block label, the
+    remaining instructions and terminating jump of the block, an
+    instruction's [inst_out], and the updated doom state, [inst_next]
+    constructs the resulting [step_result]. Depending on the
+    instruction outcome, it advances to the rest of the block,
+    finishes the run, suspends the caller to enter a callee frame, or
+    requests a fresh allocation base. *)
 Definition inst_next (c : config) (l : name) (rest : list inst) (j : jump)
     (out : inst_out) (doomed : option reason) : step_result :=
   let fr := c_frame c in
@@ -817,17 +925,21 @@ Definition inst_next (c : config) (l : name) (rest : list inst) (j : jump)
   | ICallOutside _ => Stuck "outside the core subset"
   end.
 
-(** One [[step]] of the configuration c in the global environment ge:
-    take the argument snapshot, enter a block (spending [[fuel]] and
-    binding its phis), run one instruction, or take the block's jump. *)
+(** Given the global environment and a machine configuration, [step]
+    executes one small step of the operational semantics according to
+    the active frame's execution [point]. At [Snapshot] it allocates
+    the read-only argument buffer for a variadic call, at [Enter] it
+    spends one unit of [[fuel]] and binds the block's [[phi]] nodes,
+    and at [Exec] it either runs the next instruction or takes the
+    block's terminating jump once no instructions remain. *)
 Definition step (ge : genv) (c : config) : step_result :=
   let fr := c_frame c in
   let m := c_mem c in
   match fr_at fr with
   | Snapshot xs l =>
-      (* entry_snapshot/6 and args_snapshot/4: no arguments is a null
-         pointer; otherwise a fresh 16-aligned object holds them, and
-         its pointer is read-only. *)
+      (* When a variadic call passes no arguments, its snapshot pointer
+         is null; otherwise a fresh 16-byte-aligned read-only object
+         holds the argument words. *)
       let enter e m' := mkConfig (mkFrame (fr_fn fr) (put va_snapshot e (fr_env fr)) (fr_locals fr)
                                           (fr_doomed fr) (Enter l None))
                                  (c_callers c) m' (c_fuel c) in
@@ -840,7 +952,8 @@ Definition step (ge : genv) (c : config) : step_result :=
                                      (snapshot_values xs base (allocated m q base)))
       end
   | Enter l from =>
-      (* block_outcome/7: fuel first, then the block's phis. *)
+      (* Entering a basic block consumes one unit of fuel before
+         evaluating the block's phi nodes. *)
       if c_fuel c =? 0 then Done OutOfFuel else
       or_stuck "block" (
         let* b := find_block l (fn_blocks (fr_fn fr)) in
@@ -850,8 +963,8 @@ Definition step (ge : genv) (c : config) : step_result :=
                              (c_callers c) m (c_fuel c - 1))))
   | Exec l [] j => jump_step ge c l j
   | Exec l (i :: rest) j =>
-      (* insts_result/5: a doomed run stops at the first instruction
-         that is not ahead_transparent. *)
+      (* A doomed frame faults immediately if it reaches an instruction
+         that is not ahead-transparent before the anticipated access. *)
       let stop := match fr_doomed fr with
                   | Some why => if ahead_transparent i then None else Some why
                   | None => None
@@ -866,19 +979,30 @@ Definition step (ge : genv) (c : config) : step_result :=
       end
   end.
 
-(** ## The step relation *)
+(** ## The step relation
 
-(** The configuration c' may follow c. An allocation's base is any
-    that is [fresh] in c's memory; the interpreter's choice is one. *)
+    While [step] is a deterministic function for ordinary transitions,
+    heap and stack allocations return a [Fresh] request that leaves
+    the choice of the new object's base address open. This section
+    turns [step] into the nondeterministic transition relation
+    [step_rel], defines terminal configurations with [final], and
+    takes the reflexive-transitive closure in [reachable]. *)
+
+(** The inductive relation [step_rel] relates a configuration to any
+    configuration that can follow it in one step, either
+    deterministically via [Next] or by choosing any [fresh] base
+    address in memory for a [Fresh] allocation request. *)
 Inductive step_rel (ge : genv) : config -> config -> Prop :=
 | step_next : forall c c', step ge c = Next c' -> step_rel ge c c'
 | step_fresh : forall c q k base,
     step ge c = Fresh q k -> fresh (c_mem c) q base -> step_rel ge c (k base).
 
-(** The run in the configuration c ends now with the outcome o. *)
+(** A configuration satisfies [final] for an [outcome] when [step]
+    terminates immediately in that configuration with [Done]. *)
 Definition final (ge : genv) (c : config) (o : outcome) : Prop := step ge c = Done o.
 
-(** The configuration c' follows c after any number of steps of
-    [step_rel]. *)
+(** The relation [reachable] is the reflexive-transitive closure of
+    [step_rel], relating an initial configuration to any configuration
+    it can reach in zero or more steps. *)
 Definition reachable (ge : genv) : config -> config -> Prop :=
   clos_refl_trans config (step_rel ge).
