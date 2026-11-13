@@ -19,6 +19,7 @@ nanofil-model
 # The Gallina backend (rocq/backend/Makefile)
 backend/.deps
 backend/.regs-assumptions
+backend/.amd64-assumptions
 backend/extraction/nanofil_backend.ml
 backend/extraction/nanofil_backend.mli
 backend/extraction/*.cm*

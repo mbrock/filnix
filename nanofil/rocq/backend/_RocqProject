@@ -36,4 +36,11 @@ Compile.v
 IrText.v
 Encode.v
 Elf.v
+Amd64Word.v
+Amd64Machine.v
+Amd64Step.v
+Amd64Asm.v
+Amd64Total.v
+Amd64DivisionCode.v
+Amd64Division.v
 Extract.v

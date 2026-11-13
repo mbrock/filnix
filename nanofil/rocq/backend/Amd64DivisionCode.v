@@ -151,8 +151,9 @@ Definition word_size (z : size) : Prop := z = S32 \/ z = S64.
 Definition scratch_only (s s' : machine) : Prop :=
   forall r, r <> RAX -> r <> RCX -> r <> RDX -> regs s' r = regs s r.
 
-(** Register reads can be simplified before executing the next instruction.
-    This tactic keeps the machine abstract while removing completed writes. *)
+(** Register reads can be simplified before executing the next
+    instruction. This tactic keeps the machine abstract while removing
+    completed writes. *)
 Local Ltac division_regs :=
   repeat first
     [ rewrite get_reg_set_flags
@@ -182,12 +183,14 @@ Local Ltac division_closed v :=
 Local Ltac division_constants :=
   repeat match goal with |- context [wrap ?z ?v] =>
     division_closed v;
-    let n := eval vm_compute in (wrap z v) in
+    let w := constr:(wrap z v) in
+    let n := eval vm_compute in w in
     progress change (wrap z v) with n
   end.
 
-(** Each instruction receives its own undefined flags during symbolic execution.
-    A completed step leaves only the execution of the remaining instructions. *)
+(** Each instruction receives its own undefined flags during symbolic
+    execution. A completed step leaves only the execution of the
+    remaining instructions. *)
 Local Ltac division_step :=
   match goal with
   | H : runs (_ :: _) _ _ |- _ =>
@@ -237,8 +240,9 @@ Proof.
     apply wrap_small, get_reg_range.
 Qed.
 
-(** Comparing a valid pattern with -1 sets zero exactly for the all-ones pattern.
-    This identifies the bit that the second fragment copies with `sete`. *)
+(** Comparing a valid pattern with -1 sets zero exactly for the all-ones
+    pattern. This identifies the bit that the second fragment copies
+    with `sete`. *)
 Lemma compare_minus_one (z : size) (c : Z) :
   0 <= c < size_modulus z ->
   (wrap z (c - wrap z (-1)) =? 0) = (c =? size_modulus z - 1).
