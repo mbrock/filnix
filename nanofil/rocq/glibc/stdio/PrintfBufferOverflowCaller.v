@@ -1,0 +1,82 @@
+(** Printf reads its output stream, passes the staged character to overflow,
+    and checks the result. EOF marks the printf buffer failed. Any other
+    result reaches the checked buffer-selection path.
+
+    This composition keeps two obligations explicit: the overflow contract
+    and the ownership needed by buffer selection. It borrows the FILE
+    lifetime only for the pointer read and returns it before calling overflow. *)
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+From iris.program_logic Require Import language weakestpre.
+From Stdlib Require Import String ZArith List Lia.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
+  ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioGenCode PrintfBufferFileCode PrintfBufferOverflowPrelude
+  PrintfBufferOverflowCall PrintfBufferOverflowReturn.
+Import ListNotations.
+Open Scope Z_scope.
+
+(** The composed rules share the caller's existing runtime and OS interpretation. *)
+Module PrintfBufferOverflowCallerOn (R : Runtime) (LG0 : LogicSig R).
+Module OP := PrintfBufferOverflowPreludeOn R LG0.
+Module OC := PrintfBufferOverflowCallOn R LG0.
+Module ORet := PrintfBufferOverflowReturnOn R LG0.
+Import OC.CS OC.CS.SW OC.CS.SW.FI.ML OC.CS.SW.FI.LG OC.CS.SW.FI.L
+  OC.CS.SW.OW OC.CS.SW.FI OC.CS.SW.ST.
+
+Section rules.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+
+(** The call preserves whatever OS resources its explicit contract returns. *)
+Local Instance caller_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry (os_wi w0) ge.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+Context (F : ptr -> iProp Σ) (E : iProp Σ).
+Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
+Context (Hcall : OC.printf_overflow_call_spec w0 registry ge F E).
+
+(** The stream lends its lifetime for the pointer read without losing any
+    other resources. Neither branch assumes that overflow succeeds. *)
+Lemma wp_printf_overflow_caller e from bb breg fb ch mode Φ :
+  0 < bb -> bb mod 8 = 0 -> bb + 49 <= r_end breg -> r_end breg <= 2 ^ 63 ->
+  0 < fb -> fb < 2 ^ 64 -> 0 <= ch < 256 ->
+  lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
+  lookup (TAtom "chk0") e = Some (WPtr (mkPtr (bb + 24) (Obj bb))) ->
+  (F (mkPtr fb (Obj fb)) ⊢ ∃ freg dqf, liveq dqf fb freg ∗
+    (liveq dqf fb freg -∗ F (mkPtr fb (Obj fb)))) ->
+  live bb breg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ bytes bb 48 [ch] -∗
+  int_cell bb 32 mode -∗ F (mkPtr fb (Obj fb)) -∗ E -∗
+  (live bb breg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ bytes bb 48 [ch] -∗
+    int_cell bb 32 0 -∗ F (mkPtr fb (Obj fb)) -∗ E -∗ Φ RetVoid) -∗
+  (∀ e', ⌜lookup (TAtom "v0") e' = Some (WPtr (mkPtr bb (Obj bb)))⌝ -∗
+    live bb breg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ bytes bb 48 [ch] -∗
+    int_cell bb 32 mode -∗ F (mkPtr fb (Obj fb)) -∗ E -∗
+    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+      (Enter (TAtom "L88") (Some (TAtom "L74")))) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+    (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
+Proof.
+  intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk Hborrow.
+  iIntros "Hb Hfp Hch Hm HF HE Hfail Hselect".
+  iDestruct (Hborrow with "HF") as (freg dqf) "[Hf Hclose]".
+  iApply (OP.wp_printf_overflow_prelude w0 registry ge e from bb breg fb freg dqf
+    with "Hb Hfp Hf"); try side.
+  iIntros (e' (Hv0' & Hchk' & Hfp')) "Hb Hfp Hf".
+  iDestruct ("Hclose" with "Hf") as "HF".
+  iApply (OC.wp_printf_overflow_call w0 registry ge F E Hoverflow Hcall
+    e' bb breg (mkPtr fb (Obj fb)) ch with "Hb Hch HF HE"); try side.
+  iIntros (r e'' (Hr & Hv0'' & Hchk'' & Hret)) "Hb Hch HF HE".
+  destruct (Z.eq_dec r 4294967295) as [->|Hneq].
+  - iApply (ORet.wp_printf_overflow_eof w0 registry ge e'' bb breg mode
+      with "Hb Hm"); try side.
+    iNext. iIntros "Hb Hm".
+    iApply ("Hfail" with "Hb Hfp Hch Hm HF HE").
+  - iApply (ORet.wp_printf_overflow_continue w0 registry ge e'' r); try assumption.
+    iApply ("Hselect" with "[%] Hb Hfp Hch Hm HF HE").
+    lookups; reflexivity.
+Qed.
+
+End rules.
+End PrintfBufferOverflowCallerOn.
