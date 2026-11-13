@@ -141,39 +141,54 @@ Definition divisor_safe (sg : signedness) (z : size) (c : Z) : Prop :=
 Lemma nonzero_divisor_range (z : size) (c : Z) :
   0 <= c < size_modulus z -> 0 < nonzero_divisor c < size_modulus z.
 Proof.
-Admitted.
+  intros H. pose proof (size_modulus_ge z).
+  unfold nonzero_divisor. destruct (c =? 0) eqn:E;
+    [apply Z.eqb_eq in E | apply Z.eqb_neq in E]; lia.
+Qed.
 
 (** The dividend after the first stage is a valid pattern. *)
 Lemma nonzero_dividend_range (z : size) (a c : Z) :
   0 <= a < size_modulus z -> 0 <= nonzero_dividend a c < size_modulus z.
 Proof.
-Admitted.
+  intros H. unfold nonzero_dividend. destruct (c =? 0); lia.
+Qed.
 
 (** The divisor after the second stage is nonzero and is not the
     pattern of -1. *)
 Lemma positive_divisor_range (z : size) (c : Z) :
   0 < c < size_modulus z -> 0 < positive_divisor z c < size_modulus z - 1.
 Proof.
-Admitted.
+  intros H. pose proof (size_modulus_ge z).
+  unfold positive_divisor. destruct (c =? size_modulus z - 1) eqn:E;
+    [apply Z.eqb_eq in E | apply Z.eqb_neq in E]; lia.
+Qed.
 
 (** The dividend after the second stage is a valid pattern. *)
 Lemma negated_dividend_range (z : size) (a c : Z) :
   0 <= a < size_modulus z -> 0 <= negated_dividend z a c < size_modulus z.
 Proof.
-Admitted.
+  intros H. unfold negated_dividend.
+  destruct (c =? size_modulus z - 1); [apply wrap_range | exact H].
+Qed.
 
 (** The divisor that reaches the divide instruction is safe. *)
 Lemma safe_divisor_safe (sg : signedness) (z : size) (c : Z) :
   0 <= c < size_modulus z -> divisor_safe sg z (safe_divisor sg z c).
 Proof.
-Admitted.
+  destruct sg; cbn [divisor_safe safe_divisor]; intros H.
+  - apply positive_divisor_range, nonzero_divisor_range, H.
+  - apply nonzero_divisor_range, H.
+Qed.
 
 (** The dividend that reaches the divide instruction is a valid
     pattern. *)
 Lemma safe_dividend_range (sg : signedness) (z : size) (a c : Z) :
   0 <= a < size_modulus z -> 0 <= safe_dividend sg z a c < size_modulus z.
 Proof.
-Admitted.
+  destruct sg; cbn [safe_dividend]; intros H.
+  - apply negated_dividend_range, nonzero_dividend_range, H.
+  - apply nonzero_dividend_range, H.
+Qed.
 
 (** ## The divide instruction does not fault
 
@@ -191,7 +206,13 @@ Lemma divide_words_unsigned (z : size) (a c : Z) :
   divide_words false z 0 a c
   = Some (machine_quotient Unsigned z a c, machine_remainder Unsigned z a c).
 Proof.
-Admitted.
+  intros Ha Hc. unfold divisor_safe in Hc.
+  unfold divide_words. rewrite unsigned_pair_zero, !wrap_small by lia.
+  rewrite (proj2 (Z.eqb_neq c 0) ltac:(lia)).
+  assert (Hq : a / c < size_modulus z).
+  { apply Z.div_lt_upper_bound; nia. }
+  rewrite (proj2 (Z.ltb_lt _ _) Hq). reflexivity.
+Qed.
 
 (** A signed divide of a dividend extended by its own sign succeeds
     when the divisor is neither zero nor -1. The quotient then has no
@@ -201,7 +222,27 @@ Lemma divide_words_signed (z : size) (a c : Z) :
   divide_words true z (sign_fill z a) a c
   = Some (machine_quotient Signed z a c, machine_remainder Signed z a c).
 Proof.
-Admitted.
+  intros Ha Hc. unfold divisor_safe in Hc.
+  assert (Ec : wrap z c = c) by (apply wrap_small; lia).
+  assert (D0 : signed_at z c <> 0).
+  { apply Z.eqb_neq. rewrite signed_at_zero, Ec. apply Z.eqb_neq; lia. }
+  assert (Dm : signed_at z c <> -1).
+  { apply Z.eqb_neq. rewrite signed_at_minus_one, Ec. apply Z.eqb_neq; lia. }
+  assert (F : fits_signed z (Z.quot (signed_at z a) (signed_at z c)) = true).
+  { destruct (Z.eq_dec (signed_at z c) 1) as [E | D1].
+    - rewrite E, Z.quot_1_r. apply signed_at_fits.
+    - apply fits_signed_iff.
+      pose proof (signed_at_range z a) as A.
+      pose proof (size_modulus_ge z) as M.
+      pose proof (size_modulus_half z) as H.
+      assert (B : 2 <= Z.abs (signed_at z c)) by lia.
+      assert (Q : Z.abs (Z.quot (signed_at z a) (signed_at z c)) < size_modulus z / 2).
+      { rewrite <- Z.quot_abs by exact D0.
+        apply Z.quot_lt_upper_bound; nia. }
+      lia. }
+  unfold divide_words. rewrite signed_pair_fill.
+  rewrite (proj2 (Z.eqb_neq _ _) D0), F. reflexivity.
+Qed.
 
 (** The quotient that a divide instruction leaves for a safe divisor
     is a valid pattern. *)
@@ -209,7 +250,10 @@ Lemma machine_quotient_range (sg : signedness) (z : size) (a c : Z) :
   0 <= a < size_modulus z -> divisor_safe sg z c ->
   0 <= machine_quotient sg z a c < size_modulus z.
 Proof.
-Admitted.
+  destruct sg; cbn [machine_quotient divisor_safe]; intros Ha Hc.
+  - apply wrap_range.
+  - split; [apply Z.div_pos | apply Z.div_lt_upper_bound]; nia.
+Qed.
 
 (** The remainder that a divide instruction leaves for a safe divisor
     is a valid pattern. *)
@@ -217,7 +261,10 @@ Lemma machine_remainder_range (sg : signedness) (z : size) (a c : Z) :
   0 <= a < size_modulus z -> divisor_safe sg z c ->
   0 <= machine_remainder sg z a c < size_modulus z.
 Proof.
-Admitted.
+  destruct sg; cbn [machine_remainder divisor_safe]; intros Ha Hc.
+  - apply wrap_range.
+  - pose proof (Z.mod_pos_bound a c ltac:(lia)). lia.
+Qed.
 
 (** ## The results are the IR's
 
@@ -227,6 +274,28 @@ Admitted.
     are the values that the IR operation defines for the original
     operands. *)
 
+(** The signed readings of zero and one let the rewritten division
+    use the ordinary identities for division by one. *)
+Lemma signed_at_constants (z : size) : signed_at z 0 = 0 /\ signed_at z 1 = 1.
+Proof.
+  destruct z; split; reflexivity.
+Qed.
+
+(** At an integer class, the IR reads the operands with the same
+    signed interpretation and modulus as the machine. *)
+Lemma division_alu_at (sg : signedness) (k : class) (z : size)
+    (r : bool) (x y : Z) :
+  class_size k = Some z ->
+  Ops.alu (division_op sg r) k [WInt x; WInt y] =
+  Some (WInt
+    (if (match sg with Signed => signed_at z y | Unsigned => y end) =? 0
+     then 0 else
+     if r then machine_remainder sg z x y else machine_quotient sg z x y)).
+Proof.
+  destruct sg, k, r; cbn [class_size]; intros H; try discriminate;
+    inversion H; subst z; reflexivity.
+Qed.
+
 (** The quotient of the rewritten operands is the result of the IR's
     `div` or `udiv`. *)
 Lemma total_quotient_agrees (sg : signedness) (k : class) (z : size) (x y : Z) :
@@ -235,7 +304,28 @@ Lemma total_quotient_agrees (sg : signedness) (k : class) (z : size) (x y : Z) :
   Ops.alu (division_op sg false) k [WInt x; WInt y]
   = Some (WInt (machine_quotient sg z (safe_dividend sg z x y) (safe_divisor sg z y))).
 Proof.
-Admitted.
+  intros Hk Hx Hy. rewrite (division_alu_at sg k z false x y Hk).
+  pose proof (size_modulus_ge z) as M.
+  destruct (signed_at_constants z) as [S0 S1].
+  assert (E1 : (1 =? size_modulus z - 1) = false) by (apply Z.eqb_neq; lia).
+  destruct sg; cbn [safe_dividend safe_divisor machine_quotient].
+  - rewrite signed_at_zero, wrap_small by exact Hy.
+    unfold nonzero_dividend, nonzero_divisor, negated_dividend, positive_divisor.
+    destruct (y =? 0) eqn:E0.
+    + rewrite E1, S0, S1, Z.quot_1_r, wrap_small by lia. reflexivity.
+    + destruct (y =? size_modulus z - 1) eqn:Em.
+      * assert (Sm : signed_at z y = -1).
+        { apply Z.eqb_eq. rewrite signed_at_minus_one, wrap_small by exact Hy. exact Em. }
+        rewrite Sm, S1, Z.quot_1_r.
+        replace (-1) with (- (1)) by reflexivity.
+        rewrite Z.quot_opp_r by lia. rewrite Z.quot_1_r.
+        rewrite wrap_signed_at, wrap_wrap.
+        rewrite <- wrap_opp, wrap_signed_at, (wrap_small z x Hx).
+        reflexivity.
+      * reflexivity.
+  - unfold nonzero_dividend, nonzero_divisor.
+    destruct (y =? 0); reflexivity.
+Qed.
 
 (** The remainder of the rewritten operands is the result of the IR's
     `rem` or `urem`. *)
@@ -245,4 +335,22 @@ Lemma total_remainder_agrees (sg : signedness) (k : class) (z : size) (x y : Z) 
   Ops.alu (division_op sg true) k [WInt x; WInt y]
   = Some (WInt (machine_remainder sg z (safe_dividend sg z x y) (safe_divisor sg z y))).
 Proof.
-Admitted.
+  intros Hk Hx Hy. rewrite (division_alu_at sg k z true x y Hk).
+  pose proof (size_modulus_ge z) as M.
+  destruct (signed_at_constants z) as [S0 S1].
+  assert (E1 : (1 =? size_modulus z - 1) = false) by (apply Z.eqb_neq; lia).
+  destruct sg; cbn [safe_dividend safe_divisor machine_remainder].
+  - rewrite signed_at_zero, wrap_small by exact Hy.
+    unfold nonzero_dividend, nonzero_divisor, negated_dividend, positive_divisor.
+    destruct (y =? 0) eqn:E0.
+    + rewrite E1, S0, S1, Z.rem_1_r, wrap_small by lia. reflexivity.
+    + destruct (y =? size_modulus z - 1) eqn:Em.
+      * assert (Sm : signed_at z y = -1).
+        { apply Z.eqb_eq. rewrite signed_at_minus_one, wrap_small by exact Hy. exact Em. }
+        rewrite Sm, S1, Z.rem_1_r.
+        replace (-1) with (- (1)) by reflexivity.
+        rewrite Z.rem_opp_r by lia. rewrite Z.rem_1_r. reflexivity.
+      * reflexivity.
+  - unfold nonzero_dividend, nonzero_divisor.
+    destruct (y =? 0); reflexivity.
+Qed.
