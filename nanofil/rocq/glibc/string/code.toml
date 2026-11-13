@@ -1,0 +1,10 @@
+layout = "string"
+fixtures = '''
+Strcmp|strcmp|string/strcmp.os|__GI_strcmp
+Strncmp|strncmp|string/strncmp.os|__GI_strncmp
+Memcmp|memcmp|string/memcmp.os|__GI_memcmp
+Memrchr|memrchr|string/memrchr.os|__GI___memrchr
+Strchr|strchr strchrnul strrchr memchr strnlen|string/strchr.os string/strchrnul.os string/strrchr.os string/memchr.os string/strnlen.os|__GI_strchr __GI___strchrnul __GI_strrchr __memchr __GI___strnlen
+MemFwd|memcpy mempcpy memset strdup __errno_location mbsinit towlower towupper __ctype_b_loc __ctype_tolower_loc __ctype_toupper_loc __ctype_init __ctype_get_mb_cur_max|string/memcpy.os string/mempcpy.os string/memset.os string/strdup.os csu/errno.os csu/errno-loc.os wcsmbs/mbsinit.os wctype/wcfuncs.os ctype/ctype-info.os locale/mb_cur_max.os|__GI_memcpy __GI___mempcpy __GI_memset __GI___strdup __GI___errno_location __mbsinit __GI___towlower __GI___towupper __ctype_b_loc __ctype_tolower_loc __ctype_toupper_loc __GI___ctype_init __ctype_get_mb_cur_max
+Malloc|malloc free|malloc/malloc.os|__GI___libc_malloc __GI___libc_free
+'''
