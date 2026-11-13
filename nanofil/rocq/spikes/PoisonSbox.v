@@ -1,45 +1,27 @@
-(** AES SubBytes(AddRoundKey) under Zegarmistrz's poison semantics:
-    [SboxCode.v], compiled by `nanofil -O --inline=none` from
-    `rocq/spikes/sbox.c` and checked current by `rocq/spikes/code.sh`,
-    exercised and proved against [Poison.v] (docs/poison.md).
+(** Cryptographic code must not leak secret keys or plaintext through
+    secret-dependent memory addresses or conditional branches. The C
+    program `rocq/spikes/sbox.c` implements the 256-byte FIPS-197 AES
+    S-box table alongside two functions that compute
+    `SubBytes(AddRoundKey)` on 16-byte blocks (`SboxCode.v`).
 
-    `sbox.c` holds the 256-byte FIPS-197 AES S-box table and two
-    functions with the same behavior on 16-byte blocks:
+    The fast version `subbytes_table` indexes the S-box directly with
+    each secret byte, leaking the index through the data-cache line and
+    through Fil-C's bounds check. The constant-time version
+    `subbytes_ct` scans all 256 entries using an arithmetic mask so
+    every branch, bounds check, and memory address stays independent of
+    secret data.
 
-    - `subbytes_table(out, in, rk)` indexes `sbox[in[i] ^ rk[i]]`
-      directly, leaking `in[i] ^ rk[i]` through both the data-cache
-      line touched by [RawLoad] and, when Fil-C's bounds check is
-      present, the branch inside [Check];
-    - `subbytes_ct(out, in, rk)` scans all 256 entries with an
-      arithmetic mask `-(unsigned int)(idx == (unsigned int)j)`, keeping
-      every branch, bounds check and memory address independent of `in`
-      and `rk`.
+    This spike exercises both functions under the [[poison]] semantics
+    of `Poison.v` (`docs/poison.md`). It decodes the compiled module,
+    runs Campaign 1's [[validator]], and lays out the read-only S-box
+    table in memory.
 
-    This file proves:
-
-    1. [sbox_module] decodes, passes Campaign 1's [[validator]]
-       ([sbox_valid]), and lays out its global read-only `sbox` table
-       ([sbox_initial]);
-    2. on `subbytes_table`, poisoning `rk` with [taint_index] (`0x08`)
-       under [pol_strict] passes Fil-C's [Check] and traps at [RawLoad]
-       with `PTrap CannotIndex` ([subbytes_table_traps_cannot_index]),
-       poisoning `rk` with [taint_branch] (`0x04`) traps one step
-       earlier inside [Check] with `PTrap CannotBranch`
-       ([subbytes_table_traps_cannot_branch]), and discharging checks
-       under [pol_erased] lets branch-only poison miss the table lookup
-       while index poison still catches it
-       ([subbytes_table_erased_branch_misses],
-       [subbytes_table_erased_index_traps]);
-    3. on `subbytes_ct`, running one reference input (`0^16`,
-       `0^16`) with both `in` and `rk` marked [taint_all] (`0x4C`)
-       under [pol_strict] finishes cleanly ([subbytes_ct_ref_runs]),
-       and [prun_ct_sound] lifts that single poisoned run to every
-       pair of 16-byte inputs and round keys: all 2^512 pairs emit the
-       exact same instruction-level leakage trace
-       ([subbytes_ct_constant_time]) and finish without trapping;
-    4. on the FIPS-197 Appendix B Round-1 test vector, `subbytes_ct`
-       and `subbytes_table` both produce the expected 16-byte output
-       state `[0xd4; 0x27; 0x11; 0xae; ...]` ([subbytes_ct_fips197]). *)
+    To test leak detection, the spike reproduces four poison verdicts on
+    `subbytes_table`. It then lifts a single poisoned run of
+    `subbytes_ct` via [prun_ct_sound] to prove universal constant-time
+    noninterference across all pairs of 16-byte inputs and round keys,
+    and checks both functions against the FIPS-197 Appendix B Round-1
+    test vector. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Validate Memory Runtime Ops Semantics Run Transport.
@@ -48,13 +30,19 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
-(** ## Module decoding, validation and initial memory *)
+(** ## Module decoding, validation and initial memory
 
-(** The checked module decoded from [sbox_term]. *)
+    Before running any taint or functional checks, we must turn the
+    serialized compiler output into an executable IR module and confirm
+    that it passes structural validation. This section decodes
+    [sbox_term], validates it, lays out the global read-only S-box table
+    in memory, and binds handles to both C functions. *)
+
+(** This definition decodes the checked IR module from [sbox_term]. *)
 Definition sbox_module : module :=
   match decode_module sbox_term with Some md => md | None => [] end.
 
-(** [sbox_term] decodes to [sbox_module]. *)
+(** Decoding the serialized fixture yields [sbox_module]. *)
 Lemma sbox_decodes : decode_module sbox_term = Some sbox_module.
 Proof. vm_compute. reflexivity. Qed.
 
@@ -62,16 +50,18 @@ Proof. vm_compute. reflexivity. Qed.
 Theorem sbox_valid : valid sbox_module = Some true.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The globals laid out by [initial_memory]: `subbytes_table`,
-    `subbytes_ct` and the 256-byte read-only `sbox` table. *)
+(** This list holds the global addresses laid out for `subbytes_table`,
+    `subbytes_ct`, and the 256-byte `sbox` table. *)
 Definition sbox_globals : list (name * ptr) :=
   match initial_memory sbox_module with Some (g, _) => g | None => [] end.
 
-(** The module's initial memory holding the 256-byte `sbox` table. *)
+(** The module starts with an initial memory containing the 256-byte
+    read-only `sbox` table. *)
 Definition sbox_mem : mem :=
   match initial_memory sbox_module with Some (_, m) => m | None => empty_mem end.
 
-(** Laying out [sbox_module] succeeds. *)
+(** Laying out [sbox_module] succeeds and produces [sbox_globals] and
+    [sbox_mem]. *)
 Lemma sbox_initial : initial_memory sbox_module = Some (sbox_globals, sbox_mem).
 Proof.
   assert (H : option_map (fun _ => tt) (initial_memory sbox_module) = Some tt)
@@ -80,41 +70,49 @@ Proof.
   destruct (initial_memory sbox_module) as [[g m]|]; inversion H; reflexivity.
 Qed.
 
-(** The module's [genv] paired with [free_res]. *)
+(** This global environment pairs [sbox_module] and its globals with the
+    concrete allocator handler [free_res]. *)
 Definition sbox_ge : genv := mkGenv sbox_module sbox_globals free_res.
 
-(** Named function lookup in [sbox_module]. *)
+(** This helper looks up a defined function by name in [sbox_module]. *)
 Definition sbox_fn (n : string) : func :=
   match find_fn sbox_ge (TAtom n) with
   | Some (Defined f) => f
   | _ => mkFunc (TAtom n) (TAtom "export") RVoid [] []
   end.
 
-(** `subbytes_table` is a defined core-subset function in [sbox_module]. *)
+(** The module defines `subbytes_table` in the core subset. *)
 Lemma sbox_find_table :
   find_fn sbox_ge (TAtom "subbytes_table") = Some (Defined (sbox_fn "subbytes_table")).
 Proof. vm_compute. reflexivity. Qed.
 
-(** `subbytes_ct` is a defined core-subset function in [sbox_module]. *)
+(** The module also defines `subbytes_ct` in the core subset. *)
 Lemma sbox_find_ct :
   find_fn sbox_ge (TAtom "subbytes_ct") = Some (Defined (sbox_fn "subbytes_ct")).
 Proof. vm_compute. reflexivity. Qed.
 
-(** ## Heap fixture for 16-byte `out`, `in` and `rk` blocks *)
+(** ## Heap fixture for 16-byte `out`, `in` and `rk` blocks
 
-(** Disjoint 64-byte-aligned heap bases above the module's globals
-    (`[65536, 66000)`). *)
+    Both AES functions take three 16-byte buffers: a writable output
+    buffer, a read-only plaintext block, and a read-only round key. This
+    section places those three disjoint objects above the module's
+    globals, constructs their initial memory and call frames, and sets
+    up the [[shadow]] poison state for their bytes. *)
+
+(** These constants pick three disjoint, 64-byte-aligned heap addresses
+    above the module's globals. *)
 Definition sbox_out_base : Z := 131072.
 Definition sbox_in_base  : Z := 131136.
 Definition sbox_rk_base  : Z := 131200.
 
-(** Capabilities for the three 16-byte blocks (`out` writable, `in` and
-    `rk` read-only). *)
+(** These pointers attach a writable capability to `out` and read-only
+    capabilities to `in` and `rk`. *)
 Definition sbox_out_ptr : ptr := mkPtr sbox_out_base (Obj sbox_out_base).
 Definition sbox_in_ptr  : ptr := mkPtr sbox_in_base  (Ro sbox_in_base).
 Definition sbox_rk_ptr  : ptr := mkPtr sbox_rk_base  (Ro sbox_rk_base).
 
-(** Generic heap extension over any base memory [m0]. *)
+(** This helper extends any base memory with three live 16-byte objects
+    holding zeroed `out` and byte streams for `in` and `rk`. *)
 Definition sbox_heap_on (m0 : mem) (inp rk : Z -> Z) : mem :=
   let base_bytes := m_bytes m0 in
   mkMem
@@ -132,12 +130,12 @@ Definition sbox_heap_on (m0 : mem) (inp rk : Z -> Z) : mem :=
      m_regions m0)
     (m_aux m0).
 
-(** Memory state extending [sbox_mem] with three live 16-byte objects
-    holding zeroed `out` and byte streams `inp` and `rk` (masked to
-    unsigned bytes `mod 256`). *)
+(** This function builds the initial heap on top of [sbox_mem] with
+    unsigned bytes masked modulo 256. *)
 Definition sbox_heap (inp rk : Z -> Z) : mem := sbox_heap_on sbox_mem inp rk.
 
-(** Generic entry frame for any function [f] and base memory [m0]. *)
+(** This helper constructs an entry configuration for function f over an
+    arbitrary base memory and fuel budget. *)
 Definition sbox_cfg_on (f : func) (m0 : mem) (fuel : Z) (inp rk : Z -> Z) : config :=
   mkConfig
     (mkFrame f
@@ -149,14 +147,15 @@ Definition sbox_cfg_on (f : func) (m0 : mem) (fuel : Z) (inp rk : Z -> Z) : conf
     (sbox_heap_on m0 inp rk)
     fuel.
 
-(** Entry frame calling `fn_name(out, in, rk)` on [sbox_heap inp rk]
-    with [fuel] block-entry units. *)
+(** This helper builds an entry configuration calling `fn_name` on
+    [sbox_heap] with the given block-entry fuel. *)
 Definition sbox_cfg (fn_name : string) (fuel : Z) (inp rk : Z -> Z) : config :=
   sbox_cfg_on (sbox_fn fn_name) sbox_mem fuel inp rk.
 
-(** Shadow [pstate] where `out`, `in` and `rk` pointers themselves are
-    public (`taint_bot`), the 16 bytes at [sbox_in_base] carry `t_in`,
-    and the 16 bytes at [sbox_rk_base] carry `t_rk`. *)
+(** To test which operations leak secrets, the analysis marks the bytes
+    of `in` and `rk` without tainting their buffer addresses. This
+    shadow state assigns `t_in` and `t_rk` to those two 16-byte buffers
+    while keeping all three pointer arguments public. *)
 Definition sbox_pstate (t_in t_rk : taint) : pstate :=
   mkPState
     [(TAtom "v0", WTPtr taint_bot taint_bot);
@@ -168,16 +167,22 @@ Definition sbox_pstate (t_in t_rk : taint) : pstate :=
        sbox_rk_base 16 (pb_secret t_rk))
     (fun _ => taint_bot).
 
-(** ## Four verdicts on `subbytes_table`, matching native zegarmistrz *)
+(** ## Four verdicts on `subbytes_table`, matching native zegarmistrz
 
-(** Zero byte stream used as the concrete reference input. *)
+    A table-driven S-box leaks secrets both through the memory address of
+    the lookup and through the bounds check that guards it. The four
+    tests below vary the poison bits on `rk` and the branch-checking
+    policy to confirm that our IR semantics reproduces every verdict of
+    native `zegarmistrz`. *)
+
+(** This constant stream supplies all-zero bytes as a concrete reference
+    input. *)
 Definition zero_bytes (_ : Z) : Z := 0.
 
-(** 1. With `rk` poisoned `cannot-index` only ([taint_index], `0x08`)
-    under [pol_strict] (`pol_check_branches = true`), `subbytes_table`
-    passes Fil-C's `Check` on `sbox + (in[0] ^ rk[0])` (step 19 reaches
-    `PNext`) and faults at the very next instruction (`RawLoad`, step
-    20) with `PTrap CannotIndex` — matching native `zegarmistrz`. *)
+(** A secret key used as an array index should pass the bounds check
+    when only memory indexing is forbidden. Under [pol_strict] with `rk`
+    carrying only index poison, `subbytes_table` passes Fil-C's bounds
+    check at step 19 and traps at the raw load on step 20. *)
 Theorem subbytes_table_check_passes_on_index_only :
   match prun pol_strict sbox_ge 19
              (sbox_cfg "subbytes_table" 100 zero_bytes zero_bytes)
@@ -193,68 +198,72 @@ Theorem subbytes_table_traps_cannot_index :
        (sbox_pstate taint_bot taint_index) = PTrap CannotIndex.
 Proof. vm_compute. reflexivity. Qed.
 
-(** 2. With `rk` poisoned `cannot-branch` only ([taint_branch], `0x04`)
-    under [pol_strict] (`pol_check_branches = true`), `subbytes_table`
-    traps one step earlier (step 19), inside Fil-C's `Check` on
-    `sbox + (in[0] ^ rk[0])`, with `PTrap CannotBranch` — matching
-    native `zegarmistrz`'s `cmp + jb/ja` fault on the bounds check. *)
+(** Branching on a secret key inside Fil-C's bounds check violates
+    constant-time discipline even before the table load runs. With `rk`
+    carrying only branch poison under [pol_strict], `subbytes_table`
+    traps at step 19, matching native `zegarmistrz`. *)
 Theorem subbytes_table_traps_cannot_branch :
   prun pol_strict sbox_ge 19
        (sbox_cfg "subbytes_table" 100 zero_bytes zero_bytes)
        (sbox_pstate taint_bot taint_branch) = PTrap CannotBranch.
 Proof. vm_compute. reflexivity. Qed.
 
-(** 3. Once bounds checks are statically discharged ([pol_erased],
-    `pol_check_branches = false`), `cannot-branch` alone (`0x04`)
-    misses the pure table-index leak: all 16 iterations run to
-    `PDone RetVoid []`. *)
+(** If bounds checks are statically erased under [pol_erased],
+    branch-only poison misses the secret table index and all 16
+    iterations finish cleanly. *)
 Theorem subbytes_table_erased_branch_misses :
   prun pol_erased sbox_ge 500
        (sbox_cfg "subbytes_table" 100 zero_bytes zero_bytes)
        (sbox_pstate taint_bot taint_branch) = PDone RetVoid [].
 Proof. vm_compute. reflexivity. Qed.
 
-(** 4. Under the same check-erased policy [pol_erased], `cannot-index`
-    ([taint_index], `0x08`) still catches the secret-indexed load at
-    step 20 with `PTrap CannotIndex`. *)
+(** Under the same check-erased policy [pol_erased], index poison still
+    catches the secret-indexed load at step 20 and raises
+    [CannotIndex]. *)
 Theorem subbytes_table_erased_index_traps :
   prun pol_erased sbox_ge 20
        (sbox_cfg "subbytes_table" 100 zero_bytes zero_bytes)
        (sbox_pstate taint_bot taint_index) = PTrap CannotIndex.
 Proof. vm_compute. reflexivity. Qed.
 
-(** ## Universal constant-time noninterference for `subbytes_ct` *)
+(** ## Universal constant-time noninterference for `subbytes_ct`
 
-(** Step budget and block-entry fuel for `subbytes_ct` (the 16 * 256
-    scan finishes in 61,815 transitions and 8,259 block entries; both
-    [prun] and [prun_trace] halt immediately on [PDone]). *)
+    To show that `subbytes_ct` leaks no secret data on any input, we do
+    not need to enumerate all 2^512 combinations of plaintext and key.
+    Instead, we execute one all-zero run with every secret byte marked
+    with full poison, then apply [prun_ct_sound] to prove that every
+    other input pair emits the identical leakage trace. *)
+
+(** These constants set the step budget and block-entry fuel above the
+    61,815 transitions and 8,259 block entries needed by `subbytes_ct`. *)
 Definition sbox_ct_steps : nat := Z.to_nat 65000.
 Definition sbox_ct_fuel  : Z := 10000.
 
-(** Configuration of `subbytes_ct` on arbitrary byte streams `inp` and
-    `rk`. *)
+(** This helper builds the entry configuration of `subbytes_ct` for
+    arbitrary plaintext and round-key streams. *)
 Definition sbox_ct_cfg (inp rk : Z -> Z) : config :=
   sbox_cfg "subbytes_ct" sbox_ct_fuel inp rk.
 
-(** Strictest poison state: both `in` and `rk` are marked [taint_all]
-    (`0x4C` = `cannot_branch | cannot_index | cannot_var_time_op`). *)
+(** This poison state marks every byte of both `in` and `rk` with
+    [taint_all], forbidding secret branches, indexing, and variable-time
+    ops. *)
 Definition sbox_ct_ps : pstate := sbox_pstate taint_all taint_all.
 
-(** One concrete poisoned execution on `(zero_bytes, zero_bytes)` under
-    [pol_strict] (`VTEverything`, `pol_check_branches = true`) runs all
-    61,815 steps cleanly to `PDone RetVoid []`. *)
+(** Running `subbytes_ct` on all-zero bytes under [pol_strict] completes
+    all 61,815 transitions cleanly without triggering any poison fault. *)
 Theorem subbytes_ct_ref_runs :
   prun pol_strict sbox_ge sbox_ct_steps
        (sbox_ct_cfg zero_bytes zero_bytes) sbox_ct_ps = PDone RetVoid [].
 Proof. vm_compute. reflexivity. Qed.
 
-(** Reference leakage trace of `subbytes_ct` on `(zero_bytes, zero_bytes)`. *)
+(** This definition captures the leakage trace produced by the
+    all-zero reference run of `subbytes_ct`. *)
 Definition sbox_ct_ref_trace : option (list leak_event) :=
   prun_trace pol_strict sbox_ge sbox_ct_steps
              (sbox_ct_cfg zero_bytes zero_bytes) sbox_ct_ps.
 
-(** Any run that terminates cleanly with [PDone] produces a well-defined
-    [prun_trace] without re-running the trace in `vm_compute`. *)
+(** Any poisoned run that finishes with [PDone] produces a well-defined
+    leakage trace without re-evaluating [prun_trace] by computation. *)
 Lemma prun_pdone_trace : forall pol ge steps c ps o ots,
   prun pol ge steps c ps = PDone o ots ->
   exists tr, prun_trace pol ge steps c ps = Some tr.
@@ -268,12 +277,11 @@ Proof.
     + eexists. reflexivity.
 Qed.
 
-(** Every choice of byte streams `(inp, rk)` stands in [ct_rel] to the
-    reference `(zero_bytes, zero_bytes)` configuration under
-    [sbox_ct_ps], because their memories differ only inside
-    `[sbox_in_base, sbox_in_base + 16)` and
-    `[sbox_rk_base, sbox_rk_base + 16)`, where every byte carries
-    [taint_all]. *)
+(** To lift the single reference trace to all inputs, every input pair
+    must be indistinguishable outside the secret buffers. Any plaintext
+    and round-key streams satisfy [ct_rel] against the all-zero
+    reference because their memories differ only inside the two fully
+    poisoned 16-byte regions. *)
 Lemma sbox_cfg_on_rel : forall (f : func) (m0 : mem) (fuel : Z) (inp rk : Z -> Z),
   ct_rel (sbox_cfg_on f m0 fuel zero_bytes zero_bytes)
          (sbox_cfg_on f m0 fuel inp rk) sbox_ct_ps.
@@ -308,13 +316,10 @@ Proof.
   intros inp rk. exact (sbox_cfg_on_rel (sbox_fn "subbytes_ct") sbox_mem sbox_ct_fuel inp rk).
 Qed.
 
-(** Main spike theorem (`subbytes_ct_constant_time`): one concrete
-    [taint_all] run ([subbytes_ct_ref_runs]) plus [prun_ct_sound]
-    establishes universal 2-run constant-time noninterference across
-    all pairs of 16-byte plaintexts and 16-byte round keys (`2^256 *
-    2^256 = 2^512` input pairs): every input pair runs without any
-    Fil-C trap or poison fault under [pol_strict] and emits the exact
-    same sequence of leakage events! *)
+(** Combining the single poisoned execution [subbytes_ct_ref_runs] with
+    [prun_ct_sound] proves universal constant-time noninterference for
+    `subbytes_ct`. Every pair of 16-byte plaintexts and round keys runs
+    without trapping and emits the exact same leakage trace. *)
 Theorem subbytes_ct_constant_time :
   exists tr,
     sbox_ct_ref_trace = Some tr /\
@@ -337,32 +342,37 @@ Proof.
              subbytes_ct_ref_runs Etr).
 Qed.
 
-(** ## Functional check on the FIPS-197 Appendix B Round-1 vector *)
+(** ## Functional check on the FIPS-197 Appendix B Round-1 vector
 
-(** FIPS-197 Appendix B 128-bit input block (`32 43 f6 a8 88 5a 30 8d
-    31 31 98 a2 e0 37 07 34` in decimal). *)
+    Constant-time execution is useless if the masked scan computes the
+    wrong bytes. This section runs both `subbytes_table` and
+    `subbytes_ct` on the standard FIPS-197 Appendix B Round-1 vector to
+    verify that they produce the expected AES state. *)
+
+(** This list holds the FIPS-197 Appendix B 128-bit input block in
+    decimal. *)
 Definition fips197_in_list : list Z :=
   [50; 67; 246; 168; 136; 90; 48; 141;
    49; 49; 152; 162; 224; 55; 7; 52].
 
-(** FIPS-197 Appendix B 128-bit cipher key (`2b 7e 15 16 28 ae d2 a6
-    ab f7 15 88 09 cf 4f 3c` in decimal). *)
+(** This list holds the FIPS-197 Appendix B 128-bit cipher key in
+    decimal. *)
 Definition fips197_rk_list : list Z :=
   [43; 126; 21; 22; 40; 174; 210; 166;
    171; 247; 21; 136; 9; 207; 79; 60].
 
-(** FIPS-197 Appendix B Round-1 state right after `SubBytes(AddRoundKey)`
-    (`d4 27 11 ae e0 bf 98 f1 b8 b4 5d e5 1e 41 52 30` in decimal). *)
+(** This list holds the expected FIPS-197 Appendix B Round-1 output
+    right after `SubBytes(AddRoundKey)`. *)
 Definition fips197_subbytes_expected : list Z :=
   [212; 39; 17; 174; 224; 191; 152; 241;
    184; 180; 93; 229; 30; 65; 82; 48].
 
-(** Byte stream backed by a 16-byte list. *)
+(** This helper turns a 16-byte list into a total byte stream. *)
 Definition of_byte_list (xs : list Z) (i : Z) : Z :=
   nth (Z.to_nat i) xs 0.
 
-(** Read 16 output bytes from `[sbox_out_base, sbox_out_base + 16)` in
-    a finished [Semantics.step] run of [n] steps. *)
+(** This helper steps the concrete semantics up to n times and returns
+    memory when the call finishes with `RetVoid`. *)
 Fixpoint step_n (ge : genv) (n : nat) (c : config) : option mem :=
   match n with
   | O => None
@@ -377,8 +387,8 @@ Fixpoint step_n (ge : genv) (n : nat) (c : config) : option mem :=
 Definition read_16 (m : mem) (base : Z) : list Z :=
   map (fun k => m_bytes m (base + Z.of_nat k)) (seq 0 16).
 
-(** Both `subbytes_table` and `subbytes_ct` compute the exact FIPS-197
-    Appendix B Round-1 `SubBytes(AddRoundKey)` output block! *)
+(** Both `subbytes_table` and `subbytes_ct` produce the exact FIPS-197
+    Appendix B Round-1 `SubBytes(AddRoundKey)` output block. *)
 Theorem subbytes_table_fips197 :
   option_map (fun m => read_16 m sbox_out_base)
     (step_n sbox_ge 500
