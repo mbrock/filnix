@@ -1,30 +1,22 @@
-(** Campaign 3's [[reuse|reuse forms]], part three: [[renew_if]] and
-    `check_limit`
-    ([formal.md, Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem);
-    [rocq.md, Guards and limits](../../../docs/rocq.md#guards-and-limits)).
+(** Optimizing compilers can replace repeated bounds checks with a
+    lightweight guard or a cached capability limit. In Fil-C, a
+    [[renew_if]] instruction renews a pointer's [[capability]] when an
+    earlier [[span test]] succeeded, and a `check_limit` instruction
+    verifies bounds against a saved [[limit]] value. Both forms avoid
+    re-running a full bounds check, so the machine stops with
+    [[unchecked]] if the guard or limit disagrees with the pointer's
+    actual object.
 
-    Both take their evidence from a [[single definition]] that tested
-    the pointer earlier, not from a [[check]]. A `renew_if` of a pointer
-    P with guard G trusts G, a [[span test]] of a pointer N0
-    (`guard_covers/5`): where G is nonzero, the span from N0+GLo up to
-    N0+GHi lay inside its object, and P's span lies inside that one at
-    the offset P's [[guard chain]] gives (`guard_chain/3`). The
-    interpreter renews then, and a failed access test that is not on a
-    freed object is `unchecked(span)` (`renew_res/4`). A `check_limit`
-    of P with U trusts U, a [[limit]] of N0 whose size is the check's
-    span (`limit_covers/5`), and P has N0's lower (a [[lower chain]],
-    `lower_chain/3`). The interpreter checks then, and a limit of
-    another capability or another size is `unchecked(limit)`. This file
-    proves neither [[unchecked]] outcome happens where the pass accepted
-    the instruction.
-
-    ## Decisions
-
-    | Decision | Why |
-    |---|---|
-    | the span test's memory is the one it read, which persists | a span test changes nothing; the object it found is as it was or freed (Identity.v) |
-    | a guard of 0 needs no argument | `kind_res/8` then checks, and a check is never `unchecked` |
-    | the span's width is bounded by `valid_op/1`'s span test, not by the object | the span test's two addresses are each reduced modulo 2^64; their difference is the span only because the span is less than 2^64 | *)
+    This module proves that neither instruction can fail as `unchecked`
+    once the [[validator]] accepts it. For `renew_if`, a zero guard
+    falls back to a full [[check]] (which never produces `unchecked`),
+    while a nonzero guard guarantees that the tested span fits inside
+    the object and encloses the renewed range. Because the span test
+    changes no memory, the tested object either remains intact or has
+    been freed, and the [[validator]] bounds the span's width below 2^64
+    so address arithmetic cannot wrap. For `check_limit`, a
+    [[lower chain]] connects the pointer to the source whose capability
+    and size the limit recorded. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -32,13 +24,16 @@ From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Seman
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Span tests *)
+(** ## Span tests
 
-(** A [[span test]] gn of the pointer n0, in a block b of a function f
-    of a [checked_module] md, tests a nonempty span from offset glo up
-    to ghi, both signed 64-bit offsets. The [[validator]] requires this
-    of every span test (`valid_op/1`); the lemma reads it back through
-    [inst_valid]. *)
+    A span test checks at runtime whether a pointer's byte range lies
+    inside a live object and returns a boolean integer. In this section,
+    we establish the arithmetic and memory persistence properties that
+    make a nonzero span test strong enough to justify a later renewal. *)
+
+(** The [[validator]] requires every [[span test]] in a valid module to
+    test a nonempty range with signed 64-bit offsets. Lemma
+    [span_test_ok] recovers those bounds from [inst_valid]. *)
 Lemma span_test_ok : forall md f b gn glo ghi n0,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
   In (Let gn W (SpanTest glo ghi) [Tmp n0]) (b_insts b) ->
@@ -54,13 +49,12 @@ Proof.
   lia.
 Qed.
 
-(** The arithmetic of a guard. Where a span test of a pointer at
-    address B found its span, from L = B+GLo up to H = B+GHi modulo
-    2^64, inside an object from base up to end_, which ends in the
-    address space (at or below 2^48), an access from A+Lo up to A+Hi,
-    with A = B+X modulo 2^64 and both X+Lo and X+Hi between GLo and GHi,
-    lies inside the object too. H - L is the span's width exactly,
-    since the width is below 2^64. *)
+(** Suppose a span test verified that a range around base address B
+    fits inside an object that ends at or below 2^48. If a derived
+    pointer A lies at a known offset from B, then any sub-range around
+    A that fits inside the tested span also fits inside the object. The
+    width bound below 2^64 ensures that the span's endpoints do not wrap
+    around the address space. *)
 Lemma guard_inside : forall base end_ B x glo ghi A lo hi,
   base <= raw_address B glo -> raw_address B glo < raw_address B ghi -> raw_address B ghi <= end_ ->
   end_ <= 2 ^ 48 -> glo < ghi -> ghi - glo < 2 ^ 64 ->
@@ -83,11 +77,11 @@ Proof.
   rewrite EA. lia.
 Qed.
 
-(** A renew through a pointer p with an object's capability c, of an
-    access from a up to a + size inside that object as a memory m1 had
-    it, in a memory m that [persists] from m1, traps misaligned, or
-    renews (`renew_res/4`): it passes, traps read-only, or finds the
-    object freed (`kind_res/8`). It is never [[unchecked]]. *)
+(** Suppose an access lies inside an object's bounds as they were in an
+    earlier memory. In any later memory that [persists] from it,
+    renewing a pointer to that object either succeeds, traps as
+    misaligned or read-only, or finds the object freed; it never fails
+    as [[unchecked]]. *)
 Lemma renew_inside : forall m1 m c base reg a size r al p,
   (c = Obj base \/ c = Ro base) -> object_region base (m_regions m1) = Some reg ->
   base <= a -> a + size <= r_end reg -> 0 < size -> persists m1 m -> ptr_cap p = c ->
@@ -123,8 +117,9 @@ Proof.
     eexists. split; [reflexivity | discriminate].
 Qed.
 
-(** The result a `check` makes of an access test chk ([checked_res])
-    is never [[unchecked]], since the access test itself never is. *)
+(** Turning an access check result into a plain check outcome never
+    introduces [RUnchecked], because [cap_access_res] itself never
+    returns `RUnchecked`. *)
 Lemma checked_res_access : forall m a c size r al chk w why,
   access_res m a c size r al = Some chk -> checked_res chk w <> RUnchecked why.
 Proof.
@@ -132,9 +127,8 @@ Proof.
   injection E as ->. exact (cap_access_res_checked _ _ _ _ _ _ _ H).
 Qed.
 
-(** If the [[lower chain]] of a value d reaches a single-definition
-    name n0 (`lower_chain/3`), d is a single-definition name too, or not
-    a name at all. *)
+(** If a [[lower chain]] links a temporary name to a single-definition
+    source, then that temporary also has a [[single definition]]. *)
 Lemma lower_chain_once : forall once fuel d n0,
   once_has once n0 = true -> lower_chain once fuel d (Tmp n0) = true ->
   forall y, d = Tmp y -> once_has once y = true.
@@ -145,10 +139,10 @@ Proof.
     unfold once_has. destruct (lookup y once); [reflexivity | discriminate H].
 Qed.
 
-(** The frame lemmas: a frame fr runs a function of a
-    [checked_module] md, in memory m, at index k of a reachable block l,
-    and every [[single definition]] in scope but a `check_ahead`
-    [[replay|replays]] ([scope_plain]). *)
+(** The section below proves frame-level soundness for `renew_if` and
+    `check_limit` at a single program point. We assume a reachable block
+    of a valid module where every [[single definition]] in scope
+    replays except `check_ahead`. *)
 Section Guard.
 
 Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k : Z).
@@ -158,12 +152,9 @@ Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
 Hypothesis Hs : scope_plain ge fr m.
 Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 
-(** A [[span test]] gn of the pointer n0, both single definitions, whose
-    site [[dominance|dominates]] the frame's point, holds an integer v.
-    Where v is not 0, n0 holds a pointer pb of an object whose span from
-    offset glo up to ghi the test found inside the object, in a memory
-    m1 that lay in the address space and that the current memory
-    [persists] from. *)
+(** When a [[span test]] dominates the current program point and holds a
+    nonzero integer, the tested pointer still points to an object whose
+    span lay inside its bounds in a persisting memory. *)
 Lemma span_guard_holds : forall gn glo ghi n0,
   lookup gn (single_definitions (fr_fn fr)) = Some (DInst (Let gn W (SpanTest glo ghi) [Tmp n0])) ->
   once_has (single_definitions (fr_fn fr)) n0 = true -> dominating (fr_fn fr) l k gn ->
@@ -196,11 +187,11 @@ Proof.
   all: exists pb, base, reg, m0; auto 10.
 Qed.
 
-(** A pointer value p whose [[lower chain]] reaches the single-definition
-    name n0 (`lower_chain/3`), where p's single definition dominates the
-    point, has the [[capability]] of the pointer n0 holds. Each step of
-    the chain is a [[flight]], whose capability is its lower donor's
-    (`flight_cap/4`). *)
+(** A [[lower chain]] follows [[flight]] instructions back to a source
+    pointer whose [[capability]] matches the derived pointer's
+    capability. Because each flight copies its capability from its lower
+    donor, the chain guarantees that both pointers share the same
+    capability. *)
 Lemma lower_chain_sound : forall fuel p pp n0,
   value_x ge (fr_env fr) P p = Some (WPtr pp) ->
   (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
@@ -235,12 +226,10 @@ Proof.
     exact (IH b pb n0 Eb (fun y E Hoy => operand_dominating _ _ _ _ _ _ _ Hmd Hin Hr Ex Hdx (Hub y E) Hoy) Ho H).
 Qed.
 
-(** A [[renew_if]] of a pointer p with guard g, the instruction at
-    index k of block b, that the pass accepts ([checked_inst_rest],
-    which asks `guard_covers/5`) does not step to [[unchecked]]. Either
-    its guard is 0 and it checks, which is never unchecked; or its span
-    test passed ([span_guard_holds]), the renewed span lies inside the
-    tested one ([guard_inside]), and so it renews ([renew_inside]). *)
+(** A [[renew_if]] instruction accepted by the pass never steps to
+    [[unchecked]]. When the guard is zero, the instruction falls back to
+    a full check; when the guard is nonzero, the earlier span test
+    justifies the renewal. *)
 Theorem renew_if_not_unchecked : forall b kk q lo hi r al p g rest live out why,
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
   nth_error (b_insts b) kk = Some (Let q A (RenewIf lo hi r al) [p; g]) -> k = Z.of_nat kk ->
@@ -318,12 +307,10 @@ Proof.
                                       exact (Hnot _ eq_refl)); discriminate Hst.
 Qed.
 
-(** A `check_limit` of a pointer p with limit u, the instruction at
-    index k of block b, that the pass accepts ([checked_inst_rest],
-    which asks `limit_covers/5`) does not step to [[unchecked]]. Its
-    [[limit]] u holds the capability of a pointer N0 and the check's
-    span as its size, and p has N0's capability ([lower_chain_sound]),
-    so the limit matches and the instruction checks. *)
+(** A `check_limit` instruction accepted by the pass never steps to
+    [[unchecked]]. The [[limit]] operand records the source pointer's
+    capability and span size, and [lower_chain_sound] ensures that the
+    checked pointer carries that same capability. *)
 Theorem check_limit_not_unchecked : forall b kk q lo hi r al p u rest live out why,
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
   nth_error (b_insts b) kk = Some (Let q A (CheckLimit lo hi r al) [p; u]) -> k = Z.of_nat kk ->
@@ -381,19 +368,23 @@ Qed.
 
 End Guard.
 
-(** ## Along every run *)
+(** ## Soundness along every run
 
-(** The instructions this file covers: a `let` of a `renew_if` or a
-    `check_limit`, of any class and operands. Neither is a raw access. *)
+    A single-step frame proof only covers one instruction in isolation.
+    To show that an entire execution stays safe, we lift the frame
+    lemmas across arbitrary runs of any [[runtime]] so every reachable,
+    non-[[doomed]] frame avoids [[unchecked]] outcomes. *)
+
+(** Predicate [guard_form] matches any `let` binding whose operation is
+    `RenewIf` or `CheckLimit`. Neither form is a raw memory access. *)
 Definition guard_form (i : inst) : Prop :=
   (exists q kc lo hi r al args, i = Let q kc (RenewIf lo hi r al) args) \/
   (exists q kc lo hi r al args, i = Let q kc (CheckLimit lo hi r al) args).
 
-(** A `renew_if` or `check_limit` that steps to [[unchecked]] is of
-    the proof [[class]] A with two operands (`op_arg_classes/4`,
-    `kind_res/8`); of any other shape it does not step at all. So the
-    run theorem covers every such instruction with the frame lemmas,
-    which take only that shape. *)
+(** A malformed `renew_if` or `check_limit` instruction cannot even start
+    executing, because the machine rejects wrong operand counts or
+    classes before checking bounds. Any instruction that reaches
+    [Unchecked] therefore has two operands and proof [[class]] A. *)
 Lemma guard_shape : forall ge fr m i why,
   guard_form i -> inst_step ge fr m i = Some (IStop (Unchecked why)) ->
   exists q o a1 a2, i = Let q A o [a1; a2] /\
@@ -407,18 +398,17 @@ Proof.
     eauto 12.
 Qed.
 
-(** The frame lemmas carried along every [[run]] of the [[machine]] of a
-    [[runtime]] R, as Renew.v's [Reuse] carries its own. *)
+(** Different execution backends share the same check-elimination rules
+    even though they implement allocation and garbage collection
+    differently. Module [Guards] abstracts our soundness theorem over
+    any [[runtime]] implementation. *)
 Module Guards (R : Runtime).
 
 Module G := Reuse R.
 
-(** In every state a [[run]] reaches from a call of a function f of a
-    [checked_module] md, started in a memory where the runtime is
-    [[ready]], a frame that is not [[doomed]] runs no `renew_if` and no
-    `check_limit` to an [[unchecked]] outcome. Every runtime spares the
-    pass's facts at [[poll|safepoints]] ([spares_any]; see
-    [The evidence invariant over runs](../../../docs/rocq.md#the-evidence-invariant-over-runs)). *)
+(** Every reachable, non-[[doomed]] frame in a function from a valid
+    module avoids [Unchecked] on `renew_if` and `check_limit`
+    instructions, provided the run starts in a [[ready]] memory. *)
 Theorem run_guard_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -441,14 +431,18 @@ Qed.
 
 End Guards.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
+
+    The reference [[interpreter]] provides a concrete runtime that
+    satisfies our machine axioms. Instantiating [Guards] with
+    [InterpRuntime] yields a self-contained soundness theorem for
+    interpreted runs. *)
 
 Module InterpGuards := Guards InterpRuntime.
 
-(** [run_guard_checked] for the [[interpreter]]'s runtime: in every state of a run of
-    a checked module's function that starts ready, a frame that is not
-    doomed runs no `renew_if` and no `check_limit` to `unchecked`. No
-    hypothesis remains but the ready start. *)
+(** Corollary [interp_guard_checked] specializes [run_guard_checked] to
+    the reference [[interpreter]], leaving only the ready-start
+    assumption. *)
 Corollary interp_guard_checked : forall md globals f xs fr m fuel s0 c s l i rest j why,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

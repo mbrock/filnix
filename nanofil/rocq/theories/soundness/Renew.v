@@ -1,41 +1,21 @@
-(** Campaign 3's [[reuse|reuse forms]], part two: [[renew]],
-    [[renew_hull|renew over a hull]] and [[half check]]
-    ([formal.md, Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem);
-    [rocq.md, Renew and the half check](../../../docs/rocq.md#renew-and-the-half-check)).
+(** Optimizing compilers can reuse an earlier bounds check to justify a
+    derived pointer without running a full check again. In Fil-C, a
+    [[renew]] trusts one earlier [[check]] whose span encloses the new
+    range, a [[renew_hull|renew over a hull]] trusts two checks that
+    bracket the range from below and above, and a [[half check]] tests
+    only one bound natively while trusting an earlier check for the
+    other. If any of those assumptions fails at runtime, the machine
+    stops with [[unchecked]].
 
-    All three reuse a [[check]] that passed earlier. A renew of a
-    pointer P trusts Q1, the [[proof]] of a [[single definition|single-definition]]
-    check of a pointer P1 (a [[renew source]], `renew_source_op/6`),
-    whose span covers P's at the distance `pointer_distance/4` finds. A
-    half check of P trusts the same kind of source for the bound it does
-    not test (`half_known/6`). A renew over a hull trusts two sources,
-    QL and QH, whose spans bound P's from below and above
-    (`hull_renewable/8`). The interpreter makes the run [[unchecked]]
-    where that trust was false: Q1 of another capability
-    (`unchecked(alias)`), a renew whose access test fails but not
-    because the object was freed (`unchecked(span)`), or a half check
-    whose one-sided native test disagrees with the whole check
-    (`unchecked(half)`). This file proves none of them happens where the
-    pass accepted the instruction.
-
-    The argument is the same for all three. Q1 is an operand of the
-    instruction, so its single definition [[dominance|dominates]] it and
-    [[replay|replays]] (Single.v): Q1 holds the pointer P1 held when its
-    check passed, and memory [[identity|persists]] from then, so the
-    object is as it was or freed. P is a known distance from P1, so it
-    has P1's [[capability]] (Chain.v). What is left is arithmetic over
-    `cap_access_res/7`.
-
-    ## Decisions
-
-    | Decision | Why |
-    |---|---|
-    | the source's rights are not used | a renew asks its own rights; on a read-only object a write traps `readonly`, which `renew_res/4` keeps as the program's trap |
-    | the persisting object is split by cases, not read through [persists_access] | a renew's trap must be on a freed object, which [persists_access]'s conclusion forgets |
-    | the source's memory fit the address space (Single.v's [replays]) | once the object is freed, the current memory no longer says where it ended, and a lower half check's address may wrap |
-    | objects start at or above 0 and freed objects are empty ([objects_fit], [freed_bounds]) | a lower half check reads its address signed and fails on any freed object; the whole check agrees only then |
-    | a renew over a hull compares its two sources only through the current memory | each source's check passed in its own memory, and both persist into the current one, so the object is as both saw it or freed since |
-    | an instruction of another class or arity is not the pass's concern | it does not step ([reuse_shape]) | *)
+    This module proves that none of those three instructions can fail as
+    `unchecked` once the [[validator]] accepts them. Because each
+    source's [[single definition]] [[dominance|dominates]] the reuse
+    site and [[replay|replays]], the source pointer holds the same value
+    as when its check passed, and memory [[identity|persists]] so its
+    object is either intact or freed. The derived pointer sits at a
+    known distance from the source, so it shares the same
+    [[capability]], and the remaining proof is address arithmetic over
+    [cap_access_res]. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -43,13 +23,18 @@ From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Seman
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Renew sources *)
+(** ## Renew sources
 
-(** A [[renew source]] n1 that the pass records for a function f of a
-    module md, of a pointer p1 over the span from lo1 up to hi1 at
-    alignment al1, is the check-like instruction i that is n1's single
-    definition, and p1 is a single-definition name too
-    (`stage_sources/4`). [check_fact] reads the span i checks. *)
+    Before checking individual reuse instructions, the validator
+    collects every eligible [[renew source]] in the function. This
+    section connects those recorded source entries back to their
+    defining check instructions and confirms that valid modules enforce
+    nonempty spans and positive alignments. *)
+
+(** When the pass records a candidate bounds check for reuse, the
+    soundness proof needs the original check instruction to replay its
+    semantics. Lemma [renew_source_def] recovers that instruction and
+    its single-definition pointer operand. *)
 Lemma renew_source_def : forall md f n1 p1 lo1 hi1 al1,
   lookup n1 (s_renews (fn_src md f)) = Some (p1, lo1, hi1, al1) ->
   exists i r1, lookup n1 (single_definitions f) = Some (DInst i) /\
@@ -108,9 +93,8 @@ Proof.
     rewrite forallb_forall in H; exact (ex_intro _ _ (H i Hi)) end.
 Qed.
 
-(** A check-like instruction i of a [checked_module] md, whose fact fa
-    [check_fact] reads, checks a nonempty span at one of the alignments
-    `valid_op/1` allows ([check_align]). *)
+(** Every check-like instruction in a valid module checks a nonempty
+    byte span at an alignment permitted by [check_align]. *)
 Lemma check_fact_ok : forall md f b i fa,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> In i (b_insts b) -> check_fact i = Some fa ->
   f_lo fa < f_hi fa /\ check_align (f_al fa) = true.
@@ -125,15 +109,19 @@ Proof.
     simpl; (split; [lia | assumption]).
 Qed.
 
-(** ## Renew, over memory *)
+(** ## Renewing from a single source
 
-(** The arithmetic of a [[renew]]. Where the span of capability c from
-    A+lo1 up to A+hi1 passed its check in a memory m1, a renew through a
-    pointer p of c of the part from A+off up to A+off+size, at an
-    alignment al that divides the source's al1, in a memory m that
-    [persists] from m1 and lies in the address space, passes, traps
-    read-only, or traps out of bounds on a freed object
-    (`renew_res/4`); never [[unchecked]]. *)
+    When an earlier bounds check succeeded in a previous memory state,
+    the underlying object either remains intact in the current memory or
+    has been freed since. A renew asks for its own rights, so writing to
+    a read-only object traps as read-only rather than failing as
+    unchecked. *)
+
+(** Suppose an earlier bounds check passed in memory m1 over a span
+    that encloses the renewed sub-range with compatible alignment. In
+    any persisting memory m whose objects fit in the address space,
+    renewing the pointer either succeeds, traps as read-only, or traps
+    on a freed object, never returning [[unchecked]]. *)
 Lemma renew_access : forall m1 m c A lo1 hi1 r1 al1 u off size r al p,
   access_res m1 (raw_address A lo1) c (hi1 - lo1) r1 al1 = Some (RVal u) ->
   persists m1 m -> objects_fit (m_regions m) -> ptr_cap p = c ->
@@ -185,15 +173,18 @@ Proof.
     unfold renew_res. rewrite Hc, E'. split; [reflexivity | discriminate].
 Qed.
 
-(** ## Renew over a hull, over memory *)
+(** ## Renewing over a hull
 
-(** The address of a [[renew_hull|renew over a hull]]. The renewed
-    pointer's address A is Al+dl and Ah+dh modulo 2^64, where Al and Ah
-    are the addresses of the low and high sources. The renew starts E
-    past the low source's span and ends F before the high source's,
-    both near (between 0 and 2^62). Then A+lo is both sums exactly, not
-    merely modulo 2^64: both spans lie in the address space (at or
-    below 2^48), so neither sum wraps. *)
+    A [[renew_hull|renew over a hull]] combines a low bounds check and a
+    high bounds check that each passed in their own earlier memory
+    states. Because both earlier memories persist into the current
+    memory, the shared object must either remain intact for both checks
+    or have been freed since. *)
+
+(** When a derived pointer lies at small non-negative offsets between
+    two checked spans inside the address space, adding its offset does
+    not wrap modulo 2^64. Lemma [hull_address] equates the derived
+    address with exact integer offsets from both source spans. *)
 Lemma hull_address : forall Al Ah A lol loh hih dl dh lo hi,
   A mod 2 ^ 64 = (Al + dl) mod 2 ^ 64 -> A mod 2 ^ 64 = (Ah + dh) mod 2 ^ 64 ->
   raw_address Al lol <= 2 ^ 48 -> raw_address Ah loh + (hih - loh) <= 2 ^ 48 -> loh < hih ->
@@ -215,9 +206,8 @@ Proof.
   split; [exact Xl | lia].
 Qed.
 
-(** A renew through a pointer p whose object, at base, is freed in the
-    memory m traps out of bounds on a freed object (`renew_res/4`);
-    never [[unchecked]]. *)
+(** Renewing any pointer whose object has already been freed traps out
+    of bounds on the freed object and never produces [[unchecked]]. *)
 Lemma renew_freed : forall m base reg A off size r al p,
   object_region base (m_regions m) = Some (freed_region reg) -> r_base reg = base -> 0 < size ->
   ptr_cap p = Obj base \/ ptr_cap p = Ro base ->
@@ -234,15 +224,11 @@ Proof.
   all: split; [reflexivity | split; [reflexivity | discriminate]].
 Qed.
 
-(** The arithmetic of a [[renew_hull|renew over a hull]], as
-    [renew_access] is a renew's. Where a low span from Al+lol up to
-    Al+hil and a high span from Ah+loh up to Ah+hih, of one capability
-    c, passed their checks in memories ml and mh that the current memory
-    m [persists] from, a renew from A+lo up to A+hi between them
-    (`hull_renewable/8`'s arithmetic), aligned as one of them is,
-    passes, traps read-only, or finds the object freed; never
-    [[unchecked]]. Both sources meet only in m: the object is as both
-    saw it, or freed since. *)
+(** Suppose a low check and a high check for the same capability both
+    passed in earlier memories that persist into the current memory m.
+    Any hull renewal spanning between them with compatible alignment
+    either passes, traps as read-only, or finds the object freed, never
+    returning [[unchecked]]. *)
 Lemma hull_renew_access : forall ml mh m c Al Ah A lol hil rl all loh hih rh alh lo hi r al p dl dh,
   access_res ml (raw_address Al lol) c (hil - lol) rl all = Some ok ->
   access_res mh (raw_address Ah loh) c (hih - loh) rh alh = Some ok ->
@@ -296,12 +282,18 @@ Proof.
     all: do 2 eexists; split; [reflexivity|]; split; [unfold renew_res; reflexivity | discriminate].
 Qed.
 
-(** ## The half check, over memory *)
+(** ## The half check, over memory
 
-(** A [[half check]]'s address A+lo is its source span's start A1+lo1
-    plus e = D + lo - lo1, modulo 2^64, where D is the distance d0
-    between A and A1 that `half_known/6` reads as a signed 64-bit
-    number. *)
+    A [[half check]] tests only one bound of an access at runtime and
+    relies on an earlier bounds check for the other bound. Because a
+    lower half check interprets its address as a signed 64-bit integer,
+    the proofs below require objects to sit above zero and freed objects
+    to have empty bounds so the one-sided test agrees with the full
+    check. *)
+
+(** Lemma [half_address] expresses the checked address of a [[half check]]
+    as the source span's start plus the signed 64-bit distance between
+    pointers, modulo 2^64. *)
 Lemma half_address : forall A A1 d0 lo lo1,
   A mod 2 ^ 64 = (A1 + d0) mod 2 ^ 64 ->
   raw_address A lo = (raw_address A1 lo1 + (((d0 + 2 ^ 63) mod 2 ^ 64 - 2 ^ 63) + lo - lo1)) mod 2 ^ 64.
@@ -316,14 +308,11 @@ Proof.
   reflexivity.
 Qed.
 
-(** The bound bd that a [[half check]] tests natively (`half_bound/6`)
-    says what both bounds of the whole check say. The access is at
-    address b, e past the start of a span from U up to U+span that
-    passed earlier, and that span proves the other bound (f is how far
-    the access ends before the span does). The object, from base, ends
-    at end1 as it was, empty if freed, or is freed since. The span lies
-    in the address space, so the address wraps only where a lower
-    check, read signed, falls below 0, which fails both tests. *)
+(** When an earlier span already covers one end of an access inside the
+    address space, testing only the opposite bound agrees with testing
+    both bounds. Any address wrap produces a negative signed value that
+    fails both tests, and a freed object has empty bounds so both tests
+    reject it. *)
 Lemma half_bound_agrees : forall bd base U span end1 e f size b end' life',
   0 <= base <= U -> U + span <= end1 <= 2 ^ 48 -> 0 < span -> 0 < size <= 2 ^ 62 ->
   - 2 ^ 62 <= f -> e <= 2 ^ 62 -> e - f = span - size ->
@@ -356,9 +345,8 @@ Proof.
         [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia].
 Qed.
 
-(** Where the native test agrees with the whole check's bounds, the
-    half check's result is the check's: `half_res/4` is never
-    [[unchecked]]. *)
+(** Whenever the native one-sided test agrees with the full bounds
+    check, [half_res] never returns `RUnchecked`. *)
 Lemma half_res_agrees : forall (inb ro : bool) r a al p why,
   half_res (if inb then (if ro then readonly_access_res r a al else aligned_res a al) else RTrap OutOfBounds)
            (inb && negb (rights_eqb r Write && ro) && (a mod al =? 0)) (WPtr p) <> RUnchecked why.
@@ -367,12 +355,11 @@ Proof.
   destruct inb, ro, r, (a mod al =? 0); simpl; discriminate.
 Qed.
 
-(** Where the span of capability c from A1+lo1 up to A1+hi1 passed its
-    check in a memory m1 that lay in the address space, a [[half check]]
-    at address A, d0 past A1, whose known bound that span proves
-    (`half_known/6`), in a memory m that [persists] from m1 and whose
-    freed objects are empty, tests natively what the whole check tests:
-    its result is never [[unchecked]]. *)
+(** A half check only tests one end of a memory access at runtime,
+    relying on an earlier bounds check to guarantee the other end.
+    Theorem [half_access] proves that whenever the earlier check passed
+    in a valid memory and the object's freed bounds are empty, the half
+    check agrees with a full check and never returns [[unchecked]]. *)
 Lemma half_access : forall m1 m c A1 A lo1 hi1 r1 al1 u bd lo hi r al d0 p,
   access_res m1 (raw_address A1 lo1) c (hi1 - lo1) r1 al1 = Some (RVal u) ->
   objects_fit (m_regions m1) -> persists m1 m -> freed_empty (m_regions m) ->
@@ -416,12 +403,19 @@ Proof.
     right. simpl. rewrite Hrb. auto.
 Qed.
 
-(** ## What a reuse form reads at its point *)
+(** ## What a reuse form reads at its point
 
-(** An element el of a [[guard chain]] (`guard_chain/3`) is its start
-    p itself, or p is a name whose single definition is a [[flight]]
-    with a lower donor. [distance_pointer] uses it to show the chain
-    starts at something that holds a pointer. *)
+    To apply the arithmetic lemmas to an executing frame, we must show
+    that the operands of a reuse instruction hold the expected pointers
+    and capabilities at runtime. This section uses dominance and single
+    definitions to connect the instruction's operands back to the
+    earlier check instructions. *)
+
+(** A pointer expression may be derived through a chain of [[flight]]
+    operations before reaching a bounds check. Lemma [chain_go_head]
+    shows that the head of a [[guard chain]] is either the original
+    pointer or a flight with a lower donor, so [distance_pointer] can
+    trace it back to a valid pointer. *)
 Lemma chain_go_head : forall once fuel p lo hi el,
   In el (guard_chain_go once fuel p lo hi) ->
   el = (p, (lo, hi)) \/ exists y d o args b, p = Tmp y /\ lookup y once = Some (DInst (Flight d o args (LowerOf b))).
@@ -451,8 +445,8 @@ Proof.
   destruct o; try reflexivity. destruct k; discriminate H.
 Qed.
 
-(** A check-like instruction also has an access fact, the range its
-    own access checks ([access_fact]). *)
+(** Every check-like instruction exposes a valid [access_fact]
+    describing the range checked for its paired use. *)
 Lemma access_fact_some : forall i fa, check_fact i = Some fa -> exists fb, access_fact i = Some fb.
 Proof.
   intros i fa H. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
@@ -460,10 +454,11 @@ Proof.
   destruct args as [|a [|a2 args]]; try (eexists; exact H). eexists. reflexivity.
 Qed.
 
-(** Lemmas for a frame fr of a [checked_module] md, in memory m, at
-    index k of a reachable block l, where every [[single definition]] in
-    scope but a `check_ahead` [[replay|replays]] ([scope_plain]). A
-    [[doomed]] frame keeps that much, so Doomed.v uses these too. *)
+(** Even when a `check_ahead` instruction has failed and doomed its
+    frame, all other single-definition instructions in scope still hold
+    their original values. Section [Plain] collects the pointer-distance
+    lemmas that hold under this weaker assumption so [Doomed] can reuse
+    them. *)
 Section Plain.
 
 Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k : Z).
@@ -473,12 +468,9 @@ Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
 Hypothesis Hs : scope_plain ge fr m.
 Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 
-(** A value p a known distance d from a value p1 that holds a pointer
-    (`pointer_distance/4`) holds a pointer too, where the single
-    definitions of both [[dominance|dominate]] the point. p's
-    [[guard chain]] starts at a single definition: the exact base
-    itself, which p1's chain reads, or a [[flight]], which binds a
-    pointer ([chain_go_head]). *)
+(** If two pointers have a known offset according to [pointer_distance]
+    and their definitions [[dominance|dominate]] the current point, then
+    the derived value also holds a pointer at runtime. *)
 Lemma distance_pointer : forall p p1 pp1 d,
   value_x ge (fr_env fr) P p1 = Some (WPtr pp1) ->
   (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
@@ -513,9 +505,9 @@ Qed.
 
 End Plain.
 
-(** Lemmas for a frame fr as in [Plain], but where every replayable
-    single definition in scope replays ([scope_holds]), `check_ahead`
-    included, since a renew's source may be one. *)
+(** Section [Reuse] strengthens [Plain] by assuming that every
+    replayable single definition in scope replays, including
+    `check_ahead`, which may serve as a renew source. *)
 Section Reuse.
 
 Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k : Z).
@@ -525,10 +517,9 @@ Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
 Hypothesis Hs : scope_holds ge fr m.
 Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 
-(** A single-definition operand y of the instruction i at the frame's
-    point, index kk of block b, has a site that
-    [[dominance|dominates]] the point: the [[validator]] requires an
-    operand's definition to dominate its use (`definitions_dominate/3`). *)
+(** Every single-definition operand used by an instruction in a valid
+    module has a defining site that [[dominance|dominates]] that
+    instruction. *)
 Lemma operand_at : forall b kk i y,
   find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) kk = Some i -> k = Z.of_nat kk ->
   In y (inst_uses i) -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y.
@@ -542,11 +533,11 @@ Proof.
   exists s, D. rewrite <- Hl. auto.
 Qed.
 
-(** A [[renew source]] n1 of the pointer p1 that dominates the point
-    holds the pointer pp that p1 holds, and the check n1 made of pp
-    passed ([check_passes]) in a memory m1 that lay in the address space
-    and that the current memory [persists] from. p1 dominates the point
-    too, and the checked span is nonempty. *)
+(** To justify a reuse instruction at runtime, we must know that its
+    source check actually succeeded on the same pointer in an earlier
+    memory state. Lemma [renew_source_holds] replays a dominating
+    [[renew source]] to establish that its check passed in a persisting
+    memory within the address space. *)
 Lemma renew_source_holds : forall n1 p1 lo1 hi1 al1,
   lookup n1 (s_renews (fn_src md (fr_fn fr))) = Some (p1, lo1, hi1, al1) -> dominating (fr_fn fr) l k n1 ->
   exists pp m1 r1,
@@ -572,12 +563,11 @@ Proof.
   - exact (operand_dominating _ _ _ _ _ _ _ Hmd Hin Hr Hn1 Hdom Hu1 Hop1).
 Qed.
 
-(** What a renew or half check i the pass accepted reads at the frame's
-    point, index kk of block b. Q1, the name n1, holds the pointer PP1
-    of a [[renew source]]'s check that passed in m1, a memory in the
-    address space that the current one [persists] from; the renewed
-    value p holds a pointer PP of PP1's [[capability]], d past it modulo
-    2^64 ([renew_source_holds], [pointer_distance_sound]). *)
+(** Lemma [reuse_operands] unpacks the runtime state of a reuse
+    instruction's operands. The source operand holds the checked
+    pointer from a passing check in a persisting memory, while the
+    derived operand holds a pointer with the same [[capability]] at the
+    expected offset. *)
 Lemma reuse_operands : forall b kk i n1 p p1 lo1 hi1 al1 d,
   find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) kk = Some i -> k = Z.of_nat kk ->
   In n1 (inst_uses i) -> (forall y, p = Tmp y -> In y (inst_uses i)) ->
@@ -620,13 +610,10 @@ Qed.
 Lemma cap_eqb_refl : forall c, cap_eqb c c = true.
 Proof. intros []; simpl; try apply Z.eqb_refl; try apply name_eqb_refl; reflexivity. Qed.
 
-(** A [[renew]] of the value p from source n1, the instruction at index
-    kk of block b, that the pass accepts ([checked_inst_rest],
-    `checked_inst_rest/7`) does not step to [[unchecked]], in a memory in
-    the address space. Its source holds the pointer whose check passed
-    and the renewed pointer has its capability ([reuse_operands]), so
-    there is no alias; and its span lies inside the source's
-    ([renew_access]). *)
+(** Any [[renew]] accepted by the pass never steps to [[unchecked]] in a
+    memory within the address space. Its operands share one capability,
+    and [renew_access] guarantees that the renewed span lies inside the
+    source object or finds it freed. *)
 Theorem renew_not_unchecked : forall b kk q lo hi r al n1 p rest live out why,
   objects_fit (m_regions m) ->
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
@@ -664,11 +651,10 @@ Proof.
   destruct rr as [x | w | w]; try discriminate. intros E. injection E as <-. exact (Hnot w eq_refl).
 Qed.
 
-(** A [[half check]] of the value p from source n1, the instruction at
-    index kk of block b, that the pass accepts ([checked_inst_rest])
-    does not step to [[unchecked]], in a memory in the address space
-    whose freed objects are empty. The bound it does not test is proved
-    by the source's span, which passed ([half_access]). *)
+(** Theorem [half_not_unchecked] lifts the memory-level half-check proof
+    to an executing frame. Whenever all objects fit in the address space
+    and freed objects are empty, a validated [[half check]] never steps
+    to [[unchecked]]. *)
 Theorem half_not_unchecked : forall b kk q bd lo hi r al n1 p rest live out why,
   objects_fit (m_regions m) -> freed_empty (m_regions m) ->
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
@@ -701,14 +687,11 @@ Proof.
   intros E. injection E as <-. exact (Hnot w eq_refl).
 Qed.
 
-(** A [[renew_hull|renew over a hull]] of the value p with low source nl
-    and high source nh, the instruction at index kk of block b, that the
-    pass accepts ([checked_inst_rest]) does not step to [[unchecked]],
-    in a memory in the address space. Each source holds the pointer its
-    check passed, a known distance from the renewed pointer
-    ([reuse_operands]), so all three share a capability, and the renewed
-    span lies between the two spans (`hull_renewable/8`,
-    [hull_renew_access]). *)
+(** In an executing frame whose objects fit in the address space, a
+    validated [[renew_hull|renew over a hull]] never steps to
+    [[unchecked]]. Both bracketing sources share the derived pointer's
+    capability, and [hull_renew_access] ensures the renewed span fits
+    between them. *)
 Theorem hull_renew_not_unchecked : forall b kk q lo hi r al nl nh p rest live out why,
   objects_fit (m_regions m) ->
   find_block l (fn_blocks (fr_fn fr)) = Some b ->
@@ -763,11 +746,17 @@ Qed.
 
 End Reuse.
 
-(** ## Along every run *)
+(** ## Soundness along every run
 
-(** The instructions this file covers: a `let` of a renew, a renew
-    over a hull or a half check, of any class and operands. None is a
-    raw access. *)
+    To show that an entire program execution stays safe, we lift the
+    single-step frame theorems across arbitrary runs of any [[runtime]].
+    In every reachable, non-[[doomed]] frame, the machine invariant
+    ensures that reuse instructions were accepted by the pass and never
+    produce [[unchecked]]. *)
+
+(** Predicate [reuse_form] matches any `let` binding for a `Renew`,
+    `RenewHull`, or `HalfCheck` instruction. None of these forms is a
+    raw memory access. *)
 Definition reuse_form (i : inst) : Prop :=
   (exists q kc lo hi r al args, i = Let q kc (Renew lo hi r al) args) \/
   (exists q kc lo hi r al args, i = Let q kc (RenewHull lo hi r al) args) \/
@@ -794,11 +783,9 @@ Proof.
     try discriminate H; eauto.
 Qed.
 
-(** A [reuse_form] that steps to [[unchecked]] is of the proof
-    [[class]] A, with two operands for a renew or half check and three
-    for a renew over a hull (`op_arg_classes/4`, `kind_res/8`); of any
-    other shape it does not step. So the run theorem covers every such
-    instruction with the frame lemmas, which take only that shape. *)
+(** Any reuse instruction that steps to [Unchecked] must have proof
+    [[class]] `A` and the right number of operands, because the machine
+    rejects all other shapes before evaluating bounds. *)
 Lemma reuse_shape : forall ge fr m i why,
   reuse_form i -> inst_step ge fr m i = Some (IStop (Unchecked why)) ->
   exists q o args, i = Let q A o args /\
@@ -821,23 +808,18 @@ Proof.
       do 3 eexists; split; [reflexivity | right; right; eauto 10].
 Qed.
 
-(** The frame theorems carried along every [[run]] of the [[machine]] of
-    a [[runtime]] R, as Chain.v's [Hull] does: Persistence.v's invariant
-    says the pass accepted the instruction at the point, Single.v's that
-    single definitions [[replay]] there, and the runtime's
-    [[ready|readiness]] that memory lies in the address space with freed
-    objects empty. *)
+(** Different execution backends implement memory management differently
+    while sharing the same validation rules. Module [Reuse] abstracts
+    our run-level soundness theorem over any [[runtime]] implementation
+    using [Hull]. *)
 Module Reuse (R : Runtime).
 
 Module H := Hull R.
 
-(** What holds at the point of a frame that is not [[doomed]], in every
-    state c a run reaches from a call of a function f of a
-    [checked_module] md started [[ready]], at an instruction i that is
-    not a raw access or raw call: the pass accepted it there
-    ([checked_inst_rest], `checked_inst_rest/7`), single definitions
-    [[replay]] ([scope_holds]), and memory lies in the address space
-    with freed objects empty. Guard.v's run theorem uses it too. *)
+(** Both this module and [Guard] need to know what invariants hold
+    whenever execution reaches a non-doomed instruction. Lemma
+    [run_point] extracts the accepted validator state, replayed single
+    definitions, and address-space bounds at that program point. *)
 Lemma run_point : forall ge md f xs fr m fuel s0 c s l i rest j,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -880,12 +862,9 @@ Proof.
   exact (conj (R.address_space _ _ Hready) (R.freed_bounds _ _ Hready)).
 Qed.
 
-(** In every state a [[run]] reaches from a call of a function f of a
-    [checked_module] md, started in a memory where the runtime is
-    [[ready]], a frame that is not [[doomed]] runs no renew, renew over
-    a hull or half check to an [[unchecked]] outcome. Every runtime
-    spares the pass's facts at [[poll|safepoints]] ([spares_any]; see
-    [The evidence invariant over runs](../../../docs/rocq.md#the-evidence-invariant-over-runs)). *)
+(** Every reachable, non-[[doomed]] frame in a function from a valid
+    module avoids [Unchecked] on `Renew`, `RenewHull`, and `HalfCheck`
+    instructions, provided the run starts in a [[ready]] memory. *)
 Theorem run_reuse_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -921,14 +900,18 @@ Qed.
 
 End Reuse.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
+
+    The reference [[interpreter]] provides a concrete runtime that
+    satisfies our machine axioms. Instantiating [Reuse] with
+    [InterpRuntime] yields a self-contained soundness theorem for
+    interpreted programs. *)
 
 Module InterpReuse := Reuse InterpRuntime.
 
-(** [run_reuse_checked] for the [[interpreter]]'s runtime: in every state of
-    a run of a checked module's function that starts ready, a frame that
-    is not doomed runs no renew, renew over a hull or half check to
-    `unchecked`. No hypothesis remains but the ready start. *)
+(** Corollary [interp_reuse_checked] specializes [run_reuse_checked] to
+    the reference [[interpreter]], leaving only the ready-start
+    assumption. *)
 Corollary interp_reuse_checked : forall md globals f xs fr m fuel s0 c s l i rest j why,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

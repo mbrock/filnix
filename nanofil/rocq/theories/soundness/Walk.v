@@ -1,18 +1,16 @@
-(** The [[evidence pass]] read back for Campaign 3's run-level invariant
-    (Persistence.v; [rocq.md, The evidence invariant over runs](../../../docs/rocq.md#the-evidence-invariant-over-runs)).
+(** To prove that a compiled function never hits [[unchecked]] during
+    execution, the soundness proof must know which [[evidence]] facts
+    the [[evidence pass]] carried into each block and instruction. The
+    pass walks the control-flow graph block by block in order, combining
+    facts along incoming edges at each block entry and updating them
+    across every instruction.
 
-    Validate.v's [evidence_pass] transcribes ir.pl's pass as it runs: a
-    fold over the blocks, and within each block `checked_insts/5`. The
-    invariant needs to know what the pass said at each point a run can
-    reach, so this file reads the pass back: the facts each block was
-    passed from ([pass_fold]), where the pass is within a block
-    ([walks]), and the instructions before which it keeps its facts
-    ([relies]).
-
-    A block reached by a back edge saw nothing on that edge (the fold
-    had not reached its source), and the meet over an empty set is
-    empty: a back edge without a poll gives no fact the proof must
-    justify. *)
+    When a back edge jumps to an earlier block in the list, the forward
+    fold has not processed its source block yet, so the edge carries no
+    facts unless a [[poll]] cleared them anyway. This module extracts
+    the entry and exit facts from [evidence_pass], relates block-level
+    folds to individual blocks, and characterizes which instructions keep
+    or discard live facts. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -20,7 +18,11 @@ From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Seman
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Names *)
+(** ## Names
+
+    Block labels and temporary variables are represented as names stored
+    in association lists. These small helper lemmas establish reflexivity,
+    symmetry, list membership, and lookup properties for name maps. *)
 
 (** Every name equals itself by [name_eqb]. *)
 Lemma name_eqb_refl : forall n, name_eqb n n = true.
@@ -64,42 +66,43 @@ Qed.
 
 (** ## The pass, block by block
 
-    `evidence_pass` folds `pass_block` over the blocks in order. Each
-    block's entry facts are the meet of the sets on its incoming edges
-    (`edge_set`): nothing over a poll edge, the exit facts of a block
-    the fold has passed, and nothing for one it has not reached yet, a
-    back edge. *)
+    The evidence pass processes a function's blocks sequentially from
+    start to finish. At each block entry, it intersects the fact sets
+    arriving along non-poll incoming edges, drops any facts about the
+    block's phi temporaries, and walks the block's instructions to
+    compute its exit facts. *)
 
-(** The facts the pass carries along the incoming edge e, a source label and
-    whether it is a [[poll|poll edge]]: none over a poll edge, else the exit
-    facts exits gives the source, or none if the fold has not passed the
-    source yet. *)
+(** Function [edge_set] returns the fact list carried along an incoming
+    edge. A [[poll]] edge clears all facts and yields the empty list,
+    while a normal edge yields the source block's exit facts if the fold
+    has already processed that block. *)
 Definition edge_set (exits : list (name * list fact)) (e : name * bool) : list fact :=
   if snd e then [] else match lookup (fst e) exits with Some fs => fs | None => [] end.
 
-(** The [[live fact|live facts]] at the entry of the block b of f, given the
-    exit facts so far: the meet of the sets on b's incoming edges
-    ([evidence_meet]), less the facts about b's [[phi]] temporaries
-    ([entry_kill]). *)
+(** Function [entry_live] computes the [[live fact|live facts]] at the
+    entry of block b. It intersects the fact sets from all incoming
+    edges and removes any fact that mentions a temporary bound by b's
+    [[phi]] nodes. *)
 Definition entry_live (f : func) (exits : list (name * list fact)) (b : block) : list fact :=
   entry_kill (b_phis b) (evidence_meet (map (edge_set exits) (incoming (fn_blocks f) (b_label b)))).
 
-(** One step of the pass's fold over the blocks: run `checked_insts/5` over
-    b's instructions from b's entry facts, and record what it ends with as
-    b's exit facts. Fails where the pass fails. *)
+(** Function [pass_block] performs one step of the block-level fold. It
+    runs the instruction checker over block b starting from its entry
+    facts and records the resulting exit facts under b's label. *)
 Definition pass_block (s : src) (f : func) (acc : option (list (name * list fact))) (b : block)
   : option (list (name * list fact)) :=
   let* exits := acc in
   let* out := checked_insts s (S (length (b_insts b))) (b_insts b) (entry_live f exits b) in
   Some (put (b_label b) out exits).
 
-(** The exit facts of every block of the function f, as the pass, with the
-    sources s of the function, leaves them. *)
+(** Function [pass_exits] folds [pass_block] across all blocks of
+    function f to produce the final map from block labels to exit
+    facts. *)
 Definition pass_exits (s : src) (f : func) : option (list (name * list fact)) :=
   fold_left (pass_block s f) (fn_blocks f) (Some []).
 
-(** The [[evidence pass]] accepts a function exactly when [pass_exits]
-    computes its exit facts. *)
+(** A function passes the [[evidence pass]] precisely when [pass_exits]
+    succeeds and returns a complete exit map. *)
 Lemma evidence_pass_exits : forall s f,
   evidence_pass s f = match pass_exits s f with Some _ => true | None => false end.
 Proof. reflexivity. Qed.
@@ -108,7 +111,8 @@ Proof. reflexivity. Qed.
 Lemma pass_fold_none : forall s f bs, fold_left (pass_block s f) bs None = None.
 Proof. intros s f bs. induction bs; simpl; auto. Qed.
 
-(** One unfolding of [pass_block] from the exit facts ex. *)
+(** Lemma [pass_block_some] unfolds one step of [pass_block] when the
+    accumulated exit map is already known to succeed. *)
 Lemma pass_block_some : forall s f ex b,
   pass_block s f (Some ex) b =
     match checked_insts s (S (length (b_insts b))) (b_insts b) (entry_live f ex b) with
@@ -117,8 +121,8 @@ Lemma pass_block_some : forall s f ex b,
     end.
 Proof. reflexivity. Qed.
 
-(** The exit facts the fold ends with, E, give a label n that no block of bs
-    carries what they gave it before the fold, in ex. *)
+(** Folding [pass_block] over a list of blocks leaves the exit facts of
+    every unrelated label untouched. *)
 Lemma pass_fold_keeps : forall s f bs ex E n,
   fold_left (pass_block s f) bs (Some ex) = Some E ->
   (forall b, In b bs -> name_eqb n (b_label b) = false) -> lookup n E = lookup n ex.
@@ -131,10 +135,10 @@ Proof.
     rewrite lookup_put, (Hn b) by (left; reflexivity). reflexivity.
 Qed.
 
-(** Folding [pass_block] over blocks bs with distinct labels, none of which
-    had exit facts in ex yet, passes each block b of bs from the exit facts
-    the fold had when it reached b, all of which it keeps to the end E, and
-    records b's exit facts out in E. *)
+(** When a block list has distinct labels, every block is checked
+    against the exit facts accumulated by earlier blocks in the list.
+    Those earlier exit facts remain unchanged in the final map, and the
+    current block's exit facts are recorded under its label. *)
 Lemma pass_fold : forall s f bs ex E,
   fold_left (pass_block s f) bs (Some ex) = Some E ->
   no_dups (map b_label bs) = true ->
@@ -164,9 +168,9 @@ Proof.
     intros b' Hb'. rewrite lookup_put. rewrite name_eqb_sym, (Hlater b' Hb'). apply Hex. right. exact Hb'.
 Qed.
 
-(** A jump of the block bp of bs to the [[block]] labelled l gives l an
-    incoming edge from bp, marked as a poll edge where the target is one
-    ([is_poll]). *)
+(** Every jump target of a [[block]] contributes an incoming edge to the
+    target label, recording the source block label and whether the edge
+    is a [[poll]] edge. *)
 Lemma incoming_in : forall bs bp t,
   In bp bs -> In t (jump_targets (b_jump bp)) ->
   In (b_label bp, is_poll t) (incoming bs (edge_label t)).
@@ -192,10 +196,16 @@ Proof.
   rewrite name_eqb_sym, Ht. apply IHt. exact Hts.
 Qed.
 
-(** ## Where the pass is within a block *)
+(** ## Where the pass is within a block
 
-(** From the facts live before the instructions is, the pass, with [[fuel]]
-    enough, reaches the block's end with the facts out (`checked_insts/5`). *)
+    Inside a single block, the checker steps through the instruction
+    list while tracking live facts and consuming [[fuel]]. Predicate
+    [walks] packages the existence of enough fuel for a suffix of
+    instructions to reach the block's exit facts. *)
+
+(** Predicate [walks] states that [checked_insts] accepts an instruction
+    suffix from its entry facts to its exit facts with some fuel
+    bound. *)
 Definition walks (s : src) (is : list inst) (live out : list fact) : Prop :=
   exists n, checked_insts s n is live = Some out.
 
@@ -217,14 +227,14 @@ Qed.
 
 (** ## Where the pass relies on facts
 
-    The pass reads its live facts at a raw access (its coverage), and
-    keeps them across an evidence-preserving instruction, a
-    `check_local` and a repeated getter. Before any other instruction
-    it keeps none: what it says after does not depend on them. *)
+    Most instructions overwrite temporaries or perform arbitrary work, so
+    the checker clears all incoming facts before stepping past them. It
+    keeps live facts only before a raw access, a `check_local`, a
+    repeated getter, or an evidence-preserving operation. *)
 
-(** The instruction i copies a global g into a temporary d that the sources
-    s record as a getter of g ([[getter]]): a repeated getter, after which
-    the pass keeps its facts. *)
+(** Predicate [repeated_getter] recognizes a copy from a global into a
+    temporary that the function's sources record as a [[getter]] of that
+    global. *)
 Definition repeated_getter (s : src) (i : inst) : bool :=
   match i with
   | Let d P Copy [Global g] =>
@@ -236,9 +246,9 @@ Definition repeated_getter (s : src) (i : inst) : bool :=
 Definition is_check_local (i : inst) : bool :=
   match i with Let _ A (CheckLocal _ _ _ _ _) [] => true | _ => false end.
 
-(** The instructions before which the pass keeps its live facts: an
-    evidence-preserving one ([evidence_preserving]), a `check_local`, a
-    repeated getter, or a [[raw access]], which reads them as its coverage. *)
+(** Predicate [relies] holds when the pass keeps live facts across an
+    instruction: an evidence-preserving operation, a `check_local`, a
+    repeated getter, or a [[raw access]]. *)
 Definition relies (s : src) (i : inst) : bool :=
   evidence_preserving i || is_check_local i || repeated_getter s i
   || match raw_access i with Some _ => true | None => false end.
@@ -252,8 +262,10 @@ Proof.
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; try discriminate H; reflexivity.
 Qed.
 
-(** Before an instruction it does not rely on facts for ([relies]), the pass
-    keeps none: it goes on with no live facts. *)
+(** An instruction that neither reads nor preserves existing facts
+    cannot depend on what held earlier. Whenever [relies] is false,
+    [checked_inst_rest] clears all live facts and continues with an
+    empty list. *)
 Lemma relies_false : forall s i rest live rest' live',
   relies s i = false -> checked_inst_rest s i rest live = Some (rest', live') -> live' = [].
 Proof.
@@ -279,11 +291,16 @@ Proof.
       rewrite Hg. reflexivity.
 Qed.
 
-(** ## The forms the pass pairs with their access *)
+(** ## The forms the pass pairs with their access
 
-(** A `check_local` of the local x that continues binds its result q to the
-    pointer at offset off of x's object, changes no memory, and its access
-    check passed ([access_res]). *)
+    Two check instructions, `check_local` and `check_function`, are
+    accepted only when paired directly with the instruction that uses
+    their result. Here we characterize their stepping behavior and how
+    the pass consumes the pair together. *)
+
+(** Stepping a `check_local` instruction looks up the local's base
+    address, checks the requested byte range against its object, binds
+    the result pointer, and leaves memory unchanged. *)
 Lemma check_local_step : forall ge fr m q x off bytes r al e1 l1 m1,
   inst_step ge fr m (Let q A (CheckLocal x off bytes r al) []) = Some (IContinue e1 l1 m1) ->
   exists base, lookup x (fr_locals fr) = Some (Some base) /\ m1 = m /\
@@ -297,8 +314,10 @@ Proof.
   injection H as <- <- <-. eauto.
 Qed.
 
-(** A `check_function` that continues binds its result q to a pointer p
-    whose function check passed ([function_check_res]). *)
+(** Before calling an indirect pointer, the runtime verifies that the
+    pointer actually targets a valid function. Stepping a
+    `check_function` instruction binds the verified pointer to its
+    result when [function_check_res] succeeds. *)
 Lemma check_function_step : forall ge fr m q args e1 l1 m1,
   inst_step ge fr m (Let q F CheckFunction args) = Some (IContinue e1 l1 m1) ->
   exists p, function_check_res ge p = Some ok /\ e1 = put q (WPtr p) (fr_env fr).
@@ -335,10 +354,11 @@ Proof.
   repeat match goal with Hb : (_ <=? _) = true |- _ => apply Z.leb_le in Hb end. lia.
 Qed.
 
-(** The pass takes a `check_local` together with the access after it: that
-    access is covered by the check's range, from 0 up to bytes, and the
-    facts after are what the access ([evidence_after]) leaves of the live
-    facts less those about q ([kill]). *)
+(** A stack slot check only guarantees safety for the memory operation
+    directly after it. Lemma [checked_inst_rest_local_cov] unpacks the
+    accepted pair, showing that the next instruction is covered by the
+    checked range and that the remaining facts drop the checked
+    temporary. *)
 Lemma checked_inst_rest_local_cov : forall s q x off bytes r al rest live rest' live',
   checked_inst_rest s (Let q A (CheckLocal x off bytes r al) []) rest live = Some (rest', live') ->
   exists access, rest = access :: rest' /\ covered_access access q 0 bytes r al = true /\
@@ -353,10 +373,10 @@ Proof.
   injection H as <- <-. apply andb_true_iff in E as [E _]. apply andb_true_iff in E as [_ E]. eauto.
 Qed.
 
-(** After a `check_local` q of the local x that continues, in a memory whose
-    objects fit ([objects_fit]) and a frame whose locals lie above address
-    0, the memory is unchanged, the environment changed only at q, and the
-    check's access holds as a fact of q ([fact_holds]). *)
+(** When a `check_local` instruction steps in a frame whose locals sit
+    above address zero and whose objects fit in the address space, it
+    leaves memory unchanged and establishes a valid live fact for the
+    following access. *)
 Lemma check_local_fact : forall ge fr m q x off bytes r al e1 l1 m1 access,
   objects_fit (m_regions m) ->
   (forall y base, lookup y (fr_locals fr) = Some (Some base) -> 0 < base) ->
@@ -377,23 +397,28 @@ Proof.
   unfold check_passes, raw_address. simpl ptr_addr. simpl ptr_cap. rewrite Z.sub_0_r, Z.add_0_r, Z.mod_small by lia. exact Hc.
 Qed.
 
-(** ## The pass's sources of a function *)
+(** ## The pass's sources of a function
 
-(** The sources ([src]) the pass reads for the function f of the module md:
-    what `stage_sources/4` computes from f's
-    [[dominance|dominator intervals]], or from no intervals where there are
-    none. *)
+    Before running the instruction checker, the validator collects
+    function-wide metadata such as dominator intervals, single
+    definitions, and repeated getters. This section packages those
+    sources and extracts the structural guarantees of a checked module. *)
+
+(** Function [fn_src] builds the source record for a function f from its
+    [[dominance|dominator intervals]], falling back to an empty interval
+    map when none exist. *)
 Definition fn_src (md : module) (f : func) : src :=
   stage_sources md f (match block_intervals (fn_blocks f) with Some doms => doms | None => nm_empty end).
 
-(** The function f's dominator intervals, as [fn_src] reads them. *)
+(** Function [fn_doms] returns the dominator interval map for function f,
+    or an empty map when intervals are absent. *)
 Definition fn_doms (f : func) : nmap (Z * Z) :=
   match block_intervals (fn_blocks f) with Some doms => doms | None => nm_empty end.
 
-(** [fn_src] by cases: empty in a function with a `setjmp`, else what
-    the single definitions give. The proofs of the reuse forms rewrite
-    by it, so a hypothesis about a source becomes one about
-    [single_definitions] or about an empty list. *)
+(** Lemma [fn_src_cases] splits a function's sources into two cases.
+    Functions that call `setjmp` receive empty source lists, while other
+    functions receive the single definitions and getters computed from
+    their blocks. *)
 Lemma fn_src_cases : forall md f,
   (setjmp_func f = true /\ fn_src md f = mkSrc [] [] [] []) \/
   (setjmp_func f = false /\
@@ -437,12 +462,13 @@ Proof.
   rewrite E. cbn [existsb]. rewrite !andb_false_r. reflexivity.
 Qed.
 
-(** The label of the function f's entry block, its first, if it has blocks. *)
+(** Function [entry_label] returns the label of a function's first
+    block, when the function has at least one block. *)
 Definition entry_label (f : func) : option name :=
   match fn_blocks f with b :: _ => Some (b_label b) | [] => None end.
 
-(** md is valid and in the [[stage|checked stage]], so each of its functions
-    passed the [[evidence pass]]. *)
+(** Predicate [checked_module] states that a module is valid and has
+    passed the [[stage|checked stage]] of the [[evidence pass]]. *)
 Definition checked_module (md : module) : Prop := valid md = Some true /\ module_checked md = true.
 
 (** Every function f of a [checked_module] md has distinct block labels and
@@ -470,8 +496,8 @@ Proof.
     destruct (pass_exits _ _); [eauto | discriminate].
 Qed.
 
-(** A local of a frame's starting locals, each object paired with none, has
-    no base: none is allocated yet. *)
+(** In a freshly initialized frame, every local variable is mapped to
+    `None`, so no local holds an allocated base address yet. *)
 Lemma lookup_unallocated : forall x base (objs : list (name * Z)),
   lookup x (map (fun xs => (fst xs, @None Z)) objs) <> Some (Some base).
 Proof.
@@ -479,15 +505,22 @@ Proof.
   destruct (name_eqb x y); [discriminate | exact IH].
 Qed.
 
-(** ## The pass's own forms *)
+(** ## The pass's own forms
+
+    Several helper lemmas classify special instructions handled outside
+    the generic transition rule. They show when an instruction clears
+    live facts, pairs with a following raw call, or fails if left
+    unpaired. *)
 
 (** The instruction i is a `check_function`, the check that a pointer
     designates a function. *)
 Definition is_check_function (i : inst) : bool :=
   match i with Let _ F CheckFunction _ => true | _ => false end.
 
-(** An instruction the pass treats apart ([pass_special]) that adds no fact
-    is a `check_local` or a `check_function`. *)
+(** In C, checking a local stack slot or an indirect function pointer
+    consumes the very next instruction instead of recording a reusable
+    bounds fact. Any instruction handled by [pass_special] that produces
+    no fact must be one of those two checks. *)
 Lemma pass_special_cases : forall i,
   pass_special i = true -> check_fact i = None -> is_check_local i = true \/ is_check_function i = true.
 Proof.
@@ -512,9 +545,9 @@ Proof.
   apply orb_false_iff in H as [_ H]. exact H.
 Qed.
 
-(** Where the pass relies on nothing, it goes on to the next instruction
-    with no facts, but after a `check_function`, which takes the raw call
-    after it too. *)
+(** When the pass neither relies on facts before an instruction nor
+    treats it as a `check_function`, it advances to the very next
+    instruction with an empty fact list. *)
 Lemma relies_false_rest : forall s i rest live rest' live',
   relies s i = false -> is_check_function i = false ->
   checked_inst_rest s i rest live = Some (rest', live') -> rest' = rest /\ live' = [].
