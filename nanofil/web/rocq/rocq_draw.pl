@@ -1156,6 +1156,7 @@ tactic_structural(tgroup(T)) :- tactic_structural(T).
 tactic_structural(tlet(_, _, B)) :- tactic_structural(B).
 tactic_structural(tbin(_, L, R)) :- ( tactic_structural(L) ; tactic_structural(R) ).
 
+tactic_inline(tmatch(K, Subject, Bs), Env) --> tactic_block(tmatch(K, Subject, Bs), Env).
 tactic_inline(tbin(Op, L, R), Env) -->
     el(span, "o rq-tac-chain", ['data-d'=op], ( tactic_inline(L, Env), " ",
         el(span, "op wide", [title=Op], esc(Op)), " ", tactic_inline(R, Env) )).

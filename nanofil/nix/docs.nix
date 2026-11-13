@@ -23,6 +23,7 @@ pkgs.runCommandCC "nanofil-docs"
     cd nanofil
     patchShebangs tests bin
     export FILCC=${filcc}/bin/clang
+    swipl -q -s web/rocq/tests/render.pl -g run_tests -t halt
     python3 tests/watch.py --label "guide links" --warn-after 120 --timeout 600 -- \
       swipl web/dterm.pl --check docs/README.md docs/guide.md docs/formal.md docs/filc.md docs/iris.md docs/zegarmistrz.md docs/logic.md docs/poison.md docs/lambda-anf.md docs/nfb-guide-argon.md docs/nfb-guide-wonder.md docs/nfb-guide-wonderful.md src \
       --concepts=docs/concepts --rocq=rocq/theories --rocq=rocq/spikes --rocq=rocq/backend --rocq=rocq/glibc
