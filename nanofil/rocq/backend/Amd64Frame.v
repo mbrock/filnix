@@ -95,7 +95,13 @@ Lemma slot_effective_address (cx : ctx) (k : key) (off : Z) (s : machine) :
   slots_laid_out cx -> frame_placed cx s -> slot cx k = Some off ->
   effective_address (slot_operand off) s = slot_address off s.
 Proof.
-Admitted.
+  intros Hlay [Hbase Hmap] Hslot.
+  destruct (Hlay _ _ Hslot) as [[Hlo Hhi] Hmod].
+  unfold effective_address, slot_operand, slot_address, get_reg.
+  change (wrap S64 (wrap S64 (regs s RBP) - off) = regs s RBP - off).
+  rewrite (wrap_small S64 (regs s RBP)) by lia.
+  apply wrap_small. lia.
+Qed.
 
 (** An access to a slot at any operand size touches only mapped
     bytes. *)
@@ -103,14 +109,24 @@ Lemma slot_accessible (cx : ctx) (k : key) (off : Z) (z : size) (s : machine) :
   slots_laid_out cx -> frame_placed cx s -> slot cx k = Some off ->
   accessible z (slot_address off s) s = true.
 Proof.
-Admitted.
+  intros Hlay [Hbase Hmap] Hslot.
+  destruct (Hlay _ _ Hslot) as [[Hlo Hhi] Hmod].
+  unfold accessible. apply all_mapped_spec. intros i Hi.
+  apply Hmap. unfold slot_address.
+  destruct z; cbn in Hi; lia.
+Qed.
 
 (** Two slots at different offsets are at least eight bytes apart. *)
 Lemma slots_apart (cx : ctx) (k k' : key) (off off' : Z) :
   slots_laid_out cx -> slot cx k = Some off -> slot cx k' = Some off' ->
   off <> off' -> off + 8 <= off' \/ off' + 8 <= off.
 Proof.
-Admitted.
+  intros Hlay Hslot Hslot' Hne.
+  destruct (Hlay _ _ Hslot) as [_ Hmod].
+  destruct (Hlay _ _ Hslot') as [_ Hmod'].
+  pose proof (Z.div_mod off 8 ltac:(lia)).
+  pose proof (Z.div_mod off' 8 ltac:(lia)). lia.
+Qed.
 
 (** The emitter writes the operand of a slot as `-off(%rbp)`, and that
     operand reads as the typed slot operand. *)
@@ -118,7 +134,15 @@ Lemma slot_operand_decodes (cx : ctx) (k : key) (off : Z) :
   slots_laid_out cx -> frame_encodable cx -> slot cx k = Some off ->
   memory_operand (mem (- off) "rbp") = Some (slot_operand off).
 Proof.
-Admitted.
+  intros Hlay Henc Hslot.
+  destruct (Hlay _ _ Hslot) as [[Hlo Hhi] Hmod].
+  assert (Hfit : fits_signed S32 (- off) = true).
+  { apply fits_signed_iff. change (-2147483648 <= -off < 2147483648).
+    unfold frame_encodable in Henc. lia. }
+  change ((if fits_signed S32 (-off) then Some (slot_operand off) else None)
+    = Some (slot_operand off)).
+  rewrite Hfit. reflexivity.
+Qed.
 
 (** A frame stays placed when `%rbp` and the set of mapped addresses
     stay the same. *)
@@ -126,7 +150,8 @@ Lemma frame_placed_preserved (cx : ctx) (s s' : machine) :
   frame_placed cx s -> regs s' RBP = regs s RBP -> mapped s' = mapped s ->
   frame_placed cx s'.
 Proof.
-Admitted.
+  unfold frame_placed. intros H Hr Hm. rewrite Hr, Hm. exact H.
+Qed.
 
 (** ## The relation
 
@@ -167,7 +192,9 @@ Lemma represents_subset (cx : ctx) (live live' : name -> Prop) (e : Semantics.en
   (forall n, live' n -> live n) ->
   represents cx live e s -> represents cx live' e s.
 Proof.
-Admitted.
+  unfold represents. intros Hsub Hrep n v off Hlive He Hslot.
+  eapply Hrep; eauto.
+Qed.
 
 (** The relation depends only on `%rbp` and on the bytes of the frame.
     A state with the same `%rbp` and the same frame content represents
@@ -179,7 +206,13 @@ Lemma represents_same_frame (cx : ctx) (live : name -> Prop) (e : Semantics.env)
   (forall a, regs s RBP - cx_size cx <= a < regs s RBP -> bytes s' a = bytes s a) ->
   represents cx live e s -> represents cx live e s'.
 Proof.
-Admitted.
+  intros Hlay Hr Hb Hrep n v off Hlive He Hslot.
+  unfold slot_address. rewrite Hr.
+  rewrite (read_at_agree S64 (bytes s') (bytes s)).
+  - exact (Hrep n v off Hlive He Hslot).
+  - intros i Hi. apply Hb.
+    destruct (Hlay _ _ Hslot) as [[Hlo Hhi] Hmod]. cbn in Hi. lia.
+Qed.
 
 (** A read of a live temporary's slot at the size of an integer class
     returns the low part of the integer that the environment binds to
@@ -193,7 +226,11 @@ Lemma represents_read (cx : ctx) (live : name -> Prop) (e : Semantics.env)
   slot cx (KTmp n) = Some off ->
   read_at z (bytes s) (slot_address off s) = wrap z v.
 Proof.
-Admitted.
+  intros Hrep Hlive He Hslot.
+  rewrite (read_at_narrower z S64) by (destruct z; cbn; lia).
+  rewrite (Hrep n v off Hlive He Hslot).
+  apply wrap_narrower. destruct z; cbn; lia.
+Qed.
 
 (** A 64-bit store of the integer v into the slot of d makes the state
     represent the environment in which d is bound to v. The relation
@@ -206,7 +243,20 @@ Lemma represents_store (cx : ctx) (live : name -> Prop) (e : Semantics.env)
   represents cx (live_after cx live d) (put d (Values.WInt v) e)
     (set_bytes (write_at S64 (bytes s) (slot_address off s) v) s).
 Proof.
-Admitted.
+  intros Hlay Hd Hrep n v' off' Hlive He Hslot.
+  unfold slot_address. rewrite regs_set_bytes, bytes_set_bytes.
+  rewrite lookup_put_name in He.
+  destruct (name_eqb n d) eqn:End.
+  - apply term_eqb_eq in End. subst n.
+    rewrite Hd in Hslot. inversion Hslot; subst off'.
+    inversion He; subst v'. apply read_write_at_same.
+  - destruct Hlive as [-> | [Hlive Hne]].
+    + rewrite term_eqb_refl in End. discriminate.
+    + assert (Hoff : off <> off') by (intro E; subst; apply Hne; congruence).
+      pose proof (slots_apart cx (KTmp d) (KTmp n) off off' Hlay Hd Hslot Hoff).
+      rewrite read_write_at_apart by (cbn; unfold slot_address; lia).
+      exact (Hrep n v' off' Hlive He Hslot).
+Qed.
 
 (** ## Operands in the IR's semantics
 
@@ -221,7 +271,8 @@ Admitted.
 Lemma class_size_modulus (k : class) (z : size) :
   class_size k = Some z -> modulus k = Some (size_modulus z).
 Proof.
-Admitted.
+  destruct k; cbn [class_size]; intros H; inversion H; reflexivity.
+Qed.
 
 (** A temporary that evaluates to an integer at an integer class is
     bound to an integer, and the evaluation returns the low part of
@@ -232,7 +283,12 @@ Lemma value_x_temporary (ge : Semantics.genv) (e : Semantics.env) (k : class)
   Semantics.value_x ge e k (Tmp n) = Some (Values.WInt w) ->
   exists v, lookup n e = Some (Values.WInt v) /\ w = wrap z v.
 Proof.
-Admitted.
+  destruct k; cbn [class_size]; intros Hk; inversion Hk; subst z;
+    unfold Semantics.value_x;
+    destruct (lookup n e) as [x|] eqn:He; try discriminate;
+    destruct x; cbn [Values.word_at_class]; try discriminate;
+    intros H; inversion H; subst; eexists; split; reflexivity.
+Qed.
 
 (** A constant evaluates at an integer class to its low part at the
     size of the class. *)
@@ -242,7 +298,9 @@ Lemma value_x_constant (ge : Semantics.genv) (e : Semantics.env) (k : class)
   Semantics.value_x ge e k (Const n) = Some (Values.WInt w) ->
   w = wrap z n.
 Proof.
-Admitted.
+  destruct k; cbn [class_size]; intros Hk; inversion Hk; subst z;
+    cbn [Semantics.value_x modulus]; intros H; inversion H; reflexivity.
+Qed.
 
 (** An operand that evaluates to an integer at an integer class
     evaluates to a valid pattern of the size of the class. *)
@@ -252,7 +310,13 @@ Lemma value_x_range (ge : Semantics.genv) (e : Semantics.env) (k : class)
   Semantics.value_x ge e k v = Some (Values.WInt w) ->
   0 <= w < size_modulus z.
 Proof.
-Admitted.
+  intros Hk Hv. destruct v as [n|n|n].
+  - destruct (value_x_temporary ge e k z n w Hk Hv) as [x [_ ->]].
+    apply wrap_range.
+  - rewrite (value_x_constant ge e k z n w Hk Hv). apply wrap_range.
+  - unfold Semantics.value_x in Hv.
+    destruct (lookup n (Semantics.ge_globals ge)); discriminate.
+Qed.
 
 (** ## Loads and stores of the emitter
 
@@ -314,6 +378,29 @@ Proof. split; reflexivity. Qed.
 Example names_rcx : names_register "c" RCX.
 Proof. split; reflexivity. Qed.
 
+(** A register write preserves the rest of the machine, which the
+    operand load specification requires for both kinds of source. *)
+Lemma set_reg_only (z : size) (g : gpr) (v : Z) (s : machine) :
+  only_register g s (set_reg z g v s).
+Proof.
+  split; [intros r H; apply regs_set_reg_other; exact H |].
+  split; [apply bytes_set_reg | apply mapped_set_reg].
+Qed.
+
+(** An immediate move completes with its value in the destination.
+    This rule supplies the execution part of the constant load proof. *)
+Lemma immediate_move_spec (z : size) (n : Z) (g : gpr) :
+  establishes (fun _ => True) [IMov z (SImm n) g]
+    (fun s s' => s' = set_reg z g (wrap z n) s).
+Proof.
+  intros s o _ Hr.
+  destruct (runs_cons_inv _ _ _ _ Hr) as [h [[t [Ht Hrest]] | [f [Hf Ho]]]].
+  - change (Next (set_reg z g (wrap z n) s) = Next t) in Ht.
+    inversion Ht; subst t. apply runs_nil_inv in Hrest.
+    eexists; split; [exact Hrest | reflexivity].
+  - discriminate Hf.
+Qed.
+
 (** The emitted load of an operand is inside the model and never
     faults. It leaves in the whole register the integer to which the
     IR evaluates the operand at the class k, so a 32-bit value is
@@ -336,7 +423,74 @@ Lemma load_operand_spec (cx : ctx) (ge : Semantics.genv) (live : name -> Prop)
     /\ establishes (fun s => frame_placed cx s /\ represents cx live e s) code
          (fun s s' => regs s' g = w /\ only_register g s s').
 Proof.
-Admitted.
+  intros Hk Hlay Henc [Hr64 Hr32] Hplaced Hlive Hv.
+  destruct v as [n|n|n].
+  - destruct Hplaced as [off Hslot].
+    destruct (value_x_temporary ge e k z n w Hk Hv) as [x [He ->]].
+    exists [ILoad z (slot_operand off) g]. split.
+    + assert (Hd : forall r', register r' = Some (z, g) ->
+        decode_move z (mem (-off) "rbp") (reg r') = Some (ILoad z (slot_operand off) g)).
+      { intros r' Hr. unfold decode_move.
+        rewrite (slot_operand_decodes cx (KTmp n) off Hlay Henc Hslot).
+        change ((match sized_register z (reg r') with
+          | Some d => Some (ILoad z (slot_operand off) d) | None => None end)
+          = Some (ILoad z (slot_operand off) g)).
+        unfold sized_register, reg. rewrite Hr.
+        destruct z; reflexivity. }
+      destruct k; cbn [class_size] in Hk; inversion Hk; subst z;
+        unfold load, with_slot; rewrite Hslot.
+      * change ((match decode_move S32 (mem (-off) "rbp") (reg (reg32 r)) with
+          | Some i => Some [i] | None => None end) = Some [ILoad S32 (slot_operand off) g]).
+        rewrite Hd by assumption. reflexivity.
+      * change ((match decode_move S64 (mem (-off) "rbp") (reg (reg64 r)) with
+          | Some i => Some [i] | None => None end) = Some [ILoad S64 (slot_operand off) g]).
+        rewrite Hd by assumption. reflexivity.
+    + eapply establishes_weaken; [apply load_spec | |].
+      * intros s [Hp _]. rewrite (slot_effective_address cx (KTmp n) off s Hlay Hp Hslot).
+        exact (slot_accessible cx (KTmp n) off z s Hlay Hp Hslot).
+      * intros s s' [Hp Hrep] ->.
+        rewrite (slot_effective_address cx (KTmp n) off s Hlay Hp Hslot).
+        rewrite (represents_read cx live e s n x off z Hrep Hlive He Hslot).
+        split; [|apply set_reg_only].
+        destruct k; cbn [class_size] in Hk; inversion Hk; subst z;
+          rewrite ?regs_set_reg_32, ?regs_set_reg_64; apply wrap_wrap.
+  - pose proof (value_x_constant ge e k z n w Hk Hv) as Hw. subst w.
+    destruct k; cbn [class_size] in Hk; inversion Hk; subst z.
+    + exists [IMov S32 (SImm (wrap S32 n)) g]. split.
+      * assert (Hfit : immediate_fits S32 (wrap S32 n) = true).
+        { unfold immediate_fits. rewrite andb_true_iff, Z.leb_le, Z.ltb_lt.
+          change (-2147483648 <= wrap S32 n < 4294967296).
+          pose proof (wrap_range S32 n) as Hrange.
+          change (0 <= wrap S32 n < 4294967296) in Hrange. lia. }
+        change ((match decode_move S32 (imm (wrap S32 n)) (reg (reg32 r)) with
+          | Some i => Some [i] | None => None end) = Some [IMov S32 (SImm (wrap S32 n)) g]).
+        unfold decode_move. cbn [memory_operand].
+        unfold sized_source, imm, sized_register, reg. rewrite Hr32, Hfit. reflexivity.
+      * eapply establishes_weaken; [apply immediate_move_spec | intros; exact I |].
+        intros s s' _ ->. split; [rewrite regs_set_reg_32, !wrap_wrap; reflexivity | apply set_reg_only].
+    + exists [IMov S64 (SImm (signed_at S64 n)) g]. split.
+      * assert (Hfit : wide_immediate_fits (signed_at S64 n) = true).
+        { unfold wide_immediate_fits. rewrite andb_true_iff, Z.leb_le, Z.ltb_lt.
+          change (-9223372036854775808 <= signed_at S64 n < 18446744073709551616).
+          pose proof (signed_at_range S64 n) as Hrange.
+          change (-9223372036854775808 <= signed_at S64 n < 9223372036854775808) in Hrange. lia. }
+        assert (Hs : (if n mod two64 >=? two63 then n mod two64 - two64 else n mod two64)
+          = signed_at S64 n).
+        { unfold signed_at, sign_bit, wrap.
+          change ((if n mod two64 >=? two63 then n mod two64 - two64 else n mod two64) =
+            (if two63 <=? n mod two64 then n mod two64 - two64 else n mod two64)).
+          rewrite Z.geb_leb. reflexivity. }
+        unfold load. change ((match decode_wide_move S64
+          (imm (if n mod two64 >=? two63 then n mod two64 - two64 else n mod two64))
+          (reg (reg64 r)) with | Some i => Some [i] | None => None end) = Some [IMov S64 (SImm (signed_at S64 n)) g]).
+        rewrite Hs. unfold decode_wide_move, sized_register, reg, imm.
+        rewrite Hr64, Hfit. reflexivity.
+      * eapply establishes_weaken; [apply immediate_move_spec | intros; exact I |].
+        intros s s' _ ->. split; [|apply set_reg_only].
+        rewrite regs_set_reg_64, wrap_wrap, wrap_signed_at. reflexivity.
+  - unfold Semantics.value_x in Hv.
+    destruct (lookup n (Semantics.ge_globals ge)); discriminate.
+Qed.
 
 (** The emitted store of a 64-bit register into the slot of the
     temporary d is inside the model and never faults. Afterwards the
@@ -357,4 +511,33 @@ Lemma store_slot_spec (cx : ctx) (live : name -> Prop) (e : Semantics.env)
               (put d (Values.WInt (regs s g)) e) s'
             /\ only_slot off s s').
 Proof.
-Admitted.
+  intros Hlay Henc Hr Hslot.
+  exists [IStore S64 g (slot_operand off)]. split.
+  - unfold slot_store, with_slot. rewrite Hslot.
+    assert (Hd : decode_move S64 (reg r) (mem (-off) "rbp") =
+      Some (IStore S64 g (slot_operand off))).
+    { unfold decode_move. rewrite (slot_operand_decodes cx (KTmp d) off Hlay Henc Hslot).
+      change ((match sized_register S64 (reg r) with
+        | Some x => Some (IStore S64 x (slot_operand off)) | None => None end)
+        = Some (IStore S64 g (slot_operand off))).
+      unfold sized_register, reg. rewrite Hr. reflexivity. }
+    change ((match decode_move S64 (reg r) (mem (-off) "rbp") with
+      | Some i => Some [i] | None => None end) = Some [IStore S64 g (slot_operand off)]).
+    rewrite Hd. reflexivity.
+  - eapply establishes_weaken; [apply store_spec | |].
+    + intros s [Hp _]. rewrite (slot_effective_address cx (KTmp d) off s Hlay Hp Hslot).
+      exact (slot_accessible cx (KTmp d) off S64 s Hlay Hp Hslot).
+    + intros s s' [Hp Hrep] ->.
+      rewrite (slot_effective_address cx (KTmp d) off s Hlay Hp Hslot).
+      split.
+      * eapply represents_same_frame with
+          (s := set_bytes (write_at S64 (bytes s) (slot_address off s) (regs s g)) s);
+          [exact Hlay | | |].
+        -- repeat rewrite regs_set_bytes. reflexivity.
+        -- intros a Ha. repeat rewrite bytes_set_bytes.
+           unfold get_reg. apply write_at_wrap.
+        -- apply represents_store; assumption.
+      * unfold only_slot. split; [intro x; apply regs_set_bytes |].
+        split; [apply mapped_set_bytes |]. intros a Ha.
+        rewrite bytes_set_bytes. apply write_bytes_outside. exact Ha.
+Qed.
