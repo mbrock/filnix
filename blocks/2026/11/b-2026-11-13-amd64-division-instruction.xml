@@ -1,0 +1,18 @@
+<block id="b-2026-11-13-amd64-division-instruction" kind="milestone" actor="T-01a1d672-b2c0-7735-85a2-dc20f1946b83" model="anthropic/claude-fable-5-2" created="2026-11-13T21:36:08Z" in-reply-to="b-2026-11-13-amd64-division">
+  <title>The emitted code for a whole IR division instruction is proved, with its operand loads and result store</title>
+  <about path="nanofil/rocq/backend/Amd64DivisionStep.v"/>
+  <about path="nanofil/rocq/backend/Amd64Frame.v"/>
+  <about path="nanofil/rocq/backend/Amd64Memory.v"/>
+  <about path="nanofil/rocq/backend/Amd64Layout.v"/>
+  <about path="nanofil/rocq/backend/Amd64Step.v"/>
+  <about path="nanofil/docs/gallina-backend.md"/>
+  <tag name="formal"/>
+  <tag name="backend"/>
+  <p>The first division theorem started after the two operands were already in registers, because the machine model had no memory. The model now has byte memory. <a path="nanofil/rocq/backend/Amd64Memory.v">Amd64Memory.v</a> defines little-endian reads and writes over a map from addresses to bytes, and it proves that they agree with the byte functions of the IR's memory. <a path="nanofil/rocq/backend/Amd64Step.v">Amd64Step.v</a> gives a load and a store their effect, and an access to an unmapped address is a fault.</p>
+  <p><a path="nanofil/rocq/backend/Amd64Frame.v">Amd64Frame.v</a> says when a machine state represents an environment of the IR. The relation <rocq path="nanofil/rocq/backend/Amd64Frame.v">represents</rocq> requires the eight-byte slot of each live temporary that is bound to an integer to hold that integer. The file proves that the emitter's operand load puts the operand's value in a register and that its slot store updates the relation.</p>
+  <claim status="proved" check="make -C nanofil/rocq/backend .amd64-assumptions">
+    <p><rocq path="nanofil/rocq/backend/Amd64DivisionStep.v">division_instruction_correct</rocq> is about the lines that <rocq path="nanofil/rocq/backend/EmitInst.v">let_lines</rocq> emits for a division instruction of the IR. If the IR has a step for the instruction, then the lines decode, run without a fault from every state whose frame is mapped and represents the IR's environment, and end in a state that represents the environment after the IR's step. The code changes only <c>%rax</c>, <c>%rcx</c>, <c>%rdx</c>, the flags and the slot of the destination. The theorem holds for both integer classes, both signednesses, the quotient and the remainder. <rocq path="nanofil/rocq/backend/Amd64Layout.v">plan_slots_laid_out</rocq> proves that the frame which the backend plans has the layout that the theorem assumes. Every lemma in the eleven <c>Amd64*.v</c> files is closed under the global context.</p>
+  </claim>
+  <p>The theorem still has limits. The relation compares only temporaries that hold integers, so a slot that holds a pointer or the capability of a pointer is not compared yet. The theorem is told which temporaries are live, and nothing connects that set to the liveness analysis that assigns the slots. The model has no branches or calls, the meaning of each instruction is copied by hand from the processor manuals, and the assembler is trusted.</p>
+  <p>Several models shared this work again, to learn how well proof work divides between them. Claude Fable 5.2 wrote every definition and theorem statement first, in files that compiled with their proofs left open. Five other threads then wrote the proofs, each in its own file, and none of them had to change a statement. GPT-6.1 Sol proved the facts about bytes, loads and stores, and it joined the parts into the final theorem. GPT-6 Astra proved the two harder parts, which are the facts about the frame and the theorem about the planned layout.</p>
+</block>

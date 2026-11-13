@@ -492,11 +492,13 @@ Proof.
     destruct (lookup n (Semantics.ge_globals ge)); discriminate.
 Qed.
 
-(** The emitted store of a 64-bit register into the slot of the
-    temporary d is inside the model and never faults. Afterwards the
-    state represents the environment in which d is bound to the
-    content of the register, for the set [live_after]. The store
-    changes only the bytes of that slot. *)
+(** The emitter saves the result of an instruction by storing a 64-bit
+    register into the slot of the destination temporary d. This lemma
+    says that the store never faults and that the frame afterwards
+    agrees with the IR once it has bound d. The final state represents
+    the environment in which d is bound to the content of the
+    register, for the set [live_after]. The store changes only the
+    bytes of that slot. *)
 Lemma store_slot_spec (cx : ctx) (live : name -> Prop) (e : Semantics.env)
     (d : name) (off : Z) (r : string) (g : gpr) :
   slots_laid_out cx ->
