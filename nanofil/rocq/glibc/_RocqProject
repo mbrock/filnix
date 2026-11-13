@@ -324,3 +324,5 @@ getopt/GetoptReqTail.v
 getopt/GetoptReqNext.v
 getopt/GetoptReqArg.v
 getopt/GetoptShortRet.v
+getopt/GetoptWTail.v
+getopt/GetoptWOpt.v
