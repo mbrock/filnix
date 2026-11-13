@@ -338,3 +338,10 @@ getopt/GetoptLongArg.v
 getopt/GetoptLongUnrec.v
 getopt/GetoptLongMissOnly.v
 getopt/GetoptLongMiss.v
+getopt/GetoptLongPfxCmp.v
+getopt/GetoptLongPfxMark.v
+getopt/GetoptLongPfxAlloc.v
+getopt/GetoptLongPfxSet.v
+getopt/GetoptLongPfxStep.v
+getopt/GetoptLongPfxIter.v
+getopt/GetoptLongPfxLoop.v
