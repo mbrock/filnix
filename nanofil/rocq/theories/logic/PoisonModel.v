@@ -523,13 +523,13 @@ Fixpoint join_taints (ts : list taint) : taint :=
   | t :: ts' => taint_join t (join_taints ts')
   end.
 
-(** Extract the scalar taint of a [WTInt] argument. *)
+(** This helper extracts the scalar taint from a [WTInt] argument. *)
 Definition scalar_wt (wt : word_taint) : option taint :=
   match wt with WTInt t => Some t | _ => None end.
 
-(** Whether `let(d, k, o, args)` is a self-zeroing integer idiom
-    (`xor x, x` or `sub x, x`), which produces 0 regardless of `x` and
-    clears taint as zegarmistrz does. *)
+(** Self-zeroing idioms such as `xor x, x` or `sub x, x` always produce
+    0 regardless of `x`. This predicate recognizes them so the taint
+    transfer can clear the result's taint just as `zegarmistrz` does. *)
 Definition is_zero_idiom (o : op) (k : class) (args : list value) : bool :=
   int_class k &&
   match o, args with
@@ -537,7 +537,7 @@ Definition is_zero_idiom (o : op) (k : class) (args : list value) : bool :=
   | _, _ => false
   end.
 
-(** Size in bytes of a non-pointer [load_type]. *)
+(** This helper returns the byte width of a non-pointer [load_type]. *)
 Definition load_type_bytes (t : load_type) : Z :=
   match t with
   | LdL | LdD => 8
@@ -546,7 +546,8 @@ Definition load_type_bytes (t : load_type) : Z :=
   | LdNarrow n => fst (narrow_type n)
   end.
 
-(** Environment after a block's phis for taint: mirrors [phis_env]. *)
+(** Entering a block updates the taint environment from its [[phi]]
+    nodes, mirroring how [phis_env] updates machine values. *)
 Definition phis_tenv (phis : list phi) (from : option name) (te0 : tenv)
   : option tenv :=
   match from with
@@ -562,7 +563,7 @@ Definition phis_tenv (phis : list phi) (from : option name) (te0 : tenv)
                    end) phis (Some te0)
   end.
 
-(** Initial taint environment of a called function [f] on argument
+(** Calling a function binds its parameters to the incoming argument
     taints [wts], mirroring [call_frame]. *)
 Definition call_tenv (f : func) (wts : list word_taint) : option tenv :=
   let params := fn_params f in
@@ -570,8 +571,8 @@ Definition call_tenv (f : func) (wts : list word_taint) : option tenv :=
   Some (fold_left (fun te px => put (snd (fst px)) (snd px) te)
                   (combine params (firstn (length params) wts)) []).
 
-(** Bind returned word taints [ots] into a caller's [te], mirroring
-    [returned_env]. *)
+(** Returning from a call binds the returned word taints [ots] into the
+    caller's taint environment, mirroring [returned_env]. *)
 Definition returned_tenv (r : call_result) (ots : list word_taint) (te : tenv)
   : option tenv :=
   match r, ots with
@@ -592,7 +593,8 @@ Definition returned_tenv (r : call_result) (ots : list word_taint) (te : tenv)
     Instructions that expose secrets through control flow, addresses, or
     latency must also enforce the corresponding [[poison]] check. *)
 
-(** Taint outcome of one step before pairing with [Semantics.step]. *)
+(** Each taint step produces an outcome that later pairs with
+    [Semantics.step]. *)
 Inductive tstep_out : Type :=
 | TNext (ps' : pstate)
 | TDone (ots : list word_taint)
@@ -600,10 +602,10 @@ Inductive tstep_out : Type :=
 | TFault (why : poison_reason)
 | TStuck (why : string).
 
-(** Check a runtime check op on pointer taint `(ta, tc)` under [pol].
-    When [pol_check_branches] holds, branching on the address or flags
-    checks `t_branch` on `ta` and `tc`, and reading the object header at
-    `lower - 16` checks `t_index` on `tc`. *)
+(** A pointer bounds check reads an object's header at `lower - 16` and
+    branches on the result. Under [pol], this helper checks `t_branch` on
+    both pointer components and `t_index` on the capability when
+    [pol_check_branches] is enabled. *)
 Definition check_ptr_bounds_taint (pol : poison_policy) (ta tc : taint)
   : option poison_reason :=
   if pol_check_branches pol then
@@ -624,8 +626,8 @@ Definition pure_scalar_op (o : op) : bool :=
   | _ => false
   end.
 
-(** Taint transfer and poison checks for `let(d, k, o, args)` in frame
-    environment [e] and poison state [ps]. *)
+(** This function computes the taint transfer and poison checks for
+    `let(d, k, o, args)` in environment [e] and poison state [ps]. *)
 Definition let_tstep (pol : poison_policy) (ge : genv) (e : env)
     (ps : pstate) (d : name) (k : class) (o : op) (args : list value)
   : tstep_out :=
@@ -864,10 +866,10 @@ Definition let_tstep (pol : poison_policy) (ge : genv) (e : env)
       else TStuck "unsupported_op"
   end.
 
-(** Taint transfer and poison checks for one instruction [i]. Notice
-    [[flight]] (`lea`): it checks only whether [o] is variable-time and
-    never faults on `cannot_index`, propagating the joined address taint
-    into its result pointer. *)
+(** This function computes taint transfer and poison checks for one
+    instruction [i]. A [[flight]] instruction (`lea`) only checks
+    whether [o] is variable-time, never faults on `cannot_index`, and
+    propagates the joined address taint into its result pointer. *)
 Definition inst_tstep (pol : poison_policy) (ge : genv) (fr : frame)
     (ps : pstate) (i : inst) : tstep_out :=
   let e := fr_env fr in
@@ -977,8 +979,9 @@ Definition return_tstep (ps : pstate) (ots : list word_taint) : tstep_out :=
       end
   end.
 
-(** Taint step of a block's jump [j]: `branch` enforces `cannot_branch`
-    and ignores `cannot_index` (the orthogonality invariant). *)
+(** Conditional branches leak control flow but do not touch memory.
+    This helper enforces `cannot_branch` on a branch condition while
+    ignoring `cannot_index` to preserve orthogonality. *)
 Definition jump_tstep (fr : frame) (ps : pstate) (j : jump) : tstep_out :=
   let te := ps_tenv ps in
   match j with
@@ -1006,7 +1009,8 @@ Definition jump_tstep (fr : frame) (ps : pstate) (j : jump) : tstep_out :=
   | JUnreachable => TDone []
   end.
 
-(** Taint step of configuration [c] with poison state [ps]. *)
+(** This function computes the taint step for configuration [c] in
+    poison state [ps]. *)
 Definition tstep (pol : poison_policy) (ge : genv) (c : config) (ps : pstate) : tstep_out :=
   let fr := c_frame c in
   match fr_doomed fr with
@@ -1035,7 +1039,7 @@ Definition tstep (pol : poison_policy) (ge : genv) (c : config) (ps : pstate) : 
     step. Erasing its [[poison]] state recovers the ordinary execution
     whenever the checks succeed. *)
 
-(** Result of one instrumented step of `(c, ps)`. *)
+(** Each instrumented step of `(c, ps)` returns one of these outcomes. *)
 Inductive pstep_result : Type :=
 | PNext (c' : config) (ps' : pstate)
 | PDone (o : outcome) (ots : list word_taint)
@@ -1043,10 +1047,10 @@ Inductive pstep_result : Type :=
 | PTrap (why : poison_reason)
 | PStuck (why : string).
 
-(** One instrumented step: poison checks run first (so a tainted operand
-    faults as [PTrap] even when the underlying operation would trap or
-    stop), and otherwise [Semantics.step] advances [c] in lockstep with
-    [tstep]'s [ps]. *)
+(** An instrumented step runs poison checks before executing the IR
+    instruction, so a tainted operand faults as [PTrap] even if the
+    operation would otherwise trap. When the checks pass,
+    [Semantics.step] advances [c] in lockstep with [tstep]. *)
 Definition pstep (pol : poison_policy) (ge : genv) (c : config) (ps : pstate)
   : pstep_result :=
   match tstep pol ge c ps with
@@ -1074,8 +1078,8 @@ Definition pstep (pol : poison_policy) (ge : genv) (c : config) (ps : pstate)
       end
   end.
 
-(** Multi-step deterministic poison run up to [steps] transitions,
-    returning the terminal outcome or the first poison fault. *)
+(** This function runs up to [steps] deterministic poison transitions
+    and returns either the terminal outcome or the first poison fault. *)
 Fixpoint prun (pol : poison_policy) (ge : genv) (steps : nat) (c : config) (ps : pstate)
   : pstep_result :=
   match steps with
@@ -1110,11 +1114,10 @@ Qed.
     variable-time operands. Equal observations establish constant time at
     the [[stage|checked IR]] level, not a hardware timing guarantee. *)
 
-(** Abstract leakage observation of a single IR step: control-flow
-    transfers and branch outcomes, memory access addresses and byte
-    widths, variable-latency operand bit-patterns, capability check
-    inputs, and allocation/free requests. This is not a trace of every
-    native instruction or a proof of a hardware timing model. *)
+(** Each IR step emits an abstract leakage observation covering control
+    flow, memory addresses and widths, variable-time operand bits,
+    capability checks, and allocation requests. This model does not
+    capture native instructions or hardware timing directly. *)
 Inductive leak_event : Type :=
 | LeakEnter (l : name) (from : option name)
 | LeakGoto (l : name)
@@ -1129,12 +1132,12 @@ Inductive leak_event : Type :=
 | LeakPure
 | LeakDone (tag : string).
 
-(** Leakage event emitted by configuration [c] under [pol]. The policy
-    selects the variable-time observations as well as the checks.
-    [LeakPure] includes flights and several runtime-check operations;
-    [LeakCheck] records only the principal pointer, not every donor.
-    Native constant-time adequacy therefore needs a separate argument
-    relating these observations and the taint guards to emitted code. *)
+(** This function computes the leakage event emitted by configuration [c]
+    under policy [pol], which selects variable-time observations as well
+    as checks. [LeakPure] covers flights and several runtime checks,
+    while [LeakCheck] records only the principal pointer. Establishing
+    native constant-time execution therefore requires a separate
+    argument connecting these observations to emitted machine code. *)
 Definition leak_of (pol : poison_policy) (ge : genv) (c : config) : leak_event :=
   let fr := c_frame c in
   let e := fr_env fr in
@@ -1243,8 +1246,8 @@ Definition leak_of (pol : poison_policy) (ge : genv) (c : config) : leak_event :
       end
   end.
 
-(** Multi-step leakage trace of a deterministic run, collecting the
-    [leak_event] of each step up to termination or [steps] steps. *)
+(** This function executes a deterministic run and collects the
+    [leak_event] from each step until termination or [steps] steps. *)
 Fixpoint prun_trace (pol : poison_policy) (ge : genv) (steps : nat) (c : config) (ps : pstate)
   : option (list leak_event) :=
   match steps with
@@ -1266,9 +1269,9 @@ Fixpoint prun_trace (pol : poison_policy) (ge : genv) (steps : nat) (c : config)
     arithmetic. This [[poison]] counterexample branches first and then
     chooses between two public addresses. *)
 
-(** A minimal 3-block function `implicit_leak(int sec)`:
-    if `sec == 0`, load byte 0 of `tbl`; else load byte 64 of `tbl`.
-    Neither arm uses `sec` in an address expression. *)
+(** This minimal three-block function branches on a secret integer `sec`
+    to load either byte 0 or byte 64 of `tbl`, without ever using `sec`
+    in an address expression. *)
 Definition implicit_leak_fn : func :=
   mkFunc (TAtom "implicit_leak") (TAtom "export") (RClass W) [(W, TAtom "sec")]
     [ mkBlock (TAtom "entry") []
@@ -1286,8 +1289,8 @@ Definition implicit_leak_fn : func :=
           Let (TAtom "r1") W (RawLoad (LdNarrow Ub) 0) [Tmp (TAtom "q1")] ]
         (JRet (Tmp (TAtom "r1"))) ].
 
-(** Global environment holding `implicit_leak` and a 128-byte read-only
-    table `tbl` at base 4096. *)
+(** This global environment holds `implicit_leak` alongside a 128-byte
+    read-only table `tbl` at base 4096. *)
 Definition implicit_leak_ge : genv :=
   mkGenv [IFunc implicit_leak_fn] [(TAtom "tbl", mkPtr 4096 (Ro 4096))] free_res.
 
@@ -1295,13 +1298,14 @@ Definition implicit_leak_ge : genv :=
 Definition implicit_leak_mem : mem :=
   mkMem (fun _ => 0) [mkRegion 4096 4224 GlobalData Live] (fun _ => CNone).
 
-(** Starting configuration for `implicit_leak(sec)`. *)
+(** This helper builds the starting configuration for `implicit_leak(sec)`. *)
 Definition implicit_leak_cfg (sec : Z) : config :=
   mkConfig (mkFrame implicit_leak_fn [(TAtom "sec", WInt sec)] [] None (Enter (TAtom "entry") None))
            [] implicit_leak_mem 10.
 
-(** Starting poison state with `sec` tainted only with `cannot_index`
-    (`cannot_branch = false`). *)
+(** To test whether index taint alone catches implicit control flow,
+    this starting poison state marks `sec` with `cannot_index` while
+    leaving `cannot_branch` cleared. *)
 Definition implicit_leak_ps_index_only : pstate :=
   mkPState [(TAtom "sec", WTInt taint_index)] [] (fun _ => pb_clean) (fun _ => taint_bot).
 
@@ -1330,8 +1334,8 @@ Qed.
     and restrictions. The relation below follows both executions through
     matching [[stage|checked IR]] steps. *)
 
-(** Relational agreement between two runtime words under [wt]: any
-    component on which [w1] and [w2] differ must carry [taint_all]. *)
+(** Two runtime words agree under word taint [wt] when every component
+    where [w1] and [w2] differ carries [taint_all]. *)
 Definition word_rel (wt : word_taint) (w1 w2 : word) : Prop :=
   match wt, w1, w2 with
   | WTInt t, WInt n1, WInt n2 => n1 <> n2 -> t = taint_all
@@ -1343,7 +1347,8 @@ Definition word_rel (wt : word_taint) (w1 w2 : word) : Prop :=
   | _, _, _ => False
   end.
 
-(** Environment agreement between [e1] and [e2] under [te]. *)
+(** Two environments [e1] and [e2] agree under [te] when every bound
+    variable holds words related by [word_rel]. *)
 Definition env_rel (te : tenv) (e1 e2 : env) : Prop :=
   forall x,
     (lookup x e1 = None /\ lookup x e2 = None) \/
@@ -1353,7 +1358,8 @@ Definition env_rel (te : tenv) (e1 e2 : env) : Prop :=
       lookup x te = Some wt /\
       word_rel wt w1 w2.
 
-(** Agreement of suspended caller stacks (direct calls with `pd_conv = None`). *)
+(** Suspended caller stacks from direct calls agree when their pending
+    frames, environments, and return points match under [tcs]. *)
 Fixpoint callers_rel (tcs : list (tenv * call_result))
     (cs1 cs2 : list (frame * pending)) : Prop :=
   match tcs, cs1, cs2 with
@@ -1452,8 +1458,8 @@ Proof.
     exists (w2 :: ys2). split; [reflexivity | constructor; [exact Hw | exact Hys]].
 Qed.
 
-(** Pairwise `word_rel` over scalar taints means equal `WInt` lists or
-    `join_taints = taint_all`. *)
+(** Two scalar argument lists that agree pointwise must either contain
+    identical integers or combine to carry full taint. *)
 Lemma scalar_args_eq_or_all : forall wts xs1 xs2 ts,
   Forall2 (fun wt p => word_rel wt (fst p) (snd p)) wts (combine xs1 xs2) ->
   map_option scalar_wt wts = Some ts ->
@@ -1569,7 +1575,8 @@ Proof.
     cbn in *. intros Hne. apply (proj1 Hrel). congruence.
 Qed.
 
-(** List version of [flight_arg_rel]. *)
+(** Evaluating a list of [[flight]] arguments in related environments
+    yields related integer lists. *)
 Lemma map_flight_arg_rel : forall ge te e1 e2 args xs1 ts,
   env_rel te e1 e2 ->
   map_option (flight_arg_x ge e1) args = Some xs1 ->
@@ -1617,7 +1624,9 @@ Proof.
     injection Hc as <-; injection Ht as <-. exists (ptr_cap p2). split; [reflexivity | exact (proj2 Hrel)].
 Qed.
 
-(** `phis_env` preserves [env_rel] when `phis_tenv` succeeds. *)
+(** Entering a block must keep secret differences confined to
+    fully tainted variables. Updating environments through [[phi]] nodes
+    preserves [env_rel] whenever [phis_tenv] succeeds. *)
 Lemma phis_rel : forall ge phis from e1 e2 te0 e1' te',
   env_rel te0 e1 e2 ->
   phis_env ge phis from e1 = Some e1' ->
@@ -1729,9 +1738,9 @@ Proof.
   apply Hfold; [rewrite !length_firstn, Hlen2; reflexivity | exact Hfirst | intros x; left; auto].
 Qed.
 
-(** When `check_ptr_bounds_taint pol ta tc = None` under
-    `pol_check_branches pol = true`, neither `ta` nor `tc` can be
-    [taint_all]. *)
+(** Passing a pointer bounds check guarantees that neither the address
+    nor the capability carries [taint_all] when branch checking is
+    enabled. *)
 Lemma check_ptr_bounds_not_all : forall pol ta tc,
   pol_check_branches pol = true ->
   check_ptr_bounds_taint pol ta tc = None ->
@@ -1850,8 +1859,9 @@ Proof.
     right; right; left. repeat eexists.
 Qed.
 
-(** Shape lemma for three or more scalar arguments, the arity of
-    `select`: the first three of each list are [WInt] values. *)
+(** Ternary operations such as `select` expect three scalar operands.
+    This shape lemma shows that the first three arguments in each
+    related list are [WInt] values. *)
 Lemma scalar_args_three : forall wts x1 y1 z1 xs1 xs2 ts,
   Forall2 (fun wt p => word_rel wt (fst p) (snd p)) wts
     (combine (x1 :: y1 :: z1 :: xs1) xs2) ->
@@ -1886,9 +1896,10 @@ Qed.
 
 Local Opaque Z.pow ieee_binary ieee_neg ieee_convert ieee_sqrt ieee_compare ieee_from_int ieee_to_int.
 
-(** Pure deterministic scalar `op_res` on two related inputs `xs1, xs2`
-    that passed [op_checks_vartime]: `op_res` on `xs2` succeeds with an
-    integer `n2`, and if `n1 <> n2` then `join_taints ts = taint_all`. *)
+(** Pure scalar arithmetic must produce identical results on both runs
+    unless an operand carries full taint. When variable-time checks pass,
+    the second run succeeds with an integer that differs only if the
+    joined input taints equal [taint_all]. *)
 Lemma pure_scalar_op_rel : forall pol o k cls xs1 xs2 wts ts m1 m2 w1 m1',
   pure_scalar_op o = true ->
   k <> P -> k <> A -> k <> F ->
@@ -1973,10 +1984,10 @@ Proof.
       destruct k; try congruence; reflexivity.
 Qed.
 
-(** `Flight`'s address `alu o L` on related `WInt` argument lists: if
-    `op_checks_vartime pol o L && t_vartime (join_taints ts) = false`,
-    `alu o L xs2` evaluates to an integer and differs from `xs1`'s only
-    when `join_taints ts = taint_all`. *)
+(** Address arithmetic inside a [[flight]] instruction must yield matching
+    offsets when its inputs are public. If variable-time checks pass,
+    the second evaluation returns an integer that differs only when the
+    joined input taints equal [taint_all]. *)
 Lemma flight_alu_rel : forall pol o xs1 xs2 ts n1,
   (forall w, In w xs1 -> exists z, w = WInt z) ->
   (forall w, In w xs2 -> exists z, w = WInt z) ->
@@ -2049,7 +2060,9 @@ Qed.
 
 Local Transparent Z.pow.
 
-(** Shared lemma for all non-pointer [pure_scalar_op] cases of `Let`. *)
+(** All scalar arithmetic and comparison instructions share the same
+    constant-time argument. This lemma discharges every non-pointer
+    `Let` step in the soundness proof. *)
 Lemma scalar_let_step_rel : forall pol ge e1 e2 m1 m2 ps d k o args cls wts ts xs1 r1 m1',
   pure_scalar_op o = true ->
   k <> P -> k <> A -> k <> F ->
@@ -2154,14 +2167,12 @@ Proof.
   destruct o; try discriminate Ep; cbn [pure_scalar_op andb]; reflexivity.
 Qed.
 
-(** Single-step 2-run constant-time soundness (`pstep_ct_sound`):
-    under any policy [pol] with `pol_check_branches pol = true` (such as
-    [pol_default] and [pol_strict]), and with `ge_free ge = free_res`,
-    if `(c1, c2)` satisfy [ct_rel] under [ps] and
-    `pstep pol ge c1 ps = PNext c1' ps'`, then:
-    1. `(c1, c2)` emit the exact same [leak_event] (`leak_of pol ge c1 = leak_of pol ge c2`),
-    2. `pstep pol ge c2 ps = PNext c2' ps'` for a matching `c2'`, and
-    3. `ct_rel c1' c2' ps'` holds again. *)
+(** When branch checking is enabled, a single instrumented step keeps
+    secret differences confined to tainted locations and reveals nothing
+    through observations. If two related configurations step from [c1] to
+    [c1'] under [ps], they emit the same [leak_event], the second run
+    steps to a matching [c2'], and [ct_rel] holds again on the resulting
+    states. *)
 Theorem pstep_ct_sound : forall pol ge c1 c2 ps c1' ps',
   pol_check_branches pol = true ->
   ge_free ge = free_res ->
@@ -3070,10 +3081,11 @@ Proof.
       injection Hstop as <-; destruct Hclean as [Hbad|[Hbad|[retword Hbad]]]; discriminate Hbad.
 Qed.
 
-(** Terminal-step constant-time soundness (`pstep_ct_done`): when `c1`
-    terminates cleanly (`PDone (Ret _) _` or `PDone RetVoid _` or
-    `PDone OutOfFuel _`), `c2` also terminates with `PDone` and the same
-    final [leak_event]. *)
+(** Constant-time execution must also preserve termination behavior so
+    secrets cannot decide when a function returns. Whenever the first
+    run finishes cleanly by returning or running out of fuel, the second
+    run also finishes with [PDone] and emits the same final
+    [leak_event]. *)
 Lemma pstep_ct_done : forall pol ge c1 c2 ps o1 ots,
   pol_check_branches pol = true ->
   ct_rel c1 c2 ps ->
@@ -3166,13 +3178,16 @@ Proof.
     exact (inst_step_no_clean_stop _ _ _ _ _ Eis Ho1).
 Qed.
 
-(** Multi-step 2-run constant-time noninterference (`prun_ct_sound`):
-    if the first run returns or exhausts the configuration's block fuel
-    within [steps] transitions, a related run has the same [leak_of]
-    trace. This statement excludes poison faults, stuck runs, runtime
-    traps and fresh-allocation requests; [prun] does not choose allocation
-    bases. Exhausting [steps] alone yields [PNext], not [OutOfFuel], and
-    is not covered here. Returned secret values need not agree. *)
+(** Chaining single-step soundness over multiple transitions establishes
+    constant-time noninterference for any terminating run. If the first
+    run returns or exhausts block fuel within [steps] transitions, any
+    related run produces the exact same [leak_of] trace, even when
+    returned secret values differ.
+
+    This theorem excludes poison faults, stuck states, runtime traps,
+    and fresh heap allocations because [prun] does not pick allocation
+    bases. Exhausting the step bound yields [PNext] rather than
+    [OutOfFuel] and is handled separately. *)
 Theorem prun_ct_sound : forall pol ge steps c1 c2 ps o1 ots tr,
   pol_check_branches pol = true ->
   ge_free ge = free_res ->
@@ -3201,7 +3216,8 @@ Qed.
     The two-run argument uses the same deterministic [[runtime]] driver
     so matching allocation requests receive matching addresses. *)
 
-(** [free_res] keeps memory in the sense of Machine.v's [free_keeps]. *)
+(** Freeing memory through [cap_free_res] preserves all existing regions
+    and unallocated memory in the sense of [kept]. *)
 Lemma cap_free_res_keeps : forall c a m r m',
   cap_free_res c a m = Some (r, m') -> kept m m'.
 Proof.
@@ -3234,9 +3250,10 @@ Proof.
     eapply cap_free_res_keeps; exact H.
 Qed.
 
-(** Two memories with identical regions that agree outside [in_object]
-    satisfy [kept], so [R.ready_kept] transfers [R.ready] from `m1` to
-    `m2` automatically. *)
+(** Transferring runtime readiness between two related executions
+    requires showing that their memories satisfy [kept]. Two memories
+    with identical regions that agree outside live objects satisfy
+    [kept], so [R.ready_kept] transfers [R.ready] automatically. *)
 Lemma ct_kept_ready : forall m1 m2,
   m_regions m1 = m_regions m2 ->
   (forall a, ~ in_object m1 a -> m_bytes m2 a = m_bytes m1 a /\ m_aux m2 a = m_aux m1 a) ->
@@ -3290,9 +3307,11 @@ Proof.
     injection Er as <-; destruct Href; discriminate.
 Qed.
 
-(** An instruction step that passes [inst_tstep] (not `TFault` or `TStuck`)
-    can stop with a [refusal] trap (`OutOfMemory` or `TooBig`) only when
-    it is `Let d k (Alloc al) [v]` with `why = TooBig` and `ots = []`. *)
+(** An allocator refusal such as `OutOfMemory` or `TooBig` can only
+    arise from an allocation request, not from ordinary arithmetic or
+    memory access. Any instruction step that passes [inst_tstep] and
+    stops with a [refusal] trap must be an `Alloc` whose size triggers
+    [TooBig]. *)
 Lemma inst_pstep_refusal_only_alloc : forall pol ge c ps l i rest j why ots,
   ge_free ge = free_res ->
   fr_doomed (c_frame c) = None ->
@@ -3533,9 +3552,11 @@ Proof.
     destruct (lookup x (fr_locals (c_frame c))) as [[|]|]; cbn in Es; rewrite ?Hd in Es; cbn in Es; discriminate Es.
 Qed.
 
-(** Extended terminal-step constant-time soundness (`pstep_ct_done_nofail`),
-    covering `Trap TooBig` refusals as well as `Ret`, `RetVoid` and
-    `OutOfFuel`, and relating returned words under [word_rel]. *)
+(** Heap-allocating programs can also stop cleanly when an allocation
+    request exceeds the runtime's maximum size. This extended
+    terminal-step theorem covers `Trap TooBig` refusals alongside
+    normal returns and out-of-fuel stops, and relates any returned words
+    under [word_rel]. *)
 Lemma pstep_ct_done_nofail : forall pol ge c1 c2 ps o1 ots,
   pol_check_branches pol = true ->
   ge_free ge = free_res ->
@@ -3813,8 +3834,10 @@ Proof.
       exact (inst_step_no_clean_stop _ _ _ _ _ Eis (or_intror (or_intror (ex_intro _ w1 eq_refl)))).
 Qed.
 
-(** Every non-failing [PDone] outcome of [pstep] (with `ge_free ge = free_res`)
-    is one of the four clean outcomes handled by [pstep_ct_done_nofail]. *)
+(** The driver proof needs to know that a non-failing stop cannot hide
+    an unexpected trap or stuck state. Under [free_res], every
+    non-failing [PDone] outcome falls into one of the four clean cases
+    handled by [pstep_ct_done_nofail]. *)
 Lemma pstep_done_nofail_cases : forall pol ge c ps o ots,
   ge_free ge = free_res ->
   ~ failure o ->
@@ -3880,12 +3903,11 @@ Proof.
   - right; left; reflexivity.
 Qed.
 
-(** Fresh-allocation step soundness (`pstep_ct_fresh`): when `(c1, ps)`
-    asks for an allocation `PFresh q k1` (`Alloc` or `LocalAlloc`), any
-    related configuration `c2` emits the exact same [leak_event] and
-    asks for the exact same [alloc_req] `q`, and at any `base` where `c1`
-    and `c2` agree on `[base, base + req_extent q)` (such as a [fresh]
-    base in both), `ct_rel` is preserved after the allocation. *)
+(** Heap and stack allocations must request identical sizes and
+    alignments across both runs so the allocator picks the same address
+    for each. When the first run pauses to allocate memory, any related
+    run emits the same observation, makes the same request, and stays
+    low-equivalent at any shared base address. *)
 Theorem pstep_ct_fresh : forall pol ge c1 c2 ps q k1,
   pol_check_branches pol = true ->
   ct_rel c1 c2 ps ->
@@ -4018,8 +4040,9 @@ Proof.
         -- exact (Haux a Hne).
 Qed.
 
-(** Corollary of [pstep_ct_fresh] when `base` is [fresh] in both `c1`
-    and `c2` (so both memories hold `0` and `CNone` on `[base, base + req_extent q)`). *)
+(** A freshly allocated span starts zeroed and without capabilities in
+    both memories. Because both runs agree on that fresh region,
+    [pstep_ct_fresh] preserves [ct_rel] immediately after allocation. *)
 Lemma pstep_ct_fresh_alloc : forall pol ge c1 c2 ps q k1 base,
   pol_check_branches pol = true ->
   ct_rel c1 c2 ps ->
@@ -4042,20 +4065,21 @@ Proof.
   split; congruence.
 Qed.
 
-(** Deterministic runtime-allocated poisoned execution, extending
-    Run.v's [Driver] with [pstep] and [leak_of] traces so constant-time
-    theorems cover heap-allocating programs (`Alloc`, `LocalAlloc`,
-    `free`, loops, `Select` and direct calls). *)
+(** This functor pairs `Run.v`'s deterministic runtime driver with
+    [pstep] and [leak_of] traces, extending constant-time soundness to
+    programs that allocate and free heap objects. *)
 Module PoisonDriver (R : Runtime).
 
-(** Outcome of up to `steps` deterministic poisoned transitions under R. *)
+(** Executing up to `steps` poisoned transitions under runtime R yields
+    one of these driver outcomes. *)
 Inductive pdriver_result : Type :=
 | PDriverNext (c : config) (ps : pstate) (rt : R.state)
 | PDriverDone (o : outcome) (ots : list word_taint)
 | PDriverTrap (why : poison_reason)
 | PDriverBad (why : string).
 
-(** Run up to [steps] transitions with R's [alloc] choosing fresh bases. *)
+(** This function executes up to [steps] transitions, calling R's
+    allocator whenever the program requests fresh memory. *)
 Fixpoint pdriver_run (pol : poison_policy) (ge : genv) (steps : nat)
     (c : config) (ps : pstate) (rt : R.state) : pdriver_result :=
   match steps with
@@ -4077,7 +4101,8 @@ Fixpoint pdriver_run (pol : poison_policy) (ge : genv) (steps : nat)
       end
   end.
 
-(** Leakage trace collected along [pdriver_run]. *)
+(** This function collects the leakage trace emitted along a
+    [pdriver_run] execution. *)
 Fixpoint pdriver_trace (pol : poison_policy) (ge : genv) (steps : nat)
     (c : config) (ps : pstate) (rt : R.state) : option (list leak_event) :=
   match steps with
@@ -4102,8 +4127,8 @@ Fixpoint pdriver_trace (pol : poison_policy) (ge : genv) (steps : nat)
       end
   end.
 
-(** Any clean [pdriver_run] result (`PDriverNext` or `PDriverDone`)
-    produces a `Some tr` leakage trace. *)
+(** Every clean [pdriver_run] outcome produces a well-defined leakage
+    trace. *)
 Lemma pdriver_run_has_trace : forall pol ge steps c ps rt,
   (match pdriver_run pol ge steps c ps rt with
    | PDriverNext _ _ _ | PDriverDone _ _ => True
@@ -4122,12 +4147,11 @@ Proof.
       destruct (IH c' ps' rt' Hok) as [rest ->]; eexists; reflexivity.
 Qed.
 
-(** Two-run constant-time noninterference for heap-allocating programs
-    under [PoisonDriver]: if `(c1, ps0)` and `(c2, ps0)` start [ct_rel]
-    in ready runtime state [rt], and `(c1, ps0)` runs up to [steps]
-    transitions without any [PDriverTrap], [PDriverBad] or [failure]
-    ending, then `(c2, ps0)` emits the exact same leakage trace `tr`
-    (and related return value when returning). *)
+(** Heap-allocating programs satisfy two-run constant-time
+    noninterference under [PoisonDriver]. If two related configurations
+    start in ready runtime state [rt] and the first completes [steps]
+    transitions without trapping or failing, the second emits the exact
+    same leakage trace `tr`. *)
 Theorem pdriver_ct_sound : forall pol ge steps c1 c2 ps rt tr,
   pol_check_branches pol = true ->
   ge_free ge = free_res ->

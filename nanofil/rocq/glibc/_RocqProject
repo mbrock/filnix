@@ -335,3 +335,6 @@ getopt/GetoptLongReq.v
 getopt/GetoptLongEq.v
 getopt/GetoptLongPre.v
 getopt/GetoptLongArg.v
+getopt/GetoptLongUnrec.v
+getopt/GetoptLongMissOnly.v
+getopt/GetoptLongMiss.v

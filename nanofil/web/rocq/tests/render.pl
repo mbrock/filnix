@@ -45,6 +45,18 @@ test(print_assumptions) :-
     assertion(( sub_term(element(div, As1, _), DOM), memberchk(class='clause rq-cmd', As1) )),
     assertion(( sub_term(element(span, [class=kw], ['Print Assumptions']), DOM) )).
 
+% A file's let? binds a pattern, and a mutual Fixpoint draws each body
+% under its own keyword; neither is copied as text.
+test(let_question_and_mutual) :-
+    fence_dom(["Fixpoint f (n : nat) : nat := match n with O => O | S m => g m end",
+               "with g (n : nat) : nat := let? (a, _) := h n in a."], DOM),
+    assertion(\+ ( sub_term(element(pre, As, _), DOM), memberchk(class='rq-raw', As) )),
+    assertion(sub_term(element(span, [class=kw], ['Fixpoint']), DOM)),
+    assertion(sub_term(element(span, [class=kw], [with]), DOM)),
+    assertion(sub_term(element(span, [class=kw], ['let?']), DOM)),
+    findall(V, ( sub_term(element(span, As1, [V]), DOM), memberchk('data-v'=a, As1) ), Vs),
+    assertion(Vs = [_, _|_]).
+
 fence_dom(Lines, DOM) :-
     call_with_time_limit(2, phrase(rocq_fence(Lines), Codes)),
     string_codes(Html, Codes),

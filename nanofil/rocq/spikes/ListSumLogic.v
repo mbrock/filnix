@@ -1,15 +1,20 @@
-(** Spike: spikes/listsum.c through the program logic of Logic.v.
+(** This spike verifies the C list-building and summation program
+    `spikes/listsum.c` using the [[separation-logic|separation logic]]
+    rules of `Logic.v`. Rather than stepping through concrete machine
+    states, the proof assigns a [[hoare-triple|Hoare triple]] to the
+    summation function and checks each instruction with symbolic
+    tactics.
 
-    `sum` gets an Iris Hoare triple that hands the list back and states
-    its result ([sum_spec]): from [lst] p xs, its run returns the sum of
-    xs modulo 2^64 ([list_sum]) and the list is still there. `listsum`
-    builds the list and calls `sum` through that triple
-    ([wp_call_bind]), then drops the list. Each loop is a Löb induction
-    at the point after its head's phis; `sum`'s carries the walked
-    prefix as a list segment ([lseg]). Every step is taken by its rule
-    from Logic.v, its premises discharged by Symbolic.v's tactics on
-    the premise alone; [step] is never reduced on a whole
-    configuration. *)
+    When `sum` walks the list, it promises to return the sum of all node
+    values modulo 2^64 and to hand the list back to its caller
+    ([sum_spec]). The list-building function `listsum` allocates nodes
+    one by one, invokes `sum` through that specification via
+    [wp_call_bind], and then discards the list.
+
+    Proving a loop in separation logic requires an invariant that holds
+    across every iteration. We establish both loop invariants by
+    [[later-modality|Löb induction]] right after their [[phi]] nodes,
+    using a list segment ([lseg]) to track the already-walked prefix. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,74 +26,88 @@ From Spike Require Import ListSum.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** Integer arithmetic on an unknown stays folded when a premise is
-    computed (Symbolic.v). *)
+(** Folding integer arithmetic prevents Rocq from expanding symbolic
+    addition, subtraction, and multiplication when a premise is
+    evaluated (`Symbolic.v`). *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** ## The blocks, computed once *)
+(** ## The blocks, computed once
 
-(** Block l of the function f, or an empty one. *)
+    Looking up a basic block inside a compiled function on every proof
+    step would slow down symbolic execution. Instead, this section
+    extracts each block of `sum` and `listsum` once by computation and
+    proves its lookup lemma upfront. *)
+
+(** This helper fetches block l from function f, returning an empty
+    unreachable block when the label is absent. *)
 Definition blk (f : func) (l : string) : block :=
   match find_block (TAtom l) (fn_blocks f) with
   | Some b => b
   | None => mkBlock (TAtom l) [] [] JUnreachable
   end.
 
-(** `sum`'s entry block. *)
+(** This constant holds the entry block of `sum`. *)
 Definition sum_start : block := Eval vm_compute in blk (ls_fn "sum") "start".
-(** `sum`'s loop head. *)
+(** This constant holds the loop header of `sum`. *)
 Definition sum_L3 : block := Eval vm_compute in blk (ls_fn "sum") "L3".
-(** `sum`'s loop body. *)
+(** This constant holds the loop body of `sum`. *)
 Definition sum_L4 : block := Eval vm_compute in blk (ls_fn "sum") "L4".
-(** `sum`'s exit. *)
+(** This constant holds the exit block of `sum`. *)
 Definition sum_L5 : block := Eval vm_compute in blk (ls_fn "sum") "L5".
-(** `listsum`'s entry block. *)
+(** This constant holds the entry block of `listsum`. *)
 Definition ls_start : block := Eval vm_compute in blk (ls_fn "listsum") "start".
-(** `listsum`'s loop head. *)
+(** This constant holds the loop header of `listsum`. *)
 Definition ls_L4 : block := Eval vm_compute in blk (ls_fn "listsum") "L4".
-(** `listsum`'s loop body. *)
+(** This constant holds the loop body of `listsum`. *)
 Definition ls_L5 : block := Eval vm_compute in blk (ls_fn "listsum") "L5".
-(** `listsum`'s exit, the call of `sum`. *)
+(** This constant holds the exit block of `listsum`, which calls `sum`. *)
 Definition ls_L7 : block := Eval vm_compute in blk (ls_fn "listsum") "L7".
 
-(** `sum` has its entry block. *)
+(** Looking up `"start"` in `sum` returns [sum_start]. *)
 Lemma sum_find_start : find_block (TAtom "start") (fn_blocks (ls_fn "sum")) = Some sum_start.
 Proof. vm_compute. reflexivity. Qed.
-(** `sum` has its loop head. *)
+(** Looking up `"L3"` in `sum` returns [sum_L3]. *)
 Lemma sum_find_L3 : find_block (TAtom "L3") (fn_blocks (ls_fn "sum")) = Some sum_L3.
 Proof. vm_compute. reflexivity. Qed.
-(** `sum` has its loop body. *)
+(** Looking up `"L4"` in `sum` returns [sum_L4]. *)
 Lemma sum_find_L4 : find_block (TAtom "L4") (fn_blocks (ls_fn "sum")) = Some sum_L4.
 Proof. vm_compute. reflexivity. Qed.
-(** `sum` has its exit. *)
+(** Looking up `"L5"` in `sum` returns [sum_L5]. *)
 Lemma sum_find_L5 : find_block (TAtom "L5") (fn_blocks (ls_fn "sum")) = Some sum_L5.
 Proof. vm_compute. reflexivity. Qed.
-(** `listsum` has its entry block. *)
+(** Looking up `"start"` in `listsum` returns [ls_start]. *)
 Lemma ls_find_start : find_block (TAtom "start") (fn_blocks (ls_fn "listsum")) = Some ls_start.
 Proof. vm_compute. reflexivity. Qed.
-(** `listsum` has its loop head. *)
+(** Looking up `"L4"` in `listsum` returns [ls_L4]. *)
 Lemma ls_find_L4 : find_block (TAtom "L4") (fn_blocks (ls_fn "listsum")) = Some ls_L4.
 Proof. vm_compute. reflexivity. Qed.
-(** `listsum` has its loop body. *)
+(** Looking up `"L5"` in `listsum` returns [ls_L5]. *)
 Lemma ls_find_L5 : find_block (TAtom "L5") (fn_blocks (ls_fn "listsum")) = Some ls_L5.
 Proof. vm_compute. reflexivity. Qed.
-(** `listsum` has its exit. *)
+(** Looking up `"L7"` in `listsum` returns [ls_L7]. *)
 Lemma ls_find_L7 : find_block (TAtom "L7") (fn_blocks (ls_fn "listsum")) = Some ls_L7.
 Proof. vm_compute. reflexivity. Qed.
-(** `sum` returns a `long`. *)
+(** The function `sum` returns a 64-bit `long`. *)
 Lemma sum_ret : fn_ret (ls_fn "sum") = RClass L.
 Proof. vm_compute. reflexivity. Qed.
-(** `listsum` returns a `long`. *)
+(** The function `listsum` also returns a 64-bit `long`. *)
 Lemma listsum_ret : fn_ret (ls_fn "listsum") = RClass L.
 Proof. vm_compute. reflexivity. Qed.
 
-(** ## Environments *)
+(** ## Environments
 
-(** Replace each environment put k v e of the goal, e a variable, by a
-    new variable, with what each name looks up to in it. *)
+    Each IR instruction binds a new variable in the frame's local
+    environment. If those updates pile up as nested `put` terms, variable
+    lookups become huge and slow down the proof. This tactic keeps the
+    environment abstract by replacing each update with a fresh variable
+    and recording its lookup facts in the context. *)
+
+(** This tactic replaces every `put k v e` in the goal with a fresh
+    variable and records what each variable name maps to in the new
+    environment. *)
 Ltac gen_env :=
   repeat match goal with
   | |- context[put ?k ?v ?e] =>
@@ -105,41 +124,53 @@ Ltac gen_env :=
       let e' := fresh "e" in set (e' := put k v e) in *; clearbody e'; try clear e
   end.
 
-(** ## Nodes *)
+(** ## Nodes
 
-(** A node's region: a 16-byte live heap object at b. *)
+    Each list node in C holds an 8-byte next pointer followed by an
+    8-byte `long` value. In Fil-C's memory model, that 16-byte struct
+    becomes a live heap [[region]] whose base pointer is 16-byte aligned
+    and carries an object [[capability]]. *)
+
+(** Every node occupies a 16-byte live heap region starting at base b. *)
 Definition node_reg (b : Z) : region := mkRegion b (b + 16) Heap Live.
 
-(** p is the own pointer of a node at b: positive, 16-aligned, and
-    fitting the address space. *)
+(** A pointer p is a valid node pointer at base b when it carries the
+    object's own capability and b is positive, 16-byte aligned, and
+    within the 48-bit address space. *)
 Definition node_ok (p : ptr) (b : Z) : Prop :=
   p = mkPtr b (Obj b) /\ 0 < b /\ b + 16 <= 2 ^ 48 /\ b mod 16 = 0.
 
-(** ## Taking a step *)
+(** ## Taking a step
 
-(** Prove an address premise: an alignment to 1 holds at once; the
-    wraps of [raw_address] are dropped where arithmetic proves them the
-    identity, then arithmetic. *)
+    Applying a weakest-precondition rule generates small side
+    conditions about pointer alignment, block lookups, return classes,
+    and integer bounds. The tactics in this section discharge those
+    pure goals automatically so the main loop proofs stay concise. *)
+
+(** Memory operations require showing that raw addresses stay within
+    bounds and meet alignment rules. This tactic strips trivial
+    1-alignments and modular wraps from [raw_address], then solves the
+    resulting linear inequalities. *)
 Ltac addr :=
   unfold raw_address; cbn [ptr_addr ptr_cap r_end node_reg]; rewrite ?Z.mod_1_r;
   drop_wraps_goal; arith.
 
-(** Put the facts about the module's blocks and return classes in the
-    context, for the side goals of [wp_enter] and [wp_ret]. *)
+(** Block-entry and return rules need facts about the module's blocks
+    and return types in the context. This tactic poses those precomputed
+    lemmas so later steps can match them directly. *)
 Ltac ls_facts :=
   pose proof sum_find_start; pose proof sum_find_L3; pose proof sum_find_L4; pose proof sum_find_L5;
   pose proof ls_find_start; pose proof ls_find_L4; pose proof ls_find_L5; pose proof ls_find_L7;
   pose proof sum_ret; pose proof listsum_ret.
 
-(** Unfold the blocks of the module that a frame's point names. *)
+(** This tactic unfolds the precomputed basic blocks named by a frame's
+    current program point. *)
 Ltac unfold_blocks :=
   cbn [b_insts b_jump sum_start sum_L3 sum_L4 sum_L5 ls_start ls_L4 ls_L5 ls_L7 edge_label].
 
-(** Prove one pure premise of a rule of Logic.v: by computation for
-    the op's classes, by a fact for a block and a return class, by
-    [addr] for an address, by [compute_premise] for a word, trivially
-    for what the world interpretation must keep (there is no world),
-    and by arithmetic for a bound. *)
+(** This tactic discharges one pure side condition of a logic rule by
+    computation, context lookup, [addr], [compute_premise], or linear
+    arithmetic. *)
 Ltac side :=
   lazymatch goal with
   | |- forall (_ : mem) (_ : unit), _ => intros; exact I
@@ -157,16 +188,23 @@ Ltac side :=
   | |- _ => cbn [ptr_addr ptr_cap r_end node_reg]; arith
   end.
 
-(** ## Sums *)
+(** ## Sums
 
-(** The sum of the values xs modulo 2^64, as `sum` adds longs. *)
+    In C, `sum` accumulates node values into an unsigned 64-bit integer,
+    wrapping on overflow. This section defines the mathematical
+    specification of that wrapping sum and proves the append lemma
+    needed when the loop advances by one node. *)
+
+(** This function computes the sum of the integers xs modulo 2^64,
+    matching how `sum` adds 64-bit `long` values. *)
 Definition list_sum (xs : list Z) : Z := fold_right Z.add 0 xs mod 2 ^ 64.
 
-(** A sum is a 64-bit unsigned integer. *)
+(** Every modular sum fits inside an unsigned 64-bit integer. *)
 Lemma list_sum_range xs : 0 <= list_sum xs < 2 ^ 64.
 Proof. apply Z.mod_pos_bound. lia. Qed.
 
-(** Adding one more value, wrapped as `sum`'s loop adds it. *)
+(** Appending one node value y updates [list_sum] by adding y modulo
+    2^64, matching one iteration of the summation loop. *)
 Lemma list_sum_snoc ys y : list_sum (ys ++ [y]) = (list_sum ys + y mod 2 ^ 64) mod 2 ^ 64.
 Proof.
   unfold list_sum. rewrite fold_right_app. cbn [fold_right].
@@ -175,48 +213,66 @@ Proof.
   rewrite E. rewrite <- Zplus_mod. f_equal. lia.
 Qed.
 
-(** ## Over any runtime *)
+(** ## Over any runtime
 
-(** The proof over the runtime R. *)
+    The verification should not depend on one particular allocator
+    implementation. This functor parameterizes the entire proof over an
+    arbitrary [Runtime] R so the safety theorem holds for any conforming
+    allocator. *)
+
+(** This module proves the safety and functional correctness of
+    `listsum.c` over an abstract runtime R. *)
 Module ListSumLogic (R : Runtime).
 Module LG := Logic R.
 Module L := LG.L.
 Module P := LG.P.
 Import L LG.
 
-(** The genv of the module, whose free is R's. *)
+(** This notation abbreviates the module's global environment using R's
+    allocator. *)
 Local Notation lge := (P.program_genv ls_module ls_globals).
-(** The expressions of its language. *)
+(** This notation names the Iris expression type for the program. *)
 Local Notation lexpr := (language.expr (nanofil_lang no_contracts lge)).
 
-(** ## The rules as tactics *)
+(** ## The rules as tactics
 
-(** A [let] of an op that reads no memory, by [wp_let]. *)
+    Stepping through basic blocks by hand requires applying a logic rule
+    and immediately discharging its side conditions. These wrapper
+    tactics bundle each rule with the [side] tactic and environment
+    simplification so the loop proofs read like straight-line code. *)
+
+(** This tactic steps past a `let` instruction whose operation reads no
+    memory by applying [wp_let]. *)
 Ltac wp_let_ := iApply wp_let; first [side | iNext; gen_env].
 
-(** A branch, by [wp_branch], its target computed. *)
+(** This tactic steps across a conditional branch by applying [wp_branch]
+    and computing the target label. *)
 Ltac wp_branch_ := iApply wp_branch; first [side | iNext; cbn [edge_label Z.eqb Pos.eqb]].
 
-(** Entering a block, by [wp_enter], its body unfolded. *)
+(** This tactic enters a basic block by applying [wp_enter] and
+    unfolding the block's instructions. *)
 Ltac wp_enter_ := iApply wp_enter; first [side | iNext; unfold_blocks; gen_env].
 
-(** A goto, by [wp_goto]. *)
+(** This tactic steps across an unconditional jump by applying [wp_goto]
+    and unfolding the target block. *)
 Ltac wp_goto_ := iApply wp_goto; iNext; unfold_blocks.
 
-(** A [[flight]], by [wp_flight]. *)
+(** This tactic steps past a [[flight]] instruction by applying
+    [wp_flight]. *)
 Ltac wp_flight_ := iApply wp_flight; first [side | iNext; gen_env].
 
-(** `sum` called with the pointer p: its entry frame. *)
+(** Calling `sum` with pointer p builds this entry frame. *)
 Definition sum_frame (p : ptr) : frame :=
   mkFrame (ls_fn "sum") [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None).
 
 Section proof.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The list from p holds the values xs: null for none; otherwise p is
-    its node's own pointer ([node_ok]), and the node is live, holds the
-    next pointer at offset 0 and the value at offset 8, and the rest of
-    the list follows from the next pointer. *)
+(** A linked list starting at pointer p represents the sequence of
+    integers xs. An empty list requires p to be null; otherwise p must
+    be a valid node pointer ([node_ok]) whose live 16-byte object holds
+    the next pointer at offset 0, the value at offset 8, and the
+    remaining list. *)
 Fixpoint lst (p : ptr) (xs : list Z) : iProp Σ :=
   match xs with
   | [] => ⌜p = null⌝
@@ -231,13 +287,14 @@ Fixpoint lseg (p q : ptr) (ys : list Z) : iProp Σ :=
   | y :: ys' => ∃ b nx, ⌜node_ok p b⌝ ∗ live b (node_reg b) ∗ pcell b 0 nx ∗ icell b 8 y ∗ lseg nx q ys'
   end%I.
 
-(** A list of one value or more, unfolded once. *)
+(** Unfolding a non-empty list exposes the head node's liveness, next
+    pointer, value, and tail predicate. *)
 Lemma lst_cons p x xs :
   lst p (x :: xs) ⊣⊢ ∃ b nx, ⌜node_ok p b⌝ ∗ live b (node_reg b) ∗ pcell b 0 nx ∗ icell b 8 x ∗ lst nx xs.
 Proof. reflexivity. Qed.
 
-(** A segment to q and the node at q make a segment to the node's next
-    pointer. *)
+(** Extending a list segment ending at q with the node at q yields a
+    segment ending at that node's next pointer. *)
 Lemma lseg_snoc p q ys b nx y :
   node_ok q b -> lseg p q ys -∗ live b (node_reg b) -∗ pcell b 0 nx -∗ icell b 8 y -∗
   lseg p nx (ys ++ [y]).
@@ -257,8 +314,8 @@ Proof.
     cbn [lst]. iExists b, nx. iFrame "Hlv Hp Hi". iSplit; [done|]. iApply (IH with "Hs Hl").
 Qed.
 
-(** The head of a list: its address is in range, and the life of the
-    object its capability names, if any, can be lent out. *)
+(** If a pointer heads a list, its address lies in the 64-bit range and
+    the liveness of its target object can be borrowed for a load. *)
 Lemma lst_cap p xs :
   lst p xs -∗ ⌜0 <= ptr_addr p < 2 ^ 64⌝ ∗ live_cap (ptr_cap p) (node_reg (ptr_addr p)) ∗
   (live_cap (ptr_cap p) (node_reg (ptr_addr p)) -∗ lst p xs).
@@ -270,10 +327,12 @@ Proof.
     iSplit; [iPureIntro; lia|]. iFrame "Hlv". iIntros "Hlv". iExists b, nx. iFrame. done.
 Qed.
 
-(** `sum`'s loop, from the point after its head's phis, with the walked
-    prefix ys as a segment from p to q, the rest zs as the list from q,
-    `pr.1` holding q and `pr.2` the prefix's sum: the run returns the
-    whole list's sum and hands the list back. By Löb induction. *)
+(** Walking a linked list in a loop requires splitting the list into
+    the nodes already visited and the nodes still ahead. At block `L3`,
+    the visited prefix ys forms a segment from p to q, while the
+    remaining suffix zs forms a list from q. Given q in `pr.1` and the
+    prefix sum in `pr.2`, Löb induction proves that the loop returns the
+    total sum and hands the whole list back. *)
 Lemma sum_loop p Φ :
   ⊢ ∀ e q ys zs,
       ⌜lookup (TAtom "pr.1") e = Some (WPtr q) /\ lookup (TAtom "pr.2") e = Some (WInt (list_sum ys))⌝ -∗
@@ -319,9 +378,9 @@ Proof.
 Qed.
 
 
-(** A new node's object, split into the pieces a node owns: its life,
-    a null next pointer and a zero value; the other aux slots are
-    dropped. *)
+(** Allocating a fresh 16-byte object produces the pieces of a new list
+    node: its live region, a null next pointer at offset 0, and a zero
+    value at offset 8, while discarding unused auxiliary slots. *)
 Lemma obj_node base :
   obj base (heap_req 16 16) -∗ live base (node_reg base) ∗ pcell base 0 null ∗ icell base 8 0.
 Proof.
@@ -333,13 +392,11 @@ Proof.
   rewrite (pts_app [_] (cell base 0 0)). iFrame.
 Qed.
 
-(** `listsum`'s loop, from the point after its head's phis: with
-    `pr.2` an int i in range, `pr.1` the list's pointer h and `v0` the
-    input n, owning the list, the run is safe. By Löb induction; each
-    iteration allocates a node, stores h and i in it, and the loop goes
-    on with i + 1 and the longer list; at the end `sum` is called with
-    the list through its triple, and the list it hands back is
-    dropped. *)
+(** Building a linked list in a loop requires tracking the partial list
+    constructed on earlier iterations. At block `L4`, the loop holds
+    counter i, head pointer h, and bound n alongside the list built so
+    far. By Löb induction, it allocates nodes until i reaches n and then
+    calls `sum` via [sum_spec]. *)
 Lemma ls_loop n :
   ⊢ ∀ e i h xs,
       ⌜lookup (TAtom "pr.2") e = Some (WInt i) /\ 0 <= i < 2 ^ 31 /\
@@ -391,21 +448,25 @@ Qed.
 
 End proof.
 
-(** The resources the proof uses: invariants and the ghost heap. *)
+(** To run the Iris program logic, the proof needs both invariants and a
+    [[ghost-state|ghost heap]] of memory pieces. This functor bundle
+    supplies those two resources. *)
 Definition lsΣ : gFunctors := #[invΣ; gen_heapΣ piece pval].
 
-(** [lsΣ] has invariants. *)
+(** The resource bundle [lsΣ] provides Iris invariants. *)
 Global Instance lsΣ_inv : invGpreS lsΣ.
 Proof. apply subG_invΣ. apply _. Qed.
 
-(** [lsΣ] has the ghost heap of pieces. *)
+(** Allocating and updating list nodes in separation logic requires
+    ownership of individual memory pieces. This instance supplies that
+    ghost-heap capability for [lsΣ]. *)
 Global Instance lsΣ_heap : gen_heapGpreS piece pval lsΣ.
 Proof. apply subG_gen_heapGpreS. apply _. Qed.
 
-(** `listsum` never panics: for every input whose first word is an
-    int, with any fuel, no state of its run [fails], whatever bases its
-    nodes get. Proved by Iris [[adequacy]] ([heap_never_panics]) from
-    [listsum_spec]. *)
+(** Calling `listsum` with any integer argument never panics, regardless
+    of fuel or allocator placement. Applying Iris [[adequacy]] via
+    [heap_never_panics] lifts [listsum_spec] into this concrete safety
+    theorem. *)
 Theorem listsum_never_panics :
   P.never_panics ls_module (TAtom "listsum") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
@@ -419,10 +480,11 @@ Qed.
 
 End ListSumLogic.
 
-(** The theorem for the interpreter's runtime. *)
+(** Instantiating the functor with [InterpRuntime] yields the concrete
+    safety theorem for the interpreter's allocator. *)
 Module InterpListSumLogic := ListSumLogic InterpRuntime.
 
-(** listsum.c never panics under the interpreter's runtime. *)
+(** The program `listsum.c` never panics under the interpreter's runtime. *)
 Theorem interp_listsum_never_panics :
   InterpListSumLogic.P.never_panics ls_module (TAtom "listsum")
     (fun xs => exists n rest, xs = WInt n :: rest).

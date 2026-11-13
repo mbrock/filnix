@@ -119,6 +119,7 @@ defines(ind(_, _, Bs), N, K) :- member(ib(n(_, T), _, _, Cs), Bs),
 defines(rec(_, _, n(_, T), _, _, C, Fs), N, K) :-
     ( N = T, K = type ; C = n(_, N), K = ctor ; member(field(_, N, _, _, _), Fs), K = field ).
 defines(def(_, _, n(_, N), _, _, _), N, def).
+defines(mutual(_, Ds), N, K) :- member(D, Ds), defines(D, N, K).
 defines(tacdef(_, n(_, N), _, _), N, def).
 defines(thm(_, _, n(_, N), _, _), N, lemma).
 defines(decl(_, Kw, Gs), N, K) :- member(g(Ns, _), Gs), member(n(_, N), Ns),
@@ -251,6 +252,10 @@ term_(letstar(_, n(_, X), V, B), Env) -->
 term_(letpat(_, Pat, V, B), Env) -->
     { alts_vars([[Pat]], Vs), append(Vs, Env, Env1) },
     el(span, "o let", ( kw("let"), " ", el(span, tick, "'"), term(Pat, Env1), "\u00A0", defeq, " ", term(V, Env), " ",
+                        kw("in"), " ", term(B, Env1) )).
+term_(letq(_, Pat, V, B), Env) -->
+    { alts_vars([[Pat]], Vs), append(Vs, Env, Env1) },
+    el(span, "o let", ( kw("let?"), " ", term(Pat, Env1), "\u00A0", defeq, " ", term(V, Env), " ",
                         kw("in"), " ", term(B, Env1) )).
 term_(letfix(_, n(_, F), Bs, Ty, V, B), Env) -->
     { binders_env(Bs, [F|Env], EnvV) },
@@ -557,6 +562,7 @@ block(if(_, _, _, _)).
 block(let(_, _, _, _, _)).
 block(letstar(_, _, _, _)).
 block(letpat(_, _, _, _)).
+block(letq(_, _, _, _)).
 block(letfix(_, _, _, _, _, _)).
 block(fix(_, _, _, _, _)).
 block(fun(_, _, B)) :- block(B).
@@ -600,6 +606,9 @@ blk_(letstar(_, n(_, X), V, B), Env) --> let_block(( kw("let*"), " ", var_def(X)
 blk_(letpat(_, Pat, V, B), Env) -->
     { alts_vars([[Pat]], Vs), append(Vs, Env, Env1) },
     let_block(( kw("let"), " ", el(span, tick, "'"), term(Pat, Env1) ), V, Env, B, Env1).
+blk_(letq(_, Pat, V, B), Env) -->
+    { alts_vars([[Pat]], Vs), append(Vs, Env, Env1) },
+    let_block(( kw("let?"), " ", term(Pat, Env1) ), V, Env, B, Env1).
 blk_(letfix(_, n(_, F), Bs, Ty, V, B), Env) -->
     { binders_env(Bs, [F|Env], EnvV) },
     let_block(( kw("let fix"), " ", var_def(F), binders_(Bs, Env), opt_type(Ty, EnvV) ), V, EnvV, B, [F|Env]).
@@ -736,6 +745,10 @@ item_(rec(F-T, Kw, n(_, N), Bs, Sort, Ctor, Fs)) --> !,
                          ( { Ctor = n(_, C) } -> "\u00A0", defeq, " ", ctor_def(C) ; [] ) )),
          el(table, "rq-fields", el(tbody, none, seq(Fs, field_row(Env)))) )),
     notes_upto(T).
+%  Mutual fixpoints: each body drawn as a definition, the later ones
+%  under the keyword with, with the comments written before each.
+item_(mutual(_, [D|Ds])) --> !, item_(D), seq(Ds, mutual_def).
+
 %  An Example proved by tactics is a statement, drawn as a theorem is.
 item_(def(P, 'Example', N, Bs, Ty, none)) --> { Ty \== none }, !, item_(thm(P, 'Example', N, Bs, Ty)).
 item_(def(F-T, Kw, n(_, N), Bs, Ty, Body)) --> !,
@@ -808,6 +821,8 @@ item_(endm(P, _)) --> !, raw_(P).
 item_(S) --> { arg(1, S, P) }, raw_(P).
 
 module_arg(A) --> " ", name_ref(A, []).
+
+mutual_def(D) --> { arg(1, D, F-_) }, notes_before(F), item_(D).
 
 %  cmd_words(+Toks, -Words): tokens written without a space between them
 %  (--anf-variant, "nf_id",) are one word.
