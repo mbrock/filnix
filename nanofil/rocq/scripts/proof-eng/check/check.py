@@ -65,6 +65,7 @@ class Tree:
         self.modules = {}
         self.aliases = {}
         self.functors = {}
+        self.flattened = set()
         self.module_types = {}
         self.signatures = {}
         self.abstract_runtimes = set()
@@ -91,6 +92,8 @@ class Tree:
                             self.signatures[full] = params
                         if params and kind != 'Type':
                             self.functors[full] = params
+                            if re.fullmatch(r'\s*\(R : Runtime\)(?: \(LG0 : LogicSig R\))?', tail):
+                                self.flattened.add(full)
                         stack.append(name)
                 elif re.match(rf'End\s+{IDENT}$', sentence):
                     name = sentence.split()[1]
@@ -218,13 +221,15 @@ class Tree:
                             '@LogicAbstract' if rt == '@RuntimeAbstract' else '@Logic[' + rt + ']')
                     if not head.startswith('@') and head != 'Nanofil.core.Runtime.InterpRuntime':
                         candidate = context + '.' + head if context else head
+                        matches = [f for f in self.functors if f.endswith('.' + head)]
                         if any(candidate == a or candidate.startswith(a + '.') for a in aliases) or candidate in self.functors:
                             head = candidate
+                        elif len(words) > 1 and len(matches) == 1:
+                            head = matches[0]
                         elif head.split('.')[0] in self.modules:
                             first, *rest = head.split('.')
                             head = '.'.join([self.modules[first]] + rest)
                         else:
-                            matches = [f for f in self.functors if f.endswith('.' + head)]
                             if len(matches) == 1:
                                 head = matches[0]
                             elif not head.startswith(('Glibc.', 'Nanofil.')):
@@ -244,8 +249,11 @@ class Tree:
                         return ('@LogicConcrete.' if concrete else '@LogicAbstract.') + rest[4:]
                     if rest.startswith('R.'):
                         return ('Nanofil.core.Runtime.InterpRuntime.' if concrete else '@RuntimeAbstract.') + rest[2:]
-                    # Only erase the wrapper, retaining its defining file.
-                    return full.rsplit('.', 1)[0] + '.' + rest
+                    # Sealed and extra-parameter modules remain modules in the
+                    # flat layout. Erase only the wrappers stage 10 removes.
+                    if full in self.flattened:
+                        return full.rsplit('.', 1)[0] + '.' + rest
+                    return token
             for full in self.abstract_runtimes:
                 if full == self.modules.get('Fix', '') + '.R' and token.startswith(full + '.'):
                     return '@RuntimeAbstract.' + token[len(full) + 1:]
@@ -258,7 +266,7 @@ class Tree:
         return ''.join(chunks).strip()
 
 
-def run_probe(tree, rel, decls, out, plugin):
+def run_probe(tree, rel, decls, out, plugin, inside=False):
     setup, names, instances = tree.probe(rel, decls)
     commands = setup + [f'Declare ML Module "{plugin.name}".',
                         'Set Printing All.', 'Set Printing Universes.', 'Set Printing Width 1000000.',
@@ -273,14 +281,43 @@ def run_probe(tree, rel, decls, out, plugin):
     with tempfile.TemporaryDirectory(prefix='probe-', dir=out) as tmp:
         script = Path(tmp) / 'PECheck.v'
         script.write_text('\n'.join(commands) + '\n')
+        extra = []
+        if inside:
+            # Sealed functors hide implementation lemmas. Ask the kernel before
+            # sealing, after their sections have generalized all hypotheses.
+            source = tree.files[rel].read_text()
+            inserts = {}
+            for index, (name, scope, spec) in enumerate(decls):
+                query = [f'Goal True. idtac "PE_BEGIN_{index}". Abort.', f'Check @{name}.']
+                if spec:
+                    query.append(f'Eval unfold {name} in @{name}.')
+                query.append(f'Goal True. idtac "PE_END_{index}". Abort.')
+                inserts.setdefault(scope, []).extend(query)
+            for scope, queries in inserts.items():
+                block = '\n'.join(queries) + '\n'
+                if scope:
+                    ending = re.compile(r'^End\s+' + re.escape(scope.split('.')[-1]) + r'\.', re.M)
+                    if len(ending.findall(source)) != 1:
+                        raise ValueError('ambiguous sealed module end: ' + scope)
+                    source = ending.sub(lambda m: block + m[0], source)
+                else:
+                    source += '\n' + block
+            settings = commands[len(setup):len(setup) + 5]
+            script = Path(tmp) / rel
+            script.parent.mkdir(parents=True, exist_ok=True)
+            script.write_text('\n'.join(settings) + '\n' + source)
+            extra = ['-R', tmp, 'Glibc']
+            instances = {}
         env = dict(os.environ)
         env['OCAMLPATH'] = str(plugin.parent) + ':' + env.get('OCAMLPATH', '')
         cmd = ['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
-               '-R', str(tree.root), 'Glibc', str(script)]
+               '-R', str(tree.root), 'Glibc'] + extra + [str(script)]
         p = subprocess.run(cmd, text=True, stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, env=env, timeout=180)
         (out / (rel.replace('/', '__') + '.log')).write_text(p.stdout)
         if p.returncode:
+            if not inside and 'was not found in the current environment' in p.stdout:
+                return run_probe(tree, rel, decls, out, plugin, inside=True)
             raise ValueError(f'probe compiler exited {p.returncode}: {p.stdout[-1200:]}')
     result = {}
     for index, name in enumerate(names):
@@ -288,6 +325,8 @@ def run_probe(tree, rel, decls, out, plugin):
         if not match:
             raise ValueError('missing output marker for ' + name)
         raw = match[1].strip()
+        if re.search(r'\.\.\.|…', raw):
+            raise ValueError('truncated printed statement: ' + name)
         raw = raw.split('\n     :', 1)[1].strip() if '\n     :' in raw else raw.split(' : ', 1)[1].strip()
         result[name] = {'raw': raw, 'normalized': tree.normalize(raw, instances)}
         q = names[name][0]

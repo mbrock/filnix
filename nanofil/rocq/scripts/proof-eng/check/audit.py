@@ -6,6 +6,7 @@ The original query files are the lead's exact sources, including regression
 lemmas. A different layout supplies different .v files with the same targets.
 """
 import argparse
+import copy
 import json
 import os
 from pathlib import Path
@@ -13,16 +14,43 @@ import re
 import subprocess
 import tempfile
 
+from check import PATH, Tree
+from expectations import Expectations
+
 HERE = Path(__file__).resolve().parent
+
+
+def assumption_types(text, aliases):
+    """Keep types, not just axiom names; only reviewed module paths may move."""
+    if 'Axioms:' not in text:
+        return {}
+    text = text.split('Axioms:', 1)[1]
+    for old, new in sorted(aliases.items(), key=lambda pair: -len(pair[0])):
+        text = re.sub(r"(?<![\w.'])" + re.escape(old) + r"(?=\.)", new, text)
+    matches = list(re.finditer(r"^([\w.']+)\s*:", text, re.M))
+    return {m[1]: re.sub(r'\s+', ' ', text[m.end():matches[i + 1].start()
+            if i + 1 < len(matches) else len(text)]).strip() for i, m in enumerate(matches)}
 
 
 def audit(tree, layout, contracts, output, groups=None):
     output.mkdir(parents=True, exist_ok=True)
+    plugin = output / 'printer'
+    subprocess.run(['bash', str(HERE / 'plugin.sh'), str(plugin)], check=True,
+                   stdout=subprocess.DEVNULL)
+    env = dict(os.environ)
+    env['OCAMLPATH'] = str(plugin.parent) + ':' + env.get('OCAMLPATH', '')
+    aliases_file = layout / 'assumption-aliases.json'
+    aliases = {'Audit.AuditRuntime': 'AuditRuntime'}
+    if aliases_file.exists():
+        aliases.update(json.loads(aliases_file.read_text()))
+    library = Tree(tree)
+    moves = Expectations(HERE / 'expected-statement-changes')
     report = {}
     for group, targets in contracts.items():
         if groups and group not in groups:
             continue
-        source = (layout / (group + '.v')).read_text()
+        source = (f'Declare ML Module "{plugin.name}".\n' +
+                  (layout / (group + '.v')).read_text())
         found = []
         def query(m):
             term = m[1]
@@ -31,7 +59,7 @@ def audit(tree, layout, contracts, output, groups=None):
                 raise ValueError(f'{group}: unexpected/duplicate query {term}')
             found.append(name)
             return (f'Goal True. idtac "PE_STATEMENT_{name}". Abort.\n'
-                    f'Set Printing All. Check @{term}. Unset Printing All.\n'
+                    f'Set Printing All. Set Printing Depth 1000000. Set Printing Width 1000000. Check @{term}.\n'
                     f'Goal True. idtac "PE_AUDIT_{name}". Abort.\n'
                     f'Print Assumptions {term}.\n'
                     f'Goal True. idtac "PE_END_{name}". Abort.')
@@ -42,10 +70,17 @@ def audit(tree, layout, contracts, output, groups=None):
             with tempfile.TemporaryDirectory(prefix='audit-', dir=output) as tmp:
                 path = Path(tmp) / 'Audit.v'
                 path.write_text(source)
+                context = copy.copy(library)
+                local = Tree(Path(tmp))
+                for field in ('modules', 'aliases', 'functors', 'module_types', 'signatures'):
+                    setattr(context, field, getattr(library, field) | getattr(local, field))
+                context.abstract_runtimes = library.abstract_runtimes | local.abstract_runtimes
+                if 'Glibc.Audit.AuditRuntime' in local.abstract_runtimes:
+                    context.aliases['Glibc.Audit.AuditRuntime'] = ('', '@RuntimeAbstract')
                 command = ['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
                            '-R', str(tree.resolve()), 'Glibc', str(path)]
                 p = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True, timeout=900)
+                                   text=True, timeout=900, env=env)
                 (output / (group + '.log')).write_text(p.stdout)
                 if p.returncode:
                     raise ValueError(f'rocq exited {p.returncode}; see {group}.log')
@@ -56,12 +91,22 @@ def audit(tree, layout, contracts, output, groups=None):
                 if not statement or not result:
                     raise ValueError('missing output for ' + name)
                 text = result[1].strip()
+                if re.search(r'\.\.\.|…', statement[1] + text):
+                    raise ValueError('truncated printed statement or assumptions: ' + name)
                 closed = text.splitlines().count('Closed under the global context') == 1
-                assumptions = sorted(n for n in re.findall(r"^([\w.']+)\s*:", text, re.M) if n != 'Axioms')
+                types = assumption_types(text, aliases)
+                assumptions = sorted(types)
                 valid = (closed and not assumptions and 'Axioms:' not in text) if not allowed else (
                     not closed and 'Axioms:' in text and assumptions == sorted(allowed))
+                printed = statement[1].strip()
+                printed = printed.split('\n     :', 1)[1].strip() if '\n     :' in printed else printed.split(' : ', 1)[1].strip()
+                chunks = re.split(r'("(?:[^"]|"")*")', printed)
+                for i in range(0, len(chunks), 2):
+                    chunks[i] = re.sub(PATH, lambda m: 'Glibc.' + m[0] if m[0].startswith('Audit.') else m[0], chunks[i])
+                normalized = moves.canonical(context.normalize(''.join(chunks), {}, concrete=not bool(allowed)))
                 results[name] = {'pass': valid, 'assumptions': assumptions, 'expected': allowed,
-                                 'statement': statement[1].strip(), 'raw': text}
+                                 'statement': statement[1].strip(), 'raw': text, 'types': types,
+                                 'qualified': True, 'normalized_statement': normalized}
             report[group] = {'pass': all(r['pass'] for r in results.values()), 'targets': results}
         except (ValueError, subprocess.TimeoutExpired, OSError) as e:
             report[group] = {'pass': False, 'error': str(e)}

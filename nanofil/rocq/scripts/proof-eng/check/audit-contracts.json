@@ -63,5 +63,25 @@
   "printf-AuditOverflowEntry": {"wp_printf_overflow_entry": []},
   "printf-AuditOverflowStaging": {
     "wp_printf_overflow_staging": []
+  },
+  "DirectWrapCases": {
+    "wp_printf_buffer_flush_direct": [],
+    "direct_wrap": [],
+    "direct_control": []
+  },
+  "FullWrapCases": {
+    "wp_printf_buffer_flush_full": [],
+    "case_wrap": [],
+    "case_control": []
+  },
+  "InlineRoomWrapCases": {
+    "wp_printf_buffer_flush_inline_room": [],
+    "case_wrap": [],
+    "case_control": []
+  },
+  "InlineWrapCases": {
+    "wp_printf_buffer_flush_inline_full": [],
+    "case_wrap": [],
+    "case_control": []
   }
 }

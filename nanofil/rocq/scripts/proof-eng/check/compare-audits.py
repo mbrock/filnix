@@ -3,16 +3,6 @@
 import argparse
 import json
 from pathlib import Path
-import re
-
-
-def payload(raw):
-    # Rocq announces lazily fetched proof bodies before giving the result.
-    if 'Axioms:' in raw:
-        raw = raw[raw.index('Axioms:'):]
-    elif 'Closed under the global context' in raw:
-        raw = raw[raw.index('Closed under the global context'):]
-    return re.sub(r'\s+', ' ', raw).strip()
 
 
 if __name__ == '__main__':
@@ -30,10 +20,14 @@ if __name__ == '__main__':
             continue
         for name in sorted(set(left['targets']) | set(right['targets'])):
             x, y = left['targets'].get(name), right['targets'].get(name)
-            same = x and y and payload(x['raw']) == payload(y['raw'])
+            same = (x and y and x.get('qualified') and y.get('qualified') and
+                    x['types'] == y['types'] and
+                    x['normalized_statement'] == y['normalized_statement'])
             print('PASS' if same else 'FAIL', group + ':' + name)
             if not same:
                 print('before:', x['raw'] if x else '<absent>')
                 print('after:', y['raw'] if y else '<absent>')
+                print('before statement:', x.get('normalized_statement', '<unqualified>') if x else '<absent>')
+                print('after statement:', y.get('normalized_statement', '<unqualified>') if y else '<absent>')
                 failures += 1
     raise SystemExit(bool(failures) or not before or not after)

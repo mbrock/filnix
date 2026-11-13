@@ -61,6 +61,15 @@ class Checks(unittest.TestCase):
             compile(before, abstract)
             compile(after, abstract.replace('A.ready', 'B.ready'))
             self.assertEqual([d['name'] for d in compare(1)['differences']], ['target'])
+            sealed = ('Module Type S. Parameter exposed : True. End S.\n'
+                      'Module Hidden : S. Lemma target : True. Proof. exact I. Qed.\n'
+                      'Definition exposed := target.\nEnd Hidden.\n')
+            compile(before, sealed)
+            compile(after, sealed)
+            compare(0)
+            compile(after, sealed.replace('target : True', 'target : True /\\ True')
+                    .replace('exact I.', 'split; exact I.').replace('exposed := target', 'exposed := proj1 target'))
+            self.assertEqual([d['name'] for d in compare(1)['differences']], ['Hidden.target'])
             layout = root / 'layout'
             layout.mkdir()
             (layout / 'toy.v').write_text('From Glibc Require Import Toy.\nPrint Assumptions target.\n')
@@ -73,7 +82,13 @@ class Checks(unittest.TestCase):
                 self.assertEqual(p.returncode, expected, p.stdout + p.stderr)
                 return json.loads((root / 'audit/report.json').read_text())
             compile(after, 'Lemma target : True. Proof. exact I. Qed.\n')
+            baseline = root / 'audit-before.json'
+            baseline.write_text(json.dumps(audit(0)))
+            audit_compare = ['python3', str(HERE / 'compare-audits.py'), str(baseline), str(root / 'audit/report.json')]
+            self.assertEqual(subprocess.run(audit_compare, capture_output=True).returncode, 0)
+            compile(after, 'Lemma target : True /\\ True. Proof. split; exact I. Qed.\n')
             audit(0)
+            self.assertEqual(subprocess.run(audit_compare, capture_output=True).returncode, 1)
             compile(after, 'Axiom planted : True.\nLemma target : True. Proof. exact planted. Qed.\n')
             self.assertEqual(audit(1)['toy']['targets']['target']['assumptions'], ['planted'])
             compile(before, 'Lemma target : True. Proof. exact I. Qed.\n')

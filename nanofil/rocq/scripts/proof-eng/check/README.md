@@ -20,6 +20,10 @@ The output directory retains logs, reports, sources, and objects. An explicit
 second argument selects a historical baseline for diagnosis; such a run cannot
 return a successful cutover verdict.
 
+Only the exit statuses of these local commands count. The hosted docs and Rocq
+workflows can report success after a failed Nix build because their logging
+pipelines do not enable `pipefail`.
+
 The commands from the workflows are:
 
 | Part | Local command in the materialized worktree |
@@ -62,6 +66,10 @@ The report retains module parameters. Abstract runtime references and concrete
 `InterpRuntime` references remain distinct in the comparison.
 
 The printer plugin uses Rocq's canonical global references and absolute names.
+Printing depth and width are both set to one million; an ellipsis fails the
+export instead of silently equating truncated types. Hidden implementation
+lemmas in sealed modules are queried in a temporary source copy before sealing,
+after their sections have generalized the hypotheses.
 The Python comparison resolves known module aliases but never strips arbitrary
 qualifiers. Thus two imported definitions with the same short name remain
 different, even if the statement's source text is identical. Unknown aliases
@@ -83,9 +91,14 @@ Closed specialization fails that contract. Its separate statement comparison
 also checks the theorem's hypotheses, including the Hello obligations.
 
 `layouts/original/` contains the lead's original query files, including the
-two regression definitions proved inside those queries. A layout is data:
+regression proofs and count-wrap controls inside those queries. A layout is data:
 replace imports and module applications in a separate directory when the proof
 layout changes, while retaining the query targets and their contracts.
+An optional `assumption-aliases.json` in that directory maps exact module prefixes,
+such as `Fix.R` to `AuditRuntime`. The audit comparison checks every assumption's
+full printed type after those explicit renamings, not just the twelve names.
+It also compares each audited statement using the qualified printer and the
+statement checker's module resolver. Closed proofs with changed statements fail.
 
 ```sh
 python3 nanofil/rocq/scripts/proof-eng/check/audit.py BEFORE \
@@ -142,6 +155,15 @@ statements before committing the JSON. Repeating the check then accepts those
 exact pairs but rejects an additional alteration to an already listed lemma.
 Each intentional stage also supplies a `.equivalence.v` proof for the cutover
 packet; the declaration list alone does not establish equivalence.
+
+`python3 check/packet.py POST_TREE --output cutover-packet.md`, run from the
+pipeline directory, assembles the three files into one document. It checks that
+the elaborated pairs name exactly the manifest's declarations, compiles the
+equivalence file, and independently audits every lemma in it as Closed. It also
+runs `python3 stages/STAGE.py --check POST_TREE` to connect the equivalences to
+the stage's source guards. Missing files, extra declarations, open proofs, and
+failed stage validation prevent a passing packet. `run.sh` appends its revisions,
+local gate verdicts, and complete statement differences to this packet.
 
 ## Test that the checks reject mutations
 

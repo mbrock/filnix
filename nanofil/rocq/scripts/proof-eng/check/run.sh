@@ -49,6 +49,7 @@ run cache-preflight python3 "$out/worktree/scripts/ci-cache-check.py" --flake "$
   packages.x86_64-linux.filcc-staging packages.x86_64-linux.site-swipl
 run before-build bash "$here/../build.sh" "$before" "$jobs"
 run after-build bash "$here/../build.sh" "$after" "$jobs"
+run packet python3 "$here/packet.py" "$after" --output "$out/cutover-packet.md"
 run statements python3 "$here/check.py" statements "$before" "$after" \
   --plugin "$out/plugin" --output "$out/statements" --jobs "${PE_QUERY_JOBS:-2}"
 run before-audits python3 "$here/audit.py" "$before" --output "$out/before-audits"
@@ -76,4 +77,11 @@ else
   fi
 fi
 echo "Cutover exit status: $status" | tee -a "$out/verdicts.txt"
+{
+  printf '\n## Local cutover verdicts\n\n```text\n'
+  cat "$out/revisions.txt" "$out/verdicts.txt"
+  printf '```\n\n## Complete statement differences\n\n```text\n'
+  cat "$out/statements/report.txt"
+  printf '```\n'
+} >>"$out/cutover-packet.md"
 exit "$status"
