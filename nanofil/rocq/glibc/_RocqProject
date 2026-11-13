@@ -345,3 +345,11 @@ getopt/GetoptLongPfxSet.v
 getopt/GetoptLongPfxStep.v
 getopt/GetoptLongPfxIter.v
 getopt/GetoptLongPfxLoop.v
+getopt/GetoptLongPfxEnd.v
+getopt/GetoptLongAmbTail.v
+getopt/GetoptLongAmbPrint.v
+getopt/GetoptLongAmbItem.v
+getopt/GetoptLongAmbList.v
+getopt/GetoptLongAmbHead.v
+getopt/GetoptLongAmbPoss.v
+getopt/GetoptLongAmbRep.v
