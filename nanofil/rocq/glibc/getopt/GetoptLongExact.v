@@ -102,7 +102,8 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** The search stands at entry k of the table. It stops at the first
     entry whose name equals the name of length eq_len s at the cursor,
     or at the null name. A found entry j leads on with its pointer, and
-    the end of the table leads on with a null pointer. The names ks keep
+    the end of the table leads on with a null pointer and the count of
+    entries. The names ks keep
     their values from the caller's environment e. *)
 Lemma wp_long_exact_loop ks e (k : nat) cur s lo os b r Φ :
   avoids ks exact_names = true ->
@@ -117,7 +118,8 @@ Lemma wp_long_exact_loop ks e (k : nat) cur s lo os b r Φ :
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   word_string DfracDiscarded cur s -∗ opt_table lo os -∗ live b r -∗ pcell b 32 cur -∗
   ((∀ e', ⌜keeps ks e e' /\ lookup (TAtom "v90") e' = Some (WInt 0) /\
-        lookup (TAtom "pr.6") e' = Some (WPtr null)⌝ -∗ live b r -∗ pcell b 32 cur -∗
+        lookup (TAtom "pr.6") e' = Some (WPtr null) /\
+        lookup (TAtom "pr.9") e' = Some (WInt (Z.of_nat (List.length os)))⌝ -∗ live b r -∗ pcell b 32 cur -∗
       WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L98") (Some (TAtom "L53")))) : gexpr)
         {{ Φ }}) ∧
    (∀ e' j, ⌜keeps ks e e' /\ (j < List.length os)%nat /\ lookup (TAtom "v90") e' = Some (WInt 0) /\
@@ -145,7 +147,7 @@ Proof.
       [reflexivity | vx | exact Htc | rawa | al8 | cbn; lia | unfold live_capq; cbn; done |].
     iNext. iIntros "_ _ _". st. st. iApply wp_branch; [vx | iNext]. close_br.
     en. st. st. st. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[HK _]".
-    iApply ("HK" with "[%] Hl Hcur"). split; [xkeep|]. split; lk_prove. }
+    iApply ("HK" with "[%] Hl Hcur"). split; [xkeep|]. repeat split; lk_prove. }
   destruct (lookup_lt_is_Some_2 os k Hlt) as [x Hx].
   iDestruct (big_sepL_lookup with "Hes") as "(#Hn & #Hnws & _)"; [exact Hx|].
   iDestruct (argv_str_cap with "Hnws") as (rn) "[#Hcapn %Hn0]".
@@ -185,7 +187,7 @@ Proof.
       [lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lia | exact Hos | exact Hb | exact Hal | exact Hend
       | exact Hr | iExists tb, treg; iFrame "Htl Hes Hnul"; iPureIntro; repeat split; assumption |].
     iSplit.
-    - iIntros (e' (Hk' & Hq1 & Hq2)) "Hl Hcur". iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl Hcur").
+    - iIntros (e' (Hk' & Hq1 & Hq2 & Hq3)) "Hl Hcur". iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl Hcur").
       split; [eapply keeps_trans; [exact Hk2|]; eapply keeps_trans; [|exact Hk']; xkeep | tauto].
     - iIntros (e' j (Hk' & Hq1 & Hq2)) "Hl Hcur". iDestruct "HK" as "[_ HK]". iApply ("HK" $! e' j with "[%] Hl Hcur").
       split; [eapply keeps_trans; [exact Hk2|]; eapply keeps_trans; [|exact Hk']; xkeep | tauto]. }
