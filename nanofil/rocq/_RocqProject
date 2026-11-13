@@ -73,6 +73,8 @@ theories/logic/Logic.v
 theories/logic/PoisonModel.v
 theories/logic/PoisonLogic.v
 theories/programs/PoisonHeap.v
+theories/programs/CtLtCode.v
+theories/programs/CtLt.v
 theories/hello_contracts/LibcStreamLogic.v
 theories/logic/StringLogic.v
 theories/logic/MemLogic.v

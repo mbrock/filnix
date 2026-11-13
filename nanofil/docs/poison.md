@@ -434,3 +434,11 @@ return values under the deterministic runtime driver. These traces describe
 IR control flow, addresses, and modeled variable-time operations. They do
 not establish native hardware timing or trace equality under independently
 scheduled collectors.
+
+[CtLt.v](../rocq/theories/programs/CtLt.v) follows OpenSSL's
+`constant_time_lt` from C through nanofil's optimized IR to an Iris proof.
+It proves poison-fault freedom, machine panic freedom, and equal finite
+leakage traces for any two pairs of secret integers. The return mask stays
+secret and may differ between the runs. A compiled branch-based control
+fails the poison rules. The page explains the helper-call proof and separates
+IR constant-time behavior from functional correctness and native timing.

@@ -26,6 +26,7 @@ Hi tests/c/prog/hi.c -O
 Scan rocq/theories/programs/scan.c -O
 Count rocq/theories/programs/count.c -O
 Slot rocq/theories/programs/slot.c -O
+CtLt rocq/theories/programs/ct_lt.c -O
 '
 
 status=0

@@ -1,0 +1,18 @@
+<block id="b-2026-11-13-openssl-poison-comparison" kind="milestone" actor="T-01a1d657-e0ac-75ee-aef7-c8be5191b947" created="2026-11-13T19:31:11Z">
+  <title>OpenSSL's unsigned comparison has a constant-time IR proof</title>
+  <about path="nanofil/rocq/theories/programs/CtLt.v"/>
+  <tag name="formal"/>
+  <p>OpenSSL compares secret unsigned integers without branching on them.
+  The new module page explains how its C function becomes nanofil's optimized
+  IR, then proves that changing the inputs cannot change the execution trace.</p>
+  <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-rocq">
+    <p>The compiled comparison never panics or uses a secret in a forbidden
+    operation. Two calls with different secret arguments have the same finite
+    leakage trace under the same runtime driver. Their return values may differ
+    and remain secret. The proof also rejects a branch-based version on
+    less-than, greater-than, and equal inputs.</p>
+  </claim>
+  <p>This is a proof about generated IR, not native hardware timing or the
+  arithmetic result for all inputs. The fixture check keeps the proof tied
+  to the compiler's current output.</p>
+</block>
