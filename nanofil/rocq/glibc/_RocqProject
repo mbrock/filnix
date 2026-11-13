@@ -326,3 +326,12 @@ getopt/GetoptReqArg.v
 getopt/GetoptShortRet.v
 getopt/GetoptWTail.v
 getopt/GetoptWOpt.v
+getopt/GetoptLongScan.v
+getopt/GetoptLongExact.v
+getopt/GetoptLongDiag.v
+getopt/GetoptLongStore.v
+getopt/GetoptLongTail.v
+getopt/GetoptLongReq.v
+getopt/GetoptLongEq.v
+getopt/GetoptLongPre.v
+getopt/GetoptLongArg.v
