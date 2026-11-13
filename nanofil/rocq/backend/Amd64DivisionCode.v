@@ -359,7 +359,8 @@ Qed.
 (** The state [operands] holds the dividend a in `%rax` and the divisor
     c in `%rcx`. Every other register holds a pattern with all bits
     set, and every flag is set, so that an instruction that wrongly
-    reads stale state does not read zero. *)
+    reads stale state does not read zero. No address is mapped, so an
+    instruction that wrongly touches memory faults. *)
 Definition operands (a c : Z) : machine :=
   mkMachine
     (fun r =>
@@ -368,7 +369,9 @@ Definition operands (a c : Z) : machine :=
        | RCX => c
        | _ => 18446744073709551615
        end)
-    (fun _ => true).
+    (fun _ => true)
+    (fun _ => 0)
+    (fun _ => false).
 
 (** The function [result] returns the content of `%rax` after a
     completed execution, and `None` after a fault. *)

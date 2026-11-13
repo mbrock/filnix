@@ -37,10 +37,14 @@ IrText.v
 Encode.v
 Elf.v
 Amd64Word.v
+Amd64Memory.v
 Amd64Machine.v
 Amd64Step.v
 Amd64Asm.v
 Amd64Total.v
 Amd64DivisionCode.v
 Amd64Division.v
+Amd64Frame.v
+Amd64Layout.v
+Amd64DivisionStep.v
 Extract.v

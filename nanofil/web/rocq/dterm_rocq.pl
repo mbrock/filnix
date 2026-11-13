@@ -1156,12 +1156,20 @@ file_blurb('nanofil/rocq/backend/Amd64Asm.v',
     "This module reads the backend's assembly lines as typed instructions and refuses every line that the execution model does not describe.").
 file_blurb('nanofil/rocq/backend/Amd64Division.v',
     "This theorem shows that the integer division code that the backend emits never faults and leaves the IR's result in the accumulator register.").
+file_blurb('nanofil/rocq/backend/Amd64DivisionStep.v',
+    "This theorem shows that the code emitted for an IR division instruction loads its operands from the frame, never faults, and stores the result that the IR's step binds.").
+file_blurb('nanofil/rocq/backend/Amd64Frame.v',
+    "This module relates the stack frame of emitted code to the IR's environment and proves what the emitted operand loads and result stores do to that relation.").
+file_blurb('nanofil/rocq/backend/Amd64Layout.v',
+    "This proof shows that the frame layout which the backend computes puts every slot inside the frame at a multiple of eight bytes.").
 file_blurb('nanofil/rocq/backend/Amd64DivisionCode.v',
     "This module splits the emitted division sequence into four fragments and proves what each fragment computes in the registers.").
 file_blurb('nanofil/rocq/backend/Amd64Machine.v',
-    "This module defines the general-purpose registers and arithmetic flags of x86-64 and the rules for reading and writing a part of a register.").
+    "This module defines the registers, arithmetic flags and memory of an x86-64 machine state and the rules for reading and writing a part of a register.").
+file_blurb('nanofil/rocq/backend/Amd64Memory.v',
+    "This module models memory as a map from addresses to bytes and proves the facts about little-endian reads and writes that the amd64 semantics uses.").
 file_blurb('nanofil/rocq/backend/Amd64Step.v',
-    "This execution model gives each integer instruction that the backend emits its effect on registers and flags, and it faults on every form that it does not cover.").
+    "This execution model gives each integer instruction that the backend emits its effect on registers, flags and memory, and it faults on every form that it does not cover.").
 file_blurb('nanofil/rocq/backend/Amd64Total.v',
     "These lemmas show that the backend's branch-free operand rewriting makes the processor's divide safe and yields the IR's total quotient and remainder.").
 file_blurb('nanofil/rocq/backend/Amd64Word.v',

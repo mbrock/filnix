@@ -1,8 +1,9 @@
 (** The integer code that the nanofil backend emits computes in the
-    sixteen general-purpose registers of x86-64 and tests the six
-    arithmetic flags. This module defines that part of the processor
-    state, and the two operations through which every instruction
-    touches a register: reading a part of it and writing a part of it.
+    sixteen general-purpose registers of x86-64, tests the six
+    arithmetic flags, and keeps its temporaries in memory. This module
+    defines that part of the processor state, and the two operations
+    through which every instruction touches a register: reading a part
+    of it and writing a part of it.
 
     A register name such as `%eax` or `%dl` selects the low 32 or 8
     bits of a 64-bit register. Reading a part is a truncation. Writing
@@ -12,21 +13,23 @@
     function [set_reg] states that rule once, so that no instruction
     can apply it differently.
 
-    The state has no memory and no instruction pointer yet. The first
-    theorem about emitted code, in Amd64Division.v, concerns a
-    straight-line sequence that computes only in registers. Byte memory
-    and control flow are later additions to the record [machine]. *)
+    A program also reads and writes memory, so the state holds the
+    content of every byte and the set of addresses that the program
+    may access. The state has no instruction pointer yet, because the
+    theorems so far are about sequences of instructions without
+    jumps. *)
 
 From Stdlib Require Import ZArith Bool Lia.
-From Backend Require Import Amd64Word.
+From Backend Require Import Amd64Word Amd64Memory.
 Local Open Scope Z_scope.
 
-(** ## Registers and flags
+(** ## Registers, flags and memory
 
     The state of the integer machine is a 64-bit pattern for each
-    general-purpose register and one bit for each arithmetic flag.
-    This section names the registers and the flags and defines the
-    record that holds them. *)
+    general-purpose register, one bit for each arithmetic flag, and
+    one byte for each address of memory. This section names the
+    registers and the flags and defines the record that holds the
+    state. *)
 
 (** A [gpr] names one of the sixteen 64-bit general-purpose registers.
     The partial registers, such as `%eax` and `%al`, are views of
@@ -55,10 +58,16 @@ Inductive flag : Type := CF | PF | AF | ZF | SF | OF.
 
 (** A [machine] is the integer state of the processor. The field
     [regs] gives the 64-bit content of each register, and the field
-    [flags] gives the value of each arithmetic flag. *)
+    [flags] gives the value of each arithmetic flag. The field [bytes]
+    gives the content of memory at each address. The field [mapped]
+    says which addresses the program may access, and an access to any
+    other address is a fault. No instruction of the model changes the
+    field [mapped]. *)
 Record machine : Type := mkMachine {
   regs : gpr -> Z;
-  flags : flag -> bool
+  flags : flag -> bool;
+  bytes : byte_map;
+  mapped : Z -> bool
 }.
 
 (** ## Reading and writing a part of a register
@@ -84,12 +93,20 @@ Definition merge_reg (z : size) (old v : Z) : Z :=
   end.
 
 (** The function [set_reg] writes the value v to the low part of the
-    register r at the given size. It leaves every other register and
-    every flag as it was. *)
+    register r at the given size. It leaves every other register,
+    every flag and the memory as they were. *)
 Definition set_reg (z : size) (r : gpr) (v : Z) (s : machine) : machine :=
   mkMachine
     (fun r' => if gpr_eqb r' r then merge_reg z (regs s r) v else regs s r')
-    (flags s).
+    (flags s)
+    (bytes s)
+    (mapped s).
+
+(** The function [set_bytes] replaces the content of memory with the
+    byte map b. It leaves the registers, the flags and the set of
+    mapped addresses as they were. *)
+Definition set_bytes (b : byte_map) (s : machine) : machine :=
+  mkMachine (regs s) (flags s) b (mapped s).
 
 (** ## Flag effects and undefined flags
 
@@ -118,7 +135,7 @@ Definition havoc : Type := flag -> bool.
 
 (** The function [set_flags] applies an instruction's effect on every
     flag, taking the value of each undefined flag from the havoc h. It
-    leaves the registers as they were. *)
+    leaves the registers and the memory as they were. *)
 Definition set_flags (h : havoc) (e : flag -> flag_effect) (s : machine) : machine :=
   mkMachine
     (regs s)
@@ -127,7 +144,9 @@ Definition set_flags (h : havoc) (e : flag -> flag_effect) (s : machine) : machi
        | Keep => flags s f
        | Defined b => b
        | Undefined => h f
-       end).
+       end)
+    (bytes s)
+    (mapped s).
 
 (** ## Well-formed states
 
@@ -278,6 +297,78 @@ Proof.
   intro H; unfold set_flags; simpl; rewrite H; reflexivity.
 Qed.
 
+(** ## Facts about memory and the state updates
+
+    A proof about code that uses the frame follows the memory through
+    each instruction. These lemmas say that a register write and a
+    flag update leave the memory alone, and that a memory write leaves
+    the registers and the flags alone. *)
+
+(** A write to a register does not change the content of memory. *)
+Lemma bytes_set_reg (z : size) (r : gpr) (v : Z) (s : machine) :
+  bytes (set_reg z r v s) = bytes s.
+Proof.
+  reflexivity.
+Qed.
+
+(** A flag update does not change the content of memory. *)
+Lemma bytes_set_flags (h : havoc) (e : flag -> flag_effect) (s : machine) :
+  bytes (set_flags h e s) = bytes s.
+Proof.
+  reflexivity.
+Qed.
+
+(** A memory write leaves exactly the given byte map in the state. *)
+Lemma bytes_set_bytes (b : byte_map) (s : machine) :
+  bytes (set_bytes b s) = b.
+Proof.
+  reflexivity.
+Qed.
+
+(** A memory write does not change the content of any register. *)
+Lemma regs_set_bytes (b : byte_map) (s : machine) (r : gpr) :
+  regs (set_bytes b s) r = regs s r.
+Proof.
+  reflexivity.
+Qed.
+
+(** A memory write does not change what any read of a register
+    returns. *)
+Lemma get_reg_set_bytes (b : byte_map) (z : size) (r : gpr) (s : machine) :
+  get_reg z r (set_bytes b s) = get_reg z r s.
+Proof.
+  reflexivity.
+Qed.
+
+(** A memory write does not change any flag. *)
+Lemma flags_set_bytes (b : byte_map) (s : machine) (f : flag) :
+  flags (set_bytes b s) f = flags s f.
+Proof.
+  reflexivity.
+Qed.
+
+(** A write to a register does not change which addresses are
+    mapped. *)
+Lemma mapped_set_reg (z : size) (r : gpr) (v : Z) (s : machine) :
+  mapped (set_reg z r v s) = mapped s.
+Proof.
+  reflexivity.
+Qed.
+
+(** A flag update does not change which addresses are mapped. *)
+Lemma mapped_set_flags (h : havoc) (e : flag -> flag_effect) (s : machine) :
+  mapped (set_flags h e s) = mapped s.
+Proof.
+  reflexivity.
+Qed.
+
+(** A memory write does not change which addresses are mapped. *)
+Lemma mapped_set_bytes (b : byte_map) (s : machine) :
+  mapped (set_bytes b s) = mapped s.
+Proof.
+  reflexivity.
+Qed.
+
 (** ## Facts about well-formed states
 
     These lemmas show that the two state updates keep every register
@@ -320,6 +411,13 @@ Qed.
 (** A flag update keeps a well-formed state well-formed. *)
 Lemma set_flags_well_formed (h : havoc) (e : flag -> flag_effect) (s : machine) :
   well_formed s -> well_formed (set_flags h e s).
+Proof.
+  exact (fun H => H).
+Qed.
+
+(** A memory write keeps a well-formed state well-formed. *)
+Lemma set_bytes_well_formed (b : byte_map) (s : machine) :
+  well_formed s -> well_formed (set_bytes b s).
 Proof.
   exact (fun H => H).
 Qed.
