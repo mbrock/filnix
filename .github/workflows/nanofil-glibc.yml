@@ -31,6 +31,10 @@ on:
       - .github/workflows/nanofil-glibc.yml
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 

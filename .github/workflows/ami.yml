@@ -28,6 +28,10 @@ on:
         description: Existing v* or ami-test-* tag to register
         required: true
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 

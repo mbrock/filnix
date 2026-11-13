@@ -9,6 +9,10 @@ on:
         type: string
         required: true
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
   actions: read

@@ -21,6 +21,10 @@ on:
         type: boolean
         default: false
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 

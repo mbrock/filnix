@@ -32,6 +32,10 @@ on:
       - .github/workflows/nanofil-gate.yml
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 
@@ -82,7 +86,7 @@ jobs:
         run: |
           nix eval --raw .#checks.x86_64-linux.nanofil-rocq-gate --apply 'g: builtins.concatStringsSep "\n" (map (d: d.outPath)
             (builtins.attrValues g.packages ++ builtins.attrValues g.parts ++ [ g g.driver ]))' |
-            while read -r p; do [ -e "$p" ] && echo "$p"; done | cachix push filc
+            while read -r p || [ -n "$p" ]; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
       - uses: actions/upload-artifact@v4
         if: always()
         with:
