@@ -1,70 +1,90 @@
-(** Campaign 3's [[check_ahead|scheduled checks]]: what the validator's
-    backward pass for `check_ahead` computes, point by point
-    ([formal.md, Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem);
-    [rocq.md, Facts ahead](../../../docs/rocq.md#facts-ahead);
-    [schedule.md](../../../docs/schedule.md)). It is the first step toward
-    the [[doomed frame]] of Doomed.v.
+(** A [[check_ahead|scheduled check]] verifies a pointer's bounds early,
+    before the memory access that uses it. If the early check fails on
+    bytes beyond the access's own range, the frame becomes a
+    [[doomed frame]] (see Doomed.v). From that point on, the frame must
+    reach a failing memory access before hitting a [[poll edge]], a
+    return, or a non-transparent instruction.
 
-    `ahead_justified/3` walks a function's blocks once, from the last,
-    and each block's instructions from its jump. At each point it keeps
-    [[need|needs]]: a [[single definition|single-definition]] base N with
-    an offset H, meaning that every path from the point reaches, through
-    [[ahead-transparent]] instructions only and before any
-    [[poll edge]], edge back or end, a raw access through N whose bytes
-    reach N + H. A `check_ahead` is accepted where its access is
-    followed by a need that covers the bytes it checks early. This file
-    states those needs as functions of the point, so that a frame can
-    carry them forward, and proves that the pass's one sweep computes
-    them.
+    To justify hoisting a check, the compiler must know that the program
+    will soon perform a real memory access on the same pointer. It runs a
+    backward pass over each function, walking from the last block to the
+    first and from each block's jump back to its entry. At every program
+    point it records [[need|needs]] for
+    [[single definition|single-definition]] base pointers, where a pair of
+    pointer N and offset H means every path ahead reaches a raw access
+    through N of at least N + H bytes through [[ahead-transparent]]
+    instructions.
+
+    A scheduled check is accepted when a need after its paired access
+    covers the entire range checked early. This file defines those needs
+    as functions of the program point and proves that the validator's
+    single backward sweep computes them (see
+    [formal.md](../../../docs/formal.md#campaign-3-the-soundness-theorem)
+    and [rocq.md](../../../docs/rocq.md#facts-ahead)).
 
     ## Decisions
 
-    | Decision | Why |
-    |---|---|
-    | the facts are read from the final table | an edge reads its target's entry facts only for a later block, which the sweep has finished; no later step puts that label again, labels being unique |
-    | [ahead_justified] is split into [ahead_fold], [ahead_block], [ahead_edge] and [ahead_accepts] | as ir.pl's `ahead_block/6` and `ahead_edge/5` are; the proofs read each part on its own | *)
+    When a function jumps to a later basic block, the compiler has already
+    analyzed that destination block. Because block labels are unique, later
+    steps never overwrite finished entries, so reading from the final table
+    gives the same answer as reading during the walk.
+
+    Second, the compiler checks edges, blocks, and instructions in separate
+    steps. Factoring [ahead_justified] into [ahead_fold] and its helper
+    functions mirrors that structure so each lemma reasons about one step. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Validate Walk Dominance Evidence.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Facts at a point *)
+(** ## Facts at a point
 
-(** The needs at the jump of a block b: the meet over its edges
-    (`ahead_meet/2`, the bases every edge needs, each at its least
-    offset). An edge reads its target's entry facts from the table ins
-    if the target comes later in the block order ord, and needs nothing
-    if it is a [[poll edge]] or goes back (`ahead_edge/5`). *)
+    To reason about a running frame, we need to look up the validator's
+    needs at any block entry, block exit, or instruction index. The
+    definitions in this section express those needs directly in terms of the
+    final table computed by the backward pass. *)
+
+(** At the jump of a block b, [exit_in] computes the needs by taking the
+    meet over all outgoing edges. Each forward edge reads its target's entry
+    facts from the table, while a [[poll edge]] or backward edge
+    contributes no needs. *)
 Definition exit_in (ord : list name) (ins : list (name * facts)) (b : block) : facts :=
   ahead_meet (map (ahead_edge ord (index_of (b_label b) ord 0) ins) (jump_targets (b_jump b))).
 
-(** The final table of a function's entry facts: for each block's
-    label, the needs before its first instruction, as [ahead_fold]
-    leaves them. *)
+(** Folding the backward pass over a function's blocks yields
+    [ahead_entries], the final table mapping each block label to the needs
+    that hold before its first instruction. *)
 Definition ahead_entries (f : func) : list (name * facts) := fst (ahead_fold f (single_definitions f)).
 
-(** The needs at the jump of a block b of a function f, read from the
-    final table [ahead_entries]. *)
+(** For a block b in function f, [block_exit] computes the needs at its
+    jump by reading target entry facts from the function's final table
+    [ahead_entries]. *)
 Definition block_exit (f : func) (b : block) : facts :=
   exit_in (map b_label (fn_blocks f)) (ahead_entries f) b.
 
-(** The needs before a list of instructions `is` of a function f, when
-    the facts after the last one are out: `ahead_step/5` applied from
-    the last instruction back to the first. *)
+(** Given the facts out after the last instruction of a list,
+    [facts_from] computes the needs before the first instruction by
+    applying [ahead_step] backward from right to left. *)
 Definition facts_from (f : func) (is : list inst) (out : facts) : facts :=
   fold_right (ahead_step (single_definitions f) (proof_pointers f (single_definitions f))) out is.
 
-(** ## One block *)
+(** ## One block
 
-(** One backward step, [ahead_step] with its arguments in the order
-    [fold_left] takes. *)
+    A basic block runs its instructions from first to last, while the
+    validator checks each scheduled bounds test against the memory accesses
+    that follow it. To verify that backward pass, the lemmas below connect
+    the validator's reversed-list fold back to forward instruction indices. *)
+
+(** Wrapping [ahead_step] in [step_back] puts its accumulator argument
+    first so [fold_left] can step backward over a reversed instruction
+    list. *)
 Definition step_back (once : list (name * def)) (ptrs : list (name * value)) (fs : facts) (i : inst) : facts :=
   ahead_step once ptrs i fs.
 
-(** A block's walk (`ahead_insts/8`) over its instructions, given in
-    reverse as ris and starting from the facts after them, leaves the
-    facts before its first instruction: the [step_back] fold. *)
+(** Walking a block's instructions in reverse leaves the same entry facts as
+    a plain left fold of [step_back] from the block's exit facts, as
+    [ahead_insts_after] shows. *)
 Lemma ahead_insts_after : forall once ptrs ris after next js,
   fst (ahead_insts once ptrs ris after next js) = fold_left (step_back once ptrs) ris after.
 Proof.
@@ -72,8 +92,9 @@ Proof.
   simpl. rewrite IH. reflexivity.
 Qed.
 
-(** With no facts after it, no instruction is accepted: a
-    `check_ahead` needs a [[need]] to cover its early bytes. *)
+(** When no facts follow an instruction, [ahead_accepts] accepts nothing,
+    because every `check_ahead` requires a downstream [[need]] covering
+    its early bytes. *)
 Lemma ahead_accepts_nil : forall once i, ahead_accepts once [] i = None.
 Proof.
   intros once i. destruct i as [q k o args | | | | | | | | ]; try reflexivity.
@@ -88,12 +109,11 @@ Proof.
   rewrite andb_false_r. reflexivity.
 Qed.
 
-(** Where does a proof q come from, if a block's walk over the reversed
-    instructions ris accepts it? Either it was in the list js accepted
-    before the walk; or it is the first of ris, accepted with next, the
-    facts the walk was given for after its access; or it is an
-    instruction i followed by another (its access), accepted with the
-    facts the walk had after that access. *)
+(** Every scheduled check accepted during a block's backward walk must be
+    justified by the facts after its paired access. Lemma [ahead_insts_js]
+    shows that an accepted proof q was either already in js, or sits at the
+    head of the reversed list against next, or precedes an instruction i1
+    and is accepted against the facts after i1. *)
 Lemma ahead_insts_js : forall once ptrs ris after next js q,
   In q (snd (ahead_insts once ptrs ris after next js)) ->
   In q js \/ (exists i post, ris = i :: post /\ ahead_accepts once next i = Some q) \/
@@ -108,11 +128,10 @@ Proof.
   - right. right. exists (i :: pre), i1, i', post. auto.
 Qed.
 
-(** A proof q that a block's walk over its instructions `is` accepts,
-    starting from the facts out at its jump, was accepted before the
-    block, or is the instruction at some index k, not the last, accepted
-    ([ahead_accepts]) with the facts before the instructions from k + 2
-    on, the ones after its access at k + 1. *)
+(** Every scheduled check inside a block must pair with a later instruction
+    in the same block, because a check at the end has no following access.
+    Lemma [block_accepts] converts the reversed walk back to forward order
+    and places each accepted proof q at some non-final index k. *)
 Lemma block_accepts : forall once ptrs is out js q,
   In q (snd (ahead_insts once ptrs (rev is) out [] js)) ->
   In q js \/ exists k i, nth_error is k = Some i /\ (S k < length is)%nat /\
@@ -133,16 +152,23 @@ Proof.
         rewrite skipn_all2 by (rewrite length_rev; lia). reflexivity.
 Qed.
 
-(** ## The sweep over the blocks *)
+(** ## The sweep over the blocks
 
-(** Searching from position n + 1 gives the index from n, plus one. *)
+    Across a whole function, the pass visits blocks from last to first
+    assuming their labels are unique. Because edges only consult blocks that
+    appear later in the order, adding an earlier block never changes the exit
+    facts of any block already processed. *)
+
+(** Searching for a label starting at position n + 1 yields one more than
+    searching from position n. *)
 Lemma index_of_S : forall l ls n, index_of l ls (S n) = option_map S (index_of l ls n).
 Proof.
   intros l ls. induction ls as [|l' ls IH]; intros n; [reflexivity|].
   simpl. destruct (name_eqb l l'); [reflexivity | apply IH].
 Qed.
 
-(** In a list without duplicates, a name's index is its position. *)
+(** In a list without duplicate names, [index_of] maps the element at
+    position j to index j. *)
 Lemma index_of_nth : forall ls j l, no_dups ls = true -> nth_error ls j = Some l -> index_of l ls 0 = Some j.
 Proof.
   induction ls as [|l0 ls IH]; intros j l Hnd Hj; [destruct j; discriminate Hj|].
@@ -156,8 +182,9 @@ Proof.
 Qed.
 
 
-(** The sweep over a fixed list of blocks bs with unique labels, given
-    the single definitions once and the proofs' pointers ptrs. *)
+(** To prove that the whole-function pass computes the right table, we fix
+    a block list bs with unique labels, together with the function's
+    single-definition map once and its proof-pointer map ptrs. *)
 Section Sweep.
 
 Variables (once : list (name * def)) (ptrs : list (name * value)) (bs : list block).
@@ -165,13 +192,15 @@ Hypothesis Hnd : no_dups (map b_label bs) = true.
 
 Let ord := map b_label bs.
 
-(** The state after the sweep has walked the blocks S, from the last. *)
+(** Walking a suffix of blocks S from last to first with [sweep] returns
+    the accumulated entry-fact table and accepted-proof list. *)
 Definition sweep (S : list block) : list (name * facts) * list name :=
   fold_left (ahead_block ord once ptrs) (rev S) ([], []).
 
-(** One block of the sweep (`ahead_block/6`), unfolded: it puts the
-    block's entry facts in the table, with its [[phi|phis']] names ended,
-    and adds what its walk accepts to the list of proofs. *)
+(** One block step of the pass updates the entry table and records newly
+    accepted checks. Unfolding [ahead_block] in [ahead_block_eq] shows that
+    it stores the block's entry facts with its [[phi|phis']] names ended and
+    appends any proofs accepted during its instruction walk. *)
 Lemma ahead_block_eq : forall ins js b,
   ahead_block ord once ptrs (ins, js) b =
   (put (b_label b) (phis_end_needs (b_phis b) (fold_right (ahead_step once ptrs) (exit_in ord ins b) (b_insts b))) ins,
@@ -184,9 +213,9 @@ Proof.
   unfold step_back. rewrite <- fold_left_rev_right, rev_involutive. reflexivity.
 Qed.
 
-(** A table entry for a label put earlier in the block order does not
-    change the facts at a later block's jump: its edges read only the
-    labels after it. *)
+(** Inserting an entry for a label at or before block b in the block order
+    does not change [exit_in] for b, because forward edges only read
+    labels after b. *)
 Lemma exit_put : forall lb jb e ins b p,
   index_of lb ord 0 = Some jb -> index_of (b_label b) ord 0 = Some p -> (jb <= p)%nat ->
   exit_in ord (put lb e ins) b = exit_in ord ins b.
@@ -199,11 +228,12 @@ Proof.
   - destruct (lookup l (put lb e ins)), (lookup l ins); reflexivity.
 Qed.
 
-(** After the sweep has walked the blocks from the j-th to the last,
-    each of them has its entry facts in the table, and each accepted
-    proof was accepted in one of them as [block_accepts] says, both read
-    from the table as it stands. The induction behind [ahead_entry] and
-    [ahead_accepted]. *)
+(** Because forward edges only read blocks later in the function, the pass
+    can settle each block's entry facts in a single reverse sweep without
+    revisiting earlier blocks. Lemma [ahead_fold_suffix] proves by
+    induction on the suffix from index j to the end that every visited
+    block has its exact entry facts in the table and every accepted proof
+    satisfies [block_accepts] against that table. *)
 Lemma ahead_fold_suffix : forall j,
   (forall b, In b (skipn j bs) ->
      lookup (b_label b) (fst (sweep (skipn j bs))) =
@@ -247,11 +277,10 @@ Qed.
 
 End Sweep.
 
-(** In a function f whose block labels are unique, each block b's entry
-    facts in the final table are what its instructions make of its exit
-    facts ([facts_from] of [block_exit]), with the names its
-    [[phi|phis]] define ended. So the table the pass leaves is a fixed
-    point that can be read at any point. *)
+(** Each block's entry in the final table matches the needs computed by
+    walking its instructions backward from its exit and ending the names
+    defined by its [[phi|phis]]. Theorem [ahead_entry] establishes this
+    fixed-point property for any function with unique block labels. *)
 Theorem ahead_entry : forall f b,
   no_dups (map b_label (fn_blocks f)) = true -> In b (fn_blocks f) ->
   lookup (b_label b) (ahead_entries f) =
@@ -262,12 +291,12 @@ Proof.
   exact (He b Hin).
 Qed.
 
-(** In a function f whose block labels are unique, a proof q that
-    `ahead_justified/3` accepts is the instruction at some index k of a
-    block b, not the last, accepted ([ahead_accepts], a single-definition
-    `check_ahead` whose early bytes a [[need]] covers) with the facts
-    before the instructions after its access, read from the final
-    table. Doomed.v starts its doomed frame from this. *)
+(** Whenever the compiler accepts a scheduled check, the program has a
+    guaranteed memory access later in the same block whose downstream needs
+    cover the early check range. Theorem [ahead_accepted] turns the pass's
+    output [ahead_justified] into that guarantee for any function with
+    unique block labels, giving Doomed.v the starting point for its
+    [[doomed frame]] invariant. *)
 Theorem ahead_accepted : forall f q,
   no_dups (map b_label (fn_blocks f)) = true -> In q (ahead_justified f (single_definitions f)) ->
   exists b k i, In b (fn_blocks f) /\ nth_error (b_insts b) k = Some i /\ (S k < length (b_insts b))%nat /\
