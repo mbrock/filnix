@@ -95,19 +95,38 @@ Fixpoint all_mapped (n : nat) (p : Z -> bool) (a : Z) : bool :=
     bits. *)
 Lemma size_bytes_bits (z : size) : 8 * Z.of_nat (size_bytes z) = size_bits z.
 Proof.
-Admitted.
+  destruct z; reflexivity.
+Qed.
+
+(** A read with one more byte has 256 times as many possible values.
+    This factor gives the weight of the remaining bytes after the
+    lowest byte is removed. *)
+Lemma byte_power_succ (n : nat) :
+  2 ^ (8 * Z.of_nat (S n)) = 256 * 2 ^ (8 * Z.of_nat n).
+Proof.
+  rewrite Nat2Z.inj_succ.
+  replace (8 * Z.succ (Z.of_nat n)) with (8 + 8 * Z.of_nat n) by lia.
+  rewrite Z.pow_add_r by lia. reflexivity.
+Qed.
 
 (** A read of n bytes returns an unsigned integer of n bytes. *)
 Lemma read_bytes_range (n : nat) (b : byte_map) (a : Z) :
   0 <= read_bytes n b a < 2 ^ (8 * Z.of_nat n).
 Proof.
-Admitted.
+  revert a. induction n as [|n IH]; intros a.
+  - cbn. lia.
+  - cbn [read_bytes]. rewrite byte_power_succ.
+    pose proof (Z.mod_pos_bound (b a) 256 ltac:(lia)).
+    specialize (IH (a + 1)). lia.
+Qed.
 
 (** A read at a size returns a valid pattern of that size. *)
 Lemma read_at_range (z : size) (b : byte_map) (a : Z) :
   0 <= read_at z b a < size_modulus z.
 Proof.
-Admitted.
+  unfold read_at, size_modulus. rewrite <- size_bytes_bits.
+  apply read_bytes_range.
+Qed.
 
 (** Two byte maps that agree on the n addresses from a upward give the
     same read there. *)
@@ -115,7 +134,14 @@ Lemma read_bytes_agree (n : nat) (b b' : byte_map) (a : Z) :
   (forall i, 0 <= i < Z.of_nat n -> b (a + i) = b' (a + i)) ->
   read_bytes n b a = read_bytes n b' a.
 Proof.
-Admitted.
+  revert a. induction n as [|n IH]; intros a H; cbn [read_bytes].
+  - reflexivity.
+  - pose proof (H 0 ltac:(rewrite Nat2Z.inj_succ; lia)) as H0.
+    rewrite Z.add_0_r in H0. rewrite H0.
+    rewrite IH; [reflexivity|]. intros i Hi.
+    replace (a + 1 + i) with (a + (i + 1)) by lia.
+    apply H. rewrite Nat2Z.inj_succ. lia.
+Qed.
 
 (** Two byte maps that agree on the bytes of an access give the same
     read at its size. *)
@@ -123,14 +149,34 @@ Lemma read_at_agree (z : size) (b b' : byte_map) (a : Z) :
   (forall i, 0 <= i < Z.of_nat (size_bytes z) -> b (a + i) = b' (a + i)) ->
   read_at z b a = read_at z b' a.
 Proof.
-Admitted.
+  apply read_bytes_agree.
+Qed.
+
+(** Splitting a read after its first n bytes separates its low part
+    from the remaining bytes. This lets the prefix proof discard the
+    high part by reduction modulo the weight of the split. *)
+Lemma read_bytes_split (n k : nat) (b : byte_map) (a : Z) :
+  read_bytes (n + k) b a = read_bytes n b a
+    + 2 ^ (8 * Z.of_nat n) * read_bytes k b (a + Z.of_nat n).
+Proof.
+  revert a. induction n as [|n IH]; intros a.
+  - change (read_bytes k b a = 0 + 1 * read_bytes k b (a + 0)).
+    rewrite Z.add_0_r. ring.
+  - cbn [Nat.add read_bytes]. rewrite IH, byte_power_succ, Nat2Z.inj_succ.
+    replace (a + 1 + Z.of_nat n) with (a + Z.succ (Z.of_nat n)) by lia.
+    ring.
+Qed.
 
 (** The first n bytes of a longer read are its low part. *)
 Lemma read_bytes_prefix (n n' : nat) (b : byte_map) (a : Z) :
   (n <= n')%nat ->
   read_bytes n b a = read_bytes n' b a mod 2 ^ (8 * Z.of_nat n).
 Proof.
-Admitted.
+  intros H. replace n' with (n + (n' - n))%nat by lia.
+  rewrite read_bytes_split, Z.mul_comm, Z.mod_add by
+    (pose proof (Z.pow_pos_nonneg 2 (8 * Z.of_nat n) ltac:(lia) ltac:(lia)); lia).
+  symmetry. apply Z.mod_small, read_bytes_range.
+Qed.
 
 (** A read at a narrow size returns the low part of a read at a wider
     size from the same address. *)
@@ -138,7 +184,10 @@ Lemma read_at_narrower (z z' : size) (b : byte_map) (a : Z) :
   size_bits z <= size_bits z' ->
   read_at z b a = wrap z (read_at z' b a).
 Proof.
-Admitted.
+  intros H. unfold read_at, wrap, size_modulus.
+  rewrite <- size_bytes_bits. apply read_bytes_prefix.
+  destruct z, z'; cbn in *; lia.
+Qed.
 
 (** ## Facts about writes
 
@@ -151,28 +200,60 @@ Admitted.
 Lemma write_bytes_outside (n : Z) (b : byte_map) (a v a' : Z) :
   a' < a \/ a + n <= a' -> write_bytes n b a v a' = b a'.
 Proof.
-Admitted.
+  intros H. unfold write_bytes.
+  destruct (a <=? a') eqn:L; destruct (a' <? a + n) eqn:U;
+    cbn; try reflexivity.
+  apply Z.leb_le in L. apply Z.ltb_lt in U. lia.
+Qed.
 
 (** A write stores the byte of v that has the index i at the address
     a + i. *)
 Lemma write_bytes_inside (n : Z) (b : byte_map) (a v i : Z) :
   0 <= i < n -> write_bytes n b a v (a + i) = byte_of v i.
 Proof.
-Admitted.
+  intros H. unfold write_bytes.
+  rewrite (proj2 (Z.leb_le a (a + i)) ltac:(lia)),
+    (proj2 (Z.ltb_lt (a + i) (a + n)) ltac:(lia)). cbn [andb].
+  replace (a + i - a) with i by lia. reflexivity.
+Qed.
+
+(** Reading the bytes extracted from an integer reconstructs its low
+    bytes. The write proof uses this fact after identifying each stored
+    byte with the corresponding byte of the integer. *)
+Lemma read_bytes_byte_of (n : nat) (v a : Z) :
+  read_bytes n (fun p => byte_of v (p - a)) a =
+  v mod 2 ^ (8 * Z.of_nat n).
+Proof.
+  induction n as [|n IH].
+  - cbn. rewrite Z.mod_1_r. reflexivity.
+  - replace (S n) with (n + 1)%nat by lia.
+    rewrite read_bytes_split, IH. cbn [read_bytes].
+    replace (a + Z.of_nat n - a) with (Z.of_nat n) by lia.
+    unfold byte_of. rewrite Z.mod_mod by lia. rewrite Z.mul_0_r, Z.add_0_r.
+    replace (n + 1)%nat with (S n) by lia. rewrite byte_power_succ.
+    rewrite (Z.mul_comm 256 (2 ^ (8 * Z.of_nat n))), Z.rem_mul_r by
+      (lia || (pose proof (Z.pow_pos_nonneg 2 (8 * Z.of_nat n) ltac:(lia) ltac:(lia)); lia)).
+    reflexivity.
+Qed.
 
 (** A read of the n bytes that a write of n bytes stored returns the
     low n bytes of the written integer. *)
 Lemma read_write_bytes_same (n : nat) (b : byte_map) (a v : Z) :
   read_bytes n (write_bytes (Z.of_nat n) b a v) a = v mod 2 ^ (8 * Z.of_nat n).
 Proof.
-Admitted.
+  rewrite <- (read_bytes_byte_of n v a). apply read_bytes_agree.
+  intros i Hi. rewrite write_bytes_inside by exact Hi.
+  replace (a + i - a) with i by lia. reflexivity.
+Qed.
 
 (** A read after a write of the same size at the same address returns
     the pattern of the written integer at that size. *)
 Lemma read_write_at_same (z : size) (b : byte_map) (a v : Z) :
   read_at z (write_at z b a v) a = wrap z v.
 Proof.
-Admitted.
+  unfold read_at, write_at. rewrite read_write_bytes_same.
+  unfold wrap, size_modulus. rewrite size_bytes_bits. reflexivity.
+Qed.
 
 (** A read whose bytes lie entirely below or entirely above the bytes
     of a write returns what it returned before the write. The two
@@ -181,14 +262,31 @@ Lemma read_write_at_apart (z z' : size) (b : byte_map) (a a' v : Z) :
   a' + Z.of_nat (size_bytes z') <= a \/ a + Z.of_nat (size_bytes z) <= a' ->
   read_at z' (write_at z b a v) a' = read_at z' b a'.
 Proof.
-Admitted.
+  intros H. apply read_at_agree. intros i Hi.
+  apply write_bytes_outside. lia.
+Qed.
 
 (** A write of an integer and a write of its pattern at the same size
     store the same bytes. *)
 Lemma write_at_wrap (z : size) (b : byte_map) (a v a' : Z) :
   write_at z b a (wrap z v) a' = write_at z b a v a'.
 Proof.
-Admitted.
+  unfold write_at, write_bytes. destruct (_ && _) eqn:E; [|reflexivity].
+  apply andb_true_iff in E. destruct E as [L U].
+  apply Z.leb_le in L. apply Z.ltb_lt in U.
+  unfold byte_of, wrap, size_modulus.
+  apply Z.bits_inj'. intros k Hk.
+  change 256 with (2 ^ 8).
+  rewrite !Z.testbit_mod_pow2 by lia.
+  rewrite <- !Z.shiftr_div_pow2 by lia.
+  rewrite !Z.shiftr_spec by lia.
+  rewrite Z.testbit_mod_pow2 by (destruct z; cbn; lia).
+  destruct (k <? 8) eqn:K; [|reflexivity].
+  apply Z.ltb_lt in K.
+  rewrite (proj2 (Z.ltb_lt (k + 8 * (a' - a)) (size_bits z))
+    ltac:(rewrite <- size_bytes_bits; lia)).
+  reflexivity.
+Qed.
 
 (** ## Facts about mapped ranges
 
@@ -200,13 +298,26 @@ Admitted.
 Lemma all_mapped_spec (n : nat) (p : Z -> bool) (a : Z) :
   all_mapped n p a = true <-> (forall i, 0 <= i < Z.of_nat n -> p (a + i) = true).
 Proof.
-Admitted.
+  revert a. induction n as [|n IH]; intros a.
+  - cbn. split; [intros _ i Hi; lia|reflexivity].
+  - cbn [all_mapped]. rewrite andb_true_iff, IH. split.
+    + intros [H T] i Hi. destruct (Z.eq_dec i 0) as [->|N].
+      * now rewrite Z.add_0_r.
+      * replace (a + i) with (a + 1 + (i - 1)) by lia.
+        apply T. rewrite Nat2Z.inj_succ in Hi. lia.
+    + intros H. split.
+      * replace a with (a + 0) by lia. apply H. rewrite Nat2Z.inj_succ. lia.
+      * intros i Hi. replace (a + 1 + i) with (a + (i + 1)) by lia.
+        apply H. rewrite Nat2Z.inj_succ. lia.
+Qed.
 
 (** A range that is mapped contains only mapped prefixes. *)
 Lemma all_mapped_prefix (n n' : nat) (p : Z -> bool) (a : Z) :
   (n <= n')%nat -> all_mapped n' p a = true -> all_mapped n p a = true.
 Proof.
-Admitted.
+  intros H M. apply all_mapped_spec.
+  intros i Hi. apply (proj1 (all_mapped_spec n' p a) M). lia.
+Qed.
 
 (** ## Agreement with the IR's memory
 
@@ -223,7 +334,19 @@ Lemma read_at_load_bytes (z : size) (m : mem) (a : Z) :
   (forall i, 0 <= i < Z.of_nat (size_bytes z) -> 0 <= m_bytes m (a + i) < 256) ->
   read_at z (m_bytes m) a = load_bytes m a (Z.of_nat (size_bytes z)).
 Proof.
-Admitted.
+  intros H. unfold read_at, load_bytes. rewrite Nat2Z.id.
+  destruct z; cbn [size_bytes read_bytes].
+  all: cbn [Z.to_nat Pos.to_nat Nat.iter] in *.
+  all: repeat match goal with
+    | |- context [m_bytes ?mm ?p mod 256] =>
+      rewrite (Z.mod_small (m_bytes mm p)) by
+        (replace p with (a + (p - a)) by lia; apply H; cbn; lia)
+    end.
+  all: repeat rewrite <- Z.add_assoc.
+  all: cbn [Z.of_nat Pos.of_succ_nat Z.add Pos.add PosDef.Pos.succ].
+  all: rewrite ?Z.add_0_r.
+  all: ring.
+Qed.
 
 (** A machine write to the IR's bytes stores what the IR's
     `store_bytes` stores, at every address. *)
@@ -231,7 +354,8 @@ Lemma write_at_store_bytes (z : size) (m : mem) (a v a' : Z) :
   write_at z (m_bytes m) a v a'
   = m_bytes (store_bytes m a (Z.of_nat (size_bytes z)) v) a'.
 Proof.
-Admitted.
+  reflexivity.
+Qed.
 
 (** ## Tests of the byte order
 
