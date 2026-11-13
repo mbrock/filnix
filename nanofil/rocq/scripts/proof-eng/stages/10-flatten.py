@@ -9,6 +9,7 @@ aliases (`A.B.C.name`) becomes the file module that defines the name (`FileOfC.n
 and the file gets the `From Glibc Require` line that the path needs. Fix.v fixes the
 one runtime and logic instance."""
 import argparse
+import json
 import re, sys, os, glob
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('tree')
@@ -16,6 +17,11 @@ parser.add_argument('--sealed', action='store_true',
                     default=os.environ.get('PE_SEALED') == '1')
 parser.add_argument('--runtime', choices=('interp', 'abstract'),
                     default=os.environ.get('PE_RUNTIME', 'interp'))
+parser.add_argument('--name-report', help='write the duplicate-name and unqualified-use audit as JSON')
+parser.add_argument('--notation-report', help='write imported notation-string collisions as JSON')
+parser.add_argument('--comment-report', help='write the removed functor comments as JSON')
+parser.add_argument('--comment-table', default=os.path.join(os.path.dirname(__file__), '..', 'flatten-comments.json'),
+                    help='exact-match replacements for substantive functor comments')
 args = parser.parse_args()
 src = dst = args.tree
 files = sorted(glob.glob('**/*.v', root_dir=src, recursive=True))
@@ -23,18 +29,23 @@ mod = {f: os.path.basename(f)[:-2] for f in files}
 if len(set(mod.values())) != len(files):
     raise ValueError('two proof files share a base name')
 text = {f: open(os.path.join(src, f)).read() for f in files}
+with open(args.comment_table) as table:
+    comment_table = {row['file']: row for row in json.load(table)}
+for f, row in comment_table.items():
+    if text.get(f, '').count(row['original']) != 1:
+        raise ValueError(f'{f}: expected exactly one original comment from {args.comment_table}')
 HDR = re.compile(r'^[ \t]*Module ([A-Za-z0-9_]+) \(R : Runtime\)(?: \(LG0 : LogicSig R\))?\.[ \t]*\n', re.M)
 functor_file = {}
 for f in files:
     for m in HDR.finditer(text[f]): functor_file[m.group(1)] = f
-ALIAS = re.compile(r'^[ \t]*Module ([A-Za-z0-9_]+) := ([A-Za-z0-9_]+)(?: R LG0| InterpRuntime HLG| R LG| InterpRuntime)?\.[ \t]*\n', re.M)
+ALIAS = re.compile(r'^[ \t]*Module ([A-Za-z0-9_]+) := ([A-Za-z0-9_]+)(?: R LG0| InterpRuntime [A-Za-z0-9_]+| R LG| InterpRuntime)?\.[ \t]*\n', re.M)
 PATHALIAS = re.compile(r'^[ \t]*Module ([A-Za-z0-9_]+) := ([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)\.[ \t]*\n', re.M)
 ns = {f: {} for f in files}          # file -> alias name -> target file
 for f in files:
     for m in ALIAS.finditer(text[f]):
         if m.group(2) in functor_file: ns[f][m.group(1)] = functor_file[m.group(2)]
 glob_alias = {}
-TOPALIAS = re.compile(r'^Module ([A-Za-z0-9_]+) := ([A-Za-z0-9_]+) InterpRuntime(?: HLG)?\.', re.M)
+TOPALIAS = re.compile(r'^Module ([A-Za-z0-9_]+) := ([A-Za-z0-9_]+) InterpRuntime(?: [A-Za-z0-9_]+)?\.', re.M)
 for f in files:
     for m in TOPALIAS.finditer(text[f]):
         if m.group(2) in functor_file: glob_alias.setdefault(m.group(1), set()).add(functor_file[m.group(2)])
@@ -78,6 +89,12 @@ changed = True
 while changed:
     changed = False
     for f in files:
+        for m in PATHALIAS.finditer(text[f]):
+            if m[1] in ns[f]: continue
+            new, tgt = resolve(f, m[2].split('.'))
+            if tgt is not None and len(new) == 1:
+                ns[f][m[1]] = tgt
+                changed = True
         for m in IMP.finditer(text[f]):
             for w in m.group(3).split():
                 new, tgt = resolve(f, w.split('.'))
@@ -91,24 +108,13 @@ for s in text.values():
     specialized.update(re.findall(r'^Module (?:Type )?(\w+) \(R : Runtime\)', s, re.M))
 # Importing a lifted module also opens the file's former outer declarations.
 # Order imports to preserve every colliding name, without rewriting binders.
-DECL = re.compile(r'^(?:Local |Global |Polymorphic )?(?:Ltac|Definition|Lemma|Theorem|Corollary|Proposition|Fact|Remark)\s+(\w+)', re.M)
-members, outer, owners = {}, {}, {}
-for f in files:
-    ranges = []
-    for h in HDR.finditer(text[f]):
-        end = re.search(r'^End ' + h[1] + r'\.', text[f][h.end():], re.M)
-        if end is None: raise ValueError(f'{f}: unclosed module {h[1]}')
-        ranges.append((h.end(), h.end() + end.start()))
-    members[f], outer[f] = set(), set()
-    for d in DECL.finditer(text[f]):
-        (members[f] if any(a <= d.start() < b for a, b in ranges) else outer[f]).add(d[1])
-        owners.setdefault(d[1], set()).add(f)
-duplicates = {n for n, fs in owners.items() if len(fs) > 1}
-def code_only(s):
+DECL = re.compile(r'^[ \t]*(?:#\[[^\n]*?\]\s*)*(?:(?:Local|Global|Polymorphic|Monomorphic|Program)\s+)*(?:Ltac|Definition|Lemma|Theorem|Corollary|Proposition|Fact|Remark|Fixpoint|CoFixpoint|Inductive|CoInductive|Record|Class|Instance|Example|Notation)\s+([A-Za-z_][A-Za-z0-9_\']*)', re.M)
+def code_only(s, comments=None, strings=True):
     """Mask nested comments and strings without moving source positions."""
     out, i, depth = list(s), 0, 0
     while i < len(s):
         if s.startswith('(*', i):
+            if depth == 0: comment_start = i
             depth += 1
             out[i:i+2] = '  '
             i += 2
@@ -116,27 +122,51 @@ def code_only(s):
             depth -= 1
             out[i:i+2] = '  '
             i += 2
+            if depth == 0 and comments is not None and s.startswith('(**', comment_start):
+                comments.append((comment_start, i))
         elif depth:
             if s[i] != '\n': out[i] = ' '
             i += 1
         elif s[i] == '"':
-            out[i] = ' '
+            if strings: out[i] = ' '
             i += 1
             while i < len(s):
                 c = s[i]
-                out[i] = '\n' if c == '\n' else ' '
+                if strings: out[i] = '\n' if c == '\n' else ' '
                 i += 1
                 if c == '"':
                     if i < len(s) and s[i] == '"':
-                        out[i] = ' '
+                        if strings: out[i] = ' '
                         i += 1
                     else: break
         else: i += 1
     return ''.join(out)
+codes = {f: code_only(s) for f, s in text.items()}
+members, outer, owners = {}, {}, {}
+notation_owners = {}
+for f in files:
+    ranges = []
+    for h in HDR.finditer(codes[f]):
+        end = re.search(r'^End ' + h[1] + r'\.', codes[f][h.end():], re.M)
+        if end is None: raise ValueError(f'{f}: unclosed module {h[1]}')
+        ranges.append((h.end(), h.end() + end.start()))
+    members[f], outer[f] = set(), set()
+    for d in DECL.finditer(codes[f]):
+        if re.search(r'\bLocal\s', d[0]) or d[1] == '_': continue
+        (members[f] if any(a <= d.start() < b for a, b in ranges) else outer[f]).add(d[1])
+        owners.setdefault(d[1], set()).add(f)
+    for n in re.finditer(r'^[ \t]*(?:#\[[^\n]*?\]\s*)*(?:(?:Local|Global)\s+)?(?:Tactic Notation|Notation)\s+("(?:[^"]|"")*")',
+                         code_only(text[f], strings=False), re.M):
+        if re.search(r'\bLocal\s', n[0]): continue
+        notation_owners.setdefault(n[1], set()).add(f)
+duplicates = {n for n, fs in owners.items() if len(fs) > 1}
+notation_collisions = []
+removed_comments = []
 for f in files:
     s = text[f]; used = set()
     visible = {}
-    code = code_only(s)
+    comments = []
+    code = code_only(s, comments)
     referenced = {n for n in duplicates if re.search(r"(?<![\w.'])" + n + r"(?![\w'])", code)}
     for req in re.finditer(r'From Glibc Require Import\s+([^.]*)\.', code):
         for w in req[1].split():
@@ -157,6 +187,18 @@ for f in files:
     def alias_line(m):
         if m.group(1) in ns[f] and m.group(1) not in retained_aliases: return ''
         return m.group(0)
+    remove = []
+    for h in HDR.finditer(code):
+        before = [(a, b) for a, b in comments if b <= h.start()]
+        if before:
+            a, b = before[-1]
+            if not s[b:h.start()].strip():
+                row = comment_table.get(f)
+                replacement = row['replacement'] if row and s[a:b] == row['original'] else ''
+                remove.append((a, b, replacement))
+                if not replacement:
+                    removed_comments.append({'file': f, 'module': h[1], 'comment': s[a:b]})
+    for a, b, replacement in reversed(remove): s = s[:a] + replacement + s[b:]
     hdr_names = [m.group(1) for m in HDR.finditer(s)]
     s = HDR.sub('From Glibc Require Import Fix.\n', s, count=1)
     for h in hdr_names: s = re.sub(r'^[ \t]*End ' + h + r'\.[ \t]*\n', '', s, flags=re.M)
@@ -227,19 +269,50 @@ for f in files:
         s = 'From Glibc Require Import Fix.\n' + PARAM.sub('', s)
     for name in sorted(specialized - functor_file.keys(), key=len, reverse=True):
         s = re.sub(r'\b' + name + r' R LG0\b', name, s)
-    s = re.sub(r'Module (\w+) := Logic R\.',
-               lambda m: '' if m[1] == 'LG0' else 'Module ' + m[1] + ' := LG0.', s)
-    s = s.replace('Module HLG := Logic InterpRuntime.', 'From Glibc Require Import Fix.\nModule HLG := LG0.')
+    logic_alias = re.compile(r'^Module (\w+) := Logic (?:R|InterpRuntime)\.', re.M)
+    if logic_alias.search(s):
+        prefix = '' if 'From Glibc Require Import Fix.' in s else 'From Glibc Require Import Fix.\n'
+        s = logic_alias.sub(lambda m: prefix + ('' if m[1] == 'LG0' else 'Module ' + m[1] + ' := LG0.'), s)
+    if re.search(r'^Module (?:Type )?\w+\s+\(R\s*:', code_only(s), re.M):
+        raise ValueError(f'{f}: runtime parameter was not specialized')
+    if 'InterpRuntime' in code_only(s) and 'InterpRuntime' not in code:
+        raise ValueError(f'{f}: conversion introduced an interpreter dependency')
     used.discard(mod[f])
+    generated = ''
     if used:
-        req = 'From Glibc Require ' + ' '.join(sorted(used)) + '.\n'
-        k = s.find('From Glibc Require Import Fix.\n')
-        s = s[:k] + req + s[k:] if k >= 0 else req + s
+        generated = 'From Glibc Require ' + ' '.join(sorted(used)) + '.\n'
+    fix_import = re.compile(r'^From Glibc Require Import Fix\.[ \t]*\n', re.M)
+    if fix_import.search(s):
+        s = fix_import.sub('', s)
+        generated += 'From Glibc Require Import Fix.\n'
+    if generated:
+        requires = list(re.finditer(
+            r'^[ \t]*(?:From [\w.]+ Require|Require)(?: Import| Export)?\s+[^.]*\.[ \t]*\n',
+            code_only(s), re.M))
+        if not requires: raise ValueError(f'{f}: no initial import block')
+        end = requires[0].end()
+        for req in requires[1:]:
+            if code_only(s[end:req.start()]).strip(): break
+            end = req.end()
+        s = s[:end] + generated + s[end:]
+    opened = set()
+    for req in re.finditer(r'From Glibc Require Import\s+([^.]*)\.', code_only(s)):
+        opened.update(file_by_mod[w] for w in req[1].split() if w in file_by_mod)
+    for imp_line in IMP.finditer(code_only(s)):
+        opened.update(file_by_mod[w] for w in imp_line[3].split() if w in file_by_mod)
+    for notation, defining_files in notation_owners.items():
+        collision = sorted(opened & defining_files)
+        if len(collision) > 1:
+            notation_collisions.append({'file': f, 'notation': notation, 'defined_in': collision})
+            print(f'@@proof-eng {f}: imported notation {notation} from {collision}', file=sys.stderr)
     os.makedirs(os.path.dirname(os.path.join(dst, f)), exist_ok=True)
     o = os.path.join(dst, f)
     if not os.path.exists(o) or open(o).read() != s: open(o, 'w').write(s)
 open(os.path.join(dst, 'Fix.v'), 'w').write(
-    "(** Experiment: the one runtime and logic instance every glibc file uses. *)\n"
+    "(** This file names the one runtime and logic instance used by the glibc proofs.\n"
+    "    Each proof imports these modules instead of creating its own logic instance.\n\n"
+    "    Instance search must know the world interpretation before choosing its safepoint rules.\n"
+    "    The [Hint Mode] declaration prevents it from choosing [no_world] for an unknown interpretation. *)\n"
     "From Nanofil Require Import Runtime Logic.\n"
     + ("Declare Module R : Runtime.\n" if args.runtime == 'abstract' else "Module R := InterpRuntime.\n")
     + "Module LG0" + (" : LogicSig R" if args.sealed else "") + " := Logic R.\n"
@@ -276,3 +349,23 @@ if os.path.exists(build):
   grep -wE 'Admitted|Axiom|Axioms|Parameter|Conjecture'"""
     if old not in s: raise ValueError('unrecognized build.sh assumption audit')
     open(build, 'w').write(s.replace(old, new))
+if args.name_report:
+    report = {}
+    uses = {f: DECL.sub('', codes[f]) for f in files}
+    for name in sorted(duplicates):
+        users = [f for f in files if re.search(
+            r"(?<![\w.'])" + name + r"(?![\w'])", uses[f])]
+        if users:
+            report[name] = {'defined_in': sorted(owners[name]), 'used_unqualified_in': users}
+    with open(args.name_report, 'w') as out:
+        json.dump(report, out, indent=2)
+        out.write('\n')
+if args.notation_report:
+    with open(args.notation_report, 'w') as out:
+        json.dump(notation_collisions, out, indent=2)
+        out.write('\n')
+print(f'@@proof-eng removed {len(removed_comments)} functor-header comments', file=sys.stderr)
+if args.comment_report:
+    with open(args.comment_report, 'w') as out:
+        json.dump(removed_comments, out, indent=2)
+        out.write('\n')
