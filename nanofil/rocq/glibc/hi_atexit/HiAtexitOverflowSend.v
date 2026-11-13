@@ -37,23 +37,54 @@ Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc
 
 (** A flush of pending bytes uses the proved write from the buffer base. *)
 Definition hi_ovf_do_write :=
-  HOC.wp_ovf_do_write w0 registry ge
+  HOC.wp_ovf_do_write w0 registry ge (fun f2 => Z.land f2 2 = 0)
     (hi_do_write_base w0 registry ge Hreg Hext Hwrite Hfw).
 
 (** A newline flush uses the proved write from the buffer base. *)
 Definition hi_ovf_L264 :=
-  HOF.wp_ovf_L264 w0 registry ge Hdwf
+  HOF.wp_ovf_L264 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0)
     (hi_do_write_base w0 registry ge Hreg Hext Hwrite Hfw).
 
 (** Storing a byte may continue into the proved newline flush. *)
-Definition hi_ovf_L198 := HOP.wp_ovf_L198 w0 registry ge hi_ovf_L264.
+Definition hi_ovf_L198 := HOP.wp_ovf_L198 w0 registry ge (fun f2 => Z.land f2 2 = 0) hi_ovf_L264.
 
 (** A full buffer is flushed before the byte store. *)
-Definition hi_ovf_L196 := HOU.wp_ovf_L196 w0 registry ge Hdwf hi_ovf_do_write hi_ovf_L198.
+Definition hi_ovf_L196 := HOU.wp_ovf_L196 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0) hi_ovf_do_write hi_ovf_L198.
 
 (** Sending a byte handles empty, full, and partly filled buffers. *)
 Definition hi_ovf_L18 :=
-  HOS.wp_ovf_L18 w0 registry ge Hdwf
+  HOS.wp_ovf_L18 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0)
     (HDW.wp_glibc__IO_new_do_write_zero w0 registry ge) hi_ovf_do_write hi_ovf_L198 hi_ovf_L196.
+
+(* Both write branches retain flags2; the set-bit branch resolves the captured wrapper. *)
+Local Definition nocancel_ready (f2 : Z) : Prop :=
+  Z.land f2 2 = 0 \/
+  Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel).
+
+(** A pending-byte flush also supports a stream that disables cancellation.
+    The write returns the exact flags2 value and retains the buffer bytes on failure. *)
+Definition hi_ovf_do_write_nocancel :=
+  HOC.wp_ovf_do_write w0 registry ge nocancel_ready
+    (hi_do_write_base_nocancel w0 registry ge Hreg Hext Hwrite Hfw).
+
+(** A newline flush uses the same captured noncanceling write wrapper. *)
+Definition hi_ovf_L264_nocancel :=
+  HOF.wp_ovf_L264 w0 registry ge Hdwf nocancel_ready
+    (hi_do_write_base_nocancel w0 registry ge Hreg Hext Hwrite Hfw).
+
+(** A byte store retains the noncanceling flush when the stream needs one. *)
+Definition hi_ovf_L198_nocancel :=
+  HOP.wp_ovf_L198 w0 registry ge nocancel_ready hi_ovf_L264_nocancel.
+
+(** A full buffer uses the noncanceling flush before storing another byte. *)
+Definition hi_ovf_L196_nocancel :=
+  HOU.wp_ovf_L196 w0 registry ge Hdwf nocancel_ready hi_ovf_do_write_nocancel hi_ovf_L198_nocancel.
+
+(** Sending a byte or flushing EOF permits cancellation to be disabled.
+    Short writes and errors remain possible, and no path acquires or releases a stream lock. *)
+Definition hi_ovf_L18_nocancel :=
+  HOS.wp_ovf_L18 w0 registry ge Hdwf nocancel_ready
+    (HDW.wp_glibc__IO_new_do_write_zero w0 registry ge)
+    hi_ovf_do_write_nocancel hi_ovf_L198_nocancel hi_ovf_L196_nocancel.
 
 End rules.

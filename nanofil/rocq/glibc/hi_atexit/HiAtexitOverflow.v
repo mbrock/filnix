@@ -49,7 +49,14 @@ Definition hi_ovf_L35 :=
 
 (** Overflow on a stream already writing uses the proved send path. *)
 Definition hi_overflow :=
-  HOV.wp_glibc__IO_new_file_overflow w0 registry ge
+  HOV.wp_glibc__IO_new_file_overflow w0 registry ge (fun f2 => Z.land f2 2 = 0)
     (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
+
+(** Overflow on an already-writing stream also supports a noncanceling backend.
+    The rule still requires the concrete buffer layout, descriptor and no-append facts;
+    ownership of a stream alone does not supply those facts. *)
+Definition hi_overflow_nocancel :=
+  HOV.wp_glibc__IO_new_file_overflow w0 registry ge _
+    (hi_ovf_L18_nocancel w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
 
 End rules.

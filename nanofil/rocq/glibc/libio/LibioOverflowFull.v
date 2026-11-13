@@ -31,6 +31,8 @@ Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : ge
 (** The genv defines `c: _IO_new_do_write`. *)
 Context (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
 
+Context (write_ready : Z -> Prop).
+
 Local Instance overflow_full_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -40,7 +42,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (Hovdw : forall fr fb freg f2 fd eb mode vb vreg bb breg sz k we xs fl tw off Φ,
   call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr bb (Obj bb)); WInt k] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 < k ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   vtables_ro ge vb vreg -∗ live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗
   ovf_state fb bb breg sz k we xs fl tw off -∗
@@ -52,7 +54,7 @@ Context (Hovdw : forall fr fb freg f2 fd eb mode vb vreg bb breg sz k we xs fl t
 Context (HL198 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= ch < 256 -> k < sz ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -67,7 +69,7 @@ Context (HL198 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl t
 (** Block `c: L196`: a full buffer flushed, then the byte ch stored. *)
 Lemma wp_ovf_L196 fb freg ch f2 fd eb mode vb vreg bb breg sz we xs fl tw off from e Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= ch < 256 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->

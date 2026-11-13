@@ -30,6 +30,8 @@ Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : ge
 (** The genv defines `c: _IO_new_do_write`. *)
 Context (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
 
+Context (write_ready : Z -> Prop).
+
 Local Instance overflow_flush_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -41,7 +43,7 @@ Context (Hdw : forall fr fb freg fl f2 fd tw off bb breg xs rp rb wp we be eb vb
   let base := mkPtr bb (Obj bb) in
   call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr base; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> bb + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
@@ -67,7 +69,7 @@ Context (Hdw : forall fr fb freg fl f2 fd tw off bb breg xs rp rb wp we be eb vb
 Lemma wp_ovf_L264 fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off from e Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= ch < 256 -> 0 < k ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
