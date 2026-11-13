@@ -226,6 +226,9 @@ term_(explicit(_, X), Env) --> el(span, explicit, ( el(span, at, "@"), name_ref(
 term_(app(P, id(_, F), [A, B]), Env) --> { notation_fold(F, 2, Op) }, !, term(bin(P, Op, A, B), Env).
 term_(app(_, F, As), Env) -->
     el(span, "c app", ['data-d'=args], ( head_(F, Env), el(span, args, items(As, Env)) )).
+%  2 ^ 48 as a power: a caret beside ∧ reads as a conjunction.
+term_(bin(_, '^', L, R), Env) --> { R = num(_, _) ; R = id(_, _) }, !,
+    el(span, "o rq-pow", [title="^"], ( term(L, Env), el(sup, "rq-exp", term(R, Env)) )).
 term_(bin(_, Op, L, R), Env) -->
     el(span, o, ['data-d'=op], ( term(L, Env), "\u00A0", op_(Op), " ", term(R, Env) )).
 term_(chain(_, [O1, O2], [A, B, C]), Env) -->
@@ -448,37 +451,47 @@ op_glyph('-n>', "→ⁿᵉ").
 %  Binders: (x y : T) as a box, {x} in braces, bare names as they are.
 %  A name, binders and result type: the result can move below a long
 %  signature instead of forcing its own continuations beyond the page.
-sig_(Class, N, [], none, _) --> !, el(span, Class, esc(N)).
-sig_(Class, N, Bs, Ty, Env) -->
+%  The keyword opens the group, so a phone can set a long type on the line
+%  under the keyword rather than in a column past the name.
+sig_(Kw, Class, N, [], none, _) --> !, kw(Kw), " ", el(span, Class, esc(N)).
+sig_(Kw, Class, N, Bs, Ty, Env) -->
     el(span, "c sig", ['data-d'=args],
-       ( el(span, Class, esc(N)), el(span, "args binders", sig_items(Bs, Ty, Env)) )).
+       ( kw(Kw), " ", el(span, Class, esc(N)), el(span, "args binders", sig_items(Bs, Ty, Env)) )).
 
-sig_items([], none, _) --> !, [].
-sig_items([], Ty, Env) --> el(span, arg, ( el(span, "op wide colon", [title=":"], ":"), " ", term(Ty, Env) )).
-sig_items([B|Bs], Ty, Env) -->
+sig_items(Bs0, Ty, Env) --> { split_gen(Bs0, Bs) }, sig_items_(Bs, Ty, Env).
+
+sig_items_([], none, _) --> !, [].
+sig_items_([], Ty, Env) --> el(span, arg, ( el(span, "op wide colon", [title=":"], ":"), " ", term(Ty, Env) )).
+sig_items_([B|Bs], Ty, Env) -->
     el(span, arg, binder_(B, Env)),
-    ( { Bs == [], Ty == none } -> [] ; " ", sig_items(Bs, Ty, Env) ).
+    ( { Bs == [], Ty == none } -> [] ; " ", sig_items_(Bs, Ty, Env) ).
 
-binders_([], _) --> [].
-binders_([B|Bs], Env) --> " ", binder_(B, Env), binders_(Bs, Env).
+binders_(Bs0, Env) --> { split_gen(Bs0, Bs) }, binders__(Bs, Env).
+
+binders__([], _) --> [].
+binders__([B|Bs], Env) --> " ", binder_(B, Env), binders__(Bs, Env).
+
+%  split_gen(+Binders, -Split): `{!invGS Σ, !gen_heapGS L V Σ} is two
+%  instance binders, inst(Open, Class), each drawn as {invGS Σ} is: the
+%  backquote and ! only steer implicit generalization, which the reader
+%  does not need to see.
+split_gen([], []).
+split_gen([b(P, gen(Open, Items), _, _)|Bs0], Bs) :- !,
+    findall(b(P, inst(Open, E), [], none), ( member(I, Items), ( I = bang(E) -> true ; E = I ) ), Is),
+    split_gen(Bs0, Bs1), append(Is, Bs1, Bs).
+split_gen([B|Bs0], [B|Bs]) :- split_gen(Bs0, Bs).
 
 binder_(b(_, pattern(P), _, _), Env) --> !, el(span, tick, "'"), term(P, Env).
-binder_(b(_, gen(Open, Items), _, _), Env) --> !,
-    { matching_close(Open, Close) },
-    el(span, "rq-gen binder", ( el(span, op, ( "`", esc(Open) )), gen_items(Items, Env), el(span, op, esc(Close)) )).
+binder_(b(P, gen(Open, Items), _, _), Env) --> !,
+    { split_gen([b(P, gen(Open, Items), [], none)], [B|Bs]) }, binder_(B, Env), binders__(Bs, Env).
+binder_(b(_, inst(Open, E), _, _), Env) --> !,
+    { Open == '(' -> C = "paren binder rq-inst" ; C = "braces binder rq-inst" },
+    el(span, C, [title="an instance of this class"], term(E, Env)).
 binder_(b(_, struct, [n(_, X)], _), _) --> !, el(span, "struct", ( "{", kw("struct"), " ", esc(X), "}" )).
 binder_(b(_, brace, Ns, Ty), Env) --> !, el(span, "braces binder", ( vars(Ns), opt_type(Ty, Env) )).
 binder_(b(_, _, Ns, none), _) --> !, vars(Ns).
 binder_(b(_, bare, Ns, Ty), Env) --> !, vars(Ns), opt_type(Ty, Env).
 binder_(b(_, paren, Ns, Ty), Env) --> el(span, "paren binder", ( vars(Ns), opt_type(Ty, Env) )).
-
-matching_close('{', '}').
-matching_close('(', ')').
-
-gen_items([I], Env) --> !, gen_item(I, Env).
-gen_items([I|Is], Env) --> gen_item(I, Env), el(span, sep, ","), " ", gen_items(Is, Env).
-gen_item(bang(E), Env) --> !, el(span, op, "!"), term(E, Env).
-gen_item(E, Env) --> term(E, Env).
 
 vars([]) --> [].
 vars([n(_, X)]) --> !, var_def(X).
@@ -719,14 +732,16 @@ item_(ind(_, _, Bodies)) --> !, seq(Bodies, ind_body).
 item_(rec(F-T, Kw, n(_, N), Bs, Sort, Ctor, Fs)) --> !,
     { anchor(N, Id), binders_env(Bs, [], Env) },
     el(div, "clause rq-rec", [id=Id],
-       ( el(div, head, ( line_link(F), kw(Kw), " ", sig_("ty def", N, Bs, Sort, Env),
+       ( el(div, head, ( line_link(F), sig_(Kw, "ty def", N, Bs, Sort, Env),
                          ( { Ctor = n(_, C) } -> "\u00A0", defeq, " ", ctor_def(C) ; [] ) )),
          el(table, "rq-fields", el(tbody, none, seq(Fs, field_row(Env)))) )),
     notes_upto(T).
+%  An Example proved by tactics is a statement, drawn as a theorem is.
+item_(def(P, 'Example', N, Bs, Ty, none)) --> { Ty \== none }, !, item_(thm(P, 'Example', N, Bs, Ty)).
 item_(def(F-T, Kw, n(_, N), Bs, Ty, Body)) --> !,
     { anchor(N, Id), binders_env(Bs, [], Env) },
     el(div, "clause rq-def", [id=Id],
-       ( el(div, head, ( line_link(F), kw(Kw), " ", sig_("f def", N, Bs, Ty, Env),
+       ( el(div, head, ( line_link(F), sig_(Kw, "f def", N, Bs, Ty, Env),
                          ( { Body == none } -> [] ; "\u00A0", defeq ) )),
          ( { Body == none } -> [] ; el(div, "rq-body", blk(Body, Env)) ) )),
     notes_upto(T).
@@ -745,13 +760,24 @@ item_(thm(F-T, Kw, Name, Bs, Ty)) --> !,
     notes_upto(T).
 item_(decl(F-T, Kw, Gs)) --> { axiom_kw(Kw) }, !,
     seq(Gs, axiom_(F, Kw)), notes_upto(T).
-item_(decl(F-T, Kw, [bs(Bs)])) --> !,
-    el(div, "clause rq-param", el(div, head, ( line_link(F), kw(Kw), binders_(Bs, []) ))), notes_upto(T).
+%  Context, Variable and Parameter: one name group is Kw x y : T; more
+%  binders are one group for the printer, which breaks only between them.
+%  The keyword is the group's head, so on a phone the binders can start
+%  on the line under it rather than in a column beside it.
 item_(decl(F-T, Kw, Gs)) --> !,
-    seq(Gs, param_(F, Kw)), notes_upto(T).
+    { Gs = [bs(Bs0)] -> split_gen(Bs0, Bs) ; maplist([g(Ns, Ty), b(none, group, Ns, Ty)]>>true, Gs, Bs) },
+    el(div, "clause rq-param",
+       el(div, head, ( line_link(F),
+                       (   { Bs = [b(_, group, Ns, Ty)] } -> kw(Kw), " ", param_names(Ns), opt_type(Ty, [])
+                       ;   el(span, "c sig rq-ctx", ['data-d'=args], ( kw(Kw), el(span, "args binders", param_binders(Bs)) ))
+                       ) ))),
+    notes_upto(T).
+%  Rocq needs the parentheses around a notation's meaning; the reader
+%  does not.
 item_(notation(F-T, Kw, S, E, Mods)) --> !,
+    { E = paren(_, E1) -> true ; E1 = E },
     el(div, "clause rq-notation",
-       el(div, head, ( line_link(F), kw(Kw), " ", notation_pattern(S, E), "\u00A0", defeq, " ", term(E, []),
+       el(div, head, ( line_link(F), kw(Kw), " ", notation_pattern(S, E), "\u00A0", defeq, " ", term(E1, []),
                        ( { Mods == [] } -> [] ; " ", el(span, "rq-mods", esc_words(Mods)) ) ))),
     notes_upto(T).
 %  Module M := F A, a functor applied, as one line.
@@ -761,10 +787,57 @@ item_(module(F-T, Kind, n(_, N), Bs, defined([M|As]))) --> !,
        el(div, head, ( line_link(F), kw(KwS), " ", el(span, "module-name", esc(N)), binders_(Bs, []), "\u00A0", defeq, " ",
                        name_ref(M, []), seq(As, module_arg) ))),
     notes_upto(T).
+%  Print Assumptions lt_spec, Extract Constant Z.of_nat => "…": the
+%  keywords, then each word of the arguments, a name linked to its
+%  definition and foreign code in the code face. A string of several
+%  lines at the end is a block under the command.
+item_(cmd(F-T, Kws, Toks)) --> !,
+    { atomic_list_concat(Kws, ' ', Kw), cmd_words(Toks, Ws0),
+      (   append(Ws, [[t(str(_), SF, ST)]], Ws0), src_text(SF-ST, S), sub_string(S, _, _, _, "\n")
+      ->  split_string(S, "\n", "", [L|Ls]), dedent(Ls, Ds), atomic_list_concat([L|Ds], '\n', Code)
+      ;   Ws = Ws0, Code = none
+      ) },
+    el(div, "clause rq-cmd",
+       ( el(div, head, ( line_link(F),
+                         (   { Ws == [] } -> kw(Kw)
+                         ;   el(span, "c rq-cmd-args", ['data-d'=args], ( kw(Kw), el(span, args, cmd_args(Ws)) ))
+                         ) )),
+         ( { Code == none } -> [] ; el(pre, "s rq-code rq-code-block", esc(Code)) ) )),
+    notes_upto(T).
 item_(endm(P, _)) --> !, raw_(P).
 item_(S) --> { arg(1, S, P) }, raw_(P).
 
 module_arg(A) --> " ", name_ref(A, []).
+
+%  cmd_words(+Toks, -Words): tokens written without a space between them
+%  (--anf-variant, "nf_id",) are one word.
+cmd_words([], []).
+cmd_words([t(K, F, T)|Ts0], [[t(K, F, T)|W]|Ws]) :- cmd_word(T, Ts0, W, Ts), cmd_words(Ts, Ws).
+
+cmd_word(T, [t(K, T, T1)|Ts0], [t(K, T, T1)|W], Ts) :- !, cmd_word(T1, Ts0, W, Ts).
+cmd_word(_, Ts, [], Ts).
+
+cmd_args([W]) --> !, el(span, arg, cmd_word_(W)).
+cmd_args([W|Ws]) --> el(span, arg, cmd_word_(W)), " ", cmd_args(Ws).
+
+%  A word that starts with - is an option, -O or --anf-variant.
+cmd_word_([t(sym(S), F, T0)|W]) --> { sub_atom(S, 0, 1, _, -) }, !,
+    { last([t(sym(S), F, T0)|W], t(_, _, T)), src_text(F-T, Text) }, el(span, "rq-flag", esc(Text)).
+cmd_word_(W) --> seq(W, cmd_tok).
+
+cmd_tok(t(id(X), _, _)) --> { memberchk(X, ['From', 'Include']) }, !, kw(X).
+cmd_tok(t(id(X), _, _)) --> !, name_ref(X, []).
+cmd_tok(t(num(_), F, T)) --> !, { src_text(F-T, N) }, el(span, n, esc(N)).
+cmd_tok(t(str(_), F, T)) --> !, { src_text(F-T, S) }, el(span, "s rq-code", esc(S)).
+cmd_tok(t(sym('=>'), _, _)) --> !, el(span, "op wide", [title="=>"], "⇒").
+cmd_tok(t(_, F, T)) --> { src_text(F-T, S) }, el(span, op, esc(S)).
+
+%  The lines after a string's first lose the indent they share, so its
+%  code sits under the opening quote.
+dedent(Ls, Ds) :-
+    findall(N, ( member(L, Ls), string_codes(L, Cs), append(Sp, [C|_], Cs), C \== 0' , maplist(==(0' ), Sp), length(Sp, N) ), Ns),
+    ( min_list(Ns, M) -> true ; M = 0 ),
+    maplist([L, D]>>( string_length(L, Len), ( Len >= M -> sub_string(L, M, _, 0, D0) ; D0 = "" ), string_concat(" ", D0, D) ), Ls, Ds).
 
 module_kw(module_type, "Module Type").
 module_kw(module, "Module").
@@ -786,7 +859,7 @@ ind_body(ib(n(F-_, N), Bs, Ty, Cs)) -->
     { anchor(N, Id), binders_env(Bs, [], Env) },
     el(div, "clause rq-ind", [id=Id],
        ( el(div, "head rq-ind-head",
-            ( line_link(F), kw("Inductive"), " ", sig_("ty def", N, Bs, Ty, Env), "\u00A0", defeq )),
+            ( line_link(F), sig_("Inductive", "ty def", N, Bs, Ty, Env), "\u00A0", defeq )),
          (   { member(ctor(_, _, _, CT), Cs), CT \== none, rule_parts(CT, _, [_|_], _) }
          ->  el(div, rules, seq(Cs, ctor_rule(Env)))
          ;   el(table, "rq-ctors", el(tbody, none, seq(Cs, ctor_row(Env))))
@@ -828,10 +901,17 @@ axiom_(F, Kw, g(Ns, Ty)) -->
        ( el(div, "rq-thm-head", ( line_link(F), kw(Kw), " ", el(span, "lem def", esc(N)) )),
          rule([], [], Ty, []) )).
 
-param_(F, Kw, g(Ns, Ty)) -->
-    { Ns = [n(_, N)|_], anchor(N, Id) },
-    el(div, "clause rq-param", [id=Id],
-       el(div, head, ( line_link(F), kw(Kw), " ", seq_defs(Ns), opt_type(Ty, []) ))).
+param_binders([B]) --> !, el(span, arg, param_binder(B)).
+param_binders([B|Bs]) --> el(span, arg, param_binder(B)), " ", param_binders(Bs).
+
+%  A name group's names are the section's (defines/3), each its anchor;
+%  the names of other binders are drawn as definitions too.
+param_binder(b(_, group, Ns, Ty)) --> !, el(span, "paren binder", ( param_names(Ns), opt_type(Ty, []) )).
+param_binder(b(_, paren, Ns, Ty)) --> !, el(span, "paren binder", ( seq_defs(Ns), opt_type(Ty, []) )).
+param_binder(b(_, brace, Ns, Ty)) --> !, el(span, "braces binder", ( seq_defs(Ns), opt_type(Ty, []) )).
+param_binder(B) --> binder_(B, []).
+
+param_names([n(_, N)|Ns]) --> { anchor(N, Id) }, el(span, "f def", [id=Id], esc(N)), ( { Ns == [] } -> [] ; " ", param_names(Ns) ).
 
 seq_defs([n(_, N)]) --> !, el(span, "f def", esc(N)).
 seq_defs([n(_, N)|Ns]) --> el(span, "f def", esc(N)), " ", seq_defs(Ns).

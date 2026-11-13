@@ -117,6 +117,9 @@ document.addEventListener("mouseover", (event) => {
       key,
       skip: cs.display === "none" || cs.position === "absolute",
       font: fontOf(cs),
+      // Keywords are set in capitals and spaced: measure them as drawn.
+      upper: cs.textTransform === "uppercase",
+      tracking: px(cs.letterSpacing),
       left: px(cs.marginLeft) + px(cs.borderLeftWidth) + px(cs.paddingLeft) + pseudo(el, "::before"),
       right: px(cs.marginRight) + px(cs.borderRightWidth) + px(cs.paddingRight) + pseudo(el, "::after"),
     };
@@ -134,7 +137,10 @@ document.addEventListener("mouseover", (event) => {
   function doc(n, s, st) {
     if (n.nodeType === 3) {
       if (seps.has(n)) return sep(n, s, st); // between parts of no group
-      return n.data ? T(textWidth(s.font, n.data.replace(/\s+/g, " ")), true) : null;
+      if (!n.data) return null;
+      let text = n.data.replace(/\s+/g, " ");
+      if (s.upper) text = text.toUpperCase();
+      return T(textWidth(s.font, text) + (s.tracking ? s.tracking * [...text].length : 0), true);
     }
     if (n.nodeType !== 1 || n.nodeName === "BR" || n.classList.contains("zin")) return null;
     const e = style(n, s.key);

@@ -38,8 +38,9 @@
     Names a list of `n(P, Name)`, Type `none` when there is none.
 
     Sentences are the vernacular, each `dir/2`, `ind/3`, `rec/7`, `def/6`,
-    `thm/5`, `decl/3`, `notation/5`, `module/5`, `endm/2` or `raw/2` (one
-    the grammar does not read), and the file is a tree of them (rocq_read_file/3):
+    `thm/5`, `decl/3`, `notation/5`, `module/5`, `endm/2`, `cmd/3` (a
+    command such as Print Assumptions or Extract Constant: its keywords
+    and the tokens after them) or `raw/2` (one the grammar does not read), and the file is a tree of them (rocq_read_file/3):
     a module or section holds its sentences, and a theorem its proof,
     `pf(Steps, End)`, each step `step(P, Bullets, Toks)`.
 
@@ -332,6 +333,7 @@ modifiers --> [t(id(M), _, _)], { memberchk(M, ['Local', 'Global', 'Program', 'P
 modifiers --> [].
 
 vernac(P, dir(P, Words)) --> peek(id(K)), { directive(K) }, !, words(Words).
+vernac(P, cmd(P, Kws, Toks)) --> peek(id(K)), { command(K) }, !, command_words(Kws), remaining(Toks).
 vernac(P, ind(P, Kw, Bodies)) --> tk(id(Kw)), { memberchk(Kw, ['Inductive', 'CoInductive', 'Variant']) }, !,
     ind_bodies(Bodies).
 vernac(P, rec(P, Kw, N, Bs, Sort, Ctor, Fs)) -->
@@ -379,6 +381,21 @@ directive(K) :- memberchk(K, ['From', 'Require', 'Import', 'Export', 'Include', 
 
 words([W|Ws]) --> [t(K, _, _)], !, { tok_text(K, W) }, words(Ws).
 words([]) --> [].
+
+%  Commands that query or extract, Print Assumptions lt_spec and
+%  Crane Extract Inlined Constant Z.add => "…": their leading keywords,
+%  then their arguments as tokens, which the drawer sets one by one.
+command(K) :- memberchk(K, ['Print', 'Check', 'Compute', 'Search', 'About', 'Locate',
+                            'Extraction', 'Extract', 'Recursive', 'Separate', 'Crane', 'CertiRocq']).
+
+command_word(K) :- command(K), !.
+command_word(K) :- memberchk(K, ['Assumptions', 'Opaque', 'Transparent', 'All', 'Constant', 'Inlined', 'Inductive',
+                                 'Numeral', 'Show', 'Register', 'Library', 'Language', 'NoLoopify']).
+
+command_words([W|Ws]) --> [t(id(W), _, _)], { command_word(W) }, !, command_words(Ws).
+command_words([]) --> [].
+
+remaining(Ts, Ts, []).
 
 name(n(F-T, X)) --> tk(id(X), F, T), { X \== '_' }.
 

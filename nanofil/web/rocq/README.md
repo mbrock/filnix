@@ -113,6 +113,18 @@ or tactics fail this check. Making `->` left-associative fails four Campaign
   timeline buttons and selected-step headings share that drawing. Buttons
   keep the original command as their accessible name; typeset steps expose
   it in their tooltip. Unknown syntax remains monospace.
+- A `Context`, `Variable` or `Parameter` sentence with several binders
+  is one printer group headed by its keyword: the binders share a line
+  while they fit and break only between binders. A generalizing binder
+  `` `{!invGS Σ, !gen_heapGS L V Σ} `` is one instance binder per class,
+  drawn as `{invGS Σ}` without the backquote and `!`. When the printer
+  has no plan (no script, or a binder wider than a phone), each binder
+  is a line of its own.
+- An `Example` proved by tactics is drawn as a theorem is.
+- A command (`Print Assumptions`, `Extract Constant`, `Crane Extract`,
+  `CertiRocq Register`) is a line: its keywords, the names it mentions
+  linked to their definitions, and the foreign code it names in the code
+  face, a string of several lines as a block under it.
 - A definition is its signature over its body. `match` is a table of
   patterns and results, `if` a table of conditions, `let` a binding over
   its body; anything else is one term, broken by dterm.js.
@@ -120,7 +132,9 @@ or tactics fail this check. Making `->` left-associative fails four Campaign
   parentheses, `forall`, `fun` and `exists` are `∀`, `λ` and `∃`, and the
   ASCII operators are their glyphs (`→ ∧ ∨ ≠ ≤ ≥ ×`). A file's own infix
   notation (`Notation "c ⟶ r" := (step c r)`) folds the application back
-  into it, as Rocq prints it.
+  into it, as Rocq prints it. A power whose exponent is a number or a
+  name is a superscript (`2 ^ 48` is 2⁴⁸), since a caret beside `∧`
+  reads as a conjunction.
 - A bound variable is a variable (digits as a subscript, `'` as a prime);
   a name the drawn files define links to its definition; constructors,
   types, definitions and lemmas each have their colour.

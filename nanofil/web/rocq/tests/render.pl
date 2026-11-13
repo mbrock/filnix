@@ -25,4 +25,34 @@ test(match_in_let_value, [forall(member(Body,
     assertion((sub_term(element(span, Attrs, ['Qed']), DOM),
                memberchk(class=kw, Attrs))).
 
+% Context's generalizing binders are one instance binder per class, set
+% without their ` and ! markers, in one group the printer breaks between.
+test(context_binders) :-
+    fence_dom(["Context `{!invGS_gen hlc Σ, !gen_heapGS L V Σ} {A : Type} (x y : A)."], DOM),
+    once(( sub_term(element(span, Attrs, Kids), DOM), memberchk(class='c sig rq-ctx', Attrs) )),
+    assertion(memberchk('data-d'=args, Attrs)),
+    assertion(Kids = [element(span, [class=kw], ['Context'])|_]),
+    findall(C, ( sub_term(element(span, As, _), Kids), memberchk(class=C, As), split_string(C, " ", "", Ws), memberchk("binder", Ws) ), Bs),
+    assertion(Bs == ['braces binder rq-inst', 'braces binder rq-inst', 'braces binder', 'paren binder']),
+    text_of(Kids, Text),
+    assertion(\+ sub_atom(Text, _, _, _, '`')),
+    assertion(\+ sub_atom(Text, _, _, _, '!')).
+
+% Print Assumptions is a command row naming its theorem, not raw text.
+test(print_assumptions) :-
+    fence_dom(["Theorem t : True.", "Proof.", "exact I.", "Qed.", "Print Assumptions t."], DOM),
+    assertion(\+ ( sub_term(element(pre, As, _), DOM), memberchk(class='rq-raw', As) )),
+    assertion(( sub_term(element(div, As1, _), DOM), memberchk(class='clause rq-cmd', As1) )),
+    assertion(( sub_term(element(span, [class=kw], ['Print Assumptions']), DOM) )).
+
+fence_dom(Lines, DOM) :-
+    call_with_time_limit(2, phrase(rocq_fence(Lines), Codes)),
+    string_codes(Html, Codes),
+    setup_call_cleanup(open_string(Html, Stream),
+      load_html(stream(Stream), DOM, []), close(Stream)).
+
+text_of(DOM, Text) :-
+    findall(A, ( sub_term(A, DOM), atom(A), \+ sub_term(_=A, DOM) ), As),
+    atomic_list_concat(As, Text).
+
 :- end_tests(rocq_render).

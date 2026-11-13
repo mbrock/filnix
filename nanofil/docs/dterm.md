@@ -211,7 +211,8 @@ dterm.pl marks the groups: `data-d=args` on a compound or list, whose
 `.arg` children are its items, and `data-d=op` on an operator a line
 may break at. The printer reads each head and goal as a document in
 Bernardy's operators (text, `<>` with its later lines aligned where it
-began, `flush`, and choice), measured in pixels with canvas. The craft
+began, `flush`, and choice), measured in pixels with canvas as the page
+sets them, keywords in their capitals and letter spacing. The craft
 is in which layouts each group offers:
 
 - arguments: all on one line; the first, and simple ones after it, on

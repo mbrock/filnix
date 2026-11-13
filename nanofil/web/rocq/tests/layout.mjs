@@ -109,6 +109,19 @@ try {
         }
       `);
     }
+    // Context's generalizing binders are one binder per class, without ` and
+    // !, and its broken lines align: dterm.js measures CONTEXT in capitals.
+    browser("open", source("programs-CtLt"));
+    check(`${fitsPage}
+      const ctx = [...document.querySelectorAll('.rq-ctx')].find(c => c.textContent.includes('invGS_gen'));
+      assert(ctx && !/[\`!]/.test(ctx.textContent), 'Context keeps its generalization markers');
+      const binders = [...ctx.querySelectorAll(':scope > .args > .arg')].map(a => a.getClientRects()[0]);
+      assert(binders.length === 3, 'Context is not one binder per class');
+      if (innerWidth >= 1280)
+        for (const b of binders.slice(1))
+          assert(Math.abs(b.left - binders[0].left) < 1.5, 'Context binders misaligned: ' + b.left + ' vs ' + binders[0].left);
+      assert(!document.querySelector('pre.rq-raw'), 'Print Assumptions drawn as text');
+    `);
     console.log(`ok compact declarations, wrapping and comments at ${width}px`);
   }
   browser("open", `${base}/nanofil/rocq/index.html`);
