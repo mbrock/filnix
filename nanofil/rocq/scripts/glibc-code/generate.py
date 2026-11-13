@@ -229,10 +229,15 @@ class Generator:
                     specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
                 linked_cache[cache_key] = self.prolog("link.pl", (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
             linked = linked_cache[cache_key]
-            if layout in ("libio", "stdio", "buffer"):
+            if fns.split():
                 selected = self.work / "linked.term"
                 selected.write_text(linked)
-                linked = run([self.swipl, HERE / "select.pl", selected, *fns.split()], env=self.env)
+                try:
+                    functions = run([self.swipl, HERE / "select.pl", selected, *fns.split()], env=self.env)
+                except subprocess.CalledProcessError as error:
+                    raise ValueError(f"{manifest}: fixture row {row}: function selection failed") from error
+                if layout in ("libio", "stdio", "buffer"):
+                    linked = functions
             unit_names = [re.sub(r"\.o[sS]$", "", Path(unit).name) for _, unit in units(unit_rows)]
             unit_description = " and ".join([", ".join(unit_names[:-1]), unit_names[-1]]) if len(unit_names) > 1 else "".join(unit_names)
             description = {
@@ -266,7 +271,10 @@ def main():
     parser.add_argument("--tree", type=Path, default=GLIBC, help="tree to compare or update")
     parser.add_argument("--output", type=Path, help="write generated files to a separate tree")
     parser.add_argument("--update", action="store_true")
-    parser.add_argument("--legacy", action="store_true", help="reproduce the pre-cutover form")
+    parser.add_argument("--form", choices=("legacy", "shared-prelude"), default="legacy",
+                        help="output form (default: legacy until cutover)")
+    parser.add_argument("--legacy", dest="form", action="store_const", const="legacy",
+                        help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.output and args.update:
         parser.error("choose --output or --update")
@@ -281,7 +289,7 @@ def main():
         if len(manifests) != len(set(args.directory)):
             parser.error("unknown directory")
     status = 0
-    if not args.legacy:
+    if args.form == "shared-prelude":
         prelude = (args.output or args.tree) / "CodePrelude.v"
         if args.output or args.update:
             prelude.parent.mkdir(parents=True, exist_ok=True)
@@ -311,7 +319,7 @@ def main():
             different = 0
             for path in generated:
                 text = computed_proofs(path.read_text(), styles.get(path.name, "vm_compute"))
-                path.write_text(text if args.legacy else shared(text))
+                path.write_text(shared(text) if args.form == "shared-prelude" else text)
                 destination = (args.output / rel if args.output else target) / path.name
                 if args.output or args.update:
                     destination.parent.mkdir(parents=True, exist_ok=True)

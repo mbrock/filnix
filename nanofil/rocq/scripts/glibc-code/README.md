@@ -26,23 +26,40 @@ nanofil/rocq/glibc/code.sh /tmp/glibc-pp
 nanofil/rocq/glibc/code.sh --update /tmp/glibc-pp
 ```
 
-Before cutover, pass `--legacy` to check the committed files. The default
-output imports the shared prelude, which only exists in the staged tree.
-Do not update the committed `.v` files on `proof-eng`. Write a separate tree
-instead, or compare with a tree produced by stage 15:
+The `--form` setting selects `legacy` (the default until cutover) or
+`shared-prelude`. The legacy form reproduces the committed files on main.
+The shared form imports `CodePrelude.v` from the pipeline's overlay.
+The legacy form does not need that overlay. Do not update the
+committed `.v` files on `proof-eng`. Write a separate tree instead:
 
 ```sh
-nanofil/rocq/glibc/code.sh --legacy /tmp/glibc-pp
-nanofil/rocq/glibc/code.sh /tmp/glibc-pp --output /tmp/generated-code
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp --form shared-prelude --output /tmp/generated-code
 nanofil/rocq/scripts/proof-eng/check/code.sh /tmp/glibc-pp /tmp/staged-glibc
 ```
 
 `--directory string` selects one directory; `--directory .` selects only
 the top-level fixtures. Repeat the option to select several directories.
 `--tree` selects the comparison or update destination. `--output` writes only
-generated sources and the shared prelude; it never reads the comparison tree.
+generated sources and, in shared form, the prelude; it never reads the comparison tree.
 If the capture argument is omitted, the generator uses `/tmp/glibc-pp` or
 builds `survey/glibc/capture.nix`.
+
+## Driver compatibility
+
+All eight driver paths still accept `[--update] [GLIBC_PP]`. Checks return 0
+for current files and 1 for different, missing or stale numbered fixtures.
+The root driver now checks every directory instead of only Len and Say.
+Both stdio drivers now check all three stdio fixtures instead of separate
+groups. Their `--update` commands have the same expanded scope. Other
+directory drivers keep their original scope.
+
+The drivers print per-directory counts and unified diffs rather than their
+old individual success messages. All drivers now use `/tmp/glibc-pp` if no
+capture is supplied and that directory exists; root and stdlib previously
+asked Nix for the capture, and getopt required an argument. `KEEP` no longer
+retains temporary files. Python 3.11 or newer is required for TOML parsing.
+The early `--legacy` spelling remains an alias for `--form legacy`.
 
 ## Add a unit or function
 
@@ -74,23 +91,29 @@ The one slicer preserves whole items and blocks, with the original 500-line
 getopt and 525-line hi_atexit budgets. Adding a function does not require a
 new driver or slicer.
 
+Every function in a fixture row must be defined in its linked units. A missing
+function fails generation and names the manifest row, rather than silently
+emitting an empty decoded body. Run `test.sh CAPTURE` to check this rejection,
+both output forms, fixture corruption and the manifest proof-style switch.
+
 ## Follow the computed-proof conversion
 
-The regeneration check must detect changed proofs as well as changed terms.
-The generator therefore takes proof styles from manifests, not from the files
-it checks. Each file uses `vm_compute` unless its manifest lists another style:
+The `[proof_styles]` table in each directory's `code.toml` is the only place
+that records a generated file's computed-equality proof style. The generator
+never reads that style from the files it checks, so checking catches changed
+proofs as well as changed terms. Each file uses `vm_compute` unless its manifest
+lists another style:
 
 ```toml
 [proof_styles]
 "StrcmpCode.v" = "vm_cast_no_check"
 ```
 
-The campaign lead is changing how Rocq checks these computed equations.
-After that conversion lands on main, record which files use the new proof
-style by running this helper:
+After converting a file's computed-equality proofs, run this command from the
+repository root to record the new style in its manifest:
 
 ```sh
-python3 -I nanofil/rocq/scripts/glibc-code/sync-proof-styles.py /path/to/main/nanofil/rocq/glibc
+python3 -I nanofil/rocq/scripts/glibc-code/sync-proof-styles.py nanofil/rocq/glibc
 ```
 
 This separate helper reads the tree and changes only manifests. It rejects
@@ -105,8 +128,11 @@ A Nix caller needs the compiler sources, these generator scripts, manifests,
 fixture hashes, the checked tree, Python 3.11 or newer, SWI-Prolog, coreutils,
 and `FILCC` set to the staging compiler. Supply the capture as a derivation
 input; the script needs neither Nix nor network access when it receives that
-path. Use the staged tree before cutover, or pass `--legacy` as a third argument
-to check the old form. `nanofil/nix/glibc.nix` has not been changed.
+path. This pipeline entry point explicitly selects `--form shared-prelude`,
+as does stage 15's helper transformation. Use the root driver for legacy
+checks. Stage 15 copies the canonical prelude into the staged tree and factors
+the existing helpers without changing terms or proofs.
+`nanofil/nix/glibc.nix` has not been changed.
 
 The capture built successfully in an orb at
 `/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44`.

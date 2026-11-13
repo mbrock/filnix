@@ -8,6 +8,10 @@ source = Path(__file__).resolve().parents[2] / "glibc-code/prelude.py"
 spec = importlib.util.spec_from_file_location("code_prelude", source)
 prelude = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prelude)
+# This stage explicitly selects the shared-prelude form; generation defaults
+# to the legacy form until the campaign's cutover.
+(Path(sys.argv[1]) / "CodePrelude.v").write_bytes(
+    (Path(__file__).resolve().parents[1] / "overlay/CodePrelude.v").read_bytes())
 count = 0
 for path in sorted(Path(sys.argv[1]).rglob("*.v")):
     text = path.read_text()
