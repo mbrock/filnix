@@ -177,9 +177,11 @@ if unknown:
     raise ValueError(f'new duplicated names with unqualified uses: {unknown}; review {args.name_baseline}')
 notation_collisions = []
 removed_comments = []
+shadowed = []
 for f in files:
     s = text[f]; used = set()
     visible = {}
+    qualify = {}
     comments = []
     code = code_only(s, comments)
     referenced = {n for n in duplicates if re.search(r"(?<![\w.'])" + n + r"(?![\w'])", code)}
@@ -233,22 +235,46 @@ for f in files:
                 for name in outer[file_by_mod[w]] & duplicates:
                     visible[name] = w
         out = list(dict.fromkeys(out))
-        edges = {w: set() for w in out}
+        # A name that the file took from a top-level `Require Import` stays
+        # the winner in the original, because the functor instances imported
+        # here did not carry the top-level names of their files. The flat
+        # file modules do carry them, so the original winner is imported
+        # again and ordered last. When another name needs the opposite
+        # order, the imports stay as written and the uses of the name are
+        # qualified with its original file below.
+        def order(out):
+            edges = {w: set() for w in out}
+            for name, owner in visible.items():
+                if name not in referenced: continue
+                if owner not in edges: continue
+                for w in out:
+                    if w in file_by_mod and w != owner:
+                        t = file_by_mod[w]
+                        if name in members[t] | outer[t]: edges[owner].add(w)
+            ordered = []
+            while edges:
+                ready = next((w for w, deps in edges.items() if not deps), None)
+                if ready is None: return None, edges
+                ordered.append(ready)
+                del edges[ready]
+                for deps in edges.values(): deps.discard(ready)
+            return ordered, None
+        restored = {}
         for name, owner in visible.items():
-            if name not in referenced: continue
-            if owner not in edges: continue
-            for w in out:
-                if w in file_by_mod and w != owner:
-                    t = file_by_mod[w]
-                    if name in members[t] | outer[t]: edges[owner].add(w)
-        ordered = []
-        while edges:
-            ready = next((w for w, deps in edges.items() if not deps), None)
-            if ready is None:
-                raise ValueError(f'{f}: conflicting import order for {visible}: {edges}')
-            ordered.append(ready)
-            del edges[ready]
-            for deps in edges.values(): deps.discard(ready)
+            if name not in referenced or owner in out or owner == mod[f]: continue
+            shadows = [w for w in out if w in file_by_mod and name in members[file_by_mod[w]] | outer[file_by_mod[w]]]
+            if shadows: restored.setdefault(owner, []).append((name, shadows))
+        ordered, cycle = order(out + list(restored))
+        if restored and ordered is None:
+            for owner, rows in restored.items():
+                for name, shadows in rows:
+                    if name in members[f] | outer[f]:
+                        raise ValueError(f'{f}: {name} is shadowed by {shadows[-1]} and also defined here')
+                    qualify[name] = owner
+            shadowed.append({'file': f, 'names': {n: {'original': o, 'flat': ws[-1]} for o, ns_ in restored.items() for n, ws in ns_}})
+            ordered, cycle = order(out)
+        if ordered is None:
+            raise ValueError(f'{f}: conflicting import order for {visible}: {cycle}')
         return f"{m.group(1)}{m.group(2)} {' '.join(ordered)}." if ordered else ''
     s = IMP.sub(imp, s)
     def tok(m):
@@ -259,6 +285,11 @@ for f in files:
         elif comps[0] not in file_by_mod: used.add(new[0])
         return '.'.join(new) if new else m.group(0)
     s = TOK.sub(tok, s)
+    for name, owner in qualify.items():
+        masked = code_only(s)
+        for m in reversed(list(re.finditer(r"(?<![\w.'])" + name + r"(?![\w'])", masked))):
+            s = s[:m.start()] + owner + '.' + name + s[m.end():]
+        used.add(owner)
     def retained_alias(m):
         target = functor_file.get(m[2])
         if target is None: return m[0]
@@ -375,3 +406,7 @@ if args.comment_report:
     with open(args.comment_report, 'w') as out:
         json.dump(removed_comments, out, indent=2)
         out.write('\n')
+# These files use a duplicated name whose original definition a flat import
+# now shadows, and no import order restores it. Their uses were qualified.
+for row in shadowed:
+    print(f"@@proof-eng qualified {row['file']} {json.dumps(row['names'], sort_keys=True)}", file=sys.stderr)

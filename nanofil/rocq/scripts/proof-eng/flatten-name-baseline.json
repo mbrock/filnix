@@ -6,6 +6,7 @@
   "br",
   "brz",
   "byte_loop",
+  "bytes_at",
   "bytes_le_eq",
   "cas_ign",
   "chr",

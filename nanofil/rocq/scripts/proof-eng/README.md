@@ -30,7 +30,9 @@ A stage is one program that takes the tree as its argument and rewrites it in pl
 - `40-rules` replaces rule applications by wrapper tactics.
 - `50-program` replaces `find_fn` premises and local `irisGS` instances by the `Defines` class and the `GlibcProgram` context.
 
-Only `10-flatten.py` exists so far.
+Several files define tactics with the same short name, such as `arith`. Stage `10` keeps each use bound to the definition it had before. It reorders the imports of the file when that is enough, and otherwise it writes the use with its file name, as in `StrlenLoop.arith`. The reviewed names are listed in `flatten-name-baseline.json`, and the stage fails when a new one appears.
+
+Stages `10`, `15-code.py` (which regenerates the code modules for the flat layout) and `20` exist so far.
 
 ## Rules for a stage
 
