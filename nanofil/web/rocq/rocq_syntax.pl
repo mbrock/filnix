@@ -25,6 +25,7 @@
     | `forall(P, Bs, B)`, `exists(P, Bs, B)`, `fun(P, Bs, B)` | binders over a body |
     | `let(P, Lhs, Ty, V, B)` | `let x := V in B`; Lhs `name(N, Bs)` or `tuple(Ns)` |
     | `letstar(P, N, V, B)`, `letpat(P, Pat, V, B)` | `let* x := V in B`, `let '(a, b) := V in B` |
+    | `letq(P, Pat, V, B)` | `let? (a, b) := V in B`, a result monad's bind as AnfLower.v defines it |
     | `letfix(P, N, Bs, Ty, V, B)` | `let fix f Bs : Ty := V in B` |
     | `if(P, C, T, E)` | `if C then T else E` |
     | `match(P, Scrutinees, Return, Branches)` | `br(Alternatives, Rhs)`, each alternative a list of patterns |
@@ -38,9 +39,11 @@
     Names a list of `n(P, Name)`, Type `none` when there is none.
 
     Sentences are the vernacular, each `dir/2`, `ind/3`, `rec/7`, `def/6`,
-    `thm/5`, `decl/3`, `notation/5`, `module/5`, `endm/2`, `cmd/3` (a
-    command such as Print Assumptions or Extract Constant: its keywords
-    and the tokens after them) or `raw/2` (one the grammar does not read), and the file is a tree of them (rocq_read_file/3):
+    `mutual/2` (a Fixpoint with further bodies after `with`, each a
+    `def/6`), `thm/5`, `decl/3`, `notation/5`, `module/5`, `endm/2`,
+    `cmd/3` (a command such as Print Assumptions or Extract Constant: its
+    keywords and the tokens after them) or `raw/2` (one the grammar does
+    not read), and the file is a tree of them (rocq_read_file/3):
     a module or section holds its sentences, and a theorem its proof,
     `pf(Steps, End)`, each step `step(P, Bullets, Toks)`.
 
@@ -341,10 +344,16 @@ vernac(P, rec(P, Kw, N, Bs, Sort, Ctor, Fs)) -->
     name(N), binders0(Bs), opt_type(Sort), tk(sym(':=')),
     ( name(Ctor) -> [] ; { Ctor = none } ),
     tk(p('{')), fields(Fs), tk(p('}')).
-vernac(P, def(P, Kw, N, Bs, Ty, Body)) -->
+%  Fixpoint f … := … with g … := …: mutual(P, Defs), the first def/6
+%  with its keyword and each further one with Kw with.
+vernac(P, S) -->
     def_kw(Kw), !,
     name(N), binders0(Bs), opt_type(Ty),
-    ( tk(sym(':=')) -> term(Body) ; { Body = none } ).
+    ( tk(sym(':=')) -> term(Body) ; { Body = none } ),
+    (   { Body \== none }, tk(kw(with))
+    ->  mutual_defs(Ds), { P = F-_, end(Body, T1), S = mutual(P, [def(F-T1, Kw, N, Bs, Ty, Body)|Ds]) }
+    ;   { S = def(P, Kw, N, Bs, Ty, Body) }
+    ).
 vernac(P, thm(P, Kw, N, Bs, Ty)) -->
     tk(id(Kw)), { memberchk(Kw, ['Theorem', 'Lemma', 'Corollary', 'Fact', 'Remark', 'Proposition', 'Property']) }, !,
     name(N), binders0(Bs), tk(sym(':')), term(Ty).
@@ -371,6 +380,10 @@ vernac(P, module(P, Kind, N, Bs, Open)) -->
 vernac(P, module(P, section, N, [], open)) --> tk(id('Section')), !, name(N).
 vernac(P, endm(P, N)) --> tk(id('End')), !, name(N).
 vernac(P, proof_start(P)) --> tk(id('Proof')), !, words(_).
+
+mutual_defs([def(F-T, with, N, Bs, Ty, Body)|Ds]) -->
+    name(N), { N = n(F-_, _) }, binders0(Bs), opt_type(Ty), tk(sym(':=')), term(Body), { end(Body, T) },
+    ( tk(kw(with)) -> mutual_defs(Ds) ; { Ds = [] } ).
 
 def_kw(Kw) --> tk(id(Kw)), { memberchk(Kw, ['Definition', 'Fixpoint', 'CoFixpoint', 'Let', 'Example', 'Instance', 'Function']) }, !.
 def_kw('Canonical Structure') --> tk(id('Canonical')), tk(id('Structure')).
@@ -525,6 +538,10 @@ binder_form(fun(F-T, Bs, B)) --> fun_kw(F), !, binders_typed(Bs), ( arrow_kw -> 
 %  let fix, and let '(a, b) := e in b, which destructures.
 binder_form(letstar(F-T, N, V, B)) --> tk(kw(let), F, _), tk(sym('*')), !,
     name_or_hole(N), tk(sym(':=')), term(V), tk(kw(in)), term(B), { end(B, T) }.
+%  let? (e, fv) := r in k, a file's notation for its result monad's
+%  bind, whose binder is a pattern.
+binder_form(letq(F-T, Pat, V, B)) --> tk(kw(let), F, _), tk(sym('?')), !,
+    atom(Pat), tk(sym(':=')), term(V), tk(kw(in)), term(B), { end(B, T) }.
 binder_form(letfix(F-T, N, Bs, Ty, V, B)) --> tk(kw(let), F, _), tk(kw(fix)), !,
     name(N), binders0(Bs), opt_type(Ty), tk(sym(':=')), term(V), tk(kw(in)), term(B), { end(B, T) }.
 binder_form(letpat(F-T, Pat, V, B)) --> tk(kw(let), F, _), tk(p('''')), !,

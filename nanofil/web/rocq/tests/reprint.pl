@@ -66,9 +66,8 @@ sent(rec(_, Kw, n(_, N), Bs, Sort, Ctor, Fs)) :- !,
     format("~w ~w", [Kw, N]), binders(Bs), opt_type(Sort), write(" :="),
     ( Ctor = n(_, C) -> format(" ~w", [C]) ; true ),
     write(" {\n"), fields(Fs), write("}.\n").
-sent(def(_, Kw, n(_, N), Bs, Ty, Body)) :- !,
-    format("~w ~w", [Kw, N]), binders(Bs), opt_type(Ty),
-    ( Body == none -> true ; write(" :=\n  "), pr(Body) ), write(".\n").
+sent(def(P, Kw, N, Bs, Ty, Body)) :- !, def(def(P, Kw, N, Bs, Ty, Body)), write(".\n").
+sent(mutual(_, [D|Ds])) :- !, def(D), forall(member(E, Ds), ( nl, def(E) )), write(".\n").
 sent(thm(_, 'Goal', none, [], Ty)) :- !, write("Goal "), pr(Ty), write(".\n").
 sent(thm(_, Kw, n(_, N), Bs, Ty)) :- !,
     format("~w ~w", [Kw, N]), binders(Bs), write(" : "), pr(Ty), write(".\n").
@@ -82,6 +81,10 @@ sent(decl(_, Kw, [bs(Bs)])) :- !, write(Kw), binders(Bs), write(".\n").
 sent(decl(_, Kw, Gs)) :- !,
     format("~w", [Kw]), forall(member(g(Ns, Ty), Gs), ( write(" ("), names(Ns), write(" : "), pr(Ty), write(")") )), write(".\n").
 sent(S) :- arg(1, S, P), src(P).
+
+def(def(_, Kw, n(_, N), Bs, Ty, Body)) :-
+    format("~w ~w", [Kw, N]), binders(Bs), opt_type(Ty),
+    ( Body == none -> true ; write(" :=\n  "), pr(Body) ).
 
 bodies([B]) :- !, body(B).
 bodies([B|Bs]) :- body(B), write("\nwith "), bodies(Bs).
@@ -144,6 +147,7 @@ pr(let(_, Lhs, Ty, V, B)) :- !,
     ( Lhs = tuple(Ns) -> write("("), names_c(Ns), write(")") ; Lhs = name(n(_, X), Bs), write(X), binders(Bs) ),
     opt_type(Ty), write(" := "), pr(V), write(" in "), pr(B), write(")").
 pr(letstar(_, n(_, X), V, B)) :- !, format("(let* ~w := ", [X]), pr(V), write(" in "), pr(B), write(")").
+pr(letq(_, P, V, B)) :- !, write("(let? "), pr(P), write(" := "), pr(V), write(" in "), pr(B), write(")").
 pr(letpat(_, P, V, B)) :- !, write("(let '"), pr(P), write(" := "), pr(V), write(" in "), pr(B), write(")").
 pr(letfix(_, n(_, F), Bs, Ty, V, B)) :- !,
     format("(let fix ~w", [F]), binders(Bs), opt_type(Ty), write(" := "), pr(V), write(" in "), pr(B), write(")").
