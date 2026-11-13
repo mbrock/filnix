@@ -80,6 +80,15 @@ class Checks(unittest.TestCase):
             parameters = root / 'parameters.txt'
             parameters.write_text('changed\tToy.v\tS.target\n')
             self.assertEqual([d['name'] for d in compare(1, parameters)['differences']], ['S.target'])
+            proof_alias = ('Module Type S. Parameter exposed : True. End S.\n'
+                           'Module Hidden : S. Definition exposed : True := I. End Hidden.\n')
+            compile(before, proof_alias)
+            compile(after, proof_alias.replace(': True', ': True /\\ True').replace(':= I', ':= conj I I'))
+            aliases = root / 'aliases.txt'
+            aliases.write_text('changed\tToy.v\tHidden.exposed\n')
+            changes = compare(1, aliases)['differences']
+            self.assertEqual([d['name'] for d in changes], ['Hidden.exposed'])
+            self.assertNotIn('conj', changes[0]['after']['raw'])
             layout = root / 'layout'
             layout.mkdir()
             (layout / 'toy.v').write_text('From Glibc Require Import Toy.\nPrint Assumptions target.\n')

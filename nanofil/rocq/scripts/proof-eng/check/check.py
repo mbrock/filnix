@@ -124,7 +124,8 @@ class Tree:
                     scope = max(owners, key=len)[len(self.scopes[rel]) + 1:]
             explicit = name in extra or (scope + '.' + name) in extra
             if (kind in ('prf', 'def') and (name in expected or name in specs)) or explicit:
-                found.append((name, '' if scope == '<>' else scope, name in specs or (kind == 'def' and explicit)))
+                spec = True if name in specs else 'auto' if kind == 'def' and explicit else False
+                found.append((name, '' if scope == '<>' else scope, spec))
         missing = set(expected) - {n for n, _, _ in found}
         if missing:
             raise ValueError('declarations absent from .glob: ' + ', '.join(sorted(missing)))
@@ -280,12 +281,20 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
     commands = setup + [f'Declare ML Module "{plugin.name}".',
                         'Set Printing All.', 'Set Printing Universes.', 'Set Printing Width 1000000.',
                         'Set Printing Depth 1000000.']
+    def query(index, q, spec):
+        lines = [f'Goal True. idtac "PE_BEGIN_{index}". Abort.', f'Check @{q}.']
+        if spec == 'auto':
+            # A Definition can be a proof alias rather than a predicate.
+            # Ask Rocq for its type's sort before trying to unfold its body.
+            lines.append(f'Goal True. let T := type of (@{q}) in let S := type of T in '
+                         f'lazymatch S with Prop => idtac "PE_PROOF_{index}" '
+                         f'| _ => idtac "PE_DATA_{index}" end. Abort.')
+        elif spec:
+            lines.append(f'Eval unfold {q} in @{q}.')
+        lines.append(f'Goal True. idtac "PE_END_{index}". Abort.')
+        return lines
     for index, (name, (q, spec)) in enumerate(names.items()):
-        commands.append(f'Goal True. idtac "PE_BEGIN_{index}". Abort.')
-        commands.append(f'Check @{q}.')
-        if spec:
-            commands.append(f'Eval unfold {q} in @{q}.')
-        commands.append(f'Goal True. idtac "PE_END_{index}". Abort.')
+        commands.extend(query(index, q, spec))
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='probe-', dir=out) as tmp:
         script = Path(tmp) / 'PECheck.v'
@@ -297,11 +306,7 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
             source = tree.files[rel].read_text()
             inserts = {}
             for index, (name, scope, spec) in enumerate(decls):
-                query = [f'Goal True. idtac "PE_BEGIN_{index}". Abort.', f'Check @{name}.']
-                if spec:
-                    query.append(f'Eval unfold {name} in @{name}.')
-                query.append(f'Goal True. idtac "PE_END_{index}". Abort.')
-                inserts.setdefault(scope, []).extend(query)
+                inserts.setdefault(scope, []).extend(query(index, name, spec))
             for scope, queries in inserts.items():
                 block = '\n'.join(queries) + '\n'
                 if scope:
@@ -328,6 +333,17 @@ def run_probe(tree, rel, decls, out, plugin, inside=False):
             if not inside and 'was not found in the current environment' in p.stdout:
                 return run_probe(tree, rel, decls, out, plugin, inside=True)
             raise ValueError(f'probe compiler exited {p.returncode}: {p.stdout[-1200:]}')
+    if any(spec == 'auto' for _, _, spec in decls):
+        classified = []
+        for index, (name, scope, spec) in enumerate(decls):
+            if spec == 'auto':
+                proof = f'PE_PROOF_{index}' in p.stdout.splitlines()
+                data = f'PE_DATA_{index}' in p.stdout.splitlines()
+                if proof == data:
+                    raise ValueError('missing or ambiguous sort classification: ' + name)
+                spec = data
+            classified.append((name, scope, spec))
+        return run_probe(tree, rel, classified, out, plugin, inside=inside)
     result = {}
     for index, name in enumerate(names):
         match = re.search(rf'PE_BEGIN_{index}\n(.*?)PE_END_{index}', p.stdout, re.S)
