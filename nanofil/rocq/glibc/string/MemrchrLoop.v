@@ -1,17 +1,14 @@
-(** The word loop of glibc's own `__memrchr` (MemrchrCode.v's
-    [glibc_memrchr]) over a window of words (WordString.v's [wwin]) at
-    any share, for MemrchrMask.v's last word.
+(** After checking the word holding the last of the `n` bytes, glibc's
+    `__memrchr` steps backwards through earlier 8-byte [[word|words]]
+    until it finds a match or reaches the word containing `p`. In each
+    word it tests for a matching byte, counts leading zeros in the match
+    mask to locate the highest matching lane, and checks the start
+    boundary `p` when it reaches the first word.
 
-    After the word that holds the last of the n bytes, glibc's memrchr
-    reads the words before it one by one, down to the one that holds
-    the first byte. It tests each for c's byte with `has_eq`
-    ([loop_mask] of the word xor'd with [rep] c, [has_eq_zero]), and in
-    a word that has one takes the index of the last from the count of
-    leading zeros of its marks ([idx_steps], MemrchrBits.v's
-    [head_marks]). A match in a word above the first is the answer; in
-    the first word it is the answer only at or after the first byte.
-    [rloop] proves the loop by induction on the word's index, with no
-    byte c after it among the n ([none_in]). *)
+    To verify that backward scan at any ownership share, [rloop] proves
+    the loop invariant by induction on the word index, assuming no byte
+    after the current word matches. [MemrchrMask] enters this loop
+    whenever the final word holds no matching byte. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -24,22 +21,24 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBit
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** A block of glibc's memrchr. *)
+(** Function [rblk] looks up a basic block by label in
+    [glibc_memrchr]. *)
 Definition rblk (l : string) : block :=
   match find_block (TAtom l) (fn_blocks glibc_memrchr) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
 
-(** The loop's block, L83. *)
+(** Block `L83` is the backward word-loop header of [glibc_memrchr]. *)
 Definition rblk83 : block := Eval vm_compute in rblk "L83".
 
-(** The loop over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the backward word-loop proof over a
+    [[runtime]] R and a program logic instance LG0. *)
 Module MemrchrLoopOn (R : Runtime) (LG0 : LogicSig R).
-(** The step rules of the proof mode. *)
+(** Module [SL] supplies the step rules for symbolic execution. *)
 Module SL := StrcmpLoopOn R LG0.
-(** Strings' windows. *)
+(** Module [WS] provides word-window and fractional read helpers. *)
 Module WS := SL.WS.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance. *)
 Module LG := LG0.
-(** The language of the Logic instance. *)
+(** Module [L] re-exports the core logic definitions. *)
 Module L := LG.L.
 Import L LG WS SL.
 
@@ -47,48 +46,61 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A let, its value left whole. *)
+(** Tactic [sl] advances one pure `let` instruction while keeping its
+    result expression symbolic. *)
 Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A let, its integer named. *)
+(** Tactic [sn] advances one `let` instruction and names its integer
+    result in the context. *)
 Ltac sn := eapply (s_letn registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |];
   let x := fresh "x" in let E := fresh "E" in intros x E.
-(** A flight. *)
+(** Tactic [sf] advances one [[flight]] instruction in the proof mode. *)
 Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
-(** Entering a block. *)
+(** Tactic [en] steps into the target block and exposes its instructions
+    and terminator. *)
 Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] follows an unconditional `goto` and immediately enters the
+    destination block. *)
 Ltac sg := eapply (s_goto registry wi ge); en.
-(** A branch, its condition left whole. *)
+(** Tactic [sb] advances one conditional `branch` while keeping its
+    condition expression symbolic. *)
 Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
-(** Read the temporaries of the frame's environment below its puts by
-    the hypotheses about them there, then compute the rest. *)
+(** To resolve IR temporary arguments during symbolic execution, [vx]
+    looks up each temporary in the environment hypotheses and evaluates
+    the remaining argument expressions. *)
 Ltac vx :=
   cbn [map2_option map_option flight_arg_x flight_cap arg_x];
   repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
     match goal with H : lookup n _ = Some ?x |- _ =>
       rewrite (value_x_tmp g E k n x); [|look H] end end;
   reflexivity.
-(** A let that may read the environment below the puts. *)
+(** Tactic [sl'] advances one `let` instruction whose arguments are
+    resolved via [vx]. *)
 Ltac sl' := eapply (s_let registry wi ge); [reflexivity | reflexivity | vx | intros ?; reflexivity |].
-(** Replace the integer the temporary name holds by v, proved by tac. *)
+(** Tactic [norm] rewrites the integer stored in temporary `name` to `v`
+    using tactic `tac`. *)
 Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** To keep intermediate integers readable, [normt] rewrites the
+    integer in the newest temporary to `v` using tactic `tac`. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
-(** Replace the address of the pointer the temporary name holds by v. *)
+(** Tactic [normp] rewrites the address of the pointer stored in
+    temporary `name` to `v` by arithmetic. *)
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
 
-(** From the test of a word w in range whose last c is at byte j, Hj,
-    Hcj and Hlj saying so: its marks, their count of leading zeros by
-    [head_chain] and [head_marks], and the index j, glibc's
-    `index_last_eq`. *)
+(** Once a word tests positive for a matching byte at lane j,
+    `__memrchr` computes its exact match mask and runs the 25-step
+    leading-zero count to recover j. Tactic [idx_steps] steps through
+    that sequence and reduces the resulting index to j. *)
 Ltac idx_steps w c j Hj Hcj Hlj :=
   sl; sl; sl; sl; sl; normt (first_mask (Z.lxor w (rep c))) ltac:(reflexivity); sl; sb;
   let Hmr := fresh in let Hh := fresh in let Hm0 := fresh in
@@ -105,10 +117,10 @@ Ltac idx_steps w c j Hj Hcj Hlj :=
   repeat match goal with H : ?v = _ |- _ => is_var v; clear H end;
   sg; sl; sl; sl; normt j ltac:(arith); sg; sl; normt j ltac:(arith).
 
-(** The loop at word i of the window ws at the 8-aligned W, b + wo,
-    below the one that holds the last of the n bytes from a, W + k: no
-    byte after word i in them is c's. It returns what [last_hit] finds
-    and hands the window back. *)
+(** This lemma verifies the backward loop in `L83` by induction on word
+    index i: assuming no byte after word i in the n-byte window matches
+    c, `__memrchr` scans down to word zero, returns [hit_ptr] for
+    [last_hit], and restores the window [wwin]. *)
 Lemma rloop dq b reg wo ws cp c (k n i : nat) e r Φ :
   0 < b -> (cp = Obj b \/ cp = Ro b) -> 0 <= wo -> (b + wo) mod 8 = 0 ->
   b + wo + 8 * Z.of_nat (List.length ws) <= r_end reg -> r_end reg <= 2 ^ 48 -> Forall (fun w => 0 <= w < 2 ^ 64) ws ->

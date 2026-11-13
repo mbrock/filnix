@@ -1,26 +1,21 @@
-(** glibc's own `memset`, `memcpy`, `mempcpy` and `strdup`
-    (MemFwdCode.v) through the program logic, over the [os_world] of
-    [OsWorld](../zsys/OsWorld.v) and any registry that holds
-    [OsRegistry](../zsys/OsRegistry.v)'s contracts for libpizlo's
-    `c: zmemset` and `c: zmemmove`, which these functions call at a void
-    site ([void_only]).
+(** In glibc under Fil-C, `c: memset`, `c: memcpy`, `c: mempcpy`, and
+    `c: strdup` delegate bulk memory operations to libpizlo's runtime
+    primitives `c: zmemset` and `c: zmemmove`. This module proves
+    [[weakest-precondition]] call specifications for all four functions
+    over [os_world] and any registry holding the OS contracts for those
+    two primitives.
 
-    - `c: memset(p, c, n)` calls `c: zmemset(p, c, n)` and returns p:
-      [wp_call_glibc_memset] fills a block it owns.
-    - `c: memcpy(d, s, n)` calls `c: zmemmove(d, s, n)` and returns d:
-      [wp_call_glibc_memcpy] copies the bytes of a source block, owned
-      at any share, into a block it owns; `c: mempcpy` returns d + n
-      ([wp_call_glibc_mempcpy]).
-    - `c: strdup(s)` calls `c: strlen`, `c: malloc` and `c: memcpy`:
-      [wp_call_glibc_strdup] copies a [word_string] at any share into a
-      fresh object, given any malloc that returns null or a fresh object
-      ([malloc_triple]), as MemLogic.v's [wp_malloc] or glibc's own.
-
-    The world interpretation [os_wi] keeps through every call here
-    ([os_wi_block]): the triples take no premise about it. A copy's
-    source is owned only for its bytes, so the destination's aux slots
-    afterwards are whatever the copy left ([copy_after_any]): a block of
-    bytes copied by memcpy carries no capability its caller relies on. *)
+    Each function updates or allocates memory in a straightforward way.
+    First, `c: memset` fills an owned byte block and returns the
+    destination pointer. Next, `c: memcpy` and `c: mempcpy` copy bytes
+    from a source owned at any share into an owned destination, returning
+    either the destination or the pointer just past it. Because the
+    caller supplies only byte ownership for the source, the destination's
+    [[aux]] capability slots afterward hold whatever the copy wrote.
+    Finally, `c: strdup` combines `c: strlen`, `c: malloc`, and
+    `c: memcpy` to duplicate a [word_string] into a [[fresh]] object,
+    assuming a `c: malloc` contract that returns null or a fresh
+    16-aligned allocation. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -33,21 +28,26 @@ Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The effects *)
+(** ## The effects
 
-(** The aux slots of memory m at the n offsets from o of the object b. *)
+    When `c: memcpy` copies bytes from a source buffer whose capability
+    slots are not tracked, the destination's [[aux]] slots afterward
+    cannot be predicted from the source's logical value. We record the
+    actual post-copy capability slots directly from physical memory so
+    the caller keeps full ownership of the destination block. *)
+
+(** Function [aux_now] reads the n physical [[aux]] capability slots
+    starting at offset o of object b in memory m. *)
 Definition aux_now (m : mem) (b o : Z) (n : nat) : list cap :=
   map (fun i => m_aux m (b + (o + Z.of_nat i))) (seq 0 n).
 
-(** [aux_now] has n slots. *)
+(** The list returned by [aux_now] always has length n. *)
 Lemma length_aux_now m b o n : length (aux_now m b o n) = n.
 Proof. unfold aux_now. by rewrite length_map length_seq. Qed.
 
-(** A copy of the n bytes ys of the object b' from offset o', owned
-    without their slots, into the block of the bytes xs and slots cs at
-    offset o of the live object b, at a multiple of 8: afterwards the
-    block's bytes are ys and its slots are what the copy left there,
-    and every piece outside it keeps its agreement. *)
+(** Copying n bytes ys into an 8-aligned destination block overwrites
+    its bytes with ys, leaves its capability slots at [aux_now], and
+    preserves memory agreement for every piece outside the block. *)
 Lemma copy_after_any m m' b reg o xs cs b' reg' o' ys c' :
   live_disjoint m -> live_at m b reg -> live_at m b' reg' -> b mod 8 = 0 -> o mod 8 = 0 ->
   length ys = length xs -> length cs = length xs ->
@@ -82,10 +82,17 @@ Proof.
     left. reflexivity.
 Qed.
 
-(** ## The world through these calls *)
+(** ## World invariant preservation
 
-(** A change that keeps every region, writing a block of the object b
-    over a ghost heap that holds b's life ([block_ps]), keeps [os_wi]. *)
+    Because `c: zmemset` and `c: zmemmove` only overwrite bytes and
+    capability slots inside a live object without altering [[region]]
+    registrations, they preserve the OS world invariant [os_wi]. This
+    section proves that preservation lemma along with two small
+    alignment and arithmetic facts needed by `c: strdup`. *)
+
+(** When `c: memset` or `c: memcpy` updates a single object's bytes and
+    capability slots without changing any [[region]] registrations,
+    [os_wi_block] shows that the OS world invariant still holds. *)
 Lemma os_wi_block w0 m m' w h b reg o xs cs ys ds :
   m_regions m' = m_regions m -> (forall l v, (l, v) ∈ block_ps b reg o xs cs -> h !! l = Some v) ->
   os_wi w0 m w h -> os_wi w0 m' w (overwrite (block_ps b reg o ys ds) h).
@@ -98,20 +105,28 @@ Proof.
       exact I.
 Qed.
 
-(** A multiple of 16 is a multiple of 8. *)
+(** Any integer divisible by 16 is also divisible by 8, which lets
+    `c: strdup` pass a 16-aligned `c: malloc` buffer to `c: memcpy`. *)
 Lemma mod16_mod8 z : z mod 16 = 0 -> z mod 8 = 0.
 Proof.
   intros H. rewrite (Z.div_mod z 16); [|lia]. rewrite H Z.add_0_r.
   replace (16 * (z / 16)) with (2 * (z / 16) * 8) by lia. apply Z_mod_mult.
 Qed.
 
-(** A pointer's sum with a length that keeps it below 2^64. *)
+(** Adding two non-negative integers whose sum fits below `2 ^ 64`
+    matches modular 64-bit pointer addition. *)
 Lemma add_small a n : 0 <= a -> 0 <= n -> a + n < 2 ^ 64 -> (a mod 2 ^ 64 + n mod 2 ^ 64) mod 2 ^ 64 = a + n.
 Proof. intros. rewrite !Z.mod_small; lia. Qed.
 
-(** ## A string's bytes *)
+(** ## A string's bytes
 
-(** The pieces of words are the pieces of their bytes. *)
+    String-search functions read a [word_string] as 8-byte [[word|words]],
+    whereas `c: memcpy` operates on a byte-indexed slice. We bridge the
+    two representations by showing that word pieces and byte pieces
+    describe the exact same locations in memory. *)
+
+(** Splitting each 8-byte word into its eight bytes turns [words_ps]
+    into [byte_ps] at the same offset. *)
 Lemma words_ps_bytes b o ws : words_ps b o ws = byte_ps b o (wbytes ws).
 Proof.
   revert o. induction ws as [|w ws IH]; intros o; [reflexivity|].
@@ -119,9 +134,16 @@ Proof.
   unfold cell. cbn [List.map]. rewrite !byte_ps_cons. unfold byte_ps. cbn. repeat (f_equal; try lia).
 Qed.
 
-(** ## Over a Logic instance *)
+(** ## Over a Logic instance
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+    To connect the physical memory lemmas above to C call sites, we
+    instantiate the program logic over `os_world` and prove
+    specifications for `c: zmemset` and `c: zmemmove`. We then compose
+    those primitives to verify `c: memset`, `c: memcpy`, `c: mempcpy`,
+    and `c: strdup`. *)
+
+(** This functor packages the forward memory-function specifications
+    over a [[runtime]] R and a program logic instance LG0. *)
 Module MemFwdLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module ML := MemLogicOn R LG0.
 Module SL := ML.SL.
@@ -131,8 +153,9 @@ Module OW := OsWorldOn R LG0.
 Module SW := StrlenWordOn R LG0.
 Import L LG SL ML.
 
-(** A call of [void_only] c is a call of c: every field but the ABI is
-    c's, and [void_only]'s ABI implies c's. *)
+(** Wrapping a contract with [void_only] restricts its ABI to void
+    calls, so any invocation of the wrapped contract also satisfies the
+    original contract c. *)
 Lemma invoke_void_only {world} (c : contract world) r args xs s m w trace en s' m' w' :
   M.E.invoke (void_only c) r args xs s m w trace en s' m' w' -> M.E.invoke c r args xs s m w trace en s' m' w'.
 Proof.
@@ -145,23 +168,28 @@ Qed.
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The registry holds [OsRegistry](../zsys/OsRegistry.v)'s contracts
-    for `c: zmemset` and `c: zmemmove`, which are no function or symbol
-    of the genv. *)
+(** The functor assumes the external registry provides void-only OS
+    contracts for `c: zmemset` and `c: zmemmove` and that neither name
+    collides with an internal function or global. *)
 Context (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)))
   (Hset_fn : find_fn ge (TAtom "zmemset") = None) (Hset_sym : lookup (TAtom "zmemset") (ge_globals ge) = None)
   (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
 
-(** [os_wi] w0 survives safepoints ([OW.os_wi_stable]). *)
+(** The OS world invariant `os_wi w0` remains stable across runtime
+    safepoints. *)
 Local Instance memfwd_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
-(** The Iris instance of the registry and [os_wi] w0. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [memfwd_irisGS] connects the contract registry and the OS world
+    invariant to the Iris program logic. *)
 Local Instance memfwd_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation mexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A string at the share dq lends its life and its bytes with its NUL,
-    at that share, and takes them back. *)
+(** To pass a string to `c: memcpy`, [word_string_bytes] extracts the
+    fractional live [[region]] and byte pieces for `s ++ [0]` from a
+    [word_string] and returns a wand that reassembles them. *)
 Lemma word_string_bytes dq p s :
   word_string dq p s ⊢ ∃ b reg ws, ⌜str_shape p b reg ws s⌝ ∗ liveq dq b reg ∗
     bytesq dq b (ptr_addr p - b) (s ++ [0]) ∗
@@ -185,11 +213,9 @@ Proof.
            Hlk Ho). iFrame.
 Qed.
 
-(** A void call of `c: zmemset` on the block of the bytes xs and slots
-    cs from the 8-aligned offset o of the live object b, at a multiple
-    of 8, where vp, vc and vn read as its pointer, the int c and its
-    length: the bytes become c's low byte and the slots it touches
-    empty ([memset_result]). *)
+(** Calling `c: zmemset` on an 8-aligned owned block fills its bytes
+    with `c mod 256` and clears any touched capability slots via
+    [clear_slots]. *)
 Lemma wp_zmemset f e ls lab vp vc vn rest j b reg o xs cs c Φ :
   arg_x ge e (Arg P vp) = Some (WPtr (mkPtr (b + o) (Obj b))) -> arg_x ge e (Arg W vc) = Some (WInt c) ->
   arg_x ge e (Arg L vn) = Some (WInt (Z.of_nat (length xs))) ->
@@ -248,12 +274,11 @@ Proof.
     + rewrite block_pts. iDestruct "Hps" as "(Hl & Hx & Hcs)". iApply ("HK" with "Hl Hx Hcs").
 Qed.
 
-(** A void call of `c: zmemmove` from the bytes ys from offset o' of
-    the live object b', owned at the share dq through the capability c',
-    into the block of as many bytes xs and slots cs from the 8-aligned
-    offset o of another live object b, both objects at multiples of 8:
-    the block's bytes become ys and its slots whatever the copy left,
-    and the source comes back. *)
+(** Calling `c: zmemmove` from a fractionally owned source slice `ys`
+    into a distinct 8-aligned owned destination block overwrites the
+    destination bytes with `ys`, leaves its capability slots as an
+    arbitrary list of the same length, and restores the source
+    resources. *)
 Lemma wp_zmemmove f e ls lab vd vs vn rest j b reg o xs cs dq b' reg' o' c' ys Φ :
   arg_x ge e (Arg P vd) = Some (WPtr (mkPtr (b + o) (Obj b))) ->
   arg_x ge e (Arg P vs) = Some (WPtr (mkPtr (b' + o') c')) -> c' = Obj b' \/ c' = Ro b' ->
@@ -337,11 +362,9 @@ Proof.
       iApply ("HK" with "Hl Hx [Hcs] Hl' Hy"). iExists cs'. iFrame "Hcs". iPureIntro. apply length_aux_now.
 Qed.
 
-(** A call of glibc's `memset`, in any module whose function at the
-    called name g is it ([glibc_memset]), on the block of the bytes xs
-    and slots cs from the 8-aligned offset o of the live object b, at a
-    multiple of 8: the bytes become c's low byte, the slots it touches
-    empty, and the caller resumes with the block's pointer. *)
+(** Calling a global function g bound to [glibc_memset] fills an owned
+    8-aligned block with `c mod 256`, clears touched capability slots,
+    and resumes the caller with the destination pointer. *)
 Lemma wp_call_glibc_memset f e ls lab r g args rest j b reg o xs cs c cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr (mkPtr (b + o) (Obj b)); WInt c; WInt (Z.of_nat (length xs))] ->
   find_fn ge g = Some (Defined glibc_memset) ->
@@ -364,12 +387,9 @@ Proof.
   iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hcs").
 Qed.
 
-(** A call of glibc's `memcpy` ([glibc_memcpy]) from the bytes ys
-    from offset o' of the live object b', owned at the share dq through
-    the capability c', into the block of as many bytes xs and slots cs
-    from the 8-aligned offset o of the live object b, both objects at
-    multiples of 8: the block's bytes become ys, its slots whatever the
-    copy left, and the caller resumes with the block's pointer and the
+(** Calling a global function g bound to [glibc_memcpy] copies bytes `ys`
+    from a shared source into an owned 8-aligned destination block,
+    resumes the caller with the destination pointer, and restores the
     source. *)
 Lemma wp_call_glibc_memcpy f e ls lab r g args rest j b reg o xs cs dq b' reg' o' c' ys cf' Φ :
   map_option (arg_x ge e) args =
@@ -397,9 +417,9 @@ Proof.
   iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hcs Hl' Hy").
 Qed.
 
-(** A call of glibc's `mempcpy` ([glibc_mempcpy]), which calls
-    `memcpy` by its name `__GI_memcpy`, as [wp_call_glibc_memcpy]: the
-    caller resumes with the pointer just past the block. *)
+(** Calling a global function g bound to [glibc_mempcpy] delegates to
+    `__GI_memcpy` and resumes the caller with the pointer just past the
+    end of the destination block. *)
 Lemma wp_call_glibc_mempcpy f e ls lab r g args rest j b reg o xs cs dq b' reg' o' c' ys cf' Φ :
   find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
   map_option (arg_x ge e) args =
@@ -431,29 +451,27 @@ Proof.
   rewrite (Z.mod_small (b + o + _)); [reflexivity | lia].
 Qed.
 
-(** What a malloc of n bytes may return: null, or the base of a fresh
-    16-aligned heap object of n bytes, rounded up to 16, whose pieces
-    the caller then owns ([obj]). *)
+(** Predicate [malloc_out] describes the result of allocating n bytes:
+    either null or a fresh 16-aligned heap object whose ownership is
+    transferred to the caller via [obj]. *)
 Definition malloc_out (n : Z) (q : ptr) : iProp Σ :=
   ⌜ptr_addr q = 0⌝ ∨
   ∃ base, ⌜q = mkPtr base (Obj base) /\ 0 < base /\ base mod 16 = 0 /\
            base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ ∗ obj base (heap_req 16 n).
 
-(** A triple for a call of `c: malloc` of n bytes at a pointer site:
-    the caller goes on with any [malloc_out]. MemLogic.v's [wp_malloc]
-    is one (it never returns null), and so is any triple of glibc's
-    own malloc of this shape. *)
+(** Predicate [malloc_triple] characterizes any `c: malloc`
+    implementation whose calls return [malloc_out], covering both
+    [wp_malloc] and glibc's own allocator. *)
 Definition malloc_triple : Prop :=
   forall f e ls lab d v rest j n Φ, arg_x ge e (Arg L v) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
   ⊢ ▷ (∀ q, malloc_out n q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global (TAtom "malloc")) [Arg L v] :: rest) j))
           : mexpr) {{ Φ }}.
 
-(** glibc's `strdup` ([glibc_strdup]) of a string at any share, which
-    calls `__GI_strlen`, `malloc` and `__GI_memcpy`, given glibc's
-    strlen and memcpy at those names and any [malloc_triple]: it returns
-    null when malloc does, and otherwise the base of a fresh object
-    holding the string and its NUL, and hands the string back. *)
+(** Executing [glibc_strdup] on a [word_string] at any share calls
+    `__GI_strlen`, `malloc`, and `__GI_memcpy`. It returns null if
+    allocation fails, or a fresh object holding the string and its NUL
+    terminator, while restoring the input string. *)
 Lemma wp_glibc_strdup dq p s Φ :
   malloc_triple ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->

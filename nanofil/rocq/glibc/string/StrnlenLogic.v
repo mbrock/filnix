@@ -1,14 +1,14 @@
-(** glibc's own `__memchr` for the NUL of a string, and its
-    `__GI___strnlen` (StrchrCode.v's [glibc_strnlen]), which calls it,
-    over a [word_string] (WordString.v) at any share.
+(** In C, `c: strnlen(p, n)` returns the length of string `s` at `p`,
+    capped at `n`. Glibc's `__GI___strnlen` implements it by calling
+    `__GI_memchr(p, 0, n)` to search the first `n` bytes for the NUL
+    terminator, returning `n` when `memchr` returns null or `hit - p`
+    otherwise.
 
-    memchr(p, 0, n) on the string s at p finds its NUL when that is one
-    of the n bytes ([memchr_nul_hit]): [wp_glibc_memchr_nul] for a frame
-    of it, [wp_call_glibc_memchr_nul] for a call. strnlen(p, n) returns
-    the least of s's length and n: [wp_glibc_strnlen_ws] for a frame of
-    it, and [wp_call_glibc_strnlen] for a call of any module whose
-    function at the called name is it and at `__GI_memchr` glibc's
-    memchr. *)
+    Because `c: strnlen` searches for a NUL byte within a bounded
+    prefix, this module specializes `c: memchr` to scanning a
+    [word_string] for zero. It then composes that NUL search with the
+    pointer subtraction in `c: strnlen` to prove frame and call
+    specifications at any ownership share. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,13 +21,14 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCod
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** What memchr(p, 0, n) finds on the string s at p: its NUL, when that
-    is one of the n bytes. *)
+(** Function [nul_hit] models what `c: memchr(p, 0, n)` finds on string
+    s: the NUL offset when `length s < n`, or `None` when the NUL lies
+    at or past n. *)
 Definition nul_hit (s : list Z) (n : Z) : option nat :=
   if Z.of_nat (List.length s) <? n then Some (List.length s) else None.
 
-(** The string s at p: memchr's search for 0 in its first n bytes finds
-    [nul_hit] s n. *)
+(** Searching the first n bytes of a valid [str_shape] for zero always
+    satisfies [loop_hit] with `[nul_hit] s n`. *)
 Lemma memchr_nul_hit p b reg ws s n : str_shape p b reg ws s -> 0 <= n < 2 ^ 64 ->
   loop_hit (drop (Z.to_nat (ptr_addr p mod 8)) (wbytes ws)) (0 mod 256) (ptr_addr p)
     (memchr_end (ptr_addr p) n) (nul_hit s n).
@@ -46,7 +47,9 @@ Proof.
   - split; [lia|]. intros u Hu. apply Hnz. lia.
 Qed.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the NUL-search `memchr` and `strnlen`
+    specifications over a [[runtime]] R and a program logic instance
+    LG0. *)
 Module StrnlenLogicOn (R : Runtime) (LG0 : LogicSig R).
 Module MC := MemchrLogicOn R LG0.
 Module ML := MC.ML.
@@ -59,12 +62,17 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** One step whose premises reduce, as MemchrLast.v's. *)
+(** To step past pure instructions without manual boilerplate, [st]
+    advances one pure `let`, [[flight]], block entry, or `goto` step
+    whose premises reduce. *)
 Ltac st :=
   first
     [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
@@ -72,9 +80,9 @@ Ltac st :=
     | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
     | iApply wp_goto; iNext ].
 
-(** glibc's memchr of the n bytes from the string s at p for its NUL: it
-    returns the pointer to the NUL when that is one of the n bytes, and
-    null otherwise, and hands the string back. *)
+(** To search a [word_string] for its terminating NUL within n bytes,
+    [wp_glibc_memchr_nul] executes a call [[frame]] of [glibc_memchr]
+    with target byte zero and returns the pointer for [nul_hit]. *)
 Lemma wp_glibc_memchr_nul dq p s n e Φ :
   0 <= n < 2 ^ 64 ->
   lookup (TAtom "v0") e = Some (WPtr p) -> lookup (TAtom "v2") e = Some (WInt 0) ->
@@ -90,9 +98,9 @@ Proof.
   iIntros "Hl Hw". iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
-(** A call of glibc's memchr, in any module whose function at the called
-    name g is glibc's `__memchr`, for the NUL of a string at any share:
-    the caller resumes with [hit_ptr] of [nul_hit] and the string. *)
+(** When a caller invokes `c: memchr(p, 0, n)` on a [word_string],
+    [wp_call_glibc_memchr_nul] resumes the caller with the pointer for
+    [nul_hit] and restores the string. *)
 Lemma wp_call_glibc_memchr_nul f e ls l r g args rest j dq p s n cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt 0; WInt n] -> 0 <= n < 2 ^ 64 ->
   find_fn ge g = Some (Defined glibc_memchr) ->
@@ -106,8 +114,9 @@ Proof.
   iIntros "Hs". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
-(** glibc's strnlen of the string s at p and n: it returns the least of
-    s's length and n, and hands the string back. *)
+(** Executing a call [[frame]] of [glibc_strnlen] on a [word_string] at
+    any share returns the minimum of the string's length and n, and
+    restores the string. *)
 Lemma wp_glibc_strnlen_ws dq p s n Φ :
   find_fn ge (TAtom "__GI_memchr") = Some (Defined glibc_memchr) -> 0 <= n < 2 ^ 64 ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WInt (Z.min (Z.of_nat (List.length s)) n)))) -∗
@@ -142,10 +151,9 @@ Proof.
     iApply ("HK" with "Hs").
 Qed.
 
-(** A call of glibc's strnlen, in any module whose function at the
-    called name g is glibc's `__GI___strnlen` and at `__GI_memchr`
-    glibc's `__memchr`, on a string at any share: the caller resumes
-    with the least of its length and n, and the string. *)
+(** When a caller invokes `c: strnlen(p, n)` through a module whose
+    `__GI_memchr` resolves to [glibc_memchr], [wp_call_glibc_strnlen]
+    resumes the caller with the capped length and restores the string. *)
 Lemma wp_call_glibc_strnlen f e ls l r g args rest j dq p s n cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt n] -> 0 <= n < 2 ^ 64 ->
   find_fn ge g = Some (Defined glibc_strnlen) ->

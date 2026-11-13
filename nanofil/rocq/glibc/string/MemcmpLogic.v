@@ -1,31 +1,21 @@
-(** This file proves that glibc's own memcmp compares fewer than 16
-    bytes of two live objects correctly, whatever shares of them the
-    caller holds. GNU Hello's `memeq` calls memcmp on seven bytes, so
-    this case is the one Hello needs.
+(** This module proves that glibc's `c: memcmp` compares fewer than 16
+    bytes of two live objects correctly at any ownership share. GNU
+    Hello's `memeq` helper calls `c: memcmp` on seven bytes, so this
+    bounded specification covers what GNU Hello needs.
 
-    Below 16 bytes, glibc's memcmp compares the bytes one at a time and
-    returns the difference of the first pair that differs, or 0 when
-    every pair is equal. That result is 0 modulo 2^32 just when the
-    bytes are equal.
+    Below 16 bytes, glibc's `c: memcmp` compares the two buffers one
+    byte at a time using [byte_loop] and returns the difference of the
+    first mismatching pair, or zero when every pair matches. Lemma
+    [cmp_bytes_zero] shows that the returned 32-bit integer is zero if
+    and only if the two byte lists are equal, and [glibc_memcmp_small]
+    packages that guarantee into [memcmp_small_spec].
 
-    | Name | What it states |
-    | --- | --- |
-    | [cmp_bytes] | the result memcmp computes from the two byte lists |
-    | [cmp_bytes_zero] | that result is 0 just when the lists are equal |
-    | [byte_loop] | the byte loop, by induction on the bytes left |
-    | [wp_glibc_memcmp_small] | the triple for a frame of `__GI_memcmp` |
-    | [glibc_memcmp_small] | HelloGlibcLeaf.v's [memcmp_spec] ([memcmp_small_spec]) |
-
-    The proof stops at 16 bytes because glibc's memcmp traps from there
-    on. For 16 bytes or more, it compares bytes until the second pointer
-    is 8-aligned and then compares whole words. It reads each word
-    through a pointer that it rebuilt from an integer address, and
-    nanofil gives such a pointer no capability: the read is a [[flight]]
-    that copies the integer with none (`flight(_, copy, [tmp(pr.5)],
-    none)`), followed by a [[check]]. A check through no capability
-    traps with `null_capability`, so two equal 8-aligned runs of 16
-    bytes make glibc's memcmp trap. No triple for all lengths holds of
-    this code. *)
+    The proof stops at 16 bytes because glibc's `c: memcmp` traps from
+    16 bytes onward. For longer buffers, the compiled code aligns the
+    second pointer and compares whole words through an integer-to-pointer
+    cast. In Fil-C, a pointer built from a bare integer carries no
+    [[capability]], so the subsequent [[check]] always traps with
+    `null_capability`. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -37,15 +27,16 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBit
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The difference of the first bytes where xs and ys differ, or 0. *)
+(** Function [cmp_bytes] returns the difference between the first
+    mismatching pair of bytes in xs and ys, or zero if they match. *)
 Fixpoint cmp_bytes (xs ys : list Z) : Z :=
   match xs, ys with
   | x :: xs', y :: ys' => if Z.eqb x y then cmp_bytes xs' ys' else x - y
   | _, _ => 0
   end.
 
-(** On bytes of one length, [cmp_bytes] is 0 modulo 2^32 just when
-    they are equal. *)
+(** On two byte lists of the same length, [cmp_bytes] is zero modulo
+    `2 ^ 32` if and only if the lists are equal. *)
 Lemma cmp_bytes_zero xs ys : List.length xs = List.length ys ->
   Forall (fun x => 0 <= x < 256) xs -> Forall (fun y => 0 <= y < 256) ys ->
   cmp_bytes xs ys mod 2 ^ 32 = 0 <-> xs = ys.
@@ -58,30 +49,32 @@ Proof.
   - split; [intros E; exfalso; exact (byte_diff_nonzero x y Hx Hy Hne E) | intros E; injection E as -> _; lia].
 Qed.
 
-(** The bytes from i agree with the whole once those before i are
-    equal. *)
+(** Once the first i bytes of xs and ys agree, comparing the full lists
+    gives the same result as comparing the suffixes from index i. *)
 Lemma cmp_bytes_drop xs ys i : take i xs = take i ys -> cmp_bytes xs ys = cmp_bytes (drop i xs) (drop i ys).
 Proof.
   revert xs ys. induction i as [|i IH]; intros [|x xs] [|y ys] H; cbn in H |- *; try reflexivity; try discriminate.
   injection H as -> H. rewrite Z.eqb_refl. apply IH, H.
 Qed.
 
-(** The block of the byte loop, L89. *)
+(** Block `L89` is the byte-by-byte comparison loop of [glibc_memcmp]
+    used when the byte count is below 16. *)
 Definition memcmp_blk89 : block := Eval vm_compute in
   match find_block (TAtom "L89") (fn_blocks glibc_memcmp) with
   | Some b => b | None => mkBlock (TAtom "L89") [] [] JUnreachable end.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the small-buffer `memcmp` proofs over a
+    [[runtime]] R and a program logic instance LG0. *)
 Module MemcmpLogicOn (R : Runtime) (LG0 : LogicSig R).
-(** The step rules of the proof mode. *)
+(** Module [SL] supplies the step rules for symbolic execution. *)
 Module SL := StrcmpLoopOn R LG0.
-(** The byte pieces. *)
+(** Module [ML] provides ownership predicates for byte slices. *)
 Module ML := MemLogicOn R LG0.
-(** Strings' windows. *)
+(** Module [WS] provides word-window and fractional read helpers. *)
 Module WS := SL.WS.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance. *)
 Module LG := LG0.
-(** The language of the Logic instance. *)
+(** Module [L] re-exports the core logic definitions. *)
 Module L := LG.L.
 Import L LG WS SL ML.
 
@@ -89,46 +82,60 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** This instance equips the nanofil language with a program-logic
+    state interpretation built from the contract registry and world
+    invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A let, its value left whole. *)
+(** Tactic [sl] advances one pure `let` instruction while keeping its
+    result expression symbolic. *)
 Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A flight. *)
+(** Tactic [sf] advances one [[flight]] instruction in the proof mode. *)
 Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
-(** Entering a block. *)
+(** Tactic [en] steps into the target block and exposes its instructions
+    and terminator. *)
 Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] follows an unconditional `goto` and immediately enters the
+    destination block. *)
 Ltac sg := eapply (s_goto registry wi ge); en.
-(** A branch, its condition left whole. *)
+(** Tactic [sb] advances one conditional `branch` while keeping its
+    condition expression symbolic. *)
 Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
-(** Read the temporaries of the frame's environment below its puts by
-    the hypotheses about them there, then compute the rest. *)
+(** To resolve IR temporary arguments during symbolic execution, [vx]
+    looks up each temporary in the environment hypotheses and evaluates
+    the remaining argument expressions. *)
 Ltac vx :=
   cbn [map2_option map_option flight_arg_x flight_cap arg_x];
   repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
     match goal with H : lookup n _ = Some ?x |- _ =>
       rewrite (value_x_tmp g E k n x); [|look H] end end;
   reflexivity.
-(** A let that may read the environment below the puts. *)
+(** Tactic [sl'] advances one `let` instruction whose arguments are
+    resolved via [vx]. *)
 Ltac sl' := eapply (s_let registry wi ge); [reflexivity | reflexivity | vx | intros ?; reflexivity |].
-(** A flight that may read the environment below the puts. *)
+(** Tactic [sf'] advances one [[flight]] instruction whose arguments are
+    resolved via [vx]. *)
 Ltac sf' := eapply (s_flight registry wi ge); [vx | reflexivity | vx |].
-(** Replace the integer the temporary name holds by v, proved by tac. *)
+(** Tactic [norm] rewrites the integer stored in temporary `name` to `v`
+    using tactic `tac`. *)
 Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** To keep intermediate integers readable, [normt] rewrites the
+    integer in the newest temporary to `v` using tactic `tac`. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
-(** Replace the address of the pointer the temporary name holds by v. *)
+(** Tactic [normp] rewrites the address of the pointer stored in
+    temporary `name` to `v` by arithmetic. *)
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
 
-(** Logic.v's [wp_read_with] that also hands the next step a pure fact
-    P that every memory with F has: a step that changes no memory, to
-    the frame fr'. *)
+(** Before `c: memcmp` branches on a buffer length, the proof needs
+    non-negativity bounds on the object base addresses. Lemma
+    [wp_read_fact] extracts such a pure fact from the
+    [[ghost-state|ghost heap]] during a read step. *)
 Lemma wp_read_fact (Q : iProp Σ) (F : mem -> Prop) (P : Prop) fr fr' Φ :
   (forall σ, heap_interp wi σ -∗ Q -∗ ⌜F (ls_mem σ)⌝) -> (forall m, F m -> P) ->
   (forall m fuel, F m -> Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' [] m fuel)) ->
@@ -147,10 +154,9 @@ Proof.
     iModIntro. iFrame "Hσ". iApply ("HK" with "[] HQ"). iPureIntro. exact (HP _ Hf).
 Qed.
 
-(** A [[check]] of one byte for reading of the pointer pr holds, p, and
-    a load of the unsigned byte there, where p addresses byte i of the
-    bytes xs at offset o of the object b, at a share: the load gives
-    the byte. *)
+(** To advance past a single byte comparison in the loop,
+    [wp_bytes_byte] verifies the 1-byte read [[check]] and loads the
+    unsigned byte from a fractionally owned slice. *)
 Lemma wp_bytes_byte f e ls l c d pr rest j p dq b reg o xs i x Φ :
   map2_option (value_x ge e) [P] [Tmp pr] = Some [WPtr p] -> ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
   ptr_addr p = b + o + Z.of_nat i -> xs !! i = Some x -> 0 <= x < 256 -> 0 <= o ->
@@ -185,10 +191,11 @@ Proof.
   - iNext. iIntros "[Hl Hb]". iApply ("HK" with "Hl Hb").
 Qed.
 
-(** The byte loop at i: pr.6 and pr.12 are the addresses i bytes into
-    the bytes xs at offset o of the object b and ys at o' of b', pr.3
-    the count left, the bytes before i equal. memcmp returns
-    [cmp_bytes] and hands both back. *)
+(** This lemma verifies the byte-comparison loop `L89` by induction on
+    the remaining byte count. Starting at index i where the preceding
+    bytes already match, `c: memcmp` compares `xs` and `ys` byte by
+    byte, returns `[cmp_bytes] xs ys mod 2 ^ 32`, and restores both
+    slices. *)
 Lemma byte_loop dq1 dq2 b reg o c xs b' reg' o' c' ys i e Φ :
   0 <= b -> 0 <= b' -> (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> List.length ys = List.length xs ->
   0 <= o -> 0 <= o' -> b + o + Z.of_nat (List.length xs) <= r_end reg ->
@@ -251,9 +258,9 @@ Proof.
       iApply ("HK" with "Hl Hx Hl' Hy").
 Qed.
 
-(** glibc's memcmp of fewer than 16 bytes xs at offset o of the object b
-    and ys at o' of b', at any shares, as a call binds them: it
-    returns [cmp_bytes] and hands both back. *)
+(** Executing a call [[frame]] of [glibc_memcmp] on two shared byte
+    slices of equal length below 16 returns `[cmp_bytes] xs ys mod 2 ^ 32`
+    and restores both slices. *)
 Lemma wp_glibc_memcmp_small fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ :
   call_frame glibc_memcmp [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (List.length xs))] =
     Some fr -> (List.length xs < 16)%nat ->
@@ -284,11 +291,10 @@ Proof.
   iApply (byte_loop _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Hl Hx Hl' Hy HK"); done || lia.
 Qed.
 
-(** HelloGlibcLeaf.v's [memcmp_spec] for fewer than 16 bytes: a call
-    triple for the function at `memcmp` that, on as many bytes xs and
-    ys of two live objects at any shares, n their count below 16,
-    returns an int that is 0 just when they are equal, and hands them
-    back. *)
+(** Predicate [memcmp_small_spec] abstracts the contract for `c: memcmp`
+    on fewer than 16 bytes: for any two live byte slices at any
+    ownership shares, it returns an integer that is zero modulo `2 ^ 32`
+    if and only if the slices are equal. *)
 Definition memcmp_small_spec : Prop :=
   exists F, find_fn ge (TAtom "memcmp") = Some (Defined F) /\
   (forall p q n, is_Some (call_frame F [WPtr p; WPtr q; WInt n])) /\
@@ -304,7 +310,8 @@ Definition memcmp_small_spec : Prop :=
             liveq dq2 b' reg' -∗ bytesq dq2 b' o' ys -∗ Φ (Ret (WInt k))) -∗
       WP (ERun fr : gexpr) {{ Φ }}.
 
-(** glibc's own memcmp at `memcmp` meets [memcmp_small_spec]. *)
+(** Glibc's `memcmp` satisfies [memcmp_small_spec] whenever the global
+    environment binds `memcmp` to [glibc_memcmp]. *)
 Lemma glibc_memcmp_small : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) -> memcmp_small_spec.
 Proof.
   intros Hf. exists glibc_memcmp. split; [exact Hf|]. split; [intros; eexists; reflexivity|].

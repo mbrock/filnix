@@ -1,18 +1,17 @@
-(** glibc's own `__strchrnul` (StrchrCode.v's [glibc_strchrnul]) over a
-    [word_string] (WordString.v) at any share: [wp_glibc_strchrnul_ws]
-    for a frame of it and [wp_call_glibc_strchrnul] for a call. It
-    returns the pointer to the first byte of the string that is c mod
-    256, or to its NUL: [chr_idx] bytes in.
+(** In C, `c: strchrnul(p, c)` returns a pointer to the first occurrence
+    of `c mod 256` in the string at `p`, or to the terminating NUL byte
+    if `c mod 256` does not appear. Glibc's `c: strchr(p, c)` calls
+    `c: strchrnul` and checks whether the stopped byte equals `c mod 256`,
+    returning null if it does not. This module proves frame and call
+    specifications for both functions over a [word_string] at any
+    ownership share.
 
-    glibc's strchrnul reads whole words from the one holding p's byte.
-    On the first it marks each byte that is 0 or c's with string-fza.h's
-    exact `find_zero_all` of the word and of the word xor'd with c's byte
-    in each byte (StrlenBits.v's [first_mask], MemchrLast.v's [rep]),
-    shifted past the bytes before p ([cmask]); on the others it uses the
-    cheaper `find_zero_low` of both ([lmask]), exact up to the first
-    stop. The population count of either ([tail]) is the stop's index.
-    The steps are StrcmpLoop.v's, over the proof mode's entailment, and
-    every read is a word of the string's window ([wp_win_word]). *)
+    Glibc's `__strchrnul` reads 8-byte [[word|words]] starting from the
+    aligned word containing `p`. On the first word it marks every byte
+    that equals zero or `c mod 256` and shifts away any bytes before `p`;
+    on subsequent words it uses a faster mask that is exact up to the
+    first matching byte. Once a word contains a match, a population count
+    recovers the byte offset within the word. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -25,27 +24,36 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCod
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## Where strchrnul stops *)
+(** ## Where strchrnul stops
 
-(** The byte x stops strchrnul for the byte cc: it is a NUL or cc. *)
+    Both `c: strchrnul` and `c: strchr` scan a string until they hit
+    either the target byte `cc` or the terminating NUL byte. We define
+    [chr_idx] as the offset of that first stopping byte and prove that
+    no earlier byte in the string can stop the scan. *)
+
+(** Predicate [hitb] returns `true` when byte x is either NUL or the
+    target byte cc. *)
 Definition hitb (cc x : Z) : bool := (x =? 0) || (x =? cc).
 
-(** The index of the first byte cc of the string s, or its length. *)
+(** Function [chr_idx] computes the byte offset of the first occurrence
+    of cc in string s, or the length of s if cc does not appear. *)
 Fixpoint chr_idx (cc : Z) (s : list Z) : nat :=
   match s with [] => O | x :: s' => if x =? cc then O else S (chr_idx cc s') end.
 
-(** The first stop is at most the string's length. *)
+(** The stopping index `[chr_idx] cc s` never exceeds the length of s. *)
 Lemma chr_idx_le cc s : (chr_idx cc s <= List.length s)%nat.
 Proof. induction s as [|x s IH]; cbn [chr_idx List.length]; [lia|]. destruct (x =? cc); lia. Qed.
 
-(** The byte at [chr_idx], of the string and its NUL, is a stop. *)
+(** Looking up `[chr_idx] cc s` in the NUL-terminated byte list
+    `s ++ [0]` always produces a stopping byte under [hitb]. *)
 Lemma chr_idx_at cc s : hitb cc (nth (chr_idx cc s) (s ++ [0]) 0) = true.
 Proof.
   induction s as [|x s IH]; cbn [chr_idx]; [reflexivity|].
   destruct (Z.eqb_spec x cc) as [->|]; [|exact IH]. cbn. unfold hitb. rewrite Z.eqb_refl orb_true_r. reflexivity.
 Qed.
 
-(** The bytes before [chr_idx] of a string of nonzero bytes are no stops. *)
+(** When every byte in string s is nonzero, no byte strictly before
+    `[chr_idx] cc s` satisfies [hitb]. *)
 Lemma chr_idx_below cc s j : Forall (fun x => 0 < x < 256) s -> (j < chr_idx cc s)%nat ->
   hitb cc (nth j (s ++ [0]) 0) = false.
 Proof.
@@ -56,8 +64,8 @@ Proof.
   - apply IH; [exact Hs | lia].
 Qed.
 
-(** The string's bytes from p: its stop for cc is at [chr_idx], and
-    none before. *)
+(** On any valid string window [str_shape], the byte at [chr_idx] is a
+    stopping byte under [hitb] and every earlier byte is not. *)
 Lemma shape_stop p b reg ws s cc : str_shape p b reg ws s ->
   hitb cc (sbyte p ws (Z.of_nat (chr_idx cc s))) = true /\
   forall j, 0 <= j < Z.of_nat (chr_idx cc s) -> hitb cc (sbyte p ws j) = false.
@@ -67,12 +75,14 @@ Proof.
   - intros j Hj. rewrite A; [|lia]. apply chr_idx_below; [exact (ss_chars _ _ _ _ _ Hs) | lia].
 Qed.
 
-(** strchr's answer for the byte cc of a string at p: the pointer to
-    its first cc, or to its NUL when cc is 0, else null. *)
+(** Function [strchr_ptr] computes the pointer returned by `c: strchr`:
+    it advances p to `[chr_idx] cc s` when cc is found or zero, and
+    returns null otherwise. *)
 Definition strchr_ptr (p : ptr) (cc : Z) (s : list Z) : ptr :=
   if (chr_idx cc s <? List.length s)%nat || (cc =? 0) then ptr_add p (Z.of_nat (chr_idx cc s)) else mkPtr 0 CNone.
 
-(** The byte at [chr_idx] of a string and its NUL is a byte. *)
+(** Every element of the NUL-terminated byte list `s ++ [0]` lies in the
+    unsigned byte range `0 <= b < 256`. *)
 Lemma nth_byte_range n s : Forall (fun x => 0 < x < 256) s -> 0 <= nth n (s ++ [0]) 0 < 256.
 Proof.
   intros Hs. destruct (Nat.lt_ge_cases n (List.length s)) as [H|H].
@@ -80,7 +90,8 @@ Proof.
   - rewrite app_nth2; [|exact H]. destruct (n - List.length s)%nat as [|[|]]; cbn; lia.
 Qed.
 
-(** strchr finds c's byte cc just when the byte at [chr_idx] is cc. *)
+(** Checking whether `c: strchr` succeeded reduces to comparing the byte
+    at `[chr_idx] cc s` against `cc`. *)
 Lemma strchr_hit cc s : 0 <= cc < 256 -> Forall (fun x => 0 < x < 256) s ->
   ((chr_idx cc s <? List.length s)%nat || (cc =? 0)) = (nth (chr_idx cc s) (s ++ [0]) 0 =? cc).
 Proof.
@@ -91,9 +102,16 @@ Proof.
     + cbn [app nth]. rewrite (IH Hs). reflexivity.
 Qed.
 
-(** ## The masks *)
+(** ## The masks
 
-(** A xor of 64-bit words is a 64-bit word. *)
+    To test eight bytes in parallel for either NUL or target byte c,
+    `__strchrnul` combines the zero-byte mask of word x with the
+    zero-byte mask of `x` XOR `[rep] c`. The lemmas in this section
+    characterize both the exact first-word mask [cmask] (and its shift
+    [cshift]) and the loop mask [lmask]. *)
+
+(** Bitwise XOR of two 64-bit integers stays within the 64-bit unsigned
+    range. *)
 Lemma lxor_range a b : 0 <= a < 2 ^ 64 -> 0 <= b < 2 ^ 64 -> 0 <= Z.lxor a b < 2 ^ 64.
 Proof.
   intros Ha Hb. assert (E : Z.lxor a b mod 2 ^ 64 = Z.lxor a b).
@@ -103,18 +121,20 @@ Proof.
   rewrite -E. apply Z.mod_pos_bound. lia.
 Qed.
 
-(** The first word's mask is a 64-bit word. *)
+(** The exact zero-byte mask [first_mask] always fits in 64 bits. *)
 Lemma first_mask_range x : 0 <= first_mask x < 2 ^ 64.
 Proof. unfold first_mask. apply lxor_range; [apply Z.mod_pos_bound; lia | vm_compute; split; congruence]. Qed.
 
-(** strchrnul's first mask of the word x for c: 128 in each byte that
-    is 0 or c's ([cmask_byte]). *)
+(** Function [cmask] marks every byte lane of word x that equals zero or
+    `c mod 256` by combining two [first_mask] results. *)
 Definition cmask (x c : Z) : Z := Z.lor (first_mask x) (first_mask (Z.lxor x (rep c))).
 
-(** The loop's mask of the word x for c: exact up to its first stop. *)
+(** Function [lmask] computes the cheaper loop mask for word x, which
+    remains exact up through the earliest stopping byte. *)
 Definition lmask (x c : Z) : Z := Z.lor (loop_mask x) (loop_mask (Z.lxor x (rep c))).
 
-(** A byte of x xor [rep] c is not zero where x's byte is no c. *)
+(** When byte i of x is neither zero nor `c mod 256`, both x and
+    `x` XOR `[rep] c` have a nonzero byte at lane i. *)
 Lemma xor_nonzero x c i : 0 <= i < 8 -> hitb (c mod 256) (byte_of x i) = false ->
   byte_of x i <> 0 /\ byte_of (Z.lxor x (rep c)) i <> 0.
 Proof.
@@ -122,7 +142,8 @@ Proof.
   split; [exact H1|]. intros E. apply H2. apply xor_zero; [exact Hi | exact E].
 Qed.
 
-(** Byte i of [cmask]: 128 where x's byte is a stop. *)
+(** Byte lane i of `[cmask] x c` holds 128 when byte i of x satisfies
+    [hitb], and zero otherwise. *)
 Lemma cmask_byte x c i : 0 <= i < 8 -> byte_of (cmask x c) i = if hitb (c mod 256) (byte_of x i) then 128 else 0.
 Proof.
   intros Hi. unfold cmask, hitb. rewrite byte_of_lor; [|lia]. rewrite !first_mask_byte; [|lia|lia].
@@ -132,26 +153,28 @@ Proof.
     symmetry. apply Z.eqb_neq. intros E'. apply E. apply xor_zero; [lia | exact E'].
 Qed.
 
-(** [rep] c is a 64-bit word. *)
+(** The broadcast word `[rep] c` always lies in the 64-bit unsigned
+    range. *)
 Lemma rep_range c : 0 <= rep c < 2 ^ 64.
 Proof. unfold rep. apply Z.mod_pos_bound. lia. Qed.
 
-(** [cmask] is a 64-bit word. *)
+(** The combined exact mask `[cmask] x c` always fits in 64 bits. *)
 Lemma cmask_range x c : 0 <= cmask x c < 2 ^ 64.
 Proof. apply lor_range; apply first_mask_range. Qed.
 
-(** [lmask] is a 64-bit word. *)
+(** The combined loop mask `[lmask] x c` always fits in 64 bits. *)
 Lemma lmask_range x c : 0 <= lmask x c < 2 ^ 64.
 Proof. apply lor_range; apply loop_mask_range. Qed.
 
-(** The bytes of [lmask] are 0 or 128. *)
+(** Every byte lane of `[lmask] x c` is either 0 or 128. *)
 Lemma lmask_01 x c i : 0 <= i < 8 -> byte_of (lmask x c) i = 0 \/ byte_of (lmask x c) i = 128.
 Proof.
   intros Hi. unfold lmask. rewrite byte_of_lor; [|lia].
   destruct (loop_mask_01 x i Hi) as [-> | ->], (loop_mask_01 (Z.lxor x (rep c)) i Hi) as [-> | ->]; cbn; auto.
 Qed.
 
-(** Below the word's first stop j, [lmask]'s bytes are 0. *)
+(** Every byte lane of `[lmask] x c` strictly before the word's first
+    stopping byte j is zero. *)
 Lemma lmask_below x c j i : j <= 8 -> (forall i, 0 <= i < j -> hitb (c mod 256) (byte_of x i) = false) ->
   0 <= i < j -> byte_of (lmask x c) i = 0.
 Proof.
@@ -161,7 +184,8 @@ Proof.
   intros k Hk. apply (xor_nonzero x c k); [lia | apply Hn; lia].
 Qed.
 
-(** At the word's first stop j, [lmask]'s byte is 128. *)
+(** At the word's earliest stopping byte j, lane j of `[lmask] x c`
+    equals 128. *)
 Lemma lmask_at x c j : 0 <= j < 8 -> (forall i, 0 <= i < j -> hitb (c mod 256) (byte_of x i) = false) ->
   hitb (c mod 256) (byte_of x j) = true -> byte_of (lmask x c) j = 128.
 Proof.
@@ -176,11 +200,12 @@ Proof.
     destruct (loop_mask_01 x j ltac:(lia)) as [-> | ->]; reflexivity.
 Qed.
 
-(** [cmask] shifted down past the k bytes of the word before the
-    string, as glibc's `shift_find` (string-fza.h) does. *)
+(** Function [cshift] shifts `[cmask] x c` right by k bytes to discard
+    any bytes in the first aligned word that lie before the string. *)
 Definition cshift (x c k : Z) : Z := cmask x c / 2 ^ (8 * k).
 
-(** The shift of the IR, from the address a: 8 times a's offset in its word. *)
+(** Computing `8 * (a mod 8)` in the IR yields the exact bit-shift
+    count for discarding unaligned leading bytes at address a. *)
 Lemma shift_amount a : 0 <= a < 2 ^ 64 ->
   ((Z.land (a mod 2 ^ 64) (7 mod 2 ^ 64) mod 2 ^ 64 * 2 ^ ((3 mod 2 ^ 32) mod 64)) mod 2 ^ 64) mod 2 ^ 32 mod 64
   = 8 * (a mod 8).
@@ -191,7 +216,8 @@ Proof.
   rewrite (Z.mod_small (a mod 8 * 8) (2 ^ 32)); [|lia]. rewrite (Z.mod_small (a mod 8 * 8) 64); lia.
 Qed.
 
-(** Byte i of [cshift]: [cmask]'s byte i + k inside the word, else 0. *)
+(** Byte lane i of `[cshift] x c k` holds 128 when byte `i + k` of x
+    stops the scan inside the word, and zero otherwise. *)
 Lemma cshift_byte x c k i : 0 <= k < 8 -> 0 <= i < 8 ->
   byte_of (cshift x c k) i = if i + k <? 8 then (if hitb (c mod 256) (byte_of x (i + k)) then 128 else 0) else 0.
 Proof.
@@ -200,15 +226,15 @@ Proof.
   - apply byte_of_high; [apply cmask_range | lia].
 Qed.
 
-(** [cshift] is a 64-bit word. *)
+(** The shifted first-word mask `[cshift] x c k` always fits in 64 bits. *)
 Lemma cshift_range x c k : 0 <= k -> 0 <= cshift x c k < 2 ^ 64.
 Proof.
   intros Hk. unfold cshift. pose proof (cmask_range x c). assert (0 < 2 ^ (8 * k)) by (apply Z.pow_pos_nonneg; lia).
   split; [apply Z.div_pos; lia|]. apply (Z.le_lt_trans _ (cmask x c)); [|lia]. apply Z.div_le_upper_bound; nia.
 Qed.
 
-(** A mask whose bytes are 0 or 128, 128 first at j: its population
-    count is 8j + 7, and it is not 0. *)
+(** When a 0/128 byte mask has its earliest 128 at lane j, the mask is
+    nonzero and its [tail] bit count is `8 * j + 7`. *)
 Lemma mask_tail m j : 0 <= m < 2 ^ 64 -> (forall i, 0 <= i < 8 -> byte_of m i = 0 \/ byte_of m i = 128) ->
   0 <= j < 8 -> byte_of m j = 128 -> (forall i, 0 <= i < j -> byte_of m i = 0) -> tail m = 8 * j + 7 /\ m <> 0.
 Proof.
@@ -216,15 +242,16 @@ Proof.
   intros E. rewrite E in Hb. unfold byte_of in Hb. rewrite Z.div_0_l in Hb; [discriminate | apply Z.pow_nonzero; lia].
 Qed.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the `strchrnul` and `strchr` specifications
+    over a [[runtime]] R and a program logic instance LG0. *)
 Module StrchrnulLogicOn (R : Runtime) (LG0 : LogicSig R).
-(** StrcmpLoop.v's steps and reads over R and LG0. *)
+(** Module [SL] supplies the step rules for symbolic execution. *)
 Module SL := StrcmpLoopOn R LG0.
-(** Strings' windows. *)
+(** Module [WS] provides word-window and fractional read helpers. *)
 Module WS := SL.WS.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance. *)
 Module LG := LG0.
-(** Its language. *)
+(** Module [L] re-exports the core logic definitions. *)
 Module L := LG.L.
 Import L LG WS SL.
 
@@ -232,44 +259,57 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** StrcmpLoop.v's steps: a let, its value whole. *)
+(** Tactic [sl] advances one pure `let` instruction while keeping its
+    result expression symbolic. *)
 Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A let, its integer named. *)
+(** Tactic [sn] advances one `let` instruction and names its integer
+    result in the context. *)
 Ltac sn := eapply (s_letn registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |];
   let x := fresh "x" in let E := fresh "E" in intros x E.
-(** A flight. *)
+(** Tactic [sf] advances one [[flight]] instruction in the proof mode. *)
 Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
-(** Entering the block a frame is entering. *)
+(** Tactic [en] steps into the target block and exposes its instructions
+    and terminator. *)
 Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] follows an unconditional `goto` and immediately enters the
+    destination block. *)
 Ltac sg := eapply (s_goto registry wi ge); en.
-(** A let that reads the temporary n below the puts, which H gives. *)
+(** To resolve a temporary lookup below newer `put` bindings, [slk]
+    rewrites the lookup using hypothesis H and steps one `let`. *)
 Ltac slk n H := eapply (s_let registry wi ge); [reflexivity | reflexivity |
   cbn [map2_option value_x]; repeat (rewrite (lookup_after_put_other _ (TAtom n)); [|reflexivity]);
   rewrite H; reflexivity | intros ?; reflexivity |].
-(** A branch, its condition left whole. *)
+(** Tactic [sb] advances one conditional `branch` while keeping its
+    condition expression symbolic. *)
 Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** To keep intermediate integers readable, [normt] rewrites the
+    integer in the newest temporary to `v` using tactic `tac`. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
-(** Replace the address of the pointer the temporary name holds by v. *)
+(** Tactic [normp] rewrites the address of the pointer stored in
+    temporary `name` to `v` by arithmetic. *)
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
 
-(** Drop each wrap to 64 bits of a word known to be one. *)
+(** Tactic [unmod] strips 64-bit modulo wraps from mask and word
+    expressions already known to fit in `[0, 2 ^ 64)`. *)
 Ltac unmod :=
   repeat match goal with |- context [?y mod 2 ^ 64] =>
     rewrite (Z.mod_small y (2 ^ 64));
     [| first [apply loop_mask_range | apply lmask_range | apply cmask_range | apply first_mask_range
              | apply rep_range | apply lxor_range; first [apply rep_range | lia] | lia]] end.
 
-(** From the first block of a population count of the mask m, whose
-    count Htl says is 8j + 7: the count's steps, to the block after. *)
+(** To step through the 15-instruction population count on mask m, [pop]
+    names each intermediate value, rewrites the final count using Htl,
+    and enters the successor block. *)
 Ltac pop m Htl :=
   en; do 15 sn;
   match goal with |- context [mkFrame _ (put _ (WInt ?t) _) _ _ _] =>
@@ -277,15 +317,18 @@ Ltac pop m Htl :=
   repeat match goal with H : ?v = _ |- _ => is_var v; clear H end;
   sg.
 
-(** The word x xor [rep] c, as the IR computes it, is [Z.lxor] x (rep c). *)
+(** Tactic [xrep] simplifies the IR computation of `x` XOR `[rep] c` into
+    `Z.lxor x (rep c)` by dropping redundant modulo wraps. *)
 Ltac xrep x := rewrite rep_mod; rewrite (Z.mod_small x);
   [first [reflexivity | rewrite Z.mod_small; [reflexivity | apply lxor_range; [lia | apply rep_range]]] | lia].
 
-(** The loop's block. *)
+(** Block `L37` is the main word-scanning loop of [glibc_strchrnul]. *)
 Definition blk37 : block := Eval vm_compute in
   match find_block (TAtom "L37") (fn_blocks glibc_strchrnul) with
   | Some b => b | None => mkBlock (TAtom "L37") [] [] JUnreachable end.
-
+(** Entering `L37` at word index Q after no earlier byte stopped the
+    scan, `nul_loop` steps word by word until it hits the stopping byte
+    at offset t, returns `p + t`, and restores the window [wwin]. *)
 Lemma nul_loop dq p b reg ws s c t Q A e Φ :
   str_shape p b reg ws s -> A = wstart p + 8 * Q - 8 -> 1 <= Q -> 8 * Q - ptr_addr p mod 8 <= Z.of_nat t -> (t <= List.length s)%nat ->
   hitb (c mod 256) (sbyte p ws (Z.of_nat t)) = true ->
@@ -334,7 +377,9 @@ Proof.
     rewrite Hz. close_if. en.
     iApply (IH (Q + 1) with "W HK"); [lia | cbn; lia | lia | lia | exact Ht | exact Hat | exact Hlow | look H7].
 Qed.
-
+(** Executing a call [[frame]] of [glibc_strchrnul] on a [word_string]
+    at any share returns the pointer to the first stopping byte at
+    [chr_idx] and restores the string. *)
 Lemma wp_glibc_strchrnul_ws dq p s c Φ :
   0 <= c < 2 ^ 32 ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (ptr_add p (Z.of_nat (chr_idx (c mod 256) s)))))) -∗
@@ -394,10 +439,9 @@ Proof.
     iIntros "W". iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
-(** A call of glibc's strchrnul, in any module whose function at the
-    called name g is glibc's `__strchrnul`, on a string at any share:
-    the caller resumes with the pointer to the first c mod 256, or to
-    the NUL, and the string. *)
+(** Calling a global function g bound to [glibc_strchrnul] on a
+    [word_string] at any share resumes the caller with the pointer to
+    the first `c mod 256` or to NUL, and restores the string. *)
 Lemma wp_call_glibc_strchrnul f e ls l r g args rest j dq p s c cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt c] -> 0 <= c < 2 ^ 32 ->
   find_fn ge g = Some (Defined glibc_strchrnul) ->
@@ -412,9 +456,10 @@ Proof.
   iIntros "Hs". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
-(** A [[check]] of one byte for reading of the pointer pr holds, p, and
-    a load of the unsigned byte there, where p addresses byte i of a
-    window at a share: the load gives the byte. *)
+(** After `c: strchrnul` returns, `c: strchr` loads the byte at that
+    pointer to check whether it matched `c`. Lemma [wp_win_ubyte]
+    verifies that 1-byte read [[check]] and loads the unsigned byte from
+    a shared window [wwin]. *)
 Lemma wp_win_ubyte f e ls l c d pr rest j p dq b reg wo ws i Φ :
   map2_option (value_x ge e) [P] [Tmp pr] = Some [WPtr p] -> ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
   ptr_addr p = b + wo + i -> 0 <= i < 8 * Z.of_nat (List.length ws) -> 0 < b -> 0 <= wo ->
@@ -446,8 +491,9 @@ Proof.
   - iNext. iIntros "[Hl Hw]". iApply ("HK" with "[$Hl $Hw]").
 Qed.
 
-(** glibc's strchr of the string s at p for c: the pointer to the first
-    c mod 256 of s, or to its NUL when c mod 256 is 0, else null. *)
+(** Executing a call [[frame]] of [glibc_strchr] on a [word_string] at
+    any share returns the [strchr_ptr] result and restores the
+    string. *)
 Lemma wp_glibc_strchr_ws dq p s c Φ :
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) -> 0 <= c < 2 ^ 32 ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (strchr_ptr p (c mod 256) s)))) -∗
@@ -478,9 +524,10 @@ Proof.
   - en. sg. iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
-(** A call of glibc's strchr, in any module whose function at the
-    called name g is glibc's `__GI_strchr` and at `__GI___strchrnul`
-    glibc's strchrnul, on a string at any share. *)
+(** When a caller invokes `c: strchr` in a module that links
+    `__GI___strchrnul` to [glibc_strchrnul], [wp_call_glibc_strchr]
+    resumes the caller with the matching byte pointer or null and
+    restores the string. *)
 Lemma wp_call_glibc_strchr f e ls l r g args rest j dq p s c cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt c] -> 0 <= c < 2 ^ 32 ->
   find_fn ge g = Some (Defined glibc_strchr) ->

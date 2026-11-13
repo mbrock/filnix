@@ -1,15 +1,16 @@
-(** glibc's own `__strlen` over a [word_string] (WordString.v) at any
-    share: [wp_glibc_strlen_ws] for a frame of it, and
-    [wp_call_glibc_strlen] for a call of any module whose function at
-    the called name is it, so a program linked with glibc's strlen calls
-    it on a string it owns, borrows or shares read-only, aliased or
-    persistent, and gets its length and the string back.
+(** Calling `c: strlen` on a shared, borrowed, or read-only string
+    requires a [[weakest-precondition]] specification that preserves any
+    fractional or persistent ownership share. This module proves
+    [wp_glibc_strlen_ws] for a call [[frame]] of glibc's `__strlen` over
+    a [word_string], and [wp_call_glibc_strlen] for any caller invoking
+    it through a module's global function table.
 
-    The proof is StrlenLogic.v's at a share, every read through
-    Logic.v's share rules: the entry block here ([wp_glibc_strlen_dq]),
-    the loop block in StrlenLoop.v ([loop_spec_dq]), whose tactics,
-    including the named popcount chain that keeps the proof terms
-    small, this file shares. *)
+    A caller may borrow a string, share it read-only, or hold a
+    persistent copy, so every memory read must work at any ownership
+    fraction. This proof adapts the full-ownership argument from
+    [StrlenLogic] to use fractional read rules. It verifies the entry
+    block in [wp_glibc_strlen_dq] and hands off the remaining words to
+    [StrlenLoop]'s [loop_spec_dq]. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,7 +22,8 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
+(** This functor packages the `c: strlen` entry and call triples over a
+    [[runtime]] R and a program logic instance LG0. *)
 Module StrlenWordOn (R : Runtime) (LG0 : LogicSig R).
 Module SL := StrlenLoopOn R LG0.
 Module WS := SL.WS.
@@ -33,13 +35,17 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** To step through IR instructions in [[separation-logic|separation logic]],
+    [rules_irisGS] connects the contract registry and world invariant `wi`
+    to the Iris program logic. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** This shorthand names the expression type of the instantiated
+    language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** One step whose premises reduce: a pure let, a flight, entering a
-    block, or a goto. The values stay symbolic. *)
+(** Tactic [st] advances the symbolic execution by one pure `let`,
+    `flight`, block entry, or `goto` step whose premises reduce by
+    computation. *)
 Ltac st :=
   first
     [ iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext]
@@ -47,10 +53,10 @@ Ltac st :=
     | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
     | iApply wp_goto; iNext ].
 
-(** glibc's strlen of p: owning the life of the 8-aligned object b and
-    the words ws of it from the word that holds p's byte, inside its
-    region, whose first zero byte from p is n bytes in, the call
-    returns n and hands the pieces back. *)
+(** Given fractional ownership of an 8-aligned object b and the words ws
+    starting from the word that contains byte p, `__strlen` locates the
+    first zero byte n bytes past p, returns n, and hands back the live
+    [[region]] and word pieces. *)
 Lemma wp_glibc_strlen_dq dq p b reg ws n Φ :
   (ptr_cap p = Obj b \/ ptr_cap p = Ro b) -> 0 < b -> b mod 8 = 0 -> b <= ptr_addr p ->
   ptr_addr p - ptr_addr p mod 8 + 8 * Z.of_nat (List.length ws) <= r_end reg -> r_end reg <= 2 ^ 48 ->
@@ -141,8 +147,9 @@ Proof.
       iApply ("HK" with "Hl [$Hw $Hps]").
 Qed.
 
-(** glibc's strlen of a string at any share: it returns the length and
-    hands the string back. *)
+(** Executing a frame of [glibc_strlen] on a [word_string] at any share
+    returns the string's length and restores the [word_string]
+    resource. *)
 Lemma wp_glibc_strlen_ws dq p s Φ :
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WInt (Z.of_nat (List.length s))))) -∗
   WP (ERun (mkFrame glibc_strlen [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr)
@@ -156,9 +163,9 @@ Proof.
   iIntros "Hl Hw". iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
-(** A call of glibc's strlen, in any module whose function at the
-    called name g is glibc's `__strlen`, on a string at any share: the
-    caller resumes with its length and the string. *)
+(** Calling a global function g bound to [glibc_strlen] on a
+    [word_string] at any share resumes the caller with the string's
+    length and restores the [word_string]. *)
 Lemma wp_call_glibc_strlen f e ls l r g args rest j dq p s cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p] -> find_fn ge g = Some (Defined glibc_strlen) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WInt (Z.of_nat (List.length s)))) = Some cf' ->
