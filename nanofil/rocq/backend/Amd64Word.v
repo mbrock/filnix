@@ -16,7 +16,7 @@
     its lemmas are the facts about wrapping and sign that every later
     proof needs. *)
 
-From Stdlib Require Import ZArith Bool Lia.
+From Stdlib Require Import ZArith Bool Lia Zbitwise.
 Local Open Scope Z_scope.
 
 (** ## Operand sizes
@@ -160,90 +160,114 @@ Definition divide_words (sg : bool) (z : size) (hi lo d : Z) : option (Z * Z) :=
     defined. *)
 Lemma size_modulus_pos (z : size) : 0 < size_modulus z.
 Proof.
-Admitted.
+  destruct z; vm_compute; reflexivity.
+Qed.
 
 (** The modulus of every size is even, and its half is the weight of
     the sign bit. *)
 Lemma size_modulus_half (z : size) : size_modulus z = 2 * (size_modulus z / 2).
 Proof.
-Admitted.
+  destruct z; reflexivity.
+Qed.
 
 (** The modulus of every size is at least 256, so small constants such
     as 1 and 16 are valid patterns at every size. *)
 Lemma size_modulus_ge (z : size) : 256 <= size_modulus z.
 Proof.
-Admitted.
+  destruct z; vm_compute; discriminate.
+Qed.
 
 (** A wrapped value is a valid unsigned pattern of its size. *)
 Lemma wrap_range (z : size) (x : Z) : 0 <= wrap z x < size_modulus z.
 Proof.
-Admitted.
+  apply Z.mod_pos_bound, size_modulus_pos.
+Qed.
 
 (** Wrapping leaves a valid unsigned pattern unchanged. *)
 Lemma wrap_small (z : size) (x : Z) :
   0 <= x < size_modulus z -> wrap z x = x.
 Proof.
-Admitted.
+  apply Z.mod_small.
+Qed.
 
 (** Wrapping a second time at the same size changes nothing. *)
 Lemma wrap_wrap (z : size) (x : Z) : wrap z (wrap z x) = wrap z x.
 Proof.
-Admitted.
+  apply wrap_small, wrap_range.
+Qed.
 
 (** A pattern of a narrower size is already a valid pattern of a wider
     size. *)
 Lemma wrap_wider (z z' : size) (x : Z) :
   size_bits z <= size_bits z' -> wrap z' (wrap z x) = wrap z x.
 Proof.
-Admitted.
+  intros H. apply wrap_small. pose proof (wrap_range z x).
+  assert (size_modulus z <= size_modulus z') by
+    (destruct z, z'; cbv [size_bits] in H;
+     cbv [size_modulus size_bits Z.pow Z.pow_pos Pos.iter]; lia).
+  lia.
+Qed.
 
 (** Truncating to a narrower size discards an earlier truncation to a
     wider size. *)
 Lemma wrap_narrower (z z' : size) (x : Z) :
   size_bits z <= size_bits z' -> wrap z (wrap z' x) = wrap z x.
 Proof.
-Admitted.
+  intros H. unfold wrap. apply Z.mod_mod_divide.
+  unfold size_modulus. exists (2 ^ (size_bits z' - size_bits z)).
+  rewrite <- Z.pow_add_r by (destruct z; simpl in *; lia).
+  f_equal; lia.
+Qed.
 
 (** Wrapping an operand before an addition does not change the wrapped
     sum. *)
 Lemma wrap_add_l (z : size) (x y : Z) : wrap z (wrap z x + y) = wrap z (x + y).
 Proof.
-Admitted.
+  unfold wrap. apply Z.add_mod_idemp_l. pose proof (size_modulus_pos z). lia.
+Qed.
 
 (** The same holds for the right operand of an addition. *)
 Lemma wrap_add_r (z : size) (x y : Z) : wrap z (x + wrap z y) = wrap z (x + y).
 Proof.
-Admitted.
+  rewrite (Z.add_comm x), wrap_add_l, Z.add_comm. reflexivity.
+Qed.
 
 (** Wrapping the left operand before a subtraction does not change the
     wrapped difference. *)
 Lemma wrap_sub_l (z : size) (x y : Z) : wrap z (wrap z x - y) = wrap z (x - y).
 Proof.
-Admitted.
+  change (wrap z (wrap z x + - y) = wrap z (x + - y)).
+  apply wrap_add_l.
+Qed.
 
 (** The same holds for the right operand of a subtraction. *)
 Lemma wrap_sub_r (z : size) (x y : Z) : wrap z (x - wrap z y) = wrap z (x - y).
 Proof.
-Admitted.
+  unfold wrap. rewrite Zminus_mod_idemp_r; reflexivity.
+Qed.
 
 (** Wrapping an operand before a negation does not change the wrapped
     negation. *)
 Lemma wrap_opp (z : size) (x : Z) : wrap z (- wrap z x) = wrap z (- x).
 Proof.
-Admitted.
+  replace (- wrap z x) with (0 - wrap z x) by ring.
+  rewrite wrap_sub_r. reflexivity.
+Qed.
 
 (** Adding a multiple of the modulus does not change a wrapped value. *)
 Lemma wrap_add_modulus (z : size) (x k : Z) :
   wrap z (x + k * size_modulus z) = wrap z x.
 Proof.
-Admitted.
+  unfold wrap. apply Z.mod_add. pose proof (size_modulus_pos z). lia.
+Qed.
 
 (** A wrapped value is zero exactly when the modulus divides the
     integer. For a valid pattern this means that the pattern is zero. *)
 Lemma wrap_zero_small (z : size) (x : Z) :
   0 <= x < size_modulus z -> (wrap z x =? 0) = (x =? 0).
 Proof.
-Admitted.
+  intros H. rewrite wrap_small by exact H. reflexivity.
+Qed.
 
 (** ## Facts about the signed reading
 
@@ -257,48 +281,83 @@ Admitted.
 Lemma signed_at_range (z : size) (x : Z) :
   - (size_modulus z / 2) <= signed_at z x < size_modulus z / 2.
 Proof.
-Admitted.
+  pose proof (wrap_range z x). pose proof (size_modulus_half z).
+  unfold signed_at, sign_bit. destruct (_ <=? _) eqn:E;
+    [apply Z.leb_le in E | apply Z.leb_gt in E]; lia.
+Qed.
 
 (** The signed reading therefore always passes the range test. *)
 Lemma signed_at_fits (z : size) (x : Z) : fits_signed z (signed_at z x) = true.
 Proof.
-Admitted.
+  unfold fits_signed. apply andb_true_iff. split;
+    [apply Z.leb_le | apply Z.ltb_lt]; apply signed_at_range.
+Qed.
 
 (** The signed reading depends only on the pattern, so wrapping first
     changes nothing. *)
 Lemma signed_at_wrap (z : size) (x : Z) : signed_at z (wrap z x) = signed_at z x.
 Proof.
-Admitted.
+  unfold signed_at, sign_bit. rewrite wrap_wrap. reflexivity.
+Qed.
 
 (** The signed reading and the original integer have the same
     pattern. *)
 Lemma wrap_signed_at (z : size) (x : Z) : wrap z (signed_at z x) = wrap z x.
 Proof.
-Admitted.
+  unfold signed_at. destruct (sign_bit z x).
+  - replace (wrap z x - size_modulus z) with
+      (wrap z x + (-1) * size_modulus z) by ring.
+    rewrite wrap_add_modulus. apply wrap_wrap.
+  - apply wrap_wrap.
+Qed.
 
 (** An integer in the signed range is recovered from its pattern. *)
 Lemma signed_at_of_fits (z : size) (n : Z) :
   fits_signed z n = true -> signed_at z (wrap z n) = n.
 Proof.
-Admitted.
+  unfold fits_signed. rewrite andb_true_iff, Z.leb_le, Z.ltb_lt.
+  intros [L U]. rewrite signed_at_wrap. unfold signed_at, sign_bit.
+  pose proof (size_modulus_half z). pose proof (size_modulus_pos z).
+  destruct (Z_le_dec 0 n).
+  - rewrite wrap_small by lia.
+    destruct (_ <=? _) eqn:E; [apply Z.leb_le in E; lia | reflexivity].
+  - assert (W : wrap z n = n + size_modulus z).
+    { unfold wrap. rewrite <- (Z.mod_add n 1 (size_modulus z)) by lia.
+      rewrite Z.mul_1_l. apply Z.mod_small. lia. }
+    rewrite W. destruct (_ <=? _) eqn:E;
+      [lia | apply Z.leb_gt in E; lia].
+Qed.
 
 (** The signed reading is zero exactly when the pattern is zero. *)
 Lemma signed_at_zero (z : size) (x : Z) :
   (signed_at z x =? 0) = (wrap z x =? 0).
 Proof.
-Admitted.
+  pose proof (wrap_range z x). pose proof (size_modulus_ge z).
+  pose proof (size_modulus_half z).
+  unfold signed_at, sign_bit. destruct (_ <=? _) eqn:E;
+    [apply Z.leb_le in E | apply Z.leb_gt in E];
+    destruct (_ =? _) eqn:F; apply Z.eqb_eq in F || apply Z.eqb_neq in F;
+    try reflexivity; symmetry; (apply Z.eqb_eq || apply Z.eqb_neq); lia.
+Qed.
 
 (** The signed reading is -1 exactly when the pattern is all ones. *)
 Lemma signed_at_minus_one (z : size) (x : Z) :
   (signed_at z x =? -1) = (wrap z x =? size_modulus z - 1).
 Proof.
-Admitted.
+  pose proof (wrap_range z x). pose proof (size_modulus_half z).
+  pose proof (size_modulus_ge z).
+  unfold signed_at, sign_bit. destruct (_ <=? _) eqn:E;
+    [apply Z.leb_le in E | apply Z.leb_gt in E];
+    destruct (_ =? _) eqn:F; apply Z.eqb_eq in F || apply Z.eqb_neq in F;
+    try reflexivity; symmetry; (apply Z.eqb_eq || apply Z.eqb_neq); lia.
+Qed.
 
 (** The range test unfolds to the two inequalities it checks. *)
 Lemma fits_signed_iff (z : size) (n : Z) :
   fits_signed z n = true <-> - (size_modulus z / 2) <= n < size_modulus z / 2.
 Proof.
-Admitted.
+  unfold fits_signed. rewrite andb_true_iff, Z.leb_le, Z.ltb_lt. reflexivity.
+Qed.
 
 (** ## Facts about masks
 
@@ -307,32 +366,64 @@ Admitted.
     mask with an operand by `and` and `xor`. These lemmas give the
     arithmetic meaning of those bitwise operations on valid patterns. *)
 
+(** A nonnegative integer fits an operand size exactly when its highest
+    set bit lies below that size. This also covers the zero pattern. *)
+Lemma size_bound_log2 (z : size) (x : Z) :
+  0 <= x -> (x < size_modulus z <-> Z.log2 x < size_bits z).
+Proof.
+  intros H. destruct (Z.eq_dec x 0) as [-> | Hnz].
+  - pose proof (size_modulus_pos z). destruct z; simpl; lia.
+  - apply Z.log2_lt_pow2. lia.
+Qed.
+
 (** A bitwise `and` of two valid patterns is a valid pattern. *)
 Lemma land_range (z : size) (x y : Z) :
   0 <= x < size_modulus z -> 0 <= y < size_modulus z ->
   0 <= Z.land x y < size_modulus z.
 Proof.
-Admitted.
+  intros [Hx Bx] [Hy By].
+  assert (H : 0 <= Z.land x y) by (apply Z.land_nonneg; auto).
+  split; [exact H |]. apply (size_bound_log2 z _ H).
+  apply (size_bound_log2 z _ Hx) in Bx.
+  pose proof (Z.log2_land x y Hx Hy). lia.
+Qed.
 
 (** A bitwise `or` of two valid patterns is a valid pattern. *)
 Lemma lor_range (z : size) (x y : Z) :
   0 <= x < size_modulus z -> 0 <= y < size_modulus z ->
   0 <= Z.lor x y < size_modulus z.
 Proof.
-Admitted.
+  intros [Hx Bx] [Hy By].
+  assert (H : 0 <= Z.lor x y) by (apply Z.lor_nonneg; auto).
+  split; [exact H |]. apply (size_bound_log2 z _ H).
+  apply (size_bound_log2 z _ Hx) in Bx.
+  apply (size_bound_log2 z _ Hy) in By.
+  rewrite Z.log2_lor by assumption. lia.
+Qed.
 
 (** A bitwise `xor` of two valid patterns is a valid pattern. *)
 Lemma lxor_range (z : size) (x y : Z) :
   0 <= x < size_modulus z -> 0 <= y < size_modulus z ->
   0 <= Z.lxor x y < size_modulus z.
 Proof.
-Admitted.
+  intros [Hx Bx] [Hy By].
+  assert (H : 0 <= Z.lxor x y) by (apply Z.lxor_nonneg; tauto).
+  split; [exact H |]. apply (size_bound_log2 z _ H).
+  apply (size_bound_log2 z _ Hx) in Bx.
+  apply (size_bound_log2 z _ Hy) in By.
+  pose proof (Z.log2_lxor x y Hx Hy). lia.
+Qed.
 
 (** An `and` with the all-ones mask keeps a valid pattern. *)
 Lemma land_ones (z : size) (x : Z) :
   0 <= x < size_modulus z -> Z.land x (size_modulus z - 1) = x.
 Proof.
-Admitted.
+  intros H. unfold size_modulus in *.
+  replace (2 ^ size_bits z - 1) with (Z.ones (size_bits z))
+    by (rewrite Z.ones_equiv; lia).
+  rewrite Z.land_ones by (destruct z; simpl; lia).
+  apply Z.mod_small. exact H.
+Qed.
 
 (** An `xor` with the all-ones mask complements a valid pattern, which
     in arithmetic subtracts it from the mask. *)
@@ -340,7 +431,9 @@ Lemma lxor_ones (z : size) (x : Z) :
   0 <= x < size_modulus z ->
   Z.lxor x (size_modulus z - 1) = size_modulus z - 1 - x.
 Proof.
-Admitted.
+  intros H. pose proof (Z.add_lxor_2land x (size_modulus z - 1)).
+  rewrite land_ones in H0 by exact H. lia.
+Qed.
 
 (** ## Facts about the double-width dividend
 
@@ -355,17 +448,43 @@ Admitted.
 Lemma signed_pair_fill (z : size) (x : Z) :
   signed_pair z (sign_fill z x) x = signed_at z x.
 Proof.
-Admitted.
+  pose proof (size_modulus_ge z). pose proof (wrap_range z x).
+  pose proof (size_modulus_half z).
+  unfold signed_pair, unsigned_pair, sign_fill, signed_at.
+  unfold sign_bit.
+  destruct (size_modulus z / 2 <=? wrap z x) eqn:E;
+    [apply Z.leb_le in E | apply Z.leb_gt in E].
+  all: rewrite wrap_small by lia.
+  all:
+    destruct (_ <=? _) eqn:F;
+    [apply Z.leb_le in F | apply Z.leb_gt in F].
+  - ring.
+  - assert (D : size_modulus z * size_modulus z / 2 =
+                size_modulus z * (size_modulus z / 2)).
+    { rewrite (size_modulus_half z) at 1.
+      replace (2 * (size_modulus z / 2) * size_modulus z)
+        with ((size_modulus z * (size_modulus z / 2)) * 2) by ring.
+      rewrite Z.div_mul; lia. }
+    rewrite D in F. nia.
+  - assert (size_modulus z <= size_modulus z * size_modulus z / 2).
+    { apply Z.div_le_lower_bound; nia. }
+    nia.
+  - ring.
+Qed.
 
 (** A lower half under a zero upper half reads, as an unsigned double
     word, as the unsigned reading of the lower half alone. *)
 Lemma unsigned_pair_zero (z : size) (x : Z) :
   unsigned_pair z 0 x = wrap z x.
 Proof.
-Admitted.
+  unfold unsigned_pair. rewrite wrap_small by (pose proof (size_modulus_pos z); lia).
+  ring.
+Qed.
 
 (** The sign fill of any integer is a valid pattern. *)
 Lemma sign_fill_range (z : size) (x : Z) :
   0 <= sign_fill z x < size_modulus z.
 Proof.
-Admitted.
+  pose proof (size_modulus_pos z). unfold sign_fill.
+  destruct (sign_bit z x); lia.
+Qed.
