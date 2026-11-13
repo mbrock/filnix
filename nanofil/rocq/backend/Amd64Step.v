@@ -331,13 +331,19 @@ Definition establishes (P : machine -> Prop) (code : list instr)
 Lemma run_runs (h : havoc) (code : list instr) (s : machine) :
   runs code s (run h code s).
 Proof.
-Admitted.
+  revert s; induction code as [|i code IH]; intro s; simpl.
+  - constructor.
+  - destruct (step h i s) eqn:E.
+    + eapply runs_step; [exact E | apply IH].
+    + eapply runs_fault; exact E.
+Qed.
 
 (** The empty sequence has only one execution. *)
 Lemma runs_nil_inv (s : machine) (o : outcome) :
   runs [] s o -> o = Next s.
 Proof.
-Admitted.
+  intro H; inversion H; reflexivity.
+Qed.
 
 (** An execution of a non-empty sequence begins with one step of its
     first instruction under some havoc. Either that step completes and
@@ -349,7 +355,8 @@ Lemma runs_cons_inv (i : instr) (rest : list instr) (s : machine) (o : outcome) 
     (exists s', step h i s = Next s' /\ runs rest s' o)
     \/ (exists f, step h i s = Fault f /\ o = Fault f).
 Proof.
-Admitted.
+  intro H; inversion H; subst; eauto.
+Qed.
 
 (** An execution of two sequences in a row either completes the first
     and continues with the second, or stops in the first. *)
@@ -358,14 +365,25 @@ Lemma runs_app_inv (code code' : list instr) (s : machine) (o : outcome) :
   (exists s', runs code s (Next s') /\ runs code' s' o)
   \/ (exists f, runs code s (Fault f) /\ o = Fault f).
 Proof.
-Admitted.
+  revert s o; induction code as [|i code IH]; intros s o H; simpl in H.
+  - left; exists s; split; [constructor | exact H].
+  - apply runs_cons_inv in H; destruct H as [h [[t [E H]] | [f [E ->]]]].
+    + destruct (IH _ _ H) as [[u [Hu Hrest]] | [f [Hf ->]]].
+      * left; exists u; split; [eapply runs_step; eauto | exact Hrest].
+      * right; exists f; split; [eapply runs_step; eauto | reflexivity].
+    + right; exists f; split; [eapply runs_fault; eauto | reflexivity].
+Qed.
 
 (** Two executions in a row form an execution of the concatenated
     sequence. *)
 Lemma runs_app (code code' : list instr) (s s' : machine) (o : outcome) :
   runs code s (Next s') -> runs code' s' o -> runs (code ++ code') s o.
 Proof.
-Admitted.
+  intros H; remember (Next s') as result eqn:E.
+  induction H; inversion E; subst; simpl; intro Hrest.
+  - exact Hrest.
+  - eapply runs_step; [eassumption | apply IHruns; reflexivity || assumption].
+Qed.
 
 (** Two fragments compose. The first fragment must establish, from the
     precondition P, a state that satisfies the precondition of the
@@ -379,7 +397,13 @@ Lemma establishes_app (P P' : machine -> Prop) (code code' : list instr)
   establishes P (code ++ code')
     (fun s s'' => exists s', Q s s' /\ Q' s' s'').
 Proof.
-Admitted.
+  intros H H' Hpre s o HP Hr.
+  destruct (runs_app_inv _ _ _ _ Hr) as [[t [Ht Hrest]] | [f [Hf ->]]].
+  - destruct (H _ _ HP Ht) as [u [E HQ]]; inversion E; subst u.
+    destruct (H' _ _ (Hpre _ _ HP HQ) Hrest) as [v [E' HQ']].
+    exists v; split; [exact E' | exists t; auto].
+  - destruct (H _ _ HP Hf) as [t [E _]]; discriminate.
+Qed.
 
 (** A fragment's precondition can be strengthened and its relation
     weakened. *)
@@ -390,13 +414,17 @@ Lemma establishes_weaken (P P' : machine -> Prop) (code : list instr)
   (forall s s', P' s -> Q s s' -> Q' s s') ->
   establishes P' code Q'.
 Proof.
-Admitted.
+  intros H Hpre Hpost s o HP Hr.
+  destruct (H _ _ (Hpre _ HP) Hr) as [t [E HQ]].
+  exists t; split; [exact E | eapply Hpost; eauto].
+Qed.
 
 (** The empty sequence establishes the identity relation. *)
 Lemma establishes_nil (P : machine -> Prop) :
   establishes P [] (fun s s' => s' = s).
 Proof.
-Admitted.
+  intros s o HP Hr; exists s; split; [apply runs_nil_inv; exact Hr | reflexivity].
+Qed.
 
 (** ## Facts about single steps
 
@@ -408,7 +436,17 @@ Admitted.
 Lemma step_well_formed (h : havoc) (i : instr) (s s' : machine) :
   well_formed s -> step h i s = Next s' -> well_formed s'.
 Proof.
-Admitted.
+  intros H E; destruct i; cbn [step] in E;
+    repeat match type of E with
+    | context [if ?b then _ else _] => destruct b eqn:?
+    | context [match ?z with S8 => _ | _ => _ end] => destruct z
+    | context [match ?o with UNeg => _ | UNot => _ end] => destruct o
+    | context [match ?q with Some _ => _ | None => _ end] => destruct q
+    end;
+    inversion E; subst;
+    repeat first [apply set_flags_well_formed | apply set_reg_well_formed];
+    exact H.
+Qed.
 
 (** The function [writes] lists the registers that an instruction may
     change. *)
@@ -424,7 +462,18 @@ Definition writes (i : instr) : list gpr :=
 Lemma step_frame (h : havoc) (i : instr) (s s' : machine) (r : gpr) :
   step h i s = Next s' -> ~ In r (writes i) -> regs s' r = regs s r.
 Proof.
-Admitted.
+  destruct i; cbn [step writes];
+    repeat match goal with
+    | |- context [if ?b then _ else _] => destruct b eqn:?
+    | |- context [match ?z with S8 => _ | _ => _ end] => destruct z
+    | |- context [match ?o with UNeg => _ | UNot => _ end] => destruct o
+    | |- context [match ?q with Some _ => _ | None => _ end] => destruct q
+    end;
+    intros E H; inversion E; subst;
+    repeat rewrite regs_set_flags;
+    repeat rewrite regs_set_reg_other by (simpl in H; intuition congruence);
+    reflexivity.
+Qed.
 
 (** A sequence changes no register that none of its instructions
     writes. *)
@@ -433,7 +482,13 @@ Lemma runs_frame (code : list instr) (s s' : machine) (r : gpr) :
   (forall i, In i code -> ~ In r (writes i)) ->
   regs s' r = regs s r.
 Proof.
-Admitted.
+  intro H; remember (Next s') as result eqn:E.
+  induction H; inversion E; subst; intro Hnone.
+  - reflexivity.
+  - transitivity (regs s'0 r).
+    + apply IHruns; [reflexivity | intros j Hj; apply Hnone; right; exact Hj].
+    + eapply step_frame; [eassumption | apply Hnone; left; reflexivity].
+Qed.
 
 (** An undefined flag cannot change a register. Two steps of the same
     instruction from the same state, under two different havocs,
@@ -446,4 +501,11 @@ Lemma step_regs_havoc (h h' : havoc) (i : instr) (s : machine) :
   | _, _ => False
   end.
 Proof.
-Admitted.
+  destruct i; cbn [step];
+    repeat match goal with
+    | |- context [if ?b then _ else _] => destruct b
+    | |- context [match ?z with S8 => _ | _ => _ end] => destruct z
+    | |- context [match ?o with UNeg => _ | UNot => _ end] => destruct o
+    | |- context [match ?q with Some _ => _ | None => _ end] => destruct q
+    end; reflexivity.
+Qed.
