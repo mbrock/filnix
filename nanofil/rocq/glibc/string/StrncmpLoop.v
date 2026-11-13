@@ -1,16 +1,15 @@
-(** The last comparisons of glibc's own `strncmp` (`__GI_strncmp`,
-    StrncmpCode.v), for StrncmpWords.v's loops and StrncmpLogic.v's
-    triple over [word_string]s (WordString.v).
+(** When `c: strncmp` exits one of its word loops—either on a differing
+    or zero byte, or when at most eight bytes remain—it jumps to one of
+    three inlined copies of the final comparison epilogue. Each epilogue
+    computes the comparison mask, locates the first stopping byte from
+    its trailing bit count, and returns zero if the remaining byte limit
+    expires first or the byte difference otherwise.
 
-    glibc's word loops end, for a word pair with a difference or a zero
-    or with at most 8 bytes left, in one of three copies of the same
-    last comparison its inlining makes ([fin_a], [fin_b], [fin_c]): it
-    finds the words' first stop by the comparison mask and its
-    population count, and returns 0 when the count of bytes left ends
-    at or before it, else the difference of the bytes there
-    (StrncmpBits.v's [fin_stop], [fin_none]). Lookups through a block's
-    puts are applied ([lk_put]), not rewritten, which keeps each step's
-    cost fixed. *)
+    Because basic blocks bind many local variables in sequence, resolving
+    environment lookups by rewriting grows quadratically with block
+    length. This module applies [lk_put] directly to keep each lookup
+    step constant-time, and proves the three epilogue lemmas for
+    `c: strncmp`. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -23,16 +22,17 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrncmpCo
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** Looking k up after a [put] of another name: what it answered
-    before. Applied, not rewritten, so its cost does not grow with the
-    values the environment holds. *)
+(** Lemma [lk_put] resolves a variable lookup past an unrelated binding
+    by backward application so environment terms do not expand. *)
 Lemma lk_put {A} k k' (v : A) ps x : name_eqb k k' = false -> lookup k ps = x -> lookup k (put k' v ps) = x.
 Proof. intros H E. rewrite lookup_after_put_other; [exact E | exact H]. Qed.
 
-(** The lookup of a temporary through the puts of a block, by H below them. *)
+(** Tactic [lkf] walks through a chain of variable updates to find the
+    value given by hypothesis H. *)
 Ltac lkf H := repeat (apply lk_put; [reflexivity|]); exact H.
 
-(** MemchrLast.v's [vx], each lookup by [lkf]. *)
+(** Tactic [vxf] resolves every operand lookup in the current instruction
+    from the environment hypotheses. *)
 Ltac vxf :=
   cbn [map2_option map_option flight_arg_x flight_cap arg_x];
   repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
@@ -40,15 +40,16 @@ Ltac vxf :=
       rewrite (value_x_tmp g E k n x); [|lkf H] end end;
   reflexivity.
 
-(** The last comparisons over the [[runtime]] R and the Logic instance LG0. *)
+(** Module [StrncmpLoopOn] proves the final comparison epilogues over a
+    given [[runtime]] R and logic instance LG0. *)
 Module StrncmpLoopOn (R : Runtime) (LG0 : LogicSig R).
-(** StrcmpLoop.v's steps and reads over R and LG0. *)
+(** Module [SL] provides the shared stepping and window-read lemmas. *)
 Module SL := StrcmpLoopOn R LG0.
-(** Strings' windows. *)
+(** Module [WS] provides the word-window string representation. *)
 Module WS := SL.WS.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance LG0. *)
 Module LG := LG0.
-(** Its language. *)
+(** Module [L] provides the nanofil language definition for LG. *)
 Module L := LG.L.
 Import L LG WS SL.
 
@@ -56,34 +57,39 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** Instance [rules_irisGS] builds the [[iris]] machine semantics from
+    the external registry and world invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** Notation [gexpr] abbreviates expressions in the instantiated language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-(** The proof mode's entailment. *)
+(** Notation [ent] abbreviates proof-mode entailment in the Iris context. *)
 Local Notation ent Δ P := (environments.envs_entails Δ P).
 
-(** StrcmpLoop.v's steps: a let, its value whole. *)
+(** Tactic [sl] steps past a `let` instruction while keeping its bound
+    value symbolic. *)
 Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A let that reads the abstract environment ([vxf]). *)
+(** Tactic [sv] steps past a `let` instruction after resolving its
+    operand variables from the environment. *)
 Ltac sv := eapply (s_let registry wi ge); [reflexivity | reflexivity | vxf | intros ?; reflexivity |].
-(** A let of an integer, named x with its equation E ([s_letn]). *)
+(** Tactic [sn] steps past an integer `let` and names the resulting
+    integer in the context. *)
 Ltac sn := eapply (s_letn registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |];
   let x := fresh "x" in let E := fresh "E" in intros x E.
-(** Entering the block a frame is entering. *)
+(** Tactic [en] enters the target basic block of a pending frame jump. *)
 Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] steps through a `goto` terminator and immediately enters
+    its destination block. *)
 Ltac sg := eapply (s_goto registry wi ge); en.
-(** A branch, its condition left whole. *)
+(** Tactic [sb] steps past a conditional `branch` instruction without
+    evaluating its condition. *)
 Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** Tactic [normt] normalizes the integer in the newest local variable
+    to v using tactic tac. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
 
-(** glibc's last comparison of the words x and y, r bytes left
-    ([last_cmp]), from its first block on: the comparison mask, its
-    population count, and 0 or the difference of the bytes at the first
-    stop, returned as [strncmp_res]. *)
+(** Tactic [fin_tac] steps through glibc's final word comparison on x
+    and y with remaining count r, returning [strncmp_res]. *)
 Ltac fin_tac x y r Hl HK Hc A1 A2 :=
   assert (Hr0 : 0 < r) by (destruct Hl as (_ & _ & _ & ? & _); lia);
   do 10 sv; normt (cmp_mask x y) ltac:(reflexivity); sl; sb;
@@ -116,8 +122,8 @@ Ltac fin_tac x y r Hl HK Hc A1 A2 :=
     rewrite (Z.mod_small r); [|lia]; change (8 mod 2 ^ 64) with 8; replace (r <=? 8) with true by (symmetry; apply Z.leb_le; lia); close_if;
     en; eapply (s_ret registry wi ge); [reflexivity | reflexivity | symmetry; exact Hres | exact HK] ].
 
-(** The last comparison of the aligned loop: x and y are pr.3 and
-    pr.5, r is pr.4. *)
+(** Lemma [fin_a] verifies the final comparison epilogue for the aligned
+    word loop, where pr.3 and pr.5 hold x and y and pr.4 holds r. *)
 Lemma fin_a Δ e fl s1 s2 f1 f2 c x y L r Φ :
   lookup (TAtom "iw_1.pr.3") e = Some (WInt x) -> lookup (TAtom "iw_1.pr.5") e = Some (WInt y) ->
   lookup (TAtom "iw_1.pr.4") e = Some (WInt r) -> 0 <= x < 2 ^ 64 -> 0 <= y < 2 ^ 64 -> r < 2 ^ 64 ->
@@ -126,8 +132,8 @@ Lemma fin_a Δ e fl s1 s2 f1 f2 c x y L r Φ :
   ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "iw_1.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
 Proof. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. en. fin_tac x y r Hl HK Hc A1 A2. Qed.
 
-(** The last comparison of the unaligned loop: x is pr.4, y is v58,
-    the merged word, and r is pr.6. *)
+(** Lemma [fin_b] verifies the final comparison epilogue for the
+    unaligned word loop against merged word y in v58. *)
 Lemma fin_b Δ e fl s1 s2 f1 f2 c x y L r Φ :
   lookup (TAtom "iw_2.pr.4") e = Some (WInt x) -> lookup (TAtom "iw_2.v58") e = Some (WInt y) ->
   lookup (TAtom "iw_2.pr.6") e = Some (WInt r) -> 0 <= x < 2 ^ 64 -> 0 <= y < 2 ^ 64 -> r < 2 ^ 64 ->
@@ -136,14 +142,16 @@ Lemma fin_b Δ e fl s1 s2 f1 f2 c x y L r Φ :
   ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "iw_2.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
 Proof. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. en. fin_tac x y r Hl HK Hc A1 A2. Qed.
 
-(** The block of glibc's strncmp labelled l. *)
+(** Function [nblk] looks up basic block l in `__GI_strncmp`. *)
 Definition nblk (l : string) : block :=
   match find_block (TAtom l) (fn_blocks glibc_strncmp) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
-(** The last comparison's block of an unaligned second string. *)
+(** Constant [blk32] holds the basic block for the trailing-bytes exit
+    of an unaligned second string. *)
 Definition blk32 : block := Eval vm_compute in nblk "iw_2.L32".
 
-(** The last comparison of an unaligned second string, after L32's
-    phis: x is pr.3, y is pr.9, r is pr.5. *)
+(** Lemma [fin_c] verifies the final comparison epilogue after block
+    `iw_2.L32` resolves its phi bindings when an unaligned second string
+    ends early. *)
 Lemma fin_c Δ e s1 s2 f1 f2 c x y L r Φ :
   lookup (TAtom "iw_2.pr.3") e = Some (WInt x) -> lookup (TAtom "iw_2.pr.9") e = Some (WInt y) ->
   lookup (TAtom "iw_2.pr.5") e = Some (WInt r) -> 0 <= x < 2 ^ 64 -> 0 <= y < 2 ^ 64 -> r < 2 ^ 64 ->

@@ -1,23 +1,18 @@
-(** The word loops of glibc's own `strcmp` (`__GI_strcmp`,
-    StrcmpCode.v) over two strings' windows (WordString.v) at any
-    shares, for StrcmpLogic.v's triple over [word_string]s.
+(** Once `c: strcmp` aligns the first string pointer to an 8-byte
+    boundary, it compares 64-bit words in one of two loops. If the
+    second pointer is also aligned, [aligned_loop] loads one word from
+    each string per iteration; otherwise, [unaligned_loop] shifts and
+    combines consecutive words from the second string with [merge].
 
-    Once the first string's pointer is 8-aligned, glibc compares whole
-    words: of both strings at once when the second is aligned too
-    ([aligned_loop]), else of the first against [merge]s of the
-    second's words ([unaligned_loop]). A word pair with a zero ends the
-    search with 0, and one with a difference ends it at the first
-    stop, which the comparison mask's population count finds and whose
-    bytes glibc subtracts ([fin_a], [fin_b], [fin_c], one per copy its
-    inlining makes). The answer is StrcmpBits.v's [strcmp_res] in each
-    case ([word_stop], [word_zero]). Every read is of a word or byte of a
-    window ([wp_win_word], [wp_win_byte]), which each step shows lies
-    inside the string's window.
+    When a word pair differs or contains a NUL byte, control jumps to
+    one of three inlined epilogues that locate the first stopping byte
+    and return the difference. Every load first passes a Fil-C
+    capability [[check]] inside the string's [[word]] window.
 
-    The steps are taken by rules stated over the proof mode's
-    entailment ([s_let], [s_enter]), which take no later and keep the
-    goal small, and each value glibc computes that later steps read is
-    named ([s_letn]) or rewritten to its meaning as it is made. *)
+    To keep symbolic execution fast across long loop bodies, this module
+    also wraps the program logic's stepping rules over proof-mode
+    entailments. Those wrappers consume the [[later-modality|later
+    modality]] at each step so goals stay flat. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -29,13 +24,14 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpCod
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The loops over the [[runtime]] R and the Logic instance LG0. *)
+(** Module [StrcmpLoopOn] proves the word-comparison loops over a given
+    [[runtime]] R and logic instance LG0. *)
 Module StrcmpLoopOn (R : Runtime) (LG0 : LogicSig R).
-(** Strings' windows over R and LG0. *)
+(** Module [WS] provides the word-window string representation for R and LG0. *)
 Module WS := WordStringOn R LG0.
-(** The Logic instance. *)
+(** Module [LG] re-exports the program logic instance LG0. *)
 Module LG := LG0.
-(** The language of the Logic instance. *)
+(** Module [L] provides the nanofil language definition for LG. *)
 Module L := LG.L.
 Import L LG WS.
 
@@ -43,21 +39,30 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** The Iris instance of the registry and wi. *)
+(** Instance [rules_irisGS] builds the [[iris]] machine semantics from
+    the external registry and world invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** The expressions of the language. *)
+(** Notation [gexpr] abbreviates expressions in the instantiated language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-(** The proof mode's entailment. *)
+(** Notation [ent] abbreviates proof-mode entailment in the Iris context. *)
 Local Notation ent Δ P := (environments.envs_entails Δ P).
 
-(** ## Steps in the proof mode *)
+(** ## Steps in the proof mode
 
-(** A step whose rule ends in a later: the goal before it from the
-    goal after it, with no later to strip. *)
+    Each instruction rule in [Logic](Logic.v) wraps its continuation in
+    a [[later-modality|later modality]]. When stepping through dozens of
+    instructions in a loop body, stripping those laters manually clutters
+    the proof state. This section lifts each stepping rule to
+    proof-mode entailments via [next_to] and defines short tactics for
+    symbolic execution. *)
+
+(** Lemma [next_to] strips a leading later modality from a weakest
+    precondition rule when proving a proof-mode entailment. *)
 Lemma next_to Δ (P Q : iProp Σ) : (⊢ ▷ P -∗ Q) -> ent Δ P -> ent Δ Q.
 Proof. rewrite environments.envs_entails_unseal. intros HPQ HP. iIntros "H". iApply HPQ. iNext. by iApply HP. Qed.
 
-(** Logic.v's [wp_let] in the proof mode. *)
+(** Lemma [s_let] steps past a pure `let` instruction inside a
+    proof-mode entailment. *)
 Lemma s_let Δ f e ls l d k o args rest j classes xs w Φ :
   general_op o = true -> op_arg_classes o k = Some classes -> map2_option (value_x ge e) classes args = Some xs ->
   (forall m, op_res o k xs m = Some (OpRes (RVal w) m)) ->
@@ -65,8 +70,8 @@ Lemma s_let Δ f e ls l d k o args rest j classes xs w Φ :
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : gexpr) {{ Φ }}).
 Proof. intros. eapply next_to; [eapply (wp_let registry wi ge); eauto | done]. Qed.
 
-(** [s_let] of an integer, named: the rest is proved for any x equal to
-    it, so its later readers see x, not the term. *)
+(** Lemma [s_letn] steps past an integer `let` and binds a fresh Rocq
+    variable x equal to the result so later steps stay compact. *)
 Lemma s_letn Δ f e ls l d k o args rest j classes xs X Φ :
   general_op o = true -> op_arg_classes o k = Some classes -> map2_option (value_x ge e) classes args = Some xs ->
   (forall m, op_res o k xs m = Some (OpRes (RVal (WInt X)) m)) ->
@@ -74,71 +79,89 @@ Lemma s_letn Δ f e ls l d k o args rest j classes xs X Φ :
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : gexpr) {{ Φ }}).
 Proof. intros. eapply s_let; eauto. Qed.
 
-(** Logic.v's [wp_flight] in the proof mode. *)
+(** Pointer arithmetic in Fil-C produces a derived pointer through a
+    `flight` instruction, which [s_flight] steps past in one rule. *)
 Lemma s_flight Δ f e ls l d o args lw rest j xs n c Φ :
   map_option (flight_arg_x ge e) args = Some xs -> alu o L xs = Some (WInt n) -> flight_cap ge e lw = Some c ->
   ent Δ (WP (ERun (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) : gexpr) {{ Φ }}).
 Proof. intros. eapply next_to; [eapply (wp_flight registry wi ge); eauto | done]. Qed.
 
-(** Logic.v's [wp_enter] in the proof mode. *)
+(** Entering a basic block resolves its phi bindings from the incoming
+    edge, which [s_enter] performs in a single step. *)
 Lemma s_enter Δ f e ls l from b e' Φ :
   find_block l (fn_blocks f) = Some b -> phis_env ge (b_phis b) from e = Some e' ->
   ent Δ (WP (ERun (mkFrame f e' ls None (Exec l (b_insts b) (b_jump b))) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Enter l from)) : gexpr) {{ Φ }}).
 Proof. intros. eapply next_to; [eapply (wp_enter registry wi ge); eauto | done]. Qed.
 
-(** Logic.v's [wp_goto] in the proof mode. *)
+(** Lemma [s_goto] steps past an unconditional `goto` jump inside a
+    proof-mode entailment. *)
 Lemma s_goto Δ f e ls l t Φ :
   ent Δ (WP (ERun (mkFrame f e ls None (Enter (edge_label t) (Some l))) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l [] (JGoto t))) : gexpr) {{ Φ }}).
 Proof. intros. eapply next_to; [apply (wp_goto registry wi ge) | done]. Qed.
 
-(** Logic.v's [wp_branch] in the proof mode. *)
+(** Lemma [s_branch] steps past a conditional `branch` instruction
+    inside a proof-mode entailment. *)
 Lemma s_branch Δ f e ls l v t1 t2 n Φ :
   value_x ge e W v = Some (WInt n) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Enter (edge_label (if n =? 0 then t2 else t1)) (Some l))) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l [] (JBranch v t1 t2))) : gexpr) {{ Φ }}).
 Proof. intros. eapply next_to; [eapply (wp_branch registry wi ge); eauto | done]. Qed.
 
-(** Logic.v's [wp_ret] in the proof mode, the returned word any word
-    equal to it. *)
+(** Lemma [s_ret] steps past a `ret` instruction and rewrites the
+    returned word to any provably equal integer x'. *)
 Lemma s_ret Δ f e l v x x' Φ :
   fn_ret f = RClass W -> value_x ge e W v = Some (WInt x) -> x = x' -> ent Δ (Φ (Ret (WInt x'))) ->
   ent Δ (WP (ERun (mkFrame f e [] None (Exec l [] (JRet v))) : gexpr) {{ Φ }}).
 Proof. intros Hk Hv -> H. eapply next_to; [eapply (wp_ret registry wi ge); eauto | done]. Qed.
 
-(** A let, its value left whole. *)
+(** Tactic [sl] steps past a `let` instruction while keeping its bound
+    value symbolic. *)
 Ltac sl := eapply s_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
-(** A let, its integer named. *)
+(** Tactic [sn] steps past an integer `let` and names the resulting
+    integer in the context. *)
 Ltac sn := eapply s_letn; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |];
   let x := fresh "x" in let E := fresh "E" in intros x E.
-(** A flight. *)
+(** Tactic [sf] steps past a capability `flight` check instruction. *)
 Ltac sf := eapply s_flight; [reflexivity | reflexivity | reflexivity |].
-(** A goto, and entering its block. *)
+(** Tactic [en] enters the target basic block of a pending frame jump. *)
 Ltac en := eapply s_enter; [reflexivity | reflexivity |]; cbn [b_insts b_jump].
-(** A goto and the block it enters. *)
+(** Tactic [sg] steps through a `goto` terminator and immediately enters
+    its destination block. *)
 Ltac sg := eapply s_goto; en.
-(** A let that reads the temporary n of the frame's environment below
-    its puts, which H says holds a value. *)
+(** Tactic [slk] steps past a `let` instruction that reads an earlier
+    variable n whose value is given by H. *)
 Ltac slk n H := eapply s_let; [reflexivity | reflexivity |
   cbn [map2_option value_x]; repeat (rewrite (lookup_after_put_other _ (TAtom n)); [|reflexivity]);
   rewrite H; reflexivity | intros ?; reflexivity |].
-(** A branch, its condition left whole. *)
+(** Tactic [sb] steps past a conditional `branch` instruction without
+    evaluating its condition. *)
 Ltac sb := eapply s_branch; [reflexivity|].
-(** Replace the integer the temporary name holds by v, proved by tac. *)
+(** Tactic [norm] rewrites the integer held by variable name to v using
+    tactic tac. *)
 Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
-(** Replace the integer the newest temporary holds by v, proved by tac. *)
+(** Tactic [normt] normalizes the integer in the newest local variable
+    to v using tactic tac. *)
 Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
-(** Replace the address of the pointer the temporary name holds by v. *)
+(** Tactic [normp] rewrites the address of the pointer held by variable
+    name to v using linear arithmetic. *)
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
 
-(** ## Reads of a window *)
+(** ## Reads of a window
 
-(** A window's word q is its pieces' cell at offset wo + 8q. *)
+    Every memory read in `c: strcmp` executes a Fil-C bounds [[check]]
+    followed by a raw load from the string's [[word]] window. Rather
+    than unfolding the window representation at every load site,
+    [wp_win_word] and [wp_win_byte] verify both instructions together
+    and return the window permission unchanged. *)
+
+(** Lemma [win_cell] shows that when physical memory agrees with a
+    window's pieces, it also agrees with the 8-byte cell for word q. *)
 Lemma win_cell m b wo ws q : all_agree m (words_ps b wo ws) -> 0 <= q < Z.of_nat (List.length ws) ->
   all_agree m (cell b (wo + 8 * q) (wrd ws q)).
 Proof.
@@ -148,9 +171,8 @@ Proof.
   replace (wo + 8 * q + i) with (wo + (8 * q + i)) by lia. exact (all_agree_elem _ _ _ _ Ha Hin).
 Qed.
 
-(** A [[check]] of 8 bytes for reading of the pointer pr holds, p, and
-    a load of the long there, where p addresses word q of a window at a
-    share: the load gives the word. *)
+(** Lemma [wp_win_word] steps past an 8-byte read [[check]] and a
+    64-bit load at word q of a window, returning word q from ws. *)
 Lemma wp_win_word f e ls l c d pr rest j p dq b reg wo ws q Φ :
   map2_option (value_x ge e) [P] [Tmp pr] = Some [WPtr p] -> ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
   ptr_addr p = b + wo + 8 * q -> 0 <= q < Z.of_nat (List.length ws) -> 0 < b -> 0 <= wo ->
@@ -177,9 +199,9 @@ Proof.
   - iNext. iIntros "[Hl Hw]". iApply ("HK" with "[$Hl $Hw]").
 Qed.
 
-(** A [[check]] of one byte for reading of the pointer pr holds, p, and
-    a load of the signed byte there, where p addresses byte i of a
-    window at a share: the load gives the byte, extended. *)
+(** Lemma [wp_win_byte] steps past a 1-byte read [[check]] and a
+    signed-byte load at byte i of a window, returning its sign-extended
+    value. *)
 Lemma wp_win_byte f e ls l c d pr rest j p dq b reg wo ws i Φ :
   map2_option (value_x ge e) [P] [Tmp pr] = Some [WPtr p] -> ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
   ptr_addr p = b + wo + i -> 0 <= i < 8 * Z.of_nat (List.length ws) -> 0 < b -> 0 <= wo ->
@@ -211,11 +233,18 @@ Proof.
   - iNext. iIntros "[Hl Hw]". iApply ("HK" with "[$Hl $Hw]").
 Qed.
 
-(** ## The returns of a difference *)
+(** ## Returning a byte difference
 
-(** glibc's last steps on the words x and y whose first stop is byte j,
-    from its comparison mask: the mask, its population count, the two
-    bytes at j and their difference, returned. *)
+    When a word pair differs or reaches a NUL byte, glibc computes
+    `find_zero_ne_all`, counts trailing bits to locate the first stopping
+    byte j, and returns the byte difference. Because the compiler inlined
+    this epilogue at three sites, [fin_tac] handles the shared instruction
+    sequence for [fin_a], [fin_b], and [fin_c]. The section concludes
+    with the two main word-loop proofs, [aligned_loop] and
+    [unaligned_loop]. *)
+
+(** Tactic [fin_tac] steps through glibc's comparison-mask, bit-count,
+    and byte-subtraction epilogue for words x and y stopping at byte j. *)
 Ltac fin_tac x y j :=
   pose proof (cmp_mask_range x y); pose proof (byte_of_range x j); pose proof (byte_of_range y j);
   let Ht := fresh "Ht" in let Hn := fresh "Hn" in
@@ -236,8 +265,8 @@ Ltac fin_tac x y j :=
   sl; normt ((byte_of x j - byte_of y j) mod 2 ^ 32) ltac:(arith);
   sg; eapply s_ret; [reflexivity | reflexivity | rewrite !Zmod_mod; reflexivity |].
 
-(** The words x and y differ, the second string aligned: glibc returns
-    the difference of their bytes at their first stop j. *)
+(** Lemma [fin_a] verifies the difference epilogue for the aligned
+    word loop. *)
 Lemma fin_a Δ e z a b x y j Φ :
   0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
   ent Δ (Φ (Ret (WInt ((byte_of x j - byte_of y j) mod 2 ^ 32)))) ->
@@ -246,8 +275,8 @@ Lemma fin_a Δ e z a b x y j Φ :
          (Enter (TAtom "iw_1.iw_2.start") (Some (TAtom "iw_1.L10")))) : gexpr) {{ Φ }}).
 Proof. intros Hj Hst Hs HK. en. fin_tac x y j. exact HK. Qed.
 
-(** The words x and y differ, y the second string's [merge]: glibc
-    returns the difference of their bytes at their first stop j. *)
+(** Lemma [fin_b] verifies the difference epilogue when the unaligned
+    loop finds a mismatch against the merged word y. *)
 Lemma fin_b Δ e z1 z2 z3 z4 z5 z6 z7 z8 x y j Φ :
   0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
   ent Δ (Φ (Ret (WInt ((byte_of x j - byte_of y j) mod 2 ^ 32)))) ->
@@ -258,15 +287,15 @@ Lemma fin_b Δ e z1 z2 z3 z4 z5 z6 z7 z8 x y j Φ :
          (Enter (TAtom "iw_2.iw_2.start") (Some (TAtom "iw_2.L36")))) : gexpr) {{ Φ }}).
 Proof. intros Hj Hst Hs HK. en. fin_tac x y j. exact HK. Qed.
 
-(** The block of glibc's strcmp labelled l. *)
+(** Function [blk] looks up basic block l in `__GI_strcmp`. *)
 Definition blk (l : string) : block :=
   match find_block (TAtom l) (fn_blocks glibc_strcmp) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
-(** The last word pair's block of an unaligned second string. *)
+(** Constant [blk30] holds the basic block for the trailing-bytes exit
+    of an unaligned second string. *)
 Definition blk30 : block := Eval vm_compute in blk "iw_2.L30".
 
-(** The words x and y, y the second string's last bytes, at the last
-    word pair of an unaligned second string: glibc returns the
-    difference of their bytes at their first stop j. *)
+(** Lemma [fin_c] verifies the difference epilogue when an unaligned
+    second string ends before the next word boundary. *)
 Lemma fin_c Δ e x y j Φ :
   0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
   ent Δ (Φ (Ret (WInt ((byte_of x j - byte_of y j) mod 2 ^ 32)))) ->
@@ -274,8 +303,9 @@ Lemma fin_c Δ e x y j Φ :
          (Exec (TAtom "iw_2.L30") (b_insts blk30) (b_jump blk30))) : gexpr) {{ Φ }}).
 Proof. intros Hj Hst Hs HK. cbn [blk30 b_insts b_jump]. fin_tac x y j. exact HK. Qed.
 
-(** The arithmetic of the shapes Hs1 and Hs2 of the two strings, and
-    the agreement of their bytes. *)
+(** To avoid repeating boilerplate at the start of each loop proof,
+    tactic [facts] extracts the address bounds and byte-agreement
+    hypotheses from both strings. *)
 Ltac facts Hs1 Hs2 :=
   destruct (shape_facts _ _ _ _ _ Hs1) as (B1 & S1 & M1 & P1 & K1 & E1 & R1 & N1 & C1);
   destruct (shape_facts _ _ _ _ _ Hs2) as (B2 & S2 & M2 & P2 & K2 & E2 & R2 & N2 & C2);
@@ -283,13 +313,12 @@ Ltac facts Hs1 Hs2 :=
   pose proof (ss_chars _ _ _ _ _ Hs1) as H1; pose proof (sbyte_agree _ _ _ _ _ Hs1) as A1;
   pose proof (sbyte_agree _ _ _ _ _ Hs2) as A2.
 
-(** The aligned loop's block. *)
+(** Constant [blk10a] holds the header block of the aligned word loop. *)
 Definition blk10a : block := Eval vm_compute in blk "iw_1.L10".
 
-(** The aligned loop: both strings' bytes from c start words, Q1 and
-    Q2 of their windows, read as pr.3 and pr.4, and pr.1 and pr.2 point
-    past them; their bytes before c agree and are not 0. strcmp
-    returns [strcmp_res] and hands both windows back. *)
+(** Lemma [aligned_loop] proves by induction on the remaining words of
+    the first string that comparing aligned 64-bit words returns
+    [strcmp_res] and restores both windows. *)
 Lemma aligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c Q1 Q2 e Φ :
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= c ->
   ptr_addr p1 mod 8 + c = 8 * Q1 -> ptr_addr p2 mod 8 + c = 8 * Q2 -> same_upto (sbyte p1 ws1) (sbyte p2 ws2) c ->
@@ -340,14 +369,12 @@ Proof.
     eapply (fin_a _ _ _ _ _ _ _ jj); [lia | exact Hst | exact Hsj |]. rewrite -Hres. iApply ("HK" with "W1 W2").
 Qed.
 
-(** The unaligned loop's block. *)
+(** Constant [blk36] holds the header block of the unaligned word loop. *)
 Definition blk36 : block := Eval vm_compute in blk "iw_2.L36".
 
-(** The unaligned loop: the first string's bytes from c start its word
-    Q1, read as pr.4, the second's are at offset o of its word Q2, read
-    as pr.5, and are not 0 to that word's end; pr.1 and pr.2 point past
-    them, and v14 and v18 hold the shifts of o. Their bytes before c
-    agree and are not 0. strcmp returns [strcmp_res]. *)
+(** Lemma [unaligned_loop] proves by induction on the remaining words of
+    the first string that merging consecutive words of an unaligned
+    second string returns [strcmp_res] and restores both windows. *)
 Lemma unaligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c o Q1 Q2 e Φ :
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= c -> 0 < o < 8 ->
   ptr_addr p1 mod 8 + c = 8 * Q1 -> ptr_addr p2 mod 8 + c = 8 * Q2 + o -> same_upto (sbyte p1 ws1) (sbyte p2 ws2) c ->
