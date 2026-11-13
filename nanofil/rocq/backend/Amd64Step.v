@@ -582,20 +582,48 @@ Definition stores (i : instr) : bool :=
 Lemma step_mapped (h : havoc) (i : instr) (s s' : machine) :
   step h i s = Next s' -> mapped s' = mapped s.
 Proof.
-Admitted.
+  intro E; destruct i; cbn [step] in E;
+    repeat match type of E with
+    | context [if ?b then _ else _] => destruct b eqn:?
+    | context [match ?z with S8 => _ | _ => _ end] => destruct z
+    | context [match ?o with UNeg => _ | UNot => _ end] => destruct o
+    | context [match ?q with Some _ => _ | None => _ end] => destruct q
+    end;
+    inversion E; subst;
+    repeat first [rewrite mapped_set_reg | rewrite mapped_set_flags |
+                  rewrite mapped_set_bytes];
+    reflexivity.
+Qed.
 
 (** A sequence does not change which addresses are mapped. *)
 Lemma runs_mapped (code : list instr) (s s' : machine) :
   runs code s (Next s') -> mapped s' = mapped s.
 Proof.
-Admitted.
+  intro H; remember (Next s') as result eqn:E.
+  induction H; inversion E; subst.
+  - reflexivity.
+  - transitivity (mapped s'0).
+    + apply IHruns; reflexivity.
+    + eapply step_mapped; eassumption.
+Qed.
 
 (** An instruction that is not a store does not change the content of
     memory. *)
 Lemma step_bytes (h : havoc) (i : instr) (s s' : machine) :
   step h i s = Next s' -> stores i = false -> bytes s' = bytes s.
 Proof.
-Admitted.
+  intros E H; destruct i; cbn [stores] in H; try discriminate;
+    cbn [step] in E;
+    repeat match type of E with
+    | context [if ?b then _ else _] => destruct b eqn:?
+    | context [match ?z with S8 => _ | _ => _ end] => destruct z
+    | context [match ?o with UNeg => _ | UNot => _ end] => destruct o
+    | context [match ?q with Some _ => _ | None => _ end] => destruct q
+    end;
+    inversion E; subst;
+    repeat first [rewrite bytes_set_reg | rewrite bytes_set_flags];
+    reflexivity.
+Qed.
 
 (** A sequence without a store does not change the content of
     memory. *)
@@ -604,7 +632,13 @@ Lemma runs_bytes (code : list instr) (s s' : machine) :
   (forall i, In i code -> stores i = false) ->
   bytes s' = bytes s.
 Proof.
-Admitted.
+  intro H; remember (Next s') as result eqn:E.
+  induction H; inversion E; subst; intro Hnone.
+  - reflexivity.
+  - transitivity (bytes s'0).
+    + apply IHruns; [reflexivity | intros j Hj; apply Hnone; right; exact Hj].
+    + eapply step_bytes; [eassumption | apply Hnone; left; reflexivity].
+Qed.
 
 (** A fragment without a store leaves the memory as it found it. This
     lemma adds that fact to whatever relation the fragment establishes,
@@ -617,7 +651,12 @@ Lemma establishes_memory (P : machine -> Prop) (code : list instr)
   establishes P code
     (fun s s' => Q s s' /\ bytes s' = bytes s /\ mapped s' = mapped s).
 Proof.
-Admitted.
+  intros H Hnone s o HP Hr.
+  destruct (H _ _ HP Hr) as [t [E HQ]].
+  exists t; split; [exact E | split; [exact HQ | split]].
+  - eapply runs_bytes; [rewrite <- E; exact Hr | exact Hnone].
+  - eapply runs_mapped; rewrite <- E; exact Hr.
+Qed.
 
 (** ## Facts about loads and stores
 
@@ -635,7 +674,12 @@ Lemma load_spec (z : size) (a : address) (d : gpr) :
     (fun s s' =>
        s' = set_reg z d (read_at z (bytes s) (effective_address a s)) s).
 Proof.
-Admitted.
+  intros s o HP Hr.
+  apply runs_cons_inv in Hr; destruct Hr as [h [[t [E Hr]] | [f [E ->]]]].
+  - cbn [step] in E; rewrite HP in E; inversion E; subst t.
+    eexists; split; [apply runs_nil_inv; exact Hr | reflexivity].
+  - cbn [step] in E; rewrite HP in E; discriminate.
+Qed.
 
 (** A store to accessible memory completes. It writes the low part of
     its register to the bytes of its access, and it changes neither a
@@ -647,7 +691,12 @@ Lemma store_spec (z : size) (r : gpr) (a : address) :
        s' = set_bytes
               (write_at z (bytes s) (effective_address a s) (get_reg z r s)) s).
 Proof.
-Admitted.
+  intros s o HP Hr.
+  apply runs_cons_inv in Hr; destruct Hr as [h [[t [E Hr]] | [f [E ->]]]].
+  - cbn [step] in E; rewrite HP in E; inversion E; subst t.
+    eexists; split; [apply runs_nil_inv; exact Hr | reflexivity].
+  - cbn [step] in E; rewrite HP in E; discriminate.
+Qed.
 
 (** A load from memory that is not accessible stops with a memory
     fault, under every havoc. *)
@@ -655,7 +704,8 @@ Lemma load_faults (h : havoc) (z : size) (a : address) (d : gpr) (s : machine) :
   accessible z (effective_address a s) s = false ->
   step h (ILoad z a d) s = Fault MemoryFault.
 Proof.
-Admitted.
+  intro H; cbn [step]; rewrite H; reflexivity.
+Qed.
 
 (** A store to memory that is not accessible stops with a memory
     fault, under every havoc. *)
@@ -663,4 +713,5 @@ Lemma store_faults (h : havoc) (z : size) (r : gpr) (a : address) (s : machine) 
   accessible z (effective_address a s) s = false ->
   step h (IStore z r a) s = Fault MemoryFault.
 Proof.
-Admitted.
+  intro H; cbn [step]; rewrite H; reflexivity.
+Qed.
