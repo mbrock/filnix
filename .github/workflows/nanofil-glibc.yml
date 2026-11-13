@@ -45,7 +45,7 @@ env:
 jobs:
   glibc:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -59,7 +59,7 @@ jobs:
       - name: Compile, reprint and probe glibc contracts
         run: |
           set -o pipefail
-          python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 1800 -- \
+          python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 3600 -- \
             nix build -L --no-link --keep-going --max-jobs auto --cores 0 \
             .#checks.x86_64-linux.nanofil-glibc 2>&1 | tee nanofil-glibc.log
       # The Fil-C glibc source fixes (survey/glibc/patches): the stock
@@ -77,8 +77,8 @@ jobs:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           { nix eval --raw .#checks.x86_64-linux.nanofil-glibc --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ [ g.probes g ]))'; echo; } |
-            while read -r p; do [ -e "$p" ] && echo "$p"; done | cachix push filc
+              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ [ g.probes g ]))'; echo; } |
+            while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
       - uses: actions/upload-artifact@v4
         if: always()
         with:

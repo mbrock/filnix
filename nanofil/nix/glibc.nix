@@ -1,23 +1,22 @@
-# The glibc spike (rocq/glibc, docs/glibc-ir.md): programs linked with
-# nanofil's IR of user glibc units, proved through the program logic,
-# with libpizlo's zsys_write as the one trusted contract. Off the model's
-# import path; its own push check (.github/workflows/nanofil-glibc.yml)
-# compiles and caches each changed file and its importers.
+# The glibc check compiles every proof under rocq/glibc and validates its
+# grammar round trip. Each file gets its own derivation, with only the
+# compiled Nanofil and Glibc files in its transitive imports. A theory
+# edit therefore rebuilds its importers, not every glibc proof.
 #
-#   nix build -L .#checks.x86_64-linux.nanofil-glibc
+# ```sh
+# nix build -L .#checks.x86_64-linux.nanofil-glibc
+# ```
 #
-# As rocq.nix does for the model, every .v file under rocq/glibc, in
-# any subdirectory, is compiled in its own derivation against the
-# model's compiled theories (the nanofil-rocq model's objects) and the
-# objects of the Glibc files it imports, refusing Admitted and any
-# axiom outside a module type, so an edit recompiles that file and its
-# importers. Each file is read back by parse.sh (web/rocq) in its own
-# derivation too, and every zsys-*.c native probe of a trusted contract
-# runs with filcc. The check gathers them, prints each file's compile
-# time, and compares the imports read here with rocq dep's. That the
-# Code.v fixtures are nanofil's current products is rocq/glibc/code.sh's
-# check, which needs the user glibc capture (survey/glibc/capture.nix)
-# and is run by hand.
+# The check rejects unfinished proofs and assumptions declared outside a
+# module type. It compiles each file's reprinted source against the same
+# imported objects, and runs the native zsys-*.c probes with filcc. It
+# compares the import lists with rocq dep and records each file's compile
+# time. The separate nanofil-rocq check still compiles and checks the
+# entire model.
+#
+# The fixture check in rocq/glibc/code.sh confirms that Code.v files are
+# nanofil's current products. It needs the user glibc capture from
+# survey/glibc/capture.nix and runs by hand.
 {
   pkgs,
   filcc,
@@ -34,7 +33,6 @@ let
   ];
   watch = ../tests/watch.py;
   glibc = ../rocq/glibc;
-  theories = "${model.objects}/share/rocq/theories";
   # Files are named by base name, as From Glibc Require names them, so
   # two files with one base name anywhere under rocq/glibc are refused.
   paths = map (
@@ -50,37 +48,55 @@ let
         toString (lib.filter (n: lib.count (m: m == n) ns > 1) (lib.unique ns))
       }";
     ns;
-  # The Glibc files each file imports, from its From Glibc Require
-  # sentences; the check below compares them with rocq dep's.
-  imports = lib.genAttrs names (
-    n:
-    lib.unique (
-      lib.concatMap
-        (
-          m:
-          lib.filter (w: builtins.isString w && w != "") (
-            builtins.split "[[:space:]]+" (builtins.elemAt m 2)
+  # Both namespaces use From NS Require sentences; the check below
+  # compares their direct imports with rocq dep's.
+  readImports =
+    namespace:
+    lib.genAttrs names (
+      n:
+      lib.unique (
+        lib.concatMap
+          (
+            m:
+            lib.filter (w: builtins.isString w && w != "") (
+              builtins.split "[[:space:]]+" (builtins.elemAt m 2)
+            )
           )
-        )
-        (
-          lib.filter builtins.isList (
-            builtins.split
-              "From[[:space:]]+Glibc[[:space:]]+Require[[:space:]]+((Import|Export)[[:space:]]+)?([^.]*)\\."
-              (builtins.readFile (glibc + "/${path.${n}}.v"))
+          (
+            lib.filter builtins.isList (
+              builtins.split
+                "From[[:space:]]+${namespace}[[:space:]]+Require[[:space:]]+((Import|Export)[[:space:]]+)?([^.]*)\\."
+                (builtins.readFile (glibc + "/${path.${n}}.v"))
+            )
           )
-        )
-    )
-  );
+      )
+    );
+  imports = readImports "Glibc";
+  modelImports = readImports "Nanofil";
   closure = lib.genAttrs names (
     n: lib.unique (lib.concatMap (d: closure.${d} ++ [ d ]) imports.${n})
   );
-  # link N: the objects of every Glibc file N imports, under glibc/ at
-  # their own paths, since an object records its logical path.
+  # A Glibc import can itself import Nanofil theories. Include those
+  # theories and their model dependencies, not the aggregate model tree.
+  modelClosure = lib.genAttrs names (
+    n:
+    lib.unique (
+      lib.concatMap (d: model.closure.${d} ++ [ d ]) (
+        lib.concatMap (d: modelImports.${d}) ([ n ] ++ closure.${n})
+      )
+    )
+  );
+  # Objects retain their logical paths in both namespaces.
   link =
     n:
     lib.concatMapStrings (
-      d: "mkdir -p glibc/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo glibc/${path.${d}}.vo\n"
-    ) closure.${n};
+      d:
+      "mkdir -p glibc/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo glibc/${path.${d}}.vo\n"
+    ) closure.${n}
+    + lib.concatMapStrings (
+      d:
+      "mkdir -p theories/${dirOf model.path.${d}}; ln -s ${model.vo.${d}}/${d}.vo theories/${model.path.${d}}.vo\n"
+    ) modelClosure.${n};
   vo = lib.genAttrs names (
     n:
     pkgs.runCommand "nanofil-glibc-${n}"
@@ -92,7 +108,7 @@ let
       }
       ''
         set -o pipefail
-        mkdir -p glibc/${dirOf path.${n}}
+        mkdir -p theories glibc/${dirOf path.${n}}
         ${link n}
         cp ${glibc + "/${path.${n}}.v"} glibc/${path.${n}}.v
         # No Admitted, and no axiom outside a module type.
@@ -105,7 +121,7 @@ let
         fi
         start=$(date +%s%N)
         python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
-          rocq c -q -R ${theories} Nanofil -R glibc Glibc glibc/${path.${n}}.v
+          rocq c -q -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v
         ms=$((($(date +%s%N) - start) / 1000000))
         mkdir $out
         cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob $out/
@@ -137,8 +153,7 @@ let
         OCAMLRUNPARAM = "o=200";
       }
       ''
-        mkdir -p project/glibc verdicts
-        ln -s ${theories} project/theories
+        mkdir -p project/glibc project/theories verdicts
         printf '%s\n' "-R ../theories Nanofil" "-R . Glibc" >project/glibc/_RocqProject
         (
           cd project
@@ -175,15 +190,28 @@ in
 pkgs.runCommand "nanofil-glibc"
   {
     nativeBuildInputs = rocqInputs;
-    passthru = { inherit vo reprint probes; };
+    passthru = {
+      inherit
+        vo
+        reprint
+        probes
+        model
+        ;
+    };
   }
   ''
-    # Every file imports what rocq dep says it needs from Glibc.
+    set -o pipefail
+    # The dependency guard needs sources, not the aggregate model objects.
+    # Check both namespaces, including imports through another Glibc file.
     cp -r ${glibcSrc}/rocq/glibc glibc
-    rocq dep -R ${theories} Nanofil -R glibc Glibc $(find glibc -name '*.v' | sort) |
+    cp -r ${model.src}/rocq/theories theories
+    rocq dep -R theories Nanofil -R glibc Glibc $(find glibc -name '*.v' | sort) |
       awk 'function base(p,  a, k) { k = split(p, a, "/"); sub(/\..*/, "", a[k]); return a[k] }
         $1 ~ /^glibc\/.*\.vo$/ { t = base($1); d = ""
-        for (i = 2; i <= NF; i++) if ($i ~ /^glibc\/.*\.vo$/) { s = base($i); if (s != t) d = d " " s }
+        for (i = 2; i <= NF; i++) {
+          if ($i ~ /^glibc\/.*\.vo$/) { s = base($i); if (s != t) d = d " Glibc/" s }
+          if ($i ~ /^theories\/.*\.vo$/) d = d " Nanofil/" base($i)
+        }
         print t ":" d }' |
       while read -r line; do
         f=''${line%%:*}; set -- ''${line#*:}
@@ -194,19 +222,28 @@ pkgs.runCommand "nanofil-glibc"
       lib.concatMapStrings (
         n:
         "${n}:${
-          lib.concatMapStrings (d: " ${d}") (lib.sort lib.lessThan imports.${n})
+          lib.concatMapStrings (d: " ${d}") (
+            lib.sort lib.lessThan (
+              map (d: "Glibc/${d}") imports.${n}
+              ++ map (d: "Nanofil/${d}") modelImports.${n}
+            )
+          )
         }\n"
       ) (lib.sort lib.lessThan names)
     }EOF
     sed -i 's/^ *//; s/ *$//' $TMPDIR/nixdep
     sed -i 's/ *$//' $TMPDIR/rocqdep
     if ! diff -u $TMPDIR/rocqdep $TMPDIR/nixdep; then
-      echo "glibc.nix: a file's imports differ from rocq dep's (- rocq dep, + glibc.nix); write them as From Glibc Require" >&2
+      echo "glibc.nix: a file's imports differ from rocq dep's (- rocq dep, + glibc.nix); write them as From Glibc/Nanofil Require" >&2
       exit 1
     fi
     mkdir $out
-    cat ${lib.concatMapStringsSep " " (n: "${vo.${n}}/time") names} | tee $out/timings.log
-    cat ${lib.concatMapStringsSep " " (n: "${reprint.${n}}/verdict") names} | tee $out/verdicts
+    cat ${
+      lib.concatMapStringsSep " " (n: "${vo.${n}}/time") names
+    } | tee $out/timings.log
+    cat ${
+      lib.concatMapStringsSep " " (n: "${reprint.${n}}/verdict") names
+    } | tee $out/verdicts
     cat ${probes}/log | tee $out/probes.log
     echo "@@glibc ${toString (builtins.length names)} files compiled and reprinted"
   ''

@@ -43,9 +43,15 @@ let
   # Theories sit in one directory per layer (core, soundness, ...) but are
   # named by base name, as From Nanofil Require names them; two files
   # with one base name would make those imports ambiguous.
-  paths = map (
-    p: lib.removeSuffix ".v" (lib.removePrefix "${toString theories}/" (toString p))
-  ) (lib.filter (lib.hasSuffix ".v") (lib.filesystem.listFilesRecursive theories));
+  paths =
+    map
+      (
+        p:
+        lib.removeSuffix ".v" (lib.removePrefix "${toString theories}/" (toString p))
+      )
+      (
+        lib.filter (lib.hasSuffix ".v") (lib.filesystem.listFilesRecursive theories)
+      );
   path = lib.listToAttrs (map (p: lib.nameValuePair (baseNameOf p) p) paths);
   names =
     let
@@ -84,7 +90,8 @@ let
   link =
     n:
     lib.concatMapStrings (
-      d: "mkdir -p theories/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo theories/${path.${d}}.vo\n"
+      d:
+      "mkdir -p theories/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo theories/${path.${d}}.vo\n"
     ) closure.${n};
   vo = lib.genAttrs names (
     n:
@@ -190,7 +197,8 @@ let
     cp -r ${theorySrc}/rocq/theories/. $out/share/rocq/theories/
     chmod -R u+w $out/share/rocq/theories
     ${lib.concatMapStrings (
-      n: "cp ${vo.${n}}/${n}.vo ${vo.${n}}/${n}.glob $out/share/rocq/theories/${dirOf path.${n}}/\n"
+      n:
+      "cp ${vo.${n}}/${n}.vo ${vo.${n}}/${n}.glob $out/share/rocq/theories/${dirOf path.${n}}/\n"
     ) names}
   '';
   # The model: every theory compiled, no Admitted or stray Axiom, imports
@@ -208,7 +216,10 @@ let
             parse
             objects
             driver
+            path
+            closure
             ;
+          src = theorySrc;
         };
       }
       ''
