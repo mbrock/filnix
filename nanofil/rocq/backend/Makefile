@@ -12,8 +12,8 @@ SOURCES = $(shell grep '\.v$$' _RocqProject)
 
 # The integer semantics of the emitted x86-64 (docs/gallina-backend.md),
 # in the order the files import each other.
-AMD64 = Amd64Word Amd64Machine Amd64Step Amd64Asm Amd64Total \
-  Amd64DivisionCode Amd64Division
+AMD64 = Amd64Word Amd64Memory Amd64Machine Amd64Step Amd64Asm Amd64Total \
+  Amd64DivisionCode Amd64Division Amd64Frame Amd64Layout Amd64DivisionStep
 
 PROOFS = RegsProof.vo NfbProof.vo NfbTotal.vo $(AMD64:=.vo)
 

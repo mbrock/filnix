@@ -8,8 +8,8 @@
     The refusal matters as much as the reading. A theorem about emitted
     code is stated on the lines that the emitter produces, so it holds
     only when those lines decode. A line with an operand that the
-    model does not cover, such as a memory operand or a high-byte
-    register, has no typed form and therefore no theorem.
+    model does not cover, such as an indexed memory operand or a
+    high-byte register, has no typed form and therefore no theorem.
 
     The reading checks what an assembler would check. The size that a
     suffix names must agree with the size that each register name
@@ -138,6 +138,27 @@ Definition sized_source (z : size) (o : operand) : option source :=
       end
   end.
 
+(** The function [memory_operand] reads an operand of the form
+    `d(%b)` as an address. The base must be a 64-bit register name and
+    the displacement must be an integer that fits the signed 32-bit
+    field that the instruction encodes it in. A symbolic displacement
+    and an indexed operand have no typed form. *)
+Definition memory_operand (o : operand) : option address :=
+  match o with
+  | OMem (LInt d) b =>
+      match register b with
+      | Some (S64, r) => if fits_signed S32 d then Some (mkAddress r d) else None
+      | _ => None
+      end
+  | _ => None
+  end.
+
+(** The function [wide_immediate_fits] decides whether an assembler
+    accepts the integer n as the 64-bit immediate of a `movabs`. The
+    integer may be written as a signed or an unsigned 64-bit number. *)
+Definition wide_immediate_fits (n : Z) : bool :=
+  (- (size_modulus S64 / 2) <=? n) && (n <? size_modulus S64).
+
 (** ## Mnemonics
 
     The mnemonics of the modeled instructions fall into a few families
@@ -210,15 +231,50 @@ Definition set_condition (op : string) : option condition :=
     reads a line by its shape: a suffixed line with two operands or
     with one, and an unsuffixed line with one operand or with none. *)
 
+(** The function [decode_move] reads the two operands of a `mov`. A
+    memory operand on the left makes the line a load, and a memory
+    operand on the right makes it a store of a register. With no
+    memory operand the line is a move of an immediate or a register
+    into a register. A move between two memory operands does not
+    exist, and a store of an immediate is outside the model. *)
+Definition decode_move (z : size) (a d : operand) : option instr :=
+  match memory_operand a, memory_operand d with
+  | Some m, None =>
+      match sized_register z d with
+      | Some r => Some (ILoad z m r)
+      | None => None
+      end
+  | None, Some m =>
+      match sized_register z a with
+      | Some r => Some (IStore z r m)
+      | None => None
+      end
+  | None, None =>
+      match sized_source z a, sized_register z d with
+      | Some x, Some r => Some (IMov z x r)
+      | _, _ => None
+      end
+  | Some _, Some _ => None
+  end.
+
+(** The function [decode_wide_move] reads the two operands of a
+    `movabs`, which loads a full 64-bit immediate into a 64-bit
+    register. It reads as the same typed move as a `mov` of an
+    immediate, because the typed immediate is an integer of any
+    width. *)
+Definition decode_wide_move (z : size) (a d : operand) : option instr :=
+  match z, a, sized_register S64 d with
+  | S64, OImm (ELit (LInt n)), Some r =>
+      if wide_immediate_fits n then Some (IMov S64 (SImm n) r) else None
+  | _, _, _ => None
+  end.
+
 (** The function [decode_two] reads a suffixed instruction with a
     source and a destination: a move, a binary operation or an
     extending move. *)
 Definition decode_two (op : string) (z : size) (a d : operand) : option instr :=
-  if String.eqb op "mov" then
-    match sized_source z a, sized_register z d with
-    | Some x, Some r => Some (IMov z x r)
-    | _, _ => None
-    end
+  if String.eqb op "mov" then decode_move z a d
+  else if String.eqb op "movabs" then decode_wide_move z a d
   else
     match binary_named op, extension_named op with
     | Some o, _ =>
@@ -355,9 +411,50 @@ Example decode_size_mismatch :
   decode_line (Ins "add" (Some "q") [OReg "edx"; OReg "rcx"]) = None.
 Proof. reflexivity. Qed.
 
-(** A memory operand is refused, because the model has no memory yet. *)
-Example decode_memory :
-  decode_line (Ins "mov" (Some "l") [OMem (LInt (-8)) "rbp"; OReg "eax"]) = None.
+(** A 32-bit `mov` from a frame slot reads as a load at a negative
+    displacement from `%rbp`. *)
+Example decode_load :
+  decode_line (Ins "mov" (Some "l") [OMem (LInt (-8)) "rbp"; OReg "eax"])
+  = Some (ILoad S32 (mkAddress RBP (-8)) RAX).
+Proof. reflexivity. Qed.
+
+(** A 64-bit `mov` to a frame slot reads as a store of a register. *)
+Example decode_store :
+  decode_line (Ins "mov" (Some "q") [OReg "rax"; OMem (LInt (-24)) "rbp"])
+  = Some (IStore S64 RAX (mkAddress RBP (-24))).
+Proof. reflexivity. Qed.
+
+(** A `movabs` reads as a 64-bit move of an immediate that a `mov`
+    would refuse. *)
+Example decode_movabs :
+  decode_line (Ins "movabs" (Some "q") [OImm (ELit (LInt 4294967296)); OReg "rcx"])
+  = Some (IMov S64 (SImm 4294967296) RCX).
+Proof. reflexivity. Qed.
+
+(** A load whose register disagrees with the suffix is refused. *)
+Example decode_load_mismatch :
+  decode_line (Ins "mov" (Some "l") [OMem (LInt (-8)) "rbp"; OReg "rax"]) = None.
+Proof. reflexivity. Qed.
+
+(** A memory operand with a 32-bit base register is refused. *)
+Example decode_narrow_base :
+  decode_line (Ins "mov" (Some "q") [OMem (LInt (-8)) "ebp"; OReg "rax"]) = None.
+Proof. reflexivity. Qed.
+
+(** A displacement that does not fit 32 signed bits is refused. *)
+Example decode_wide_displacement :
+  decode_line (Ins "mov" (Some "q") [OMem (LInt 2147483648) "rbp"; OReg "rax"]) = None.
+Proof. reflexivity. Qed.
+
+(** An indexed memory operand is refused, because the model has no
+    index register. *)
+Example decode_indexed :
+  decode_line (Ins "mov" (Some "q") [OMemIndex (LInt 0) "rax" "rcx"; OReg "rdx"]) = None.
+Proof. reflexivity. Qed.
+
+(** A store of an immediate is refused. *)
+Example decode_store_immediate :
+  decode_line (Ins "mov" (Some "q") [OImm (ELit (LInt 0)); OMem (LInt (-8)) "rbp"]) = None.
 Proof. reflexivity. Qed.
 
 (** A quad immediate that does not fit 32 signed bits is refused. *)
