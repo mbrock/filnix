@@ -1,0 +1,136 @@
+# The glibc code generator
+
+`generate.py` compiles captured glibc units, links their checked terms and
+prints the code fixtures used by the glibc proofs. Each directory's
+`code.toml` lists its units, roots and selected functions. The shell drivers
+delegate to this generator; `stdio/buffer-code.sh` now checks all of `stdio`.
+`gallina.pl` is unchanged.
+
+## Regenerate or check
+
+Build the tools and capture from the repository root:
+
+```sh
+nix build -o /tmp/filcc .#filcc-staging
+nix build -o /tmp/swipl --impure --expr \
+  '(import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; }).swi-prolog'
+nix build -L -f nanofil/survey/glibc/capture.nix -o /tmp/glibc-pp
+export FILCC=/tmp/filcc/bin/clang SWIPL=/tmp/swipl/bin/swipl
+```
+
+The default command checks every directory and returns nonzero for a missing,
+different or stale numbered fixture. It prints unified diffs for changed files.
+
+```sh
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp
+nanofil/rocq/glibc/code.sh --update /tmp/glibc-pp
+```
+
+Legacy is the only output form in this checkpoint. It reproduces the committed
+files without changing their helpers, imports or proof statements. To inspect
+fresh output without changing or reading the comparison tree, write it separately:
+
+```sh
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp --output /tmp/generated-code
+```
+
+`--directory string` selects one directory; `--directory .` selects only
+the top-level fixtures. Repeat the option to select several directories.
+`--tree` selects the comparison or update destination. `--output` writes only
+generated sources; it never reads the comparison tree.
+If the capture argument is omitted, the generator uses `/tmp/glibc-pp` or
+builds `survey/glibc/capture.nix`.
+
+## Driver compatibility
+
+All eight driver paths still accept `[--update] [GLIBC_PP]`. Checks return 0
+for current files and 1 for different, missing or stale numbered fixtures.
+The root driver now checks every directory instead of only Len and Say.
+Both stdio drivers now check all three stdio fixtures instead of separate
+groups. Their `--update` commands have the same expanded scope. Other
+directory drivers keep their original scope.
+
+The drivers print per-directory counts and unified diffs rather than their
+old individual success messages. All drivers now use `/tmp/glibc-pp` if no
+capture is supplied and that directory exists; root and stdlib previously
+asked Nix for the capture, and getopt required an argument. `KEEP` no longer
+retains temporary files. Python 3.11 or newer is required for TOML parsing.
+The early `--legacy` spelling remains an alias for `--form legacy`.
+
+## Add a unit or function
+
+The fixture rows retain the drivers' table format:
+
+```text
+NAME|ROOTS|UNITS|FUNCTIONS[|PROGRAM]
+```
+
+`NAME` gives the output file's base name without `Code.v`. An empty roots or
+units column inherits the manifest's `roots` or `units`. A `units` table uses
+`OBJECT UNIT` rows; `- UNIT...` derives each object name as `glibc_` followed
+by the unit basename with hyphens changed to underscores. Preserve explicit
+object names, unit order and root order: the linker uses them to name private
+symbols and order the resulting terms. `FUNCTIONS` lists the bodies to decode;
+the libio and stdio layouts also select only those functions from the link.
+`PROGRAM` names a C source relative to `nanofil`.
+
+Existing fixtures must keep their names and presentation when units are added.
+The `layout` setting chooses those conventions. The `mode` setting preserves
+how each old driver compiled its units: `checked` by default, `trap` for stdlib
+and `outcomes` for Len/Say.
+
+Some linked units contain constructors that initialize the standard streams.
+The `ctors` setting keeps those constructors. The stdio manifest uses a second
+`[[batch]]` because its buffer fixtures come from a separate link.
+
+The one slicer preserves whole items and blocks, with the original 500-line
+getopt and 525-line hi_atexit budgets. Adding a function does not require a
+new driver or slicer.
+
+Every function in a fixture row must be defined in its linked units. A missing
+function fails generation and names the manifest row, rather than silently
+emitting an empty decoded body. Run `test.sh CAPTURE` to check this rejection,
+fixture corruption and the manifest proof-style switch.
+
+## Follow the computed-proof conversion
+
+The `[proof_styles]` table in each directory's `code.toml` is the only place
+that records a generated file's computed-equality proof style. The generator
+never reads that style from the files it checks, so checking catches changed
+proofs as well as changed terms. Each file uses `vm_compute` unless its manifest
+lists another style:
+
+```toml
+[proof_styles]
+"StrcmpCode.v" = "vm_cast_no_check"
+```
+
+After converting a file's computed-equality proofs, run this command from the
+repository root to record the new style in its manifest:
+
+```sh
+python3 -I nanofil/rocq/scripts/glibc-code/sync-proof-styles.py nanofil/rocq/glibc
+```
+
+This separate helper reads the tree and changes only manifests. It rejects
+mixed styles within one file and unknown proof scripts before writing anything.
+It requires every manifest fixture and numbered slice to be present with its
+generated header. It checks multiline proofs too and does not convert proofs.
+Review and commit its manifest changes before running the regeneration check.
+
+## Integrate the check
+
+`nanofil/rocq/glibc/code.sh CAPTURE` is the standalone gate entry point.
+A Nix caller needs the compiler sources, these generator scripts, manifests,
+fixture hashes, the checked tree, Python 3.11 or newer, SWI-Prolog, coreutils,
+and `FILCC` set to the staging compiler. Supply the capture as a derivation
+input; the script needs neither Nix nor network access when it receives that
+path. Pass `--tree TREE` to check a separate tree instead of the committed files.
+`nanofil/nix/glibc.nix` has not been changed.
+
+The capture built successfully in an orb at
+`/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44`.
+The compiler came from Cachix; this capture was built locally, not substituted.
+The check can therefore run in an orb and can be a dependency of the glibc
+gate once its caller supplies the capture. It need not remain a manual check.

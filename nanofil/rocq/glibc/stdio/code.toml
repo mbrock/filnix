@@ -1,0 +1,21 @@
+layout = "stdio"
+ctors = true
+roots = "__printf_buffer_done __GI___pthread_setcancelstate"
+units = '''
+- nptl/pthread_setcancelstate.os stdio-common/printf_buffer_done.os
+'''
+fixtures = '''
+PrintfState|||__printf_buffer_done __GI___pthread_setcancelstate
+'''
+
+[[batch]]
+layout = "buffer"
+ctors = true
+roots = "__printf_buffer_write __printf_buffer_flush __printf_buffer_flush_to_file __printf_buffer_to_file_init __printf_buffer_to_file_done"
+units = '''
+- stdio-common/printf_buffer_write.os stdio-common/printf_buffer_flush.os stdio-common/printf_buffer_to_file.os
+'''
+fixtures = '''
+PrintfBufferIo|||__printf_buffer_write __printf_buffer_flush
+PrintfBufferFile|||__printf_buffer_to_file_switch __printf_buffer_flush_to_file __printf_buffer_to_file_init __printf_buffer_to_file_done
+'''

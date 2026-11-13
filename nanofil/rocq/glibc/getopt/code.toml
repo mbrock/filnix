@@ -1,0 +1,8 @@
+layout = "getopt"
+roots = "getopt_long"
+units = '''
+- posix/getopt.os posix/getopt1.os
+'''
+fixtures = '''
+Getopt|||
+'''
