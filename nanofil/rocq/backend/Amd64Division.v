@@ -53,8 +53,9 @@ Definition division_result_in_rax (sg : signedness) (remainder : bool) (k : clas
   = Some (WInt (regs s' RAX))
   /\ scratch_only s s'.
 
-(** Division must leave registers other than `%rax`, `%rcx` and `%rdx` unchanged.
-    If each part preserves those registers, running the parts in sequence preserves them too. *)
+(** Division must leave registers other than `%rax`, `%rcx` and `%rdx`
+    unchanged. If each part preserves those registers, running the
+    parts in sequence preserves them too. *)
 Lemma division_scratch_trans (s s' s'' : machine) :
   scratch_only s s' -> scratch_only s' s'' -> scratch_only s s''.
 Proof.
@@ -62,7 +63,8 @@ Proof.
 Qed.
 
 (** The two operand rewritings leave the safe dividend and divisor in
-    their registers. Their range bounds ensure that later reads keep them unchanged. *)
+    their registers. Their range bounds ensure that later reads keep
+    them unchanged. *)
 Lemma division_operands_spec (sg : signedness) (z : size) :
   word_size z ->
   establishes (fun _ => True)
@@ -96,8 +98,9 @@ Proof.
     exact (zero_divisor_spec z Hz).
 Qed.
 
-(** The last two fragments select the quotient or remainder of safe operands.
-    The remainder's range bound makes its final register read exact. *)
+(** The last two fragments select the quotient or remainder of safe
+    operands. The remainder's range bound makes its final register
+    read exact. *)
 Lemma division_finish_spec (sg : signedness) (remainder : bool) (z : size) :
   word_size z ->
   establishes (fun s => divisor_safe sg z (get_reg z RCX s))
