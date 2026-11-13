@@ -353,3 +353,4 @@ getopt/GetoptLongAmbList.v
 getopt/GetoptLongAmbHead.v
 getopt/GetoptLongAmbPoss.v
 getopt/GetoptLongAmbRep.v
+getopt/GetoptLongPfxPath.v
