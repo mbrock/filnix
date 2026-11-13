@@ -1,28 +1,33 @@
-(** Campaign 3's [[reuse|reuse forms]], part one: what a frame may read
-    off the [[single definition|single definitions]] that
-    [[dominance|dominate]] its point
-    ([formal.md, Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem);
-    [rocq.md, Reading single definitions](../../../docs/rocq.md#reading-single-definitions)).
+(** This module proves the soundness of Campaign 3's [[reuse|reuse forms]]
+    for [[offset-interval|offset intervals]], [[guard-chain|guard chains]],
+    [[pointer-distance|pointer distances]], and hull-covered accesses.
+    [Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem)
+    and
+    [Reading single definitions](../../../docs/rocq.md#reading-single-definitions)
+    explain how these pieces fit into the validator proof.
 
-    Single.v proves that every replayable single definition whose site
-    dominates a frame's point [[replay|replays]]: the name still holds
-    what its instruction made. This file turns that into the facts the
-    reuse forms' rules need: [[offset interval|offset intervals]], the
-    elements of a [[guard chain]], and the distance between two
-    pointers. From them it proves the first reuse form, a raw access
-    covered by the hull of two live facts, never [[unchecked]] along
-    any run.
+    Earlier, we proved that every dominating single-definition
+    instruction still produces its original value at runtime. Here we
+    turn that guarantee into the arithmetic bounds, pointer
+    relationships, and base distances that the validator's reuse rules
+    need. Combining those facts with the [[live-fact|live facts]] from
+    [Persistence], we show that no [[raw-access|raw access]] covered by
+    a hull of two checks can ever fail as [[unchecked]].
 
     ## Decisions
 
-    | Decision | Why |
-    |---|---|
-    | "dominates the point" is the predicate Interval.v walks | it is closed under single-definition operands ([use_dominated]), and what dominates replays ([scope_holds]) |
-    | Interval.v's hypothesis speaks of [iv_op] lets at an integer class | a check's proof or a float sum does not compute by `alu`; no derivation walks through one |
-    | [guard_chain] and [pointer_distance] are rewritten by equations, never unfolded in a hypothesis | unfolding makes the kernel compare two 64-deep unfoldings, and `Qed` takes minutes |
-    | a write through the hull needs some write check of the capability, not of the two bounding spans | `hull_covered/7` takes write rights from any span; a passed write check means the capability is not read-only |
-    | the facts' pointers dominating the point is Invariant.v's ([live_dom]), not a hypothesis | inside a block it is [use_dominated]; over a block's entry it is [dom_meet] |
-    | `Hull R` carries runs between two instances of `Machine R` | Persistence.v and Single.v each instantiate it, and `mstep` is an inductive, new in each instance | *)
+    When the validator checks a chain of pointer offsets, every operand
+    in the chain must still hold its original value at runtime. Because
+    both the interval pass and our runtime invariant use block
+    dominance, any dominating operand replays automatically. We also
+    exclude capability checks and floating-point instructions from the
+    interval rule, and expand recursive guard-chain lookups with
+    explicit equations to keep proof checking fast.
+
+    A capability only needs one passing write check to permit a write
+    anywhere inside a hull of two bounds checks. Separate checks on both
+    bounding spans are unnecessary because a capability's write
+    permission applies to the entire object. *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -30,12 +35,17 @@ From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Seman
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## A replayed definition holds *)
+(** ## A replayed definition holds
 
-(** A `let` n of an op o that intervals walk through ([iv_op]), at an
-    integer [[class]] k, that steps and continues, computed its result
-    from its operands as [let_holds] says, reading them in the frame
-    where it ran (`inst_result/5`, `op_res/7`). *)
+    When an arithmetic `let` instruction dominates the current point and
+    replays, we need to recover the exact ALU relation between its
+    result and its operands. These two lemmas translate a replayed step
+    into [let_holds] and show that it depends only on the defined name
+    in the later environment. *)
+
+(** When an integer-class `let` instruction steps and continues, it
+    satisfies [let_holds], relating the defined temporary n in the later
+    environment to its operands in the earlier frame. *)
 Lemma step_let_holds : forall ge fr m n k o args e1 l1 m1,
   iv_op o = true -> class_bits k <> None ->
   inst_step ge fr m (Let n k o args) = Some (IContinue e1 l1 m1) ->
@@ -66,11 +76,17 @@ Lemma let_holds_name : forall ge e0 e e' n k o args,
   lookup n e' = lookup n e -> let_holds ge e0 e n k o args -> let_holds ge e0 e' n k o args.
 Proof. intros ge e0 e e' n k o args E H. unfold let_holds in *. rewrite E. exact H. Qed.
 
-(** ## Definitions that dominate a point *)
+(** ## Definitions that dominate a point
 
-(** [[dominance|Dominance]] of sites composes: a site s that dominates
-    index j of block d, where that site dominates index k of block l,
-    dominates index k of block l. *)
+    To evaluate an offset interval or a guard chain at a frame's point,
+    every single-definition operand along the chain must also dominate
+    that point and replay. This section proves transitivity for
+    dominance and connects [scope_plain] to individual dominating
+    instructions. *)
+
+(** Site dominance is transitive across blocks and instructions. If site
+    s dominates block d at index j, and that site dominates block l at
+    index k, then s dominates block l at index k. *)
 Lemma site_dominates_trans : forall b0 rest doms l k d j s,
   block_intervals (b0 :: rest) = Some doms ->
   site_dominates doms l k (SAt d j) = true -> site_dominates doms d j s = true ->
@@ -110,9 +126,8 @@ Proof.
   rewrite Hl in Hsda. exact (site_dominates_trans _ _ _ _ _ _ _ _ Hd Hsd Hsda).
 Qed.
 
-(** Where every replayable single definition in scope replays
-    ([scope_holds]), a replayable definition i of n that dominates the
-    frame's point replays: [scope_holds] read at one name. *)
+(** When a frame holds its scope, any dominating single definition at
+    that point replays its original computation. *)
 Lemma dominating_replays : forall ge fr m l k n i,
   scope_holds ge fr m -> point_site (fr_fn fr) (fr_at fr) = Some (l, k) ->
   lookup n (single_definitions (fr_fn fr)) = Some (DInst i) -> replayable i = true ->
@@ -122,9 +137,9 @@ Proof.
   exact (Hs _ _ _ _ _ Hpt Hn Hrp Hpos Hsd).
 Qed.
 
-(** [dominating_replays] where only definitions that are not a
-    `check_ahead` need to replay ([scope_plain]), for a definition that
-    is not one ([ahead_free]). *)
+(** Even when speculative checks are excluded, any dominating ordinary
+    instruction at the frame's point still replays its original
+    computation. *)
 Lemma plain_replays : forall ge fr m l k n i,
   scope_plain ge fr m -> point_site (fr_fn fr) (fr_at fr) = Some (l, k) ->
   lookup n (single_definitions (fr_fn fr)) = Some (DInst i) -> replayable i = true -> ahead_free i = true ->
@@ -134,13 +149,17 @@ Proof.
   exact (Hs _ _ _ _ _ Hpt Hn Hrp Hpos Hsd Ha).
 Qed.
 
-(** ## Offset intervals at a point *)
+(** ## Offset intervals at a point
 
-(** An [[offset interval]] from lo to hi that the [[validator]] derives
-    for a value v at class k' ([iv], `offset_interval/8`) holds of the
-    value the frame reads ([in_iv]), where v's name dominates the
-    frame's point and every single definition in scope but a
-    `check_ahead` replays. *)
+    The validator bounds pointer offsets using an integer interval
+    analysis proved sound in [Interval]. Here we instantiate that
+    soundness theorem at a running frame whose single definitions
+    replay. *)
+
+(** Whenever the validator derives an integer [[offset-interval|offset interval]]
+    for a value, the runtime value in the frame lies within those
+    bounds, provided the value's definition dominates the point and
+    ordinary single definitions replay. *)
 Theorem interval_at : forall ge md fr m l k v k' lo hi,
   checked_module md -> In (IFunc (fr_fn fr)) md -> is_reachable (fn_doms (fr_fn fr)) l = true ->
   scope_plain ge fr m -> point_site (fr_fn fr) (fr_at fr) = Some (l, k) ->
@@ -161,10 +180,16 @@ Proof.
     + exact (Ha _ (value_temps_in _ _ Hin') Ho).
 Qed.
 
-(** ## The hull of two checks *)
+(** ## The hull of two checks
 
-(** An access check that passes ([cap_access_res]) is at an address
-    aligned to its alignment al. *)
+    When two earlier bounds checks on the same [[capability]] flank a
+    new access, the new access must also lie inside the capability's
+    bounds. This section proves the modular arithmetic behind that hull
+    argument, relying on [objects_fit] to rule out 64-bit wraparound
+    inside live objects. *)
+
+(** Any passing capability access check guarantees that the checked
+    address is aligned to the required alignment al. *)
 Lemma cap_access_aligned : forall c rs a size r al,
   cap_access_res c rs a size r al = Some ok -> a mod al = 0.
 Proof.
@@ -186,18 +211,16 @@ Proof.
           | exists (2 ^ 62); reflexivity | exists (2 ^ 63); reflexivity ].
 Qed.
 
-(** An access between two passed checks of one [[capability]] c, at
-    addresses of one pointer A that are near offsets apart, passes too
-    (the arithmetic of `hull_covered/7`). The first
-    check's span ends at or above -2^62 and starts at or below the
-    access; the second's starts at or below 2^62 and ends at or above
-    it. A read needs nothing more; a write needs some write check of
-    the capability to have passed.
+(** If two earlier checks on the same [[capability]] c passed at near
+    offsets around pointer A, then any access between them also passes.
+    The lower check must reach at or below the new access, the upper
+    check must reach at or above it, and a write access also requires
+    some passing write check on c.
 
-    The two checks compare addresses taken modulo 2^64. They are A+l1
-    and A+l2 exactly, not merely congruent to them, only because the
-    object ends at or below 2^48 ([objects_fit]): addresses inside it
-    that are congruent and less than 2^63 apart are equal. *)
+    Because raw pointer arithmetic computes addresses modulo 2^64,
+    congruence alone does not order two addresses. Because every object
+    fits below 2^48 under [objects_fit], congruent addresses within
+    2^63 of each other must be equal. *)
 Lemma cap_access_hull : forall c rs A l1 s1 r1 al1 l2 s2 r2 al2 off size need aa,
   objects_fit rs ->
   cap_access_res c rs (raw_address A l1) s1 r1 al1 = Some ok ->
@@ -230,9 +253,18 @@ Proof.
     destruct (_ && _); discriminate Hw.
 Qed.
 
-(** ## Guard chains *)
+(** ## Guard chains
 
-(** What [first_some] finds is f of some element of the list. *)
+    To compare two pointers derived by separate pointer arithmetic steps,
+    the validator walks backward along [[flight]] instructions to build a
+    [[guard-chain|guard chain]] of base pointers and bounded offsets.
+    This section proves that every entry in a guard chain accurately
+    relates the derived pointer to its base, and that two pointers with
+    a matching base sit at the exact distance computed by
+    [pointer_distance]. *)
+
+(** When [first_some] returns a value y, some element x in the list
+    evaluated to y under f. *)
 Lemma first_some_in : forall (X Y : Type) (f : X -> option Y) xs y,
   first_some f xs = Some y -> exists x, In x xs /\ f x = Some y.
 Proof.
@@ -256,10 +288,11 @@ Lemma value_x_agree : forall ge e0 e k v,
   (forall y, v = Tmp y -> lookup y e0 = lookup y e) -> value_x ge e0 k v = value_x ge e k v.
 Proof. intros ge e0 e k v H. destruct v as [y | c | g]; simpl; [rewrite (H y eq_refl) | |]; reflexivity. Qed.
 
-(** What a [[guard chain]] element (b, lo, hi) says of a pointer pp0:
-    the value b reads in the environment e as a pointer with pp0's
-    [[capability]], and pp0's address is b's plus some x between lo and
-    hi, modulo 2^64. *)
+(** A [[guard-chain|guard chain]] element relates a derived pointer pp0
+    to a base value b and offset bounds lo and hi. Under [offset_rel],
+    b evaluates to a pointer with the same [[capability]] as pp0, and
+    pp0's address equals b's address plus some integer x between lo and
+    hi modulo 2^64. *)
 Definition offset_rel (ge : genv) (e : env) (pp0 : ptr) (b : value) (lo hi : Z) : Prop :=
   exists pb x, value_x ge e P b = Some (WPtr pb) /\ ptr_cap pb = ptr_cap pp0 /\ lo <= x <= hi /\
     ptr_addr pp0 mod 2 ^ 64 = (ptr_addr pb + x) mod 2 ^ 64.
@@ -274,12 +307,14 @@ Lemma mod_shift_add : forall a z xo,
   ((a mod 2 ^ 64 + z mod 2 ^ 64) mod 2 ^ 64 + xo) mod 2 ^ 64 = (a + (xo + z)) mod 2 ^ 64.
 Proof. intros a z xo. rewrite <- Z.add_mod, Z.add_mod_idemp_l by lia. f_equal. lia. Qed.
 
-(** The same for a sub flight: shifting by -z and then xo. *)
+(** Subtracting z and then adding xo shifts an address by xo - z modulo
+    2^64. *)
 Lemma mod_shift_sub : forall a z xo,
   ((a mod 2 ^ 64 - z mod 2 ^ 64) mod 2 ^ 64 + xo) mod 2 ^ 64 = (a + (xo - z)) mod 2 ^ 64.
 Proof. intros a z xo. rewrite <- Zminus_mod, Z.add_mod_idemp_l by lia. f_equal. lia. Qed.
 
-(** The same for a copy flight, whose shift z is 0 modulo 2^64. *)
+(** Copying a pointer with a zero offset shift z shifts an address by
+    xo + z modulo 2^64. *)
 Lemma mod_shift_zero : forall a z xo, z mod 2 ^ 64 = 0 ->
   (a mod 2 ^ 64 + xo) mod 2 ^ 64 = (a + (xo + z)) mod 2 ^ 64.
 Proof.
@@ -287,10 +322,9 @@ Proof.
   rewrite (Z.add_mod (a + xo) z), Hz, Z.add_0_r, Z.mod_mod, Z.add_mod_idemp_l by lia. reflexivity.
 Qed.
 
-(** Lemmas for a frame fr of a [checked_module] md, in memory m, at
-    index k of a reachable block l, where every
-    [[single definition]] in scope but a `check_ahead`
-    [[replay|replays]] ([scope_plain]). *)
+(** To prove that guard chains match runtime pointer arithmetic, we fix
+    an active frame inside a reachable block where ordinary dominating
+    definitions still replay. *)
 Section Chain.
 
 Variables (ge : genv) (md : module) (fr : frame) (m : Memory.mem) (l : name) (k : Z).
@@ -300,10 +334,10 @@ Hypothesis Hr : is_reachable (fn_doms (fr_fn fr)) l = true.
 Hypothesis Hs : scope_plain ge fr m.
 Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 
-(** Every [stable] element of a [[guard chain]] walked from p with fuel
-    steps (`guard_chain/3`) holds of the pointer pp0 ([offset_rel]),
-    where p's single definition dominates the point and p's own element
-    holds. The induction behind [guard_chain_sound]. *)
+(** Walking backward along a pointer's [[guard-chain|guard chain]]
+    recovers each base pointer and its offset range, provided the
+    starting pointer dominates the current point. This bounded induction
+    establishes [guard_chain_sound]. *)
 Lemma chain_go_sound : forall fuel p lo hi pp0,
   (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
   (stable (single_definitions (fr_fn fr)) p -> offset_rel ge (fr_env fr) pp0 p lo hi) ->
@@ -368,15 +402,15 @@ Proof.
       rewrite Haddr. simpl. apply mod_shift_zero. change (Z.pow_pos 2 64) with (2 ^ 64) in *. rewrite <- Ez. reflexivity.
 Qed.
 
-(** [guard_chain] as an equation. Unfolding it in a hypothesis instead
-    makes the kernel compare two unfoldings of [guard_chain_go], which
-    recurses twice per level, 64 levels deep. *)
+(** Expanding a 64-level recursive function inside a proof hypothesis
+    slows down Rocq's kernel. This equation rewrites [guard_chain] in
+    one step instead. *)
 Lemma guard_chain_eq : forall once p, guard_chain once p = guard_chain_go once 64 p 0 0.
 Proof. intros once p. reflexivity. Qed.
 
-(** Each [stable] element of the [[guard chain]] of a value p
-    (`guard_chain/3`) holds of the pointer pp that p reads
-    ([offset_rel]), where p's single definition dominates the point. *)
+(** Every single-definition element in a pointer's [[guard-chain|guard chain]]
+    accurately bounds that pointer's offset from the element's base,
+    provided the pointer's definition dominates the current point. *)
 Lemma guard_chain_sound : forall p pp b blo bhi,
   value_x ge (fr_env fr) P p = Some (WPtr pp) ->
   (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
@@ -389,8 +423,9 @@ Proof.
   rewrite Z.add_0_r. reflexivity.
 Qed.
 
-(** [pointer_distance] as an equation, for the same reason as
-    [guard_chain_eq]. *)
+(** Expanding a 64-level recursive pointer search inside a hypothesis
+    slows down Rocq's kernel. This equation rewrites [pointer_distance]
+    in one step instead. *)
 Lemma pointer_distance_eq : forall once p p1,
   pointer_distance once p p1 =
     first_some (fun e =>
@@ -405,12 +440,11 @@ Lemma pointer_distance_eq : forall once p p1,
                   end) (guard_chain once p).
 Proof. intros once p p1. reflexivity. Qed.
 
-(** Two values p and p1 that read as pointers pp and pp1, whose
-    [[guard chain|guard chains]] share an exact base d apart
-    (`pointer_distance/4`), have one [[capability]], and addresses d
-    apart, modulo 2^64, where their single definitions dominate the
-    point. The reuse forms use it to give a renewed pointer its
-    source's capability. *)
+(** Suppose a program derives two pointers from the same base object at
+    a known constant offset difference d. When their
+    [[guard-chain|guard chains]] meet at that shared base, both pointers
+    carry the same [[capability]] and their addresses differ by d modulo
+    2^64. *)
 Theorem pointer_distance_sound : forall p p1 pp pp1 d,
   value_x ge (fr_env fr) P p = Some (WPtr pp) -> value_x ge (fr_env fr) P p1 = Some (WPtr pp1) ->
   (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
@@ -436,14 +470,17 @@ Proof.
   rewrite Ha, <- (Z.add_mod_idemp_l (ptr_addr pp1)), Ha1, Z.add_mod_idemp_l by lia. f_equal. lia.
 Qed.
 
-(** ## The hull of a pointer's live facts *)
+(** ## The hull of a pointer's live facts
 
-(** Each span from l1 to h1 that `hull_covered/7` reads off a
-    [[live fact]] is a check that passed, of the capability of the
-    access pointer pp, at its address plus the span's bounds, where the
-    live facts hold ([facts_hold]) and their pointers dominate the
-    point. The fact's pointer and the access's are a known distance
-    apart ([pointer_distance_sound]). *)
+    We now connect the [[live-fact|live facts]] maintained at a program
+    point to the bounds checks required by a [[raw-access|raw access]].
+    Each span extracted by [hull_covered] corresponds to a passing
+    capability check on the access pointer, so [cap_access_hull]
+    guarantees the raw access itself cannot trap as [[unchecked]]. *)
+
+(** Every span from l1 to h1 that [hull_covered] extracts from a
+    [[live-fact|live fact]] represents a passing check on the access
+    pointer pp's capability at pp's address plus the span bounds. *)
 Lemma hull_span_passes : forall live p pp l1 h1 r1,
   facts_hold ge m (fr_env fr) live ->
   (forall fb y, In fb live -> f_p fb = Tmp y ->
@@ -479,13 +516,11 @@ Proof.
   - unfold raw_address. rewrite <- Z.add_mod_idemp_l, Haddr, Z.add_mod_idemp_l by lia. f_equal. lia.
 Qed.
 
-(** A [[raw access]] i through the proof q that the pass accepts by
-    `hull_covered/7` does not step to [[unchecked]], where memory lies
-    in the address space, the [[live fact|live facts]] hold and their
-    pointers' single definitions dominate the point. The span
-    starting at or below the access and the span ending at or above it
-    are checks of one capability that passed ([hull_span_passes]), so
-    the access's own check passes ([cap_access_hull]). *)
+(** When two earlier bounds checks on the same capability cover a
+    [[raw-access|raw access]] from below and above, that access cannot
+    fail as [[unchecked]]. Because every live object fits below 2^48 and
+    both bounding spans pass on the same capability, the access itself
+    satisfies its capability check. *)
 Theorem hull_access_not_unchecked : forall i q fa live why,
   objects_fit (m_regions m) ->
   facts_hold ge m (fr_env fr) live ->
@@ -537,14 +572,17 @@ End Chain.
 
 
 
-(** ## No unchecked access through the hull, along every run *)
+(** ## Hull soundness along every run
 
-(** The frame lemmas carried along every [[run]] of the [[machine]] of a
-    [[runtime]] R. It joins Persistence.v's invariant, which says the
-    hull's facts hold and dominate the point, with Single.v's, which
-    says the single definitions there replay. Each instantiates `Machine R` on
-    its own, and an instance's `mstep` is an inductive of its own, so a
-    run of one is carried over to the other ([mreachable_same]). *)
+    A single-step proof is not enough on its own, because both the
+    live-fact invariant and the single-definition invariant must hold
+    together at every reachable state. [Hull] bridges the two machine
+    instances from [Persistence] and [Single] so both invariants travel
+    together along every execution. *)
+
+(** The functor [Hull] combines [Persistence] and [Single] for any
+    [[runtime]] R and transports reachable states between their two
+    machine instances. *)
 Module Hull (R : Runtime).
 
 Module P := Persistence R.
@@ -564,13 +602,11 @@ Proof.
   - exact (rt_trans _ _ _ _ _ IH1 IH2).
 Qed.
 
-(** In every state c a [[run]] reaches from a call of a function f of a
-    [checked_module] md, started in a memory where the runtime is
-    [[ready]], a frame that is not [[doomed]] runs no [[raw access]], and
-    no raw call, to an [[unchecked]] outcome, `hull_covered/7` included.
-    Every runtime spares the pass's facts at [[poll|safepoints]]
-    ([spares_any]; see
-    [The evidence invariant over runs](../../../docs/rocq.md#the-evidence-invariant-over-runs)). *)
+(** Every execution of a checked module from a [[ready]] memory state
+    keeps non-doomed frames safe from [[unchecked]] accesses. No
+    [[raw-access|raw access]] or raw call can step to an unchecked
+    outcome, including accesses accepted through a hull, because every
+    runtime preserves live facts at [[poll|safepoints]]. *)
 Theorem run_access_checked : forall ge md f xs fr m fuel s0 c s l i rest j why,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -600,14 +636,18 @@ Qed.
 
 End Hull.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
+
+    A real interpreter allocates and frees memory without abstract
+    runtime assumptions. Here we instantiate the machine theorem with
+    the concrete interpreter runtime so the safety guarantee holds
+    directly from any ready start. *)
 
 Module InterpHull := Hull InterpRuntime.
 
-(** [run_access_checked] for the [[interpreter]]'s runtime: in every state of
-    a run of a checked module's function that starts ready, a frame that
-    is not doomed runs no raw access or raw call to `unchecked`. No
-    hypothesis remains but the ready start. *)
+(** Under the [[interpreter]]'s runtime, no non-doomed frame in a
+    checked module ever runs a raw access or raw call to an
+    [[unchecked]] outcome from a ready start. *)
 Corollary interp_access_checked : forall md globals f xs fr m fuel s0 c s l i rest j why,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

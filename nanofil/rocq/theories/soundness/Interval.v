@@ -1,33 +1,35 @@
-(** What ir.pl's [[offset-interval|offset intervals]] derive, and that
-    they hold ([Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem);
-    [docs/rocq.md](../../../docs/rocq.md#offset-intervals)).
+(** This module proves that the [[offset-interval|offset intervals]]
+    computed by the [[validator]] accurately bound runtime integer
+    values.
+    [Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem)
+    and [Offset intervals](../../../docs/rocq.md#offset-intervals)
+    describe how interval bounds support pointer reuse.
 
-    The reuse forms' rules bound the offset of a [[flight]] from its base
-    by `offset_interval/8` (Validate.v's [oi]): the interval of values an
-    integer name can hold, walked through the
-    [[single-definition|single definitions]] of the function. This file
-    states the same derivations as an inductive relation, [iv], one
-    constructor per clause of `op_interval/9`, and proves two things:
-
-    - whatever [oi] answers, [iv] derives ([offset_interval_iv]), so
-      [oi]'s memo and depth limit need no further thought;
-    - an [iv] interval holds of the value a run reads, wherever each
-      name the derivation walks holds what its definition computes from
-      its operands' values where it ran, and each single-definition
-      operand still holds that value ([iv_sound]). Which names do, at a
-      point of a run, is the run-level invariant's to say; here it is
-      any predicate ok closed under single-definition operands.
+    When a program adds an offset to a pointer, the validator bounds
+    that integer offset by walking backward through the function's
+    [[single-definition|single definitions]] with [offset_interval]. To
+    prove that walk sound without reasoning about memo tables and depth
+    limits at every step, we define a declarative relation [iv] with one
+    constructor per operator clause. We then prove two facts: every
+    interval returned by the validator is derivable in [iv], and every
+    derivable interval holds of the runtime value whenever all walked
+    single definitions still match their original computations.
 
     ## Decisions
 
-    | Decision | Why |
-    |---|---|
-    | one constructor per clause, each a little more general | `op_interval/9` commits to the first clause whose head matches; the relation needs no order, only that each derivation is sound |
-    | the depth limit and the memo are not in [iv] | a memo keeps only answers derived earlier, so they need no depth; [oi_sound] carries the memo's invariant |
-    | `mul` names its scaled operand, with the two orders as a premise | an [iv] under a disjunction gets no induction hypothesis |
-    | an interval holds modulo the class | an `l` interval is not wrapped (`interval_fits/3` accepts any), so it bounds some integer congruent to the value; a `w` interval fits, so it bounds the signed word itself |
-    | a narrow load's relation does not mention memory | any loaded value, extended, lies in the narrow range, so the relation survives every store |
-    | an operand that is not a single definition is read where the definition ran | it may be defined again after; the clauses that walk an operand walk only single definitions, and the others (`and`'s, `urem`'s, a narrow `ext`'s) bound the result whatever the operand holds | *)
+    When a program adds several integer offsets together, the validator
+    caches intermediate bounds in a memo table and stops at a fixed
+    depth. Our declarative relation drops both the memo table and the
+    depth limit, because soundness only needs each arithmetic rule to
+    hold on its own. For multiplication, we name the scaled operand
+    directly so induction never splits across a disjunction.
+
+    A 64-bit pointer offset never wraps around like a 32-bit signed
+    integer, so we check integer bounds modulo the operand's bit width.
+    A narrow memory load always fits inside its target integer size
+    after extension, regardless of what is in memory. Similarly, bitwise
+    masks and narrow extensions bound their outputs regardless of their
+    inputs, so their operands can be redefined later. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Values Memory Ops Semantics Machine Validate Dominance.
@@ -38,9 +40,8 @@ Local Open Scope Z_scope.
 Lemma class_eqb_true : forall k k', class_eqb k k' = true -> k = k'.
 Proof. intros k k' H. destruct k, k'; try discriminate H; reflexivity. Qed.
 
-(** Closes the goal of a clause that answered no interval (H says so) and
-    returned the old memo, derived by Hm: there is no interval to derive,
-    and the memo is still derived. *)
+(** This tactic closes any clause that returns no interval and leaves
+    the memo unchanged. *)
 Ltac no_answer_now H Hm :=
   injection H as <- <-; split; [intros ? ? Hno; discriminate Hno | exact Hm].
 
@@ -50,24 +51,24 @@ Ltac no_answer H Hm :=
   first [ no_answer_now H Hm
         | match goal with v : value |- _ => destruct v; cbn in H; no_answer H Hm end ].
 
-(** The intervals of one function, read over its
-    [[single-definition|single definitions]]. *)
+(** This section fixes a function's single-definition map and defines
+    the declarative interval relation over it. *)
 Section Intervals.
 
-(** The function's single definitions, each name with its one definition, as
-    [single_definitions] builds them. *)
+(** The variable [once] holds the function's single-definition map as
+    built by [single_definitions]. *)
 Variable once : list (name * def).
 
-(** The name n has a single definition, the `let` that defines n at the
-    [[class]] k by the op o from args: `let(tmp(n), k, o, args)`. *)
+(** A temporary name n is [defined] at [[class]] k by operation o and
+    arguments args when its unique definition in the function is that
+    `let` binding. *)
 Definition defined (n : name) (k : class) (o : op) (args : list value) : Prop :=
   exists n', lookup n once = Some (DInst (Let n' k o args)) /\ name_eqb n' n = true.
 
-(** The [[offset-interval|offset intervals]] `offset_interval/8` derives, as
-    a relation: [iv v k lo hi] says the operand v read at the [[class]] k
-    lies from lo to hi (for `l`, modulo 2^64). One constructor per clause of
-    `op_interval/9`, each a little more general than its clause, with the
-    [interval_fits] test the walk applies to each name. *)
+(** The inductive relation [iv] captures every [[offset-interval|offset interval]]
+    that the validator's bounded walk can derive. A judgment [iv v k lo hi]
+    means that value v read at [[class]] k lies between lo and hi modulo
+    the class width, with one constructor for each operator clause. *)
 Inductive iv : value -> class -> Z -> Z -> Prop :=
 | iv_const : forall c k x, signed_value k c = Some x -> iv (Const c) k x x
 | iv_narrow : forall n k t args lo hi,
@@ -106,8 +107,9 @@ Inductive iv : value -> class -> Z -> Z -> Prop :=
     defined n k Sub [a; Const c] -> signed_value k c = Some v -> iv a k lo hi ->
     interval_fits k (lo - v) (hi - v) = true -> iv (Tmp n) k (lo - v) (hi - v).
 
-(** The invariant of [oi]'s memo m: each interval it keeps for a name at a
-    class is derived ([iv]). *)
+(** The validator caches previously computed intervals in a memo table
+    to avoid re-walking shared expressions. A memo satisfies [memo_ok]
+    when every cached interval is derivable in [iv]. *)
 Definition memo_ok (m : memo) : Prop :=
   forall n k lo hi, memo_lookup n k m = Some (Some (lo, hi)) -> iv (Tmp n) k lo hi.
 
@@ -115,8 +117,8 @@ Definition memo_ok (m : memo) : Prop :=
 Lemma memo_ok_nil : memo_ok [].
 Proof. intros n k lo hi E. discriminate E. Qed.
 
-(** Recording the answer r for the name n at the class k keeps a derived
-    memo m derived, when r, if an interval, is derived. *)
+(** Caching a newly computed interval in the memo table preserves memo
+    validity whenever the interval itself is derivable. *)
 Lemma memo_ok_cons : forall n k r m,
   memo_ok m -> (forall lo hi, r = Some (lo, hi) -> iv (Tmp n) k lo hi) -> memo_ok (((n, k), r) :: m).
 Proof.
@@ -127,17 +129,17 @@ Proof.
   - exact (Hm _ _ _ _ H).
 Qed.
 
-(** What the walk rec of an operand promises [op_interval]: from a derived
-    memo, an interval it answers is derived, and the memo it returns is
-    derived too. *)
+(** When an operator clause inspects its operand subexpressions, it
+    calls a recursive helper to bound them. A helper satisfies [rec_ok]
+    when every interval it returns is derivable and it keeps the memo
+    table valid. *)
 Definition rec_ok (rec : value -> class -> memo -> option (Z * Z) * memo) : Prop :=
   forall a k m r m', memo_ok m -> rec a k m = (r, m') ->
   (forall lo hi, r = Some (lo, hi) -> iv a k lo hi) /\ memo_ok m'.
 
-(** Each clause of [op_interval] (`op_interval/9`) is sound: where the name
-    n is [defined] by the op o over args and the operand walk rec keeps
-    [rec_ok], an interval the clause answers that fits the class is derived
-    for n, and the memo stays derived. *)
+(** Every operator clause in [op_interval] produces a derivable interval
+    and preserves [memo_ok] whenever the operand callback satisfies
+    [rec_ok] and the interval fits the class. *)
 Lemma op_interval_ok : forall rec o args k m r m' n,
   rec_ok rec -> memo_ok m -> defined n k o args ->
   op_interval rec o args k m = (r, m') ->
@@ -272,10 +274,10 @@ Proof.
     exact (iv_load _ _ _ _ _ _ _ Hd E Hf).
 Qed.
 
-(** Whatever its fuel and depth, from a derived memo, an interval the walk
-    [oi] (`offset_interval/8`) answers for v at the class k is derived, and
-    the memo it returns is derived. So the memo and the depth limit need no
-    further thought. *)
+(** Bounding the recursion depth and caching intermediate answers cannot
+    invent an unsound interval. Whatever fuel or depth remains, every
+    bound returned by [oi] is derivable in [iv] and preserves memo
+    validity. *)
 Lemma oi_sound : forall fuel v k depth m r m',
   memo_ok m -> oi once fuel v k depth m = (r, m') ->
   (forall lo hi, r = Some (lo, hi) -> iv v k lo hi) /\ memo_ok m'.
@@ -330,10 +332,10 @@ Proof.
       apply memo_ok_cons; [exact Hm0 | exact Hr].
 Qed.
 
-(** An interval [offset_interval] (`offset_interval/6`, as the [[validator]]
-    calls it) answers for v at the class k is derived: what [oi_sound] gives
-    from the empty memo. Chain.v reads the validator's intervals back
-    through it. *)
+(** When the [[validator]] computes an integer bound for a pointer
+    offset, that bound is guaranteed to be derivable in our declarative
+    relation [iv]. Downstream proofs in [Chain] consume the validator's
+    bounds through [offset_interval_iv]. *)
 Theorem offset_interval_iv : forall v k lo hi,
   offset_interval once v k = Some (lo, hi) -> iv v k lo hi.
 Proof.
@@ -344,18 +346,17 @@ Qed.
 
 (** ## What an interval means on a run
 
-    An interval speaks of the values the names it walks hold. Where
-    each of those names holds what its definition computes from its
-    operands' values, the value an `iv` derivation reads lies in its
-    interval (`iv_sound`). Which names hold their definitions at a
-    point of a run is the run-level invariant's to say; here it is a
-    predicate `ok` closed under operands. *)
+    An interval bounds the runtime integer values that a program
+    computes along an execution. Whenever each walked temporary holds
+    the result computed from its operands, [iv_sound] shows that the
+    derived interval holds of the runtime value. We abstract over the
+    run-level invariant using a predicate ok that is closed under
+    single-definition operands. *)
 
-(** As `interp:inst_result/5` of a `let`: the value of the temporary n in
-    the environment e is what `let(tmp(n), k, o, args)` computes
-    (`interp:alu/4`) from its operands' values in e0, the environment it ran
-    in, with ge the global environment. For a narrow load it is some loaded
-    value, extended (`interp:extended_res/4`). *)
+(** The predicate [let_holds] states that temporary n in environment e
+    holds the value computed by operation o on its arguments in the
+    defining environment e0. For a narrow load, it holds some extended
+    value from that narrow type. *)
 Definition let_holds (ge : genv) (e0 e : env) (n : name) (k : class) (o : op) (args : list value) : Prop :=
   match o with
   | RawLoad (LdNarrow t) _ => exists u x, extended t k u = Some x /\ lookup n e = Some x
@@ -364,17 +365,18 @@ Definition let_holds (ge : genv) (e0 e : env) (n : name) (k : class) (o : op) (a
            lookup n e = Some x
   end.
 
-(** The ops an interval derivation walks through, one per clause of
-    `op_interval/9`: those whose results [let_holds] speaks of. *)
+(** Only integer arithmetic, extensions, and narrow loads produce bounds
+    in an interval derivation. The predicate [iv_op] identifies those
+    supported operations. *)
 Definition iv_op (o : op) : bool :=
   match o with
   | Ext _ | RawLoad (LdNarrow _) _ | Copy | And | Urem | Shl | Mul | Add | Sub => true
   | _ => false
   end.
 
-(** What an interval means of a value: the operand v, read at the integer
-    [[class]] k in the environment e (ge the global environment), is some x
-    from lo to hi, modulo the class's width. *)
+(** A value v satisfies [in_iv] at integer [[class]] k in environment e
+    when it evaluates to a word congruent to some integer x between lo
+    and hi modulo the class width. *)
 Definition in_iv (ge : genv) (e : env) (k : class) (v : value) (lo hi : Z) : Prop :=
   exists bits u x, class_bits k = Some bits /\ value_x ge e k v = Some (WInt u) /\
     lo <= x <= hi /\ u = x mod 2 ^ bits.
@@ -425,9 +427,9 @@ Proof.
   destruct (h <=? u mod m) eqn:E; [apply Z.leb_le in E | apply Z.leb_gt in E]; lia.
 Qed.
 
-(** Any x extended from the narrow type t ([extension]) lies in t's range
-    ([narrow_range]), so a narrow `ext` or load is bounded whatever it
-    reads. *)
+(** Extending any integer from a narrow type t produces a value inside
+    t's [narrow_range], so narrow extensions and narrow loads are bounded
+    regardless of the underlying value. *)
 Lemma narrow_extension : forall t lo hi x, narrow_range t = Some (lo, hi) -> lo <= extension t x <= hi.
 Proof.
   intros t lo hi x H. destruct t; simpl in H; try discriminate H; injection H as <- <-; simpl.
@@ -478,8 +480,9 @@ Proof.
   all: destruct (lookup g (ge_globals ge)); discriminate H.
 Qed.
 
-(** A temporary n holding w lies in the interval from lo to hi ([in_iv])
-    when some x in it is congruent to w modulo the class's width. *)
+(** When a temporary holds integer w, it satisfies [in_iv] between lo
+    and hi if some integer in that range equals w modulo the class
+    width. *)
 Lemma in_iv_tmp : forall ge e k n w bits x lo hi,
   class_bits k = Some bits -> lookup n e = Some (WInt w) -> w mod 2 ^ bits = x mod 2 ^ bits ->
   lo <= x <= hi -> in_iv ge e k (Tmp n) lo hi.
@@ -503,21 +506,20 @@ Qed.
 
 (** ### The theorem *)
 
-(** Soundness in one environment of a run: the names that hold their
-    definitions there are a predicate ok, which the run-level invariant
-    supplies (Chain.v's [interval_at] takes the names whose definitions
-    [[dominance|dominate]] the point). *)
+(** To prove interval soundness in one runtime state, we parameterize
+    over a predicate ok naming the temporaries that still match their
+    definitions. [Chain] instantiates ok with dominance at the frame's
+    current point. *)
 Section Sound.
 
-(** The global environment ge, the environment e the interval is read
-    in, and ok, the names that hold their definitions there. *)
+(** This section fixes the global environment ge, the current frame
+    environment e, and the predicate ok of valid temporaries. *)
 Variables (ge : genv) (e : env) (ok : name -> Prop).
 
-(** What ok must promise, the hypothesis of [iv_sound]: each name n that is
-    ok and whose definition ([defined]) is one a derivation walks ([iv_op]),
-    at an integer class, holds what that definition computed in some
-    environment e0 ([let_holds]); each of its single-definition operands is
-    ok and holds in e0 what it holds in e. *)
+(** Every valid temporary defined by an arithmetic or load instruction
+    must still hold the result computed when that instruction ran, and
+    every single-definition operand it used must still match its value
+    in the current environment. *)
 Hypothesis Hok : forall n k o args, defined n k o args -> iv_op o = true -> class_bits k <> None -> ok n ->
   exists e0, let_holds ge e0 e n k o args /\
     forall a, In (Tmp a) args -> once_has once a = true -> ok a /\ lookup a e0 = lookup a e.
@@ -531,10 +533,10 @@ Proof.
     unfold once_has; rewrite Hl; reflexivity.
 Qed.
 
-(** An operand a of a definition that ran in e0, where a has a derived
-    interval and the definition's single-definition operands are ok and
-    unchanged since ([Hok]'s conclusion): a, if a temporary, is ok, and a
-    reads the same in e0 as in e, at any class. *)
+(** When an arithmetic instruction reuses an earlier operand, that
+    operand must still hold the same value in the current environment.
+    Any operand with a derived interval that satisfies ok reads
+    identically in e0 and e across every integer class. *)
 Lemma walked : forall e0 args a k' lo hi,
   (forall a, In (Tmp a) args -> once_has once a = true -> ok a /\ lookup a e0 = lookup a e) ->
   In a args -> iv a k' lo hi ->
@@ -554,10 +556,9 @@ Ltac opens H :=
          | context [match ?x with _ => _ end] => destruct x eqn:?; cbv beta iota zeta in H; try discriminate H
          end; try discriminate H.
 
-(** Offset intervals are sound: if [iv v k lo hi] is derived and v, if a
-    temporary, is ok, then the value v reads in e at the class k lies from
-    lo to hi, modulo the class ([in_iv]). With [offset_interval_iv], an
-    interval the [[validator]] answers bounds the offset a run computes. *)
+(** Whenever the [[validator]] derives an integer bound for a value, the
+    runtime value in environment e lies within that bound modulo its
+    class width, provided any temporary involved is valid under ok. *)
 Theorem iv_sound : forall v k lo hi, iv v k lo hi -> (forall n, v = Tmp n -> ok n) -> in_iv ge e k v lo hi.
 Proof.
   intros v k lo hi H. induction H; intros Hv.
