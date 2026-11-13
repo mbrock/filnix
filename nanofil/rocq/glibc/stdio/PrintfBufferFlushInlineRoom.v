@@ -4,7 +4,7 @@
 
     FILE supplies the lifetime for its own interior pointers. The proof
     requires no separate character-allocation lifetime and adds the pending
-    span to the count under an explicit bound excluding wrap. *)
+    span to the count modulo 2^64, including unsigned wraparound. *)
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -50,7 +50,7 @@ Lemma wp_printf_buffer_flush_inline_room fr bb breg fb freg bo used eo written o
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= bo -> 0 <= used -> bo + used < eo -> fb + eo <= r_end freg ->
   fb + eo <> bb + 176 -> fb + eo <> bb + 49 ->
-  0 <= written -> written + used < 2 ^ 64 ->
+  0 <= written < 2 ^ 64 ->
   live bb breg -∗ live fb freg -∗
   pcell bb 40 (mkPtr fb (Obj fb)) -∗ pcell fb 40 oldwp -∗
   pcell fb 48 (mkPtr (fb + eo) (Obj fb)) -∗
@@ -63,11 +63,11 @@ Lemma wp_printf_buffer_flush_inline_room fr bb breg fb freg bo used eo written o
      pcell fb 48 (mkPtr (fb + eo) (Obj fb)) -∗
      pcell bb 0 (mkPtr (fb + bo + used) (Obj fb)) -∗
      pcell bb 8 (mkPtr (fb + bo + used) (Obj fb)) -∗
-     pcell bb 16 (mkPtr (fb + eo) (Obj fb)) -∗ icell bb 24 (written + used) -∗
+     pcell bb 16 (mkPtr (fb + eo) (Obj fb)) -∗ icell bb 24 ((written + used) mod 2 ^ 64) -∗
      Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hbo Hused Hspace Hde
-    Hstage Hsingle Hw Htotal. injection Hfr as <-.
+    Hstage Hsingle Hw. injection Hfr as <-.
   iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend Hw HK".
   enter. fs. fchk "Hb".
   iApply (wp_raw_load_read_dq with "Hb Hw");
@@ -91,6 +91,7 @@ Proof.
   iApply wp_ret_void. iNext. norm.
   iApply ("HK" with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend [Hw]").
   replace (fb + bo + used - (fb + bo)) with used by lia.
+  iEval (rewrite Z.mod_mod; [|lia]) in "Hw".
   iExact "Hw".
 Qed.
 
