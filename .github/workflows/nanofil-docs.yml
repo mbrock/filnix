@@ -37,6 +37,7 @@ jobs:
             python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
       - name: Check the documents
         run: |
+          set -o pipefail
           python3 nanofil/tests/watch.py --label nanofil-docs --warn-after 300 --timeout 900 -- \
             nix build -L --no-link .#checks.x86_64-linux.nanofil-docs 2>&1 | tee nanofil-docs.log
       - uses: actions/upload-artifact@v4

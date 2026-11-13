@@ -88,6 +88,7 @@ jobs:
         env:
           ROOT: ${{ steps.select.outputs.root }}
         run: |
+          set -o pipefail
           warn=300; limit=1200
           if [ "$ROOT" = nanofil-rocq-full ]; then warn=600; limit=1800; fi
           roots=(".#checks.x86_64-linux.nanofil-rocq.model" ".#checks.x86_64-linux.$ROOT")
