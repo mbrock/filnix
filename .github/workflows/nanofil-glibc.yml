@@ -19,6 +19,8 @@ on:
       - "nanofil/survey/glibc/regress/**"
       - "nanofil/survey/glibc/run/mem16.c"
       - nanofil/tests/watch.py
+      - nanofil/tests/rocq_time.py
+      - nanofil/tests/rocq_time_test.py
       - nanofil/web/rocq/rocq_syntax.pl
       - nanofil/web/rocq/tests/parse.sh
       - nanofil/web/rocq/tests/reprint.pl
