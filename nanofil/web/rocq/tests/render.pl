@@ -1,3 +1,4 @@
+:- encoding(utf8).
 /* Run with swipl -q -s nanofil/web/rocq/tests/render.pl -g run_tests -t halt.
    The public source drawer must draw matches used as Ltac let values,
    whether the body is an inline tactic or another structured match. */
