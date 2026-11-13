@@ -1,26 +1,30 @@
-(** rocq/glibc/len.c, linked with nanofil's IR of user glibc's
-    string/strlen.c, through the program logic of Logic.v
-    (docs/glibc-ir.md).
+(** A C program that calls `c: strlen` on a string literal usually
+    treats `c: strlen` as a primitive with an external specification.
+    Here we link `c: len.c` directly with the intermediate
+    representation of userland glibc's `c: string/strlen.c` and prove
+    memory safety through the program logic in [Logic](Logic.v).
 
-    `main` returns `strlen(msg)` for the 13-byte literal "hello, glibc".
-    No contract describes strlen here: the linked module defines
-    `__strlen`, glibc's word-at-a-time scan, and the exported alias
-    `strlen` that names it, so the call is an ordinary direct call
-    ([wp_call_bind]) and the proof walks glibc's own IR. The module
-    calls nothing outside itself; the registry is empty.
+    In `c: len.c`, `c: main` returns `c: strlen(msg)` for the 13-byte
+    string literal `"hello, glibc"`. Because the linked module defines
+    glibc's `__strlen` and exports `c: strlen` as an alias for it, the
+    call resolves directly inside the module through [wp_call_bind]. The
+    program makes no external calls, so the [[runtime]] registry stays
+    empty.
 
-    The call is taken by StrlenLogic.v's [wp_glibc_strlen], the triple
-    of glibc's strlen for any string: the literal's object is 8-aligned
-    and 16 bytes, its 13 bytes rounded up to whole words (Run.v's
-    [layout]; filcc's literal object is also 16 bytes, probed in
-    docs/glibc-ir.md), and the program owns its life and both words
-    ([msg_ps]), which is the triple's precondition. Its first zero is
-    12 bytes in, so strlen returns 12.
+    Glibc's string scan reads aligned 8-byte words rather than single
+    bytes, so the proof requires the literal's [[region]] to be 8-byte
+    aligned and padded to a whole number of words. In memory, the
+    13-byte literal occupies 16 bytes, and the program starts owning its
+    liveness token and both words in [msg_ps] so [wp_glibc_strlen] in
+    [StrlenLogic](StrlenLogic.v) can discharge the call. Its first zero
+    byte lies 12 bytes in, so `c: strlen` returns 12.
 
-    [len_never_panics] is [never_panics] for `main`, through
-    GlibcLogic.v's [pieces_never_panics]: Iris [[adequacy]] where the
-    program starts owning pieces of its initial memory, here the
-    literal's. *)
+    Finally, the Iris [[adequacy]] theorem turns this weakest
+    precondition into an operational safety guarantee. Starting from
+    initial memory where the program owns the literal's pieces,
+    [len_never_panics] applies [pieces_never_panics] from
+    [GlibcLogic](GlibcLogic.v) to show that `c: main` never fails at any
+    [[check]] or safepoint. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -32,69 +36,94 @@ From Glibc Require Import LenCode GlibcLogic StrlenBits StrlenLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The module *)
+(** ## The module
 
-(** The checked module: len.c's `main` and its literal, glibc's
-    `__strlen` and its alias `strlen` ([len_term]). *)
+    The compiled fixture [len_term] bundles `c: main`, its string
+    literal, glibc's `__strlen`, and the `c: strlen` alias into one
+    linked module. Before reasoning about any call, we decode the
+    module, fix the addresses and [[capability]] metadata that the
+    initial layout assigns, and extract the function bodies we step
+    through. *)
+
+(** [len_module] holds the decoded IR module for `c: len.c` linked with
+    glibc's `__strlen` and its exported `c: strlen` alias. *)
 Definition len_module : module :=
   match decode_module len_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [len_module]. *)
+(** [len_decodes] verifies by computation that [len_term] decodes to
+    [len_module]. *)
 Lemma len_decodes : decode_module len_term = Some len_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The address of the literal `msg`, renamed `len#msg` by link.pl. *)
+(** [msg_base] is the base address assigned to the string literal `msg`,
+    which `c: link.pl` renames to `len#msg`. *)
 Definition msg_base : Z := 65552.
 
-(** The literal's capability, read-only. *)
+(** [msg_ptr] pairs [msg_base] with a read-only [[capability]] for the
+    literal object. *)
 Definition msg_ptr : ptr := mkPtr msg_base (Ro msg_base).
 
-(** The literal's region: its 13 bytes rounded up to 16. *)
+(** [msg_reg] describes the literal's 16-byte global [[region]],
+    rounding its 13 bytes up to two 8-byte words. *)
 Definition msg_reg : region := mkRegion msg_base (msg_base + 16) GlobalData Live.
 
-(** The module's symbols: `strlen` is `__strlen`'s address. *)
+(** [len_globals] lists the module's global symbols, mapping both
+    `c: strlen` and `__strlen` to the same function pointer. *)
 Definition len_globals : list (name * ptr) :=
   [(TAtom "strlen", mkPtr 65584 (Fn (TAtom "__strlen")));
    (TAtom "__strlen", mkPtr 65584 (Fn (TAtom "__strlen")));
    (TAtom "len#msg", msg_ptr);
    (TAtom "main", mkPtr 65536 (Fn (TAtom "main")))].
 
-(** The module's initial memory. *)
+(** [len_mem] is the initial memory produced by laying out
+    [len_module]. *)
 Definition len_mem : mem :=
   match initial_memory len_module with Some (_, m) => m | None => empty_mem end.
 
-(** Laying out the module gives [len_globals] and [len_mem]. *)
+(** [len_initial] confirms that laying out [len_module] yields
+    [len_globals] and [len_mem]. *)
 Lemma len_initial : initial_memory len_module = Some (len_globals, len_mem).
 Proof.
   assert (H : option_map fst (initial_memory len_module) = Some len_globals) by (vm_compute; reflexivity).
   unfold len_mem. destruct (initial_memory len_module) as [[g m]|]; inversion H; reflexivity.
 Qed.
 
-(** The function named n of the module, or an empty one. *)
+(** [len_fn] looks up a defined function named n in [len_module],
+    falling back to an empty stub when missing. *)
 Definition len_fn (n : string) : func :=
   match find_direct (TAtom n) len_module with
   | Some (Defined f) => f
   | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []
   end.
 
-(** len.c's `main`. *)
+(** [main_fn] is the decoded body of `c: main` from `c: len.c`. *)
 Definition main_fn : func := Eval vm_compute in len_fn "main".
-(** glibc's `__strlen`. *)
+(** [strlen_fn] is the decoded body of glibc's `__strlen`. *)
 Definition strlen_fn : func := Eval vm_compute in len_fn "__strlen".
 
-(** ## The literal's pieces *)
+(** ## The literal's pieces
 
-(** The literal's first word, "hello, g", little-endian. *)
+    A proof in the program logic tracks each byte and liveness token of
+    the string literal separately, rather than treating the initial
+    memory image as one block. Before stepping through `c: main`, we
+    encode the literal's two 64-bit words and check that their
+    [[separation-logic]] pieces have distinct keys and match [len_mem]. *)
+
+(** [msg_w0] encodes the first eight bytes `"hello, g"` as a
+    little-endian 64-bit integer. *)
 Definition msg_w0 : Z := 7430988242233353576.
-(** Its second word, "libc" and the NUL, then the three zero bytes
-    the layout's rounding adds. *)
+(** [msg_w1] encodes `"libc"`, the terminating NUL byte, and the three
+    zero padding bytes added by 8-byte alignment. *)
 Definition msg_w1 : Z := 1667393900.
 
-(** The pieces the program owns: the literal's life and its two words. *)
+(** [msg_ps] collects the [[ghost-state|ghost pieces]] owned by the
+    program: the literal's liveness token followed by its two aligned
+    words. *)
 Definition msg_ps : list (piece * pval) :=
   [(PLive msg_base, VLive msg_reg)] ++ cell msg_base 0 msg_w0 ++ cell msg_base 8 msg_w1.
 
-(** The pieces' keys are distinct. *)
+(** [msg_ps_nodup] proves that no two entries in [msg_ps] share the same
+    piece key. *)
 Lemma msg_ps_nodup : NoDup msg_ps.*1.
 Proof.
   cbn. repeat (apply NoDup_cons_2;
@@ -103,11 +132,13 @@ Proof.
   apply NoDup_nil_2.
 Qed.
 
-(** The literal's object is registered with its region. *)
+(** [msg_region] checks that [len_mem] registers the literal object at
+    [msg_base] with region [msg_reg]. *)
 Lemma msg_region : object_region msg_base (m_regions len_mem) = Some msg_reg.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The initial memory holds the literal as [msg_ps] says. *)
+(** [msg_ps_agree] verifies that every piece in [msg_ps] matches the
+    actual bytes and region stored in [len_mem]. *)
 Lemma msg_ps_agree : all_agree len_mem msg_ps.
 Proof.
   unfold msg_ps, cell. cbn [all_agree map app fst snd agree_piece].
@@ -117,7 +148,9 @@ Proof.
     cbn [r_end msg_reg]; unfold msg_base; try lia; vm_compute; reflexivity.
 Qed.
 
-(** The initial memory's one live object is apart from itself. *)
+(** Live objects in initial memory must not overlap one another. Since
+    [len_mem] has only one live object, [len_disjoint] establishes
+    [live_disjoint] trivially. *)
 Lemma len_disjoint : live_disjoint len_mem.
 Proof.
   intros b1 r1 b2 r2 [E1 _] [E2 _] Hne.
@@ -127,9 +160,16 @@ Proof.
   apply Z.eqb_eq in H1, H2. congruence.
 Qed.
 
-(** ## Over any runtime *)
+(** ## Over any runtime
 
-(** The proof over the [[runtime]] R. *)
+    Because the module makes no external calls, the safety proof works
+    over any Fil-C [[runtime]] R. We parameterize the proof by R,
+    establish a [[weakest-precondition]] specification for `c: strlen`
+    on the literal and for `c: main`, and then instantiate R with the
+    interpreter's runtime at the end. *)
+
+(** The module [LenLogic] packages the verification of `c: len.c` over
+    an arbitrary runtime R. *)
 Module LenLogic (R : Runtime).
 Module LG := Logic R.
 Module GL := GlibcLogicOn R LG.
@@ -138,29 +178,35 @@ Module L := LG.L.
 Module P := LG.P.
 Import L LG GL.
 
-(** The linked genv, whose free is R's. *)
+(** [lge] is the [[genv|global environment]] built from [len_module]
+    and [len_globals]. *)
 Local Notation lge := (P.program_genv len_module len_globals).
-(** The expressions of its language. *)
+(** [lexpr] abbreviates the expression type of the program's language
+    with no external contracts. *)
 Local Notation lexpr := (language.expr (nanofil_lang no_contracts lge)).
 
-(** A call of `strlen` runs `__strlen`, through the alias. *)
+(** [find_strlen] confirms that looking up `c: strlen` in [lge]
+    resolves through the alias to [strlen_fn]. *)
 Lemma find_strlen : find_fn lge (TAtom "strlen") = Some (Defined strlen_fn).
 Proof. vm_compute. reflexivity. Qed.
 
-(** `main` is a function of the module. *)
+(** [find_main] confirms that looking up `c: main` in [lge] returns
+    [main_fn]. *)
 Lemma find_main : find_fn lge (TAtom "main") = Some (Defined main_fn).
 Proof. vm_compute. reflexivity. Qed.
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The Iris instance of the module: no contracts, no world. *)
+(** [len_irisGS] supplies the Iris [[state-interpretation]] for
+    [len_module] with an empty contract registry and an empty world. *)
 Local Instance len_irisGS : irisGS_gen hlc (nanofil_lang no_contracts lge) Σ :=
   nanofil_irisGS no_contracts no_world lge.
 
-(** glibc's strlen, called with the literal, owning its pieces:
-    [wp_glibc_strlen] with its two words, returning 12 and handing the
-    pieces back. *)
+(** Calling `c: strlen` on the 13-byte literal `"hello, glibc"`
+    returns 12 and leaves the string's memory intact. Lemma
+    [strlen_msg_spec] establishes this specification for `__strlen` by
+    applying [wp_glibc_strlen] to the two aligned words in [msg_ps]. *)
 Lemma strlen_msg_spec Φ :
   pts msg_ps -∗ (pts msg_ps -∗ Φ (Ret (WInt 12))) -∗
   WP (ERun (mkFrame strlen_fn [(TAtom "v0", WPtr msg_ptr)] [] None (Enter (TAtom "start") None)) : lexpr)
@@ -182,7 +228,8 @@ Proof.
     iApply "HΦ". iFrame.
 Qed.
 
-(** `main`, owning the literal, returns 12: glibc's strlen of it. *)
+(** [main_spec] proves that `c: main` returns 12 when given ownership of
+    the literal's pieces [msg_ps]. *)
 Lemma main_spec :
   pts msg_ps -∗
   WP (ERun (mkFrame main_fn [] [] None (Enter (TAtom "start") None)) : lexpr) {{ o, ⌜o = Ret (WInt 12)⌝ }}.
@@ -196,10 +243,9 @@ Qed.
 
 End wp.
 
-(** len.c linked with glibc's strlen never panics: called with any
-    arguments, with any fuel and whatever the runtime does at its
-    safepoints, no state of its run [fails]. By [pieces_never_panics]
-    from [main_spec], the program owning the literal's pieces. *)
+(** [len_never_panics] proves by [pieces_never_panics] that `c: len.c`
+    linked with glibc's `c: strlen` never traps or fails for any
+    arguments, any fuel bound, or any runtime behavior at safepoints. *)
 Theorem len_never_panics : P.never_panics len_module (TAtom "main") (fun _ => True).
 Proof.
   apply (pieces_never_panics glibcΣ len_module (TAtom "main") _ len_globals len_mem main_fn msg_ps).
@@ -214,11 +260,12 @@ Qed.
 
 End LenLogic.
 
-(** The theorem for the interpreter's runtime. *)
+(** [InterpLenLogic] instantiates [LenLogic] with the interpreter's
+    runtime. *)
 Module InterpLenLogic := LenLogic InterpRuntime.
 
-(** len.c with glibc's strlen never panics under the interpreter's
-    runtime. *)
+(** [interp_len_never_panics] states that `c: len.c` linked with glibc's
+    `c: strlen` never panics under the interpreter's runtime. *)
 Theorem interp_len_never_panics :
   InterpLenLogic.P.never_panics len_module (TAtom "main") (fun _ => True).
 Proof. exact InterpLenLogic.len_never_panics. Qed.
