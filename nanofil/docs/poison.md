@@ -87,7 +87,7 @@ Instruction-level rules verified in `decode_exec.cpp` and `syscall.cpp`:
   faults early at its lane-0 setup load at line 44 rather than at the
   `VPEXPANDQ` test at line 70).
 
-### The `mem_note_store` double-store toggle bug
+### The `mem_note_store` repeated-store clearing bug
 
 In `src/mem.cpp` (lines 290–357), `mem_note_store` updates `g_poison`
 after storing a value with taint `t`. When `t` is clean, lines 294–324
@@ -104,20 +104,19 @@ if (cb) {
 }
 ```
 
-Storing a tainted value `s1` (`cb = true`) to clean stack memory sets
-`CANNOT_BRANCH | CLEAR_BRANCH_ON_STORE` (`0x14`). Storing a *second*
-tainted value `s2` (`cb = true`) to the same stack slot sees
-`old & POISON_CLEAR_BRANCH_ON_STORE` and **clears** `CANNOT_BRANCH`,
-leaving `0x10` (clean!). Every odd spill of a secret to a stack slot
-taints it; every even spill launders it. And if `old` has
-`CANNOT_BRANCH | CLEAR_BRANCH_ON_STORE` and is overwritten with an
-index-only tainted value (`cb = false, ci = true`), `if (cb)` has no
-`else`, leaving the stale `CANNOT_BRANCH` bit behind.
+The first secret spill into clean stack memory sets both the branch taint
+bit and its clear-on-store flag. When a second secret is spilled to the
+same stack slot, the inverted branch sees that clear-on-store flag and
+clears the branch taint while leaving the clear-on-store flag set. Every
+subsequent secret spill to that slot hits the same branch and leaves the
+slot untainted. Overwriting a branch-tainted slot with an index-only
+secret also skips the branch check and leaves stale branch taint behind.
 
-[Poison.v](../rocq/spikes/Poison.v) transcribes both the unpatched C++
-update ([note_store_byte_buggy]) and the monotone per-dimension update
-([note_store_byte]), proving the toggle counterexample alongside
-idempotence, clean-store sanitization and sticky redzone preservation:
+[PoisonModel.v](../rocq/theories/logic/PoisonModel.v) and
+[PoisonLogic.v](../rocq/theories/logic/PoisonLogic.v) model both the
+unpatched C++ update and the repaired monotone update, proving the
+repeated-store counterexamples alongside idempotence, clean-store
+sanitization, and sticky redzone preservation:
 
 ```rocq
 Definition note_dim (stored old_taint old_clear : bool) : bool * bool :=
@@ -134,7 +133,7 @@ Definition note_store_byte (t : taint) (old : poison_byte) : poison_byte :=
 - [note_store_idempotent]: `note_store_byte t (note_store_byte t old) = note_store_byte t old`.
 - [note_store_clean_sanitizes]: when `pb_clear_branch old = true`, `note_store_byte taint_bot old` clears `t_branch`.
 - [note_store_sticky_launders]: when `pb_clear_branch old = false`, `note_store_byte taint_bot old` preserves `t_branch` (`poison_launder_branch.c`).
-- [buggy_double_store_toggles]: `t_branch (pb_taint (note_store_byte_buggy taint_branch (note_store_byte_buggy taint_branch pb_clean))) = false`.
+- [buggy_double_store_toggles] and [buggy_third_store_stays_clean]: both the second and third `taint_branch` stores to `pb_clean` under `note_store_byte_buggy` leave `t_branch = false`.
 
 ## Mapping poison onto nanofil IR (`Poison.v`)
 
@@ -410,26 +409,28 @@ clears byte poison and capability taint throughout the new object. Free
 ends the right to access the object, even if a proof retains its byte records.
 
 Helper calls must carry restrictions along with values, including when a
-caller resumes after a return. The logic supplies rules for these calls,
-byte loads and stores, heap allocation, free, arithmetic, `Select`, block
-entry, and public branches. More general rules let a proof establish a
-read, write, allocation, or pure step directly from the instrumented machine.
-This first logic handles closed IR functions; it does not provide external
-poison contracts, variadic calls, raw calls, or argument snapshots.
+caller resumes after a return. The logic supplies rules for helper calls,
+bounds [[check]] and [[renew]] instructions, [[flight]] address arithmetic,
+byte and 8-byte word accesses, and aligned pointer accesses with [[aux]]
+capability taint. It also covers bounded and unbounded heap allocation,
+free, arithmetic, `Select`, block entry, public branches, and returns. More
+general rules establish a read, write, allocation, or pure step directly
+from the machine. Closed IR functions are supported; external contracts,
+variadic calls, raw calls, and argument snapshots are not yet modeled.
 
-[PoisonHeap.v](../rocq/theories/programs/PoisonHeap.v) proves a kernel that
-allocates a scratch object, calls a recursive byte-loop helper, and frees
-the scratch object. The loop scans an arbitrary secret byte list whose
-public length fits in 32 bits. Each iteration uses `Select` on the secret
-byte and writes the result to the same scratch slot. The proof works for
-every such length and byte content, rather than evaluating one fixture.
-Separate negative lemmas show that a secret branch and a secret address
-are rejected.
+[PoisonHeap.v](../rocq/theories/programs/PoisonHeap.v) proves both a small
+byte-scratch kernel and a [[validator]]-accepted module over an 8-byte heap
+cell. The validated kernel checks every pointer before accessing memory,
+advances its input cursor with [[flight]], runs a recursive `Select` loop
+over any 32-bit length, reads back the tainted 8-byte cell, frees it, and
+returns zero. Separate negative lemmas show that a secret branch and a
+secret address are rejected.
 
 The same Hoare triple yields reachable-state memory safety, poison-fault
-freedom, and `never_panics` for modules whose initial memory satisfies the
-input ownership premises. It also yields equal finite leakage traces for
-two related inputs under the same deterministic runtime driver. These
-traces describe IR control flow, addresses, and modeled variable-time
-operations. They do not establish native hardware timing or trace equality
-under independently scheduled collectors.
+freedom, and `never_panics` with input key uniqueness proved automatically.
+One safe run also transfers allocator readiness to any secret-related
+memory and yields equal finite leakage traces together with equal public
+return values under the deterministic runtime driver. These traces describe
+IR control flow, addresses, and modeled variable-time operations. They do
+not establish native hardware timing or trace equality under independently
+scheduled collectors.

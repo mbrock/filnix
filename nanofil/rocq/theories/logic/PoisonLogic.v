@@ -401,6 +401,170 @@ Proof.
   rewrite H !orb_false_r taint_join_bot_r. auto.
 Qed.
 
+(** Under the unpatched store rule, a third secret spill to the same stack
+    slot still leaves its branch taint cleared. *)
+Lemma buggy_third_store_stays_clean :
+  t_branch (pb_taint
+    (note_store_byte_buggy taint_branch
+      (note_store_byte_buggy taint_branch
+        (note_store_byte_buggy taint_branch pb_clean)))) = false.
+Proof. reflexivity. Qed.
+
+(** Eight bytes with the same poison state stay in bounds and determine
+    both access guards and the taint of an 8-byte load. *)
+Lemma pcell_ps_facts m pm paux b reg o pb :
+  live_at m b reg ->
+  all_p_agree m pm paux (pcell_ps b o pb) ->
+  0 <= o /\ b + o + 8 <= r_end reg /\
+  mem_no_load pm (b + o) 8 = pb_no_load pb /\
+  mem_no_store pm (b + o) 8 = pb_no_store pb /\
+  mem_load_taint pm (b + o) 8 = pb_taint pb.
+Proof.
+  intros [E L] Hag.
+  cbn [pcell_ps map all_p_agree agree_ppiece fst snd] in Hag.
+  destruct Hag as ([_ H0] & [_ H1] & [_ H2] & [_ H3] & [_ H4] & [_ H5] & [_ H6] & [_ H7] & _).
+  destruct (H0 reg E L) as (Ho0 & _ & E0).
+  destruct (H1 reg E L) as (_ & _ & E1).
+  destruct (H2 reg E L) as (_ & _ & E2).
+  destruct (H3 reg E L) as (_ & _ & E3).
+  destruct (H4 reg E L) as (_ & _ & E4).
+  destruct (H5 reg E L) as (_ & _ & E5).
+  destruct (H6 reg E L) as (_ & _ & E6).
+  destruct (H7 reg E L) as (_ & He7 & E7).
+  replace (b + (o + 0)) with (b + o) in E0 by lia.
+  replace (b + (o + 1)) with (b + o + 1) in E1 by lia.
+  replace (b + (o + 2)) with (b + o + 2) in E2 by lia.
+  replace (b + (o + 3)) with (b + o + 3) in E3 by lia.
+  replace (b + (o + 4)) with (b + o + 4) in E4 by lia.
+  replace (b + (o + 5)) with (b + o + 5) in E5 by lia.
+  replace (b + (o + 6)) with (b + o + 6) in E6 by lia.
+  replace (b + (o + 7)) with (b + o + 7) in E7 by lia.
+  split; [lia | split; [lia |]].
+  unfold mem_no_load, mem_no_store, mem_load_taint.
+  change (Z.to_nat 8) with 8%nat.
+  cbn [range_no_load_nat range_no_store_nat range_taint_nat].
+  replace (b + o + 1 + 1) with (b + o + 2) by lia.
+  replace (b + o + 2 + 1) with (b + o + 3) by lia.
+  replace (b + o + 3 + 1) with (b + o + 4) by lia.
+  replace (b + o + 4 + 1) with (b + o + 5) by lia.
+  replace (b + o + 5 + 1) with (b + o + 6) by lia.
+  replace (b + o + 6 + 1) with (b + o + 7) by lia.
+  rewrite E0 E1 E2 E3 E4 E5 E6 E7 !orb_false_r taint_join_bot_r !taint_join_idem.
+  destruct (pb_no_load pb), (pb_no_store pb); auto.
+Qed.
+
+(** Every byte address inside an 8-byte cell belongs to that cell's key list,
+    so framing an 8-byte poison write needs no manual offset enumeration. *)
+Lemma elem_pcell_ps_keys b o pb a :
+  b + o <= a < b + o + 8 ->
+  PPByte b (a - b) ∈ (pcell_ps b o pb).*1.
+Proof.
+  intros Ha. apply list_elem_of_In; unfold pcell_ps; cbn.
+  assert (a - b = o + 0 \/ a - b = o + 1 \/ a - b = o + 2 \/ a - b = o + 3 \/
+          a - b = o + 4 \/ a - b = o + 5 \/ a - b = o + 6 \/ a - b = o + 7) as Hc by lia.
+  destruct Hc as [E|[E|[E|[E|[E|[E|[E|E]]]]]]]; rewrite E;
+    repeat (first [left; reflexivity | right]).
+Qed.
+
+(** Storing an 8-byte scalar into a uniform poison cell updates all eight
+    poison entries in lockstep while preserving every unowned poison piece. *)
+Lemma pcell_ps_store_ok m m' pm paux b reg o pb tv :
+  m_regions m' = m_regions m ->
+  live_disjoint m ->
+  live_at m b reg ->
+  all_p_agree m pm paux (pcell_ps b o pb) ->
+  all_p_agree m' (mem_store_taint pm (b + o) 8 tv) paux (pcell_ps b o (note_store_byte tv pb)) /\
+  pframe_ok (pcell_ps b o (note_store_byte tv pb)).*1 m m'
+    pm (mem_store_taint pm (b + o) 8 tv) paux paux.
+Proof.
+  intros Hreg Hd Hlv Hag.
+  destruct (pcell_ps_facts m pm paux b reg o pb Hlv Hag) as (Ho & He & _).
+  split.
+  - apply all_p_agree_intro. intros l v Hin.
+    unfold pcell_ps in Hin; apply list_elem_of_In, in_map_iff in Hin as (i & [= <- <-] & Hi).
+    assert (Hi_bound : i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5 \/ i = 6 \/ i = 7)
+      by (cbn in Hi; intuition lia).
+    cbn [agree_ppiece]; unfold registered, in_live; rewrite Hreg.
+    destruct Hlv as [Eb Lb].
+    split; [rewrite Eb; discriminate | intros reg' E' _].
+    rewrite Eb in E'; injection E' as <-.
+    split; [lia | split; [lia |]].
+    cbn [pcell_ps map all_p_agree agree_ppiece fst snd] in Hag.
+    assert (Hpm_i : pm (b + (o + i)) = pb).
+    { destruct Hag as ([_ H0] & [_ H1] & [_ H2] & [_ H3] & [_ H4] & [_ H5] & [_ H6] & [_ H7] & _).
+      destruct Hi_bound as [->|[->|[->|[->|[->|[->|[->| ->]]]]]]];
+        [exact (proj2 (proj2 (H0 reg Eb Lb))) | exact (proj2 (proj2 (H1 reg Eb Lb)))
+        |exact (proj2 (proj2 (H2 reg Eb Lb))) | exact (proj2 (proj2 (H3 reg Eb Lb)))
+        |exact (proj2 (proj2 (H4 reg Eb Lb))) | exact (proj2 (proj2 (H5 reg Eb Lb)))
+        |exact (proj2 (proj2 (H6 reg Eb Lb))) | exact (proj2 (proj2 (H7 reg Eb Lb)))]. }
+    unfold mem_store_taint.
+    replace ((b + o <=? b + (o + i)) && (b + (o + i) <? b + o + 8)) with true
+      by (symmetry; apply andb_true_iff; split; [apply Z.leb_le | apply Z.ltb_lt]; lia).
+    rewrite Hpm_i; reflexivity.
+  - apply (pframe_within _ m m' b reg pm _ paux paux Hreg Hd Hlv).
+    + intros a Hne; unfold mem_store_taint in Hne.
+      destruct ((b + o <=? a) && (a <? b + o + 8)) eqn:Ein; [|contradiction].
+      apply andb_true_iff in Ein as [E1 E2]; apply Z.leb_le in E1; apply Z.ltb_lt in E2.
+      split; [lia | exact (elem_pcell_ps_keys b o _ a (conj E1 E2))].
+    + intros a Hne; contradiction.
+Qed.
+
+(** Storing a pointer into an 8-byte slot updates both the eight address-byte
+    poison entries and the shadow capability taint slot while preserving all
+    other poison pieces. *)
+Lemma ppcell_ps_store_ok m m' pm paux b reg o pb tva tvc :
+  m_regions m' = m_regions m ->
+  live_disjoint m ->
+  live_at m b reg ->
+  all_p_agree m pm paux (pcell_ps b o pb) ->
+  let paux' := fun a => if a =? b + o then tvc else paux a in
+  all_p_agree m' (mem_store_taint pm (b + o) 8 tva) paux'
+    ((PPAux b o, VPAux tvc) :: pcell_ps b o (note_store_byte tva pb)) /\
+  pframe_ok (((PPAux b o, VPAux tvc) :: pcell_ps b o (note_store_byte tva pb)).*1) m m'
+    pm (mem_store_taint pm (b + o) 8 tva) paux paux'.
+Proof.
+  intros Hreg Hd Hlv Hag paux'.
+  destruct (pcell_ps_facts m pm paux b reg o pb Hlv Hag) as (Ho & He & _).
+  destruct (pcell_ps_store_ok m m' pm paux b reg o pb tva Hreg Hd Hlv Hag) as [Hbytes _].
+  split.
+  - cbn [all_p_agree fst snd]. split.
+    + cbn [agree_ppiece]; unfold registered, in_live; rewrite Hreg.
+      destruct Hlv as [Eb Lb].
+      split; [rewrite Eb; discriminate | intros reg' E' _].
+      rewrite Eb in E'; injection E' as <-.
+      split; [lia | split; [lia | unfold paux'; rewrite Z.eqb_refl; reflexivity]].
+    + apply all_p_agree_intro; intros l v Hin.
+      pose proof (all_p_agree_elem _ _ _ _ _ _ Hbytes Hin) as H0.
+      unfold pcell_ps in Hin; apply list_elem_of_In, in_map_iff in Hin as (i & [= <- <-] & _).
+      exact H0.
+  - apply (pframe_within _ m m' b reg pm _ paux paux' Hreg Hd Hlv).
+    + intros a Hne; unfold mem_store_taint in Hne.
+      destruct ((b + o <=? a) && (a <? b + o + 8)) eqn:Ein; [|contradiction].
+      apply andb_true_iff in Ein as [E1 E2]; apply Z.leb_le in E1; apply Z.ltb_lt in E2.
+      split; [lia | cbn; right; exact (elem_pcell_ps_keys b o (note_store_byte tva pb) a (conj E1 E2))].
+    + intros a Hne; unfold paux' in Hne.
+      destruct (Z.eqb_spec a (b + o)) as [Ha_eq | _]; [|contradiction]; subst a.
+      split; [lia | replace (b + o - b) with o by lia; left].
+Qed.
+
+(** When a pointer stored in memory names a heap or global object, a collector
+    may clear its [[aux]] slot if that object has been freed. Borrowing a share
+    of [cap_live_ps] proves the target object is still live when loaded. *)
+Definition cap_live_ps (c : cap) (reg : region) : list (piece * pval) :=
+  match c with
+  | Obj b | Ro b => [(PLive b, VLive reg)]
+  | _ => []
+  end.
+
+(** Agreement of [cap_live_ps] rules out collector clearing of the capability. *)
+Lemma cap_live_ps_not_freed m c reg :
+  all_agree m (cap_live_ps c reg) -> ~ freed_in (m_regions m) c.
+Proof.
+  intros Hag (b & reg' & Hc & E & L).
+  destruct Hc as [-> | ->]; cbn [cap_live_ps all_agree agree_piece fst snd] in Hag;
+    destruct Hag as [[E' L'] _]; rewrite E' in E; injection E as <-; congruence.
+Qed.
+
 (** ## Poison program logic over a runtime
 
     Programs execute alongside an allocator and collector that satisfy the
@@ -2035,8 +2199,9 @@ Proof.
   reflexivity.
 Qed.
 
-(** A caller uses its helper's Hoare triple through the usual Iris
-    bind rule, then checks value and taint resumption together. *)
+(** To verify a call without inlining the helper, the caller proves the
+    helper's specification once and checks that the returned value and taint
+    both fit the call site. *)
 Lemma wp_pcall_bind f e te ls l r g args rest j xs wts gf callee cte Φ :
   map_option (arg_x ge e) args = Some xs -> map_option (arg_t te) args = Some wts ->
   find_fn ge g = Some (Defined gf) -> variadic_func gf = false ->
@@ -2069,17 +2234,497 @@ Proof.
     m fuel _ m (invalidate_none m)). reflexivity.
 Qed.
 
+(** A void return finishes with an empty taint list once the function's
+    signature declares no return value. *)
+Lemma wp_pret_void f e te l Φ :
+  fn_ret f = RVoid ->
+  ▷ Φ (RetVoid, []) -∗
+  WP (PRun (mkFrame f e [] None (Exec l [] JRetVoid)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hk. apply wp_preturn; [reflexivity | exact I |].
+  intros m pm paux fuel. unfold pstep.
+  cbn [tstep c_frame fr_doomed fr_at jump_tstep fr_fn return_tstep ps_callers].
+  rewrite Hk rule_ret_void.
+  rewrite (rule_return_top (mkFrame f e [] None (Exec l [] JRetVoid)) m fuel _ m (invalidate_none m)).
+  reflexivity.
+Qed.
+
+(** Pure address computation through [[flight]] propagates address and
+    capability taints without faulting on an index-tainted offset, matching
+    native `lea`. *)
+Lemma wp_pflight f e te ls l d o args lw rest j xs ts n c tc Φ :
+  map_option (flight_arg_x ge e) args = Some xs ->
+  map_option (flight_arg_t te) args = Some ts ->
+  alu o L xs = Some (WInt n) ->
+  flight_cap ge e lw = Some c ->
+  flight_cap_t te lw = Some tc ->
+  op_checks_vartime pol o L && t_vartime (join_taints ts) = false ->
+  ▷ WP (PRun (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j))
+    (put d (WTPtr (join_taints ts) tc) te) : pexprL) {{ Φ }} -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hx Ht Ha Hc Htc Hvt. apply (wp_ppure_next _ _ _ _ []).
+  intros m pm paux fuel. unfold pstep.
+  cbn [tstep c_frame fr_doomed fr_at inst_tstep ps_tenv ps_callers ps_mem ps_aux].
+  rewrite Ht Htc Hvt (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hx Ha Hc).
+  reflexivity.
+Qed.
+
+(** Before a raw store or load, compiled code runs a bounds [[check]] that
+    produces a proven address temporary while enforcing the policy's branch
+    and header-index taint guards on the pointer. *)
+Lemma wp_pcheck f e te ls l d lo hi r al v rest j p ta tc b reg dq Φ :
+  value_x ge e P v = Some (WPtr p) ->
+  value_t te P v = Some (WTPtr ta tc) ->
+  check_ptr_bounds_taint pol ta tc = None ->
+  ptr_cap p = Obj b ->
+  b <= raw_address (ptr_addr p) lo ->
+  raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg ->
+  raw_address (ptr_addr p) lo mod al = 0 ->
+  ptsq dq [(PLive b, VLive reg)] -∗
+  ▷ (ptsq dq [(PLive b, VLive reg)] -∗
+     WP (PRun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j))
+       (put d (WTPtr ta tc) te) : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Let d A (Check lo hi r al) [v] :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hv Ht Hchk Hp Hlo Hhi Hal. iIntros "Hl HK".
+  iApply (wp_pread dq (DfracOwn 1) [(PLive b, VLive reg)] [] _ _ _ _ [] with "Hl [] [HK]");
+    [|by rewrite /pptsq|iNext; iIntros "Hl _"; iApply ("HK" with "Hl")].
+  intros m pm paux fuel (Hf & _) _.
+  cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
+  assert (Es : Semantics.step ge
+    (mkConfig (mkFrame f e ls None (Exec l (Let d A (Check lo hi r al) [v] :: rest) j)) [] m fuel) =
+    Next (mkConfig (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) [] m fuel)).
+  { apply rule_let with (classes := [P]) (xs := [WPtr p]); [reflexivity | reflexivity | cbn; rewrite Hv; reflexivity |].
+    apply op_check. rewrite Hp. exact (access_obj _ _ _ _ _ _ _ E Hlo Hhi Hal). }
+  unfold pstep.
+  change (tstep pol ge _ _) with (let_tstep pol ge e (mkPState te [] pm paux) d A (Check lo hi r al) [v]).
+  unfold let_tstep. cbn [is_zero_idiom andb ps_tenv ps_callers ps_mem ps_aux].
+  rewrite Ht Hchk Es. reflexivity.
+Qed.
+
+(** A read-only bounds [[check]] accepts either a writable or a read-only
+    object capability once the pointer's taint passes the policy guard. *)
+Lemma wp_pcheck_read f e te ls l d lo hi al v rest j p ta tc b reg dq Φ :
+  value_x ge e P v = Some (WPtr p) ->
+  value_t te P v = Some (WTPtr ta tc) ->
+  check_ptr_bounds_taint pol ta tc = None ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
+  b <= raw_address (ptr_addr p) lo ->
+  raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg ->
+  raw_address (ptr_addr p) lo mod al = 0 ->
+  ptsq dq [(PLive b, VLive reg)] -∗
+  ▷ (ptsq dq [(PLive b, VLive reg)] -∗
+     WP (PRun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j))
+       (put d (WTPtr ta tc) te) : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) [v] :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hv Ht Hchk Hp Hlo Hhi Hal. iIntros "Hl HK".
+  iApply (wp_pread dq (DfracOwn 1) [(PLive b, VLive reg)] [] _ _ _ _ [] with "Hl [] [HK]");
+    [|by rewrite /pptsq|iNext; iIntros "Hl _"; iApply ("HK" with "Hl")].
+  intros m pm paux fuel (Hf & _) _.
+  cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
+  assert (Es : Semantics.step ge
+    (mkConfig (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) [v] :: rest) j)) [] m fuel) =
+    Next (mkConfig (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) [] m fuel)).
+  { apply rule_let with (classes := [P]) (xs := [WPtr p]); [reflexivity | reflexivity | cbn; rewrite Hv; reflexivity |].
+    apply op_check. exact (access_read _ _ _ _ _ _ _ Hp E Hlo Hhi Hal). }
+  unfold pstep.
+  change (tstep pol ge _ _) with (let_tstep pol ge e (mkPState te [] pm paux) d A (Check lo hi Read al) [v]).
+  unfold let_tstep. cbn [is_zero_idiom andb ps_tenv ps_callers ps_mem ps_aux].
+  rewrite Ht Hchk Es. reflexivity.
+Qed.
+
+(** Across a loop back-edge or call, [[renew]] reuses an earlier dominating
+    check for the same object while checking the joined taints of both
+    operands. *)
+Lemma wp_prenew f e te ls l d lo hi r al q1 v rest j p1 p qa qc ta tc b reg dq Φ :
+  value_x ge e A q1 = Some (WPtr p1) ->
+  value_x ge e P v = Some (WPtr p) ->
+  value_t te A q1 = Some (WTPtr qa qc) ->
+  value_t te P v = Some (WTPtr ta tc) ->
+  check_ptr_bounds_taint pol (taint_join qa ta) (taint_join qc tc) = None ->
+  ptr_cap p1 = ptr_cap p ->
+  ptr_cap p = Obj b ->
+  b <= raw_address (ptr_addr p) lo ->
+  raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg ->
+  raw_address (ptr_addr p) lo mod al = 0 ->
+  ptsq dq [(PLive b, VLive reg)] -∗
+  ▷ (ptsq dq [(PLive b, VLive reg)] -∗
+     WP (PRun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j))
+       (put d (WTPtr ta tc) te) : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi r al) [q1; v] :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hq1 Hv Htq1 Htv Hchk Hcap Hp Hlo Hhi Hal. iIntros "Hl HK".
+  iApply (wp_pread dq (DfracOwn 1) [(PLive b, VLive reg)] [] _ _ _ _ [] with "Hl [] [HK]");
+    [|by rewrite /pptsq|iNext; iIntros "Hl _"; iApply ("HK" with "Hl")].
+  intros m pm paux fuel (Hf & _) _.
+  cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
+  assert (Es : Semantics.step ge
+    (mkConfig (mkFrame f e ls None (Exec l (Let d A (Renew lo hi r al) [q1; v] :: rest) j)) [] m fuel) =
+    Next (mkConfig (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) [] m fuel)).
+  { apply rule_let with (classes := [A; P]) (xs := [WPtr p1; WPtr p]);
+      [reflexivity | reflexivity | cbn; rewrite Hq1 Hv; reflexivity |].
+    apply op_renew; [exact Hcap |]. rewrite Hp. exact (access_obj _ _ _ _ _ _ _ E Hlo Hhi Hal). }
+  unfold pstep.
+  change (tstep pol ge _ _) with (let_tstep pol ge e (mkPState te [] pm paux) d A (Renew lo hi r al) [q1; v]).
+  unfold let_tstep. cbn [is_zero_idiom andb ps_tenv ps_callers ps_mem ps_aux].
+  rewrite Htq1 Htv Hchk Es. reflexivity.
+Qed.
+
+(** When a public allocation size exceeds Fil-C's size limit, the machine
+    stops cleanly with a refusal trap, so callers need not bound the
+    requested size from above. *)
+Lemma wp_palloc_any f e te ls l d k al v rest j size tsz Φ :
+  value_x ge e L v = Some (WInt size) ->
+  value_t te L v = Some (WTInt tsz) ->
+  t_branch tsz = false ->
+  t_index tsz = false ->
+  0 <= size ->
+  ▷ (∀ base, ⌜0 < base /\ base mod req_align (heap_req al size) = 0 /\
+              base + req_extent (heap_req al size) <= 2 ^ 48⌝ -∗
+     pts (obj_ps base (heap_req al size)) -∗ ppts (pobj_ps base (heap_req al size)) -∗
+     WP (PRun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j))
+       (put d (WTPtr taint_bot taint_bot) te) : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Let d k (Alloc al) [v] :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hv Ht Hb Hi Hs0.
+  destruct (Z.le_gt_cases size max_allocation_size) as [Hs | Hs].
+  - apply wp_palloc.
+    + cbn; lia.
+    + cbn; apply Z.mul_nonneg_nonneg; [apply Z.div_pos|]; lia.
+    + intros m pm paux fuel. unfold pstep.
+      change (tstep pol ge _ _) with (let_tstep pol ge e (mkPState te [] pm paux) d k (Alloc al) [v]).
+      assert (Hz : is_zero_idiom (Alloc al) k [v] = false) by (unfold is_zero_idiom; apply andb_false_r).
+      unfold let_tstep; rewrite Hz; cbn [ps_tenv ps_callers ps_mem ps_aux].
+      rewrite Hv Ht Hb Hi (proj2 (Z.ltb_ge _ _) Hs).
+      rewrite (rule_alloc ge f e ls l d k al [v] rest j [] m fuel size);
+        [reflexivity | cbn; rewrite Hv; reflexivity | exact Hs].
+  - assert (Hpst : forall m pm paux fuel,
+              pstep pol ge
+                (mkConfig (mkFrame f e ls None (Exec l (Let d k (Alloc al) [v] :: rest) j)) [] m fuel)
+                (mkPState te [] pm paux) = PDone (Trap TooBig) []).
+    { intros m pm paux fuel. unfold pstep.
+      change (tstep pol ge _ _) with (let_tstep pol ge e (mkPState te [] pm paux) d k (Alloc al) [v]).
+      assert (Hz : is_zero_idiom (Alloc al) k [v] = false) by (unfold is_zero_idiom; apply andb_false_r).
+      unfold let_tstep; rewrite Hz; cbn [ps_tenv ps_callers ps_mem ps_aux].
+      rewrite Hv Ht Hb Hi (proj2 (Z.ltb_lt _ _) Hs).
+      rewrite (rule_alloc_too_big ge f e ls l d k al [v] rest j [] m fuel size);
+        [reflexivity | cbn; rewrite Hv; reflexivity | exact Hs]. }
+    iIntros "HK". iApply (wp_lift_prun with "HK").
+    + iIntros (σ) "_ _". iPureIntro. unfold pfails; rewrite Hpst; cbn; unfold refusal; tauto.
+    + iIntros (σ) "_ _". iNext. iIntros (e2 σ2 Hm). exfalso.
+      destruct Hm as [(c' & ps' & pcs' & E & _) | [(q & kk & base & s' & E & _) | (o & ots & m' & E & Hr & _)]];
+        rewrite Hpst in E; try discriminate E.
+      injection E as <- _; exact Hr.
+Qed.
+
+(** Freeing a null pointer with untainted branch and capability-index bits
+    is a safe no-op that leaves both heaps unchanged. *)
+Lemma wp_pfree_null fnm f e te ls l v rest j ta tc Φ :
+  is_free_name fnm = true ->
+  frees_heap (ge_free ge) ->
+  find_fn ge fnm = None ->
+  lookup fnm (ge_globals ge) = None ->
+  arg_x ge e (Arg P v) = Some (WPtr null) ->
+  arg_t te (Arg P v) = Some (WTPtr ta tc) ->
+  t_branch ta = false ->
+  t_branch tc = false ->
+  t_index tc = false ->
+  ▷ WP (PRun (mkFrame f e ls None (Exec l rest j)) te : pexprL) {{ Φ }} -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hfnm [Hnull _] Hfn Hdata Hx Ht Hba Hbc Hic.
+  apply (wp_ppure_next _ _ _ _ []).
+  intros m pm paux fuel. unfold pstep.
+  cbn [tstep c_frame fr_doomed fr_at inst_tstep ps_tenv ps_callers ps_mem ps_aux fr_env map_option].
+  rewrite Ht; cbn [map_option]; rewrite Hfn Hdata Hfnm Hba Hbc Hic; cbn [orb].
+  rewrite (rule_free_sym _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfnm Hfn Hdata Hx (Hnull m)).
+  reflexivity.
+Qed.
+
+(** Loading an 8-byte integer from a uniform poison cell borrows the cell's
+    value and poison shares and binds the loaded word together with the
+    cell's taint. *)
+Lemma wp_praw_load f e te ls l d k off av rest j p b reg o v pb ta tc dq pdq Φ :
+  op_arg_classes (RawLoad LdL off) k = Some [A] ->
+  value_x ge e A av = Some (WPtr p) ->
+  value_t te A av = Some (WTPtr ta tc) ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
+  raw_address (ptr_addr p) off = b + o ->
+  t_index ta = false ->
+  pol_check_branches pol && (t_branch ta || t_branch tc || t_index tc) = false ->
+  pb_no_load pb = false ->
+  ptsq dq ([(PLive b, VLive reg)] ++ cell b o v) -∗
+  pptsq pdq (pcell_ps b o pb) -∗
+  ▷ (ptsq dq ([(PLive b, VLive reg)] ++ cell b o v) -∗
+     pptsq pdq (pcell_ps b o pb) -∗
+     WP (PRun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j))
+       (put d (WTInt (pb_taint pb)) te) : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) [av] :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hc Ha Hta Hp Hoff Hi Hb Hload.
+  apply (wp_pread dq pdq _ _ _ _ _ _ []).
+  intros m pm paux fuel (Hf & _) Hpf.
+  apply all_agree_app in Hf as [[Hlv _] Hcl]; cbn [agree_piece fst snd] in Hlv.
+  destruct (pcell_ps_facts m pm paux b reg o pb Hlv Hpf) as (Ho & He & Hnl & _ & Htl).
+  assert (Es : Semantics.step ge
+    (mkConfig (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) [av] :: rest) j)) [] m fuel) =
+    Next (mkConfig (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) [] m fuel)).
+  { apply rule_let with (classes := [A]) (xs := [WPtr p]); [reflexivity | exact Hc | cbn; rewrite Ha; reflexivity |].
+    rewrite (op_raw_load m k p off).
+    - rewrite Hoff (cell_load m b reg o v (b + o) Hlv Hcl eq_refl). reflexivity.
+    - rewrite Hoff. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r]. }
+  unfold pstep.
+  change (tstep pol ge _ _) with (let_tstep pol ge e (mkPState te [] pm paux) d k (RawLoad LdL off) [av]).
+  assert (Hz : is_zero_idiom (RawLoad LdL off) k [av] = false) by (unfold is_zero_idiom; apply andb_false_r).
+  unfold let_tstep; rewrite Hz; cbn [ps_tenv ps_callers ps_mem ps_aux load_type_bytes].
+  rewrite Ha Hta Hi Hb Hoff Hnl Hload Htl Es. reflexivity.
+Qed.
+
+(** Storing an 8-byte integer updates all eight bytes of the cell in both
+    heaps while preserving every unowned byte and capability taint slot. *)
+Lemma wp_praw_store f e te ls l off v a rest j p b reg o w w' pb tv ta tc Φ :
+  value_x ge e L v = Some (WInt w') ->
+  value_x ge e A a = Some (WPtr p) ->
+  value_t te L v = Some (WTInt tv) ->
+  value_t te A a = Some (WTPtr ta tc) ->
+  ptr_cap p = Obj b ->
+  raw_address (ptr_addr p) off = b + o ->
+  t_index ta = false ->
+  pol_check_branches pol && (t_branch ta || t_branch tc || t_index tc) = false ->
+  pb_no_store pb = false ->
+  pts ([(PLive b, VLive reg)] ++ cell b o w) -∗
+  ppts (pcell_ps b o pb) -∗
+  ▷ (pts ([(PLive b, VLive reg)] ++ cell b o w') -∗
+     ppts (pcell_ps b o (note_store_byte tv pb)) -∗
+     WP (PRun (mkFrame f e ls None (Exec l rest j)) te : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hv Ha Htv Hta Hp Hoff Hi Hb Hstore.
+  apply (wp_pwrite
+    ([(PLive b, VLive reg)] ++ cell b o w)
+    ([(PLive b, VLive reg)] ++ cell b o w')
+    (pcell_ps b o pb)
+    (pcell_ps b o (note_store_byte tv pb))
+    _ _ _ _ []
+    (fun m => store_bytes m (b + o) 8 w')
+    (fun pm => mem_store_taint pm (b + o) 8 tv)
+    (fun paux => paux));
+    [reflexivity | reflexivity |].
+  intros m pm paux fuel (Hf & Hd & _) Hpf.
+  apply all_agree_app in Hf as [[Hlv _] Hcl]; cbn [agree_piece fst snd] in Hlv.
+  destruct (pcell_ps_facts m pm paux b reg o pb Hlv Hpf) as (Ho & He & _ & Hns & _).
+  destruct (cell_store_ok m b reg o (b + o) w' Hd Hlv Ho He eq_refl) as [Hcs Hfr].
+  destruct (pcell_ps_store_ok m (store_bytes m (b + o) 8 w') pm paux b reg o pb tv eq_refl Hd Hlv Hpf)
+    as [Hpcs Hpfr].
+  assert (Es : Semantics.step ge
+    (mkConfig (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) [] m fuel) =
+    Next (mkConfig (mkFrame f e ls None (Exec l rest j)) [] (store_bytes m (b + o) 8 w') fuel)).
+  { apply rule_raw_store with (vk := L) (x := WInt w') (p := p); [reflexivity | exact Hv | exact Ha |].
+    rewrite Hoff. apply store_res_long. rewrite Hp.
+    apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r]. }
+  split; [|split; [|split; [|split; [|split; [|split]]]]].
+  - unfold pstep.
+    change (tstep pol ge _ _) with
+      (inst_tstep pol ge (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j))
+        (mkPState te [] pm paux) (RawStore Wl off v a)).
+    cbn [inst_tstep fr_env ps_tenv width_value_class ps_mem ps_aux ps_callers width_bytes].
+    rewrite Ha Hta Hi Hb Hoff Hns Hstore Htv Es. reflexivity.
+  - apply store_bytes_kept. exact (in_object_live _ _ _ (b + o) Hlv ltac:(lia) ltac:(lia)).
+  - exact Hd.
+  - apply all_agree_app; split; [|exact Hcs].
+    cbn [all_agree agree_piece fst snd]; split; [apply (live_at_regions m); [reflexivity | exact Hlv] | exact I].
+  - eapply frame_ok_mono; [|exact Hfr]. intros key Hin; rewrite fmap_app; apply elem_of_app; by right.
+  - exact Hpcs.
+  - exact Hpfr.
+Qed.
+
+(** Loading a pointer from an aligned 8-byte slot reads its address taint
+    from the byte poison map and its capability taint from the [[aux]]
+    poison map, provided the target capability has not been freed. *)
+Lemma wp_praw_load_pointer f e te ls l d off av rest j p b reg o x reg' pb txc ta tc dq pdq cdq Φ :
+  value_x ge e A av = Some (WPtr p) ->
+  value_t te A av = Some (WTPtr ta tc) ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
+  raw_address (ptr_addr p) off = b + o ->
+  (b + o) mod 8 = 0 ->
+  0 <= ptr_addr x < 2 ^ 64 ->
+  t_index ta || t_index tc = false ->
+  pol_check_branches pol && (t_branch ta || t_branch tc) = false ->
+  pb_no_load pb = false ->
+  ptsq dq ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)) -∗
+  pptsq pdq ((PPAux b o, VPAux txc) :: pcell_ps b o pb) -∗
+  ptsq cdq (cap_live_ps (ptr_cap x) reg') -∗
+  ▷ (ptsq dq ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)) -∗
+     pptsq pdq ((PPAux b o, VPAux txc) :: pcell_ps b o pb) -∗
+     ptsq cdq (cap_live_ps (ptr_cap x) reg') -∗
+     WP (PRun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j))
+       (put d (WTPtr (pb_taint pb) txc) te) : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None
+       (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) [av] :: rest) j))
+       te : pexprL) {{ Φ }}.
+Proof.
+  intros Ha Hta Hp Hoff Hal Hrange Hi Hb Hload.
+  iIntros "Hv Hp Hcap HK". iCombine "Hv Hp Hcap HK" as "H".
+  iApply (wp_lift_prun with "H").
+  - iIntros (σ) "Hσ [Hv [Hp [Hcap _]]]".
+    iDestruct (poison_ptsq_facts with "Hσ Hv") as %(Hf & _).
+    iDestruct (poison_pptsq_facts with "Hσ Hp") as %Hpf.
+    iDestruct (poison_ptsq_facts with "Hσ Hcap") as %(Hcf & _).
+    iPureIntro.
+    apply all_agree_app in Hf as [[Hlv _] [Hax Hcl]]; cbn [agree_piece fst snd] in Hlv.
+    cbn [all_p_agree agree_ppiece fst snd] in Hpf; destruct Hpf as [[_ Hpaux] Hpb_all].
+    destruct (Hpaux reg (proj1 Hlv) (proj2 Hlv)) as (_ & _ & Epaux).
+    destruct (pcell_ps_facts _ _ _ b reg o pb Hlv Hpb_all) as (Ho & He & Hnl & _ & Htl).
+    pose proof (cap_live_ps_not_freed _ _ _ Hcf) as Hkept.
+    assert (Es : Semantics.step ge
+      (mkConfig (mkFrame f e ls None
+        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) [av] :: rest) j))
+        [] (pl_mem σ) (pl_fuel σ)) =
+      Next (mkConfig (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) [] (pl_mem σ) (pl_fuel σ))).
+    { apply rule_let with (classes := [A]) (xs := [WPtr p]);
+        [reflexivity | reflexivity | cbn; rewrite Ha; reflexivity |].
+      apply op_raw_load_pointer.
+      - rewrite Hoff. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | exact Hal].
+      - rewrite pointer_load_plain Hoff (cell_load _ b reg o (ptr_addr x) (b + o) Hlv Hcl eq_refl).
+        rewrite Z.mod_small; [|exact Hrange]. unfold aux_at.
+        rewrite (aux_holds_kept _ _ _ (aux_piece_holds _ _ _ _ _ Hlv Hax) Hkept).
+        destruct x; reflexivity. }
+    unfold pfails, pstep.
+    change (tstep pol ge _ _) with
+      (let_tstep pol ge e (mkPState te [] (pl_pm σ) (pl_paux σ))
+        d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) [av]).
+    unfold let_tstep; cbn [is_zero_idiom andb ps_tenv ps_callers ps_mem ps_aux].
+    rewrite Ha Hta Hi Hb Hoff Hnl Hload Htl Epaux Es. auto.
+  - iIntros ([m pm paux s fuel]) "Hσ [Hv [Hp [Hcap HK]]]".
+    iDestruct (poison_ptsq_facts with "Hσ Hv") as %(Hf & _).
+    iDestruct (poison_pptsq_facts with "Hσ Hp") as %Hpf.
+    iDestruct (poison_ptsq_facts with "Hσ Hcap") as %(Hcf & _).
+    cbn [pl_mem pl_pm pl_paux pl_fuel] in *.
+    apply all_agree_app in Hf as [[Hlv _] [Hax Hcl]]; cbn [agree_piece fst snd] in Hlv.
+    cbn [all_p_agree agree_ppiece fst snd] in Hpf; destruct Hpf as [[_ Hpaux] Hpb_all].
+    destruct (Hpaux reg (proj1 Hlv) (proj2 Hlv)) as (_ & _ & Epaux).
+    destruct (pcell_ps_facts _ _ _ b reg o pb Hlv Hpb_all) as (Ho & He & Hnl & _ & Htl).
+    pose proof (cap_live_ps_not_freed _ _ _ Hcf) as Hkept.
+    assert (Ep : pstep pol ge
+      (mkConfig (mkFrame f e ls None
+        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) [av] :: rest) j)) [] m fuel)
+      (mkPState te [] pm paux) =
+      PNext (mkConfig (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) [] m fuel)
+            (mkPState (put d (WTPtr (pb_taint pb) txc) te) [] pm paux)).
+    { assert (Es : Semantics.step ge
+        (mkConfig (mkFrame f e ls None
+          (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) [av] :: rest) j))
+          [] m fuel) =
+        Next (mkConfig (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) [] m fuel)).
+      { apply rule_let with (classes := [A]) (xs := [WPtr p]);
+          [reflexivity | reflexivity | cbn; rewrite Ha; reflexivity |].
+        apply op_raw_load_pointer.
+        - rewrite Hoff. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | exact Hal].
+        - rewrite pointer_load_plain Hoff (cell_load _ b reg o (ptr_addr x) (b + o) Hlv Hcl eq_refl).
+          rewrite Z.mod_small; [|exact Hrange]. unfold aux_at.
+          rewrite (aux_holds_kept _ _ _ (aux_piece_holds _ _ _ _ _ Hlv Hax) Hkept).
+          destruct x; reflexivity. }
+      unfold pstep.
+      change (tstep pol ge _ _) with
+        (let_tstep pol ge e (mkPState te [] pm paux)
+          d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) [av]).
+      unfold let_tstep; cbn [is_zero_idiom andb ps_tenv ps_callers ps_mem ps_aux].
+      rewrite Ha Hta Hi Hb Hoff Hnl Hload Htl Epaux Es; reflexivity. }
+    iNext. iIntros (e2 σ2 Hm).
+    destruct Hm as [(c' & ps' & pcs & E' & Hcs & Htcs & -> & ->) |
+      [(q & k & base & s' & E' & _) | (o' & ots & m' & E' & _)]];
+      cbn [pl_mem pl_pm pl_paux pl_rt pl_fuel] in E'; rewrite Ep in E'; try discriminate E'.
+    injection E' as <- <-.
+    cbn [c_callers ps_callers] in Hcs, Htcs; assert (pcs = []) as -> by exact (pcs_sync_inj pcs [] Hcs Htcs).
+    cbn [c_frame c_mem c_fuel ps_tenv ps_mem ps_aux pstack_expr].
+    iModIntro. iFrame "Hσ". iApply ("HK" with "Hv Hp Hcap").
+Qed.
+
+(** Storing a pointer into an aligned 8-byte slot writes both its address
+    taint into the eight byte entries and its capability taint into the
+    [[aux]] slot while preserving every unowned piece. *)
+Lemma wp_praw_store_pointer f e te ls l off v a rest j xp p b reg o x pb txc tva tvc ta tc Φ :
+  value_x ge e P v = Some (WPtr xp) ->
+  value_x ge e A a = Some (WPtr p) ->
+  value_t te P v = Some (WTPtr tva tvc) ->
+  value_t te A a = Some (WTPtr ta tc) ->
+  ptr_cap p = Obj b ->
+  raw_address (ptr_addr p) off = b + o ->
+  (b + o) mod 8 = 0 ->
+  t_index ta || t_index tc = false ->
+  pol_check_branches pol && (t_branch ta || t_branch tc) = false ->
+  pb_no_store pb = false ->
+  pts ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x)) -∗
+  ppts ((PPAux b o, VPAux txc) :: pcell_ps b o pb) -∗
+  ▷ (pts ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) -∗
+     ppts ((PPAux b o, VPAux tvc) :: pcell_ps b o (note_store_byte tva pb)) -∗
+     WP (PRun (mkFrame f e ls None (Exec l rest j)) te : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None
+       (Exec l (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
+                :: rest) j)) te : pexprL) {{ Φ }}.
+Proof.
+  intros Hv Ha Htv Hta Hp Hoff Hal Hi Hb Hstore.
+  apply (wp_pwrite
+    ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x))
+    ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp))
+    ((PPAux b o, VPAux txc) :: pcell_ps b o pb)
+    ((PPAux b o, VPAux tvc) :: pcell_ps b o (note_store_byte tva pb))
+    _ _ _ _ []
+    (fun m => store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp))
+    (fun pm => mem_store_taint pm (b + o) 8 tva)
+    (fun paux b' => if b' =? b + o then tvc else paux b'));
+    [reflexivity | reflexivity |].
+  intros m pm paux fuel (Hf & Hd & _) Hpf.
+  apply all_agree_app in Hf as [[Hlv _] [_ Hcl]]; cbn [agree_piece fst snd] in Hlv.
+  cbn [all_p_agree fst snd] in Hpf; destruct Hpf as [_ Hpb_all].
+  destruct (pcell_ps_facts m pm paux b reg o pb Hlv Hpb_all) as (Ho & He & _ & Hns & _).
+  destruct (pcell_store_ok m b reg o (b + o) (ptr_cap xp) (ptr_addr xp) Hd Hlv Ho He eq_refl) as [Hcs Hfr].
+  destruct (ppcell_ps_store_ok m
+    (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp))
+    pm paux b reg o pb tva tvc eq_refl Hd Hlv Hpb_all) as [Hpcs Hpfr].
+  assert (Hin := in_object_live _ _ _ (b + o) Hlv ltac:(lia) ltac:(lia)).
+  assert (Es : Semantics.step ge
+    (mkConfig (mkFrame f e ls None
+      (Exec l (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
+               :: rest) j)) [] m fuel) =
+    Next (mkConfig (mkFrame f e ls None (Exec l rest j)) []
+      (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) fuel)).
+  { apply rule_raw_store_pointer with (xp := xp) (p := p); [exact Hv | exact Ha | |].
+    - rewrite Hoff Hp. apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | exact Hal].
+    - rewrite Hoff. apply pointer_store_plain. }
+  split; [|split; [|split; [|split; [|split; [|split]]]]].
+  - unfold pstep.
+    change (tstep pol ge _ _) with
+      (inst_tstep pol ge (mkFrame f e ls None
+        (Exec l (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
+                 :: rest) j)) (mkPState te [] pm paux)
+        (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])).
+    cbn [inst_tstep fr_env ps_tenv ps_mem ps_aux ps_callers effects_eqb effect_eqb andb orb].
+    rewrite Ha Hta Htv Hi Hb Hoff Hns Hstore Es. reflexivity.
+  - exact (pointer_store_effects_kept _ _ _ _ _ Hin (pointer_store_plain m (b + o) xp)).
+  - exact Hd.
+  - apply all_agree_app; split; [|exact Hcs].
+    cbn [all_agree agree_piece fst snd]; split; [apply (live_at_regions m); [reflexivity | exact Hlv] | exact I].
+  - eapply frame_ok_mono; [|exact Hfr]. intros key Hin'; rewrite fmap_app; apply elem_of_app; by right.
+  - exact Hpcs.
+  - exact Hpfr.
+Qed.
+
 End wp.
 End logic.
 
 (** ## Adequacy of heap proofs
 
-    A program proof starts with ownership from both heaps. Iris adequacy
-    turns that proof into poison-fault freedom and ordinary memory safety,
-    while the deterministic driver supplies the separate two-run trace
-    theorem without making claims about independently scheduled collectors. *)
+    Once a function's body has been verified against owned bytes and poison
+    records, callers want guarantees about real machine runs rather than
+    logical assertions. The theorems below prove that every reachable
+    machine state avoids panics and poison faults, and that two secret-related
+    runs emit identical leakage traces under a deterministic allocator. *)
 
-(** Initial ownership in both heaps gives Iris adequacy for a frame. *)
+(** A caller starts with distinct value and poison records that match memory,
+    then proves the entry frame never gets stuck. *)
 Theorem poison_pieces_adequate Σ
     {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     {HpoisonP : gen_heapGpreS ppiece ppval Σ}
@@ -2126,7 +2771,8 @@ Definition poison_safe pol ge fr te m pm paux s fuel : Prop :=
     | PD.PDriverTrap _ | PD.PDriverBad _ => False
     end).
 
-(** Iris adequacy discharges the safety premise used by the trace theorem. *)
+(** Execution adequacy implies that the program avoids poison faults and
+    memory panics across all reachable machine states and finite driver runs. *)
 Lemma wp_poison_safe pol ge fr te m pm paux s fuel φ :
   @adequate (poison_lang pol ge) NotStuck (PRun fr te) (mkPLstate m pm paux s fuel) φ ->
   poison_safe pol ge fr te m pm paux s fuel.
@@ -2153,6 +2799,41 @@ Proof.
   exact (proj1 (PD.pdriver_ct_sound pol ge steps (mkConfig fr1 [] m1 fuel)
     (mkConfig fr2 [] m2 fuel) (mkPState te [] pm paux) s tr
     Hcb Hfree Hr1 Hr2 Hrel (Hsafe steps) Htr)).
+Qed.
+
+(** Two runs that differ only in secret object bytes share allocator
+    readiness, emit equal traces, and return related results. *)
+Theorem wp_ct_driver_ret pol ge fr1 fr2 te m1 m2 pm paux s fuel :
+  pol_check_branches pol = true -> ge_free ge = free_res ->
+  R.ready s m1 ->
+  (forall a, ~ in_object m1 a -> m_bytes m2 a = m_bytes m1 a /\ m_aux m2 a = m_aux m1 a) ->
+  ct_rel (mkConfig fr1 [] m1 fuel) (mkConfig fr2 [] m2 fuel) (mkPState te [] pm paux) ->
+  poison_safe pol ge fr1 te m1 pm paux s fuel ->
+  forall steps, exists tr,
+    PD.pdriver_trace pol ge steps (mkConfig fr1 [] m1 fuel) (mkPState te [] pm paux) s = Some tr /\
+    PD.pdriver_trace pol ge steps (mkConfig fr2 [] m2 fuel) (mkPState te [] pm paux) s = Some tr /\
+    match PD.pdriver_run pol ge steps (mkConfig fr1 [] m1 fuel) (mkPState te [] pm paux) s,
+          PD.pdriver_run pol ge steps (mkConfig fr2 [] m2 fuel) (mkPState te [] pm paux) s with
+    | PD.PDriverDone o1 ots1, PD.PDriverDone o2 ots2 =>
+        ots1 = ots2 /\ ~ failure o2 /\
+        (forall w1 wt, o1 = Ret w1 -> ots1 = [wt] -> exists w2, o2 = Ret w2 /\ word_rel wt w1 w2)
+    | PD.PDriverNext c1' ps1' rt1', PD.PDriverNext c2' ps2' rt2' =>
+        ps1' = ps2' /\ rt1' = rt2' /\ ct_rel c1' c2' ps1'
+    | _, _ => False
+    end.
+Proof.
+  intros Hcb Hfree Hr1 Hout Hrel (_ & _ & Hsafe) steps.
+  assert (Hreg : m_regions m1 = m_regions m2)
+    by (destruct Hrel as (_ & _ & _ & _ & _ & _ & Hreg & _); exact Hreg).
+  pose proof (R.ready_kept _ _ _ Hr1 (ct_kept_ready m1 m2 Hreg Hout)) as Hr2.
+  destruct (PD.pdriver_run_has_trace pol ge steps (mkConfig fr1 [] m1 fuel)
+    (mkPState te [] pm paux) s ltac:(specialize (Hsafe steps);
+    destruct (PD.pdriver_run pol ge steps (mkConfig fr1 [] m1 fuel)
+      (mkPState te [] pm paux) s); cbn in *; tauto)) as [tr Htr].
+  exists tr. split; [exact Htr|].
+  exact (PD.pdriver_ct_sound pol ge steps (mkConfig fr1 [] m1 fuel)
+    (mkConfig fr2 [] m2 fuel) (mkPState te [] pm paux) s tr
+    Hcb Hfree Hr1 Hr2 Hrel (Hsafe steps) Htr).
 Qed.
 
 (** A closed module never panics when its entry has a two-heap proof for
