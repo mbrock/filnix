@@ -28,8 +28,8 @@ Local Instance zero_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The three-argument [[frame]] binds the stream, source and zero count.
-    Neither pointer is dereferenced, so the continuation receives all of P. *)
+(** The call reads neither pointer and preserves every caller resource.
+    Its [[frame]] binds the stream, source and zero byte count. *)
 Lemma wp_xsputn_zero fr fp src (P : iProp Σ) Φ :
   call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr src; WInt 0] = Some fr ->
   P -∗ ▷ (P -∗ Φ (Ret (WInt 0))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
