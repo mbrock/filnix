@@ -6,7 +6,7 @@ capture=${1:?pass the glibc capture directory}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 python3 -I "$here/generate.py" "$capture" --output "$work/legacy"
-python3 -I "$here/generate.py" "$capture" --tree "$work/legacy"
+python3 -I "$here/generate.py" "$capture"
 python3 -I "$here/generate.py" "$capture" --form shared-prelude --output "$work/staged"
 python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged"
 
@@ -34,6 +34,16 @@ mkdir -p "$work/nanofil/rocq/scripts/glibc-code" "$work/nanofil/rocq/glibc/strin
 cp "$here/sync-proof-styles.py" "$work/nanofil/rocq/scripts/glibc-code/"
 cp "$here/../../glibc/string/code.toml" "$work/nanofil/rocq/glibc/string/"
 mkdir -p "$work/styles/string"
+cp "$work/legacy/string/"*.v "$work/styles/string/"
+python3 - "$work/styles/string" <<'PY'
+from pathlib import Path
+import re
+import sys
+# Keep this test's default-style control independent of main's conversions.
+for file in Path(sys.argv[1]).glob('*.v'):
+    file.write_text(re.sub(r'Proof\. vm_cast_no_check \(eq_refl .+\)\. Qed\.',
+                           'Proof. vm_compute. reflexivity. Qed.', file.read_text()))
+PY
 cat >"$work/styles/string/StrcmpCode.v" <<'COQ'
 (** Generated fixture. Do not edit. *)
 Lemma sample : Some true = Some true.
@@ -41,6 +51,44 @@ Proof. vm_cast_no_check (eq_refl (Some true)). Qed.
 COQ
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
 grep -F '"StrcmpCode.v" = "vm_cast_no_check"' "$work/nanofil/rocq/glibc/string/code.toml"
+cp "$work/nanofil/rocq/glibc/string/code.toml" "$work/styles-before.toml"
+cp "$work/styles/string/StrcmpCode.v" "$work/Strcmp-valid.v"
+reject_sync() {
+  if python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" \
+      "$work/styles" >"$work/$1.log" 2>&1; then
+    echo "style sync accepted $1" >&2; exit 1
+  fi
+  grep -F "$2" "$work/$1.log"
+  cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/string/code.toml"
+}
+cat >>"$work/styles/string/StrcmpCode.v" <<'COQ'
+Lemma plain : Some false = Some false.
+Proof.
+  vm_compute. reflexivity.
+Qed.
+COQ
+reject_sync mixed-multiline 'mixed proof styles'
+cp "$work/Strcmp-valid.v" "$work/styles/string/StrcmpCode.v"
+cat >>"$work/styles/string/StrcmpCode.v" <<'COQ'
+Lemma unknown : True.
+Proof.
+  exact I.
+Qed.
+COQ
+reject_sync unknown-multiline 'unrecognized computed proof'
+cp "$work/Strcmp-valid.v" "$work/styles/string/StrcmpCode.v"
+printf '\nQed.\n' >>"$work/styles/string/StrcmpCode.v"
+reject_sync unmatched-proof 'unrecognized proof block'
+rm "$work/styles/string/StrcmpCode.v"
+reject_sync missing-converted 'missing fixture:'
+sed 's/Do not edit\.//' "$work/Strcmp-valid.v" >"$work/styles/string/StrcmpCode.v"
+reject_sync damaged-header 'unrecognized generated header'
+cp "$work/Strcmp-valid.v" "$work/styles/string/StrcmpCode.v"
+mv "$work/styles/string/StrncmpCode.v" "$work/Strncmp-valid.v"
+reject_sync missing-default 'missing fixture:'
+mv "$work/Strncmp-valid.v" "$work/styles/string/StrncmpCode.v"
+python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
+cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/string/code.toml"
 cp "$here/generate.py" "$here/prelude.py" "$here/select.pl" "$work/nanofil/rocq/scripts/glibc-code/"
 for part in bin src survey bench; do ln -s "$here/../../../$part" "$work/nanofil/$part"; done
 for script in gallina.pl link.pl; do ln -s "$here/../$script" "$work/nanofil/rocq/scripts/$script"; done

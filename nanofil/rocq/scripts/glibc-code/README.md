@@ -118,8 +118,9 @@ python3 -I nanofil/rocq/scripts/glibc-code/sync-proof-styles.py nanofil/rocq/gli
 
 This separate helper reads the tree and changes only manifests. It rejects
 mixed styles within one file and unknown proof scripts before writing anything.
-It does not convert proofs. Review and commit its manifest changes before
-running the regeneration check.
+It requires every manifest fixture and numbered slice to be present with its
+generated header. It checks multiline proofs too and does not convert proofs.
+Review and commit its manifest changes before running the regeneration check.
 
 ## Integrate the check
 

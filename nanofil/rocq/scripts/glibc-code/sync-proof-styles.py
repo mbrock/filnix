@@ -13,15 +13,42 @@ args = parser.parse_args()
 
 updates = []
 for manifest in sorted(manifests.rglob("code.toml")):
+    old = manifest.read_text()
+    config = tomllib.loads(old)
     styles = {}
     directory = args.tree / manifest.parent.relative_to(manifests)
     if not directory.is_dir():
         parser.error(f"missing fixture directory: {directory}")
-    for file in sorted(directory.glob("*Code*.v")):
+    expected = set()
+    for batch in [config, *config.get("batch", [])]:
+        for row in batch["fixtures"].splitlines():
+            if not row.strip():
+                continue
+            name = row.strip().split("|")[0]
+            if batch["layout"] in ("getopt", "hi_atexit"):
+                term = directory / (name + "Term.v")
+                if not term.is_file():
+                    parser.error(f"missing fixture: {term}")
+                indices = re.findall(r"\b" + re.escape(name) + r"Code(\d+)\b", term.read_text())
+                if not indices:
+                    parser.error(f"missing slice references in {term}")
+                expected.add(term.name)
+                expected.update(f"{name}Code{i:02}.v" for i in range(1, max(map(int, indices)) + 1))
+            else:
+                expected.add(name + "Code.v")
+    if set(config.get("proof_styles", {})) - expected:
+        parser.error(f"proof styles name unexpected fixtures in {manifest}")
+    for name in sorted(expected):
+        file = directory / name
+        if not file.is_file():
+            parser.error(f"missing fixture: {file}")
         text = file.read_text()
         if "Do not edit." not in text and "Regenerate this file rather than editing it." not in text:
-            continue
-        proofs = re.findall(r"^Proof\. (.*?) Qed\.$", text, re.M)
+            parser.error(f"unrecognized generated header in {file}")
+        blocks = re.compile(r"^\s*Proof\.(.*?)\bQed\.", re.M | re.S)
+        proofs = [" ".join(match[1].split()) for match in blocks.finditer(text)]
+        if re.search(r"^\s*(Proof|Qed|Defined|Admitted|Abort|Save)\b", blocks.sub("", text), re.M):
+            parser.error(f"unrecognized proof block in {file}")
         kinds = set()
         for proof in proofs:
             if proof == "vm_compute. reflexivity.":
@@ -34,8 +61,6 @@ for manifest in sorted(manifests.rglob("code.toml")):
             raise ValueError(f"mixed proof styles in {file}; finish that file's conversion first")
         if kinds == {"vm_cast_no_check"}:
             styles[file.name] = "vm_cast_no_check"
-    old = manifest.read_text()
-    config = tomllib.loads(old)
     if config.get("proof_styles", {}) == styles:
         continue
     text = re.sub(r"(?ms)^\[proof_styles\]\n.*?(?=^\[|\Z)", "", old).rstrip() + "\n"
