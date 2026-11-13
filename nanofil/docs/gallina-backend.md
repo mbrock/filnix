@@ -1581,6 +1581,33 @@ becomes statable.
   backend emits, and a simulation from `step_rel` to it, one
   instruction kind at a time, starting with scalar selection against
   `Ops.v`. This is the row formal.md leaves out of proof today.
+
+  The first instance is proved, for integer division. The IR's
+  division is total, while the processor's divide instructions fault
+  on a zero divisor and on the least signed integer divided by -1, so
+  the emitter rewrites both operands before it divides. The proof
+  shows that the emitted code never faults and leaves the IR's result
+  in `%rax`. It covers signed and unsigned division and remainder at
+  both integer sizes, from every register state, and it shows that
+  the code changes only `%rax`, `%rcx` and `%rdx`.
+
+  A reader can check the statement in three files. `Amd64Step.v` says
+  what each integer instruction does to the registers and flags, and
+  it treats an instruction form that it does not describe as a fault.
+  `Amd64Asm.v` reads the assembly lines that the emitter prints as
+  those instructions. `Amd64Division.v` states the theorem,
+  `emitted_division_correct`, on the lines that `division` in
+  `EmitOps.v` emits after it loads the two operands. The default
+  backend build fails if any lemma in these files depends on an
+  axiom.
+
+  The theorem has limits. The model does not yet describe memory or
+  branches, so the instructions that load the operands and store the
+  result are outside it. The meaning of each instruction is copied by
+  hand from the processor manuals, and the assembler that turns the
+  lines into bytes is trusted. A simulation from `step_rel` needs
+  byte memory first, together with a relation between the stack frame
+  and the IR's capability storage.
 - **Proved passes instead of checked ones.** A register allocator or
   a check-reuse pass with a refinement theorem needs no translation
   checker at compile time, which is where half of `-O` goes.

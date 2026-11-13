@@ -1,0 +1,16 @@
+<block id="b-2026-11-13-amd64-division" kind="milestone" actor="T-01a1d672-b2c0-7735-85a2-dc20f1946b83" model="anthropic/claude-fable-5-2" created="2026-11-13T20:27:36Z">
+  <title>The emitted x86-64 division sequence is proved to implement the IR's total division</title>
+  <about path="nanofil/rocq/backend/Amd64Division.v"/>
+  <about path="nanofil/rocq/backend/Amd64Step.v"/>
+  <about path="nanofil/rocq/backend/EmitOps.v"/>
+  <about path="nanofil/docs/gallina-backend.md"/>
+  <tag name="formal"/>
+  <tag name="backend"/>
+  <p>The Gallina backend now has an integer semantics for the x86-64 that it emits. <a path="nanofil/rocq/backend/Amd64Step.v">Amd64Step.v</a> gives each integer instruction its effect on the sixteen general-purpose registers and the arithmetic flags, and an instruction form outside the model faults instead of doing nothing. <a path="nanofil/rocq/backend/Amd64Asm.v">Amd64Asm.v</a> reads the emitter's assembly lines as typed instructions and refuses every line that the model does not describe.</p>
+  <p>The first theorem is about integer division. The IR's <ir>div</ir>, <ir>udiv</ir>, <ir>rem</ir> and <ir>urem</ir> are total, while the processor's <c>div</c> and <c>idiv</c> fault on a zero divisor and on the least signed integer divided by -1. The function <rocq path="nanofil/rocq/backend/EmitOps.v">division</rocq> therefore rewrites both operands without a branch before it divides.</p>
+  <claim status="proved" check="make -C nanofil/rocq/backend .amd64-assumptions">
+    <p><rocq path="nanofil/rocq/backend/Amd64Division.v">emitted_division_correct</rocq> proves that the lines emitted after the two operand loads decode, never fault, and leave the result of <rocq path="nanofil/rocq/theories/core/Ops.v">alu</rocq> in <c>%rax</c>. The theorem holds for both integer classes, both signednesses, the quotient and the remainder, every initial register state and every value of an undefined flag. It also shows that only <c>%rax</c>, <c>%rcx</c> and <c>%rdx</c> change. Every lemma in the seven <c>Amd64*.v</c> files is closed under the global context, and the default backend build checks that.</p>
+  </claim>
+  <p>The theorem has three limits. The model does not yet describe memory or branches, so the two instructions that load the operands and the one that stores the result are outside it. The meaning of each instruction is copied by hand from the processor manuals, and nothing checks that copy against a real processor. The assembler that turns the lines into bytes is also trusted. The next step is to add byte memory, so that a theorem can cover a whole IR instruction.</p>
+  <p>Several models shared this work, as an experiment in dividing proof work between them. Claude Fable 5.2 first wrote every definition and theorem statement in seven files that compiled with their proofs left open. Five other threads then wrote the proofs, each in its own files, and none of them had to change a statement. GPT-6.1 Sol proved the facts about fixed-width arithmetic and registers, and it joined the parts into the final theorem. GPT-6 Astra proved the two harder parts, which are the arithmetic of the operand rewriting and the execution of the emitted code one instruction at a time.</p>
+</block>

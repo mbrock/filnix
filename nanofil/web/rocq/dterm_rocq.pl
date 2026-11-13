@@ -1152,6 +1152,20 @@ file_blurb('nanofil/rocq/spikes/ListSumLogic.v',
 %  Gallina compiler backend: rocq/backend/
 file_blurb('nanofil/rocq/backend/Abi.v',
     "This pass lowers calls, arguments, returns, and function objects into the actions required by Fil-C's calling conventions.").
+file_blurb('nanofil/rocq/backend/Amd64Asm.v',
+    "This module reads the backend's assembly lines as typed instructions and refuses every line that the execution model does not describe.").
+file_blurb('nanofil/rocq/backend/Amd64Division.v',
+    "This theorem shows that the integer division code that the backend emits never faults and leaves the IR's result in the accumulator register.").
+file_blurb('nanofil/rocq/backend/Amd64DivisionCode.v',
+    "This module splits the emitted division sequence into four fragments and proves what each fragment computes in the registers.").
+file_blurb('nanofil/rocq/backend/Amd64Machine.v',
+    "This module defines the general-purpose registers and arithmetic flags of x86-64 and the rules for reading and writing a part of a register.").
+file_blurb('nanofil/rocq/backend/Amd64Step.v',
+    "This execution model gives each integer instruction that the backend emits its effect on registers and flags, and it faults on every form that it does not cover.").
+file_blurb('nanofil/rocq/backend/Amd64Total.v',
+    "These lemmas show that the backend's branch-free operand rewriting makes the processor's divide safe and yields the IR's total quotient and remainder.").
+file_blurb('nanofil/rocq/backend/Amd64Word.v',
+    "This module reads 8, 16, 32 and 64-bit patterns as unsigned and signed integers and proves the wrapping and sign facts that the amd64 semantics uses.").
 file_blurb('nanofil/rocq/backend/Asm.v',
     "This module represents x86-64 assembly lines and prints GNU assembler syntax to match the Prolog printer exactly.").
 file_blurb('nanofil/rocq/backend/AsmTerm.v',
