@@ -1,0 +1,111 @@
+EM.Running :
+forall {rt : R.RuntimeClass} {world : Type},
+EM.P.I.RM.mstate -> world -> EM.state world
+
+EM.Running is not universe polymorphic
+Arguments EM.Running {rt} {world}%_type_scope machine w
+Expands to: Constructor ArgumentsClass.EM.Running (syntactically equal to
+            Nanofil.external.ExternalMachine.ExternalMachine.Running)
+Declared in
+library Nanofil.external.ExternalMachine, line 199, characters 2-9
+EM.Stopped :
+forall {rt : R.RuntimeClass} {world : Type},
+ending -> EM.P.I.RM.mstate -> world -> EM.state world
+
+EM.Stopped is not universe polymorphic
+Arguments EM.Stopped {rt} {world}%_type_scope why machine w
+Expands to: Constructor ArgumentsClass.EM.Stopped (syntactically equal to
+            Nanofil.external.ExternalMachine.ExternalMachine.Stopped)
+Declared in
+library Nanofil.external.ExternalMachine, line 200, characters 2-9
+EM.admissible :
+forall {world : Type},
+(Term.name -> option (ExternalCalls.contract world)) ->
+Semantics.genv -> Semantics.config -> world -> call_site -> Prop
+
+EM.admissible is not universe polymorphic
+Arguments EM.admissible {world}%_type_scope registry%_function_scope
+  ge c w site
+EM.admissible is transparent
+Expands to: Constant ArgumentsClass.EM.admissible (syntactically equal to
+            Nanofil.external.ExternalMachine.ExternalMachine.admissible)
+Declared in
+library Nanofil.external.ExternalMachine, line 217, characters 11-21
+EM.step :
+forall {rt : R.RuntimeClass} {world : Type},
+(Term.name -> option (ExternalCalls.contract world)) ->
+Semantics.genv ->
+EM.state world -> list ExternalCalls.event -> EM.state world -> Prop
+
+EM.step is not universe polymorphic
+EM.step may only be eliminated to produce values whose type is SProp or Prop.
+Arguments EM.step {rt} {world}%_type_scope registry%_function_scope
+  ge _ _%_list_scope _
+Expands to: Inductive ArgumentsClass.EM.step (syntactically equal to
+            Nanofil.external.ExternalMachine.ExternalMachine.step)
+Declared in
+library Nanofil.external.ExternalMachine, line 257, characters 10-14
+EM.run :
+forall {rt : R.RuntimeClass} {world : Type},
+(Term.name -> option (ExternalCalls.contract world)) ->
+Semantics.genv ->
+EM.state world -> list ExternalCalls.event -> EM.state world -> Prop
+
+EM.run is not universe polymorphic
+EM.run may only be eliminated to produce values whose type is SProp or Prop.
+Arguments EM.run {rt} {world}%_type_scope registry%_function_scope
+  ge _ _%_list_scope _
+Expands to: Inductive ArgumentsClass.EM.run (syntactically equal to
+            Nanofil.external.ExternalMachine.ExternalMachine.run)
+Declared in
+library Nanofil.external.ExternalMachine, line 311, characters 10-13
+L.mkLstate :
+forall {rt : R.RuntimeClass} {world : Type},
+Memory.mem -> R.state -> BinNums.Z -> world -> L.lstate world
+
+L.mkLstate is template universe polymorphic
+Arguments L.mkLstate {rt} {world}%_type_scope ls_mem
+  ls_rt ls_fuel%_Z_scope ls_world
+Expands to: Constructor ArgumentsClass.L.mkLstate (syntactically equal to
+            Nanofil.logic.Language.Language.mkLstate)
+Declared in library Nanofil.logic.Language, line 341, characters 2-10
+L.ls_mem :
+forall {rt : R.RuntimeClass} {world : Type}, L.lstate world -> Memory.mem
+
+L.ls_mem is not universe polymorphic
+L.ls_mem is a projection of L.lstate
+Arguments L.ls_mem {rt} {world}%_type_scope l
+L.ls_mem is transparent
+Expands to: Constant ArgumentsClass.L.ls_mem (syntactically equal to
+            Nanofil.logic.Language.Language.ls_mem)
+Declared in library Nanofil.logic.Language, line 341, characters 13-19
+L.ls_rt :
+forall {rt : R.RuntimeClass} {world : Type}, L.lstate world -> R.state
+
+L.ls_rt is not universe polymorphic
+L.ls_rt is a projection of L.lstate
+Arguments L.ls_rt {rt} {world}%_type_scope l
+L.ls_rt is transparent
+Expands to: Constant ArgumentsClass.L.ls_rt (syntactically equal to
+            Nanofil.logic.Language.Language.ls_rt)
+Declared in library Nanofil.logic.Language, line 341, characters 27-32
+L.ls_fuel :
+forall {rt : R.RuntimeClass} {world : Type}, L.lstate world -> BinNums.Z
+
+L.ls_fuel is not universe polymorphic
+L.ls_fuel is a projection of L.lstate
+Arguments L.ls_fuel {rt} {world}%_type_scope l
+L.ls_fuel is transparent
+Expands to: Constant ArgumentsClass.L.ls_fuel (syntactically equal to
+            Nanofil.logic.Language.Language.ls_fuel)
+Declared in library Nanofil.logic.Language, line 341, characters 44-51
+L.ls_world :
+forall {rt : R.RuntimeClass} {world : Type}, L.lstate world -> world
+
+L.ls_world is not universe polymorphic
+L.ls_world is a projection of L.lstate
+Arguments L.ls_world {rt} {world}%_type_scope l
+L.ls_world is transparent
+Expands to: Constant ArgumentsClass.L.ls_world (syntactically equal to
+            Nanofil.logic.Language.Language.ls_world)
+Declared in library Nanofil.logic.Language, line 341, characters 57-65

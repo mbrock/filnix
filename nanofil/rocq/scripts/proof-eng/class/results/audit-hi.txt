@@ -1,0 +1,170 @@
+hi_atexit_initialized_entry
+     : Run.initial_memory HiAtexitModule.hi_module =
+       Some (HiAtexitModule.hi_globals, HiAtexitInitial.hi_m0) /\
+       HiAtexitPrepare.hi_host_prepare HiAtexitInitial.hi_m0
+         Runtime.InterpRuntime.start HiAtexitEntryImage.hi_entry_saved_jmp =
+       Some
+         (HiAtexitEntryImage.hi_prepared_memory,
+          BinNums.Zpos
+            (BinNums.xO
+               (BinNums.xO
+                  (BinNums.xO
+                     (BinNums.xO
+                        (BinNums.xI
+                           (BinNums.xO
+                              (BinNums.xO
+                                 (BinNums.xO
+                                    (BinNums.xO
+                                       (BinNums.xI
+                                          (BinNums.xO
+                                             (BinNums.xI
+                                                (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO (...))))))))))))))))))))),
+          HiAtexitPrepare.hi_entry_world
+            (BinNums.Zpos
+               (BinNums.xO
+                  (BinNums.xO
+                     (BinNums.xO
+                        (BinNums.xO
+                           (BinNums.xO
+                              (BinNums.xO
+                                 (BinNums.xO
+                                    (BinNums.xO
+                                       (BinNums.xO
+                                          (BinNums.xO
+                                             (BinNums.xO
+                                                (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO (...)))))))))))))))))))))) /\
+       Runtime.InterpRuntime.ready
+         (BinNums.Zpos
+            (BinNums.xO
+               (BinNums.xO
+                  (BinNums.xO
+                     (BinNums.xO
+                        (BinNums.xI
+                           (BinNums.xO
+                              (BinNums.xO
+                                 (BinNums.xO
+                                    (BinNums.xO
+                                       (BinNums.xI
+                                          (BinNums.xO
+                                             (BinNums.xI
+                                                (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO (...))))))))))))))))))))))
+         HiAtexitEntryImage.hi_prepared_memory /\
+       Pieces.live_disjoint HiAtexitEntryImage.hi_prepared_memory /\
+       Heap.agrees HiAtexitEntryImage.hi_prepared_memory
+         (fin_maps.list_to_map HiAtexitEntryImage.hi_entry_ps) /\
+       OsWorld.os_wi
+         (HiAtexitPrepare.hi_entry_world
+            (BinNums.Zpos
+               (BinNums.xO
+                  (BinNums.xO
+                     (BinNums.xO
+                        (BinNums.xO
+                           (BinNums.xO
+                              (BinNums.xO
+                                 (BinNums.xO
+                                    (BinNums.xO
+                                       (BinNums.xO
+                                          (BinNums.xO
+                                             (BinNums.xO
+                                                (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO (...)))))))))))))))))))))
+         HiAtexitEntryImage.hi_prepared_memory
+         (HiAtexitPrepare.hi_entry_world
+            (BinNums.Zpos
+               (BinNums.xO
+                  (BinNums.xO
+                     (BinNums.xO
+                        (BinNums.xO
+                           (BinNums.xO
+                              (BinNums.xO
+                                 (BinNums.xO
+                                    (BinNums.xO
+                                       (BinNums.xO
+                                          (BinNums.xO
+                                             (BinNums.xO
+                                                (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO (...)))))))))))))))))))))
+         (fin_maps.list_to_map HiAtexitEntryImage.hi_entry_ps)
+hi_atexit_never_panics
+     : forall fuel : BinNums.Z,
+       HiAtexitBase.HLG.L.labelled_safe OsRegistry.glibc_os_registry
+         HiAtexitGe.hge HiAtexitMain.hi_main_frame
+         HiAtexitEntryImage.hi_prepared_memory
+         (BinNums.Zpos
+            (BinNums.xO
+               (BinNums.xO
+                  (BinNums.xO
+                     (BinNums.xO
+                        (BinNums.xI
+                           (BinNums.xO
+                              (BinNums.xO
+                                 (BinNums.xO
+                                    (BinNums.xO
+                                       (BinNums.xI
+                                          (BinNums.xO
+                                             (BinNums.xI
+                                                (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO (...)))))))))))))))))))))))
+         (HiAtexitPrepare.hi_entry_world
+            (BinNums.Zpos
+               (BinNums.xO
+                  (BinNums.xO
+                     (BinNums.xO
+                        (BinNums.xO
+                           (BinNums.xO
+                              (BinNums.xO
+                                 (BinNums.xO
+                                    (BinNums.xO
+                                       (BinNums.xO
+                                          (BinNums.xO
+                                             (BinNums.xO
+                                                (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO
+                                                 (BinNums.xO (...)))))))))))))))))))))))
+         fuel (fun _ : Semantics.outcome => True)
+Closed under the global context
+Closed under the global context

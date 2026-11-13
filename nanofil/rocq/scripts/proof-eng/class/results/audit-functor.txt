@@ -1,0 +1,212 @@
+@@nanofil-progress 2026-11-13T22:52:36Z start elapsed=0.0s label=functor-audit last=no output yet
+@@nanofil-progress 2026-11-13T22:52:51Z running elapsed=15.0s label=functor-audit last=no output yet
+AuditHello.hello_never_panics
+     : forall Σ : iprop.gFunctors,
+       fancy_updates.invGpreS Σ ->
+       @gen_heap.gen_heapGpreS Pieces.piece Heap.pval Σ Heap.piece_eq_dec
+         Heap.piece_countable ->
+       forall (w0 : OsWorld.os_world) (ge : Semantics.genv)
+         (o : HelloGlibcDebts.hello_objs) (m : Memory.mem)
+         (s : AuditRuntime.state) (w : OsWorld.os_world)
+         (h0 : @gmap.gmap Pieces.piece Heap.piece_eq_dec Heap.piece_countable
+                 Heap.pval)
+         (argc av : Z) (ar : Memory.region) (p0 : Values.ptr)
+         (ps : list Values.ptr) (x y z a : Values.ptr)
+         (i c fuel : Z),
+       HelloGlibcLibsT.hello_link ge o ->
+       HelloGlibcDebts.hello_layout ge o ->
+       HelloGlibcLibsT.hello_os_layout w0 o ->
+       argc = Z.of_nat (@length Values.ptr (p0 :: ps)) ->
+       0 <= i <= argc ->
+       AuditRuntime.ready s m ->
+       Pieces.live_disjoint m ->
+       Heap.agrees m h0 ->
+       OsWorld.os_wi w0 m w h0 ->
+       (forall (HinvG : fancy_updates.invGS_gen fancy_updates.HasNoLc Σ)
+          (HheapG : @gen_heap.gen_heapGS Pieces.piece Heap.pval Σ
+                      Heap.piece_eq_dec Heap.piece_countable),
+        exists
+          debt : @AuditHello.D.HelloDebts fancy_updates.HasNoLc Σ HinvG
+                   HheapG w0 ge o,
+          @interface.bi_entails (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+            (@big_op.big_opM stepindex_finite.natSI
+               (interface.bi_ofeO (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+               (@interface.bi_sep (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+               (@interface.bi_emp (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+               (@monoid.monoid_ops stepindex_finite.natSI
+                  stepindex_finite.natSI
+                  (interface.bi_ofeO
+                     (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                  (@interface.bi_sep
+                     (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                  (@interface.bi_emp
+                     (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                  (@derived_laws.bi.bi_sep_monoid
+                     (bi.uPredI (iprop.iProp_solution.iResUR Σ))))
+               Pieces.piece Heap.piece_eq_dec Heap.piece_countable Heap.pval
+               (fun (l : Pieces.piece) (v : Heap.pval) =>
+                @gen_heap.pointsto Pieces.piece Heap.piece_eq_dec
+                  Heap.piece_countable Heap.pval Σ HheapG l
+                  (dfrac.DfracOwn (numbers.pos_to_Qp 1)) v)
+               h0)
+            (@interface.bi_sep (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+               (@AuditHello.D.hello_ro Σ HheapG ge o)
+               (@interface.bi_sep (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+                  (@big_op.big_opL stepindex_finite.natSI
+                     (interface.bi_ofeO
+                        (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                     (@interface.bi_sep
+                        (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                     (@interface.bi_emp
+                        (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                     (@monoid.monoid_ops stepindex_finite.natSI
+                        stepindex_finite.natSI
+                        (interface.bi_ofeO
+                           (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                        (@interface.bi_sep
+                           (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                        (@interface.bi_emp
+                           (bi.uPredI (iprop.iProp_solution.iResUR Σ)))
+                        (@derived_laws.bi.bi_sep_monoid
+                           (bi.uPredI (iprop.iProp_solution.iResUR Σ))))
+                     Values.ptr
+                     (fun (_ : nat) (q : Values.ptr) =>
+                      @AuditHello.D.str_ro Σ HheapG q)
+                     (p0 :: ps))
+                  (@interface.bi_sep
+                     (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+                     (@AuditHello.D.argv_own Σ HheapG av ar (p0 :: ps))
+                     (@interface.bi_sep
+                        (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+                        (@AuditHello.D.ncells Σ HheapG o x y z)
+                        (@interface.bi_sep
+                           (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+                           (@interface.bi_sep
+                              (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+                              (@AuditHello.AX.exit_funcs_inv Σ HheapG
+                                 (HelloGlibcDebts.ho_x o)
+                                 (@nil (Values.ptr * Values.ptr * Values.ptr))
+                                 c)
+                              (@AuditHello.Libs.exit_lock Σ HheapG o))
+                           (@interface.bi_sep
+                              (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+                              (@AuditHello.D.hello_stdio Σ HheapG w0 ge o)
+                              (@interface.bi_sep
+                                 (bi.uPredI (iprop.iProp_solution.iResUR Σ))
+                                 (@AuditHello.D.hd_priv fancy_updates.HasNoLc
+                                    Σ HinvG HheapG w0 ge o debt)
+                                 (@AuditHello.D.getopt_cells Σ HheapG o a i))))))))) ->
+       @AuditHello.LG0.L.labelled_safe OsWorld.os_world
+         OsRegistry.glibc_os_registry ge
+         (HelloLeaf.invocation HelloMain.main_fn
+            (Values.WInt argc
+             :: Values.WPtr
+                  {|
+                    Values.ptr_addr := av; Values.ptr_cap := Values.Obj av
+                  |}
+                :: @nil Values.word))
+         m s w fuel (fun _ : Semantics.outcome => True)
+@@nanofil-progress 2026-11-13T22:53:06Z running elapsed=30.0s label=functor-audit last=m s w fuel (fun _ : Semantics.outcome => True)
+@@nanofil-progress 2026-11-13T22:53:21Z running elapsed=45.0s label=functor-audit last=m s w fuel (fun _ : Semantics.outcome => True)
+@@nanofil-progress 2026-11-13T22:53:36Z WARNING budget=60s elapsed=60.0s label=functor-audit last=m s w fuel (fun _ : Semantics.outcome => True)
+@@nanofil-progress 2026-11-13T22:53:36Z running elapsed=60.0s label=functor-audit last=m s w fuel (fun _ : Semantics.outcome => True)
+@@nanofil-progress 2026-11-13T22:53:51Z running elapsed=75.0s label=functor-audit last=m s w fuel (fun _ : Semantics.outcome => True)
+@@nanofil-progress 2026-11-13T22:54:06Z running elapsed=90.0s label=functor-audit last=m s w fuel (fun _ : Semantics.outcome => True)
+Axioms:
+AuditRuntime.state : Type
+AuditRuntime.safepoint_ready :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' ->
+  AuditRuntime.ready s m -> AuditRuntime.ready s' m'
+AuditRuntime.safepoint :
+  AuditRuntime.state ->
+  Memory.mem -> AuditRuntime.state -> Memory.mem -> Prop
+AuditRuntime.ready_kept :
+  forall (s : AuditRuntime.state) (m m' : Memory.mem),
+  AuditRuntime.ready s m -> kept m m' -> AuditRuntime.ready s m'
+AuditRuntime.ready : AuditRuntime.state -> Memory.mem -> Prop
+AuditRuntime.non_moving :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' -> Memory.m_bytes m' = Memory.m_bytes m
+AuditRuntime.fresh_allocation :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (q : Memory.alloc_req) (base : Z) (s' : AuditRuntime.state),
+  AuditRuntime.ready s m ->
+  0 < Memory.req_align q ->
+  0 <= Memory.req_extent q ->
+  AuditRuntime.alloc s q = @Some (Z * AuditRuntime.state) (base, s') ->
+  Memory.fresh m q base /\ AuditRuntime.ready s' (Memory.allocated m q base)
+AuditRuntime.collector_live :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' ->
+  Memory.m_regions m' = Memory.m_regions m
+AuditRuntime.aux_round_trip :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' ->
+  forall a : Z,
+  Memory.m_aux m' a = Memory.m_aux m a \/
+  freed_in (Memory.m_regions m') (Memory.m_aux m a) /\
+  traps_as_freed (Memory.m_regions m') (Memory.m_aux m' a)
+AuditRuntime.at_safepoint : Syntax.inst -> bool
+AuditRuntime.alloc :
+  AuditRuntime.state -> Memory.alloc_req -> option (Z * AuditRuntime.state)
+AuditRuntime.address_space :
+  forall (s : AuditRuntime.state) (m : Memory.mem),
+  AuditRuntime.ready s m -> objects_fit (Memory.m_regions m)
+hi_atexit_initialized_entry
+     : Run.initial_memory HiAtexitModule.hi_module =
+       @Some (list (Term.name * Values.ptr) * Memory.mem)
+         (HiAtexitModule.hi_globals, HiAtexitInitial.hi_m0) /\
+       HiAtexitPrepare.hi_host_prepare HiAtexitInitial.hi_m0
+         InterpRuntime.start HiAtexitEntryImage.hi_entry_saved_jmp =
+       @Some (Memory.mem * Z * OsWorld.os_world)
+         (HiAtexitEntryImage.hi_prepared_memory, 4294969872,
+          HiAtexitPrepare.hi_entry_world 4294967296) /\
+       InterpRuntime.ready 4294969872 HiAtexitEntryImage.hi_prepared_memory /\
+       Pieces.live_disjoint HiAtexitEntryImage.hi_prepared_memory /\
+       Heap.agrees HiAtexitEntryImage.hi_prepared_memory
+         (@fin_maps.list_to_map Pieces.piece Heap.pval
+            (@gmap.gmap Pieces.piece Heap.piece_eq_dec Heap.piece_countable
+               Heap.pval)
+            (@fin_maps.map_insert Pieces.piece Heap.pval
+               (@gmap.gmap Pieces.piece Heap.piece_eq_dec
+                  Heap.piece_countable Heap.pval)
+               (@gmap.gmap_partial_alter Pieces.piece Heap.piece_eq_dec
+                  Heap.piece_countable Heap.pval))
+            (@gmap.gmap_empty Pieces.piece Heap.piece_eq_dec
+               Heap.piece_countable Heap.pval)
+            HiAtexitEntryImage.hi_entry_ps) /\
+       OsWorld.os_wi (HiAtexitPrepare.hi_entry_world 4294967296)
+         HiAtexitEntryImage.hi_prepared_memory
+         (HiAtexitPrepare.hi_entry_world 4294967296)
+         (@fin_maps.list_to_map Pieces.piece Heap.pval
+            (@gmap.gmap Pieces.piece Heap.piece_eq_dec Heap.piece_countable
+               Heap.pval)
+            (@fin_maps.map_insert Pieces.piece Heap.pval
+               (@gmap.gmap Pieces.piece Heap.piece_eq_dec
+                  Heap.piece_countable Heap.pval)
+               (@gmap.gmap_partial_alter Pieces.piece Heap.piece_eq_dec
+                  Heap.piece_countable Heap.pval))
+            (@gmap.gmap_empty Pieces.piece Heap.piece_eq_dec
+               Heap.piece_countable Heap.pval)
+            HiAtexitEntryImage.hi_entry_ps)
+hi_atexit_never_panics
+     : forall fuel : Z,
+       @HiAtexitBase.HLG.L.labelled_safe OsWorld.os_world
+         OsRegistry.glibc_os_registry HiAtexitGe.hge
+         HiAtexitMain.hi_main_frame HiAtexitEntryImage.hi_prepared_memory
+         4294969872 (HiAtexitPrepare.hi_entry_world 4294967296) fuel
+         (fun _ : Semantics.outcome => True)
+Closed under the global context
+@@nanofil-progress 2026-11-13T22:54:21Z running elapsed=105.0s label=functor-audit last=Closed under the global context
+@@nanofil-progress 2026-11-13T22:54:36Z running elapsed=120.0s label=functor-audit last=Closed under the global context
+@@nanofil-progress 2026-11-13T22:54:51Z running elapsed=135.1s label=functor-audit last=Closed under the global context
+@@nanofil-progress 2026-11-13T22:55:06Z running elapsed=150.1s label=functor-audit last=Closed under the global context
+@@nanofil-progress 2026-11-13T22:55:21Z running elapsed=165.1s label=functor-audit last=Closed under the global context
+@@nanofil-progress 2026-11-13T22:55:36Z running elapsed=180.1s label=functor-audit last=Closed under the global context
+Closed under the global context
+@@nanofil-progress 2026-11-13T22:55:42Z done exit=0 cpu=186.584s elapsed=186.7s label=functor-audit last=Closed under the global context

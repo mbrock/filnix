@@ -1,0 +1,208 @@
+Module Type
+ Runtime =
+ Sig
+   Parameter state : Type.
+   Parameter start : Nanofil.core.Runtime.Runtime.state.
+   Parameter ready :
+     Nanofil.core.Runtime.Runtime.state -> Memory.mem -> Prop.
+   Parameter alloc :
+     Nanofil.core.Runtime.Runtime.state ->
+     Memory.alloc_req -> option (Z * Nanofil.core.Runtime.Runtime.state).
+   Parameter fresh_allocation :
+     forall (s : Nanofil.core.Runtime.Runtime.state)
+       (m : Memory.mem) (q : Memory.alloc_req) (base : Z)
+       (s' : Nanofil.core.Runtime.Runtime.state),
+     Nanofil.core.Runtime.Runtime.ready s m ->
+     0 < Memory.req_align q ->
+     0 <= Memory.req_extent q ->
+     Nanofil.core.Runtime.Runtime.alloc s q = Some (base, s') ->
+     Memory.fresh m q base /\
+     Nanofil.core.Runtime.Runtime.ready s' (Memory.allocated m q base).
+   Parameter address_space :
+     forall (s : Nanofil.core.Runtime.Runtime.state) (m : Memory.mem),
+     Nanofil.core.Runtime.Runtime.ready s m ->
+     objects_fit (Memory.m_regions m).
+   Parameter freed_bounds :
+     forall (s : Nanofil.core.Runtime.Runtime.state) (m : Memory.mem),
+     Nanofil.core.Runtime.Runtime.ready s m ->
+     freed_empty (Memory.m_regions m).
+   Parameter ready_kept :
+     forall (s : Nanofil.core.Runtime.Runtime.state) (m m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.ready s m ->
+     kept m m' -> Nanofil.core.Runtime.Runtime.ready s m'.
+   Parameter free :
+     Values.word -> Memory.mem -> option (Memory.res unit * Memory.mem).
+   Parameter free_lifetime :
+     forall (x : Values.word) (m : Memory.mem) (r : Memory.res unit)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.free x m = Some (r, m') ->
+     lifetime_step m m'.
+   Parameter retention :
+     forall (x : Values.word) (m : Memory.mem) (r : Memory.res unit)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.free x m = Some (r, m') ->
+     Memory.m_bytes m' = Memory.m_bytes m /\ Memory.m_aux m' = Memory.m_aux m.
+   Parameter free_keeps_ids :
+     forall (x : Values.word) (m : Memory.mem) (r : Memory.res unit)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.free x m = Some (r, m') ->
+     forall b : Z,
+     Memory.object_region b (Memory.m_regions m) <> None ->
+     Memory.object_region b (Memory.m_regions m') <> None.
+   Parameter free_checked :
+     forall (x : Values.word) (m : Memory.mem) (w : Memory.reason)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.free x m <> Some (Memory.RUnchecked w, m').
+   Parameter free_succeeds : frees_heap Nanofil.core.Runtime.Runtime.free.
+   Parameter at_safepoint : Syntax.inst -> bool.
+   Parameter safepoints :
+     forall i : Syntax.inst,
+     Nanofil.core.Runtime.Runtime.at_safepoint i = true ->
+     Syntax.evidence_preserving i = false.
+   Parameter safepoint :
+     Nanofil.core.Runtime.Runtime.state ->
+     Memory.mem -> Nanofil.core.Runtime.Runtime.state -> Memory.mem -> Prop.
+   Parameter collector_live :
+     forall (s : Nanofil.core.Runtime.Runtime.state)
+       (m : Memory.mem) (s' : Nanofil.core.Runtime.Runtime.state)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.safepoint s m s' m' ->
+     Memory.m_regions m' = Memory.m_regions m.
+   Parameter safepoint_lifetime :
+     forall (s : Nanofil.core.Runtime.Runtime.state)
+       (m : Memory.mem) (s' : Nanofil.core.Runtime.Runtime.state)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.safepoint s m s' m' -> lifetime_step m m'.
+   Parameter non_moving :
+     forall (s : Nanofil.core.Runtime.Runtime.state)
+       (m : Memory.mem) (s' : Nanofil.core.Runtime.Runtime.state)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.safepoint s m s' m' ->
+     Memory.m_bytes m' = Memory.m_bytes m.
+   Parameter aux_round_trip :
+     forall (s : Nanofil.core.Runtime.Runtime.state)
+       (m : Memory.mem) (s' : Nanofil.core.Runtime.Runtime.state)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.safepoint s m s' m' ->
+     forall a : Z,
+     Memory.m_aux m' a = Memory.m_aux m a \/
+     freed_in (Memory.m_regions m') (Memory.m_aux m a) /\
+     traps_as_freed (Memory.m_regions m') (Memory.m_aux m' a).
+   Parameter rooting :
+     forall (s : Nanofil.core.Runtime.Runtime.state)
+       (m : Memory.mem) (s' : Nanofil.core.Runtime.Runtime.state)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.safepoint s m s' m' ->
+     forall b : Z,
+     Memory.object_region b (Memory.m_regions m) <> None ->
+     Memory.object_region b (Memory.m_regions m') <> None.
+   Parameter safepoint_ready :
+     forall (s : Nanofil.core.Runtime.Runtime.state)
+       (m : Memory.mem) (s' : Nanofil.core.Runtime.Runtime.state)
+       (m' : Memory.mem),
+     Nanofil.core.Runtime.Runtime.safepoint s m s' m' ->
+     Nanofil.core.Runtime.Runtime.ready s m ->
+     Nanofil.core.Runtime.Runtime.ready s' m'.
+ End
+Record RuntimeClass : Type := Build_RuntimeClass
+  { state : Type;
+    start : state;
+    ready : state -> Memory.mem -> Prop;
+    alloc : state -> Memory.alloc_req -> option (Z * state);
+    fresh_allocation : forall (s : state) (m : Memory.mem)
+                         (q : Memory.alloc_req) (base : Z)
+                         (s' : state),
+                       ready s m ->
+                       0 < Memory.req_align q ->
+                       0 <= Memory.req_extent q ->
+                       alloc s q = Some (base, s') ->
+                       Memory.fresh m q base /\
+                       ready s' (Memory.allocated m q base);
+    address_space : forall (s : state) (m : Memory.mem),
+                    ready s m -> objects_fit (Memory.m_regions m);
+    freed_bounds : forall (s : state) (m : Memory.mem),
+                   ready s m -> freed_empty (Memory.m_regions m);
+    ready_kept : forall (s : state) (m m' : Memory.mem),
+                 ready s m -> kept m m' -> ready s m';
+    free : Values.word -> Memory.mem -> option (Memory.res unit * Memory.mem);
+    free_lifetime : forall (x : Values.word) (m : Memory.mem)
+                      (r : Memory.res unit) (m' : Memory.mem),
+                    free x m = Some (r, m') -> lifetime_step m m';
+    retention : forall (x : Values.word) (m : Memory.mem)
+                  (r : Memory.res unit) (m' : Memory.mem),
+                free x m = Some (r, m') ->
+                Memory.m_bytes m' = Memory.m_bytes m /\
+                Memory.m_aux m' = Memory.m_aux m;
+    free_keeps_ids : forall (x : Values.word) (m : Memory.mem)
+                       (r : Memory.res unit) (m' : Memory.mem),
+                     free x m = Some (r, m') ->
+                     forall b : Z,
+                     Memory.object_region b (Memory.m_regions m) <> None ->
+                     Memory.object_region b (Memory.m_regions m') <> None;
+    free_checked : forall (x : Values.word) (m : Memory.mem)
+                     (w : Memory.reason) (m' : Memory.mem),
+                   free x m <> Some (Memory.RUnchecked w, m');
+    free_succeeds : frees_heap free;
+    at_safepoint : Syntax.inst -> bool;
+    safepoints : forall i : Syntax.inst,
+                 at_safepoint i = true ->
+                 Syntax.evidence_preserving i = false;
+    safepoint : state -> Memory.mem -> state -> Memory.mem -> Prop;
+    collector_live : forall (s : state) (m : Memory.mem)
+                       (s' : state) (m' : Memory.mem),
+                     safepoint s m s' m' ->
+                     Memory.m_regions m' = Memory.m_regions m;
+    non_moving : forall (s : state) (m : Memory.mem)
+                   (s' : state) (m' : Memory.mem),
+                 safepoint s m s' m' -> Memory.m_bytes m' = Memory.m_bytes m;
+    aux_round_trip : forall (s : state) (m : Memory.mem)
+                       (s' : state) (m' : Memory.mem),
+                     safepoint s m s' m' ->
+                     forall a : Z,
+                     Memory.m_aux m' a = Memory.m_aux m a \/
+                     freed_in (Memory.m_regions m') (Memory.m_aux m a) /\
+                     traps_as_freed (Memory.m_regions m') (Memory.m_aux m' a);
+    safepoint_ready : forall (s : state) (m : Memory.mem)
+                        (s' : state) (m' : Memory.mem),
+                      safepoint s m s' m' -> ready s m -> ready s' m' }.
+
+Arguments R.Build_RuntimeClass state%_type_scope start
+  (ready alloc fresh_allocation address_space freed_bounds ready_kept free
+   free_lifetime retention free_keeps_ids free_checked)%_function_scope
+  free_succeeds
+  (at_safepoint safepoints safepoint collector_live non_moving aux_round_trip
+   safepoint_ready)%_function_scope
+Arguments R.state {RuntimeClass}
+Arguments R.start {RuntimeClass}
+Arguments R.ready {RuntimeClass} _ _
+Arguments R.alloc {RuntimeClass} _ _
+Arguments R.fresh_allocation {RuntimeClass} s m q base%_Z_scope s' _ _ _ _
+Arguments R.address_space {RuntimeClass} s m _ b reg _
+Arguments R.freed_bounds {RuntimeClass} s m _ b reg _ _
+Arguments R.ready_kept {RuntimeClass} s m m' _ _
+Arguments R.free {RuntimeClass} _ _
+Arguments R.free_lifetime {RuntimeClass} x m r m' _ b reg' _
+Arguments R.retention {RuntimeClass} x m r m' _
+Arguments R.free_keeps_ids {RuntimeClass} x m r m' _ b%_Z_scope _ _
+Arguments R.free_checked {RuntimeClass} x m w m' _
+Arguments R.free_succeeds {RuntimeClass}
+Arguments R.at_safepoint {RuntimeClass} _
+Arguments R.safepoints {RuntimeClass} i _
+Arguments R.safepoint {RuntimeClass} _ _ _ _
+Arguments R.collector_live {RuntimeClass} s m s' m' _
+Arguments R.non_moving {RuntimeClass} s m s' m' _
+Arguments R.aux_round_trip {RuntimeClass} s m s' m' _ a%_Z_scope
+Arguments R.safepoint_ready {RuntimeClass} s m s' m' _ _
+R.safepoint_lifetime
+     : forall (s : R.state) (m : Memory.mem) (s' : R.state) (m' : Memory.mem),
+       R.safepoint s m s' m' -> lifetime_step m m'
+where
+?rt : [ |- R.RuntimeClass]
+R.rooting
+     : forall (s : R.state) (m : Memory.mem) (s' : R.state) (m' : Memory.mem),
+       R.safepoint s m s' m' ->
+       forall b : Z,
+       Memory.object_region b (Memory.m_regions m) <> None ->
+       Memory.object_region b (Memory.m_regions m') <> None
+where
+?rt : [ |- R.RuntimeClass]

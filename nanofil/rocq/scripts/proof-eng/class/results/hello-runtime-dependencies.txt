@@ -1,0 +1,12 @@
+R.state :
+R.safepoint_ready :
+R.safepoint :
+R.ready_kept :
+R.ready :
+R.non_moving :
+R.fresh_allocation :
+R.collector_live :
+R.aux_round_trip :
+R.at_safepoint :
+R.alloc :
+R.address_space :

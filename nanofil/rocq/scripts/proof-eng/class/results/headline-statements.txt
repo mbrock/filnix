@@ -1,0 +1,67 @@
+
+Functor: hello/HelloGlibcJoin.v
+Module HelloGlibcJoin (R : Runtime).
+Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    w0 ge o m s w h0 argc av ar p0 ps x y z a i c fuel :
+  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
+  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
+  R.ready s m -> live_disjoint m -> agrees m h0 -> os_wi w0 m w h0 ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+    exists debt : D.HelloDebts w0 ge o,
+    ([∗ map] l ↦ v ∈ h0, pointsto l (DfracOwn 1) v) ⊢
+      D.hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, D.str_ro q) ∗ D.argv_own av ar (p0 :: ps) ∗
+      D.ncells o x y z ∗ (AX.exit_funcs_inv (ho_x o) [] c ∗ Libs.exit_lock o) ∗
+      D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.getopt_cells o a i) ->
+  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
+    m s w fuel (fun _ => True).
+
+
+Functor: hi_atexit/HiAtexitSafe.v
+Theorem hi_atexit_initialized_entry :
+  initial_memory hi_module = Some (hi_globals, hi_m0) /\
+  hi_host_prepare hi_m0 InterpRuntime.start hi_entry_saved_jmp =
+    Some (hi_prepared_memory, 4294969872, hi_entry_world 4294967296) /\
+  InterpRuntime.ready 4294969872 hi_prepared_memory /\
+  live_disjoint hi_prepared_memory /\
+  agrees hi_prepared_memory (list_to_map hi_entry_ps) /\
+  os_wi (hi_entry_world 4294967296) hi_prepared_memory (hi_entry_world 4294967296)
+    (list_to_map hi_entry_ps).
+
+Theorem hi_atexit_never_panics fuel :
+  labelled_safe glibc_os_registry hge hi_main_frame hi_prepared_memory 4294969872
+    (hi_entry_world 4294967296) fuel (fun _ => True).
+
+
+Class: hello/HelloGlibcJoin.v
+Context `{rt : R.RuntimeClass}.
+Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    w0 ge o m s w h0 argc av ar p0 ps x y z a i c fuel :
+  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
+  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
+  R.ready s m -> live_disjoint m -> agrees m h0 -> os_wi w0 m w h0 ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+    exists debt : HelloGlibcDebts.HelloDebts w0 ge o,
+    ([∗ map] l ↦ v ∈ h0, pointsto l (DfracOwn 1) v) ⊢
+      HelloGlibcDebts.hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, HelloGlibcDebts.str_ro q) ∗ HelloGlibcDebts.argv_own av ar (p0 :: ps) ∗
+      HelloGlibcDebts.ncells o x y z ∗ (AX.exit_funcs_inv (ho_x o) [] c ∗ Libs.exit_lock o) ∗
+      HelloGlibcDebts.hello_stdio w0 ge o ∗ HelloGlibcDebts.hd_priv w0 ge o debt ∗ HelloGlibcDebts.getopt_cells o a i) ->
+  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
+    m s w fuel (fun _ => True).
+
+
+
+Class: hi_atexit/HiAtexitSafe.v
+Local Instance concrete_runtime : R.RuntimeClass := interp_runtime.
+Theorem hi_atexit_initialized_entry :
+  initial_memory hi_module = Some (hi_globals, hi_m0) /\
+  hi_host_prepare hi_m0 InterpRuntime.start hi_entry_saved_jmp =
+    Some (hi_prepared_memory, 4294969872, hi_entry_world 4294967296) /\
+  InterpRuntime.ready 4294969872 hi_prepared_memory /\
+  live_disjoint hi_prepared_memory /\
+  agrees hi_prepared_memory (list_to_map hi_entry_ps) /\
+  os_wi (hi_entry_world 4294967296) hi_prepared_memory (hi_entry_world 4294967296)
+    (list_to_map hi_entry_ps).
+
+Theorem hi_atexit_never_panics fuel :
+  labelled_safe (rt := interp_runtime) glibc_os_registry hge hi_main_frame hi_prepared_memory 4294969872
+    (hi_entry_world 4294967296) fuel (fun _ => True).

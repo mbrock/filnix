@@ -1,0 +1,10 @@
+EM.Running: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+EM.Stopped: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+EM.admissible: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+EM.step: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+EM.run: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+L.mkLstate: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+L.ls_mem: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+L.ls_rt: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+L.ls_fuel: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}
+L.ls_world: PASS, original argument order, names, scopes and implicit status match after removing extra {rt}

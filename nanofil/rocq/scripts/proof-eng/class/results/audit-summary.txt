@@ -1,0 +1,8 @@
+Functor assumptions: 12 ['address_space', 'alloc', 'at_safepoint', 'aux_round_trip', 'collector_live', 'fresh_allocation', 'non_moving', 'ready', 'ready_kept', 'safepoint', 'safepoint_ready', 'state']
+Class projection dependencies: 12 ['address_space', 'alloc', 'at_safepoint', 'aux_round_trip', 'collector_live', 'fresh_allocation', 'non_moving', 'ready', 'ready_kept', 'safepoint', 'safepoint_ready', 'state']
+Exact equality of functor assumptions and class projections: PASS
+Class abstract record assumptions: 21 ['address_space', 'alloc', 'at_safepoint', 'aux_round_trip', 'collector_live', 'free', 'free_checked', 'free_keeps_ids', 'free_lifetime', 'free_succeeds', 'freed_bounds', 'fresh_allocation', 'non_moving', 'ready', 'ready_kept', 'retention', 'safepoint', 'safepoint_ready', 'safepoints', 'start', 'state']
+Abstract flat assumptions: 12 ['address_space', 'alloc', 'at_safepoint', 'aux_round_trip', 'collector_live', 'fresh_allocation', 'non_moving', 'ready', 'ready_kept', 'safepoint', 'safepoint_ready', 'state']
+Class Closed outputs: 5
+Functor Closed outputs: 2
+No interpreter constants in general dependency query: True

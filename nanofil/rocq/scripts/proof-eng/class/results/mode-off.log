@@ -1,0 +1,34 @@
+@@nanofil-progress 2026-11-13T22:54:05Z start elapsed=0.0s label=class-without-mode last=no output yet
+ROCQ DEP VFILES
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/theories/logic/Logic.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/Fix.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/theories/logic/StringLogic.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/GlibcLogic.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/theories/logic/MemLogic.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/StrlenLogic.v
+@@nanofil-progress 2026-11-13T22:54:20Z running elapsed=15.0s label=class-without-mode last=ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/StrlenLogic.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/FileInv.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsBlocks.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsWorld.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioLogic.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsClose.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsExit.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsFstat.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsIoctl.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsLseek.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsThread.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsWrite.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsWritev.v
+@@nanofil-progress 2026-11-13T22:54:35Z running elapsed=30.0s label=class-without-mode last=ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsWritev.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/zsys/OsRegistry.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/SysWrappers.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioSetb.v
+ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.v
+@@nanofil-progress 2026-11-13T22:54:50Z running elapsed=45.0s label=class-without-mode last=ROCQ compile /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.v
+File "/home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.v", line 269, characters 2-159:
+Error: Tactic failure: iApply: cannot apply
+(WP LG.L.ERun ?fr {{ v, ?Goal v }})%I.
+
+make: *** [ClassNoModeMakefile:814: /home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.vo] Error 1
+make: *** [/home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.vo] Deleting file '/home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.glob'
+@@nanofil-progress 2026-11-13T22:55:01Z done exit=2 cpu=105.584s elapsed=55.9s label=class-without-mode last=make: *** [/home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.vo] Deleting file '/home/user/workspace/repo/.amp/in/orb-backup/class/no-mode/glibc/libio/LibioDoAllocBase.glob'

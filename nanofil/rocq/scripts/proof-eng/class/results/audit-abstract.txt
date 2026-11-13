@@ -1,0 +1,96 @@
+hello_never_panics
+     : forall Σ : iprop.gFunctors,
+       fancy_updates.invGpreS Σ ->
+       gen_heap.gen_heapGpreS Pieces.piece Heap.pval Σ ->
+       forall (w0 : OsWorld.os_world) (ge : Semantics.genv)
+         (o : HelloGlibcDebts.hello_objs) (m : Memory.mem)
+         (s : Fix.R.state) (w : OsWorld.os_world)
+         (h0 : gmap.gmap Pieces.piece Heap.pval) (argc av : Z)
+         (ar : Memory.region) (p0 : Values.ptr) (ps : list Values.ptr)
+         (x y z a : Values.ptr) (i c fuel : Z),
+       HelloGlibcLibsT.hello_link ge o ->
+       HelloGlibcDebts.hello_layout ge o ->
+       HelloGlibcLibsT.hello_os_layout w0 o ->
+       argc = Z.of_nat (length (p0 :: ps)) ->
+       0 <= i <= argc ->
+       Fix.R.ready s m ->
+       Pieces.live_disjoint m ->
+       Heap.agrees m h0 ->
+       OsWorld.os_wi w0 m w h0 ->
+       (forall (HinvG : fancy_updates.invGS_gen fancy_updates.HasNoLc Σ)
+          (HheapG : gen_heap.gen_heapGS Pieces.piece Heap.pval Σ),
+        exists debt : HelloGlibcDebts.HelloDebts w0 ge o,
+          interface.bi_entails
+            (big_op.big_opM interface.bi_sep
+               (fun (l : Pieces.piece) (v : Heap.pval) =>
+                gen_heap.pointsto l (dfrac.DfracOwn (numbers.pos_to_Qp 1)) v)
+               h0)
+            (interface.bi_sep (HelloGlibcDebts.hello_ro ge o)
+               (interface.bi_sep
+                  (big_op.big_opL interface.bi_sep
+                     (fun (_ : nat) (q : Values.ptr) =>
+                      HelloGlibcDebts.str_ro q)
+                     (p0 :: ps))
+                  (interface.bi_sep
+                     (HelloGlibcDebts.argv_own av ar (p0 :: ps))
+                     (interface.bi_sep (HelloGlibcDebts.ncells o x y z)
+                        (interface.bi_sep
+                           (interface.bi_sep
+                              (AX.exit_funcs_inv (HelloGlibcDebts.ho_x o) nil
+                                 c)
+                              (Libs.exit_lock o))
+                           (interface.bi_sep
+                              (HelloGlibcDebts.hello_stdio w0 ge o)
+                              (interface.bi_sep
+                                 (HelloGlibcDebts.hd_priv w0 ge o debt)
+                                 (HelloGlibcDebts.getopt_cells o a i))))))))) ->
+       Fix.LG0.L.labelled_safe OsRegistry.glibc_os_registry ge
+         (HelloLeaf.invocation HelloMain.main_fn
+            (Values.WInt argc
+             :: Values.WPtr
+                  {|
+                    Values.ptr_addr := av; Values.ptr_cap := Values.Obj av
+                  |}
+                :: nil))
+         m s w fuel (fun _ : Semantics.outcome => True)
+Axioms:
+Fix.R.state : Type
+Fix.R.safepoint_ready :
+  forall (s : Fix.R.state) (m : Memory.mem) (s' : Fix.R.state)
+    (m' : Memory.mem),
+  Fix.R.safepoint s m s' m' -> Fix.R.ready s m -> Fix.R.ready s' m'
+Fix.R.safepoint :
+  Fix.R.state -> Memory.mem -> Fix.R.state -> Memory.mem -> Prop
+Fix.R.ready_kept :
+  forall (s : Fix.R.state) (m m' : Memory.mem),
+  Fix.R.ready s m -> Runtime.kept m m' -> Fix.R.ready s m'
+Fix.R.ready : Fix.R.state -> Memory.mem -> Prop
+Fix.R.non_moving :
+  forall (s : Fix.R.state) (m : Memory.mem) (s' : Fix.R.state)
+    (m' : Memory.mem),
+  Fix.R.safepoint s m s' m' -> Memory.m_bytes m' = Memory.m_bytes m
+Fix.R.fresh_allocation :
+  forall (s : Fix.R.state) (m : Memory.mem) (q : Memory.alloc_req)
+    (base : Z) (s' : Fix.R.state),
+  Fix.R.ready s m ->
+  0 < Memory.req_align q ->
+  0 <= Memory.req_extent q ->
+  Fix.R.alloc s q = Some (base, s') ->
+  Memory.fresh m q base /\ Fix.R.ready s' (Memory.allocated m q base)
+Fix.R.collector_live :
+  forall (s : Fix.R.state) (m : Memory.mem) (s' : Fix.R.state)
+    (m' : Memory.mem),
+  Fix.R.safepoint s m s' m' -> Memory.m_regions m' = Memory.m_regions m
+Fix.R.aux_round_trip :
+  forall (s : Fix.R.state) (m : Memory.mem) (s' : Fix.R.state)
+    (m' : Memory.mem),
+  Fix.R.safepoint s m s' m' ->
+  forall a : Z,
+  Memory.m_aux m' a = Memory.m_aux m a \/
+  Runtime.freed_in (Memory.m_regions m') (Memory.m_aux m a) /\
+  Runtime.traps_as_freed (Memory.m_regions m') (Memory.m_aux m' a)
+Fix.R.at_safepoint : Syntax.inst -> bool
+Fix.R.alloc : Fix.R.state -> Memory.alloc_req -> option (Z * Fix.R.state)
+Fix.R.address_space :
+  forall (s : Fix.R.state) (m : Memory.mem),
+  Fix.R.ready s m -> Runtime.objects_fit (Memory.m_regions m)

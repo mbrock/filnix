@@ -1,0 +1,28 @@
+FLAGGED nanofil/rocq/scripts/proof-eng/class/README.md (readability 1.66/2.00, 9/42 passages flagged)
+  [FLAG] line 23 (The runtime remains arbitrary, prose): read=1.79/2.00 [inside_out_jargon=0.66] (50w, 4s, 0 parens, 0 refs)
+         "The converter replaces the runtime module argument with an implicit argument on each theorem, so each proof is compiled once. Theory namespaces keep their names. Aliases and nes..."
+         -> inside-out jargon (0.66): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 29 (The runtime remains arbitrary, prose): read=1.82/2.00 [inside_out_jargon=0.81] (39w, 3s, 0 parens, 0 refs)
+         "The glibc converter is a copy of stage 10, not an edit to the shared pipeline. It rewrites dependency paths and closes and reopens the runtime section around exported tactics. S..."
+         -> inside-out jargon (0.81): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 52 (The headline audits pass, prose): read=1.52/2.00 [inside_out_jargon=0.74] (56w, 4s, 0 parens, 2 refs)
+         "The conversion does not weaken the initial resources a caller must supply. The resource hypothesis still quantifies over every ghost-heap instance and requires `exists debt : D...."
+         -> inside-out jargon (0.74): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 62 (The headline audits pass, prose): read=1.73/2.00 [inside_out_jargon=0.81] (43w, 4s, 0 parens, 3 refs)
+         "The assumption listing becomes less selective, but a dependency query recovers the fields the proof uses. `Print Assumptions` reports every field of the supplied record. `Depend..."
+         -> inside-out jargon (0.81): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 100 (Sections have observable costs, prose): read=1.23/2.00 [verbless_fragment=0.55 inside_out_jargon=0.83] (50w, 4s, 0 parens, 5 refs)
+         "Iris language canonical structures compile, with redundant-projection warnings. Public instances need re-registration after section close: `closed_irisGS`, `no_world_stable`, an..."
+         -> inside-out jargon (0.83): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 106 (Sections have observable costs, prose): read=1.62/2.00 [inside_out_jargon=0.77] (104w, 7s, 0 parens, 9 refs)
+         "`SafepointStable` needs a mode that delays search until the world interpretation is known. The class version has an additional runtime argument, so its mode is `+ + !`, not the ..."
+         -> inside-out jargon (0.77): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 125 (Sections have observable costs, prose): read=1.62/2.00 [inside_out_jargon=0.66] (29w, 2s, 0 parens, 3 refs)
+         "Concrete allocator numerals require explicit runtime specialization before Rocq can check them against `R.state`. The converter supplies it for concrete safety calls and for `In..."
+         -> inside-out jargon (0.66): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 219 (The remaining theory files are not certified by this spike, prose): read=1.22/2.00 [verbless_fragment=0.35 inside_out_jargon=0.71] (101w, 7s, 0 parens, 3 refs)
+         "The glibc generator changes 365 of 376 original files and adds two files. Only the 269-file measured closure union is certified here, not the whole 378-file generated tree. The ..."
+         -> inside-out jargon (0.71): state what problem this solves in plain terms before naming internal lemmas
+  [FLAG] line 261 (Prefer two flat trees for this cutover, prose): read=1.31/2.00 [inside_out_jargon=0.72] (62w, 4s, 0 parens, 0 refs)
+         "The fallback retains the selective 12-entry assumption audit unchanged and does not require a theory migration. Its cost is duplicate compilation and storage of the shared closu..."
+         -> inside-out jargon (0.72): state what problem this solves in plain terms before naming internal lemmas

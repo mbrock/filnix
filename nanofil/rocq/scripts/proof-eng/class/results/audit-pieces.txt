@@ -1,0 +1,108 @@
+@pieces_never_panics
+     : forall (rt : R.RuntimeClass) (Σ : iprop.gFunctors),
+       fancy_updates.invGpreS Σ ->
+       gen_heap.gen_heapGpreS Pieces.piece Heap.pval Σ ->
+       forall (md : Syntax.module) (entry : Term.name)
+         (input : list Values.word -> Prop)
+         (globals : list (Term.name * Values.ptr))
+         (m : Memory.mem) (f : Syntax.func)
+         (ps : list (Pieces.piece * Heap.pval)),
+       Run.initial_memory md = Some (globals, m) ->
+       Semantics.find_fn (LG.P.program_genv md globals) entry =
+       Some (Semantics.Defined f) ->
+       Pieces.live_disjoint m ->
+       Heap.all_agree m ps ->
+       base.NoDup (base.fmap fst ps) ->
+       (forall xs : list Values.word,
+        input xs ->
+        exists fr : Semantics.frame,
+          Semantics.call_frame f xs = Some fr /\
+          (forall (HinvG : fancy_updates.invGS_gen fancy_updates.HasNoLc Σ)
+             (HheapG : gen_heap.gen_heapGS Pieces.piece Heap.pval Σ),
+           interface.bi_entails (Heap.pts ps)
+             (weakestpre.wp weakestpre.NotStuck base.top
+                (LG.L.ERun fr)
+                (fun
+                   _ : language.val
+                         (LG.L.nanofil_lang LG.L.no_contracts
+                            (LG.P.program_genv md globals)) =>
+                 interface.bi_pure True)))) ->
+       LG.P.never_panics md entry input
+Closed under the global context
+Closed under the global context
+Axioms:
+AuditRuntime.state : Type
+AuditRuntime.start : AuditRuntime.state
+AuditRuntime.safepoints :
+  forall i : Syntax.inst,
+  AuditRuntime.at_safepoint i = true -> Syntax.evidence_preserving i = false
+AuditRuntime.safepoint_ready :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' ->
+  AuditRuntime.ready s m -> AuditRuntime.ready s' m'
+AuditRuntime.safepoint :
+  AuditRuntime.state ->
+  Memory.mem -> AuditRuntime.state -> Memory.mem -> Prop
+AuditRuntime.retention :
+  forall (x : Values.word) (m : Memory.mem) (r : Memory.res unit)
+    (m' : Memory.mem),
+  AuditRuntime.free x m = Some (r, m') ->
+  Memory.m_bytes m' = Memory.m_bytes m /\ Memory.m_aux m' = Memory.m_aux m
+AuditRuntime.ready_kept :
+  forall (s : AuditRuntime.state) (m m' : Memory.mem),
+  AuditRuntime.ready s m -> kept m m' -> AuditRuntime.ready s m'
+AuditRuntime.ready : AuditRuntime.state -> Memory.mem -> Prop
+AuditRuntime.non_moving :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' -> Memory.m_bytes m' = Memory.m_bytes m
+AuditRuntime.fresh_allocation :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (q : Memory.alloc_req) (base : BinNums.Z) (s' : AuditRuntime.state),
+  AuditRuntime.ready s m ->
+  BinInt.Z.lt BinNums.Z0 (Memory.req_align q) ->
+  BinInt.Z.le BinNums.Z0 (Memory.req_extent q) ->
+  AuditRuntime.alloc s q = Some (base, s') ->
+  Memory.fresh m q base /\ AuditRuntime.ready s' (Memory.allocated m q base)
+AuditRuntime.freed_bounds :
+  forall (s : AuditRuntime.state) (m : Memory.mem),
+  AuditRuntime.ready s m -> freed_empty (Memory.m_regions m)
+AuditRuntime.free_succeeds : frees_heap AuditRuntime.free
+AuditRuntime.free_lifetime :
+  forall (x : Values.word) (m : Memory.mem) (r : Memory.res unit)
+    (m' : Memory.mem),
+  AuditRuntime.free x m = Some (r, m') -> lifetime_step m m'
+AuditRuntime.free_keeps_ids :
+  forall (x : Values.word) (m : Memory.mem) (r : Memory.res unit)
+    (m' : Memory.mem),
+  AuditRuntime.free x m = Some (r, m') ->
+  forall b : BinNums.Z,
+  Memory.object_region b (Memory.m_regions m) <> None ->
+  Memory.object_region b (Memory.m_regions m') <> None
+AuditRuntime.free_checked :
+  forall (x : Values.word) (m : Memory.mem) (w : Memory.reason)
+    (m' : Memory.mem),
+  AuditRuntime.free x m <> Some (Memory.RUnchecked w, m')
+AuditRuntime.free :
+  Values.word -> Memory.mem -> option (Memory.res unit * Memory.mem)
+AuditRuntime.collector_live :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' ->
+  Memory.m_regions m' = Memory.m_regions m
+AuditRuntime.aux_round_trip :
+  forall (s : AuditRuntime.state) (m : Memory.mem)
+    (s' : AuditRuntime.state) (m' : Memory.mem),
+  AuditRuntime.safepoint s m s' m' ->
+  forall a : BinNums.Z,
+  Memory.m_aux m' a = Memory.m_aux m a \/
+  freed_in (Memory.m_regions m') (Memory.m_aux m a) /\
+  traps_as_freed (Memory.m_regions m') (Memory.m_aux m' a)
+AuditRuntime.at_safepoint : Syntax.inst -> bool
+AuditRuntime.alloc :
+  AuditRuntime.state ->
+  Memory.alloc_req -> option (BinNums.Z * AuditRuntime.state)
+AuditRuntime.address_space :
+  forall (s : AuditRuntime.state) (m : Memory.mem),
+  AuditRuntime.ready s m -> objects_fit (Memory.m_regions m)
