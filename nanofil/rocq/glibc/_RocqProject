@@ -316,3 +316,11 @@ getopt/GetoptScan.v
 getopt/GetoptCursor.v
 getopt/GetoptLongOnly.v
 getopt/GetoptDispatch.v
+getopt/GetoptShort.v
+getopt/GetoptOptArg.v
+getopt/GetoptShortOpt.v
+getopt/GetoptDiag.v
+getopt/GetoptReqTail.v
+getopt/GetoptReqNext.v
+getopt/GetoptReqArg.v
+getopt/GetoptShortRet.v
