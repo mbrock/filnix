@@ -1,33 +1,20 @@
-(** rocq/theories/programs/slot.c through the program logic of Logic.v: a callee
-    that owns memory across calls, in the shape of gnulib's quotearg.
+(** This module proves that the C program `slot.c` never panics and always
+    returns an integer. The function `c: fill` maintains a static heap
+    buffer pointer `c: slot` and its capacity `c: slot_size`, growing the
+    buffer with `c: free` and `c: malloc` whenever a request does not fit,
+    then filling it with `c: memset`. The caller `c: use` calls `c: fill`
+    three times and reads a byte from the returned buffer after each call.
 
-    `fill` keeps one heap buffer in its static `slot`, with its size in
-    `slot_size`. When a request does not fit it frees the buffer and
-    mallocs a bigger one; then it memsets the request, terminates it,
-    and returns the buffer. The caller may read the buffer until its
-    next call of `fill`, which reuses it or frees it.
+    Because `c: fill` owns the buffer across calls, the caller cannot hold
+    onto the returned bytes permanently. Instead, `c: fill` temporarily
+    lends the filled bytes to its caller along with a callback permission
+    that restores the module invariant once the caller finishes reading.
+    When `c: use` calls `c: fill` again, it must first return the borrowed
+    bytes so `c: fill` can safely reuse or free the old buffer.
 
-    That ownership is the module invariant [slot_inv]: the two static
-    objects, the pointer and size they hold, and the buffer's object
-    with all its bytes and [[aux]] slots ([buffer]): null and size 0
-    before the first call. `fill`'s triple ([fill_spec]) takes the
-    invariant and lends the filled bytes to the caller ([lent]), with a
-    wand that, given them back, gives the invariant back. The caller
-    cannot keep the bytes across the next call: the next call needs the
-    invariant, which needs them.
-
-    The grow path uses [wp_free] on the old buffer, whose life token
-    then ends, and [wp_malloc], whose fresh object becomes the new
-    buffer ([obj_block]); both paths then go through the fill in
-    [fill_L6], with [wp_memset] and a byte store. `use` calls `fill`
-    three times, through [wp_call_bind] and [fill_spec], and reads the
-    buffer after each call ([use_spec]).
-
-    [slot_logic_safe] is the labelled machine's safety from any memory
-    whose static objects hold null and 0, over any runtime, whose free
-    succeeds on null and the buffer ([R.free_succeeds]), and
-    [interp_slot_logic_safe] instantiates it from the module's initial
-    memory under the interpreter's runtime. *)
+    The safety theorem works for any [[runtime]] R whose `free` operation
+    succeeds on null and live heap pointers. We also run the theorem on the
+    module's initial memory under the [[interpreter]]'s runtime. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -40,101 +27,117 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** Integer arithmetic on an unknown stays folded when a premise is
-    computed (Symbolic.v). *)
+(** Integer arithmetic on symbolic values stays folded during premise
+    reduction so buffer sizes and offsets remain readable. *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
-(** ## The module *)
+(** ## The module
 
-(** The checked module nanofil makes of slot.c ([slot_term]). *)
+    The proof verifies the compiled IR that `nanofil -O` produces for
+    `slot.c`. We decode the module, record the addresses of the static
+    variables `c: slot` and `c: slot_size`, precompute the basic blocks of
+    both functions, and link `c: malloc` and `c: memset`. *)
+
+(** Decoding [slot_term] extracts the compiled module for `slot.c`. *)
 Definition slot_module : module :=
   match decode_module slot_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [slot_module]. *)
+(** The saved compiler fixture decodes cleanly into [slot_module]. *)
 Lemma slot_decodes : decode_module slot_term = Some slot_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The module's i-th function, or an empty one. *)
+(** Selecting the i-th function from the module returns its IR definition,
+    or a dummy function if the index is out of range. *)
 Definition slot_nth (i : nat) : func :=
   match nth_error slot_module i with
   | Some (IFunc f) => f
   | _ => mkFunc (TAtom "none") (TAtom "export") RVoid [] []
   end.
 
-(** `fill`: grow the buffer if need be, fill it, lend it. *)
+(** The helper function `fill` grows the static buffer if needed and fills
+    it with a byte value. *)
 Definition fill_fn : func := Eval vm_compute in slot_nth 0.
-(** `use`: three calls of `fill`, each read after it. *)
+(** The caller `use` invokes `fill` three times and reads from each
+    returned buffer. *)
 Definition use_fn : func := Eval vm_compute in slot_nth 1.
 
-(** The identity of the static `slot`, which holds the buffer. *)
+(** The static pointer variable `slot` lives at object address 65568. *)
 Definition slot_b : Z := 65568.
-(** The identity of the static `slot_size`, which holds its size. *)
+(** The static size variable `slot_size` lives at object address 65600. *)
 Definition size_b : Z := 65600.
-(** `slot`'s region. *)
+(** The global [[region]] for `slot` spans 8 bytes of live global data. *)
 Definition slot_reg : region := mkRegion 65568 65576 GlobalData Live.
-(** `slot_size`'s region. *)
+(** The global [[region]] for `slot_size` spans 8 bytes of live global data. *)
 Definition size_reg : region := mkRegion 65600 65608 GlobalData Live.
 
-(** The module's symbols. *)
+(** The global symbol table maps both static variables and both compiled
+    functions to their addresses. *)
 Definition slot_globals : list (name * ptr) :=
   [(TAtom "slot_size", mkPtr size_b (Obj size_b)); (TAtom "slot", mkPtr slot_b (Obj slot_b));
    (TAtom "use", mkPtr 65552 (Fn (TAtom "use"))); (TAtom "fill", mkPtr 65536 (Fn (TAtom "fill")))].
 
-(** Laying out the module gives [slot_globals]. *)
+(** Laying out the module's globals produces the expected symbol table. *)
 Lemma slot_layout : option_map fst (initial_memory slot_module) = Some slot_globals.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Block l of f, or an empty one. *)
+(** Extracting block l from function f returns its instruction list and
+    terminator, or an empty unreachable block if missing. *)
 Definition sblk (f : func) (l : String.string) : block :=
   match find_block (TAtom l) (fn_blocks f) with
   | Some b => b
   | None => mkBlock (TAtom l) [] [] JUnreachable
   end.
 
-(** `fill`'s entry: does the request fit? *)
+(** The entry block of `fill` checks whether the existing buffer is large
+    enough for the request. *)
 Definition f_start : block := Eval vm_compute in sblk fill_fn "start".
-(** The grow path: free the old buffer, malloc a new one. *)
+(** Block `L4` of `fill` frees the old buffer and allocates a larger one. *)
 Definition f_L4 : block := Eval vm_compute in sblk fill_fn "L4".
-(** The fill: memset, the terminator, return the buffer. *)
+(** Block `L6` of `fill` runs `c: memset`, writes the terminating byte, and
+    returns the buffer pointer. *)
 Definition f_L6 : block := Eval vm_compute in sblk fill_fn "L6".
-(** `use`'s one block. *)
+(** The single block of `use` makes three calls to `fill` and loads one
+    byte after each. *)
 Definition u_start : block := Eval vm_compute in sblk use_fn "start".
 
-(** `fill` has its entry. *)
+(** Looking up `start` in `fill` returns its precomputed entry block. *)
 Lemma find_f_start : find_block (TAtom "start") (fn_blocks fill_fn) = Some f_start.
 Proof. vm_compute. reflexivity. Qed.
-(** `fill` has its grow path. *)
+(** Looking up `L4` in `fill` returns its precomputed growth block. *)
 Lemma find_f_L4 : find_block (TAtom "L4") (fn_blocks fill_fn) = Some f_L4.
 Proof. vm_compute. reflexivity. Qed.
-(** `fill` has its fill. *)
+(** Looking up `L6` in `fill` returns its precomputed fill block. *)
 Lemma find_f_L6 : find_block (TAtom "L6") (fn_blocks fill_fn) = Some f_L6.
 Proof. vm_compute. reflexivity. Qed.
-(** `use` has its block. *)
+(** Looking up `start` in `use` returns its precomputed block. *)
 Lemma find_u_start : find_block (TAtom "start") (fn_blocks use_fn) = Some u_start.
 Proof. vm_compute. reflexivity. Qed.
 
-(** `fill` called with the int c and the size n. *)
+(** Calling `fill` with byte c and size n constructs an entry frame binding
+    `v0` to c and `v2` to n. *)
 Definition fill_entry (c n : Z) : frame :=
   mkFrame fill_fn (put (TAtom "v2") (WInt n) (put (TAtom "v0") (WInt c) [])) [] None
     (Enter (TAtom "start") None).
 
-(** A call of `fill` starts it at [fill_entry]. *)
+(** Passing arguments c and n to `fill` enters the function at
+    [fill_entry]. *)
 Lemma fill_call_frame c n : call_frame fill_fn [WInt c; WInt n] = Some (fill_entry c n).
 Proof. reflexivity. Qed.
 
-(** `use` called. *)
+(** Calling `use` constructs an entry frame with no parameters. *)
 Definition use_entry : frame := mkFrame use_fn [] [] None (Enter (TAtom "start") None).
 
-(** `slot.c`'s contracts: malloc's and memset's, over no world. *)
+(** The external call registry links `c: malloc` and `c: memset` with an
+    empty world state. *)
 Definition slot_registry (symbol : name) : option (contract unit) :=
   if name_eqb symbol (TAtom "malloc") then Some (malloc_contract unit)
   else if name_eqb symbol (TAtom "memset") then Some (memset_contract unit)
   else None.
 
-(** A fresh object's pieces, all zero bytes and empty slots, are a
-    block from offset 0 of its whole extent. *)
+(** A freshly allocated object starts with zero bytes and empty [[aux]]
+    slots across its entire extent. *)
 Lemma obj_block base q :
   0 <= req_extent q ->
   obj_ps base q = block_ps base (mkRegion base (base + req_extent q) (req_kind q) Live) 0
@@ -146,25 +149,26 @@ Proof.
   reflexivity.
 Qed.
 
-(** Prove an address premise: drop the wraps of [raw_address] and of a
-    flight's sum where arithmetic shows them the identity, then
-    arithmetic. *)
+(** This tactic solves address bounds by simplifying [raw_address], dropping
+    proven-safe wraps, and running integer arithmetic. *)
 Ltac addr_premise := cbn [ptr_addr slot_b size_b]; unfold raw_address; drop_wraps_goal; arith.
 
-(** Prove a premise about a static object's address: by computation. *)
+(** This tactic discharges bounds checks for the static globals `slot` and
+    `slot_size` by computation. *)
 Ltac static_premise := unfold slot_b, size_b, slot_reg, size_reg; vm_compute; first [reflexivity | congruence].
 
-(** Prove a premise that names words: by computation, with the
-    environment's facts. *)
+(** This tactic solves word equalities by reflexivity or by looking up
+    known values in the local environment. *)
 Ltac word_premise := first [ reflexivity | compute_premise ].
 
-(** The pieces a run of `use` starts owning: the static objects, `slot`
-    holding null and `slot_size` holding 0. *)
+(** Initially, `slot` holds a null pointer and `slot_size` holds zero,
+    with both static objects live in memory. *)
 Definition slot_ps0 : list (piece * pval) :=
   (PLive slot_b, VLive slot_reg) :: (PLive size_b, VLive size_reg) ::
   ((PAux slot_b 0, VAux CNone) :: cell slot_b 0 0) ++ cell size_b 0 0.
 
-(** No piece of [slot_ps0] is listed twice. *)
+(** Every piece in the initial static state [slot_ps0] appears at most
+    once. *)
 Lemma slot_ps0_nodup : NoDup slot_ps0.*1.
 Proof.
   cbv [slot_ps0 cell fmap list_fmap fst map app slot_b size_b]. cbn [Z.add].
@@ -174,7 +178,8 @@ Proof.
   apply NoDup_nil_2.
 Qed.
 
-(** `slot.c` over any [[runtime]] R. *)
+(** This functor constructs the Iris safety proof for `slot.c` over any
+    [[runtime]] R. *)
 Module SlotLogic (R : Runtime).
 Module ML := LibcMemLogic R.
 Module SL := ML.SL.
@@ -182,10 +187,12 @@ Module LG := ML.LG.
 Module L := LG.L.
 Import L LG SL ML.
 
-(** The linked genv: the module, its symbols, R's free. *)
+(** The global environment links `slot.c`'s symbols with R's `free`
+    handler. *)
 Definition slot_ge : genv := mkGenv slot_module slot_globals R.free.
 
-(** `fill` is a function of the module. *)
+(** Looking up `fill` in [slot_ge] resolves to the compiled helper
+    function. *)
 Lemma find_fill : find_fn slot_ge (TAtom "fill") = Some (Defined fill_fn).
 Proof. vm_compute. reflexivity. Qed.
 
@@ -194,20 +201,25 @@ Section proof.
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The Iris instance of `slot.c`: malloc's and memset's contracts, no
-    world. *)
+(** The Iris language instance pairs the external call table with an empty
+    world and `slot.c`'s symbols. *)
 Local Instance slot_irisGS : irisGS_gen hlc (nanofil_lang slot_registry slot_ge) Σ :=
   nanofil_irisGS slot_registry no_world slot_ge.
 
-(** The expressions of `slot.c`'s language. *)
+(** Expressions in this language run over `slot.c` with `c: malloc` and
+    `c: memset` linked. *)
 Local Notation sexpr := (language.expr (nanofil_lang slot_registry slot_ge)).
 
-(** ## The module invariant *)
+(** ## The module invariant
 
-(** What `slot` holding p and `slot_size` holding sz own: nothing for
-    null and size 0; else the heap object p's capability names, at a
-    multiple of 16, live, with every byte and aux slot of its first
-    length xs bytes, at least sz of them. *)
+    Across calls to `fill`, the static variables `slot` and `slot_size`
+    either hold null and zero or own a live heap buffer of at least
+    `slot_size` bytes. When `fill` returns, it lends the caller the first
+    n bytes and keeps a permission wand that rebuilds this invariant once
+    the caller finishes reading. *)
+
+(** The heap buffer predicate holds either a null pointer of size zero or a
+    16-byte-aligned live heap object owning its bytes and [[aux]] slots. *)
 Definition buffer (p : ptr) (sz : Z) : iProp Σ :=
   ⌜p = null /\ sz = 0⌝ ∨
   ∃ b reg xs cs, ⌜p = mkPtr b (Obj b) /\ 0 < b /\ b mod 16 = 0 /\ r_kind reg = Heap /\
@@ -215,22 +227,28 @@ Definition buffer (p : ptr) (sz : Z) : iProp Σ :=
                    b + Z.of_nat (length xs) <= r_end reg /\ r_end reg <= 2 ^ 48⌝ ∗
     live b reg ∗ bytes b 0 xs ∗ auxes b 0 cs.
 
-(** The module invariant: both static objects, the pointer and size
-    they hold, and the [buffer] they describe. *)
+(** The module invariant owns both static globals, the pointer and size they
+    store, and the heap buffer described by those values. *)
 Definition slot_inv : iProp Σ :=
   live slot_b slot_reg ∗ live size_b size_reg ∗
   ∃ p sz, ⌜0 <= sz < 2 ^ 48⌝ ∗ pcell slot_b 0 p ∗ icell size_b 0 sz ∗ buffer p sz.
 
-(** What `fill` lends its caller: the life of the buffer b and its
-    first n bytes, all c's low byte, with the byte after them inside
-    its bounds; and, for those given back, the module invariant. *)
+(** After `fill` succeeds, it lends the caller the buffer's liveness and the
+    n filled bytes, along with a permission to return them and restore the
+    invariant. *)
 Definition lent (b : Z) (reg : region) (n c : Z) : iProp Σ :=
   ⌜0 < b /\ b + n < r_end reg /\ r_end reg <= 2 ^ 48⌝ ∗ live b reg ∗ bytes b 0 (replicate (Z.to_nat n) (c mod 256)) ∗
   (live b reg -∗ bytes b 0 (replicate (Z.to_nat n) (c mod 256)) -∗ slot_inv).
 
-(** ## Bytes *)
+(** ## Bytes
 
-(** The bytes ys, then x, then zs, are ys's, x's, then zs's. *)
+    Both `c: fill` and `c: use` work with slices of a byte array: `c: fill`
+    splits the buffer into the filled prefix, the terminating zero byte, and
+    the remaining capacity, while `c: use` borrows individual bytes to read.
+    These helper lemmas split and reassemble byte and [[aux]] sequences. *)
+
+(** Splitting a byte list at an element separates the prefix, that byte, and
+    the suffix in separation logic. *)
 Lemma bytes_split b o ys x zs :
   bytes b o (ys ++ x :: zs) ⊣⊢
   bytes b o ys ∗ ibyte b (o + Z.of_nat (length ys)) x ∗ bytes b (o + Z.of_nat (length ys) + 1) zs.
@@ -239,7 +257,8 @@ Proof.
   replace (o + Z.of_nat (length ys) + 1) with (o + Z.of_nat (length ys) + 1) by lia. done.
 Qed.
 
-(** The slots cs1 then cs2 are cs1's, then cs2's. *)
+(** Splitting an [[aux]] slot list separates the prefix slots from the
+    suffix slots. *)
 Lemma auxes_app b o cs1 cs2 : auxes b o (cs1 ++ cs2) ⊣⊢ auxes b o cs1 ∗ auxes b (o + Z.of_nat (length cs1)) cs2.
 Proof.
   rewrite /auxes /pts -big_sepL_app. f_equiv. revert o. induction cs1 as [|c cs1 IH]; intros o.
@@ -248,7 +267,8 @@ Proof.
     replace (o + Z.of_nat (S (length cs1))) with (o + 1 + Z.of_nat (length cs1)) by lia. reflexivity.
 Qed.
 
-(** The bytes xs lend their i-th, x, and take it back. *)
+(** Indexing into a byte sequence borrows the byte at offset i and returns
+    a permission to put it back. *)
 Lemma bytes_byte b o xs i x :
   xs !! i = Some x ->
   bytes b o xs -∗ ibyte b (o + Z.of_nat i) x ∗ (ibyte b (o + Z.of_nat i) x -∗ bytes b o xs).
@@ -258,11 +278,15 @@ Proof.
   iSplitL "Hb"; [iExact "Hb"|]. iIntros "Hb". iApply ("Hk" with "Hb").
 Qed.
 
-(** ## The buffer *)
+(** ## The buffer
 
-(** The buffer lends the life of the object its pointer's capability
-    names, if any ([live_cap]), and takes it back; its pointer's
-    address is in range. *)
+    Before freeing or loading through the static `slot` pointer, the proof
+    must handle the case where `slot` is still null. These two lemmas
+    extract the buffer's [[capability]] liveness when non-null and dispatch
+    `c: free` cleanly on both null and heap pointers. *)
+
+(** Any buffer pointer has a valid 64-bit address and lends its object's
+    [[capability]] liveness token when non-null. *)
 Lemma buffer_cap p sz :
   buffer p sz -∗ ∃ reg', ⌜0 <= ptr_addr p < 2 ^ 64⌝ ∗ live_cap (ptr_cap p) reg' ∗
     (live_cap (ptr_cap p) reg' -∗ buffer p sz).
@@ -273,8 +297,8 @@ Proof.
     iSplit; [iPureIntro; cbn; lia|]. iFrame "Hl". iIntros "Hl". iRight. iExists b, reg, xs, cs. by iFrame.
 Qed.
 
-(** A call of `free` on the buffer's pointer, which v reads as, frees
-    it if it is not null, and gives up the whole buffer. *)
+(** Calling `c: free` on the buffer pointer releases the heap object if
+    non-null and consumes the buffer ownership. *)
 Lemma wp_free_buffer f e ls l v rest j p sz Φ :
   arg_x slot_ge e (Arg P v) = Some (WPtr p) ->
   buffer p sz -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : sexpr) {{ Φ }} -∗
@@ -288,12 +312,16 @@ Proof.
                                     intros; exact I].
 Qed.
 
-(** ## `fill` *)
+(** ## `fill`
 
-(** The fill, from L6's instructions: owning the static objects
-    holding the buffer b and its size sz, more than n, and the buffer's
-    bytes xs and slots cs: memset its first n bytes, terminate them,
-    and return the buffer, lending the bytes. *)
+    When `slot_size <= n`, `fill` frees the old buffer and allocates a
+    bigger one before joining block `L6` to run `c: memset` and write the
+    zero terminator. We verify the shared tail at `L6` first, then the full
+    `fill` function, and finally three consecutive calls in `use`. *)
+
+(** Starting from block `L6` with a buffer larger than n, `fill` runs
+    `c: memset` on the first n bytes, writes a zero terminator, and lends the
+    filled slice to the caller. *)
 Lemma fill_L6 e c n b reg xs cs sz Φ :
   lookup (TAtom "v0") e = Some (WInt c) -> lookup (TAtom "v2") e = Some (WInt n) ->
   0 <= c < 2 ^ 32 -> 0 <= n < sz -> sz < 2 ^ 48 ->
@@ -362,12 +390,9 @@ Proof.
   split; [reflexivity|]. repeat split; first [assumption | lia].
 Qed.
 
-(** `fill`'s triple: with the module invariant, called with an int c
-    and a size n below 2^47, it returns the buffer, lending its first n
-    bytes, each c's low byte ([lent]). From the entry: load the size,
-    and if it is at most n, free the old buffer ([wp_free_buffer]),
-    malloc n + 1 bytes ([wp_malloc]) and store the new buffer and its
-    size; then [fill_L6]. *)
+(** Calling `fill` with byte c and size n consumes the module invariant,
+    grows the buffer if `slot_size <= n`, and returns a pointer lending the
+    first n bytes. *)
 Lemma fill_spec c n Φ :
   0 <= c < 2 ^ 32 -> 0 <= n < 2 ^ 47 ->
   slot_inv -∗ ▷ (∀ b reg, lent b reg n c -∗ Φ (Ret (WPtr (mkPtr b (Obj b))))) -∗
@@ -434,9 +459,8 @@ Proof.
        exact Hend | exact Hend48].
 Qed.
 
-(** `use` is safe and returns an int: it calls `fill` three times
-    through [fill_spec], each time reading a byte of the bytes lent
-    ([bytes_byte]) and handing them back for the next call. *)
+(** Calling `use` with the initial module invariant executes three `fill`
+    calls, reads one byte after each, and safely returns an integer. *)
 Lemma use_spec : slot_inv -∗ WP (ERun use_entry : sexpr) {{ o, ⌜exists k, o = Ret (WInt k)⌝ }}.
 Proof.
   iIntros "Hinv". iApply wp_enter; [exact find_u_start | reflexivity |]. iNext. cbn [b_insts b_jump u_start].
@@ -473,11 +497,9 @@ Qed.
 
 End wp.
 
-(** `use` is safe: from a ready runtime, live objects apart, and a
-    memory whose static objects hold null and 0, with any fuel, no
-    labelled run stops with a [failure_ending], and a run that returns
-    returns an int. By [heap_labelled_safe] from [use_spec], the ghost
-    heap starting with [slot_ps0]. *)
+(** Whenever the runtime is ready and the static globals start at null and
+    zero, `use` executes safely for any fuel and returns an integer if it
+    finishes. *)
 Theorem slot_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} m s fuel :
   R.ready s m -> live_disjoint m -> all_agree m slot_ps0 ->
   labelled_safe slot_registry slot_ge use_entry m s tt fuel (fun o => exists k, o = Ret (WInt k)).
@@ -498,22 +520,28 @@ Qed.
 End proof.
 End SlotLogic.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
 
-(** `slot.c` over the interpreter's runtime. *)
+    To verify that `c: use` runs safely from a real initial state, we
+    instantiate the theorem with the [[interpreter]]'s runtime. Both static
+    globals sit below the heap allocation threshold and do not overlap, so
+    the initial memory satisfies every requirement. *)
+
+(** Instantiating the Iris functor with the interpreter's runtime yields a
+    concrete safety theorem for `slot.c`. *)
 Module InterpSlotLogic := SlotLogic InterpRuntime.
 
-(** The module's initial memory: the two static objects, every byte 0
-    and every aux slot empty. *)
+(** The module's initial memory contains both static objects with all bytes
+    set to zero and all [[aux]] slots empty. *)
 Definition slot_memory : mem :=
   mkMem (fun _ => 0) [size_reg; slot_reg] (fun _ => CNone).
 
-(** Laying out the module gives [slot_memory]. *)
+(** Laying out `slot_module` produces [slot_globals] and [slot_memory]. *)
 Lemma slot_initial : initial_memory slot_module = Some (slot_globals, slot_memory).
 Proof. vm_compute. reflexivity. Qed.
 
-(** The interpreter is ready in [slot_memory] at its start: both
-    objects lie below it. *)
+(** The interpreter runtime is ready in [slot_memory] because both static
+    objects lie below the heap allocation threshold. *)
 Lemma slot_memory_ready : InterpRuntime.ready InterpRuntime.start slot_memory.
 Proof.
   split; [vm_compute; split; congruence|]. split; [|intros a _; split; reflexivity].
@@ -523,7 +551,8 @@ Proof.
     (split; [vm_compute; split; congruence|]); (split; [vm_compute; congruence | discriminate]).
 Qed.
 
-(** The two static objects are apart. *)
+(** The two static objects `slot` and `slot_size` occupy disjoint address
+    ranges. *)
 Lemma slot_memory_disjoint : live_disjoint slot_memory.
 Proof.
   intros b1 r1 b2 r2 [E1 _] [E2 _] Hne.
@@ -536,8 +565,8 @@ Proof.
   injection E1 as <-; injection E2 as <-; cbn; lia.
 Qed.
 
-(** [slot_ps0] agrees with [slot_memory]: its objects are live, every
-    byte is 0 and every aux slot empty. *)
+(** Every piece in [slot_ps0] matches the initial memory state
+    [slot_memory]. *)
 Lemma slot_memory_agrees : all_agree slot_memory slot_ps0.
 Proof.
   cbv [slot_ps0 cell map app slot_b size_b]. cbn [all_agree agree_piece fst snd].
@@ -553,8 +582,8 @@ Proof.
   end.
 Qed.
 
-(** `use` is safe under the interpreter's runtime, from the module's
-    initial memory ([slot_initial]). *)
+(** Under the interpreter's runtime and `slot.c`'s initial memory, calling
+    `use` executes safely for any amount of fuel. *)
 Theorem interp_slot_logic_safe : forall fuel,
   InterpSlotLogic.L.labelled_safe slot_registry InterpSlotLogic.slot_ge use_entry slot_memory
     InterpRuntime.start tt fuel (fun o => exists k, o = Ret (WInt k)).

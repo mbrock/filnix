@@ -1,29 +1,21 @@
-(** The first program proved never to panic: rocq/theories/programs/sum.c, a
-    loop that sums a read-only global array of four longs, as nanofil
-    -O compiles it (SumCode.v, checked current by rocq/scripts/programs.sh).
-    Step 1 of [formal.md's quest](../../../docs/formal.md#the-quest-in-steps):
-    a closed module, with no input and no external call.
+(** This module proves that the C function `c: sum` in `sum.c` never panics,
+    no matter which runtime executes it or how much [[fuel]] the execution
+    has. The function loops over a read-only global array of four longs and
+    returns their sum, taking no arguments and making no external calls. It
+    is the simplest closed-module example in [formal.md](../../../docs/formal.md#the-quest-in-steps).
 
-    The statement is Panics.v's [never_panics] over every [[runtime]]
-    R, every argument list and every [[fuel]]: no state a [[run]]
-    reaches [fails]. The proof is a symbolic execution of the one path
-    the program has. The run on the module's initial memory is computed
-    once by the model's own [step] ([sum_points], 59 states); then
-    [sum_progress] shows that from each of those states, in any memory
-    that agrees with the initial one on what the program reads ([mem_ok]),
-    the step is the next state of the list, the last return, or the end
-    of fuel. A [[poll|safepoint]] may change the memory, but
-    [mem_ok_safepoint] shows it keeps [mem_ok], by Runtime.v's axioms:
-    the array is global data, which no free empties, and no byte moves.
+    Because `c: sum` takes no input, it follows the exact same 59-point path
+    on every run. We compute that trace once on the module's initial memory
+    to get the list of visited points ([sum_points]), and then prove in
+    [sum_progress] that each point steps to the next one in any memory that
+    still holds the array's bytes and bounds ([mem_ok]).
 
-    ## Decisions
-
-    | Decision | Why |
-    |---|---|
-    | the run is computed, then each step checked against abstract memory | the computed list is only a guess the proof checks; the memory and fuel stay universally quantified, so nothing about one runtime's placement is assumed |
-    | [mem_ok] tracks the bytes and the array's [[region]], not the [[aux]] | the program loads no pointer, so it reads memory only through the array's bounds and bytes |
-    | no use of [R.ready] | the program allocates nothing, so readiness, which only governs fresh allocations, plays no part |
-    | the input is any argument list | `sum` takes no parameters, and [call_frame] ignores extra words | *)
+    Between any two instructions, the garbage collector may pause the program
+    at a [[poll|safepoint]] to inspect memory. Because the array is immutable
+    global data, the collector never moves its bytes or frees its
+    [[region]]. The function allocates no heap objects and takes no
+    parameters, so allocator readiness and extra call arguments cannot cause
+    a failure. *)
 
 From Stdlib Require Import String ZArith List Bool Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
@@ -31,35 +23,41 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The program *)
+(** ## The program
 
-(** The checked module, decoded from the fixture [sum_term]
-    ([sum_decodes]). *)
+    The proof operates on the checked IR that `nanofil -O` actually produces
+    from `sum.c`, rather than a hand-written model. Decoding the saved
+    compiler output gives us the function body, its global symbol table, and
+    its initial memory layout. *)
+
+(** Decoding [sum_term] extracts the compiled module so the operational
+    semantics can step through its instructions. *)
 Definition sum_module : module :=
   match decode_module sum_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [sum_module]: the proof is about what nanofil
-    makes of sum.c. *)
+(** The saved compiler fixture decodes cleanly into [sum_module]. *)
 Lemma sum_decodes : decode_module sum_term = Some sum_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The function `sum`, the module's first item. *)
+(** The compiled function `sum` sits at the front of the module. *)
 Definition sum_fn : func :=
   match sum_module with
   | IFunc f :: _ => f
   | _ => mkFunc (TAtom "sum") (TAtom "export") (RClass L) [] []
   end.
 
-(** The module's globals, each name with its pointer: the array `xs`
-    and the function `sum`. *)
+(** The global table places the array `xs` at address 65552 and the function
+    `sum` at address 65536. *)
 Definition sum_globals : list (name * ptr) :=
   [(TAtom "xs", mkPtr 65552 (Ro 65552)); (TAtom "sum", mkPtr 65536 (Fn (TAtom "sum")))].
 
-(** The module's initial memory, as `initial_memory/4` lays it out. *)
+(** Laying out the module's globals builds the initial memory state before
+    execution starts. *)
 Definition sum_mem : mem :=
   match initial_memory sum_module with Some (_, m) => m | None => empty_mem end.
 
-(** Laying out the module succeeds, with [sum_globals] and [sum_mem]. *)
+(** Memory layout succeeds and produces the expected global pointers and
+    initial heap. *)
 Lemma sum_initial : initial_memory sum_module = Some (sum_globals, sum_mem).
 Proof.
   assert (H : option_map fst (initial_memory sum_module) = Some sum_globals)
@@ -67,25 +65,31 @@ Proof.
   unfold sum_mem. destruct (initial_memory sum_module) as [[g m]|]; inversion H; reflexivity.
 Qed.
 
-(** The genv of the module with any free; the program calls none. *)
+(** Wrapping the module and its globals into a global environment lets the
+    semantics resolve function calls under any `free` handler. *)
 Definition sum_ge (free : word -> mem -> option (res unit * mem)) : genv :=
   mkGenv sum_module sum_globals free.
 
-(** `sum` is a function of the [[core subset]] in the module. *)
+(** Looking up `sum` in the global environment finds the compiled function in
+    the [[core subset]]. *)
 Lemma sum_find : forall free, find_fn (sum_ge free) (TAtom "sum") = Some (Defined sum_fn).
 Proof. intros free. vm_compute. reflexivity. Qed.
 
-(** Any argument list starts `sum` at its entry block with no
-    temporaries. *)
+(** Calling `sum` with any argument list enters its start block with an
+    empty local environment. *)
 Lemma sum_call_frame : forall xs,
   call_frame sum_fn xs = Some (mkFrame sum_fn [] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** ## The path *)
+(** ## The path
 
-(** The points and environments of the run in the genv ge from the
-    configuration c, one per [step], for at most n steps, until a step
-    is not [Next]. *)
+    Because `c: sum` has no inputs and no branches that depend on outside
+    state, it always executes the same sequence of instructions. We record
+    that concrete sequence as a list of program points and environments so
+    the progress proof can check each step against abstract memory. *)
+
+(** Running the step function up to n times collects the program points and
+    environments visited along a single execution path. *)
 Fixpoint trace (ge : genv) (n : nat) (c : config) : list (point * env) :=
   (fr_at (c_frame c), fr_env (c_frame c)) ::
   match n with
@@ -93,48 +97,54 @@ Fixpoint trace (ge : genv) (n : nat) (c : config) : list (point * env) :=
   | S n' => match step ge c with Next c' => trace ge n' c' | _ => [] end
   end.
 
-(** The one path of `sum`, computed by running the model on the initial
-    memory: 59 points, ending at the return of 10. The proof does not
-    trust it; [sum_progress] checks every step. *)
+(** Executing `sum` from its initial memory yields 59 points ending with a
+    return value of 10. The proof treats this list only as a witness and
+    verifies every transition independently in [sum_progress]. *)
 Definition sum_points : list (point * env) :=
   trace (sum_ge (fun _ _ => None)) 200 (mkConfig (mkFrame sum_fn [] [] None (Enter (TAtom "start") None)) [] sum_mem 1000).
 
-(** ## What the program reads of memory *)
+(** ## What the program reads of memory
 
-(** The array `xs`: 32 bytes of read-only global data. *)
+    A function that only reads a global array does not care about the rest
+    of memory or about capability metadata in [[aux]] slots. As long as the
+    raw bytes and the array's bounds remain intact, every load behaves the
+    same way as on the initial memory. *)
+
+(** The global array `xs` occupies 32 bytes of read-only data starting at
+    address 65552. *)
 Definition xs_region : region := mkRegion 65552 65584 GlobalData Live.
 
-(** The memory m agrees with the initial memory m0 on everything a
-    program that only reads the array reads: the bytes, and the array's
-    [[region]]. *)
+(** Two memory states agree for `sum` when they share the same raw bytes and
+    keep the global array's [[region]] live. *)
 Definition mem_ok (m0 m : mem) : Prop :=
   m_bytes m = m_bytes m0 /\ object_region 65552 (m_regions m) = Some xs_region.
 
-(** The initial memory agrees with itself. *)
+(** The initial memory trivially agrees with itself. *)
 Lemma mem_ok_initial : mem_ok sum_mem sum_mem.
 Proof. split; [reflexivity | vm_compute; reflexivity]. Qed.
 
-(** A load reads only bytes: two memories with the same bytes load the
-    same value. *)
+(** Two memories with identical bytes return the same value from any load. *)
 Lemma load_bytes_same : forall m m', m_bytes m = m_bytes m' ->
   forall a n, load_bytes m a n = load_bytes m' a n.
 Proof. intros m m' H a n. unfold load_bytes. rewrite H. reflexivity. Qed.
 
-(** ## Each step of the path *)
+(** ## Each step of the path
 
-(** The four longs of the array in the initial memory, 1 to 4. *)
+    Checking all 59 program points by hand would repeat the same symbolic
+    reduction 59 times. Instead, we record the four integer values stored in
+    the array and automate each single-step check so every point reduces in
+    a uniform way. *)
+
+(** The four 8-byte elements of `xs` in initial memory hold the integers 1
+    through 4. *)
 Lemma xs0 : load_bytes sum_mem 65552 8 = 1. Proof. vm_compute. reflexivity. Qed.
 Lemma xs1 : load_bytes sum_mem 65560 8 = 2. Proof. vm_compute. reflexivity. Qed.
 Lemma xs2 : load_bytes sum_mem 65568 8 = 3. Proof. vm_compute. reflexivity. Qed.
 Lemma xs3 : load_bytes sum_mem 65576 8 = 4. Proof. vm_compute. reflexivity. Qed.
 
-(** Compute the [step] in the goal for a memory known only by Hb and Hr
-    and the fuel: at a block's entry, which tests the fuel, split on
-    whether fuel is left, and rewrite that test
-    first, before the arithmetic it guards is unfolded; then reduce the
-    step without unfolding the memory's regions, loads or the initial
-    memory, and rewrite what the reduction is stuck on (the array's
-    region, its loads), again until nothing changes. *)
+(** This tactic reduces a single execution step under abstract memory
+    hypotheses without unfolding the full memory map. At block entries, it
+    case-splits on fuel availability first so arithmetic stays folded. *)
 Ltac step_eq Hb Hr fuel :=
   match goal with |- context[step ?g ?c] =>
     remember (step g c) as r eqn:Estep;
@@ -146,9 +156,9 @@ Ltac step_eq Hb Hr fuel :=
     subst r
   end.
 
-(** One point of the path: take its point and environment from Hn,
-    compute the step, and find it among the three outcomes
-    [sum_progress] allows. *)
+(** This tactic checks one point on the trace by unpacking its state and
+    matching the resulting step against a transition, fuel exhaustion, or
+    return. *)
 Ltac point_step Hn Hb Hr fuel :=
   cbv in Hn; injection Hn as <- <-;
   step_eq Hb Hr fuel;
@@ -156,9 +166,8 @@ Ltac point_step Hn Hb Hr fuel :=
         | right; left; reflexivity
         | left; do 3 eexists; split; [|reflexivity]; reflexivity ].
 
-(** From the n-th point of the path, in any memory m that is [mem_ok]
-    and with any fuel, `sum` steps to the next point with the same
-    memory, ends for lack of fuel, or returns 10. *)
+(** From any point in [sum_points] and any agreeing memory, `sum` either
+    advances to the next point, runs out of fuel, or returns 10. *)
 Lemma sum_progress : forall free n pt e m fuel,
   nth_error sum_points n = Some (pt, e) -> mem_ok sum_mem m ->
   (exists pt' e' fuel', nth_error sum_points (S n) = Some (pt', e') /\
@@ -174,16 +183,20 @@ Proof.
   destruct n; discriminate.
 Qed.
 
-(** ## Over any runtime *)
+(** ## Over any runtime
 
-(** `sum` never panics under the [[runtime]] R. *)
+    Single-step progress covers one instruction at a time, whereas a full
+    run interleaves instructions with garbage-collector pauses. We lift the
+    trace property to the full machine over any [[runtime]] R and show that
+    neither instructions nor pauses can ever leave the safe set of states. *)
+
+(** This functor packages the safety proof for any runtime implementation
+    satisfying the [Runtime] interface. *)
 Module SumSafe (R : Runtime).
 Module P := Panics R.
 
-(** What R does at a [[poll|safepoint]] keeps [mem_ok]: no byte moves
-    ([R.non_moving]), and the array is still an object ([R.rooting])
-    whose bounds only a free of a heap object could empty
-    ([R.safepoint_lifetime]); it is global data. *)
+(** A garbage-collector [[poll|safepoint]] preserves [mem_ok] because
+    bytes never move and global data regions are never freed. *)
 Lemma mem_ok_safepoint : forall m0 s m s' m',
   R.safepoint s m s' m' -> mem_ok m0 m -> mem_ok m0 m'.
 Proof.
@@ -196,16 +209,16 @@ Proof.
       rewrite Hr in Hreg; injection Hreg as <-; [reflexivity | discriminate Hk].
 Qed.
 
-(** A machine state on the path: its configuration is `sum` at one of
-    [sum_points], with no caller, in a [mem_ok] memory. *)
+(** A machine state satisfies [sum_inv] when its frame sits at one of the
+    59 recorded points with an agreeing memory and no callers. *)
 Definition sum_inv (st : P.RM.mstate) : Prop :=
   exists n pt e, nth_error sum_points n = Some (pt, e) /\
     fst st = mkConfig (mkFrame sum_fn e [] None pt) [] (c_mem (fst st)) (c_fuel (fst st)) /\
     mem_ok sum_mem (c_mem (fst st)).
 
-(** Every machine step from a state on the path stays on it: a step is
-    the next point ([sum_progress]), never an allocation, and a
-    safepoint keeps the point and [mem_ok]. *)
+(** Every machine transition keeps the execution on the recorded path
+    because instructions follow the trace, no heap allocations occur, and
+    collector pauses preserve the array. *)
 Lemma sum_mstep : forall st st', P.RM.mstep (P.program_genv sum_module sum_globals) st st' ->
   sum_inv st -> sum_inv st'.
 Proof.
@@ -221,7 +234,8 @@ Proof.
     eapply mem_ok_safepoint; eauto.
 Qed.
 
-(** Every state a run reaches from a state on the path is on it. *)
+(** By induction on machine steps, every state reachable from [sum_inv]
+    remains in [sum_inv]. *)
 Lemma sum_reachable : forall st st',
   P.RM.mreachable (P.program_genv sum_module sum_globals) st st' -> sum_inv st -> sum_inv st'.
 Proof.
@@ -229,8 +243,8 @@ Proof.
   apply sum_mstep; assumption.
 Qed.
 
-(** No state on the path [fails]: its step is the next point, the end
-    of fuel, or the return of 10. *)
+(** No state satisfying [sum_inv] can fail, because [sum_progress] rules
+    out every error and trap outcome. *)
 Lemma sum_not_fails : forall st, sum_inv st ->
   ~ fails (P.program_genv sum_module sum_globals) (fst st).
 Proof.
@@ -240,8 +254,8 @@ Proof.
     change (P.program_genv sum_module sum_globals) with (sum_ge R.free); rewrite E; simpl; tauto.
 Qed.
 
-(** `sum` never panics: called with any arguments, under the runtime R,
-    with any fuel, no state of its run [fails]. *)
+(** Calling `sum` with any arguments, any fuel, and any runtime satisfying
+    [Runtime] never reaches a failing state. *)
 Theorem sum_never_panics : P.never_panics sum_module (TAtom "sum") (fun _ => True).
 Proof.
   exists sum_globals, sum_mem, sum_fn. split; [exact sum_initial|]. split; [apply sum_find|].
@@ -253,5 +267,6 @@ Qed.
 
 End SumSafe.
 
-(** The theorem for the [[interpreter]]'s runtime. *)
+(** Instantiating the safety functor with the [[interpreter]]'s runtime
+    gives a concrete closed-module safety theorem. *)
 Module InterpSum := SumSafe InterpRuntime.

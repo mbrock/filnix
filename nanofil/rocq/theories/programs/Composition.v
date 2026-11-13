@@ -1,6 +1,7 @@
-(** A trusted puts contract with one continuous logical stdout and
-    registration inventory. The additional guarantees are libc obligations,
-    not a FILE implementation or a native coverage proof. *)
+(** This module strengthens the trusted `c: puts` contract so it tracks one
+    continuous logical stdout stream and exit-callback list across the whole
+    program. These extra obligations constrain what libc must preserve
+    without modelling `FILE` internals or claiming native coverage. *)
 
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics
@@ -28,9 +29,11 @@ Definition program_world_wf (w : program_world) : Prop :=
 Definition prefix_observation (trace : list event) (actions : list stream_action) : Prop :=
   (trace = [] /\ accepted actions = []) \/ trace = puts_observation actions.
 
-(** Original argument memory fixes this call's source string. Its finite
-    stream evolution may settle old output but accepts only a prefix of
-    this string and newline. No eventual return or resumability is asserted. *)
+(** Before `c: puts` returns or blocks, the argument pointer determines the
+    NUL-terminated string it may print. Any finite sequence of stream
+    actions can flush previously buffered bytes, but it may accept at most a
+    prefix of that string plus a trailing newline without promising eventual
+    termination. *)
 Definition puts_stream_prefix (xs : list word) (m : mem)
     (q : stream_state) (trace : list event) (q' : stream_state) : Prop :=
   exists p bytes actions tail,
@@ -206,12 +209,17 @@ Qed.
 
 End Composition.
 
-(** ## Inhabited protocol boundaries, not native coverage *)
+(** ## Inhabited protocol boundaries, not native coverage
+
+    To show that these coupled stream and callback invariants are satisfiable,
+    we build a concrete fixture world over the interpreter runtime. These
+    examples exercise the logical contract directly without proving that
+    native libc implements them. *)
 Module CompositionChecks.
 Module C := Composition InterpRuntime.
 
-(** The same real main literal and libc root as the body checks, with one
-    actual registration instance retained across puts. *)
+(** This fixture pairs `hello_world` with logical stream state q and a
+    single registered exit callback. *)
 Definition world (q : stream_state) : program_world :=
   mkProgramWorld hello_world q [exit_first].
 
@@ -335,8 +343,9 @@ Qed.
 Example silent_acceptance_rejected : ~ prefix_observation [] [Accept [104]].
 Proof. intros [[_ Hb]|Ht]; discriminate. Qed.
 
-(** Changing the inventory violates the strengthened prefix even if all
-    memory and byte observations could satisfy the ordinary contract. *)
+(** Dropping or altering registered exit callbacks violates the strengthened
+    `c: puts` contract even when memory and output bytes are otherwise
+    valid. *)
 Example inventory_mutation_rejected : forall born trace m' q,
   ~ contract_prefix (program_puts fixture_rep fixture_requests)
     [WPtr hi_literal] HiChecks.memory (world stdout_initial) born trace m'

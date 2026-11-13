@@ -1,6 +1,8 @@
-(** The application proof describes the checked module actually generated
-    from hi.c. The shared program-fixture gate regenerates HiCode.v;
-    this equality connects that artifact to the source-shaped body. *)
+(** When the test suite compiles `hi.c` with `nanofil -O`, it writes the
+    checked IR module into `HiCode.v`. This module links that generated
+    compiler artifact to the whole-program safety proof and defines the
+    trusted entry and exit boundaries used by the C startup and shutdown
+    harness. *)
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls LibcCalls
@@ -8,21 +10,24 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics External
 Import ListNotations.
 Open Scope Z_scope.
 
-(** Decoding the pinned -O output gives exactly the module used by Hi.v,
-    including its literal bytes, result and actual temporary argument. *)
+(** Decoding the saved compiler output yields the exact same module that
+    `Hi.v` verifies, including its string literal, return type, and temporary
+    names. *)
 Theorem hi_generated_module : decode_module hi_term = Some hi_module.
 Proof. reflexivity. Qed.
 
-(** The generated main ignores its launcher words. This application-entry
-    theorem is stronger than restricting them to startup_at; it does not
-    prove the native launcher reaches an entry satisfying these premises. *)
+(** Because the compiled `c: main` function takes no parameters, it ignores
+    whatever launcher words `argc`, `argv`, and `envp` the C runtime passes.
+    This functor lifts the body safety proof to any launcher arguments over
+    a given [[runtime]] R, without claiming that native startup itself
+    reaches `c: main`. *)
 Module HiProgram (R : Runtime).
 Module P := Program R.
 
-(** Defined main and an actual call frame, then independent admissibility
-    and shared-classification safety for every fuel and launcher input.
-    The exact runtime state after startup is retained, not reset to start.
-    Opaque stdio validity and its safepoint stability remain explicit. *)
+(** Calling the generated `c: main` function with any launcher arguments
+    produces a valid call frame, and every finite run keeps external calls
+    admissible without panicking, provided the entry memory and stream
+    representation remain valid across safepoints. *)
 Theorem hi_launcher_words_safe : forall rep requests s_entry m w argc argv envp,
   (forall s m s' m' w, R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
     rep m' w /\ stdio_ready m' w) ->
@@ -56,17 +61,17 @@ Proof.
       [exact Hstable|apply Hentry|exact Hrun].
 Qed.
 
-(** The named trusted successful-entry image for this generated program.
-    Native launcher/libc/TLS satisfaction is trusted, probed by libc-entry.c,
-    not proved by these predicates or by startup's copy lemmas. Constructor
-    and environment obligations are not permissions for arbitrary callbacks. *)
+(** The trusted entry contract packages the preconditions that the native C
+    launcher and libc startup must establish before entering `c: main`. The
+    C probe `libc-entry.c` checks these conditions dynamically rather than
+    proving them in Rocq. *)
 Definition trusted_entry_contract rep s m w argc argv envp args environment : Prop :=
   startup_at m argc argv envp args environment /\ R.ready s m /\
   P.H.hi_before_call rep m (program_stdio w) /\
   program_world_wf w /\ orientation (program_stdout w) <> WideOriented.
 
-(** Every successful trusted entry supplies the real application invariant,
-    retaining the exact runtime and memory, for any execution fuel. *)
+(** Every state satisfying the trusted entry contract also satisfies the
+    whole-program invariant for any amount of execution [[fuel]]. *)
 Lemma trusted_entry_body : forall rep s m w argc argv envp args environment fuel,
   trusted_entry_contract rep s m w argc argv envp args environment ->
   P.body_inv rep (P.M.Running (hi_entry m fuel, s) w).
@@ -75,9 +80,10 @@ Proof.
   split; [apply P.H.hi_body_entry; exact Hpre|]. auto.
 Qed.
 
-(** The trusted entry image suffices for application-only nonfailure.
-    Entry refusal or unfinished startup is not a successful-entry image;
-    this theorem promises neither native startup success nor termination. *)
+(** Once startup establishes the trusted entry contract, no finite run of
+    `c: main` can end in a capability panic or contract violation. This
+    theorem assumes startup succeeded and does not prove that the program
+    terminates. *)
 Theorem trusted_entry_never_panics : forall rep requests s m w argc argv envp args environment
     fuel b host trace why ms w',
   (forall s m s' m' w, R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
@@ -92,22 +98,22 @@ Proof.
     [exact Hstable| |exact Hrun]. eapply trusted_entry_body; exact Hentry.
 Qed.
 
-(** A named trusted successful-completion specification. The explicit
-    completed witness concerns this exact handoff, not mere readiness.
-    Native satisfaction is probed by libc-exit.c, not proved. Finished
-    remembers the handoff snapshot, not native postmortem memory, and
-    completion does not assert that outstanding output was delivered. *)
+(** The trusted host contract wraps a completion predicate with runtime
+    readiness, a well-formed output stream, and a recorded shutdown handoff.
+    It captures the snapshot at process exit without claiming that buffered
+    bytes were flushed natively. *)
 Definition trusted_host_contract (completed : P.host_boundary) : P.host_boundary :=
   fun s m w sh => R.ready s m /\ stream_wf (shutdown_stdout sh) /\
     (exists kind, shutdown_at sh = HandedOff kind) /\ completed s m w sh.
 
-(** Readiness and a handoff must not invent a missing native completion. *)
+(** Runtime readiness and a shutdown handoff alone cannot satisfy the host
+    contract when the native completion predicate is false. *)
 Example missing_host_completion_rejected : forall s m w sh,
   ~ trusted_host_contract (fun _ _ _ _ => False) s m w sh.
 Proof. intros s m w sh (_ & _ & _ & Hmissing). exact Hmissing. Qed.
 
-(** An explicitly witnessed completion permits one terminal observation.
-    Reaching a ready handoff alone proves no native eventual completion. *)
+(** When an explicit completion witness holds at shutdown, the outer machine
+    can take one final step into the finished state with the exit status. *)
 Theorem trusted_host_completion_step : forall (completed : P.host_boundary)
     rep requests b s m w kind status pending consumed q,
   R.ready s m -> stream_wf q ->

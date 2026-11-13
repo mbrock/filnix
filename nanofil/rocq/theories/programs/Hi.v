@@ -1,6 +1,10 @@
-(** The source-shaped body of tests/c/prog/hi.c at the trusted libc
-    boundary. Entry and libc realization are premises, not proofs of
-    the native launcher or libc. The body ignores all launcher words. *)
+(** This module verifies the body of `c: main` in `hi.c` at the trusted
+    libc boundary. The function ignores its launcher arguments, passes the
+    global string literal `"hello"` to `c: puts`, and returns zero. Rather
+    than proving properties about native startup or libc internals, this
+    development takes entry readiness and the `c: puts` contract as explicit
+    premises and proves that every finite execution of `c: main` stays
+    safe. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics Run
@@ -29,10 +33,12 @@ Definition hi_module : Syntax.module :=
   [IFunc hi_function; IData (TAtom "str.10") (LRo (TAtom "local")) 1
     (map (Item Wb) (hello_bytes ++ [0]))].
 
-(** The pointer assigned to the literal by the model's actual module layout. *)
+(** Laying out the module assigns address 65552 to the read-only string
+    literal. *)
 Definition hi_literal : ptr := mkPtr 65552 (Ro 65552).
 
-(** The model's actual initialized module memory, before launcher/libc allocations. *)
+(** Laying out the module builds the initial memory state before launcher or
+    libc allocations run. *)
 Definition hi_memory : mem :=
   match initial_memory hi_module with Some (_, m) => m | None => empty_mem end.
 
@@ -46,7 +52,8 @@ Proof. reflexivity. Qed.
 Example hi_initialized_literal : c_string hi_memory hi_literal hello_bytes.
 Proof. vm_compute. repeat split; try reflexivity; lia. Qed.
 
-(** A configuration in this main, with no caller/local objects or doom. *)
+(** Building a configuration for `c: main` starts with no callers, no
+    local allocations, and no doomed frame. *)
 Definition hi_config (m : mem) (fuel : Z) (e : env) (at_ : point) : config :=
   mkConfig (mkFrame hi_function e [] None at_) [] m fuel.
 
@@ -64,11 +71,14 @@ Theorem hi_ignores_launcher_words : forall argc argv envp m fuel,
   call_frame hi_function (main_arguments argc argv envp) = Some (c_frame (hi_entry m fuel)).
 Proof. reflexivity. Qed.
 
-(** Bind this body's own symbols; libc remains unresolved and contract-dispatched. *)
+(** This functor links `c: main`'s own symbols over any [[runtime]] R,
+    while leaving `c: puts` external so calls dispatch through the contract
+    registry. *)
 Module Hi (R : Runtime).
 Module M := ExternalMachine R.
 
-(** The linked model environment: this module and its initialized global symbols. *)
+(** The global environment pairs the compiled `hi.c` module with its
+    initialized symbols and R's `free` handler. *)
 Definition hi_genv : genv :=
   mkGenv hi_module
     [(TAtom "str.10", hi_literal); (TAtom "main", mkPtr 65536 (Fn (TAtom "main")))] R.free.
@@ -135,8 +145,8 @@ Lemma hi_return_environment : forall rep requests n m fuel,
     Some [(TAtom "v1", WInt (n mod 2 ^ 32)); (TAtom "v0", WPtr hi_literal)].
 Proof. reflexivity. Qed.
 
-(** Whatever puts returns, main's next real core instruction returns zero,
-    and the retained snapshot is exactly the invocation's final memory. *)
+(** Once `c: puts` returns any integer, `c: main`'s next instruction returns
+    zero while keeping the memory state produced by `c: puts`. *)
 Theorem hi_after_puts_return : forall n m m' fuel,
   main_return_site hi_genv
     (resume_external (hi_call m fuel) hi_site
@@ -202,7 +212,8 @@ Proof.
   - rewrite Hreg in Hr. injection Hr as <-. discriminate Hheap.
 Qed.
 
-(** The source's copy point, after its entry block has consumed fuel. *)
+(** Entering `c: main` consumes one unit of [[fuel]] and moves execution to
+    the copy instruction. *)
 Definition hi_copy (m : mem) (fuel : Z) : config :=
   hi_config m fuel [] (Exec (TAtom "start") hi_instructions (JRet (Const 0))).
 
@@ -234,25 +245,27 @@ Proof.
   inversion Hat. reflexivity.
 Qed.
 
-(** The four application phases and permitted terminals; none deletes a
-    failed precondition or silently turns it into a native safety result. *)
+(** This section defines a four-phase state invariant for `c: main` and
+    proves that every finite execution stays safe without hiding failed
+    preconditions. *)
 Section BodySafety.
 Variable rep : mem -> stdio_world -> Prop.
 Variable requests : list word -> mem -> stdio_world -> Z -> Z -> Prop.
 
-(** This environment/library premise requires the opaque representation and
-    writable roots to survive collector safepoints, including permitted
-    rewriting of capabilities to already-freed objects. It is not an extra
-    Runtime axiom. The literal preservation is proved above. *)
+(** Garbage-collector pauses must keep the stream representation and stdio
+    readiness valid, even if the collector rewrites capabilities to already
+    freed objects. *)
 Hypothesis stdio_stable : forall s m s' m' w,
   R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
   rep m' w /\ stdio_ready m' w.
 
-(** Only the facts main still needs are retained before its call; argv is unused. *)
+(** Only the stream state and string literal remain needed before calling
+    `c: puts`, because `c: main` ignores `argv`. *)
 Definition hi_before_call (m : mem) (w : stdio_world) : Prop :=
   rep m w /\ stdio_ready m w /\ hi_literal_valid m.
 
-(** Safepoints retain those facts under the explicit stdio-stability premise. *)
+(** Garbage-collector pauses preserve [hi_before_call] because both the
+    stream representation and the global string literal survive them. *)
 Lemma hi_before_safepoint : forall s m s' m' w,
   R.safepoint s m s' m' -> hi_before_call m w -> hi_before_call m' w.
 Proof.
@@ -267,7 +280,8 @@ Definition hi_ending (why : ending) : Prop :=
   why = CoreEnd (Ret (WInt 0)) \/ why = CoreEnd OutOfFuel \/
   exists resource, why = CoreEnd (Trap resource) /\ resource_reason resource.
 
-(** The actual configuration shape and the caller obligations at every phase. *)
+(** The body invariant [hi_body_state] pairs each of `c: main`'s four
+    execution phases with the caller facts needed at that point. *)
 Inductive hi_body_state : M.state stdio_world -> Prop :=
 | hi_body_entry : forall m fuel s w, hi_before_call m w ->
     hi_body_state (M.Running (hi_entry m fuel, s) w)
@@ -280,7 +294,8 @@ Inductive hi_body_state : M.state stdio_world -> Prop :=
 | hi_body_end : forall why ms w, hi_ending why ->
     hi_body_state (M.Stopped why ms w).
 
-(** Every external call in a body state is this puts, with its obligations proved. *)
+(** Whenever a body state reaches an external call, that call must be
+    `c: puts` and all of its preconditions must hold. *)
 Theorem hi_reached_call_admissible : forall c s w site,
   hi_body_state (M.Running (c, s) w) -> external_site hi_genv c site ->
   site = hi_site /\ M.admissible (hi_registry rep requests) hi_genv c w site.
@@ -381,8 +396,9 @@ Proof.
     rewrite hi_return_step in Hstuck. discriminate.
 Qed.
 
-(** Every enabled labelled step retains the body invariant. Bad contracts are not
-    filtered out: the concrete call's proved obligations contradict rejection. *)
+(** Every transition of the external machine preserves [hi_body_state],
+    because the proved preconditions at `c: puts` rule out contract
+    rejection. *)
 Theorem hi_body_step : forall st trace st',
   M.step (hi_registry rep requests) hi_genv st trace st' ->
   hi_body_state st -> hi_body_state st'.
@@ -435,8 +451,8 @@ Proof.
   apply IHrun. eapply hi_body_step; eauto.
 Qed.
 
-(** Every reached external call meets its obligations, regardless of whether
-    libc has a completed invocation there. No coverage-by-empty-relation claim. *)
+(** Every reached external call satisfies its preconditions whether or not
+    libc finishes the invocation. *)
 Theorem hi_all_calls_admissible : forall m fuel s w trace c s' w' site,
   hi_before_call m w ->
   M.run (hi_registry rep requests) hi_genv (M.Running (hi_entry m fuel, s) w) trace
@@ -517,7 +533,8 @@ Proof.
   - intros status Hbad. discriminate.
 Qed.
 
-(** The actual return-zero run after EOF, parameterized by the accepted bytes. *)
+(** This predicate states that `c: main` still returns zero after `c: puts`
+    returns EOF with a given accepted byte prefix. *)
 Definition eof_main_returns_zero (acc : list Z) : Prop :=
   let c' := resume_external (hi_call memory 9) hi_site
     [(TAtom "v1", WInt (2 ^ 32 - 1)); (TAtom "v0", WPtr hi_literal)] memory in

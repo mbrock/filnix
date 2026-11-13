@@ -1,16 +1,19 @@
-(** rocq/theories/programs/buffer.c through the program logic of Logic.v.
+(** This module proves that the C function `c: buffer` in `buffer.c` never
+    panics, using the [[iris|Iris]] program logic in `Logic.v` instead of a
+    point-by-point transition table. The function allocates a four-long
+    buffer on the collected heap, fills it with values, and sums its elements
+    modulo four for any integer trip count.
 
-    Buffer.v proves `buffer` never panics by an assertion at each of
-    its 32 points, checked one symbolic step at a time. This file
-    proves the same theorem ([buffer_never_panics]) in Iris: the
-    allocation hands the program the new object's pieces ([obj]),
-    which [obj_buf] splits into its life and four 8-byte cells
-    ([cells]); each loop is a Löb induction at the point after its
-    head's phis, carrying the life and the cells; each check lends the
-    life back for one step, and each access takes the one cell it
-    reaches ([cells_at]). The values the cells hold play no part. Every
-    step is taken by its rule from Logic.v, its premises discharged by
-    Symbolic.v's tactics on the premise alone. *)
+    Each loop needs to know that the four-long buffer is still live and that
+    all four slots are owned. In Iris, we represent the allocation as a
+    region permission together with four 8-byte cells. Every bounds
+    [[check]] uses the region permission to prove the buffer is live, and
+    each load or store borrows only the single cell it accesses.
+
+    Because the sum loop only reads the buffer as integers, the values stored
+    in the four cells never affect memory safety. Each instruction step uses
+    a weakest-precondition rule from `Logic.v`, and the symbolic tactics in
+    `Symbolic.v` discharge the arithmetic and address side conditions. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,88 +24,102 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** Integer arithmetic on an unknown stays folded when a premise is
-    computed (Symbolic.v). *)
+(** Integer arithmetic on symbolic values stays folded during premise
+    reduction so bounds remain readable. *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** ## The blocks, computed once *)
+(** ## The blocks, computed once
 
-(** Block l of `buffer`, or an empty one. *)
+    Looking up each basic block of `buffer` on every symbolic step would
+    slow down the proof. Instead, we extract all six basic blocks once at
+    compile time and record lookup lemmas that the tactics can apply
+    immediately. *)
+
+(** Extracting block l from `buffer` returns its instruction list and jump,
+    or a dummy unreachable block if missing. *)
 Definition bblk (l : string) : block :=
   match find_block (TAtom l) (fn_blocks buffer_fn) with
   | Some b => b
   | None => mkBlock (TAtom l) [] [] JUnreachable
   end.
 
-(** The entry block, which allocates the buffer. *)
+(** The entry block allocates the four-long heap buffer. *)
 Definition b_start : block := Eval vm_compute in bblk "start".
-(** The fill loop's head. *)
+(** Block `L6` holds the header and condition check of the fill loop. *)
 Definition b_L6 : block := Eval vm_compute in bblk "L6".
-(** The fill loop's body. *)
+(** Block `L7` holds the body of the fill loop. *)
 Definition b_L7 : block := Eval vm_compute in bblk "L7".
-(** The sum loop's head. *)
+(** Block `L24` holds the header and condition check of the sum loop. *)
 Definition b_L24 : block := Eval vm_compute in bblk "L24".
-(** The sum loop's body. *)
+(** Block `L25` holds the body of the sum loop. *)
 Definition b_L25 : block := Eval vm_compute in bblk "L25".
-(** The exit. *)
+(** Block `L27` returns the computed sum. *)
 Definition b_L27 : block := Eval vm_compute in bblk "L27".
 
-(** `buffer` has its entry block. *)
+(** Looking up `start` in `buffer` returns the precomputed entry block. *)
 Lemma find_start : find_block (TAtom "start") (fn_blocks buffer_fn) = Some b_start.
 Proof. vm_compute. reflexivity. Qed.
-(** `buffer` has the fill loop's head. *)
+(** Looking up `L6` returns the precomputed fill-loop header. *)
 Lemma find_L6 : find_block (TAtom "L6") (fn_blocks buffer_fn) = Some b_L6.
 Proof. vm_compute. reflexivity. Qed.
-(** `buffer` has the fill loop's body. *)
+(** Looking up `L7` returns the precomputed fill-loop body. *)
 Lemma find_L7 : find_block (TAtom "L7") (fn_blocks buffer_fn) = Some b_L7.
 Proof. vm_compute. reflexivity. Qed.
-(** `buffer` has the sum loop's head. *)
+(** Looking up `L24` returns the precomputed sum-loop header. *)
 Lemma find_L24 : find_block (TAtom "L24") (fn_blocks buffer_fn) = Some b_L24.
 Proof. vm_compute. reflexivity. Qed.
-(** `buffer` has the sum loop's body. *)
+(** Looking up `L25` returns the precomputed sum-loop body. *)
 Lemma find_L25 : find_block (TAtom "L25") (fn_blocks buffer_fn) = Some b_L25.
 Proof. vm_compute. reflexivity. Qed.
-(** `buffer` has its exit. *)
+(** Looking up `L27` returns the precomputed exit block. *)
 Lemma find_L27 : find_block (TAtom "L27") (fn_blocks buffer_fn) = Some b_L27.
 Proof. vm_compute. reflexivity. Qed.
-(** `buffer` returns a `long`. *)
+(** The compiled `buffer` function returns a 64-bit `long` value. *)
 Lemma buffer_ret : fn_ret buffer_fn = RClass L.
 Proof. vm_compute. reflexivity. Qed.
 
-(** ## Environments *)
 
-(** ## The buffer *)
 
-(** The buffer's region: a 32-byte live heap object at b. *)
+(** ## The buffer
+
+    Allocating 32 bytes creates a live heap [[region]] starting at the
+    returned address b. Defining that region shape in one place lets both
+    loops refer to the same allocated object. *)
+
+(** The allocated buffer forms a live 32-byte heap [[region]] starting at
+    address b. *)
 Definition buf_reg (b : Z) : region := mkRegion b (b + 32) Heap Live.
 
-(** ## Taking a step *)
+(** ## Taking a step
 
-(** Prove an address premise: an alignment to 1 holds at once; the
-    wraps of [raw_address] are dropped where arithmetic proves them the
-    identity, then arithmetic. *)
+    Each IR instruction generates small side conditions about opcode kinds,
+    block targets, and pointer arithmetic. Grouping those checks into
+    tactics keeps the loop proofs focused on memory ownership rather than
+    boilerplate. *)
+
+(** This tactic proves address alignment and bounds conditions by simplifying
+    [raw_address], dropping proven-safe wraps, and calling arithmetic. *)
 Ltac addr :=
   unfold raw_address; cbn [ptr_addr ptr_cap r_end buf_reg]; rewrite ?Z.mod_1_r;
   drop_wraps_goal; arith.
 
-(** Put the facts about the blocks and the return class in the
-    context, for the side goals of [wp_enter] and [wp_ret]. *)
+(** Putting the six block lemmas and the return type into the context lets
+    jump and return rules finish without repeated lookups. *)
 Ltac buf_facts :=
   pose proof find_start; pose proof find_L6; pose proof find_L7; pose proof find_L24;
   pose proof find_L25; pose proof find_L27; pose proof buffer_ret.
 
-(** Unfold the blocks that a frame's point names. *)
+(** This tactic unfolds the precomputed block definitions so the current
+    instruction list becomes visible. *)
 Ltac unfold_blocks :=
   cbn [b_insts b_jump b_start b_L6 b_L7 b_L24 b_L25 b_L27 edge_label].
 
-(** Prove one pure premise of a rule of Logic.v: by computation for
-    the op's classes, by a fact for a block and a return class, by
-    [addr] for an address, by [compute_premise] for a word, trivially
-    for what the world interpretation must keep (there is no world),
-    and by arithmetic for a bound. *)
+(** This tactic discharges pure side goals from program-logic rules by
+    computing opcode classes, reusing block facts, solving word equalities,
+    and checking address bounds. *)
 Ltac side :=
   lazymatch goal with
   | |- forall (_ : mem) (_ : unit), _ => intros; exact I
@@ -118,46 +135,59 @@ Ltac side :=
   | |- _ => cbn [ptr_addr ptr_cap r_end buf_reg]; arith
   end.
 
-(** ## Over any runtime *)
+(** ## Over any runtime
 
-(** The proof over the runtime R. *)
+    We parameterize the Iris proof by any [[runtime]] R so the resulting
+    safety theorem holds for every implementation of the runtime interface.
+    The module defines step tactics, splits the allocated buffer into cells,
+    and verifies both loops before applying Iris [[adequacy]]. *)
+
+(** This functor constructs the Iris safety proof for `buffer` over any
+    runtime satisfying [Runtime]. *)
 Module BufferLogic (R : Runtime).
 Module LG := Logic R.
 Module L := LG.L.
 Module P := LG.P.
 Import L LG.
 
-(** The genv of the module, whose free is R's. *)
+(** The global environment links `buffer` against R's `free` handler. *)
 Local Notation bge := (P.program_genv buffer_module buffer_globals).
-(** The expressions of its language. *)
+(** Expressions in this language run over `buffer` with no external calls. *)
 Local Notation bexpr := (language.expr (nanofil_lang no_contracts bge)).
 
-(** ## The rules as tactics *)
+(** ## The rules as tactics
 
-(** A [let] of an op that reads no memory, by [wp_let]. *)
+    Proofs of individual instructions follow a repeating pattern of applying
+    a rule and discharging its arithmetic side conditions. We wrap each rule
+    with our side-condition solver so the loop proofs read almost like the
+    instruction stream itself. *)
+
+(** This tactic steps through a pure `let` binding and updates the local
+    environment. *)
 Ltac wp_let_ := iApply wp_let; first [side | iNext; gen_env].
 
-(** A branch, by [wp_branch], its target computed. *)
+(** This tactic steps through a conditional branch to the target block. *)
 Ltac wp_branch_ := iApply wp_branch; first [side | iNext; cbn [edge_label Z.eqb Pos.eqb]].
 
-(** Entering a block, by [wp_enter], its body unfolded. *)
+(** This tactic enters a basic block and unfolds its instruction list. *)
 Ltac wp_enter_ := iApply wp_enter; first [side | iNext; unfold_blocks; gen_env].
 
-(** A goto, by [wp_goto]. *)
+(** This tactic steps across an unconditional jump to the next block. *)
 Ltac wp_goto_ := iApply wp_goto; iNext; unfold_blocks.
 
-(** A [[flight]], by [wp_flight]. *)
+(** This tactic steps through a [[flight]] pointer-arithmetic instruction. *)
 Ltac wp_flight_ := iApply wp_flight; first [side | iNext; gen_env].
 
 Section proof.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The buffer's four 8-byte cells at b, holding any values. *)
+(** The four 8-byte cells at base b represent the buffer's mutable storage,
+    holding arbitrary integer values. *)
 Definition cells (b : Z) : iProp Σ :=
   ∃ v0 v1 v2 v3, icell b 0 v0 ∗ icell b 8 v1 ∗ icell b 16 v2 ∗ icell b 24 v3.
 
-(** The cell at offset 8 k, for k from 0 to 3, can be taken from the
-    cells and given back holding anything. *)
+(** For any index k from 0 to 3, the proof can borrow cell k from the buffer
+    and return it with any updated value after a load or store. *)
 Lemma cells_at b k :
   0 <= k < 4 -> cells b -∗ ∃ v, icell b (8 * k) v ∗ (∀ w, icell b (8 * k) w -∗ cells b).
 Proof.
@@ -167,8 +197,8 @@ Proof.
     iIntros (w) "Hw"; rewrite /cells; iExists _, _, _, _; iFrame.
 Qed.
 
-(** A new 32-byte object, split into its life and its four cells,
-    which hold zero; the aux slots are dropped. *)
+(** Splitting a freshly allocated 32-byte object yields its liveness token
+    and four zero-initialized cells, discarding unused [[aux]] slots. *)
 Lemma obj_buf base :
   obj base (heap_req 16 32) -∗ live base (buf_reg base) ∗ cells base.
 Proof.
@@ -180,17 +210,15 @@ Proof.
   iExists 0, 0, 0, 0. iFrame.
 Qed.
 
-(** What both loops know of the environment e: `v4` holds the
-    buffer's own pointer, its base b positive, 16-aligned and ending
-    within the address space. *)
+(** Throughout both loops, `v4` holds a 16-byte-aligned heap pointer to
+    base b, whose 32-byte allocation fits inside the address space. *)
 Definition holds (e : env) (b : Z) : Prop :=
   lookup (TAtom "v4") e = Some (WPtr (mkPtr b (Obj b))) /\
   0 < b /\ b mod 16 = 0 /\ b + 32 <= 2 ^ 48.
 
-(** The sum loop, from the point after its head's phis: with `pr.3` an
-    int j from 0 below 2^31, `pr.2` any long, `v0` the input n, owning
-    the buffer, the run is safe. By Löb induction; each iteration reads
-    the cell j mod 4. *)
+(** Inside the sum loop, owning the array and its four slots guarantees
+    safe execution as long as index j stays below 2^31. Each iteration
+    checks the pointer and loads slot `j mod 4`. *)
 Lemma sum_loop n b :
   ⊢ ∀ e j s,
       ⌜holds e b /\ lookup (TAtom "pr.3") e = Some (WInt j) /\ 0 <= j < 2 ^ 31 /\
@@ -221,10 +249,9 @@ Proof.
     iApply wp_ret; first [side | done].
 Qed.
 
-(** The fill loop, from the point after its head's phi: with `pr.1` an
-    int i from 0 to 4 and `v0` the input n, owning the buffer, the run
-    is safe. By Löb induction; each iteration writes the cell i; when i
-    reaches 4 the sum loop starts with j and the sum 0. *)
+(** Inside the fill loop, owning the array and its four elements guarantees
+    safe execution for indices 0 through 3. When index i reaches 4, control
+    moves to the sum loop with index 0 and sum 0. *)
 Lemma fill_loop n b :
   ⊢ ∀ e i,
       ⌜holds e b /\ lookup (TAtom "pr.1") e = Some (WInt i) /\ 0 <= i <= 4 /\
@@ -254,7 +281,8 @@ Proof.
     repeat split; try eassumption; lia.
 Qed.
 
-(** `buffer` called with the int n is safe. *)
+(** Entering `buffer` with any integer argument n satisfies the Iris
+    weakest precondition for safe execution. *)
 Lemma buffer_spec n :
   ⊢ WP (ERun (mkFrame buffer_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None))
          : bexpr) {{ _, True }}.
@@ -271,21 +299,21 @@ Qed.
 
 End proof.
 
-(** The resources the proof uses: invariants and the ghost heap. *)
+(** To track heap ownership across execution steps, the proof combines Iris
+    invariants with a ghost map of memory pieces. *)
 Definition bufΣ : gFunctors := #[invΣ; gen_heapΣ piece pval].
 
-(** [bufΣ] has invariants. *)
+(** The resource bundle [bufΣ] provides Iris invariants. *)
 Instance bufΣ_inv : invGpreS bufΣ.
 Proof. apply subG_invΣ. apply _. Qed.
 
-(** [bufΣ] has the ghost heap of pieces. *)
+(** The ghost heap stores ownership of individual bytes and liveness tokens
+    for the program. *)
 Instance bufΣ_heap : gen_heapGpreS piece pval bufΣ.
 Proof. apply subG_gen_heapGpreS. apply _. Qed.
 
-(** `buffer` never panics: for every input whose first word is an int,
-    with any fuel, no state of its run [fails], whatever base its
-    buffer gets. Proved by Iris [[adequacy]] ([heap_never_panics]) from
-    [buffer_spec]. *)
+(** Applying Iris [[adequacy]] to the weakest-precondition specification
+    proves that `buffer` never panics for any integer input or fuel. *)
 Theorem buffer_never_panics :
   P.never_panics buffer_module (TAtom "buffer") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
@@ -299,11 +327,12 @@ Qed.
 
 End BufferLogic.
 
-(** The theorem for the interpreter's runtime. *)
+(** Instantiating the Iris functor with the [[interpreter]]'s runtime gives
+    a concrete program-logic safety theorem. *)
 Module InterpBufferLogic := BufferLogic InterpRuntime.
 
-(** buffer.c never panics under the interpreter's runtime, by the
-    program logic. *)
+(** Under the interpreter's runtime, `buffer.c` never panics for any
+    integer first argument. *)
 Theorem interp_buffer_never_panics_logic :
   InterpBufferLogic.P.never_panics buffer_module (TAtom "buffer")
     (fun xs => exists n rest, xs = WInt n :: rest).

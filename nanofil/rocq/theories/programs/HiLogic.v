@@ -1,28 +1,20 @@
-(** tests/c/prog/hi.c through the program logic of Logic.v, with puts
-    called through [[campaign|Campaign]] 4's contract
-    ([puts_contract]).
+(** This module verifies the C program `hi.c` using the [[iris|Iris]]
+    program logic in `Logic.v` and the `c: puts` contract. The program
+    contains a single `c: main` function that passes the string literal
+    `"hello"` to `c: puts` and returns zero.
 
-    Hi.v proves hi's body safe by hand: an invariant over the labelled
-    machine's states with a case for each of main's four points, and a
-    lemma for each kind of labelled step at each. This file proves the
-    same body in Iris, by one rule per instruction and StringLogic.v's
-    triple for puts ([wp_puts]):
-    - the program owns its literal `str.10` as a [string]: its life and
-      its six bytes ([lit_ps]);
-    - the world interpretation is [stdio_wi]: puts's rep and
-      [stdio_ready], and the world's writable roots apart from the
-      program's live objects; a safepoint keeps it under Hi.v's
-      premise that it keeps rep and readiness;
-    - main enters, copies the literal, calls puts and returns 0
-      ([main_spec]), and Iris [[adequacy]] for the labelled machine
-      ([heap_labelled_safe]) makes that [hi_logic_safe].
+    While `Hi.v` proves `c: main` safe by hand with a four-phase state
+    invariant, this module steps through each instruction with Iris rules.
+    The program owns its six-byte string literal at its laid-out global
+    address, while the stdio world interpretation tracks the trusted stream
+    representation and keeps writable stdio buffers disjoint from the
+    literal.
 
-    The theorem's premises beyond Hi.v's [hi_before_call] are the
-    logic's own: the runtime [[ready]], the live objects apart, and the
-    world's roots apart from the literal ([literal_apart]). Its
-    conclusion is the logic's: no run stops with a [failure_ending],
-    and main returns 0; Hi.v's [hi_ending] lists the stops that remain
-    by name. docs/logic.md compares the two proofs. *)
+    When `c: main` runs, it enters its start block, copies the literal
+    pointer, calls `c: puts`, and returns zero regardless of whether
+    `c: puts` succeeds or returns EOF. Applying Iris [[adequacy]] lifts that
+    specification to any [[runtime]] R, and we instantiate it on `Hi.v`'s
+    fixture memory under the [[interpreter]]'s runtime. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -34,23 +26,32 @@ From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime O
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The literal *)
+(** ## The literal
 
-(** The literal's object, `str.10`'s region in the module's layout. *)
+    The compiled `hi.c` module places the string literal `"hello"` in
+    read-only global data at address 65552. We describe that 8-byte global
+    [[region]], list its six bytes including the NUL terminator, and show
+    that no writable stdio buffer overlaps it. *)
+
+(** The global [[region]] for `str.10` spans 8 bytes of live global data at
+    address 65552. *)
 Definition lit_reg : region := mkRegion 65552 65560 GlobalData Live.
 
-(** The literal's bytes: hello and its NUL. *)
+(** The literal's byte contents consist of `"hello"` followed by a zero NUL
+    byte. *)
 Definition lit_bytes : list Z := hello_bytes ++ [0].
 
-(** The pieces of the literal the program owns, as a string: its life
-    and its six bytes. *)
+(** The program owns the string literal's object bounds and all six of its
+    bytes. *)
 Definition lit_ps : list (piece * pval) := string_ps hi_literal 65552 lit_reg hello_bytes.
 
-(** The literal is a string in its object. *)
+(** The global object at address 65552 forms a valid NUL-terminated
+    string. *)
 Lemma lit_ok : string_ok hi_literal 65552 lit_reg hello_bytes.
 Proof. unfold string_ok. cbn. split; [right; reflexivity|]. repeat split; try lia. repeat constructor; lia. Qed.
 
-(** The six byte pieces, one by one. *)
+(** Every piece in [lit_ps] is either the object's liveness token or one of
+    its six bytes. *)
 Lemma lit_ps_cases l v : (l, v) ∈ lit_ps ->
   (l, v) = (PLive 65552, VLive lit_reg) \/
   exists i, 0 <= i < 6 /\ l = PByte 65552 i /\ v = VByte (nth (Z.to_nat i) lit_bytes 0).
@@ -61,12 +62,13 @@ Proof.
     injection Hp as -> ->; eexists; (split; [|split; reflexivity]); lia.
 Qed.
 
-(** No writable root of the world w reaches into the literal's
-    object. *)
+(** The stdio world satisfies [literal_apart] when none of its writable
+    root spans overlap the literal's 8-byte global region. *)
 Definition literal_apart (w : stdio_world) : Prop :=
   forall sp a, In sp (stdio_roots w) -> span_contains sp a -> ~ (65552 <= a < 65560).
 
-(** hi over any [[runtime]] R. *)
+(** This functor constructs the Iris safety proof for `hi.c` over any
+    [[runtime]] R. *)
 Module HiLogic (R : Runtime).
 Module SL := LibcStringLogic R.
 Module LG := SL.LG.
@@ -74,8 +76,8 @@ Module L := LG.L.
 Module HB := Hi R.
 Import L LG SL.
 
-(** Where the literal is valid (Hi.v's [hi_literal_valid]: its region
-    and its string), every piece of the literal agrees. *)
+(** Whenever the literal is valid in physical memory, every piece in
+    [lit_ps] agrees with that memory state. *)
 Lemma lit_valid_agrees m : HB.hi_literal_valid m -> forall l v, (l, v) ∈ lit_ps -> agree_piece m l v.
 Proof.
   intros [Hreg Hs] l v Hin. destruct (lit_ps_cases l v Hin) as [Hp|(i & Hi & -> & ->)].
@@ -87,33 +89,37 @@ Proof.
 Qed.
 
 Section proof.
-(** puts's trusted stream representation and allocation requests. *)
+(** The `c: puts` contract takes a stream representation and an allocation
+    predicate as parameters. *)
 Variable rep : mem -> stdio_world -> Prop.
 Variable requests : list word -> mem -> stdio_world -> Z -> Z -> Prop.
 
-(** Hi.v's premise: a safepoint keeps rep and readiness. *)
+(** Garbage-collector pauses must preserve both the trusted stream
+    representation and stdio readiness. *)
 Hypothesis stdio_stable : forall s m s' m' w,
   R.safepoint s m s' m' -> rep m w -> stdio_ready m w -> rep m' w /\ stdio_ready m' w.
 
-(** [stdio_wi] survives safepoints, by [stdio_stable]. *)
+(** Because `stdio_stable` keeps stream invariants intact, garbage-collector
+    pauses preserve the world interpretation. *)
 Local Instance hi_wi_stable : SafepointStable (stdio_wi rep) := stdio_wi_safepoint rep stdio_stable.
 
-(** main's frame at its entry. *)
+(** Calling `c: main` starts at its entry block with no local
+    temporaries. *)
 Definition hi_main : frame := mkFrame hi_function [] [] None (Enter (TAtom "start") None).
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The Iris instance of hi: puts's contract and [stdio_wi]. *)
+(** The Iris language instance pairs the external call table with the stdio
+    world interpretation and `hi.c`'s symbols. *)
 Local Instance hi_irisGS : irisGS_gen hlc (nanofil_lang (HB.hi_registry rep requests) HB.hi_genv) Σ :=
   nanofil_irisGS (HB.hi_registry rep requests) (stdio_wi rep) HB.hi_genv.
 
-(** The expressions of hi's language. *)
+(** Expressions in this language run over `hi.c` with `c: puts` linked. *)
 Local Notation hexpr := (language.expr (nanofil_lang (HB.hi_registry rep requests) HB.hi_genv)).
 
-(** main, owning the literal, is safe and returns 0: it enters its
-    block, copies the literal's pointer, calls puts and returns 0,
-    whatever puts returned. *)
+(** Calling `c: main` with ownership of the `"hello"` literal executes
+    `c: puts` safely and returns zero regardless of what `c: puts` returns. *)
 Lemma main_spec :
   string hi_literal 65552 lit_reg hello_bytes -∗ WP (ERun hi_main : hexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
 Proof.
@@ -125,11 +131,9 @@ Qed.
 
 End wp.
 
-(** hi's body is safe: from a ready runtime, live objects apart, Hi.v's
-    [hi_before_call] and the world's roots apart from the literal, with
-    any fuel, no labelled run stops with a [failure_ending], and a run
-    that returns returns 0. By [heap_labelled_safe] from [main_spec],
-    the ghost heap starting with the literal's pieces. *)
+(** Whenever the runtime is ready, live objects are disjoint, and the
+    literal is valid and apart from stdio roots, `c: main` executes safely
+    for any fuel and returns zero if it finishes. *)
 Theorem hi_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} m s w fuel :
   R.ready s m -> live_disjoint m -> HB.hi_before_call rep m w -> literal_apart w ->
   labelled_safe (HB.hi_registry rep requests) HB.hi_genv hi_main m s w fuel (fun o => o = Ret (WInt 0)).
@@ -151,24 +155,32 @@ Qed.
 End proof.
 End HiLogic.
 
-(** The resources the proof uses: invariants and the ghost heap. *)
+(** To track heap ownership across execution steps, the proof combines Iris
+    invariants with a ghost map of memory pieces. *)
 Definition hiΣ : gFunctors := #[invΣ; gen_heapΣ piece pval].
 
-(** [hiΣ] has invariants. *)
+(** The resource bundle [hiΣ] provides Iris invariants. *)
 Instance hiΣ_inv : invGpreS hiΣ.
 Proof. apply subG_invΣ. apply _. Qed.
 
-(** [hiΣ] has the ghost heap of pieces. *)
+(** The ghost heap stores ownership of individual bytes and liveness tokens
+    for the program. *)
 Instance hiΣ_heap : gen_heapGpreS piece pval hiΣ.
 Proof. apply subG_gen_heapGpreS. apply _. Qed.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
 
-(** hi over the interpreter's runtime. *)
+    To check that `c: main` runs safely from a concrete memory state, we
+    instantiate the theorem with the [[interpreter]]'s runtime. The libc
+    root at 2048 and the literal at 65552 do not overlap and sit below the
+    heap allocation threshold at 2^32. *)
+
+(** Instantiating the Iris functor with the interpreter's runtime yields a
+    concrete safety theorem for `hi.c`. *)
 Module InterpHiLogic := HiLogic InterpRuntime.
 
-(** Above 2^32, where the interpreter allocates, Hi.v's fixture memory
-    holds no byte and no capability. *)
+(** Above 2^32, where the interpreter allocates new heap objects, `Hi.v`'s
+    fixture memory contains only zero bytes and empty [[aux]] slots. *)
 Lemma hi_memory_high : forall a, 2 ^ 32 <= a ->
   m_bytes HiChecks.memory a = 0 /\ m_aux HiChecks.memory a = CNone.
 Proof.
@@ -185,9 +197,8 @@ Proof.
   all: split; reflexivity.
 Qed.
 
-(** The interpreter is [[ready]] in Hi.v's fixture memory: the libc
-    root at 2048 and the literal at 65552, both below its first
-    allocation at 2^32. *)
+(** The interpreter runtime is [[ready]] in `Hi.v`'s fixture memory because
+    both the libc root and the literal lie below 2^32. *)
 Lemma hi_memory_ready : InterpRuntime.ready InterpRuntime.start HiChecks.memory.
 Proof.
   split; [vm_compute; split; congruence|]. split; [|exact hi_memory_high].
@@ -197,7 +208,8 @@ Proof.
     (split; [vm_compute; split; congruence|]); (split; [vm_compute; congruence | discriminate]).
 Qed.
 
-(** The fixture's two live objects are apart. *)
+(** The libc root at 2048 and the string literal at 65552 occupy disjoint
+    address ranges. *)
 Lemma hi_memory_disjoint : live_disjoint HiChecks.memory.
 Proof.
   intros b1 r1 b2 r2 [E1 _] [E2 _] Hne.
@@ -210,9 +222,9 @@ Proof.
   injection E1 as <-; injection E2 as <-; cbn; lia.
 Qed.
 
-(** hi's body is safe under the interpreter's runtime, from Hi.v's
-    fixture: the libc root at 2048 and the initialized literal, with
-    the fixture's stream representation. *)
+(** Under the interpreter's runtime and `Hi.v`'s fixture memory, calling
+    `c: main` executes safely for any amount of fuel and returns zero if it
+    finishes. *)
 Theorem interp_hi_logic_safe : forall fuel,
   InterpHiLogic.L.labelled_safe (InterpHiLogic.HB.hi_registry fixture_rep fixture_requests)
     InterpHiLogic.HB.hi_genv
