@@ -151,6 +151,56 @@ Definition word_size (z : size) : Prop := z = S32 \/ z = S64.
 Definition scratch_only (s s' : machine) : Prop :=
   forall r, r <> RAX -> r <> RCX -> r <> RDX -> regs s' r = regs s r.
 
+(** Register reads can be simplified before executing the next instruction.
+    This tactic keeps the machine abstract while removing completed writes. *)
+Local Ltac division_regs :=
+  repeat first
+    [ rewrite get_reg_set_flags
+    | rewrite regs_set_flags
+    | rewrite get_set_reg_other by congruence
+    | rewrite regs_set_reg_other by congruence
+    | rewrite get_set_reg_same by (cbn; lia)
+    | rewrite get_64_set_32
+    | rewrite regs_set_reg_32
+    | rewrite regs_set_reg_64
+    | rewrite wrap_wrap ].
+
+(** Only closed arithmetic is evaluated while simplifying masks.
+    Symbolic operands remain intact for the word lemmas. *)
+Local Ltac division_closed v :=
+  lazymatch v with
+  | Z0 => idtac
+  | Zpos ?p => is_ground p
+  | Zneg ?p => is_ground p
+  | wrap _ ?x => division_closed x
+  | Z.sub ?x ?y => division_closed x; division_closed y
+  | Z.add ?x ?y => division_closed x; division_closed y
+  | Z.opp ?x => division_closed x
+  end.
+
+(** Constant masks reduce without expanding a symbolic register read. *)
+Local Ltac division_constants :=
+  repeat match goal with |- context [wrap ?z ?v] =>
+    division_closed v;
+    let n := eval vm_compute in (wrap z v) in
+    progress change (wrap z v) with n
+  end.
+
+(** Each instruction receives its own undefined flags during symbolic execution.
+    A completed step leaves only the execution of the remaining instructions. *)
+Local Ltac division_step :=
+  match goal with
+  | H : runs (_ :: _) _ _ |- _ =>
+      let h := fresh "h" in let t := fresh "t" in
+      let E := fresh "E" in let R := fresh "R" in
+      apply runs_cons_inv in H;
+      destruct H as [h [[t [E R]] | [t [E R]]]];
+      cbv beta iota zeta delta
+        [step source_value binary_writes binary_value size_ltb size_bits] in E;
+      revert E; division_regs; intro E;
+      [ injection E as E; subst t | discriminate E ]
+  end.
+
 (** The first fragment leaves the first-stage dividend in `%rax` and
     the first-stage divisor in `%rcx`. It needs no precondition. *)
 Lemma zero_divisor_spec (z : size) :
@@ -161,7 +211,48 @@ Lemma zero_divisor_spec (z : size) :
        /\ regs s' RCX = nonzero_divisor (get_reg z RCX s)
        /\ scratch_only s s').
 Proof.
-Admitted.
+  intros [-> | ->] s o _ H; unfold zero_divisor_code in H;
+    do 6 division_step;
+    match goal with H : runs [] _ _ |- _ => apply runs_nil_inv in H; subst o end;
+    eexists; (split; [reflexivity |]);
+    cbn beta; unfold scratch_only; repeat split; intros;
+    division_regs.
+  all: cbn [condition_holds flags set_flags binary_flags binary_value logic_flags].
+  all: try reflexivity.
+  all: try rewrite Z.land_diag.
+  all: unfold nonzero_dividend, nonzero_divisor;
+    match goal with |- context [get_reg ?z RCX ?st] =>
+      destruct (get_reg z RCX st =? 0) eqn:C
+    end;
+    cbv beta iota; division_constants.
+  all: try rewrite Z.land_0_r.
+  all: try reflexivity.
+  all: try (rewrite Z.add_0_r; apply wrap_small, get_reg_range).
+  all: try (apply Z.eqb_eq in C; rewrite C; reflexivity).
+  - change 4294967295 with (size_modulus S32 - 1).
+    rewrite land_ones by apply get_reg_range.
+    apply wrap_small, get_reg_range.
+  - change 18446744073709551615 with (size_modulus S64 - 1).
+    rewrite land_ones by apply get_reg_range.
+    apply wrap_small, get_reg_range.
+Qed.
+
+(** Comparing a valid pattern with -1 sets zero exactly for the all-ones pattern.
+    This identifies the bit that the second fragment copies with `sete`. *)
+Lemma compare_minus_one (z : size) (c : Z) :
+  0 <= c < size_modulus z ->
+  (wrap z (c - wrap z (-1)) =? 0) = (c =? size_modulus z - 1).
+Proof.
+  intros Hc. rewrite wrap_sub_r.
+  replace (c - -1) with (c + 1) by lia.
+  destruct (c =? size_modulus z - 1) eqn:C.
+  - apply Z.eqb_eq in C. rewrite C.
+    replace (size_modulus z - 1 + 1) with (size_modulus z) by lia.
+    unfold wrap. rewrite Z.mod_same by (pose proof (size_modulus_pos z); lia).
+    reflexivity.
+  - apply Z.eqb_neq in C. rewrite wrap_small by lia.
+    apply Z.eqb_neq. lia.
+Qed.
 
 (** The second fragment of a signed division leaves the second-stage
     dividend in `%rax` and the second-stage divisor in `%rcx`. It needs
@@ -174,7 +265,34 @@ Lemma minus_one_divisor_spec (z : size) :
        /\ regs s' RCX = positive_divisor z (get_reg z RCX s)
        /\ scratch_only s s').
 Proof.
-Admitted.
+  intros [-> | ->] s o _ H; unfold minus_one_divisor_code in H;
+    do 8 division_step;
+    match goal with H : runs [] _ _ |- _ => apply runs_nil_inv in H; subst o end;
+    eexists; (split; [reflexivity |]);
+    cbn beta; unfold scratch_only; repeat split; intros;
+    division_regs.
+  all: cbn [condition_holds flags set_flags binary_flags binary_value arith_flags].
+  all: try reflexivity.
+  all: rewrite compare_minus_one by apply get_reg_range;
+    unfold negated_dividend, positive_divisor;
+    match goal with |- context [get_reg ?z RCX ?st] =>
+      destruct (get_reg z RCX st =? size_modulus z - 1) eqn:C
+    end;
+    cbv beta iota; division_constants;
+    try rewrite Z.lxor_0_r;
+    repeat rewrite wrap_add_l;
+    repeat rewrite wrap_sub_l;
+    repeat rewrite Z.add_0_r;
+    try rewrite Z.sub_0_r;
+    try (apply wrap_small, get_reg_range);
+    try (apply Z.eqb_eq in C; rewrite C; reflexivity).
+  - change 4294967295 with (size_modulus S32 - 1).
+    rewrite lxor_ones by apply get_reg_range.
+    f_equal. lia.
+  - change 18446744073709551615 with (size_modulus S64 - 1).
+    rewrite lxor_ones by apply get_reg_range.
+    f_equal. lia.
+Qed.
 
 (** The divide fragment requires a safe divisor in `%rcx`. It then
     completes without a divide error and leaves the quotient in `%rax`
@@ -187,7 +305,27 @@ Lemma divide_spec (sg : signedness) (z : size) :
        /\ regs s' RDX = machine_remainder sg z (get_reg z RAX s) (get_reg z RCX s)
        /\ scratch_only s s').
 Proof.
-Admitted.
+  intros [-> | ->] s o Hsafe H; destruct sg;
+    unfold divide_code in H; division_step;
+    apply runs_cons_inv in R;
+    destruct R as [hd [[t [E R]] | [f [E R]]]];
+    cbv beta iota zeta delta [step] in E;
+    revert E; division_regs;
+    try rewrite Z.lxor_nilpotent;
+    division_constants;
+    try rewrite wrap_small by apply sign_fill_range;
+    first [rewrite divide_words_signed by (try apply get_reg_range; assumption)
+          |rewrite divide_words_unsigned by (try apply get_reg_range; assumption)];
+    intro E; try discriminate E;
+    injection E as E; subst t;
+    apply runs_nil_inv in R; subst o;
+    eexists; (split; [reflexivity |]);
+    cbn beta; unfold scratch_only; repeat split; intros; division_regs;
+    cbn [fst snd]; try reflexivity;
+    apply wrap_small;
+    first [apply machine_quotient_range | apply machine_remainder_range];
+    try apply get_reg_range; assumption.
+Qed.
 
 (** The result fragment of a remainder copies the low part of `%rdx`
     to `%rax` and changes no other register. *)
@@ -198,7 +336,14 @@ Lemma result_spec (z : size) :
        regs s' RAX = get_reg z RDX s
        /\ forall r, r <> RAX -> regs s' r = regs s r).
 Proof.
-Admitted.
+  intros [-> | ->] s o _ H; unfold result_code in H;
+    division_step; apply runs_nil_inv in R; subst o;
+    eexists; (split; [reflexivity |]); split.
+  - division_regs. apply wrap_small, get_reg_range.
+  - intros r Hr. division_regs. reflexivity.
+  - division_regs. apply wrap_small, get_reg_range.
+  - intros r Hr. division_regs. reflexivity.
+Qed.
 
 (** ## Executions on concrete operands
 
