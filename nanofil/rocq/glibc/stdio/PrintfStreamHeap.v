@@ -11,7 +11,7 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioOverflowBase PrintfStreamInv.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioOverflowBase LibioDefaultXsputnBuf PrintfStreamInv.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -19,6 +19,7 @@ Open Scope Z_scope.
 Module PrintfStreamHeapOn (R : Runtime) (LG0 : LogicSig R).
 Module PS := PrintfStreamInvOn R LG0.
 Module OB := LibioOverflowBaseOn R LG0.
+Module BF := LibioBufOn R LG0.
 Import PS PS.PI PS.PI.CS.SW.FI PS.PI.CS.SW.FI.ML PS.PI.CS.SW.FI.LG PS.PI.CS.SW.FI.L.
 
 (** Overflow changes the first eight pointers, flags, offset and byte count.
@@ -67,7 +68,7 @@ Definition heap_file_tail (fb : Z) (self : ptr) (held : option Z) (st : fstate)
 (** An IO-ready heap stream owns all ordinary stream fields and buffer bytes.
     Its extra facts justify the already-writing, nonappend backend path.
     Errno remains separate because writes may change its value. *)
-Definition printf_heap_stream (w0 : os_world) (vb : Z) (self fp : ptr)
+Definition printf_heap_stream_with (B : Z -> Z -> iProp Σ) (w0 : os_world) (vb : Z) (self fp : ptr)
     (mode flags2 : Z) (held : option Z) : iProp Σ :=
   ∃ fb freg st bb breg sz k we xs fl tw off col,
     ⌜fp = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\
@@ -81,20 +82,90 @@ Definition printf_heap_stream (w0 : os_world) (vb : Z) (self fp : ptr)
     live fb freg ∗ OB.ovf_state fb bb breg sz k we xs fl tw off ∗
     int_cell fb off_flags2 flags2 ∗ int_cell fb off_fileno (fs_fileno st) ∗
     bytes fb off_column [0; 0] ∗ int_cell fb off_mode mode ∗
-    pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) ∗ heap_file_tail fb self held st col.
+    pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) ∗ heap_file_tail fb self held st col ∗ B bb sz.
+
+(** Overflow needs only the buffer's bytes. This view leaves any additional
+    buffer resources outside the call, as the existing overflow rules require. *)
+Definition printf_heap_stream := printf_heap_stream_with (fun _ _ => emp%I).
+
+(** Copying bytes also updates their capability slots. The caller owns those
+    slots for this same aligned buffer, rather than an unrelated allocation. *)
+Definition printf_copy_buffer (bb sz : Z) : iProp Σ :=
+  ⌜bb mod 8 = 0⌝ ∗ ∃ cs, ⌜length cs = Z.to_nat sz⌝ ∗ auxes bb 0 cs.
+
+(** String output keeps the ordinary stream fields and the buffer's capability
+    slots together. The slot contents may change when new bytes are copied. *)
+Definition printf_xsputn_heap_stream := printf_heap_stream_with printf_copy_buffer.
+
+(** The aligned buffer and its capability slots supply string output's owned
+    buffer view. The write pointer comes from overflow's pending byte count. *)
+Lemma printf_copy_buffer_open fb bb breg sz k we xs fl tw off :
+  r_kind breg = Heap ->
+  OB.ovf_state fb bb breg sz k we xs fl tw off -∗ printf_copy_buffer bb sz -∗
+  BF.wbuf fb (Some (bb, sz)) (mkPtr (bb + k) (Obj bb)) we ∗
+  int_cell fb off_flags fl ∗ icell fb off_total_written tw ∗ icell fb off_offset off.
+Proof.
+  intros Hheap.
+  iIntros "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)
+    (%Hal & %cs & %Hlc & Hcs)".
+  destruct Hp as (Hb & Hend & Hreg & Hsz & Hk & Hlx & Hx & Hec & Hea).
+  iFrame "Hfl Htw Hoff". unfold BF.wbuf, BF.wcells. cbn [nb_base nb_end].
+  iFrame "Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend".
+  iExists breg, xs, cs. iFrame. iPureIntro.
+  unfold room_ok, LibioDefaultXsputnBuf.in_buf.
+  cbn [ptr_cap ptr_addr]. split_and!; first [reflexivity | assumption | lia].
+Qed.
+
+(** The reverse conversion retains alignment and every capability slot.
+    Slot contents remain existential because byte copies may have changed them. *)
+Lemma printf_copy_buffer_close fb bb sz wp we fl tw off :
+  BF.wbuf fb (Some (bb, sz)) wp we -∗ int_cell fb off_flags fl -∗
+  icell fb off_total_written tw -∗ icell fb off_offset off -∗
+  ∃ breg xs k, ⌜r_kind breg = Heap⌝ ∗
+    OB.ovf_state fb bb breg sz k we xs fl tw off ∗ printf_copy_buffer bb sz.
+Proof.
+  iIntros "((Hrp & Hre & Hrb & Hwb & Hbase & Hbend) & Hwp & Hwe & Hroom) Hfl Htw Hoff".
+  iDestruct "Hroom" as (breg xs cs Hp) "(Hbl & Hxs & Hcs)".
+  destruct Hp as (Hb & Hal & Hsz & Hend & Hreg & Hlx & Hlc & Hx & [Hpc Hpa] & [Hec Hea] & Hheap).
+  destruct wp as [wa wc]. cbn in Hpc, Hpa. subst wc.
+  replace wa with (bb + (wa - bb)) by lia.
+  iExists breg, xs, (wa - bb). iSplit; [done|].
+  iSplitR "Hcs".
+  - unfold OB.ovf_state. iFrame. iPureIntro. split_and!; first [assumption | lia].
+  - iSplit; [done|]. iExists cs. iFrame. done.
+Qed.
+
+(** Forgetting the copy resources recovers the bytes-only overflow interface.
+    It does not manufacture capability-slot ownership from byte ownership. *)
+Lemma printf_heap_stream_with_forget B w0 vb self fp mode flags2 held :
+  printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
+  printf_heap_stream w0 vb self fp mode flags2 held.
+Proof.
+  iIntros "(%fb & %freg & %st & %bb & %breg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp &
+    Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvt & Htail & _)".
+  iExists fb, freg, st, bb, breg, sz, k, we, xs, fl, tw, off, col. iFrame. done.
+Qed.
 
 (** A caller can borrow the FILE lifetime for its checked pointer load.
     The closing wand requires the same token before any stream call proceeds. *)
-Lemma printf_heap_stream_live w0 vb self fp mode flags2 held :
-  printf_heap_stream w0 vb self fp mode flags2 held -∗
+Lemma printf_heap_stream_with_live B w0 vb self fp mode flags2 held :
+  printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
   ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗
-    (live_capq dq (ptr_cap fp) reg -∗ printf_heap_stream w0 vb self fp mode flags2 held).
+    (live_capq dq (ptr_cap fp) reg -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held).
 Proof.
   iIntros "(%fb & %freg & %st & %bb & %breg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp & Hl & Hrest)".
   pose proof Hp as (Hfp & _). subst fp.
   iExists (DfracOwn 1%Qp), freg. iFrame "Hl". iIntros "Hl".
   iExists fb, freg, st, bb, breg, sz, k, we, xs, fl, tw, off, col. iFrame. done.
 Qed.
+
+(** The existing lifetime loan remains available for bytes-only callers.
+    Callers with capability slots use the general loan and recover those slots. *)
+Lemma printf_heap_stream_live w0 vb self fp mode flags2 held :
+  printf_heap_stream w0 vb self fp mode flags2 held -∗
+  ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗
+    (live_capq dq (ptr_cap fp) reg -∗ printf_heap_stream w0 vb self fp mode flags2 held).
+Proof. exact (printf_heap_stream_with_live (fun _ _ => emp%I) w0 vb self fp mode flags2 held). Qed.
 
 (** The stronger heap view returns an ordinary diagnostic stream with the
     same mode, cancellation flags and held count. This implication does not
@@ -104,7 +175,7 @@ Lemma printf_heap_stream_forget w0 vb self fp mode flags2 held :
   printf_stream vb self fp mode flags2 held.
 Proof.
   iIntros "(%fb & %freg & %st & %bb & %breg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp &
-    Hl & Hst & Hf2 & Hfd & Hcol0 & Hmd & Hvt & Htail)".
+    Hl & Hst & Hf2 & Hfd & Hcol0 & Hmd & Hvt & Htail & _)".
   destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hheap & Hmode & Hnarrow & Hflags2 & Hvt & Hcolumn &
     Hcol & Hfd & Happ & Hnw & Hput & Hok).
   iDestruct "Hst" as "(%Hb & Hbl & Hxs & Hfl & Htw & Hoff & H0 & H1 & H2 & H3 & H4 & H5 & H6 & H7)".

@@ -43,20 +43,20 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** File overflow returns the IO-ready stream and errno ownership on failure
     as well as success. Neither the lock count nor flags2 is existentially
     forgotten, and errno's value is allowed to change. *)
-Lemma hi_printf_heap_file_overflow fr eb vb vreg self fp mode flags2 held ch Φ :
+Lemma hi_printf_heap_file_overflow_with B fr eb vb vreg self fp mode flags2 held ch Φ :
   call_frame glibc__IO_new_file_overflow [WPtr fp; WInt ch] = Some fr ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\
     find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
-  vtables_ro ge vb vreg -∗ printf_heap_stream w0 vb self fp mode flags2 held -∗ errno_any eb -∗
-  ▷ (∀ r, ⌜ovf_ret ch r⌝ -∗ printf_heap_stream w0 vb self fp mode flags2 held -∗
+  vtables_ro ge vb vreg -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held -∗ errno_any eb -∗
+  ▷ (∀ r, ⌜ovf_ret ch r⌝ -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
      errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hch Hready Heb. iIntros "#Hvt Hf Herr HK".
   iDestruct "Hf" as (fb freg st bb breg sz k we xs fl tw off col Hp)
-    "(Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvtp & Htail)".
+    "(Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvtp & Htail & HB)".
   destruct Hp as (-> & Hfb & Hal & Hend & Hregend & Hheap & Hmode & Hnarrow & Hflags2 & Hvtp & Hcolumn &
     Hcol & Hfd & Happ & Hnw & Hput & Hok).
   iDestruct "Hf2" as "[%Hf2r Hf2]".
@@ -72,11 +72,25 @@ Proof.
   assert (Hmask : forall mask, Z.land io_err_seen mask = 0 -> Z.land fl' mask = Z.land fl mask).
   { intros mask Hmask. destruct Hfl' as [-> | ->]; [reflexivity|].
     apply land_lor_const. exact Hmask. }
-  iApply ("HK" with "[%] [Hl Hst Hf2 Hfd Hcol Hmd Hvtp Htail] Herr"); [exact Hr|].
+  iApply ("HK" with "[%] [Hl Hst Hf2 Hfd Hcol Hmd Hvtp Htail HB] Herr"); [exact Hr|].
   iExists fb, freg, st, bb, breg, sz, k', we', xs', fl', tw', off', col.
   iFrame. iPureIntro. rewrite (Hmask io_is_appending eq_refl) (Hmask io_no_writes eq_refl)
     (Hmask io_currently_putting eq_refl). tauto.
 Qed.
+
+(** The bytes-only entry retains its original contract. Calls that also own
+    capability slots use the stronger rule without discarding those slots. *)
+Lemma hi_printf_heap_file_overflow fr eb vb vreg self fp mode flags2 held ch Φ :
+  call_frame glibc__IO_new_file_overflow [WPtr fp; WInt ch] = Some fr ->
+  (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
+  (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\
+    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
+  vtables_ro ge vb vreg -∗ printf_heap_stream w0 vb self fp mode flags2 held -∗ errno_any eb -∗
+  ▷ (∀ r, ⌜ovf_ret ch r⌝ -∗ printf_heap_stream w0 vb self fp mode flags2 held -∗
+     errno_any eb -∗ Φ (Ret (WInt r))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+Proof. exact (hi_printf_heap_file_overflow_with (fun _ _ => emp%I) fr eb vb vreg self fp mode flags2 held ch Φ). Qed.
 
 (** The outer wrapper leaves an already narrow stream's mode unchanged.
     Its checked dispatch reaches the proved heap backend, and every canonical
