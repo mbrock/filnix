@@ -1,33 +1,24 @@
-(** A loop whose trip count is the input, proved never to panic:
-    rocq/theories/programs/cycle.c, the sum of n longs read in turn from a
-    read-only global array of four, `xs[i % 4]` for i from 0 while
-    i < n, for every int n (CycleCode.v, checked current by
-    rocq/scripts/programs.sh). The loop runs up to 2^31 - 1 times, so no list
-    of runs covers it.
+(** This module proves that the C function `c: cycle` in `cycle.c` never
+    panics for any integer input. The function sums n longs from a four-element
+    read-only global array by indexing `c: xs[i % 4]` for i from 0 while
+    i < n. Because n can be any signed 32-bit integer up to 2^31 - 1, no
+    finite list of concrete runs can cover all trip counts.
 
-    The proof is Floyd's: an assertion at each point of the function
-    ([cycle_assert]) says what the [[temporary|temporaries]] hold
-    there, and one [[step]] from any configuration where the assertion
-    holds reaches a point where its assertion holds, or ends without a
-    failure ([cycle_safe]). Each step is taken by its rule from
-    StepRules.v (Symbolic.v's [take_step]): the rule of the instruction
-    at the point, with its premises (a temporary's value, an op on
-    words, an access check) proved one by one.
-    The loop's assertion is that its index i is between 0 and 2^31 - 1:
-    then `i % 4` is between 0 and 3, the access is in bounds, and
-    `i + 1` does not wrap. The index stays below 2^31 because the loop
-    continues only while i < n, and no int n is above 2^31 - 1.
-    Panics.v's [never_panics_by_invariant] turns that into
-    [never_panics].
+    Instead of unrolling the loop, we use Floyd's invariant method. We attach
+    an assertion ([cycle_assert]) to every program point in the function and
+    prove in [cycle_safe] that taking one [[step]] from any state satisfying
+    its point's assertion lands in another valid point or terminates cleanly.
+    The key loop invariant is that the index i stays between 0 and 2^31 - 1,
+    which guarantees that `i % 4` falls between 0 and 3 and that `i + 1` never
+    overflows when the loop condition i < n holds.
 
-    ## Decisions
-
-    | Decision | Why |
-    |---|---|
-    | assertions at every point, not only at the loop's head | the machine's invariant must hold in every state a run reaches, and the safepoint at the poll edge may act in the middle of the loop |
-    | an assertion names only the temporaries read later, each with a range | the environment stays abstract, so the proof holds whatever else it holds, in the first iteration and in every later one |
-    | the input is any list whose first word is an integer | the model reads an `int` parameter modulo 2^32, so no range on the word is needed; a pointer there is outside the C type |
-    | memory as in Sum.v's [mem_ok] | the array is laid out where sum.c's is, and the program only reads it | *)
+    Execution can pause between any two instructions, so we attach facts to
+    every program point rather than only to the loop header. Each point
+    constrains only the [[temporary|temporaries]] that later instructions
+    read, leaving the rest of the environment abstract across iterations.
+    The global array's bytes and bounds never move, and `c: cycle` accepts
+    any trailing arguments because it only inspects its first integer
+    parameter. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
@@ -35,42 +26,46 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Import ListNotations.
 Open Scope Z_scope.
 
-(** Integer arithmetic on an unknown stays folded when a step is
-    computed (Symbolic.v). *)
+(** Integer arithmetic on symbolic values stays folded during step
+    reduction so bounds remain readable. *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** ## The program *)
+(** ## The program
 
-(** The checked module, decoded from the fixture [cycle_term]
-    ([cycle_decodes]). *)
+    The proof verifies the compiled IR fixture emitted by `nanofil -O` for
+    `cycle.c`. Decoding that fixture gives us the function body, the global
+    array layout, and the initial memory state. *)
+
+(** Decoding [cycle_term] produces the compiled module for `cycle.c`. *)
 Definition cycle_module : module :=
   match decode_module cycle_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [cycle_module]. *)
+(** The saved compiler fixture decodes cleanly into [cycle_module]. *)
 Lemma cycle_decodes : decode_module cycle_term = Some cycle_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The function `cycle`, the module's first item. *)
+(** The compiled function `cycle` is the first definition in the module. *)
 Definition cycle_fn : func :=
   match cycle_module with
   | IFunc f :: _ => f
   | _ => mkFunc (TAtom "cycle") (TAtom "export") (RClass L) [] []
   end.
 
-(** The module's globals: the array `xs`, laid out as in Sum.v, and the
-    function `cycle`. *)
+(** The global table places the array `xs` at address 65552 and the function
+    `cycle` at address 65536. *)
 Definition cycle_globals : list (name * ptr) :=
   [(TAtom "xs", mkPtr 65552 (Ro 65552)); (TAtom "cycle", mkPtr 65536 (Fn (TAtom "cycle")))].
 
-(** The module's initial memory. *)
+(** Laying out the module's globals builds the initial memory state before
+    execution starts. *)
 Definition cycle_mem : mem :=
   match initial_memory cycle_module with Some (_, m) => m | None => empty_mem end.
 
-(** Laying out the module succeeds, with [cycle_globals] and
-    [cycle_mem]. *)
+(** Memory layout succeeds and produces the expected global pointers and
+    initial heap. *)
 Lemma cycle_initial : initial_memory cycle_module = Some (cycle_globals, cycle_mem).
 Proof.
   assert (H : option_map fst (initial_memory cycle_module) = Some cycle_globals)
@@ -78,36 +73,42 @@ Proof.
   unfold cycle_mem. destruct (initial_memory cycle_module) as [[g m]|]; inversion H; reflexivity.
 Qed.
 
-(** The genv of the module with any free; the program calls none. *)
+(** Wrapping the module and its globals into a global environment lets the
+    semantics resolve calls under any `free` handler. *)
 Definition cycle_ge (free : word -> mem -> option (res unit * mem)) : genv :=
   mkGenv cycle_module cycle_globals free.
 
-(** `cycle` is a function of the [[core subset]] in the module. *)
+(** Looking up `cycle` in the global environment finds the compiled function
+    in the [[core subset]]. *)
 Lemma cycle_find : forall free,
   find_fn (cycle_ge free) (TAtom "cycle") = Some (Defined cycle_fn).
 Proof. intros free. vm_compute. reflexivity. Qed.
 
-(** Any arguments whose first word is the integer n start `cycle` at
-    its entry block with n as its parameter `v0`. *)
+(** Calling `cycle` with an integer first argument starts at its entry block
+    with `v0` bound to that integer. *)
 Lemma cycle_call_frame : forall n rest,
   call_frame cycle_fn (WInt n :: rest) =
   Some (mkFrame cycle_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** ## The points *)
+(** ## The points
 
-(** Block l of `cycle` after its first j instructions. *)
+    Because the invariant must hold at every intermediate machine state, we
+    enumerate every program point in `cycle` in a fixed list. Each entry
+    identifies either a block transition or a specific instruction suffix
+    within a basic block. *)
+
+(** Computing the suffix of block l after skipping j instructions builds a
+    program point inside that block. *)
 Definition block_at (l : string) (j : nat) : point :=
   match find_block (TAtom l) (fn_blocks cycle_fn) with
   | Some b => Exec (TAtom l) (skipn j (b_insts b)) (b_jump b)
   | None => Enter (TAtom l) None
   end.
 
-(** Every point of `cycle`, numbered: the entry block `start`; the
-    loop's head `L4` (entered from `start` or from the body, then its
-    comparison of i with n, then its branch); the loop's body `L5`,
-    before each of its nine instructions and before its jump back,
-    which polls; and the exit `L7`, which returns the sum. *)
+(** The list [cycle_points] indexes all 19 reachable program points across
+    the entry block `start`, the loop header `L4`, the loop body `L5`, and
+    the exit block `L7`. *)
 Definition cycle_points : list point :=
   [Enter (TAtom "start") None; block_at "start" 0;
    Enter (TAtom "L4") (Some (TAtom "start")); Enter (TAtom "L4") (Some (TAtom "L5"));
@@ -115,20 +116,21 @@ Definition cycle_points : list point :=
    Enter (TAtom "L5") (Some (TAtom "L4"))] ++ map (block_at "L5") (seq 0 10) ++
   [Enter (TAtom "L7") (Some (TAtom "L4")); block_at "L7" 0].
 
-(** ## The assertions *)
+(** ## The assertions
 
-(** The temporary x holds a pointer into `xs` with 8 bytes after it:
-    an address from the array's start to its last long, with the
-    array's read-only capability. *)
+    Each program point carries an assertion describing the integer bounds and
+    pointer capabilities held in live temporaries. By tracking only the
+    values needed by subsequent instructions, the assertions stay simple
+    while still discharging every memory access check. *)
+
+(** A temporary x satisfies [into_xs] when it holds a read-only pointer into
+    the global array `xs` with at least 8 bytes remaining before the end. *)
 Definition into_xs (e : env) (x : string) : Prop :=
   exists a, lookup (TAtom x) e = Some (WPtr (mkPtr a (Ro 65552))) /\ 65552 <= a <= 65576.
 
-(** What holds after the first j instructions of the body: the sum
-    `pr.1`, the index `pr.2` with room to add one, and each temporary
-    the body has assigned and reads later: the array's pointer `v12`,
-    `i % 4` (`v14`, then `v15` as a long), the offset `v16`, the
-    pointer `v17` and its [[check|checked]] proof `chk0`, the long
-    loaded `v18`, the new sum `v19` and the next index `v21`. *)
+(** Inside the loop body, every instruction keeps the running sum and
+    bounded loop index valid while building the [[check|checked]] array
+    pointer up to index j. *)
 Definition body_assert (j : nat) (e : env) : Prop :=
   int_at e (TAtom "pr.1") any /\ int_at e (TAtom "pr.2") (fun i => 0 <= i /\ i + 1 < 2 ^ 31) /\
   (if (1 <=? j)%nat then lookup (TAtom "v12") e = Some (WPtr (mkPtr 65552 (Ro 65552))) else True) /\
@@ -141,12 +143,9 @@ Definition body_assert (j : nat) (e : env) : Prop :=
   (if (8 <=? j)%nat then int_at e (TAtom "v19") any else True) /\
   (if (9 <=? j)%nat then int_at e (TAtom "v21") (fun i => 0 <= i < 2 ^ 31) else True).
 
-(** What holds at point k of [cycle_points], besides the input. At the
-    loop's head entered from the body, the next index and sum; before
-    the comparison, the index i and the sum; at the branch, also the
-    comparison's answer, and where it is true, that i + 1 does not
-    reach 2^31, since i < n; in the body, [body_assert]; at the exit,
-    the sum. *)
+(** Depending on which of the 19 program points execution has reached, the
+    point assertion records either the loop comparison outcome or the body
+    state up to that instruction. *)
 Definition cycle_assert (k : nat) (e : env) : Prop :=
   match k with
   | 3%nat => int_at e (TAtom "v21") (fun i => 0 <= i < 2 ^ 31) /\ int_at e (TAtom "v19") any
@@ -160,26 +159,31 @@ Definition cycle_assert (k : nat) (e : env) : Prop :=
   | _ => if (7 <=? k)%nat && (k <=? 16)%nat then body_assert (k - 7) e else True
   end.
 
-(** A configuration of `cycle` where the assertions hold: at point k,
-    with no caller, the input `v0` an integer, the assertion of k, and
-    a memory that is [mem_ok] for the array. *)
+(** A machine state is valid when `cycle` is at one of the 19 recorded
+    points, has no callers, holds an integer input, and matches the global
+    array. *)
 Definition cycle_inv (c : config) : Prop :=
   exists k pt e,
     c = mkConfig (mkFrame cycle_fn e [] None pt) [] (c_mem c) (c_fuel c) /\
     nth_error cycle_points k = Some pt /\
     mem_ok cycle_mem (c_mem c) /\ int_at e (TAtom "v0") any /\ cycle_assert k e.
 
-(** ## Each step *)
+(** ## Each step
 
-(** Unfold the assertion at a known point. *)
+    Rather than proving 19 separate lemmas by hand, we write small tactics
+    that unpack the current point's assertion, apply the matching symbolic
+    step rule, and discharge the resulting arithmetic obligations. *)
+
+(** This tactic unfolds the point assertion in the goal so individual
+    temporary bounds become visible. *)
 Ltac assertion := cbn [cycle_assert Nat.leb andb Nat.sub]; try unfold body_assert; cbn [Nat.leb].
 
-(** Unfold the assertion at a known point in the hypothesis H. *)
+(** This tactic unfolds the point assertion inside a named hypothesis H. *)
 Ltac assertion_in H :=
   cbn [cycle_assert Nat.leb andb Nat.sub] in H; try unfold body_assert in H; cbn [Nat.leb] in H.
 
-(** The point of the next configuration is point n of
-    [cycle_points] or a later one: find it by computing each in turn. *)
+(** This tactic locates the target program point pt in [cycle_points] by
+    testing each index starting from n. *)
 Ltac find_point pt n :=
   lazymatch n with
   | 19%nat => fail
@@ -188,8 +192,8 @@ Ltac find_point pt n :=
                | find_point pt (S n) ]
   end.
 
-(** The next configuration is in [cycle_inv]: at its point, with the
-    memory unchanged, and the facts shown. *)
+(** This tactic proves that a stepped configuration satisfies [cycle_inv]
+    by finding its new point index and discharging all temporary facts. *)
 Ltac next_inv Hb Hr :=
   unfold cycle_inv;
   match goal with |- exists k pt e, mkConfig (mkFrame _ _ _ _ ?pt') _ _ _ = _ /\ _ =>
@@ -198,17 +202,17 @@ Ltac next_inv Hb Hr :=
   eexists; split; [subst; reflexivity|]; split; [assumption|]; cbn [c_mem]; split; [exact (conj Hb Hr)|];
   split; [show_facts | assertion; try unfold into_xs; show_facts].
 
-(** One point of [cycle_safe]: the point from Hk, an index into the
-    points pts, the assertion Ha taken apart, the step taken by its
-    rule ([take_step]), and its result shown safe. *)
+(** This tactic proves safety for a single program point by unpacking its
+    assertion, stepping through the instruction, and checking that the next
+    state stays within the invariant or exits cleanly. *)
 Ltac point_safe pts Hk Ha Hb Hr :=
   cbv in Hk; injection Hk as <-; clear pts;
   assertion_in Ha; unfold int_at, into_xs in *; facts;
   take_step; cbn [safe_step];
   solve [ intro; assumption | next_inv Hb Hr ].
 
-(** One step from a configuration where the assertions hold is
-    [safe_step] for them. *)
+(** Every configuration satisfying [cycle_inv] takes a safe step under any
+    `free` handler, either preserving the invariant or terminating cleanly. *)
 Lemma cycle_safe : forall free c, cycle_inv c -> safe_step cycle_inv (c_mem c) (step (cycle_ge free) c).
 Proof.
   intros free c (k & pt & e & Ec & Hk & Hm & Hin & Ha).
@@ -225,8 +229,8 @@ Proof.
   destruct k; discriminate Hk.
 Qed.
 
-(** A call with an integer first argument starts where the assertions
-    hold, with any fuel. *)
+(** Entering `cycle` with any integer argument and any fuel immediately
+    satisfies [cycle_inv]. *)
 Lemma cycle_start : forall n fuel,
   cycle_inv (mkConfig (mkFrame cycle_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None))
                       [] cycle_mem fuel).
@@ -237,16 +241,21 @@ Proof.
   split; [exists n; split; [reflexivity | exact I] | exact I].
 Qed.
 
-(** ## Over any runtime *)
+(** ## Over any runtime
 
-(** `cycle` never panics under the [[runtime]] R. *)
+    Single-step safety covers individual instructions, while a full machine
+    run also includes garbage-collector pauses at safepoints. We lift
+    [cycle_safe] to any [[runtime]] R and show that safepoints preserve
+    the invariant because they keep the global array intact. *)
+
+(** This functor packages the safety proof for any runtime implementation
+    satisfying the [Runtime] interface. *)
 Module CycleSafe (R : Runtime).
 Module P := Panics R.
 Module S := SumSafe R.
 
-(** What R does at a [[poll|safepoint]] keeps the assertions: it
-    changes only the memory, and keeps [mem_ok] (Sum.v's
-    [mem_ok_safepoint]). *)
+(** A garbage-collector [[poll|safepoint]] preserves the machine invariant
+    because it leaves the global array's bytes and bounds untouched. *)
 Lemma cycle_safepoint : forall c s s' m',
   cycle_inv c -> R.safepoint s (c_mem c) s' m' -> cycle_inv (P.RM.with_mem c m').
 Proof.
@@ -256,9 +265,8 @@ Proof.
   eapply S.mem_ok_safepoint; eassumption.
 Qed.
 
-(** `cycle` never panics: for every input whose first word is an
-    integer, under the runtime R, with any fuel, no state of its run
-    [fails], however many times the loop runs. *)
+(** Calling `cycle` with any integer first argument, any fuel, and any
+    runtime satisfying [Runtime] never reaches a failing state. *)
 Theorem cycle_never_panics :
   P.never_panics cycle_module (TAtom "cycle") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
@@ -272,5 +280,6 @@ Qed.
 
 End CycleSafe.
 
-(** The theorem for the [[interpreter]]'s runtime. *)
+(** Instantiating the safety functor with the [[interpreter]]'s runtime
+    gives a concrete closed-module safety theorem. *)
 Module InterpCycle := CycleSafe InterpRuntime.

@@ -1,24 +1,21 @@
-(** rocq/theories/programs/scan.c through the program logic of Logic.v, with
-    strlen, strchr and puts called through [[campaign|Campaign]] 4's
-    contracts.
+(** This module proves that the C function `c: scan` in `scan.c` never
+    panics and always returns an integer when called on a valid
+    NUL-terminated string. The function measures the length of its input s
+    with `c: strlen`, searches for the first `l` with `c: strchr`, prints
+    the suffix starting at that `l` with `c: puts`, and then reads the byte
+    immediately following the `l`.
 
-    `scan` reads memory after a libc call: it takes the length of its
-    string s, finds the first `l` in it, prints the rest of s from
-    there, and then reads the byte after that `l` through the pointer
-    strchr returned. Each call is a triple of StringLogic.v, used as a
-    rule: [wp_strlen] and [wp_strchr] hand the string back unchanged,
-    [wp_puts] hands back the suffix it was lent ([string_suffix]),
-    which the frame for external calls keeps through puts's writes.
-    The read after puts takes the object's life and the one byte from
-    the suffix ([string_byte]) for a read check through the string's
-    capability, read-write or read-only ([wp_check_read]), and a byte
-    load ([wp_raw_load_byte]). That the `l` is not the NUL is what puts
-    the byte after it inside the string.
+    Reading memory after a `c: puts` call requires knowing that the call did
+    not free or overwrite the caller's string. In our proof, `c: scan`
+    hands the matched suffix to `c: puts` and takes it back upon return,
+    while the external-call frame rule shields the string from any writes to
+    standard output. Because `c: strchr` never matches the NUL terminator, at
+    least one byte always follows a match.
 
-    [scan_logic_safe] is the labelled machine's safety from any memory
-    holding the string, with its object apart from the stdio world's
-    roots; [interp_scan_logic_safe] instantiates it on Hi.v's fixture,
-    whose literal is "hello". *)
+    The safety proof works for any [[runtime]] R and any stream
+    representation whose buffers stay disjoint from the string. We also test
+    the theorem on the `"hello"` literal from `Hi.v` under the
+    [[interpreter]]'s runtime. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -31,68 +28,79 @@ From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime O
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The module *)
+(** ## The module
 
-(** The checked module nanofil makes of scan.c ([scan_term]). *)
+    The proof verifies the checked IR emitted by `nanofil -O` for `scan.c`.
+    We decode the compiled module, precompute its three basic blocks, and
+    link `c: strlen`, `c: strchr`, and `c: puts` into the external call
+    table. *)
+
+(** Decoding [scan_term] extracts the compiled module for `scan.c`. *)
 Definition scan_module : module :=
   match decode_module scan_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [scan_module]. *)
+(** The saved compiler fixture decodes cleanly into [scan_module]. *)
 Lemma scan_decodes : decode_module scan_term = Some scan_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The module's one function, `scan`. *)
+(** The compiled function `scan` is the only definition in the module. *)
 Definition scan_fn : func :=
   match scan_module with
   | IFunc f :: _ => f
   | _ => mkFunc (TAtom "scan") (TAtom "export") (RClass W) [] []
   end.
 
-(** The module's symbols: `scan` alone; strlen, strchr and puts are
-    external. *)
+(** The global table lists only `scan` at address 65536, while the three
+    libc functions remain external. *)
 Definition scan_globals : list (name * ptr) := [(TAtom "scan", mkPtr 65536 (Fn (TAtom "scan")))].
 
-(** Laying out the module gives [scan_globals]. *)
+(** Laying out the module's globals produces the expected symbol table. *)
 Lemma scan_layout : option_map fst (initial_memory scan_module) = Some scan_globals.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Block l of `scan`, or an empty one. *)
+(** Extracting block l from `scan` returns its instruction list and
+    terminator, or an empty unreachable block if missing. *)
 Definition sblk (l : String.string) : block :=
   match find_block (TAtom l) (fn_blocks scan_fn) with
   | Some b => b
   | None => mkBlock (TAtom l) [] [] JUnreachable
   end.
 
-(** The entry block: strlen, strchr, and the test for a miss. *)
+(** The entry block calls `c: strlen` and `c: strchr`, then branches on
+    whether `l` was found. *)
 Definition s_start : block := Eval vm_compute in sblk "start".
-(** The miss: return 0. *)
+(** Block `L8` handles the miss case by returning zero. *)
 Definition s_L8 : block := Eval vm_compute in sblk "L8".
-(** The hit: puts, then the read after it. *)
+(** Block `L10` handles the hit case by calling `c: puts` and loading the
+    following byte. *)
 Definition s_L10 : block := Eval vm_compute in sblk "L10".
 
-(** `scan` has its entry block. *)
+(** Looking up `start` in `scan` returns its precomputed entry block. *)
 Lemma find_start : find_block (TAtom "start") (fn_blocks scan_fn) = Some s_start.
 Proof. vm_compute. reflexivity. Qed.
-(** `scan` has its miss block. *)
+(** Looking up `L8` returns the precomputed miss block. *)
 Lemma find_L8 : find_block (TAtom "L8") (fn_blocks scan_fn) = Some s_L8.
 Proof. vm_compute. reflexivity. Qed.
-(** `scan` has its hit block. *)
+(** Looking up `L10` returns the precomputed hit block. *)
 Lemma find_L10 : find_block (TAtom "L10") (fn_blocks scan_fn) = Some s_L10.
 Proof. vm_compute. reflexivity. Qed.
-(** `scan` returns an int. *)
+(** The compiled `scan` function returns a 32-bit `int` value. *)
 Lemma scan_ret : fn_ret scan_fn = RClass W.
 Proof. reflexivity. Qed.
 
-(** `scan` called with the pointer p. *)
+(** Calling `scan` with pointer p constructs an entry frame binding
+    parameter `v0` to p. *)
 Definition scan_entry (p : ptr) : frame :=
   mkFrame scan_fn [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None).
 
-(** A call of `scan` with p starts it at [scan_entry]. *)
+(** Passing a single pointer argument to `scan` enters the function at
+    [scan_entry]. *)
 Lemma scan_call_frame p : call_frame scan_fn [WPtr p] = Some (scan_entry p).
 Proof. reflexivity. Qed.
 
-(** The contracts `scan` is linked with: strlen, strchr and puts, the
-    last with the trusted stream representation rep. *)
+(** The external call registry links `c: strlen`, `c: strchr`, and
+    `c: puts` over the stdio world, using the given stream representation
+    and allocation predicate. *)
 Definition scan_registry (rep : mem -> stdio_world -> Prop)
     (requests : list word -> mem -> stdio_world -> Z -> Z -> Prop)
     (symbol : name) : option (contract stdio_world) :=
@@ -101,48 +109,56 @@ Definition scan_registry (rep : mem -> stdio_world -> Prop)
   else if name_eqb symbol (TAtom "puts") then Some (puts_contract rep requests)
   else None.
 
-(** The raw address of a at offset 0 is a, inside the address space. *)
+(** Adding offset 0 to an address inside the 64-bit address space leaves the
+    address unchanged. *)
 Lemma raw_address_0 a : 0 <= a < 2 ^ 64 -> raw_address a 0 = a.
 Proof. intros H. unfold raw_address. rewrite Z.add_0_r. apply Z.mod_small. exact H. Qed.
 
-(** Prove an address premise: drop the wraps of [raw_address] and of
-    the flight's sum where arithmetic shows them the identity, then
-    arithmetic. *)
+(** This tactic solves address bounds by simplifying [raw_address], dropping
+    proven-safe wraps, and running integer arithmetic. *)
 Ltac addr_premise := cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; arith.
 
-(** `scan` over any [[runtime]] R. *)
+(** This functor constructs the Iris safety proof for `scan.c` over any
+    [[runtime]] R. *)
 Module ScanLogic (R : Runtime).
 Module SL := LibcStringLogic R.
 Module LG := SL.LG.
 Module L := LG.L.
 Import L LG SL.
 
-(** The linked genv: the module, its symbol, R's free. *)
+(** The global environment links `scan.c`'s symbols with R's `free`
+    handler. *)
 Definition scan_ge : genv := mkGenv scan_module scan_globals R.free.
 
 Section proof.
-(** puts's trusted stream representation and allocation requests. *)
+(** The stream representation and allocation predicate are parameters of the
+    trusted `c: puts` contract. *)
 Variable rep : mem -> stdio_world -> Prop.
 Variable requests : list word -> mem -> stdio_world -> Z -> Z -> Prop.
 
-(** Hi.v's premise: a safepoint keeps rep and readiness. *)
+(** Garbage-collector pauses must preserve both the trusted stream
+    representation and stdio readiness. *)
 Hypothesis stdio_stable : forall s m s' m' w,
   R.safepoint s m s' m' -> rep m w -> stdio_ready m w -> rep m' w /\ stdio_ready m' w.
 
-(** [stdio_wi] survives safepoints, by [stdio_stable]. *)
+(** Because `stdio_stable` keeps stream invariants intact, garbage-collector
+    pauses preserve the world interpretation. *)
 Local Instance scan_wi_stable : SafepointStable (stdio_wi rep) := stdio_wi_safepoint rep stdio_stable.
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The Iris instance of `scan`: its contracts and [stdio_wi]. *)
+(** The Iris language instance pairs the external call table with the stdio
+    world interpretation and `scan`'s symbols. *)
 Local Instance scan_irisGS : irisGS_gen hlc (nanofil_lang (scan_registry rep requests) scan_ge) Σ :=
   nanofil_irisGS (scan_registry rep requests) (stdio_wi rep) scan_ge.
 
-(** The expressions of `scan`'s language. *)
+(** Expressions in this language run over `scan.c` with all three libc
+    functions linked. *)
 Local Notation sexpr := (language.expr (nanofil_lang (scan_registry rep requests) scan_ge)).
 
-(** `scan`, owning the string at p, is safe and returns an int. *)
+(** Calling `scan` with ownership of the string at p executes safely across
+    all three libc calls and returns an integer. *)
 Lemma scan_spec p b reg bytes :
   string p b reg bytes -∗ WP (ERun (scan_entry p) : sexpr) {{ o, ⌜exists n, o = Ret (WInt n)⌝ }}.
 Proof.
@@ -189,12 +205,9 @@ Qed.
 
 End wp.
 
-(** `scan` is safe: from a ready runtime, live objects apart, puts's
-    rep and readiness of the world, and a string at p, in an object no
-    root of the world reaches into, with any fuel, no labelled run
-    stops with a [failure_ending], and a run that returns returns an
-    int. By [heap_labelled_safe] from [scan_spec], the ghost heap
-    starting with the string's pieces. *)
+(** Whenever the runtime is ready, the string is disjoint from stdio roots,
+    and memory matches the string's pieces, `scan` runs safely for any fuel
+    and returns an integer if it finishes. *)
 Theorem scan_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     m s w fuel p b reg bytes :
   R.ready s m -> live_disjoint m -> rep m w -> stdio_ready m w ->
@@ -220,14 +233,19 @@ Qed.
 End proof.
 End ScanLogic.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
 
-(** `scan` over the interpreter's runtime. *)
+    To check that a concrete memory state satisfies the theorem's
+    preconditions, we instantiate the proof with the [[interpreter]]'s
+    runtime. Calling `c: scan` on the `"hello"` literal in `Hi.v`'s fixture
+    memory runs safely for any fuel. *)
+
+(** Instantiating the Iris functor with the interpreter's runtime yields a
+    concrete safety theorem for `scan.c`. *)
 Module InterpScanLogic := ScanLogic InterpRuntime.
 
-(** `scan` is safe under the interpreter's runtime, called with Hi.v's
-    literal "hello" in Hi.v's fixture memory, with the fixture's stream
-    representation. *)
+(** Under the interpreter's runtime and `Hi.v`'s fixture memory, calling
+    `scan` on `"hello"` runs safely for any fuel and returns an integer. *)
 Theorem interp_scan_logic_safe : forall fuel,
   InterpScanLogic.L.labelled_safe (scan_registry fixture_rep fixture_requests) InterpScanLogic.scan_ge
     (scan_entry hi_literal) HiChecks.memory InterpRuntime.start hello_world fuel

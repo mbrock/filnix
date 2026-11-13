@@ -1,35 +1,19 @@
-(** A program with a heap object, proved never to panic:
-    rocq/theories/programs/buffer.c, which allocates a buffer of four longs
-    (`__builtin_alloca`, which Fil-C places in the collected heap),
-    fills it, then sums `p[i % 4]` for i from 0 while i < n, for every
-    int n (BufferCode.v, checked current by rocq/scripts/programs.sh).
-    BufferLogic.v proves the same theorem through the Iris program
-    logic.
+(** This module proves that the C function `c: buffer` in `buffer.c` never
+    panics for any integer input. The function allocates a four-long buffer
+    on the collected heap using `c: __builtin_alloca`, fills the buffer with
+    values, and then sums `c: p[i % 4]` for i from 0 while i < n.
 
-    The proof is Cycle.v's: an assertion at each of the function's 32
-    points ([buffer_assert]), and one [[step]] from any configuration
-    where it holds is safe and reaches a point where its assertion holds
-    ([buffer_safe]). What is new is the object. The run chooses its
-    base, so the assertions speak of any base b that the allocation
-    could return ([fresh]): from the allocation on, the temporary `v4`
-    holds a pointer to b with b's own [[capability]], and b's [[region]]
-    is a live heap object of 32 bytes. The access checks then pass
-    because each address is b plus 0 to 24.
+    Unlike `cycle.c`, this function creates a dynamic heap object whose base
+    address b is chosen by the [[runtime]] at allocation time. From that
+    point onward, the invariant tracks that `v4` holds a pointer with b's
+    [[capability]] and that b's [[region]] is a live 32-byte heap object.
+    Because every access in both loops falls within b plus 0 to 24 bytes,
+    all bounds checks pass for any [[fresh]] address.
 
-    A [[poll|safepoint]] leaves the object as it is: the collector
-    changes no region (Runtime.v's [collector_live]), and Fil-C's
-    runtime frees nothing by itself. Only code a program brings in, a
-    signal handler it installs or a thread it starts, could free the
-    buffer under it, and `buffer` calls no external at all. So the
-    theorem holds for every runtime with no premise.
-
-    ## Decisions
-
-    | Decision | Why |
-    |---|---|
-    | no premise about safepoints | the theorem once took `safepoint_keeps_live`, when Runtime.v's safepoint stood for signal handlers too; a handler or a thread is the program's code, and Fil-C's collector frees nothing, so the safepoint axiom is now the collector's alone ([collector_live]) |
-    | the assertions say nothing of the buffer's bytes | the program reads them only as `long`s it adds; any value is safe, so neither the fill nor a safepoint's bytes matter |
-    | an allocation's base is any [fresh] one | Panics.v's [never_panics_by_invariant] gives every base the runtime may return; the proof uses only that it is positive and that the object ends at or below 2^64 | *)
+    While `c: buffer` runs, the garbage collector never frees a live
+    allocation or shrinks its bounds, so the proof needs no extra runtime
+    premise. In addition, the sum loop reads the buffer only as 64-bit
+    integers, so every possible byte value is safe. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
@@ -37,41 +21,46 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Import ListNotations.
 Open Scope Z_scope.
 
-(** Integer arithmetic on an unknown stays folded when a step is
-    computed (Symbolic.v). *)
+(** Integer arithmetic on symbolic values stays folded during step
+    reduction so bounds remain readable. *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** ## The program *)
+(** ## The program
 
-(** The checked module, decoded from the fixture [buffer_term]
-    ([buffer_decodes]). *)
+    The proof verifies the compiled IR fixture emitted by `nanofil -O` for
+    `buffer.c`. Decoding that fixture gives us the function body and its
+    initial global symbol table, which contains only the function itself. *)
+
+(** Decoding [buffer_term] extracts the compiled module for `buffer.c`. *)
 Definition buffer_module : module :=
   match decode_module buffer_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [buffer_module]. *)
+(** The saved compiler fixture decodes cleanly into [buffer_module]. *)
 Lemma buffer_decodes : decode_module buffer_term = Some buffer_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The function `buffer`, the module's only item. *)
+(** The compiled function `buffer` is the only definition in the module. *)
 Definition buffer_fn : func :=
   match buffer_module with
   | IFunc f :: _ => f
   | _ => mkFunc (TAtom "buffer") (TAtom "export") (RClass L) [] []
   end.
 
-(** The module's one global, the function `buffer`. *)
+(** The global table contains a single entry for the function `buffer` at
+    address 65536. *)
 Definition buffer_globals : list (name * ptr) :=
   [(TAtom "buffer", mkPtr 65536 (Fn (TAtom "buffer")))].
 
-(** The module's initial memory, which holds no object. *)
+(** Laying out the module builds the initial memory state with no
+    pre-allocated heap objects. *)
 Definition buffer_mem : mem :=
   match initial_memory buffer_module with Some (_, m) => m | None => empty_mem end.
 
-(** Laying out the module succeeds, with [buffer_globals] and
-    [buffer_mem]. *)
+(** Memory layout succeeds and produces the expected global pointer and
+    empty initial heap. *)
 Lemma buffer_initial : initial_memory buffer_module = Some (buffer_globals, buffer_mem).
 Proof.
   assert (H : option_map fst (initial_memory buffer_module) = Some buffer_globals)
@@ -79,35 +68,41 @@ Proof.
   unfold buffer_mem. destruct (initial_memory buffer_module) as [[g m]|]; inversion H; reflexivity.
 Qed.
 
-(** The genv of the module with any free; the program calls none. *)
+(** Wrapping the module and its globals into a global environment lets the
+    semantics resolve calls under any `free` handler. *)
 Definition buffer_ge (free : word -> mem -> option (res unit * mem)) : genv :=
   mkGenv buffer_module buffer_globals free.
 
-(** `buffer` is a function of the [[core subset]] in the module. *)
+(** Looking up `buffer` in the global environment finds the compiled function
+    in the [[core subset]]. *)
 Lemma buffer_find : forall free,
   find_fn (buffer_ge free) (TAtom "buffer") = Some (Defined buffer_fn).
 Proof. intros free. vm_compute. reflexivity. Qed.
 
-(** Any arguments whose first word is the integer n start `buffer` at
-    its entry block with n as its parameter `v0`. *)
+(** Calling `buffer` with an integer first argument starts at its entry
+    block with `v0` bound to that integer. *)
 Lemma buffer_call_frame : forall n rest,
   call_frame buffer_fn (WInt n :: rest) =
   Some (mkFrame buffer_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** ## The points *)
+(** ## The points
 
-(** Block l of `buffer` after its first j instructions. *)
+    Because the invariant must hold at every intermediate machine state, we
+    enumerate all 32 program points of `buffer` in a fixed list. Each entry
+    identifies either a block transition or a specific instruction suffix
+    within one of the six basic blocks. *)
+
+(** Computing the suffix of block l after skipping j instructions builds a
+    program point inside that block. *)
 Definition buffer_at (l : string) (j : nat) : point :=
   match find_block (TAtom l) (fn_blocks buffer_fn) with
   | Some b => Exec (TAtom l) (skipn j (b_insts b)) (b_jump b)
   | None => Enter (TAtom l) None
   end.
 
-(** Every point of `buffer`, numbered: the entry block `start`, before
-    and after its allocation (0 to 2); the fill loop's head `L6` (3 to
-    6) and body `L7` (7 to 15); the sum loop's head `L24` (16 to 19)
-    and body `L25` (20 to 29); and the exit `L27` (30, 31). *)
+(** The list [buffer_points] indexes all 32 reachable program points across
+    the entry block, the fill loop, the sum loop, and the exit block. *)
 Definition buffer_points : list point :=
   [Enter (TAtom "start") None; buffer_at "start" 0; buffer_at "start" 1;
    Enter (TAtom "L6") (Some (TAtom "start")); Enter (TAtom "L6") (Some (TAtom "L7"));
@@ -118,25 +113,26 @@ Definition buffer_points : list point :=
    Enter (TAtom "L25") (Some (TAtom "L24"))] ++ map (buffer_at "L25") (seq 0 9) ++
   [Enter (TAtom "L27") (Some (TAtom "L24")); buffer_at "L27" 0].
 
-(** ## The assertions *)
+(** ## The assertions
 
-(** The buffer at the base b, in the environment e and the memory m:
-    `v4` holds a pointer to b with b's capability, b is positive, the
-    object ends at or below 2^64, and its region is a live heap object
-    of 32 bytes. *)
+    Each program point needs an assertion describing the live buffer and the
+    current loop indices. Before the allocation runs, no buffer exists yet;
+    afterward, every point checks that the 32-byte buffer at address b
+    remains live and that both loop indices stay in bounds. *)
+
+(** After allocation, the temporary `v4` holds a pointer to a positive,
+    non-wrapping base b whose 32-byte heap region remains live. *)
 Definition holds_buffer (e : env) (m : mem) (b : Z) : Prop :=
   lookup (TAtom "v4") e = Some (WPtr (mkPtr b (Obj b))) /\ 0 < b /\ b + 32 <= 2 ^ 64 /\
   object_region b (m_regions m) = Some (mkRegion b (b + 32) Heap Live).
 
-(** The temporary x holds a pointer into the buffer at b with 8 bytes
-    after it. *)
+(** A temporary x satisfies [into_buf] when it holds a pointer into the
+    buffer at b with at least 8 bytes remaining before the end. *)
 Definition into_buf (e : env) (x : string) (b : Z) : Prop :=
   exists a, lookup (TAtom x) e = Some (WPtr (mkPtr a (Obj b))) /\ b <= a <= b + 24.
 
-(** What holds after the first j instructions of the fill loop's body,
-    which stores i + 1 at `p[i]`: the index `pr.1` below 4, then `v14`
-    and `v15`, the offset, the pointer `v16`, the next index `v18` and
-    its long `v19`, and the [[check|checked]] proof `chk0`. *)
+(** Inside the fill loop body, every instruction keeps the loop index below
+    4 while computing the store offset and the [[check|checked]] pointer. *)
 Definition fill_assert (j : nat) (b : Z) (e : env) : Prop :=
   int_at e (TAtom "pr.1") (fun i => 0 <= i < 4) /\
   (if (1 <=? j)%nat then int_at e (TAtom "v14") (fun i => 0 <= i < 4) else True) /\
@@ -146,8 +142,8 @@ Definition fill_assert (j : nat) (b : Z) (e : env) : Prop :=
   (if (5 <=? j)%nat then int_at e (TAtom "v19") any else True) /\
   (if (6 <=? j)%nat then into_buf e "chk0" b else True).
 
-(** What holds after the first j instructions of the sum loop's body,
-    as Cycle.v's [body_assert] with the buffer for the array. *)
+(** Inside the sum loop body, every instruction keeps the running sum and
+    bounded loop index valid while building the [[check|checked]] pointer. *)
 Definition sum_assert (j : nat) (b : Z) (e : env) : Prop :=
   int_at e (TAtom "pr.2") any /\ int_at e (TAtom "pr.3") (fun i => 0 <= i /\ i + 1 < 2 ^ 31) /\
   (if (1 <=? j)%nat then int_at e (TAtom "v34") (fun r => 0 <= r < 4) else True) /\
@@ -159,10 +155,8 @@ Definition sum_assert (j : nat) (b : Z) (e : env) : Prop :=
   (if (7 <=? j)%nat then int_at e (TAtom "v39") any else True) /\
   (if (8 <=? j)%nat then int_at e (TAtom "v41") (fun i => 0 <= i < 2 ^ 31) else True).
 
-(** What holds at point k of [buffer_points] besides the buffer: at
-    each loop's head and branch, its index and the comparison's
-    answer; in each body, [fill_assert] or [sum_assert]; at the exit,
-    the sum. *)
+(** At point index k of [buffer_points], [point_assert] specifies the loop
+    conditions, [fill_assert], or [sum_assert] for that location. *)
 Definition point_assert (k : nat) (b : Z) (e : env) : Prop :=
   match k with
   | 4%nat => int_at e (TAtom "v18") (fun i => 0 <= i <= 4)
@@ -184,37 +178,44 @@ Definition point_assert (k : nat) (b : Z) (e : env) : Prop :=
          else True
   end.
 
-(** What holds at point k in the memory m: nothing before the
-    allocation; from it on, the buffer at some base b and the point's
-    own assertion. *)
+(** Before the allocation runs, no heap buffer exists yet. From the
+    allocation onward, some heap address b holds the buffer and satisfies
+    the current point's loop assertion. *)
 Definition buffer_assert (k : nat) (e : env) (m : mem) : Prop :=
   match k with
   | 0%nat | 1%nat => True
   | _ => exists b, holds_buffer e m b /\ point_assert k b e
   end.
 
-(** A configuration of `buffer` where the assertions hold: at point k,
-    with no caller, the input `v0` an integer, and the assertion of k. *)
+(** A machine configuration satisfies [buffer_inv] when it sits at a known
+    point of `buffer` with no callers, an integer input `v0`, and the
+    point's assertion. *)
 Definition buffer_inv (c : config) : Prop :=
   exists k pt e,
     c = mkConfig (mkFrame buffer_fn e [] None pt) [] (c_mem c) (c_fuel c) /\
     nth_error buffer_points k = Some pt /\
     int_at e (TAtom "v0") any /\ buffer_assert k e (c_mem c).
 
-(** ## Each step *)
+(** ## Each step
 
-(** Unfold the assertion at a known point. *)
+    Checking all 32 points by hand would repeat the same symbolic step
+    reduction across every block. Instead, we automate the step check with
+    tactics that unpack the point's assertion, handle ordinary instructions,
+    and verify that any [[fresh]] heap base satisfies the invariant. *)
+
+(** This tactic unfolds the point assertion in the goal so individual
+    temporary bounds become visible. *)
 Ltac assertion :=
   cbn [buffer_assert point_assert Nat.leb andb Nat.sub];
   try unfold fill_assert; try unfold sum_assert; cbn [Nat.leb].
 
-(** Unfold the assertion at a known point in the hypothesis H. *)
+(** This tactic unfolds the point assertion inside a named hypothesis H. *)
 Ltac assertion_in H :=
   cbn [buffer_assert point_assert Nat.leb andb Nat.sub] in H;
   try unfold fill_assert in H; try unfold sum_assert in H; cbn [Nat.leb] in H.
 
-(** The point of the next configuration is point n of
-    [buffer_points] or a later one: find it by computing each in turn. *)
+(** This tactic locates the target program point pt in [buffer_points] by
+    testing each index starting from n. *)
 Ltac find_point pt n :=
   lazymatch n with
   | 32%nat => fail
@@ -223,8 +224,8 @@ Ltac find_point pt n :=
                | find_point pt (S n) ]
   end.
 
-(** The next configuration is in [buffer_inv]: at its point, with the
-    facts shown. *)
+(** This tactic proves that a stepped configuration satisfies [buffer_inv]
+    by finding its new point index and discharging all temporary facts. *)
 Ltac next_inv :=
   cbv beta; unfold buffer_inv;
   match goal with |- exists k pt e, mkConfig (mkFrame _ _ _ _ ?pt') _ _ _ = _ /\ _ =>
@@ -233,25 +234,25 @@ Ltac next_inv :=
   eexists; split; [subst; reflexivity|]; split; [assumption|];
   split; [show_facts | assertion; unfold holds_buffer, into_buf; show_facts].
 
-(** The allocation's result is safe: its extent is nonnegative, and
-    every [fresh] base gives a configuration where the assertions
-    hold. *)
+(** This tactic verifies the heap allocation step by showing that the
+    requested extent is nonnegative and that every [fresh] base satisfies
+    [buffer_inv]. *)
 Ltac fresh_inv :=
   change (heap_req 16 32) with (mkReq 16 32 Heap) in *;
   split; [cbv; discriminate|]; intros ? Hfresh; unfold fresh in Hfresh;
   cbn [c_mem req_extent req_align] in Hfresh; facts; next_inv.
 
-(** One point of [buffer_safe]: the point from Hk, an index into the
-    points pts, the assertion Ha taken apart, the step taken by its
-    rule ([take_step]), and its result shown safe. *)
+(** This tactic proves safety for a single program point by unpacking its
+    assertion, stepping through the instruction, and checking that the next
+    state stays within the invariant or exits cleanly. *)
 Ltac point_safe pts Hk Ha :=
   cbv in Hk; injection Hk as <-; clear pts;
   assertion_in Ha; unfold int_at, holds_buffer, into_buf in *; facts;
   take_step; cbn [safe_step];
   solve [ intro; assumption | next_inv | fresh_inv ].
 
-(** One step from a configuration where the assertions hold is
-    [safe_step] for them. *)
+(** Every configuration satisfying [buffer_inv] takes a safe step under any
+    `free` handler, either preserving the invariant or terminating cleanly. *)
 Lemma buffer_safe : forall free c, buffer_inv c ->
   safe_step buffer_inv (c_mem c) (step (buffer_ge free) c).
 Proof.
@@ -271,8 +272,8 @@ Proof.
   destruct k; discriminate Hk.
 Qed.
 
-(** A call with an integer first argument starts where the assertions
-    hold, with any fuel. *)
+(** Entering `buffer` with any integer argument and any fuel immediately
+    satisfies [buffer_inv]. *)
 Lemma buffer_start : forall n fuel,
   buffer_inv (mkConfig (mkFrame buffer_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None))
                        [] buffer_mem fuel).
@@ -282,15 +283,20 @@ Proof.
   split; [exists n; split; [reflexivity | exact I] | exact I].
 Qed.
 
-(** ## Over any runtime *)
+(** ## Over any runtime
 
-(** `buffer` never panics under the [[runtime]] R. *)
+    Single-step safety covers individual instructions, while a full machine
+    run also includes garbage-collector pauses at safepoints. We lift
+    [buffer_safe] to any [[runtime]] R and show that safepoints preserve
+    the invariant because they leave every heap region intact. *)
+
+(** This functor packages the safety proof for any runtime implementation
+    satisfying the [Runtime] interface. *)
 Module BufferSafe (R : Runtime).
 Module P := Panics R.
 
-(** What R does at a [[poll|safepoint]] keeps the assertions: it
-    changes only the memory, and no region ([R.collector_live]), so
-    the buffer's region stays. *)
+(** A garbage-collector [[poll|safepoint]] preserves [buffer_inv] because
+    the collector never frees or alters heap regions. *)
 Lemma buffer_safepoint : forall c s s' m',
   buffer_inv c -> R.safepoint s (c_mem c) s' m' -> buffer_inv (P.RM.with_mem c m').
 Proof.
@@ -303,9 +309,8 @@ Proof.
   rewrite (R.collector_live _ _ _ _ Hsp). exact Hr.
 Qed.
 
-(** `buffer` never panics: for every input whose first word is an
-    integer, with any fuel, no state of its run [fails], whatever base
-    its buffer gets. *)
+(** Calling `buffer` with any integer first argument, any fuel, and any
+    runtime satisfying [Runtime] never reaches a failing state. *)
 Theorem buffer_never_panics :
   P.never_panics buffer_module (TAtom "buffer") (fun xs => exists n rest, xs = WInt n :: rest).
 Proof.
@@ -319,11 +324,12 @@ Qed.
 
 End BufferSafe.
 
-(** The theorem for the [[interpreter]]'s runtime. *)
+(** Instantiating the safety functor with the [[interpreter]]'s runtime
+    gives a concrete closed-module safety theorem. *)
 Module InterpBuffer := BufferSafe InterpRuntime.
 
-(** `buffer` never panics under the [[interpreter]]'s runtime, an
-    instance of [buffer_never_panics]. *)
+(** The concrete theorem [interp_buffer_never_panics] applies
+    [buffer_never_panics] to the interpreter runtime. *)
 Theorem interp_buffer_never_panics :
   InterpBuffer.P.never_panics buffer_module (TAtom "buffer")
     (fun xs => exists n rest, xs = WInt n :: rest).

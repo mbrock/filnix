@@ -1,5 +1,7 @@
-(** Application execution over the coupled libc world. Extra preconditions
-    are proved at reached calls, not assumed from invocation existence. *)
+(** This module models whole-program execution across `c: main`, its coupled
+    libc stdio state, and process shutdown. Every external call must satisfy
+    its preconditions at the point where it is reached rather than assuming
+    those preconditions from the existence of a return witness. *)
 
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime Ops Semantics Identity
@@ -18,16 +20,18 @@ Section Body.
 Variable rep : mem -> stdio_world -> Prop.
 Variable requests : list word -> mem -> stdio_world -> Z -> Z -> Prop.
 
-(** The same explicit environment restriction as the body theorem. *)
+(** Garbage-collector pauses must keep the stream representation and stdio
+    readiness valid across execution steps. *)
 Hypothesis stdio_stable : forall s m s' m' w,
   R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
   rep m' w /\ stdio_ready m' w.
 
-(** Only puts is linked through this richer registry. *)
+(** Only `c: puts` is linked through this coupled world registry. *)
 Definition registry (symbol : name) : option (contract program_world) :=
   if name_eqb symbol (TAtom "puts") then Some (program_puts rep requests) else None.
 
-(** Forget logical stdout and callbacks without changing machine snapshots. *)
+(** Projecting a program state forgets the logical stdout buffer and
+    callback list while leaving the underlying machine snapshot intact. *)
 Definition project (st : M.state program_world) : M.state stdio_world :=
   match st with
   | M.Running ms w => M.Running ms (program_stdio w)
@@ -38,7 +42,8 @@ Definition project (st : M.state program_world) : M.state stdio_world :=
 Definition world_of (st : M.state program_world) : program_world :=
   match st with M.Running _ w | M.Stopped _ _ w => w end.
 
-(** The old body facts plus the extra independent caller obligations. *)
+(** The whole-program invariant combines `c: main`'s body invariant with
+    well-formedness of the coupled world and a non-wide stdout stream. *)
 Definition body_inv (st : M.state program_world) : Prop :=
   H.hi_body_state rep (project st) /\ program_world_wf (world_of st) /\
   orientation (program_stdout (world_of st)) <> WideOriented.
@@ -177,15 +182,15 @@ Proof.
   destruct (body_run _ _ _ Hrun Hinv) as [Hbody _]. inversion Hbody. assumption.
 Qed.
 
-(** Campaign 3's shared failure classification, not a competing definition
-    of panic for the labelled machine. Resource refusal remains nonfailure. *)
+(** Normal termination, out-of-fuel stops, and genuine resource refusals
+    never count as capability panics under the shared failure predicate. *)
 Lemma hi_ending_not_failure : forall why, H.hi_ending why -> ~ failure_ending why.
 Proof.
   intros why [->|[->|(resource & -> & Hr)]]; simpl; tauto.
 Qed.
 
-(** Labelled application safety uses the same failure_ending predicate as
-    the closed-module never_panics statement in Panics.v. *)
+(** Every stopped application run avoids capability panics and contract
+    violations under the same failure predicate used by closed modules. *)
 Theorem application_never_panics : forall st trace why ms w,
   body_inv st -> M.run registry H.hi_genv st trace (M.Stopped why ms w) ->
   ~ failure_ending why.
@@ -232,9 +237,9 @@ Definition partial_actions (action : shutdown_action) (actions : list stream_act
   | _ => actions = []
   end.
 
-(** A terminal summary of one original segment, not a resumable trace.
-    Delivery and discard remain distinct in the retained action history;
-    only acceptance can produce a cumulative stdout observation. *)
+(** A partial output segment summarizes a single incomplete shutdown step
+    rather than a resumable execution. Delivery and discard remain distinct in
+    the action history, and only byte acceptance produces an output event. *)
 Definition partial_output action q trace actions q' : Prop :=
   partial_actions action actions /\ stream_run q actions q' /\
   match action with
@@ -252,8 +257,9 @@ Proof.
   destruct Hobs as [[-> _]| ->]; simpl; intuition discriminate.
 Qed.
 
-(** The actual stream path, not a successful lifecycle endpoint, gives
-    FIFO accounting, well-formedness and sticky error at partial leaves. *)
+(** Even when a shutdown action fails to complete, its stream prefix still
+    preserves FIFO byte accounting, stream well-formedness, and sticky
+    errors. *)
 Theorem partial_output_accounting : forall action q trace actions q',
   partial_output action q trace actions q' ->
   outstanding q ++ accepted actions = resolved actions ++ outstanding q' /\
@@ -299,8 +305,8 @@ Inductive realizes (b : shutdown_boundary) :
     trace = action_events action -> shutdown_ready b s' m' w' sh' ->
     realizes b s m w sh action trace s' m' w' sh'.
 
-(** The actual effect witness, rather than a readiness postulate about the
-    logical protocol, preserves runtime readiness and every object identity. *)
+(** Every realized shutdown step preserves allocator readiness and existing
+    objects through its memory-effect witness. *)
 Theorem realizes_preserve : forall b s m w sh action trace s' m' w' sh',
   realizes b s m w sh action trace s' m' w' sh' -> R.ready s m ->
   R.ready s' m' /\ persists m m'.
@@ -322,10 +328,10 @@ Proof.
   all: eapply stream_step_accounting; eassumption.
 Qed.
 
-(** The outer sum consumes completion once; neither resource leaves nor
-    unfinished observations acquire a normal-exit continuation. Shutdown
-    leaves retain original snapshots as provenance, not endpoint phases
-    or inventories; their memory/world and observed stdout are separate. *)
+(** The outer machine tracks whether execution is inside `c: main`, in
+    shutdown, stopped at an unfinished call or resource leaf, or finished.
+    Shutdown leaves keep their original snapshot for provenance rather than
+    creating a resumable state. *)
 Inductive state : Type :=
 | Application (body : M.state program_world)
 | ShuttingDown (runtime : R.state) (memory : mem) (stdio : stdio_world) (sh : shutdown_state)
@@ -341,9 +347,9 @@ Inductive state : Type :=
 (** Host completion is explicitly tied to the entire handoff snapshot. *)
 Definition host_boundary : Type := R.state -> mem -> stdio_world -> shutdown_state -> Prop.
 
-(** A separate outer interpreter: existing Stopped states remain terminal.
-    An unfinished prefix is observed once at its original admissible call,
-    never restarted at its endpoint. *)
+(** Each outer transition advances `c: main`, enters shutdown on return,
+    records an unfinished or resource leaf, or finishes process exit once.
+    Stopped states and unfinished prefixes never restart from their endpoints. *)
 Inductive step (rep : mem -> stdio_world -> Prop)
     (requests : list word -> mem -> stdio_world -> Z -> Z -> Prop)
     (b : shutdown_boundary) (host : host_boundary) : state -> list event -> state -> Prop :=
@@ -390,14 +396,16 @@ Inductive step (rep : mem -> stdio_world -> Prop)
       [ProcessExit (process_status status)]
       (Finished s m w (mkShutdown (HandedOff kind) status pending consumed q)).
 
-(** Finite observations, with no eventual-termination assertion. *)
+(** Finite outer runs chain zero or more steps together without assuming
+    that every execution eventually terminates. *)
 Inductive run rep requests b host : state -> list event -> state -> Prop :=
 | program_refl : forall st, run rep requests b host st [] st
 | program_next : forall st trace mid tail last,
     step rep requests b host st trace mid -> run rep requests b host mid tail last ->
     run rep requests b host st (trace ++ tail) last.
 
-(** Compose actual finite runs through their shared exact snapshot. *)
+(** Two finite runs sharing an intermediate state compose into a single
+    run over the concatenated event trace. *)
 Lemma run_trans : forall rep requests b host st first mid last final,
   run rep requests b host st first mid -> run rep requests b host mid last final ->
   run rep requests b host st (first ++ last) final.
@@ -423,8 +431,8 @@ Theorem shutdown_leaves_terminal : forall rep requests b host s m w sh action ac
   forall why, ~ step rep requests b host (ShutdownResource why s m w sh action actions q) trace st.
 Proof. intros. split; intros; intro Hstep; inversion Hstep. Qed.
 
-(** Even without successful endpoint readiness, an unfinished observation
-    keeps allocator readiness and all old object identities through effects. *)
+(** Even when a shutdown action stops mid-stream without completing, its
+    partial effects preserve allocator readiness and existing objects. *)
 Theorem shutdown_unfinished_preserve : forall rep requests b host s m w sh trace s' m' w' action actions q,
   step rep requests b host (ShuttingDown s m w sh) trace
     (ShutdownUnfinished s' m' w' sh action actions q) -> R.ready s m ->
@@ -480,10 +488,9 @@ Proof.
   - eapply program_next; [apply program_application; eassumption|exact IHHrun].
 Qed.
 
-(** Native entry/libc closure covers every returning call reached from
-    this exact entry, not arbitrary token-distinct callback inventories.
-    Readiness at the exact endpoint is not inferred from equal tokens
-    or stipulated only on an enabled bridge edge. *)
+(** A shutdown boundary satisfies [puts_shutdown_closed] when every
+    returning `c: puts` call reached from the given entry state enters a
+    ready shutdown state. *)
 Definition puts_shutdown_closed rep requests (b : shutdown_boundary)
     (start : M.state program_world) : Prop :=
   forall first s m w fuel trace n s' m' w',
@@ -494,9 +501,9 @@ Definition puts_shutdown_closed rep requests (b : shutdown_boundary)
   shutdown_ready b s' m' (program_stdio w')
     (mkShutdown Tls 0 (program_pending w') [] (program_stdout w')).
 
-(** Every returning puts reached from the selected entry has the real
-    return-zero bridge. Its original prefix is retained, not replayed
-    from an independently selected call snapshot. *)
+(** Under a closed shutdown boundary, any run reaching and returning from
+    `c: puts` continues cleanly into shutdown with `c: main`'s zero return
+    value. *)
 Theorem returning_puts_shutdown : forall rep requests b host start first s m w fuel trace n s' m' w',
   puts_shutdown_closed rep requests b start ->
   M.run (registry rep requests) H.hi_genv start first
@@ -529,8 +536,8 @@ Definition shutdown_ready_admits (b : shutdown_boundary) : Prop :=
   forall s m w sh action sh', shutdown_ready b s m w sh ->
     shutdown_step sh action sh' -> shutdown_admissible b s m w sh action.
 
-(** Runtime readiness is proved through actual effects for every outer
-    transition, including unfinished calls. Host completion retains its snapshot. *)
+(** Every outer machine state keeps allocator readiness, including
+    unfinished calls and finished host snapshots. *)
 Definition runtime_ready (st : state) : Prop :=
   match st with
   | Application body => M.state_ready program_world body
@@ -583,9 +590,8 @@ Proof.
   intros Hsafe. apply IHHrun. eapply step_application_safe; eauto.
 Qed.
 
-(** The outer machine's reachable application stops use the shared panic
-    classification too. Shutdown coverage and native realization remain
-    independent obligations, not consequences of this finite theorem. *)
+(** Even when an outer run stops inside `c: main`, it cannot end in a
+    capability panic or contract violation. *)
 Theorem application_stopped_never_panics : forall rep requests b host st trace why ms w,
   (forall s m s' m' w, R.safepoint s m s' m' -> rep m w -> stdio_ready m w ->
     rep m' w /\ stdio_ready m' w) ->
@@ -598,7 +604,8 @@ Proof.
   destruct Hbody as [Hbody _]. apply hi_ending_not_failure. inversion Hbody. assumption.
 Qed.
 
-(** Process-exit observations, separated from stdout acceptance summaries. *)
+(** Counting process-exit events in an event trace keeps exit accounting
+    separate from stdout acceptance summaries. *)
 Fixpoint exit_count (trace : list event) : nat :=
   match trace with
   | [] => O
@@ -662,14 +669,20 @@ Qed.
 End Program.
 
 (** ## Public conditional-composition checks
-    These fixtures realize only identity memory segments, not native libc. *)
+
+    To confirm that the outer machine's invariants and shutdown steps are
+    consistent, we test them on concrete fixtures over the interpreter
+    runtime. These checks use trivial memory segments rather than claiming
+    that native libc implements them. *)
 Module ProgramChecks.
 Module P := Program InterpRuntime.
 
-(** Initial logical stdout with no user exit registrations in this fixture. *)
+(** The fixture starts with an empty logical stdout buffer and no registered
+    exit callbacks. *)
 Definition initial_world : program_world := mkProgramWorld hello_world stdout_initial [].
 
-(** The actual initialized main body inhabits the stronger application invariant. *)
+(** Entering `c: main` in this fixture satisfies the whole-program
+    invariant. *)
 Lemma initial_body : P.body_inv fixture_rep
     (P.M.Running (hi_entry HiChecks.memory 10, InterpRuntime.start) initial_world).
 Proof.
@@ -702,7 +715,8 @@ Proof.
   simpl in Hsame. rewrite Hp in Hsame. discriminate.
 Qed.
 
-(** Zero fuel stops at entry, without calling puts or starting shutdown. *)
+(** Starting `c: main` with zero fuel stops immediately at entry without
+    calling `c: puts` or entering shutdown. *)
 Example zero_fuel_leaf : forall b host,
   P.step fixture_rep fixture_requests b host
     (P.Application (P.M.Running (hi_entry HiChecks.memory 0, InterpRuntime.start) initial_world)) []
@@ -713,8 +727,8 @@ Proof.
   intros site Hsite. pose proof (external_site_stuck _ _ _ Hsite) as Hbad. discriminate.
 Qed.
 
-(** With any fuel, every stopped application endpoint of this actual
-    entry is nonfailure, including return, fuel and resource leaves. *)
+(** For any amount of fuel, every stopped application state reached from
+    `c: main` avoids capability panics and contract violations. *)
 Example all_outer_application_stops_safe : forall fuel b host trace why ms w,
   P.run fixture_rep fixture_requests b host
     (P.Application (P.M.Running (hi_entry HiChecks.memory fuel, InterpRuntime.start) initial_world))
@@ -727,8 +741,8 @@ Proof.
   split; [split; [exact stdout_initial_wf|constructor]|discriminate].
 Qed.
 
-(** A segment with no memory authority; endpoint relations are deliberately
-    trivial only for this logical fixture. Native realization remains open. *)
+(** This dummy contract represents a shutdown segment with no memory writes
+    so the fixture can step through shutdown without modelling native libc. *)
 Definition segment : contract stdio_world :=
   mkContract stdio_world RVoid (fun _ _ => True) (fun _ _ _ => True)
     (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ => []) (fun _ _ _ _ _ => False)
@@ -757,8 +771,8 @@ Proof.
   split; [constructor|exact I].
 Qed.
 
-(** No callbacks: the exact pending bytes survive TLS/handlers/cleanup to
-    soft handoff. This fixture does not promise lossless flushing. *)
+(** When no callbacks are registered, pending output bytes pass unchanged
+    through TLS, handler, and cleanup steps to the soft handoff. *)
 Lemma fixture_shutdown : forall s m w q host,
   P.run fixture_rep fixture_requests boundary host
     (P.ShuttingDown s m w (mkShutdown Tls 0 [] [] q)) []
@@ -784,8 +798,8 @@ Proof.
   exists (TAtom "start"), (Const 0). repeat split; reflexivity.
 Qed.
 
-(** Host completion is consumed into an outer terminal, even when its
-    logical witness remains reusable as a proposition. *)
+(** Completing shutdown consumes the host witness once and leaves the outer
+    machine in a terminal state that cannot step again. *)
 Example complete_once : forall s m w q,
   P.step fixture_rep fixture_requests boundary (fun _ _ _ _ => True)
     (P.ShuttingDown s m w (mkShutdown (HandedOff SoftExit) 0 [] [] q)) [ProcessExit 0]
@@ -840,8 +854,9 @@ Proof.
   - intros status Hbad. discriminate.
 Qed.
 
-(** A complete represented path through actual main entry/copy/call/return,
-    logical shutdown and one host-completion event. This is not native adequacy. *)
+(** This example traces a complete finite run from `c: main` entry through
+    `c: puts`, shutdown, and host completion without claiming native
+    adequacy. *)
 Example hi_entry_to_host :
   P.run fixture_rep fixture_requests boundary (fun _ _ _ _ => True)
     (P.Application (P.M.Running (hi_entry HiChecks.memory 10, InterpRuntime.start) initial_world))
@@ -906,8 +921,9 @@ Proof.
       [exact (stream_deliver [65] [66; 67] true ltac:(discriminate))|constructor].
 Qed.
 
-(** Control/hidden output, excess acceptance, non-FIFO delivery and
-    delivery/discard substitution are not admitted partial observations. *)
+(** Control steps cannot emit output, and partial segments cannot accept
+    extra bytes, deliver bytes out of order, or substitute discard for
+    delivery. *)
 Example incompatible_partial_output :
   (~ P.partial_output EmptyTls stdout_initial [StreamBytes 1 [65]] [Accept [65]]
     (mkStream ByteOriented [65] false)) /\

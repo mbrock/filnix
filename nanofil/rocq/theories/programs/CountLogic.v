@@ -1,23 +1,21 @@
-(** rocq/theories/programs/count.c through the program logic of Logic.v: a
-    helper with its own specification, called in a loop, with memory
-    read after each call.
+(** This module proves that the C program `count.c` never panics and
+    always returns an integer when given a valid NUL-terminated string. The
+    program defines a helper `c: next_l` that searches for the character `l`
+    via `c: strchr`, and a loop `c: count_l` that counts how many `l` bytes
+    occur by reading each matched byte and calling `c: next_l` on the rest of
+    the string.
 
-    `next_l` is strchr for `l`. Its triple ([next_l_spec]) is proved
-    once, from [wp_strchr], and `count_l` uses it at both of its calls
-    through [wp_call_bind]: once on the whole string, then in the loop
-    on the suffix just past each hit, which the string lends
-    ([string_suffix]) and takes back after the call. The loop is a
-    Löb induction at the point after its head's phis ([count_loop]):
-    it owns the string, and the pointer it holds is null or a hit
-    before the NUL ([found_from]). Each iteration reads the byte the
-    pointer lands on through the string's capability ([wp_check_read],
-    [wp_raw_load_byte]), so the read comes after a call and depends on
-    the callee's postcondition: a hit is before the NUL, because `l` is
-    not 0.
+    Because `c: count_l` calls `c: next_l` both before and inside its loop, we
+    first give `c: next_l` a reusable specification from `c: strchr`. At each
+    call site, `c: count_l` passes either the whole string or the unread tail
+    to `c: next_l`, then recovers the string when it returns. Because
+    `c: strchr` never matches the NUL byte for a nonzero character, every
+    non-null result points to a readable byte.
 
-    [count_logic_safe] is the labelled machine's safety from any memory
-    holding the string; [interp_count_logic_safe] instantiates it on
-    Hi.v's fixture, whose literal "hello" has two `l`s. *)
+    The loop proof uses induction at the loop header, keeping the string
+    intact while ensuring the cursor is either null or a match before NUL.
+    We lift that specification to any [[runtime]] R and test it on the
+    `"hello"` literal from `Hi.v` under the [[interpreter]]'s runtime. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -30,118 +28,136 @@ From Nanofil Require Import LibcCallFixtures Term Syntax Values Memory Runtime O
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** Integer arithmetic on an unknown stays folded when a premise is
-    computed (Symbolic.v). *)
+(** Integer arithmetic on symbolic values stays folded during premise
+    reduction so pointer offsets remain readable. *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
-(** ## The module *)
+(** ## The module
 
-(** The checked module nanofil makes of count.c ([count_term]). *)
+    The proof verifies the checked IR emitted by `nanofil -O` for `count.c`.
+    We decode the compiled module, precompute the basic blocks of both
+    functions, and link the `c: strchr` contract into the call table. *)
+
+(** Decoding [count_term] extracts the compiled module for `count.c`. *)
 Definition count_module : module :=
   match decode_module count_term with Some md => md | None => [] end.
 
-(** The fixture decodes to [count_module]. *)
+(** The saved compiler fixture decodes cleanly into [count_module]. *)
 Lemma count_decodes : decode_module count_term = Some count_module.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The module's i-th function, or an empty one. *)
+(** Selecting the i-th function from the module returns its IR definition,
+    or a dummy function if the index is out of range. *)
 Definition count_nth (i : nat) : func :=
   match nth_error count_module i with
   | Some (IFunc f) => f
   | _ => mkFunc (TAtom "none") (TAtom "export") RVoid [] []
   end.
 
-(** `next_l`: strchr for `l`. *)
+(** The helper function `next_l` searches a string for the byte `l`. *)
 Definition next_l_fn : func := Eval vm_compute in count_nth 0.
-(** `count_l`: the loop. *)
+(** The main function `count_l` loops over hits from `next_l` and counts
+    them. *)
 Definition count_fn : func := Eval vm_compute in count_nth 1.
 
-(** The module's symbols. *)
+(** The global table places `count_l` at address 65552 and `next_l` at
+    address 65536. *)
 Definition count_globals : list (name * ptr) :=
   [(TAtom "count_l", mkPtr 65552 (Fn (TAtom "count_l")));
    (TAtom "next_l", mkPtr 65536 (Fn (TAtom "next_l")))].
 
-(** Laying out the module gives [count_globals]. *)
+(** Laying out the module's globals produces the expected symbol table. *)
 Lemma count_layout : option_map fst (initial_memory count_module) = Some count_globals.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Block l of f, or an empty one. *)
+(** Extracting block l from function f returns its instruction list and
+    terminator, or an empty unreachable block if missing. *)
 Definition cblk (f : func) (l : String.string) : block :=
   match find_block (TAtom l) (fn_blocks f) with
   | Some b => b
   | None => mkBlock (TAtom l) [] [] JUnreachable
   end.
 
-(** `next_l`'s one block: strchr, then return its result. *)
+(** The single block of `next_l` calls `c: strchr` and returns its pointer. *)
 Definition n_start : block := Eval vm_compute in cblk next_l_fn "start".
-(** `count_l`'s entry: the first call of `next_l`. *)
+(** The entry block of `count_l` performs the initial call to `next_l`. *)
 Definition c_start : block := Eval vm_compute in cblk count_fn "start".
-(** The loop's head: is the pointer null? *)
+(** Block `L6` checks whether the current search pointer is null. *)
 Definition c_L6 : block := Eval vm_compute in cblk count_fn "L6".
-(** The loop's body: read the byte, count it, call `next_l` past it. *)
+(** Block `L7` loads the matched byte, increments the count, and searches the
+    remaining suffix. *)
 Definition c_L7 : block := Eval vm_compute in cblk count_fn "L7".
-(** The exit: return the count. *)
+(** Block `L9` returns the accumulated match count. *)
 Definition c_L9 : block := Eval vm_compute in cblk count_fn "L9".
 
-(** `next_l` has its block. *)
+(** Looking up `start` in `next_l` returns its precomputed block. *)
 Lemma find_n_start : find_block (TAtom "start") (fn_blocks next_l_fn) = Some n_start.
 Proof. vm_compute. reflexivity. Qed.
-(** `count_l` has its entry. *)
+(** Looking up `start` in `count_l` returns its precomputed entry block. *)
 Lemma find_c_start : find_block (TAtom "start") (fn_blocks count_fn) = Some c_start.
 Proof. vm_compute. reflexivity. Qed.
-(** `count_l` has the loop's head. *)
+(** Looking up `L6` in `count_l` returns its precomputed loop header. *)
 Lemma find_c_L6 : find_block (TAtom "L6") (fn_blocks count_fn) = Some c_L6.
 Proof. vm_compute. reflexivity. Qed.
-(** `count_l` has the loop's body. *)
+(** Looking up `L7` in `count_l` returns its precomputed loop body. *)
 Lemma find_c_L7 : find_block (TAtom "L7") (fn_blocks count_fn) = Some c_L7.
 Proof. vm_compute. reflexivity. Qed.
-(** `count_l` has the exit. *)
+(** Looking up `L9` in `count_l` returns its precomputed exit block. *)
 Lemma find_c_L9 : find_block (TAtom "L9") (fn_blocks count_fn) = Some c_L9.
 Proof. vm_compute. reflexivity. Qed.
 
-(** A function called with the pointer p, at its entry. *)
+(** Calling function f with pointer p constructs an entry frame binding
+    parameter `v0` to p. *)
 Definition entry (f : func) (p : ptr) : frame :=
   mkFrame f [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None).
 
-(** `count_l`'s contracts: strchr's alone, over no world. *)
+(** The external call registry links `c: strchr` with an empty world state
+    and leaves all other external names undefined. *)
 Definition count_registry (symbol : name) : option (contract unit) :=
   if name_eqb symbol (TAtom "strchr") then Some (strchr_contract unit) else None.
 
-(** ## What the loop holds *)
+(** ## What the loop holds
 
-(** The pointer q, for the string p with contents bytes, is null or
-    points into it before its NUL, with its capability. *)
+    Each iteration of `count_l` receives a pointer returned by `next_l` on
+    some suffix of the string. We show that any match returned by `c: strchr`
+    on a suffix is either null or points to a byte strictly before the
+    terminating NUL, and then prove the Iris loop specification over any
+    [[runtime]] R. *)
+
+(** A pointer q satisfies [found_from] when it is either null or points to
+    some byte index strictly before the string's terminating NUL. *)
 Definition found_from (p : ptr) (bytes : list Z) (q : ptr) : Prop :=
   q = mkPtr 0 CNone \/
   exists j, (j < length bytes)%nat /\ q = mkPtr (ptr_addr p + Z.of_nat j) (ptr_cap p).
 
-(** Prove an address premise: drop the wraps of [raw_address] and of a
-    flight's sum where arithmetic shows them the identity, then
-    arithmetic. *)
+(** This tactic solves address bounds by simplifying [raw_address], dropping
+    proven-safe wraps, and running integer arithmetic. *)
 Ltac addr_premise := cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; arith.
 
-(** Prove a premise that names words: by computation, with the
-    environment's facts. *)
+(** This tactic solves word equalities by reflexivity or by looking up
+    known values in the local environment. *)
 Ltac word_premise := first [ reflexivity | compute_premise ].
 
-(** `count.c` over any [[runtime]] R. *)
+(** This functor constructs the Iris safety proof for `count.c` over any
+    [[runtime]] R. *)
 Module CountLogic (R : Runtime).
 Module SL := LibcStringLogic R.
 Module LG := SL.LG.
 Module L := LG.L.
 Import L LG SL.
 
-(** What strchr finds of a nonzero byte is null or before the NUL. *)
+(** Any result returned by `c: strchr` on the whole string is either null or
+    points within the string's content bytes. *)
 Lemma found_first p bytes c q : strchr_found p bytes c q -> found_from p bytes q.
 Proof.
   intros [(i & x & Hx & _ & _ & ->) | (_ & ->)]; [right | left; reflexivity].
   exists i. split; [exact (lookup_lt_Some _ _ _ Hx) | reflexivity].
 Qed.
 
-(** What strchr finds in the suffix just past the j-th byte of the
-    string, before its NUL, is null or before the string's NUL. *)
+(** Any result returned by `c: strchr` on the suffix past index j is either
+    null or points within the original string's content bytes. *)
 Lemma found_next p bytes c q j : (j < length bytes)%nat ->
   strchr_found (mkPtr (ptr_addr p + Z.of_nat (S j)) (ptr_cap p)) (drop (S j) bytes) c q ->
   found_from p bytes q.
@@ -151,25 +167,29 @@ Proof.
   cbn [ptr_addr ptr_cap]. f_equal. lia.
 Qed.
 
-(** The linked genv: the module, its symbols, R's free. *)
+(** The global environment links `count.c`'s symbols with R's `free`
+    handler. *)
 Definition count_ge : genv := mkGenv count_module count_globals R.free.
 
-(** `next_l` is a function of the module. *)
+(** Looking up `next_l` in [count_ge] resolves to the compiled helper
+    function. *)
 Lemma find_next_l : find_fn count_ge (TAtom "next_l") = Some (Defined next_l_fn).
 Proof. vm_compute. reflexivity. Qed.
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
-(** The Iris instance of `count.c`: strchr's contract, no world. *)
+(** The Iris language instance pairs the external call table with an empty
+    world and the module's symbols. *)
 Local Instance count_irisGS : irisGS_gen hlc (nanofil_lang count_registry count_ge) Σ :=
   nanofil_irisGS count_registry no_world count_ge.
 
-(** The expressions of `count.c`'s language. *)
+(** Expressions in this language run over `count.c` with `c: strchr` linked. *)
 Local Notation cexpr := (language.expr (nanofil_lang count_registry count_ge)).
 
-(** `next_l`'s triple: owning the string at p, it returns what strchr
-    finds of `l`, and hands the string back. *)
+(** Calling `next_l` with ownership of the string at p returns a pointer
+    satisfying `strchr_found` for `l` and restores full ownership of the
+    string. *)
 Lemma next_l_spec p b reg bytes Φ :
   string p b reg bytes -∗
   ▷ (∀ q, ⌜strchr_found p bytes 108 q⌝ -∗ string p b reg bytes -∗ Φ (Ret (WPtr q))) -∗
@@ -184,11 +204,9 @@ Proof.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply ("HΦ" with "[%] Hs"). exact Hq.
 Qed.
 
-(** The loop, from the point after its head's phis: with `pr.2` a
-    pointer null or before the NUL of the string at p, which it owns,
-    and `pr.1` an int, the run is safe and returns an int. By Löb
-    induction; each iteration reads the byte at the pointer and calls
-    `next_l` on the suffix past it. *)
+(** Starting from the loop header with a valid cursor q, owning the string
+    guarantees safe execution and an integer return value. Each iteration
+    loads the byte at q and calls `next_l` on the remaining suffix. *)
 Lemma count_loop p b reg bytes :
   ⊢ ∀ e q n, ⌜lookup (TAtom "pr.2") e = Some (WPtr q) /\ lookup (TAtom "pr.1") e = Some (WInt n) /\
                found_from p bytes q⌝ -∗
@@ -236,8 +254,8 @@ Proof.
     exact (found_next p bytes 108 q' j Hj Hq').
 Qed.
 
-(** `count_l`, owning the string at p, is safe and returns an int: it
-    calls `next_l` on the whole string and enters the loop. *)
+(** Calling `count_l` on an owned string searches from the start, enters
+    the loop, and safely returns an integer count. *)
 Lemma count_spec p b reg bytes :
   string p b reg bytes -∗ WP (ERun (entry count_fn p) : cexpr) {{ o, ⌜exists k, o = Ret (WInt k)⌝ }}.
 Proof.
@@ -255,11 +273,9 @@ Qed.
 
 End wp.
 
-(** `count_l` is safe: from a ready runtime, live objects apart, and a
-    string at p, with any fuel, no labelled run stops with a
-    [failure_ending], and a run that returns returns an int. By
-    [heap_labelled_safe] from [count_spec], the ghost heap starting
-    with the string's pieces. *)
+(** Applying Iris [[adequacy]] to [count_spec] proves that `count_l` never
+    fails on any ready runtime holding a valid string in memory, and any
+    returning run yields an integer. *)
 Theorem count_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     m s fuel p b reg bytes :
   R.ready s m -> live_disjoint m -> string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) ->
@@ -279,13 +295,19 @@ Qed.
 
 End CountLogic.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
 
-(** `count.c` over the interpreter's runtime. *)
+    To show that the safety theorem applies to a real memory state, we
+    instantiate it with the [[interpreter]]'s runtime. Calling `c: count_l`
+    on the `"hello"` literal from `Hi.v` runs safely for any amount of
+    fuel. *)
+
+(** Instantiating the Iris functor with the interpreter's runtime yields a
+    concrete safety theorem for `count.c`. *)
 Module InterpCountLogic := CountLogic InterpRuntime.
 
-(** `count_l` is safe under the interpreter's runtime, called with
-    Hi.v's literal "hello" in Hi.v's fixture memory. *)
+(** Under the interpreter's runtime and `Hi.v`'s fixture memory, calling
+    `count_l` on `"hello"` is safe for any fuel and returns an integer. *)
 Theorem interp_count_logic_safe : forall fuel,
   InterpCountLogic.L.labelled_safe count_registry InterpCountLogic.count_ge
     (entry count_fn hi_literal) HiChecks.memory InterpRuntime.start tt fuel
