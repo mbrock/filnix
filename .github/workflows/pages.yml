@@ -22,6 +22,10 @@ on:
       - .github/workflows/pages.yml
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 

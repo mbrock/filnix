@@ -18,6 +18,10 @@ on:
         description: Existing v* tag to (re)publish
         required: true
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 

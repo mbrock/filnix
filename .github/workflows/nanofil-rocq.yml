@@ -34,6 +34,10 @@ on:
         type: boolean
         default: false
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 
@@ -107,7 +111,7 @@ jobs:
               (builtins.attrValues m.vo ++ builtins.attrValues m.reprint ++ [ m m.driver m.parse ]))'
             echo; nix eval --raw "$c.$ROOT.outPath"; echo
             nix eval --raw "$c.$ROOT.corpus.outPath"; echo
-          } | while read -r p; do [ -e "$p" ] && echo "$p"; done | cachix push filc
+          } | while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
       - uses: actions/upload-artifact@v4
         if: always()
         with:

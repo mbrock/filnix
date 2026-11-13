@@ -46,6 +46,10 @@ concurrency:
   group: cache-${{ github.ref }}-${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
   cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 
