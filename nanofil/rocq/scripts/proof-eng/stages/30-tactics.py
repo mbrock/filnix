@@ -232,7 +232,7 @@ def rewrite_tactics(text, names):
                 protected.add(k)
             if code[k] in ")]" and stack:
                 stack.pop()
-        for m in re.finditer(r"\b[A-Za-z_][\w']*(?![\w'])", code[a:b]):
+        for m in re.finditer(r"\b[A-Za-z_][\w']*(?:\.[A-Za-z_][\w']*)*(?![\w'])", code[a:b]):
             prefix = code[a:a + m.start()]
             if m[0] in names and a + m.start() not in protected and start.search(prefix):
                 changes.append((a + m.start(), a + m.end(), names[m[0]]))
@@ -254,6 +254,19 @@ def main(root):
     migrate = {module: {n: replacement(n, text[a:b]) for n, a, b in tactics(text)
                         if recognized(n, text[a:b], library)}
                for module, text in sources.items()}
+    qualified = {}
+    for module, replacements in migrate.items():
+        for name, value in replacements.items():
+            if name in definitions[module]:
+                head = value.split()[0]
+                owner = "LibioTactics" if head in stream_library else "GlibcTactics"
+                target = owner + "." + value if head in library else value
+                for prefix in (module, "Glibc." + module):
+                    qualified[prefix + "." + name] = target
+    qualified_sides = {prefix + ".side": module + "." + solver
+                       for module, solver in SIDES.items()
+                       if "side" in definitions.get(module, ())
+                       for prefix in (module, "Glibc." + module)}
     # Stream rules stay above the generic library. Their old import of
     # SysWrappers was only for aliases and would cycle through LibioTactics.
     close = root / "libio/LibioCloseSteps.v"
@@ -282,6 +295,10 @@ def main(root):
                     owners[name] = module
         names = {name: migrate[owner][name] for name, owner in owners.items()
                  if name in migrate.get(owner, {})}
+        # Explicit owners survive import shadowing and must be rewritten as
+        # whole identifiers, including when their old definition is removed.
+        names.update(qualified)
+        text = rewrite_tactics(text, qualified_sides)
         solver = side_name(text, path.stem, definitions)
         if solver:
             # A future main may already name the solver and retain an alias.
@@ -307,6 +324,10 @@ def main(root):
             elif name in names:
                 del names[name]
         text = rewrite_tactics(text, names)
+        remaining = set(re.findall(
+            r"\b[A-Za-z_][\w']*(?:\.[A-Za-z_][\w']*)+(?![\w'])", masked(text))) & qualified.keys()
+        if remaining:
+            raise ValueError(f"{path}: qualified uses of removed tactics remain: {sorted(remaining)}")
         # Move only identical generic statements and proofs, modulo comments
         # and whitespace. Their names remain available through the shared import.
         for m in reversed(list(re.finditer(
@@ -327,7 +348,9 @@ def main(root):
                 text = text[:m.end()] + f"\n#[export] Hint Unfold {m[1]} : offs." + text[m.end():]
         if path.stem != "Fix" and (re.search(r"\b(?:Proof|Ltac)\b", masked(text)) or path.stem == "FileInv"):
             text = edit_imports(text, stream=path.stem not in support and
-                              any(value.split()[0] in stream_library for value in names.values()))
+                              any(value.split()[0] in stream_library or
+                                  value.startswith("LibioTactics.") and value in text
+                                  for value in names.values()))
         if re.search(r"\bside\b", masked(text)):
             raise ValueError(f"{path}: unresolved legacy side reference; retain its alias until reviewed")
         path.write_text(text)
