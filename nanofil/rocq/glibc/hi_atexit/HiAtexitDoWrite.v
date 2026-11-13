@@ -92,8 +92,8 @@ Qed.
     block proved: the blocks' premises discharged from the last back
     to the first, and the write by [hi_file_write]. *)
 Definition hi_do_write_mode :=
-  HDW.wp_glibc__IO_new_do_write_mode w0 registry ge
-    (HDC.wp_do_write_call w0 registry ge Hfw hi_file_write
+  HDW.wp_glibc__IO_new_do_write_mode w0 registry ge (fun f2 => Z.land f2 2 = 0)
+    (HDC.wp_do_write_call w0 registry ge Hfw (fun f2 => Z.land f2 2 = 0) hi_file_write
        (HDR.wp_do_write_ret w0 registry ge
           (HDT.wp_do_write_tail w0 registry ge
              (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
@@ -101,8 +101,57 @@ Definition hi_do_write_mode :=
 (** Overflow flushes from the buffer's base; the same proved blocks
     establish that case without a callee hypothesis. *)
 Definition hi_do_write_base :=
+  HDW.wp_glibc__IO_new_do_write_base w0 registry ge (fun f2 => Z.land f2 2 = 0)
+    (HDC.wp_do_write_call w0 registry ge Hfw (fun f2 => Z.land f2 2 = 0) hi_file_write
+       (HDR.wp_do_write_ret w0 registry ge
+          (HDT.wp_do_write_tail w0 registry ge
+             (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
+
+(** A noncanceling write uses the captured wrapper rather than clearing flags2.
+    Both branches return its exact value, the source bytes and errno ownership. *)
+Lemma hi_file_write_nocancel fr fb freg fl f2 fd tw off b reg o xs eb Φ :
+  call_frame glibc__IO_new_file_write
+    [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b)); WInt (Z.of_nat (length xs))] = Some fr ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  (Z.land f2 2 = 0 \/
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
+  0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
+  Forall (fun x => 0 <= x < 256) xs ->
+  live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
+  icell fb off_total_written tw -∗ icell fb off_offset off -∗ live b reg -∗ bytes b o xs -∗ errno_any eb -∗
+  ▷ (∀ r fl' tw' off', ⌜fw_post (Z.of_nat (length xs)) fl r fl' /\ 0 <= fl' < 2 ^ 32⌝ -∗
+     live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
+     icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ live b reg -∗ bytes b o xs -∗ errno_any eb -∗
+     Φ (Ret (WInt r))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+Proof.
+  intros Hfr Hfb Hfal Hfend Hfreg Hf2 Hf2r Hfd Hfl He Hb Ho Hbend Hbreg Hxs.
+  iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
+  iApply (HWD.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite fr fb freg fl f2 fd tw off
+            (DfracOwn 1) b reg (Obj b) o xs eb with "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK");
+    try assumption; left; reflexivity.
+Qed.
+
+(** A stream can flush its pending bytes without allowing cancellation.
+    This proof uses the captured write wrapper and retains the existing short-write and error cases. *)
+Definition hi_do_write_mode_nocancel :=
+  HDW.wp_glibc__IO_new_do_write_mode w0 registry ge
+    (fun f2 => Z.land f2 2 = 0 \/
+      Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel))
+    (HDC.wp_do_write_call w0 registry ge Hfw _ hi_file_write_nocancel
+       (HDR.wp_do_write_ret w0 registry ge
+          (HDT.wp_do_write_tail w0 registry ge
+             (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
+
+(** Overflow can use the same noncanceling flush from the buffer's base.
+    This rule does not acquire or release a stream lock. *)
+Definition hi_do_write_base_nocancel :=
   HDW.wp_glibc__IO_new_do_write_base w0 registry ge
-    (HDC.wp_do_write_call w0 registry ge Hfw hi_file_write
+    (fun f2 => Z.land f2 2 = 0 \/
+      Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel))
+    (HDC.wp_do_write_call w0 registry ge Hfw _ hi_file_write_nocancel
        (HDR.wp_do_write_ret w0 registry ge
           (HDT.wp_do_write_tail w0 registry ge
              (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).

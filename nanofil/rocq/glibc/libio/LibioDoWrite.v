@@ -34,6 +34,10 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 
+(** The write rule determines which cancellation flags this composition accepts.
+    The buffer-reset blocks preserve those flags on both success and failure. *)
+Context (write_ready : Z -> Prop).
+
 Local Instance do_write_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -46,7 +50,7 @@ Context (Hcall_spec : forall fb freg fl f2 fd tw off bb breg i xs rp rb wp we be
   let base := mkPtr bb (Obj bb) in
   0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
@@ -83,7 +87,7 @@ Lemma wp_glibc__IO_new_do_write_mode fr fb freg fl f2 fd tw off bb breg i xs rp 
   let base := mkPtr bb (Obj bb) in
   call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
@@ -127,7 +131,7 @@ Lemma wp_glibc__IO_new_do_write fr fb freg fl f2 fd tw off bb breg i xs rp rb wp
   let base := mkPtr bb (Obj bb) in
   call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> 0 <= i -> bb + i + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
@@ -160,7 +164,7 @@ Lemma wp_glibc__IO_new_do_write_base fr fb freg fl f2 fd tw off bb breg xs rp rb
   let base := mkPtr bb (Obj bb) in
   call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr base; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> bb + n <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs -> 0 <= ptr_addr be < 2 ^ 64 -> ptr_cap be = Obj bb ->
