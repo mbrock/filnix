@@ -7,7 +7,7 @@ out=${1:?usage: plugin.sh OUTPUT}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 nix build --impure -o "$out/compiler" --expr "
-  let f = builtins.getFlake \"$repo\";
+  let f = builtins.getFlake \"git+file://$repo\";
       p = import f.inputs.nixpkgs { system = \"x86_64-linux\"; };
   in p.buildEnv { name = \"proof-check-ocaml\";
     paths = with p.ocaml-ng.ocamlPackages_4_14; [ ocaml findlib zarith ]; }"

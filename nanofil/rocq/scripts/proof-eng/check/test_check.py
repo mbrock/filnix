@@ -53,6 +53,10 @@ class Checks(unittest.TestCase):
             self.assertTrue(compare(0, manifest)['differences'][0]['accepted'])
             compile(after, source.replace('target : side', 'target : True /\\ (True /\\ True)').replace('exact I.', 'repeat split; exact I.'))
             self.assertFalse(compare(1, manifest)['differences'][0]['accepted'])
+            spec = 'Definition spec (_ : Corelib.Init.Datatypes.nat) : Prop := True.\n'
+            compile(before, spec)
+            compile(after, spec.replace(':= True', ':= False'))
+            self.assertEqual([d['name'] for d in compare(1)['differences']], ['spec'])
             prelude = 'From Nanofil Require Import Runtime.\n'
             compile(before, prelude + 'Module General (R : Runtime).\nLemma target : forall s m, R.ready s m -> R.ready s m.\nProof. auto. Qed. End General.\n')
             compile(after, prelude + 'Module R := InterpRuntime.\nLemma target : forall s m, R.ready s m -> R.ready s m.\nProof. auto. Qed.\n')
