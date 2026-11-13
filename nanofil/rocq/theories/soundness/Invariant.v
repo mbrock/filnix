@@ -1,16 +1,18 @@
-(** Campaign 3's run-level [[evidence]] invariant, stated
-    ([docs/rocq.md, The evidence invariant over runs](../../../docs/rocq.md#the-evidence-invariant-over-runs)):
-    what holds at each point of a [[frame]] of [Machine] R (Machine.v),
-    and the lemmas each kind of step needs. Persistence.v proves that
-    every step keeps it.
+(** When the compiler reuses a pointer check across later instructions,
+    the proof of soundness must show that every fact the [[validator]]
+    assumes at runtime still holds when the program reaches it. A single
+    step of the machine cannot establish that alone, because a check in
+    one block may justify a memory access several blocks or instructions
+    later.
 
-    The invariant ([inv]) says that the running frame, unless a
-    [[check_ahead]] doomed it, is at a point where the facts the
-    [[evidence pass]] computed for that point hold ([point_ok]), and
-    that every waiting caller has no fact ([parked]). It also says that
-    each live fact's pointer has a [[single definition]] whose [[site]]
-    [[dominates]] the point ([live_dom]), so that the [[reuse]] forms
-    may read that pointer's definition. *)
+    This module defines the run-level [[evidence-invariant|evidence invariant]]
+    [inv] over machine configurations and proves the structural lemmas
+    that connect it to the [[evidence-pass|evidence pass]]. The
+    invariant requires the running [[frame]]—unless a failed
+    [[check_ahead]] has marked it [[doomed]]—to sit at a program point
+    whose live facts hold and whose checked pointers dominate the point,
+    while every waiting caller on the stack sits [[parked]] with no live
+    facts. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -20,19 +22,22 @@ Open Scope Z_scope.
 
 (** ## The live facts' pointers dominate
 
-    A fact names the pointer its check was of. The reuse forms read
-    that pointer's single definition, so they need it to dominate the
-    point where the fact is live (`live_dom`). This is a property of
-    the pass alone, block by block: a check's pointer is an operand the
-    check uses (`definitions_dominate/3`), and a fact that reaches a
-    block's entry over every incoming edge has a pointer dominating each
-    reachable predecessor's end, so the entry too (`dom_meet`). *)
+    In SSA form, a [[reuse]] instruction can only rely on a previously
+    checked pointer if that pointer's [[single definition]] [[dominates]]
+    the current program point. Otherwise, control flow could reach the
+    reuse without ever defining or checking the pointer along the path.
 
-(** A function f of a [checked_module] md is valid in the ways the
-    proofs use: it has a first block, its [[dominator intervals]]
-    ([block_intervals]) are its [fn_doms], its block labels are
-    distinct, and its definitions dominate their uses
-    (`definitions_dominate/3`). *)
+    Every check inspects an operand already defined in the function, and
+    any fact surviving at a block merge must have survived every
+    incoming path. The lemmas below prove [live_dom] block by block by
+    showing that each checked pointer's defining [[site]] dominates
+    every reachable predecessor and thus the block entry. *)
+
+(** Every function in a validated module satisfies the structural
+    conditions that the dominance proofs assume. Lemma [func_facts]
+    extracts its non-empty block list, its [[dominator intervals]], its
+    distinct block labels, and the proof that every use is dominated by
+    its definition. *)
 Lemma func_facts : forall md f,
   checked_module md -> In (IFunc f) md ->
   exists b0 rest, fn_blocks f = b0 :: rest /\ block_intervals (b0 :: rest) = Some (fn_doms f) /\
@@ -78,15 +83,16 @@ Qed.
 Lemma value_temps_in : forall vs a, In (Tmp a) vs -> In a (value_temps vs).
 Proof. intros vs a H. unfold value_temps. apply in_flat_map. exists (Tmp a). split; [exact H | left; reflexivity]. Qed.
 
-(** The [[single definition]] of each live fact's pointer (its P, where
-    P is a temporary y with one definition) is at a [[site]] that
-    dominates index k of block l of f ([dominating]). *)
+(** Predicate [facts_dominate] checks that every [[live fact]] whose
+    pointer has a single definition in function f is defined at a site
+    that dominates instruction index k of block l. *)
 Definition facts_dominate (f : func) (l : name) (k : Z) (live : list fact) : Prop :=
   forall fa y, In fa live -> f_p fa = Tmp y -> once_has (single_definitions f) y = true ->
     dominating f l k y.
 
-(** The same, where block l is reachable: what the reuse forms need of
-    the live facts at index k of l. *)
+(** Unreachable blocks need no dominance guarantee because execution can
+    never enter them. Predicate [live_dom] restricts [facts_dominate] to
+    blocks that are reachable in the function's dominator tree. *)
 Definition live_dom (f : func) (l : name) (k : nat) (live : list fact) : Prop :=
   is_reachable (fn_doms f) l = true -> facts_dominate f l (Z.of_nat k) live.
 
@@ -123,8 +129,9 @@ Proof.
   destruct (inst_def_first i); [exact (kill_incl _ _ _ H) | exact H].
 Qed.
 
-(** The fact a check-like instruction i adds ([check_fact]) is of a
-    pointer y that i uses. *)
+(** Every check instruction inspects a pointer temporary that appears
+    among its own operands. Lemma [check_fact_uses] records that the
+    pointer named by [check_fact] is an operand used by instruction i. *)
 Lemma check_fact_uses : forall i fa y, check_fact i = Some fa -> f_p fa = Tmp y -> In y (inst_uses i).
 Proof.
   intros i fa y H Hy. destruct i as [q k o args | | | | | | | | ]; try discriminate H.
@@ -167,10 +174,10 @@ Proof.
           [exact (evidence_after_incl _ _ _ Hfa) | exact (kill_incl _ _ _ Hfa)].
 Qed.
 
-(** In a block b of a function f of a checked module md, where the facts
-    before the pass's step at index k dominate k, the facts after it
-    dominate index k + 1: a check's own fact is of an operand it uses,
-    whose single definition dominates it ([use_dominated]). *)
+(** A pointer check can only add evidence about a temporary variable that
+    was defined before the check runs. Lemma [pass_step_dom] shows that
+    each instruction step preserves dominance of all live facts at the
+    next instruction index. *)
 Lemma pass_step_dom : forall md f b k i rest live rest' live',
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
   nth_error (b_insts b) k = Some i ->
@@ -186,9 +193,11 @@ Proof.
     exists s, D. split; [exact Ey|]. split; [exact Hs|]. eapply site_dominates_mono; [|exact Hsd]. lia.
 Qed.
 
-(** The pass's facts at a block's end ([checked_insts] walking the
-    block from index k) dominate the end, where those it started with
-    dominated k. *)
+(** Any pointer check recorded inside a basic block can only be reused
+    in a successor block if the pointer's definition dominates the
+    outgoing edge. By induction over the remaining instructions in the
+    block, [walk_dom] proves that the block's exit facts dominate its
+    end. *)
 Lemma walk_dom : forall md f b n k is live out,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
   is = skipn k (b_insts b) -> (k <= length (b_insts b))%nat ->
@@ -208,8 +217,8 @@ Proof.
     exact (IH _ _ _ _ Hmd Hin Hb (eq_sym Hrest') Hlen' (live_dom_mono _ _ _ _ _ (le_S _ _ (le_n _)) H1) Hc).
 Qed.
 
-(** Each block's exit facts, in the map ex from labels to the facts at
-    their end, dominate its end. *)
+(** Predicate [exits_dom] states that every block's recorded exit facts
+    in map ex dominate the end of that block. *)
 Definition exits_dom (f : func) (ex : list (name * list fact)) : Prop :=
   forall bp out, In bp (fn_blocks f) -> lookup (b_label bp) ex = Some out ->
     live_dom f (b_label bp) (length (b_insts bp)) out.
@@ -223,11 +232,10 @@ Proof.
   - destruct H as [<- | [<- | []]]; [exists t1 | exists t2]; simpl; auto.
 Qed.
 
-(** Where every block's exit facts dominate its end, the pass's entry
-    facts of a block b ([entry_live]) dominate its entry: a fact that
-    reaches b over every incoming edge has a pointer whose definition
-    dominates each reachable predecessor's end, so b's entry too
-    ([dom_meet]). The entry block has no incoming edge and no fact. *)
+(** At a merge point, a fact enters block b only if it survives every
+    incoming edge. When every predecessor's exit facts dominate its own
+    end, the meet over incoming edges in [entry_live] produces facts
+    that dominate the entry of b. *)
 Lemma entry_dom : forall md f ex b,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> exits_dom f ex ->
   live_dom f (b_label b) 0 (entry_live f ex b).
@@ -263,8 +271,9 @@ Proof.
   rewrite (proj2 (name_eqb_false _ _) Hne). exact Hd.
 Qed.
 
-(** Every block's exit facts, as the pass computes them for f
-    ([pass_exits]), dominate its end. *)
+(** By walking each block in order from its entry facts, [pass_exits]
+    computes an exit map for function f whose facts dominate every block
+    end. *)
 Lemma pass_exits_dom : forall md f E,
   checked_module md -> In (IFunc f) md -> pass_exits (fn_src md f) f = Some E -> exits_dom f E.
 Proof.
@@ -292,10 +301,17 @@ Proof.
   apply (G _ _ (fun b Hb => Hb) HE). intros bp out _ Hl. discriminate Hl.
 Qed.
 
-(** ## The invariant, frame by frame *)
+(** ## The invariant, frame by frame
 
-(** The invariant over the configurations of [Machine] R, for any
-    [[runtime]] R. *)
+    To prove that a whole program run never dereferences an unchecked
+    pointer, we track what every call frame on the stack knows at each
+    execution point. Functor [Invariant] defines this state invariant
+    over [Machine] R: the active frame agrees with the evidence pass,
+    and every suspended caller waits immediately after a call with no
+    cached facts. *)
+
+(** Functor [Invariant] defines the run-level invariant [inv] and its
+    step lemmas for any concrete [[runtime]] R. *)
 Module Invariant (R : Runtime).
 
 Module RM := Machine R.
@@ -310,10 +326,10 @@ Proof.
     destruct (n =? 0); simpl; auto.
 Qed.
 
-(** An edge step along t from the block from that continues moves the
-    frame to the entry of t's label, entered from from, with memory and
-    [[fuel]] unchanged; and the frame is not doomed, or the edge does not
-    [[poll]]. *)
+(** Jumping to another basic block transfers control without changing
+    memory or consuming [[fuel]]. Lemma [edge_step_next'] records that
+    the frame lands at the target block's entry and either stays
+    undoomed or took a non-polling edge. *)
 Lemma edge_step_next' : forall c from t c',
   edge_step c from t = Next c' ->
   c' = continue_at c (with_point (c_frame c) (Enter (edge_label t) (Some from))) (c_mem c) (c_fuel c) /\
@@ -358,26 +374,23 @@ Qed.
 
 (** ### What holds where
 
-    `at_pos` says where the pass is in a block and what holds there:
-    between two of the pass's steps, the live facts the next
-    instruction relies on (and, at the block's end, the facts the next
-    unpolled edge carries); or between a check and the access the pass
-    took with it, the fact that covers the access (`pair_claim`). A
-    `check_function`'s raw call needs no fact but its function check. *)
+    As execution moves through a basic block, we need to track which
+    pointer checks remain valid before each instruction or outgoing
+    jump. The definitions below state what holds between two
+    instructions and between a paired check and its memory access. *)
 
-(** At a block's end, before its jump j: if the edge j takes does not
-    [[poll]], the facts live hold. A poll edge carries no fact, since
-    the runtime may act there. *)
+(** Before taking a jump at the end of a block, the frame needs its
+    outgoing facts to survive into the next block. Predicate
+    [jump_claim] requires those facts to hold whenever the taken edge
+    does not [[poll]], because a poll edge may trigger the garbage
+    collector and invalidate live facts. *)
 Definition jump_claim (ge : genv) (m : Memory.mem) (fr : frame) (j : jump) (live : list fact) : Prop :=
   forall t, taken_target ge fr j = Some t -> is_poll t = false -> facts_hold ge m (fr_env fr) live.
 
-(** Between a check and the access the pass took with it: the fact fb
-    that covers the access ([covered_access]), or whose proof a touch
-    uses, holds, with the facts pre
-    the pass kept with it, and live' is what [evidence_after] keeps of
-    pre across the access; or, after a `check_function`, the access is a
-    raw call through q whose pointer p passed its function check
-    ([function_check_res]), and the pass keeps no fact. *)
+(** When a pointer check is paired directly with its memory access, the
+    machine steps to a point between the two instructions. Predicate
+    [pair_claim] states that the check's fact covers the upcoming
+    access, or that a function check just validated a raw call's target. *)
 Definition pair_claim (ge : genv) (m : Memory.mem) (fr : frame) (access : inst) (live' : list fact) : Prop :=
   (exists fb pre, (covered_access access (f_q fb) (f_lo fb) (f_hi fb) (f_r fb) (f_al fb) = true \/
                    access = Touch (f_q fb)) /\
@@ -385,13 +398,10 @@ Definition pair_claim (ge : genv) (m : Memory.mem) (fr : frame) (access : inst) 
   (live' = [] /\ exists r q args p, access = RawCall r (Tmp q) args /\
      lookup q (fr_env fr) = Some (WPtr p) /\ function_check_res ge p = Some ok).
 
-(** Where the pass is in the instructions is of block l of f, and what
-    holds there, with out the pass's exit facts of the block. Either it
-    is between two of its steps, with facts live that the pass walks to
-    out ([walks]), that dominate index k ([live_dom]), and that hold if
-    the next instruction relies on them ([relies]) or, at the block's
-    end, as the jump carries them ([jump_claim]); or it is between a
-    check and the access it took with it ([pair_claim]). *)
+(** Inside a basic block, execution is either waiting for the next
+    instruction or paused between a paired check and its access.
+    Predicate [at_pos] captures both cases at instruction index k of
+    block l. *)
 Definition at_pos (ge : genv) (s : src) (m : Memory.mem) (fr : frame) (is : list inst) (j : jump)
     (out : list fact) (f : func) (l : name) (k : nat) : Prop :=
   (exists live, walks s is live out /\ live_dom f l k live /\
@@ -402,12 +412,11 @@ Definition at_pos (ge : genv) (s : src) (m : Memory.mem) (fr : frame) (is : list
   (exists access rest' live', is = access :: rest' /\ walks s rest' live' out /\
      live_dom f l (S k) live' /\ pair_claim ge m fr access live').
 
-(** What holds at the point of the frame fr in memory m, for its
-    function f of the module md: at a [[snapshot]], or at the entry
-    entered from no block, the point is f's entry; at a block's entry
-    from the block p, the edge is one of p's and, unless it polls, p's
-    exit facts hold; within a block, [at_pos], with the exit facts E the
-    pass computes ([pass_exits]). *)
+(** Predicate [point_ok] ties the frame's current execution point to the
+    module's validated evidence. At function entry or [[snapshot]] it
+    checks the entry label, at a block entry it checks the incoming edge's
+    exit facts unless the edge polls, and inside a block it delegates to
+    [at_pos]. *)
 Definition point_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Prop :=
   let f := fr_fn fr in
   exists E, pass_exits (fn_src md f) f = Some E /\
@@ -428,16 +437,19 @@ Definition point_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Pr
 Definition locals_pos (fr : frame) : Prop :=
   forall x base, lookup x (fr_locals fr) = Some (Some base) -> 0 < base.
 
-(** The running frame fr: it runs a function of the module md, its
-    locals lie above 0 ([locals_pos]), and it is [point_ok] unless a
-    [[check_ahead]] [[doomed]] it. *)
+(** To stay safe while executing C code, the active call frame must keep
+    its stack locals at positive addresses and maintain valid pointer
+    evidence unless it is already doomed to trap. Predicate [frame_ok]
+    states that the function belongs to md, its locals lie above 0, and
+    either it is [[doomed]] or [point_ok] holds. *)
 Definition frame_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Prop :=
   In (IFunc (fr_fn fr)) md /\ locals_pos fr /\ (fr_doomed fr <> None \/ point_ok ge md m fr).
 
-(** A waiting caller fr: it runs a function of md, its locals lie above
-    0, it is not doomed, and it waits just after its call, inside a
-    block whose rest the pass walks from no fact at all: a call ends
-    every fact. *)
+(** A function call can overwrite arbitrary memory and trigger garbage
+    collection, so no cached pointer facts survive across it. Predicate
+    [parked] describes a waiting caller on the stack: it is undoomed,
+    its locals lie above address 0, and execution resumes after the call
+    with an empty fact list. *)
 Definition parked (md : module) (fr : frame) : Prop :=
   In (IFunc (fr_fn fr)) md /\ locals_pos fr /\ fr_doomed fr = None /\
   exists E l rest j b out k, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
@@ -445,28 +457,28 @@ Definition parked (md : module) (fr : frame) : Prop :=
     lookup l E = Some out /\ j = b_jump b /\ rest = skipn k (b_insts b) /\
     walks (fn_src md (fr_fn fr)) rest [] out.
 
-(** The invariant of a machine state st: the running frame is
-    [frame_ok], and every waiting caller is [parked]. *)
+(** The run-level invariant [inv] holds of a machine state when its
+    running frame satisfies [frame_ok] and every suspended caller on the
+    call stack satisfies [parked]. *)
 Definition inv (ge : genv) (md : module) (st : mstate) : Prop :=
   frame_ok ge md (c_mem (fst st)) (c_frame (fst st)) /\
   Forall (fun fp => parked md (fst fp)) (c_callers (fst st)).
 
-(** The [[runtime]]'s action at a [[safepoint]] changes no region where
-    it comes just before an instruction i that the pass relies on facts
-    across ([relies]). Every runtime satisfies it ([spares_any]): no
-    region changes at a safepoint. It was kept a hypothesis while the
-    safepoint stood for signal handlers too, since natively a pointer
-    store whose aux must be allocated exits to the runtime, where a
-    handler the program installed may free the checked object
-    (docs/rocq.md, The evidence invariant over runs). *)
+(** If the [[runtime]] freed objects at a [[safepoint]] right before an
+    instruction that relies on cached evidence, those cached facts could
+    become stale. Predicate [spares] requires [R.safepoint] to leave
+    all memory regions unchanged before any instruction where [relies]
+    is true. *)
 Definition spares (ge : genv) (md : module) : Prop :=
   forall c s s' m',
     safepoint_due ge c = true -> R.safepoint s (c_mem c) s' m' ->
     forall l i rest j, fr_at (c_frame c) = Exec l (i :: rest) j ->
     relies (fn_src md (fr_fn (c_frame c))) i = true -> m_regions m' = m_regions (c_mem c).
 
-(** Every runtime spares every module's facts: the collector changes
-    no region at a safepoint ([R.collector_live]). *)
+(** In Fil-C, the garbage collector may move or sweep dead objects at a
+    safepoint, but it never frees objects that are still live. By
+    [R.collector_live], every runtime satisfies [spares] for every
+    module. *)
 Lemma spares_any : forall ge md, spares ge md.
 Proof. intros ge md c s s' m' _ Hsp _ _ _ _ _ _. exact (R.collector_live _ _ _ _ Hsp). Qed.
 
@@ -483,8 +495,10 @@ Proof.
   destruct is; [intros t _ _; exact Hl | intros _; exact Hl].
 Qed.
 
-(** A [parked] caller, resumed with any environment e (the call's
-    result bound) in any memory m, is [frame_ok]. *)
+(** When a callee returns, the suspended caller resumes with the
+    callee's return value bound in a fresh environment and potentially
+    updated memory. Because a [parked] caller waits with no live facts,
+    it immediately satisfies [frame_ok] in any resulting memory. *)
 Lemma parked_resume : forall ge md m fr e,
   parked md fr -> frame_ok ge md m (mkFrame (fr_fn fr) e (fr_locals fr) (fr_doomed fr) (fr_at fr)).
 Proof.
@@ -494,8 +508,10 @@ Proof.
   eapply at_pos_between; [exact Hw | apply live_dom_nil | apply facts_hold_nil].
 Qed.
 
-(** A callee g of a checked module, its frame fr made by [call_frame]
-    from the arguments xs, starts at its entry, [frame_ok]. *)
+(** Calling a C function starts execution at the callee's entry block
+    before any stack local variables have been allocated. Because a
+    freshly built frame has no named locals and starts at the entry
+    point, it satisfies [frame_ok]. *)
 Lemma call_frame_ok : forall ge md m g xs fr,
   checked_module md -> In (IFunc g) md -> call_frame g xs = Some fr -> frame_ok ge md m fr.
 Proof.
@@ -508,10 +524,10 @@ Proof.
   destruct (variadic_func g); reflexivity.
 Qed.
 
-(** An instruction i the pass took, that continues, leaves the pass's
-    next position true: the facts after it, or the fact that covers the
-    access the pass took with it ([pair_claim]). The facts before i
-    need to hold only if the pass relies on them ([relies]). *)
+(** Executing an instruction accepted by the evidence pass advances the
+    proof state by one step. If the instruction continues without
+    stopping, either the updated live facts hold after it or the pass
+    paused between a check and its access where [pair_claim] holds. *)
 Lemma pass_step : forall ge s fr m i rest live rest' live' e1 l1 m1 fr1,
   objects_fit (m_regions m) -> locals_pos fr ->
   (relies s i = true -> facts_hold ge m (fr_env fr) live) ->
@@ -565,8 +581,10 @@ Proof.
            rewrite (relies_false _ _ _ _ _ _ Hr Hc). apply facts_hold_nil.
 Qed.
 
-(** The access the pass took with its check, if it continues, leaves
-    the facts the pass has after it. *)
+(** After a pointer check validates an upcoming memory access, the
+    access itself runs without invalidating unrelated evidence. Lemma
+    [pair_continue] proves that any facts surviving the access still
+    hold in the new memory and environment. *)
 Lemma pair_continue : forall ge m fr access live' e1 l1 m1,
   pair_claim ge m fr access live' ->
   inst_step ge fr m access = Some (IContinue e1 l1 m1) -> facts_hold ge m1 e1 live'.
@@ -575,9 +593,10 @@ Proof.
   eapply evidence_after_holds; [|exact Hs]. intros fa Hin. apply Hh. right. exact Hin.
 Qed.
 
-(** Where the instruction i at the pass's position, index k of block b,
-    continues with environment e1 and memory m1, the next position, at
-    index k + 1, holds of any frame fr1 with environment e1. *)
+(** Every non-stopping instruction inside a basic block advances
+    execution to the next instruction without losing evidence. Lemma
+    [at_pos_continue] preserves [at_pos] at index k + 1 whether the pass
+    stepped normally or completed a paired access. *)
 Lemma at_pos_continue : forall ge md m fr i rest j out e1 l1 m1 fr1 f l b k,
   checked_module md -> In (IFunc f) md -> find_block l (fn_blocks f) = Some b ->
   i :: rest = skipn k (b_insts b) ->
@@ -601,8 +620,10 @@ Proof.
     eapply pair_continue; eauto.
 Qed.
 
-(** After an instruction the pass relies on nothing for, and that is
-    not a `check_function`, the pass goes on with no facts. *)
+(** Because function calls and allocations can change memory
+    arbitrarily, no cached pointer evidence survives across them. After
+    any instruction that discards cached facts—except a function
+    check—execution continues with an empty fact list. *)
 Lemma walks_after : forall ge s m fr i rest j out f l k,
   at_pos ge s m fr (i :: rest) j out f l k -> relies s i = false -> is_check_function i = false ->
   walks s rest [] out.
@@ -616,10 +637,17 @@ Proof.
     unfold evidence_after in Hw. rewrite (relies_preserving _ _ Hr) in Hw. exact Hw.
 Qed.
 
-(** ### Reading and making `point_ok` *)
+(** ### Reading and making [point_ok]
 
-(** [point_ok] of a frame inside block l, from [at_pos] at its
-    instructions is, the suffix of the block from index k. *)
+    Many step proofs inspect a frame executing inside a block and then
+    rebuild [point_ok] at the next position. The two helper lemmas below
+    pack and unpack the existential witnesses inside [point_ok] for
+    [Exec] points. *)
+
+(** To re-establish the frame invariant after stepping inside a block, a
+    proof needs to package the block's exit evidence and the current
+    position into [point_ok]. Lemma [point_ok_exec] builds that witness
+    at instruction index k. *)
 Lemma point_ok_exec : forall ge md m fr l is j E b out k,
   pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E -> fr_at fr = Exec l is j ->
   find_block l (fn_blocks (fr_fn fr)) = Some b -> lookup l E = Some out -> j = b_jump b ->
@@ -630,8 +658,10 @@ Proof.
   exists E. split; [exact HE|]. rewrite Ha. eauto 8.
 Qed.
 
-(** Conversely, [point_ok] of a frame inside block l gives the block b,
-    the pass's exit facts, the index k of its point, and [at_pos]. *)
+(** To analyze an instruction step inside a basic block, a proof needs
+    the block's instruction list, its exit facts, and the evidence
+    currently live. Lemma [point_ok_exec_inv] extracts all of those
+    fields from [point_ok]. *)
 Lemma point_ok_exec_inv : forall ge md m fr l is j,
   point_ok ge md m fr -> fr_at fr = Exec l is j ->
   exists E b out k, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
@@ -642,8 +672,10 @@ Proof.
   destruct H as (E & HE & H). rewrite Ha in H. destruct H as (b & out & k & ?). eauto 10.
 Qed.
 
-(** A running frame that is not doomed, at a call, can wait after it
-    with no fact, whatever the call does: it is [parked] there. *)
+(** When a function calls another function, any pointer checks cached in
+    the caller cannot be assumed after the callee runs. An undoomed
+    frame at a call therefore leaves a waiting caller on the stack with
+    no live facts. *)
 Lemma call_parked : forall ge md m fr l r callee args rest j,
   frame_ok ge md m fr -> fr_doomed fr = None -> fr_at fr = Exec l (Call r callee args :: rest) j ->
   parked md (mkFrame (fr_fn fr) (fr_env fr) (fr_locals fr) None (Exec l rest j)).
@@ -658,10 +690,10 @@ Proof.
   eapply walks_after; [exact Hat | reflexivity | reflexivity].
 Qed.
 
-(** A frame fr' of the same function, at the entry of the entry block
-    l from no block, is [point_ok] in any memory where fr, at the
-    [[snapshot]] that leads to l or at l itself, was: a function's entry
-    is where its snapshot leads. *)
+(** A variadic function first takes a [[snapshot]] of its extra
+    arguments and then enters its entry block. Lemma [point_ok_entry]
+    transfers [point_ok] from the snapshot (or entry) to the entry block
+    in any resulting memory. *)
 Lemma point_ok_entry : forall ge md m m' fr fr' xs l,
   point_ok ge md m fr -> fr_at fr = Snapshot xs l \/ fr_at fr = Enter l None ->
   fr_fn fr' = fr_fn fr -> fr_at fr' = Enter l None -> point_ok ge md m' fr'.
@@ -675,10 +707,11 @@ Qed.
 Lemma lookup_nil_none : forall (A : Type) n, @lookup A n [] = None.
 Proof. reflexivity. Qed.
 
-(** Entering a block l of a checked module's function, from [point_ok],
-    the pass's entry facts hold once the phis have run, and their
-    pointers dominate the entry ([entry_dom]): the frame after the step
-    is [point_ok]. *)
+(** Entering a basic block evaluates its phi nodes to bind incoming
+    values before running its first instruction. Lemma [enter_point_ok]
+    proves that evaluating those phi nodes preserves every fact
+    surviving the incoming edge, so the frame remains [point_ok] at the
+    block entry. *)
 Lemma enter_point_ok : forall ge md c c' l from,
   checked_module md -> In (IFunc (fr_fn (c_frame c))) md ->
   fr_at (c_frame c) = Enter l from -> step ge c = Next c' ->

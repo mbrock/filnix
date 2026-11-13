@@ -1,40 +1,37 @@
-(** Campaign 3's theorem, [valid_no_unchecked]: if the
-    [[validator]] accepts a module, no [[run]] of it that starts
-    [[ready]] ever steps to [[unchecked]]
-    ([formal.md, Campaign 3](../../../docs/formal.md#campaign-3-the-soundness-theorem);
-    [rocq.md, No run is unchecked](../../../docs/rocq.md#no-run-is-unchecked)).
+(** When a C compiler optimizes away redundant bounds checks, a single
+    wrong elimination can turn a safe trap into an out-of-bounds memory
+    access. In the [[interpreter]], that failure appears as the
+    [[unchecked]] outcome: an instruction that the [[validator]]
+    accepted without a full check, but whose runtime justification
+    failed.
 
-    The [[interpreter]]'s `unchecked(Reason)` is the outcome a validated
-    module must never reach: it marks a [[raw access]] or a
-    [[reuse|reuse form]] the validator accepted but whose justification
-    was false at run time. So the theorem says the validator's checks
-    are sound: every access it lets go unchecked is in fact in bounds,
-    or traps as a checked access would. It rests on the
-    [[runtime|runtime axioms]] of Runtime.v and on the run starting
-    ready; the runtime's [[poll|safepoints]] spare the pass's facts for
-    every runtime (Invariant.v's [spares_any]), and the interpreter's
-    instance is [interp_valid_no_unchecked]. The validator here is
-    Validate.v's transcription, which the gates compare with
-    `ir:valid_module/1`; external calls other than free are stuck in
-    the model, so the theorem says nothing about a run past one. The
-    proof is assembled from the run theorems, one per place an
-    `unchecked` can come from:
+    This module proves the top-level [[soundness]] theorem
+    [valid_no_unchecked]. If the validator accepts a module, then any
+    [[run]] starting from a [[ready]] [[runtime]] never steps to an
+    [[unchecked]] outcome. Every access that skips a full check either
+    lies in bounds or traps just as a checked access would.
 
-    | Source | Run theorem |
-    |---|---|
-    | a raw load, store, cas or call | Chain.v's [run_access_checked] |
-    | a renew, a renew over a hull, a half check | Renew.v's [run_reuse_checked] |
-    | a `renew_if`, a `check_limit` | Guard.v's [run_guard_checked] |
-    | a frame a `check_ahead` doomed | Doomed.v's [run_doomed_checked] |
-    | the runtime's free | Runtime.v's axiom [free_checked] |
+    Each kind of unchecked failure has its own safety argument across the
+    soundness development. This module combines the separate proofs for
+    raw accesses, pointer renewals, conditional guards, doomed frames,
+    and `c: free` into one theorem, stopping only at external calls
+    other than `c: free` because those calls get stuck in the model.
 
     ## Decisions
 
-    | Decision | Why |
-    |---|---|
-    | free never answering `unchecked` is the module type's axiom [free_checked] | mbrock's decision, with the native test axiom-free.c |
-    | the theorem takes no hypothesis about safepoints | every runtime spares the pass's facts (Invariant.v's [spares_any]); [spares] was a hypothesis until 2026-11-09, while a handler's free at a pointer store's [[aux]] exit counted as the runtime's ([The runtime's safepoints](../../../docs/rocq.md#the-evidence-invariant-over-runs)) |
-    | a run is stated over Guard.v's machine instance | the doomed frame's run is carried over to Doomed.v's ([mreachable_doom]) | *)
+    Guaranteeing that `c: free` never returns an unchecked error is an
+    axiom of the runtime module type ([free_checked]), backed by the
+    native test `axiom-free.c`.
+
+    Garbage collection safepoints never free live memory objects, so
+    cached pointer checks remain valid across every collector pause.
+    Because every runtime preserves live regions automatically, the
+    top-level theorem needs no extra safepoint hypothesis.
+
+    When an ahead-of-bounds check fails early, the running frame enters
+    a doomed state handled separately from healthy execution. Because
+    both cases share the same runtime semantics, a small helper converts
+    execution traces between the two machine instances. *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Semantics Machine Validate
@@ -42,13 +39,18 @@ From Nanofil Require Import Term Maps Syntax Cfg Values Memory Runtime Ops Seman
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Where unchecked comes from *)
+(** ## Where unchecked comes from
 
-(** The ops o whose result may be [[unchecked]]: a raw load or a raw
-    [[cas]], whose access the check before it covers (`raw_res/2`), or a
-    [[reuse|reuse form]] (renew, renew over a hull, half check,
-    `renew_if`, `check_limit`), whose source or limit may not be the
-    one the pass took. *)
+    To show that no validated run ever fails with [[unchecked]], we
+    first classify every operation and instruction that can produce that
+    outcome. Only raw accesses, reuse forms, raw calls, and calls to
+    `c: free` can stop with an unchecked error; checked operations
+    always trap or succeed. *)
+
+(** Predicate [unchecked_op] lists the operations that can return an
+    [[unchecked]] result: raw loads, raw atomic compare-and-swaps, and
+    the [[reuse|reuse forms]] whose cached evidence may fail if
+    unvalidated. *)
 Definition unchecked_op (o : op) : bool :=
   match o with
   | RawLoad _ _ | RawLoadPointer _ _ | RawCas _ _ | Renew _ _ _ _ | RenewHull _ _ _ _
@@ -56,8 +58,9 @@ Definition unchecked_op (o : op) : bool :=
   | _ => false
   end.
 
-(** No op but an [unchecked_op] answers [[unchecked]] (`kind_res/8`):
-    a check answers its access check, which traps or passes. *)
+(** Every ordinary checked operation either succeeds or traps cleanly.
+    Lemma [op_unchecked_source] proves that only operations marked by
+    [unchecked_op] can return [RUnchecked]. *)
 Lemma op_unchecked_source : forall o k xs m r m',
   op_res o k xs m = Some (OpRes (RUnchecked r) m') -> unchecked_op o = true.
 Proof.
@@ -74,10 +77,9 @@ Proof.
          injection H as H3 _; exact (va_arg_reason _ _ _ _ _ E H3) end.
 Qed.
 
-(** An instruction i's result is [[unchecked]] only as a `let` of an
-    [unchecked_op], a raw store, a raw call, or a call of `free` or
-    `zgc_free` ([is_free_name]) that the runtime's free ([ge_free])
-    answered so (`inst_result/5`). *)
+(** Lifting [op_unchecked_source] to whole instructions, an instruction
+    stops with [[unchecked]] only when it runs an [unchecked_op], a raw
+    store, a raw call, or a call to `c: free` or `c: zgc_free`. *)
 Lemma inst_unchecked_source : forall ge fr m i w,
   inst_step ge fr m i = Some (IStop (Unchecked w)) ->
   (exists q k o args, i = Let q k o args /\ unchecked_op o = true) \/
@@ -124,13 +126,18 @@ Proof.
   - exfalso. simpl in H. discriminate H.
 Qed.
 
-(** ## Raw accesses go through a temporary *)
+(** ## Raw accesses go through a temporary
 
-(** A raw load, store or [[cas]] i of a function of a [checked_module] md reads
-    its address from a [[temporary]], so the validator saw it as a
-    [[raw access]] ([raw_access] is not None, `raw_access/5`):
-    `valid_use/3` reads no global at the proof [[class]] `a` and no
-    constant at a proof class. *)
+    The evidence pass tracks bounds facts by temporary variable name, so
+    it can only justify a raw memory access whose address operand is a
+    [[temporary]]. This section verifies that static validation rejects
+    any raw load, store, or compare-and-swap with a non-temporary
+    address. *)
+
+(** In any validated function, every raw load, store, or [[cas]] reads
+    its base address from a [[temporary]] rather than a global or
+    constant. As a result, [raw_access] recognizes every raw memory
+    instruction in a checked module. *)
 Lemma raw_tmp : forall md f b i,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) -> In i (b_insts b) ->
   (exists q k t off args, i = Let q k (RawLoad t off) args) \/
@@ -159,7 +166,13 @@ Proof.
       try discriminate; simpl; discriminate.
 Qed.
 
-(** ## A step that is not doomed *)
+(** ## Undoomed execution steps
+
+    When a frame has not been marked [[doomed]] by a failed
+    [[check_ahead]], an [[unchecked]] error can only come from
+    evaluating the next instruction in a block. The lemmas below rule
+    out block entries, jumps, and returns as sources of unchecked
+    outcomes. *)
 
 (** In a frame fr that is not [[doomed]], `doomed_result/5` keeps an
     instruction's result out as it is, or goes on. *)
@@ -171,8 +184,8 @@ Proof.
   cases H; injection H as <-; simpl; first [left; reflexivity | right; do 3 eexists; reflexivity].
 Qed.
 
-(** A return that ends the run ends it with the outcome o it returns,
-    not another (`call_outcome_result/5`). *)
+(** When a function return finishes the entire program run, [return_step]
+    propagates the callee's own return outcome unchanged. *)
 Lemma return_step_done : forall c o o', return_step c o = Done o' -> o' = o.
 Proof.
   unfold return_step, or_stuck. intros c o o' H. cases H.
@@ -184,9 +197,11 @@ Proof.
   all: congruence.
 Qed.
 
-(** A frame that is not [[doomed]] steps to [[unchecked]] only where its
-    next instruction i's result is: a block's entry, a jump and a return
-    give no such outcome (`block_outcome/7`, `jump_outcome/7`). *)
+(** When a C function fails an unchecked operation in a healthy frame,
+    the failure must come from the instruction itself rather than
+    control-flow glue. Lemma [step_unchecked_inst] confirms that block
+    entries, jumps, and returns never produce [Unchecked], so only
+    [inst_step] can fail that way. *)
 Lemma step_unchecked_inst : forall ge c w,
   fr_doomed (c_frame c) = None -> step ge c = Done (Unchecked w) ->
   exists l i rest j, fr_at (c_frame c) = Exec l (i :: rest) j /\
@@ -213,22 +228,29 @@ Proof.
     exists l, i, rest, j. split; [reflexivity|]. rewrite Ei, Ho. reflexivity.
 Qed.
 
-(** ## Along a run *)
+(** ## Along a run
 
-(** The theorem for any [[runtime]] R that meets Runtime.v's module
-    type. *)
+    With the sources of unchecked outcomes classified, we can prove the
+    main safety theorem for any runtime R. The proof splits on whether
+    the running frame is [[doomed]] or healthy and delegates each case
+    to its dedicated run theorem. *)
+
+(** Functor [Sound] proves [valid_no_unchecked] for any concrete
+    [[runtime]] R satisfying the [Runtime] interface. *)
 Module Sound (R : Runtime).
 
 Module GD := Guards R.
 Module D := Doom R.
 
-(** A step of Guard.v's [[machine]] instance, the one Chain.v's,
-    Renew.v's and Guard.v's run theorems share, is a step of Doomed.v's. *)
+(** Every transition in the [Guard](Guard.v) machine instance is also a
+    valid transition in the [Doomed](Doomed.v) machine instance. *)
 Lemma mstep_doom : forall ge st st', GD.G.H.P.I.RM.mstep ge st st' -> D.P.I.RM.mstep ge st st'.
 Proof. intros ge st st' H. destruct H; econstructor; eassumption. Qed.
 
-(** A run of Guard.v's machine instance is a run of Doomed.v's, so
-    [run_doomed_checked] applies to it. *)
+(** A program execution that starts in one machine instance must also be
+    recognized by the doomed-frame theorem. By induction over the steps
+    of a run, [mreachable_doom] translates multi-step reachability from
+    [Guards] to [Doom]. *)
 Lemma mreachable_doom : forall ge st st',
   GD.G.H.P.I.RM.mreachable ge st st' -> D.P.I.RM.mreachable ge st st'.
 Proof.
@@ -238,18 +260,11 @@ Proof.
   - exact (rt_trans _ _ _ _ _ IH1 IH2).
 Qed.
 
-(** Soundness of checking. Take a module md the [[validator]] accepts
-    ([checked_module]), a function f of it called with arguments xs,
-    and a memory m where the [[runtime]] R is [[ready]]. In every state c
-    a [[run]] reaches from that call, the next [[step]] is not
-    [[unchecked]]: every access the checked code did not check was in
-    bounds or trapped as a check would. It rests on Runtime.v's axioms
-    (among them [free_checked]: free never answers unchecked); every
-    runtime spares the pass's facts at [[poll|safepoints]]
-    ([spares_any]; see
-    [The evidence invariant over runs](../../../docs/rocq.md#the-evidence-invariant-over-runs)).
-    The proof sends a doomed frame to [run_doomed_checked], and any
-    other to the run theorem for its instruction. *)
+(** If the [[validator]] accepts a module, no [[run]] starting from a
+    [[ready]] runtime ever steps to an [[unchecked]] outcome. Doomed
+    frames are discharged by [run_doomed_checked], while undoomed frames
+    route each candidate instruction to [run_access_checked],
+    [run_reuse_checked], [run_guard_checked], or [R.free_checked]. *)
 Theorem valid_no_unchecked : forall ge md f xs fr m fuel s0 c s w,
   checked_module md -> ge_module ge = md -> ge_free ge = R.free ->
   In (IFunc f) md -> call_frame f xs = Some fr -> R.ready s0 m ->
@@ -297,15 +312,20 @@ Qed.
 
 End Sound.
 
-(** ## The interpreter's runtime *)
+(** ## The interpreter's runtime
 
-(** The theorem for the [[interpreter]]'s runtime. *)
+    Finally, we instantiate [Sound] with [InterpRuntime] to obtain a
+    closed soundness theorem for the executable reference interpreter.
+    No extra runtime hypotheses remain beyond starting from a ready
+    memory state. *)
+
+(** Module [InterpSound] instantiates the [Sound] functor with
+    [InterpRuntime]. *)
 Module InterpSound := Sound InterpRuntime.
 
-(** [valid_no_unchecked] for the [[interpreter]]'s runtime: in every state of
-    a run of a checked module's function that starts ready, no step is
-    [[unchecked]]. No hypothesis remains but the ready start;
-    Print Assumptions reports it closed. *)
+(** For any validated module executed under [InterpRuntime] from a ready
+    initial state, no reachable step ever produces an [[unchecked]]
+    outcome. *)
 Corollary interp_valid_no_unchecked : forall md globals f xs fr m fuel s0 c s w,
   let ge := mkGenv md globals InterpRuntime.free in
   checked_module md -> In (IFunc f) md -> call_frame f xs = Some fr -> InterpRuntime.ready s0 m ->

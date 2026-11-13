@@ -1,42 +1,62 @@
-(** Campaign 3's [[machine]]: Semantics.v's steps run over a [Runtime]
-    (Runtime.v), and the first invariant of every run, that the runtime
-    stays [[ready]] to allocate ([formal.md](../../../docs/formal.md),
-    Campaign 3; [rocq.md](../../../docs/rocq.md)).
+(** A Fil-C program cannot run in isolation from its [[runtime]]: it asks
+    the allocator for fresh heap objects, calls `c: free`, and yields at
+    GC safepoints. While the abstract semantics in [Semantics](Semantics.v)
+    lets any [[fresh]] address stand in for an allocation, a real runtime
+    chooses concrete base addresses and may sweep memory at safepoints.
 
-    Semantics.v's [step_rel] takes any [fresh] base for an allocation
-    and has no other thread. The machine of a runtime R is what one
-    thread's program sees run under R: R chooses each allocation's
-    base, R's free runs each call of libc's `free` (Run.v's [Driver]
-    makes the genv so), and R may act before an instruction where
-    [R.at_safepoint] holds and before a [[poll|poll edge]] is taken,
-    and nowhere else. That is what lets the [[validator]] keep
-    [[evidence]] across every other instruction and edge.
+    This module pairs the program's execution with a concrete [Runtime]
+    R to form a [[machine]], and proves that R stays [[ready]] to
+    allocate across every step of a run. It also proves that the runtime
+    may act only before an instruction marked with [R.at_safepoint] or
+    before a [[poll|poll edge]] is taken, which is what lets the
+    [[validator]] keep [[evidence]] across every other instruction and
+    edge.
 
     ## Decisions
 
-    | Decision | Why |
-    |---|---|
-    | the runtime acts *before* an [at_safepoint] instruction or a poll edge | the instruction then runs on what the runtime left, as native code does after a pollcheck |
-    | an allocation with a negative extent has no machine step | [fresh_allocation] covers extents from 0; only a local's constant size can be negative, and `valid` refuses it (sizes 0 to 2^31-1), while heap sizes are read at `l` and so never negative |
-    | ending a local is not [lifetime_step]'s free | Runtime.v's [region_step] lets any live object end, of any kind; the axioms' [lifetime_step] speaks of the runtime's free, which empties only heap objects | *)
+    The runtime acts before an [at_safepoint] instruction or a poll edge
+    rather than after it, so the instruction runs on whatever memory the
+    runtime left behind, just as native code does after a pollcheck.
+
+    An allocation with a negative extent has no machine step. The
+    runtime's [fresh_allocation] axiom covers non-negative extents only;
+    only a stack local's constant size can be negative, and validation
+    rejects negative local sizes while heap sizes are read at unsigned
+    length.
+
+    Ending a stack local on function return is distinct from freeing a
+    heap object. The [region_step] relation allows any live object to
+    end, whereas [lifetime_step] speaks specifically of the runtime's
+    `c: free`, which empties only heap objects. *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Runtime.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## Case analysis *)
+(** ## Case analysis
 
-(** A tactic: split on every match in the hypothesis H whose scrutinee
-    names no bound variable, outermost first, dropping the cases where
-    H's computation gives no result or another one. *)
+    Program steps in [Semantics](Semantics.v) branch on many runtime
+    checks and instruction forms. When a proof examines a step
+    assumption, this section provides a tactic to split those nested
+    matches automatically and discard impossible branches. *)
+
+(** The tactic [cases] splits on every match in hypothesis H whose
+    scrutinee names no bound variable, working outermost first and
+    discarding branches where H reaches a contradiction. *)
 Ltac cases H :=
   repeat match type of H with
          | context [match ?x with _ => _ end] =>
              destruct x eqn:?; cbv beta iota zeta in H; try discriminate H
          end.
 
-(** ## What the program does to memory *)
+(** ## What the program does to memory
+
+    To stay [[ready]] to allocate, the runtime needs to know that
+    ordinary program steps never corrupt its allocator metadata or
+    scribble outside live objects. The [kept] relation captures this
+    contract: existing objects may only stay intact or be freed, and no
+    bytes or capabilities may be written outside live objects. *)
 
 (** Leaving memory as it is is [kept]. *)
 Lemma kept_refl : forall m, kept m m.
@@ -57,8 +77,9 @@ Proof.
     destruct (O12 a Hn) as [B1 A1]. destruct (O23 a Hn2) as [B2 A2]. split; congruence.
 Qed.
 
-(** A change the runtime's free may make ([lifetime_step]) is one the
-    program may make ([region_step]): it ends only live objects. *)
+(** When the runtime frees an object via [lifetime_step], it only
+    empties live heap regions, which satisfies the more general
+    [region_step] relation used by the program semantics. *)
 Lemma lifetime_region_step : forall m m', lifetime_step m m' -> region_step m m'.
 Proof.
   intros m m' H b reg' E.
@@ -115,7 +136,8 @@ Lemma in_object_store_bytes : forall m a size x b,
   in_object m b -> in_object (store_bytes m a size x) b.
 Proof. auto. Qed.
 
-(** The same for a capability stored in the aux. *)
+(** Storing a capability in the [[aux]] space at address a leaves
+    objects intact as long as a lies inside a live object. *)
 Lemma in_object_store_aux : forall m a c b, in_object m b -> in_object (store_aux m a c) b.
 Proof. auto. Qed.
 
@@ -141,8 +163,9 @@ Lemma fold_left_none : forall (A : Type) (f : mem -> A -> option mem) xs,
   fold_left (fun acc x => let* m1 := acc in f m1 x) xs None = None.
 Proof. intros A f xs. induction xs; simpl; auto. Qed.
 
-(** A fold of memory changes f over xs, from m0, is kept if each
-    change is kept and keeps P, where P holds of m0. *)
+(** Folding a list of memory updates over an initial memory state
+    produces a [kept] transition if each individual update is [kept] and
+    preserves a loop invariant P. *)
 Lemma fold_kept : forall (A : Type) (P : mem -> Prop) (f : mem -> A -> option mem) xs m0 m',
   P m0 ->
   (forall m1 x m2, P m1 -> f m1 x = Some m2 -> P m2 /\ kept m1 m2) ->
@@ -156,8 +179,10 @@ Proof.
     + rewrite fold_left_none in H. discriminate.
 Qed.
 
-(** A pointer store's effects es (`pointer_store_effects/4`) at the
-    address a are kept, if the access check of its 8 bytes passed. *)
+(** Storing a pointer executes a sequence of byte and capability effects.
+    When the 8-byte access check at address a has passed, every effect
+    in [pointer_store_effects] writes inside a live object and preserves
+    [kept]. *)
 Lemma pointer_store_effects_kept : forall a x m es m',
   (forall b, a <= b < a + 8 -> in_object m b) ->
   pointer_store_effects a x m es = Some m' -> kept m m'.
@@ -188,9 +213,9 @@ Proof.
           | match goal with E : store_res _ _ _ _ _ = Some _ |- _ => exact (store_res_kept _ _ _ _ _ _ _ E) end ].
 Qed.
 
-(** A [[cas]] ([cas_res], `cas_res/9`) is kept and changes no region:
-    it writes, the bytes and for a pointer its capability, only after
-    its access check passed, inside the bytes that check covered. *)
+(** An atomic compare-and-swap ([cas_res]) first checks access to its
+    target bytes and then writes data and any pointer capability inside
+    those bounds, so it preserves [kept] and leaves regions unchanged. *)
 Lemma cas_res_kept : forall t k m a c e n r m',
   cas_res t k m a c e n = Some (r, m') -> kept m m' /\ m_regions m' = m_regions m.
 Proof.
@@ -254,11 +279,17 @@ Proof.
   - exists reg'. auto.
 Qed.
 
-(** ## What a step does to memory *)
+(** ## What a step does to memory
 
-(** The argument snapshot a variadic callee takes writes its words into
-    the snapshot object: if the 8 bytes per word from a on are inside
-    objects, [snapshot_values] is kept. *)
+    Every single memory write or deallocation in the interpreter stays
+    inside live objects, so whole program steps preserve the allocator's
+    invariants as well. The lemmas below lift [kept] from individual
+    operations to entire instruction, jump, and function-return steps. *)
+
+(** When a variadic C function starts, it copies its extra arguments
+    into a newly allocated buffer. Writing those words with
+    [snapshot_values] preserves [kept] as long as the buffer's addresses
+    all lie inside live objects. *)
 Lemma snapshot_kept : forall xs a m,
   (forall b, a <= b < a + 8 * Z.of_nat (length xs) -> in_object m b) ->
   kept m (snapshot_values xs a m).
@@ -305,14 +336,16 @@ Proof.
   pose proof (heap_req_extent 16 (8 * Z.of_nat (length xs))). unfold q. lia.
 Qed.
 
-(** The instruction i is the one `doomed_result/5` reads: a
-    [[check_ahead]]. *)
+(** Predicate [ahead_inst] identifies a [[check_ahead]] instruction,
+    which is the only instruction where [doomed_result] can mark a
+    healthy frame as doomed. *)
 Definition ahead_inst (i : inst) : bool :=
   match i with Let _ A (CheckAhead _ _ _ _ _) [_] => true | _ => false end.
 
-(** For every instruction but a check_ahead, [doomed_result] changes
-    only an [[unchecked]] outcome: in a [[doomed]] frame it becomes the
-    early trap, unless it is an alias or a wrong limit. *)
+(** When a frame is already [[doomed]], any later [[unchecked]] failure
+    becomes an early trap unless it is an alias or limit error, while a
+    healthy frame passes every non-[check_ahead] result through
+    unchanged. *)
 Lemma doomed_result_other : forall ge fr m i out,
   ahead_inst i = false ->
   doomed_result ge fr m i out =
@@ -344,9 +377,10 @@ Proof.
   - rewrite (doomed_result_other _ _ _ _ _ Ea) in H. cases H; inversion H; subst; simpl; eauto.
 Qed.
 
-(** The ops [inst_step] reads in a `let` of its own (a local's check,
-    a function check, the variadic area); every other op's `let` is
-    the generic one. *)
+(** Most operations evaluate their arguments and run [op_res] uniformly,
+    while local checks, function checks, and variadic argument queries
+    take special paths in [inst_step]. Predicate [special_let] marks
+    those three exceptions. *)
 Definition special_let (o : op) : bool :=
   match o with CheckLocal _ _ _ _ _ | CheckFunction | VaArgs => true | _ => false end.
 
@@ -369,8 +403,9 @@ Lemma inst_step_let : forall ge fr m d k o args,
     end.
 Proof. intros ge fr m d k o args Es. destruct o; try discriminate Es; destruct k; reflexivity. Qed.
 
-(** An instruction that continues changes memory as [kept] allows,
-    where the genv's free does ([free_keeps]). *)
+(** Any instruction that continues without allocating preserves [kept],
+    provided the environment's `c: free` function satisfies
+    [free_keeps]. *)
 Lemma inst_step_kept : forall ge fr m i e l m',
   free_keeps (ge_free ge) ->
   inst_step ge fr m i = Some (IContinue e l m') -> kept m m'.
@@ -416,8 +451,10 @@ Proof. intros why r c H. destruct r; simpl in H; congruence. Qed.
 Lemma or_stuck_fresh : forall why r q k, or_stuck why r = Fresh q k -> r = Some (Fresh q k).
 Proof. intros why r q k H. destruct r; simpl in H; congruence. Qed.
 
-(** A tactic: where the hypothesis H says an [or_stuck] gave a step,
-    split on the result it was given. *)
+(** When a function call or memory access fails at runtime, helpers wrap
+    the outcome in [or_stuck] to stop execution cleanly. If a proof
+    assumes a step succeeded, tactic [unstuck] splits on the inner
+    result so the proof can inspect the successful transition. *)
 Ltac unstuck H :=
   lazymatch type of H with
   | or_stuck _ _ = Next _ => apply or_stuck_next in H; cases H
@@ -459,10 +496,10 @@ Proof.
   all: injection H as H; exact (return_step_not_fresh _ _ _ _ H).
 Qed.
 
-(** A tactic for the goal that memory is kept: an instruction's result
-    after [doomed_result], if it continues, continues as the
-    instruction did, or with the memory unchanged. Hfree says the
-    genv's free is kept. *)
+(** When an instruction runs inside a [[doomed]] frame, it either
+    proceeds with its normal memory update or skips the update to trap
+    later. Tactic [doomed_continue] closes the [kept] goal in both
+    cases. *)
 Ltac doomed_continue Hfree :=
   match goal with
   | E : doomed_result _ _ _ _ _ = Some ?od, Hc : fst ?od = IContinue _ _ _ |- _ =>
@@ -474,10 +511,9 @@ Ltac doomed_continue Hfree :=
       | inversion Hc; subst; apply kept_refl ]
   end.
 
-(** A step that allocates nothing changes memory as [kept] allows,
-    where the genv's free does: its writes pass an access check, so
-    they are inside an object, and it ends objects (free, and an
-    invocation's locals) without moving one. *)
+(** Every non-allocating step of [step] preserves [kept] when `c: free`
+    satisfies [free_keeps], because writes pass access checks and
+    deallocations only end live objects. *)
 Lemma step_next_kept : forall ge c c',
   free_keeps (ge_free ge) -> step ge c = Next c' -> kept (c_mem c) (c_mem c').
 Proof.
@@ -488,9 +524,9 @@ Proof.
     | inversion H; subst; simpl; first [exact (kept_refl _) | doomed_continue Hfree] ].
 Qed.
 
-(** An allocation step: its request has a positive alignment, and what
-    the step then writes, such as a variadic callee's argument
-    snapshot, is inside the new object. *)
+(** Every allocating step of [step] requests a positive alignment and
+    only writes initial data, such as a variadic argument snapshot, into
+    the newly allocated object. *)
 Lemma step_fresh_kept : forall ge c q k,
   step ge c = Fresh q k ->
   0 < req_align q /\ forall base, kept (allocated (c_mem c) q base) (c_mem (k base)).
@@ -514,21 +550,29 @@ Proof.
     match goal with Hk : kept _ (snd ?t) |- _ => destruct t as [[e1 l1] m1] end. exact Hk.
 Qed.
 
-(** ## The machine of a runtime *)
+(** ## The machine of a runtime
 
-(** The [[machine]] of a [[runtime]] R: one thread's program run under
-    R, and the proof that R stays [[ready]] in every state of a run. *)
+    We now combine the program's configuration with the runtime's state
+    to define the full [[machine]] transition system. Each step either
+    runs a non-allocating program step, asks the runtime for a fresh
+    object on an allocation, or lets the runtime act at a safepoint. *)
+
+(** Functor [Machine] instantiates one thread's execution under a
+    concrete [[runtime]] R and proves that R stays [[ready]] throughout
+    every reachable run. *)
 Module Machine (R : Runtime).
 
-(** A machine state: the [[configuration]] and the runtime's state. *)
+(** A machine state [mstate] pairs the program's [[configuration]] with
+    the runtime's internal state. *)
 Definition mstate : Type := (config * R.state)%type.
 
-(** The configuration c with its memory replaced by m. *)
+(** Helper [with_mem] replaces the memory in configuration c with m
+    after a safepoint update. *)
 Definition with_mem (c : config) (m : mem) : config :=
   mkConfig (c_frame c) (c_callers c) m (c_fuel c).
 
-(** The edge the jump j of the frame fr takes, read as [jump_step]
-    reads it; None for a return or unreachable. *)
+(** Helper [taken_target] determines which outgoing edge the jump j of
+    frame fr takes, returning None for returns and unreachable blocks. *)
 Definition taken_target (ge : genv) (fr : frame) (j : jump) : option target :=
   match j with
   | JGoto t => Some t
@@ -551,13 +595,11 @@ Definition safepoint_due (ge : genv) (c : config) : bool :=
   | _ => false
   end.
 
-(** A machine step:
-    - [mstep_next]: a [step] that allocates nothing;
-    - [mstep_alloc]: an allocation at R's [alloc], taking its base and
-      R's next state; where R refuses (out of memory) there is no step,
-      and the run traps;
-    - [mstep_safepoint]: R's action at a safepoint, where one is due:
-      [R.safepoint] may change memory and R's state. *)
+(** Relation [mstep] defines the three transitions of the combined
+    machine. Constructor [mstep_next] runs a non-allocating program
+    step, [mstep_alloc] allocates a fresh object from R (trapping if R
+    refuses out of memory), and [mstep_safepoint] lets R update memory
+    and its own state whenever a safepoint is due. *)
 Inductive mstep (ge : genv) : mstate -> mstate -> Prop :=
 | mstep_next : forall c c' s,
     step ge c = Next c' ->
@@ -581,8 +623,10 @@ Definition mreachable (ge : genv) : mstate -> mstate -> Prop :=
     the runtime's state and the configuration's memory. *)
 Definition ready_state (st : mstate) : Prop := R.ready (snd st) (c_mem (fst st)).
 
-(** R's free changes memory as [kept] allows, by R's [free_lifetime]
-    and [retention]. *)
+(** Calling `c: free` in C may empty heap regions without corrupting
+    other objects or writing arbitrary bytes. Because R satisfies
+    [R.free_lifetime] and [R.retention], its `c: free` implementation
+    obeys [free_keeps]. *)
 Lemma free_kept : free_keeps R.free.
 Proof.
   intros x m r m' H. split.
@@ -590,13 +634,11 @@ Proof.
   - intros a _. destruct (R.retention _ _ _ _ H) as [-> ->]. auto.
 Qed.
 
-(** Every machine step keeps the runtime ready, where the genv's free is
-    R's:
-    - a step that allocates nothing changes memory only as [kept]
-      allows ([step_next_kept]), so R's [ready_kept] applies;
-    - an allocation is R's [fresh_allocation], and what the step then
-      writes is inside the new object ([step_fresh_kept]);
-    - a safepoint is R's [safepoint_ready]. *)
+(** Every machine step preserves [ready_state] when the environment uses
+    the runtime's `c: free` function. Non-allocating steps use
+    [step_next_kept] and [R.ready_kept], allocations use
+    [R.fresh_allocation] and [step_fresh_kept], and safepoints use
+    [R.safepoint_ready]. *)
 Theorem mstep_ready : forall ge st st',
   ge_free ge = R.free -> mstep ge st st' -> ready_state st -> ready_state st'.
 Proof.
@@ -609,9 +651,9 @@ Proof.
   - simpl in *. eapply R.safepoint_ready; eauto.
 Qed.
 
-(** Ready initially, ready ever after: if the runtime is ready in st
-    and the genv's free is R's, it is ready in every state a run from
-    st reaches. *)
+(** By induction over [mreachable], if the runtime starts ready in state
+    st and the environment uses R's `c: free`, then the runtime remains
+    ready in every reachable state. *)
 Theorem mreachable_ready : forall ge st st',
   ge_free ge = R.free -> mreachable ge st st' -> ready_state st -> ready_state st'.
 Proof.
@@ -619,10 +661,11 @@ Proof.
   eapply mstep_ready; eauto.
 Qed.
 
-(** Ready initially, no object of any state a run reaches ends past
-    2^48 (R's [address_space]): the coverage lemma's [objects_fit]
-    hypothesis (Coverage.v) holds in every state of a run that starts
-    ready. *)
+(** Fil-C capabilities rely on pointers staying within the 48-bit user
+    address space so pointer arithmetic never wraps around. Because the
+    runtime stays ready at every reachable state, [R.address_space]
+    guarantees that every object ends within 2^48 bytes, discharging
+    [objects_fit] in [Coverage](Coverage.v). *)
 Corollary mreachable_objects_fit : forall ge st st',
   ge_free ge = R.free -> mreachable ge st st' -> ready_state st ->
   objects_fit (m_regions (c_mem (fst st'))).
@@ -631,11 +674,11 @@ Proof.
   exact (mreachable_ready _ _ _ Hge H Hr).
 Qed.
 
-(** The machine [[refines]] the step relation: from a ready state, a
-    machine step is a step of [step_rel], its allocation's base
-    [fresh], or the runtime's action at a safepoint that was due. So
-    whatever the soundness theorem proves of [step_rel] and the
-    safepoint relation holds of every run of every runtime. *)
+(** Every step taken with a concrete runtime allocator corresponds to
+    either a valid abstract execution step or a collector pause. Theorem
+    [mstep_refines] proves that from a ready state, each machine step
+    either [[refines]] [step_rel] with a [fresh] base address or
+    performs a due safepoint action. *)
 Theorem mstep_refines : forall ge c s c' s',
   ready_state (c, s) -> mstep ge (c, s) (c', s') ->
   step_rel ge c c' \/
