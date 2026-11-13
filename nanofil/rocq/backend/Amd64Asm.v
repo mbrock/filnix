@@ -308,7 +308,12 @@ Lemma decode_lines_app (ls ls' : list line) (code code' : list instr) :
   decode_lines ls' = Some code' ->
   decode_lines (ls ++ ls') = Some (code ++ code').
 Proof.
-Admitted.
+  revert code; induction ls as [|l ls IH]; intros code H H'; simpl in *.
+  - inversion H; subst; exact H'.
+  - destruct (decode_line l) as [i|] eqn:E;
+      destruct (decode_lines ls) as [rest|] eqn:Er; try discriminate.
+    inversion H; subst code; rewrite (IH _ eq_refl H'); reflexivity.
+Qed.
 
 (** ## Examples
 

@@ -151,17 +151,21 @@ Definition well_formed (s : machine) : Prop :=
     register. *)
 Lemma gpr_eqb_eq (r r' : gpr) : gpr_eqb r r' = true <-> r = r'.
 Proof.
-Admitted.
+  destruct r, r'; cbv; intuition discriminate.
+Qed.
 
 (** Every register is equal to itself under [gpr_eqb]. *)
 Lemma gpr_eqb_refl (r : gpr) : gpr_eqb r r = true.
 Proof.
-Admitted.
+  apply gpr_eqb_eq; reflexivity.
+Qed.
 
 (** Distinct registers are distinct under [gpr_eqb]. *)
 Lemma gpr_eqb_neq (r r' : gpr) : r <> r' -> gpr_eqb r r' = false.
 Proof.
-Admitted.
+  intro H; destruct (gpr_eqb r r') eqn:E; auto.
+  apply gpr_eqb_eq in E; contradiction.
+Qed.
 
 (** ## Facts about reading after writing
 
@@ -175,26 +179,30 @@ Admitted.
 Lemma get_reg_range (z : size) (r : gpr) (s : machine) :
   0 <= get_reg z r s < size_modulus z.
 Proof.
-Admitted.
+  apply wrap_range.
+Qed.
 
 (** A 64-bit write leaves exactly the wrapped value in the register. *)
 Lemma regs_set_reg_64 (r : gpr) (v : Z) (s : machine) :
   regs (set_reg S64 r v s) r = wrap S64 v.
 Proof.
-Admitted.
+  unfold set_reg; simpl; rewrite gpr_eqb_refl; reflexivity.
+Qed.
 
 (** A 32-bit write leaves the wrapped value in the register with a
     clear upper half. *)
 Lemma regs_set_reg_32 (r : gpr) (v : Z) (s : machine) :
   regs (set_reg S32 r v s) r = wrap S32 v.
 Proof.
-Admitted.
+  unfold set_reg; simpl; rewrite gpr_eqb_refl; reflexivity.
+Qed.
 
 (** A write does not change the content of any other register. *)
 Lemma regs_set_reg_other (z : size) (r r' : gpr) (v : Z) (s : machine) :
   r' <> r -> regs (set_reg z r v s) r' = regs s r'.
 Proof.
-Admitted.
+  intro H; unfold set_reg; simpl; rewrite gpr_eqb_neq by exact H; reflexivity.
+Qed.
 
 (** A read of a part that is no wider than the part just written
     returns the written value, truncated to the size of the read. *)
@@ -202,32 +210,46 @@ Lemma get_set_reg_same (z z' : size) (r : gpr) (v : Z) (s : machine) :
   size_bits z <= size_bits z' ->
   get_reg z r (set_reg z' r v s) = wrap z v.
 Proof.
-Admitted.
+  intro H; unfold get_reg, set_reg; simpl; rewrite gpr_eqb_refl.
+  destruct z' as [| | |]; cbn [merge_reg].
+  all: try (apply wrap_narrower; exact H).
+  all: rewrite <- (wrap_narrower z _ (_ - _ + _) H).
+  all: rewrite wrap_add_r, <- wrap_add_l, wrap_sub_r.
+  all: rewrite <- (wrap_sub_l _ (wrap S64 (regs s r))),
+    (wrap_narrower _ S64) by (simpl; lia).
+  all: rewrite wrap_sub_l, Z.sub_diag.
+  all: rewrite wrap_add_l, Z.add_0_l.
+  all: apply wrap_narrower; exact H.
+Qed.
 
 (** A 64-bit read after a 32-bit write returns the written value, since
     the write cleared the upper half. *)
 Lemma get_64_set_32 (r : gpr) (v : Z) (s : machine) :
   get_reg S64 r (set_reg S32 r v s) = wrap S32 v.
 Proof.
-Admitted.
+  unfold get_reg; rewrite regs_set_reg_32; apply wrap_wider; simpl; lia.
+Qed.
 
 (** A read of one register is unaffected by a write to another. *)
 Lemma get_set_reg_other (z z' : size) (r r' : gpr) (v : Z) (s : machine) :
   r' <> r -> get_reg z r' (set_reg z' r v s) = get_reg z r' s.
 Proof.
-Admitted.
+  intro H; unfold get_reg; rewrite regs_set_reg_other by exact H; reflexivity.
+Qed.
 
 (** A write to a register does not change any flag. *)
 Lemma flags_set_reg (z : size) (r : gpr) (v : Z) (s : machine) (f : flag) :
   flags (set_reg z r v s) f = flags s f.
 Proof.
-Admitted.
+  reflexivity.
+Qed.
 
 (** A flag update does not change the content of any register. *)
 Lemma regs_set_flags (h : havoc) (e : flag -> flag_effect) (s : machine) (r : gpr) :
   regs (set_flags h e s) r = regs s r.
 Proof.
-Admitted.
+  reflexivity.
+Qed.
 
 (** A flag update does not change what any read of a register
     returns. *)
@@ -235,7 +257,8 @@ Lemma get_reg_set_flags (h : havoc) (e : flag -> flag_effect) (z : size) (r : gp
     (s : machine) :
   get_reg z r (set_flags h e s) = get_reg z r s.
 Proof.
-Admitted.
+  reflexivity.
+Qed.
 
 (** A flag that an instruction defines has the defined value
     afterwards, whatever the havoc is. *)
@@ -243,7 +266,8 @@ Lemma flags_set_flags_defined (h : havoc) (e : flag -> flag_effect) (s : machine
     (f : flag) (b : bool) :
   e f = Defined b -> flags (set_flags h e s) f = b.
 Proof.
-Admitted.
+  intro H; unfold set_flags; simpl; rewrite H; reflexivity.
+Qed.
 
 (** A flag that an instruction keeps has its earlier value
     afterwards. *)
@@ -251,7 +275,8 @@ Lemma flags_set_flags_keep (h : havoc) (e : flag -> flag_effect) (s : machine)
     (f : flag) :
   e f = Keep -> flags (set_flags h e s) f = flags s f.
 Proof.
-Admitted.
+  intro H; unfold set_flags; simpl; rewrite H; reflexivity.
+Qed.
 
 (** ## Facts about well-formed states
 
@@ -264,16 +289,37 @@ Admitted.
 Lemma merge_reg_range (z : size) (old v : Z) :
   0 <= merge_reg z old v < size_modulus S64.
 Proof.
-Admitted.
+  pose proof (wrap_range S64 old) as Ho.
+  pose proof (wrap_range z old) as Hr.
+  pose proof (wrap_range z v) as Hv.
+  pose proof (wrap_narrower z S64 old) as Hw.
+  pose proof (Z.div_mod (wrap S64 old) (size_modulus z)) as Hd.
+  destruct z; cbn [merge_reg] in *.
+  - specialize (Hw ltac:(simpl; lia)).
+    specialize (Hd ltac:(vm_compute; discriminate)).
+    change (wrap S8 (wrap S64 old)) with
+      (wrap S64 old mod size_modulus S8) in Hw.
+    rewrite Hw in Hd; cbv [size_modulus size_bits] in *; nia.
+  - specialize (Hw ltac:(simpl; lia)).
+    specialize (Hd ltac:(vm_compute; discriminate)).
+    change (wrap S16 (wrap S64 old)) with
+      (wrap S64 old mod size_modulus S16) in Hw.
+    rewrite Hw in Hd; cbv [size_modulus size_bits] in *; nia.
+  - cbv [size_modulus size_bits] in *; lia.
+  - exact Hv.
+Qed.
 
 (** A write to a register keeps a well-formed state well-formed. *)
 Lemma set_reg_well_formed (z : size) (r : gpr) (v : Z) (s : machine) :
   well_formed s -> well_formed (set_reg z r v s).
 Proof.
-Admitted.
+  intros H r'; unfold set_reg; simpl.
+  destruct (gpr_eqb r' r); [apply merge_reg_range | apply H].
+Qed.
 
 (** A flag update keeps a well-formed state well-formed. *)
 Lemma set_flags_well_formed (h : havoc) (e : flag -> flag_effect) (s : machine) :
   well_formed s -> well_formed (set_flags h e s).
 Proof.
-Admitted.
+  exact (fun H => H).
+Qed.
