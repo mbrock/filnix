@@ -13,11 +13,11 @@ import json
 import re, sys, os, glob
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('tree')
-parser.add_argument('--sealed', action='store_true',
-                    default=os.environ.get('PE_SEALED') == '1')
 parser.add_argument('--runtime', choices=('interp', 'abstract'),
                     default=os.environ.get('PE_RUNTIME', 'interp'))
 parser.add_argument('--name-report', help='write the duplicate-name and unqualified-use audit as JSON')
+parser.add_argument('--name-baseline', default=os.path.join(os.path.dirname(__file__), '..', 'flatten-name-baseline.json'),
+                    help='reviewed duplicated names allowed to have unqualified uses')
 parser.add_argument('--notation-report', help='write imported notation-string collisions as JSON')
 parser.add_argument('--comment-report', help='write the removed functor comments as JSON')
 parser.add_argument('--comment-table', default=os.path.join(os.path.dirname(__file__), '..', 'flatten-comments.json'),
@@ -160,6 +160,21 @@ for f in files:
         if re.search(r'\bLocal\s', n[0]): continue
         notation_owners.setdefault(n[1], set()).add(f)
 duplicates = {n for n, fs in owners.items() if len(fs) > 1}
+name_report = {}
+uses = {f: DECL.sub('', codes[f]) for f in files}
+for name in sorted(duplicates):
+    users = [f for f in files if re.search(
+        r"(?<![\w.'])" + name + r"(?![\w'])", uses[f])]
+    if users:
+        name_report[name] = {'defined_in': sorted(owners[name]), 'used_unqualified_in': users}
+if args.name_report:
+    with open(args.name_report, 'w') as out:
+        json.dump(name_report, out, indent=2)
+        out.write('\n')
+with open(args.name_baseline) as baseline:
+    unknown = sorted(name_report.keys() - set(json.load(baseline)))
+if unknown:
+    raise ValueError(f'new duplicated names with unqualified uses: {unknown}; review {args.name_baseline}')
 notation_collisions = []
 removed_comments = []
 for f in files:
@@ -310,12 +325,14 @@ for f in files:
     if not os.path.exists(o) or open(o).read() != s: open(o, 'w').write(s)
 open(os.path.join(dst, 'Fix.v'), 'w').write(
     "(** This file names the one runtime and logic instance used by the glibc proofs.\n"
-    "    Each proof imports these modules instead of creating its own logic instance.\n\n"
-    "    Instance search must know the world interpretation before choosing its safepoint rules.\n"
-    "    The [Hint Mode] declaration prevents it from choosing [no_world] for an unknown interpretation. *)\n"
+    "    Each proof imports these modules instead of creating its own logic instance. *)\n"
     "From Nanofil Require Import Runtime Logic.\n"
     + ("Declare Module R : Runtime.\n" if args.runtime == 'abstract' else "Module R := InterpRuntime.\n")
-    + "Module LG0" + (" : LogicSig R" if args.sealed else "") + " := Logic R.\n"
+    + "Module LG0 := Logic R.\n"
+    + "\n(** A memory rule must use the caller's description of the world. This mode\n"
+    "    waits until that description is known before choosing a safepoint rule.\n"
+    "    Without it, [wp_read_with] in LibioDoAllocBase.v picks [no_world_stable]\n"
+    "    too early instead of the caller's [os_wi]. *)\n"
     + "#[export] Hint Mode LG0.SafepointStable + ! : typeclass_instances.\n")
 project = os.path.join(dst, '_RocqProject')
 if os.path.exists(project):
@@ -349,17 +366,6 @@ if os.path.exists(build):
   grep -wE 'Admitted|Axiom|Axioms|Parameter|Conjecture'"""
     if old not in s: raise ValueError('unrecognized build.sh assumption audit')
     open(build, 'w').write(s.replace(old, new))
-if args.name_report:
-    report = {}
-    uses = {f: DECL.sub('', codes[f]) for f in files}
-    for name in sorted(duplicates):
-        users = [f for f in files if re.search(
-            r"(?<![\w.'])" + name + r"(?![\w'])", uses[f])]
-        if users:
-            report[name] = {'defined_in': sorted(owners[name]), 'used_unqualified_in': users}
-    with open(args.name_report, 'w') as out:
-        json.dump(report, out, indent=2)
-        out.write('\n')
 if args.notation_report:
     with open(args.notation_report, 'w') as out:
         json.dump(notation_collisions, out, indent=2)

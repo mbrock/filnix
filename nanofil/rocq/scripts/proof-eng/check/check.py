@@ -104,7 +104,8 @@ class Tree:
         path = self.files[rel]
         source = uncomment(path.read_text())
         expected = re.findall(rf'\b(?:Lemma|Theorem|Corollary)\s+({IDENT})', source)
-        specs = set(re.findall(rf'\bDefinition\s+({IDENT})\b[^.]*?:\s*Prop\s*:=', source, re.S))
+        specs = {m[1] for sentence in sentences(source)
+                 if (m := re.search(rf'\bDefinition\s+({IDENT})\b.*?:\s*Prop\s*:=', sentence, re.S))}
         glob = path.with_suffix('.glob')
         if not path.with_suffix('.vo').exists() or not glob.exists():
             raise ValueError('missing .vo/.glob (file did not compile)')
