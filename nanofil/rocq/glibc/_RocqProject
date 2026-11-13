@@ -89,6 +89,7 @@ libio/LibioReadCode.v
 libio/LibioDoWriteCode.v
 libio/LibioGenCode.v
 libio/LibioXsputnCode.v
+libio/LibioXsputnZero.v
 libio/LibioPutsCode.v
 libio/LibioUnlinkCode.v
 libio/LibioCloseItCode.v
@@ -354,3 +355,5 @@ getopt/GetoptLongAmbHead.v
 getopt/GetoptLongAmbPoss.v
 getopt/GetoptLongAmbRep.v
 getopt/GetoptLongPfxPath.v
+getopt/GetoptLongFind.v
+getopt/GetoptLongBody.v
