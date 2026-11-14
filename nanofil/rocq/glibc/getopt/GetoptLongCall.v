@@ -67,7 +67,7 @@ Lemma wp_call_glibc_process_long_option_arg f e ls l rd g args rest j (G : iProp
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z ->
   0 <= pe < 2 ^ 32 -> 0 <= lonly < 2 ^ 32 ->
   ps !! Z.to_nat i = Some q -> (lonly <> 0 -> sbyte sq 0 <> 0) ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
@@ -117,7 +117,7 @@ Lemma wp_call_glibc_process_long_option f e ls l rd g args rest j (G : iProp Σ)
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z ->
   0 <= pe < 2 ^ 32 -> 0 <= lonly < 2 ^ 32 ->
   ps !! Z.to_nat i = Some q -> (lonly <> 0 -> sbyte sq 0 <> 0) ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->

@@ -257,7 +257,7 @@ Lemma wp_getopt_wrap_parse e n av ar p os lo li lonly pc penv b r ps i err oi ro
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
-  0 <= lonly < 2 ^ 32 -> Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  0 <= lonly < 2 ^ 32 -> Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   copy_in_view b r av ar ps i err -∗
   live oi roi -∗ int_cell oi 0 i -∗ live oe roe -∗ int_cell oe 0 err -∗

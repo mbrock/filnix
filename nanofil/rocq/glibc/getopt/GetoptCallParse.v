@@ -266,7 +266,7 @@ Qed.
     only one path runs. *)
 
 (** A call of the parser is safe, and it ends in one of the returns of
-    [call_parse_rets_arg]. The count of words must stay below 2^31 - 1, and
+    [call_parse_rets_arg]. The count of words must stay below 2^31, and
     the option table must not use -1 as a value with a null flag. *)
 Lemma wp_getopt_call_parse_arg cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom se sereg mid mid'
     pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ :
@@ -296,7 +296,7 @@ Lemma wp_getopt_call_parse_arg cf n av ar p os lo li lonly pc penv b r ps j (G :
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
-  0 <= lonly < 2 ^ 32 -> Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  0 <= lonly < 2 ^ 32 -> Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
@@ -379,7 +379,7 @@ Lemma wp_getopt_call_parse cf n av ar p os lo li lonly pc penv b r ps j (G : iPr
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
-  0 <= lonly < 2 ^ 32 -> Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  0 <= lonly < 2 ^ 32 -> Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗

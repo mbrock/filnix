@@ -94,7 +94,7 @@ Lemma wp_getopt_known_cap ks e i n c pe cur t po so k a lo oo b r av ar ps (G : 
   lookup (TAtom "chk19") e = Some (WPtr po) ->
   lookup (TAtom "chk20") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
   lookup (TAtom "chk137") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
-  (k < List.length so)%nat -> 0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> sbyte t 0 <> 0 ->
+  (k < List.length so)%nat -> 0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n -> sbyte t 0 <> 0 ->
   0 <= c < 2 ^ 32 -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->

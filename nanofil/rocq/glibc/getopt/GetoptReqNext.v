@@ -54,7 +54,7 @@ Lemma wp_getopt_reqnext ks e0 e fr i n c a x b r av ar ps Φ :
   lookup (TAtom "chk2") e = Some (WPtr (mkPtr b (Obj b))) ->
   lookup (TAtom "chk20") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
   lookup (TAtom "chk177") e = Some (WPtr (mkPtr b (Obj b))) ->
-  0 <= i -> i + 1 < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> 0 <= c < 2 ^ 32 ->
+  0 <= i -> i + 1 < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n -> 0 <= c < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   live b r -∗ int_cell b 0 (i + 1) -∗ pcell b 16 a -∗ pcell b 32 x -∗ live av ar -∗ argv_cells av ps -∗

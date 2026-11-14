@@ -196,7 +196,7 @@ Lemma wp_getopt_char_ret ks ks2 e fr i n pe cur t po so oo a lo li lonly b r av 
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
   entry_env e n (mkPtr av (Obj av)) po lo li lonly b pe ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> sbyte t 0 <> 0 -> 0 <= pe < 2 ^ 32 ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n -> sbyte t 0 <> 0 -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
@@ -299,7 +299,7 @@ Lemma wp_getopt_char_session ks ks2 e fr s pe t po so lo li lonly b r av ar ps (
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
   entry_env e (Z.of_nat (List.length ps)) (mkPtr av (Obj av)) po lo li lonly b pe ->
   getopt_bounds (Z.of_nat (List.length ps)) (gs_ind s) s -> gs_ind s < Z.of_nat (List.length ps) ->
-  Z.of_nat (List.length ps) < 2 ^ 31 - 1 -> gs_initialized s = 1 -> 0 <= gs_order s <= 2 ->
+  Z.of_nat (List.length ps) < 2 ^ 31 -> gs_initialized s = 1 -> 0 <= gs_order s <= 2 ->
   sbyte t 0 <> 0 -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (List.length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->

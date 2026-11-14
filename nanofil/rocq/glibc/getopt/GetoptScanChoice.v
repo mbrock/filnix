@@ -15,7 +15,7 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
-From Nanofil Require Import Term Values Memory Runtime Pieces Heap Logic.
+From Nanofil Require Import Term Values Memory Runtime Ops Pieces Heap Logic.
 From Glibc Require Import FileInv WordString GetoptState GetoptInitialize GetoptExchange GetoptReturn
   GetoptIdlePath GetoptScanEnd GetoptEntry GetoptEntryScan.
 From Glibc Require FileInv GetoptArgv GetoptEntryScan GetoptExchange GetoptInitialize GetoptState.
@@ -79,8 +79,8 @@ Proof. unfold entry_env. tauto. Qed.
     final null pointer pass through unchanged. *)
 Lemma scan_choice_nums (ps ps' : list ptr) n i i' f' l' av ar :
   Permutation ps ps' -> Z.of_nat (List.length ps) = n -> 0 <= f' <= l' -> l' <= i' -> 0 <= i <= i' -> i' < n ->
-  n < 2 ^ 31 - 1 -> av + 8 * (n + 1) <= r_end ar ->
-  Z.of_nat (List.length ps') = n /\ 0 <= i' < n /\ n < 2 ^ 31 - 1 /\
+  n < 2 ^ 31 -> av + 8 * (n + 1) <= r_end ar ->
+  Z.of_nat (List.length ps') = n /\ 0 <= i' < n /\ n < 2 ^ 31 /\
   ps' !! Z.to_nat i' = Some (nth (Z.to_nat i') ps' null) /\ 0 <= f' <= l' /\ l' <= i' /\
   av + 8 * (n + 1) <= r_end ar.
 Proof.
@@ -90,11 +90,27 @@ Proof.
   rewrite (nth_lookup_Some _ _ _ _ Hq). repeat split; first [exact Hq | lia].
 Qed.
 
-(** The scanner allows a count of 2147483647, but the choice does not,
-    because it may move the index past the current word. The bridge
-    therefore takes the choice's bound as a premise. *)
-Lemma scan_choice_ctl_bound : 2147483647 < 2 ^ 31 /\ ~ (2147483647 < 2 ^ 31 - 1).
-Proof. lia. Qed.
+(** The parser compares the public index with the count before it steps
+    past an argument word, so the index it stores never exceeds the count.
+    The rules here therefore allow every count below 2^31, including
+    2147483647, which the bound 2^31 - 1 used to exclude. The control
+    below takes that count. An option in the last word, at index
+    2147483646, still meets the character step's bound, and the step
+    stores 2147483647. An option whose argument is the next word starts
+    at index 2147483645, and taking the argument stores 2147483647. Both
+    indices read back as themselves when loaded as a signed int, while
+    one more word would read back as a negative number. *)
+Lemma getopt_count_ctl : let n := 2147483647 in
+  ~ (n < 2 ^ 31 - 1) /\ n < 2 ^ 31 /\
+  0 <= n - 1 < 2 ^ 31 - 1 /\ sign_extension (2 ^ 32) (2 ^ 31) ((n - 1 + 1) mod 2 ^ 32) = n /\
+  0 <= n - 2 /\ n - 2 + 1 < n /\ sign_extension (2 ^ 32) (2 ^ 31) ((n - 2 + 2) mod 2 ^ 32) = n /\
+  sign_extension (2 ^ 32) (2 ^ 31) ((n + 1) mod 2 ^ 32) = - 2 ^ 31.
+Proof. cbn zeta. split_and!; first [lia | reflexivity]. Qed.
+
+(** Every index that the parser stores is at most the count, so it reads
+    back unchanged. *)
+Lemma getopt_index_fits i n : 0 <= i <= n -> n < 2 ^ 31 -> sign_extension (2 ^ 32) (2 ^ 31) (i mod 2 ^ 32) = i.
+Proof. intros. unfold sign_extension. rewrite !Z.mod_small; try lia. destruct (Z.leb_spec (2 ^ 31) i); lia. Qed.
 
 (** After a permutation that swaps the first two words, the word at
     index 1 is the old first word. Reading the old vector at the same

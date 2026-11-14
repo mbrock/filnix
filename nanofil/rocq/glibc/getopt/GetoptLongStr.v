@@ -341,7 +341,7 @@ Lemma wp_getopt_long_str e n av ar p os lo li b r ps i err oi roi oe roe oa roa 
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
-  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   str_code (drop (opt_skip os) os) los c ->
   copy_in_view b r av ar ps i err -∗
@@ -460,7 +460,7 @@ Lemma wp_getopt_long_str_call cf av ar p os lo li b r ps i err oi roi oe roe oa 
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
-  Z.of_nat (List.length ps) < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   str_code (drop (opt_skip os) os) los c ->
   copy_in_view b r av ar ps i err -∗

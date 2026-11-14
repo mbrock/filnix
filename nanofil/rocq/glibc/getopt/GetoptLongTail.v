@@ -56,7 +56,7 @@ Lemma wp_long_next ks e fr i n a b r av ar ps Φ :
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
   lookup (TAtom "chk47") e = Some (WPtr (mkPtr b (Obj b))) ->
   lookup (TAtom "chk59") e = Some (WPtr (mkPtr b (Obj b))) ->
-  0 <= i -> i + 1 < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i -> i + 1 < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   live b r -∗ int_cell b 0 (i + 1) -∗ pcell b 16 a -∗ live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗

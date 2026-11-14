@@ -92,7 +92,7 @@ Lemma wp_getopt_long_dash_arg e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z ->
   0 <= pe < 2 ^ 32 -> 0 <= lonly < 2 ^ 32 ->
   ps !! Z.to_nat i = Some q -> sbyte sq 0 <> 0 ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
@@ -143,7 +143,7 @@ Lemma wp_getopt_long_dash e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z ->
   0 <= pe < 2 ^ 32 -> 0 <= lonly < 2 ^ 32 ->
   ps !! Z.to_nat i = Some q -> sbyte sq 0 <> 0 ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
@@ -194,7 +194,7 @@ Lemma wp_getopt_dash_session e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z ->
   0 <= pe < 2 ^ 32 -> 0 <= lonly < 2 ^ 32 ->
   ps !! Z.to_nat i = Some q -> sbyte sq 0 = 45 -> sbyte sq 1 = 45 ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * (n + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->

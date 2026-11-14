@@ -130,8 +130,8 @@ Definition entry_scan_exit (n av : Z) (ar : region) (p : ptr) (os : list Z) (lo 
     character and then stops at W; through its own exit, or returns in a
     way that [char_ret_case] lists. The entry blocks clear the argument
     before the step, so the caller needs no evidence for it. The count of
-    words must stay below 2^31 - 1, so that a step by two still fits in
-    the index. A return after a resumed character also gives the string
+    words must stay below 2^31. A step by two happens only when the
+    second word lies below the count, so the index still fits in an int. A return after a resumed character also gives the string
     of the word. *)
 Lemma wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom
     se sereg mid mid' Φ :
@@ -147,7 +147,7 @@ Lemma wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps 
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
@@ -229,7 +229,7 @@ Lemma wp_getopt_entry_char ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗

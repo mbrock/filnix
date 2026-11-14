@@ -202,7 +202,7 @@ Lemma wp_getopt_entry_scan_char_ws ks ks2 ks3 cf n av ar p os lo li lonly pc pen
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
@@ -289,7 +289,7 @@ Lemma wp_getopt_entry_scan_char ks ks2 ks3 cf n av ar p os lo li lonly pc penv b
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗

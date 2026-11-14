@@ -149,7 +149,7 @@ Lemma long_only_fallback_char ks kz kc kr n av ar p os lo li lonly b r ps j (G :
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  n < 2 ^ 31 - 1 ->
+  n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   word_string DfracDiscarded p os -∗
   long_only_short_exits n av ar p os lo li lonly b r ps j G se sereg fp kc kr F M Φ -∗

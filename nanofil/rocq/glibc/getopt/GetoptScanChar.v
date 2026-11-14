@@ -261,7 +261,7 @@ Lemma scan_choice_char_ws ks ks2 ks4 n av ar p os lo li lonly b r ps j (G : iPro
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  n < 2 ^ 31 - 1 ->
+  n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   word_string DfracDiscarded p os -∗
   (scan_long_exits n av ar p os lo li lonly b r ps j G se sereg fp ks4 Φ ∧
@@ -337,7 +337,7 @@ Lemma scan_choice_char ks ks2 ks4 n av ar p os lo li lonly b r ps j (G : iProp �
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  n < 2 ^ 31 - 1 ->
+  n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   word_string DfracDiscarded p os -∗
   (scan_long_exits n av ar p os lo li lonly b r ps j G se sereg fp ks4 Φ ∧
@@ -381,7 +381,7 @@ Lemma wp_getopt_entry_dispatch_ws ks ks2 ks3 ks4 cf n av ar p os lo li lonly pc 
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
@@ -452,7 +452,7 @@ Lemma wp_getopt_entry_dispatch ks ks2 ks3 ks4 cf n av ar p os lo li lonly pc pen
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗

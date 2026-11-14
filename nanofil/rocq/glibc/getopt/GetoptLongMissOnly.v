@@ -62,7 +62,7 @@ Lemma wp_long_miss_only ks e cur s q sq po so i n b r av ar ps Φ :
   lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) -> lookup (TAtom "v90") e = Some (WInt 0) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
   ps !! Z.to_nat i = Some q -> sbyte sq 0 <> 0 ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
   word_string DfracDiscarded q sq -∗ word_string DfracDiscarded po so -∗ word_string DfracDiscarded cur s -∗

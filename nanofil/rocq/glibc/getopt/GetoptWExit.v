@@ -182,7 +182,7 @@ Lemma w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z ->
   ps !! Z.to_nat i = Some q -> (k0 < List.length sq)%nat ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> 0 <= pe < 2 ^ 32 ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * (n + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
@@ -273,7 +273,7 @@ Lemma w_exit_bridge kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z ->
   ps !! Z.to_nat i = Some q -> (k0 < List.length sq)%nat ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> 0 <= pe < 2 ^ 32 ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * (n + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
@@ -400,7 +400,7 @@ Lemma entry_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T 
   lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
-  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 - 1 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   Z.of_nat (List.length ps) = n ->
   opt_table lo los -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded p os -∗
@@ -448,7 +448,7 @@ Lemma entry_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp d
   lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
-  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 - 1 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   Z.of_nat (List.length ps) = n ->
   opt_table lo los -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded p os -∗
@@ -489,7 +489,7 @@ Lemma scan_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T f
   lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
-  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 - 1 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   opt_table lo los -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded p os -∗
   flags_own F -∗ M -∗ longind_own li -∗
@@ -539,7 +539,7 @@ Lemma scan_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp do
   lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
-  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 - 1 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   opt_table lo los -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded p os -∗
   flags_own F -∗ M -∗ longind_own li -∗
@@ -580,7 +580,7 @@ Lemma long_only_w_ret kc kr n av ar p os lo li lonly b r ps j (G : iProp Σ) T f
   lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
-  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 - 1 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 ->
   0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
   opt_table lo los -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded p os -∗
   (∀ s s' w ps' i' f' l' a',

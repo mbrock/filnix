@@ -138,7 +138,7 @@ Lemma wp_getopt_wopt_session e fr i n c pe po so oo a b r av ar ps (G : iProp Σ
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z ->
   ps !! Z.to_nat i = Some q -> (k0 < List.length sq)%nat -> sbyte sq k0 <> 0 ->
-  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n ->
   0 <= c < 2 ^ 32 -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * (n + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
