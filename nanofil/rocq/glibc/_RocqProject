@@ -368,3 +368,4 @@ getopt/GetoptLongDash.v
 getopt/GetoptLongChoice.v
 getopt/GetoptLongSingle.v
 getopt/GetoptLongW.v
+getopt/GetoptWOptSession.v
