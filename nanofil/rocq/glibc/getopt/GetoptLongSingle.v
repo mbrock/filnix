@@ -6,6 +6,8 @@
     caller receives either the answer with a session at the new index
     or the short-option state with the cursor past the dash. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +21,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
   GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSite GetoptLongSession.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptCursor GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongSession GetoptLongSite GetoptLongStore GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,32 +35,11 @@ Local Arguments Z.opp : simpl nomatch.
 Lemma single_nth_error (l : list ptr) k x : l !! k = Some x -> nth_error l k = Some x.
 Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discriminate; auto. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongSingleOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The site module proves the long-only call and its test of the answer. *)
-Module LSI := GetoptLongSiteOn R LG0.
 (** The session module restores the session after a return. *)
-Module LSS := GetoptLongSessionOn R LG0.
 (** The cursor module proves the store of the cursor before the short options. *)
-Module CU := GetoptCursorOn R LG0.
-Import LSI LSI.LCL
-  LSS
-  LSI.LCL.LJN.LJF.LJM.LPB
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongSite GetoptLongCall GetoptLongSession GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** After the store of the cursor, the short options read these names, which keep their values through the store. *)
 Definition single_keys : list name := Eval vm_compute in
@@ -80,7 +63,7 @@ Section single.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance single_stable : SafepointStable (os_wi w0) := LSI.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance single_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance single_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -140,7 +123,7 @@ Lemma wp_getopt_single_session e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   pcell b 32 (ptr_add q 1) -∗ int_cell b 40 ord -∗ int_cell b 44 fst -∗ int_cell b 48 lst -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   ((∀ x i', ⌜x <> 4294967295 /\ (i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n))%Z⌝ -∗
-      LSS.S.getopt_session b r av ar ps i' -∗
+      GetoptState.getopt_session b r av ar ps i' -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))) ∧
    (∀ e' oo' a', ⌜lookup (TAtom "v2") e' = Some (WPtr (mkPtr av (Obj av))) /\
        lookup (TAtom "v12") e' = Some (WPtr (mkPtr b (Obj b))) /\ lookup (TAtom "pr.1") e' = Some (WPtr po) /\
@@ -172,10 +155,10 @@ Proof.
     destruct Hp as (Hi' & Hc' & _ & _ & _).
     iApply ("HK" $! x i' with "[%] [-Ha Hcl HG HF HM Hli] Ha Hcl HG HF HM Hli"); [split; [exact Ex | exact Hi']|].
     set (s0 := mkGetoptState i er oo a 1 (ptr_add q 1) ord fst lst).
-    iApply (LSS.long_session b r av ar ps s0 i' oo' a' c' (drop 1 sq)
+    iApply (GetoptLongSession.long_session b r av ar ps s0 i' oo' a' c' (drop 1 sq)
       with "[] Hws Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla");
       try (unfold getopt_bounds; cbn; lia); try (cbn; lia); try reflexivity; try exact Hc'.
-    unfold LSS.S.getopt_cursor. unfold s0. cbn [gs_next gs_last gs_ind]. destruct (drop 1 sq) as [|t0 t] eqn:Ht0.
+    unfold GetoptState.getopt_cursor. unfold s0. cbn [gs_next gs_last gs_ind]. destruct (drop 1 sq) as [|t0 t] eqn:Ht0.
     + iRight. iLeft. iExact "Hws".
     + iRight. iRight. iExists q, (take 1 sq), (drop 1 sq). iSplit; [iPureIntro|].
       * rewrite Ht0. split; [lia|]. split; [by apply single_nth_error|]. split; [discriminate|].
@@ -185,7 +168,7 @@ Proof.
     iDestruct "HK" as "[_ HK]". rewrite Hc2 in Hk2. rewrite Hc20 in Hk20.
     assert (Hnq : nth (Z.to_nat i) ps null = q) by (by rewrite (nth_lookup_Some _ _ _ _ Hq)).
     single_conv b r i av ar ps (ptr_add q 1).
-    iApply (CU.wp_getopt_short_cursor w0 registry ge single_keys e' (TAtom "L376") i n (ptr_add q 1) b r av ar ps
+    iApply (GetoptCursor.wp_getopt_short_cursor w0 registry ge single_keys e' (TAtom "L376") i n (ptr_add q 1) b r av ar ps
       with "Hl Hib Hcur Ha Hcl Hs"); try single_side.
     iIntros (e2 Hk) "Hl Hib Hcur Ha Hcl". rewrite Hnq.
     iApply ("HK" $! e2 oo' a' with "[%] Hl Hib Hcur Ha Hcl Her Hoob Hab Hini Hor Hfi Hla HG HF HM Hli").
@@ -193,4 +176,3 @@ Proof.
 Qed.
 
 End single.
-End GetoptLongSingleOn.

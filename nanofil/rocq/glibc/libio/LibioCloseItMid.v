@@ -8,6 +8,7 @@
     ([wp_close_it_L18]). `c: fclose` passes `c: unlink` 0, and so does
     this triple. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioCloseItCode FileInv LibioLogic
   SysWrappers LibioSetb LibioCloseSteps LibioCloseItEnd.
+From Glibc Require FileInv LibioCloseItEnd LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,11 +27,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCloseItMidOn (R : Runtime) (LG0 : LogicSig R).
-Module CE := LibioCloseItEndOn R LG0.
-Import CE CE.CS CE.CS.SW CE.CS.SW.FI.ML CE.CS.SW.FI.LG CE.CS.SW.FI.L CE.CS.SW.OW
-  CE.CS.SW.FI CE.CS.SW.ST.
+
+Import LibioCloseItEnd SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -58,7 +58,7 @@ Context (Hclose : close_spec).
 
 (** `c: _IO_setb`'s triple, LibioSetb.v's [wp_glibc__IO_setb], as
     LibioCloseItEnd.v states it. *)
-Context (Hsetb_spec : CE.setb_spec w0 registry ge).
+Context (Hsetb_spec : LibioCloseItEnd.setb_spec w0 registry ge).
 (** What `c: _IO_unsave_markers` does to a stream fb without markers
     (`c: _markers`, offset 96, null) or a backup area
     (`c: _IO_backup_base`, offset 80, null): nothing, for the function
@@ -120,17 +120,17 @@ Proof.
   iApply wp_call_bind; [vx | exact Hfum | exact Hfrm |]. iNext.
   iApply (Hspec with "Hl H80 H96"); [exact Hfb | exact Hfal | unfold file_size; lia |]. iNext. iIntros "Hl H80 H96". resume.
   iDestruct "Hfl2" as "[_ Hfl2]".
-  fs. fchk "Hl". fldi "Hl" "Hfl2". fs. fs. fs. fs.
-  rewrite (flags2_mask f2 32 5); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. fbr.
+  step. check "Hl". load_s32 "Hl" "Hfl2". step. step. step. step.
+  rewrite (flags2_mask f2 32 5); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. branch.
   (* L202: the jump table's `c: __close`. *)
   iPoseProof (vtables_slot ge vb vreg slot_close "__GI__IO_file_close" with "Hvt") as "#Hsc"; [cbn; tauto|].
   iAssert (live_capq DfracDiscarded (ptr_cap (sym_ptr ge "__GI__IO_file_close")) vreg) as "Hcap".
   { rewrite (ge_fn_cap _ _ _ Hfc). done. }
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)". unfold io_vtables_size in Hvend.
-  fs. fs. fchk "Hl".
+  step. step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true. fs. fs.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true. step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsc Hcap");
@@ -140,17 +140,17 @@ Proof.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hfc) | apply (ge_fn_check _ _ _ Hfc) | vx |
     apply (ge_fn_find _ _ _ Hfc) | reflexivity | reflexivity |].
   iNext.
-  iApply (Hclose with "Hl Hfd Herr"); try side.
+  iApply (Hclose with "Hl Hfd Herr"); try close_side.
   iNext. iIntros (k Hk) "Hl Hfd Herr". resume.
   (* L204, L223: `c: _IO_setb`, and the pointers null. *)
-  fs. fs. fs. fchk "Hl". iDestruct "Hmode" as "[%Hmr Hmode]". fldi "Hl" "Hmode". fs.
+  step. step. step. check "Hl". iDestruct "Hmode" as "[%Hmr Hmode]". load_s32 "Hl" "Hmode". step.
   assert (Esx : (sign_extension (2 ^ 32) (2 ^ 31) (0 mod 2 ^ 32) <? sign_extension (2 ^ 32) (2 ^ 31) (md mod 2 ^ 32))
                 = false) by (destruct Hmd as [-> | ->]; reflexivity).
-  rewrite Esx. clear Esx. fbr.
+  rewrite Esx. clear Esx. branch.
   assert (Hkr : 0 <= k < 2 ^ 32) by (destruct Hk as [-> | ->]; lia).
   rewrite (Z.mod_small k (2 ^ 32)); [|exact Hkr]. rewrite (Z.mod_small k (2 ^ 32)); [|exact Hkr].
-  iApply (CE.wp_close_it_L223 w0 registry ge Hsetb Hsetb_spec
-            with "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe Hob"); try side.
+  iApply (LibioCloseItEnd.wp_close_it_L223 w0 registry ge Hsetb Hsetb_spec
+            with "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe Hob"); try close_side.
   iNext. iIntros "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe".
   iAssert (int_cell fb off_mode md) with "[Hmode]" as "Hmode"; [iSplit; [done | iExact "Hmode"]|].
   iAssert (int_cell fb off_flags2 f2) with "[Hfl2]" as "Hfl2"; [iSplit; [done | iExact "Hfl2"]|].
@@ -159,4 +159,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioCloseItMidOn.

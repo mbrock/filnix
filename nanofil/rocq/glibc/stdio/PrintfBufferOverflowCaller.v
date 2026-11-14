@@ -5,6 +5,7 @@
     This composition keeps two obligations explicit: the overflow contract
     and the ownership needed by buffer selection. It borrows the FILE
     lifetime only for the pointer read and returns it before calling overflow. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,16 +15,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode PrintfBufferFileCode PrintfBufferOverflowPrelude
   PrintfBufferOverflowCall PrintfBufferOverflowReturn.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferOverflowCall PrintfBufferOverflowPrelude PrintfBufferOverflowReturn SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The composed rules share the caller's existing runtime and OS interpretation. *)
-Module PrintfBufferOverflowCallerOn (R : Runtime) (LG0 : LogicSig R).
-Module OP := PrintfBufferOverflowPreludeOn R LG0.
-Module OC := PrintfBufferOverflowCallOn R LG0.
-Module ORet := PrintfBufferOverflowReturnOn R LG0.
-Import OC.CS OC.CS.SW OC.CS.SW.FI.ML OC.CS.SW.FI.LG OC.CS.SW.FI.L
-  OC.CS.SW.OW OC.CS.SW.FI OC.CS.SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -35,7 +33,7 @@ Local Instance caller_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (F : ptr -> iProp Σ) (E : iProp Σ).
 Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
-Context (Hcall : OC.printf_overflow_call_spec w0 registry ge F E).
+Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge F E).
 
 (** The stream lends its lifetime for the pointer read without losing any
     other resources. Neither branch assumes that overflow succeeds. *)
@@ -61,22 +59,21 @@ Proof.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk Hborrow.
   iIntros "Hb Hfp Hch Hm HF HE Hfail Hselect".
   iDestruct (Hborrow with "HF") as (freg dqf) "[Hf Hclose]".
-  iApply (OP.wp_printf_overflow_prelude w0 registry ge e from bb breg fb freg dqf
-    with "Hb Hfp Hf"); try side.
+  iApply (PrintfBufferOverflowPrelude.wp_printf_overflow_prelude w0 registry ge e from bb breg fb freg dqf
+    with "Hb Hfp Hf"); try close_side.
   iIntros (e' (Hv0' & Hchk' & Hfp')) "Hb Hfp Hf".
   iDestruct ("Hclose" with "Hf") as "HF".
-  iApply (OC.wp_printf_overflow_call w0 registry ge F E Hoverflow Hcall
-    e' bb breg (mkPtr fb (Obj fb)) ch with "Hb Hch HF HE"); try side.
+  iApply (PrintfBufferOverflowCall.wp_printf_overflow_call w0 registry ge F E Hoverflow Hcall
+    e' bb breg (mkPtr fb (Obj fb)) ch with "Hb Hch HF HE"); try close_side.
   iIntros (r e'' (Hr & Hv0'' & Hchk'' & Hret)) "Hb Hch HF HE".
   destruct (Z.eq_dec r 4294967295) as [->|Hneq].
-  - iApply (ORet.wp_printf_overflow_eof w0 registry ge e'' bb breg mode
-      with "Hb Hm"); try side.
+  - iApply (PrintfBufferOverflowReturn.wp_printf_overflow_eof w0 registry ge e'' bb breg mode
+      with "Hb Hm"); try close_side.
     iNext. iIntros "Hb Hm".
     iApply ("Hfail" with "Hb Hfp Hch Hm HF HE").
-  - iApply (ORet.wp_printf_overflow_continue w0 registry ge e'' r); try assumption.
+  - iApply (PrintfBufferOverflowReturn.wp_printf_overflow_continue w0 registry ge e'' r); try assumption.
     iApply ("Hselect" with "[%] Hb Hfp Hch Hm HF HE").
     lookups; reflexivity.
 Qed.
 
 End rules.
-End PrintfBufferOverflowCallerOn.

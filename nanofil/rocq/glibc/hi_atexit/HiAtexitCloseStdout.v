@@ -11,6 +11,7 @@
     with stdout out of the list, or ends the process in `c: _exit`.
     Either way any postcondition of a return holds. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,10 +21,10 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode LibioGenCode
   LibioUnlinkCode LibioCloseItCode LibioFcloseCode FileInv LibioLogic SysWrappers AllocLogic LibioCloseSteps
   HiAtexitModule HiAtexitFns HiAtexitGe HiAtexitBase HiAtexitCloseIt HiAtexitFclose.
+From Glibc Require FileInv LibioCloseSteps LibioFcloseTail LibioLogic LibioRead OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
-Import HFC.FU.FT HFC.FU.FT.FN.CS HFC.FU.FT.FN.CS.SW HFC.FU.FT.FN.CS.SW.FI.ML HFC.FU.FT.FN.CS.SW.FI.LG
-  HFC.FU.FT.FN.CS.SW.FI.L HFC.FU.FT.FN.CS.SW.OW HFC.FU.FT.FN.CS.SW.FI HFC.FU.FT.FN.CS.SW.ST.
+Import LibioFcloseTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** hi_atexit.c's `c: close_stdout_hi`, renamed by link.pl. *)
 Definition hi_close_fn : func := Eval vm_compute in
@@ -117,20 +118,20 @@ Proof.
   iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
-  unfold hi_close_frame. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl".
+  unfold hi_close_frame. step. step. check "Hso". load "Hso" "Hsoc" "Hl".
   (* `c: __fpending(stdout)`. *)
   iApply wp_call_bind; [vx | exact (hi_find___fpending _) | reflexivity |]. iNext.
-  iApply (HRD.wp_glibc___fpending w0 glibc_os_registry hge _ _ _ md (mkPtr (bb + i + Z.of_nat (length xs)) (Obj bb)) (mkPtr (bb + i) (Obj bb)) breg
-            with "Hl Hmode Hwp Hwb Hbl"); [reflexivity | side | side | side | side | exact Hmd | reflexivity
+  iApply (LibioRead.wp_glibc___fpending w0 glibc_os_registry hge _ _ _ md (mkPtr (bb + i + Z.of_nat (length xs)) (Obj bb)) (mkPtr (bb + i) (Obj bb)) breg
+            with "Hl Hmode Hwp Hwb Hbl"); [reflexivity | close_side | close_side | close_side | close_side | exact Hmd | reflexivity
                                             | cbn; lia | cbn; lia |].
   iNext. iIntros "Hl Hmode Hwp Hwb Hbl". resume.
-  fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl".
+  step. step. check "Hso". load "Hso" "Hsoc" "Hl".
   (* `c: ferror(stdout)`. *)
   iApply wp_call_bind; [vx | exact (hi_find_ferror _) | reflexivity |]. iNext.
-  iApply (HRD.wp_glibc__IO_ferror w0 glibc_os_registry hge with "Hl Hfl Hfl2"); [reflexivity | side | side | side
-                                                                                 | side | exact Hnl |].
+  iApply (LibioRead.wp_glibc__IO_ferror w0 glibc_os_registry hge with "Hl Hfl Hfl2"); [reflexivity | close_side | close_side | close_side
+                                                                                 | close_side | exact Hnl |].
   iNext. iIntros "Hl Hfl Hfl2". resume.
-  fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl".
+  step. step. check "Hso". load "Hso" "Hsoc" "Hl".
   (* `c: fclose(stdout)`. *)
   iApply wp_call_bind; [vx | exact (hi_find_fclose _) | reflexivity |]. iNext.
   iApply (hge_fclose_stdout _ pre post 69808 freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg lb lbreg
@@ -141,9 +142,9 @@ Proof.
        | |- _ => first [assumption | reflexivity | vm_compute; reflexivity | lia]
        end.
   iNext. iIntros (r fl' k tw' [Hpost Hk]) "Htcb _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hio Hlives _".
-  resume. iClear "Hso Hsoc". fs.
+  resume. iClear "Hso Hsoc". step.
   (* The branches: `c: _exit(1)`, or the return. *)
-  all: repeat first [fs | brc].
+  all: repeat first [step | branch_cases].
   all: lazymatch goal with
        | |- context [Exec _ (Call _ (Global (TAtom "_exit")) _ :: _) _] =>
            iApply wp_call_bind; [vx | exact (hi_find__exit _) | reflexivity |]; iNext;

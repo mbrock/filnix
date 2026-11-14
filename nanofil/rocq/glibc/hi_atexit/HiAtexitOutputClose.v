@@ -3,6 +3,7 @@
     This bridge supplies the close callback's concrete stream state
     without assuming that the operating system accepted the output. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,13 +13,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioOverflowBase LibioDefaultXsputnBuf LibioXsputnBase HiAtexitBase HiAtexitGe
   HiAtexitFclose HiAtexitCloseStdout HiAtexitOutputState.
+From Glibc Require FileInv LibioDefaultXsputnBuf LibioFcloseTail LibioLogic LibioOverflowBase LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
-Import HOG.OB HOG.OB.SW HOG.OB.SW.FI.ML HOG.OB.SW.FI.LG HOG.OB.SW.FI.L
-  HOG.OB.SW.OW HOG.OB.SW.FI HOG.OB.SW.ST.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB XB.DX.RM.SM.TL.BY.BF.
-Import HFC.FU.FT.
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioXsputnSetp.
+Import LibioXsputnBase LibioDefaultXsputnBuf.
+Import LibioFcloseTail.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

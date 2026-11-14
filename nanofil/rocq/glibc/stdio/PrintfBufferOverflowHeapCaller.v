@@ -5,6 +5,7 @@
     This composition follows both caller branches and restores the stream's
     exact cancellation flags and held lock count. The overflow call remains
     an explicit contract; this file does not prove a stream backend succeeds. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,15 +15,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode PrintfBufferFileCode PrintfBufferOverflowCaller
   PrintfBufferOverflowHeapSwitch.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferOverflowCall PrintfBufferOverflowCaller PrintfBufferOverflowHeapSwitch PrintfStreamHeap SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The caller and selection share the stream's memory and OS interpretation. *)
-Module PrintfBufferOverflowHeapCallerOn (R : Runtime) (LG0 : LogicSig R).
-Module HC := PrintfBufferOverflowCallerOn R LG0.
-Module HS := PrintfBufferOverflowHeapSwitchOn R LG0.
-Import HS.HS HC.OC.CS HC.OC.CS.SW HC.OC.CS.SW.FI.ML HC.OC.CS.SW.FI.LG
-  HC.OC.CS.SW.FI.L HC.OC.CS.SW.OW HC.OC.CS.SW.FI HC.OC.CS.SW.ST.
+
+Import PrintfStreamHeap LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -34,7 +33,7 @@ Context (vb : Z) (self : ptr) (mode flags2 : Z) (held : option Z) (E : iProp Σ)
 Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
 Context (Hswitch : find_fn ge (TAtom "__printf_buffer_to_file_switch") =
   Some (Defined glibc___printf_buffer_to_file_switch)).
-Context (Hcall : HC.OC.printf_overflow_call_spec w0 registry ge
+Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
   (fun fp => printf_heap_stream w0 vb self fp mode flags2 held) E).
 
 (** EOF clears the printf mode without changing its three buffer pointers.
@@ -61,7 +60,7 @@ Lemma wp_printf_overflow_heap_caller e from bb breg fb ch bufmode oldbase oldptr
     (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
 Proof.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk.
-  assert (Hframed : HC.OC.printf_overflow_call_spec w0 registry ge
+  assert (Hframed : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
     (fun fp => printf_heap_stream w0 vb self fp mode flags2 held)
     (E ∗ pcell bb 0 oldbase ∗ pcell bb 8 oldptr ∗ pcell bb 16 oldend)).
   { intros fr fp c Ψ Hc Hframe. iIntros "HF (HE & Hb & Hp & He) HK".
@@ -69,7 +68,7 @@ Proof.
     iNext. iIntros (r Hr) "HF HE".
     iApply ("HK" $! r with "[%] HF [HE Hb Hp He]"); [done | iFrame]. }
   iIntros "Hb Hfp Hch Hm HF HE Hbase Hptr Hend Hfail Hselect".
-  iApply (HC.wp_printf_overflow_caller w0 registry ge
+  iApply (PrintfBufferOverflowCaller.wp_printf_overflow_caller w0 registry ge
     (fun fp => printf_heap_stream w0 vb self fp mode flags2 held)
     (E ∗ pcell bb 0 oldbase ∗ pcell bb 8 oldptr ∗ pcell bb 16 oldend) Hoverflow Hframed
     e from bb breg fb ch bufmode with "Hb Hfp Hch Hm HF [HE Hbase Hptr Hend] [Hfail] [Hselect]");
@@ -81,7 +80,7 @@ Proof.
   - iIntros "Hb Hfp Hch Hm HF (HE & Hbase & Hptr & Hend)".
     iApply ("Hfail" with "Hb Hfp Hch Hm HF HE Hbase Hptr Hend").
   - iIntros (e' Hv0') "Hb Hfp Hch Hm HF (HE & Hbase & Hptr & Hend)".
-    iApply (HS.wp_printf_overflow_heap_switch w0 registry ge Hswitch
+    iApply (PrintfBufferOverflowHeapSwitch.wp_printf_overflow_heap_switch w0 registry ge Hswitch
       e' (Some (TAtom "L74")) bb breg vb self (mkPtr fb (Obj fb)) mode flags2 held
       with "Hb Hfp HF Hbase Hptr Hend"); try assumption.
     iNext. iIntros (db k eo) "Hb Hfp HF Hbase Hptr Hend".
@@ -89,4 +88,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferOverflowHeapCallerOn.

@@ -4,6 +4,7 @@
 
     This rule covers separately owned character storage. It preserves that
     storage and does not claim that the pending bytes reach the output. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Publication uses the existing memory and OS interpretation. *)
-Module PrintfBufferFlushDirectOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -35,10 +36,7 @@ Local Instance direct_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Pointer reads borrow the lifetime of the character allocation. *)
-Local Ltac load_pointer H :=
-  iApply (wp_raw_load_pointer_dq with H);
-    [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |];
-  iNext; iIntros H.
+
 
 (** Available space keeps the direct buffer selected. The count records the
     newly published span modulo 2^64, including unsigned wraparound. *)
@@ -68,22 +66,22 @@ Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hdb Hbo Hused Hspace Hde Hdr
     Hstage Hsingle Hw. injection Hfr as <-.
   iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend Hw HK".
-  enter. fs. fchk "Hb".
+  step. step. check "Hb".
   iApply (wp_raw_load_read_dq with "Hb Hw");
     [reflexivity | vx | left; reflexivity | a2 |].
   iNext. iIntros "Hb Hw".
-  fs. fchk "Hb". load_pointer "Hb Hptr Hd".
-  fchk "Hb". load_pointer "Hb Hbase Hd".
-  fs. fs. fs. fs. fchk "Hb". fstl "Hb" "Hw".
-  fs. load_pointer "Hb Hend Hd". fs. fs. fs. fs. fs. fbrv true. fs.
-  fs. load_pointer "Hb Hend Hd". fs. fs. fs. fs. fs. fbrv true. fs.
-  fs. load_pointer "Hb Hend Hd". fs. fchk "Hb". load_pointer "Hb Hfp Hf".
-  fs. fchk "Hf". load_pointer "Hf Hwe Hd". fs. fs. fs. fbrv false. fs.
-  fs. fchk "Hb". load_pointer "Hb Hfp Hf". fs. fs. fchk "Hb".
-  load_pointer "Hb Hptr Hd". fchk "Hf". fstp "Hf" "Hwp".
-  fchk "Hb". load_pointer "Hb Hptr Hd". fs. fchk "Hb".
-  load_pointer "Hb Hend Hd". fs. fs. fs. fbrv true. fs.
-  fs. fchk "Hb". load_pointer "Hb Hptr Hd". fchk "Hb". fstp "Hb" "Hbase".
+  step. check "Hb". load_shared "Hb Hptr Hd".
+  check "Hb". load_shared "Hb Hbase Hd".
+  step. step. step. step. check "Hb". store_long "Hb" "Hw".
+  step. load_shared "Hb Hend Hd". step. step. step. step. step. branch_as true. step.
+  step. load_shared "Hb Hend Hd". step. step. step. step. step. branch_as true. step.
+  step. load_shared "Hb Hend Hd". step. check "Hb". load_shared "Hb Hfp Hf".
+  step. check "Hf". load_shared "Hf Hwe Hd". step. step. step. branch_as false. step.
+  step. check "Hb". load_shared "Hb Hfp Hf". step. step. check "Hb".
+  load_shared "Hb Hptr Hd". check "Hf". store "Hf" "Hwp".
+  check "Hb". load_shared "Hb Hptr Hd". step. check "Hb".
+  load_shared "Hb Hend Hd". step. step. step. branch_as true. step.
+  step. check "Hb". load_shared "Hb Hptr Hd". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.
   iApply ("HK" with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend [Hw]").
   replace (db + bo + used - (db + bo)) with used by lia.
@@ -92,4 +90,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferFlushDirectOn.

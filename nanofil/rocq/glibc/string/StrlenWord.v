@@ -12,6 +12,7 @@
     block in [wp_glibc_strlen_dq] and hands off the remaining words to
     [StrlenLoop]'s [loop_spec_dq]. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,17 +20,15 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop.
+From Glibc Require StrlenLoop WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** This functor packages the `c: strlen` entry and call triples over a
-    [[runtime]] R and a program logic instance LG0. *)
-Module StrlenWordOn (R : Runtime) (LG0 : LogicSig R).
-Module SL := StrlenLoopOn R LG0.
-Module WS := SL.WS.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG WS.
+Import L LG WordString.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -46,12 +45,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** Tactic [st] advances the symbolic execution by one pure `let`,
     `flight`, block entry, or `goto` step whose premises reduce by
     computation. *)
-Ltac st :=
-  first
-    [ iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext]
-    | iApply wp_flight; [reflexivity | reflexivity | reflexivity | iNext]
-    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-    | iApply wp_goto; iNext ].
+
 
 (** Given fractional ownership of an 8-aligned object b and the words ws
     starting from the word that contains byte p, `__strlen` locates the
@@ -75,7 +69,7 @@ Proof.
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   apply Forall_cons_1 in Hr as [Hw0 Hr].
   iIntros "Hl Hps HK". cbn [words_ps]. rewrite ptsq_app. iDestruct "Hps" as "[Hw Hps]".
-  do 5 st.
+  do 5 step.
   match goal with |- context [put (TAtom "v10") (WPtr (mkPtr ?X _)) _] =>
     replace X with (a - a mod 8) by
       (cbn [ptr_addr]; rewrite (Z.mod_small a (2 ^ 64)); [rewrite land_align; [arith | lia] | lia]) end.
@@ -83,8 +77,8 @@ Proof.
   iNext. iIntros "Hl".
   iApply (wp_raw_load_read_dq with "Hl Hw"); [reflexivity | reflexivity | exact Hc | arith |].
   iNext. iIntros "Hl Hw". rewrite (Z.mod_small w (2 ^ 64) Hw0).
-  do 8 st. set_int "iw_2.v12" (first_shift w a).
-  st. iApply wp_branch; [reflexivity|]. iNext.
+  do 8 step. set_int "iw_2.v12" (first_shift w a).
+  step. iApply wp_branch; [reflexivity|]. iNext.
   rewrite (Z.mod_small (first_shift w a) (2 ^ 64) (first_shift_range w a)) Zmod_0_l.
   assert (Hfs : forall i, 0 <= i -> byte_of (first_shift w a) i =
             if i + a mod 8 <? 8 then (if byte_of w (i + a mod 8) =? 0 then 128 else 0) else 0)
@@ -107,14 +101,14 @@ Proof.
     { apply Z.eqb_neq. intros E. rewrite E in Hat. unfold byte_of in Hat. rewrite Z.div_0_l in Hat; [discriminate|].
       apply Z.pow_nonzero; lia. }
     rewrite Hnz0. close_if.
-    st. st. iApply wp_branch; [reflexivity|]. iNext.
+    step. step. iApply wp_branch; [reflexivity|]. iNext.
     rewrite (Z.mod_small (first_shift w a) (2 ^ 64) (first_shift_range w a)) Zmod_0_l Hnz0. close_if.
-    do 16 (st; gen_top).
+    do 16 (step; gen_top).
     set_tail "iw_3.iw_1.iw_1.v22" (first_shift w a).
     rewrite (tail_first (first_shift w a) (Z.of_nat n) (first_shift_range w a) H01 ltac:(lia) Hat Hlow).
-    st. st. set_int "iw_3.iw_1.iw_1.v23" (8 * Z.of_nat n + 7).
-    st. set_int "iw_3.iw_1.v27" (Z.of_nat n).
-    st. set_int "v26" (Z.of_nat n).
+    step. step. set_int "iw_3.iw_1.iw_1.v23" (8 * Z.of_nat n + 7).
+    step. set_int "iw_3.iw_1.v27" (Z.of_nat n).
+    step. set_int "v26" (Z.of_nat n).
     iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     match goal with |- environments.envs_entails _ (Φ (Ret (WInt ?X))) => replace X with (Z.of_nat n) by arith end.
     iApply ("HK" with "Hl [$Hw $Hps]").
@@ -126,7 +120,7 @@ Proof.
       specialize (Hnz (Z.to_nat (i + a mod 8)) ltac:(lia)). rewrite Z2Nat.id in Hnz; [|lia].
       apply Z.eqb_neq in Hnz. rewrite Hnz. reflexivity. }
     rewrite H0. close_if.
-    iApply (SL.loop_spec_dq registry wi ge dq b reg c a ws (a - a mod 8 - b + 8) _ (Some (TAtom "start"))
+    iApply (StrlenLoop.loop_spec_dq registry wi ge dq b reg c a ws (a - a mod 8 - b + 8) _ (Some (TAtom "start"))
               (Z.to_nat (a mod 8) + n - 8)%nat (mkPtr (a - a mod 8) c) with "Hl Hps [Hw HK]").
     + exact Hc.
     + lia.
@@ -179,4 +173,3 @@ Proof.
 Qed.
 
 End rules.
-End StrlenWordOn.

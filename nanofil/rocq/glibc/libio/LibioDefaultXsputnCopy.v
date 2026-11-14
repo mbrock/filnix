@@ -21,6 +21,7 @@
     | [wp_call_memcpy_in] | glibc's `memcpy`, returning d |
     | [wp_call_mempcpy_in] | glibc's `mempcpy`, returning d + n | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,6 +30,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode MemFwdLogic FileInv LibioLogic SysWrappers
   LibioCloseSteps.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -109,11 +112,8 @@ Qed.
 
 (** ## Over a Logic instance *)
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCopyOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Module SW := CS.SW.
-Import CS SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** A call of [void_only] c is a call of c, as MemFwdLogic.v's
     [invoke_void_only] says. *)
@@ -135,7 +135,7 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
 
 (** [os_wi] w0 survives safepoints. *)
-Local Instance copy_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance copy_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The Iris instance of the registry and [os_wi] w0. *)
 Local Instance copy_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
@@ -296,4 +296,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioCopyOn.

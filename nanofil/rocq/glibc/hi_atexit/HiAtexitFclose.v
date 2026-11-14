@@ -20,15 +20,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode LibioGenCode
   LibioUnlinkCode LibioCloseItCode FileInv LibioLogic SysWrappers AllocLogic LibioUnlink LibioFclose
   HiAtexitBase HiAtexitCloseIt.
+From Glibc Require FileInv LibioFclose LibioLogic LibioUnlink OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** `c: _IO_un_link`, at [HLG]. *)
-Module HUL := LibioUnlinkOn InterpRuntime HLG.
 (** `c: _IO_new_fclose`, at [HLG]. *)
-Module HFC := LibioFcloseOn InterpRuntime HLG.
-Import HFC.FU.FT.FN.CS.SW HFC.FU.FT.FN.CS.SW.FI.ML HFC.FU.FT.FN.CS.SW.FI.LG HFC.FU.FT.FN.CS.SW.FI.L
-  HFC.FU.FT.FN.CS.SW.OW HFC.FU.FT.FN.CS.SW.FI HFC.FU.FT.FN.CS.SW.ST.
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -58,9 +56,9 @@ Local Instance hi_fclose_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :
 (** LibioFclose.v's [wp_glibc__IO_new_fclose_stdout] with its callees
     proved. *)
 Definition hi_fclose_stdout :=
-  HFC.wp_glibc__IO_new_fclose_stdout w0 registry ge Hreg Hext Hunl Hdf Hff Hcif
+  LibioFclose.wp_glibc__IO_new_fclose_stdout w0 registry ge Hreg Hext Hunl Hdf Hff Hcif
     (hi_close_it w0 registry ge Hreg Hext Hwrite Hfw Hfree_fn Hfh Hzf Hzg Hcn Hfc Hsetb Hdwf Hfum)
-    (HUL.wp_glibc__IO_un_link w0 registry ge Hreg Hext Hpush Hpop)
-    (HUL.wp_glibc__IO_un_link_unlinked w0 registry ge).
+    (LibioUnlink.wp_glibc__IO_un_link w0 registry ge Hreg Hext Hpush Hpop)
+    (LibioUnlink.wp_glibc__IO_un_link_unlinked w0 registry ge).
 
 End rules.

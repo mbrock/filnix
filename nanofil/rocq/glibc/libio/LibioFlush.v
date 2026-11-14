@@ -12,6 +12,7 @@
     output `c: _IO_new_file_overflow` writes. The result is 0, or EOF
     (-1) if a flush failed ([wp_glibc__IO_flush_all]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,6 +22,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart LibioFlushTail LibioFlushBody.
+From Glibc Require FileInv LibioCloseSteps LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -29,12 +32,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFlushOn (R : Runtime) (LG0 : LogicSig R).
-Module FB := LibioFlushBodyOn R LG0.
-Import FB FB.FT FB.FT.FS FB.FT.FS.FC FB.FT.FS.FC.FU FB.FT.FS.FC.FU.FL FB.FT.FS.FC.FU.FL.CS
-  FB.FT.FS.FC.FU.FL.CS.SW FB.FT.FS.FC.FU.FL.CS.SW.FI.ML FB.FT.FS.FC.FU.FL.CS.SW.FI.LG
-  FB.FT.FS.FC.FU.FL.CS.SW.FI.L FB.FT.FS.FC.FU.FL.CS.SW.OW FB.FT.FS.FC.FU.FL.CS.SW.FI FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section lives.
 Context `{!gen_heapGS piece pval Σ}.
@@ -104,8 +103,8 @@ Proof.
   induction rest as [|g rest IH]; intros prev e from r Hph Hv3 Hr; cbn [head_ptr] in Hph.
   - iIntros "#Hs Hrl Hrc Hch Hfs HK".
     destruct Hph as [(-> & Hv81 & ->) | (-> & Hv413 & Hp1)].
-    + fs. fs. fs. fs. fbr. iApply ("HK" $! _ 0 with "[%] Hrl Hrc Hch Hfs"). split_and!; try lk_prove; lia.
-    + fs. fs. fs. fs. fbr. rewrite (Z.mod_small r (2 ^ 32)); [|exact Hr].
+    + step. step. step. step. branch. iApply ("HK" $! _ 0 with "[%] Hrl Hrc Hch Hfs"). split_and!; try lk_prove; lia.
+    + step. step. step. step. branch. rewrite (Z.mod_small r (2 ^ 32)); [|exact Hr].
       iApply ("HK" $! _ r with "[%] Hrl Hrc Hch Hfs"). split_and!; try lk_prove; lia.
   - iIntros "#Hs Hrl Hrc Hch Hfs HK". cbn [chain_links].
     iDestruct "Hch" as (gb ->) "(Hpv & Hnc & Hch)".
@@ -114,7 +113,7 @@ Proof.
     iDestruct (head_life with "Hfs") as (nreg Hnx) "[Hnl Hback]".
     assert (Hr' : (r mod 2 ^ 32) = r) by (apply Z.mod_small; exact Hr).
     destruct Hph as [(-> & Hv81 & Hr0) | (-> & Hv413 & Hp1)].
-    all: fs; fs; fs; fs; fbrv false; try rewrite Hr'.
+    all: step; step; step; step; branch_as false; try rewrite Hr'.
     all: iApply (Hbody _ gb greg rf rfreg sb sreg null r cb (head_ptr rest) nreg with "Hs Hl HP Hrl Hrc Hnc Hnl");
       try lazymatch goal with
       | |- environments.envs_entails _ _ => idtac
@@ -159,17 +158,16 @@ Proof.
   assert (Hsz : ptr_addr (ow_self w0) <> 0) by (rewrite Hself; cbn; lia).
   iDestruct (head_life with "Hfs") as (hreg Hh) "[Hhl Hback]".
   iApply (wp_flush_start w0 registry ge Hreg Hext Hpush Hpush_spec with "Hs Htcb Hla Hlah Hhl Hlk");
-    try first [exact Hfr | side].
+    try first [exact Hfr | close_side].
   iNext. iIntros (e cb creg (Hv81 & Hv3 & Hcb & Hcal & Hcend & Hcreg)) "Htcb Hcl Hc24 Hc16 Hla Hlah Hhl Hlk".
   iDestruct ("Hback" with "Hhl") as "Hfs".
   iApply (flush_loop P Q fs (mkPtr la (Obj la)) e (TAtom "L15") 0 with "Hs Hrl Hrc Hch Hfs");
     [exact Hbody | exact Hgrf | exact Hral | exact Hrend | exact Hsz | left; auto | exact Hv3 | lia |].
   iIntros (e' r' (Hv3' & Hp4' & Hr' & Hrr)) "Hrl Hrc Hch Hfs".
-  iApply (wp_flush_L414 w0 registry ge Hpop Hpop_spec with "Hs Hlk Htcb Hcl Hc24 Hc16"); try side.
+  iApply (wp_flush_L414 w0 registry ge Hpop Hpop_spec with "Hs Hlk Htcb Hcl Hc24 Hc16"); try close_side.
   iNext. iIntros "Hlk Htcb Hcl".
   iApply ("HK" $! r' with "[%] Htcb [Hla Hlah Hch Hlk Hrl Hrc] Hfs"); [lia|].
   iExists la, lareg, lk, lkreg, rf, rfreg. iFrame. iPureIntro. split_and!; assumption.
 Qed.
 
 End rules.
-End LibioFlushOn.

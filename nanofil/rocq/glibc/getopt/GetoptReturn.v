@@ -7,6 +7,8 @@
     reads an argument pointer only below the argument count, and it
     writes only the fields of its own state. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptClamp.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -33,26 +37,21 @@ Definition return_names : list name := Eval vm_compute in
 (** The nonoption return of 1 ends in this block. *)
 Definition getopt_blk318 : block := Eval vm_compute in x_blk "L318".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptReturnOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exchange module supplies the argument vector and its tactics. *)
-Module X := GetoptExchangeOn R LG0.
-Import X X.I X.I.S X.I.S.FI X.I.S.FI.ML X.I.S.FI.LG X.I.S.FI.L X.I.ST X.I.GB X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 Section returns.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance return_stable : SafepointStable (os_wi w0) := X.I.OW.os_wi_stable w0.
+Local Instance return_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance return_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -78,13 +77,13 @@ Lemma wp_getopt_argv_end ks e fr i f l b r Φ :
 Proof.
   intros Hks H12 H0 H2 H23 Hb Hal Hend Hr.
   iIntros "Hl [%Hi0 Hib] [%Hf Hfb] [%Hla Hlab] HK".
-  en. st. norm. chk "Hl". load_int "Hl Hfb". st. norm. chk "Hl". load_int "Hl Hlab". st.
+  step. step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hfb". step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hlab". step.
   rewrite (Z.mod_small f (2 ^ 32)); [|lia]. rewrite (Z.mod_small l (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec f l) as [Efl | Efl]; close_br.
   - iApply ("HK" with "[%] Hl [Hib] [Hfb] [Hlab]"); [xkeep | by iSplit | by iSplit | by iSplit].
-  - en. st. norm. load_int "Hl Hfb". chk "Hl".
+  - step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". check "Hl".
     iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st.
+    iNext. iIntros "Hl Hib". step.
     iApply ("HK" with "[%] Hl [Hib] [Hfb] [Hlab]"); [xkeep | | by iSplit | by iSplit].
     iSplit; [iPureIntro; lia|]. rewrite (Z.mod_small f (2 ^ 32)); [|lia]. iAssumption.
 Qed.
@@ -124,20 +123,20 @@ Proof.
   destruct (lookup_lt_is_Some_2 ps j) as [q Hq]; [lia|].
   iDestruct (big_sepL_lookup with "Hs") as (s) "#Hws"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
-  en. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hob");
     [reflexivity | vx | reflexivity | apply load_uw_int; assumption | left; reflexivity | arith |].
-  iNext. iIntros "Hl Hob". st. rewrite (Z.mod_small o (2 ^ 32)); [|lia]. change (0 mod 2 ^ 32) with 0.
+  iNext. iIntros "Hl Hob". step. rewrite (Z.mod_small o (2 ^ 32)); [|lia]. change (0 mod 2 ^ 32) with 0.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec o 0) as [Eo | Eo]; close_br.
   - iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl [Hib] Hab [Hob] Ha Hc"); [split; [xkeep | lia] | by iSplit | by iSplit].
-  - en. st. norm. load_int "Hl Hib". st. norm. chk "Hl".
+  - step. step. norm. load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
     iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st. st. st. idx i. chk "Ha".
+    iNext. iIntros "Hl Hib". step. step. step. idx i. check "Ha".
     iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
     iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq");
       [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-    iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). chk "Hl".
+    iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
     iNext. iIntros "Hl Hab". iDestruct "HK" as "[_ HK]".
     iApply ("HK" with "[%] Hl [Hib] [Hab] [Hob] Ha Hc");
@@ -146,4 +145,3 @@ Proof.
 Qed.
 
 End returns.
-End GetoptReturnOn.

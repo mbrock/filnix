@@ -11,6 +11,7 @@
     (LibioFcloseLock.v's [wp_fclose_L101]); the whole is
     [wp_glibc__IO_new_fclose_stdout]. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +21,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioUnlinkCode LibioCloseItCode
   LibioFcloseCode FileInv LibioLogic SysWrappers LibioCloseSteps LibioCloseItEnd LibioFinish LibioFcloseTail
   LibioFcloseLock.
+From Glibc Require FileInv LibioCloseSteps LibioFcloseLock LibioFcloseTail LibioFinish LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -49,11 +52,8 @@ Proof.
   unfold io_err_seen. rewrite Z.land_lor_distr_l. change (Z.land 32 128) with 0. apply Z.lor_0_r.
 Qed.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFcloseOn (R : Runtime) (LG0 : LogicSig R).
-Module FU := LibioFcloseLockOn R LG0.
-Import FU FU.FT FU.FT.FN FU.FT.FN.CS FU.FT.FN.CS.SW FU.FT.FN.CS.SW.FI.ML FU.FT.FN.CS.SW.FI.LG FU.FT.FN.CS.SW.FI.L
-  FU.FT.FN.CS.SW.OW FU.FT.FN.CS.SW.FI FU.FT.FN.CS.SW.ST.
+
+Import LibioFcloseLock LibioFcloseTail LibioFinish SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -174,20 +174,20 @@ Proof.
   pose proof Hfb8 as Hfb8'. unfold has, io_is_filebuf in Hfb8'. apply negb_true_iff, Z.eqb_neq in Hfb8'.
   assert (0 <= Z.land fl 8192 < 2 ^ 32) by (apply land_lt32; lia).
   (* start: the stream's lock is taken. *)
-  iApply (wp_fclose_start w0 registry ge Hreg Hext _ _ _ _ _ _ _ _ _ Hfr with "Hs Htcb Hl Hfl Hlp Hlk"); try side.
+  iApply (wp_fclose_start w0 registry ge Hreg Hext _ _ _ _ _ _ _ _ _ Hfr with "Hs Htcb Hl Hfl Hlp Hlk"); try close_side.
   iIntros (e from [Hv0 Hc0]) "Htcb Hl Hfl Hlp Hlk".
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* L13, L99: `c: _IO_file_close_it`, then `c: _flags2 |= 32`. *)
   iDestruct "Hfl" as "[_ Hfl]".
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fbrv false. fs.
+  step. check "Hl". load_s32 "Hl" "Hfl". step. branch_as false. step.
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   iApply wp_call_bind; [vx | exact Hcif | reflexivity |]. iNext.
   iApply (Hci with "Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp
-            H80 H96"); try side; try exact Hmd.
+            H80 H96"); try close_side; try exact Hmd.
   iNext. iIntros (r fl' k tw' [Hpost Hk]) "Hl Hfl Hfl2 Hfd Htw Hoff Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol
     Hmode Hvtp H80 H96". resume.
   iDestruct "Hfl2" as "[%Hf2r' Hfl2]".
-  fs. fchk "Hl". fldi "Hl" "Hfl2". fs. fs. fs. fldi "Hl" "Hfl2". fs. fs. fs. fchk "Hl". fsti "Hl" "Hfl2". fs.
+  step. check "Hl". load_s32 "Hl" "Hfl2". step. step. step. load_s32 "Hl" "Hfl2". step. step. step. check "Hl". store_int "Hl" "Hfl2". step.
   iAssert (∃ f2', int_cell fb off_flags2 f2')%I with "[Hfl2]" as "Hfl2".
   { iExists _. iSplit; [iPureIntro | iExact "Hfl2"].
     first [apply Z.mod_pos_bound; lia | apply lor_lt32; apply Z.mod_pos_bound; lia]. }
@@ -200,7 +200,7 @@ Proof.
   assert (Hcu2 : has (closed_flags fl') io_user_lock = false).
   { unfold has, io_user_lock. rewrite closed_user_lock. reflexivity. }
   cbn [edge_label]. iApply (wp_fclose_L101 w0 registry ge Hunl Hdf Hff Hunl_spec Hunl_unlinked
-               with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 [-]"); try side; try exact Hmd.
+               with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 [-]"); try close_side; try exact Hmd.
   iNext. iIntros "Htcb Hl Hfl Hlp Hlk Hio Hlives Hlinks Hfd Hmode Hvtp Hbb H80 H96".
   iSpecialize ("HK" $! r fl' k tw' with "[%]"); [exact (conj Hpost Hk)|].
   assert (Hpr : 0 <= (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k) < 2 ^ 32).
@@ -211,4 +211,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioFcloseOn.

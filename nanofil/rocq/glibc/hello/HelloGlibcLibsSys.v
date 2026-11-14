@@ -2,6 +2,7 @@
     registration calls. The proofs use the concrete OS world, so their
     interfaces require no separate world-preservation assumptions. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -10,11 +11,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
   ExternalCalls Pieces Heap Language Logic MemLogic HelloLeaf HelloJoin.
 From Glibc Require Import OsWorld OsRegistry AllocLogic AtexitLogic
   HelloGlibcXmalloc HelloGlibcDebts HelloGlibcLibsT.
+From Glibc Require AllocLogic AtexitLogic HelloGlibcXmalloc OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The interface exposes the three proved triples. *)
-Module Type HelloLibsSysSig (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0) (AX : AtexitT R LG0).
+Module Type HelloLibsSysSig (D : HelloDebtsT) (AX : AtexitT).
 Import LG0 LG0.L D D.SW.FI.ML.
 (** Allocation returns a positive fresh object rather than a null pointer. *)
 Parameter libs_xmalloc : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
@@ -40,18 +43,18 @@ Parameter libs_ignores : forall (w0 : os_world) (o : hello_objs), hello_os_layou
 End HelloLibsSysSig.
 
 (** The implementation uses the existing glibc proofs at the linked names. *)
-Module HelloGlibcLibsSysOn (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0) (AX : AtexitT R LG0)
-  : HelloLibsSysSig R LG0 D AX.
+Module HelloGlibcLibsSysOn (D : HelloDebtsT) (AX : AtexitT)
+  : HelloLibsSysSig D AX.
 (** Hello's allocation wrapper uses glibc's allocator. *)
-Module XM := HelloGlibcXmallocOn R LG0.
+Module XM := HelloGlibcXmalloc.
 (** Registration uses the existing proof while exporting only its resources. *)
-Module AR := AtexitOn R LG0.
+Module AR := AtexitLogic.
 Import LG0 LG0.L D D.SW.FI.ML.
 Section libs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (o : hello_objs).
 (** The OS interpretation survives collector safepoints. *)
-Local Instance sys_stable : SafepointStable (os_wi w0) := XM.OW.os_wi_stable w0.
+Local Instance sys_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** These calls run with the concrete glibc OS registry. *)
 Local Instance sys_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) Σ :=
   nanofil_irisGS glibc_os_registry (os_wi w0) ge.
@@ -66,7 +69,7 @@ Proof.
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   rewrite xmalloc_frame in Hfr. injection Hfr as <-.
   iIntros "Hro HK". iDestruct "Hro" as "(_ & _ & _ & _ & _ & _ & _ & Htc & _)".
-  iApply (XM.wp_hello_xmalloc w0 glibc_os_registry ge n with "Htc");
+  iApply (HelloGlibcXmalloc.wp_hello_xmalloc w0 glibc_os_registry ge n with "Htc");
     [exact Hn | exact (hk_malloc _ _ Hk) | exact (hk_mp _ _ Hk) | exact (hk_tc _ _ Hk) |
      exact (hk_malloc2 _ _ Hk) |].
   iNext. iIntros (b Hb) "Hobj _". iApply "HK". iExists b. iSplit; [done|iExact "Hobj"].
@@ -81,7 +84,7 @@ Proof.
   change (Some (mkFrame free_fn [(TAtom "v0", WPtr (mkPtr b (Obj b)))] [] None
     (Enter (TAtom "start") None)) = Some fr) in Hfr. injection Hfr as <-.
   destruct (hk_frees _ _ Hk) as (Hfree & Hfn & Hglobal). iIntros "Hl HK".
-  iApply (XM.AL.wp_glibc_free glibc_os_registry (os_wi w0) ge with "Hl");
+  iApply (AllocLogic.wp_glibc_free glibc_os_registry (os_wi w0) ge with "Hl");
     [exact Hfree | exact Hfn | exact Hglobal | exact Hheap | exact Hb |
      intros m wd h rs Hlive Hrs Hw; exact (os_wi_free w0 m wd h b reg rs Hheap Hlive Hrs Hw) |].
   iApply "HK". done.
@@ -105,7 +108,7 @@ Proof.
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   change (Some (mkFrame atexit_fn [(TAtom "v0", WPtr (ho_cp o))] [] None
     (Enter (TAtom "start") None)) = Some fr) in Hfr. injection Hfr as <-.
-  iIntros "HX HK". iApply (AR.wp_glibc_atexit glibc_os_registry (os_wi w0) ge with "HX");
+  iIntros "HX HK". iApply (AtexitLogic.wp_glibc_atexit glibc_os_registry (os_wi w0) ge with "HX");
     [exact (hk_exit_layout _ _ Hk) | exact (hk_exit_globals _ _ Hk) |
      split; [|split]; (apply (libs_ignores w0 o Hos); cbn; tauto) |
      exact (hk_exit_fns _ _ Hk) | cbn; lia | exact (proj2 (proj2 (hk_cp _ _ Hk))) |].

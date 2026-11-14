@@ -6,4 +6,3 @@ From Nanofil Require Import Runtime.
 From Glibc Require Import LibioPuts HiAtexitBase.
 
 (** Puts uses the same interpreter logic as its proved callees. *)
-Module HP := LibioPutsOn InterpRuntime HLG.

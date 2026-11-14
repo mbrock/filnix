@@ -3,6 +3,7 @@
     exception. This file runs the validator on the whole program,
     hi_atexit.c with its 32 glibc units, and shows that it accepts it. *)
 
+From Glibc Require Import GlibcTactics.
 From Nanofil Require Import Syntax ValidFast.
 From Glibc Require Import HiAtexitModule.
 

@@ -3,6 +3,7 @@
     This file joins the proofs of those steps. The resulting buffer
     belongs to the stream, and the allocator's thread cache stays idle. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,16 +13,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
   AllocLogic LibioSetb LibioDoAllocBase LibioDoAllocTail LibioDoAllocMode LibioDoAlloc
   HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitCloseIt.
+From Glibc Require FileInv LibioDoAlloc LibioDoAllocMode LibioDoAllocTail LibioLogic LibioRead OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The allocation tail runs in the common interpreter logic. *)
-Module HAT := LibioDoAllocTailOn InterpRuntime HLG.
 (** The file-kind test runs in the common interpreter logic. *)
-Module HAM := LibioDoAllocModeOn InterpRuntime HLG.
 (** The complete allocation function runs in the common interpreter logic. *)
-Module HAD := LibioDoAllocOn InterpRuntime HLG.
-Import HSB.SW HSB.SW.FI.ML HSB.SW.FI.LG HSB.SW.FI.L HSB.SW.OW HSB.SW.FI HSB.SW.ST.
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -64,22 +63,22 @@ Definition hi_doalloc_malloc :=
 
 (** The size-selection tail calls the proved allocator and buffer setter. *)
 Definition hi_doalloc_L7 :=
-  HAT.wp_doalloc_L7 w0 registry ge Hsetb hi_setb_null
+  LibioDoAllocTail.wp_doalloc_L7 w0 registry ge Hsetb hi_setb_null
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_malloc.
 
 (** The block-size branch uses the same allocator and buffer setter. *)
 Definition hi_doalloc_L28 :=
-  HAT.wp_doalloc_L28 w0 registry ge Hsetb hi_setb_null
+  LibioDoAllocTail.wp_doalloc_L28 w0 registry ge Hsetb hi_setb_null
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_malloc.
 
 (** The terminal branch installs a line-buffered stream buffer. *)
 Definition hi_doalloc_L33 :=
-  HAT.wp_doalloc_L33 w0 registry ge Hsetb hi_setb_null
+  LibioDoAllocTail.wp_doalloc_L33 w0 registry ge Hsetb hi_setb_null
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_malloc.
 
 (** The stream's file kind determines whether its buffer is line-buffered. *)
 Definition hi_doalloc_L5 :=
-  HAM.wp_doalloc_L5 w0 registry ge Hreg Hext Hmaj Hisatty
+  LibioDoAllocMode.wp_doalloc_L5 w0 registry ge Hreg Hext Hmaj Hisatty
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_L28 hi_doalloc_L33.
 
 (** The file-stat call runs the proved wrapper of the kernel stat call. *)
@@ -94,12 +93,12 @@ Lemma hi_file_stat fr fb freg fd b reg o eb Φ :
   WP (ERun fr : language.expr (nanofil_lang registry ge)) {{ Φ }}.
 Proof.
   intros Hfr Hfb Hal Hend Hr He Hfd Ho Hstatend. iIntros "Hl Hfd Hb Hs Herr HK".
-  iApply (HRD.wp_glibc__IO_file_stat w0 registry ge Hreg Hext with "Hl Hfd Hb Hs Herr HK"); assumption.
+  iApply (LibioRead.wp_glibc__IO_file_stat w0 registry ge Hreg Hext with "Hl Hfd Hb Hs Herr HK"); assumption.
 Qed.
 
 (** Buffer allocation now has no unproved callee or block triples. *)
 Definition hi_doallocate :=
-  HAD.wp_glibc__IO_file_doallocate w0 registry ge Hstat
+  LibioDoAlloc.wp_glibc__IO_file_doallocate w0 registry ge Hstat
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_L5 hi_doalloc_L7 hi_file_stat.
 
 End rules.

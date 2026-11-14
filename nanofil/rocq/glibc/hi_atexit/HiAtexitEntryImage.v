@@ -3,6 +3,7 @@
     against the prepared memory. It also checks the complete list for
     duplicate ownership before constructing its [[separation-logic]] heap. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List.
 From stdpp Require Import list gmap.
 From Nanofil Require Import Values Memory Pieces Heap.

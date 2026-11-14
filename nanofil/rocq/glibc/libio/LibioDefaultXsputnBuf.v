@@ -25,6 +25,7 @@
     | [bytesq_at] | one byte of a source at a share |
     | [wbuf_room] | the room of a stream with a buffer | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -33,6 +34,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioDoWriteCode LibioDefaultXsputnCopy.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnCopy LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 
 (** ## Environments *)
 
@@ -83,10 +86,8 @@ Definition room_ok (b sz : Z) (reg : region) (xs : list Z) (cs : list cap) (wp w
   length xs = Z.to_nat sz /\ length cs = Z.to_nat sz /\ Forall (fun x => 0 <= x < 256) xs /\
   in_buf b sz wp /\ in_buf b sz we /\ r_kind reg = Heap.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioBufOn (R : Runtime) (LG0 : LogicSig R).
-Module CP := LibioCopyOn R LG0.
-Import CP CP.CS CP.SW CP.SW.FI.ML CP.SW.FI.LG CP.SW.FI.L CP.SW.OW CP.SW.FI CP.SW.ST.
+
+Import LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section buf.
 Context `{!gen_heapGS piece pval Σ}.
@@ -201,4 +202,3 @@ Definition overflow_spec (os : Z -> option (Z * Z) -> iProp Σ) : Prop :=
     WP (ERun fr : sexpr) {{ Φ }}.
 
 End ovf.
-End LibioBufOn.

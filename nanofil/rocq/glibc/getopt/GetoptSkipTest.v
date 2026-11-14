@@ -5,6 +5,8 @@
     argument's terminated string, and its second byte only after the
     first byte showed that the string is not empty. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptPermute.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -32,20 +36,15 @@ Definition test_names : list name := Eval vm_compute in
 Lemma dash_len (s : list Z) : sbyte s 0 = 45 -> (1 <= List.length s)%nat.
 Proof. destruct s; [discriminate | cbn; lia]. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptSkipTestOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exchange module supplies the argument vector and its tactics. *)
-Module X := GetoptExchangeOn R LG0.
-Import X X.I X.I.S X.I.S.FI X.I.S.FI.ML X.I.S.FI.LG X.I.S.FI.L X.I.ST X.I.GB X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 (** This tactic rebuilds an integer field from its rewritten bytes. *)
 Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
@@ -54,7 +53,7 @@ Section test.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance test_stable : SafepointStable (os_wi w0) := X.I.OW.os_wi_stable w0.
+Local Instance test_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance test_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -92,7 +91,7 @@ Proof.
   intros Hks Hv2 Hc57 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hib Ha Hc #Hs HLs".
   assert (Hi0 : 0 <= i < 2 ^ 32) by lia.
-  en. load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   set (j := Z.to_nat i). assert (Hj : Z.of_nat j = i) by (unfold j; lia).
   destruct (lookup_lt_is_Some_2 ps j) as [q Hq]; [lia|].
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
@@ -101,18 +100,18 @@ Proof.
   iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj").
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
-  rdchr "Hws" q s 0%nat. st.
+  rdchr "Hws" q s 0%nat. step.
   pose proof (sbyte_range s 0 Hch) as Hs0.
   rewrite (Z.mod_small (chr_w (sbyte s 0)) (2 ^ 32)); [|apply chr_w_range].
   change (45 mod 2 ^ 32) with 45. rewrite chr_w_eqb; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte s 0) 45) as [E45 | E45]; close_br.
-  2:{ en. brz. iDestruct "HLs" as "[_ HL]". iApply ("HL" with "[%] Hl Hib Ha Hc"). xkeep. }
+  2:{ step. brz. iDestruct "HLs" as "[_ HL]". iApply ("HL" with "[%] Hl Hib Ha Hc"). xkeep. }
   pose proof (dash_len s E45) as Hs1.
-  en. load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
   iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj").
-  st. norm. iClear "Hbl Hbt". clear Hcap Hb0' Hbq Hbe Hbr.
+  step. norm. iClear "Hbl Hbt". clear Hcap Hb0' Hbq Hbe Hbr.
   iDestruct (ws_byte q s 1 with "Hws") as (bb1 breg1) "(%Hbb1 & #Hbl & #Hbt)"; [lia|].
   destruct Hbb1 as (Hcap & Hb0' & Hbq & Hbe & Hbr).
   assert (Hlen1 : 1 <= Z.of_nat (List.length s)) by lia.
@@ -120,7 +119,7 @@ Proof.
     [reflexivity | vx | exact Hcap | arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | arith |]; iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |].
-  iNext; iIntros "_ _". st. st. en.
+  iNext; iIntros "_ _". step. step. step.
   pose proof (sbyte_range s 1 Hch) as Hs1'. rewrite chr_cmp; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte s 1) 0) as [E0 | E0]; close_br.
   - iDestruct "HLs" as "[_ HL]". iApply ("HL" with "[%] Hl Hib Ha Hc"). xkeep.
@@ -128,4 +127,3 @@ Proof.
 Qed.
 
 End test.
-End GetoptSkipTestOn.

@@ -5,6 +5,8 @@
     it reaches the option parser with an argument that starts with a
     dash and has a second character. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,26 +17,24 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpCode
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptExchangeTwo GetoptIdlePath GetoptReturn GetoptScanEnd.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptIdlePath GetoptInitialize GetoptScanEnd GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** These names hold what the decision reads after the tidying. *)
 Definition scan_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; "chk1"; "chk2"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptScanOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The path module proves the tidying of the argument vector. *)
-Module IP := GetoptIdlePathOn R LG0.
 (** The decision module proves the decision and the early returns. *)
-Module SE := GetoptScanEndOn R LG0.
-Import SE.N.X SE.N.X.I SE.N.X.I.S SE.N.X.I.S.FI SE.N.X.I.S.FI.ML SE.N.X.I.S.FI.LG SE.N.X.I.S.FI.L
-  SE.N.X.I.ST SE.N.X.I.GB SE.N.X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section scan.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance scan_stable : SafepointStable (os_wi w0) := SE.N.X.I.OW.os_wi_stable w0.
+Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance scan_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -95,7 +95,7 @@ Lemma wp_getopt_scan ks e fr0 n i o f l a b r av ar ps pdd sdd Φ :
 Proof.
   intros Hki Hks Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc1 Hc2 Hfl Hln Hfi Hin Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hi Hab Ho Hf Hla Ha Hc #Hs #Hdd HK".
-  iApply (IP.wp_getopt_idle w0 registry ge (ks ++ scan_keys) e fr0 n i o f l b r av ar ps pdd sdd
+  iApply (GetoptIdlePath.wp_getopt_idle w0 registry ge (ks ++ scan_keys) e fr0 n i o f l b r av ar ps pdd sdd
             with "Hl Hi Ho Hf Hla Ha Hc Hs Hdd [Hab HK]");
     [ apply avoids_app_r; [exact Hki | vm_compute; reflexivity] | exact Hg | exact Hdd
     | exact Hv0 | exact Hv2 | exact Hv12 | exact Hc0 | exact Hc2
@@ -103,7 +103,7 @@ Proof.
   iIntros (e1 ps1 i1 f1 l1 (Hp & Hk & Hfl1 & Hli1 & Hii & H23)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
   apply keeps_app in Hk as [Hk Hk'].
   assert (Hlen1 : Z.of_nat (List.length ps1) = n) by (rewrite -(Permutation_length Hp); exact Hlen).
-  iApply (SE.wp_getopt_scan_end w0 registry ge ks e1 i1 n o f1 l1 a b r av ar ps1
+  iApply (GetoptScanEnd.wp_getopt_scan_end w0 registry ge ks e1 i1 n o f1 l1 a b r av ar ps1
             with "Hl Hi Hab Ho Hf Hla Ha Hc Hs1 [HK]");
     [ exact Hks | kin Hk' Hv0 | kin Hk' Hv2 | kin Hk' Hv12 | kin Hk' Hc0 | kin Hk' Hc1 | kin Hk' Hc2 | exact H23
     | lia | lia | lia | lia | exact Hlen1 | lia | lia | lia | lia | lia | lia | lia | lia |].
@@ -124,4 +124,3 @@ Proof.
 Qed.
 
 End scan.
-End GetoptScanOn.

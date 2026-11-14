@@ -4,6 +4,7 @@
     It preserves arbitrary caller resources without requiring a usable
     stream buffer or an operating-system write contract. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,11 +12,12 @@ From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import LibioXsputnCode.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The proof uses the caller's existing [[runtime]] and instruction rules. *)
-Module LibioXsputnZeroOn (R : Runtime) (LG : LogicSig R).
+
+Module LG := LG0.
 Import LG LG.L.
 
 Section rules.
@@ -55,4 +57,3 @@ Proof.
   iNext. iIntros "HP". iFrame "HP". done.
 Qed.
 End rules.
-End LibioXsputnZeroOn.

@@ -13,19 +13,15 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers LibioOverflowBase LibioOverflowCall LibioOverflowFlush LibioOverflowPut
   LibioOverflowFull LibioOverflowSend HiAtexitBase HiAtexitDoWrite.
+From Glibc Require LibioDoWrite LibioOverflowCall LibioOverflowFlush LibioOverflowFull LibioOverflowPut LibioOverflowSend.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The flush call uses the common interpreter logic. *)
-Module HOC := LibioOverflowCallOn InterpRuntime HLG.
 (** The newline flush uses the common interpreter logic. *)
-Module HOF := LibioOverflowFlushOn InterpRuntime HLG.
 (** The byte store uses the common interpreter logic. *)
-Module HOP := LibioOverflowPutOn InterpRuntime HLG.
 (** The full-buffer branch uses the common interpreter logic. *)
-Module HOU := LibioOverflowFullOn InterpRuntime HLG.
 (** The send branch uses the common interpreter logic. *)
-Module HOS := LibioOverflowSendOn InterpRuntime HLG.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -37,24 +33,24 @@ Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc
 
 (** A flush of pending bytes uses the proved write from the buffer base. *)
 Definition hi_ovf_do_write :=
-  HOC.wp_ovf_do_write w0 registry ge (fun f2 => Z.land f2 2 = 0)
+  LibioOverflowCall.wp_ovf_do_write w0 registry ge (fun f2 => Z.land f2 2 = 0)
     (hi_do_write_base w0 registry ge Hreg Hext Hwrite Hfw).
 
 (** A newline flush uses the proved write from the buffer base. *)
 Definition hi_ovf_L264 :=
-  HOF.wp_ovf_L264 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0)
+  LibioOverflowFlush.wp_ovf_L264 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0)
     (hi_do_write_base w0 registry ge Hreg Hext Hwrite Hfw).
 
 (** Storing a byte may continue into the proved newline flush. *)
-Definition hi_ovf_L198 := HOP.wp_ovf_L198 w0 registry ge (fun f2 => Z.land f2 2 = 0) hi_ovf_L264.
+Definition hi_ovf_L198 := LibioOverflowPut.wp_ovf_L198 w0 registry ge (fun f2 => Z.land f2 2 = 0) hi_ovf_L264.
 
 (** A full buffer is flushed before the byte store. *)
-Definition hi_ovf_L196 := HOU.wp_ovf_L196 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0) hi_ovf_do_write hi_ovf_L198.
+Definition hi_ovf_L196 := LibioOverflowFull.wp_ovf_L196 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0) hi_ovf_do_write hi_ovf_L198.
 
 (** Sending a byte handles empty, full, and partly filled buffers. *)
 Definition hi_ovf_L18 :=
-  HOS.wp_ovf_L18 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0)
-    (HDW.wp_glibc__IO_new_do_write_zero w0 registry ge) hi_ovf_do_write hi_ovf_L198 hi_ovf_L196.
+  LibioOverflowSend.wp_ovf_L18 w0 registry ge Hdwf (fun f2 => Z.land f2 2 = 0)
+    (LibioDoWrite.wp_glibc__IO_new_do_write_zero w0 registry ge) hi_ovf_do_write hi_ovf_L198 hi_ovf_L196.
 
 (* Both write branches retain flags2; the set-bit branch resolves the captured wrapper. *)
 Local Definition nocancel_ready (f2 : Z) : Prop :=
@@ -64,27 +60,27 @@ Local Definition nocancel_ready (f2 : Z) : Prop :=
 (** A pending-byte flush also supports a stream that disables cancellation.
     The write returns the exact flags2 value and retains the buffer bytes on failure. *)
 Definition hi_ovf_do_write_nocancel :=
-  HOC.wp_ovf_do_write w0 registry ge nocancel_ready
+  LibioOverflowCall.wp_ovf_do_write w0 registry ge nocancel_ready
     (hi_do_write_base_nocancel w0 registry ge Hreg Hext Hwrite Hfw).
 
 (** A newline flush uses the same captured noncanceling write wrapper. *)
 Definition hi_ovf_L264_nocancel :=
-  HOF.wp_ovf_L264 w0 registry ge Hdwf nocancel_ready
+  LibioOverflowFlush.wp_ovf_L264 w0 registry ge Hdwf nocancel_ready
     (hi_do_write_base_nocancel w0 registry ge Hreg Hext Hwrite Hfw).
 
 (** A byte store retains the noncanceling flush when the stream needs one. *)
 Definition hi_ovf_L198_nocancel :=
-  HOP.wp_ovf_L198 w0 registry ge nocancel_ready hi_ovf_L264_nocancel.
+  LibioOverflowPut.wp_ovf_L198 w0 registry ge nocancel_ready hi_ovf_L264_nocancel.
 
 (** A full buffer uses the noncanceling flush before storing another byte. *)
 Definition hi_ovf_L196_nocancel :=
-  HOU.wp_ovf_L196 w0 registry ge Hdwf nocancel_ready hi_ovf_do_write_nocancel hi_ovf_L198_nocancel.
+  LibioOverflowFull.wp_ovf_L196 w0 registry ge Hdwf nocancel_ready hi_ovf_do_write_nocancel hi_ovf_L198_nocancel.
 
 (** Sending a byte or flushing EOF permits cancellation to be disabled.
     Short writes and errors remain possible, and no path acquires or releases a stream lock. *)
 Definition hi_ovf_L18_nocancel :=
-  HOS.wp_ovf_L18 w0 registry ge Hdwf nocancel_ready
-    (HDW.wp_glibc__IO_new_do_write_zero w0 registry ge)
+  LibioOverflowSend.wp_ovf_L18 w0 registry ge Hdwf nocancel_ready
+    (LibioDoWrite.wp_glibc__IO_new_do_write_zero w0 registry ge)
     hi_ovf_do_write_nocancel hi_ovf_L198_nocancel hi_ovf_L196_nocancel.
 
 End rules.

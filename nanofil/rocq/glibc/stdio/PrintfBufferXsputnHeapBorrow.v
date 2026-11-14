@@ -1,18 +1,18 @@
 (** Printf reads FILE's jump-table field before calling xsputn.
     The heap stream owns that field and the permission to access FILE.
     This rule lends both and restores the entire stream when they return. *)
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic PrintfBufferXsputnHeapSwitch.
+From Glibc Require FileInv OsWorld PrintfStreamHeap.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 
-(** Borrowing uses the same memory interpretation as the heap stream. *)
-Module PrintfBufferXsputnHeapBorrowOn (R : Runtime) (LG0 : LogicSig R).
-Module XS := PrintfBufferXsputnHeapSwitchOn R LG0.
-Import XS.HS XS.HS.PS.PI.CS.SW.FI XS.HS.PS.PI.CS.SW.FI.ML XS.HS.PS.PI.CS.SW.FI.LG
-  XS.HS.PS.PI.CS.SW.FI.L XS.HS.PS.PI.CS.SW.OW.
+
+Import PrintfStreamHeap FileInv FileInv.ML FileInv.LG FileInv.L OsWorld.
 
 Section rules.
 Context `{!gen_heapGS piece pval Σ}.
@@ -36,4 +36,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferXsputnHeapBorrowOn.

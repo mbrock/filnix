@@ -6,6 +6,8 @@
     file proves that walk safe: it reads the cursor's string only up to
     the byte where it stops, and it writes nothing. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -67,21 +71,18 @@ Definition plo_blk (l : string) : block := Eval vm_compute in
 (** The walk's test starts in this block. *)
 Definition plo_blk27 : block := Eval vm_compute in plo_blk "L27".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongScanOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The tail module supplies the string lemmas, a shared renewed read and the tactics. *)
-Module RT := GetoptReqTailOn R LG0.
-Import RT RT.D RT.D.X RT.D.X.I RT.D.X.I.S RT.D.X.I.S.FI RT.D.X.I.S.FI.ML RT.D.X.I.S.FI.LG RT.D.X.I.S.FI.L RT.D.X.I.ST
-  RT.D.X.I.GB RT.D.X.A.
+Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 Section scan.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance scan_stable : SafepointStable (os_wi w0) := RT.D.X.I.OW.os_wi_stable w0.
+Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance scan_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -129,9 +130,9 @@ Proof.
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   pose proof (eq_len_le s) as Hle.
-  en. st. chk "Hl".
+  step. step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Hl Hcur _". st. st. st. st.
+  iNext. iIntros "Hl Hcur _". step. step. step. step.
   iApply ("HK" with "[%] Hl Hcur"). split; [xkeep|].
   split; [lk_prove|]. split; [|split; lk_prove].
   match goal with |- lookup _ (put _ (WInt ?X) _) = _ => replace X with (Z.of_nat (eq_len s)); [lk_prove|] end.
@@ -178,14 +179,14 @@ Proof.
   iApply wp_branch; [vx | iNext].
   rewrite (Z.mod_small (chr_w _) (2 ^ 32)); [|apply chr_w_range]. rewrite chr_w_eqb; [|lia|lia].
   destruct (Z.eqb_spec (sbyte s j) 0) as [E0 | E0]; cbn [edge_label].
-  { en. iApply wp_branch; [vx | iNext]. close_br.
+  { step. iApply wp_branch; [vx | iNext]. close_br.
     assert (Hje : j = eq_len s) by (apply eq_len_at; auto). subst j.
     iApply (wp_long_scan_end ks e with "Hws Hl Hcur HK");
       [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | exact Hb | exact Hal | exact Hend | exact Hr]. }
-  en.
+  step.
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
-  iNext; iIntros "_ _". st. st. en. iApply wp_branch; [vx | iNext].
+  iNext; iIntros "_ _". step. step. step. iApply wp_branch; [vx | iNext].
   rewrite (Z.mod_small (chr_w _) (2 ^ 32)); [|apply chr_w_range]. change (61 mod 2 ^ 32) with 61.
   rewrite chr_w_eqb; [|lia|lia].
   destruct (Z.eqb_spec (sbyte s j) 61) as [E61 | E61]; first [close_br | cbn [edge_label]].
@@ -195,7 +196,7 @@ Proof.
   assert (Hlt : (j < eq_len s)%nat).
   { destruct (Nat.lt_ge_cases j (eq_len s)) as [Hq | Hq]; [exact Hq|].
     assert (j = eq_len s) as -> by lia. destruct (eq_len_stop s); lia. }
-  en. st. st. iApply wp_enter; [reflexivity | reflexivity | iNext].
+  step. step. step. iApply wp_enter; [reflexivity | reflexivity | iNext].
   iApply (IH (eq_len s - S j)%nat ltac:(lia) _ (S j) eq_refl with "Hws Hl Hcur [HK]");
     [lk_prove | lk_prove | | lia | exact Hb | exact Hal | exact Hend | exact Hr |].
   { match goal with |- lookup _ (put _ (WPtr ?X) _) = _ => replace X with (ptr_add cur (Z.of_nat (S j))); [lk_prove|] end.
@@ -223,9 +224,9 @@ Lemma wp_getopt_long_scan ks e cur s b r Φ :
 Proof.
   intros Hks H12 Hb Hal Hend Hr. iIntros "#Hws Hl Hcur HK".
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
-  en. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Hl Hcur _". st. iApply wp_enter; [reflexivity | reflexivity | iNext].
+  iNext. iIntros "Hl Hcur _". step. iApply wp_enter; [reflexivity | reflexivity | iNext].
   iApply (wp_long_scan_loop ks _ 0 with "Hws Hl Hcur [HK]");
     [exact Hks | lk_prove | lk_prove | | lia | exact Hb | exact Hal | exact Hend | exact Hr |].
   { replace (ptr_add cur (Z.of_nat 0)) with cur; [lk_prove|]. destruct cur; unfold ptr_add; cbn; f_equal; lia. }
@@ -234,4 +235,3 @@ Proof.
 Qed.
 
 End scan.
-End GetoptLongScanOn.

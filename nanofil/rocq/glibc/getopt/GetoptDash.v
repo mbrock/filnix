@@ -4,6 +4,8 @@
     setting both the public index and the end of the nonoption block to
     the argument count. This file proves those blocks safe. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule Get
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptSwap3Lower GetoptSwap3Upper GetoptExchangeThree
   GetoptIdleThree.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptExchangeThree GetoptExchangeTwo GetoptIdleThree GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -32,19 +36,15 @@ Definition dash_names : list name := Eval vm_compute in
 (** The end-of-scan test starts here. *)
 Definition getopt_blk203 : block := Eval vm_compute in x_blk "L203".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptDashOn (R : Runtime) (LG0 : LogicSig R).
+
 (** This module proves the second exchange. *)
-Module X3 := GetoptIdle3On R LG0.
-Import X3 X3.O3 X3.O3.O X3.O3.O.SL.X X3.O3.O.SL.X.I X3.O3.O.SL.X.I.S X3.O3.O.SL.X.I.S.FI
-  X3.O3.O.SL.X.I.S.FI.ML X3.O3.O.SL.X.I.S.FI.LG X3.O3.O.SL.X.I.S.FI.L X3.O3.O.SL.X.I.ST
-  X3.O3.O.SL.X.I.GB X3.O3.O.SL.X.A.
+Import GetoptIdleThree GetoptExchangeThree GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section dash.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance dash_stable : SafepointStable (os_wi w0) := X3.O3.O.SL.X.I.OW.os_wi_stable w0.
+Local Instance dash_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance dash_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -91,28 +91,28 @@ Proof.
     WP (ERun (mkFrame glibc_getopt_internal_r e2 [] None (Enter (TAtom "L227") (Some fr))) : gexpr) {{ Φ }})%I
     with "[HK]" as "HL227".
   { iIntros (e2 fr i' f' l' ps' (Hp & Hk & Hf' & H0 & H12 & H2 & H23)) "Hl [%Hi' Hib] Hfb [%Hl' Hlab] Ha Hc Hs'".
-    en. st. norm. chk "Hl".
+    step. step. norm. check "Hl".
     iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hlab". chk "Hl".
+    iNext. iIntros "Hl Hlab". check "Hl".
     iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st. en.
+    iNext. iIntros "Hl Hib". step. step.
     iApply ("HK" with "[%] Hl [Hib] Hfb [Hlab] Ha Hc Hs'");
       [| (iApply cell_mod3; [lia | iAssumption]) | (iApply cell_mod3; [lia | iAssumption])].
     split; [done|]. split; [xkeep | lia]. }
-  en. chk "Hl". load_int "Hl Hib". st. norm. chk "Hl".
+  step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
   iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-  iNext. iIntros "Hl Hib". st. norm. chk "Hl". load_int "Hl Hfb". st. norm. chk "Hl". load_int "Hl Hlab". st.
+  iNext. iIntros "Hl Hib". step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hfb". step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hlab". step.
   rewrite (Z.mod_small f (2 ^ 32)); [|lia]. rewrite (Z.mod_small l (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec f l) as [Efl | Efl]; close_br.
-  - subst l. en. brz. en. st. norm. load_int "Hl Hfb". st. norm. load_int "Hl Hlab". st.
+  - subst l. step. brz. step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". step. norm. load_s32_using ltac:(arith) "Hl Hlab". step.
     rewrite (Z.mod_small f (2 ^ 32)); [|lia]. rewrite Z.eqb_refl. brz.
-    en. st. norm. load_int "Hl Hib".
+    step. step. norm. load_s32_using ltac:(arith) "Hl Hib".
     iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hfb". st.
+    iNext. iIntros "Hl Hfb". step.
     iApply ("HL227" $! _ _ (i + 1) (i + 1) f ps with "[%] Hl [Hib] [Hfb] [Hlab] Ha Hc Hs");
       [| icell | (iApply cell_mod3; [lia | iAssumption]) | icell].
     split; [done|]. split; [xkeep|]. split; [lia|]. repeat split; lk_prove.
-  - en. st. norm. load_int "Hl Hlab". load_int "Hl Hib". st. st. en.
+  - step. step. norm. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step. step. step.
     rewrite (Z.mod_small l (2 ^ 32)); [|lia]. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia].
     iApply wp_branch; [vx | iNext]. rewrite (proj2 (Z.eqb_neq l (i + 1))); [|lia]. close_br.
     iApply (wp_x3_exchange w0 registry ge (ks ++ [TAtom "v0"; TAtom "v12"; TAtom "chk2"; TAtom "chk23"])%list
@@ -129,4 +129,3 @@ Proof.
 Qed.
 
 End dash.
-End GetoptDashOn.

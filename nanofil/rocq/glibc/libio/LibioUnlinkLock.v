@@ -6,6 +6,7 @@
     the streams before it; then LibioUnlinkMid.v's [unlink_split] and
     [wp_unlink_L185]. LibioUnlink.v proves the whole function. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic
   SysWrappers SysCleanup LibioCloseSteps LibioUnlinkTail LibioUnlinkMid.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioUnlinkMid LibioUnlinkTail OsThread OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -22,11 +25,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioUnlinkLockOn (R : Runtime) (LG0 : LogicSig R).
-Module UM := LibioUnlinkMidOn R LG0.
-Import UM UM.UT UM.UT.CS UM.UT.CS.SW UM.UT.CS.SW.FI.ML UM.UT.CS.SW.FI.LG UM.UT.CS.SW.FI.L UM.UT.CS.SW.OW
-  UM.UT.CS.SW.FI UM.UT.CS.SW.ST.
+
+Import LibioUnlinkMid LibioUnlinkTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -48,7 +48,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's
     cookie, not null (H). *)
-Ltac self H := iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
 
 (** Block `c: L22` of `c: _IO_un_link` to its return, `c: list_all_lock`
     held once by the thread and the cleanup buffer cb pushed: the
@@ -94,13 +94,13 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* L22: `c: run_fp`; L96 to L101: take the stream's lock. *)
-  fs. fs. fchk "Hrl". fstp "Hrl" "Hrc". fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrv false.
-  fs. self Hsz. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fldn "Hbl" "Hbo". fs. fs. fs. fs. fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fchk "Hbl". fsti "Hbl" "Hb0". fldp "Hl" "Hlp" "Hbl". fs.
-  fchk "Hbl". fstp "Hbl" "Hbo". fs.
+  step. step. check "Hrl". store "Hrl" "Hrc". check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
+  step. self Hsz. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". load_null "Hbl" "Hbo". step. step. step. step. step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". check "Hbl". store_int "Hbl" "Hb0". load "Hl" "Hlp" "Hbl". step.
+  check "Hbl". store "Hbl" "Hbo". step.
   (* L91: the list's head, fp or the first of pre. *)
-  fs. fs. fchk "Hla".
+  step. step. check "Hla".
   iAssert (∃ hb hreg, ⌜head_ptr (pre ++ mkPtr fb (Obj fb) :: post) = mkPtr hb (Obj hb) /\ 0 < hb /\
                                 hb + 8 <= r_end hreg⌝ ∗ live hb hreg ∗
              (live hb hreg -∗ live fb freg ∗ [∗ list] g ∈ pre ++ post, stream_life g))%I
@@ -113,8 +113,8 @@ Proof.
       iSplit; [iPureIntro; split_and!; [reflexivity | lia | lia]|]. iIntros "Hgl". iFrame "Hl Hlives".
       iExists gb, greg. iFrame. done. }
   iApply (wp_live_fit1 w0 registry ge with "Hhl"). iIntros ([Hh0 Hh48]) "Hhl".
-  iEval (rewrite Hhd) in "Hlah". fldp "Hla" "Hlah" "Hhl". iEval (rewrite -Hhd) in "Hlah".
-  iDestruct ("Hback" with "Hhl") as "[Hl Hlives]". fs. fs. fs. fbrv true.
+  iEval (rewrite Hhd) in "Hlah". load "Hla" "Hlah" "Hhl". iEval (rewrite -Hhd) in "Hlah".
+  iDestruct ("Hback" with "Hhl") as "[Hl Hlives]". step. step. step. branch_as true.
   (* L185 to the return. *)
   iDestruct (unlink_split la lareg pre fb post Hlaal Hlaend with "Hla Hlah Hch Hlives")
     as (qb qo qreg Hq) "(Hql & Hqc & Hfp & Hfc & Hnx & HW)".
@@ -123,11 +123,10 @@ Proof.
   { iFrame. iPureIntro. unfold int_bytes. split_and!; try lia. }
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done|]; iExact "Hfl"|].
   iApply (wp_unlink_L185 w0 registry ge Hreg Hext Hpop
-            with "Hs Hl Hfl Hlp Hlb Hfp Hfc Hql Hqc Hnx Hrl Hrc Hlk Htcb Hcl Hc24 Hc16"); try side.
+            with "Hs Hl Hfl Hlp Hlb Hfp Hfc Hql Hqc Hnx Hrl Hrc Hlk Htcb Hcl Hc24 Hc16"); try close_side.
   iNext. iIntros "Hl Hfl Hlp Hlb Hfp Hfc Hql Hqc Hnx Hrl Hrc Hlk Htcb Hcl".
   iDestruct ("HW" with "Hql Hqc Hnx") as "(Hla & Hlah & Hch & Hlives)".
   iApply ("HK" with "Htcb Hl Hfl Hlp Hlb Hla Hlah Hch Hlk Hrl Hrc Hlives [Hfp Hfc]"). iExists _, _. iFrame.
 Qed.
 
 End rules.
-End LibioUnlinkLockOn.

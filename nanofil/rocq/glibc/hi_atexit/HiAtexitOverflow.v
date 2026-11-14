@@ -13,17 +13,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers LibioOverflowBase LibioOverflowSetpEnd LibioOverflowSetpRest LibioOverflowSetp
   LibioOverflow HiAtexitBase HiAtexitOverflowSend.
+From Glibc Require LibioOverflow LibioOverflowSetp LibioOverflowSetpEnd LibioOverflowSetpRest.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The final pointer resets use the common interpreter logic. *)
-Module HOE := LibioOverflowSetpEndOn InterpRuntime HLG.
 (** The write-pointer resets use the common interpreter logic. *)
-Module HOR := LibioOverflowSetpRestOn InterpRuntime HLG.
 (** The first pointer resets use the common interpreter logic. *)
-Module HOSP := LibioOverflowSetpOn InterpRuntime HLG.
 (** The overflow entry uses the common interpreter logic. *)
-Module HOV := LibioOverflowOn InterpRuntime HLG.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -35,28 +32,28 @@ Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc
 
 (** Line-buffered streams keep the write end at the write pointer. *)
 Definition hi_ovf_L162 :=
-  HOE.wp_ovf_L162 w0 registry ge (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
+  LibioOverflowSetpEnd.wp_ovf_L162 w0 registry ge (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
 
 (** The stream starts writing at the buffer's base. *)
-Definition hi_ovf_L113_rest := HOR.wp_ovf_L113_rest w0 registry ge hi_ovf_L162.
+Definition hi_ovf_L113_rest := LibioOverflowSetpRest.wp_ovf_L113_rest w0 registry ge hi_ovf_L162.
 
 (** The stream discards its read area before writing. *)
-Definition hi_ovf_L113 := HOSP.wp_ovf_L113 w0 registry ge hi_ovf_L113_rest.
+Definition hi_ovf_L113 := LibioOverflowSetp.wp_ovf_L113 w0 registry ge hi_ovf_L113_rest.
 
 (** A stream with a new buffer switches to writing through the proved resets. *)
 Definition hi_ovf_L35 :=
-  HOE.wp_ovf_L35 w0 registry ge hi_ovf_L113.
+  LibioOverflowSetpEnd.wp_ovf_L35 w0 registry ge hi_ovf_L113.
 
 (** Overflow on a stream already writing uses the proved send path. *)
 Definition hi_overflow :=
-  HOV.wp_glibc__IO_new_file_overflow w0 registry ge (fun f2 => Z.land f2 2 = 0)
+  LibioOverflow.wp_glibc__IO_new_file_overflow w0 registry ge (fun f2 => Z.land f2 2 = 0)
     (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
 
 (** Overflow on an already-writing stream also supports a noncanceling backend.
     The rule still requires the concrete buffer layout, descriptor and no-append facts;
     ownership of a stream alone does not supply those facts. *)
 Definition hi_overflow_nocancel :=
-  HOV.wp_glibc__IO_new_file_overflow w0 registry ge _
+  LibioOverflow.wp_glibc__IO_new_file_overflow w0 registry ge _
     (hi_ovf_L18_nocancel w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
 
 End rules.

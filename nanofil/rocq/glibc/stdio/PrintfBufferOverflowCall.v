@@ -5,6 +5,7 @@
     The stream call remains an explicit conditional obligation. Its resource
     predicate must carry any descriptor and buffer-ordering facts needed by
     the backend; ownership of the FILE layout alone does not establish them. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,13 +14,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioOverflowBase PrintfBufferFileCode PrintfBufferOverflowReturn.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The caller and its conditional callee share the same OS interpretation. *)
-Module PrintfBufferOverflowCallOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -67,10 +68,10 @@ Lemma wp_printf_overflow_call e bb breg fp ch Φ :
 Proof.
   intros Hbb Hbe Hbr Hch Hv0 Hchk Hfp. iIntros "Hb Hch HF HE HK".
   cbn [printf_overflow_block b_insts b_jump skipn].
-  fs. fchk "Hb".
+  step. check "Hb".
   iApply (wp_raw_load_sub_bytes_dq with "Hb Hch");
     [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | a2 |].
-  iNext. iIntros "Hb Hch". fs.
+  iNext. iIntros "Hb Hch". step.
   iApply wp_call_bind; [vx | exact Hoverflow | reflexivity |]. iNext.
   norm. rewrite Z.mul_0_r Z.add_0_r (sb_byte ch Hch).
   rewrite !(Z.mod_small ch (2 ^ 32) ltac:(lia)).
@@ -82,4 +83,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferOverflowCallOn.

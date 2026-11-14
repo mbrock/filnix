@@ -5,6 +5,7 @@
     descriptor. A terminal goes on to `c: L33`, which makes the stream
     line-buffered; any other stream goes to `c: L28`. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase.
+From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -21,10 +24,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoAllocModeOn (R : Runtime) (LG0 : LogicSig R).
-Module DB := LibioDoAllocBaseOn R LG0.
-Import DB DB.SW DB.SW.FI.ML DB.SW.FI.LG DB.SW.FI.L DB.SW.OW DB.SW.FI DB.SW.ST.
+
+Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -91,17 +92,17 @@ Lemma wp_doalloc_L48 fb freg fl fd eb oe sb sreg bs3 from e Φ :
 Proof.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 He Hfd Hv0 Hc0 Hv4 Hc4.
   iIntros "Hl Hfl [%Hfdr Hfdb] Herr Hb Hbe HM Hsl Hb3 HK". unfold file_size in Hend.
-  st. st. norm. chk "Hl". load_int "Hl Hfdb".
+  step. step. norm. check "Hl". load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [vx | exact Hisatty | reflexivity |]. iNext.
   iApply (wp_glibc___isatty_nostatus w0 registry ge Hreg Hext with "Herr");
     [reflexivity | apply Z.mod_pos_bound; lia | exact He | rewrite Z.mod_small; [exact Hfd | lia] |].
   iNext. iIntros (r Hr) "Herr". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
-  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st. st.
-  st. destruct Hr as [-> | ->]; br.
-  - iApply (HL28 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try side.
+  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step.
+  step. destruct Hr as [-> | ->]; branch.
+  - iApply (HL28 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try libio_side.
     iNext. iIntros (bb sz Hbb) "Hl Hfl Hb Hbe Hbo HM".
     iApply ("HK" $! fl bb sz with "[%] Hl Hfl [$Hfdb //] Hb Hbe Hbo Herr HM"). split; [left; reflexivity | lia].
-  - iApply (HL33 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try side.
+  - iApply (HL33 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try libio_side.
     iNext. iIntros (bb sz Hbb) "Hl Hfl Hb Hbe Hbo HM".
     iApply ("HK" $! (Z.lor fl io_line_buf) bb sz with "[%] Hl Hfl [$Hfdb //] Hb Hbe Hbo Herr HM").
     split; [right; reflexivity | lia].
@@ -126,28 +127,27 @@ Lemma wp_doalloc_L5 fb freg fl fd eb oe sb sreg bs1 bs2 bs3 e Φ :
 Proof.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl1 Hl2 Hl3 He Hfd Hv0 Hc0 Hv4.
   iIntros "Hl Hfl Hfd Herr Hb Hbe HM Hsl Hb1 Hb2 Hb3 HK".
-  st. st. norm. chk "Hsl".
+  step. step. norm. check "Hsl".
   iApply (wp_raw_load_sub_bytes_dq with "Hsl Hb1");
     [reflexivity | vx | rewrite Hl1; reflexivity | reflexivity | left; reflexivity | ar |].
-  iNext. iIntros "Hsl Hb1". st. st. brk Ec.
-  - st. st. norm. chk "Hsl".
+  iNext. iIntros "Hsl Hb1". step. step. brk Ec.
+  - step. step. norm. check "Hsl".
     iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb2"); [reflexivity | vx | exact Hl2 | reflexivity | ar |].
     iNext. iIntros "Hsl Hb2".
     iApply wp_call_bind; [vx | exact Hmaj | reflexivity |]. iNext.
     iApply (wp_glibc___gnu_dev_major w0 registry ge); [reflexivity | apply Z.mod_pos_bound; lia |].
     iNext. iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-    st. brk Ej.
-    + st. st. st. st. brk Ek.
-      * st. br. iApply (HL33 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try side.
+    step. brk Ej.
+    + step. step. step. step. brk Ek.
+      * step. branch. iApply (HL33 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try libio_side.
         iNext. iIntros (bb sz Hbb) "Hl Hfl Hb Hbe Hbo HM".
         iApply ("HK" $! (Z.lor fl io_line_buf) bb sz with "[%] Hl Hfl Hfd Hb Hbe Hbo Herr HM").
         split; [right; reflexivity | lia].
-      * iApply (wp_doalloc_L48 with "Hl Hfl Hfd Herr Hb Hbe HM Hsl Hb3 HK"); try side.
-    + st. br. iApply (wp_doalloc_L48 with "Hl Hfl Hfd Herr Hb Hbe HM Hsl Hb3 HK"); try side.
-  - iApply (HL28 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try side.
+      * iApply (wp_doalloc_L48 with "Hl Hfl Hfd Herr Hb Hbe HM Hsl Hb3 HK"); try libio_side.
+    + step. branch. iApply (wp_doalloc_L48 with "Hl Hfl Hfd Herr Hb Hbe HM Hsl Hb3 HK"); try libio_side.
+  - iApply (HL28 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try libio_side.
     iNext. iIntros (bb sz Hbb) "Hl Hfl Hb Hbe Hbo HM".
     iApply ("HK" $! fl bb sz with "[%] Hl Hfl Hfd Hb Hbe Hbo Herr HM"). split; [left; reflexivity | lia].
 Qed.
 
 End rules.
-End LibioDoAllocModeOn.

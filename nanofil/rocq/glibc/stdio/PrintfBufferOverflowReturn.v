@@ -4,6 +4,7 @@
 
     This proof starts after the call in the captured flush body. It proves
     the caller's error handling, not the overflow call that precedes it. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Definition printf_overflow_block : block := Eval vm_compute in
   match find_block (TAtom "L74") (fn_blocks glibc___printf_buffer_flush_to_file) with
   | Some b => b | None => mkBlock (TAtom "L74") [] [] JRetVoid end.
 
-(** The return path uses the caller's existing memory and OS interpretation. *)
-Module PrintfBufferOverflowReturnOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -49,7 +50,7 @@ Lemma wp_printf_overflow_eof e bb breg mode Φ :
 Proof.
   intros Hbb Hbe Hbr Hv0 Hchk Hr. iIntros "Hb [%Hm Hm] HK".
   cbn [printf_overflow_block b_insts b_jump skipn].
-  fs. fbrv false. fs. fs. fchk "Hb". fsti "Hb" "Hm".
+  step. branch_as false. step. step. check "Hb". store_int "Hb" "Hm".
   iApply wp_ret_void. iNext. norm.
   iApply ("HK" with "Hb [Hm]"). iSplit; [iPureIntro; lia | iExact "Hm"].
 Qed.
@@ -69,10 +70,9 @@ Lemma wp_printf_overflow_continue e r Φ :
 Proof.
   intros Hr Hnot Hlookup. iIntros "HK".
   cbn [printf_overflow_block b_insts b_jump skipn].
-  fs. fbrv true. norm.
+  step. branch_as true. norm.
   assert (Heof : (r =? 4294967295) = false) by (apply Z.eqb_neq; exact Hnot).
   rewrite Heof. iExact "HK".
 Qed.
 
 End rules.
-End PrintfBufferOverflowReturnOn.

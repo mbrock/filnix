@@ -4,6 +4,7 @@
     The call rule stops before the count comparison. The composed rule
     follows the matching-count branch, leaving buffer selection to the caller. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,12 +13,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   ExternalCalls Pieces Heap Language Logic Symbolic.
 From Glibc Require Import LibioLogic LibioXsputnCode LibioXsputnZero
   PrintfBufferFileCode PrintfBufferXsputnReturn.
+From Glibc Require LibioXsputnZero.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The caller and zero-length callee share the supplied instruction rules. *)
-Module PrintfBufferXsputnZeroOn (R : Runtime) (LG : LogicSig R).
-Module ZS := LibioXsputnZeroOn R LG.
+
+Module LG := LG0.
 Import LG LG.L.
 
 Section rules.
@@ -58,7 +60,7 @@ Proof.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hfn) |
     apply (ge_fn_check _ _ _ Hfn) | vx | apply (ge_fn_find _ _ _ Hfn) |
     reflexivity | reflexivity |].
-  iNext. iApply (ZS.wp_xsputn_zero registry wi ge _ fp src P with "HP [HK]"); [reflexivity |].
+  iNext. iApply (LibioXsputnZero.wp_xsputn_zero registry wi ge _ fp src P with "HP [HK]"); [reflexivity |].
   iNext. iIntros "HP".
   iExists _. iSplit; [iPureIntro; reflexivity |]. iNext.
   cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
@@ -93,4 +95,3 @@ Proof.
   iApply ("HK" with "[%] HP"). split; lookups; assumption || reflexivity.
 Qed.
 End rules.
-End PrintfBufferXsputnZeroOn.

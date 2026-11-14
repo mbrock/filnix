@@ -8,6 +8,7 @@
     a wide load from the stat buffer, and [doalloc_k], the
     continuation every proof of the function ends in. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +16,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers LibioSetb.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -87,10 +90,8 @@ Proof.
   destruct (Z.leb_spec (2 ^ 63) (x mod 2 ^ 64)); lia.
 Qed.
 
-(** The definitions over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoAllocBaseOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** The value of x, computed. *)
 Ltac vm_of x := eval vm_compute in x.
@@ -134,7 +135,7 @@ Lemma wp_glibc___gnu_dev_major fr d Φ :
   ▷ Φ (Ret (WInt (dev_major d))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hd. injection Hfr as <-. iIntros "HK". enter. st. st. st. st. st. st. st. st.
+  intros Hfr Hd. injection Hfr as <-. iIntros "HK". step. step. step. step. step. step. step. step. step.
   iApply wp_ret; [reflexivity | vx |]. iNext. rewrite dev_major_eq; [iExact "HK" | exact Hd].
 Qed.
 (** A 64-bit load of eight owned bytes bs reads [of_bytes] bs. *)
@@ -167,4 +168,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioDoAllocBaseOn.

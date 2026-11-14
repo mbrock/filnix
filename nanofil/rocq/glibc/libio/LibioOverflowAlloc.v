@@ -4,6 +4,7 @@
     the fresh buffer's alignment, heap ownership and empty capability
     slots, which later copies and stream closure need. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioSetb LibioOverflowBase LibioOverflowAllocSetg.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowAllocOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -85,15 +86,14 @@ Proof.
   iIntros "#Hvt Hl Hfx [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HM HK". unfold file_size in Hend.
   iDestruct "Hfx" as "(Hf2 & Hfd & Herr & Hcol & Hmode & Hvtp)".
   assert (H2048 : 0 <= Z.land fl 2048 < 2 ^ 32) by (apply land_lt32; lia).
-  enter. adv. load_int "Hl Hflb". adv. brv true.
-  adv. load_int "Hl Hflb". adv. brv false.
-  adv. br. adv.
+  step. adv. load_s32_group "Hl Hflb". adv. branch_as true.
+  adv. load_s32_group "Hl Hflb". adv. branch_as false.
+  adv. branch. adv.
   iApply (wp_raw_load_pointer with "Hl Hwb [//]"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hwb _". adv. br.
+  iNext. iIntros "Hl Hwb _". adv. branch.
   iApply (HL33 with "Hvt Hl [$Hf2 $Hfd $Herr $Hcol $Hmode $Hvtp] [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HM HK");
-    try first [side | lk_prove].
+    try first [libio_side | lk_prove].
   Unshelve. all: exact freg.
 Qed.
 
 End rules.
-End LibioOverflowAllocOn.

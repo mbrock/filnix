@@ -22,6 +22,7 @@
     Theorem [say_logic_safe] proves that `c: main` never fails from such
     a state and returns 0 when it finishes. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -30,6 +31,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules ExternalCalls ExternalMachine Transport Pieces Heap ContractFrame Language Logic
   StringLogic MemLogic.
 From Glibc Require Import SayCode GlibcLogic OsBlocks OsWorld OsWrite StrlenLogic.
+From Glibc Require GlibcLogic OsWorld OsWrite StrlenLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -214,15 +217,10 @@ Definition main_entry : frame := mkFrame main_fn [] [] None (Enter (TAtom "start
     the literal, step through `c: main` and `c: write`, and conclude
     with a safety theorem for any ready runtime state. *)
 
-(** The module [SayLogic] verifies `c: say.c` over an arbitrary runtime
-    R. *)
-Module SayLogic (R : Runtime).
-Module LG := Logic R.
-Module GL := GlibcLogicOn R LG.
-Module OW := OsWriteOn R LG.
-Module SO := StrlenOn R LG.
+
+Module LG := LG0.
 Module L := LG.L.
-Import L LG GL OW OW.OW.
+Import L LG GlibcLogic OsWrite OsWorld.
 
 (** [say_ge] builds the [[genv|global environment]] from [say_module],
     [say_globals], and R's free-list relation. *)
@@ -259,7 +257,7 @@ Lemma strlen_msg_spec Φ :
     {{ Φ }}.
 Proof.
   iIntros "Hps HΦ". rewrite /msg_ps !pts_app. iDestruct "Hps" as "(Hl & H0 & H1)".
-  iApply (SO.wp_glibc_strlen say_registry (os_wi w0) say_ge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 13
+  iApply (StrlenLogic.wp_glibc_strlen say_registry (os_wi w0) say_ge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 13
             with "Hl [H0 H1]").
   - right. reflexivity.
   - vm_compute. reflexivity.
@@ -282,14 +280,14 @@ Lemma main_spec eb :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In 1 (ow_fds w0) ->
   pts msg_ps -∗ errno_any eb -∗ WP (ERun main_entry : sexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
 Proof.
-  intros He Hfd. iIntros "Hps Herr". repeat step.
-  iApply wp_call_bind; [side | exact find_strlen | side |]. iNext.
+  intros He Hfd. iIntros "Hps Herr". repeat concrete_step.
+  iApply wp_call_bind; [concrete_side | exact find_strlen | concrete_side |]. iNext.
   iApply (strlen_msg_spec with "Hps"). iIntros "Hps".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. norm_env.
-  iApply wp_call_bind; [side | exact find_write | side |]. iNext.
-  step.
+  iApply wp_call_bind; [concrete_side | exact find_write | concrete_side |]. iNext.
+  concrete_step.
   iApply (wp_zsys_write w0 say_registry say_ge with "Hps Herr");
-    [reflexivity | side | side | side | exact He | exact Hfd | exact msg_readable |].
+    [reflexivity | concrete_side | concrete_side | concrete_side | exact He | exact Hfd | exact msg_readable |].
   iNext. iIntros (k _) "Hps Herr".
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
@@ -333,8 +331,6 @@ Proof.
     iPureIntro. split; reflexivity.
 Qed.
 
-End SayLogic.
 
 (** [InterpSayLogic] instantiates [SayLogic] with the interpreter's
     runtime. *)
-Module InterpSayLogic := SayLogic InterpRuntime.

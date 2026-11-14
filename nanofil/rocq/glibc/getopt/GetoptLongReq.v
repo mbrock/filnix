@@ -8,6 +8,8 @@
     the first byte of the option string, and it writes only the parser's
     own private fields. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +21,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongScan GetoptLongStore GetoptLongTail GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,20 +35,15 @@ Local Arguments Z.opp : simpl nomatch.
 Definition lreq_keys : list name := Eval vm_compute in
   List.map TAtom ["v12"; "v4"; "pr.7"; "chk0"; "chk58"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongReqOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The tail module supplies both ends of the path, the option table, the report rule and the tactics. *)
-Module LL := GetoptLongTailOn R LG0.
-Import LL LL.LT LL.LT.LD LL.LT.LD.LE LL.LT.LD.LE.LS LL.LT.LD.LE.LS.RT LL.LT.LD.LE.LS.RT.D LL.LT.LD.LE.LS.RT.D.X
-  LL.LT.LD.LE.LS.RT.D.X.I LL.LT.LD.LE.LS.RT.D.X.I.S LL.LT.LD.LE.LS.RT.D.X.I.S.FI LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L LL.LT.LD.LE.LS.RT.D.X.I.ST LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section req.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance req_stable : SafepointStable (os_wi w0) := LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance req_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance req_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -101,16 +100,16 @@ Proof.
   iDestruct "Ht" as (tb treg) "(%Ht & #Htl & #Hes & _)". destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
   iDestruct (big_sepL_lookup with "Hes") as "(_ & _ & #Hhl & _ & #Hvl)"; [exact Hx|].
   iDestruct "Hhl" as "[%Hh0 Hhb]". iDestruct "Hvl" as "[%Hv0 Hvb]".
-  en. st.
+  step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
     [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hhb");
     [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
-  iNext; iIntros "_ _". st. rewrite (Z.mod_small (lo_has x) (2 ^ 32)); [|lia].
+  iNext; iIntros "_ _". step. rewrite (Z.mod_small (lo_has x) (2 ^ 32)); [|lia].
   change (1 mod 2 ^ 32) with 1.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (lo_has x) 1) as [E1 | E1]; close_br.
   2: { iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl [Hib] Hoo Hab Ha Hcl HG"); [split; [xkeep | exact E1] | by iSplit]. }
-  en. chk "Hl". load_int "Hl Hib". st.
+  step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step.
   destruct (Z.lt_ge_cases (i + 1) n) as [Hlt | Hge].
   - brz. iDestruct "HK" as "[_ [HK _]]".
     iApply (wp_long_next w0 registry ge _ _ _ i n with "Hl [Hib] Hab Ha Hcl Hs");
@@ -136,7 +135,7 @@ Proof.
       iIntros (e2 (Hk2 & H484)) "Hl Hoo".
       iApply ("HK" with "[%] Hl [Hib] Hoo Hab Ha Hcl HG"); [|by iSplit].
       split; [eapply keeps_trans; [exact Hk1 | exact Hk2]|]. repeat split; first [exact E1 | exact Hn1 | exact H484]. }
-    en. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
+    step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
     destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
     + iApply ("HL458" with "[%] Ha Hcl HG"). split; [xkeep|]. repeat split; lk_prove.
     + iApply (wp_getopt_ldiag_missing w0 registry ge (lreq_keys ++ ks) with "Ht0 Hpfx Hsl Hsc Ha Hcl Hs HG [HL458]");
@@ -149,4 +148,3 @@ Proof.
 Qed.
 
 End req.
-End GetoptLongReqOn.

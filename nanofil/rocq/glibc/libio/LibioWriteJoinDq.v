@@ -3,6 +3,8 @@
     fields before the loop can continue. This file proves that they do,
     following the actual join block rather than assuming a call rule. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
   SysWrappers LibioWriteExit LibioWriteCallDq.
+From Glibc Require FileInv LibioLogic LibioWriteCallDq LibioWriteExit OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -19,11 +23,8 @@ Definition fw_L16 : block := Eval vm_compute in
   match find_block (TAtom "L16") (fn_blocks glibc__IO_new_file_write) with
   | Some b => b | None => mkBlock (TAtom "L16") [] [] JRetVoid end.
 
-(** The rules use the caller's [[runtime]] and program logic. *)
-Module LibioWriteJoinDqOn (R : Runtime) (LG0 : LogicSig R).
-Module WC := LibioWriteCallDqOn R LG0.
-Import WC WC.WE WC.WE.SW WC.WE.SW.FI.ML WC.WE.SW.FI.LG WC.WE.SW.FI.L
-  WC.WE.SW.OW WC.WE.SW.FI WC.WE.SW.ST.
+
+Import LibioWriteCallDq LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -53,8 +54,7 @@ Lemma wp_file_write_join_dq fb freg f2 fd dq b reg c o xs eb t e Φ :
   lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b + o + (Z.of_nat (length xs) - t)) c)) ->
   live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ liveq dq b reg -∗
   bytesq dq b o xs -∗ errno_any eb -∗
-  ▷ (∀ e' k, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v4" \/ x = TAtom "pr.1" \/ x = TAtom "pr.2" ->
-                lookup x e' = lookup x e) /\
+  ▷ (∀ e' k, ⌜keeps (atoms ["v0"; "v4"; "pr.1"; "pr.2"]) e e' /\
               lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (fb + off_flags2) (Obj fb))) /\
               lookup (TAtom "v37") e' = Some (WInt k) /\
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
@@ -70,29 +70,28 @@ Proof.
   destruct Hcalls as [Hf2 | [Hf2 Hnocancel]].
   - iApply (wp_file_write_call_dq w0 registry ge Hreg Hext Hwrite
       fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr"); try assumption.
-    iNext. iIntros (e' k (Hsame & Hchk & Hresult & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
+    iNext. iIntros (e' k (Hsame & Hchk & Hresult & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     assert (Hk64 : 0 <= k < 2 ^ 64) by (unfold file_size in Hend; lia).
-    st. st.
+    step. step.
     iApply ("HK" $! _ k with "[%] Hl Hfl2 Hfd Hbl Hxs Herr").
     split_and!.
-    + intros x Hx. pose proof (Hsame x Hx) as Hlookup.
-      destruct Hx as [-> | [-> | [-> | ->]]]; lookups; rewrite Hlookup; lookups; reflexivity.
+    + rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. pose proof (Hsame x Hx) as Hlookup.
+      destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; rewrite Hlookup; lookups; reflexivity.
     + lookups. reflexivity.
     + lookups. rewrite Z.mod_small; [reflexivity | exact Hk64].
     + exact Hk.
   - iApply (wp_file_write_call_nocancel_dq w0 registry ge Hreg Hext Hnocancel
       fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr"); try assumption.
-    iNext. iIntros (e' k (Hsame & Hchk & Hresult & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
+    iNext. iIntros (e' k (Hsame & Hchk & Hresult & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     assert (Hk64 : 0 <= k < 2 ^ 64) by (unfold file_size in Hend; lia).
-    st. st.
+    step. step.
     iApply ("HK" $! _ k with "[%] Hl Hfl2 Hfd Hbl Hxs Herr").
     split_and!.
-    + intros x Hx. pose proof (Hsame x Hx) as Hlookup.
-      destruct Hx as [-> | [-> | [-> | ->]]]; lookups; rewrite Hlookup; lookups; reflexivity.
+    + rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. pose proof (Hsame x Hx) as Hlookup.
+      destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; rewrite Hlookup; lookups; reflexivity.
     + lookups. reflexivity.
     + lookups. rewrite Z.mod_small; [reflexivity | exact Hk64].
     + exact Hk.
 Qed.
 
 End rules.
-End LibioWriteJoinDqOn.

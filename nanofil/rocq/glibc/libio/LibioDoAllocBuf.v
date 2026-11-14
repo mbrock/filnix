@@ -3,6 +3,7 @@
     doallocate, `c: _IO_file_doallocate`, whose result is the buffer
     LibioDoAlloc.v proves it installs. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,6 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase.
+From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -19,10 +22,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoAllocBufOn (R : Runtime) (LG0 : LogicSig R).
-Module DB := LibioDoAllocBaseOn R LG0.
-Import DB DB.SW DB.SW.FI.ML DB.SW.FI.LG DB.SW.FI.L DB.SW.OW DB.SW.FI DB.SW.ST.
+
+Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -81,15 +82,15 @@ Proof.
   { rewrite (ge_fn_cap _ _ _ Hdaf). done. }
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & Hslots)".
   unfold io_vtables_size in Hvend.
-  enter. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hb [//]"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hb _". st. st. br.
-  st. chk "Hl". iDestruct "Hfl" as "[%Hfl Hflb]". load_int "Hl Hflb". st. st. brv false.
-  st. br. st. st. norm. chk "Hl".
+  iNext. iIntros "Hl Hb _". step. step. branch.
+  step. check "Hl". iDestruct "Hfl" as "[%Hfl Hflb]". load_s32_group "Hl Hflb". step. step. branch_as false.
+  step. branch. step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". st. st. st. st. st. brv true.
-  st. st. norm.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
+  step. step. norm.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsd Hfc");
@@ -99,14 +100,13 @@ Proof.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hdaf) | apply (ge_fn_check _ _ _ Hdaf) | vx |
     apply (ge_fn_find _ _ _ Hdaf) | reflexivity | reflexivity |].
   iNext.
-  iApply (Hda_spec _ fb freg fl fd eb oe vb vreg with "[] Hl [$Hflb //] Hfd Herr Hb Hbe Hvtp HM"); try side.
+  iApply (Hda_spec _ fb freg fl fd eb oe vb vreg with "[] Hl [$Hflb //] Hfd Herr Hb Hbe Hvtp HM"); try libio_side.
   { iFrame "Hvl Hslots". iPureIntro. unfold io_vtables_size. auto. }
   iNext. iIntros "Hvtp" (fl1 bb sz Hc) "Hl Hfl Hfd Hb Hbe Hbo Herr HM".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  st. br. st. iApply wp_ret_void. iNext.
+  step. branch. step. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hvtp [%] Hl Hfl Hfd Hb Hbe Hbo Herr HM"). exact Hc.
   Unshelve. exact freg.
 Qed.
 
 End rules.
-End LibioDoAllocBufOn.

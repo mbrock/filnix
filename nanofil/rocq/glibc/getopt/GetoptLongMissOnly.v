@@ -7,6 +7,8 @@
     that test safe: it reads the vector, the word and the option string
     only inside them and writes nothing. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +20,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongArg GetoptLongDiag GetoptLongEq GetoptLongExact GetoptLongPre GetoptLongReq GetoptLongScan GetoptLongStore GetoptLongTail GetoptLongUnrec GetoptReqTail GetoptState LibioLogic OsWorld StrchrnulLogic StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,25 +35,16 @@ Definition lonly_names : list name := Eval vm_compute in
   List.map TAtom ["chk35"; "v341"; "v342"; "v343"; "v344"; "chk36"; "v345"; "v346"; "chk37"; "v347"; "v348"; "v350";
     "v355"; "chk38"; "v356"; "chk39"; "v357"; "v358"; "v359"; "v361"; "v363"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongMissOnlyOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The report module supplies the report, the option table and the tactics. *)
-Module LU := GetoptLongUnrecOn R LG0.
-Import LU LU.LA LU.LA.LP LU.LA.LP.LQE LU.LA.LP.LQE.LQ LU.LA.LP.LQE.LQ.LL LU.LA.LP.LQE.LQ.LL.LT LU.LA.LP.LQE.LQ.LL.LT.LD
-  LU.LA.LP.LQE.LQ.LL.LT.LD.LE LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongUnrec GetoptLongArg GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 (** The strchr module proves glibc's own strchr. *)
-Module SC := StrchrnulLogicOn R LG0.
 
 Section only.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance only_stable : SafepointStable (os_wi w0) := LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance only_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance only_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -91,41 +86,40 @@ Proof.
   iDestruct (ws_shape with "Hwq") as %(Hchq & Hqp & Hqe). iDestruct (ws_shape with "Hws") as %(Hch & Hcp & Hce).
   pose proof (sbyte_in_len sq 0 Hq0) as Hql. pose proof (sbyte_range sq 1 Hchq) as Hq1r.
   pose proof (sbyte_range s 0 Hch) as Hs0r.
-  en. chk "Hl". load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). st. norm.
+  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). step. norm.
   iDestruct (ws_byte q sq 1 with "Hwq") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
-    [reflexivity | vx | exact Hcap | arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | arith |].
+    [reflexivity | vx | exact Hcap | StrlenLoop.arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | StrlenLoop.arith |].
   iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |].
-  iNext; iIntros "_ _". iClear "Hbl Hbt". st. rewrite chr_cmp; [|lia|lia].
-  st. en. iApply wp_branch; [vx | iNext].
+    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | StrlenLoop.arith |].
+  iNext; iIntros "_ _". iClear "Hbl Hbt". step. rewrite chr_cmp; [|lia|lia].
+  step. step. iApply wp_branch; [vx | iNext].
   destruct (Z.eqb_spec (sbyte sq 1) 45) as [E45 | E45]; cbn [edge_label].
-  { en. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[HK _]".
+  { step. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl [Hib] Hcur Ha Hcl"); [xkeep | by iSplit]. }
-  en. st. chk "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  step. step. check "Hl".
+  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
   iNext. iIntros "Hl Hcur _".
   iDestruct (ws_byte cur s 0 with "Hws") as (cb creg) "(%Hcb & #Hcbl & #Hcbt)"; [lia|].
   destruct Hcb as (Hccap & ? & ? & ? & ?).
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hcbl");
-    [reflexivity | vx | exact Hccap | arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | arith |].
+    [reflexivity | vx | exact Hccap | StrlenLoop.arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | StrlenLoop.arith |].
   iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hcbl Hcbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hccap | arith |].
+    [reflexivity | vx | reflexivity | apply extended_chr | exact Hccap | StrlenLoop.arith |].
   iNext; iIntros "_ _". iClear "Hcbl Hcbt".
-  iApply (SC.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");
+  iApply (StrchrnulLogic.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");
     [vx | apply Z.mod_pos_bound; lia | exact Hg | exact Hgn | reflexivity |].
-  iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st. st. st. en.
+  iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step. step. step.
   iApply wp_branch; [vx | iNext].
   match goal with |- context [edge_label (if ?c then _ else _)] => destruct c end; cbn [edge_label].
-  - iDestruct "HK" as "[_ HK]". en. iApply ("HK" with "[%] Hl [Hib] Hcur Ha Hcl"); [xkeep | by iSplit].
+  - iDestruct "HK" as "[_ HK]". step. iApply ("HK" with "[%] Hl [Hib] Hcur Ha Hcl"); [xkeep | by iSplit].
   - iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl [Hib] Hcur Ha Hcl"); [xkeep | by iSplit].
 Qed.
 
 End only.
-End GetoptLongMissOnlyOn.

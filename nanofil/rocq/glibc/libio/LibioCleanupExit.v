@@ -13,6 +13,7 @@
     [exit_stream]s themselves, as the unused `c: stdin` and the
     unbuffered `c: stderr` are after `c: close_stdout`. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,22 +24,13 @@ From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlus
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
   LibioCleanupStart LibioCleanupLock LibioCleanupPass LibioCleanup SysCleanup SysCleanupPop ExitRunTail.
+From Glibc Require ExitRunTail FileInv LibioCleanup LibioCleanupFpLock LibioCleanupFpUnlock LibioCleanupLock LibioCleanupMode LibioCleanupPass LibioCleanupStart LibioCloseSteps LibioFlush LibioFlushBody LibioFlushStart LibioFlushTail LibioLogic OsWorld SysCleanup SysCleanupPop SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCleanupExitOn (R : Runtime) (LG0 : LogicSig R).
-Module CC := LibioCleanupOn R LG0.
-Module SC := SysCleanupOn R LG0.
-Module SCP := SysCleanupPopOn R LG0.
-Module XT := ExitRunTailOn R LG0.
-Import CC CC.CP CC.CP.CK CC.CP.CK.CT CC.CP.CK.CT.CU CC.CP.CK.CT.CU.CM CC.CP.CK.CT.CU.CM.CL
-  CC.CP.CK.CT.CU.CM.CL.FA CC.CP.CK.CT.CU.CM.CL.FA.FB CC.CP.CK.CT.CU.CM.CL.FA.FB.FT
-  CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS
-  CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML
-  CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.L
-  CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.OW CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI
-  CC.CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioCleanup LibioCleanupPass LibioCleanupLock LibioCleanupStart LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -57,7 +49,7 @@ Lemma push_spec_holds : push_spec w0 registry ge.
 Proof.
   intros fr cb creg pv xs Φ Hfr Hcb Hcal Hcend Hcreg Hxs.
   iIntros "Htcb Hcl Hc24 Hc16 HK".
-  iApply (SC.wp_glibc___libc_cleanup_push_defer w0 registry ge Hreg Hext fr cb creg 0 pv xs
+  iApply (SysCleanup.wp_glibc___libc_cleanup_push_defer w0 registry ge Hreg Hext fr cb creg 0 pv xs
             with "Htcb Hcl Hc24 Hc16");
     [rewrite Z.add_0_r; exact Hfr | lia | lia | rewrite Z.add_0_r; exact Hcal | lia | lia | exact Hxs |].
   iNext. iIntros "Htcb Hcl Hc24 Hc16". iEval (rewrite Z.add_0_r) in "Htcb".
@@ -71,7 +63,7 @@ Proof.
   iIntros "Htcb Hcl Hcp Hct HK".
   assert (E : mkPtr cb (Obj cb) = mkPtr (cb + 0) (Obj cb)) by (rewrite Z.add_0_r; reflexivity).
   iEval (rewrite E) in "Htcb".
-  iApply (SCP.wp_glibc___libc_cleanup_pop_restore w0 registry ge Hreg Hext fr cb creg 0
+  iApply (SysCleanupPop.wp_glibc___libc_cleanup_pop_restore w0 registry ge Hreg Hext fr cb creg 0
             with "Htcb Hcl Hcp Hct");
     [rewrite Z.add_0_r; exact Hfr | lia | lia | rewrite Z.add_0_r; exact Hcal | lia | lia |].
   iNext. iIntros "Htcb Hcl Hcp Hct". iApply ("HK" with "Htcb Hcl Hcp Hct").
@@ -125,7 +117,7 @@ Proof. intros n c H. exact H. Qed.
 Lemma cleanup_rule_io (P : ptr -> iProp Σ) fs sb sreg fcp :
   flush_body w0 glibc_os_registry ge P (exit_stream false) ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
-  ⊢ XT.cleanup_rule w0 ge (single_ro ge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge fs ∗
+  ⊢ ExitRunTail.cleanup_rule w0 ge (single_ro ge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge fs ∗
                            [∗ list] g ∈ fs, stream_life g ∗ P g).
 Proof.
   intros Hbody Hfc Hfcr. iIntros (f e ls lab d rest j Ψ) "(#Hs & Htcb & Hio & Hfs) HK".
@@ -139,7 +131,7 @@ Qed.
     with nothing to flush ([flush_body_exit]). *)
 Lemma cleanup_rule_exit fs sb sreg fcp :
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
-  ⊢ XT.cleanup_rule w0 ge (single_ro ge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge fs ∗
+  ⊢ ExitRunTail.cleanup_rule w0 ge (single_ro ge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge fs ∗
                            [∗ list] g ∈ fs, stream_life g ∗ exit_stream false g).
 Proof.
   intros Hfc Hfcr. apply (cleanup_rule_io (exit_stream false) fs sb sreg fcp); [|exact Hfc | exact Hfcr].
@@ -147,4 +139,3 @@ Proof.
 Qed.
 
 End exit.
-End LibioCleanupExitOn.

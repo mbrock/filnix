@@ -4,12 +4,15 @@
     Argument storage, diagnostics and the parser transition remain separate
     obligations; this is not a complete program-entry theorem. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import GetoptModule GetoptState.
 From stdpp Require Import list.
+From Glibc Require FileInv GetoptState.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -66,11 +69,9 @@ Proof.
   apply (bool_decide_unpack _). vm_compute. exact I.
 Qed.
 
-(** Resource construction uses the same runtime and logic as the caller. *)
-Module GetoptInitialOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The session module supplies the private-field representation. *)
-Module S := GetoptStateOn R LG0.
-Import S S.FI S.FI.ML S.FI.LG S.FI.L.
+Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.
@@ -103,4 +104,3 @@ Proof.
     [iExact "Hpts"|exact getopt_private_distinct].
 Qed.
 
-End GetoptInitialOn.

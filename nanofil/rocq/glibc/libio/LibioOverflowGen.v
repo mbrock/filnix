@@ -4,6 +4,7 @@
     narrow, its `c: _mode` set to -1, and the jump table's overflow,
     `c: _IO_new_file_overflow`, does the rest. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode LibioGenCode FileInv LibioLogic
   SysWrappers LibioOverflowBase.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowGenOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -57,14 +58,14 @@ Proof.
   { rewrite (ge_fn_cap _ _ _ Hovf). done. }
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & Hslots)".
   unfold io_vtables_size in Hvend.
-  enter. adv. load_int "Hl Hmb". st. destruct Hmd as [-> | ->]; br.
-  1: adv; load_int "Hl Hmb"; st; br; adv;
+  step. adv. load_s32_group "Hl Hmb". step. destruct Hmd as [-> | ->]; branch.
+  1: adv; load_s32_group "Hl Hmb"; step; branch; adv;
     iApply (wp_raw_store_w with "Hl Hmb"); [vx | vx | reflexivity | ar | reflexivity | wi_store |];
-    iNext; iIntros "Hl Hmb"; adv; assert (Hm1 : 0 <= 4294967295 < 2 ^ 32) by lia; load_int "Hl Hmb"; st.
+    iNext; iIntros "Hl Hmb"; adv; assert (Hm1 : 0 <= 4294967295 < 2 ^ 32) by lia; load_s32_group "Hl Hmb"; step.
   all: adv; iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
-  all: iNext; iIntros "Hl Hvtp #Hvl'"; st; st; st; st; st; brv true.
-  all: st; st; norm.
+  all: iNext; iIntros "Hl Hvtp #Hvl'"; step; step; step; step; step; branch_as true.
+  all: step; step; norm.
   all: iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
   all: iNext; iIntros "_".
   all: iApply (wp_raw_load_pointer_dq with "Hvl' Hso Hfc");
@@ -84,4 +85,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioOverflowGenOn.

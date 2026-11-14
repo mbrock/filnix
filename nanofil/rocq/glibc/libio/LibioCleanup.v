@@ -20,6 +20,7 @@
     `c: stderr` have nothing to flush. [cleanup_rule_io] is
     ExitRunTail.v's [cleanup_rule] for them. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -30,6 +31,8 @@ From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlus
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
   LibioCleanupStart LibioCleanupLock LibioCleanupPass.
+From Glibc Require FileInv LibioCleanupFpLock LibioCleanupFpUnlock LibioCleanupLock LibioCleanupMode LibioCleanupPass LibioCleanupStart LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -38,16 +41,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCleanupOn (R : Runtime) (LG0 : LogicSig R).
-Module CP := LibioCleanupPassOn R LG0.
-Import CP CP.CK CP.CK.CT CP.CK.CT.CU CP.CK.CT.CU.CM CP.CK.CT.CU.CM.CL CP.CK.CT.CU.CM.CL.FA CP.CK.CT.CU.CM.CL.FA.FB
-  CP.CK.CT.CU.CM.CL.FA.FB.FT CP.CK.CT.CU.CM.CL.FA.FB.FT.FS CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC
-  CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS
-  CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML
-  CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.L
-  CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.OW CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI
-  CP.CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioCleanupPass LibioCleanupLock LibioCleanupStart LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -94,7 +89,7 @@ Proof.
   induction rest as [|g rest IH]; intros prev e from Hph Hv1 Hv2; cbn [head_ptr] in Hph.
   - iIntros "#Hs Hrl Hrc Hch Hfs HK".
     destruct Hph as [(-> & Hv) | (-> & Hv)].
-    all: fs; fs; fs; fbr; iApply ("HK" with "[%] Hrl Hrc Hch Hfs"); split_and!; lk_prove.
+    all: step; step; step; branch; iApply ("HK" with "[%] Hrl Hrc Hch Hfs"); split_and!; lk_prove.
   - iIntros "#Hs Hrl Hrc Hch Hfs HK". cbn [chain_links].
     iDestruct "Hch" as (gb ->) "(Hpv & Hnc & Hch)".
     iDestruct "Hfs" as "[[(%gb' & %greg & %Hg & Hl) HX] Hfs]".
@@ -117,7 +112,7 @@ Proof.
       rewrite big_sepL_cons. iFrame "Hfs HX". iExists gb, greg. iFrame "Hl". iPureIntro.
       unfold file_size. split_and!; auto; lia. }
     destruct Hph as [(-> & Hv) | (-> & Hv)].
-    all: fs; fs; fs; fbrv false; iApply "Hpass"; iPureIntro; split_and!; lk_prove.
+    all: step; step; step; branch_as false; iApply "Hpass"; iPureIntro; split_and!; lk_prove.
 Qed.
 
 (** `c: _IO_cleanup ()` over [io_list_inv]'s streams fs, each with
@@ -158,4 +153,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioCleanupOn.

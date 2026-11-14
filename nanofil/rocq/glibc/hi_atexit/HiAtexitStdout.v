@@ -4,6 +4,7 @@
     independently of the returned byte count and leaves the generic
     FILE predicates unchanged. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,15 +13,15 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioDefaultXsputnBuf LibioXsputnBase LibioPutsInv HiAtexitBase HiAtexitOutputState.
 From Glibc Require Export HiAtexitPutsRules.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioLogic LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The stream views reuse the instance checked for the puts rule. *)
-Import HP.PN.PB.PM.PC.PU.PL.
-Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
-  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB XB.DX.RM.SM.TL.BY.BF.
+Import LibioPutsLock.
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioXsputnSetp.
+Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 Section streams.
 Context `{!gen_heapGS piece pval Σ}.

@@ -8,6 +8,7 @@
     its exit status. Comparison and exit use concrete library proofs;
     printing remains an explicit obligation. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,16 +19,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
   HelloGlibcMainVersion.
+From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainLoop HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The help-ending proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainHelpEndOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The version module supplies the common output and exit rules. *)
-Module Vn := HelloGlibcMainVersionOn R LG0.
-Import Vn Vn.Lp Vn.Lp.Dp Vn.Lp.Dp.St Vn.Lp.Dp.St.S Vn.Lp.Dp.St.S.D Vn.Lp.Dp.St.S.D.FB
-  Vn.Lp.Dp.St.S.D.SW Vn.Lp.Dp.St.S.D.SW.FI.ML Vn.Lp.Dp.St.S.D.SW.FI.LG
-  Vn.Lp.Dp.St.S.D.SW.FI.L Vn.Lp.Dp.St.S.D.SW.OW Vn.Lp.Dp.St.S.D.SW.FI.
+Import HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section help_end.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -87,16 +86,16 @@ Proof.
   intros Hv41. iIntros "#Hro [Hio Hpv] Hn HX".
   iPoseProof "Hro" as "(_ & _ & _ & _ & #Hsel & #Hsec & _)".
   iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & Hen)".
-  st. st_global (hy_se _ _ Hy).
+  step. step_global (hy_se _ _ Hy).
   iApply (wp_std_stream with "Hsel Hsec Hfe"); [lk_prove | exact (hy_se_at _ _ Hy) |]. iIntros "Hfe".
   iAssert (hello_stdio w0 ge o) with "[Hfo Hfe Hfi Hls Htc Hen]" as "Hio".
   { iSplitL "Hfo"; [iExact "Hfo"|]. iSplitL "Hfe"; [iExact "Hfe"|]. iSplitL "Hfi"; [iExact "Hfi"|].
     iSplitL "Hls"; [iExact "Hls"|]. iSplitL "Htc"; [iExact "Htc" | iExact "Hen"]. }
-  st. st. st.
-  eapply step_wand; [eapply wp_branch; ins; vx |].
+  step. step. step.
+  eapply step_wand; [eapply wp_branch; inst; vx |].
   lazymatch goal with |- context [if ?c then _ else _] => destruct c end; cbn [Z.eqb edge_label].
-  - st. iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
-  - st. st. st. iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
+  - step. iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
+  - step. step. step. iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
 Qed.
 
 (** A read-only string's address is positive and a machine word. *)
@@ -122,25 +121,24 @@ Proof.
   intros Hv41 Hv3. iIntros "#Hro Hio Hq Hn HX".
   (* The note on translations, when the message locale is not English. *)
   iDestruct "Hq" as "[%Hq0 | #Hq]".
-  - st. st. br. st. br. iApply (help_L32 with "Hro Hio Hn HX"). lk_prove.
+  - step. step. (branch_symbolic; LeavesLogic.decide_branch). step. (branch_symbolic; LeavesLogic.decide_branch). iApply (help_L32 with "Hro Hio Hn HX"). lk_prove.
   - iDestruct (str_ro_pos with "Hq") as %Hqa.
-    st. st. br. st. st_global (hy_lits _ _ Hy "hello#str.61" ltac:(cbn; tauto)).
+    step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step_global (hy_lits _ _ Hy "hello#str.61" ltac:(cbn; tauto)).
     iDestruct "Hq" as (s1) "#Hw1".
     iDestruct (lit_ro ge o "hello#str.61" with "Hro") as (s2) "#Hw2"; [cbn; tauto|].
     iApply (wp_call_intn w0 ge _ _ _ (fun _ => True)%I with "[]");
       [eapply fn_triple_mono; [exact (hl_strncmp _ _ _ _ _ _ Lb q (sym_ptr ge "hello#str.61") s1 s2)|];
        iIntros (r) "(%k & %Hk)"; iExists k; iSplit; [iPureIntro; exact Hk | done] | vx |
        iSplitL; [iExact "Hw1" | iExact "Hw2"] |].
-    iNext. iIntros (k Hk) "_". st. st. st.
+    iNext. iIntros (k Hk) "_". step. step. step.
     destruct (Z.eq_dec k 0) as [-> | Hk0].
-    + br. iApply (help_L32 with "Hro Hio Hn HX"). lk_prove.
-    + br. st. st_global (hy_lits _ _ Hy "hello#str.62" ltac:(cbn; tauto)).
-      st_global (hy_lits _ _ Hy "hello#str.63" ltac:(cbn; tauto)).
+    + (branch_symbolic; LeavesLogic.decide_branch). iApply (help_L32 with "Hro Hio Hn HX"). lk_prove.
+    + (branch_symbolic; LeavesLogic.decide_branch). step. step_global (hy_lits _ _ Hy "hello#str.62" ltac:(cbn; tauto)).
+      step_global (hy_lits _ _ Hy "hello#str.63" ltac:(cbn; tauto)).
       iApply (wp_print with "Hro Hio [] [-]"); [right; right; left; split; reflexivity | vx | |].
       { iSplitL; [iApply arg_out|]. iSplitL; [iApply str_ro_arg; iApply (lit_ro with "Hro"); cbn; tauto|].
         iSplitL; [iApply str_ro_arg; iApply (lit_ro with "Hro"); cbn; tauto | done]. }
-      iNext. iIntros (n8) "Hio". st. iApply (help_L32 with "Hro Hio Hn HX"). lk_prove.
+      iNext. iIntros (n8) "Hio". step. iApply (help_L32 with "Hro Hio Hn HX"). lk_prove.
 Qed.
 
 End help_end.
-End HelloGlibcMainHelpEndOn.

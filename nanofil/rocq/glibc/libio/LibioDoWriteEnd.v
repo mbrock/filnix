@@ -4,6 +4,7 @@
     and the result is 0 when the write took all n bytes, else
     `c: EOF` ([wp_do_write_end]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,6 +12,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioDoWriteCode FileInv LibioLogic SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -19,10 +22,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoWriteEndOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -54,32 +55,31 @@ Proof.
   intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hv0 Hc0 Hc16 Hv114 Hv4 Hv67. unfold file_size in Hend.
   destruct be as [bea bec]. cbn in Hbe, Hbec. subst bec.
   iIntros "Hl Hbl Hfl Hwe Hbase Hbend HK".
-  st. chk "Hl". iDestruct "Hfl" as "[%Hfl0 Hfl]". load_int "Hl Hfl". st. st. st.
+  step. check "Hl". iDestruct "Hfl" as "[%Hfl0 Hfl]". load_s32_group "Hl Hfl". step. step. step.
   assert (Hm514 : 0 <= Z.land fl 514 < 2 ^ 32) by (apply land_lt32; lia).
   destruct (Z.land fl 514 =? 0) eqn:E514; [apply Z.eqb_eq in E514 | apply Z.eqb_neq in E514].
-  - st. brv true. st. st. norm. chk "Hl".
+  - step. branch_as true. step. step. norm. check "Hl".
     iApply (wp_raw_load_pointer with "Hl Hbend Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hbend Hbl". st. st. chk "Hl".
+    iNext. iIntros "Hl Hbend Hbl". step. step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hwe"); [vx | vx | reflexivity | ar | ar | wi_store |].
-    iNext. iIntros "Hl Hwe". st. st. st. st. st.
+    iNext. iIntros "Hl Hwe". step. step. step. step. step.
     destruct (Z.eq_dec r n) as [-> | Hrn].
-    + brv false. st. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.
+    + branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.
       iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with true by (symmetry; apply Z.eqb_eq; exact E514). iExact "Hwe".
-    + brv true. st. st. st. iApply wp_ret; [reflexivity | vx |]. iNext.
+    + branch_as true. step. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
       replace (r =? n) with false by (symmetry; apply Z.eqb_neq; exact Hrn).
       iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with true by (symmetry; apply Z.eqb_eq; exact E514). iExact "Hwe".
-  - st. brv false. st. st. norm. chk "Hl".
+  - step. branch_as false. step. step. norm. check "Hl".
     iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hbase Hbl". st. st. chk "Hl".
+    iNext. iIntros "Hl Hbase Hbl". step. step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hwe"); [vx | vx | reflexivity | ar | ar | wi_store |].
-    iNext. iIntros "Hl Hwe". st. st. st. st. st.
+    iNext. iIntros "Hl Hwe". step. step. step. step. step.
     destruct (Z.eq_dec r n) as [-> | Hrn].
-    + brv false. st. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.
+    + branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.
       iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with false by (symmetry; apply Z.eqb_neq; exact E514). iExact "Hwe".
-    + brv true. st. st. st. iApply wp_ret; [reflexivity | vx |]. iNext.
+    + branch_as true. step. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
       replace (r =? n) with false by (symmetry; apply Z.eqb_neq; exact Hrn).
       iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with false by (symmetry; apply Z.eqb_neq; exact E514). iExact "Hwe".
 Qed.
 
 End rules.
-End LibioDoWriteEndOn.

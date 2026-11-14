@@ -15,6 +15,7 @@
     and calls nothing ([wp_glibc__IO_unsave_markers]), which is
     LibioCloseItMid.v's [unsave_spec] for it ([unsave_spec_holds]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,6 +24,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   LibioGenCode LibioCloseItEnd LibioCloseItMid ExitRun.
+From Glibc Require ExitRun FileInv LibioCloseItMid LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,12 +34,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioGenLeavesOn (R : Runtime) (LG0 : LogicSig R).
-Module CM := LibioCloseItMidOn R LG0.
-Module ER := ExitRunOn R LG0.
-Import CM.CE.CS CM.CE.CS.SW CM.CE.CS.SW.FI.ML CM.CE.CS.SW.FI.LG CM.CE.CS.SW.FI.L CM.CE.CS.SW.OW
-  CM.CE.CS.SW.FI CM.CE.CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -72,14 +71,14 @@ Proof.
   intros Hfb Hfal Hfend. unfold file_size in Hfend.
   iIntros "Hl H80 H96 HK". unfold unsave_frame.
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  fs. fs. fchk "Hl". fldn "Hl" "H96". fs. fs. fbr.
-  fs. fs. fchk "Hl". fldn "Hl" "H80". fs. fs. fs. fbr.
-  fs. iApply wp_ret_void. iNext. iApply ("HK" with "Hl H80 H96").
+  step. step. check "Hl". load_null "Hl" "H96". step. step. branch.
+  step. step. check "Hl". load_null "Hl" "H80". step. step. step. branch.
+  step. iApply wp_ret_void. iNext. iApply ("HK" with "Hl H80 H96").
 Qed.
 
 (** LibioCloseItMid.v's [unsave_spec] holds of glibc's
     `c: _IO_unsave_markers`. *)
-Lemma unsave_spec_holds : CM.unsave_spec w0 registry ge glibc__IO_unsave_markers.
+Lemma unsave_spec_holds : LibioCloseItMid.unsave_spec w0 registry ge glibc__IO_unsave_markers.
 Proof.
   intros fb. exists (unsave_frame fb). split; [apply unsave_frame_call|].
   intros freg Φ Hfb Hfal Hfend. iIntros "Hl H80 H96 HK".
@@ -95,7 +94,7 @@ Context (Hdt : find_fn ge (TAtom "__GI___call_tls_dtors") = Some (Defined glibc_
 
 (** `c: __call_tls_dtors ()` returns at once: ExitRun.v's
     [dtors_rule] holds from any resource P to itself. *)
-Lemma dtors_rule_tls (P : iProp Σ) : ⊢ ER.dtors_rule w0 ge P P.
+Lemma dtors_rule_tls (P : iProp Σ) : ⊢ ExitRun.dtors_rule w0 ge P P.
 Proof.
   iIntros (f e ls lab rest j Ψ) "HP HK".
   iApply wp_call_bind; [reflexivity | exact Hdt | reflexivity |]. iNext.
@@ -105,4 +104,3 @@ Proof.
 Qed.
 
 End dtors.
-End LibioGenLeavesOn.
