@@ -126,11 +126,13 @@ def audit(tree, layout, contracts, output, groups=None):
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('tree', type=Path)
-    p.add_argument('--layout', type=Path, default=HERE / 'layouts/original')
+    p.add_argument('--layout', type=Path)
     p.add_argument('--contracts', type=Path)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--groups', nargs='+')
     a = p.parse_args()
+    if a.layout is None:
+        a.layout = HERE / 'layouts' / ('flat' if (a.tree / 'Fix.v').exists() else 'original')
     contracts = a.contracts or (a.layout / 'contracts.json')
     if not contracts.exists() and a.contracts is None:
         contracts = HERE / 'audit-contracts.json'

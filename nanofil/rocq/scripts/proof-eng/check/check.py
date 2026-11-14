@@ -493,6 +493,24 @@ def runtime_partition(before, out):
 def compare(args):
     before, after = Tree(args.before), Tree(args.after)
     abstract = Tree(args.abstract_after) if args.abstract_after else None
+    abstract_before_path = getattr(args, 'abstract_before', None)
+    abstract_before = Tree(abstract_before_path) if abstract_before_path else None
+    if abstract and (before.root / 'Fix.v').exists() and abstract_before is None:
+        raise ValueError('a flat baseline requires --abstract-before with --abstract-after')
+    if abstract_before and not abstract:
+        raise ValueError('--abstract-before requires --abstract-after')
+    if abstract_before:
+        if set(abstract_before.files) != set(before.files):
+            raise ValueError('abstract baseline inventory differs from the concrete baseline')
+        for rel, source in before.files.items():
+            expected = source.read_text()
+            if rel == 'Fix.v':
+                binding = 'Module R := InterpRuntime.'
+                if expected.count(binding) != 1:
+                    raise ValueError('flat baseline must bind InterpRuntime exactly once')
+                expected = expected.replace(binding, 'Declare Module R : Runtime.')
+            if abstract_before.files[rel].read_text() != expected:
+                raise ValueError('abstract baseline changed more than its runtime binding: ' + rel)
     out = Path(args.output).resolve()
     out.mkdir(parents=True, exist_ok=True)
     partition = runtime_partition(before, out) if abstract else None
@@ -516,16 +534,18 @@ def compare(args):
         sides = []
         errors = []
         candidate = after
+        original = before
         concrete = False
         if abstract:
             if rel in interpreter_closure:
                 concrete = True
             else:
                 candidate = abstract
+                original = abstract_before or before
                 if rel in candidate.files and not candidate.files[rel].with_suffix('.vo').exists():
                     return rel, [None, None], ['general file failed to compile abstractly: ' + rel]
         results['runtime_by_file'][rel] = 'concrete' if concrete else 'abstract'
-        for label, tree in [('before', before), ('after', candidate)]:
+        for label, tree in [('before', original), ('after', candidate)]:
             if rel not in tree.files:
                 sides.append({})
                 continue
@@ -633,6 +653,7 @@ if __name__ == '__main__':
     p.add_argument('--files', nargs='+')
     p.add_argument('--discovery', action='store_true', help='allow unchanged candidates; never accept discovered differences')
     p.add_argument('--stage50-evidence', action='append', default=[], help='source-bound packet receipt; repeat for both runtimes')
+    p.add_argument('--abstract-before', help='compiled abstract copy of a flat baseline; only Fix.R may differ')
     p.add_argument('--abstract-after', help='compare general files abstractly and the original interpreter dependency closure concretely')
     args = p.parse_args()
     if args.mode == 'partition':

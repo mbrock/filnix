@@ -5,11 +5,15 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src=${1:?usage: prepare-layout.sh ORIGINAL_TREE OUTPUT_LAYOUT}
 out=${2:?usage: prepare-layout.sh ORIGINAL_TREE OUTPUT_LAYOUT}
+layout=$here/layouts/original
+if [ -f "$src/Fix.v" ]; then
+  layout=$here/layouts/flat
+fi
 mkdir -p "$out"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 cp -r "$src" "$tmp/source"
-for file in "$here"/layouts/original/*.v; do
+for file in "$layout"/*.v; do
   name=$(basename "$file" .v | tr - _)
   cp "$file" "$tmp/source/PEAudit_$name.v"
 done
@@ -41,7 +45,7 @@ for path in Path(sys.argv[1]).glob('PEAudit_*.v'):
 Path(sys.argv[2]).write_text(json.dumps(renames))
 PY
 "$here/../apply.sh" "$tmp/source" "$tmp/flat"
-python3 - "$tmp/flat" "$tmp/renames.json" "$here/layouts/original" "$out" <<'PY'
+python3 - "$tmp/flat" "$tmp/renames.json" "$layout" "$out" <<'PY'
 from pathlib import Path
 import json
 import re
