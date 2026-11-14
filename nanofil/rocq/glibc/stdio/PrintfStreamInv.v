@@ -88,7 +88,7 @@ Proof.
   cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset fs_codecvt fs_wide
     fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable].
   iSplitR; [iPureIntro; unfold flags_ok in *; cbn [fs_flags fs_flags2]; tauto|].
-  iFrame. iSplit; done.
+  iFrame "Hl Hk Hb Hfl Hps Hfd Hflags2 Hold Hcol Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htot Hvtp". iSplit; done.
 Qed.
 
 End streams.

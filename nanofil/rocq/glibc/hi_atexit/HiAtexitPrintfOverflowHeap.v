@@ -74,7 +74,7 @@ Proof.
     apply land_lor_const. exact Hmask. }
   iApply ("HK" with "[%] [Hl Hst Hf2 Hfd Hcol Hmd Hvtp Htail HB] Herr"); [exact Hr|].
   iExists fb, freg, st, bb, breg, sz, k', we', xs', fl', tw', off', col.
-  iFrame. iPureIntro. rewrite (Hmask io_is_appending eq_refl) (Hmask io_no_writes eq_refl)
+  iFrame "Hl Hst Hf2 Hfd Hcol Hmd Hvtp Htail HB". iPureIntro. rewrite (Hmask io_is_appending eq_refl) (Hmask io_no_writes eq_refl)
     (Hmask io_currently_putting eq_refl). tauto.
 Qed.
 
@@ -118,7 +118,7 @@ Proof.
   iApply (hi_printf_heap_file_overflow fr' eb vb vreg self (mkPtr fb (Obj fb))
     (2 ^ 32 - 1) flags2 held ch with "Hvt [Hl Hst Hf2 Hfd Hcol Hmd Hvtp Htail] Herr");
     try assumption; try (left; exact Hch).
-  { iExists fb, freg, st, bb, breg, sz, k, we, xs, fl, tw, off, col. iFrame. done. }
+  { iExists fb, freg, st, bb, breg, sz, k, we, xs, fl, tw, off, col. iFrame "Hl Hst Hf2 Hfd Hcol Hmd Hvtp Htail". done. }
   iNext. iIntros (r Hr) "Hf Herr".
   assert (Hrr : 0 <= r < 2 ^ 32).
   { destruct Hr as [-> | ->]; [lia|]. destruct (Z.eqb_spec ch (2 ^ 32 - 1)); lia. }

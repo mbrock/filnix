@@ -342,8 +342,10 @@ vernac(P, ind(P, Kw, Bodies)) --> tk(id(Kw)), { memberchk(Kw, ['Inductive', 'CoI
 vernac(P, rec(P, Kw, N, Bs, Sort, Ctor, Fs)) -->
     tk(id(Kw)), { memberchk(Kw, ['Record', 'Structure', 'Class']) }, !,
     name(N), binders0(Bs), opt_type(Sort), tk(sym(':=')),
-    ( name(Ctor) -> [] ; { Ctor = none } ),
-    tk(p('{')), fields(Fs), tk(p('}')).
+    ( { Kw == 'Class' }, field(Fld), \+ peek(_)
+    -> { Ctor = singleton, Fs = [Fld] }
+    ; ( name(Ctor) -> [] ; { Ctor = none } ),
+      tk(p('{')), fields(Fs), tk(p('}')) ).
 %  Fixpoint f … := … with g … := …: mutual(P, Defs), the first def/6
 %  with its keyword and each further one with Kw with.
 vernac(P, S) -->
@@ -392,7 +394,7 @@ def_kw(Kw) --> tk(id(Kw)), { memberchk(Kw, ['Definition', 'Fixpoint', 'CoFixpoin
 def_kw('Canonical Structure') --> tk(id('Canonical')), tk(id('Structure')).
 
 directive(K) :- memberchk(K, ['From', 'Require', 'Import', 'Export', 'Include', 'Open', 'Close', 'Set', 'Unset',
-                              'Arguments', 'Hint', 'Declare', 'Delimit', 'Bind', 'Implicit',
+                              'Arguments', 'Hint', 'Declare', 'Existing', 'Delimit', 'Bind', 'Implicit',
                               'Generalizable', 'Create', 'Opaque', 'Transparent', 'Coercion']).
 
 words([W|Ws]) --> [t(K, _, _)], !, { tok_text(K, W) }, words(Ws).
@@ -616,8 +618,13 @@ binder(b(F-T, gen(Open, Items), [], none)) -->
     tk(p('`'), F, _), [t(p(Open), _, _)], { memberchk(Open, ['{', '(']), matching(Open, Close) },
     gen_items(Items), tk(p(Close), _, T).
 
-gen_items([I|Is]) --> ( tk(sym('!')) -> term(E), { I = bang(E) } ; term(I) ),
+gen_items([I|Is]) --> gen_item(I),
     ( tk(p(',')) -> gen_items(Is) ; { Is = [] } ).
+
+gen_item(bang(cast(F-T, id(F-NEnd, N), E))) -->
+    tk(id(N), F, NEnd), tk(sym(':')), tk(sym('!')), !, term(E), { end(E, T) }.
+gen_item(bang(E)) --> tk(sym('!')), !, term(E).
+gen_item(E) --> term(E).
 
 %  Operators by precedence: binop(Op, Level, Assoc), Rocq's levels (a
 %  lower level binds tighter). The file's own infix notations are added

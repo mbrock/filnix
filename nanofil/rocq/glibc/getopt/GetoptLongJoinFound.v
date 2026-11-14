@@ -29,13 +29,13 @@ Local Arguments Z.opp : simpl nomatch.
 Module GetoptLongJoinFoundOn (R : Runtime) (LG0 : LogicSig R).
 (** The not-found returns module supplies the state after a return, the searches and the tactics. *)
 Module LJM := GetoptLongJoinMissOn R LG0.
-Import LJM LJM.LPB LJM.LPB.LPF LJM.LPB.LPF.LPP LJM.LPB.LPF.LPP.LAR LJM.LPB.LPF.LPP.LAR.LAO LJM.LPB.LPF.LPP.LAR.LAO.LAH LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM
-  LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
+Import LJM
+  LJM.LPB
+  LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT
+  LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA
+  LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
   LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
   LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
   LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
   LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
   LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
@@ -74,7 +74,8 @@ Qed.
 
 (** The parser found the entry x at index j for the word whose rest s
     starts at the cursor cur. Each of its four returns gives the caller
-    the value x of the return and the state that plo_res describes. *)
+    the value v of the return and the state that plo_res describes. The
+    value is -1 only when the entry has no flag and the value -1. *)
 Lemma wp_long_join_found ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid3 mid4 av ar ps lo os j x pfx sp
     po so cur s i n pe oo a b r li F Φ :
   avoids ks larg_names = true -> avoids ks lreq_names = true -> avoids ks leq_names = true ->
@@ -101,7 +102,7 @@ Lemma wp_long_join_found ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mi
   live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo -∗ pcell b 16 a -∗ pcell b 32 cur -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   (∀ e' l rv v, ⌜keeps ks e e' /\ value_x ge e' W rv = Some (WInt v)⌝ -∗
-     plo_res b r av ar ps li F G M i n cur s a -∗
+     plo_res b r av ar ps li F G M i n cur s a os v -∗
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
@@ -115,19 +116,25 @@ Proof.
   - iIntros (e' i' a' (Hk' & Hla & _)) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hli HF".
     destruct (long_arg_res _ _ _ _ _ _ _ _ _ Hla) as [Hi' Ha'].
     iApply ("HK" $! e' _ (Const 0) 0 with "[%] [-]"); [split; [exact Hk' | reflexivity]|].
-    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM [Hli]"); [exact Hi' | left; reflexivity | exact Ha'|].
+    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM [Hli]");
+      [exact Hi' | left; reflexivity | exact Ha' | lia | intros Hv; lia |].
     iDestruct "Hli" as "[%Hn0 | Hli]"; [by iLeft | iRight; iExists _; iExact "Hli"].
-  - iIntros (e' i' a' (Hk' & Hla & _ & H511)) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hli HF".
+  - iIntros (e' i' a' (Hk' & Hla & Hfn & H511)) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hli HF".
     destruct (long_arg_res _ _ _ _ _ _ _ _ _ Hla) as [Hi' Ha'].
-    iApply ("HK" $! e' _ (Tmp (TAtom "v511")) _ with "[%] [-]"); [split; [exact Hk' | cbn; rewrite H511; reflexivity]|].
-    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM [Hli]"); [exact Hi' | left; reflexivity | exact Ha'|].
+    iApply ("HK" $! e' _ (Tmp (TAtom "v511")) (lo_val x mod 2 ^ 32) with "[%] [-]");
+      [split; [exact Hk' | cbn; rewrite H511; reflexivity]|].
+    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM [Hli]");
+      [exact Hi' | left; reflexivity | exact Ha' | apply Z.mod_pos_bound; lia | intros Hv; right; exists x; split; [eapply list_elem_of_lookup_2; exact Hx | split; assumption] |].
     iDestruct "Hli" as "[%Hn0 | Hli]"; [by iLeft | iRight; iExists _; iExact "Hli"].
   - iIntros (e' (Hk' & _ & _)) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hli HF".
     iApply ("HK" $! e' _ (Const 63) 63 with "[%] [-]"); [split; [exact Hk' | reflexivity]|].
-    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli"); [lia | left; reflexivity | left; reflexivity].
+    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli");
+      [lia | left; reflexivity | left; reflexivity | lia | intros Hv; lia].
   - iIntros (e' (Hk' & _ & _ & _ & H484)) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hli HF".
-    iApply ("HK" $! e' _ (Tmp (TAtom "v484")) _ with "[%] [-]"); [split; [exact Hk' | cbn; rewrite H484; reflexivity]|].
-    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli"); [lia | left; reflexivity | left; reflexivity].
+    iApply ("HK" $! e' _ (Tmp (TAtom "v484")) ((if sbyte so 0 =? 58 then 58 else 63) mod 2 ^ 32) with "[%] [-]");
+      [split; [exact Hk' | cbn; rewrite H484; reflexivity]|].
+    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli");
+      [lia | left; reflexivity | left; reflexivity | apply Z.mod_pos_bound; lia | intros Hv; exfalso; destruct (sbyte so 0 =? 58); vm_compute in Hv; discriminate Hv].
 Qed.
 
 End found.

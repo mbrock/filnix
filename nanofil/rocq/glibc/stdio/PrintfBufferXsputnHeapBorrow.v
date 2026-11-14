@@ -32,7 +32,7 @@ Proof.
   injection Hfp as Heq. subst fb'.
   iExists freg, (DfracOwn 1%Qp). iSplit; [iPureIntro; unfold file_size in *; lia|].
   iFrame "Hf Hvt". iIntros "Hf Hvt".
-  iExists fb, freg, st, db, dreg, sz, k, we, xs, fl, tw, off, col. iFrame. done.
+  iExists fb, freg, st, db, dreg, sz, k, we, xs, fl, tw, off, col. iFrame "Hf Hst Hf2 Hfd Hcol Hmd Hvt Htail". done.
 Qed.
 
 End rules.

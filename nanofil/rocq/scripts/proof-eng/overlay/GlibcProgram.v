@@ -62,6 +62,19 @@ Notation "'program_call' '(' rule ')'" :=
          exact (let result : T' := proof in result)))
   (at level 0, rule at level 200, only parsing).
 
+(** An audited endpoint also preserves its original instance name and local
+    let-bindings. The instance argument supplies that name without registering
+    another instance for proof search. *)
+Notation "'program_call_with' '(' instance ')' '(' rule ')'" :=
+  (ltac:(let proof := constr:(rule) in
+         let T := type of proof in
+         let T' := eval cbv beta iota delta
+           [program_of program_world program_registry program_ge
+            program_irisGS program_inv program_heap] in T in
+         let T'' := eval fold instance in T' in
+         exact (let result : T'' := proof in result)))
+  (at level 0, instance at level 200, rule at level 200, only parsing).
+
 (** A computed table supplies individual lookup facts without recomputing
     the linked program for every named function. *)
 Lemma defines_from_table ge table n f :

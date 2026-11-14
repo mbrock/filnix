@@ -59,7 +59,15 @@ run cache-preflight python3 "$out/worktree/scripts/ci-cache-check.py" --flake "$
   packages.x86_64-linux.filcc-staging packages.x86_64-linux.site-swipl
 run before-build bash "$here/../build.sh" "$before" "$jobs"
 run after-build bash "$here/../build.sh" "$after" "$jobs"
-run abstract-apply env PE_RUNTIME=abstract bash "$here/../apply.sh" "$before" "$out/abstract"
+run runtime-partition python3 "$here/check.py" partition "$before" --output "$out/runtime-partition"
+if [ -s "$out/runtime-partition/general-targets.txt" ]; then
+  run abstract-apply env PE_RUNTIME=abstract \
+    PE_PROGRAM_TARGETS="$(cat "$out/runtime-partition/general-targets.txt")" \
+    bash "$here/../apply.sh" "$before" "$out/abstract"
+else
+  echo 'FAIL abstract-apply (no compiler-derived original general targets)' | tee -a "$out/verdicts.txt"
+  status=1
+fi
 if bash "$here/../build.sh" "$out/abstract" "$jobs" >"$out/abstract-build.log" 2>&1; then
   echo 'PASS abstract-build' | tee -a "$out/verdicts.txt"
 else
@@ -71,8 +79,19 @@ run tactics-after-build bash "$here/../build.sh" "$out/tactics-boundary/after" "
 run packet python3 "$here/packet.py" "$after" --output "$out/cutover-packet.md" \
   --stage30-before "$out/tactics-boundary/before" --stage30-after "$out/tactics-boundary/after" \
   --plugin "$out/plugin"
+stage50_evidence=()
+if [ -f "$here/expected-statement-changes/50-program.txt" ]; then
+  run packet-abstract python3 "$here/packet.py" "$out/abstract" --stage50-only \
+    --output "$out/abstract-packet.md" --interpreter-evidence "$out/cutover-packet.stage50.json"
+  for receipt in "$out/cutover-packet.stage50.json" "$out/abstract-packet.stage50.json"; do
+    if [ -f "$receipt" ]; then
+      stage50_evidence+=(--stage50-evidence "$receipt")
+    fi
+  done
+fi
 run statements python3 "$here/check.py" statements "$before" "$after" \
-  --abstract-after "$out/abstract" --plugin "$out/plugin" --output "$out/statements" --jobs "${PE_QUERY_JOBS:-2}"
+  --abstract-after "$out/abstract" --plugin "$out/plugin" --output "$out/statements" --jobs "${PE_QUERY_JOBS:-2}" \
+  "${stage50_evidence[@]}"
 run before-audits python3 "$here/audit.py" "$before" --output "$out/before-audits"
 layout=${PE_AUDIT_LAYOUT:-$out/flat-layout}
 if [ -z "${PE_AUDIT_LAYOUT:-}" ]; then
@@ -81,7 +100,7 @@ fi
 run after-audits python3 "$here/audit.py" "$after" --layout "$layout" --output "$out/after-audits"
 run hello-abstract bash "$here/hello-abstract.sh" "$before" "$out/hello-abstract" "$out/abstract"
 run audit-comparison python3 "$here/compare-audits.py" "$out/before-audits/report.json" "$out/after-audits/report.json" \
-  --hello-abstract "$out/hello-abstract/audit/report.json"
+  --hello-abstract "$out/hello-abstract/audit/report.json" "${stage50_evidence[@]}"
 run glibc nix build -L --no-link --keep-going --max-jobs "$jobs" "$out/worktree#checks.x86_64-linux.nanofil-glibc"
 run glibc-units nix build -L --no-link -f "$out/worktree/nanofil/survey/glibc/regress.nix" units
 run docs nix build -L --no-link "$out/worktree#checks.x86_64-linux.nanofil-docs"
