@@ -4,21 +4,29 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude LibioPutsCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import LibioPutsCode.
 Module LibioPutsSrc.
+
+Definition file_0 : string := "./libioP.h".
+
+Definition file_1 : string := "iofputs.c".
+
+Definition file_2 : string := "ioputs.c".
 
 Module fn___GI__IO_fputs.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("iofputs.c", 30%nat).
+Definition source : option (string * N) := Some (file_1, 30%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("iofputs.c", 33%nat)); ((TAtom "L24"), ("iofputs.c", 36%nat)); ((TAtom "L35"), ("iofputs.c", 36%nat)); ((TAtom "L36"), ("iofputs.c", 36%nat)); ((TAtom "L29"), ("iofputs.c", 36%nat)); ((TAtom "L30"), ("iofputs.c", 36%nat)); ((TAtom "L55"), ("iofputs.c", 36%nat)); ((TAtom "L79"), ("iofputs.c", 36%nat)); ((TAtom "L80"), ("iofputs.c", 36%nat)); ((TAtom "L84"), ("iofputs.c", 36%nat)); ((TAtom "L73"), ("iofputs.c", 36%nat)); ((TAtom "L56"), ("iofputs.c", 36%nat)); ((TAtom "L113"), ("iofputs.c", 37%nat)); ((TAtom "L123"), ("iofputs.c", 37%nat)); ((TAtom "L125"), ("iofputs.c", 37%nat)); ((TAtom "L161"), ("iofputs.c", 37%nat)); ((TAtom "iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_1.join"), ("iofputs.c", 37%nat)); ((TAtom "L162"), ("iofputs.c", 37%nat)); ((TAtom "L106"), ("iofputs.c", 37%nat)); ((TAtom "L107"), ("iofputs.c", 34%nat)); ((TAtom "iw_2.L5"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L19"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L28"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L29"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L22"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L23"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L45"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L66"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L67"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L78"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L46"), ("./libioP.h", 1000%nat)); ((TAtom "L14"), ("iofputs.c", 41%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 33%N)); ((TAtom "L24"), (file_1, 36%N)); ((TAtom "L35"), (file_1, 36%N)); ((TAtom "L36"), (file_1, 36%N)); ((TAtom "L29"), (file_1, 36%N)); ((TAtom "L30"), (file_1, 36%N)); ((TAtom "L55"), (file_1, 36%N)); ((TAtom "L79"), (file_1, 36%N)); ((TAtom "L80"), (file_1, 36%N)); ((TAtom "L84"), (file_1, 36%N)); ((TAtom "L73"), (file_1, 36%N)); ((TAtom "L56"), (file_1, 36%N)); ((TAtom "L113"), (file_1, 37%N)); ((TAtom "L123"), (file_1, 37%N)); ((TAtom "L125"), (file_1, 37%N)); ((TAtom "L161"), (file_1, 37%N)); ((TAtom "iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_1.join"), (file_1, 37%N)); ((TAtom "L162"), (file_1, 37%N)); ((TAtom "L106"), (file_1, 37%N)); ((TAtom "L107"), (file_1, 34%N)); ((TAtom "iw_2.L5"), (file_0, 1000%N)); ((TAtom "iw_2.L19"), (file_0, 1000%N)); ((TAtom "iw_2.L28"), (file_0, 1000%N)); ((TAtom "iw_2.L29"), (file_0, 1000%N)); ((TAtom "iw_2.L22"), (file_0, 1000%N)); ((TAtom "iw_2.L23"), (file_0, 1000%N)); ((TAtom "iw_2.L45"), (file_0, 1000%N)); ((TAtom "iw_2.L66"), (file_0, 1000%N)); ((TAtom "iw_2.L67"), (file_0, 1000%N)); ((TAtom "iw_2.L78"), (file_0, 1000%N)); ((TAtom "iw_2.L46"), (file_0, 1000%N)); ((TAtom "L14"), (file_1, 41%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +35,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "iw_2.L66")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI__IO_fputs") (code_module libioputs_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI__IO_fputs.
 
 Module fn___GI__IO_puts.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("ioputs.c", 31%nat).
+Definition source : option (string * N) := Some (file_2, 31%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("ioputs.c", 35%nat)); ((TAtom "L20"), ("ioputs.c", 36%nat)); ((TAtom "L31"), ("ioputs.c", 36%nat)); ((TAtom "L32"), ("ioputs.c", 36%nat)); ((TAtom "L25"), ("ioputs.c", 36%nat)); ((TAtom "L26"), ("ioputs.c", 36%nat)); ((TAtom "L51"), ("ioputs.c", 36%nat)); ((TAtom "L75"), ("ioputs.c", 36%nat)); ((TAtom "L76"), ("ioputs.c", 36%nat)); ((TAtom "L80"), ("ioputs.c", 36%nat)); ((TAtom "L69"), ("ioputs.c", 36%nat)); ((TAtom "L52"), ("ioputs.c", 36%nat)); ((TAtom "L109"), ("ioputs.c", 39%nat)); ((TAtom "L119"), ("ioputs.c", 39%nat)); ((TAtom "L121"), ("ioputs.c", 39%nat)); ((TAtom "L162"), ("ioputs.c", 38%nat)); ((TAtom "iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_1.join"), ("ioputs.c", 38%nat)); ((TAtom "L163"), ("ioputs.c", 38%nat)); ((TAtom "L180"), ("ioputs.c", 38%nat)); ((TAtom "L182"), ("ioputs.c", 38%nat)); ((TAtom "L183"), ("ioputs.c", 38%nat)); ((TAtom "L184"), ("ioputs.c", 38%nat)); ((TAtom "L181"), ("ioputs.c", 38%nat)); ((TAtom "L101"), ("ioputs.c", 42%nat)); ((TAtom "L212"), ("ioputs.c", 42%nat)); ((TAtom "L103"), ("ioputs.c", 34%nat)); ((TAtom "iw_2.L5"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L19"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L28"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L29"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L22"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L23"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L45"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L66"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L67"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L78"), ("./libioP.h", 1000%nat)); ((TAtom "iw_2.L46"), ("./libioP.h", 1000%nat)); ((TAtom "L9"), ("ioputs.c", 45%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 35%N)); ((TAtom "L20"), (file_2, 36%N)); ((TAtom "L31"), (file_2, 36%N)); ((TAtom "L32"), (file_2, 36%N)); ((TAtom "L25"), (file_2, 36%N)); ((TAtom "L26"), (file_2, 36%N)); ((TAtom "L51"), (file_2, 36%N)); ((TAtom "L75"), (file_2, 36%N)); ((TAtom "L76"), (file_2, 36%N)); ((TAtom "L80"), (file_2, 36%N)); ((TAtom "L69"), (file_2, 36%N)); ((TAtom "L52"), (file_2, 36%N)); ((TAtom "L109"), (file_2, 39%N)); ((TAtom "L119"), (file_2, 39%N)); ((TAtom "L121"), (file_2, 39%N)); ((TAtom "L162"), (file_2, 38%N)); ((TAtom "iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_1.join"), (file_2, 38%N)); ((TAtom "L163"), (file_2, 38%N)); ((TAtom "L180"), (file_2, 38%N)); ((TAtom "L182"), (file_2, 38%N)); ((TAtom "L183"), (file_2, 38%N)); ((TAtom "L184"), (file_2, 38%N)); ((TAtom "L181"), (file_2, 38%N)); ((TAtom "L101"), (file_2, 42%N)); ((TAtom "L212"), (file_2, 42%N)); ((TAtom "L103"), (file_2, 34%N)); ((TAtom "iw_2.L5"), (file_0, 1000%N)); ((TAtom "iw_2.L19"), (file_0, 1000%N)); ((TAtom "iw_2.L28"), (file_0, 1000%N)); ((TAtom "iw_2.L29"), (file_0, 1000%N)); ((TAtom "iw_2.L22"), (file_0, 1000%N)); ((TAtom "iw_2.L23"), (file_0, 1000%N)); ((TAtom "iw_2.L45"), (file_0, 1000%N)); ((TAtom "iw_2.L66"), (file_0, 1000%N)); ((TAtom "iw_2.L67"), (file_0, 1000%N)); ((TAtom "iw_2.L78"), (file_0, 1000%N)); ((TAtom "iw_2.L46"), (file_0, 1000%N)); ((TAtom "L9"), (file_2, 45%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,16 +53,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "iw_2.L66")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI__IO_puts") (code_module libioputs_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI__IO_puts.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) libioputs_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI__IO_fputs"; "__GI__IO_puts"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI__IO_fputs", app (map fst fn___GI__IO_fputs.block_src) fn___GI__IO_fputs.loop_heads); ("__GI__IO_puts", app (map fst fn___GI__IO_puts.block_src) fn___GI__IO_puts.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End LibioPutsSrc.

@@ -53,7 +53,8 @@ contains the optional cut labels for that function.
 
 The `source` definition holds the C function's file and line, or `None` when
 its context has no function location. The `block_src` table maps each located
-block label to a file and line. Paths under `nanofil` are relative to that
+block label to a file and line. Line numbers use binary natural numbers (`N`)
+to avoid constructing long unary terms for captured files. Paths under `nanofil` are relative to that
 directory, so the generated tables do not depend on the checkout location.
 The generator visits phi sites, instruction sites in
 index order, then the jump, and takes the first located origin. A generated
@@ -70,9 +71,14 @@ The `loop_heads` list comes from `cfg.pl`'s dominators and natural-loop
 analysis. It covers reachable natural loops, not every irreducible cycle.
 
 Changing a function's blocks can leave old labels in its source tables.
-The sidecar rejects those labels during compilation. Each function's
-`labels_valid` lemma uses `vm_compute` to check that the decoded module
-defines the function and contains every label in both label tables.
+The sidecar rejects those labels during compilation. One `labels_valid`
+lemma uses `vm_compute` to check every function and both label tables in
+the fixture. It reuses the code fixture's decoded module when available;
+otherwise, the sidecar decodes the module once for all its tables.
+Lazy projection extracts block labels before the boolean computation, so
+the VM does not compile the decoded instruction bodies for this check.
+Large fixtures put their table definitions in numbered source slices.
+The main sidecar includes those definitions and performs the single membership check.
 The check does not establish that a source location or C name is accurate.
 The sidecars contain definitions and computed proofs, with no axioms.
 

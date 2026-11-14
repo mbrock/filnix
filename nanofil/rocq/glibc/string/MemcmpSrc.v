@@ -4,21 +4,25 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude MemcmpCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import MemcmpCode.
 Module MemcmpSrc.
+
+Definition file_0 : string := "memcmp.c".
 
 Module fn___GI_memcmp.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("memcmp.c", 290%nat).
+Definition source : option (string * N) := Some (file_0, 290%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("memcmp.c", 295%nat)); ((TAtom "L20"), ("memcmp.c", 296%nat)); ((TAtom "L21"), ("memcmp.c", 305%nat)); ((TAtom "L43"), ("memcmp.c", 311%nat)); ((TAtom "L45"), ("memcmp.c", 312%nat)); ((TAtom "L22"), ("memcmp.c", 319%nat)); ((TAtom "L52"), ("memcmp.c", 320%nat)); ((TAtom "iw_1.L15"), ("memcmp.c", 116%nat)); ((TAtom "iw_1.L33"), ("memcmp.c", 123%nat)); ((TAtom "iw_1.L55"), ("memcmp.c", 130%nat)); ((TAtom "iw_1.L52"), ("memcmp.c", 132%nat)); ((TAtom "iw_1.L71"), ("memcmp.c", 136%nat)); ((TAtom "iw_1.L100"), ("memcmp.c", 112%nat)); ((TAtom "iw_1.L102"), ("memcmp.c", 112%nat)); ((TAtom "iw_1.L104"), ("memcmp.c", 112%nat)); ((TAtom "iw_1.L107"), ("memcmp.c", 110%nat)); ((TAtom "iw_1.iw_1.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_1.L70"), ("memcmp.c", 110%nat)); ((TAtom "iw_1.iw_2.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_1.L48"), ("memcmp.c", 110%nat)); ((TAtom "iw_1.iw_3.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_1.L32"), ("memcmp.c", 110%nat)); ((TAtom "iw_1.iw_4.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_1.L174"), ("memcmp.c", 171%nat)); ((TAtom "iw_1.L97"), ("memcmp.c", 110%nat)); ((TAtom "iw_1.iw_5.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_1.join"), ("memcmp.c", 320%nat)); ((TAtom "L53"), ("memcmp.c", 322%nat)); ((TAtom "iw_2.L32"), ("memcmp.c", 212%nat)); ((TAtom "iw_2.L54"), ("memcmp.c", 220%nat)); ((TAtom "iw_2.L79"), ("memcmp.c", 227%nat)); ((TAtom "iw_2.L76"), ("memcmp.c", 229%nat)); ((TAtom "iw_2.L102"), ("memcmp.c", 235%nat)); ((TAtom "iw_2.L137"), ("memcmp.c", 208%nat)); ((TAtom "iw_2.L139"), ("memcmp.c", 208%nat)); ((TAtom "iw_2.L141"), ("memcmp.c", 208%nat)); ((TAtom "iw_2.L144"), ("memcmp.c", 194%nat)); ((TAtom "iw_2.iw_1.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_2.L101"), ("memcmp.c", 194%nat)); ((TAtom "iw_2.iw_2.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_2.L72"), ("memcmp.c", 194%nat)); ((TAtom "iw_2.iw_3.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_2.L53"), ("memcmp.c", 194%nat)); ((TAtom "iw_2.iw_4.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_2.L239"), ("memcmp.c", 275%nat)); ((TAtom "iw_2.L134"), ("memcmp.c", 194%nat)); ((TAtom "iw_2.iw_5.start"), ("memcmp.c", 96%nat)); ((TAtom "iw_2.join"), ("memcmp.c", 322%nat)); ((TAtom "L54"), ("memcmp.c", 297%nat)); ((TAtom "L70"), ("memcmp.c", 324%nat)); ((TAtom "L72"), ("memcmp.c", 327%nat)); ((TAtom "L89"), ("memcmp.c", 296%nat)); ((TAtom "L90"), ("memcmp.c", 335%nat)); ((TAtom "L111"), ("memcmp.c", 341%nat)); ((TAtom "L113"), ("memcmp.c", 342%nat)); ((TAtom "L91"), ("memcmp.c", 345%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 295%N)); ((TAtom "L20"), (file_0, 296%N)); ((TAtom "L21"), (file_0, 305%N)); ((TAtom "L43"), (file_0, 311%N)); ((TAtom "L45"), (file_0, 312%N)); ((TAtom "L22"), (file_0, 319%N)); ((TAtom "L52"), (file_0, 320%N)); ((TAtom "iw_1.L15"), (file_0, 116%N)); ((TAtom "iw_1.L33"), (file_0, 123%N)); ((TAtom "iw_1.L55"), (file_0, 130%N)); ((TAtom "iw_1.L52"), (file_0, 132%N)); ((TAtom "iw_1.L71"), (file_0, 136%N)); ((TAtom "iw_1.L100"), (file_0, 112%N)); ((TAtom "iw_1.L102"), (file_0, 112%N)); ((TAtom "iw_1.L104"), (file_0, 112%N)); ((TAtom "iw_1.L107"), (file_0, 110%N)); ((TAtom "iw_1.iw_1.start"), (file_0, 96%N)); ((TAtom "iw_1.L70"), (file_0, 110%N)); ((TAtom "iw_1.iw_2.start"), (file_0, 96%N)); ((TAtom "iw_1.L48"), (file_0, 110%N)); ((TAtom "iw_1.iw_3.start"), (file_0, 96%N)); ((TAtom "iw_1.L32"), (file_0, 110%N)); ((TAtom "iw_1.iw_4.start"), (file_0, 96%N)); ((TAtom "iw_1.L174"), (file_0, 171%N)); ((TAtom "iw_1.L97"), (file_0, 110%N)); ((TAtom "iw_1.iw_5.start"), (file_0, 96%N)); ((TAtom "iw_1.join"), (file_0, 320%N)); ((TAtom "L53"), (file_0, 322%N)); ((TAtom "iw_2.L32"), (file_0, 212%N)); ((TAtom "iw_2.L54"), (file_0, 220%N)); ((TAtom "iw_2.L79"), (file_0, 227%N)); ((TAtom "iw_2.L76"), (file_0, 229%N)); ((TAtom "iw_2.L102"), (file_0, 235%N)); ((TAtom "iw_2.L137"), (file_0, 208%N)); ((TAtom "iw_2.L139"), (file_0, 208%N)); ((TAtom "iw_2.L141"), (file_0, 208%N)); ((TAtom "iw_2.L144"), (file_0, 194%N)); ((TAtom "iw_2.iw_1.start"), (file_0, 96%N)); ((TAtom "iw_2.L101"), (file_0, 194%N)); ((TAtom "iw_2.iw_2.start"), (file_0, 96%N)); ((TAtom "iw_2.L72"), (file_0, 194%N)); ((TAtom "iw_2.iw_3.start"), (file_0, 96%N)); ((TAtom "iw_2.L53"), (file_0, 194%N)); ((TAtom "iw_2.iw_4.start"), (file_0, 96%N)); ((TAtom "iw_2.L239"), (file_0, 275%N)); ((TAtom "iw_2.L134"), (file_0, 194%N)); ((TAtom "iw_2.iw_5.start"), (file_0, 96%N)); ((TAtom "iw_2.join"), (file_0, 322%N)); ((TAtom "L54"), (file_0, 297%N)); ((TAtom "L70"), (file_0, 324%N)); ((TAtom "L72"), (file_0, 327%N)); ((TAtom "L89"), (file_0, 296%N)); ((TAtom "L90"), (file_0, 335%N)); ((TAtom "L111"), (file_0, 341%N)); ((TAtom "L113"), (file_0, 342%N)); ((TAtom "L91"), (file_0, 345%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,16 +31,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L20"); (TAtom "L89")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI_memcmp") (code_module memcmp_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI_memcmp.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) memcmp_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI_memcmp"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI_memcmp", app (map fst fn___GI_memcmp.block_src) fn___GI_memcmp.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End MemcmpSrc.

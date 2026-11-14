@@ -4,21 +4,31 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude PrintfBufferIoCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import PrintfBufferIoCode.
 Module PrintfBufferIoSrc.
+
+Definition file_0 : string := "../include/printf_buffer.h".
+
+Definition file_1 : string := "./Xprintf_buffer_flush.c".
+
+Definition file_2 : string := "./Xprintf_buffer_write.c".
+
+Definition file_3 : string := "printf_buffer_flush.c".
 
 Module fn___printf_buffer_write.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("./Xprintf_buffer_write.c", 24%nat).
+Definition source : option (string * N) := Some (file_2, 24%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../include/printf_buffer.h", 115%nat)); ((TAtom "L6"), ("./Xprintf_buffer_write.c", 29%nat)); ((TAtom "L15"), ("./Xprintf_buffer_write.c", 24%nat)); ((TAtom "L16"), ("./Xprintf_buffer_write.c", 33%nat)); ((TAtom "L32"), ("./Xprintf_buffer_write.c", 33%nat)); ((TAtom "L33"), ("./Xprintf_buffer_write.c", 33%nat)); ((TAtom "L20"), ("./Xprintf_buffer_write.c", 34%nat)); ((TAtom "L22"), ("./Xprintf_buffer_write.c", 35%nat)); ((TAtom "L42"), ("./Xprintf_buffer_write.c", 35%nat)); ((TAtom "L43"), ("./Xprintf_buffer_write.c", 36%nat)); ((TAtom "L67"), ("./Xprintf_buffer_write.c", 37%nat)); ((TAtom "L68"), ("./Xprintf_buffer_write.c", 36%nat)); ((TAtom "L17"), ("./Xprintf_buffer_write.c", 24%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 115%N)); ((TAtom "L6"), (file_2, 29%N)); ((TAtom "L15"), (file_2, 24%N)); ((TAtom "L16"), (file_2, 33%N)); ((TAtom "L32"), (file_2, 33%N)); ((TAtom "L33"), (file_2, 33%N)); ((TAtom "L20"), (file_2, 34%N)); ((TAtom "L22"), (file_2, 35%N)); ((TAtom "L42"), (file_2, 35%N)); ((TAtom "L43"), (file_2, 36%N)); ((TAtom "L67"), (file_2, 37%N)); ((TAtom "L68"), (file_2, 36%N)); ((TAtom "L17"), (file_2, 24%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +37,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L15")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__printf_buffer_write") (code_module printf_buffer_io_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___printf_buffer_write.
 
 Module fn___printf_buffer_flush.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("./Xprintf_buffer_flush.c", 59%nat).
+Definition source : option (string * N) := Some (file_1, 59%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../include/printf_buffer.h", 115%nat)); ((TAtom "L2"), ("./Xprintf_buffer_flush.c", 63%nat)); ((TAtom "iw_2.start"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L9"), ("printf_buffer_flush.c", 47%nat)); ((TAtom "iw_2.L11"), ("printf_buffer_flush.c", 50%nat)); ((TAtom "iw_2.L12"), ("printf_buffer_flush.c", 53%nat)); ((TAtom "iw_2.L14"), ("printf_buffer_flush.c", 56%nat)); ((TAtom "iw_2.L16"), ("printf_buffer_flush.c", 59%nat)); ((TAtom "iw_2.L18"), ("printf_buffer_flush.c", 62%nat)); ((TAtom "iw_2.L21"), ("printf_buffer_flush.c", 66%nat)); ((TAtom "iw_2.L23"), ("printf_buffer_flush.c", 69%nat)); ((TAtom "iw_2.L25"), ("printf_buffer_flush.c", 73%nat)); ((TAtom "iw_2.L27"), ("printf_buffer_flush.c", 77%nat)); ((TAtom "iw_2.L31"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L34"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L37"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L39"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L35"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L43"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L45"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L32"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L49"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L52"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L54"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L50"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L58"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L60"), ("printf_buffer_flush.c", 41%nat)); ((TAtom "iw_2.L6"), ("printf_buffer_flush.c", 80%nat)); ((TAtom "iw_3.start"), ("../include/printf_buffer.h", 115%nat)); ((TAtom "L13"), ("./Xprintf_buffer_flush.c", 67%nat)); ((TAtom "L15"), ("./Xprintf_buffer_flush.c", 70%nat)); ((TAtom "L22"), ("./Xprintf_buffer_flush.c", 70%nat)); ((TAtom "L23"), ("./Xprintf_buffer_flush.c", 71%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 115%N)); ((TAtom "L2"), (file_1, 63%N)); ((TAtom "iw_2.start"), (file_3, 41%N)); ((TAtom "iw_2.L9"), (file_3, 47%N)); ((TAtom "iw_2.L11"), (file_3, 50%N)); ((TAtom "iw_2.L12"), (file_3, 53%N)); ((TAtom "iw_2.L14"), (file_3, 56%N)); ((TAtom "iw_2.L16"), (file_3, 59%N)); ((TAtom "iw_2.L18"), (file_3, 62%N)); ((TAtom "iw_2.L21"), (file_3, 66%N)); ((TAtom "iw_2.L23"), (file_3, 69%N)); ((TAtom "iw_2.L25"), (file_3, 73%N)); ((TAtom "iw_2.L27"), (file_3, 77%N)); ((TAtom "iw_2.L31"), (file_3, 41%N)); ((TAtom "iw_2.L34"), (file_3, 41%N)); ((TAtom "iw_2.L37"), (file_3, 41%N)); ((TAtom "iw_2.L39"), (file_3, 41%N)); ((TAtom "iw_2.L35"), (file_3, 41%N)); ((TAtom "iw_2.L43"), (file_3, 41%N)); ((TAtom "iw_2.L45"), (file_3, 41%N)); ((TAtom "iw_2.L32"), (file_3, 41%N)); ((TAtom "iw_2.L49"), (file_3, 41%N)); ((TAtom "iw_2.L52"), (file_3, 41%N)); ((TAtom "iw_2.L54"), (file_3, 41%N)); ((TAtom "iw_2.L50"), (file_3, 41%N)); ((TAtom "iw_2.L58"), (file_3, 41%N)); ((TAtom "iw_2.L60"), (file_3, 41%N)); ((TAtom "iw_2.L6"), (file_3, 80%N)); ((TAtom "iw_3.start"), (file_0, 115%N)); ((TAtom "L13"), (file_1, 67%N)); ((TAtom "L15"), (file_1, 70%N)); ((TAtom "L22"), (file_1, 70%N)); ((TAtom "L23"), (file_1, 71%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,16 +55,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__printf_buffer_flush") (code_module printf_buffer_io_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___printf_buffer_flush.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) printf_buffer_io_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__printf_buffer_write"; "__printf_buffer_flush"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__printf_buffer_write", app (map fst fn___printf_buffer_write.block_src) fn___printf_buffer_write.loop_heads); ("__printf_buffer_flush", app (map fst fn___printf_buffer_flush.block_src) fn___printf_buffer_flush.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End PrintfBufferIoSrc.

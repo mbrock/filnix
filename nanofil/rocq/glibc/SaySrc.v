@@ -4,21 +4,34 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude SayCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import SayCode.
 Module SaySrc.
+
+Definition file_0 : string := "../stdlib/stdbit.h".
+
+Definition file_1 : string := "../sysdeps/unix/sysv/linux/write.c".
+
+Definition file_2 : string := "rocq/glibc/say.c".
+
+Definition file_3 : string := "strlen.c".
+
+(** Decoding once lets all source tables share the same checked function bodies. *)
+Definition source_module : module := Eval vm_compute in code_module say_term.
 
 Module fn_main.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("rocq/glibc/say.c", 11%nat).
+Definition source : option (string * N) := Some (file_2, 11%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("rocq/glibc/say.c", 12%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 12%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +40,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "main") (code_module say_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn_main.
 
 Module fn___strlen.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("strlen.c", 31%nat).
+Definition source : option (string * N) := Some (file_3, 31%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("strlen.c", 35%nat)); ((TAtom "iw_3.start"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "L28"), ("strlen.c", 36%nat)); ((TAtom "iw_5.start"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_5.iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_5.iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_3, 35%N)); ((TAtom "iw_3.start"), (file_0, 193%N)); ((TAtom "iw_3.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_3.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "L28"), (file_3, 36%N)); ((TAtom "iw_5.start"), (file_0, 193%N)); ((TAtom "iw_5.iw_3.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_5.iw_3.iw_1.iw_1.L4"), (file_0, 193%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,26 +58,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L28")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__strlen") (code_module say_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___strlen.
 
 Module fn___GI___libc_write.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/write.c", 24%nat).
+Definition source : option (string * N) := Some (file_1, 24%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/write.c", 27%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 27%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -83,16 +76,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___libc_write") (code_module say_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___libc_write.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) source_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["main"; "__strlen"; "__GI___libc_write"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("main", app (map fst fn_main.block_src) fn_main.loop_heads); ("__strlen", app (map fst fn___strlen.block_src) fn___strlen.loop_heads); ("__GI___libc_write", app (map fst fn___GI___libc_write.block_src) fn___GI___libc_write.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End SaySrc.

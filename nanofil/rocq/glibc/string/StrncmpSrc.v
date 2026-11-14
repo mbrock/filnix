@@ -4,21 +4,31 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude StrncmpCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import StrncmpCode.
 Module StrncmpSrc.
+
+Definition file_0 : string := "../stdlib/stdbit.h".
+
+Definition file_1 : string := "../sysdeps/generic/string-fza.h".
+
+Definition file_2 : string := "../sysdeps/generic/string-misc.h".
+
+Definition file_3 : string := "strncmp.c".
 
 Module fn___GI_strncmp.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("strncmp.c", 113%nat).
+Definition source : option (string * N) := Some (file_3, 113%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("strncmp.c", 117%nat)); ((TAtom "L8"), ("strncmp.c", 117%nat)); ((TAtom "L9"), ("strncmp.c", 117%nat)); ((TAtom "L24"), ("strncmp.c", 119%nat)); ((TAtom "L25"), ("strncmp.c", 121%nat)); ((TAtom "L50"), ("strncmp.c", 124%nat)); ((TAtom "L51"), ("strncmp.c", 124%nat)); ((TAtom "L45"), ("strncmp.c", 125%nat)); ((TAtom "L26"), ("strncmp.c", 119%nat)); ((TAtom "L27"), ("strncmp.c", 127%nat)); ((TAtom "L60"), ("strncmp.c", 128%nat)); ((TAtom "L62"), ("strncmp.c", 132%nat)); ((TAtom "L77"), ("strncmp.c", 134%nat)); ((TAtom "iw_1.L12"), ("strncmp.c", 46%nat)); ((TAtom "iw_1.L13"), ("strncmp.c", 50%nat)); ((TAtom "iw_1.L20"), ("strncmp.c", 52%nat)); ((TAtom "iw_1.L28"), ("strncmp.c", 56%nat)); ((TAtom "iw_1.iw_2.start"), ("../sysdeps/generic/string-fza.h", 92%nat)); ((TAtom "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_1.iw_2.iw_2.start"), ("../sysdeps/generic/string-misc.h", 32%nat)); ((TAtom "L78"), ("strncmp.c", 134%nat)); ((TAtom "iw_2.L37"), ("strncmp.c", 76%nat)); ((TAtom "iw_2.L38"), ("strncmp.c", 76%nat)); ((TAtom "iw_2.L46"), ("strncmp.c", 71%nat)); ((TAtom "iw_2.L64"), ("strncmp.c", 87%nat)); ((TAtom "iw_2.L65"), ("strncmp.c", 87%nat)); ((TAtom "iw_2.iw_2.start"), ("../sysdeps/generic/string-fza.h", 92%nat)); ((TAtom "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_2.iw_2.iw_2.start"), ("../sysdeps/generic/string-misc.h", 32%nat)); ((TAtom "iw_2.L61"), ("strncmp.c", 89%nat)); ((TAtom "iw_2.L84"), ("strncmp.c", 90%nat)); ((TAtom "iw_2.L85"), ("strncmp.c", 90%nat)); ((TAtom "iw_2.L80"), ("strncmp.c", 92%nat)); ((TAtom "iw_2.iw_4.start"), ("../sysdeps/generic/string-fza.h", 40%nat)); ((TAtom "iw_2.L99"), ("strncmp.c", 102%nat)); ((TAtom "iw_2.L32"), ("strncmp.c", 75%nat)); ((TAtom "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_2.iw_5.iw_2.start"), ("../sysdeps/generic/string-misc.h", 32%nat)); ((TAtom "L79"), ("strncmp.c", 134%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_3, 117%N)); ((TAtom "L8"), (file_3, 117%N)); ((TAtom "L9"), (file_3, 117%N)); ((TAtom "L24"), (file_3, 119%N)); ((TAtom "L25"), (file_3, 121%N)); ((TAtom "L50"), (file_3, 124%N)); ((TAtom "L51"), (file_3, 124%N)); ((TAtom "L45"), (file_3, 125%N)); ((TAtom "L26"), (file_3, 119%N)); ((TAtom "L27"), (file_3, 127%N)); ((TAtom "L60"), (file_3, 128%N)); ((TAtom "L62"), (file_3, 132%N)); ((TAtom "L77"), (file_3, 134%N)); ((TAtom "iw_1.L12"), (file_3, 46%N)); ((TAtom "iw_1.L13"), (file_3, 50%N)); ((TAtom "iw_1.L20"), (file_3, 52%N)); ((TAtom "iw_1.L28"), (file_3, 56%N)); ((TAtom "iw_1.iw_2.start"), (file_1, 92%N)); ((TAtom "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "iw_1.iw_2.iw_2.start"), (file_2, 32%N)); ((TAtom "L78"), (file_3, 134%N)); ((TAtom "iw_2.L37"), (file_3, 76%N)); ((TAtom "iw_2.L38"), (file_3, 76%N)); ((TAtom "iw_2.L46"), (file_3, 71%N)); ((TAtom "iw_2.L64"), (file_3, 87%N)); ((TAtom "iw_2.L65"), (file_3, 87%N)); ((TAtom "iw_2.iw_2.start"), (file_1, 92%N)); ((TAtom "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "iw_2.iw_2.iw_2.start"), (file_2, 32%N)); ((TAtom "iw_2.L61"), (file_3, 89%N)); ((TAtom "iw_2.L84"), (file_3, 90%N)); ((TAtom "iw_2.L85"), (file_3, 90%N)); ((TAtom "iw_2.L80"), (file_3, 92%N)); ((TAtom "iw_2.iw_4.start"), (file_1, 40%N)); ((TAtom "iw_2.L99"), (file_3, 102%N)); ((TAtom "iw_2.L32"), (file_3, 75%N)); ((TAtom "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "iw_2.iw_5.iw_2.start"), (file_2, 32%N)); ((TAtom "L79"), (file_3, 134%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,16 +37,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L24"); (TAtom "iw_1.L12"); (TAtom "iw_2.L46")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI_strncmp") (code_module strncmp_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI_strncmp.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) strncmp_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI_strncmp"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI_strncmp", app (map fst fn___GI_strncmp.block_src) fn___GI_strncmp.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End StrncmpSrc.

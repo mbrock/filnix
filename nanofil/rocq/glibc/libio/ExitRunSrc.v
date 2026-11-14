@@ -4,21 +4,25 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude ExitRunCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import ExitRunCode.
 Module ExitRunSrc.
+
+Definition file_0 : string := "exit.c".
 
 Module fn___run_exit_handlers.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("exit.c", 42%nat).
+Definition source : option (string * N) := Some (file_0, 42%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("exit.c", 48%nat)); ((TAtom "L13"), ("exit.c", 48%nat)); ((TAtom "L33"), ("exit.c", 48%nat)); ((TAtom "L34"), ("exit.c", 48%nat)); ((TAtom "L38"), ("exit.c", 48%nat)); ((TAtom "L27"), ("exit.c", 48%nat)); ((TAtom "L15"), ("exit.c", 48%nat)); ((TAtom "L55"), ("exit.c", 52%nat)); ((TAtom "L57"), ("exit.c", 54%nat)); ((TAtom "L69"), ("exit.c", 54%nat)); ((TAtom "L70"), ("exit.c", 54%nat)); ((TAtom "L74"), ("exit.c", 54%nat)); ((TAtom "L88"), ("exit.c", 65%nat)); ((TAtom "L91"), ("exit.c", 71%nat)); ((TAtom "L101"), ("exit.c", 75%nat)); ((TAtom "L102"), ("exit.c", 77%nat)); ((TAtom "L130"), ("exit.c", 91%nat)); ((TAtom "L145"), ("exit.c", 96%nat)); ((TAtom "L146"), ("exit.c", 96%nat)); ((TAtom "L157"), ("exit.c", 96%nat)); ((TAtom "L152"), ("exit.c", 97%nat)); ((TAtom "L181"), ("exit.c", 98%nat)); ((TAtom "L182"), ("exit.c", 98%nat)); ((TAtom "L186"), ("exit.c", 98%nat)); ((TAtom "L196"), ("exit.c", 101%nat)); ((TAtom "L207"), ("exit.c", 105%nat)); ((TAtom "L208"), ("exit.c", 105%nat)); ((TAtom "L219"), ("exit.c", 105%nat)); ((TAtom "L214"), ("exit.c", 106%nat)); ((TAtom "L241"), ("exit.c", 107%nat)); ((TAtom "L242"), ("exit.c", 107%nat)); ((TAtom "L246"), ("exit.c", 107%nat)); ((TAtom "L256"), ("exit.c", 112%nat)); ((TAtom "L272"), ("exit.c", 118%nat)); ((TAtom "L273"), ("exit.c", 118%nat)); ((TAtom "L284"), ("exit.c", 118%nat)); ((TAtom "L279"), ("exit.c", 119%nat)); ((TAtom "L308"), ("exit.c", 120%nat)); ((TAtom "L309"), ("exit.c", 120%nat)); ((TAtom "L313"), ("exit.c", 120%nat)); ((TAtom "L325"), ("exit.c", 80%nat)); ((TAtom "L328"), ("exit.c", 80%nat)); ((TAtom "L330"), ("exit.c", 80%nat)); ((TAtom "L326"), ("exit.c", 80%nat)); ((TAtom "L332"), ("exit.c", 80%nat)); ((TAtom "L334"), ("exit.c", 80%nat)); ((TAtom "L123"), ("exit.c", 124%nat)); ((TAtom "L103"), ("exit.c", 130%nat)); ((TAtom "L350"), ("exit.c", 134%nat)); ((TAtom "L365"), ("exit.c", 137%nat)); ((TAtom "L366"), ("exit.c", 137%nat)); ((TAtom "L377"), ("exit.c", 137%nat)); ((TAtom "L372"), ("exit.c", 139%nat)); ((TAtom "L388"), ("exit.c", 140%nat)); ((TAtom "L390"), ("exit.c", 143%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 48%N)); ((TAtom "L13"), (file_0, 48%N)); ((TAtom "L33"), (file_0, 48%N)); ((TAtom "L34"), (file_0, 48%N)); ((TAtom "L38"), (file_0, 48%N)); ((TAtom "L27"), (file_0, 48%N)); ((TAtom "L15"), (file_0, 48%N)); ((TAtom "L55"), (file_0, 52%N)); ((TAtom "L57"), (file_0, 54%N)); ((TAtom "L69"), (file_0, 54%N)); ((TAtom "L70"), (file_0, 54%N)); ((TAtom "L74"), (file_0, 54%N)); ((TAtom "L88"), (file_0, 65%N)); ((TAtom "L91"), (file_0, 71%N)); ((TAtom "L101"), (file_0, 75%N)); ((TAtom "L102"), (file_0, 77%N)); ((TAtom "L130"), (file_0, 91%N)); ((TAtom "L145"), (file_0, 96%N)); ((TAtom "L146"), (file_0, 96%N)); ((TAtom "L157"), (file_0, 96%N)); ((TAtom "L152"), (file_0, 97%N)); ((TAtom "L181"), (file_0, 98%N)); ((TAtom "L182"), (file_0, 98%N)); ((TAtom "L186"), (file_0, 98%N)); ((TAtom "L196"), (file_0, 101%N)); ((TAtom "L207"), (file_0, 105%N)); ((TAtom "L208"), (file_0, 105%N)); ((TAtom "L219"), (file_0, 105%N)); ((TAtom "L214"), (file_0, 106%N)); ((TAtom "L241"), (file_0, 107%N)); ((TAtom "L242"), (file_0, 107%N)); ((TAtom "L246"), (file_0, 107%N)); ((TAtom "L256"), (file_0, 112%N)); ((TAtom "L272"), (file_0, 118%N)); ((TAtom "L273"), (file_0, 118%N)); ((TAtom "L284"), (file_0, 118%N)); ((TAtom "L279"), (file_0, 119%N)); ((TAtom "L308"), (file_0, 120%N)); ((TAtom "L309"), (file_0, 120%N)); ((TAtom "L313"), (file_0, 120%N)); ((TAtom "L325"), (file_0, 80%N)); ((TAtom "L328"), (file_0, 80%N)); ((TAtom "L330"), (file_0, 80%N)); ((TAtom "L326"), (file_0, 80%N)); ((TAtom "L332"), (file_0, 80%N)); ((TAtom "L334"), (file_0, 80%N)); ((TAtom "L123"), (file_0, 124%N)); ((TAtom "L103"), (file_0, 130%N)); ((TAtom "L350"), (file_0, 134%N)); ((TAtom "L365"), (file_0, 137%N)); ((TAtom "L366"), (file_0, 137%N)); ((TAtom "L377"), (file_0, 137%N)); ((TAtom "L372"), (file_0, 139%N)); ((TAtom "L388"), (file_0, 140%N)); ((TAtom "L390"), (file_0, 143%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +31,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L101"); (TAtom "L145"); (TAtom "L207"); (TAtom "L272"); (TAtom "L365"); (TAtom "L88")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__run_exit_handlers") (code_module exitrun_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___run_exit_handlers.
 
 Module fn___GI_exit.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("exit.c", 147%nat).
+Definition source : option (string * N) := Some (file_0, 147%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("exit.c", 150%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 150%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,16 +49,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI_exit") (code_module exitrun_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI_exit.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) exitrun_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__run_exit_handlers"; "__GI_exit"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__run_exit_handlers", app (map fst fn___run_exit_handlers.block_src) fn___run_exit_handlers.loop_heads); ("__GI_exit", app (map fst fn___GI_exit.block_src) fn___GI_exit.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End ExitRunSrc.

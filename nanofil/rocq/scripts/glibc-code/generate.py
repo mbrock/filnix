@@ -246,7 +246,8 @@ class Generator:
                 term = self.work / "source.term"
                 term.write_text(linked)
                 facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
-                (output / (name + "Src.v")).write_text(source_tables(name, lower, facts, layout, NF))
+                for filename, text in source_tables(name, lower, facts, layout, NF).items():
+                    (output / filename).write_text(text)
                 located = sum(r["source"] is not None for r in facts)
                 blocks = sum(r["blocks"] for r in facts)
                 locations = sum(len(r["block_src"]) for r in facts)
@@ -340,6 +341,9 @@ def main():
                 raise ValueError(f"proof styles name nonexistent fixtures in {manifest}: {sorted(unknown)}")
             target = args.tree / rel
             stale = set()
+            if not args.output and args.form == 'shared-prelude':
+                for pattern in ('*Src[0-9]*.v', '*SrcFiles.v'):
+                    stale.update(p for p in target.glob(pattern) if not (out / p.name).exists())
             # Only numbered slices are exclusively owned by a slicer.
             for prefix in (() if args.output else ("HiAtexit", "Getopt")):
                 if any(p.name.startswith(prefix + "Code") for p in generated):

@@ -4,21 +4,27 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude LibioXsputnCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import LibioXsputnCode.
 Module LibioXsputnSrc.
+
+Definition file_0 : string := "./libioP.h".
+
+Definition file_1 : string := "fileops.c".
 
 Module fn__IO_new_file_xsputn.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("fileops.c", 1273%nat).
+Definition source : option (string * N) := Some (file_1, 1273%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("fileops.c", 1281%nat)); ((TAtom "L12"), ("fileops.c", 1282%nat)); ((TAtom "L14"), ("fileops.c", 1288%nat)); ((TAtom "L24"), ("fileops.c", 1288%nat)); ((TAtom "L25"), ("fileops.c", 1288%nat)); ((TAtom "L18"), ("fileops.c", 1290%nat)); ((TAtom "L40"), ("fileops.c", 1294%nat)); ((TAtom "L50"), ("fileops.c", 1293%nat)); ((TAtom "L51"), ("fileops.c", 1296%nat)); ((TAtom "L59"), ("fileops.c", 1298%nat)); ((TAtom "L19"), ("fileops.c", 1305%nat)); ((TAtom "L73"), ("fileops.c", 1306%nat)); ((TAtom "L20"), ("fileops.c", 1279%nat)); ((TAtom "L94"), ("fileops.c", 1311%nat)); ((TAtom "L100"), ("fileops.c", 1311%nat)); ((TAtom "L101"), ("fileops.c", 1279%nat)); ((TAtom "L96"), ("fileops.c", 1277%nat)); ((TAtom "L120"), ("fileops.c", 1321%nat)); ((TAtom "iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_1.join"), ("fileops.c", 1321%nat)); ((TAtom "L130"), ("fileops.c", 1324%nat)); ((TAtom "L145"), ("fileops.c", 1324%nat)); ((TAtom "L146"), ("fileops.c", 1324%nat)); ((TAtom "L132"), ("fileops.c", 1327%nat)); ((TAtom "L166"), ("fileops.c", 1328%nat)); ((TAtom "L168"), ("fileops.c", 1328%nat)); ((TAtom "iw_2.start"), ("fileops.c", 484%nat)); ((TAtom "iw_2.L7"), ("fileops.c", 490%nat)); ((TAtom "iw_2.L8"), ("fileops.c", 491%nat)); ((TAtom "iw_2.L17"), ("fileops.c", 493%nat)); ((TAtom "iw_2.iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_2.iw_1.join"), ("fileops.c", 493%nat)); ((TAtom "iw_2.L49"), ("fileops.c", 497%nat)); ((TAtom "iw_2.L9"), ("fileops.c", 499%nat)); ((TAtom "iw_2.iw_2.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_2.iw_2.join"), ("fileops.c", 499%nat)); ((TAtom "iw_2.L74"), ("fileops.c", 500%nat)); ((TAtom "iw_2.L75"), ("fileops.c", 500%nat)); ((TAtom "iw_2.L68"), ("fileops.c", 501%nat)); ((TAtom "iw_2.L70"), ("fileops.c", 502%nat)); ((TAtom "iw_2.L122"), ("fileops.c", 504%nat)); ((TAtom "iw_2.L123"), ("fileops.c", 504%nat)); ((TAtom "iw_2.L115"), ("fileops.c", 504%nat)); ((TAtom "iw_2.L116"), ("fileops.c", 504%nat)); ((TAtom "iw_2.L117"), ("fileops.c", 504%nat)); ((TAtom "iw_2.join"), ("fileops.c", 1333%nat)); ((TAtom "L188"), ("fileops.c", 1335%nat)); ((TAtom "L178"), ("fileops.c", 1277%nat)); ((TAtom "L198"), ("fileops.c", 1342%nat)); ((TAtom "L122"), ("fileops.c", 1277%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 1281%N)); ((TAtom "L12"), (file_1, 1282%N)); ((TAtom "L14"), (file_1, 1288%N)); ((TAtom "L24"), (file_1, 1288%N)); ((TAtom "L25"), (file_1, 1288%N)); ((TAtom "L18"), (file_1, 1290%N)); ((TAtom "L40"), (file_1, 1294%N)); ((TAtom "L50"), (file_1, 1293%N)); ((TAtom "L51"), (file_1, 1296%N)); ((TAtom "L59"), (file_1, 1298%N)); ((TAtom "L19"), (file_1, 1305%N)); ((TAtom "L73"), (file_1, 1306%N)); ((TAtom "L20"), (file_1, 1279%N)); ((TAtom "L94"), (file_1, 1311%N)); ((TAtom "L100"), (file_1, 1311%N)); ((TAtom "L101"), (file_1, 1279%N)); ((TAtom "L96"), (file_1, 1277%N)); ((TAtom "L120"), (file_1, 1321%N)); ((TAtom "iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_1.join"), (file_1, 1321%N)); ((TAtom "L130"), (file_1, 1324%N)); ((TAtom "L145"), (file_1, 1324%N)); ((TAtom "L146"), (file_1, 1324%N)); ((TAtom "L132"), (file_1, 1327%N)); ((TAtom "L166"), (file_1, 1328%N)); ((TAtom "L168"), (file_1, 1328%N)); ((TAtom "iw_2.start"), (file_1, 484%N)); ((TAtom "iw_2.L7"), (file_1, 490%N)); ((TAtom "iw_2.L8"), (file_1, 491%N)); ((TAtom "iw_2.L17"), (file_1, 493%N)); ((TAtom "iw_2.iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_2.iw_1.join"), (file_1, 493%N)); ((TAtom "iw_2.L49"), (file_1, 497%N)); ((TAtom "iw_2.L9"), (file_1, 499%N)); ((TAtom "iw_2.iw_2.L10"), (file_0, 1049%N)); ((TAtom "iw_2.iw_2.join"), (file_1, 499%N)); ((TAtom "iw_2.L74"), (file_1, 500%N)); ((TAtom "iw_2.L75"), (file_1, 500%N)); ((TAtom "iw_2.L68"), (file_1, 501%N)); ((TAtom "iw_2.L70"), (file_1, 502%N)); ((TAtom "iw_2.L122"), (file_1, 504%N)); ((TAtom "iw_2.L123"), (file_1, 504%N)); ((TAtom "iw_2.L115"), (file_1, 504%N)); ((TAtom "iw_2.L116"), (file_1, 504%N)); ((TAtom "iw_2.L117"), (file_1, 504%N)); ((TAtom "iw_2.join"), (file_1, 1333%N)); ((TAtom "L188"), (file_1, 1335%N)); ((TAtom "L178"), (file_1, 1277%N)); ((TAtom "L198"), (file_1, 1342%N)); ((TAtom "L122"), (file_1, 1277%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,16 +33,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L50")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "_IO_new_file_xsputn") (code_module libioxsputn_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn__IO_new_file_xsputn.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) libioxsputn_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["_IO_new_file_xsputn"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("_IO_new_file_xsputn", app (map fst fn__IO_new_file_xsputn.block_src) fn__IO_new_file_xsputn.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End LibioXsputnSrc.

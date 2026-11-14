@@ -468,6 +468,7 @@ pkgs.runCommand "nanofil-glibc"
       ) (lib.sort lib.lessThan names)
     }EOF
     sed -i 's/^ *//; s/ *$//' $TMPDIR/nixdep
+    sort -o $TMPDIR/nixdep $TMPDIR/nixdep
     sed -i 's/ *$//' $TMPDIR/rocqdep
     if ! diff -u $TMPDIR/rocqdep $TMPDIR/nixdep; then
       echo "glibc.nix: a file's imports differ from rocq dep's (- rocq dep, + glibc.nix); write them as From Glibc/Nanofil Require" >&2

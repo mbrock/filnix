@@ -4,21 +4,27 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude LibioFlushCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import LibioFlushCode.
 Module LibioFlushSrc.
+
+Definition file_0 : string := "./libioP.h".
+
+Definition file_1 : string := "genops.c".
 
 Module fn___GI__IO_flush_all.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("genops.c", 708%nat).
+Definition source : option (string * N) := Some (file_1, 708%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("genops.c", 715%nat)); ((TAtom "L24"), ("genops.c", 716%nat)); ((TAtom "L25"), ("genops.c", 716%nat)); ((TAtom "L18"), ("genops.c", 716%nat)); ((TAtom "L19"), ("genops.c", 716%nat)); ((TAtom "L38"), ("genops.c", 716%nat)); ((TAtom "L58"), ("genops.c", 716%nat)); ((TAtom "L59"), ("genops.c", 716%nat)); ((TAtom "L63"), ("genops.c", 716%nat)); ((TAtom "L52"), ("genops.c", 716%nat)); ((TAtom "L39"), ("genops.c", 716%nat)); ((TAtom "L15"), ("genops.c", 719%nat)); ((TAtom "L82"), ("genops.c", 712%nat)); ((TAtom "L83"), ("genops.c", 721%nat)); ((TAtom "L99"), ("genops.c", 722%nat)); ((TAtom "L110"), ("genops.c", 722%nat)); ((TAtom "L111"), ("genops.c", 722%nat)); ((TAtom "L104"), ("genops.c", 722%nat)); ((TAtom "L105"), ("genops.c", 722%nat)); ((TAtom "L130"), ("genops.c", 722%nat)); ((TAtom "L154"), ("genops.c", 722%nat)); ((TAtom "L155"), ("genops.c", 722%nat)); ((TAtom "L159"), ("genops.c", 722%nat)); ((TAtom "L148"), ("genops.c", 722%nat)); ((TAtom "L131"), ("genops.c", 722%nat)); ((TAtom "L94"), ("genops.c", 726%nat)); ((TAtom "L180"), ("genops.c", 728%nat)); ((TAtom "L197"), ("genops.c", 728%nat)); ((TAtom "L198"), ("genops.c", 728%nat)); ((TAtom "L213"), ("genops.c", 728%nat)); ((TAtom "L221"), ("genops.c", 728%nat)); ((TAtom "L211"), ("genops.c", 728%nat)); ((TAtom "L240"), ("genops.c", 728%nat)); ((TAtom "iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_1.join"), ("genops.c", 728%nat)); ((TAtom "L241"), ("genops.c", 728%nat)); ((TAtom "L191"), ("genops.c", 728%nat)); ((TAtom "L192"), ("genops.c", 711%nat)); ((TAtom "L263"), ("genops.c", 735%nat)); ((TAtom "L269"), ("genops.c", 735%nat)); ((TAtom "L270"), ("genops.c", 735%nat)); ((TAtom "L285"), ("genops.c", 735%nat)); ((TAtom "L293"), ("genops.c", 735%nat)); ((TAtom "L264"), ("genops.c", 735%nat)); ((TAtom "L313"), ("genops.c", 735%nat)); ((TAtom "iw_2.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_2.join"), ("genops.c", 735%nat)); ((TAtom "L314"), ("genops.c", 735%nat)); ((TAtom "L257"), ("genops.c", 735%nat)); ((TAtom "L182"), ("genops.c", 711%nat)); ((TAtom "L334"), ("genops.c", 744%nat)); ((TAtom "L343"), ("genops.c", 744%nat)); ((TAtom "L344"), ("genops.c", 744%nat)); ((TAtom "L337"), ("genops.c", 744%nat)); ((TAtom "L338"), ("genops.c", 744%nat)); ((TAtom "L360"), ("genops.c", 744%nat)); ((TAtom "L381"), ("genops.c", 744%nat)); ((TAtom "L382"), ("genops.c", 744%nat)); ((TAtom "L393"), ("genops.c", 744%nat)); ((TAtom "L361"), ("genops.c", 744%nat)); ((TAtom "L329"), ("genops.c", 745%nat)); ((TAtom "L414"), ("genops.c", 749%nat)); ((TAtom "L423"), ("genops.c", 749%nat)); ((TAtom "L424"), ("genops.c", 749%nat)); ((TAtom "L417"), ("genops.c", 749%nat)); ((TAtom "L418"), ("genops.c", 749%nat)); ((TAtom "L434"), ("genops.c", 749%nat)); ((TAtom "L449"), ("genops.c", 749%nat)); ((TAtom "L450"), ("genops.c", 749%nat)); ((TAtom "L461"), ("genops.c", 749%nat)); ((TAtom "L435"), ("genops.c", 749%nat)); ((TAtom "L476"), ("genops.c", 750%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 715%N)); ((TAtom "L24"), (file_1, 716%N)); ((TAtom "L25"), (file_1, 716%N)); ((TAtom "L18"), (file_1, 716%N)); ((TAtom "L19"), (file_1, 716%N)); ((TAtom "L38"), (file_1, 716%N)); ((TAtom "L58"), (file_1, 716%N)); ((TAtom "L59"), (file_1, 716%N)); ((TAtom "L63"), (file_1, 716%N)); ((TAtom "L52"), (file_1, 716%N)); ((TAtom "L39"), (file_1, 716%N)); ((TAtom "L15"), (file_1, 719%N)); ((TAtom "L82"), (file_1, 712%N)); ((TAtom "L83"), (file_1, 721%N)); ((TAtom "L99"), (file_1, 722%N)); ((TAtom "L110"), (file_1, 722%N)); ((TAtom "L111"), (file_1, 722%N)); ((TAtom "L104"), (file_1, 722%N)); ((TAtom "L105"), (file_1, 722%N)); ((TAtom "L130"), (file_1, 722%N)); ((TAtom "L154"), (file_1, 722%N)); ((TAtom "L155"), (file_1, 722%N)); ((TAtom "L159"), (file_1, 722%N)); ((TAtom "L148"), (file_1, 722%N)); ((TAtom "L131"), (file_1, 722%N)); ((TAtom "L94"), (file_1, 726%N)); ((TAtom "L180"), (file_1, 728%N)); ((TAtom "L197"), (file_1, 728%N)); ((TAtom "L198"), (file_1, 728%N)); ((TAtom "L213"), (file_1, 728%N)); ((TAtom "L221"), (file_1, 728%N)); ((TAtom "L211"), (file_1, 728%N)); ((TAtom "L240"), (file_1, 728%N)); ((TAtom "iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_1.join"), (file_1, 728%N)); ((TAtom "L241"), (file_1, 728%N)); ((TAtom "L191"), (file_1, 728%N)); ((TAtom "L192"), (file_1, 711%N)); ((TAtom "L263"), (file_1, 735%N)); ((TAtom "L269"), (file_1, 735%N)); ((TAtom "L270"), (file_1, 735%N)); ((TAtom "L285"), (file_1, 735%N)); ((TAtom "L293"), (file_1, 735%N)); ((TAtom "L264"), (file_1, 735%N)); ((TAtom "L313"), (file_1, 735%N)); ((TAtom "iw_2.L10"), (file_0, 1049%N)); ((TAtom "iw_2.join"), (file_1, 735%N)); ((TAtom "L314"), (file_1, 735%N)); ((TAtom "L257"), (file_1, 735%N)); ((TAtom "L182"), (file_1, 711%N)); ((TAtom "L334"), (file_1, 744%N)); ((TAtom "L343"), (file_1, 744%N)); ((TAtom "L344"), (file_1, 744%N)); ((TAtom "L337"), (file_1, 744%N)); ((TAtom "L338"), (file_1, 744%N)); ((TAtom "L360"), (file_1, 744%N)); ((TAtom "L381"), (file_1, 744%N)); ((TAtom "L382"), (file_1, 744%N)); ((TAtom "L393"), (file_1, 744%N)); ((TAtom "L361"), (file_1, 744%N)); ((TAtom "L329"), (file_1, 745%N)); ((TAtom "L414"), (file_1, 749%N)); ((TAtom "L423"), (file_1, 749%N)); ((TAtom "L424"), (file_1, 749%N)); ((TAtom "L417"), (file_1, 749%N)); ((TAtom "L418"), (file_1, 749%N)); ((TAtom "L434"), (file_1, 749%N)); ((TAtom "L449"), (file_1, 749%N)); ((TAtom "L450"), (file_1, 749%N)); ((TAtom "L461"), (file_1, 749%N)); ((TAtom "L435"), (file_1, 749%N)); ((TAtom "L476"), (file_1, 750%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,16 +33,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L381"); (TAtom "L449"); (TAtom "L82")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI__IO_flush_all") (code_module libioflush_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI__IO_flush_all.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) libioflush_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI__IO_flush_all"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI__IO_flush_all", app (map fst fn___GI__IO_flush_all.block_src) fn___GI__IO_flush_all.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End LibioFlushSrc.

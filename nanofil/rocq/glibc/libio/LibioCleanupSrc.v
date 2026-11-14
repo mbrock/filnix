@@ -4,21 +4,27 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude LibioCleanupCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import LibioCleanupCode.
 Module LibioCleanupSrc.
+
+Definition file_0 : string := "./libioP.h".
+
+Definition file_1 : string := "genops.c".
 
 Module fn__IO_cleanup.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("genops.c", 886%nat).
+Definition source : option (string * N) := Some (file_1, 886%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("genops.c", 889%nat)); ((TAtom "iw_1.L23"), ("genops.c", 817%nat)); ((TAtom "iw_1.L24"), ("genops.c", 817%nat)); ((TAtom "iw_1.L17"), ("genops.c", 817%nat)); ((TAtom "iw_1.L18"), ("genops.c", 817%nat)); ((TAtom "iw_1.L37"), ("genops.c", 817%nat)); ((TAtom "iw_1.L57"), ("genops.c", 817%nat)); ((TAtom "iw_1.L58"), ("genops.c", 817%nat)); ((TAtom "iw_1.L62"), ("genops.c", 817%nat)); ((TAtom "iw_1.L51"), ("genops.c", 817%nat)); ((TAtom "iw_1.L38"), ("genops.c", 817%nat)); ((TAtom "iw_1.L14"), ("genops.c", 820%nat)); ((TAtom "iw_1.L81"), ("genops.c", 813%nat)); ((TAtom "iw_1.L82"), ("genops.c", 824%nat)); ((TAtom "iw_1.L98"), ("genops.c", 825%nat)); ((TAtom "iw_1.L109"), ("genops.c", 825%nat)); ((TAtom "iw_1.L110"), ("genops.c", 825%nat)); ((TAtom "iw_1.L103"), ("genops.c", 825%nat)); ((TAtom "iw_1.L104"), ("genops.c", 825%nat)); ((TAtom "iw_1.L129"), ("genops.c", 825%nat)); ((TAtom "iw_1.L153"), ("genops.c", 825%nat)); ((TAtom "iw_1.L154"), ("genops.c", 825%nat)); ((TAtom "iw_1.L158"), ("genops.c", 825%nat)); ((TAtom "iw_1.L147"), ("genops.c", 825%nat)); ((TAtom "iw_1.L130"), ("genops.c", 825%nat)); ((TAtom "iw_1.L93"), ("genops.c", 833%nat)); ((TAtom "iw_1.L179"), ("genops.c", 834%nat)); ((TAtom "iw_1.L194"), ("genops.c", 835%nat)); ((TAtom "iw_1.L202"), ("genops.c", 835%nat)); ((TAtom "iw_1.L203"), ("genops.c", 835%nat)); ((TAtom "iw_1.L189"), ("genops.c", 836%nat)); ((TAtom "iw_1.L191"), ("genops.c", 838%nat)); ((TAtom "iw_1.L225"), ("genops.c", 838%nat)); ((TAtom "iw_1.L223"), ("genops.c", 838%nat)); ((TAtom "iw_1.L240"), ("genops.c", 842%nat)); ((TAtom "iw_1.L247"), ("genops.c", 842%nat)); ((TAtom "iw_1.L248"), ("genops.c", 842%nat)); ((TAtom "iw_1.L235"), ("genops.c", 844%nat)); ((TAtom "iw_1.L237"), ("genops.c", 851%nat)); ((TAtom "iw_1.iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_1.iw_1.join"), ("genops.c", 851%nat)); ((TAtom "iw_1.L277"), ("genops.c", 854%nat)); ((TAtom "iw_1.L291"), ("genops.c", 860%nat)); ((TAtom "iw_1.L306"), ("genops.c", 862%nat)); ((TAtom "iw_1.L315"), ("genops.c", 862%nat)); ((TAtom "iw_1.L316"), ("genops.c", 862%nat)); ((TAtom "iw_1.L309"), ("genops.c", 862%nat)); ((TAtom "iw_1.L310"), ("genops.c", 862%nat)); ((TAtom "iw_1.L332"), ("genops.c", 862%nat)); ((TAtom "iw_1.L353"), ("genops.c", 862%nat)); ((TAtom "iw_1.L354"), ("genops.c", 862%nat)); ((TAtom "iw_1.L365"), ("genops.c", 862%nat)); ((TAtom "iw_1.L333"), ("genops.c", 862%nat)); ((TAtom "iw_1.L301"), ("genops.c", 863%nat)); ((TAtom "iw_1.L386"), ("genops.c", 867%nat)); ((TAtom "iw_1.L395"), ("genops.c", 867%nat)); ((TAtom "iw_1.L396"), ("genops.c", 867%nat)); ((TAtom "iw_1.L389"), ("genops.c", 867%nat)); ((TAtom "iw_1.L390"), ("genops.c", 867%nat)); ((TAtom "iw_1.L406"), ("genops.c", 867%nat)); ((TAtom "iw_1.L421"), ("genops.c", 867%nat)); ((TAtom "iw_1.L422"), ("genops.c", 867%nat)); ((TAtom "iw_1.L433"), ("genops.c", 867%nat)); ((TAtom "iw_1.L407"), ("genops.c", 867%nat)); ((TAtom "iw_1.L448"), ("genops.c", 868%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 889%N)); ((TAtom "iw_1.L23"), (file_1, 817%N)); ((TAtom "iw_1.L24"), (file_1, 817%N)); ((TAtom "iw_1.L17"), (file_1, 817%N)); ((TAtom "iw_1.L18"), (file_1, 817%N)); ((TAtom "iw_1.L37"), (file_1, 817%N)); ((TAtom "iw_1.L57"), (file_1, 817%N)); ((TAtom "iw_1.L58"), (file_1, 817%N)); ((TAtom "iw_1.L62"), (file_1, 817%N)); ((TAtom "iw_1.L51"), (file_1, 817%N)); ((TAtom "iw_1.L38"), (file_1, 817%N)); ((TAtom "iw_1.L14"), (file_1, 820%N)); ((TAtom "iw_1.L81"), (file_1, 813%N)); ((TAtom "iw_1.L82"), (file_1, 824%N)); ((TAtom "iw_1.L98"), (file_1, 825%N)); ((TAtom "iw_1.L109"), (file_1, 825%N)); ((TAtom "iw_1.L110"), (file_1, 825%N)); ((TAtom "iw_1.L103"), (file_1, 825%N)); ((TAtom "iw_1.L104"), (file_1, 825%N)); ((TAtom "iw_1.L129"), (file_1, 825%N)); ((TAtom "iw_1.L153"), (file_1, 825%N)); ((TAtom "iw_1.L154"), (file_1, 825%N)); ((TAtom "iw_1.L158"), (file_1, 825%N)); ((TAtom "iw_1.L147"), (file_1, 825%N)); ((TAtom "iw_1.L130"), (file_1, 825%N)); ((TAtom "iw_1.L93"), (file_1, 833%N)); ((TAtom "iw_1.L179"), (file_1, 834%N)); ((TAtom "iw_1.L194"), (file_1, 835%N)); ((TAtom "iw_1.L202"), (file_1, 835%N)); ((TAtom "iw_1.L203"), (file_1, 835%N)); ((TAtom "iw_1.L189"), (file_1, 836%N)); ((TAtom "iw_1.L191"), (file_1, 838%N)); ((TAtom "iw_1.L225"), (file_1, 838%N)); ((TAtom "iw_1.L223"), (file_1, 838%N)); ((TAtom "iw_1.L240"), (file_1, 842%N)); ((TAtom "iw_1.L247"), (file_1, 842%N)); ((TAtom "iw_1.L248"), (file_1, 842%N)); ((TAtom "iw_1.L235"), (file_1, 844%N)); ((TAtom "iw_1.L237"), (file_1, 851%N)); ((TAtom "iw_1.iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_1.iw_1.join"), (file_1, 851%N)); ((TAtom "iw_1.L277"), (file_1, 854%N)); ((TAtom "iw_1.L291"), (file_1, 860%N)); ((TAtom "iw_1.L306"), (file_1, 862%N)); ((TAtom "iw_1.L315"), (file_1, 862%N)); ((TAtom "iw_1.L316"), (file_1, 862%N)); ((TAtom "iw_1.L309"), (file_1, 862%N)); ((TAtom "iw_1.L310"), (file_1, 862%N)); ((TAtom "iw_1.L332"), (file_1, 862%N)); ((TAtom "iw_1.L353"), (file_1, 862%N)); ((TAtom "iw_1.L354"), (file_1, 862%N)); ((TAtom "iw_1.L365"), (file_1, 862%N)); ((TAtom "iw_1.L333"), (file_1, 862%N)); ((TAtom "iw_1.L301"), (file_1, 863%N)); ((TAtom "iw_1.L386"), (file_1, 867%N)); ((TAtom "iw_1.L395"), (file_1, 867%N)); ((TAtom "iw_1.L396"), (file_1, 867%N)); ((TAtom "iw_1.L389"), (file_1, 867%N)); ((TAtom "iw_1.L390"), (file_1, 867%N)); ((TAtom "iw_1.L406"), (file_1, 867%N)); ((TAtom "iw_1.L421"), (file_1, 867%N)); ((TAtom "iw_1.L422"), (file_1, 867%N)); ((TAtom "iw_1.L433"), (file_1, 867%N)); ((TAtom "iw_1.L407"), (file_1, 867%N)); ((TAtom "iw_1.L448"), (file_1, 868%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,16 +33,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "iw_1.L353"); (TAtom "iw_1.L421"); (TAtom "iw_1.L81")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "_IO_cleanup") (code_module libiocleanup_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn__IO_cleanup.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) libiocleanup_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["_IO_cleanup"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("_IO_cleanup", app (map fst fn__IO_cleanup.block_src) fn__IO_cleanup.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End LibioCleanupSrc.

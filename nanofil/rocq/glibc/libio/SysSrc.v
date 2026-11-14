@@ -4,21 +4,45 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude SysCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import SysCode.
 Module SysSrc.
+
+Definition file_0 : string := "../nptl/descr.h".
+
+Definition file_1 : string := "../sysdeps/nptl/pthreadP.h".
+
+Definition file_2 : string := "../sysdeps/unix/sysv/linux/_exit.c".
+
+Definition file_3 : string := "../sysdeps/unix/sysv/linux/close_nocancel.c".
+
+Definition file_4 : string := "../sysdeps/unix/sysv/linux/close_nocancel_nostatus.c".
+
+Definition file_5 : string := "../sysdeps/unix/sysv/linux/fstat64.c".
+
+Definition file_6 : string := "../sysdeps/unix/sysv/linux/isatty_nostatus.c".
+
+Definition file_7 : string := "../sysdeps/unix/sysv/linux/lseek64.c".
+
+Definition file_8 : string := "../sysdeps/unix/sysv/linux/write.c".
+
+Definition file_9 : string := "../sysdeps/unix/sysv/linux/write_nocancel.c".
+
+Definition file_10 : string := "libc-cleanup.c".
 
 Module fn___isatty_nostatus.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/isatty_nostatus.c", 22%nat).
+Definition source : option (string * N) := Some (file_6, 22%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/isatty_nostatus.c", 25%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_6, 25%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +51,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__isatty_nostatus") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___isatty_nostatus.
 
 Module fn___GI___libc_write.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/write.c", 24%nat).
+Definition source : option (string * N) := Some (file_8, 24%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/write.c", 27%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_8, 27%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,26 +69,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___libc_write") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___libc_write.
 
 Module fn___lseek64.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/lseek64.c", 27%nat).
+Definition source : option (string * N) := Some (file_7, 27%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/lseek64.c", 30%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_7, 30%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -83,26 +87,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__lseek64") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___lseek64.
 
 Module fn___GI___fstat64.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/fstat64.c", 29%nat).
+Definition source : option (string * N) := Some (file_5, 29%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/fstat64.c", 32%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_5, 32%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -111,26 +105,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___fstat64") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___fstat64.
 
 Module fn___GI___close_nocancel.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/close_nocancel.c", 24%nat).
+Definition source : option (string * N) := Some (file_3, 24%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/close_nocancel.c", 27%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_3, 27%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -138,27 +122,17 @@ Definition temp_names : list (name * string) :=
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
-
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___close_nocancel") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
 
 End fn___GI___close_nocancel.
 
 Module fn___GI___close_nocancel_nostatus.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/close_nocancel_nostatus.c", 24%nat).
+Definition source : option (string * N) := Some (file_4, 24%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/close_nocancel_nostatus.c", 27%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_4, 27%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -167,26 +141,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___close_nocancel_nostatus") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___close_nocancel_nostatus.
 
 Module fn___GI__exit.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/_exit.c", 26%nat).
+Definition source : option (string * N) := Some (file_2, 26%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/_exit.c", 30%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 30%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -195,26 +159,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI__exit") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI__exit.
 
 Module fn___GI___libc_cleanup_push_defer.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("libc-cleanup.c", 22%nat).
+Definition source : option (string * N) := Some (file_10, 22%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("libc-cleanup.c", 25%nat)); ((TAtom "L22"), ("libc-cleanup.c", 29%nat)); ((TAtom "L35"), ("libc-cleanup.c", 39%nat)); ((TAtom "L36"), ("libc-cleanup.c", 29%nat)); ((TAtom "L15"), ("libc-cleanup.c", 29%nat)); ((TAtom "L41"), ("libc-cleanup.c", 44%nat)); ((TAtom "L42"), ("libc-cleanup.c", 44%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_10, 25%N)); ((TAtom "L22"), (file_10, 29%N)); ((TAtom "L35"), (file_10, 39%N)); ((TAtom "L36"), (file_10, 29%N)); ((TAtom "L15"), (file_10, 29%N)); ((TAtom "L41"), (file_10, 44%N)); ((TAtom "L42"), (file_10, 44%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -223,26 +177,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L22")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___libc_cleanup_push_defer") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___libc_cleanup_push_defer.
 
 Module fn___GI___libc_cleanup_pop_restore.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("libc-cleanup.c", 52%nat).
+Definition source : option (string * N) := Some (file_10, 52%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("libc-cleanup.c", 55%nat)); ((TAtom "L20"), ("libc-cleanup.c", 60%nat)); ((TAtom "L21"), ("libc-cleanup.c", 60%nat)); ((TAtom "L29"), ("libc-cleanup.c", 59%nat)); ((TAtom "L41"), ("libc-cleanup.c", 68%nat)); ((TAtom "L42"), ("libc-cleanup.c", 59%nat)); ((TAtom "iw_1.start"), ("../nptl/descr.h", 463%nat)); ((TAtom "L44"), ("libc-cleanup.c", 72%nat)); ((TAtom "iw_2.L12"), ("../sysdeps/nptl/pthreadP.h", 256%nat)); ((TAtom "iw_2.L13"), ("../sysdeps/nptl/pthreadP.h", 268%nat)); ((TAtom "iw_2.L37"), ("../sysdeps/nptl/pthreadP.h", 268%nat)); ((TAtom "iw_2.L38"), ("../sysdeps/nptl/pthreadP.h", 256%nat)); ((TAtom "iw_2.L14"), ("../sysdeps/nptl/pthreadP.h", 271%nat)); ((TAtom "L15"), ("libc-cleanup.c", 52%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_10, 55%N)); ((TAtom "L20"), (file_10, 60%N)); ((TAtom "L21"), (file_10, 60%N)); ((TAtom "L29"), (file_10, 59%N)); ((TAtom "L41"), (file_10, 68%N)); ((TAtom "L42"), (file_10, 59%N)); ((TAtom "iw_1.start"), (file_0, 463%N)); ((TAtom "L44"), (file_10, 72%N)); ((TAtom "iw_2.L12"), (file_1, 256%N)); ((TAtom "iw_2.L13"), (file_1, 268%N)); ((TAtom "iw_2.L37"), (file_1, 268%N)); ((TAtom "iw_2.L38"), (file_1, 256%N)); ((TAtom "iw_2.L14"), (file_1, 271%N)); ((TAtom "L15"), (file_10, 52%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -251,26 +195,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L29"); (TAtom "iw_2.L12")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___libc_cleanup_pop_restore") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___libc_cleanup_pop_restore.
 
 Module fn___GI___write_nocancel.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../sysdeps/unix/sysv/linux/write_nocancel.c", 24%nat).
+Definition source : option (string * N) := Some (file_9, 24%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../sysdeps/unix/sysv/linux/write_nocancel.c", 27%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_9, 27%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -279,16 +213,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___write_nocancel") (code_module sys_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___write_nocancel.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) sys_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__isatty_nostatus"; "__GI___libc_write"; "__lseek64"; "__GI___fstat64"; "__GI___close_nocancel"; "__GI___close_nocancel_nostatus"; "__GI__exit"; "__GI___libc_cleanup_push_defer"; "__GI___libc_cleanup_pop_restore"; "__GI___write_nocancel"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__isatty_nostatus", app (map fst fn___isatty_nostatus.block_src) fn___isatty_nostatus.loop_heads); ("__GI___libc_write", app (map fst fn___GI___libc_write.block_src) fn___GI___libc_write.loop_heads); ("__lseek64", app (map fst fn___lseek64.block_src) fn___lseek64.loop_heads); ("__GI___fstat64", app (map fst fn___GI___fstat64.block_src) fn___GI___fstat64.loop_heads); ("__GI___close_nocancel", app (map fst fn___GI___close_nocancel.block_src) fn___GI___close_nocancel.loop_heads); ("__GI___close_nocancel_nostatus", app (map fst fn___GI___close_nocancel_nostatus.block_src) fn___GI___close_nocancel_nostatus.loop_heads); ("__GI__exit", app (map fst fn___GI__exit.block_src) fn___GI__exit.loop_heads); ("__GI___libc_cleanup_push_defer", app (map fst fn___GI___libc_cleanup_push_defer.block_src) fn___GI___libc_cleanup_push_defer.loop_heads); ("__GI___libc_cleanup_pop_restore", app (map fst fn___GI___libc_cleanup_pop_restore.block_src) fn___GI___libc_cleanup_pop_restore.loop_heads); ("__GI___write_nocancel", app (map fst fn___GI___write_nocancel.block_src) fn___GI___write_nocancel.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End SysSrc.

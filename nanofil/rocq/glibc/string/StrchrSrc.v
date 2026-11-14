@@ -4,21 +4,37 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude StrchrCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import StrchrCode.
 Module StrchrSrc.
+
+Definition file_0 : string := "../stdlib/stdbit.h".
+
+Definition file_1 : string := "../sysdeps/generic/string-fza.h".
+
+Definition file_2 : string := "memchr.c".
+
+Definition file_3 : string := "strchr.c".
+
+Definition file_4 : string := "strchrnul.c".
+
+Definition file_5 : string := "strnlen.c".
+
+Definition file_6 : string := "strrchr.c".
 
 Module fn___GI_strchr.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("strchr.c", 28%nat).
+Definition source : option (string * N) := Some (file_3, 28%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("strchr.c", 31%nat)); ((TAtom "L9"), ("strchr.c", 32%nat)); ((TAtom "L10"), ("strchr.c", 32%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_3, 31%N)); ((TAtom "L9"), (file_3, 32%N)); ((TAtom "L10"), (file_3, 32%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +43,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI_strchr") (code_module strchr_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI_strchr.
 
 Module fn___GI___strchrnul.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("strchrnul.c", 33%nat).
+Definition source : option (string * N) := Some (file_4, 33%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("strchrnul.c", 37%nat)); ((TAtom "iw_4.start"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_4.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_4.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "L37"), ("strchrnul.c", 38%nat)); ((TAtom "iw_6.start"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_6.iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_6.iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_4, 37%N)); ((TAtom "iw_4.start"), (file_0, 193%N)); ((TAtom "iw_4.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_4.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "L37"), (file_4, 38%N)); ((TAtom "iw_6.start"), (file_0, 193%N)); ((TAtom "iw_6.iw_3.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_6.iw_3.iw_1.iw_1.L4"), (file_0, 193%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,26 +61,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L37")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___strchrnul") (code_module strchr_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___strchrnul.
 
 Module fn___GI_strrchr.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("strrchr.c", 27%nat).
+Definition source : option (string * N) := Some (file_6, 27%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("strrchr.c", 30%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_6, 30%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -83,26 +79,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI_strrchr") (code_module strchr_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI_strrchr.
 
 Module fn___memchr.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("memchr.c", 40%nat).
+Definition source : option (string * N) := Some (file_2, 40%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("memchr.c", 43%nat)); ((TAtom "L6"), ("memchr.c", 44%nat)); ((TAtom "L8"), ("memchr.c", 48%nat)); ((TAtom "iw_2.L5"), ("memchr.c", 36%nat)); ((TAtom "iw_2.L6"), ("memchr.c", 36%nat)); ((TAtom "iw_6.start"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_6.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_6.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "L62"), ("memchr.c", 63%nat)); ((TAtom "L63"), ("memchr.c", 63%nat)); ((TAtom "L52"), ("memchr.c", 65%nat)); ((TAtom "L72"), ("memchr.c", 66%nat)); ((TAtom "L74"), ("memchr.c", 68%nat)); ((TAtom "L84"), ("memchr.c", 51%nat)); ((TAtom "iw_7.start"), ("../sysdeps/generic/string-fza.h", 63%nat)); ((TAtom "iw_8.start"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_8.iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_8.iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "L94"), ("memchr.c", 73%nat)); ((TAtom "iw_9.start"), ("../sysdeps/generic/string-fza.h", 63%nat)); ((TAtom "iw_10.start"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_10.iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "iw_10.iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 193%nat)); ((TAtom "L123"), ("memchr.c", 82%nat)); ((TAtom "L111"), ("memchr.c", 84%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 43%N)); ((TAtom "L6"), (file_2, 44%N)); ((TAtom "L8"), (file_2, 48%N)); ((TAtom "iw_2.L5"), (file_2, 36%N)); ((TAtom "iw_2.L6"), (file_2, 36%N)); ((TAtom "iw_6.start"), (file_0, 193%N)); ((TAtom "iw_6.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_6.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "L62"), (file_2, 63%N)); ((TAtom "L63"), (file_2, 63%N)); ((TAtom "L52"), (file_2, 65%N)); ((TAtom "L72"), (file_2, 66%N)); ((TAtom "L74"), (file_2, 68%N)); ((TAtom "L84"), (file_2, 51%N)); ((TAtom "iw_7.start"), (file_1, 63%N)); ((TAtom "iw_8.start"), (file_0, 193%N)); ((TAtom "iw_8.iw_3.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_8.iw_3.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "L94"), (file_2, 73%N)); ((TAtom "iw_9.start"), (file_1, 63%N)); ((TAtom "iw_10.start"), (file_0, 193%N)); ((TAtom "iw_10.iw_3.iw_1.iw_1.L3"), (file_0, 193%N)); ((TAtom "iw_10.iw_3.iw_1.iw_1.L4"), (file_0, 193%N)); ((TAtom "L123"), (file_2, 82%N)); ((TAtom "L111"), (file_2, 84%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -111,26 +97,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L84")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__memchr") (code_module strchr_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___memchr.
 
 Module fn___GI___strnlen.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("strnlen.c", 27%nat).
+Definition source : option (string * N) := Some (file_5, 27%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("strnlen.c", 30%nat)); ((TAtom "L8"), ("strnlen.c", 31%nat)); ((TAtom "L10"), ("strnlen.c", 31%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_5, 30%N)); ((TAtom "L8"), (file_5, 31%N)); ((TAtom "L10"), (file_5, 31%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -139,16 +115,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___strnlen") (code_module strchr_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___strnlen.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) strchr_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI_strchr"; "__GI___strchrnul"; "__GI_strrchr"; "__memchr"; "__GI___strnlen"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI_strchr", app (map fst fn___GI_strchr.block_src) fn___GI_strchr.loop_heads); ("__GI___strchrnul", app (map fst fn___GI___strchrnul.block_src) fn___GI___strchrnul.loop_heads); ("__GI_strrchr", app (map fst fn___GI_strrchr.block_src) fn___GI_strrchr.loop_heads); ("__memchr", app (map fst fn___memchr.block_src) fn___memchr.loop_heads); ("__GI___strnlen", app (map fst fn___GI___strnlen.block_src) fn___GI___strnlen.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End StrchrSrc.

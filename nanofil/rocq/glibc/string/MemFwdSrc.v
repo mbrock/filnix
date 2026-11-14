@@ -4,21 +4,45 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude MemFwdCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import MemFwdCode.
 Module MemFwdSrc.
+
+Definition file_0 : string := "../include/ctype.h".
+
+Definition file_1 : string := "./wchar-lookup.h".
+
+Definition file_2 : string := "ctype-info.c".
+
+Definition file_3 : string := "errno-loc.c".
+
+Definition file_4 : string := "mb_cur_max.c".
+
+Definition file_5 : string := "mbsinit.c".
+
+Definition file_6 : string := "memcpy.c".
+
+Definition file_7 : string := "mempcpy.c".
+
+Definition file_8 : string := "memset.c".
+
+Definition file_9 : string := "strdup.c".
+
+Definition file_10 : string := "wcfuncs.c".
 
 Module fn___GI_memcpy.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("memcpy.c", 28%nat).
+Definition source : option (string * N) := Some (file_6, 28%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("memcpy.c", 37%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_6, 37%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +51,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI_memcpy") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI_memcpy.
 
 Module fn___GI___mempcpy.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("mempcpy.c", 32%nat).
+Definition source : option (string * N) := Some (file_7, 32%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("mempcpy.c", 35%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_7, 35%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,26 +69,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___mempcpy") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___mempcpy.
 
 Module fn___GI_memset.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("memset.c", 26%nat).
+Definition source : option (string * N) := Some (file_8, 26%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("memset.c", 29%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_8, 29%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -83,26 +87,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI_memset") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI_memset.
 
 Module fn___GI___strdup.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("strdup.c", 38%nat).
+Definition source : option (string * N) := Some (file_9, 38%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("strdup.c", 41%nat)); ((TAtom "L9"), ("strdup.c", 45%nat)); ((TAtom "L11"), ("strdup.c", 47%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_9, 41%N)); ((TAtom "L9"), (file_9, 45%N)); ((TAtom "L11"), (file_9, 47%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -111,26 +105,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___strdup") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___strdup.
 
 Module fn___GI___errno_location.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("errno-loc.c", 23%nat).
+Definition source : option (string * N) := Some (file_3, 23%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("errno-loc.c", 26%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_3, 26%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -139,26 +123,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___errno_location") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___errno_location.
 
 Module fn___mbsinit.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("mbsinit.c", 32%nat).
+Definition source : option (string * N) := Some (file_5, 32%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("mbsinit.c", 35%nat)); ((TAtom "L6"), ("mbsinit.c", 35%nat)); ((TAtom "L7"), ("mbsinit.c", 35%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_5, 35%N)); ((TAtom "L6"), (file_5, 35%N)); ((TAtom "L7"), (file_5, 35%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -167,26 +141,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__mbsinit") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___mbsinit.
 
 Module fn___GI___towlower.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("wcfuncs.c", 73%nat).
+Definition source : option (string * N) := Some (file_10, 73%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("wcfuncs.c", 76%nat)); ((TAtom "iw_1.L16"), ("./wchar-lookup.h", 124%nat)); ((TAtom "iw_1.L30"), ("./wchar-lookup.h", 127%nat)); ((TAtom "iw_1.L59"), ("./wchar-lookup.h", 133%nat)); ((TAtom "iw_1.join"), ("wcfuncs.c", 78%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_10, 76%N)); ((TAtom "iw_1.L16"), (file_1, 124%N)); ((TAtom "iw_1.L30"), (file_1, 127%N)); ((TAtom "iw_1.L59"), (file_1, 133%N)); ((TAtom "iw_1.join"), (file_10, 78%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -194,27 +158,17 @@ Definition temp_names : list (name * string) :=
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
-
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___towlower") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
 
 End fn___GI___towlower.
 
 Module fn___GI___towupper.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("wcfuncs.c", 85%nat).
+Definition source : option (string * N) := Some (file_10, 85%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("wcfuncs.c", 88%nat)); ((TAtom "iw_1.L16"), ("./wchar-lookup.h", 124%nat)); ((TAtom "iw_1.L30"), ("./wchar-lookup.h", 127%nat)); ((TAtom "iw_1.L59"), ("./wchar-lookup.h", 133%nat)); ((TAtom "iw_1.join"), ("wcfuncs.c", 90%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_10, 88%N)); ((TAtom "iw_1.L16"), (file_1, 124%N)); ((TAtom "iw_1.L30"), (file_1, 127%N)); ((TAtom "iw_1.L59"), (file_1, 133%N)); ((TAtom "iw_1.join"), (file_10, 90%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -223,26 +177,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___towupper") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___towupper.
 
 Module fn___ctype_b_loc.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../include/ctype.h", 40%nat).
+Definition source : option (string * N) := Some (file_0, 40%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../include/ctype.h", 43%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 43%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -250,27 +194,17 @@ Definition temp_names : list (name * string) :=
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
-
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__ctype_b_loc") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
 
 End fn___ctype_b_loc.
 
 Module fn___ctype_toupper_loc.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../include/ctype.h", 46%nat).
+Definition source : option (string * N) := Some (file_0, 46%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../include/ctype.h", 49%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 49%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -278,27 +212,17 @@ Definition temp_names : list (name * string) :=
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
-
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__ctype_toupper_loc") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
 
 End fn___ctype_toupper_loc.
 
 Module fn___ctype_tolower_loc.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("../include/ctype.h", 52%nat).
+Definition source : option (string * N) := Some (file_0, 52%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("../include/ctype.h", 55%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 55%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -307,26 +231,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__ctype_tolower_loc") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___ctype_tolower_loc.
 
 Module fn___GI___ctype_init.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("ctype-info.c", 35%nat).
+Definition source : option (string * N) := Some (file_2, 35%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("ctype-info.c", 38%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 38%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -335,26 +249,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___ctype_init") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___ctype_init.
 
 Module fn___ctype_get_mb_cur_max.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("mb_cur_max.c", 26%nat).
+Definition source : option (string * N) := Some (file_4, 26%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("mb_cur_max.c", 30%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_4, 30%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -363,16 +267,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__ctype_get_mb_cur_max") (code_module memfwd_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___ctype_get_mb_cur_max.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) memfwd_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI_memcpy"; "__GI___mempcpy"; "__GI_memset"; "__GI___strdup"; "__GI___errno_location"; "__mbsinit"; "__GI___towlower"; "__GI___towupper"; "__ctype_b_loc"; "__ctype_toupper_loc"; "__ctype_tolower_loc"; "__GI___ctype_init"; "__ctype_get_mb_cur_max"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI_memcpy", app (map fst fn___GI_memcpy.block_src) fn___GI_memcpy.loop_heads); ("__GI___mempcpy", app (map fst fn___GI___mempcpy.block_src) fn___GI___mempcpy.loop_heads); ("__GI_memset", app (map fst fn___GI_memset.block_src) fn___GI_memset.loop_heads); ("__GI___strdup", app (map fst fn___GI___strdup.block_src) fn___GI___strdup.loop_heads); ("__GI___errno_location", app (map fst fn___GI___errno_location.block_src) fn___GI___errno_location.loop_heads); ("__mbsinit", app (map fst fn___mbsinit.block_src) fn___mbsinit.loop_heads); ("__GI___towlower", app (map fst fn___GI___towlower.block_src) fn___GI___towlower.loop_heads); ("__GI___towupper", app (map fst fn___GI___towupper.block_src) fn___GI___towupper.loop_heads); ("__ctype_b_loc", app (map fst fn___ctype_b_loc.block_src) fn___ctype_b_loc.loop_heads); ("__ctype_toupper_loc", app (map fst fn___ctype_toupper_loc.block_src) fn___ctype_toupper_loc.loop_heads); ("__ctype_tolower_loc", app (map fst fn___ctype_tolower_loc.block_src) fn___ctype_tolower_loc.loop_heads); ("__GI___ctype_init", app (map fst fn___GI___ctype_init.block_src) fn___GI___ctype_init.loop_heads); ("__ctype_get_mb_cur_max", app (map fst fn___ctype_get_mb_cur_max.block_src) fn___ctype_get_mb_cur_max.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End MemFwdSrc.

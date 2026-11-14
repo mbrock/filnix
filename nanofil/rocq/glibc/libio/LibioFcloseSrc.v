@@ -4,21 +4,27 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude LibioFcloseCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import LibioFcloseCode.
 Module LibioFcloseSrc.
+
+Definition file_0 : string := "./libioP.h".
+
+Definition file_1 : string := "iofclose.c".
 
 Module fn__IO_new_fclose.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("iofclose.c", 32%nat).
+Definition source : option (string * N) := Some (file_1, 32%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("iofclose.c", 47%nat)); ((TAtom "L18"), ("iofclose.c", 47%nat)); ((TAtom "L29"), ("iofclose.c", 47%nat)); ((TAtom "L30"), ("iofclose.c", 47%nat)); ((TAtom "L23"), ("iofclose.c", 47%nat)); ((TAtom "L24"), ("iofclose.c", 47%nat)); ((TAtom "L49"), ("iofclose.c", 47%nat)); ((TAtom "L73"), ("iofclose.c", 47%nat)); ((TAtom "L74"), ("iofclose.c", 47%nat)); ((TAtom "L78"), ("iofclose.c", 47%nat)); ((TAtom "L67"), ("iofclose.c", 47%nat)); ((TAtom "L50"), ("iofclose.c", 47%nat)); ((TAtom "L13"), ("iofclose.c", 48%nat)); ((TAtom "L99"), ("iofclose.c", 50%nat)); ((TAtom "L100"), ("iofclose.c", 55%nat)); ((TAtom "L121"), ("iofclose.c", 55%nat)); ((TAtom "L101"), ("iofclose.c", 35%nat)); ((TAtom "iw_1.L5"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L19"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L28"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L29"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L22"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L23"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L45"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L66"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L67"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L78"), ("./libioP.h", 1000%nat)); ((TAtom "iw_1.L46"), ("./libioP.h", 1000%nat)); ((TAtom "L8"), ("iofclose.c", 65%nat)); ((TAtom "iw_2.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_2.join"), ("iofclose.c", 67%nat)); ((TAtom "L136"), ("iofclose.c", 70%nat)); ((TAtom "L143"), ("iofclose.c", 71%nat)); ((TAtom "L145"), ("iofclose.c", 74%nat)); ((TAtom "L169"), ("iofclose.c", 76%nat)); ((TAtom "L170"), ("iofclose.c", 76%nat)); ((TAtom "L174"), ("iofclose.c", 76%nat)); ((TAtom "L163"), ("iofclose.c", 77%nat)); ((TAtom "L195"), ("iofclose.c", 79%nat)); ((TAtom "L196"), ("iofclose.c", 79%nat)); ((TAtom "L207"), ("iofclose.c", 79%nat)); ((TAtom "L137"), ("iofclose.c", 83%nat)); ((TAtom "L218"), ("iofclose.c", 84%nat)); ((TAtom "iw_3.start"), ("./libioP.h", 971%nat)); ((TAtom "iw_3.L10"), ("./libioP.h", 971%nat)); ((TAtom "iw_3.L11"), ("./libioP.h", 971%nat)); ((TAtom "iw_3.L19"), ("./libioP.h", 971%nat)); ((TAtom "iw_3.L20"), ("./libioP.h", 971%nat)); ((TAtom "iw_3.L4"), ("./libioP.h", 978%nat)); ((TAtom "iw_3.join"), ("iofclose.c", 87%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 47%N)); ((TAtom "L18"), (file_1, 47%N)); ((TAtom "L29"), (file_1, 47%N)); ((TAtom "L30"), (file_1, 47%N)); ((TAtom "L23"), (file_1, 47%N)); ((TAtom "L24"), (file_1, 47%N)); ((TAtom "L49"), (file_1, 47%N)); ((TAtom "L73"), (file_1, 47%N)); ((TAtom "L74"), (file_1, 47%N)); ((TAtom "L78"), (file_1, 47%N)); ((TAtom "L67"), (file_1, 47%N)); ((TAtom "L50"), (file_1, 47%N)); ((TAtom "L13"), (file_1, 48%N)); ((TAtom "L99"), (file_1, 50%N)); ((TAtom "L100"), (file_1, 55%N)); ((TAtom "L121"), (file_1, 55%N)); ((TAtom "L101"), (file_1, 35%N)); ((TAtom "iw_1.L5"), (file_0, 1000%N)); ((TAtom "iw_1.L19"), (file_0, 1000%N)); ((TAtom "iw_1.L28"), (file_0, 1000%N)); ((TAtom "iw_1.L29"), (file_0, 1000%N)); ((TAtom "iw_1.L22"), (file_0, 1000%N)); ((TAtom "iw_1.L23"), (file_0, 1000%N)); ((TAtom "iw_1.L45"), (file_0, 1000%N)); ((TAtom "iw_1.L66"), (file_0, 1000%N)); ((TAtom "iw_1.L67"), (file_0, 1000%N)); ((TAtom "iw_1.L78"), (file_0, 1000%N)); ((TAtom "iw_1.L46"), (file_0, 1000%N)); ((TAtom "L8"), (file_1, 65%N)); ((TAtom "iw_2.L10"), (file_0, 1049%N)); ((TAtom "iw_2.join"), (file_1, 67%N)); ((TAtom "L136"), (file_1, 70%N)); ((TAtom "L143"), (file_1, 71%N)); ((TAtom "L145"), (file_1, 74%N)); ((TAtom "L169"), (file_1, 76%N)); ((TAtom "L170"), (file_1, 76%N)); ((TAtom "L174"), (file_1, 76%N)); ((TAtom "L163"), (file_1, 77%N)); ((TAtom "L195"), (file_1, 79%N)); ((TAtom "L196"), (file_1, 79%N)); ((TAtom "L207"), (file_1, 79%N)); ((TAtom "L137"), (file_1, 83%N)); ((TAtom "L218"), (file_1, 84%N)); ((TAtom "iw_3.start"), (file_0, 971%N)); ((TAtom "iw_3.L10"), (file_0, 971%N)); ((TAtom "iw_3.L11"), (file_0, 971%N)); ((TAtom "iw_3.L19"), (file_0, 971%N)); ((TAtom "iw_3.L20"), (file_0, 971%N)); ((TAtom "iw_3.L4"), (file_0, 978%N)); ((TAtom "iw_3.join"), (file_1, 87%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,16 +33,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L195"); (TAtom "iw_1.L66")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "_IO_new_fclose") (code_module libiofclose_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn__IO_new_fclose.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) libiofclose_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["_IO_new_fclose"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("_IO_new_fclose", app (map fst fn__IO_new_fclose.block_src) fn__IO_new_fclose.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End LibioFcloseSrc.

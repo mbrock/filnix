@@ -4,21 +4,29 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude LibioGenCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import LibioGenCode.
 Module LibioGenSrc.
+
+Definition file_0 : string := "./libioP.h".
+
+Definition file_1 : string := "cxa_thread_atexit_impl.c".
+
+Definition file_2 : string := "genops.c".
 
 Module fn___GI___overflow.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("genops.c", 223%nat).
+Definition source : option (string * N) := Some (file_2, 223%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("genops.c", 227%nat)); ((TAtom "L13"), ("genops.c", 228%nat)); ((TAtom "L23"), ("genops.c", 228%nat)); ((TAtom "L25"), ("genops.c", 228%nat)); ((TAtom "L6"), ("genops.c", 229%nat)); ((TAtom "iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_1.join"), ("genops.c", 229%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 227%N)); ((TAtom "L13"), (file_2, 228%N)); ((TAtom "L23"), (file_2, 228%N)); ((TAtom "L25"), (file_2, 228%N)); ((TAtom "L6"), (file_2, 229%N)); ((TAtom "iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_1.join"), (file_2, 229%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +35,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___overflow") (code_module libiogen_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___overflow.
 
 Module fn___GI__IO_default_xsputn.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("genops.c", 395%nat).
+Definition source : option (string * N) := Some (file_2, 395%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("genops.c", 400%nat)); ((TAtom "L10"), ("genops.c", 401%nat)); ((TAtom "L16"), ("genops.c", 399%nat)); ((TAtom "L20"), ("genops.c", 407%nat)); ((TAtom "L43"), ("genops.c", 408%nat)); ((TAtom "L44"), ("genops.c", 407%nat)); ((TAtom "L49"), ("genops.c", 412%nat)); ((TAtom "L50"), ("genops.c", 415%nat)); ((TAtom "L65"), ("genops.c", 417%nat)); ((TAtom "L76"), ("genops.c", 418%nat)); ((TAtom "L77"), ("genops.c", 420%nat)); ((TAtom "L79"), ("genops.c", 421%nat)); ((TAtom "L51"), ("genops.c", 398%nat)); ((TAtom "L22"), ("genops.c", 399%nat)); ((TAtom "L99"), ("genops.c", 425%nat)); ((TAtom "iw_1.L10"), ("./libioP.h", 1049%nat)); ((TAtom "iw_1.join"), ("genops.c", 425%nat)); ((TAtom "L100"), ("genops.c", 425%nat)); ((TAtom "L96"), ("genops.c", 427%nat)); ((TAtom "L19"), ("genops.c", 429%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 400%N)); ((TAtom "L10"), (file_2, 401%N)); ((TAtom "L16"), (file_2, 399%N)); ((TAtom "L20"), (file_2, 407%N)); ((TAtom "L43"), (file_2, 408%N)); ((TAtom "L44"), (file_2, 407%N)); ((TAtom "L49"), (file_2, 412%N)); ((TAtom "L50"), (file_2, 415%N)); ((TAtom "L65"), (file_2, 417%N)); ((TAtom "L76"), (file_2, 418%N)); ((TAtom "L77"), (file_2, 420%N)); ((TAtom "L79"), (file_2, 421%N)); ((TAtom "L51"), (file_2, 398%N)); ((TAtom "L22"), (file_2, 399%N)); ((TAtom "L99"), (file_2, 425%N)); ((TAtom "iw_1.L10"), (file_0, 1049%N)); ((TAtom "iw_1.join"), (file_2, 425%N)); ((TAtom "L100"), (file_2, 425%N)); ((TAtom "L96"), (file_2, 427%N)); ((TAtom "L19"), (file_2, 429%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,26 +53,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L16"); (TAtom "L76")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI__IO_default_xsputn") (code_module libiogen_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI__IO_default_xsputn.
 
 Module fn___GI__IO_unsave_markers.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("genops.c", 981%nat).
+Definition source : option (string * N) := Some (file_2, 981%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("genops.c", 984%nat)); ((TAtom "L6"), ("genops.c", 987%nat)); ((TAtom "L8"), ("genops.c", 990%nat)); ((TAtom "L14"), ("genops.c", 991%nat)); ((TAtom "L16"), ("genops.c", 981%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 984%N)); ((TAtom "L6"), (file_2, 987%N)); ((TAtom "L8"), (file_2, 990%N)); ((TAtom "L14"), (file_2, 991%N)); ((TAtom "L16"), (file_2, 981%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -83,26 +71,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI__IO_unsave_markers") (code_module libiogen_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI__IO_unsave_markers.
 
 Module fn___GI___call_tls_dtors.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("cxa_thread_atexit_impl.c", 80%nat).
+Definition source : option (string * N) := Some (file_1, 80%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("cxa_thread_atexit_impl.c", 80%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 80%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -111,16 +89,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___call_tls_dtors") (code_module libiogen_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___call_tls_dtors.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) libiogen_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI___overflow"; "__GI__IO_default_xsputn"; "__GI__IO_unsave_markers"; "__GI___call_tls_dtors"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI___overflow", app (map fst fn___GI___overflow.block_src) fn___GI___overflow.loop_heads); ("__GI__IO_default_xsputn", app (map fst fn___GI__IO_default_xsputn.block_src) fn___GI__IO_default_xsputn.loop_heads); ("__GI__IO_unsave_markers", app (map fst fn___GI__IO_unsave_markers.block_src) fn___GI__IO_unsave_markers.loop_heads); ("__GI___call_tls_dtors", app (map fst fn___GI___call_tls_dtors.block_src) fn___GI___call_tls_dtors.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End LibioGenSrc.

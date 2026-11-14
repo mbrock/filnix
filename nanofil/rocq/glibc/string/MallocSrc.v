@@ -4,21 +4,27 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude MallocCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import MallocCode.
 Module MallocSrc.
+
+Definition file_0 : string := "../stdlib/stdbit.h".
+
+Definition file_1 : string := "malloc.c".
 
 Module fn___GI___libc_malloc.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("malloc.c", 3102%nat).
+Definition source : option (string * N) := Some (file_1, 3102%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("malloc.c", 1136%nat)); ((TAtom "iw_1.L4"), ("malloc.c", 1139%nat)); ((TAtom "iw_1.L76"), ("malloc.c", 1139%nat)); ((TAtom "iw_1.join"), ("malloc.c", 3108%nat)); ((TAtom "L26"), ("malloc.c", 3110%nat)); ((TAtom "L43"), ("malloc.c", 3114%nat)); ((TAtom "iw_2.start"), ("malloc.c", 2879%nat)); ((TAtom "iw_2.iw_1.L22"), ("malloc.c", 2857%nat)); ((TAtom "iw_2.iw_1.L38"), ("malloc.c", 2860%nat)); ((TAtom "iw_3.start"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_4.iw_1.L18"), ("malloc.c", 2887%nat)); ((TAtom "iw_4.iw_1.L25"), ("malloc.c", 2888%nat)); ((TAtom "iw_4.iw_1.L26"), ("malloc.c", 2888%nat)); ((TAtom "iw_4.iw_1.L19"), ("malloc.c", 2892%nat)); ((TAtom "iw_4.iw_1.join"), ("malloc.c", 2919%nat)); ((TAtom "iw_4.L18"), ("malloc.c", 2919%nat)); ((TAtom "iw_4.L19"), ("malloc.c", 2919%nat)); ((TAtom "iw_4.iw_2.start"), ("malloc.c", 2851%nat)); ((TAtom "iw_4.iw_2.L7"), ("malloc.c", 2852%nat)); ((TAtom "iw_4.iw_2.L8"), ("malloc.c", 2854%nat)); ((TAtom "iw_4.iw_2.L9"), ("malloc.c", 2850%nat)); ((TAtom "iw_4.iw_2.L22"), ("malloc.c", 2857%nat)); ((TAtom "iw_4.iw_2.L24"), ("malloc.c", 2859%nat)); ((TAtom "iw_4.iw_2.L38"), ("malloc.c", 2860%nat)); ((TAtom "iw_4.iw_2.L39"), ("malloc.c", 2862%nat)); ((TAtom "iw_4.iw_2.L40"), ("malloc.c", 2864%nat)); ((TAtom "iw_4.join"), ("malloc.c", 3121%nat)); ((TAtom "L72"), ("malloc.c", 3122%nat)); ((TAtom "L7"), ("malloc.c", 3127%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 1136%N)); ((TAtom "iw_1.L4"), (file_1, 1139%N)); ((TAtom "iw_1.L76"), (file_1, 1139%N)); ((TAtom "iw_1.join"), (file_1, 3108%N)); ((TAtom "L26"), (file_1, 3110%N)); ((TAtom "L43"), (file_1, 3114%N)); ((TAtom "iw_2.start"), (file_1, 2879%N)); ((TAtom "iw_2.iw_1.L22"), (file_1, 2857%N)); ((TAtom "iw_2.iw_1.L38"), (file_1, 2860%N)); ((TAtom "iw_3.start"), (file_0, 79%N)); ((TAtom "iw_3.iw_1.iw_1.L3"), (file_0, 79%N)); ((TAtom "iw_3.iw_1.iw_1.L4"), (file_0, 79%N)); ((TAtom "iw_4.iw_1.L18"), (file_1, 2887%N)); ((TAtom "iw_4.iw_1.L25"), (file_1, 2888%N)); ((TAtom "iw_4.iw_1.L26"), (file_1, 2888%N)); ((TAtom "iw_4.iw_1.L19"), (file_1, 2892%N)); ((TAtom "iw_4.iw_1.join"), (file_1, 2919%N)); ((TAtom "iw_4.L18"), (file_1, 2919%N)); ((TAtom "iw_4.L19"), (file_1, 2919%N)); ((TAtom "iw_4.iw_2.start"), (file_1, 2851%N)); ((TAtom "iw_4.iw_2.L7"), (file_1, 2852%N)); ((TAtom "iw_4.iw_2.L8"), (file_1, 2854%N)); ((TAtom "iw_4.iw_2.L9"), (file_1, 2850%N)); ((TAtom "iw_4.iw_2.L22"), (file_1, 2857%N)); ((TAtom "iw_4.iw_2.L24"), (file_1, 2859%N)); ((TAtom "iw_4.iw_2.L38"), (file_1, 2860%N)); ((TAtom "iw_4.iw_2.L39"), (file_1, 2862%N)); ((TAtom "iw_4.iw_2.L40"), (file_1, 2864%N)); ((TAtom "iw_4.join"), (file_1, 3121%N)); ((TAtom "L72"), (file_1, 3122%N)); ((TAtom "L7"), (file_1, 3127%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +33,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "iw_4.iw_1.L18")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___libc_malloc") (code_module malloc_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___libc_malloc.
 
 Module fn___GI___libc_free.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("malloc.c", 3138%nat).
+Definition source : option (string * N) := Some (file_1, 3138%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("malloc.c", 3142%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 3142%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,16 +51,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___libc_free") (code_module malloc_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___libc_free.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) malloc_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI___libc_malloc"; "__GI___libc_free"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI___libc_malloc", app (map fst fn___GI___libc_malloc.block_src) fn___GI___libc_malloc.loop_heads); ("__GI___libc_free", app (map fst fn___GI___libc_free.block_src) fn___GI___libc_free.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End MallocSrc.

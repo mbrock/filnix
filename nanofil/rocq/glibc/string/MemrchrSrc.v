@@ -4,21 +4,31 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude MemrchrCode.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import MemrchrCode.
 Module MemrchrSrc.
+
+Definition file_0 : string := "../stdlib/stdbit.h".
+
+Definition file_1 : string := "../sysdeps/generic/string-fza.h".
+
+Definition file_2 : string := "../sysdeps/generic/string-shift.h".
+
+Definition file_3 : string := "memrchr.c".
 
 Module fn___GI___memrchr.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("memrchr.c", 33%nat).
+Definition source : option (string * N) := Some (file_3, 33%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("memrchr.c", 36%nat)); ((TAtom "L6"), ("memrchr.c", 37%nat)); ((TAtom "L8"), ("memrchr.c", 39%nat)); ((TAtom "iw_3.L13"), ("../sysdeps/generic/string-shift.h", 47%nat)); ((TAtom "iw_3.join"), ("memrchr.c", 51%nat)); ((TAtom "iw_4.start"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_4.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_4.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_4.join"), ("memrchr.c", 53%nat)); ((TAtom "L61"), ("memrchr.c", 54%nat)); ((TAtom "L62"), ("memrchr.c", 54%nat)); ((TAtom "L51"), ("memrchr.c", 56%nat)); ((TAtom "L71"), ("memrchr.c", 57%nat)); ((TAtom "L73"), ("memrchr.c", 58%nat)); ((TAtom "L83"), ("memrchr.c", 42%nat)); ((TAtom "iw_5.start"), ("../sysdeps/generic/string-fza.h", 63%nat)); ((TAtom "iw_6.start"), ("../sysdeps/generic/string-fza.h", 56%nat)); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_6.iw_1.iw_3.join"), ("memrchr.c", 63%nat)); ((TAtom "L93"), ("memrchr.c", 64%nat)); ((TAtom "iw_7.start"), ("../sysdeps/generic/string-fza.h", 63%nat)); ((TAtom "iw_8.start"), ("../sysdeps/generic/string-fza.h", 56%nat)); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L3"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L4"), ("../stdlib/stdbit.h", 79%nat)); ((TAtom "iw_8.iw_1.iw_3.join"), ("memrchr.c", 71%nat)); ((TAtom "L122"), ("memrchr.c", 73%nat)); ((TAtom "L110"), ("memrchr.c", 75%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_3, 36%N)); ((TAtom "L6"), (file_3, 37%N)); ((TAtom "L8"), (file_3, 39%N)); ((TAtom "iw_3.L13"), (file_2, 47%N)); ((TAtom "iw_3.join"), (file_3, 51%N)); ((TAtom "iw_4.start"), (file_0, 79%N)); ((TAtom "iw_4.iw_1.iw_1.L3"), (file_0, 79%N)); ((TAtom "iw_4.iw_1.iw_1.L4"), (file_0, 79%N)); ((TAtom "iw_4.join"), (file_3, 53%N)); ((TAtom "L61"), (file_3, 54%N)); ((TAtom "L62"), (file_3, 54%N)); ((TAtom "L51"), (file_3, 56%N)); ((TAtom "L71"), (file_3, 57%N)); ((TAtom "L73"), (file_3, 58%N)); ((TAtom "L83"), (file_3, 42%N)); ((TAtom "iw_5.start"), (file_1, 63%N)); ((TAtom "iw_6.start"), (file_1, 56%N)); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L3"), (file_0, 79%N)); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L4"), (file_0, 79%N)); ((TAtom "iw_6.iw_1.iw_3.join"), (file_3, 63%N)); ((TAtom "L93"), (file_3, 64%N)); ((TAtom "iw_7.start"), (file_1, 63%N)); ((TAtom "iw_8.start"), (file_1, 56%N)); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L3"), (file_0, 79%N)); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L4"), (file_0, 79%N)); ((TAtom "iw_8.iw_1.iw_3.join"), (file_3, 71%N)); ((TAtom "L122"), (file_3, 73%N)); ((TAtom "L110"), (file_3, 75%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,16 +37,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L83")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "__GI___memrchr") (code_module memrchr_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn___GI___memrchr.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) memrchr_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI___memrchr"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("__GI___memrchr", app (map fst fn___GI___memrchr.block_src) fn___GI___memrchr.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End MemrchrSrc.

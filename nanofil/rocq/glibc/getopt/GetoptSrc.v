@@ -4,21 +4,29 @@
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool.
-From Glibc Require Import CodePrelude GetoptTerm.
+From Stdlib Require Import String List Bool NArith.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 
+
+From Glibc Require Import GetoptModule.
 Module GetoptSrc.
+
+Definition file_0 : string := "../sysdeps/pthread/allocalim.h".
+
+Definition file_1 : string := "getopt.c".
+
+Definition file_2 : string := "getopt1.c".
 
 Module fn_glibc_getopt_process_long_option.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("getopt.c", 193%nat).
+Definition source : option (string * N) := Some (file_1, 193%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("getopt.c", 206%nat)); ((TAtom "L27"), ("getopt.c", 199%nat)); ((TAtom "L33"), ("getopt.c", 206%nat)); ((TAtom "L34"), ("getopt.c", 206%nat)); ((TAtom "L29"), ("getopt.c", 206%nat)); ((TAtom "L30"), ("getopt.c", 208%nat)); ((TAtom "L50"), ("getopt.c", 203%nat)); ((TAtom "L51"), ("getopt.c", 213%nat)); ((TAtom "L69"), ("getopt.c", 213%nat)); ((TAtom "L70"), ("getopt.c", 213%nat)); ((TAtom "L52"), ("getopt.c", 212%nat)); ((TAtom "L53"), ("getopt.c", 204%nat)); ((TAtom "L98"), ("getopt.c", 228%nat)); ((TAtom "L99"), ("getopt.c", 231%nat)); ((TAtom "L106"), ("getopt.c", 233%nat)); ((TAtom "L118"), ("getopt.c", 239%nat)); ((TAtom "L130"), ("getopt.c", 239%nat)); ((TAtom "L131"), ("getopt.c", 239%nat)); ((TAtom "L141"), ("getopt.c", 239%nat)); ((TAtom "L142"), ("getopt.c", 239%nat)); ((TAtom "L154"), ("getopt.c", 239%nat)); ((TAtom "L155"), ("getopt.c", 239%nat)); ((TAtom "L126"), ("getopt.c", 245%nat)); ((TAtom "L165"), ("getopt.c", 247%nat)); ((TAtom "L171"), ("getopt.c", 251%nat)); ((TAtom "L175"), ("getopt.c", 253%nat)); ((TAtom "iw_1.L6"), ("../sysdeps/pthread/allocalim.h", 27%nat)); ((TAtom "iw_1.L7"), ("../sysdeps/pthread/allocalim.h", 27%nat)); ((TAtom "L182"), ("getopt.c", 254%nat)); ((TAtom "L183"), ("getopt.c", 255%nat)); ((TAtom "L192"), ("getopt.c", 255%nat)); ((TAtom "L184"), ("getopt.c", 227%nat)); ((TAtom "L200"), ("getopt.c", 263%nat)); ((TAtom "L172"), ("getopt.c", 227%nat)); ((TAtom "L214"), ("getopt.c", 268%nat)); ((TAtom "L108"), ("getopt.c", 228%nat)); ((TAtom "L101"), ("getopt.c", 273%nat)); ((TAtom "L234"), ("getopt.c", 273%nat)); ((TAtom "L235"), ("getopt.c", 273%nat)); ((TAtom "L228"), ("getopt.c", 275%nat)); ((TAtom "L239"), ("getopt.c", 277%nat)); ((TAtom "L243"), ("getopt.c", 278%nat)); ((TAtom "L244"), ("getopt.c", 283%nat)); ((TAtom "L273"), ("getopt.c", 204%nat)); ((TAtom "L274"), ("getopt.c", 288%nat)); ((TAtom "L280"), ("getopt.c", 289%nat)); ((TAtom "L275"), ("getopt.c", 287%nat)); ((TAtom "L276"), ("getopt.c", 295%nat)); ((TAtom "L241"), ("getopt.c", 299%nat)); ((TAtom "L305"), ("getopt.c", 300%nat)); ((TAtom "L307"), ("getopt.c", 301%nat)); ((TAtom "L87"), ("getopt.c", 204%nat)); ((TAtom "L325"), ("getopt.c", 315%nat)); ((TAtom "L337"), ("getopt.c", 315%nat)); ((TAtom "L338"), ("getopt.c", 315%nat)); ((TAtom "L351"), ("getopt.c", 315%nat)); ((TAtom "L352"), ("getopt.c", 315%nat)); ((TAtom "L332"), ("getopt.c", 318%nat)); ((TAtom "L364"), ("getopt.c", 319%nat)); ((TAtom "L366"), ("getopt.c", 322%nat)); ((TAtom "L334"), ("getopt.c", 329%nat)); ((TAtom "L327"), ("getopt.c", 333%nat)); ((TAtom "L396"), ("getopt.c", 339%nat)); ((TAtom "L401"), ("getopt.c", 340%nat)); ((TAtom "L402"), ("getopt.c", 343%nat)); ((TAtom "L411"), ("getopt.c", 344%nat)); ((TAtom "L413"), ("getopt.c", 348%nat)); ((TAtom "L397"), ("getopt.c", 352%nat)); ((TAtom "L432"), ("getopt.c", 354%nat)); ((TAtom "L439"), ("getopt.c", 355%nat)); ((TAtom "L440"), ("getopt.c", 358%nat)); ((TAtom "L456"), ("getopt.c", 359%nat)); ((TAtom "L458"), ("getopt.c", 363%nat)); ((TAtom "L478"), ("getopt.c", 364%nat)); ((TAtom "L479"), ("getopt.c", 364%nat)); ((TAtom "L398"), ("getopt.c", 368%nat)); ((TAtom "L485"), ("getopt.c", 369%nat)); ((TAtom "L487"), ("getopt.c", 370%nat)); ((TAtom "L494"), ("getopt.c", 372%nat)); ((TAtom "L496"), ("getopt.c", 375%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 206%N)); ((TAtom "L27"), (file_1, 199%N)); ((TAtom "L33"), (file_1, 206%N)); ((TAtom "L34"), (file_1, 206%N)); ((TAtom "L29"), (file_1, 206%N)); ((TAtom "L30"), (file_1, 208%N)); ((TAtom "L50"), (file_1, 203%N)); ((TAtom "L51"), (file_1, 213%N)); ((TAtom "L69"), (file_1, 213%N)); ((TAtom "L70"), (file_1, 213%N)); ((TAtom "L52"), (file_1, 212%N)); ((TAtom "L53"), (file_1, 204%N)); ((TAtom "L98"), (file_1, 228%N)); ((TAtom "L99"), (file_1, 231%N)); ((TAtom "L106"), (file_1, 233%N)); ((TAtom "L118"), (file_1, 239%N)); ((TAtom "L130"), (file_1, 239%N)); ((TAtom "L131"), (file_1, 239%N)); ((TAtom "L141"), (file_1, 239%N)); ((TAtom "L142"), (file_1, 239%N)); ((TAtom "L154"), (file_1, 239%N)); ((TAtom "L155"), (file_1, 239%N)); ((TAtom "L126"), (file_1, 245%N)); ((TAtom "L165"), (file_1, 247%N)); ((TAtom "L171"), (file_1, 251%N)); ((TAtom "L175"), (file_1, 253%N)); ((TAtom "iw_1.L6"), (file_0, 27%N)); ((TAtom "iw_1.L7"), (file_0, 27%N)); ((TAtom "L182"), (file_1, 254%N)); ((TAtom "L183"), (file_1, 255%N)); ((TAtom "L192"), (file_1, 255%N)); ((TAtom "L184"), (file_1, 227%N)); ((TAtom "L200"), (file_1, 263%N)); ((TAtom "L172"), (file_1, 227%N)); ((TAtom "L214"), (file_1, 268%N)); ((TAtom "L108"), (file_1, 228%N)); ((TAtom "L101"), (file_1, 273%N)); ((TAtom "L234"), (file_1, 273%N)); ((TAtom "L235"), (file_1, 273%N)); ((TAtom "L228"), (file_1, 275%N)); ((TAtom "L239"), (file_1, 277%N)); ((TAtom "L243"), (file_1, 278%N)); ((TAtom "L244"), (file_1, 283%N)); ((TAtom "L273"), (file_1, 204%N)); ((TAtom "L274"), (file_1, 288%N)); ((TAtom "L280"), (file_1, 289%N)); ((TAtom "L275"), (file_1, 287%N)); ((TAtom "L276"), (file_1, 295%N)); ((TAtom "L241"), (file_1, 299%N)); ((TAtom "L305"), (file_1, 300%N)); ((TAtom "L307"), (file_1, 301%N)); ((TAtom "L87"), (file_1, 204%N)); ((TAtom "L325"), (file_1, 315%N)); ((TAtom "L337"), (file_1, 315%N)); ((TAtom "L338"), (file_1, 315%N)); ((TAtom "L351"), (file_1, 315%N)); ((TAtom "L352"), (file_1, 315%N)); ((TAtom "L332"), (file_1, 318%N)); ((TAtom "L364"), (file_1, 319%N)); ((TAtom "L366"), (file_1, 322%N)); ((TAtom "L334"), (file_1, 329%N)); ((TAtom "L327"), (file_1, 333%N)); ((TAtom "L396"), (file_1, 339%N)); ((TAtom "L401"), (file_1, 340%N)); ((TAtom "L402"), (file_1, 343%N)); ((TAtom "L411"), (file_1, 344%N)); ((TAtom "L413"), (file_1, 348%N)); ((TAtom "L397"), (file_1, 352%N)); ((TAtom "L432"), (file_1, 354%N)); ((TAtom "L439"), (file_1, 355%N)); ((TAtom "L440"), (file_1, 358%N)); ((TAtom "L456"), (file_1, 359%N)); ((TAtom "L458"), (file_1, 363%N)); ((TAtom "L478"), (file_1, 364%N)); ((TAtom "L479"), (file_1, 364%N)); ((TAtom "L398"), (file_1, 368%N)); ((TAtom "L485"), (file_1, 369%N)); ((TAtom "L487"), (file_1, 370%N)); ((TAtom "L494"), (file_1, 372%N)); ((TAtom "L496"), (file_1, 375%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -27,26 +35,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L27"); (TAtom "L273"); (TAtom "L50"); (TAtom "L98")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "glibc_getopt#process_long_option") (code_module getopt_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn_glibc_getopt_process_long_option.
 
 Module fn__getopt_internal_r.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("getopt.c", 470%nat).
+Definition source : option (string * N) := Some (file_1, 470%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("getopt.c", 475%nat)); ((TAtom "L20"), ("getopt.c", 478%nat)); ((TAtom "L22"), ("getopt.c", 480%nat)); ((TAtom "L35"), ("getopt.c", 482%nat)); ((TAtom "L36"), ("getopt.c", 482%nat)); ((TAtom "iw_1.start"), ("getopt.c", 388%nat)); ((TAtom "iw_1.L10"), ("getopt.c", 389%nat)); ((TAtom "iw_1.L12"), ("getopt.c", 391%nat)); ((TAtom "iw_1.L25"), ("getopt.c", 397%nat)); ((TAtom "iw_1.L26"), ("getopt.c", 400%nat)); ((TAtom "iw_1.L36"), ("getopt.c", 402%nat)); ((TAtom "iw_1.L37"), ("getopt.c", 405%nat)); ((TAtom "iw_1.L51"), ("getopt.c", 405%nat)); ((TAtom "iw_1.L52"), ("getopt.c", 405%nat)); ((TAtom "iw_1.L47"), ("getopt.c", 406%nat)); ((TAtom "iw_1.L48"), ("getopt.c", 408%nat)); ((TAtom "iw_1.L27"), ("getopt.c", 380%nat)); ((TAtom "L30"), ("getopt.c", 484%nat)); ((TAtom "L56"), ("getopt.c", 484%nat)); ((TAtom "L57"), ("getopt.c", 484%nat)); ((TAtom "L49"), ("getopt.c", 485%nat)); ((TAtom "L31"), ("getopt.c", 470%nat)); ((TAtom "L67"), ("getopt.c", 487%nat)); ((TAtom "L68"), ("getopt.c", 475%nat)); ((TAtom "L82"), ("getopt.c", 493%nat)); ((TAtom "L83"), ("getopt.c", 493%nat)); ((TAtom "L73"), ("getopt.c", 499%nat)); ((TAtom "L91"), ("getopt.c", 500%nat)); ((TAtom "L93"), ("getopt.c", 501%nat)); ((TAtom "L104"), ("getopt.c", 502%nat)); ((TAtom "L106"), ("getopt.c", 504%nat)); ((TAtom "L117"), ("getopt.c", 509%nat)); ((TAtom "L134"), ("getopt.c", 509%nat)); ((TAtom "L135"), ("getopt.c", 509%nat)); ((TAtom "iw_2.start"), ("getopt.c", 133%nat)); ((TAtom "iw_2.L16"), ("getopt.c", 135%nat)); ((TAtom "iw_2.L22"), ("getopt.c", 143%nat)); ((TAtom "iw_2.L23"), ("getopt.c", 143%nat)); ((TAtom "iw_2.L17"), ("getopt.c", 145%nat)); ((TAtom "iw_2.L44"), ("getopt.c", 149%nat)); ((TAtom "iw_2.L45"), ("getopt.c", 154%nat)); ((TAtom "iw_2.L47"), ("getopt.c", 159%nat)); ((TAtom "iw_2.L100"), ("getopt.c", 165%nat)); ((TAtom "iw_2.L101"), ("getopt.c", 170%nat)); ((TAtom "iw_2.L103"), ("getopt.c", 175%nat)); ((TAtom "iw_2.L18"), ("getopt.c", 181%nat)); ((TAtom "L125"), ("getopt.c", 512%nat)); ((TAtom "L146"), ("getopt.c", 513%nat)); ((TAtom "L159"), ("getopt.c", 518%nat)); ((TAtom "L166"), ("getopt.c", 518%nat)); ((TAtom "L178"), ("getopt.c", 518%nat)); ((TAtom "L167"), ("getopt.c", 518%nat)); ((TAtom "L160"), ("getopt.c", 519%nat)); ((TAtom "L161"), ("getopt.c", 520%nat)); ((TAtom "L119"), ("getopt.c", 528%nat)); ((TAtom "L208"), ("getopt.c", 528%nat)); ((TAtom "L209"), ("getopt.c", 528%nat)); ((TAtom "L201"), ("getopt.c", 530%nat)); ((TAtom "L235"), ("getopt.c", 532%nat)); ((TAtom "L236"), ("getopt.c", 532%nat)); ((TAtom "iw_3.start"), ("getopt.c", 133%nat)); ((TAtom "iw_3.L16"), ("getopt.c", 135%nat)); ((TAtom "iw_3.L22"), ("getopt.c", 143%nat)); ((TAtom "iw_3.L23"), ("getopt.c", 143%nat)); ((TAtom "iw_3.L17"), ("getopt.c", 145%nat)); ((TAtom "iw_3.L44"), ("getopt.c", 149%nat)); ((TAtom "iw_3.L45"), ("getopt.c", 154%nat)); ((TAtom "iw_3.L47"), ("getopt.c", 159%nat)); ((TAtom "iw_3.L100"), ("getopt.c", 165%nat)); ((TAtom "iw_3.L101"), ("getopt.c", 170%nat)); ((TAtom "iw_3.L103"), ("getopt.c", 175%nat)); ((TAtom "iw_3.L18"), ("getopt.c", 181%nat)); ((TAtom "L226"), ("getopt.c", 535%nat)); ((TAtom "L247"), ("getopt.c", 536%nat)); ((TAtom "L227"), ("getopt.c", 537%nat)); ((TAtom "L203"), ("getopt.c", 545%nat)); ((TAtom "L266"), ("getopt.c", 549%nat)); ((TAtom "L273"), ("getopt.c", 550%nat)); ((TAtom "L275"), ("getopt.c", 551%nat)); ((TAtom "L268"), ("getopt.c", 557%nat)); ((TAtom "L302"), ("getopt.c", 557%nat)); ((TAtom "L303"), ("getopt.c", 557%nat)); ((TAtom "L289"), ("getopt.c", 559%nat)); ((TAtom "L316"), ("getopt.c", 560%nat)); ((TAtom "L318"), ("getopt.c", 561%nat)); ((TAtom "L291"), ("getopt.c", 567%nat)); ((TAtom "L336"), ("getopt.c", 569%nat)); ((TAtom "L342"), ("getopt.c", 573%nat)); ((TAtom "L344"), ("getopt.c", 591%nat)); ((TAtom "L380"), ("getopt.c", 591%nat)); ((TAtom "L391"), ("getopt.c", 591%nat)); ((TAtom "L381"), ("getopt.c", 591%nat)); ((TAtom "L376"), ("getopt.c", 595%nat)); ((TAtom "L432"), ("getopt.c", 600%nat)); ((TAtom "L338"), ("getopt.c", 605%nat)); ((TAtom "L75"), ("getopt.c", 611%nat)); ((TAtom "L460"), ("getopt.c", 616%nat)); ((TAtom "L462"), ("getopt.c", 618%nat)); ((TAtom "L478"), ("getopt.c", 618%nat)); ((TAtom "L479"), ("getopt.c", 618%nat)); ((TAtom "L484"), ("getopt.c", 618%nat)); ((TAtom "L485"), ("getopt.c", 618%nat)); ((TAtom "L471"), ("getopt.c", 620%nat)); ((TAtom "L490"), ("getopt.c", 621%nat)); ((TAtom "L492"), ("getopt.c", 622%nat)); ((TAtom "L473"), ("getopt.c", 627%nat)); ((TAtom "L515"), ("getopt.c", 627%nat)); ((TAtom "L516"), ("getopt.c", 627%nat)); ((TAtom "L523"), ("getopt.c", 627%nat)); ((TAtom "L524"), ("getopt.c", 627%nat)); ((TAtom "L508"), ("getopt.c", 630%nat)); ((TAtom "L531"), ("getopt.c", 631%nat)); ((TAtom "L532"), ("getopt.c", 632%nat)); ((TAtom "L544"), ("getopt.c", 634%nat)); ((TAtom "L551"), ("getopt.c", 635%nat)); ((TAtom "L553"), ("getopt.c", 639%nat)); ((TAtom "L569"), ("getopt.c", 640%nat)); ((TAtom "L570"), ("getopt.c", 611%nat)); ((TAtom "L545"), ("getopt.c", 647%nat)); ((TAtom "L533"), ("getopt.c", 649%nat)); ((TAtom "L510"), ("getopt.c", 654%nat)); ((TAtom "L603"), ("getopt.c", 656%nat)); ((TAtom "L610"), ("getopt.c", 659%nat)); ((TAtom "L617"), ("getopt.c", 661%nat)); ((TAtom "L618"), ("getopt.c", 665%nat)); ((TAtom "L619"), ("getopt.c", 666%nat)); ((TAtom "L611"), ("getopt.c", 671%nat)); ((TAtom "L637"), ("getopt.c", 673%nat)); ((TAtom "L638"), ("getopt.c", 678%nat)); ((TAtom "L653"), ("getopt.c", 680%nat)); ((TAtom "L660"), ("getopt.c", 681%nat)); ((TAtom "L662"), ("getopt.c", 685%nat)); ((TAtom "L678"), ("getopt.c", 686%nat)); ((TAtom "L654"), ("getopt.c", 694%nat)); ((TAtom "L639"), ("getopt.c", 611%nat)); ((TAtom "L605"), ("getopt.c", 611%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 475%N)); ((TAtom "L20"), (file_1, 478%N)); ((TAtom "L22"), (file_1, 480%N)); ((TAtom "L35"), (file_1, 482%N)); ((TAtom "L36"), (file_1, 482%N)); ((TAtom "iw_1.start"), (file_1, 388%N)); ((TAtom "iw_1.L10"), (file_1, 389%N)); ((TAtom "iw_1.L12"), (file_1, 391%N)); ((TAtom "iw_1.L25"), (file_1, 397%N)); ((TAtom "iw_1.L26"), (file_1, 400%N)); ((TAtom "iw_1.L36"), (file_1, 402%N)); ((TAtom "iw_1.L37"), (file_1, 405%N)); ((TAtom "iw_1.L51"), (file_1, 405%N)); ((TAtom "iw_1.L52"), (file_1, 405%N)); ((TAtom "iw_1.L47"), (file_1, 406%N)); ((TAtom "iw_1.L48"), (file_1, 408%N)); ((TAtom "iw_1.L27"), (file_1, 380%N)); ((TAtom "L30"), (file_1, 484%N)); ((TAtom "L56"), (file_1, 484%N)); ((TAtom "L57"), (file_1, 484%N)); ((TAtom "L49"), (file_1, 485%N)); ((TAtom "L31"), (file_1, 470%N)); ((TAtom "L67"), (file_1, 487%N)); ((TAtom "L68"), (file_1, 475%N)); ((TAtom "L82"), (file_1, 493%N)); ((TAtom "L83"), (file_1, 493%N)); ((TAtom "L73"), (file_1, 499%N)); ((TAtom "L91"), (file_1, 500%N)); ((TAtom "L93"), (file_1, 501%N)); ((TAtom "L104"), (file_1, 502%N)); ((TAtom "L106"), (file_1, 504%N)); ((TAtom "L117"), (file_1, 509%N)); ((TAtom "L134"), (file_1, 509%N)); ((TAtom "L135"), (file_1, 509%N)); ((TAtom "iw_2.start"), (file_1, 133%N)); ((TAtom "iw_2.L16"), (file_1, 135%N)); ((TAtom "iw_2.L22"), (file_1, 143%N)); ((TAtom "iw_2.L23"), (file_1, 143%N)); ((TAtom "iw_2.L17"), (file_1, 145%N)); ((TAtom "iw_2.L44"), (file_1, 149%N)); ((TAtom "iw_2.L45"), (file_1, 154%N)); ((TAtom "iw_2.L47"), (file_1, 159%N)); ((TAtom "iw_2.L100"), (file_1, 165%N)); ((TAtom "iw_2.L101"), (file_1, 170%N)); ((TAtom "iw_2.L103"), (file_1, 175%N)); ((TAtom "iw_2.L18"), (file_1, 181%N)); ((TAtom "L125"), (file_1, 512%N)); ((TAtom "L146"), (file_1, 513%N)); ((TAtom "L159"), (file_1, 518%N)); ((TAtom "L166"), (file_1, 518%N)); ((TAtom "L178"), (file_1, 518%N)); ((TAtom "L167"), (file_1, 518%N)); ((TAtom "L160"), (file_1, 519%N)); ((TAtom "L161"), (file_1, 520%N)); ((TAtom "L119"), (file_1, 528%N)); ((TAtom "L208"), (file_1, 528%N)); ((TAtom "L209"), (file_1, 528%N)); ((TAtom "L201"), (file_1, 530%N)); ((TAtom "L235"), (file_1, 532%N)); ((TAtom "L236"), (file_1, 532%N)); ((TAtom "iw_3.start"), (file_1, 133%N)); ((TAtom "iw_3.L16"), (file_1, 135%N)); ((TAtom "iw_3.L22"), (file_1, 143%N)); ((TAtom "iw_3.L23"), (file_1, 143%N)); ((TAtom "iw_3.L17"), (file_1, 145%N)); ((TAtom "iw_3.L44"), (file_1, 149%N)); ((TAtom "iw_3.L45"), (file_1, 154%N)); ((TAtom "iw_3.L47"), (file_1, 159%N)); ((TAtom "iw_3.L100"), (file_1, 165%N)); ((TAtom "iw_3.L101"), (file_1, 170%N)); ((TAtom "iw_3.L103"), (file_1, 175%N)); ((TAtom "iw_3.L18"), (file_1, 181%N)); ((TAtom "L226"), (file_1, 535%N)); ((TAtom "L247"), (file_1, 536%N)); ((TAtom "L227"), (file_1, 537%N)); ((TAtom "L203"), (file_1, 545%N)); ((TAtom "L266"), (file_1, 549%N)); ((TAtom "L273"), (file_1, 550%N)); ((TAtom "L275"), (file_1, 551%N)); ((TAtom "L268"), (file_1, 557%N)); ((TAtom "L302"), (file_1, 557%N)); ((TAtom "L303"), (file_1, 557%N)); ((TAtom "L289"), (file_1, 559%N)); ((TAtom "L316"), (file_1, 560%N)); ((TAtom "L318"), (file_1, 561%N)); ((TAtom "L291"), (file_1, 567%N)); ((TAtom "L336"), (file_1, 569%N)); ((TAtom "L342"), (file_1, 573%N)); ((TAtom "L344"), (file_1, 591%N)); ((TAtom "L380"), (file_1, 591%N)); ((TAtom "L391"), (file_1, 591%N)); ((TAtom "L381"), (file_1, 591%N)); ((TAtom "L376"), (file_1, 595%N)); ((TAtom "L432"), (file_1, 600%N)); ((TAtom "L338"), (file_1, 605%N)); ((TAtom "L75"), (file_1, 611%N)); ((TAtom "L460"), (file_1, 616%N)); ((TAtom "L462"), (file_1, 618%N)); ((TAtom "L478"), (file_1, 618%N)); ((TAtom "L479"), (file_1, 618%N)); ((TAtom "L484"), (file_1, 618%N)); ((TAtom "L485"), (file_1, 618%N)); ((TAtom "L471"), (file_1, 620%N)); ((TAtom "L490"), (file_1, 621%N)); ((TAtom "L492"), (file_1, 622%N)); ((TAtom "L473"), (file_1, 627%N)); ((TAtom "L515"), (file_1, 627%N)); ((TAtom "L516"), (file_1, 627%N)); ((TAtom "L523"), (file_1, 627%N)); ((TAtom "L524"), (file_1, 627%N)); ((TAtom "L508"), (file_1, 630%N)); ((TAtom "L531"), (file_1, 631%N)); ((TAtom "L532"), (file_1, 632%N)); ((TAtom "L544"), (file_1, 634%N)); ((TAtom "L551"), (file_1, 635%N)); ((TAtom "L553"), (file_1, 639%N)); ((TAtom "L569"), (file_1, 640%N)); ((TAtom "L570"), (file_1, 611%N)); ((TAtom "L545"), (file_1, 647%N)); ((TAtom "L533"), (file_1, 649%N)); ((TAtom "L510"), (file_1, 654%N)); ((TAtom "L603"), (file_1, 656%N)); ((TAtom "L610"), (file_1, 659%N)); ((TAtom "L617"), (file_1, 661%N)); ((TAtom "L618"), (file_1, 665%N)); ((TAtom "L619"), (file_1, 666%N)); ((TAtom "L611"), (file_1, 671%N)); ((TAtom "L637"), (file_1, 673%N)); ((TAtom "L638"), (file_1, 678%N)); ((TAtom "L653"), (file_1, 680%N)); ((TAtom "L660"), (file_1, 681%N)); ((TAtom "L662"), (file_1, 685%N)); ((TAtom "L678"), (file_1, 686%N)); ((TAtom "L654"), (file_1, 694%N)); ((TAtom "L639"), (file_1, 611%N)); ((TAtom "L605"), (file_1, 611%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -55,26 +53,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L159"); (TAtom "iw_2.L100"); (TAtom "iw_2.L16"); (TAtom "iw_2.L44"); (TAtom "iw_3.L100"); (TAtom "iw_3.L16"); (TAtom "iw_3.L44")].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "_getopt_internal_r") (code_module getopt_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn__getopt_internal_r.
 
 Module fn__getopt_internal.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("getopt.c", 702%nat).
+Definition source : option (string * N) := Some (file_1, 702%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("getopt.c", 709%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_1, 709%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -83,26 +71,16 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "_getopt_internal") (code_module getopt_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn__getopt_internal.
 
 Module fn_getopt_long.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * nat) := Some ("getopt1.c", 27%nat).
+Definition source : option (string * N) := Some (file_2, 27%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
-Definition block_src : list (name * (string * nat)) :=
-  [((TAtom "start"), ("getopt1.c", 31%nat))].
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_2, 31%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -111,16 +89,25 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
-(** Computation checks block membership without trusting the source hints or the loop analysis. *)
-Lemma labels_valid :
-  match find_direct (TAtom "getopt_long") (code_module getopt_term) with
-  | Some (Defined f) =>
-      forallb (fun l => existsb (fun b => name_eqb l (b_label b)) (fn_blocks f))
-        (map fst block_src ++ loop_heads) = true
-  | _ => False
-  end.
-Proof. vm_compute. reflexivity. Qed.
-
 End fn_getopt_long.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) getopt_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["glibc_getopt#process_long_option"; "_getopt_internal_r"; "_getopt_internal"; "getopt_long"].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) [("glibc_getopt#process_long_option", app (map fst fn_glibc_getopt_process_long_option.block_src) fn_glibc_getopt_process_long_option.loop_heads); ("_getopt_internal_r", app (map fst fn__getopt_internal_r.block_src) fn__getopt_internal_r.loop_heads); ("_getopt_internal", app (map fst fn__getopt_internal.block_src) fn__getopt_internal.loop_heads); ("getopt_long", app (map fst fn_getopt_long.block_src) fn_getopt_long.loop_heads)] = true.
+Proof. vm_compute. reflexivity. Qed.
 
 End GetoptSrc.
