@@ -876,9 +876,9 @@ End Weak.
     steps through a basic block. Predicate [dpos] records that for the
     remaining instructions, the pass is either at a [walks] step or between
     a check and its paired access, call, or touch. *)
-Definition dpos (s : src) (is : list inst) (out : list fact) : Prop :=
-  (exists live, walks s is live out) \/
-  (exists access rest' live', is = access :: rest' /\ walks s rest' live' out /\
+Definition dpos (s : src) (instructions : list inst) (out : list fact) : Prop :=
+  (exists live, walks s instructions live out) \/
+  (exists access rest' live', instructions = access :: rest' /\ walks s rest' live' out /\
      (raw_access access <> None \/ (exists r cl args, access = RawCall r cl args) \/
       exists q, access = Touch q)).
 
@@ -925,9 +925,9 @@ Definition need_at (f : func) (n : name) (hreq : Z) (pt : point) : Prop :=
   match pt with
   | Snapshot _ _ => False
   | Enter l _ => exists fs h, lookup l (ahead_entries f) = Some fs /\ lookup n fs = Some h /\ hreq <= h
-  | Exec l is _ =>
+  | Exec l instructions _ =>
       exists b h, find_block l (fn_blocks f) = Some b /\
-        lookup n (facts_from f is (block_exit f b)) = Some h /\ hreq <= h
+        lookup n (facts_from f instructions (block_exit f b)) = Some h /\ hreq <= h
   end.
 
 (** A [[doomed frame]] remains safe as long as its variables still hold
@@ -937,9 +937,9 @@ Definition need_at (f : func) (n : name) (hreq : Z) (pt : point) : Prop :=
 Definition doomed_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Prop :=
   let f := fr_fn fr in
   scope_weak ge fr m /\
-  (forall l is j, fr_at fr = Exec l is j ->
+  (forall l instructions j, fr_at fr = Exec l instructions j ->
      exists E b out, pass_exits (fn_src md f) f = Some E /\ find_block l (fn_blocks f) = Some b /\
-       lookup l E = Some out /\ dpos (fn_src md f) is out) /\
+       lookup l E = Some out /\ dpos (fn_src md f) instructions out) /\
   exists n pn kl hreq, lookup n (fr_env fr) = Some (WPtr pn) /\ near_offset kl = true /\
     doom_mem m pn kl hreq /\ need_at f n hreq (fr_at fr).
 
@@ -975,7 +975,7 @@ Proof.
                 (fun a Ha => phis_env_other _ _ _ _ _ _ Hphi Ha) Hn' Hpos Hsd0) as [Hn1 Ha1].
     exact (replays_weak_moves _ _ _ _ _ _ _ _
              (Hsc l (-1) n' s i ltac:(rewrite Ha; reflexivity) Hn' Hrp Hpos Hsd0) Hn1 Ha1 (persists_refl _)).
-  - intros l' is j E. simpl in E. injection E as <- <- <-.
+  - intros l' instructions j E. simpl in E. injection E as <- <- <-.
     destruct (module_func _ _ Hmd Hin) as (_ & (b1 & bs & Eb & Hnoin) & EE & HE).
     destruct (pass_fold _ _ _ _ _ HE Hnd (fun b _ => eq_refl) b Hbin)
       as (exits & out & _ & Hout & Hc).
@@ -1107,9 +1107,9 @@ Qed.
 (** Walking backward over a sequence of instructions processes the tail
     before the head. Lemma [facts_from_cons] unfolds [facts_from] for an
     instruction prepended to a list into one `ahead_step` after the tail. *)
-Lemma facts_from_cons : forall f i is out,
-  facts_from f (i :: is) out =
-  ahead_step (single_definitions f) (proof_pointers f (single_definitions f)) i (facts_from f is out).
+Lemma facts_from_cons : forall f i instructions out,
+  facts_from f (i :: instructions) out =
+  ahead_step (single_definitions f) (proof_pointers f (single_definitions f)) i (facts_from f instructions out).
 Proof. reflexivity. Qed.
 
 (** Any instruction recorded as the single definition of name n defines n. *)
@@ -1302,7 +1302,7 @@ Proof.
     refine (replays_weak_moves _ _ _ _ _ _ _ _ (Hsc _ _ _ _ _ _ Hn' Hrp Hpos Hsd0) eq_refl (fun _ _ _ => eq_refl)
               (persists_refl _)).
     rewrite Ha, Hnil, Hkl'. exact (point_site_exec _ _ _ _ _ Hb (le_n _)).
-  - intros l' is j' E. discriminate E.
+  - intros l' instructions j' E. discriminate E.
   - rewrite Ha in Hneed. destruct Hneed as (b' & h & Hb' & Hh & Hle).
     rewrite Hb in Hb'. injection Hb' as <-. simpl in Hh.
     unfold block_exit, exit_in in Hh. destruct (meet_found _ _ _ Hh) as [_ Hall].
@@ -1418,11 +1418,11 @@ Proof.
       discriminate Ht. }
   simpl in Hp, Hfit' |- *.
   (* the pass's position after i *)
-  assert (Hpos' : forall l' is j', Exec l rest j = Exec l' is j' ->
+  assert (Hpos' : forall l' instructions j', Exec l rest j = Exec l' instructions j' ->
      exists E b out, pass_exits (fn_src md (fr_fn (c_frame c))) (fr_fn (c_frame c)) = Some E /\
        find_block l' (fn_blocks (fr_fn (c_frame c))) = Some b /\ lookup l' E = Some out /\
-       dpos (fn_src md (fr_fn (c_frame c))) is out).
-  { intros l' is j' E. injection E as <- <- <-.
+       dpos (fn_src md (fr_fn (c_frame c))) instructions out).
+  { intros l' instructions j' E. injection E as <- <- <-.
     destruct (Hpos _ _ _ Ha) as (E & b1 & out & HE & Hb1 & Hout & Hdp).
     exists E, b1, out. split; [exact HE|]. split; [exact Hb1|]. split; [exact Hout|].
     destruct Hdp as [(live & Hw) | (access & rest' & live' & Ea & Hw & _)].
@@ -1594,7 +1594,7 @@ Proof.
     split; [apply lookup_put_same|].
     intros a Hu Ho1. symmetry. apply He1.
     rewrite <- Hl in Hr. exact (operand_not_defined _ _ _ _ _ _ _ Hf Hd Hdd Hbin Hr Hki Hu Ho1).
-  - intros l' is j' Ex. injection Ex as <- <- <-.
+  - intros l' instructions j' Ex. injection Ex as <- <- <-.
     exists E, b, out. split; [exact HE|]. split; [exact Hb|]. split; [exact Hout|].
     right. exists access, rest2, live'. split; [reflexivity|]. split; [exact Hw'|].
     destruct (proof_use_cases _ _ _ _ _ _ Hpu) as [-> | Hcov]; [right; right; eauto | left].

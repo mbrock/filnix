@@ -9,8 +9,9 @@ out=$(cd "$out" && pwd)
 nix build --impure -o "$out/compiler" --expr "
   let f = builtins.getFlake \"git+file://$repo\";
       p = import f.inputs.nixpkgs { system = \"x86_64-linux\"; };
+      rocq = import $repo/nanofil/nix/rocq-packages.nix { pkgs = p; };
   in p.buildEnv { name = \"proof-check-ocaml\";
-    paths = with p.ocaml-ng.ocamlPackages_4_14; [ ocaml findlib zarith ]; }"
+    paths = with rocq.rocq-core.ocamlPackages; [ ocaml findlib zarith ]; }"
 export PATH="$out/compiler/bin:$PATH"
 export OCAMLPATH="$out/compiler/lib/ocaml/$(ocamlc -version)/site-lib:$PE_CACHE/tools/lib/ocaml/$(ocamlc -version)/site-lib${OCAMLPATH:+:$OCAMLPATH}"
 cp "$here/qualify.ml" "$out/pe_qualify.ml"

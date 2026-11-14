@@ -13,10 +13,11 @@ if [ ! -e "$PE_CACHE/tools" ]; then
   nix build --impure -o "$PE_CACHE/tools" --expr "
     let flake = builtins.getFlake \"$pe_repo\";
         pkgs = import flake.inputs.nixpkgs { system = \"x86_64-linux\"; };
-        rocq = pkgs.rocqPackages;
+        rocq = import $pe_repo/nanofil/nix/rocq-packages.nix { inherit pkgs; };
     in pkgs.buildEnv {
       name = \"rocq-tools\";
-      paths = [ rocq.rocq-core rocq.stdlib rocq.stdpp rocq.iris ];
+      paths = [ rocq.rocq-core rocq.stdlib rocq.stdpp rocq.iris
+                rocq.rocq-core.ocamlPackages.ocaml rocq.rocq-core.ocamlPackages.findlib ];
       pathsToLink = [ \"/bin\" \"/lib\" ];
     }" || return 1
 fi

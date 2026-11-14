@@ -343,10 +343,10 @@ Proof.
   split; [|exact Hcall]. split; [exact Hin|]. split; [exact Hpos|].
   destruct Hpt as [Hd0 | Hp]; [left; exact Hd0 | right].
   pose proof Hdue as Hdue0. unfold safepoint_due in Hdue.
-  destruct (fr_at (c_frame c)) as [xs l | l from | l is j] eqn:Ha; try discriminate Hdue.
+  destruct (fr_at (c_frame c)) as [xs l | l from | l instructions j] eqn:Ha; try discriminate Hdue.
   destruct (point_ok_exec_inv _ _ _ _ _ _ _ Hp Ha) as (E & b & out & k & HE & Hb & Hout & Hj & Hk & Hat).
   eapply point_ok_exec; [exact HE | exact Ha | exact Hb | exact Hout | exact Hj | exact Hk |].
-  destruct is as [|i rest].
+  destruct instructions as [|i rest].
   - destruct Hat as [(live & Hw & Hd & Hjc) | (access & rest' & live' & E' & _)]; [|discriminate E'].
     left. exists live. split; [exact Hw|]. split; [exact Hd|]. intros t Ht Hpoll. exfalso.
     unfold with_mem in Ht. simpl in Ht. rewrite Ht in Hdue. destruct t; simpl in Hdue, Hpoll; [discriminate Hdue | discriminate Hpoll].

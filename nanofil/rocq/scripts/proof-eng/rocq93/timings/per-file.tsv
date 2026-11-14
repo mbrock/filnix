@@ -1,0 +1,538 @@
+file	old_status	old_seconds	old_rss_mb	old_slowest	new_status	new_seconds	new_rss_mb	new_slowest	delta_seconds	delta_rss_mb
+glibc/CodePrelude.v	pass	0.49	173	0.25s line 5 -: From Stdlib Require Import String Ascii List.	pass	0.45	181	0.20s line 6 -: From Nanofil Require Export Term Syntax Transport Semantics.	-0.04	8
+glibc/Fix.v	pass	1.28	330	1.15s line 3 -: From Nanofil Require Import Runtime Logic.	pass	0.99	341	0.82s line 3 -: From Nanofil Require Import Runtime Logic.	-0.29	11
+glibc/GlibcEnv.v	pass	1.35	331	1.07s line 7 -: From iris.proofmode Require Import proofmode.	pass	1.08	344	0.73s line 7 -: From iris.proofmode Require Import proofmode.	-0.27	13
+glibc/GlibcLogic.v	pass	1.91	405	1.00s line 25 -: From Glibc Require Import GlibcTactics.	pass	1.78	421	0.85s line 25 -: From Glibc Require Import GlibcTactics.	-0.13	16
+glibc/GlibcTactics.v	pass	1.73	381	1.04s line 6 -: From iris.proofmode Require Import proofmode.	pass	1.46	394	0.77s line 6 -: From iris.proofmode Require Import proofmode.	-0.27	13
+glibc/LenCode.v	pass	0.7	195	0.33s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.7	202	0.33s line 5 -: From Stdlib Require Import String ZArith List Ascii.	0.0	7
+glibc/LenLogic.v	pass	4.32	595	1.02s line 29 -: From Glibc Require Import GlibcTactics.	pass	4.19	633	0.82s line 29 -: From Glibc Require Import GlibcTactics.	-0.13	38
+glibc/SayCode.v	pass	0.74	196	0.34s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.66	203	0.32s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.08	7
+glibc/SayLogic.v	pass	5.43	598	1.10s line 25 -: From Glibc Require Import GlibcTactics.	pass	5.06	626	0.88s line 25 -: From Glibc Require Import GlibcTactics.	-0.37	28
+glibc/StrlenBits.v	pass	3.29	421	1.12s line 420 tail_first: byte_cases j; repeat match goal with | |- context [byte_of r	pass	3.15	450	1.19s line 420 tail_first: byte_cases j; repeat match goal with | |- context [byte_of r	-0.14	29
+glibc/StrlenLogic.v	pass	11.56	801	2.43s line 273 loop_spec: Qed.	pass	10.63	799	2.13s line 273 loop_spec: Qed.	-0.93	-2
+glibc/getopt/GetoptArgv.v	pass	1.7	380	1.17s line 9 -: From Glibc Require Import GlibcTactics.	pass	1.44	395	0.84s line 9 -: From Glibc Require Import GlibcTactics.	-0.26	15
+glibc/getopt/GetoptBytes.v	pass	2.21	428	1.04s line 11 -: From Glibc Require Import GlibcTactics.	pass	2.02	462	0.79s line 11 -: From Glibc Require Import GlibcTactics.	-0.19	34
+glibc/getopt/GetoptClamp.v	pass	6.41	686	1.12s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.33	719	1.09s line 122 wp_getopt_clamp: Qed.	-0.08	33
+glibc/getopt/GetoptCode01.v	pass	1.33	246	"0.80s line 11 getopt_blocks_01: Definition getopt_blocks_01 : list term := [ TApp ""block"" [T"	pass	1.4	264	"0.92s line 11 getopt_blocks_01: Definition getopt_blocks_01 : list term := [ TApp ""block"" [T"	0.07	18
+glibc/getopt/GetoptCode02.v	pass	0.56	182	0.33s line 4 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.54	189	0.33s line 4 -: From Stdlib Require Import String ZArith List Ascii.	-0.02	7
+glibc/getopt/GetoptCode03.v	pass	0.63	179	0.46s line 4 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.48	185	0.33s line 4 -: From Stdlib Require Import String ZArith List Ascii.	-0.15	6
+glibc/getopt/GetoptCode04.v	pass	1.27	242	"0.76s line 11 getopt_blocks_04: Definition getopt_blocks_04 : list term := [ TApp ""block"" [T"	pass	1.35	259	"0.87s line 11 getopt_blocks_04: Definition getopt_blocks_04 : list term := [ TApp ""block"" [T"	0.08	17
+glibc/getopt/GetoptCode05.v	pass	1.29	242	"0.79s line 11 getopt_blocks_05: Definition getopt_blocks_05 : list term := [ TApp ""block"" [T"	pass	1.42	260	"0.90s line 11 getopt_blocks_05: Definition getopt_blocks_05 : list term := [ TApp ""block"" [T"	0.13	18
+glibc/getopt/GetoptCode06.v	pass	0.56	181	0.34s line 4 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.53	188	0.35s line 4 -: From Stdlib Require Import String ZArith List Ascii.	-0.03	7
+glibc/getopt/GetoptCode07.v	pass	0.89	203	0.39s line 4 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.76	214	0.31s line 4 -: From Stdlib Require Import String ZArith List Ascii.	-0.13	11
+glibc/getopt/GetoptColon.v	pass	6.87	689	1.08s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.21	738	1.01s line 226 wp_getopt_colon: Qed.	0.34	49
+glibc/getopt/GetoptCursor.v	pass	8.33	695	1.54s line 138 wp_getopt_long_cursor: idx i.	pass	8.49	765	1.65s line 138 wp_getopt_long_cursor: idx i.	0.16	70
+glibc/getopt/GetoptDash.v	pass	9.82	717	2.42s line 129 wp_getopt_dash: Qed.	pass	9.42	834	2.14s line 129 wp_getopt_dash: Qed.	-0.4	117
+glibc/getopt/GetoptDashTest.v	pass	5.92	653	1.13s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.04	682	0.94s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	0.12	29
+glibc/getopt/GetoptDiag.v	pass	8.73	705	1.86s line 165 wp_getopt_diag_wmissing: diag_block.	pass	8.8	784	2.13s line 165 wp_getopt_diag_wmissing: diag_block.	0.07	79
+glibc/getopt/GetoptDispatch.v	pass	13.07	941	2.16s line 163 wp_getopt_choice: idx i.	pass	12.85	958	2.37s line 163 wp_getopt_choice: idx i.	-0.22	17
+glibc/getopt/GetoptEntry.v	pass	10.92	741	1.27s line 185 wp_getopt_entry_init: iFrame.	pass	10.73	856	1.37s line 185 wp_getopt_entry_init: iFrame.	-0.19	115
+glibc/getopt/GetoptEntryBridge.v	pass	6.83	605	1.79s line 162 entry_cluster: iFrame.	pass	6.75	652	1.78s line 104 entry_select: iFrame.	-0.08	47
+glibc/getopt/GetoptEntryScan.v	pass	3.84	545	1.31s line 151 entry_scan_cells: iFrame.	pass	3.67	573	1.13s line 151 entry_scan_cells: iFrame.	-0.17	28
+glibc/getopt/GetoptEntrySession.v	pass	2.87	497	1.08s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.98	535	1.19s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	0.11	38
+glibc/getopt/GetoptExchange.v	pass	2.75	483	1.17s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.25	520	0.99s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.5	37
+glibc/getopt/GetoptExchangeThree.v	pass	4.14	535	1.71s line 61 wp_x3_loop: x_outer (GetoptSwap3Lower.wp_x3_lower w0 registry ge) (Getop	pass	3.67	571	1.63s line 61 wp_x3_loop: x_outer (GetoptSwap3Lower.wp_x3_lower w0 registry ge) (Getop	-0.47	36
+glibc/getopt/GetoptExchangeTwo.v	pass	4.38	551	1.65s line 130 wp_x2_loop: x_outer (GetoptSwap2Lower.wp_x2_lower w0 registry ge) (Getop	pass	3.79	570	1.72s line 130 wp_x2_loop: x_outer (GetoptSwap2Lower.wp_x2_lower w0 registry ge) (Getop	-0.59	19
+glibc/getopt/GetoptIdle.v	pass	7.28	698	1.43s line 109 wp_x2_exchange: Qed.	pass	7.01	726	1.46s line 109 wp_x2_exchange: Qed.	-0.27	28
+glibc/getopt/GetoptIdlePath.v	pass	3.87	554	1.14s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.47	584	0.95s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.4	30
+glibc/getopt/GetoptIdleThree.v	pass	7.11	701	1.35s line 109 wp_x3_exchange: Qed.	pass	6.99	727	1.43s line 109 wp_x3_exchange: Qed.	-0.12	26
+glibc/getopt/GetoptInitial.v	pass	4.83	526	1.72s line 84 getopt_private_own: rewrite /getopt_private_pieces /concat !pts_app.	pass	4.9	580	1.93s line 84 getopt_private_own: rewrite /getopt_private_pieces /concat !pts_app.	0.07	54
+glibc/getopt/GetoptInitialize.v	pass	14.0	907	3.02s line 252 wp_getopt_initialize: Qed.	pass	14.25	995	3.02s line 252 wp_getopt_initialize: Qed.	0.25	88
+glibc/getopt/GetoptLongAmbHead.v	pass	5.78	672	2.49s line 108 wp_amb_head138: arep_head w0 registry ge Hlend Hfp Hgt Hfx mid.	pass	5.58	703	2.55s line 108 wp_amb_head138: arep_head w0 registry ge Hlend Hfp Hgt Hfx mid.	-0.2	31
+glibc/getopt/GetoptLongAmbItem.v	pass	3.88	581	1.04s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.67	611	0.94s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.21	30
+glibc/getopt/GetoptLongAmbList.v	pass	3.54	571	1.03s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.42	602	0.90s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.12	31
+glibc/getopt/GetoptLongAmbPoss.v	pass	5.61	671	2.42s line 77 wp_amb_head139: arep_head w0 registry ge Hlend Hfp Hgt Hfx mid.	pass	5.34	703	2.35s line 77 wp_amb_head139: arep_head w0 registry ge Hlend Hfp Hgt Hfx mid.	-0.27	32
+glibc/getopt/GetoptLongAmbPrint.v	pass	4.75	614	1.10s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.54	644	0.97s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.21	30
+glibc/getopt/GetoptLongAmbRep.v	pass	4.29	619	1.13s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.96	651	0.98s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.33	32
+glibc/getopt/GetoptLongAmbTail.v	pass	5.98	699	1.15s line 119 wp_amb_tail: Qed.	pass	5.72	727	1.27s line 119 wp_amb_tail: Qed.	-0.26	28
+glibc/getopt/GetoptLongArg.v	pass	12.15	802	2.35s line 165 wp_long_found: iApply (wp_long_req w0 registry ge (larg_keys ++ ks) _ G T f	pass	11.18	890	2.27s line 165 wp_long_found: iApply (wp_long_req w0 registry ge (larg_keys ++ ks) _ G T f	-0.97	88
+glibc/getopt/GetoptLongBody.v	pass	3.47	578	1.11s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.09	608	0.97s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.38	30
+glibc/getopt/GetoptLongCall.v	pass	3.41	557	1.12s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.18	587	0.95s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.23	30
+glibc/getopt/GetoptLongChoice.v	pass	4.42	656	1.14s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.89	686	0.96s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.53	30
+glibc/getopt/GetoptLongDash.v	pass	5.79	697	1.05s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.34	728	0.97s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.45	31
+glibc/getopt/GetoptLongDiag.v	pass	12.13	800	4.01s line 174 wp_getopt_ldiag_noarg: ldiag_entry_block Htc Hn0.	pass	11.66	911	3.99s line 203 wp_getopt_ldiag_missing: ldiag_entry_block Htc Hn0.	-0.47	111
+glibc/getopt/GetoptLongEq.v	pass	9.67	735	1.34s line 142 wp_long_eq: Qed.	pass	9.46	847	"1.26s line 123 wp_long_eq: iApply (wp_half_check_read_dq w0 registry ge with ""Htl""); [r"	-0.21	112
+glibc/getopt/GetoptLongExact.v	pass	11.78	800	2.23s line 219 wp_long_exact_loop: Qed.	pass	11.19	911	1.99s line 219 wp_long_exact_loop: Qed.	-0.59	111
+glibc/getopt/GetoptLongFind.v	pass	3.54	585	1.12s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.08	612	0.92s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.46	27
+glibc/getopt/GetoptLongJoin.v	pass	3.94	624	1.04s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.54	652	1.01s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.4	28
+glibc/getopt/GetoptLongJoinFound.v	pass	4.37	648	1.03s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.75	676	0.97s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.62	28
+glibc/getopt/GetoptLongJoinMiss.v	pass	4.76	611	1.51s line 75 plo_res_intro: iFrame.	pass	4.38	639	1.55s line 75 plo_res_intro: iFrame.	-0.38	28
+glibc/getopt/GetoptLongMiss.v	pass	4.94	636	1.08s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.59	667	1.00s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.35	31
+glibc/getopt/GetoptLongMissOnly.v	pass	9.29	758	1.84s line 123 wp_long_miss_only: Qed.	pass	9.5	865	1.82s line 123 wp_long_miss_only: Qed.	0.21	107
+glibc/getopt/GetoptLongOnly.v	pass	13.27	891	2.49s line 165 wp_getopt_long_only: Qed.	pass	12.89	943	1.88s line 165 wp_getopt_long_only: Qed.	-0.38	52
+glibc/getopt/GetoptLongPfxAlloc.v	pass	7.43	713	1.29s line 221 wp_pfx_alloc: Qed.	pass	7.05	763	1.23s line 221 wp_pfx_alloc: Qed.	-0.38	50
+glibc/getopt/GetoptLongPfxCmp.v	pass	10.86	820	1.85s line 189 wp_long_pfx_cmp: Qed.	pass	10.22	927	1.61s line 189 wp_long_pfx_cmp: Qed.	-0.64	107
+glibc/getopt/GetoptLongPfxEnd.v	pass	2.82	522	1.04s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.51	552	0.95s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.31	30
+glibc/getopt/GetoptLongPfxIter.v	pass	9.8	773	1.57s line 139 wp_pfx_iter: Qed.	pass	9.96	883	1.45s line 139 wp_pfx_iter: Qed.	0.16	110
+glibc/getopt/GetoptLongPfxLoop.v	pass	4.18	581	1.11s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.27	605	1.08s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.91	24
+glibc/getopt/GetoptLongPfxMark.v	pass	3.33	549	1.13s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.94	582	0.94s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.39	33
+glibc/getopt/GetoptLongPfxPath.v	pass	4.21	621	1.08s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.75	641	0.94s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.46	20
+glibc/getopt/GetoptLongPfxSet.v	pass	4.56	585	1.10s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.27	611	0.99s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.29	26
+glibc/getopt/GetoptLongPfxStep.v	pass	5.14	631	1.19s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.51	648	1.00s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.63	17
+glibc/getopt/GetoptLongPre.v	pass	4.62	593	1.21s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.24	618	0.98s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.38	25
+glibc/getopt/GetoptLongReq.v	pass	9.45	714	1.27s line 148 wp_long_req: Qed.	pass	8.61	825	1.14s line 148 wp_long_req: Qed.	-0.84	111
+glibc/getopt/GetoptLongScan.v	pass	5.28	628	1.15s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.92	663	0.94s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.36	35
+glibc/getopt/GetoptLongSession.v	pass	5.81	559	"1.96s line 172 short_session: iSplitL ""Hl Hib Her Hoo Hab Hini Hcur Hord Hfi Hla""; [iFrame"	pass	5.71	604	"1.85s line 172 short_session: iSplitL ""Hl Hib Her Hoo Hab Hini Hcur Hord Hfi Hla""; [iFrame"	-0.1	45
+glibc/getopt/GetoptLongSingle.v	pass	4.76	675	1.11s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.54	707	1.11s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.22	32
+glibc/getopt/GetoptLongSite.v	pass	5.63	654	1.06s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.06	688	1.01s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.57	34
+glibc/getopt/GetoptLongStore.v	pass	9.18	713	1.86s line 175 wp_long_store: Qed.	pass	8.93	832	1.74s line 175 wp_long_store: Qed.	-0.25	119
+glibc/getopt/GetoptLongTail.v	pass	8.45	711	1.45s line 80 wp_long_next: idx (i + 1).	pass	8.83	818	1.73s line 80 wp_long_next: idx (i + 1).	0.38	107
+glibc/getopt/GetoptLongUnrec.v	pass	9.24	726	1.64s line 128 wp_long_unrec: Qed.	pass	9.02	837	1.48s line 128 wp_long_unrec: Qed.	-0.22	111
+glibc/getopt/GetoptLongW.v	pass	5.95	690	1.07s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.23	722	1.00s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.72	32
+glibc/getopt/GetoptLongWrapper.v	pass	3.7	513	1.11s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.88	554	1.17s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	0.18	41
+glibc/getopt/GetoptModule.v	pass	2.79	471	1.06s line 6 -: From Glibc Require Import GlibcTactics.	pass	2.5	498	0.86s line 6 -: From Glibc Require Import GlibcTactics.	-0.29	27
+glibc/getopt/GetoptOptArg.v	pass	7.46	714	1.47s line 124 wp_getopt_optarg: Qed.	pass	7.27	777	1.36s line 124 wp_getopt_optarg: Qed.	-0.19	63
+glibc/getopt/GetoptPermute.v	pass	8.37	702	1.59s line 130 wp_getopt_permute: Qed.	pass	8.05	797	1.45s line 130 wp_getopt_permute: Qed.	-0.32	95
+glibc/getopt/GetoptReqArg.v	pass	7.14	700	1.20s line 149 wp_getopt_reqarg: Qed.	pass	6.55	760	1.07s line 149 wp_getopt_reqarg: Qed.	-0.59	60
+glibc/getopt/GetoptReqNext.v	pass	8.2	698	1.07s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	8.15	780	0.94s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.05	82
+glibc/getopt/GetoptReqTail.v	pass	5.7	614	1.16s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.13	646	0.91s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.57	32
+glibc/getopt/GetoptReturn.v	pass	7.86	702	1.19s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.54	765	1.00s line 135 wp_getopt_nonopt: idx i.	-0.32	63
+glibc/getopt/GetoptScan.v	pass	4.42	566	1.19s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.68	598	1.09s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.74	32
+glibc/getopt/GetoptScanChoice.v	pass	4.8	511	2.64s line 159 scan_choice_cells: by iFrame.	pass	4.39	544	2.62s line 159 scan_choice_cells: by iFrame.	-0.41	33
+glibc/getopt/GetoptScanEnd.v	pass	13.25	903	2.45s line 200 wp_getopt_scan_end: Qed.	pass	13.66	958	2.61s line 200 wp_getopt_scan_end: Qed.	0.41	55
+glibc/getopt/GetoptScanSession.v	pass	4.99	559	"1.67s line 110 scan_session: iSplitL ""Hl Hi He Hoo Ha Hin Hcur Ho Hf Hla""; [iFrame; iPure"	pass	5.0	597	"1.85s line 110 scan_session: iSplitL ""Hl Hi He Hoo Ha Hin Hcur Ho Hf Hla""; [iFrame; iPure"	0.01	38
+glibc/getopt/GetoptShort.v	pass	11.15	770	2.72s line 184 wp_getopt_char: Qed.	pass	10.27	885	2.01s line 184 wp_getopt_char: Qed.	-0.88	115
+glibc/getopt/GetoptShortOpt.v	pass	9.43	755	1.26s line 207 wp_getopt_known: Qed.	pass	8.95	862	1.19s line 207 wp_getopt_known: Qed.	-0.48	107
+glibc/getopt/GetoptShortRet.v	pass	3.05	499	1.12s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.81	531	0.96s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.24	32
+glibc/getopt/GetoptSkip.v	pass	5.07	600	1.18s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.88	634	1.27s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.19	34
+glibc/getopt/GetoptSkipTest.v	pass	8.12	701	1.68s line 127 wp_skip_test: Qed.	pass	7.88	762	1.33s line 127 wp_skip_test: Qed.	-0.24	61
+glibc/getopt/GetoptState.v	pass	1.65	410	1.03s line 12 -: From Glibc Require Import GlibcTactics.	pass	1.45	425	0.84s line 12 -: From Glibc Require Import GlibcTactics.	-0.2	15
+glibc/getopt/GetoptSwap2Lower.v	pass	10.24	753	6.91s line 59 wp_x2_lower: x_lower e fr i ps bot mid top av.	pass	9.56	808	6.87s line 59 wp_x2_lower: x_lower e fr i ps bot mid top av.	-0.68	55
+glibc/getopt/GetoptSwap2Upper.v	pass	9.33	735	5.97s line 59 wp_x2_upper: x_upper e fr i ps bot mid top av.	pass	9.07	787	6.14s line 59 wp_x2_upper: x_upper e fr i ps bot mid top av.	-0.26	52
+glibc/getopt/GetoptSwap3Lower.v	pass	10.27	796	6.87s line 59 wp_x3_lower: x_lower e fr i ps bot mid top av.	pass	9.88	808	7.28s line 59 wp_x3_lower: x_lower e fr i ps bot mid top av.	-0.39	12
+glibc/getopt/GetoptSwap3Upper.v	pass	9.03	734	5.66s line 59 wp_x3_upper: x_upper e fr i ps bot mid top av.	pass	9.12	786	6.09s line 59 wp_x3_upper: x_upper e fr i ps bot mid top av.	0.09	52
+glibc/getopt/GetoptTerm.v	pass	0.54	178	0.36s line 4 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.46	185	0.34s line 4 -: From Stdlib Require Import String ZArith List Ascii.	-0.08	7
+glibc/getopt/GetoptWOpt.v	pass	14.5	894	3.14s line 145 wp_getopt_wopt: idx (i + 1).	pass	14.58	981	3.59s line 145 wp_getopt_wopt: idx (i + 1).	0.08	87
+glibc/getopt/GetoptWOptSession.v	pass	5.72	715	1.13s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.14	759	0.95s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.58	44
+glibc/getopt/GetoptWTail.v	pass	6.0	648	1.13s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.69	681	0.97s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.31	33
+glibc/getopt/GetoptWrapper.v	pass	10.64	748	1.97s line 155 wp_getopt_internal_in: Qed.	pass	9.93	862	1.74s line 155 wp_getopt_internal_in: Qed.	-0.71	114
+glibc/hello/HelloGlibcDebts.v	pass	4.38	811	1.17s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.19	857	1.02s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.19	46
+glibc/hello/HelloGlibcJoin.v	pass	6.53	1915	3.10s line 19 -: From Glibc Require Import OsWorld OsRegistry AtexitLogic Hel	pass	5.53	1948	2.59s line 19 -: From Glibc Require Import OsWorld OsRegistry AtexitLogic Hel	-1.0	33
+glibc/hello/HelloGlibcLeaf.v	pass	4.91	686	1.03s line 23 -: From Glibc Require Import GlibcTactics.	pass	4.35	719	0.81s line 23 -: From Glibc Require Import GlibcTactics.	-0.56	33
+glibc/hello/HelloGlibcLibsCleanup.v	pass	4.82	1015	1.68s line 12 -: From Glibc Require Import OsWorld OsRegistry LibioCleanupCod	pass	3.94	1046	1.42s line 12 -: From Glibc Require Import OsWorld OsRegistry LibioCleanupCod	-0.88	31
+glibc/hello/HelloGlibcLibsExit.v	pass	7.88	1914	3.07s line 13 -: From Glibc Require Import OsWorld OsRegistry AtexitLogic Exi	pass	6.56	1957	2.44s line 13 -: From Glibc Require Import OsWorld OsRegistry AtexitLogic Exi	-1.32	43
+glibc/hello/HelloGlibcLibsName.v	pass	5.77	1076	2.04s line 13 -: From Glibc Require Import OsWorld OsRegistry WordString Hell	pass	4.84	1158	1.41s line 13 -: From Glibc Require Import OsWorld OsRegistry WordString Hell	-0.93	82
+glibc/hello/HelloGlibcLibsStr.v	pass	7.76	1202	1.75s line 17 -: From Glibc Require Import OsWorld OsRegistry WordString Strl	pass	7.0	1286	1.21s line 17 -: From Glibc Require Import OsWorld OsRegistry WordString Strl	-0.76	84
+glibc/hello/HelloGlibcLibsSys.v	pass	7.71	1844	1.86s line 10 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	6.62	1893	1.75s line 10 -: From Nanofil Require Import Term Syntax Values Memory Runtim	-1.09	49
+glibc/hello/HelloGlibcLibsT.v	pass	4.66	975	1.16s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.0	1020	1.09s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.66	45
+glibc/hello/HelloGlibcMainAlloc.v	pass	1.68	398	0.86s line 5 -: From iris.proofmode Require Import proofmode.	pass	1.42	411	0.76s line 5 -: From iris.proofmode Require Import proofmode.	-0.26	13
+glibc/hello/HelloGlibcMainDispatch.v	pass	12.95	1397	1.15s line 15 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	12.13	1487	1.21s line 187 loop_dispatch: iNext.	-0.82	90
+glibc/hello/HelloGlibcMainFull.v	pass	4.71	1209	1.40s line 13 -: From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts	pass	4.1	1265	1.19s line 13 -: From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts	-0.61	56
+glibc/hello/HelloGlibcMainGreet.v	pass	7.87	1223	1.10s line 14 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	7.63	1306	1.03s line 74 main_join: iNext.	-0.24	83
+glibc/hello/HelloGlibcMainHelp.v	pass	13.04	1430	3.07s line 98 main_help: Qed.	pass	12.39	1513	2.94s line 98 main_help: Qed.	-0.65	83
+glibc/hello/HelloGlibcMainHelpEnd.v	pass	7.98	1229	1.28s line 19 -: From Glibc Require Import OsWorld OsRegistry WordString File	pass	7.21	1307	0.93s line 19 -: From Glibc Require Import OsWorld OsRegistry WordString File	-0.77	78
+glibc/hello/HelloGlibcMainLibs.v	pass	9.25	2127	4.08s line 11 -: From Glibc Require Import OsWorld AtexitLogic HelloGlibcDebt	pass	7.92	2164	3.32s line 11 -: From Glibc Require Import OsWorld AtexitLogic HelloGlibcDebt	-1.33	37
+glibc/hello/HelloGlibcMainLibsCalls.v	pass	6.8	1168	2.16s line 6 -: From Glibc Require Import HelloGlibcLibsT HelloGlibcLibsStr 	pass	6.14	1193	2.22s line 6 -: From Glibc Require Import HelloGlibcLibsT HelloGlibcLibsStr 	-0.66	25
+glibc/hello/HelloGlibcMainLoop.v	pass	7.62	1206	1.48s line 19 -: From Glibc Require Import OsWorld OsRegistry WordString File	pass	5.86	1279	0.94s line 11 -: From Glibc Require Import GlibcTactics.	-1.76	73
+glibc/hello/HelloGlibcMainNameSearch.v	pass	4.08	574	0.96s line 5 -: From iris.proofmode Require Import proofmode.	pass	3.2	629	0.73s line 5 -: From iris.proofmode Require Import proofmode.	-0.88	55
+glibc/hello/HelloGlibcMainOperands.v	pass	11.16	1389	1.10s line 15 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	10.39	1470	1.02s line 215 operand_L55: iNext.	-0.77	81
+glibc/hello/HelloGlibcMainStart.v	pass	13.47	1375	1.14s line 10 -: From Glibc Require Import GlibcTactics.	pass	13.57	1475	1.03s line 85 main_start: iNext.	0.1	100
+glibc/hello/HelloGlibcMainSteps.v	pass	8.94	994	3.11s line 128 zero_pcell: rewrite /pts !big_sepL_cons big_sepL_nil.	pass	8.97	1113	3.96s line 128 zero_pcell: rewrite /pts !big_sepL_cons big_sepL_nil.	0.03	119
+glibc/hello/HelloGlibcMainStreams.v	pass	2.58	467	0.91s line 6 -: From iris.proofmode Require Import proofmode.	pass	2.42	523	0.72s line 6 -: From iris.proofmode Require Import proofmode.	-0.16	56
+glibc/hello/HelloGlibcMainTail.v	pass	9.29	1253	1.14s line 18 -: From Glibc Require Import OsBlocks OsWorld OsRegistry WordSt	pass	8.82	1341	0.86s line 126 join_print: iNext.	-0.47	88
+glibc/hello/HelloGlibcMainVersion.v	pass	10.6	1318	1.23s line 150 main_version: Qed.	pass	10.12	1404	1.13s line 150 main_version: Qed.	-0.48	86
+glibc/hello/HelloGlibcMainWitness.v	pass	7.02	1018	1.66s line 14 -: From Glibc Require Import OsBlocks OsWorld FileInv AllocLogi	pass	6.96	1094	1.53s line 14 -: From Glibc Require Import OsBlocks OsWorld FileInv AllocLogi	-0.06	76
+glibc/hello/HelloGlibcMainWitnessIO.v	pass	10.3	1146	"2.01s line 156 witness_all_resources: iFrame ""Hlist Ht Herr Hel Ha Hro""."	pass	9.69	1163	"2.32s line 156 witness_all_resources: iFrame ""Hlist Ht Herr Hel Ha Hro""."	-0.61	17
+glibc/hello/HelloGlibcProgCells.v	pass	8.55	904	1.01s line 22 -: From Glibc Require Import GlibcTactics.	pass	8.72	990	0.82s line 22 -: From Glibc Require Import GlibcTactics.	0.17	86
+glibc/hello/HelloGlibcProgClosed.v	pass	2.83	692	1.08s line 22 -: From Glibc Require Import GlibcTactics.	pass	2.33	728	0.83s line 22 -: From Glibc Require Import GlibcTactics.	-0.5	36
+glibc/hello/HelloGlibcProgLibs.v	pass	9.29	874	1.09s line 9 -: From Glibc Require Import GlibcTactics.	pass	8.72	964	0.82s line 9 -: From Glibc Require Import GlibcTactics.	-0.57	90
+glibc/hello/HelloGlibcProgName.v	pass	5.42	747	1.02s line 26 -: From Glibc Require Import GlibcTactics.	pass	4.74	784	0.81s line 26 -: From Glibc Require Import GlibcTactics.	-0.68	37
+glibc/hello/HelloGlibcXmalloc.v	pass	4.63	1361	1.75s line 21 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	4.08	1407	1.57s line 21 -: From Nanofil Require Import Term Syntax Values Memory Runtim	-0.55	46
+glibc/hi_atexit/HiAtexitAlloc.v	pass	1.91	437	1.16s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.68	455	0.93s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.23	18
+glibc/hi_atexit/HiAtexitBase.v	pass	1.16	333	1.00s line 13 -: From Nanofil Require Import Runtime Logic.	pass	0.99	345	0.81s line 13 -: From Nanofil Require Import Runtime Logic.	-0.17	12
+glibc/hi_atexit/HiAtexitBufferedOverflow.v	pass	3.78	514	1.16s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.55	545	1.19s line 69 hi_buffered_overflow: iFrame.	-0.23	31
+glibc/hi_atexit/HiAtexitCleanup.v	pass	2.01	442	1.11s line 6 -: From Glibc Require Import GlibcTactics.	pass	1.55	479	0.88s line 6 -: From Glibc Require Import GlibcTactics.	-0.46	37
+glibc/hi_atexit/HiAtexitCloseIt.v	pass	1.83	440	1.12s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.52	463	0.95s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.31	23
+glibc/hi_atexit/HiAtexitCloseStdout.v	pass	9.93	797	3.13s line 154 wp_hi_close_stdout: Qed.	pass	9.02	886	2.88s line 154 wp_hi_close_stdout: Qed.	-0.91	89
+glibc/hi_atexit/HiAtexitCode01.v	pass	1.33	247	"0.79s line 14 hi_items_01: Definition hi_items_01 : list term := [ TApp ""func"" [TAtom """	pass	1.33	264	"0.83s line 14 hi_items_01: Definition hi_items_01 : list term := [ TApp ""func"" [TAtom """	0.0	17
+glibc/hi_atexit/HiAtexitCode02.v	pass	1.31	242	"0.75s line 14 hi_items_02: Definition hi_items_02 : list term := [ TApp ""func"" [TAtom """	pass	1.23	259	"0.77s line 14 hi_items_02: Definition hi_items_02 : list term := [ TApp ""func"" [TAtom """	-0.08	17
+glibc/hi_atexit/HiAtexitCode03.v	pass	1.49	253	"0.97s line 14 hi_items_03: Definition hi_items_03 : list term := [ TApp ""func"" [TAtom """	pass	1.38	271	"0.92s line 14 hi_items_03: Definition hi_items_03 : list term := [ TApp ""func"" [TAtom """	-0.11	18
+glibc/hi_atexit/HiAtexitCode04.v	pass	0.81	203	0.32s line 7 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.8	216	0.34s line 7 -: From Stdlib Require Import String ZArith List Ascii.	-0.01	13
+glibc/hi_atexit/HiAtexitCode05.v	pass	1.21	237	"0.69s line 14 hi_items_05: Definition hi_items_05 : list term := [ TApp ""func"" [TAtom """	pass	1.21	253	"0.73s line 14 hi_items_05: Definition hi_items_05 : list term := [ TApp ""func"" [TAtom """	0.0	16
+glibc/hi_atexit/HiAtexitCode06.v	pass	1.29	242	"0.81s line 14 hi_items_06: Definition hi_items_06 : list term := [ TApp ""func"" [TAtom """	pass	1.27	259	"0.82s line 14 hi_items_06: Definition hi_items_06 : list term := [ TApp ""func"" [TAtom """	-0.02	17
+glibc/hi_atexit/HiAtexitCode07.v	pass	0.91	206	0.40s line 7 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.87	221	"0.41s line 14 hi_items_07: Definition hi_items_07 : list term := [ TApp ""func"" [TAtom """	-0.04	15
+glibc/hi_atexit/HiAtexitCode08.v	pass	1.35	244	"0.86s line 14 hi_items_08: Definition hi_items_08 : list term := [ TApp ""func"" [TAtom """	pass	1.33	261	"0.83s line 14 hi_items_08: Definition hi_items_08 : list term := [ TApp ""func"" [TAtom """	-0.02	17
+glibc/hi_atexit/HiAtexitCode09.v	pass	0.65	189	0.35s line 7 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.61	196	0.37s line 7 -: From Stdlib Require Import String ZArith List Ascii.	-0.04	7
+glibc/hi_atexit/HiAtexitCode10.v	pass	1.41	251	"0.89s line 14 hi_blocks_10: Definition hi_blocks_10 : list term := [ TApp ""block"" [TAtom"	pass	1.38	268	"0.87s line 14 hi_blocks_10: Definition hi_blocks_10 : list term := [ TApp ""block"" [TAtom"	-0.03	17
+glibc/hi_atexit/HiAtexitCode11.v	pass	0.95	208	"0.42s line 14 hi_blocks_11: Definition hi_blocks_11 : list term := [ TApp ""block"" [TAtom"	pass	0.91	223	"0.41s line 14 hi_blocks_11: Definition hi_blocks_11 : list term := [ TApp ""block"" [TAtom"	-0.04	15
+glibc/hi_atexit/HiAtexitCode12.v	pass	1.23	225	"0.58s line 15 hi_items_12: Definition hi_items_12 : list term := [ TApp ""func"" [TAtom """	pass	1.07	242	"0.63s line 15 hi_items_12: Definition hi_items_12 : list term := [ TApp ""func"" [TAtom """	-0.16	17
+glibc/hi_atexit/HiAtexitCode13.v	pass	1.07	223	"0.56s line 14 hi_items_13: Definition hi_items_13 : list term := [ TApp ""func"" [TAtom """	pass	1.05	240	"0.58s line 14 hi_items_13: Definition hi_items_13 : list term := [ TApp ""func"" [TAtom """	-0.02	17
+glibc/hi_atexit/HiAtexitCode14.v	pass	1.15	231	"0.64s line 14 hi_items_14: Definition hi_items_14 : list term := [ TApp ""func"" [TAtom """	pass	1.22	247	"0.80s line 14 hi_items_14: Definition hi_items_14 : list term := [ TApp ""func"" [TAtom """	0.07	16
+glibc/hi_atexit/HiAtexitCode15.v	pass	0.84	203	0.37s line 7 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.76	214	"0.30s line 14 hi_items_15: Definition hi_items_15 : list term := [ TApp ""func"" [TAtom """	-0.08	11
+glibc/hi_atexit/HiAtexitCode16.v	pass	1.24	238	"0.68s line 14 hi_items_16: Definition hi_items_16 : list term := [ TApp ""func"" [TAtom """	pass	1.21	255	"0.76s line 14 hi_items_16: Definition hi_items_16 : list term := [ TApp ""func"" [TAtom """	-0.03	17
+glibc/hi_atexit/HiAtexitCode17.v	pass	1.17	231	"0.62s line 14 hi_items_17: Definition hi_items_17 : list term := [ TApp ""func"" [TAtom """	pass	1.25	247	"0.83s line 14 hi_items_17: Definition hi_items_17 : list term := [ TApp ""func"" [TAtom """	0.08	16
+glibc/hi_atexit/HiAtexitCode18.v	pass	1.12	226	"0.60s line 14 hi_items_18: Definition hi_items_18 : list term := [ TApp ""func"" [TAtom """	pass	1.13	243	"0.72s line 14 hi_items_18: Definition hi_items_18 : list term := [ TApp ""func"" [TAtom """	0.01	17
+glibc/hi_atexit/HiAtexitCode19.v	pass	0.99	214	"0.47s line 14 hi_items_19: Definition hi_items_19 : list term := [ TApp ""func"" [TAtom """	pass	1.0	230	"0.57s line 14 hi_items_19: Definition hi_items_19 : list term := [ TApp ""func"" [TAtom """	0.01	16
+glibc/hi_atexit/HiAtexitCode20.v	pass	1.34	245	"0.79s line 14 hi_blocks_20: Definition hi_blocks_20 : list term := [ TApp ""block"" [TAtom"	pass	1.29	262	"0.82s line 14 hi_blocks_20: Definition hi_blocks_20 : list term := [ TApp ""block"" [TAtom"	-0.05	17
+glibc/hi_atexit/HiAtexitCode21.v	pass	0.52	179	0.34s line 7 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.48	186	0.31s line 7 -: From Stdlib Require Import String ZArith List Ascii.	-0.04	7
+glibc/hi_atexit/HiAtexitCode22.v	pass	1.46	252	"0.94s line 15 hi_items_22: Definition hi_items_22 : list term := [ TApp ""func"" [TAtom """	pass	1.32	270	"0.86s line 15 hi_items_22: Definition hi_items_22 : list term := [ TApp ""func"" [TAtom """	-0.14	18
+glibc/hi_atexit/HiAtexitCode23.v	pass	0.99	209	"0.41s line 14 hi_items_23: Definition hi_items_23 : list term := [ TApp ""func"" [TAtom """	pass	1.01	225	"0.48s line 14 hi_items_23: Definition hi_items_23 : list term := [ TApp ""func"" [TAtom """	0.02	16
+glibc/hi_atexit/HiAtexitCode24.v	pass	1.02	220	"0.51s line 14 hi_items_24: Definition hi_items_24 : list term := [ TApp ""func"" [TAtom """	pass	1.08	236	"0.58s line 14 hi_items_24: Definition hi_items_24 : list term := [ TApp ""func"" [TAtom """	0.06	16
+glibc/hi_atexit/HiAtexitCode25.v	pass	1.75	275	"1.31s line 14 hi_items_25: Definition hi_items_25 : list term := [ TApp ""func"" [TAtom """	pass	1.67	295	"1.18s line 14 hi_items_25: Definition hi_items_25 : list term := [ TApp ""func"" [TAtom """	-0.08	20
+glibc/hi_atexit/HiAtexitCode26.v	pass	1.19	229	"0.65s line 14 hi_items_26: Definition hi_items_26 : list term := [ TApp ""func"" [TAtom """	pass	1.17	246	"0.68s line 14 hi_items_26: Definition hi_items_26 : list term := [ TApp ""func"" [TAtom """	-0.02	17
+glibc/hi_atexit/HiAtexitCode27.v	pass	0.79	196	0.33s line 7 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.7	203	0.39s line 7 -: From Stdlib Require Import String ZArith List Ascii.	-0.09	7
+glibc/hi_atexit/HiAtexitDoAlloc.v	pass	2.31	446	1.32s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.75	482	0.90s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.56	36
+glibc/hi_atexit/HiAtexitDoWrite.v	pass	1.99	432	1.09s line 22 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.77	445	0.94s line 22 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.22	13
+glibc/hi_atexit/HiAtexitEntryFields.v	pass	9.74	852	"5.38s line 56 hi_entry_vtables_own: iFrame ""Hl H1 H2 H3 H4 H5 H6 H7""."	pass	8.86	871	"4.97s line 56 hi_entry_vtables_own: iFrame ""Hl H1 H2 H3 H4 H5 H6 H7""."	-0.88	19
+glibc/hi_atexit/HiAtexitEntryImage.v	pass	7.77	469	4.99s line 37 hi_entry_agree: Qed.	pass	7.49	505	5.04s line 37 hi_entry_agree: Qed.	-0.28	36
+glibc/hi_atexit/HiAtexitEntryList.v	pass	5.14	578	"1.51s line 62 hi_entry_list_own: iFrame ""Hla Hlac Hrf Hrfc""."	pass	4.44	597	"1.58s line 62 hi_entry_list_own: iFrame ""Hla Hlac Hrf Hrfc""."	-0.7	19
+glibc/hi_atexit/HiAtexitEntryMemory.v	pass	2.06	414	1.01s line 8 -: From Glibc Require Import GlibcTactics.	pass	1.96	431	0.85s line 8 -: From Glibc Require Import GlibcTactics.	-0.1	17
+glibc/hi_atexit/HiAtexitEntryOwn.v	pass	2.36	501	1.03s line 7 -: From Glibc Require Import GlibcTactics.	pass	2.03	540	0.97s line 7 -: From Glibc Require Import GlibcTactics.	-0.33	39
+glibc/hi_atexit/HiAtexitExit.v	pass	2.84	538	1.03s line 7 -: From Glibc Require Import GlibcTactics.	pass	2.38	570	0.92s line 7 -: From Glibc Require Import GlibcTactics.	-0.46	32
+glibc/hi_atexit/HiAtexitExitEnv.v	pass	1.57	430	1.01s line 6 -: From Glibc Require Import GlibcTactics.	pass	1.39	447	0.86s line 6 -: From Glibc Require Import GlibcTactics.	-0.18	17
+glibc/hi_atexit/HiAtexitFclose.v	pass	1.89	419	0.86s line 14 -: From iris.proofmode Require Import proofmode.	pass	1.51	466	0.74s line 14 -: From iris.proofmode Require Import proofmode.	-0.38	47
+glibc/hi_atexit/HiAtexitFns.v	pass	3.83	584	1.00s line 12 -: From Glibc Require Import GlibcTactics.	pass	3.42	614	0.87s line 12 -: From Glibc Require Import GlibcTactics.	-0.41	30
+glibc/hi_atexit/HiAtexitGe.v	pass	1.8	442	1.12s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.58	476	0.91s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.22	34
+glibc/hi_atexit/HiAtexitImage.v	pass	13.27	837	6.37s line 126 hi_image_high_initial: let image := eval cbv -[store_bytes store_aux] in hi_m0 in h	pass	12.46	1024	6.20s line 126 hi_image_high_initial: let image := eval cbv -[store_bytes store_aux] in hi_m0 in h	-0.81	187
+glibc/hi_atexit/HiAtexitInitial.v	pass	4.4	378	1.39s line 59 hi_allocator_agree: vm_compute.	pass	4.15	392	1.35s line 59 hi_allocator_agree: vm_compute.	-0.25	14
+glibc/hi_atexit/HiAtexitInitialAlloc.v	pass	1.94	429	1.06s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.83	459	1.12s line 5 -: From Glibc Require Import GlibcTactics.	-0.11	30
+glibc/hi_atexit/HiAtexitInitialExit.v	pass	9.82	531	2.75s line 42 hi_initial_exit_agree: Qed.	pass	9.57	563	2.76s line 42 hi_initial_exit_agree: vm_compute.	-0.25	32
+glibc/hi_atexit/HiAtexitInitialList.v	pass	3.28	523	1.02s line 6 -: From Glibc Require Import GlibcTactics.	pass	3.12	557	1.05s line 6 -: From Glibc Require Import GlibcTactics.	-0.16	34
+glibc/hi_atexit/HiAtexitInitialStdout.v	pass	9.96	621	1.96s line 83 hi_stdout_own: iFrame.	pass	9.43	650	2.05s line 83 hi_stdout_own: iFrame.	-0.53	29
+glibc/hi_atexit/HiAtexitMain.v	pass	3.26	560	1.10s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.99	585	0.98s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.27	25
+glibc/hi_atexit/HiAtexitModule.v	pass	8.65	825	2.17s line 29 hi_globals: Definition hi_globals : list (name * ptr) := Eval vm_compute	pass	7.91	865	2.27s line 29 hi_globals: Definition hi_globals : list (name * ptr) := Eval vm_compute	-0.74	40
+glibc/hi_atexit/HiAtexitOutputClose.v	pass	3.85	608	1.16s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.3	639	0.93s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.55	31
+glibc/hi_atexit/HiAtexitOutputState.v	pass	6.58	591	1.88s line 72 hi_wbuf_to_ovf: iFrame.	pass	6.78	622	1.95s line 72 hi_wbuf_to_ovf: iFrame.	0.2	31
+glibc/hi_atexit/HiAtexitOverflow.v	pass	1.61	401	0.88s line 7 -: From iris.proofmode Require Import proofmode.	pass	1.26	415	0.72s line 7 -: From iris.proofmode Require Import proofmode.	-0.35	14
+glibc/hi_atexit/HiAtexitOverflowAlloc.v	pass	1.85	416	0.86s line 6 -: From iris.proofmode Require Import proofmode.	pass	1.51	465	0.74s line 6 -: From iris.proofmode Require Import proofmode.	-0.34	49
+glibc/hi_atexit/HiAtexitOverflowRules.v	pass	1.21	362	0.80s line 7 -: From Glibc Require Import LibioOverflowGen HiAtexitBase.	pass	1.1	382	0.77s line 7 -: From Glibc Require Import LibioOverflowGen HiAtexitBase.	-0.11	20
+glibc/hi_atexit/HiAtexitOverflowSend.v	pass	1.65	401	0.90s line 7 -: From iris.proofmode Require Import proofmode.	pass	1.35	416	0.72s line 7 -: From iris.proofmode Require Import proofmode.	-0.3	15
+glibc/hi_atexit/HiAtexitPrepare.v	pass	2.02	405	1.13s line 14 -: From Glibc Require Import GlibcTactics.	pass	1.85	416	0.83s line 14 -: From Glibc Require Import GlibcTactics.	-0.17	11
+glibc/hi_atexit/HiAtexitPrepareFrame.v	pass	1.29	368	1.03s line 7 -: From Glibc Require Import GlibcTactics.	pass	1.1	381	0.88s line 7 -: From Glibc Require Import GlibcTactics.	-0.19	13
+glibc/hi_atexit/HiAtexitPrintfOverflowHeap.v	pass	5.98	571	1.99s line 76 hi_printf_heap_file_overflow_with: tauto.	pass	4.88	608	1.07s line 76 hi_printf_heap_file_overflow_with: tauto.	-1.1	37
+glibc/hi_atexit/HiAtexitPuts.v	pass	2.27	501	1.01s line 7 -: From Glibc Require Import GlibcTactics.	pass	2.04	539	0.89s line 7 -: From Glibc Require Import GlibcTactics.	-0.23	38
+glibc/hi_atexit/HiAtexitPutsBuf.v	pass	3.41	558	1.13s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.88	590	0.91s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.53	32
+glibc/hi_atexit/HiAtexitPutsNl.v	pass	15.82	858	"2.29s line 71 hi_puts_L180: iIntros ""Hso Hsoc Hf [#Hvt HM] HK""."	pass	15.92	940	"2.38s line 71 hi_puts_L180: iIntros ""Hso Hsoc Hf [#Hvt HM] HK""."	0.1	82
+glibc/hi_atexit/HiAtexitPutsOverflow.v	pass	5.96	559	"2.34s line 60 hi_puts_overflow: iIntros ""#Hvt Hf HM HK""."	pass	5.67	593	"2.38s line 60 hi_puts_overflow: iIntros ""#Hvt Hf HM HK""."	-0.29	34
+glibc/hi_atexit/HiAtexitPutsRules.v	pass	1.4	386	1.00s line 6 -: From Glibc Require Import LibioPuts HiAtexitBase.	pass	1.14	409	0.77s line 6 -: From Glibc Require Import LibioPuts HiAtexitBase.	-0.26	23
+glibc/hi_atexit/HiAtexitPutsXsputn.v	pass	2.76	536	1.03s line 6 -: From Glibc Require Import GlibcTactics.	pass	2.49	571	0.90s line 6 -: From Glibc Require Import GlibcTactics.	-0.27	35
+glibc/hi_atexit/HiAtexitSafe.v	pass	2.06	492	1.02s line 12 -: From Glibc Require Import GlibcTactics.	pass	1.97	530	0.96s line 12 -: From Glibc Require Import GlibcTactics.	-0.09	38
+glibc/hi_atexit/HiAtexitSetb.v	pass	1.87	434	1.18s line 13 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.67	451	1.03s line 13 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.2	17
+glibc/hi_atexit/HiAtexitStdout.v	pass	6.87	610	1.22s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.92	649	1.10s line 112 hi_stdout_after_lock: iFrame.	0.05	39
+glibc/hi_atexit/HiAtexitStdoutClose.v	pass	2.46	517	1.19s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.17	546	0.99s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.29	29
+glibc/hi_atexit/HiAtexitStringBytes.v	pass	2.12	442	1.13s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.73	473	0.90s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.39	31
+glibc/hi_atexit/HiAtexitTerm.v	pass	0.53	180	0.28s line 7 -: From Stdlib Require Import String List.	pass	0.43	187	0.15s line 7 -: From Stdlib Require Import String List.	-0.1	7
+glibc/hi_atexit/HiAtexitValid.v	pass	9.2	388	8.01s line 12 hi_valid: Qed.	pass	8.92	400	8.08s line 12 hi_valid: Qed.	-0.28	12
+glibc/hi_atexit/HiAtexitWorld.v	pass	1.75	434	1.06s line 7 -: From Glibc Require Import GlibcTactics.	pass	1.4	465	0.85s line 7 -: From Glibc Require Import GlibcTactics.	-0.35	31
+glibc/hi_atexit/HiAtexitXsputn.v	pass	2.46	514	1.14s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.21	544	1.13s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.25	30
+glibc/hi_atexit/HiAtexitXsputnOverflow.v	pass	4.64	591	1.25s line 88 hi_xsputn_overflow: iFrame.	pass	4.43	625	1.21s line 88 hi_xsputn_overflow: iFrame.	-0.21	34
+glibc/hi_atexit/HiAtexitXsputnRules.v	pass	1.44	400	1.01s line 6 -: From Glibc Require Import LibioXsputn HiAtexitBase.	pass	1.2	429	0.82s line 6 -: From Glibc Require Import LibioXsputn HiAtexitBase.	-0.24	29
+glibc/libio/ExitRun.v	pass	6.29	650	1.05s line 25 -: From Glibc Require Import GlibcTactics.	pass	6.1	669	1.00s line 175 wp_glibc_run_exit_handlers: Qed.	-0.19	19
+glibc/libio/ExitRunCode.v	pass	1.75	404	1.00s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.59	417	0.94s line 5 -: From Glibc Require Import GlibcTactics.	-0.16	13
+glibc/libio/ExitRunLoop.v	pass	16.73	878	4.17s line 146 exit_loop: Qed.	pass	15.8	1014	3.67s line 146 exit_loop: Qed.	-0.93	136
+glibc/libio/ExitRunTail.v	pass	4.98	598	1.00s line 28 -: From Glibc Require Import GlibcTactics.	pass	4.96	627	0.83s line 28 -: From Glibc Require Import GlibcTactics.	-0.02	29
+glibc/libio/FileInv.v	pass	1.92	428	0.99s line 48 -: From Glibc Require Import GlibcTactics.	pass	1.77	447	0.82s line 48 -: From Glibc Require Import GlibcTactics.	-0.15	19
+glibc/libio/LibioCleanup.v	pass	8.15	679	"1.56s line 92 cleanup_loop: all: step; step; step; branch; iApply (""HK"" with ""[%] Hrl Hr"	pass	7.93	772	"1.46s line 92 cleanup_loop: all: step; step; step; branch; iApply (""HK"" with ""[%] Hrl Hr"	-0.22	93
+glibc/libio/LibioCleanupCode.v	pass	2.52	454	1.05s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.31	489	0.96s line 5 -: From Glibc Require Import GlibcTactics.	-0.21	35
+glibc/libio/LibioCleanupExit.v	pass	2.69	473	1.13s line 16 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.42	502	0.94s line 16 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.27	29
+glibc/libio/LibioCleanupFpLock.v	pass	6.98	684	1.11s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.44	691	1.53s line 97 wp_cleanup_L82: Qed.	0.46	7
+glibc/libio/LibioCleanupFpUnlock.v	pass	6.56	668	1.23s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.82	679	1.07s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	0.26	11
+glibc/libio/LibioCleanupLock.v	pass	6.46	629	1.11s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.26	653	0.91s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.2	24
+glibc/libio/LibioCleanupMode.v	pass	5.97	629	"1.32s line 87 wp_cleanup_L93: all: step; step; check ""Hl""; store_int ""Hl"" ""Hmd""; check ""Hl"	pass	5.22	617	"1.17s line 87 wp_cleanup_L93: all: step; step; check ""Hl""; store_int ""Hl"" ""Hmd""; check ""Hl"	-0.75	-12
+glibc/libio/LibioCleanupPass.v	pass	5.33	536	2.19s line 86 cleanup_pass: iFrame.	pass	4.89	568	2.40s line 86 cleanup_pass: iFrame.	-0.44	32
+glibc/libio/LibioCleanupStart.v	pass	8.84	692	2.15s line 122 wp_cleanup_start: Qed.	pass	9.46	736	2.10s line 122 wp_cleanup_start: Qed.	0.62	44
+glibc/libio/LibioCloseIt.v	pass	13.35	881	3.62s line 197 wp_glibc__IO_file_close_maybe_unlink: Qed.	pass	13.05	949	3.55s line 197 wp_glibc__IO_file_close_maybe_unlink: Qed.	-0.3	68
+glibc/libio/LibioCloseItCode.v	pass	2.04	425	1.15s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.75	440	0.84s line 5 -: From Glibc Require Import GlibcTactics.	-0.29	15
+glibc/libio/LibioCloseItEnd.v	pass	6.76	682	1.28s line 131 wp_close_it_L223: Qed.	pass	6.64	687	1.36s line 131 wp_close_it_L223: Qed.	-0.12	5
+glibc/libio/LibioCloseItMid.v	pass	9.82	682	2.77s line 159 wp_close_it_L18: Qed.	pass	9.66	788	2.68s line 159 wp_close_it_L18: Qed.	-0.16	106
+glibc/libio/LibioCloseSteps.v	pass	4.22	522	1.53s line 167 obj32: rewrite !bytes_app !auxes_app.	pass	4.09	572	1.67s line 167 obj32: rewrite !bytes_app !auxes_app.	-0.13	50
+glibc/libio/LibioDefaultXsputn.v	pass	10.18	707	2.85s line 118 wp_dx_loop: iFrame.	pass	9.88	803	3.01s line 118 wp_dx_loop: iFrame.	-0.3	96
+glibc/libio/LibioDefaultXsputnBuf.v	pass	2.8	477	1.11s line 28 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.64	520	0.91s line 28 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.16	43
+glibc/libio/LibioDefaultXsputnBytes.v	pass	6.47	691	1.10s line 19 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.21	726	1.12s line 94 wp_dx_bytes: branch_as true.	-0.26	35
+glibc/libio/LibioDefaultXsputnCopy.v	pass	5.01	600	1.16s line 24 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.58	637	1.04s line 24 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.43	37
+glibc/libio/LibioDefaultXsputnRoom.v	pass	7.84	663	3.56s line 129 wp_dx_L44: iFrame.	pass	7.49	698	2.94s line 129 wp_dx_L44: iFrame.	-0.35	35
+glibc/libio/LibioDefaultXsputnSmall.v	pass	10.14	697	2.85s line 101 wp_dx_L50: iFrame.	pass	10.04	759	3.15s line 101 wp_dx_L50: iFrame.	-0.1	62
+glibc/libio/LibioDefaultXsputnTail.v	pass	11.09	749	2.92s line 169 wp_dx_L22: Qed.	pass	9.96	826	2.01s line 169 wp_dx_L22: Qed.	-1.13	77
+glibc/libio/LibioDoAlloc.v	pass	8.56	682	1.91s line 157 wp_glibc__IO_file_doallocate: Qed.	pass	8.2	750	1.78s line 157 wp_glibc__IO_file_doallocate: Qed.	-0.36	68
+glibc/libio/LibioDoAllocBase.v	pass	2.15	433	1.27s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.83	446	0.90s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.32	13
+glibc/libio/LibioDoAllocBuf.v	pass	7.6	673	1.56s line 110 wp_glibc__IO_doallocbuf_alloc: Qed.	pass	7.35	683	1.63s line 110 wp_glibc__IO_doallocbuf_alloc: Qed.	-0.25	10
+glibc/libio/LibioDoAllocMode.v	pass	7.19	671	1.09s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.04	708	1.02s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.15	37
+glibc/libio/LibioDoAllocShort.v	pass	4.74	531	1.36s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.06	558	0.99s line 68 wp_glibc__IO_doallocbuf_short: all: step; step; step; norm; iApply wp_call_bind; [vx | exac	-0.68	27
+glibc/libio/LibioDoAllocTail.v	pass	5.83	624	1.12s line 13 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.91	659	1.19s line 13 -: From Glibc Require Import GlibcTactics LibioTactics.	0.08	35
+glibc/libio/LibioDoWrite.v	pass	6.01	611	1.17s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.57	639	1.08s line 125 wp_glibc__IO_new_do_write_mode: Qed.	-0.44	28
+glibc/libio/LibioDoWriteCall.v	pass	9.18	682	2.21s line 155 wp_do_write_call: Qed.	pass	8.86	770	1.96s line 155 wp_do_write_call: Qed.	-0.32	88
+glibc/libio/LibioDoWriteCode.v	pass	2.48	447	1.02s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.27	482	"0.91s line 13 libiodowrite_term: Definition libiodowrite_term : term := TApp ""module"" [TList "	-0.21	35
+glibc/libio/LibioDoWriteEnd.v	pass	5.79	600	1.17s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.58	622	1.08s line 83 wp_do_write_end: Qed.	-0.21	22
+glibc/libio/LibioDoWriteRet.v	pass	2.98	461	1.17s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.5	491	0.97s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.48	30
+glibc/libio/LibioDoWriteSetp.v	pass	5.27	591	"1.18s line 99 wp_do_write_setp: all: iApply (Hend_spec with ""Hl Hbl Hfl Hwe Hbase Hbend""); t"	pass	4.76	609	0.94s line 102 wp_do_write_setp: Qed.	-0.51	18
+glibc/libio/LibioDoWriteTail.v	pass	6.97	657	2.12s line 101 wp_do_write_tail: Qed.	pass	6.54	670	2.02s line 101 wp_do_write_tail: Qed.	-0.43	13
+glibc/libio/LibioFclose.v	pass	10.12	725	2.44s line 211 wp_glibc__IO_new_fclose_stdout: Qed.	pass	9.14	818	2.09s line 211 wp_glibc__IO_new_fclose_stdout: Qed.	-0.98	93
+glibc/libio/LibioFcloseCode.v	pass	1.9	421	0.97s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.71	436	0.85s line 5 -: From Glibc Require Import GlibcTactics.	-0.19	15
+glibc/libio/LibioFcloseLock.v	pass	13.76	832	1.58s line 159 wp_fclose_L101: Qed.	pass	13.75	915	1.63s line 159 wp_fclose_L101: Qed.	-0.01	83
+glibc/libio/LibioFcloseTail.v	pass	11.73	716	2.77s line 156 wp_fclose_L8: Qed.	pass	11.61	815	2.31s line 156 wp_fclose_L8: Qed.	-0.12	99
+glibc/libio/LibioFinish.v	pass	4.83	548	1.14s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.42	575	0.99s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.41	27
+glibc/libio/LibioFlush.v	pass	5.96	608	1.25s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.46	644	0.90s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.5	36
+glibc/libio/LibioFlushBody.v	pass	5.18	564	1.84s line 102 flush_body_exit: iFrame.	pass	4.91	598	1.74s line 102 flush_body_exit: iFrame.	-0.27	34
+glibc/libio/LibioFlushClean.v	pass	10.13	741	"1.30s line 98 wp_flush_L192: all: step; step; check ""Hl""; load ""Hl"" ""Hrp"" ""Hbc""; step; lo"	pass	9.47	811	"1.20s line 98 wp_flush_L192: all: step; step; check ""Hl""; load ""Hl"" ""Hrp"" ""Hbc""; step; lo"	-0.66	70
+glibc/libio/LibioFlushCode.v	pass	2.46	436	1.23s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.1	471	0.93s line 5 -: From Glibc Require Import GlibcTactics.	-0.36	35
+glibc/libio/LibioFlushFpLock.v	pass	6.47	650	1.09s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.47	665	0.93s line 97 wp_flush_L83: Qed.	0.0	15
+glibc/libio/LibioFlushFpUnlock.v	pass	7.58	683	1.19s line 96 wp_flush_L182: Qed.	pass	7.25	717	0.97s line 13 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.33	34
+glibc/libio/LibioFlushInv.v	pass	1.44	378	0.90s line 6 -: From iris.proofmode Require Import proofmode.	pass	1.19	391	0.81s line 6 -: From iris.proofmode Require Import proofmode.	-0.25	13
+glibc/libio/LibioFlushOver.v	pass	9.53	694	2.21s line 147 flush_body_over: iFrame.	pass	9.07	789	2.30s line 147 flush_body_over: iFrame.	-0.46	95
+glibc/libio/LibioFlushOverCall.v	pass	9.13	690	2.63s line 153 wp_flush_L240: Qed.	pass	8.41	770	2.22s line 153 wp_flush_L240: Qed.	-0.72	80
+glibc/libio/LibioFlushStart.v	pass	8.55	678	1.47s line 124 wp_flush_start: Qed.	pass	7.69	705	1.16s line 124 wp_flush_start: Qed.	-0.86	27
+glibc/libio/LibioFlushTail.v	pass	4.4	524	1.34s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.61	550	0.93s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	0.21	26
+glibc/libio/LibioFputs.v	pass	3.93	525	1.12s line 28 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.6	563	0.93s line 28 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.33	38
+glibc/libio/LibioFputsCall.v	pass	10.16	698	1.59s line 110 wp_fputs_L161: Qed.	pass	9.76	809	1.45s line 110 wp_fputs_L161: Qed.	-0.4	111
+glibc/libio/LibioFputsLock.v	pass	6.51	661	1.25s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.37	682	0.95s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.14	21
+glibc/libio/LibioFputsUnlock.v	pass	7.28	685	1.12s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.21	706	1.19s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.07	21
+glibc/libio/LibioGenCode.v	pass	1.65	389	1.05s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.36	401	0.83s line 5 -: From Glibc Require Import GlibcTactics.	-0.29	12
+glibc/libio/LibioGenLeaves.v	pass	2.53	465	1.08s line 18 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.29	501	1.07s line 18 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.24	36
+glibc/libio/LibioLogic.v	pass	1.75	403	1.04s line 14 -: From Glibc Require Import GlibcTactics.	pass	1.56	418	0.83s line 14 -: From Glibc Require Import GlibcTactics.	-0.19	15
+glibc/libio/LibioOverflow.v	pass	4.24	530	1.11s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.98	559	0.95s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.26	29
+glibc/libio/LibioOverflowAlloc.v	pass	4.13	528	1.14s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.13	559	0.95s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	0.0	31
+glibc/libio/LibioOverflowAllocSetg.v	pass	9.28	682	1.76s line 150 wp_ovf_L33: Qed.	pass	9.14	762	1.57s line 150 wp_ovf_L33: Qed.	-0.14	80
+glibc/libio/LibioOverflowBase.v	pass	8.66	606	3.39s line 135 ovf_state_base: iFrame.	pass	9.07	649	3.81s line 135 ovf_state_base: iFrame.	0.41	43
+glibc/libio/LibioOverflowCall.v	pass	3.17	494	1.16s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.93	523	0.94s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.24	29
+glibc/libio/LibioOverflowFlush.v	pass	7.36	673	1.81s line 119 wp_ovf_L264: Qed.	pass	7.07	704	1.46s line 119 wp_ovf_L264: Qed.	-0.29	31
+glibc/libio/LibioOverflowFull.v	pass	7.53	681	1.25s line 119 wp_ovf_L196: Qed.	pass	7.58	716	1.27s line 119 wp_ovf_L196: Qed.	0.05	35
+glibc/libio/LibioOverflowGen.v	pass	9.39	687	2.83s line 85 wp_glibc___overflow: Qed.	pass	8.8	764	2.58s line 85 wp_glibc___overflow: Qed.	-0.59	77
+glibc/libio/LibioOverflowPut.v	pass	8.3	682	1.47s line 109 wp_ovf_L198: Qed.	pass	7.86	762	1.20s line 109 wp_ovf_L198: Qed.	-0.44	80
+glibc/libio/LibioOverflowSend.v	pass	9.94	690	1.64s line 158 wp_ovf_L18: Qed.	pass	9.64	813	1.55s line 158 wp_ovf_L18: Qed.	-0.3	123
+glibc/libio/LibioOverflowSetp.v	pass	7.69	681	1.89s line 102 wp_ovf_L113: Qed.	pass	7.54	710	1.98s line 102 wp_ovf_L113: Qed.	-0.15	29
+glibc/libio/LibioOverflowSetpEnd.v	pass	9.13	682	1.14s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	9.05	779	0.95s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.08	97
+glibc/libio/LibioOverflowSetpRest.v	pass	7.55	670	1.53s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.0	696	1.22s line 106 wp_ovf_L113_rest: Qed.	-0.55	26
+glibc/libio/LibioPuts.v	pass	5.62	621	1.14s line 30 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.57	658	1.13s line 30 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.05	37
+glibc/libio/LibioPutsBuf.v	pass	4.39	574	1.44s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.23	617	0.89s line 15 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.16	43
+glibc/libio/LibioPutsCall.v	pass	8.69	695	1.93s line 111 wp_puts_L162_for: Qed.	pass	7.69	735	1.83s line 111 wp_puts_L162_for: Qed.	-1.0	40
+glibc/libio/LibioPutsCode.v	pass	2.47	442	1.15s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.08	478	"0.83s line 13 libioputs_term: Definition libioputs_term : term := TApp ""module"" [TList [ T"	-0.39	36
+glibc/libio/LibioPutsInv.v	pass	9.31	682	"3.69s line 224 file_at_nl: iFrame ""Hl Hb Hk Hfl H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H"	pass	9.27	748	"3.86s line 224 file_at_nl: iFrame ""Hl Hb Hk Hfl H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H"	-0.04	66
+glibc/libio/LibioPutsLock.v	pass	7.54	693	1.13s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.19	728	1.11s line 101 wp_puts_start: Qed.	-0.35	35
+glibc/libio/LibioPutsMode.v	pass	7.51	700	1.55s line 110 wp_puts_L109_for: Qed.	pass	7.25	736	1.42s line 110 wp_puts_L109_for: Qed.	-0.26	36
+glibc/libio/LibioPutsNl.v	pass	7.67	701	1.87s line 111 wp_puts_L180: Qed.	pass	7.66	746	1.88s line 111 wp_puts_L180: Qed.	-0.01	45
+glibc/libio/LibioPutsUnlock.v	pass	7.46	684	1.07s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.34	706	1.02s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.12	22
+glibc/libio/LibioRead.v	pass	6.46	649	"1.29s line 72 wp_glibc___fpending: all: step; step; norm; check ""Hl""; (iApply (wp_raw_load_poin"	pass	6.28	679	"1.35s line 72 wp_glibc___fpending: all: step; step; norm; check ""Hl""; (iApply (wp_raw_load_poin"	-0.18	30
+glibc/libio/LibioReadCode.v	pass	2.35	433	1.04s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.08	468	0.83s line 5 -: From Glibc Require Import GlibcTactics.	-0.27	35
+glibc/libio/LibioSetb.v	pass	5.54	614	1.28s line 150 wp_setb_tail: setb_tail a fl.	pass	5.53	645	1.47s line 150 wp_setb_tail: setb_tail a fl.	-0.01	31
+glibc/libio/LibioStdfiles.v	pass	6.99	619	2.51s line 167 wp_glibc_stdfiles_init: iFrame.	pass	7.04	658	2.75s line 167 wp_glibc_stdfiles_init: iFrame.	0.05	39
+glibc/libio/LibioStdfilesCode.v	pass	1.32	357	1.10s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.03	368	0.83s line 5 -: From Glibc Require Import GlibcTactics.	-0.29	11
+glibc/libio/LibioTactics.v	pass	1.52	389	0.84s line 5 -: From iris.proofmode Require Import proofmode.	pass	1.27	402	0.74s line 5 -: From iris.proofmode Require Import proofmode.	-0.25	13
+glibc/libio/LibioUnlink.v	pass	13.0	780	2.06s line 149 wp_glibc__IO_un_link: Qed.	pass	12.56	867	1.83s line 149 wp_glibc__IO_un_link: Qed.	-0.44	87
+glibc/libio/LibioUnlinkCode.v	pass	2.4	436	1.09s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.04	471	0.83s line 5 -: From Glibc Require Import GlibcTactics.	-0.36	35
+glibc/libio/LibioUnlinkLock.v	pass	12.52	821	2.43s line 130 wp_unlink_L22: Qed.	pass	11.42	857	1.88s line 130 wp_unlink_L22: Qed.	-1.1	36
+glibc/libio/LibioUnlinkMid.v	pass	7.35	673	1.02s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	7.29	742	0.91s line 10 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.06	69
+glibc/libio/LibioUnlinkTail.v	pass	10.75	705	1.17s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	10.52	817	1.05s line 12 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.23	112
+glibc/libio/LibioWrite.v	pass	5.61	591	1.19s line 16 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.53	623	0.99s line 16 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.08	32
+glibc/libio/LibioWriteCall.v	pass	4.39	533	1.09s line 20 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.14	563	0.91s line 20 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.25	30
+glibc/libio/LibioWriteCallDq.v	pass	8.72	677	1.22s line 260 wp_file_write_call_nocancel_dq: Qed.	pass	8.66	772	0.93s line 20 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.06	95
+glibc/libio/LibioWriteDq.v	pass	5.02	580	1.09s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.84	612	0.99s line 11 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.18	32
+glibc/libio/LibioWriteExit.v	pass	4.92	552	1.37s line 20 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.25	582	0.94s line 20 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.67	30
+glibc/libio/LibioWriteJoinDq.v	pass	2.32	438	1.19s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.02	466	0.91s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.3	28
+glibc/libio/LibioXsputn.v	pass	5.25	585	1.19s line 21 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.92	612	0.98s line 21 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.33	27
+glibc/libio/LibioXsputnBase.v	pass	6.58	675	1.13s line 45 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.27	706	0.92s line 45 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.31	31
+glibc/libio/LibioXsputnCall.v	pass	13.31	796	2.51s line 153 wp_xs_L9: Qed.	pass	12.91	881	2.65s line 153 wp_xs_L9: Qed.	-0.4	85
+glibc/libio/LibioXsputnCode.v	pass	2.05	427	1.05s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.81	443	0.84s line 5 -: From Glibc Require Import GlibcTactics.	-0.24	16
+glibc/libio/LibioXsputnDo.v	pass	4.77	598	1.13s line 22 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.44	619	1.07s line 22 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.33	21
+glibc/libio/LibioXsputnEnter.v	pass	7.28	699	1.12s line 19 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	6.96	745	0.96s line 19 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.32	46
+glibc/libio/LibioXsputnFill.v	pass	8.82	700	2.79s line 120 wp_xs_L101: iFrame.	pass	8.87	768	2.90s line 120 wp_xs_L101: iFrame.	0.05	68
+glibc/libio/LibioXsputnFlags.v	pass	10.66	704	2.10s line 129 wp_xs_L122: to117 fb nb.	pass	10.96	824	2.52s line 129 wp_xs_L122: to117 fb nb.	0.3	120
+glibc/libio/LibioXsputnFlush.v	pass	9.91	700	1.84s line 145 wp_xs_L96: Qed.	pass	9.75	805	1.68s line 145 wp_xs_L96: Qed.	-0.16	105
+glibc/libio/LibioXsputnReset.v	pass	10.24	779	2.07s line 108 wp_xs_L70: Qed.	pass	9.95	852	1.86s line 108 wp_xs_L70: Qed.	-0.29	73
+glibc/libio/LibioXsputnSetp.v	pass	4.96	560	"1.49s line 113 wp_xs_L117: iAssert (wbuf fb nb (nb_base nb) we') with ""[Hwc Hwp Hwe Hro"	pass	4.61	591	"1.47s line 113 wp_xs_L117: iAssert (wbuf fb nb (nb_base nb) we') with ""[Hwc Hwp Hwe Hro"	-0.35	31
+glibc/libio/LibioXsputnWrite.v	pass	5.1	601	1.18s line 20 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.49	619	0.94s line 20 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.61	18
+glibc/libio/LibioXsputnZero.v	pass	1.87	400	1.13s line 7 -: From Glibc Require Import GlibcTactics.	pass	1.59	413	0.89s line 7 -: From Glibc Require Import GlibcTactics.	-0.28	13
+glibc/libio/SysCleanup.v	pass	4.44	520	1.15s line 14 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	4.15	550	1.02s line 14 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.29	30
+glibc/libio/SysCleanupPop.v	pass	3.87	497	1.24s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.67	528	1.00s line 6 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.2	31
+glibc/libio/SysCode.v	pass	1.61	388	1.06s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.33	400	0.83s line 5 -: From Glibc Require Import GlibcTactics.	-0.28	12
+glibc/libio/SysWrappers.v	pass	3.75	507	1.20s line 18 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.62	544	1.00s line 18 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.13	37
+glibc/stdio/CancelState.v	pass	6.21	637	1.17s line 5 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	5.97	663	0.93s line 5 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.24	26
+glibc/stdio/NarrowArgs.v	pass	1.23	349	1.09s line 8 -: From Glibc Require Import GlibcTactics.	pass	0.98	362	0.81s line 8 -: From Glibc Require Import GlibcTactics.	-0.25	13
+glibc/stdio/NarrowFormat.v	pass	1.23	351	1.03s line 8 -: From Glibc Require Import GlibcTactics.	pass	1.06	364	0.87s line 8 -: From Glibc Require Import GlibcTactics.	-0.17	13
+glibc/stdio/PrintfBufferCount.v	pass	6.26	669	1.38s line 105 wp_printf_buffer_done_count: Qed.	pass	6.13	687	1.36s line 100 wp_printf_buffer_done_count: norm.	-0.13	18
+glibc/stdio/PrintfBufferDirect.v	pass	9.59	683	3.07s line 76 wp_printf_buffer_switch_direct: Qed.	pass	9.36	782	2.71s line 76 wp_printf_buffer_switch_direct: Qed.	-0.23	99
+glibc/stdio/PrintfBufferDone.v	pass	2.04	421	1.16s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.78	435	0.97s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.26	14
+glibc/stdio/PrintfBufferFileCode.v	pass	2.01	420	1.08s line 8 -: From Glibc Require Import GlibcTactics.	pass	1.85	435	0.82s line 8 -: From Glibc Require Import GlibcTactics.	-0.16	15
+glibc/stdio/PrintfBufferFlushDirect.v	pass	17.41	865	7.26s line 90 wp_printf_buffer_flush_direct: Qed.	pass	16.73	1015	6.63s line 90 wp_printf_buffer_flush_direct: Qed.	-0.68	150
+glibc/stdio/PrintfBufferFlushEmpty.v	pass	5.7	593	1.87s line 70 wp_printf_buffer_flush_empty: Qed.	pass	5.26	616	1.72s line 70 wp_printf_buffer_flush_empty: Qed.	-0.44	23
+glibc/stdio/PrintfBufferFlushFull.v	pass	19.45	923	7.22s line 96 wp_printf_buffer_flush_full: Qed.	pass	18.68	1073	6.54s line 96 wp_printf_buffer_flush_full: Qed.	-0.77	150
+glibc/stdio/PrintfBufferFlushInline.v	pass	18.64	886	7.00s line 96 wp_printf_buffer_flush_inline_full: Qed.	pass	17.9	1047	6.59s line 96 wp_printf_buffer_flush_inline_full: Qed.	-0.74	161
+glibc/stdio/PrintfBufferFlushInlineRoom.v	pass	16.81	886	6.81s line 93 wp_printf_buffer_flush_inline_room: Qed.	pass	16.25	1023	6.64s line 93 wp_printf_buffer_flush_inline_room: Qed.	-0.56	137
+glibc/stdio/PrintfBufferInit.v	pass	8.46	693	1.56s line 124 wp_printf_buffer_init_owned: Qed.	pass	8.12	775	1.37s line 124 wp_printf_buffer_init_owned: Qed.	-0.34	82
+glibc/stdio/PrintfBufferIoCode.v	pass	1.75	401	1.08s line 8 -: From Glibc Require Import GlibcTactics.	pass	1.54	412	0.89s line 8 -: From Glibc Require Import GlibcTactics.	-0.21	11
+glibc/stdio/PrintfBufferOverflow.v	pass	8.25	694	2.20s line 112 wp_printf_buffer_done_overflow: norm.	pass	7.92	776	2.43s line 112 wp_printf_buffer_done_overflow: norm.	-0.33	82
+glibc/stdio/PrintfBufferOverflowCall.v	pass	2.56	438	1.12s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.33	467	0.88s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.23	29
+glibc/stdio/PrintfBufferOverflowCaller.v	pass	2.07	430	1.09s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.77	445	0.95s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.3	15
+glibc/stdio/PrintfBufferOverflowEntry.v	pass	6.5	637	2.06s line 75 wp_printf_overflow_entry: Qed.	pass	6.19	649	1.95s line 75 wp_printf_overflow_entry: Qed.	-0.31	12
+glibc/stdio/PrintfBufferOverflowHeapCaller.v	pass	3.09	492	1.34s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.72	530	0.96s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.37	38
+glibc/stdio/PrintfBufferOverflowHeapSwitch.v	pass	7.84	633	4.29s line 68 wp_printf_overflow_heap_switch: iFrame.	pass	7.65	676	4.08s line 68 wp_printf_overflow_heap_switch: iFrame.	-0.19	43
+glibc/stdio/PrintfBufferOverflowPrelude.v	pass	2.06	429	1.12s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.9	443	0.90s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.16	14
+glibc/stdio/PrintfBufferOverflowReturn.v	pass	1.95	426	1.11s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.83	439	1.10s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.12	13
+glibc/stdio/PrintfBufferOverflowStaging.v	pass	2.73	463	1.18s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.77	496	1.05s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	0.04	33
+glibc/stdio/PrintfBufferOverflowSwitch.v	pass	3.88	511	1.26s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.38	539	0.94s line 9 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.5	28
+glibc/stdio/PrintfBufferSkip.v	pass	2.46	439	1.13s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.29	471	0.94s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.17	32
+glibc/stdio/PrintfBufferStage.v	pass	8.32	690	1.33s line 111 wp_printf_buffer_switch_staging: Qed.	pass	8.28	772	1.29s line 111 wp_printf_buffer_switch_staging: Qed.	-0.04	82
+glibc/stdio/PrintfBufferXsputnCall.v	pass	2.2	434	1.11s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.01	447	0.95s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.19	13
+glibc/stdio/PrintfBufferXsputnCaller.v	pass	2.33	449	1.09s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.17	481	0.90s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.16	32
+glibc/stdio/PrintfBufferXsputnEntry.v	pass	4.27	527	1.14s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.83	550	0.93s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.44	23
+glibc/stdio/PrintfBufferXsputnHeapBorrow.v	pass	2.13	440	1.06s line 4 -: From Glibc Require Import GlibcTactics.	pass	1.81	477	0.93s line 4 -: From Glibc Require Import GlibcTactics.	-0.32	37
+glibc/stdio/PrintfBufferXsputnHeapSwitch.v	pass	7.95	632	4.48s line 68 wp_printf_xsputn_heap_switch: iFrame.	pass	7.71	675	4.05s line 68 wp_printf_xsputn_heap_switch: iFrame.	-0.24	43
+glibc/stdio/PrintfBufferXsputnPrelude.v	pass	7.63	691	2.29s line 99 wp_printf_xsputn_prelude: Qed.	pass	7.5	712	2.22s line 99 wp_printf_xsputn_prelude: Qed.	-0.13	21
+glibc/stdio/PrintfBufferXsputnReturn.v	pass	1.94	428	1.09s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	1.84	439	0.93s line 7 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.1	11
+glibc/stdio/PrintfBufferXsputnStaging.v	pass	2.64	466	1.07s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	2.64	499	0.97s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	0.0	33
+glibc/stdio/PrintfBufferXsputnSwitch.v	pass	3.73	511	1.10s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	pass	3.56	537	0.99s line 8 -: From Glibc Require Import GlibcTactics LibioTactics.	-0.17	26
+glibc/stdio/PrintfBufferXsputnZero.v	pass	2.23	427	1.00s line 7 -: From Glibc Require Import GlibcTactics.	pass	2.01	456	0.85s line 7 -: From Glibc Require Import GlibcTactics.	-0.22	29
+glibc/stdio/PrintfCountBits.v	pass	1.26	354	0.99s line 8 -: From Glibc Require Import GlibcTactics.	pass	1.15	367	0.91s line 8 -: From Glibc Require Import GlibcTactics.	-0.11	13
+glibc/stdio/PrintfStateCode.v	pass	1.6	383	1.08s line 8 -: From Glibc Require Import GlibcTactics.	pass	1.39	394	0.85s line 8 -: From Glibc Require Import GlibcTactics.	-0.21	11
+glibc/stdio/PrintfStreamHeap.v	pass	9.61	682	1.89s line 133 printf_copy_buffer_close: iFrame.	pass	9.72	760	2.04s line 133 printf_copy_buffer_close: iFrame.	0.11	78
+glibc/stdio/PrintfStreamInv.v	pass	7.81	582	"1.55s line 92 printf_stream_flags2: iFrame ""Hl Hk Hb Hfl Hps Hfd Hflags2 Hold Hcol Hlp Hoff Hcv "	pass	7.96	623	"1.83s line 92 printf_stream_flags2: iFrame ""Hl Hk Hb Hfl Hps Hfd Hflags2 Hold Hcol Hlp Hoff Hcv "	0.15	41
+glibc/stdlib/AllocLogic.v	pass	10.37	732	2.05s line 268 wp_glibc_malloc: Qed.	pass	10.0	825	2.00s line 268 wp_glibc_malloc: Qed.	-0.37	93
+glibc/stdlib/AtexitLogic.v	pass	14.46	897	1.58s line 337 wp_new_exitfn: Qed.	pass	13.78	990	1.62s line 337 wp_new_exitfn: Qed.	-0.68	93
+glibc/stdlib/LeavesLogic.v	pass	4.67	573	1.06s line 23 -: From Glibc Require Import GlibcTactics.	pass	4.59	610	0.90s line 23 -: From Glibc Require Import GlibcTactics.	-0.08	37
+glibc/stdlib/StdlibCode.v	pass	1.73	285	"1.20s line 12 stdlib_term: Definition stdlib_term : term := TApp ""module"" [TList [ TApp"	pass	1.92	305	"1.50s line 12 stdlib_term: Definition stdlib_term : term := TApp ""module"" [TList [ TApp"	0.19	20
+glibc/string/MallocCode.v	pass	2.33	432	1.02s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.01	465	0.94s line 5 -: From Glibc Require Import GlibcTactics.	-0.32	33
+glibc/string/MemFwdCode.v	pass	2.06	431	1.03s line 5 -: From Glibc Require Import GlibcTactics.	pass	1.79	446	0.83s line 5 -: From Glibc Require Import GlibcTactics.	-0.27	15
+glibc/string/MemFwdLogic.v	pass	9.67	754	0.99s line 20 -: From Glibc Require Import GlibcTactics.	pass	10.0	854	0.90s line 20 -: From Glibc Require Import GlibcTactics.	0.33	100
+glibc/string/MemchrFirst.v	pass	5.32	578	0.99s line 9 -: From Glibc Require Import GlibcTactics.	pass	5.0	607	0.83s line 9 -: From Glibc Require Import GlibcTactics.	-0.32	29
+glibc/string/MemchrLast.v	pass	6.39	587	1.28s line 376 memchr_last: Qed.	pass	6.11	602	1.17s line 376 memchr_last: Qed.	-0.28	15
+glibc/string/MemchrLogic.v	pass	7.42	684	1.05s line 14 -: From Glibc Require Import GlibcTactics.	pass	7.42	697	1.07s line 14 -: From Glibc Require Import GlibcTactics.	0.0	13
+glibc/string/MemchrLoop.v	pass	8.0	677	1.86s line 122 memchr_loop_ind: Qed.	pass	7.9	715	1.72s line 122 memchr_loop_ind: Qed.	-0.1	38
+glibc/string/MemcmpCode.v	pass	3.95	559	"1.52s line 13 memcmp_term: Definition memcmp_term : term := TApp ""module"" [TList [ TApp"	pass	3.52	594	"1.27s line 13 memcmp_term: Definition memcmp_term : term := TApp ""module"" [TList [ TApp"	-0.43	35
+glibc/string/MemcmpLogic.v	pass	6.27	614	1.56s line 271 wp_glibc_memcmp_small: cbn in Hfr.	pass	5.08	642	0.83s line 20 -: From Glibc Require Import GlibcTactics.	-1.19	28
+glibc/string/MemrchrBits.v	pass	7.29	680	2.68s line 162 head_last: byte_cases j; repeat match goal with | |- context [byte_of r	pass	6.36	666	2.71s line 162 head_last: byte_cases j; repeat match goal with | |- context [byte_of r	-0.93	-14
+glibc/string/MemrchrCode.v	pass	2.43	438	1.09s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.07	469	0.87s line 5 -: From Glibc Require Import GlibcTactics.	-0.36	31
+glibc/string/MemrchrLogic.v	pass	8.18	689	1.76s line 156 memrchr_win: Qed.	pass	7.03	699	1.65s line 156 memrchr_win: Qed.	-1.15	10
+glibc/string/MemrchrLoop.v	pass	10.29	871	2.60s line 199 rloop: Qed.	pass	9.11	758	2.35s line 199 rloop: Qed.	-1.18	-113
+glibc/string/MemrchrMask.v	pass	6.09	686	1.00s line 13 -: From Glibc Require Import GlibcTactics.	pass	5.62	665	1.03s line 225 memrchr_mask: Qed.	-0.47	-21
+glibc/string/StrchrCode.v	pass	2.53	449	1.08s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.19	482	0.84s line 5 -: From Glibc Require Import GlibcTactics.	-0.34	33
+glibc/string/StrchrnulLogic.v	pass	9.43	763	1.10s line 436 wp_glibc_strchrnul_ws: Qed.	pass	9.14	786	1.11s line 16 -: From Glibc Require Import GlibcTactics.	-0.29	23
+glibc/string/StrcmpBits.v	pass	3.44	427	1.06s line 15 -: From Glibc Require Import GlibcTactics.	pass	3.42	447	0.83s line 15 -: From Glibc Require Import GlibcTactics.	-0.02	20
+glibc/string/StrcmpCode.v	pass	2.65	458	1.05s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.24	491	0.85s line 5 -: From Glibc Require Import GlibcTactics.	-0.41	33
+glibc/string/StrcmpLogic.v	pass	6.12	657	1.01s line 14 -: From Glibc Require Import GlibcTactics.	pass	6.24	680	0.82s line 14 -: From Glibc Require Import GlibcTactics.	0.12	23
+glibc/string/StrcmpLoop.v	pass	13.98	826	1.43s line 285 fin_b: fin_tac x y j.	pass	12.92	901	1.43s line 285 fin_b: fin_tac x y j.	-1.06	75
+glibc/string/StrlenLoop.v	pass	5.55	571	1.21s line 232 loop_spec_dq: Qed.	pass	5.45	587	1.13s line 232 loop_spec_dq: Qed.	-0.1	16
+glibc/string/StrlenWord.v	pass	6.04	586	1.32s line 142 wp_glibc_strlen_dq: Qed.	pass	5.54	602	1.30s line 142 wp_glibc_strlen_dq: Qed.	-0.5	16
+glibc/string/StrncmpBits.v	pass	1.58	391	1.01s line 14 -: From Glibc Require Import GlibcTactics.	pass	1.43	406	0.84s line 14 -: From Glibc Require Import GlibcTactics.	-0.15	15
+glibc/string/StrncmpCode.v	pass	2.74	474	0.97s line 5 -: From Glibc Require Import GlibcTactics.	pass	2.46	506	0.93s line 5 -: From Glibc Require Import GlibcTactics.	-0.28	32
+glibc/string/StrncmpLogic.v	pass	8.35	683	1.03s line 16 -: From Glibc Require Import GlibcTactics.	pass	7.78	770	0.92s line 186 after_bytes: Qed.	-0.57	87
+glibc/string/StrncmpLoop.v	pass	13.72	868	2.95s line 131 fin_a: fin_tac x y r Hl HK Hc A1 A2.	pass	11.98	831	2.49s line 141 fin_b: fin_tac x y r Hl HK Hc A1 A2.	-1.74	-37
+glibc/string/StrncmpWords.v	pass	9.79	755	2.12s line 248 unaligned_loop: all: (step; do 4 step_symbolic; normt (loop_mask x) ltac:(re	pass	8.91	784	1.86s line 248 unaligned_loop: all: (step; do 4 step_symbolic; normt (loop_mask x) ltac:(re	-0.88	29
+glibc/string/StrnlenLogic.v	pass	3.23	490	1.00s line 13 -: From Glibc Require Import GlibcTactics.	pass	2.92	528	0.82s line 13 -: From Glibc Require Import GlibcTactics.	-0.31	38
+glibc/string/StrrchrLogic.v	pass	2.82	464	1.00s line 12 -: From Glibc Require Import GlibcTactics.	pass	2.68	498	0.86s line 12 -: From Glibc Require Import GlibcTactics.	-0.14	34
+glibc/string/WordString.v	pass	4.44	562	1.04s line 25 -: From Glibc Require Import GlibcTactics.	pass	4.42	609	0.86s line 25 -: From Glibc Require Import GlibcTactics.	-0.02	47
+glibc/zsys/OsBlocks.v	pass	2.0	412	1.06s line 30 -: From Glibc Require Import GlibcTactics.	pass	1.78	428	0.84s line 30 -: From Glibc Require Import GlibcTactics.	-0.22	16
+glibc/zsys/OsClose.v	pass	1.87	403	1.07s line 67 -: From Glibc Require Import GlibcTactics.	pass	1.6	416	0.87s line 67 -: From Glibc Require Import GlibcTactics.	-0.27	13
+glibc/zsys/OsExit.v	pass	1.62	386	1.03s line 43 -: From Glibc Require Import GlibcTactics.	pass	1.43	399	0.89s line 43 -: From Glibc Require Import GlibcTactics.	-0.19	13
+glibc/zsys/OsFstat.v	pass	2.06	415	1.13s line 41 -: From Glibc Require Import GlibcTactics.	pass	1.83	429	0.88s line 41 -: From Glibc Require Import GlibcTactics.	-0.23	14
+glibc/zsys/OsIoctl.v	pass	2.12	416	1.15s line 54 -: From Glibc Require Import GlibcTactics.	pass	1.85	430	0.90s line 54 -: From Glibc Require Import GlibcTactics.	-0.27	14
+glibc/zsys/OsLseek.v	pass	1.81	401	1.06s line 45 -: From Glibc Require Import GlibcTactics.	pass	1.51	413	0.87s line 45 -: From Glibc Require Import GlibcTactics.	-0.3	12
+glibc/zsys/OsRegistry.v	pass	1.29	357	1.17s line 32 -: From Glibc Require Import GlibcTactics.	pass	1.0	370	0.83s line 32 -: From Glibc Require Import GlibcTactics.	-0.29	13
+glibc/zsys/OsThread.v	pass	1.67	389	1.15s line 37 -: From Glibc Require Import GlibcTactics.	pass	1.36	403	0.86s line 37 -: From Glibc Require Import GlibcTactics.	-0.31	14
+glibc/zsys/OsWorld.v	pass	2.8	447	1.09s line 56 -: From Glibc Require Import GlibcTactics.	pass	2.54	483	0.84s line 56 -: From Glibc Require Import GlibcTactics.	-0.26	36
+glibc/zsys/OsWrite.v	pass	1.94	408	1.08s line 39 -: From Glibc Require Import GlibcTactics.	pass	1.62	422	0.83s line 39 -: From Glibc Require Import GlibcTactics.	-0.32	14
+glibc/zsys/OsWritev.v	pass	1.81	402	1.06s line 52 -: From Glibc Require Import GlibcTactics.	pass	1.56	416	0.82s line 52 -: From Glibc Require Import GlibcTactics.	-0.25	14
+theories/core/Cfg.v	pass	0.61	175	0.44s line 22 -: From Stdlib Require Import String ZArith List Bool.	pass	0.47	181	0.30s line 22 -: From Stdlib Require Import String ZArith List Bool.	-0.14	6
+theories/core/Extract.v	pass	3.5	466	"3.06s line 28 -: Extraction ""nanofil_model.ml"" term_eqb decode_module judge j"	pass	3.52	493	"3.09s line 28 -: Extraction ""nanofil_model.ml"" term_eqb decode_module judge j"	0.02	27
+theories/core/Ieee.v	pass	0.5	153	0.39s line 17 -: From Stdlib Require Import ZArith Bool.	pass	0.42	161	0.29s line 17 -: From Stdlib Require Import ZArith Bool.	-0.08	8
+theories/core/Maps.v	pass	0.65	179	0.41s line 16 -: From Stdlib Require Import String ZArith List Ascii OrderedT	pass	0.56	186	0.33s line 16 -: From Stdlib Require Import String ZArith List Ascii OrderedT	-0.09	7
+theories/core/Memory.v	pass	0.52	155	0.43s line 27 -: From Stdlib Require Import String ZArith List Bool.	pass	0.43	163	0.30s line 27 -: From Stdlib Require Import String ZArith List Bool.	-0.09	8
+theories/core/Ops.v	pass	0.7	180	0.36s line 22 -: From Stdlib Require Import String ZArith List Bool.	pass	0.56	174	0.32s line 22 -: From Stdlib Require Import String ZArith List Bool.	-0.14	-6
+theories/core/Run.v	pass	0.48	159	0.33s line 17 -: From Stdlib Require Import String ZArith List Bool.	pass	0.47	167	0.34s line 17 -: From Stdlib Require Import String ZArith List Bool.	-0.01	8
+theories/core/Runtime.v	pass	0.8	175	0.35s line 34 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.79	183	0.31s line 34 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.01	8
+theories/core/Semantics.v	pass	10.23	643	9.50s line 646 inst_step: Definition inst_step (ge : genv) (fr : frame) (m : mem) (i :	pass	10.27	815	9.05s line 646 inst_step: Definition inst_step (ge : genv) (fr : frame) (m : mem) (i :	0.04	172
+theories/core/Syntax.v	pass	0.6	160	0.47s line 23 -: From Stdlib Require Import String ZArith List Bool.	pass	0.46	168	0.29s line 23 -: From Stdlib Require Import String ZArith List Bool.	-0.14	8
+theories/core/Term.v	pass	0.46	155	0.36s line 19 -: From Stdlib Require Import String ZArith List Bool Ascii.	pass	0.43	162	0.29s line 19 -: From Stdlib Require Import String ZArith List Bool Ascii.	-0.03	7
+theories/core/Transport.v	pass	2.34	309	0.65s line 710 judge_valid: Definition judge_valid (md : module) (line : term) : term :=	pass	2.04	297	0.40s line 25 -: From Stdlib Require Import String ZArith List Bool Ascii.	-0.3	-12
+theories/core/ValidFast.v	pass	0.7	186	0.39s line 20 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.6	192	0.31s line 20 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.1	6
+theories/core/Validate.v	pass	1.69	275	0.45s line 1745 checked_inst_rest: Definition checked_inst_rest (s : src) (i : inst) (rest : li	pass	1.75	295	0.49s line 1745 checked_inst_rest: Definition checked_inst_rest (s : src) (i : inst) (rest : li	0.06	20
+theories/core/Values.v	pass	0.54	154	0.47s line 29 -: From Stdlib Require Import String ZArith List Bool.	pass	0.4	162	0.30s line 29 -: From Stdlib Require Import String ZArith List Bool.	-0.14	8
+theories/external/ExternalCalls.v	pass	1.5	210	0.40s line 28 -: From Stdlib Require Import String ZArith List Bool Lia Relat	pass	1.41	225	0.33s line 28 -: From Stdlib Require Import String ZArith List Bool Lia Relat	-0.09	15
+theories/external/ExternalMachine.v	pass	0.83	206	0.35s line 31 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.83	215	0.30s line 31 -: From Stdlib Require Import String ZArith List Bool Lia.	0.0	9
+theories/external/Startup.v	pass	2.26	249	0.54s line 22 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	2.04	263	0.30s line 22 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.22	14
+theories/hello_contracts/CallbackLogic.v	pass	2.58	434	0.86s line 5 -: From iris.proofmode Require Import proofmode.	pass	2.35	485	0.75s line 5 -: From iris.proofmode Require Import proofmode.	-0.23	51
+theories/hello_contracts/Diagnostics.v	pass	0.85	231	0.33s line 6 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.51	290	0.74s line 132 error_admitted: Inductive step registry ge (b : N.boundary payload) admitted	0.66	59
+theories/hello_contracts/Ending.v	pass	0.95	216	0.36s line 6 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	2.91	403	2.04s line 355 step_preserve: Inductive run registry ge reserved b admitted : state -> lis	1.96	187
+theories/hello_contracts/ExitMemory.v	pass	7.26	362	1.46s line 1137 unlink_alias_represented: Qed.	pass	7.35	401	1.48s line 1132 unlink_alias_represented: change (load_bytes (store_bytes (store_bytes (mkMem (fun _ =	0.09	39
+theories/hello_contracts/ExternalMachineFixtures.v	pass	1.5	320	0.39s line 4 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.3	335	0.30s line 4 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.2	15
+theories/hello_contracts/Formatting.v	pass	1.05	203	0.60s line 7 -: From Stdlib Require Import ZArith List Bool Lia.	pass	0.74	216	0.29s line 7 -: From Stdlib Require Import ZArith List Bool Lia.	-0.31	13
+theories/hello_contracts/Getopt.v	pass	0.8	205	0.39s line 14 -: From Stdlib Require Import String ZArith List Bool Lia Permu	pass	0.68	210	0.30s line 14 -: From Stdlib Require Import String ZArith List Bool Lia Permu	-0.12	5
+theories/hello_contracts/GetoptLogic.v	pass	2.1	416	1.05s line 12 -: From iris.proofmode Require Import proofmode.	pass	1.83	430	0.74s line 12 -: From iris.proofmode Require Import proofmode.	-0.27	14
+theories/hello_contracts/HelloClose.v	pass	32.04	1283	"2.18s line 713 close_stdout_spec: iApply (close_stdout_L91 with ""Herr [Hol Hoc Hsl Hsc Hfl Hfb"	pass	31.35	1665	"2.26s line 713 close_stdout_spec: iApply (close_stdout_L91 with ""Herr [Hol Hoc Hsl Hsc Hfl Hfb"	-0.69	382
+theories/hello_contracts/HelloCode.v	pass	7.22	688	"6.82s line 15 hello_term: Definition hello_term : term := TApp ""module"" [TList [ TApp "	pass	7.63	747	"6.93s line 15 hello_term: Definition hello_term : term := TApp ""module"" [TList [ TApp "	0.41	59
+theories/hello_contracts/HelloConv.v	pass	78.14	2518	4.62s line 1138 rpl_mbsrtowcs_spec: Include HelloConvOn R LG0.	pass	75.7	3401	4.54s line 1138 rpl_mbsrtowcs_spec: Include HelloConvOn R LG0.	-2.44	883
+theories/hello_contracts/HelloConvDefs.v	pass	2.24	501	0.86s line 10 -: From iris.proofmode Require Import proofmode.	pass	1.92	544	0.84s line 10 -: From iris.proofmode Require Import proofmode.	-0.32	43
+theories/hello_contracts/HelloDiagnosticChecks.v	pass	64.87	5266	17.08s line 9 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	58.17	6801	14.49s line 9 -: From Nanofil Require Import Term Syntax Values Memory Runtim	-6.7	1535
+theories/hello_contracts/HelloJoin.v	pass	76.02	4088	18.90s line 55 setlocale_query_abi: Module HM := HelloMain R.	pass	74.37	4708	18.65s line 55 setlocale_query_abi: Module HM := HelloMain R.	-1.65	620
+theories/hello_contracts/HelloLeaf.v	pass	12.76	1148	4.79s line 41 hello_globals: Definition hello_globals : list (name * ptr) := Eval vm_comp	pass	12.1	1311	4.65s line 41 hello_globals: Definition hello_globals : list (name * ptr) := Eval vm_comp	-0.66	163
+theories/hello_contracts/HelloLocale.v	pass	20.2	1413	2.20s line 519 hard_locale_spec: Include HelloLocaleOn R LG0.	pass	20.4	1669	2.21s line 519 hard_locale_spec: Include HelloLocaleOn R LG0.	0.2	256
+theories/hello_contracts/HelloMain.v	pass	114.23	2827	"4.30s line 604 main_to_setlocale: iApply (wp_check_read with ""Hal""); [reflexivity | word_premi"	pass	110.13	4467	4.61s line 379 name_ok: Module HLo := HelloLocaleOn R LG0.	-4.1	1640
+theories/hello_contracts/HelloModule.v	pass	19.27	332	8.94s line 34 hello_valid: vm_compute.	pass	18.95	376	8.55s line 34 hello_valid: vm_compute.	-0.32	44
+theories/hello_contracts/HelloName.v	pass	17.9	1194	1.80s line 117 progname_globals: Module HL := HelloLeafOn R LG0.	pass	17.74	1335	1.73s line 117 progname_globals: Module HL := HelloLeafOn R LG0.	-0.16	141
+theories/hello_contracts/HelloProgName.v	pass	16.51	1343	2.85s line 45 strncmp_zero_lengths: Module HN := HelloNameOn R LG0.	pass	16.95	1447	2.81s line 45 strncmp_zero_lengths: Module HN := HelloNameOn R LG0.	0.44	104
+theories/hello_contracts/HelloReach.v	pass	3.28	676	0.87s line 7 -: From Nanofil Require Import Term Maps Syntax Values Memory R	pass	6.32	750	3.35s line 44 hello_edges: Inductive hello_reachable : name -> Prop := | hello_reach_ma	3.04	74
+theories/hello_contracts/HelloStdio.v	pass	129.22	6010	10.47s line 1336 transfer_close_return: Module H := X.H.	pass	119.62	6394	10.81s line 1245 callback_transfer_resources: Module X := HelloTransferChecks.	-9.6	384
+theories/hello_contracts/HelloVersion.v	pass	52.15	1442	3.21s line 828 version_etc_va_spec: Qed.	pass	50.02	2124	2.89s line 828 version_etc_va_spec: Qed.	-2.13	682
+theories/hello_contracts/HelloWorld.v	pass	28.46	3327	17.70s line 8 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	24.96	3837	14.74s line 8 -: From Nanofil Require Import Term Syntax Values Memory Runtim	-3.5	510
+theories/hello_contracts/LentLogic.v	pass	6.24	695	0.92s line 33 -: From iris.proofmode Require Import proofmode.	pass	5.9	788	0.76s line 33 -: From iris.proofmode Require Import proofmode.	-0.34	93
+theories/hello_contracts/Libc.v	pass	3.51	323	0.38s line 7 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	3.33	351	0.33s line 1128 conversion_utf8_initial_error_changed_count_rejected: discriminate Hcount.	-0.18	28
+theories/hello_contracts/LibcCallFixtures.v	pass	19.45	561	5.30s line 2356 string_copy_completion_cells: destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]; i	pass	18.62	902	3.73s line 2356 string_copy_completion_cells: destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]; i	-0.83	341
+theories/hello_contracts/LibcCalls.v	pass	2.3	271	0.48s line 6 -: From Stdlib Require Import String ZArith List Bool Lia Relat	pass	2.0	284	0.32s line 6 -: From Stdlib Require Import String ZArith List Bool Lia Relat	-0.3	13
+theories/hello_contracts/LibcDiagnosticLogic.v	pass	5.13	914	2.47s line 7 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	4.75	976	2.25s line 7 -: From Nanofil Require Import Term Syntax Values Memory Runtim	-0.38	62
+theories/hello_contracts/LibcErrnoLogic.v	pass	6.37	941	2.91s line 377 close_stream_frame: Module H := HelloClose InterpRuntime.	pass	6.48	1011	3.10s line 377 close_stream_frame: Module H := HelloClose InterpRuntime.	0.11	70
+theories/hello_contracts/LibcExit.v	pass	0.77	215	0.34s line 6 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.69	228	0.29s line 6 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.08	13
+theories/hello_contracts/LibcMemLogic.v	pass	7.38	716	0.92s line 6 -: From iris.proofmode Require Import proofmode.	pass	7.07	814	0.74s line 6 -: From iris.proofmode Require Import proofmode.	-0.31	98
+theories/hello_contracts/LibcStreamAdapter.v	pass	6.71	984	2.31s line 7 -: From Nanofil Require Import Term Syntax Values Memory Runtim	pass	6.2	1054	1.89s line 7 -: From Nanofil Require Import Term Syntax Values Memory Runtim	-0.51	70
+theories/hello_contracts/LibcStreamLogic.v	pass	1.69	406	0.87s line 4 -: From iris.proofmode Require Import proofmode.	pass	1.42	419	0.72s line 4 -: From iris.proofmode Require Import proofmode.	-0.27	13
+theories/hello_contracts/LibcStreamTokens.v	pass	7.22	1035	2.95s line 212 close_frame: Module E := HelloErrnoChecks.	pass	7.54	1115	3.81s line 212 close_frame: Module E := HelloErrnoChecks.	0.32	80
+theories/hello_contracts/LibcStreams.v	pass	1.27	239	0.42s line 6 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.21	252	0.30s line 6 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.06	13
+theories/hello_contracts/LibcStringLogic.v	pass	4.22	528	1.07s line 4 -: From iris.proofmode Require Import proofmode.	pass	3.88	578	0.72s line 4 -: From iris.proofmode Require Import proofmode.	-0.34	50
+theories/hello_contracts/Linked.v	pass	1.24	229	0.35s line 7 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.08	240	0.30s line 7 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.16	11
+theories/hello_contracts/Locale.v	pass	1.31	223	0.39s line 7 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.29	235	0.30s line 7 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.02	12
+theories/hello_contracts/LocaleLogic.v	pass	4.38	669	0.96s line 235 locale_wi_setter: Module LL := LentLogicOn R LG0.	pass	3.99	720	0.94s line 235 locale_wi_setter: Module LL := LentLogicOn R LG0.	-0.39	51
+theories/hello_contracts/Shutdown.v	pass	0.96	212	0.38s line 6 -: From Stdlib Require Import ZArith List Bool Lia Sorting.Perm	pass	0.96	225	0.29s line 6 -: From Stdlib Require Import ZArith List Bool Lia Sorting.Perm	0.0	13
+theories/hello_contracts/StartupFixtures.v	pass	1.89	229	0.43s line 4 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.85	241	0.36s line 311 exposed_wrong_cell_identity: discriminate Hr.	-0.04	12
+theories/hello_contracts/Stdio.v	pass	0.77	198	0.36s line 16 -: From Stdlib Require Import ZArith List Bool Lia.	pass	0.69	205	0.31s line 16 -: From Stdlib Require Import ZArith List Bool Lia.	-0.08	7
+theories/hello_contracts/Streams.v	pass	0.8	202	0.36s line 6 -: From Stdlib Require Import ZArith List Bool Lia.	pass	0.7	211	0.30s line 6 -: From Stdlib Require Import ZArith List Bool Lia.	-0.1	9
+theories/logic/ContractFrame.v	pass	1.29	313	0.98s line 41 -: From iris.proofmode Require Import proofmode.	pass	1.04	326	0.73s line 41 -: From iris.proofmode Require Import proofmode.	-0.25	13
+theories/logic/Heap.v	pass	2.74	408	0.87s line 43 -: From iris.proofmode Require Import proofmode.	pass	2.46	430	0.72s line 43 -: From iris.proofmode Require Import proofmode.	-0.28	22
+theories/logic/Language.v	pass	3.56	458	0.90s line 36 -: From iris.proofmode Require Import proofmode.	pass	3.25	512	0.74s line 36 -: From iris.proofmode Require Import proofmode.	-0.31	54
+theories/logic/Logic.v	pass	10.25	719	0.88s line 39 -: From iris.proofmode Require Import proofmode.	pass	10.61	852	0.79s line 39 -: From iris.proofmode Require Import proofmode.	0.36	133
+theories/logic/MemLogic.v	pass	6.27	629	1.00s line 7 -: From iris.proofmode Require Import proofmode.	pass	6.24	680	0.74s line 7 -: From iris.proofmode Require Import proofmode.	-0.03	51
+theories/logic/Panics.v	pass	0.67	185	0.44s line 45 -: From Stdlib Require Import String ZArith List Bool Lia Relat	pass	0.51	192	0.31s line 45 -: From Stdlib Require Import String ZArith List Bool Lia Relat	-0.16	7
+theories/logic/Pieces.v	pass	0.74	165	0.58s line 38 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.49	172	0.30s line 38 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.25	7
+theories/logic/PoisonLogic.v	pass	22.59	903	2.32s line 1177 pstep_callers: Qed.	pass	20.91	1162	2.12s line 1177 pstep_callers: Qed.	-1.68	259
+theories/logic/PoisonModel.v	pass	202.23	1403	65.64s line 2789 pstep_ct_sound: destruct t as [| | | | nt], k; cbn in Eocls, Hp1; try discri	pass	92.08	2034	30.31s line 2789 pstep_ct_sound: destruct t as [| | | | nt], k; cbn in Eocls, Hp1; try discri	-110.15	631
+theories/logic/StepRules.v	pass	3.29	335	0.83s line 139 rule_alloc: destruct k; cbn - [map2_option heap_req allocated max_alloca	pass	1.21	213	0.36s line 23 -: From Stdlib Require Import String ZArith List Bool Lia.	-2.08	-122
+theories/logic/StringLogic.v	pass	2.89	431	0.92s line 7 -: From iris.proofmode Require Import proofmode.	pass	2.67	485	0.76s line 7 -: From iris.proofmode Require Import proofmode.	-0.22	54
+theories/logic/Symbolic.v	pass	0.63	187	0.38s line 37 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.49	193	0.30s line 37 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.14	6
+theories/logic/VariadicLogic.v	pass	4.67	521	0.96s line 20 -: From iris.proofmode Require Import proofmode.	pass	4.62	586	0.78s line 20 -: From iris.proofmode Require Import proofmode.	-0.05	65
+theories/logic/WordBits.v	pass	2.87	244	1.10s line 435 tail_first: byte_cases j; repeat match goal with | |- context [byte_of r	pass	3.08	254	1.05s line 435 tail_first: byte_cases j; repeat match goal with | |- context [byte_of r	0.21	10
+theories/programs/Buffer.v	pass	5.9	467	4.06s line 271 buffer_safe: do 32 (destruct k as [|k]; [point_safe pts Hk Ha|]).	pass	4.61	414	2.96s line 271 buffer_safe: do 32 (destruct k as [|k]; [point_safe pts Hk Ha|]).	-1.29	-53
+theories/programs/BufferCode.v	pass	0.52	157	0.37s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.46	164	0.31s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.06	7
+theories/programs/BufferLogic.v	pass	14.39	741	1.77s line 195 cells_at: assert (k = 0 \/ k = 1 \/ k = 2 \/ k = 3) as [-> | [-> | [->	pass	13.7	972	1.74s line 195 cells_at: assert (k = 0 \/ k = 1 \/ k = 2 \/ k = 3) as [-> | [-> | [->	-0.69	231
+theories/programs/Composition.v	pass	0.94	214	0.36s line 6 -: From Stdlib Require Import String ZArith List Lia.	pass	0.84	228	0.30s line 6 -: From Stdlib Require Import String ZArith List Lia.	-0.1	14
+theories/programs/CountCode.v	pass	0.5	155	0.40s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.43	163	0.29s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.07	8
+theories/programs/CountLogic.v	pass	5.39	601	0.95s line 20 -: From iris.proofmode Require Import proofmode.	pass	5.05	657	0.84s line 20 -: From iris.proofmode Require Import proofmode.	-0.34	56
+theories/programs/CtLt.v	pass	15.79	837	6.41s line 256 lt_masks: Print Assumptions InterpCtLt.lt_constant_time.	pass	14.47	882	5.67s line 256 lt_masks: Print Assumptions InterpCtLt.lt_constant_time.	-1.32	45
+theories/programs/CtLtCode.v	pass	0.49	155	0.40s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.42	162	0.30s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.07	7
+theories/programs/Cycle.v	pass	3.49	322	2.48s line 228 cycle_safe: do 19 (destruct k as [|k]; [point_safe pts Hk Ha Hb Hr|]).	pass	2.79	323	1.48s line 228 cycle_safe: do 19 (destruct k as [|k]; [point_safe pts Hk Ha Hb Hr|]).	-0.7	1
+theories/programs/CycleCode.v	pass	0.56	155	0.50s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.41	163	0.30s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.15	8
+theories/programs/Hi.v	pass	1.25	222	0.40s line 9 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.13	236	0.33s line 9 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.12	14
+theories/programs/HiArtifact.v	pass	0.8	216	0.34s line 7 -: From Stdlib Require Import String ZArith List.	pass	0.72	231	0.30s line 7 -: From Stdlib Require Import String ZArith List.	-0.08	15
+theories/programs/HiCode.v	pass	0.47	153	0.39s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.41	161	0.32s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.06	8
+theories/programs/HiLogic.v	pass	3.48	483	0.85s line 19 -: From iris.proofmode Require Import proofmode.	pass	3.22	536	0.77s line 19 -: From iris.proofmode Require Import proofmode.	-0.26	53
+theories/programs/PoisonHeap.v	pass	12.88	732	1.35s line 184 secret_index_rejected: cbn.	pass	11.49	849	0.68s line 484 alloc_16_cell: rewrite !pts_app !ppts_app.	-1.39	117
+theories/programs/Program.v	pass	1.67	281	0.36s line 6 -: From Stdlib Require Import String ZArith List Lia.	pass	1.71	282	0.35s line 6 -: From Stdlib Require Import String ZArith List Lia.	0.04	1
+theories/programs/ScanCode.v	pass	0.48	155	0.40s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.43	162	0.32s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.05	7
+theories/programs/ScanLogic.v	pass	4.43	558	0.88s line 20 -: From iris.proofmode Require Import proofmode.	pass	4.11	617	0.81s line 20 -: From iris.proofmode Require Import proofmode.	-0.32	59
+theories/programs/SlotCode.v	pass	0.56	161	0.39s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.49	169	0.29s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.07	8
+theories/programs/SlotLogic.v	pass	15.12	929	1.08s line 532 slot_logic_safe: Module InterpSlotLogic := SlotLogic InterpRuntime.	pass	14.91	1057	0.99s line 496 use_spec: Qed.	-0.21	128
+theories/programs/Sum.v	pass	13.46	526	8.74s line 182 sum_progress: do 59 (destruct n as [|n]; [point_step Hn Hb Hr fuel|]).	pass	10.16	713	4.95s line 182 sum_progress: do 59 (destruct n as [|n]; [point_step Hn Hb Hr fuel|]).	-3.3	187
+theories/programs/SumCode.v	pass	0.49	155	0.38s line 5 -: From Stdlib Require Import String ZArith List Ascii.	pass	0.42	163	0.29s line 5 -: From Stdlib Require Import String ZArith List Ascii.	-0.07	8
+theories/soundness/Ahead.v	pass	0.73	193	0.34s line 36 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.7	199	0.33s line 36 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.03	6
+theories/soundness/Chain.v	pass	1.9	286	0.35s line 32 -: From Stdlib Require Import String ZArith List Bool Lia Relat	pass	1.83	300	0.29s line 32 -: From Stdlib Require Import String ZArith List Bool Lia Relat	-0.07	14
+theories/soundness/Coverage.v	pass	1.02	229	0.37s line 18 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.89	212	0.30s line 18 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.13	-17
+theories/soundness/Dominance.v	pass	2.28	267	0.36s line 34 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	2.25	281	0.33s line 34 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.03	14
+theories/soundness/Doomed.v	pass	23.97	496	16.66s line 574 va_arg_reason: cases H; injection H as <-; discriminate Hr.	pass	21.43	631	14.22s line 574 va_arg_reason: cases H; injection H as <-; discriminate Hr.	-2.54	135
+theories/soundness/Evidence.v	pass	6.9	471	2.92s line 354 check_like_continue: all: crush.	pass	6.69	503	2.53s line 354 check_like_continue: all: crush.	-0.21	32
+theories/soundness/Guard.v	pass	1.64	256	0.52s line 21 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.37	268	0.32s line 21 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.27	12
+theories/soundness/Identity.v	pass	3.06	369	0.83s line 289 op_res_alloc_exact: Qed.	pass	3.21	428	0.84s line 289 op_res_alloc_exact: Qed.	0.15	59
+theories/soundness/Interval.v	pass	2.03	267	0.34s line 34 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	2.15	282	0.32s line 34 -: From Stdlib Require Import String ZArith List Bool Lia.	0.12	15
+theories/soundness/Invariant.v	pass	1.44	238	0.41s line 17 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.41	251	0.31s line 17 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.03	13
+theories/soundness/Machine.v	pass	4.36	386	0.82s line 264 op_res_alloc: Qed.	pass	4.41	465	0.80s line 264 op_res_alloc: Qed.	0.05	79
+theories/soundness/Persistence.v	pass	1.44	294	0.44s line 37 -: From Stdlib Require Import String ZArith List Bool Lia Relat	pass	1.19	292	0.31s line 37 -: From Stdlib Require Import String ZArith List Bool Lia Relat	-0.25	-2
+theories/soundness/Renew.v	pass	3.2	338	0.37s line 20 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	3.19	385	0.31s line 20 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.01	47
+theories/soundness/Single.v	pass	2.03	268	0.37s line 42 -: From Stdlib Require Import String ZArith List Bool Lia Relat	pass	1.92	283	0.30s line 42 -: From Stdlib Require Import String ZArith List Bool Lia Relat	-0.11	15
+theories/soundness/Sites.v	pass	0.82	195	0.40s line 25 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	0.78	201	0.30s line 25 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.04	6
+theories/soundness/Soundness.v	pass	3.71	404	0.87s line 184 undoomed_result: cases H; injection H as <-; simpl; first [left; reflexivity 	pass	3.58	453	1.03s line 184 undoomed_result: cases H; injection H as <-; simpl; first [left; reflexivity 	-0.13	49
+theories/soundness/Steps.v	pass	2.49	306	0.44s line 15 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	2.37	321	0.33s line 15 -: From Stdlib Require Import String ZArith List Bool Lia.	-0.12	15
+theories/soundness/Walk.v	pass	1.44	246	0.34s line 15 -: From Stdlib Require Import String ZArith List Bool Lia.	pass	1.48	258	0.31s line 15 -: From Stdlib Require Import String ZArith List Bool Lia.	0.04	12

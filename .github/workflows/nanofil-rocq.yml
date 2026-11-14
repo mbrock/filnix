@@ -19,6 +19,7 @@ on:
       - "nanofil/src/**"
       - "nanofil/bin/**"
       - nanofil/nix/rocq.nix
+      - nanofil/nix/rocq-packages.nix
       - nanofil/tests/par.sh
       - nanofil/tests/watch.py
       - "nanofil/tests/filc/**"

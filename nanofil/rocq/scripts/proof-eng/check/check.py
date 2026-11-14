@@ -363,16 +363,16 @@ def run_probe(tree, rel, decls, out, plugin, inside=False, concrete=False):
                         'Set Printing All.', 'Set Printing Universes.', 'Set Printing Width 1000000.',
                         'Set Printing Depth 1000000.']
     def query(index, q, spec):
-        lines = [f'Goal True. idtac "PE_BEGIN_{index}". Abort.', f'Check @{q}.']
+        lines = [f'Goal True. Proof. idtac "PE_BEGIN_{index}". Abort.', f'Check @{q}.']
         if spec == 'auto':
             # A Definition can be a proof alias rather than a predicate.
             # Ask Rocq for its type's sort before trying to unfold its body.
-            lines.append(f'Goal True. let T := type of (@{q}) in let S := type of T in '
+            lines.append(f'Goal True. Proof. let T := type of (@{q}) in let S := type of T in '
                          f'lazymatch S with Prop => idtac "PE_PROOF_{index}" '
                          f'| _ => idtac "PE_DATA_{index}" end. Abort.')
         elif spec:
             lines.append(f'Eval unfold {q} in @{q}.')
-        lines.append(f'Goal True. idtac "PE_END_{index}". Abort.')
+        lines.append(f'Goal True. Proof. idtac "PE_END_{index}". Abort.')
         return lines
     for index, (name, (q, spec)) in enumerate(names.items()):
         commands.extend(query(index, q, spec))

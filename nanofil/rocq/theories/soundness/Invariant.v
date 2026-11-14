@@ -198,15 +198,15 @@ Qed.
     outgoing edge. By induction over the remaining instructions in the
     block, [walk_dom] proves that the block's exit facts dominate its
     end. *)
-Lemma walk_dom : forall md f b n k is live out,
+Lemma walk_dom : forall md f b n k instructions live out,
   checked_module md -> In (IFunc f) md -> In b (fn_blocks f) ->
-  is = skipn k (b_insts b) -> (k <= length (b_insts b))%nat ->
+  instructions = skipn k (b_insts b) -> (k <= length (b_insts b))%nat ->
   live_dom f (b_label b) k live ->
-  checked_insts (fn_src md f) n is live = Some out ->
+  checked_insts (fn_src md f) n instructions live = Some out ->
   live_dom f (b_label b) (length (b_insts b)) out.
 Proof.
-  intros md f b n. induction n as [|n IH]; intros k is live out Hmd Hin Hb Hs Hk H Hc;
-    (destruct is as [|i rest]; cbn [checked_insts] in Hc; [injection Hc as <-; exact (live_dom_mono _ _ _ _ _ Hk H)|]);
+  intros md f b n. induction n as [|n IH]; intros k instructions live out Hmd Hin Hb Hs Hk H Hc;
+    (destruct instructions as [|i rest]; cbn [checked_insts] in Hc; [injection Hc as <-; exact (live_dom_mono _ _ _ _ _ Hk H)|]);
     [discriminate Hc|].
   destruct (checked_inst_rest _ i rest live) as [[rest' live']|] eqn:Ec; [|discriminate Hc]. simpl in Hc.
   destruct (skipn_cons _ _ _ _ _ (eq_sym Hs)) as (Hki & Hrest & Hlen).
@@ -402,14 +402,14 @@ Definition pair_claim (ge : genv) (m : Memory.mem) (fr : frame) (access : inst) 
     instruction or paused between a paired check and its access.
     Predicate [at_pos] captures both cases at instruction index k of
     block l. *)
-Definition at_pos (ge : genv) (s : src) (m : Memory.mem) (fr : frame) (is : list inst) (j : jump)
+Definition at_pos (ge : genv) (s : src) (m : Memory.mem) (fr : frame) (instructions : list inst) (j : jump)
     (out : list fact) (f : func) (l : name) (k : nat) : Prop :=
-  (exists live, walks s is live out /\ live_dom f l k live /\
-     match is with
+  (exists live, walks s instructions live out /\ live_dom f l k live /\
+     match instructions with
      | i :: _ => relies s i = true -> facts_hold ge m (fr_env fr) live
      | [] => jump_claim ge m fr j live
      end) \/
-  (exists access rest' live', is = access :: rest' /\ walks s rest' live' out /\
+  (exists access rest' live', instructions = access :: rest' /\ walks s rest' live' out /\
      live_dom f l (S k) live' /\ pair_claim ge m fr access live').
 
 (** Predicate [point_ok] ties the frame's current execution point to the
@@ -427,9 +427,9 @@ Definition point_ok (ge : genv) (md : module) (m : Memory.mem) (fr : frame) : Pr
       exists bp t, find_block p (fn_blocks f) = Some bp /\ In t (jump_targets (b_jump bp)) /\
         edge_label t = l /\
         (is_poll t = true \/ exists out, lookup p E = Some out /\ facts_hold ge m (fr_env fr) out)
-  | Exec l is j =>
+  | Exec l instructions j =>
       exists b out k, find_block l (fn_blocks f) = Some b /\ lookup l E = Some out /\
-        j = b_jump b /\ is = skipn k (b_insts b) /\ at_pos ge (fn_src md f) m fr is j out f l k
+        j = b_jump b /\ instructions = skipn k (b_insts b) /\ at_pos ge (fn_src md f) m fr instructions j out f l k
   end.
 
 (** Every named local the frame has allocated lies above address 0: a
@@ -488,11 +488,11 @@ Proof. intros ge m e fa []. Qed.
 
 (** Where the facts after a step hold, whatever comes next may rely on
     them. *)
-Lemma at_pos_between : forall ge s m fr is j live out f l k,
-  walks s is live out -> live_dom f l k live -> facts_hold ge m (fr_env fr) live -> at_pos ge s m fr is j out f l k.
+Lemma at_pos_between : forall ge s m fr instructions j live out f l k,
+  walks s instructions live out -> live_dom f l k live -> facts_hold ge m (fr_env fr) live -> at_pos ge s m fr instructions j out f l k.
 Proof.
-  intros ge s m fr is j live out f l k Hw Hd Hl. left. exists live. split; [exact Hw|]. split; [exact Hd|].
-  destruct is; [intros t _ _; exact Hl | intros _; exact Hl].
+  intros ge s m fr instructions j live out f l k Hw Hd Hl. left. exists live. split; [exact Hw|]. split; [exact Hd|].
+  destruct instructions; [intros t _ _; exact Hl | intros _; exact Hl].
 Qed.
 
 (** When a callee returns, the suspended caller resumes with the
@@ -648,13 +648,13 @@ Qed.
     proof needs to package the block's exit evidence and the current
     position into [point_ok]. Lemma [point_ok_exec] builds that witness
     at instruction index k. *)
-Lemma point_ok_exec : forall ge md m fr l is j E b out k,
-  pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E -> fr_at fr = Exec l is j ->
+Lemma point_ok_exec : forall ge md m fr l instructions j E b out k,
+  pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E -> fr_at fr = Exec l instructions j ->
   find_block l (fn_blocks (fr_fn fr)) = Some b -> lookup l E = Some out -> j = b_jump b ->
-  is = skipn k (b_insts b) ->
-  at_pos ge (fn_src md (fr_fn fr)) m fr is j out (fr_fn fr) l k -> point_ok ge md m fr.
+  instructions = skipn k (b_insts b) ->
+  at_pos ge (fn_src md (fr_fn fr)) m fr instructions j out (fr_fn fr) l k -> point_ok ge md m fr.
 Proof.
-  intros ge md m fr l is j E b out k HE Ha Hb Ho Hj Hk Hat. unfold point_ok. cbv zeta.
+  intros ge md m fr l instructions j E b out k HE Ha Hb Ho Hj Hk Hat. unfold point_ok. cbv zeta.
   exists E. split; [exact HE|]. rewrite Ha. eauto 8.
 Qed.
 
@@ -662,13 +662,13 @@ Qed.
     the block's instruction list, its exit facts, and the evidence
     currently live. Lemma [point_ok_exec_inv] extracts all of those
     fields from [point_ok]. *)
-Lemma point_ok_exec_inv : forall ge md m fr l is j,
-  point_ok ge md m fr -> fr_at fr = Exec l is j ->
+Lemma point_ok_exec_inv : forall ge md m fr l instructions j,
+  point_ok ge md m fr -> fr_at fr = Exec l instructions j ->
   exists E b out k, pass_exits (fn_src md (fr_fn fr)) (fr_fn fr) = Some E /\
     find_block l (fn_blocks (fr_fn fr)) = Some b /\ lookup l E = Some out /\ j = b_jump b /\
-    is = skipn k (b_insts b) /\ at_pos ge (fn_src md (fr_fn fr)) m fr is j out (fr_fn fr) l k.
+    instructions = skipn k (b_insts b) /\ at_pos ge (fn_src md (fr_fn fr)) m fr instructions j out (fr_fn fr) l k.
 Proof.
-  intros ge md m fr l is j H Ha. unfold point_ok in H. cbv zeta in H.
+  intros ge md m fr l instructions j H Ha. unfold point_ok in H. cbv zeta in H.
   destruct H as (E & HE & H). rewrite Ha in H. destruct H as (b & out & k & ?). eauto 10.
 Qed.
 
