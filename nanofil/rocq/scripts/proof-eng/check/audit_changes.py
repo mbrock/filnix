@@ -96,7 +96,7 @@ def receipt(tree, manifest, validation):
                         'pairs': [{s: pair[s] for s in ('before', 'after')}
                                   for pair in [item] + item.get('variants', [])]})
     return {'version': 1, 'stage': '50-program', 'runtime': validation['runtime'],
-            'tree_sha256': tree_digest(tree),
+            'tree': str(tree.resolve()), 'tree_sha256': tree_digest(tree),
             'manifest': str(manifest.resolve()),
             'actions_sha256': digest(HERE / 'expected-statement-changes/50-program.txt'),
             'policy_sha256': digest(HERE / 'audit-changes.json'),
@@ -112,6 +112,7 @@ class AuditChanges:
             manifest = Path(data['manifest'])
             if (data.get('version') != 1 or data.get('stage') != '50-program' or
                     data.get('runtime') not in ('concrete', 'abstract') or
+                    data.get('tree_sha256') != tree_digest(Path(data['tree'])) or
                     data.get('policy_sha256') != digest(HERE / 'audit-changes.json') or
                     data.get('actions_sha256') != digest(HERE / 'expected-statement-changes/50-program.txt') or
                     data.get('evidence') != evidence_hashes(manifest)):

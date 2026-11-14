@@ -104,8 +104,10 @@ class Checks(unittest.TestCase):
             run(0, [concrete, abstract])
             # Distinguish runtimes by source identity so the concrete receipt
             # cannot mask a rejected abstract receipt in the following cases.
-            other_source = copy.deepcopy(concrete)
-            other_source['tree_sha256'] = 'different concrete tree'
+            concrete_tree = root / 'concrete-tree'
+            concrete_tree.mkdir()
+            (concrete_tree / 'Toy.v').write_text('(* Concrete tree. *)\n' + (tree / 'Toy.v').read_text())
+            other_source = receipt(concrete_tree, manifest, {'runtime': 'concrete', 'pairs': [checked]})
             run(0, [other_source, abstract])
             for label, mutation in (
                 ('outside Fix.R', lambda e: e['directions'][0].update({'External.axiom': 'True'})),
@@ -123,6 +125,8 @@ class Checks(unittest.TestCase):
             bad = copy.deepcopy(concrete)
             bad['declarations'][0]['assumptions']['directions'][1] = {'Glibc.Fix.R.state': 'Type'}
             run(1, [bad])  # Interpreter evidence must be Closed, even for runtime fields.
+            (concrete_tree / 'Toy.v').write_text('Lemma rule : False -> False. Proof. auto. Qed.\n')
+            run(1, [other_source, abstract])  # The Closed counterpart's sources must still match.
 
     def test_tactics_packet_checks_whole_boundary(self):
         with tempfile.TemporaryDirectory(prefix='tactics-packet-') as tmp:
