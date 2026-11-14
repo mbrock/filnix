@@ -5,17 +5,18 @@
 
     These ownership lemmas do not prove a formatting call or a cleanup call.
     In particular, forgetting the flags does not release a held lock. *)
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv LibioPutsInv.
+From Glibc Require FileInv LibioPutsInv.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 
-(** The refinement uses the caller's existing runtime and heap interpretation. *)
-Module PrintfStreamInvOn (R : Runtime) (LG0 : LogicSig R).
-Module PI := LibioPutsInvOn R LG0.
-Import PI PI.CS.SW.FI PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L.
+
+Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L.
 
 (** Updating flags2 leaves the stream's orientation, buffer and lock pointer unchanged. *)
 Definition fs_with_flags2 (st : fstate) (flags2 : Z) : fstate :=
@@ -92,4 +93,3 @@ Proof.
 Qed.
 
 End streams.
-End PrintfStreamInvOn.

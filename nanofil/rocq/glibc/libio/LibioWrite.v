@@ -13,6 +13,8 @@
     open with "c" has, so the loop calls `c: __write`, the alias of
     `c: __libc_write`. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,6 +23,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
   SysWrappers LibioWriteExit.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -29,10 +33,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioWriteOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -94,8 +96,7 @@ Context (Hcall : forall fb freg f2 fd b reg o xs eb t e Φ,
   lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b + o + (Z.of_nat (length xs) - t)) (Obj b))) ->
   live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ live b reg -∗ bytes b o xs -∗
   errno_any eb -∗
-  ▷ (∀ e' k, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v4" \/ x = TAtom "pr.1" \/ x = TAtom "pr.2" ->
-                lookup x e' = lookup x e) /\
+  ▷ (∀ e' k, ⌜keeps (atoms ["v0"; "v4"; "pr.1"; "pr.2"]) e e' /\
               lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (fb + off_flags2) (Obj fb))) /\
               lookup (TAtom "v36") e' = Some (WInt k) /\
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
@@ -130,14 +131,14 @@ Proof.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr He Hb Ho Hbend Hreg' Hy. unfold file_size in Hend.
   iLöb as "IH". iIntros (e t tw off (Hv0 & Hv4 & Ht & Hp & Htr)) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
-  cbn [fw_L8 b_insts b_jump]. st. destruct (Z.eq_dec t 0) as [-> | Ht0].
-  { brv true. iApply (Hexit with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
+  cbn [fw_L8 b_insts b_jump]. step. destruct (Z.eq_dec t 0) as [-> | Ht0].
+  { branch_as true. iApply (Hexit with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
     rewrite Z.sub_0_r. iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
     split; [left; split; reflexivity | exact Hflr]. }
-  brv false.
+  branch_as false.
   iApply (Hcall fb freg f2 fd b reg o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
     try wside.
-  iNext. iIntros (e' k (Hsame & Hc0 & Hk36 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
+  iNext. iIntros (e' k (Hsame & Hc0 & Hk36 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   pose proof (Hsame (TAtom "v0") ltac:(auto)) as Hv0'. pose proof (Hsame (TAtom "v4") ltac:(auto)) as Hv4'.
   pose proof (Hsame (TAtom "pr.1") ltac:(auto)) as Hp''. pose proof (Hsame (TAtom "pr.2") ltac:(auto)) as Ht''.
   assert (Hv0n : lookup (TAtom "v0") e' = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hv0'; lookups; reflexivity).
@@ -146,14 +147,14 @@ Proof.
     by (rewrite Hp''; lookups; reflexivity).
   assert (Htn : lookup (TAtom "pr.2") e' = Some (WInt t)) by (rewrite Ht''; lookups; reflexivity).
   clear Hsame Hv0' Hv4' Hp'' Ht'' Hv0 Hv4 Hp Ht.
-  st. st. st. destruct Hk as [Hk | ->].
-  2: { brv false.
+  step. step. step. destruct Hk as [Hk | ->].
+  2: { branch_as false.
        iApply (Herr_spec with "Hl [$Hfl //] Hoff");
          try wside.
        iNext. iIntros (off') "Hl Hfl Hoff".
        iApply ("HK" $! _ (Z.lor fl io_err_seen) with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
        split; [right; split; [lia | reflexivity] | apply lor_lt32; unfold io_err_seen; lia]. }
-  destruct Hk as [[Hk0 Hkn] Hk31]. try (rewrite Z.mod_small in Hkn; [|lia]). brv true.
+  destruct Hk as [[Hk0 Hkn] Hk31]. try (rewrite Z.mod_small in Hkn; [|lia]). branch_as true.
   iApply (Hnext fb freg tw t k (mkPtr (b + o + (Z.of_nat (length xs) - t)) (Obj b))
             with "Hl Htw");
     try wside.
@@ -183,7 +184,7 @@ Lemma wp_glibc__IO_new_file_write fr fb freg fl f2 fd tw off b reg o xs eb Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr. injection Hfr as <-. intros. iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
-  enter. st. iApply wp_enter; [reflexivity | reflexivity | iNext].
+  step. step. iApply wp_enter; [reflexivity | reflexivity | iNext].
   iApply (wp_file_write_loop with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try eassumption.
   assert (Z.of_nat (length xs) < 2 ^ 63) by lia.
   split_and!; try reflexivity; cbn; try (unwrap; lia). do 3 f_equal. arith.
@@ -191,4 +192,3 @@ Qed.
 
 
 End rules.
-End LibioWriteOn.

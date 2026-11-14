@@ -7,20 +7,19 @@
     the call. This view separates fields that overflow changes from fields
     it leaves alone. It supports heap buffers only; it does not describe
     allocation or buffers stored inside FILE. *)
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic LibioOverflowBase LibioDefaultXsputnBuf PrintfStreamInv.
+From Glibc Require FileInv LibioDefaultXsputnBuf LibioOverflowBase LibioPutsInv PrintfStreamInv.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The heap view shares the caller's runtime and memory interpretation. *)
-Module PrintfStreamHeapOn (R : Runtime) (LG0 : LogicSig R).
-Module PS := PrintfStreamInvOn R LG0.
-Module OB := LibioOverflowBaseOn R LG0.
-Module BF := LibioBufOn R LG0.
-Import PS PS.PI PS.PI.CS.SW.FI PS.PI.CS.SW.FI.ML PS.PI.CS.SW.FI.LG PS.PI.CS.SW.FI.L.
+
+Import PrintfStreamInv LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L.
 
 (** Overflow changes the first eight pointers, flags, offset and byte count.
     The remaining fields keep their values from the surrounding stream. *)
@@ -79,7 +78,7 @@ Definition printf_heap_stream_with (B : Z -> Z -> iProp Σ) (w0 : os_world) (vb 
       Z.land fl io_is_appending = 0 /\ Z.land fl io_no_writes = 0 /\
       Z.land fl io_currently_putting <> 0 /\
       flags_ok (heap_file_state st bb sz k we fl tw off)⌝ ∗
-    live fb freg ∗ OB.ovf_state fb bb breg sz k we xs fl tw off ∗
+    live fb freg ∗ LibioOverflowBase.ovf_state fb bb breg sz k we xs fl tw off ∗
     int_cell fb off_flags2 flags2 ∗ int_cell fb off_fileno (fs_fileno st) ∗
     bytes fb off_column [0; 0] ∗ int_cell fb off_mode mode ∗
     pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) ∗ heap_file_tail fb self held st col ∗ B bb sz.
@@ -101,15 +100,15 @@ Definition printf_xsputn_heap_stream := printf_heap_stream_with printf_copy_buff
     buffer view. The write pointer comes from overflow's pending byte count. *)
 Lemma printf_copy_buffer_open fb bb breg sz k we xs fl tw off :
   r_kind breg = Heap ->
-  OB.ovf_state fb bb breg sz k we xs fl tw off -∗ printf_copy_buffer bb sz -∗
-  BF.wbuf fb (Some (bb, sz)) (mkPtr (bb + k) (Obj bb)) we ∗
+  LibioOverflowBase.ovf_state fb bb breg sz k we xs fl tw off -∗ printf_copy_buffer bb sz -∗
+  LibioDefaultXsputnBuf.wbuf fb (Some (bb, sz)) (mkPtr (bb + k) (Obj bb)) we ∗
   int_cell fb off_flags fl ∗ icell fb off_total_written tw ∗ icell fb off_offset off.
 Proof.
   intros Hheap.
   iIntros "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)
     (%Hal & %cs & %Hlc & Hcs)".
   destruct Hp as (Hb & Hend & Hreg & Hsz & Hk & Hlx & Hx & Hec & Hea).
-  iFrame "Hfl Htw Hoff". unfold BF.wbuf, BF.wcells. cbn [nb_base nb_end].
+  iFrame "Hfl Htw Hoff". unfold LibioDefaultXsputnBuf.wbuf, LibioDefaultXsputnBuf.wcells. cbn [nb_base nb_end].
   iFrame "Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend".
   iExists breg, xs, cs. iFrame. iPureIntro.
   unfold room_ok, LibioDefaultXsputnBuf.in_buf.
@@ -119,10 +118,10 @@ Qed.
 (** The reverse conversion retains alignment and every capability slot.
     Slot contents remain existential because byte copies may have changed them. *)
 Lemma printf_copy_buffer_close fb bb sz wp we fl tw off :
-  BF.wbuf fb (Some (bb, sz)) wp we -∗ int_cell fb off_flags fl -∗
+  LibioDefaultXsputnBuf.wbuf fb (Some (bb, sz)) wp we -∗ int_cell fb off_flags fl -∗
   icell fb off_total_written tw -∗ icell fb off_offset off -∗
   ∃ breg xs k, ⌜r_kind breg = Heap⌝ ∗
-    OB.ovf_state fb bb breg sz k we xs fl tw off ∗ printf_copy_buffer bb sz.
+    LibioOverflowBase.ovf_state fb bb breg sz k we xs fl tw off ∗ printf_copy_buffer bb sz.
 Proof.
   iIntros "((Hrp & Hre & Hrb & Hwb & Hbase & Hbend) & Hwp & Hwe & Hroom) Hfl Htw Hoff".
   iDestruct "Hroom" as (breg xs cs Hp) "(Hbl & Hxs & Hcs)".
@@ -131,7 +130,7 @@ Proof.
   replace wa with (bb + (wa - bb)) by lia.
   iExists breg, xs, (wa - bb). iSplit; [done|].
   iSplitR "Hcs".
-  - unfold OB.ovf_state. iFrame. iPureIntro. split_and!; first [assumption | lia].
+  - unfold LibioOverflowBase.ovf_state. iFrame. iPureIntro. split_and!; first [assumption | lia].
   - iSplit; [done|]. iExists cs. iFrame. done.
 Qed.
 
@@ -201,4 +200,3 @@ Proof.
 Qed.
 
 End streams.
-End PrintfStreamHeapOn.

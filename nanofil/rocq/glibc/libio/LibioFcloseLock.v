@@ -5,6 +5,7 @@
     `c: _IO_funlockfile(fp)`, releasing it again, then
     LibioFcloseTail.v's [wp_fclose_L8] ([wp_fclose_L101]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode LibioFcloseCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFinish LibioFcloseTail.
+From Glibc Require FileInv LibioCloseSteps LibioFcloseTail LibioFinish LibioLogic OsThread OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -21,11 +24,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFcloseLockOn (R : Runtime) (LG0 : LogicSig R).
-Module FT := LibioFcloseTailOn R LG0.
-Import FT FT.FN FT.FN.CS FT.FN.CS.SW FT.FN.CS.SW.FI.ML FT.FN.CS.SW.FI.LG FT.FN.CS.SW.FI.L FT.FN.CS.SW.OW
-  FT.FN.CS.SW.FI FT.FN.CS.SW.ST.
+
+Import LibioFcloseTail LibioFinish SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -44,10 +44,7 @@ Local Instance fclose_lock_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A branch whose condition H's left side decides. *)
-Ltac fbrw H :=
-  eapply step_wand; [eapply wp_branch; inst; vx |]; rewrite H;
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := vm_of c in change c with c' end; cbn [edge_label].
+
 
 (** The premises of `c: zthread_self_cookie`'s rule. *)
 Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
@@ -87,12 +84,12 @@ Proof.
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   iDestruct "Hfl" as "[%Hflr Hfl]".
   (* start, L18 to L23: the lock is free and the process single-threaded. *)
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrv false.
-  fs. iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [exact Hsz|]. iNext.
-  fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl'". fs. fchk "Hbl'". fldn "Hbl'" "Hbo". fs. fs. fs. fs. fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl'". fchk "Hbl'". fsti "Hbl'" "Hb0". fldp "Hl" "Hlp" "Hbl'". fs.
-  fchk "Hbl'". fstp "Hbl'" "Hbo". fs.
+  step. check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
+  step. iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact Hsz|]. iNext.
+  step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl'". step. check "Hbl'". load_null "Hbl'" "Hbo". step. step. step. step. step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl'". check "Hbl'". store_int "Hbl'" "Hb0". load "Hl" "Hlp" "Hbl'". step.
+  check "Hbl'". store "Hbl'" "Hbo". step.
   iAssert (lock_state lb lbreg 1 0 (ow_self w0)) with "[Hbl' Hb0 Hb4 Hbo]" as "Hlk".
   { iSplit; [iPureIntro; lia|]. iFrame "Hbl'". iSplitL "Hb0"; [iSplit; [done | iExact "Hb0"]|].
     iSplitL "Hb4"; [iSplit; [done | iExact "Hb4"]|]. iExact "Hbo". }
@@ -145,21 +142,20 @@ Proof.
   { rewrite (Z.mod_small fl); [|lia]. change (32768 mod 2 ^ 32) with 32768. rewrite Hcu. reflexivity. }
   iDestruct "Hfl" as "[_ Hfl]".
   (* The user lock is clear, and the process single-threaded. *)
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrw Hcu'.
-  fs. fldi "Hl" "Hfl". fs. fs. fbrw Hcu'.
-  fs. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
+  step. check "Hl". load_s32 "Hl" "Hfl". step. step. branch_rewrite Hcu'.
+  step. load_s32 "Hl" "Hfl". step. step. branch_rewrite Hcu'.
+  step. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
   (* The count is 0: the owner becomes null, then the lock word 0. *)
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl'". fs. fchk "Hbl'". fldi "Hbl'" "Hb4". fs. fs. fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl'". fs. fchk "Hbl'". fstp "Hbl'" "Hbo".
-  fchk "Hl". fldp "Hl" "Hlp" "Hbl'". fchk "Hbl'". fsti "Hbl'" "Hb0". fs.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl'". step. check "Hbl'". load_s32 "Hbl'" "Hb4". step. step. step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl'". step. check "Hbl'". store "Hbl'" "Hbo".
+  check "Hl". load "Hl" "Hlp" "Hbl'". check "Hbl'". store_int "Hbl'" "Hb0". step.
   iAssert (lock_state lb lbreg 0 0 null) with "[Hbl' Hb0 Hb4 Hbo]" as "Hlk".
   { iSplit; [iPureIntro; lia|]. iFrame "Hbl'". iSplitL "Hb0"; [iSplit; [done | iExact "Hb0"]|].
     iSplitL "Hb4"; [iSplit; [done | iExact "Hb4"]|]. iExact "Hbo". }
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   rewrite (Z.mod_small p1 (2 ^ 32)); [|lia].
   iApply (wp_fclose_L8 w0 registry ge Hunl Hdf Hff Hunl_spec Hunl_unlinked
-            with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK"); try side; try exact Hmd.
+            with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK"); try close_side; try exact Hmd.
 Qed.
 
 End rules.
-End LibioFcloseLockOn.

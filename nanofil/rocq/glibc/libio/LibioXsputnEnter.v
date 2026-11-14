@@ -16,6 +16,7 @@
     LibioXsputnFill.v's [wp_xs_L20]. A stream's write pointer and end
     lie in its buffer ([wroom_ptrs]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,6 +30,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioXsputnReset LibioXsputnCall LibioXsputnDo
   LibioXsputnWrite LibioXsputnFlush
   LibioXsputnFill.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnDo LibioXsputnFill LibioXsputnFlags LibioXsputnFlush LibioXsputnReset LibioXsputnSetp LibioXsputnWrite OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -37,14 +40,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnEnterOn (R : Runtime) (LG0 : LogicSig R).
-Module XL := LibioXsputnFillOn R LG0.
-Import XL XL.XU XL.XU.XW XL.XU.XW.XD XL.XU.XW.XD.XC XL.XU.XW.XD.XC.XR XL.XU.XW.XD.XC.XR.XF XL.XU.XW.XD.XC.XR.XF.XS XL.XU.XW.XD.XC.XR.XF.XS.XB XL.XU.XW.XD.XC.XR.XF.XS.XB.DX XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY
-  XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI
-  XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnFill LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** A stream's write pointer and write end lie in its buffer, with its
     capability, and the buffer ends at an address. *)
@@ -106,21 +103,21 @@ Proof.
   iIntros "#Hvt Hl Hvtp (Hwc & Hwp & Hwe & Hroom) Hos Hl' Hys HK".
   iDestruct (wroom_ptrs with "Hroom") as "[%Hp Hroom]". destruct Hp as (Hwpc & Hwec & Hwpa & Hwea & Hend & Hdif).
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
-  fs. fs. fchk "Hl". iEval (rewrite -Hwec) in "Hbl". fldp "Hl" "Hwe" "Hbl". iEval (rewrite Hwec) in "Hbl".
-  fs. iEval (rewrite -Hwpc) in "Hbl". fldp "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". fs. fs. fs.
+  step. step. check "Hl". iEval (rewrite -Hwec) in "Hbl". load "Hl" "Hwe" "Hbl". iEval (rewrite Hwec) in "Hbl".
+  step. iEval (rewrite -Hwpc) in "Hbl". load "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". step. step. step.
   destruct (Z_lt_le_dec (ptr_addr wp) (ptr_addr we)) as [Hlt | Hge].
   - (* L73: the room. *)
-    fbrv false. fs. fs. iEval (rewrite -Hwec) in "Hbl". fldp "Hl" "Hwe" "Hbl". iEval (rewrite Hwec) in "Hbl".
-    fs. iEval (rewrite -Hwpc) in "Hbl". fldp "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". fs. fs. fs. fs. fs.
+    branch_as false. step. step. iEval (rewrite -Hwec) in "Hbl". load "Hl" "Hwe" "Hbl". iEval (rewrite Hwec) in "Hbl".
+    step. iEval (rewrite -Hwpc) in "Hbl". load "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". step. step. step. step. step.
     iDestruct ("Hroom" with "Hbl") as "Hroom".
     iApply (wp_xs_L20 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys 0 (ptr_addr we - ptr_addr wp) with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe $Hroom] Hos Hl' Hys HK");
-      try side.
+      try close_side.
     all: unfold n in *; try lia. all: lookups; try reflexivity. all: do 2 f_equal; unwrap2; lia.
   - (* No room: L20 with none. *)
-    fbrv true. fs. iDestruct ("Hroom" with "Hbl") as "Hroom".
+    branch_as true. step. iDestruct ("Hroom" with "Hbl") as "Hroom".
     iApply (wp_xs_L20 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
-              dq b' reg' so c' ys 0 0 with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try side.
+              dq b' reg' so c' ys 0 0 with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia. all: lookups; reflexivity.
 Qed.
 
@@ -147,19 +144,19 @@ Proof.
   iIntros "#Hvt Hl Hvtp ((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom) Hos Hl' Hys HK".
   iDestruct (wroom_ptrs with "Hroom") as "[%Hp Hroom]". destruct Hp as (Hwpc & Hwec & Hwpa & Hwea & Hend & Hdif).
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
-  fs. fs. fchk "Hl". iEval (rewrite -Hcap) in "Hbl". fldp "Hl" "Hbe" "Hbl". iEval (rewrite Hcap) in "Hbl".
-  fs. iEval (rewrite -Hwpc) in "Hbl". fldp "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". fs. fs. fs. fs.
+  step. step. check "Hl". iEval (rewrite -Hcap) in "Hbl". load "Hl" "Hbe" "Hbl". iEval (rewrite Hcap) in "Hbl".
+  step. iEval (rewrite -Hwpc) in "Hbl". load "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". step. step. step. step.
   iDestruct ("Hroom" with "Hbl") as "Hroom".
   set (cnt0 := ptr_addr (nb_end nb) - ptr_addr wp).
   destruct (Z_lt_le_dec cnt0 n) as [Hlt | Hge].
   - (* Less room than bytes: L20 with it. *)
-    fbrv true. fs.
+    branch_as true. step.
     iApply (wp_xs_L20 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys 0 cnt0 with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK");
-      try side.
+      try close_side.
     all: unfold n, cnt0 in *; try lia. all: lookups; try reflexivity. all: do 2 f_equal; unwrap2; lia.
   - (* L40: the scan back from s + n. *)
-    fbrv false. fs. fs. fs. fs.
+    branch_as false. step. step. step. step.
     assert (Hcr : 0 <= cnt0 < 2 ^ 63) by (unfold cnt0; lia).
     iApply (wp_xs_scan w0 registry ge dq b' reg' so c' ys cnt0 Hc' Hso Hyend Hyreg Hy Hcr $! _ (Z.of_nat (length ys))
               with "[%] Hl' Hys").
@@ -176,4 +173,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioXsputnEnterOn.

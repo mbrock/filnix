@@ -11,6 +11,7 @@
     size and cleanup-field offsets. Other real-startup effects are
     outside this projection. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Syntax Values Memory Runtime Run Pieces.

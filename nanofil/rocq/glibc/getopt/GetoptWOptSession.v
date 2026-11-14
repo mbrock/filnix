@@ -5,6 +5,8 @@
     reaches the W option receives either the parser's answer with a
     session at the new index or the missing-argument path. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +20,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
   GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSession GetoptWTail GetoptWOpt GetoptLongW.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongSession GetoptLongStore GetoptLongW GetoptState GetoptWOpt LibioLogic OsWorld.
+From Glibc Require Import Fix.
 
 Import ListNotations.
 Open Scope Z_scope.
@@ -58,30 +62,10 @@ Proof. unfold sbyte. cbn. repeat split; lia. Qed.
 Lemma wos_ctl_end : ~ (2 < List.length [45; 87])%nat.
 Proof. cbn. lia. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptWOptSessionOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The W option module proves the scanner up to the call. *)
-Module WO := GetoptWOptOn R LG0.
 (** The W call module proves the call and restores the session. *)
-Module LW := GetoptLongWOn R LG0.
-Import LW LW.LCL
-  LW.LSS
-  LW.LCL.LJN.LJF.LJM.LPB
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongW GetoptLongCall GetoptLongSession GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** A key in the list keeps its value through the W option. *)
 Ltac wos_lk Hk :=
@@ -101,7 +85,7 @@ Section wos.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance wos_stable : SafepointStable (os_wi w0) := LW.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance wos_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance wos_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -126,7 +110,7 @@ Ltac wos_conv b r j av ar ps c :=
     field that it lent. *)
 Lemma wp_getopt_wopt_session e fr i n c pe po so oo a b r av ar ps (G : iProp Σ) T fp dom se sereg mid
     (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 lo os F pfx pxs q sq k0 li er ord fst lst Φ :
-  WO.WT.RT.D.getopt_diag_rule w0 registry ge G T fp dom ->
+  GetoptDiag.getopt_diag_rule w0 registry ge G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
   lookup (TAtom "v0") e = Some (WInt n) -> lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
@@ -170,7 +154,7 @@ Lemma wp_getopt_wopt_session e fr i n c pe po so oo a b r av ar ps (G : iProp Σ
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   ((∀ x (j' : Z), ⌜((sbyte sq (S k0) <> 0 /\ (i <= j' <= i + 1 \/ (j' = i + 2 /\ i + 1 < n))) \/
         (sbyte sq (S k0) = 0 /\ i + 1 < n /\ (i + 1 <= j' <= i + 2 \/ (j' = i + 3 /\ i + 2 < n))))%Z⌝ -∗
-      LW.LSS.S.getopt_session b r av ar ps j' -∗
+      GetoptState.getopt_session b r av ar ps j' -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))) ∧
    (∀ e', ⌜keeps wos_keys e e' /\ sbyte sq (S k0) = 0 /\ (i + 1)%Z = n /\
         lookup (TAtom "v575") e' = Some (WInt (if sbyte so 0 =? 58 then 58 else 63))⌝ -∗
@@ -194,7 +178,7 @@ Proof.
   { unfold sbyte. rewrite -drop_app_le; [|lia]. rewrite wos_nth_drop. by rewrite Nat.add_1_r. }
   assert (Hc1' : ptr_add (ptr_add q (Z.of_nat k0)) 1 = ptr_add q (Z.of_nat (S k0))) by (rewrite wos_ptr_add; f_equal; lia).
   rewrite -Hc1' -Ht1.
-  iApply (WO.wp_getopt_wopt w0 registry ge wos_keys e e fr i n c pe (ptr_add q (Z.of_nat k0)) (drop k0 sq) po so a oo b r
+  iApply (GetoptWOpt.wp_getopt_wopt w0 registry ge wos_keys e e fr i n c pe (ptr_add q (Z.of_nat k0)) (drop k0 sq) po so a oo b r
     av ar ps G T fp dom se sereg mid with "Hwc Hpo Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG [-]"); try wos_side.
   iSplit; [|iSplit].
   - iIntros (e' [Hk Hs1]) "Hl Hib Hoob Hab Hcur Ha Hcl HG". rewrite Hc1'.
@@ -202,7 +186,7 @@ Proof.
     assert (Hk1 : (S k0 <= List.length sq)%nat).
     { destruct (decide (S k0 < List.length sq)%nat); [lia|]. exfalso. apply Hs1. rewrite Ht1.
       unfold sbyte. rewrite app_nth2; [|lia]. by destruct (S k0 - List.length sq)%nat as [|[|]] eqn:?; cbn; try lia. }
-    iApply (LW.wp_getopt_w_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
+    iApply (GetoptLongW.wp_getopt_w_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
       lo os F pfx pxs po so q sq (S k0) n pe i oo null b r li er ord fst lst
       with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli");
       try (wos_lk Hk; assumption); try wos_side.
@@ -215,7 +199,7 @@ Proof.
     rewrite Hn2. iAssert (pcell b 32 (ptr_add q2 (Z.of_nat 0))) with "[Hcur]" as "Hcur".
     { cbn [Z.of_nat]. rewrite wos_ptr_add_0. iExact "Hcur". }
     wos_conv b r (i + 1) av ar ps (ptr_add q2 (Z.of_nat 0)). iDestruct "HK" as "[HK _]".
-    iApply (LW.wp_getopt_w_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
+    iApply (GetoptLongW.wp_getopt_w_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
       lo os F pfx pxs po so q2 s2 0 n pe (i + 1) oo null b r li er ord fst lst
       with "Ht Hw2 Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli");
       try (wos_lk Hk; assumption); try wos_side.
@@ -228,4 +212,3 @@ Proof.
 Qed.
 
 End wos.
-End GetoptWOptSessionOn.

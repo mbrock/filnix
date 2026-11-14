@@ -5,6 +5,8 @@
     the argument's terminated string, and the loop stores the index it
     stops at as the new end of the nonoption block. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptPermute GetoptExchangeTwo GetoptSkipTest.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptSkipTest GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -27,17 +31,15 @@ Local Arguments Z.opp : simpl nomatch.
 Definition skip_names : list name :=
   List.map TAtom ["chk57"; "v163"; "v165"; "v195"; "v196"; "chk65"; "v198"; "v200"; "chk67"]%string ++ test_names.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptSkipOn (R : Runtime) (LG0 : LogicSig R).
+
 (** This module proves the nonoption test, and its exchange module supplies the argument vector. *)
-Module T := GetoptSkipTestOn R LG0.
-Import T T.X T.X.I T.X.I.S T.X.I.S.FI T.X.I.S.FI.ML T.X.I.S.FI.LG T.X.I.S.FI.L T.X.I.ST T.X.I.GB T.X.A.
+Import GetoptSkipTest GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section skip.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance skip_stable : SafepointStable (os_wi w0) := T.X.I.OW.os_wi_stable w0.
+Local Instance skip_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance skip_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -75,7 +77,7 @@ Proof.
   induction m as [m IH] using (well_founded_induction lt_wf). intros e i Hv0 Hv2 Hv12 Hc2 Hc23 Hi Hms.
   iIntros "Hl [%Hi0 Hib] [%Hla Hlab] Ha Hc #Hs HK".
   cbn [b_insts b_jump getopt_blk159].
-  chk "Hl". load_int "Hl Hib". st.
+  check "Hl". load_s32_using ltac:(arith) "Hl Hib". step.
   iAssert ((∀ e2 fr, ⌜keeps ks e e2 /\ lookup (TAtom "chk57") e2 = Some (WPtr (mkPtr b (Obj b))) /\
         lookup (TAtom "v12") e2 = Some (WPtr (mkPtr b (Obj b))) /\ lookup (TAtom "chk23") e2 = Some (WPtr (mkPtr (b + 48) (Obj b)))⌝ -∗
       live b r -∗ bytes b 0 (int_bytes i) -∗ live av ar -∗ argv_cells av ps -∗
@@ -90,15 +92,15 @@ Proof.
     with "[HK Hlab]" as "HLs".
   { iSplit.
     - iIntros (e2 fr (Hk & H57 & H12 & H23)) "Hl Hib Ha Hc".
-      en. st. norm. load_int "Hl Hib". chk "Hl".
+      step. step. norm. load_s32_using ltac:(arith) "Hl Hib". check "Hl".
       iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-      iNext. iIntros "Hl Hlab". st. en.
+      iNext. iIntros "Hl Hlab". step. step.
       iApply ("HK" $! _ i with "[%] Hl [Hib] [Hlab] Ha Hc Hs"); [| icell | (iApply skip_cell; [lia | iAssumption])].
       split; [xkeep | lia].
     - iIntros (e2 fr (Hk & Hin & H57 & H0 & H2 & H12 & H2' & H23)) "Hl Hib Ha Hc".
-      en. load_int "Hl Hib". st. norm. chk "Hl".
+      step. load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
       iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-      iNext. iIntros "Hl Hib". st. en.
+      iNext. iIntros "Hl Hib". step. step.
       iApply (IH (Z.to_nat (n - (i + 1))) ltac:(lia) _ (i + 1) with "Hl [Hib] [Hlab] Ha Hc Hs [HK]");
         [ lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lia | reflexivity
         | (iApply skip_cell; [lia | iAssumption]) | icell | ].
@@ -106,7 +108,7 @@ Proof.
       split; [|lia]. eapply keeps_trans; [|exact Hk']. xkeep. }
   iApply wp_branch; [vx | iNext]. sx.
   destruct (Z.ltb_spec i n) as [Hlt | Hge]; close_br.
-  2:{ en. brz. iDestruct "HLs" as "[HL _]". iApply ("HL" with "[%] Hl Hib Ha Hc").
+  2:{ step. brz. iDestruct "HLs" as "[HL _]". iApply ("HL" with "[%] Hl Hib Ha Hc").
       split; [xkeep|]. repeat split; lk_prove. }
   pose proof (avoids_app _ _ _ Hks) as [_ Hkt].
   iApply (wp_skip_test w0 registry ge (ks ++ List.map TAtom ["v0"; "v2"; "v12"; "chk2"; "chk23"; "chk57"]%string)%list
@@ -125,4 +127,3 @@ Proof.
 Qed.
 
 End skip.
-End GetoptSkipOn.

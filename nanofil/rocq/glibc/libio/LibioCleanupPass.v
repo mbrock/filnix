@@ -8,6 +8,7 @@
     lock, clears `c: run_fp` and reads the next stream from
     `c: _chain` (LibioCleanupFpUnlock.v). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlus
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
   LibioCleanupStart LibioCleanupLock.
+From Glibc Require FileInv LibioCleanupFpLock LibioCleanupFpUnlock LibioCleanupLock LibioCleanupMode LibioCleanupStart LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,16 +29,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCleanupPassOn (R : Runtime) (LG0 : LogicSig R).
-Module CK := LibioCleanupLockOn R LG0.
-Import CK CK.CT CK.CT.CU CK.CT.CU.CM CK.CT.CU.CM.CL CK.CT.CU.CM.CL.FA CK.CT.CU.CM.CL.FA.FB
-  CK.CT.CU.CM.CL.FA.FB.FT CK.CT.CU.CM.CL.FA.FB.FT.FS CK.CT.CU.CM.CL.FA.FB.FT.FS.FC
-  CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS
-  CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML
-  CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.L
-  CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.OW CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI
-  CK.CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioCleanupLock LibioCleanupStart LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -93,4 +88,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioCleanupPassOn.

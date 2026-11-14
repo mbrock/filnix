@@ -7,6 +7,7 @@
     The proof is one for every buffer, none or a heap object, through
     the life its base's capability names ([wroom_cap]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,13 +33,8 @@ Definition xs_L122 : block := Eval vm_compute in
   match find_block (TAtom "iw_2.L122") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "iw_2.L122") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnFlagsOn (R : Runtime) (LG0 : LogicSig R).
-Module XS := LibioXsputnSetpOn R LG0.
-Import XS XS.XB XS.XB.DX XS.XB.DX.RM XS.XB.DX.RM.SM.TL XS.XB.DX.RM.SM.TL.BY XS.XB.DX.RM.SM.TL.BY.BF
-  XS.XB.DX.RM.SM.TL.BY.BF.CP XS.XB.DX.RM.SM.TL.BY.BF.CP.CS XS.XB.DX.RM.SM.TL.BY.BF.CP.SW
-  XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L
-  XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** The life of a stream's buffer, as the capability of its base
     names it: the heap object's, or nothing when there is no buffer;
@@ -79,7 +77,7 @@ Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; u
 (** [wp_xs_L117] after the write end's load, its resources named. *)
 Ltac to117 fb nb :=
   iAssert (wcells fb nb) with "[Hrp Hre Hrb Hwb Hbb Hbe]" as "Hwc"; [iFrame |];
-  iApply (wp_xs_L117 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf with "Hvt Hl Hvtp Hwc Hwp Hwe Hroom Hos Hl' Hys HK"); try side; lk_fin.
+  iApply (wp_xs_L117 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf with "Hvt Hl Hvtp Hwc Hwp Hwe Hroom Hos Hl' Hys HK"); try close_side; lk_fin.
 
 (** Block `c: iw_2.L122` on, the narrow mode passed, the read and
     write pointers the buffer's base: the flags' test of
@@ -118,23 +116,22 @@ Proof.
   iIntros "#Hvt Hl Hvtp Hrp Hre Hrb Hwb Hbb Hbe Hwp Hwe Hroom Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX Hl' Hys HK".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
   iDestruct "Hfl" as "[%Hfl32 Hfl]".
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fs. fs. fs.
+  step. check "Hl". load_s32 "Hl" "Hfl". step. step. step. step.
   iAssert (xos w0 eb X fb nb) with "[Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX]" as "Hos".
   { iFrame "HX". iExists fl, f2, fd, tw, off, m. iFrame. iPureIntro. split_and!; first [assumption | lia]. }
   assert (Hm514 : 0 <= Z.land fl 514 < 2 ^ 32) by (apply land_lt32; lia).
   destruct (Z.land fl 514 =? 0) eqn:E514; [apply Z.eqb_eq in E514 | apply Z.eqb_neq in E514].
   - (* L116: the buffer's end. *)
-    fbrv true. clear E514 Hm514. fs. fs. fchk "Hl".
-    iEval (rewrite -Hcap) in "Hbl". fldp "Hl" "Hbe" "Hbl". iEval (rewrite Hcap) in "Hbl". fs. fs.
+    branch_as true. clear E514 Hm514. step. step. check "Hl".
+    iEval (rewrite -Hcap) in "Hbl". load "Hl" "Hbe" "Hbl". iEval (rewrite Hcap) in "Hbl". step. step.
     iDestruct ("Hroom" with "Hbl") as "Hroom".
     iDestruct (wroom_reset nb wp we (nb_end nb) with "Hroom") as "Hroom"; [right; reflexivity|].
     to117 fb nb.
   - (* L115: the buffer's base. *)
-    fbrv false. clear E514 Hm514. fs. fs. fchk "Hl". fldp "Hl" "Hbb" "Hbl". fs. fs.
+    branch_as false. clear E514 Hm514. step. step. check "Hl". load "Hl" "Hbb" "Hbl". step. step.
     iDestruct ("Hroom" with "Hbl") as "Hroom".
     iDestruct (wroom_reset nb wp we (nb_base nb) with "Hroom") as "Hroom"; [left; reflexivity|].
     to117 fb nb.
 Qed.
 
 End rules.
-End LibioXsputnFlagsOn.

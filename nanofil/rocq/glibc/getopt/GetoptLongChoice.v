@@ -6,6 +6,8 @@
     choice receives either a session after that call or the state for
     one of the other two ways. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +21,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
   GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSession GetoptLongDash.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDispatch GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDash GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongStore GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -27,30 +31,10 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongChoiceOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The dispatch module proves the choice between short and long options. *)
-Module DP := GetoptDispatchOn R LG0.
 (** The two-dash module proves the call for a word with two dashes and restores the session. *)
-Module LD := GetoptLongDashOn R LG0.
-Import LD
-  LD.LCL
-  LD.LCL.LJN.LJF.LJM.LPB
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongDash GetoptLongCall GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** The two-dash call and the short options read these names, which keep their values through the choice. *)
 Definition choice_keys : list name := Eval vm_compute in
@@ -74,7 +58,7 @@ Section choice.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance choice_stable : SafepointStable (os_wi w0) := LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance choice_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance choice_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -147,7 +131,7 @@ Lemma wp_getopt_long_choice e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
       int_cell b 44 fst -∗ int_cell b 48 lst -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L376") long_only_call long_only_jump))
             : gexpr) {{ Φ }}) ∧
-   (∀ x i', ⌜(i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n))%Z⌝ -∗ LSS.S.getopt_session b r av ar ps i' -∗
+   (∀ x i', ⌜(i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n))%Z⌝ -∗ GetoptState.getopt_session b r av ar ps i' -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L291") (Some (TAtom "L303")))) : gexpr)
     {{ Φ }}.
@@ -158,7 +142,7 @@ Proof.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hsl #Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl #Hs HG HF HM Hli HK".
   assert (Hnq : nth (Z.to_nat i) ps null = q) by (by rewrite (nth_lookup_Some _ _ _ _ Hq)).
   iAssert (word_string DfracDiscarded (nth (Z.to_nat i) ps null) sq) as "#Hwn"; [by rewrite Hnq|].
-  iApply (DP.wp_getopt_choice w0 registry ge choice_keys e i n c lo lonly po so b r av ar ps sq
+  iApply (GetoptDispatch.wp_getopt_choice w0 registry ge choice_keys e i n c lo lonly po so b r av ar ps sq
     with "Hwn Hpo Hl Hib Hcur Ha Hcl Hs [-]");
     try choice_side.
   iSplit; [|iSplit].
@@ -167,7 +151,7 @@ Proof.
     iApply ("HK" $! e' with "[%] Hl Hib Hcur Ha Hcl Her Hoob Hab Hini Hor Hfi Hla HG HF HM Hli"). exact Hk.
   - iIntros (e' (Hk & H45)) "Hl Hib Hcur Ha Hcl". rewrite Hnq.
     choice_conv b r i av ar ps (ptr_add q 2). iDestruct "HK" as "[_ [_ HK]]".
-    iApply (LD.wp_getopt_dash_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps
+    iApply (GetoptLongDash.wp_getopt_dash_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps
       lo os F pfx pxs po so q sq n lonly pe i oo a b r li er ord fst lst
       with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli HK");
       first [choice_lk Hk | assumption].
@@ -177,4 +161,3 @@ Proof.
 Qed.
 
 End choice.
-End GetoptLongChoiceOn.

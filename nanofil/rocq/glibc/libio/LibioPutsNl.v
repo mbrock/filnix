@@ -17,6 +17,8 @@
     | room in the buffer | `c: L183` | LibioPutsBuf.v's [wp_buf_putc] |
     | the buffer full | `c: L182` | LibioPutsInv.v's hypothesis [overflow_spec] | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -25,6 +27,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString LibioGenCode LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsBuf.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsBuf LibioPutsInv OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -33,12 +37,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioPutsNlOn (R : Runtime) (LG0 : LogicSig R).
-Module PB := LibioPutsBufOn R LG0.
-Import PB PB.PM.PC.PU.PL.PI PB.PM.PC.PU.PL.PI.CS PB.PM.PC.PU.PL.PI.CS.SW PB.PM.PC.PU.PL.PI.CS.SW.FI.ML
-  PB.PM.PC.PU.PL.PI.CS.SW.FI.LG PB.PM.PC.PU.PL.PI.CS.SW.FI.L PB.PM.PC.PU.PL.PI.CS.SW.OW PB.PM.PC.PU.PL.PI.CS.SW.FI
-  PB.PM.PC.PU.PL.PI.CS.SW.ST.
+
+Import LibioPutsBuf LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -62,8 +62,7 @@ Lemma wp_puts_L180 e so soreg fb Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) -> so mod 8 = 0 -> so + 8 <= r_end soreg ->
   live so soreg -∗ pcell so 0 fp -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
-  ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v12" \/ x = TAtom "chk1" ->
-                lookup x e' = lookup x e) /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
+  ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 fp -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
@@ -78,38 +77,37 @@ Proof.
   iApply (wp_buf_fit w0 registry ge fb with "Hb"); [lia | lia |]. iIntros (Hfit) "Hb".
   pose proof (Hfit _ Hwin) as Hwr. pose proof (Hfit _ Hwein) as Her. clear Hfit.
   (* L180: the write pointer and the write end, compared. *)
-  fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+  step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
   iApply (wp_load_bufptr w0 registry ge with "Hl Hwp Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
     | exact Hwin |].
   iNext. iIntros "Hl Hwp Hb".
-  fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+  step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
   iApply (wp_load_bufptr w0 registry ge with "Hl Hwe Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
     | exact Hwein |].
-  iNext. iIntros "Hl Hwe Hb". fs. fs. fs.
+  iNext. iIntros "Hl Hwe Hb". step. step. step.
   destruct (Z.ltb_spec (ptr_addr wp) (ptr_addr we)) as [Hlt | Hge].
   - (* L183: room in the buffer, the byte stored and the write pointer moved past it. *)
-    fbrv true. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+    branch_as true. step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
     iApply (wp_load_bufptr w0 registry ge with "Hl Hwp Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
       | exact Hwin |].
-    iNext. iIntros "Hl Hwp Hb". fs. fchk "Hl". fstp "Hl" "Hwp".
+    iNext. iIntros "Hl Hwp Hb". step. check "Hl". store "Hl" "Hwp".
     iApply (wp_buf_putc w0 registry ge with "Hl Hcol Hb");
       [vx | lia | exact Hfal | unfold file_size; lia | lia | exact Hwin | exact Hwein | exact Hlt | exact Hcl8 |].
-    iNext. iIntros (col' Hcl') "Hl Hcol Hb". fs. fs. fs. fs.
+    iNext. iIntros (col' Hcl') "Hl Hcol Hb". step. step. step. step.
     iApply ("HK" with "[%] Hso Hsoc [Hl Hwp Hwe Hcol Hb Hcl] HRx").
-    + split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | lk_prove].
+    + split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
     + iApply ("Hcl" with "[%] Hl Hwp Hwe Hcol Hb"). split; [|exact Hcl'].
       destruct nb as [| |bb sz|bb]; cbn [in_buf] in Hwin, Hwein |- *;
         [subst wp we; cbn in Hlt; lia | | | subst wp we; cbn in Hlt; lia];
         (split; [cbn [ptr_cap]; tauto | cbn [ptr_addr]; unwrap2; lia]).
   - (* L182: the buffer full, `c: __overflow(stdout, '\n')`. *)
-    fbrv false. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl".
+    branch_as false. step. step. check "Hso". load "Hso" "Hsoc" "Hl".
     iApply wp_call_bind; [vx | exact Hov_fn | reflexivity |]. iNext.
     iDestruct ("Hcl" with "[%] Hl Hwp Hwe Hcol Hb") as "Hf"; [split; [exact Hwin | exact Hcl8]|].
     iApply (Hov with "Hf HRx"); [reflexivity|].
-    iNext. iIntros (r Hr) "Hf HRx". resume. fs. fs. fs. fs.
+    iNext. iIntros (r Hr) "Hf HRx". resume. step. step. step. step.
     iApply ("HK" with "[%] Hso Hsoc Hf HRx").
-    split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | lk_prove].
+    split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
 Qed.
 
 End rules.
-End LibioPutsNlOn.

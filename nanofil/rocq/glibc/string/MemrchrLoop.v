@@ -10,6 +10,7 @@
     after the current word matches. [MemrchrMask] enters this loop
     whenever the final word holds no matching byte. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop StrrchrLogic
   MemchrLast MemrchrCode MemrchrBits.
+From Glibc Require StrcmpLoop WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -29,18 +32,14 @@ Definition rblk (l : string) : block :=
 (** Block `L83` is the backward word-loop header of [glibc_memrchr]. *)
 Definition rblk83 : block := Eval vm_compute in rblk "L83".
 
-(** This functor packages the backward word-loop proof over a
-    [[runtime]] R and a program logic instance LG0. *)
-Module MemrchrLoopOn (R : Runtime) (LG0 : LogicSig R).
+
 (** Module [SL] supplies the step rules for symbolic execution. *)
-Module SL := StrcmpLoopOn R LG0.
 (** Module [WS] provides word-window and fractional read helpers. *)
-Module WS := SL.WS.
 (** Module [LG] re-exports the program logic instance. *)
 Module LG := LG0.
 (** Module [L] re-exports the core logic definitions. *)
 Module L := LG.L.
-Import L LG WS SL.
+Import L LG WordString StrcmpLoop.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -56,34 +55,28 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Tactic [sl] advances one pure `let` instruction while keeping its
     result expression symbolic. *)
-Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
+
 (** Tactic [sn] advances one `let` instruction and names its integer
     result in the context. *)
-Ltac sn := eapply (s_letn registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |];
-  let x := fresh "x" in let E := fresh "E" in intros x E.
+
 (** Tactic [sf] advances one [[flight]] instruction in the proof mode. *)
-Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
+
 (** Tactic [en] steps into the target block and exposes its instructions
     and terminator. *)
-Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
+
 (** Tactic [sg] follows an unconditional `goto` and immediately enters the
     destination block. *)
-Ltac sg := eapply (s_goto registry wi ge); en.
+
 (** Tactic [sb] advances one conditional `branch` while keeping its
     condition expression symbolic. *)
-Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
+
 (** To resolve IR temporary arguments during symbolic execution, [vx]
     looks up each temporary in the environment hypotheses and evaluates
     the remaining argument expressions. *)
-Ltac vx :=
-  cbn [map2_option map_option flight_arg_x flight_cap arg_x];
-  repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
-    match goal with H : lookup n _ = Some ?x |- _ =>
-      rewrite (value_x_tmp g E k n x); [|look H] end end;
-  reflexivity.
+
 (** Tactic [sl'] advances one `let` instruction whose arguments are
     resolved via [vx]. *)
-Ltac sl' := eapply (s_let registry wi ge); [reflexivity | reflexivity | vx | intros ?; reflexivity |].
+
 (** Tactic [norm] rewrites the integer stored in temporary `name` to `v`
     using tactic `tac`. *)
 Ltac norm name v tac :=
@@ -102,20 +95,20 @@ Ltac normp name v :=
     leading-zero count to recover j. Tactic [idx_steps] steps through
     that sequence and reduces the resulting index to j. *)
 Ltac idx_steps w c j Hj Hcj Hlj :=
-  sl; sl; sl; sl; sl; normt (first_mask (Z.lxor w (rep c))) ltac:(reflexivity); sl; sb;
+  step_symbolic; step_symbolic; step_symbolic; step_symbolic; step_symbolic; normt (first_mask (Z.lxor w (rep c))) ltac:(reflexivity); step_symbolic; branch_symbolic;
   let Hmr := fresh in let Hh := fresh in let Hm0 := fresh in
   pose proof (marks_range w c) as Hmr; pose proof (head_marks w c j Hj Hcj Hlj) as Hh;
   assert (Hm0 : first_mask (Z.lxor w (rep c)) <> 0) by
     (let E := fresh in let B := fresh in intros E; pose proof (marks_byte w c j Hj) as B;
      rewrite E Hcj Z.eqb_refl in B; unfold byte_of in B;
      rewrite Z.div_0_l in B; [discriminate | apply Z.pow_nonzero; lia]);
-  rewrite (Z.mod_small _ (2 ^ 64) Hmr) Zmod_0_l (proj2 (Z.eqb_neq _ _) Hm0); close_if; en;
-  do 26 sn;
+  rewrite (Z.mod_small _ (2 ^ 64) Hmr) Zmod_0_l (proj2 (Z.eqb_neq _ _) Hm0); close_if; step;
+  do 26 step_named;
   match goal with |- context [mkFrame _ (put _ (WInt ?t) _) _ _ _] =>
     let H := fresh in assert (H : t = head (first_mask (Z.lxor w (rep c)))) by (eapply head_chain; eassumption);
     rewrite H Hh; clear H end;
   repeat match goal with H : ?v = _ |- _ => is_var v; clear H end;
-  sg; sl; sl; sl; normt j ltac:(arith); sg; sl; normt j ltac:(arith).
+  (step; step); step_symbolic; step_symbolic; step_symbolic; normt j ltac:(arith); (step; step); step_symbolic; normt j ltac:(arith).
 
 (** This lemma verifies the backward loop in `L83` by induction on word
     index i: assuming no byte after word i in the n-byte window matches
@@ -138,54 +131,54 @@ Proof.
   intros Hb0 Hc Hwo Hal Hend Hreg Hr Hk Hkn.
   assert (HB : (k + n <= List.length (wbytes ws))%nat) by (rewrite wbytes_length; lia).
   revert e. induction i as [|i IH]; intros e Hi Hnone Hhit H77 H26 H7; iIntros "Hw HK"; cbn [rblk83 b_insts b_jump];
-    sl; sl'; sb; cbn [ptr_addr].
+    step_symbolic; step_symbolic; branch_symbolic; cbn [ptr_addr].
   - (* The first word. *)
-    replace (b + wo + 8 * Z.of_nat 0) with (b + wo) by lia. rewrite Z.eqb_refl. close_if. en.
+    replace (b + wo + 8 * Z.of_nat 0) with (b + wo) by lia. rewrite Z.eqb_refl. close_if. step.
     pose proof (wrd_range ws 0 Hr) as Hw0. set (w := wrd ws (Z.of_nat 0)) in *.
-    sl'. sl. sl. sl. sl. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
-    normt (loop_mask (Z.lxor w (rep c))) ltac:(reflexivity). sl. sb.
+    step_symbolic. step_symbolic. step_symbolic. step_symbolic. step_symbolic. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
+    normt (loop_mask (Z.lxor w (rep c))) ltac:(reflexivity). step_symbolic. branch_symbolic.
     rewrite (Z.mod_small (loop_mask _) (2 ^ 64) (loop_mask_range _)) Zmod_0_l.
     destruct (word_last w (c mod 256)) as [(j & Hj & Hcj & Hlj) | Hn].
     + assert (Hm : loop_mask (Z.lxor w (rep c)) <> 0).
       { intros E. apply (proj1 (has_eq_zero w c Hw0) E j Hj Hcj). }
-      rewrite (proj2 (Z.eqb_neq _ _) Hm). close_if. en.
+      rewrite (proj2 (Z.eqb_neq _ _) Hm). close_if. step.
       idx_steps w c j Hj Hcj Hlj.
-      sf. normp "v121" (b + wo + j). sl. sl'. sb. cbn [ptr_addr ptr_cap].
+      step. normp "v121" (b + wo + j). step_symbolic. step_symbolic. branch_symbolic. cbn [ptr_addr ptr_cap].
       rewrite (Z.mod_small (b + wo + Z.of_nat k)); [|arith]. rewrite (Z.mod_small (b + wo + j)); [|arith].
       assert (Hv : wbytes ws !! (8 * 0 + Z.to_nat j)%nat = Some (c mod 256)) by (rewrite wbytes_at; [change (wrd ws (Z.of_nat 0)) with w; congruence | lia | exact Hj]).
       pose proof (none_after ws (c mod 256) 0 j (k + n) ltac:(lia) Hj Hlj Hnone) as Hna.
       destruct (Z.leb_spec (b + wo + Z.of_nat k) (b + wo + j)) as [Hge|Hlt].
       * (* At or after the first byte: the match. *)
-        close_if. en. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+        close_if. step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
         rewrite (last_hit_unique _ _ _ _ Hhit (hit_at _ _ k n (8 * 0 + Z.to_nat j) HB
                    ltac:(lia) Hv Hna)).
         cbn [hit_ptr ptr_addr ptr_cap]. replace (b + wo + Z.of_nat k + Z.of_nat (8 * 0 + Z.to_nat j - k)) with (b + wo + j)
           by lia. iApply ("HK" with "Hw").
       * (* Before it: none. *)
-        close_if. en. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+        close_if. step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
         rewrite (last_hit_unique _ _ _ _ Hhit (hit_none _ _ k n HB
                    ltac:(intros u Hu; apply Hna; lia))).
         iApply ("HK" with "Hw").
     + (* No c in the first word: none. *)
-      rewrite (proj2 (has_eq_zero w c Hw0) Hn). close_if. en. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+      rewrite (proj2 (has_eq_zero w c Hw0) Hn). close_if. step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
       pose proof (none_word ws (c mod 256) 0 (k + n) ltac:(lia) Hn Hnone) as Hnw.
       rewrite (last_hit_unique _ _ _ _ Hhit (hit_none _ _ k n HB
                  ltac:(intros u Hu; apply Hnw; lia))).
       iApply ("HK" with "Hw").
   - (* A word after the first. *)
     rewrite (Z.mod_small (b + wo + 8 * Z.of_nat (S i))); [|arith]. rewrite (Z.mod_small (b + wo)); [|arith].
-    rewrite (proj2 (Z.eqb_neq _ _)); [|lia]. close_if. en.
+    rewrite (proj2 (Z.eqb_neq _ _)); [|lia]. close_if. step.
     pose proof (wrd_range ws (Z.of_nat (S i)) Hr) as Hw0. set (w := wrd ws (Z.of_nat (S i))) in *.
-    sl'. sl. sl. sl. sl. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
-    normt (loop_mask (Z.lxor w (rep c))) ltac:(reflexivity). sl. sb.
+    step_symbolic. step_symbolic. step_symbolic. step_symbolic. step_symbolic. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
+    normt (loop_mask (Z.lxor w (rep c))) ltac:(reflexivity). step_symbolic. branch_symbolic.
     rewrite (Z.mod_small (loop_mask _) (2 ^ 64) (loop_mask_range _)) Zmod_0_l.
     destruct (word_last w (c mod 256)) as [(j & Hj & Hcj & Hlj) | Hn].
     + (* Its last c. *)
       assert (Hm : loop_mask (Z.lxor w (rep c)) <> 0).
       { intros E. apply (proj1 (has_eq_zero w c Hw0) E j Hj Hcj). }
-      rewrite (proj2 (Z.eqb_neq _ _) Hm). close_if. en.
+      rewrite (proj2 (Z.eqb_neq _ _) Hm). close_if. step.
       idx_steps w c j Hj Hcj Hlj.
-      sf. normp "v103" (b + wo + 8 * Z.of_nat (S i) + j).
+      step. normp "v103" (b + wo + 8 * Z.of_nat (S i) + j).
       iApply wp_ret; [reflexivity | reflexivity |]. iNext.
       assert (Hv : wbytes ws !! (8 * S i + Z.to_nat j)%nat = Some (c mod 256))
         by (rewrite wbytes_at; [change (wrd ws (Z.of_nat (S i))) with w; congruence | lia | exact Hj]).
@@ -195,15 +188,14 @@ Proof.
       replace (b + wo + Z.of_nat k + Z.of_nat (8 * S i + Z.to_nat j - k)) with (b + wo + 8 * Z.of_nat (S i) + j)
         by lia. iApply ("HK" with "Hw").
     + (* No c: the word before. *)
-      rewrite (proj2 (has_eq_zero w c Hw0) Hn). close_if. en.
+      rewrite (proj2 (has_eq_zero w c Hw0) Hn). close_if. step.
       pose proof (none_word ws (c mod 256) (S i) (k + n) ltac:(lia) Hn Hnone) as Hnw.
-      sf. normp "v106" (b + wo + 8 * Z.of_nat i). cbn [ptr_cap].
+      step. normp "v106" (b + wo + 8 * Z.of_nat i). cbn [ptr_cap].
       iApply (wp_win_word registry wi ge _ _ _ _ _ _ _ _ _ (mkPtr (b + wo + 8 * Z.of_nat i) cp) dq b reg wo ws
                 (Z.of_nat i) with "Hw"); [reflexivity | exact Hc | reflexivity | lia | exact Hb0 | exact Hwo
                 | exact Hend | exact Hreg | exact Hr |].
-      iIntros "Hw". sg. rewrite (Z.mod_small _ _ (wrd_range ws (Z.of_nat i) Hr)).
+      iIntros "Hw". (step; step). rewrite (Z.mod_small _ _ (wrd_range ws (Z.of_nat i) Hr)).
       iApply (IH with "Hw HK"); [lia | intros u Hu; apply Hnw; lia | exact Hhit | look H77 | look H26 | look H7].
 Qed.
 
 End rules.
-End MemrchrLoopOn.

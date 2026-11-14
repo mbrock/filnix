@@ -4,6 +4,7 @@
 
     These rules begin after the stream call. They preserve the caller's
     resources without assuming that the requested bytes were all accepted. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Definition printf_xsputn_block : block := Eval vm_compute in
   match find_block (TAtom "iw_1.join") (fn_blocks glibc___printf_buffer_flush_to_file) with
   | Some b => b | None => mkBlock (TAtom "iw_1.join") [] [] JRetVoid end.
 
-(** The return paths use the caller's existing memory and OS interpretation. *)
-Module PrintfBufferXsputnReturnOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -52,7 +53,7 @@ Proof.
   intros Hbb Hbe Hbr Hr Hn Hneq Hv0 Hchk Hret Hcount.
   iIntros "Hb [%Hm Hm] HK".
   cbn [printf_xsputn_block b_insts b_jump skipn].
-  fs. fbrv false. fs. fs. fchk "Hb". fsti "Hb" "Hm".
+  step. branch_as false. step. step. check "Hb". store_int "Hb" "Hm".
   iApply wp_ret_void. iNext. norm.
   iApply ("HK" with "Hb [Hm]"). iSplit; [iPureIntro; lia | iExact "Hm"].
 Qed.
@@ -72,8 +73,7 @@ Lemma wp_printf_xsputn_complete e n Φ :
 Proof.
   intros Hn Hret Hcount. iIntros "HK".
   cbn [printf_xsputn_block b_insts b_jump skipn].
-  fs. fbrv true. norm. rewrite Z.eqb_refl. iExact "HK".
+  step. branch_as true. norm. rewrite Z.eqb_refl. iExact "HK".
 Qed.
 
 End rules.
-End PrintfBufferXsputnReturnOn.

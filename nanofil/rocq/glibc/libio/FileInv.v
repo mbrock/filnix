@@ -45,11 +45,13 @@
     | the lock is (0, 0, null) or (1, cnt, the thread's cookie) | `c: _IO_lock_lock` and `c: _IO_lock_unlock` in one thread |
     | `c: _chain` and `c: _prevchain` belong to the list, not the stream | `c: _IO_un_link` rewrites a neighbour's links | *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Pieces Heap StringLogic Logic MemLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -58,43 +60,73 @@ Open Scope Z_scope.
 (** `c: struct _IO_FILE`'s fields, and the jump table field of
     `c: struct _IO_FILE_plus`. *)
 Definition off_flags : Z := 0.
+#[export] Hint Unfold off_flags : offs.
 Definition off_read_ptr : Z := 8.
+#[export] Hint Unfold off_read_ptr : offs.
 Definition off_write_base : Z := 32.
+#[export] Hint Unfold off_write_base : offs.
 Definition off_write_ptr : Z := 40.
+#[export] Hint Unfold off_write_ptr : offs.
 Definition off_write_end : Z := 48.
+#[export] Hint Unfold off_write_end : offs.
 Definition off_buf_base : Z := 56.
+#[export] Hint Unfold off_buf_base : offs.
 Definition off_buf_end : Z := 64.
+#[export] Hint Unfold off_buf_end : offs.
 Definition off_chain : Z := 104.
+#[export] Hint Unfold off_chain : offs.
 Definition off_fileno : Z := 112.
+#[export] Hint Unfold off_fileno : offs.
 Definition off_flags2 : Z := 116.
+#[export] Hint Unfold off_flags2 : offs.
 Definition off_old_offset : Z := 120.
-Definition off_column : Z := 128.      (* `c: _cur_column`, `c: _vtable_offset`, `c: _shortbuf` at 131, padding *)
+#[export] Hint Unfold off_old_offset : offs.
+Definition off_column : Z := 128.
+#[export] Hint Unfold off_column : offs.      (* `c: _cur_column`, `c: _vtable_offset`, `c: _shortbuf` at 131, padding *)
 Definition off_shortbuf : Z := 131.
+#[export] Hint Unfold off_shortbuf : offs.
 Definition off_lock : Z := 136.
+#[export] Hint Unfold off_lock : offs.
 Definition off_offset : Z := 144.
+#[export] Hint Unfold off_offset : offs.
 Definition off_codecvt : Z := 152.
+#[export] Hint Unfold off_codecvt : offs.
 Definition off_wide : Z := 160.
+#[export] Hint Unfold off_wide : offs.
 Definition off_freeres_list : Z := 168.
+#[export] Hint Unfold off_freeres_list : offs.
 Definition off_freeres_buf : Z := 176.
+#[export] Hint Unfold off_freeres_buf : offs.
 Definition off_prevchain : Z := 184.
+#[export] Hint Unfold off_prevchain : offs.
 Definition off_mode : Z := 192.
+#[export] Hint Unfold off_mode : offs.
 Definition off_total_written : Z := 200.
+#[export] Hint Unfold off_total_written : offs.
 Definition off_vtable : Z := 216.
+#[export] Hint Unfold off_vtable : offs.
 (** The offsets in `c: struct pthread`. *)
 Definition off_cleanup : Z := 776.
+#[export] Hint Unfold off_cleanup : offs.
 Definition off_cleanup_jmp : Z := 784.
+#[export] Hint Unfold off_cleanup_jmp : offs.
 Definition off_cancelhandling : Z := 792.
+#[export] Hint Unfold off_cancelhandling : offs.
 
 (** The offsets of `c: _IO_lock_t`. *)
 Definition off_lk_lock : Z := 0.
+#[export] Hint Unfold off_lk_lock : offs.
 Definition off_lk_cnt : Z := 4.
+#[export] Hint Unfold off_lk_cnt : offs.
 Definition off_lk_owner : Z := 8.
+#[export] Hint Unfold off_lk_owner : offs.
 
 (** The size of `c: struct _IO_FILE_plus`. *)
 Definition file_size : Z := 224.
 
 (** The offset of the i-th of the twelve pointers from `c: _IO_read_ptr`. *)
 Definition off_ptr (i : nat) : Z := 8 + 8 * Z.of_nat i.
+#[export] Hint Unfold off_ptr : offs.
 
 (** `c: _IO_MAGIC`, in the high half of `c: _flags`, and the bits
     the narrow path tests. *)
@@ -123,16 +155,25 @@ Definition has (flags bit : Z) : bool := negb (Z.land flags bit =? 0).
 Definition io_vtables_size : Z := 2352.
 (** The offsets of `c: _IO_file_jumps` and `c: _IO_wfile_jumps` in it. *)
 Definition vt_file : Z := 336.
+#[export] Hint Unfold vt_file : offs.
 Definition vt_wfile : Z := 840.
+#[export] Hint Unfold vt_wfile : offs.
 
 (** The slots of a jump table (`c: struct _IO_jump_t`). *)
 Definition slot_finish : Z := 16.
+#[export] Hint Unfold slot_finish : offs.
 Definition slot_overflow : Z := 24.
+#[export] Hint Unfold slot_overflow : offs.
 Definition slot_xsputn : Z := 56.
+#[export] Hint Unfold slot_xsputn : offs.
 Definition slot_doallocate : Z := 104.
+#[export] Hint Unfold slot_doallocate : offs.
 Definition slot_write : Z := 120.
+#[export] Hint Unfold slot_write : offs.
 Definition slot_close : Z := 136.
+#[export] Hint Unfold slot_close : offs.
 Definition slot_stat : Z := 144.
+#[export] Hint Unfold slot_stat : offs.
 
 (** The functions of `c: _IO_file_jumps` the narrow path calls, by
     slot: the names the linked module's table points at, aliases
@@ -165,8 +206,7 @@ Proof. intros [[_ ->] | [-> _]] Hm; [reflexivity | contradiction]. Qed.
 
 (** ## Over a Logic instance *)
 
-(** The invariants over the [[runtime]] R and [LogicSig] LG0. *)
-Module FileInvOn (R : Runtime) (LG0 : LogicSig R).
+
 Module ML := MemLogicOn R LG0.
 Module LG := ML.LG.
 Module L := LG.L.
@@ -390,4 +430,3 @@ Definition io_list_inv (ge : genv) (fs : list ptr) : iProp Σ :=
     lock_state lk lkreg 0 0 null ∗ live rf rfreg ∗ pcell rf 0 null.
 
 End inv.
-End FileInvOn.

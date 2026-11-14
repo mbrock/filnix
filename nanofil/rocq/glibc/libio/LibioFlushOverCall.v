@@ -8,6 +8,7 @@
     [wp_flush_L192]). LibioFlushOver.v reaches block `c: L240` and
     makes the whole pass. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart LibioFlushTail LibioFlushBody.
+From Glibc Require FileInv LibioCloseSteps LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,12 +28,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFlushOverCallOn (R : Runtime) (LG0 : LogicSig R).
-Module FB := LibioFlushBodyOn R LG0.
-Import FB FB.FT FB.FT.FS FB.FT.FS.FC FB.FT.FS.FC.FU FB.FT.FS.FC.FU.FL FB.FT.FS.FC.FU.FL.CS
-  FB.FT.FS.FC.FU.FL.CS.SW FB.FT.FS.FC.FU.FL.CS.SW.FI.ML FB.FT.FS.FC.FU.FL.CS.SW.FI.LG
-  FB.FT.FS.FC.FU.FL.CS.SW.FI.L FB.FT.FS.FC.FU.FL.CS.SW.OW FB.FT.FS.FC.FU.FL.CS.SW.FI FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -115,10 +114,10 @@ Proof.
   iAssert (live_capq DfracDiscarded (ptr_cap (sym_ptr ge "_IO_new_file_overflow")) vreg) as "Hcap".
   { rewrite (ge_fn_cap _ _ _ Hovf). done. }
   iPoseProof "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)". unfold io_vtables_size in Hvend.
-  fs. fs. fchk "Hl".
+  step. step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true. fs. fs.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true. step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hso Hcap");
@@ -134,17 +133,17 @@ Proof.
   iNext. iIntros (k fl' c' breg' arp' are' awb' awp' Hk) "Hl Hfl Hf2 Hfd Hmd Hrp Hre Hwb Hwp Hbc Hvtp". resume.
   destruct Hk as (Hk & Hfl' & Hfu' & Hmu' & Hw' & Hwb' & Hrd' & Hrp').
   (* iw_1.join, L241, L191: EOF or not. *)
-  fs. fs. fs. rewrite (Z.mod_small k (2 ^ 32)); [|exact Hk].
+  step. step. step. rewrite (Z.mod_small k (2 ^ 32)); [|exact Hk].
   iAssert (live fb freg) with "[Hl]" as "Hl"; [rewrite /live pts_ptsq; iExact "Hl"|].
   destruct (Z.eq_dec k (2 ^ 32 - 1)) as [-> | Hk1].
-  - br. iApply (wp_flush_L192 w0 registry ge _ (TAtom "L241") (2 ^ 32 - 1) with "Hl Hmd Hfd Hrp Hre Hbc");
+  - branch. iApply (wp_flush_L192 w0 registry ge _ (TAtom "L241") (2 ^ 32 - 1) with "Hl Hmd Hfd Hrp Hre Hbc");
       try first [lk_prove | right; split; reflexivity | lia | exact Hmd | exact Hfd | exact Hfal | exact Hfreg
                 | unfold file_size; lia].
     iNext. iIntros (e' He') "Hl Hmd Hfd Hrp Hre Hbc".
     iApply ("HK" $! e' (2 ^ 32 - 1) fl' c' breg' arp' are' awb' awp' with "[%] Hl Hfl Hf2 Hmd Hfd Hrp Hre Hwb Hwp
               Hbc Hvtp").
     destruct He' as (? & ? & ? & ?). split_and!; auto; lia.
-  - brv true. fs. iApply wp_goto. iNext.
+  - branch_as true. step. iApply wp_goto. iNext.
     iApply (wp_flush_L192 w0 registry ge _ (TAtom "L191") r with "Hl Hmd Hfd Hrp Hre Hbc");
       try first [lk_prove | left; split; [reflexivity | lk_prove] | lia | exact Hmd | exact Hfd | exact Hfal
                 | exact Hfreg | unfold file_size; lia].
@@ -155,4 +154,3 @@ Qed.
 
 
 End rules.
-End LibioFlushOverCallOn.

@@ -3,6 +3,7 @@
     of memrchr and memcmp. Its sealed interface keeps those proofs out of
     later functor substitutions. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,10 +12,12 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
   ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
 From Glibc Require Import OsWorld OsRegistry WordString HelloGlibcProgCells HelloGlibcProgName HelloGlibcMainNameSearch
   HelloGlibcDebts HelloGlibcLibsT.
+From Glibc Require HelloGlibcProgName OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 
 (** The interface exposes only the proved program-name triple. *)
-Module Type HelloLibsNameSig (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0).
+Module Type HelloLibsNameSig (D : HelloDebtsT).
 Import LG0 LG0.L D D.SW.FI.ML.
 (** The call stores the suffix pointers selected from the argument string. *)
 Parameter libs_name : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
@@ -26,19 +29,19 @@ Parameter libs_name : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
 End HelloLibsNameSig.
 
 (** The implementation instantiates the closed proof once. *)
-Module HelloGlibcLibsNameOn (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0)
-  : HelloLibsNameSig R LG0 D.
+Module HelloGlibcLibsNameOn (D : HelloDebtsT)
+  : HelloLibsNameSig D.
 (** The name proof supplies the control flow and cell stores. *)
-Module PN := HelloGlibcProgNameOn R LG0.
+Module PN := HelloGlibcProgName.
 (** The sealed search proofs discharge basename and directory comparisons. *)
-Module NS := HelloGlibcMainNameSearchOn R LG0.
+Module NS := HelloGlibcMainNameSearchOn.
 Import LG0 LG0.L D D.SW.FI.ML.
 
 Section libs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (o : hello_objs).
 (** The OS interpretation survives collector safepoints. *)
-Local Instance name_stable : SafepointStable (os_wi w0) := PN.OW.os_wi_stable w0.
+Local Instance name_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The call runs with the concrete glibc OS registry. *)
 Local Instance name_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) Σ :=
   nanofil_irisGS glibc_os_registry (os_wi w0) ge.
@@ -56,7 +59,7 @@ Proof.
     by (unfold invocation; rewrite Hfr; reflexivity). subst fr.
   iIntros "(Hro & Hs & Hn) HK".
   iDestruct "Hro" as "(_ & _ & _ & _ & _ & _ & _ & _ & #Hlp & #Htp & _)".
-  iApply (PN.set_program_name_glibc w0 glibc_os_registry ge
+  iApply (HelloGlibcProgName.set_program_name_glibc w0 glibc_os_registry ge
     (hk_strrchr _ _ Hk) (hk_gi_strlen _ _ Hk) (hk_memeq _ _ Hk) (hk_strncmp _ _ Hk)
     (ho_pb o) (ho_nb o) (ho_nsb o) (ho_preg o) (ho_nreg o) (ho_nsreg o) (ho_lp o) (ho_tp o)
     (hk_pb _ _ Hk) (hk_nb _ _ Hk) (hk_nsb _ _ Hk) (hk_lp _ _ Hk) (hk_tp _ _ Hk)

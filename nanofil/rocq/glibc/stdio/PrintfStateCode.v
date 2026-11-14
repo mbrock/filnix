@@ -5,14 +5,12 @@
     rocq/glibc/stdio/code.sh reproduces these terms from the pinned capture
     with gallina.pl. Regenerate this file rather than editing it. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Ascii.
-From Nanofil Require Import Term.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
-
-(** This helper constructs the atom containing one character with code n. *)
-Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 
 (** This term contains the selected checked function bodies. *)
 Definition printf_state_term : term :=
@@ -183,7 +181,7 @@ From Nanofil Require Import Syntax Transport Semantics.
 
 (** Decoding gives the actual checked function bodies, not their specifications. *)
 Definition printf_state_module : module := Eval vm_compute in
-  match decode_module printf_state_term with Some md => md | None => [] end.
+  code_module printf_state_term.
 
 (** Computation checks that decoding did not take the empty fallback. *)
 Lemma printf_state_decodes : decode_module printf_state_term = Some printf_state_module.
@@ -191,10 +189,7 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** Function lookup selects a decoded body for the subsequent instruction proofs. *)
 Definition printf_state_fn (n : string) : func :=
-  match find_direct (TAtom n) printf_state_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []
-  end.
+  code_function printf_state_module n.
 
 (** This body changes the thread's cancellation flag and optionally saves its old value. *)
 Definition glibc___pthread_setcancelstate : func := Eval vm_compute in

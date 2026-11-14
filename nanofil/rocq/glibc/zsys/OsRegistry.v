@@ -29,6 +29,7 @@
     both contracts to [CVoid] call sites that discard the return value,
     while keeping the same preconditions and memory effects. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory ExternalCalls.
 From Glibc Require Import OsWorld OsWrite OsWritev OsFstat OsIoctl OsLseek OsClose OsExit OsThread.

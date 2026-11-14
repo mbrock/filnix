@@ -4,6 +4,8 @@
     followed them, or restarts the nonoption block at i. This file proves
     those blocks safe and tracks the endpoints they leave. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptIdle GetoptPermute.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptExchangeTwo GetoptIdle GetoptInitialize GetoptPermute GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,18 +30,15 @@ Local Arguments Z.opp : simpl nomatch.
 Lemma load_uw_int x : 0 <= x < 2 ^ 32 -> extended Uw W (of_bytes (le_bytes x 4)) = Some (WInt x).
 Proof. intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. by rewrite !(Z.mod_small x (2 ^ 32)). Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptClampOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The permuting branch. *)
-Module P := GetoptPermuteOn R LG0.
-Import P P.X P.X.O P.X.O.SL.X P.X.O.SL.X.I P.X.O.SL.X.I.S P.X.O.SL.X.I.S.FI P.X.O.SL.X.I.S.FI.ML
-  P.X.O.SL.X.I.S.FI.LG P.X.O.SL.X.I.S.FI.L P.X.O.SL.X.I.ST P.X.O.SL.X.I.GB P.X.O.SL.X.A.
+Import GetoptPermute GetoptIdle GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section clamp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance clamp_stable : SafepointStable (os_wi w0) := P.X.O.SL.X.I.OW.os_wi_stable w0.
+Local Instance clamp_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance clamp_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -79,7 +80,7 @@ Lemma wp_getopt_clamp ks e fr0 n i o f l b r av ar ps Φ :
 Proof.
   intros Hkx Hkc Hv2 Hv12 Hc0 Hc2 Hfl Hln Hfi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi Hib] [%Ho Hob] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".
-  en. st. norm. chk "Hl". load_int "Hl Hlab". chk "Hl". load_int "Hl Hib". st.
+  step. step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hlab". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step.
   iAssert (∀ e2 l1 fr, ⌜keeps ks e e2 /\ f <= l1 <= i /\
       lookup (TAtom "v2") e2 = Some (WPtr (mkPtr av (Obj av))) /\
       lookup (TAtom "v12") e2 = Some (WPtr (mkPtr b (Obj b))) /\
@@ -91,17 +92,17 @@ Proof.
     WP (ERun (mkFrame glibc_getopt_internal_r e2 [] None (Enter (TAtom "L93") (Some fr))) : gexpr) {{ Φ }})%I
     with "[Hob Hfb Ha Hc HK]" as "HL93".
   { iIntros (e2 l1 fr (Hk & Hl1 & H2 & H12 & H0 & H2' & H23 & H24)) "Hl [%Hi' Hib] [%Hl1' Hlab]".
-    en. st. norm. load_int "Hl Hfb". load_int "Hl Hib". st. brz. en. st. norm.
+    step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". load_s32_using ltac:(arith) "Hl Hib". step. brz. step. step. norm.
     iApply (wp_raw_load_sub_bytes_dq with "Hl Hob");
       [reflexivity | vx | reflexivity | apply load_uw_int; assumption | left; reflexivity | arith |].
-    iNext. iIntros "Hl Hob". st.
+    iNext. iIntros "Hl Hob". step.
     rewrite (Z.mod_small o (2 ^ 32)); [|lia]. change (1 mod 2 ^ 32) with 1. iApply wp_branch; [vx | iNext].
     destruct (Z.eqb_spec o 1) as [-> | Ho1]; close_br.
-    2:{ en. iDestruct "HK" as "[_ HK]".
+    2:{ step. iDestruct "HK" as "[_ HK]".
         iApply ("HK" $! _ l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs"); [| icell | icell | icell | icell].
         split; [xkeep|]. split; [done|]. split; [lia|]. split; lk_prove. }
     iDestruct "HK" as "[HK _]".
-    iApply (P.wp_getopt_permute w0 registry ge ks _ _ f l1 i b r av ar n ps
+    iApply (GetoptPermute.wp_getopt_permute w0 registry ge ks _ _ f l1 i b r av ar n ps
       with "Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs [HK]");
       [ exact Hkx | exact Hkc | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove
       | lia | lia | lia | assumption | lia | lia | lia | lia | lia | lia | lia | lia
@@ -111,9 +112,9 @@ Proof.
     split; [done|]. split; [eapply keeps_trans; [|exact Hk']; xkeep|]. split; [done|]. split; [lia|]. split; assumption. }
   iApply wp_branch; [vx | iNext]. sx.
   destruct (Z.ltb_spec i l) as [Hgt | Hle]; close_br.
-  - en. st. norm. load_int "Hl Hib". chk "Hl".
+  - step. step. norm. load_s32_using ltac:(arith) "Hl Hib". check "Hl".
     iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hlab". st.
+    iNext. iIntros "Hl Hlab". step.
     iApply ("HL93" $! _ i with "[%] Hl [Hib] [Hlab]"); [| icell | (iApply cell_mod; [lia | iAssumption])].
     split; [xkeep|]. split; [lia|]. repeat split; lk_prove.
   - iApply ("HL93" $! _ l with "[%] Hl [Hib] [Hlab]"); [| icell | icell].
@@ -121,4 +122,3 @@ Proof.
 Qed.
 
 End clamp.
-End GetoptClampOn.

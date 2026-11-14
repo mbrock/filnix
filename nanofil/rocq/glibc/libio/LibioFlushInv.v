@@ -8,12 +8,12 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv.
+From Glibc Require FileInv.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 
-(** The predicates use the caller's runtime and shared memory logic. *)
-Module LibioFlushInvOn (R : Runtime) (LG0 : LogicSig R).
-Module FI := FileInvOn R LG0.
-Import FI FI.LG.
+
+Import FileInv FileInv.LG.
 
 Section preds.
 Context `{!gen_heapGS piece pval Σ}.
@@ -41,4 +41,3 @@ Definition exit_stream (done : bool) (g : ptr) : iProp Σ :=
     pcell fb 40 (mkPtr awp c) ∗ live_cap c breg ∗ pcell fb 80 null.
 
 End preds.
-End LibioFlushInvOn.

@@ -16,6 +16,7 @@
     [over_stream] to [exit_stream], and [flush_body_or] joins it with
     [flush_body_exit] for a list holding both kinds of stream. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -25,6 +26,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart LibioFlushTail LibioFlushBody LibioFlushOverCall.
+From Glibc Require FileInv LibioCloseSteps LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushOverCall LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -33,13 +36,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFlushOverOn (R : Runtime) (LG0 : LogicSig R).
-Module OC := LibioFlushOverCallOn R LG0.
-Import OC OC.FB OC.FB.FT OC.FB.FT.FS OC.FB.FT.FS.FC OC.FB.FT.FS.FC.FU OC.FB.FT.FS.FC.FU.FL OC.FB.FT.FS.FC.FU.FL.CS
-  OC.FB.FT.FS.FC.FU.FL.CS.SW OC.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML OC.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG
-  OC.FB.FT.FS.FC.FU.FL.CS.SW.FI.L OC.FB.FT.FS.FC.FU.FL.CS.SW.OW OC.FB.FT.FS.FC.FU.FL.CS.SW.FI
-  OC.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioFlushOverCall LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -56,10 +54,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A branch on a mode test, decided by the equation E, as in
     LibioFlushClean.v. *)
-Ltac fbrm E :=
-  eapply step_wand; [eapply wp_branch; inst; vx |]; rewrite E;
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := vm_of c in change c with c' end; cbn [edge_label].
+
 
 (** [over_stream] Rest g: the narrow stream g with output to flush.
     It is as an [exit_stream] not yet unbuffered, except that the
@@ -114,12 +109,12 @@ Proof.
   iIntros "#Hvt Hl Hfl [%Hf2r Hf2] [%Hmdr Hmd] Hfd Hrp Hre Hwb Hwp Hbc Hvtp HR HK".
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* L94: `c: _flags2` lacks bit 32. *)
-  fs. fs. fchk "Hl". fldi "Hl" "Hf2". fs. fs. fs. fs.
-  rewrite (flags2_mask f2 32 5); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. fbr.
+  step. step. check "Hl". load_s32 "Hl" "Hf2". step. step. step. step.
+  rewrite (flags2_mask f2 32 5); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. branch.
   (* L180, L197, L198, L211: narrow, and the write pointer above the base. *)
-  fs. fs. fchk "Hl". fldi "Hl" "Hmd". fs. fbrm (narrow_sle md Hmd).
-  fs. fs. fchk "Hl". fldp "Hl" "Hwp" "Hbc". fs. fchk "Hl". fldp "Hl" "Hwb" "Hbc". fs. fs. fs. fs. fs. fbrv false.
-  fs. br.
+  step. step. check "Hl". load_s32 "Hl" "Hmd". step. branch_rewrite (narrow_sle md Hmd).
+  step. step. check "Hl". load "Hl" "Hwp" "Hbc". step. check "Hl". load "Hl" "Hwb" "Hbc". step. step. step. step. step. branch_as false.
+  step. branch.
   (* L240 to L182: the call. *)
   iAssert (live fb freg) with "[Hl]" as "Hl"; [rewrite /live pts_ptsq; iExact "Hl"|].
   iApply (wp_flush_L240 w0 registry ge Hovf Rest Hov _ fb freg fl f2 fd md c breg arp are awb awp vb vreg r cb
@@ -140,12 +135,12 @@ Proof.
   iDestruct "HP" as (fb' fl f2 fd md lb lbreg c breg arp are awb awp vb vreg Hc)
     "(Hfl & Hf2 & Hfd & Hmd & Hlp & Hlb & Hrp & Hre & Hwb & Hwp & Hbc & H80 & Hvtp & #Hvt & HR)".
   destruct Hc as (Heq & Hfl & Hul & Hf2 & Hfd & Hw & Hwp' & Hrd & Hrp & Hmd). injection Heq as <-.
-  iApply (wp_flush_L83 w0 registry ge Hreg Hext with "Hs Hl Hfl Hlp Hlb Hrl Hrc"); try side.
+  iApply (wp_flush_L83 w0 registry ge Hreg Hext with "Hs Hl Hfl Hlp Hlb Hrl Hrc"); try close_side.
   iNext. iIntros (e1 (H1p5 & H1c13 & H1p4 & H1v3)) "Hl Hfl Hlp Hlb Hrl Hrc".
-  iApply (wp_flush_L94_over with "Hvt Hl Hfl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc Hvtp HR"); try side.
+  iApply (wp_flush_L94_over with "Hvt Hl Hfl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc Hvtp HR"); try close_side.
   iNext. iIntros (e2 r2 fl' c' breg' arp' are' awb' awp' Hc2) "Hl Hfl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc Hvtp".
   destruct Hc2 as (H2p5 & H2c13 & H2p2 & H2v3 & Hr2 & Hrr2 & Hfl' & Hfu' & Hmu' & Hw' & Hwb' & Hrd' & Hrp').
-  iApply (wp_flush_L182 w0 registry ge with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl"); try side.
+  iApply (wp_flush_L182 w0 registry ge with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl"); try close_side.
   iNext. iIntros (e3 (H3v413 & H3p1 & H3v3)) "Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl".
   iApply ("HK" $! e3 r2 with "[%] Hl [-Hrl Hrc Hch Hnl] Hrl Hrc Hch Hnl").
   - split_and!; try assumption; lia.
@@ -172,4 +167,3 @@ Proof.
 Qed.
 
 End join.
-End LibioFlushOverOn.

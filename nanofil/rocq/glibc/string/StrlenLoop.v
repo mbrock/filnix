@@ -10,6 +10,7 @@
     bit-twiddling value so the calculation stays readable and fast to
     check, and [StrlenWord] reuses the same helper tactics. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString.
+From Glibc Require WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -116,13 +119,10 @@ Ltac gen_top :=
     lazymatch X with Z0 => fail | Zpos _ => fail | Zneg _ => fail | _ => idtac end;
     tryif is_var X then fail else (let x := fresh "x" in let E := fresh "E" in remember X as x eqn:E) end.
 
-(** This functor packages the `c: strlen` word-loop proof over a
-    [[runtime]] R and a program logic instance LG0. *)
-Module StrlenLoopOn (R : Runtime) (LG0 : LogicSig R).
-Module WS := WordStringOn R LG0.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG WS.
+Import L LG WordString.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -139,12 +139,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** Tactic [st] advances the symbolic execution by one pure `let`,
     `flight`, block entry, or `goto` step whose premises reduce by
     computation. *)
-Ltac st :=
-  first
-    [ iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext]
-    | iApply wp_flight; [reflexivity | reflexivity | reflexivity | iNext]
-    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-    | iApply wp_goto; iNext ].
+
 
 (** Block `L28` is the main word loop of [glibc_strlen]: it advances to
     the next 8-byte word, checks read access, loads the word, and tests
@@ -175,15 +170,15 @@ Proof.
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   iIntros "Hl Hps HK". cbn [words_ps]. rewrite ptsq_app. iDestruct "Hps" as "[Hw Hps]".
   iApply wp_enter; [reflexivity | exact Hphi |]. iNext. cbn [b_insts b_jump strlen_blk28].
-  st. set_ptr "v32" (b + o).
+  step. set_ptr "v32" (b + o).
   iApply (wp_check_read_dq with "Hl").
   { reflexivity. } { reflexivity. } { cbn [ptr_cap]. rewrite Hqc. exact Hc. } { arith. } { arith. } { apply Z.mod_1_r. }
   iNext. iIntros "Hl".
   iApply (wp_raw_load_read_dq with "Hl Hw"); [reflexivity | reflexivity | cbn [ptr_cap]; rewrite Hqc; exact Hc | arith |].
   iNext. iIntros "Hl Hw".
   apply Forall_cons_1 in Hr as [Hw0 Hr]. rewrite (Z.mod_small w (2 ^ 64) Hw0).
-  do 4 st. set_int "iw_4.iw_1.v13" (loop_mask w).
-  st. iApply wp_branch; [reflexivity|]. iNext.
+  do 4 step. set_int "iw_4.iw_1.v13" (loop_mask w).
+  step. iApply wp_branch; [reflexivity|]. iNext.
   rewrite (Z.mod_small (loop_mask w) (2 ^ 64) (loop_mask_range w)) Zmod_0_l.
   destruct (Nat.lt_ge_cases t 8) as [Ht|Ht].
   - (* w holds the NUL, at byte t. *)
@@ -195,16 +190,16 @@ Proof.
     { apply Z.eqb_neq. intros E. rewrite E in Hb. unfold byte_of in Hb. rewrite Z.div_0_l in Hb; [discriminate|].
       apply Z.pow_nonzero; lia. }
     rewrite Hm. close_if.
-    st. iApply wp_branch; [reflexivity|]. iNext. close_if.
-    do 16 (st; gen_top).
+    step. iApply wp_branch; [reflexivity|]. iNext. close_if.
+    do 16 (step; gen_top).
     set_tail "iw_5.iw_3.iw_1.iw_1.v22" (loop_mask w).
     rewrite (tail_first (loop_mask w) (Z.of_nat t) (loop_mask_range w) (loop_mask_01 w) ltac:(lia) Hb
       (fun i Hi => loop_mask_below w (Z.of_nat t) i ltac:(lia) Hlow Hi)).
-    st. st. set_int "iw_5.iw_3.iw_1.iw_1.v23" (8 * Z.of_nat t + 7).
-    st. set_int "iw_5.iw_3.iw_1.v27" (Z.of_nat t).
-    st. set_int "v41" (Z.of_nat t).
-    st. set_ptr "v42" (b + o + Z.of_nat t).
-    st.
+    step. step. set_int "iw_5.iw_3.iw_1.iw_1.v23" (8 * Z.of_nat t + 7).
+    step. set_int "iw_5.iw_3.iw_1.v27" (Z.of_nat t).
+    step. set_int "v41" (Z.of_nat t).
+    step. set_ptr "v42" (b + o + Z.of_nat t).
+    step.
     iApply wp_let;
       [reflexivity | reflexivity
       | cbn [map2_option]; rewrite (value_x_tmp _ _ _ (TAtom "v4") (WInt a)); [reflexivity | look Hv4]
@@ -237,4 +232,3 @@ Proof.
 Qed.
 
 End rules.
-End StrlenLoopOn.

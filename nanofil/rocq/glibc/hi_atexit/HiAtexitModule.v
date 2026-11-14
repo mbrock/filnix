@@ -10,6 +10,7 @@
     | [hi_decodes] | the term decodes to it |
     | [hi_globals], [hi_layout] | the globals its initial memory places | *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Transport Semantics Run.
 From Glibc Require Import HiAtexitTerm.

@@ -9,6 +9,7 @@
     the public cells. This file proves those copies. The parser's own
     behaviour stays a premise, because its proof is not finished. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry.
+From Glibc Require FileInv GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -59,14 +62,12 @@ Proof. do 2 eexists. vm_compute. reflexivity. Qed.
 Lemma wrapper_ctl_reset : needs_init (mkGetoptState 0 1 0 null 1 null 0 0 0) /\ (if 0 =? 0 then 1 else 0) = 1.
 Proof. split; [left; reflexivity | reflexivity]. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptWrapperOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The setup module supplies the private fields and the step tactics. *)
-Module I := GetoptInitializeOn R LG0.
-Import I I.S I.S.FI I.S.FI.ML I.S.FI.LG I.S.FI.L I.ST.
+Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads a four-byte cell as a signed 32-bit value. *)
 Ltac ld H :=
@@ -83,7 +84,7 @@ Section wrapper.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the wrapper's safepoints. *)
-Local Instance wrap_stable : SafepointStable (os_wi w0) := I.OW.os_wi_stable w0.
+Local Instance wrap_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance wrap_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -134,9 +135,9 @@ Lemma wp_getopt_internal_in e n av p lo li lonly pc b r oi roi oe roe i err i0 e
 Proof.
   intros H0 H2 H4 H6 H8 H10 H12 Hn Hlo Hpc Hfn Hgd Hgi Hge Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer.
   iIntros "Hli [%Hi Hib] Hle [%He Heb] Hl [%Hi0 Hb0] [%He0 Hb4] HR HK".
-  en. st. st. norm. chk "Hli". ld "Hli Hib". chk "Hl". sw "Hl Hb0".
-  st. st. norm. st. chk "Hle". ld "Hle Heb". chk "Hl". sw "Hl Hb4".
-  st. unwrap.
+  step. step. step. norm. check "Hli". ld "Hli Hib". check "Hl". sw "Hl Hb0".
+  step. step. norm. step. check "Hle". ld "Hle Heb". check "Hl". sw "Hl Hb4".
+  step. unwrap.
   set (xs := [WInt n; WPtr av; WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc]).
   assert (Hcf : exists cf, call_frame glibc_getopt_internal_r xs = Some cf) by (eexists; reflexivity).
   destruct Hcf as [cf Hcf].
@@ -178,13 +179,13 @@ Proof.
   intros Hx Ha' Hgd Hgi Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoa Hoaa Hoae Hoar Hoo Hooe Hoor.
   iIntros "Hl [%Hi' Hb0] [%Hc' Hb8] Hb16 Hcap Hli [%Hi Hib] Hla Hab Hlo [%Hc Hcb] HK".
   unfold getopt_wrap_after, getopt_wrap_blk. cbn [b_jump].
-  st. st. norm. chk "Hl". ld "Hl Hb0". chk "Hli". sw "Hli Hib".
-  st. st. st. norm. chk "Hl".
+  step. step. norm. check "Hl". ld "Hl Hb0". check "Hli". sw "Hli Hib".
+  step. step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hb16 Hcap"); [reflexivity | vx | left; reflexivity | arith | arith | exact Ha' |].
-  iNext. iIntros "Hl Hb16 _". chk "Hla".
+  iNext. iIntros "Hl Hb16 _". check "Hla".
   iApply (wp_raw_store_pointer with "Hla Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
   iNext. iIntros "Hla Hab".
-  st. st. st. norm. chk "Hl". ld "Hl Hb8". chk "Hlo". sw "Hlo Hcb".
+  step. step. step. norm. check "Hl". ld "Hl Hb8". check "Hlo". sw "Hlo Hcb".
   iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt (x mod 2 ^ 32))); [reflexivity | vx |].
   unwrap. iNext.
   iApply ("HK" with "Hl [Hb0] [Hb8] Hb16 Hli [Hib] Hla Hab Hlo [Hcb]"); by iSplit.
@@ -246,4 +247,3 @@ Proof.
 Qed.
 
 End wrapper.
-End GetoptWrapperOn.

@@ -11,6 +11,7 @@
     and proves the bounded exit lemmas for that final word
     comparison. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia List Bool.
 From Nanofil Require Import Syntax Values Memory Ops.

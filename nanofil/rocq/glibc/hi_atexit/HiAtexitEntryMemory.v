@@ -5,6 +5,7 @@
     the OS interpretation for every ghost heap agreeing with that
     prepared memory. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Values Memory Runtime Run Pieces Heap.

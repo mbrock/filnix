@@ -11,6 +11,7 @@
     higher-level proofs such as [StrnlenLogic] can invoke `__memchr` on
     borrowed or shared strings. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +20,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast MemchrLoop
   MemchrFirst.
+From Glibc Require MemchrFirst MemchrLast MemchrLoop WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -38,16 +41,10 @@ Proof.
   rewrite (Z.mod_small (c mod 256) (2 ^ 64)); [|lia]. rewrite (Z.mod_small (c mod 256) (2 ^ 64)); [reflexivity|lia].
 Qed.
 
-(** This functor packages the entry-block and whole-function rules for
-    `__memchr` over a [[runtime]] R and a program logic instance LG0. *)
-Module MemchrLogicOn (R : Runtime) (LG0 : LogicSig R).
-Module MF := MemchrFirstOn R LG0.
-Module MO := MF.MO.
-Module ML := MO.ML.
-Module WS := ML.WS.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG WS ML MO MF.
+Import L LG WordString MemchrLast MemchrLoop MemchrFirst.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -64,12 +61,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** To step past pure instructions without manual boilerplate, [st]
     advances one pure `let`, [[flight]], block entry, or `goto` step
     whose premises reduce. *)
-Ltac st :=
-  first
-    [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
-    | iApply wp_flight; [vx | reflexivity | vx | iNext]
-    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-    | iApply wp_goto; iNext ].
+
 
 (** Block `iw_2.L6` receives the saturated end address E, aligns it to an
     8-byte boundary, and tests the first word starting at byte offset k. *)
@@ -100,13 +92,13 @@ Proof.
   pose proof (Nat2Z.is_nonneg (List.length ws)) as Hws.
   pose proof (Z.mod_pos_bound E 8 ltac:(lia)) as HE8.
   iApply wp_enter; [reflexivity | exact Hphi |]. iNext. cbn [b_insts b_jump memchr_blk_end].
-  do 5 st. cbn [ptr_addr ptr_cap]. sp "iw_3.v12" E. si "v40" E.
-  st. rewrite (Z.mod_small E (2 ^ 64)); [|zl]. rewrite land_align; [|zl].
-  st. st. sp "v43" (E - E mod 8).
-  do 6 st. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
+  do 5 step. cbn [ptr_addr ptr_cap]. sp "iw_3.v12" E. si "v40" E.
+  step. rewrite (Z.mod_small E (2 ^ 64)); [|zl]. rewrite land_align; [|zl].
+  step. step. sp "v43" (E - E mod 8).
+  do 6 step. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
   si "iw_4.iw_1.v13" (first_mask (Z.lxor w (rep c))).
-  do 3 st. si "iw_5.v12" (first_shift (Z.lxor w (rep c)) a).
-  st. iApply wp_branch; [reflexivity|]. iNext.
+  do 3 step. si "iw_5.v12" (first_shift (Z.lxor w (rep c)) a).
+  step. iApply wp_branch; [reflexivity|]. iNext.
   rewrite (Z.mod_small (first_shift _ _) (2 ^ 64) (first_shift_range _ _)) Zmod_0_l.
   set (m := first_shift (Z.lxor w (rep c)) a).
   assert (Hm : forall i, 0 <= i -> byte_of m i =
@@ -197,10 +189,10 @@ Proof.
   iIntros "Hl Hps HK".
   pose proof (Z.mod_pos_bound a 8 ltac:(lia)) as Hk.
   assert (Hal : b <= a - a mod 8) by (pose proof (Z.div_mod a 8 ltac:(lia)); pose proof (Z.div_mod b 8 ltac:(lia)); nia).
-  st. st. iApply wp_branch; [reflexivity|]. iNext. rewrite (Z.mod_small n (2 ^ 64) Hn).
+  step. step. iApply wp_branch; [reflexivity|]. iNext. rewrite (Z.mod_small n (2 ^ 64) Hn).
   destruct (Z.eqb_spec n 0) as [->|Hn0].
   { (* No bytes: null. *)
-    close_if. st. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+    close_if. step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     destruct r as [t|]; [|iApply ("HK" with "Hl Hps")].
     exfalso. destruct Hhit as [Ht _]. unfold memchr_end in Ht. lia. }
   rewrite (proj2 (Z.eqb_neq _ _) Hn0). close_if.
@@ -211,13 +203,13 @@ Proof.
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   apply Forall_cons_1 in Hr as [Hw0 Hr'].
   cbn [words_ps]. rewrite ptsq_app. iDestruct "Hps" as "[Hw Hps]".
-  do 5 st. cbn [ptr_addr ptr_cap]. rewrite (Z.mod_small a (2 ^ 64)); [|zl]. rewrite land_align; [|zl].
+  do 5 step. cbn [ptr_addr ptr_cap]. rewrite (Z.mod_small a (2 ^ 64)); [|zl]. rewrite land_align; [|zl].
   sp "v19" (a - a mod 8).
   iApply (wp_check_read_dq with "Hl"); [reflexivity | vx | exact Hc | ar | ar | apply Z.mod_1_r |].
   iNext. iIntros "Hl".
   iApply (wp_raw_load_read_dq with "Hl Hw"); [reflexivity | reflexivity | exact Hc | ar |].
   iNext. iIntros "Hl Hw". rewrite (Z.mod_small w (2 ^ 64) Hw0).
-  do 6 st. rewrite (rep_ext c Hcr). si "v34" (n - 1). si "iw_2.v9" (2 ^ 64 - 1 - a).
+  do 6 step. rewrite (rep_ext c Hcr). si "v34" (n - 1). si "iw_2.v9" (2 ^ 64 - 1 - a).
   iApply wp_branch; [reflexivity|]. iNext.
   rewrite (Z.mod_small (2 ^ 64 - 1 - a) (2 ^ 64)); [|zl]. rewrite (Z.mod_small (n - 1) (2 ^ 64)); [|zl].
   set (k := Z.to_nat (a mod 8)) in Hhit.
@@ -248,7 +240,7 @@ Proof.
     + cbn [words_ps]. rewrite ptsq_app. iFrame.
     + iIntros "Hl Hps". cbn [words_ps]. rewrite ptsq_app. iApply ("HK" with "Hl Hps").
   - change ((if false then 1 else 0) mod 2 ^ 32 =? 0) with true. cbn [edge_label].
-    do 2 st. si "iw_2.v13" (a + n - 1). st.
+    do 2 step. si "iw_2.v13" (a + n - 1). step.
     replace (memchr_end a n) with (a + n - 1) in Hhit by (unfold memchr_end; lia).
     iApply (memchr_first dq b reg w ws a c0 k _ _ c (a + n - 1) r with "Hl [Hw Hps] [HK]").
     + exact Hc.
@@ -273,4 +265,3 @@ Proof.
 Qed.
 
 End rules.
-End MemchrLogicOn.

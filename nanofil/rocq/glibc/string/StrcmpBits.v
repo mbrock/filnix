@@ -12,6 +12,7 @@
     the arithmetic, bitmask, and [[word]]-window facts needed by the
     `c: strcmp` loop and entry proofs. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia List Bool.
 From Nanofil Require Import Syntax Values Memory Ops.

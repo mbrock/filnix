@@ -38,6 +38,7 @@
     On success the wrapper returns `0`, and on failure it returns `c: -1`
     as `2 ^ 32 - 1`. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -45,6 +46,8 @@ From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic.
 From Glibc Require Import OsBlocks OsWorld.
+From Glibc Require OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -114,12 +117,9 @@ Qed.
     [[weakest-precondition|weakest-precondition]] rules that callers use
     in proofs. *)
 
-(** To verify C functions that call `c: zsys_fstat`, [OsFstatOn] lifts the
-    contract above into separation-logic proof rules for a given
-    [[runtime]] and program logic. *)
-Module OsFstatOn (R : Runtime) (LG0 : LogicSig R).
-Module OW := OsWorldOn R LG0.
-Import OW OW.L OW.LG.
+(** The rules below lift the contract above into separation-logic proof rules
+    for C functions that call `c: zsys_fstat`. *)
+Import OsWorld OsWorld.L OsWorld.LG.
 
 (** When an invocation of [os_fstat_contract] returns to its caller, it
     leaves the OS world unchanged and yields either `0` or `c: -1`. *)
@@ -203,4 +203,3 @@ Proof.
 Qed.
 
 End rule.
-End OsFstatOn.

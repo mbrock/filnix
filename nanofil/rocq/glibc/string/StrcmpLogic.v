@@ -11,6 +11,7 @@
     `c: strcmp` so callers can share strings, recover their read
     permissions, and obtain [strcmp_res]. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,21 +19,19 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpCode StrcmpBits StrcmpLoop.
+From Glibc Require StrcmpLoop WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** Module [StrcmpLogicOn] packages the `c: strcmp` entry triples over a
-    given [[runtime]] R and logic instance LG0. *)
-Module StrcmpLogicOn (R : Runtime) (LG0 : LogicSig R).
+
 (** Module [SL] provides the aligned and unaligned word-loop proofs. *)
-Module SL := StrcmpLoopOn R LG0.
 (** Module [WS] provides the word-window string representation. *)
-Module WS := SL.WS.
 (** Module [LG] re-exports the program logic instance LG0. *)
 Module LG := LG0.
 (** Module [L] provides the nanofil language definition for LG. *)
 Module L := LG.L.
-Import L LG WS SL.
+Import L LG WordString StrcmpLoop.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -46,22 +45,20 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Tactic [sl] steps past a `let` instruction while keeping its bound
     value symbolic. *)
-Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
+
 (** Tactic [sf] steps past a capability `flight` check instruction. *)
-Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
+
 (** Tactic [en] enters the target basic block of a pending frame jump. *)
-Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
+
 (** Tactic [sg] steps through a `goto` terminator and immediately enters
     its destination block. *)
-Ltac sg := eapply (s_goto registry wi ge); en.
+
 (** Tactic [sb] steps past a conditional `branch` instruction without
     evaluating its condition. *)
-Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
+
 (** Tactic [slk] steps past a `let` instruction that reads an earlier
     variable n whose value is given by H. *)
-Ltac slk n H := eapply (s_let registry wi ge); [reflexivity | reflexivity |
-  cbn [map2_option value_x]; repeat (rewrite (lookup_after_put_other _ (TAtom n)); [|reflexivity]);
-  rewrite H; reflexivity | intros ?; reflexivity |].
+
 (** Tactic [norm] rewrites the integer held by [[temporary]] name to v
     using tactic tac. *)
 Ltac norm name v tac :=
@@ -109,7 +106,7 @@ Lemma after_bytes dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c Q1 q1 q2 z1 z2 z
 Proof.
   intros Hs1 Hs2 Hc HQ1 Hsame Hq1 Hc1 Hq2 Hc2. facts Hs1 Hs2.
   destruct (same_upto_len _ _ _ _ _ A1 A2 Hsame) as [L1 L2].
-  iIntros "W1 W2 HK". en.
+  iIntros "W1 W2 HK". step.
   set (Q2 := (ptr_addr p2 mod 8 + c) / 8). set (o := (ptr_addr p2 mod 8 + c) mod 8).
   assert (HQ2 : ptr_addr p2 mod 8 + c = 8 * Q2 + o) by (apply Z.div_mod; lia).
   assert (Ho : 0 <= o < 8) by (apply Z.mod_pos_bound; lia). destruct Ho as [Ho0 Ho8].
@@ -117,26 +114,26 @@ Proof.
   { replace (ptr_addr p2 + c) with (o + (wstart p2 / 8 + Q2) * 8).
     - rewrite Z_mod_plus_full. apply Z.mod_small. lia.
     - pose proof (Z.div_mod (wstart p2) 8 ltac:(lia)). lia. }
-  sf. normp "v51" (ptr_addr p1 + c + 8).
+  step. normp "v51" (ptr_addr p1 + c + 8).
   iApply (wp_win_word registry wi ge _ _ _ _ _ _ _ _ _ _ dq1 b1 reg1 (wstart p1 - b1) ws1 Q1 with "W1");
     [reflexivity | rewrite Hc1; exact C1 | lia | lia | lia | lia | lia | lia | exact F1 |]. iIntros "W1".
   set (x := wrd ws1 Q1). pose proof (wrd_range ws1 Q1 F1) as X1.
-  sl. sl. normt o ltac:(rewrite -Hao; symmetry; rewrite Hq2; apply land7; lia).
-  sl. sb. rewrite (Z.mod_small o); [|lia]. rewrite ?Hc1. change (0 mod 2 ^ 64) with 0.
+  step_symbolic. step_symbolic. normt o ltac:(rewrite -Hao; symmetry; rewrite Hq2; apply land7; lia).
+  step_symbolic. branch_symbolic. rewrite (Z.mod_small o); [|lia]. rewrite ?Hc1. change (0 mod 2 ^ 64) with 0.
   destruct (Z.eqb_spec o 0) as [Eo|Eo]; close_if.
-  - en. sf. normp "iw_1.v8" (ptr_addr p2 + c + 8).
+  - step. step. normp "iw_1.v8" (ptr_addr p2 + c + 8).
     iApply (wp_win_word registry wi ge _ _ _ _ _ _ _ _ _ _ dq2 b2 reg2 (wstart p2 - b2) ws2 Q2 with "W2");
       [reflexivity | cbn; rewrite Hc2; exact C2 | cbn; lia | lia | lia | lia | lia | lia | exact F2 |]. iIntros "W2".
-    sg. norm "iw_1.pr.4" (wrd ws2 Q2) ltac:(symmetry; apply Z.mod_small, wrd_range, F2).
+    (step; step). norm "iw_1.pr.4" (wrd ws2 Q2) ltac:(symmetry; apply Z.mod_small, wrd_range, F2).
     norm "iw_1.pr.3" x ltac:(symmetry; apply Z.mod_small; lia).
     rewrite ?Hc2. iApply (aligned_loop registry wi ge _ _ _ _ _ _ _ _ _ _ _ _ c Q1 Q2 with "W1 W2 HK"); [done | done | lia | lia | lia | done].
-  - en. sf. normp "v69" (wstart p2 + 8 * Q2). sf. normp "iw_2.v10" (wstart p2 + 8 * Q2 + 8).
+  - step. step. normp "v69" (wstart p2 + 8 * Q2). step. normp "iw_2.v10" (wstart p2 + 8 * Q2 + 8).
     iApply (wp_win_word registry wi ge _ _ _ _ _ _ _ _ _ _ dq2 b2 reg2 (wstart p2 - b2) ws2 Q2 with "W2");
       [reflexivity | cbn; rewrite Hc2; exact C2 | cbn; lia | lia | lia | lia | lia | lia | exact F2 |]. iIntros "W2".
     set (lo := wrd ws2 Q2). pose proof (wrd_range ws2 Q2 F2) as XL.
-    sl. normt (8 * o) ltac:(arith). sl. normt (64 - 8 * o) ltac:(arith).
-    sl. sl. sl. normt (merge lo all64 o) ltac:(reflexivity).
-    do 4 sl. normt (loop_mask (merge lo all64 o)) ltac:(reflexivity). sl. sb.
+    step_symbolic. normt (8 * o) ltac:(arith). step_symbolic. normt (64 - 8 * o) ltac:(arith).
+    step_symbolic. step_symbolic. step_symbolic. normt (merge lo all64 o) ltac:(reflexivity).
+    do 4 step_symbolic. normt (loop_mask (merge lo all64 o)) ltac:(reflexivity). step_symbolic. branch_symbolic.
     pose proof (merge_range lo all64 o) as XM.
     assert (Hb : forall u, 0 <= u < 8 - o -> sbyte p1 ws1 (c + u) = byte_of x u /\
                                          sbyte p2 ws2 (c + u) = byte_of (merge lo all64 o) u).
@@ -144,14 +141,14 @@ Proof.
       replace (u + o <? 8) with true by (symmetry; apply Z.ltb_lt; lia).
       unfold lo. rewrite (bt_word ws2 Q2 (u + o)); [|lia|lia]. f_equal. lia. }
     destruct (Z.eq_dec (loop_mask (merge lo all64 o)) 0) as [Hz|Hz].
-    + rewrite Hz. close_if. en.
+    + rewrite Hz. close_if. step.
       norm "iw_2.pr.5" lo ltac:(symmetry; apply Z.mod_small; lia). norm "iw_2.pr.4" x ltac:(symmetry; apply Z.mod_small; lia).
       rewrite ?Hc2. iApply (unaligned_loop registry wi ge _ _ _ _ _ _ _ _ _ _ _ _ c o Q1 Q2 with "W1 W2 HK");
         [done | done | lia | lia | lia | lia | done | | reflexivity | reflexivity].
       intros u Hu. destruct (Hb u Hu) as [_ ->]. apply (loop_mask_zero _ XM); [exact Hz | lia].
     + rewrite (Z.mod_small (loop_mask _) _ (loop_mask_range _)).
       replace (loop_mask (merge lo all64 o) =? 0 mod 2 ^ 64) with false by (symmetry; apply Z.eqb_neq; exact Hz).
-      close_if. en.
+      close_if. step.
       norm "iw_2.pr.6" (merge lo all64 o) ltac:(symmetry; apply Z.mod_small; lia).
       norm "iw_2.pr.3" x ltac:(symmetry; apply Z.mod_small; lia).
       destruct (loop_mask_has_zero _ XM Hz) as (z & Hz8 & Hz0).
@@ -197,42 +194,42 @@ Proof.
   revert i q1 q2 e Hn. induction n as [|n IH]; intros i q1 q2 e Hn [Hi0 Hi8] Hsame Hq1 Hc1 Hq2 Hc2 Hv8;
     destruct (same_upto_len _ _ _ _ _ A1 A2 Hsame) as [L1 L2];
     iIntros "W1 W2 HK"; cbn [blk10 b_insts b_jump];
-    sl; normt i ltac:(symmetry; apply sext_small; lia); slk "v8" Hv8; sb;
+    step_symbolic; normt i ltac:(symmetry; apply sext_small; lia); step_lookup "v8" Hv8; branch_symbolic;
     rewrite (Z.mod_small i); try lia; rewrite (Z.mod_small n8); try lia.
   - (* i = n8: the words. *)
     replace (i <? n8) with false by (symmetry; apply Z.ltb_ge; lia). close_if.
     assert (HQ1 : ptr_addr p1 mod 8 + i = 8 * ((ptr_addr p1 mod 8 + i) / 8)).
     { replace i with n8 by lia. unfold n8. Z.div_mod_to_equations. lia. }
     iApply (after_bytes _ _ _ _ _ _ _ _ _ _ _ _ i _ q1 q2 with "W1 W2 HK"); done || lia.
-  - destruct (Z.ltb_spec i n8) as [Hlt|Hge]; [|lia]. close_if. en.
-    sf. normp "v20" (ptr_addr p1 + i + 1).
+  - destruct (Z.ltb_spec i n8) as [Hlt|Hge]; [|lia]. close_if. step.
+    step. normp "v20" (ptr_addr p1 + i + 1).
     iApply (wp_win_byte registry wi ge _ _ _ _ _ _ _ _ _ _ dq1 b1 reg1 (wstart p1 - b1) ws1 (ptr_addr p1 mod 8 + i)
               with "W1"); [reflexivity | rewrite Hc1; exact C1 | lia | lia | lia | lia | lia | lia |]. iIntros "W1".
-    sl. normt (sbyte p1 ws1 i) ltac:(symmetry; apply sb_ub, byte_of_range).
-    sf. normp "v25" (ptr_addr p2 + i + 1).
+    step_symbolic. normt (sbyte p1 ws1 i) ltac:(symmetry; apply sb_ub, byte_of_range).
+    step. normp "v25" (ptr_addr p2 + i + 1).
     iApply (wp_win_byte registry wi ge _ _ _ _ _ _ _ _ _ _ dq2 b2 reg2 (wstart p2 - b2) ws2 (ptr_addr p2 mod 8 + i)
               with "W2"); [reflexivity | rewrite Hc2; exact C2 | lia | lia | lia | lia | lia | lia |]. iIntros "W2".
-    sl. normt (sbyte p2 ws2 i) ltac:(symmetry; apply sb_ub, byte_of_range).
+    step_symbolic. normt (sbyte p2 ws2 i) ltac:(symmetry; apply sb_ub, byte_of_range).
     assert (Y1 : 0 <= sbyte p1 ws1 i < 256) by apply byte_of_range.
     assert (Y2 : 0 <= sbyte p2 ws2 i < 256) by apply byte_of_range.
     set (c1 := sbyte p1 ws1 i) in *. set (c2 := sbyte p2 ws2 i) in *.
     assert (Hstop : stop_at (sbyte p1 ws1) (sbyte p2 ws2) i -> strcmp_res s1 s2 = (c1 - c2) mod 2 ^ 32).
     { intros Hst. apply strcmp_res_stop; [ | exact A1 | exact A2 | lia | exact Hsame | exact Hst].
       apply Forall_forall. intros x Hx. rewrite Forall_forall in H1. specialize (H1 x Hx). lia. }
-    sl. normt ((c1 - c2) mod 2 ^ 32) ltac:(arith). sl. sb.
+    step_symbolic. normt ((c1 - c2) mod 2 ^ 32) ltac:(arith). step_symbolic. branch_symbolic.
     rewrite (Z.mod_small c1); [|lia]. change (0 mod 2 ^ 32) with 0.
     destruct (Z.eqb_spec c1 0) as [Z1|Z1]; close_if.
-    + en. sb. close_if. en.
+    + step. branch_symbolic. close_if. step.
       eapply (s_ret registry wi ge _ _ _ _ _ _ (strcmp_res s1 s2)); [reflexivity | reflexivity | |].
       { rewrite Hstop; [apply Zmod_mod | left; exact Z1]. }
       iApply ("HK" with "W1 W2").
-    + en. sl. sg. sb. rewrite !Zmod_mod. change (0 mod 2 ^ 32) with 0.
+    + step. step_symbolic. (step; step). branch_symbolic. rewrite !Zmod_mod. change (0 mod 2 ^ 32) with 0.
       destruct (Z.eqb_spec ((c1 - c2) mod 2 ^ 32) 0) as [D|D]; close_if.
       * assert (Ec : c1 = c2) by (destruct (Z.eq_dec c1 c2); [done | exfalso; exact (byte_diff_nonzero c1 c2 Y1 Y2 n0 D)]).
-        en. sl. normt (i + 1) ltac:(arith). sg. norm "pr.3" (i + 1) ltac:(arith).
+        step. step_symbolic. normt (i + 1) ltac:(arith). (step; step). norm "pr.3" (i + 1) ltac:(arith).
         iApply (IH (i + 1) with "W1 W2 HK"); [lia | lia | | cbn; lia | done | cbn; lia | done | look Hv8].
         intros j Hj. destruct (Z.eq_dec j i) as [->|]; [split; [exact Ec | exact Z1] | apply Hsame; lia].
-      * en. eapply (s_ret registry wi ge _ _ _ _ _ _ (strcmp_res s1 s2)); [reflexivity | reflexivity | |].
+      * step. eapply (s_ret registry wi ge _ _ _ _ _ _ (strcmp_res s1 s2)); [reflexivity | reflexivity | |].
         { rewrite Hstop; [apply Zmod_mod | right; intros Ec; apply D; unfold c1, c2; rewrite Ec Z.sub_diag; reflexivity]. }
         iApply ("HK" with "W1 W2").
 Qed.
@@ -255,8 +252,8 @@ Lemma strcmp_entry dq1 dq2 p1 p2 s1 s2 e Φ :
 Proof.
   intros He. iIntros "(%b1 & %reg1 & %ws1 & %Hs1 & W1) (%b2 & %reg2 & %ws2 & %Hs2 & W2) HK". facts Hs1 Hs2.
   destruct He as [-> | ->];
-    (en; sl; sl; sl; normt ((- ptr_addr p1) mod 8) ltac:(symmetry; apply neg_land7; lia);
-     sg; norm "pr.3" 0 ltac:(reflexivity);
+    (step; step_symbolic; step_symbolic; step_symbolic; normt ((- ptr_addr p1) mod 8) ltac:(symmetry; apply neg_land7; lia);
+     (step; step); norm "pr.3" 0 ltac:(reflexivity);
      iApply (byte_loop _ _ _ _ _ _ _ _ _ _ _ _ 0 with "W1 W2 [HK]");
        [exact Hs1 | exact Hs2 | split; [lia | apply Z.mod_pos_bound; lia] | intros j Hj; lia | lia | done | lia | done
        | reflexivity |];
@@ -293,4 +290,3 @@ Proof.
 Qed.
 
 End rules.
-End StrcmpLogicOn.
