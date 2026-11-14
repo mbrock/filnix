@@ -6,9 +6,10 @@ from pathlib import Path
 
 
 class Expectations:
-    def __init__(self, location):
+    def __init__(self, location, extra=()):
         location = Path(location)
         files = sorted(location.glob('*.txt')) if location.is_dir() else ([location] if location.exists() else [])
+        files += [Path(p) for p in extra]
         self.rows = {}
         self.moves = {}
         self.pins = {}

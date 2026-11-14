@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+from audit_changes import AuditChanges
 
 
 if __name__ == '__main__':
@@ -11,7 +12,9 @@ if __name__ == '__main__':
     parser.add_argument('after', type=Path)
     parser.add_argument('--hello-abstract', type=Path,
                         help='compare generic Hello against this abstract-tree audit; require concrete Hello Closed')
+    parser.add_argument('--stage50-evidence', type=Path, action='append', default=[])
     a = parser.parse_args()
+    changes = AuditChanges(a.stage50_evidence)
     before, after = [json.loads(p.read_text()) for p in (a.before, a.after)]
     abstract = json.loads(a.hello_abstract.read_text()) if a.hello_abstract else None
     failures = 0
@@ -32,7 +35,9 @@ if __name__ == '__main__':
                     x['pass'] and y['pass'] and
                     x['types'] == y['types'] and
                     x['normalized_statement'] == y['normalized_statement'])
-            print('PASS' if same else 'FAIL', group + ':' + name)
+            accepted = not same and changes.accepts_audit(x, y, right.get('tree_sha256'))
+            print('PASS reviewed transition' if accepted else 'PASS' if same else 'FAIL', group + ':' + name)
+            same = same or accepted
             if not same:
                 print('before:', x['raw'] if x else '<absent>')
                 print('after:', y['raw'] if y else '<absent>')

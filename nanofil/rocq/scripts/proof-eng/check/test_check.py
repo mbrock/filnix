@@ -6,11 +6,124 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import copy
+
+from audit_changes import receipt, reference, tree_digest
 
 HERE = Path(__file__).resolve().parent
 
 
 class Checks(unittest.TestCase):
+    def test_discovery_does_not_accept_changes_or_hide_probe_errors(self):
+        with tempfile.TemporaryDirectory(prefix='discovery-') as tmp:
+            root = Path(tmp)
+            before, after = root / 'before', root / 'after'
+            source = 'Definition unchanged : nat := 0. Lemma target : True. Proof. auto. Qed.\n'
+            def compile(tree, text):
+                tree.mkdir(exist_ok=True)
+                path = tree / 'Toy.v'
+                path.write_text(text)
+                subprocess.run(['rocq', 'c', '-q', '-R', str(tree), 'Glibc', str(path)],
+                               check=True, capture_output=True)
+            compile(before, source)
+            compile(after, source)
+            manifest = root / 'candidates.txt'
+            manifest.write_text('changed\tToy.v\ttarget\nchanged\tToy.v\tunchanged\n')
+            command = ['python3', str(HERE / 'check.py'), 'statements', str(before), str(after),
+                       '--plugin', os.environ['PE_CHECK_PLUGIN'], '--expectations', str(manifest),
+                       '--output', str(root / 'report')]
+            def run(discovery):
+                result = subprocess.run(command + (['--discovery'] if discovery else []), capture_output=True)
+                return result.returncode, json.loads((root / 'report/report.json').read_text())
+            code, report = run(False)
+            self.assertEqual(code, 1)
+            self.assertEqual(len(report['errors']), 2)
+            code, report = run(True)
+            self.assertEqual((code, report['errors'], report['differences']), (0, [], []))
+            compile(after, source.replace('target : True', 'target : False -> False'))
+            code, report = run(True)
+            self.assertEqual((code, report['errors']), (1, []))
+            self.assertEqual([d['name'] for d in report['differences']], ['target'])
+            d = report['differences'][0]
+            manifest.with_suffix('.elaborated.json').write_text(json.dumps({'version': 1, 'changes': [
+                {k: d[k] for k in ('kind', 'file', 'name')} |
+                {s: d[s]['normalized'] for s in ('before', 'after')}]}))
+            code, report = run(True)
+            self.assertEqual(code, 1)
+            self.assertFalse(report['differences'][0]['accepted'])
+            (after / 'Toy.vo').unlink()
+            code, report = run(True)
+            self.assertEqual(code, 1)
+            self.assertTrue(report['errors'])
+
+    def test_reviewed_audit_permissions(self):
+        # Exercise the comparison's report interface. Adapter compilation is
+        # the stage's responsibility; these fixtures model its checked output.
+        with tempfile.TemporaryDirectory(prefix='audit-permissions-') as tmp:
+            root = Path(tmp)
+            tree = root / 'tree'
+            tree.mkdir()
+            (tree / 'Toy.v').write_text('Lemma rule : True. Proof. exact I. Qed.\n')
+            key = ('getopt/GetoptLongArg.v', 'wp_long_found')
+            manifest = root / '50-program.txt'
+            manifest.write_text('changed\t' + '\t'.join(key) + '\n# equivalence\t' +
+                                '\t'.join(key) + '\tforward\treverse\n')
+            manifest.with_suffix('.equivalence.v').write_text(
+                'Lemma forward : (forall n : nat, True) -> True. Proof. auto. Qed.\n'
+                'Lemma reverse : True -> (forall n : nat, True). Proof. auto. Qed.\n')
+            manifest.with_suffix('.elaborated.json').write_text(json.dumps({'version': 1, 'changes': [
+                {'file': key[0], 'name': key[1], 'kind': 'changed', 'before': 'old type', 'after': 'new type'}]}))
+            checked = {'file': key[0], 'name': key[1], 'adapters': ['forward', 'reverse'],
+                       'before': {}, 'after': {}, 'directions': [{}, {}]}
+            concrete = receipt(tree, manifest, {'runtime': 'concrete', 'pairs': [checked]})
+            fields = {'Glibc.Fix.R.state': 'Type'}
+            abstract_checked = checked | {'before': fields, 'after': fields, 'directions': [fields, {}]}
+            abstract = receipt(tree, manifest, {'runtime': 'abstract', 'pairs': [abstract_checked]})
+            paths = [root / f'{name}.json' for name in ('before', 'after', 'concrete', 'abstract')]
+            def run(expected, receipts, declaration=reference(key), assumption_types=None):
+                target = {'pass': True, 'qualified': True, 'types': {}, 'raw': 'Closed under the global context',
+                          'declaration': declaration}
+                for path, statement in zip(paths[:2], ('old type', 'new type')):
+                    entry = target | {'normalized_statement': statement}
+                    if path == paths[1] and assumption_types is not None:
+                        entry['types'] = assumption_types
+                    path.write_text(json.dumps({'test': {'pass': True, 'tree_sha256': tree_digest(tree),
+                                                         'targets': {key[1]: entry}}}))
+                command = ['python3', str(HERE / 'compare-audits.py'), *map(str, paths[:2])]
+                for path, data in zip(paths[2:], receipts):
+                    path.write_text(json.dumps(data))
+                    command += ['--stage50-evidence', str(path)]
+                result = subprocess.run(command, capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            run(0, [concrete])
+            # An unlisted file cannot borrow a listed declaration's bare name.
+            run(1, [concrete], 'Glibc.other.GetoptLongArg.wp_long_found')
+            run(1, [], reference(key))
+            run(1, [concrete], assumption_types={'new_axiom': 'True'})
+            run(1, [abstract])  # Abstract evidence also requires Closed interpreter adapters.
+            run(0, [concrete, abstract])
+            # Distinguish runtimes by source identity so the concrete receipt
+            # cannot mask a rejected abstract receipt in the following cases.
+            other_source = copy.deepcopy(concrete)
+            other_source['tree_sha256'] = 'different concrete tree'
+            run(0, [other_source, abstract])
+            for label, mutation in (
+                ('outside Fix.R', lambda e: e['directions'][0].update({'External.axiom': 'True'})),
+                ('unlisted Fix.R field', lambda e: e['directions'][0].update({'Glibc.Fix.R.alloc': 'Type'})),
+                ('changed field type', lambda e: e['directions'][0].update({'Glibc.Fix.R.state': 'Prop'})),
+                ('unequal statement assumptions', lambda e: e['after'].update({'Glibc.Fix.R.alloc': 'Type'})),
+            ):
+                with self.subTest(label=label):
+                    bad = copy.deepcopy(abstract)
+                    # JSON roundtrip separates shared dicts in the fixture.
+                    bad = json.loads(json.dumps(bad))
+                    mutation(bad['declarations'][0]['assumptions'])
+                    bad['validated_pairs'][0] = bad['declarations'][0]['assumptions']
+                    run(1, [other_source, bad])
+            bad = copy.deepcopy(concrete)
+            bad['declarations'][0]['assumptions']['directions'][1] = {'Glibc.Fix.R.state': 'Type'}
+            run(1, [bad])  # Interpreter evidence must be Closed, even for runtime fields.
+
     def test_tactics_packet_checks_whole_boundary(self):
         with tempfile.TemporaryDirectory(prefix='tactics-packet-') as tmp:
             root = Path(tmp)
@@ -90,10 +203,18 @@ class Checks(unittest.TestCase):
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
             report = json.loads((root / 'report/report.json').read_text())
             self.assertEqual(report['runtime_partition']['concrete'], ['Bridge.v', 'Toy.v'])
+            partition_command = ['python3', str(HERE / 'check.py'), 'partition', str(trees[0]),
+                                 '--output', str(root / 'partition')]
+            subprocess.run(partition_command, check=True, capture_output=True)
+            self.assertEqual(json.loads((root / 'partition/report.json').read_text()),
+                             {'roots': ['Toy.v'], 'concrete': ['Bridge.v', 'Toy.v'], 'general': []})
+            self.assertEqual((root / 'partition/general-targets.txt').read_text(), '')
             (trees[2] / 'Toy.vo').unlink()
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
             compile(trees[0], 'Lemma target : True. Proof. exact I. Qed.\n')
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+            subprocess.run(partition_command, check=True, capture_output=True)
+            self.assertEqual((root / 'partition/general-targets.txt').read_text(), 'Bridge.vo\nToy.vo\n')
 
     def test_statement_binding_runtime_and_axiom_mutations(self):
         plugin = os.environ['PE_CHECK_PLUGIN']
@@ -161,6 +282,20 @@ class Checks(unittest.TestCase):
             compile(before, included)
             compile(after, flat)
             compare(0)
+            # A renamed logic parameter still moves local references and
+            # their universe owners; it must not equate distinct definitions.
+            definitions = ('Definition bound (A : Type) : Prop := True.\n'
+                           'Definition other (A : Type) : Prop := True.\n'
+                           'Lemma target : forall A : Type, bound A. Proof. intros; exact I. Qed.\n')
+            for logic_parameter in ('LG', 'ProofLogic'):
+                compile(before, 'From Nanofil Require Import Runtime Logic.\n' +
+                        f'Module General (R : Runtime) ({logic_parameter} : LogicSig R).\n' +
+                        definitions + 'End General.\n')
+                compile(after, definitions)
+                compare(0)
+                compile(after, definitions.replace('forall A : Type, bound A', 'forall A : Type, other A'))
+                self.assertEqual([d['name'] for d in compare(1)['differences']], ['target'])
+            compile(after, flat)
             signature_include = (prelude + 'Module General (R : Runtime). Definition bound : Prop := True. End General.\n'
                                  'Module Type Sig (R : Runtime). Include General R. End Sig.\n'
                                  'Module Copy (R : Runtime) (D : Sig R). Lemma target : D.bound. Proof. exact I. Qed. End Copy.\n')
