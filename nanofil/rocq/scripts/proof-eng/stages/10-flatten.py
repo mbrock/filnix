@@ -16,6 +16,8 @@ parser.add_argument('tree')
 parser.add_argument('--runtime', choices=('interp', 'abstract'),
                     default=os.environ.get('PE_RUNTIME', 'interp'))
 parser.add_argument('--name-report', help='write the duplicate-name and unqualified-use audit as JSON')
+parser.add_argument('--check-names-only', action='store_true',
+                    help='check duplicate names without rewriting the input tree')
 parser.add_argument('--name-baseline', default=os.path.join(os.path.dirname(__file__), '..', 'flatten-name-baseline.json'),
                     help='reviewed duplicated names allowed to have unqualified uses')
 parser.add_argument('--notation-report', help='write imported notation-string collisions as JSON')
@@ -38,7 +40,7 @@ for f in files:
 with open(args.comment_table) as table:
     comment_table = {row['file']: row for row in json.load(table)}
 for f, row in comment_table.items():
-    if text.get(f, '').count(row['original']) != 1:
+    if not args.check_names_only and text.get(f, '').count(row['original']) != 1:
         raise ValueError(f'{f}: expected exactly one original comment from {args.comment_table}')
 HDR = re.compile(r'^[ \t]*Module ([A-Za-z0-9_]+) \(R : Runtime\)(?: \(LG0 : LogicSig R\))?\.[ \t]*\n', re.M)
 functor_file = {}
@@ -181,6 +183,9 @@ with open(args.name_baseline) as baseline:
     unknown = sorted(name_report.keys() - set(json.load(baseline)))
 if unknown:
     raise ValueError(f'new duplicated names with unqualified uses: {unknown}; review {args.name_baseline}')
+if args.check_names_only:
+    print(f'@@proof-eng duplicate-name check passed: {len(name_report)} reviewed names')
+    sys.exit(0)
 notation_collisions = []
 removed_comments = []
 shadowed = []

@@ -354,6 +354,30 @@ def main(root):
         if re.search(r"\bside\b", masked(text)):
             raise ValueError(f"{path}: unresolved legacy side reference; retain its alias until reviewed")
         path.write_text(text)
+    # Compare after offset unfolding and legacy solver renaming, so copies
+    # introduced by those transformations are removed as well.
+    redirects = {}
+    for path in sorted(root.rglob("*.v")):
+        text = path.read_text()
+        for name, a, b in reversed(list(tactics(text))):
+            normalized = body(text[a:b])
+            canonical = library.get(name)
+            if name == "at_of" and canonical:
+                normalized = normalized.replace("goalwith|-", "goalwith||-").replace(
+                    "=>aend.", "=>leta':=evalhnfinaina'end.")
+            if name == "decide_ints":
+                normalized = normalized.replace(
+                    "unfoldsign_extension,vt_file,vt_wfile;cbvzeta;unwrap;",
+                    "unfoldsign_extension;autounfoldwithoffs;cbvzeta;unwrap2;")
+            if canonical and normalized == canonical:
+                text = text[:a] + text[b:]
+                removed += 1
+                owner = "LibioTactics" if name in stream_library else "GlibcTactics"
+                for prefix in (path.stem, "Glibc." + path.stem):
+                    redirects[prefix + "." + name] = owner + "." + name
+        path.write_text(text)
+    for path in sorted(root.rglob("*.v")):
+        path.write_text(rewrite_tactics(path.read_text(), redirects))
     project = root / "_RocqProject"
     if project.exists():
         text = project.read_text()
