@@ -142,9 +142,12 @@ Context (Hsplit : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢
     runs. It leaves a session at the new optind, which is again a
     matching state, and a return of 103 leaves a string at optarg. *)
 
-(** With the borrowed resources in hand, glibc's getopt_long runs on an
-    admissible state and returns those resources with a new one. *)
-Lemma hello_getopt_lend av ar ps a i :
+(** This is the contract of one call. The call starts from a state that
+    matches argv and optind. It gives back the resources it borrowed,
+    together with a new matching state. While the parser searches for a
+    long option, the alloca cutoff borrows G and returns it. *)
+Lemma hello_getopt_lend_with av ar ps a i :
+  getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
   fn_triple w0 ge (TAtom "getopt_long")
     [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av)); WPtr (sym_ptr ge "hello#str.69");
      WPtr (sym_ptr ge "hello#parse_options.longopts.64"); WPtr null]
@@ -155,6 +158,7 @@ Lemma hello_getopt_lend av ar ps a i :
                 hello_getopt_priv ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗
                 hello_getopt_state gb greg av ar ps' i' ∗ (if code =? 103 then str_ro a' else True))%I.
 Proof.
+  intros Hcw.
   exists glibc_getopt_long. split; [exact Hgl|].
   split; [eexists; apply getopt_long_call_frame|]. intros fr Φ Hfr.
   destruct (hello_los_facts n1 n2 n3 n4 []) as (Hfl & Hlos & Hneg & Hcode).
@@ -168,7 +172,7 @@ Proof.
   iPoseProof (hello_getopt_state_copy_in (glibc_program := program_of w0 glibc_os_registry ge)
     gb greg av ar ps i err with "HS") as "Hci".
   iEval (rewrite /HelloGlibcDebts.str_ro) in "Hps".
-  iApply (wp_getopt_long_str_call (glibc_program := program_of w0 glibc_os_registry ge) fr av ar
+  iApply (wp_getopt_long_str_call_with (glibc_program := program_of w0 glibc_os_registry ge) fr av ar
     (sym_ptr ge "hello#str.69") s_optstring (sym_ptr ge "hello#parse_options.longopts.64") null gb greg ps i err
     (ho_oi o) (ho_oireg o) oe roe (ho_oa o) (ho_oareg o) oo roo a c0 G T (ho_err o) dom (ho_se o) (ho_sereg o)
     mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 (hello_los n1 n2 n3 n4) [] pfx7 pxs7 pfx0 pxs0 penv 103 Φ
@@ -190,6 +194,19 @@ Proof.
     iEval (rewrite /GetoptLongStr.arg_str) in "Hstr". destruct (x =? 103); [|done].
     rewrite /HelloGlibcDebts.str_ro. iDestruct "Hstr" as (s) "Hs". iExists s. iExact "Hs".
 Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
+Lemma hello_getopt_lend av ar ps a i :
+  fn_triple w0 ge (TAtom "getopt_long")
+    [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av)); WPtr (sym_ptr ge "hello#str.69");
+     WPtr (sym_ptr ge "hello#parse_options.longopts.64"); WPtr null]
+    (hello_ro ge o ∗ hello_getopt_priv ∗ argv_own av ar ps ∗ ([∗ list] q ∈ ps, str_ro q) ∗
+     getopt_cells o a i ∗ hello_getopt_state gb greg av ar ps i)%I
+    (fun r => ∃ code ps' a' i', ⌜r = Ret (WInt code) /\ 0 <= code < 2 ^ 32 /\ Permutation ps ps' /\
+                                 0 <= i' <= Z.of_nat (length ps)⌝ ∗
+                hello_getopt_priv ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗
+                hello_getopt_state gb greg av ar ps' i' ∗ (if code =? 103 then str_ro a' else True))%I.
+Proof. exact (hello_getopt_lend_with av ar ps a i (getopt_cutoff_rule_with_any w0 glibc_os_registry ge G Hcut)). Qed.
 
 (** glibc's getopt_long meets the loop's contract with the admissible
     states of the parser's object. *)
@@ -276,11 +293,13 @@ Context (Hro_m : hello_ro ge o ⊢ M)
   (Hg : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D)).
 
 (** With that, each call to glibc's getopt_long does what the loop
-    expects of it. *)
-Lemma hello_getopt_ix_ro av ar :
+    expects of it, also when the cutoff borrows G. *)
+Lemma hello_getopt_ix_ro_with av ar :
+  getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
   loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals)%I.
 Proof.
-  intros ps a i. destruct (hello_getopt_lend av ar ps a i) as (gf & Hgf & Hfr & Ht).
+  intros Hcw.
+  intros ps a i. destruct (hello_getopt_lend_with av ar ps a i Hcw) as (gf & Hgf & Hfr & Ht).
   exists gf. split; [exact Hgf|]. split; [exact Hfr|]. intros fr Φ Hf.
   iIntros "(#Hro & Hio & Hpv & Hav & #Hps & Hc & HS & Hgo) HQ".
   iDestruct (Hg with "[Hio Hpv]") as "[HG Hback]"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
@@ -296,6 +315,11 @@ Proof.
   iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|]. iSplitL "Hav"; [iExact "Hav"|].
   iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo"; [iSplitL "HS"; [iExact "HS" | iExact "Hgo"] | iExact "Hstr"].
 Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
+Lemma hello_getopt_ix_ro av ar :
+  loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals)%I.
+Proof. exact (hello_getopt_ix_ro_with av ar (getopt_cutoff_rule_with_any w0 glibc_os_registry ge G Hcut)). Qed.
 
 End call.
 
