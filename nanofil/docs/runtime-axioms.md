@@ -53,13 +53,15 @@ allowlist. A separate build keeps the interpreter's definitions visible
 for the concrete layer below. This binding change follows the campaign's
 second cutover; this page does not claim it has landed yet.
 
-`nanofil-rocq` compiles the witness and runs
-[runtime_signature.py](../tests/runtime_signature.py). The gate requires
-each logical signature field to have a table row. A real axiom must
-name an existing native probe; a derived lemma may instead name the
-axiom it follows from. The gate includes predicate parameters and
-bookkeeping obligations. A probe named for bookkeeping checks the
-corresponding native operation, not the interpreter's private representation.
+Each runtime promise needs an entry in the table below. An axiom's row
+must link to an existing native probe. A derived lemma can instead name
+the axiom it follows from. The `nanofil-rocq` build checks these links
+with [runtime_signature.py](../tests/runtime_signature.py) and compiles
+the witness against the signature.
+
+The table also covers predicates and bookkeeping requirements. Probes
+listed for bookkeeping check the corresponding native operation, not
+the interpreter's private representation.
 
 Rocq's `Print Assumptions` report is evidence, not a guarantee. The
 [campaign ledger](https://ampcode.com/artifacts/campaign-ledger-proof-automation-for-the-glibc-proofs-defe5a84-33de-4f52-b9b1-abc8197ea1ba)
@@ -68,6 +70,13 @@ the report incomplete. `Fix.v` applies the functor `Logic R`, so the
 limitation matters here. Even a correct report saying “Closed” would
 not show that a proof used only the public interface. Hiding definitions
 and compiling without an implementation check that separate requirement.
+
+An axiom listed by `rocqchk` is not necessarily an unproved assumption.
+In Rocq 9.3, the checker also lists proved lemmas when a sealed module
+hides their bodies. The repository's
+[sealed-module reproduction](../rocq/scripts/proof-eng/rocq93/rocqchk-sealed/run.sh)
+shows this over-reporting alongside a Closed `Print Assumptions` result.
+The planned sealed `Fix.R` will hide proved runtime lemmas in the same way.
 
 The native source references below describe the pinned staging Fil-C:
 mbrock/fil-c at
