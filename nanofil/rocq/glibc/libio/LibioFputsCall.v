@@ -17,6 +17,8 @@
     LibioPutsCall.v's for `c: puts`, with the stream the argument
     `c: v2` instead of `c: stdout`'s pointer. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -25,6 +27,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsMode LibioFputsLock LibioFputsUnlock.
+From Glibc Require FileInv LibioCloseSteps LibioFputsLock LibioFputsUnlock LibioLogic LibioPutsInv OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -36,11 +40,8 @@ Local Arguments Z.opp : simpl nomatch.
 (** The jump of block `c: L162` of `c: fputs`, on the flag `c: v176`. *)
 Definition fp_j162 : jump := JBranch (Tmp (TAtom "v176")) (To (TAtom "L107")) (To (TAtom "L106")).
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFputsCallOn (R : Runtime) (LG0 : LogicSig R).
-Module FU := LibioFputsUnlockOn R LG0.
-Import FU FU.PL FU.PL.PI FU.PL.PI.CS FU.PL.PI.CS.SW FU.PL.PI.CS.SW.FI.ML FU.PL.PI.CS.SW.FI.LG
-  FU.PL.PI.CS.SW.FI.L FU.PL.PI.CS.SW.OW FU.PL.PI.CS.SW.FI FU.PL.PI.CS.SW.ST.
+
+Import LibioFputsUnlock LibioFputsLock LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -65,8 +66,7 @@ Lemma wp_fputs_L161 e p dq s fb Φ :
   lookup (TAtom "v0") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WInt (Z.of_nat (length s))) ->
   lookup (TAtom "v2") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
   vtables_ro ge vb vreg -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
-  ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v2" \/ x = TAtom "chk0" ->
-                lookup x e' = lookup x e) /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
+  ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v2"; "chk0"]) e e' /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
      file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L161") (Some (TAtom "L125")))) : sexpr) {{ Φ }}.
@@ -85,12 +85,12 @@ Proof.
   unfold io_vtables_size in Hvend.
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* L161: the stream's jump table, within `c: __io_vtables`. *)
-  fs. fs. fchk "Hl".
+  step. step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_1.join: the `c: xsputn` slot, called on the stream, the string and its length. *)
-  fs. fs.
+  step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsx Hfc");
@@ -104,9 +104,9 @@ Proof.
     [left; split; [right; reflexivity | reflexivity]|].
   iApply (Hxs with "Hf Hstr HRx"); [reflexivity|].
   iNext. iIntros (r Hr) "Hf Hstr HRx". resume.
-  fs. fs. iApply wp_enter; [reflexivity | vx | iNext].
+  step. step. iApply wp_enter; [reflexivity | vx | iNext].
   iApply ("HK" with "[%] Hf Hstr HRx").
-  split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | lk_prove].
+  split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
 Qed.
 
 (** Block `c: L113` of `c: fputs`, the stream fb at any mode with its
@@ -119,8 +119,7 @@ Lemma wp_fputs_L113 e p dq s fb mode Φ :
   lookup (TAtom "v0") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WInt (Z.of_nat (length s))) ->
   lookup (TAtom "v2") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
   vtables_ro ge vb vreg -∗ file_at vb (ow_self w0) fp mode (Some 0) -∗ word_string dq p s -∗ Rx -∗
-  ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v2" \/ x = TAtom "chk0" ->
-                lookup x e' = lookup x e) /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
+  ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v2"; "chk0"]) e e' /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
      file_at vb (ow_self w0) fp (oriented mode) (Some 0) -∗ word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L113") (Some (TAtom "L29")))) : sexpr) {{ Φ }}.
@@ -133,34 +132,33 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iDestruct "Hmd" as "[%Hmr Hmd]".
   (* L113: the mode. *)
-  fs. fs. fchk "Hl". fldi "Hl" "Hmd". fs.
+  step. step. check "Hl". load_s32 "Hl" "Hmd". step.
   destruct Hmv as [[[-> | ->] ->] | [-> ->]].
   - (* Unoriented: L123 makes it -1, and L125 finds it narrow. *)
-    fbr. fs. fs. fchk "Hl". fsti "Hl" "Hmd". fs.
-    fs. fs. change (4294967295 mod 2 ^ 32) with (2 ^ 32 - 1). assert (Hm1 : 0 <= 2 ^ 32 - 1 < 2 ^ 32) by lia.
-    fldi "Hl" "Hmd". fs. fbr.
+    branch. step. step. check "Hl". store_int "Hl" "Hmd". step.
+    step. step. change (4294967295 mod 2 ^ 32) with (2 ^ 32 - 1). assert (Hm1 : 0 <= 2 ^ 32 - 1 < 2 ^ 32) by lia.
+    load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! (2 ^ 32 - 1) (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [left; split; [right; reflexivity | reflexivity]|].
-    iApply (wp_fputs_L161 with "Hvt Hf Hstr HRx"); try side.
-    iNext. iIntros (e' c [Hsame Hc]) "Hf Hstr HRx".
+    iApply (wp_fputs_L161 with "Hvt Hf Hstr HRx"); try close_side.
+    iNext. iIntros (e' c [Hsame Hc]) "Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     iApply ("HK" with "[%] Hf Hstr HRx"). split; [|exact Hc].
-    intros x Hx. rewrite (Hsame x Hx). destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity.
+    rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. rewrite (Hsame x Hx). destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity.
   - (* Narrow: L125 finds it so. *)
-    fbr. fs. fs. fldi "Hl" "Hmd". fs. fbr.
+    branch. step. step. load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! (2 ^ 32 - 1) (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [left; split; [right; reflexivity | reflexivity]|].
-    iApply (wp_fputs_L161 with "Hvt Hf Hstr HRx"); try side.
-    iNext. iIntros (e' c [Hsame Hc]) "Hf Hstr HRx".
+    iApply (wp_fputs_L161 with "Hvt Hf Hstr HRx"); try close_side.
+    iNext. iIntros (e' c [Hsame Hc]) "Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     iApply ("HK" with "[%] Hf Hstr HRx"). split; [|exact Hc].
-    intros x Hx. rewrite (Hsame x Hx). destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity.
+    rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. rewrite (Hsame x Hx). destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity.
   - (* Wide: L125 skips the call, the flag 0. *)
-    fbr. fs. fs. fldi "Hl" "Hmd". fs. fbr.
+    branch. step. step. load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! 1%Z (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [right; split; reflexivity|].
     iApply wp_enter; [reflexivity | vx | iNext].
     iApply ("HK" with "[%] Hf Hstr HRx").
-    split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | lk_prove].
+    split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
 Qed.
 
 End rules.
-End LibioFputsCallOn.

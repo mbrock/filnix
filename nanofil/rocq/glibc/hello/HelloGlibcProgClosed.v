@@ -19,6 +19,7 @@
     compares: `set_program_name` compares the seven bytes of "/.libs/".
     From 16 bytes on, glibc's memcmp traps (MemcmpLogic.v's header). *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -28,31 +29,28 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrchrCode MemchrLast StrlenWord
   StrrchrLogic StrncmpCode HelloGlibcLeaf HelloGlibcProgCells HelloGlibcProgLibs HelloGlibcProgName MemcmpCode MemcmpLogic
   MemrchrCode MemrchrLogic.
+From Glibc Require HelloGlibcLeaf HelloGlibcProgCells HelloGlibcProgName MemcmpLogic MemrchrLogic OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The closed triples over the [[runtime]] R and the Logic instance LG0. *)
-Module HelloGlibcProgClosedOn (R : Runtime) (LG0 : LogicSig R).
+
 (** `set_program_name` over its two premises. *)
-Module PN := HelloGlibcProgNameOn R LG0.
 (** Hello's leaves over their premises. *)
-Module LF := HelloGlibcLeafOn R LG0.
 (** glibc's memrchr. *)
-Module MR := MemrchrLogicOn R LG0.
 (** glibc's memcmp. *)
-Module MC := MemcmpLogicOn R LG0.
 (** The Logic instance. *)
 Module LG := LG0.
 (** Its language. *)
 Module L := LG.L.
-Import L LG MC.ML.
+Import L LG MemcmpLogic.ML.
 
 Section closed.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 
 (** [os_wi] w0 survives safepoints. *)
-Local Instance pc_stable : SafepointStable (os_wi w0) := PN.OW.os_wi_stable w0.
+Local Instance pc_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The Iris instance of the registry and [os_wi] w0. *)
 Local Instance pc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
@@ -60,14 +58,14 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** glibc's own memcmp at `memcmp` meets HelloGlibcLeaf.v's
     [memcmp_spec], so its [memeq_glibc] needs no premise about it. *)
-Lemma leaf_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) -> LF.memcmp_spec w0 registry ge.
-Proof. intros Hf. exact (MC.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
+Lemma leaf_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) -> HelloGlibcLeaf.memcmp_spec w0 registry ge.
+Proof. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
 
 (** glibc's own memcmp at `memcmp` meets HelloGlibcProgCells.v's
     [memcmp_spec]. *)
 Lemma cells_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) ->
-  PN.PL.PC.memcmp_spec w0 registry ge.
-Proof. intros Hf. exact (MC.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
+  HelloGlibcProgCells.memcmp_spec w0 registry ge.
+Proof. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
 
 (** Hello's callees: glibc's strrchr, which calls glibc's strlen and
     memrchr, Hello's memeq, which calls glibc's memcmp, and glibc's
@@ -90,7 +88,7 @@ Context (pb nb sb : Z) (preg nreg sreg : region) (lp tp : ptr)
   (Hsb_cell : 0 <= sb /\ sb mod 8 = 0 /\ sb + 8 <= r_end sreg /\ r_end sreg <= 2 ^ 48).
 
 (** The three cells, holding x, y and z. *)
-Local Notation name_cells := (PN.PL.PC.name_cells pb nb sb preg nreg sreg).
+Local Notation name_cells := (HelloGlibcProgCells.name_cells pb nb sb preg nreg sreg).
 
 (** HelloGlibcProgName.v's [set_program_name_glibc] over glibc's own
     memrchr and memcmp, with no premise about either: on the string s
@@ -106,10 +104,9 @@ Lemma set_program_name_closed dq p s x0 y0 z0 Φ :
        (ptr_add p (Z.of_nat (short_idx s))) -∗ Φ RetVoid) -∗
   WP (ERun (invocation set_program_name_fn [WPtr p]) : gexpr) {{ Φ }}.
 Proof.
-  apply (PN.set_program_name_glibc w0 registry ge Hstrrchr Hstrlen Hmemeq Hstrncmp pb nb sb preg nreg sreg lp tp
-           Hpb Hnb Hsb Hlp Htp Hpb_cell Hnb_cell Hsb_cell (MR.glibc_memrchr_spec registry (os_wi w0) ge Hmemrchr)
+  apply (HelloGlibcProgName.set_program_name_glibc w0 registry ge Hstrrchr Hstrlen Hmemeq Hstrncmp pb nb sb preg nreg sreg lp tp
+           Hpb Hnb Hsb Hlp Htp Hpb_cell Hnb_cell Hsb_cell (MemrchrLogic.glibc_memrchr_spec registry (os_wi w0) ge Hmemrchr)
            (cells_memcmp_spec Hmemcmp)).
 Qed.
 
 End closed.
-End HelloGlibcProgClosedOn.

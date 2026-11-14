@@ -9,6 +9,7 @@
     0, each release takes the path that stores a null owner and a free
     lock word, with no futex wake. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic
   SysWrappers SysCleanup SysCleanupPop LibioCloseSteps.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysCleanupPop SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,12 +28,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioUnlinkTailOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Module SC := SysCleanupOn R LG0.
-Module SCP := SysCleanupPopOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -68,16 +67,16 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
   iApply (wp_live_fit1 w0 registry ge with "Hll"). iIntros ([Hlk0 Hlk48]) "Hll".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
-  fs. fs. fchk "Hrl". fstp "Hrl" "Hrc". fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fs. fchk "Hll". fldi "Hll" "Hl4". fs. fs. fs. fbr.
-  fs. fs. fs. fchk "Hll". fstp "Hll" "Hlo". fs. fchk "Hll".
-  iDestruct "Hl0" as "[%Hl0r Hl0]". fsti "Hll" "Hl0". fs. fs.
+  step. step. check "Hrl". store "Hrl" "Hrc". step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. step. check "Hll". load_s32 "Hll" "Hl4". step. step. step. branch.
+  step. step. step. check "Hll". store "Hll" "Hlo". step. check "Hll".
+  iDestruct "Hl0" as "[%Hl0r Hl0]". store_int "Hll" "Hl0". step. step.
   iApply wp_call_bind; [vx | exact Hpop | reflexivity |]. iNext.
   assert (E : mkPtr cb (Obj cb) = mkPtr (cb + 0) (Obj cb)) by (rewrite Z.add_0_r; reflexivity).
   iEval (rewrite E) in "Htcb".
-  iApply (SCP.wp_glibc___libc_cleanup_pop_restore w0 registry ge Hreg Hext _ cb creg 0
+  iApply (SysCleanupPop.wp_glibc___libc_cleanup_pop_restore w0 registry ge Hreg Hext _ cb creg 0
             with "Htcb Hcl Hcp Hct"); [rewrite Z.add_0_r; reflexivity | lia | lia | rewrite Z.add_0_r; exact Hcal | lia | lia |].
-  iNext. iIntros "Htcb Hcl _ _". resume. fs. fs. iApply wp_ret_void. iNext.
+  iNext. iIntros "Htcb Hcl _ _". resume. step. step. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hrl Hrc [Hll Hl0 Hl4 Hlo] Htcb Hcl").
   iFrame. iPureIntro. unfold int_bytes. split_and!; try lia.
 Qed.
@@ -127,24 +126,23 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hb0' Hb48]) "Hbl".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   pose proof (unlinked_flags_range fl Hfl) as Hfl'.
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fchk "Hl".
-  fsti "Hl" "Hfl".
+  step. check "Hl". load_s32 "Hl" "Hfl". step. check "Hl".
+  store_int "Hl" "Hfl".
   assert (E : Z.land (fl mod 2 ^ 32) (4294967167 mod 2 ^ 32) mod 2 ^ 32 = unlinked_flags fl).
   { replace (fl mod 2 ^ 32) with fl by (symmetry; apply Z.mod_small; lia).
     change (4294967167 mod 2 ^ 32) with 4294967167. apply Z.mod_small. exact Hfl'. }
   iEval (rewrite E) in "Hfl". clear E.
   pose proof (unlinked_user_lock fl Hul) as Hul'.
   assert (0 <= Z.land (unlinked_flags fl) 32768 < 2 ^ 32) by lia.
-  fldi "Hl" "Hfl". fs. fs. fbrv false.
-  fs. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr. fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl".
-  fldi "Hbl" "Hb4". fs. fs. fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fstp "Hbl" "Hbo". fchk "Hl". fldp "Hl" "Hlp" "Hbl".
-  fchk "Hbl". iDestruct "Hb0" as "[%Hb0r Hb0]". fsti "Hbl" "Hb0". fs.
-  iApply (wp_unlink_L257 with "Hs Hrl Hrc Hlk Htcb Hcl Hcp Hct"); try side.
+  load_s32 "Hl" "Hfl". step. step. branch_as false.
+  step. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch. step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl".
+  load_s32 "Hbl" "Hb4". step. step. step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". store "Hbl" "Hbo". check "Hl". load "Hl" "Hlp" "Hbl".
+  check "Hbl". iDestruct "Hb0" as "[%Hb0r Hb0]". store_int "Hbl" "Hb0". step.
+  iApply (wp_unlink_L257 with "Hs Hrl Hrc Hlk Htcb Hcl Hcp Hct"); try close_side.
   iNext. iIntros "Hrl Hrc Hlk Htcb Hcl". iApply ("HK" with "Hl [Hfl] Hlp [Hbl Hb0 Hb4 Hbo] Hrl Hrc Hlk Htcb Hcl").
   - iSplit; [iPureIntro; exact Hfl'|]. iExact "Hfl".
   - iFrame. iPureIntro. unfold int_bytes. split_and!; try lia.
 Qed.
 
 End rules.
-End LibioUnlinkTailOn.

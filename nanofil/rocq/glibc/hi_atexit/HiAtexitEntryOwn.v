@@ -4,6 +4,7 @@
     thread. It obtains read-only access by giving up write permission
     to fields already present in that same memory. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List.

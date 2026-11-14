@@ -7,6 +7,8 @@
     run, the scanner first stores the private cursor one byte into the
     argument. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptCursor GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld StrchrnulLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,28 +34,22 @@ Definition long_only_names : list name :=
     "v398"; "v399"; "chk126"; "v400"; "v401"; "chk127"; "v402"; "v403"; "v404"; "v406"; "v410"]%string
   ++ long_cursor_names.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongOnlyOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The cursor module stores the cursor before the long-option parser. *)
-Module CU := GetoptCursorOn R LG0.
-Import CU CU.X CU.X.I CU.X.I.S CU.X.I.S.FI CU.X.I.S.FI.ML CU.X.I.S.FI.LG CU.X.I.S.FI.L CU.X.I.ST CU.X.I.GB CU.X.A.
+Import GetoptCursor GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 (** The strchr module proves glibc's own strchr. *)
-Module SC := StrchrnulLogicOn R LG0.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 Section long_only.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance long_only_stable : SafepointStable (os_wi w0) := CU.X.I.OW.os_wi_stable w0.
+Local Instance long_only_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance long_only_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -135,30 +133,30 @@ Proof.
       | lia | lia | lia | lia | lia | lia | lia | lia | by iSplit |].
     iIntros (e' Hk') "Hl Hi Hcur Ha Hc". iDestruct "HK" as "[_ HK]". fold j. rewrite Hnq.
     iApply ("HK" with "[%] Hl Hi Hcur Ha Hc"). split; [eapply keeps_trans; [exact Hk | exact Hk'] | exact El]. }
-  en. iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (lonly mod 2 ^ 32) 0) as [El | El]; cbn [edge_label].
-  { en. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HL" as "[_ HL]".
+  step. iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (lonly mod 2 ^ 32) 0) as [El | El]; cbn [edge_label].
+  { step. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HL" as "[_ HL]".
     iApply ("HL" with "[%] Hl [Hib] Hcur Ha Hc"); [xkeep | by iSplit]. }
-  en. load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
   iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq");
     [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). st. norm.
+  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. norm.
   rdin q s 2%nat. iApply wp_branch; [vx | iNext].
   pose proof (sbyte_range s 2 Hch) as Hs2r.
   rewrite (Z.mod_small (chr_w (sbyte s 2)) (2 ^ 32)); [|apply chr_w_range].
   rewrite chr_w_eqb; [|lia|lia].
   destruct (Z.eqb_spec (sbyte s 2) 0) as [E2 | E2]; cbn [edge_label].
-  2:{ en. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HL" as "[HL _]".
+  2:{ step. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HL" as "[HL _]".
       iApply ("HL" with "[%] Hl Hib Hcur Ha Hc"). split; [xkeep|]. split; [exact El|]. repeat split; lk_prove. }
-  en. load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
   iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq");
     [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). st. norm.
+  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. norm.
   rdin q s 1%nat.
-  iApply (SC.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");
+  iApply (StrchrnulLogic.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");
     [vx | apply Z.mod_pos_bound; lia | exact Hg | exact Hgn | reflexivity |].
-  iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st. st. st. en.
+  iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step. step. step.
   iApply wp_branch; [vx | iNext].
   match goal with |- context [edge_label (if ?c then _ else _)] => destruct c end; cbn [edge_label].
   - iDestruct "HL" as "[_ HL]". iApply ("HL" with "[%] Hl [Hib] Hcur Ha Hc"); [xkeep | by iSplit].
@@ -167,4 +165,3 @@ Proof.
 Qed.
 
 End long_only.
-End GetoptLongOnlyOn.

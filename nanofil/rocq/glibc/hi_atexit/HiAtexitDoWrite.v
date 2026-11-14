@@ -19,6 +19,7 @@
     genv: the write and `c: __write` are glibc's, and the system calls
     stay external. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -28,25 +29,19 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers LibioWriteDq LibioDoWriteEnd LibioDoWriteSetp LibioDoWriteTail LibioDoWriteRet
   LibioDoWriteCall LibioDoWrite HiAtexitBase.
+From Glibc Require FileInv LibioDoWrite LibioDoWriteCall LibioDoWriteEnd LibioDoWriteRet LibioDoWriteSetp LibioDoWriteTail LibioLogic LibioWriteDq OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The write of bytes at a share, the do-write's blocks and the
     do-write itself, at [HLG]. *)
-Module HWD := LibioWriteDqOn InterpRuntime HLG.
 (** `c: L70`'s end. *)
-Module HDE := LibioDoWriteEndOn InterpRuntime HLG.
 (** The pointer reset. *)
-Module HDS := LibioDoWriteSetpOn InterpRuntime HLG.
 (** The tail. *)
-Module HDT := LibioDoWriteTailOn InterpRuntime HLG.
 (** The return. *)
-Module HDR := LibioDoWriteRetOn InterpRuntime HLG.
 (** The call. *)
-Module HDC := LibioDoWriteCallOn InterpRuntime HLG.
 (** The function. *)
-Module HDW := LibioDoWriteOn InterpRuntime HLG.
-Import HDW HDW.SW HDW.SW.FI.ML HDW.SW.FI.LG HDW.SW.FI.L HDW.SW.OW HDW.SW.FI HDW.SW.ST.
+Import LibioDoWrite SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -83,7 +78,7 @@ Lemma hi_file_write fr fb freg fl f2 fd tw off b reg o xs eb Φ :
 Proof.
   intros Hfr Hfb Hfal Hfend Hfreg Hf2 Hf2r Hfd Hfl He Hb Ho Hbend Hbreg Hxs.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
-  iApply (HWD.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite fr fb freg fl f2 fd tw off
+  iApply (LibioWriteDq.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite fr fb freg fl f2 fd tw off
             (DfracOwn 1) b reg (Obj b) o xs eb with "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK");
     try assumption; first [left; assumption | left; reflexivity].
 Qed.
@@ -92,20 +87,20 @@ Qed.
     block proved: the blocks' premises discharged from the last back
     to the first, and the write by [hi_file_write]. *)
 Definition hi_do_write_mode :=
-  HDW.wp_glibc__IO_new_do_write_mode w0 registry ge (fun f2 => Z.land f2 2 = 0)
-    (HDC.wp_do_write_call w0 registry ge Hfw (fun f2 => Z.land f2 2 = 0) hi_file_write
-       (HDR.wp_do_write_ret w0 registry ge
-          (HDT.wp_do_write_tail w0 registry ge
-             (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
+  LibioDoWrite.wp_glibc__IO_new_do_write_mode w0 registry ge (fun f2 => Z.land f2 2 = 0)
+    (LibioDoWriteCall.wp_do_write_call w0 registry ge Hfw (fun f2 => Z.land f2 2 = 0) hi_file_write
+       (LibioDoWriteRet.wp_do_write_ret w0 registry ge
+          (LibioDoWriteTail.wp_do_write_tail w0 registry ge
+             (LibioDoWriteSetp.wp_do_write_setp w0 registry ge (LibioDoWriteEnd.wp_do_write_end w0 registry ge))))).
 
 (** Overflow flushes from the buffer's base; the same proved blocks
     establish that case without a callee hypothesis. *)
 Definition hi_do_write_base :=
-  HDW.wp_glibc__IO_new_do_write_base w0 registry ge (fun f2 => Z.land f2 2 = 0)
-    (HDC.wp_do_write_call w0 registry ge Hfw (fun f2 => Z.land f2 2 = 0) hi_file_write
-       (HDR.wp_do_write_ret w0 registry ge
-          (HDT.wp_do_write_tail w0 registry ge
-             (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
+  LibioDoWrite.wp_glibc__IO_new_do_write_base w0 registry ge (fun f2 => Z.land f2 2 = 0)
+    (LibioDoWriteCall.wp_do_write_call w0 registry ge Hfw (fun f2 => Z.land f2 2 = 0) hi_file_write
+       (LibioDoWriteRet.wp_do_write_ret w0 registry ge
+          (LibioDoWriteTail.wp_do_write_tail w0 registry ge
+             (LibioDoWriteSetp.wp_do_write_setp w0 registry ge (LibioDoWriteEnd.wp_do_write_end w0 registry ge))))).
 
 (** A noncanceling write uses the captured wrapper rather than clearing flags2.
     Both branches return its exact value, the source bytes and errno ownership. *)
@@ -129,7 +124,7 @@ Lemma hi_file_write_nocancel fr fb freg fl f2 fd tw off b reg o xs eb Φ :
 Proof.
   intros Hfr Hfb Hfal Hfend Hfreg Hf2 Hf2r Hfd Hfl He Hb Ho Hbend Hbreg Hxs.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
-  iApply (HWD.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite fr fb freg fl f2 fd tw off
+  iApply (LibioWriteDq.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite fr fb freg fl f2 fd tw off
             (DfracOwn 1) b reg (Obj b) o xs eb with "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK");
     try assumption; left; reflexivity.
 Qed.
@@ -137,23 +132,23 @@ Qed.
 (** A stream can flush its pending bytes without allowing cancellation.
     This proof uses the captured write wrapper and retains the existing short-write and error cases. *)
 Definition hi_do_write_mode_nocancel :=
-  HDW.wp_glibc__IO_new_do_write_mode w0 registry ge
+  LibioDoWrite.wp_glibc__IO_new_do_write_mode w0 registry ge
     (fun f2 => Z.land f2 2 = 0 \/
       Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel))
-    (HDC.wp_do_write_call w0 registry ge Hfw _ hi_file_write_nocancel
-       (HDR.wp_do_write_ret w0 registry ge
-          (HDT.wp_do_write_tail w0 registry ge
-             (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
+    (LibioDoWriteCall.wp_do_write_call w0 registry ge Hfw _ hi_file_write_nocancel
+       (LibioDoWriteRet.wp_do_write_ret w0 registry ge
+          (LibioDoWriteTail.wp_do_write_tail w0 registry ge
+             (LibioDoWriteSetp.wp_do_write_setp w0 registry ge (LibioDoWriteEnd.wp_do_write_end w0 registry ge))))).
 
 (** Overflow can use the same noncanceling flush from the buffer's base.
     This rule does not acquire or release a stream lock. *)
 Definition hi_do_write_base_nocancel :=
-  HDW.wp_glibc__IO_new_do_write_base w0 registry ge
+  LibioDoWrite.wp_glibc__IO_new_do_write_base w0 registry ge
     (fun f2 => Z.land f2 2 = 0 \/
       Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel))
-    (HDC.wp_do_write_call w0 registry ge Hfw _ hi_file_write_nocancel
-       (HDR.wp_do_write_ret w0 registry ge
-          (HDT.wp_do_write_tail w0 registry ge
-             (HDS.wp_do_write_setp w0 registry ge (HDE.wp_do_write_end w0 registry ge))))).
+    (LibioDoWriteCall.wp_do_write_call w0 registry ge Hfw _ hi_file_write_nocancel
+       (LibioDoWriteRet.wp_do_write_ret w0 registry ge
+          (LibioDoWriteTail.wp_do_write_tail w0 registry ge
+             (LibioDoWriteSetp.wp_do_write_setp w0 registry ge (LibioDoWriteEnd.wp_do_write_end w0 registry ge))))).
 
 End rules.

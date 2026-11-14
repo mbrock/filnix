@@ -5,6 +5,7 @@
     The staging array belongs to the same allocation as the printf-buffer
     fields. Selecting it changes three pointer cells, not the array's bytes,
     the accumulated count, stream flags or recursive lock ownership. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioPutsInv PrintfBufferFileCode.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -21,11 +24,9 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The pointer proof uses the existing stream and lifetime rules unchanged. *)
-Module PrintfBufferStageOn (R : Runtime) (LG0 : LogicSig R).
-Module PI := LibioPutsInvOn R LG0.
-Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
-  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
+(** Changing the buffer pointers does not require new rules for stream
+    ownership or for keeping allocations alive. *)
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -54,15 +55,15 @@ Lemma wp_printf_buffer_switch_null fr bb breg fb freg oldbase oldptr oldend Φ :
 Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg. injection Hfr as <-.
   iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend HK".
-  enter. fs. fchk "Hb". fldp "Hb" "Hfp" "Hf".
-  fs. fchk "Hf". fldn "Hf" "Hwp". fldp "Hb" "Hfp" "Hf".
-  fs. fchk "Hf". fldn "Hf" "Hwe". fs. fs. fs. fbr. fs.
-  fs. fs. fchk "Hb". fstp "Hb" "Hptr".
-  fs. fs. fchk "Hb". fstp "Hb" "Hend". fs. fs.
-  fs. fchk "Hb".
+  step. step. check "Hb". load "Hb" "Hfp" "Hf".
+  step. check "Hf". load_null "Hf" "Hwp". load "Hb" "Hfp" "Hf".
+  step. check "Hf". load_null "Hf" "Hwe". step. step. step. branch. step.
+  step. step. check "Hb". store "Hb" "Hptr".
+  step. step. check "Hb". store "Hb" "Hend". step. step.
+  step. check "Hb".
   iApply (wp_raw_load_pointer_self w0 registry ge with "Hb Hptr");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
-  iNext. iIntros "Hb Hptr". fchk "Hb". fstp "Hb" "Hbase".
+  iNext. iIntros "Hb Hptr". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.
   replace (bb + 48 + 128) with (bb + 176) by lia.
   iApply ("HK" with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend").
@@ -70,10 +71,7 @@ Qed.
 
 (** Pointer loads preserve separate lifetime shares even when the character
     buffer and stream occupy the same allocation. *)
-Local Ltac load_pointer H :=
-  iApply (wp_raw_load_pointer_dq with H);
-    [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |];
-  iNext; iIntros H.
+
 
 (** A write pointer at or beyond the end also selects the staging array.
     Both original pointers remain owned, including their interior offsets. *)
@@ -97,20 +95,19 @@ Lemma wp_printf_buffer_switch_staging fr bb breg fb freg db dreg bo eo dqf dqd
 Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hdb Heo Hspace Hde Hdr. injection Hfr as <-.
   iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend HK".
-  enter. fs. fchk "Hb". load_pointer "Hb Hfp Hf".
-  fs. chkq "Hf". load_pointer "Hf Hwp Hd".
-  load_pointer "Hb Hfp Hf". fs. chkq "Hf".
-  load_pointer "Hf Hwe Hd". fs. fs. fs. fbrv true. fs.
-  fs. fs. fchk "Hb". fstp "Hb" "Hptr".
-  fs. fs. fchk "Hb". fstp "Hb" "Hend". fs. fs.
-  fs. fchk "Hb".
+  step. step. check "Hb". load_shared "Hb Hfp Hf".
+  step. check_shared "Hf". load_shared "Hf Hwp Hd".
+  load_shared "Hb Hfp Hf". step. check_shared "Hf".
+  load_shared "Hf Hwe Hd". step. step. step. branch_as true. step.
+  step. step. check "Hb". store "Hb" "Hptr".
+  step. step. check "Hb". store "Hb" "Hend". step. step.
+  step. check "Hb".
   iApply (wp_raw_load_pointer_self w0 registry ge with "Hb Hptr");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
-  iNext. iIntros "Hb Hptr". fchk "Hb". fstp "Hb" "Hbase".
+  iNext. iIntros "Hb Hptr". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.
   replace (bb + 48 + 128) with (bb + 176) by lia.
   iApply ("HK" with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend").
 Qed.
 
 End rules.
-End PrintfBufferStageOn.

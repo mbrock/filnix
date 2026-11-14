@@ -26,6 +26,7 @@
     [GlibcLogic](GlibcLogic.v) to show that `c: main` never fails at any
     [[check]] or safepoint. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -33,6 +34,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules ExternalCalls ExternalMachine Transport Pieces Heap Language Logic.
 From Glibc Require Import LenCode GlibcLogic StrlenBits StrlenLogic.
+From Glibc Require GlibcLogic StrlenLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -168,15 +171,11 @@ Qed.
     on the literal and for `c: main`, and then instantiate R with the
     interpreter's runtime at the end. *)
 
-(** The module [LenLogic] packages the verification of `c: len.c` over
-    an arbitrary runtime R. *)
-Module LenLogic (R : Runtime).
-Module LG := Logic R.
-Module GL := GlibcLogicOn R LG.
-Module SO := StrlenOn R LG.
+
+Module LG := LG0.
 Module L := LG.L.
 Module P := LG.P.
-Import L LG GL.
+Import L LG GlibcLogic.
 
 (** [lge] is the [[genv|global environment]] built from [len_module]
     and [len_globals]. *)
@@ -213,7 +212,7 @@ Lemma strlen_msg_spec Φ :
     {{ Φ }}.
 Proof.
   iIntros "Hps HΦ". rewrite /msg_ps !pts_app. iDestruct "Hps" as "(Hl & H0 & H1)".
-  iApply (SO.wp_glibc_strlen no_contracts no_world lge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 12
+  iApply (StrlenLogic.wp_glibc_strlen no_contracts no_world lge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 12
             with "Hl [H0 H1]").
   - right. reflexivity.
   - vm_compute. reflexivity.
@@ -234,11 +233,11 @@ Lemma main_spec :
   pts msg_ps -∗
   WP (ERun (mkFrame main_fn [] [] None (Enter (TAtom "start") None)) : lexpr) {{ o, ⌜o = Ret (WInt 12)⌝ }}.
 Proof.
-  iIntros "Hps". repeat step.
-  iApply wp_call_bind; [side | exact find_strlen | side |]. iNext.
+  iIntros "Hps". repeat concrete_step.
+  iApply wp_call_bind; [concrete_side | exact find_strlen | concrete_side |]. iNext.
   iApply (strlen_msg_spec with "Hps"). iIntros "_".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
-  iApply wp_ret; [side | side |]. iNext. done.
+  iApply wp_ret; [concrete_side | concrete_side |]. iNext. done.
 Qed.
 
 End wp.
@@ -258,14 +257,12 @@ Proof.
     iIntros "Hps". iApply (wp_wand with "[Hps]"); [iApply (main_spec with "Hps") | by iIntros (o) "_"].
 Qed.
 
-End LenLogic.
 
 (** [InterpLenLogic] instantiates [LenLogic] with the interpreter's
     runtime. *)
-Module InterpLenLogic := LenLogic InterpRuntime.
 
 (** [interp_len_never_panics] states that `c: len.c` linked with glibc's
     `c: strlen` never panics under the interpreter's runtime. *)
 Theorem interp_len_never_panics :
-  InterpLenLogic.P.never_panics len_module (TAtom "main") (fun _ => True).
-Proof. exact InterpLenLogic.len_never_panics. Qed.
+  P.never_panics len_module (TAtom "main") (fun _ => True).
+Proof. exact len_never_panics. Qed.

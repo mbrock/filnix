@@ -12,6 +12,7 @@
     | [hi_ge_file_write] and the others | [ge_fn] of a function called through a jump table |
     | [hge], [hge_frees], [hge_zgc_free] | the genv with the interpreter's free | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls.
 From Glibc Require Import HiAtexitModule HiAtexitFns OsWorld OsRegistry SysWrappers LibioLogic SysCode

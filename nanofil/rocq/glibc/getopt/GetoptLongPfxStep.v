@@ -4,6 +4,8 @@
     the two entries, records an ambiguity when they differ, and then
     stands ready to move on to the next entry. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxSet GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -59,24 +63,9 @@ Definition pfx_first (lo : ptr) (k : nat) (p : ptr) (w : Z) : Prop :=
 Lemma pfx_first_S lo k p w : pfx_first lo k p w -> pfx_first lo (S k) p w.
 Proof. intros [H | (j & Hj & H)]; [left; exact H | right; exists j; split; [lia | exact H]]. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPfxStepOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The set module supplies the comparison, the set, the option table and the tactics. *)
-Module LPS := GetoptLongPfxSetOn R LG0.
-Import LPS LPS.LPA LPS.LPA.LPM LPS.LPA.LPM.LPC LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic chains the kept names through assignments and the steps that keep them. *)
 Ltac ploop_kc := repeat (match goal with H : avoids _ ?Wl = true |- keeps _ _ (put _ _ _) =>
@@ -106,7 +95,7 @@ Section step.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance step_stable : SafepointStable (os_wi w0) := LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance step_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance step_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -156,10 +145,10 @@ Proof.
   pose proof Hat as (H12 & Hc0 & H48 & H10 & H14 & H90 & H9).
   iIntros "#Ht0 HF Hs HM HK". iPoseProof "Ht0" as "Ht".
   iDestruct "Ht" as (tb treg) "(%Ht & _)". destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
-  en. st. st.
+  step. step. step.
   destruct Hf as [(-> & ->) | (j & Hj & -> & ->)].
   { unfold null; cbn [ptr_addr]. iApply wp_branch; [vx | iNext]. close_br.
-    st. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
+    step. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
     split; [xkeep|]. split; [unfold pfx_at; repeat split; lk_prove|].
     repeat split; try lk_prove; try assumption. right. exists k. split; [lia | split; reflexivity]. }
   destruct (lookup_lt_is_Some_2 os j ltac:(lia)) as [x Hx]. destruct (lookup_lt_is_Some_2 os k Hk) as [y Hy].
@@ -186,13 +175,13 @@ Proof.
     assert (Hke : keeps ks e e'') by ploop_kc.
     clear Hkt Hkt' Hk' Hk''. pose proof Hat'' as (Hs12 & Hs0 & Hs48 & Hs10 & Hs14 & Hs90 & Hs9).
     destruct Hout as [(-> & H39' & H30' & H21') | ([-> | ->] & H35 & H26 & H18)].
-    * st. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
+    * step. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
       split; [xkeep|]. split; [unfold pfx_at; repeat split; lk_prove|].
       repeat split; first [lk_prove | assumption | right; exists j; split; [lia | split; reflexivity]].
-    * st. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
+    * step. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
       split; [xkeep|]. split; [unfold pfx_at; repeat split; lk_prove|].
       repeat split; first [lk_prove | assumption | right; exists j; split; [lia | split; reflexivity]].
-    * st. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
+    * step. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
       split; [xkeep|]. split; [unfold pfx_at; repeat split; lk_prove|].
       repeat split; first [lk_prove | assumption | right; exists j; split; [lia | split; reflexivity]].
   + iIntros (e' Hk') "HF". apply keeps_app in Hk' as [Hkt Hk'].
@@ -201,10 +190,9 @@ Proof.
     assert (Hq39 : lookup (TAtom "pr.39") e' = Some (WInt a)) by ploop_via.
     assert (Hq30 : lookup (TAtom "pr.30") e' = Some (WInt m)) by ploop_via.
     assert (Hq21 : lookup (TAtom "pr.21") e' = Some (WPtr sp)) by ploop_via.
-    st. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
+    step. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] HF Hs HM").
     split; [ploop_kc|]. split; [unfold pfx_at; repeat split; ploop_via|].
     repeat split; first [ploop_via | assumption | right; exists j; split; [lia | split; reflexivity]].
 Qed.
 
 End step.
-End GetoptLongPfxStepOn.

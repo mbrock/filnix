@@ -7,10 +7,12 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic MemLogic.
 From Glibc Require Import AllocLogic.
+From Glibc Require AllocLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 
 (** The interface exposes the exact cells read by the allocation prelude. *)
-Module Type HelloAllocSig (R : Runtime) (LG0 : LogicSig R).
+Module Type HelloAllocSig.
 Import LG0 LG0.L.
 (** The allocator reads its size limit, dummy pointer and empty bins. *)
 Definition tcache_idle `{!gen_heapGS piece pval Σ} (dq : dfrac)
@@ -24,9 +26,9 @@ Definition tcache_idle `{!gen_heapGS piece pval Σ} (dq : dfrac)
 End HelloAllocSig.
 
 (** The existing allocator proof supplies the concrete resource definition. *)
-Module HelloGlibcMainAllocOn (R : Runtime) (LG0 : LogicSig R) : HelloAllocSig R LG0.
+Module HelloGlibcMainAllocOn : HelloAllocSig.
 (** The allocator implementation supplies its idle-state predicate. *)
-Module A := AllocOn R LG0.
+Module A := AllocLogic.
 (** The allocator reads its size limit, dummy pointer and empty bins. *)
-Definition tcache_idle := @A.tcache_idle.
+Definition tcache_idle := @AllocLogic.tcache_idle.
 End HelloGlibcMainAllocOn.

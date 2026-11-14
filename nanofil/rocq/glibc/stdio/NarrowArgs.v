@@ -5,6 +5,7 @@
     A typed pointer is not evidence that its string can be read. The formatter's
     [[separation logic]] contract must also supply whole-word string ownership,
     snapshot ownership and the mutable cursor's [[capability]]. *)
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values.
 From Glibc Require Import NarrowFormat.

@@ -14,6 +14,7 @@
     over such a stream calls nothing and changes nothing, by
     LibioFlushFpLock.v, LibioFlushClean.v and LibioFlushFpUnlock.v. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,6 +24,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart LibioFlushTail LibioFlushInv.
+From Glibc Require FileInv LibioCloseSteps LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushInv LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,16 +34,12 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFlushBodyOn (R : Runtime) (LG0 : LogicSig R).
-Module FT := LibioFlushTailOn R LG0.
-Import FT FT.FS FT.FS.FC FT.FS.FC.FU FT.FS.FC.FU.FL FT.FS.FC.FU.FL.CS FT.FS.FC.FU.FL.CS.SW
-  FT.FS.FC.FU.FL.CS.SW.FI.ML FT.FS.FC.FU.FL.CS.SW.FI.LG FT.FS.FC.FU.FL.CS.SW.FI.L FT.FS.FC.FU.FL.CS.SW.OW
-  FT.FS.FC.FU.FL.CS.SW.FI FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** The stream predicates retain their public names and definitions
     without importing the flush proofs into clients that only need ownership. *)
-Include LibioFlushInvOn R LG0.
+Include LibioFlushInv.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -92,11 +91,11 @@ Proof.
     "(Hfl & Hf2 & Hfd & Hmd & Hlp & Hlb & Hrp & Hre & Hwb & Hwp & Hbc & H80)".
   destruct Hc as (Heq & Hfl & Hul & Hf2 & Hfd & Hw & Hwb & Hrd & Hrp & Hmd & Hub).
   injection Heq as <-.
-  iApply (wp_flush_L83 w0 registry ge Hreg Hext with "Hs Hl Hfl Hlp Hlb Hrl Hrc"); try side.
+  iApply (wp_flush_L83 w0 registry ge Hreg Hext with "Hs Hl Hfl Hlp Hlb Hrl Hrc"); try close_side.
   iNext. iIntros (e1 (H1p5 & H1c13 & H1p4 & H1v3)) "Hl Hfl Hlp Hlb Hrl Hrc".
-  iApply (wp_flush_L94_clean w0 registry ge with "Hl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc"); try side.
+  iApply (wp_flush_L94_clean w0 registry ge with "Hl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc"); try close_side.
   iNext. iIntros (e2 (H2p5 & H2c13 & H2p2 & H2v3)) "Hl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc".
-  iApply (wp_flush_L182 w0 registry ge with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl"); try side.
+  iApply (wp_flush_L182 w0 registry ge with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl"); try close_side.
   iNext. iIntros (e3 (H3v413 & H3p1 & H3v3)) "Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl".
   iApply ("HK" $! e3 r with "[%] Hl [-Hrl Hrc Hch Hnl] Hrl Hrc Hch Hnl").
   - split_and!; try assumption; lia.
@@ -105,4 +104,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioFlushBodyOn.

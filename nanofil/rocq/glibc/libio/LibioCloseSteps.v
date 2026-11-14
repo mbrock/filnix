@@ -9,13 +9,16 @@
     Each is stated over the [os_world] of [OsWorld](../zsys/OsWorld.v),
     as the triples of SysWrappers.v are. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode FileInv LibioLogic SysWrappers.
+From Glibc Require Import OsBlocks OsWorld OsRegistry  FileInv LibioLogic .
+From Glibc Require FileInv LibioLogic OsWorld .
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,65 +34,34 @@ Local Arguments Z.opp : simpl nomatch.
     cost most of a step. *)
 
 (** Apply a step rule ⊢ ▷ P -∗ Q to the goal Q, leaving P. *)
-Lemma step_wand {PROP : bi} (Δ : environments.envs PROP) (P Q : PROP) :
-  (⊢ ▷ P -∗ Q) -> environments.envs_entails Δ P -> environments.envs_entails Δ Q.
-Proof.
-  rewrite environments.envs_entails_unseal. intros HW HΔ. etrans; [exact HΔ|].
-  iIntros "H". iApply HW. iNext. iExact "H".
-Qed.
+
 
 (** Apply a step rule R -∗ ▷ (R' -∗ P) -∗ Q, over one resource, to
     the goal R -∗ Q, leaving R' -∗ P. *)
-Lemma step_res1 {PROP : bi} (Δ : environments.envs PROP) (R R' P Q : PROP) :
-  (⊢ R -∗ ▷ (R' -∗ P) -∗ Q) -> environments.envs_entails Δ (R' -∗ P) -> environments.envs_entails Δ (R -∗ Q).
-Proof.
-  rewrite environments.envs_entails_unseal. intros HW HΔ. etrans; [exact HΔ|].
-  iIntros "H HR". iApply (HW with "HR"). iNext. iExact "H".
-Qed.
+
 
 (** [step_res1] over two resources. *)
-Lemma step_res2 {PROP : bi} (Δ : environments.envs PROP) (R1 R2 R1' R2' P Q : PROP) :
-  (⊢ R1 -∗ R2 -∗ ▷ (R1' -∗ R2' -∗ P) -∗ Q) ->
-  environments.envs_entails Δ (R1' -∗ R2' -∗ P) -> environments.envs_entails Δ (R1 -∗ R2 -∗ Q).
-Proof.
-  rewrite environments.envs_entails_unseal. intros HW HΔ. etrans; [exact HΔ|].
-  iIntros "H HR1 HR2". iApply (HW with "HR1 HR2"). iNext. iExact "H".
-Qed.
+
 
 (** [step_res1] over three resources. *)
-Lemma step_res3 {PROP : bi} (Δ : environments.envs PROP) (R1 R2 R3 R1' R2' R3' P Q : PROP) :
-  (⊢ R1 -∗ R2 -∗ R3 -∗ ▷ (R1' -∗ R2' -∗ R3' -∗ P) -∗ Q) ->
-  environments.envs_entails Δ (R1' -∗ R2' -∗ R3' -∗ P) -> environments.envs_entails Δ (R1 -∗ R2 -∗ R3 -∗ Q).
-Proof.
-  rewrite environments.envs_entails_unseal. intros HW HΔ. etrans; [exact HΔ|].
-  iIntros "H HR1 HR2 HR3". iApply (HW with "HR1 HR2 HR3"). iNext. iExact "H".
-Qed.
+
 
 (** Apply a rule over the resource H by the tactic t. *)
-Ltac rule1 H t := iRevert H; eapply step_res1; [t |]; iIntros H.
+
 
 (** Apply a rule over the resources H1 and H2 by the tactic t. *)
-Ltac rule2 H1 H2 t := iRevert H2; iRevert H1; eapply step_res2; [t |]; iIntros H1; iIntros H2.
+
 
 (** Apply a rule over the resources H1, H2 and H3 by the tactic t. *)
-Ltac rule3 H1 H2 H3 t :=
-  iRevert H3; iRevert H2; iRevert H1; eapply step_res3; [t |]; iIntros H1; iIntros H2; iIntros H3.
+
 
 (** Drop each wrap to 64 or 32 bits of the goal that arithmetic shows
     the identity, as LibioLogic.v's [unwrap], without clearing
     hypotheses first. *)
-Ltac unwrap2 :=
-  repeat match goal with
-    | |- context [?x mod 2 ^ 64] => rewrite (Z.mod_small x (2 ^ 64)); [|lia]
-    | |- context [?x mod 18446744073709551616] => rewrite (Z.mod_small x 18446744073709551616); [|lia]
-    | |- context [?x mod 2 ^ 32] => rewrite (Z.mod_small x (2 ^ 32)); [|lia]
-    | |- context [?x mod 4294967296] => rewrite (Z.mod_small x 4294967296); [|lia]
-    end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCloseStepsOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+
+Import  FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -205,137 +177,74 @@ End streams.
 
 (** A signed 32-bit load of an [int_cell]'s bytes, its life and bytes
     in H. *)
-Ltac ldi H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | ar |];
-  iNext; iIntros H.
+
 
 (** A one-byte load, its life and byte in H, at any shares. *)
-Ltac ldb H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |];
-  iNext; iIntros H.
+
 
 (** A 32-bit store over the four bytes in H. *)
-Ltac sti H :=
-  iApply (wp_raw_store_w with H); [vx | vx | reflexivity | ar | reflexivity | wi_store |];
-  iNext; iIntros H.
+
 
 (** A pointer load, the base's life, the cell and the loaded
     capability's life in H. *)
-Ltac ldp H :=
-  iApply (wp_raw_load_pointer with H); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |];
-  iNext; iIntros H.
+
 
 (** A pointer store, the base's life and the cell in H. *)
-Ltac stp H :=
-  iApply (wp_raw_store_pointer with H); [vx | vx | reflexivity | ar | ar | wi_store |];
-  iNext; iIntros H.
+
 
 (** A read check at a share of the object's life H. *)
-Ltac chkq H :=
-  iApply (wp_check_read_dq with H);
-    [reflexivity | vx | first [left; reflexivity | right; reflexivity] | ar | ar | ar |];
-  iNext; iIntros H.
+
 
 (** [ldb] and [chkq] of persistent shares, handed back to the
     persistent context. *)
-Ltac ldbp H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |];
-  iNext; iIntros "_ _".
-Ltac chkp H :=
-  iApply (wp_check_read_dq with H);
-    [reflexivity | vx | first [left; reflexivity | right; reflexivity] | ar | ar | ar |];
-  iNext; iIntros "_".
+
+
 
 (** Close the instance premise a rule's eapply leaves. *)
-Ltac inst := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
+
 
 (** An address fact about FileInv.v's offsets, by arithmetic, as
     LibioLogic.v's [ar] without clearing hypotheses. *)
-Ltac a2 := unfold off_cleanup, off_cleanup_jmp, off_cancelhandling, off_lk_lock, off_lk_cnt, off_lk_owner,
-  off_flags, off_read_ptr, off_write_base, off_write_ptr, off_write_end, off_buf_base, off_buf_end,
-  off_chain, off_fileno, off_flags2, off_lock, off_wide, off_prevchain, off_mode, off_vtable, off_ptr,
-  off_old_offset, off_column, off_shortbuf, off_offset, off_codecvt, off_freeres_list, off_freeres_buf,
-  off_total_written, vt_file, vt_wfile, slot_finish, slot_overflow, slot_xsputn, slot_doallocate, slot_write,
-  slot_close, slot_stat;
-  cbn [ptr_addr ptr_cap]; unfold raw_address; rewrite ?Z.add_0_r; clear_junk; unwrap2;
-  first [lia | apply Z.mod_1_r | Z.div_mod_to_equations; lia].
+
 
 (** One step whose premises reduce, applied as an entailment: a pure
     let, a flight, entering a block, or a goto. *)
-Ltac fs :=
-  let a := at_of in
-  lazymatch a with
-  | Exec _ (Let _ _ _ _ :: _) _ =>
-      eapply step_wand; [eapply wp_let; inst; [reflexivity | reflexivity | vx | intros ?; cbn; reflexivity] |]
-  | Exec _ (Flight _ _ _ _ :: _) _ => eapply step_wand; [eapply wp_flight; inst; [vx | reflexivity | vx] |]
-  | Enter _ _ => eapply step_wand; [eapply wp_enter; inst; [reflexivity | vx] |]; cbn [b_insts b_jump]
-  | Exec _ [] (JGoto _) => eapply step_wand; [eapply wp_goto; inst |]
-  end.
+
 
 (** The normal form of x by the virtual machine. *)
 Ltac vm_of x := eval vm_compute in x.
 
 (** A branch on a closed condition, computed. *)
-Ltac fbr :=
-  eapply step_wand; [eapply wp_branch; inst; vx |];
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := vm_of c in change c with c' end; cbn [edge_label].
+
 
 (** A branch whose condition is b, by [decide_ints]. *)
-Ltac fbrv b :=
-  eapply step_wand; [eapply wp_branch; inst; vx |];
-  lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] =>
-    let E := fresh "E" in assert (E : (n =? 0) = b) by decide_ints; rewrite E; clear E end;
-  cbn [edge_label].
+
 
 (** A check, half check or renew, over the object's life H. *)
-Ltac fchk H :=
-  let a := at_of in
-  lazymatch a with
-  | Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _ =>
-      rule1 H ltac:(eapply wp_check; inst; [reflexivity | vx | reflexivity | a2 | a2 | a2])
-  | Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _ =>
-      rule1 H ltac:(eapply wp_half_check; inst; [reflexivity | vx | reflexivity | reflexivity | a2 | a2 | lia | a2 | a2])
-  | Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _ =>
-      rule1 H ltac:(eapply wp_renew; inst; [reflexivity | vx | reflexivity | reflexivity | a2 | a2 | a2])
-  end.
+
 
 (** A signed 32-bit load of an [int_cell]'s bytes Hb, the life Hl. *)
-Ltac fldi Hl Hb :=
-  rule2 Hl Hb ltac:(eapply wp_raw_load_sub_bytes_dq; inst;
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | a2]).
+
 
 (** A 32-bit store over the four bytes Hb, the life Hl. *)
-Ltac fsti Hl Hb :=
-  rule2 Hl Hb ltac:(eapply wp_raw_store_w; inst; [vx | vx | reflexivity | a2 | reflexivity | wi_store]).
+
 
 (** A pointer load: the base's life Hl, the cell Hc and the loaded
     capability's life Hk. *)
-Ltac fldp Hl Hc Hk :=
-  iRevert Hk; iRevert Hc; iRevert Hl;
-  lazymatch goal with |- environments.envs_entails _ (_ -∗ pcell _ _ ?pv -∗ _) =>
-    eapply step_res3; [eapply wp_raw_load_pointer with (x := pv); inst;
-                       [reflexivity | vx | reflexivity | a2 | a2 | cbn; lia] |] end;
-  iIntros Hl; iIntros Hc; iIntros Hk.
+
 
 (** A load of a null pointer: the base's life Hl and the cell Hc. *)
-Ltac fldn Hl Hc :=
-  rule2 Hl Hc ltac:(eapply wp_raw_load_null; inst; [reflexivity | vx | reflexivity | a2 | a2]).
+
 
 (** A 64-bit store over the [icell] Hc, the life Hl. *)
-Ltac fstl Hl Hc :=
-  rule2 Hl Hc ltac:(eapply wp_raw_store; inst; [vx | vx | reflexivity | a2 | wi_store]).
+
 
 (** A pointer store: the base's life Hl and the cell Hc. *)
-Ltac fstp Hl Hc :=
-  rule2 Hl Hc ltac:(eapply wp_raw_store_pointer; inst; [vx | vx | reflexivity | a2 | a2 | wi_store]).
+
 
 (** A side premise of a block lemma: a hypothesis, a lookup through
     the environment's [put]s, or arithmetic. *)
-Ltac side :=
+Ltac close_side :=
   lazymatch goal with
   | |- environments.envs_entails _ _ => fail
   | |- call_frame _ _ = _ => reflexivity
@@ -346,4 +255,3 @@ Ltac side :=
 (** The rest of a caller after a callee's triple: resume it. *)
 Ltac resume := iExists _; iSplit; [iPureIntro; reflexivity|]; iNext; cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
 
-End LibioCloseStepsOn.

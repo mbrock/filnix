@@ -2,6 +2,7 @@
     Only the close_stdout callback uses HelloDebts; glibc registers and
     invokes that callback using its proved exit-handler machinery. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -9,11 +10,12 @@ From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld AtexitLogic HelloGlibcDebts HelloGlibcLibsT
   HelloGlibcMainLibsCalls HelloGlibcLibsSys HelloGlibcLibsCleanup HelloGlibcLibsExit.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The interface exposes concrete exit resources and the completed record. *)
-Module Type HelloMainLibsSig (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0) (AX : AtexitT R LG0).
+Module Type HelloMainLibsSig (D : HelloDebtsT) (AX : AtexitT).
 Import LG0 LG0.L D D.SW.FI.ML.
 (** The recursive exit lock starts unlocked, with no owner. *)
 Definition exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
@@ -29,14 +31,14 @@ Parameter hello_libs : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
 End HelloMainLibsSig.
 
 (** The implementation assembles the independently proved bridges. *)
-Module HelloGlibcMainLibsOn (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0) (AX : AtexitT R LG0)
-  : HelloMainLibsSig R LG0 D AX.
+Module HelloGlibcMainLibsOn (D : HelloDebtsT) (AX : AtexitT)
+  : HelloMainLibsSig D AX.
 (** The sealed call group supplies string and program-name calls. *)
-Module C := HelloGlibcMainLibsCallsOn R LG0 D.
+Module C := HelloGlibcMainLibsCallsOn D.
 (** The system bridge supplies allocation and registration. *)
-Module SY := HelloGlibcLibsSysOn R LG0 D AX.
+Module SY := HelloGlibcLibsSysOn D AX.
 (** The exit bridge invokes the callback and finishes cleanup. *)
-Module EX := HelloGlibcLibsExitOn R LG0 D AX.
+Module EX := HelloGlibcLibsExitOn D AX.
 Import LG0 LG0.L D D.SW.FI.ML.
 (** The recursive exit lock starts unlocked, with no owner. *)
 Definition exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=

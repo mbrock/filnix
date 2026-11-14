@@ -4,6 +4,7 @@
     checks that static objects do not overlap, before host preparation
     allocates the thread object. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Values Memory Runtime Run Pieces.

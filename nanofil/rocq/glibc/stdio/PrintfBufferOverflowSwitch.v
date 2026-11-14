@@ -6,6 +6,7 @@
     The caller must own the pointer cells that the switch reads and updates.
     These proofs preserve that ownership. They do not prove that overflow
     returns the required resources. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,15 +15,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode PrintfBufferStage PrintfBufferDirect.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld PrintfBufferDirect PrintfBufferStage SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** Both calls use the same runtime and OS interpretation as the flush caller. *)
-Module PrintfBufferOverflowSwitchOn (R : Runtime) (LG0 : LogicSig R).
-Module BS := PrintfBufferStageOn R LG0.
-Module BD := PrintfBufferDirectOn R LG0.
-Import BS.PI BS.PI.CS BS.PI.CS.SW BS.PI.CS.SW.FI.ML BS.PI.CS.SW.FI.LG
-  BS.PI.CS.SW.FI.L BS.PI.CS.SW.OW BS.PI.CS.SW.FI BS.PI.CS.SW.ST.
+
+Import LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -56,10 +55,10 @@ Proof.
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
   iNext. cbn [b_insts b_jump].
   iApply wp_call_bind; [vx | exact Hswitch | reflexivity |]. iNext.
-  iApply (BS.wp_printf_buffer_switch_null w0 registry ge _ bb breg fb freg
-    with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend"); try side.
+  iApply (PrintfBufferStage.wp_printf_buffer_switch_null w0 registry ge _ bb breg fb freg
+    with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
   iNext. iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend".
-  resume. fs. enter. iApply wp_ret_void. iNext.
+  resume. step. step. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend").
 Qed.
 
@@ -91,17 +90,16 @@ Proof.
   iNext. cbn [b_insts b_jump].
   iApply wp_call_bind; [vx | exact Hswitch | reflexivity |]. iNext.
   destruct (Z.ltb_spec bo eo) as [Hspace|Hspace].
-  - iApply (BD.wp_printf_buffer_switch_direct w0 registry ge _ bb breg fb freg db dreg bo eo
-      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try side.
+  - iApply (PrintfBufferDirect.wp_printf_buffer_switch_direct w0 registry ge _ bb breg fb freg db dreg bo eo
+      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
     iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".
-    resume. fs. enter. iApply wp_ret_void. iNext.
+    resume. step. step. iApply wp_ret_void. iNext.
     iApply ("HK" with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend").
-  - iApply (BS.wp_printf_buffer_switch_staging w0 registry ge _ bb breg fb freg db dreg bo eo
-      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try side.
+  - iApply (PrintfBufferStage.wp_printf_buffer_switch_staging w0 registry ge _ bb breg fb freg db dreg bo eo
+      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
     iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".
-    resume. fs. enter. iApply wp_ret_void. iNext.
+    resume. step. step. iApply wp_ret_void. iNext.
     iApply ("HK" with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend").
 Qed.
 
 End rules.
-End PrintfBufferOverflowSwitchOn.

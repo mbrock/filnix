@@ -13,6 +13,7 @@
     read base, write pointer and write base, finds the mode narrow
     ([mode_sle]) and goes on at LibioXsputnFlags.v's [wp_xs_L122]. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,6 +24,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnFlags LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -37,14 +40,8 @@ Lemma mode_sle m : m = 0 \/ m = 2 ^ 32 - 1 ->
    then 1 else 0) = 1.
 Proof. intros [-> | ->]; reflexivity. Qed.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnResetOn (R : Runtime) (LG0 : LogicSig R).
-Module XF := LibioXsputnFlagsOn R LG0.
-Import XF XF.XS XF.XS.XB XF.XS.XB.DX XF.XS.XB.DX.RM XF.XS.XB.DX.RM.SM.TL XF.XS.XB.DX.RM.SM.TL.BY
-  XF.XS.XB.DX.RM.SM.TL.BY.BF XF.XS.XB.DX.RM.SM.TL.BY.BF.CP XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI
-  XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -69,7 +66,7 @@ Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; u
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
 (** A pointer load of the buffer's base from the cell H. *)
-Ltac ldb H := fldp "Hl" H "Hbl".
+Ltac ldb H := load "Hl" H "Hbl".
 
 (** Block `c: iw_2.L70` on, r of the d bytes written of the T left:
     `c: _IO_setg` and `c: _IO_setp` store the buffer's base as every
@@ -99,16 +96,15 @@ Proof.
   iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
   iDestruct "Hmode" as "[%Hm32 Hmode]".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
-  fs. fs. fs. fchk "Hl". ldb "Hbb". fchk "Hl". fstp "Hl" "Hrb". fs. fchk "Hl". ldb "Hbb". fchk "Hl". fstp "Hl" "Hrp".
-  fs. fchk "Hl". ldb "Hbb". fchk "Hl". fstp "Hl" "Hre". fs. fs. fchk "Hl". ldb "Hbb". fchk "Hl". fstp "Hl" "Hwp".
-  fchk "Hl". fstp "Hl" "Hwb". fs. fs. fchk "Hl". fldi "Hl" "Hmode". fs.
-  rewrite (mode_sle _ Hm). fbrv false.
+  step. step. step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hrb". step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hrp".
+  step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hre". step. step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hwp".
+  check "Hl". store "Hl" "Hwb". step. step. check "Hl". load_s32 "Hl" "Hmode". step.
+  rewrite (mode_sle _ Hm). branch_as false.
   iDestruct ("Hroom" with "Hbl") as "Hroom".
   iApply (wp_xs_L122 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb wp we dq b' reg'
             so c' ys T d r fl f2 fd tw off m with "Hvt Hl Hvtp Hrp Hre Hrb Hwb Hbb Hbe Hwp Hwe Hroom Hfl Hfl2 Hfdc Htw
-            Hoff Hcol [$Hmode //] Herr HX Hl' Hys HK"); try side.
+            Hoff Hcol [$Hmode //] Herr HX Hl' Hys HK"); try close_side.
   all: lk_fin.
 Qed.
 
 End rules.
-End LibioXsputnResetOn.

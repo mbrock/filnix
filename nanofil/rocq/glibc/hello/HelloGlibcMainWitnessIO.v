@@ -7,20 +7,21 @@
     The fixture checks resource satisfiability, not program linking or
     the remaining M4 and M6 call proofs. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld FileInv HelloGlibcMainWitness.
 From stdpp Require Import list.
+From Glibc Require AllocLogic FileInv HelloGlibcMainWitness.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** All predicates share one runtime and logic instance. *)
-Module HelloGlibcMainWitnessIOOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The earlier fixture supplies the streams and allocator. *)
-Module W := HelloGlibcMainWitnessOn R LG0.
-Import W LG0 LG0.L FI FI.ML.
+Import HelloGlibcMainWitness LG0 LG0.L FileInv FileInv.ML.
 
 (** The resource environment assigns distinct pages to shared globals.
     The jump-table slots carry function capabilities, even though this
@@ -138,7 +139,7 @@ Lemma witness_all_resources : pts witness_all ==∗
   liveq DfracDiscarded 49152 (hello_witness_region 49152) ∗
   vtables_ro witness_ge 16384 (hello_witness_region 16384) ∗
   single_ro witness_ge 98304 (hello_witness_region 98304) ∗
-  AL.tcache_idle DfracDiscarded 32768 36864 40960
+  AllocLogic.tcache_idle DfracDiscarded 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
 Proof.
   rewrite /witness_all witness_concat. cbn [big_opL]. iIntros "(Hfiles & Hlist & Hthread & Hro & _)".
@@ -173,18 +174,17 @@ Qed.
     of any program resource. *)
 Lemma witness_imported_resources Σ `{!gen_heapGpreS piece pval Σ} :
   ⊢ |==> ∃ Hh : gen_heapGS piece pval Σ,
-    @FI.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 4096 (Obj 4096)) ∗
-    @FI.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 8192 (Obj 8192)) ∗
-    @FI.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 12288 (Obj 12288)) ∗
-    @FI.io_list_inv Σ Hh witness_ge [mkPtr 8192 (Obj 8192); mkPtr 4096 (Obj 4096); mkPtr 12288 (Obj 12288)] ∗
-    @FI.tcb_cleanup_inv Σ Hh (ow_self hello_witness_world) ∗ @errno_any Σ Hh 49152 ∗
+    @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 4096 (Obj 4096)) ∗
+    @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 8192 (Obj 8192)) ∗
+    @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 12288 (Obj 12288)) ∗
+    @FileInv.io_list_inv Σ Hh witness_ge [mkPtr 8192 (Obj 8192); mkPtr 4096 (Obj 4096); mkPtr 12288 (Obj 12288)] ∗
+    @FileInv.tcb_cleanup_inv Σ Hh (ow_self hello_witness_world) ∗ @errno_any Σ Hh 49152 ∗
     @liveq Σ Hh DfracDiscarded 49152 (hello_witness_region 49152) ∗
-    @FI.vtables_ro Σ Hh witness_ge 16384 (hello_witness_region 16384) ∗
-    @FI.single_ro Σ Hh witness_ge 98304 (hello_witness_region 98304) ∗
-    @AL.tcache_idle Σ Hh DfracDiscarded 32768 36864 40960
+    @FileInv.vtables_ro Σ Hh witness_ge 16384 (hello_witness_region 16384) ∗
+    @FileInv.single_ro Σ Hh witness_ge 98304 (hello_witness_region 98304) ∗
+    @AllocLogic.tcache_idle Σ Hh DfracDiscarded 32768 36864 40960
       (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
 Proof.
   iMod (witness_imported_allocatable Σ) as (Hh) "H".
   iMod (witness_all_resources with "H") as "H". iModIntro. iExists Hh. iExact "H".
 Qed.
-End HelloGlibcMainWitnessIOOn.

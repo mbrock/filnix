@@ -6,6 +6,8 @@
     parser's own index and cursor, and they read the word only inside
     its string. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongEq GetoptLongExact GetoptLongReq GetoptLongScan GetoptLongStore GetoptLongTail GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -32,21 +36,15 @@ Definition larg_names : list name := Eval vm_compute in
 (** The test of the found entry starts in this block. *)
 Definition plo_blk87 : block := Eval vm_compute in plo_blk "L87".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPreOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The equals-sign module supplies the option table and the tactics. *)
-Module LQE := GetoptLongEqOn R LG0.
-Import LQE LQE.LQ LQE.LQ.LL LQE.LQ.LL.LT LQE.LQ.LL.LT.LD LQE.LQ.LL.LT.LD.LE LQE.LQ.LL.LT.LD.LE.LS
-  LQE.LQ.LL.LT.LD.LE.LS.RT LQE.LQ.LL.LT.LD.LE.LS.RT.D LQE.LQ.LL.LT.LD.LE.LS.RT.D.X LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section pre.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance pre_stable : SafepointStable (os_wi w0) := LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance pre_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance pre_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -81,14 +79,14 @@ Proof.
   intros Hks H12 H90 H7 Hp1 Hc0 Hc1 Hlo Hlj Hi Hb Hal Hend Hr.
   iIntros "#Hws Hl [%Hi0 Hib] Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe). pose proof (eq_len_le s) as Hle.
-  cbn [b_insts b_jump plo_blk87]. st. st.
+  cbn [b_insts b_jump plo_blk87]. step. step.
   rewrite (Z.mod_small (ptr_addr lo + 32 * Z.of_nat j) (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
   rewrite (proj2 (Z.eqb_neq (ptr_addr lo + 32 * Z.of_nat j) 0)); [|lia].
   iApply wp_branch; [vx | iNext]. close_br.
-  en. chk "Hl". load_int "Hl Hib". st. norm. chk "Hl".
-  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-  iNext. iIntros "Hl Hib". st. chk "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
+  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+  iNext. iIntros "Hl Hib". step. check "Hl".
+  iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
   iNext. iIntros "Hl Hcur".
   iDestruct (ws_byte cur s (eq_len s) with "Hws") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
@@ -108,4 +106,3 @@ Proof.
 Qed.
 
 End pre.
-End GetoptLongPreOn.

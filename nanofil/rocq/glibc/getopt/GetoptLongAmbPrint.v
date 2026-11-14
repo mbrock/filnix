@@ -4,6 +4,8 @@
     pointer and the entry's name, and it writes them only through the
     report rule that its caller supplies. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -28,34 +32,16 @@ Local Arguments Z.opp : simpl nomatch.
 Definition aprint_names : list name := Eval vm_compute in
   List.map TAtom ["v288"; "chk26"; "v289"; "v290"; "v295"; "v296"; "chk27"; "v297"; "v298"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongAmbPrintOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The tail module supplies the set, the option table, the report rule and the tactics. *)
-Module LAT := GetoptLongAmbTailOn R LG0.
-Import LAT LAT.LPE LAT.LPE.LPL LAT.LPE.LPL.LPI LAT.LPE.LPL.LPI.LPT LAT.LPE.LPL.LPI.LPT.LPS LAT.LPE.LPL.LPI.LPT.LPS.LPA LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 
 Section print.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance aprint_stable : SafepointStable (os_wi w0) := LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance aprint_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance aprint_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -88,13 +74,13 @@ Proof.
   destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
   iDestruct (big_sepL_lookup with "Hes") as "(#Hn & #Hnws & _)"; [exact Hy|].
   iDestruct (argv_str_cap with "Hnws") as (rn) "[#Hcapn %Hn0]".
-  en. st.
+  step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | arith | arith | arith |].
+    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |].
   iNext; iIntros "_".
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]".
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | arith | arith | exact Hfp |].
-  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). st. st. st. norm.
+  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |].
+  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). step. step. step. norm.
   change (2 ^ (5 mod 64)) with 32.
   match goal with |- context [put (TAtom "v296") (WPtr {| ptr_addr := ?X; ptr_cap := ptr_cap lo |})] =>
     replace X with (ptr_addr lo + 32 * Z.of_nat k) by (rewrite !Z.mod_small; lia) end.
@@ -103,10 +89,9 @@ Proof.
   iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
     [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
   iNext. iIntros "_ _ _".
-  iApply (Hf4 with "HG Hpfx Hnws"); [exact H140 | vx |]. iNext. iIntros (r0) "HG". st.
+  iApply (Hf4 with "HG Hpfx Hnws"); [exact H140 | vx |]. iNext. iIntros (r0) "HG". step.
   iApply ("HK" with "[%] HG"). xkeep.
 Unshelve. all: first [exact treg | exact DfracDiscarded | idtac].
 Qed.
 
 End print.
-End GetoptLongAmbPrintOn.

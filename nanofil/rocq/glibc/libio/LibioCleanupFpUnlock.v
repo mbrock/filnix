@@ -9,6 +9,7 @@
     object it names: the next stream's, given as [live_cap], or
     nothing for null. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioCleanupCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode.
+From Glibc Require FileInv LibioCleanupFpLock LibioCleanupMode LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,14 +29,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCleanupFpUnlockOn (R : Runtime) (LG0 : LogicSig R).
-Module CM := LibioCleanupModeOn R LG0.
-Import CM CM.CL CM.CL.FA CM.CL.FA.FB CM.CL.FA.FB.FT CM.CL.FA.FB.FT.FS CM.CL.FA.FB.FT.FS.FC CM.CL.FA.FB.FT.FS.FC.FU
-  CM.CL.FA.FB.FT.FS.FC.FU.FL CM.CL.FA.FB.FT.FS.FC.FU.FL.CS CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW
-  CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG
-  CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.L CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.OW CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI
-  CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -83,18 +80,17 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* iw_1.L306: single threaded. *)
-  fs. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
+  step. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
   (* iw_1.L315, iw_1.L316: the count is 0. *)
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fldi "Hbl" "Hb4". fs. fs. fs. fbr.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". load_s32 "Hbl" "Hb4". step. step. step. branch.
   (* iw_1.L309: the owner null, then the lock word 0. *)
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fstp "Hbl" "Hbo".
-  fchk "Hl". fldp "Hl" "Hlp" "Hbl". fchk "Hbl". fsti "Hbl" "Hb0". fs.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". store "Hbl" "Hbo".
+  check "Hl". load "Hl" "Hlp" "Hbl". check "Hbl". store_int "Hbl" "Hb0". step.
   (* iw_1.L301: `c: run_fp` null, and the next stream. *)
-  fs. fs. fchk "Hrl". fstp "Hrl" "Hrc". fs. fchk "Hl". fldp "Hl" "Hch" "Hnl". fs.
+  step. step. check "Hrl". store "Hrl" "Hrc". step. check "Hl". load "Hl" "Hch" "Hnl". step.
   iApply ("HK" with "[%] Hl Hlp [Hbl Hb0 Hb4 Hbo] Hrl Hrc Hch Hnl").
   - split_and!; lk_prove.
   - iFrame. iPureIntro. unfold int_bytes. split_and!; lia.
 Qed.
 
 End rules.
-End LibioCleanupFpUnlockOn.

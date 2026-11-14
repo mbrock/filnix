@@ -7,6 +7,7 @@
     returns what the wrapper returns. This file proves that call on top
     of the wrapper's rule, so the parser's own behaviour stays a premise. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptWrapper.
+From Glibc Require FileInv GetoptInitialize GetoptState GetoptWrapper LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -75,17 +78,15 @@ Lemma getopt_long_ctl_index :
   needs_init (mkGetoptState 0 1 0 null 1 null 0 0 0) /\ ~ needs_init (mkGetoptState 2 1 0 null 1 null 0 1 1).
 Proof. unfold needs_init. cbn. split; [left; reflexivity | lia]. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongWrapperOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The wrapper module proves the copies around the reentrant parser. *)
-Module WR := GetoptWrapperOn R LG0.
-Import WR.I WR.I.S WR.I.S.FI WR.I.S.FI.ML WR.I.S.FI.LG WR.I.S.FI.L WR.I.ST.
+Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic.
 
 Section long_wrapper.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the call's safepoints. *)
-Local Instance lw_stable : SafepointStable (os_wi w0) := WR.I.OW.os_wi_stable w0.
+Local Instance lw_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance lw_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -149,7 +150,7 @@ Proof.
                (Enter (TAtom "start") None)));
     [ cbn; rewrite H0 H2 H4 H6 H8; cbn; unwrap; reflexivity | exact Hfi | reflexivity |].
   iNext.
-  iApply (WR.wp_getopt_internal w0 registry ge _ n av p lo li 0 0 b r oi roi oe roe oa roa oo roo i err a0 c0 i0 e0
+  iApply (GetoptWrapper.wp_getopt_internal w0 registry ge _ n av p lo li 0 0 b r oi roi oe roe oa roa oo roo i err a0 c0 i0 e0
             (fun x i' c' a' => ⌜0 <= x < 2 ^ 32⌝ ∗ Ψ x i' c' a')%I
             with "Hli Hi Hle He Hla Hab Hlo Hc Hl Hb0 Hb4 [HR] [HK]");
     try (reflexivity || assumption || lia).
@@ -164,4 +165,3 @@ Proof.
 Qed.
 
 End long_wrapper.
-End GetoptLongWrapperOn.

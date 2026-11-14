@@ -22,6 +22,7 @@
     word. Keeping a fraction behind lets [wwin_agree] verify that the
     returned words still match the original string. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.bi.lib Require Import fractional.
@@ -30,6 +31,7 @@ From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -491,9 +493,7 @@ End word_string.
     callers to extract physical memory readability for external calls
     and to discharge read checks using a fractional liveness token. *)
 
-(** The module [WordStringOn] lifts string readability and fractional
-    read checks into an arbitrary [[runtime]] R and logic instance LG0. *)
-Module WordStringOn (R : Runtime) (LG0 : LogicSig R).
+
 Module LG := LG0.
 Module L := LG.L.
 Import L LG.
@@ -542,4 +542,3 @@ Proof.
 Qed.
 
 End rules.
-End WordStringOn.

@@ -9,6 +9,8 @@
     exception: the choice needs a bound one smaller than the scanner's,
     and the caller must supply it. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
@@ -16,6 +18,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv WordString GetoptState GetoptInitialize GetoptExchange GetoptReturn
   GetoptIdlePath GetoptScanEnd GetoptEntry GetoptEntryScan.
+From Glibc Require FileInv GetoptArgv GetoptEntryScan GetoptExchange GetoptInitialize GetoptState.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -108,11 +112,9 @@ Proof. split; [apply perm_swap | split; [reflexivity | discriminate]]. Qed.
 Lemma scan_choice_ctl_order : ~ (0 <= 1 <= 3 /\ 3 <= 2).
 Proof. lia. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptScanChoiceOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The bridge module carries the setup's environment fact across the scan. *)
-Module ES := GetoptEntryScanOn R LG0.
-Import ES.X ES.X.I ES.X.I.S ES.X.I.S.FI ES.X.I.S.FI.ML ES.X.I.S.FI.LG ES.X.I.S.FI.L ES.X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L GetoptArgv.
 
 (** After the scan, the choice can look up every value it needs. The
     scan kept the setup's values, and the caller takes chk100 from the
@@ -129,7 +131,7 @@ Lemma scan_choice_env_keeps ks e e' n av p lo li lonly b pe :
   lookup (TAtom "chk100") e' = Some (WPtr (mkPtr b (Obj b))).
 Proof.
   intros Hk Hin Henv H100. apply scan_choice_env; [|exact H100].
-  exact (ES.entry_env_keeps ks e e' n _ p lo li lonly b pe Hk Hin Henv).
+  exact (GetoptEntryScan.entry_env_keeps ks e e' n _ p lo li lonly b pe Hk Hin Henv).
 Qed.
 
 Section scan_choice.
@@ -158,4 +160,3 @@ Proof.
 Qed.
 
 End scan_choice.
-End GetoptScanChoiceOn.

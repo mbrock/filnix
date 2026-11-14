@@ -4,6 +4,7 @@
     The caller keeps the buffer's alignment, heap ownership and empty
     capability slots so it can copy into the buffer or free it later. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioSetb LibioOverflowBase.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -34,10 +37,8 @@ Definition ovf_alloc_flags (fl fl' : Z) : Prop :=
   exists fl1, (fl1 = fl \/ fl1 = Z.lor fl io_line_buf) /\
     (fl' = Z.lor (setb_flags fl1 1) 2048 \/ fl' = Z.lor (Z.lor (setb_flags fl1 1) 2048) io_err_seen).
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowAllocSetgOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -121,7 +122,7 @@ Proof.
   iIntros "#Hvt Hl Hfx [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HM HK". unfold file_size in Hend.
   iDestruct "Hfx" as "(Hf2 & Hfd & Herr & Hcol & Hmode & Hvtp)". adv.
   iApply wp_call_bind; [vx | exact Hdabf | reflexivity |]. iNext.
-  iApply (Hdab with "Hvt Hl [$Hflb //] Hfd Herr Hbase Hbend Hvtp HM"); try first [reflexivity | side].
+  iApply (Hdab with "Hvt Hl [$Hflb //] Hfd Herr Hbase Hbend Hvtp HM"); try first [reflexivity | libio_side].
   iNext. iIntros "Hvtp". iIntros (fl1 bb sz (Hfl1 & Hsz & Hbb & Hbbe)) "Hl Hflb Hfd Hbase Hbend Hnb Herr HM".
   iDestruct "Hnb" as (breg) "(%Hbr & Hbl & Hxs & Haux)". destruct Hbr as (Hbk' & Hbe & Hbreg & Hb16).
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
@@ -136,17 +137,16 @@ Proof.
   iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
   iNext. iIntros "Hl Hbase Hbl". adv.
   iApply (wp_raw_store_pointer with "Hl Hre"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hre". st.
+  iNext. iIntros "Hl Hre". step.
   assert (Hfa : Z.land (setb_flags fl1 1) io_is_appending = 0 /\ Z.land (setb_flags fl1 1) 256 = 0).
   { rewrite !setb1_land; try reflexivity. unfold io_is_appending, io_line_buf in *.
     destruct Hfl1 as [-> | ->]; [split; assumption | rewrite !land_lor_const; try reflexivity; split; assumption]. }
   destruct Hfa as [Happ' Hbk2].
   iApply (HL35 with "Hvt Hl [$Hf2 $Hfd $Herr $Hcol $Hmode $Hvtp] Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
-    try first [side | lk_prove | rewrite length_replicate; lia | apply Forall_replicate; lia].
+    try first [libio_side | lk_prove | rewrite length_replicate; lia | apply Forall_replicate; lia].
   iNext. iIntros (r k' we' xs' fl' tw' off' [Hr Hfl']) "Hl Hfx Hst".
   iApply ("HK" with "[%] Hl Hfx Hst Haux HM").
   split; [exact Hr|]. split; [exact Hsz|]. split; [exists fl1; tauto|]. tauto.
 Qed.
 
 End rules.
-End LibioOverflowAllocSetgOn.

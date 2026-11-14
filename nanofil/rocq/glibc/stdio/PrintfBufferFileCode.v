@@ -5,14 +5,12 @@
     rocq/glibc/stdio/buffer-code.sh reproduces these terms from the pinned
     capture with gallina.pl. Regenerate this file rather than editing it. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Ascii.
-From Nanofil Require Import Term.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
-
-(** This helper constructs the atom containing one character with code n. *)
-Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 
 (** This term contains the selected checked function bodies. *)
 Definition printf_buffer_file_term : term :=
@@ -299,7 +297,7 @@ From Nanofil Require Import Syntax Transport Semantics.
 
 (** Decoding gives the actual checked bodies used by instruction proofs. *)
 Definition printf_buffer_file_module : module := Eval vm_compute in
-  match decode_module printf_buffer_file_term with Some md => md | None => [] end.
+  code_module printf_buffer_file_term.
 
 (** Computation rules out the empty fallback in the decoded module. *)
 Lemma printf_buffer_file_decodes : decode_module printf_buffer_file_term = Some printf_buffer_file_module.
@@ -307,10 +305,7 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** Function lookup selects a checked body without supplying its specification. *)
 Definition printf_buffer_file_fn (n : string) : func :=
-  match find_direct (TAtom n) printf_buffer_file_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []
-  end.
+  code_function printf_buffer_file_module n.
 
 (** This definition selects the checked body of [__printf_buffer_to_file_switch]. *)
 Definition glibc___printf_buffer_to_file_switch : func := Eval vm_compute in

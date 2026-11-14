@@ -42,6 +42,7 @@
     our trace model records written stream bytes rather than file offsets,
     `c: zsys_lseek` emits no trace events. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -49,6 +50,8 @@ From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic.
 From Glibc Require Import OsBlocks OsWorld.
+From Glibc Require OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -97,12 +100,9 @@ Definition os_lseek_contract : contract os_world :=
     [[weakest-precondition|weakest-precondition]] rules that callers use
     in proofs. *)
 
-(** To verify C functions that call `c: zsys_lseek`, [OsLseekOn] lifts the
-    contract above into separation-logic proof rules for a given
-    [[runtime]] and program logic. *)
-Module OsLseekOn (R : Runtime) (LG0 : LogicSig R).
-Module OW := OsWorldOn R LG0.
-Import OW OW.L OW.LG.
+(** The rules below lift the contract above into separation-logic proof rules
+    for C functions that call `c: zsys_lseek`. *)
+Import OsWorld OsWorld.L OsWorld.LG.
 
 (** When an invocation of [os_lseek_contract] returns to its caller, it
     leaves the OS world unchanged and yields either a non-negative file
@@ -177,4 +177,3 @@ Lemma wp_zsys_lseek_lend f e ls lab d a0 a1 a2 rest j fd off wh eb bs Φ :
 Proof. intros. iIntros "Herr HK". iApply (wp_zsys_lseek with "[Herr] HK"); try eassumption. by iExists bs. Qed.
 
 End rule.
-End OsLseekOn.

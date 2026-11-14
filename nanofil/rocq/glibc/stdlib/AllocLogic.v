@@ -20,8 +20,11 @@
     releases a live heap object, and [wp_glibc_free_null] ignores a null
     pointer. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith Lia.
 From Glibc Require Import StrlenBits.
+From Glibc Require GlibcLogic LeavesLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 
 (** Glibc's `c: request2size` rounds a chunk size down to a multiple of
@@ -63,15 +66,10 @@ Definition malloc2_fn : func := Eval vm_compute in stdlib_fn "malloc#__libc_mall
     `__GI___libc_free`. *)
 Definition free_fn : func := Eval vm_compute in stdlib_fn "__GI___libc_free".
 
-(** The module [AllocOn] proves the `c: malloc` and `c: free`
-    specifications over an arbitrary [[runtime]] R and logic instance
-    LG0. *)
-Module AllocOn (R : Runtime) (LG0 : LogicSig R).
-Module GL := GlibcLogicOn R LG0.
-Module LV := LeavesOn R LG0.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG GL LV.
+Import L LG GlibcLogic LeavesLogic.
 
 Local Opaque malloc_fn malloc2_fn free_fn.
 
@@ -90,37 +88,21 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** Applying a step rule creates a side condition showing that the world
     stays valid across garbage-collection safepoints. The tactic [inst]
     closes that [SafepointStable] obligation by typeclass search. *)
-Ltac inst := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
+
 
 (** The tactic [st] advances the proof by one symbolic IR step,
     dispatching on whether the frame sits at a let binding, a
     [[flight]], a block entry, or a jump. *)
-Ltac st :=
-  lazymatch goal with
-  | |- environments.envs_entails _ (wp _ _ (ERun (mkFrame _ _ _ _ ?pos)) _) =>
-      lazymatch pos with
-      | Exec _ (Let _ _ _ _ :: _) _ =>
-          eapply step_wand;
-            [eapply wp_let; inst; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity] |]
-      | Exec _ (Flight _ _ _ _ :: _) _ =>
-          eapply step_wand; [eapply wp_flight; inst; [reflexivity | reflexivity | reflexivity] |]
-      | Enter _ _ =>
-          eapply step_wand; [eapply wp_enter; inst; [reflexivity | reflexivity] |]; cbn [b_insts b_jump]
-      | Exec _ [] (JGoto _) => eapply step_wand; [eapply wp_goto; inst |]
-      end
-  end.
+
 
 (** Functions in the prelude read global variables such as `mp_` and
     `tcache` before dereferencing them. The tactic [st_global] steps
     past a global pointer load using its binding hypothesis Hs. *)
-Ltac st_global Hs :=
-  eapply step_wand;
-    [eapply wp_let; inst;
-       [reflexivity | reflexivity | cbn [map2_option value_x]; rewrite Hs; reflexivity | intros ?; reflexivity] |].
+
 
 (** The tactic [br] steps across a conditional branch and immediately
     simplifies its boolean condition. *)
-Ltac br := eapply step_wand; [eapply wp_branch; inst; reflexivity |]; decide_branch.
+
 
 (** Allocating a fresh 16-aligned heap object of n bytes must preserve
     the [[state-interpretation|world interpretation]] [wi]. Predicate
@@ -140,7 +122,7 @@ Lemma wp_libc_malloc2 n Φ :
      obj base (heap_req 16 n) -∗ Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
   WP (ERun (mkFrame malloc2_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros Hn Hk. iIntros "HΦ". st.
+  intros Hn Hk. iIntros "HΦ". step.
   iApply (wp_alloc_any _ _ _ _ _ _ _ _ _ _ _ _ _ n);
     [cbn; rewrite Z.mod_small; [reflexivity | lia] | lia | exact Hk |].
   nx. iIntros (base) "%Hb Hobj".
@@ -162,7 +144,7 @@ Lemma wp_glibc_free b reg Φ :
   WP (ERun (mkFrame free_fn [(TAtom "v0", WPtr (mkPtr b (Obj b)))] [] None (Enter (TAtom "start") None))
       : gexpr) {{ Φ }}.
 Proof.
-  intros Hf Hfn Hdata Hk Hb Hwi. iIntros "Hl HΦ". st.
+  intros Hf Hfn Hdata Hk Hb Hwi. iIntros "Hl HΦ". step.
   iApply (wp_free_sym with "Hl"); [reflexivity | exact Hf | exact Hfn | exact Hdata | reflexivity
                                   | exact Hk | exact Hb | exact Hwi |].
   nx. iApply wp_ret_void. nx. iExact "HΦ".
@@ -176,7 +158,7 @@ Lemma wp_glibc_free_null Φ :
   Φ RetVoid -∗
   WP (ERun (mkFrame free_fn [(TAtom "v0", WPtr null)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros Hf Hfn Hdata. iIntros "HΦ". st.
+  intros Hf Hfn Hdata. iIntros "HΦ". step.
   iApply wp_free_null_sym; [reflexivity | exact Hf | exact Hfn | exact Hdata | reflexivity |].
   nx. iApply wp_ret_void. nx. iExact "HΦ".
 Qed.
@@ -205,7 +187,7 @@ Proof. reflexivity. Qed.
     [l7] steps through that call using [wp_libc_malloc2] and restores
     [tcache_idle] to the caller. *)
 Ltac l7 n Hn Hk Hm2 :=
-  st;
+  step;
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WInt n] malloc2_fn _);
     [transitivity (Some [WInt (n mod 2 ^ 64)]); [reflexivity | rewrite Z.mod_small; [reflexivity | lia]]
     | exact Hm2 | apply malloc2_frame |];
@@ -218,11 +200,11 @@ Ltac l7 n Hn Hk Hm2 :=
     `mp_.tcache_max_bytes` and compares it with the request. The tactic
     [join] steps through that global read and its comparison branch. *)
 Ltac join Hmp :=
-  st; st_global Hmp; st;
+  step; step_global Hmp; step;
   rule1 "Hmpl" ltac:(eapply wp_check_read_dq; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]);
   rule2 "Hmpl" "Hmpc" ltac:(eapply wp_raw_load_read_dq; inst;
-    [reflexivity | reflexivity | left; reflexivity | arith]); st; br.
+    [reflexivity | reflexivity | left; reflexivity | arith]); step; (branch_symbolic; LeavesLogic.decide_branch).
 
 (** [seqZ_bin] confirms that any small-bin index i below 64 appears at
     position i in `seqZ 0 64`. *)
@@ -235,19 +217,19 @@ Proof. intros Hi. rewrite lookup_seqZ_lt; [f_equal; lia | lia]. Qed.
     bin bounds check, load the `tcache` pointer, read the null bin
     entry, and restore the remaining bins. *)
 Ltac l26 i Htc dq dummy_reg :=
-  st; st; st; st; br; st; st_global Htc;
+  step; step; step; step; (branch_symbolic; LeavesLogic.decide_branch); step; step_global Htc;
   rule1 "Htcl" ltac:(eapply wp_check_read_dq; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]);
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Htcl Htcc Hdl");
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith |];
-  nx; iIntros "Htcl Htcc Hdl"; st; st; st; simp;
+  nx; iIntros "Htcl Htcc Hdl"; step; step; step; simp;
   iDestruct (big_sepL_lookup_acc _ _ (Z.to_nat i) i with "Hbins") as "[Hbin Hbins]"; [apply seqZ_bin; lia|];
   rule1 "Hdl" ltac:(eapply wp_check_read_dq; inst;
     [reflexivity | reflexivity | right; reflexivity | arith | arith | arith]);
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (152 + 8 * i) null dummy_reg dq dq dq
             with "Hdl Hbin []");
     [reflexivity | reflexivity | right; reflexivity | arith | arith | arith | by cbn |];
-  nx; iIntros "Hdl Hbin _"; iDestruct ("Hbins" with "Hbin") as "Hbins"; st; st; st; br.
+  nx; iIntros "Hdl Hbin _"; iDestruct ("Hbins" with "Hbin") as "Hbins"; step; step; step; (branch_symbolic; LeavesLogic.decide_branch).
 
 (** Calling `c: malloc` with any size n below 2^64 either stalls or
     returns a fresh 16-aligned heap object. Theorem [wp_glibc_malloc]
@@ -268,14 +250,14 @@ Proof.
   intros Hn Hk Hmp Htc Hm2. iIntros "Hidle HΦ".
   iDestruct "Hidle" as "(%Hlay & Hmpl & Hmpc & Htcl & Htcc & Hdl & Hbins)".
   destruct Hlay as (Hm0 & Hmend & Ht0 & Ht8 & Htend & Hd0 & Hd8 & Hdend).
-  st. st. br.
+  step. step. (branch_symbolic; LeavesLogic.decide_branch).
   destruct (Z.ltb_spec 9223372036854775807 n) as [Hbig|Hsmall]; simp.
   - join Hmp.
     l7 n Hn Hk Hm2.
-  - st. st. st. st. br.
+  - step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch).
     destruct (Z.ltb_spec (n + 8 + 15) 32) as [Hs32|Hb32]; simp.
     + join Hmp. l26 0 Htc dq dummy_reg. l7 n Hn Hk Hm2.
-    + st. st. st. simp. rewrite land_align16; [|lia].
+    + step. step. step. simp. rewrite land_align16; [|lia].
       remember (n + 8 + 15 - (n + 8 + 15) mod 16) as nb eqn:Enb.
       assert (Hnb : 32 <= nb <= n + 23) by (subst nb; Z.div_mod_to_equations; lia).
       clear Enb. join Hmp.
@@ -286,4 +268,3 @@ Proof.
 Qed.
 
 End rules.
-End AllocOn.

@@ -3,6 +3,7 @@
     matcher, permutation loops and diagnostic calls. These lookup facts
     identify bodies; they do not prove that a parser call is safe. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String List.
 From Nanofil Require Import Term Syntax Transport Semantics.
 From Glibc Require Import GetoptTerm.

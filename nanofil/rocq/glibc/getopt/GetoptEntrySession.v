@@ -6,6 +6,7 @@
     places where the blocks end, the exact fields of the object and what
     is known about the saved position in the current word. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptColon GetoptEntry GetoptLongSession GetoptEntryBridge.
+From Glibc Require FileInv GetoptEntry GetoptEntryBridge GetoptInitialize GetoptLongSession GetoptState OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,19 +29,16 @@ Proof. split; [left; reflexivity | reflexivity]. Qed.
 Lemma entry_session_ctl_pos : ~ needs_init (mkGetoptState 3 1 0 null 1 null 0 0 3) /\ (if 3 =? 0 then 1 else 3) = 3.
 Proof. unfold needs_init. cbn. split; [lia | reflexivity]. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptEntrySessionOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The entry module proves the first blocks of the call. *)
-Module EN := GetoptEntryOn R LG0.
 (** The bridge module turns the session into the object and back into fields. *)
-Module BR := GetoptEntryBridgeOn R LG0.
-Import BR BR.LSS BR.LSS.S BR.LSS.S.FI BR.LSS.S.FI.ML BR.LSS.S.FI.LG BR.LSS.S.FI.L.
+Import GetoptEntryBridge GetoptLongSession GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
 Section entry_session.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance es_stable : SafepointStable (os_wi w0) := EN.C.I.OW.os_wi_stable w0.
+Local Instance es_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance es_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -61,7 +61,7 @@ Proof. unfold getopt_cursor. apply _. Qed.
     far into that word the saved position lies, and that the byte there
     is not the end. *)
 Lemma wp_getopt_entry_session e n av ar p os lo li lonly pc penv b r ps i (G : iProp Σ) Φ :
-  EN.C.I.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   lookup (TAtom "v0") e = Some (WInt n) -> lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
   lookup (TAtom "v4") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WPtr lo) ->
   lookup (TAtom "v8") e = Some (WPtr li) -> lookup (TAtom "v10") e = Some (WInt lonly) ->
@@ -102,7 +102,7 @@ Proof.
   rewrite Hlen in Hav Hbd Hi0.
   iAssert (⌜s = getopt_zero /\ i = 1 \/ gs_initialized s = 1 /\ gs_ind s = i /\ 0 <= gs_order s <= 2⌝)%I as %Hkp.
   { iDestruct "Hk" as "[%H | [%H _]]"; iPureIntro; [left | right]; exact H. }
-  iApply (EN.wp_getopt_entry w0 registry ge e n (mkPtr av (Obj av)) p os lo li lonly pc penv b r s tail G
+  iApply (GetoptEntry.wp_getopt_entry w0 registry ge e n (mkPtr av (Obj av)) p os lo li lonly pc penv b r s tail G
     with "Hs Hos Hc HG"); try (assumption || (unfold getopt_bounds in Hbd; lia)).
   iSplit.
   - iIntros (e' s' (Hst & Henv & Hnt)) "Hs' HG".
@@ -126,4 +126,3 @@ Proof.
 Qed.
 
 End entry_session.
-End GetoptEntrySessionOn.

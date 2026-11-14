@@ -10,6 +10,7 @@
     stdlib/AllocLogic.v's [wp_glibc_malloc] discharges over
     `c: tcache_idle` as Mres. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase.
+From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,10 +29,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoAllocTailOn (R : Runtime) (LG0 : LogicSig R).
-Module DB := LibioDoAllocBaseOn R LG0.
-Import DB DB.SW DB.SW.FI.ML DB.SW.FI.LG DB.SW.FI.L DB.SW.OW DB.SW.FI DB.SW.ST.
+
+Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -95,7 +96,7 @@ Proof.
   iApply (Hmalloc _ _ _ _ _ _ _ _ sz with "HM"); [cbn; rewrite Z.mod_small; [reflexivity | lia] | lia |].
   iNext. iIntros (base (Hb0 & Hb16 & Hbext)) "Ho HM".
   assert (Hx : sz <= req_extent (heap_req 16 sz)) by (cbn; Z.div_mod_to_equations; lia).
-  st. st. st. brv true. st. st. norm.
+  step. step. step. branch_as true. step. step. norm.
   iApply wp_call_bind; [vx | exact Hsetbf | reflexivity |]. iNext.
   iApply (Hsetb_null _ fb freg fl oe _ _ 1 with "Hl Hfl Hb He"); [reflexivity | lia | lia | lia | lia | lia |].
   iNext. iIntros "Hl Hfl Hb He". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
@@ -124,9 +125,9 @@ Lemma wp_doalloc_L7 fb freg fl oe sz from e Φ :
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}.
 Proof.
   intros Hfb Hal Hend Hfreg Hsz Hfrom Hv0. iIntros "Hl Hfl Hb He HM HK".
-  destruct Hfrom as [[-> (v & Hv & Hvs)] | [[-> | ->] ->]]; st;
+  destruct Hfrom as [[-> (v & Hv & Hvs)] | [[-> | ->] ->]]; step;
     [rewrite Hvs | change (8192 mod 2 ^ 64) with 8192 | change (8192 mod 2 ^ 64) with 8192].
-  all: iApply (wp_doalloc_malloc with "Hl Hfl Hb He HM HK"); try side.
+  all: iApply (wp_doalloc_malloc with "Hl Hfl Hb He HM HK"); try libio_side.
 Qed.
 
 (** Block `c: L28`, which takes `c: st_blksize` as the size when it is
@@ -147,22 +148,22 @@ Lemma wp_doalloc_L28 fb freg fl oe sb sreg bs3 from e Φ :
 Proof.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hv4 Hc4.
   iIntros "Hl Hfl Hb He HM Hsl Hb3 HK".
-  st. st. norm. chk "Hsl".
+  step. step. norm. check "Hsl".
   iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
-  iNext. iIntros "Hsl Hb3". st. brk E1.
-  - st. st. norm.
+  iNext. iIntros "Hsl Hb3". step. brk E1.
+  - step. step. norm.
     iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
-    iNext. iIntros "Hsl Hb3". st. st. st. brk E2.
-    + st. st. norm.
+    iNext. iIntros "Hsl Hb3". step. step. step. brk E2.
+    + step. step. norm.
       iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
-      iNext. iIntros "Hsl Hb3". st. pose proof (blksize_range _ E1 E2) as Hx.
-      iApply (wp_doalloc_L7 _ _ _ _ (of_bytes bs3 mod 2 ^ 64) with "Hl Hfl Hb He HM"); try side.
+      iNext. iIntros "Hsl Hb3". step. pose proof (blksize_range _ E1 E2) as Hx.
+      iApply (wp_doalloc_L7 _ _ _ _ (of_bytes bs3 mod 2 ^ 64) with "Hl Hfl Hb He HM"); try libio_side.
       * left. split; [reflexivity|]. eexists. split; [lk_prove | reflexivity].
       * iNext. iIntros (bb Hbb). iApply "HK". iPureIntro. lia.
-    + iApply (wp_doalloc_L7 _ _ _ _ 8192 with "Hl Hfl Hb He HM"); try side.
+    + iApply (wp_doalloc_L7 _ _ _ _ 8192 with "Hl Hfl Hb He HM"); try libio_side.
       * right. auto.
       * iNext. iIntros (bb Hbb). iApply "HK". iPureIntro. lia.
-  - st. br. iApply (wp_doalloc_L7 _ _ _ _ 8192 with "Hl Hfl Hb He HM"); try side.
+  - step. branch. iApply (wp_doalloc_L7 _ _ _ _ 8192 with "Hl Hfl Hb He HM"); try libio_side.
     + right. auto.
     + iNext. iIntros (bb Hbb). iApply "HK". iPureIntro. lia.
 Qed.
@@ -186,10 +187,10 @@ Lemma wp_doalloc_L33 fb freg fl oe sb sreg bs3 from e Φ :
 Proof.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hc0 Hv4 Hc4.
   iIntros "Hl [%Hfl Hflb] Hb He HM Hsl Hb3 HK". unfold file_size in Hend.
-  st. chk "Hl". load_int "Hl Hflb". st. chk "Hl".
+  step. check "Hl". load_s32_group "Hl Hflb". step. check "Hl".
   iApply (wp_raw_store_w with "Hl Hflb"); [vx | vx | reflexivity | ar | reflexivity | wi_store |].
-  iNext. iIntros "Hl Hflb". st.
-  iApply (wp_doalloc_L28 _ _ (Z.lor fl io_line_buf) with "Hl [Hflb] Hb He HM Hsl Hb3 HK"); try side.
+  iNext. iIntros "Hl Hflb". step.
+  iApply (wp_doalloc_L28 _ _ (Z.lor fl io_line_buf) with "Hl [Hflb] Hb He HM Hsl Hb3 HK"); try libio_side.
   assert (Hlo : 0 <= Z.lor fl 512 < 2 ^ 32) by (apply lor_lt32; lia).
   iSplit; [iPureIntro; exact Hlo|]. unfold int_bytes, io_line_buf.
   change (512 mod 2 ^ 32) with 512. rewrite (Z.mod_small fl); [|lia]. rewrite (Z.mod_small (Z.lor fl 512)); [|lia].
@@ -197,4 +198,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioDoAllocTailOn.

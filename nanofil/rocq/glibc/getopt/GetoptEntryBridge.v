@@ -7,11 +7,14 @@
     the other, and it also keeps what is known about the saved position
     inside the current word. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv WordString GetoptBytes GetoptState GetoptEntry GetoptLongSession.
+From Glibc Require FileInv GetoptBytes GetoptLongSession GetoptState.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -42,11 +45,9 @@ Proof. unfold sbyte. cbn. repeat split; lia. Qed.
 Lemma entry_nth_error (l : list ptr) k x : nth_error l k = Some x -> l !! k = Some x.
 Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discriminate; auto. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptEntryBridgeOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The session module supplies the state, the byte rules and the byte agreement of two views. *)
-Module LSS := GetoptLongSessionOn R LG0.
-Import LSS LSS.S LSS.S.FI LSS.S.FI.ML LSS.S.FI.LG LSS.S.FI.L.
+Import GetoptLongSession GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
 Section bridge.
 Context `{!gen_heapGS piece pval Σ}.
@@ -138,14 +139,14 @@ Proof.
   destruct Hst as [(Hni' & _) | (_ & ->)]; [done|].
   iDestruct "Hk" as "[[%Hz _] | [(%Hin & %Hi & %Hor) #Hcu]]".
   { exfalso. apply Hni. subst. left. reflexivity. }
-  iDestruct (GB.ws_shape with "Ht") as %(Htc & _ & _).
+  iDestruct (GetoptBytes.ws_shape with "Ht") as %(Htc & _ & _).
   iDestruct "Hcu" as "[%Hn | [#H0 | (%q & %prefix & %suffix & %Hc & #Hw)]]".
   - exfalso. apply Hnn. exact Hn.
   - iDestruct (short_byte_agree _ [] tail 0 with "H0 Ht") as %E; [cbn; lia | lia |].
     exfalso. destruct tail as [|t0 tl]; [done|]. inversion Htc as [|? ? Ht0 _]; subst.
     unfold sbyte in E. cbn in E. lia.
   - destruct Hc as (Hi0 & Hq & Hsne & Hnx & Hla').
-    iDestruct (GB.ws_shape with "Hw") as %(Hwc & _ & _).
+    iDestruct (GetoptBytes.ws_shape with "Hw") as %(Hwc & _ & _).
     iExists q, (prefix ++ suffix), (length prefix).
     assert (Hd : drop (length prefix) (prefix ++ suffix) = suffix) by (by rewrite drop_app_length).
     iSplit.
@@ -162,4 +163,3 @@ Proof.
 Qed.
 
 End bridge.
-End GetoptEntryBridgeOn.

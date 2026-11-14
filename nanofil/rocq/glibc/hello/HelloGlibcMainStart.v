@@ -7,6 +7,7 @@
     It also registers the close callback. The locale call remains an
     explicit debt; the other calls use their concrete library proofs. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   HelloModule HelloLeaf HelloMain.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcProgCells HelloGlibcDebts HelloGlibcMainSteps.
+From Glibc Require HelloGlibcDebts HelloGlibcMainSteps.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,11 +33,9 @@ Definition start_vars (e : env) (argc av b4 b6 : Z) : Prop :=
 (** A fresh object has a positive, sixteen-aligned base and fits in the address space. *)
 Definition fresh16 (b : Z) : Prop := 0 < b /\ b mod 16 = 0 /\ b + 16 <= 2 ^ 48.
 
-(** The start-block proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainStartOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The step module supplies the shared rules and tactics. *)
-Module S := HelloGlibcStepsOn R LG0.
-Import S S.D S.D.FB S.D.SW S.D.SW.FI.ML S.D.SW.FI.LG S.D.SW.FI.L S.D.SW.OW S.D.SW.FI.
+Import HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section start.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -77,7 +78,7 @@ Lemma main_start av ar p0 ps' x y z Φ :
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av))]) : gexpr) {{ Φ }}.
 Proof.
   intros ps. iIntros "#Hro #Hps Hav Hnc HX0 Hio Hpv HK".
-  rewrite main_entry. st.
+  rewrite main_entry. step.
   (* b4, the greeting's cell. *)
   iApply (wp_alloc _ _ _ _ _ _ _ _ _ _ _ _ _ 8);
     [reflexivity | lia | unfold max_allocation_size; lia | intros m wd h base Hf Hw; exact (os_wi_alloc w0 m wd h _ base Hf Hw) |].
@@ -93,7 +94,7 @@ Proof.
   iNext. iIntros "Hb6".
   (* argv[0], the program's name. *)
   iDestruct "Hav" as "(%Hav & Hal & Hslots)". pose proof Hav as (Hav0 & Hav8 & H31 & Havend & Har).
-  rule1 "Hal" ltac:(eapply wp_check_read; ins;
+  rule1 "Hal" ltac:(eapply wp_check_read; inst;
     [reflexivity | vx | left; reflexivity | arith | cbn [length] in Havend; arith | arith]).
   iApply (wp_argv_load _ _ _ _ _ _ _ _ _ _ av ar ps av 0 with "[Hal Hslots] Hps");
     [reflexivity | lia | cbn; lia | iFrame; iPureIntro; exact Hav |].
@@ -103,20 +104,20 @@ Proof.
     iFrame "Hro Hs0 Hnc" |].
   iNext. iIntros "Hnc".
   (* setlocale (LC_ALL, ""). *)
-  st_global (hy_lits _ _ Hy "hello#str.80" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.80" ltac:(cbn; tauto)).
   iApply (wp_call_ptr w0 ge _ _ _ (fun _ => hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I with "[Hio Hpv]");
     [exact (hd_setlocale_all _ _ _ D) | reflexivity |
     iSplitR; [iExact "Hro" | iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]] |].
   iNext. iIntros (q) "[Hio Hpv]".
   (* The default greeting, stored in b4's cell. *)
-  st_global (hy_lits _ _ Hy "hello#str.81" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.81" ltac:(cbn; tauto)).
   iDestruct (gcell_store with "Hb4") as "(Hl4 & Hp4 & Hy4 & Hc4)".
-  rule1 "Hl4" ltac:(eapply wp_check; ins; [reflexivity | vx | reflexivity | arith | cbn [r_end]; arith | arith]).
-  rule2 "Hl4" "Hp4" ltac:(eapply wp_raw_store_pointer; ins; [vx | vx | reflexivity | arith | arith | wi_store]).
+  rule1 "Hl4" ltac:(eapply wp_check; inst; [reflexivity | vx | reflexivity | arith | cbn [r_end]; arith | arith]).
+  rule2 "Hl4" "Hp4" ltac:(eapply wp_raw_store_pointer; inst; [vx | vx | reflexivity | arith | arith | wi_store]).
   (* atexit (close_stdout). *)
-  st_global (hy_cp _ _ Hy).
+  step_global (hy_cp _ _ Hy).
   iApply (wp_call_int with "HX0"); [exact (hl_atexit _ _ _ _ _ _ Lb) | reflexivity |].
-  iNext. iIntros (k Hk) "HX". st.
+  iNext. iIntros (k Hk) "HX". step.
   iApply ("HK" $! _ b4 b6 (ptr_add p0 (Z.of_nat (name_idx s0))) (ptr_add p0 (Z.of_nat (short_idx s0)))
            with "[%] Hav Hnc [] [] HX Hio Hpv [Hl4 Hp4 Hy4 Hc4] Hb6").
   - split; [repeat split; reflexivity|]. split; [split; [lia | split; [exact Hb416 | lia]] |].
@@ -127,4 +128,3 @@ Proof.
 Qed.
 
 End start.
-End HelloGlibcMainStartOn.

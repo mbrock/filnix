@@ -7,6 +7,8 @@
     cursor becomes null. This file proves that step safe: the scanner
     reads only the cursor's string and writes only its own fields. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule
   GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptShort.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptShort GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,20 +35,15 @@ Definition opt_names : list name := Eval vm_compute in
     "v624"; "v626"; "v628"; "v629"; "chk166"; "chk167"; "v631"; "v632"; "chk168"; "v634"; "chk169"; "v636";
     "chk170"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptOptArgOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The character module supplies the argument vector and its tactics. *)
-Module SH := GetoptShortOn R LG0.
-Import SH SH.X SH.X.I SH.X.I.S SH.X.I.S.FI SH.X.I.S.FI.ML SH.X.I.S.FI.LG SH.X.I.S.FI.L SH.X.I.ST SH.X.I.GB SH.X.A.
+Import GetoptShort GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 (** This tactic closes a bound on a raw address inside a shared string. *)
 Ltac rawa := unfold raw_address, ptr_add; cbn [ptr_addr]; rewrite ?(Z.mod_small _ (2 ^ 64)); lia.
@@ -53,7 +52,7 @@ Section optarg.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance optarg_stable : SafepointStable (os_wi w0) := SH.X.I.OW.os_wi_stable w0.
+Local Instance optarg_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance optarg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -89,7 +88,7 @@ Proof.
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   pose proof (sbyte_in_len t 0 Ht0) as Hlt. pose proof (sbyte_range t 1 Hch) as Ht1r.
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
-  en. st.
+  step. step.
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq");
     [reflexivity | vx | left; reflexivity | arith | arith | unfold ptr_add; cbn [ptr_addr]; lia |].
   iNext. iIntros "Hl Hcur _".
@@ -99,30 +98,29 @@ Proof.
     [reflexivity | vx | exact Hcap' | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap' | rawa |].
-  iNext; iIntros "_ _". iClear "Hbl Hbt". st.
+  iNext; iIntros "_ _". iClear "Hbl Hbt". step.
   rewrite (Z.mod_small (chr_w (sbyte t 1)) (2 ^ 32)); [|apply chr_w_range].
   change (0 mod 2 ^ 32) with 0. rewrite chr_w_eqb; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte t 1) 0) as [E1 | E1]; close_br.
-  - en. st. chk "Hl".
+  - step. step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hab". st. en. st. chk "Hl".
+    iNext. iIntros "Hl Hab". step. step. step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hcur". st.
+    iNext. iIntros "Hl Hcur". step.
     iApply ("HK" with "[%] Hl Hib Hab Hcur"). xkeep.
   - iDestruct "Hib" as "[%Hi0 Hib]".
-    en. st. st.
+    step. step. step.
     iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq");
       [reflexivity | vx | left; reflexivity | arith | arith | unfold ptr_add; cbn [ptr_addr]; lia |].
-    iNext. iIntros "Hl Hcur _". chk "Hl".
+    iNext. iIntros "Hl Hcur _". check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hab". chk "Hl". load_int "Hl Hib". st. norm. chk "Hl".
+    iNext. iIntros "Hl Hab". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
     iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st. en. st. chk "Hl".
+    iNext. iIntros "Hl Hib". step. step. step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hcur". st.
+    iNext. iIntros "Hl Hcur". step.
     iApply ("HK" with "[%] Hl [Hib] Hab Hcur"); [xkeep|].
     iSplit; [iPureIntro; lia|]. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [iAssumption | lia].
 Qed.
 
 End optarg.
-End GetoptOptArgOn.

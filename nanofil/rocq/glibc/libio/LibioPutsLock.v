@@ -9,6 +9,7 @@
     global's cell as well as the stream's fields. LibioPuts.v puts
     them together with the parts between. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString StrlenLogic StrlenWord LibioPutsCode LibioPutsInv.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsThread OsWorld StrlenWord SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,11 +28,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioPutsLockOn (R : Runtime) (LG0 : LogicSig R).
-Module PI := LibioPutsInvOn R LG0.
-Module SL := StrlenWordOn R LG0.
-Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
+
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -48,7 +48,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
                         | apply (ext_data ge Hext); cbn; tauto].
 
 (** A call of `c: zthread_self_cookie`, the cookie not null by H. *)
-Ltac self H := iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
 
 (** `c: puts(s)`'s start, s at p the string at the share dq and stdout
     fb, whose `c: _IO_USER_LOCK` is clear and whose lock lb is free:
@@ -85,15 +85,15 @@ Proof.
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   iDestruct (word_string_len with "Hstr") as %Hlen.
   (* start: the length, stdout, and `c: _IO_USER_LOCK` clear. *)
-  fs. iApply (SL.wp_call_glibc_strlen registry (os_wi w0) ge with "Hstr"); [vx | exact Hstr | reflexivity |].
+  step. iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hstr"); [vx | exact Hstr | reflexivity |].
   iNext. iIntros "Hstr". cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrv false.
+  step. check "Hso". load "Hso" "Hsoc" "Hl". check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
   (* L20, L31, L32: single threaded, the owner null. *)
-  fs. self Hsz. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fldn "Hbl" "Hbo". fs. fs. fs. fs. fs. fbr.
+  step. self Hsz. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". load_null "Hbl" "Hbo". step. step. step. step. step. branch.
   (* L25: the lock word 1, the owner the cookie. *)
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fchk "Hbl". fsti "Hbl" "Hb0". fldp "Hl" "Hlp" "Hbl". fs.
-  fchk "Hbl". fstp "Hbl" "Hbo". fs.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". check "Hbl". store_int "Hbl" "Hb0". load "Hl" "Hlp" "Hbl". step.
+  check "Hbl". store "Hbl" "Hbo". step.
   iApply ("HK" with "[%] Hstr Hso Hsoc Hl [Hfl] Hlp [Hbl Hb0 Hb4 Hbo]").
   - split_and!; try lk_prove. lookups. rewrite Z.mod_small; [reflexivity | lia].
   - iSplit; [done | iExact "Hfl"].
@@ -101,4 +101,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioPutsLockOn.

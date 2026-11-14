@@ -3,6 +3,8 @@
     blocks is empty. This file gives the proof script for that loop and
     proves the loop of the first copy. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptSwap2Lower GetoptSwap2Upper.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState GetoptSwap2Lower GetoptSwap2Upper LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,16 +29,13 @@ Local Arguments Z.opp : simpl nomatch.
 Lemma avoids_app_r ks1 ks2 W : avoids ks1 W = true -> avoids ks2 W = true -> avoids (ks1 ++ ks2) W = true.
 Proof. unfold avoids. rewrite forallb_app. by intros -> ->. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptExchange2On (R : Runtime) (LG0 : LogicSig R).
+
 (** This module proves the lower swap loop of the first copy. *)
-Module SL := GetoptSwap2LowerOn R LG0.
 (** This module proves the upper swap loop of the first copy. *)
-Module SU := GetoptSwap2UpperOn R LG0.
-Import SL.X SL.X.I SL.X.I.S SL.X.I.S.FI SL.X.I.S.FI.ML SL.X.I.S.FI.LG SL.X.I.S.FI.L SL.X.I.ST SL.X.I.GB SL.X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic proves the kept facts a swap loop's caller needs: the
     lookups at kept names, and kept lookups since the loop began. *)
@@ -75,13 +76,13 @@ Ltac x_outer lower upper p1 p3 v11 ks e bot mid top av ar n ps :=
   induction m as [m IH] using (well_founded_induction lt_wf); intros e bot top ps Hms;
   iIntros (Hb Ht Hm Hv2 Hbm Hmt Htop Hlen Hav Hal Hend Hr) "Hl Hc #Hs HK";
   unfold_blk; cbn [b_insts b_jump];
-  st; iApply wp_branch; [vx | iNext]; sx;
+  step; iApply wp_branch; [vx | iNext]; sx;
   destruct (Z.ltb_spec mid top) as [Hmt' | Hmt']; close_br;
-  [| en; brz; iApply ("HK" with "[%] Hl Hc Hs"); split; [done|]; xkeep ];
-  en; st; st; en; iApply wp_branch; [vx | iNext]; sx;
+  [| step; brz; iApply ("HK" with "[%] Hl Hc Hs"); split; [done|]; xkeep ];
+  step; step; step; step; iApply wp_branch; [vx | iNext]; sx;
   destruct (Z.ltb_spec bot mid) as [Hbm' | Hbm']; close_br;
   [| iApply ("HK" with "[%] Hl Hc Hs"); split; [done|]; xkeep ];
-  en; st; st; st;
+  step; step; step; step;
   assert (E37 : (mid mod 2 ^ 32 - bot mod 2 ^ 32) mod 2 ^ 32 = mid - bot)
     by (rewrite (Z.mod_small mid); [|lia]; rewrite (Z.mod_small bot); [|lia]; rewrite Z.mod_small; lia);
   assert (E34 : (top mod 2 ^ 32 - mid mod 2 ^ 32) mod 2 ^ 32 = top - mid)
@@ -102,7 +103,7 @@ Section exchange.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance xchg_stable : SafepointStable (os_wi w0) := I.OW.os_wi_stable w0.
+Local Instance xchg_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance xchg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -126,8 +127,7 @@ Lemma wp_x2_loop ks e bot mid top av ar n ps Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "iw_2.L16") (b_insts x2_blk16) (b_jump x2_blk16))) : gexpr) {{ Φ }}.
-Proof. x_outer (SL.wp_x2_lower w0 registry ge) (SU.wp_x2_upper w0 registry ge)
+Proof. x_outer (GetoptSwap2Lower.wp_x2_lower w0 registry ge) (GetoptSwap2Upper.wp_x2_upper w0 registry ge)
   (TAtom "iw_2.pr.1") (TAtom "iw_2.pr.3") (TAtom "iw_2.v11") ks e bot mid top av ar n ps. Qed.
 
 End exchange.
-End GetoptExchange2On.

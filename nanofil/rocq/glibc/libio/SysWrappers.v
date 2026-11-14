@@ -15,6 +15,7 @@
     whatever libpizlo's handler stored ([errno_any]); `c: _exit`
     never returns, so its triple proves any postcondition. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,6 +24,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsWrite OsFstat OsIoctl OsLseek OsClose OsExit OsThread
   OsRegistry SysCode FileInv LibioLogic.
+From Glibc Require FileInv LibioLogic OsClose OsExit OsFstat OsIoctl OsLseek OsWorld OsWrite.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -47,26 +50,12 @@ Definition sys_external (ge : genv) : Prop :=
 Definition holds_os (registry : name -> option (contract os_world)) : Prop :=
   forall n c, glibc_os_registry n = Some c -> registry n = Some c.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module SysWrappersOn (R : Runtime) (LG0 : LogicSig R).
-Module FI := FileInvOn R LG0.
-Module OWr := OsWriteOn R LG0.
-Module OFs := OsFstatOn R LG0.
-Module OIo := OsIoctlOn R LG0.
-Module OLs := OsLseekOn R LG0.
-Module OCl := OsCloseOn R LG0.
-Module OEx := OsExitOn R LG0.
-Module OTh := OsThreadOn R LG0.
-Module OW := OWr.OW.
-Module ST := LibioStepOn R LG0.
-Import FI.ML FI.LG FI.L OW FI ST.
+
+Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** A signed 32-bit load of an owned [int_cell]'s bytes, H naming the
     object's life and the bytes. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | ar |];
-  iNext; iIntros H.
+
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -113,8 +102,8 @@ Ltac sides := try first [os_side | args_x | assumption].
 Lemma wp_glibc__exit fr bits Φ :
   call_frame glibc__exit [WInt bits] = Some fr -> ⊢ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr. injection Hfr as <-. enter.
-  iApply (OEx.wp_zsys_exit_hard w0 registry ge); sides.
+  intros Hfr. injection Hfr as <-. step.
+  iApply (OsExit.wp_zsys_exit_hard w0 registry ge); sides.
 Qed.
 
 (** ## `c: __libc_write` *)
@@ -132,8 +121,8 @@ Lemma wp_glibc___libc_write fr fd p n eb ps Φ :
   ▷ (∀ k, ⌜(0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1⌝ -∗ pts ps -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". enter.
-  iApply (OWr.wp_zsys_write w0 registry ge with "Hps Herr"); sides.
+  intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". step.
+  iApply (OsWrite.wp_zsys_write w0 registry ge with "Hps Herr"); sides.
   iNext. iIntros (k Hk) "Hps Herr".
   assert (Hk' : 0 <= k < 2 ^ 64) by lia.
   iApply wp_ret; [reflexivity | reflexivity |]. rewrite !(Z.mod_small k); [|lia|lia].
@@ -154,8 +143,8 @@ Lemma wp_glibc___fstat64 fr fd b reg o eb Φ :
        Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd He Hin Ho Hend. injection Hfr as <-. iIntros "Hl Hb Herr HK". enter.
-  iApply (OFs.wp_zsys_fstat w0 registry ge with "Hl Hb Herr");
+  intros Hfr Hfd He Hin Ho Hend. injection Hfr as <-. iIntros "Hl Hb Herr HK". step.
+  iApply (OsFstat.wp_zsys_fstat w0 registry ge with "Hl Hb Herr");
     sides.
   iNext. iIntros (k Hk) "Hl Hb Herr".
   iApply wp_ret; [reflexivity | reflexivity |]. rewrite Z.mod_small; [|lia].
@@ -174,8 +163,8 @@ Lemma wp_glibc___lseek64 fr fd off wh eb Φ :
   ▷ (∀ k, ⌜(0 <= k < 2 ^ 63) \/ k = 2 ^ 64 - 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd Hoff Hwh He Hin. injection Hfr as <-. iIntros "Herr HK". enter.
-  iApply (OLs.wp_zsys_lseek w0 registry ge with "Herr");
+  intros Hfr Hfd Hoff Hwh He Hin. injection Hfr as <-. iIntros "Herr HK". step.
+  iApply (OsLseek.wp_zsys_lseek w0 registry ge with "Herr");
     sides.
   iNext. iIntros (k Hk) "Herr".
   assert (Hk' : 0 <= k < 2 ^ 64) by lia.
@@ -193,8 +182,8 @@ Lemma wp_glibc___close_nocancel fr fd eb Φ :
   errno_any eb -∗ ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". enter.
-  iApply (OCl.wp_zsys_close w0 registry ge with "Herr"); sides.
+  intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". step.
+  iApply (OsClose.wp_zsys_close w0 registry ge with "Herr"); sides.
   iNext. iIntros (k Hk) "Herr".
   iApply wp_ret; [reflexivity | reflexivity |]. rewrite Z.mod_small; [|lia].
   iNext. iApply ("HK" with "[%] Herr"). exact Hk.
@@ -206,8 +195,8 @@ Lemma wp_glibc___close_nocancel_nostatus fr fd eb Φ :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   errno_any eb -∗ ▷ (errno_any eb -∗ Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". enter.
-  iApply (OCl.wp_zsys_close w0 registry ge with "Herr"); sides.
+  intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". step.
+  iApply (OsClose.wp_zsys_close w0 registry ge with "Herr"); sides.
   iNext. iIntros (k Hk) "Herr". iApply wp_ret_void. iNext. iApply ("HK" with "Herr").
 Qed.
 
@@ -232,17 +221,17 @@ Lemma wp_glibc___isatty_nostatus fr fd eb Φ :
   errno_any eb -∗ ▷ (∀ r, ⌜r = 0 \/ r = 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd He Hin. injection Hfr as <-. iIntros "Herr HK". enter.
+  intros Hfr Hfd He Hin. injection Hfr as <-. iIntros "Herr HK". step.
   iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
                     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |].
   iNext. iIntros (base (Hb0 & _ & Hb48)) "Ho".
   iDestruct (obj_blk with "Ho") as "[Hl Hb]"; [vm_compute; congruence|]. cbn [req_extent req_kind heap_req] in *.
   replace ((44 + 15) / 16 * 16) with 48 by reflexivity.
-  iApply (OIo.wp_zsys_ioctl w0 registry ge _ _ _ _ _ _ _ _ _ _ fd 2150388778 44 base _ 0 eb
+  iApply (OsIoctl.wp_zsys_ioctl w0 registry ge _ _ _ _ _ _ _ _ _ _ fd 2150388778 44 base _ 0 eb
             with "Hl [Hb] Herr"); sides.
   - cbn. rewrite Z.add_0_r !Z.mod_small; [reflexivity | lia | lia].
   - cbn. lia.
-  - unfold OIo.ioctl_n. cbn [r_end]. rewrite Z.add_0_r. replace (Z.min (base + 48 - base) 128) with 48 by lia.
+  - unfold OsIoctl.ioctl_n. cbn [r_end]. rewrite Z.add_0_r. replace (Z.min (base + 48 - base) 128) with 48 by lia.
     iExact "Hb".
   - iNext. iIntros (x Hx) "_ _ Herr".
     iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |]. iNext.
@@ -251,4 +240,3 @@ Proof.
 Qed.
 
 End rules.
-End SysWrappersOn.

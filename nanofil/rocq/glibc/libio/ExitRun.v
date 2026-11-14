@@ -22,6 +22,7 @@
     parameters returning nothing, as `atexit` registers: `close_stdout`
     takes neither the null argument nor the status it is called with. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -30,6 +31,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsThread OsRegistry ExitRunCode
   ExitRunTail ExitRunLoop.
+From Glibc Require AtexitLogic ExitRunLoop ExitRunTail LeavesLogic OsExit OsThread OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -41,11 +44,8 @@ Lemma run_exit_frame s l a d :
           (TAtom "v0", WInt s)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
-Module ExitRunOn (R : Runtime) (LG0 : LogicSig R).
-Module XL := ExitRunLoopOn R LG0.
-Module OT := OsThreadOn R LG0.
-Import XL XL.XT XL.XT.L XL.XT.LG XL.XT.AX.ML XL.XT.AX.LV XL.XT.AX XL.XT.OE.OW XL.XT.OE OT.
+
+Import ExitRunLoop ExitRunTail ExitRunTail.L ExitRunTail.LG AtexitLogic.ML LeavesLogic AtexitLogic OsWorld OsExit OsThread.
 
 Local Opaque glibc___run_exit_handlers glibc_exit.
 
@@ -119,52 +119,52 @@ Proof.
   iIntros "((%Hlen & %Hc) & Hll & Hlb & Hdl & Hdb & Hcl & Hcc & Hfl & Hfc & Hblk) (Hel & Hek & Hen & Heo)
            HP HD Hhs HK".
   cbn [xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg xo_funcs xo_funcs_reg xo_init xo_init_reg].
-  st.
+  step.
   iApply wp_zthread_self_cookie; [reflexivity | exact Hsf | exact Hsg | lia |]. iNext.
-  st_global Hgel. st.
-  rule1 "Hel" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  step_global Hgel. step.
+  rule1 "Hel" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 8 null elr with "Hel Heo []");
     [reflexivity | reflexivity | reflexivity | arith | arith | arith | done |]. nx. iIntros "Hel Heo _".
-  st. st. st. br. st.
+  step. step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   (* L13: take the lock word. *)
-  st_global Hgel.
-  rule1 "Hel" ltac:(eapply wp_check; ins; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hel" "Hek" ltac:(eapply wp_raw_cas_w; ins;
+  step_global Hgel.
+  rule1 "Hel" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hel" "Hek" ltac:(eapply wp_raw_cas_w; inst;
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity | arith | arith
      | cas_ign Hwel]). rewrite lock_take.
-  st. br. st. st. br. st.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   (* L27: the owner is the cookie. *)
-  st_global Hgel. st.
-  rule1 "Hel" ltac:(eapply wp_check; ins; [reflexivity | vx | reflexivity | arith | arith | arith]).
-  rule2 "Hel" "Heo" ltac:(eapply wp_raw_store_pointer; ins;
+  step_global Hgel. step.
+  rule1 "Hel" ltac:(eapply wp_check; inst; [reflexivity | vx | reflexivity | arith | arith | arith]).
+  rule2 "Hel" "Heo" ltac:(eapply wp_raw_store_pointer; inst;
     [vx | reflexivity | reflexivity | arith | arith | ign Hwel]).
-  st. st.
+  step. step.
   (* L15: count one. *)
-  st_global Hgel. st.
-  rule1 "Hel" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  step_global Hgel. step.
+  rule1 "Hel" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 4 [0; 0; 0; 0] (WInt 0)
             (DfracOwn 1) (DfracOwn 1) with "Hel Hen");
     [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | arith |]. nx. iIntros "Hel Hen".
-  st.
-  rule1 "Hel" ltac:(eapply wp_renew; ins; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hel" "Hen" ltac:(eapply wp_raw_store_w; ins;
+  step.
+  rule1 "Hel" ltac:(eapply wp_renew; inst; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hel" "Hen" ltac:(eapply wp_raw_store_w; inst;
     [vx | vx | reflexivity | arith | reflexivity | ign Hwel]).
-  st. br. st.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step.
   (* L55: the thread-local destructors. *)
-  iApply ("HD" with "HP"). iNext. iIntros "HR". st. st.
+  iApply ("HD" with "HP"). iNext. iIntros "HR". step. step.
   (* L57: take `__exit_funcs_lock`. *)
-  st_global Hglk.
-  rule1 "Hll" ltac:(eapply wp_check; ins; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; ins;
+  step_global Hglk.
+  rule1 "Hll" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; inst;
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity | arith | arith
      | cas_ign Hwlk]). rewrite lock_take.
-  st. br. st. st. br. st.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   (* L88: `cur` is `initial`. *)
-  rule1 "Hfl" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule1 "Hfl" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iDestruct "Hblk" as "(Hil & Hblk)".
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 (mkPtr ib (Obj ib)) ibr with "Hfl Hfc Hil");
     [reflexivity | vx | reflexivity | arith | arith | arith |]. nx. iIntros "Hfl Hfc Hil". cbn [live_cap].
-  st. st. st. br.
+  step. step. step. (branch_symbolic; LeavesLogic.decide_branch).
   iApply (exit_loop w0 ge (mkExitObjs lk lkr dn dnr cl clr fs fsr ib ibr) ents c status _ _ R
             with "[-HR Hhs HK] HR Hhs HK"); [exact Henv | |].
   { unfold loop_vars. cbn [xo_funcs xo_init]. repeat split; reflexivity. }
@@ -187,13 +187,12 @@ Lemma wp_glibc_exit x el elr ents c status (P : iProp Σ) (R : nat -> iProp Σ) 
     {{ Φ }}.
 Proof.
   intros Henv Hlk Hrun. pose proof Henv as (_ & (_ & _ & _ & Hgfs) & _).
-  iIntros "Hinv Hlock HP HD Hhs HK". st. st_global Hgfs.
+  iIntros "Hinv Hlock HP HD Hhs HK". step. step_global Hgfs.
   eapply step_wand; [eapply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _
-    [WInt (status mod 2 ^ 32); WPtr (mkPtr (xo_funcs x) (Obj (xo_funcs x))); WInt 1; WInt 1]); ins;
+    [WInt (status mod 2 ^ 32); WPtr (mkPtr (xo_funcs x) (Obj (xo_funcs x))); WInt 1; WInt 1]); inst;
     [reflexivity | exact Hrun | apply run_exit_frame] |].
   iApply (wp_glibc_run_exit_handlers with "Hinv Hlock HP HD [Hhs] HK"); [exact Henv | exact Hlk |].
   rewrite Zmod_mod. iExact "Hhs".
 Qed.
 
 End rules.
-End ExitRunOn.
