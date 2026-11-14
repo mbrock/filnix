@@ -211,6 +211,7 @@ class Tree:
                                     raise ValueError(f'cannot resolve captured runtime {captured} for {full}')
                                 arg = f'PELogic{len(roots)}_{len(args)}'
                                 setup.append(f'Module {arg} := Logic {runtime_arg}.')
+                                parameters[arg] = f'Logic {runtime_arg}'
                         else:
                             typ = re.sub(PATH, lambda m: bindings.get(m[0], self.module_types.get(m[0], m[0])), typ)
                             arg = f'PEArg{len(roots)}_{len(args)}'

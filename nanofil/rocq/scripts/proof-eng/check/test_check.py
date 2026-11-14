@@ -74,6 +74,12 @@ class Checks(unittest.TestCase):
                     statement + 'End General. Module Concrete := General InterpRuntime.\n')
             compile(trees[1], logic + 'Module LG := Logic InterpRuntime.\n' + statement)
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            compile(trees[0], logic + 'Module General (R : Runtime) (LG : LogicSig R).\n' +
+                    statement + 'End General. Module ConcreteLogic := Logic InterpRuntime.\n'
+                    'Module Concrete := General InterpRuntime ConcreteLogic.\n')
+            compile(trees[1], logic + 'Module R := InterpRuntime. Module General (LG : LogicSig R).\n' +
+                    statement + 'End General.\n')
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
             compile(trees[1], source)
             compile(trees[0], source)
             for tree in trees[:2]:
