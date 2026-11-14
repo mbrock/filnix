@@ -2148,6 +2148,12 @@ the composite stream model, registry, literal admission or world frames;
 those remain independent integration obligations. In particular they do
 not introduce a stream token or duplicate the authoritative stdout FIFO.
 
+A glibc proof file cannot build a second machine by accident. The files
+under `rocq/glibc` are not functors, and
+[Fix.v](../rocq/glibc/Fix.v) applies `Logic` once for all of them. No
+other glibc file applies `Logic` or `ExternalMachine`, so every glibc
+proof states its triples over the machine of that one instance.
+
 ### Campaign 4 milestone 6e: composite world and plain mbrtowc
 
 [Libc.v](../rocq/theories/hello_contracts/Libc.v) pairs one locale/stdio/errno payload

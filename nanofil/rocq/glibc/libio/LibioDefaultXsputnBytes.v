@@ -16,6 +16,7 @@
     the one at the head), the buffer with new contents and the write
     pointer past the count. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -24,6 +25,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -41,11 +44,8 @@ Definition dx_L76 : block := Eval vm_compute in
 Definition dx_loop_names : list name :=
   map TAtom ["pr.11"; "pr.10"; "pr.6"; "v81"; "v82"; "v84"; "v86"; "chk7"; "v87"; "chk8"; "v89"; "chk9"].
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDefaultXsputnBytesOn (R : Runtime) (LG0 : LogicSig R).
-Module BF := LibioBufOn R LG0.
-Import BF BF.CP BF.CP.CS BF.CP.SW BF.CP.SW.FI.ML BF.CP.SW.FI.LG BF.CP.SW.FI.L BF.CP.SW.OW BF.CP.SW.FI
-  BF.CP.SW.ST.
+
+Import LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -88,15 +88,15 @@ Proof.
   intros Hfb Hfal Hfend Hfreg Hb Hbend Hbreg Hk0 Hkc Hc' Hso Hj0 Hjc Hyend Hyreg. unfold file_size in Hfend.
   iLöb as "IH". iIntros (e i xs Φ (Hv0 & Hc0 & Hi & Hp10 & Hp6 & Hir & Hlx & Hx)) "Hl Hwp Hbl Hxs Hl' Hy HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [dx_L76 b_insts b_jump]. st. fs.
+  cbn [dx_L76 b_insts b_jump]. step. step.
   destruct (Z.eq_dec i 0) as [-> | Hi0].
   - (* L79: store p, past all cnt bytes, as the write pointer. *)
-    fbrv true. fs. fs. norm. fchk "Hl". fstp "Hl" "Hwp". fs.
+    branch_as true. step. step. norm. check "Hl". store "Hl" "Hwp". step.
     iApply ("HK" $! _ xs with "[%] Hl [Hwp] Hbl Hxs Hl' Hy").
     + split; [same_tac|]. split; [lookups; rewrite Z.sub_0_r; reflexivity|]. split; assumption.
     + rewrite Z.sub_0_r. iExact "Hwp".
   - (* L77: copy one byte. *)
-    fbrv false. fs. fs. fs.
+    branch_as false. step. step. step.
     set (j := Z.to_nat (j0 + (cnt - i))).
     destruct (lookup_lt_is_Some_2 ys j ltac:(lia)) as [y Hyj].
     iDestruct (bytesq_at _ _ _ _ j y Hyj with "Hy") as "[Hy1 Hyb]".
@@ -107,7 +107,7 @@ Proof.
     iApply (wp_raw_load_sub_bytes_dq with "Hl' Hy1");
       [reflexivity | vx | reflexivity | reflexivity | exact Hc' | cbn; unfold raw_address; unwrap2; lia |].
     iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hy".
-    fchk "Hbl".
+    check "Hbl".
     set (k := Z.to_nat (k0 + (cnt - i))).
     destruct (lookup_lt_is_Some_2 xs k ltac:(lia)) as [x Hxk].
     iEval (rewrite (bytes_at b xs k x Hxk)) in "Hxs". iDestruct "Hxs" as "(Hx1 & Hxb & Hx2)".
@@ -115,7 +115,7 @@ Proof.
       [vx | vx | reflexivity | cbn; unfold raw_address; unwrap2; lia | wi_store |].
     iNext. iIntros "Hbl Hxb".
     iDestruct (bytes_put with "[$Hx1 $Hxb $Hx2]") as "Hxs"; [lia|].
-    fs. fs.
+    step. step.
     iApply ("IH" $! _ (i - 1) with "[%] Hl Hwp Hbl Hxs Hl' Hy [HK]").
     + split_and!; try (lookups; reflexivity).
       * lookups. do 3 f_equal. unfold raw_address. unwrap2. reflexivity.
@@ -131,4 +131,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioDefaultXsputnBytesOn.

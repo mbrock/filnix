@@ -9,11 +9,14 @@
     These definitions describe valid sessions; the scanner must still be
     proved to preserve them. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv WordString.
+From Glibc Require FileInv.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -48,12 +51,10 @@ Proof. unfold getopt_bounds. intros H. lia. Qed.
 Lemma getopt_zero_bounds n : 1 <= n < 2 ^ 31 -> getopt_bounds n 1 getopt_zero.
 Proof. unfold getopt_bounds, getopt_zero; cbn. lia. Qed.
 
-(** The parser and its caller must describe the same heap. This module uses
-    their shared [[separation-logic]] instance to keep those descriptions compatible. *)
-Module GetoptStateOn (R : Runtime) (LG0 : LogicSig R).
+(** The parser and its caller use the same [[separation-logic]] instance
+    so that their descriptions of the heap remain compatible. *)
 (** File-field rules supply the existing four-byte integer representation. *)
-Module FI := FileInvOn R LG0.
-Import FI FI.ML FI.LG FI.L.
+Import FileInv FileInv.ML FileInv.LG FileInv.L.
 
 Section state.
 Context `{!gen_heapGS piece pval Σ}.
@@ -113,4 +114,3 @@ Proof.
 Qed.
 
 End state.
-End GetoptStateOn.

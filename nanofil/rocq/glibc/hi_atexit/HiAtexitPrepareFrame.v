@@ -4,6 +4,7 @@
     The statement concerns this modeled preparation, not the footprint
     of all real libc startup routines. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Values Memory Runtime Run Pieces.

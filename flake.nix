@@ -368,6 +368,19 @@
                   filcc = filcc-staging;
                 }).model;
             };
+            # Every glibc proof file that does not need the interpreter's
+            # runtime, compiled against an abstract one. It runs twice
+            # daily; the push check compiles only Hello's files this way.
+            nanofil-glibc-abstract =
+              (import ./nanofil/nix/glibc.nix {
+                inherit pkgs;
+                filcc = filcc-staging;
+                model =
+                  (import ./nanofil/nix/rocq.nix {
+                    inherit pkgs;
+                    filcc = filcc-staging;
+                  }).model;
+              }).abstractGeneral;
             nanofil-backend = import ./nanofil/nix/backend.nix {
               inherit pkgs;
               filcc = filcc-staging;

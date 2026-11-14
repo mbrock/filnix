@@ -9,6 +9,7 @@
     buffer, [ovf_fixed] is the fields the function leaves alone, and
     [ovf_ret] is its result. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -48,10 +51,8 @@ Proof. intros H. rewrite Z.land_lor_distr_l H Z.lor_0_r. reflexivity. Qed.
 Lemma lor_err_twice fl : Z.lor (Z.lor fl 32) 32 = Z.lor fl 32.
 Proof. rewrite -Z.lor_assoc Z.lor_diag. reflexivity. Qed.
 
-(** The definitions over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowBaseOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** A branch on the signed test `c: fp->_mode <= 0` of a narrow
     stream, whose mode H says is 0 or -1: the test holds. *)
@@ -69,12 +70,12 @@ Ltac brm H :=
 Ltac adv1 :=
   let a := at_of in
   lazymatch a with
-  | Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _ => norm; chk "Hl"
-  | Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _ => norm; chk "Hl"
-  | Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _ => norm; chk "Hl"
+  | Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _ => norm; check "Hl"
+  | Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _ => norm; check "Hl"
+  | Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _ => norm; check "Hl"
   | Exec _ (Let _ _ (RawLoad _ _) _ :: _) _ => fail
   | Exec _ (Let _ _ (RawLoadPointer _ _) _ :: _) _ => fail
-  | _ => st
+  | _ => step
   end.
 
 (** Steps of [adv1] up to the next load, store, call or branch. *)
@@ -162,4 +163,3 @@ Proof.
 Qed.
 
 End defs.
-End LibioOverflowBaseOn.

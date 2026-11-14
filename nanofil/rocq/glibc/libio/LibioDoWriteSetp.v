@@ -3,6 +3,7 @@
     `c: _IO_setp(fp, base, base)` and the mode's test, then the last
     blocks ([wp_do_write_setp]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -10,6 +11,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioDoWriteCode FileInv LibioLogic SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,10 +27,8 @@ Definition dw_L70 : block := Eval vm_compute in
   match find_block (TAtom "iw_1.L70") (fn_blocks glibc__IO_new_do_write) with
   | Some b => b | None => mkBlock (TAtom "iw_1.L70") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoWriteSetpOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -87,19 +88,18 @@ Proof.
   destruct be as [bea bec]. cbn in Hbe, Hbec. subst bec.
   iIntros "Hl Hbl Hfl Hmode Hwb Hwp Hwe Hbase Hbend HK".
   cbn [dw_L70 b_insts b_jump skipn].
-  st. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hbase Hbl". chk "Hl".
+  iNext. iIntros "Hl Hbase Hbl". check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hwp"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hwp". chk "Hl".
+  iNext. iIntros "Hl Hwp". check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hwb"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hwb". st. st. norm. chk "Hl". iDestruct "Hmode" as "[%Hm0 Hmode]". load_int "Hl Hmode".
-  st. destruct Hmd as [-> | ->]; br.
-  all: iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend"); try side;
+  iNext. iIntros "Hl Hwb". step. step. norm. check "Hl". iDestruct "Hmode" as "[%Hm0 Hmode]". load_s32_group "Hl Hmode".
+  step. destruct Hmd as [-> | ->]; branch.
+  all: iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend"); try libio_side;
     iNext; iIntros "Hl Hbl Hfl Hwe Hbase Hbend";
     iApply ("HK" with "Hl Hbl Hfl [$Hmode //] Hwb Hwp Hwe Hbase Hbend").
 Qed.
 
 
 End rules.
-End LibioDoWriteSetpOn.

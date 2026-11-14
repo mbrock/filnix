@@ -3,6 +3,7 @@
     and global bindings. Execution can use these facts independently
     of the proof that the loader image owns the initial fields. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Values Memory.
 From Glibc Require Import AtexitLogic HiAtexitGe.

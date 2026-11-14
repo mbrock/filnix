@@ -14,6 +14,7 @@
     caller's bytes at their share, and [wp_xs_L20] takes the smaller of
     the count and n; both go on at LibioXsputnFlush.v's [wp_xs_L96]. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -26,6 +27,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioXsputnSetp LibioXsputnFlags
   LibioXsputnReset LibioXsputnCall LibioXsputnDo
   LibioXsputnWrite LibioXsputnFlush.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnDo LibioXsputnFlags LibioXsputnFlush LibioXsputnReset LibioXsputnSetp LibioXsputnWrite OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -44,14 +47,8 @@ Definition xs_L101 : block := Eval vm_compute in
   match find_block (TAtom "L101") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L101") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnFillOn (R : Runtime) (LG0 : LogicSig R).
-Module XU := LibioXsputnFlushOn R LG0.
-Import XU XU.XW XU.XW.XD XU.XW.XD.XC XU.XW.XD.XC.XR XU.XW.XD.XC.XR.XF XU.XW.XD.XC.XR.XF.XS XU.XW.XD.XC.XR.XF.XS.XB XU.XW.XD.XC.XR.XF.XS.XB.DX XU.XW.XD.XC.XR.XF.XS.XB.DX.RM XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY
-  XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI
-  XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -106,7 +103,7 @@ Proof.
   iDestruct "Hroom" as (reg xs cs Hok) "(Hbl & Hxs & Hcs)".
   pose proof Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [Hwc' Hwa] & [Hec Hea] & Hheap).
   destruct wp as [wa wc]. cbn in Hwc', Hwa, Hroom. subst wc.
-  cbn [xs_L101 b_insts b_jump]. fs. fchk "Hl". fldp "Hl" "Hwp" "Hbl".
+  cbn [xs_L101 b_insts b_jump]. step. check "Hl". load "Hl" "Hwp" "Hbl".
   set (ysub := take (Z.to_nat c) ys).
   assert (Hls : Z.of_nat (length ysub) = c) by (unfold ysub; rewrite length_take_le; lia).
   iDestruct (bytesq_sub _ _ _ _ 0 (Z.to_nat c) with "Hys") as "[Hsub Hysb]"; [lia|].
@@ -118,14 +115,14 @@ Proof.
   { unfold ysub. apply Forall_take. exact Hy. }
   iNext. iIntros "Hbl Hbuf Hl' Hsub". iDestruct ("Hysb" with "Hsub") as "Hys".
   iDestruct "Hbuf" as (xs' cs') "(%Hl3 & Hxs & Hcs)". cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  fchk "Hl". fstp "Hl" "Hwp". fs. fs. fs. fs.
+  check "Hl". store "Hl" "Hwp". step. step. step. step.
   iAssert (wbuf fb (Some (b, sz)) (mkPtr (wa + c) (Obj b)) we) with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
   { rewrite Hls. replace (b + (wa - b) + c) with (wa + c) by lia. iFrame. iPureIntro.
     unfold room_ok, in_buf. cbn. destruct Hl3 as (H1 & H2 & H3). cbn in Hroom.
     split_and!; first [reflexivity | assumption | lia]. }
   iApply (wp_xs_L96 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg
             (Some (b, sz)) (mkPtr (wa + c) (Obj b)) we dq b' reg' so c' ys (n - c) mf
-            with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
+            with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
   all: unfold n in *; try lia; try (intros _; discriminate). all: lk_fin.
 Qed.
 
@@ -157,25 +154,24 @@ Proof.
   { iDestruct "Hwb" as "(_ & _ & _ & Hr)". destruct nb as [[b sz] |].
     - iDestruct "Hr" as (reg xs cs Hok) "_". iPureIntro. destruct Hok as (H1 & _ & _ & _ & _ & _ & _ & _ & [_ H2] & _). lia.
     - iDestruct "Hr" as %[-> _]. done. }
-  cbn [xs_L20b b_insts b_jump]. fs.
+  cbn [xs_L20b b_insts b_jump]. step.
   destruct (Z.eq_dec cnt 0) as [-> | Hc0'].
   - (* Nothing fits: L96 with all n left. *)
-    fbrv true. fs.
+    branch_as true. step.
     iApply (wp_xs_L96 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
-              dq b' reg' so c' ys n mf with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
+              dq b' reg' so c' ys n mf with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia; try (intros Hlt; lia). all: lk_fin.
-  - fbrv false. fs. fs.
+  - branch_as false. step. step.
     destruct (Z_lt_le_dec (Z.of_nat (length ys)) cnt) as [Hlt | Hle].
     + (* More room than bytes: all n. *)
-      fbrv false. fs.
+      branch_as false. step.
       iApply (wp_xs_L101 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf n with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK");
-        try side.
+        try close_side.
       all: unfold n in *; try lia. all: lk_fin.
-    + fbrv true. fs. fs. fs.
+    + branch_as true. step. step. step.
       iApply (wp_xs_L101 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf cnt with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK");
-        try side.
+        try close_side.
       all: unfold n in *; try lia. all: lk_fin.
 Qed.
 
 End rules.
-End LibioXsputnFillOn.

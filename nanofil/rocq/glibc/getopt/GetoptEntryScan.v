@@ -8,12 +8,16 @@
     scanner leaves the setup's facts about the environment intact, so the
     option parser can still use them after the scan. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv GetoptState GetoptInitialize GetoptExchange GetoptReturn
   GetoptIdlePath GetoptScanEnd GetoptEntry.
+From Glibc Require FileInv GetoptExchange GetoptInitialize GetoptState.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -106,11 +110,9 @@ Proof. unfold getopt_bounds. cbn. lia. Qed.
 Lemma entry_scan_ctl_sentinel : 8 + 8 * 2 <= 24 /\ ~ (8 + 8 * (2 + 1) <= 24).
 Proof. lia. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptEntryScanOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exchange module supplies the private fields and the kept-name relation. *)
-Module X := GetoptExchangeOn R LG0.
-Import X X.I X.I.S X.I.S.FI X.I.S.FI.ML X.I.S.FI.LG X.I.S.FI.L.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
 (** The scanner hands back a later environment that agrees with the old
     one on every kept name. When the kept names include the setup's
@@ -150,4 +152,3 @@ Proof.
 Qed.
 
 End entry_scan.
-End GetoptEntryScanOn.

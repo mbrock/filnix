@@ -26,19 +26,22 @@ nanofil/rocq/glibc/code.sh /tmp/glibc-pp
 nanofil/rocq/glibc/code.sh --update /tmp/glibc-pp
 ```
 
-Legacy is the only output form in this checkpoint. It reproduces the committed
-files without changing their helpers, imports or proof statements. To inspect
-fresh output without changing or reading the comparison tree, write it separately:
+The `--form` setting selects `legacy` (the default until cutover) or
+`shared-prelude`. The legacy form reproduces the committed files on main.
+The shared form imports `CodePrelude.v` from the pipeline's overlay.
+The legacy form does not need that overlay. Do not update the
+committed `.v` files on `proof-eng`. Write a separate tree instead:
 
 ```sh
 nanofil/rocq/glibc/code.sh /tmp/glibc-pp
-nanofil/rocq/glibc/code.sh /tmp/glibc-pp --output /tmp/generated-code
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp --form shared-prelude --output /tmp/generated-code
+nanofil/rocq/scripts/proof-eng/check/code.sh /tmp/glibc-pp /tmp/staged-glibc
 ```
 
 `--directory string` selects one directory; `--directory .` selects only
 the top-level fixtures. Repeat the option to select several directories.
 `--tree` selects the comparison or update destination. `--output` writes only
-generated sources; it never reads the comparison tree.
+generated sources and, in shared form, the prelude; it never reads the comparison tree.
 If the capture argument is omitted, the generator uses `/tmp/glibc-pp` or
 builds `survey/glibc/capture.nix`.
 
@@ -91,7 +94,62 @@ new driver or slicer.
 Every function in a fixture row must be defined in its linked units. A missing
 function fails generation and names the manifest row, rather than silently
 emitting an empty decoded body. Run `test.sh CAPTURE` to check this rejection,
-fixture corruption and the manifest proof-style switch.
+both output forms, fixture corruption and the manifest proof-style switch.
+
+## Start a block lemma
+
+`skeleton.py` links one manifest fixture and prints statement skeletons for
+every block of a named function. The unit argument names a directory and a
+fixture row, not a captured translation unit. The function argument uses its
+exact linked symbol, including the object prefix of a private function:
+
+```sh
+python3 -I nanofil/rocq/scripts/glibc-code/skeleton.py \
+  getopt/Getopt 'glibc_getopt#process_long_option' \
+  --capture /tmp/glibc-pp --rocq-function glibc_process_long_option
+python3 -I nanofil/rocq/scripts/glibc-code/skeleton.py \
+  hi_atexit/HiAtexit __GI__IO_puts \
+  --capture /tmp/glibc-pp --rocq-function glibc__IO_puts --expr-type sexpr
+```
+
+A statement must name the function and expression type used by its proof.
+Use `--rocq-function` to supply the function's Rocq name instead of the
+placeholder `F`, and `--expr-type` to replace the default `gexpr` notation.
+The author supplies these names because they belong to the proof, not the IR.
+The author also supplies the runtime and logic context, memory resources,
+call contracts and continuation. The command shares the generator's compilation
+and linking code; it does not read proof files or write generated files.
+
+`blocks.pl` computes the block data from the linked Prolog term. It reuses
+`src/cfg.pl` for predecessor labels and backward liveness, including loop
+backedges and phi operands on their particular incoming edges. The slicer
+remains a text packer. Analysis follows control flow, not the order in which
+blocks happen to appear in a file.
+
+A join can read different incoming values depending on which block jumped to
+it. The command therefore prints one statement for each incoming edge and adds
+a lookup premise for every temporary that must already exist. It selects the
+incoming phi operands before binding their results, so those results are not
+entry lookups. Only the function's first block gets an entry with `None`.
+An unreachable block without a predecessor gets no invented entry statement.
+Poll-wrapped edges retain the underlying predecessor and target labels.
+
+The live-out list contains names a successor may read before overwriting them.
+It includes values this block defines. Such new values cannot satisfy
+`keeps ks e e'` against the pre-entry environment. The output therefore also
+prints an unchanged live-out list, excluding all writes and phi destinations,
+and a separate list of new live-out values that need post-entry lookup facts.
+These are conservative syntactic sets: they do not predict which branch runs,
+infer word values, or describe memory that calls preserve. A proof may keep
+additional names for its own resources or generalize a predecessor deliberately.
+
+`--json` prints the same labels, read/write sets, live-out projections and
+entry statements as structured data. Names in statement output must be printable
+ASCII, with Rocq string quotes escaped. For an existing linked module term,
+the analysis alone can run as `swipl blocks.pl MODULE.term FUNCTION` from this
+directory. `test-blocks.py` checks edge-specific phi inputs, parallel loop phis,
+dead definitions, poll edges and unreachable blocks without needing the capture.
+`test.sh CAPTURE` also exercises the complete manifest-to-statement command.
 
 ## Follow the computed-proof conversion
 
@@ -121,12 +179,15 @@ Review and commit its manifest changes before running the regeneration check.
 
 ## Integrate the check
 
-`nanofil/rocq/glibc/code.sh CAPTURE` is the standalone gate entry point.
+`proof-eng/check/code.sh CAPTURE TREE` is the standalone gate entry point.
 A Nix caller needs the compiler sources, these generator scripts, manifests,
 fixture hashes, the checked tree, Python 3.11 or newer, SWI-Prolog, coreutils,
 and `FILCC` set to the staging compiler. Supply the capture as a derivation
 input; the script needs neither Nix nor network access when it receives that
-path. Pass `--tree TREE` to check a separate tree instead of the committed files.
+path. This pipeline entry point explicitly selects `--form shared-prelude`,
+as does stage 15's helper transformation. Use the root driver for legacy
+checks. Stage 15 copies the canonical prelude into the staged tree and factors
+the existing helpers without changing terms or proofs.
 `nanofil/nix/glibc.nix` has not been changed.
 
 The capture built successfully in an orb at

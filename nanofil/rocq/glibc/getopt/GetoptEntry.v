@@ -12,6 +12,8 @@
     to option reading. Only a resumed call can have an active cursor,
     because initialization clears the cursor. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +22,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptColon.
+From Glibc Require FileInv GetoptBytes GetoptColon GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -80,17 +84,15 @@ Definition getopt_blk_start : block := Eval vm_compute in
   match find_block (TAtom "start") (fn_blocks glibc_getopt_internal_r) with
   | Some b => b | None => mkBlock (TAtom "start") [] [] JUnreachable end.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptEntryOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The colon module supplies initialization, resume and the colon check. *)
-Module C := GetoptColonOn R LG0.
-Import C C.I C.I.S C.I.S.FI C.I.S.FI.ML C.I.S.FI.LG C.I.S.FI.L C.I.ST C.I.GB.
+Import GetoptColon GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes.
 
 Section entry.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance entry_stable : SafepointStable (os_wi w0) := C.I.OW.os_wi_stable w0.
+Local Instance entry_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance entry_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -98,10 +100,7 @@ Local Instance entry_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 (** Signed comparisons of nonnegative 32-bit values read the values. *)
 Ltac sx := repeat match goal with |- context [sign_extension (2 ^ 32) (2 ^ 31) (?x mod 2 ^ 32)] =>
@@ -173,7 +172,7 @@ Lemma wp_getopt_entry_init e1 fr n av p os lo li lonly pc penv b r s (tail : lis
 Proof.
   intros Hget Hpenv (H0 & H2 & H4 & H6 & H8 & H10 & H12 & H14 & H19 & Hc0 & Hc1 & Hc2) Hni Hn Hi Hb Hal Hend Hr.
   iIntros "Hl Hi [%Herr Heb] Ho Ha Hini Hnext Hord Hf Hla #Hos HG HK".
-  st. iApply (wp_getopt_initialize w0 registry ge _ n p os b r s pc penv G
+  step. iApply (wp_getopt_initialize w0 registry ge _ n p os b r s pc penv G
     with "Hl Hi Hini Hnext Hord Hf Hla Hos HG"); try assumption; try lia.
   iIntros (e2 o (Hk & Ho)) "Hl Hi Hini Hnext Hord Hf Hla HG". unkeep Hk.
   iApply (wp_getopt_colon w0 registry ge _ p os b r null tail (gs_err s) with "Hl Hnext Hos []");
@@ -216,23 +215,23 @@ Proof.
   iIntros "(%Hown & Hl & Hi & He & Ho & Ha & Hini & Hnext & Hord & Hf & Hla) #Hos #Hcur HG HK".
   destruct Hown as (Hb & Hal & Hend & Hr).
   iDestruct "He" as "[%Herr Heb]". cbn [b_insts b_jump getopt_blk_start].
-  st. norm. chk "Hl". load_int "Hl Heb". st.
+  step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Heb". step.
   brz.
-  st. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_store_pointer with "Hl Ha"); [vx | vx | reflexivity | arith | arith | wi_store |].
-  iNext. iIntros "Hl Ha". chk "Hl". iDestruct "Hi" as "[%Hi0 Hib]". load_int "Hl Hib". st.
+  iNext. iIntros "Hl Ha". check "Hl". iDestruct "Hi" as "[%Hi0 Hib]". load_s32_using ltac:(arith) "Hl Hib". step.
   norm. iApply wp_branch; [vx | iNext].
   destruct (Z.eqb_spec (gs_ind s) 0) as [E0|E0]; close_br.
-  { st. br. iDestruct "HK" as "[HK _]".
+  { step. branch. iDestruct "HK" as "[HK _]".
     iApply (wp_getopt_entry_init with "Hl [Hib] [Heb] Ho Ha Hini Hnext Hord Hf Hla Hos HG HK");
       [exact Hget | exact Hpenv | repeat split; lk | left; exact E0 | lia | lia | lia | lia | lia | lia | icell | icell]. }
-  st. st. norm. chk "Hl". iDestruct "Hini" as "[%Hn0 Hinib]". load_int "Hl Hinib". st. norm. st. st.
+  step. step. norm. check "Hl". iDestruct "Hini" as "[%Hn0 Hinib]". load_s32_using ltac:(arith) "Hl Hinib". step. norm. step. step.
   iApply wp_branch; [vx | iNext].
   destruct (Z.eqb_spec (gs_initialized s) 0) as [I0|I0]; close_br.
   { iDestruct "HK" as "[HK _]".
     iApply (wp_getopt_entry_init with "Hl [Hib] [Heb] Ho Ha [Hinib] Hnext Hord Hf Hla Hos HG HK");
       [exact Hget | exact Hpenv | repeat split; lk | right; exact I0 | lia | lia | lia | lia | lia | lia | icell | icell | icell]. }
-  st. iApply (wp_getopt_resume w0 registry ge _ p os with "Hos"); [lk|].
+  step. iApply (wp_getopt_resume w0 registry ge _ p os with "Hos"); [lk|].
   iIntros (e1 Hk1). unkeep Hk1.
   iApply (wp_getopt_colon w0 registry ge _ p os b r (gs_next s) tail (gs_err s) with "Hl Hnext Hos Hcur");
     try lk; try lia. iSplit.
@@ -250,4 +249,3 @@ Proof.
 Qed.
 
 End entry.
-End GetoptEntryOn.

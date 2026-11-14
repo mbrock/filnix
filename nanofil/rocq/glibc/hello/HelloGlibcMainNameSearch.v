@@ -9,11 +9,13 @@ From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls Pieces Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld WordString MemchrLast StrrchrLogic MemrchrBits MemrchrCode MemrchrLogic MemcmpCode MemcmpLogic.
+From Glibc Require MemcmpLogic MemrchrLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The interface states only the observable search triples. *)
-Module Type HelloNameSearchSig (R : Runtime) (LG0 : LogicSig R).
+Module Type HelloNameSearchSig.
 Import LG0 LG0.L.
 (** The memory predicates share the caller's logic instance. *)
 Module ML := MemLogicOn R LG0.
@@ -50,26 +52,26 @@ End spec.
 End HelloNameSearchSig.
 
 (** The implementation exports existing proofs without new assumptions. *)
-Module HelloGlibcMainNameSearchOn (R : Runtime) (LG0 : LogicSig R) : HelloNameSearchSig R LG0.
+Module HelloGlibcMainNameSearchOn : HelloNameSearchSig.
 Import LG0 LG0.L.
 (** The memory predicates share the caller's logic instance. *)
 Module ML := MemLogicOn R LG0.
 (** The reverse-search proof handles every byte of a word string. *)
-Module MR := MemrchrLogicOn R LG0.
+Module MR := MemrchrLogic.
 (** The comparison proof handles the short directory-name comparison. *)
-Module MC := MemcmpLogicOn R LG0.
+Module MC := MemcmpLogic.
 (** The OS interpretation supplies the required safepoint instance. *)
-Module OW := OsWorldOn R LG0.
+Module OW := OsWorld.
 Section results.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** These calls use the concrete OS interpretation. *)
 Local Instance search_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** Collector safepoints preserve the concrete interpretation. *)
-Local Instance search_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance search_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** Reverse search returns the last matching byte while preserving the string. *)
-Definition name_memrchr := MR.glibc_memrchr_spec registry (os_wi w0) ge.
+Definition name_memrchr := MemrchrLogic.glibc_memrchr_spec registry (os_wi w0) ge.
 (** Byte comparison returns zero exactly for equal small byte sequences. *)
-Definition name_memcmp := MC.glibc_memcmp_small registry (os_wi w0) ge.
+Definition name_memcmp := MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge.
 End results.
 End HelloGlibcMainNameSearchOn.

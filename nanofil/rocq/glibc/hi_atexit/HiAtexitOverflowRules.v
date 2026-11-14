@@ -7,4 +7,3 @@ From Nanofil Require Import Runtime.
 From Glibc Require Import LibioOverflowGen HiAtexitBase.
 
 (** The wrapper uses the same interpreter logic as stream output. *)
-Module HOG := LibioOverflowGenOn InterpRuntime HLG.

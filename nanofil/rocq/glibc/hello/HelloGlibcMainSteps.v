@@ -7,6 +7,7 @@
     instructions, branches and returns. Each application still proves
     the rule's memory and control-flow premises. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,41 +15,26 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic ExitRunTail HelloGlibcDebts.
+From Glibc Require HelloGlibcDebts.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** These rules and tactics share one [[runtime]] and logic instance. *)
-Module HelloGlibcStepsOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The debt record supplies the call contracts and their resources. *)
-Module D := HelloGlibcDebtsOn R LG0.
-Import D D.FB D.SW D.SW.FI.ML D.SW.FI.LG D.SW.FI.L D.SW.OW D.SW.FI.
+Import HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 (** This tactic supplies the safepoint instance left by a step rule. *)
-Ltac ins := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
+
 
 (** This tactic takes one pure step after computing its argument values. *)
-Ltac st :=
-  lazymatch goal with
-  | |- environments.envs_entails _ (wp _ _ (ERun (mkFrame _ _ _ _ ?pos)) _) =>
-      lazymatch pos with
-      | Exec _ (Let _ _ _ _ :: _) _ =>
-          eapply step_wand; [eapply wp_let; ins; [reflexivity | reflexivity | vx | intros ?; reflexivity] |]
-      | Exec _ (Flight _ _ _ _ :: _) _ =>
-          eapply step_wand; [eapply wp_flight; ins; [vx | reflexivity | vx] |]
-      | Enter _ _ =>
-          eapply step_wand; [eapply wp_enter; ins; [reflexivity | vx] |]; cbn [b_insts b_jump]
-      | Exec _ nil (JGoto _) => eapply step_wand; [eapply wp_goto; ins |]; cbn [edge_label]
-      end
-  end.
+
 
 (** This tactic copies a global pointer into the local environment. *)
-Ltac st_global Hs :=
-  eapply step_wand;
-    [eapply wp_let; ins;
-       [reflexivity | reflexivity | cbn [map2_option value_x]; rewrite Hs; reflexivity | intros ?; reflexivity] |].
+
 
 (** This tactic computes a branch condition and takes the selected edge. *)
-Ltac br := eapply step_wand; [eapply wp_branch; ins; vx |]; decide_branch.
+
 
 (** This tactic resumes the caller with the returned value bound. *)
 Ltac resume := iExists _; iSplit; [iPureIntro; reflexivity|]; iNext; cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
@@ -260,4 +246,3 @@ Proof.
 Qed.
 
 End steps.
-End HelloGlibcStepsOn.

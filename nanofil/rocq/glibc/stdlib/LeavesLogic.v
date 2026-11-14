@@ -20,6 +20,7 @@
     [wp_check_read_dq] to verify read checks against fractional
     liveness tokens. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -27,6 +28,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import StdlibCode GlibcLogic.
+From Glibc Require GlibcLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -144,51 +147,32 @@ Ltac arith := cbn [ptr_addr ptr_cap null]; unfold raw_address; rewrite ?Z.add_0_
 
 (** [step_wand] applies a zero-resource step rule directly to the
     current proof-mode context. *)
-Lemma step_wand {PROP : bi} (Δ : environments.envs PROP) (P Q : PROP) :
-  (⊢ ▷ P -∗ Q) -> environments.envs_entails Δ P -> environments.envs_entails Δ Q.
-Proof.
-  rewrite environments.envs_entails_unseal. intros HW HΔ. etrans; [exact HΔ|].
-  iIntros "H". iApply HW. iNext. iExact "H".
-Qed.
+
 
 (** [step_res1] applies a step rule that consumes and returns one
     named separation-logic resource. *)
-Lemma step_res1 {PROP : bi} (Δ : environments.envs PROP) (R R' P Q : PROP) :
-  (⊢ R -∗ ▷ (R' -∗ P) -∗ Q) -> environments.envs_entails Δ (R' -∗ P) -> environments.envs_entails Δ (R -∗ Q).
-Proof.
-  rewrite environments.envs_entails_unseal. intros HW HΔ. etrans; [exact HΔ|].
-  iIntros "H HR". iApply (HW with "HR"). iNext. iExact "H".
-Qed.
+
 
 (** [step_res2] extends [step_res1] to step rules that thread two
     named resources across an instruction. *)
-Lemma step_res2 {PROP : bi} (Δ : environments.envs PROP) (R1 R2 R1' R2' P Q : PROP) :
-  (⊢ R1 -∗ R2 -∗ ▷ (R1' -∗ R2' -∗ P) -∗ Q) ->
-  environments.envs_entails Δ (R1' -∗ R2' -∗ P) -> environments.envs_entails Δ (R1 -∗ R2 -∗ Q).
-Proof.
-  rewrite environments.envs_entails_unseal. intros HW HΔ. etrans; [exact HΔ|].
-  iIntros "H HR1 HR2". iApply (HW with "HR1 HR2"). iNext. iExact "H".
-Qed.
+
 
 (** Stepping through a memory read or check requires handing a named
     hypothesis to a step rule and getting it back without triggering an
     `iApply` search. The tactic [rule1] automates that pattern for one
     resource H using [step_res1]. *)
-Ltac rule1 H t := iRevert H; eapply step_res1; [t |]; iIntros H.
+
 
 (** Memory loads often thread both a liveness token and a cell resource
     across the same instruction. The tactic [rule2] automates that
     pattern for two hypotheses H1 and H2 using [step_res2]. *)
-Ltac rule2 H1 H2 t := iRevert H2; iRevert H1; eapply step_res2; [t |]; iIntros H1; iIntros H2.
 
-(** The module [LeavesOn] proves the leaf specifications over an
-    arbitrary [[runtime]] R and logic instance LG0. *)
-Module LeavesOn (R : Runtime) (LG0 : LogicSig R).
-Module GL := GlibcLogicOn R LG0.
+
+
 Module ML := MemLogicOn R LG0.
 Module LG := LG0.
 Module L := LG.L.
-Import L LG GL ML.
+Import L LG GlibcLogic ML.
 
 Local Opaque errno_location_fn ctype_b_loc_fn mb_cur_max_fn mbsinit_fn.
 
@@ -226,33 +210,17 @@ Qed.
 (** Applying a step rule creates a side condition showing that the world
     stays valid across garbage-collection safepoints. The tactic [inst]
     closes that [SafepointStable] obligation by typeclass search. *)
-Ltac inst := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
+
 
 (** The tactic [st] advances the proof by one symbolic IR step,
     dispatching on whether the frame sits at a let binding, a
     [[flight]], a block entry, or a jump. *)
-Ltac st :=
-  lazymatch goal with
-  | |- environments.envs_entails _ (wp _ _ (ERun (mkFrame _ _ _ _ ?pos)) _) =>
-      lazymatch pos with
-      | Exec _ (Let _ _ _ _ :: _) _ =>
-          eapply step_wand;
-            [eapply wp_let; inst; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity] |]
-      | Exec _ (Flight _ _ _ _ :: _) _ =>
-          eapply step_wand; [eapply wp_flight; inst; [reflexivity | reflexivity | reflexivity] |]
-      | Enter _ _ =>
-          eapply step_wand; [eapply wp_enter; inst; [reflexivity | reflexivity] |]; cbn [b_insts b_jump]
-      | Exec _ [] (JGoto _) => eapply step_wand; [eapply wp_goto; inst |]
-      end
-  end.
+
 
 (** Functions in this file read global variables such as `__libc_errno`
     and `__libc_tsd_LOCALE` directly. The tactic [st_global] steps past
     a global pointer load using its binding hypothesis Hs. *)
-Ltac st_global Hs :=
-  eapply step_wand;
-    [eapply wp_let; inst;
-       [reflexivity | reflexivity | cbn [map2_option value_x]; rewrite Hs; reflexivity | intros ?; reflexivity] |].
+
 
 (** Calling `__errno_location` returns the pointer `errno_p` that the
     global environment binds to `__libc_errno` without requiring any
@@ -262,7 +230,7 @@ Lemma wp_glibc_errno_location errno_p Φ :
   Φ (Ret (WPtr errno_p)) -∗
   WP (ERun (mkFrame errno_location_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros Hs. iIntros "HΦ". st. st_global Hs.
+  intros Hs. iIntros "HΦ". step. step_global Hs.
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iExact "HΦ".
 Qed.
 
@@ -274,7 +242,7 @@ Lemma wp_glibc_ctype_b_loc tsd_p Φ :
   Φ (Ret (WPtr tsd_p)) -∗
   WP (ERun (mkFrame ctype_b_loc_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros Hs. iIntros "HΦ". st. st_global Hs.
+  intros Hs. iIntros "HΦ". step. step_global Hs.
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iExact "HΦ".
 Qed.
 
@@ -296,7 +264,7 @@ Lemma wp_glibc_mb_cur_max tb treg lc lb lreg cc cb creg v dq1 dq2 dq3 dq4 dq5 dq
   WP (ERun (mkFrame mb_cur_max_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
   intros Hs Hlc Hcc Ht0 Ht8 Htb Hl0 Hl8 Hlb Hc0 Hcb.
-  iIntros "(Ht & Htc & Hl & Hlc & Hc & Hv) HΦ". st. st_global Hs.
+  iIntros "(Ht & Htc & Hl & Hlc & Hc & Hv) HΦ". step. step_global Hs.
   iApply (wp_check_read_dq with "Ht"); [reflexivity | reflexivity | left; reflexivity | arith | arith | arith |].
   nx. iIntros "Ht".
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Ht Htc [Hl]");
@@ -311,7 +279,7 @@ Proof.
   { destruct Hcc as [-> | ->]; iExact "Hc". }
   nx. iIntros "Hl Hlc Hc".
   iAssert (liveq dq5 cb creg) with "[Hc]" as "Hc"; [destruct Hcc as [-> | ->]; iExact "Hc"|].
-  st. st.
+  step. step.
   iApply (wp_check_read_dq with "Hc"); [reflexivity | reflexivity | exact Hcc | arith | arith | arith |].
   nx. iIntros "Hc".
   iApply (wp_raw_load_sub_read_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 160 with "Hc Hv");
@@ -332,7 +300,7 @@ Lemma wp_glibc_mbsinit_null p Φ :
   WP (ERun (mkFrame mbsinit_fn [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
   destruct p as [a c]. cbn [ptr_addr]. intros ->. iIntros "HΦ".
-  st. st. st. st. iApply wp_branch; [reflexivity|]. nx. simp. st.
+  step. step. step. step. iApply wp_branch; [reflexivity|]. nx. simp. step.
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iExact "HΦ".
 Qed.
 
@@ -349,17 +317,16 @@ Lemma wp_glibc_mbsinit p b reg o bs dq1 dq2 Φ :
   WP (ERun (mkFrame mbsinit_fn [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
   destruct p as [a c]. cbn [ptr_addr ptr_cap]. intros Hc -> Ha Ho Hend Hlen.
-  iIntros "Hl Hb HΦ". st. st. st. st.
-  iApply wp_branch; [reflexivity|]. nx. simp. st.
+  iIntros "Hl Hb HΦ". step. step. step. step.
+  iApply wp_branch; [reflexivity|]. nx. simp. step.
   iApply (wp_check_read_dq with "Hl"); [reflexivity | reflexivity | exact Hc | arith | arith | arith |].
   nx. iIntros "Hl".
   iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ o with "Hl Hb");
     [reflexivity | reflexivity | rewrite Hlen; reflexivity | reflexivity | exact Hc | arith |].
-  nx. iIntros "Hl Hb". st. st. st.
+  nx. iIntros "Hl Hb". step. step. step.
   iApply wp_ret; [reflexivity | reflexivity |]. nx.
   rewrite !Zmod_mod ext_sw_mod Zmod_0_l.
   destruct (of_bytes bs mod 2 ^ 32 =? 0); unwrap; iApply ("HΦ" with "Hl Hb").
 Qed.
 
 End rules.
-End LeavesOn.

@@ -991,6 +991,40 @@ instance. Campaign 4's
 StreamFrameLogic has the same signature, so its `…On` modules take
 the same instance.
 
+**The glibc proofs share one instance.** A proof of one glibc function
+builds on what other files prove about the functions it calls. Rocq
+accepts that only when both files state their results over the same
+instance of the logic. The files under `rocq/glibc`
+therefore share one instance, and they are ordinary files, not functors.
+
+So that every file agrees on the instance, one file builds it and all
+the others import that file. The file is [Fix.v](../rocq/glibc/Fix.v).
+It calls the runtime `R` and the instance `LG0`. A lemma's full name is
+its file name followed by its own name. The functors of `theories/` are
+unchanged, and a glibc file that needs one of them applies it to `R`
+and `LG0`.
+
+The glibc proofs make two kinds of claim about the runtime. A theorem
+such as `hi_atexit_never_panics` is about the interpreter and its own
+allocator. `Fix.v` binds `R` to `InterpRuntime`, so that such a theorem
+depends on no assumption. `hello_never_panics` claims more: GNU Hello
+does not panic on any runtime that satisfies the axioms of `Runtime`. A
+proof that used a fact about the interpreter's allocator would break
+that claim, and the ordinary build would still accept it.
+
+The glibc check catches such a proof by compiling files a second time
+with the runtime left abstract. For that compilation it replaces the
+binding in `Fix.v` by `Declare Module R : Runtime.`, so that a proof
+can use only what every runtime guarantees. On every push the check
+compiles the files that Hello's theorem imports in this way. It then
+requires `Print Assumptions` to list exactly the twelve fields of `R`
+for `hello_never_panics`.
+
+Twice daily the check `nanofil-glibc-abstract` compiles every other
+general file in the same way. A file that needs the interpreter's
+runtime is listed in `rocq/glibc/runtime-concrete.txt`, and the check
+requires Rocq to reject each listed file against the abstract runtime.
+
 **Main's start block.** [HelloMain.v](../rocq/theories/hello_contracts/HelloMain.v)
 applies every `…On` functor to one `Logic R`. Its world is libc's, and
 its world interpretation wi stays abstract. Each section premise is

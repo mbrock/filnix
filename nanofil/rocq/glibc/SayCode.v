@@ -3,13 +3,10 @@
     current. Do not edit. *)
 
 From Stdlib Require Import String ZArith List Ascii.
-From Nanofil Require Import Term.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
-
-(** The one-character atom with code n. *)
-Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 
 (** The module term. *)
 Definition say_term : term :=

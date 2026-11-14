@@ -7,6 +7,8 @@
     only the bad-option field of the scanner's own state, and the report
     goes through the caller's rule. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -40,18 +44,15 @@ Proof.
   rewrite <- (Znumtheory.Zmod_div_mod 256 (2 ^ 32)); [reflexivity | lia | lia | exists (2 ^ 24); reflexivity].
 Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptShortRetOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The tail module supplies the report rule, the argument vector and its tactics. *)
-Module RT := GetoptReqTailOn R LG0.
-Import RT RT.D RT.D.X RT.D.X.I RT.D.X.I.S RT.D.X.I.S.FI RT.D.X.I.S.FI.ML RT.D.X.I.S.FI.LG RT.D.X.I.S.FI.L RT.D.X.I.ST
-  RT.D.X.I.GB RT.D.X.A.
+Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section ret.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance ret_stable : SafepointStable (os_wi w0) := RT.D.X.I.OW.os_wi_stable w0.
+Local Instance ret_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance ret_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -93,11 +94,11 @@ Proof.
     WP (ERun (mkFrame glibc_getopt_internal_r e1 [] None (Enter (TAtom "L492") (Some fr1))) : gexpr) {{ Φ }})%I
     with "[Hl Hoob HK]" as "HL492".
   { iIntros (e1 fr1 (Hk1 & H12' & H455' & Hc0')) "Ha Hcl HG".
-    en. st. chk "Hl".
+    step. step. check "Hl".
     iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
     iNext. iIntros "Hl Hoob". rewrite (Z.mod_small c (2 ^ 32)); [|lia].
     iApply ("HK" with "[%] Hl [Hoob] Ha Hcl HG"); [xkeep | by iSplit]. }
-  en. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
+  step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   - iApply ("HL492" with "[%] Ha Hcl HG"). split; [apply keeps_refl|]. split; [exact H12|]. split; assumption.
   - iApply (wp_getopt_diag_unknown w0 registry ge (tail_keys ++ ks) with "Hsl Hsc Ha Hcl Hs HG [HL492]");
@@ -123,8 +124,7 @@ Lemma wp_getopt_short_ret ks e fr v Φ :
 Proof.
   intros Hks Hv. iIntros "HK".
   destruct Hv as [[[-> | ->] Hv] | [-> Hv]];
-    enter; st; iApply ("HK" with "[%]"); (split; [xkeep | rewrite chr_w_mod32; lk_prove]).
+    step; step; iApply ("HK" with "[%]"); (split; [xkeep | rewrite chr_w_mod32; lk_prove]).
 Qed.
 
 End ret.
-End GetoptShortRetOn.

@@ -8,6 +8,7 @@
     tests what the stream has to flush; LibioFlushClean.v and
     LibioFlushOver.v go on from there. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioFlushCode FileInv LibioLogic
   SysWrappers LibioCloseSteps.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,10 +27,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFlushFpLockOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -47,7 +48,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's
     cookie, not null (H). *)
-Ltac self H := iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
 
 (** Block `c: L83` of `c: _IO_flush_all` to block `c: L94`, the
     stream fb in `c: pr.5`: `c: run_fp` becomes fb, and the stream's
@@ -82,13 +83,13 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* L83: `c: run_fp`, and `c: _IO_USER_LOCK` clear. *)
-  fs. fs. fchk "Hrl". fstp "Hrl" "Hrc". fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrv false.
+  step. step. check "Hrl". store "Hrl" "Hrc". check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
   (* L99, L110, L111: single threaded, the owner null. *)
-  fs. self Hsz. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fldn "Hbl" "Hbo". fs. fs. fs. fs. fbr.
+  step. self Hsz. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". load_null "Hbl" "Hbo". step. step. step. step. branch.
   (* L104: the lock word 1, the owner the cookie. *)
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fchk "Hbl". fsti "Hbl" "Hb0". fldp "Hl" "Hlp" "Hbl". fs.
-  fchk "Hbl". fstp "Hbl" "Hbo". fs.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". check "Hbl". store_int "Hbl" "Hb0". load "Hl" "Hlp" "Hbl". step.
+  check "Hbl". store "Hbl" "Hbo". step.
   iApply ("HK" with "[%] Hl [Hfl] Hlp [Hbl Hb0 Hb4 Hbo] Hrl Hrc").
   - split_and!; lk_prove.
   - iSplit; [done | iExact "Hfl"].
@@ -96,4 +97,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioFlushFpLockOn.

@@ -7,6 +7,7 @@
     They hide internal proofs from later substitutions while exposing
     the concrete predicates needed to compose registration and exit. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import base list fin_maps.
@@ -16,6 +17,8 @@ From Nanofil Require HelloClose.
 From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers StrlenLogic StrncmpCode MemrchrCode MemcmpCode
   MemFwdCode StrchrCode AllocLogic LeavesLogic AtexitLogic ExitRunCode LibioGenCode SysCode LibioFlushCode
   LibioCleanupCode HelloGlibcDebts.
+From Glibc Require AtexitLogic HelloGlibcDebts.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -107,12 +110,12 @@ Proof.
 Qed.
 
 (** The bridge interfaces share the concrete debt and resource definitions. *)
-Module Type HelloDebtsT (R : Runtime) (LG0 : LogicSig R).
-Include HelloGlibcDebtsOn R LG0.
+Module Type HelloDebtsT.
+Include HelloGlibcDebts.
 End HelloDebtsT.
 
 (** The exit-resource interface hides registration proofs from later substitutions. *)
-Module Type AtexitT (R : Runtime) (LG0 : LogicSig R).
+Module Type AtexitT.
 (** The cells use the caller's memory logic. *)
 Module ML := MemLogicOn R LG0.
 Import LG0 LG0.L ML.
@@ -146,6 +149,6 @@ Definition wi_ignores {world : Type} (wi : mem -> world -> gmap piece pval -> Pr
 End AtexitT.
 
 (** Signature checking verifies that these are exactly AtexitLogic.v's predicates. *)
-Module HelloGlibcAtexitOn (R : Runtime) (LG0 : LogicSig R) : AtexitT R LG0.
-Include AtexitOn R LG0.
+Module HelloGlibcAtexitOn : AtexitT.
+Include AtexitLogic.
 End HelloGlibcAtexitOn.

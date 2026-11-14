@@ -6,6 +6,7 @@
     `c: __libc_cleanup_pop_restore`, whose triple ([pop_spec])
     SysCleanupPop.v proves, and returns the result in `c: pr.4`. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart.
+From Glibc Require FileInv LibioCloseSteps LibioFlushClean LibioFlushStart LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -23,11 +26,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFlushTailOn (R : Runtime) (LG0 : LogicSig R).
-Module FS := LibioFlushStartOn R LG0.
-Import FS FS.FC FS.FC.FU.FL.CS FS.FC.FU.FL.CS.SW FS.FC.FU.FL.CS.SW.FI.ML FS.FC.FU.FL.CS.SW.FI.LG
-  FS.FC.FU.FL.CS.SW.FI.L FS.FC.FU.FL.CS.SW.OW FS.FC.FU.FL.CS.SW.FI FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioFlushStart LibioFlushClean LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -77,11 +77,11 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hll"). iIntros ([Hlk0 Hlk48]) "Hll".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* L414, L423, L424: single threaded, the count 0. *)
-  fs. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fs. fchk "Hll". fldi "Hll" "Hl4". fs. fs. fs. fbr.
+  step. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. step. check "Hll". load_s32 "Hll" "Hl4". step. step. step. branch.
   (* L417: the owner null, then the lock word 0. *)
-  fs. fs. fs. fchk "Hll". fstp "Hll" "Hlo". fs. fchk "Hll".
-  iDestruct "Hl0" as "[%Hl0r Hl0]". fsti "Hll" "Hl0". fs. fs.
+  step. step. step. check "Hll". store "Hll" "Hlo". step. check "Hll".
+  iDestruct "Hl0" as "[%Hl0r Hl0]". store_int "Hll" "Hl0". step. step.
   (* L476: pop the cleanup buffer and return. *)
   iApply wp_call_bind; [vx | exact Hpop | reflexivity |]. iNext.
   iApply (Hpop_spec with "Htcb Hcl Hcp Hct"); [reflexivity | lia | exact Hcal | lia | lia |].
@@ -92,4 +92,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioFlushTailOn.

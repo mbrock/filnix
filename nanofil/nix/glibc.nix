@@ -88,18 +88,18 @@ let
   );
   # Objects retain their logical paths in both namespaces.
   link =
-    n:
+    objects: n:
     lib.concatMapStrings (
       d:
-      "mkdir -p glibc/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo glibc/${path.${d}}.vo\n"
+      "mkdir -p glibc/${dirOf path.${d}}; ln -s ${objects.${d}}/${d}.vo glibc/${path.${d}}.vo\n"
     ) closure.${n}
     + lib.concatMapStrings (
       d:
       "mkdir -p theories/${dirOf model.path.${d}}; ln -s ${model.vo.${d}}/${d}.vo theories/${model.path.${d}}.vo\n"
     ) modelClosure.${n};
-  vo = lib.genAttrs names (
-    n:
-    pkgs.runCommand "nanofil-glibc-${n}"
+  compile =
+    prefix: objects: source: n:
+    pkgs.runCommand "nanofil-glibc-${prefix}${n}"
       {
         nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
         # More free major-heap space reduces GC during large proof imports,
@@ -109,8 +109,8 @@ let
       ''
         set -o pipefail
         mkdir -p theories glibc/${dirOf path.${n}}
-        ${link n}
-        cp ${glibc + "/${path.${n}}.v"} glibc/${path.${n}}.v
+        ${link objects n}
+        cp ${source n} glibc/${path.${n}}.v
         # No Admitted, and no axiom outside a module type.
         if awk 'skip == "" && /^Module Type [A-Za-z0-9_]/ { skip = $3; sub(/[ .(].*/, "", skip); next }
           skip != "" { if ($0 ~ "^End " skip "\\.") skip = ""; next }
@@ -135,8 +135,161 @@ let
         cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob sentence-timings.log $out/
         printf '@@glibc %4d.%01ds %5d lines %s.v\n' $((ms / 1000)) $((ms % 1000 / 100)) \
           "$(wc -l <glibc/${path.${n}}.v)" ${path.${n}} >$out/time
-      ''
+      '';
+  vo = lib.genAttrs names (compile "" vo (n: glibc + "/${path.${n}}.v"));
+  # Rebuild Hello's entire Glibc closure against one abstract runtime.
+  # No interpreter Glibc object may enter this graph through an import.
+  helloNames = closure.HelloGlibcJoin ++ [ "HelloGlibcJoin" ];
+  abstractFix =
+    let
+      source = builtins.readFile (glibc + "/${path.Fix}.v");
+      binding = "Module R := InterpRuntime.";
+    in
+    assert lib.assertMsg (
+      builtins.length (lib.splitString binding source) == 2
+    ) "glibc.nix: Fix.v must bind the interpreter runtime exactly once";
+    pkgs.writeText "Fix-abstract.v" (
+      lib.replaceStrings [ binding ] [ "Declare Module R : Runtime." ] source
+    );
+  # rocq/glibc/runtime-concrete.txt lists the files that need the
+  # interpreter's runtime. Every other file is general, and has an
+  # abstract object.
+  concretePaths = lib.filter (l: l != "" && !lib.hasPrefix "#" l) (
+    lib.splitString "\n" (builtins.readFile (glibc + "/runtime-concrete.txt"))
   );
+  concreteNames =
+    assert lib.assertMsg (lib.all (l: lib.elem (lib.removeSuffix ".v" l) paths)
+      concretePaths
+    ) "glibc.nix: runtime-concrete.txt lists a file that is not under rocq/glibc";
+    map (l: baseNameOf (lib.removeSuffix ".v" l)) concretePaths;
+  importsConcrete = n: lib.any (d: lib.elem d concreteNames) closure.${n};
+  generalNames = lib.filter (n: !lib.elem n concreteNames) names;
+  abstractSource =
+    n: if n == "Fix" then abstractFix else glibc + "/${path.${n}}.v";
+  abstractVo = lib.genAttrs generalNames (
+    n:
+    assert lib.assertMsg (!importsConcrete n)
+      "glibc.nix: ${path.${n}}.v imports a file of runtime-concrete.txt, so list it there too";
+    compile "abstract-" abstractVo abstractSource n
+  );
+  # A listed file that imports no other listed file must be rejected
+  # by the abstract runtime, so a file cannot leave the abstract check
+  # by being listed without need. rocq_reject.py accepts only an error
+  # that Rocq reports at a position in the file with status 1; it
+  # refuses a timeout, a signal, another status and a failure to load a
+  # library. The file's interpreter object is an input: the two
+  # compilations differ only in the runtime binding of Fix.v, so the
+  # runtime causes the rejection.
+  abstractRejected =
+    lib.genAttrs (lib.filter (n: !importsConcrete n) concreteNames)
+      (
+        n:
+        pkgs.runCommand "nanofil-glibc-abstract-rejected-${n}"
+          {
+            nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
+            OCAMLRUNPARAM = "o=200";
+          }
+          ''
+            set -o pipefail
+            mkdir -p theories glibc/${dirOf path.${n}} $out
+            ${link abstractVo n}
+            cp ${glibc + "/${path.${n}}.v"} glibc/${path.${n}}.v
+            test -f ${vo.${n}}/${n}.vo
+            python3 ${../tests/rocq_reject.py} --file glibc/${path.${n}}.v --timeout 900 --log $out/log -- \
+              rocq c -q -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v | tee $out/verdict
+          ''
+      );
+  # rocq_reject.py itself: it accepts a type error from Rocq, and
+  # refuses a file that compiles, a timeout, a signal, an unexpected
+  # status, a missing library and an error outside the file.
+  rejectTestSrc = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../tests/rocq_reject.py
+      ../tests/rocq_reject_test.py
+    ];
+  };
+  rejectTests =
+    pkgs.runCommand "nanofil-glibc-reject-tests"
+      {
+        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
+      }
+      ''
+        set -o pipefail
+        mkdir $out
+        python3 ${rejectTestSrc}/tests/rocq_reject_test.py -v 2>&1 | tee $out/log
+        touch $out/passed
+      '';
+  # The scheduled check nanofil-glibc-abstract: every general file
+  # compiles against the abstract runtime, and every listed file is
+  # rejected by it.
+  abstractGeneral =
+    pkgs.runCommand "nanofil-glibc-abstract-general"
+      {
+        passthru = {
+          vo = abstractVo;
+          rejected = abstractRejected;
+          inherit rejectTests;
+        };
+      }
+      ''
+        test -f ${rejectTests}/passed
+        mkdir $out
+        cat ${
+          lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/time") generalNames
+        } >$out/timings.log
+        ${lib.concatMapStrings (
+          n: "cp ${abstractRejected.${n}}/verdict $out/rejected-${n}.log\n"
+        ) (lib.attrNames abstractRejected)}
+        echo "@@glibc abstract general ${toString (builtins.length generalNames)} files compiled, ${toString (builtins.length concreteNames)} listed files rejected"
+        touch $out/passed
+      '';
+  abstractHello =
+    pkgs.runCommand "nanofil-glibc-hello-abstract"
+      {
+        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
+        OCAMLRUNPARAM = "o=200";
+        passthru.vo = lib.getAttrs helloNames abstractVo;
+      }
+      ''
+        set -o pipefail
+        mkdir -p theories glibc/${dirOf path.HelloGlibcJoin} $out
+        ${link abstractVo "HelloGlibcJoin"}
+        ln -s ${abstractVo.HelloGlibcJoin}/HelloGlibcJoin.vo glibc/${path.HelloGlibcJoin}.vo
+        cat >HelloAbstractAudit.v <<'EOF'
+        From Glibc Require Import HelloGlibcJoin.
+        Print Assumptions HelloGlibcJoin.hello_never_panics.
+        EOF
+        python3 ${watch} --label "glibc abstract Hello audit" --warn-after 120 --timeout 900 -- \
+          rocq c -q -R theories Nanofil -R glibc Glibc HelloAbstractAudit.v | tee $out/assumptions.log
+        cat >expected-assumptions <<'EOF'
+        Fix.R.address_space
+        Fix.R.alloc
+        Fix.R.at_safepoint
+        Fix.R.aux_round_trip
+        Fix.R.collector_live
+        Fix.R.fresh_allocation
+        Fix.R.non_moving
+        Fix.R.ready
+        Fix.R.ready_kept
+        Fix.R.safepoint
+        Fix.R.safepoint_ready
+        Fix.R.state
+        EOF
+        python3 - "$out/assumptions.log" <<'PY'
+        import pathlib, re, sys
+        text = pathlib.Path(sys.argv[1]).read_text()
+        names = sorted(set(re.findall(r"^(\S+)\s*:", text, re.M)) - {"Axioms"})
+        pathlib.Path("actual-assumptions").write_text("".join(name + "\n" for name in names))
+        PY
+        diff -u expected-assumptions actual-assumptions
+        cp actual-assumptions $out/assumption-names
+        cat ${
+          lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/time") helloNames
+        } >$out/timings.log
+        echo "@@glibc abstract Hello ${toString (builtins.length helloNames)} files compiled"
+        touch $out/passed
+      '';
   # The grammar check (web/rocq/tests/parse.sh), one file at a time:
   # reprint it with every subterm in parentheses and compile the reprint
   # against the original objects of its imports, in a project laid out
@@ -165,7 +318,7 @@ let
         printf '%s\n' "-R ../theories Nanofil" "-R . Glibc" >project/glibc/_RocqProject
         (
           cd project
-          ${link n}
+          ${link vo n}
         )
         mkdir -p project/glibc/${dirOf path.${n}}
         cp ${glibc + "/${path.${n}}.v"} project/glibc/${path.${n}}.v
@@ -223,12 +376,15 @@ pkgs.runCommand "nanofil-glibc"
         probes
         model
         timingTests
+        abstractHello
+        abstractGeneral
         ;
     };
   }
   ''
     set -o pipefail
     test -f ${timingTests}/passed
+    test -f ${abstractHello}/passed
     # The dependency guard needs sources, not the aggregate model objects.
     # Check both namespaces, including imports through another Glibc file.
     cp -r ${glibcSrc}/rocq/glibc glibc

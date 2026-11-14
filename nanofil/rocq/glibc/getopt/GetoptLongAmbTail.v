@@ -5,6 +5,8 @@
     last steps safe. The parser frees only the set that malloc made, and
     it writes only its own private fields. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop StrlenWord.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,33 +34,15 @@ Definition atail_names : list name := Eval vm_compute in
   List.map TAtom ["v311"; "chk29"; "v312"; "v315"; "v316"; "v317"; "chk31"; "chk32"; "v319"; "v320"; "chk33";
     "v322"; "chk34"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongAmbTailOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The decision module supplies the set, the option table and the tactics. *)
-Module LPE := GetoptLongPfxEndOn R LG0.
-Import LPE LPE.LPL LPE.LPL.LPI LPE.LPL.LPI.LPT LPE.LPL.LPI.LPT.LPS LPE.LPL.LPI.LPT.LPS.LPA LPE.LPL.LPI.LPT.LPS.LPA.LPM
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section tail.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance atail_stable : SafepointStable (os_wi w0) := LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance atail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance atail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -104,18 +90,18 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L307") (Some fr1))) : gexpr) {{ Φ }})%I
     with "[Hib Hoob HK]" as "HL307".
   { iIntros (e1 fr1 (Hk1 & H12' & Hc0'')) "Hl Hcur".
-    en. st. chk "Hl".
-    iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+    step. step. check "Hl".
+    iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
     iNext. iIntros "Hl Hcur _".
-    iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+    iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
     iNext. iIntros "Hl Hcur _".
-    iApply (SW.wp_call_glibc_strlen registry (os_wi w0) ge with "Hws"); [vx | exact Hgl | reflexivity |].
-    iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st. chk "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hcur". chk "Hl". load_int "Hl Hib". st. norm. chk "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st. chk "Hl".
-    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hws"); [vx | exact Hgl | reflexivity |].
+    iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. check "Hl".
+    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+    iNext. iIntros "Hl Hcur". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
+    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+    iNext. iIntros "Hl Hib". step. check "Hl".
+    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
     iNext. iIntros "Hl Hoob".
     rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia]. change (0 mod 2 ^ 64) with 0.
     match goal with |- context [pcell b 32 {| ptr_addr := ?X; ptr_cap := ptr_cap cur |}] =>
@@ -123,14 +109,13 @@ Proof.
     iApply ("HK" with "[%] Hl [Hib] [Hoob] Hcur");
       [eapply keeps_trans; [exact Hk1|]; xkeep | iSplit; [iPureIntro; lia | iExact "Hib"]
       | iSplit; [iPureIntro; lia | iExact "Hoob"]]. }
-  en. iApply wp_branch; [vx | iNext].
+  step. iApply wp_branch; [vx | iNext].
   destruct Hm as [-> | [-> Hsn]]; close_br.
   { iApply ("HL307" with "[%] Hl Hcur"). split; [xkeep|]. split; lk_prove. }
   iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hsl & _)]"; [contradiction|].
   destruct Hs as (-> & Hsk & Hsb & Hse & Hsr & Hlen).
-  en. iApply (Hfree with "Hsl"); [vx | exact Hsk | lia |]. iNext. st.
+  step. iApply (Hfree with "Hsl"); [vx | exact Hsk | lia |]. iNext. step.
   iApply ("HL307" with "[%] Hl Hcur"). split; [xkeep|]. split; lk_prove.
 Qed.
 
 End tail.
-End GetoptLongAmbTailOn.

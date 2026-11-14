@@ -8,6 +8,8 @@
     reuses the fact, known when the scan started, that the position is
     null or at the end of a string. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptArgv GetoptExchange GetoptReturn.
+From Glibc Require FileInv GetoptArgv GetoptExchange GetoptInitialize GetoptState OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -61,20 +65,18 @@ Proof. unfold getopt_bounds. cbn. lia. Qed.
 Lemma scan_ctl_active_end : ~ (0 <= 3 < Z.of_nat (List.length [null; null; null])).
 Proof. cbn. lia. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptScanSessionOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The return module supplies the argument vector, the private object and its rules. *)
-Module RT := GetoptReturnOn R LG0.
-Import RT.X RT.X.I RT.X.I.S RT.X.I.S.FI RT.X.I.S.FI.ML RT.X.I.S.FI.LG RT.X.I.S.FI.L RT.X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L GetoptArgv.
 
 (** This tactic enters a block that has no phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 Section scan_session.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance ss_stable : SafepointStable (os_wi w0) := RT.X.I.OW.os_wi_stable w0.
+Local Instance ss_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance ss_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -150,13 +152,13 @@ Proof.
   iSplit; [|iSplit].
   - iIntros (e' fr ps' i' f' l' (Hp & _ & Hfl & Hli & ->)) "Hl Hi Ha Ho Hf Hla Hva Hvc Hvs".
     assert (Hlen' : Z.of_nat (List.length ps') = n) by (rewrite -(Permutation_length Hp); exact Hlen).
-    en. iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt 4294967295)); [reflexivity | reflexivity |].
+    step. iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt 4294967295)); [reflexivity | reflexivity |].
     iNext. iApply ("HK" with "[%] [-Hva Hvc Hvs] Hva Hvc Hvs"); [split; [exact Hp | left; reflexivity] |].
     iApply (scan_session with "Hc Hl Hi He Hoo Ha Hin Hcur Ho Hf Hla");
       rewrite ?Hlen'; try lia; destruct (Z.eqb_spec f' l'); lia.
   - iIntros (e' ps' i' f' l' (Hp & _ & Hfl & Hli & Hii & Ho0)) "Hl Hi Ha Ho Hf Hla Hva Hvc Hvs".
     assert (Hlen' : Z.of_nat (List.length ps') = n) by (rewrite -(Permutation_length Hp); exact Hlen).
-    en. iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt 4294967295)); [reflexivity | reflexivity |].
+    step. iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt 4294967295)); [reflexivity | reflexivity |].
     iNext. iApply ("HK" with "[%] [-Hva Hvc Hvs] Hva Hvc Hvs"); [split; [exact Hp | left; reflexivity] |].
     iApply (scan_session with "Hc Hl Hi He Hoo Ha Hin Hcur Ho Hf Hla"); rewrite ?Hlen'; lia.
   - iIntros (e' ps' i' f' l' (Hp & _ & Hfl & Hli & Hii & Ho0)) "Hl Hi Ha Ho Hf Hla Hva Hvc Hvs".
@@ -168,4 +170,3 @@ Proof.
 Qed.
 
 End scan_session.
-End GetoptScanSessionOn.

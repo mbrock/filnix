@@ -11,6 +11,7 @@
     pieces of a store are the same life token and pieces with none
     ([wi_store]). *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
@@ -19,6 +20,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Pieces Heap Language Logic StringLogic MemLogic StepRules ExternalCalls ExternalMachine.
 From Nanofil Require WordBits Symbolic.
 From Glibc Require Import OsBlocks OsWorld FileInv.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -155,15 +157,7 @@ Proof. apply (flags2_mask f2 128 7); [reflexivity | lia]. Qed.
 (** ## Arithmetic *)
 
 (** Keep only arithmetic hypotheses, so lia does not read the rest. *)
-Ltac clear_junk :=
-  repeat match goal with
-    H : ?T |- _ =>
-      lazymatch T with
-      | @eq Z _ _ => fail | Z.le _ _ => fail | Z.lt _ _ => fail | and (Z.le _ _) _ => fail
-      | and (Z.lt _ _) _ => fail | not (@eq Z _ _) => fail
-      | _ => clear H
-      end
-    end.
+
 
 (** Drop each wrap to 64 or 32 bits of the goal that arithmetic shows
     the identity. *)
@@ -180,12 +174,7 @@ Ltac arith := cbn [ptr_addr ptr_cap]; unfold raw_address; unwrap; clear_junk;
   first [lia | Z.div_mod_to_equations; lia].
 
 (** An address fact about FileInv.v's offsets, by arithmetic. *)
-Ltac ar := unfold off_cleanup, off_cleanup_jmp, off_cancelhandling, off_lk_lock, off_lk_cnt, off_lk_owner,
-  off_flags, off_read_ptr, off_write_base, off_write_ptr, off_write_end, off_buf_base, off_buf_end,
-  off_chain, off_fileno, off_flags2, off_lock, off_wide, off_prevchain, off_mode, off_vtable, off_ptr,
-  off_old_offset, off_column, off_shortbuf, off_offset, off_codecvt, off_freeres_list, off_freeres_buf,
-  off_total_written, vt_file, vt_wfile, slot_finish, slot_overflow, slot_xsputn, slot_doallocate, slot_write,
-  slot_close, slot_stat; arith.
+Ltac ar := autounfold with offs; arith.
 
 (** Write each address of the goal's environment without wraps. *)
 Ltac norm := cbn [ptr_addr ptr_cap]; unwrap.
@@ -204,19 +193,11 @@ Ltac closed_ints :=
     end.
 
 (** The term X holds no integer test. *)
-Ltac innermost X :=
-  lazymatch X with context [_ =? _] => fail | context [_ <? _] => fail | context [_ <=? _] => fail | _ => idtac end.
+
 
 (** Decide a goal of integer tests, such as a branch condition, by
     a case on each test and arithmetic. *)
-Ltac decide_ints :=
-  unfold sign_extension, vt_file, vt_wfile; cbv zeta; unwrap;
-  repeat match goal with
-    | |- context [?x =? ?y] => innermost x; innermost y; destruct (Z.eqb_spec x y); cbn [negb andb orb]
-    | |- context [?x <? ?y] => innermost x; innermost y; destruct (Z.ltb_spec x y); cbn [negb andb orb]
-    | |- context [?x <=? ?y] => innermost x; innermost y; destruct (Z.leb_spec x y); cbn [negb andb orb]
-    end;
-  first [reflexivity | exfalso; clear_junk; first [lia | Z.div_mod_to_equations; lia]].
+
 
 (** ## Values of an environment with an unknown tail *)
 
@@ -226,23 +207,18 @@ Ltac decide_ints :=
     [lookup] is taken through the [put]s ([Symbolic.lookup_after_put])
     and, past them, from a hypothesis `c: lookup k e = Some x`. *)
 (** A lookup past a [put] of another name. *)
-Lemma lookup_put_miss {A : Type} k k' (v : A) e r :
-  name_eqb k k' = false -> lookup k e = r -> lookup k (put k' v e) = r.
-Proof. intros H <-. apply Symbolic.lookup_after_put_other. exact H. Qed.
+
 
 (** Prove `c: lookup k E = r`, r found: through E's [put]s, each of
     another name by computation, to the [put] of k or, past them, to a
     hypothesis. The proof applies one small lemma per [put], so its
     size does not grow with the goal's. *)
-Ltac lk_prove :=
-  first [ apply Symbolic.lookup_after_put_same
-        | eapply lookup_put_miss; [vm_compute; reflexivity | lk_prove]
-        | eassumption ].
+
 
 (** A pure premise left by an [iApply], by arithmetic or a lookup; the
     proof-mode goal is left alone, so [try side] after an [iApply]
     takes all its premises. *)
-Ltac side :=
+Ltac libio_side :=
   lazymatch goal with
   | |- environments.envs_entails _ _ => fail
   | _ => first [done | lia | unfold file_size; lia | unfold io_is_appending; lia | cbn; lia | lk_prove]
@@ -257,7 +233,7 @@ Ltac lookups :=
           cbn beta iota);
   repeat match goal with H : lookup ?k ?e = Some _ |- context [lookup ?k ?e] => rewrite H end.
 
-(** A pure premise of a write-loop rule, the [side] of LibioLogic.v with
+(** A pure premise of a write-loop rule, the [side] of v with
     [lookups] for environments past the call. *)
 Ltac wside :=
   lazymatch goal with
@@ -265,15 +241,7 @@ Ltac wside :=
   | _ => first [done | unfold file_size; lia | lia | cbn; lia | lookups; first [reflexivity | do 2 f_equal; arith]]
   end.
 
-Ltac vx :=
-  first
-    [ reflexivity
-    | cbn -[put];
-      repeat match goal with
-        |- context [lookup ?k ?E] =>
-          let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H
-        end;
-      reflexivity ].
+
 
 (** What `c: _IO_new_file_write` leaves: r of the n bytes written,
     all of them with the flags as they were, or fewer after a failed
@@ -310,64 +278,32 @@ Proof. intros (a & _ & Hf & _). exact Hf. Qed.
 
 (** ## Steps over a Logic instance *)
 
-(** The step tactics over the [[runtime]] R and [LogicSig] LG0: each
-    takes one instruction of a run whose values are symbolic, by its
-    rule from Logic.v, every premise computed or shown by arithmetic. *)
-Module LibioStepOn (R : Runtime) (LG0 : LogicSig R).
+(** Each step tactic applies a rule from Logic.v to one instruction of a run
+    whose values are symbolic. It discharges the premises by computation or arithmetic. *)
 Import LG0.
 
 (** The point of the frame the goal's weakest precondition runs: the
     hypotheses, which may hold other frames, are not looked at. *)
-Ltac at_of :=
-  lazymatch goal with |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ ?a)) _) => a end.
+
 
 (** Enter the start block of a frame. *)
-Ltac enter := iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]].
+
 
 (** A check, its bounds by arithmetic, with the object's life H. *)
-Ltac chk H :=
-  let a := at_of in
-  lazymatch a with
-  | Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _ =>
-      iApply (wp_check with H); [reflexivity | vx | reflexivity | ar | ar | ar |]
-  | Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _ =>
-      iApply (wp_half_check with H);
-        [reflexivity | vx | reflexivity | reflexivity | ar | ar | lia | ar | ar |]
-  | Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _ =>
-      iApply (wp_renew with H); [reflexivity | vx | reflexivity | reflexivity | ar | ar | ar |]
-  end;
-  iNext; iIntros H.
+
 
 (** A branch on a closed condition: computed. *)
-Ltac br :=
-  iApply wp_branch; [vx | iNext];
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
+
 
 (** A branch on an unknown condition: both ways, as two goals. *)
-Ltac brc :=
-  iApply wp_branch; [vx | iNext];
-  lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] => destruct (n =? 0) end;
-  cbn [edge_label].
+
 
 (** A branch whose condition is b, by [decide_ints]. *)
-Ltac brv b :=
-  iApply wp_branch; [vx | iNext];
-  lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] =>
-    let E := fresh "E" in assert (E : (n =? 0) = b) by decide_ints; rewrite E; clear E end;
-  cbn [edge_label].
+
 
 (** One step whose premises reduce: a pure let, a flight, entering a
     block, or a goto. The values stay symbolic. *)
-Ltac st :=
-  let a := at_of in
-  lazymatch a with
-  | Exec _ (Let _ _ _ _ :: _) _ =>
-      iApply wp_let; [reflexivity | reflexivity | vx | intros ?; cbn; reflexivity | iNext]
-  | Exec _ (Flight _ _ _ _ :: _) _ => iApply wp_flight; [vx | reflexivity | vx | iNext]
-  | Enter _ _ => iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]]
-  | Exec _ [] (JGoto _) => iApply wp_goto; iNext
-  end.
+
 
 (** ## A check at a share *)
 
@@ -400,4 +336,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioStepOn.

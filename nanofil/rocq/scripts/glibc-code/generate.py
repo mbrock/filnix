@@ -6,6 +6,7 @@ import importlib.util
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import tempfile
 import tomllib
@@ -14,6 +15,8 @@ import tomllib
 HERE = Path(__file__).resolve().parent
 NF = HERE.parents[2]
 GLIBC = NF / "rocq/glibc"
+shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
+PRELUDE = HERE.parent / "proof-eng/overlay/CodePrelude.v"
 
 
 def run(args, *, cwd=NF, data=None, env=None):
@@ -35,6 +38,11 @@ def units(text):
             if len(paths) != 1:
                 raise ValueError(f"expected OBJECT UNIT: {line}")
             yield obj, paths[0]
+
+
+def fixture_prefix(name):
+    return {"HiAtexit": "hi_atexit", "PrintfState": "printf_state",
+            "PrintfBufferIo": "printf_buffer_io", "PrintfBufferFile": "printf_buffer_file"}.get(name, name.lower())
 
 
 def decoded(prefix, fns, layout):
@@ -189,13 +197,30 @@ class Generator:
     def prolog(self, script, args, data=None):
         return run([self.swipl, NF / "rocq/scripts" / script, *args], data=data, env=self.env)
 
+    def link(self, cfg, name, roots, paths, source):
+        """Link a manifest fixture before selecting or printing any bodies."""
+        lower, layout = fixture_prefix(name), cfg["layout"]
+        mode = cfg.get("mode", "checked")
+        specs = []
+        if source:
+            specs.append(f"{lower}={self.compile(NF / source, mode, False)}")
+        for obj, unit in units(paths):
+            specs.append(f"{obj}={self.compile(self.capture / (unit + '.i'), mode)}")
+        entry = roots
+        if not source and layout != "getopt":
+            entry = {"libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots", "stdlib": "stdlib_root"}.get(layout, lower + "_roots")
+            items = ",".join(f"item(p,sym('{r}',0))" for r in roots.split())
+            root = self.work / "roots.term"
+            root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
+            specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
+        return self.prolog("link.pl", (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
+
     def generate(self, manifest, output, cfg=None):
         if cfg is None:
             cfg = tomllib.loads(manifest.read_text())
             for batch in cfg.pop("batch", []):
                 self.generate(manifest, output, batch)
         layout = cfg["layout"]
-        mode = cfg.get("mode", "checked")
         checker = str(manifest.parent.relative_to(NF) / ("buffer-code.sh" if layout == "buffer" else "code.sh"))
         if layout in ("stdio", "buffer"):
             run(["sha256sum", "-c", manifest.parent / ("buffer-fixtures.sha256" if layout == "buffer" else "fixtures.sha256")], cwd=self.capture)
@@ -207,24 +232,11 @@ class Generator:
             name, roots, paths, fns, *program = fields
             roots = roots or cfg.get("roots", "")
             unit_rows = "- " + paths if paths else cfg.get("units", "")
-            lower = {"HiAtexit": "hi_atexit", "PrintfState": "printf_state",
-                     "PrintfBufferIo": "printf_buffer_io", "PrintfBufferFile": "printf_buffer_file"}.get(name, name.lower())
+            lower = fixture_prefix(name)
             source = program[0] if program else ""
             cache_key = (roots, unit_rows, source)
             if cache_key not in linked_cache:
-                specs = []
-                if source:
-                    specs.append(f"{lower}={self.compile(NF / source, mode, False)}")
-                for obj, unit in units(unit_rows):
-                    specs.append(f"{obj}={self.compile(self.capture / (unit + '.i'), mode)}")
-                entry = roots
-                if not source and layout != "getopt":
-                    entry = {"libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots", "stdlib": "stdlib_root"}.get(layout, lower + "_roots")
-                    items = ",".join(f"item(p,sym('{r}',0))" for r in roots.split())
-                    root = self.work / "roots.term"
-                    root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
-                    specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
-                linked_cache[cache_key] = self.prolog("link.pl", (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
+                linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)
             linked = linked_cache[cache_key]
             if fns.split():
                 selected = self.work / "linked.term"
@@ -268,8 +280,8 @@ def main():
     parser.add_argument("--tree", type=Path, default=GLIBC, help="tree to compare or update")
     parser.add_argument("--output", type=Path, help="write generated files to a separate tree")
     parser.add_argument("--update", action="store_true")
-    parser.add_argument("--form", choices=("legacy",), default="legacy",
-                        help="output form (only legacy is supported before cutover)")
+    parser.add_argument("--form", choices=("legacy", "shared-prelude"), default="legacy",
+                        help="output form (default: legacy until cutover)")
     parser.add_argument("--legacy", dest="form", action="store_const", const="legacy",
                         help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -286,6 +298,14 @@ def main():
         if len(manifests) != len(set(args.directory)):
             parser.error("unknown directory")
     status = 0
+    if args.form == "shared-prelude":
+        prelude = (args.output or args.tree) / "CodePrelude.v"
+        if args.output or args.update:
+            prelude.parent.mkdir(parents=True, exist_ok=True)
+            prelude.write_bytes(PRELUDE.read_bytes())
+        elif not prelude.exists() or prelude.read_bytes() != PRELUDE.read_bytes():
+            print(f"shared prelude differs or is missing: {prelude}")
+            status = 1
     with tempfile.TemporaryDirectory(prefix="glibc-code-") as tmp:
         work = Path(tmp)
         generator = Generator(args.capture.resolve(), work)
@@ -308,7 +328,7 @@ def main():
             different = 0
             for path in generated:
                 text = computed_proofs(path.read_text(), styles.get(path.name, "vm_compute"))
-                path.write_text(text)
+                path.write_text(shared(text) if args.form == "shared-prelude" else text)
                 destination = (args.output / rel if args.output else target) / path.name
                 if args.output or args.update:
                     destination.parent.mkdir(parents=True, exist_ok=True)

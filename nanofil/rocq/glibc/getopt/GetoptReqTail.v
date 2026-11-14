@@ -6,6 +6,8 @@
     its first byte and writes only the fields of its own state, and the
     report goes through the caller's rule. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,17 +34,12 @@ Definition req_names : list name := Eval vm_compute in
     "v688"; "v689"; "chk183"; "v690"; "v691"; "v692"; "chk184"; "v693"; "chk185"; "pr.7"; "v695";
     "chk186"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptReqTailOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The report module supplies the diagnostic rule, the argument vector and its tactics. *)
-Module D := GetoptDiagOn R LG0.
-Import D D.X D.X.I D.X.I.S D.X.I.S.FI D.X.I.S.FI.ML D.X.I.S.FI.LG D.X.I.S.FI.L D.X.I.ST D.X.I.GB D.X.A.
+Import GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 (** This tactic reads a lookup through names that a report keeps. *)
 Ltac viakeep H := erewrite (keeps_in _ _ _ _ H); [lk_prove | cbn; tauto].
@@ -60,7 +59,7 @@ Section tail.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance tail_stable : SafepointStable (os_wi w0) := D.X.I.OW.os_wi_stable w0.
+Local Instance tail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -108,7 +107,7 @@ Proof.
   iIntros "#Hpo Hl [%Hoo Hoob] Hcur HK".
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
   pose proof (sbyte_range so 0 Hcho) as Hs0r.
-  en. st. chk "Hl".
+  step. step. check "Hl".
   iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
   iNext. iIntros "Hl Hoob".
   iDestruct (ws_byte po so 0 with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
@@ -117,16 +116,16 @@ Proof.
   iNext. iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
-  iNext; iIntros "_ _". iClear "Hbl Hbt". st. rewrite chr_cmp; [|lia|lia].
+  iNext; iIntros "_ _". iClear "Hbl Hbt". step. rewrite chr_cmp; [|lia|lia].
   rewrite (Z.mod_small c (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so 0) 58) as [E58 | E58]; close_br.
-  - en. st. chk "Hl".
+  - step. step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hcur". st.
+    iNext. iIntros "Hl Hcur". step.
     iApply ("HK" with "[%] Hl [Hoob] Hcur"); [split; [xkeep | lk_prove] | by iSplit].
-  - en. st. en. st. chk "Hl".
+  - step. step. step. step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hcur". st.
+    iNext. iIntros "Hl Hcur". step.
     iApply ("HK" with "[%] Hl [Hoob] Hcur"); [split; [xkeep | lk_prove] | by iSplit].
 Qed.
 
@@ -162,7 +161,7 @@ Proof.
   intros Hks Hksd Hk0 Hrule Hse Hmid H2 H12 H455 Hpo Hpe Hc0 Hc19 Hc20 Hc Hper Hb Hal Hend Hr Hav Hala Hda Hra Hps
     Hse0 Hsea Hsee Hser.
   iIntros "#Hpo #Hsl #Hsc Hl Hoo Hcur Ha Hcl #Hs HG HK".
-  en. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
+  step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   - iApply (wp_getopt_miss_tail ks e0 with "Hpo Hl Hoo Hcur");
       [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hc | exact Hb
@@ -180,4 +179,3 @@ Proof.
 Qed.
 
 End tail.
-End GetoptReqTailOn.

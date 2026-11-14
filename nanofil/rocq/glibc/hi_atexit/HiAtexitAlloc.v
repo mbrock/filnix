@@ -3,6 +3,7 @@
     buffer proofs from AllocLogic.v's triple. The allocator keeps its
     thread cache idle and returns a fresh heap object. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,9 +12,10 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   AllocLogic HiAtexitBase HiAtexitSetb.
+From Glibc Require AllocLogic FileInv LibioLogic OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
-Import HSB.SW HSB.SW.FI.ML HSB.SW.FI.LG HSB.SW.FI.L HSB.SW.OW HSB.SW.FI HSB.SW.ST.
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -29,7 +31,7 @@ Local Instance hi_alloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 
 (** Buffer allocation preserves the idle thread cache. *)
-Definition hi_malloc_state : iProp Σ := HAL.tcache_idle dq mp tc dummy mpr tcr dr.
+Definition hi_malloc_state : iProp Σ := AllocLogic.tcache_idle dq mp tc dummy mpr tcr dr.
 
 (** A call of glibc's `c: malloc` in a buffer-allocation block returns
     a fresh object and preserves the idle thread cache. *)
@@ -47,7 +49,7 @@ Proof.
   intros Hx Hn. iIntros "HM HK".
   iApply wp_call_bind; [cbn [map_option]; rewrite Hx; reflexivity | exact Hmalloc_fn | reflexivity |].
   iNext.
-  iApply (HAL.wp_glibc_malloc registry (os_wi w0) ge n dq mp tc dummy mpr tcr dr with "HM [HK]");
+  iApply (AllocLogic.wp_glibc_malloc registry (os_wi w0) ge n dq mp tc dummy mpr tcr dr with "HM [HK]");
     [exact Hn | | exact Hmp | exact Htc | exact Hmalloc2 |].
   - intros m wd h base Hfresh Hw. exact (os_wi_alloc w0 m wd h (heap_req 16 n) base Hfresh Hw).
   - iIntros (base Hb) "Ho HM". iExists _. iSplit; [iPureIntro; reflexivity|].

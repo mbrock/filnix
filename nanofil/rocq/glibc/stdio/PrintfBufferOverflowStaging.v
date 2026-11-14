@@ -5,6 +5,7 @@
     This proof connects the function entry to both caller outcomes.
     The overflow contract and the subsequent buffer selection remain explicit
     obligations, so the proof does not assume that output succeeds. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,15 +15,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode PrintfBufferFileCode PrintfBufferOverflowEntry
   PrintfBufferOverflowCaller.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferOverflowCall PrintfBufferOverflowCaller PrintfBufferOverflowEntry SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The entry and caller share the same memory and OS interpretation. *)
-Module PrintfBufferOverflowStagingOn (R : Runtime) (LG0 : LogicSig R).
-Module OE := PrintfBufferOverflowEntryOn R LG0.
-Module OC := PrintfBufferOverflowCallerOn R LG0.
-Import OC.OC.CS OC.OC.CS.SW OC.OC.CS.SW.FI.ML OC.OC.CS.SW.FI.LG
-  OC.OC.CS.SW.FI.L OC.OC.CS.SW.OW OC.OC.CS.SW.FI OC.OC.CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -32,7 +31,7 @@ Local Instance overflow_staging_irisGS : irisGS_gen hlc (nanofil_lang registry g
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (F : ptr -> iProp Σ) (E : iProp Σ).
 Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
-Context (Hcall : OC.OC.printf_overflow_call_spec w0 registry ge F E).
+Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge F E).
 
 (** Both outcomes preserve the original buffer cells and updated unsigned count.
     EOF clears the printf mode; any other result reaches L88 with the original
@@ -68,16 +67,16 @@ Proof.
     pcell bb 8 (mkPtr (bb + 49) (Obj bb)) ∗
     pcell bb 16 (mkPtr (bb + 49) (Obj bb)) ∗
     icell bb 24 ((written + 1) mod 2 ^ 64))%I).
-  assert (Hframed : OC.OC.printf_overflow_call_spec w0 registry ge F (E ∗ P)).
+  assert (Hframed : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge F (E ∗ P)).
   { intros fr' fp c Ψ Hc Hframe. iIntros "HF (HE & HP) HK".
     iApply (Hcall fr' fp c with "HF HE"); try assumption.
     iNext. iIntros (r Hr) "HF HE".
     iApply ("HK" $! r with "[%] HF [HE HP]"); [done | iFrame]. }
   iIntros "Hb Hbase Hptr Hend Hw Hfp Hch Hm HF HE Hfail Hselect".
-  iApply (OE.wp_printf_overflow_entry w0 registry ge fr bb breg written
+  iApply (PrintfBufferOverflowEntry.wp_printf_overflow_entry w0 registry ge fr bb breg written
     with "Hb Hbase Hptr Hend Hw"); try assumption.
   iIntros (e (Hv0 & Hchk)) "Hb Hbase Hptr Hend Hw".
-  iApply (OC.wp_printf_overflow_caller w0 registry ge F (E ∗ P) Hoverflow Hframed
+  iApply (PrintfBufferOverflowCaller.wp_printf_overflow_caller w0 registry ge F (E ∗ P) Hoverflow Hframed
     e (Some (TAtom "L62")) bb breg fb ch mode
     with "Hb Hfp Hch Hm HF [HE Hbase Hptr Hend Hw] [Hfail] [Hselect]"); try assumption; try lia.
   - rewrite /P. iFrame.
@@ -88,4 +87,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferOverflowStagingOn.

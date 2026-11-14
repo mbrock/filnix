@@ -5,6 +5,8 @@
     count, and it compares two terminated strings that the scanner may
     read. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpCode StrcmpBits StrcmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptPermute GetoptExchangeTwo GetoptExchangeThree GetoptIdleThree GetoptDash.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDash GetoptExchange GetoptExchangeThree GetoptExchangeTwo GetoptIdleThree GetoptInitialize GetoptState LibioLogic OsWorld StrcmpLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -28,30 +32,22 @@ Definition dash_test_names : list name := Eval vm_compute in
   List.map TAtom ["chk68"; "v205"; "v207"; "v212"; "v213"; "v214"; "v215"; "chk70"; "v216"; "v217";
     "v218"; "v219"; "v221"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptDashTestOn (R : Runtime) (LG0 : LogicSig R).
+
 (** When the argument is "--", the scanner runs the blocks that GetoptDash.v proves. *)
-Module D := GetoptDashOn R LG0.
-Import D D.X3 D.X3.O3 D.X3.O3.O D.X3.O3.O.SL.X D.X3.O3.O.SL.X.I D.X3.O3.O.SL.X.I.S D.X3.O3.O.SL.X.I.S.FI
-  D.X3.O3.O.SL.X.I.S.FI.ML D.X3.O3.O.SL.X.I.S.FI.LG D.X3.O3.O.SL.X.I.S.FI.L D.X3.O3.O.SL.X.I.ST
-  D.X3.O3.O.SL.X.I.GB D.X3.O3.O.SL.X.A.
+Import GetoptDash GetoptIdleThree GetoptExchangeThree GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 (** The strcmp module proves glibc's own strcmp. *)
-Module SC := StrcmpLogicOn R LG0.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 Section test.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance dash_test_stable : SafepointStable (os_wi w0) := D.X3.O3.O.SL.X.I.OW.os_wi_stable w0.
+Local Instance dash_test_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance dash_test_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -91,25 +87,25 @@ Proof.
   intros Hks Hg Hdd Hv0 Hv2 Hv12 Hc2 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Ha Hc #Hs #Hdd HK".
   cbn [b_insts b_jump getopt_blk119].
-  chk "Hl". load_int "Hl Hib". st.
+  check "Hl". load_s32_using ltac:(arith) "Hl Hib". step.
   rewrite (Z.mod_small i (2 ^ 32)); [|lia]. rewrite (Z.mod_small n (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec i n) as [Ein | Ein]; close_br.
-  { en. iApply wp_branch; [vx | iNext]. close_br. en. iDestruct "HK" as "[HK _]".
+  { step. iApply wp_branch; [vx | iNext]. close_br. step. iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl [Hib] Ha Hc"); [xkeep | by iSplit]. }
-  en. load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   set (j := Z.to_nat i). assert (Hj : Z.of_nat j = i) by (unfold j; lia).
   destruct (lookup_lt_is_Some_2 ps j) as [q Hq]; [lia|].
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
   iDestruct (big_sepL_lookup with "Hs") as (s) "#Hws"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws") as (rq) "[Hcapq %Hq0]".
   iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). st.
-  iApply (SC.wp_call_glibc_strcmp registry (os_wi w0) ge with "Hws Hdd"); [reflexivity | exact Hg | reflexivity |].
-  iNext. iIntros "_ _". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st. st. en.
+  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step.
+  iApply (StrcmpLogic.wp_call_glibc_strcmp registry (os_wi w0) ge with "Hws Hdd"); [reflexivity | exact Hg | reflexivity |].
+  iNext. iIntros "_ _". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step. step.
   destruct (Z.eqb ((strcmp_res s sdd mod 2 ^ 32) mod 2 ^ 32) (0 mod 2 ^ 32));
     iApply wp_branch; [vx | iNext | vx | iNext]; close_br.
   - iDestruct "HK" as "[_ HK]". iApply ("HK" with "[%] Hl [Hib] Ha Hc"); [split; [xkeep | lia] | by iSplit].
-  - en. iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl [Hib] Ha Hc"); [xkeep | by iSplit].
+  - step. iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl [Hib] Ha Hc"); [xkeep | by iSplit].
 Qed.
 
 (** These names hold what the "--" blocks read. *)
@@ -170,4 +166,3 @@ Proof.
 Qed.
 
 End test.
-End GetoptDashTestOn.

@@ -5,11 +5,18 @@ here=$(cd "$(dirname "$0")" && pwd)
 capture=${1:?pass the glibc capture directory}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+python3 -I "$here/test-blocks.py"
+python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
+  --rocq-function glibc_strcmp >"$work/strcmp-skeleton"
+grep -F 'WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \
+  "$work/strcmp-skeleton"
 python3 -I "$here/generate.py" "$capture" --output "$work/legacy"
 python3 -I "$here/generate.py" "$capture"
+python3 -I "$here/generate.py" "$capture" --form shared-prelude --output "$work/staged"
+python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged"
 
 # A wrong atom, a wrong proof, a missing file and a stale slice must all fail.
-python3 - "$work/legacy" <<'PY'
+python3 - "$work/staged" <<'PY'
 from pathlib import Path
 import sys
 tree = Path(sys.argv[1])
@@ -20,7 +27,7 @@ p.write_text(p.read_text().replace('Proof. vm_compute. reflexivity. Qed.', 'Proo
 (tree / 'stdio/PrintfBufferIoCode.v').unlink()
 (tree / 'getopt/GetoptCode99.v').write_text('stale\n')
 PY
-if python3 -I "$here/generate.py" "$capture" --tree "$work/legacy" \
+if python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged" \
     --directory stdio --directory getopt >"$work/rejected"; then
   echo "generator accepted corrupt fixtures" >&2; exit 1
 fi
@@ -87,7 +94,7 @@ reject_sync missing-default 'missing fixture:'
 mv "$work/Strncmp-valid.v" "$work/styles/string/StrncmpCode.v"
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
 cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/string/code.toml"
-cp "$here/generate.py" "$here/select.pl" "$work/nanofil/rocq/scripts/glibc-code/"
+cp "$here/generate.py" "$here/prelude.py" "$here/select.pl" "$work/nanofil/rocq/scripts/glibc-code/"
 for part in bin src survey bench; do ln -s "$here/../../../$part" "$work/nanofil/$part"; done
 for script in gallina.pl link.pl; do ln -s "$here/../$script" "$work/nanofil/rocq/scripts/$script"; done
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" \

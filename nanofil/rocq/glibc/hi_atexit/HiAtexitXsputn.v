@@ -3,6 +3,7 @@
     result is a bounded byte count or failure; safety does not require
     the operating system to accept every requested byte. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,12 +14,12 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode Libi
   LibioLogic SysWrappers MemFwdCode AllocLogic LibioGenCode LibioXsputnCode LibioDefaultXsputnBuf LibioXsputnBase
   LibioWriteDq HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitDoWrite
   HiAtexitOutputState HiAtexitXsputnRules HiAtexitXsputnOverflow HiAtexitGe HiAtexitFns.
+From Glibc Require FileInv LibioDefaultXsputnBuf LibioLogic LibioOverflowBase LibioWriteDq LibioXsputn LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
-Import HOG.OB HOG.OB.SW HOG.OB.SW.FI.ML HOG.OB.SW.FI.LG HOG.OB.SW.FI.L
-  HOG.OB.SW.OW HOG.OB.SW.FI HOG.OB.SW.ST.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB XB.DX.RM.SM.TL.BY.BF.
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioXsputnSetp.
+Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -62,7 +63,7 @@ Proof.
   intros fr fb freg fl f2 fd tw off dq' b reg o c xs eb Φ Hfr Hc Hfb Hal Hend Hregend Hf2 Hf2r Hfd Hfl Heb
     Hb Ho Hbend Hbreg Hxs.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
-  iApply (HWD.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite
+  iApply (LibioWriteDq.wp_glibc__IO_new_file_write_dq w0 registry ge Hreg Hext Hwrite
     fr fb freg fl f2 fd tw off dq' b reg c o xs eb with
     "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try assumption.
 Qed.
@@ -86,7 +87,7 @@ Lemma hi_xsputn fr eb fb freg vb vreg nb wp we dq' b' reg' so c' ys Φ :
 Proof.
   intros n Hfr Heb Hfb Hal Hend Hregend Hc Hb Hb8 Ho Hbend Hbreg Hys.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hbl Hys HK".
-  iApply (HXS.wp_glibc__IO_new_file_xsputn w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw
+  iApply (LibioXsputn.wp_glibc__IO_new_file_xsputn w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw
     hi_file_write_dq fr eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)
     fb freg vb vreg nb wp we dq' b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hbl Hys HK"); try assumption.
   exact (hi_xsputn_overflow w0 registry ge Hreg Hext Hstat Hfstat Hmaj Hisatty Hsetb Hfree_fn Hfh Hzf Hzg

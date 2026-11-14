@@ -4,13 +4,15 @@
     applies to every state satisfying the OS invariant, not just the
     concrete entry image. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap.
 From Glibc Require Import OsWorld AtexitLogic ExitRun HiAtexitBase HiAtexitGe
   HiAtexitCloseIt HiAtexitExitEnv.
+From Glibc Require AtexitLogic ExitRun ExitRunTail.
 Open Scope Z_scope.
-Import HGV.ER HGV.ER.XL.XT HGV.ER.XL.XT.AX.
+Import ExitRun ExitRunTail AtexitLogic.
 
 (** Updating another object's pieces cannot change errno's liveness
     kind. Physical stores also leave every registered region unchanged,

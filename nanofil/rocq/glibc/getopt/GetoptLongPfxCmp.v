@@ -8,6 +8,8 @@
     a flag pointer only while it holds the flag target's lifetime, which
     the caller lends it from the targets that it owns. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +22,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -41,18 +45,9 @@ Definition plo_blk142 : block := Eval vm_compute in plo_blk "L142".
 (** The comparison decides in this block. *)
 Definition plo_blk155 : block := Eval vm_compute in plo_blk "L155".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPfxCmpOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The not-found module supplies the option table, the targets and the tactics. *)
-Module LM := GetoptLongMissOn R LG0.
-Import LM.LOM.LU.LA.LP.LQE.LQ.LL.LT LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic hands the comparison's outcome to the caller. *)
 Ltac pcmp_fin := first
@@ -72,7 +67,7 @@ Section cmp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance cmp_stable : SafepointStable (os_wi w0) := LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance cmp_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance cmp_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -141,20 +136,20 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e2 [] None
       (Exec (TAtom "L142") (b_insts plo_blk142) (b_jump plo_blk142))) : gexpr) {{ Φ }})%I with "[H155]" as "H142".
   { iIntros (e2 (Hk2 & H82 & H32 & Hc82 & c & Hc)) "HF". cbn [b_insts b_jump plo_blk142]. pcmp_br.
-    - en. st.
+    - step. step.
       iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
         [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
       iApply (wp_raw_load_sub_bytes_dq with "Htl Hvxb");
         [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
-      iNext; iIntros "_ _". st.
+      iNext; iIntros "_ _". step.
       iApply (wp_half_check_read_dq w0 registry ge with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
       iNext; iIntros "_".
       iApply (wp_raw_load_sub_bytes_dq with "Htl Hvyb");
         [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
-      iNext; iIntros "_ _". st. st. en.
+      iNext; iIntros "_ _". step. step. step.
       pcmp_fold "L155" plo_blk155. iApply ("H155" with "[%] HF"). split; [xkeep | eexists; lk_prove].
-    - en. pcmp_fold "L155" plo_blk155. iApply ("H155" with "[%] HF"). split; [xkeep | eexists; lk_prove]. }
+    - step. pcmp_fold "L155" plo_blk155. iApply ("H155" with "[%] HF"). split; [xkeep | eexists; lk_prove]. }
   iAssert (∀ e2, ⌜keeps ks e e2 /\ lookup (TAtom "pr.8") e2 = Some (WPtr (ptr_add lo (32 * Z.of_nat j))) /\
       lookup (TAtom "pr.3") e2 = Some (WPtr (ptr_add lo (32 * Z.of_nat k))) /\
       lookup (TAtom "chk8") e2 = Some (WPtr (ptr_add lo (32 * Z.of_nat k))) /\
@@ -162,36 +157,35 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e2 [] None
       (Exec (TAtom "L131") (b_insts plo_blk131) (b_jump plo_blk131))) : gexpr) {{ Φ }})%I with "[H142]" as "H131".
   { iIntros (e2 (Hk2 & H82 & H32 & Hc82 & c & Hc)) "HF". cbn [b_insts b_jump plo_blk131]. pcmp_br.
-    - en. st.
+    - step. step.
       iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
         [reflexivity | vx | exact Htc | rawa | rawa | al8 |]; iNext; iIntros "_".
       iDestruct (flag_capq with "HF") as (fr) "(%Hfr & Hcap & HF)"; [exact Hfx|].
       iApply (wp_raw_load_pointer_dq with "Htl Hfxl Hcap"); [reflexivity | vx | exact Htc | rawa | al8 | exact Hfr |].
-      iNext. iIntros "_ _ Hcap". iSpecialize ("HF" with "Hcap"). st.
+      iNext. iIntros "_ _ Hcap". iSpecialize ("HF" with "Hcap"). step.
       iApply (wp_half_check_read_dq w0 registry ge with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | al8 |].
       iNext; iIntros "_".
       iDestruct (flag_capq with "HF") as (fr') "(%Hfr' & Hcap & HF)"; [exact Hfy|].
       iApply (wp_raw_load_pointer_dq with "Htl Hfyl Hcap"); [reflexivity | vx | exact Htc | rawa | al8 | exact Hfr' |].
-      iNext. iIntros "_ _ Hcap". iSpecialize ("HF" with "Hcap"). st. st. st. st. en. pcmp_fold "L142" plo_blk142.
+      iNext. iIntros "_ _ Hcap". iSpecialize ("HF" with "Hcap"). step. step. step. step. step. pcmp_fold "L142" plo_blk142.
       iApply ("H142" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove].
-    - en. pcmp_fold "L142" plo_blk142. iApply ("H142" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove]. }
-  en. pcmp_br.
-  - en. st.
+    - step. pcmp_fold "L142" plo_blk142. iApply ("H142" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove]. }
+  step. pcmp_br.
+  - step. step.
     iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
       [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
     iApply (wp_raw_load_sub_bytes_dq with "Htl Hhxb");
       [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
-    iNext; iIntros "_ _". st.
+    iNext; iIntros "_ _". step.
     iApply (wp_half_check_read_dq w0 registry ge with "Htl");
       [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
     iNext; iIntros "_".
     iApply (wp_raw_load_sub_bytes_dq with "Htl Hhyb");
       [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
-    iNext; iIntros "_ _". st. st. en.
+    iNext; iIntros "_ _". step. step. step.
     pcmp_fold "L131" plo_blk131. iApply ("H131" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove].
-  - en. pcmp_fold "L131" plo_blk131. iApply ("H131" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove].
+  - step. pcmp_fold "L131" plo_blk131. iApply ("H131" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove].
 Qed.
 
 End cmp.
-End GetoptLongPfxCmpOn.

@@ -33,6 +33,7 @@
     The fill is LibioDefaultXsputnRoom.v's, the end of a round
     LibioDefaultXsputnTail.v's. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -42,6 +43,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnBytes LibioDefaultXsputnTail LibioDefaultXsputnRoom.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -50,12 +53,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDefaultXsputnOn (R : Runtime) (LG0 : LogicSig R).
-Module RM := LibioDefaultXsputnRoomOn R LG0.
-Import RM RM.SM.TL RM.SM.TL.BY RM.SM.TL.BY.BF RM.SM.TL.BY.BF.CP RM.SM.TL.BY.BF.CP.CS RM.SM.TL.BY.BF.CP.SW
-  RM.SM.TL.BY.BF.CP.SW.FI.ML RM.SM.TL.BY.BF.CP.SW.FI.LG RM.SM.TL.BY.BF.CP.SW.FI.L RM.SM.TL.BY.BF.CP.SW.OW
-  RM.SM.TL.BY.BF.CP.SW.FI RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -94,37 +93,37 @@ Proof.
   iIntros (e t nb wp we (Hv0 & Hv4 & Hp7 & Hp2 & Ht & Hprogress)) "Hl Hvtp Hwb Hos Hl' Hys HK".
   iDestruct "Hwb" as "(Hwc & Hwp & Hwe & Hroom)".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [dx_L16 b_insts b_jump]. fs. fchk "Hl".
+  cbn [dx_L16 b_insts b_jump]. step. check "Hl".
   destruct nb as [[b sz] |].
   - iDestruct "Hroom" as (reg xs cs Hok) "(Hbl & Hxs & Hcs)".
     pose proof Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [Hwc' Hwa] & [Hec Hea] & Hheap).
     destruct wp as [wa wc], we as [ea ec]. cbn in Hwc', Hwa, Hec, Hea. subst wc ec.
-    fldp "Hl" "Hwp" "Hbl". fs. fchk "Hl". fldp "Hl" "Hwe" "Hbl". fs. fs. fs.
+    load "Hl" "Hwp" "Hbl". step. check "Hl". load "Hl" "Hwe" "Hbl". step. step. step.
     destruct (Z_lt_le_dec wa ea) as [Hlt | Hge].
     + (* L20: room for ea - wa bytes; the count is the smaller of it and t. *)
-      fbrv false. fs. fs. norm. fldp "Hl" "Hwe" "Hbl". fs. fldp "Hl" "Hwp" "Hbl". fs. fs. fs. fs.
+      branch_as false. step. step. norm. load "Hl" "Hwe" "Hbl". step. load "Hl" "Hwp" "Hbl". step. step. step. step.
       destruct (Z_lt_le_dec t (ea - wa)) as [Htl | Htg].
-      * fbrv false. fs.
+      * branch_as false. step.
         iApply (wp_dx_L44 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy os fb freg vb vreg b sz reg xs cs wa ea
-                  dq b' reg' so c' ys t t with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK"); try side.
+                  dq b' reg' so c' ys t t with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK"); try close_side.
         all: try lia. all: lk_fin.
-      * fbrv true. fs. fs. fs.
+      * branch_as true. step. step. step.
         iApply (wp_dx_L44 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy os fb freg vb vreg b sz reg xs cs wa ea
                   dq b' reg' so c' ys t (ea - wa) with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK");
-          try side.
+          try close_side.
         all: try lia. all: lk_fin.
     + (* No room: L22. *)
-      fbrv true. fs.
+      branch_as true. step.
       iAssert (wbuf fb (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))) with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
       { iFrame. iPureIntro. exact Hok. }
       iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
-                dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
+                dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try close_side.
       all: first [intros _; discriminate | lk_fin].
   - (* No buffer yet: both pointers null, no room; L22. *)
     iDestruct "Hroom" as %[-> ->].
-    fldn "Hl" "Hwp". fs. fchk "Hl". fldn "Hl" "Hwe". fs. fs. fs. fbrv true. fs.
+    load_null "Hl" "Hwp". step. check "Hl". load_null "Hl" "Hwe". step. step. step. branch_as true. step.
     iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg None null null dq b' reg' so c' ys t
-              with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe //] Hos Hl' Hys IH HK"); try side.
+              with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe //] Hos Hl' Hys IH HK"); try close_side.
     all: lk_fin.
 Qed.
 
@@ -147,12 +146,12 @@ Proof.
   intros n Hfr Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy. injection Hfr as <-.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  fs. fs.
+  step. step.
   destruct (Z.eq_dec n 0) as [Hn0 | Hn0].
   - (* Nothing to write: L10 returns 0. *)
-    fbrv false. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+    branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). rewrite Zmod_0_l. split; lia.
-  - fbrv true. fs.
+  - branch_as true. step.
     iPoseProof (wp_dx_loop os fb freg vb vreg dq b' reg' so c' ys Φ with "Hvt") as "Hloop"; try assumption.
     iEval (unfold dx_loop; cbv zeta) in "Hloop".
     iApply ("Hloop" $! _ n with "[%] Hl Hvtp Hwb Hos Hl' Hys HK").
@@ -160,4 +159,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioDefaultXsputnOn.

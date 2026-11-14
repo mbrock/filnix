@@ -27,6 +27,8 @@
     | the count, at most `c: INT_MAX` | `c: L101`, `c: L212` | here |
     | the release | `c: L103` | LibioPutsUnlock.v | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -36,6 +38,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString StrlenLogic LibioGenCode LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsLock LibioPutsUnlock
   LibioPutsCall LibioPutsMode LibioPutsBuf LibioPutsNl.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsBuf LibioPutsCall LibioPutsInv LibioPutsLock LibioPutsMode LibioPutsNl LibioPutsUnlock OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -48,13 +52,8 @@ Local Arguments Z.opp : simpl nomatch.
     the newline, at most `c: INT_MAX`, or `c: EOF`. *)
 Definition puts_ret (n r : Z) : Prop := r = Z.min (n + 1) 2147483647 \/ r = 2 ^ 32 - 1.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioPutsOn (R : Runtime) (LG0 : LogicSig R).
-Module PN := LibioPutsNlOn R LG0.
-Import PN PN.PB PN.PB.PM PN.PB.PM.PC PN.PB.PM.PC.PU PN.PB.PM.PC.PU.PL PN.PB.PM.PC.PU.PL.PI
-  PN.PB.PM.PC.PU.PL.PI.CS PN.PB.PM.PC.PU.PL.PI.CS.SW PN.PB.PM.PC.PU.PL.PI.CS.SW.FI.ML
-  PN.PB.PM.PC.PU.PL.PI.CS.SW.FI.LG PN.PB.PM.PC.PU.PL.PI.CS.SW.FI.L PN.PB.PM.PC.PU.PL.PI.CS.SW.OW
-  PN.PB.PM.PC.PU.PL.PI.CS.SW.FI PN.PB.PM.PC.PU.PL.PI.CS.SW.ST.
+
+Import LibioPutsNl LibioPutsBuf LibioPutsMode LibioPutsCall LibioPutsUnlock LibioPutsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** A lookup of the goal, through its environment's [put]s, of a value
     equal to the one asked for by arithmetic. *)
@@ -97,8 +96,7 @@ Context (Hnl : forall s e so soreg fb Φ,
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) -> so mod 8 = 0 -> so + 8 <= r_end soreg ->
   live so soreg -∗ pcell so 0 fp -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
-  ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v12" \/ x = TAtom "chk1" ->
-                lookup x e' = lookup x e) /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
+  ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 fp -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}).
@@ -155,36 +153,36 @@ Proof.
     [iExists lb, lreg; iSplit; done|].
   (* The orientation and the write. *)
   iApply (wp_puts_L109_for w0 registry ge vb vreg Rx F G Hopen Hwide Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try eassumption.
-  iNext. iIntros (e1 c (Hsame & Hc & Hco)) "Hso Hsoc Hf Hstr HRx".
+  iNext. iIntros (e1 c (Hsame & Hc & Hco)) "Hso Hsoc Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   assert (Hv12' : lookup (TAtom "v12") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hc1' : lookup (TAtom "chk1") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hv6' : lookup (TAtom "v6") e1 = Some (WInt (Z.of_nat (length s)))) by (rewrite Hsame; auto).
   clear Hsame. unfold pu_j163.
   brz Hc0.
   { (* The write fell short: L181, then L103 with `c: EOF`. *)
-    fs. fbr. iApply wp_enter; [reflexivity | vx | iNext].
+    step. branch. iApply wp_enter; [reflexivity | vx | iNext].
     iApply (wp_puts_L103_for (G s) (HopenG s) _ (2 ^ 32 - 1) with "Hs Hf"); [lk_val | lk_val | lk_val | lia |].
     iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr Hso Hsoc Hf HRx"). right. reflexivity. }
   assert (Hcn : c <> 0) by (intros ->; apply Hc0; reflexivity).
   rewrite (Hco Hcn).
   (* The newline. *)
   iApply (Hnl s with "Hso Hsoc Hf HRx"); try eassumption.
-  iNext. iIntros (e2 c2 [Hsame Hc2]) "Hso Hsoc Hf HRx".
+  iNext. iIntros (e2 c2 [Hsame Hc2]) "Hso Hsoc Hf HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   assert (Hv12'' : lookup (TAtom "v12") e2 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hc1'' : lookup (TAtom "chk1") e2 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hv6'' : lookup (TAtom "v6") e2 = Some (WInt (Z.of_nat (length s)))) by (rewrite Hsame; auto).
   clear Hsame Hv12' Hc1' Hv6'.
-  fs. brz Hc20.
+  step. brz Hc20.
   { (* The newline failed: L103 with `c: EOF`. *)
     iApply wp_enter; [reflexivity | vx | iNext].
     iApply (wp_puts_L103_for (G s) (HopenG s) _ (2 ^ 32 - 1) with "Hs Hf"); [lk_val | lk_val | lk_val | lia |].
     iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr Hso Hsoc Hf HRx"). right. reflexivity. }
   (* L101: the count, at most `c: INT_MAX`. *)
-  fs. fs. fs. destruct (Z.leb_spec (Z.of_nat (length s) + 1) 2147483647) as [Hle | Hgt].
-  - fbrv true. fs. fs. iApply wp_enter; [reflexivity | vx | iNext].
+  step. step. step. destruct (Z.leb_spec (Z.of_nat (length s) + 1) 2147483647) as [Hle | Hgt].
+  - branch_as true. step. step. iApply wp_enter; [reflexivity | vx | iNext].
     iApply (wp_puts_L103_for (G s) (HopenG s) _ (Z.of_nat (length s) + 1) with "Hs Hf"); [lk_val | lk_val | lk_val | lia |].
     iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr Hso Hsoc Hf HRx"). left. lia.
-  - fbrv false. iApply wp_enter; [reflexivity | vx | iNext].
+  - branch_as false. iApply wp_enter; [reflexivity | vx | iNext].
     iApply (wp_puts_L103_for (G s) (HopenG s) _ 2147483647 with "Hs Hf"); [lk_val | lk_val | lk_val | lia |].
     iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr Hso Hsoc Hf HRx"). left. lia.
 Qed.
@@ -205,4 +203,3 @@ Definition wp_glibc__IO_puts `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
     (fun _ => file_at_lock vb (ow_self w0)) (fun _ _ _ => reflexivity _) Hxs_fn Hxs
     (fun _ => wp_puts_L180 w0 registry ge vb Rx Hov_fn Hov).
 
-End LibioPutsOn.

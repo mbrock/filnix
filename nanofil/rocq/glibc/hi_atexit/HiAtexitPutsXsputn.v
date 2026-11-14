@@ -3,6 +3,7 @@
     its original word-aligned memory window. It also preserves
     stdout's buffer, stream fields and allocator state on failure. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,11 +12,12 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv WordString
   HiAtexitBase HiAtexitGe HiAtexitAlloc HiAtexitOutputState HiAtexitXsputn HiAtexitStdout HiAtexitStringBytes.
+From Glibc Require FileInv LibioDefaultXsputnBuf LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp.
 Import ListNotations.
 Open Scope Z_scope.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import HP.PN.PB.PM.PC.PU.PL.
-Import PI PI.CS.SW.FI PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L XB XB.DX.RM.SM.TL.BY.BF.
+Import LibioXsputnSetp.
+Import LibioPutsLock.
+Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L LibioXsputnBase LibioDefaultXsputnBuf.
 Local Opaque HiAtexitFns.hi_ge.
 
 (** Proof-mode searches keep the stream and allocator resources
