@@ -79,6 +79,30 @@ tree listed-fails-otherwise
 echo 'Lemma broken : True. Proof. exact 0. Qed.' >"$tmp/listed-fails-otherwise/sub/Concrete.v"
 expect listed-fails-otherwise 1 'has no object in TREE.*: sub/Concrete.v'
 
+# fault NAME COMMAND REASON: a compiler that runs COMMAND instead of
+# compiling the listed file against the abstract runtime, and compiles
+# every other file as usual.
+fault() {
+  tree "$1"
+  mkdir "$tmp/$1.bin"
+  cat >"$tmp/$1.bin/rocq" <<EOF
+#!/bin/sh
+for a in "\$@"; do last=\$a; done
+if [ "\$last" = sub/Concrete.v ] && grep -q '^Declare Module R' Fix.v; then
+  $2
+fi
+exec $(command -v rocq) "\$@"
+EOF
+  chmod +x "$tmp/$1.bin/rocq"
+  PATH=$tmp/$1.bin:$PATH expect "$1" 1 "not rejected by a compiler error ($3): sub/Concrete.v"
+}
+# The delayed compiler finishes during the build and not within the one
+# second that the rejection is given.
+PE_REJECT_TIMEOUT=1 fault listed-times-out 'sleep 3' 'the compiler did not finish in 1 seconds'
+fault listed-killed 'kill -KILL $$' 'the compiler was ended by signal 9'
+fault listed-status-124 'exit 124' 'the compiler exited with status 124.*'
+fault listed-status-2 'exit 2' 'the compiler exited with status 2.*'
+
 tree unbound
 sed -i 's/^Module R := InterpRuntime\.$/Declare Module R : Runtime./' "$tmp/unbound/Fix.v"
 expect unbound 2 ''

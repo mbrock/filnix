@@ -21,7 +21,11 @@
 #   - a listed file does not exist, or has no object in TREE. The two
 #     trees differ only in the runtime binding, so a file that compiles
 #     in TREE and not in the copy fails because of the runtime and for
-#     no other reason.
+#     no other reason;
+#   - a listed file that imports no listed file is not rejected by an
+#     error of the compiler itself. tests/rocq_reject.py compiles it
+#     again and refuses a timeout, a signal, a status other than 1, and
+#     an error that is not located in the file.
 #
 # OUT/report.txt names every file on the wrong side, and OUT/glibc.build
 # holds the logs and times of build.sh.
@@ -30,6 +34,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 tree=$(cd "${1:?usage: abstract-general.sh TREE OUT [JOBS]}" && pwd)
 out=${2:?usage: abstract-general.sh TREE OUT [JOBS]}
 jobs=${3:-8}
+reject=$here/../../../tests/rocq_reject.py
 if [ -e "$out" ]; then
   echo "abstract-general: refusing existing output directory $out" >&2
   exit 2
@@ -68,6 +73,18 @@ status=0
   comm -12 "$out/all.txt" "$out/listed.txt" | while read -r f; do
     if [ ! -f "$tree/${f%.v}.vo" ]; then
       echo "FAIL listed file has no object in TREE, so it does not compile at the interpreter's runtime either: $f"
+    fi
+    # make starts no compiler for a file whose import failed, so only a
+    # listed file with no listed import has a rejection to examine.
+    if grep "^${f%.v}\.vo " "$out/glibc.build/deps" | tr ' ' '\n' | sed -n 's/\.vo$/.v/p' |
+      grep -vxF "$f" | grep -qxFf "$out/listed.txt"; then
+      continue
+    fi
+    mkdir -p "$out/rejections/$(dirname "$f")"
+    if ! (cd "$out/glibc" && python3 "$reject" --file "$f" --timeout "${PE_REJECT_TIMEOUT:-900}" \
+      --log "$out/rejections/$f.log" -- rocq c -q -R "$PE_MODEL" Nanofil -R . Glibc "$f") \
+      >"$out/rejections/$f.verdict" 2>&1; then
+      echo "FAIL listed file is not rejected by a compiler error ($(sed -n 's/^rocq_reject: refused: //p' "$out/rejections/$f.verdict")): $f"
     fi
   done
 } >"$out/report.txt"
