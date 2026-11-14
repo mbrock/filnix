@@ -7,7 +7,12 @@ out=${2:?usage: hello-abstract.sh ORIGINAL_TREE NEW_OUTPUT_DIRECTORY}
 test ! -e "$out"
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
-PE_RUNTIME=abstract "$here/../apply.sh" "$before" "$out/tree"
+if [ -n "${3:-}" ]; then
+  ln -s "$(realpath "$3")" "$out/tree"
+else
+  PE_RUNTIME=abstract PE_PROGRAM_TARGETS=hello/HelloGlibcJoin.vo \
+    "$here/../apply.sh" "$before" "$out/tree"
+fi
 mkdir "$out/layout"
 printf 'From Glibc Require Import HelloGlibcJoin.\nPrint Assumptions HelloGlibcJoin.hello_never_panics.\n' >"$out/layout/m3.v"
 printf '%s\n' '{"Fix.R":"AuditRuntime","Glibc.Fix.R":"AuditRuntime"}' >"$out/layout/assumption-aliases.json"

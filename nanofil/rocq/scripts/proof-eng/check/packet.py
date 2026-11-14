@@ -9,13 +9,40 @@ import subprocess
 import sys
 import tempfile
 
-from check import Tree, uncomment
+from check import Tree, uncomment, compare
 from expectations import Expectations
 
 HERE = Path(__file__).resolve().parent
 
 
-def packet(tree, manifests, output):
+def unchanged_tactics(before, after, plugin, manifest, output):
+    """Check the complete stage boundary, not just the relocated declarations."""
+    if before is None or after is None or plugin is None:
+        raise ValueError('stage 30 requires --stage30-before, --stage30-after and --plugin')
+    destination = output.parent / '30-tactics-statements'
+    if compare(argparse.Namespace(mode='statements', before=before, after=after,
+                                  abstract_after=None, plugin=plugin, output=destination,
+                                  expectations=manifest, files=None, jobs=4)):
+        raise ValueError('stage 30 has unexpected statement differences; see 30-tactics-statements')
+    with tempfile.TemporaryDirectory(prefix='tactics-audit-', dir=output.parent) as tmp:
+        query = Path(tmp) / 'TacticsAudit.v'
+        query.write_text('From Glibc Require Import GlibcTactics.\n'
+                         'Print Assumptions GlibcTactics.step_named_rule.\n')
+        audited = subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                                  '-R', str(after.resolve()), 'Glibc', str(query)],
+                                 capture_output=True, text=True, timeout=900)
+        log = audited.stdout + audited.stderr
+        (output.parent / '30-tactics.audit.log').write_text(log)
+        if audited.returncode or 'Axioms:' in log or log.count('Closed under the global context') != 1:
+            raise ValueError('step_named_rule is not Closed; see 30-tactics.audit.log')
+    lint = subprocess.run([sys.executable, str(HERE.parent / 'lint-tactics.py'), str(after), '--max', '226'],
+                          capture_output=True, text=True, timeout=900)
+    (output.parent / '30-tactics.lint.log').write_text(lint.stdout + lint.stderr)
+    if lint.returncode:
+        raise ValueError('stage 30 tactic budget failed; see 30-tactics.lint.log')
+
+
+def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plugin=None):
     output.parent.mkdir(parents=True, exist_ok=True)
     lines = ['# Proof-engineering cutover packet', '',
              'This packet is review material, not authorization to land.',
@@ -47,6 +74,20 @@ def packet(tree, manifests, output):
                 for side in ('before', 'after'):
                     lines += [side.capitalize() + ':', '', '```text',
                               change[side] if change[side] is not None else '<absent>', '```', '']
+                for variant in change.get('variants', []):
+                    lines += ['Additional exact runtime pair:', '']
+                    for side in ('before', 'after'):
+                        lines += [side.capitalize() + ':', '', '```text',
+                                  variant[side] if variant[side] is not None else '<absent>', '```', '']
+            if manifest.stem == '30-tactics':
+                if any(kinds - {'moved', 'added'} for kinds in rules.rows.values()):
+                    raise ValueError('stage 30 cannot exempt statement changes')
+                unchanged_tactics(stage30_before, stage30_after, plugin, manifest, output)
+                lines += ['PASS: statements unchanged across the complete stage-30 boundary; '
+                          'every reviewed source has its target type, including universes. '
+                          'The added rule has its pinned type and prints Closed. '
+                          'The private-tactic count is at most 226.', '']
+                continue
             source = proof.read_text()
             lines += ['### Equivalence proof', '', '```coq', source.rstrip(), '```', '']
             # Copy to a legal basename, then audit every proved declaration,
@@ -86,7 +127,7 @@ def packet(tree, manifests, output):
             lines += ['PASS: stage --check ties the equivalences to its transformation guards.', '']
         except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
             failures.append(f'{manifest.stem}: {error}')
-    lines += ['## Verdict', ''] + (['FAIL: ' + x for x in failures] if failures else ['PASS: every listed stage has all three review files and Closed kernel evidence.'])
+    lines += ['## Verdict', ''] + (['FAIL: ' + x for x in failures] if failures else ['PASS: statement-changing stages have compiled equivalence evidence; stage 30 has unchanged-statement evidence.'])
     output.write_text('\n'.join(lines) + '\n')
     for failure in failures:
         print('FAIL', failure)
@@ -99,5 +140,9 @@ if __name__ == '__main__':
     parser.add_argument('tree', type=Path)
     parser.add_argument('--manifests', type=Path, default=HERE / 'expected-statement-changes')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--stage30-before', type=Path)
+    parser.add_argument('--stage30-after', type=Path)
+    parser.add_argument('--plugin', type=Path)
     args = parser.parse_args()
-    raise SystemExit(packet(args.tree, args.manifests, args.output))
+    raise SystemExit(packet(args.tree, args.manifests, args.output,
+                           args.stage30_before, args.stage30_after, args.plugin))

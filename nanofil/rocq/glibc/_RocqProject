@@ -90,6 +90,7 @@ libio/LibioDoWriteCode.v
 libio/LibioGenCode.v
 libio/LibioXsputnCode.v
 libio/LibioXsputnZero.v
+stdio/PrintfBufferXsputnZero.v
 libio/LibioPutsCode.v
 libio/LibioUnlinkCode.v
 libio/LibioCloseItCode.v
@@ -357,3 +358,7 @@ getopt/GetoptLongAmbRep.v
 getopt/GetoptLongPfxPath.v
 getopt/GetoptLongFind.v
 getopt/GetoptLongBody.v
+getopt/GetoptLongJoinMiss.v
+getopt/GetoptLongJoinFound.v
+getopt/GetoptLongJoin.v
+getopt/GetoptLongCall.v

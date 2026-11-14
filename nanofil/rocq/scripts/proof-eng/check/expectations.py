@@ -37,7 +37,8 @@ class Expectations:
                     raise ValueError(f'{pins}: unsupported version')
                 for item in data['changes']:
                     key = (item['file'], item['name'])
-                    self.pins.setdefault(key, []).append((item['before'], item['after']))
+                    for pair in [item] + item.get('variants', []):
+                        self.pins.setdefault(key, []).append((pair['before'], pair['after']))
 
     def names(self, file):
         return {n for f, n in set(self.rows) | set(self.moves) if f == file}
@@ -58,6 +59,8 @@ class Expectations:
             old = 'Glibc.' + file[:-2].replace('/', '.') + '.' + name
             new = 'Glibc.' + target[0][:-2].replace('/', '.') + '.' + target[1]
             text = re.sub(r"(?<![\w.'])" + re.escape(old) + r"(?![\w'])", new, text)
+            universe = Path(file).stem + '.' + name
+            text = re.sub(r"(?<![\w.'])" + re.escape(universe) + r"(?=\.u\d+(?![\w.']))", new, text)
         return text
 
     def accepts(self, difference):
@@ -88,6 +91,7 @@ if __name__ == '__main__':
     parser.add_argument('operation', choices=['files', 'export'])
     parser.add_argument('manifest', type=Path)
     parser.add_argument('report', type=Path, nargs='?')
+    parser.add_argument('--append', action='store_true', help='retain existing pairs and append exact runtime variants')
     args = parser.parse_args()
     rules = Expectations(args.manifest)
     if args.operation == 'files':
@@ -110,5 +114,18 @@ if __name__ == '__main__':
         if set(rules.rows) - found:
             raise SystemExit(f'Manifest entries not observed: {set(rules.rows) - found}')
         output = args.manifest.with_suffix('.elaborated.json')
+        if args.append and output.exists():
+            previous = json.loads(output.read_text())['changes']
+            old = {(d['file'], d['name']): d for d in previous}
+            if set(old) != found:
+                raise SystemExit('Existing declaration set differs from export')
+            for change in changes:
+                item = old[(change['file'], change['name'])]
+                if item['kind'] != change['kind']:
+                    raise SystemExit('Existing declaration kind differs from export')
+                pair = {k: change[k] for k in ('before', 'after')}
+                if pair not in [{k: item[k] for k in ('before', 'after')}] + item.get('variants', []):
+                    item.setdefault('variants', []).append(pair)
+            changes = previous
         output.write_text(json.dumps({'version': 1, 'changes': changes}, indent=2) + '\n')
         print(f'Wrote {output}; review both statements before committing this approval')

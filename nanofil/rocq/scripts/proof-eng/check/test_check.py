@@ -11,6 +11,90 @@ HERE = Path(__file__).resolve().parent
 
 
 class Checks(unittest.TestCase):
+    def test_tactics_packet_checks_whole_boundary(self):
+        with tempfile.TemporaryDirectory(prefix='tactics-packet-') as tmp:
+            root = Path(tmp)
+            before, after, manifests = [root / n for n in ('before', 'after', 'manifests')]
+            for path in (before, after, manifests):
+                path.mkdir()
+            def compile(tree, name, source):
+                path = tree / (name + '.v')
+                path.write_text(source)
+                subprocess.run(['rocq', 'c', '-q', '-R', str(tree), 'Glibc', str(path)],
+                               check=True, capture_output=True)
+            base = 'Lemma target : True. Proof. exact I. Qed.\n'
+            rule = 'Lemma step_named_rule : True. Proof. exact I. Qed.\n'
+            for tree in (before, after):
+                compile(tree, 'Toy', base)
+            compile(after, 'GlibcTactics', rule)
+            manifest = manifests / '30-tactics.txt'
+            manifest.write_text('added\tGlibcTactics.v\tstep_named_rule\n')
+            subprocess.run(['python3', str(HERE / 'check.py'), 'statements', str(before), str(after),
+                            '--plugin', os.environ['PE_CHECK_PLUGIN'], '--expectations', str(manifest),
+                            '--output', str(root / 'capture')], capture_output=True)
+            subprocess.run(['python3', str(HERE / 'expectations.py'), 'export', str(manifest),
+                            str(root / 'capture/report.json')], check=True, capture_output=True)
+            command = ['python3', str(HERE / 'packet.py'), str(after), '--manifests', str(manifests),
+                       '--stage30-before', str(before), '--stage30-after', str(after),
+                       '--plugin', os.environ['PE_CHECK_PLUGIN'], '--output', str(root / 'packet.md')]
+            def packet(expected):
+                result = subprocess.run(command, capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            packet(0)
+            compile(after, 'Toy', 'Lemma target : False -> False. Proof. auto. Qed.\n')
+            packet(1)
+            compile(after, 'Toy', base)
+            compile(after, 'GlibcTactics', 'Axiom planted : True.\n' + rule.replace('exact I', 'exact planted'))
+            packet(1)
+            compile(after, 'GlibcTactics', rule)
+            compile(after, 'Toy', base + ''.join(f'Ltac extra{i} := idtac.\n' for i in range(227)))
+            packet(1)
+
+    def test_original_runtime_partition(self):
+        with tempfile.TemporaryDirectory(prefix='runtime-selection-') as tmp:
+            root = Path(tmp)
+            trees = [root / name for name in ('before', 'concrete', 'abstract')]
+            source = 'From Nanofil Require Import Runtime. Module R := InterpRuntime. Lemma target : True. Proof. exact I. Qed.\n'
+            def compile(tree, text):
+                tree.mkdir(exist_ok=True)
+                (tree / 'Toy.v').write_text(text)
+                subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                                '-R', str(tree), 'Glibc', str(tree / 'Toy.v')], check=True, capture_output=True)
+            for tree in trees:
+                compile(tree, source)
+            compile(trees[0], 'Lemma target : True. Proof. exact I. Qed.\n')
+            compile(trees[2], 'Lemma target : False -> False. Proof. auto. Qed.\n')
+            command = ['python3', str(HERE / 'check.py'), 'statements', str(trees[0]), str(trees[1]),
+                       '--abstract-after', str(trees[2]), '--plugin', os.environ['PE_CHECK_PLUGIN'],
+                       '--expectations', str(root / 'none'), '--output', str(root / 'report')]
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+            logic = 'From Nanofil Require Import Runtime Logic.\n'
+            statement = 'Lemma target : forall x y, LG.L.P.program_genv x y = LG.L.P.program_genv x y. Proof. reflexivity. Qed.\n'
+            compile(trees[0], logic + 'Module General (R : Runtime). Module LG := Logic R.\n' +
+                    statement + 'End General. Module Concrete := General InterpRuntime.\n')
+            compile(trees[1], logic + 'Module LG := Logic InterpRuntime.\n' + statement)
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            compile(trees[0], logic + 'Module General (R : Runtime) (LG : LogicSig R).\n' +
+                    statement + 'End General. Module ConcreteLogic := Logic InterpRuntime.\n'
+                    'Module Concrete := General InterpRuntime ConcreteLogic.\n')
+            compile(trees[1], logic + 'Module R := InterpRuntime. Module General (LG : LogicSig R).\n' +
+                    statement + 'End General.\n')
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            compile(trees[1], source)
+            compile(trees[0], source)
+            for tree in trees[:2]:
+                path = tree / 'Bridge.v'
+                path.write_text('From Glibc Require Import Toy. Lemma bridge_target : True. Proof. exact I. Qed.\n')
+                subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                                '-R', str(tree), 'Glibc', str(path)], check=True, capture_output=True)
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            report = json.loads((root / 'report/report.json').read_text())
+            self.assertEqual(report['runtime_partition']['concrete'], ['Bridge.v', 'Toy.v'])
+            (trees[2] / 'Toy.vo').unlink()
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            compile(trees[0], 'Lemma target : True. Proof. exact I. Qed.\n')
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+
     def test_statement_binding_runtime_and_axiom_mutations(self):
         plugin = os.environ['PE_CHECK_PLUGIN']
         with tempfile.TemporaryDirectory(prefix='proof-check-test-') as tmp:
@@ -53,6 +137,11 @@ class Checks(unittest.TestCase):
             self.assertTrue(compare(0, manifest)['differences'][0]['accepted'])
             compile(after, source.replace('target : side', 'target : True /\\ (True /\\ True)').replace('exact I.', 'repeat split; exact I.'))
             self.assertFalse(compare(1, manifest)['differences'][0]['accepted'])
+            subprocess.run(['python3', str(HERE / 'expectations.py'), 'export', str(manifest),
+                            str(root / 'statements/report.json'), '--append'], check=True, capture_output=True)
+            self.assertTrue(compare(0, manifest)['differences'][0]['accepted'])
+            compile(after, source.replace('target : side', 'target : True /\\ True').replace('exact I.', 'split; exact I.'))
+            self.assertTrue(compare(0, manifest)['differences'][0]['accepted'])
             spec = 'Definition spec (_ : Corelib.Init.Datatypes.nat) : Prop := True.\n'
             compile(before, spec)
             compile(after, spec.replace(':= True', ':= False'))
@@ -65,9 +154,37 @@ class Checks(unittest.TestCase):
             compile(before, abstract)
             compile(after, abstract.replace('A.ready', 'B.ready'))
             self.assertEqual([d['name'] for d in compare(1)['differences']], ['target'])
+            included = (prelude + 'Module General (R : Runtime). Definition bound : Prop := True. End General.\n'
+                        'Module Copy (R : Runtime). Include General R.\n'
+                        'Lemma target : bound. Proof. exact I. Qed. End Copy.\n')
+            flat = 'Definition bound : Prop := True. Lemma target : bound. Proof. exact I. Qed.\n'
+            compile(before, included)
+            compile(after, flat)
+            compare(0)
+            signature_include = (prelude + 'Module General (R : Runtime). Definition bound : Prop := True. End General.\n'
+                                 'Module Type Sig (R : Runtime). Include General R. End Sig.\n'
+                                 'Module Copy (R : Runtime) (D : Sig R). Lemma target : D.bound. Proof. exact I. Qed. End Copy.\n')
+            compile(before, signature_include)
+            compare(0)
+            opaque_signature = (prelude + 'Module General (R : Runtime). Definition bound : Prop := True. End General.\n'
+                                'Module Type Sig (R : Runtime). Parameter bound : Prop. Parameter bound_true : bound. End Sig.\n'
+                                'Module Witness (R : Runtime) : Sig R. Include General R. Definition bound_true : bound := I. End Witness.\n'
+                                'Module Copy (R : Runtime) (D : Sig R). Lemma target : D.bound. Proof. exact D.bound_true. Qed. End Copy.\n')
+            compile(before, opaque_signature)
+            self.assertTrue(any(d['name'] == 'target' for d in compare(1)['differences']))
+            compile(before, signature_include)
+            compile(after, 'Module Other. Definition bound : Prop := True. End Other.\n' +
+                    flat.replace('target : bound', 'target : Other.bound'))
+            self.assertTrue(any(d['name'] == 'target' for d in compare(1)['differences']))
             sealed = ('Module Type S. Parameter exposed : True. End S.\n'
                       'Module Hidden : S. Lemma target : True. Proof. exact I. Qed.\n'
                       'Definition exposed := target.\nEnd Hidden.\n')
+            captured = ('From Nanofil Require Import Runtime Logic.\n'
+                        'Module R := InterpRuntime. Module Captured (LG : LogicSig R).\n'
+                        'Lemma target : True. Proof. exact I. Qed. End Captured.\n')
+            compile(before, captured)
+            compile(after, captured)
+            compare(0)
             compile(before, sealed)
             compile(after, sealed)
             compare(0)
@@ -117,6 +234,26 @@ class Checks(unittest.TestCase):
             moves = root / 'moves.txt'
             moves.write_text('moved\tToy.v\ttarget\tRenamed.v\ttarget\n')
             self.assertTrue(compare(0, moves)['differences'][0]['accepted'])
+            # Both reviewed sources must equal the destination, including
+            # the universe that moves with a polymorphic declaration.
+            polymorphic = 'Lemma target (A : Type) (x : A) : x = x. Proof. reflexivity. Qed.\n'
+            compile(before, polymorphic)
+            for tree, name in [(before, 'Other'), (after, 'Renamed')]:
+                path = tree / (name + '.v')
+                path.write_text(polymorphic)
+                subprocess.run(['rocq', 'c', '-q', '-R', str(tree), 'Glibc', str(path)], check=True)
+            moves.write_text(moves.read_text() + 'moved\tOther.v\ttarget\tRenamed.v\ttarget\n')
+            self.assertEqual(len(compare(0, moves)['differences'][0]['origins']), 2)
+            moves.write_text('moved\tToy.v\ttarget\tRenamed.v\ttarget\n')
+            self.assertTrue(any(not d['accepted'] for d in compare(1, moves)['differences']))
+            moves.write_text(moves.read_text() + 'moved\tOther.v\ttarget\tRenamed.v\ttarget\n')
+            (before / 'Other.v').write_text('Lemma target (A : Type) (x : A) : True. Proof. exact I. Qed.\n')
+            subprocess.run(['rocq', 'c', '-q', '-R', str(before), 'Glibc', str(before / 'Other.v')], check=True)
+            failed = subprocess.run(['python3', str(HERE / 'check.py'), 'statements', str(before), str(after),
+                                     '--plugin', plugin, '--output', str(root / 'bad-merge'),
+                                     '--expectations', str(moves)], capture_output=True, text=True)
+            self.assertEqual(failed.returncode, 1)
+            self.assertTrue(json.loads((root / 'bad-merge/report.json').read_text())['errors'])
             print('PASS: comments and reviewed moves accepted; changed proposition, binding, runtime, axiom, and unapproved edits rejected')
 
 

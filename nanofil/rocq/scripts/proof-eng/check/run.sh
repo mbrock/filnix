@@ -59,16 +59,27 @@ run cache-preflight python3 "$out/worktree/scripts/ci-cache-check.py" --flake "$
   packages.x86_64-linux.filcc-staging packages.x86_64-linux.site-swipl
 run before-build bash "$here/../build.sh" "$before" "$jobs"
 run after-build bash "$here/../build.sh" "$after" "$jobs"
-run packet python3 "$here/packet.py" "$after" --output "$out/cutover-packet.md"
+run abstract-apply env PE_RUNTIME=abstract bash "$here/../apply.sh" "$before" "$out/abstract"
+if bash "$here/../build.sh" "$out/abstract" "$jobs" >"$out/abstract-build.log" 2>&1; then
+  echo 'PASS abstract-build' | tee -a "$out/verdicts.txt"
+else
+  echo 'PARTIAL abstract-build (statement check requires every original general file)' | tee -a "$out/verdicts.txt"
+fi
+run tactics-boundary bash "$here/tactics-boundary.sh" "$before" "$out/tactics-boundary"
+run tactics-before-build bash "$here/../build.sh" "$out/tactics-boundary/before" "$jobs"
+run tactics-after-build bash "$here/../build.sh" "$out/tactics-boundary/after" "$jobs"
+run packet python3 "$here/packet.py" "$after" --output "$out/cutover-packet.md" \
+  --stage30-before "$out/tactics-boundary/before" --stage30-after "$out/tactics-boundary/after" \
+  --plugin "$out/plugin"
 run statements python3 "$here/check.py" statements "$before" "$after" \
-  --plugin "$out/plugin" --output "$out/statements" --jobs "${PE_QUERY_JOBS:-2}"
+  --abstract-after "$out/abstract" --plugin "$out/plugin" --output "$out/statements" --jobs "${PE_QUERY_JOBS:-2}"
 run before-audits python3 "$here/audit.py" "$before" --output "$out/before-audits"
 layout=${PE_AUDIT_LAYOUT:-$out/flat-layout}
 if [ -z "${PE_AUDIT_LAYOUT:-}" ]; then
   run audit-layout bash "$here/prepare-layout.sh" "$before" "$layout"
 fi
 run after-audits python3 "$here/audit.py" "$after" --layout "$layout" --output "$out/after-audits"
-run hello-abstract bash "$here/hello-abstract.sh" "$before" "$out/hello-abstract"
+run hello-abstract bash "$here/hello-abstract.sh" "$before" "$out/hello-abstract" "$out/abstract"
 run audit-comparison python3 "$here/compare-audits.py" "$out/before-audits/report.json" "$out/after-audits/report.json" \
   --hello-abstract "$out/hello-abstract/audit/report.json"
 run glibc nix build -L --no-link --keep-going --max-jobs "$jobs" "$out/worktree#checks.x86_64-linux.nanofil-glibc"
