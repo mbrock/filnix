@@ -7,6 +7,11 @@
 :- use_module(library(assoc)).
 :- use_module(library(lists)).
 
+%! module_layouts(+Env, +Module, -Layouts) is det.
+%
+%  Layouts contains completed record definitions, their field layouts and
+%  the records each function's source types reach. Incomplete tags have
+%  no fields and retain an explicit incomplete marker.
 module_layouts(Env, module(Items), layouts(Records, Uses)) :-
     Env = e(Ords, Tags, Defs, _),
     findall(record(Id, Names, Def, Fields),

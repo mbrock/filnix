@@ -104,7 +104,9 @@ c_module(Items, Module) :- c_module(Items, Module, _).
 %  has no field for them, so they are not in Module.
 c_module(Items, Module, Attributes) :- c_module(Items, Module, Attributes, _).
 
-% The fourth argument exposes the completed type environment to cc-layouts.
+%! c_module(+Items, -Module, -Attributes, -Env)
+%
+%  As c_module/3; Env is the completed type environment used by cc-layouts.
 c_module(Items00, module(Funcs), Attributes, Env) :-
     empty_env(Env0),
     builtin_declarations(Builtins),
