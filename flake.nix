@@ -3,8 +3,8 @@
 
   inputs = {
     # Modified nixpkgs with Fil-C cross-compilation support
-    # filc-aarch64: 118d872 plus aarch64 in the gnufilc0 ABI assertion.
-    nixpkgs.url = "github:lessrest/filnixpkgs/e63c68034d742160a48ca80640442337e6356cf4";
+    # filc-26.11: the gnufilc0 ABI commits on nixos-unstable d4f25a3e (26.11).
+    nixpkgs.url = "github:lessrest/filnixpkgs/3bb072bcb33addf9c0e807424e897b5892c5c0cf";
     nixpkgs.flake = false;
     # For the example finix machine and its test (finix/demo.nix). The last
     # revision before finix required finit 5; filnix's Nixpkgs has finit 4.17.
