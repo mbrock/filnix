@@ -245,6 +245,23 @@ def declaration_end(source: Source, declaration: list[Token]) -> int:
     fail(source, declaration[0], 'cannot locate declaration proof terminator')
 
 
+def inferred_body(declaration):
+    words = [t.text for t in declaration]
+    if words[0] != 'Definition' or ':=' not in words:
+        return None
+    top = list(groups(declaration, 2))
+    assignment = next((a for a, b in top if b == a+1 and words[a] == ':='), None)
+    if assignment is None or any(words[a] == ':' for a, b in top if a < assignment):
+        return None
+    return declaration[assignment+1].start, declaration[-1].start
+
+
+def legacy_instance(conversion):
+    words = [t.text for t in conversion.section.iris]
+    name = words[words.index('Instance')+1]
+    return name, '.'.join([conversion.source.path.stem, *conversion.section.scope, name])
+
+
 def section_edits(source: Source, metadata: dict, calls=()):
     edits = []
     conversions = {}
@@ -557,7 +574,8 @@ def rewrite_calls(source: Source, conversions: dict, reserved: list[tuple], call
                 edits.append((source.ts[begin].start, source.ts[end-1].end, f'({name} := {text})'))
         call_report.append({'file': str(source.path), 'line': source.text.count('\n', 0, token.start)+1,
                             'declaration': key, 'before': len(mapped), 'after': len(mapped)-count+bool(extra),
-                            'bundle_argument': bool(extra)})
+                            'bundle_argument': bool(extra), 'position': token.start,
+                            'program_values': {n: values[n] for n in ('w0', 'registry', 'ge') if n in values}})
     return edits
 
 
@@ -1167,7 +1185,7 @@ def prepare_evidence(tree: Path, refresh_review=False):
             if source_digest(tree / rel) != source_digest(expected / rel):
                 raise ValueError(f'50-program: output differs from the transformation: {rel}')
     selected.add('GlibcProgram.v')
-    compile_targets(tree, [f[:-1] + 'o' for f in sorted(selected)])
+    compile_targets(tree, [f + 'o' for f in sorted(selected)])
     plugin = out / 'plugin'
     subprocess.run(['bash', str(HERE / 'check/plugin.sh'), str(plugin)], check=True)
     candidates = out / 'candidates.txt'
@@ -1425,33 +1443,10 @@ def regenerate(original: Path):
 
     # Runtime choice comes from the original source, never from transformed
     # imports or a hardcoded list of example programs.
-    files = {str(p.relative_to(original)): p for p in original.rglob('*.v')}
-    roots = {f for f, p in files.items() if any(t.text == 'InterpRuntime' for t in tokens(p.read_text()))}
-    dep = subprocess.run(['rocq', 'dep', '-R', os.environ['PE_MODEL'], 'Nanofil',
-                          '-R', str(original), 'Glibc', *map(str, files.values())],
-                         text=True, capture_output=True, check=True)
-    (work / 'runtime-dependencies.txt').write_text(dep.stdout + dep.stderr)
-    objects = {str(p.with_suffix('.vo')): f for f, p in files.items()}
-    graph = {}
-    for line in dep.stdout.splitlines():
-        targets, separator, dependencies = line.partition(':')
-        if separator:
-            for target in targets.split():
-                if target in objects:
-                    graph[objects[target]] = {objects[p] for p in dependencies.split() if p in objects}
-    if set(graph) != set(files):
-        raise ValueError('50-program: dependency graph does not cover every original source')
-    concrete = set(roots)
-    while True:
-        more = {f for f, deps in graph.items() if deps & concrete} - concrete
-        if not more:
-            break
-        concrete.update(more)
-    general = sorted(set(files) - concrete)
-    (work / 'runtime-partition.json').write_text(json.dumps(
-        {'roots': sorted(roots), 'concrete': sorted(concrete), 'general': general}, indent=2) + '\n')
+    subprocess.run([sys.executable, str(HERE / 'check/check.py'), 'partition',
+                    str(original), '--output', str(work / 'partition')], check=True)
     env['PE_RUNTIME'] = 'abstract'
-    env['PE_PROGRAM_TARGETS'] = ' '.join(f[:-1] + 'o' for f in general)
+    env['PE_PROGRAM_TARGETS'] = (work / 'partition/general-targets.txt').read_text().replace('\n', ' ')
     abstract = work / 'abstract'
     abstract_before = apply(abstract, env)
     selected = compile_targets(abstract, env['PE_PROGRAM_TARGETS'].split())
@@ -1540,6 +1535,20 @@ def main():
         edits, entries = section_edits(source, metadata)
         planned[source.path] = edits
         conversions.update(entries)
+    # Keep only the old instance constants that occur in inferred endpoint
+    # types. They remain ordinary definitions, never competing instances.
+    legacy = {}
+    for source in sources:
+        load_references(source)
+        for name, declaration in source.declarations.items():
+            body = inferred_body(declaration)
+            if not protected_name(name) or body is None:
+                continue
+            for position, reference in source.references.items():
+                conversion = conversions.get(reference)
+                if (body[0] <= position < body[1] and conversion and
+                        not conversion.retained and not conversion.wrapped):
+                    legacy[(conversion.source.path, conversion.section.start)] = conversion
     wrapper_pairs = []
     for conversion in conversions.values():
         if conversion.wrapped:
@@ -1552,28 +1561,42 @@ def main():
     table_instances = {name for source in sources for _, _, text in table_edits(source)
                        for name in re.findall(r'Lemma (\w+) : Defines', text)}
     for source in sources:
-        load_references(source)
         edits = planned.get(source.path, [])
         context_ranges = {(s[0].start, s[-1].end) for section in source.sections for s in section.contexts}
         reserved = [(a, b, t) for a, b, t in edits if (a, b) not in context_ranges]
         call_edits = rewrite_calls(source, conversions, reserved, calls, table_instances)
         if source.path in planned:
             edits, _ = section_edits(source, metadata, call_edits)
+        for (path, position), conversion in legacy.items():
+            if path == source.path:
+                name, _ = legacy_instance(conversion)
+                text = (f'Definition {name} `{{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}}\n'
+                        '  (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv) :\n'
+                        '  irisGS_gen hlc (nanofil_lang registry ge) Σ :=\n'
+                        '  nanofil_irisGS registry (os_wi w0) ge.\n\n')
+                edits.append((position, position, text))
         edits += table_edits(source)
         edits += [(a, b, t) for a, b, t in call_edits
                   if not any(x <= a and b <= y for x, y, _ in edits if x != y)]
-        for declaration in source.declarations.values():
-            words = [t.text for t in declaration]
-            if words[0] != 'Definition' or ':=' not in words:
+        for name, declaration in source.declarations.items():
+            body = inferred_body(declaration)
+            if body is None:
                 continue
-            top = [(a, b) for a, b in groups(declaration, 2)]
-            assignment = next((a for a, b in top if b == a+1 and words[a] == ':='), None)
-            if assignment is None or any(words[a] == ':' for a, b in top if a < assignment):
-                continue
-            start, end = declaration[assignment+1].start, declaration[-1].start
+            start, end = body
             if any(start <= a <= b <= end and 'program_of' in text for a, b, text in call_edits):
                 # Keep inferred legacy endpoint types free of bundle projections.
-                edits.extend([(start, start, 'program_call('), (end, end, ')')])
+                prefix = 'program_call('
+                if protected_name(name):
+                    uses = [c for c in calls if c['file'] == str(source.path) and
+                            start <= c.get('position', -1) < end and c['bundle_argument']]
+                    if len(uses) != 1 or len(uses[0]['program_values']) != 3:
+                        fail(source, declaration[0], 'inferred endpoint needs one complete program application')
+                    conversion = conversions[uses[0]['declaration']]
+                    _, instance = legacy_instance(conversion)
+                    values = uses[0]['program_values']
+                    arguments = ' '.join(term_argument(values[n]) for n in ('w0', 'registry', 'ge'))
+                    prefix = f'program_call_with (@{instance} hlc Σ _ _ {arguments}) ('
+                edits.extend([(start, start, prefix), (end, end, ')')])
         if edits:
             edits.append((0, 0, 'From Glibc Require Import GlibcProgram.\n'))
             first = next((section for section in source.sections if section.canonical), None)

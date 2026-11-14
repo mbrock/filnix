@@ -45,11 +45,15 @@ python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --regenerate nanofil
 
 The command applies the stages and compiles both sides of stage 50, using the original imports to choose concrete or abstract runtimes. For each output tree it writes `50-program.txt`, `50-program.elaborated.json` and `50-program.equivalence.v` under `TREE.program/`. It retains the trees and logs under `.amp/in/orb-backup/program-regeneration-*` and prints their location. It also updates the committed declaration list for review. Generated types and proofs stay out of git; `check/audit-changes.json` preserves the forty reviewed old types and adapter mappings. Regeneration does not approve new changes or a cutover.
 
+For a custom abstract run, `check.py partition ORIGINAL_TREE --output DIR` writes `general-targets.txt` from the original compiler import graph. Pass that list as `PE_PROGRAM_TARGETS` with `PE_RUNTIME=abstract`; the runtime setting alone does not select the general files. Regeneration and the cutover runner do this automatically.
+
 Run `python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --check TREE` against a converted tree to regenerate and validate its packet. The command needs the input snapshot and compiler metadata that `apply.sh` retains in `TREE.program/`. It reproduces the transformation, checks the reviewed declaration list and old types, then compiles both adapter directions. Four workers compile shards grouped by source directory, each containing at most sixteen pairs and one MiB of adapter source. Each worker has a five-minute limit.
 
 Concrete adapters must print Closed. Abstract adapters may depend only on the declared runtime's fields: old and new statements must have identical assumption names and types, and each direction may use only a subset. The check verifies each field's identity and type with Rocq and writes the per-pair results to `TREE.program/check/assumptions.json`. Concrete success does not authorize abstract evidence; the checker requires a separate successful run for each runtime.
 
 Stage 50 does not remove every local instance or lookup expression. Specification predicates and partial interfaces retain their parameters, while noncanonical sections retain their original setup. The stage prints each retained section and its reason. It leaves stronger program facts, absent-symbol facts and allocator premises explicit.
+
+An inferred audited endpoint keeps its original Iris constant as an ordinary definition when its printed type needs that name. It does not register another instance.
 
 `../glibc-code/skeleton.py` prints block-lemma statement skeletons from a manifest's linked IR. It is not a stage, and `../glibc-code/README.md` describes it.
 

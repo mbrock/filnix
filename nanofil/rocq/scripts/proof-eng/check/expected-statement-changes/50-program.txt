@@ -10,6 +10,7 @@ added	SayLogic.v	SayLogic_say_ge_program_table
 added	SayLogic.v	SayLogic_say_ge_program_table_correct
 added	hi_atexit/HiAtexitFns.v	HiAtexitFns_hi_ge_program_table
 added	hi_atexit/HiAtexitFns.v	HiAtexitFns_hi_ge_program_table_correct
+added	hi_atexit/HiAtexitXsputn.v	hi_xsputn_irisGS
 changed	LenLogic.v	find_main
 changed	LenLogic.v	find_strlen
 changed	SayLogic.v	find_strlen
@@ -223,7 +224,6 @@ changed	hi_atexit/HiAtexitPrintfOverflowHeap.v	hi_printf_heap_overflow
 changed	hi_atexit/HiAtexitPrintfOverflowHeap.v	hi_printf_heap_overflow_spec
 changed	hi_atexit/HiAtexitSetb.v	hi_free_rule
 changed	hi_atexit/HiAtexitSetb.v	hi_setb
-changed	hi_atexit/HiAtexitXsputn.v	hge_xsputn
 changed	hi_atexit/HiAtexitXsputn.v	hi_file_write_dq
 changed	hi_atexit/HiAtexitXsputn.v	hi_xsputn
 changed	hi_atexit/HiAtexitXsputnOverflow.v	hi_xsputn_overflow
