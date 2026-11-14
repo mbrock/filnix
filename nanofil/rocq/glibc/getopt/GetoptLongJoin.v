@@ -34,13 +34,14 @@ Definition jparam_keys : list name := Eval vm_compute in
 Module GetoptLongJoinOn (R : Runtime) (LG0 : LogicSig R).
 (** The found returns module supplies both kinds of return, the searches and the tactics. *)
 Module LJF := GetoptLongJoinFoundOn R LG0.
-Import LJF LJF.LJM LJF.LJM.LPB LJF.LJM.LPB.LPF LJF.LJM.LPB.LPF.LPP LJF.LJM.LPB.LPF.LPP.LAR LJF.LJM.LPB.LPF.LPP.LAR.LAO LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM
-  LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
+Import LJF
+  LJF.LJM
+  LJF.LJM.LPB
+  LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT
+  LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA
+  LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
   LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
   LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
   LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
   LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
   LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
@@ -122,7 +123,7 @@ Lemma wp_long_join e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f139 f
   live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo -∗ pcell b 16 a -∗ pcell b 32 cur -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   (∀ e' l rv x, ⌜value_x ge e' W rv = Some (WInt x)⌝ -∗
-     LJF.LJM.plo_res b r av ar ps li F G M i n cur s a -∗
+     LJF.LJM.plo_res b r av ar ps li F G M i n cur s a os x -∗
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
@@ -137,7 +138,7 @@ Proof.
   - iIntros (e2 p w (Hk2 & Hf & H12' & H7' & H90 & Hp1 & Hc0 & Hc1)) "Hl Hib Hoob Hcur Ha Hcl HG HF HM".
     destruct Hf as [[-> ->] | (j & Hj & -> & ->)].
     + iApply (LJF.LJM.wp_long_join_miss w0 registry ge [] e2 G T fp dom M se sereg mid av ar ps q sq po so pfx pxs
-        cur s i n lonly pe oo a li F b r
+        cur s i n lonly pe oo a li F b r os
         with "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli"); try jn_side.
       iIntros (e' l rv x [_ Hv]) "Hres". iApply ("HK" $! e' l rv x with "[%] Hres"). exact Hv.
     + destruct (lookup_lt_is_Some_2 os j Hj) as [x Hx].
@@ -149,7 +150,7 @@ Proof.
   - iIntros (e2 _) "Hl Hib Hoob Hcur Ha Hcl HG HF HM".
     iApply ("HK" $! e2 _ (Const 63) 63 with "[%] [-]"); [reflexivity|].
     iApply (LJF.LJM.plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli");
-      [lia | right; right; reflexivity | left; reflexivity].
+      [lia | right; right; reflexivity | left; reflexivity | lia | intros Hv; lia].
 Qed.
 
 End join.
