@@ -2968,6 +2968,10 @@ in
   {
     python312 = for pkgs.python312 [
       (pin "3.12.5" "sha256-+oouEsXmILCfU+ZbzYdVDS5aHi4Ev4upkdzFUROHY5c=")
+      # Nixpkgs 26.11 gives Pythons before 3.16 a mimetypes patch for 3.14's
+      # file; 3.12.5 takes the original one, as in 26.05.
+      (skipPatch "3.14/mimetypes.patch")
+      (patch "${pkgs.path}/pkgs/development/interpreters/python/cpython/mimetypes.patch")
       (patch ./ports/patch/Python-3.12.5.patch)
       (patch ./patches/python-code-header-cxx.patch)
       (patch ./patches/python-filc-triplet-detection.patch)
