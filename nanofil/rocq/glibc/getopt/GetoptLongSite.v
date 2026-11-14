@@ -172,7 +172,8 @@ Lemma wp_getopt_long_only_call e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   ((∀ x, ⌜x <> 4294967295⌝ -∗ LCL.LJN.LJF.LJM.plo_res b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) ∧
    (∀ e' oo' a', ⌜lookup (TAtom "v2") e' = Some (WPtr (mkPtr av (Obj av))) /\
        lookup (TAtom "v12") e' = Some (WPtr (mkPtr b (Obj b))) /\ lookup (TAtom "chk2") e' = lookup (TAtom "chk2") e /\
-       lookup (TAtom "chk20") e' = lookup (TAtom "chk20") e⌝ -∗
+       lookup (TAtom "chk20") e' = lookup (TAtom "chk20") e /\
+       lookup (TAtom "pr.1") e' = lookup (TAtom "pr.1") e /\ lookup (TAtom "v80") e' = lookup (TAtom "v80") e⌝ -∗
      live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 cur -∗
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L338") (Some (TAtom "L376")))) : gexpr)
