@@ -339,6 +339,7 @@ libio/LibioXsputnFlags.v
 getopt/GetoptLongEq.v
 getopt/GetoptScanChoice.v
 getopt/GetoptScanJoin.v
+getopt/GetoptEntryPre.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v
