@@ -26,6 +26,7 @@ on:
       - "nanofil/rocq/theories/core/**"
       - nanofil/nix/rocq-gate.nix
       - nanofil/nix/rocq.nix
+      - nanofil/nix/rocq-packages.nix
       - nanofil/nix/nanofil-cc.nix
       - nanofil/nix/sqlite.nix
       - nanofil/nix/corpus.nix

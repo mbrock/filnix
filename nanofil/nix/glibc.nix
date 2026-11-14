@@ -23,13 +23,18 @@
   model,
 }:
 let
-  rocq = pkgs.rocqPackages;
+  rocq = import ./rocq-packages.nix { inherit pkgs; };
   lib = pkgs.lib;
+  # native_compute compiles with this OCaml and findlib, and assembles
+  # and links with the C toolchain, which runCommand does not provide.
   rocqInputs = [
     rocq.rocq-core
     rocq.stdlib
     rocq.stdpp
     rocq.iris
+    rocq.rocq-core.ocamlPackages.ocaml
+    rocq.rocq-core.ocamlPackages.findlib
+    pkgs.stdenv.cc
   ];
   watch = ../tests/watch.py;
   glibc = ../rocq/glibc;

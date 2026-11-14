@@ -12,6 +12,7 @@ on:
       - nanofil/nix/glibc.nix
       - nanofil/nix/hello-glibc.nix
       - nanofil/nix/rocq.nix
+      - nanofil/nix/rocq-packages.nix
       - "nanofil/survey/glibc/capture.nix"
       - "nanofil/survey/glibc/mixed.nix"
       - "nanofil/survey/glibc/regress.nix"
