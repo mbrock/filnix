@@ -6,6 +6,7 @@
     or unbuffered stream's write end its write pointer, so every byte
     comes back to the function ([wp_ovf_L162]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioOverflowBase.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -22,10 +25,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowSetpEndOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -96,23 +97,23 @@ Proof.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & [%Hflr Hflb] & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hbb & Hbe & Hbreg & Hsz & Hkr & Hxl & Hxr & Hwec & Hwea). rewrite Z.add_0_r.
-  adv. load_int "Hl Hflb". adv.
+  adv. load_s32_group "Hl Hflb". adv.
   assert (Hlb : 0 <= Z.land fl 514 < 2 ^ 32) by (apply land_lt32; lia).
   destruct (Z.eq_dec (Z.land fl 514) 0) as [H514 | H514].
-  - brv true.
+  - branch_as true.
     iApply (HL18 _ _ _ _ _ _ _ _ _ _ _ _ 0 (mkPtr (bb + sz) (Obj bb)) with "Hvt Hl Hfx
       [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
-      try first [side | lk_prove |
+      try first [libio_side | lk_prove |
         iApply (ovf_state_base with "Hbl Hxs [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
           try first [assumption | reflexivity | cbn; lia]].
-  - brv false. adv.
+  - branch_as false. adv.
     iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
     iNext. iIntros "Hl Hwp Hbl". adv.
     iApply (wp_raw_store_pointer with "Hl Hwe"); [vx | vx | reflexivity | ar | ar | wi_store |].
-    iNext. iIntros "Hl Hwe". st.
+    iNext. iIntros "Hl Hwe". step.
     iApply (HL18 _ _ _ _ _ _ _ _ _ _ _ _ 0 (mkPtr bb (Obj bb)) with "Hvt Hl Hfx
       [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
-      try first [side | lk_prove |
+      try first [libio_side | lk_prove |
         iApply (ovf_state_base with "Hbl Hxs [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
           try first [assumption | reflexivity | cbn; lia]].
 Qed.
@@ -143,14 +144,13 @@ Proof.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ Hbk He Hmd Hbb Hbe Hbreg Hsz Hxl Hxr Hv0 Hv2 Hc0 Hc6.
   iIntros "#Hvt Hl Hfx Hbl Hxs [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".
   unfold file_size in Hend.
-  adv. load_int "Hl Hflb". adv. brv true.
+  adv. load_s32_group "Hl Hflb". adv. branch_as true.
   adv. iApply (wp_raw_load_pointer with "Hl Hrp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
   iNext. iIntros "Hl Hrp Hbl". adv.
   iApply (wp_raw_load_pointer with "Hl Hbend Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hbend Hbl". adv. brv true.
+  iNext. iIntros "Hl Hbend Hbl". adv. branch_as true.
   iApply (HL113 with "Hvt Hl Hfx Hbl Hxs [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK");
-    try first [side | lk_prove].
+    try first [libio_side | lk_prove].
 Qed.
 
 End rules.
-End LibioOverflowSetpEndOn.

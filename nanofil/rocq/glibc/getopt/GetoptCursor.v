@@ -5,6 +5,8 @@
     argument i only below the argument count and writes only the cursor
     field of the scanner's own state. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -43,26 +47,21 @@ Proof.
   destruct m; cbn in H; congruence.
 Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptCursorOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exchange module supplies the argument vector and its tactics. *)
-Module X := GetoptExchangeOn R LG0.
-Import X X.I X.I.S X.I.S.FI X.I.S.FI.ML X.I.S.FI.LG X.I.S.FI.L X.I.ST X.I.GB X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 Section cursor.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance cursor_stable : SafepointStable (os_wi w0) := X.I.OW.os_wi_stable w0.
+Local Instance cursor_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance cursor_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -96,15 +95,15 @@ Proof.
   iDestruct (big_sepL_lookup with "Hs") as (s) "#Hws"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
-  en. st. chk "Hl". load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
   iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). st. chk "Hl".
+  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
   iNext. iIntros "Hl Hcur".
   assert (Ha1 : (ptr_addr q mod 2 ^ 64 + 1 mod 2 ^ 64) mod 2 ^ 64 = ptr_addr q + 1)
     by (rewrite !(Z.mod_small _ (2 ^ 64)); lia).
-  rewrite Ha1. st.
+  rewrite Ha1. step.
   iApply ("HK" with "[%] Hl [Hib] [Hcur] Ha Hc"); [xkeep | by iSplit |].
   unfold j in Hq. by rewrite (nth_lookup_Some _ _ _ _ Hq).
 Qed.
@@ -136,10 +135,10 @@ Proof.
   iDestruct (big_sepL_lookup with "Hs") as (s) "#Hws"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
-  en. st. chk "Hl". load_int "Hl Hib". st. st. st. idx i. chk "Ha".
+  step. step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
   iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). st. chk "Hl".
+  iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
   iNext. iIntros "Hl Hcur".
   assert (Ha1 : (ptr_addr q mod 2 ^ 64 + 1 mod 2 ^ 64) mod 2 ^ 64 = ptr_addr q + 1)
@@ -150,4 +149,3 @@ Proof.
 Qed.
 
 End cursor.
-End GetoptCursorOn.

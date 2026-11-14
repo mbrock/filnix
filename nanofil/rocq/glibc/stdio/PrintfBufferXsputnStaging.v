@@ -5,6 +5,7 @@
     This proof connects the function entry to the stream call and its count
     comparison. The stream call and the following buffer selection remain
     explicit obligations; neither is assumed to accept all bytes. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,15 +15,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioXsputnCode PrintfBufferFileCode PrintfBufferXsputnEntry
   PrintfBufferXsputnCaller.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld PrintfBufferXsputnCall PrintfBufferXsputnCaller PrintfBufferXsputnEntry SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The two stages share the same memory and OS interpretation. *)
-Module PrintfBufferXsputnStagingOn (R : Runtime) (LG0 : LogicSig R).
-Module XE := PrintfBufferXsputnEntryOn R LG0.
-Module XC := PrintfBufferXsputnCallerOn R LG0.
-Import XC.XP.PI XC.XP.CS XC.XP.CS.SW XC.XP.CS.SW.FI.ML XC.XP.CS.SW.FI.LG
-  XC.XP.CS.SW.FI.L XC.XP.CS.SW.OW XC.XP.CS.SW.FI XC.XP.CS.SW.ST.
+
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -32,7 +31,7 @@ Local Instance staging_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (F : ptr -> iProp Σ) (E : iProp Σ).
 Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context (Hcall : XC.XC.printf_xsputn_call_spec w0 registry ge F E).
+Context (Hcall : PrintfBufferXsputnCall.printf_xsputn_call_spec w0 registry ge F E).
 
 (** Both continuations receive the updated unsigned count and the original bytes.
     A count mismatch returns with failure; an exact count reaches L40 with the
@@ -73,17 +72,17 @@ Proof.
   set (P := (pcell bb 0 (mkPtr (bb + 48) (Obj bb)) ∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) ∗
     icell bb 24 ((written + Z.of_nat (length xs)) mod 2 ^ 64))%I).
-  assert (Hframed : XC.XC.printf_xsputn_call_spec w0 registry ge F (E ∗ P)).
+  assert (Hframed : PrintfBufferXsputnCall.printf_xsputn_call_spec w0 registry ge F (E ∗ P)).
   { intros fr' fp b reg dq ys Ψ Hb Ha Hlen' He Hr Hys Hframe.
     iIntros "HF (HE & HP) Hl Hys HK".
     iApply (Hcall fr' fp b reg dq ys with "HF HE Hl Hys"); try assumption.
     iNext. iIntros (r Hret) "HF HE Hl Hys".
     iApply ("HK" $! r with "[%] HF [HE HP] Hl Hys"); [done | iFrame]. }
   iIntros "#Hvt Hb Hbase Hptr Hend Hw Hfp Hxs Hm HF HE Hfail Hselect".
-  iApply (XE.wp_printf_xsputn_entry w0 registry ge fr bb breg (Z.of_nat (length xs)) written
+  iApply (PrintfBufferXsputnEntry.wp_printf_xsputn_entry w0 registry ge fr bb breg (Z.of_nat (length xs)) written
     with "Hb Hbase Hptr Hend Hw"); try assumption; try lia.
   iIntros (e (Hv0 & Hchk & Hchk1)) "Hb Hbase Hptr Hend Hw".
-  iApply (XC.wp_printf_xsputn_caller w0 registry ge F (E ∗ P) Hfn Hframed
+  iApply (PrintfBufferXsputnCaller.wp_printf_xsputn_caller w0 registry ge F (E ∗ P) Hfn Hframed
     e (Some (TAtom "start")) bb breg fb vb vreg xs mode
     with "Hvt Hb Hptr Hfp Hxs Hm HF [HE Hbase Hend Hw] [Hfail] [Hselect]"); try assumption.
   - rewrite /P. iFrame.
@@ -94,4 +93,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferXsputnStagingOn.

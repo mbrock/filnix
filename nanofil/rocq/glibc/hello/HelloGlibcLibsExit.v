@@ -2,6 +2,7 @@
     close_stdout callback remains an M4 debt, but registration, dispatch,
     TLS destructors and final stream cleanup use their concrete proofs. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,11 +12,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
 From Nanofil Require HelloClose.
 From Glibc Require Import OsWorld OsRegistry AtexitLogic ExitRunCode ExitRunTail ExitRun LibioGenCode
   HelloGlibcDebts HelloGlibcLibsT HelloGlibcLibsSys HelloGlibcLibsCleanup.
+From Glibc Require ExitRun ExitRunTail.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The interface keeps the exit implementation out of later substitutions. *)
-Module Type HelloLibsExitSig (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0) (AX : AtexitT R LG0).
+Module Type HelloLibsExitSig (D : HelloDebtsT) (AX : AtexitT).
 Import LG0 LG0.L D D.SW.FI.ML.
 (** The recursive exit lock starts unlocked, with no owner. *)
 Definition hello_exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
@@ -31,12 +34,12 @@ Parameter libs_exit : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
 End HelloLibsExitSig.
 
 (** The implementation composes the exit loop with the two proved bridges. *)
-Module HelloGlibcLibsExitOn (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0) (AX : AtexitT R LG0)
-  : HelloLibsExitSig R LG0 D AX.
+Module HelloGlibcLibsExitOn (D : HelloDebtsT) (AX : AtexitT)
+  : HelloLibsExitSig D AX.
 (** The sealed cleanup bridge supplies the final stream call. *)
-Module CL := HelloGlibcLibsCleanupOn R LG0 D.
+Module CL := HelloGlibcLibsCleanupOn D.
 (** The exit proof dispatches the callback and terminates through zsys_exit_soft. *)
-Module ER := ExitRunOn R LG0.
+Module ER := ExitRun.
 Import LG0 LG0.L D D.SW.FI.ML.
 (** The recursive exit lock starts unlocked, with no owner. *)
 Definition hello_exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
@@ -54,7 +57,7 @@ Local Instance exit_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) 
   nanofil_irisGS glibc_os_registry (os_wi w0) ge.
 
 (** The concrete object layout establishes all preservation premises of the loop. *)
-Lemma hello_exit_env : ER.XL.XT.loop_env w0 ge (ho_x o).
+Lemma hello_exit_env : ExitRunTail.loop_env w0 ge (ho_x o).
 Proof.
   split; [exact (hk_exit_layout _ _ Hk)|]. split; [exact (hk_exit_globals _ _ Hk)|].
   split.
@@ -64,7 +67,7 @@ Proof.
 Qed.
 
 (** The thread cookie and external symbol facts establish the recursive-lock contract. *)
-Lemma hello_exit_lock_env : ER.exit_lock_env w0 ge (ho_el o) (ho_elr o).
+Lemma hello_exit_lock_env : ExitRun.exit_lock_env w0 ge (ho_el o) (ho_elr o).
 Proof.
   destruct (hk_el _ _ Hk) as (H0 & H8 & He & Hg).
   split; [exact H0|]. split; [exact H8|]. split; [exact He|]. split; [exact Hg|].
@@ -73,7 +76,7 @@ Proof.
 Qed.
 
 (** The compiled TLS destructor function returns immediately in this build. *)
-Lemma hello_dtors (P : iProp Σ) : ⊢ ER.dtors_rule w0 ge P P.
+Lemma hello_dtors (P : iProp Σ) : ⊢ ExitRun.dtors_rule w0 ge P P.
 Proof.
   iIntros (f e ls lab rest j Ψ) "HP HK".
   iApply wp_call_bind; [reflexivity | exact (hk_dtors _ _ Hk) | reflexivity |]. iNext.
@@ -83,7 +86,7 @@ Proof.
 Qed.
 
 (** The concrete cleanup triple supplies the exit loop's cleanup call rule. *)
-Lemma hello_cleanup : ⊢ ER.XL.XT.cleanup_rule w0 ge (D.exit_io w0 ge o).
+Lemma hello_cleanup : ⊢ ExitRunTail.cleanup_rule w0 ge (D.exit_io w0 ge o).
 Proof.
   iIntros (f e ls lab d rest j Ψ) "HP HK".
   iApply (D.wp_call_fn w0 ge _ [] with "HP"); [exact (CL.libs_cleanup w0 ge o Hk)|reflexivity|].
@@ -104,14 +107,14 @@ Proof.
   set (P := (D.hello_ro ge o ∗ D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.names o)%I).
   set (Q := fun i : nat => if Nat.eqb i 0 then D.exit_io w0 ge o else P).
   iIntros "(Hro & Hio & Hpv & Hnames & HX & Hl) _".
-  iApply (ER.wp_glibc_exit w0 ge (ho_x o) (ho_el o) (ho_elr o) [(ho_cp o, null, null)] c n P Q
+  iApply (ExitRun.wp_glibc_exit w0 ge (ho_x o) (ho_el o) (ho_elr o) [(ho_cp o, null, null)] c n P Q
     with "HX Hl [Hro Hio Hpv Hnames] [] [] []");
     [exact hello_exit_env | exact hello_exit_lock_env | exact (hk_run_exit _ _ Hk) | | | |].
   - iSplitL "Hro"; [iExact "Hro"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|iExact "Hnames"].
   - cbn [Q]. iApply hello_dtors.
   - cbn [Q]. iSplitL; [|done].
     destruct (hk_cp _ _ Hk) as (Hcap & Hcheck & Haddr).
-    iApply (ER.exit_handler_void w0 ge _ (ho_cp o) null (TAtom "close_stdout") HelloClose.close_stdout_fn
+    iApply (ExitRun.exit_handler_void w0 ge _ (ho_cp o) null (TAtom "close_stdout") HelloClose.close_stdout_fn
       (invocation HelloClose.close_stdout_fn []) P (D.exit_io w0 ge o));
       [exact Hcap | exact Hcheck | exact (hk_close_stdout _ _ Hk) | lia | reflexivity | reflexivity |
        reflexivity | reflexivity |].

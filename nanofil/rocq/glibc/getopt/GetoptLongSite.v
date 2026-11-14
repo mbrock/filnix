@@ -4,6 +4,7 @@
     that call safe, and it states the condition on the option table
     that makes the fallback safe. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
   GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongPfxAlloc GetoptLongStore GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -81,27 +84,9 @@ Proof.
   - intros Hx. discriminate Hx.
 Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongSiteOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The call module supplies the rule for a call of the parser. *)
-Module LCL := GetoptLongCallOn R LG0.
-Import LCL
-  LCL.LJN.LJF.LJM.LPB
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongCall GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic evaluates arguments through assignments and drops their wraps to 32 bits. *)
 Ltac site_vx :=
@@ -110,7 +95,7 @@ Ltac site_vx :=
     |- context [lookup ?k ?E] =>
       let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H
     end;
-  unwrap; reflexivity.
+  StrlenLoop.unwrap; reflexivity.
 
 (** A call needs facts about its arguments, such as their values and ranges, and this tactic proves them. *)
 Ltac site_side :=
@@ -123,7 +108,7 @@ Section site.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance site_stable : SafepointStable (os_wi w0) := LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance site_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance site_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -169,7 +154,7 @@ Lemma wp_getopt_long_only_call e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
   live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo -∗ pcell b 16 a -∗ pcell b 32 cur -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
-  ((∀ x, ⌜x <> 4294967295⌝ -∗ LCL.LJN.LJF.LJM.plo_res b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) ∧
+  ((∀ x, ⌜x <> 4294967295⌝ -∗ GetoptLongJoinMiss.plo_res b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) ∧
    (∀ e' oo' a', ⌜lookup (TAtom "v2") e' = Some (WPtr (mkPtr av (Obj av))) /\
        lookup (TAtom "v12") e' = Some (WPtr (mkPtr b (Obj b))) /\ lookup (TAtom "chk2") e' = lookup (TAtom "chk2") e /\
        lookup (TAtom "chk20") e' = lookup (TAtom "chk20") e /\
@@ -184,23 +169,22 @@ Proof.
   intros Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hneg Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
-  unfold long_only_call, long_only_jump. st.
-  iApply (LCL.wp_call_glibc_process_long_option w0 registry ge _ _ _ _ _ _ _ _ _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
+  unfold long_only_call, long_only_jump. step.
+  iApply (GetoptLongCall.wp_call_glibc_process_long_option w0 registry ge _ _ _ _ _ _ _ _ _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try site_side.
   iNext. iIntros (x) "Hres". iExists _. iSplit; [done|]. iNext.
   iDestruct "Hres" as (i' oo' a' c') "(Hl & Hib & Hoob & Hab & Hcur & Ha & Hcl & HG & HF & HM & Hli & %Hp)".
   destruct Hp as (Hi' & Hc' & Ha' & Hxr & Hxf). cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  st. iApply wp_branch; [vx | iNext]. unwrap.
+  step. iApply wp_branch; [vx | iNext]. StrlenLoop.unwrap.
   destruct (Z.eqb_spec x 4294967295) as [Ex | Ex]; cbn [negb];
     lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
       let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
   - destruct (neg1_fallback os x i i' cur c' Hneg Hxf Ex) as [-> ->]. iDestruct "HK" as "[_ HK]".
     iApply ("HK" with "[%] Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli").
     repeat split; repeat (eapply lookup_put_miss; [vm_compute; reflexivity|]); first [eassumption | reflexivity].
-  - iDestruct "HK" as "[HK _]". st. iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt x)); [reflexivity | site_vx |]. iNext.
+  - iDestruct "HK" as "[HK _]". step. iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt x)); [reflexivity | site_vx |]. iNext.
     iApply ("HK" with "[%]"); [exact Ex|].
-    iApply (LCL.LJN.LJF.LJM.plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli"); assumption.
+    iApply (GetoptLongJoinMiss.plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli"); assumption.
 Qed.
 
 End site.
-End GetoptLongSiteOn.

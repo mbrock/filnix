@@ -6,12 +6,15 @@
     This witness checks the resource contracts, not the remaining M4 and
     M6 call proofs. It does not claim to construct HelloDebts. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld FileInv AllocLogic AtexitLogic HelloGlibcDebts HelloGlibcLibsT.
 From stdpp Require Import list.
+From Glibc Require AllocLogic FileInv.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -49,13 +52,10 @@ Proof.
   congruence.
 Qed.
 
-(** Resource proofs share one runtime and logic instance. *)
-Module HelloGlibcMainWitnessOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The stream witness uses the existing file invariant without weakening it. *)
-Module FI := FileInvOn R LG0.
 (** The allocation witness uses the existing idle-prelude predicate. *)
-Module AL := AllocOn R LG0.
-Import LG0 LG0.L FI FI.ML.
+Import LG0 LG0.L FileInv FileInv.ML.
 
 (** The stream starts unoriented, with no buffer and a free lock. *)
 Definition hello_witness_state (vb lb fd : Z) : fstate :=
@@ -200,10 +200,10 @@ Qed.
 
 (** The allocator image supplies the full-share idle-prelude predicate. *)
 Lemma witness_alloc : pts hello_witness_alloc -∗
-  AL.tcache_idle (DfracOwn 1) 32768 36864 40960
+  AllocLogic.tcache_idle (DfracOwn 1) 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
 Proof.
-  rewrite /hello_witness_alloc witness_concat /AL.tcache_idle. cbn [big_opL].
+  rewrite /hello_witness_alloc witness_concat /AllocLogic.tcache_idle. cbn [big_opL].
   iIntros "(Hmp & Hmax & Htc & Hptr & Hdm & Hbins & _)". iSplit; [iPureIntro; vm_compute; intuition congruence|].
   iFrame "Hmp Hmax Htc Hptr Hdm".
   rewrite witness_concat big_sepL_fmap /pcellq /hello_witness_pointer. done.
@@ -211,11 +211,11 @@ Qed.
 
 (** Giving up the allocator image produces exactly the read-only prelude used by Hello. *)
 Lemma witness_alloc_readonly : pts hello_witness_alloc ==∗
-  AL.tcache_idle DfracDiscarded 32768 36864 40960
+  AllocLogic.tcache_idle DfracDiscarded 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
 Proof.
   iIntros "Ha". iMod (ptsq_persist (DfracOwn 1) with "Ha") as "#Ha". iModIntro.
-  rewrite /hello_witness_alloc witness_concatq /AL.tcache_idle. cbn [big_opL].
+  rewrite /hello_witness_alloc witness_concatq /AllocLogic.tcache_idle. cbn [big_opL].
   iDestruct "Ha" as "(Hmp & Hmax & Htc & Hptr & Hdm & Hbins & _)".
   iSplit; [iPureIntro; vm_compute; intuition congruence|]. iFrame "Hmp Hmax Htc Hptr Hdm".
   rewrite witness_concatq big_sepL_fmap /pcellq /hello_witness_pointer. done.
@@ -226,7 +226,7 @@ Lemma witness_resources : pts hello_witness_pieces -∗
   file_inv 16384 (ow_self hello_witness_world) (mkPtr 4096 (Obj 4096)) ∗
   file_inv 16384 (ow_self hello_witness_world) (mkPtr 8192 (Obj 8192)) ∗
   file_inv 16384 (ow_self hello_witness_world) (mkPtr 12288 (Obj 12288)) ∗
-  AL.tcache_idle (DfracOwn 1) 32768 36864 40960
+  AllocLogic.tcache_idle (DfracOwn 1) 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
 Proof.
   rewrite /hello_witness_pieces witness_concat. cbn [big_opL]. iIntros "(Ho & He & Hi & Ha & _)".
@@ -241,10 +241,10 @@ End resources.
     This establishes satisfiability rather than assuming resource ownership. *)
 Lemma witness_allocatable Σ `{!gen_heapGpreS piece pval Σ} :
   ⊢ |==> ∃ Hh : gen_heapGS piece pval Σ,
-    @FI.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 4096 (Obj 4096)) ∗
-    @FI.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 8192 (Obj 8192)) ∗
-    @FI.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 12288 (Obj 12288)) ∗
-    @AL.tcache_idle Σ Hh (DfracOwn 1) 32768 36864 40960
+    @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 4096 (Obj 4096)) ∗
+    @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 8192 (Obj 8192)) ∗
+    @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 12288 (Obj 12288)) ∗
+    @AllocLogic.tcache_idle Σ Hh (DfracOwn 1) 32768 36864 40960
       (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
 Proof.
   iMod (gen_heap_init (list_to_map hello_witness_pieces : gmap piece pval)) as (Hh) "(_ & Hpts & _)".
@@ -252,4 +252,3 @@ Proof.
   rewrite /pts -(big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v));
     [iExact "Hpts"|exact hello_witness_distinct].
 Qed.
-End HelloGlibcMainWitnessOn.

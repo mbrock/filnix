@@ -11,6 +11,8 @@
     about locale translation and formatting. It is not part of the OS
     boundary. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,6 +24,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongExact GetoptLongScan GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -43,19 +47,15 @@ Definition ldiag_msg (ge : genv) (mid : ptr) : Prop :=
     ["glibc_getopt#str.138"; "glibc_getopt#str.139"; "glibc_getopt#str.142"; "glibc_getopt#str.143";
      "glibc_getopt#str.144"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongDiagOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exact search module supplies the option table and the tactics. *)
-Module LE := GetoptLongExactOn R LG0.
-Import LE LE.LS LE.LS.RT LE.LS.RT.D LE.LS.RT.D.X LE.LS.RT.D.X.I LE.LS.RT.D.X.I.S LE.LS.RT.D.X.I.S.FI
-  LE.LS.RT.D.X.I.S.FI.ML LE.LS.RT.D.X.I.S.FI.LG LE.LS.RT.D.X.I.S.FI.L LE.LS.RT.D.X.I.ST LE.LS.RT.D.X.I.GB
-  LE.LS.RT.D.X.A.
+Import GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section ldiag.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance ldiag_stable : SafepointStable (os_wi w0) := LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance ldiag_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance ldiag_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -119,18 +119,18 @@ Ltac ldiag_entry_block Htc Hn0 :=
   iAssert (∃ s0, word_string DfracDiscarded q0 s0)%I as (s0) "#Hws";
   [unfold argv_strs; rewrite big_sepL_cons; iDestruct "Hs" as "[H _]"; iExact "H"|];
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]";
-  en; st;
+  step; step;
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | arith | arith | arith |];
+    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |];
   iNext; iIntros "_";
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]";
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | arith | arith | exact Hfp |];
-  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"); st; st;
+  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |];
+  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"); step; step;
   iApply (Hgt with "HG"); [lmsg | vx |]; iNext; iIntros (q) "HT";
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Ha");
-    [reflexivity | vx | left; reflexivity | arith | arith | arith |];
+    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |];
   iNext; iIntros "Ha"; iDestruct "Hcl" as "[Hc0 Hcl]";
-  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |];
+  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |];
   iNext; iIntros "Ha Hc0 _";
   iApply (wp_half_check_read_dq w0 registry ge with "Htl");
     [reflexivity | vx | assumption | exact Htc | al8 | al8 | lia | lia | al8 |];
@@ -138,7 +138,7 @@ Ltac ldiag_entry_block Htc Hn0 :=
   iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn"); [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |];
   iNext; iIntros "_ _ _";
   iApply (Hfx with "HT Hws Hpfx Hnws"); [lmsg | vx |];
-  iNext; iIntros (r0) "HG"; st;
+  iNext; iIntros (r0) "HG"; step;
   iApply ("HK" with "[%] Ha [Hc0 Hcl] HG"); [xkeep | iFrame].
 
 (** The parser rejects an argument given to the found entry x when x
@@ -204,4 +204,3 @@ Proof.
 Qed.
 
 End ldiag.
-End GetoptLongDiagOn.

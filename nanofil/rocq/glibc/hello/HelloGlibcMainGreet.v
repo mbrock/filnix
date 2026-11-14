@@ -6,6 +6,7 @@
     error-reporting branch; success reaches the printing branch.
     The tail proof supplies both continuations. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,18 +18,14 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv LeavesL
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
   HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp HelloGlibcMainOperands
   HelloGlibcMainTail.
+From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainOperands HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainTail HelloGlibcMainVersion.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The greeting proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainGreetOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The tail module supplies the success and conversion-failure exits. *)
-Module Tl := HelloGlibcMainTailOn R LG0.
-Import Tl Tl.Op Tl.Op.Hp Tl.Op.Hp.He Tl.Op.Hp.He.Vn Tl.Op.Hp.He.Vn.Lp Tl.Op.Hp.He.Vn.Lp.Dp Tl.Op.Hp.He.Vn.Lp.Dp.St
-  Tl.Op.Hp.He.Vn.Lp.Dp.St.S Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D.FB
-  Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D.SW Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.ML
-  Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.LG Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.L
-  Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.OW Tl.Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.
+Import HelloGlibcMainTail HelloGlibcMainOperands HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 (** This tactic computes call arguments whose values fit their integer bounds. *)
 Ltac vxm := cbn -[put];
@@ -69,8 +66,8 @@ Proof.
   iIntros "#Hro" (e g [(H4 & Hc1 & H6) [Hb4 Hb6]]) "Hgc #Hg Hb6 Hio Hn HX".
   pose proof Hb4 as (Hb40 & Hb416 & Hb448).
   iDestruct "Hgc" as "(Hl4 & Hp4 & Hy4 & Hc4)".
-  st.
-  rule1 "Hl4" ltac:(eapply wp_renew; ins;
+  step.
+  rule1 "Hl4" ltac:(eapply wp_renew; inst;
     [reflexivity | vx | reflexivity | reflexivity | arith | cbn [r_end]; arith | arith]).
   iApply (wp_load_str w0 ge _ _ _ _ _ _ _ _ _ _ _ (DfracOwn 1) (DfracOwn 1) with "Hl4 Hp4 Hg");
     [lk_prove | arith | apply mod16_mod8; exact Hb416 |].
@@ -81,9 +78,9 @@ Proof.
      iIntros (r) "[-> _]"; iExists _; iSplit; [iPureIntro; split; [reflexivity | lia] | done] | vx |].
   iNext. iIntros (n Hn ->).
   destruct (greet_len (Z.of_nat (length s))) as (E1 & E2); [lia|].
-  eapply step_wand; [eapply (wp_let_as w0 ge (WInt (Z.of_nat (length s) + 1))); ins;
+  eapply step_wand; [eapply (wp_let_as w0 ge (WInt (Z.of_nat (length s) + 1))); inst;
     [reflexivity | reflexivity | vx | intros ?; reflexivity | f_equal; exact E1] |].
-  eapply step_wand; [eapply (wp_let_as w0 ge (WInt (4 * (Z.of_nat (length s) + 1)))); ins;
+  eapply step_wand; [eapply (wp_let_as w0 ge (WInt (4 * (Z.of_nat (length s) + 1)))); inst;
     [reflexivity | reflexivity | vx | intros ?; reflexivity | f_equal; exact E2] |].
   set (N := 4 * (Z.of_nat (length s) + 1)).
   assert (HN : 0 <= N < 2 ^ 64) by (unfold N; change (2 ^ 48) with 281474976710656 in Hsl;
@@ -109,12 +106,11 @@ Proof.
      iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv"|];
      iSplitL "Hwb"; [iExact "Hwb"|]; iSplitL "Hgc"; [iExact "Hgc"|]; iSplitR; [iExact "Hs" | iExact "Hb6"] |].
   iNext. iIntros (k Hk) "(%ws & %Hw & Hio & Hpv & Hwb)".
-  st.
+  step.
   destruct (Z.eq_dec k (2 ^ 64 - 1)) as [-> | Hk1].
-  - br. iApply (join_fail w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX"). iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
-  - br. iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact (Hw Hk1) |].
+  - (branch_symbolic; LeavesLogic.decide_branch). iApply (join_fail w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX"). iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
+  - (branch_symbolic; LeavesLogic.decide_branch). iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact (Hw Hk1) |].
     iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
 Qed.
 
 End greet.
-End HelloGlibcMainGreetOn.

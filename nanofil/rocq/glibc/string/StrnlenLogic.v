@@ -10,6 +10,7 @@
     pointer subtraction in `c: strnlen` to prove frame and call
     specifications at any ownership share. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast MemchrLoop
   MemchrFirst MemchrLogic.
+From Glibc Require MemchrLast MemchrLogic WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -47,16 +50,10 @@ Proof.
   - split; [lia|]. intros u Hu. apply Hnz. lia.
 Qed.
 
-(** This functor packages the NUL-search `memchr` and `strnlen`
-    specifications over a [[runtime]] R and a program logic instance
-    LG0. *)
-Module StrnlenLogicOn (R : Runtime) (LG0 : LogicSig R).
-Module MC := MemchrLogicOn R LG0.
-Module ML := MC.ML.
-Module WS := ML.WS.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG WS ML.
+Import L LG WordString MemchrLast.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -73,12 +70,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** To step past pure instructions without manual boilerplate, [st]
     advances one pure `let`, [[flight]], block entry, or `goto` step
     whose premises reduce. *)
-Ltac st :=
-  first
-    [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
-    | iApply wp_flight; [vx | reflexivity | vx | iNext]
-    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-    | iApply wp_goto; iNext ].
+
 
 (** To search a [word_string] for its terminating NUL within n bytes,
     [wp_glibc_memchr_nul] executes a call [[frame]] of [glibc_memchr]
@@ -92,7 +84,7 @@ Lemma wp_glibc_memchr_nul dq p s n e Φ :
 Proof.
   intros Hn H0 H2 H4. iIntros "(%b & %reg & %ws & %Hs & Hl & Hw) HK".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp _ Hr _ _].
-  iApply (MC.wp_glibc_memchr_dq registry wi ge dq p 0 n b reg ws _ e with "Hl Hw");
+  iApply (MemchrLogic.wp_glibc_memchr_dq registry wi ge dq p 0 n b reg ws _ e with "Hl Hw");
     [exact Hc | exact Hb0 | exact Hb8 | exact Hst | exact Hf | exact Hsp | exact Hr | lia | exact Hn
     | exact (memchr_nul_hit _ _ _ _ _ _ Hs Hn) | exact H0 | exact H2 | exact H4 |].
   iIntros "Hl Hw". iApply "HK". iExists b, reg, ws. by iFrame.
@@ -135,17 +127,17 @@ Proof.
   { cbn. rewrite (Z.mod_small n); [reflexivity | lia]. }
   iNext. iIntros "Hs". destruct p as [a c0]. cbn [ptr_addr ptr_cap] in *. unfold nul_hit.
   destruct (Z.ltb_spec (Z.of_nat (List.length s)) n) as [Hls|Hls]; cbn [hit_ptr ptr_addr ptr_cap].
-  - st. st. cbn [fr_fn ptr_addr]. iApply wp_branch; [reflexivity|]. iNext.
+  - step. step. cbn [fr_fn ptr_addr]. iApply wp_branch; [reflexivity|]. iNext.
     rewrite Zmod_0_l (Z.mod_small (a + Z.of_nat (List.length s))); [|lia].
     replace (a + Z.of_nat (List.length s) =? 0) with false by (symmetry; apply Z.eqb_neq; lia). close_if.
-    do 3 st. si "v18" (Z.of_nat (List.length s)). st. st.
+    do 3 step. si "v18" (Z.of_nat (List.length s)). step. step.
     iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     rewrite Z.min_l; [|lia].
     match goal with |- environments.envs_entails _ (Φ (Ret (WInt ?X))) =>
       replace X with (Z.of_nat (List.length s)) by ar end.
     iApply ("HK" with "Hs").
-  - st. st. cbn [fr_fn ptr_addr]. iApply wp_branch; [reflexivity|]. iNext. close_if.
-    st. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  - step. step. cbn [fr_fn ptr_addr]. iApply wp_branch; [reflexivity|]. iNext. close_if.
+    step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     rewrite Z.min_r; [|lia].
     match goal with |- environments.envs_entails _ (Φ (Ret (WInt ?X))) => replace X with n by ar end.
     iApply ("HK" with "Hs").
@@ -170,4 +162,3 @@ Proof.
 Qed.
 
 End rules.
-End StrnlenLogicOn.

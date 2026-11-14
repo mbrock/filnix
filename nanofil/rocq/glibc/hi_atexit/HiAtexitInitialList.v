@@ -3,6 +3,7 @@
     before exit can unlink stdout. This file checks its input against
     the linked initial memory and proves the actual constructor call. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,12 +12,12 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry FileInv LibioStdfiles HiAtexitBase HiAtexitGe
   HiAtexitInitial HiAtexitInitialAlloc HiAtexitInitialStdout.
 From stdpp Require Import list.
+From Glibc Require FileInv LibioStdfiles.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The constructor uses the same interpreter logic as puts and close. *)
-Module HST := LibioStdfilesOn InterpRuntime HLG.
-Import HST HST.CS.SW.FI HST.CS.SW.FI.ML HST.CS.SW.FI.LG HST.CS.SW.FI.L.
+Import LibioStdfiles FileInv FileInv.ML FileInv.LG FileInv.L.
 
 (** The static list runs from stderr through stdout to stdin. *)
 Definition hi_initial_streams : list ptr :=

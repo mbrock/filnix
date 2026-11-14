@@ -6,6 +6,7 @@
     (HelloGlibcProgCells.v's [memeq_call]) and goes on to the "lt-"
     test ([spn_L16]) or to the stores ([spn_L18]). *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrrchrLogic StrncmpCode StrcmpBits
   StrncmpBits HelloGlibcProgCells.
+From Glibc Require HelloGlibcProgCells OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -23,12 +26,9 @@ Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
-(** The test over the [[runtime]] R and the Logic instance LG0. *)
-Module HelloGlibcProgLibsOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The cells, the bytes and the memeq call. *)
-Module PC := HelloGlibcProgCellsOn R LG0.
 (** The world's rules. *)
-Module OW := PC.OW.
 (** The Logic instance. *)
 Module LG := LG0.
 (** Its language. *)
@@ -54,23 +54,23 @@ Context (pb nb sb : Z) (preg nreg sreg : region) (lp tp : ptr)
   (Hsb_cell : 0 <= sb /\ sb mod 8 = 0 /\ sb + 8 <= r_end sreg /\ r_end sreg <= 2 ^ 48).
 
 (** [os_wi] w0 survives safepoints. *)
-Local Instance pn_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance pn_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The Iris instance of the registry and [os_wi] w0. *)
 Local Instance pn_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** HelloGlibcProgCells.v's [memcmp_spec] for this genv. *)
-Local Notation memcmp_spec := (PC.memcmp_spec w0 registry ge).
+Local Notation memcmp_spec := (HelloGlibcProgCells.memcmp_spec w0 registry ge).
 (** The three cells, holding x, y and z. *)
-Local Notation name_cells := (PC.name_cells pb nb sb preg nreg sreg).
+Local Notation name_cells := (HelloGlibcProgCells.name_cells pb nb sb preg nreg sreg).
 (** The stores into them. *)
-Local Notation spn_L18 := (PC.spn_L18 w0 registry ge pb nb sb preg nreg sreg Hpb Hnb Hsb Hpb_cell Hnb_cell Hsb_cell).
+Local Notation spn_L18 := (HelloGlibcProgCells.spn_L18 w0 registry ge pb nb sb preg nreg sreg Hpb Hnb Hsb Hpb_cell Hnb_cell Hsb_cell).
 (** Hello's memeq over a [memcmp_spec]. *)
-Local Notation memeq_call := (PC.memeq_call w0 registry ge).
+Local Notation memeq_call := (HelloGlibcProgCells.memeq_call w0 registry ge).
 (** A string's bytes, as memcmp owns them. *)
-Local Notation word_string_bytes := PC.word_string_bytes.
+Local Notation word_string_bytes := HelloGlibcProgCells.word_string_bytes.
 (** The "lt-" test and the stores after it. *)
-Local Notation spn_L16 := (PC.spn_L16 w0 registry ge Hstrncmp pb nb sb preg nreg sreg tp Hpb Hnb Hsb Htp
+Local Notation spn_L16 := (HelloGlibcProgCells.spn_L16 w0 registry ge Hstrncmp pb nb sb preg nreg sreg tp Hpb Hnb Hsb Htp
   Hpb_cell Hnb_cell Hsb_cell).
 
 (** From L8, with `v15` reading as the base name, argv[0]'s tail from
@@ -149,4 +149,3 @@ Proof.
 Qed.
 
 End progname.
-End HelloGlibcProgLibsOn.

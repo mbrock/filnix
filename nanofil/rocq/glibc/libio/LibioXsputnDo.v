@@ -19,6 +19,7 @@
     [wp_xs_L70] resets the pointers. With nothing to write directly,
     LibioXsputnBase.v's [wp_xs_L178] hands the rest on. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,6 +30,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags LibioXsputnReset LibioXsputnCall.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnFlags LibioXsputnReset LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -42,14 +45,8 @@ Definition xs_L168 : block := Eval vm_compute in
   match find_block (TAtom "L168") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L168") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnDoOn (R : Runtime) (LG0 : LogicSig R).
-Module XC := LibioXsputnCallOn R LG0.
-Import XC XC.XR XC.XR.XF XC.XR.XF.XS XC.XR.XF.XS.XB XC.XR.XF.XS.XB.DX XC.XR.XF.XS.XB.DX.RM XC.XR.XF.XS.XB.DX.RM.SM.TL XC.XR.XF.XS.XB.DX.RM.SM.TL.BY
-  XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI
-  XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -104,29 +101,28 @@ Proof.
     Hv0 Hc0 Hc11 Hc14 Hc15 Hv4 Hp5 Hv174 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwbf Hos Hl' Hys HK".
-  cbn [xs_L168 b_insts b_jump]. fs. fs.
+  cbn [xs_L168 b_insts b_jump]. step. step.
   destruct (Z.eq_dec d 0) as [-> | Hd0].
   { (* Nothing to write directly: L178 on the T left. *)
-    fbrv true. fs.
+    branch_as true. step.
     iApply (wp_xs_L178 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb wp we
-              dq b' reg' so c' ys T 0 with "Hvt Hl Hvtp Hwbf Hos Hl' Hys HK"); try side.
+              dq b' reg' so c' ys T 0 with "Hvt Hl Hvtp Hwbf Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia. all: lk_fin. }
-  fbrv false. fs.
+  branch_as false. step.
   iDestruct "Hwbf" as "((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom)".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
   iDestruct "Hos" as "(Hxf & HX)".
   iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
   iDestruct "Hfl" as "[%Hfl32 Hfl]". iDestruct "Hfl2" as "[%Hf2r Hfl2]".
   (* iw_2.start: not appending. *)
-  fchk "Hl". fldi "Hl" "Hfl". fs. unfold io_is_appending in Happ. fbrv true.
+  check "Hl". load_s32 "Hl" "Hfl". step. unfold io_is_appending in Happ. branch_as true.
   (* iw_2.L8: the read end is the write base. *)
-  fs. fs. fldp "Hl" "Hre" "Hbl". fs. fldp "Hl" "Hwb" "Hbl". fs. fs. fs. fbrv true.
+  step. step. load "Hl" "Hre" "Hbl". step. load "Hl" "Hwb" "Hbl". step. step. step. branch_as true.
   iDestruct ("Hroom" with "Hbl") as "Hroom".
   iApply (wp_xs_L9 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
             dq b' reg' so c' ys T d fl f2 fd tw off m with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom]
-            [$Hfl //] [$Hfl2 //] Hfdc Htw Hoff Hcol Hmode Herr HX Hl' Hys HK"); try side.
+            [$Hfl //] [$Hfl2 //] Hfdc Htw Hoff Hcol Hmode Herr HX Hl' Hys HK"); try close_side.
   all: unfold n in *; try lia. all: lk_fin.
 Qed.
 
 End rules.
-End LibioXsputnDoOn.

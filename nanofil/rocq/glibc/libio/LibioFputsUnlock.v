@@ -5,6 +5,7 @@
     the process single-threaded, and the result is returned
     ([wp_fputs_unlock]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   LibioPutsCode LibioPutsInv LibioFputsLock.
+From Glibc Require FileInv LibioCloseSteps LibioFputsLock LibioLogic LibioPutsInv OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -27,11 +30,8 @@ Definition fp_L107 : block := Eval vm_compute in
   match find_block (TAtom "L107") (fn_blocks glibc__IO_fputs) with
   | Some b => b | None => mkBlock (TAtom "L107") [] [] JRetVoid end.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFputsUnlockOn (R : Runtime) (LG0 : LogicSig R).
-Module PL := LibioFputsLockOn R LG0.
-Import PL PL.PI PL.PI.CS PL.PI.CS.SW PL.PI.CS.SW.FI.ML PL.PI.CS.SW.FI.LG PL.PI.CS.SW.FI.L PL.PI.CS.SW.OW
-  PL.PI.CS.SW.FI PL.PI.CS.SW.ST.
+
+Import LibioFputsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -73,18 +73,17 @@ Proof.
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   cbn [fp_L107 b_insts b_jump].
   (* The user lock is clear, and the process single-threaded. *)
-  fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrv false.
-  fs. fldi "Hl" "Hfl". fs. fs. fbrv false.
-  fs. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
+  check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
+  step. load_s32 "Hl" "Hfl". step. step. branch_as false.
+  step. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
   (* The count is 0: the owner becomes null, then the lock word 0. *)
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fldi "Hbl" "Hb4". fs. fs. fs. fbr.
-  fs. fs. fchk "Hl". fldp "Hl" "Hlp" "Hbl". fs. fchk "Hbl". fstp "Hbl" "Hbo".
-  fchk "Hl". fldp "Hl" "Hlp" "Hbl". fchk "Hbl". fsti "Hbl" "Hb0". fs.
-  fs. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (Z.mod_small r); [|lia].
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". load_s32 "Hbl" "Hb4". step. step. step. branch.
+  step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". store "Hbl" "Hbo".
+  check "Hl". load "Hl" "Hlp" "Hbl". check "Hbl". store_int "Hbl" "Hb0". step.
+  step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (Z.mod_small r); [|lia].
   iApply ("HK" with "Hl [Hfl] Hlp [Hbl Hb0 Hb4 Hbo]").
   - iSplit; [done | iExact "Hfl"].
   - iFrame. iPureIntro. unfold int_bytes. split_and!; lia.
 Qed.
 
 End rules.
-End LibioFputsUnlockOn.

@@ -4,6 +4,7 @@
     Establishing that entry state is separate from this execution proof;
     in particular, the loader image alone is not its precondition. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,10 +14,10 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry FileInv WordString AtexitLogic LibioPutsCode ExitRun LibioCloseSteps
   HiAtexitModule HiAtexitBase HiAtexitFns HiAtexitGe HiAtexitCloseIt HiAtexitStdout
   HiAtexitAlloc HiAtexitInitial HiAtexitExitEnv HiAtexitCleanup HiAtexitPuts HiAtexitExit.
+From Glibc Require AtexitLogic ExitRun ExitRunTail FileInv LibioFlushInv OsWorld.
 Import ListNotations.
 Open Scope Z_scope.
-Import HGV.ER HGV.ER.XL.XT HGV.ER.XL.XT.AX HGV.ER.XL.XT.OE.OW HLG HLG.L
-  HFL HFL.FI.
+Import ExitRun ExitRunTail AtexitLogic OsWorld HLG HLG.L LibioFlushInv FileInv.
 
 (** This is main's body in the actual linked module. *)
 Definition hi_main_fn : func := Eval vm_compute in
@@ -87,14 +88,14 @@ Proof.
     by (vm_compute; reflexivity).
   rewrite /hi_main_state.
   iIntros "(#Hvt & #Hs & Htcb & Hso & Hsoc & Hout & HM & Hio & Hrest & Hstr & Hinv & Hlock)".
-  unfold hi_main_frame. st. st_global Hclose.
-  eapply step_wand; [eapply wp_call_bind; ins;
+  unfold hi_main_frame. step. step_global Hclose.
+  eapply step_wand; [eapply wp_call_bind; inst;
     [reflexivity | exact (hi_find_atexit _) | reflexivity] |].
   iApply (wp_glibc_atexit glibc_os_registry (os_wi w0) hge hi_exit_objs [] 0 hi_close_ptr with "Hinv");
     [exact Hlay | exact Hgl | exact Hwi | exact Hfns | cbn; lia | cbn; lia |].
   iIntros "Hinv". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
-  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st_global Hstr.
-  eapply step_wand; [eapply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WPtr (mkPtr 65568 (Ro 65568))]); ins;
+  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step_global Hstr.
+  eapply step_wand; [eapply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WPtr (mkPtr 65568 (Ro 65568))]); inst;
     [reflexivity | exact (hi_find_puts _) | reflexivity] |].
   iApply (hi_puts w0 (DfracOwn 1) 66464 66624 65680 hi_mp_reg hi_tc_reg hi_dummy_reg
     with "Hvt Hs Hstr Hso Hsoc Hout HM");
@@ -103,7 +104,7 @@ Proof.
   iNext. iIntros (r Hr) "Hstr Hso Hsoc Hout HM".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  eapply step_wand; [eapply wp_call_bind; ins;
+  eapply step_wand; [eapply wp_call_bind; inst;
     [reflexivity | exact (hi_find_exit _) | reflexivity] |].
   iApply (hi_exit_after_puts w0 [104; 101; 108; 108; 111] with "Hinv Hlock [Htcb Hso Hsoc Hout Hio Hrest]");
     [discriminate | exact Heb | exact Henv | exact Hlock |].

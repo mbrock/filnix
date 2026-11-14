@@ -6,6 +6,8 @@
     option string only up to two bytes past the character, which stay
     inside it, and it writes only the fields of its own state. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule
   GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptShort GetoptOptArg.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptOptArg GetoptShort GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -23,18 +27,15 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptShortOptOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The optional-argument module supplies the argument vector, its tactics and its step. *)
-Module OA := GetoptOptArgOn R LG0.
-Import OA OA.SH OA.SH.X OA.SH.X.I OA.SH.X.I.S OA.SH.X.I.S.FI OA.SH.X.I.S.FI.ML OA.SH.X.I.S.FI.LG OA.SH.X.I.S.FI.L
-  OA.SH.X.I.ST OA.SH.X.I.GB OA.SH.X.A.
+Import GetoptOptArg GetoptShort GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section opt.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance opt_stable : SafepointStable (os_wi w0) := OA.SH.X.I.OW.os_wi_stable w0.
+Local Instance opt_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance opt_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -117,11 +118,11 @@ Proof.
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
   pose proof (sbyte_range so (S k) Hcho) as Hx1r. pose proof (sbyte_range so (S (S k)) Hcho) as Hx2r.
-  en. st. norm. rdopt po so (S k). st. rewrite chr_cmp; [|lia|lia].
+  step. step. norm. rdopt po so (S k). step. rewrite chr_cmp; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so (S k)) 58) as [E58 | E58]; close_br.
   2: { iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl Hib Hab Hcur"). split; [xkeep | exact E58]. }
   pose proof (sbyte_in_len so (S k) ltac:(lia)) as Hk1.
-  en. st. norm. rdopt po so (S (S k)). st. rewrite chr_cmp; [|lia|lia].
+  step. step. norm. rdopt po so (S (S k)). step. rewrite chr_cmp; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so (S (S k))) 58) as [E58' | E58']; close_br.
   2: { iDestruct "HK" as "[_ [_ HK]]". iApply ("HK" with "[%] Hl Hib Hab Hcur"). split; [xkeep|]. split; assumption. }
   iDestruct "HK" as "[_ [HK _]]".
@@ -176,7 +177,7 @@ Proof.
   iIntros "#Hws #Hpo Hl Hib Hab Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
-  unfold ptr_add in H459. en.
+  unfold ptr_add in H459. step.
   iDestruct (ws_byte po so k with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
@@ -185,25 +186,24 @@ Proof.
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
   iNext; iIntros "_ _". iClear "Hbl Hbt".
   pose proof (sbyte_range so k Hcho) as Hxr. pose proof (sbyte_range so (S k) Hcho) as Hx1r.
-  st. rewrite chr_cmp; [|lia|lia].
+  step. rewrite chr_cmp; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so k) 87) as [E87 | E87]; close_br.
-  - en. st. norm. rdopt po so (S k). st. rewrite chr_cmp; [|lia|lia]. st. en.
+  - step. step. norm. rdopt po so (S k). step. rewrite chr_cmp; [|lia|lia]. step. step.
     iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so (S k)) 59) as [E59 | E59]; close_br.
-    + en. st. st. st. en. change (0 mod 2 ^ 64) with 0.
+    + step. step. step. step. step. change (0 mod 2 ^ 64) with 0.
       iApply wp_branch; [vx | iNext]. destruct (ptr_addr lo mod 2 ^ 64 =? 0) eqn:El; close_br.
       * iDestruct "HK" as "[_ HK]". iApply (wp_getopt_argkind ks e with "Hws Hpo Hl Hib Hab Hcur HK");
           [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hk | exact Hi
           | exact Ht0 | exact Hb | exact Hal | exact Hend | exact Hr].
       * iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl Hib Hab Hcur").
         split; [xkeep|]. split; [exact E87|]. split; [exact E59|]. apply Z.eqb_neq. exact El.
-    + en. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[_ HK]". iApply (wp_getopt_argkind ks e with "Hws Hpo Hl Hib Hab Hcur HK");
+    + step. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[_ HK]". iApply (wp_getopt_argkind ks e with "Hws Hpo Hl Hib Hab Hcur HK");
         [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hk | exact Hi
         | exact Ht0 | exact Hb | exact Hal | exact Hend | exact Hr].
-  - en. iApply wp_branch; [vx | iNext]. close_br. en. iApply wp_branch; [vx | iNext]. close_br.
+  - step. iApply wp_branch; [vx | iNext]. close_br. step. iApply wp_branch; [vx | iNext]. close_br.
     iDestruct "HK" as "[_ HK]". iApply (wp_getopt_argkind ks e with "Hws Hpo Hl Hib Hab Hcur HK");
       [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hk | exact Hi
       | exact Ht0 | exact Hb | exact Hal | exact Hend | exact Hr].
 Qed.
 
 End opt.
-End GetoptShortOptOn.

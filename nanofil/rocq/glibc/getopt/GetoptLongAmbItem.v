@@ -5,6 +5,8 @@
     table and writes it through the report rule that its caller
     supplies. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongAmbPrint GetoptLongAmbTail GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -47,34 +51,16 @@ Qed.
 (** The parser tests here whether entries are left to list. *)
 Definition plo_blk273 : block := Eval vm_compute in plo_blk "L273".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongAmbItemOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The write module supplies the write of one candidate, the set, the option table and the tactics. *)
-Module LAP := GetoptLongAmbPrintOn R LG0.
-Import LAP LAP.LAT LAP.LAT.LPE LAP.LAT.LPE.LPL LAP.LAT.LPE.LPL.LPI LAP.LAT.LPE.LPL.LPI.LPT LAP.LAT.LPE.LPL.LPI.LPT.LPS LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 
 Section item.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance aitem_stable : SafepointStable (os_wi w0) := LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance aitem_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance aitem_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -118,23 +104,23 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L275") (Some fr1))) : gexpr) {{ Φ }})%I
     with "[HK]" as "HL275".
   { iIntros (e1 fr1 (Hk1 & H6' & H16' & H9' & H10' & H21')) "Hl Hx HG".
-    en. st. st. st. match goal with |- context [put (TAtom "pr.10") (WInt ?X) _] =>
+    step. step. step. step. match goal with |- context [put (TAtom "pr.10") (WInt ?X) _] =>
       replace X with (Z.of_nat (S k)) by (rewrite (Z.mod_small (Z.of_nat k) (2 ^ 32)); [|lia];
         rewrite (Z.mod_small 1 (2 ^ 32)); [|lia]; rewrite !(Z.mod_small (Z.of_nat k + 1) (2 ^ 32)); lia) end.
     pcmp_fold "L273" plo_blk273.
     iApply ("HK" with "[%] Hl Hx HG"). split; [eapply keeps_trans; [exact Hk1|]; xkeep|]. repeat split; lk_prove. }
-  cbn [b_insts b_jump plo_blk273]. st.
+  cbn [b_insts b_jump plo_blk273]. step.
   rewrite (Z.mod_small (Z.of_nat k) (2 ^ 32)); [|lia]. rewrite (Z.mod_small (Z.of_nat (List.length os)) (2 ^ 32)); [|lia].
   rewrite (sx_nonneg (Z.of_nat k)); [|lia]. rewrite (sx_nonneg (Z.of_nat (List.length os))); [|lia].
   rewrite (proj2 (Z.ltb_lt _ _)); [|lia]. iApply wp_branch; [vx | iNext]. close_br.
   destruct (lookup_lt_is_Some_2 xs k ltac:(lia)) as [x Hx].
-  en. st. st. norm. rewrite (Z.mod_small (Z.of_nat k) (2 ^ 32)); [|lia]. rewrite (sx_nonneg (Z.of_nat k)); [|lia].
+  step. step. step. norm. rewrite (Z.mod_small (Z.of_nat k) (2 ^ 32)); [|lia]. rewrite (sx_nonneg (Z.of_nat k)); [|lia].
   rewrite (Z.mod_small (Z.of_nat k) (2 ^ 64)); [|lia].
   match goal with |- context [put (TAtom "v286") (WPtr {| ptr_addr := ?X; ptr_cap := Obj sb |})] =>
     replace X with (sb + Z.of_nat k) by (rewrite !Z.mod_small; lia) end.
-  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | arith | arith | apply Z.mod_1_r |].
+  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | apply Z.mod_1_r |].
   iNext. iIntros "Hl". iDestruct (bytes_at sb xs k x Hx with "Hx") as "(Hx0 & Hb & Hx1)".
-  iApply (wp_raw_load_byte with "Hl Hb"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | arith |].
+  iApply (wp_raw_load_byte with "Hl Hb"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | StrlenLoop.arith |].
   iNext. iIntros "Hl Hb". iDestruct (bytes_at sb xs k x Hx with "[$Hx0 $Hb $Hx1]") as "Hx".
   iApply wp_branch; [vx | iNext].
   destruct (Z.eqb ((extension Ub x mod 2 ^ 32) mod 2 ^ 32) 0); cbn [edge_label].
@@ -150,4 +136,3 @@ Proof.
 Qed.
 
 End item.
-End GetoptLongAmbItemOn.

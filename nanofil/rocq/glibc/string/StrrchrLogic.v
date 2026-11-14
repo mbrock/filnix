@@ -9,6 +9,7 @@
     verify `c: strrchr` on any shared string independently of how
     `c: memrchr` is implemented. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrlenWord StrchrCode MemchrLast.
+From Glibc Require StrlenWord WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -31,14 +34,10 @@ Fixpoint last_from (c : Z) (i : nat) (bs : list Z) (acc : option nat) : option n
     byte c in bs, or `None` if c is absent. *)
 Definition last_byte (c : Z) (bs : list Z) : option nat := last_from c 0 bs None.
 
-(** This functor packages the `strrchr` specifications over a
-    [[runtime]] R and a program logic instance LG0. *)
-Module StrrchrLogicOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := StrlenWordOn R LG0.
-Module WS := SW.WS.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG WS.
+Import L LG WordString.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -84,7 +83,7 @@ Proof.
     pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)). lia. }
   iDestruct (word_string_intro with "Hw") as "Hs"; [exact Hs|].
   iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
-  iApply (SW.wp_call_glibc_strlen registry wi ge with "Hs"); [reflexivity | exact Hsl | reflexivity |].
+  iApply (StrlenWord.wp_call_glibc_strlen registry wi ge with "Hs"); [reflexivity | exact Hsl | reflexivity |].
   iNext. iIntros "Hs".
   iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext].
   destruct (Hfr p c (Z.of_nat (List.length s) + 1)) as [fr Hfr'].
@@ -117,4 +116,3 @@ Proof.
 Qed.
 
 End rules.
-End StrrchrLogicOn.

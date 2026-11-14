@@ -5,6 +5,7 @@
     resources R (S i) and R i, and ends with ExitRunTail.v's
     [exit_tail]. By induction on the entries. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,13 +13,13 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry ExitRunCode ExitRunTail.
+From Glibc Require AtexitLogic ExitRunTail LeavesLogic OsExit OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The loop over the [[runtime]] R and the Logic instance LG0. *)
-Module ExitRunLoopOn (R : Runtime) (LG0 : LogicSig R).
-Module XT := ExitRunTailOn R LG0.
-Import XT XT.L XT.LG XT.AX.ML XT.AX.LV XT.AX XT.OE.OW XT.OE.
+
+Import ExitRunTail ExitRunTail.L ExitRunTail.LG AtexitLogic.ML LeavesLogic AtexitLogic OsWorld OsExit.
 
 Local Opaque glibc___run_exit_handlers.
 
@@ -76,65 +77,65 @@ Proof.
   iDestruct "Hen" as "(Hef & Hex & Hea & Hed)".
   iDestruct "Hh" as (g gf ys fr) "[%Hhd Hwp]". cbn [fst snd] in Hhd.
   destruct Hhd as (Hfg & Hfc' & Hfn & Hfa & Haa & Hacap & Hcv & Hfr).
-  eapply step_wand; [eapply wp_enter; ins; [reflexivity | destruct from; reflexivity] |]; cbn [b_insts b_jump].
-  st.
-  rule1 "Hil" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
-  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_load; ins; [reflexivity | reflexivity | reflexivity | arith]).
-  st. br. st. st. st.
-  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_load; ins; [reflexivity | reflexivity | reflexivity | arith]).
-  st. simp.
-  rule1 "Hil" ltac:(eapply wp_renew; ins; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_store; ins; [vx | reflexivity | reflexivity | arith | ign Hwib]).
-  st. st. simp. st_global Hgcl.
-  rule1 "Hcl" ltac:(eapply wp_check_read; ins; [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
-  rule2 "Hcl" "Hcc" ltac:(eapply wp_raw_load; ins; [reflexivity | reflexivity | reflexivity | arith]).
-  rule1 "Hil" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
-  rule2 "Hil" "Hef" ltac:(eapply wp_raw_load; ins; [reflexivity | reflexivity | reflexivity | arith]).
-  st. br. st. st. br. st. st. br. st. st. br. st.
+  eapply step_wand; [eapply wp_enter; inst; [reflexivity | destruct from; reflexivity] |]; cbn [b_insts b_jump].
+  step.
+  rule1 "Hil" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_load; inst; [reflexivity | reflexivity | reflexivity | arith]).
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. step.
+  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_load; inst; [reflexivity | reflexivity | reflexivity | arith]).
+  step. simp.
+  rule1 "Hil" ltac:(eapply wp_renew; inst; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_store; inst; [vx | reflexivity | reflexivity | arith | ign Hwib]).
+  step. step. simp. step_global Hgcl.
+  rule1 "Hcl" ltac:(eapply wp_check_read; inst; [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
+  rule2 "Hcl" "Hcc" ltac:(eapply wp_raw_load; inst; [reflexivity | reflexivity | reflexivity | arith]).
+  rule1 "Hil" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule2 "Hil" "Hef" ltac:(eapply wp_raw_load; inst; [reflexivity | reflexivity | reflexivity | arith]).
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   (* L256: mark the slot free, read the handler and its argument, release the lock. *)
-  rule1 "Hil" ltac:(eapply wp_renew; ins; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hil" "Hef" ltac:(eapply wp_raw_store; ins; [vx | reflexivity | reflexivity | arith | ign Hwib]).
-  st.
-  rule1 "Hil" ltac:(eapply wp_half_check_read; ins;
+  rule1 "Hil" ltac:(eapply wp_renew; inst; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hil" "Hef" ltac:(eapply wp_raw_store; inst; [vx | reflexivity | reflexivity | arith | ign Hwib]).
+  step.
+  rule1 "Hil" ltac:(eapply wp_half_check_read; inst;
     [reflexivity | vx | reflexivity | left; reflexivity | arith | arith | arith | arith | arith]).
   iApply (wp_raw_load_pointer_in _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ [] with "Hil Hex []");
     [reflexivity | reflexivity | left; reflexivity | arith | arith | lia | intros ? [?|?]; exfalso; congruence |
      by rewrite /pts big_sepL_nil |]. nx. iIntros "Hil Hex _".
-  st.
-  rule1 "Hil" ltac:(eapply wp_half_check_read; ins;
+  step.
+  rule1 "Hil" ltac:(eapply wp_half_check_read; inst;
     [reflexivity | vx | reflexivity | left; reflexivity | arith | arith | arith | arith | arith]).
   iApply (wp_raw_load_pointer_in _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ [] with "Hil Hea []");
     [reflexivity | reflexivity | left; reflexivity | arith | arith | lia |
      intros xb [Hx|Hx]; exfalso; destruct (Hacap xb); contradiction | by rewrite /pts big_sepL_nil |].
   nx. iIntros "Hil Hea _".
-  st_global Hglk.
-  rule1 "Hll" ltac:(eapply wp_check_read; ins;
+  step_global Hglk.
+  rule1 "Hll" ltac:(eapply wp_check_read; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 [1; 0; 0; 0] (WInt 1)
             (DfracOwn 1) (DfracOwn 1) with "Hll Hlb");
     [reflexivity | reflexivity | reflexivity | reflexivity | left; reflexivity | arith |]. nx. iIntros "Hll Hlb".
-  st. st.
-  rule1 "Hll" ltac:(eapply wp_half_check; ins;
+  step. step.
+  rule1 "Hll" ltac:(eapply wp_half_check; inst;
     [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith | arith | arith]).
-  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; ins;
+  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; inst;
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity | arith | arith
      | cas_ign Hwlk]). rewrite lock_release.
-  st. br. st. st. br. st.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   (* L279: the call of the handler. *)
-  eapply step_wand; [eapply wp_check_function; ins; [reflexivity | exact Hfc'] |].
+  eapply step_wand; [eapply wp_check_function; inst; [reflexivity | exact Hfc'] |].
   iApply (wp_raw_call_bind with "[-]");
     [reflexivity | exact Hfg | exact Hfc' | vx | exact Hfn | exact Hcv | exact Hfr |].
   iNext. iApply (wp_wand with "(Hwp HR)"). iIntros (o) "[-> HR]". iExists _. iSplit; [iPureIntro; reflexivity|].
   nx. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  st_global Hglk.
-  rule1 "Hll" ltac:(eapply wp_check; ins; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; ins;
+  step_global Hglk.
+  rule1 "Hll" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; inst;
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity | arith | arith
      | cas_ign Hwlk]). rewrite lock_take.
-  st. br. st. st. br. st. st_global Hgcl.
-  rule1 "Hcl" ltac:(eapply wp_check_read; ins; [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
-  rule2 "Hcl" "Hcc" ltac:(eapply wp_raw_load; ins; [reflexivity | reflexivity | reflexivity | arith]).
-  st. br.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step_global Hgcl.
+  rule1 "Hcl" ltac:(eapply wp_check_read; inst; [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
+  rule2 "Hcl" "Hcc" ltac:(eapply wp_raw_load; inst; [reflexivity | reflexivity | reflexivity | arith]).
+  step. (branch_symbolic; LeavesLogic.decide_branch).
   iApply (IH with "[-HR Hhs HK] HR Hhs HK"); [exact Henv | |].
   { unfold loop_vars. cbn [xo_funcs xo_init].
     repeat split; [look H0 | look H2 | look H4 | look H6 | look H90 | look H96]. }
@@ -145,4 +146,3 @@ Proof.
 Qed.
 
 End rules.
-End ExitRunLoopOn.

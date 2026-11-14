@@ -13,6 +13,7 @@
     Allocation preserves the concrete OS world interpretation.
     The triple therefore requires no additional preservation premise. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +21,8 @@ From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic MemLogic HelloModule HelloLeaf HelloJoin.
 From Glibc Require Import OsWorld LeavesLogic AllocLogic.
+From Glibc Require AllocLogic OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -29,12 +32,9 @@ Lemma xmalloc_frame n :
   Some (mkFrame xmalloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
-(** The allocation proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcXmallocOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The allocator module supplies the concrete malloc and free proofs. *)
-Module AL := AllocOn R LG0.
 (** The OS module supplies the concrete preservation rules. *)
-Module OW := OsWorldOn R LG0.
 (** The proof uses the caller's logic instance. *)
 Module LG := LG0.
 (** The linked language uses that same logic instance. *)
@@ -46,7 +46,7 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
-Local Instance xm_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance xm_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the chosen registry and concrete world interpretation. *)
 Local Instance xm_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
@@ -64,9 +64,9 @@ Lemma wp_hello_xmalloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
   lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp_b (Obj mp_b)) ->
   lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc_b (Obj tc_b)) ->
   find_fn ge (TAtom "malloc#__libc_malloc2") = Some (Defined malloc2_fn) ->
-  AL.tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
+  AllocLogic.tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
   ▷ (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
-       obj base (heap_req 16 n) -∗ AL.tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
+       obj base (heap_req 16 n) -∗ AllocLogic.tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
        Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
   WP (ERun (mkFrame xmalloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) : gexpr)
     {{ Φ }}.
@@ -77,7 +77,7 @@ Proof.
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WInt n]);
     [cbn; rewrite Z.mod_small; [reflexivity | exact Hn] | exact Hm | reflexivity |].
   iNext.
-  iApply (AL.wp_glibc_malloc registry (os_wi w0) ge n with "Hidle");
+  iApply (AllocLogic.wp_glibc_malloc registry (os_wi w0) ge n with "Hidle");
     [exact Hn | intros m wd h base Hf Hw; exact (os_wi_alloc w0 m wd h _ base Hf Hw) |
      exact Hmp | exact Htc | exact Hm2 |].
   iIntros (base (Hb0 & Hb16 & Hbend)) "Hobj Hidle".
@@ -97,4 +97,3 @@ Proof.
 Qed.
 
 End xmalloc.
-End HelloGlibcXmallocOn.

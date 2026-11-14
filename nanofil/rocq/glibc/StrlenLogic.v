@@ -25,6 +25,7 @@
     index of the first zero byte by delegating later words to
     [loop_spec]. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -32,6 +33,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic.
 From Glibc Require Import LenCode GlibcLogic StrlenBits.
+From Glibc Require GlibcLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -108,13 +111,10 @@ Qed.
 Lemma value_x_tmp ge e k n x : lookup n e = Some x -> value_x ge e k (Tmp n) = word_at_class k x.
 Proof. intros H. cbn. rewrite H. reflexivity. Qed.
 
-(** The module [StrlenOn] proves the `__strlen` specification over an
-    arbitrary [[runtime]] R and logic instance LG0. *)
-Module StrlenOn (R : Runtime) (LG0 : LogicSig R).
-Module GL := GlibcLogicOn R LG0.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG GL.
+Import L LG GlibcLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -129,12 +129,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The tactic [st] advances the proof by one symbolic IR step—either a
     pure let binding, a [[flight]], a block entry, or a jump. *)
-Ltac st :=
-  first
-    [ iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext]
-    | iApply wp_flight; [reflexivity | reflexivity | reflexivity | iNext]
-    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-    | iApply wp_goto; iNext ].
+
 
 (** The tactic [unwrap] removes 64-bit and 32-bit modulo wraps whenever
     `lia` can prove the operand is already in range. *)
@@ -216,15 +211,15 @@ Proof.
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   iIntros "Hl Hps HK". cbn [words_ps]. rewrite pts_app. iDestruct "Hps" as "[Hw Hps]".
   iApply wp_enter; [reflexivity | exact Hphi |]. iNext. cbn [b_insts b_jump blk28].
-  st. set_ptr "v32" (b + o).
+  step. set_ptr "v32" (b + o).
   iApply (wp_check_read with "Hl").
   { reflexivity. } { reflexivity. } { cbn [ptr_cap]. rewrite Hqc. exact Hc. } { arith. } { arith. } { apply Z.mod_1_r. }
   iNext. iIntros "Hl".
   iApply (wp_raw_load_read with "Hl Hw"); [reflexivity | reflexivity | cbn [ptr_cap]; rewrite Hqc; exact Hc | arith |].
   iNext. iIntros "Hl Hw".
   apply Forall_cons_1 in Hr as [Hw0 Hr]. rewrite (Z.mod_small w (2 ^ 64) Hw0).
-  do 4 st. set_int "iw_4.iw_1.v13" (loop_mask w).
-  st. iApply wp_branch; [reflexivity|]. iNext.
+  do 4 step. set_int "iw_4.iw_1.v13" (loop_mask w).
+  step. iApply wp_branch; [reflexivity|]. iNext.
   rewrite (Z.mod_small (loop_mask w) (2 ^ 64) (loop_mask_range w)) Zmod_0_l.
   destruct (Nat.lt_ge_cases t 8) as [Ht|Ht].
   - (* w holds the NUL, at byte t. *)
@@ -236,16 +231,16 @@ Proof.
     { apply Z.eqb_neq. intros E. rewrite E in Hb. unfold byte_of in Hb. rewrite Z.div_0_l in Hb; [discriminate|].
       apply Z.pow_nonzero; lia. }
     rewrite Hm. close_if.
-    st. iApply wp_branch; [reflexivity|]. iNext. close_if.
-    do 16 st.
+    step. iApply wp_branch; [reflexivity|]. iNext. close_if.
+    do 16 step.
     set_int "iw_5.iw_3.iw_1.iw_1.v22" (tail (loop_mask w)).
     rewrite (tail_first (loop_mask w) (Z.of_nat t) (loop_mask_range w) (loop_mask_01 w) ltac:(lia) Hb
       (fun i Hi => loop_mask_below w (Z.of_nat t) i ltac:(lia) Hlow Hi)).
-    st. st. set_int "iw_5.iw_3.iw_1.iw_1.v23" (8 * Z.of_nat t + 7).
-    st. set_int "iw_5.iw_3.iw_1.v27" (Z.of_nat t).
-    st. set_int "v41" (Z.of_nat t).
-    st. set_ptr "v42" (b + o + Z.of_nat t).
-    st.
+    step. step. set_int "iw_5.iw_3.iw_1.iw_1.v23" (8 * Z.of_nat t + 7).
+    step. set_int "iw_5.iw_3.iw_1.v27" (Z.of_nat t).
+    step. set_int "v41" (Z.of_nat t).
+    step. set_ptr "v42" (b + o + Z.of_nat t).
+    step.
     iApply wp_let;
       [reflexivity | reflexivity
       | cbn [map2_option]; rewrite (value_x_tmp _ _ _ (TAtom "v4") (WInt a)); [reflexivity | look Hv4]
@@ -300,7 +295,7 @@ Proof.
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   apply Forall_cons_1 in Hr as [Hw0 Hr].
   iIntros "Hl Hps HK". cbn [words_ps]. rewrite pts_app. iDestruct "Hps" as "[Hw Hps]".
-  do 5 st.
+  do 5 step.
   match goal with |- context [put (TAtom "v10") (WPtr (mkPtr ?X _)) _] =>
     replace X with (a - a mod 8) by
       (cbn [ptr_addr]; rewrite (Z.mod_small a (2 ^ 64)); [rewrite land_align; [arith | lia] | lia]) end.
@@ -308,8 +303,8 @@ Proof.
   iNext. iIntros "Hl".
   iApply (wp_raw_load_read with "Hl Hw"); [reflexivity | reflexivity | exact Hc | arith |].
   iNext. iIntros "Hl Hw". rewrite (Z.mod_small w (2 ^ 64) Hw0).
-  do 8 st. set_int "iw_2.v12" (first_shift w a).
-  st. iApply wp_branch; [reflexivity|]. iNext.
+  do 8 step. set_int "iw_2.v12" (first_shift w a).
+  step. iApply wp_branch; [reflexivity|]. iNext.
   rewrite (Z.mod_small (first_shift w a) (2 ^ 64) (first_shift_range w a)) Zmod_0_l.
   assert (Hfs : forall i, 0 <= i -> byte_of (first_shift w a) i =
             if i + a mod 8 <? 8 then (if byte_of w (i + a mod 8) =? 0 then 128 else 0) else 0)
@@ -332,14 +327,14 @@ Proof.
     { apply Z.eqb_neq. intros E. rewrite E in Hat. unfold byte_of in Hat. rewrite Z.div_0_l in Hat; [discriminate|].
       apply Z.pow_nonzero; lia. }
     rewrite Hnz0. close_if.
-    st. st. iApply wp_branch; [reflexivity|]. iNext.
+    step. step. iApply wp_branch; [reflexivity|]. iNext.
     rewrite (Z.mod_small (first_shift w a) (2 ^ 64) (first_shift_range w a)) Zmod_0_l Hnz0. close_if.
-    do 16 st.
+    do 16 step.
     set_int "iw_3.iw_1.iw_1.v22" (tail (first_shift w a)).
     rewrite (tail_first (first_shift w a) (Z.of_nat n) (first_shift_range w a) H01 ltac:(lia) Hat Hlow).
-    st. st. set_int "iw_3.iw_1.iw_1.v23" (8 * Z.of_nat n + 7).
-    st. set_int "iw_3.iw_1.v27" (Z.of_nat n).
-    st. set_int "v26" (Z.of_nat n).
+    step. step. set_int "iw_3.iw_1.iw_1.v23" (8 * Z.of_nat n + 7).
+    step. set_int "iw_3.iw_1.v27" (Z.of_nat n).
+    step. set_int "v26" (Z.of_nat n).
     iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     match goal with |- environments.envs_entails _ (Φ (Ret (WInt ?X))) => replace X with (Z.of_nat n) by arith end.
     iApply ("HK" with "Hl [$Hw $Hps]").
@@ -373,4 +368,3 @@ Proof.
 Qed.
 
 End rules.
-End StrlenOn.

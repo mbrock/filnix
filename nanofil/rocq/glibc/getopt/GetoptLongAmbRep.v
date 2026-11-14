@@ -6,6 +6,8 @@
     writes the report only through the rule that its caller supplies,
     and it frees only the set that malloc made. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +21,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
   GetoptLongAmbHead GetoptLongAmbPoss.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongAmbHead GetoptLongAmbItem GetoptLongAmbList GetoptLongAmbPoss GetoptLongAmbPrint GetoptLongAmbTail GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,33 +35,15 @@ Local Arguments Z.opp : simpl nomatch.
 Definition arep_keys : list name := Eval vm_compute in
   List.map TAtom ["pr.30"; "pr.21"; "v12"; "chk0"; "v6"; "v16"; "pr.9"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongAmbRepOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The heading modules supply the report's first line, the listing, the last steps and the set. *)
-Module LAO := GetoptLongAmbPossOn R LG0.
-Import LAO LAO.LAH LAO.LAH.LAL LAO.LAH.LAL.LAI LAO.LAH.LAL.LAI.LAP LAO.LAH.LAL.LAI.LAP.LAT LAO.LAH.LAL.LAI.LAP.LAT.LPE LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongAmbPoss GetoptLongAmbHead GetoptLongAmbList GetoptLongAmbItem GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section rep.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance arep_stable : SafepointStable (os_wi w0) := LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance arep_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance arep_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -126,17 +112,17 @@ Proof.
       | exact Hb | exact Hal | exact Hend | exact Hr |].
     iIntros (e' Hk') "Hl Hib Hoob Hcur". iApply ("HK" with "[%] Hl Hib Hoob Hcur Ha Hcl HG").
     eapply keeps_trans; [exact Hk1 | exact Hk']. }
-  en. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
+  step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   { iApply ("HL241" with "[%] Hs Hl Hib Hoob Hcur Ha Hcl HG"). split; [xkeep|]. repeat split; lk_prove. }
-  en. iApply wp_branch; [vx | iNext]. destruct Ha as [-> | ->]; close_br.
+  step. iApply wp_branch; [vx | iNext]. destruct Ha as [-> | ->]; close_br.
   - destruct Hsa as [Hsn | ?]; [|lia].
     iApply (wp_amb_head139 w0 registry ge (arep_keys ++ ks)%list e _ G T fp dom se sereg f139 av ar ps pfx pxs cur s b r
       with "Hpfx Hwc Hsl Hsc Hl Hcur Ha Hcl Hargs HG");
       [rewrite avoids_app_l Hks; reflexivity | exact Hrule | exact Hse | exact H139 | lk_prove | lk_prove | lk_prove | lk_prove | exact Hb | exact Hal
       | exact Hend | exact Hr | exact Hav | exact Hala | exact Hda | exact Hra | exact Hps | exact Hse0 | exact Hsea
       | exact Hsee | exact Hser |].
-    iIntros (e2 Hk2) "Hl Hcur Ha Hcl HG". apply keeps_app in Hk2 as [Hkt2 Hk2]. st. pcmp_fold "L273" plo_blk273.
+    iIntros (e2 Hk2) "Hl Hcur Ha Hcl HG". apply keeps_app in Hk2 as [Hkt2 Hk2]. step. pcmp_fold "L273" plo_blk273.
     iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hsetl & Hx)]"; [contradiction|].
     destruct Hs as (-> & Hsk & Hsb & Hsend & Hsr & Hlen).
     iApply (wp_amb_list w0 registry ge (arep_keys ++ ks)%list _ G T fp dom se sereg f140 f141 lo os pfx pxs 0 sb sreg xs
@@ -159,4 +145,3 @@ Proof.
 Qed.
 
 End rep.
-End GetoptLongAmbRepOn.

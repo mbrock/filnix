@@ -4,6 +4,8 @@
     safe, including the blocks that load the endpoints before the outer
     loop and update them after it. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptSwap3Lower GetoptSwap3Upper GetoptExchangeThree.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptExchangeThree GetoptExchangeTwo GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -28,18 +32,12 @@ Definition x3_edges : list name := Eval vm_compute in
     [".v6"; ".v7"; ".v10"; ".v11"; ".v14"; ".v144"; ".v145"; ".v147"; ".v149"; ".v150"; ".v151";
      ".v152"; ".v156"]%string ++ List.map TAtom ["chk88"; "chk89"; "chk90"; "chk91"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptIdle3On (R : Runtime) (LG0 : LogicSig R).
+
 (** This module proves the second exchange's outer loop. *)
-Module O3 := GetoptExchange3On R LG0.
-Import O3 O3.O O3.O.SL.X O3.O.SL.X.I O3.O.SL.X.I.S O3.O.SL.X.I.S.FI O3.O.SL.X.I.S.FI.ML O3.O.SL.X.I.S.FI.LG
-  O3.O.SL.X.I.S.FI.L O3.O.SL.X.I.ST O3.O.SL.X.I.GB O3.O.SL.X.A.
+Import GetoptExchangeThree GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 (** This tactic rebuilds an integer field from its rewritten bytes. *)
 Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
@@ -48,7 +46,7 @@ Section idle3.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance idle3_stable : SafepointStable (os_wi w0) := O3.O.SL.X.I.OW.os_wi_stable w0.
+Local Instance idle3_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance idle3_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -87,10 +85,10 @@ Proof.
   intros Hks Hv2 Hv12 Hc2 Hc23 Hc72 Hc73 Hc74 Hfl Hli Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   pose proof (avoids_app _ _ _ Hks) as [Hko Hke].
   iIntros "Hl [%Hi Hib] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".
-  en. st. norm. load_int "Hl Hfb". st. norm. load_int "Hl Hlab". load_int "Hl Hib". st.
+  step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". step. norm. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step.
   iApply wp_enter; [reflexivity | vxn | iNext].
   set (ks' := (ks ++ [TAtom "v12"; TAtom "chk2"; TAtom "chk23"; TAtom "chk73"])%list).
-  iApply (O3.wp_x3_loop w0 registry ge ks' _ f l i av ar n ps with "Ha Hc Hs");
+  iApply (GetoptExchangeThree.wp_x3_loop w0 registry ge ks' _ f l i av ar n ps with "Ha Hc Hs");
     [ apply avoids_app_r; [exact Hko | vm_compute; reflexivity]
     | lk_prove | lk_prove | lk_prove | lk_prove | lia | lia | lia | assumption | lia | lia | lia | lia |].
   iIntros (e1 ps1 (Hp1 & Hk1)) "Ha Hc Hs1".
@@ -99,16 +97,15 @@ Proof.
   eassert (K73 : lookup (TAtom "chk73") e1 = Some _) by (rewrite (keeps_in _ _ _ _ Hk1'); [lk_prove | cbn; tauto]).
   eassert (K2 : lookup (TAtom "chk2") e1 = Some _) by (rewrite (keeps_in _ _ _ _ Hk1'); [lk_prove | cbn; tauto]).
   eassert (K23 : lookup (TAtom "chk23") e1 = Some _) by (rewrite (keeps_in _ _ _ _ Hk1'); [lk_prove | cbn; tauto]).
-  en. st. chk "Hl". load_int "Hl Hfb". chk "Hl". load_int "Hl Hib". st. chk "Hl". load_int "Hl Hlab".
-  st. st. norm. chk "Hl".
+  step. step. check "Hl". load_s32_using ltac:(arith) "Hl Hfb". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. check "Hl". load_s32_using ltac:(arith) "Hl Hlab".
+  step. step. norm. check "Hl".
   iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-  iNext. iIntros "Hl Hfb". load_int "Hl Hib".
+  iNext. iIntros "Hl Hfb". load_s32_using ltac:(arith) "Hl Hib".
   iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-  iNext. iIntros "Hl Hlab". st.
+  iNext. iIntros "Hl Hlab". step.
   iApply ("HK" with "[%] Hl [Hib] [Hfb] [Hlab] Ha Hc Hs1"); [| icell | (iApply cell_mod3; [lia | iAssumption]) | (iApply cell_mod3; [lia | iAssumption])].
   assert (Hke1 : keeps ks e e1) by (eapply keeps_trans; [|exact Hk1]; xkeep).
   split; [done|]. xkeep.
 Qed.
 
 End idle3.
-End GetoptIdle3On.

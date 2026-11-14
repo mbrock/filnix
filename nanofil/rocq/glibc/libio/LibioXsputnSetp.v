@@ -20,6 +20,7 @@
     (LibioXsputnBase.v's [wp_xs_L178]) when all do_write bytes
     went. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,6 +30,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -42,13 +45,8 @@ Definition xs_L117 : block := Eval vm_compute in
   match find_block (TAtom "iw_2.L117") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "iw_2.L117") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnSetpOn (R : Runtime) (LG0 : LogicSig R).
-Module XB := LibioXsputnBaseOn R LG0.
-Import XB XB.DX XB.DX.RM XB.DX.RM.SM.TL XB.DX.RM.SM.TL.BY XB.DX.RM.SM.TL.BY.BF XB.DX.RM.SM.TL.BY.BF.CP
-  XB.DX.RM.SM.TL.BY.BF.CP.CS XB.DX.RM.SM.TL.BY.BF.CP.SW XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML
-  XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XB.DX.RM.SM.TL.BY.BF.CP.SW.OW
-  XB.DX.RM.SM.TL.BY.BF.CP.SW.FI XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** A buffer whose write pointer becomes its base and write end its
     base or end is still [wroom]'s. *)
@@ -111,18 +109,17 @@ Proof.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hroom Hos Hl' Hys HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [xs_L117 b_insts b_jump]. fchk "Hl". fstp "Hl" "Hwe". fs. fs. fs. fs.
+  cbn [xs_L117 b_insts b_jump]. check "Hl". store "Hl" "Hwe". step. step. step. step.
   iAssert (wbuf fb nb (nb_base nb) we') with "[Hwc Hwp Hwe Hroom]" as "Hwb"; [iFrame|].
   destruct (Z.eq_dec r d) as [-> | Hrd].
   - (* All went: L178 on the T - d left. *)
-    fbrv true. fs.
+    branch_as true. step.
     iApply (wp_xs_L178 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb (nb_base nb) we'
-              dq b' reg' so c' ys (T - d) d with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
+              dq b' reg' so c' ys (T - d) d with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia. all: lk_fin.
   - (* Fewer: L188 returns n - (T - r). *)
-    fbrv false. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+    branch_as false. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [right; unwrap2; lia | intros _; exact Hnb].
 Qed.
 
 End rules.
-End LibioXsputnSetpOn.

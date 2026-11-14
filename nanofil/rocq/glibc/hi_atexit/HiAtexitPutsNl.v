@@ -3,6 +3,8 @@
     Both paths here preserve the buffer and stream resources that
     the later close callback needs, including when overflow fails. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,14 +14,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   LibioGenCode LibioPutsCode LibioPutsNl AllocLogic HiAtexitBase HiAtexitGe HiAtexitFns
   HiAtexitAlloc HiAtexitOutputState HiAtexitStdout HiAtexitPutsBuf.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioLogic LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import HP.PN.PB.PM.PC.PU.PL.
-Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
-  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB XB.DX.RM.SM.TL.BY.BF.
+Import LibioPutsLock.
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioXsputnSetp.
+Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
@@ -57,8 +59,7 @@ Lemma hi_puts_L180 s e so soreg fb eb vb vreg Φ :
   live so soreg -∗ pcell so 0 (mkPtr fb (Obj fb)) -∗
   hi_stdout_after w0 eb vb s (mkPtr fb (Obj fb)) (Some 0) -∗
   (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
-  ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v12" \/ x = TAtom "chk1" ->
-      lookup x e' = lookup x e) /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
+  ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 (mkPtr fb (Obj fb)) -∗
      hi_stdout_after w0 eb vb s (mkPtr fb (Obj fb)) (Some 0) -∗
      (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
@@ -76,33 +77,33 @@ Proof.
   iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   unfold file_size in Hend.
-  fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+  step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
   iApply (hi_load_bufptr w0 with "Hl Hwp Hroom"); [reflexivity | vx | reflexivity | a2 | a2 | left; reflexivity |].
   iNext. iIntros "Hl Hwp Hroom".
-  fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+  step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
   iApply (hi_load_bufptr w0 with "Hl Hwe Hroom"); [reflexivity | vx | reflexivity | a2 | a2 | right; reflexivity |].
-  iNext. iIntros "Hl Hwe Hroom". fs. fs. fs.
+  iNext. iIntros "Hl Hwe Hroom". step. step. step.
   destruct (Z.ltb_spec (ptr_addr wp) (ptr_addr we)) as [Hlt | Hge].
-  - fbrv true. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+  - branch_as true. step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
     iApply (hi_load_bufptr w0 with "Hl Hwp Hroom"); [reflexivity | vx | reflexivity | a2 | a2 | left; reflexivity |].
-    iNext. iIntros "Hl Hwp Hroom". fs. fchk "Hl". fstp "Hl" "Hwp".
+    iNext. iIntros "Hl Hwp Hroom". step. check "Hl". store "Hl" "Hwp".
     iApply (hi_buf_putc w0 with "Hroom"); [vx | exact Hlt |].
-    iNext. iIntros "Hroom". fs. fs. fs. fs.
+    iNext. iIntros "Hroom". step. step. step. step.
     iApply ("HK" with "[%] Hso Hsoc [Hl Hvtp Hcells Hwp Hwe Hroom Hxf Htail] [$Hvt $HM]").
-    + split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | lk_prove].
+    + split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
     + iExists fb, freg, nb, (mkPtr (ptr_addr wp + 1) (ptr_cap wp)), we, lb.
       iSplitR; [iPureIntro; tauto|]. iFrame "Hl Hvtp Hxf Htail".
       unfold wbuf. iFrame "Hcells Hwe Hroom".
       unfold raw_address. unwrap2. done.
-  - fbrv false. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl".
+  - branch_as false. step. step. check "Hso". load "Hso" "Hsoc" "Hl".
     iApply wp_call_bind; [vx | exact (hi_find___GI___overflow _) | reflexivity |]. iNext.
     iApply (Hov s with
       "Hvt [Hl Hvtp Hcells Hwp Hwe Hroom Hxf Htail] HM"); [reflexivity | exact Heb | |].
     { iExists fb, freg, nb, wp, we, lb. iSplitR; [iPureIntro; unfold file_size; tauto|].
       iFrame "Hl Hvtp Hxf Htail". unfold wbuf. iFrame "Hcells Hwp Hwe Hroom". }
-    iNext. iIntros (r Hr) "Hf HM". resume. fs. fs. fs. fs.
+    iNext. iIntros (r Hr) "Hf HM". resume. step. step. step. step.
     iApply ("HK" with "[%] Hso Hsoc Hf [$Hvt $HM]").
-    split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | lk_prove].
+    split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
 Qed.
 
 End rules.

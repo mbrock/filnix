@@ -5,6 +5,8 @@
     argument vector: every swap reads and writes two distinct cells inside
     the vector, and the vector stays a permutation of the original. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptInitialize GetoptState LibioLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -22,10 +26,6 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 Local Transparent glibc_getopt_internal_r.
-
-(** A loop keeps the caller's names ks when it assigns none of them. This test checks that no name of ks occurs in the list W of assigned names. *)
-Definition avoids (ks W : list name) : bool :=
-  forallb (fun k => forallb (fun w => negb (name_eqb k w)) W) ks.
 
 (** Sign extension keeps a nonnegative signed 32-bit value. *)
 Lemma sx_nonneg x : 0 <= x < 2 ^ 31 -> sign_extension (2 ^ 32) (2 ^ 31) x = x.
@@ -73,40 +73,13 @@ Definition x2_blk16 : block := Eval vm_compute in x_blk "iw_2.L16".
 (** The outer loop of the second exchange starts here. *)
 Definition x3_blk16 : block := Eval vm_compute in x_blk "iw_3.L16".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptExchangeOn (R : Runtime) (LG0 : LogicSig R).
+
 (** Initialization supplies the private-field and byte modules. *)
-Module I := GetoptInitializeOn R LG0.
 (** This module describes the argument vector cells. *)
-Module A := GetoptArgvOn R LG0.
-Import I I.S I.S.FI I.S.FI.ML I.S.FI.LG I.S.FI.L I.ST I.GB A.
+Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section helpers.
 Context `{!gen_heapGS piece pval Σ}.
-
-(** Kept lookups compose. *)
-Lemma keeps_trans ks e e1 e2 : keeps ks e e1 -> keeps ks e1 e2 -> keeps ks e e2.
-Proof.
-  unfold keeps. rewrite !Forall_forall. intros H1 H2 k Hk. rewrite H2; [|done]. by apply H1.
-Qed.
-
-(** Assigning one of the names W keeps every lookup at names that avoid W. *)
-Lemma keeps_put_avoid ks W k v e e' :
-  existsb (name_eqb k) W = true -> avoids ks W = true -> keeps ks e e' -> keeps ks e (put k v e').
-Proof.
-  intros Hk Ha. apply keeps_put. apply forallb_forall. intros k' Hk'.
-  apply existsb_exists in Hk as (w & Hw & Ekw). apply term_eqb_eq in Ekw. subst w.
-  unfold avoids in Ha. rewrite forallb_forall in Ha. specialize (Ha k' Hk').
-  rewrite forallb_forall in Ha. by apply Ha.
-Qed.
-
-(** The kept names may be split into two lists. *)
-Lemma keeps_app ks1 ks2 e e' : keeps (ks1 ++ ks2) e e' -> keeps ks1 e e' /\ keeps ks2 e e'.
-Proof. unfold keeps. by rewrite Forall_app. Qed.
-
-(** A kept name has its original lookup. *)
-Lemma keeps_in ks k e e' : keeps ks e e' -> In k ks -> lookup k e' = lookup k e.
-Proof. unfold keeps. rewrite Forall_forall. intros H Hk. apply H. by apply list_elem_of_In. Qed.
 
 (** Names that avoid two lists avoid their concatenation. *)
 Lemma avoids_app ks W1 W2 : avoids ks (W1 ++ W2) = true -> avoids ks W1 = true /\ avoids ks W2 = true.
@@ -188,23 +161,23 @@ Ltac vxn :=
     iteration swaps the entry at bot plus i with the entry the same
     distance into the top run. *)
 Ltac x_lower_step IH bot mid top i av ps :=
-  brz; st; st; st; st; st; idx (bot + i);
+  brz; step; step; step; step; step; idx (bot + i);
   set (j := Z.to_nat (bot + i)); set (k := Z.to_nat (top - (mid - bot) + i));
   assert (Hj : Z.of_nat j = bot + i) by (unfold j; lia);
   assert (Hk : Z.of_nat k = top - (mid - bot) + i) by (unfold k; lia);
   iDestruct (argv_cells_two av ps j k with "Hc") as "(Hcj & Hck & Hc)"; [lia | lia | lia |];
   iDestruct (argv_strs_cap ps j with "Hs") as (rj) "[Hcapj %Hqj]"; [lia|];
   iDestruct (argv_strs_cap ps k with "Hs") as (rk) "[Hcapk %Hqk]"; [lia|];
-  chk "Hl";
+  check "Hl";
   iApply (wp_raw_load_pointer_dq with "Hl Hcj Hcapj"); [reflexivity | vx | left; reflexivity | arith | arith | lia |];
   iNext; iIntros "Hl Hcj _";
-  st; st; st; st; st; idx (top - (mid - bot) + i); chk "Hl";
+  step; step; step; step; step; idx (top - (mid - bot) + i); check "Hl";
   iApply (wp_raw_load_pointer_dq with "Hl Hck Hcapk"); [reflexivity | vx | left; reflexivity | arith | arith | lia |];
-  iNext; iIntros "Hl Hck _"; chk "Hl";
+  iNext; iIntros "Hl Hck _"; check "Hl";
   iApply (wp_raw_store_pointer with "Hl Hcj"); [vx | vx | reflexivity | arith | arith | wi_store |];
-  iNext; iIntros "Hl Hcj"; chk "Hl";
+  iNext; iIntros "Hl Hcj"; check "Hl";
   iApply (wp_raw_store_pointer with "Hl Hck"); [vx | vx | reflexivity | arith | arith | wi_store |];
-  iNext; iIntros "Hl Hck"; st; st;
+  iNext; iIntros "Hl Hck"; step; step;
   iSpecialize ("Hc" with "Hcj Hck");
   pose proof (swap_at_perm ps j k ltac:(lia) ltac:(lia)) as Hp;
   iApply (IH (Z.to_nat (mid - bot - (i + 1))) ltac:(lia) _ _ (i + 1) (swap_at ps j k) eq_refl
@@ -220,30 +193,30 @@ Ltac x_lower e fr i ps bot mid top av :=
   induction m as [m IH] using (well_founded_induction lt_wf); intros e fr i ps Hms;
   iIntros (Hphi Hb Ht Hm Hv2 Hb0 Hi Hlt Htop Hlen Hav Hal Hend Hr) "Hl Hc #Hs HK";
   iApply wp_enter; [reflexivity | eassumption | iNext]; unfold_blk; cbn [b_insts b_jump];
-  st; destruct (Z.eq_dec i (mid - bot)) as [->|Hne];
-  [ brz; st; st; st; iApply ("HK" with "[%] Hl Hc Hs"); split; [done|]; split; [xkeep|vxn]
+  step; destruct (Z.eq_dec i (mid - bot)) as [->|Hne];
+  [ brz; step; step; step; iApply ("HK" with "[%] Hl Hc Hs"); split; [done|]; split; [xkeep|vxn]
   | x_lower_step IH bot mid top i av ps ].
 
 (** These scripts prove an upper swap loop of either exchange: one
     iteration swaps entry bot + i with entry mid + i. *)
 Ltac x_upper_step IH bot mid top i av ps :=
-  brz; st; st; st; st; st; idx (bot + i);
+  brz; step; step; step; step; step; idx (bot + i);
   set (j := Z.to_nat (bot + i)); set (k := Z.to_nat (mid + i));
   assert (Hj : Z.of_nat j = bot + i) by (unfold j; lia);
   assert (Hk : Z.of_nat k = mid + i) by (unfold k; lia);
   iDestruct (argv_cells_two av ps j k with "Hc") as "(Hcj & Hck & Hc)"; [lia | lia | lia |];
   iDestruct (argv_strs_cap ps j with "Hs") as (rj) "[Hcapj %Hqj]"; [lia|];
   iDestruct (argv_strs_cap ps k with "Hs") as (rk) "[Hcapk %Hqk]"; [lia|];
-  chk "Hl";
+  check "Hl";
   iApply (wp_raw_load_pointer_dq with "Hl Hcj Hcapj"); [reflexivity | vx | left; reflexivity | arith | arith | lia |];
   iNext; iIntros "Hl Hcj _";
-  st; st; st; st; idx (mid + i); chk "Hl";
+  step; step; step; step; idx (mid + i); check "Hl";
   iApply (wp_raw_load_pointer_dq with "Hl Hck Hcapk"); [reflexivity | vx | left; reflexivity | arith | arith | lia |];
-  iNext; iIntros "Hl Hck _"; chk "Hl";
+  iNext; iIntros "Hl Hck _"; check "Hl";
   iApply (wp_raw_store_pointer with "Hl Hcj"); [vx | vx | reflexivity | arith | arith | wi_store |];
-  iNext; iIntros "Hl Hcj"; chk "Hl";
+  iNext; iIntros "Hl Hcj"; check "Hl";
   iApply (wp_raw_store_pointer with "Hl Hck"); [vx | vx | reflexivity | arith | arith | wi_store |];
-  iNext; iIntros "Hl Hck"; st; st;
+  iNext; iIntros "Hl Hck"; step; step;
   iSpecialize ("Hc" with "Hcj Hck");
   pose proof (swap_at_perm ps j k ltac:(lia) ltac:(lia)) as Hp;
   iApply (IH (Z.to_nat (top - mid - (i + 1))) ltac:(lia) _ _ (i + 1) (swap_at ps j k) eq_refl
@@ -259,8 +232,7 @@ Ltac x_upper e fr i ps bot mid top av :=
   induction m as [m IH] using (well_founded_induction lt_wf); intros e fr i ps Hms;
   iIntros (Hphi Hb Ht Hm Hv2 Hb0 Hi Hlt Htop Hlen Hav Hal Hend Hr) "Hl Hc #Hs HK";
   iApply wp_enter; [reflexivity | eassumption | iNext]; unfold_blk; cbn [b_insts b_jump];
-  st; destruct (Z.eq_dec i (top - mid)) as [->|Hne];
-  [ brz; st; st; st; iApply ("HK" with "[%] Hl Hc Hs"); split; [done|]; split; [xkeep|vxn]
+  step; destruct (Z.eq_dec i (top - mid)) as [->|Hne];
+  [ brz; step; step; step; iApply ("HK" with "[%] Hl Hc Hs"); split; [done|]; split; [xkeep|vxn]
   | x_upper_step IH bot mid top i av ps ].
 
-End GetoptExchangeOn.

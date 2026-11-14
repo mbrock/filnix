@@ -6,6 +6,8 @@
     skips the write, and block `c: L163` is reached with its flag
     `c: v179` 0 ([wp_puts_L109]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsLock LibioPutsUnlock LibioPutsCall.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsCall LibioPutsInv LibioPutsLock LibioPutsUnlock OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,11 +29,8 @@ Local Arguments Z.opp : simpl nomatch.
 (** The mode `c: _IO_fwide(fp, -1)` leaves: -1 for 0, else the same. *)
 Definition oriented (mode : Z) : Z := if mode =? 0 then 2 ^ 32 - 1 else mode.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioPutsModeOn (R : Runtime) (LG0 : LogicSig R).
-Module PC := LibioPutsCallOn R LG0.
-Import PC PC.PU PC.PU.PL PC.PU.PL.PI PC.PU.PL.PI.CS PC.PU.PL.PI.CS.SW PC.PU.PL.PI.CS.SW.FI.ML
-  PC.PU.PL.PI.CS.SW.FI.LG PC.PU.PL.PI.CS.SW.FI.L PC.PU.PL.PI.CS.SW.OW PC.PU.PL.PI.CS.SW.FI PC.PU.PL.PI.CS.SW.ST.
+
+Import LibioPutsCall LibioPutsUnlock LibioPutsLock LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -61,8 +62,7 @@ Lemma wp_puts_L109_for e p dq s so soreg fb mode Φ :
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) -> so mod 8 = 0 -> so + 8 <= r_end soreg ->
   vtables_ro ge vb vreg -∗ live so soreg -∗ pcell so 0 fp -∗
   F fp mode (Some 0) -∗ word_string dq p s -∗ Rx -∗
-  ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v12" \/ x = TAtom "chk1" ->
-                lookup x e' = lookup x e) /\ lookup (TAtom "v179") e' = Some (WInt c) /\
+  ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v179") e' = Some (WInt c) /\
               (c <> 0 -> oriented mode = 2 ^ 32 - 1)⌝ -∗
      live so soreg -∗ pcell so 0 fp -∗ G s fp (oriented mode) (Some 0) -∗
      word_string dq p s -∗ Rx -∗
@@ -78,35 +78,35 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   iDestruct "Hmd" as "[%Hmr Hmd]".
   (* L109: the mode. *)
-  fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl". fldi "Hl" "Hmd". fs.
+  step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl". load_s32 "Hl" "Hmd". step.
   destruct Hmv as [[[-> | ->] ->] | [-> ->]].
   - (* Unoriented: L119 makes it -1, and L121 finds it narrow. *)
-    fbr. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl". fsti "Hl" "Hmd". fs.
-    fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+    branch. step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl". store_int "Hl" "Hmd". step.
+    step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
     change (4294967295 mod 2 ^ 32) with (2 ^ 32 - 1). assert (Hm1 : 0 <= 2 ^ 32 - 1 < 2 ^ 32) by lia.
-    fldi "Hl" "Hmd". fs. fbr.
+    load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! (2 ^ 32 - 1) (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [left; split; [right; reflexivity | reflexivity]|].
-    iApply (wp_puts_L162_for w0 registry ge vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try side.
-    iNext. iIntros (e' c [Hsame Hc]) "Hso Hsoc Hf Hstr HRx".
+    iApply (wp_puts_L162_for w0 registry ge vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try close_side.
+    iNext. iIntros (e' c [Hsame Hc]) "Hso Hsoc Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     iApply ("HK" with "[%] Hso Hsoc Hf Hstr HRx"). split; [|split; [exact Hc | reflexivity]].
-    intros x Hx. rewrite (Hsame x Hx). destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity.
+    rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. rewrite (Hsame x Hx). destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity.
   - (* Narrow: L121 finds it so. *)
-    fbr. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl". fldi "Hl" "Hmd". fs. fbr.
+    branch. step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl". load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! (2 ^ 32 - 1) (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [left; split; [right; reflexivity | reflexivity]|].
-    iApply (wp_puts_L162_for w0 registry ge vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try side.
-    iNext. iIntros (e' c [Hsame Hc]) "Hso Hsoc Hf Hstr HRx".
+    iApply (wp_puts_L162_for w0 registry ge vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try close_side.
+    iNext. iIntros (e' c [Hsame Hc]) "Hso Hsoc Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     iApply ("HK" with "[%] Hso Hsoc Hf Hstr HRx"). split; [|split; [exact Hc | reflexivity]].
-    intros x Hx. rewrite (Hsame x Hx). destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity.
+    rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. rewrite (Hsame x Hx). destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity.
   - (* Wide: L121 skips the call, the flag 0. *)
-    fbr. fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl". fldi "Hl" "Hmd". fs. fbr.
+    branch. step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl". load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! 1%Z (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [right; split; reflexivity|].
     iDestruct (Hwide s with "Hf") as "Hf".
     iApply wp_enter; [reflexivity | vx | iNext].
     iApply ("HK" with "[%] Hso Hsoc Hf Hstr HRx").
-    split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | split; [lk_prove | done]].
+    split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | split; [lk_prove | done]].
 Qed.
 
 End rules.
@@ -120,4 +120,3 @@ Definition wp_puts_L109 `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
     (fun _ => file_at vb (ow_self w0)) (file_at_open vb (ow_self w0))
     (fun _ _ _ => reflexivity _) Hxs_fn Hxs.
 
-End LibioPutsModeOn.

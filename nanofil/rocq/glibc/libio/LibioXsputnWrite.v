@@ -17,6 +17,7 @@
     [wp_xs_L70]. With nothing to write directly, the rest goes to
     LibioXsputnBase.v's [wp_xs_L178]. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -28,6 +29,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags
   LibioXsputnReset LibioXsputnCall LibioXsputnDo.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnDo LibioXsputnFlags LibioXsputnReset LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -39,14 +42,8 @@ Local Arguments Z.opp : simpl nomatch.
 (** The size of the buffer nb, 0 when there is none. *)
 Definition nb_size (nb : option (Z * Z)) : Z := match nb with Some (_, sz) => sz | None => 0 end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnWriteOn (R : Runtime) (LG0 : LogicSig R).
-Module XD := LibioXsputnDoOn R LG0.
-Import XD XD.XC XD.XC.XR XD.XC.XR.XF XD.XC.XR.XF.XS XD.XC.XR.XF.XS.XB XD.XC.XR.XF.XS.XB.DX XD.XC.XR.XF.XS.XB.DX.RM XD.XC.XR.XF.XS.XB.DX.RM.SM.TL XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY
-  XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI
-  XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -101,31 +98,30 @@ Proof.
   { destruct nb as [[b sz] |]; [|iPureIntro; cbn; lia].
     iDestruct ("Hroom" with "Hbl") as "(%reg0 & %xs & %cs & %Hok & _)". iPureIntro. cbn.
     destruct Hok as (H1 & H2 & H3 & H4 & H5 & _). lia. }
-  fs. fs. fchk "Hl". iEval (rewrite -Hcap) in "Hbl". fldp "Hl" "Hbe" "Hbl". iEval (rewrite Hcap) in "Hbl".
-  fs. fchk "Hl". fldp "Hl" "Hbb" "Hbl". fs. fs. fs. fs.
+  step. step. check "Hl". iEval (rewrite -Hcap) in "Hbl". load "Hl" "Hbe" "Hbl". iEval (rewrite Hcap) in "Hbl".
+  step. check "Hl". load "Hl" "Hbb" "Hbl". step. step. step. step.
   replace ((ptr_addr (nb_end nb) mod 2 ^ 64 - ptr_addr (nb_base nb) mod 2 ^ 64) mod 2 ^ 64) with (nb_size nb)
     by (unwrap2; lia).
   iDestruct ("Hroom" with "Hbl") as "Hroom".
   pose proof (Z.mod_pos_bound T (nb_size nb)) as Hmb.
   destruct (Z_le_gt_dec 128 (nb_size nb)) as [Hbig | Hsmall].
   - (* L166: whole blocks. *)
-    fbrv false. fs. fs. fs. fs.
+    branch_as false. step. step. step. step.
     iApply (wp_xs_L168 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys T (T - T mod nb_size nb)
-              with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try side.
+              with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try close_side.
     assert (Hml : T mod nb_size nb <= T) by (apply Z.mod_le; lia). specialize (Hmb ltac:(lia)).
     all: unfold n, off_buf_end, off_buf_base in *; try lia.
     all: lookups; try reflexivity. all: try (do 3 f_equal; unwrap2; lia).
     all: do 2 f_equal; unwrap2.
     all: unfold unsigned_division; destruct (nb_size nb =? 0) eqn:E; [apply Z.eqb_eq in E; lia|]; unwrap2; set (q := T mod nb_size nb) in *; lia.
   - (* L168 at once: everything. *)
-    assert (Hs128 : nb_size nb < 128) by lia. clear Hsmall. fbrv true. fs.
+    assert (Hs128 : nb_size nb < 128) by lia. clear Hsmall. branch_as true. step.
     iApply (wp_xs_L168 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys T T
-              with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try side.
+              with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try close_side.
     all: unfold n, off_buf_end, off_buf_base in *; try lia.
     all: lookups; try reflexivity. all: try (do 3 f_equal; unwrap2; lia). all: do 2 f_equal; lia.
 Qed.
 
 End rules.
-End LibioXsputnWriteOn.
