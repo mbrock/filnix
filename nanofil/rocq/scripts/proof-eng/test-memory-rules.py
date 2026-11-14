@@ -36,6 +36,12 @@ Proof.
     [reflexivity | vx | exact Hcap | rawa | al8 | exact Hn0 |].
   iApply (wp_check_read_dq with "Hl");
     [reflexivity | exact Hx | exact Hcap | arith | arith | apply Z.mod_1_r |].
+  iApply (wp_check_read_dq (glibc_program := glibc_program)    with "Htl");
+    [reflexivity | vx | exact Hcap | rawa | rawa | apply Z.mod_1_r |].
+  iApply (wp_check_read_dq (glibc_program := other_program) with "Hother");
+    [reflexivity | vx | exact Hcap | rawa | rawa | apply Z.mod_1_r |].
+  iApply (wp_check_read_dq (glibc_program := glibc_program) (p := ptr) with "Hp");
+    [reflexivity | vx | exact Hcap | rawa | rawa | apply Z.mod_1_r |].
   iApply (wp_raw_store_w with "Hl Hb");
     [vx | vx | reflexivity | custom [left | right] | reflexivity | wi_store |].
 Qed.
@@ -53,6 +59,10 @@ Qed.
             self.assertIn('2 declarations byte-identical', output)
             self.assertIn('From Glibc Require Import LibioTactics GlibcTactics WordString.', result)
             self.assertIn('check_read_dq "Hl" by arith', result)
+            self.assertIn('check_read_dq "Htl" by rawa', result)
+            self.assertIn('wp_check_read_dq: rewritten 2, left 2 (explicit rule terms 2)', output)
+            self.assertIn('wp_check_read_dq (glibc_program := other_program) with "Hother"', result)
+            self.assertIn('wp_check_read_dq (glibc_program := glibc_program) (p := ptr) with "Hp"', result)
             self.assertIn('Local Lemma unseen : True.', result)
             self.assertNotIn('Hint Extern', result)
             self.assertIn('load_bytes_dq "[Hl Hb]" decode (apply extended_chr) by ar', result)
@@ -62,6 +72,11 @@ Qed.
             self.assertIn('custom [left | right]', result)
             self.assertIn(source.splitlines()[0], result)
             self.assertIn(source.splitlines()[2], result)
+            run()
+            self.assertEqual(path.read_text(), result)
+            path.write_text(source.replace(
+                'wp_check_read_dq (glibc_program := glibc_program)    with "Htl"',
+                'wp_check_read_dq with "Htl"'))
             run()
             self.assertEqual(path.read_text(), result)
 

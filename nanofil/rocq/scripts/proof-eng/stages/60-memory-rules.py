@@ -128,7 +128,10 @@ def rewrite(text, counts):
         counts[name][1] += 1
         if name not in RULES or not args:
             continue
-        if args[1].strip() != name:
+        # Stage 50 may spell out the current program instance. No other
+        # instantiation is redundant: preserve alternate programs and arguments.
+        if not re.fullmatch(re.escape(name) + r"(?:\s*\(\s*glibc_program\s*:=\s*glibc_program\s*\))?",
+                            args[1].strip()):
             counts[name][2] += 1
             continue
         opening = end + tail.end()
