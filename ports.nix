@@ -2904,13 +2904,58 @@ in
         (patch ./patches/perl-5.40-custom-op-ptrtable.patch)
         (patch ./patches/perl-5.40-mro-ptrtable.patch)
         (use (old: {
-          # postPatch replaces the bundled Compress-Raw-Zlib with a newer
-          # release, discarding the port's typemap change.
-          postPatch = old.postPatch + ''
-            substituteInPlace cpan/Compress-Raw-Zlib/typemap \
-              --replace-fail '$var = INT2PTR($type, tmp);' \
-                '$var = zptrtable_decode(Perl_xsub_ptrtable, tmp);'
-          '';
+          # The fixed CPAN releases Nixpkgs 26.05 put into perl 5.40's
+          # bundled distributions; 26.11 dropped them with its move to 5.42.
+          # The new Compress-Raw-Zlib discards the port's typemap change.
+          postPatch =
+            old.postPatch
+            +
+              pkgs.lib.concatMapStrings
+                (d: ''
+                  rm -rf ${d.path}
+                  mkdir -p ${d.path}
+                  tar --strip-components=1 -C ${d.path} -xf ${
+                    pkgs.fetchurl { inherit (d) url hash; }
+                  }
+                  find ${d.path} -type f -exec chmod a-x {} +
+                '')
+                [
+                  # CVE-2026-7010
+                  {
+                    path = "cpan/HTTP-Tiny";
+                    url = "mirror://cpan/authors/id/H/HA/HAARG/HTTP-Tiny-0.094.tar.gz";
+                    hash = "sha256-poQemfwbVdFd6VlHzL17dnvsxRxxAhl/qPBE333cB0M=";
+                  }
+                  # CVE-2026-3381, CVE-2026-4176
+                  {
+                    path = "cpan/Compress-Raw-Zlib";
+                    url = "mirror://cpan/authors/id/P/PM/PMQS/Compress-Raw-Zlib-2.222.tar.gz";
+                    hash = "sha256-Hf19URplVifIGBXTDTurwo+luIRV/wP4sECZ3LUShrg=";
+                  }
+                  # Runtime dependency of IO-Compress 2.220.
+                  {
+                    path = "cpan/Compress-Raw-Bzip2";
+                    url = "mirror://cpan/authors/id/P/PM/PMQS/Compress-Raw-Bzip2-2.218.tar.gz";
+                    hash = "sha256-iRU+ai69pSNJSTsHT6S3VJ/x+QU952E8GKXgXFtBX6g=";
+                  }
+                  # CVE-2026-48962, CVE-2026-48961, CVE-2026-48959
+                  {
+                    path = "cpan/IO-Compress";
+                    url = "mirror://cpan/authors/id/P/PM/PMQS/IO-Compress-2.220.tar.gz";
+                    hash = "sha256-nZbqKR8sVO82fHOWuFfZO6GsHEsvG84T7Yo+Xz7rtic=";
+                  }
+                  # CVE-2026-42496, CVE-2026-42497, CVE-2026-9538
+                  {
+                    path = "cpan/Archive-Tar";
+                    url = "mirror://cpan/authors/id/B/BI/BINGOS/Archive-Tar-3.12.tar.gz";
+                    hash = "sha256-ARTvObZfSfiWgoOrR3Gdfoj5jXNg/jZJvjMcf1PVgyw=";
+                  }
+                ]
+            + ''
+              substituteInPlace cpan/Compress-Raw-Zlib/typemap \
+                --replace-fail '$var = INT2PTR($type, tmp);' \
+                  '$var = zptrtable_decode(Perl_xsub_ptrtable, tmp);'
+            '';
         }))
         (skipCheck "too slow")
         # NO overrides arg - that breaks withPackages!

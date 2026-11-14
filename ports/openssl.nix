@@ -21,7 +21,7 @@ stdenv.mkDerivation rec {
   # NIX_SSL_CERT_FILE overrides the default CA file, as in Nixpkgs.
   patches = [
     ./patch/openssl-3.5.7.patch
-    "${path}/pkgs/development/libraries/openssl/3.0/nix-ssl-cert-file.patch"
+    "${path}/pkgs/development/libraries/openssl/3.5/nix-ssl-cert-file.patch"
   ];
 
   outputs = [
