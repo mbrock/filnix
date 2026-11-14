@@ -42,6 +42,18 @@ in
       ccache
     ];
 
+    # Nixpkgs 26.11's Linux headers (7.3) lack linux/scc.h; LLVM 22 dropped its
+    # use, and Nixpkgs applies the same commit to its older compiler-rt.
+    postPatch = ''
+      patch -p1 -d compiler-rt < ${
+        pkgs.fetchpatch {
+          url = "https://github.com/llvm/llvm-project/commit/3dc4fd6dd41100f051a63642f449b16324389c96.patch?full_index=1";
+          hash = "sha256-Av6CN95XjdUagIKh3AAjD0UK8r01fDz0cD0BLjZ70dg=";
+          relative = "compiler-rt";
+        }
+      }
+    '';
+
     preConfigure = ''
       ${setupCcache}
       cd compiler-rt
