@@ -15,3 +15,10 @@ mb_cur_max locale/mb_cur_max.os
 fixtures = '''
 Stdlib|||
 '''
+
+[[batch]]
+layout = "string"
+mode = "checked"
+fixtures = '''
+Getenv|getenv|stdlib/getenv.os|__GI_getenv
+'''

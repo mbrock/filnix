@@ -55,6 +55,9 @@ stdio/PrintfBufferIoCode.v
 stdio/PrintfCountBits.v
 stdio/PrintfStateCode.v
 stdlib/StdlibCode.v
+stdlib/GetenvCode.v
+stdlib/GetenvSrc.v
+stdlib/GetenvEntry.v
 string/MallocCode.v
 string/MemFwdCode.v
 string/MemcmpCode.v
