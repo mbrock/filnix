@@ -155,11 +155,15 @@ native.
   string lists are copied for the same reason. Buffers bounded by a scalar the
   runtime has already copied, such as `read`'s or `poll`'s, can be passed
   through.
-- Pointer fields have to be reloaded, not copied. In Fil-C memory a pointer
-  field's capability lives outside the struct, so `memcpy` of the user struct
-  gives addresses without capabilities. The field list is what tells the runtime
-  which words to reload, and that is the main reason the X-macro has to be
-  shared with libpizlo.
+- Pointer fields have to be reloaded on the runtime side. Pizlonated `memcpy`
+  keeps capabilities, because `zmemmove` copies each word's capability slot as
+  well. The marshaller, however, copies the struct into native memory on
+  libpizlo's stack, which has no capability slots, so the copy holds bare
+  addresses. The runtime therefore reloads each pointer field from the
+  program's struct with `filc_load_ptr_at` to get its capability. The capability
+  slots alone would show which words hold pointers, but not how many bytes the
+  kernel will touch through each one. That extent comes only from the field
+  list, which is the main reason the X-macro has to be shared with libpizlo.
 - libpizlo is C, and `Syscall.h` is C++. The descriptor parses as both only
   because C++-only types are spelled through macros (`SC_MUTABLE_BUFFER(T, S)`,
   `SC_USERSPACE(T)`, `SC_THREAD_ENTRY`). The marshaller also needs complete
