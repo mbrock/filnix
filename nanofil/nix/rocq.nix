@@ -24,7 +24,7 @@
   full ? false,
 }:
 let
-  rocq = pkgs.rocqPackages;
+  rocq = import ./rocq-packages.nix { inherit pkgs; };
   ocamlPackages = rocq.rocq-core.ocamlPackages;
   lib = pkgs.lib;
   rocqInputs = [

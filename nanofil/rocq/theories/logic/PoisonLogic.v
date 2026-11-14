@@ -322,7 +322,7 @@ Lemma pptsq_split q1 q2 pps :
   pptsq (DfracOwn (q1 + q2)) pps ⊣⊢ pptsq (DfracOwn q1) pps ∗ pptsq (DfracOwn q2) pps.
 Proof.
   rewrite /pptsq -big_sepL_sep. apply big_sepL_proper. intros _ lv _.
-  exact (@fractional _ (fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) _ q1 q2).
+  exact (fractional (Φ := fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) q1 q2).
 Qed.
 
 Lemma pptsq_persist dq pps : pptsq dq pps ==∗ □ pptsq DfracDiscarded pps.

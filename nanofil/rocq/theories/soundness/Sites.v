@@ -38,8 +38,8 @@ Local Open Scope Z_scope.
 (** Starting from index j in block l, [inst_positions] walks through
     the instruction list and records each defined name together with its
     instruction [[site]] and definition. *)
-Fixpoint inst_positions (l : name) (j : Z) (is : list inst) : list (name * site * def) :=
-  match is with
+Fixpoint inst_positions (l : name) (j : Z) (instructions : list inst) : list (name * site * def) :=
+  match instructions with
   | [] => []
   | i :: rest =>
       map (fun dk => (fst dk, SAt l j, DInst i)) (inst_temp_defs i) ++ inst_positions l (j + 1) rest
@@ -65,11 +65,11 @@ Definition drop_site (t : name * site * def) : name * def := (fst (fst t), snd t
 (** Erasing sites from [inst_positions] produces the same name and
     definition pairs that [all_defs] collects for those instructions,
     regardless of block label or starting index. *)
-Lemma inst_positions_defs : forall l j is,
-  flat_map (fun i => map (fun dk => (fst dk, DInst i)) (inst_temp_defs i)) is
-  = map drop_site (inst_positions l j is).
+Lemma inst_positions_defs : forall l j instructions,
+  flat_map (fun i => map (fun dk => (fst dk, DInst i)) (inst_temp_defs i)) instructions
+  = map drop_site (inst_positions l j instructions).
 Proof.
-  intros l j is. revert j. induction is as [|i rest IH]; intros j; [reflexivity|].
+  intros l j instructions. revert j. induction instructions as [|i rest IH]; intros j; [reflexivity|].
   simpl. rewrite map_app, (IH (j + 1)), map_map. reflexivity.
 Qed.
 
@@ -128,14 +128,14 @@ Qed.
 (** Folding over the instructions of block l from index j preserves map
     soundness whenever every position in [inst_positions] belongs to
     function f. *)
-Lemma inst_fold_sites_ok : forall f l is j m,
-  sites_ok f m -> (forall t, In t (inst_positions l j is) -> In t (def_positions f)) ->
+Lemma inst_fold_sites_ok : forall f l instructions j m,
+  sites_ok f m -> (forall t, In t (inst_positions l j instructions) -> In t (def_positions f)) ->
   sites_ok f (fst (fold_left (fun (acc : nmap (list site) * Z) ins =>
                                 let (m, j) := acc in
                                 (fold_left (fun m dk => add_site m (fst dk) (SAt l j))
-                                           (inst_temp_defs ins) m, j + 1)) is (m, j))).
+                                           (inst_temp_defs ins) m, j + 1)) instructions (m, j))).
 Proof.
-  intros f l is. induction is as [|i rest IH]; intros j m Hm Hp; [exact Hm|].
+  intros f l instructions. induction instructions as [|i rest IH]; intros j m Hm Hp; [exact Hm|].
   simpl. apply IH; [|intros t Ht; apply Hp; simpl; apply in_or_app; right; exact Ht].
   apply (fold_sites_ok _ f (fun dk => (fst dk, SAt l j))); [exact Hm|].
   intros dk Hdk. exists (DInst i). apply Hp. simpl. apply in_or_app. left.
@@ -237,10 +237,10 @@ Proof.
   apply andb_true_iff in H as [Hi _].
   assert (Hdu : dominated_use (temp_sites f) doms (b_label b) (Z.of_nat k) o = true).
   { match type of Hi with ?F (b_insts b) 0 = true =>
-      assert (G : forall is i k ins, F is i = true -> nth_error is k = Some ins -> In o (inst_uses ins) ->
+      assert (G : forall instructions i k ins, F instructions i = true -> nth_error instructions k = Some ins -> In o (inst_uses ins) ->
                     dominated_use (temp_sites f) doms (b_label b) (i + Z.of_nat k) o = true)
     end.
-    { intros is. induction is as [|ins0 rest IH]; intros i k0 ins1 Hf Hn Hin; [destruct k0; discriminate Hn|].
+    { intros instructions. induction instructions as [|ins0 rest IH]; intros i k0 ins1 Hf Hn Hin; [destruct k0; discriminate Hn|].
       cbn in Hf. apply andb_true_iff in Hf as [Hf1 Hf2]. destruct k0 as [|k0]; simpl in Hn.
       - injection Hn as <-. rewrite forallb_forall in Hf1. rewrite Z.add_0_r. exact (Hf1 _ Hin).
       - rewrite Nat2Z.inj_succ. replace (i + Z.succ (Z.of_nat k0)) with (i + 1 + Z.of_nat k0) by lia.
@@ -271,12 +271,12 @@ Qed.
 (** Any position recorded by [inst_positions] for block l from index j
     belongs to some instruction i at offset k, sits at site index j + k,
     and names a temporary defined by i. *)
-Lemma inst_positions_in : forall l j is n s d,
-  In (n, s, d) (inst_positions l j is) ->
-  exists k i, nth_error is k = Some i /\ s = SAt l (j + Z.of_nat k) /\ d = DInst i /\
+Lemma inst_positions_in : forall l j instructions n s d,
+  In (n, s, d) (inst_positions l j instructions) ->
+  exists k i, nth_error instructions k = Some i /\ s = SAt l (j + Z.of_nat k) /\ d = DInst i /\
     In n (map fst (inst_temp_defs i)).
 Proof.
-  intros l j is. revert j. induction is as [|i rest IH]; intros j n s d H; [destruct H|].
+  intros l j instructions. revert j. induction instructions as [|i rest IH]; intros j n s d H; [destruct H|].
   simpl in H. apply in_app_or in H as [H | H].
   - apply in_map_iff in H as (dk & E & Hdk). injection E as <- <- <-.
     exists O, i. split; [reflexivity|]. split; [replace (j + Z.of_nat 0) with j by lia; reflexivity|].
@@ -289,11 +289,11 @@ Qed.
 
 (** Every temporary defined by an instruction at offset k in a block
     appears in the position list at index j + k. *)
-Lemma inst_positions_nth : forall l j is k i dk,
-  nth_error is k = Some i -> In dk (inst_temp_defs i) ->
-  In (fst dk, SAt l (j + Z.of_nat k), DInst i) (inst_positions l j is).
+Lemma inst_positions_nth : forall l j instructions k i dk,
+  nth_error instructions k = Some i -> In dk (inst_temp_defs i) ->
+  In (fst dk, SAt l (j + Z.of_nat k), DInst i) (inst_positions l j instructions).
 Proof.
-  intros l j is. revert j. induction is as [|i0 rest IH]; intros j k i dk Hk Hdk; [destruct k; discriminate Hk|].
+  intros l j instructions. revert j. induction instructions as [|i0 rest IH]; intros j k i dk Hk Hdk; [destruct k; discriminate Hk|].
   simpl. apply in_or_app. destruct k as [|k]; simpl in Hk.
   - injection Hk as <-. left. apply in_map_iff. exists dk. split; [|exact Hdk].
     replace (j + Z.of_nat 0) with j by lia. reflexivity.

@@ -66,8 +66,8 @@ Definition block_exit (f : func) (b : block) : facts :=
 (** Given the facts out after the last instruction of a list,
     [facts_from] computes the needs before the first instruction by
     applying [ahead_step] backward from right to left. *)
-Definition facts_from (f : func) (is : list inst) (out : facts) : facts :=
-  fold_right (ahead_step (single_definitions f) (proof_pointers f (single_definitions f))) out is.
+Definition facts_from (f : func) (instructions : list inst) (out : facts) : facts :=
+  fold_right (ahead_step (single_definitions f) (proof_pointers f (single_definitions f))) out instructions.
 
 (** ## One block
 
@@ -132,17 +132,17 @@ Qed.
     in the same block, because a check at the end has no following access.
     Lemma [block_accepts] converts the reversed walk back to forward order
     and places each accepted proof q at some non-final index k. *)
-Lemma block_accepts : forall once ptrs is out js q,
-  In q (snd (ahead_insts once ptrs (rev is) out [] js)) ->
-  In q js \/ exists k i, nth_error is k = Some i /\ (S k < length is)%nat /\
-    ahead_accepts once (fold_right (ahead_step once ptrs) out (skipn (S (S k)) is)) i = Some q.
+Lemma block_accepts : forall once ptrs instructions out js q,
+  In q (snd (ahead_insts once ptrs (rev instructions) out [] js)) ->
+  In q js \/ exists k i, nth_error instructions k = Some i /\ (S k < length instructions)%nat /\
+    ahead_accepts once (fold_right (ahead_step once ptrs) out (skipn (S (S k)) instructions)) i = Some q.
 Proof.
-  intros once ptrs is out js q H.
+  intros once ptrs instructions out js q H.
   destruct (ahead_insts_js _ _ _ _ _ _ _ H) as [Hj | [(i & post & _ & Ha) | (pre & i1 & i & post & E & Ha)]].
   - left. exact Hj.
   - rewrite ahead_accepts_nil in Ha. discriminate Ha.
-  - right. assert (Eis : is = rev post ++ i :: i1 :: rev pre).
-    { rewrite <- (rev_involutive is), E. rewrite rev_app_distr. simpl. rewrite <- !app_assoc. reflexivity. }
+  - right. assert (Eis : instructions = rev post ++ i :: i1 :: rev pre).
+    { rewrite <- (rev_involutive instructions), E. rewrite rev_app_distr. simpl. rewrite <- !app_assoc. reflexivity. }
     exists (length post), i. rewrite Eis. split; [|split].
     + rewrite nth_error_app2 by (rewrite length_rev; lia). rewrite length_rev, Nat.sub_diag. reflexivity.
     + rewrite length_app, length_rev. simpl. lia.

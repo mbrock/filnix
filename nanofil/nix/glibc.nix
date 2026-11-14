@@ -23,7 +23,7 @@
   model,
 }:
 let
-  rocq = pkgs.rocqPackages;
+  rocq = import ./rocq-packages.nix { inherit pkgs; };
   lib = pkgs.lib;
   rocqInputs = [
     rocq.rocq-core
