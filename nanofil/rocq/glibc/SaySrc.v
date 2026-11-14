@@ -1,13 +1,15 @@
 (** These tables connect checked function bodies to C declarations and source lines.
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
+    Live sets and memory footprints guide execution but cannot justify a memory access.
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool NArith.
+From Stdlib Require Import String List Bool NArith ZArith.
 From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
+Open Scope Z_scope.
 
 
 From Glibc Require Import SayCode.
@@ -40,6 +42,21 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), [])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [])].
+
+(** Each access records its instruction index, address, byte offset, optional width,
+    read and write flags, optional root temporary and optional offset from that root.
+    A local address names an invocation-local object, not a pointer temporary.
+    Variable-sized runtime accesses have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
+  [((TAtom "start"), [])].
+
+
 End fn_main.
 
 Module fn___strlen.
@@ -57,6 +74,21 @@ Definition temp_names : list (name * string) :=
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L28")].
+
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0")]); ((TAtom "iw_3.start"), [(TAtom "iw_2.v12")]); ((TAtom "iw_3.iw_1.iw_1.L3"), [(TAtom "iw_2.v12")]); ((TAtom "iw_3.iw_1.iw_1.L4"), []); ((TAtom "L28"), [(TAtom "v4")]); ((TAtom "iw_5.start"), [(TAtom "iw_4.iw_1.v13"); (TAtom "v32"); (TAtom "v37"); (TAtom "v4")]); ((TAtom "iw_5.iw_3.iw_1.iw_1.L3"), [(TAtom "iw_4.iw_1.v13"); (TAtom "v32"); (TAtom "v4")]); ((TAtom "iw_5.iw_3.iw_1.iw_1.L4"), [(TAtom "v32"); (TAtom "v4")])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "iw_2.v12"); (TAtom "v10"); (TAtom "v4")]); ((TAtom "iw_3.start"), [(TAtom "iw_2.v12")]); ((TAtom "iw_3.iw_1.iw_1.L3"), [(TAtom "iw_3.iw_1.iw_1.v22")]); ((TAtom "iw_3.iw_1.iw_1.L4"), []); ((TAtom "L28"), [(TAtom "iw_4.iw_1.v13"); (TAtom "v32"); (TAtom "v37"); (TAtom "v4")]); ((TAtom "iw_5.start"), [(TAtom "iw_4.iw_1.v13"); (TAtom "v32"); (TAtom "v4")]); ((TAtom "iw_5.iw_3.iw_1.iw_1.L3"), [(TAtom "iw_5.iw_3.iw_1.iw_1.v22"); (TAtom "v32"); (TAtom "v4")]); ((TAtom "iw_5.iw_3.iw_1.iw_1.L4"), [])].
+
+(** Each access records its instruction index, address, byte offset, optional width,
+    read and write flags, optional root temporary and optional offset from that root.
+    A local address names an invocation-local object, not a pointer temporary.
+    Variable-sized runtime accesses have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
+  [((TAtom "start"), [(5%N, (TApp "tmp" [(TAtom "v10")]), (0), (Some 8), true, false, (Some (TAtom "v0")), None)]); ((TAtom "iw_3.start"), []); ((TAtom "iw_3.iw_1.iw_1.L3"), []); ((TAtom "iw_3.iw_1.iw_1.L4"), []); ((TAtom "L28"), [(2%N, (TApp "tmp" [(TAtom "v32")]), (0), (Some 8), true, false, (Some (TAtom "pr.1")), (Some (8)))]); ((TAtom "iw_5.start"), []); ((TAtom "iw_5.iw_3.iw_1.iw_1.L3"), []); ((TAtom "iw_5.iw_3.iw_1.iw_1.L4"), [])].
+
 
 End fn___strlen.
 
@@ -76,6 +108,21 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v4")])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [])].
+
+(** Each access records its instruction index, address, byte offset, optional width,
+    read and write flags, optional root temporary and optional offset from that root.
+    A local address names an invocation-local object, not a pointer temporary.
+    Variable-sized runtime accesses have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
+  [((TAtom "start"), [])].
+
+
 End fn___GI___libc_write.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
@@ -86,6 +133,10 @@ Definition source_blocks : list (string * option (list name)) := Eval lazy in
     | _ => None
     end)) ["main"; "__strlen"; "__GI___libc_write"].
 
+(** Projection keeps live sets and memory access records out of the membership computation. *)
+Definition table_labels : list (string * list name) := Eval lazy in
+  [("main", app (map fst fn_main.block_src) (app (map fst fn_main.live_in) (app (map fst fn_main.live_out) (app (map fst fn_main.footprint) (fn_main.loop_heads))))); ("__strlen", app (map fst fn___strlen.block_src) (app (map fst fn___strlen.live_in) (app (map fst fn___strlen.live_out) (app (map fst fn___strlen.footprint) (fn___strlen.loop_heads))))); ("__GI___libc_write", app (map fst fn___GI___libc_write.block_src) (app (map fst fn___GI___libc_write.live_in) (app (map fst fn___GI___libc_write.live_out) (app (map fst fn___GI___libc_write.footprint) (fn___GI___libc_write.loop_heads)))))].
+
 (** One computation rejects missing functions and stale labels across all tables in this fixture. *)
 Lemma labels_valid :
   forallb (fun row =>
@@ -94,7 +145,7 @@ Lemma labels_valid :
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false
-  end) [("main", app (map fst fn_main.block_src) fn_main.loop_heads); ("__strlen", app (map fst fn___strlen.block_src) fn___strlen.loop_heads); ("__GI___libc_write", app (map fst fn___GI___libc_write.block_src) fn___GI___libc_write.loop_heads)] = true.
+  end) table_labels = true.
 Proof. vm_compute. reflexivity. Qed.
 
 End SaySrc.

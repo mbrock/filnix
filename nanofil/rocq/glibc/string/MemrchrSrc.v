@@ -1,13 +1,15 @@
 (** These tables connect checked function bodies to C declarations and source lines.
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
+    Live sets and memory footprints guide execution but cannot justify a memory access.
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool NArith.
+From Stdlib Require Import String List Bool NArith ZArith.
 From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
+Open Scope Z_scope.
 
 
 From Glibc Require Import MemrchrCode.
@@ -37,6 +39,21 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L83")].
 
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v4")]); ((TAtom "L6"), []); ((TAtom "L8"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v4")]); ((TAtom "iw_3.L13"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "iw_2.iw_1.v13"); (TAtom "iw_3.v5"); (TAtom "v26"); (TAtom "v31"); (TAtom "v42")]); ((TAtom "iw_3.join"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "v26"); (TAtom "v31"); (TAtom "v42")]); ((TAtom "iw_4.start"), [(TAtom "v26"); (TAtom "v31"); (TAtom "v48")]); ((TAtom "iw_4.iw_1.iw_1.L3"), [(TAtom "v26"); (TAtom "v31"); (TAtom "v48")]); ((TAtom "iw_4.iw_1.iw_1.L4"), [(TAtom "v26"); (TAtom "v31")]); ((TAtom "iw_4.join"), [(TAtom "v26"); (TAtom "v31")]); ((TAtom "L61"), []); ((TAtom "L62"), []); ((TAtom "L51"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "v26"); (TAtom "v31"); (TAtom "v42")]); ((TAtom "L71"), []); ((TAtom "L73"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "v26"); (TAtom "v31"); (TAtom "v77")]); ((TAtom "L83"), [(TAtom "iw_1.v7"); (TAtom "v26"); (TAtom "v77")]); ((TAtom "iw_5.start"), [(TAtom "iw_1.v7"); (TAtom "pr.1"); (TAtom "pr.2"); (TAtom "v26"); (TAtom "v77")]); ((TAtom "iw_6.start"), [(TAtom "iw_5.iw_1.v6"); (TAtom "pr.1")]); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L3"), [(TAtom "iw_6.iw_1.iw_1.v13"); (TAtom "pr.1")]); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L4"), [(TAtom "pr.1")]); ((TAtom "iw_6.iw_1.iw_3.join"), [(TAtom "pr.1")]); ((TAtom "L93"), [(TAtom "iw_1.v7"); (TAtom "pr.1"); (TAtom "v26"); (TAtom "v77")]); ((TAtom "iw_7.start"), [(TAtom "iw_1.v7"); (TAtom "pr.1"); (TAtom "pr.2"); (TAtom "v26")]); ((TAtom "iw_8.start"), [(TAtom "iw_7.iw_1.v6"); (TAtom "pr.1"); (TAtom "v26")]); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L3"), [(TAtom "iw_8.iw_1.iw_1.v13"); (TAtom "pr.1"); (TAtom "v26")]); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L4"), [(TAtom "pr.1"); (TAtom "v26")]); ((TAtom "iw_8.iw_1.iw_3.join"), [(TAtom "pr.1"); (TAtom "v26")]); ((TAtom "L122"), [(TAtom "v121")]); ((TAtom "L110"), [])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v4")]); ((TAtom "L6"), []); ((TAtom "L8"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "iw_2.iw_1.v13"); (TAtom "iw_3.v5"); (TAtom "v26"); (TAtom "v31"); (TAtom "v42")]); ((TAtom "iw_3.L13"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "iw_3.v24"); (TAtom "v26"); (TAtom "v31"); (TAtom "v42")]); ((TAtom "iw_3.join"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "v26"); (TAtom "v31"); (TAtom "v42"); (TAtom "v48")]); ((TAtom "iw_4.start"), [(TAtom "v26"); (TAtom "v31"); (TAtom "v48")]); ((TAtom "iw_4.iw_1.iw_1.L3"), [(TAtom "iw_4.iw_1.iw_1.v33"); (TAtom "v26"); (TAtom "v31")]); ((TAtom "iw_4.iw_1.iw_1.L4"), [(TAtom "iw_4.v14"); (TAtom "v26"); (TAtom "v31")]); ((TAtom "iw_4.join"), [(TAtom "v59")]); ((TAtom "L61"), []); ((TAtom "L62"), []); ((TAtom "L51"), [(TAtom "chk0"); (TAtom "iw_1.v7"); (TAtom "v26"); (TAtom "v31"); (TAtom "v77")]); ((TAtom "L71"), []); ((TAtom "L73"), [(TAtom "iw_1.v7"); (TAtom "v26"); (TAtom "v77"); (TAtom "v81"); (TAtom "v82")]); ((TAtom "L83"), [(TAtom "iw_1.v7"); (TAtom "pr.1"); (TAtom "pr.2"); (TAtom "v26"); (TAtom "v77")]); ((TAtom "iw_5.start"), [(TAtom "iw_1.v7"); (TAtom "iw_5.iw_1.v6"); (TAtom "pr.1"); (TAtom "v26"); (TAtom "v77")]); ((TAtom "iw_6.start"), [(TAtom "iw_6.iw_1.iw_1.v13"); (TAtom "pr.1")]); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L3"), [(TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.v33"); (TAtom "pr.1")]); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L4"), [(TAtom "iw_6.iw_1.iw_3.v14"); (TAtom "pr.1")]); ((TAtom "iw_6.iw_1.iw_3.join"), []); ((TAtom "L93"), [(TAtom "iw_1.v7"); (TAtom "v106"); (TAtom "v107"); (TAtom "v26"); (TAtom "v77")]); ((TAtom "iw_7.start"), [(TAtom "iw_7.iw_1.v6"); (TAtom "pr.1"); (TAtom "v26")]); ((TAtom "iw_8.start"), [(TAtom "iw_8.iw_1.iw_1.v13"); (TAtom "pr.1"); (TAtom "v26")]); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L3"), [(TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.v33"); (TAtom "pr.1"); (TAtom "v26")]); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L4"), [(TAtom "iw_8.iw_1.iw_3.v14"); (TAtom "pr.1"); (TAtom "v26")]); ((TAtom "iw_8.iw_1.iw_3.join"), [(TAtom "v121")]); ((TAtom "L122"), []); ((TAtom "L110"), [])].
+
+(** Each access records its instruction index, address, byte offset, optional width,
+    read and write flags, optional root temporary and optional offset from that root.
+    A local address names an invocation-local object, not a pointer temporary.
+    Variable-sized runtime accesses have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
+  [((TAtom "start"), []); ((TAtom "L6"), []); ((TAtom "L8"), [(11%N, (TApp "tmp" [(TAtom "v31")]), (0), (Some 8), true, false, (Some (TAtom "v0")), None)]); ((TAtom "iw_3.L13"), []); ((TAtom "iw_3.join"), []); ((TAtom "iw_4.start"), []); ((TAtom "iw_4.iw_1.iw_1.L3"), []); ((TAtom "iw_4.iw_1.iw_1.L4"), []); ((TAtom "iw_4.join"), []); ((TAtom "L61"), []); ((TAtom "L62"), []); ((TAtom "L51"), []); ((TAtom "L71"), []); ((TAtom "L73"), [(2%N, (TApp "tmp" [(TAtom "v81")]), (0), (Some 8), true, false, (Some (TAtom "v0")), None)]); ((TAtom "L83"), []); ((TAtom "iw_5.start"), []); ((TAtom "iw_6.start"), []); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L3"), []); ((TAtom "iw_6.iw_1.iw_3.iw_1.iw_1.L4"), []); ((TAtom "iw_6.iw_1.iw_3.join"), []); ((TAtom "L93"), [(2%N, (TApp "tmp" [(TAtom "v106")]), (0), (Some 8), true, false, (Some (TAtom "pr.1")), (Some (-8)))]); ((TAtom "iw_7.start"), []); ((TAtom "iw_8.start"), []); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L3"), []); ((TAtom "iw_8.iw_1.iw_3.iw_1.iw_1.L4"), []); ((TAtom "iw_8.iw_1.iw_3.join"), []); ((TAtom "L122"), []); ((TAtom "L110"), [])].
+
+
 End fn___GI___memrchr.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
@@ -47,6 +64,10 @@ Definition source_blocks : list (string * option (list name)) := Eval lazy in
     | _ => None
     end)) ["__GI___memrchr"].
 
+(** Projection keeps live sets and memory access records out of the membership computation. *)
+Definition table_labels : list (string * list name) := Eval lazy in
+  [("__GI___memrchr", app (map fst fn___GI___memrchr.block_src) (app (map fst fn___GI___memrchr.live_in) (app (map fst fn___GI___memrchr.live_out) (app (map fst fn___GI___memrchr.footprint) (fn___GI___memrchr.loop_heads)))))].
+
 (** One computation rejects missing functions and stale labels across all tables in this fixture. *)
 Lemma labels_valid :
   forallb (fun row =>
@@ -55,7 +76,7 @@ Lemma labels_valid :
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false
-  end) [("__GI___memrchr", app (map fst fn___GI___memrchr.block_src) fn___GI___memrchr.loop_heads)] = true.
+  end) table_labels = true.
 Proof. vm_compute. reflexivity. Qed.
 
 End MemrchrSrc.

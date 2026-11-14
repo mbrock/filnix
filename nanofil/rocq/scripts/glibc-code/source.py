@@ -16,7 +16,7 @@ def listing(values):
     return '[' + '; '.join(values) + ']'
 
 
-def source_tables(name, prefix, functions, layout, root):
+def source_tables(name, prefix, functions, layout, root, block_definitions):
     files = sorted({f for row in functions for _, f, _ in row['block_src']} |
                    {row['source'][0] for row in functions if row['source'] is not None})
     file_names = {f: f'file_{i}' for i, f in enumerate(files)}
@@ -34,13 +34,15 @@ def source_tables(name, prefix, functions, layout, root):
     header = '''(** These tables connect checked function bodies to C declarations and source lines.
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
+    Live sets and memory footprints guide execution but cannot justify a memory access.
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool NArith.
+From Stdlib Require Import String List Bool NArith ZArith.
 From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
+Open Scope Z_scope.
 
 '''
     text = ''
@@ -61,7 +63,11 @@ Definition source_module : module := Eval vm_compute in code_module {term}.
         if ident in identifiers:
             raise ValueError(f"source table identifier collision: {fn}")
         identifiers.add(ident)
-        checks.append(f'({string(fn)}, app (map fst {ident}.block_src) {ident}.loop_heads)')
+        tables = [f'map fst {ident}.{table}' for table in ('block_src', 'live_in', 'live_out', 'footprint')]
+        labels = f'{ident}.loop_heads'
+        for table in reversed(tables):
+            labels = f'app ({table}) ({labels})'
+        checks.append(f'({string(fn)}, {labels})')
         loc = row['source']
         source = 'None' if loc is None else f'Some ({filename(loc[0])}, {loc[1]}%N)'
         blocks = listing(f'({atom(l)}, ({filename(f)}, {n}%N))' for l, f, n in row['block_src'])
@@ -84,6 +90,7 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := {heads}.
 
+{block_definitions[fn]}
 End {ident}.
 ''')
     names = listing(string(row['function']) for row in functions)
@@ -96,6 +103,10 @@ Definition source_blocks : list (string * option (list name)) := Eval lazy in
     | _ => None
     end)) {names}.
 
+(** Projection keeps live sets and memory access records out of the membership computation. *)
+Definition table_labels : list (string * list name) := Eval lazy in
+  {listing(checks)}.
+
 (** One computation rejects missing functions and stale labels across all tables in this fixture. *)
 Lemma labels_valid :
   forallb (fun row =>
@@ -104,21 +115,26 @@ Lemma labels_valid :
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false
-  end) {listing(checks)} = true.
+  end) table_labels = true.
 Proof. vm_compute. reflexivity. Qed.
 '''
-    if len(groups) <= 32:
+    chunks = []
+    for group in groups:
+        if not chunks or sum(map(len, chunks[-1])) + len(group) > 100000:
+            chunks.append([])
+        chunks[-1].append(group)
+    if len(chunks) == 1:
         return {name + 'Src.v': header + f'\nFrom Glibc Require Import {code}.\nModule {name}Src.\n' +
                 text + ''.join(groups) + footer + f'\nEnd {name}Src.\n'}
     common = name + 'SrcFiles'
     output = {common + '.v': header + f'\nModule {common}.\n' + text + f'\nEnd {common}.\n'}
     parts = []
-    for i in range(0, len(groups), 24):
-        part = f'{name}Src{i // 24 + 1:02d}'
+    for i, chunk in enumerate(chunks, 1):
+        part = f'{name}Src{i:02d}'
         parts.append(part)
         output[part + '.v'] = (header + f'\nFrom Glibc Require Import {common}.\n' +
                               f'Import {common}.\nModule {part}.\n' +
-                              ''.join(groups[i:i + 24]) + f'\nEnd {part}.\n')
+                              ''.join(chunk) + f'\nEnd {part}.\n')
     output[name + 'Src.v'] = (header + f'\nFrom Glibc Require Import {code} {common} ' +
                              ' '.join(parts) + f'.\nModule {name}Src.\n' +
                              f'Include {common}.\n' + ''.join(f'Include {p}.\n' for p in parts) +

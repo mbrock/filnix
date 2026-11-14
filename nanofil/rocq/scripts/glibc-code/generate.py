@@ -19,7 +19,7 @@ GLIBC = NF / "rocq/glibc"
 shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
 layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
-block_tables = runpy.run_path(str(HERE / "block-facts.py"))["block_tables"]
+block_definitions = runpy.run_path(str(HERE / "block-facts.py"))["block_definitions"]
 PRELUDE = GLIBC / "CodePrelude.v"
 
 
@@ -270,11 +270,10 @@ class Generator:
                 term = self.work / "source.term"
                 term.write_text(linked)
                 facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
-                for filename, text in source_tables(name, lower, facts, layout, NF).items():
-                    (output / filename).write_text(text)
                 block_facts = json.loads(run([NF / 'bin/nanofil', '--script', HERE / 'block-facts.pl',
                                               term, *fns.split()], env=self.env))
-                for filename, text in block_tables(name, block_facts).items():
+                for filename, text in source_tables(name, lower, facts, layout, NF,
+                                                    block_definitions(block_facts)).items():
                     (output / filename).write_text(text)
                 bs = [b for r in block_facts for b in r['blocks']]
                 accesses = [a for b in bs for a in b['footprint']]
@@ -379,6 +378,10 @@ def main():
             if not args.output and args.form == 'shared-prelude':
                 for pattern in ('*Src[0-9]*.v', '*SrcFiles.v', '*Blocks[0-9]*.v'):
                     stale.update(p for p in target.glob(pattern) if not (out / p.name).exists())
+                for path in out.glob('*Src.v'):
+                    old = target / (path.name.removesuffix('Src.v') + 'Blocks.v')
+                    if old.exists():
+                        stale.add(old)
             # Only numbered slices are exclusively owned by a slicer.
             for prefix in (() if args.output else ("HiAtexit", "Getopt")):
                 if any(p.name.startswith(prefix + "Code") for p in generated):

@@ -72,13 +72,14 @@ analysis. It covers reachable natural loops, not every irreducible cycle.
 
 Changing a function's blocks can leave old labels in its source tables.
 The sidecar rejects those labels during compilation. One `labels_valid`
-lemma uses `vm_compute` to check every function and both label tables in
+lemma uses `vm_compute` to check every function and all label tables in
 the fixture. It reuses the code fixture's decoded module when available;
 otherwise, the sidecar decodes the module once for all its tables.
 Lazy projection extracts block labels before the boolean computation, so
 the VM does not compile the decoded instruction bodies for this check.
-Large fixtures put their table definitions in numbered source slices.
+Large fixtures put their table definitions in numbered source slices of about 100 KB.
 The main sidecar includes those definitions and performs the single membership check.
+Source and block facts share these slices, so only the main sidecar imports the decoded module.
 The check does not establish that a source location or C name is accurate.
 The sidecars contain definitions and computed proofs, with no axioms.
 
@@ -114,8 +115,8 @@ test before its capture checks.
 
 An executor can forget a temporary once no later block can read it.
 Doing so only weakens its claim about the symbolic environment.
-Each fixture's `<Name>Blocks.v` records which values remain live at each
-block boundary, under the same function module names as the source sidecar.
+Each fixture's `<Name>Src.v` records which values remain live at each
+block boundary, in the same function modules as its names and locations.
 
 A block may select a different value from each incoming branch.
 Its phi arguments are uses on those edges, while phi destinations are definitions at entry.
@@ -139,11 +140,11 @@ A proof may use these hints to choose candidate memory regions,
 but it must justify each access without trusting them.
 
 Compilation rejects labels that are not blocks of the decoded function.
-The `labels_valid` lemma performs this check once per fixture, using the
-source sidecar's block labels. The generator projects labels before compiling
+The shared `labels_valid` lemma performs this check once per fixture, using
+the decoded module's block labels. The generator projects labels before compiling
 the membership computation, so temporary sets and access records stay out
 of its VM code. Large fixtures split definitions into numbered files by
-size and function count, while the main file retains the single check.
+size, while the main file retains the single check.
 
 The generator reports block counts, liveness entries, accesses and resolved roots.
 `test-block-facts.py` checks phi edges, local objects, byte widths and the

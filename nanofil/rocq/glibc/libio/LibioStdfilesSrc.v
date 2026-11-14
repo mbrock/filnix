@@ -1,13 +1,15 @@
 (** These tables connect checked function bodies to C declarations and source lines.
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
+    Live sets and memory footprints guide execution but cannot justify a memory access.
     Computation checks that every recorded block label belongs to the decoded function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
-From Stdlib Require Import String List Bool NArith.
+From Stdlib Require Import String List Bool NArith ZArith.
 From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
+Open Scope Z_scope.
 
 
 From Glibc Require Import LibioStdfilesCode.
@@ -31,6 +33,21 @@ Definition temp_names : list (name * string) :=
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L2")].
 
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), []); ((TAtom "L2"), []); ((TAtom "L3"), [(TAtom "chk0"); (TAtom "pr.1")]); ((TAtom "L5"), [])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v1")]); ((TAtom "L2"), [(TAtom "chk0"); (TAtom "pr.1")]); ((TAtom "L3"), [(TAtom "v17")]); ((TAtom "L5"), [])].
+
+(** Each access records its instruction index, address, byte offset, optional width,
+    read and write flags, optional root temporary and optional offset from that root.
+    A local address names an invocation-local object, not a pointer temporary.
+    Variable-sized runtime accesses have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
+  [((TAtom "start"), []); ((TAtom "L2"), [(1%N, (TApp "tmp" [(TAtom "pr.1")]), (0), (Some 8), true, false, (Some (TAtom "pr.1")), (Some (0)))]); ((TAtom "L3"), [(0%N, (TApp "tmp" [(TAtom "pr.1")]), (0), (Some 8), true, false, (Some (TAtom "pr.1")), (Some (0))); (3%N, (TApp "tmp" [(TAtom "v13")]), (0), (Some 8), false, true, (Some (TAtom "v12")), (Some (184))); (5%N, (TApp "tmp" [(TAtom "pr.1")]), (0), (Some 8), true, false, (Some (TAtom "pr.1")), (Some (0)))]); ((TAtom "L5"), [])].
+
+
 End fn_glibc_stdfiles__IO_stdfiles_init.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
@@ -41,6 +58,10 @@ Definition source_blocks : list (string * option (list name)) := Eval lazy in
     | _ => None
     end)) ["glibc_stdfiles#_IO_stdfiles_init"].
 
+(** Projection keeps live sets and memory access records out of the membership computation. *)
+Definition table_labels : list (string * list name) := Eval lazy in
+  [("glibc_stdfiles#_IO_stdfiles_init", app (map fst fn_glibc_stdfiles__IO_stdfiles_init.block_src) (app (map fst fn_glibc_stdfiles__IO_stdfiles_init.live_in) (app (map fst fn_glibc_stdfiles__IO_stdfiles_init.live_out) (app (map fst fn_glibc_stdfiles__IO_stdfiles_init.footprint) (fn_glibc_stdfiles__IO_stdfiles_init.loop_heads)))))].
+
 (** One computation rejects missing functions and stale labels across all tables in this fixture. *)
 Lemma labels_valid :
   forallb (fun row =>
@@ -49,7 +70,7 @@ Lemma labels_valid :
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false
-  end) [("glibc_stdfiles#_IO_stdfiles_init", app (map fst fn_glibc_stdfiles__IO_stdfiles_init.block_src) fn_glibc_stdfiles__IO_stdfiles_init.loop_heads)] = true.
+  end) table_labels = true.
 Proof. vm_compute. reflexivity. Qed.
 
 End LibioStdfilesSrc.
