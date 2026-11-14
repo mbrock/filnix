@@ -378,4 +378,121 @@ Proof.
     iApply ("HK" with "[%] Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha Hcl Hs' HG HF HM Hli Hca Hstr"). exact Hp.
 Qed.
 
+(** ## The call as the program makes it
+
+    A program calls getopt_long by name with five arguments. Its vector
+    ends with a null cell that getopt never reads, and each word holds a
+    read-only string. The lemmas below build the frame of that call,
+    split the null cell off the vector and restore it afterwards, and
+    restate the rule for that frame. *)
+
+(** The call puts the count, the vector, the option string, the table
+    and the longind pointer into these names. *)
+Definition getopt_long_env (n av : Z) (p lo li : ptr) : env :=
+  put (TAtom "v8") (WPtr li) (put (TAtom "v6") (WPtr lo) (put (TAtom "v4") (WPtr p)
+    (put (TAtom "v2") (WPtr (mkPtr av (Obj av))) (put (TAtom "v0") (WInt n) [])))).
+
+(** The call frame enters the block named start with that environment. *)
+Lemma getopt_long_call_frame n av p lo li :
+  call_frame glibc_getopt_long [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li] =
+  Some (mkFrame glibc_getopt_long (getopt_long_env n av p lo li) [] None (Enter (TAtom "start") None)).
+Proof. reflexivity. Qed.
+
+(** A vector with its null cell holds the cells of the words and one more
+    cell after them. The rules of getopt own only the first part, so the
+    caller keeps the null cell aside and gets it back unchanged. *)
+Lemma argv_cells_null av ps :
+  ([∗ list] k ↦ q ∈ ps ++ [null], pcell av (8 * Z.of_nat k) q) ⊣⊢
+  argv_cells av ps ∗ pcell av (8 * Z.of_nat (List.length ps)) null.
+Proof. unfold argv_cells. rewrite big_sepL_app big_sepL_singleton Nat.add_0_r. reflexivity. Qed.
+
+(** A session keeps its index between zero and the count of words. *)
+Lemma getopt_session_index b r av ar ps i :
+  getopt_session b r av ar ps i -∗ ⌜0 <= i <= Z.of_nat (List.length ps)⌝ ∗ getopt_session b r av ar ps i.
+Proof.
+  iIntros "[%Ha (%s & Hs & %Hb & Hc)]". unfold getopt_bounds in Hb.
+  iSplit; [iPureIntro; lia|]. iSplit; [done|]. iExists s. iSplitL "Hs"; [done|]. iSplit; [done | iExact "Hc"].
+Qed.
+
+(** A program can call getopt_long by name safely. The frame cf is the
+    one that the five arguments build. The program lends its vector with
+    the null cell and the strings of the words, and it gets them back in
+    the same form over the reordered words. Everything else is as in the
+    rule above. *)
+Lemma wp_getopt_long_str_call cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+    (G : iProp Σ) T fp dom se sereg mid mid' pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F
+    pfx7 pxs7 pfx0 pxs0 penv c Φ :
+  call_frame glibc_getopt_long
+    [WInt (Z.of_nat (List.length ps)); WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li] = Some cf ->
+  find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal) ->
+  find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r) ->
+  lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr b (Obj b)) ->
+  lookup (TAtom "optind") (ge_globals ge) = Some (mkPtr oi (Obj oi)) ->
+  lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)) ->
+  lookup (TAtom "optarg") (ge_globals ge) = Some (mkPtr oa (Obj oa)) ->
+  lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)) ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < oi -> oi + 4 <= r_end roi -> r_end roi <= 2 ^ 48 ->
+  0 < oe -> oe + 4 <= r_end roe -> r_end roe <= 2 ^ 48 ->
+  0 < oa -> oa mod 8 = 0 -> oa + 8 <= r_end roa -> r_end roa <= 2 ^ 48 ->
+  0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
+  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some pfx7 ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx0 ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
+  Z.of_nat (List.length ps) < 2 ^ 31 - 1 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  str_code (drop (opt_skip os) os) los c ->
+  copy_in_view b r av ar ps i err -∗
+  live oi roi -∗ int_cell oi 0 i -∗ live oe roe -∗ int_cell oe 0 err -∗
+  live oa roa -∗ pcell oa 0 a0 -∗ live oo roo -∗ int_cell oo 0 c0 -∗
+  word_string DfracDiscarded p os -∗ G -∗ liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live av ar -∗ ([∗ list] k ↦ q ∈ ps ++ [null], pcell av (8 * Z.of_nat k) q) -∗
+  ([∗ list] q ∈ ps, ∃ s, word_string DfracDiscarded q s) -∗ word_string DfracDiscarded pdd sdd -∗
+  opt_table lo los -∗ word_string DfracDiscarded pfx7 pxs7 -∗ word_string DfracDiscarded pfx0 pxs0 -∗
+  flags_own F -∗ M -∗ longind_own li -∗
+  (∀ x i' c' a' ps', ⌜Permutation ps ps' /\ 0 <= x < 2 ^ 32⌝ -∗ getopt_session b r av ar ps' i' -∗
+     live oi roi -∗ int_cell oi 0 i' -∗ live oe roe -∗ int_cell oe 0 err -∗
+     live oa roa -∗ pcell oa 0 a' -∗ live oo roo -∗ int_cell oo 0 c' -∗
+     live av ar -∗ ([∗ list] k ↦ q ∈ ps' ++ [null], pcell av (8 * Z.of_nat k) q) -∗
+     ([∗ list] q ∈ ps', ∃ s, word_string DfracDiscarded q s) -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
+     arg_cap a' -∗
+     arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
+  WP (ERun cf : gexpr) {{ Φ }}.
+Proof.
+  intros Hcf. rewrite getopt_long_call_frame in Hcf. injection Hcf as <-. intros.
+  iIntros "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli HK".
+  iDestruct (argv_cells_null with "Hcl") as "[Hcl Hnull]".
+  iApply (wp_getopt_long_str (getopt_long_env (Z.of_nat (List.length ps)) av p lo li) (Z.of_nat (List.length ps))
+            av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M
+            f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ
+            with "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli [Hnull HK]");
+    try (reflexivity || assumption || lia).
+  iIntros (x i' c' a' ps' [Hp Hx]) "Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha Hcl Hs' HG HF HM Hli Hca Hstr".
+  iEval (rewrite (Permutation_length Hp)) in "Hnull".
+  iApply ("HK" with "[%] Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha [Hcl Hnull] Hs' HG HF HM Hli Hca Hstr");
+    [split; assumption|].
+  iApply argv_cells_null. iSplitL "Hcl"; [iExact "Hcl" | iExact "Hnull"].
+Qed.
+
 End long_str.
