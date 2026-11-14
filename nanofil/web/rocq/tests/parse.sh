@@ -280,6 +280,8 @@ End Left.
 Module Right : Value.
   Definition value := 5.
 End Right.
+Module Sealed : Value := Left.
+Definition sealed_value : nat := Sealed.value.
 Module Type Sum (A B : Value).
   Parameter total : nat.
   Parameter correct : total = A.value + B.value.

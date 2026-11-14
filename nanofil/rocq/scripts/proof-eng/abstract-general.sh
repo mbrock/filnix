@@ -4,11 +4,10 @@
 #
 #   . env.sh; abstract-general.sh TREE OUT [JOBS]    # default: 8 jobs
 #
-# TREE is a flat tree that build.sh has already compiled: the output of
-# apply.sh, or rocq/glibc of main after the first cutover. OUT must not
-# exist. The check copies the sources of TREE to OUT/glibc, replaces the
-# one runtime binding of Fix.v by "Declare Module R : Runtime.", and
-# compiles every file with build.sh.
+# TREE has the sealed binding of Fix.v and concrete objects previously
+# compiled with a transparent binding. OUT must not exist. The check
+# copies the sources of TREE to OUT/glibc, replaces the one runtime
+# binding by "Declare Module R : Runtime.", and compiles with build.sh.
 #
 # TREE/runtime-concrete.txt lists the files that need the interpreter's
 # runtime, one path per line, with "#" comments. The check fails when
@@ -43,9 +42,9 @@ mkdir -p "$out"
 out=$(cd "$out" && pwd)
 cp -r "$tree" "$out/glibc"
 find "$out/glibc" \( -name '*.vo*' -o -name '*.glob' -o -name '.*.aux' \) -delete
-binding='Module R := InterpRuntime.'
+binding='Module R : Runtime := InterpRuntime.'
 if [ "$(grep -cxF "$binding" "$out/glibc/Fix.v")" != 1 ]; then
-  echo "abstract-general: Fix.v must bind the interpreter runtime exactly once" >&2
+  echo "abstract-general: Fix.v must seal the interpreter runtime exactly once" >&2
   exit 2
 fi
 sed -i "s/^$binding\$/Declare Module R : Runtime./" "$out/glibc/Fix.v"

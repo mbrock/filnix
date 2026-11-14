@@ -292,7 +292,7 @@ tree([I|Is]) --> item(I), !, tree(Is).
 tree([]) --> [].
 
 item(I) --> [sent(S)], { S \= endm(_, _) }, !,
-    (   { S = module(_, _, _, _, Open), Open \= defined(_) }
+    (   { S = module(_, _, _, _, Open), \+ functor(Open, defined, _) }
     ->  tree(Body), ( [sent(E)], { E = endm(_, _) } -> [] ; { E = none } ),
         { I = block(S, Body, E) }
     ;   { opens_proof(S) }
@@ -377,9 +377,10 @@ vernac(P, module(P, Kind, N, Bs, Open)) -->
     tk(id('Module')), !, ( tk(id('Type')) -> { Kind = module_type } ; { Kind = module } ),
     name(N), binders0(Bs),
     (   tk(sym(':=')) -> words(W), { Open = defined(W) }
-    ;   tk(sym(':')), name(n(_, Sig)), names0(Ns), \+ peek(_) ->
-        { maplist([n(_, A), A]>>true, Ns, Args),
-          ( Args = [] -> Open = open(Sig) ; Open = open(Sig, Args) ) }
+    ;   tk(sym(':')), name(n(_, Sig)), names0(Ns) ->
+        { maplist([n(_, A), A]>>true, Ns, Args) },
+        ( tk(sym(':=')) -> words(W), { Open = defined(W, signature(Sig, Args)) }
+        ; \+ peek(_), { Args = [] -> Open = open(Sig) ; Open = open(Sig, Args) } )
     ;   { Open = open }
     ).
 vernac(P, module(P, section, N, [], open)) --> tk(id('Section')), !, name(N).

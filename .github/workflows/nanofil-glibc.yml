@@ -22,6 +22,8 @@ on:
       - nanofil/tests/watch.py
       - nanofil/tests/rocq_time.py
       - nanofil/tests/rocq_time_test.py
+      - nanofil/tests/rocq_runtime_audit.py
+      - nanofil/tests/rocq_reject.py
       - nanofil/web/rocq/rocq_syntax.pl
       - nanofil/web/rocq/tests/parse.sh
       - nanofil/web/rocq/tests/reprint.pl
@@ -88,7 +90,7 @@ jobs:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           { nix eval --raw .#checks.x86_64-linux.nanofil-glibc --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ builtins.attrValues g.abstractHello.vo ++ [ g.abstractHello g.probes g ]))'; echo
+              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ builtins.attrValues g.concreteVo ++ builtins.attrValues g.sealedRejected ++ [ g.probes g ]))'; echo
             # The Rocq 9.3 package set (nanofil/nix/rocq-packages.nix), which no
             # public cache has.
             nix eval --raw --impure --expr 'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };
@@ -104,9 +106,9 @@ jobs:
             glibc-units.log
           retention-days: 3
 
-  # The push check compiles Hello's files against an abstract runtime.
-  # This one compiles every file that rocq/glibc/runtime-concrete.txt does
-  # not list, and requires each listed file to be rejected.
+  # The push check seals the runtime and rebuilds the concrete closure.
+  # This job also removes the implementation and audits assumptions for
+  # every top-level proof, including Hello's exact twelve-field list.
   abstract:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
@@ -133,7 +135,7 @@ jobs:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           { nix eval --raw .#checks.x86_64-linux.nanofil-glibc-abstract --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.vo ++ builtins.attrValues g.rejected ++ [ g ]))'; echo; } |
+              (map (d: d.outPath) (builtins.attrValues g.vo ++ builtins.attrValues g.rejected ++ builtins.attrValues g.abstractAudit ++ [ g.abstractHello g ]))'; echo; } |
             while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
       - uses: actions/upload-artifact@v4
         if: always()

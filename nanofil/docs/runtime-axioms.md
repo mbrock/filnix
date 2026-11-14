@@ -43,15 +43,18 @@ test the primitive boundary, not G1 for glibc code.
 
 Most glibc proofs should work with any runtime that meets the interface.
 They should not depend on the interpreter's choice to represent allocator
-states as integers. The planned default enforces this by hiding the
-interpreter's definitions behind the runtime signature. In `Fix.v`, the
-binding becomes `Module R : Runtime := InterpRuntime.`
+states as integers. The default enforces this by hiding the interpreter's
+definitions behind the runtime signature. In `Fix.v`, the binding is
+`Module R : Runtime := InterpRuntime.`
 
 The abstract build supplies no implementation at all: it declares
 `R : Runtime` and compares Rocq's reported assumptions with an explicit
-allowlist. A separate build keeps the interpreter's definitions visible
-for the concrete layer below. This binding change follows the campaign's
-second cutover; this page does not claim it has landed yet.
+allowlist for every top-level proof recorded in the compiled files.
+It also retains Hello's exact twelve-field comparison. These abstract
+checks run twice daily. On each push, the build checks the general files
+with the sealed runtime and requires genuine compiler errors for listed
+concrete files. It then compiles the concrete layer's whole import
+closure again with the interpreter's definitions visible.
 
 Each runtime promise needs an entry in the table below. An axiom's row
 must link to an existing native probe. A derived lemma can instead name
@@ -76,7 +79,7 @@ In Rocq 9.3, the checker also lists proved lemmas when a sealed module
 hides their bodies. The repository's
 [sealed-module reproduction](../rocq/scripts/proof-eng/rocq93/rocqchk-sealed/run.sh)
 shows this over-reporting alongside a Closed `Print Assumptions` result.
-The planned sealed `Fix.R` will hide proved runtime lemmas in the same way.
+The sealed `Fix.R` hides proved runtime lemmas in the same way.
 
 The native source references below describe the pinned staging Fil-C:
 mbrock/fil-c at
@@ -222,7 +225,7 @@ exact integer allocator cursor 4294969872 where the logic expects a
 runtime state. Its initialized-entry statement records preparation of
 that same interpreter image. These describe a prepared interpreter
 image, not arbitrary implementations of `Runtime`.
-Their statements remain unchanged. The sealed-default design compiles
+Their statements remain unchanged. The default build compiles
 this file's import closure again with a transparent `Fix.v`; it does not
 make every glibc proof transparent to accommodate this one theorem.
 

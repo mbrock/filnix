@@ -1236,6 +1236,8 @@ def check_evidence(tree: Path, refresh_review=False):
     changed, pairs, guards = set(), {}, {}
     added, wrappers, inventory = set(), set(), set()
     hashes = {}
+    # Both transparent and sealed implementations require Closed reports;
+    # only a declaration without an implementation permits runtime axioms.
     abstract = 'Declare Module R : Runtime' in normalized(tokens((tree / 'Fix.v').read_text()))
     abstract_compiled = {str(p.relative_to(tree)) for p in tree.rglob('*.v') if p.with_suffix('.vo').exists()}
     for line in manifest.read_text().splitlines():

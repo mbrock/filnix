@@ -1,7 +1,7 @@
 (** This file names the one runtime and logic instance used by the glibc proofs.
     Each proof imports these modules instead of creating its own logic instance. *)
 From Nanofil Require Import Runtime Logic.
-Module R := InterpRuntime.
+Module R : Runtime := InterpRuntime.
 Module LG0 := Logic R.
 
 (** A memory rule must use the caller's description of the world. This mode

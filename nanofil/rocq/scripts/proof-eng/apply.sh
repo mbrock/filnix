@@ -30,9 +30,9 @@ mkdir -p "$(dirname "$dst")"
 cp -r "$src" "$dst"
 find "$dst" \( -name '*.vo*' -o -name '*.glob' -o -name '.*.aux' \) -delete
 if [ "${PE_RUNTIME:-interp}" = abstract ] && [ -f "$dst/Fix.v" ]; then
-  binding='Module R := InterpRuntime.'
+  binding='Module R : Runtime := InterpRuntime.'
   if [ "$(grep -cxF "$binding" "$dst/Fix.v")" != 1 ]; then
-    echo "apply: Fix.v must bind the interpreter runtime exactly once" >&2
+    echo "apply: Fix.v must seal the interpreter runtime exactly once" >&2
     exit 2
   fi
   sed -i "s/^$binding\$/Declare Module R : Runtime./" "$dst/Fix.v"
