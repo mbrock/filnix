@@ -2149,7 +2149,7 @@ those remain independent integration obligations. In particular they do
 not introduce a stream token or duplicate the authoritative stdout FIFO.
 
 A glibc proof file cannot build a second machine by accident. The files
-under [rocq/glibc](../rocq/glibc) are not functors, and
+under `rocq/glibc` are not functors, and
 [Fix.v](../rocq/glibc/Fix.v) applies `Logic` once for all of them. No
 other glibc file applies `Logic` or `ExternalMachine`, so every glibc
 proof states its triples over the machine of that one instance.

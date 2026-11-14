@@ -994,7 +994,7 @@ the same instance.
 **The glibc proofs share one instance.** A proof of one glibc function
 builds on what other files prove about the functions it calls. Rocq
 accepts that only when both files state their results over the same
-instance of the logic. The files under [rocq/glibc](../rocq/glibc)
+instance of the logic. The files under `rocq/glibc`
 therefore share one instance, and they are ordinary files, not functors.
 
 So that every file agrees on the instance, one file builds it and all
