@@ -1,8 +1,10 @@
 (** The parser's private state must come from real storage rather than an
     assumed library invariant. This file checks the zeroed object in the
-    linked getopt image and constructs ownership of all its accessed fields.
-    Argument storage, diagnostics and the parser transition remain separate
-    obligations; this is not a complete program-entry theorem. *)
+    image that the loader builds for the getopt module alone, and it
+    constructs ownership of all the fields the parser reads. The same
+    fields at any other base describe the object wherever a linker puts
+    it. Argument storage, diagnostics and the parser transition remain
+    separate obligations; this is not a complete program-entry theorem. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -36,7 +38,7 @@ Proof.
   destruct (initial_memory getopt_module) as [[g m]|]; inversion H; reflexivity.
 Qed.
 
-(** The private parser object occupies 56 bytes in the actual linked image. *)
+(** The private parser object occupies 56 bytes in the getopt module's own image. *)
 Definition getopt_private_region : region := mkRegion 65584 65640 GlobalData Live.
 
 (** The symbol and region identify the same private storage. *)
@@ -70,6 +72,35 @@ Proof.
 Qed.
 
 
+(** ## The zeroed object at any base
+
+    A linked program may put the parser's object at another address. The
+    fields keep their offsets there, so one list describes the zeroed
+    object at every base, and the loader's object is its instance. *)
+
+(** The zeroed object at base b with region r has these fields. *)
+Definition getopt_zero_ps (b : Z) (r : region) : list (piece * pval) :=
+  concat [[(PLive b, VLive r)];
+    byte_ps b 0 (le_bytes 0 4); byte_ps b 4 (le_bytes 0 4);
+    byte_ps b 8 (le_bytes 0 4);
+    (PAux b 16, VAux CNone) :: cell b 16 0;
+    byte_ps b 24 (le_bytes 0 4);
+    (PAux b 32, VAux CNone) :: cell b 32 0;
+    byte_ps b 40 (le_bytes 0 4); byte_ps b 44 (le_bytes 0 4);
+    byte_ps b 48 (le_bytes 0 4)].
+
+(** The loader's object is the zeroed object at its own base. *)
+Lemma getopt_private_zero_ps : getopt_private_pieces = getopt_zero_ps 65584 getopt_private_region.
+Proof. reflexivity. Qed.
+
+(** The field keys differ at every base, because only their offsets vary. *)
+Lemma getopt_zero_ps_distinct b r : NoDup (getopt_zero_ps b r).*1.
+Proof.
+  apply (NoDup_fmap_1 (fun p => match p with
+    | PByte _ o => 2 * o + 1 | PAux _ o => 2 * o + 2 | _ => 0 end)).
+  apply (bool_decide_unpack _). vm_compute. exact I.
+Qed.
+
 (** The session module supplies the private-field representation. *)
 Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
@@ -85,6 +116,18 @@ Proof.
   iIntros "(Hl & Hi & He & Ho & Ha & Hz & Hn & Hr & Hf & Ht & _)".
   rewrite /getopt_state_own /getopt_zero /=.
   iSplitR; [iPureIntro; vm_compute; intuition congruence|].
+  iFrame "Hl Ha Hn". rewrite /int_cell /int_bytes /bytes.
+  iFrame. repeat iSplit; iPureIntro; lia.
+Qed.
+
+(** The zeroed fields at an aligned base give the parser its fresh state. *)
+Lemma getopt_zero_ps_own b r : 0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  pts (getopt_zero_ps b r) ⊢ getopt_state_own b r getopt_zero.
+Proof.
+  intros Hb H8 He Hr. rewrite /getopt_zero_ps /concat !pts_app.
+  iIntros "(Hl & Hi & He & Ho & Ha & Hz & Hn & Hr & Hf & Ht & _)".
+  rewrite /getopt_state_own /getopt_zero /=.
+  iSplitR; [iPureIntro; lia|].
   iFrame "Hl Ha Hn". rewrite /int_cell /int_bytes /bytes.
   iFrame. repeat iSplit; iPureIntro; lia.
 Qed.

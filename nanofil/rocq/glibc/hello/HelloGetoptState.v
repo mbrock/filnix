@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     the public index restarts by being zero, or zeroed storage before the
     first call. The lemmas below show that each such state lets the
     wrapper copy the public index in, that a session after a call is such
-    a state, and that the loader's zeroed object gives one. *)
+    a state, and that the zeroed object gives one wherever it lies. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -62,6 +62,27 @@ Lemma hello_getopt_state_loader av ar ps i :
 Proof.
   intros. rewrite getopt_private_own. by apply hello_getopt_state_zero.
 Qed.
+
+(** The zeroed object at any aligned base gives such a state, with any
+    index within the count. *)
+Lemma hello_getopt_state_pieces b r av ar ps i :
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  1 <= Z.of_nat (length ps) < 2 ^ 31 -> 0 <= i <= Z.of_nat (length ps) ->
+  pts (getopt_zero_ps b r) ⊢ hello_getopt_state b r av ar ps i.
+Proof.
+  intros. etrans; [apply getopt_zero_ps_own; assumption | apply hello_getopt_state_zero; assumption].
+Qed.
+
+(** Hello promises counts up to 2147483647, and the zeroed object admits
+    that count with any index from zero to it. A count of 2147483648 lies
+    outside the bound, so the route does not reach a wrapped index. *)
+Lemma hello_getopt_state_pieces_ctl b r av ar ps i :
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  Z.of_nat (length ps) = 2147483647 -> 0 <= i <= 2147483647 ->
+  ~ (1 <= 2147483648 < 2 ^ 31) /\ (pts (getopt_zero_ps b r) ⊢ hello_getopt_state b r av ar ps i).
+Proof. intros. split; [lia|]. apply hello_getopt_state_pieces; lia. Qed.
 
 End state.
 
