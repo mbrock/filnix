@@ -794,10 +794,14 @@ item_(notation(F-T, Kw, S, E, Mods)) --> !,
                        ( { Mods == [] } -> [] ; " ", el(span, "rq-mods", esc_words(Mods)) ) ))),
     notes_upto(T).
 %  Module M := F A, a functor applied, as one line.
-item_(module(F-T, Kind, n(_, N), Bs, defined([M|As]))) --> !,
-    { nb_getval(rq_mod, Mod0), qualify(Mod0, N, Q), module_kw(Kind, KwS) },
+item_(module(F-T, Kind, n(_, N), Bs, Open)) -->
+    { ( Open = defined([M|As]) -> Signature = none ; Open = defined([M|As], Signature) ),
+      nb_getval(rq_mod, Mod0), qualify(Mod0, N, Q), module_kw(Kind, KwS) }, !,
     el(div, "clause rq-module-def", [id=Q],
-       el(div, head, ( line_link(F), kw(KwS), " ", el(span, "module-name", esc(N)), binders_(Bs, []), "\u00A0", defeq, " ",
+       el(div, head, ( line_link(F), kw(KwS), " ", el(span, "module-name", esc(N)), binders_(Bs, []),
+                       ( { Signature = signature(Sig, Args) } ->
+                           "\u00A0", el(span, "op wide colon", ":"), " ", name_ref(Sig, []), seq(Args, module_arg)
+                       ; [] ), "\u00A0", defeq, " ",
                        name_ref(M, []), seq(As, module_arg) ))),
     notes_upto(T).
 %  Print Assumptions lt_spec, Extract Constant Z.of_nat => "…": the
