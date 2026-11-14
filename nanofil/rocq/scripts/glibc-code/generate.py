@@ -18,6 +18,7 @@ NF = HERE.parents[2]
 GLIBC = NF / "rocq/glibc"
 shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
+layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
 PRELUDE = GLIBC / "CodePrelude.v"
 
 
@@ -171,6 +172,22 @@ class Generator:
         self.survey = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.survey)
         self.compiled = {}
+        self.layout_files = {}
+
+    def layouts(self, paths, functions):
+        specs = []
+        for obj, unit in units(paths):
+            source = self.capture / (unit + '.i')
+            if source not in self.layout_files:
+                env = self.env.copy()
+                extra, flags = self.survey.cc_options(Path(str(source)[:-2] + '.cmd').read_text())
+                env.update(extra)
+                path = self.work / f'layout{len(self.layout_files)}.term'
+                path.write_text(run([NF / 'bin/nanofil', *flags, 'cc-layouts', source],
+                                    cwd=NF / 'src', env=env))
+                self.layout_files[source] = path
+            specs.append(f'{obj}={self.layout_files[source]}')
+        return json.loads(run([self.swipl, HERE / 'layout.pl', ','.join(functions), *specs], env=self.env))
 
     def compile(self, source, mode, captured=True):
         key = (str(source), mode, captured)
@@ -238,6 +255,12 @@ class Generator:
             unit_rows = "- " + paths if paths else cfg.get("units", "")
             lower = fixture_prefix(name)
             source = program[0] if program else ""
+            if self.sources and cfg.get('layouts', False):
+                layouts = self.layouts(unit_rows, fns.split())
+                (output / (name + 'Layout.v')).write_text(layout_tables(name, layouts))
+                tags = {r['tag'] for r in layouts if not r.get('missing', False)}
+                missing = sorted({r['tag'] for r in layouts if r.get('missing', False)} - tags)
+                print(f'{name}Layout: {len(tags)} record entries; unavailable {missing}', flush=True)
             cache_key = (roots, unit_rows, source)
             if cache_key not in linked_cache:
                 linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)

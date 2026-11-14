@@ -1,4 +1,5 @@
 layout = "libio"
+layouts = true
 ctors = true
 roots = "puts fputs __fpending ferror fclose exit atexit _exit __close_nocancel_nostatus"
 units = '''

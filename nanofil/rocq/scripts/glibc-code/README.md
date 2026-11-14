@@ -111,6 +111,41 @@ selects the right context records. It checks site order, missing locations,
 recorded names and loop headers without a capture. The test driver runs this
 test before its capture checks.
 
+## Use captured layouts
+
+The compiler's `cc-layouts FILE` command exposes the completed C layouts
+without changing `cc-ir`, checked terms or assembly output. The generator
+uses this command for manifests with `layouts = true`; libio enables it first.
+Each fixture receives a `<Name>Layout.v` beside its source tables.
+
+The command prints `layouts(Records, Uses)` as a Prolog term. A record is
+`record(Id, Names, def(Kind, Members, Size, Align), Fields)`. Its definition
+comes directly from the completed type environment. Each field is
+`field(Name, CType, Offset, Size, Align, Bits)`, using `member_layout/6`
+and the member type's size and alignment. Flexible arrays have zero size.
+Bit-fields retain their bit positions and widths in the Prolog output;
+their byte size and alignment describe the declared type, not just the occupied bits.
+Packed offsets and record alignments remain those of the completed definition.
+Forward declarations use `incomplete` instead of a definition and have no fields.
+
+Function uses start with the types in existing context records and follow
+record member types, including pointer targets. The generator selects the
+fixture's functions before merging layouts and rejects conflicting named
+layouts from different translation units. Tags use names such as
+`struct _IO_FILE`; anonymous typedefs use names such as `typedef _IO_lock_t`.
+An unnamed record uses its object name, kind and translation-unit record ID.
+Forward declarations without a complete definition have no layout table.
+The `unavailable` list identifies their tags when no selected unit supplies a definition.
+
+The Gallina `records` table gives each record's size and alignment. Its
+`fields` table gives each tag, field, byte offset, type size and type alignment.
+The `field_offset` lookup returns `None` for a missing entry.
+`libio/FileLayoutChecks.v` compares the existing offset constants with these
+entries by computation, including all twelve instances of `off_ptr`.
+It also checks the jump-table slots and stream-object size.
+Neither the invariants nor existing proofs change, and no soundness theorem
+takes a generated layout table as a premise.
+
 ## Driver compatibility
 
 All eight driver paths still accept `[--update] [GLIBC_PP]`. Checks return 0

@@ -28,6 +28,7 @@
 :- use_module('../src/c_lex').
 :- use_module('../src/c_parse').
 :- use_module('../src/c_lower').
+:- use_module('../src/c_layouts').
 :- use_module('../src/c_types').
 :- use_module('../src/asm').
 :- use_module('../src/filc_amd64').
@@ -47,6 +48,31 @@
 :- dynamic(test/1).
 :- discontiguous(test/1).
 :- initialization(main).
+
+% Asymmetric fields expose padding, promoted anonymous members and flexible arrays.
+test(c_record_layouts) :-
+    c_tokens("struct S { char c; int n; union { short a; long b; }; char tail[]; };
+              struct __attribute__((packed)) P { char c; long n; };
+              typedef struct { int lock; int cnt; void *owner; } Lock;
+              struct Opaque;
+              int f(struct S *p, struct Opaque *opaque) { return p->n; }", 'layouts.c', Ts),
+    c_parse(Ts, C), c_module(C, M, _, Env),
+    module_layouts(Env, M, layouts(Rows, Uses)),
+    member(record(S, SN, def(struct, _, 16, 8), SF), Rows),
+    memberchk(tag(struct, 'S'), SN),
+    memberchk(field(c, char, 0, 1, 1, none), SF),
+    memberchk(field(n, int, 4, 4, 4, none), SF),
+    memberchk(field(a, short, 8, 2, 2, none), SF),
+    memberchk(field(b, long, 8, 8, 8, none), SF),
+    memberchk(field(tail, array(char, none), 16, 0, 1, none), SF),
+    member(record(_, PN, def(struct, _, 9, 1), PF), Rows),
+    memberchk(tag(struct, 'P'), PN), memberchk(field(n, long, 1, 8, 8, none), PF),
+    member(record(_, LN, def(struct, _, 16, 8), LF), Rows),
+    memberchk(typedef('Lock'), LN), memberchk(field(owner, ptr(void), 8, 8, 8, none), LF),
+    memberchk(uses(f, Ids), Uses), memberchk(S, Ids),
+    member(record(U, [], def(union, _, 8, 8), _), Rows), memberchk(U, Ids),
+    member(record(O, ON, incomplete, []), Rows), memberchk(tag(struct, 'Opaque'), ON),
+    memberchk(O, Ids).
 
 % Run every test in file order, report, and exit 0 if all passed.
 main :-

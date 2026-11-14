@@ -74,7 +74,7 @@
     | Ebs | eightbytes, `eb(Offset, Bytes, Class)` |
     | S0 ... S | `s(Env, Chunks, End)` in the static initializer predicates |
 */
-:- module(c_lower, [c_module/2, c_module/3, c_toplevel_asm/2]).
+:- module(c_lower, [c_module/2, c_module/3, c_module/4, c_toplevel_asm/2]).
 
 :- use_module(library(lists)).
 :- use_module(library(assoc)).
@@ -102,7 +102,10 @@ c_module(Items, Module) :- c_module(Items, Module, _).
 %  Module whose definition has the attribute A, always_inline or
 %  noinline. Only -O's inlining reads them (main.pl, inline.pl): the IR
 %  has no field for them, so they are not in Module.
-c_module(Items00, module(Funcs), Attributes) :-
+c_module(Items, Module, Attributes) :- c_module(Items, Module, Attributes, _).
+
+% The fourth argument exposes the completed type environment to cc-layouts.
+c_module(Items00, module(Funcs), Attributes, Env) :-
     empty_env(Env0),
     builtin_declarations(Builtins),
     append(Builtins, Items00, ItemsB),

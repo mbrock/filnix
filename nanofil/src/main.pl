@@ -203,6 +203,7 @@
 :- use_module(c_pp).
 :- use_module(c_parse).
 :- use_module(c_lower).
+:- use_module(c_layouts).
 :- use_module(opt).
 :- use_module(promote).
 :- use_module(pizlonate).
@@ -760,6 +761,12 @@ command(Opt0, ['cc-ir', File]) :-
     inline_attributes(Opt0, Attributes, Opt),
     optimize(Opt, Module0, Module),
     print_module(Module).
+command(_, ['cc-layouts', File]) :-
+    c_file_tokens(File, Tokens),
+    ( c_parse(Tokens, Items) -> true ; throw(nanofil_error('C parse failed')) ),
+    once(c_module(Items, Module, _, Env)),
+    module_layouts(Env, Module, Layouts),
+    write_canonical(Layouts), write('.'), nl.
 command(Opt, [run, File, Fn|ArgAtoms]) :-
     file_module(File, Module0),
     optimize(Opt, Module0, Module),
