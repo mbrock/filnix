@@ -6,8 +6,10 @@ Nixpkgs 26.11 packages fontconfig 2.18.3, whose clang-formatted fcint.h no
 longer matches the extracted 2.15.0 port (2.18 also computes offsets
 through uintptr_t). The change is otherwise identical: serialized offsets
 are converted through FcPtrToOffsetImpl and FcOffsetToPtrImpl so decoded
-pointers keep their capability. Replace this with the extracted patch once
-upstream ports a 2.18 release.
+pointers keep their capability. 2.18 passes an integer (the old leaves
+address in FcCharSetPutLeaf) as a base, so FcOffsetToPtr casts its base;
+FcOffsetToPtrImpl then finds the leaf in the pointer table. Replace this
+with the extracted patch once upstream ports a 2.18 release.
 
 diff --git a/src/fcfilc.c b/src/fcfilc.c
 new file mode 100644
@@ -67,7 +69,7 @@ index 0000000..ed5bff9
 +}
 +
 diff --git a/src/fcint.h b/src/fcint.h
-index 00f7053..fb994a8 100644
+index 00f7053..77b2c8a 100644
 --- a/src/fcint.h
 +++ b/src/fcint.h
 @@ -155,6 +155,9 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
@@ -89,7 +91,7 @@ index 00f7053..fb994a8 100644
  
  /* Given base address, offset and type, return a pointer */
 -#define FcOffsetToPtr(b, o, t)         ((t *)((uintptr_t)(b) + (ptrdiff_t)(o)))
-+#define FcOffsetToPtr(b, o, t)         ((t *)FcOffsetToPtrImpl (b, o))
++#define FcOffsetToPtr(b, o, t)         ((t *)FcOffsetToPtrImpl ((const void *)(b), o))
  
  /* Given base address, encoded offset and type, return a pointer */
  #define FcEncodedOffsetToPtr(b, p, t)  FcOffsetToPtr (b, FcOffsetDecode (p), t)
