@@ -401,6 +401,7 @@ getopt/GetoptLongPfxAlloc.v
 hello/HelloGlibcJoin.v
 hello/HelloGlibcJoinIx.v
 hello/HelloGetoptCall.v
+hello/HelloGetoptStart.v
 hi_atexit/HiAtexitXsputnRules.v
 getopt/GetoptLongPfxSet.v
 hi_atexit/HiAtexitOutputState.v

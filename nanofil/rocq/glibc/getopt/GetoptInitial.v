@@ -101,6 +101,30 @@ Proof.
   apply (bool_decide_unpack _). vm_compute. exact I.
 Qed.
 
+(** ## The public flags
+
+    The parser also writes the public integers opterr and optopt. glibc
+    initializes opterr to 1 and optopt to the question mark, 63. One list
+    describes such an integer object at any base. *)
+
+(** The integer object at base b with region r holds v in its first four bytes. *)
+Definition int_global_ps (b : Z) (r : region) (v : Z) : list (piece * pval) :=
+  (PLive b, VLive r) :: byte_ps b 0 (le_bytes v 4).
+
+(** The getopt module's own image puts opterr and optopt at these objects. *)
+Lemma getopt_flag_layout :
+  Term.lookup (TAtom "opterr") getopt_globals = Some (mkPtr 65696 (Obj 65696)) /\
+  Term.lookup (TAtom "optopt") getopt_globals = Some (mkPtr 65760 (Obj 65760)) /\
+  object_region 65696 (m_regions getopt_memory) = Some (mkRegion 65696 65704 GlobalData Live) /\
+  object_region 65760 (m_regions getopt_memory) = Some (mkRegion 65760 65768 GlobalData Live).
+Proof. vm_compute. split_and!; reflexivity. Qed.
+
+(** Those objects hold glibc's initial values 1 and 63. *)
+Lemma getopt_flag_agrees : all_agree getopt_memory
+  (int_global_ps 65696 (mkRegion 65696 65704 GlobalData Live) 1 ++
+   int_global_ps 65760 (mkRegion 65760 65768 GlobalData Live) 63).
+Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
+
 (** The session module supplies the private-field representation. *)
 Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
@@ -130,6 +154,13 @@ Proof.
   iSplitR; [iPureIntro; lia|].
   iFrame "Hl Ha Hn". rewrite /int_cell /int_bytes /bytes.
   iFrame. repeat iSplit; iPureIntro; lia.
+Qed.
+
+(** The pieces of an integer object give the cell that the parser writes. *)
+Lemma int_global_own b r v : 0 <= v < 2 ^ 32 -> pts (int_global_ps b r v) ⊢ live b r ∗ int_cell b 0 v.
+Proof.
+  intros Hv. rewrite /int_global_ps (pts_app [_]). iIntros "[Hl Hb]".
+  iFrame "Hl". rewrite /int_cell /int_bytes /bytes. iFrame "Hb". iPureIntro. exact Hv.
 Qed.
 
 End resources.

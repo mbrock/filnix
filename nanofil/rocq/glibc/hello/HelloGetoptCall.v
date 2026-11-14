@@ -142,19 +142,27 @@ Context (Hsplit : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢
     runs. It leaves a session at the new optind, which is again a
     matching state, and a return of 103 leaves a string at optarg. *)
 
-(** glibc's getopt_long meets the loop's contract with the admissible
-    states of the parser's object. *)
-Lemma hello_getopt_ix av ar : loop_getopt w0 ge o D av ar (hello_getopt_state gb greg av ar).
+(** With the borrowed resources in hand, glibc's getopt_long runs on an
+    admissible state and returns those resources with a new one. *)
+Lemma hello_getopt_lend av ar ps a i :
+  fn_triple w0 ge (TAtom "getopt_long")
+    [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av)); WPtr (sym_ptr ge "hello#str.69");
+     WPtr (sym_ptr ge "hello#parse_options.longopts.64"); WPtr null]
+    (hello_ro ge o ∗ hello_getopt_priv ∗ argv_own av ar ps ∗ ([∗ list] q ∈ ps, str_ro q) ∗
+     getopt_cells o a i ∗ hello_getopt_state gb greg av ar ps i)%I
+    (fun r => ∃ code ps' a' i', ⌜r = Ret (WInt code) /\ 0 <= code < 2 ^ 32 /\ Permutation ps ps' /\
+                                 0 <= i' <= Z.of_nat (length ps)⌝ ∗
+                hello_getopt_priv ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗
+                hello_getopt_state gb greg av ar ps' i' ∗ (if code =? 103 then str_ro a' else True))%I.
 Proof.
-  intros ps a i. exists glibc_getopt_long. split; [exact Hgl|].
+  exists glibc_getopt_long. split; [exact Hgl|].
   split; [eexists; apply getopt_long_call_frame|]. intros fr Φ Hfr.
   destruct (hello_los_facts n1 n2 n3 n4 []) as (Hfl & Hlos & Hneg & Hcode).
   pose proof (hy_oa _ _ Hy) as Hoa. pose proof (hy_oa_at _ _ Hy) as (_ & Hoa8 & Hoae & Hoar).
   pose proof (hy_oi _ _ Hy) as Hoi. pose proof (hy_oi_at _ _ Hy) as (_ & Hoie & Hoir).
   pose proof (hy_se _ _ Hy) as Hse. pose proof (hy_se_at _ _ Hy) as (_ & Hse8 & Hsee & Hser).
-  iIntros "(#Hro & Hio & Hpv & (%Hav & Havl & Hcl) & #Hps & (Hoal & Hoac & Hoil & Hoic) & HS) HQ".
+  iIntros "(#Hro & Hp & (%Hav & Havl & Hcl) & #Hps & (Hoal & Hoac & Hoil & Hoic) & HS) HQ".
   destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
-  iDestruct (Hsplit with "[$Hio $Hpv]") as "[Hp Hback]".
   iDestruct "Hp" as (err c0) "(Hoel & Hoec & Hool & Hooc & HG & HM & #Hos & #Ht & #Hdd & #H7 & #H0)".
   iPoseProof "Hro" as "(_ & _ & _ & _ & #Hsel & #Hsec & _)".
   iPoseProof (hello_getopt_state_copy_in (glibc_program := program_of w0 glibc_os_registry ge)
@@ -164,18 +172,18 @@ Proof.
     (sym_ptr ge "hello#str.69") s_optstring (sym_ptr ge "hello#parse_options.longopts.64") null gb greg ps i err
     (ho_oi o) (ho_oireg o) oe roe (ho_oa o) (ho_oareg o) oo roo a c0 G T (ho_err o) dom (ho_se o) (ho_sereg o)
     mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 (hello_los n1 n2 n3 n4) [] pfx7 pxs7 pfx0 pxs0 penv 103 Φ
-    with "Hci Hoil Hoic Hoel Hoec Hoal Hoac Hool Hooc Hos HG Hsel Hsec Havl Hcl Hps Hdd Ht H7 H0 [] HM [] [Hback HQ]");
+    with "Hci Hoil Hoic Hoel Hoec Hoal Hoac Hool Hooc Hos HG Hsel Hsec Havl Hcl Hps Hdd Ht H7 H0 [] HM [] [HQ]");
     try (assumption || reflexivity || lia).
   - rewrite /GetoptLongStore.flags_own. iSplit; [iPureIntro; apply NoDup_nil_2 | done].
   - rewrite /GetoptLongStore.longind_own. iLeft. done.
   - iIntros (x i' c' a' ps' [Hp Hx]) "Hw Hoil Hoic Hoel Hoec Hoal Hoac Hool Hooc Havl Hcl _ HG _ HM _ _ Hstr".
     iDestruct (getopt_session_index with "Hw") as "[%Hi' Hw]".
     pose proof (Permutation_length Hp) as Hl.
-    iDestruct ("Hback" with "[Hoel Hoec Hool Hooc HG HM]") as "[Hio Hpv]".
+    iAssert hello_getopt_priv with "[Hoel Hoec Hool Hooc HG HM]" as "Hp".
     { iExists err, c'. iFrame "Hoel Hoec Hool Hooc HG HM Hos Ht Hdd H7 H0". }
     iApply "HQ". iExists x, ps', a', i'.
     iSplit; [iPureIntro; split_and!; [reflexivity | lia | lia | exact Hp | lia | rewrite Hl; lia]|].
-    iFrame "Hio Hpv". iSplitL "Havl Hcl".
+    iFrame "Hp". iSplitL "Havl Hcl".
     { iSplit; [iPureIntro; rewrite -Hl; split_and!; assumption | iFrame "Havl Hcl"]. }
     iSplitL "Hoal Hoac Hoil Hoic"; [iFrame "Hoal Hoac Hoil Hoic"|].
     iSplitL "Hw"; [iApply (hello_getopt_state_session with "Hw")|].
@@ -183,8 +191,83 @@ Proof.
     rewrite /HelloGlibcDebts.str_ro. iDestruct "Hstr" as (s) "Hs". iExists s. iExact "Hs".
 Qed.
 
+(** glibc's getopt_long meets the loop's contract with the admissible
+    states of the parser's object. *)
+Lemma hello_getopt_ix av ar : loop_getopt w0 ge o D av ar (hello_getopt_state gb greg av ar).
+Proof.
+  intros ps a i. destruct (hello_getopt_lend av ar ps a i) as (gf & Hg & Hfr & Ht).
+  exists gf. split; [exact Hg|]. split; [exact Hfr|]. intros fr Φ Hf.
+  iIntros "(#Hro & Hio & Hpv & Hav & #Hps & Hc & HS) HQ".
+  iDestruct (Hsplit with "[Hio Hpv]") as "[Hp Hback]"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
+  iApply (Ht fr Φ Hf with "[Hp Hav Hc HS]").
+  { iSplitR; [iExact "Hro"|]. iSplitL "Hp"; [iExact "Hp"|]. iSplitL "Hav"; [iExact "Hav"|].
+    iSplitR; [iExact "Hps"|]. iSplitL "Hc"; [iExact "Hc" | iExact "HS"]. }
+  iIntros (r) "(%x & %ps' & %a' & %i' & %Hx & Hp & Hav & Hc & HS & Hstr)".
+  iDestruct ("Hback" with "Hp") as "[Hio Hpv]".
+  iApply "HQ". iExists x, ps', a', i'. iSplit; [iPureIntro; exact Hx|].
+  iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|]. iSplitL "Hav"; [iExact "Hav"|].
+  iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS"; [iExact "HS" | iExact "Hstr"].
+Qed.
+
 (** This record packs the other contracts with the proved call. *)
 Definition hello_debts_ix : HelloDebtsIx w0 ge o := mkHelloDebtsIx w0 ge o D gb greg hello_getopt_ix.
+
+(** ## The parser's own resources
+
+    Hello's other calls never touch opterr, optopt, the option table or
+    getopt's strings; only getopt_long uses them. So the loop can keep
+    them next to the parser's private object. Then the streams and the
+    private state need to lend each call only what getenv, the warning
+    printers and malloc use. *)
+
+(** These are the resources that only the parser uses: opterr and optopt
+    at any values, and shares of the strings and the table. *)
+Definition hello_getopt_globals : iProp Σ :=
+  ∃ err c0, live oe roe ∗ int_cell oe 0 err ∗ live oo roo ∗ int_cell oo 0 c0 ∗
+    word_string DfracDiscarded (sym_ptr ge "hello#str.69") s_optstring ∗
+    opt_table (sym_ptr ge "hello#parse_options.longopts.64") (hello_los n1 n2 n3 n4) ∗
+    word_string DfracDiscarded pdd sdd ∗ word_string DfracDiscarded pfx7 pxs7 ∗
+    word_string DfracDiscarded pfx0 pxs0.
+
+(** What a call borrows splits into the parser's own objects and what the backends use. *)
+Lemma hello_getopt_priv_split : hello_getopt_priv ⊣⊢ hello_getopt_globals ∗ G ∗ M.
+Proof.
+  iSplit.
+  - iIntros "(%err & %c0 & Hel & Hec & Hol & Hoc & HG & HM & #H69 & #Ht & #Hdd & #H7 & #H0)".
+    iSplitR "HG HM"; [|iSplitL "HG"; [iExact "HG" | iExact "HM"]].
+    iExists err, c0. iSplitL "Hel"; [iExact "Hel"|]. iSplitL "Hec"; [iExact "Hec"|].
+    iSplitL "Hol"; [iExact "Hol"|]. iSplitL "Hoc"; [iExact "Hoc"|]. iSplitR; [iExact "H69"|].
+    iSplitR; [iExact "Ht"|]. iSplitR; [iExact "Hdd"|]. iSplitR; [iExact "H7" | iExact "H0"].
+  - iIntros "((%err & %c0 & Hel & Hec & Hol & Hoc & #H69 & #Ht & #Hdd & #H7 & #H0) & HG & HM)".
+    iExists err, c0. iSplitL "Hel"; [iExact "Hel"|]. iSplitL "Hec"; [iExact "Hec"|].
+    iSplitL "Hol"; [iExact "Hol"|]. iSplitL "Hoc"; [iExact "Hoc"|]. iSplitL "HG"; [iExact "HG"|].
+    iSplitL "HM"; [iExact "HM"|]. iSplitR; [iExact "H69"|].
+    iSplitR; [iExact "Ht"|]. iSplitR; [iExact "Hdd"|]. iSplitR; [iExact "H7" | iExact "H0"].
+Qed.
+
+(** The streams and the private state still lend what the backends use. *)
+Context (Hgm : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢ (G ∗ M) ∗ (G ∗ M -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D)).
+
+(** glibc's getopt_long meets the loop's contract when the loop carries
+    the parser's own resources beside its object. *)
+Lemma hello_getopt_ix_own av ar :
+  loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals)%I.
+Proof.
+  intros ps a i. destruct (hello_getopt_lend av ar ps a i) as (gf & Hg & Hfr & Ht).
+  exists gf. split; [exact Hg|]. split; [exact Hfr|]. intros fr Φ Hf.
+  iIntros "(#Hro & Hio & Hpv & Hav & #Hps & Hc & HS & Hgo) HQ".
+  iDestruct (Hgm with "[Hio Hpv]") as "[Hb Hback]"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
+  iApply (Ht fr Φ Hf with "[Hgo Hb Hav Hc HS]").
+  { iSplitR; [iExact "Hro"|]. iSplitL "Hgo Hb".
+    { iApply hello_getopt_priv_split. iSplitL "Hgo"; [iExact "Hgo" | iExact "Hb"]. }
+    iSplitL "Hav"; [iExact "Hav"|]. iSplitR; [iExact "Hps"|]. iSplitL "Hc"; [iExact "Hc" | iExact "HS"]. }
+  iIntros (r) "(%x & %ps' & %a' & %i' & %Hx & Hp & Hav & Hc & HS & Hstr)".
+  iDestruct (hello_getopt_priv_split with "Hp") as "(Hgo & Hb)".
+  iDestruct ("Hback" with "Hb") as "[Hio Hpv]".
+  iApply "HQ". iExists x, ps', a', i'. iSplit; [iPureIntro; exact Hx|].
+  iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|]. iSplitL "Hav"; [iExact "Hav"|].
+  iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo"; [iSplitL "HS"; [iExact "HS" | iExact "Hgo"] | iExact "Hstr"].
+Qed.
 
 End call.
 
