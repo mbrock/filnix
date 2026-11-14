@@ -818,8 +818,9 @@ tactic_notation_parts([argument(K, N)|Ps]) -->
     tk(id(K)), tk(p('(')), name(N), tk(p(')')), !, tactic_notation_parts(Ps).
 tactic_notation_parts([]) --> [].
 
-% Choice binds more tightly than sequencing; prefixes bind more tightly
-% than either. Parentheses and dispatch brackets retain that scope.
+% A proof can need several steps before by can finish it. The parser
+% keeps the whole sequence in its argument so the reprint does not try
+% to finish the proof after only the first step.
 tactic(T) --> tactic_choice(L), tactic_then(L, T).
 tactic_choice(T) --> tactic_unit(L),
     ( tk(sym('||')) -> tactic_choice(R), { T = tbin('||', L, R) } ; { T = L } ).
@@ -839,7 +840,8 @@ tactic_unit(teval(Ws, E)) --> tk(id(eval)), !, eval_words(Ws), tk(kw(in)), term(
 tactic_unit(select(S, T)) --> [t(K, _, _)], { K = num(S) ; K = id(S), S == all }, tk(sym(':')), !, tactic(T).
 tactic_unit(do(N, T)) --> tk(id(do)), !,
     [t(K, _, _)], { K = num(N) ; K = id(N) }, tactic_unit(T).
-tactic_unit(prefix(K, T)) --> tk(id(K)), { memberchk(K, [try, repeat, progress, now, once, timeout, by]) },
+tactic_unit(prefix(by, T)) --> tk(id(by)), !, tactic(T).
+tactic_unit(prefix(K, T)) --> tk(id(K)), { memberchk(K, [try, repeat, progress, now, once, timeout]) },
     !, tactic_unit(T).
 tactic_unit(choices(K, Ts)) --> tk(id(K)), { memberchk(K, [first, solve]) }, tk(p('[')), !,
     tactic_choices(Ts), tk(p(']')).

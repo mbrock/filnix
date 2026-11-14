@@ -297,6 +297,38 @@ Proof. exact Alias.correct. Qed.
 ROCQ
 set -- "$@" "$tmp/terms/Terms.v"
 
+mkdir "$tmp/by"
+cat >"$tmp/by/By.v" <<'ROCQ'
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import iprop.
+Section by_tactics.
+Context {Σ : gFunctors}.
+Lemma by_sequence : ⊢ (∃ xs : list nat, True ∨ ⌜xs = [1]⌝ : iProp Σ).
+Proof. by (iExists []; iLeft). Qed.
+Lemma by_ungrouped_sequence : ⊢ (∃ xs : list nat, True ∨ ⌜xs = [1]⌝ : iProp Σ).
+Proof. by iExists []; iLeft. Qed.
+Lemma by_choice : ⊢ (True : iProp Σ).
+Proof. by (fail || iPureIntro). Qed.
+Lemma by_ungrouped_choice : ⊢ (True : iProp Σ).
+Proof. by fail || iPureIntro. Qed.
+Lemma by_dispatch : ⊢ (True ∧ True : iProp Σ).
+Proof. by (iSplit; [iPureIntro | iPureIntro]). Qed.
+Lemma by_ungrouped_dispatch : ⊢ (True ∧ True : iProp Σ).
+Proof. by iSplit; [iPureIntro | iPureIntro]. Qed.
+Lemma by_prefix : ⊢ (True : iProp Σ).
+Proof. by try iPureIntro. Qed.
+Lemma by_do : ⊢ (True : iProp Σ).
+Proof. by do 1 iPureIntro. Qed.
+Lemma by_first : ⊢ (True : iProp Σ).
+Proof. by first [fail | iPureIntro]. Qed.
+Lemma by_let : ⊢ (True : iProp Σ).
+Proof. by let t := constr:(I) in iPureIntro; exact t. Qed.
+Lemma by_match : ⊢ (True : iProp Σ).
+Proof. by lazymatch goal with _ => iPureIntro end. Qed.
+End by_tactics.
+ROCQ
+set -- "$@" "$tmp/by/By.v"
+
 # Iris's notations and proof mode, where Iris is on ROCQPATH (the logic
 # spikes' check, nix/spikes.nix): each lemma fails to type-check, or its
 # proof to go through, if one of its operators is read at another level.
