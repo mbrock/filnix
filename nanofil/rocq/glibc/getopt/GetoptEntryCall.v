@@ -106,10 +106,10 @@ Definition getopt_entry_exits (n av : Z) (ar : region) (p : ptr) (os : list Z) (
     The call enters the first block with the arguments in place, and the
     entry rule runs from there. The argument count is the length of the
     argument vector, which lies between 1 and 2 ^ 31. *)
-Lemma wp_getopt_entry_call cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) Φ :
+Lemma wp_getopt_entry_call_at cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) Φ :
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   Z.of_nat (length ps) = n ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   getopt_entry_exits n av ar p os lo li lonly b r ps j G Φ -∗
@@ -118,9 +118,15 @@ Proof.
   intros Hcf Hget Hpenv Hlen. rewrite getopt_r_call_frame in Hcf. injection Hcf as <-.
   iIntros "Hpre Hos HG HK".
   iApply wp_enter; [exact getopt_r_find_start | reflexivity |]. iNext.
-  iApply (GetoptEntryPre.wp_getopt_entry_pre (getopt_r_env n av p lo li lonly b pc) n av ar p os lo li lonly pc penv
+  iApply (GetoptEntryPre.wp_getopt_entry_pre_at (getopt_r_env n av p lo li lonly b pc) n av ar p os lo li lonly pc penv
             b r ps j G with "Hpre Hos HG HK"); try reflexivity; assumption.
 Qed.
+
+(** Legacy calls retain their exact call-frame premise and argument bounds. *)
+Definition wp_getopt_entry_call cf n av ar p os lo li lonly pc penv b r ps j G Φ Hcf
+    (Hget : GetoptInitialize.getenv_rule w0 registry ge G) :=
+  wp_getopt_entry_call_at cf n av ar p os lo li lonly pc penv b r ps j G Φ Hcf
+    (GetoptInitialize.getenv_rule_at w0 registry ge G penv Hget).
 
 (** ## The parser premise of the wrapper
 

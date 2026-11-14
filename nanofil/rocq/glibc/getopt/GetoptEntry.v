@@ -155,8 +155,8 @@ Ltac unkeep Hk :=
 (** Two tests can request initialization, and both reach the same
     inlined code. Initialization clears the cursor, so the call then
     always goes to argument selection. *)
-Lemma wp_getopt_entry_init e1 fr n av p os lo li lonly pc penv b r s (tail : list Z) (G : iProp Σ) Φ :
-  getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+Lemma wp_getopt_entry_init_at e1 fr n av p os lo li lonly pc penv b r s (tail : list Z) (G : iProp Σ) Φ :
+  getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   start_env e1 n av p lo li lonly b pc (gs_err s) -> needs_init s ->
   1 <= n < 2 ^ 31 -> 0 <= gs_ind s <= n -> 0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   live b r -∗ int_cell b 0 (gs_ind s) -∗ int_cell b 4 (gs_err s) -∗ int_cell b 8 (gs_opt s) -∗
@@ -172,7 +172,7 @@ Lemma wp_getopt_entry_init e1 fr n av p os lo li lonly pc penv b r s (tail : lis
 Proof.
   intros Hget Hpenv (H0 & H2 & H4 & H6 & H8 & H10 & H12 & H14 & H19 & Hc0 & Hc1 & Hc2) Hni Hn Hi Hb Hal Hend Hr.
   iIntros "Hl Hi [%Herr Heb] Ho Ha Hini Hnext Hord Hf Hla #Hos HG HK".
-  step. iApply (wp_getopt_initialize _ n p os b r s pc penv G
+  step. iApply (wp_getopt_initialize_at _ n p os b r s pc penv G
     with "Hl Hi Hini Hnext Hord Hf Hla Hos HG"); try assumption; try lia.
   iIntros (e2 o (Hk & Ho)) "Hl Hi Hini Hnext Hord Hf Hla HG". unkeep Hk.
   iApply (wp_getopt_colon _ p os b r null tail (gs_err s) with "Hl Hnext Hos []");
@@ -186,11 +186,17 @@ Proof.
   - iIntros (e3 [_ [Hnn _]]). by exfalso.
 Qed.
 
+(** Callers that support every getenv argument also support this name. *)
+Definition wp_getopt_entry_init e1 fr n av p os lo li lonly pc penv b r s tail G Φ
+    (Hget : getenv_rule w0 registry ge G) :=
+  wp_getopt_entry_init_at e1 fr n av p os lo li lonly pc penv b r s tail G Φ
+    (getenv_rule_at w0 registry ge G penv Hget).
+
 (** The first blocks of a call either initialize the private object or
     resume it, and then reach argument selection or option reading. The
     caller's getenv rule covers the environment query of initialization. *)
-Lemma wp_getopt_entry e n av p os lo li lonly pc penv b r s tail (G : iProp Σ) Φ :
-  getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+Lemma wp_getopt_entry_at e n av p os lo li lonly pc penv b r s tail (G : iProp Σ) Φ :
+  getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   lookup (TAtom "v0") e = Some (WInt n) -> lookup (TAtom "v2") e = Some (WPtr av) ->
   lookup (TAtom "v4") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WPtr lo) ->
   lookup (TAtom "v8") e = Some (WPtr li) -> lookup (TAtom "v10") e = Some (WInt lonly) ->
@@ -223,13 +229,13 @@ Proof.
   norm. iApply wp_branch; [vx | iNext].
   destruct (Z.eqb_spec (gs_ind s) 0) as [E0|E0]; close_br.
   { step. branch. iDestruct "HK" as "[HK _]".
-    iApply (wp_getopt_entry_init with "Hl [Hib] [Heb] Ho Ha Hini Hnext Hord Hf Hla Hos HG HK");
+    iApply (wp_getopt_entry_init_at with "Hl [Hib] [Heb] Ho Ha Hini Hnext Hord Hf Hla Hos HG HK");
       [exact Hget | exact Hpenv | repeat split; lk | left; exact E0 | lia | lia | lia | lia | lia | lia | icell | icell]. }
   step. step. norm. check "Hl". iDestruct "Hini" as "[%Hn0 Hinib]". load_s32_using ltac:(arith) "Hl Hinib". step. norm. step. step.
   iApply wp_branch; [vx | iNext].
   destruct (Z.eqb_spec (gs_initialized s) 0) as [I0|I0]; close_br.
   { iDestruct "HK" as "[HK _]".
-    iApply (wp_getopt_entry_init with "Hl [Hib] [Heb] Ho Ha [Hinib] Hnext Hord Hf Hla Hos HG HK");
+    iApply (wp_getopt_entry_init_at with "Hl [Hib] [Heb] Ho Ha [Hinib] Hnext Hord Hf Hla Hos HG HK");
       [exact Hget | exact Hpenv | repeat split; lk | right; exact I0 | lia | lia | lia | lia | lia | lia | icell | icell | icell]. }
   step. iApply (wp_getopt_resume _ p os with "Hos"); [lk|].
   iIntros (e1 Hk1). unkeep Hk1.
@@ -247,5 +253,11 @@ Proof.
     + unfold getopt_state_own, clear_arg; cbn [gs_ind gs_err gs_opt gs_arg gs_initialized gs_next
         gs_order gs_first gs_last]. iFrame. iPureIntro; repeat split; lia.
 Qed.
+
+(** Existing callers can still supply a rule for every getenv argument. *)
+Definition wp_getopt_entry e n av p os lo li lonly pc penv b r s tail G Φ
+    (Hget : getenv_rule w0 registry ge G) :=
+  wp_getopt_entry_at e n av p os lo li lonly pc penv b r s tail G Φ
+    (getenv_rule_at w0 registry ge G penv Hget).
 
 End entry.

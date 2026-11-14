@@ -185,7 +185,7 @@ Qed.
     return gives the copied fields, the evidence for the argument and a
     wand that restores the session. A return after a resumed character
     also gives the string of the word. *)
-Lemma wp_getopt_entry_scan_char_ws ks ks2 ks3 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom
+Lemma wp_getopt_entry_scan_char_ws_at ks ks2 ks3 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom
     se sereg mid mid' pdd sdd Φ :
   avoids ks char_names = true -> incl char_ret_keys ks ->
   avoids ks2 opt_names = true -> avoids ks2 req_names = true -> avoids ks2 diag_names = true ->
@@ -195,7 +195,7 @@ Lemma wp_getopt_entry_scan_char_ws ks ks2 ks3 cf n av ar p os lo li lonly pc pen
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
@@ -261,7 +261,7 @@ Proof.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hki3 Hks3 Hin3 Hgc Hdd Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hlen Hn
     Hse0 Hsea Hsee Hser.
   iIntros "Hpre #Hos HG Hsl Hsc Ha Hcl #Hs #Hdd HK".
-  iApply (wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' Φ
+  iApply (wp_getopt_entry_char_ws_at ks ks2 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' Φ
             with "Hpre Hos HG Hsl Hsc Ha Hcl Hs [HK]"); try assumption.
   iSplit.
   - iIntros "Hsl Hsc Ha Hcl".
@@ -270,6 +270,14 @@ Proof.
     iSplit; [iDestruct "HK" as "[H _]"; iExact "H" | iDestruct "HK" as "(_ & H & _)"; iExact "H"].
   - iSplit; [iDestruct "HK" as "(_ & _ & H & _)"; iExact "H" | iDestruct "HK" as "(_ & _ & _ & H)"; iExact "H"].
 Qed.
+
+(** Legacy callers retain the same scan exits and string evidence. *)
+Definition wp_getopt_entry_scan_char_ws ks ks2 ks3 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom
+    se sereg mid mid' pdd sdd Φ Hks Hkin Hop Hrq Hdg Hrt Hinc Hki3 Hks3 Hin3 Hgc Hdd Hcf
+    (Hget : GetoptInitialize.getenv_rule w0 registry ge G) :=
+  wp_getopt_entry_scan_char_ws_at ks ks2 ks3 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom
+    se sereg mid mid' pdd sdd Φ Hks Hkin Hop Hrq Hdg Hrt Hinc Hki3 Hks3 Hin3 Hgc Hdd Hcf
+    (GetoptInitialize.getenv_rule_at w0 registry ge G penv Hget).
 
 (** The same call serves a caller that needs no string of the word. *)
 Lemma wp_getopt_entry_scan_char ks ks2 ks3 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom

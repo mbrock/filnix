@@ -146,7 +146,8 @@ Context (Hsplit : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢
     matches argv and optind. It gives back the resources it borrowed,
     together with a new matching state. While the parser searches for a
     long option, the alloca cutoff borrows G and returns it. *)
-Lemma hello_getopt_lend_with av ar ps a i :
+Lemma hello_getopt_lend_with_at av ar ps a i :
+  GetenvCall.getenv_at_rule w0 glibc_os_registry ge G penv ->
   getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
   fn_triple w0 ge (TAtom "getopt_long")
     [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av)); WPtr (sym_ptr ge "hello#str.69");
@@ -158,7 +159,7 @@ Lemma hello_getopt_lend_with av ar ps a i :
                 hello_getopt_priv ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗
                 hello_getopt_state gb greg av ar ps' i' ∗ (if code =? 103 then str_ro a' else True))%I.
 Proof.
-  intros Hcw.
+  intros Hnamed Hcw.
   exists glibc_getopt_long. split; [exact Hgl|].
   split; [eexists; apply getopt_long_call_frame|]. intros fr Φ Hfr.
   destruct (hello_los_facts n1 n2 n3 n4 []) as (Hfl & Hlos & Hneg & Hcode).
@@ -172,7 +173,7 @@ Proof.
   iPoseProof (hello_getopt_state_copy_in (glibc_program := program_of w0 glibc_os_registry ge)
     gb greg av ar ps i err with "HS") as "Hci".
   iEval (rewrite /HelloGlibcDebts.str_ro) in "Hps".
-  iApply (wp_getopt_long_str_call_with (glibc_program := program_of w0 glibc_os_registry ge) fr av ar
+  iApply (wp_getopt_long_str_call_with_at (glibc_program := program_of w0 glibc_os_registry ge) fr av ar
     (sym_ptr ge "hello#str.69") s_optstring (sym_ptr ge "hello#parse_options.longopts.64") null gb greg ps i err
     (ho_oi o) (ho_oireg o) oe roe (ho_oa o) (ho_oareg o) oo roo a c0 G T (ho_err o) dom (ho_se o) (ho_sereg o)
     mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 (hello_los n1 n2 n3 n4) [] pfx7 pxs7 pfx0 pxs0 penv 103 Φ
@@ -194,6 +195,11 @@ Proof.
     iEval (rewrite /GetoptLongStr.arg_str) in "Hstr". destruct (x =? 103); [|done].
     rewrite /HelloGlibcDebts.str_ro. iDestruct "Hstr" as (s) "Hs". iExists s. iExact "Hs".
 Qed.
+
+(** Callers that support every getenv argument also support this name. *)
+Definition hello_getopt_lend_with av ar ps a i :=
+  hello_getopt_lend_with_at av ar ps a i
+    (getenv_rule_at w0 glibc_os_registry ge G penv Hgetenv).
 
 (** Callers that need no resource for the cutoff keep this form. *)
 Lemma hello_getopt_lend av ar ps a i :
@@ -307,19 +313,19 @@ Qed.
 Context (Hro_m : hello_ro ge o ⊢ M)
   (Hg : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D)).
 
-(** Hello's loop can carry one more resource R beside the parser's
-    object. Each call to getopt_long then lends R together with the
-    streams and the private state. Getenv, the warning printers and the
-    alloca cutoff borrow G from those three, and the call gives all of
-    it back. Hello puts the frozen stack size in R, because the cutoff
-    reads it. *)
-Lemma hello_getopt_ix_ro_sep (R : iProp Σ) av ar :
+(** The parser needs to read memory that Hello keeps between calls.
+    Hello carries its read permissions in R beside the parser's object,
+    and lends them with the streams and private state. Each call returns
+    everything it borrows. This supports both the environment name and
+    the stack-size cell read by the cutoff. *)
+Lemma hello_getopt_ix_ro_sep_at (R : iProp Σ) av ar :
+  GetenvCall.getenv_at_rule w0 glibc_os_registry ge G penv ->
   getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
   (hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R)) ->
   loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals ∗ R)%I.
 Proof.
-  intros Hcw HgR.
-  intros ps a i. destruct (hello_getopt_lend_with av ar ps a i Hcw) as (gf & Hgf & Hfr & Ht).
+  intros Hnamed Hcw HgR.
+  intros ps a i. destruct (hello_getopt_lend_with_at av ar ps a i Hnamed Hcw) as (gf & Hgf & Hfr & Ht).
   exists gf. split; [exact Hgf|]. split; [exact Hfr|]. intros fr Φ Hf.
   iIntros "(#Hro & Hio & Hpv & Hav & #Hps & Hc & HS & Hgo & HR) HQ".
   iDestruct (HgR with "[$Hio $Hpv $HR]") as "[HG Hback]".
@@ -335,6 +341,11 @@ Proof.
   iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|]. iSplitL "Hav"; [iExact "Hav"|].
   iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo HR"; [iFrame "HS Hgo HR" | iExact "Hstr"].
 Qed.
+
+(** Legacy callers retain the extra-resource loop contract unchanged. *)
+Definition hello_getopt_ix_ro_sep R av ar :=
+  hello_getopt_ix_ro_sep_at R av ar
+    (getenv_rule_at w0 glibc_os_registry ge G penv Hgetenv).
 
 (** With that, each call to glibc's getopt_long does what the loop
     expects of it, also when the cutoff borrows G. *)

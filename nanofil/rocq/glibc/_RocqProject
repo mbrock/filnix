@@ -63,6 +63,7 @@ stdlib/GetenvCompare.v
 stdlib/GetenvScan.v
 stdlib/GetenvStatic.v
 stdlib/GetenvCall.v
+stdlib/GetenvHello.v
 nptl/CutoffCode.v
 nptl/CutoffLayout.v
 nptl/CutoffSrc.v

@@ -24,6 +24,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes.
+From Glibc Require Export GetenvCall.
 From Glibc Require FileInv GetoptBytes GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -115,6 +116,11 @@ Proof.
   intros Hg f e ls l d args rest j x Φ Hx. iIntros "[HG HR] HK".
   iApply (Hg with "HG"); [exact Hx|]. iNext. iIntros (q) "HG". iApply ("HK" with "[$HG $HR]").
 Qed.
+(** The legacy rule accepts every argument, so it also covers the linked
+    name. This implication does not turn readability into a legacy rule. *)
+Lemma getenv_rule_at (G : iProp Σ) p :
+  getenv_rule G -> getenv_at_rule w0 registry ge G p.
+Proof. intros Hget f e ls l d args rest j Φ Hargs. exact (Hget f e ls l d args rest j (WPtr p) Φ Hargs). Qed.
 Definition entry_keys : list name :=
   List.map TAtom ["v0"; "v2"; "v4"; "v6"; "v8"; "v10"; "v12"; "v14"; "v19"; "chk0"; "chk1"; "chk2"]%string.
 End initialize_values.
@@ -170,8 +176,8 @@ Ltac keep := repeat (apply keeps_put; [vm_compute; reflexivity |]); first [apply
     both nonoption endpoints, the saved cursor, the ordering mode and the
     initialized flag. When the caller has not requested an ordering, glibc
     asks the environment through the caller's getenv rule. *)
-Lemma wp_getopt_initialize e n p os b r s pc penv (G : iProp Σ) Φ :
-  (getenv_rule w0 registry ge) G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+Lemma wp_getopt_initialize_at e n p os b r s pc penv (G : iProp Σ) Φ :
+  getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   lookup (TAtom "v4") e = Some (WPtr p) -> lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->
   lookup (TAtom "v14") e = Some (WInt pc) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 4) (Obj b))) ->
@@ -270,5 +276,12 @@ Proof.
     rewrite Ei. cbn [edge_label].
     iApply ("HL12" with "[%] Hl Hib"). keep.
 Qed.
+
+(** Existing callers retain their original contract and use the same
+    instruction proof through the restricted-name rule. *)
+Definition wp_getopt_initialize e n p os b r s pc penv G Φ
+    (Hget : getenv_rule w0 registry ge G) :=
+  wp_getopt_initialize_at e n p os b r s pc penv G Φ
+    (getenv_rule_at w0 registry ge G penv Hget).
 
 End initialize.

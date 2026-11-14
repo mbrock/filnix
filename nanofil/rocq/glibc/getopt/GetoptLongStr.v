@@ -299,7 +299,7 @@ Qed.
 (** A program can call getopt_long safely. If the call returns the code
     c, the argument in optarg is a readable string. The program also
     gets back the session, the public cells and everything it lent. *)
-Lemma wp_getopt_long_str_with e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+Lemma wp_getopt_long_str_with_at e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
     (G : iProp Σ) T fp dom se sereg mid mid' pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F
     pfx7 pxs7 pfx0 pxs0 penv c Φ :
   lookup (TAtom "v0") e = Some (WInt n) -> lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
@@ -319,7 +319,7 @@ Lemma wp_getopt_long_str_with e n av ar p os lo li b r ps i err oi roi oe roe oa
   0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
   find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
-  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
@@ -367,7 +367,7 @@ Proof.
             a0 c0 i0 e0 (str_rest b r av ar ps G F M li c) Φ
             with "Hoi Hi Hoe He Hoa Hpa Hoo Hc Hl Hb0 Hb4 [Hpre HG Ha Hcl HF HM Hli] [HK]"); try (assumption || lia).
   - iIntros (cf Hcf) "Hl Hb0 Hb4". iSpecialize ("Hpre" with "Hl Hb0 Hb4").
-    iApply (wp_getopt_call_parse_arg_with cf n av ar p os lo li 0 0 penv b r ps i G T fp dom se sereg mid mid' pdd sdd M
+    iApply (wp_getopt_call_parse_arg_with_at cf n av ar p os lo li 0 0 penv b r ps i G T fp dom se sereg mid mid' pdd sdd M
               f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0
               (wrap_post b r (str_rest b r av ar ps G F M li c))
               with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli [ ]"); try (assumption || lia).
@@ -377,6 +377,20 @@ Proof.
     iSpecialize ("Hw" with "Hl Hb0 Hb8 Hb16 Hcur").
     iApply ("HK" with "[%] Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha Hcl Hs' HG HF HM Hli Hca Hstr"). exact Hp.
 Qed.
+
+(** Legacy callers retain the resource-aware cutoff and all index bounds. *)
+Definition wp_getopt_long_str_with e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+    G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F
+    pfx7 pxs7 pfx0 pxs0 penv c Φ
+    H0 H2 H4 H6 H8 Hfi Hfr Hgd Hgi Hge Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer
+    Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd
+    (Hget : GetoptInitialize.getenv_rule w0 registry ge G) :=
+  wp_getopt_long_str_with_at e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+    G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F
+    pfx7 pxs7 pfx0 pxs0 penv c Φ
+    H0 H2 H4 H6 H8 Hfi Hfr Hgd Hgi Hge Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer
+    Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd
+    (GetoptInitialize.getenv_rule_at w0 registry ge G penv Hget).
 
 (** Callers that need no resource for the cutoff keep this form. *)
 Lemma wp_getopt_long_str e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
@@ -483,7 +497,7 @@ Qed.
     the null cell and the strings of the words, and it gets them back in
     the same form over the reordered words. Everything else is as in the
     rule above. *)
-Lemma wp_getopt_long_str_call_with cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+Lemma wp_getopt_long_str_call_with_at cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
     (G : iProp Σ) T fp dom se sereg mid mid' pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F
     pfx7 pxs7 pfx0 pxs0 penv c Φ :
   call_frame glibc_getopt_long
@@ -502,7 +516,7 @@ Lemma wp_getopt_long_str_call_with cf av ar p os lo li b r ps i err oi roi oe ro
   0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
   find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
-  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
@@ -547,7 +561,7 @@ Proof.
   intros Hcf. rewrite getopt_long_call_frame in Hcf. injection Hcf as <-. intros.
   iIntros "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli HK".
   iDestruct (argv_cells_null with "Hcl") as "[Hcl Hnull]".
-  iApply (wp_getopt_long_str_with (getopt_long_env (Z.of_nat (List.length ps)) av p lo li) (Z.of_nat (List.length ps))
+  iApply (wp_getopt_long_str_with_at (getopt_long_env (Z.of_nat (List.length ps)) av p lo li) (Z.of_nat (List.length ps))
             av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M
             f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ
             with "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli [Hnull HK]");
@@ -558,6 +572,18 @@ Proof.
     [split; assumption|].
   iApply argv_cells_null. iSplitL "Hcl"; [iExact "Hcl" | iExact "Hnull"].
 Qed.
+
+(** Legacy real calls keep their original statement through the same proof. *)
+Definition wp_getopt_long_str_call_with cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+    G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F
+    pfx7 pxs7 pfx0 pxs0 penv c Φ Hcf Hfi Hfr Hgd Hgi Hge Hga Hgo
+    Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd
+    (Hget : GetoptInitialize.getenv_rule w0 registry ge G) :=
+  wp_getopt_long_str_call_with_at cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+    G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F
+    pfx7 pxs7 pfx0 pxs0 penv c Φ Hcf Hfi Hfr Hgd Hgi Hge Hga Hgo
+    Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd
+    (GetoptInitialize.getenv_rule_at w0 registry ge G penv Hget).
 
 (** Callers that need no resource for the cutoff keep this form. *)
 Lemma wp_getopt_long_str_call cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0

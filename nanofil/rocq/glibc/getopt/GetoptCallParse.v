@@ -268,13 +268,13 @@ Qed.
 (** A call of the parser is safe, and it ends in one of the returns of
     [call_parse_rets_arg]. The count of words must stay below 2^31, and
     the option table must not use -1 as a value with a null flag. *)
-Lemma wp_getopt_call_parse_arg_with cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom se sereg mid mid'
+Lemma wp_getopt_call_parse_arg_with_at cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom se sereg mid mid'
     pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ :
   find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
@@ -310,7 +310,7 @@ Proof.
     H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlo Hlen Hn Hse0 Hsea Hsee Hser.
   iIntros "Hpre #Hos HG #Hsl #Hsc Ha Hcl #Hs #Hdd #Ht #Hp7 #Hp0 HF HM Hli HK".
   unfold call_parse_rets_arg.
-  iApply (wp_getopt_entry_dispatch_ws call_char_keys call_req_keys entry_scan_keys entry_scan_keys cf n av ar p os lo li
+  iApply (wp_getopt_entry_dispatch_ws_at call_char_keys call_req_keys entry_scan_keys entry_scan_keys cf n av ar p os lo li
             lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd Φ
             with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd [-]"); try call_keys; try assumption.
   iSplit.
@@ -349,6 +349,14 @@ Proof.
       iIntros (s q sq k0 x i' oo' a' c' Hc) "Hwq Hl Hi Ho Hab Hcur Hw Ha Hcl HG Hca".
       iApply ("H9" with "[%] Hwq Hl Hi Ho Hab Hcur Hw Ha Hcl HG Hca HF HM Hli"). exact Hc.
 Qed.
+
+(** The original call contract retains its resource-aware cutoff premise. *)
+Definition wp_getopt_call_parse_arg_with cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid'
+    pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ Hgc Hdd Hcf
+    (Hget : GetoptInitialize.getenv_rule w0 registry ge G) :=
+  wp_getopt_call_parse_arg_with_at cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid'
+    pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ Hgc Hdd Hcf
+    (GetoptInitialize.getenv_rule_at w0 registry ge G penv Hget).
 
 (** Callers that need no resource for the cutoff keep this form. *)
 Lemma wp_getopt_call_parse_arg cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom se sereg mid mid'

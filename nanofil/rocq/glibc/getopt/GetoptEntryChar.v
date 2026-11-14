@@ -133,14 +133,14 @@ Definition entry_scan_exit (n av : Z) (ar : region) (p : ptr) (os : list Z) (lo 
     words must stay below 2^31. A step by two happens only when the
     second word lies below the count, so the index still fits in an int. A return after a resumed character also gives the string
     of the word. *)
-Lemma wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom
+Lemma wp_getopt_entry_char_ws_at ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom
     se sereg mid mid' Φ :
   avoids ks char_names = true -> incl char_ret_keys ks ->
   avoids ks2 opt_names = true -> avoids ks2 req_names = true -> avoids ks2 diag_names = true ->
   avoids ks2 ret_names = true -> incl known_req_keys ks2 ->
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
@@ -182,7 +182,7 @@ Lemma wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps 
 Proof.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hlen Hn Hse0 Hsea Hsee Hser.
   iIntros "Hpre #Hos HG Hsl Hsc Ha Hcl #Hs HK".
-  iApply (wp_getopt_entry_call cf n av ar p os lo li lonly pc penv b r ps j G Φ with "Hpre Hos HG [-]");
+  iApply (wp_getopt_entry_call_at cf n av ar p os lo li lonly pc penv b r ps j G Φ with "Hpre Hos HG [-]");
     try assumption.
   iSplit; [iDestruct "HK" as "[HK _]"; iApply ("HK" with "Hsl Hsc Ha Hcl") |].
   iIntros (e' s q sq k0 Hf) "#Hq #Hws Hl Hib Her Hoob Hab Hini Hcur Hord Hfi Hla HG".
@@ -213,6 +213,14 @@ Proof.
     iApply (char_ret_session b r av ar ps s (gs_opt s) (drop k0 sq) (drop (opt_skip os) os) x i' oo' null a' c'
               with "Hcu Hws Hl Hib Her Hoob Hab Hini Hcur Hord Hfi Hla"); try (assumption || lia).
 Qed.
+
+(** Legacy callers keep the same character-scanning contract. *)
+Definition wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom
+    se sereg mid mid' Φ Hks Hkin Hop Hrq Hdg Hrt Hinc Hcf
+    (Hget : GetoptInitialize.getenv_rule w0 registry ge G) :=
+  wp_getopt_entry_char_ws_at ks ks2 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom
+    se sereg mid mid' Φ Hks Hkin Hop Hrq Hdg Hrt Hinc Hcf
+    (GetoptInitialize.getenv_rule_at w0 registry ge G penv Hget).
 
 (** The same call serves a caller that needs no string of the word. *)
 Lemma wp_getopt_entry_char ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom

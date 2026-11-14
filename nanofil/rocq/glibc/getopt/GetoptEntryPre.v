@@ -190,8 +190,8 @@ Proof. unfold getopt_cursor. apply _. Qed.
     short options, it kept the copied index, and the program learns where
     the saved position lies in the current word. A call that starts over
     reads the environment, so the program supplies a rule for that. *)
-Lemma wp_getopt_entry_pre e n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) Φ :
-  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+Lemma wp_getopt_entry_pre_at e n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) Φ :
+  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   lookup (TAtom "v0") e = Some (WInt n) -> lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
   lookup (TAtom "v4") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WPtr lo) ->
   lookup (TAtom "v8") e = Some (WPtr li) -> lookup (TAtom "v10") e = Some (WInt lonly) ->
@@ -235,7 +235,7 @@ Proof.
   iAssert ⌜needs_init s \/ gs_initialized s = 1 /\ 0 <= gs_order s <= 2 /\
     getopt_bounds (Z.of_nat (length ps)) j s⌝%I as %Hkp.
   { iDestruct "Hk" as "[[%H _] | [%H _]]"; iPureIntro; [left | right]; exact H. }
-  iApply (GetoptEntry.wp_getopt_entry e (Z.of_nat (length ps)) (mkPtr av (Obj av)) p os lo li lonly pc penv
+  iApply (GetoptEntry.wp_getopt_entry_at e (Z.of_nat (length ps)) (mkPtr av (Obj av)) p os lo li lonly pc penv
     b r s tail G with "Hs Hos Hc HG"); try (assumption || lia).
   iSplit.
   - iIntros (e' s' (Hst & Henv & Hnt)) "Hs' HG".
@@ -258,5 +258,11 @@ Proof.
     repeat match goal with H : _ /\ _ |- _ => destruct H end.
     repeat (split; [first [assumption | lia] |]). first [assumption | lia].
 Qed.
+
+(** Legacy callers keep their original entry precondition. *)
+Definition wp_getopt_entry_pre e n av ar p os lo li lonly pc penv b r ps j G Φ
+    (Hget : GetoptInitialize.getenv_rule w0 registry ge G) :=
+  wp_getopt_entry_pre_at e n av ar p os lo li lonly pc penv b r ps j G Φ
+    (GetoptInitialize.getenv_rule_at w0 registry ge G penv Hget).
 
 End entry_pre_wp.
