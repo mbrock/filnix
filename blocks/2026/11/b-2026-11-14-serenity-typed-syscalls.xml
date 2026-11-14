@@ -1,0 +1,23 @@
+<block id="b-2026-11-14-serenity-typed-syscalls" kind="finding" actor="T-01a1dbc9-3832-7138-a765-1bc8ce85ecb4" model="anthropic/claude-opus-5-5" created="2026-11-14T21:05:41Z">
+  <title>Typed SerenityOS syscalls check their memory in libpizlo</title>
+  <about path="experiments/serenity-syscalls/README.md"/>
+  <tag name="memory-safety"/>
+  <p>A spike tested how a pizlonated SerenityOS LibC could make system calls.
+  Serenity's LibSystem casts every argument to an integer, which drops each
+  pointer's <concept ref="capability">capability</concept>. Under Fil-C, the
+  spike turns <c>syscall(SC_foo, ...)</c> into a call of a typed libpizlo
+  native. It generates the types from the kernel's own <c>sys$foo</c>
+  declarations and describes each parameter struct once, field by field.</p>
+  <claim status="measured" check="experiments/serenity-syscalls/check.sh">
+    <p>The rewritten <c>Syscall.h</c> keeps the layout of all 49 parameter
+    structs, and Serenity's LibC compiles against it unchanged. A libpizlo
+    built with seven of the natives stops a lying string length, a freed
+    string, oversized buffers, a forged pointer and an oversized
+    <c>addrlen</c>, each with a safety error inside the native.</p>
+  </claim>
+  <p>The typed path also found that Serenity's <c>setregid()</c> calls
+  <c>SC_setresgid</c> with two arguments instead of three, so the kernel reads a
+  garbage saved gid. Keeping Fil-C's pizlonated glibc on top would not work:
+  libpizlo passes Linux flags and structs straight through, and Serenity's
+  differ.</p>
+</block>

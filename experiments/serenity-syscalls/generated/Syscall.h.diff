@@ -1,0 +1,424 @@
+--- a/Kernel/API/Syscall.h
++++ b/Kernel/API/Syscall.h
+@@ -10,6 +10,7 @@
+ #include <AK/Types.h>
+ #include <AK/Userspace.h>
+ #include <Kernel/API/POSIX/sched.h>
++#include <Kernel/API/SyscallParams.h>
+ 
+ #ifdef KERNEL
+ #    include <AK/Error.h>
+@@ -229,349 +230,75 @@
+     SizeType size { 0 };
+ };
+ 
++enum class SchedulerParametersMode : bool {
++    Process,
++    Thread,
++};
++
+ struct StringListArgument {
+     StringArgument* strings {};
+     size_t length { 0 };
+ };
+ 
+-struct SC_mmap_params {
+-    void* addr;
+-    size_t size;
+-    size_t alignment;
+-    int32_t prot;
+-    int32_t flags;
+-    int32_t fd;
+-    int64_t offset;
+-    StringArgument name;
+-};
+-
+-struct SC_mremap_params {
+-    void* old_address;
+-    size_t old_size;
+-    size_t new_size;
+-    int32_t flags;
+-};
+-
+-struct SC_open_params {
+-    int dirfd;
+-    StringArgument path;
+-    int options;
+-    u16 mode;
+-};
+-
+-struct SC_poll_params {
+-    struct pollfd* fds;
+-    unsigned nfds;
+-    const struct timespec* timeout;
+-    u32 const* sigmask;
+-};
+-
+-struct SC_clock_nanosleep_params {
+-    int clock_id;
+-    int flags;
+-    const struct timespec* requested_sleep;
+-    struct timespec* remaining_sleep;
+-};
+-
+-struct SC_clock_getres_params {
+-    int clock_id;
+-    struct timespec* result;
+-};
+-
+-struct SC_accept4_params {
+-    sockaddr* addr;
+-    socklen_t* addrlen;
+-    int sockfd;
+-    int flags;
+-};
+-
+-struct SC_getsockopt_params {
+-    int sockfd;
+-    int level;
+-    int option;
+-    void* value;
+-    socklen_t* value_size;
+-};
+-
+-struct SC_setsockopt_params {
+-    void const* value;
+-    int sockfd;
+-    int level;
+-    int option;
+-    socklen_t value_size;
+-};
+-
+-struct SC_getsockname_params {
+-    int sockfd;
+-    sockaddr* addr;
+-    socklen_t* addrlen;
+-};
+-
+-struct SC_getpeername_params {
+-    int sockfd;
+-    sockaddr* addr;
+-    socklen_t* addrlen;
+-};
+-
+-struct SC_socketpair_params {
+-    int domain;
+-    int type;
+-    int protocol;
+-    int* sv;
+-};
+-
+-struct SC_futex_params {
+-    u32* userspace_address;
+-    int futex_op;
+-    u32 val;
+-    union {
+-        timespec const* timeout;
+-        uintptr_t val2;
+-    };
+-    u32* userspace_address2;
+-    u32 val3;
+-};
+-
+-struct SC_setkeymap_params {
+-    u32 const* map;
+-    u32 const* shift_map;
+-    u32 const* alt_map;
+-    u32 const* altgr_map;
+-    u32 const* shift_altgr_map;
+-    StringArgument map_name;
+-};
+-
+-struct SC_unshare_open_params {
+-    int type;
+-};
+-
+-struct SC_unshare_create_params {
+-    int unshared_resource_fd;
+-};
+-
+-struct SC_unshare_enter_params {
+-    int type;
+-    int id;
+-    int flags;
+-};
+-
+-struct SC_getkeymap_params {
+-    u32* map;
+-    u32* shift_map;
+-    u32* alt_map;
+-    u32* altgr_map;
+-    u32* shift_altgr_map;
+-    MutableBufferArgument<char, size_t> map_name;
+-};
+-
+-struct SC_create_thread_params {
+-    unsigned int detach_state = 0; // JOINABLE or DETACHED
+-    int schedule_priority = 30;    // THREAD_PRIORITY_NORMAL
+-    // "If an implementation rounds up the value of guardsize to a multiple of {PAGESIZE},
+-    // a call to pthread_attr_getguardsize() specifying attr shall store in the guardsize
+-    // parameter the guard size specified by the previous pthread_attr_setguardsize() function call"
+-    // ... ok, if you say so posix. Guess we get to lie to people about guard page size
+-    unsigned int guard_page_size = 0;          // Rounded up to PAGE_SIZE
+-    unsigned int reported_guard_page_size = 0; // The lie we tell callers
+-    unsigned int stack_size = 1 * MiB;         // Equal to Thread::default_userspace_stack_size
+-    void* stack_location;                      // nullptr means any, o.w. process virtual address
+-    void* (*entry)(void*);
+-    void* entry_argument;
+-    void* tls_pointer;
+-};
+-
+-struct SC_realpath_params {
+-    StringArgument path;
+-    MutableBufferArgument<char, size_t> buffer;
+-};
+-
+-struct SC_set_mmap_name_params {
+-    void* addr;
+-    size_t size;
+-    StringArgument name;
+-};
+-
+-struct SC_execve_params {
+-    StringArgument path;
+-    StringListArgument arguments;
+-    StringListArgument environment;
+-};
+-
+-struct SC_readlink_params {
+-    StringArgument path;
+-    MutableBufferArgument<char, size_t> buffer;
+-    int dirfd;
+-};
+-
+-struct SC_link_params {
+-    StringArgument old_path;
+-    StringArgument new_path;
+-};
+-
+-struct SC_chown_params {
+-    StringArgument path;
+-    u32 uid;
+-    u32 gid;
+-    int dirfd;
+-    int follow_symlinks;
+-};
+-
+-struct SC_mknod_params {
+-    StringArgument path;
+-    u16 mode;
+-    dev_t dev;
+-    int dirfd;
+-};
+-
+-struct SC_symlink_params {
+-    StringArgument target;
+-    StringArgument linkpath;
+-    int dirfd;
+-};
+-
+-struct SC_rename_params {
+-    int olddirfd;
+-    StringArgument old_path;
+-    int newdirfd;
+-    StringArgument new_path;
+-};
+-
+-struct SC_fsopen_params {
+-    StringArgument fs_type;
+-    int flags;
+-};
+-
+-struct SC_fsmount_params {
+-    int vfs_root_context_id;
+-    int mount_fd;
+-    StringArgument target;
+-    int source_fd;
+-};
+-
+-struct SC_bindmount_params {
+-    int vfs_root_context_id;
+-    StringArgument target;
+-    int source_fd;
+-    int flags;
+-};
+-
+-struct SC_remount_params {
+-    int vfs_root_context_id;
+-    StringArgument target;
+-    int flags;
+-};
+-
+-struct SC_umount_params {
+-    int vfs_root_context_id;
+-    StringArgument target;
+-};
+-
+-struct SC_copy_mount_params {
+-    int original_vfs_root_context_id;
+-    int target_vfs_root_context_id;
+-    StringArgument original_path;
+-    StringArgument target_path;
+-    int flags;
+-};
+-
+-struct SC_pledge_params {
+-    StringArgument promises;
+-    StringArgument execpromises;
+-};
+-
+-struct SC_unveil_params {
+-    int flags;
+-    StringArgument path;
+-    StringArgument permissions;
+-};
+-
+-struct SC_utimensat_params {
+-    int dirfd;
+-    StringArgument path;
+-    struct timespec const* times;
+-    int flag;
+-};
+-
+-struct SC_posix_spawn_params {
+-    StringArgument path;
+-    StringListArgument arguments;
+-    StringListArgument environment;
+-    Userspace<void const*> attr_data;
+-    size_t attr_data_size;
+-    Userspace<void const*> serialized_file_actions_data;
+-    size_t serialized_file_actions_data_size;
+-};
+-
+-struct SC_futimens_params {
+-    int fd;
+-    struct timespec const* times;
+-};
+-
+-struct SC_waitid_params {
+-    int idtype;
+-    int id;
+-    struct siginfo* infop;
+-    int options;
+-};
+-
+-struct SC_stat_params {
+-    StringArgument path;
+-    struct stat* statbuf;
+-    int dirfd;
+-    int follow_symlinks;
+-};
+-
+-struct SC_ptrace_buf_params {
+-    MutableBufferArgument<u8, size_t> buf;
+-};
+-
+-struct SC_ptrace_params {
+-    int request;
+-    pid_t tid;
+-    void* addr;
+-    FlatPtr data;
+-};
+-
+-struct SC_set_coredump_metadata_params {
+-    StringArgument key;
+-    StringArgument value;
+-};
+-
+-struct SC_inode_watcher_add_watch_params {
+-    StringArgument user_path;
+-    int fd;
+-    u32 event_mask;
+-};
+-
+-struct SC_statvfs_params {
+-    StringArgument path;
+-    struct statvfs* buf;
+-};
+-
+-struct SC_chmod_params {
+-    int dirfd;
+-    StringArgument path;
+-    u16 mode;
+-    int follow_symlinks;
+-};
+-
+-enum class SchedulerParametersMode : bool {
+-    Process,
+-    Thread,
+-};
+-
+-struct SC_scheduler_parameters_params {
+-    pid_t pid_or_tid;
+-    SchedulerParametersMode mode;
+-    struct sched_param parameters;
+-};
+-
+-struct SC_faccessat_params {
+-    int dirfd;
+-    StringArgument pathname;
+-    int mode;
+-    int flags;
+-};
++// Expansion A: the params structs, generated from SyscallParams.h. The layout
++// is identical to the hand-written structs these replace (see layout_check.cpp).
++#    define SC_MUTABLE_BUFFER(T, S) MutableBufferArgument<T, S>
++#    define SC_USERSPACE(T) Userspace<T>
++#    define SC_THREAD_ENTRY void* (*entry)(void*)
++#    define __SC_FIELD_DECL(kind, type, name, extent, ...) type name __VA_OPT__(= __VA_ARGS__);
++#    define __SC_PARAMS_STRUCT(sc) \
++        struct SC_##sc##_params {  \
++            SC_##sc##_FIELDS(__SC_FIELD_DECL) \
++        };
++ENUMERATE_PARAMS_STRUCTS(__SC_PARAMS_STRUCT)
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
+ 
+ void initialize();
+ int sync();
