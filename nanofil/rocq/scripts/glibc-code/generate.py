@@ -40,6 +40,11 @@ def units(text):
             yield obj, paths[0]
 
 
+def fixture_prefix(name):
+    return {"HiAtexit": "hi_atexit", "PrintfState": "printf_state",
+            "PrintfBufferIo": "printf_buffer_io", "PrintfBufferFile": "printf_buffer_file"}.get(name, name.lower())
+
+
 def decoded(prefix, fns, layout):
     text = f'''
 From Nanofil Require Import Syntax Transport Semantics.
@@ -192,13 +197,30 @@ class Generator:
     def prolog(self, script, args, data=None):
         return run([self.swipl, NF / "rocq/scripts" / script, *args], data=data, env=self.env)
 
+    def link(self, cfg, name, roots, paths, source):
+        """Link a manifest fixture before selecting or printing any bodies."""
+        lower, layout = fixture_prefix(name), cfg["layout"]
+        mode = cfg.get("mode", "checked")
+        specs = []
+        if source:
+            specs.append(f"{lower}={self.compile(NF / source, mode, False)}")
+        for obj, unit in units(paths):
+            specs.append(f"{obj}={self.compile(self.capture / (unit + '.i'), mode)}")
+        entry = roots
+        if not source and layout != "getopt":
+            entry = {"libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots", "stdlib": "stdlib_root"}.get(layout, lower + "_roots")
+            items = ",".join(f"item(p,sym('{r}',0))" for r in roots.split())
+            root = self.work / "roots.term"
+            root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
+            specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
+        return self.prolog("link.pl", (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
+
     def generate(self, manifest, output, cfg=None):
         if cfg is None:
             cfg = tomllib.loads(manifest.read_text())
             for batch in cfg.pop("batch", []):
                 self.generate(manifest, output, batch)
         layout = cfg["layout"]
-        mode = cfg.get("mode", "checked")
         checker = str(manifest.parent.relative_to(NF) / ("buffer-code.sh" if layout == "buffer" else "code.sh"))
         if layout in ("stdio", "buffer"):
             run(["sha256sum", "-c", manifest.parent / ("buffer-fixtures.sha256" if layout == "buffer" else "fixtures.sha256")], cwd=self.capture)
@@ -210,24 +232,11 @@ class Generator:
             name, roots, paths, fns, *program = fields
             roots = roots or cfg.get("roots", "")
             unit_rows = "- " + paths if paths else cfg.get("units", "")
-            lower = {"HiAtexit": "hi_atexit", "PrintfState": "printf_state",
-                     "PrintfBufferIo": "printf_buffer_io", "PrintfBufferFile": "printf_buffer_file"}.get(name, name.lower())
+            lower = fixture_prefix(name)
             source = program[0] if program else ""
             cache_key = (roots, unit_rows, source)
             if cache_key not in linked_cache:
-                specs = []
-                if source:
-                    specs.append(f"{lower}={self.compile(NF / source, mode, False)}")
-                for obj, unit in units(unit_rows):
-                    specs.append(f"{obj}={self.compile(self.capture / (unit + '.i'), mode)}")
-                entry = roots
-                if not source and layout != "getopt":
-                    entry = {"libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots", "stdlib": "stdlib_root"}.get(layout, lower + "_roots")
-                    items = ",".join(f"item(p,sym('{r}',0))" for r in roots.split())
-                    root = self.work / "roots.term"
-                    root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
-                    specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
-                linked_cache[cache_key] = self.prolog("link.pl", (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
+                linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)
             linked = linked_cache[cache_key]
             if fns.split():
                 selected = self.work / "linked.term"

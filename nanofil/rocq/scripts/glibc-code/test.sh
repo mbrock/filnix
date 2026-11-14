@@ -5,6 +5,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 capture=${1:?pass the glibc capture directory}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+python3 -I "$here/test-blocks.py"
+python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
+  --rocq-function glibc_strcmp >"$work/strcmp-skeleton"
+grep -F 'WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \
+  "$work/strcmp-skeleton"
 python3 -I "$here/generate.py" "$capture" --output "$work/legacy"
 python3 -I "$here/generate.py" "$capture"
 python3 -I "$here/generate.py" "$capture" --form shared-prelude --output "$work/staged"
