@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file discharges glibc's final stream cleanup after Hello's exit
     callback has closed stdout and stderr. The remaining stdin stream has
     nothing to flush, so the existing concrete cleanup proof suffices. *)
@@ -44,11 +45,11 @@ Proof.
   intros Hk. exists glibc__IO_cleanup. split; [exact (hk_cleanup _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   iIntros "(Hs & Htc & Hls & Hfs) HK".
-  iApply (LibioCleanupExit.wp_glibc__IO_cleanup_exit w0 glibc_os_registry ge (fun n c H => H) (hk_sys _ _ Hk) fr
+  iApply (LibioCleanupExit.wp_glibc__IO_cleanup_exit (glibc_program := program_of w0 glibc_os_registry ge) (fun n c H => H) (hk_sys _ _ Hk) fr
     (D.FB.exit_stream false) [ho_in o] (ho_sb o) (ho_sreg o) (ho_fcp o) with "Hs Htc Hls Hfs");
     [exact (hk_push _ _ Hk) |
      exact (hk_pop _ _ Hk) | exact (hk_flush _ _ Hk) |
-     apply LibioFlushBody.flush_body_exit;
+     apply program_call(LibioFlushBody.flush_body_exit (glibc_program := program_of w0 glibc_os_registry ge));
        [intros n c H; exact H | exact (hk_sys _ _ Hk)] |
      exact Hfr | exact (proj1 (hk_fcp _ _ Hk)) | exact (proj2 (hk_fcp _ _ Hk)) |].
   iNext. iIntros (r Hr) "_ _ _". iApply "HK". iExists r. iSplit; [iPureIntro; split; [reflexivity|lia]|done].

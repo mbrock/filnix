@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A caller that calls glibc's getopt again holds the session that the
     previous call left behind. The first blocks of the next call set up
     the private object and then either look for the next argument or go
@@ -34,14 +35,11 @@ Proof. unfold needs_init. cbn. split; [lia | reflexivity]. Qed.
 (** The bridge module turns the session into the object and back into fields. *)
 Import GetoptEntryBridge GetoptLongSession GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
+Import ProgramAbbreviations.
 Section entry_session.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance es_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance es_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -102,7 +100,7 @@ Proof.
   rewrite Hlen in Hav Hbd Hi0.
   iAssert (⌜s = getopt_zero /\ i = 1 \/ gs_initialized s = 1 /\ gs_ind s = i /\ 0 <= gs_order s <= 2⌝)%I as %Hkp.
   { iDestruct "Hk" as "[%H | [%H _]]"; iPureIntro; [left | right]; exact H. }
-  iApply (GetoptEntry.wp_getopt_entry w0 registry ge e n (mkPtr av (Obj av)) p os lo li lonly pc penv b r s tail G
+  iApply (GetoptEntry.wp_getopt_entry e n (mkPtr av (Obj av)) p os lo li lonly pc penv b r s tail G
     with "Hs Hos Hc HG"); try (assumption || (unfold getopt_bounds in Hbd; lia)).
   iSplit.
   - iIntros (e' s' (Hst & Henv & Hnt)) "Hs' HG".

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf passes its staged character to the stream as an unsigned byte.
     This proof follows the byte load and overflow call in the captured
     flush body, beginning after the FILE pointer has been loaded.
@@ -22,28 +23,41 @@ Open Scope Z_scope.
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The surrounding process retains its existing OS resources across the call. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv)
+  (F : ptr -> iProp Σ)
+  (E : iProp Σ).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-Context (F : ptr -> iProp Σ) (E : iProp Σ).
-
-(** The backend must return its stream resources even when it returns EOF.
-    The abstract resources may own errno, but need not preserve its value. *)
 Definition printf_overflow_call_spec : Prop := forall fr fp ch Φ,
   0 <= ch < 256 ->
   call_frame glibc___overflow [WPtr fp; WInt ch] = Some fr ->
   F fp -∗ E -∗
   ▷ (∀ r, ⌜0 <= r < 2 ^ 32⌝ -∗ F fp -∗ E -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
-Context (Hcall : printf_overflow_call_spec).
+Context (F : ptr -> iProp Σ)
+  (E : iProp Σ).
+
+(** The backend must return its stream resources even when it returns EOF.
+    The abstract resources may own errno, but need not preserve its value. *)
+
+Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
+Context (Hcall : (printf_overflow_call_spec w0 registry ge F E)).
 
 (** The staged byte is passed unchanged, including bytes above 127. The
     returned value remains unrestricted except for its canonical integer range. *)
@@ -69,8 +83,7 @@ Proof.
   intros Hbb Hbe Hbr Hch Hv0 Hchk Hfp. iIntros "Hb Hch HF HE HK".
   cbn [printf_overflow_block b_insts b_jump skipn].
   step. check "Hb".
-  iApply (wp_raw_load_sub_bytes_dq with "Hb Hch");
-    [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | a2 |].
+  load_bytes_dq "Hb Hch" decode (reflexivity) by a2.
   iNext. iIntros "Hb Hch". step.
   iApply wp_call_bind; [vx | exact Hoverflow | reflexivity |]. iNext.
   norm. rewrite Z.mul_0_r Z.add_0_r (sb_byte ch Hch).

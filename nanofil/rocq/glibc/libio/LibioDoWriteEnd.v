@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The last blocks of `c: _IO_new_do_write` (LibioDoWrite.v
     describes it), from `c: iw_1.L122`: the write end is the buffer's
     base when the stream is line-buffered or unbuffered, else its end,
@@ -25,12 +26,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance do_write_end_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Block `c: iw_1.L122` of `c: _IO_new_do_write` to its return, the
@@ -59,9 +57,9 @@ Proof.
   assert (Hm514 : 0 <= Z.land fl 514 < 2 ^ 32) by (apply land_lt32; lia).
   destruct (Z.land fl 514 =? 0) eqn:E514; [apply Z.eqb_eq in E514 | apply Z.eqb_neq in E514].
   - step. branch_as true. step. step. norm. check "Hl".
-    iApply (wp_raw_load_pointer with "Hl Hbend Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hbend Hbl" by ar.
     iNext. iIntros "Hl Hbend Hbl". step. step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hwe"); [vx | vx | reflexivity | ar | ar | wi_store |].
+    store_pointer "Hl Hwe" by (ar) preserving wi_store.
     iNext. iIntros "Hl Hwe". step. step. step. step. step.
     destruct (Z.eq_dec r n) as [-> | Hrn].
     + branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.
@@ -70,9 +68,9 @@ Proof.
       replace (r =? n) with false by (symmetry; apply Z.eqb_neq; exact Hrn).
       iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with true by (symmetry; apply Z.eqb_eq; exact E514). iExact "Hwe".
   - step. branch_as false. step. step. norm. check "Hl".
-    iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hbase Hbl" by ar.
     iNext. iIntros "Hl Hbase Hbl". step. step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hwe"); [vx | vx | reflexivity | ar | ar | wi_store |].
+    store_pointer "Hl Hwe" by (ar) preserving wi_store.
     iNext. iIntros "Hl Hwe". step. step. step. step. step.
     destruct (Z.eq_dec r n) as [-> | Hrn].
     + branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.

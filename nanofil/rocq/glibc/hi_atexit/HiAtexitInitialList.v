@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The static streams initially link forward, but their backward
     links are null. The stdfiles constructor must build those links
     before exit can unlink stdout. This file checks its input against
@@ -65,7 +66,7 @@ Lemma hi_initial_list_construct Φ :
 Proof.
   rewrite /hi_initial_list_ps hi_pts_concat. cbn [big_opL].
   iIntros "(He & Hi & Hep & Hec & Hop & Hoc & Hip & Hic & Hla & Hlac & Hlk & Hlk0 & Hlk4 & Hlk8 & Hrf & Hrfc & _) Ho HK".
-  iApply (wp_glibc_stdfiles_init w0 glibc_os_registry hge _
+  iApply (wp_glibc_stdfiles_init (glibc_program := program_of w0 glibc_os_registry hge) _
     (mkPtr 69328 (Obj 69328)) (mkPtr 69808 (Obj 69808)) (mkPtr 69568 (Obj 69568))
     70048 (mkRegion 70048 70056 GlobalData Live) 69216 (mkRegion 69216 69232 GlobalData Live)
     69248 (mkRegion 69248 69256 GlobalData Live)

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Flushing a partially filled direct buffer publishes its current pointer
     to the stream without calling a write function. The stream keeps the
     pending bytes, and printf starts counting again at the current pointer.
@@ -26,13 +27,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Updating the owned pointer cells preserves the OS resources. *)
-Local Instance direct_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Pointer reads borrow the lifetime of the character allocation. *)

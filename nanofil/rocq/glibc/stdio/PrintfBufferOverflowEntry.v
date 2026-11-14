@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf can hold one character while waiting for room in the stream.
     Flushing that character first updates the count and checks which buffer
     holds it, before calling the stream's overflow routine.
@@ -27,11 +28,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Local Instance overflow_entry_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Staging pointers borrow their containing allocation's lifetime for each read. *)
@@ -60,13 +59,13 @@ Proof.
   step. step. check "Hb".
   iApply (wp_raw_load_read_dq with "Hb Hw"); [reflexivity | vx | left; reflexivity | a2 |].
   iNext. iIntros "Hb Hw".
-  step. check "Hb". load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hb Hptr".
-  check "Hb". load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hb Hbase".
+  step. check "Hb". load_self_using (wp_raw_load_pointer_self) "Hb Hptr".
+  check "Hb". load_self_using (wp_raw_load_pointer_self) "Hb Hbase".
   step. step. step. step. check "Hb". store_long "Hb" "Hw".
-  step. load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hb Hend". step. step. step. step. step. branch_as true. step.
-  step. load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hb Hend". step. step. step. step. step. branch_as false. step.
-  step. load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hb Hptr". step.
-  load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hb Hend". step. step. step. branch_as false.
+  step. load_self_using (wp_raw_load_pointer_self) "Hb Hend". step. step. step. step. step. branch_as true. step.
+  step. load_self_using (wp_raw_load_pointer_self) "Hb Hend". step. step. step. step. step. branch_as false. step.
+  step. load_self_using (wp_raw_load_pointer_self) "Hb Hptr". step.
+  load_self_using (wp_raw_load_pointer_self) "Hb Hend". step. step. step. branch_as false.
   iApply ("HK" $! _ with "[%] Hb Hbase Hptr Hend [Hw]").
   - split; lookups; try reflexivity;
       do 3 f_equal; cbn [ptr_addr ptr_cap]; unwrap2; lia.

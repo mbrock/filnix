@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** What the proof of `c: _IO_new_file_write` (LibioWrite.v) builds on:
     its loop's head block, the bytes a write reads, and the loop's
     exit. LibioWrite.v describes the function.
@@ -69,24 +70,28 @@ Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
     [wp_call_bind]: its triple's postcondition resumes the caller. *)
 Ltac resume_ret := iExists _; iSplit; [iPureIntro; reflexivity|]; iNext; cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-
-Local Instance write_exit_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
-Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** Bytes of equal values. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
 Lemma bytes_le_eq b o x y n : x = y -> bytes b o (le_bytes x n) -∗ bytes b o (le_bytes y n).
 Proof. intros ->. auto. Qed.
-
-(** The pieces a write of the bytes xs reads, as one list. *)
 Lemma live_bytes_pts b reg o xs : live b reg -∗ bytes b o xs -∗ pts ([(PLive b, VLive reg)] ++ byte_ps b o xs).
 Proof. iIntros "Hl Hb". rewrite pts_app. iFrame. Qed.
 Lemma pts_live_bytes b reg o xs : pts ([(PLive b, VLive reg)] ++ byte_ps b o xs) -∗ live b reg ∗ bytes b o xs.
 Proof. rewrite pts_app. auto. Qed.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** Bytes of equal values. *)
+
+(** The pieces a write of the bytes xs reads, as one list. *)
 
 (** The exit of `c: _IO_new_file_write`'s loop, block `c: L10`, t of
     the n bytes left: the count written, n - t, added to
@@ -126,7 +131,7 @@ Lemma wp_file_write_err fb freg fl off n t e from Φ :
 Proof.
   intros Hfb Hal Hend Hfreg Ht Hn Hfl Hv0 Hv4 Ht' Hc0. unfold file_size in Hend. iIntros "Hl [_ Hfl] Hoff HK".
   step. check "Hl". load_s32_group "Hl Hfl". step. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hfl"); [vx | vx | reflexivity | ar | reflexivity | wi_store |].
+  store_word "Hl Hfl" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hfl". step.
   iApply (wp_file_write_exit with "Hl Hoff"); try wside.
   iNext. iIntros (off') "Hl Hoff".

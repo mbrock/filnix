@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser has found the option that a word
     names in the caller's table, it steps the index past the word,
     clears its cursor and looks at the option's argument. The argument
@@ -60,14 +61,11 @@ Definition long_arg (s : list Z) (has i n : Z) (cur a : ptr) (ps : list ptr) (i'
 (** The first-blocks module supplies the steps that this file composes. *)
 Import GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section arg.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance arg_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance arg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -147,7 +145,7 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L398") (Some fr1))) : gexpr) {{ Φ }})%I
     as "HL398".
   { iIntros (e1 fr1 i' a' (Hk1 & Ha' & H8' & H90' & Hp12' & H7')) "Hl Hib Hoo Hab Hcur Ha Hcl HG Hli HF HK".
-    iApply (wp_long_store w0 registry ge ks e1 fr1 li F lo os j x with "Ht0 Hli HF");
+    iApply (wp_long_store ks e1 fr1 li F lo os j x with "Ht0 Hli HF");
       [exact Hkst | exact H8' | exact H90' | exact Hp12' | exact H7' | exact Hx | exact Hos | exact Hf |].
     iSplit.
     - iIntros (e2 (Hk2 & Hnn)) "Hli HF". iDestruct "HK" as "[HK _]".
@@ -156,13 +154,13 @@ Proof.
     - iIntros (e2 (Hk2 & Hnl & H511)) "Hli HF". iDestruct "HK" as "[_ [HK _]]".
       iApply ("HK" $! e2 i' a' with "[%] Hl Hib Hoo Hab Hcur Ha Hcl HG Hli HF").
       split; [eapply keeps_trans; [exact Hk1 | exact Hk2] | repeat split; assumption]. }
-  iApply (wp_long_pre w0 registry ge (lpre_keys ++ ks) e lo j cur s c0 i b r with "Hws Hl Hib Hcur");
+  iApply (wp_long_pre (lpre_keys ++ ks) e lo j cur s c0 i b r with "Hws Hl Hib Hcur");
     [rewrite avoids_app_l; rewrite Hks; vm_compute; reflexivity | exact H12 | exact H90 | exact H7 | exact Hp1
     | exact Hc0 | exact Hc1 | lia | lia | lia | exact Hb | exact Hal | exact Hend | exact Hr |].
   iSplit.
   - iIntros (e0 (Hk0 & E0 & H47)) "Hl Hib Hcur". apply keeps_app in Hk0 as [Hkt0 Hk0].
     pose proof Hkt0 as Hka. rewrite lpre_keys_app in Hka. apply keeps_app in Hka as [Hka _].
-    iApply (wp_long_req w0 registry ge (larg_keys ++ ks) _ G T fp dom se sereg mid4 av ar ps lo os j x pfx sp po so
+    iApply (wp_long_req (larg_keys ++ ks) _ G T fp dom se sereg mid4 av ar ps lo os j x pfx sp po so
       i n pe oo a b r with "Ht0 Hpfx Hpo Hsl Hsc Hl Hib Hoo Hab Ha Hcl Hs HG");
       [rewrite avoids_app_l; rewrite Hksq; vm_compute; reflexivity | rewrite avoids_app_l; rewrite Hksd; vm_compute; reflexivity
       | exact Hrule | exact Hse | exact Hmid4 | viakeep Hkt0 | viakeep Hkt0 | viakeep Hkt0 | viakeep Hkt0 | viakeep Hkt0
@@ -184,7 +182,7 @@ Proof.
       split; [eapply keeps_trans; [exact Hk0 | exact Hk1]|]. repeat split; auto.
   - iIntros (e0 (Hk0 & E61)) "Hl Hib Hcur". apply keeps_app in Hk0 as [Hkt0 Hk0].
     pose proof Hkt0 as Hka. rewrite lpre_keys_app in Hka. apply keeps_app in Hka as [Hka _].
-    iApply (wp_long_eq w0 registry ge (larg_keys ++ ks) _ _ G T fp dom se sereg mid3 av ar ps lo os j x pfx sp cur s
+    iApply (wp_long_eq (larg_keys ++ ks) _ _ G T fp dom se sereg mid3 av ar ps lo os j x pfx sp cur s
       pe oo a b r with "Ht0 Hpfx Hws Hsl Hsc Hl Hoo Hab Ha Hcl Hs HG");
       [rewrite avoids_app_l; rewrite Hkse; vm_compute; reflexivity | rewrite avoids_app_l; rewrite Hksd; vm_compute; reflexivity
       | exact Hrule | exact Hse | exact Hmid3 | viakeep Hkt0 | viakeep Hkt0 | viakeep Hkt0 | viakeep Hkt0 | viakeep Hkt0

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A short option that glibc's scanner finds in the option string may
     take an argument. One colon after the character means that it does,
     and two colons make the argument optional. "W;" in the option string
@@ -31,14 +32,11 @@ Local Arguments Z.opp : simpl nomatch.
 (** The optional-argument module supplies the argument vector, its tactics and its step. *)
 Import GetoptOptArg GetoptShort GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section opt.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance opt_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance opt_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -126,7 +124,7 @@ Proof.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so (S (S k))) 58) as [E58' | E58']; close_br.
   2: { iDestruct "HK" as "[_ [_ HK]]". iApply ("HK" with "[%] Hl Hib Hab Hcur"). split; [xkeep|]. split; assumption. }
   iDestruct "HK" as "[_ [HK _]]".
-  iApply (wp_getopt_optarg w0 registry ge ks e0 with "Hws Hl Hib Hab Hcur [HK]");
+  iApply (wp_getopt_optarg ks e0 with "Hws Hl Hib Hab Hcur [HK]");
     [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hi | exact Ht0 | exact Hb
     | exact Hal | exact Hend | exact Hr |].
   iIntros (e') "%Hk' Hl Hib Hab Hcur". iApply ("HK" with "[%] Hl Hib Hab Hcur"). split; [exact Hk'|]. split; assumption.
@@ -180,10 +178,8 @@ Proof.
   unfold ptr_add in H459. step.
   iDestruct (ws_byte po so k with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
-    [reflexivity | vx | exact Hcap | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
+  check_read_dq "Hbl" by rawa; iNext; iIntros "_".
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _". iClear "Hbl Hbt".
   pose proof (sbyte_range so k Hcho) as Hxr. pose proof (sbyte_range so (S k) Hcho) as Hx1r.
   step. rewrite chr_cmp; [|lia|lia].

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A long option such as "--name=value" names its option before an
     equals sign, or before the end of the argument. glibc's long-option
     parser first measures that name. It walks a pointer from its private
@@ -78,14 +79,11 @@ Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState File
 (** This tactic enters a block and evaluates its phi assignments. *)
 
 
+Import ProgramAbbreviations.
 Section scan.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance scan_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -131,7 +129,7 @@ Proof.
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   pose proof (eq_len_le s) as Hle.
   step. step. check "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Hl Hcur Hcapq" by arith.
   iNext. iIntros "Hl Hcur _". step. step. step. step.
   iApply ("HK" with "[%] Hl Hcur"). split; [xkeep|].
   split; [lk_prove|]. split; [|split; lk_prove].
@@ -171,10 +169,8 @@ Proof.
   cbn [b_insts b_jump plo_blk27].
   iDestruct (ws_byte cur s j with "Hws") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
-    [reflexivity | vx | exact Hcap | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
+  check_read_dq "Hbl" by rawa; iNext; iIntros "_".
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _".
   iApply wp_branch; [vx | iNext].
   rewrite (Z.mod_small (chr_w _) (2 ^ 32)); [|apply chr_w_range]. rewrite chr_w_eqb; [|lia|lia].
@@ -184,8 +180,7 @@ Proof.
     iApply (wp_long_scan_end ks e with "Hws Hl Hcur HK");
       [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | exact Hb | exact Hal | exact Hend | exact Hr]. }
   step.
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _". step. step. step. iApply wp_branch; [vx | iNext].
   rewrite (Z.mod_small (chr_w _) (2 ^ 32)); [|apply chr_w_range]. change (61 mod 2 ^ 32) with 61.
   rewrite chr_w_eqb; [|lia|lia].
@@ -225,7 +220,7 @@ Proof.
   intros Hks H12 Hb Hal Hend Hr. iIntros "#Hws Hl Hcur HK".
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Hl Hcur Hcapq" by arith.
   iNext. iIntros "Hl Hcur _". step. iApply wp_enter; [reflexivity | reflexivity | iNext].
   iApply (wp_long_scan_loop ks _ 0 with "Hws Hl Hcur [HK]");
     [exact Hks | lk_prove | lk_prove | | lia | exact Hb | exact Hal | exact Hend | exact Hr |].

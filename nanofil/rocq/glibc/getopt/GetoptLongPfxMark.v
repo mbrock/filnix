@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser meets a word that names more than
     one option by a prefix, it may remember which entries matched. It
     keeps one byte per table entry in a set, and it marks the bytes of
@@ -63,14 +64,11 @@ Qed.
 
 End set.
 
+Import ProgramAbbreviations.
 Section mark.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance mark_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance mark_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 

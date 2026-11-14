@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Glibc's scanner inlines its exchange routine twice. This file
     proves the outer loop of the second copy with the script that proves
     the first. *)
@@ -30,14 +31,11 @@ Local Arguments Z.opp : simpl nomatch.
 (** This module proves the upper swap loop of the second copy. *)
 Import GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section exchange.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance xchg_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance xchg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -58,7 +56,7 @@ Lemma wp_x3_loop ks e bot mid top av ar n ps Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "iw_3.L16") (b_insts x3_blk16) (b_jump x3_blk16))) : gexpr) {{ Φ }}.
-Proof. x_outer (GetoptSwap3Lower.wp_x3_lower w0 registry ge) (GetoptSwap3Upper.wp_x3_upper w0 registry ge)
+Proof. x_outer (GetoptSwap3Lower.wp_x3_lower) (GetoptSwap3Upper.wp_x3_upper)
   (TAtom "iw_3.pr.1") (TAtom "iw_3.pr.3") (TAtom "iw_3.v11") ks e bot mid top av ar n ps. Qed.
 
 End exchange.

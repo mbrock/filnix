@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's scanner turns "-W foo" or "-Wfoo" into a call of its
     long-option parser on the word after the W. One file proves the
     scanner safe up to that call, and another proves the call and the
@@ -81,14 +82,11 @@ Ltac wos_side :=
   | _ => first [assumption | lia | (hnf; apply Forall_forall; intros; reflexivity)]
   end.
 
+Import ProgramAbbreviations.
 Section wos.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance wos_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance wos_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -178,7 +176,7 @@ Proof.
   { unfold sbyte. rewrite -drop_app_le; [|lia]. rewrite wos_nth_drop. by rewrite Nat.add_1_r. }
   assert (Hc1' : ptr_add (ptr_add q (Z.of_nat k0)) 1 = ptr_add q (Z.of_nat (S k0))) by (rewrite wos_ptr_add; f_equal; lia).
   rewrite -Hc1' -Ht1.
-  iApply (GetoptWOpt.wp_getopt_wopt w0 registry ge wos_keys e e fr i n c pe (ptr_add q (Z.of_nat k0)) (drop k0 sq) po so a oo b r
+  iApply (GetoptWOpt.wp_getopt_wopt wos_keys e e fr i n c pe (ptr_add q (Z.of_nat k0)) (drop k0 sq) po so a oo b r
     av ar ps G T fp dom se sereg mid with "Hwc Hpo Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG [-]"); try wos_side.
   iSplit; [|iSplit].
   - iIntros (e' [Hk Hs1]) "Hl Hib Hoob Hab Hcur Ha Hcl HG". rewrite Hc1'.
@@ -186,7 +184,7 @@ Proof.
     assert (Hk1 : (S k0 <= List.length sq)%nat).
     { destruct (decide (S k0 < List.length sq)%nat); [lia|]. exfalso. apply Hs1. rewrite Ht1.
       unfold sbyte. rewrite app_nth2; [|lia]. by destruct (S k0 - List.length sq)%nat as [|[|]] eqn:?; cbn; try lia. }
-    iApply (GetoptLongW.wp_getopt_w_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
+    iApply (GetoptLongW.wp_getopt_w_session e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
       lo os F pfx pxs po so q sq (S k0) n pe i oo null b r li er ord fst lst
       with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli");
       try (wos_lk Hk; assumption); try wos_side.
@@ -199,7 +197,7 @@ Proof.
     rewrite Hn2. iAssert (pcell b 32 (ptr_add q2 (Z.of_nat 0))) with "[Hcur]" as "Hcur".
     { cbn [Z.of_nat]. rewrite wos_ptr_add_0. iExact "Hcur". }
     wos_conv b r (i + 1) av ar ps (ptr_add q2 (Z.of_nat 0)). iDestruct "HK" as "[HK _]".
-    iApply (GetoptLongW.wp_getopt_w_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
+    iApply (GetoptLongW.wp_getopt_w_session e' G T fp dom M se sereg f138 f139 f140 f141 lmid mid3 mid4 av ar ps
       lo os F pfx pxs po so q2 s2 0 n pe (i + 1) oo null b r li er ord fst lst
       with "Ht Hw2 Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli");
       try (wos_lk Hk; assumption); try wos_side.

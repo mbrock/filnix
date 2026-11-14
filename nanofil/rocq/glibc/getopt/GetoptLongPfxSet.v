@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A word on the command line can name two long options at once, as
     "--ver" names both "--verbose" and "--version". glibc's parser then
     reports the word as ambiguous. Before the report it remembers which
@@ -51,14 +52,11 @@ Definition plo_blk126 : block := Eval vm_compute in plo_blk "L126".
 (** The allocation module supplies the callee rules, the set, the option table and the tactics. *)
 Import GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section set.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance set_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance set_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -94,7 +92,7 @@ Proof.
   step. step. rewrite (Z.mod_small pe (2 ^ 32)) //. try change (0 mod 2 ^ 32) with 0.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec pe 0) as [-> | Hpe0]; repeat close_br.
   - step. rewrite (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
-    iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n s k with "Hs");
+    iApply (wp_pfx_mark (palloc_keys ++ ks)%list _ n s k with "Hs");
       [exact Hksk | lk_prove | lk_prove | lia | lia |].
     iIntros (e' P (Hk' & HP)) "Hs". apply keeps_app in Hk' as [Hkt Hk'].
     iApply ("HK" $! e' P 1 m s with "[%] Hs HM").
@@ -103,7 +101,7 @@ Proof.
   - step. step. step. iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
     + unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. iApply wp_branch; [vx | iNext]. close_br.
       assert (m = 0) as -> by (destruct Hm as [? | [_ ?]]; [assumption | contradiction]).
-      iApply (wp_pfx_alloc w0 registry ge ks _ M n j k with "HM");
+      iApply (wp_pfx_alloc ks _ M n j k with "HM");
         [exact Hksa | exact Hksm | exact Hcut | exact Hmal | exact Hset | lk_prove | lk_prove | lk_prove | lk_prove
         | lk_prove | lk_prove | lia | lia | lia |].
       iIntros (e' P a' m' s' (Hk' & HP & H35 & H26 & H18 & Ha' & Hm')) "Hs HM".
@@ -113,7 +111,7 @@ Proof.
       rewrite (Z.mod_small sb (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
       rewrite (proj2 (Z.eqb_neq sb 0)); [|lia]. iApply wp_branch; [vx | iNext]. close_br. step.
       rewrite (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
-      iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n (mkPtr sb (Obj sb)) k with "[Hl Hx]");
+      iApply (wp_pfx_mark (palloc_keys ++ ks)%list _ n (mkPtr sb (Obj sb)) k with "[Hl Hx]");
         [exact Hksk | lk_prove | lk_prove | lia | lia | iRight; iExists sb, sreg, xs; iFrame; done |].
       iIntros (e' P (Hk' & HP)) "Hs". apply keeps_app in Hk' as [Hkt Hk'].
       iApply ("HK" $! e' P 0 m (mkPtr sb (Obj sb)) with "[%] Hs HM").

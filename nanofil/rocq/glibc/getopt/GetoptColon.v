@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Each call of glibc's reentrant option scanner first initializes its
     private object or resumes the previous call's state. A resumed call
     must still skip the ordering prefix of the option string. Every call
@@ -77,14 +78,11 @@ Definition colon_env (e e' : env) (p : ptr) (os : list Z) (err b : Z) : Prop :=
   lookup (TAtom "v80") e' = Some (WInt 0).
 
 
+Import ProgramAbbreviations.
 Section colon.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance colon_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance colon_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -128,8 +126,7 @@ Proof.
   destruct (Z.eqb_spec (sbyte os 0) 45) as [E45|E45]; cbn [edge_label].
   { rewrite (opt_skip_minus os E45). step. branch. step. step. step. step.
     rewrite (addr_add (ptr_addr p) 1); [|lia|lia|lia]. iApply ("HK" with "[%]"). keep. }
-  step. iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |]. iNext. iIntros "_ _".
+  step. load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by arith. iNext. iIntros "_ _".
   step. step. step. rewrite chr_cmp; [|lia|lia].
   destruct (Z.eqb_spec (sbyte os 0) 43) as [E43|E43].
   { rewrite (opt_skip_plus os E43). branch. step. step. step. step.
@@ -190,19 +187,15 @@ Proof.
       destruct Hcb as (Hccap & Hcb0 & Hcbq & Hcbe & Hcbr).
       iAssert (live_capq DfracDiscarded (ptr_cap cur) creg) as "Hcc".
       { by destruct Hccap as [-> | ->]. }
-      iApply (wp_raw_load_pointer_dq with "Hl Hnext Hcc");
-        [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+      load_pointer_dq "Hl Hnext Hcc" by arith.
       iNext. iIntros "Hl Hnext _". step. step. step.
       assert (Ez : (ptr_addr cur mod 2 ^ 64 =? 0 mod 2 ^ 64) = false)
         by (apply Z.eqb_neq; rewrite !Z.mod_small; lia).
       iApply wp_branch; [vx | iNext]. rewrite Ez. close_br. step. step.
-      iApply (wp_raw_load_pointer_dq with "Hl Hnext Hcc");
-        [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+      load_pointer_dq "Hl Hnext Hcc" by arith.
       iNext. iIntros "Hl Hnext _".
-      iApply (wp_check_read_dq registry (os_wi w0) ge with "Hcl");
-        [reflexivity | vx | exact Hccap | arith | arith | arith |]. iNext. iIntros "_".
-      iApply (wp_raw_load_sub_bytes_dq with "Hcl Hct");
-        [reflexivity | vx | reflexivity | apply extended_chr | exact Hccap | arith |].
+      check_read_dq "Hcl" by arith. iNext. iIntros "_".
+      load_bytes_dq "Hcl Hct" decode (apply extended_chr) by arith.
       iNext. iIntros "_ _". pose proof (sbyte_range tail 0 Hcht) as Htr.
       step. step. step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
       destruct (Z.eqb_spec (sbyte tail 0) 0) as [Et|Et]; close_br.

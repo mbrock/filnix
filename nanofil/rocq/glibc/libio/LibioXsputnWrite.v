@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The direct write of `c: _IO_new_file_xsputn` (LibioXsputnBase.v
     describes the function), from block `c: L132`, once the overflow
     has flushed the buffer:
@@ -45,23 +46,22 @@ Definition nb_size (nb : option (Z * Z)) : Z := match nb with Some (_, sz) => sz
 
 Import LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
     LibioXsputnBase.v asks. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
-  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) (Hfwq : fwq_spec w0 registry ge).
+Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+  (Hfwq : fwq_spec w0 registry ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance xs_write_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -107,7 +107,7 @@ Proof.
   destruct (Z_le_gt_dec 128 (nb_size nb)) as [Hbig | Hsmall].
   - (* L166: whole blocks. *)
     branch_as false. step. step. step. step.
-    iApply (wp_xs_L168 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
+    iApply (wp_xs_L168 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys T (T - T mod nb_size nb)
               with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try close_side.
     assert (Hml : T mod nb_size nb <= T) by (apply Z.mod_le; lia). specialize (Hmb ltac:(lia)).
@@ -117,7 +117,7 @@ Proof.
     all: unfold unsigned_division; destruct (nb_size nb =? 0) eqn:E; [apply Z.eqb_eq in E; lia|]; unwrap2; set (q := T mod nb_size nb) in *; lia.
   - (* L168 at once: everything. *)
     assert (Hs128 : nb_size nb < 128) by lia. clear Hsmall. branch_as true. step.
-    iApply (wp_xs_L168 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
+    iApply (wp_xs_L168 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys T T
               with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try close_side.
     all: unfold n, off_buf_end, off_buf_base in *; try lia.

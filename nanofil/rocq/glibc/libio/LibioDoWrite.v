@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The triple of `c: _IO_new_do_write` (LibioDoWriteCode.v), which
     hands the n bytes from the write base to the jump table's write and
     empties the buffer: `c: new_do_write` inlined.
@@ -31,16 +32,14 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** The write rule determines which cancellation flags this composition accepts.
     The buffer-reset blocks preserve those flags on both success and failure. *)
 Context (write_ready : Z -> Prop).
 
-Local Instance do_write_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The call through the jump table and the rest, as
@@ -116,9 +115,9 @@ Proof.
   assert (Hn : n < 2 ^ 63) by lia.
   step. branch_as true. step. check "Hl". iDestruct "Hfl" as "[%Hfl0 Hfl]". load_s32_group "Hl Hfl". step. branch_as true.
   step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hre Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hre Hbl" by ar.
   iNext. iIntros "Hl Hre Hbl". step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hwb Hbl" by ar.
   iNext. iIntros "Hl Hwb Hbl". step. step. step. branch_as true.
   iApply (Hcall_spec with "Hvt Hl [$Hfl //] Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp HK");
     try libio_side.

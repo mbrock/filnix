@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The byte loop of `c: _IO_default_xsputn` (LibioGenCode.v), which
     copies a count of at most 20 bytes one at a time:
 
@@ -47,13 +48,9 @@ Definition dx_loop_names : list name :=
 
 Import LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance dx_bytes_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -87,7 +84,7 @@ Lemma wp_dx_bytes fb freg b reg sz k0 cnt dq b' reg' so c' ys j0 wp0 :
 Proof.
   intros Hfb Hfal Hfend Hfreg Hb Hbend Hbreg Hk0 Hkc Hc' Hso Hj0 Hjc Hyend Hyreg. unfold file_size in Hfend.
   iLöb as "IH". iIntros (e i xs Φ (Hv0 & Hc0 & Hi & Hp10 & Hp6 & Hir & Hlx & Hx)) "Hl Hwp Hbl Hxs Hl' Hy HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [dx_L76 b_insts b_jump]. step. step.
   destruct (Z.eq_dec i 0) as [-> | Hi0].
   - (* L79: store p, past all cnt bytes, as the write pointer. *)

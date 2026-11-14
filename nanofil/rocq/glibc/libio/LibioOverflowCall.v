@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the flush of an [ovf_state]'s k pending bytes by
     `c: _IO_new_do_write(fp, fp->_IO_write_base, k)`, as
     `c: _IO_new_file_overflow` calls it ([wp_ovf_do_write]). The call
@@ -27,16 +28,14 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_new_do_write`. *)
-Context (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
+Context `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
 
 Context (write_ready : Z -> Prop).
 
-Local Instance overflow_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_new_do_write` from the buffer's base, as LibioDoWrite.v's

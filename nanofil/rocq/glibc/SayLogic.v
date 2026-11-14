@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A small C program that writes a greeting to standard output still
     exercises both userland glibc and a system-call boundary. Here we
     link `c: say.c` with the intermediate representation of userland
@@ -228,13 +229,26 @@ Definition say_ge : genv := mkGenv say_module say_globals R.free.
 
 (** [find_strlen] confirms that looking up `c: strlen` in [say_ge]
     resolves to [strlen_fn]. *)
-Lemma find_strlen : find_fn say_ge (TAtom "strlen") = Some (Defined strlen_fn).
-Proof. vm_compute. reflexivity. Qed.
+Definition SayLogic_say_ge_program_table : list (string * func) :=
+  ("strlen", strlen_fn) ::
+  ("write", write_fn) :: nil.
+Lemma SayLogic_say_ge_program_table_correct :
+  List.Forall (fun '(n, f) => find_fn say_ge (TAtom n) = Some (Defined f)) SayLogic_say_ge_program_table.
+Proof.
+  apply defines_table_of_map.
+  vm_cast_no_check (eq_refl (List.map (fun '(_, f) => Some (Defined f)) SayLogic_say_ge_program_table)).
+Qed.
+#[global] Instance SayLogic_say_ge_program_table_instance : ProgramTable say_ge :=
+  {| program_table := SayLogic_say_ge_program_table; program_table_correct := SayLogic_say_ge_program_table_correct |}.
+Lemma find_strlen : Defines say_ge "strlen" strlen_fn.
+Proof. exact (defines_from_table_nth say_ge SayLogic_say_ge_program_table 0 "strlen" strlen_fn SayLogic_say_ge_program_table_correct eq_refl). Qed.
+#[global] Existing Instance find_strlen.
 
 (** [find_write] confirms that looking up `c: write` in [say_ge]
     resolves through the weak alias to [write_fn]. *)
-Lemma find_write : find_fn say_ge (TAtom "write") = Some (Defined write_fn).
-Proof. vm_compute. reflexivity. Qed.
+Lemma find_write : Defines say_ge "write" write_fn.
+Proof. exact (defines_from_table_nth say_ge SayLogic_say_ge_program_table 1 "write" write_fn SayLogic_say_ge_program_table_correct eq_refl). Qed.
+#[global] Existing Instance find_write.
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -286,7 +300,7 @@ Proof.
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. norm_env.
   iApply wp_call_bind; [concrete_side | exact find_write | concrete_side |]. iNext.
   concrete_step.
-  iApply (wp_zsys_write w0 say_registry say_ge with "Hps Herr");
+  iApply (wp_zsys_write (glibc_program := program_of w0 say_registry say_ge) with "Hps Herr");
     [reflexivity | concrete_side | concrete_side | concrete_side | exact He | exact Hfd | exact msg_readable |].
   iNext. iIntros (k _) "Hps Herr".
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.

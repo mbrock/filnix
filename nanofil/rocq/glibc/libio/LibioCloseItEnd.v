@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The last blocks of `c: _IO_file_close_maybe_unlink(fp, 0)`
     (LibioCloseItCode.v), from `c: L223`, the descriptor closed:
     `c: _IO_setb(fp, NULL, NULL, 0)`, the read and write pointers null,
@@ -41,25 +42,23 @@ Qed.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hsetb : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance close_it_end_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** [old_base] fl ob, as LibioSetb.v's: the old base ob is null, or a
-    live heap buffer the stream owns, `c: _IO_USER_BUF` clear in fl. *)
 Definition old_base (fl : Z) (ob : ptr) : iProp Σ :=
   ⌜ob = null⌝ ∨ ∃ bb breg, ⌜ob = mkPtr bb (Obj bb) /\ r_kind breg = Heap /\ 0 < bb /\ bb < 2 ^ 64 /\
                             Z.land fl io_user_buf = 0⌝ ∗ live bb breg.
-
-(** `c: _IO_setb`'s triple, LibioSetb.v's [wp_glibc__IO_setb]. *)
 Definition setb_spec : Prop := forall fr fb freg fl ob oe nb ne a Φ,
   call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
@@ -68,9 +67,22 @@ Definition setb_spec : Prop := forall fr fb freg fl ob oe nb ne a Φ,
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
      pcell fb off_buf_end ne -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** [old_base] fl ob, as LibioSetb.v's: the old base ob is null, or a
+    live heap buffer the stream owns, `c: _IO_USER_BUF` clear in fl. *)
+
+(** `c: _IO_setb`'s triple, LibioSetb.v's [wp_glibc__IO_setb]. *)
 
 (** [setb_spec] holds. *)
-Context (Hsetb_spec : setb_spec).
+Context (Hsetb_spec : (setb_spec w0 registry ge)).
 
 (** Block `c: L223` of `c: _IO_file_close_maybe_unlink(fp, 0)` to its
     return, `c: pr.3` the result of writing pending output and k that
@@ -101,7 +113,7 @@ Proof.
   intros fp Hv0 Hc0 Hc1 Hv2 Hp3 Hv220 Hfb Hfal Hfend Hfreg Hfl Hp3r Hk. subst fp.
   iIntros "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe Hob HK".
   unfold file_size in Hfend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl". step.
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl". step.
   iApply wp_call_bind; [vx | exact Hsetb | reflexivity |]. iNext.
   iApply (Hsetb_spec with "Hl Hfl Hbb Hbe Hob"); try close_side.
   iNext. iIntros "Hl Hfl Hbb Hbe". resume.

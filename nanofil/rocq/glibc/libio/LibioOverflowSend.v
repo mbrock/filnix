@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves block `c: L18` of `c: _IO_new_file_overflow`
     (LibioOverflowBase.v describes the function), reached once the
     stream is putting. An argument of `c: EOF` flushes the pending
@@ -27,16 +28,14 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_new_do_write`. *)
-Context (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
+Context `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
 
 Context (write_ready : Z -> Prop).
 
-Local Instance overflow_send_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_new_do_write` of no bytes, as LibioDoWrite.v proves it
@@ -112,9 +111,9 @@ Proof.
   step. step. destruct Hch as [Hch | ->].
   - assert (Hne : ch <> 2 ^ 32 - 1) by lia. branch_as true.
     step. step. norm. check "Hl".
-    iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hwp Hbl" by ar.
     iNext. iIntros "Hl Hwp Hbl". step. norm. check "Hl".
-    iApply (wp_raw_load_pointer with "Hl Hbend Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hbend Hbl" by ar.
     iNext. iIntros "Hl Hbend Hbl". step. step. step.
     destruct (Z.eq_dec k sz) as [-> | Hks].
     + branch_as false.
@@ -132,11 +131,11 @@ Proof.
       iApply ("HK" with "[%] Hl Hfx Hst"). split; [|exact Hfl'].
       destruct Hr as [-> | ->]; [right; rewrite (proj2 (Z.eqb_neq _ _) Hne); reflexivity | left; reflexivity].
   - branch. step. step. norm. check "Hl".
-    iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hwb Hbl" by ar.
     iNext. iIntros "Hl Hwb Hbl". step. norm. check "Hl".
-    iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hwp Hbl" by ar.
     iNext. iIntros "Hl Hwp Hbl".
-    iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hwb Hbl" by ar.
     iNext. iIntros "Hl Hwb Hbl". step. step. step. norm.
     replace (bb + k - bb) with k by lia.
     iApply wp_call_bind; [vx | exact Hdwf | reflexivity |]. iNext.

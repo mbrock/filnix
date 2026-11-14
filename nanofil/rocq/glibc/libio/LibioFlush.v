@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** `c: _IO_flush_all ()` (LibioFlushCode.v, libio/genops.c), which
     `c: _IO_cleanup` calls at exit to write out what every open
     stream still buffers.
@@ -58,19 +59,16 @@ Qed.
 
 End lives.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hpush : find_fn ge (TAtom "__GI___libc_cleanup_push_defer") =
-                 Some (Defined glibc___libc_cleanup_push_defer)).
-Context (Hpop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") =
-                Some (Defined glibc___libc_cleanup_pop_restore)).
-Context (Hpush_spec : push_spec w0 registry ge) (Hpop_spec : pop_spec w0 registry ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context (Hpush_spec : push_spec w0 registry ge)
+  (Hpop_spec : pop_spec w0 registry ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance flush_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -157,14 +155,14 @@ Proof.
   { iExists tb, treg, jb. iSplit; [iPureIntro; exact Ht | iExact "Htcb"]. }
   assert (Hsz : ptr_addr (ow_self w0) <> 0) by (rewrite Hself; cbn; lia).
   iDestruct (head_life with "Hfs") as (hreg Hh) "[Hhl Hback]".
-  iApply (wp_flush_start w0 registry ge Hreg Hext Hpush Hpush_spec with "Hs Htcb Hla Hlah Hhl Hlk");
+  iApply (wp_flush_start Hreg Hext Hpush_spec with "Hs Htcb Hla Hlah Hhl Hlk");
     try first [exact Hfr | close_side].
   iNext. iIntros (e cb creg (Hv81 & Hv3 & Hcb & Hcal & Hcend & Hcreg)) "Htcb Hcl Hc24 Hc16 Hla Hlah Hhl Hlk".
   iDestruct ("Hback" with "Hhl") as "Hfs".
   iApply (flush_loop P Q fs (mkPtr la (Obj la)) e (TAtom "L15") 0 with "Hs Hrl Hrc Hch Hfs");
     [exact Hbody | exact Hgrf | exact Hral | exact Hrend | exact Hsz | left; auto | exact Hv3 | lia |].
   iIntros (e' r' (Hv3' & Hp4' & Hr' & Hrr)) "Hrl Hrc Hch Hfs".
-  iApply (wp_flush_L414 w0 registry ge Hpop Hpop_spec with "Hs Hlk Htcb Hcl Hc24 Hc16"); try close_side.
+  iApply (wp_flush_L414 Hpop_spec with "Hs Hlk Htcb Hcl Hc24 Hc16"); try close_side.
   iNext. iIntros "Hlk Htcb Hcl".
   iApply ("HK" $! r' with "[%] Htcb [Hla Hlah Hch Hlk Hrl Hrc] Hfs"); [lia|].
   iExists la, lareg, lk, lkreg, rf, rfreg. iFrame. iPureIntro. split_and!; assumption.

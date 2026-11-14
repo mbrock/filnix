@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's scanner reports a bad option on stderr when the caller lets
     it print errors. The report takes two calls. __GI___dcgettext
     translates the message through the C library's message domain, and
@@ -49,14 +50,39 @@ Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG
 (** This tactic enters a block and evaluates its phi assignments. *)
 
 
-Section diag.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the scanner's safepoints. *)
-Local Instance diag_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
+Import ProgramAbbreviations.
+Section diag_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance diag_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+Definition getopt_diag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom : ptr) : Prop :=
+  lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom /\ 0 <= ptr_addr fp < 2 ^ 64 /\
+  (⊢ G -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ G)) /\
+  (forall f e ls l d args rest j mid Φ, diag_msg ge mid ->
+     map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] ->
+     ⊢ G -∗ ▷ (∀ q, T mid q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+       WP (ERun (mkFrame f e ls None
+            (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}) /\
+  (forall f e ls l d args rest j mid q a0 s0 c Φ, diag_msg ge mid -> 0 <= c < 2 ^ 32 ->
+     map_option (arg_x ge e) args = Some [WPtr fp; WPtr q; WPtr a0; WInt c] ->
+     ⊢ T mid q -∗ word_string DfracDiscarded a0 s0 -∗
+       ▷ (∀ x, G -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+       WP (ERun (mkFrame f e ls None
+            (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}).
+End diag_values.
+Section diag.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the scanner's safepoints. *)
+Local Instance diag_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -73,20 +99,6 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     translation. Output then gives back G. Proving the rule for the real
     callees remains an open proof obligation of the caller about locale
     translation and formatting. It is not part of the OS boundary. *)
-Definition getopt_diag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom : ptr) : Prop :=
-  lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom /\ 0 <= ptr_addr fp < 2 ^ 64 /\
-  (⊢ G -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ G)) /\
-  (forall f e ls l d args rest j mid Φ, diag_msg ge mid ->
-     map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] ->
-     ⊢ G -∗ ▷ (∀ q, T mid q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
-       WP (ERun (mkFrame f e ls None
-            (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}) /\
-  (forall f e ls l d args rest j mid q a0 s0 c Φ, diag_msg ge mid -> 0 <= c < 2 ^ 32 ->
-     map_option (arg_x ge e) args = Some [WPtr fp; WPtr q; WPtr a0; WInt c] ->
-     ⊢ T mid q -∗ word_string DfracDiscarded a0 s0 -∗
-       ▷ (∀ x, G -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
-       WP (ERun (mkFrame f e ls None
-            (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}).
 
 (** This tactic computes call arguments whose last one is the option character c. *)
 Ltac vxc c := cbn -[put];
@@ -101,7 +113,7 @@ Ltac msg := unfold diag_msg; first [left; eassumption | right; eassumption].
 Ltac diag_block :=
   let Hdom := fresh "Hdom" in let Hfp := fresh "Hfp" in let Hlend := fresh "Hlend" in
   let Hgt := fresh "Hgt" in let Hfx := fresh "Hfx" in
-  match goal with H : getopt_diag_rule _ _ _ _ |- _ => destruct H as (Hdom & Hfp & Hlend & Hgt & Hfx) end;
+  match goal with H : (getopt_diag_rule w0 registry ge) _ _ _ _ |- _ => destruct H as (Hdom & Hfp & Hlend & Hgt & Hfx) end;
   iIntros "#Hsl #Hsc Ha Hcl #Hs HG HK";
   let q0 := fresh "q0" in let ps' := fresh "ps" in
   match goal with Hps : ?ps <> [] |- _ => destruct ps as [|q0 ps']; [congruence|] end;
@@ -132,7 +144,7 @@ Ltac diag_block :=
     c to the output call. The report keeps the vector and returns G. The
     unknown-option report uses the message str.148. *)
 Lemma wp_getopt_diag_unknown ks e fr (G : iProp Σ) T fp dom se sereg mid c av ar ps Φ :
-  avoids ks diag_names = true -> getopt_diag_rule G T fp dom ->
+  avoids ks diag_names = true -> (getopt_diag_rule w0 registry ge) G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
@@ -149,7 +161,7 @@ Proof. intros. diag_block. Qed.
 
 (** The missing-argument report of "-W" uses the message str.149. *)
 Lemma wp_getopt_diag_wmissing ks e fr (G : iProp Σ) T fp dom se sereg mid c av ar ps Φ :
-  avoids ks diag_names = true -> getopt_diag_rule G T fp dom ->
+  avoids ks diag_names = true -> (getopt_diag_rule w0 registry ge) G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
@@ -166,7 +178,7 @@ Proof. intros. diag_block. Qed.
 
 (** The missing-argument report of a short option uses str.149 too. *)
 Lemma wp_getopt_diag_missing ks e fr (G : iProp Σ) T fp dom se sereg mid c av ar ps Φ :
-  avoids ks diag_names = true -> getopt_diag_rule G T fp dom ->
+  avoids ks diag_names = true -> (getopt_diag_rule w0 registry ge) G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->

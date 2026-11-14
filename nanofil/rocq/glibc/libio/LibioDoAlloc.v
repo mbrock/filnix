@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: _IO_file_doallocate` (LibioDoAllocBase.v
     describes the function), from its entry: the 144-byte stat buffer
     on the stack, the jump table's stat, and the blocks that
@@ -26,18 +27,35 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
+Lemma stat_fields sb xs : length xs = 144%nat ->
+  bytes sb 0 xs -∗
+  bytes sb 24 (take 4 (drop 24 xs)) ∗ bytes sb 40 (take 8 (drop 40 xs)) ∗ bytes sb 56 (take 8 (drop 56 xs)).
+Proof.
+  iIntros (Hl) "H".
+  iDestruct (bytes_take_drop _ _ _ 24 with "H") as "[_ H]"; [lia|].
+  iDestruct (bytes_take_drop _ _ _ 4 with "H") as "[H1 H]"; [rewrite length_drop; lia|].
+  iDestruct (bytes_take_drop _ _ _ 12 with "H") as "[_ H]"; [rewrite !length_drop; lia|].
+  iDestruct (bytes_take_drop _ _ _ 8 with "H") as "[H2 H]"; [rewrite !length_drop; lia|].
+  iDestruct (bytes_take_drop _ _ _ 8 with "H") as "[_ H]"; [rewrite !length_drop; lia|].
+  iDestruct (bytes_take_drop _ _ _ 8 with "H") as "[H3 _]"; [rewrite !length_drop; lia|].
+  rewrite !drop_drop. cbn [Nat.add]. iFrame.
+Qed.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The registry holds the OS contracts, and the genv's externals
     are the system calls. *)
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 (** The genv defines `c: _IO_file_stat` at the symbol the jump
     table's stat slot holds. *)
 Context (Hstatf : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat).
 
-Local Instance doalloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The allocator's state, which `c: malloc` takes and gives back. *)
@@ -85,19 +103,6 @@ Context (Hstat_spec : forall fr fb freg fd b reg o eb Φ,
 
 (** The stat buffer's 144 bytes, split into `c: st_mode`,
     `c: st_rdev` and `c: st_blksize` and the rest dropped. *)
-Lemma stat_fields sb xs : length xs = 144%nat ->
-  bytes sb 0 xs -∗
-  bytes sb 24 (take 4 (drop 24 xs)) ∗ bytes sb 40 (take 8 (drop 40 xs)) ∗ bytes sb 56 (take 8 (drop 56 xs)).
-Proof.
-  iIntros (Hl) "H".
-  iDestruct (bytes_take_drop _ _ _ 24 with "H") as "[_ H]"; [lia|].
-  iDestruct (bytes_take_drop _ _ _ 4 with "H") as "[H1 H]"; [rewrite length_drop; lia|].
-  iDestruct (bytes_take_drop _ _ _ 12 with "H") as "[_ H]"; [rewrite !length_drop; lia|].
-  iDestruct (bytes_take_drop _ _ _ 8 with "H") as "[H2 H]"; [rewrite !length_drop; lia|].
-  iDestruct (bytes_take_drop _ _ _ 8 with "H") as "[_ H]"; [rewrite !length_drop; lia|].
-  iDestruct (bytes_take_drop _ _ _ 8 with "H") as "[H3 _]"; [rewrite !length_drop; lia|].
-  rewrite !drop_drop. cbn [Nat.add]. iFrame.
-Qed.
 
 (** `c: _IO_file_doallocate(fp)` on a stream with no buffer installs a
     fresh one and returns 1, as [doalloc_k] states. *)
@@ -131,7 +136,7 @@ Proof.
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   step. step. norm.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
+  check_read_dq "Hvl'" by ar.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hss Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hstatf) |].

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** After glibc's long-option parser has reported an ambiguous word, it
     gives back the set of matching options when malloc made it. Then it
     steps the index past the word, moves its cursor to the end of the
@@ -38,14 +39,30 @@ Definition atail_names : list name := Eval vm_compute in
 (** The decision module supplies the set, the option table and the tactics. *)
 Import GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
-Section tail.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the parser's safepoints. *)
-Local Instance atail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
+Import ProgramAbbreviations.
+Section tail_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance atail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+Definition getopt_free_rule : Prop := forall f e ls l v rest j b reg Φ,
+  arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> 0 < b < 2 ^ 64 ->
+  ⊢ live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }} -∗
+    WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global (TAtom "free")) [Arg P v] :: rest) j)) : gexpr)
+      {{ Φ }}.
+End tail_values.
+Section tail.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the parser's safepoints. *)
+Local Instance atail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -54,11 +71,6 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     heap object the argument points at, and the rest of the code runs
     on. The stdio proofs state free the same way. Until a caller proves
     it, the rule stays an open premise. *)
-Definition getopt_free_rule : Prop := forall f e ls l v rest j b reg Φ,
-  arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> 0 < b < 2 ^ 64 ->
-  ⊢ live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }} -∗
-    WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global (TAtom "free")) [Arg P v] :: rest) j)) : gexpr)
-      {{ Φ }}.
 
 (** After it reports an ambiguous option, the parser cleans up and
     skips the word. It frees the set of candidates when malloc made it,
@@ -66,7 +78,7 @@ Definition getopt_free_rule : Prop := forall f e ls l v rest j b reg Φ,
     the word, steps to the next word, clears the bad option and
     answers '?'. *)
 Lemma wp_amb_tail ks e fr n m sp cur s i oo b r Φ :
-  avoids ks atail_names = true -> getopt_free_rule ->
+  avoids ks atail_names = true -> (getopt_free_rule w0 registry ge) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   lookup (TAtom "pr.30") e = Some (WInt m) -> lookup (TAtom "pr.21") e = Some (WPtr sp) ->
   lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->
@@ -91,17 +103,17 @@ Proof.
     with "[Hib Hoob HK]" as "HL307".
   { iIntros (e1 fr1 (Hk1 & H12' & Hc0'')) "Hl Hcur".
     step. step. check "Hl".
-    iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+    load_pointer_dq "Hl Hcur Hcapc" by StrlenLoop.arith.
     iNext. iIntros "Hl Hcur _".
-    iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+    load_pointer_dq "Hl Hcur Hcapc" by StrlenLoop.arith.
     iNext. iIntros "Hl Hcur _".
     iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hws"); [vx | exact Hgl | reflexivity |].
     iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+    store_pointer "Hl Hcur" by (StrlenLoop.arith) preserving wi_store.
     iNext. iIntros "Hl Hcur". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+    store_word "Hl Hib" by (StrlenLoop.arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+    store_word "Hl Hoob" by (StrlenLoop.arith) preserving wi_store.
     iNext. iIntros "Hl Hoob".
     rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia]. change (0 mod 2 ^ 64) with 0.
     match goal with |- context [pcell b 32 {| ptr_addr := ?X; ptr_cap := ptr_cap cur |}] =>

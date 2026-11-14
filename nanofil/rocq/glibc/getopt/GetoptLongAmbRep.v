@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds several options whose names
     start with a word's name, it reports the word as ambiguous when its
     caller lets it print errors. It names the word and, when it built a
@@ -39,14 +40,11 @@ Definition arep_keys : list name := Eval vm_compute in
 (** The heading modules supply the report's first line, the listing, the last steps and the set. *)
 Import GetoptLongAmbPoss GetoptLongAmbHead GetoptLongAmbList GetoptLongAmbItem GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section rep.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance arep_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance arep_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -107,7 +105,7 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L241") (Some fr1))) : gexpr) {{ Φ }})%I
     with "[HK]" as "HL241".
   { iIntros (e1 fr1 (Hk1 & H30' & H21' & H12' & Hc0'')) "Hs Hl Hib Hoob Hcur Ha Hcl HG".
-    iApply (wp_amb_tail w0 registry ge ks e1 fr1 _ m sp cur s i oo b r with "Hwc Hs Hl Hib Hoob Hcur");
+    iApply (wp_amb_tail ks e1 fr1 _ m sp cur s i oo b r with "Hwc Hs Hl Hib Hoob Hcur");
       [exact Hkst | exact Hfree | exact Hgl | exact H30' | exact H21' | exact H12' | exact Hc0'' | exact Hm | exact Hi
       | exact Hb | exact Hal | exact Hend | exact Hr |].
     iIntros (e' Hk') "Hl Hib Hoob Hcur". iApply ("HK" with "[%] Hl Hib Hoob Hcur Ha Hcl HG").
@@ -117,7 +115,7 @@ Proof.
   { iApply ("HL241" with "[%] Hs Hl Hib Hoob Hcur Ha Hcl HG"). split; [xkeep|]. repeat split; lk_prove. }
   step. iApply wp_branch; [vx | iNext]. destruct Ha as [-> | ->]; close_br.
   - destruct Hsa as [Hsn | ?]; [|lia].
-    iApply (wp_amb_head139 w0 registry ge (arep_keys ++ ks)%list e _ G T fp dom se sereg f139 av ar ps pfx pxs cur s b r
+    iApply (wp_amb_head139 (arep_keys ++ ks)%list e _ G T fp dom se sereg f139 av ar ps pfx pxs cur s b r
       with "Hpfx Hwc Hsl Hsc Hl Hcur Ha Hcl Hargs HG");
       [rewrite avoids_app_l Hks; reflexivity | exact Hrule | exact Hse | exact H139 | lk_prove | lk_prove | lk_prove | lk_prove | exact Hb | exact Hal
       | exact Hend | exact Hr | exact Hav | exact Hala | exact Hda | exact Hra | exact Hps | exact Hse0 | exact Hsea
@@ -125,7 +123,7 @@ Proof.
     iIntros (e2 Hk2) "Hl Hcur Ha Hcl HG". apply keeps_app in Hk2 as [Hkt2 Hk2]. step. pcmp_fold "L273" plo_blk273.
     iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hsetl & Hx)]"; [contradiction|].
     destruct Hs as (-> & Hsk & Hsb & Hsend & Hsr & Hlen).
-    iApply (wp_amb_list w0 registry ge (arep_keys ++ ks)%list _ G T fp dom se sereg f140 f141 lo os pfx pxs 0 sb sreg xs
+    iApply (wp_amb_list (arep_keys ++ ks)%list _ G T fp dom se sereg f140 f141 lo os pfx pxs 0 sb sreg xs
       with "Ht Hpfx Hsl Hsc Hsetl Hx HG");
       [rewrite avoids_app_l Hksl; reflexivity | exact Hrule | exact Hse | exact H140 | exact H141 | arep_lk | arep_lk
       | arep_lk | arep_lk | arep_lk | lia | exact Hos | lia | exact Hsb | exact Hsend | exact Hsr | exact Hse0
@@ -134,7 +132,7 @@ Proof.
     iApply ("HL241" with "[%] [Hsetl Hx] Hl Hib Hoob Hcur Ha Hcl HG").
     + split; [eapply keeps_trans; [exact Hk2|]; eapply keeps_trans; [|exact Hk3]; xkeep|]. repeat split; arep_lk.
     + iRight. iExists sb, sreg, xs. iFrame. done.
-  - iApply (wp_amb_head138 w0 registry ge (arep_keys ++ ks)%list e _ G T fp dom se sereg f138 av ar ps pfx pxs cur s b r
+  - iApply (wp_amb_head138 (arep_keys ++ ks)%list e _ G T fp dom se sereg f138 av ar ps pfx pxs cur s b r
       with "Hpfx Hwc Hsl Hsc Hl Hcur Ha Hcl Hargs HG");
       [rewrite avoids_app_l Hks; reflexivity | exact Hrule | exact Hse | exact H138 | lk_prove | lk_prove | lk_prove | lk_prove | exact Hb | exact Hal
       | exact Hend | exact Hr | exact Hav | exact Hala | exact Hda | exact Hra | exact Hps | exact Hse0 | exact Hsea

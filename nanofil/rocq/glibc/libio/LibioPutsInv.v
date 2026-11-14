@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** What the proofs of `c: puts` and `c: fputs` (LibioPutsCode.v)
     share: a stream at a known mode and lock state ([file_at]), the
     fields each part of the two functions opens from it, the triples
@@ -227,20 +228,44 @@ Qed.
 
 End streams.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance puts_inv_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+Lemma live_halves b reg : live b reg ⊣⊢ liveq (DfracOwn (1 / 2)) b reg ∗ liveq (DfracOwn (1 / 2)) b reg.
+Proof. rewrite /live /liveq pts_ptsq -ptsq_split Qp.half_half. done. Qed.
+Definition xsputn_spec_for (F : ptr -> Z -> option Z -> iProp Σ)
+    (G : list Z -> ptr -> Z -> option Z -> iProp Σ) (Rx : iProp Σ) : Prop := forall fr fp p dq s Φ,
+  call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr p; WInt (Z.of_nat (length s))] = Some fr ->
+  F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+  ▷ (∀ r, ⌜0 <= r < 2 ^ 64⌝ -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+     Φ (Ret (WInt r))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+Definition xsputn_spec (vb : Z) (Rx : iProp Σ) : Prop :=
+  xsputn_spec_for (file_at vb (ow_self w0)) (fun _ => file_at vb (ow_self w0)) Rx.
+Definition overflow_spec (vb : Z) (Rx : iProp Σ) : Prop := forall fr fp Φ,
+  call_frame glibc___overflow [WPtr fp; WInt 10] = Some fr ->
+  file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
+  ▷ (∀ r, ⌜0 <= r < 2 ^ 32⌝ -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗ Φ (Ret (WInt r))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A whole life of b is two half lives. *)
-Lemma live_halves b reg : live b reg ⊣⊢ liveq (DfracOwn (1 / 2)) b reg ∗ liveq (DfracOwn (1 / 2)) b reg.
-Proof. rewrite /live /liveq pts_ptsq -ptsq_split Qp.half_half. done. Qed.
 
 (** [wp_raw_load_pointer] of a pointer x into the object b that holds
     it: one life gives both shares the load reads. *)
@@ -272,28 +297,14 @@ Qed.
     nonempty output can establish buffer allocation even when the
     returned count indicates failure. Generic callers keep the same
     stream predicate before and after the call. *)
-Definition xsputn_spec_for (F : ptr -> Z -> option Z -> iProp Σ)
-    (G : list Z -> ptr -> Z -> option Z -> iProp Σ) (Rx : iProp Σ) : Prop := forall fr fp p dq s Φ,
-  call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr p; WInt (Z.of_nat (length s))] = Some fr ->
-  F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
-  ▷ (∀ r, ⌜0 <= r < 2 ^ 64⌝ -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
-     Φ (Ret (WInt r))) -∗
-  WP (ERun fr : sexpr) {{ Φ }}.
 
 (** Existing callers keep the same stream resources before and after
     string output. This definition retains that original interface. *)
-Definition xsputn_spec (vb : Z) (Rx : iProp Σ) : Prop :=
-  xsputn_spec_for (file_at vb (ow_self w0)) (fun _ => file_at vb (ow_self w0)) Rx.
 
 (** `c: __overflow(fp, '\n')`'s triple as `c: puts` calls it on a full
     buffer, with the stream's lock held once and its mode -1: any
     `c: int` comes back, with the stream at the same mode and lock and
     the resources Rx. *)
-Definition overflow_spec (vb : Z) (Rx : iProp Σ) : Prop := forall fr fp Φ,
-  call_frame glibc___overflow [WPtr fp; WInt 10] = Some fr ->
-  file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
-  ▷ (∀ r, ⌜0 <= r < 2 ^ 32⌝ -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun fr : sexpr) {{ Φ }}.
 
 End rules.
 

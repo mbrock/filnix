@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The end of block `c: iw_1.iw_2.join` of `c: _IO_new_do_write`
     (LibioDoWrite.v describes it), after the jump table's write returned
     r of the n bytes: `c: _cur_column` is 0, so `c: _IO_adjust_column`
@@ -32,12 +33,9 @@ Definition dw_join : block := Eval vm_compute in
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance do_write_ret_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The end of the call, as LibioDoWriteTail.v proves it
@@ -87,7 +85,7 @@ Proof.
   iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol HK".
   cbn [dw_join b_insts b_jump skipn].
   step. norm. check "Hl".
-  iApply (wp_raw_load_sub_bytes_dq with "Hl Hcol"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |].
+  load_bytes_dq "Hl Hcol" decode (reflexivity) by ar.
   iNext. iIntros "Hl Hcol". branch. step. branch.
   iApply (Htail_spec with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
     try libio_side.

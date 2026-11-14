@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A stream's first overflow allocates a buffer and points its read
     pointers at the buffer's base. This file proves that part of the
     function and then uses the proof of the write-pointer resets.
@@ -40,16 +41,13 @@ Definition ovf_alloc_flags (fl fl' : Z) : Prop :=
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance overflow_alloc_setg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The genv defines `c: _IO_doallocbuf`. *)
-Context (Hdabf : find_fn ge (TAtom "__GI__IO_doallocbuf") = Some (Defined glibc__IO_doallocbuf)).
+Context `{Hdabf : !Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
 (** The allocator's state, which `c: malloc` takes and gives back. *)
 Context (Mres : iProp Σ).
 
@@ -126,17 +124,17 @@ Proof.
   iNext. iIntros "Hvtp". iIntros (fl1 bb sz (Hfl1 & Hsz & Hbb & Hbbe)) "Hl Hflb Hfd Hbase Hbend Hnb Herr HM".
   iDestruct "Hnb" as (breg) "(%Hbr & Hbl & Hxs & Haux)". destruct Hbr as (Hbk' & Hbe & Hbreg & Hb16).
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  adv. iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  adv. load_pointer "Hl Hbase Hbl" by ar.
   iNext. iIntros "Hl Hbase Hbl". adv.
-  iApply (wp_raw_store_pointer with "Hl Hrb"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hrb" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hrb". adv.
-  iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hbase Hbl" by ar.
   iNext. iIntros "Hl Hbase Hbl". adv.
-  iApply (wp_raw_store_pointer with "Hl Hrp"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hrp" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hrp". adv.
-  iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hbase Hbl" by ar.
   iNext. iIntros "Hl Hbase Hbl". adv.
-  iApply (wp_raw_store_pointer with "Hl Hre"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hre" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hre". step.
   assert (Hfa : Z.land (setb_flags fl1 1) io_is_appending = 0 /\ Z.land (setb_flags fl1 1) 256 = 0).
   { rewrite !setb1_land; try reflexivity. unfold io_is_appending, io_line_buf in *.

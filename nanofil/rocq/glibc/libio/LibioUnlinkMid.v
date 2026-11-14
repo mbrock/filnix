@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The middle of `c: _IO_un_link` (LibioUnlinkCode.v): the stream
     leaves the list. [chain_split] finds, in [io_list_inv]'s
     [chain_links], the link before a stream, `c: _IO_list_all` or the
@@ -119,16 +120,13 @@ Qed.
 
 End list.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hpop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") =
-                Some (Defined glibc___libc_cleanup_pop_restore)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance unlink_mid_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -166,8 +164,8 @@ Proof.
     Hral Hrend.
   iIntros "#Hs Hl Hfl Hlp Hlb Hpc Hch Hql Hqc Hnx Hrl Hrc Hlk Htcb Hcl Hcp Hct HK".
   unfold file_size in Hfend. subst qp fp.
-  iApply (wp_live_fit1 w0 registry ge with "Hql"). iIntros ([Hq0 Hq48]) "Hql".
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hql"). iIntros ([Hq0 Hq48]) "Hql".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   step. step. check "Hl". load "Hl" "Hpc" "Hql". step. check "Hl".
   iDestruct "Hnx" as "[-> | (%nb & %nreg & %Hn & Hnl & Hnp)]".
   - load_null "Hl" "Hch". check "Hql". store "Hql" "Hqc". step. step. branch.
@@ -175,7 +173,7 @@ Proof.
     iNext. iIntros "Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl".
     iApply ("HK" with "Hl Hfl Hlp Hlb Hpc Hch Hql Hqc [] Hrl Hrc Hlk Htcb Hcl"). iLeft. done.
   - destruct Hn as (-> & Hnb & Hnal & Hnend & Hnreg). unfold file_size in Hnend.
-    iApply (wp_live_fit1 w0 registry ge with "Hnl"). iIntros ([Hn0 Hn48]) "Hnl".
+    iApply (wp_live_fit1 with "Hnl"). iIntros ([Hn0 Hn48]) "Hnl".
     load "Hl" "Hch" "Hnl". check "Hql". store "Hql" "Hqc". step. step. branch_as false.
     step. step. check "Hnl". store "Hnl" "Hnp". step.
     iApply (wp_unlink_L179 with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl Hcp Hct"); try close_side.

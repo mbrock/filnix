@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf finds the stream operation through FILE's jump table before
     sending its staged bytes. It computes the byte count from its staging
     pointer and checks that the jump table belongs to glibc.
@@ -27,13 +28,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Reading the jump table leaves the stream and OS resources unchanged. *)
-Local Instance prelude_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 
@@ -74,23 +71,20 @@ Proof.
   unfold io_vtables_size in Hvend.
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
   iNext. cbn [b_insts b_jump]. step.
-  iApply (wp_raw_load_pointer_self w0 registry ge with "Hb Hptr");
+  iApply (wp_raw_load_pointer_self with "Hb Hptr");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
   iNext. iIntros "Hb Hptr". step. step. step. step. step. check "Hb".
-  iApply (wp_raw_load_pointer_dq with "Hb Hfp Hf");
-    [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |].
+  load_pointer_dq "Hb Hfp Hf" by a2.
   iNext. iIntros "Hb Hfp Hf". step. check_shared "Hf".
   iApply (wp_raw_load_pointer_dq with "Hf Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file; lia |].
   iNext. iIntros "Hf Hvtp #Hvl'". step. step. step. step. step. branch_as true. step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'");
-    [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
+  check_read_dq "Hvl'" by a2.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsx Hfc");
     [reflexivity | vx | right; reflexivity | a2 | a2 | apply (ge_fn_addr _ _ _ Hfn) |].
   iNext. iIntros "_ _ _". step. check "Hb".
-  iApply (wp_raw_load_pointer_dq with "Hb Hfp Hf");
-    [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |].
+  load_pointer_dq "Hb Hfp Hf" by a2.
   iNext. iIntros "Hb Hfp Hf". step.
   iApply ("HK" $! _ with "[%] Hb Hf Hptr Hfp Hvtp").
   split_and!; lookups; try reflexivity.

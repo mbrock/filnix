@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When the current word starts with two dashes, glibc's getopt
     stores a cursor past the dashes and calls its long-option parser,
     then returns the parser's answer. The next call of getopt relies on
@@ -54,14 +55,11 @@ Ltac dash_side :=
   | _ => first [assumption | lia | vx | dash_vx]
   end.
 
+Import ProgramAbbreviations.
 Section dash.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance dash_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance dash_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -109,7 +107,7 @@ Proof.
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
   unfold long_call, long_jump. step.
-  iApply (GetoptLongCall.wp_call_glibc_process_long_option w0 registry ge _ _ _ _ _ _ _ _ _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
+  iApply (GetoptLongCall.wp_call_glibc_process_long_option _ _ _ _ _ _ _ _ _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try dash_side.
   iNext. iIntros (x) "Hres". iExists _. iSplit; [done|]. iNext.
   iDestruct "Hres" as (i' oo' a' c') "(Hl & Hib & Hoob & Hab & Hcur & Ha & Hcl & HG & HF & HM & Hli & %Hp)".

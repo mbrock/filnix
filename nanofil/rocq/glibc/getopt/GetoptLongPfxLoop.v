@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's long-option parser searches the whole table for options
     whose names start with a word's name. The module before this one
     proves one round of that search. This file proves the whole search
@@ -31,14 +32,11 @@ Local Arguments Z.opp : simpl nomatch.
 (** The round module supplies one round of the search, the set, the option table and the tactics. *)
 Import GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section loop.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance loop_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance loop_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -79,7 +77,7 @@ Proof.
   intros e k p w a m sp Hd Hat H3 H13 H8 H42 H39 H30 H21 Hk Hf Ha Hm.
   iIntros "#Hws #Ht Hl Hcur HF Hs HM HK". iPoseProof "Ht" as "Ht0".
   iDestruct "Ht" as (tb treg) "(%Ht & _)". destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
-  iApply (wp_pfx_iter w0 registry ge ks e M k p w a m sp cur s lo os F b r lonly pe
+  iApply (wp_pfx_iter ks e M k p w a m sp cur s lo os F b r lonly pe
     with "Hws Ht0 Hl Hcur HF Hs HM");
     [exact Hks | exact Hksc | exact Hkss | exact Hksa | exact Hksm | exact Hcut | exact Hmal | exact Hset | exact Hgn
     | exact Hfl | exact Hos | exact Hpe | exact Hb | exact Hal | exact Hend | exact Hr | exact Hat | exact H3 | exact H13

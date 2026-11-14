@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's long-option parser measures the name in the current word,
     searches the option table and then reaches one of its returns. This
     file joins the search with the returns of the found and not-found
@@ -56,14 +57,11 @@ Ltac jn_side :=
   | _ => first [assumption | lia]
   end.
 
+Import ProgramAbbreviations.
 Section join.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance join_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance join_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -116,19 +114,19 @@ Proof.
     H0 H2 H4 H6 H8 H10 H12 H14 H16 Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
   assert (Hps : ps <> []) by (intros ->; cbn in Hlen; lia).
-  iApply (GetoptLongBody.wp_long_body w0 registry ge jparam_keys e G T fp dom M se sereg f138 f139 f140 f141
+  iApply (GetoptLongBody.wp_long_body jparam_keys e G T fp dom M se sereg f138 f139 f140 f141
     av ar ps lo os F pfx pxs cur s lonly pe i oo b r with "Ht Hpfx Hws Hsl Hsc Hl Hib Hoob Hcur Ha Hcl Hs HG HF HM");
     try jn_side.
   iSplit.
   - iIntros (e2 p w (Hk2 & Hf & H12' & H7' & H90 & Hp1 & Hc0 & Hc1)) "Hl Hib Hoob Hcur Ha Hcl HG HF HM".
     destruct Hf as [[-> ->] | (j & Hj & -> & ->)].
-    + iApply (GetoptLongJoinMiss.wp_long_join_miss w0 registry ge [] e2 G T fp dom M se sereg mid av ar ps q sq po so pfx pxs
+    + iApply (GetoptLongJoinMiss.wp_long_join_miss [] e2 G T fp dom M se sereg mid av ar ps q sq po so pfx pxs
         cur s i n lonly pe oo a li F b r os
         with "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli"); try jn_side.
       iIntros (e' l rv x [_ Hv]) "Hres". iApply ("HK" $! e' l rv x with "[%] Hres"). exact Hv.
     + destruct (lookup_lt_is_Some_2 os j Hj) as [x Hx].
       pose proof (Forall_lookup_1 _ _ _ _ Hfl Hx) as Hfx.
-      iApply (GetoptLongJoinFound.wp_long_join_found w0 registry ge [] e2 G T fp dom M se sereg mid3 mid4 av ar ps lo os j x
+      iApply (GetoptLongJoinFound.wp_long_join_found [] e2 G T fp dom M se sereg mid3 mid4 av ar ps lo os j x
         pfx pxs po so cur s i n pe oo a b r li F
         with "Ht Hpfx Hpo Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli"); try jn_side.
       iIntros (e' l rv v [_ Hv]) "Hres". iApply ("HK" $! e' l rv v with "[%] Hres"). exact Hv.

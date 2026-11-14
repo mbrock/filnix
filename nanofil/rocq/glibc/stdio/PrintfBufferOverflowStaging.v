@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Flushing a staged character updates printf's count before calling the
     stream's overflow routine. EOF marks failure; any other result proceeds
     to buffer selection with the original character still owned.
@@ -23,14 +24,13 @@ Open Scope Z_scope.
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Local Instance overflow_staging_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (F : ptr -> iProp Σ) (E : iProp Σ).
-Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
+Context (F : ptr -> iProp Σ)
+  (E : iProp Σ).
+Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
 Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge F E).
 
 (** Both outcomes preserve the original buffer cells and updated unsigned count.
@@ -73,10 +73,10 @@ Proof.
     iNext. iIntros (r Hr) "HF HE".
     iApply ("HK" $! r with "[%] HF [HE HP]"); [done | iFrame]. }
   iIntros "Hb Hbase Hptr Hend Hw Hfp Hch Hm HF HE Hfail Hselect".
-  iApply (PrintfBufferOverflowEntry.wp_printf_overflow_entry w0 registry ge fr bb breg written
+  iApply (PrintfBufferOverflowEntry.wp_printf_overflow_entry fr bb breg written
     with "Hb Hbase Hptr Hend Hw"); try assumption.
   iIntros (e (Hv0 & Hchk)) "Hb Hbase Hptr Hend Hw".
-  iApply (PrintfBufferOverflowCaller.wp_printf_overflow_caller w0 registry ge F (E ∗ P) Hoverflow Hframed
+  iApply (PrintfBufferOverflowCaller.wp_printf_overflow_caller F (E ∗ P) Hframed
     e (Some (TAtom "L62")) bb breg fb ch mode
     with "Hb Hfp Hch Hm HF [HE Hbase Hptr Hend Hw] [Hfail] [Hselect]"); try assumption; try lia.
   - rewrite /P. iFrame.

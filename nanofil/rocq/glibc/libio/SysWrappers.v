@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Triples for user glibc's C wrappers over libpizlo's `zsys_*` calls
     (SysCode.v), over the [os_world] of [OsWorld](../zsys/OsWorld.v)
     and any registry holding [glibc_os_registry]'s contracts, for any
@@ -57,34 +58,48 @@ Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
     object's life and the bytes. *)
 
 
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (registry : name -> option (contract os_world))
+  (ge : genv)
+  (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Existing Instance gen_heapGS0.
+Lemma reg_of s c : glibc_os_registry (TAtom s) = Some c -> registry (TAtom s) = Some c.
+Proof. apply Hreg. Qed.
+Lemma ext_fn s : In s sys_externals -> find_fn ge (TAtom s) = None.
+Proof. intros Hin. exact (proj1 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
+Lemma ext_data s : In s sys_externals -> lookup (TAtom s) (ge_globals ge) = None.
+Proof. intros Hin. exact (proj2 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
+Lemma obj_blk b q :
+  0 <= req_extent q -> obj b q -∗ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗ blk_any b 0 (req_extent q).
+Proof.
+  iIntros (H) "Ho". rewrite obj_zero_block; [|exact H]. iDestruct "Ho" as "($ & Hb & Ha)".
+  iExists (replicate (Z.to_nat (req_extent q)) 0), (replicate (Z.to_nat (req_extent q)) CNone).
+  rewrite /bytes /auxes pts_app. iFrame. iPureIntro. rewrite !length_replicate. done.
+Qed.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance sys_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The registry's contract of a `zsys_*` name. *)
-Lemma reg_of s c : glibc_os_registry (TAtom s) = Some c -> registry (TAtom s) = Some c.
-Proof. apply Hreg. Qed.
 
 (** The genv neither defines nor holds one of [sys_externals]. *)
-Lemma ext_fn s : In s sys_externals -> find_fn ge (TAtom s) = None.
-Proof. intros Hin. exact (proj1 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
-Lemma ext_data s : In s sys_externals -> lookup (TAtom s) (ge_globals ge) = None.
-Proof. intros Hin. exact (proj2 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
 
 (** The premises of a contract call's rule: its registry entry and
     the name's being external. *)
 Ltac os_side :=
-  first [ apply reg_of; reflexivity
-        | apply ext_fn; cbn; tauto
-        | apply ext_data; cbn; tauto ].
+  first [ apply (reg_of registry Hreg); reflexivity
+        | apply (ext_fn ge Hext); cbn; tauto
+        | apply (ext_data ge Hext); cbn; tauto ].
 
 
 (** The arguments of a call, read from the frame: computed, with each
@@ -103,7 +118,7 @@ Lemma wp_glibc__exit fr bits Φ :
   call_frame glibc__exit [WInt bits] = Some fr -> ⊢ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr. injection Hfr as <-. step.
-  iApply (OsExit.wp_zsys_exit_hard w0 registry ge); sides.
+  iApply (OsExit.wp_zsys_exit_hard); sides.
 Qed.
 
 (** ## `c: __libc_write` *)
@@ -122,7 +137,7 @@ Lemma wp_glibc___libc_write fr fd p n eb ps Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". step.
-  iApply (OsWrite.wp_zsys_write w0 registry ge with "Hps Herr"); sides.
+  iApply (OsWrite.wp_zsys_write with "Hps Herr"); sides.
   iNext. iIntros (k Hk) "Hps Herr".
   assert (Hk' : 0 <= k < 2 ^ 64) by lia.
   iApply wp_ret; [reflexivity | reflexivity |]. rewrite !(Z.mod_small k); [|lia|lia].
@@ -144,7 +159,7 @@ Lemma wp_glibc___fstat64 fr fd b reg o eb Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfd He Hin Ho Hend. injection Hfr as <-. iIntros "Hl Hb Herr HK". step.
-  iApply (OsFstat.wp_zsys_fstat w0 registry ge with "Hl Hb Herr");
+  iApply (OsFstat.wp_zsys_fstat with "Hl Hb Herr");
     sides.
   iNext. iIntros (k Hk) "Hl Hb Herr".
   iApply wp_ret; [reflexivity | reflexivity |]. rewrite Z.mod_small; [|lia].
@@ -164,7 +179,7 @@ Lemma wp_glibc___lseek64 fr fd off wh eb Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfd Hoff Hwh He Hin. injection Hfr as <-. iIntros "Herr HK". step.
-  iApply (OsLseek.wp_zsys_lseek w0 registry ge with "Herr");
+  iApply (OsLseek.wp_zsys_lseek with "Herr");
     sides.
   iNext. iIntros (k Hk) "Herr".
   assert (Hk' : 0 <= k < 2 ^ 64) by lia.
@@ -183,7 +198,7 @@ Lemma wp_glibc___close_nocancel fr fd eb Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". step.
-  iApply (OsClose.wp_zsys_close w0 registry ge with "Herr"); sides.
+  iApply (OsClose.wp_zsys_close with "Herr"); sides.
   iNext. iIntros (k Hk) "Herr".
   iApply wp_ret; [reflexivity | reflexivity |]. rewrite Z.mod_small; [|lia].
   iNext. iApply ("HK" with "[%] Herr"). exact Hk.
@@ -196,7 +211,7 @@ Lemma wp_glibc___close_nocancel_nostatus fr fd eb Φ :
   errno_any eb -∗ ▷ (errno_any eb -∗ Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". step.
-  iApply (OsClose.wp_zsys_close w0 registry ge with "Herr"); sides.
+  iApply (OsClose.wp_zsys_close with "Herr"); sides.
   iNext. iIntros (k Hk) "Herr". iApply wp_ret_void. iNext. iApply ("HK" with "Herr").
 Qed.
 
@@ -204,13 +219,6 @@ Qed.
 
 (** A fresh heap object's pieces are its life and a block of its whole
     extent ([blk_any]), whatever it holds. *)
-Lemma obj_blk b q :
-  0 <= req_extent q -> obj b q -∗ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗ blk_any b 0 (req_extent q).
-Proof.
-  iIntros (H) "Ho". rewrite obj_zero_block; [|exact H]. iDestruct "Ho" as "($ & Hb & Ha)".
-  iExists (replicate (Z.to_nat (req_extent q)) 0), (replicate (Z.to_nat (req_extent q)) CNone).
-  rewrite /bytes /auxes pts_app. iFrame. iPureIntro. rewrite !length_replicate. done.
-Qed.
 
 (** `c: __isatty_nostatus(fd)`: a fresh 44-byte `c: struct termios2`
     on the heap for `c: zsys_ioctl(fd, TCGETS2, &k_termios)`, then 1
@@ -227,7 +235,7 @@ Proof.
   iNext. iIntros (base (Hb0 & _ & Hb48)) "Ho".
   iDestruct (obj_blk with "Ho") as "[Hl Hb]"; [vm_compute; congruence|]. cbn [req_extent req_kind heap_req] in *.
   replace ((44 + 15) / 16 * 16) with 48 by reflexivity.
-  iApply (OsIoctl.wp_zsys_ioctl w0 registry ge _ _ _ _ _ _ _ _ _ _ fd 2150388778 44 base _ 0 eb
+  iApply (OsIoctl.wp_zsys_ioctl _ _ _ _ _ _ _ _ _ _ fd 2150388778 44 base _ 0 eb
             with "Hl [Hb] Herr"); sides.
   - cbn. rewrite Z.add_0_r !Z.mod_small; [reflexivity | lia | lia].
   - cbn. lia.

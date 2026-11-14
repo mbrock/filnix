@@ -12,7 +12,7 @@
     block in [wp_glibc_strlen_dq] and hands off the remaining words to
     [StrlenLoop]'s [loop_spec_dq]. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -73,7 +73,7 @@ Proof.
   match goal with |- context [put (TAtom "v10") (WPtr (mkPtr ?X _)) _] =>
     replace X with (a - a mod 8) by
       (cbn [ptr_addr]; rewrite (Z.mod_small a (2 ^ 64)); [rewrite land_align; [arith | lia] | lia]) end.
-  iApply (wp_check_read_dq with "Hl"); [reflexivity | reflexivity | exact Hc | arith | arith | apply Z.mod_1_r |].
+  check_read_dq "Hl" by arith.
   iNext. iIntros "Hl".
   iApply (wp_raw_load_read_dq with "Hl Hw"); [reflexivity | reflexivity | exact Hc | arith |].
   iNext. iIntros "Hl Hw". rewrite (Z.mod_small w (2 ^ 64) Hw0).

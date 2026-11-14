@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf sends the bytes in its staging array through the stream's jump
     table. It checks the returned count and marks the printf buffer failed
     whenever that count differs from the request.
@@ -23,13 +24,12 @@ Open Scope Z_scope.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Local Instance caller_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (F : ptr -> iProp Σ) (E : iProp Σ).
+Context (F : ptr -> iProp Σ)
+  (E : iProp Σ).
 Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hcall : PrintfBufferXsputnCall.printf_xsputn_call_spec w0 registry ge F E).
 
@@ -66,20 +66,20 @@ Proof.
   cbn zeta. intros Hbb Hba Hbe Hbr Hfb Hfa Hlen Hxs Hv0 Hchk Hchk1 Hborrow.
   iIntros "#Hvt Hb Hptr Hfp Hxs Hm HF HE Hfail Hselect".
   iDestruct (Hborrow with "HF") as (freg dqf (Hfe & Hfr)) "(Hf & Hvtp & Hclose)".
-  iApply (PrintfBufferXsputnPrelude.wp_printf_xsputn_prelude w0 registry ge Hfn
+  iApply (PrintfBufferXsputnPrelude.wp_printf_xsputn_prelude Hfn
     e from bb breg fb freg dqf vb vreg (Z.of_nat (length xs))
     with "Hvt Hb Hf Hptr Hfp Hvtp"); try assumption; try lia.
   iIntros (e' (Hv0' & Hchk' & Hfn' & Hfp' & Hsrc' & Hcount')) "Hb Hf Hptr Hfp Hvtp".
   iDestruct ("Hclose" with "Hf Hvtp") as "HF".
-  iApply (PrintfBufferXsputnCall.wp_printf_xsputn_call w0 registry ge F E Hfn Hcall
+  iApply (PrintfBufferXsputnCall.wp_printf_xsputn_call F E Hfn Hcall
     e' (mkPtr fb (Obj fb)) bb breg (DfracOwn 1%Qp) xs with "HF HE Hb Hxs");
     try assumption; try lia.
   iIntros (r e'' (Hr & Hv0'' & Hchk'' & Hcount'' & Hret)) "HF HE Hb Hxs".
   destruct (Z.eq_dec r (Z.of_nat (length xs))) as [->|Hneq].
-  - iApply (PrintfBufferXsputnReturn.wp_printf_xsputn_complete w0 registry ge e'' (Z.of_nat (length xs)));
+  - iApply (PrintfBufferXsputnReturn.wp_printf_xsputn_complete e'' (Z.of_nat (length xs)));
       try assumption; try lia.
     iApply ("Hselect" with "[%] Hb Hptr Hfp Hxs Hm HF HE"). lookups; reflexivity.
-  - iApply (PrintfBufferXsputnReturn.wp_printf_xsputn_mismatch w0 registry ge e'' bb breg mode r (Z.of_nat (length xs))
+  - iApply (PrintfBufferXsputnReturn.wp_printf_xsputn_mismatch e'' bb breg mode r (Z.of_nat (length xs))
       with "Hb Hm"); try assumption; try lia.
     iNext. iIntros "Hb Hm".
     iApply ("Hfail" with "Hb Hptr Hfp Hxs Hm HF HE").

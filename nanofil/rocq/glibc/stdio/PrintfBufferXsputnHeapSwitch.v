@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** After xsputn reports the requested count, printf chooses where to store
     its next bytes. Reading the heap stream's write pointers leaves the stream
     ready for later calls, with the same cancellation flags and lock count.
@@ -21,15 +22,12 @@ Open Scope Z_scope.
 
 Import PrintfStreamHeap LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (B : Z -> Z -> iProp Σ).
-Local Instance heap_switch_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (Hswitch : find_fn ge (TAtom "__printf_buffer_to_file_switch") =
-  Some (Defined glibc___printf_buffer_to_file_switch)).
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
 
 (** Selection uses remaining heap space or falls back to printf's staging array.
     The continuation receives the selected pointers and the original stream,
@@ -58,7 +56,7 @@ Proof.
   assert (Hwe : we = mkPtr (db + eo) (Obj db)).
   { destruct we as [a c]. cbn in *. subst c. f_equal; lia. }
   rewrite Hwe.
-  iApply (PrintfBufferXsputnSwitch.wp_printf_xsputn_switch_owned w0 registry ge Hswitch e from bb breg fb freg
+  iApply (PrintfBufferXsputnSwitch.wp_printf_xsputn_switch_owned e from bb breg fb freg
     db dreg k eo (DfracOwn 1%Qp) (DfracOwn 1%Qp)
     with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try assumption; try (unfold file_size in *; lia).
   iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".

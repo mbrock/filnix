@@ -1,0 +1,7 @@
+# Stages whose output is on main. apply.sh skips them.
+10-flatten.py
+15-code.py
+20-keeps.py
+30-tactics.py
+50-program.py
+60-memory-rules.py

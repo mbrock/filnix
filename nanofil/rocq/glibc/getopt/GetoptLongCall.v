@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's getopt calls its long-option parser when the current word
     starts with two dashes, or with one dash in long-only mode. This
     file gives that caller a rule for the call: the parser returns a
@@ -33,14 +34,11 @@ Local Arguments Z.opp : simpl nomatch.
 Import GetoptLongJoin GetoptLongJoinFound GetoptLongJoinMiss GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 
+Import ProgramAbbreviations.
 Section call.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance call_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -91,7 +89,7 @@ Proof.
        (TAtom "v12", WPtr (mkPtr b (Obj b))); (TAtom "v10", WInt lonly); (TAtom "v8", WPtr li); (TAtom "v6", WPtr lo);
        (TAtom "v4", WPtr po); (TAtom "v2", WPtr (mkPtr av (Obj av))); (TAtom "v0", WInt n)] [] None
        (Enter (TAtom "start") None)) with "[-]"); [exact Hx | exact Hgp | reflexivity |]. iNext.
-  iApply (GetoptLongJoin.wp_long_join w0 registry ge _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq
+  iApply (GetoptLongJoin.wp_long_join _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq
     cur s n lonly pe i oo a b r li with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli"); try GetoptLongJoin.jn_side.
   iIntros (e' l' rv x Hv) "Hres". iApply wp_ret; [reflexivity | exact Hv |]. iNext. iApply ("HK" with "Hres").
 Qed.

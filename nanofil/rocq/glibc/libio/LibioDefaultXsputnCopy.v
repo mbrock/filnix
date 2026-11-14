@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A copy into a stream's buffer at any offset, as `c: _IO_default_xsputn`
     and `c: _IO_new_file_xsputn` make with `c: __mempcpy(f->_IO_write_ptr,
     s, count)`: glibc's own `mempcpy` (MemFwdCode.v), which calls
@@ -126,26 +127,30 @@ Proof.
   - eapply M.E.invoke_resource; [exact (proj2 Habi) | exact Hpre | exact Hp | exact Hf | exact Hres].
 Qed.
 
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
+Definition buf_after (b : Z) (n : nat) : iProp Σ :=
+  ∃ xs' cs', ⌜length xs' = n /\ length cs' = n /\ Forall (fun x => 0 <= x < 256) xs'⌝ ∗
+    bytes b 0 xs' ∗ auxes b 0 cs'.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The registry holds [OsRegistry](../zsys/OsRegistry.v)'s contract
     for `c: zmemmove`, which is no function or symbol of the genv. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
 
 (** [os_wi] w0 survives safepoints. *)
 Local Instance copy_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The Iris instance of the registry and [os_wi] w0. *)
-Local Instance copy_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** What the buffer of the live object b holds after a copy into it:
     some bytes, below 256, and slots, as many as before. *)
-Definition buf_after (b : Z) (n : nat) : iProp Σ :=
-  ∃ xs' cs', ⌜length xs' = n /\ length cs' = n /\ Forall (fun x => 0 <= x < 256) xs'⌝ ∗
-    bytes b 0 xs' ∗ auxes b 0 cs'.
 
 (** A void call of `c: zmemmove` of the bytes ys from offset o' of the
     live object b', owned at the share dq through the capability c',

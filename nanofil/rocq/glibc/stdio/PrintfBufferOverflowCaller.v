@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf reads its output stream, passes the staged character to overflow,
     and checks the result. EOF marks the printf buffer failed. Any other
     result reaches the checked buffer-selection path.
@@ -23,16 +24,13 @@ Open Scope Z_scope.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The call preserves whatever OS resources its explicit contract returns. *)
-Local Instance caller_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (F : ptr -> iProp Σ) (E : iProp Σ).
-Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
+Context (F : ptr -> iProp Σ)
+  (E : iProp Σ).
+Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
 Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge F E).
 
 (** The stream lends its lifetime for the pointer read without losing any
@@ -59,19 +57,19 @@ Proof.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk Hborrow.
   iIntros "Hb Hfp Hch Hm HF HE Hfail Hselect".
   iDestruct (Hborrow with "HF") as (freg dqf) "[Hf Hclose]".
-  iApply (PrintfBufferOverflowPrelude.wp_printf_overflow_prelude w0 registry ge e from bb breg fb freg dqf
+  iApply (PrintfBufferOverflowPrelude.wp_printf_overflow_prelude e from bb breg fb freg dqf
     with "Hb Hfp Hf"); try close_side.
   iIntros (e' (Hv0' & Hchk' & Hfp')) "Hb Hfp Hf".
   iDestruct ("Hclose" with "Hf") as "HF".
-  iApply (PrintfBufferOverflowCall.wp_printf_overflow_call w0 registry ge F E Hoverflow Hcall
+  iApply (PrintfBufferOverflowCall.wp_printf_overflow_call F E Hcall
     e' bb breg (mkPtr fb (Obj fb)) ch with "Hb Hch HF HE"); try close_side.
   iIntros (r e'' (Hr & Hv0'' & Hchk'' & Hret)) "Hb Hch HF HE".
   destruct (Z.eq_dec r 4294967295) as [->|Hneq].
-  - iApply (PrintfBufferOverflowReturn.wp_printf_overflow_eof w0 registry ge e'' bb breg mode
+  - iApply (PrintfBufferOverflowReturn.wp_printf_overflow_eof e'' bb breg mode
       with "Hb Hm"); try close_side.
     iNext. iIntros "Hb Hm".
     iApply ("Hfail" with "Hb Hfp Hch Hm HF HE").
-  - iApply (PrintfBufferOverflowReturn.wp_printf_overflow_continue w0 registry ge e'' r); try assumption.
+  - iApply (PrintfBufferOverflowReturn.wp_printf_overflow_continue e'' r); try assumption.
     iApply ("Hselect" with "[%] Hb Hfp Hch Hm HF HE").
     lookups; reflexivity.
 Qed.

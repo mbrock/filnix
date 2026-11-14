@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Flushing the staging array updates printf's count before sending its
     bytes through the stream's jump table. A returned count that differs from
     the request marks failure, but does not discard the staged bytes.
@@ -23,13 +24,12 @@ Open Scope Z_scope.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Local Instance staging_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (F : ptr -> iProp Σ) (E : iProp Σ).
+Context (F : ptr -> iProp Σ)
+  (E : iProp Σ).
 Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hcall : PrintfBufferXsputnCall.printf_xsputn_call_spec w0 registry ge F E).
 
@@ -79,10 +79,10 @@ Proof.
     iNext. iIntros (r Hret) "HF HE Hl Hys".
     iApply ("HK" $! r with "[%] HF [HE HP] Hl Hys"); [done | iFrame]. }
   iIntros "#Hvt Hb Hbase Hptr Hend Hw Hfp Hxs Hm HF HE Hfail Hselect".
-  iApply (PrintfBufferXsputnEntry.wp_printf_xsputn_entry w0 registry ge fr bb breg (Z.of_nat (length xs)) written
+  iApply (PrintfBufferXsputnEntry.wp_printf_xsputn_entry fr bb breg (Z.of_nat (length xs)) written
     with "Hb Hbase Hptr Hend Hw"); try assumption; try lia.
   iIntros (e (Hv0 & Hchk & Hchk1)) "Hb Hbase Hptr Hend Hw".
-  iApply (PrintfBufferXsputnCaller.wp_printf_xsputn_caller w0 registry ge F (E ∗ P) Hfn Hframed
+  iApply (PrintfBufferXsputnCaller.wp_printf_xsputn_caller F (E ∗ P) Hfn Hframed
     e (Some (TAtom "start")) bb breg fb vb vreg xs mode
     with "Hvt Hb Hptr Hfp Hxs Hm HF [HE Hbase Hend Hw] [Hfail] [Hselect]"); try assumption.
   - rewrite /P. iFrame.

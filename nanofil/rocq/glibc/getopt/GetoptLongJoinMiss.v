@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option for a word, it
     either reports the word as unrecognized and skips it, or, in
     long-only mode, leaves the word to the short options. Both ways end
@@ -77,14 +78,11 @@ Qed.
 
 End res.
 
+Import ProgramAbbreviations.
 Section miss.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance jmiss_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance jmiss_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -122,7 +120,7 @@ Proof.
   intros Hks Hkso Hksu Hrule Hg Hgn Hse Hmid H2 H4 H10 H12 H14 H16 H90 H7 Hc0 Hq Hq0 Hi Hn Hlen Hlo Hpe
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
-  iApply (GetoptLongMiss.wp_long_miss w0 registry ge ks e G T fp dom se sereg mid av ar ps q sq po so pfx sp cur s i n lonly pe oo b r
+  iApply (GetoptLongMiss.wp_long_miss ks e G T fp dom se sereg mid av ar ps q sq po so pfx sp cur s i n lonly pe oo b r
     with "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hcur Ha Hcl Hs HG"); try assumption.
   iSplit.
   - iIntros (e' Hk') "Hl Hib Hoob Hcur Ha Hcl HG".

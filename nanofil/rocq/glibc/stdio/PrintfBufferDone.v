@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A printf buffer remembers output failure by setting its mode to zero.
     Completion then returns minus one without reading the buffer pointers
     or the accumulated character count. This rule preserves that failure
@@ -26,13 +27,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The completion body runs in the same concrete world as its caller. *)
-Local Instance done_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A failed buffer needs only its live mode field. Its other fields and errno
@@ -46,9 +43,7 @@ Lemma wp_printf_buffer_done_failed fr bb breg Φ :
 Proof.
   intros Hfr Hbb Hal Hend Hreg. injection Hfr as <-.
   iIntros "Hl [%Hm Hmode] HK". step. step. norm. check "Hl".
-  iApply (wp_raw_load_sub_bytes_dq with "Hl Hmode");
-    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-     left; reflexivity | ar |].
+  load_bytes_dq "Hl Hmode" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Hl Hmode". step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Hl [Hmode]"). iSplit; [iPureIntro; lia|iExact "Hmode"].

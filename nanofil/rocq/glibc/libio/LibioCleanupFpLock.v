@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The start of one pass of the loop of `c: _IO_unbuffer_all`, which
     `c: _IO_cleanup` inlines after `c: _IO_flush_all`
     (LibioCleanupCode.v), from block `c: iw_1.L82`: the pass sets
@@ -29,14 +30,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance cleanup_fp_lock_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -47,7 +46,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's
     cookie, not null (H). *)
-Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H|]; iNext.
 
 (** Block `c: iw_1.L82` of `c: _IO_cleanup` to block `c: iw_1.L93`,
     the stream fb in `c: iw_1.pr.1`: `c: run_fp` becomes fb, and the
@@ -78,10 +77,10 @@ Proof.
   iIntros "#Hs Hl [_ Hfl] Hlp Hlb Hrl Hrc HK".
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).
   iDestruct "Hlb" as "(%Hb & Hbl & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
-  iApply (wp_live_fit1 w0 registry ge with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
+  iApply (wp_live_fit1 with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* iw_1.L82: `c: run_fp`, and `c: _IO_USER_LOCK` clear. *)
   step. step. check "Hrl". store "Hrl" "Hrc". check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
   (* iw_1.L98, iw_1.L109, iw_1.L110: single threaded, the owner null. *)

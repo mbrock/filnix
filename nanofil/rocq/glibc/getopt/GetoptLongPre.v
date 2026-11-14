@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser has found the option that a word
     names in the caller's table, it first tests the found entry, steps
     the index past the word and clears its cursor. Then it reads the
@@ -40,14 +41,11 @@ Definition plo_blk87 : block := Eval vm_compute in plo_blk "L87".
 (** The equals-sign module supplies the option table and the tactics. *)
 Import GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section pre.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance pre_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance pre_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -84,16 +82,15 @@ Proof.
   rewrite (proj2 (Z.eqb_neq (ptr_addr lo + 32 * Z.of_nat j) 0)); [|lia].
   iApply wp_branch; [vx | iNext]. close_br.
   step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+  store_word "Hl Hib" by (StrlenLoop.arith) preserving wi_store.
   iNext. iIntros "Hl Hib". step. check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+  store_pointer "Hl Hcur" by (StrlenLoop.arith) preserving wi_store.
   iNext. iIntros "Hl Hcur".
   iDestruct (ws_byte cur s (eq_len s) with "Hws") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
   iApply (wp_renew_read_dq with "Hbl"); [reflexivity | vx | reflexivity | exact Hcap | rawa | rawa | apply Z.mod_1_r |].
   iNext. iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _". iClear "Hbl Hbt".
   rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia]. change (0 mod 2 ^ 64) with 0. fold null.
   iAssert (int_cell b 0 (i + 1)) with "[Hib]" as "Hib"; [iSplit; [iPureIntro; lia | iExact "Hib"]|].

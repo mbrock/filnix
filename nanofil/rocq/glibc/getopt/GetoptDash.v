@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The argument "--" ends the options. When glibc's scanner meets it,
     the scanner steps past it, moves the pending nonoptions behind the
     options before it, and makes every remaining argument a nonoption by
@@ -40,14 +41,11 @@ Definition getopt_blk203 : block := Eval vm_compute in x_blk "L203".
 (** This module proves the second exchange. *)
 Import GetoptIdleThree GetoptExchangeThree GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section dash.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance dash_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance dash_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -92,22 +90,22 @@ Proof.
     with "[HK]" as "HL227".
   { iIntros (e2 fr i' f' l' ps' (Hp & Hk & Hf' & H0 & H12 & H2 & H23)) "Hl [%Hi' Hib] Hfb [%Hl' Hlab] Ha Hc Hs'".
     step. step. norm. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hlab" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hlab". check "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hib" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step. step.
     iApply ("HK" with "[%] Hl [Hib] Hfb [Hlab] Ha Hc Hs'");
       [| (iApply cell_mod3; [lia | iAssumption]) | (iApply cell_mod3; [lia | iAssumption])].
     split; [done|]. split; [xkeep | lia]. }
   step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+  store_word "Hl Hib" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hib". step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hfb". step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hlab". step.
   rewrite (Z.mod_small f (2 ^ 32)); [|lia]. rewrite (Z.mod_small l (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec f l) as [Efl | Efl]; close_br.
   - subst l. step. brz. step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". step. norm. load_s32_using ltac:(arith) "Hl Hlab". step.
     rewrite (Z.mod_small f (2 ^ 32)); [|lia]. rewrite Z.eqb_refl. brz.
     step. step. norm. load_s32_using ltac:(arith) "Hl Hib".
-    iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hfb" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hfb". step.
     iApply ("HL227" $! _ _ (i + 1) (i + 1) f ps with "[%] Hl [Hib] [Hfb] [Hlab] Ha Hc Hs");
       [| icell | (iApply cell_mod3; [lia | iAssumption]) | icell].
@@ -115,7 +113,7 @@ Proof.
   - step. step. norm. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step. step. step.
     rewrite (Z.mod_small l (2 ^ 32)); [|lia]. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia].
     iApply wp_branch; [vx | iNext]. rewrite (proj2 (Z.eqb_neq l (i + 1))); [|lia]. close_br.
-    iApply (wp_x3_exchange w0 registry ge (ks ++ [TAtom "v0"; TAtom "v12"; TAtom "chk2"; TAtom "chk23"])%list
+    iApply (wp_x3_exchange (ks ++ [TAtom "v0"; TAtom "v12"; TAtom "chk2"; TAtom "chk23"])%list
       _ _ f l (i + 1) b r av ar n ps with "Hl [Hib] [Hfb] [Hlab] Ha Hc Hs [HL227]");
       [ apply avoids_app_r; [exact Hkx | vm_compute; reflexivity]
       | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove

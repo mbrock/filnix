@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** After a successful overflow call, printf selects its next buffer and
     returns. It uses available stream space when possible and its own staging
     array otherwise. These rules follow the captured buffer-selection call
@@ -23,16 +24,11 @@ Open Scope Z_scope.
 
 Import LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The switch preserves the surrounding process resources. *)
-Local Instance switch_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (Hswitch : find_fn ge (TAtom "__printf_buffer_to_file_switch") =
-  Some (Defined glibc___printf_buffer_to_file_switch)).
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
 
 (** Null stream pointers select printf's staging array without a stream write. *)
 Lemma wp_printf_overflow_switch_null e from bb breg fb freg oldbase oldptr oldend Φ :
@@ -55,7 +51,7 @@ Proof.
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
   iNext. cbn [b_insts b_jump].
   iApply wp_call_bind; [vx | exact Hswitch | reflexivity |]. iNext.
-  iApply (PrintfBufferStage.wp_printf_buffer_switch_null w0 registry ge _ bb breg fb freg
+  iApply (PrintfBufferStage.wp_printf_buffer_switch_null _ bb breg fb freg
     with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
   iNext. iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend".
   resume. step. step. iApply wp_ret_void. iNext.
@@ -90,12 +86,12 @@ Proof.
   iNext. cbn [b_insts b_jump].
   iApply wp_call_bind; [vx | exact Hswitch | reflexivity |]. iNext.
   destruct (Z.ltb_spec bo eo) as [Hspace|Hspace].
-  - iApply (PrintfBufferDirect.wp_printf_buffer_switch_direct w0 registry ge _ bb breg fb freg db dreg bo eo
+  - iApply (PrintfBufferDirect.wp_printf_buffer_switch_direct _ bb breg fb freg db dreg bo eo
       with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
     iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".
     resume. step. step. iApply wp_ret_void. iNext.
     iApply ("HK" with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend").
-  - iApply (PrintfBufferStage.wp_printf_buffer_switch_staging w0 registry ge _ bb breg fb freg db dreg bo eo
+  - iApply (PrintfBufferStage.wp_printf_buffer_switch_staging _ bb breg fb freg db dreg bo eo
       with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
     iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".
     resume. step. step. iApply wp_ret_void. iNext.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Closing stdout runs glibc's `c: fclose`, which flushes the stream,
     closes its descriptor, frees its buffer and takes it out of the
     list of open streams. Its proof in LibioFclose.v assumes a triple
@@ -28,37 +29,37 @@ Open Scope Z_scope.
 (** `c: _IO_new_fclose`, at [HLG]. *)
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 (** The functions of the genv that the callees call. *)
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write))
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
   (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hfree_fn : find_fn ge (TAtom "free") = Some (Defined free_fn)) (Hfh : frees_heap (ge_free ge))
-  (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None)
-  (Hcn : find_fn ge (TAtom "__GI___close_nocancel") = Some (Defined glibc___close_nocancel))
+  `{Hfree_fn : !Defines ge "free" free_fn}
+  (Hfh : frees_heap (ge_free ge))
+  (Hzf : find_fn ge zgc_free_name = None)
+  (Hzg : lookup zgc_free_name (ge_globals ge) = None)
+  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
   (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  (Hsetb : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb))
-  (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write))
-  (Hfum : find_fn ge (TAtom "__GI__IO_unsave_markers") = Some (Defined glibc__IO_unsave_markers))
-  (Hpush : find_fn ge (TAtom "__GI___libc_cleanup_push_defer") = Some (Defined glibc___libc_cleanup_push_defer))
-  (Hpop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") = Some (Defined glibc___libc_cleanup_pop_restore))
-  (Hunl : find_fn ge (TAtom "__GI__IO_un_link") = Some (Defined glibc__IO_un_link))
-  (Hdf : find_fn ge (TAtom "__GI__IO_default_finish") = Some (Defined glibc__IO_default_finish))
+  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
+  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}
+  `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}
+  `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}
+  `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}
+  `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
   (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
-  (Hcif : find_fn ge (TAtom "_IO_file_close_maybe_unlink") = Some (Defined glibc__IO_file_close_maybe_unlink)).
+  `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance hi_fclose_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** LibioFclose.v's [wp_glibc__IO_new_fclose_stdout] with its callees
     proved. *)
 Definition hi_fclose_stdout :=
-  LibioFclose.wp_glibc__IO_new_fclose_stdout w0 registry ge Hreg Hext Hunl Hdf Hff Hcif
-    (hi_close_it w0 registry ge Hreg Hext Hwrite Hfw Hfree_fn Hfh Hzf Hzg Hcn Hfc Hsetb Hdwf Hfum)
-    (LibioUnlink.wp_glibc__IO_un_link w0 registry ge Hreg Hext Hpush Hpop)
-    (LibioUnlink.wp_glibc__IO_un_link_unlinked w0 registry ge).
+  LibioFclose.wp_glibc__IO_new_fclose_stdout Hreg Hext Hff
+    (hi_close_it Hreg Hext Hfw Hfh Hzf Hzg Hfc)
+    (LibioUnlink.wp_glibc__IO_un_link Hreg Hext)
+    (LibioUnlink.wp_glibc__IO_un_link_unlinked).
 
 End rules.

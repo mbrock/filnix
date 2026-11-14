@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file holds the shared pieces of the `c: _IO_file_doallocate` proofs
     (LibioReadCode.v). The function asks the jump table's stat for the
     stream's descriptor, makes a terminal line-buffered, and installs a
@@ -105,28 +106,30 @@ Ltac brk E :=
   lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
     let c' := vm_of c in change c with c' end; cbn [edge_label].
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-
-(** A fresh heap object starts at a 16-byte-aligned address and holds
-    at least sz zero bytes with no capabilities stored in it. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
 Definition new_buf (bb sz : Z) : iProp Σ :=
   ∃ breg, ⌜r_kind breg = Heap /\ bb + sz <= r_end breg /\ r_end breg <= 2 ^ 48 /\ bb mod 16 = 0⌝ ∗
     live bb breg ∗ bytes bb 0 (replicate (Z.to_nat sz) 0) ∗ auxes bb 0 (replicate (Z.to_nat sz) CNone).
-
-(** What `c: _IO_file_doallocate` leaves: the flags, made line-buffered
-    or not, with `c: _IO_USER_BUF` cleared; a fresh buffer of 1 to 8192
-    bytes installed as the stream's; the descriptor and errno as they
-    were; and the result 1. *)
 Definition doalloc_k (Mres : iProp Σ) (fb : Z) (freg : region) (fl fd eb : Z) (Φ : outcome -> iProp Σ) : iProp Σ :=
   ∀ fl1 bb sz, ⌜(fl1 = fl \/ fl1 = Z.lor fl io_line_buf) /\ 0 < sz <= 8192 /\ 0 < bb /\ bb + sz <= 2 ^ 48⌝ -∗
     live fb freg -∗ int_cell fb off_flags (setb_flags fl1 1) -∗ int_cell fb off_fileno fd -∗
     pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
     new_buf bb sz -∗ errno_any eb -∗ Mres -∗ Φ (Ret (WInt 1)).
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
-Local Instance doalloc_base_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+(** A fresh heap object starts at a 16-byte-aligned address and holds
+    at least sz zero bytes with no capabilities stored in it. *)
+
+(** What `c: _IO_file_doallocate` leaves: the flags, made line-buffered
+    or not, with `c: _IO_USER_BUF` cleared; a fresh buffer of 1 to 8192
+    bytes installed as the stream's; the descriptor and errno as they
+    were; and the result 1. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: __gnu_dev_major(d)` returns [dev_major] d. *)

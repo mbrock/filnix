@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The middle of one pass of `c: _IO_unbuffer_all`'s loop in
     `c: _IO_cleanup` (LibioCleanupCode.v), from block `c: iw_1.L93`,
     with the stream locked. The pass frees a backup area if the
@@ -35,13 +36,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance cleanup_mode_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -73,7 +70,7 @@ Proof.
   iIntros "Hl [%Hflr Hfl] [%Hmdr Hmd] H80 HK".
   assert (0 <= Z.land fl 32768 < 2 ^ 32) by (rewrite Hul; lia).
   assert (0 <= Z.land fl 2 < 2 ^ 32) by (apply land_lt32; lia).
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* iw_1.L93, iw_1.L194, iw_1.L203: no backup area, and narrow. *)
   step. step. check "Hl". load_null "Hl" "H80". step. step. step. branch.
   step. step. check "Hl". load_s32 "Hl" "Hmd". step. branch_rewrite (narrow_sgt md Hmd). step. branch.

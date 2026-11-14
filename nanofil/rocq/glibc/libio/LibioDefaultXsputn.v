@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The triple of `c: _IO_default_xsputn(f, s, n)` (LibioGenCode.v),
     the generic string output of libio, which `c: _IO_new_file_xsputn`
     hands the bytes that are left once it has filled and flushed the
@@ -56,19 +57,17 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The registry holds `c: zmemmove`'s contract, and the genv's
     `c: __GI_memcpy` and `c: __GI_mempcpy` are glibc's. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance dx_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -92,7 +91,7 @@ Proof.
   iIntros "#Hvt". iLöb as "IH". iEval (unfold dx_loop; cbv zeta).
   iIntros (e t nb wp we (Hv0 & Hv4 & Hp7 & Hp2 & Ht & Hprogress)) "Hl Hvtp Hwb Hos Hl' Hys HK".
   iDestruct "Hwb" as "(Hwc & Hwp & Hwe & Hroom)".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [dx_L16 b_insts b_jump]. step. check "Hl".
   destruct nb as [[b sz] |].
   - iDestruct "Hroom" as (reg xs cs Hok) "(Hbl & Hxs & Hcs)".
@@ -104,11 +103,11 @@ Proof.
       branch_as false. step. step. norm. load "Hl" "Hwe" "Hbl". step. load "Hl" "Hwp" "Hbl". step. step. step. step.
       destruct (Z_lt_le_dec t (ea - wa)) as [Htl | Htg].
       * branch_as false. step.
-        iApply (wp_dx_L44 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy os fb freg vb vreg b sz reg xs cs wa ea
+        iApply (wp_dx_L44 Hmove Hmove_fn Hmove_sym os fb freg vb vreg b sz reg xs cs wa ea
                   dq b' reg' so c' ys t t with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK"); try close_side.
         all: try lia. all: lk_fin.
       * branch_as true. step. step. step.
-        iApply (wp_dx_L44 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy os fb freg vb vreg b sz reg xs cs wa ea
+        iApply (wp_dx_L44 Hmove Hmove_fn Hmove_sym os fb freg vb vreg b sz reg xs cs wa ea
                   dq b' reg' so c' ys t (ea - wa) with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK");
           try close_side.
         all: try lia. all: lk_fin.
@@ -116,13 +115,13 @@ Proof.
       branch_as true. step.
       iAssert (wbuf fb (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))) with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
       { iFrame. iPureIntro. exact Hok. }
-      iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
+      iApply (wp_dx_L22 os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
                 dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try close_side.
       all: first [intros _; discriminate | lk_fin].
   - (* No buffer yet: both pointers null, no room; L22. *)
     iDestruct "Hroom" as %[-> ->].
     load_null "Hl" "Hwp". step. check "Hl". load_null "Hl" "Hwe". step. step. step. branch_as true. step.
-    iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg None null null dq b' reg' so c' ys t
+    iApply (wp_dx_L22 os fb freg vb vreg None null null dq b' reg' so c' ys t
               with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe //] Hos Hl' Hys IH HK"); try close_side.
     all: lk_fin.
 Qed.
@@ -145,7 +144,7 @@ Lemma wp_glibc__IO_default_xsputn fr os fb freg vb vreg nb wp we dq b' reg' so c
 Proof.
   intros n Hfr Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy. injection Hfr as <-.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   step. step.
   destruct (Z.eq_dec n 0) as [Hn0 | Hn0].
   - (* Nothing to write: L10 returns 0. *)

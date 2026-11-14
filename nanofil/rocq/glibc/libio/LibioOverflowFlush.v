@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves block `c: L264` of `c: _IO_new_file_overflow`
     (LibioOverflowBase.v describes the function): the flush after the
     byte was stored, which returns the byte, or `c: EOF` when the write
@@ -25,16 +26,14 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_new_do_write`. *)
-Context (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
+Context `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
 
 Context (write_ready : Z -> Prop).
 
-Local Instance overflow_flush_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_new_do_write` from the buffer's base, as LibioDoWrite.v's
@@ -87,11 +86,11 @@ Proof.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hbb & Hbe & Hbreg & Hsz & Hkr & Hxl & Hxr & Hwec & Hwea).
   step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hwb Hbl" by ar.
   iNext. iIntros "Hl Hwb Hbl". step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hwp Hbl" by ar.
   iNext. iIntros "Hl Hwp Hbl".
-  iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hwb Hbl" by ar.
   iNext. iIntros "Hl Hwb Hbl". step. step. step. norm.
   iDestruct (bytes_take_drop bb 0 xs (Z.to_nat k) with "Hxs") as "[Hxs Hxs2]"; [lia|].
   replace (bb + k - bb) with (Z.of_nat (length (take (Z.to_nat k) xs))) by (rewrite length_take; lia).

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file discharges the program-name call in Hello's library interface.
     The proof uses the closed glibc proof, which in turn proves the calls
     of memrchr and memcmp. Its sealed interface keeps those proofs out of
@@ -59,13 +60,13 @@ Proof.
     by (unfold invocation; rewrite Hfr; reflexivity). subst fr.
   iIntros "(Hro & Hs & Hn) HK".
   iDestruct "Hro" as "(_ & _ & _ & _ & _ & _ & _ & _ & #Hlp & #Htp & _)".
-  iApply (HelloGlibcProgName.set_program_name_glibc w0 glibc_os_registry ge
-    (hk_strrchr _ _ Hk) (hk_gi_strlen _ _ Hk) (hk_memeq _ _ Hk) (hk_strncmp _ _ Hk)
+  iApply (HelloGlibcProgName.set_program_name_glibc (glibc_program := program_of w0 glibc_os_registry ge)
+    (Hstrrchr := (hk_strrchr _ _ Hk)) (Hstrlen := (hk_gi_strlen _ _ Hk)) (Hmemeq := (hk_memeq _ _ Hk)) (Hstrncmp := (hk_strncmp _ _ Hk))
     (ho_pb o) (ho_nb o) (ho_nsb o) (ho_preg o) (ho_nreg o) (ho_nsreg o) (ho_lp o) (ho_tp o)
     (hk_pb _ _ Hk) (hk_nb _ _ Hk) (hk_nsb _ _ Hk) (hk_lp _ _ Hk) (hk_tp _ _ Hk)
     (hk_pb_at _ _ Hk) (hk_nb_at _ _ Hk) (hk_nsb_at _ _ Hk)
-    (NS.name_memrchr w0 glibc_os_registry ge (hk_memrchr _ _ Hk))
-    (NS.name_memcmp w0 glibc_os_registry ge (hk_memcmp _ _ Hk))
+    (NS.name_memrchr (glibc_program := program_of w0 glibc_os_registry ge) (hk_memrchr _ _ Hk))
+    (NS.name_memcmp (glibc_program := program_of w0 glibc_os_registry ge) (hk_memcmp _ _ Hk))
     DfracDiscarded p s x y z with "Hs Hlp Htp Hn"); [left; reflexivity|].
   iNext. iIntros "_ Hn". iApply "HK". iSplit; [done|iExact "Hn"].
 Qed.

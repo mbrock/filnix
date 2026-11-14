@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Before it looks for an option, glibc's permuting scanner tidies the
     argument vector. It clamps the ends of the pending nonoption block to
     the public index, moves pending nonoptions behind the options that
@@ -36,14 +37,11 @@ Definition clamp_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; 
 (** The "--" test module proves the test and the second exchange. *)
 Import GetoptSkipTest GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section path.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance path_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance path_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -86,7 +84,7 @@ Proof.
   apply avoids_app in Hks as [Hksk Hks]. apply avoids_app in Hks as [Hkx3 Hks].
   apply avoids_app in Hks as [Hkd Hkt].
   iIntros "Hl Hi Ho Hf Hla Ha Hc #Hs #Hdd HK".
-  iApply (GetoptClamp.wp_getopt_clamp w0 registry ge (ks ++ clamp_keys) e fr0 n i o f l b r av ar ps
+  iApply (GetoptClamp.wp_getopt_clamp (ks ++ clamp_keys) e fr0 n i o f l b r av ar ps
             with "Hl Hi Ho Hf Hla Ha Hc Hs [HK]");
     [ apply avoids_app_r; [exact Hkx2 | vm_compute; reflexivity]
     | apply avoids_app_r; [exact Hkc | vm_compute; reflexivity]
@@ -96,13 +94,13 @@ Proof.
   - iIntros (e1 ps1 f1 l1 (Hp1 & Hk1 & _ & Hf1 & H23 & _)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
     apply keeps_app in Hk1 as [Hk1 Hk1'].
     assert (Hlen1 : Z.of_nat (List.length ps1) = n) by (rewrite -(Permutation_length Hp1); exact Hlen).
-    iApply (GetoptSkip.wp_getopt_skip w0 registry ge (ks ++ GetoptDashTest.dash_keys) e1 i n l1 b r av ar ps1
+    iApply (GetoptSkip.wp_getopt_skip (ks ++ GetoptDashTest.dash_keys) e1 i n l1 b r av ar ps1
               with "Hl Hi Hla Ha Hc Hs1 [Ho Hf HK]");
       [ apply avoids_app_r; [exact Hksk | vm_compute; reflexivity]
       | kin Hk1' Hv0 | kin Hk1' Hv2 | kin Hk1' Hv12 | kin Hk1' Hc2 | exact H23
       | lia | lia | exact Hlen1 | lia | lia | lia | lia | lia | lia | lia | lia |].
     iIntros (e2 i2 (Hk2 & Hi2)) "Hl Hi Hla Ha Hc #Hs2". apply keeps_app in Hk2 as [Hk2 Hk2'].
-    iApply (GetoptDashTest.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e2 i2 n f1 i2 b r av ar ps1 pdd sdd
+    iApply (GetoptDashTest.wp_getopt_dash_end (ks ++ [TAtom "chk23"]) e2 i2 n f1 i2 b r av ar ps1 pdd sdd
               with "Hl Hi Hf Hla Ha Hc Hs2 Hdd [Ho HK]");
       [ apply avoids_app_r; [exact Hkx3 | vm_compute; reflexivity]
       | apply avoids_app_r; [exact Hkd | vm_compute; reflexivity]
@@ -117,7 +115,7 @@ Proof.
     split; [lia|]. split; [lia|]. split; [lia|]. kin2 Hk3' Hk2' H23.
   - iIntros (e1 l1 (Hk1 & _ & Hl1 & H23 & _)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
     apply keeps_app in Hk1 as [Hk1 Hk1'].
-    iApply (GetoptDashTest.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e1 i n f l1 b r av ar ps pdd sdd
+    iApply (GetoptDashTest.wp_getopt_dash_end (ks ++ [TAtom "chk23"]) e1 i n f l1 b r av ar ps pdd sdd
               with "Hl Hi Hf Hla Ha Hc Hs1 Hdd [Ho HK]");
       [ apply avoids_app_r; [exact Hkx3 | vm_compute; reflexivity]
       | apply avoids_app_r; [exact Hkd | vm_compute; reflexivity]

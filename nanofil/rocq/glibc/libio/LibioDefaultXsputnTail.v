@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The end of each round of `c: _IO_default_xsputn`'s loop
     (LibioGenCode.v), from block `c: L22`, once the room in the buffer
     is filled:
@@ -48,29 +49,25 @@ Definition dx_L22 : block := Eval vm_compute in
 
 Import LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance dx_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** Default string output returns a count between zero and n, together
-    with the stream and source resources. A nonempty input leaves an
-    allocated buffer even when the count is zero. *)
 Definition dx_post (os : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb n : Z) (dq : dfrac)
     (b' : Z) (reg' : region) (so : Z) (ys : list Z) (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
   ∀ k nb' wp' we', ⌜0 <= k <= n /\ (0 < n -> nb' <> None)⌝ -∗ live fb freg -∗
     pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
     wbuf fb nb' wp' we' -∗ os fb nb' -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗ Φ (Ret (WInt k)).
-
-(** The loop keeps t bytes left to write and advances the source past
-    the others. Once it has consumed any input, it retains the fact
-    that the stream has a buffer. *)
 Definition dx_loop (os : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb : Z) (vreg : region)
     (dq : dfrac) (b' : Z) (reg' : region) (so : Z) (c' : cap) (ys : list Z) (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
   let n := Z.of_nat (length ys) in
@@ -82,6 +79,20 @@ Definition dx_loop (os : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : regio
     liveq dq b' reg' -∗ bytesq dq b' so ys -∗ ▷ dx_post os fb freg vb n dq b' reg' so ys Φ -∗
     WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L16") (b_insts dx_L16) (b_jump dx_L16)))
           : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** Default string output returns a count between zero and n, together
+    with the stream and source resources. A nonempty input leaves an
+    allocated buffer even when the count is zero. *)
+
+(** The loop keeps t bytes left to write and advances the source past
+    the others. Once it has consumed any input, it retains the fact
+    that the stream has a buffer. *)
 
 (** Block `c: L22` on, t bytes left and s at the next: return n - t
     when none are left; else hand the next byte to the jump table's
@@ -99,14 +110,14 @@ Lemma wp_dx_L22 os fb freg vb vreg nb wp we dq b' reg' so c' ys t e Φ :
   lookup (TAtom "pr.3") e = Some (WPtr (mkPtr (b' + (so + (n - t))) c')) ->
   vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   wbuf fb nb wp we -∗ os fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
-  ▷ dx_loop os fb freg vb vreg dq b' reg' so c' ys Φ -∗
-  ▷ dx_post os fb freg vb n dq b' reg' so ys Φ -∗
+  ▷ (dx_loop w0 registry ge) os fb freg vb vreg dq b' reg' so c' ys Φ -∗
+  ▷ (dx_post registry ge) os fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L22") (b_insts dx_L22) (b_jump dx_L22)))
         : sexpr) {{ Φ }}.
 Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hso Hyend Hyreg Hy Ht Hprogress Hv0 Hc0 Hv4 Hp8 Hp3. unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [dx_L22 b_insts b_jump]. step.
   destruct (Z.eq_dec t 0) as [-> | Ht0].
   { (* No byte left: L100, then L19 returns n. *)
@@ -126,7 +137,7 @@ Proof.
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_1.join: the overflow slot, the next byte, and the call. *)
   step. step. norm.
-  iApply (wp_check_read_dq with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
+  check_read_dq "Hvl'" by ar.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hfo) |].

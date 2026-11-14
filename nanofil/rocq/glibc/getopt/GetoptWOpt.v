@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** "-W foo" or "-Wfoo" stands for the long option "--foo" when the
     option string holds "W;" and the caller passes a long option table.
     glibc's scanner takes the word after the W as a required argument:
@@ -33,14 +34,11 @@ Local Arguments Z.opp : simpl nomatch.
 (** The W tail module supplies the argument vector and its tactics. *)
 Import GetoptWTail GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section wopt.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance wopt_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance wopt_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -104,10 +102,8 @@ Proof.
   iNext. iIntros "Hl Hcur _".
   iDestruct (ws_byte cur t 1 with "Hws") as (bb1 breg1) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap' & ? & ? & ? & ?).
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
-    [reflexivity | vx | exact Hcap' | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap' | rawa |].
+  check_read_dq "Hbl" by rawa; iNext; iIntros "_".
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _". iClear "Hbl Hbt". step.
   rewrite (Z.mod_small (chr_w (sbyte t 1)) (2 ^ 32)); [|apply chr_w_range].
   change (0 mod 2 ^ 32) with 0. rewrite chr_w_eqb; [|lia|lia].
@@ -117,9 +113,9 @@ Proof.
     iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq");
       [reflexivity | vx | left; reflexivity | arith | arith | unfold ptr_add; cbn [ptr_addr]; lia |].
     iNext. iIntros "Hl Hcur _". check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
+    store_pointer "Hl Hab" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hab". step. iDestruct "HK" as "[HK _]".
-    iApply (wp_getopt_wstore w0 registry ge ks e0 _ _ (ptr_add cur 1) rq with "Hcapq Hl Hab Hcur [Hib Hoo Ha Hcl HG HK]");
+    iApply (wp_getopt_wstore ks e0 _ _ (ptr_add cur 1) rq with "Hcapq Hl Hab Hcur [Hib Hoo Ha Hcl HG HK]");
       [ exact Hks | xkeep | lk_prove | lk_prove | lk_prove | unfold ptr_add; cbn [ptr_addr]; lia | exact Hb | exact Hal
       | exact Hend | exact Hr |].
     iIntros (e') "%Hk' Hl Hab Hcur".
@@ -129,7 +125,7 @@ Proof.
   rewrite (Z.mod_small n (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (i + 1) n) as [En | En]; close_br.
   - iDestruct "HK" as "[_ [_ HK]]".
-    iApply (wp_getopt_wmiss w0 registry ge ks e0 with "Hpo Hsl Hsc Hl Hoo Ha Hcl Hs HG [Hib Hab Hcur HK]");
+    iApply (wp_getopt_wmiss ks e0 with "Hpo Hsl Hsc Hl Hoo Ha Hcl Hs HG [Hib Hab Hcur HK]");
       [ exact Hks | exact Hksd | xkeep | exact Hrule | exact Hse | exact Hmid | lk_prove | lk_prove | lk_prove
       | lk_prove | lk_prove | lk_prove | lk_prove | exact Hc | exact Hper | exact Hb | exact Hal | exact Hend
       | exact Hr | exact Hav | exact Hala | lia | exact Hra | intros ->; cbn in Hlen; lia | exact Hse0 | exact Hsea
@@ -144,11 +140,11 @@ Proof.
     iDestruct (argv_str_cap with "Hws1") as (rq1) "[#Hcapq1 %Hq1]".
     step. step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx (i + 1). check "Ha".
     iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
-    iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq1"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+    load_pointer_dq "Ha Hcj Hcapq1" by arith.
     iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
+    store_pointer "Hl Hab" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hab". step.
-    iApply (wp_getopt_wstore w0 registry ge ks e0 _ _ q rq1 with "Hcapq1 Hl Hab Hcur [Hib Hoo Ha Hcl HG HK]");
+    iApply (wp_getopt_wstore ks e0 _ _ q rq1 with "Hcapq1 Hl Hab Hcur [Hib Hoo Ha Hcl HG HK]");
       [ exact Hks | xkeep | lk_prove | lk_prove | lk_prove | exact Hq1 | exact Hb | exact Hal | exact Hend | exact Hr |].
     iIntros (e') "%Hk' Hl Hab Hcur".
     iApply ("HK" with "[%] Hl [Hib] Hoo Hab [Hcur] Ha Hcl HG");

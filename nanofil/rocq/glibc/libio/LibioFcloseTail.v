@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The end of `c: _IO_new_fclose(fp)` (LibioFcloseCode.v,
     libio/iofclose.c) for stdout, from block `c: L8`, after
     `c: _IO_file_close_it` and the unlock: `c: _IO_un_link(fp)`
@@ -30,27 +31,23 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioFinish SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hunl : find_fn ge (TAtom "__GI__IO_un_link") = Some (Defined glibc__IO_un_link)).
-Context (Hdf : find_fn ge (TAtom "__GI__IO_default_finish") = Some (Defined glibc__IO_default_finish)).
-Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance fclose_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** [stream_life] g, as LibioUnlinkMid.v's: the life of the stream g. *)
 Definition stream_life (g : ptr) : iProp Σ :=
   ∃ gb greg, ⌜g = mkPtr gb (Obj gb) /\ 0 < gb /\ gb mod 8 = 0 /\ gb + file_size <= r_end greg /\
               r_end greg <= 2 ^ 63⌝ ∗ live gb greg.
-
-(** `c: _IO_un_link`'s triple on a linked stream, as LibioUnlink.v's
-    [wp_glibc__IO_un_link] states it (4294967167 is `c: ~_IO_LINKED`). *)
 Definition unlink_spec : Prop := forall fr pre post fb freg fl lb lbreg sb sreg fcp Φ,
   let fp := mkPtr fb (Obj fb) in
   call_frame glibc__IO_un_link [WPtr fp] = Some fr ->
@@ -66,16 +63,32 @@ Definition unlink_spec : Prop := forall fr pre post fb freg fl lb lbreg sb sreg 
      io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-
-(** The triples the tail calls. *)
-Context (Hunl_spec : unlink_spec) (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
-
-(** Clearing `c: _IO_LINKED` leaves a stream unlinked. *)
 Lemma unlink_has fl : has (Z.land fl 4294967167) io_linked = false.
 Proof.
   unfold has, io_linked. rewrite <- Z.land_assoc. change (Z.land 4294967167 128) with 0.
   rewrite Z.land_0_r. reflexivity.
 Qed.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
+Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
+Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
+
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** [stream_life] g, as LibioUnlinkMid.v's: the life of the stream g. *)
+
+(** `c: _IO_un_link`'s triple on a linked stream, as LibioUnlink.v's
+    [wp_glibc__IO_un_link] states it (4294967167 is `c: ~_IO_LINKED`). *)
+
+(** The triples the tail calls. *)
+Context (Hunl_spec : (unlink_spec w0 registry ge))
+  (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
+
+(** Clearing `c: _IO_LINKED` leaves a stream unlinked. *)
 
 (** Block `c: L8` of `c: _IO_new_fclose(fp)` for stdout (the symbol
     `c: _IO_2_1_stdout_`, not `c: _IO_2_1_stdin_`), whose close gave
@@ -112,7 +125,7 @@ Proof.
   intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd. subst fp.
   iIntros "#Hvt #Hs Htcb Hl Hfl Hlp Hlb Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK".
   unfold file_size in Hfend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* `c: _IO_un_link(fp)`. *)
   step. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
   iApply (Hunl_spec with "Hs Htcb Hl Hfl Hlp Hlb Hio Hlives"); try close_side.
@@ -126,7 +139,7 @@ Proof.
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file in *; lia |].
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true. step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
+  check_read_dq "Hvl'" by a2.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsf Hcap");
     [reflexivity | vx | right; reflexivity | a2 | a2 | apply (ge_fn_addr _ _ _ Hff) |].
@@ -136,9 +149,9 @@ Proof.
     apply (ge_fn_find _ _ _ Hff) | reflexivity | reflexivity |].
   iNext.
   iDestruct "Hlb" as "(%Hb & Hbl & Hb0 & Hb4 & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hb0' Hb48]) "Hbl".
+  iApply (wp_live_fit1 with "Hbl"). iIntros ([Hb0' Hb48]) "Hbl".
   pose proof (unlink_has fl) as Hun. assert (0 <= Z.land fl 4294967167 < 2 ^ 32) by (apply land_lt32; lia).
-  iApply (LibioFinish.wp_glibc__IO_new_file_finish_closed w0 registry ge Hunl Hdf Hunl_unlinked
+  iApply (LibioFinish.wp_glibc__IO_new_file_finish_closed Hunl_unlinked
             with "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl"); try close_side.
   iNext. iIntros "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl". resume.
   (* `c: _mode` 0 or -1, not wide; no backup area; fp is stdout. *)

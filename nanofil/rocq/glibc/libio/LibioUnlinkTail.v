@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The end of `c: _IO_un_link` (LibioUnlinkCode.v), from block
     `c: L179`, after the stream has left the list: `c: _IO_LINKED`
     cleared, the stream's lock released ([wp_unlink_L179]), then
@@ -31,16 +32,23 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
+Section rules_values.
+Definition unlinked_flags (fl : Z) : Z := Z.land fl 4294967167.
+Lemma unlinked_flags_range fl : 0 <= fl < 2 ^ 32 -> 0 <= unlinked_flags fl < 2 ^ 32.
+Proof. intros H. unfold unlinked_flags. apply land_lt32; lia. Qed.
+Lemma unlinked_user_lock fl : Z.land fl 32768 = 0 -> Z.land (unlinked_flags fl) 32768 = 0.
+Proof.
+  intros H. unfold unlinked_flags. rewrite <- Z.land_assoc.
+  change (Z.land 4294967167 32768) with 32768. exact H.
+Qed.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hpop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") =
-                Some (Defined glibc___libc_cleanup_pop_restore)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance unlink_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -64,9 +72,9 @@ Proof.
   intros Hglk Hgrf Hv10 Hcb Hcal Hcend Hcreg Hral Hrend.
   iIntros "#(%Hs & Hsl & Hsb) Hrl Hrc (%Hlk & Hll & Hl0 & [%Hc0 Hl4] & Hlo) Htcb Hcl Hcp Hct HK".
   destruct Hs as (Hgs & Hsend). destruct Hlk as (Hlal & Hlend & Hlreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
-  iApply (wp_live_fit1 w0 registry ge with "Hll"). iIntros ([Hlk0 Hlk48]) "Hll".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
+  iApply (wp_live_fit1 with "Hll"). iIntros ([Hlk0 Hlk48]) "Hll".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   step. step. check "Hrl". store "Hrl" "Hrc". step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
   step. step. step. check "Hll". load_s32 "Hll" "Hl4". step. step. step. branch.
   step. step. step. check "Hll". store "Hll" "Hlo". step. check "Hll".
@@ -74,7 +82,7 @@ Proof.
   iApply wp_call_bind; [vx | exact Hpop | reflexivity |]. iNext.
   assert (E : mkPtr cb (Obj cb) = mkPtr (cb + 0) (Obj cb)) by (rewrite Z.add_0_r; reflexivity).
   iEval (rewrite E) in "Htcb".
-  iApply (SysCleanupPop.wp_glibc___libc_cleanup_pop_restore w0 registry ge Hreg Hext _ cb creg 0
+  iApply (SysCleanupPop.wp_glibc___libc_cleanup_pop_restore Hreg Hext _ cb creg 0
             with "Htcb Hcl Hcp Hct"); [rewrite Z.add_0_r; reflexivity | lia | lia | rewrite Z.add_0_r; exact Hcal | lia | lia |].
   iNext. iIntros "Htcb Hcl _ _". resume. step. step. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hrl Hrc [Hll Hl0 Hl4 Hlo] Htcb Hcl").
@@ -82,18 +90,10 @@ Proof.
 Qed.
 
 (** The flags with `c: _IO_LINKED` (128) cleared. *)
-Definition unlinked_flags (fl : Z) : Z := Z.land fl 4294967167.
 
 (** [unlinked_flags] keeps the flags' range. *)
-Lemma unlinked_flags_range fl : 0 <= fl < 2 ^ 32 -> 0 <= unlinked_flags fl < 2 ^ 32.
-Proof. intros H. unfold unlinked_flags. apply land_lt32; lia. Qed.
 
 (** Clearing `c: _IO_LINKED` keeps `c: _IO_USER_LOCK` (32768) clear. *)
-Lemma unlinked_user_lock fl : Z.land fl 32768 = 0 -> Z.land (unlinked_flags fl) 32768 = 0.
-Proof.
-  intros H. unfold unlinked_flags. rewrite <- Z.land_assoc.
-  change (Z.land 4294967167 32768) with 32768. exact H.
-Qed.
 
 (** Block `c: L179` of `c: _IO_un_link` to its return: `c: _flags`
     loses `c: _IO_LINKED`, the stream's lock, held once by the thread
@@ -123,8 +123,8 @@ Proof.
   iIntros "#Hs Hl [_ Hfl] Hlp (%Hb & Hbl & Hb0 & [%Hb4r Hb4] & Hbo) Hrl Hrc Hlk Htcb Hcl Hcp Hct HK".
   destruct Hb as (Hbal & Hbend & Hbreg). unfold file_size in Hfend.
   iPoseProof "Hs" as "(%Hs & Hsl & Hsb)". destruct Hs as (Hgs & Hsend).
-  iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hb0' Hb48]) "Hbl".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hbl"). iIntros ([Hb0' Hb48]) "Hbl".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   pose proof (unlinked_flags_range fl Hfl) as Hfl'.
   step. check "Hl". load_s32 "Hl" "Hfl". step. check "Hl".
   store_int "Hl" "Hfl".

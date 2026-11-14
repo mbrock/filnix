@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The jump table's `c: __finish` of a stream `c: fclose` has closed
     and unlinked: `c: _IO_new_file_finish(fp, 0)` (LibioUnlinkCode.v,
     libio/fileops.c) sees `c: _fileno` -1 and calls
@@ -30,21 +31,20 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hunl : find_fn ge (TAtom "__GI__IO_un_link") = Some (Defined glibc__IO_un_link)).
-Context (Hdf : find_fn ge (TAtom "__GI__IO_default_finish") = Some (Defined glibc__IO_default_finish)).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance finish_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** `c: _IO_un_link`'s triple on an unlinked stream, as LibioUnlink.v's
-    [wp_glibc__IO_un_link_unlinked] states it. *)
 Definition unlink_unlinked_spec : Prop := forall fr fb freg fl Φ,
   call_frame glibc__IO_un_link [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -52,9 +52,21 @@ Definition unlink_unlinked_spec : Prop := forall fr fb freg fl Φ,
   live fb freg -∗ int_cell fb off_flags fl -∗
   ▷ (live fb freg -∗ int_cell fb off_flags fl -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
+Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
+
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** `c: _IO_un_link`'s triple on an unlinked stream, as LibioUnlink.v's
+    [wp_glibc__IO_un_link_unlinked] states it. *)
 
 (** [unlink_unlinked_spec] holds. *)
-Context (Hunl_spec : unlink_unlinked_spec).
+Context (Hunl_spec : (unlink_unlinked_spec w0 registry ge)).
 
 (** `c: _IO_default_finish(fp, 0)` of a closed, unlinked stream: no
     buffer (`c: _IO_buf_base` null), no markers, no backup area
@@ -71,8 +83,8 @@ Lemma wp_glibc__IO_default_finish_closed fr fb freg fl lb lbreg Φ :
 Proof.
   intros Hfr Hfb Hfal Hfend Hfreg Hfl Hlnk Hlb Hlbend. injection Hfr as <-. unfold file_size in Hfend.
   iIntros "Hl Hfl Hbb H80 H96 Hlp Hll HK".
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hll"). iIntros ([Hl0 Hl48]) "Hll".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hll"). iIntros ([Hl0 Hl48]) "Hll".
   step. step. check "Hl". load_null "Hl" "Hbb". step. step. branch. step. branch.
   step. step. check "Hl". load_null "Hl" "H96". step. step. step. step. step. branch.
   step. step. check "Hl". load_null "Hl" "H80". step. step. branch.
@@ -99,7 +111,7 @@ Lemma wp_glibc__IO_new_file_finish_closed fr fb freg fl lb lbreg Φ :
 Proof.
   intros Hfr Hfb Hfal Hfend Hfreg Hfl Hlnk Hlb Hlbend. injection Hfr as <-. unfold file_size in Hfend.
   iIntros "Hl [%Hfd Hfd] Hfl Hbb H80 H96 Hlp Hll HK".
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   step. step. check "Hl". load_s32 "Hl" "Hfd". step. branch. step.
   iApply wp_call_bind; [vx | exact Hdf | reflexivity |]. iNext.
   iApply (wp_glibc__IO_default_finish_closed with "Hl Hfl Hbb H80 H96 Hlp Hll"); try close_side.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When userland glibc closes a file descriptor, it calls libpizlo's
     `c: int zsys_close(int fd)` wrapper. That wrapper sits at the
     [[external call|contract]] boundary between compiled C code and the
@@ -131,14 +132,9 @@ Proof.
     as (_ & born & _ & _ & Hw & _ & [He|He]); injection He as ->; auto.
 Qed.
 
+Import ProgramAbbreviations.
 Section rule.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The instance [os_close_irisGS] configures Iris for the language with
-    the OS contract registry and the world interpretation [os_wi]. *)
-Local Instance os_close_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** The notation [zexpr] abbreviates expressions of the language over the
     OS contract registry. *)

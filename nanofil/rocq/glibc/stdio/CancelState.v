@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Fatal diagnostics disable cancellation before they lock and write stderr.
     The cancellation flag remains disabled when the diagnostic calls exit.
     This proof follows the actual flag update and saves the previous state
@@ -24,14 +25,12 @@ Local Arguments Z.opp : simpl nomatch.
     changes that thread's cancellation flag. *)
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The concrete OS world provides the registered thread cookie. *)
-Local Instance cancel_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The call to obtain the thread address uses the registered runtime function,
@@ -54,18 +53,15 @@ Proof.
   intros Hfr Hself Htb Htal Htend Htreg Hsb Hso Hsend Hsreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] Hsl [%Hprior Hsave] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
-  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
+  iApply (OsThread.wp_zthread_self_cookie); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
   step. norm. check "Htl".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
-    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-     left; reflexivity | ar |].
+  load_bytes_dq "Htl Hcb" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
   step. step. step. step. step. step. step.
   branch_as false. step. step. closed_ints. branch. step. step. step.
   check "Hsl".
-  iApply (wp_raw_store_w with "Hsl Hsave");
-    [reflexivity | reflexivity | reflexivity | ar | reflexivity | wi_store |].
+  store_word "Hsl Hsave" by (ar) preserving wi_store.
   iNext. iIntros "Hsl Hsave".
   step. step. step. closed_ints. branch. step. step. norm. check "Htl".
   iApply (wp_raw_cas_w with "Htl Hcb");
@@ -92,12 +88,10 @@ Proof.
   intros Hfr Hself Htb Htal Htend Htreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
-  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
+  iApply (OsThread.wp_zthread_self_cookie); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
   step. norm. check "Htl".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
-    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-     left; reflexivity | ar |].
+  load_bytes_dq "Htl Hcb" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
   step. step. step. step. step. step. step. closed_ints. branch.
   step. step. closed_ints. branch. step. step. norm. check "Htl".
@@ -125,17 +119,14 @@ Proof.
   intros Hfr Hself Htb Htal Htend Htreg Hsb Hso Hsend Hsreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] Hsl [%Hprior Hsave] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
-  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
+  iApply (OsThread.wp_zthread_self_cookie); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
   step. norm. check "Htl".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
-    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-     left; reflexivity | ar |].
+  load_bytes_dq "Htl Hcb" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
   step. step. step. step. step. step. step.
   branch_as false. step. step. closed_ints. branch. step. check "Hsl".
-  iApply (wp_raw_store_w with "Hsl Hsave");
-    [reflexivity | reflexivity | reflexivity | ar | reflexivity | wi_store |].
+  store_word "Hsl Hsave" by (ar) preserving wi_store.
   iNext. iIntros "Hsl Hsave". step. step. step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Htl [Hcb] Hsl [Hsave]").
@@ -156,12 +147,10 @@ Proof.
   intros Hfr Hself Htb Htal Htend Htreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
-  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
+  iApply (OsThread.wp_zthread_self_cookie); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
   step. norm. check "Htl".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
-    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-     left; reflexivity | ar |].
+  load_bytes_dq "Htl Hcb" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
   step. step. step. step. step. step. step. closed_ints. branch. step. step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.

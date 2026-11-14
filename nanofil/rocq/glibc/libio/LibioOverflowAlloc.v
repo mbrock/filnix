@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The first overflow of a stream allocates its buffer, switches it to
     writing, and sends the requested byte. This file proves the whole
     function from the proof of its allocation block. The result retains
@@ -26,12 +27,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance overflow_alloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The allocator's state, which `c: malloc` takes and gives back. *)
@@ -89,7 +87,7 @@ Proof.
   step. adv. load_s32_group "Hl Hflb". adv. branch_as true.
   adv. load_s32_group "Hl Hflb". adv. branch_as false.
   adv. branch. adv.
-  iApply (wp_raw_load_pointer with "Hl Hwb [//]"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hwb [//]" by ar.
   iNext. iIntros "Hl Hwb _". adv. branch.
   iApply (HL33 with "Hvt Hl [$Hf2 $Hfd $Herr $Hcol $Hmode $Hvtp] [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HM HK");
     try first [libio_side | lk_prove].

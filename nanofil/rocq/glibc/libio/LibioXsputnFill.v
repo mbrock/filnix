@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The fill of `c: _IO_new_file_xsputn` (LibioXsputnBase.v describes
     the function), from block `c: L20`, with the count of bytes that
     fit and the flush flag the line-buffer test chose:
@@ -50,23 +51,22 @@ Definition xs_L101 : block := Eval vm_compute in
 
 Import LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
     LibioXsputnBase.v asks. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
-  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) (Hfwq : fwq_spec w0 registry ge).
+Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+  (Hfwq : fwq_spec w0 registry ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance xs_fill_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -107,7 +107,7 @@ Proof.
   set (ysub := take (Z.to_nat c) ys).
   assert (Hls : Z.of_nat (length ysub) = c) by (unfold ysub; rewrite length_take_le; lia).
   iDestruct (bytesq_sub _ _ _ _ 0 (Z.to_nat c) with "Hys") as "[Hsub Hysb]"; [lia|].
-  iApply (wp_call_mempcpy_in w0 registry ge Hmove Hmove_fn Hmove_sym _ _ _ _ _ _ _ _ _ b reg xs cs (wa - b) dq b'
+  iApply (wp_call_mempcpy_in Hmove Hmove_fn Hmove_sym _ _ _ _ _ _ _ _ _ b reg xs cs (wa - b) dq b'
             reg' (so + Z.of_nat 0) c' ysub with "Hbl Hxs Hcs Hl' Hsub");
     [exact Hcpy | | exact Hpcpy | reflexivity | exact Hc' | lia | lia | exact Hb8 | exact Hb8' | lia | lia | lia
     | lia | lia | lia | exact Hx | |].
@@ -120,7 +120,7 @@ Proof.
   { rewrite Hls. replace (b + (wa - b) + c) with (wa + c) by lia. iFrame. iPureIntro.
     unfold room_ok, in_buf. cbn. destruct Hl3 as (H1 & H2 & H3). cbn in Hroom.
     split_and!; first [reflexivity | assumption | lia]. }
-  iApply (wp_xs_L96 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg
+  iApply (wp_xs_L96 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg
             (Some (b, sz)) (mkPtr (wa + c) (Obj b)) we dq b' reg' so c' ys (n - c) mf
             with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
   all: unfold n in *; try lia; try (intros _; discriminate). all: lk_fin.
@@ -158,7 +158,7 @@ Proof.
   destruct (Z.eq_dec cnt 0) as [-> | Hc0'].
   - (* Nothing fits: L96 with all n left. *)
     branch_as true. step.
-    iApply (wp_xs_L96 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
+    iApply (wp_xs_L96 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys n mf with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia; try (intros Hlt; lia). all: lk_fin.
   - branch_as false. step. step.

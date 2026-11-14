@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Each call of glibc's reentrant option scanner first checks whether
     its private object needs initialization. It initializes when the
     object is fresh or when the caller reset the public index to zero.
@@ -86,25 +87,38 @@ Definition getopt_blk_init : block := Eval vm_compute in
 (** The OS interpretation survives safepoints. *)
 Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes.
 
-Section initialize.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the scanner's safepoints. *)
-Local Instance init_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
+Import ProgramAbbreviations.
+Section initialize_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance init_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+Definition getenv_rule (G : iProp Σ) : Prop :=
+  forall f e ls l d args rest j x Φ, map_option (arg_x ge e) args = Some [x] ->
+  ⊢ G -∗ ▷ (∀ q, G -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+    WP (ERun (mkFrame f e ls None
+         (Exec l (Call (CResult d P) (Global (TAtom "__GI_getenv")) args :: rest) j)) : gexpr) {{ Φ }}.
+Definition entry_keys : list name :=
+  List.map TAtom ["v0"; "v2"; "v4"; "v6"; "v8"; "v10"; "v12"; "v14"; "v19"; "chk0"; "chk1"; "chk2"]%string.
+End initialize_values.
+Section initialize.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the scanner's safepoints. *)
+Local Instance init_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Initialization calls getenv, and this file does not prove getenv.
     The caller instead supplies a rule for that call. The rule keeps the
     caller's resource G and may return any pointer. *)
-Definition getenv_rule (G : iProp Σ) : Prop :=
-  forall f e ls l d args rest j x Φ, map_option (arg_x ge e) args = Some [x] ->
-  ⊢ G -∗ ▷ (∀ q, G -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
-    WP (ERun (mkFrame f e ls None
-         (Exec l (Call (CResult d P) (Global (TAtom "__GI_getenv")) args :: rest) j)) : gexpr) {{ Φ }}.
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
@@ -130,8 +144,6 @@ Ltac rdchr H q s k :=
 Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
 
 (** The scanner reads these names after initialization. *)
-Definition entry_keys : list name :=
-  List.map TAtom ["v0"; "v2"; "v4"; "v6"; "v8"; "v10"; "v12"; "v14"; "v19"; "chk0"; "chk1"; "chk2"]%string.
 
 (** Each kept lookup of a known value becomes a fact about the new
     environment. The tactic leaves the original hypothesis in place for
@@ -150,7 +162,7 @@ Ltac keep := repeat (apply keeps_put; [vm_compute; reflexivity |]); first [apply
     initialized flag. When the caller has not requested an ordering, glibc
     asks the environment through the caller's getenv rule. *)
 Lemma wp_getopt_initialize e n p os b r s pc penv (G : iProp Σ) Φ :
-  getenv_rule G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  (getenv_rule w0 registry ge) G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   lookup (TAtom "v4") e = Some (WPtr p) -> lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->
   lookup (TAtom "v14") e = Some (WInt pc) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 4) (Obj b))) ->
@@ -183,7 +195,7 @@ Proof.
   { iIntros (e2 fr o (Hk & Ho & Hphi)) "Hl Hi Hn Ho Hf Hla HG". unkeep Hk.
     iApply wp_enter; [reflexivity | exact Hphi | iNext]. cbn [b_insts b_jump getopt_blk27].
     step. norm. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hinib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hinib" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hinib". step. iApply wp_enter; [reflexivity | vx | iNext].
     iApply ("HK" $! _ o with "[%] Hl Hi [Hinib] Hn Ho Hf Hla HG"); [split; [keep | exact Ho] | by iSplit]. }
   iAssert (∀ e1 from, ⌜keeps entry_keys e e1⌝ -∗ live b r -∗ bytes b 0 (int_bytes i) -∗
@@ -192,26 +204,25 @@ Proof.
   { iIntros (e1 from Hk) "Hl Hib". unkeep Hk.
     iDestruct (ws_shape with "Hos") as %(Hch & Hp0 & Hpe).
     step. step. step. load_int' "Hl Hib" i. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hlab" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hlab".
-    iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hfb" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hfb". step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hnext"); [vx | vx | reflexivity | arith | arith | wi_store |].
+    store_pointer "Hl Hnext" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hnext". norm.
     rdchr "Hos" p os 0%nat. pose proof (sbyte_range os 0 Hch) as Hc0r.
     step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
     destruct (Z.eqb_spec (sbyte os 0) 45) as [E45|E45]; cbn [edge_label].
     { rewrite (opt_skip_minus os E45). step. step. norm. check "Hl".
-      iApply (wp_raw_store_w with "Hl Hordb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+      store_word "Hl Hordb" by (arith) preserving wi_store.
       iNext. iIntros "Hl Hordb". step. norm. step.
       iApply ("HL27" $! _ _ 2 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG");
         [split; [keep|]; split; [lia|]; unfold ptr_add; vx | icell | icell | icell | icell]. }
-    step. norm. iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-      [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |]. iNext. iIntros "_ _".
+    step. norm. load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by arith. iNext. iIntros "_ _".
     step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
     destruct (Z.eqb_spec (sbyte os 0) 43) as [E43|E43]; cbn [edge_label].
     { rewrite (opt_skip_plus os E43). step. step. norm. check "Hl".
-      iApply (wp_raw_store_w with "Hl Hordb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+      store_word "Hl Hordb" by (arith) preserving wi_store.
       iNext. iIntros "Hl Hordb". step. norm. step.
       iApply ("HL27" $! _ _ 0 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG");
         [split; [keep|]; split; [lia|]; unfold ptr_add; vx | icell | icell | icell | icell]. }
@@ -224,7 +235,7 @@ Proof.
     { iIntros (o e3 fr (Hk3 & Hv43 & Ho)) "[_ Hordb] Hl HG". unkeep Hk3.
       assert (Ho' : 0 <= o < 2 ^ 32) by lia.
       assert (o = 0 \/ o = 1) as [-> | ->] by lia; step; step; norm; check "Hl";
-        (iApply (wp_raw_store_w with "Hl Hordb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |]);
+        (store_word "Hl Hordb" by (arith) preserving wi_store);
         iNext; iIntros "Hl Hordb"; step;
         [iApply ("HL27" $! _ _ 0 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG")
         |iApply ("HL27" $! _ _ 1 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG")]; try icell;
@@ -244,7 +255,7 @@ Proof.
   destruct (Z.eqb_spec (gs_ind s) 0) as [H0|H0].
   - assert (Ei : i = 1) by (unfold i; reflexivity). rewrite Ei.
     cbn [edge_label]. step. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hib" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step. iApply ("HL12" with "[%] Hl Hib"). keep.
   - assert (Ei : i = gs_ind s) by (unfold i; reflexivity).
     rewrite Ei. cbn [edge_label].

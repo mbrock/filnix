@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves GNU Hello's `set_program_name` and `memeq` when
     they are linked with glibc's own memrchr and memcmp, with no
     premise about either function.
@@ -45,14 +46,12 @@ Module LG := LG0.
 Module L := LG.L.
 Import L LG MemcmpLogic.ML.
 
+Import ProgramAbbreviations.
 Section closed.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** [os_wi] w0 survives safepoints. *)
 Local Instance pc_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The Iris instance of the registry and [os_wi] w0. *)
-Local Instance pc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -70,14 +69,16 @@ Proof. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge H
 (** Hello's callees: glibc's strrchr, which calls glibc's strlen and
     memrchr, Hello's memeq, which calls glibc's memcmp, and glibc's
     strncmp. *)
-Context (Hstrrchr : find_fn ge (TAtom "strrchr") = Some (Defined glibc_strrchr))
-  (Hstrlen : find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen))
-  (Hmemrchr : find_fn ge (TAtom "__GI___memrchr") = Some (Defined glibc_memrchr))
-  (Hmemcmp : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp))
-  (Hmemeq : find_fn ge (TAtom "memeq") = Some (Defined memeq_fn))
-  (Hstrncmp : find_fn ge (TAtom "strncmp") = Some (Defined glibc_strncmp)).
+Context `{Hstrrchr : !Defines ge "strrchr" glibc_strrchr}
+  `{Hstrlen : !Defines ge "__GI_strlen" glibc_strlen}
+  `{Hmemrchr : !Defines ge "__GI___memrchr" glibc_memrchr}
+  `{Hmemcmp : !Defines ge "memcmp" glibc_memcmp}
+  `{Hmemeq : !Defines ge "memeq" memeq_fn}
+  `{Hstrncmp : !Defines ge "strncmp" glibc_strncmp}.
 (** The globals, as HelloGlibcProgName.v has them. *)
-Context (pb nb sb : Z) (preg nreg sreg : region) (lp tp : ptr)
+Context (pb nb sb : Z)
+  (preg nreg sreg : region)
+  (lp tp : ptr)
   (Hpb : lookup (TAtom "program_name") (ge_globals ge) = Some (mkPtr pb (Obj pb)))
   (Hnb : lookup (TAtom "program_invocation_name") (ge_globals ge) = Some (mkPtr nb (Obj nb)))
   (Hsb : lookup (TAtom "program_invocation_short_name") (ge_globals ge) = Some (mkPtr sb (Obj sb)))
@@ -104,7 +105,7 @@ Lemma set_program_name_closed dq p s x0 y0 z0 Φ :
        (ptr_add p (Z.of_nat (short_idx s))) -∗ Φ RetVoid) -∗
   WP (ERun (invocation set_program_name_fn [WPtr p]) : gexpr) {{ Φ }}.
 Proof.
-  apply (HelloGlibcProgName.set_program_name_glibc w0 registry ge Hstrrchr Hstrlen Hmemeq Hstrncmp pb nb sb preg nreg sreg lp tp
+  apply (HelloGlibcProgName.set_program_name_glibc pb nb sb preg nreg sreg lp tp
            Hpb Hnb Hsb Hlp Htp Hpb_cell Hnb_cell Hsb_cell (MemrchrLogic.glibc_memrchr_spec registry (os_wi w0) ge Hmemrchr)
            (cells_memcmp_spec Hmemcmp)).
 Qed.

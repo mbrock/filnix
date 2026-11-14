@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: _IO_new_file_overflow` (LibioOverflowBase.v
     describes the function) on a stream that is already putting into
     its buffer, as it is after the first call
@@ -25,14 +26,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 Context (write_ready : Z -> Prop).
 
-Local Instance overflow_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Block `c: L18`, as LibioOverflowSend.v proves it ([wp_ovf_L18]). *)
@@ -74,7 +73,7 @@ Proof.
   step. adv. load_s32_group "Hl Hflb". adv. branch_as true.
   assert (H2048 : 0 <= Z.land fl 2048 < 2 ^ 32) by (apply land_lt32; lia).
   adv. load_s32_group "Hl Hflb". adv. branch_as true.
-  adv. iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  adv. load_pointer "Hl Hwb Hbl" by ar.
   iNext. iIntros "Hl Hwb Hbl". step. step. step. step. step. branch_as true.
   iApply (HL18 with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
     try first [libio_side | lk_prove |

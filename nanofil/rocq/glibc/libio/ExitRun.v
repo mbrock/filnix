@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Triples for user glibc's `__run_exit_handlers` and `exit`
     (ExitRunCode.v), over user glibc's OS registry and world, for any
     genv that binds their symbols.
@@ -120,7 +121,7 @@ Proof.
            HP HD Hhs HK".
   cbn [xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg xo_funcs xo_funcs_reg xo_init xo_init_reg].
   step.
-  iApply wp_zthread_self_cookie; [reflexivity | exact Hsf | exact Hsg | lia |]. iNext.
+  iApply program_call(wp_zthread_self_cookie (glibc_program := program_of w0 glibc_os_registry ge)); [reflexivity | exact Hsf | exact Hsg | lia |]. iNext.
   step_global Hgel. step.
   rule1 "Hel" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 8 null elr with "Hel Heo []");

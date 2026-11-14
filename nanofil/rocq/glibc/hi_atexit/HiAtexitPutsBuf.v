@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Puts can store its newline directly when stdout's buffer has
     room. These rules retain the buffer's bytes, capability slots
     and heap origin through the pointer loads and byte store. The
@@ -64,7 +65,7 @@ Proof.
     iExists reg, xs, cs. rewrite Hcap. iFrame. done.
   - iDestruct "Hb" as %[Hwp Hwe].
     assert (Hx0 : x = null) by (destruct Hwhich as [->| ->]; assumption). subst x.
-    iApply (wp_raw_load_null w0 glibc_os_registry hge with "Hl Hpc"); try eassumption.
+    iApply (wp_raw_load_null (glibc_program := program_of w0 glibc_os_registry hge) with "Hl Hpc"); try eassumption.
     iNext. iIntros "Hl Hpc". iApply ("HK" with "Hl Hpc []"). done.
 Qed.
 

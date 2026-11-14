@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** GNU Hello's leaf functions (HelloLeaf.v's [mbszero_fn],
     [strnlen1_fn], [streq_fn] and [memeq_fn], Hello's own IR from
     HelloCode.v) linked with glibc, over the [os_world] of
@@ -39,27 +40,19 @@ Module LG := LG0.
 Module L := LG.L.
 Import L LG MemFwdLogic.ML WordString MemchrLast.
 
-Section leaves.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The registry holds the contract for `c: zmemset`, which is no
-    function or symbol of the genv. *)
-Context (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)))
-  (Hset_fn : find_fn ge (TAtom "zmemset") = None) (Hset_sym : lookup (TAtom "zmemset") (ge_globals ge) = None).
-(** Hello's `memset` and `memchr` are glibc's. *)
-Context (Hmemset : find_fn ge (TAtom "memset") = Some (Defined glibc_memset))
-  (Hmemchr : find_fn ge (TAtom "memchr") = Some (Defined glibc_memchr)).
-
-(** [os_wi] w0 survives safepoints. *)
-Local Instance leaf_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The Iris instance of the registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section leaves_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance leaf_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
-(** The expressions of the language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** A call triple for the function at `strcmp`: on two strings at any
-    shares it returns an int that is 0 just when they are equal, and
-    hands them back. *)
 Definition strcmp_spec : Prop :=
   exists F, find_fn ge (TAtom "strcmp") = Some (Defined F) /\
   (forall p q, is_Some (call_frame F [WPtr p; WPtr q])) /\
@@ -67,14 +60,6 @@ Definition strcmp_spec : Prop :=
     ⊢ word_string dq1 p s -∗ word_string dq2 q t -∗
       (∀ k, ⌜k mod 2 ^ 32 = 0 <-> s = t⌝ -∗ word_string dq1 p s -∗ word_string dq2 q t -∗ Φ (Ret (WInt k))) -∗
       WP (ERun fr : gexpr) {{ Φ }}.
-
-(** A call triple for the function at `memcmp`: on as many bytes xs and
-    ys of two live objects at any shares, through read-write or
-    read-only capabilities, n their count, below 16, it returns an int
-    that is 0 just when they are equal, and hands them back.
-    Only fewer than 16 bytes: from 16 bytes on glibc's own memcmp
-    reads words through pointers it rebuilds from integers, which have
-    no capability, so it traps (MemcmpLogic.v's header). *)
 Definition memcmp_spec : Prop :=
   exists F, find_fn ge (TAtom "memcmp") = Some (Defined F) /\
   (forall p q n, is_Some (call_frame F [WPtr p; WPtr q; WInt n])) /\
@@ -88,6 +73,34 @@ Definition memcmp_spec : Prop :=
       (∀ k, ⌜k mod 2 ^ 32 = 0 <-> xs = ys⌝ -∗ liveq dq1 b reg -∗ bytesq dq1 b o xs -∗
             liveq dq2 b' reg' -∗ bytesq dq2 b' o' ys -∗ Φ (Ret (WInt k))) -∗
       WP (ERun fr : gexpr) {{ Φ }}.
+End leaves_values.
+Section leaves.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The registry holds the contract for `c: zmemset`, which is no
+    function or symbol of the genv. *)
+Context (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)))
+  (Hset_fn : find_fn ge (TAtom "zmemset") = None)
+  (Hset_sym : lookup (TAtom "zmemset") (ge_globals ge) = None).
+(** Hello's `memset` and `memchr` are glibc's. *)
+Context `{Hmemset : !Defines ge "memset" glibc_memset}
+  `{Hmemchr : !Defines ge "memchr" glibc_memchr}.
+
+(** [os_wi] w0 survives safepoints. *)
+Local Instance leaf_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** The expressions of the language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** A call triple for the function at `strcmp`: on two strings at any
+    shares it returns an int that is 0 just when they are equal, and
+    hands them back. *)
+
+(** A call triple for the function at `memcmp`: on as many bytes xs and
+    ys of two live objects at any shares, through read-write or
+    read-only capabilities, n their count, below 16, it returns an int
+    that is 0 just when they are equal, and hands them back.
+    Only fewer than 16 bytes: from 16 bytes on glibc's own memcmp
+    reads words through pointers it rebuilds from integers, which have
+    no capability, so it traps (MemcmpLogic.v's header). *)
 
 (** One pure step whose premises compute. *)
 
@@ -103,7 +116,7 @@ Lemma mbszero_glibc b reg o xs cs Φ :
 Proof.
   intros Hx Hc Hb8 Ho8 Ho Hend. iIntros "Hl Hx Hcs HΦ". rewrite mbszero_entry.
   iApply wp_enter; [exact find_z_start | reflexivity |]. iNext. cbn [b_insts b_jump z_start].
-  iApply (MemFwdLogic.wp_call_glibc_memset w0 registry ge Hset Hset_fn Hset_sym _ _ _ _ _ _ _ _ _ b reg o xs cs 0
+  iApply (MemFwdLogic.wp_call_glibc_memset Hset Hset_fn Hset_sym _ _ _ _ _ _ _ _ _ b reg o xs cs 0
             with "Hl Hx Hcs"); [rewrite Hx; reflexivity | exact Hmemset | reflexivity | lia | rewrite Hx; lia
     | exact Hb8 | exact Ho8 | exact Ho | rewrite Hx; exact Hend | lia |].
   iNext. iIntros "Hl Hx Hcs". rewrite Hx.
@@ -152,7 +165,7 @@ Qed.
 (** `streq`'s triple, from any [strcmp_spec] (glibc's own strcmp's, for
     one): on two strings at any shares it returns 1 just when they are
     equal, and 0 otherwise. *)
-Lemma streq_glibc (Hcmp : strcmp_spec) dq1 dq2 p q s t Φ :
+Lemma streq_glibc (Hcmp : (strcmp_spec w0 registry ge)) dq1 dq2 p q s t Φ :
   word_string dq1 p s -∗ word_string dq2 q t -∗
   ▷ (word_string dq1 p s -∗ word_string dq2 q t -∗
      Φ (Ret (WInt (if decide (s = t) then 1 else 0)))) -∗
@@ -175,7 +188,7 @@ Qed.
 (** `memeq`'s triple, from any [memcmp_spec]: on as many bytes xs and
     ys of two live objects at any shares, n their count, below 16, it
     returns 1 just when they are equal, and 0 otherwise. *)
-Lemma memeq_glibc (Hcmp : memcmp_spec) dq1 dq2 b reg o c xs b' reg' o' c' ys Φ : 0 < b -> (length xs < 16)%nat ->
+Lemma memeq_glibc (Hcmp : (memcmp_spec w0 registry ge)) dq1 dq2 b reg o c xs b' reg' o' c' ys Φ : 0 < b -> (length xs < 16)%nat ->
   (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> length ys = length xs ->
   0 <= o -> 0 <= o' -> b + o + Z.of_nat (length xs) <= r_end reg ->
   b' + o' + Z.of_nat (length xs) <= r_end reg' -> r_end reg <= 2 ^ 48 -> r_end reg' <= 2 ^ 48 ->

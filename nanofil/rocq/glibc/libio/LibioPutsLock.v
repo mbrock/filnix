@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The stream lock in `c: puts(s)` (LibioPutsCode.v, libio/ioputs.c):
     the start, which measures the string with `c: strlen` and takes
     stdout's lock, the single thread finding it free, (0, 0, null)
@@ -31,14 +32,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance puts_lock_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -48,7 +47,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
                         | apply (ext_data ge Hext); cbn; tauto].
 
 (** A call of `c: zthread_self_cookie`, the cookie not null by H. *)
-Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H|]; iNext.
 
 (** `c: puts(s)`'s start, s at p the string at the share dq and stdout
     fb, whose `c: _IO_USER_LOCK` is clear and whose lock lb is free:
@@ -79,10 +78,10 @@ Proof.
   iIntros "#Hs Hstr Hso Hsoc Hl [_ Hfl] Hlp Hlb HK".
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).
   iDestruct "Hlb" as "(%Hb & Hbl & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
-  iApply (wp_live_fit1 w0 registry ge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
+  iApply (wp_live_fit1 with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   iDestruct (word_string_len with "Hstr") as %Hlen.
   (* start: the length, stdout, and `c: _IO_USER_LOCK` clear. *)
   step. iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hstr"); [vx | exact Hstr | reflexivity |].

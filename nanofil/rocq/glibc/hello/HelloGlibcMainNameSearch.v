@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file packages the two proved searches needed by set_program_name.
     Sealing these results avoids substituting their internal proof modules
     when the name-call bridge is compiled. *)
@@ -15,16 +16,14 @@ Import ListNotations.
 Open Scope Z_scope.
 
 (** The interface states only the observable search triples. *)
+Import ProgramAbbreviations.
 Module Type HelloNameSearchSig.
 Import LG0 LG0.L.
 (** The memory predicates share the caller's logic instance. *)
 Module ML := MemLogicOn R LG0.
 Import ML.
 Section spec.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** These calls use the concrete OS interpretation. *)
-Local Instance search_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** Reverse search returns the last matching byte while preserving the string. *)
 Parameter name_memrchr : find_fn ge (TAtom "__GI___memrchr") = Some (Defined glibc_memrchr) ->
   exists F, find_fn ge (TAtom "__GI___memrchr") = Some (Defined F) /\
@@ -63,10 +62,7 @@ Module MC := MemcmpLogic.
 (** The OS interpretation supplies the required safepoint instance. *)
 Module OW := OsWorld.
 Section results.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** These calls use the concrete OS interpretation. *)
-Local Instance search_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** Collector safepoints preserve the concrete interpretation. *)
 Local Instance search_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** Reverse search returns the last matching byte while preserving the string. *)

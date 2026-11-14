@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves one pass of the loop of `c: _IO_unbuffer_all`,
     which is inlined in `c: _IO_cleanup` (LibioCleanupCode.v), over a
     stream that [exit_stream] describes. The pass runs from block `c: iw_1.L82` to
@@ -32,14 +33,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioCleanupLock LibioCleanupStart LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance cleanup_pass_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -74,12 +73,12 @@ Proof.
   iDestruct "HX" as (fb' fl f2 fd md lb lbreg c breg arp are awb awp Hx)
     "(Hfl & Hf2 & Hfd & Hmd & Hlp & Hlk & H8 & H16 & H32 & H40 & Hcl & H80)".
   destruct Hx as (Heq & Hfl & Hfl15 & Hf2 & Hfd & Hw & Hwb & Hrd & Hrb & Hmd & Hmu). injection Heq as <-.
-  iApply (wp_cleanup_L82 w0 registry ge Hreg Hext e fb freg fl lb lbreg rf rfreg sb sreg null r cb
+  iApply (wp_cleanup_L82 Hreg Hext e fb freg fl lb lbreg rf rfreg sb sreg null r cb
             with "Hs Hl Hfl Hlp Hlk Hrl Hrc"); try assumption.
   iNext. iIntros (e1 (Hp1' & Hc13 & Hv1' & Hv2')) "Hl Hfl Hlp Hlk Hrl Hrc".
-  iApply (wp_cleanup_L93 w0 registry ge e1 fb freg fl md r cb with "Hl Hfl Hmd H80"); try assumption.
+  iApply (wp_cleanup_L93 e1 fb freg fl md r cb with "Hl Hfl Hmd H80"); try assumption.
   iNext. iIntros (e2 (Hp1'' & Hc13' & Hv1'' & Hv2'')) "Hl Hfl Hmd H80".
-  iApply (wp_cleanup_L306 w0 registry ge e2 r fb freg lb lbreg rf rfreg sb sreg _ cb nx nreg
+  iApply (wp_cleanup_L306 e2 r fb freg lb lbreg rf rfreg sb sreg _ cb nx nreg
             with "Hs Hl Hlp Hlk Hrl Hrc Hnc Hnl"); try assumption.
   iNext. iIntros (e3 Hv) "Hl Hlp Hlk Hrl Hrc Hnc Hnl".
   iApply ("HK" $! e3 Hv with "Hl [-Hrl Hrc Hnc Hnl] Hrl Hrc Hnc Hnl").

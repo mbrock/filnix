@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser lists the candidates of an
     ambiguous word, it writes the name of each marked entry on stderr.
     This file proves one such write safe: the parser reads the stream
@@ -37,14 +38,11 @@ Definition aprint_names : list name := Eval vm_compute in
 Import GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 
+Import ProgramAbbreviations.
 Section print.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance aprint_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance aprint_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -75,19 +73,16 @@ Proof.
   iDestruct (big_sepL_lookup with "Hes") as "(#Hn & #Hnws & _)"; [exact Hy|].
   iDestruct (argv_str_cap with "Hnws") as (rn) "[#Hcapn %Hn0]".
   step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |].
+  check_read_dq "Hsl" by StrlenLoop.arith.
   iNext; iIntros "_".
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]".
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |].
+  load_pointer_dq "Hsl Hsc Hcf" by StrlenLoop.arith.
   iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). step. step. step. norm.
   change (2 ^ (5 mod 64)) with 32.
   match goal with |- context [put (TAtom "v296") (WPtr {| ptr_addr := ?X; ptr_cap := ptr_cap lo |})] =>
     replace X with (ptr_addr lo + 32 * Z.of_nat k) by (rewrite !Z.mod_small; lia) end.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-    [reflexivity | vx | exact Htc | rawa | rawa | al8 |]; iNext; iIntros "_".
-  iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
-    [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
+  check_read_dq "Htl" by first [rawa | al8]; iNext; iIntros "_".
+  load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8].
   iNext. iIntros "_ _ _".
   iApply (Hf4 with "HG Hpfx Hnws"); [exact H140 | vx |]. iNext. iIntros (r0) "HG". step.
   iApply ("HK" with "[%] HG"). xkeep.

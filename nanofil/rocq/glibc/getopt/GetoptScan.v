@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Each call of glibc's scanner first tidies the argument vector, which
     only the permuting order rearranges, and then decides what the
     argument at the public index is. This file joins the two proofs. The call either returns
@@ -30,14 +31,11 @@ Definition scan_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; "
 (** The decision module proves the decision and the early returns. *)
 Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section scan.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance scan_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -95,7 +93,7 @@ Lemma wp_getopt_scan ks e fr0 n i o f l a b r av ar ps pdd sdd Φ :
 Proof.
   intros Hki Hks Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc1 Hc2 Hfl Hln Hfi Hin Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hi Hab Ho Hf Hla Ha Hc #Hs #Hdd HK".
-  iApply (GetoptIdlePath.wp_getopt_idle w0 registry ge (ks ++ scan_keys) e fr0 n i o f l b r av ar ps pdd sdd
+  iApply (GetoptIdlePath.wp_getopt_idle (ks ++ scan_keys) e fr0 n i o f l b r av ar ps pdd sdd
             with "Hl Hi Ho Hf Hla Ha Hc Hs Hdd [Hab HK]");
     [ apply avoids_app_r; [exact Hki | vm_compute; reflexivity] | exact Hg | exact Hdd
     | exact Hv0 | exact Hv2 | exact Hv12 | exact Hc0 | exact Hc2
@@ -103,7 +101,7 @@ Proof.
   iIntros (e1 ps1 i1 f1 l1 (Hp & Hk & Hfl1 & Hli1 & Hii & H23)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
   apply keeps_app in Hk as [Hk Hk'].
   assert (Hlen1 : Z.of_nat (List.length ps1) = n) by (rewrite -(Permutation_length Hp); exact Hlen).
-  iApply (GetoptScanEnd.wp_getopt_scan_end w0 registry ge ks e1 i1 n o f1 l1 a b r av ar ps1
+  iApply (GetoptScanEnd.wp_getopt_scan_end ks e1 i1 n o f1 l1 a b r av ar ps1
             with "Hl Hi Hab Ho Hf Hla Ha Hc Hs1 [HK]");
     [ exact Hks | kin Hk' Hv0 | kin Hk' Hv2 | kin Hk' Hv12 | kin Hk' Hc0 | kin Hk' Hc1 | kin Hk' Hc2 | exact H23
     | lia | lia | lia | lia | exact Hlen1 | lia | lia | lia | lia | lia | lia | lia | lia |].

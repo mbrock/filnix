@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Triples for user glibc's narrow stream readers and the jump-table
     entries that wrap a syscall (LibioReadCode.v): `c: __fpending`,
     `c: _IO_ferror`, `c: _IO_file_stat` and `c: _IO_file_close`.
@@ -33,14 +34,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance read_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -70,11 +69,9 @@ Proof.
   load_s32_group "Hl Hmode". step.
   destruct Hmode as [-> | ->]; closed_ints. 1: branch. 2: branch.
   all: step; step; norm; check "Hl";
-    (iApply (wp_raw_load_pointer with "Hl Hwp Hc");
-       [reflexivity | reflexivity | reflexivity | ar | ar | exact Hwp |]);
+    (load_pointer "Hl Hwp Hc" by ar);
     iNext; iIntros "Hl Hwp Hc"; step; norm; check "Hl"; rewrite Hcap;
-    (iApply (wp_raw_load_pointer with "Hl Hwb Hc");
-       [reflexivity | reflexivity | reflexivity | ar | ar | exact Hwb |]);
+    (load_pointer "Hl Hwb Hc" by ar);
     iNext; iIntros "Hl Hwb Hc"; step; step; step; rewrite -Hcap;
     (iApply wp_ret; [reflexivity | reflexivity |]); iNext; cbn;
     rewrite (Z.mod_small (ptr_addr wp)); [|lia]; rewrite (Z.mod_small (ptr_addr wb)); [|lia];
@@ -130,7 +127,7 @@ Proof.
   iIntros "Hl [%Hfd Hfdb] Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [reflexivity | exact Hfn | reflexivity |]. iNext.
-  iApply (wp_glibc___close_nocancel w0 registry ge Hreg Hext with "Herr"); [reflexivity | apply Z.mod_pos_bound; lia | exact He |].
+  iApply (wp_glibc___close_nocancel Hreg Hext with "Herr"); [reflexivity | apply Z.mod_pos_bound; lia | exact He |].
   iNext. iIntros (k Hk) "Herr". resume_ret.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. rewrite Z.mod_mod; [|lia]. rewrite Z.mod_small; [|lia].
   iApply ("HK" with "[%] Hl [Hfdb] Herr"); [exact Hk | iSplit; [done | iExact "Hfdb"]].
@@ -153,7 +150,7 @@ Proof.
   iIntros "Hl [%Hfd Hfdb] Hbl Hb Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [reflexivity | exact Hfn | reflexivity |]. iNext.
-  iApply (wp_glibc___fstat64 w0 registry ge Hreg Hext with "Hbl Hb Herr");
+  iApply (wp_glibc___fstat64 Hreg Hext with "Hbl Hb Herr");
     [reflexivity | apply Z.mod_pos_bound; lia | exact He | rewrite Z.mod_small; [exact Hin | lia] | exact Ho | exact Hst |].
   iNext. iIntros (k Hk) "Hbl Hb Herr". resume_ret.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. rewrite Z.mod_mod; [|lia]. rewrite Z.mod_small; [|lia].

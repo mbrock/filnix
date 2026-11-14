@@ -11,7 +11,7 @@
     higher-level proofs such as [StrnlenLogic] can invoke `__memchr` on
     borrowed or shared strings. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -205,7 +205,7 @@ Proof.
   cbn [words_ps]. rewrite ptsq_app. iDestruct "Hps" as "[Hw Hps]".
   do 5 step. cbn [ptr_addr ptr_cap]. rewrite (Z.mod_small a (2 ^ 64)); [|zl]. rewrite land_align; [|zl].
   sp "v19" (a - a mod 8).
-  iApply (wp_check_read_dq with "Hl"); [reflexivity | vx | exact Hc | ar | ar | apply Z.mod_1_r |].
+  check_read_dq "Hl" by ar.
   iNext. iIntros "Hl".
   iApply (wp_raw_load_read_dq with "Hl Hw"); [reflexivity | reflexivity | exact Hc | ar |].
   iNext. iIntros "Hl Hw". rewrite (Z.mod_small w (2 ^ 64) Hw0).

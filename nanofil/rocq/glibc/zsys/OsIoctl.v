@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When userland glibc issues a device control request, such as probing
     whether a file descriptor refers to a terminal in `c: isatty`, it
     calls libpizlo's `c: int zsys_ioctl(int fd, int request, ...)` wrapper
@@ -193,14 +194,12 @@ Proof.
     as (_ & born & _ & _ & Hw & _ & k & Hk & He). injection He as ->. eauto.
 Qed.
 
+Import ProgramAbbreviations.
+Section rule_values.
+Definition ioctl_n (reg : region) (b o : Z) : Z := Z.min (r_end reg - (b + o)) 128.
+End rule_values.
 Section rule.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The instance [os_ioctl_irisGS] configures Iris for the language with
-    the OS contract registry and the world interpretation [os_wi]. *)
-Local Instance os_ioctl_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** The notation [zexpr] abbreviates expressions of the language over the
     OS contract registry. *)
@@ -209,7 +208,6 @@ Local Notation zexpr := (language.expr (nanofil_lang registry ge)).
 (** For a pointer at offset o of an object with region `reg`, [ioctl_n]
     computes the byte length of the copy-back block that the caller lends
     to `c: zsys_ioctl`, capped at 128 bytes. *)
-Definition ioctl_n (reg : region) (b o : Z) : Z := Z.min (r_end reg - (b + o)) 128.
 
 (** When a C function calls `c: zsys_ioctl` with a known request whose
     footprint fits at offset o of a live object, the caller lends the

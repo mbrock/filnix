@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf must locate its output stream before passing a character to it.
     It reads the FILE pointer stored in its buffer header without changing
     either allocation.
@@ -21,13 +22,9 @@ Open Scope Z_scope.
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Reading the pointer leaves OS resources unchanged. *)
-Local Instance prelude_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Reading the FILE pointer does not consume ownership of either allocation.
@@ -51,8 +48,7 @@ Proof.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hv0 Hchk. iIntros "Hb Hfp Hf HK".
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
   iNext. cbn [b_insts b_jump]. step. check "Hb".
-  iApply (wp_raw_load_pointer_dq with "Hb Hfp Hf");
-    [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |].
+  load_pointer_dq "Hb Hfp Hf" by a2.
   iNext. iIntros "Hb Hfp Hf".
   iApply ("HK" $! _ with "[%] Hb Hfp Hf").
   split_and!; lookups; reflexivity.

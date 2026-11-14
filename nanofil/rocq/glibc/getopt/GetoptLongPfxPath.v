@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option whose name equals a
     word's name, it searches the table for names that start with it.
     The search ends with one match, with none, or with an ambiguity. One
@@ -52,14 +53,11 @@ Ltac ppath_lk := first
       rewrite (keeps_in KS k a c H);
       [ppath_lk | solve [unfold ppath_keys, pend_keys; cbn [In]; repeat first [left; reflexivity | right]]] end ].
 
+Import ProgramAbbreviations.
 Section path.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance ppath_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance ppath_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -122,7 +120,7 @@ Proof.
   step. pcmp_fold "L98" plo_blk98.
   change (0 mod 2 ^ 32) with 0. change (4294967295 mod 2 ^ 32) with 4294967295. change (0 mod 2 ^ 64) with 0.
   fold null.
-  iApply (wp_pfx_loop w0 registry ge (ppath_keys ++ ks)%list _ M 0 null 4294967295 0 0 null cur s lo os F b r lonly pe
+  iApply (wp_pfx_loop (ppath_keys ++ ks)%list _ M 0 null 4294967295 0 0 null cur s lo os F b r lonly pe
     with "Hws Ht0 Hl Hcur HF [] HM");
     [rewrite avoids_app_l Hksl; reflexivity | rewrite avoids_app_l Hksc; reflexivity
     | rewrite avoids_app_l Hkss; reflexivity | rewrite avoids_app_l Hksa; reflexivity
@@ -134,7 +132,7 @@ Proof.
   apply keeps_app in Hk1 as [Hkt1 Hk1].
   assert (Hk1e : keeps ks e e1) by (eapply keeps_trans; [|exact Hk1]; xkeep).
   assert (Hw : 0 <= w < 2 ^ 32) by (destruct Hf as [(_ & ->) | (j & Hj & _ & ->)]; lia).
-  iApply (wp_pfx_end w0 registry ge (ppath_keys ++ pend_keys ++ ks)%list e1 _ p w a m sp with "Hs");
+  iApply (wp_pfx_end (ppath_keys ++ pend_keys ++ ks)%list e1 _ p w a m sp with "Hs");
     [rewrite !avoids_app_l Hkse; reflexivity | exact H8' | exact H42' | exact H39' | exact H30' | exact H21'
     | exact Hw | exact Ha | exact Hm |].
   iSplit.
@@ -144,7 +142,7 @@ Proof.
     split; [eapply keeps_trans; [exact Hk1e | exact Hk2]|]. repeat split; assumption.
   - iIntros (e2 (Hk2 & Hsa)) "Hs". apply keeps_app in Hk2 as [Hkt2 Hk2].
     apply keeps_app in Hk2 as [Hkp2 Hk2].
-    iApply (wp_amb_report w0 registry ge ks e2 G T fp dom se sereg f138 f139 f140 f141 av ar ps lo os pfx pxs
+    iApply (wp_amb_report ks e2 G T fp dom se sereg f138 f139 f140 f141 av ar ps lo os pfx pxs
       cur s pe a m sp i oo b r with "Ht0 Hpfx Hws Hsl Hsc Hs Hl Hib Hoob Hcur Ha Hcl Hargs HG");
       [exact Hksr | exact Hksi | exact Hkst | exact Hrule | exact Hfree | exact Hgl | exact Hse | exact H138
       | exact H139 | exact H140 | exact H141 | ppath_lk | ppath_lk | ppath_lk | ppath_lk | ppath_lk | ppath_lk

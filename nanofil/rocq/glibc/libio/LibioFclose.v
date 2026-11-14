@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** `c: _IO_new_fclose(stdout)` (LibioFcloseCode.v, libio/iofclose.c),
     as `c: close_stdout` calls it at exit in hi_atexit.c, on stdout
     holding n bytes `c: puts` left in its heap buffer: the single
@@ -55,25 +56,20 @@ Qed.
 
 Import LibioFcloseLock LibioFcloseTail LibioFinish SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hunl : find_fn ge (TAtom "__GI__IO_un_link") = Some (Defined glibc__IO_un_link)).
-Context (Hdf : find_fn ge (TAtom "__GI__IO_default_finish") = Some (Defined glibc__IO_default_finish)).
-Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
-Context (Hcif : find_fn ge (TAtom "_IO_file_close_maybe_unlink") =
-                Some (Defined glibc__IO_file_close_maybe_unlink)).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance fclose_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** `c: _IO_file_close_maybe_unlink`'s triple, as LibioCloseIt.v's
-    [wp_glibc__IO_file_close_maybe_unlink] states it. *)
 Definition close_it_spec : Prop :=
   forall fr fb freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg md Φ,
   let n := Z.of_nat (length xs) in
@@ -106,9 +102,26 @@ Definition close_it_spec : Prop :=
      pcell fb 80 null -∗ pcell fb 96 null -∗
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
+Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
+Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
+Context `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}.
+
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** `c: _IO_file_close_maybe_unlink`'s triple, as LibioCloseIt.v's
+    [wp_glibc__IO_file_close_maybe_unlink] states it. *)
 
 (** The callees' triples. *)
-Context (Hci : close_it_spec) (Hunl_spec : unlink_spec w0 registry ge)
+Context (Hci : (close_it_spec w0 registry ge))
+  (Hunl_spec : unlink_spec w0 registry ge)
   (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
 
 (** `c: fclose(stdout)` (`c: _IO_new_fclose`), stdout ge's
@@ -174,9 +187,9 @@ Proof.
   pose proof Hfb8 as Hfb8'. unfold has, io_is_filebuf in Hfb8'. apply negb_true_iff, Z.eqb_neq in Hfb8'.
   assert (0 <= Z.land fl 8192 < 2 ^ 32) by (apply land_lt32; lia).
   (* start: the stream's lock is taken. *)
-  iApply (wp_fclose_start w0 registry ge Hreg Hext _ _ _ _ _ _ _ _ _ Hfr with "Hs Htcb Hl Hfl Hlp Hlk"); try close_side.
+  iApply (wp_fclose_start Hreg Hext _ _ _ _ _ _ _ _ _ Hfr with "Hs Htcb Hl Hfl Hlp Hlk"); try close_side.
   iIntros (e from [Hv0 Hc0]) "Htcb Hl Hfl Hlp Hlk".
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* L13, L99: `c: _IO_file_close_it`, then `c: _flags2 |= 32`. *)
   iDestruct "Hfl" as "[_ Hfl]".
   step. check "Hl". load_s32 "Hl" "Hfl". step. branch_as false. step.
@@ -199,7 +212,7 @@ Proof.
     destruct Hpost as [[_ ->] | [_ ->]]; [|rewrite lor32_linked]; tauto. }
   assert (Hcu2 : has (closed_flags fl') io_user_lock = false).
   { unfold has, io_user_lock. rewrite closed_user_lock. reflexivity. }
-  cbn [edge_label]. iApply (wp_fclose_L101 w0 registry ge Hunl Hdf Hff Hunl_spec Hunl_unlinked
+  cbn [edge_label]. iApply (wp_fclose_L101 Hff Hunl_spec Hunl_unlinked
                with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 [-]"); try close_side; try exact Hmd.
   iNext. iIntros "Htcb Hl Hfl Hlp Hlk Hio Hlives Hlinks Hfd Hmode Hvtp Hbb H80 H96".
   iSpecialize ("HK" $! r fl' k tw' with "[%]"); [exact (conj Hpost Hk)|].

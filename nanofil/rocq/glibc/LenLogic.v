@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A C program that calls `c: strlen` on a string literal usually
     treats `c: strlen` as a primitive with an external specification.
     Here we link `c: len.c` directly with the intermediate
@@ -186,13 +187,26 @@ Local Notation lexpr := (language.expr (nanofil_lang no_contracts lge)).
 
 (** [find_strlen] confirms that looking up `c: strlen` in [lge]
     resolves through the alias to [strlen_fn]. *)
-Lemma find_strlen : find_fn lge (TAtom "strlen") = Some (Defined strlen_fn).
-Proof. vm_compute. reflexivity. Qed.
+Definition LenLogic_lge_program_table : list (string * func) :=
+  ("strlen", strlen_fn) ::
+  ("main", main_fn) :: nil.
+Lemma LenLogic_lge_program_table_correct :
+  List.Forall (fun '(n, f) => find_fn lge (TAtom n) = Some (Defined f)) LenLogic_lge_program_table.
+Proof.
+  apply defines_table_of_map.
+  vm_cast_no_check (eq_refl (List.map (fun '(_, f) => Some (Defined f)) LenLogic_lge_program_table)).
+Qed.
+#[global] Instance LenLogic_lge_program_table_instance : ProgramTable lge :=
+  {| program_table := LenLogic_lge_program_table; program_table_correct := LenLogic_lge_program_table_correct |}.
+Lemma find_strlen : Defines lge "strlen" strlen_fn.
+Proof. exact (defines_from_table_nth lge LenLogic_lge_program_table 0 "strlen" strlen_fn LenLogic_lge_program_table_correct eq_refl). Qed.
+#[global] Existing Instance find_strlen.
 
 (** [find_main] confirms that looking up `c: main` in [lge] returns
     [main_fn]. *)
-Lemma find_main : find_fn lge (TAtom "main") = Some (Defined main_fn).
-Proof. vm_compute. reflexivity. Qed.
+Lemma find_main : Defines lge "main" main_fn.
+Proof. exact (defines_from_table_nth lge LenLogic_lge_program_table 1 "main" main_fn LenLogic_lge_program_table_correct eq_refl). Qed.
+#[global] Existing Instance find_main.
 
 Section wp.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds a word ambiguous without a set
     of the candidates, and its caller lets it print errors, its report
     is a single line that names the word. This file proves that line
@@ -64,14 +65,11 @@ Ltac arep_head w0 registry ge Hlend Hfp Hgt Hfx M :=
   iApply (Hfx _ _ _ _ _ _ _ _ M with "HT Hw0 Hpfx Hwc"); [arep_msg | vx |];
   iNext; iIntros (r0) "HG"; step.
 
+Import ProgramAbbreviations.
 Section head.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance ahead_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance ahead_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 

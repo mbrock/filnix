@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** In long-only mode, glibc's getopt sends a word with one dash to its
     long-option parser before it tries the short options. The parser
     answers -1 when no long option matches, and getopt then stores the
@@ -59,14 +60,11 @@ Ltac single_lk Hk :=
     rewrite (keeps_in single_keys k _ e' Hk);
     [|unfold single_keys; cbn [In]; repeat first [left; reflexivity | right]] end.
 
+Import ProgramAbbreviations.
 Section single.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance single_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance single_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -146,7 +144,7 @@ Proof.
   iAssert (word_string DfracDiscarded (ptr_add q 1) (drop 1 sq)) as "#Hws".
   { rewrite -Hl1. iApply word_string_suffix. by rewrite take_drop. }
   assert (Hq0' : sbyte sq 0 <> 0) by lia.
-  iApply (wp_getopt_long_only_call w0 registry ge e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo
+  iApply (wp_getopt_long_only_call e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo
     os F pfx pxs po so q sq (ptr_add q 1) (drop 1 sq) n lonly pe i oo a b r li
     with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli [-]"); try single_side.
   iSplit.
@@ -168,7 +166,7 @@ Proof.
     iDestruct "HK" as "[_ HK]". rewrite Hc2 in Hk2. rewrite Hc20 in Hk20.
     assert (Hnq : nth (Z.to_nat i) ps null = q) by (by rewrite (nth_lookup_Some _ _ _ _ Hq)).
     single_conv b r i av ar ps (ptr_add q 1).
-    iApply (GetoptCursor.wp_getopt_short_cursor w0 registry ge single_keys e' (TAtom "L376") i n (ptr_add q 1) b r av ar ps
+    iApply (GetoptCursor.wp_getopt_short_cursor single_keys e' (TAtom "L376") i n (ptr_add q 1) b r av ar ps
       with "Hl Hib Hcur Ha Hcl Hs"); try single_side.
     iIntros (e2 Hk) "Hl Hib Hcur Ha Hcl". rewrite Hnq.
     iApply ("HK" $! e2 oo' a' with "[%] Hl Hib Hcur Ha Hcl Her Hoob Hab Hini Hor Hfi Hla HG HF HM Hli").

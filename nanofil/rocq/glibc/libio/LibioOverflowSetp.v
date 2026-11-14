@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves block `c: L113` of `c: _IO_new_file_overflow`
     (LibioOverflowBase.v describes the function), the switch to
     putting: the write pointers start at the read pointer and end at
@@ -26,12 +27,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance overflow_setp_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The rest of block `c: L113`, as LibioOverflowSetpRest.v proves it
@@ -83,17 +81,17 @@ Proof.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ Hbk He Hmd Hbb Hbe Hbreg Hsz Hxl Hxr Hv0 Hv2 Hc0 Hc6 Hc24 Hc25.
   iIntros "#Hvt Hl Hfx Hbl Hxs [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".
   unfold file_size in Hend.
-  adv. iApply (wp_raw_load_pointer with "Hl Hrp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  adv. load_pointer "Hl Hrp Hbl" by ar.
   iNext. iIntros "Hl Hrp Hbl". adv.
-  iApply (wp_raw_store_pointer with "Hl Hwp"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hwp" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hwp". adv.
-  iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hwp Hbl" by ar.
   iNext. iIntros "Hl Hwp Hbl". adv.
-  iApply (wp_raw_store_pointer with "Hl Hwb"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hwb" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hwb". adv.
-  iApply (wp_raw_load_pointer with "Hl Hbend Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hbend Hbl" by ar.
   iNext. iIntros "Hl Hbend Hbl". adv.
-  iApply (wp_raw_store_pointer with "Hl Hwe"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hwe" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hwe".
   iApply (HL113r with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
     try first [reflexivity | libio_side | lk_prove |

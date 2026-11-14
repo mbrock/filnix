@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: _IO_doallocbuf` (LibioReadCode.v) on a stream
     with no buffer that is not unbuffered: it calls the jump table's
     doallocate, `c: _IO_file_doallocate`, whose result is the buffer
@@ -25,17 +26,15 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_file_doallocate` at the symbol the jump
     table's doallocate slot holds. *)
 Context (Hdaf : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate).
 (** The genv defines `c: _IO_setb`. *)
-Context (Hsetbf : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
+Context `{Hsetbf : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
 
-Local Instance doallocbuf_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_setb` on a stream with no buffer, as LibioSetb.v's
@@ -83,7 +82,7 @@ Proof.
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & Hslots)".
   unfold io_vtables_size in Hvend.
   step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hb [//]"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hb [//]" by ar.
   iNext. iIntros "Hl Hb _". step. step. branch.
   step. check "Hl". iDestruct "Hfl" as "[%Hfl Hflb]". load_s32_group "Hl Hflb". step. step. branch_as false.
   step. branch. step. step. norm. check "Hl".
@@ -91,7 +90,7 @@ Proof.
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   step. step. norm.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
+  check_read_dq "Hvl'" by ar.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsd Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hdaf) |].

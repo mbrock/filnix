@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's long-option parser reports a bad long option on stderr when
     its caller lets it print errors. Most reports take two calls, as the
     short-option reports do: __GI___dcgettext translates the message,
@@ -51,30 +52,20 @@ Definition ldiag_msg (ge : genv) (mid : ptr) : Prop :=
 (** The exact search module supplies the option table and the tactics. *)
 Import GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
-Section ldiag.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the parser's safepoints. *)
-Local Instance ldiag_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
+Import ProgramAbbreviations.
+Section ldiag_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance ldiag_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-(** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** When the parser reports a bad long option, it translates the
-    message and writes the translation to the error stream. This file
-    does not prove those two calls. A caller that wants the parser
-    proved supplies a rule for them. The caller's resource G holds the
-    error stream fp that stderr points at. G must keep the lock on that
-    stream exactly as the caller holds it. G must also keep the stream's
-    fixed fields. G must let the buffer, errno and the OS state change,
-    because the real calls change them. The rule lends a share of the
-    stream's lifetime while the parser reads fp. It names the message
-    domain dom. Translating one of the five messages takes G and gives
-    back T, which holds the stream and the translation. Output then
-    gives back G. The output of the two formats that the parser does not
-    translate keeps G. *)
 Definition getopt_ldiag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom : ptr) : Prop :=
   lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom /\ 0 <= ptr_addr fp < 2 ^ 64 /\
   (⊢ G -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ G)) /\
@@ -103,6 +94,27 @@ Definition getopt_ldiag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom
      ⊢ G -∗ ▷ (∀ x, G -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
        WP (ERun (mkFrame f e ls None
             (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}).
+End ldiag_values.
+Section ldiag.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the parser's safepoints. *)
+Local Instance ldiag_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** This notation selects expressions of the linked language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** When the parser reports a bad long option, it translates the
+    message and writes the translation to the error stream. This file
+    does not prove those two calls. A caller that wants the parser
+    proved supplies a rule for them. The caller's resource G holds the
+    error stream fp that stderr points at. G must keep the lock on that
+    stream exactly as the caller holds it. G must also keep the stream's
+    fixed fields. G must let the buffer, errno and the OS state change,
+    because the real calls change them. The rule lends a share of the
+    stream's lifetime while the parser reads fp. It names the message
+    domain dom. Translating one of the five messages takes G and gives
+    back T, which holds the stream and the translation. Output then
+    gives back G. The output of the two formats that the parser does not
+    translate keeps G. *)
 
 (** This tactic shows that the message of a report is one of the five. *)
 Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].
@@ -113,7 +125,7 @@ Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumpt
 Ltac ldiag_entry_block Htc Hn0 :=
   let Hdom := fresh "Hdom" in let Hfp := fresh "Hfp" in let Hlend := fresh "Hlend" in
   let Hgt := fresh "Hgt" in let Hfx := fresh "Hfx" in
-  match goal with Hr : getopt_ldiag_rule _ _ _ _ |- _ => destruct Hr as (Hdom & Hfp & Hlend & Hgt & Hfx & _) end;
+  match goal with Hr : (getopt_ldiag_rule w0 registry ge) _ _ _ _ |- _ => destruct Hr as (Hdom & Hfp & Hlend & Hgt & Hfx & _) end;
   let q0 := fresh "q0" in let ps' := fresh "ps" in
   match goal with Hps : ?ps <> [] |- _ => destruct ps as [|q0 ps']; [congruence|] end;
   iAssert (∃ s0, word_string DfracDiscarded q0 s0)%I as (s0) "#Hws";
@@ -132,7 +144,7 @@ Ltac ldiag_entry_block Htc Hn0 :=
   iNext; iIntros "Ha"; iDestruct "Hcl" as "[Hc0 Hcl]";
   iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |];
   iNext; iIntros "Ha Hc0 _";
-  iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+  iApply (wp_half_check_read_dq with "Htl");
     [reflexivity | vx | assumption | exact Htc | al8 | al8 | lia | lia | al8 |];
   iNext; iIntros "_";
   iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn"); [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |];
@@ -148,7 +160,7 @@ Ltac ldiag_entry_block Htc Hn0 :=
     message str.143 and writes it with the prefix pfx and the name of x.
     The report keeps the vector and gives back G. *)
 Lemma wp_getopt_ldiag_noarg ks e fr (G : iProp Σ) T fp dom se sereg mid av ar ps lo os j x p1 pfx sp Φ :
-  avoids ks ldiag_names = true -> getopt_ldiag_rule G T fp dom ->
+  avoids ks ldiag_names = true -> (getopt_ldiag_rule w0 registry ge) G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
@@ -177,7 +189,7 @@ Qed.
 (** The parser reports a missing argument of the found entry x, which
     requires one, in the same way with the message str.144. *)
 Lemma wp_getopt_ldiag_missing ks e fr (G : iProp Σ) T fp dom se sereg mid av ar ps lo os j x p1 pfx sp Φ :
-  avoids ks ldiag_names = true -> getopt_ldiag_rule G T fp dom ->
+  avoids ks ldiag_names = true -> (getopt_ldiag_rule w0 registry ge) G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->

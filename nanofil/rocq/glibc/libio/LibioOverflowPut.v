@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves block `c: L198` of `c: _IO_new_file_overflow`
     (LibioOverflowBase.v describes the function): the byte goes to
     `c: _IO_write_ptr`, which advances, and an unbuffered stream, or a
@@ -26,14 +27,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 Context (write_ready : Z -> Prop).
 
-Local Instance overflow_put_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Block `c: L264`, as LibioOverflowFlush.v proves it ([wp_ovf_L264]). *)
@@ -74,9 +73,9 @@ Proof.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hbb & Hbe & Hbreg & Hsz & Hkr & Hxl & Hxr & Hwec & Hwea).
   step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hwp Hbl" by ar.
   iNext. iIntros "Hl Hwp Hbl". step. norm. check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hwp"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hwp" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hwp". step. norm. check "Hbl".
   iDestruct (bytes_focus bb xs (Z.to_nat k) with "Hxs") as "(Hx0 & Hx1 & Hx2)"; [lia|].
   rewrite Z2Nat.id; [|lia].

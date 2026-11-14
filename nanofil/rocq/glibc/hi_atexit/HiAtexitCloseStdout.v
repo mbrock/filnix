@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** hi_atexit.c registers `c: close_stdout_hi` with `c: atexit`, so
     `c: exit` runs it before glibc's own cleanup. It asks
     `c: __fpending` and `c: ferror` about stdout, closes stdout with
@@ -62,12 +63,10 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 (** HiAtexitFclose.v's [hi_fclose_stdout] in [hge]: every premise about
     the genv by computation. *)
 Definition hge_fclose_stdout :=
-  hi_fclose_stdout (Σ := Σ) w0 glibc_os_registry hge (fun n c H => H) (hi_sys_external _)
-    (hi_find___GI___write _) (hi_ge_file_write _) (hi_find_free _) hge_frees (proj1 hge_zgc_free)
-    (proj2 hge_zgc_free) (hi_find___GI___close_nocancel _) (hi_ge_file_close _) (hi_find___GI__IO_setb _)
-    (hi_find__IO_new_do_write _) (hi_find___GI__IO_unsave_markers _) (hi_find___GI___libc_cleanup_push_defer _)
-    (hi_find___GI___libc_cleanup_pop_restore _) (hi_find___GI__IO_un_link _) (hi_find___GI__IO_default_finish _)
-    (hi_ge_file_finish _) (hi_find__IO_file_close_maybe_unlink _).
+  program_call(hi_fclose_stdout (glibc_program := program_of w0 glibc_os_registry hge) (Σ := Σ) (fun n c H => H) (hi_sys_external _)
+    (hi_ge_file_write _) hge_frees (proj1 hge_zgc_free)
+    (proj2 hge_zgc_free) (hi_ge_file_close _)
+    (hi_ge_file_finish _)).
 
 (** `c: close_stdout_hi()`, stdout's stream fb as [hge_fclose_stdout]
     takes it and `c: stdout` at so holding it: either `c: _exit(1)` ends
@@ -115,20 +114,20 @@ Proof.
     Hmode Hvtp H72 H80 H96 Hlp Hlk Hio Hlives HK".
   unfold file_size in Hfend. subst fp wb base.
   vm_compute in Hgso. injection Hgso as <-. vm_compute in Hgout. injection Hgout as <-.
-  iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
-  iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
+  iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
+  iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
   unfold hi_close_frame. step. step. check "Hso". load "Hso" "Hsoc" "Hl".
   (* `c: __fpending(stdout)`. *)
   iApply wp_call_bind; [vx | exact (hi_find___fpending _) | reflexivity |]. iNext.
-  iApply (LibioRead.wp_glibc___fpending w0 glibc_os_registry hge _ _ _ md (mkPtr (bb + i + Z.of_nat (length xs)) (Obj bb)) (mkPtr (bb + i) (Obj bb)) breg
+  iApply (LibioRead.wp_glibc___fpending (glibc_program := program_of w0 glibc_os_registry hge) _ _ _ md (mkPtr (bb + i + Z.of_nat (length xs)) (Obj bb)) (mkPtr (bb + i) (Obj bb)) breg
             with "Hl Hmode Hwp Hwb Hbl"); [reflexivity | close_side | close_side | close_side | close_side | exact Hmd | reflexivity
                                             | cbn; lia | cbn; lia |].
   iNext. iIntros "Hl Hmode Hwp Hwb Hbl". resume.
   step. step. check "Hso". load "Hso" "Hsoc" "Hl".
   (* `c: ferror(stdout)`. *)
   iApply wp_call_bind; [vx | exact (hi_find_ferror _) | reflexivity |]. iNext.
-  iApply (LibioRead.wp_glibc__IO_ferror w0 glibc_os_registry hge with "Hl Hfl Hfl2"); [reflexivity | close_side | close_side | close_side
+  iApply (LibioRead.wp_glibc__IO_ferror (glibc_program := program_of w0 glibc_os_registry hge) with "Hl Hfl Hfl2"); [reflexivity | close_side | close_side | close_side
                                                                                  | close_side | exact Hnl |].
   iNext. iIntros "Hl Hfl Hfl2". resume.
   step. step. check "Hso". load "Hso" "Hsoc" "Hl".
@@ -148,7 +147,7 @@ Proof.
   all: lazymatch goal with
        | |- context [Exec _ (Call _ (Global (TAtom "_exit")) _ :: _) _] =>
            iApply wp_call_bind; [vx | exact (hi_find__exit _) | reflexivity |]; iNext;
-           iApply (wp_glibc__exit w0 glibc_os_registry hge (fun n c H => H) (hi_sys_external _)); reflexivity
+           iApply (wp_glibc__exit (glibc_program := program_of w0 glibc_os_registry hge) (fun n c H => H) (hi_sys_external _)); reflexivity
        | |- _ => iApply wp_ret_void; iNext; iApply ("HK" with "Htcb Hio Hlives")
        end.
 Qed.

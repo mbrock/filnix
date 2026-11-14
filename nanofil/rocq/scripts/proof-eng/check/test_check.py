@@ -14,6 +14,51 @@ HERE = Path(__file__).resolve().parent
 
 
 class Checks(unittest.TestCase):
+    def test_flat_abstract_baseline(self):
+        with tempfile.TemporaryDirectory(prefix='flat-runtime-') as tmp:
+            root = Path(tmp)
+            trees = [root / n for n in ('before', 'after', 'abstract-before', 'abstract-after')]
+            fix = 'From Nanofil Require Import Runtime.\nModule R := InterpRuntime.\n'
+            target = ('From Glibc Require Import Fix.\n'
+                      'Lemma target : forall s m, R.ready s m -> R.ready s m. Proof. auto. Qed.\n')
+            for i, tree in enumerate(trees):
+                tree.mkdir()
+                (tree / 'runtime-concrete.txt').write_text('')
+                (tree / 'Fix.v').write_text(fix if i < 2 else fix.replace(
+                    'Module R := InterpRuntime.', 'Declare Module R : Runtime.'))
+                (tree / 'Toy.v').write_text(target)
+                for name in ('Fix', 'Toy'):
+                    subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                                    '-R', str(tree), 'Glibc', str(tree / (name + '.v'))],
+                                   check=True, capture_output=True)
+            command = ['python3', str(HERE / 'check.py'), 'statements', str(trees[0]), str(trees[1]),
+                       '--abstract-after', str(trees[3]), '--plugin', os.environ['PE_CHECK_PLUGIN'],
+                       '--expectations', str(root / 'none'), '--output', str(root / 'report')]
+            missing = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn('requires --abstract-before', missing.stderr)
+            command += ['--abstract-before', str(trees[2])]
+            valid = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
+            report = json.loads((root / 'report/report.json').read_text())
+            self.assertEqual(report['runtime_partition']['concrete'], [])
+            self.assertEqual(report['runtime_partition']['general'], ['Fix.v', 'Toy.v'])
+            (trees[2] / 'Toy.v').write_text(target + '(* changed baseline *)\n')
+            changed = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(changed.returncode, 0)
+            self.assertIn('changed more than its runtime binding: Toy.v', changed.stderr)
+            (trees[2] / 'Toy.v').write_text(target)
+            (trees[3] / 'Toy.v').write_text(
+                'Lemma target : False -> False. Proof. auto. Qed.\n')
+            subprocess.run(['rocq', 'c', '-q', '-R', str(trees[3]), 'Glibc',
+                            str(trees[3] / 'Toy.v')], check=True, capture_output=True)
+            rejected = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(rejected.returncode, 1, rejected.stdout + rejected.stderr)
+            report = json.loads((root / 'report/report.json').read_text())
+            self.assertEqual(report['errors'], [])
+            self.assertEqual([d['name'] for d in report['differences']], ['target'])
+            self.assertFalse(report['differences'][0]['accepted'])
+
     def test_discovery_does_not_accept_changes_or_hide_probe_errors(self):
         with tempfile.TemporaryDirectory(prefix='discovery-') as tmp:
             root = Path(tmp)

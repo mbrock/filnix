@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The triple of `c: _IO_new_file_write` (LibioReadCode.v), the jump
     table's write: it hands the bytes from data to
     `c: __write(fp->_fileno, ...)` until all are written or a call
@@ -36,12 +37,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance write_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The loop's exit, as LibioWriteExit.v proves it ([wp_file_write_exit]). *)

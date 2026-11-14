@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** What the proofs of the close, flush and exit path share
     (LibioUnlink.v to ExitRun.v): checks at a share of an object's
     life, as the read-only jump tables and `c: __libc_single_threaded`
@@ -63,13 +64,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import  FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance steps_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).

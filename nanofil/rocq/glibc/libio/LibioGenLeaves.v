@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Two leaves of user glibc's genops unit (LibioGenCode.v) that the
     exit path calls: `c: __call_tls_dtors`, which `c: exit` runs before
     the atexit handlers, and `c: _IO_unsave_markers`, which
@@ -37,26 +38,24 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
+Section rules_values.
+Definition unsave_frame (fb : Z) : frame :=
+  mkFrame glibc__IO_unsave_markers [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None
+    (Enter (TAtom "start") None).
+Lemma unsave_frame_call fb :
+  call_frame glibc__IO_unsave_markers [WPtr (mkPtr fb (Obj fb))] = Some (unsave_frame fb).
+Proof. reflexivity. Qed.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance gen_leaves_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The frame of `c: _IO_unsave_markers(fp)` for the stream fb. *)
-Definition unsave_frame (fb : Z) : frame :=
-  mkFrame glibc__IO_unsave_markers [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None
-    (Enter (TAtom "start") None).
 
 (** That is the frame the call of `c: _IO_unsave_markers` with fp builds. *)
-Lemma unsave_frame_call fb :
-  call_frame glibc__IO_unsave_markers [WPtr (mkPtr fb (Obj fb))] = Some (unsave_frame fb).
-Proof. reflexivity. Qed.
 
 (** `c: _IO_unsave_markers(fp)` of the 8-aligned stream fb, whose
     224 bytes its life covers, with `c: _markers` and
@@ -70,7 +69,7 @@ Lemma wp_glibc__IO_unsave_markers fb freg Φ :
 Proof.
   intros Hfb Hfal Hfend. unfold file_size in Hfend.
   iIntros "Hl H80 H96 HK". unfold unsave_frame.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   step. step. check "Hl". load_null "Hl" "H96". step. step. branch.
   step. step. check "Hl". load_null "Hl" "H80". step. step. step. branch.
   step. iApply wp_ret_void. iNext. iApply ("HK" with "Hl H80 H96").

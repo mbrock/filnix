@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When no long option has exactly the name of a word, glibc's parser
     looks through the table for options whose names start with it. This
     file proves one round of that search safe: the test of one entry.
@@ -34,14 +35,11 @@ Definition plo_blk98 : block := Eval vm_compute in plo_blk "L98".
 (** The step module supplies the step after a second match, the set, the option table and the tactics. *)
 Import GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section iter.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance iter_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance iter_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -94,8 +92,7 @@ Proof.
   destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
   pose proof Hat as (H12 & Hc0 & H48 & H10 & H14 & H90 & H9).
   cbn [b_insts b_jump plo_blk98].
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-    [reflexivity | vx | exact Htc | rawa | rawa | al8 |]; iNext; iIntros "_".
+  check_read_dq "Htl" by first [rawa | al8]; iNext; iIntros "_".
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   destruct (Nat.lt_ge_cases k (List.length os)) as [Hlt | Hge].
   2: {
@@ -108,16 +105,14 @@ Proof.
   iDestruct (big_sepL_lookup with "Hes") as "(#Hn & #Hnws & _)"; [exact Hy|].
   iDestruct (argv_str_cap with "Hnws") as (rn) "[#Hcapn %Hn0]".
   iDestruct (ws_shape with "Hnws") as %(Hchn & Hnp & Hne).
-  iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
-    [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
+  load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8].
   iNext. iIntros "_ _ _". step. step.
   rewrite (Z.mod_small (ptr_addr (lo_name y)) (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
   rewrite (proj2 (Z.eqb_neq (ptr_addr (lo_name y)) 0)); [|lia].
   iApply wp_branch; [vx | iNext]. close_br.
-  step. iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
-    [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
+  step. load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8].
   iNext. iIntros "_ _ _". step. check "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  load_pointer_dq "Hl Hcur Hcapq" by StrlenLoop.arith.
   iNext. iIntros "Hl Hcur _".
   pose proof (eq_len_le s) as Hle. iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iApply (StrncmpLogic.wp_call_glibc_strncmp registry (os_wi w0) ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (Z.of_nat (eq_len s))
@@ -128,7 +123,7 @@ Proof.
   2: { step. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] Hl Hcur HF Hs HM").
        split; [xkeep|]. split; [exact Hlt|]. split; [unfold pfx_at; repeat split; lk_prove|].
        repeat split; try lk_prove; first [apply pfx_first_S; exact Hf | assumption]. }
-  iApply (wp_pfx_step w0 registry ge ks _ M k lo os F b s lonly pe p w a m sp with "Ht0 HF Hs HM");
+  iApply (wp_pfx_step ks _ M k lo os F b s lonly pe p w a m sp with "Ht0 HF Hs HM");
     [exact Hks | exact Hksc | exact Hkss | exact Hksa | exact Hksm | exact Hcut | exact Hmal | exact Hset | exact Hfl
     | exact Hos | exact Hpe | unfold pfx_at; repeat split; lk_prove | lk_prove | lk_prove | lk_prove | lk_prove
     | lk_prove | lk_prove | lk_prove | lk_prove | exact Hf | exact Hlt | exact Ha | exact Hm |].

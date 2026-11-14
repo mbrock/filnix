@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser reports an ambiguous word, it lists
     the candidates that its set marks. This file proves one step of that
     listing safe: the parser reads the byte of one entry in the set, and
@@ -56,14 +57,11 @@ Definition plo_blk273 : block := Eval vm_compute in plo_blk "L273".
 Import GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 
+Import ProgramAbbreviations.
 Section item.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance aitem_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance aitem_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -126,7 +124,7 @@ Proof.
   destruct (Z.eqb ((extension Ub x mod 2 ^ 32) mod 2 ^ 32) 0); cbn [edge_label].
   - iApply ("HL275" with "[%] Hl Hx HG"). split; [xkeep|]. repeat split; lk_prove.
   - destruct (lookup_lt_is_Some_2 os k ltac:(lia)) as [y Hy].
-    iApply (wp_amb_print w0 registry ge (alist_keys ++ ks)%list _ _ G T fp dom se sereg f140 lo os pfx ps k y
+    iApply (wp_amb_print (alist_keys ++ ks)%list _ _ G T fp dom se sereg f140 lo os pfx ps k y
       with "Ht Hpfx Hsl Hsc HG"); [rewrite avoids_app_l (alist_avoids_print _ Hks); reflexivity | exact Hrule | exact Hse
       | exact H140 | lk_prove | lk_prove | lk_prove | exact Hy | exact Hos | exact Hse0 | exact Hsea | exact Hsee
       | exact Hser |].

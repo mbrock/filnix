@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When a call of glibc's getopt looks for the next argument, it may
     return before it parses any option: no argument is left, or the
     argument is a nonoption that the ordering mode returns. A caller
@@ -72,28 +73,11 @@ Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG
 (** This tactic enters a block that has no phi assignments. *)
 
 
-Section scan_session.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the scanner's safepoints. *)
-Local Instance ss_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance ss_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
-(** This notation selects expressions of the linked language. *)
-Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** ## The session after an early return
-
-    An early return leaves the nine fields of the private object in the
-    caller's hands. The next call needs them packed as a session at the
-    new index. These lemmas pack them and then run the return itself. *)
-
-(** The next call can resume after any early return because the
-    scanner leaves the object in a known shape. The object is set up,
-    its limits hold at the new index, and its saved position is null or
-    points at a terminator. Such a position names no word, so the nine
-    fields form a session over any argument vector of that length. *)
+Import ProgramAbbreviations.
+Section scan_session_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
 Lemma scan_session b r av ar ps i err oo a c o f l :
   1 <= Z.of_nat (List.length ps) < 2 ^ 31 -> 0 <= f <= l -> l <= Z.of_nat (List.length ps) ->
   f <= i <= Z.of_nat (List.length ps) -> 0 <= o <= 2 ->
@@ -112,6 +96,25 @@ Proof.
   iSplit; [iPureIntro; cbn; lia|].
   iDestruct "Hc" as "[%Hc | Hc]"; [iLeft; done | iRight; iLeft; done].
 Qed.
+End scan_session_values.
+Section scan_session.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the scanner's safepoints. *)
+Local Instance ss_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** This notation selects expressions of the linked language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** ## The session after an early return
+
+    An early return leaves the nine fields of the private object in the
+    caller's hands. The next call needs them packed as a session at the
+    new index. These lemmas pack them and then run the return itself. *)
+
+(** The next call can resume after any early return because the
+    scanner leaves the object in a known shape. The object is set up,
+    its limits hold at the new index, and its saved position is null or
+    points at a terminator. Such a position names no word, so the nine
+    fields form a session over any argument vector of that length. *)
 
 (** The scanner's early returns must leave a session. The caller keeps
     the five fields that the scanner does not touch: the error flag, the

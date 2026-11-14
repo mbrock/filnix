@@ -5,10 +5,21 @@ import json
 from pathlib import Path
 
 
+def manifest_files(location):
+    location = Path(location)
+    files = sorted(location.glob('*.txt')) if location.is_dir() else ([location] if location.exists() else [])
+    here = Path(__file__).resolve().parent
+    landed = here.parent / 'stages/landed.txt'
+    if location.resolve() == here / 'expected-statement-changes' and landed.exists():
+        completed = {Path(line.split('#')[0].strip()).stem for line in landed.read_text().splitlines()
+                     if line.split('#')[0].strip()}
+        files = [file for file in files if file.stem not in completed]
+    return files
+
+
 class Expectations:
     def __init__(self, location, extra=()):
-        location = Path(location)
-        files = sorted(location.glob('*.txt')) if location.is_dir() else ([location] if location.exists() else [])
+        files = manifest_files(location)
         files += [Path(p) for p in extra]
         self.rows = {}
         self.moves = {}

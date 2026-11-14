@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The fill of `c: _IO_default_xsputn`'s loop (LibioGenCode.v), from
     block `c: L20`, when the buffer has room:
 
@@ -47,19 +48,17 @@ Definition dx_L44 : block := Eval vm_compute in
 
 Import LibioDefaultXsputnSmall LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The registry holds `c: zmemmove`'s contract, and the genv's
     `c: __GI_memcpy` and `c: __GI_mempcpy` are glibc's. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance dx_room_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -99,12 +98,12 @@ Proof.
   unfold file_size in Hfend.
   destruct Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [_ Hwa] & [_ Hea] & Hheap). cbn in Hwa, Hea.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [dx_L44 b_insts b_jump]. step.
   destruct (Z_le_gt_dec cnt 20) as [Hsmall | Hbig].
   - (* L50: at most 20 bytes. *)
     branch_as true.
-    iApply (wp_dx_L50 w0 registry ge os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cnt
+    iApply (wp_dx_L50 os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cnt
               with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK"); try close_side.
     unfold room_ok, in_buf. cbn. split_and!; first [reflexivity | assumption | lia].
   - (* L49: past 20 bytes, `c: __mempcpy`. *)
@@ -113,7 +112,7 @@ Proof.
     assert (Hls : Z.of_nat (length ysub) = cnt).
     { unfold ysub. rewrite length_take_le; [lia|]. rewrite length_drop. lia. }
     iDestruct (bytesq_sub _ _ _ _ (Z.to_nat (n - t)) (Z.to_nat cnt) with "Hys") as "[Hsub Hysb]"; [lia|].
-    iApply (wp_call_mempcpy_in w0 registry ge Hmove Hmove_fn Hmove_sym _ _ _ _ _ _ _ _ _ b reg xs cs (wa - b) dq b'
+    iApply (wp_call_mempcpy_in Hmove Hmove_fn Hmove_sym _ _ _ _ _ _ _ _ _ b reg xs cs (wa - b) dq b'
               reg' (so + Z.of_nat (Z.to_nat (n - t))) c' ysub with "Hbl Hxs Hcs Hl' Hsub");
       [exact Hcpy | | exact Hpcpy | reflexivity | exact Hc' | lia | lia | exact Hb8 | exact Hb8' | lia | lia | lia
       | lia | lia | lia | exact Hx | |].
@@ -129,7 +128,7 @@ Proof.
     { rewrite Hls. replace (b + (wa - b) + cnt) with (wa + cnt) by lia. iFrame. iPureIntro.
       unfold room_ok, in_buf. cbn. destruct Hl3 as (H1 & H2 & H3).
       split_and!; first [reflexivity | assumption | lia]. }
-    iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
+    iApply (wp_dx_L22 os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
               (mkPtr ea (Obj b)) dq b' reg' so c' ys (t - cnt) with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try close_side.
     all: unfold n in *; first [intros _; discriminate | lk_fin].
 Qed.

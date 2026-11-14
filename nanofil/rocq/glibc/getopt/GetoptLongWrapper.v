@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A program parses long options by calling glibc's getopt_long with
     the argument count, the argument vector, the short-option string,
     the table of long options and a cell for the matched index. The
@@ -82,14 +83,11 @@ Proof. unfold needs_init. cbn. split; [left; reflexivity | lia]. Qed.
 (** The wrapper module proves the copies around the reentrant parser. *)
 Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic.
 
+Import ProgramAbbreviations.
 Section long_wrapper.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the call's safepoints. *)
 Local Instance lw_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance lw_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -150,7 +148,7 @@ Proof.
                (Enter (TAtom "start") None)));
     [ cbn; rewrite H0 H2 H4 H6 H8; cbn; unwrap; reflexivity | exact Hfi | reflexivity |].
   iNext.
-  iApply (GetoptWrapper.wp_getopt_internal w0 registry ge _ n av p lo li 0 0 b r oi roi oe roe oa roa oo roo i err a0 c0 i0 e0
+  iApply (GetoptWrapper.wp_getopt_internal _ n av p lo li 0 0 b r oi roi oe roe oa roa oo roo i err a0 c0 i0 e0
             (fun x i' c' a' => ⌜0 <= x < 2 ^ 32⌝ ∗ Ψ x i' c' a')%I
             with "Hli Hi Hle He Hla Hab Hlo Hc Hl Hb0 Hb4 [HR] [HK]");
     try (reflexivity || assumption || lia).

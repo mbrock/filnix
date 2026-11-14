@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** String output may overflow before stdout has a buffer or after
     writing has started. Both cases use proved glibc code here. The
     resulting rule preserves stdout's stronger field invariant and
@@ -21,32 +22,35 @@ Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld Fil
 Import LibioXsputnSetp.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 Context (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat)
-  (Hfstat : find_fn ge (TAtom "__GI___fstat64") = Some (Defined glibc___fstat64))
-  (Hmaj : find_fn ge (TAtom "__gnu_dev_major") = Some (Defined glibc___gnu_dev_major))
-  (Hisatty : find_fn ge (TAtom "__isatty_nostatus") = Some (Defined glibc___isatty_nostatus))
-  (Hsetb : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
-Context (Hfree_fn : find_fn ge (TAtom "free") = Some (Defined free_fn)) (Hfh : frees_heap (ge_free ge))
-  (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None).
-Context (Hmalloc_fn : find_fn ge (TAtom "malloc") = Some (Defined malloc_fn))
-  (Hmalloc2 : find_fn ge (TAtom "malloc#__libc_malloc2") = Some (Defined malloc2_fn)).
-Context (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region).
+  `{Hfstat : !Defines ge "__GI___fstat64" glibc___fstat64}
+  `{Hmaj : !Defines ge "__gnu_dev_major" glibc___gnu_dev_major}
+  `{Hisatty : !Defines ge "__isatty_nostatus" glibc___isatty_nostatus}
+  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hfree_fn : !Defines ge "free" free_fn}
+  (Hfh : frees_heap (ge_free ge))
+  (Hzf : find_fn ge zgc_free_name = None)
+  (Hzg : lookup zgc_free_name (ge_globals ge) = None).
+Context `{Hmalloc_fn : !Defines ge "malloc" malloc_fn}
+  `{Hmalloc2 : !Defines ge "malloc#__libc_malloc2" malloc2_fn}.
+Context (dq : dfrac)
+  (mp tc dummy : Z)
+  (mpr tcr dr : region).
 Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc))).
 Context (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate)
-  (Hdab : find_fn ge (TAtom "__GI__IO_doallocbuf") = Some (Defined glibc__IO_doallocbuf))
-  (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write))
+  `{Hdab : !Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}
+  `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
   (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
-Context (eb : Z) (Heb : ow_errno w0 = Some (mkPtr eb (Obj eb))).
+  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
+Context (eb : Z)
+  (Heb : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 
-(** The overflow rule uses the same OS world as string output. *)
-Local Instance hi_xsputn_overflow_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Overflow allocates a buffer on the first write and reuses it on
     later writes. Both paths call only functions proved here. *)
@@ -56,7 +60,7 @@ Proof.
   intros fr fb freg nb wp we ch vb vreg Φ Hfr Hch Hfb Hal Hend Hregend.
   iIntros "#Hvt Hl Hvtp Hwb (Hxf & HM) HK".
   destruct nb as [[bb sz] |].
-  - iApply (hi_buffered_overflow w0 registry ge Hreg Hext Hwrite Hfw Hdwf
+  - iApply (hi_buffered_overflow Hreg Hext Hfw
       fr eb fb freg vb vreg bb sz wp we ch with "Hvt Hl Hvtp Hwb Hxf");
       try assumption.
     iNext. iIntros (r wp' we' Hr) "Hl Hvtp Hwb Hxf".

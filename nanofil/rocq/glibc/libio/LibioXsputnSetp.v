@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The end of `c: new_do_write` inlined in `c: _IO_new_file_xsputn`
     (LibioXsputnBase.v describes the function), from block
     `c: iw_2.L70`, once the jump table's write returned r of the
@@ -60,20 +61,18 @@ Proof.
   - iIntros "_". cbn in Hwe. iPureIntro. destruct Hwe as [-> | ->]; split; reflexivity.
 Qed.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
     LibioXsputnBase.v asks. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
-  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance xs_setp_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -108,13 +107,13 @@ Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Hv0 Hc0 Hv114 Hv136 Hv4 Hp5 Hv67 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hroom Hos Hl' Hys HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [xs_L117 b_insts b_jump]. check "Hl". store "Hl" "Hwe". step. step. step. step.
   iAssert (wbuf fb nb (nb_base nb) we') with "[Hwc Hwp Hwe Hroom]" as "Hwb"; [iFrame|].
   destruct (Z.eq_dec r d) as [-> | Hrd].
   - (* All went: L178 on the T - d left. *)
     branch_as true. step.
-    iApply (wp_xs_L178 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb (nb_base nb) we'
+    iApply (wp_xs_L178 Hmove Hmove_fn Hmove_sym eb X fb freg vb vreg nb (nb_base nb) we'
               dq b' reg' so c' ys (T - d) d with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia. all: lk_fin.
   - (* Fewer: L188 returns n - (T - r). *)

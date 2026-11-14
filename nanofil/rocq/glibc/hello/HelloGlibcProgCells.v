@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The parts of GNU Hello's `set_program_name` (HelloName.v's
     [set_program_name_fn]) linked with glibc after the "/.libs/" test,
     for HelloGlibcProgName.v's triple over the [os_world] of
@@ -153,35 +154,25 @@ Module LG := LG0.
 Module L := LG.L.
 Import L LG ML.
 
-Section progname.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** Hello's `strncmp` is glibc's. *)
-Context (Hstrncmp : find_fn ge (TAtom "strncmp") = Some (Defined glibc_strncmp)).
-(** The three cells, each its own 8-aligned object, and the literal
-    "lt-". *)
-Context (pb nb sb : Z) (preg nreg sreg : region) (tp : ptr)
-  (Hpb : lookup (TAtom "program_name") (ge_globals ge) = Some (mkPtr pb (Obj pb)))
-  (Hnb : lookup (TAtom "program_invocation_name") (ge_globals ge) = Some (mkPtr nb (Obj nb)))
-  (Hsb : lookup (TAtom "program_invocation_short_name") (ge_globals ge) = Some (mkPtr sb (Obj sb)))
-  (Htp : lookup (TAtom "progname#str.4") (ge_globals ge) = Some tp)
-  (Hpb_cell : 0 <= pb /\ pb mod 8 = 0 /\ pb + 8 <= r_end preg /\ r_end preg <= 2 ^ 48)
-  (Hnb_cell : 0 <= nb /\ nb mod 8 = 0 /\ nb + 8 <= r_end nreg /\ r_end nreg <= 2 ^ 48)
-  (Hsb_cell : 0 <= sb /\ sb mod 8 = 0 /\ sb + 8 <= r_end sreg /\ r_end sreg <= 2 ^ 48).
-
-(** [os_wi] w0 survives safepoints. *)
-Local Instance pn_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The Iris instance of the registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section progname_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv)
+  (pb : Z)
+  (nb : Z)
+  (sb : Z)
+  (preg : region)
+  (nreg : region)
+  (sreg : region).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance pn_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
-(** The expressions of the language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** HelloGlibcLeaf.v's [memcmp_spec], over this file's byte pieces: a
-    call triple for the function at `memcmp` that, on fewer than 16
-    bytes, returns an int that is 0 just when they are equal.
-    Only fewer than 16 bytes: from 16 bytes on glibc's own memcmp
-    reads words through pointers it rebuilds from integers, which have
-    no capability, so it traps (MemcmpLogic.v's header). *)
 Definition memcmp_spec : Prop :=
   exists F, find_fn ge (TAtom "memcmp") = Some (Defined F) /\
   (forall p q n, is_Some (call_frame F [WPtr p; WPtr q; WInt n])) /\
@@ -195,15 +186,8 @@ Definition memcmp_spec : Prop :=
       (∀ k, ⌜k mod 2 ^ 32 = 0 <-> xs = ys⌝ -∗ liveq dq1 b reg -∗ bytesq dq1 b o xs -∗
             liveq dq2 b' reg' -∗ bytesq dq2 b' o' ys -∗ Φ (Ret (WInt k))) -∗
       WP (ERun fr : gexpr) {{ Φ }}.
-
-(** The three cells, holding x, y and z. *)
 Definition name_cells (x y z : ptr) : iProp Σ :=
   live pb preg ∗ pcell pb 0 x ∗ live nb nreg ∗ pcell nb 0 y ∗ live sb sreg ∗ pcell sb 0 z.
-
-(** ## Strings' bytes and tails *)
-
-(** The n bytes of a string from its i-th, as memcmp owns them, and a
-    wand that gives the string back. *)
 Lemma word_string_bytes dq p s i n : (i + n <= length s)%nat ->
   word_string dq p s ⊢ ∃ b reg, ⌜(ptr_cap p = Obj b \/ ptr_cap p = Ro b) /\ 0 < b /\ b <= ptr_addr p /\
       ptr_addr p + Z.of_nat (i + n) < r_end reg /\ r_end reg <= 2 ^ 48⌝ ∗
@@ -235,10 +219,6 @@ Proof.
   iIntros "Hl H2". iExists b, reg, ws. iSplit; [done|]. iFrame "Hl".
   rewrite /wwin Hsplit !ptsq_app. iFrame.
 Qed.
-
-(** A share of a string's tail from its j-th byte, at a share of the
-    string's own, and a wand that gives the string back: half of a
-    fraction ([word_string_borrow]), or a copy of a read-only string. *)
 Lemma word_string_lend dq p s j : (dq = DfracDiscarded \/ exists q, dq = DfracOwn q) -> (j <= length s)%nat ->
   word_string dq p s ⊢ ∃ dq', word_string dq' (ptr_add p (Z.of_nat j)) (drop j s) ∗
     (word_string dq' (ptr_add p (Z.of_nat j)) (drop j s) -∗ word_string dq p s).
@@ -254,13 +234,66 @@ Proof.
     rewrite Lt. iExists (DfracOwn (q / 2)). iFrame "H". iIntros "H". iSpecialize ("W" with "H").
     rewrite Qp.div_2 -E. iExact "W".
 Qed.
+Lemma os_keeps b o reg x xp : forall m wd h,
+  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) ->
+     h !! l = Some v) ->
+  os_wi w0 m wd h ->
+  os_wi w0 (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
+    (overwrite ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h).
+Proof.
+  intros m wd h Hh Hw. apply (os_wi_store w0 m); [reflexivity | | exact Hw].
+  intros l v Hin. destruct l; try exact I. apply Hh.
+  apply elem_of_app in Hin as [Hin | Hin]; [apply elem_of_app; left; exact Hin|].
+  apply elem_of_cons in Hin as [[=] | Hin]. unfold cell in Hin.
+  apply list_elem_of_In, in_map_iff in Hin as (? & [=] & _).
+Qed.
+End progname_values.
+Section progname.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** Hello's `strncmp` is glibc's. *)
+Context `{Hstrncmp : !Defines ge "strncmp" glibc_strncmp}.
+(** The three cells, each its own 8-aligned object, and the literal
+    "lt-". *)
+Context (pb nb sb : Z)
+  (preg nreg sreg : region)
+  (tp : ptr)
+  (Hpb : lookup (TAtom "program_name") (ge_globals ge) = Some (mkPtr pb (Obj pb)))
+  (Hnb : lookup (TAtom "program_invocation_name") (ge_globals ge) = Some (mkPtr nb (Obj nb)))
+  (Hsb : lookup (TAtom "program_invocation_short_name") (ge_globals ge) = Some (mkPtr sb (Obj sb)))
+  (Htp : lookup (TAtom "progname#str.4") (ge_globals ge) = Some tp)
+  (Hpb_cell : 0 <= pb /\ pb mod 8 = 0 /\ pb + 8 <= r_end preg /\ r_end preg <= 2 ^ 48)
+  (Hnb_cell : 0 <= nb /\ nb mod 8 = 0 /\ nb + 8 <= r_end nreg /\ r_end nreg <= 2 ^ 48)
+  (Hsb_cell : 0 <= sb /\ sb mod 8 = 0 /\ sb + 8 <= r_end sreg /\ r_end sreg <= 2 ^ 48).
+
+(** [os_wi] w0 survives safepoints. *)
+Local Instance pn_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** The expressions of the language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** HelloGlibcLeaf.v's [memcmp_spec], over this file's byte pieces: a
+    call triple for the function at `memcmp` that, on fewer than 16
+    bytes, returns an int that is 0 just when they are equal.
+    Only fewer than 16 bytes: from 16 bytes on glibc's own memcmp
+    reads words through pointers it rebuilds from integers, which have
+    no capability, so it traps (MemcmpLogic.v's header). *)
+
+(** The three cells, holding x, y and z. *)
+
+(** ## Strings' bytes and tails *)
+
+(** The n bytes of a string from its i-th, as memcmp owns them, and a
+    wand that gives the string back. *)
+
+(** A share of a string's tail from its j-th byte, at a share of the
+    string's own, and a wand that gives the string back: half of a
+    fraction ([word_string_borrow]), or a copy of a read-only string. *)
 
 (** ## The calls and the stores *)
 
 (** HelloGlibcLeaf.v's [memeq_glibc] over this file's [memcmp_spec],
     for pointers q and q' that name fewer than 16 bytes: `memeq` returns
     1 just when the n bytes are equal, and 0 otherwise. *)
-Lemma memeq_call (Hcmp : memcmp_spec) dq1 dq2 q q' n b reg o xs b' reg' o' ys Φ : 0 < b -> (length xs < 16)%nat ->
+Lemma memeq_call (Hcmp : (memcmp_spec w0 registry ge)) dq1 dq2 q q' n b reg o xs b' reg' o' ys Φ : 0 < b -> (length xs < 16)%nat ->
   ptr_addr q = b + o -> ptr_addr q' = b' + o' -> n = Z.of_nat (length xs) ->
   (ptr_cap q = Obj b \/ ptr_cap q = Ro b) -> (ptr_cap q' = Obj b' \/ ptr_cap q' = Ro b') -> length ys = length xs ->
   0 <= o -> 0 <= o' -> b + o + Z.of_nat (length xs) <= r_end reg ->
@@ -293,25 +326,12 @@ Qed.
 (** A pointer store into the cell at offset o of the object b keeps
     [os_wi]: it keeps every region, and the life it writes back is the
     one the ghost heap holds ([os_wi_store]). *)
-Lemma os_keeps b o reg x xp : forall m wd h,
-  (forall l v, (l, v) ∈ [(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x) ->
-     h !! l = Some v) ->
-  os_wi w0 m wd h ->
-  os_wi w0 (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
-    (overwrite ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h).
-Proof.
-  intros m wd h Hh Hw. apply (os_wi_store w0 m); [reflexivity | | exact Hw].
-  intros l v Hin. destruct l; try exact I. apply Hh.
-  apply elem_of_app in Hin as [Hin | Hin]; [apply elem_of_app; left; exact Hin|].
-  apply elem_of_cons in Hin as [[=] | Hin]. unfold cell in Hin.
-  apply list_elem_of_In, in_map_iff in Hin as (? & [=] & _).
-Qed.
 
 (** The stores, from L18 after its phis, where `pr.1` reads as x and
     `pr.3` as z: each cell's check passes and its store keeps [os_wi]. *)
 Lemma spn_L18 e x z x0 y0 z0 Φ :
   lookup (TAtom "pr.1") e = Some (WPtr x) -> lookup (TAtom "pr.3") e = Some (WPtr z) ->
-  name_cells x0 y0 z0 -∗ ▷ (name_cells x x z -∗ Φ RetVoid) -∗
+  (name_cells pb nb sb preg nreg sreg) x0 y0 z0 -∗ ▷ ((name_cells pb nb sb preg nreg sreg) x x z -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L18") (b_insts s_L18) (b_jump s_L18)))
         : gexpr) {{ Φ }}.
 Proof.
@@ -323,21 +343,21 @@ Proof.
                                   addr_premise |].
   iNext. iIntros "Hlp". gen_env.
   iApply (wp_raw_store_pointer with "Hlp Hcp");
-    [word_premise | word_premise | reflexivity | addr_premise | addr_premise | intros m wd h; apply os_keeps |].
+    [word_premise | word_premise | reflexivity | addr_premise | addr_premise | intros m wd h; apply (os_keeps w0) |].
   iNext. iIntros "Hlp Hcp".
   iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
   iApply (wp_check with "Hln"); [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
                                   addr_premise |].
   iNext. iIntros "Hln". gen_env.
   iApply (wp_raw_store_pointer with "Hln Hcn");
-    [word_premise | word_premise | reflexivity | addr_premise | addr_premise | intros m wd h; apply os_keeps |].
+    [word_premise | word_premise | reflexivity | addr_premise | addr_premise | intros m wd h; apply (os_keeps w0) |].
   iNext. iIntros "Hln Hcn".
   iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
   iApply (wp_check with "Hls"); [reflexivity | word_premise | reflexivity | addr_premise | addr_premise |
                                   addr_premise |].
   iNext. iIntros "Hls". gen_env.
   iApply (wp_raw_store_pointer with "Hls Hcs");
-    [word_premise | word_premise | reflexivity | addr_premise | addr_premise | intros m wd h; apply os_keeps |].
+    [word_premise | word_premise | reflexivity | addr_premise | addr_premise | intros m wd h; apply (os_keeps w0) |].
   iNext. iIntros "Hls Hcs".
   iApply wp_ret_void. iNext. iApply "HΦ". iFrame.
 Qed.
@@ -352,8 +372,8 @@ Qed.
 Lemma spn_L16 dq p s e x0 y0 z0 Φ :
   (dq = DfracDiscarded \/ exists q, dq = DfracOwn q) -> in_libs s = true ->
   lookup (TAtom "v15") e = Some (WPtr (ptr_add p (Z.of_nat (base_idx s)))) ->
-  word_string dq p s -∗ word_string DfracDiscarded tp lt_bytes -∗ name_cells x0 y0 z0 -∗
-  ▷ (word_string dq p s -∗ name_cells (ptr_add p (Z.of_nat (short_idx s))) (ptr_add p (Z.of_nat (short_idx s)))
+  word_string dq p s -∗ word_string DfracDiscarded tp lt_bytes -∗ (name_cells pb nb sb preg nreg sreg) x0 y0 z0 -∗
+  ▷ (word_string dq p s -∗ (name_cells pb nb sb preg nreg sreg) (ptr_add p (Z.of_nat (short_idx s))) (ptr_add p (Z.of_nat (short_idx s)))
        (ptr_add p (Z.of_nat (short_idx s))) -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L16") (b_insts s_L16) (b_jump s_L16)))
         : gexpr) {{ Φ }}.

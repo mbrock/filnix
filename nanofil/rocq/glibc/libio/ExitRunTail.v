@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The definitions of the handler loop of user glibc's
     `__run_exit_handlers` (ExitRunCode.v's [glibc___run_exit_handlers])
     and the end of the function after it ([exit_tail]). ExitRunLoop.v
@@ -211,7 +212,7 @@ Proof.
      | cas_ign Hwlk]). rewrite lock_release.
   step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   iApply ("HK" with "HP"). iNext. iIntros (n). step. step.
-  iApply wp_zsys_exit_soft; [reflexivity | exact Hxf | exact Hxg | vx].
+  iApply program_call(wp_zsys_exit_soft (glibc_program := program_of w0 glibc_os_registry ge)); [reflexivity | exact Hxf | exact Hxg | vx].
 Qed.
 
 End rules.

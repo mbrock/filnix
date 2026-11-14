@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** stdout gets its first buffer by asking the kernel about its file
     descriptor, choosing a buffer size, and calling glibc's allocator.
     This file joins the proofs of those steps. The resulting buffer
@@ -22,26 +23,28 @@ Open Scope Z_scope.
 (** The complete allocation function runs in the common interpreter logic. *)
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 Context (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat)
-  (Hfstat : find_fn ge (TAtom "__GI___fstat64") = Some (Defined glibc___fstat64))
-  (Hmaj : find_fn ge (TAtom "__gnu_dev_major") = Some (Defined glibc___gnu_dev_major))
-  (Hisatty : find_fn ge (TAtom "__isatty_nostatus") = Some (Defined glibc___isatty_nostatus))
-  (Hsetb : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
-Context (Hfree_fn : find_fn ge (TAtom "free") = Some (Defined free_fn)) (Hfh : frees_heap (ge_free ge))
-  (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None).
-Context (Hmalloc_fn : find_fn ge (TAtom "malloc") = Some (Defined malloc_fn))
-  (Hmalloc2 : find_fn ge (TAtom "malloc#__libc_malloc2") = Some (Defined malloc2_fn)).
-Context (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region).
+  `{Hfstat : !Defines ge "__GI___fstat64" glibc___fstat64}
+  `{Hmaj : !Defines ge "__gnu_dev_major" glibc___gnu_dev_major}
+  `{Hisatty : !Defines ge "__isatty_nostatus" glibc___isatty_nostatus}
+  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hfree_fn : !Defines ge "free" free_fn}
+  (Hfh : frees_heap (ge_free ge))
+  (Hzf : find_fn ge zgc_free_name = None)
+  (Hzg : lookup zgc_free_name (ge_globals ge) = None).
+Context `{Hmalloc_fn : !Defines ge "malloc" malloc_fn}
+  `{Hmalloc2 : !Defines ge "malloc#__libc_malloc2" malloc2_fn}.
+Context (dq : dfrac)
+  (mp tc dummy : Z)
+  (mpr tcr dr : region).
 Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc))).
 
-(** The program logic uses the OS world for buffer allocation. *)
-Local Instance hi_doalloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Installing a stream's first buffer needs no old buffer resource. *)
 Lemma hi_setb_null fr fb freg fl oe nb ne a Φ :
@@ -53,32 +56,32 @@ Lemma hi_setb_null fr fb freg fl oe nb ne a Φ :
   WP (ERun fr : language.expr (nanofil_lang registry ge)) {{ Φ }}.
 Proof.
   intros Hfr Hfb Hal Hend Hr Ha. iIntros "Hl Hfl Hb He HK".
-  iApply (hi_setb w0 registry ge Hfree_fn Hfh Hzf Hzg with "Hl Hfl Hb He [] HK"); try assumption.
+  iApply (hi_setb Hfh Hzf Hzg with "Hl Hfl Hb He [] HK"); try assumption.
   iLeft. done.
 Qed.
 
 (** The buffer allocator uses the proved glibc allocation call. *)
 Definition hi_doalloc_malloc :=
-  hi_malloc_rule w0 registry ge Hmalloc_fn Hmalloc2 dq mp tc dummy mpr tcr dr Hmp Htc.
+  hi_malloc_rule dq mp tc dummy mpr tcr dr Hmp Htc.
 
 (** The size-selection tail calls the proved allocator and buffer setter. *)
 Definition hi_doalloc_L7 :=
-  LibioDoAllocTail.wp_doalloc_L7 w0 registry ge Hsetb hi_setb_null
+  LibioDoAllocTail.wp_doalloc_L7 hi_setb_null
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_malloc.
 
 (** The block-size branch uses the same allocator and buffer setter. *)
 Definition hi_doalloc_L28 :=
-  LibioDoAllocTail.wp_doalloc_L28 w0 registry ge Hsetb hi_setb_null
+  LibioDoAllocTail.wp_doalloc_L28 hi_setb_null
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_malloc.
 
 (** The terminal branch installs a line-buffered stream buffer. *)
 Definition hi_doalloc_L33 :=
-  LibioDoAllocTail.wp_doalloc_L33 w0 registry ge Hsetb hi_setb_null
+  LibioDoAllocTail.wp_doalloc_L33 hi_setb_null
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_malloc.
 
 (** The stream's file kind determines whether its buffer is line-buffered. *)
 Definition hi_doalloc_L5 :=
-  LibioDoAllocMode.wp_doalloc_L5 w0 registry ge Hreg Hext Hmaj Hisatty
+  LibioDoAllocMode.wp_doalloc_L5 Hreg Hext
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_L28 hi_doalloc_L33.
 
 (** The file-stat call runs the proved wrapper of the kernel stat call. *)
@@ -93,12 +96,12 @@ Lemma hi_file_stat fr fb freg fd b reg o eb Φ :
   WP (ERun fr : language.expr (nanofil_lang registry ge)) {{ Φ }}.
 Proof.
   intros Hfr Hfb Hal Hend Hr He Hfd Ho Hstatend. iIntros "Hl Hfd Hb Hs Herr HK".
-  iApply (LibioRead.wp_glibc__IO_file_stat w0 registry ge Hreg Hext with "Hl Hfd Hb Hs Herr HK"); assumption.
+  iApply (LibioRead.wp_glibc__IO_file_stat Hreg Hext with "Hl Hfd Hb Hs Herr HK"); assumption.
 Qed.
 
 (** Buffer allocation now has no unproved callee or block triples. *)
 Definition hi_doallocate :=
-  LibioDoAlloc.wp_glibc__IO_file_doallocate w0 registry ge Hstat
+  LibioDoAlloc.wp_glibc__IO_file_doallocate Hstat
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doalloc_L5 hi_doalloc_L7 hi_file_stat.
 
 End rules.

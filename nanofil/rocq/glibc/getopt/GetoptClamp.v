@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When no short-option cluster is pending, glibc's scanner first clamps
     its two nonoption endpoints to the public index i. In permuting mode
     it then either exchanges the skipped nonoptions with the options that
@@ -34,14 +35,11 @@ Proof. intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. by rewrite !(Z.mod_sma
 (** The permuting branch. *)
 Import GetoptPermute GetoptIdle GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section clamp.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance clamp_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance clamp_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -102,7 +100,7 @@ Proof.
         iApply ("HK" $! _ l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs"); [| icell | icell | icell | icell].
         split; [xkeep|]. split; [done|]. split; [lia|]. split; lk_prove. }
     iDestruct "HK" as "[HK _]".
-    iApply (GetoptPermute.wp_getopt_permute w0 registry ge ks _ _ f l1 i b r av ar n ps
+    iApply (GetoptPermute.wp_getopt_permute ks _ _ f l1 i b r av ar n ps
       with "Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs [HK]");
       [ exact Hkx | exact Hkc | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove
       | lia | lia | lia | assumption | lia | lia | lia | lia | lia | lia | lia | lia
@@ -113,7 +111,7 @@ Proof.
   iApply wp_branch; [vx | iNext]. sx.
   destruct (Z.ltb_spec i l) as [Hgt | Hle]; close_br.
   - step. step. norm. load_s32_using ltac:(arith) "Hl Hib". check "Hl".
-    iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hlab" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hlab". step.
     iApply ("HL93" $! _ i with "[%] Hl [Hib] [Hlab]"); [| icell | (iApply cell_mod; [lia | iAssumption])].
     split; [xkeep|]. split; [lia|]. repeat split; lk_prove.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A long option written without an equals sign may still require an
     argument. This file proves the two ends of that path in glibc's
     long-option parser. When another element of the argument vector is
@@ -39,14 +40,11 @@ Definition lreq_names : list name := Eval vm_compute in
 (** The store module supplies the option table, the report rule and the tactics. *)
 Import GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section tail.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance tail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -76,12 +74,12 @@ Proof.
   iDestruct (big_sepL_lookup with "Hs") as (s1) "#Hws1"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws1") as (rq1) "[#Hcapq1 %Hq1]".
   step. step. load_s32_using ltac:(arith) "Hl Hib". step. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+  store_word "Hl Hib" by (StrlenLoop.arith) preserving wi_store.
   iNext. iIntros "Hl Hib". step. step. step. idx (i + 1). check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq1"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq1" by StrlenLoop.arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+  store_pointer "Hl Hab" by (StrlenLoop.arith) preserving wi_store.
   iNext. iIntros "Hl Hab". step.
   iApply ("HK" with "[%] Hl [Hib] [Hab] Ha Hcl"); [xkeep | | unfold k in Hq; by rewrite (nth_lookup_Some _ _ _ _ Hq)].
   iSplit; [iPureIntro; lia|]. by replace (i + 2) with (i + 1 + 1) by lia.
@@ -112,20 +110,17 @@ Proof.
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
   pose proof (sbyte_range so 0 Hcho) as Hs0r.
   step. step. step.
-  iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+  iApply (wp_half_check_read_dq with "Htl");
     [reflexivity | vx | cbn; rewrite Hp1; reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
   iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hvb");
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+  load_bytes_dq "Htl Hvb" decode (apply load_sw_int; assumption) by rawa.
   iNext; iIntros "_ _". check "Hl".
-  iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+  store_word "Hl Hoob" by (StrlenLoop.arith) preserving wi_store.
   iNext. iIntros "Hl Hoob". rewrite (Z.mod_small (lo_val x) (2 ^ 32)); [|lia].
   iDestruct (ws_byte po so 0 with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
-    [reflexivity | vx | exact Hcap | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
+  check_read_dq "Hbl" by rawa; iNext; iIntros "_".
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _". iClear "Hbl Hbt". step. rewrite chr_cmp; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so 0) 58) as [E58 | E58]; close_br.
   - step. iApply ("HK" with "[%] Hl [Hoob]"); [split; [xkeep | lk_prove] | by iSplit].

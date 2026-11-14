@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf sends its staging array through the stream's checked xsputn
     function pointer. The array contains raw bytes and need not end in NUL.
     The caller compares the returned count with the requested count.
@@ -22,18 +23,22 @@ Open Scope Z_scope.
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The stream contract owns any errno resources that the call may change. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv)
+  (F : ptr -> iProp Σ)
+  (E : iProp Σ).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (F : ptr -> iProp Σ) (E : iProp Σ).
-
-(** The backend must preserve the source bytes and stream resources on every
-    return. The result may differ from the requested count. *)
 Definition printf_xsputn_call_spec : Prop := forall fr fp bb breg dq xs Φ,
   0 < bb -> bb mod 8 = 0 -> Z.of_nat (length xs) <= 128 ->
   bb + 48 + Z.of_nat (length xs) <= r_end breg -> r_end breg <= 2 ^ 63 ->
@@ -43,9 +48,18 @@ Definition printf_xsputn_call_spec : Prop := forall fr fp bb breg dq xs Φ,
   F fp -∗ E -∗ liveq dq bb breg -∗ bytesq dq bb 48 xs -∗
   ▷ (∀ r, ⌜0 <= r < 2 ^ 64⌝ -∗ F fp -∗ E -∗ liveq dq bb breg -∗
     bytesq dq bb 48 xs -∗ Φ (Ret (WInt r))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+Context (F : ptr -> iProp Σ)
+  (E : iProp Σ).
+
+(** The backend must preserve the source bytes and stream resources on every
+    return. The result may differ from the requested count. *)
 
 Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context (Hcall : printf_xsputn_call_spec).
+Context (Hcall : (printf_xsputn_call_spec w0 registry ge F E)).
 
 (** Printf compares the returned count after calling the stream operation.
     This rule checks which function it calls, but the caller must prove that

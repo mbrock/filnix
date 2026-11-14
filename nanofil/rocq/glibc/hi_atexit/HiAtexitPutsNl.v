@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Puts adds a newline only after the string write succeeds.
     The newline either fits in stdout's buffer or calls overflow.
     Both paths here preserve the buffer and stream resources that
@@ -74,8 +75,8 @@ Proof.
   iDestruct "Hwb" as "(Hcells & Hwp & Hwe & Hroom)".
   iDestruct (hi_room_bounds with "Hroom") as "[%Hbounds Hroom]".
   destruct Hbounds as [Hwr Her].
-  iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 glibc_os_registry hge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
+  iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   unfold file_size in Hend.
   step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
   iApply (hi_load_bufptr w0 with "Hl Hwp Hroom"); [reflexivity | vx | reflexivity | a2 | a2 | left; reflexivity |].

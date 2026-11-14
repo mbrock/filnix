@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A full direct buffer publishes its end pointer to FILE before printf
     switches to its one-character staging area. This transition makes no
     stream call and leaves the character bytes with the caller.
@@ -26,13 +27,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Pointer updates leave the process's OS resources unchanged. *)
-Local Instance full_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Reads borrow the independent lifetime of the pointer's target. *)
@@ -84,7 +81,7 @@ Proof.
   step. step. check "Hb". store "Hb" "Hptr".
   step. step. check "Hb". store "Hb" "Hend". step.
   step. step. check "Hb".
-  iApply (wp_raw_load_pointer_self w0 registry ge with "Hb Hptr");
+  iApply (wp_raw_load_pointer_self with "Hb Hptr");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
   iNext. iIntros "Hb Hptr". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A file write may consume only part of its input or fail. This file
     proves that the captured glibc write loop safely retries the remaining
     bytes and preserves the caller's share of the input. It also allows
@@ -31,15 +32,13 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioWriteJoinDq LibioWriteCallDq LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance write_dq_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -74,11 +73,11 @@ Proof.
   iLöb as "IH". iIntros (e t tw off (Hv0 & Hv4 & Ht & Hp & Htr)) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
   cbn [fw_L8 b_insts b_jump]. step. destruct (Z.eq_dec t 0) as [-> | Ht0].
-  { branch_as true. iApply ((wp_file_write_exit w0 registry ge) with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
+  { branch_as true. iApply ((wp_file_write_exit) with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
     rewrite Z.sub_0_r. iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
     split; [left; split; reflexivity | exact Hflr]. }
   branch_as false.
-  iApply (wp_file_write_join_dq w0 registry ge Hreg Hext Hwrite fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
+  iApply (wp_file_write_join_dq Hreg Hext fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
     try wside.
   iNext. iIntros (e' k (Hsame & Hc0 & Hk37 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   pose proof (Hsame (TAtom "v0") ltac:(auto)) as Hv0'. pose proof (Hsame (TAtom "v4") ltac:(auto)) as Hv4'.
@@ -91,13 +90,13 @@ Proof.
   clear Hsame Hv0' Hv4' Hp'' Ht'' Hv0 Hv4 Hp Ht.
   cbn [fw_L16 b_insts b_jump]. step. destruct Hk as [Hk | ->].
   2: { branch_as false.
-       iApply ((wp_file_write_err w0 registry ge) with "Hl [$Hfl //] Hoff");
+       iApply ((wp_file_write_err) with "Hl [$Hfl //] Hoff");
          try wside.
        iNext. iIntros (off') "Hl Hfl Hoff".
        iApply ("HK" $! _ (Z.lor fl io_err_seen) with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
        split; [right; split; [lia | reflexivity] | apply lor_lt32; unfold io_err_seen; lia]. }
   destruct Hk as [[Hk0 Hkn] Hk31]. try (rewrite Z.mod_small in Hkn; [|lia]). branch_as true.
-  iApply (wp_file_write_next w0 registry ge fb freg tw t k (mkPtr (b + o + (Z.of_nat (length xs) - t)) c)
+  iApply (wp_file_write_next fb freg tw t k (mkPtr (b + o + (Z.of_nat (length xs) - t)) c)
             with "Hl Htw");
     try wside.
   iNext. iIntros (e2 tw' (Hv02 & Hv42 & Ht2 & Hp2)) "Hl Htw".

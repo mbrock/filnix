@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The test in one pass of `c: _IO_flush_all`'s loop
     (LibioFlushCode.v), from block `c: L94` to block `c: L182`, for a
     narrow stream with nothing to flush. The pass would call
@@ -49,13 +50,9 @@ Proof. intros [-> | ->]; reflexivity. Qed.
 
 Import LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance flush_clean_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -90,7 +87,7 @@ Proof.
   intros fp Hp5 Hc13 Hc31 Hv3 Hph Hr Hfb Hfal Hfend Hfreg Hmd Hfd Hrd Hrp. subst fp.
   unfold file_size in Hfend.
   iIntros "Hl [%Hmdr Hmd] [%Hfdr Hfd] Hrp Hre Hbc HK".
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* L192, L263, L269, L270: a descriptor, narrow, and the read pointer not below the end. *)
   destruct Hph as [(-> & Hp4) | (-> & ->)]; step.
   all: step; check "Hl"; load_s32 "Hl" "Hfd"; step; branch_as false.
@@ -131,7 +128,7 @@ Proof.
   intros fp Hp5 Hc13 Hp4 Hv3 Hr Hfb Hfal Hfend Hfreg Hf2 Hmd Hfd Hw Hwb Hrd Hrp. subst fp.
   unfold file_size in Hfend.
   iIntros "Hl [%Hf2r Hf2] [%Hmdr Hmd] [%Hfdr Hfd] Hrp Hre Hwb Hwp Hbc HK".
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* L94: `c: _flags2` lacks bit 32. *)
   step. step. check "Hl". load_s32 "Hl" "Hf2". step. step. step. step.
   rewrite (flags2_mask f2 32 5); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. branch.

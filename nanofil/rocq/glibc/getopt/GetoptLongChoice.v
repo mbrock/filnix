@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's getopt decides how to parse an argument that starts with a
     dash. A word with two dashes goes to the long-option parser, and in
     long-only mode a word with one dash may go there too; every other
@@ -54,14 +55,11 @@ Ltac choice_side :=
   | _ => first [assumption | lia]
   end.
 
+Import ProgramAbbreviations.
 Section choice.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance choice_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance choice_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -142,7 +140,7 @@ Proof.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hsl #Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl #Hs HG HF HM Hli HK".
   assert (Hnq : nth (Z.to_nat i) ps null = q) by (by rewrite (nth_lookup_Some _ _ _ _ Hq)).
   iAssert (word_string DfracDiscarded (nth (Z.to_nat i) ps null) sq) as "#Hwn"; [by rewrite Hnq|].
-  iApply (GetoptDispatch.wp_getopt_choice w0 registry ge choice_keys e i n c lo lonly po so b r av ar ps sq
+  iApply (GetoptDispatch.wp_getopt_choice choice_keys e i n c lo lonly po so b r av ar ps sq
     with "Hwn Hpo Hl Hib Hcur Ha Hcl Hs [-]");
     try choice_side.
   iSplit; [|iSplit].
@@ -151,7 +149,7 @@ Proof.
     iApply ("HK" $! e' with "[%] Hl Hib Hcur Ha Hcl Her Hoob Hab Hini Hor Hfi Hla HG HF HM Hli"). exact Hk.
   - iIntros (e' (Hk & H45)) "Hl Hib Hcur Ha Hcl". rewrite Hnq.
     choice_conv b r i av ar ps (ptr_add q 2). iDestruct "HK" as "[_ [_ HK]]".
-    iApply (GetoptLongDash.wp_getopt_dash_session w0 registry ge e' G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps
+    iApply (GetoptLongDash.wp_getopt_dash_session e' G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps
       lo os F pfx pxs po so q sq n lonly pe i oo a b r li er ord fst lst
       with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli HK");
       first [choice_lk Hk | assumption].

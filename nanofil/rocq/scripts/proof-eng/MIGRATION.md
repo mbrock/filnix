@@ -1,21 +1,23 @@
-# What changes for a proof author at cutover
+# What changed for a proof author at the cutovers
 
-This note is for someone who writes proofs in `nanofil/rocq/glibc/`. At cutover the output of the stages in this directory replaces the tree on `main`. Every file changes once. The statements of the audited theorems do not change. This note lists what an author writes differently afterwards and how to convert a file that is not merged yet.
+This note is for someone who writes proofs in `nanofil/rocq/glibc/`. At two cutovers the output of the stages in this directory replaced the tree on `main`. The audited endpoints kept their statements. This note lists what an author writes differently now and how to convert a file that was written before and is not merged yet.
 
-The first three sections describe the changes of the first cutover, which are on the branch `proof-eng-flat`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes a design that is developed on the branch `proof-eng` and lands in a second cutover. The last section says how the tree stays general in the runtime and what that asks of an author.
+The first three sections describe the first cutover: flat files, the shared `keeps` definition and the one tactic library. The sections on the program context and on the memory-rule tactics describe the second cutover, which added stages 50 and 60. Both are on `main`. The last section says how the tree stays general in the runtime and what that asks of an author.
 
 ## Converting an unmerged file
 
-The stages recognize patterns and do not list files, so they convert a file they have never seen. Run them on your own tree and build the result:
+The stages recognize patterns and do not list files, so they convert a file they have never seen. They read the layout that `main` had before the first cutover, so run them on a tree in that layout. Check out the glibc proofs at the revision your file was written against (`0f5accc` is the last revision before the first cutover), add your file, and run every stage with `PE_STAGES=all`:
 
 ```sh
 . nanofil/rocq/scripts/proof-eng/env.sh
-nanofil/rocq/scripts/proof-eng/apply.sh nanofil/rocq/glibc /tmp/pe/glibc
+mkdir -p /tmp/pe/old && git archive 0f5accc nanofil/rocq/glibc | tar -x -C /tmp/pe/old
+cp YourFile.v /tmp/pe/old/nanofil/rocq/glibc/libio/
+PE_STAGES=all nanofil/rocq/scripts/proof-eng/apply.sh /tmp/pe/old/nanofil/rocq/glibc /tmp/pe/glibc
 nanofil/rocq/scripts/proof-eng/build.sh /tmp/pe/glibc 12
 nanofil/rocq/scripts/proof-eng/one.sh /tmp/pe/glibc libio/YourFile.v -time
 ```
 
-`apply.sh` replaces `/tmp/pe/glibc` with the converted copy. `build.sh` writes times and failures to `/tmp/pe/glibc.build/`, and its `make.log` ends in `DONE 0` when every file compiles. A stage fails with a message when it meets input it does not understand. Report that message instead of editing the output by hand, because the fix belongs in the stage.
+`apply.sh` replaces `/tmp/pe/glibc` with the converted copy, from which you take your file. A file that was written on flat `main` between the two cutovers needs stages 50 and 60 only. Put it into a copy of the glibc proofs at `1270e5a`, the last revision before the second cutover, and run `PE_STAGES="50-program.py 60-memory-rules.py"` with the same command. `build.sh` writes times and failures to `/tmp/pe/glibc.build/`, and its `make.log` ends in `DONE 0` when every file compiles. A stage fails with a message when it meets input it does not understand. Report that message instead of editing the output by hand, because the fix belongs in the stage.
 
 ## Files are flat
 
@@ -95,17 +97,55 @@ Three more conventions hold.
 
 - A field offset is registered where it is defined, with `Hint Unfold off_… : offs`. The address solvers `ar` and `a2` keep their names and unfold offsets with `autounfold with offs`, so a new field needs that one line and no change to a tactic.
 - The three side-condition solvers have distinct names: `concrete_side`, `libio_side` and `close_side`. A proof names the one it needs. No file calls a bare `side`.
-- `lint-tactics.py TREE --check-inventory` counts the `Ltac` definitions outside the two libraries and fails when the tree has more than `tactic-inventory.json` lists. The list is recorded from the tree that lands at cutover. A helper that is specific to one proof may stay in its file. A tactic that steps an instruction or applies a memory rule belongs in the library.
+- `lint-tactics.py TREE --check-inventory` counts the `Ltac` definitions outside the two libraries and the block executor `GlibcSym.v`, and fails when the tree has more than `tactic-inventory.json` lists. The list is recorded from the tree that lands at cutover. A helper that is specific to one proof may stay in its file. A tactic that steps an instruction or applies a memory rule belongs in the library.
 
-## One program context (stage 50, second cutover)
+## One program context (stage 50)
 
-A rules section today takes the world, the registry, the global environment and one `find_fn` hypothesis for each function it calls, and it declares a local `irisGS` instance. After stage 50 a converted section takes one `GlibcProgram` context, and a `Defines` instance says that the program defines a function. A caller no longer passes the `find_fn` facts by position. In the trial `hge_output_overflow` passes 19 arguments where it passed 31.
+A converted rules section takes one `GlibcProgram` context instead of separate world, registry, environment and ghost-state parameters. Its Iris instance comes from that bundle. A `Defines` instance supplies each function-lookup fact, so callers no longer pass those facts by position.
 
-Stage 50 leaves three kinds of declaration alone.
+Import `ProgramAbbreviations` once in a converted file to use `w0`, `registry` and `ge`. A converted caller writes `iApply (wp_live_fit1 with "Hl")`; instance search supplies its program. An old-style caller supplies `(glibc_program := program_of w0 registry ge)` when applying a bundled rule. A converted proof can still use an old-style rule: `Defines` is the same lookup equality, and the bundle provides its original world and ghost instances.
 
-- A lemma that the audit contracts name keeps its name and its type. It becomes a wrapper that is proved from an implementation named `FILE_NAME_program`, so `Print Assumptions` on the audited name still covers the proof. Converted sections call the `_program` implementation. The stage prints every pair.
-- A specification predicate such as `overflow_spec` keeps its original parameters.
-- A section that is partial or pure keeps its original interface, so that it gains no ghost-state or world premise. The stage prints each such section with its reason.
+The forty audited intermediate declarations listed in `check/audit-changes.json` take bundled statements under their original names. They have no compatibility wrappers. The packet records their full old and new types and proves both directions with the same resources and ghost instances. Every endpoint retains its name, type and assumptions; the permission applies only to the listed file/name pairs.
+
+Specification predicates such as `overflow_spec` retain their parameters. Partial and pure interfaces gain no world or ghost-state premise, and noncanonical sections keep their existing setup. The stage prints retained sections with their reasons. Stronger program facts and allocator premises remain explicit.
+
+A linked program has one function table and one computed certificate. After editing a table, run `python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --refresh-tables TREE` and compile it again. The command generates the indexed instances from the rows; authors do not maintain a second list.
+
+The [README](README.md#regenerating-the-stage-50-evidence) gives the regeneration command for the three packet files of the cutover, which are build outputs rather than committed pages. `50-program.py --check TREE` regenerates evidence from the retained input, verifies the transformation, and compiles the adapters in bounded parallel shards. It preserves the reviewed old types of the forty intermediate audits and checks each runtime separately.
+
+## Memory rules have wrapper tactics (stage 60)
+
+A load, a store or a read check applies one memory rule and then discharges the same side conditions each time: the instruction's shape, the value, the capability and the address arithmetic. Six tactics apply the rule and discharge those conditions. The proof names the ownership hypotheses and the one solver that differs between uses.
+
+Before, in `getopt/GetoptColon.v`:
+
+```coq
+iApply (wp_raw_load_pointer_dq with "Hl Hnext Hcc");
+  [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+iApply (wp_check_read_dq registry (os_wi w0) ge with "Hcl");
+  [reflexivity | vx | exact Hccap | arith | arith | arith |].
+iApply (wp_raw_load_sub_bytes_dq with "Hcl Hct");
+  [reflexivity | vx | reflexivity | apply extended_chr | exact Hccap | arith |].
+```
+
+After:
+
+```coq
+load_pointer_dq "Hl Hnext Hcc" by arith.
+check_read_dq "Hcl" by arith.
+load_bytes_dq "Hcl Hct" decode (apply extended_chr) by arith.
+```
+
+| Tactic | Rule | Library |
+| --- | --- | --- |
+| `load_pointer H by side` | `wp_raw_load_pointer` | `GlibcTactics.v` |
+| `load_pointer_dq H by side` | `wp_raw_load_pointer_dq` | `GlibcTactics.v` |
+| `store_pointer H by side preserving world` | `wp_raw_store_pointer` | `GlibcTactics.v` |
+| `check_read_dq H by side` | `wp_check_read_dq` | `libio/LibioTactics.v` |
+| `load_bytes_dq H decode d by side` | `wp_raw_load_sub_bytes_dq` | `libio/LibioTactics.v` |
+| `store_word H by side preserving world` | `wp_raw_store_w` | `libio/LibioTactics.v` |
+
+A wrapper leaves the rule's continuation as the one remaining goal, as the `iApply` did, so the `iNext` and `iIntros` that follow stay as they were. The stage converts an application only when its side conditions have the standard shape. An application with another solver in some position keeps its `iApply`, and a new proof may write either form.
 
 ## Proofs stay general in the runtime
 

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A live printf buffer returns its accumulated count when that count fits
     a nonnegative C int. This proof follows the checked completion body;
     it does not assume that a formatter or a stream write succeeds.
@@ -26,13 +27,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Read-only completion preserves the caller's concrete world interpretation. *)
-Local Instance count_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Adding the buffered characters to the previous count produces a nonnegative C int.
@@ -53,8 +50,7 @@ Proof.
   intros Hfr Hbb Hal Hend Hreg Hdb Hbo Hused Hdend Hdreg Hw Htotal Hmode.
   injection Hfr as <-. iIntros "Hl Hd [%Hm Hmode] Hbase Hptr Hwritten HK".
   step. step. norm.
-  iApply (wp_check_read_dq with "Hl");
-    [reflexivity | reflexivity | left; reflexivity | ar | ar | ar |].
+  check_read_dq "Hl" by ar.
   iNext. iIntros "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hmode");
     [reflexivity | reflexivity | reflexivity |
@@ -65,14 +61,12 @@ Proof.
   iApply (MemchrLast.wp_half_check_read_dq registry (os_wi w0) ge with "Hl");
     [reflexivity | reflexivity | reflexivity | left; reflexivity | ar | ar | lia | ar | ar |].
   iNext. iIntros "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hptr Hd");
-    [reflexivity | reflexivity | left; reflexivity | ar | ar | ar |].
+  load_pointer_dq "Hl Hptr Hd" by ar.
   iNext. iIntros "Hl Hptr Hd".
   iApply (MemchrLast.wp_half_check_read_dq registry (os_wi w0) ge with "Hl");
     [reflexivity | reflexivity | reflexivity | left; reflexivity | ar | ar | lia | ar | ar |].
   iNext. iIntros "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hbase Hd");
-    [reflexivity | reflexivity | left; reflexivity | ar | ar | ar |].
+  load_pointer_dq "Hl Hbase Hd" by ar.
   iNext. iIntros "Hl Hbase Hd".
   step. step. step. step. norm.
   iApply (wp_raw_load_read_dq with "Hl Hwritten");

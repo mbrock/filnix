@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A short option with a required argument takes the rest of its
     cluster as the argument, or else the next argument of the vector
     when one is left. glibc's scanner
@@ -31,14 +32,11 @@ Local Arguments Z.opp : simpl nomatch.
 (** The tail module supplies the report rule, the argument vector and its tactics. *)
 Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section next.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance next_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance next_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -75,14 +73,14 @@ Proof.
   iDestruct (big_sepL_lookup with "Hs") as (s1) "#Hws1"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws1") as (rq1) "[#Hcapq1 %Hq1]".
   step. step. norm. load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+  store_word "Hl Hib" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hib". step. step. step. idx (i + 1). check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq1"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq1" by arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  store_pointer "Hl Hab" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hab". step. step. rewrite ?(Z.mod_small c (2 ^ 32)); [|lia]. step. check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  store_pointer "Hl Hcur" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hcur". step.
   iApply ("HK" with "[%] Hl [Hib] [Hab] Hcur Ha Hcl");
     [split; [xkeep | lk_prove] | | unfold j in Hq; by rewrite (nth_lookup_Some _ _ _ _ Hq)].
@@ -119,11 +117,11 @@ Proof.
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq");
     [reflexivity | vx | left; reflexivity | arith | arith | unfold ptr_add; cbn [ptr_addr]; lia |].
   iNext. iIntros "Hl Hcur _". check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  store_pointer "Hl Hab" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hab". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+  store_word "Hl Hib" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hib". step. step. rewrite ?(Z.mod_small c (2 ^ 32)); [|lia]. step. check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  store_pointer "Hl Hcur" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hcur". step.
   iApply ("HK" with "[%] Hl [Hib] Hab Hcur"); [split; [xkeep | lk_prove]|].
   iSplit; [iPureIntro; lia|]. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [iAssumption | lia].

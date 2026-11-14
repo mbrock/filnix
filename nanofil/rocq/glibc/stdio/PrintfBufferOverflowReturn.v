@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When the stream's overflow call returns EOF, printf marks its buffer
     failed and returns without selecting another buffer. The caller keeps
     the stream, staging byte and accumulated count unchanged by this suffix.
@@ -26,13 +27,9 @@ Definition printf_overflow_block : block := Eval vm_compute in
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Marking the owned buffer failed leaves OS resources untouched. *)
-Local Instance return_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Canonical EOF follows the failure edge and stores mode zero. No stream

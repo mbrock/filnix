@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file connects Hello's small memory calls to their proved glibc
     implementations. It proves zeroing, string length, bounded comparison
     and errno lookup over the concrete resources used by main.
@@ -126,7 +127,7 @@ Proof.
   destruct (hk_zmemset _ _ Hk) as [Hzf Hzs].
   rewrite mbszero_entry.
   iApply wp_enter; [exact find_z_start | reflexivity |]. iNext. cbn [b_insts b_jump z_start].
-  iApply (MemFwdLogic.wp_call_glibc_memset w0 glibc_os_registry ge eq_refl Hzf Hzs _ _ _ _ _ _ _ _ _
+  iApply (MemFwdLogic.wp_call_glibc_memset (glibc_program := program_of w0 glibc_os_registry ge) eq_refl Hzf Hzs _ _ _ _ _ _ _ _ _
     b (mkRegion b (b + 16) Heap Live) 0 (replicate 8 0) (replicate 8 CNone) 0 with "Hl Hx Hc");
     [reflexivity | exact (hk_memset _ _ Hk) | reflexivity | cbn; lia | cbn; lia |
      apply mod16_mod8'; exact Hb16 | reflexivity | lia | cbn; lia | reflexivity |].

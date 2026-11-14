@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The first write to stdout allocates its buffer with glibc's
     `c: malloc`. This file proves the allocation rule used by the
     buffer proofs from AllocLogic.v's triple. The allocator keeps its
@@ -17,29 +18,40 @@ Import ListNotations.
 Open Scope Z_scope.
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (dq : dfrac)
+  (mp : Z)
+  (tc : Z)
+  (dummy : Z)
+  (mpr : region)
+  (tcr : region)
+  (dr : region).
+Existing Instance gen_heapGS0.
+Definition hi_malloc_state : iProp Σ := AllocLogic.tcache_idle dq mp tc dummy mpr tcr dr.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hmalloc_fn : find_fn ge (TAtom "malloc") = Some (Defined malloc_fn))
-  (Hmalloc2 : find_fn ge (TAtom "malloc#__libc_malloc2") = Some (Defined malloc2_fn)).
-Context (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{Hmalloc_fn : !Defines ge "malloc" malloc_fn}
+  `{Hmalloc2 : !Defines ge "malloc#__libc_malloc2" malloc2_fn}.
+Context (dq : dfrac)
+  (mp tc dummy : Z)
+  (mpr tcr dr : region).
 Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc))).
 
-(** The program logic uses the OS world for this allocation rule. *)
-Local Instance hi_alloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Buffer allocation preserves the idle thread cache. *)
-Definition hi_malloc_state : iProp Σ := AllocLogic.tcache_idle dq mp tc dummy mpr tcr dr.
 
 (** A call of glibc's `c: malloc` in a buffer-allocation block returns
     a fresh object and preserves the idle thread cache. *)
 Lemma hi_malloc_rule f e ls lab d v rest j n Φ :
   arg_x ge e (Arg L v) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
-  hi_malloc_state -∗
+  (hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
   ▷ (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
-       obj base (heap_req 16 n) -∗ hi_malloc_state -∗
+       obj base (heap_req 16 n) -∗ (hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
        WP (ERun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec lab rest j))
              : language.expr (nanofil_lang registry ge)) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None

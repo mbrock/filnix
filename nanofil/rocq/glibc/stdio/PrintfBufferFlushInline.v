@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** FILE can hold its character buffer inside its own allocation. Publishing
     a full inline buffer therefore borrows the FILE lifetime for pointer
     reads rather than asking for a second copy of that lifetime.
@@ -27,13 +28,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Updating owned cells preserves the process's OS resources. *)
-Local Instance inline_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Cross-allocation reads borrow the target lifetime without duplicating it. *)
@@ -79,14 +76,14 @@ Proof.
   step. load_shared "Hb Hend Hf". step. step. step. step. step. branch_as true. step.
   step. load_shared "Hb Hend Hf". step. step. step. step. step. branch_as true. step.
   step. load_shared "Hb Hend Hf". step. check "Hb". load_shared "Hb Hfp Hf".
-  step. check "Hf". load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hf Hwe". step. step. step. branch_as false. step.
+  step. check "Hf". load_self_using (wp_raw_load_pointer_self) "Hf Hwe". step. step. step. branch_as false. step.
   step. check "Hb". load_shared "Hb Hfp Hf". step. step. check "Hb".
   load_shared "Hb Hptr Hf". check "Hf". store "Hf" "Hwp".
   check "Hb". load_shared "Hb Hptr Hf". step. check "Hb".
   load_shared "Hb Hend Hf". step. step. step. branch_as false. step.
   step. step. check "Hb". store "Hb" "Hptr".
   step. step. check "Hb". store "Hb" "Hend". step.
-  step. step. check "Hb". load_self_using (wp_raw_load_pointer_self w0 registry ge) "Hb Hptr". check "Hb". store "Hb" "Hbase".
+  step. step. check "Hb". load_self_using (wp_raw_load_pointer_self) "Hb Hptr". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.
   replace (bb + 48 + 1) with (bb + 49) by lia.
   iApply ("HK" with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend [Hw]").

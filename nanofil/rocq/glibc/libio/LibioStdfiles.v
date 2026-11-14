@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The triple of `c: _IO_stdfiles_init` (LibioStdfilesCode.v,
     libio/stdfiles.c), the constructor that links glibc's three
     standard streams both ways before `c: main` runs
@@ -52,33 +53,44 @@ Definition sf_L2 : block := Eval vm_compute in
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance stdfiles_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
-Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** [stream_live] f: f is the stream fb's own pointer, a 224-byte
-    8-aligned object whose life is owned. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
 Definition stream_live (f : ptr) : iProp Σ :=
   ∃ fb freg, ⌜f = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\
               r_end freg <= 2 ^ 63⌝ ∗ live fb freg.
-
-(** [chain_pre] fs: each stream of fs, in order, is a [stream_live]
-    whose `c: _chain` names the next stream, the last null, and whose
-    `c: _prevchain` holds anything: the list before the constructor
-    links it back. *)
 Fixpoint chain_pre (fs : list ptr) : iProp Σ :=
   match fs with
   | [] => True
   | f :: fs' => stream_live f ∗ (∃ fb x, ⌜f = mkPtr fb (Obj fb)⌝ ∗ pcell fb off_prevchain x ∗
       pcell fb off_chain (head_ptr fs')) ∗ chain_pre fs'
   end.
+Definition stdfile_pre (f next : ptr) : iProp Σ :=
+  ∃ fb freg, ⌜f = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\
+              r_end freg <= 2 ^ 63⌝ ∗
+    live fb freg ∗ pcell fb off_prevchain null ∗ pcell fb off_chain next.
+Lemma stdfile_chain_pre f fs : stdfile_pre f (head_ptr fs) -∗ chain_pre fs -∗ chain_pre (f :: fs).
+Proof.
+  iIntros "(%fb & %freg & %Hf & Hl & Hpc & Hch) Hpre". cbn [chain_pre]. iFrame "Hpre".
+  pose proof Hf as (-> & _). iSplitL "Hl"; [iExists fb, freg; iFrame "Hl"; done|].
+  iExists fb, null. iFrame. done.
+Qed.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** [stream_live] f: f is the stream fb's own pointer, a 224-byte
+    8-aligned object whose life is owned. *)
+
+(** [chain_pre] fs: each stream of fs, in order, is a [stream_live]
+    whose `c: _chain` names the next stream, the last null, and whose
+    `c: _prevchain` holds anything: the list before the constructor
+    links it back. *)
 
 (** The constructor's loop at its head `c: L2`, `c: pr.1` the address
     of the link at offset o of the live object b that names the first
@@ -95,7 +107,7 @@ Lemma wp_stdfiles_loop Φ :
           : sexpr) {{ Φ }}.
 Proof.
   iLöb as "IH". iIntros (fs e b breg o (Hp & Ho & Hal & Hend & Hreg)) "Hl Hc Hpre HK".
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hb Hb48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hb Hb48]) "Hl".
   cbn [sf_L2 b_insts b_jump].
   destruct fs as [|f fs].
   - (* The link is null: the loop ends. *)
@@ -122,18 +134,8 @@ Qed.
 (** [stdfile_pre] f next: the standard stream f as stdfiles.c builds
     it, its life owned, its `c: _chain` the stream next and its
     `c: _prevchain` null. *)
-Definition stdfile_pre (f next : ptr) : iProp Σ :=
-  ∃ fb freg, ⌜f = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\
-              r_end freg <= 2 ^ 63⌝ ∗
-    live fb freg ∗ pcell fb off_prevchain null ∗ pcell fb off_chain next.
 
 (** A [stdfile_pre] is the head of a [chain_pre]. *)
-Lemma stdfile_chain_pre f fs : stdfile_pre f (head_ptr fs) -∗ chain_pre fs -∗ chain_pre (f :: fs).
-Proof.
-  iIntros "(%fb & %freg & %Hf & Hl & Hpc & Hch) Hpre". cbn [chain_pre]. iFrame "Hpre".
-  pose proof Hf as (-> & _). iSplitL "Hl"; [iExists fb, freg; iFrame "Hl"; done|].
-  iExists fb, null. iFrame. done.
-Qed.
 
 (** `c: _IO_stdfiles_init()`, with `c: _IO_list_all` naming stderr fe
     and the static chain fe, stdout fo, stdin fi, null, every
@@ -158,7 +160,7 @@ Proof.
   iDestruct (stdfile_chain_pre fi [] with "Hi [//]") as "Hpre".
   iDestruct (stdfile_chain_pre fo [fi] with "Ho Hpre") as "Hpre".
   iDestruct (stdfile_chain_pre fe [fo; fi] with "He Hpre") as "Hpre".
-  iApply (wp_live_fit1 w0 registry ge with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
+  iApply (wp_live_fit1 with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
   step. step. step. iApply wp_enter; [reflexivity | vx | iNext].
   iApply (wp_stdfiles_loop Φ $! [fe; fo; fi] _ la lareg 0 with "[%] Hla Hc Hpre").
   { split_and!; [rewrite Z.add_0_r; lk_prove | lia | rewrite Z.add_0_r; exact Hlal | lia | lia]. }

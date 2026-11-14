@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The end of `c: _IO_flush_all` (LibioFlushCode.v), from block
     `c: L414`, after the loop has passed every stream: the function
     releases `c: list_all_lock`, which the thread holds once at count
@@ -29,15 +30,31 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioFlushStart LibioFlushClean LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hpop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") =
-                Some (Defined glibc___libc_cleanup_pop_restore)).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance flush_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+Definition pop_spec : Prop := forall fr cb creg Φ,
+  call_frame glibc___libc_cleanup_pop_restore [WPtr (mkPtr cb (Obj cb))] = Some fr ->
+  0 < cb -> cb mod 8 = 0 -> cb + 32 <= r_end creg -> r_end creg <= 2 ^ 63 ->
+  ⊢ tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
+    ▷ (tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗ Φ RetVoid) -∗
+    WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -47,15 +64,9 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     [wp_glibc___libc_cleanup_pop_restore] states it at offset 0; a
     premise for the reason [push_spec] is, proved in
     LibioCleanupExit.v. *)
-Definition pop_spec : Prop := forall fr cb creg Φ,
-  call_frame glibc___libc_cleanup_pop_restore [WPtr (mkPtr cb (Obj cb))] = Some fr ->
-  0 < cb -> cb mod 8 = 0 -> cb + 32 <= r_end creg -> r_end creg <= 2 ^ 63 ->
-  ⊢ tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
-    ▷ (tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗ Φ RetVoid) -∗
-    WP (ERun fr : sexpr) {{ Φ }}.
 
 (** [pop_spec] holds. *)
-Context (Hpop_spec : pop_spec).
+Context (Hpop_spec : (pop_spec w0 registry ge)).
 
 (** Block `c: L414` of `c: _IO_flush_all` to its return, the result r
     in `c: pr.4` and the cleanup buffer cb in `c: v3`:
@@ -74,8 +85,8 @@ Proof.
   intros Hglk Hv3 Hp4 Hr Hcb Hcal Hcend Hcreg.
   iIntros "#(%Hs & Hsl & Hsb) (%Hlk & Hll & Hl0 & [%Hc0 Hl4] & Hlo) Htcb Hcl Hcp Hct HK".
   destruct Hs as (Hgs & Hsend). destruct Hlk as (Hlal & Hlend & Hlreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hll"). iIntros ([Hlk0 Hlk48]) "Hll".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hll"). iIntros ([Hlk0 Hlk48]) "Hll".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* L414, L423, L424: single threaded, the count 0. *)
   step. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
   step. step. step. check "Hll". load_s32 "Hll" "Hl4". step. step. step. branch.

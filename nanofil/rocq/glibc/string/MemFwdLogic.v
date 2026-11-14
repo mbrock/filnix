@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** In glibc under Fil-C, `c: memset`, `c: memcpy`, `c: mempcpy`, and
     `c: strdup` delegate bulk memory operations to libpizlo's runtime
     primitives `c: zmemset` and `c: zmemmove`. This module proves
@@ -164,31 +165,19 @@ Proof.
   - eapply M.E.invoke_resource; [exact (proj2 Habi) | exact Hpre | exact Hp | exact Hf | exact Hres].
 Qed.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The functor assumes the external registry provides void-only OS
-    contracts for `c: zmemset` and `c: zmemmove` and that neither name
-    collides with an internal function or global. *)
-Context (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)))
-  (Hset_fn : find_fn ge (TAtom "zmemset") = None) (Hset_sym : lookup (TAtom "zmemset") (ge_globals ge) = None)
-  (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
-
-(** The OS world invariant `os_wi w0` remains stable across runtime
-    safepoints. *)
-Local Instance memfwd_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** To step through IR instructions in [[separation-logic|separation logic]],
-    [memfwd_irisGS] connects the contract registry and the OS world
-    invariant to the Iris program logic. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance memfwd_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
-(** This shorthand names the expression type of the instantiated
-    language. *)
 Local Notation mexpr := (language.expr (nanofil_lang registry ge)).
-
-(** To pass a string to `c: memcpy`, [word_string_bytes] extracts the
-    fractional live [[region]] and byte pieces for `s ++ [0]` from a
-    [word_string] and returns a wand that reassembles them. *)
 Lemma word_string_bytes dq p s :
   word_string dq p s ⊢ ∃ b reg ws, ⌜str_shape p b reg ws s⌝ ∗ liveq dq b reg ∗
     bytesq dq b (ptr_addr p - b) (s ++ [0]) ∗
@@ -211,6 +200,38 @@ Proof.
   iEval (rewrite words_ps_bytes -/W E (byte_ps_app _ _ (take k W)) (byte_ps_app _ _ (s ++ [0])) ptsq_app ptsq_app
            Hlk Ho). iFrame.
 Qed.
+Definition malloc_out (n : Z) (q : ptr) : iProp Σ :=
+  ⌜ptr_addr q = 0⌝ ∨
+  ∃ base, ⌜q = mkPtr base (Obj base) /\ 0 < base /\ base mod 16 = 0 /\
+           base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ ∗ obj base (heap_req 16 n).
+Definition malloc_triple : Prop :=
+  forall f e ls lab d v rest j n Φ, arg_x ge e (Arg L v) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
+  ⊢ ▷ (∀ q, malloc_out n q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
+    WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global (TAtom "malloc")) [Arg L v] :: rest) j))
+          : mexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The functor assumes the external registry provides void-only OS
+    contracts for `c: zmemset` and `c: zmemmove` and that neither name
+    collides with an internal function or global. *)
+Context (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)))
+  (Hset_fn : find_fn ge (TAtom "zmemset") = None)
+  (Hset_sym : lookup (TAtom "zmemset") (ge_globals ge) = None)
+  (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
+
+(** The OS world invariant `os_wi w0` remains stable across runtime
+    safepoints. *)
+Local Instance memfwd_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** This shorthand names the expression type of the instantiated
+    language. *)
+Local Notation mexpr := (language.expr (nanofil_lang registry ge)).
+
+(** To pass a string to `c: memcpy`, [word_string_bytes] extracts the
+    fractional live [[region]] and byte pieces for `s ++ [0]` from a
+    [word_string] and returns a wand that reassembles them. *)
 
 (** Calling `c: zmemset` on an 8-aligned owned block fills its bytes
     with `c mod 256` and clears any touched capability slots via
@@ -453,26 +474,17 @@ Qed.
 (** Predicate [malloc_out] describes the result of allocating n bytes:
     either null or a fresh 16-aligned heap object whose ownership is
     transferred to the caller via [obj]. *)
-Definition malloc_out (n : Z) (q : ptr) : iProp Σ :=
-  ⌜ptr_addr q = 0⌝ ∨
-  ∃ base, ⌜q = mkPtr base (Obj base) /\ 0 < base /\ base mod 16 = 0 /\
-           base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ ∗ obj base (heap_req 16 n).
 
 (** Predicate [malloc_triple] characterizes any `c: malloc`
     implementation whose calls return [malloc_out], covering both
     [wp_malloc] and glibc's own allocator. *)
-Definition malloc_triple : Prop :=
-  forall f e ls lab d v rest j n Φ, arg_x ge e (Arg L v) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
-  ⊢ ▷ (∀ q, malloc_out n q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
-    WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global (TAtom "malloc")) [Arg L v] :: rest) j))
-          : mexpr) {{ Φ }}.
 
 (** Executing [glibc_strdup] on a [word_string] at any share calls
     `__GI_strlen`, `malloc`, and `__GI_memcpy`. It returns null if
     allocation fails, or a fresh object holding the string and its NUL
     terminator, while restoring the input string. *)
 Lemma wp_glibc_strdup dq p s Φ :
-  malloc_triple ->
+  (malloc_triple w0 registry ge) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
   word_string dq p s -∗

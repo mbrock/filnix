@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The stream lock in `c: _IO_new_fclose(fp)` (LibioFcloseCode.v,
     libio/iofclose.c) for stdout: `c: _IO_acquire_lock(fp)`, the
     single thread taking the free lock, (0, 0, null) becoming
@@ -27,18 +28,17 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioFcloseTail LibioFinish SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hunl : find_fn ge (TAtom "__GI__IO_un_link") = Some (Defined glibc__IO_un_link)).
-Context (Hdf : find_fn ge (TAtom "__GI__IO_default_finish") = Some (Defined glibc__IO_default_finish)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
+Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
 Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
-Context (Hunl_spec : unlink_spec w0 registry ge) (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
+Context (Hunl_spec : unlink_spec w0 registry ge)
+  (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance fclose_lock_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -79,13 +79,13 @@ Proof.
   { iExists tb, treg, jb. iSplit; [iPureIntro; exact Ht | iExact "Htcb"]. }
   assert (Hsz : ptr_addr (ow_self w0) <> 0) by (rewrite Hself; cbn; lia).
   iDestruct "Hlk" as "(%Hk & Hbl' & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hk as (Hkal & Hkend & Hkreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hbl'"). iIntros ([Hl0 Hl48]) "Hbl'".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hbl'"). iIntros ([Hl0 Hl48]) "Hbl'".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   iDestruct "Hfl" as "[%Hflr Hfl]".
   (* start, L18 to L23: the lock is free and the process single-threaded. *)
   step. check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
-  step. iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact Hsz|]. iNext.
+  step. iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact Hsz|]. iNext.
   step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
   step. step. check "Hl". load "Hl" "Hlp" "Hbl'". step. check "Hbl'". load_null "Hbl'" "Hbo". step. step. step. step. step. branch.
   step. step. check "Hl". load "Hl" "Hlp" "Hbl'". check "Hbl'". store_int "Hbl'" "Hb0". load "Hl" "Hlp" "Hbl'". step.
@@ -134,9 +134,9 @@ Proof.
   unfold file_size in Hfend.
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).
   iDestruct "Hlk" as "(%Hk & Hbl' & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hk as (Hkal & Hkend & Hkreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hbl'"). iIntros ([Hl0 Hl48]) "Hbl'".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hbl'"). iIntros ([Hl0 Hl48]) "Hbl'".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   pose proof Hul as Hcu. unfold has, io_user_lock in Hcu. apply negb_false_iff, Z.eqb_eq in Hcu.
   assert (Hcu' : Z.land (fl mod 2 ^ 32) (32768 mod 2 ^ 32) mod 2 ^ 32 = 0).
   { rewrite (Z.mod_small fl); [|lia]. change (32768 mod 2 ^ 32) with 32768. rewrite Hcu. reflexivity. }
@@ -154,7 +154,7 @@ Proof.
     iSplitL "Hb4"; [iSplit; [done | iExact "Hb4"]|]. iExact "Hbo". }
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   rewrite (Z.mod_small p1 (2 ^ 32)); [|lia].
-  iApply (wp_fclose_L8 w0 registry ge Hunl Hdf Hff Hunl_spec Hunl_unlinked
+  iApply (wp_fclose_L8 Hff Hunl_spec Hunl_unlinked
             with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK"); try close_side; try exact Hmd.
 Qed.
 

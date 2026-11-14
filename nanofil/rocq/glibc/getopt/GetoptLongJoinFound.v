@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds an option for a word, it
     takes the option's argument, stores the option's index and returns
     the option's value, or it reports a misused option. Every way ends
@@ -34,19 +35,8 @@ Local Arguments Z.opp : simpl nomatch.
 Import GetoptLongJoinMiss GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 
-Section found.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the parser's safepoints. *)
-Local Instance jfound_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance jfound_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
-(** This notation selects expressions of the linked language. *)
-Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** When the parser takes an argument, it moves the index by at most
-    two words and points the argument at the word or at the next word. *)
+Import ProgramAbbreviations.
+Section found_values.
 Lemma long_arg_res s has i n cur a ps i' a' :
   long_arg s has i n cur a ps i' a' ->
   (i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n)) /\
@@ -57,6 +47,16 @@ Proof.
   - split; [lia | left; reflexivity].
   - split; [right; lia | right; right; reflexivity].
 Qed.
+End found_values.
+Section found.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the parser's safepoints. *)
+Local Instance jfound_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** This notation selects expressions of the linked language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** When the parser takes an argument, it moves the index by at most
+    two words and points the argument at the word or at the next word. *)
 
 (** The parser found the entry x at index j for the word whose rest s
     starts at the cursor cur. Each of its four returns gives the caller
@@ -96,7 +96,7 @@ Proof.
   intros Hks Hksq Hkse Hkst Hksd Hrule Hse Hmid3 Hmid4 H0 H2 H4 H8 H12 H14 H16 H90 Hp12 H7 Hp1 Hc0 Hc1 Hx Hos Hf
     Hi Hn Hlen Hpe Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hpo #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
-  iApply (GetoptLongArg.wp_long_found w0 registry ge ks e G T fp dom se sereg mid3 mid4 av ar ps lo os j x pfx sp po so cur s cur
+  iApply (GetoptLongArg.wp_long_found ks e G T fp dom se sereg mid3 mid4 av ar ps lo os j x pfx sp po so cur s cur
     i n pe oo a b r li F with "Ht Hpfx Hpo Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG Hli HF"); try assumption.
   iSplit; [|iSplit; [|iSplit]].
   - iIntros (e' i' a' (Hk' & Hla & _)) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hli HF".

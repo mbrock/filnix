@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The locked middle of `c: _IO_un_link` (LibioUnlinkCode.v), from
     block `c: L22`, with `c: list_all_lock` taken and the cleanup
     buffer pushed: `c: run_fp` is the stream, the stream's lock, free,
@@ -28,16 +29,13 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioUnlinkMid LibioUnlinkTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hpop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") =
-                Some (Defined glibc___libc_cleanup_pop_restore)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance unlink_lock_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -48,7 +46,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's
     cookie, not null (H). *)
-Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H|]; iNext.
 
 (** Block `c: L22` of `c: _IO_un_link` to its return, `c: list_all_lock`
     held once by the thread and the cleanup buffer cb pushed: the
@@ -88,11 +86,11 @@ Proof.
   iIntros "#Hs Htcb Hl [_ Hfl] Hlp Hlb Hla Hlah Hch Hlk Hrl Hrc Hlives Hcl Hc24 Hc16 HK".
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).
   iDestruct "Hlb" as "(%Hb & Hbl & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
-  iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
-  iApply (wp_live_fit1 w0 registry ge with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
+  iApply (wp_live_fit1 with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
+  iApply (wp_live_fit1 with "Hrl"). iIntros ([Hrf0 Hrf48]) "Hrl".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* L22: `c: run_fp`; L96 to L101: take the stream's lock. *)
   step. step. check "Hrl". store "Hrl" "Hrc". check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
   step. self Hsz. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
@@ -112,7 +110,7 @@ Proof.
       pose proof Hg as (-> & Hgb & _ & Hgend & _). unfold file_size in Hgend. iExists gb, greg. iFrame "Hgl".
       iSplit; [iPureIntro; split_and!; [reflexivity | lia | lia]|]. iIntros "Hgl". iFrame "Hl Hlives".
       iExists gb, greg. iFrame. done. }
-  iApply (wp_live_fit1 w0 registry ge with "Hhl"). iIntros ([Hh0 Hh48]) "Hhl".
+  iApply (wp_live_fit1 with "Hhl"). iIntros ([Hh0 Hh48]) "Hhl".
   iEval (rewrite Hhd) in "Hlah". load "Hla" "Hlah" "Hhl". iEval (rewrite -Hhd) in "Hlah".
   iDestruct ("Hback" with "Hhl") as "[Hl Hlives]". step. step. step. branch_as true.
   (* L185 to the return. *)
@@ -122,7 +120,7 @@ Proof.
   iAssert (lock_state lb lbreg 1 0 (ow_self w0)) with "[Hbl Hb0 Hb4 Hbo]" as "Hlb".
   { iFrame. iPureIntro. unfold int_bytes. split_and!; try lia. }
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done|]; iExact "Hfl"|].
-  iApply (wp_unlink_L185 w0 registry ge Hreg Hext Hpop
+  iApply (wp_unlink_L185 Hreg Hext
             with "Hs Hl Hfl Hlp Hlb Hfp Hfc Hql Hqc Hnx Hrl Hrc Hlk Htcb Hcl Hc24 Hc16"); try close_side.
   iNext. iIntros "Hl Hfl Hlp Hlb Hfp Hfc Hql Hqc Hnx Hrl Hrc Hlk Htcb Hcl".
   iDestruct ("HW" with "Hql Hqc Hnx") as "(Hla & Hlah & Hch & Hlives)".

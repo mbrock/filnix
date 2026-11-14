@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** An argument that starts with a dash and has a second character is
     an option. glibc's scanner first decides how to parse it. With a long
     option table, an argument that starts with two dashes is a long
@@ -49,14 +50,11 @@ Import GetoptLongOnly GetoptCursor GetoptExchange GetoptInitialize GetoptState F
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
 
+Import ProgramAbbreviations.
 Section dispatch.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance dispatch_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance dispatch_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -145,7 +143,7 @@ Proof.
     with "[HK]" as "HL".
   { iSplit; [|iDestruct "HK" as "(_ & HK)"; iExact "HK"].
     iIntros (e2 fr (Hk & H2 & H12 & H2' & H20)) "Hl Hi Hcur Ha Hc".
-    iApply (wp_getopt_short_cursor w0 registry ge ks e2 fr i n c b r av ar ps with "Hl Hi Hcur Ha Hc Hs [HK]");
+    iApply (wp_getopt_short_cursor ks e2 fr i n c b r av ar ps with "Hl Hi Hcur Ha Hc Hs [HK]");
       [ exact Hksh | exact H2 | exact H12 | exact H2' | exact H20 | lia | lia | exact Hlen
       | lia | lia | lia | lia | lia | lia | lia | lia |].
     iIntros (e' Hk') "Hl Hi Hcur Ha Hc". iDestruct "HK" as "[HK _]". fold j. rewrite Hnq.
@@ -155,23 +153,22 @@ Proof.
   1:{ iDestruct "HL" as "[HL338 _]". iApply ("HL338" with "[%] Hl [Hib] Hcur Ha Hc"); [split; [xkeep|]; repeat split; lk_prove | by iSplit]. }
   step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq" by arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. norm.
   rdin q s 1%nat. step.
   pose proof (sbyte_range s 1 Hch) as Hs1r. rewrite chr_cmp; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte s 1) 45) as [E45 | E45]; close_br.
   - step. step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
     iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-    iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq");
-      [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+    load_pointer_dq "Ha Hcj Hcapq" by arith.
     iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+    store_pointer "Hl Hcur" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hcur".
     assert (Ha2 : (ptr_addr q mod 2 ^ 64 + 2 mod 2 ^ 64) mod 2 ^ 64 = ptr_addr q + 2)
       by (rewrite !(Z.mod_small _ (2 ^ 64)); lia).
     rewrite Ha2. iDestruct "HL" as "(_ & HK & _)".
     iApply ("HK" with "[%] Hl [Hib] Hcur Ha Hc"); [split; [xkeep | exact E45] | by iSplit].
-  - iApply (wp_getopt_long_only w0 registry ge (ks ++ List.map TAtom ["v2"; "v12"; "chk2"; "chk20"]%string) _ i n c lonly po so b r av ar ps s
+  - iApply (wp_getopt_long_only (ks ++ List.map TAtom ["v2"; "v12"; "chk2"; "chk20"]%string) _ i n c lonly po so b r av ar ps s
               with "[Hws] Hpo Hl [Hib] Hcur Ha Hc Hs [HL]");
       [ unfold avoids; rewrite forallb_app; apply andb_true_intro; split; [exact Hklo | vm_compute; reflexivity] | exact Hg | exact Hgn | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove
       | lk_prove | lia | lia | exact Hlen | exact Hs0 | exact Hs1 | exact E45

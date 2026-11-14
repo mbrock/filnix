@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Once stdout has a buffer, an overflow either stores the next byte
     or flushes the pending bytes first. This proof connects that
     concrete overflow rule to the buffer and field predicates used by
@@ -20,17 +21,15 @@ Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld Fil
 Import LibioXsputnSetp.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write))
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
   (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
+  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
 
-(** The program logic uses the same OS world as the overflow proof. *)
-Local Instance hi_buffered_overflow_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Overflow preserves the stronger output fields and every owned

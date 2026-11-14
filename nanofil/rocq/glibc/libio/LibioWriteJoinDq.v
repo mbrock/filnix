@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A stream can ask glibc to write without changing thread cancellation
     state. Both write branches must preserve the same bytes and stream
     fields before the loop can continue. This file proves that they do,
@@ -26,15 +27,13 @@ Definition fw_L16 : block := Eval vm_compute in
 
 Import LibioWriteCallDq LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
 
-(** Both branches use the same OS interpretation. *)
-Local Instance write_join_dq_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The loop receives its write result in the same variable after either
@@ -68,7 +67,7 @@ Proof.
   intros Hfb Hal Hend Hfreg Hcalls Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".
   destruct Hcalls as [Hf2 | [Hf2 Hnocancel]].
-  - iApply (wp_file_write_call_dq w0 registry ge Hreg Hext Hwrite
+  - iApply (wp_file_write_call_dq Hreg Hext
       fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr"); try assumption.
     iNext. iIntros (e' k (Hsame & Hchk & Hresult & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     assert (Hk64 : 0 <= k < 2 ^ 64) by (unfold file_size in Hend; lia).
@@ -80,7 +79,7 @@ Proof.
     + lookups. reflexivity.
     + lookups. rewrite Z.mod_small; [reflexivity | exact Hk64].
     + exact Hk.
-  - iApply (wp_file_write_call_nocancel_dq w0 registry ge Hreg Hext Hnocancel
+  - iApply (wp_file_write_call_nocancel_dq Hreg Hext Hnocancel
       fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr"); try assumption.
     iNext. iIntros (e' k (Hsame & Hchk & Hresult & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     assert (Hk64 : 0 <= k < 2 ^ 64) by (unfold file_size in Hend; lia).

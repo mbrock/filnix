@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf's staged-byte overflow path either records failure or selects its
     next buffer and returns. A heap-backed stream supplies the storage needed
     for selection, even when overflow changes its write pointers.
@@ -23,16 +24,17 @@ Open Scope Z_scope.
 
 Import PrintfStreamHeap LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Local Instance heap_caller_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (vb : Z) (self : ptr) (mode flags2 : Z) (held : option Z) (E : iProp Σ).
-Context (Hoverflow : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
-Context (Hswitch : find_fn ge (TAtom "__printf_buffer_to_file_switch") =
-  Some (Defined glibc___printf_buffer_to_file_switch)).
+Context (vb : Z)
+  (self : ptr)
+  (mode flags2 : Z)
+  (held : option Z)
+  (E : iProp Σ).
+Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
 Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
   (fun fp => printf_heap_stream w0 vb self fp mode flags2 held) E).
 
@@ -68,9 +70,9 @@ Proof.
     iNext. iIntros (r Hr) "HF HE".
     iApply ("HK" $! r with "[%] HF [HE Hb Hp He]"); [done | iFrame]. }
   iIntros "Hb Hfp Hch Hm HF HE Hbase Hptr Hend Hfail Hselect".
-  iApply (PrintfBufferOverflowCaller.wp_printf_overflow_caller w0 registry ge
+  iApply (PrintfBufferOverflowCaller.wp_printf_overflow_caller
     (fun fp => printf_heap_stream w0 vb self fp mode flags2 held)
-    (E ∗ pcell bb 0 oldbase ∗ pcell bb 8 oldptr ∗ pcell bb 16 oldend) Hoverflow Hframed
+    (E ∗ pcell bb 0 oldbase ∗ pcell bb 8 oldptr ∗ pcell bb 16 oldend) Hframed
     e from bb breg fb ch bufmode with "Hb Hfp Hch Hm HF [HE Hbase Hptr Hend] [Hfail] [Hselect]");
     try assumption; try lia.
   - iIntros "HF".
@@ -80,7 +82,7 @@ Proof.
   - iIntros "Hb Hfp Hch Hm HF (HE & Hbase & Hptr & Hend)".
     iApply ("Hfail" with "Hb Hfp Hch Hm HF HE Hbase Hptr Hend").
   - iIntros (e' Hv0') "Hb Hfp Hch Hm HF (HE & Hbase & Hptr & Hend)".
-    iApply (PrintfBufferOverflowHeapSwitch.wp_printf_overflow_heap_switch w0 registry ge Hswitch
+    iApply (PrintfBufferOverflowHeapSwitch.wp_printf_overflow_heap_switch
       e' (Some (TAtom "L74")) bb breg vb self (mkPtr fb (Obj fb)) mode flags2 held
       with "Hb Hfp HF Hbase Hptr Hend"); try assumption.
     iNext. iIntros (db k eo) "Hb Hfp HF Hbase Hptr Hend".

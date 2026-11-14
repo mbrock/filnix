@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file shows that `c: _IO_cleanup ()` behaves at exit as
     ExitRunTail.v's [cleanup_rule] says, for the streams still open,
     with no premise left about the functions it calls.
@@ -32,14 +33,12 @@ Open Scope Z_scope.
 
 Import LibioCleanup LibioCleanupPass LibioCleanupLock LibioCleanupStart LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance cleanup_exit_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -49,7 +48,7 @@ Lemma push_spec_holds : push_spec w0 registry ge.
 Proof.
   intros fr cb creg pv xs Φ Hfr Hcb Hcal Hcend Hcreg Hxs.
   iIntros "Htcb Hcl Hc24 Hc16 HK".
-  iApply (SysCleanup.wp_glibc___libc_cleanup_push_defer w0 registry ge Hreg Hext fr cb creg 0 pv xs
+  iApply (SysCleanup.wp_glibc___libc_cleanup_push_defer Hreg Hext fr cb creg 0 pv xs
             with "Htcb Hcl Hc24 Hc16");
     [rewrite Z.add_0_r; exact Hfr | lia | lia | rewrite Z.add_0_r; exact Hcal | lia | lia | exact Hxs |].
   iNext. iIntros "Htcb Hcl Hc24 Hc16". iEval (rewrite Z.add_0_r) in "Htcb".
@@ -63,7 +62,7 @@ Proof.
   iIntros "Htcb Hcl Hcp Hct HK".
   assert (E : mkPtr cb (Obj cb) = mkPtr (cb + 0) (Obj cb)) by (rewrite Z.add_0_r; reflexivity).
   iEval (rewrite E) in "Htcb".
-  iApply (SysCleanupPop.wp_glibc___libc_cleanup_pop_restore w0 registry ge Hreg Hext fr cb creg 0
+  iApply (SysCleanupPop.wp_glibc___libc_cleanup_pop_restore Hreg Hext fr cb creg 0
             with "Htcb Hcl Hcp Hct");
     [rewrite Z.add_0_r; exact Hfr | lia | lia | rewrite Z.add_0_r; exact Hcal | lia | lia |].
   iNext. iIntros "Htcb Hcl Hcp Hct". iApply ("HK" with "Htcb Hcl Hcp Hct").
@@ -84,7 +83,7 @@ Lemma wp_glibc__IO_cleanup_exit fr (P : ptr -> iProp Σ) fs sb sreg fcp Φ :
      ([∗ list] g ∈ fs, stream_life g ∗ exit_stream true g) -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hpush Hpop Hflush. apply (wp_glibc__IO_cleanup w0 registry ge Hreg Hext Hpush Hpop Hflush).
+  intros Hpush Hpop Hflush. apply (wp_glibc__IO_cleanup Hreg Hext).
   - exact push_spec_holds.
   - exact pop_spec_holds.
 Qed.
@@ -122,7 +121,7 @@ Lemma cleanup_rule_io (P : ptr -> iProp Σ) fs sb sreg fcp :
 Proof.
   intros Hbody Hfc Hfcr. iIntros (f e ls lab d rest j Ψ) "(#Hs & Htcb & Hio & Hfs) HK".
   iApply wp_call_bind; [reflexivity | exact Hcl | reflexivity |]. iNext.
-  iApply (wp_glibc__IO_cleanup_exit w0 glibc_os_registry ge holds_os_glibc Hext with "Hs Htcb Hio Hfs");
+  iApply (wp_glibc__IO_cleanup_exit (glibc_program := program_of w0 glibc_os_registry ge) holds_os_glibc Hext with "Hs Htcb Hio Hfs");
     [exact Hpush | exact Hpop | exact Hflush | exact Hbody | reflexivity | exact Hfc | exact Hfcr |].
   iNext. iIntros (r Hr) "_ _ _". resume. iApply "HK".
 Qed.
@@ -135,7 +134,7 @@ Lemma cleanup_rule_exit fs sb sreg fcp :
                            [∗ list] g ∈ fs, stream_life g ∗ exit_stream false g).
 Proof.
   intros Hfc Hfcr. apply (cleanup_rule_io (exit_stream false) fs sb sreg fcp); [|exact Hfc | exact Hfcr].
-  apply (flush_body_exit w0 glibc_os_registry ge holds_os_glibc Hext).
+  apply (flush_body_exit (glibc_program := program_of w0 glibc_os_registry ge) holds_os_glibc Hext).
 Qed.
 
 End exit.

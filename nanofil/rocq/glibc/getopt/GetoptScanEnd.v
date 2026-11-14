@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** After it tidies the argument vector, glibc's scanner decides what the
     argument at the public index is. It may find no argument left, a
     nonoption, or an option. An argument is a nonoption when it does not
@@ -47,14 +48,11 @@ Import GetoptReturn GetoptExchange GetoptInitialize GetoptState FileInv FileInv.
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
 
+Import ProgramAbbreviations.
 Section scan.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance scan_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -124,7 +122,7 @@ Proof.
   check "Hl". load_s32_using ltac:(arith) "Hl Hib". step.
   rewrite (Z.mod_small i (2 ^ 32)); [|lia]. rewrite (Z.mod_small n (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec i n) as [Ein | Ein]; close_br.
-  - iApply (wp_getopt_argv_end w0 registry ge ks _ _ i f l b r with "Hl [Hib] [Hfb] [Hlab] [Hab Hob Ha Hc HK]");
+  - iApply (wp_getopt_argv_end ks _ _ i f l b r with "Hl [Hib] [Hfb] [Hlab] [Hab Hob Ha Hc HK]");
       [exact Hkn | lk_prove | lk_prove | lk_prove | lk_prove | lia | lia | lia | lia | by iSplit | by iSplit | by iSplit |].
     iIntros (e' fr Hk') "Hl Hi Hf Hla". iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl Hi Hab [Hob] Hf Hla Ha Hc"); [| by iSplit].
@@ -152,7 +150,7 @@ Proof.
       with "[HK]" as "HL".
     { iSplit; [|iDestruct "HK" as "(_ & _ & _ & HK)"; iExact "HK"].
       iIntros (e2 fr (Hk & H2 & H12 & H0 & H1 & H2' & H100)) "Hl Hib Hab Hob Hfb Hlab Ha Hc".
-      iApply (wp_getopt_nonopt w0 registry ge ks e2 fr i n o a b r av ar ps
+      iApply (wp_getopt_nonopt ks e2 fr i n o a b r av ar ps
                 with "Hl [Hib] Hab [Hob] Ha Hc Hs [HK Hfb Hlab]");
         [ exact Hkn | exact H2 | exact H12 | exact H0 | exact H1 | exact H2' | exact H100 | lia | lia
         | exact Hlen | lia | lia | lia | lia | lia | lia | lia | lia | by iSplit | by iSplit |].
@@ -165,7 +163,7 @@ Proof.
           [split; [eapply keeps_trans; [exact Hk | exact Hk'] | lia] | by iSplit | by iSplit]. }
     step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
     iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-    iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+    load_pointer_dq "Ha Hcj Hcapq" by arith.
     iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj").
     iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
     rdchr "Hws" q s 0%nat. step.
@@ -178,7 +176,7 @@ Proof.
     pose proof (dash_len s E45) as Hs1.
     step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
     iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-    iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+    load_pointer_dq "Ha Hcj Hcapq" by arith.
     iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj").
     step. norm. iClear "Hbl Hbt". clear Hcap Hb0' Hbq Hbe Hbr.
     iDestruct (ws_byte q s 1 with "Hws") as (bb1 breg1) "(%Hbb1 & #Hbl & #Hbt)"; [lia|].
@@ -187,8 +185,7 @@ Proof.
     iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
       [reflexivity | vx | exact Hcap | arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | arith |].
     iNext; iIntros "_".
-    iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-      [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |].
+    load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by arith.
     iNext; iIntros "_ _". step. step. step.
     pose proof (sbyte_range s 1 Hch) as Hs1'. rewrite chr_cmp; [|lia|lia].
     iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte s 1) 0) as [E0 | E0]; close_br.

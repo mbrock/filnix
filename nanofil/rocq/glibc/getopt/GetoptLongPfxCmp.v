@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no entry whose name equals the
     word's name, it looks for entries whose names start with it. A
     second such entry makes the word ambiguous unless it means the same
@@ -63,21 +64,11 @@ Ltac pcmp_fold L B := cbn [edge_label]; lazymatch goal with |- environments.envs
 Ltac pcmp_br := iApply wp_branch; [vx | iNext];
   match goal with |- context [edge_label (if ?c then _ else _)] => destruct c end; cbn [edge_label].
 
-Section cmp.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the parser's safepoints. *)
-Local Instance cmp_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance cmp_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
-(** This notation selects expressions of the linked language. *)
-Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** To read a flag pointer, the parser needs a share of the lifetime of
-    the integer it points at. The caller owns each flag target in F.
-    One target can lend its lifetime for the read and take it back
-    afterwards. A null flag needs no lifetime. *)
+Import ProgramAbbreviations.
+Section cmp_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
 Lemma flag_capq F f :
   f = null \/ f ∈ F ->
   flags_own F ⊢ ∃ reg, ⌜0 <= ptr_addr f < 2 ^ 64⌝ ∗ live_capq (DfracOwn 1) (ptr_cap f) reg ∗
@@ -92,6 +83,18 @@ Proof.
     iExists freg. iSplit; [iPureIntro; lia|]. rewrite Hfc0. iFrame "Hfll".
     iIntros "Hfll". iSplit; [done|]. iApply "HF". iExists fv, fb, freg. iFrame. done.
 Qed.
+End cmp_values.
+Section cmp.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the parser's safepoints. *)
+Local Instance cmp_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** This notation selects expressions of the linked language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** To read a flag pointer, the parser needs a share of the lifetime of
+    the integer it points at. The caller owns each flag target in F.
+    One target can lend its lifetime for the read and take it back
+    afterwards. A null flag needs no lifetime. *)
 
 (** The parser has found a second entry y at index k whose name starts
     with the word's name, after the first such entry x at index j. In
@@ -137,16 +140,13 @@ Proof.
       (Exec (TAtom "L142") (b_insts plo_blk142) (b_jump plo_blk142))) : gexpr) {{ Φ }})%I with "[H155]" as "H142".
   { iIntros (e2 (Hk2 & H82 & H32 & Hc82 & c & Hc)) "HF". cbn [b_insts b_jump plo_blk142]. pcmp_br.
     - step. step.
-      iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-        [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-      iApply (wp_raw_load_sub_bytes_dq with "Htl Hvxb");
-        [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+      check_read_dq "Htl" by rawa; iNext; iIntros "_".
+      load_bytes_dq "Htl Hvxb" decode (apply load_sw_int; assumption) by rawa.
       iNext; iIntros "_ _". step.
-      iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+      iApply (wp_half_check_read_dq with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
       iNext; iIntros "_".
-      iApply (wp_raw_load_sub_bytes_dq with "Htl Hvyb");
-        [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+      load_bytes_dq "Htl Hvyb" decode (apply load_sw_int; assumption) by rawa.
       iNext; iIntros "_ _". step. step. step.
       pcmp_fold "L155" plo_blk155. iApply ("H155" with "[%] HF"). split; [xkeep | eexists; lk_prove].
     - step. pcmp_fold "L155" plo_blk155. iApply ("H155" with "[%] HF"). split; [xkeep | eexists; lk_prove]. }
@@ -158,31 +158,27 @@ Proof.
       (Exec (TAtom "L131") (b_insts plo_blk131) (b_jump plo_blk131))) : gexpr) {{ Φ }})%I with "[H142]" as "H131".
   { iIntros (e2 (Hk2 & H82 & H32 & Hc82 & c & Hc)) "HF". cbn [b_insts b_jump plo_blk131]. pcmp_br.
     - step. step.
-      iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-        [reflexivity | vx | exact Htc | rawa | rawa | al8 |]; iNext; iIntros "_".
+      check_read_dq "Htl" by first [rawa | al8]; iNext; iIntros "_".
       iDestruct (flag_capq with "HF") as (fr) "(%Hfr & Hcap & HF)"; [exact Hfx|].
-      iApply (wp_raw_load_pointer_dq with "Htl Hfxl Hcap"); [reflexivity | vx | exact Htc | rawa | al8 | exact Hfr |].
+      load_pointer_dq "Htl Hfxl Hcap" by first [rawa | al8].
       iNext. iIntros "_ _ Hcap". iSpecialize ("HF" with "Hcap"). step.
-      iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+      iApply (wp_half_check_read_dq with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | al8 |].
       iNext; iIntros "_".
       iDestruct (flag_capq with "HF") as (fr') "(%Hfr' & Hcap & HF)"; [exact Hfy|].
-      iApply (wp_raw_load_pointer_dq with "Htl Hfyl Hcap"); [reflexivity | vx | exact Htc | rawa | al8 | exact Hfr' |].
+      load_pointer_dq "Htl Hfyl Hcap" by first [rawa | al8].
       iNext. iIntros "_ _ Hcap". iSpecialize ("HF" with "Hcap"). step. step. step. step. step. pcmp_fold "L142" plo_blk142.
       iApply ("H142" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove].
     - step. pcmp_fold "L142" plo_blk142. iApply ("H142" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove]. }
   step. pcmp_br.
   - step. step.
-    iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-      [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-    iApply (wp_raw_load_sub_bytes_dq with "Htl Hhxb");
-      [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+    check_read_dq "Htl" by rawa; iNext; iIntros "_".
+    load_bytes_dq "Htl Hhxb" decode (apply load_sw_int; assumption) by rawa.
     iNext; iIntros "_ _". step.
-    iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+    iApply (wp_half_check_read_dq with "Htl");
       [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
     iNext; iIntros "_".
-    iApply (wp_raw_load_sub_bytes_dq with "Htl Hhyb");
-      [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+    load_bytes_dq "Htl Hhyb" decode (apply load_sw_int; assumption) by rawa.
     iNext; iIntros "_ _". step. step. step.
     pcmp_fold "L131" plo_blk131. iApply ("H131" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove].
   - step. pcmp_fold "L131" plo_blk131. iApply ("H131" with "[%] HF"). split; [xkeep|]. repeat split; [lk_prove | lk_prove | lk_prove | eexists; lk_prove].

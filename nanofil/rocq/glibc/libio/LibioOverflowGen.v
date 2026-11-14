@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: __overflow` (LibioGenCode.v), which glibc's
     `c: putc` and `c: _IO_default_xsputn` call when a stream has no
     room ([wp_glibc___overflow]). A stream with no orientation becomes
@@ -26,15 +27,13 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_new_file_overflow` at the symbol the
     jump table's overflow slot holds. *)
 Context (Hovf : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow).
 
-Local Instance overflow_gen_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: __overflow(fp, ch)` on a narrow or unoriented stream sets
@@ -60,13 +59,13 @@ Proof.
   unfold io_vtables_size in Hvend.
   step. adv. load_s32_group "Hl Hmb". step. destruct Hmd as [-> | ->]; branch.
   1: adv; load_s32_group "Hl Hmb"; step; branch; adv;
-    iApply (wp_raw_store_w with "Hl Hmb"); [vx | vx | reflexivity | ar | reflexivity | wi_store |];
+    store_word "Hl Hmb" by (ar) preserving wi_store;
     iNext; iIntros "Hl Hmb"; adv; assert (Hm1 : 0 <= 4294967295 < 2 ^ 32) by lia; load_s32_group "Hl Hmb"; step.
   all: adv; iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
   all: iNext; iIntros "Hl Hvtp #Hvl'"; step; step; step; step; step; branch_as true.
   all: step; step; norm.
-  all: iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
+  all: check_read_dq "Hvl'" by ar.
   all: iNext; iIntros "_".
   all: iApply (wp_raw_load_pointer_dq with "Hvl' Hso Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hovf) |].

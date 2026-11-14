@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Some arguments end one call of glibc's scanner before it parses an
     option. When no argument is left, the scanner points the public
     index at the first pending nonoption and returns -1. A nonoption at
@@ -47,14 +48,11 @@ Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
 
+Import ProgramAbbreviations.
 Section returns.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance return_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance return_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -82,7 +80,7 @@ Proof.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec f l) as [Efl | Efl]; close_br.
   - iApply ("HK" with "[%] Hl [Hib] [Hfb] [Hlab]"); [xkeep | by iSplit | by iSplit | by iSplit].
   - step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". check "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hib" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step.
     iApply ("HK" with "[%] Hl [Hib] [Hfb] [Hlab]"); [xkeep | | by iSplit | by iSplit].
     iSplit; [iPureIntro; lia|]. rewrite (Z.mod_small f (2 ^ 32)); [|lia]. iAssumption.
@@ -131,13 +129,12 @@ Proof.
   - iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl [Hib] Hab [Hob] Ha Hc"); [split; [xkeep | lia] | by iSplit | by iSplit].
   - step. step. norm. load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hib" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step. step. step. idx i. check "Ha".
     iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-    iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq");
-      [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+    load_pointer_dq "Ha Hcj Hcapq" by arith.
     iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
+    store_pointer "Hl Hab" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hab". iDestruct "HK" as "[_ HK]".
     iApply ("HK" with "[%] Hl [Hib] [Hab] [Hob] Ha Hc");
       [ split; [xkeep | lia] | iSplit; [iPureIntro; lia | iAssumption]

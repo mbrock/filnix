@@ -20,7 +20,7 @@
     [wp_check_read_dq] to verify read checks against fractional
     liveness tokens. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -265,14 +265,14 @@ Lemma wp_glibc_mb_cur_max tb treg lc lb lreg cc cb creg v dq1 dq2 dq3 dq4 dq5 dq
 Proof.
   intros Hs Hlc Hcc Ht0 Ht8 Htb Hl0 Hl8 Hlb Hc0 Hcb.
   iIntros "(Ht & Htc & Hl & Hlc & Hc & Hv) HΦ". step. step_global Hs.
-  iApply (wp_check_read_dq with "Ht"); [reflexivity | reflexivity | left; reflexivity | arith | arith | arith |].
+  check_read_dq "Ht" by arith.
   nx. iIntros "Ht".
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Ht Htc [Hl]");
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith | |].
   { destruct Hlc as [-> | ->]; iExact "Hl". }
   nx. iIntros "Ht Htc Hl".
   iAssert (liveq dq3 lb lreg) with "[Hl]" as "Hl"; [destruct Hlc as [-> | ->]; iExact "Hl"|].
-  iApply (wp_check_read_dq with "Hl"); [reflexivity | reflexivity | exact Hlc | arith | arith | arith |].
+  check_read_dq "Hl" by arith.
   nx. iIntros "Hl".
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Hl Hlc [Hc]");
     [reflexivity | reflexivity | exact Hlc | arith | arith | arith | |].
@@ -280,7 +280,7 @@ Proof.
   nx. iIntros "Hl Hlc Hc".
   iAssert (liveq dq5 cb creg) with "[Hc]" as "Hc"; [destruct Hcc as [-> | ->]; iExact "Hc"|].
   step. step.
-  iApply (wp_check_read_dq with "Hc"); [reflexivity | reflexivity | exact Hcc | arith | arith | arith |].
+  check_read_dq "Hc" by arith.
   nx. iIntros "Hc".
   iApply (wp_raw_load_sub_read_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 160 with "Hc Hv");
     [reflexivity | reflexivity | reflexivity | exact Hcc | arith |].
@@ -319,7 +319,7 @@ Proof.
   destruct p as [a c]. cbn [ptr_addr ptr_cap]. intros Hc -> Ha Ho Hend Hlen.
   iIntros "Hl Hb HΦ". step. step. step. step.
   iApply wp_branch; [reflexivity|]. nx. simp. step.
-  iApply (wp_check_read_dq with "Hl"); [reflexivity | reflexivity | exact Hc | arith | arith | arith |].
+  check_read_dq "Hl" by arith.
   nx. iIntros "Hl".
   iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ o with "Hl Hb");
     [reflexivity | reflexivity | rewrite Hlen; reflexivity | reflexivity | exact Hc | arith |].

@@ -286,6 +286,40 @@ Ltac check H :=
   | _ => fail "check: expected a check, half check, or renew"
   end.
 
+(** ## Applying memory rules
+
+    A load or store needs facts about its address, alignment, and owned memory.
+    Each wrapper supplies the fixed checks and uses the caller's arithmetic solver
+    for addresses. A failed check reports its position before the [[separation-logic]] proof continues. *)
+
+(** This tactic requires a side condition to close and identifies it when the supplied proof fails. *)
+Ltac memory_condition wrapper position proof :=
+  first [solve [proof] | fail 1 wrapper "side condition" position].
+
+(** This wrapper loads a pointer using fractional ownership of the cells and object lives. *)
+Tactic Notation "load_pointer_dq" constr(H) "by" tactic3(side) :=
+  iApply (wp_raw_load_pointer_dq with H);
+    [memory_condition "load_pointer_dq" 1 ltac:(reflexivity) |memory_condition "load_pointer_dq" 2 ltac:(vx)
+    |memory_condition "load_pointer_dq" 3 ltac:(first [eassumption | left; reflexivity | right; reflexivity])
+    |memory_condition "load_pointer_dq" 4 side |memory_condition "load_pointer_dq" 5 side
+    |memory_condition "load_pointer_dq" 6 ltac:(first [eassumption | solve [lia] | side]) |].
+
+(** This wrapper stores a pointer and proves that the store preserves the world invariant. *)
+Tactic Notation "store_pointer" constr(H) "by" tactic3(side) "preserving" tactic3(world) :=
+  iApply (wp_raw_store_pointer with H);
+    [memory_condition "store_pointer" 1 ltac:(vx) |memory_condition "store_pointer" 2 ltac:(vx)
+    |memory_condition "store_pointer" 3 ltac:(reflexivity)
+    |memory_condition "store_pointer" 4 side |memory_condition "store_pointer" 5 side
+    |memory_condition "store_pointer" 6 world |].
+
+(** This wrapper loads a pointer using full ownership of its cell and object lives. *)
+Tactic Notation "load_pointer" constr(H) "by" tactic3(side) :=
+  iApply (wp_raw_load_pointer with H);
+    [memory_condition "load_pointer" 1 ltac:(reflexivity) |memory_condition "load_pointer" 2 ltac:(vx)
+    |memory_condition "load_pointer" 3 ltac:(reflexivity)
+    |memory_condition "load_pointer" 4 side |memory_condition "load_pointer" 5 side
+    |memory_condition "load_pointer" 6 ltac:(first [eassumption | solve [cbn; lia] | side]) |].
+
 (** ## Concrete executions
 
     A proof on fixed input data can compute each updated environment instead of keeping symbolic expressions.

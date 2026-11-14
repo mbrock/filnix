@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The write side of a stream, as the string output functions
     `c: _IO_default_xsputn`, `c: _IO_new_file_xsputn` and `c: puts`
     see it, and the call of the jump table's overflow they make.
@@ -168,27 +169,21 @@ Proof. reflexivity. Qed.
 
 End buf.
 
-Section ovf.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section ovf_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance buf_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** What `c: _IO_new_file_overflow(f, ch)` returns: ch, or 0 when ch
-    is `c: EOF` and the flush succeeded, or `c: EOF` on failure. *)
 Definition ovf_ret (ch r : Z) : Prop := r = 2 ^ 32 - 1 \/ r = (if ch =? 2 ^ 32 - 1 then 0 else ch).
-
-(** The call `c: _IO_new_file_overflow(f, ch)` of a byte ch or of
-    `c: EOF`, through the jump table of a narrow stream: over the
-    stream's life, its jump table pointer, its buffer pointers and
-    buffer ([wbuf]) and the rest of it, os fb nb, it returns as
-    [ovf_ret] says. It leaves an allocated buffer even when output
-    fails, so callers can retain that fact without assuming success. *)
 Definition overflow_spec (os : Z -> option (Z * Z) -> iProp Σ) : Prop :=
   forall fr fb freg nb wp we ch vb vreg Φ,
   call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
@@ -200,5 +195,21 @@ Definition overflow_spec (os : Z -> option (Z * Z) -> iProp Σ) : Prop :=
        live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
        wbuf fb nb' wp' we' -∗ os fb nb' -∗ Φ (Ret (WInt r))) -∗
     WP (ERun fr : sexpr) {{ Φ }}.
+End ovf_values.
+Section ovf.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** What `c: _IO_new_file_overflow(f, ch)` returns: ch, or 0 when ch
+    is `c: EOF` and the flush succeeded, or `c: EOF` on failure. *)
+
+(** The call `c: _IO_new_file_overflow(f, ch)` of a byte ch or of
+    `c: EOF`, through the jump table of a narrow stream: over the
+    stream's life, its jump table pointer, its buffer pointers and
+    buffer ([wbuf]) and the rest of it, os fb nb, it returns as
+    [ovf_ret] says. It leaves an allocated buffer even when output
+    fails, so callers can retain that fact without assuming success. *)
 
 End ovf.

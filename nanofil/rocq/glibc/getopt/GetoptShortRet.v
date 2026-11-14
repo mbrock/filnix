@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A short option ends glibc's scanner in one of two returns. A
     character that the option string does not name, or a colon or a
     semicolon, is an unknown option: the scanner records it as the bad
@@ -48,14 +49,11 @@ Qed.
 (** The tail module supplies the report rule, the argument vector and its tactics. *)
 Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section ret.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance ret_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance ret_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -95,13 +93,13 @@ Proof.
     with "[Hl Hoob HK]" as "HL492".
   { iIntros (e1 fr1 (Hk1 & H12' & H455' & Hc0')) "Ha Hcl HG".
     step. step. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    store_word "Hl Hoob" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hoob". rewrite (Z.mod_small c (2 ^ 32)); [|lia].
     iApply ("HK" with "[%] Hl [Hoob] Ha Hcl HG"); [xkeep | by iSplit]. }
   step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   - iApply ("HL492" with "[%] Ha Hcl HG"). split; [apply keeps_refl|]. split; [exact H12|]. split; assumption.
-  - iApply (wp_getopt_diag_unknown w0 registry ge (tail_keys ++ ks) with "Hsl Hsc Ha Hcl Hs HG [HL492]");
+  - iApply (wp_getopt_diag_unknown (tail_keys ++ ks) with "Hsl Hsc Ha Hcl Hs HG [HL492]");
       [rewrite avoids_app_l; rewrite Hksd; vm_compute; reflexivity | exact Hrule | exact Hse | exact Hmid | lk_prove
       | lk_prove | exact Hc | exact Hse0 | exact Hsea | exact Hsee | exact Hser | exact Hav | exact Hala | exact Hda
       | exact Hra | exact Hps |].

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The orientation in `c: puts(s)` (LibioPutsCode.v,
     libio/ioputs.c), with stdout's lock held:
     `c: _IO_fwide(stdout, -1)` makes an unoriented stream narrow,
@@ -32,10 +33,12 @@ Definition oriented (mode : Z) : Z := if mode =? 0 then 2 ^ 32 - 1 else mode.
 
 Import LibioPutsCall LibioPutsUnlock LibioPutsLock LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (vb : Z) (vreg : region) (Rx : iProp Σ).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (vb : Z)
+  (vreg : region)
+  (Rx : iProp Σ).
 Context (F : ptr -> Z -> option Z -> iProp Σ).
 Context (G : list Z -> ptr -> Z -> option Z -> iProp Σ).
 Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
@@ -43,9 +46,6 @@ Context (Hwide : forall s fp held, F fp 1 held ⊢ G s fp 1 held).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hxs : xsputn_spec_for w0 registry ge F G Rx).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance puts_mode_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -74,8 +74,8 @@ Proof.
   iDestruct (Hopen with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.
   unfold file_size in Hfend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   iDestruct "Hmd" as "[%Hmr Hmd]".
   (* L109: the mode. *)
   step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl". load_s32 "Hl" "Hmd". step.
@@ -87,7 +87,7 @@ Proof.
     load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! (2 ^ 32 - 1) (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [left; split; [right; reflexivity | reflexivity]|].
-    iApply (wp_puts_L162_for w0 registry ge vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try close_side.
+    iApply (wp_puts_L162_for vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try close_side.
     iNext. iIntros (e' c [Hsame Hc]) "Hso Hsoc Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     iApply ("HK" with "[%] Hso Hsoc Hf Hstr HRx"). split; [|split; [exact Hc | reflexivity]].
     rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. rewrite (Hsame x Hx). destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity.
@@ -95,7 +95,7 @@ Proof.
     branch. step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl". load_s32 "Hl" "Hmd". step. branch.
     iDestruct ("Hcl" $! (2 ^ 32 - 1) (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [left; split; [right; reflexivity | reflexivity]|].
-    iApply (wp_puts_L162_for w0 registry ge vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try close_side.
+    iApply (wp_puts_L162_for vb vreg Rx F G Hopen Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try close_side.
     iNext. iIntros (e' c [Hsame Hc]) "Hso Hsoc Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
     iApply ("HK" with "[%] Hso Hsoc Hf Hstr HRx"). split; [|split; [exact Hc | reflexivity]].
     rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx. rewrite (Hsame x Hx). destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity.
@@ -116,7 +116,7 @@ End rules.
     postcondition of that step. *)
 Definition wp_puts_L109 `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
     w0 registry ge vb vreg Rx Hxs_fn (Hxs : xsputn_spec w0 registry ge vb Rx) :=
-  wp_puts_L109_for w0 registry ge vb vreg Rx (file_at vb (ow_self w0))
+  program_call(wp_puts_L109_for (glibc_program := program_of w0 registry ge) vb vreg Rx (file_at vb (ow_self w0))
     (fun _ => file_at vb (ow_self w0)) (file_at_open vb (ow_self w0))
-    (fun _ _ _ => reflexivity _) Hxs_fn Hxs.
+    (fun _ _ _ => reflexivity _) Hxs_fn Hxs).
 

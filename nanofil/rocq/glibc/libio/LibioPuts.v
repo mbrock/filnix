@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The triple of `c: puts(s)` (LibioPutsCode.v, libio/ioputs.c)
     over a string at any share and stdout as LibioPutsInv.v's
     [file_at] has it ([wp_glibc__IO_puts]):
@@ -68,11 +69,14 @@ Ltac brz H :=
     destruct (Z.eqb_spec n 0) as [H | H] end;
   cbn [edge_label].
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (vb : Z) (vreg : region) (Rx : iProp Σ).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context (vb : Z)
+  (vreg : region)
+  (Rx : iProp Σ).
 Context (F : ptr -> Z -> option Z -> iProp Σ).
 Context (G : list Z -> ptr -> Z -> option Z -> iProp Σ).
 Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
@@ -82,9 +86,6 @@ Context (Hwide : forall s fp held, F fp 1 held ⊢ G s fp 1 held).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hxs : xsputn_spec_for w0 registry ge F G Rx).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance puts_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -120,7 +121,7 @@ Proof.
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul). injection Hfp as <-.
   iDestruct "Hlk" as (lb' lreg Hlb) "Hlk". injection Hlb as <-.
   pose proof Hul as Hul'. unfold has, io_user_lock in Hul'. apply negb_false_iff, Z.eqb_eq in Hul'.
-  iApply (wp_puts_unlock w0 registry ge with "Hs Hl [$Hfl //] Hlp Hlk"); try eassumption.
+  iApply (wp_puts_unlock with "Hs Hl [$Hfl //] Hlp Hlk"); try eassumption.
   iNext. iIntros "Hl Hfl Hlp Hlk". iApply "HK".
   iApply ("Hcl" with "Hl Hfl Hlp [Hlk]"). iExists lb, lreg. iSplit; done.
 Qed.
@@ -147,12 +148,12 @@ Proof.
   iDestruct "Hlk" as (lb' lreg Hlb) "Hlk". injection Hlb as <-.
   pose proof Hul as Hul'. unfold has, io_user_lock in Hul'. apply negb_false_iff, Z.eqb_eq in Hul'.
   (* The string measured and the lock taken. *)
-  iApply (wp_puts_start w0 registry ge Hreg Hext with "Hs Hstr Hso Hsoc Hl Hfl Hlp Hlk"); try eassumption.
+  iApply (wp_puts_start Hreg Hext with "Hs Hstr Hso Hsoc Hl Hfl Hlp Hlk"); try eassumption.
   iNext. iIntros (e (Hv0 & Hv6 & Hv12 & Hc1)) "Hstr Hso Hsoc Hl Hfl Hlp Hlk".
   iDestruct ("Hcl" $! mode (Some 0) with "[//] Hl Hfl Hlp [Hlk] Hmd Hvtp") as "Hf";
     [iExists lb, lreg; iSplit; done|].
   (* The orientation and the write. *)
-  iApply (wp_puts_L109_for w0 registry ge vb vreg Rx F G Hopen Hwide Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try eassumption.
+  iApply (wp_puts_L109_for vb vreg Rx F G Hopen Hwide Hxs_fn Hxs with "Hvt Hso Hsoc Hf Hstr HRx"); try eassumption.
   iNext. iIntros (e1 c (Hsame & Hc & Hco)) "Hso Hsoc Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   assert (Hv12' : lookup (TAtom "v12") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hc1' : lookup (TAtom "chk1") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
@@ -191,15 +192,15 @@ End rules.
 
 (** Generic streams retain their original unlock interface. *)
 Definition wp_puts_L103 `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} w0 registry ge vb :=
-  wp_puts_L103_for w0 registry ge (file_at vb (ow_self w0)) (file_at_lock vb (ow_self w0)).
+  program_call(wp_puts_L103_for (glibc_program := program_of w0 registry ge) (file_at vb (ow_self w0)) (file_at_lock vb (ow_self w0))).
 
 (** Existing callers can still use puts with a generic stream. This
     rule keeps their original precondition and postcondition unchanged. *)
 Definition wp_glibc__IO_puts `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
     w0 registry ge Hreg Hext vb vreg Rx Hxs_fn
     (Hxs : xsputn_spec w0 registry ge vb Rx) Hov_fn (Hov : overflow_spec w0 registry ge vb Rx) :=
-  wp_glibc__IO_puts_for w0 registry ge Hreg Hext vb vreg Rx (file_at vb (ow_self w0))
+  program_call(wp_glibc__IO_puts_for (glibc_program := program_of w0 registry ge) Hreg Hext vb vreg Rx (file_at vb (ow_self w0))
     (fun _ => file_at vb (ow_self w0)) (file_at_open vb (ow_self w0))
     (fun _ => file_at_lock vb (ow_self w0)) (fun _ _ _ => reflexivity _) Hxs_fn Hxs
-    (fun _ => wp_puts_L180 w0 registry ge vb Rx Hov_fn Hov).
+    (fun _ => wp_puts_L180 (glibc_program := program_of w0 registry ge) vb Rx (Hov_fn := Hov_fn) Hov)).
 

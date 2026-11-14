@@ -1,0 +1,99 @@
+{
+  "m3": {
+    "hi_atexit_initialized_entry": [],
+    "hi_atexit_never_panics": [],
+    "hello_never_panics": []
+  },
+  "m3-gc": {
+    "hi_main_wp": [],
+    "hi_exit_after_puts": []
+  },
+  "m4-copy": {
+    "printf_copy_buffer_open": [],
+    "printf_copy_buffer_close": [],
+    "printf_heap_stream_with_forget": [],
+    "printf_heap_stream_with_live": [],
+    "printf_heap_stream_live": [],
+    "hi_printf_heap_file_overflow_with": [],
+    "hi_printf_heap_file_overflow": [],
+    "copy_file_overflow": []
+  },
+  "m4-xsputn": {
+    "hi_file_write_dq": [],
+    "hi_xsputn": [],
+    "hge_xsputn": [],
+    "wp_printf_xsputn_call": [],
+    "wp_printf_xsputn_mismatch": [],
+    "wp_printf_xsputn_complete": [],
+    "wp_printf_xsputn_prelude": [],
+    "set_bit_write": []
+  },
+  "m4-switch-found": {
+    "wp_long_found": [],
+    "wp_long_pre": [],
+    "wp_long_eq": [],
+    "wp_long_req": [],
+    "wp_long_next": [],
+    "wp_long_miss_tail": [],
+    "wp_long_store": [],
+    "int_at_store": [],
+    "wp_getopt_ldiag_noarg": [],
+    "wp_getopt_ldiag_missing": [],
+    "wp_long_exact_loop": [],
+    "wp_getopt_long_scan": [],
+    "wp_long_scan_loop": [],
+    "wp_half_check_read_dq": [],
+    "wp_printf_overflow_heap_switch": []
+  },
+  "m4-caller-miss": {
+    "wp_long_miss": [],
+    "wp_long_miss_only": [],
+    "wp_long_unrec": [],
+    "wp_printf_overflow_heap_caller": []
+  },
+  "printf-AuditCaller": {
+    "wp_printf_xsputn_caller": []
+  },
+  "printf-AuditEntry": {
+    "wp_printf_xsputn_entry": []
+  },
+  "printf-AuditHeapBorrow": {
+    "printf_heap_vtable_borrow": []
+  },
+  "printf-AuditHeapSwitch": {
+    "wp_printf_xsputn_heap_switch": []
+  },
+  "printf-AuditStaging": {
+    "wp_printf_xsputn_staging": []
+  },
+  "printf-AuditSwitch": {
+    "wp_printf_xsputn_switch_null": [],
+    "wp_printf_xsputn_switch_owned": []
+  },
+  "printf-AuditOverflowEntry": {
+    "wp_printf_overflow_entry": []
+  },
+  "printf-AuditOverflowStaging": {
+    "wp_printf_overflow_staging": []
+  },
+  "DirectWrapCases": {
+    "wp_printf_buffer_flush_direct": [],
+    "direct_wrap": [],
+    "direct_control": []
+  },
+  "FullWrapCases": {
+    "wp_printf_buffer_flush_full": [],
+    "case_wrap": [],
+    "case_control": []
+  },
+  "InlineRoomWrapCases": {
+    "wp_printf_buffer_flush_inline_room": [],
+    "case_wrap": [],
+    "case_control": []
+  },
+  "InlineWrapCases": {
+    "wp_printf_buffer_flush_inline_full": [],
+    "case_wrap": [],
+    "case_control": []
+  }
+}

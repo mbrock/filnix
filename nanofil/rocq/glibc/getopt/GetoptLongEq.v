@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A long option may carry its argument after an equals sign, as in
     "--name=value". glibc's long-option parser then makes the rest of the
     word after the equals sign the argument when the option takes one.
@@ -41,14 +42,11 @@ Definition leq_keys : list name := Eval vm_compute in
 (** The required-argument module supplies the option table, the report rule and the tactics. *)
 Import GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section eq.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance eq_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance eq_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -94,15 +92,13 @@ Proof.
   iDestruct "Hhl" as "[%Hh0 Hhb]". iDestruct "Hvl" as "[%Hv0 Hvb]".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe). pose proof (eq_len_le s) as Hle.
   step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-    [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hhb");
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+  check_read_dq "Htl" by rawa; iNext; iIntros "_".
+  load_bytes_dq "Htl Hhb" decode (apply load_sw_int; assumption) by rawa.
   iNext; iIntros "_ _".
   iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small (lo_has x) (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec (lo_has x) 0) as [E0 | E0]; cbn [edge_label].
   2: { iDestruct "HK" as "[HK _]". step. step. step. check "Hl".
-       iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+       store_pointer "Hl Hab" by (StrlenLoop.arith) preserving wi_store.
        iNext. iIntros "Hl Hab". step.
        match goal with |- context [pcell b 16 ?X] =>
          replace X with (ptr_add cur (Z.of_nat (eq_len s) + 1)) by
@@ -120,19 +116,18 @@ Proof.
     with "[Hl Hoob Hab HK]" as "HL413".
   { iIntros (e1 fr1 (Hk1 & H12' & H7' & Hc0' & Hc51')) "Ha Hcl HG".
     step. step. step.
-    iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+    iApply (wp_half_check_read_dq with "Htl");
       [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
     iNext; iIntros "_".
-    iApply (wp_raw_load_sub_bytes_dq with "Htl Hvb");
-      [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+    load_bytes_dq "Htl Hvb" decode (apply load_sw_int; assumption) by rawa.
     iNext; iIntros "_ _". check "Hl".
-    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+    store_word "Hl Hoob" by (StrlenLoop.arith) preserving wi_store.
     iNext. iIntros "Hl Hoob". rewrite (Z.mod_small (lo_val x) (2 ^ 32)); [|lia].
     iApply ("HK" with "[%] Hl [Hoob] Hab Ha Hcl HG"); [split; [eapply keeps_trans; [exact Hk1|]; xkeep | exact E0] | by iSplit]. }
   step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   - iApply ("HL413" with "[%] Ha Hcl HG"). split; [xkeep|]. repeat split; lk_prove.
-  - iApply (wp_getopt_ldiag_noarg w0 registry ge (leq_keys ++ ks) with "Ht0 Hpfx Hsl Hsc Ha Hcl Hs HG [HL413]");
+  - iApply (wp_getopt_ldiag_noarg (leq_keys ++ ks) with "Ht0 Hpfx Hsl Hsc Ha Hcl Hs HG [HL413]");
       [rewrite avoids_app_l; rewrite Hksd; vm_compute; reflexivity | exact Hrule | exact Hse | exact Hmid | lk_prove
       | lk_prove | lk_prove | lk_prove | reflexivity | exact Hx | exact Hse0 | exact Hsea | exact Hsee | exact Hser
       | exact Hav | exact Hala | exact Hda | exact Hra | exact Hps |].

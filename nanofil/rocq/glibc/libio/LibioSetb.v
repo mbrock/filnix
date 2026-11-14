@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** `c: _IO_setb` (LibioReadCode.v) sets a stream's buffer. It frees
     the old buffer when the stream owns it, stores the new base and
     end, and sets `c: _IO_USER_BUF` when the caller keeps the new
@@ -61,29 +62,44 @@ Qed.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance setb_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+Definition free_rule : Prop := forall f e ls l v rest j b reg Φ,
+  arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> 0 < b < 2 ^ 64 ->
+  live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : sexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global (TAtom "free")) [Arg P v] :: rest) j)) : sexpr)
+    {{ Φ }}.
+Definition old_base (fl : Z) (ob : ptr) : iProp Σ :=
+  ⌜ob = null⌝ ∨ ∃ bb breg, ⌜ob = mkPtr bb (Obj bb) /\ r_kind breg = Heap /\ 0 < bb /\ bb < 2 ^ 64 /\
+                            Z.land fl io_user_buf = 0⌝ ∗ live bb breg.
+Lemma bytes_le_eq b o x y n : x = y -> bytes b o (le_bytes x n) -∗ bytes b o (le_bytes y n).
+Proof. intros ->. auto. Qed.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The call `c: free(p)` at any call site, p the own pointer of the
     live heap object b: b's life is given up and the rest of the block
     runs. *)
-Definition free_rule : Prop := forall f e ls l v rest j b reg Φ,
-  arg_x ge e (Arg P v) = Some (WPtr (mkPtr b (Obj b))) -> r_kind reg = Heap -> 0 < b < 2 ^ 64 ->
-  live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : sexpr) {{ Φ }} -∗
-  WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global (TAtom "free")) [Arg P v] :: rest) j)) : sexpr)
-    {{ Φ }}.
 
 (** Where `c: free` is the model's free of a heap object, [free_rule]
     holds: the model frees b, and [os_wi] keeps no piece of a heap
     object. *)
-Lemma heap_free_rule : heap_fns ge -> free_rule.
+Lemma heap_free_rule : heap_fns ge -> (free_rule w0 registry ge).
 Proof.
   intros (Hfh & Hff & Hfd & _) f e ls l v rest j b reg Φ Hx Hk Hb. iIntros "Hbl HK".
   iApply (wp_free_sym _ _ _ (TAtom "free") with "Hbl"); [reflexivity | exact Hfh | exact Hff | exact Hfd | exact Hx |
@@ -93,17 +109,12 @@ Proof.
 Qed.
 
 (** The call of `c: free` is [free_rule]'s. *)
-Context (Hfree : free_rule).
+Context (Hfree : (free_rule w0 registry ge)).
 
 (** [old_base] fl ob: the old base ob is null, or a live heap buffer
     the stream owns, `c: _IO_USER_BUF` clear in fl. *)
-Definition old_base (fl : Z) (ob : ptr) : iProp Σ :=
-  ⌜ob = null⌝ ∨ ∃ bb breg, ⌜ob = mkPtr bb (Obj bb) /\ r_kind breg = Heap /\ 0 < bb /\ bb < 2 ^ 64 /\
-                            Z.land fl io_user_buf = 0⌝ ∗ live bb breg.
 
 (** Bytes of equal values. *)
-Lemma bytes_le_eq b o x y n : x = y -> bytes b o (le_bytes x n) -∗ bytes b o (le_bytes y n).
-Proof. intros ->. auto. Qed.
 
 (** A signed 32-bit load of an owned [int_cell]'s bytes. *)
 
@@ -165,14 +176,14 @@ Proof.
   intros Hfr Hfb Hal Hend Hfreg Ha. injection Hfr as <-.
   iIntros "Hl [%Hf Hfl] Hb He Hob HK". unfold file_size in Hend. step. step. norm. check "Hl".
   iDestruct "Hob" as "[-> | (%bb & %breg & %Hbb & Hbl)]".
-  - iApply (wp_raw_load_pointer with "Hl Hb [//]"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
+  - load_pointer "Hl Hb [//]" by ar.
     iNext. iIntros "Hl Hb _". step. step. branch. step. branch.
     iApply (wp_setb_tail with "Hl [$Hfl //] Hb He HK"); try libio_side.
   - destruct Hbb as (-> & Hk & Hb0 & Hb64 & Huser).
-    iApply (wp_raw_load_pointer with "Hl Hb Hbl"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hb Hbl" by ar.
     iNext. iIntros "Hl Hb Hbl". step. step. branch_as false. step. check "Hl". load_s32_group "Hl Hfl". step. step. step.
     unfold io_user_buf in Huser. step. branch_as false. step. step.
-    iApply (wp_raw_load_pointer with "Hl Hb Hbl"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
+    load_pointer "Hl Hb Hbl" by ar.
     iNext. iIntros "Hl Hb Hbl".
     iApply (Hfree with "Hbl"); [reflexivity | exact Hk | lia |].
     iNext. step.

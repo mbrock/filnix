@@ -26,6 +26,23 @@ second argument pins the baseline for an agreed cutover. Such a run reports the
 exact revision and makes no claim that it is the latest main. Without that
 argument, the command still requires main to remain unchanged during the run.
 
+Both sides of a statement comparison must use the same runtime. For flat input,
+the command therefore compiles another copy of the baseline with an abstract
+runtime. Pass that copy to the statement checker with `--abstract-before`.
+Only the runtime binding in `Fix.v` may differ from the concrete baseline.
+The audits also compare before with after at the same runtime. Their flat query
+sources are retained in `layouts/flat`.
+
+An earlier cutover must not authorize changes in a later one. The checker ignores
+statement permissions for stages listed in `stages/landed.txt`. When stage 30 has
+landed, it checks that stage 60 leaves every compared statement unchanged. The
+tactic inventory and its minus-one rejection control still run.
+
+Another thread can run the Nix builds and site tests separately. Set
+`PE_PARENT_GATES=1` to skip those six checks and their cache preflight here.
+The report marks them `PARENT`, not `PASS`. Acceptance still requires the other
+thread's results.
+
 Only the exit statuses of these local commands count. The hosted docs and Rocq
 workflows can report success after a failed Nix build because their logging
 pipelines do not enable `pipefail`.
@@ -68,6 +85,8 @@ The full command builds a second candidate with `PE_RUNTIME=abstract`. It uses
 or depends on a file that does. Those files are compared against the concrete
 candidate, with the original functor instantiated at `InterpRuntime`. Every
 other original file must compile and compare against the abstract candidate.
+For flat input, `runtime-concrete.txt` supplies the concrete roots instead;
+importing the shared `Fix.v` does not make every file concrete.
 The report retains the dependency output, the file partition, and declaration
 counts for each runtime. Compilation success never chooses a file's runtime.
 `check.py partition ORIGINAL --output DIRECTORY` exports that same partition

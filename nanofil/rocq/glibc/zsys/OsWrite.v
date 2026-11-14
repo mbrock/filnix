@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When userland glibc writes bytes to an open file descriptor, it calls
     libpizlo's `c: long zsys_write(int fd, const void *buf, size_t size)`
     wrapper. That wrapper sits at the [[external call|contract]] boundary
@@ -140,14 +141,9 @@ Proof.
     injection He as ->; split; auto; exists fd, p, n; eexists; auto.
 Qed.
 
+Import ProgramAbbreviations.
 Section rule.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The instance [os_write_irisGS] configures Iris for the language with the
-    OS contract registry and the world interpretation [os_wi]. *)
-Local Instance os_write_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** The notation [zexpr] abbreviates expressions of the language over the
     OS contract registry. *)

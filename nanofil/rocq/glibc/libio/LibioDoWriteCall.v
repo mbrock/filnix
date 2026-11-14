@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The call of `c: _IO_new_do_write` (LibioDoWrite.v) through the
     jump table, from block `c: iw_1.L9` on ([wp_do_write_call]).
 
@@ -34,17 +35,15 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
 
 (** The caller chooses which cancellation flags its proved write rule accepts.
     This block forwards that condition without inspecting the flags itself. *)
 Context (write_ready : Z -> Prop).
 
-Local Instance do_write_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The jump table's write, as LibioWrite.v proves it
@@ -133,7 +132,7 @@ Proof.
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl"); [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file, io_vtables_size in *; lia |].
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   step. step. norm.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
+  check_read_dq "Hvl'" by ar.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hfw) |].

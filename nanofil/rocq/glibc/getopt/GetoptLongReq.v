@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A long option written without an equals sign may still require an
     argument. glibc's long-option parser then takes the next element of
     the argument vector as the argument and steps the index past it.
@@ -39,14 +40,11 @@ Definition lreq_keys : list name := Eval vm_compute in
 (** The tail module supplies both ends of the path, the option table, the report rule and the tactics. *)
 Import GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section req.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance req_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance req_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -101,10 +99,8 @@ Proof.
   iDestruct (big_sepL_lookup with "Hes") as "(_ & _ & #Hhl & _ & #Hvl)"; [exact Hx|].
   iDestruct "Hhl" as "[%Hh0 Hhb]". iDestruct "Hvl" as "[%Hv0 Hvb]".
   step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-    [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hhb");
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+  check_read_dq "Htl" by rawa; iNext; iIntros "_".
+  load_bytes_dq "Htl Hhb" decode (apply load_sw_int; assumption) by rawa.
   iNext; iIntros "_ _". step. rewrite (Z.mod_small (lo_has x) (2 ^ 32)); [|lia].
   change (1 mod 2 ^ 32) with 1.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (lo_has x) 1) as [E1 | E1]; close_br.
@@ -112,7 +108,7 @@ Proof.
   step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step.
   destruct (Z.lt_ge_cases (i + 1) n) as [Hlt | Hge].
   - brz. iDestruct "HK" as "[_ [HK _]]".
-    iApply (wp_long_next w0 registry ge _ _ _ i n with "Hl [Hib] Hab Ha Hcl Hs");
+    iApply (wp_long_next _ _ _ i n with "Hl [Hib] Hab Ha Hcl Hs");
       [exact Hks | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lia | exact Hlt | exact Hn | exact Hlen
       | exact Hb | exact Hal | exact Hend | exact Hr | exact Hav | exact Hala | exact Hda | exact Hra | by iSplit |].
     iIntros (e1) "%Hk1 Hl Hib Hab Ha Hcl".
@@ -129,7 +125,7 @@ Proof.
       WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L458") (Some fr1))) : gexpr) {{ Φ }})%I
       with "[Hl Hoo Hib Hab HK]" as "HL458".
     { iIntros (e1 fr1 (Hk1 & H12' & H4' & H7' & Hc0' & Hc58')) "Ha Hcl HG".
-      iApply (wp_long_miss_tail w0 registry ge with "Ht0 Hpo Hl Hoo");
+      iApply (wp_long_miss_tail with "Ht0 Hpo Hl Hoo");
         [exact Hks | exact H4' | exact H12' | exact H7' | exact Hc0' | exact Hc58' | reflexivity | exact Hx
         | exact Hb | exact Hal | exact Hend | exact Hr |].
       iIntros (e2 (Hk2 & H484)) "Hl Hoo".
@@ -138,7 +134,7 @@ Proof.
     step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
     destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
     + iApply ("HL458" with "[%] Ha Hcl HG"). split; [xkeep|]. repeat split; lk_prove.
-    + iApply (wp_getopt_ldiag_missing w0 registry ge (lreq_keys ++ ks) with "Ht0 Hpfx Hsl Hsc Ha Hcl Hs HG [HL458]");
+    + iApply (wp_getopt_ldiag_missing (lreq_keys ++ ks) with "Ht0 Hpfx Hsl Hsc Ha Hcl Hs HG [HL458]");
         [rewrite avoids_app_l; rewrite Hksd; vm_compute; reflexivity | exact Hrule | exact Hse | exact Hmid | lk_prove
         | lk_prove | lk_prove | lk_prove | reflexivity | exact Hx | exact Hse0 | exact Hsea | exact Hsee | exact Hser
         | exact Hav | exact Hala | lia | exact Hra | intros ->; cbn in Hlen; lia |].

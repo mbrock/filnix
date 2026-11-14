@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When stdout first switches to writing, glibc resets its read and
     write pointers to the buffer's base. It then stores or flushes the
     requested byte. This file joins the pointer-reset proofs with the
@@ -32,28 +33,28 @@ Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc
 
 (** Line-buffered streams keep the write end at the write pointer. *)
 Definition hi_ovf_L162 :=
-  LibioOverflowSetpEnd.wp_ovf_L162 w0 registry ge (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
+  program_call(LibioOverflowSetpEnd.wp_ovf_L162 (glibc_program := program_of w0 registry ge) (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf)).
 
 (** The stream starts writing at the buffer's base. *)
-Definition hi_ovf_L113_rest := LibioOverflowSetpRest.wp_ovf_L113_rest w0 registry ge hi_ovf_L162.
+Definition hi_ovf_L113_rest := program_call(LibioOverflowSetpRest.wp_ovf_L113_rest (glibc_program := program_of w0 registry ge) hi_ovf_L162).
 
 (** The stream discards its read area before writing. *)
-Definition hi_ovf_L113 := LibioOverflowSetp.wp_ovf_L113 w0 registry ge hi_ovf_L113_rest.
+Definition hi_ovf_L113 := program_call(LibioOverflowSetp.wp_ovf_L113 (glibc_program := program_of w0 registry ge) hi_ovf_L113_rest).
 
 (** A stream with a new buffer switches to writing through the proved resets. *)
 Definition hi_ovf_L35 :=
-  LibioOverflowSetpEnd.wp_ovf_L35 w0 registry ge hi_ovf_L113.
+  program_call(LibioOverflowSetpEnd.wp_ovf_L35 (glibc_program := program_of w0 registry ge) hi_ovf_L113).
 
 (** Overflow on a stream already writing uses the proved send path. *)
 Definition hi_overflow :=
-  LibioOverflow.wp_glibc__IO_new_file_overflow w0 registry ge (fun f2 => Z.land f2 2 = 0)
-    (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
+  program_call(LibioOverflow.wp_glibc__IO_new_file_overflow (glibc_program := program_of w0 registry ge) (fun f2 => Z.land f2 2 = 0)
+    (hi_ovf_L18 w0 registry ge Hreg Hext Hwrite Hfw Hdwf)).
 
 (** Overflow on an already-writing stream also supports a noncanceling backend.
     The rule still requires the concrete buffer layout, descriptor and no-append facts;
     ownership of a stream alone does not supply those facts. *)
 Definition hi_overflow_nocancel :=
-  LibioOverflow.wp_glibc__IO_new_file_overflow w0 registry ge _
-    (hi_ovf_L18_nocancel w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
+  program_call(LibioOverflow.wp_glibc__IO_new_file_overflow (glibc_program := program_of w0 registry ge) _
+    (hi_ovf_L18_nocancel w0 registry ge Hreg Hext Hwrite Hfw Hdwf)).
 
 End rules.

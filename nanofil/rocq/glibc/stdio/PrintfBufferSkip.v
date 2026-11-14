@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A failed printf buffer stops further writes and flushes before touching
     its character storage. A zero-length write also returns without reading
     its source or the buffer pointers, even when the buffer has not failed.
@@ -26,13 +27,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Buffer reads leave the concrete world interpretation unchanged. *)
-Local Instance skip_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Failure or an empty input prevents the write loop from touching either
@@ -73,9 +70,7 @@ Lemma wp_printf_buffer_flush_failed fr bb breg Φ :
 Proof.
   intros Hfr Hbb Hal Hend Hreg. injection Hfr as <-.
   iIntros "Hl [%Hm Hmode] HK". step. step. norm. check "Hl".
-  iApply (wp_raw_load_sub_bytes_dq with "Hl Hmode");
-    [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-     left; reflexivity | ar |].
+  load_bytes_dq "Hl Hmode" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Hl Hmode". step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Hl [Hmode]"). iSplit; [iPureIntro; lia|iExact "Hmode"].

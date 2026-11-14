@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** After glibc's long-option parser has accepted an option and its
     argument, it reports which option it found. It stores the option's
     index through the caller's longind pointer when that pointer is not
@@ -60,14 +61,11 @@ Definition longind_own (li : ptr) : iProp Σ := ⌜li = null⌝ ∨ ∃ v, int_a
 
 End targets.
 
+Import ProgramAbbreviations.
 Section store.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance store_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance store_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -115,18 +113,16 @@ Proof.
       WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L487") (Some fr1))) : gexpr)
         {{ Φ }})%I with "[HF HK]" as "HL487".
   { iIntros (e1 fr1 (Hk1 & H71)) "Hli". step. step.
-    iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-      [reflexivity | vx | exact Htc | rawa | rawa | al8 |]; iNext; iIntros "_".
+    check_read_dq "Htl" by first [rawa | al8]; iNext; iIntros "_".
     destruct Hf as [Hnull | Hin].
     - iApply (wp_raw_load_pointer_dq with "Htl Hfl []");
         [reflexivity | vx | exact Htc | rawa | al8 | rewrite Hnull; cbn; lia | rewrite Hnull; unfold live_capq; cbn; done |].
       iNext. iIntros "_ _ _". step. step. rewrite Hnull. unfold null; cbn [ptr_addr].
       iApply wp_branch; [vx | iNext]. close_br. step. step.
-      iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+      iApply (wp_half_check_read_dq with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
       iNext; iIntros "_". iDestruct "Hvl" as "[%Hv0 Hvb]".
-      iApply (wp_raw_load_sub_bytes_dq with "Htl Hvb");
-        [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+      load_bytes_dq "Htl Hvb" decode (apply load_sw_int; assumption) by rawa.
       iNext; iIntros "_ _". iDestruct "HK" as "[_ HK]".
       iApply ("HK" with "[%] Hli [HF]"); [split; [|split]; [xkeep | reflexivity | lk_prove] | iFrame; done].
     - apply list_elem_of_lookup_1 in Hin as [k Hk].
@@ -135,18 +131,17 @@ Proof.
       assert (Hnn : lo_flag x <> null) by (intros Heq; rewrite Heq in Hfb; unfold null in Hfb; cbn in Hfb; lia).
       iAssert (live_capq (DfracOwn 1) (ptr_cap (lo_flag x)) freg) with "[Hfll]" as "Hfcap";
         [rewrite Hfc0; iExact "Hfll"|].
-      iApply (wp_raw_load_pointer_dq with "Htl Hfl Hfcap"); [reflexivity | vx | exact Htc | rawa | al8 | lia |].
+      load_pointer_dq "Htl Hfl Hfcap" by first [rawa | al8].
       iNext. iIntros "_ _ Hfcap". step. step.
       rewrite (Z.mod_small (ptr_addr (lo_flag x)) (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
       rewrite (proj2 (Z.eqb_neq (ptr_addr (lo_flag x)) 0)); [|lia].
       iApply wp_branch; [vx | iNext]. close_br. step. step.
-      iApply (wp_raw_load_pointer_dq with "Htl Hfl Hfcap"); [reflexivity | vx | exact Htc | rawa | al8 | lia |].
+      load_pointer_dq "Htl Hfl Hfcap" by first [rawa | al8].
       iNext. iIntros "_ _ Hfcap". step.
-      iApply (wp_half_check_read_dq w0 registry ge with "Htl");
+      iApply (wp_half_check_read_dq with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
       iNext; iIntros "_". iDestruct "Hvl" as "[%Hv0 Hvb]".
-      iApply (wp_raw_load_sub_bytes_dq with "Htl Hvb");
-        [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
+      load_bytes_dq "Htl Hvb" decode (apply load_sw_int; assumption) by rawa.
       iNext; iIntros "_ _".
       iAssert (live fb freg) with "[Hfcap]" as "Hfll"; [rewrite Hfc0; iExact "Hfcap"|].
       iApply (wp_check with "Hfll"); [reflexivity | vx | exact Hfc0 | unfold raw_address; rewrite Z.mod_small; lia

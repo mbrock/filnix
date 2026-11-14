@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the tail blocks of `c: _IO_file_doallocate` (LibioDoAllocBase.v
     describes the function). Block `c: L7` calls `c: malloc` for the
     buffer and installs it with `c: _IO_setb(fp, p, p + size, 1)`;
@@ -32,21 +33,25 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
+Section rules_values.
+Definition da_L7 : block := Eval vm_compute in
+  match find_block (TAtom "L7") (fn_blocks glibc__IO_file_doallocate) with
+  | Some b => b | None => mkBlock (TAtom "L7") [] [] JRetVoid end.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The registry holds the OS contracts, and the genv's externals
     are the system calls. *)
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 (** The genv defines `c: __gnu_dev_major`. *)
-Context (Hmaj : find_fn ge (TAtom "__gnu_dev_major") = Some (Defined glibc___gnu_dev_major)).
+Context `{Hmaj : !Defines ge "__gnu_dev_major" glibc___gnu_dev_major}.
 (** The genv defines `c: __isatty_nostatus`. *)
-Context (Hisatty : find_fn ge (TAtom "__isatty_nostatus") = Some (Defined glibc___isatty_nostatus)).
+Context `{Hisatty : !Defines ge "__isatty_nostatus" glibc___isatty_nostatus}.
 
 (** The genv defines `c: _IO_setb`. *)
-Context (Hsetbf : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
-Local Instance doalloc_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{Hsetbf : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_setb` on a stream with no buffer, as LibioSetb.v's
@@ -75,9 +80,6 @@ Context (Hmalloc : forall f e ls lab d v rest j n Φ,
 
 
 (** Block `c: L7` of `c: _IO_file_doallocate`. *)
-Definition da_L7 : block := Eval vm_compute in
-  match find_block (TAtom "L7") (fn_blocks glibc__IO_file_doallocate) with
-  | Some b => b | None => mkBlock (TAtom "L7") [] [] JRetVoid end.
 
 (** Block `c: L7`'s instructions, from `c: malloc(size)` to
     `c: _IO_setb(fp, p, p + size, 1)` and the return of 1. *)
@@ -149,13 +151,13 @@ Proof.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hv4 Hc4.
   iIntros "Hl Hfl Hb He HM Hsl Hb3 HK".
   step. step. norm. check "Hsl".
-  iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
+  iApply (wp_raw_load_bytes8 with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
   iNext. iIntros "Hsl Hb3". step. brk E1.
   - step. step. norm.
-    iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
+    iApply (wp_raw_load_bytes8 with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
     iNext. iIntros "Hsl Hb3". step. step. step. brk E2.
     + step. step. norm.
-      iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
+      iApply (wp_raw_load_bytes8 with "Hsl Hb3"); [reflexivity | vx | exact Hl3 | reflexivity | ar |].
       iNext. iIntros "Hsl Hb3". step. pose proof (blksize_range _ E1 E2) as Hx.
       iApply (wp_doalloc_L7 _ _ _ _ (of_bytes bs3 mod 2 ^ 64) with "Hl Hfl Hb He HM"); try libio_side.
       * left. split; [reflexivity|]. eexists. split; [lk_prove | reflexivity].
@@ -188,7 +190,7 @@ Proof.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hc0 Hv4 Hc4.
   iIntros "Hl [%Hfl Hflb] Hb He HM Hsl Hb3 HK". unfold file_size in Hend.
   step. check "Hl". load_s32_group "Hl Hflb". step. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hflb"); [vx | vx | reflexivity | ar | reflexivity | wi_store |].
+  store_word "Hl Hflb" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hflb". step.
   iApply (wp_doalloc_L28 _ _ (Z.lor fl io_line_buf) with "Hl [Hflb] Hb He HM Hsl Hb3 HK"); try libio_side.
   assert (Hlo : 0 <= Z.lor fl 512 < 2 ^ 32) by (apply lor_lt32; lia).

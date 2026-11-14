@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the terminal test of `c: _IO_file_doallocate` (LibioDoAllocBase.v
     describes the function). Block `c: L5` sees a character device in
     the stat buffer's `c: st_mode` and asks `c: __gnu_dev_major` of its
@@ -27,19 +28,18 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The registry holds the OS contracts, and the genv's externals
     are the system calls. *)
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 (** The genv defines `c: __gnu_dev_major`. *)
-Context (Hmaj : find_fn ge (TAtom "__gnu_dev_major") = Some (Defined glibc___gnu_dev_major)).
+Context `{Hmaj : !Defines ge "__gnu_dev_major" glibc___gnu_dev_major}.
 (** The genv defines `c: __isatty_nostatus`. *)
-Context (Hisatty : find_fn ge (TAtom "__isatty_nostatus") = Some (Defined glibc___isatty_nostatus)).
+Context `{Hisatty : !Defines ge "__isatty_nostatus" glibc___isatty_nostatus}.
 
-Local Instance doalloc_mode_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The allocator's state, which `c: malloc` takes and gives back. *)
@@ -94,7 +94,7 @@ Proof.
   iIntros "Hl Hfl [%Hfdr Hfdb] Herr Hb Hbe HM Hsl Hb3 HK". unfold file_size in Hend.
   step. step. norm. check "Hl". load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [vx | exact Hisatty | reflexivity |]. iNext.
-  iApply (wp_glibc___isatty_nostatus w0 registry ge Hreg Hext with "Herr");
+  iApply (wp_glibc___isatty_nostatus Hreg Hext with "Herr");
     [reflexivity | apply Z.mod_pos_bound; lia | exact He | rewrite Z.mod_small; [exact Hfd | lia] |].
   iNext. iIntros (r Hr) "Herr". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step.
@@ -132,10 +132,10 @@ Proof.
     [reflexivity | vx | rewrite Hl1; reflexivity | reflexivity | left; reflexivity | ar |].
   iNext. iIntros "Hsl Hb1". step. step. brk Ec.
   - step. step. norm. check "Hsl".
-    iApply (wp_raw_load_bytes8 w0 registry ge with "Hsl Hb2"); [reflexivity | vx | exact Hl2 | reflexivity | ar |].
+    iApply (wp_raw_load_bytes8 with "Hsl Hb2"); [reflexivity | vx | exact Hl2 | reflexivity | ar |].
     iNext. iIntros "Hsl Hb2".
     iApply wp_call_bind; [vx | exact Hmaj | reflexivity |]. iNext.
-    iApply (wp_glibc___gnu_dev_major w0 registry ge); [reflexivity | apply Z.mod_pos_bound; lia |].
+    iApply (wp_glibc___gnu_dev_major); [reflexivity | apply Z.mod_pos_bound; lia |].
     iNext. iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
     step. brk Ej.
     + step. step. step. step. brk Ek.

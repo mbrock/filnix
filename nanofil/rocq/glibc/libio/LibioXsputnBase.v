@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The state, the premises and the last blocks of
     `c: _IO_new_file_xsputn(f, s, n)` (LibioXsputnCode.v), the jump
     table's string output of a narrow stream:
@@ -147,29 +148,20 @@ Qed.
 
 End defs.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The registry holds `c: zmemmove`'s contract, and the genv's
-    `c: __GI_memcpy`, `c: __GI_mempcpy` and
-    `c: __GI__IO_default_xsputn` are glibc's. *)
-Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
-  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance xs_base_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** The stream's write function borrows the source bytes instead of owning
-    them exclusively. It returns that share and the exact cancellation flags
-    even if the write fails. A set NOTCANCEL bit requires the captured
-    noncanceling wrapper. The result still permits partial writes and failure. *)
 Definition fwq_spec : Prop :=
   forall fr fb freg fl f2 fd tw off dq b reg o c xs eb Φ,
   call_frame glibc__IO_new_file_write
@@ -190,26 +182,47 @@ Definition fwq_spec : Prop :=
        icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ liveq dq b reg -∗ bytesq dq b o xs -∗
        errno_any eb -∗ Φ (Ret (WInt r))) -∗
     WP (ERun fr : sexpr) {{ Φ }}.
-
-(** String output returns either EOF or a count no greater than n.
-    A nonempty input leaves an allocated buffer even when output
-    fails. The stream's remaining resources and the source are returned
-    to the caller. *)
 Definition xs_post (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb n : Z)
     (dq : dfrac) (b' : Z) (reg' : region) (so : Z) (ys : list Z)
     (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
   ∀ r nb' wp' we', ⌜(r = 2 ^ 64 - 1 \/ 0 <= r <= n) /\ (0 < n -> nb' <> None)⌝ -∗ live fb freg -∗
     pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗ wbuf fb nb' wp' we' -∗ xos w0 eb X fb nb' -∗
     liveq dq b' reg' -∗ bytesq dq b' so ys -∗ Φ (Ret (WInt r)).
-
-(** A byte other than a newline, loaded signed and widened, is not
-    the newline's code. *)
 Lemma sb_ne_nl z : 0 <= z < 256 -> z <> 10 ->
   ((sign_extension 256 128 (z + 0) mod 2 ^ 32) mod 2 ^ 32 =? 10 mod 2 ^ 32) = false.
 Proof.
   intros Hz H10. unfold sign_extension. rewrite Z.add_0_r (Z.mod_small z 256); [|lia].
   apply Z.eqb_neq. destruct (128 <=? z); Z.div_mod_to_equations; lia.
 Qed.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The registry holds `c: zmemmove`'s contract, and the genv's
+    `c: __GI_memcpy`, `c: __GI_mempcpy` and
+    `c: __GI__IO_default_xsputn` are glibc's. *)
+Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
+
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** The stream's write function borrows the source bytes instead of owning
+    them exclusively. It returns that share and the exact cancellation flags
+    even if the write fails. A set NOTCANCEL bit requires the captured
+    noncanceling wrapper. The result still permits partial writes and failure. *)
+
+(** String output returns either EOF or a count no greater than n.
+    A nonempty input leaves an allocated buffer even when output
+    fails. The stream's remaining resources and the source are returned
+    to the caller. *)
+
+(** A byte other than a newline, loaded signed and widened, is not
+    the newline's code. *)
 
 (** The newline scan, blocks `c: L50` to `c: L59`, at the head with p
     at offset i of the n bytes ys from offset so of b': it reads back
@@ -234,7 +247,7 @@ Lemma wp_xs_scan dq b' reg' so c' ys cnt0 :
 Proof.
   intros n Hc' Hso Hyend Hyreg Hy Hcr.
   iLöb as "IH". iIntros (e i Φ (Hv2 & Hp14 & Hv39 & Hi)) "Hl' Hys HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [xs_L50 b_insts b_jump]. step. step. step.
   destruct (Z.eq_dec i 0) as [-> | Hi0].
   - (* p is s: no newline; L20 from L50. *)
@@ -284,13 +297,13 @@ Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
   lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b' + so + (n - t - d)) c')) ->
   vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
-  ▷ xs_post eb X fb freg vb n dq b' reg' so ys Φ -∗
+  ▷ (xs_post w0 registry ge) eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L178") (b_insts xs_L178) (b_jump xs_L178)))
         : sexpr) {{ Φ }}.
 Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Ht Hd Htd Hv0 Hv4 Hp3 Hv175 Hp1.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   cbn [xs_L178 b_insts b_jump]. step.
   destruct (Z.eq_dec t 0) as [-> | Ht0].
   - (* Nothing left: L122 returns n. *)
@@ -304,7 +317,7 @@ Proof.
       [| exact Hdxf | reflexivity |].
     { cbn -[put]. lookups. rewrite Hlj. do 5 f_equal; unfold j; unwrap2; lia. }
     iNext.
-    iApply (wp_glibc__IO_default_xsputn w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy _ (xos w0 eb X) fb freg vb
+    iApply (wp_glibc__IO_default_xsputn Hmove Hmove_fn Hmove_sym _ (xos w0 eb X) fb freg vb
               vreg nb wp we dq b' reg' (so + Z.of_nat j) c' (drop j ys) with "Hvt Hl Hvtp Hwb Hos Hl' Hys2");
       [reflexivity | exact Hov | exact Hfo | exact Hfb | exact Hfal | exact Hfend | exact Hfreg | exact Hc' | exact Hb8'
       | lia | lia | exact Hyreg | apply Forall_drop; exact Hy |].

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The second half of block `c: iw_1.L70` of `c: _IO_new_do_write`
     (LibioDoWrite.v describes it), from its fourth store on:
     `c: _IO_setp(fp, base, base)` and the mode's test, then the last
@@ -30,12 +31,9 @@ Definition dw_L70 : block := Eval vm_compute in
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance do_write_setp_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The last blocks, as LibioDoWriteEnd.v proves them
@@ -89,11 +87,11 @@ Proof.
   iIntros "Hl Hbl Hfl Hmode Hwb Hwp Hwe Hbase Hbend HK".
   cbn [dw_L70 b_insts b_jump skipn].
   step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hbase Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hbase Hbl" by ar.
   iNext. iIntros "Hl Hbase Hbl". check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hwp"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hwp" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hwp". check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hwb"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hwb" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hwb". step. step. norm. check "Hl". iDestruct "Hmode" as "[%Hm0 Hmode]". load_s32_group "Hl Hmode".
   step. destruct Hmd as [-> | ->]; branch.
   all: iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend"); try libio_side;

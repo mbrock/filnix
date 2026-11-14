@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the second half of block `c: L113` of
     `c: _IO_new_file_overflow` (LibioOverflowSetp.v proves the first),
     split off so that each file compiles quickly. Once the write
@@ -32,12 +33,9 @@ Definition ovf_b113 : block := Eval vm_compute in
 
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-Local Instance overflow_setp_rest_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Block `c: L162`, as LibioOverflowSetpEnd.v proves it ([wp_ovf_L162]). *)
@@ -85,13 +83,13 @@ Proof.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & [%Hflr Hflb] & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hbb & Hbe & Hbreg & Hsz & Hkr & Hxl & Hxr & Hwec & Hwea). rewrite Z.add_0_r.
   cbn [ovf_b113 b_insts b_jump skipn]. adv.
-  iApply (wp_raw_load_pointer with "Hl Hre Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hre Hbl" by ar.
   iNext. iIntros "Hl Hre Hbl". adv.
-  iApply (wp_raw_store_pointer with "Hl Hrp"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hrp" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hrp". adv.
-  iApply (wp_raw_store_pointer with "Hl Hrb"); [vx | vx | reflexivity | ar | ar | wi_store |].
+  store_pointer "Hl Hrb" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hrb". adv. load_s32_group "Hl Hflb". adv.
-  iApply (wp_raw_store_w with "Hl Hflb"); [vx | vx | reflexivity | ar | reflexivity | wi_store |].
+  store_word "Hl Hflb" by (ar) preserving wi_store.
   iNext. iIntros "Hl Hflb".
   assert (Hlo : 0 <= Z.lor fl 2048 < 2 ^ 32) by (apply lor_lt32; lia).
   try change (2048 mod 2 ^ 32) with 2048. try (rewrite (Z.mod_small fl); [|lia]).

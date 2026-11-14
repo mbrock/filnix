@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The count of `c: _IO_new_file_xsputn` (LibioXsputnBase.v
     describes the function): the bytes that fit before a flush.
 
@@ -56,23 +57,22 @@ Proof.
   - iIntros "[-> ->]". iSplit; [|done]. iPureIntro. cbn. split_and!; first [reflexivity | lia].
 Qed.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
     LibioXsputnBase.v asks. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
-  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) (Hfwq : fwq_spec w0 registry ge).
+Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+  (Hfwq : fwq_spec w0 registry ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance xs_enter_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -110,13 +110,13 @@ Proof.
     branch_as false. step. step. iEval (rewrite -Hwec) in "Hbl". load "Hl" "Hwe" "Hbl". iEval (rewrite Hwec) in "Hbl".
     step. iEval (rewrite -Hwpc) in "Hbl". load "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". step. step. step. step. step.
     iDestruct ("Hroom" with "Hbl") as "Hroom".
-    iApply (wp_xs_L20 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
+    iApply (wp_xs_L20 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys 0 (ptr_addr we - ptr_addr wp) with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe $Hroom] Hos Hl' Hys HK");
       try close_side.
     all: unfold n in *; try lia. all: lookups; try reflexivity. all: do 2 f_equal; unwrap2; lia.
   - (* No room: L20 with none. *)
     branch_as true. step. iDestruct ("Hroom" with "Hbl") as "Hroom".
-    iApply (wp_xs_L20 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
+    iApply (wp_xs_L20 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys 0 0 with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia. all: lookups; reflexivity.
 Qed.
@@ -151,20 +151,20 @@ Proof.
   destruct (Z_lt_le_dec cnt0 n) as [Hlt | Hge].
   - (* Less room than bytes: L20 with it. *)
     branch_as true. step.
-    iApply (wp_xs_L20 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
+    iApply (wp_xs_L20 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys 0 cnt0 with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK");
       try close_side.
     all: unfold n, cnt0 in *; try lia. all: lookups; try reflexivity. all: do 2 f_equal; unwrap2; lia.
   - (* L40: the scan back from s + n. *)
     branch_as false. step. step. step. step.
     assert (Hcr : 0 <= cnt0 < 2 ^ 63) by (unfold cnt0; lia).
-    iApply (wp_xs_scan w0 registry ge dq b' reg' so c' ys cnt0 Hc' Hso Hyend Hyreg Hy Hcr $! _ (Z.of_nat (length ys))
+    iApply (wp_xs_scan dq b' reg' so c' ys cnt0 Hc' Hso Hyend Hyreg Hy Hcr $! _ (Z.of_nat (length ys))
               with "[%] Hl' Hys").
     { unfold n in *. split_and!; [lookups; reflexivity | | | lia | lia].
       - lookups. do 3 f_equal. cbn [ptr_addr]. unwrap2. lia.
       - lookups. do 2 f_equal. unwrap2. reflexivity. }
     iIntros (e' cnt mf (Hsame & Hp10 & Hp6 & Hc)) "Hl' Hys".
-    iApply (wp_xs_L20 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
+    iApply (wp_xs_L20 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys mf cnt with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom] Hos Hl' Hys HK");
       try assumption.
     all: unfold n, cnt0 in *; try lia.

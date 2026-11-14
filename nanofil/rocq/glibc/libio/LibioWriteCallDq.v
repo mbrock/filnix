@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** `c: fputs` and `c: puts` hand `c: _IO_new_file_xsputn` the
     caller's string, which they may only read: it can be a string
     literal behind a read-only pointer, or a string the caller shares
@@ -60,15 +61,24 @@ Qed.
 
 Import LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
+Section rules_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
+Lemma liveq_bytesq_ptsq dq b reg o xs :
+  liveq dq b reg -∗ bytesq dq b o xs -∗ ptsq dq ([(PLive b, VLive reg)] ++ byte_ps b o xs).
+Proof. iIntros "Hl Hb". rewrite ptsq_app. iFrame. Qed.
+Lemma ptsq_liveq_bytesq dq b reg o xs :
+  ptsq dq ([(PLive b, VLive reg)] ++ byte_ps b o xs) -∗ liveq dq b reg ∗ bytesq dq b o xs.
+Proof. rewrite ptsq_app. auto. Qed.
+End rules_values.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance write_call_dq_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -155,14 +165,8 @@ Proof.
 Qed.
 
 (** The life and bytes of a share, as one list of pieces. *)
-Lemma liveq_bytesq_ptsq dq b reg o xs :
-  liveq dq b reg -∗ bytesq dq b o xs -∗ ptsq dq ([(PLive b, VLive reg)] ++ byte_ps b o xs).
-Proof. iIntros "Hl Hb". rewrite ptsq_app. iFrame. Qed.
 
 (** The list back as the life and bytes. *)
-Lemma ptsq_liveq_bytesq dq b reg o xs :
-  ptsq dq ([(PLive b, VLive reg)] ++ byte_ps b o xs) -∗ liveq dq b reg ∗ bytesq dq b o xs.
-Proof. rewrite ptsq_app. auto. Qed.
 
 (** Block `c: L9` of `c: _IO_new_file_write`, t > 0 of the n bytes xs
     owned at the share dq left, through a pointer of capability c of

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** GNU Hello's `set_program_name` (HelloName.v's
     [set_program_name_fn], Hello's own IR from HelloCode.v) linked with
     glibc, over the [os_world] of [OsWorld](../zsys/OsWorld.v), with no
@@ -53,18 +54,20 @@ Module LG := LG0.
 Module L := LG.L.
 Import L LG.
 
+Import ProgramAbbreviations.
 Section progname.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** Hello's callees: glibc's strrchr, which calls glibc's strlen,
     Hello's memeq, and glibc's strncmp. *)
-Context (Hstrrchr : find_fn ge (TAtom "strrchr") = Some (Defined glibc_strrchr))
-  (Hstrlen : find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen))
-  (Hmemeq : find_fn ge (TAtom "memeq") = Some (Defined memeq_fn))
-  (Hstrncmp : find_fn ge (TAtom "strncmp") = Some (Defined glibc_strncmp)).
+Context `{Hstrrchr : !Defines ge "strrchr" glibc_strrchr}
+  `{Hstrlen : !Defines ge "__GI_strlen" glibc_strlen}
+  `{Hmemeq : !Defines ge "memeq" memeq_fn}
+  `{Hstrncmp : !Defines ge "strncmp" glibc_strncmp}.
 (** The globals: the three cells, each its own 8-aligned object, and
     the literals "/.libs/" and "lt-". *)
-Context (pb nb sb : Z) (preg nreg sreg : region) (lp tp : ptr)
+Context (pb nb sb : Z)
+  (preg nreg sreg : region)
+  (lp tp : ptr)
   (Hpb : lookup (TAtom "program_name") (ge_globals ge) = Some (mkPtr pb (Obj pb)))
   (Hnb : lookup (TAtom "program_invocation_name") (ge_globals ge) = Some (mkPtr nb (Obj nb)))
   (Hsb : lookup (TAtom "program_invocation_short_name") (ge_globals ge) = Some (mkPtr sb (Obj sb)))
@@ -76,8 +79,6 @@ Context (pb nb sb : Z) (preg nreg sreg : region) (lp tp : ptr)
 
 (** [os_wi] w0 survives safepoints. *)
 Local Instance pn_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The Iris instance of the registry and [os_wi] w0. *)
-Local Instance pn_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** HelloGlibcProgCells.v's [memcmp_spec] for this genv. *)
@@ -85,7 +86,7 @@ Local Notation memcmp_spec := (HelloGlibcProgCells.memcmp_spec w0 registry ge).
 (** The three cells, holding x, y and z. *)
 Local Notation name_cells := (HelloGlibcProgCells.name_cells pb nb sb preg nreg sreg).
 (** From L8 on. *)
-Local Notation spn_L8 := (HelloGlibcProgLibs.spn_L8 w0 registry ge Hmemeq Hstrncmp pb nb sb preg nreg sreg lp tp Hpb Hnb Hsb Hlp Htp
+Local Notation spn_L8 := (HelloGlibcProgLibs.spn_L8 pb nb sb preg nreg sreg lp tp Hpb Hnb Hsb Hlp Htp
   Hpb_cell Hnb_cell Hsb_cell).
 
 (** glibc and Hello's `set_program_name(argv0)`: on the string s at p,

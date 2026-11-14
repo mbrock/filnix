@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser meets an ambiguous word and its
     caller lets it print errors, it allocates a set with one byte per
     table entry. A small set lives in the parser's frame, and a large
@@ -66,33 +67,25 @@ Qed.
 
 End fresh.
 
-Section alloc.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-(** The OS interpretation survives the parser's safepoints. *)
-Local Instance alloc_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
+Import ProgramAbbreviations.
+Section alloc_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance alloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-(** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** The parser asks __libc_alloca_cutoff whether a set of a given size
-    may live in its frame. The function reads the size of the thread's
-    stack. A caller supplies this rule for it: the call returns some
-    32-bit integer and needs no resources. The rule remains a recorded
-    dependency on the thread's stack data, which this proof does not
-    show valid. *)
 Definition getopt_cutoff_rule : Prop :=
   forall f e ls l d args rest j n Φ, map_option (arg_x ge e) args = Some [WInt n] ->
   ⊢ ▷ (∀ x, ⌜0 <= x < 2 ^ 32⌝ -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : gexpr) {{ Φ }}.
-
-(** A caller supplies this rule for malloc. The allocator's own state
-    M goes in and comes back. The call returns null, or a fresh heap
-    object of the requested size at a positive address aligned to 16
-    bytes below 2^48. The rule allows a failed allocation. *)
 Definition getopt_malloc_rule (M : iProp Σ) : Prop :=
   forall f e ls l d v rest j n Φ, arg_x ge e (Arg L v) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
   ⊢ M -∗ ▷ (∀ p, M -∗ (⌜p = null⌝ ∨ ∃ base, ⌜p = mkPtr base (Obj base) /\ 0 < base /\ base mod 16 = 0 /\
@@ -100,10 +93,6 @@ Definition getopt_malloc_rule (M : iProp Σ) : Prop :=
        WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None (Exec l (Call (CResult d P) (Global (TAtom "malloc")) [Arg L v] :: rest) j)) : gexpr)
       {{ Φ }}.
-
-(** A caller supplies this rule for glibc's memset on the first nz bytes
-    xs of a live object b at an eight-byte boundary. The bytes become
-    zero, the capability slots stay owned, and the call returns b. *)
 Definition getopt_memset_rule : Prop :=
   forall f e ls l d args rest j b reg xs cs nz Φ,
   map_option (arg_x ge e) args = Some [WPtr (mkPtr b (Obj b)); WInt 0; WInt nz] -> nz = Z.of_nat (List.length xs) ->
@@ -113,6 +102,29 @@ Definition getopt_memset_rule : Prop :=
        WP (ERun (mkFrame f (put d (WPtr (mkPtr b (Obj b))) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None (Exec l (Call (CResult d P) (Global (TAtom "__GI_memset")) args :: rest) j)) : gexpr)
       {{ Φ }}.
+End alloc_values.
+Section alloc.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+(** The OS interpretation survives the parser's safepoints. *)
+Local Instance alloc_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
+(** This notation selects expressions of the linked language. *)
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** The parser asks __libc_alloca_cutoff whether a set of a given size
+    may live in its frame. The function reads the size of the thread's
+    stack. A caller supplies this rule for it: the call returns some
+    32-bit integer and needs no resources. The rule remains a recorded
+    dependency on the thread's stack data, which this proof does not
+    show valid. *)
+
+(** A caller supplies this rule for malloc. The allocator's own state
+    M goes in and comes back. The call returns null, or a fresh heap
+    object of the requested size at a positive address aligned to 16
+    bytes below 2^48. The rule allows a failed allocation. *)
+
+(** A caller supplies this rule for glibc's memset on the first nz bytes
+    xs of a live object b at an eight-byte boundary. The bytes become
+    zero, the capability slots stay owned, and the call returns b. *)
 
 (** This tactic replaces the integer that the name holds by v. *)
 Ltac palloc_int nm v := match goal with |- context [put (TAtom nm) (WInt ?X) _] =>
@@ -130,7 +142,7 @@ Ltac palloc_brp := iApply wp_branch; [vx | iNext]; close_br.
     the flag a. When the set came from malloc, the flag m is 1. *)
 Lemma wp_pfx_alloc ks e (M : iProp Σ) n j k Φ :
   avoids ks palloc_names = true -> avoids ks pmark_names = true ->
-  getopt_cutoff_rule -> getopt_malloc_rule M -> getopt_memset_rule ->
+  (getopt_cutoff_rule w0 registry ge) -> (getopt_malloc_rule w0 registry ge) M -> (getopt_memset_rule w0 registry ge) ->
   lookup (TAtom "pr.9") e = Some (WInt n) -> lookup (TAtom "pr.39") e = Some (WInt 0) ->
   lookup (TAtom "pr.30") e = Some (WInt 0) -> lookup (TAtom "pr.42") e = Some (WInt (Z.of_nat j)) ->
   lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) -> lookup (TAtom "v90") e = Some (WInt 0) ->
@@ -162,7 +174,7 @@ Proof.
     iDestruct "Hp" as "[-> | (%base & %Hb & Ho)]".
     - unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. palloc_brp. step.
       rewrite (Z.mod_small a (2 ^ 32)) // (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
-      iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n null k with "[]"); [exact Hksk | lk_prove | lk_prove | lia | lia | by iLeft |].
+      iApply (wp_pfx_mark (palloc_keys ++ ks)%list _ n null k with "[]"); [exact Hksk | lk_prove | lk_prove | lia | lia | by iLeft |].
       iIntros (e' P (Hk' & HP)) "Hs". apply keeps_app in Hk' as [Hkt Hk'].
       iApply ("HK" $! e' P a m null with "[%] Hs HM").
       split; [eapply keeps_trans; [exact Hk2|]; eapply keeps_trans; [|exact Hk']; xkeep|].
@@ -181,7 +193,7 @@ Proof.
       iApply (wp_amb_mark with "Hl Hx"); [lk_prove | rewrite length_replicate; lia | lia
         | rewrite length_replicate Z2Nat.id; [|lia]; cbn [r_end]; lia | cbn [r_end]; lia |].
       iNext. iIntros "Hl Hx". step. step. rewrite (Z.mod_small a (2 ^ 32)) // (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
-      iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n (mkPtr base (Obj base)) k with "[Hl Hx]");
+      iApply (wp_pfx_mark (palloc_keys ++ ks)%list _ n (mkPtr base (Obj base)) k with "[Hl Hx]");
         [exact Hksk | lk_prove | lk_prove | lia | lia | | ].
       { iRight. iExists base, _, _. iFrame. iPureIntro. cbn [r_end r_kind]. rewrite length_insert length_replicate Z2Nat.id; [|lia].
         repeat split; try reflexivity; lia. }

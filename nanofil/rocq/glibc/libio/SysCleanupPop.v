@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The triple for user glibc's `c: __libc_cleanup_pop_restore`
     (SysCode.v, nptl/libc-cleanup.c), the pop that ends the push of
     SysCleanup.v: with `c: cancelhandling` 0 it restores the thread's
@@ -26,14 +27,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance cleanup_pop_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -59,18 +58,16 @@ Proof.
   intros Hfr Hbb Hbo Hal Hend Hbreg. injection Hfr as <-.
   iIntros "(%tb & %treg & %jb & %Ht & Htl & Hcl & Hjb & Hch) Hbl Hpv [%Hct0 Hct] HK".
   destruct Ht as (Hself & Htb & Htal & Htend & Htreg). step.
-  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [rewrite Hself; cbn; lia|]. iNext.
+  iApply (OsThread.wp_zthread_self_cookie); try self_side; [rewrite Hself; cbn; lia|]. iNext.
   unfold off_cancelhandling in Htend. rewrite Hself. step. step. norm. check "Hbl".
-  iApply (wp_raw_load_pointer with "Hbl Hpv [//]"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hbl Hpv [//]" by ar.
   iNext. iIntros "Hbl Hpv _". check "Htl".
-  iApply (wp_raw_store_pointer with "Htl Hcl"); [reflexivity | reflexivity | reflexivity | ar | ar | wi_store |].
+  store_pointer "Htl Hcl" by (ar) preserving wi_store.
   iNext. iIntros "Htl Hcl". step. norm. check "Htl".
   iDestruct "Hch" as "[%Hch0 Hch]".
-  iApply (wp_raw_load_sub_bytes_dq with "Htl Hch"); [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-    left; reflexivity | ar |].
+  load_bytes_dq "Htl Hch" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Htl Hch". step. norm. check "Hbl".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hct"); [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
-    left; reflexivity | ar |].
+  load_bytes_dq "Hbl Hct" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Hbl Hct". step. closed_ints. branch. step. closed_ints. branch. step.
   iApply wp_ret_void. iNext.
   iApply ("HK" with "[Htl Hcl Hjb Hch] Hbl Hpv [Hct]").

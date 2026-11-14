@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** One write of `c: _IO_new_file_write`'s loop (LibioWrite.v
     describes the function), from block `c: L9` to the return of its
     call of `c: __write` ([wp_file_write_call]).
@@ -40,14 +41,13 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
 
-Local Instance write_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Block `c: L9` of `c: _IO_new_file_write`, t > 0 of the n bytes xs
@@ -83,7 +83,7 @@ Proof.
   step. step. norm. check "Hl". iDestruct "Hfd" as "[%Hfd' Hfdb]". load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [vx | exact Hwrite | reflexivity |]. iNext.
   iPoseProof (live_bytes_pts with "Hbl Hxs") as "Hps".
-  iApply (wp_glibc___libc_write w0 registry ge Hreg Hext with "Hps Herr");
+  iApply (wp_glibc___libc_write Hreg Hext with "Hps Herr");
     [reflexivity | apply Z.mod_pos_bound; lia | unwrap; lia | exact He | rewrite Z.mod_small; [exact Hfd | lia] | |].
   { intros m Hm. apply all_agree_app in Hm as [[Hlv _] Hm]. cbn [agree_piece fst snd] in Hlv.
     unwrap. replace t with (Z.of_nat (length xs) - (Z.of_nat (length xs) - t)) at 2 by lia.

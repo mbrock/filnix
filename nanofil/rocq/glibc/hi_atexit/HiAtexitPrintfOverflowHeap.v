@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** An error report can fill stderr's buffer while the caller holds its lock.
     Flushing must leave the caller's lock and cancellation settings as they
     were, even if the write fails. This file proves that behavior for an
@@ -25,17 +26,15 @@ Open Scope Z_scope.
 (** The caller's callee obligation uses the same concrete logic. *)
 Import PrintfStreamHeap PrintfStreamInv LibioPutsInv SysWrappers FileInv FileInv.ML FileInv.LG FileInv.L.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write))
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
   (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
+  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
 
-(** The composition keeps the backend's OS interpretation throughout the call. *)
-Local Instance printf_heap_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** File overflow returns the IO-ready stream and errno ownership on failure
@@ -110,7 +109,7 @@ Proof.
   iDestruct "Hf" as (fb freg st bb breg sz k we xs fl tw off col Hp)
     "(Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvtp & Htail)".
   pose proof Hp as (Hfp & Hfb & Hal & Hend & Hregend & _). subst fp.
-  iApply (LibioOverflowGen.wp_glibc___overflow w0 registry ge Hovf
+  iApply (LibioOverflowGen.wp_glibc___overflow Hovf
     fr fb freg ch (2 ^ 32 - 1) vb vreg with "Hvt Hl Hmd Hvtp"); try assumption; try lia.
   iNext. iIntros (fr' Hfr') "Hl Hmd Hvtp".
   iApply (hi_printf_heap_file_overflow fr' eb vb vreg self (mkPtr fb (Obj fb))

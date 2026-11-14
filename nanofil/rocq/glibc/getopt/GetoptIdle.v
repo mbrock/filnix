@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When no short-option cluster is pending, glibc's scanner first clamps
     its two nonoption endpoints to the public index. In permuting mode it
     then moves the nonoptions it skipped behind the options that followed
@@ -43,20 +44,22 @@ Import GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv Fil
 (** This tactic rebuilds an integer field from its rewritten bytes. *)
 Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
 
+Import ProgramAbbreviations.
+Section idle_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
+Lemma cell_mod b o x : 0 <= x < 2 ^ 32 -> bytes b o (le_bytes (x mod 2 ^ 32) 4) ⊢ int_cell b o x.
+Proof. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
+End idle_values.
 Section idle.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance idle_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance idle_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A stored integer in range rebuilds its field. *)
-Lemma cell_mod b o x : 0 <= x < 2 ^ 32 -> bytes b o (le_bytes (x mod 2 ^ 32) 4) ⊢ int_cell b o x.
-Proof. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
 
 (** The first exchange takes the pending nonoptions, from first up to
     last, and moves them behind the options from last up to the public
@@ -88,7 +91,7 @@ Proof.
   step. step. load_s32_using ltac:(arith) "Hl Hfb". step. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step.
   iApply wp_enter; [reflexivity | vxn | iNext].
   set (ks' := (ks ++ [TAtom "v12"; TAtom "chk0"; TAtom "chk2"; TAtom "chk23"])%list).
-  iApply (GetoptExchangeTwo.wp_x2_loop w0 registry ge ks' _ f l i av ar n ps with "Ha Hc Hs");
+  iApply (GetoptExchangeTwo.wp_x2_loop ks' _ f l i av ar n ps with "Ha Hc Hs");
     [ apply avoids_app_r; [exact Hko | vm_compute; reflexivity]
     | lk_prove | lk_prove | lk_prove | lk_prove | lia | lia | lia | assumption | lia | lia | lia | lia |].
   iIntros (e1 ps1 (Hp1 & Hk1)) "Ha Hc Hs1".
@@ -99,9 +102,9 @@ Proof.
   eassert (K23 : lookup (TAtom "chk23") e1 = Some _) by (rewrite (keeps_in _ _ _ _ Hk1'); [lk_prove | cbn; tauto]).
   step. step. check "Hl". load_s32_using ltac:(arith) "Hl Hfb". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. check "Hl". load_s32_using ltac:(arith) "Hl Hlab".
   step. step. norm. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+  store_word "Hl Hfb" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hfb". load_s32_using ltac:(arith) "Hl Hib".
-  iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+  store_word "Hl Hlab" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hlab". step.
   iApply ("HK" with "[%] Hl [Hib] [Hfb] [Hlab] Ha Hc Hs1"); [| icell | (iApply cell_mod; [lia | iAssumption]) | (iApply cell_mod; [lia | iAssumption])].
   assert (Hke1 : keeps ks e e1) by (eapply keeps_trans; [|exact Hk1]; xkeep).

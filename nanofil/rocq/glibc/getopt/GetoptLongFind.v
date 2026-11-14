@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** After glibc's long-option parser has measured the name at its
     cursor, it searches the caller's table for an option with exactly
     that name, and when it finds none, for options whose names start
@@ -53,14 +54,11 @@ Ltac find_lk := first
       [find_lk | solve [unfold bscan_keys, bpath_keys; cbn [In];
                         repeat first [left; reflexivity | right]]] end ].
 
+Import ProgramAbbreviations.
 Section find.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance find_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance find_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -119,12 +117,12 @@ Proof.
     H140 H141 Hfl Hos Hpe Hi H2 H6 H10 H12 H14 H16 Hc0 H48 Hp2 Hp9 Hb Hal Hend Hr Hav Hala Hda Hra Hps
     Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hcur Ha Hcl #Hargs HG HF HM HK".
-  iApply (wp_long_exact_loop w0 registry ge (bscan_keys ++ ks)%list e 0 cur s lo os b r with "Hws Ht Hl Hcur");
+  iApply (wp_long_exact_loop (bscan_keys ++ ks)%list e 0 cur s lo os b r with "Hws Ht Hl Hcur");
     [rewrite avoids_app_l Hksx; reflexivity | exact Hgn | exact Hgl | exact H12 | exact Hc0 | exact H48 | exact Hp2
     | exact Hp9 | lia | exact Hos | exact Hb | exact Hal | exact Hend | exact Hr |].
   iSplit.
   - iIntros (e2 (Hk2 & H90 & H6p & H9)) "Hl Hcur". apply keeps_app in Hk2 as [Hkt2 Hk2].
-    iApply (wp_long_pfx_path w0 registry ge (bpath_keys ++ ks)%list e2 G T fp dom M se sereg f138 f139 f140 f141
+    iApply (wp_long_pfx_path (bpath_keys ++ ks)%list e2 G T fp dom M se sereg f138 f139 f140 f141
       av ar ps lo os F pfx pxs cur s lonly pe i oo b r
       with "Ht Hpfx Hws Hsl Hsc Hl Hib Hoob Hcur Ha Hcl Hargs HG HF HM");
       [rewrite avoids_app_l Hksl; reflexivity | rewrite avoids_app_l Hksc; reflexivity

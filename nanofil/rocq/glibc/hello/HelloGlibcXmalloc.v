@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves GNU Hello's `xmalloc` when it is linked with
     glibc's own `malloc`, with no premise about either function.
 
@@ -41,14 +42,12 @@ Module LG := LG0.
 Module L := LG.L.
 Import L LG.
 
+Import ProgramAbbreviations.
 Section xmalloc.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Local Instance xm_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the chosen registry and concrete world interpretation. *)
-Local Instance xm_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 

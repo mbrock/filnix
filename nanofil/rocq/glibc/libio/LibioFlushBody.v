@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** One pass of `c: _IO_flush_all`'s loop (LibioFlushCode.v), from
     the loop's head `c: L83` to its next entry of `c: L82`, stated as
     a triple over two predicates on a stream ([flush_body]). The pass
@@ -41,25 +42,20 @@ Import LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFl
     without importing the flush proofs into clients that only need ownership. *)
 Include LibioFlushInv.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance flush_body_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** [flush_body] P Q: a pass of the loop over the stream fb, from
-    `c: L83` with fb in `c: pr.5`, the result so far r in `c: pr.4`,
-    the cleanup buffer in `c: v3` and the null address in `c: v88`,
-    runs from P to Q: it enters the loop's head from `c: L329` with
-    fb's `c: _chain` nx in `c: v413`, and in `c: pr.1` r or, after a
-    failed flush, EOF. `c: run_fp` ends null, and the life of nx is
-    lent for the load of the chain. *)
 Definition flush_body (P Q : ptr -> iProp Σ) : Prop :=
   forall e fb freg rf rfreg sb sreg x r cb nx nreg Φ,
   let fp := mkPtr fb (Obj fb) in
@@ -79,10 +75,27 @@ Definition flush_body (P Q : ptr -> iProp Σ) : Prop :=
          {{ Φ }}) -∗
     WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L83") (Some (TAtom "L82")))) : sexpr)
       {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** [flush_body] P Q: a pass of the loop over the stream fb, from
+    `c: L83` with fb in `c: pr.5`, the result so far r in `c: pr.4`,
+    the cleanup buffer in `c: v3` and the null address in `c: v88`,
+    runs from P to Q: it enters the loop's head from `c: L329` with
+    fb's `c: _chain` nx in `c: v413`, and in `c: pr.1` r or, after a
+    failed flush, EOF. `c: run_fp` ends null, and the life of nx is
+    lent for the load of the chain. *)
 
 (** A pass over an [exit_stream] calls nothing and leaves the stream
     as it was, the result unchanged. *)
-Lemma flush_body_exit : flush_body (exit_stream false) (exit_stream false).
+Lemma flush_body_exit : (flush_body w0 registry ge) (exit_stream false) (exit_stream false).
 Proof.
   intros e fb freg rf rfreg sb sreg x r cb nx nreg Φ fp Hgrf Hp5 Hp4 Hv3 Hv88 Hsz Hr Hnx Hfb Hfal Hfend Hfreg
     Hral Hrend.
@@ -91,11 +104,11 @@ Proof.
     "(Hfl & Hf2 & Hfd & Hmd & Hlp & Hlb & Hrp & Hre & Hwb & Hwp & Hbc & H80)".
   destruct Hc as (Heq & Hfl & Hul & Hf2 & Hfd & Hw & Hwb & Hrd & Hrp & Hmd & Hub).
   injection Heq as <-.
-  iApply (wp_flush_L83 w0 registry ge Hreg Hext with "Hs Hl Hfl Hlp Hlb Hrl Hrc"); try close_side.
+  iApply (wp_flush_L83 Hreg Hext with "Hs Hl Hfl Hlp Hlb Hrl Hrc"); try close_side.
   iNext. iIntros (e1 (H1p5 & H1c13 & H1p4 & H1v3)) "Hl Hfl Hlp Hlb Hrl Hrc".
-  iApply (wp_flush_L94_clean w0 registry ge with "Hl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc"); try close_side.
+  iApply (wp_flush_L94_clean with "Hl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc"); try close_side.
   iNext. iIntros (e2 (H2p5 & H2c13 & H2p2 & H2v3)) "Hl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc".
-  iApply (wp_flush_L182 w0 registry ge with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl"); try close_side.
+  iApply (wp_flush_L182 with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl"); try close_side.
   iNext. iIntros (e3 (H3v413 & H3p1 & H3v3)) "Hl Hfl Hlp Hlb Hrl Hrc Hch Hnl".
   iApply ("HK" $! e3 r with "[%] Hl [-Hrl Hrc Hch Hnl] Hrl Hrc Hch Hnl").
   - split_and!; try assumption; lia.

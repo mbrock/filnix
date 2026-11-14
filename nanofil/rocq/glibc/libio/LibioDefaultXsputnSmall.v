@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The small fill of `c: _IO_default_xsputn`'s loop
     (LibioGenCode.v), block `c: L50`, when at most 20 bytes go into the
     buffer: none, or one at a time by LibioDefaultXsputnBytes.v's
@@ -28,13 +29,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance dx_small_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -73,19 +70,19 @@ Proof.
   unfold file_size in Hfend.
   destruct Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [_ Hwa] & [_ Hea] & Hheap). cbn in Hwa, Hea.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK".
-  iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
+  iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
   step. step.
   destruct (Z.eq_dec cnt 0) as [-> | Hcn0].
   + (* None: L51 at once. *)
     branch_as true. to_L22.
     iAssert (wbuf fb (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))) with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
     { iFrame. iPureIntro. unfold room_ok, in_buf. cbn. split_and!; first [reflexivity | assumption | lia]. }
-    iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
+    iApply (wp_dx_L22 os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
               dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try close_side.
     all: unfold n in *; first [intros _; discriminate | lk_fin].
   + (* L65: the byte loop. *)
     branch_as false. step. step. norm. load "Hl" "Hwp" "Hbl". step. step.
-    iApply (wp_dx_bytes w0 registry ge fb freg b reg sz (wa - b) cnt dq b' reg' so c' ys (n - t)
+    iApply (wp_dx_bytes fb freg b reg sz (wa - b) cnt dq b' reg' so c' ys (n - t)
               (mkPtr wa (Obj b)) with "[%] Hl Hwp Hbl Hxs Hl' Hys"); try close_side.
     { unfold n in *. split_and!; try (lookups; reflexivity); try lia.
       all: first [assumption | lia | lookups; do 3 f_equal; cbn [ptr_addr]; unfold raw_address; unwrap2; lia]. }
@@ -100,7 +97,7 @@ Proof.
       with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
     { replace (b + (wa - b + cnt)) with (wa + cnt) by lia. iFrame. iPureIntro. unfold room_ok, in_buf. cbn.
       split_and!; first [reflexivity | assumption | lia]. }
-    iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
+    iApply (wp_dx_L22 os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
               (mkPtr ea (Obj b)) dq b' reg' so c' ys (t - cnt) with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try close_side.
     all: unfold n in *; first [intros _; discriminate | lk_fin].
 Qed.

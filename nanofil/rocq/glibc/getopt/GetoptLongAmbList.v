@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds several options whose names
     start with a word's name, it reports the word as ambiguous and lists
     the candidates on stderr. The set that the prefix search built marks
@@ -35,14 +36,11 @@ Local Arguments Z.opp : simpl nomatch.
 Import GetoptLongAmbItem GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 
+Import ProgramAbbreviations.
 Section list.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance alist_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance alist_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -80,7 +78,7 @@ Proof.
   pose proof Hrule as (Hdom & Hfp & Hlend & Hgt & Hfx & Hf4 & Hf5).
   iIntros "#Ht #Hpfx #Hsl #Hsc Hl Hx HG HK".
   destruct (Nat.lt_ge_cases k (List.length os)) as [Hlt | Hge].
-  { iApply (wp_amb_item w0 registry ge ks e G T fp dom se sereg f140 lo os pfx ps k sb sreg xs
+  { iApply (wp_amb_item ks e G T fp dom se sereg f140 lo os pfx ps k sb sreg xs
       with "Ht Hpfx Hsl Hsc Hl Hx HG");
       [exact Hks | exact Hrule | exact Hse | exact H140 | exact H6 | exact H16 | exact H9 | exact H10 | exact H21
       | exact Hlt | exact Hos | exact Hxs | exact Hsb | exact Hse' | exact Hsr | exact Hse0 | exact Hsea | exact Hsee
@@ -96,11 +94,10 @@ Proof.
   rewrite (sx_nonneg (Z.of_nat (List.length os))); [|lia].
   rewrite Z.ltb_irrefl. iApply wp_branch; [vx | iNext]. close_br.
   step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |].
+  check_read_dq "Hsl" by StrlenLoop.arith.
   iNext; iIntros "_".
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]".
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |].
+  load_pointer_dq "Hsl Hsc Hcf" by StrlenLoop.arith.
   iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). step.
   iApply (Hf5 with "HG"); [exact H141 | vx |]. iNext. iIntros (r0) "HG". step.
   iApply ("HK" with "[%] Hl Hx HG"). xkeep.

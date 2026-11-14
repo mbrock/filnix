@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A partially filled inline buffer remains available after printf publishes
     its current pointer to FILE. Printf resets its base to that pointer,
     without calling the stream or touching the pending character bytes.
@@ -27,13 +28,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Updating owned cells leaves the process's OS resources unchanged. *)
-Local Instance room_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Reads from printf's header borrow the FILE lifetime for their target. *)
@@ -77,7 +74,7 @@ Proof.
   step. load_shared "Hb Hend Hf". step. step. step. step. step. branch_as true. step.
   step. load_shared "Hb Hend Hf". step. check "Hb". load_shared "Hb Hfp Hf".
   step. check "Hf".
-  iApply (wp_raw_load_pointer_self w0 registry ge with "Hf Hwe");
+  iApply (wp_raw_load_pointer_self with "Hf Hwe");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
   iNext. iIntros "Hf Hwe". step. step. step. branch_as false. step.
   step. check "Hb". load_shared "Hb Hfp Hf". step. step. check "Hb".

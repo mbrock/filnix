@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** glibc's long-option parser starts by measuring the name at its
     cursor. Then it searches the caller's table for an option with
     exactly that name, and when it finds none, for options whose names
@@ -52,14 +53,11 @@ Ltac body_lk := first
       rewrite (keeps_in KS k a c H);
       [body_lk | solve [unfold bparam_keys, bout_keys; cbn [In]; repeat first [left; reflexivity | right]]] end ].
 
+Import ProgramAbbreviations.
 Section body.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance body_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance body_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -119,7 +117,7 @@ Proof.
   iIntros "#Ht #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hcur Ha Hcl #Hargs HG HF HM HK".
   iPoseProof "Ht" as "Ht0".
   iDestruct "Ht" as (tb treg) "(%Ht & _)". destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
-  iApply (wp_getopt_long_scan w0 registry ge (bparam_keys ++ ks)%list e cur s b r with "Hws Hl Hcur");
+  iApply (wp_getopt_long_scan (bparam_keys ++ ks)%list e cur s b r with "Hws Hl Hcur");
     [rewrite avoids_app_l Hksn; reflexivity | exact H12 | exact Hb | exact Hal | exact Hend | exact Hr |].
   iIntros (e1 (Hk1 & Hp1 & H48 & Hc0 & Hc1)) "Hl Hcur". apply keeps_app in Hk1 as [Hkt1 Hk1].
   assert (H6' : lookup (TAtom "v6") e1 = Some (WPtr lo)) by body_lk.
@@ -127,7 +125,7 @@ Proof.
   { destruct lo as [la lc]. unfold ptr_add. cbn [ptr_addr ptr_cap] in *. f_equal.
     rewrite ?Z.add_0_r; first [reflexivity | apply Z.mod_small; lia]. }
   step. change (0 mod 2 ^ 32) with 0. pcmp_fold "L50" plo_blk50.
-  iApply (wp_long_find w0 registry ge (bout_keys ++ ks)%list _ G T fp dom M se sereg f138 f139 f140 f141
+  iApply (wp_long_find (bout_keys ++ ks)%list _ G T fp dom M se sereg f138 f139 f140 f141
     av ar ps lo os F pfx pxs cur s lonly pe i oo b r
     with "Ht0 Hpfx Hws Hsl Hsc Hl Hib Hoob Hcur Ha Hcl Hargs HG HF HM");
     [rewrite avoids_app_l Hksx; reflexivity | rewrite avoids_app_l Hksl; reflexivity

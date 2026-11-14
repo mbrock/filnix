@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The triple of `c: fputs(s, fp)` (LibioPutsCode.v,
     libio/iofputs.c) over a string at any share and a stream as
     LibioPutsInv.v's [file_at] has it ([wp_glibc__IO_fputs]):
@@ -49,17 +50,17 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioFputsCall LibioFputsUnlock LibioFputsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (vb : Z) (vreg : region) (Rx : iProp Σ).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context (vb : Z)
+  (vreg : region)
+  (Rx : iProp Σ).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hxs : xsputn_spec w0 registry ge vb Rx).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance fputs_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -81,7 +82,7 @@ Proof.
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.
   iDestruct "Hlk" as (lb' lreg Hlb) "Hlk". injection Hlb as <-.
   pose proof Hul as Hul'. unfold has, io_user_lock in Hul'. apply negb_false_iff, Z.eqb_eq in Hul'.
-  iApply (wp_fputs_unlock w0 registry ge with "Hs Hl [$Hfl //] Hlp Hlk"); try eassumption.
+  iApply (wp_fputs_unlock with "Hs Hl [$Hfl //] Hlp Hlk"); try eassumption.
   iNext. iIntros "Hl Hfl Hlp Hlk". iApply "HK".
   iApply ("Hcl" with "[//] Hl Hfl Hlp [Hlk] Hmd Hvtp"). iExists lb, lreg. iSplit; done.
 Qed.
@@ -107,12 +108,12 @@ Proof.
   iDestruct "Hlk" as (lb' lreg Hlb) "Hlk". injection Hlb as <-.
   pose proof Hul as Hul'. unfold has, io_user_lock in Hul'. apply negb_false_iff, Z.eqb_eq in Hul'.
   (* The string measured and the lock taken. *)
-  iApply (wp_fputs_start w0 registry ge Hreg Hext with "Hs Hstr Hl Hfl Hlp Hlk"); try eassumption.
+  iApply (wp_fputs_start Hreg Hext with "Hs Hstr Hl Hfl Hlp Hlk"); try eassumption.
   iNext. iIntros (e (Hv0 & Hv6 & Hv2 & Hc0)) "Hstr Hl Hfl Hlp Hlk".
   iDestruct ("Hcl" $! mode (Some 0) with "[//] Hl Hfl Hlp [Hlk] Hmd Hvtp") as "Hf";
     [iExists lb, lreg; iSplit; done|].
   (* The orientation and the write. *)
-  iApply (wp_fputs_L113 w0 registry ge vb vreg Rx Hxs_fn Hxs with "Hvt Hf Hstr HRx"); try eassumption.
+  iApply (wp_fputs_L113 vb vreg Rx Hxs_fn Hxs with "Hvt Hf Hstr HRx"); try eassumption.
   iNext. iIntros (e1 c (Hsame & Hc)) "Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   assert (Hv2' : lookup (TAtom "v2") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hc0' : lookup (TAtom "chk0") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).

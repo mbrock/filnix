@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Before `c: fclose` drops a stream, it flushes the pending bytes and
     closes the descriptor through `c: _IO_file_close_maybe_unlink`.
     LibioCloseIt.v proves that function from triples of the four
@@ -31,40 +32,40 @@ Open Scope Z_scope.
 (** `c: _IO_file_close_maybe_unlink`, at [HLG]. *)
 Import LibioRead SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
 (** The functions of the genv that the callees call. *)
-Context (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write))
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
   (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hfree_fn : find_fn ge (TAtom "free") = Some (Defined free_fn)) (Hfh : frees_heap (ge_free ge))
-  (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None)
-  (Hcn : find_fn ge (TAtom "__GI___close_nocancel") = Some (Defined glibc___close_nocancel))
+  `{Hfree_fn : !Defines ge "free" free_fn}
+  (Hfh : frees_heap (ge_free ge))
+  (Hzf : find_fn ge zgc_free_name = None)
+  (Hzg : lookup zgc_free_name (ge_globals ge) = None)
+  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
   (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  (Hsetb : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb))
-  (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write))
-  (Hfum : find_fn ge (TAtom "__GI__IO_unsave_markers") = Some (Defined glibc__IO_unsave_markers)).
+  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
+  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance hi_close_it_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** LibioCloseItMid.v's [close_spec]: LibioRead.v's
     [wp_glibc__IO_file_close], ge's `c: __close_nocancel` glibc's. *)
 Lemma hi_close : LibioCloseItMid.close_spec w0 registry ge.
 Proof.
   intros fr fb freg fd eb Φ Hfr Hfb Hfal Hfend Hfreg He.
-  exact (LibioRead.wp_glibc__IO_file_close w0 registry ge Hreg Hext fr fb freg fd eb Φ Hfr Hcn Hfb Hfal Hfend Hfreg He).
+  exact (LibioRead.wp_glibc__IO_file_close Hreg Hext fr fb freg fd eb Φ Hfr Hcn Hfb Hfal Hfend Hfreg He).
 Qed.
 
 (** LibioCloseIt.v's [wp_glibc__IO_file_close_maybe_unlink] with its
     callees proved. *)
 Definition hi_close_it :=
-  LibioCloseIt.wp_glibc__IO_file_close_maybe_unlink w0 registry ge Hfc Hsetb Hdwf
-    (hi_do_write_mode w0 registry ge Hreg Hext Hwrite Hfw)
-    (LibioDoWrite.wp_glibc__IO_new_do_write_zero w0 registry ge)
-    hi_close (hi_setb w0 registry ge Hfree_fn Hfh Hzf Hzg)
-    glibc__IO_unsave_markers Hfum (LibioGenLeaves.unsave_spec_holds w0 registry ge).
+  LibioCloseIt.wp_glibc__IO_file_close_maybe_unlink Hfc
+    (hi_do_write_mode Hreg Hext Hfw)
+    (LibioDoWrite.wp_glibc__IO_new_do_write_zero)
+    hi_close (hi_setb Hfh Hzf Hzg)
+    glibc__IO_unsave_markers (LibioGenLeaves.unsave_spec_holds).
 
 End rules.

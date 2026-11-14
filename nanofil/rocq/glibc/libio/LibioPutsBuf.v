@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** What the newline of `c: puts(s)` (LibioPutsCode.v,
     libio/ioputs.c) needs of a stream's narrow buffer: the bounds every
     pointer into it has ([wp_buf_fit]), a load of a read or write
@@ -38,13 +39,9 @@ Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L 
 Lemma bytes_one `{!gen_heapGS piece pval Σ} b o x : bytes b o [x] ⊣⊢ ibyte b o x.
 Proof. rewrite /bytes /ibyte byte_ps_cons. done. Qed.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance puts_buf_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -60,7 +57,7 @@ Proof.
   - iApply ("HK" with "[%] Hb"). intros p ->. cbn. lia.
   - iApply ("HK" with "[%] Hb"). intros p [_ H]. lia.
   - iDestruct "Hb" as (breg xs Hbr) "[Hbl Hxs]".
-    iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
+    iApply (wp_live_fit1 with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
     iApply ("HK" with "[%] [Hbl Hxs]"); [intros p [_ H]; lia|]. iExists breg, xs. iFrame. done.
   - iApply ("HK" with "[%] Hb"). intros p ->. cbn. lia.
 Qed.
@@ -82,10 +79,10 @@ Lemma wp_load_bufptr f e ls l d off args rest j classes p fb freg o nb x Φ :
 Proof.
   intros Hc Hx Hp Ha Hal Hr Hin. iIntros "Hl Hpc Hb HK".
   destruct nb as [| |bb sz|bb]; cbn [in_buf] in Hin.
-  - subst x. iApply (wp_raw_load_null w0 registry ge with "Hl Hpc"); [exact Hc | exact Hx | exact Hp | exact Ha
+  - subst x. iApply (wp_raw_load_null with "Hl Hpc"); [exact Hc | exact Hx | exact Hp | exact Ha
       | exact Hal |]. iNext. iIntros "Hl Hpc". iApply ("HK" with "Hl Hpc Hb").
   - destruct Hin as [Hxc _].
-    iApply (wp_raw_load_pointer_self w0 registry ge with "Hl Hpc");
+    iApply (wp_raw_load_pointer_self with "Hl Hpc");
       [exact Hc | exact Hx | exact Hp | exact Ha | exact Hal | exact Hr | exact Hxc |].
     iNext. iIntros "Hl Hpc". iApply ("HK" with "Hl Hpc Hb").
   - destruct Hin as [Hxc _]. iDestruct "Hb" as (breg xs Hbr) "[Hbl Hxs]".
@@ -93,7 +90,7 @@ Proof.
       [exact Hc | exact Hx | exact Hp | exact Ha | exact Hal | exact Hr | rewrite Hxc; iExact "Hbl" |].
     iNext. iIntros "Hl Hpc Hbl". iApply ("HK" with "Hl Hpc [Hbl Hxs]"). rewrite Hxc.
     iExists breg, xs. iFrame. done.
-  - subst x. iApply (wp_raw_load_null w0 registry ge with "Hl Hpc"); [exact Hc | exact Hx | exact Hp | exact Ha
+  - subst x. iApply (wp_raw_load_null with "Hl Hpc"); [exact Hc | exact Hx | exact Hp | exact Ha
       | exact Hal |]. iNext. iIntros "Hl Hpc". iApply ("HK" with "Hl Hpc Hb").
 Qed.
 
@@ -134,7 +131,7 @@ Proof.
     rewrite (bytes_take_drop bb 0 xs i); [|subst i; lia]. rewrite (drop_S xs x i Hx).
     change (x :: drop (S i) xs) with ([x] ++ drop (S i) xs)%list. rewrite bytes_app bytes_one.
     iDestruct "Hxs" as "(Ht & Hx & Hd)".
-    iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
+    iApply (wp_live_fit1 with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
     iApply (wp_check with "Hbl"); [reflexivity | exact Hv | exact Hwc | a2 | a2 | a2 |]. iNext. iIntros "Hbl".
     iApply (wp_raw_store_byte with "Hbl Hx"); [reflexivity | vx | exact Hwc | a2 | wi_store |].
     iNext. iIntros "Hbl Hx".

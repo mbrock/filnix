@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: _IO_doallocbuf` (LibioReadCode.v) on an
     unbuffered stream with no buffer: it installs the one byte
     `c: _shortbuf` inside the `c: FILE` itself with
@@ -25,14 +26,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_setb`. *)
-Context (Hsetbf : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
+Context `{Hsetbf : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
 
-Local Instance doallocshort_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_setb` on a stream with no buffer, as LibioSetb.v's
@@ -60,7 +59,7 @@ Proof.
   intros Hfr Hfb Hal Hend Hfreg Hub Hmd. injection Hfr as <-.
   iIntros "Hl Hfl [%Hm Hmb] Hb Hbe HK". unfold file_size in Hend. unfold io_unbuffered in Hub.
   step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer with "Hl Hb [//]"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
+  load_pointer "Hl Hb [//]" by ar.
   iNext. iIntros "Hl Hb _". step. step. branch.
   step. check "Hl". iDestruct "Hfl" as "[%Hfl Hflb]". load_s32_group "Hl Hflb". step. step.
   assert (Hl2 : 0 <= Z.land fl 2 < 2 ^ 32) by (apply land_lt32; lia). branch_as true.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When a stream is closed, `c: _IO_setb` gives its buffer back to
     the allocator by calling `c: free`. In hi_atexit.c that call runs
     glibc's own `c: free`, linked from malloc/malloc.os, so the proof
@@ -27,15 +28,14 @@ Open Scope Z_scope.
 (** `c: _IO_setb`, at [HLG]. *)
 Import LibioSetb SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hfree_fn : find_fn ge (TAtom "free") = Some (Defined free_fn)) (Hfh : frees_heap (ge_free ge))
-  (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{Hfree_fn : !Defines ge "free" free_fn}
+  (Hfh : frees_heap (ge_free ge))
+  (Hzf : find_fn ge zgc_free_name = None)
+  (Hzg : lookup zgc_free_name (ge_globals ge) = None).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance hi_setb_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -54,6 +54,6 @@ Proof.
 Qed.
 
 (** LibioSetb.v's [wp_glibc__IO_setb] with glibc's `c: free`. *)
-Definition hi_setb := LibioSetb.wp_glibc__IO_setb w0 registry ge hi_free_rule.
+Definition hi_setb := LibioSetb.wp_glibc__IO_setb hi_free_rule.
 
 End rules.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The start of `c: _IO_setg` and `c: _IO_setp` in the
     `c: new_do_write` inlined in `c: _IO_new_file_xsputn`
     (LibioXsputnBase.v describes the function), block `c: iw_2.L70`,
@@ -43,20 +44,18 @@ Proof. intros [-> | ->]; reflexivity. Qed.
 
 Import LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
     LibioXsputnBase.v asks. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
-  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance xs_reset_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -101,7 +100,7 @@ Proof.
   check "Hl". store "Hl" "Hwb". step. step. check "Hl". load_s32 "Hl" "Hmode". step.
   rewrite (mode_sle _ Hm). branch_as false.
   iDestruct ("Hroom" with "Hbl") as "Hroom".
-  iApply (wp_xs_L122 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb wp we dq b' reg'
+  iApply (wp_xs_L122 Hmove Hmove_fn Hmove_sym eb X fb freg vb vreg nb wp we dq b' reg'
             so c' ys T d r fl f2 fd tw off m with "Hvt Hl Hvtp Hrp Hre Hrb Hwb Hbb Hbe Hwp Hwe Hroom Hfl Hfl2 Hfdc Htw
             Hoff Hcol [$Hmode //] Herr HX Hl' Hys HK"); try close_side.
   all: lk_fin.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** In permuting mode, glibc's scanner skips nonoptions and then asks
     whether the argument at the public index is "--", which ends the
     options. It compares the argument with glibc's own strcmp. This file
@@ -43,14 +44,14 @@ Import GetoptDash GetoptIdleThree GetoptExchangeThree GetoptExchangeTwo GetoptEx
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
 
+Import ProgramAbbreviations.
+Section test_values.
+Definition dash_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; "chk2"; "chk23"]%string.
+End test_values.
 Section test.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance dash_test_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance dash_test_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -98,7 +99,7 @@ Proof.
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
   iDestruct (big_sepL_lookup with "Hs") as (s) "#Hws"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws") as (rq) "[Hcapq %Hq0]".
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq" by arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step.
   iApply (StrcmpLogic.wp_call_glibc_strcmp registry (os_wi w0) ge with "Hws Hdd"); [reflexivity | exact Hg | reflexivity |].
   iNext. iIntros "_ _". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step. step.
@@ -109,7 +110,6 @@ Proof.
 Qed.
 
 (** These names hold what the "--" blocks read. *)
-Definition dash_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; "chk2"; "chk23"]%string.
 
 (** The end-of-scan test needs the scanner's positions in order, so this
     lemma joins the "--" test with the blocks that follow it. It starts
@@ -151,7 +151,7 @@ Proof.
   - iIntros (e' Hk) "Hl Hi Ha Hc". apply keeps_app in Hk as [Hk _].
     iApply ("HK" with "[%] Hl Hi Hf Hla Ha Hc Hs"). split; [done|]. split; [exact Hk | lia].
   - iIntros (e' (Hk & Hlt)) "Hl Hi Ha Hc". apply keeps_app in Hk as [Hk Hk'].
-    iApply (wp_getopt_dash w0 registry ge ks e' i n f l b r av ar ps with "Hl Hi Hf Hla Ha Hc Hs [HK]");
+    iApply (wp_getopt_dash ks e' i n f l b r av ar ps with "Hl Hi Hf Hla Ha Hc Hs [HK]");
       [ exact Hkx | exact Hkd
       | rewrite (keeps_in _ _ _ _ Hk'); [exact Hv0 | cbn; tauto]
       | rewrite (keeps_in _ _ _ _ Hk'); [exact Hv2 | cbn; tauto]

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A short option with a required argument takes the rest of its
     cluster as that argument, or else the next argument of the vector.
     When the cluster ends at the last argument, nothing is left to take:
@@ -33,14 +34,11 @@ Local Arguments Z.opp : simpl nomatch.
 (** The next-argument module supplies the argument vector and its tactics. *)
 Import GetoptReqNext GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section req.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance req_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance req_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -111,17 +109,15 @@ Proof.
   iNext. iIntros "Hl Hcur _".
   iDestruct (ws_byte cur t 1 with "Hws") as (bb1 breg1) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap' & ? & ? & ? & ?).
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
-    [reflexivity | vx | exact Hcap' | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap' | rawa |].
+  check_read_dq "Hbl" by rawa; iNext; iIntros "_".
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _". iClear "Hbl Hbt". step.
   rewrite (Z.mod_small (chr_w (sbyte t 1)) (2 ^ 32)); [|apply chr_w_range].
   change (0 mod 2 ^ 32) with 0. rewrite chr_w_eqb; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte t 1) 0) as [E1 | E1]; close_br.
   2: {
     iDestruct "HK" as "[HK _]".
-    iApply (wp_getopt_reqrest w0 registry ge ks e0 _ _ i c cur t with "Hws Hl Hib Hab Hcur [Hoo Ha Hcl HG HK]");
+    iApply (wp_getopt_reqrest ks e0 _ _ i c cur t with "Hws Hl Hib Hab Hcur [Hoo Ha Hcl HG HK]");
       [ exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lia | exact Hc
       | exact Hb | exact Hal | exact Hend | exact Hr |].
     iIntros (e') "[%Hk' %H7] Hl Hib Hab Hcur".
@@ -131,7 +127,7 @@ Proof.
   rewrite (Z.mod_small n (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (i + 1) n) as [En | En]; close_br.
   - iDestruct "HK" as "[_ [_ HK]]".
-    iApply (wp_getopt_reqmiss w0 registry ge ks e0 with "Hpo Hsl Hsc Hl Hoo Hcur Ha Hcl Hs HG [Hib Hab HK]");
+    iApply (wp_getopt_reqmiss ks e0 with "Hpo Hsl Hsc Hl Hoo Hcur Ha Hcl Hs HG [Hib Hab HK]");
       [ exact Hks | exact Hksd | xkeep | exact Hrule | exact Hse | exact Hmid | lk_prove | lk_prove | lk_prove
       | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hc | exact Hper | exact Hb | exact Hal | exact Hend
       | exact Hr | exact Hav | exact Hala | lia | exact Hra | intros ->; cbn in Hlen; lia | exact Hse0 | exact Hsea
@@ -140,7 +136,7 @@ Proof.
     iApply ("HK" with "[%] Hl [Hib] Hoo Hab Hcur Ha Hcl HG"); [split; [exact Hk'|]; split; [exact E1|]; split; [lia | exact H7]|].
     iSplit; [iPureIntro; lia|]. by rewrite <- En.
   - iDestruct "HK" as "[_ [HK _]]".
-    iApply (wp_getopt_reqnext w0 registry ge ks e0 _ _ i n c with "Hl [Hib] Hab Hcur Ha Hcl Hs [Hoo HG HK]");
+    iApply (wp_getopt_reqnext ks e0 _ _ i n c with "Hl [Hib] Hab Hcur Ha Hcl Hs [Hoo HG HK]");
       [ exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lia | lia
       | exact Hn | exact Hlen | exact Hc | exact Hb | exact Hal | exact Hend | exact Hr | exact Hav | exact Hala
       | exact Hda | exact Hra | (iSplit; [iPureIntro; lia | done]) |].

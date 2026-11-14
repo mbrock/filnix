@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option for a word and
     may not leave the word to the short options, it reports the word as
     unrecognized on stderr when its caller lets it print errors. Then it
@@ -40,14 +41,11 @@ Import GetoptLongArg GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail Get
 (** This tactic shows that the message of a report is one of the five. *)
 Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].
 
+Import ProgramAbbreviations.
 Section unrec.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance unrec_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance unrec_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -89,11 +87,11 @@ Proof.
     with "[Hib Hoob HK]" as "HL366".
   { iIntros (e1 fr1 (Hk1 & H12' & Hc0'')) "Hl Hcur Ha Hcl HG".
     step. step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+    store_pointer "Hl Hcur" by (StrlenLoop.arith) preserving wi_store.
     iNext. iIntros "Hl Hcur". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+    store_word "Hl Hib" by (StrlenLoop.arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step. check "Hl".
-    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+    store_word "Hl Hoob" by (StrlenLoop.arith) preserving wi_store.
     iNext. iIntros "Hl Hoob".
     rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia]. change (0 mod 2 ^ 64) with 0. fold null.
     iApply ("HK" with "[%] Hl [Hib] [Hoob] Hcur Ha Hcl HG");
@@ -108,19 +106,17 @@ Proof.
     [unfold argv_strs; rewrite big_sepL_cons; iDestruct "Hs" as "[H _]"; iExact "H"|].
   iDestruct (argv_str_cap with "Hw0") as (rq) "[#Hcapq %Hq0]".
   step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |].
+  check_read_dq "Hsl" by StrlenLoop.arith.
   iNext; iIntros "_".
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]".
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |].
+  load_pointer_dq "Hsl Hsc Hcf" by StrlenLoop.arith.
   iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). step. step.
   iApply (Hgt with "HG"); [lmsg | vx |]. iNext; iIntros (q) "HT".
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Ha");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |].
+  check_read_dq "Ha" by StrlenLoop.arith.
   iNext; iIntros "Ha"; iDestruct "Hcl" as "[Hc0 Hcl]".
-  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  load_pointer_dq "Ha Hc0 Hcapq" by StrlenLoop.arith.
   iNext; iIntros "Ha Hc0 _". step. check "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  load_pointer_dq "Hl Hcur Hcapc" by StrlenLoop.arith.
   iNext. iIntros "Hl Hcur _".
   iApply (Hfx with "HT Hw0 Hpfx Hwc"); [lmsg | vx |].
   iNext; iIntros (r0) "HG". step.

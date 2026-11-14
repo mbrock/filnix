@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Before glibc's scanner parses an option argument, it stores the
     private cursor, which points into the argument just after its dashes.
     A cluster of short options and a long-only option store a cursor one
@@ -57,14 +58,11 @@ Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
 
+Import ProgramAbbreviations.
 Section cursor.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance cursor_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance cursor_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -97,9 +95,9 @@ Proof.
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   step. step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq" by arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  store_pointer "Hl Hcur" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hcur".
   assert (Ha1 : (ptr_addr q mod 2 ^ 64 + 1 mod 2 ^ 64) mod 2 ^ 64 = ptr_addr q + 1)
     by (rewrite !(Z.mod_small _ (2 ^ 64)); lia).
@@ -137,9 +135,9 @@ Proof.
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   step. step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq" by arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. check "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  store_pointer "Hl Hcur" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hcur".
   assert (Ha1 : (ptr_addr q mod 2 ^ 64 + 1 mod 2 ^ 64) mod 2 ^ 64 = ptr_addr q + 1)
     by (rewrite !(Z.mod_small _ (2 ^ 64)); lia).

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A printf buffer uses its own staging array when the stream has no write
     buffer or its write pointer has reached the end. These rules follow the
     checked switch function and preserve the stream pointers unchanged.
@@ -28,13 +29,9 @@ Local Arguments Z.opp : simpl nomatch.
     ownership or for keeping allocations alive. *)
 Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The switch function shares the caller's concrete world interpretation. *)
-Local Instance stage_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A stream with null write pointers selects the full 128-byte staging array.
@@ -61,7 +58,7 @@ Proof.
   step. step. check "Hb". store "Hb" "Hptr".
   step. step. check "Hb". store "Hb" "Hend". step. step.
   step. check "Hb".
-  iApply (wp_raw_load_pointer_self w0 registry ge with "Hb Hptr");
+  iApply (wp_raw_load_pointer_self with "Hb Hptr");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
   iNext. iIntros "Hb Hptr". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.
@@ -102,7 +99,7 @@ Proof.
   step. step. check "Hb". store "Hb" "Hptr".
   step. step. check "Hb". store "Hb" "Hend". step. step.
   step. check "Hb".
-  iApply (wp_raw_load_pointer_self w0 registry ge with "Hb Hptr");
+  iApply (wp_raw_load_pointer_self with "Hb Hptr");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
   iNext. iIntros "Hb Hptr". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.

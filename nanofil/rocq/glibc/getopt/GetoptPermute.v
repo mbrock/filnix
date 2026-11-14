@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** In permuting mode, after clamping its nonoption endpoints to the
     public index i, glibc's scanner either exchanges the skipped
     nonoptions with the options that followed them, or restarts the
@@ -42,14 +43,11 @@ Definition getopt_blk119 : block := Eval vm_compute in x_blk "L119".
 (** The first exchange. *)
 Import GetoptIdle GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section permute.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance permute_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance permute_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -100,7 +98,7 @@ Proof.
       - step. iApply ("HK" $! _ ps f l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs"); [| icell | icell | icell | icell].
         split; [done|]. split; [xkeep|]. split; [lia|]. split; lk_prove.
       - step. step. norm. load_s32_using ltac:(arith) "Hl Hib". check "Hl".
-        iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+        store_word "Hl Hfb" by (arith) preserving wi_store.
         iNext. iIntros "Hl Hfb". step. step.
         iApply ("HK" $! _ ps i l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs");
           [| icell | icell | (iApply cell_mod; [lia | iAssumption]) | icell].
@@ -116,7 +114,7 @@ Proof.
     step. step. norm. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step. step. step.
     rewrite (Z.mod_small i (2 ^ 32)); [|lia]. rewrite (Z.mod_small l1 (2 ^ 32)); [|lia].
     iApply wp_branch; [vx | iNext]. rewrite (proj2 (Z.eqb_neq l1 i)); [|lia]. close_br.
-    iApply (GetoptIdle.wp_x2_exchange w0 registry ge (ks ++ [TAtom "chk23"; TAtom "chk24"])%list _ _ f l1 i b r av ar n ps
+    iApply (GetoptIdle.wp_x2_exchange (ks ++ [TAtom "chk23"; TAtom "chk24"])%list _ _ f l1 i b r av ar n ps
       with "Hl [Hib] [Hfb] [Hlab] Ha Hc Hs [HK Hob]");
       [ apply avoids_app_r; [exact Hkx | vm_compute; reflexivity]
       | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove

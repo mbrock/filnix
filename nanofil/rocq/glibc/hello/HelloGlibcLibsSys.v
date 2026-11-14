@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file discharges Hello's allocation, deallocation and exit-handler
     registration calls. The proofs use the concrete OS world, so their
     interfaces require no separate world-preservation assumptions. *)
@@ -69,7 +70,7 @@ Proof.
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   rewrite xmalloc_frame in Hfr. injection Hfr as <-.
   iIntros "Hro HK". iDestruct "Hro" as "(_ & _ & _ & _ & _ & _ & _ & Htc & _)".
-  iApply (HelloGlibcXmalloc.wp_hello_xmalloc w0 glibc_os_registry ge n with "Htc");
+  iApply (HelloGlibcXmalloc.wp_hello_xmalloc (glibc_program := program_of w0 glibc_os_registry ge) n with "Htc");
     [exact Hn | exact (hk_malloc _ _ Hk) | exact (hk_mp _ _ Hk) | exact (hk_tc _ _ Hk) |
      exact (hk_malloc2 _ _ Hk) |].
   iNext. iIntros (b Hb) "Hobj _". iApply "HK". iExists b. iSplit; [done|iExact "Hobj"].

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The middle of `c: fputs(s, fp)` (LibioPutsCode.v,
     libio/iofputs.c), with the stream's lock held:
 
@@ -43,16 +44,15 @@ Definition fp_j162 : jump := JBranch (Tmp (TAtom "v176")) (To (TAtom "L107")) (T
 
 Import LibioFputsUnlock LibioFputsLock LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (vb : Z) (vreg : region) (Rx : iProp Σ).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (vb : Z)
+  (vreg : region)
+  (Rx : iProp Σ).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hxs : xsputn_spec w0 registry ge vb Rx).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance fputs_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -83,7 +83,7 @@ Proof.
   { rewrite (ge_fn_cap _ _ _ Hxs_fn). done. }
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & Hslots)".
   unfold io_vtables_size in Hvend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* L161: the stream's jump table, within `c: __io_vtables`. *)
   step. step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
@@ -91,7 +91,7 @@ Proof.
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_1.join: the `c: xsputn` slot, called on the stream, the string and its length. *)
   step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
+  check_read_dq "Hvl'" by a2.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsx Hfc");
     [reflexivity | vx | right; reflexivity | a2 | a2 | apply (ge_fn_addr _ _ _ Hxs_fn) |].
@@ -129,7 +129,7 @@ Proof.
   iDestruct (file_at_open with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.
   unfold file_size in Hfend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iDestruct "Hmd" as "[%Hmr Hmd]".
   (* L113: the mode. *)
   step. step. check "Hl". load_s32 "Hl" "Hmd". step.

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The jump table's write in the `c: new_do_write` inlined in
     `c: _IO_new_file_xsputn` (LibioXsputnDo.v describes it), from
     block `c: iw_2.L9`:
@@ -42,23 +43,22 @@ Proof. intros H. rewrite Z.land_lor_distr_l H. reflexivity. Qed.
 
 Import LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
     LibioXsputnBase.v asks. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
-  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None) (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
-  (Hpcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy))
-  (Hdxf : find_fn ge (TAtom "__GI__IO_default_xsputn") = Some (Defined glibc__IO_default_xsputn)).
+  (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
+  (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
+  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) (Hfwq : fwq_spec w0 registry ge).
+Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+  (Hfwq : fwq_spec w0 registry ge).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance xs_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -111,7 +111,7 @@ Proof.
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_2.iw_2.join: the write slot and the call. *)
   step. step. norm.
-  iApply (wp_check_read_dq with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
+  check_read_dq "Hvl'" by ar.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hfw) |].
@@ -137,7 +137,7 @@ Proof.
   resume. rewrite (Z.mod_small r (2 ^ 64)); [|lia].
   (* `c: _cur_column` is 0: no adjustment; iw_2.L70. *)
   step. check "Hl".
-  iApply (wp_raw_load_sub_bytes_dq with "Hl Hcol"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |].
+  load_bytes_dq "Hl Hcol" decode (reflexivity) by ar.
   iNext. iIntros "Hl Hcol". branch. step. branch.
   iAssert (xos w0 eb X fb nb) with "[Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX]" as "Hos".
   { assert (Happ' : Z.land fl' io_is_appending = 0).
@@ -146,7 +146,7 @@ Proof.
     { destruct Hpost as [[_ ->] | [_ ->]]; [exact Hflags | apply xs_flags_error; exact Hflags]. }
     iFrame "HX". iExists fl', f2, fd, tw', off', m. iFrame. iPureIntro.
     tauto. }
-  iApply (wp_xs_L70 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb wp we
+  iApply (wp_xs_L70 Hmove Hmove_fn Hmove_sym eb X fb freg vb vreg nb wp we
             dq b' reg' so c' ys T d r with "Hvt Hl Hvtp Hwbf Hos Hl' Hys HK");
     try close_side.
   all: unfold n in *; try lia. all: lk_fin.

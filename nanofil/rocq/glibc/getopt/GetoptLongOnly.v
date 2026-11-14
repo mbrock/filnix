@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** In long-only mode, the scanner tries a single-dash argument as a
     long option unless the argument is one character that the short
     option string names. This file proves that test safe: the scanner
@@ -45,14 +46,11 @@ Import GetoptCursor GetoptExchange GetoptInitialize GetoptState FileInv FileInv.
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
 
+Import ProgramAbbreviations.
 Section long_only.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance long_only_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance long_only_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -128,7 +126,7 @@ Proof.
   { iSplit; [|iDestruct "HK" as "[HK _]"; iExact "HK"].
     iIntros (e2 fr (Hk & El & H2 & H12 & H2' & H20)) "Hl Hib Hcur Ha Hc".
     pose proof (avoids_app _ _ _ Hks) as [_ Hkc].
-    iApply (wp_getopt_long_cursor w0 registry ge ks e2 fr i n c b r av ar ps with "Hl [Hib] Hcur Ha Hc Hs [HK]");
+    iApply (wp_getopt_long_cursor ks e2 fr i n c b r av ar ps with "Hl [Hib] Hcur Ha Hc Hs [HK]");
       [ exact Hkc | exact H2 | exact H12 | exact H2' | exact H20 | lia | lia | exact Hlen
       | lia | lia | lia | lia | lia | lia | lia | lia | by iSplit |].
     iIntros (e' Hk') "Hl Hi Hcur Ha Hc". iDestruct "HK" as "[_ HK]". fold j. rewrite Hnq.
@@ -138,8 +136,7 @@ Proof.
     iApply ("HL" with "[%] Hl [Hib] Hcur Ha Hc"); [xkeep | by iSplit]. }
   step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq");
-    [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq" by arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. norm.
   rdin q s 2%nat. iApply wp_branch; [vx | iNext].
   pose proof (sbyte_range s 2 Hch) as Hs2r.
@@ -150,8 +147,7 @@ Proof.
       iApply ("HL" with "[%] Hl Hib Hcur Ha Hc"). split; [xkeep|]. split; [exact El|]. repeat split; lk_prove. }
   step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hc") as "[Hcj Hc]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq");
-    [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq" by arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hc" with "Hcj"). step. norm.
   rdin q s 1%nat.
   iApply (StrchrnulLogic.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");

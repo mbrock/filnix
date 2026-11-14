@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Programs call glibc's getopt through global cells: optind holds the
     index of the next argument, opterr says whether to print errors,
     optarg returns an option's argument, and optopt returns the option
@@ -80,14 +81,11 @@ Ltac sw H :=
   iApply (wp_raw_store_w with H); [vx | vx | reflexivity | arith | reflexivity | wi_store |];
   iNext; iIntros H.
 
+Import ProgramAbbreviations.
 Section wrapper.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the wrapper's safepoints. *)
 Local Instance wrap_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance wrap_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -181,9 +179,9 @@ Proof.
   unfold getopt_wrap_after, getopt_wrap_blk. cbn [b_jump].
   step. step. norm. check "Hl". ld "Hl Hb0". check "Hli". sw "Hli Hib".
   step. step. step. norm. check "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hb16 Hcap"); [reflexivity | vx | left; reflexivity | arith | arith | exact Ha' |].
+  load_pointer_dq "Hl Hb16 Hcap" by arith.
   iNext. iIntros "Hl Hb16 _". check "Hla".
-  iApply (wp_raw_store_pointer with "Hla Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
+  store_pointer "Hla Hab" by (arith) preserving wi_store.
   iNext. iIntros "Hla Hab".
   step. step. step. norm. check "Hl". ld "Hl Hb8". check "Hlo". sw "Hlo Hcb".
   iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt (x mod 2 ^ 32))); [reflexivity | vx |].

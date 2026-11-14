@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The start of `c: _IO_flush_all` (LibioFlushCode.v), to the head
     of its loop over `c: _IO_list_all`: `c: _IO_cleanup_region_start_noarg`
     allocates a 32-byte cleanup buffer, stores `c: flush_cleanup` in it
@@ -30,16 +31,34 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioFlushClean LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hpush : find_fn ge (TAtom "__GI___libc_cleanup_push_defer") =
-                 Some (Defined glibc___libc_cleanup_push_defer)).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance flush_start_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+Definition push_spec : Prop := forall fr cb creg pv xs Φ,
+  call_frame glibc___libc_cleanup_push_defer [WPtr (mkPtr cb (Obj cb))] = Some fr ->
+  0 < cb -> cb mod 8 = 0 -> cb + 32 <= r_end creg -> r_end creg <= 2 ^ 63 -> length xs = 4%nat ->
+  ⊢ tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ pcell cb 24 pv -∗ bytes cb 16 xs -∗
+    ▷ (tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
+       Φ RetVoid) -∗
+    WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry)
+  (Hext : sys_external ge).
+Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}.
+
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -49,16 +68,9 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     [wp_glibc___libc_cleanup_push_defer] states it at offset 0. It is
     a premise here, so that these proofs do not instantiate
     SysCleanup.v's module; LibioCleanupExit.v proves it. *)
-Definition push_spec : Prop := forall fr cb creg pv xs Φ,
-  call_frame glibc___libc_cleanup_push_defer [WPtr (mkPtr cb (Obj cb))] = Some fr ->
-  0 < cb -> cb mod 8 = 0 -> cb + 32 <= r_end creg -> r_end creg <= 2 ^ 63 -> length xs = 4%nat ->
-  ⊢ tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ pcell cb 24 pv -∗ bytes cb 16 xs -∗
-    ▷ (tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
-       Φ RetVoid) -∗
-    WP (ERun fr : sexpr) {{ Φ }}.
 
 (** [push_spec] holds. *)
-Context (Hpush_spec : push_spec).
+Context (Hpush_spec : (push_spec w0 registry ge)).
 
 (** The premises of `c: zthread_self_cookie`'s rule. *)
 Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
@@ -66,7 +78,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's
     cookie, not null (H). *)
-Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H|]; iNext.
 
 (** `c: _IO_flush_all ()` from its frame fr to the head of its loop:
     the cleanup buffer cb is pushed, `c: list_all_lock` is held once
@@ -97,9 +109,9 @@ Proof.
   { iExists tb, treg, jb. iSplit; [iPureIntro; exact Ht | iExact "Htcb"]. }
   assert (Hsz : ptr_addr (ow_self w0) <> 0) by (rewrite Hself; cbn; lia).
   iDestruct "Hlk" as "(%Hk & Hkl & [%Hk0r Hk0] & [%Hk4r Hk4] & Hko)". destruct Hk as (Hkal & Hkend & Hkreg).
-  iApply (wp_live_fit1 w0 registry ge with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
-  iApply (wp_live_fit1 w0 registry ge with "Hkl"). iIntros ([Hlk0 Hlk48]) "Hkl".
-  iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
+  iApply (wp_live_fit1 with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
+  iApply (wp_live_fit1 with "Hkl"). iIntros ([Hlk0 Hlk48]) "Hkl".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* start: the cleanup buffer, pushed. *)
   step. iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |].

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** In permuting mode, glibc's scanner skips the nonoptions that follow
     the public index before it looks for an option. An argument is a
     nonoption when its first character is not a dash, or when it is the
@@ -35,20 +36,22 @@ Definition skip_names : list name :=
 (** This module proves the nonoption test, and its exchange module supplies the argument vector. *)
 Import GetoptSkipTest GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
+Section skip_values.
+Context {Σ : gFunctors}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
+Existing Instance gen_heapGS0.
+Lemma skip_cell b o x : 0 <= x < 2 ^ 32 -> bytes b o (le_bytes (x mod 2 ^ 32) 4) ⊢ int_cell b o x.
+Proof. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
+End skip_values.
 Section skip.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance skip_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance skip_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A stored integer in range rebuilds its field. *)
-Lemma skip_cell b o x : 0 <= x < 2 ^ 32 -> bytes b o (le_bytes (x mod 2 ^ 32) 4) ⊢ int_cell b o x.
-Proof. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
 
 
 (** The loop starts at the public index i and stops at some i' between
@@ -93,13 +96,13 @@ Proof.
   { iSplit.
     - iIntros (e2 fr (Hk & H57 & H12 & H23)) "Hl Hib Ha Hc".
       step. step. norm. load_s32_using ltac:(arith) "Hl Hib". check "Hl".
-      iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+      store_word "Hl Hlab" by (arith) preserving wi_store.
       iNext. iIntros "Hl Hlab". step. step.
       iApply ("HK" $! _ i with "[%] Hl [Hib] [Hlab] Ha Hc Hs"); [| icell | (iApply skip_cell; [lia | iAssumption])].
       split; [xkeep | lia].
     - iIntros (e2 fr (Hk & Hin & H57 & H0 & H2 & H12 & H2' & H23)) "Hl Hib Ha Hc".
       step. load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-      iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+      store_word "Hl Hib" by (arith) preserving wi_store.
       iNext. iIntros "Hl Hib". step. step.
       iApply (IH (Z.to_nat (n - (i + 1))) ltac:(lia) _ (i + 1) with "Hl [Hib] [Hlab] Ha Hc Hs [HK]");
         [ lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lia | reflexivity
@@ -111,7 +114,7 @@ Proof.
   2:{ step. brz. iDestruct "HLs" as "[HL _]". iApply ("HL" with "[%] Hl Hib Ha Hc").
       split; [xkeep|]. repeat split; lk_prove. }
   pose proof (avoids_app _ _ _ Hks) as [_ Hkt].
-  iApply (wp_skip_test w0 registry ge (ks ++ List.map TAtom ["v0"; "v2"; "v12"; "chk2"; "chk23"; "chk57"]%string)%list
+  iApply (wp_skip_test (ks ++ List.map TAtom ["v0"; "v2"; "v12"; "chk2"; "chk23"; "chk57"]%string)%list
     _ i n b r av ar ps with "Hl Hib Ha Hc Hs [HLs]");
     [ apply avoids_app_r; [exact Hkt | vm_compute; reflexivity] | lk_prove | lk_prove
     | lia | lia | assumption | lia | lia | lia | lia | lia | lia | lia | lia |].

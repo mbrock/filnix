@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The call of `c: puts(s)` (LibioPutsCode.v, libio/ioputs.c) that
     writes the string, with stdout's lock held and the stream narrow:
     `c: _IO_sputn(stdout, s, len)` through the jump table's
@@ -36,19 +37,18 @@ Definition pu_j163 : jump := JBranch (Tmp (TAtom "v179")) (To (TAtom "L180")) (T
 
 Import LibioPutsUnlock LibioPutsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (vb : Z) (vreg : region) (Rx : iProp Σ).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (vb : Z)
+  (vreg : region)
+  (Rx : iProp Σ).
 Context (F : ptr -> Z -> option Z -> iProp Σ).
 Context (G : list Z -> ptr -> Z -> option Z -> iProp Σ).
 Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
 Context (Hxs : xsputn_spec_for w0 registry ge F G Rx).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance puts_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -82,8 +82,8 @@ Proof.
   { rewrite (ge_fn_cap _ _ _ Hxs_fn). done. }
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & Hslots)".
   unfold io_vtables_size in Hvend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   (* L162: stdout's jump table, within `c: __io_vtables`. *)
   step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
@@ -91,7 +91,7 @@ Proof.
   iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_1.join: the `c: xsputn` slot, called on stdout, the string and its length. *)
   step. step.
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
+  check_read_dq "Hvl'" by a2.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsx Hfc");
     [reflexivity | vx | right; reflexivity | a2 | a2 | apply (ge_fn_addr _ _ _ Hxs_fn) |].
@@ -116,6 +116,6 @@ End rules.
     stronger buffer and flag requirements to their predicate. *)
 Definition wp_puts_L162 `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
     w0 registry ge vb vreg Rx Hxs_fn (Hxs : xsputn_spec w0 registry ge vb Rx) :=
-  wp_puts_L162_for w0 registry ge vb vreg Rx (file_at vb (ow_self w0))
-    (fun _ => file_at vb (ow_self w0)) (file_at_open vb (ow_self w0)) Hxs_fn Hxs.
+  program_call(wp_puts_L162_for (glibc_program := program_of w0 registry ge) vb vreg Rx (file_at vb (ow_self w0))
+    (fun _ => file_at vb (ow_self w0)) (file_at_open vb (ow_self w0)) Hxs_fn Hxs).
 

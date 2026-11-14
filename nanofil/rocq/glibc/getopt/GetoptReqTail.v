@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A short option with a required argument and nothing left to take
     has no argument. glibc's scanner then records the option character
     as the bad option, reports it on stderr if the caller lets it print
@@ -55,14 +56,11 @@ Definition tail_keys : list name := Eval vm_compute in
 Lemma avoids_app_l xs ks W : avoids (xs ++ ks) W = avoids xs W && avoids ks W.
 Proof. unfold avoids. apply forallb_app. Qed.
 
+Import ProgramAbbreviations.
 Section tail.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance tail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -108,23 +106,22 @@ Proof.
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
   pose proof (sbyte_range so 0 Hcho) as Hs0r.
   step. step. check "Hl".
-  iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+  store_word "Hl Hoob" by (arith) preserving wi_store.
   iNext. iIntros "Hl Hoob".
   iDestruct (ws_byte po so 0 with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
   iApply (wp_renew_read_dq with "Hbl"); [reflexivity | vx | reflexivity | exact Hcap | rawa | rawa | apply Z.mod_1_r |].
   iNext. iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by rawa.
   iNext; iIntros "_ _". iClear "Hbl Hbt". step. rewrite chr_cmp; [|lia|lia].
   rewrite (Z.mod_small c (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so 0) 58) as [E58 | E58]; close_br.
   - step. step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+    store_pointer "Hl Hcur" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hcur". step.
     iApply ("HK" with "[%] Hl [Hoob] Hcur"); [split; [xkeep | lk_prove] | by iSplit].
   - step. step. step. step. check "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
+    store_pointer "Hl Hcur" by (arith) preserving wi_store.
     iNext. iIntros "Hl Hcur". step.
     iApply ("HK" with "[%] Hl [Hoob] Hcur"); [split; [xkeep | lk_prove] | by iSplit].
 Qed.
@@ -167,7 +164,7 @@ Proof.
       [exact Hks | xkeep | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hc | exact Hb
       | exact Hal | exact Hend | exact Hr |].
     iIntros (e2) "Hk Hl Hoo Hcur". iApply ("HK" with "Hk Hl Hoo Hcur Ha Hcl HG").
-  - iApply (wp_getopt_diag_missing w0 registry ge (tail_keys ++ ks) with "Hsl Hsc Ha Hcl Hs HG [Hl Hoo Hcur HK]");
+  - iApply (wp_getopt_diag_missing (tail_keys ++ ks) with "Hsl Hsc Ha Hcl Hs HG [Hl Hoo Hcur HK]");
       [rewrite avoids_app_l; rewrite Hksd; vm_compute; reflexivity | exact Hrule | exact Hse | exact Hmid | lk_prove
       | lk_prove | exact Hc | exact Hse0 | exact Hsea | exact Hsee | exact Hser | exact Hav | exact Hala | exact Hda
       | exact Hra | exact Hps |].

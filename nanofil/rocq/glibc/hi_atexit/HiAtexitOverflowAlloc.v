@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** stdout initially has no buffer. Its first overflow allocates one,
     switches the stream to writing, and sends the requested byte. This
     file joins allocation with the proved pointer resets and send path.
@@ -44,19 +45,19 @@ Context (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate)
 
 (** A stream without a buffer calls the proved buffer allocator. *)
 Definition hi_doallocbuf :=
-  LibioDoAllocBuf.wp_glibc__IO_doallocbuf_alloc w0 registry ge Hda
+  program_call(LibioDoAllocBuf.wp_glibc__IO_doallocbuf_alloc (glibc_program := program_of w0 registry ge) Hda
     (hi_malloc_state dq mp tc dummy mpr tcr dr)
-    (hi_doallocate w0 registry ge Hreg Hext Hstat Hfstat Hmaj Hisatty Hsetb Hfree_fn Hfh Hzf Hzg
-       Hmalloc_fn Hmalloc2 dq mp tc dummy mpr tcr dr Hmp Htc).
+    (hi_doallocate (glibc_program := program_of w0 registry ge) Hreg Hext Hstat (Hfstat := Hfstat) (Hmaj := Hmaj) (Hisatty := Hisatty) (Hsetb := Hsetb) (Hfree_fn := Hfree_fn) Hfh Hzf Hzg
+       (Hmalloc_fn := Hmalloc_fn) (Hmalloc2 := Hmalloc2) dq mp tc dummy mpr tcr dr Hmp Htc)).
 
 (** The new buffer becomes the stream's read and write area. *)
 Definition hi_ovf_L33 :=
-  LibioOverflowAllocSetg.wp_ovf_L33 w0 registry ge Hdab (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doallocbuf
-    (hi_ovf_L35 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
+  program_call(LibioOverflowAllocSetg.wp_ovf_L33 (glibc_program := program_of w0 registry ge) (Hdabf := Hdab) (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doallocbuf
+    (hi_ovf_L35 w0 registry ge Hreg Hext Hwrite Hfw Hdwf)).
 
 (** The first overflow allocates its buffer and then sends the byte. *)
 Definition hi_overflow_alloc :=
-  LibioOverflowAlloc.wp_glibc__IO_new_file_overflow_alloc w0 registry ge
-    (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_ovf_L33.
+  program_call(LibioOverflowAlloc.wp_glibc__IO_new_file_overflow_alloc (glibc_program := program_of w0 registry ge)
+    (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_ovf_L33).
 
 End rules.

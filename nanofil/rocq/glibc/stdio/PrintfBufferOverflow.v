@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf-buffer completion reports EOVERFLOW when its accumulated character
     count no longer fits a nonnegative C int. This rule follows the checked
     body through that error store and its minus-one return.
@@ -27,13 +28,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** The errno store preserves the existing world interpretation. *)
-Local Instance overflow_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A mathematical count beyond INT_MAX fails even when its low 64 bits look small.
@@ -58,8 +55,7 @@ Proof.
   intros Hfr Herr Hbb Hal Hend Hreg Hdb Hbo Hused Hdend Hdreg Hw Htotal Hmode Heb Heo Heend Hereg.
   injection Hfr as <-. iIntros "Hl Hd [%Hm Hmode] Hbase Hptr Hwritten Hel [%Hprior Herrno] HK".
   step. step. norm.
-  iApply (wp_check_read_dq with "Hl");
-    [reflexivity | reflexivity | left; reflexivity | ar | ar | ar |].
+  check_read_dq "Hl" by ar.
   iNext. iIntros "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hmode");
     [reflexivity | reflexivity | reflexivity |
@@ -70,14 +66,12 @@ Proof.
   iApply (MemchrLast.wp_half_check_read_dq registry (os_wi w0) ge with "Hl");
     [reflexivity | reflexivity | reflexivity | left; reflexivity | ar | ar | lia | ar | ar |].
   iNext. iIntros "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hptr Hd");
-    [reflexivity | reflexivity | left; reflexivity | ar | ar | ar |].
+  load_pointer_dq "Hl Hptr Hd" by ar.
   iNext. iIntros "Hl Hptr Hd".
   iApply (MemchrLast.wp_half_check_read_dq registry (os_wi w0) ge with "Hl");
     [reflexivity | reflexivity | reflexivity | left; reflexivity | ar | ar | lia | ar | ar |].
   iNext. iIntros "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hbase Hd");
-    [reflexivity | reflexivity | left; reflexivity | ar | ar | ar |].
+  load_pointer_dq "Hl Hbase Hd" by ar.
   iNext. iIntros "Hl Hbase Hd". step. step. step. step. norm.
   iApply (wp_raw_load_read_dq with "Hl Hwritten");
     [reflexivity | reflexivity | left; reflexivity | ar |].
@@ -110,8 +104,7 @@ Proof.
       destruct (negb (1 =? (narrowed / 2 ^ 63) mod 2 ^ 64));
       cbn in Hoverflow |- *; try discriminate; reflexivity. }
   rewrite E. cbn [edge_label]. step. step. norm. check "Hel".
-  iApply (wp_raw_store_w with "Hel Herrno");
-    [reflexivity | reflexivity | reflexivity | ar | reflexivity | wi_store |].
+  store_word "Hel Herrno" by (ar) preserving wi_store.
   iNext. iIntros "Hel Herrno".
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Hl Hd [Hmode] Hbase Hptr Hwritten Hel [Herrno]").

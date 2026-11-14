@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves one step of glibc's search for long options whose
     names start with a word's name. The step handles an entry that
     matches after a first match was already found. The parser compares
@@ -91,14 +92,11 @@ Ltac ploop_rng := first
 Ltac ploop_small := repeat match goal with |- context [?x mod 2 ^ 32] =>
   rewrite (Z.mod_small x (2 ^ 32)); [|ploop_rng] end.
 
+Import ProgramAbbreviations.
 Section step.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance step_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance step_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -156,12 +154,12 @@ Proof.
   rewrite (Z.mod_small (ptr_addr lo + 32 * Z.of_nat j) (2 ^ 64)); [|lia].
   rewrite (proj2 (Z.eqb_neq (ptr_addr lo + 32 * Z.of_nat j) 0)); [|lia].
   iApply wp_branch; [vx | iNext]. close_br.
-  iApply (wp_long_pfx_cmp w0 registry ge (ploop_keys ++ ks)%list _ lo os j x k y lonly F with "Ht0 HF");
+  iApply (wp_long_pfx_cmp (ploop_keys ++ ks)%list _ lo os j x k y lonly F with "Ht0 HF");
     [exact Hkc2 | lk_prove | lk_prove | lk_prove | lk_prove | exact Hx | exact Hy | exact Hos
     | exact (Forall_lookup_1 _ _ _ _ Hfl Hx) | exact (Forall_lookup_1 _ _ _ _ Hfl Hy) |].
   iSplit.
   + iIntros (e' Hk') "HF". apply keeps_app in Hk' as [Hkt Hk'].
-    iApply (wp_pfx_set w0 registry ge (ploop_keys ++ ks)%list _ M (Z.of_nat (List.length os)) j k a m sp pe
+    iApply (wp_pfx_set (ploop_keys ++ ks)%list _ M (Z.of_nat (List.length os)) j k a m sp pe
       with "Hs HM");
       [exact Hks2 | exact Hka2 | exact Hkm2 | exact Hcut | exact Hmal | exact Hset | ploop_via | ploop_via
       | ploop_via | ploop_via | ploop_via | ploop_via | ploop_via | ploop_via | lia | lia | lia | exact Ha | exact Hm

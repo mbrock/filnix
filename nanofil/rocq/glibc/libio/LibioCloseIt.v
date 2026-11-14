@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** `c: _IO_file_close_maybe_unlink(fp, 0)` (LibioCloseItCode.v;
     glibc 2.44's `c: _IO_file_close_it`, libio/fileops.c), which
     `c: fclose` calls, on a narrow stream with pending output in its
@@ -30,23 +31,20 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioCloseItMid LibioCloseItEnd SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close).
-Context (Hsetb : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
-Context (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
-
-(** The Iris instance for registry and [os_wi] w0. *)
+Import ProgramAbbreviations.
+Section rules_values.
+Context {hlc : has_lc}
+  {Σ : gFunctors}
+  {invGS_gen0 : invGS_gen hlc Σ}
+  {gen_heapGS0 : gen_heapGS piece pval Σ}
+  (w0 : os_world)
+  (registry : name -> option (contract os_world))
+  (ge : genv).
+Existing Instance invGS_gen0.
+Existing Instance gen_heapGS0.
 Local Instance close_it_top_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
-
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** `c: _IO_new_do_write`'s triple for some bytes, as LibioDoWrite.v's
-    [wp_glibc__IO_new_do_write_mode] states it: the stream's mode is 0
-    or -1. *)
 Definition do_write_spec : Prop :=
   forall fr fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb vreg mode Φ,
   let n := Z.of_nat (length xs) in
@@ -74,22 +72,38 @@ Definition do_write_spec : Prop :=
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-
-(** `c: _IO_new_do_write(fp, data, 0)`'s triple, as LibioDoWrite.v's
-    [wp_glibc__IO_new_do_write_zero] states it: nothing to write, 0 at
-    once. *)
 Definition do_write_zero_spec : Prop := forall fr fp data Φ,
   call_frame glibc__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
   ▷ Φ (Ret (WInt 0)) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
+End rules_values.
+Section rules.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close).
+Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
+
+
+(** Expressions of the language. *)
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** `c: _IO_new_do_write`'s triple for some bytes, as LibioDoWrite.v's
+    [wp_glibc__IO_new_do_write_mode] states it: the stream's mode is 0
+    or -1. *)
+
+(** `c: _IO_new_do_write(fp, data, 0)`'s triple, as LibioDoWrite.v's
+    [wp_glibc__IO_new_do_write_zero] states it: nothing to write, 0 at
+    once. *)
 
 (** The callees' triples: [do_write_spec] and [do_write_zero_spec],
     and LibioCloseItMid.v's `c: _IO_file_close`, `c: _IO_setb` and
     `c: _IO_unsave_markers`. *)
-Context (Hdw : do_write_spec) (Hdw0 : do_write_zero_spec).
+Context (Hdw : (do_write_spec w0 registry ge))
+  (Hdw0 : (do_write_zero_spec w0 registry ge)).
 Context (Hclose : LibioCloseItMid.close_spec w0 registry ge).
 Context (Hsetb_spec : setb_spec w0 registry ge).
-Context (fum : func) (Hfum : find_fn ge (TAtom "__GI__IO_unsave_markers") = Some (Defined fum)).
+Context (fum : func)
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" fum}.
 Context (Hum : LibioCloseItMid.unsave_spec w0 registry ge fum).
 
 (** `c: _IO_file_close_maybe_unlink(fp, 0)` of an open stream,
@@ -137,8 +151,8 @@ Proof.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp H80 H96 HK".
   unfold file_size in Hfend. pose proof Hnw as Hnw'. pose proof Hcp as Hcp'.
   unfold io_no_writes in Hnw'. unfold io_currently_putting in Hcp'.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
   assert (0 <= fd < 2 ^ 32) by lia. assert (0 <= 0 < 2 ^ 32) by lia.
   assert (0 <= Z.land fl 8 < 2 ^ 32) by (rewrite Hnw'; lia).
   assert (0 <= Z.land fl 2048 < 2 ^ 32) by (apply land_lt32; lia).
@@ -166,7 +180,7 @@ Proof.
     assert (Hl0 : Z.of_nat (length xs) = 0) by exact Hn0.
     assert (Hxs0 : xs = []) by (destruct xs; [reflexivity | cbn [length] in Hl0; lia]). subst xs.
     iApply Hdw0; [reflexivity |]. iNext. resume. step.
-    iApply (LibioCloseItMid.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
+    iApply (LibioCloseItMid.wp_close_it_L18 Hfc Hclose Hsetb_spec fum Hum
               with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
       first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
     { iRight. iExists bb, breg. iFrame "Hbl". iPureIntro. split_and!; try done; try lia. }
@@ -183,7 +197,7 @@ Proof.
                 (if r =? Z.of_nat (length xs) then 0 else 2 ^ 32 - 1))
     by (destruct (r =? Z.of_nat (length xs)); reflexivity).
   rewrite Ep3. try rewrite Ep3.
-  iApply (LibioCloseItMid.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
+  iApply (LibioCloseItMid.wp_close_it_L18 Hfc Hclose Hsetb_spec fum Hum
             with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
     first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
   { iRight. iExists bb, breg. iFrame "Hbl". iPureIntro. split_and!; try done; try lia.

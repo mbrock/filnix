@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The newline of `c: puts(s)` (LibioPutsCode.v, libio/ioputs.c),
     block `c: L180` to the end of block `c: L184`, with stdout's lock
     held and the stream narrow ([wp_puts_L180]):
@@ -40,16 +41,14 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioPutsBuf LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Context (vb : Z) (Rx : iProp Σ).
-Context (Hov_fn : find_fn ge (TAtom "__GI___overflow") = Some (Defined glibc___overflow)).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (vb : Z)
+  (Rx : iProp Σ).
+Context `{Hov_fn : !Defines ge "__GI___overflow" glibc___overflow}.
 Context (Hov : overflow_spec w0 registry ge vb Rx).
 
-(** The Iris instance for registry and [os_wi] w0. *)
-Local Instance puts_nl_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -72,26 +71,26 @@ Proof.
   iDestruct (file_at_nl with "Hf") as (fb' freg nb wp we col) "(%Hp & Hl & Hwp & Hwe & Hcol & Hb & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hwin & Hwein & Hcl8). injection Hfp as <-.
   unfold file_size in Hfend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 w0 registry ge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
-  iApply (wp_buf_fit w0 registry ge fb with "Hb"); [lia | lia |]. iIntros (Hfit) "Hb".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  iApply (wp_live_fit1 with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
+  iApply (wp_buf_fit fb with "Hb"); [lia | lia |]. iIntros (Hfit) "Hb".
   pose proof (Hfit _ Hwin) as Hwr. pose proof (Hfit _ Hwein) as Her. clear Hfit.
   (* L180: the write pointer and the write end, compared. *)
   step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
-  iApply (wp_load_bufptr w0 registry ge with "Hl Hwp Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
+  iApply (wp_load_bufptr with "Hl Hwp Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
     | exact Hwin |].
   iNext. iIntros "Hl Hwp Hb".
   step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
-  iApply (wp_load_bufptr w0 registry ge with "Hl Hwe Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
+  iApply (wp_load_bufptr with "Hl Hwe Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
     | exact Hwein |].
   iNext. iIntros "Hl Hwe Hb". step. step. step.
   destruct (Z.ltb_spec (ptr_addr wp) (ptr_addr we)) as [Hlt | Hge].
   - (* L183: room in the buffer, the byte stored and the write pointer moved past it. *)
     branch_as true. step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
-    iApply (wp_load_bufptr w0 registry ge with "Hl Hwp Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
+    iApply (wp_load_bufptr with "Hl Hwp Hb"); [reflexivity | vx | reflexivity | a2 | a2 | lia
       | exact Hwin |].
     iNext. iIntros "Hl Hwp Hb". step. check "Hl". store "Hl" "Hwp".
-    iApply (wp_buf_putc w0 registry ge with "Hl Hcol Hb");
+    iApply (wp_buf_putc with "Hl Hcol Hb");
       [vx | lia | exact Hfal | unfold file_size; lia | lia | exact Hwin | exact Hwein | exact Hlt | exact Hcl8 |].
     iNext. iIntros (col' Hcl') "Hl Hcol Hb". step. step. step. step.
     iApply ("HK" with "[%] Hso Hsoc [Hl Hwp Hwe Hcol Hb Hcl] HRx").

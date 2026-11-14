@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** In long-only mode glibc's long-option parser accepts long options
     after a single dash, so a word such as "-x" that names no long option
     may still be a short option. When the word's second byte is not a
@@ -40,14 +41,11 @@ Definition lonly_names : list name := Eval vm_compute in
 Import GetoptLongUnrec GetoptLongArg GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 (** The strchr module proves glibc's own strchr. *)
 
+Import ProgramAbbreviations.
 Section only.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance only_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance only_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -88,30 +86,28 @@ Proof.
   pose proof (sbyte_range s 0 Hch) as Hs0r.
   step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx i. check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  load_pointer_dq "Ha Hcj Hcapq" by StrlenLoop.arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). step. norm.
   iDestruct (ws_byte q sq 1 with "Hwq") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
     [reflexivity | vx | exact Hcap | StrlenLoop.arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | StrlenLoop.arith |].
   iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | StrlenLoop.arith |].
+  load_bytes_dq "Hbl Hbt" decode (apply extended_chr) by StrlenLoop.arith.
   iNext; iIntros "_ _". iClear "Hbl Hbt". step. rewrite chr_cmp; [|lia|lia].
   step. step. iApply wp_branch; [vx | iNext].
   destruct (Z.eqb_spec (sbyte sq 1) 45) as [E45 | E45]; cbn [edge_label].
   { step. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl [Hib] Hcur Ha Hcl"); [xkeep | by iSplit]. }
   step. step. check "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  load_pointer_dq "Hl Hcur Hcapc" by StrlenLoop.arith.
   iNext. iIntros "Hl Hcur _".
   iDestruct (ws_byte cur s 0 with "Hws") as (cb creg) "(%Hcb & #Hcbl & #Hcbt)"; [lia|].
   destruct Hcb as (Hccap & ? & ? & ? & ?).
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hcbl");
     [reflexivity | vx | exact Hccap | StrlenLoop.arith | cbn [ptr_addr]; unfold raw_address; rewrite Z.mod_small; lia | StrlenLoop.arith |].
   iNext; iIntros "_".
-  iApply (wp_raw_load_sub_bytes_dq with "Hcbl Hcbt");
-    [reflexivity | vx | reflexivity | apply extended_chr | exact Hccap | StrlenLoop.arith |].
+  load_bytes_dq "Hcbl Hcbt" decode (apply extended_chr) by StrlenLoop.arith.
   iNext; iIntros "_ _". iClear "Hcbl Hcbt".
   iApply (StrchrnulLogic.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");
     [vx | apply Z.mod_pos_bound; lia | exact Hg | exact Hgn | reflexivity |].

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** After overflow returns, printf must choose where to store its next bytes.
     The stream's write pointers identify any remaining space in its heap buffer.
     Reading those pointers leaves the stream ready for later writes and preserves
@@ -22,14 +23,11 @@ Open Scope Z_scope.
 
 Import PrintfStreamHeap LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-Local Instance heap_switch_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (Hswitch : find_fn ge (TAtom "__printf_buffer_to_file_switch") =
-  Some (Defined glibc___printf_buffer_to_file_switch)).
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
 
 (** The checked switch borrows the stream's pointer cells and restores them.
     Its continuation receives the selected pointers and the original IO-ready
@@ -58,7 +56,7 @@ Proof.
   assert (Hwe : we = mkPtr (db + eo) (Obj db)).
   { destruct we as [a c]. cbn in *. subst c. f_equal; lia. }
   rewrite Hwe.
-  iApply (PrintfBufferOverflowSwitch.wp_printf_overflow_switch_owned w0 registry ge Hswitch e from bb breg fb freg
+  iApply (PrintfBufferOverflowSwitch.wp_printf_overflow_switch_owned e from bb breg fb freg
     db dreg k eo (DfracOwn 1%Qp) (DfracOwn 1%Qp)
     with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try assumption; try (unfold file_size in *; lia).
   iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option for a word, it
     still has two ways out. In long-only mode a word such as "-x" may be
     a short option, so the parser returns -1 and lets the caller try the
@@ -59,14 +60,11 @@ Proof. unfold sbyte. cbn. lia. Qed.
 (** The long-only module supplies the long-only test, the report, the option table and the tactics. *)
 Import GetoptLongMissOnly GetoptLongUnrec GetoptLongArg GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
+Import ProgramAbbreviations.
 Section miss.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance miss_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance miss_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -121,7 +119,7 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L332") (Some fr1))) : gexpr) {{ Φ }})%I
     as "HL332".
   { iIntros (e1 fr1 (Hk1 & H2' & H12' & H14' & H16' & Hc0'')) "Hl Hib Hoo Hcur Ha Hcl HG HK".
-    iApply (wp_long_unrec w0 registry ge ks e1 fr1 G T fp dom se sereg mid av ar ps pfx sp cur s i pe oo b r
+    iApply (wp_long_unrec ks e1 fr1 G T fp dom se sereg mid av ar ps pfx sp cur s i pe oo b r
       with "Hpfx Hws Hsl Hsc Hl Hib Hoo Hcur Ha Hcl Hs HG");
       [exact Hksu | exact Hrule | exact Hse | exact Hmid | exact H2' | exact H12' | exact H14' | exact H16' | exact Hc0''
       | lia | exact Hpe | exact Hb | exact Hal | exact Hend | exact Hr | exact Hav | exact Hala | lia | exact Hra
@@ -134,7 +132,7 @@ Proof.
   destruct (Z.eqb_spec lonly 0) as [El | El]; cbn [edge_label].
   { step. iApply wp_branch; [vx | iNext]. close_br. step. iApply wp_branch; [vx | iNext]. close_br.
     iApply ("HL332" with "[%] Hl Hib Hoo Hcur Ha Hcl HG HK"). split; [xkeep|]. repeat split; lk_prove. }
-  iApply (wp_long_miss_only w0 registry ge (lmiss_keys ++ ks) _ cur s q sq po so i n b r av ar ps with "Hwq Hpo Hws Hl Hib Hcur Ha Hcl");
+  iApply (wp_long_miss_only (lmiss_keys ++ ks) _ cur s q sq po so i n b r av ar ps with "Hwq Hpo Hws Hl Hib Hcur Ha Hcl");
     [rewrite avoids_app_l; rewrite Hkso; vm_compute; reflexivity | exact Hg | exact Hgn | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hq | exact (Hq0 El) | exact Hi
     | exact Hn | exact Hlen | exact Hb | exact Hal | exact Hend | exact Hr | exact Hav | exact Hala | exact Hda
     | exact Hra |].

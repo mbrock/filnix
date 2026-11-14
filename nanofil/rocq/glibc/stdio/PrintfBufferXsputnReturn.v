@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Printf checks how many staged bytes the stream accepted. A short result
     marks the printf buffer failed and returns. Only an exact count reaches
     the buffer-selection call.
@@ -26,13 +27,9 @@ Definition printf_xsputn_block : block := Eval vm_compute in
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Updating the printf error flag leaves stream and OS resources untouched. *)
-Local Instance return_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Any count mismatch takes the failure edge, including partial acceptance

@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** This file proves puts for the actual linked hi_atexit program.
     Its string-output and newline calls use proved glibc functions,
     not assumed call rules. A nonempty input leaves stdout with an
@@ -54,7 +55,7 @@ Lemma hi_puts fr p dq' s so soreg fp mode eb vb vreg sb sreg Φ :
 Proof.
   intros Hfr Hgso Hsoal Hsoend Heb Hself.
   iIntros "#Hvt #Hsingle Hstr Hso Hsoc Hf HM HK".
-  iApply (LibioPuts.wp_glibc__IO_puts_for w0 glibc_os_registry hge (fun n c H => H) (hi_sys_external _)
+  iApply (LibioPuts.wp_glibc__IO_puts_for (glibc_program := program_of w0 glibc_os_registry hge) (fun n c H => H) (hi_sys_external _)
     vb vreg (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr)
     (hi_stdout_before w0 eb vb) (fun s fp _ held => hi_stdout_after w0 eb vb s fp held)
     (hi_stdout_before_open w0 eb vb) (fun s fp _ held => hi_stdout_after_lock w0 eb vb s fp held)

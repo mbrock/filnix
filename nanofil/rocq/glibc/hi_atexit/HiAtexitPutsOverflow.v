@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** The newline in puts calls an overflow wrapper when stdout has
     no room. The wrapper chooses byte output and calls the stream's
     overflow function. This file connects both calls to the linked
@@ -38,12 +39,11 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 (** Every function called during buffer allocation or flushing is
     present in the linked environment and has a proved rule. *)
 Definition hge_output_overflow :=
-  hi_xsputn_overflow (Σ := Σ) w0 glibc_os_registry hge (fun n c H => H) (hi_sys_external _)
-    (hi_ge_file_stat _) (hi_find___GI___fstat64 _) (hi_find___gnu_dev_major _) (hi_find___isatty_nostatus _)
-    (hi_find___GI__IO_setb _) (hi_find_free _) hge_frees (proj1 hge_zgc_free) (proj2 hge_zgc_free)
-    (hi_find_malloc _) (hi_find_malloc___libc_malloc2 _) dq mp tc dummy mpr tcr dr Hmp Htc
-    (hi_ge_doallocate _) (hi_find___GI__IO_doallocbuf _) (hi_find___GI___write _) (hi_ge_file_write _)
-    (hi_find__IO_new_do_write _).
+  program_call(hi_xsputn_overflow (glibc_program := program_of w0 glibc_os_registry hge) (Σ := Σ) (fun n c H => H) (hi_sys_external _)
+    (hi_ge_file_stat _)
+    hge_frees (proj1 hge_zgc_free) (proj2 hge_zgc_free)
+    dq mp tc dummy mpr tcr dr Hmp Htc
+    (hi_ge_doallocate _) (hi_ge_file_write _)).
 
 (** The wrapper may orient stdout, allocate its first buffer or
     flush an existing one. A failed write still returns the buffer
@@ -63,7 +63,7 @@ Proof.
   iDestruct "Hxf" as (fl f2 fd tw off m Hp)
     "(Hfl & Hfl2 & Hfd & Htw & Hoff & Hcol & Hmode & Herr)".
   destruct Hp as (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160).
-  iApply (LibioOverflowGen.wp_glibc___overflow w0 glibc_os_registry hge (hi_ge_overflow _)
+  iApply (LibioOverflowGen.wp_glibc___overflow (glibc_program := program_of w0 glibc_os_registry hge) (hi_ge_overflow _)
     fr fb freg 10 m vb vreg with "Hvt Hl Hmode Hvtp"); try assumption; try lia.
   iNext. iIntros (fr' Hfr') "Hl Hmode Hvtp".
   iApply (hge_output_overflow eb Heb fr' fb freg nb wp we 10 vb vreg with

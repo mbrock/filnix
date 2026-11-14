@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A caller of glibc's getopt_long passes a table of long options. Each
     entry is 32 bytes long and holds the option's name, whether it takes
     an argument, a flag pointer and a value, and an entry whose name is
@@ -87,14 +88,11 @@ Proof. rewrite /opt_table /opt_entry /int_cellq /pcellq /liveq. apply _. Qed.
 
 End table.
 
+Import ProgramAbbreviations.
 Section exact.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the parser's safepoints. *)
 Local Instance exact_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance exact_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -136,8 +134,7 @@ Proof.
   iDestruct "Ht" as (tb treg) "(%Ht & #Htl & #Hes & #Hnul)".
   destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
   cbn [b_insts b_jump plo_blk50].
-  iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
-    [reflexivity | vx | exact Htc | rawa | rawa | al8 |]; iNext; iIntros "_".
+  check_read_dq "Htl" by first [rawa | al8]; iNext; iIntros "_".
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   destruct (Nat.lt_ge_cases k (List.length os)) as [Hlt | Hge].
   2: {
@@ -151,16 +148,14 @@ Proof.
   iDestruct (big_sepL_lookup with "Hes") as "(#Hn & #Hnws & _)"; [exact Hx|].
   iDestruct (argv_str_cap with "Hnws") as (rn) "[#Hcapn %Hn0]".
   iDestruct (ws_shape with "Hnws") as %(Hchn & Hnp & Hne).
-  iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
-    [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
+  load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8].
   iNext. iIntros "_ _ _". step. step.
   rewrite (Z.mod_small (ptr_addr (lo_name x)) (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
   rewrite (proj2 (Z.eqb_neq (ptr_addr (lo_name x)) 0)); [|lia].
   iApply wp_branch; [vx | iNext]. close_br.
-  step. iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
-    [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
+  step. load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8].
   iNext. iIntros "_ _ _". step. check "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  load_pointer_dq "Hl Hcur Hcapq" by StrlenLoop.arith.
   iNext. iIntros "Hl Hcur _".
   pose proof (eq_len_le s) as Hle. iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iApply (StrncmpLogic.wp_call_glibc_strncmp registry (os_wi w0) ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (Z.of_nat (eq_len s)) with "Hnws Hws"); [lia | vxc (Z.of_nat (eq_len s)) | exact Hgn | reflexivity |].
@@ -193,10 +188,10 @@ Proof.
   destruct (Z.eqb _ (0 mod 2 ^ 32)) eqn:Ecmp; iApply wp_branch; [vx | iNext | vx | iNext]; close_br.
   2: { step. iApply wp_branch; [vx | iNext]. close_br.
        iApply ("HL52" with "[%] Hl Hcur HK"). split; [xkeep|]. repeat split; lk_prove. }
-  step. iApply (wp_renew_read_dq w0 registry ge with "Htl");
+  step. iApply (wp_renew_read_dq with "Htl");
     [reflexivity | vx | reflexivity | exact Htc | rawa | rawa | al8 |].
   iNext. iIntros "_".
-  iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn"); [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
+  load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8].
   iNext. iIntros "_ _ _".
   iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hnws"); [vx | exact Hgl | reflexivity |].
   iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step. step.

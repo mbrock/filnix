@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** Glibc's scanner inlines its exchange routine twice. The outer loop
     of each copy alternates its two swap loops until one of the two
     blocks is empty. This file gives the proof script for that loop and
@@ -99,14 +100,11 @@ Ltac x_outer lower upper p1 p3 v11 ks e bot mid top av ar n ps :=
     | lia | lia | lia | lia | assumption | lia | lia | lia | lia
     | x_after p1 p3 v11 av ks e; x_again IH (bot + (top - mid)) top ] ].
 
+Import ProgramAbbreviations.
 Section exchange.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance xchg_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The program logic uses the caller's registry and OS interpretation. *)
-Local Instance xchg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -127,7 +125,7 @@ Lemma wp_x2_loop ks e bot mid top av ar n ps Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "iw_2.L16") (b_insts x2_blk16) (b_jump x2_blk16))) : gexpr) {{ Φ }}.
-Proof. x_outer (GetoptSwap2Lower.wp_x2_lower w0 registry ge) (GetoptSwap2Upper.wp_x2_upper w0 registry ge)
+Proof. x_outer (GetoptSwap2Lower.wp_x2_lower) (GetoptSwap2Upper.wp_x2_upper)
   (TAtom "iw_2.pr.1") (TAtom "iw_2.pr.3") (TAtom "iw_2.v11") ks e bot mid top av ar n ps. Qed.
 
 End exchange.

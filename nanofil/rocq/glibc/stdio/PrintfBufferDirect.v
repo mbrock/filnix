@@ -1,3 +1,4 @@
+From Glibc Require Import GlibcProgram.
 (** A printf buffer writes directly into a stream buffer when the stream's
     write pointer lies below its end. The switch function borrows these
     pointers and installs them without changing the stream or character bytes.
@@ -27,13 +28,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
+Import ProgramAbbreviations.
 Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
-
-(** Pointer selection leaves the concrete world interpretation unchanged. *)
-Local Instance direct_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry (os_wi w0) ge.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Pointer loads borrow independent shares of the containing and target allocations. *)

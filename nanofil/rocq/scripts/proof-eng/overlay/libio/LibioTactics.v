@@ -1,6 +1,6 @@
 (** Stream proofs need store rules that preserve the operating system's state.
-    This extension adds those rules to [GlibcTactics] without making string
-    proofs load the stream invariants or the operating-system model. *)
+    This extension keeps those dependencies out of [GlibcTactics].
+    Callers that need these rules import this file. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -10,6 +10,35 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
 From Glibc Require Import Fix FileInv LibioLogic LibioCloseSteps GlibcTactics.
 Import ListNotations FileInv.ML LG0 LG0.L.
 Open Scope Z_scope.
+
+(** This wrapper loads a narrow integer from a fractionally owned byte sequence.
+    The caller's conversion proof chooses the symbolic form of the loaded value. *)
+Tactic Notation "load_bytes_dq" constr(H) "decode" tactic3(decode) "by" tactic3(side) :=
+  iApply (wp_raw_load_sub_bytes_dq with H);
+    [memory_condition "load_bytes_dq" 1 ltac:(reflexivity) |memory_condition "load_bytes_dq" 2 ltac:(vx)
+    |memory_condition "load_bytes_dq" 3 ltac:(first [reflexivity | eassumption])
+    |memory_condition "load_bytes_dq" 4 decode
+    |memory_condition "load_bytes_dq" 5 ltac:(first [eassumption | left; reflexivity | right; reflexivity])
+    |memory_condition "load_bytes_dq" 6 side |].
+
+(** This wrapper stores an integer's bytes while preserving the world invariant. *)
+Tactic Notation "store_word" constr(H) "by" tactic3(side) "preserving" tactic3(world) :=
+  iApply (wp_raw_store_w with H);
+    [memory_condition "store_word" 1 ltac:(vx) |memory_condition "store_word" 2 ltac:(vx)
+    |memory_condition "store_word" 3 ltac:(reflexivity)
+    |memory_condition "store_word" 4 side
+    |memory_condition "store_word" 5 ltac:(first [reflexivity | eassumption])
+    |memory_condition "store_word" 6 world |].
+
+(** This wrapper checks read access using fractional ownership of the object's life.
+    The rule stays here because it is supplied by [LibioLogic], rather than the generic instruction library. *)
+Tactic Notation "check_read_dq" constr(H) "by" tactic3(side) :=
+  iApply (wp_check_read_dq with H);
+    [memory_condition "check_read_dq" 1 ltac:(reflexivity)
+    |memory_condition "check_read_dq" 2 ltac:(first [solve [vx] | eassumption])
+    |memory_condition "check_read_dq" 3 ltac:(first [eassumption | left; reflexivity | right; reflexivity])
+    |memory_condition "check_read_dq" 4 side |memory_condition "check_read_dq" 5 side
+    |memory_condition "check_read_dq" 6 ltac:(first [solve [apply Z.mod_1_r] | side]) |].
 
 (** This tactic loads a pointer while retaining the base and loaded objects' lives. *)
 Ltac load Hl Hc Hk :=

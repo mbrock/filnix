@@ -13,7 +13,7 @@
     first matching byte. Once a word contains a match, a population count
     recovers the byte offset within the word. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -467,7 +467,7 @@ Lemma wp_win_ubyte f e ls l c d pr rest j p dq b reg wo ws i Φ :
                                          Let d W (RawLoad (LdNarrow Ub) 0) [Tmp c] :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hc Ha Hi Hb Hwo Hend Hreg. iIntros "[Hl Hw] HK".
-  iApply (wp_check_read_dq with "Hl"); [reflexivity | exact Hx | exact Hc | arith | arith | apply Z.mod_1_r |].
+  check_read_dq "Hl" by arith.
   iNext. iIntros "Hl".
   iApply (wp_read_with registry wi ge (liveq dq b reg ∗ ptsq dq (words_ps b wo ws))%I
             (fun m => live_at m b reg /\ all_agree m (words_ps b wo ws)) _ _ [] with "[$Hl $Hw] [HK]").
