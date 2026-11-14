@@ -656,6 +656,8 @@ in
 
   (for pkgs.libarchive [
     (pin "3.7.4" "sha256-z3/IW59mPAbcK3A2t+5U0CcSFn4EsHvcxMJ1U6vy1v8=")
+    # Nixpkgs 26.11's patches are for its 3.8; 26.05 applied none to 3.7.
+    (use { patches = [ ]; })
     (patch ./ports/patch/libarchive-3.7.4.patch)
     (skipCheck "some tests fail")
     (skipPatch "mac")
