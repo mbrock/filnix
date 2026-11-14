@@ -29,25 +29,24 @@ let
       throw "Unknown campaign scope: ${scope}";
   # Flake outputs CI requires in the caches (scripts/ci-outputs.txt), built
   # ahead of the package roots so that publication puts them there first.
-  leading =
-    map
+  # A root is named by its last attribute, or by its whole path when that
+  # name is not unique (each NixOS configuration ends in toplevel).
+  leadingAttrs =
+    builtins.filter (line: line != "" && !pkgs.lib.hasPrefix "#" line)
       (
-        attr:
-        let
-          path = pkgs.lib.splitString "." attr;
-        in
-        {
-          name = pkgs.lib.last path;
-          value = pkgs.lib.getAttrFromPath path flake;
-        }
-      )
-      (
-        builtins.filter (line: line != "" && !pkgs.lib.hasPrefix "#" line) (
-          pkgs.lib.splitString "\n" (
-            builtins.readFile "${flake.outPath}/scripts/ci-outputs.txt"
-          )
+        pkgs.lib.splitString "\n" (
+          builtins.readFile "${flake.outPath}/scripts/ci-outputs.txt"
         )
       );
+  lastOf = attr: pkgs.lib.last (pkgs.lib.splitString "." attr);
+  leading = map (attr: {
+    name =
+      if pkgs.lib.count (other: lastOf other == lastOf attr) leadingAttrs > 1 then
+        attr
+      else
+        lastOf attr;
+    value = pkgs.lib.getAttrFromPath (pkgs.lib.splitString "." attr) flake;
+  }) leadingAttrs;
   evaluated =
     map (item: {
       inherit (item) name;
