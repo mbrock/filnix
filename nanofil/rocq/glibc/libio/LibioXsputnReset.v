@@ -1,20 +1,14 @@
 From Glibc Require Import GlibcProgram.
-(** The start of `c: _IO_setg` and `c: _IO_setp` in the
-    `c: new_do_write` inlined in `c: _IO_new_file_xsputn`
-    (LibioXsputnBase.v describes the function), block `c: iw_2.L70`,
-    once the jump table's write returned:
+(** After the stream's write method returns, the stream resets its read and write pointers.
+    This proof follows the reset through the test of the stream's mode:
 
     ```
     _IO_setg (fp, fp->_IO_buf_base, fp->_IO_buf_base, fp->_IO_buf_base);
     fp->_IO_write_base = fp->_IO_write_ptr = fp->_IO_buf_base;
     if (fp->_mode <= 0 && ...)
-    ```
+    ``` *)
 
-    [wp_xs_L70] stores the buffer's base as the read pointer, read end,
-    read base, write pointer and write base, finds the mode narrow
-    ([mode_sle]) and goes on at LibioXsputnFlags.v's [wp_xs_L122]. *)
-
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -47,8 +41,7 @@ Import LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn Libio
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-(** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
-    LibioXsputnBase.v asks. *)
+(** The program must provide the copying routines and the default stream writer used by the continuation. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
@@ -57,20 +50,18 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
   `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 
 
-(** Expressions of the language. *)
+(** The expression type uses the caller's registry and program environment. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A lookup premise, through the environment's puts. *)
+(** Temporary lookups follow environment updates and normalize pointer arithmetic. *)
 Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
-(** A pointer load of the buffer's base from the cell H. *)
+(** Loading the buffer's base preserves ownership of the stream and its buffer. *)
 Ltac ldb H := load "Hl" H "Hbl".
 
-(** Block `c: iw_2.L70` on, r of the d bytes written of the T left:
-    `c: _IO_setg` and `c: _IO_setp` store the buffer's base as every
-    read and write pointer, the mode is narrow, and [wp_xs_L122] goes
-    on. *)
+(** Resetting the stream stores the buffer's base in all five read and write pointer fields.
+    The narrow mode permits execution to continue with the flag test. *)
 Lemma wp_xs_L70 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d r e from Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
@@ -95,10 +86,11 @@ Proof.
   iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
   iDestruct "Hmode" as "[%Hm32 Hmode]".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
-  step. step. step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hrb". step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hrp".
-  step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hre". step. step. check "Hl". ldb "Hbb". check "Hl". store "Hl" "Hwp".
-  check "Hl". store "Hl" "Hwb". step. step. check "Hl". load_s32 "Hl" "Hmode". step.
-  rewrite (mode_sle _ Hm). branch_as false.
+  step. unfold int_bytes.
+  sym_frun_with "Hl Hbl Hbb Hrb Hrp Hre Hwp Hwb Hmode" [TAtom "iw_2.L122"]
+    ltac:(first [GlibcSym.sym_lia | eexists; split; [reflexivity|]; unfold GlibcSym.cell_pieces; wi_store]) ltac:(sym_vm).
+  all: try (exfalso; destruct Hm as [-> | ->]; vm_compute in Hsym_yes; contradiction).
+  all: try (exfalso; destruct Hm as [-> | ->]; vm_compute in Hsym_no; discriminate).
   iDestruct ("Hroom" with "Hbl") as "Hroom".
   iApply (wp_xs_L122 Hmove Hmove_fn Hmove_sym eb X fb freg vb vreg nb wp we dq b' reg'
             so c' ys T d r fl f2 fd tw off m with "Hvt Hl Hvtp Hrp Hre Hrb Hwb Hbb Hbe Hwp Hwe Hroom Hfl Hfl2 Hfdc Htw
