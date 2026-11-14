@@ -2,12 +2,12 @@
     linked with userland glibc, under an indexed contract for
     getopt_long. HelloGlibcJoin.v proves the same result under the
     original contract, which accepts any public index and says nothing
-    about the parser's private object. That contract cannot be proved
-    for glibc, because glibc's parser resumes from the private object,
-    and the object must match the argument vector and the index.
+    about the parser's private object. The proof of glibc's parser needs
+    more than that: the parser resumes from the private object, and its
+    rule asks that the object match the argument vector and the index.
 
-    Under the new contract, each call borrows the parser's object in a
-    state that suits the current vector and index. The call gives the
+    Under the new contract, each call borrows the parser's object while
+    it matches the current argv and optind. The call gives the
     object back in a state that suits the vector and index it leaves.
     So the program must start with the object in such a state. It may
     hold a session that the starting optind continues or restarts, or it

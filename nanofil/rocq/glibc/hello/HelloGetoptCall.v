@@ -1,0 +1,188 @@
+From Glibc Require Import GlibcProgram.
+(** Hello calls getopt_long once per option, and glibc remembers its
+    place between calls in a private object. The safety theorem in
+    HelloGlibcJoinIx.v lets each call borrow that object while it matches
+    argv and optind. This file proves that contract from the proof of
+    glibc's own getopt_long, so the theorem no longer has to assume it. The proof only moves resources: it lends the
+    call what the parser rule in GetoptLongStr.v asks for and gives the
+    caller back what the rule returns.
+
+    The call also writes opterr and optopt, prints through stderr and
+    reads Hello's option table, but Hello's loop does not hold those.
+    The callees keep them in their private state, so this file asks that
+    the streams and that state lend them to the call and take them back.
+    The streams are part of the loan because a warning printed to stderr
+    uses the stream that Hello owns.
+
+    This file does not decide where the linker puts glibc's objects.
+    It takes each address as a parameter, along with the fact that the
+    linked program finds the symbol there. It also takes the rules for
+    getenv, the warning printers, the alloca cutoff, malloc, memset and
+    free as premises. *)
+
+From Glibc Require Import GlibcTactics LibioTactics.
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+From iris.program_logic Require Import language weakestpre.
+From stdpp Require Import list.
+From Stdlib Require Import String ZArith List Lia Permutation.
+From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
+  ExternalCalls Pieces Heap Language Logic StringLogic MemLogic.
+From Glibc Require Import OsWorld OsRegistry WordString FileInv StrchrCode StrcmpCode StrncmpCode StrlenLogic
+  GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
+  GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr
+  HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop HelloGlibcJoinIx.
+From Glibc Require FileInv GetoptLongStr GetoptLongStore HelloGlibcDebts HelloGetoptState HelloGlibcJoinIx.
+From Glibc Require Import Fix.
+Import ListNotations.
+Open Scope Z_scope.
+
+Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L HelloGlibcDebts.
+
+Section call.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (Hy : hello_layout ge o).
+
+(** ## The linked program
+
+    The parser rule names the functions it calls and the globals it
+    reads, so the linked program must define them. These facts describe
+    the linked program, not the standalone images of Hello or glibc.
+    Each object the rule writes also needs its bounds. *)
+
+(** The program defines getopt_long and the functions that it calls. *)
+Context (Hgl : find_fn ge (TAtom "getopt_long") = Some (Defined glibc_getopt_long))
+  (Hgi : find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal))
+  (Hgr : find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r))
+  (Hplo : find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option))
+  (Hcmp : find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp))
+  (Hchr : find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr))
+  (Hchrn : find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul))
+  (Hncmp : find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp))
+  (Hlen : find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen)).
+
+(** The parser keeps its progress in the object gb with region greg. *)
+Context (gb : Z) (greg : region)
+  (Hgb : Term.lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr gb (Obj gb)))
+  (Hgb0 : 0 < gb) (Hgb8 : gb mod 8 = 0) (Hgbe : gb + 56 <= r_end greg) (Hgbr : r_end greg <= 2 ^ 48).
+
+(** The globals opterr and optopt are integer objects. *)
+Context (oe : Z) (roe : region) (oo : Z) (roo : region)
+  (Hoe : Term.lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)))
+  (Hoe0 : 0 < oe) (Hoee : oe + 4 <= r_end roe) (Hoer : r_end roe <= 2 ^ 48)
+  (Hoo : Term.lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)))
+  (Hoo0 : 0 < oo) (Hooe : oo + 4 <= r_end roo) (Hoor : r_end roo <= 2 ^ 48).
+
+(** Hello's layout bounds optarg, optind and stderr from below by zero.
+    The parser rule needs them strictly above zero. *)
+Context (Hoa0 : 0 < ho_oa o) (Hoi0 : 0 < ho_oi o) (Hse0 : 0 < ho_se o).
+
+(** These are glibc's own strings: the separator "--", the prefixes "-"
+    and "-W ", the getenv key and the diagnostic formats. *)
+Context (pdd pfx7 pfx0 penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom : ptr) (sdd pxs7 pxs0 : list Z)
+  (H146 : Term.lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd)
+  (H147 : Term.lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some pfx7)
+  (H150 : Term.lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx0)
+  (H145 : Term.lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv)
+  (H148 : Term.lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid')
+  (H149 : Term.lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid)
+  (H138 : Term.lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138)
+  (H139 : Term.lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139)
+  (H140 : Term.lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140)
+  (H141 : Term.lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141)
+  (H142 : Term.lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid)
+  (H143 : Term.lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3)
+  (H144 : Term.lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4).
+
+(** ## The rules that remain premises
+
+    The parser reads the environment and prints warnings. It may also
+    allocate a small buffer and free it again. Other milestones prove
+    those functions, so this file assumes each of their rules. *)
+
+(** G serves getenv and the diagnostics, and M serves malloc. *)
+Context (G M : iProp Σ) (T : ptr -> ptr -> iProp Σ)
+  (Hgetenv : getenv_rule w0 glibc_os_registry ge G)
+  (Hdiag : getopt_diag_rule w0 glibc_os_registry ge G T (ho_err o) dom)
+  (Hldiag : getopt_ldiag_rule w0 glibc_os_registry ge G T (ho_err o) dom)
+  (Hcut : getopt_cutoff_rule w0 glibc_os_registry ge)
+  (Hmalloc : getopt_malloc_rule w0 glibc_os_registry ge M)
+  (Hmemset : getopt_memset_rule w0 glibc_os_registry ge)
+  (Hfree : getopt_free_rule w0 glibc_os_registry ge).
+
+(** ## The resources that the call borrows
+
+    Each call needs a few things that only the callees hold. It writes
+    opterr and optopt, and it reads Hello's option string, its table of
+    four long options and glibc's own strings. The definition below
+    gathers them, and the split after it says where they come from. *)
+
+(** The option names lie at these pointers. *)
+Context (n1 n2 n3 n4 : ptr).
+
+(** The call borrows opterr and optopt at any values, the backends'
+    resources, and shares of the strings and the table. *)
+Definition hello_getopt_priv : iProp Σ :=
+  ∃ err c0, live oe roe ∗ int_cell oe 0 err ∗ live oo roo ∗ int_cell oo 0 c0 ∗ G ∗ M ∗
+    word_string DfracDiscarded (sym_ptr ge "hello#str.69") s_optstring ∗
+    opt_table (sym_ptr ge "hello#parse_options.longopts.64") (hello_los n1 n2 n3 n4) ∗
+    word_string DfracDiscarded pdd sdd ∗ word_string DfracDiscarded pfx7 pxs7 ∗
+    word_string DfracDiscarded pfx0 pxs0.
+
+(** The streams and the private state lend these resources and take
+    them back after the call. *)
+Context (Hsplit : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢
+  hello_getopt_priv ∗ (hello_getopt_priv -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D)).
+
+(** ## The contract
+
+    Each call starts with optind and the parser's object in a matching
+    state. The wrapper copies optind into the object, and the parser
+    runs. It leaves a session at the new optind, which is again a
+    matching state, and a return of 103 leaves a string at optarg. *)
+
+(** glibc's getopt_long meets the loop's contract with the admissible
+    states of the parser's object. *)
+Lemma hello_getopt_ix av ar : loop_getopt w0 ge o D av ar (hello_getopt_state gb greg av ar).
+Proof.
+  intros ps a i. exists glibc_getopt_long. split; [exact Hgl|].
+  split; [eexists; apply getopt_long_call_frame|]. intros fr Φ Hfr.
+  destruct (hello_los_facts n1 n2 n3 n4 []) as (Hfl & Hlos & Hneg & Hcode).
+  pose proof (hy_oa _ _ Hy) as Hoa. pose proof (hy_oa_at _ _ Hy) as (_ & Hoa8 & Hoae & Hoar).
+  pose proof (hy_oi _ _ Hy) as Hoi. pose proof (hy_oi_at _ _ Hy) as (_ & Hoie & Hoir).
+  pose proof (hy_se _ _ Hy) as Hse. pose proof (hy_se_at _ _ Hy) as (_ & Hse8 & Hsee & Hser).
+  iIntros "(#Hro & Hio & Hpv & (%Hav & Havl & Hcl) & #Hps & (Hoal & Hoac & Hoil & Hoic) & HS) HQ".
+  destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
+  iDestruct (Hsplit with "[$Hio $Hpv]") as "[Hp Hback]".
+  iDestruct "Hp" as (err c0) "(Hoel & Hoec & Hool & Hooc & HG & HM & #Hos & #Ht & #Hdd & #H7 & #H0)".
+  iPoseProof "Hro" as "(_ & _ & _ & _ & #Hsel & #Hsec & _)".
+  iPoseProof (hello_getopt_state_copy_in (glibc_program := program_of w0 glibc_os_registry ge)
+    gb greg av ar ps i err with "HS") as "Hci".
+  iEval (rewrite /HelloGlibcDebts.str_ro) in "Hps".
+  iApply (wp_getopt_long_str_call (glibc_program := program_of w0 glibc_os_registry ge) fr av ar
+    (sym_ptr ge "hello#str.69") s_optstring (sym_ptr ge "hello#parse_options.longopts.64") null gb greg ps i err
+    (ho_oi o) (ho_oireg o) oe roe (ho_oa o) (ho_oareg o) oo roo a c0 G T (ho_err o) dom (ho_se o) (ho_sereg o)
+    mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 (hello_los n1 n2 n3 n4) [] pfx7 pxs7 pfx0 pxs0 penv 103 Φ
+    with "Hci Hoil Hoic Hoel Hoec Hoal Hoac Hool Hooc Hos HG Hsel Hsec Havl Hcl Hps Hdd Ht H7 H0 [] HM [] [Hback HQ]");
+    try (assumption || reflexivity || lia).
+  - rewrite /GetoptLongStore.flags_own. iSplit; [iPureIntro; apply NoDup_nil_2 | done].
+  - rewrite /GetoptLongStore.longind_own. iLeft. done.
+  - iIntros (x i' c' a' ps' [Hp Hx]) "Hw Hoil Hoic Hoel Hoec Hoal Hoac Hool Hooc Havl Hcl _ HG _ HM _ _ Hstr".
+    iDestruct (getopt_session_index with "Hw") as "[%Hi' Hw]".
+    pose proof (Permutation_length Hp) as Hl.
+    iDestruct ("Hback" with "[Hoel Hoec Hool Hooc HG HM]") as "[Hio Hpv]".
+    { iExists err, c'. iFrame "Hoel Hoec Hool Hooc HG HM Hos Ht Hdd H7 H0". }
+    iApply "HQ". iExists x, ps', a', i'.
+    iSplit; [iPureIntro; split_and!; [reflexivity | lia | lia | exact Hp | lia | rewrite Hl; lia]|].
+    iFrame "Hio Hpv". iSplitL "Havl Hcl".
+    { iSplit; [iPureIntro; rewrite -Hl; split_and!; assumption | iFrame "Havl Hcl"]. }
+    iSplitL "Hoal Hoac Hoil Hoic"; [iFrame "Hoal Hoac Hoil Hoic"|].
+    iSplitL "Hw"; [iApply (hello_getopt_state_session with "Hw")|].
+    iEval (rewrite /GetoptLongStr.arg_str) in "Hstr". destruct (x =? 103); [|done].
+    rewrite /HelloGlibcDebts.str_ro. iDestruct "Hstr" as (s) "Hs". iExists s. iExact "Hs".
+Qed.
+
+(** This record packs the other contracts with the proved call. *)
+Definition hello_debts_ix : HelloDebtsIx w0 ge o := mkHelloDebtsIx w0 ge o D gb greg hello_getopt_ix.
+
+End call.
