@@ -848,6 +848,11 @@ tactic_unit(tmatch(K, Subject, Bs)) -->
     !, tactic_subject(Subject), tk(kw(with)),
     ( tk(sym('|')) -> [] ; [] ), tactic_branches(Bs), tk(kw(end)).
 tactic_unit(tgroup(T)) --> tk(p('(')), !, tactic(T), tk(p(')')).
+
+% A caller can supply the logical inputs when argument evaluation cannot
+% infer their arithmetic decomposition.
+tactic_unit(call(call_spec, [clause(with, [term(X)])])) -->
+    tk(id(call_spec)), tk(kw(with)), atom(X), !.
 %  The proof mode's introduction: Rocq patterns in parentheses, its own
 %  in strings: iIntros (x [a b]) "H [H1 H2]".
 tactic_unit(call(iIntros, [ipm_intros(Is)])) --> tk(id(iIntros)), ipm_intro_items(Is), { Is \== [] }, !.

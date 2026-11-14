@@ -75,6 +75,7 @@ libio/LibioXsputnZero.v
 stdio/NarrowArgs.v
 zsys/OsWorld.v
 GlibcProgram.v
+GlibcSpec.v
 StrlenLogic.v
 getopt/GetoptTerm.v
 hi_atexit/HiAtexitTerm.v

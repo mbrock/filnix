@@ -8,6 +8,15 @@
 
 :- begin_tests(rocq_render).
 
+test(call_spec_inputs) :-
+    string_codes("Goal True. Proof. call_spec. call_spec with (b, reg, wa - b, xs). exact I. Qed.", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    Items = [proved(_, pf([step(_, _, Plain), step(_, _, With)|_], _))],
+    rocq_syntax:rocq_tactic_tokens(Plain, P),
+    rocq_syntax:rocq_tactic_tokens(With, W),
+    assertion(P = call(call_spec, [])),
+    assertion(W = call(call_spec, [clause(with, [term(tuple(_, [_, _, _, _]))])])).
+
 test(tactic_notation_body) :-
     string_codes("Tactic Notation \"load_cell\" constr(H) \"by\" tactic3(side) := iApply (rule with H); [reflexivity | side |].", Cs),
     rocq_syntax:rocq_parse_codes(Cs, Items, _),
