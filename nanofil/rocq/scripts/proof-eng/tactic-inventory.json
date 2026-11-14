@@ -1,5 +1,5 @@
 {
-  "total": 241,
+  "total": 243,
   "files": {
     "StrlenBits.v": [
       "byte_cases"
@@ -166,6 +166,10 @@
       "wos_lk",
       "wos_side",
       "wos_conv"
+    ],
+    "getopt/GetoptWrapper.v": [
+      "ld",
+      "sw"
     ],
     "hello/HelloGlibcMainDispatch.v": [
       "phi_kept",

@@ -112,7 +112,7 @@ Stage 50 leaves three kinds of declaration alone.
 `hello_never_panics` holds for every `Runtime`, and the audit checks that by listing twelve runtime assumptions. `Fix.v` binds `R` to `InterpRuntime`, so the ordinary build checks every file at the interpreter's runtime only. Two more checks compile files against a copy of `Fix.v` that says `Declare Module R : Runtime.` in place of the binding:
 
 - Every push checks Hello's theorem. The glibc check compiles the files that the theorem depends on a second time, with the runtime left abstract. Rocq must then report exactly the twelve fields of the runtime as the theorem's assumptions.
-- Twice daily, the check `nanofil-glibc-abstract` compiles every file that `rocq/glibc/runtime-concrete.txt` does not list. On main `57908a2` that is 413 of the 414 files.
+- Twice daily, the check `nanofil-glibc-abstract` compiles every file that `rocq/glibc/runtime-concrete.txt` does not list. At the first cutover the list names one file, so the check compiles every other file.
 
 An author follows three rules:
 
