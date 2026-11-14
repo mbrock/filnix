@@ -93,8 +93,7 @@ stage using `cc-ir` and `bench/trap-checked.pl`; it does not change the compiler
 It passes `--context` to `link.pl`, which renames context function names
 alongside local definitions and retains only surviving functions' records.
 Context references neither extract archive members nor retain dead code.
-Without that flag, the linker's output stays unchanged. The legacy generator
-does not emit sidecars or change its compilation path.
+Without that flag, the linker's output stays unchanged.
 
 Generate into a separate tree to leave existing code fixtures untouched:
 
@@ -110,6 +109,51 @@ The source-table test checks that linking preserves the default bytes and
 selects the right context records. It checks site order, missing locations,
 recorded names and loop headers without a capture. The test driver runs this
 test before its capture checks.
+
+## Use block hints
+
+An executor can forget a temporary once no later block can read it.
+Doing so only weakens its claim about the symbolic environment.
+Each fixture's `<Name>Blocks.v` records which values remain live at each
+block boundary, under the same function module names as the source sidecar.
+
+A block may select a different value from each incoming branch.
+Its phi arguments are uses on those edges, while phi destinations are definitions at entry.
+The `live_in` and `live_out` tables come from `cfg.pl`.
+
+An executor needs to know which pointer and byte range a block accesses.
+The `footprint` table gives the address and constant byte offset for each
+explicit access, in instruction order. Each entry also records the zero-based
+instruction index, byte width and read and write flags.
+
+An address computed by advancing another pointer can still refer to that
+pointer's object. The table records this root temporary and the constant
+distance from it when known. Flight lower donors and the existing guard-chain
+analysis supply this information. Checked proof operands resolve to their
+pointer or local object.
+
+Some byte ranges depend on values known only when the program runs.
+Unknown widths and pointer distances use `None` rather than invented constants.
+The generator does not infer accesses inside called functions.
+A proof may use these hints to choose candidate memory regions,
+but it must justify each access without trusting them.
+
+Compilation rejects labels that are not blocks of the decoded function.
+The `labels_valid` lemma performs this check once per fixture, using the
+source sidecar's block labels. The generator projects labels before compiling
+the membership computation, so temporary sets and access records stay out
+of its VM code. Large fixtures split definitions into numbered files by
+size and function count, while the main file retains the single check.
+
+The generator reports block counts, liveness entries, accesses and resolved roots.
+`test-block-facts.py` checks phi edges, local objects, byte widths and the
+difference between constant and dynamic root offsets through the analysis command.
+
+The tables do not describe which earlier range checks remain available at a block's exit.
+The check-reuse pass calculates those `avail` facts but discards its exit maps.
+Later passes also rewrite the checks those maps name.
+Preserving the original maps would require another compiler interface,
+which this generator does not add.
 
 ## Use captured layouts
 
@@ -128,12 +172,16 @@ their byte size and alignment describe the declared type, not just the occupied 
 Packed offsets and record alignments remain those of the completed definition.
 Forward declarations use `incomplete` instead of a definition and have no fields.
 
-Function uses start with the types in existing context records and follow
-record member types, including pointer targets. The generator selects the
-fixture's functions before merging layouts and rejects conflicting named
-layouts from different translation units. Tags use names such as
+The fixture tables omit record types that its functions do not use.
+Selection starts with types in existing context records and follows record
+member types, including pointer targets. The generator selects the fixture's
+functions before merging layouts and rejects conflicting named layouts
+from different translation units.
+
+Named records keep their C names. Tags use names such as
 `struct _IO_FILE`; anonymous typedefs use names such as `typedef _IO_lock_t`.
 An unnamed record uses its object name, kind and translation-unit record ID.
+
 Forward declarations without a complete definition have no layout table.
 The `unavailable` list identifies their tags when no selected unit supplies a definition.
 

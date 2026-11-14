@@ -7,6 +7,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 python3 -I "$here/test-blocks.py"
 python3 -I "$here/test-source.py"
+python3 -I "$here/test-block-facts.py"
 python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
   --rocq-function glibc_strcmp >"$work/strcmp-skeleton"
 grep -F 'WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \
@@ -31,8 +32,8 @@ if python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work
     --directory stdio --directory getopt >"$work/rejected"; then
   echo "generator accepted corrupt fixtures" >&2; exit 1
 fi
-grep -F 'stdio: 6 files, 3 differ, 0 stale' "$work/rejected"
-grep -F 'getopt: 9 files, 0 differ, 1 stale' "$work/rejected"
+grep -E 'stdio: [0-9]+ files, 3 differ, 0 stale' "$work/rejected"
+grep -E 'getopt: [0-9]+ files, 0 differ, 1 stale' "$work/rejected"
 
 # Exercise the style-sync CLI in an isolated copy, never in the real manifests.
 mkdir -p "$work/nanofil/rocq/scripts/glibc-code" "$work/nanofil/rocq/glibc/string"
@@ -94,7 +95,9 @@ reject_sync missing-default 'missing fixture:'
 mv "$work/Strncmp-valid.v" "$work/styles/string/StrncmpCode.v"
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
 cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/string/code.toml"
-cp "$here/generate.py" "$here/prelude.py" "$here/source.py" "$here/source.pl" "$here/select.pl" "$work/nanofil/rocq/scripts/glibc-code/"
+cp "$here/generate.py" "$here/prelude.py" "$here/source.py" "$here/source.pl" "$here/select.pl" \
+   "$here/layout.py" "$here/layout.pl" "$here/block-facts.py" "$here/block-facts.pl" \
+   "$work/nanofil/rocq/scripts/glibc-code/"
 cp "$here/../../glibc/CodePrelude.v" "$work/nanofil/rocq/glibc/"
 for part in bin src survey bench; do ln -s "$here/../../../$part" "$work/nanofil/$part"; done
 for script in gallina.pl link.pl; do ln -s "$here/../$script" "$work/nanofil/rocq/scripts/$script"; done

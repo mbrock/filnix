@@ -19,6 +19,7 @@ GLIBC = NF / "rocq/glibc"
 shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
 layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
+block_tables = runpy.run_path(str(HERE / "block-facts.py"))["block_tables"]
 PRELUDE = GLIBC / "CodePrelude.v"
 
 
@@ -271,6 +272,17 @@ class Generator:
                 facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
                 for filename, text in source_tables(name, lower, facts, layout, NF).items():
                     (output / filename).write_text(text)
+                block_facts = json.loads(run([NF / 'bin/nanofil', '--script', HERE / 'block-facts.pl',
+                                              term, *fns.split()], env=self.env))
+                for filename, text in block_tables(name, block_facts).items():
+                    (output / filename).write_text(text)
+                bs = [b for r in block_facts for b in r['blocks']]
+                accesses = [a for b in bs for a in b['footprint']]
+                print(f'{name}Blocks: functions {len(block_facts)}; blocks {len(bs)}; '
+                      f'live-in {sum(len(b["live_in"]) for b in bs)}; '
+                      f'live-out {sum(len(b["live_out"]) for b in bs)}; accesses {len(accesses)}; '
+                      f'rooted {sum(a["root"] is not None for a in accesses)}; '
+                      f'constant-root-offset {sum(a["root_offset"] is not None for a in accesses)}', flush=True)
                 located = sum(r["source"] is not None for r in facts)
                 blocks = sum(r["blocks"] for r in facts)
                 locations = sum(len(r["block_src"]) for r in facts)
@@ -365,7 +377,7 @@ def main():
             target = args.tree / rel
             stale = set()
             if not args.output and args.form == 'shared-prelude':
-                for pattern in ('*Src[0-9]*.v', '*SrcFiles.v'):
+                for pattern in ('*Src[0-9]*.v', '*SrcFiles.v', '*Blocks[0-9]*.v'):
                     stale.update(p for p in target.glob(pattern) if not (out / p.name).exists())
             # Only numbered slices are exclusively owned by a slicer.
             for prefix in (() if args.output else ("HiAtexit", "Getopt")):
