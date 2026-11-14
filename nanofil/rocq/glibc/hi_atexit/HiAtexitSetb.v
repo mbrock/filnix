@@ -10,6 +10,7 @@
     glibc's, the runtime frees heap objects, and `c: zgc_free` is the
     model's. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,14 +19,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
   LeavesLogic AllocLogic LibioSetb HiAtexitBase.
+From Glibc Require AllocLogic FileInv LibioLogic LibioSetb OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** glibc's `c: malloc` and `c: free`, at [HLG]. *)
-Module HAL := AllocOn InterpRuntime HLG.
 (** `c: _IO_setb`, at [HLG]. *)
-Module HSB := LibioSetbOn InterpRuntime HLG.
-Import HSB HSB.SW HSB.SW.FI.ML HSB.SW.FI.LG HSB.SW.FI.L HSB.SW.OW HSB.SW.FI HSB.SW.ST.
+Import LibioSetb SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -43,17 +43,17 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** [free_rule] with glibc's `c: free`: the call enters `free_fn`,
     [wp_glibc_free] gives up b's life, and the call returns to the rest
     of the block. *)
-Lemma hi_free_rule : HSB.free_rule w0 registry ge.
+Lemma hi_free_rule : LibioSetb.free_rule w0 registry ge.
 Proof.
   intros f e ls l v rest j b reg Φ Hx Hk Hb. iIntros "Hbl HK".
   iApply wp_call_bind; [cbn [map_option]; rewrite Hx; reflexivity | exact Hfree_fn | reflexivity |]. iNext.
-  iApply (HAL.wp_glibc_free registry (os_wi w0) ge b reg with "Hbl [HK]");
+  iApply (AllocLogic.wp_glibc_free registry (os_wi w0) ge b reg with "Hbl [HK]");
     [exact Hfh | exact Hzf | exact Hzg | exact Hk | lia | |].
   - intros m wd h rs Hh Hrs Hw. exact (os_wi_free w0 m wd h b reg rs Hk Hh Hrs Hw).
   - iExists _. iSplit; [iPureIntro; reflexivity|]. iExact "HK".
 Qed.
 
 (** LibioSetb.v's [wp_glibc__IO_setb] with glibc's `c: free`. *)
-Definition hi_setb := HSB.wp_glibc__IO_setb w0 registry ge hi_free_rule.
+Definition hi_setb := LibioSetb.wp_glibc__IO_setb w0 registry ge hi_free_rule.
 
 End rules.

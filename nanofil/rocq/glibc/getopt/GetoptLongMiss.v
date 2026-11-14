@@ -8,6 +8,8 @@
     the word, the option string and the vector only inside them, and it
     writes only the parser's own private fields. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +21,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongArg GetoptLongDiag GetoptLongEq GetoptLongExact GetoptLongMissOnly GetoptLongPre GetoptLongReq GetoptLongScan GetoptLongStore GetoptLongTail GetoptLongUnrec GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -35,24 +39,15 @@ Definition lmiss_names : list name := Eval vm_compute in
 Definition lmiss_keys : list name := Eval vm_compute in
   List.map TAtom ["v2"; "v12"; "v14"; "v16"; "chk0"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongMissOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The long-only module supplies the long-only test, the report, the option table and the tactics. *)
-Module LOM := GetoptLongMissOnlyOn R LG0.
-Import LOM LOM.LU LOM.LU.LA LOM.LU.LA.LP LOM.LU.LA.LP.LQE LOM.LU.LA.LP.LQE.LQ LOM.LU.LA.LP.LQE.LQ.LL
-  LOM.LU.LA.LP.LQE.LQ.LL.LT LOM.LU.LA.LP.LQE.LQ.LL.LT.LD LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongMissOnly GetoptLongUnrec GetoptLongArg GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section miss.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance miss_stable : SafepointStable (os_wi w0) := LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance miss_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance miss_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -116,11 +111,11 @@ Proof.
       | exact Hps | exact Hse0 | exact Hsea | exact Hsee | exact Hser |].
     iIntros (e2 Hk2) "Hl Hib Hoo Hcur Ha Hcl HG". iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl Hib Hoo Hcur Ha Hcl HG"). eapply keeps_trans; [exact Hk1 | exact Hk2]. }
-  cbn [b_insts b_jump plo_blk87]. st. st. unfold null; cbn [ptr_addr].
+  cbn [b_insts b_jump plo_blk87]. step. step. unfold null; cbn [ptr_addr].
   iApply wp_branch; [vx | iNext]. close_br.
-  en. st. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small lonly (2 ^ 32)); [|lia]. change (0 mod 2 ^ 32) with 0.
+  step. step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small lonly (2 ^ 32)); [|lia]. change (0 mod 2 ^ 32) with 0.
   destruct (Z.eqb_spec lonly 0) as [El | El]; cbn [edge_label].
-  { en. iApply wp_branch; [vx | iNext]. close_br. en. iApply wp_branch; [vx | iNext]. close_br.
+  { step. iApply wp_branch; [vx | iNext]. close_br. step. iApply wp_branch; [vx | iNext]. close_br.
     iApply ("HL332" with "[%] Hl Hib Hoo Hcur Ha Hcl HG HK"). split; [xkeep|]. repeat split; lk_prove. }
   iApply (wp_long_miss_only w0 registry ge (lmiss_keys ++ ks) _ cur s q sq po so i n b r av ar ps with "Hwq Hpo Hws Hl Hib Hcur Ha Hcl");
     [rewrite avoids_app_l; rewrite Hkso; vm_compute; reflexivity | exact Hg | exact Hgn | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hq | exact Hq0 | exact Hi
@@ -135,4 +130,3 @@ Proof.
 Qed.
 
 End miss.
-End GetoptLongMissOn.

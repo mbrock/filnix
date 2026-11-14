@@ -20,6 +20,7 @@
     `memchr` are glibc's, and the registry holds OsRegistry.v's
     contract for libpizlo's `c: zmemset`, which glibc's memset calls. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -28,18 +29,15 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic HelloLeaf.
 From Glibc Require Import StrlenBits StrlenLogic WordString OsWorld OsRegistry MemFwdCode MemFwdLogic
   StrchrCode MemchrLast MemchrLogic StrnlenLogic.
+From Glibc Require MemFwdLogic MemchrLast OsWorld StrnlenLogic WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** The triples over the [[runtime]] R and the Logic instance LG0. *)
-Module HelloGlibcLeafOn (R : Runtime) (LG0 : LogicSig R).
-Module MF := MemFwdLogicOn R LG0.
-Module SN := StrnlenLogicOn R LG0.
-Module OW := MF.OW.
-Module WS := SN.WS.
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG MF.ML WS SN.ML.
+Import L LG MemFwdLogic.ML WordString MemchrLast.
 
 Section leaves.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -53,7 +51,7 @@ Context (Hmemset : find_fn ge (TAtom "memset") = Some (Defined glibc_memset))
   (Hmemchr : find_fn ge (TAtom "memchr") = Some (Defined glibc_memchr)).
 
 (** [os_wi] w0 survives safepoints. *)
-Local Instance leaf_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance leaf_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The Iris instance of the registry and [os_wi] w0. *)
 Local Instance leaf_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
@@ -92,7 +90,7 @@ Definition memcmp_spec : Prop :=
       WP (ERun fr : gexpr) {{ Φ }}.
 
 (** One pure step whose premises compute. *)
-Ltac pst := iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext].
+
 
 (** `mbszero`'s triple, over glibc's memset: owning the 8 bytes xs and
     their slots cs at the 8-aligned offset o of the live object b, at a
@@ -105,7 +103,7 @@ Lemma mbszero_glibc b reg o xs cs Φ :
 Proof.
   intros Hx Hc Hb8 Ho8 Ho Hend. iIntros "Hl Hx Hcs HΦ". rewrite mbszero_entry.
   iApply wp_enter; [exact find_z_start | reflexivity |]. iNext. cbn [b_insts b_jump z_start].
-  iApply (MF.wp_call_glibc_memset w0 registry ge Hset Hset_fn Hset_sym _ _ _ _ _ _ _ _ _ b reg o xs cs 0
+  iApply (MemFwdLogic.wp_call_glibc_memset w0 registry ge Hset Hset_fn Hset_sym _ _ _ _ _ _ _ _ _ b reg o xs cs 0
             with "Hl Hx Hcs"); [rewrite Hx; reflexivity | exact Hmemset | reflexivity | lia | rewrite Hx; lia
     | exact Hb8 | exact Ho8 | exact Ho | rewrite Hx; exact Hend | lia |].
   iNext. iIntros "Hl Hx Hcs". rewrite Hx.
@@ -129,23 +127,23 @@ Proof.
     pose proof (Z.mod_pos_bound (ptr_addr p mod 8 + Z.of_nat (length s) + 8) 8 ltac:(lia)). lia. }
   iDestruct (word_string_intro with "Hw") as "Hs"; [exact Hs|].
   iApply wp_enter; [exact find_n_start | reflexivity |]. iNext. cbn [b_insts b_jump n_start].
-  iApply (SN.wp_call_glibc_memchr_nul registry (os_wi w0) ge with "Hs");
+  iApply (StrnlenLogic.wp_call_glibc_memchr_nul registry (os_wi w0) ge with "Hs");
     [cbn; rewrite (Z.mod_small n); [reflexivity | lia] | exact Hn | exact Hmemchr | reflexivity |].
   iNext. iIntros "Hs". destruct p as [a c0]. cbn [ptr_addr ptr_cap] in *. unfold nul_hit.
   destruct (Z.ltb_spec (Z.of_nat (length s)) n) as [Hls|Hls]; cbn [hit_ptr ptr_addr ptr_cap].
-  - pst. pst. pst. iApply wp_branch; [reflexivity|]. iNext.
+  - step_symbolic. step_symbolic. step_symbolic. iApply wp_branch; [reflexivity|]. iNext.
     rewrite !Zmod_0_l (Z.mod_small (a + Z.of_nat (length s))); [|lia].
     replace (negb (a + Z.of_nat (length s) =? 0)) with true
       by (symmetry; apply negb_true_iff, Z.eqb_neq; lia).
     cbn [Z.eqb edge_label].
     iApply wp_enter; [exact find_n_L8 | reflexivity |]. iNext. cbn [b_insts b_jump n_L8].
-    pst. pst. pst. iApply wp_ret; [reflexivity | reflexivity |]. iNext. rewrite Z.min_l; [|lia].
+    step_symbolic. step_symbolic. step_symbolic. iApply wp_ret; [reflexivity | reflexivity |]. iNext. rewrite Z.min_l; [|lia].
     match goal with |- environments.envs_entails _ (Φ (Ret (WInt ?X))) =>
       replace X with (Z.of_nat (length s) + 1) end; [iApply ("HΦ" with "Hs")|].
     cbn [ptr_addr]. change (2 ^ 64) with 18446744073709551616.
     repeat match goal with |- context [?x mod 18446744073709551616] =>
       rewrite (Z.mod_small x 18446744073709551616); [|lia] end; lia.
-  - pst. pst. pst. iApply wp_branch; [reflexivity|]. iNext. cbn [Z.eqb edge_label negb].
+  - step_symbolic. step_symbolic. step_symbolic. iApply wp_branch; [reflexivity|]. iNext. cbn [Z.eqb edge_label negb].
     iApply wp_enter; [exact find_n_L9 | reflexivity |]. iNext. cbn [b_insts b_jump n_L9].
     iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     rewrite Z.min_r; [|lia]. rewrite (Z.mod_small n); [|lia]. iApply ("HΦ" with "Hs").
@@ -166,7 +164,7 @@ Proof.
   iApply (wp_call_bind with "[-]"); [reflexivity | exact HF | exact Hfr' |]. iNext.
   iApply (Hspec with "Hs Ht"); [exact Hfr'|]. iIntros (k Hk) "Hs Ht".
   iExists _. iSplit; [done|]. iNext.
-  pst. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  step_symbolic. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   match goal with |- environments.envs_entails _ (Φ (Ret (WInt ?X))) =>
     replace X with (if decide (s = t) then 1 else 0) end; [iApply ("HΦ" with "Hs Ht")|].
   rewrite Zmod_0_l Zmod_mod. destruct (decide (s = t)) as [E|E].
@@ -198,7 +196,7 @@ Proof.
   iApply (Hspec with "Hl Hx Hl' Hy"); [exact Hfr' | exact H16 | exact Hc | exact Hc' | exact Hly | exact Ho | exact Ho'
     | exact Hend | exact Hend' | exact Hr | exact Hr' | exact Hx | exact Hy |].
   iIntros (k Hk) "Hl Hx Hl' Hy". iExists _. iSplit; [done|]. iNext.
-  pst. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  step_symbolic. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   match goal with |- environments.envs_entails _ (Φ (Ret (WInt ?X))) =>
     replace X with (if decide (xs = ys) then 1 else 0) end; [iApply ("HΦ" with "Hl Hx Hl' Hy")|].
   rewrite Zmod_0_l Zmod_mod. destruct (decide (xs = ys)) as [E|E].
@@ -207,4 +205,3 @@ Proof.
 Qed.
 
 End leaves.
-End HelloGlibcLeafOn.

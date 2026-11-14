@@ -4,6 +4,8 @@
     nonoption block at i. This file proves those blocks safe and tracks
     the endpoints they leave. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptIdle.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptExchangeTwo GetoptIdle GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -34,18 +38,15 @@ Definition getopt_blk159 : block := Eval vm_compute in x_blk "L159".
 (** The test for the "--" argument starts here. *)
 Definition getopt_blk119 : block := Eval vm_compute in x_blk "L119".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptPermuteOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The first exchange. *)
-Module X := GetoptIdleOn R LG0.
-Import X X.O X.O.SL.X X.O.SL.X.I X.O.SL.X.I.S X.O.SL.X.I.S.FI X.O.SL.X.I.S.FI.ML X.O.SL.X.I.S.FI.LG
-  X.O.SL.X.I.S.FI.L X.O.SL.X.I.ST X.O.SL.X.I.GB X.O.SL.X.A.
+Import GetoptIdle GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section permute.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance permute_stable : SafepointStable (os_wi w0) := X.O.SL.X.I.OW.os_wi_stable w0.
+Local Instance permute_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance permute_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -80,7 +81,7 @@ Lemma wp_getopt_permute ks e fr f l1 i b r av ar n ps Φ :
 Proof.
   intros Hkx Hkc Hv2 Hv12 Hc0 Hc2 Hc23 Hc24 Hfl Hli Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi Hib] [%Ho Hob] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".
-  en. st. norm. load_int "Hl Hfb". st. norm. load_int "Hl Hlab". st.
+  step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". step. norm. load_s32_using ltac:(arith) "Hl Hlab". step.
   rewrite (Z.mod_small f (2 ^ 32)); [|lia]. rewrite (Z.mod_small l1 (2 ^ 32)); [|lia].
   destruct (decide (f = l1 \/ l1 = i)) as [Hrs | Hx].
   + iAssert (∀ e3 fr', ⌜keeps ks e e3 /\
@@ -93,40 +94,39 @@ Proof.
       WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L125") (Some fr'))) : gexpr) {{ Φ }})%I
       with "[HK Hob Ha Hc]" as "HL125".
     { iIntros (e3 fr' (Hk3 & H12' & H0' & H2'' & H23' & H24')) "Hl [%Hi3 Hib] [%Hf3 Hfb] [%Hl3 Hlab]".
-      en. st. norm. load_int "Hl Hlab". load_int "Hl Hib". st.
+      step. step. norm. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step.
       rewrite (Z.mod_small i (2 ^ 32)); [|lia]. rewrite (Z.mod_small l1 (2 ^ 32)); [|lia].
       iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec l1 i) as [Eli | Eli]; close_br.
-      - en. iApply ("HK" $! _ ps f l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs"); [| icell | icell | icell | icell].
+      - step. iApply ("HK" $! _ ps f l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs"); [| icell | icell | icell | icell].
         split; [done|]. split; [xkeep|]. split; [lia|]. split; lk_prove.
-      - en. st. norm. load_int "Hl Hib". chk "Hl".
+      - step. step. norm. load_s32_using ltac:(arith) "Hl Hib". check "Hl".
         iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-        iNext. iIntros "Hl Hfb". st. en.
+        iNext. iIntros "Hl Hfb". step. step.
         iApply ("HK" $! _ ps i l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs");
           [| icell | icell | (iApply cell_mod; [lia | iAssumption]) | icell].
         split; [done|]. split; [xkeep|]. split; [lia|]. split; lk_prove. }
     iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec f l1) as [Efl | Efl]; close_br.
-    * en. brz. iApply ("HL125" with "[%] Hl [Hib] [Hfb] [Hlab]"); [| icell | icell | icell].
+    * step. brz. iApply ("HL125" with "[%] Hl [Hib] [Hfb] [Hlab]"); [| icell | icell | icell].
       split; [xkeep|]. repeat split; lk_prove.
     * assert (Eli : l1 = i) by lia. subst l1.
-      en. st. norm. load_int "Hl Hlab". load_int "Hl Hib". st. st. en.
+      step. step. norm. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step. step. step.
       rewrite (Z.mod_small i (2 ^ 32)); [|lia]. rewrite (Z.eqb_refl i). brz. iApply ("HL125" with "[%] Hl [Hib] [Hfb] [Hlab]"); [| icell | icell | icell].
       split; [xkeep|]. repeat split; lk_prove.
   + iApply wp_branch; [vx | iNext]. rewrite (proj2 (Z.eqb_neq f l1)); [|lia]. close_br.
-    en. st. norm. load_int "Hl Hlab". load_int "Hl Hib". st. st. en.
+    step. step. norm. load_s32_using ltac:(arith) "Hl Hlab". load_s32_using ltac:(arith) "Hl Hib". step. step. step.
     rewrite (Z.mod_small i (2 ^ 32)); [|lia]. rewrite (Z.mod_small l1 (2 ^ 32)); [|lia].
     iApply wp_branch; [vx | iNext]. rewrite (proj2 (Z.eqb_neq l1 i)); [|lia]. close_br.
-    iApply (X.wp_x2_exchange w0 registry ge (ks ++ [TAtom "chk23"; TAtom "chk24"])%list _ _ f l1 i b r av ar n ps
+    iApply (GetoptIdle.wp_x2_exchange w0 registry ge (ks ++ [TAtom "chk23"; TAtom "chk24"])%list _ _ f l1 i b r av ar n ps
       with "Hl [Hib] [Hfb] [Hlab] Ha Hc Hs [HK Hob]");
       [ apply avoids_app_r; [exact Hkx | vm_compute; reflexivity]
       | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove
       | lia | lia | lia | assumption | lia | lia | lia | lia | lia | lia | lia | lia
       | icell | icell | icell | ].
     iIntros (e4 ps4 (Hp4 & Hk4)) "Hl Hib Hfb Hlab Ha Hc Hs4".
-    apply keeps_app in Hk4 as [Hk4 Hk4']. en.
+    apply keeps_app in Hk4 as [Hk4 Hk4']. step.
     iApply ("HK" $! _ ps4 (f + (i - l1)) i with "[%] Hl Hib [Hob] Hfb Hlab Ha Hc Hs4"); [| icell].
     split; [done|]. split; [eapply keeps_trans; [|exact Hk4]; xkeep|]. split; [lia|].
     split; (rewrite (keeps_in _ _ _ _ Hk4'); [lk_prove | cbn; tauto]).
 Qed.
 
 End permute.
-End GetoptPermuteOn.

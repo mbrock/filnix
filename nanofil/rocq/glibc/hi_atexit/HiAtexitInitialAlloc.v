@@ -2,11 +2,13 @@
     buffer. This file constructs that starting state from fields checked
     against the linked memory, including the cache pointer and empty bins. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import HiAtexitBase HiAtexitAlloc HiAtexitSetb HiAtexitInitial.
+From Glibc Require AllocLogic.
 Import ListNotations.
 Open Scope Z_scope.
 Import HLG HLG.L.
@@ -25,7 +27,7 @@ Lemma hi_allocator_own : pts hi_allocator_ps ⊢
 Proof.
   rewrite /hi_allocator_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hmp & Hmax & Htc & Htcp & Hdm & Hbins & _)".
-  rewrite /hi_malloc_state /HAL.tcache_idle.
+  rewrite /hi_malloc_state /AllocLogic.tcache_idle.
   iSplitR; [iPureIntro; vm_compute; intuition congruence|].
   iFrame "Hmp Hmax Htc Htcp Hdm".
   rewrite hi_pts_concat big_sepL_fmap /pcellq /null. done.

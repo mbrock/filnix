@@ -5,6 +5,8 @@
     bad option and answers '?'. This file proves that report and those
     stores safe. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongArg GetoptLongDiag GetoptLongEq GetoptLongExact GetoptLongPre GetoptLongReq GetoptLongScan GetoptLongStore GetoptLongTail GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -29,16 +33,9 @@ Definition lunrec_names : list name := Eval vm_compute in
   List.map TAtom ["v368"; "chk40"; "v369"; "v370"; "v371"; "v372"; "chk41"; "v375"; "v378"; "chk42"; "v379"; "v380";
     "v382"; "chk43"; "chk44"; "v384"; "v385"; "chk45"; "v387"; "chk46"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongUnrecOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The found-option module supplies the option table, the report rule and the tactics. *)
-Module LA := GetoptLongArgOn R LG0.
-Import LA LA.LP LA.LP.LQE LA.LP.LQE.LQ LA.LP.LQE.LQ.LL LA.LP.LQE.LQ.LL.LT LA.LP.LQE.LQ.LL.LT.LD
-  LA.LP.LQE.LQ.LL.LT.LD.LE LA.LP.LQE.LQ.LL.LT.LD.LE.LS LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongArg GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic shows that the message of a report is one of the five. *)
 Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].
@@ -47,7 +44,7 @@ Section unrec.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance unrec_stable : SafepointStable (os_wi w0) := LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance unrec_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance unrec_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -91,18 +88,18 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L366") (Some fr1))) : gexpr) {{ Φ }})%I
     with "[Hib Hoob HK]" as "HL366".
   { iIntros (e1 fr1 (Hk1 & H12' & Hc0'')) "Hl Hcur Ha Hcl HG".
-    en. st. chk "Hl".
-    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hcur". chk "Hl". load_int "Hl Hib". st. norm. chk "Hl".
-    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st. chk "Hl".
-    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    step. step. check "Hl".
+    iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+    iNext. iIntros "Hl Hcur". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
+    iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+    iNext. iIntros "Hl Hib". step. check "Hl".
+    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
     iNext. iIntros "Hl Hoob".
     rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia]. change (0 mod 2 ^ 64) with 0. fold null.
     iApply ("HK" with "[%] Hl [Hib] [Hoob] Hcur Ha Hcl HG");
       [eapply keeps_trans; [exact Hk1|]; xkeep | iSplit; [iPureIntro; lia | iExact "Hib"]
       | iSplit; [iPureIntro; lia | iExact "Hoob"]]. }
-  en. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
+  step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   { iApply ("HL366" with "[%] Hl Hcur Ha Hcl HG"). split; [xkeep|]. split; lk_prove. }
   destruct Hrule as (Hdom & Hfp & Hlend & Hgt & Hfx & _).
@@ -110,25 +107,24 @@ Proof.
   iAssert (∃ s0, word_string DfracDiscarded q0 s0)%I as (s0) "#Hw0";
     [unfold argv_strs; rewrite big_sepL_cons; iDestruct "Hs" as "[H _]"; iExact "H"|].
   iDestruct (argv_str_cap with "Hw0") as (rq) "[#Hcapq %Hq0]".
-  en. st.
+  step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | arith | arith | arith |].
+    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |].
   iNext; iIntros "_".
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]".
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | arith | arith | exact Hfp |].
-  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). st. st.
+  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |].
+  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). step. step.
   iApply (Hgt with "HG"); [lmsg | vx |]. iNext; iIntros (q) "HT".
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Ha");
-    [reflexivity | vx | left; reflexivity | arith | arith | arith |].
+    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |].
   iNext; iIntros "Ha"; iDestruct "Hcl" as "[Hc0 Hcl]".
-  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext; iIntros "Ha Hc0 _". st. chk "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  iNext; iIntros "Ha Hc0 _". step. check "Hl".
+  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
   iNext. iIntros "Hl Hcur _".
   iApply (Hfx with "HT Hw0 Hpfx Hwc"); [lmsg | vx |].
-  iNext; iIntros (r0) "HG". st.
+  iNext; iIntros (r0) "HG". step.
   iApply ("HL366" with "[%] Hl Hcur Ha [Hc0 Hcl] HG"); [split; [xkeep|]; split; lk_prove | iFrame].
 Qed.
 
 End unrec.
-End GetoptLongUnrecOn.

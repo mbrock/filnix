@@ -4,6 +4,7 @@
     line-buffered one given a newline, is flushed by block `c: L264`
     ([wp_ovf_L198]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioOverflowBase.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowPutOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -72,40 +73,39 @@ Proof.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hbb & Hbe & Hbreg & Hsz & Hkr & Hxl & Hxr & Hwec & Hwea).
-  st. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hwp Hbl". st. norm. chk "Hl".
+  iNext. iIntros "Hl Hwp Hbl". step. norm. check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hwp"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hwp". st. norm. chk "Hbl".
+  iNext. iIntros "Hl Hwp". step. norm. check "Hbl".
   iDestruct (bytes_focus bb xs (Z.to_nat k) with "Hxs") as "(Hx0 & Hx1 & Hx2)"; [lia|].
   rewrite Z2Nat.id; [|lia].
   iApply (wp_raw_store_byte with "Hbl Hx1"); [vx | vx | reflexivity | ar | wi_store |].
   iNext. iIntros "Hbl Hx1". rewrite (sb_byte ch Hch) -Z.add_assoc.
   iPoseProof (bytes_unfocus bb xs (Z.to_nat k) ch with "Hx0") as "U"; [lia|]. rewrite Z2Nat.id; [|lia].
   iDestruct ("U" with "Hx1 Hx2") as "Hxs".
-  iDestruct "Hfl" as "[%Hflr Hflb]". chk "Hl". load_int "Hl Hflb". st.
+  iDestruct "Hfl" as "[%Hflr Hflb]". check "Hl". load_s32_group "Hl Hflb". step.
   assert (H2 : 0 <= Z.land fl 2 < 2 ^ 32) by (apply land_lt32; lia).
   assert (H512 : 0 <= Z.land fl 512 < 2 ^ 32) by (apply land_lt32; lia).
   assert (Hxs' : length (<[Z.to_nat k := ch]> xs) = Z.to_nat sz /\ Forall (fun x => 0 <= x < 256) (<[Z.to_nat k := ch]> xs))
     by (rewrite length_insert; split; [exact Hxl | apply Forall_insert; [exact Hxr | lia]]).
   destruct Hxs' as [Hxl' Hxr'].
   destruct (Z.eq_dec (Z.land fl 2) 0) as [Hu | Hu].
-  - brv true. st. load_int "Hl Hflb". st.
+  - branch_as true. step. load_s32_group "Hl Hflb". step.
     destruct (Z.eq_dec (Z.land fl 512) 0) as [Hlb | Hlb].
-    + brv true. st. br. st. st. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (ret_byte ch Hch).
+    + branch_as true. step. branch. step. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (ret_byte ch Hch).
       iApply ("HK" with "[%] Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend]");
         [split; left; reflexivity | iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
-    + brv false. st. st. st. st. destruct (Z.eq_dec ch 10) as [-> | Hc10].
-      * brv false.
+    + branch_as false. step. step. step. step. destruct (Z.eq_dec ch 10) as [-> | Hc10].
+      * branch_as false.
         iApply (HL264 _ _ _ _ _ _ _ _ _ _ _ _ (k + 1) with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
-          try first [side | lia | iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
-      * brv true. st. st. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (ret_byte ch Hch).
+          try first [libio_side | lia | iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
+      * branch_as true. step. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (ret_byte ch Hch).
         iApply ("HK" with "[%] Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend]");
           [split; left; reflexivity | iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
-  - brv false. st. br.
+  - branch_as false. step. branch.
     iApply (HL264 _ _ _ _ _ _ _ _ _ _ _ _ (k + 1) with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
-      try first [side | lia | iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
+      try first [libio_side | lia | iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
 Qed.
 
 End rules.
-End LibioOverflowPutOn.

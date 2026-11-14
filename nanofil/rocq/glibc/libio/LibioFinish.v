@@ -8,6 +8,7 @@
     [unlink_unlinked_spec]), and returns ([wp_glibc__IO_default_finish_closed],
     [wp_glibc__IO_new_file_finish_closed]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic SysWrappers
   LibioCloseSteps.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,10 +27,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFinishOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -72,13 +73,13 @@ Proof.
   iIntros "Hl Hfl Hbb H80 H96 Hlp Hll HK".
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iApply (wp_live_fit1 w0 registry ge with "Hll"). iIntros ([Hl0 Hl48]) "Hll".
-  fs. fs. fchk "Hl". fldn "Hl" "Hbb". fs. fs. fbr. fs. fbr.
-  fs. fs. fchk "Hl". fldn "Hl" "H96". fs. fs. fs. fs. fs. fbr.
-  fs. fs. fchk "Hl". fldn "Hl" "H80". fs. fs. fbr.
-  fs. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
-  iApply (Hunl_spec with "Hl Hfl"); try side.
+  step. step. check "Hl". load_null "Hl" "Hbb". step. step. branch. step. branch.
+  step. step. check "Hl". load_null "Hl" "H96". step. step. step. step. step. branch.
+  step. step. check "Hl". load_null "Hl" "H80". step. step. branch.
+  step. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
+  iApply (Hunl_spec with "Hl Hfl"); try close_side.
   iNext. iIntros "Hl Hfl". resume.
-  fs. fchk "Hl". fldp "Hl" "Hlp" "Hll". fs. fs. fbrv false. fs. iApply wp_ret_void. iNext.
+  step. check "Hl". load "Hl" "Hlp" "Hll". step. step. branch_as false. step. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hl Hfl Hbb H80 H96 Hlp Hll").
 Qed.
 
@@ -99,12 +100,11 @@ Proof.
   intros Hfr Hfb Hfal Hfend Hfreg Hfl Hlnk Hlb Hlbend. injection Hfr as <-. unfold file_size in Hfend.
   iIntros "Hl [%Hfd Hfd] Hfl Hbb H80 H96 Hlp Hll HK".
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  fs. fs. fchk "Hl". fldi "Hl" "Hfd". fs. fbr. fs.
+  step. step. check "Hl". load_s32 "Hl" "Hfd". step. branch. step.
   iApply wp_call_bind; [vx | exact Hdf | reflexivity |]. iNext.
-  iApply (wp_glibc__IO_default_finish_closed with "Hl Hfl Hbb H80 H96 Hlp Hll"); try side.
+  iApply (wp_glibc__IO_default_finish_closed with "Hl Hfl Hbb H80 H96 Hlp Hll"); try close_side.
   iNext. iIntros "Hl Hfl Hbb H80 H96 Hlp Hll". resume. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hl [Hfd] Hfl Hbb H80 H96 Hlp Hll"). iSplit; [done | iExact "Hfd"].
 Qed.
 
 End rules.
-End LibioFinishOn.

@@ -5,6 +5,7 @@
     The caller keeps its source bytes when the stream reports a short write.
     This proof covers the pointer reads and count comparison, but requires
     separate proofs of the stream call and the subsequent buffer selection. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,16 +15,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioXsputnCode PrintfBufferFileCode PrintfBufferXsputnPrelude
   PrintfBufferXsputnCall PrintfBufferXsputnReturn.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld PrintfBufferXsputnCall PrintfBufferXsputnPrelude PrintfBufferXsputnReturn SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** All three caller stages share the same memory and OS interpretation. *)
-Module PrintfBufferXsputnCallerOn (R : Runtime) (LG0 : LogicSig R).
-Module XP := PrintfBufferXsputnPreludeOn R LG0.
-Module XC := PrintfBufferXsputnCallOn R LG0.
-Module XR := PrintfBufferXsputnReturnOn R LG0.
-Import XP.PI XP.CS XP.CS.SW XP.CS.SW.FI.ML XP.CS.SW.FI.LG XP.CS.SW.FI.L
-  XP.CS.SW.OW XP.CS.SW.FI XP.CS.SW.ST.
+
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -33,7 +31,7 @@ Local Instance caller_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (F : ptr -> iProp Σ) (E : iProp Σ).
 Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context (Hcall : XC.printf_xsputn_call_spec w0 registry ge F E).
+Context (Hcall : PrintfBufferXsputnCall.printf_xsputn_call_spec w0 registry ge F E).
 
 (** Printf requests exactly the number of staged bytes, from zero through 128.
     Every returned count preserves those bytes. A count mismatch marks failure;
@@ -68,24 +66,23 @@ Proof.
   cbn zeta. intros Hbb Hba Hbe Hbr Hfb Hfa Hlen Hxs Hv0 Hchk Hchk1 Hborrow.
   iIntros "#Hvt Hb Hptr Hfp Hxs Hm HF HE Hfail Hselect".
   iDestruct (Hborrow with "HF") as (freg dqf (Hfe & Hfr)) "(Hf & Hvtp & Hclose)".
-  iApply (XP.wp_printf_xsputn_prelude w0 registry ge Hfn
+  iApply (PrintfBufferXsputnPrelude.wp_printf_xsputn_prelude w0 registry ge Hfn
     e from bb breg fb freg dqf vb vreg (Z.of_nat (length xs))
     with "Hvt Hb Hf Hptr Hfp Hvtp"); try assumption; try lia.
   iIntros (e' (Hv0' & Hchk' & Hfn' & Hfp' & Hsrc' & Hcount')) "Hb Hf Hptr Hfp Hvtp".
   iDestruct ("Hclose" with "Hf Hvtp") as "HF".
-  iApply (XC.wp_printf_xsputn_call w0 registry ge F E Hfn Hcall
+  iApply (PrintfBufferXsputnCall.wp_printf_xsputn_call w0 registry ge F E Hfn Hcall
     e' (mkPtr fb (Obj fb)) bb breg (DfracOwn 1%Qp) xs with "HF HE Hb Hxs");
     try assumption; try lia.
   iIntros (r e'' (Hr & Hv0'' & Hchk'' & Hcount'' & Hret)) "HF HE Hb Hxs".
   destruct (Z.eq_dec r (Z.of_nat (length xs))) as [->|Hneq].
-  - iApply (XR.wp_printf_xsputn_complete w0 registry ge e'' (Z.of_nat (length xs)));
+  - iApply (PrintfBufferXsputnReturn.wp_printf_xsputn_complete w0 registry ge e'' (Z.of_nat (length xs)));
       try assumption; try lia.
     iApply ("Hselect" with "[%] Hb Hptr Hfp Hxs Hm HF HE"). lookups; reflexivity.
-  - iApply (XR.wp_printf_xsputn_mismatch w0 registry ge e'' bb breg mode r (Z.of_nat (length xs))
+  - iApply (PrintfBufferXsputnReturn.wp_printf_xsputn_mismatch w0 registry ge e'' bb breg mode r (Z.of_nat (length xs))
       with "Hb Hm"); try assumption; try lia.
     iNext. iIntros "Hb Hm".
     iApply ("Hfail" with "Hb Hptr Hfp Hxs Hm HF HE").
 Qed.
 
 End rules.
-End PrintfBufferXsputnCallerOn.

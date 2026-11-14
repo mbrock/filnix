@@ -14,6 +14,8 @@
     preserves the caller's own resource. Every path then joins at the
     block that checks for a leading colon. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,6 +23,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes.
+From Glibc Require FileInv GetoptBytes GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -75,23 +79,18 @@ Definition getopt_blk_init : block := Eval vm_compute in
   match find_block (TAtom "iw_1.start") (fn_blocks glibc_getopt_internal_r) with
   | Some b => b | None => mkBlock (TAtom "iw_1.start") [] [] JUnreachable end.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptInitializeOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The session module supplies the private-field representation. *)
-Module S := GetoptStateOn R LG0.
 (** Byte access supplies shared string reads. *)
-Module GB := GetoptBytesOn R LG0.
 (** The step tactics evaluate symbolic instructions. *)
-Module ST := LibioStepOn R LG0.
 (** The OS interpretation survives safepoints. *)
-Module OW := OsWorldOn R LG0.
-Import S S.FI S.FI.ML S.FI.LG S.FI.L ST GB.
+Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes.
 
 Section initialize.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance init_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance init_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance init_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -108,10 +107,7 @@ Definition getenv_rule (G : iProp Σ) : Prop :=
          (Exec l (Call (CResult d P) (Global (TAtom "__GI_getenv")) args :: rest) j)) : gexpr) {{ Φ }}.
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 (** This tactic loads a field whose value is a local definition. *)
 Ltac load_int' H x :=
@@ -133,25 +129,9 @@ Ltac rdchr H q s k :=
 (** This tactic rebuilds an integer field from its rewritten bytes. *)
 Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
 
-(** The environment e' keeps every lookup of e at the names ks. *)
-Definition keeps (ks : list name) (e e' : env) : Prop := Forall (fun k => lookup k e' = lookup k e) ks.
-
 (** The scanner reads these names after initialization. *)
 Definition entry_keys : list name :=
   List.map TAtom ["v0"; "v2"; "v4"; "v6"; "v8"; "v10"; "v12"; "v14"; "v19"; "chk0"; "chk1"; "chk2"]%string.
-
-(** Every environment keeps its own lookups. *)
-Lemma keeps_refl ks e : keeps ks e e.
-Proof. apply Forall_forall. reflexivity. Qed.
-
-(** Assigning a name outside ks keeps every lookup at ks. *)
-Lemma keeps_put ks k v e e' :
-  forallb (fun k' => negb (name_eqb k' k)) ks = true -> keeps ks e e' -> keeps ks e (put k v e').
-Proof.
-  intros Hks Hk. apply Forall_forall. intros x Hx.
-  rewrite (Symbolic.lookup_after_put_other _ x k v e'); [exact (proj1 (Forall_forall _ _) Hk x Hx)|].
-  apply forallb_forall with (x := x) in Hks; [|exact Hx]. by destruct (name_eqb x k).
-Qed.
 
 (** Each kept lookup of a known value becomes a fact about the new
     environment. The tactic leaves the original hypothesis in place for
@@ -202,37 +182,37 @@ Proof.
     with "[Hinib HK]" as "HL27".
   { iIntros (e2 fr o (Hk & Ho & Hphi)) "Hl Hi Hn Ho Hf Hla HG". unkeep Hk.
     iApply wp_enter; [reflexivity | exact Hphi | iNext]. cbn [b_insts b_jump getopt_blk27].
-    st. norm. chk "Hl".
+    step. norm. check "Hl".
     iApply (wp_raw_store_w with "Hl Hinib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hinib". st. iApply wp_enter; [reflexivity | vx | iNext].
+    iNext. iIntros "Hl Hinib". step. iApply wp_enter; [reflexivity | vx | iNext].
     iApply ("HK" $! _ o with "[%] Hl Hi [Hinib] Hn Ho Hf Hla HG"); [split; [keep | exact Ho] | by iSplit]. }
   iAssert (∀ e1 from, ⌜keeps entry_keys e e1⌝ -∗ live b r -∗ bytes b 0 (int_bytes i) -∗
     WP (ERun (mkFrame glibc_getopt_internal_r e1 [] None (Enter (TAtom "iw_1.L12") (Some from))) : gexpr) {{ Φ }})%I
     with "[Hnext Hordb Hfb Hlab HG HL27]" as "HL12".
   { iIntros (e1 from Hk) "Hl Hib". unkeep Hk.
     iDestruct (ws_shape with "Hos") as %(Hch & Hp0 & Hpe).
-    st. st. st. load_int' "Hl Hib" i. chk "Hl".
+    step. step. step. load_int' "Hl Hib" i. check "Hl".
     iApply (wp_raw_store_w with "Hl Hlab"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
     iNext. iIntros "Hl Hlab".
     iApply (wp_raw_store_w with "Hl Hfb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hfb". st. chk "Hl".
+    iNext. iIntros "Hl Hfb". step. check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hnext"); [vx | vx | reflexivity | arith | arith | wi_store |].
     iNext. iIntros "Hl Hnext". norm.
     rdchr "Hos" p os 0%nat. pose proof (sbyte_range os 0 Hch) as Hc0r.
-    st. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
+    step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
     destruct (Z.eqb_spec (sbyte os 0) 45) as [E45|E45]; cbn [edge_label].
-    { rewrite (opt_skip_minus os E45). st. st. norm. chk "Hl".
+    { rewrite (opt_skip_minus os E45). step. step. norm. check "Hl".
       iApply (wp_raw_store_w with "Hl Hordb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-      iNext. iIntros "Hl Hordb". st. norm. st.
+      iNext. iIntros "Hl Hordb". step. norm. step.
       iApply ("HL27" $! _ _ 2 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG");
         [split; [keep|]; split; [lia|]; unfold ptr_add; vx | icell | icell | icell | icell]. }
-    st. norm. iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
+    step. norm. iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
       [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |]. iNext. iIntros "_ _".
-    st. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
+    step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
     destruct (Z.eqb_spec (sbyte os 0) 43) as [E43|E43]; cbn [edge_label].
-    { rewrite (opt_skip_plus os E43). st. st. norm. chk "Hl".
+    { rewrite (opt_skip_plus os E43). step. step. norm. check "Hl".
       iApply (wp_raw_store_w with "Hl Hordb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-      iNext. iIntros "Hl Hordb". st. norm. st.
+      iNext. iIntros "Hl Hordb". step. norm. step.
       iApply ("HL27" $! _ _ 0 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG");
         [split; [keep|]; split; [lia|]; unfold ptr_add; vx | icell | icell | icell | icell]. }
     rewrite (opt_skip_other os E45 E43). cbn [Z.of_nat]. unfold ptr_add. rewrite Z.add_0_r.
@@ -243,33 +223,32 @@ Proof.
       with "[Hib Hnext Hfb Hlab HL27]" as "HL47".
     { iIntros (o e3 fr (Hk3 & Hv43 & Ho)) "[_ Hordb] Hl HG". unkeep Hk3.
       assert (Ho' : 0 <= o < 2 ^ 32) by lia.
-      assert (o = 0 \/ o = 1) as [-> | ->] by lia; st; st; norm; chk "Hl";
+      assert (o = 0 \/ o = 1) as [-> | ->] by lia; step; step; norm; check "Hl";
         (iApply (wp_raw_store_w with "Hl Hordb"); [vx | vx | reflexivity | arith | reflexivity | wi_store |]);
-        iNext; iIntros "Hl Hordb"; st;
+        iNext; iIntros "Hl Hordb"; step;
         [iApply ("HL27" $! _ _ 0 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG")
         |iApply ("HL27" $! _ _ 1 with "[%] Hl [Hib] Hnext [Hordb] [Hfb] [Hlab] HG")]; try icell;
         (split; [keep|]); (split; [lia|]); destruct p; vx. }
-    st. iApply wp_branch; [vx | iNext].
+    step. iApply wp_branch; [vx | iNext].
     destruct (Z.eqb_spec (pc mod 2 ^ 32) 0) as [Epc|Epc]; cbn [edge_label].
-    - st. st. iApply (Hget with "HG"); [vx|]. iNext. iIntros (q) "HG". st. st. st.
+    - step. step. iApply (Hget with "HG"); [vx|]. iNext. iIntros (q) "HG". step. step. step.
       iApply wp_enter; [reflexivity | vx | iNext]. cbn [b_insts b_jump]. iApply wp_branch; [vx | iNext].
       destruct (ptr_addr q mod 2 ^ 64 =? 0 mod 2 ^ 64); cbn [negb];
         [change ((0 mod 2 ^ 32) mod 2 ^ 32 =? 0) with true | change ((1 mod 2 ^ 32) mod 2 ^ 32 =? 0) with false];
         cbn [edge_label].
       + iApply ("HL47" $! 1 with "[%] [Hordb] Hl HG"); [split; [keep|]; split; [vx | lia] | icell].
       + iApply ("HL47" $! 0 with "[%] [Hordb] Hl HG"); [split; [keep|]; split; [vx | lia] | icell].
-    - st. iApply wp_branch; [vx | iNext]. cbn [edge_label].
+    - step. iApply wp_branch; [vx | iNext]. cbn [edge_label].
       iApply ("HL47" $! 0 with "[%] [Hordb] Hl HG"); [split; [keep|]; split; [vx | lia] | icell]. }
-  load_int "Hl Hib". st. iApply wp_branch; [vx | iNext]. norm.
+  load_s32_using ltac:(arith) "Hl Hib". step. iApply wp_branch; [vx | iNext]. norm.
   destruct (Z.eqb_spec (gs_ind s) 0) as [H0|H0].
   - assert (Ei : i = 1) by (unfold i; reflexivity). rewrite Ei.
-    cbn [edge_label]. st. chk "Hl".
+    cbn [edge_label]. step. check "Hl".
     iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st. iApply ("HL12" with "[%] Hl Hib"). keep.
+    iNext. iIntros "Hl Hib". step. iApply ("HL12" with "[%] Hl Hib"). keep.
   - assert (Ei : i = gs_ind s) by (unfold i; reflexivity).
     rewrite Ei. cbn [edge_label].
     iApply ("HL12" with "[%] Hl Hib"). keep.
 Qed.
 
 End initialize.
-End GetoptInitializeOn.

@@ -8,11 +8,14 @@
     and the facts that the parser's return state gives about the new
     index and the new cursor. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv WordString GetoptState.
+From Glibc Require FileInv GetoptState.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -46,11 +49,9 @@ Lemma long_bounds_ctl_past :
   ~ getopt_bounds 3 4 (long_state (mkGetoptState 2 1 0 null 1 null 0 1 1) 4 0 null null).
 Proof. unfold getopt_bounds, long_state. cbn. lia. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongSessionOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The state module supplies the private fields, the cursor and the session. *)
-Module S := GetoptStateOn R LG0.
-Import S S.FI S.FI.ML S.FI.LG S.FI.L.
+Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
 
 Section session.
 Context `{!gen_heapGS piece pval Σ}.
@@ -100,4 +101,3 @@ Proof.
 Qed.
 
 End session.
-End GetoptLongSessionOn.

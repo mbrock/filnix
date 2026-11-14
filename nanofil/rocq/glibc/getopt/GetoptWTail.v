@@ -6,6 +6,8 @@
     With no word left, it records the bad option, reports it through the
     caller's rule, and answers ':' or '?'. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -36,18 +40,15 @@ Definition w_jump : jump := Eval vm_compute in b_jump (x_blk "L533").
 (** The missing-argument answer of the W option returns from this block. *)
 Definition getopt_blk570 : block := Eval vm_compute in x_blk "L570".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptWTailOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The tail module supplies the report rule, the argument vector and its tactics. *)
-Module RT := GetoptReqTailOn R LG0.
-Import RT RT.D RT.D.X RT.D.X.I RT.D.X.I.S RT.D.X.I.S.FI RT.D.X.I.S.FI.ML RT.D.X.I.S.FI.LG RT.D.X.I.S.FI.L RT.D.X.I.ST
-  RT.D.X.I.GB RT.D.X.A.
+Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section wtail.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance wtail_stable : SafepointStable (os_wi w0) := RT.D.X.I.OW.os_wi_stable w0.
+Local Instance wtail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance wtail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -71,11 +72,11 @@ Lemma wp_getopt_wstore ks e0 e fr q rq x b r Φ :
 Proof.
   intros Hks Hk0 H12 Hc1 Hc20 Hq0 Hb Hal Hend Hr.
   iIntros "Hcapq Hl Hab Hcur HK".
-  en. st. st. chk "Hl".
+  step. step. step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hab Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Hl Hab _". chk "Hl".
+  iNext. iIntros "Hl Hab _". check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
-  iNext. iIntros "Hl Hcur". chk "Hl".
+  iNext. iIntros "Hl Hcur". check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
   iNext. iIntros "Hl Hab". iApply ("HK" with "[%] Hl Hab Hcur"). xkeep.
 Qed.
@@ -120,7 +121,7 @@ Proof.
     WP (ERun (mkFrame glibc_getopt_internal_r e1 [] None (Enter (TAtom "L553") (Some fr1))) : gexpr) {{ Φ }})%I
     with "[Hl Hoob HK]" as "HL553".
   { iIntros (e1 fr1 (Hk1 & H12' & H455' & Hc0' & Hc19' & Hpo')) "Ha Hcl HG".
-    en. st. chk "Hl".
+    step. step. check "Hl".
     iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
     iNext. iIntros "Hl Hoob".
     iDestruct (ws_byte po so 0 with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
@@ -129,12 +130,12 @@ Proof.
     iNext. iIntros "_".
     iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
       [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
-    iNext; iIntros "_ _". iClear "Hbl Hbt". st. rewrite chr_cmp; [|lia|lia].
+    iNext; iIntros "_ _". iClear "Hbl Hbt". step. rewrite chr_cmp; [|lia|lia].
     rewrite (Z.mod_small c (2 ^ 32)); [|lia].
     iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so 0) 58) as [E58 | E58]; close_br.
-    - en. st. iApply ("HK" with "[%] Hl [Hoob] Ha Hcl HG"); [split; [xkeep | lk_prove] | by iSplit].
-    - en. st. en. st. iApply ("HK" with "[%] Hl [Hoob] Ha Hcl HG"); [split; [xkeep | lk_prove] | by iSplit]. }
-  en. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
+    - step. step. iApply ("HK" with "[%] Hl [Hoob] Ha Hcl HG"); [split; [xkeep | lk_prove] | by iSplit].
+    - step. step. step. step. iApply ("HK" with "[%] Hl [Hoob] Ha Hcl HG"); [split; [xkeep | lk_prove] | by iSplit]. }
+  step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   - iApply ("HL553" with "[%] Ha Hcl HG"). split; [xkeep|]. repeat split; lk_prove.
   - iApply (wp_getopt_diag_wmissing w0 registry ge (tail_keys ++ ks) with "Hsl Hsc Ha Hcl Hs HG [HL553]");
@@ -147,4 +148,3 @@ Proof.
 Qed.
 
 End wtail.
-End GetoptWTailOn.

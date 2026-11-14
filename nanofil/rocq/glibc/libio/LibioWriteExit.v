@@ -17,6 +17,7 @@
     open with "c" has, so the loop calls `c: __write`, the alias of
     `c: __libc_write`. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -25,6 +26,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
   SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -56,16 +59,11 @@ Proof.
     exact (Forall_lookup_1 _ _ _ _ Hy Hxi).
 Qed.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioWriteExitOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** A signed 32-bit load of an owned [int_cell]'s bytes. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | ar |];
-  iNext; iIntros H.
+
 
 (** A call of a wrapper of SysWrappers.v from a frame, through
     [wp_call_bind]: its triple's postcondition resumes the caller. *)
@@ -102,14 +100,14 @@ Lemma wp_file_write_exit fb freg off n t e from Φ :
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
 Proof.
   intros Hfb Hal Hend Hfreg Ht Hn Hv0 Hv4 Ht'. unfold file_size in Hend. iIntros "Hl Hoff HK".
-  st. st. st. norm. chk "Hl".
+  step. step. step. norm. check "Hl".
   iApply (wp_raw_load with "Hl Hoff"); [reflexivity | vx | reflexivity | ar |]. iNext. iIntros "Hl Hoff".
-  st. brc.
-  - st. iApply wp_ret; [reflexivity | vx |]. iNext. unwrap. iApply ("HK" with "Hl Hoff").
-  - st. st. iApply (wp_raw_load with "Hl Hoff"); [reflexivity | vx | reflexivity | ar |]. iNext. iIntros "Hl Hoff".
-    st. chk "Hl".
+  step. branch_cases.
+  - step. iApply wp_ret; [reflexivity | vx |]. iNext. unwrap. iApply ("HK" with "Hl Hoff").
+  - step. step. iApply (wp_raw_load with "Hl Hoff"); [reflexivity | vx | reflexivity | ar |]. iNext. iIntros "Hl Hoff".
+    step. check "Hl".
     iApply (wp_raw_store with "Hl Hoff"); [vx | vx | reflexivity | ar | wi_store |]. iNext. iIntros "Hl Hoff".
-    st. st. iApply wp_ret; [reflexivity | vx |]. iNext. unwrap. iApply ("HK" with "Hl Hoff").
+    step. step. iApply wp_ret; [reflexivity | vx |]. iNext. unwrap. iApply ("HK" with "Hl Hoff").
 Qed.
 
 
@@ -127,9 +125,9 @@ Lemma wp_file_write_err fb freg fl off n t e from Φ :
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L38") (Some from))) : sexpr) {{ Φ }}.
 Proof.
   intros Hfb Hal Hend Hfreg Ht Hn Hfl Hv0 Hv4 Ht' Hc0. unfold file_size in Hend. iIntros "Hl [_ Hfl] Hoff HK".
-  st. chk "Hl". load_int "Hl Hfl". st. chk "Hl".
+  step. check "Hl". load_s32_group "Hl Hfl". step. check "Hl".
   iApply (wp_raw_store_w with "Hl Hfl"); [vx | vx | reflexivity | ar | reflexivity | wi_store |].
-  iNext. iIntros "Hl Hfl". st.
+  iNext. iIntros "Hl Hfl". step.
   iApply (wp_file_write_exit with "Hl Hoff"); try wside.
   iNext. iIntros (off') "Hl Hoff".
   assert (Hor : 0 <= Z.lor fl 32 < 2 ^ 32) by (apply lor_lt32; lia).
@@ -157,11 +155,11 @@ Lemma wp_file_write_next fb freg tw t k p e from Φ :
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L40") (Some from))) : sexpr) {{ Φ }}.
 Proof.
   intros Hfb Hal Hend Hfreg Hk Ht Hp0 Hp64 Hv0 Hv37 Ht' Hp Hc0. unfold file_size in Hend. iIntros "Hl Htw HK".
-  st. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load with "Hl Htw"); [reflexivity | vx | reflexivity | ar |]. iNext. iIntros "Hl Htw".
-  st. chk "Hl".
+  step. check "Hl".
   iApply (wp_raw_store with "Hl Htw"); [vx | vx | reflexivity | ar | wi_store |]. iNext. iIntros "Hl Htw".
-  st. st. st. iApply wp_enter; [reflexivity | vx | iNext].
+  step. step. step. iApply wp_enter; [reflexivity | vx | iNext].
   iApply ("HK" with "[%] Hl Htw").
   split_and!; lookups; try reflexivity;
     lazymatch goal with
@@ -171,4 +169,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioWriteExitOn.

@@ -8,6 +8,7 @@
     A signed byte load extends characters above 127 to negative values,
     so this file also states which comparisons that extension preserves. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +16,8 @@ From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   Pieces Heap Language Logic StringLogic MemLogic StepRules.
 From Glibc Require Import StrlenBits StrlenLogic WordString.
+From Glibc Require WordString.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -91,14 +94,12 @@ Proof.
   specialize (Hs (nth k s 0) (nth_In s 0 Hlt)). lia.
 Qed.
 
-(** Byte support shares the caller's [[runtime]] and logic instance. *)
-Module GetoptBytesOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The string window comes from the word-string module. *)
-Module WS := WordStringOn R LG0.
 (** Byte ownership comes from the memory logic. *)
 Module ML := MemLogicOn R LG0.
 Import ML.
-Import LG0 LG0.L WS.
+Import LG0 LG0.L WordString.
 
 Section bytes.
 Context `{!gen_heapGS piece pval Σ}.
@@ -163,4 +164,3 @@ Proof.
 Qed.
 
 End bytes.
-End GetoptBytesOn.

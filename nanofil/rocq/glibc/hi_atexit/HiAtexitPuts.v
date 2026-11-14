@@ -4,6 +4,7 @@
     allocated buffer even when output fails, so closing it remains
     safe without assuming a successful write. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,10 +14,11 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry FileInv WordString LibioPuts LibioPutsCode
   HiAtexitBase HiAtexitGe HiAtexitFns HiAtexitAlloc HiAtexitStdout
   HiAtexitPutsXsputn HiAtexitPutsNl HiAtexitPutsOverflow HiAtexitPutsRules.
+From Glibc Require FileInv LibioPuts LibioPutsInv LibioPutsLock.
 Import ListNotations.
 Open Scope Z_scope.
-Import HP.PN.PB.PM.PC.PU.PL.
-Import PI PI.CS.SW.FI PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L.
+Import LibioPutsLock.
+Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L.
 
 (** Proof-mode searches keep the stream and allocator resources
     folded instead of expanding their memory layouts. *)
@@ -52,7 +54,7 @@ Lemma hi_puts fr p dq' s so soreg fp mode eb vb vreg sb sreg Φ :
 Proof.
   intros Hfr Hgso Hsoal Hsoend Heb Hself.
   iIntros "#Hvt #Hsingle Hstr Hso Hsoc Hf HM HK".
-  iApply (HP.wp_glibc__IO_puts_for w0 glibc_os_registry hge (fun n c H => H) (hi_sys_external _)
+  iApply (LibioPuts.wp_glibc__IO_puts_for w0 glibc_os_registry hge (fun n c H => H) (hi_sys_external _)
     vb vreg (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr)
     (hi_stdout_before w0 eb vb) (fun s fp _ held => hi_stdout_after w0 eb vb s fp held)
     (hi_stdout_before_open w0 eb vb) (fun s fp _ held => hi_stdout_after_lock w0 eb vb s fp held)

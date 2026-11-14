@@ -7,6 +7,7 @@
     cookie, as `c: _IO_flush_all` does (LibioFlushStart.v). Block
     `c: iw_1.L23` then takes `c: list_all_lock` (LibioCleanupLock.v). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode LibioCleanupCode FileInv
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock.
+From Glibc Require FileInv LibioCleanupFpLock LibioCleanupFpUnlock LibioCleanupMode LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsThread OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,15 +27,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCleanupStartOn (R : Runtime) (LG0 : LogicSig R).
-Module CU := LibioCleanupFpUnlockOn R LG0.
-Import CU CU.CM CU.CM.CL CU.CM.CL.FA CU.CM.CL.FA.FB CU.CM.CL.FA.FB.FT CU.CM.CL.FA.FB.FT.FS
-  CU.CM.CL.FA.FB.FT.FS.FC CU.CM.CL.FA.FB.FT.FS.FC.FU CU.CM.CL.FA.FB.FT.FS.FC.FU.FL
-  CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML
-  CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.L
-  CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.OW CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI
-  CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -58,7 +54,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's
     cookie, not null (H). *)
-Ltac self H := iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
 
 (** `c: _IO_cleanup ()` from its frame fr to block `c: iw_1.L23`,
     over [io_list_inv]'s streams fs, each with its life and P, each
@@ -91,7 +87,7 @@ Proof.
   intros Hbody Hfr Hfc Hfcr. injection Hfr as <-.
   iIntros "#Hs Htcb Hio Hfs HK".
   (* start: `c: _IO_flush_all ()`. *)
-  fs. iApply wp_call_bind; [vx | exact Hflush | reflexivity |]. iNext.
+  step. iApply wp_call_bind; [vx | exact Hflush | reflexivity |]. iNext.
   iApply (wp_glibc__IO_flush_all w0 registry ge Hreg Hext Hpush Hpop Hpush_spec Hpop_spec
             with "Hs Htcb Hio Hfs"); [exact Hbody | reflexivity | exact Hfc | exact Hfcr |].
   iNext. iIntros (r Hr) "Htcb Hio Hfs". resume.
@@ -112,12 +108,12 @@ Proof.
   assert (Hcal8 : cb mod 8 = 0) by (Z.div_mod_to_equations; lia).
   iDestruct (obj32 with "Hobj") as "(Hcl & Hc0 & Hc8 & Hc16 & Hc24)".
   set (creg := mkRegion cb (cb + 32) Heap Live). assert (Hcre : r_end creg = cb + 32) by reflexivity.
-  fs. fs. fchk "Hcl". fstp "Hcl" "Hc8". fchk "Hcl". fstp "Hcl" "Hc0".
+  step. step. check "Hcl". store "Hcl" "Hc8". check "Hcl". store "Hcl" "Hc0".
   iApply wp_call_bind; [vx | exact Hpush | reflexivity |]. iNext.
   iApply (Hpush_spec with "Htcb Hcl Hc24 Hc16"); [reflexivity | lia | exact Hcal8 | lia | lia | reflexivity |].
   iNext. iIntros "Htcb Hcl Hc24 Hc16". resume.
   (* The thread's cookie, and a single thread. *)
-  self Hsz. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
+  self Hsz. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
   assert (Hrm : r mod 2 ^ 32 = r) by (apply Z.mod_small; destruct Hr as [-> | ->]; lia).
   rewrite ?Hrm.
   iApply ("HK" $! _ r cb creg la lareg lk lkreg rf rfreg with "[%] Htcb Hcl Hc24 Hc16 Hla Hlah Hch
@@ -126,4 +122,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioCleanupStartOn.

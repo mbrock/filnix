@@ -4,6 +4,7 @@
     and the flags, descriptor and offset of a closed stream
     ([wp_close_it_L223]). LibioCloseIt.v runs the blocks before. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioCloseItCode FileInv LibioLogic
   SysWrappers LibioSetb LibioCloseSteps.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -35,10 +38,8 @@ Proof.
   apply lor_lt32; lia.
 Qed.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCloseItEndOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -100,16 +101,16 @@ Proof.
   intros fp Hv0 Hc0 Hc1 Hv2 Hp3 Hv220 Hfb Hfal Hfend Hfreg Hfl Hp3r Hk. subst fp.
   iIntros "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe Hob HK".
   unfold file_size in Hfend.
-  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl". fs.
+  iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl". step.
   iApply wp_call_bind; [vx | exact Hsetb | reflexivity |]. iNext.
-  iApply (Hsetb_spec with "Hl Hfl Hbb Hbe Hob"); try side.
+  iApply (Hsetb_spec with "Hl Hfl Hbb Hbe Hob"); try close_side.
   iNext. iIntros "Hl Hfl Hbb Hbe". resume.
-  fs. fchk "Hl". fstp "Hl" "H24". fs. fchk "Hl". fstp "Hl" "H8". fs. fchk "Hl". fstp "Hl" "H16".
-  fs. fs. fchk "Hl". fstp "Hl" "H40". fchk "Hl". fstp "Hl" "H32". fs. fchk "Hl". fstp "Hl" "H48".
-  fs. fbrv true.
+  step. check "Hl". store "Hl" "H24". step. check "Hl". store "Hl" "H8". step. check "Hl". store "Hl" "H16".
+  step. step. check "Hl". store "Hl" "H40". check "Hl". store "Hl" "H32". step. check "Hl". store "Hl" "H48".
+  step. branch_as true.
   (* L279: the flags, descriptor and offset of a closed stream. *)
   pose proof (setb_flags_range fl 0 Hfl) as Hsf. iDestruct "Hfl" as "[_ Hfl]".
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fs. fchk "Hl".
+  step. check "Hl". load_s32 "Hl" "Hfl". step. step. check "Hl".
   assert (E : Z.lor (Z.land (setb_flags fl (0 mod 2 ^ 32) mod 2 ^ 32) (128 mod 2 ^ 32) mod 2 ^ 32)
                 (4222428172 mod 2 ^ 32) mod 2 ^ 32 = closed_flags fl).
   { change (0 mod 2 ^ 32) with 0. change (128 mod 2 ^ 32) with 128. change (4222428172 mod 2 ^ 32) with 4222428172.
@@ -117,17 +118,16 @@ Proof.
     unfold setb_flags, io_user_buf. cbn [Z.eqb]. rewrite land_lor1_128.
     rewrite (Z.mod_small (Z.land fl 128)); [|apply land_lt32; lia].
     apply Z.mod_small, closed_flags_range; lia. }
-  fsti "Hl" "Hfl". iEval (rewrite E) in "Hfl". clear E.
-  iDestruct "Hfd" as "[_ Hfd]". fs. fchk "Hl". fsti "Hl" "Hfd". fs. fchk "Hl". fstl "Hl" "Hoff".
+  store_int "Hl" "Hfl". iEval (rewrite E) in "Hfl". clear E.
+  iDestruct "Hfd" as "[_ Hfd]". step. check "Hl". store_int "Hl" "Hfd". step. check "Hl". store_long "Hl" "Hoff".
   iAssert (int_cell fb off_flags (closed_flags fl)) with "[Hfl]" as "Hfl".
   { iSplit; [iPureIntro; apply closed_flags_range; lia | iExact "Hfl"]. }
   iAssert (int_cell fb off_fileno (2 ^ 32 - 1)) with "[Hfd]" as "Hfd"; [iSplit; [iPureIntro; lia | iExact "Hfd"]|].
   iSpecialize ("HK" with "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe").
   destruct Hk as [-> | ->].
-  - fbr. fs. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+  - branch. step. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     rewrite (Z.mod_small p3 (2 ^ 32)); [|lia]. rewrite (Z.mod_small p3 (2 ^ 32)); [|lia]. iExact "HK".
-  - fbr. fs. iApply wp_ret; [reflexivity | vx |]. iNext. iExact "HK".
+  - branch. step. iApply wp_ret; [reflexivity | vx |]. iNext. iExact "HK".
 Qed.
 
 End rules.
-End LibioCloseItEndOn.

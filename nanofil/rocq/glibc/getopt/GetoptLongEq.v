@@ -6,6 +6,8 @@
     that part of the parser safe: it reads only the found table entry
     and writes only the parser's own private fields. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongReq GetoptLongScan GetoptLongStore GetoptLongTail GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -33,20 +37,15 @@ Definition leq_names : list name := Eval vm_compute in
 Definition leq_keys : list name := Eval vm_compute in
   List.map TAtom ["v12"; "pr.7"; "chk0"; "chk51"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongEqOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The required-argument module supplies the option table, the report rule and the tactics. *)
-Module LQ := GetoptLongReqOn R LG0.
-Import LQ LQ.LL LQ.LL.LT LQ.LL.LT.LD LQ.LL.LT.LD.LE LQ.LL.LT.LD.LE.LS LQ.LL.LT.LD.LE.LS.RT LQ.LL.LT.LD.LE.LS.RT.D
-  LQ.LL.LT.LD.LE.LS.RT.D.X LQ.LL.LT.LD.LE.LS.RT.D.X.I LQ.LL.LT.LD.LE.LS.RT.D.X.I.S LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section eq.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance eq_stable : SafepointStable (os_wi w0) := LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance eq_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance eq_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -94,7 +93,7 @@ Proof.
   iDestruct (big_sepL_lookup with "Hes") as "(_ & _ & #Hhl & _ & #Hvl)"; [exact Hx|].
   iDestruct "Hhl" as "[%Hh0 Hhb]". iDestruct "Hvl" as "[%Hv0 Hvb]".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe). pose proof (eq_len_le s) as Hle.
-  en. st.
+  step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
     [reflexivity | vx | exact Htc | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hhb");
@@ -102,9 +101,9 @@ Proof.
   iNext; iIntros "_ _".
   iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small (lo_has x) (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec (lo_has x) 0) as [E0 | E0]; cbn [edge_label].
-  2: { iDestruct "HK" as "[HK _]". en. st. st. chk "Hl".
-       iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
-       iNext. iIntros "Hl Hab". st.
+  2: { iDestruct "HK" as "[HK _]". step. step. step. check "Hl".
+       iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+       iNext. iIntros "Hl Hab". step.
        match goal with |- context [pcell b 16 ?X] =>
          replace X with (ptr_add cur (Z.of_nat (eq_len s) + 1)) by
            (unfold ptr_add; cbn [ptr_addr ptr_cap]; f_equal; rewrite (Z.mod_small 1 (2 ^ 64)); [|lia];
@@ -120,17 +119,17 @@ Proof.
     WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L413") (Some fr1))) : gexpr) {{ Φ }})%I
     with "[Hl Hoob Hab HK]" as "HL413".
   { iIntros (e1 fr1 (Hk1 & H12' & H7' & Hc0' & Hc51')) "Ha Hcl HG".
-    en. st. st.
+    step. step. step.
     iApply (wp_half_check_read_dq w0 registry ge with "Htl");
       [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
     iNext; iIntros "_".
     iApply (wp_raw_load_sub_bytes_dq with "Htl Hvb");
       [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
-    iNext; iIntros "_ _". chk "Hl".
-    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+    iNext; iIntros "_ _". check "Hl".
+    iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
     iNext. iIntros "Hl Hoob". rewrite (Z.mod_small (lo_val x) (2 ^ 32)); [|lia].
     iApply ("HK" with "[%] Hl [Hoob] Hab Ha Hcl HG"); [split; [eapply keeps_trans; [exact Hk1|]; xkeep | exact E0] | by iSplit]. }
-  en. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
+  step. iApply wp_branch; [vx | iNext]. rewrite (Z.mod_small pe (2 ^ 32)); [|lia].
   destruct (Z.eqb_spec pe 0) as [Ep | Ep]; cbn [edge_label].
   - iApply ("HL413" with "[%] Ha Hcl HG"). split; [xkeep|]. repeat split; lk_prove.
   - iApply (wp_getopt_ldiag_noarg w0 registry ge (leq_keys ++ ks) with "Ht0 Hpfx Hsl Hsc Ha Hcl Hs HG [HL413]");
@@ -143,4 +142,3 @@ Proof.
 Qed.
 
 End eq.
-End GetoptLongEqOn.

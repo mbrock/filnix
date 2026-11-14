@@ -11,6 +11,7 @@
     composition file instantiates its glibc modules at it. *)
 
 From Nanofil Require Import Runtime Logic.
+From Glibc Require Import Fix.
 
 (** The program logic over the interpreter's runtime. *)
-Module HLG := Logic InterpRuntime.
+Module HLG := LG0.

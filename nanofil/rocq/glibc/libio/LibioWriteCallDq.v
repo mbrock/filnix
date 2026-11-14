@@ -17,6 +17,8 @@
     | [wp_glibc___libc_write_dq] | SysWrappers.v's [wp_glibc___libc_write] |
     | [wp_file_write_call_dq] | LibioWriteCall.v's [wp_file_write_call] | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -25,6 +27,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsWrite OsRegistry SysCode LibioReadCode FileInv LibioLogic
   SysWrappers LibioWriteExit.
+From Glibc Require FileInv LibioLogic LibioWriteExit OsWorld OsWrite SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -53,10 +57,8 @@ Proof.
     exact (Forall_lookup_1 _ _ _ _ Hy Hxi).
 Qed.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioWriteCallDqOn (R : Runtime) (LG0 : LogicSig R).
-Module WE := LibioWriteExitOn R LG0.
-Import WE WE.SW WE.SW.FI.ML WE.SW.FI.LG WE.SW.FI.L WE.SW.OW WE.SW.FI WE.SW.ST.
+
+Import LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -100,7 +102,7 @@ Proof.
     iPureIntro. split; [exists fd, p, n, (mkPtr eb (Obj eb)); auto|]. split; [constructor|].
     exists []. split; [reflexivity | intros ? ? []].
   - intros σ trace vs s' m' w' Hi. iIntros "_ _". iPureIntro.
-    destruct (WE.SW.OWr.os_write_returns _ _ _ _ _ _ _ _ _ _ _ Hi) as (-> & fd' & p' & n' & k & Hx' & -> & Hk).
+    destruct (OsWrite.os_write_returns _ _ _ _ _ _ _ _ _ _ _ Hi) as (-> & fd' & p' & n' & k & Hx' & -> & Hk).
     injection Hx' as <- <- <-. split; [reflexivity|]. eauto.
   - iApply blks_nil.
   - iNext. iIntros (vs (k & -> & Hk)) "Hps Herr _". iExists _. iSplit; [done|].
@@ -118,7 +120,7 @@ Lemma wp_glibc___libc_write_dq fr fd p n eb dq ps Φ :
   ▷ (∀ k, ⌜(0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1⌝ -∗ ptsq dq ps -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". enter.
+  intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". step.
   iApply (wp_zsys_write_dq with "Hps Herr");
     [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
     | apply (ext_data ge Hext); cbn; tauto | cbn; repeat (rewrite Z.mod_small; [|lia]); reflexivity
@@ -141,7 +143,7 @@ Lemma wp_glibc___write_nocancel_dq fr fd p n eb dq ps Φ :
   ▷ (∀ k, ⌜(0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1⌝ -∗ ptsq dq ps -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". enter.
+  intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". step.
   iApply (wp_zsys_write_dq with "Hps Herr");
     [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
     | apply (ext_data ge Hext); cbn; tauto | cbn; repeat (rewrite Z.mod_small; [|lia]); reflexivity
@@ -178,8 +180,7 @@ Lemma wp_file_write_call_dq fb freg f2 fd dq b reg c o xs eb t e Φ :
   lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b + o + (Z.of_nat (length xs) - t)) c)) ->
   live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ liveq dq b reg -∗
   bytesq dq b o xs -∗ errno_any eb -∗
-  ▷ (∀ e' k, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v4" \/ x = TAtom "pr.1" \/ x = TAtom "pr.2" ->
-                lookup x e' = lookup x e) /\
+  ▷ (∀ e' k, ⌜keeps (atoms ["v0"; "v4"; "pr.1"; "pr.2"]) e e' /\
               lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (fb + off_flags2) (Obj fb))) /\
               lookup (TAtom "v36") e' = Some (WInt k) /\
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
@@ -192,9 +193,9 @@ Proof.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp. unfold file_size in Hend.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
-  st. st. norm. chk "Hl". iDestruct "Hfl2" as "[%Hf2' Hfl2]". load_int "Hl Hfl2". st. st. st. st. st.
-  rewrite (flags2_mask f2 2 1); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. br.
-  st. st. norm. chk "Hl". iDestruct "Hfd" as "[%Hfd' Hfdb]". load_int "Hl Hfdb".
+  step. step. norm. check "Hl". iDestruct "Hfl2" as "[%Hf2' Hfl2]". load_s32_group "Hl Hfl2". step. step. step. step. step.
+  rewrite (flags2_mask f2 2 1); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. branch.
+  step. step. norm. check "Hl". iDestruct "Hfd" as "[%Hfd' Hfdb]". load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [vx | exact Hwrite | reflexivity |]. iNext.
   iPoseProof (liveq_bytesq_ptsq with "Hbl Hxs") as "Hps".
   iApply (wp_glibc___libc_write_dq with "Hps Herr");
@@ -205,7 +206,7 @@ Proof.
   iNext. iIntros (k Hk) "Hps Herr". iDestruct (ptsq_liveq_bytesq with "Hps") as "[Hbl Hxs]". resume_ret.
   iApply ("HK" $! _ k with "[%] Hl [$Hfl2 //] [$Hfdb //] Hbl Hxs Herr").
   assert (Hk64 : 0 <= k < 2 ^ 64) by lia.
-  split_and!; [intros x Hx; lookups; destruct Hx as [-> | [-> | [-> | ->]]]; reflexivity | lookups; reflexivity | | ].
+  split_and!; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; lookups; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; reflexivity | lookups; reflexivity | | ].
   - lookups. rewrite Z.mod_small; [reflexivity | exact Hk64].
   - rewrite Z.mod_small in Hk; [exact Hk | lia].
 Qed.
@@ -227,8 +228,7 @@ Lemma wp_file_write_call_nocancel_dq
   lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b + o + (Z.of_nat (length xs) - t)) c)) ->
   live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ liveq dq b reg -∗
   bytesq dq b o xs -∗ errno_any eb -∗
-  ▷ (∀ e' k, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v4" \/ x = TAtom "pr.1" \/ x = TAtom "pr.2" ->
-                lookup x e' = lookup x e) /\
+  ▷ (∀ e' k, ⌜keeps (atoms ["v0"; "v4"; "pr.1"; "pr.2"]) e e' /\
               lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (fb + off_flags2) (Obj fb))) /\
               lookup (TAtom "v30") e' = Some (WInt k) /\
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
@@ -241,9 +241,9 @@ Proof.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp. unfold file_size in Hend.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
-  st. st. norm. chk "Hl". iDestruct "Hfl2" as "[%Hf2' Hfl2]". load_int "Hl Hfl2". st. st. st. st. st.
-  rewrite (flags2_mask f2 2 1); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. br.
-  st. st. norm. chk "Hl". iDestruct "Hfd" as "[%Hfd' Hfdb]". load_int "Hl Hfdb".
+  step. step. norm. check "Hl". iDestruct "Hfl2" as "[%Hf2' Hfl2]". load_s32_group "Hl Hfl2". step. step. step. step. step.
+  rewrite (flags2_mask f2 2 1); [|reflexivity | lia | exact Hf2r]. rewrite Hf2. branch.
+  step. step. norm. check "Hl". iDestruct "Hfd" as "[%Hfd' Hfdb]". load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [vx | exact Hnocancel | reflexivity |]. iNext.
   iPoseProof (liveq_bytesq_ptsq with "Hbl Hxs") as "Hps".
   iApply (wp_glibc___write_nocancel_dq with "Hps Herr");
@@ -254,10 +254,9 @@ Proof.
   iNext. iIntros (k Hk) "Hps Herr". iDestruct (ptsq_liveq_bytesq with "Hps") as "[Hbl Hxs]". resume_ret.
   iApply ("HK" $! _ k with "[%] Hl [$Hfl2 //] [$Hfdb //] Hbl Hxs Herr").
   assert (Hk64 : 0 <= k < 2 ^ 64) by lia.
-  split_and!; [intros x Hx; lookups; destruct Hx as [-> | [-> | [-> | ->]]]; reflexivity | lookups; reflexivity | | ].
+  split_and!; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; lookups; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; reflexivity | lookups; reflexivity | | ].
   - lookups. rewrite Z.mod_small; [reflexivity | exact Hk64].
   - rewrite Z.mod_small in Hk; [exact Hk | lia].
 Qed.
 
 End rules.
-End LibioWriteCallDqOn.

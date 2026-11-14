@@ -7,6 +7,7 @@
     proof supplies the continuation through the optional translation note
     and exit. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,16 +18,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
   HelloGlibcMainVersion HelloGlibcMainHelpEnd.
+From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The help proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainHelpOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The help-ending module supplies the final output and exit steps. *)
-Module He := HelloGlibcMainHelpEndOn R LG0.
-Import He He.Vn He.Vn.Lp He.Vn.Lp.Dp He.Vn.Lp.Dp.St He.Vn.Lp.Dp.St.S He.Vn.Lp.Dp.St.S.D He.Vn.Lp.Dp.St.S.D.FB
-  He.Vn.Lp.Dp.St.S.D.SW He.Vn.Lp.Dp.St.S.D.SW.FI.ML He.Vn.Lp.Dp.St.S.D.SW.FI.LG
-  He.Vn.Lp.Dp.St.S.D.SW.FI.L He.Vn.Lp.Dp.St.S.D.SW.OW He.Vn.Lp.Dp.St.S.D.SW.FI.
+Import HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section help.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -52,7 +51,7 @@ Proof.
   iDestruct "Hr" as "(_ & _ & _ & _ & _ & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & _)".
   iPoseProof "Hro" as "(_ & _ & #Hsol & #Hsoc & _)".
   iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & Hen)".
-  st. st_global (hy_so _ _ Hy).
+  step. step_global (hy_so _ _ Hy).
   iApply (wp_std_stream with "Hsol Hsoc Hfo"); [lk_prove | exact (hy_so_at _ _ Hy) |]. iIntros "Hfo".
   iAssert (hello_stdio w0 ge o) with "[Hfo Hfe Hfi Hls Htc Hen]" as "Hio".
   { iSplitL "Hfo"; [iExact "Hfo"|]. iSplitL "Hfe"; [iExact "Hfe"|]. iSplitL "Hfi"; [iExact "Hfi"|].
@@ -65,8 +64,8 @@ Proof.
   iNext. iIntros (q) "(Hio & Hpv & Hq)".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
   (* The usage line, with program_name. *)
-  st_global (hy_lits _ _ Hy "hello#str.54" ltac:(cbn; tauto)).
-  st_global (hy_pb _ _ Hy).
+  step_global (hy_lits _ _ Hy "hello#str.54" ltac:(cbn; tauto)).
+  step_global (hy_pb _ _ Hy).
   iDestruct "Hnc" as "(Hpl & Hpc & Hncr)".
   iApply (wp_name_load with "Hpl Hpc Hpn"); [exact Hy | lk_prove |]. iIntros "Hpl Hpc".
   iApply (wp_print w0 ge o D with "Hro Hio [] [-]"); [right; left; split; [reflexivity | eexists; reflexivity] | vx | |].
@@ -77,19 +76,19 @@ Proof.
   { iApply (names_intro o pn sn with "[Hpl Hpc Hncr] Hpn Hsn").
     iSplitL "Hpl"; [iExact "Hpl"|]. iSplitL "Hpc"; [iExact "Hpc" | iExact "Hncr"]. }
   (* The help text. *)
-  st_global (hy_lits _ _ Hy "hello#str.55" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.55" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.55" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n1) "Hio".
-  st_global (hy_lits _ _ Hy "hello#str.56" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.56" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.56" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n2) "Hio".
-  st_global (hy_lits _ _ Hy "hello#str.57" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.57" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.57" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n3) "Hio".
-  st_global (hy_lits _ _ Hy "hello#str.58" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.58" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.58" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n4) "Hio".
-  st_global (hy_lits _ _ Hy "hello#str.56" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.56" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.56" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n5) "Hio".
-  st_global (hy_lits _ _ Hy "hello#str.59" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.59" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.59" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n6) "Hio".
-  st_global (hy_lits _ _ Hy "hello#str.60" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.60" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.60" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n7) "Hio".
   iApply (wp_call_void with "[Hio]");
     [exact (hd_emit_bug _ _ _ D) | reflexivity | iSplitR; [iExact "Hro" | iExact "Hio"] |].
@@ -99,4 +98,3 @@ Proof.
 Qed.
 
 End help.
-End HelloGlibcMainHelpOn.

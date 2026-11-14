@@ -7,6 +7,8 @@
     targets and proves the final stores safe: every store goes to an
     integer cell that the caller owns, inside its object. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +20,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,13 +35,9 @@ Definition lstore_names : list name := Eval vm_compute in
   List.map TAtom ["v489"; "v491"; "chk70"; "v498"; "chk71"; "v499"; "v500"; "v501"; "v503"; "v504"; "v506";
     "chk73"; "v507"; "chk74"; "v510"; "chk75"; "v511"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongStoreOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The report module supplies the option table and the tactics. *)
-Module LD := GetoptLongDiagOn R LG0.
-Import LD LD.LE LD.LE.LS LD.LE.LS.RT LD.LE.LS.RT.D LD.LE.LS.RT.D.X LD.LE.LS.RT.D.X.I LD.LE.LS.RT.D.X.I.S
-  LD.LE.LS.RT.D.X.I.S.FI LD.LE.LS.RT.D.X.I.S.FI.ML LD.LE.LS.RT.D.X.I.S.FI.LG LD.LE.LS.RT.D.X.I.S.FI.L
-  LD.LE.LS.RT.D.X.I.ST LD.LE.LS.RT.D.X.I.GB LD.LE.LS.RT.D.X.A.
+Import GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section targets.
 Context `{!gen_heapGS piece pval Σ}.
@@ -64,7 +64,7 @@ Section store.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance store_stable : SafepointStable (os_wi w0) := LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance store_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance store_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -114,14 +114,14 @@ Proof.
       (⌜li = null⌝ ∨ int_at li (Z.of_nat j)) -∗
       WP (ERun (mkFrame glibc_process_long_option e1 [] None (Enter (TAtom "L487") (Some fr1))) : gexpr)
         {{ Φ }})%I with "[HF HK]" as "HL487".
-  { iIntros (e1 fr1 (Hk1 & H71)) "Hli". en. st.
+  { iIntros (e1 fr1 (Hk1 & H71)) "Hli". step. step.
     iApply (wp_check_read_dq registry (os_wi w0) ge with "Htl");
       [reflexivity | vx | exact Htc | rawa | rawa | al8 |]; iNext; iIntros "_".
     destruct Hf as [Hnull | Hin].
     - iApply (wp_raw_load_pointer_dq with "Htl Hfl []");
         [reflexivity | vx | exact Htc | rawa | al8 | rewrite Hnull; cbn; lia | rewrite Hnull; unfold live_capq; cbn; done |].
-      iNext. iIntros "_ _ _". st. st. rewrite Hnull. unfold null; cbn [ptr_addr].
-      iApply wp_branch; [vx | iNext]. close_br. en. st.
+      iNext. iIntros "_ _ _". step. step. rewrite Hnull. unfold null; cbn [ptr_addr].
+      iApply wp_branch; [vx | iNext]. close_br. step. step.
       iApply (wp_half_check_read_dq w0 registry ge with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
       iNext; iIntros "_". iDestruct "Hvl" as "[%Hv0 Hvb]".
@@ -136,12 +136,12 @@ Proof.
       iAssert (live_capq (DfracOwn 1) (ptr_cap (lo_flag x)) freg) with "[Hfll]" as "Hfcap";
         [rewrite Hfc0; iExact "Hfll"|].
       iApply (wp_raw_load_pointer_dq with "Htl Hfl Hfcap"); [reflexivity | vx | exact Htc | rawa | al8 | lia |].
-      iNext. iIntros "_ _ Hfcap". st. st.
+      iNext. iIntros "_ _ Hfcap". step. step.
       rewrite (Z.mod_small (ptr_addr (lo_flag x)) (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
       rewrite (proj2 (Z.eqb_neq (ptr_addr (lo_flag x)) 0)); [|lia].
-      iApply wp_branch; [vx | iNext]. close_br. en. st.
+      iApply wp_branch; [vx | iNext]. close_br. step. step.
       iApply (wp_raw_load_pointer_dq with "Htl Hfl Hfcap"); [reflexivity | vx | exact Htc | rawa | al8 | lia |].
-      iNext. iIntros "_ _ Hfcap". st.
+      iNext. iIntros "_ _ Hfcap". step.
       iApply (wp_half_check_read_dq w0 registry ge with "Htl");
         [reflexivity | vx | reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
       iNext; iIntros "_". iDestruct "Hvl" as "[%Hv0 Hvb]".
@@ -157,22 +157,21 @@ Proof.
       iNext. iIntros "Hfc". iDestruct "HK" as "[HK _]".
       iApply ("HK" with "[%] Hli [HF Hfc]"); [split; [xkeep | exact Hnn] |].
       iSplit; [iPureIntro; exact Hnd|]. iApply "HF". iExists _. iExact "Hfc". }
-  en. st. st. iDestruct "Hli" as "[%Hn | Hli]".
+  step. step. step. iDestruct "Hli" as "[%Hn | Hli]".
   - subst li. unfold null; cbn [ptr_addr]. iApply wp_branch; [vx | iNext]. close_br.
     iApply ("HL487" with "[%] []"); [split; [xkeep | lk_prove] | iLeft; done].
   - iDestruct "Hli" as (v lb lreg) "(%Hp & Hll & Hlc)". destruct Hp as (Hlc0 & Hlb & Hla & Hle & Hlr).
     rewrite (Z.mod_small (ptr_addr li) (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
     rewrite (proj2 (Z.eqb_neq (ptr_addr li) 0)); [|lia].
-    iApply wp_branch; [vx | iNext]. close_br. en.
+    iApply wp_branch; [vx | iNext]. close_br. step.
     iApply (wp_check with "Hll"); [reflexivity | vx | exact Hlc0 | unfold raw_address; rewrite Z.mod_small; lia
       | unfold raw_address; rewrite Z.mod_small; lia | apply Z.mod_1_r |].
     iNext. iIntros "Hll".
     iApply (int_at_store with "[Hll Hlc]"); [vx | vx | apply Z.mod_pos_bound; lia
       | iExists lb, lreg; iFrame; iPureIntro; repeat split; first [assumption | lia] |].
-    iNext. iIntros "Hli". st. rewrite (Z.mod_small (Z.of_nat j) (2 ^ 32)); [|lia].
+    iNext. iIntros "Hli". step. rewrite (Z.mod_small (Z.of_nat j) (2 ^ 32)); [|lia].
     iApply ("HL487" with "[%] [Hli]"); [split; [xkeep | lk_prove] | iRight; iExact "Hli"].
 Unshelve. exact treg. exact DfracDiscarded.
 Qed.
 
 End store.
-End GetoptLongStoreOn.

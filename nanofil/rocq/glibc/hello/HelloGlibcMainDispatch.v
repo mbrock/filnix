@@ -7,6 +7,7 @@
     keep the selected string read-only, and the error flag remains zero
     or one. The loop proof supplies the continuation for each back edge. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   HelloModule HelloLeaf HelloMain.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart.
+From Glibc Require HelloGlibcDebts HelloGlibcMainStart HelloGlibcMainSteps.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -32,12 +35,9 @@ Definition loop_entry (from : string) (e : env) (lose : Z) : Prop :=
   ((from = "iw_1.L35"%string \/ from = "iw_1.L42"%string) /\
    lookup (TAtom "iw_1.pr.2") e = Some (WInt lose) /\ (lose = 0 \/ lose = 1)).
 
-(** The dispatch proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainDispatchOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The start-block module supplies the initialized state and shared rules. *)
-Module St := HelloGlibcMainStartOn R LG0.
-Import St St.S St.S.D St.S.D.FB St.S.D.SW St.S.D.SW.FI.ML
-  St.S.D.SW.FI.LG St.S.D.SW.FI.L St.S.D.SW.OW St.S.D.SW.FI.
+Import HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section dispatch.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -122,9 +122,9 @@ Lemma greeting_store f e ls lab d v rest j g q Φ :
     {{ Φ }}.
 Proof.
   intros Hc1 H4 Hv (Hb40 & Hb416 & Hb448). iIntros "(Hl4 & Hp4 & Hy4 & Hc4) HK".
-  rule1 "Hl4" ltac:(eapply wp_renew; ins;
+  rule1 "Hl4" ltac:(eapply wp_renew; inst;
     [reflexivity | vx | reflexivity | reflexivity | arith | cbn [r_end]; arith | arith]).
-  rule2 "Hl4" "Hp4" ltac:(eapply wp_raw_store_pointer; ins;
+  rule2 "Hl4" "Hp4" ltac:(eapply wp_raw_store_pointer; inst;
     [cbn -[put lookup]; rewrite Hv; reflexivity |
      cbn -[put lookup]; rewrite Symbolic.lookup_after_put_same; reflexivity |
      reflexivity | arith | arith | wi_store]).
@@ -143,20 +143,20 @@ Proof.
   intros Hf Hpr Hlose Hv15 Hcode Hn1. iIntros "#Hro Hr Hga IH HK".
   iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6)".
   pose proof Hf as ((H0 & H2 & H4 & H6 & Hc1) & Hb4 & Hb6 & Hi).
-  st. st.
+  step. step.
   destruct (Z.eq_dec code 129) as [-> | H129].
   { (* --version. *)
-    br. iDestruct "HK" as "[HK _]".
+    (branch_symbolic; LeavesLogic.decide_branch). iDestruct "HK" as "[HK _]".
     iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
     iApply ("HK" $! _ ps a i g lose with "[%] Hr"). lfacts. }
-  br. st. st.
+  (branch_symbolic; LeavesLogic.decide_branch). step. step.
   destruct (Z.eq_dec code 103) as [-> | H103].
   { (* -g: the greeting is optarg. *)
     iEval (cbn) in "Hga". iDestruct "Hga" as "#Ha".
-    br. st. st_global (hy_oa _ _ Hy).
+    (branch_symbolic; LeavesLogic.decide_branch). step. step_global (hy_oa _ _ Hy).
     iDestruct "Hgo" as "(Hoal & Hoac & Hoil & Hoic)".
     pose proof (hy_oa_at _ _ Hy) as (Hoa0 & Hoa8 & Hoae & Hoar).
-    rule1 "Hoal" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+    rule1 "Hoal" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
     iApply (wp_load_str w0 ge _ _ _ _ _ _ _ _ _ _ _ (DfracOwn 1) (DfracOwn 1) with "Hoal Hoac Ha");
       [lk_prove | arith | exact Hoa8 |].
     iNext. iIntros "Hoal Hoac".
@@ -167,16 +167,16 @@ Proof.
     iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Ha Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
     iApply ("IH" $! "iw_1.L35"%string _ lose ps a i a with "[%] Hr HK").
     split; [right; right; split; [left; reflexivity | split; [lk_prove | exact Hlose]]|]. lf. }
-  br. st. st.
+  (branch_symbolic; LeavesLogic.decide_branch). step. step.
   destruct (Z.eq_dec code 128) as [-> | H128].
   { (* --help. *)
-    br. iDestruct "HK" as "[_ [HK _]]".
+    (branch_symbolic; LeavesLogic.decide_branch). iDestruct "HK" as "[_ [HK _]]".
     iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
     iApply ("HK" $! _ ps a i g lose with "[%] Hr"). lfacts. }
-  br. st. st.
+  (branch_symbolic; LeavesLogic.decide_branch). step. step.
   destruct (Z.eq_dec code 116) as [-> | H116].
   { (* -t: the traditional greeting. *)
-    br. st. st_global (hy_lits _ _ Hy "hello#str.76" ltac:(cbn; tauto)).
+    (branch_symbolic; LeavesLogic.decide_branch). step. step_global (hy_lits _ _ Hy "hello#str.76" ltac:(cbn; tauto)).
     iAssert (str_ro (sym_ptr ge "hello#str.76")) as "#Ht"; [iApply (lit_ro with "Hro"); cbn; tauto|].
     iApply (greeting_store with "Hgc"); [lk_prove | lk_prove | lk_prove | exact Hb4 |]. iIntros "Hgc".
     iApply wp_goto. iNext. cbn [edge_label].
@@ -191,4 +191,3 @@ Proof.
 Qed.
 
 End dispatch.
-End HelloGlibcMainDispatchOn.

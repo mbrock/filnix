@@ -8,6 +8,8 @@
     leaves the set null, and the parser then only remembers that the
     word is ambiguous. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +22,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxCmp GetoptLongPfxMark GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -39,20 +43,9 @@ Definition palloc_keys : list name := Eval vm_compute in List.map TAtom ["pr.35"
 (** The parser tests the allocated set in this block. *)
 Definition plo_blk184 : block := Eval vm_compute in plo_blk "L184".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPfxAllocOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The marking module supplies the set, the option table and the tactics. *)
-Module LPM := GetoptLongPfxMarkOn R LG0.
-Import LPM LPM.LPC LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section fresh.
 Context `{!gen_heapGS piece pval Σ}.
@@ -77,7 +70,7 @@ Section alloc.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance alloc_stable : SafepointStable (os_wi w0) := LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance alloc_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance alloc_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -165,9 +158,9 @@ Proof.
   { iIntros (e2 p a m (Hk2 & H20 & H37 & H28 & H186 & H42' & H13' & Ha & Hm)) "Hp HM".
     assert (Ha32 : 0 <= a < 2 ^ 32) by (destruct Ha as [-> | ->]; lia).
     assert (Hm32 : 0 <= m < 2 ^ 32) by (destruct Hm as [-> | [-> _]]; lia).
-    cbn [b_insts b_jump plo_blk184]. st. st.
+    cbn [b_insts b_jump plo_blk184]. step. step.
     iDestruct "Hp" as "[-> | (%base & %Hb & Ho)]".
-    - unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. palloc_brp. st.
+    - unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. palloc_brp. step.
       rewrite (Z.mod_small a (2 ^ 32)) // (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
       iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n null k with "[]"); [exact Hksk | lk_prove | lk_prove | lia | lia | by iLeft |].
       iIntros (e' P (Hk' & HP)) "Hs". apply keeps_app in Hk' as [Hkt Hk'].
@@ -176,18 +169,18 @@ Proof.
       split; [exact HP|]. repeat split; try viakeep Hkt; tauto.
     - destruct Hb as (-> & Hb0 & Hb16 & Hbe). cbn [ptr_addr].
       rewrite (Z.mod_small base (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
-      rewrite (proj2 (Z.eqb_neq base 0)); [|lia]. palloc_brp. st.
+      rewrite (proj2 (Z.eqb_neq base 0)); [|lia]. palloc_brp. step.
       iDestruct (obj_set with "Ho") as "(Hl & Hx & Hcs)"; [lia|].
       iApply (Hset with "Hl Hx Hcs"); [vx | rewrite length_replicate Z2Nat.id; [|lia]; try rewrite Z.mod_small; lia
         | try rewrite Z.mod_small; lia | Z.div_mod_to_equations; lia
         | cbn [r_end]; try rewrite Z.mod_small; lia | rewrite !length_replicate; reflexivity |].
-      iNext. iIntros (cs') "Hl Hx _". rewrite length_replicate. st. st. norm.
+      iNext. iIntros (cs') "Hl Hx _". rewrite length_replicate. step. step. norm.
       rewrite (sx_nonneg (Z.of_nat j)); [|lia].
       match goal with |- context [put (TAtom "v213") (WPtr {| ptr_addr := ?X; ptr_cap := Obj base |})] =>
         replace X with (base + Z.of_nat j) by (rewrite !Z.mod_small; lia) end.
       iApply (wp_amb_mark with "Hl Hx"); [lk_prove | rewrite length_replicate; lia | lia
         | rewrite length_replicate Z2Nat.id; [|lia]; cbn [r_end]; lia | cbn [r_end]; lia |].
-      iNext. iIntros "Hl Hx". st. st. rewrite (Z.mod_small a (2 ^ 32)) // (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
+      iNext. iIntros "Hl Hx". step. step. rewrite (Z.mod_small a (2 ^ 32)) // (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
       iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n (mkPtr base (Obj base)) k with "[Hl Hx]");
         [exact Hksk | lk_prove | lk_prove | lia | lia | | ].
       { iRight. iExists base, _, _. iFrame. iPureIntro. cbn [r_end r_kind]. rewrite length_insert length_replicate Z2Nat.id; [|lia].
@@ -202,30 +195,29 @@ Proof.
       lookup (TAtom "pr.42") e2 = Some (WInt (Z.of_nat j)) /\ lookup (TAtom "pr.13") e2 = Some (WInt (Z.of_nat k))⌝ -∗ M -∗
     WP (ERun (mkFrame glibc_process_long_option e2 [] None (Enter (TAtom "L182") (Some (TAtom "iw_1.L7")))) : gexpr)
       {{ Φ }})%I as "H182".
-  { iIntros "H184" (e2 (Hk2 & H186 & H39' & H30' & H42' & H13')) "HM". st.
+  { iIntros "H184" (e2 (Hk2 & H186 & H39' & H30' & H42' & H13')) "HM". step.
     iApply wp_alloc_any; [vx | apply Z.mod_pos_bound; lia | intros mm wd h base Hf Hw; exact (os_wi_alloc w0 mm wd h _ base Hf Hw) |].
     rewrite (Z.mod_small n (2 ^ 64)); [|lia].
-    iNext. iIntros (base Hb) "Ho". st. st. pcmp_fold "L184" plo_blk184.
+    iNext. iIntros (base Hb) "Ho". step. step. pcmp_fold "L184" plo_blk184.
     iApply ("H184" with "[%] [Ho] HM"); [split; [xkeep|]; repeat split; try lk_prove; tauto |].
     iRight. iExists base. iFrame. iPureIntro. destruct Hb as (Hb1 & Hb2 & Hb3).
     split; [reflexivity|]. split; [lia|]. split; [exact Hb2 | exact Hb3]. }
-  st. st. palloc_int "v186" n.
-  iApply Hcut; [vx |]. iNext. iIntros (x Hx). st. st. pcmp_br.
-  - st. st. st. st. pcmp_br.
-    + st. iApply (Hmal with "HM"); [vx | apply Z.mod_pos_bound; lia |]. rewrite (Z.mod_small n (2 ^ 64)); [|lia]. iNext. iIntros (p) "HM Hp". st. st.
+  step. step. palloc_int "v186" n.
+  iApply Hcut; [vx |]. iNext. iIntros (x Hx). step. step. pcmp_br.
+  - step. step. step. step. pcmp_br.
+    + step. iApply (Hmal with "HM"); [vx | apply Z.mod_pos_bound; lia |]. rewrite (Z.mod_small n (2 ^ 64)); [|lia]. iNext. iIntros (p) "HM Hp". step. step.
       iDestruct "Hp" as "[-> | (%base & %Hb & Ho)]".
-      * unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. palloc_brp. st. pcmp_fold "L184" plo_blk184.
+      * unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. palloc_brp. step. pcmp_fold "L184" plo_blk184.
         iApply ("H184" with "[%] [] HM"); [split; [xkeep|]; repeat split; try lk_prove; tauto | by iLeft].
       * destruct Hb as (-> & Hb0 & Hb16 & Hbe). cbn [ptr_addr].
         rewrite (Z.mod_small base (2 ^ 64)); [|lia]. rewrite (proj2 (Z.eqb_neq base 0)); [|lia].
-        palloc_brp. st. st. st. pcmp_fold "L184" plo_blk184.
+        palloc_brp. step. step. step. pcmp_fold "L184" plo_blk184.
         iApply ("H184" with "[%] [Ho] HM"); [split; [xkeep|]; repeat split; try lk_prove; try tauto |].
         { right. split; [reflexivity | discriminate]. }
         iRight. iExists base. iFrame. done.
     + iApply ("H182" with "H184 [%] HM"). split; [xkeep | repeat split; lk_prove].
-  - st. iApply wp_branch; [vx | iNext]. close_br.
+  - step. iApply wp_branch; [vx | iNext]. close_br.
     iApply ("H182" with "H184 [%] HM"). split; [xkeep | repeat split; lk_prove].
 Qed.
 
 End alloc.
-End GetoptLongPfxAllocOn.

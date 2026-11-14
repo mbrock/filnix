@@ -8,6 +8,8 @@
     the vector only below the argument count, and writes only the fields
     of its own state. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptReqNext.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptReqNext GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,18 +29,15 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptReqArgOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The next-argument module supplies the argument vector and its tactics. *)
-Module RN := GetoptReqNextOn R LG0.
-Import RN RN.RT RN.RT.D RN.RT.D.X RN.RT.D.X.I RN.RT.D.X.I.S RN.RT.D.X.I.S.FI RN.RT.D.X.I.S.FI.ML RN.RT.D.X.I.S.FI.LG
-  RN.RT.D.X.I.S.FI.L RN.RT.D.X.I.ST RN.RT.D.X.I.GB RN.RT.D.X.A.
+Import GetoptReqNext GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section req.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance req_stable : SafepointStable (os_wi w0) := RN.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance req_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance req_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -104,7 +105,7 @@ Proof.
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
   pose proof (sbyte_in_len t 0 Ht0) as Hlt. pose proof (sbyte_range t 1 Hch) as Ht1r.
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
-  en. st.
+  step. step.
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq");
     [reflexivity | vx | left; reflexivity | arith | arith | unfold ptr_add; cbn [ptr_addr]; lia |].
   iNext. iIntros "Hl Hcur _".
@@ -114,7 +115,7 @@ Proof.
     [reflexivity | vx | exact Hcap' | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap' | rawa |].
-  iNext; iIntros "_ _". iClear "Hbl Hbt". st.
+  iNext; iIntros "_ _". iClear "Hbl Hbt". step.
   rewrite (Z.mod_small (chr_w (sbyte t 1)) (2 ^ 32)); [|apply chr_w_range].
   change (0 mod 2 ^ 32) with 0. rewrite chr_w_eqb; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte t 1) 0) as [E1 | E1]; close_br.
@@ -126,7 +127,7 @@ Proof.
     iIntros (e') "[%Hk' %H7] Hl Hib Hab Hcur".
     iApply ("HK" with "[%] Hl Hib Hoo Hab Hcur Ha Hcl HG"). split; [exact Hk'|]. split; [exact E1 | exact H7]. }
   iDestruct "Hib" as "[%Hi0 Hib]".
-  en. chk "Hl". load_int "Hl Hib". st. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia].
+  step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia].
   rewrite (Z.mod_small n (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (i + 1) n) as [En | En]; close_br.
   - iDestruct "HK" as "[_ [_ HK]]".
@@ -148,4 +149,3 @@ Proof.
 Qed.
 
 End req.
-End GetoptReqArgOn.

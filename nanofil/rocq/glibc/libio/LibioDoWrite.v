@@ -9,6 +9,7 @@
     called. The write is [wp_glibc__IO_new_file_write], reached
     through `c: _IO_file_jumps`' write slot. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,10 +28,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoWriteOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -111,16 +112,16 @@ Proof.
   intros n wb base Hfr. injection Hfr as <-. intros Hn0 Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr Happ He Hb Hi Hbend Hbreg Hy
     Hbe Hbec Hmd.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp HK".
-  unfold file_size in Hend. enter. unfold io_is_appending in Happ.
+  unfold file_size in Hend. step. unfold io_is_appending in Happ.
   assert (Hn : n < 2 ^ 63) by lia.
-  st. brv true. st. chk "Hl". iDestruct "Hfl" as "[%Hfl0 Hfl]". load_int "Hl Hfl". st. brv true.
-  st. st. norm. chk "Hl".
+  step. branch_as true. step. check "Hl". iDestruct "Hfl" as "[%Hfl0 Hfl]". load_s32_group "Hl Hfl". step. branch_as true.
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hre Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hre Hbl". st. norm. chk "Hl".
+  iNext. iIntros "Hl Hre Hbl". step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hwb Hbl". st. st. st. brv true.
+  iNext. iIntros "Hl Hwb Hbl". step. step. step. branch_as true.
   iApply (Hcall_spec with "Hvt Hl [$Hfl //] Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp HK");
-    try side.
+    try libio_side.
 Qed.
 
 (** [wp_glibc__IO_new_do_write_mode] for an un-oriented stream, mode 0:
@@ -197,9 +198,8 @@ Lemma wp_glibc__IO_new_do_write_zero fr fp data Φ :
   ▷ Φ (Ret (WInt 0)) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros Hfr. injection Hfr as <-. iIntros "HK". enter. st. br. st. br. st.
+  intros Hfr. injection Hfr as <-. iIntros "HK". step. step. branch. step. branch. step.
   iApply wp_ret; [reflexivity | vx |]. iNext. iExact "HK".
 Qed.
 
 End rules.
-End LibioDoWriteOn.

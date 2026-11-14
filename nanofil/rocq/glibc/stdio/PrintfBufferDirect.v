@@ -5,6 +5,7 @@
     Separate lifetime shares allow the character buffer to be the stream's
     inline short buffer. Interior offsets remain explicit, and the rule
     neither acquires a lock nor assumes that a later write will succeed. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -21,10 +24,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The instruction rules preserve the caller's runtime and concrete OS world. *)
-Module PrintfBufferDirectOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -36,10 +37,7 @@ Local Instance direct_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Pointer loads borrow independent shares of the containing and target allocations. *)
-Local Ltac load_pointer H :=
-  iApply (wp_raw_load_pointer_dq with H);
-    [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |];
-  iNext; iIntros H.
+
 
 (** Available stream space selects the same allocation and exact interior offsets.
     The borrowed stream pointers and both lifetime shares are returned unchanged. *)
@@ -63,19 +61,18 @@ Lemma wp_printf_buffer_switch_direct fr bb breg fb freg db dreg bo eo dqf dqd
 Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hdb Hbo Hspace Hde Hdr. injection Hfr as <-.
   iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend HK".
-  enter. fs. fchk "Hb". load_pointer "Hb Hfp Hf".
-  fs. chkq "Hf". load_pointer "Hf Hwp Hd".
-  load_pointer "Hb Hfp Hf". fs. chkq "Hf".
-  load_pointer "Hf Hwe Hd". fs. fs. fs. fbrv false. fs.
-  fs. fs. load_pointer "Hb Hfp Hf". fs. chkq "Hf".
-  load_pointer "Hf Hwp Hd". fchk "Hb". fstp "Hb" "Hptr".
-  fs. fchk "Hb". load_pointer "Hb Hfp Hf".
-  fs. chkq "Hf". load_pointer "Hf Hwe Hd".
-  fchk "Hb". fstp "Hb" "Hend". fs. fs. fs. fchk "Hb".
-  load_pointer "Hb Hptr Hd". fchk "Hb". fstp "Hb" "Hbase".
+  step. step. check "Hb". load_shared "Hb Hfp Hf".
+  step. check_shared "Hf". load_shared "Hf Hwp Hd".
+  load_shared "Hb Hfp Hf". step. check_shared "Hf".
+  load_shared "Hf Hwe Hd". step. step. step. branch_as false. step.
+  step. step. load_shared "Hb Hfp Hf". step. check_shared "Hf".
+  load_shared "Hf Hwp Hd". check "Hb". store "Hb" "Hptr".
+  step. check "Hb". load_shared "Hb Hfp Hf".
+  step. check_shared "Hf". load_shared "Hf Hwe Hd".
+  check "Hb". store "Hb" "Hend". step. step. step. check "Hb".
+  load_shared "Hb Hptr Hd". check "Hb". store "Hb" "Hbase".
   iApply wp_ret_void. iNext. norm.
   iApply ("HK" with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend").
 Qed.
 
 End rules.
-End PrintfBufferDirectOn.

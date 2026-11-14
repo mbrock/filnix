@@ -8,6 +8,8 @@
     and LibioWriteExit.v supplies the exit and accounting steps. The
     loop preserves the flag and the input share even when a write fails. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
   SysWrappers LibioWriteExit LibioWriteCallDq LibioWriteJoinDq.
+From Glibc Require FileInv LibioLogic LibioWriteCallDq LibioWriteExit LibioWriteJoinDq OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,11 +28,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioWriteDqOn (R : Runtime) (LG0 : LogicSig R).
-Module WJ := LibioWriteJoinDqOn R LG0.
-Module WC := WJ.WC.
-Import WJ WC WC.WE WC.WE.SW WC.WE.SW.FI.ML WC.WE.SW.FI.LG WC.WE.SW.FI.L WC.WE.SW.OW WC.WE.SW.FI WC.WE.SW.ST.
+
+Import LibioWriteJoinDq LibioWriteCallDq LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -72,14 +73,14 @@ Proof.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr He Hc Hb Ho Hbend Hreg' Hy. unfold file_size in Hend.
   iLöb as "IH". iIntros (e t tw off (Hv0 & Hv4 & Ht & Hp & Htr)) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
-  cbn [fw_L8 b_insts b_jump]. st. destruct (Z.eq_dec t 0) as [-> | Ht0].
-  { brv true. iApply ((wp_file_write_exit w0 registry ge) with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
+  cbn [fw_L8 b_insts b_jump]. step. destruct (Z.eq_dec t 0) as [-> | Ht0].
+  { branch_as true. iApply ((wp_file_write_exit w0 registry ge) with "Hl Hoff"); try wside. iNext. iIntros (off') "Hl Hoff".
     rewrite Z.sub_0_r. iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
     split; [left; split; reflexivity | exact Hflr]. }
-  brv false.
+  branch_as false.
   iApply (wp_file_write_join_dq w0 registry ge Hreg Hext Hwrite fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
     try wside.
-  iNext. iIntros (e' k (Hsame & Hc0 & Hk37 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr".
+  iNext. iIntros (e' k (Hsame & Hc0 & Hk37 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   pose proof (Hsame (TAtom "v0") ltac:(auto)) as Hv0'. pose proof (Hsame (TAtom "v4") ltac:(auto)) as Hv4'.
   pose proof (Hsame (TAtom "pr.1") ltac:(auto)) as Hp''. pose proof (Hsame (TAtom "pr.2") ltac:(auto)) as Ht''.
   assert (Hv0n : lookup (TAtom "v0") e' = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hv0'; lookups; reflexivity).
@@ -88,14 +89,14 @@ Proof.
     by (rewrite Hp''; lookups; reflexivity).
   assert (Htn : lookup (TAtom "pr.2") e' = Some (WInt t)) by (rewrite Ht''; lookups; reflexivity).
   clear Hsame Hv0' Hv4' Hp'' Ht'' Hv0 Hv4 Hp Ht.
-  cbn [fw_L16 b_insts b_jump]. st. destruct Hk as [Hk | ->].
-  2: { brv false.
+  cbn [fw_L16 b_insts b_jump]. step. destruct Hk as [Hk | ->].
+  2: { branch_as false.
        iApply ((wp_file_write_err w0 registry ge) with "Hl [$Hfl //] Hoff");
          try wside.
        iNext. iIntros (off') "Hl Hfl Hoff".
        iApply ("HK" $! _ (Z.lor fl io_err_seen) with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
        split; [right; split; [lia | reflexivity] | apply lor_lt32; unfold io_err_seen; lia]. }
-  destruct Hk as [[Hk0 Hkn] Hk31]. try (rewrite Z.mod_small in Hkn; [|lia]). brv true.
+  destruct Hk as [[Hk0 Hkn] Hk31]. try (rewrite Z.mod_small in Hkn; [|lia]). branch_as true.
   iApply (wp_file_write_next w0 registry ge fb freg tw t k (mkPtr (b + o + (Z.of_nat (length xs) - t)) c)
             with "Hl Htw");
     try wside.
@@ -128,11 +129,10 @@ Lemma wp_glibc__IO_new_file_write_dq fr fb freg fl f2 fd tw off dq b reg c o xs 
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr. injection Hfr as <-. intros. iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
-  enter. st. iApply wp_enter; [reflexivity | reflexivity | iNext].
+  step. step. iApply wp_enter; [reflexivity | reflexivity | iNext].
   iApply (wp_file_write_loop_dq with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try eassumption.
   assert (Z.of_nat (length xs) < 2 ^ 63) by lia.
   split_and!; try reflexivity; cbn; try (unwrap; lia). do 3 f_equal. arith.
 Qed.
 
 End rules.
-End LibioWriteDqOn.

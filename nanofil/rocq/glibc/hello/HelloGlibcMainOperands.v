@@ -7,6 +7,7 @@
     error reporting use the explicit M4 obligations; exit uses the
     concrete glibc proof. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
   HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp.
+From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -50,14 +53,9 @@ Proof.
   destruct (2 ^ 31 <=? x) eqn:E; [apply Z.leb_le in E; lia | reflexivity].
 Qed.
 
-(** The operand proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainOperandsOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The help module supplies the common output and exit rules. *)
-Module Hp := HelloGlibcMainHelpOn R LG0.
-Import Hp Hp.He Hp.He.Vn Hp.He.Vn.Lp Hp.He.Vn.Lp.Dp Hp.He.Vn.Lp.Dp.St Hp.He.Vn.Lp.Dp.St.S Hp.He.Vn.Lp.Dp.St.S.D
-  Hp.He.Vn.Lp.Dp.St.S.D.FB Hp.He.Vn.Lp.Dp.St.S.D.SW Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.ML
-  Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.LG Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.L
-  Hp.He.Vn.Lp.Dp.St.S.D.SW.OW Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.
+Import HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section operands.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -96,8 +94,8 @@ Lemma wp_optind_load f e ls lab vc chk d rest j i Ψ :
                   Let d W (RawLoad (LdNarrow Sw) 0) [Tmp chk] :: rest) j)) : gexpr) {{ Ψ }}.
 Proof.
   intros Hv Hi. pose proof (hy_oi_at _ _ Hy) as (Hoi0 & Hoie & Hoir). iIntros "Hl [%Hi32 Hb] HK".
-  rule1 "Hl" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
-  rule2 "Hl" "Hb" ltac:(eapply wp_raw_load_sub_bytes_dq; ins;
+  rule1 "Hl" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule2 "Hl" "Hb" ltac:(eapply wp_raw_load_sub_bytes_dq; inst;
     [reflexivity | cbn -[put lookup]; rewrite Symbolic.lookup_after_put_same; reflexivity | reflexivity |
      apply load_sw_int; lia | left; reflexivity | arith]).
   iApply ("HK" with "Hl [Hb]"). iSplit; [iPureIntro; lia | iExact "Hb"].
@@ -129,12 +127,12 @@ Ltac operand_steps Havp a i :=
   pose proof Havp as (Hav0 & Hav8 & H31 & Havend & Har);
   let Ei := fresh "Ei" in let E8 := fresh "E8" in let Ea := fresh "Ea" in
   destruct (operand_index a i) as (Ei & E8 & Ea); [lia | lia | lia |];
-  eapply step_wand; [eapply (wp_let_as (WInt i)); ins; [reflexivity | reflexivity | vx | intros ?; reflexivity | f_equal; exact Ei] |];
-  eapply step_wand; [eapply (wp_let_as (WInt (8 * i))); ins;
+  eapply step_wand; [eapply (wp_let_as (WInt i)); inst; [reflexivity | reflexivity | vx | intros ?; reflexivity | f_equal; exact Ei] |];
+  eapply step_wand; [eapply (wp_let_as (WInt (8 * i))); inst;
     [reflexivity | reflexivity | vx | intros ?; reflexivity |
      cbn; f_equal; first [exact E8 | rewrite (Z.mod_small i) in E8; [exact E8 | lia] | rewrite Zmod_mod; exact E8]] |];
-  eapply step_wand; [eapply (wp_flight_as (a + 8 * i)); ins; [vx | reflexivity | vx | exact Ea] |];
-  rule1 "Hal" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]);
+  eapply step_wand; [eapply (wp_flight_as (a + 8 * i)); inst; [vx | reflexivity | vx | exact Ea] |];
+  rule1 "Hal" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]);
   iApply (wp_argv_load _ _ _ _ _ _ _ _ _ _ _ _ _ _ (Z.to_nat i) with "[Hal Hsl] Hps");
     [apply Symbolic.lookup_after_put_same | rewrite Z2Nat.id; lia | lia | iFrame "Hal Hsl"; iPureIntro; assumption |];
     iExact "HK".
@@ -182,13 +180,13 @@ Proof.
   iIntros "#Hro [Hio Hpv] Hn HX".
   iPoseProof "Hro" as "(_ & _ & _ & _ & #Hsel & #Hsec & _)".
   iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & Hen)".
-  st. st_global (hy_se _ _ Hy).
+  step. step_global (hy_se _ _ Hy).
   iApply (wp_std_stream with "Hsel Hsec Hfe"); [lk_prove | exact (hy_se_at _ _ Hy) |]. iIntros "Hfe".
   iAssert (hello_stdio w0 ge o) with "[Hfo Hfe Hfi Hls Htc Hen]" as "Hio".
   { iSplitL "Hfo"; [iExact "Hfo"|]. iSplitL "Hfe"; [iExact "Hfe"|]. iSplitL "Hfi"; [iExact "Hfi"|].
     iSplitL "Hls"; [iExact "Hls"|]. iSplitL "Htc"; [iExact "Htc" | iExact "Hen"]. }
-  st_global (hy_lits _ _ Hy "hello#str.79" ltac:(cbn; tauto)).
-  st_global (hy_pb _ _ Hy).
+  step_global (hy_lits _ _ Hy "hello#str.79" ltac:(cbn; tauto)).
+  step_global (hy_pb _ _ Hy).
   iDestruct "Hn" as (x y z) "((Hpl & Hpc & Hncr) & #Hx & #Hy' & #Hz)".
   iApply (wp_name_load with "Hpl Hpc Hx"); [exact Hy | lk_prove |]. iIntros "Hpl Hpc".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
@@ -212,23 +210,23 @@ Proof.
   intros H2 Hi. iIntros "#Hro [Hio Hpv] Hn HX Hav #Hps Hoil Hoic".
   iAssert (⌜Z.of_nat (length ps) < 2 ^ 31⌝)%I with "[Hav]" as %H31; [iDestruct "Hav" as "[%Hp _]"; iPureIntro; tauto|].
   assert (Hi31 : 0 <= i < 2 ^ 31) by lia.
-  st. st_global (hy_oi _ _ Hy).
+  step. step_global (hy_oi _ _ Hy).
   iApply (wp_optind_load with "Hoil Hoic"); [lk_prove | exact Hi31 |]. iIntros "Hoil Hoic".
   iApply (wp_operand_load true with "Hav Hps"); [lk_prove | lk_prove | exact Hi |]. iNext. iIntros "Hav".
   iPoseProof (nth_arg_ro ps (Z.to_nat i) with "Hps") as "#Hq".
-  st. st.
-  eapply step_wand; [eapply wp_branch; ins; vx |].
+  step. step.
+  eapply step_wand; [eapply wp_branch; inst; vx |].
   lazymatch goal with |- context [if ?c then _ else _] => destruct c end; decide_branch.
-  - st. st_global (hy_lits _ _ Hy "hello#str.77" ltac:(cbn; tauto)).
-    st_global (hy_lits _ _ Hy "hello#str.78" ltac:(cbn; tauto)).
-    st_global (hy_oi _ _ Hy).
+  - step. step_global (hy_lits _ _ Hy "hello#str.77" ltac:(cbn; tauto)).
+    step_global (hy_lits _ _ Hy "hello#str.78" ltac:(cbn; tauto)).
+    step_global (hy_oi _ _ Hy).
     iApply (wp_optind_load with "Hoil Hoic"); [lk_prove | exact Hi31 |]. iIntros "Hoil Hoic".
     iApply (wp_operand_load false with "Hav Hps"); [lk_prove | lk_prove | exact Hi |]. iNext. iIntros "Hav".
     iApply (wp_call_void with "[Hio Hpv Hn]");
       [exact (hd_error_operand _ _ _ D (nth (Z.to_nat i) (ps ++ [null]) null)) | vx |
        iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv"|];
        iSplitL "Hn"; [iExact "Hn" | iExact "Hq"] |].
-    iNext. iIntros "(Hio & Hpv & Hn)". st.
+    iNext. iIntros "(Hio & Hpv & Hn)". step.
     iApply (operand_hint with "Hro [Hio Hpv] Hn HX"). iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
   - iApply (operand_hint with "Hro [Hio Hpv] Hn HX"). iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
 Qed.
@@ -242,22 +240,21 @@ Proof.
   iDestruct "Hr" as "(Hav & #Hps & (Hoal & Hoac & Hoil & Hoic) & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6)".
   iPoseProof (names_intro o pn sn with "Hnc Hpn Hsn") as "Hn".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
-  st. destruct Hlose as [-> | ->].
+  step. destruct Hlose as [-> | ->].
   - (* No unknown option: optind against argc. *)
-    br. st. st_global (hy_oi _ _ Hy).
+    (branch_symbolic; LeavesLogic.decide_branch). step. step_global (hy_oi _ _ Hy).
     iAssert (⌜Z.of_nat (length ps) < 2 ^ 31⌝)%I with "[Hav]" as %H31; [iDestruct "Hav" as "[%Hp _]"; iPureIntro; tauto|].
     iApply (wp_optind_load with "Hoil Hoic"); [lk_prove | lia |]. iIntros "Hoil Hoic".
     destruct (Z.lt_dec i (Z.of_nat (length ps))) as [Hlt | Hge].
-    + eapply step_wand; [eapply (wp_let_as (WInt 1)); ins; [reflexivity | reflexivity | vx | intros ?; reflexivity |
+    + eapply step_wand; [eapply (wp_let_as (WInt 1)); inst; [reflexivity | reflexivity | vx | intros ?; reflexivity |
         rewrite !sext_small; [| lia | lia]; f_equal; apply Z.ltb_lt in Hlt; rewrite Hlt; reflexivity] |].
-      st. st. br. iApply (operand_L55 with "Hro Hio Hn HX Hav Hps Hoil Hoic"); [lk_prove | lia].
-    + eapply step_wand; [eapply (wp_let_as (WInt 0)); ins; [reflexivity | reflexivity | vx | intros ?; reflexivity |
+      step. step. (branch_symbolic; LeavesLogic.decide_branch). iApply (operand_L55 with "Hro Hio Hn HX Hav Hps Hoil Hoic"); [lk_prove | lia].
+    + eapply step_wand; [eapply (wp_let_as (WInt 0)); inst; [reflexivity | reflexivity | vx | intros ?; reflexivity |
         rewrite !sext_small; [| lia | lia]; f_equal; rewrite (proj2 (Z.ltb_ge _ _)); [reflexivity | lia]] |].
-      st. st. br. iApply ("HJ" with "[%] Hgc Hg Hb6 Hio Hn HX").
+      step. step. (branch_symbolic; LeavesLogic.decide_branch). iApply ("HJ" with "[%] Hgc Hg Hb6 Hio Hn HX").
       split; [split; [lk_prove | split; lk_prove] | split; assumption].
   - (* An unknown option: the operand check, then the hint. *)
-    br. st. br. iApply (operand_L55 with "Hro Hio Hn HX Hav Hps Hoil Hoic"); [lk_prove | lia].
+    (branch_symbolic; LeavesLogic.decide_branch). step. (branch_symbolic; LeavesLogic.decide_branch). iApply (operand_L55 with "Hro Hio Hn HX Hav Hps Hoil Hoic"); [lk_prove | lia].
 Qed.
 
 End operands.
-End HelloGlibcMainOperandsOn.

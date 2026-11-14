@@ -4,6 +4,8 @@
     the word as ambiguous. Otherwise it goes on with the first match it
     found, or with no option at all. This file proves that decision. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -28,32 +32,15 @@ Local Arguments Z.opp : simpl nomatch.
 Definition pend_names : list name := Eval vm_compute in
   List.map TAtom ["v232"; "v233"; "v237"; "v238"; "pr.12"; "pr.7"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPfxEndOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The search module supplies the search, the set, the option table and the tactics. *)
-Module LPL := GetoptLongPfxLoopOn R LG0.
-Import LPL LPL.LPI LPL.LPI.LPT LPL.LPI.LPT.LPS LPL.LPI.LPT.LPS.LPA LPL.LPI.LPT.LPS.LPA.LPM LPL.LPI.LPT.LPS.LPA.LPM.LPC
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section decide.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance end_stable : SafepointStable (os_wi w0) := LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance end_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance end_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -84,12 +71,12 @@ Lemma wp_pfx_end ks e n p w a m sp Φ :
     {{ Φ }}.
 Proof.
   intros Hks H8 H42 H39 H30 H21 Hw Ha Hm. iIntros "Hs HK".
-  st. st. st. iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
+  step. step. step. iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
   - unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0.
-    iApply wp_branch; [vx | iNext]. close_br. st. st. st. st.
+    iApply wp_branch; [vx | iNext]. close_br. step. step. step. step.
     assert (m = 0) as -> by (destruct Hm as [? | [_ ?]]; [assumption | contradiction]).
     destruct Ha as [-> | ->].
-    + iApply wp_branch; [vx | iNext]. close_br. st. pcmp_fold "L87" plo_blk87. iDestruct "HK" as "[HK _]".
+    + iApply wp_branch; [vx | iNext]. close_br. step. pcmp_fold "L87" plo_blk87. iDestruct "HK" as "[HK _]".
       rewrite (Z.mod_small w (2 ^ 32)) //. iApply "HK". iPureIntro. split; [xkeep|].
       repeat split; first [reflexivity | lk_prove].
     + iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[_ HK]".
@@ -97,11 +84,10 @@ Proof.
   - pose proof Hs as (-> & Hsk & Hsb & Hse & Hsr & Hlen). cbn [ptr_addr].
     rewrite (Z.mod_small sb (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
     rewrite (proj2 (Z.eqb_neq sb 0)); [|lia].
-    iApply wp_branch; [vx | iNext]. close_br. st. iApply wp_branch; [vx | iNext]. close_br.
+    iApply wp_branch; [vx | iNext]. close_br. step. iApply wp_branch; [vx | iNext]. close_br.
     iDestruct "HK" as "[_ HK]". iApply ("HK" with "[%] [Hl Hx]").
     { split; [xkeep | left; discriminate]. }
     iRight. iExists sb, sreg, xs. iFrame. done.
 Qed.
 
 End decide.
-End GetoptLongPfxEndOn.

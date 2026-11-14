@@ -9,6 +9,7 @@
     The genv [hi_ge] is the linked module with its globals and any free
     function the runtime supplies. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Semantics.
 From Glibc Require Import HiAtexitModule StrlenLogic MemFwdCode StdlibCode AllocLogic AtexitLogic SysCode

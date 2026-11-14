@@ -6,6 +6,8 @@
     bad option and answers ':' or '?' as the option string asks. Both
     ends write only the parser's own private fields. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,19 +35,15 @@ Definition lreq_names : list name := Eval vm_compute in
     "v452"; "v453"; "v454"; "chk62"; "v455"; "chk63"; "v473"; "v475"; "chk67"; "v476"; "chk68"; "chk69";
     "v482"; "v483"; "v484"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongTailOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The store module supplies the option table, the report rule and the tactics. *)
-Module LT := GetoptLongStoreOn R LG0.
-Import LT LT.LD LT.LD.LE LT.LD.LE.LS LT.LD.LE.LS.RT LT.LD.LE.LS.RT.D LT.LD.LE.LS.RT.D.X LT.LD.LE.LS.RT.D.X.I
-  LT.LD.LE.LS.RT.D.X.I.S LT.LD.LE.LS.RT.D.X.I.S.FI LT.LD.LE.LS.RT.D.X.I.S.FI.ML LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LT.LD.LE.LS.RT.D.X.I.S.FI.L LT.LD.LE.LS.RT.D.X.I.ST LT.LD.LE.LS.RT.D.X.I.GB LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section tail.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance tail_stable : SafepointStable (os_wi w0) := LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance tail_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -75,14 +75,14 @@ Proof.
   destruct (lookup_lt_is_Some_2 ps k) as [q Hq]; [lia|].
   iDestruct (big_sepL_lookup with "Hs") as (s1) "#Hws1"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws1") as (rq1) "[#Hcapq1 %Hq1]".
-  en. st. load_int "Hl Hib". st. chk "Hl".
-  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-  iNext. iIntros "Hl Hib". st. st. st. idx (i + 1). chk "Ha".
+  step. step. load_s32_using ltac:(arith) "Hl Hib". step. check "Hl".
+  iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
+  iNext. iIntros "Hl Hib". step. step. step. idx (i + 1). check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
-  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq1"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). chk "Hl".
-  iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
-  iNext. iIntros "Hl Hab". st.
+  iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq1"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
+  iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). check "Hl".
+  iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | wi_store |].
+  iNext. iIntros "Hl Hab". step.
   iApply ("HK" with "[%] Hl [Hib] [Hab] Ha Hcl"); [xkeep | | unfold k in Hq; by rewrite (nth_lookup_Some _ _ _ _ Hq)].
   iSplit; [iPureIntro; lia|]. by replace (i + 2) with (i + 1 + 1) by lia.
 Qed.
@@ -111,14 +111,14 @@ Proof.
   iDestruct "Hvl" as "[%Hv0 Hvb]".
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
   pose proof (sbyte_range so 0 Hcho) as Hs0r.
-  en. st. st.
+  step. step. step.
   iApply (wp_half_check_read_dq w0 registry ge with "Htl");
     [reflexivity | vx | cbn; rewrite Hp1; reflexivity | exact Htc | al8 | al8 | lia | lia | apply Z.mod_1_r |].
   iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hvb");
     [reflexivity | vx | reflexivity | apply load_sw_int; assumption | exact Htc | rawa |].
-  iNext; iIntros "_ _". chk "Hl".
-  iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
+  iNext; iIntros "_ _". check "Hl".
+  iApply (wp_raw_store_w with "Hl Hoob"); [vx | vx | reflexivity | StrlenLoop.arith | reflexivity | wi_store |].
   iNext. iIntros "Hl Hoob". rewrite (Z.mod_small (lo_val x) (2 ^ 32)); [|lia].
   iDestruct (ws_byte po so 0 with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).
@@ -126,11 +126,10 @@ Proof.
     [reflexivity | vx | exact Hcap | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | rawa |].
-  iNext; iIntros "_ _". iClear "Hbl Hbt". st. rewrite chr_cmp; [|lia|lia].
+  iNext; iIntros "_ _". iClear "Hbl Hbt". step. rewrite chr_cmp; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte so 0) 58) as [E58 | E58]; close_br.
-  - en. iApply ("HK" with "[%] Hl [Hoob]"); [split; [xkeep | lk_prove] | by iSplit].
-  - en. st. en. iApply ("HK" with "[%] Hl [Hoob]"); [split; [xkeep | lk_prove] | by iSplit].
+  - step. iApply ("HK" with "[%] Hl [Hoob]"); [split; [xkeep | lk_prove] | by iSplit].
+  - step. step. step. iApply ("HK" with "[%] Hl [Hoob]"); [split; [xkeep | lk_prove] | by iSplit].
 Qed.
 
 End tail.
-End GetoptLongTailOn.

@@ -6,6 +6,7 @@
     The stream must already be producing bytes into a heap buffer.
     Buffers inside FILE and streams that need a new buffer or a choice
     of orientation are not covered. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,17 +16,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers LibioOverflowBase LibioGenCode LibioOverflowGen
   PrintfStreamHeap PrintfBufferOverflowCall HiAtexitBase HiAtexitOverflow.
+From Glibc Require FileInv LibioOverflowGen LibioPutsInv PrintfBufferOverflowCall PrintfStreamHeap PrintfStreamInv SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The stream view uses the same interpreter logic as the backend. *)
-Module PHS := PrintfStreamHeapOn InterpRuntime HLG.
 (** The wrapper checks the stream's actual overflow jump-table entry. *)
-Module PHG := LibioOverflowGenOn InterpRuntime HLG.
 (** The caller's callee obligation uses the same concrete logic. *)
-Module PHC := PrintfBufferOverflowCallOn InterpRuntime HLG.
-Import PHS PHS.PS PHS.PS.PI PHS.PS.PI.CS.SW PHS.PS.PI.CS.SW.FI
-  PHS.PS.PI.CS.SW.FI.ML PHS.PS.PI.CS.SW.FI.LG PHS.PS.PI.CS.SW.FI.L.
+Import PrintfStreamHeap PrintfStreamInv LibioPutsInv SysWrappers FileInv FileInv.ML FileInv.LG FileInv.L.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -112,7 +110,7 @@ Proof.
   iDestruct "Hf" as (fb freg st bb breg sz k we xs fl tw off col Hp)
     "(Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvtp & Htail)".
   pose proof Hp as (Hfp & Hfb & Hal & Hend & Hregend & _). subst fp.
-  iApply (PHG.wp_glibc___overflow w0 registry ge Hovf
+  iApply (LibioOverflowGen.wp_glibc___overflow w0 registry ge Hovf
     fr fb freg ch (2 ^ 32 - 1) vb vreg with "Hvt Hl Hmd Hvtp"); try assumption; try lia.
   iNext. iIntros (fr' Hfr') "Hl Hmd Hvtp".
   iApply (hi_printf_heap_file_overflow fr' eb vb vreg self (mkPtr fb (Obj fb))
@@ -135,7 +133,7 @@ Lemma hi_printf_heap_overflow_spec
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\
     find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
-  PHC.printf_overflow_call_spec w0 registry ge
+  PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
     (fun fp => printf_heap_stream w0 vb self fp (2 ^ 32 - 1) flags2 held)
     (vtables_ro ge vb vreg ∗ errno_any eb).
 Proof.

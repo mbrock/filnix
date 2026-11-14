@@ -9,6 +9,7 @@
     its `c: _flags2` has `c: _IO_FLAGS2_NEED_LOCK` clear ([flags_ok]),
     so `c: _IO_ferror` reads the flags without taking the lock. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry SysCode LibioReadCode FileInv LibioLogic
   SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -27,10 +30,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioReadOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -46,10 +47,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A signed 32-bit load of an owned [int_cell] at offset o of b, read
     through the proven pointer the frame holds. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | reflexivity | reflexivity | apply load_sw_int; assumption | left; reflexivity | ar |];
-  iNext; iIntros H.
+
 
 (** ## `c: __fpending` *)
 
@@ -68,16 +66,16 @@ Lemma wp_glibc___fpending fr fb freg mode wp wb reg' Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfb Hal Hend Hfreg Hmode Hcap Hwp Hwb. injection Hfr as <-.
-  iIntros "Hl [%Hm Hmode] Hwp Hwb Hc HK". unfold file_size in Hend. enter. st. norm. chk "Hl".
-  load_int "Hl Hmode". st.
-  destruct Hmode as [-> | ->]; closed_ints. 1: br. 2: br.
-  all: st; st; norm; chk "Hl";
+  iIntros "Hl [%Hm Hmode] Hwp Hwb Hc HK". unfold file_size in Hend. step. step. norm. check "Hl".
+  load_s32_group "Hl Hmode". step.
+  destruct Hmode as [-> | ->]; closed_ints. 1: branch. 2: branch.
+  all: step; step; norm; check "Hl";
     (iApply (wp_raw_load_pointer with "Hl Hwp Hc");
        [reflexivity | reflexivity | reflexivity | ar | ar | exact Hwp |]);
-    iNext; iIntros "Hl Hwp Hc"; st; norm; chk "Hl"; rewrite Hcap;
+    iNext; iIntros "Hl Hwp Hc"; step; norm; check "Hl"; rewrite Hcap;
     (iApply (wp_raw_load_pointer with "Hl Hwb Hc");
        [reflexivity | reflexivity | reflexivity | ar | ar | exact Hwb |]);
-    iNext; iIntros "Hl Hwb Hc"; st; st; st; rewrite -Hcap;
+    iNext; iIntros "Hl Hwb Hc"; step; step; step; rewrite -Hcap;
     (iApply wp_ret; [reflexivity | reflexivity |]); iNext; cbn;
     rewrite (Z.mod_small (ptr_addr wp)); [|lia]; rewrite (Z.mod_small (ptr_addr wb)); [|lia];
     rewrite Z.mod_mod; [|lia]; iApply ("HK" with "Hl [Hmode] Hwp Hwb Hc"); (iSplit; [iPureIntro; lia | iExact "Hmode"]).
@@ -98,10 +96,10 @@ Lemma wp_glibc__IO_ferror fr fb freg fl f2 Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfb Hal Hend Hfreg Hnl. injection Hfr as <-.
-  iIntros "Hl [%Hf Hfl] [%Hf2 Hfl2] HK". unfold file_size in Hend. enter. st. norm. chk "Hl".
-  load_int "Hl Hfl2". st. st. st. st.
-  rewrite flags2_bit7; [|exact Hf2]. unfold io_need_lock in Hnl. rewrite Hnl. br. st. chk "Hl".
-  load_int "Hl Hfl". st. st. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iIntros "Hl [%Hf Hfl] [%Hf2 Hfl2] HK". unfold file_size in Hend. step. step. norm. check "Hl".
+  load_s32_group "Hl Hfl2". step. step. step. step.
+  rewrite flags2_bit7; [|exact Hf2]. unfold io_need_lock in Hnl. rewrite Hnl. branch. step. check "Hl".
+  load_s32_group "Hl Hfl". step. step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   change (32 mod 2 ^ 32) with 32. change (0 mod 2 ^ 32) with 0. rewrite (Z.mod_small fl); [|lia].
   assert (Hb : 0 <= Z.land fl 32 < 2 ^ 32).
   { apply land_lt32; lia. }
@@ -129,8 +127,8 @@ Lemma wp_glibc__IO_file_close fr fb freg fd eb Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfn Hfb Hal Hend Hfreg He. injection Hfr as <-.
-  iIntros "Hl [%Hfd Hfdb] Herr HK". unfold file_size in Hend. enter. st. norm. chk "Hl".
-  load_int "Hl Hfdb".
+  iIntros "Hl [%Hfd Hfdb] Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
+  load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [reflexivity | exact Hfn | reflexivity |]. iNext.
   iApply (wp_glibc___close_nocancel w0 registry ge Hreg Hext with "Herr"); [reflexivity | apply Z.mod_pos_bound; lia | exact He |].
   iNext. iIntros (k Hk) "Herr". resume_ret.
@@ -152,8 +150,8 @@ Lemma wp_glibc__IO_file_stat fr fb freg fd b reg o eb Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfn Hfb Hal Hend Hfreg He Hin Ho Hst. injection Hfr as <-.
-  iIntros "Hl [%Hfd Hfdb] Hbl Hb Herr HK". unfold file_size in Hend. enter. st. norm. chk "Hl".
-  load_int "Hl Hfdb".
+  iIntros "Hl [%Hfd Hfdb] Hbl Hb Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
+  load_s32_group "Hl Hfdb".
   iApply wp_call_bind; [reflexivity | exact Hfn | reflexivity |]. iNext.
   iApply (wp_glibc___fstat64 w0 registry ge Hreg Hext with "Hbl Hb Herr");
     [reflexivity | apply Z.mod_pos_bound; lia | exact He | rewrite Z.mod_small; [exact Hin | lia] | exact Ho | exact Hst |].
@@ -163,4 +161,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioReadOn.

@@ -2,13 +2,10 @@
     getopt/code.sh regenerates it from the pinned capture. Do not edit. *)
 
 From Stdlib Require Import String ZArith List Ascii.
-From Nanofil Require Import Term.
+From Glibc Require Import CodePrelude.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
-
-(** Character atoms retain their byte values. *)
-Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 
 (** These blocks retain their order in the linked module. *)
 Definition getopt_blocks_02 : list term :=

@@ -11,6 +11,7 @@
     then discharge each single-byte identity by computing over all 256
     byte values. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith Lia List Bool.
 From Nanofil Require Import Memory.
 Import ListNotations.
