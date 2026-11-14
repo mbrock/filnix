@@ -1231,6 +1231,10 @@ tactic_block(dispatch(T, Ts), Env) --> { tactic_structural(T) ; member(B, Ts), t
 tactic_block(tlet(n(_, X), V, B), Env) --> { tactic_structural(B) }, !,
     el(span, "rq-tac-let", ( el(span, "goal rq-tac-head", ( kw("let"), " ", var_def(X), "\u00A0", defeq, " ", tactic_inline(V, Env), " ", kw("in") )),
                              tactic_block(B, [X|Env]) )).
+tactic_block(tletrec(n(_, X), Args, V, B), Env) --> !,
+    { maplist([n(_, A), A]>>true, Args, Ns), append(Ns, [X|Env], Inner) },
+    el(span, "rq-tac-let", ( el(span, "goal rq-tac-head", ( kw("let rec"), " ", var_def(X), " ", vars(Args), "\u00A0", defeq )),
+        tactic_block(V, Inner), el(span, "goal rq-tac-head", kw("in")), tactic_block(B, [X|Env]) )).
 tactic_block(tgroup(T), Env) --> { tactic_structural(T) }, !,
     el(span, "rq-tac-group", ( "(", tactic_block(T, Env), ")" )).
 tactic_block(T, Env) --> el(span, "goal rq-tac-inline", tactic_inline(T, Env)).
@@ -1243,6 +1247,7 @@ tactic_structural(prefix(_, T)) :- tactic_structural(T).
 tactic_structural(do(_, T)) :- tactic_structural(T).
 tactic_structural(tgroup(T)) :- tactic_structural(T).
 tactic_structural(tlet(_, _, B)) :- tactic_structural(B).
+tactic_structural(tletrec(_, _, _, _)).
 tactic_structural(tbin(_, L, R)) :- ( tactic_structural(L) ; tactic_structural(R) ).
 
 tactic_inline(tmatch(K, Subject, Bs), Env) --> tactic_block(tmatch(K, Subject, Bs), Env).
@@ -1264,6 +1269,10 @@ tactic_inline(dispatch(T, Ts), Env) -->
 tactic_inline(tlet(n(_, X), V, B), Env) -->
     el(span, "o rq-tac-chain", ['data-d'=op], ( kw("let"), " ", var_def(X), "\u00A0", defeq, " ", tactic_inline(V, Env), " ",
         kw("in"), " ", tactic_inline(B, [X|Env]) )).
+tactic_inline(tletrec(N, Args, V, B), Env) --> tactic_block(tletrec(N, Args, V, B), Env).
+tactic_inline(teval(Ws, E), Env) -->
+    { atomic_list_concat(Ws, ' ', Strategy) },
+    el(span, "o rq-tac-chain", ['data-d'=op], ( kw(eval), " ", esc(Strategy), " ", kw("in"), " ", term(E, Env) )).
 tactic_inline(call(N, []), Env) --> !, name_ref(N, Env, head).
 tactic_inline(call(pose, [token(id(proof))|Ps]), Env) --> !,
     el(span, "c rq-tac-call", ['data-d'=args],
