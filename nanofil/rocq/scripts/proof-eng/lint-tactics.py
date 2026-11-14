@@ -26,7 +26,9 @@ files = {}
 libraries = {}
 for path in sorted(args.tree.rglob("*.v")):
     names = [name for name, _, _ in stage.tactics(path.read_text())]
-    if path.name in {"GlibcTactics.v", "LibioTactics.v"}:
+    # GlibcSym.v is the block executor: its tactics quote a goal for the
+    # executor and are shared by every proof that runs it.
+    if path.name in {"GlibcTactics.v", "LibioTactics.v", "GlibcSym.v"}:
         libraries[str(path.relative_to(args.tree))] = names
         continue
     if names:
