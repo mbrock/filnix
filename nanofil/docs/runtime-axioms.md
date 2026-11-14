@@ -208,10 +208,11 @@ gates run `Driver InterpRuntime`.
 
 The glibc layer is named by
 [runtime-concrete.txt](../rocq/glibc/runtime-concrete.txt). Its current
-member is `hi_atexit/HiAtexitSafe.v`: both safety and initialized-entry
-statements use the exact integer allocator cursor 4294969872 where the
-logic expects a runtime state. They are statements about a prepared
-interpreter image, not arbitrary implementations of `Runtime`.
+member is `hi_atexit/HiAtexitSafe.v`: its safety statement supplies the
+exact integer allocator cursor 4294969872 where the logic expects a
+runtime state. Its initialized-entry statement records preparation of
+that same interpreter image. These describe a prepared interpreter
+image, not arbitrary implementations of `Runtime`.
 Their statements remain unchanged. The sealed-default design compiles
 this file's import closure again with a transparent `Fix.v`; it does not
 make every glibc proof transparent to accommodate this one theorem.
