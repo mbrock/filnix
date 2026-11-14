@@ -18,11 +18,99 @@ experimental; see [the toolchain notes](docs/upstream-updates.md) for validation
 
 ## Quick start
 
-Use the binary cache to avoid building LLVM and glibc yourself:
+You do not need to know Nix to use Filnix. This section shows how to install
+Nix, turn on the Filnix binary cache, and open a shell in which your own C or
+C++ project builds with Fil-C against Fil-C builds of its libraries.
+
+### Install Nix and the binary cache
+
+The Determinate Nix installer works on Fedora with SELinux, on Ubuntu, Debian
+and most other x86-64 Linux distributions, and it enables flakes:
 
 ``` bash
-cachix use filc
+curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 ```
+
+Then tell Nix about the Filnix binary cache, so that it downloads the Fil-C
+compiler and libraries instead of compiling LLVM and glibc on your machine:
+
+``` bash
+sudo tee -a /etc/nix/nix.custom.conf <<'EOF'
+extra-substituters = https://filc.cachix.org
+extra-trusted-public-keys = filc.cachix.org-1:8rA7kXyu1HaJuMTsAKfA9fU/+r8YtLv5KiZ5hfDNZMk=
+EOF
+sudo systemctl restart nix-daemon
+```
+
+If you installed Nix another way, put the same two lines in
+`/etc/nix/nix.conf`, or run `cachix use filc`.
+
+### A shell for your own C or C++ project
+
+Save this as `flake.nix` in your project's directory. It describes the shell:
+the build tools in `nativeBuildInputs` are ordinary programs for your machine,
+and the libraries in `buildInputs` are compiled with Fil-C.
+
+``` nix
+{
+  inputs.filnix.url = "github:mbrock/filnix";
+
+  outputs =
+    { filnix, ... }:
+    let
+      fil = filnix.legacyPackages.x86_64-linux.pkgsFilc;
+    in
+    {
+      devShells.x86_64-linux.default = fil.mkShell {
+        nativeBuildInputs = with fil.buildPackages; [
+          cmake
+          ninja
+          pkg-config
+          python3
+          wayland-scanner
+        ];
+        buildInputs = with fil; [
+          dbus
+          libxkbcommon
+          wayland
+          wayland-protocols
+          # pkg-config also asks for these, via dbus-1.pc and wayland-client.pc.
+          systemdLibs
+          libffi
+        ];
+      };
+    };
+}
+```
+
+If the project is a Git repository, run `git add flake.nix` first, because
+Nix only sees files that Git tracks. Then enter the shell and build as usual:
+
+``` bash
+nix develop
+cmake -B build -G Ninja
+cmake --build build
+```
+
+Inside the shell, `cc`, `c++`, `$CC` and `$CXX` are the Fil-C compiler, and
+`pkg-config` and CMake's `pkg_check_modules` find the Fil-C libraries. No
+CMake toolchain file is needed. If `pkg-config` reports a library outside
+`/nix/store`, that library is missing from `buildInputs`. The first
+`nix develop` downloads about 700 MB and writes `flake.lock`, which pins the
+Filnix version until you run `nix flake update`.
+
+The program you build runs directly on your desktop. It loads the Fil-C
+loader and libraries from `/nix/store`, and it talks to your normal Wayland
+compositor and D-Bus session bus through `WAYLAND_DISPLAY`,
+`XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, which your desktop session
+already sets. Re-enter `nix develop` after running `nix-collect-garbage`,
+which can delete libraries that no shell is using.
+
+To find more libraries, search for a nixpkgs attribute name on
+<https://search.nixos.org/packages> and add it to `buildInputs`. The campaign
+dashboard at <https://nix.swa.sh/> shows whether it builds with Fil-C.
+
+### Other things to try
 
 Compile a program directly:
 
