@@ -368,6 +368,7 @@ getopt/GetoptLongOnlyRet.v
 getopt/GetoptLongOnlyShort.v
 getopt/GetoptWRet.v
 getopt/GetoptWExit.v
+getopt/GetoptWExitRet.v
 getopt/GetoptCallParse.v
 getopt/GetoptWrapParse.v
 getopt/GetoptLongStr.v
