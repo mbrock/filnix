@@ -1,10 +1,7 @@
 From Glibc Require Import GlibcProgram.
-(** This file proves the terminal test of `c: _IO_file_doallocate` (LibioDoAllocBase.v
-    describes the function). Block `c: L5` sees a character device in
-    the stat buffer's `c: st_mode` and asks `c: __gnu_dev_major` of its
-    `c: st_rdev`; block `c: L48` asks `c: __isatty_nostatus` of the
-    descriptor. A terminal goes on to `c: L33`, which makes the stream
-    line-buffered; any other stream goes to `c: L28`. *)
+(** The stream buffer allocator tests whether its descriptor refers to a terminal.
+    It first examines the device type and major number, then queries the descriptor.
+    A terminal receives a line-buffered stream; other devices keep ordinary buffering. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -17,6 +14,7 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode File
   LibioSetb LibioDoAllocBase.
 From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec LibioSpecs.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -42,9 +40,9 @@ Context `{Hisatty : !Defines ge "__isatty_nostatus" glibc___isatty_nostatus}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The allocator's state, which `c: malloc` takes and gives back. *)
+(** Buffer allocation preserves this ownership of the allocator's state. *)
 Context (Mres : iProp Σ).
-(** Block `c: L28`, as LibioDoAllocTail.v proves it ([wp_doalloc_L28]). *)
+(** The ordinary-buffering continuation installs a fresh buffer and returns ownership of the stream. *)
 Context (HL28 : forall fb freg fl oe sb sreg bs3 from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < sb -> sb mod 16 = 0 -> sb + 144 <= r_end sreg -> r_end sreg <= 2 ^ 48 -> length bs3 = 8%nat ->
@@ -59,7 +57,7 @@ Context (HL28 : forall fb freg fl oe sb sreg bs3 from e Φ,
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L28") (Some from))) : sexpr) {{ Φ }}).
 
-(** Block `c: L33`, as LibioDoAllocTail.v proves it ([wp_doalloc_L33]). *)
+(** The terminal continuation installs a fresh buffer and sets the stream's line-buffering flag. *)
 Context (HL33 : forall fb freg fl oe sb sreg bs3 from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < sb -> sb mod 16 = 0 -> sb + 144 <= r_end sreg -> r_end sreg <= 2 ^ 48 -> length bs3 = 8%nat ->
@@ -75,8 +73,7 @@ Context (HL33 : forall fb freg fl oe sb sreg bs3 from e Φ,
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}).
 
-(** Block `c: L48`, which asks `c: __isatty_nostatus` of the descriptor
-    and makes a terminal line-buffered. *)
+(** The descriptor query selects the terminal or ordinary-buffering continuation. *)
 Lemma wp_doalloc_L48 fb freg fl fd eb oe sb sreg bs3 from e Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < sb -> sb mod 16 = 0 -> sb + 144 <= r_end sreg -> r_end sreg <= 2 ^ 48 -> length bs3 = 8%nat ->
@@ -93,10 +90,11 @@ Proof.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 He Hfd Hv0 Hc0 Hv4 Hc4.
   iIntros "Hl Hfl [%Hfdr Hfdb] Herr Hb Hbe HM Hsl Hb3 HK". unfold file_size in Hend.
   step. step. norm. check "Hl". load_s32_group "Hl Hfdb".
-  iApply wp_call_bind; [vx | exact Hisatty | reflexivity |]. iNext.
-  iApply (wp_glibc___isatty_nostatus Hreg Hext with "Herr");
-    [reflexivity | apply Z.mod_pos_bound; lia | exact He | rewrite Z.mod_small; [exact Hfd | lia] |].
-  iNext. iIntros (r Hr) "Herr". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
+  call_spec with (fd mod 2 ^ 32, eb).
+  { repeat split; try assumption; try (apply Z.mod_pos_bound; lia).
+    rewrite Z.mod_small; [exact Hfd | lia]. }
+  iDestruct "Hpost" as (r) "(%Hout & Herr)". destruct Hout as [-> Hr].
+  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step.
   step. destruct Hr as [-> | ->]; branch.
   - iApply (HL28 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try libio_side.
@@ -108,8 +106,7 @@ Proof.
     split; [right; reflexivity | lia].
 Qed.
 
-(** Block `c: L5`, the test of `c: st_mode` for a character device and
-    of its major number for a terminal. *)
+(** The initial test recognizes character devices and checks their major number before querying the descriptor. *)
 Lemma wp_doalloc_L5 fb freg fl fd eb oe sb sreg bs1 bs2 bs3 e Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < sb -> sb mod 16 = 0 -> sb + 144 <= r_end sreg -> r_end sreg <= 2 ^ 48 ->
@@ -134,9 +131,10 @@ Proof.
   - step. step. norm. check "Hsl".
     iApply (wp_raw_load_bytes8 with "Hsl Hb2"); [reflexivity | vx | exact Hl2 | reflexivity | ar |].
     iNext. iIntros "Hsl Hb2".
-    iApply wp_call_bind; [vx | exact Hmaj | reflexivity |]. iNext.
-    iApply (wp_glibc___gnu_dev_major); [reflexivity | apply Z.mod_pos_bound; lia |].
-    iNext. iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
+    call_spec.
+    { apply Z.mod_pos_bound; lia. }
+    iDestruct "Hpost" as %->.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
     step. brk Ej.
     + step. step. step. step. brk Ek.
       * step. branch. iApply (HL33 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try libio_side.

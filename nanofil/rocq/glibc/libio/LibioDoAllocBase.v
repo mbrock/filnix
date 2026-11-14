@@ -5,9 +5,8 @@ From Glibc Require Import GlibcProgram.
     fresh `c: malloc` buffer of `c: st_blksize` bytes, or of
     `c: BUFSIZ` when the stat fails or gives no usable size.
 
-    This file gives the arithmetic of `c: __gnu_dev_major`, its triple,
-    a wide load from the stat buffer, and [doalloc_k], the
-    continuation every proof of the function ends in. *)
+    The allocator needs to distinguish terminal devices before choosing its buffer.
+    The shared proofs extract the device's major number and read the kernel's size hint. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -19,6 +18,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers LibioSetb.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec LibioSpecs.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -27,10 +27,9 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** `c: __gnu_dev_major(d)`: bits 8 to 19 and 32 to 63 of the device
-    number d, joined into the major number. *)
+(** The device query joins bits 8 through 19 and 32 through 63 into the major number. *)
 Definition dev_major (d : Z) : Z :=
-  Z.lor (Z.land d 1048320 / 2 ^ 8) (Z.land d 18446726481523507200 / 2 ^ 32) mod 2 ^ 32.
+  LibioSpecs.dev_major d.
 
 (** Reducing the left operand of an or to 32 bits does not change the
     or's low 32 bits. *)
@@ -51,8 +50,7 @@ Proof.
   lia.
 Qed.
 
-(** The word `c: __gnu_dev_major`'s instructions compute from a 64-bit
-    d is [dev_major] d. *)
+(** The helper's shifts and masks compute the specified major number for every 64-bit input. *)
 Lemma dev_major_eq d : 0 <= d < 2 ^ 64 ->
   (Z.lor
      ((((((Z.land (d mod 2 ^ 64) (1048320 mod 2 ^ 64) mod 2 ^ 64 / 2 ^ ((8 mod 2 ^ 32) mod 64))
@@ -60,7 +58,7 @@ Lemma dev_major_eq d : 0 <= d < 2 ^ 64 ->
      ((Z.land (d mod 2 ^ 64) (18446726481523507200 mod 2 ^ 64) mod 2 ^ 64 / 2 ^ ((32 mod 2 ^ 32) mod 64))
         mod 2 ^ 64) mod 2 ^ 32) mod 2 ^ 32 = dev_major d.
 Proof.
-  intros Hd. unfold dev_major.
+  intros Hd. unfold dev_major, LibioSpecs.dev_major.
   change (1048320 mod 2 ^ 64) with 1048320. change (18446726481523507200 mod 2 ^ 64) with 18446726481523507200.
   change ((8 mod 2 ^ 32) mod 64) with 8. change ((32 mod 2 ^ 32) mod 64) with 32.
   rewrite (Z.mod_small d); [|lia].
@@ -94,11 +92,11 @@ Qed.
 
 Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-(** The value of x, computed. *)
+(** The evaluator computes a concrete value before a branch is chosen. *)
 Ltac vm_of x := eval vm_compute in x.
 
-(** A branch on an unknown test c, as `c: if c then 1 else 0` bound:
-    both ways, as two goals, with E saying which. *)
+(** A branch on an unknown test produces two proof goals.
+    Each goal records which test result led to that branch. *)
 Ltac brk E :=
   iApply wp_branch; [vx | iNext];
   lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] =>
@@ -126,10 +124,8 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** A fresh heap object starts at a 16-byte-aligned address and holds
     at least sz zero bytes with no capabilities stored in it. *)
 
-(** What `c: _IO_file_doallocate` leaves: the flags, made line-buffered
-    or not, with `c: _IO_USER_BUF` cleared; a fresh buffer of 1 to 8192
-    bytes installed as the stream's; the descriptor and errno as they
-    were; and the result 1. *)
+(** The allocator installs a fresh buffer between one and 8192 bytes.
+    It clears the user-buffer flag and returns one, preserving the descriptor and errno. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: __gnu_dev_major(d)` returns [dev_major] d. *)
@@ -141,6 +137,18 @@ Proof.
   intros Hfr Hd. injection Hfr as <-. iIntros "HK". step. step. step. step. step. step. step. step. step.
   iApply wp_ret; [reflexivity | vx |]. iNext. rewrite dev_major_eq; [iExact "HK" | exact Hd].
 Qed.
+
+(** The linked device-number helper establishes its pure result contract. *)
+#[global] Instance major_has_spec n `{!Defines ge n glibc___gnu_dev_major} :
+  HasSpec registry (os_wi w0) ge (TAtom n) major_spec.
+Proof.
+  intros d. exists glibc___gnu_dev_major. split; [apply defines|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn [fs_pre fs_post major_spec]. iIntros "%Hd HK".
+  iApply (wp_glibc___gnu_dev_major fr d); [exact Hfr | exact Hd |].
+  iNext. iApply "HK". done.
+Qed.
+
 (** A 64-bit load of eight owned bytes bs reads [of_bytes] bs. *)
 Lemma wp_raw_load_bytes8 f e ls l d k off args rest j classes p b reg o bs Φ :
   op_arg_classes (RawLoad LdL off) k = Some classes ->

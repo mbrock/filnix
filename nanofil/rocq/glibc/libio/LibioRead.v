@@ -1,14 +1,11 @@
 From Glibc Require Import GlibcProgram.
-(** Triples for user glibc's narrow stream readers and the jump-table
-    entries that wrap a syscall (LibioReadCode.v): `c: __fpending`,
-    `c: _IO_ferror`, `c: _IO_file_stat` and `c: _IO_file_close`.
+(** Stream readers inspect individual FILE fields or delegate to system-call wrappers.
+    This module proves the pending-byte count, error test, stat, and close operations
+    over the fields each operation touches.
 
-    Each is stated over the fields of FileInv.v's layout it touches,
-    the stream's life owned whole, as the checks need: a caller opens
-    them from [file_inv]. A narrow stream's mode is 0 or -1
-    ([mode_vtable]), so `c: __fpending` takes its narrow branch, and
-    its `c: _flags2` has `c: _IO_FLAGS2_NEED_LOCK` clear ([flags_ok]),
-    so `c: _IO_ferror` reads the flags without taking the lock. *)
+    A caller must prevent these fields from changing during an operation.
+    It does so by owning them through the stream's [[separation-logic]] invariant.
+    Narrow streams use mode zero or minus one, and the error test requires locking to be disabled. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -21,11 +18,11 @@ From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry SysCode LibioReadC
   SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec LibioSpecs.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** Integer arithmetic stays folded on an unknown under [cbn]
-    (Symbolic.v's decisions): on numbers it computes. *)
+(** Arithmetic computes on concrete numbers but stays folded on unknown inputs. *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
@@ -41,18 +38,13 @@ Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
 
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** A signed 32-bit load of an owned [int_cell] at offset o of b, read
-    through the proven pointer the frame holds. *)
-
 
 (** ## `c: __fpending` *)
 
-(** `c: __fpending(fp)` of a narrow stream (mode 0 or -1): the bytes
-    between `c: _IO_write_base` and `c: _IO_write_ptr`, which share a
-    capability, the buffer's or none. *)
+(** The pending-byte query subtracts the stream's write base from its write pointer.
+    Both pointers must carry the same capability, and the stream must use narrow mode. *)
 Lemma wp_glibc___fpending fr fb freg mode wp wb reg' Φ :
   call_frame glibc___fpending [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -80,9 +72,8 @@ Qed.
 
 (** ## `c: _IO_ferror` *)
 
-(** `c: _IO_ferror(fp)` of a stream whose `c: _flags2` has
-    `c: _IO_FLAGS2_NEED_LOCK` clear: the lock macros skip the lock,
-    and the result is `c: _IO_ERR_SEEN` of `c: _flags`, 1 or 0. *)
+(** The error query returns one when the stream's error flag is set and zero otherwise.
+    Its locking macros skip the lock when the need-lock flag is clear. *)
 Lemma wp_glibc__IO_ferror fr fb freg fl f2 Φ :
   call_frame glibc__IO_ferror [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -107,12 +98,12 @@ Qed.
 
 (** ## `c: _IO_file_close` and `c: _IO_file_stat` *)
 
-(** A call of a wrapper of SysWrappers.v from a frame, through
-    [wp_call_bind]: its triple's postcondition resumes the caller. *)
+(** Stat and close call the named system-call wrappers and then return their results.
+    The continuation resumes after the wrapper returns its outcome. *)
 Ltac resume_ret := iExists _; iSplit; [iPureIntro; reflexivity|]; iNext.
 
-(** `c: _IO_file_close(fp)`: `c: __close_nocancel(fp->_fileno)`, 0 or
-    `c: -1`, errno left as the call left it. *)
+(** Closing a stream passes its descriptor to the close wrapper.
+    It returns zero or minus one and preserves ownership of errno's resulting bytes. *)
 Lemma wp_glibc__IO_file_close fr fb freg fd eb Φ :
   call_frame glibc__IO_file_close [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   find_fn ge (TAtom "__GI___close_nocancel") = Some (Defined glibc___close_nocancel) ->
@@ -126,15 +117,16 @@ Proof.
   intros Hfr Hfn Hfb Hal Hend Hfreg He. injection Hfr as <-.
   iIntros "Hl [%Hfd Hfdb] Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".
-  iApply wp_call_bind; [reflexivity | exact Hfn | reflexivity |]. iNext.
-  iApply (wp_glibc___close_nocancel Hreg Hext with "Herr"); [reflexivity | apply Z.mod_pos_bound; lia | exact He |].
-  iNext. iIntros (k Hk) "Herr". resume_ret.
+  assert (Hclose : Defines ge "__GI___close_nocancel" glibc___close_nocancel) by exact Hfn.
+  call_spec with (fd mod 2 ^ 32, eb).
+  { split; [apply Z.mod_pos_bound; lia | exact He]. }
+  iDestruct "Hpost" as (k) "(%Hout & Herr)". destruct Hout as [-> Hk]. resume_ret.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. rewrite Z.mod_mod; [|lia]. rewrite Z.mod_small; [|lia].
   iApply ("HK" with "[%] Hl [Hfdb] Herr"); [exact Hk | iSplit; [done | iExact "Hfdb"]].
 Qed.
 
-(** `c: _IO_file_stat(fp, st)`: `c: __fstat64(fp->_fileno, st)`, 0 or
-    `c: -1`, the 144 bytes at st holding whatever the kernel left. *)
+(** The stream stat operation passes its descriptor and an owned buffer to the stat wrapper.
+    It returns zero or minus one and restores ownership of the buffer's new bytes. *)
 Lemma wp_glibc__IO_file_stat fr fb freg fd b reg o eb Φ :
   call_frame glibc__IO_file_stat [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
   find_fn ge (TAtom "__GI___fstat64") = Some (Defined glibc___fstat64) ->
@@ -149,10 +141,11 @@ Proof.
   intros Hfr Hfn Hfb Hal Hend Hfreg He Hin Ho Hst. injection Hfr as <-.
   iIntros "Hl [%Hfd Hfdb] Hbl Hb Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".
-  iApply wp_call_bind; [reflexivity | exact Hfn | reflexivity |]. iNext.
-  iApply (wp_glibc___fstat64 Hreg Hext with "Hbl Hb Herr");
-    [reflexivity | apply Z.mod_pos_bound; lia | exact He | rewrite Z.mod_small; [exact Hin | lia] | exact Ho | exact Hst |].
-  iNext. iIntros (k Hk) "Hbl Hb Herr". resume_ret.
+  assert (Hstat : Defines ge "__GI___fstat64" glibc___fstat64) by exact Hfn.
+  call_spec with (fd mod 2 ^ 32, b, reg, o, eb).
+  { repeat split; try assumption; try (apply Z.mod_pos_bound; lia).
+    rewrite Z.mod_small; [exact Hin | lia]. }
+  iDestruct "Hpost" as (k) "(%Hout & Hbl & Hb & Herr)". destruct Hout as [-> Hk]. resume_ret.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. rewrite Z.mod_mod; [|lia]. rewrite Z.mod_small; [|lia].
   iApply ("HK" with "[%] Hl [Hfdb] Hbl Hb Herr"); [exact Hk | iSplit; [done | iExact "Hfdb"]].
 Qed.

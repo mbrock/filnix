@@ -1,14 +1,10 @@
 From Glibc Require Import GlibcProgram.
-(** The start of `c: fputs(s, fp)` (LibioPutsCode.v,
-    libio/iofputs.c), which measures the string with `c: strlen` and
-    takes the stream's lock, the single thread finding it free,
-    (0, 0, null) becoming (1, 0, self) ([wp_fputs_start]).
-    LibioFputsUnlock.v releases it again, and LibioFputs.v puts the
-    function together.
+(** The fputs function measures its input string before taking the stream's lock.
+    This proof covers the single-threaded path, where the lock is initially free.
+    The resulting lock has count zero and records the current thread as owner.
 
-    The code is LibioPutsLock.v's for `c: puts`, which takes the lock
-    of `c: stdout`, with the stream the argument `c: v2` instead of the
-    global's pointer. *)
+    Unlike puts, fputs receives its stream as an argument rather than reading stdout.
+    [LibioFputsUnlock] proves the later unlock, and [LibioFputs] composes the whole function. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -21,6 +17,7 @@ From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogi
   WordString StrlenLogic StrlenWord LibioPutsCode LibioPutsInv.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsThread OsWorld StrlenWord SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -39,21 +36,18 @@ Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
 
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The premises of `c: zthread_self_cookie`'s rule. *)
+(** The thread-cookie call requires an external name and its registry contract. *)
 Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
                         | apply (ext_data ge Hext); cbn; tauto].
 
-(** A call of `c: zthread_self_cookie`, the cookie not null by H. *)
+(** The thread-cookie rule returns a nonnull identifier when the caller supplies that guarantee. *)
 Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H|]; iNext.
 
-(** `c: fputs(s, fp)`'s start, s at p the string at the share dq and
-    fp the stream fb, whose `c: _IO_USER_LOCK` is clear and whose lock
-    lb is free: the string is measured, the single thread takes the
-    lock, and block `c: L113` runs, with p in `c: v0`, fp in `c: v2`
-    and `c: chk0` and the length in `c: v6`. *)
+(** Before writing characters, fputs measures its input and takes the stream's lock.
+    It preserves the string pointer, its length, and the stream pointer for the following block. *)
 Lemma wp_fputs_start fr p dq s fb freg fl lb lbreg sb sreg Φ :
   let fp := mkPtr fb (Obj fb) in
   call_frame glibc__IO_fputs [WPtr p; WPtr fp] = Some fr ->
@@ -81,8 +75,10 @@ Proof.
   iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   iDestruct (word_string_len with "Hstr") as %Hlen.
   (* start: the length, and `c: _IO_USER_LOCK` clear. *)
-  step. iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hstr"); [vx | exact Hstr | reflexivity |].
-  iNext. iIntros "Hstr". cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
+  step. assert (Hstrlen : Defines ge "__GI_strlen" glibc_strlen) by exact Hstr.
+  call_spec with (dq, p, s).
+  iDestruct "Hpost" as "[-> Hstr]". resume.
+  cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
   (* L24, L35, L36: single threaded, the owner null. *)
   step. self Hsz. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.

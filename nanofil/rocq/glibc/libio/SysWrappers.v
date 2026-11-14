@@ -1,20 +1,13 @@
 From Glibc Require Import GlibcProgram.
-(** Triples for user glibc's C wrappers over libpizlo's `zsys_*` calls
-    (SysCode.v), over the [os_world] of [OsWorld](../zsys/OsWorld.v)
-    and any registry holding [glibc_os_registry]'s contracts, for any
-    genv where the `zsys_*` names are external: `c: _exit`,
-    `c: __libc_write`, `c: __fstat64`, `c: __lseek64`,
-    `c: __close_nocancel` and its `_nostatus` twin,
-    and `c: __isatty_nostatus`. SysCleanup.v has the cleanup push and
-    pop over FileInv.v's [tcb_cleanup_inv].
+(** Glibc wraps runtime system calls in C functions that normalize their results.
+    This module proves contracts for those wrappers over the OS state in
+    [OsWorld](../zsys/OsWorld.v). The linked program must leave the runtime
+    calls external and supply their contracts in its registry.
 
-    Each wrapper's body is one call of its contract and a return, so
-    each triple is the contract's rule (OsWrite.v to OsExit.v) between
-    entering the block and returning, stated for the callee frame
-    [call_frame] makes of the arguments: a caller binds it with
-    Logic.v's [wp_call_bind]. A failing call leaves errno holding
-    whatever libpizlo's handler stored ([errno_any]); `c: _exit`
-    never returns, so its triple proves any postcondition. *)
+    Each wrapper calls the runtime and then returns, except for the exit wrapper,
+    which never returns. Failed calls preserve ownership of errno but may change
+    its bytes. Named contracts in [LibioSpecs] let stream callers use these
+    results without constructing the callee's [[frame]]. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -27,23 +20,23 @@ From Glibc Require Import OsBlocks OsWorld OsWrite OsFstat OsIoctl OsLseek OsClo
   OsRegistry SysCode FileInv LibioLogic.
 From Glibc Require FileInv LibioLogic OsClose OsExit OsFstat OsIoctl OsLseek OsWorld OsWrite.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec LibioSpecs.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** Integer arithmetic stays folded on an unknown under [cbn]
-    (Symbolic.v's decisions): on numbers it computes. *)
+(** Arithmetic computes on concrete numbers but stays folded on unknown inputs. *)
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The `zsys_*` names the wrappers call. *)
+(** The wrappers call these runtime operations. *)
 Definition sys_externals : list string :=
   ["zsys_write"; "zsys_fstat"; "zsys_ioctl"; "zsys_lseek"; "zsys_close"; "zsys_exit_hard";
    "zsys_exit_soft"; "zthread_self_cookie"].
 
-(** The genv ge defines none of them, as function or data: each call
-    of one is a call of its contract. *)
+(** The program leaves these names undefined as functions and global data.
+    Calls therefore use the external contracts supplied by the registry. *)
 Definition sys_external (ge : genv) : Prop :=
   Forall (fun s => find_fn ge (TAtom s) = None /\ lookup (TAtom s) (ge_globals ge) = None) sys_externals.
 
@@ -53,10 +46,6 @@ Definition holds_os (registry : name -> option (contract os_world)) : Prop :=
 
 
 Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
-
-(** A signed 32-bit load of an owned [int_cell]'s bytes, H naming the
-    object's life and the bytes. *)
-
 
 Import ProgramAbbreviations.
 Section rules_values.
@@ -87,33 +76,26 @@ Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
 
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The registry's contract of a `zsys_*` name. *)
-
-(** The genv neither defines nor holds one of [sys_externals]. *)
-
-(** The premises of a contract call's rule: its registry entry and
-    the name's being external. *)
+(** A runtime call is safe only if its name is external and its contract is registered. *)
 Ltac os_side :=
   first [ apply (reg_of registry Hreg); reflexivity
         | apply (ext_fn ge Hext); cbn; tauto
         | apply (ext_data ge Hext); cbn; tauto ].
 
 
-(** The arguments of a call, read from the frame: computed, with each
-    wrap of a canonical value dropped. *)
+(** Argument evaluation removes integer wrapping when bounds show that the value already fits. *)
 Ltac args_x := first [cbn; repeat (rewrite Z.mod_small; [|lia]); reflexivity | reflexivity].
 
-(** Every pure premise of a contract call's rule: by [os_side],
-    [args_x] or a hypothesis. *)
+(** A wrapper can run once its arguments and external-call conditions have been checked. *)
 Ltac sides := try first [os_side | args_x | assumption].
 
 (** ## `c: _exit` *)
 
-(** `c: _exit(status)` ends the process through `c: zsys_exit_hard`:
-    any postcondition. *)
+(** The exit wrapper calls the runtime's hard-exit operation, which halts.
+    It therefore satisfies any postcondition without returning to its caller. *)
 Lemma wp_glibc__exit fr bits Φ :
   call_frame glibc__exit [WInt bits] = Some fr -> ⊢ WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
@@ -123,10 +105,8 @@ Qed.
 
 (** ## `c: __libc_write` *)
 
-(** `c: __libc_write(fd, p, n)`, `c: fd` one of w0's and the owned
-    pieces ps making p pass `c: filc_check_read(p, n)`: what
-    `c: zsys_write` returns, a count k up to n and below 2^31 or
-    `c: -1`, with ps and errno back. *)
+(** The write wrapper accepts a known descriptor and a readable buffer.
+    It returns a bounded byte count or minus one, preserving the buffer and errno ownership. *)
 Lemma wp_glibc___libc_write fr fd p n eb ps Φ :
   call_frame glibc___libc_write [WInt fd; WPtr p; WInt n] = Some fr ->
   0 <= fd < 2 ^ 32 -> 0 <= n < 2 ^ 64 ->
@@ -146,9 +126,8 @@ Qed.
 
 (** ## `c: __fstat64` *)
 
-(** `c: __fstat64(fd, st)`, st at offset o of the live object b with
-    the 144 bytes of `c: struct stat` there owned: 0 or `c: -1`, the
-    block holding whatever the kernel left. *)
+(** The stat wrapper writes into an owned buffer for a known descriptor.
+    It returns zero or minus one and restores ownership of the buffer's new bytes. *)
 Lemma wp_glibc___fstat64 fr fd b reg o eb Φ :
   call_frame glibc___fstat64 [WInt fd; WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
   0 <= fd < 2 ^ 32 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
@@ -168,8 +147,8 @@ Qed.
 
 (** ## `c: __lseek64` *)
 
-(** `c: __lseek64(fd, off, whence)`: the new offset, below 2^63, or
-    `c: -1`. *)
+(** The seek wrapper changes the position of a known descriptor.
+    It returns the new offset below 2^63, or minus one on failure. *)
 Lemma wp_glibc___lseek64 fr fd off wh eb Φ :
   call_frame glibc___lseek64 [WInt fd; WInt off; WInt wh] = Some fr ->
   0 <= fd < 2 ^ 32 -> 0 <= off < 2 ^ 64 -> 0 <= wh < 2 ^ 32 ->
@@ -189,8 +168,8 @@ Qed.
 
 (** ## `c: __close_nocancel` *)
 
-(** `c: __close_nocancel(fd)`: 0 or `c: -1`. Any descriptor: libpizlo's
-    close does not check it. *)
+(** The close wrapper returns zero or minus one and preserves errno ownership.
+    It accepts any descriptor because the runtime does not require a registered descriptor for close. *)
 Lemma wp_glibc___close_nocancel fr fd eb Φ :
   call_frame glibc___close_nocancel [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
@@ -204,7 +183,7 @@ Proof.
   iNext. iApply ("HK" with "[%] Herr"). exact Hk.
 Qed.
 
-(** `c: __close_nocancel_nostatus(fd)`: the same, returning nothing. *)
+(** The no-status variant discards close's result and returns void. *)
 Lemma wp_glibc___close_nocancel_nostatus fr fd eb Φ :
   call_frame glibc___close_nocancel_nostatus [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
@@ -217,12 +196,8 @@ Qed.
 
 (** ## `c: __isatty_nostatus` *)
 
-(** A fresh heap object's pieces are its life and a block of its whole
-    extent ([blk_any]), whatever it holds. *)
-
-(** `c: __isatty_nostatus(fd)`: a fresh 44-byte `c: struct termios2`
-    on the heap for `c: zsys_ioctl(fd, TCGETS2, &k_termios)`, then 1
-    if it returned 0, else 0; errno holds whatever the call left. *)
+(** The terminal query allocates a temporary buffer and asks the kernel for terminal settings.
+    It returns one when the query succeeds and zero otherwise, preserving errno ownership. *)
 Lemma wp_glibc___isatty_nostatus fr fd eb Φ :
   call_frame glibc___isatty_nostatus [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
@@ -245,6 +220,39 @@ Proof.
     iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |]. iNext.
     iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     iApply ("HK" with "[%] Herr"). cbn. destruct (_ =? _); [right | left]; reflexivity.
+Qed.
+
+(** The linked close wrapper establishes the descriptor-close contract. *)
+#[global] Instance close_has_spec n `{!Defines ge n glibc___close_nocancel} :
+  HasSpec registry (os_wi w0) ge (TAtom n) LibioSpecs.close_spec.
+Proof.
+  intros [fd eb]. exists glibc___close_nocancel. split; [apply defines|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn [fs_pre fs_post LibioSpecs.close_spec]. iIntros "((%Hfd & %He) & Herr) HK".
+  iApply (wp_glibc___close_nocancel fr fd eb with "Herr"); try assumption.
+  iNext. iIntros (k Hk) "Herr". iApply "HK". iExists k. by iFrame.
+Qed.
+
+(** The linked terminal wrapper establishes the terminal-query contract. *)
+#[global] Instance isatty_has_spec n `{!Defines ge n glibc___isatty_nostatus} :
+  HasSpec registry (os_wi w0) ge (TAtom n) isatty_spec.
+Proof.
+  intros [fd eb]. exists glibc___isatty_nostatus. split; [apply defines|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn [fs_pre fs_post isatty_spec]. iIntros "((%Hfd & %He & %Hin) & Herr) HK".
+  iApply (wp_glibc___isatty_nostatus fr fd eb with "Herr"); try assumption.
+  iNext. iIntros (k Hk) "Herr". iApply "HK". iExists k. by iFrame.
+Qed.
+
+(** The linked stat wrapper establishes the stat-buffer contract. *)
+#[global] Instance fstat_has_spec n `{!Defines ge n glibc___fstat64} :
+  HasSpec registry (os_wi w0) ge (TAtom n) fstat_spec.
+Proof.
+  intros [[[[fd b] reg] o] eb]. exists glibc___fstat64. split; [apply defines|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn [fs_pre fs_post fstat_spec]. iIntros "((%Hfd & %He & %Hin & %Ho & %Hend) & Hl & Hb & Herr) HK".
+  iApply (wp_glibc___fstat64 fr fd b reg o eb with "Hl Hb Herr"); try assumption.
+  iNext. iIntros (k Hk) "Hl Hb Herr". iApply "HK". iExists k. by iFrame.
 Qed.
 
 End rules.
