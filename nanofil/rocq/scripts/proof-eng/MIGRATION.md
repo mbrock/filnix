@@ -2,7 +2,7 @@
 
 This note is for someone who writes proofs in `nanofil/rocq/glibc/`. At cutover the output of the stages in this directory replaces the tree on `main`. Every file changes once. The statements of the audited theorems do not change. This note lists what an author writes differently afterwards and how to convert a file that is not merged yet.
 
-The first three sections describe the changes of the first cutover, which are on the branch `proof-eng-flat`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes a design that is developed on the branch `proof-eng` and lands in a second cutover. The last section covers one open question, which is how the tree stays general in the runtime.
+The first three sections describe the changes of the first cutover, which are on the branch `proof-eng-flat`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes a design that is developed on the branch `proof-eng` and lands in a second cutover. The last section says how the tree stays general in the runtime and what that asks of an author.
 
 ## Converting an unmerged file
 
@@ -107,8 +107,28 @@ Stage 50 leaves three kinds of declaration alone.
 - A specification predicate such as `overflow_spec` keeps its original parameters.
 - A section that is partial or pure keeps its original interface, so that it gains no ghost-state or world premise. The stage prints each such section with its reason.
 
-## What is not decided: generality in the runtime
+## Proofs stay general in the runtime
 
-`hello_never_panics` holds for every `Runtime`, and the audit checks that by listing twelve runtime assumptions. `Fix.v` therefore has two forms. The stages write `Module R := InterpRuntime.` by default, and with `PE_RUNTIME=abstract` they write `Declare Module R : Runtime.`. A file that does not depend on `InterpRuntime` compiles against both. On main `57908a2`, 413 of the 414 files do. The exception is `hi_atexit/HiAtexitSafe.v`, whose theorem starts the interpreter at a numeric allocation cursor, and `runtime-concrete.txt` lists it. `abstract-general.sh` checks that the listed files are exactly the files that the abstract runtime rejects.
+`hello_never_panics` holds for every `Runtime`, and the audit checks that by listing twelve runtime assumptions. `Fix.v` binds `R` to `InterpRuntime`, so the ordinary build checks every file at the interpreter's runtime only. Two more checks compile files against a copy of `Fix.v` that says `Declare Module R : Runtime.` in place of the binding:
 
-Until the layout is chosen, keep to one rule that holds under every option: a file names `InterpRuntime` only when its theorem is about the interpreter, as the `hi_atexit` endpoints are. Every other file uses `R` and `LG0` from `Fix.v` and nothing that is specific to the interpreter.
+- Every push checks Hello's theorem. The glibc check compiles the files that the theorem depends on a second time, with the runtime left abstract. Rocq must then report exactly the twelve fields of the runtime as the theorem's assumptions.
+- Twice daily, the check `nanofil-glibc-abstract` compiles every file that `rocq/glibc/runtime-concrete.txt` does not list. On main `57908a2` that is 413 of the 414 files.
+
+An author follows three rules:
+
+- An author writes against the runtime that `Fix.v` names and relies on nothing that is true only of the interpreter. The ordinary build cannot check this rule, because it compiles every file at the interpreter. It accepts, for example, a proof that writes a number where the runtime's state is expected. If Hello's theorem does not depend on the file, the push check accepts the proof too, and the twice-daily check fails later.
+- A file may name `InterpRuntime` when its theorem is about the interpreter, as the `hi_atexit` endpoints are. Naming the module does not make a file concrete. Seven of the eight files that name it compile against the abstract runtime, because they do not need `R` to equal it.
+- A file that needs `R` to be the interpreter's runtime goes into `runtime-concrete.txt`, with a comment that gives the reason. Every file that imports a listed file must be listed too. The one listed file is `hi_atexit/HiAtexitSafe.v`, whose theorem starts the interpreter at a numeric allocation cursor.
+
+The list cannot hide a failure of another kind. The check compiles each listed file against the abstract runtime and requires Rocq to report an error at a position in that file. It fails when a listed file compiles, and it does not accept a timeout, a killed compiler or a library that does not load as a rejection.
+
+Run the check on your own tree before you push a file that touches the runtime. The script works on a copy that `build.sh` has compiled, so that no object file is written into the checkout:
+
+```sh
+. nanofil/rocq/scripts/proof-eng/env.sh
+mkdir -p /tmp/general && cp -r nanofil/rocq/glibc /tmp/general/glibc
+nanofil/rocq/scripts/proof-eng/build.sh /tmp/general/glibc 8
+nanofil/rocq/scripts/proof-eng/abstract-general.sh /tmp/general/glibc /tmp/general/abstract 8
+```
+
+It prints one `FAIL` line for each file on the wrong side of the list. The same check in Nix is `nix build -L .#checks.x86_64-linux.nanofil-glibc-abstract`.
