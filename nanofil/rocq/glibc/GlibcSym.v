@@ -24,11 +24,73 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
-  Machine Pieces Heap Language Logic ExternalCalls StepRules.
-From Nanofil Require Validate.
+  Machine Pieces Heap Language Logic MemLogic ExternalCalls StepRules.
+From Nanofil Require Validate WordBits Interval.
 From Glibc Require Import Fix GlibcTactics.
+Module sym_ML := MemLogicOn R LG0.
 Import ListNotations LG0 LG0.L.
 Open Scope Z_scope.
+
+(** Narrow cells own exactly the bytes used by the corresponding load. *)
+Definition sym_bytes (n : narrow) (x : Z) : list Z :=
+  le_bytes x (Z.to_nat (fst (narrow_type n))).
+
+(** Decoding a narrow cell recovers its low bits even when the supplied integer is out of range. *)
+Lemma sym_bytes_decode n x :
+  of_bytes (sym_bytes n x) = x mod 2 ^ (8 * fst (narrow_type n)).
+Proof.
+  pose proof (WordBits.low_step x 0 ltac:(lia)) as H0.
+  pose proof (WordBits.low_step x 1 ltac:(lia)) as H1.
+  pose proof (WordBits.low_step x 2 ltac:(lia)) as H2.
+  pose proof (WordBits.low_step x 3 ltac:(lia)) as H3.
+  change (x mod 256 = x mod 1 + 1 * byte_of x 0) in H0.
+  change (x mod 65536 = x mod 256 + 256 * byte_of x 1) in H1.
+  change (x mod 16777216 = x mod 65536 + 65536 * byte_of x 2) in H2.
+  change (x mod 4294967296 = x mod 16777216 + 16777216 * byte_of x 3) in H3.
+  rewrite Z.mod_1_r in H0.
+  destruct n;
+    first [change (byte_of x 0 + 256 * (byte_of x 1 + 256 *
+              (byte_of x 2 + 256 * (byte_of x 3 + 256 * 0))) = x mod 4294967296) |
+           change (byte_of x 0 + 256 * (byte_of x 1 + 256 * 0) = x mod 65536) |
+           change (byte_of x 0 + 256 * 0 = x mod 256)]; lia.
+Qed.
+
+(** Flag calculations combine bits without changing their register width. *)
+Inductive bitop := BAnd | BOr | BXor.
+
+(** Each flag operation has the same integer meaning as its machine instruction. *)
+Definition bitden (o : bitop) : Z -> Z -> Z :=
+  match o with BAnd => Z.land | BOr => Z.lor | BXor => Z.lxor end.
+
+(** Shifts distinguish arithmetic right shift from logical right shift and left shift. *)
+Inductive shiftop := SArith | SRight | SLeft.
+
+(** Shift counts wrap at the register width, as they do in the machine's arithmetic evaluator. *)
+Definition shiftden (o : shiftop) (k : class) (x y : Z) : Z :=
+  match shift_factor k y, modulus k, signed k x with
+  | Some p, Some m, Some sx =>
+      match o with SArith => (sx / p) mod m | SRight => x / p | SLeft => (x * p) mod m end
+  | _, _, _ => 0
+  end.
+
+(** Extending a value bounds it by the signed or unsigned width of its source type. *)
+Definition sym_ext_range (n : narrow) : Z * Z :=
+  match n with
+  | Sb => (-128, 127) | Ub => (0, 255)
+  | Sh => (-32768, 32767) | Uh => (0, 65535)
+  | Sw => (-2 ^ 31, 2 ^ 31 - 1) | Uw => (0, 2 ^ 32 - 1)
+  end.
+
+(** These bounds hold for every input, including negative integers and values wider than the source type. *)
+Lemma sym_ext_range_sound n x :
+  fst (sym_ext_range n) <= extension n x <= snd (sym_ext_range n).
+Proof.
+  destruct n; cbn [sym_ext_range extension fst snd];
+    first [match goal with |- context [sign_extension ?m ?h x] =>
+      pose proof (Interval.sign_extension_range m h x ltac:(lia) ltac:(lia)) end |
+      match goal with |- context [x mod ?m] =>
+      pose proof (Z.mod_pos_bound x m ltac:(lia)) end]; lia.
+Qed.
 
 (** ## Symbolic integers, capabilities and words
 
@@ -49,7 +111,10 @@ Inductive zexp : Type :=
   | ZAdd (a b : zexp)
   | ZSub (a b : zexp)
   | ZMod (a : zexp) (m : Z)
-  | ZCmp (c : cond) (k : class) (a b : zexp).
+  | ZCmp (c : cond) (k : class) (a b : zexp)
+  | ZBits (o : bitop) (a b : zexp)
+  | ZExt (n : narrow) (a : zexp)
+  | ZShift (o : shiftop) (k : class) (a b : zexp).
 
 (** A capability identifies a writable or read-only object by its base address.
     It can also be absent or supplied by a pointer variable. *)
@@ -83,6 +148,9 @@ Fixpoint zden (ρ : valuation) (x : zexp) : Z :=
   | ZSub a b => zden ρ a - zden ρ b
   | ZMod a m => zden ρ a mod m
   | ZCmp c k a b => match cond_bit c k (zden ρ a) (zden ρ b) with Some v => v | None => 0 end
+  | ZBits o a b => bitden o (zden ρ a) (zden ρ b)
+  | ZExt n a => extension n (zden ρ a)
+  | ZShift o k a b => shiftden o k (zden ρ a) (zden ρ b)
   end.
 
 (** Evaluation replaces a symbolic capability's variables with their values. *)
@@ -152,7 +220,8 @@ Inductive atom : Type :=
   | ALive (b : zexp) (r : nat)
   | ACell (b o v : zexp)
   | APCell (b o a : zexp) (c : scap)
-  | ALiveCap (c : scap) (r : nat).
+  | ALiveCap (c : scap) (r : nat)
+  | ANarrow (n : narrow) (b o v : zexp).
 
 (** ## What the executor returns
 
@@ -225,6 +294,15 @@ Fixpoint zsame (a b : zexp) : bool :=
   | ZMod a m, ZMod b n => zsame a b && Z.eqb m n
   | ZCmp c k a b, ZCmp d l x y =>
       sym_cond_eqb c d && class_eqb k l && zsame a x && zsame b y
+  | ZBits o a b, ZBits p c d =>
+      (match o, p with BAnd, BAnd | BOr, BOr | BXor, BXor => true | _, _ => false end)
+      && zsame a c && zsame b d
+  | ZExt n a, ZExt m b =>
+      (match n, m with Sb, Sb | Ub, Ub | Sh, Sh | Uh, Uh | Sw, Sw | Uw, Uw => true | _, _ => false end)
+      && zsame a b
+  | ZShift o k a b, ZShift p l c d =>
+      (match o, p with SArith, SArith | SRight, SRight | SLeft, SLeft => true | _, _ => false end)
+      && class_eqb k l && zsame a c && zsame b d
   | _, _ => false
   end.
 
@@ -236,9 +314,14 @@ Proof.
     try match goal with H : Z.eqb _ _ = true |- _ => apply Z.eqb_eq in H end;
     try match goal with H : Nat.eqb _ _ = true |- _ => apply Nat.eqb_eq in H end;
     try solve [f_equal; auto].
-  assert (c = c0) by (destruct c, c0; discriminate || reflexivity).
-  assert (k = k0) by (destruct k, k0; discriminate || reflexivity).
-  subst. f_equal; auto.
+  - assert (c = c0) by (destruct c, c0; discriminate || reflexivity).
+    assert (k = k0) by (destruct k, k0; discriminate || reflexivity).
+    subst. f_equal; auto.
+  - destruct o, o0; try discriminate; f_equal; auto.
+  - destruct n, n0; try discriminate; f_equal; auto.
+  - destruct o, o0; try discriminate;
+      assert (k = k0) by (destruct k, k0; discriminate || reflexivity);
+      subst; f_equal; auto.
 Qed.
 
 (** A recorded bound supplies an inclusive interval for its expression. *)
@@ -267,6 +350,13 @@ Fixpoint zrange (fs : facts) (x : zexp) : option (Z * Z) :=
           | _, _ => None
           end
       | ZMod _ m => if 0 <? m then Some (0, m - 1) else None
+      | ZExt n _ => Some (sym_ext_range n)
+      | ZBits BAnd a b =>
+          match zrange fs a, zrange fs b with
+          | Some (lo, hi), Some (lo', hi') =>
+              if (0 <=? lo) && (0 <=? lo') then Some (0, hi') else None
+          | _, _ => None
+          end
       | _ => None
       end
   end.
@@ -313,6 +403,16 @@ Proof.
   - destruct (0 <? m) eqn:Em; [|discriminate].
     apply Z.ltb_lt in Em. intros H. inversion H; subst.
     pose proof (Z.mod_pos_bound (zden ρ x) m Em). cbn. lia.
+  - destruct o; try discriminate.
+    destruct (zrange fs x1) as [[a b]|] eqn:E1; [|discriminate].
+    destruct (zrange fs x2) as [[c d]|] eqn:E2; [|discriminate].
+    destruct ((0 <=? a) && (0 <=? c)) eqn:En; [|discriminate].
+    apply andb_true_iff in En as [Ha Hc]. apply Z.leb_le in Ha. apply Z.leb_le in Hc.
+    intros H. injection H as <- <-. specialize (IHx1 _ _ eq_refl).
+    specialize (IHx2 _ _ eq_refl). cbn [zden bitden].
+    pose proof (Interval.land_le (zden ρ x1) (zden ρ x2) ltac:(lia) ltac:(lia)). lia.
+  - intros H. pose proof (sym_ext_range_sound n (zden ρ x)).
+    destruct n; inversion H; subst; exact H0.
 Qed.
 
 (** Removing a redundant wrap does not change the represented integer. *)
@@ -324,6 +424,31 @@ Proof.
     destruct ((0 <=? lo) && (hi <? m)) eqn:H; try reflexivity;
     apply andb_true_iff in H as [Hl Hh]; apply Z.leb_le in Hl; apply Z.ltb_lt in Hh;
     symmetry; apply Z.mod_small; pose proof (zrange_sound _ _ _ _ _ Hfs E); lia.
+Qed.
+
+(** Same-width extensions keep only the source bits; other extensions retain their signed or unsigned interpretation. *)
+Definition zextend (fs : facts) (n : narrow) (x : zexp) (m : Z) : zexp :=
+  if m =? 2 ^ (8 * fst (narrow_type n)) then zwrap fs x m
+  else zwrap fs (ZExt n x) m.
+
+(** Sign extension leaves the source bits unchanged when the result has the same width. *)
+Lemma extension_mod_width n x :
+  extension n x mod 2 ^ (8 * fst (narrow_type n)) = x mod 2 ^ (8 * fst (narrow_type n)).
+Proof.
+  destruct n; cbn [extension narrow_type fst];
+    try (unfold sign_extension; match goal with |- context [if ?b then _ else _] => destruct b end);
+    try rewrite Zminus_mod;
+    rewrite ?Z_mod_same_full ?Z.sub_0_r;
+    repeat (rewrite Z.mod_mod; [|lia]); reflexivity.
+Qed.
+
+(** Removing a same-width extension preserves the result of the machine instruction. *)
+Lemma zextend_sound ρ fs n x m : facts_hold ρ fs ->
+  zden ρ (zextend fs n x m) = extension n (zden ρ x) mod m.
+Proof.
+  intros Hfs. unfold zextend. destruct (m =? 2 ^ (8 * fst (narrow_type n))) eqn:E.
+  - apply Z.eqb_eq in E. subst m. rewrite (zwrap_sound _ _ _ _ Hfs) extension_mod_width. reflexivity.
+  - rewrite (zwrap_sound _ _ _ _ Hfs). reflexivity.
 Qed.
 
 (** Nested expressions lose redundant wraps before their addresses are compared. *)
@@ -339,6 +464,9 @@ Fixpoint zclean (fs : facts) (x : zexp) : zexp :=
           match cond_bit c k x y with Some v => ZK v | None => ZCmp c k a' b' end
       | _, _ => ZCmp c k a' b'
       end
+  | ZBits o a b => ZBits o (zclean fs a) (zclean fs b)
+  | ZExt n a => ZExt n (zclean fs a)
+  | ZShift o k a b => ZShift o k (zclean fs a) (zclean fs b)
   | _ => x
   end.
 
@@ -352,6 +480,9 @@ Proof.
   - destruct (zclean fs x1); destruct (zclean fs x2);
       cbn in IHx1, IHx2; cbn [zden]; rewrite <- IHx1, <- IHx2;
       try reflexivity. destruct (cond_bit c k z z0) eqn:E; cbn [zden]; rewrite ?E; reflexivity.
+  - cbn. now rewrite IHx1 IHx2.
+  - cbn. now rewrite IHx.
+  - cbn. now rewrite IHx1 IHx2.
 Qed.
 
 (** A linear form records one coefficient for each non-additive expression. *)
@@ -484,6 +615,17 @@ Definition salu (fs : facts) (o : op) (k : class) (xs : list sword) : option swo
       match modulus k with Some m => Some (SWInt (zwrap fs (ZAdd x y) m)) | None => None end
   | Sub, [SWInt x; SWInt y] =>
       match modulus k with Some m => Some (SWInt (zwrap fs (ZSub x y) m)) | None => None end
+  | And, [SWInt x; SWInt y] => Some (SWInt (ZBits BAnd x y))
+  | Or, [SWInt x; SWInt y] => Some (SWInt (ZBits BOr x y))
+  | Xor, [SWInt x; SWInt y] => Some (SWInt (ZBits BXor x y))
+  | Sar, [SWInt x; SWInt y] =>
+      match k with W | L => Some (SWInt (ZShift SArith k x y)) | _ => None end
+  | Shr, [SWInt x; SWInt y] =>
+      match k with W | L => Some (SWInt (ZShift SRight k x y)) | _ => None end
+  | Shl, [SWInt x; SWInt y] =>
+      match k with W | L => Some (SWInt (ZShift SLeft k x y)) | _ => None end
+  | Ext n, [SWInt x] =>
+      match modulus k with Some m => Some (SWInt (zextend fs n x m)) | None => None end
   | Cmp c ck, [SWInt x; SWInt y] =>
       match cond_bit c ck 0 0 with
       | Some _ => Some (SWInt (zclean fs (ZCmp c ck x y)))
@@ -498,7 +640,7 @@ Definition sop (fs : facts) (o : op) (k : class) (xs : list sword) : option swor
   match o, k, xs with
   | Add, P, [SWPtr a c; SWInt x] => Some (SWPtr (zwrap fs (ZAdd a x) (2 ^ 64)) c)
   | Sub, P, [SWPtr a c; SWInt x] => Some (SWPtr (zwrap fs (ZSub a x) (2 ^ 64)) c)
-  | (Add | Sub), (W | L), _ => salu fs o k xs
+  | (Add | Sub | And | Or | Xor | Sar | Shr | Shl | Ext _), (W | L), _ => salu fs o k xs
   | Cmp _ ck, _, _ => if float_class ck then None else salu fs o k xs
   | (Copy | Ptoi), _, _ => salu fs o k xs
   | _, _, _ => None
@@ -653,6 +795,7 @@ Proof.
     destruct x; try discriminate; try destruct y; try discriminate;
     cbn [salu]; try discriminate.
   all: try (intros H; inversion H; subst; reflexivity).
+  all: try solve [destruct k; try discriminate; intros H; injection H as <-; reflexivity].
   - destruct (modulus k) eqn:E; [|discriminate].
     intros H. injection H as <-.
     change (alu Add k [WInt (zden ρ x); WInt (zden ρ x0)] =
@@ -670,6 +813,11 @@ Proof.
     rewrite (zclean_sound _ _ _ Hfs). cbn [alu zden].
     destruct (cond_bit_total _ _ _ (zden ρ x) (zden ρ x0) E) as [v Ev].
     rewrite Ev. reflexivity.
+  - destruct (modulus k) eqn:E; [|discriminate].
+    intros H. injection H as <-.
+    change (alu (Ext t) k [WInt (zden ρ x)] =
+      Some (WInt (zden ρ (zextend fs t x z)))).
+    rewrite (zextend_sound _ _ _ _ _ Hfs). cbn [alu zden]. rewrite E. reflexivity.
 Qed.
 
 (** Updating a temporary preserves every other known binding. *)
@@ -795,6 +943,15 @@ Definition is_cell (fs : facts) (pointer : bool) (b addr : zexp) (a : atom) : bo
   | _, _ => false
   end.
 
+(** A narrow load selects a cell with the same byte width and address. *)
+Definition is_narrow (fs : facts) (n : narrow) (b addr : zexp) (a : atom) : bool :=
+  match a with
+  | ANarrow t b' o _ =>
+      Z.eqb (fst (narrow_type n)) (fst (narrow_type t)) &&
+      zlinear_eqb fs b b' && zlinear_eqb fs addr (ZAdd b' o)
+  | _ => false
+  end.
+
 (** A loaded pointer needs its own target lifetime, apart from the source object's lifetime. *)
 Definition is_cap (fs : facts) (c : scap) (a : atom) : bool :=
   match a with
@@ -840,6 +997,14 @@ Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
                     | Some (_, ACell _ _ v, _) => inr (sbind d (SWInt (zwrap fs v (2 ^ 64))) s)
                     | _ => inl (NoCell b (ZSub a b))
                     end
+                | RawLoad (LdNarrow n) off =>
+                    let a := sraw fs addr off in
+                    match modulus k, pick_atom (is_narrow fs n b a) (pre ++ post) with
+                    | Some m, Some (_, ANarrow t _ _ v, _) =>
+                        inr (sbind d (SWInt (zextend fs n
+                          (zwrap fs v (2 ^ (8 * fst (narrow_type t)))) m)) s)
+                    | _, _ => inl (NoCell b (ZSub a b))
+                    end
                 | RawLoadPointer off [AuxRead; LowerResolve; AddressRead] =>
                     let a := sraw fs addr off in
                     match pick_atom (is_cell fs true b a) (pre ++ post) with
@@ -860,6 +1025,7 @@ Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
   | Check _ _ _ _, A, [p] => access p None
   | HalfCheck _ _ _ _ _, A, [p1; p] => access p (Some p1)
   | RawLoad LdL _, _, [p] => access p None
+  | RawLoad (LdNarrow _) _, _, [p] => access p None
   | RawLoadPointer _ [AuxRead; LowerResolve; AddressRead], P, [p] => access p None
   | _, _, _ => inl fallback
   end.
@@ -993,6 +1159,37 @@ Example sym_check_pointer_goto ge :
   end.
 Proof. vm_compute. repeat split; reflexivity. Qed.
 
+(** Loads at each sign boundary distinguish sign extension from zero extension and preserve the owned bytes. *)
+Example sym_narrow_loads ge :
+  Forall (fun test =>
+    let '(n, k, v, expected) := test in
+    let h := [ALive (ZK 4096) 0; ANarrow n (ZK 4096) (ZK 0) (ZK v)] in
+    match sym_block ge (mkFacts [] [])
+      [(TAtom "p", SWPtr (ZK 4096) (SCObj (ZK 4096)))] h (TAtom "entry")
+      [Let (TAtom "loaded") k (RawLoad (LdNarrow n) 0) [Tmp (TAtom "p")]]
+      (JGoto (To (TAtom "next"))) with
+    | LGoto _ s =>
+        option_map (wden (mkVal [] [] [])) (lookup (TAtom "loaded") (st_env s)) = Some (WInt expected) /\
+        st_heap s = h
+    | _ => False
+    end)
+    [(Sb, L, 127, 127); (Sb, L, 128, 2 ^ 64 - 128); (Ub, L, 128, 128);
+     (Sh, L, 32767, 32767); (Sh, L, 32768, 2 ^ 64 - 32768); (Uh, L, 32768, 32768);
+     (Sw, L, 2 ^ 31 - 1, 2 ^ 31 - 1); (Sw, L, 2 ^ 31, 2 ^ 64 - 2 ^ 31);
+     (Uw, L, 2 ^ 31, 2 ^ 31); (Sw, W, 2 ^ 31, 2 ^ 31); (Ub, W, 257, 1)].
+Proof.
+  repeat (apply Forall_cons; [vm_compute; split; reflexivity|]). apply Forall_nil.
+Qed.
+
+(** Flag operations and wrapped shift counts agree with concrete register arithmetic. *)
+Example sym_flag_operations :
+  map (fun test => let '(o, k, x, y) := test in
+    option_map (wden (mkVal [] [] [])) (salu (mkFacts [] []) o k [SWInt (ZK x); SWInt (ZK y)]))
+    [(And, W, 165, 15); (Or, W, 160, 15); (Xor, W, 165, 15);
+     (Shl, W, 3, 33); (Shr, W, 2147483648, 1); (Sar, W, 2147483648, 1)] =
+    map (fun x => Some (WInt x)) [5; 175; 170; 6; 1073741824; 3221225472].
+Proof. vm_compute. reflexivity. Qed.
+
 (** ## Soundness
 
     The meaning of an atom is the logic's assertion it names, and the
@@ -1015,6 +1212,7 @@ Definition atom_den (ρ : valuation) (a : atom) : iProp Σ :=
   | ACell b o v => icell (zden ρ b) (zden ρ o) (zden ρ v)
   | APCell b o a c => pcell (zden ρ b) (zden ρ o) (mkPtr (zden ρ a) (cden ρ c))
   | ALiveCap c r => match nth_error (vr ρ) r with Some reg => live_cap (cden ρ c) reg | None => False end
+  | ANarrow n b o v => sym_ML.bytes (zden ρ b) (zden ρ o) (sym_bytes n (zden ρ v))
   end.
 
 (** A list of atoms means their separating conjunction, written so that
@@ -1247,6 +1445,44 @@ Proof.
   iNext. iIntros "Hl Hcell". iApply "HK". iFrame.
 Qed.
 
+(** A narrow load preserves its byte ownership and applies the instruction's signed or unsigned extension. *)
+Lemma sym_load_narrow_rule ρ fs h pre life post pre' post' f e ls l d k n t off args rest j classes a c b b' o v m Φ :
+  facts_hold ρ fs -> modulus k = Some m ->
+  op_arg_classes (RawLoad (LdNarrow n) off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [wden ρ (SWPtr a c)] ->
+  object_base fs c = Some b -> pick_atom (is_live fs b) h = Some (pre, life, post) ->
+  pick_atom (is_narrow fs n b (sraw fs a off)) (pre ++ post) = Some (pre', ANarrow t b' o v, post') ->
+  heap_den ρ h -∗
+  ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d
+       (wden ρ (SWInt (zextend fs n (zwrap fs v (2 ^ (8 * fst (narrow_type t)))) m))) e)
+       ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs Hm Hclasses Hargs Hobj Hp Hcell.
+  pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
+  destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hlive].
+  destruct (pick_atom_sound _ _ _ _ _ Hcell) as [_ Haddr].
+  cbn [is_narrow] in Haddr. apply andb_true_iff in Haddr as [Hwidth Ha].
+  apply andb_true_iff in Hwidth as [Hwidth Hb]. apply Z.eqb_eq in Hwidth.
+  apply (zlinear_eqb_sound _ _ _ _ Hfs) in Hb. apply (zlinear_eqb_sound _ _ _ _ Hfs) in Ha.
+  rewrite (sraw_sound _ _ _ _ Hfs) in Ha. cbn [zden] in Ha.
+  rewrite (heap_den_pick _ _ _ _ _ _ Hp) (is_live_den _ _ _ _ Hfs Hlive).
+  rewrite (heap_den_pick _ _ _ _ _ _ Hcell).
+  destruct (nth_error (vr ρ) (atom_region life)) as [reg|] eqn:Hr; last first.
+  { iIntros "[Hfalse _] _". iDestruct "Hfalse" as %[]. }
+  cbn [atom_den wden]. rewrite (zextend_sound _ _ _ _ _ Hfs). cbn [zden].
+  rewrite (zwrap_sound _ _ _ _ Hfs) Hb. rewrite Hb in Hcap.
+  iIntros "(Hl & Hcell & Hrest) HK".
+  iApply (sym_ML.wp_raw_load_sub_bytes_dq registry wi ge with "Hl Hcell").
+  - exact Hclasses.
+  - exact Hargs.
+  - unfold sym_bytes. rewrite length_le_bytes Hwidth. reflexivity.
+  - rewrite sym_bytes_decode. unfold extended. rewrite Hm. reflexivity.
+  - left. exact Hcap.
+  - exact Ha.
+  - iNext. iIntros "Hl Hcell". iApply "HK". iFrame.
+Qed.
+
 (** A reflected pointer load returns both source ownership and the loaded pointer's target lifetime. *)
 Lemma sym_load_pointer_rule ρ fs h pre life post pre' post' pre'' target post''
     f e ls l d off args rest j classes a c b b' o v vc Φ :
@@ -1378,6 +1614,7 @@ Proof.
   all: first [iApply (sym_check_rule with "Hheap") |
     iApply (sym_half_check_rule with "Hheap") |
     iApply (sym_load_rule with "Hheap") |
+    iApply (sym_load_narrow_rule with "Hheap") |
     iApply (sym_load_pointer_rule with "Hheap")]; try eassumption.
   all: try (iNext; iIntros "Hheap"; iApply ("HK" with "Hheap"); iPureIntro;
     apply env_models_put; exact Henv).
@@ -1637,7 +1874,18 @@ Ltac sym_quote_atom rho P :=
       lazymatch qb with (?b', ?r1) => let qo := sym_quote_z r1 o in
         lazymatch qo with (?o', ?r2) => let qp := sym_quote_w r2 constr:(WPtr p) in
           lazymatch qp with (SWPtr ?a ?c, ?r3) => constr:((APCell b' o' a c, r3)) end end end
-  | _ => fail "sym_run: expected live, icell, pcell, or live_cap; found" P
+  | ?byte_assertion ?b ?o ?bs =>
+      let checked := constr:(eq_refl P : P = sym_ML.bytes b o bs) in
+      let bs := eval cbv beta delta [sym_bytes] in bs in
+      lazymatch bs with
+      | le_bytes ?v ?sz =>
+          let n := lazymatch sz with 1%nat => constr:(Ub) | 2%nat => constr:(Uh) | 4%nat => constr:(Uw) end in
+          let qb := sym_quote_z rho b in
+          lazymatch qb with (?b', ?r1) => let qo := sym_quote_z r1 o in
+            lazymatch qo with (?o', ?r2) => let qv := sym_quote_z r2 v in
+              lazymatch qv with (?v', ?r3) => constr:((ANarrow n b' o' v', r3)) end end end
+      end
+  | _ => fail "sym_run: expected live, icell, pcell, narrow bytes, or live_cap; found" P
   end.
 
 (** Named spatial hypotheses become an ordered list of ownership atoms. *)
@@ -1781,6 +2029,9 @@ Definition atom_slot (fs : facts) (a b : atom) : bool :=
   | ALive x r, ALive y s => zlinear_eqb fs x y && Nat.eqb r s
   | ALiveCap c r, ALiveCap d s => csame fs c d && Nat.eqb r s
   | ACell x o _, ACell y p _ | APCell x o _ _, APCell y p _ _ =>
+      zlinear_eqb fs x y && zlinear_eqb fs o p
+  | ANarrow n x o _, ANarrow m y p _ =>
+      Z.eqb (fst (narrow_type n)) (fst (narrow_type m)) &&
       zlinear_eqb fs x y && zlinear_eqb fs o p
   | _, _ => false
   end.
