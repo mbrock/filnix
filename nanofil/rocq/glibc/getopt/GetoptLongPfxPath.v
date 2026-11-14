@@ -67,13 +67,15 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     on at the found-option block with the first match p and its index w,
     or with no option at all. Otherwise it reports the ambiguity and
     answers '?'. The flag targets stay the caller's, the allocator keeps
-    its state M, and the report gives G back. *)
-Lemma wp_long_pfx_path ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f139 f140 f141 av ar ps lo os F
+    its state M, and the report gives G back. While the parser searches,
+    G is idle, so the cutoff borrows it then and returns it before any
+    report. *)
+Lemma wp_long_pfx_path_with ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f139 f140 f141 av ar ps lo os F
     pfx pxs cur s lonly pe i oo b r Φ :
   avoids ks ploop_names = true -> avoids ks pcmp_names = true -> avoids ks pset_names = true ->
   avoids ks palloc_names = true -> avoids ks pmark_names = true -> avoids ks pend_names = true ->
   avoids ks arep_names = true -> avoids ks alist_names = true -> avoids ks atail_names = true ->
-  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
   find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
@@ -120,15 +122,16 @@ Proof.
   step. pcmp_fold "L98" plo_blk98.
   change (0 mod 2 ^ 32) with 0. change (4294967295 mod 2 ^ 32) with 4294967295. change (0 mod 2 ^ 64) with 0.
   fold null.
-  iApply (wp_pfx_loop (ppath_keys ++ ks)%list _ M 0 null 4294967295 0 0 null cur s lo os F b r lonly pe
-    with "Hws Ht0 Hl Hcur HF [] HM");
+  iApply (wp_pfx_loop_with (ppath_keys ++ ks)%list _ (M ∗ G) 0 null 4294967295 0 0 null cur s lo os F b r lonly pe
+    with "Hws Ht0 Hl Hcur HF [] [HM HG]");
     [rewrite avoids_app_l Hksl; reflexivity | rewrite avoids_app_l Hksc; reflexivity
     | rewrite avoids_app_l Hkss; reflexivity | rewrite avoids_app_l Hksa; reflexivity
-    | rewrite avoids_app_l Hksm; reflexivity | exact Hcut | exact Hmal | exact Hset | exact Hgn | exact Hfl | exact Hos
+    | rewrite avoids_app_l Hksm; reflexivity | apply getopt_cutoff_rule_with_sep, Hcut
+    | apply getopt_malloc_rule_sep, Hmal | exact Hset | exact Hgn | exact Hfl | exact Hos
     | exact Hpe | exact Hb | exact Hal | exact Hend | exact Hr | unfold pfx_at; repeat split; lk_prove
     | rewrite Hlo; lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | lia
-    | left; split; reflexivity | left; reflexivity | left; reflexivity | by iLeft |].
-  iIntros (e1 p w a m sp (Hk1 & H8' & H42' & H39' & H30' & H21' & Hf & Ha & Hm)) "Hl Hcur HF Hs HM".
+    | left; split; reflexivity | left; reflexivity | left; reflexivity | by iLeft | iFrame "HM HG" |].
+  iIntros (e1 p w a m sp (Hk1 & H8' & H42' & H39' & H30' & H21' & Hf & Ha & Hm)) "Hl Hcur HF Hs [HM HG]".
   apply keeps_app in Hk1 as [Hkt1 Hk1].
   assert (Hk1e : keeps ks e e1) by (eapply keeps_trans; [|exact Hk1]; xkeep).
   assert (Hw : 0 <= w < 2 ^ 32) by (destruct Hf as [(_ & ->) | (j & Hj & _ & ->)]; lia).
@@ -152,6 +155,51 @@ Proof.
     iIntros (e3 Hk3) "Hl Hib Hoob Hcur Ha Hcl HG". iDestruct "HK" as "[_ HK]".
     iApply ("HK" with "[%] Hl Hib Hoob Hcur Ha Hcl HG HF HM").
     eapply keeps_trans; [exact Hk1e|]. eapply keeps_trans; [exact Hk2 | exact Hk3].
+Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
+Lemma wp_long_pfx_path ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f139 f140 f141 av ar ps lo os F
+    pfx pxs cur s lonly pe i oo b r Φ :
+  avoids ks ploop_names = true -> avoids ks pcmp_names = true -> avoids ks pset_names = true ->
+  avoids ks palloc_names = true -> avoids ks pmark_names = true -> avoids ks pend_names = true ->
+  avoids ks arep_names = true -> avoids ks alist_names = true -> avoids ks atail_names = true ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z -> 0 <= pe < 2 ^ 32 ->
+  0 <= i < 2 ^ 31 - 1 ->
+  pfx_at e b s lonly pe (Z.of_nat (List.length os)) ->
+  lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) -> lookup (TAtom "v6") e = Some (WPtr lo) ->
+  lookup (TAtom "v16") e = Some (WPtr pfx) -> lookup (TAtom "pr.6") e = Some (WPtr null) ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < av -> av mod 8 = 0 -> av + 8 <= r_end ar -> r_end ar <= 2 ^ 48 -> ps <> [] ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  opt_table lo os -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded cur s -∗
+  liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo -∗ pcell b 32 cur -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗
+  ((∀ e' p w, ⌜keeps ks e e' /\ pfx_first lo (List.length os) p w /\ lookup (TAtom "pr.12") e' = Some (WInt w) /\
+        lookup (TAtom "pr.7") e' = Some (WPtr p)⌝ -∗
+      live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo -∗ pcell b 32 cur -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗
+      WP (ERun (mkFrame glibc_process_long_option e' [] None
+        (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}) ∧
+   (∀ e', ⌜keeps ks e e'⌝ -∗
+      live b r -∗ int_cell b 0 (i + 1) -∗ int_cell b 8 0 -∗ pcell b 32 (ptr_add cur (Z.of_nat (List.length s))) -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗
+      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec (TAtom "L307") [] (JRet (Const 63)))) : gexpr)
+        {{ Φ }})) -∗
+  WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L98") (Some (TAtom "L53")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros Hksl Hksc Hkss Hksa Hksm Hkse Hksr Hksi Hkst Hcut.
+  exact (wp_long_pfx_path_with ks e G T fp dom M se sereg f138 f139 f140 f141 av ar ps lo os F pfx pxs cur s lonly pe i oo b r Φ Hksl Hksc Hkss Hksa Hksm Hkse Hksr Hksi Hkst (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
 
 End path.

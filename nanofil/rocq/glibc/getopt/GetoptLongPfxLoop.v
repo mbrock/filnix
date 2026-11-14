@@ -46,10 +46,10 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     sp. It tests each entry from k on and stops at the table's null name
     with what it holds then. Every flag target stays the caller's, and
     the allocator keeps its state M. *)
-Lemma wp_pfx_loop ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b r lonly pe Φ :
+Lemma wp_pfx_loop_with ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b r lonly pe Φ :
   avoids ks ploop_names = true -> avoids ks pcmp_names = true -> avoids ks pset_names = true ->
   avoids ks palloc_names = true -> avoids ks pmark_names = true ->
-  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_cutoff_rule_with w0 registry ge M -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
@@ -77,7 +77,7 @@ Proof.
   intros e k p w a m sp Hd Hat H3 H13 H8 H42 H39 H30 H21 Hk Hf Ha Hm.
   iIntros "#Hws #Ht Hl Hcur HF Hs HM HK". iPoseProof "Ht" as "Ht0".
   iDestruct "Ht" as (tb treg) "(%Ht & _)". destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).
-  iApply (wp_pfx_iter ks e M k p w a m sp cur s lo os F b r lonly pe
+  iApply (wp_pfx_iter_with ks e M k p w a m sp cur s lo os F b r lonly pe
     with "Hws Ht0 Hl Hcur HF Hs HM");
     [exact Hks | exact Hksc | exact Hkss | exact Hksa | exact Hksm | exact Hcut | exact Hmal | exact Hset | exact Hgn
     | exact Hfl | exact Hos | exact Hpe | exact Hb | exact Hal | exact Hend | exact Hr | exact Hat | exact H3 | exact H13
@@ -106,5 +106,35 @@ Proof.
   iIntros (e' p' w' a2 m2 sp2 (Hk' & Hrest)) "Hl Hcur HF Hs HM".
   iApply ("HK" $! e' p' w' a2 m2 sp2 with "[%] Hl Hcur HF Hs HM").
   split; [|exact Hrest]. eapply keeps_trans; [exact Hk2|]. eapply keeps_trans; [|exact Hk']. xkeep. Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
+Lemma wp_pfx_loop ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b r lonly pe Φ :
+  avoids ks ploop_names = true -> avoids ks pcmp_names = true -> avoids ks pset_names = true ->
+  avoids ks palloc_names = true -> avoids ks pmark_names = true ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z -> 0 <= pe < 2 ^ 32 ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  pfx_at e b s lonly pe (Z.of_nat (List.length os)) ->
+  lookup (TAtom "pr.3") e = Some (WPtr (ptr_add lo (32 * Z.of_nat k))) ->
+  lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) -> lookup (TAtom "pr.8") e = Some (WPtr p) ->
+  lookup (TAtom "pr.42") e = Some (WInt w) -> lookup (TAtom "pr.39") e = Some (WInt a) ->
+  lookup (TAtom "pr.30") e = Some (WInt m) -> lookup (TAtom "pr.21") e = Some (WPtr sp) ->
+  (k <= List.length os)%nat -> pfx_first lo k p w -> (a = 0 \/ a = 1) -> (m = 0 \/ (m = 1 /\ sp <> null)) ->
+  word_string DfracDiscarded cur s -∗ opt_table lo os -∗ live b r -∗ pcell b 32 cur -∗ flags_own F -∗
+  amb_set (Z.of_nat (List.length os)) sp -∗ M -∗
+  (∀ e' p' w' a' m' sp', ⌜keeps ks e e' /\ lookup (TAtom "pr.8") e' = Some (WPtr p') /\
+      lookup (TAtom "pr.42") e' = Some (WInt w') /\ lookup (TAtom "pr.39") e' = Some (WInt a') /\
+      lookup (TAtom "pr.30") e' = Some (WInt m') /\ lookup (TAtom "pr.21") e' = Some (WPtr sp') /\
+      pfx_first lo (List.length os) p' w' /\ (a' = 0 \/ a' = 1) /\ (m' = 0 \/ (m' = 1 /\ sp' <> null))⌝ -∗
+     live b r -∗ pcell b 32 cur -∗ flags_own F -∗ amb_set (Z.of_nat (List.length os)) sp' -∗ M -∗
+     WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L101") (Some (TAtom "L98")))) : gexpr)
+       {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc_process_long_option e [] None
+              (Exec (TAtom "L98") (b_insts plo_blk98) (b_jump plo_blk98))) : gexpr) {{ Φ }}.
+Proof.
+  intros H0 H1 H2 H3 H4 Hcut.
+  exact (wp_pfx_loop_with ks e M k p w a m sp cur s lo os F b r lonly pe Φ H0 H1 H2 H3 H4 (getopt_cutoff_rule_with_any w0 registry ge M Hcut)).
+Qed.
 
 End loop.
