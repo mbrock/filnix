@@ -40,9 +40,6 @@ qfinal: qprev: {
     (qprev.qtbase.override {
       # The Fil-C GTK 3 port has no X11 backend (gdk/gdkx.h).
       withGtk3 = false;
-      # journald logging needs only libsystemd; full systemd 262 does not
-      # link yet (see the systemd port).
-      systemd = final.systemdLibs;
       # Same X11-enabled dependency as Qt 5. Its Xvfb tests use unsupported
       # __start_/__stop_ section symbols, so omit those tests, not the backend.
       libxkbcommon = final.libxkbcommon.overrideAttrs (old: {

@@ -2,7 +2,9 @@
 # that the Fil-C compiler drops: it ignores section() on globals, so the
 # notes' JSON payloads end up as ordinary data. Find each payload in an ELF
 # file and add it again as a .note.dlopen section, so tools that read the
-# notes (make-initrd-ng, autoPatchelf) see them.
+# notes (make-initrd-ng, autoPatchelf) see them. systemd 262 writes its notes
+# in assembly, so under Fil-C its patch keeps the payload as a C string
+# escaped for the assembler ([{\"feature\":...); those are unescaped here.
 #
 # Usage: restore-dlopen-notes.py OBJCOPY DIR...
 import json
@@ -14,7 +16,8 @@ import sys
 import tempfile
 
 NT_FDO_DLOPEN = 0x407C0C0A
-PAYLOAD = re.compile(rb'\[\{"feature":.*?\}\](?=\x00)')
+PAYLOAD = re.compile(rb'\[\{\\?"feature\\?":.*?\}\](?=\x00)')
+ESCAPE = re.compile(rb"\\(.)")
 
 
 def pad4(b):
@@ -34,12 +37,15 @@ def restore(objcopy, path):
         return
     payloads = []
     for m in PAYLOAD.finditer(data):
+        payload = m.group()
+        if payload.startswith(b'[{\\"'):
+            payload = ESCAPE.sub(rb"\1", payload)
         try:
-            json.loads(m.group())
+            json.loads(payload)
         except ValueError:
             continue
-        if m.group() not in payloads:
-            payloads.append(m.group())
+        if payload not in payloads:
+            payloads.append(payload)
     if not payloads:
         return
     with tempfile.NamedTemporaryFile() as section:

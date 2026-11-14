@@ -2590,12 +2590,6 @@ in
     ];
   }
 
-  # slapd links libsystemd for sd_notify. Full systemd 262 (and so
-  # systemdMinimal) does not link yet; see the systemd port.
-  (for pkgs.openldap [
-    (arg { systemdMinimal = final.systemdLibs; })
-  ])
-
   (for pkgs.dbus [
     (arg { systemdMinimal = final.systemdLibs; })
     (arg { libapparmor = final.hello; })
@@ -3145,10 +3139,16 @@ in
     # this port through .override, so all three get the same fixes.
     # patches/systemd-262-filc.patch rebases upstream Fil-C's 256.4 patch
     # (ports/patch/systemd-256.4.patch) and adds what 260 and 262 need; its
-    # header lists each change, and the verb and option tables it does not
-    # handle yet.
+    # header lists each change.
     systemd = for pkgs.systemd [
       (patch ./patches/systemd-262-filc.patch)
+      # 262's option tables are statics inside each parse_argv(); move them
+      # to file scope, where the patch's constructors register them.
+      (use (old: {
+        postPatch = (old.postPatch or "") + ''
+          ${pkgs.buildPackages.python3.interpreter} ${./patches/systemd-filc-option-tables.py} .
+        '';
+      }))
       (arg { withKexectools = false; })
       (arg { withLibseccomp = false; })
       # EFI/BPF/kexec emit kernel or firmware code, outside Fil-C userspace.
@@ -3172,8 +3172,8 @@ in
       # this seems to not be a real problem
       (use { autoPatchelfIgnoreMissingDeps = [ "*" ]; })
       # systemdLibs installs only the devel, libsystemd and libudev tags;
-      # build only systemd's alias targets of the same names. The rest of
-      # 262 needs its verb and option tables (see the patch).
+      # build only systemd's alias targets of the same names instead of the
+      # whole tree.
       (use (
         old:
         pkgs.lib.optionalAttrs ((old.mesonInstallTags or [ ]) != [ ]) {
@@ -3299,8 +3299,6 @@ in
   (for pkgs.redis [
     # Aligned encoded reply buffers; no madvise on the heap after fork.
     (patch ./patches/redis-filc.patch)
-    # sd_notify only; full systemd 262 does not link yet (see the systemd port).
-    (arg { systemd = final.systemdLibs; })
     (use (old: {
       makeFlags = old.makeFlags ++ [
         # Redis's default -O3 turns on LTO, which Fil-C does not have.
