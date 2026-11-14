@@ -119,7 +119,8 @@ Ltac call_spec_rule :=
         (@program_ge hlc Σ P) n s (HasSpec0 := H) x f e ls lab r args rest j _)
   end.
 
-(** Argument equations and arithmetic premises remain visible when computation cannot solve them. *)
+(** Passing large generated proofs directly to Iris makes calls slow.
+    Local proof names avoid that search, while unsolved argument equations and arithmetic premises remain visible. *)
 Ltac call_spec_apply rule x :=
   let T := type of (rule x) in
   lazymatch T with
@@ -129,8 +130,12 @@ Ltac call_spec_apply rule x :=
       | let T := type of (rule x Hargs) in
         lazymatch T with
         | ⊢ ?P -∗ ?K -∗ ?Q =>
-            iApply (bi.wand_elim_r' P K Q
-              ltac:(iIntros "HK HP"; iApply (rule x Hargs with "HP HK")));
+            let Hcall := fresh "Hcall" in
+            pose proof (rule x Hargs) as Hcall;
+            let Happly := fresh "Happly" in
+            pose proof (bi.wand_elim_r' P K Q
+              ltac:(iIntros "HK HP"; iApply (Hcall with "HP HK"))) as Happly;
+            iApply Happly; clear Hcall Happly;
             cbn [fs_pre]; iFrame;
             first [iSplitR; [iPureIntro | let v := fresh "v" in iIntros (v) "Hpost"]
                   | let v := fresh "v" in iIntros (v) "Hpost"]
