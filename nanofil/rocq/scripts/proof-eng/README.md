@@ -11,7 +11,7 @@ nanofil/rocq/scripts/proof-eng/build.sh /tmp/pe/glibc 12
 nanofil/rocq/scripts/proof-eng/one.sh /tmp/pe/glibc libio/LibioPutsNl.v -time
 ```
 
-`apply.sh` copies the tree, runs every program in `stages/` in name order on the copy, and then copies `overlay/` over it. `build.sh` compiles the copy with make and writes times and failures to `/tmp/pe/glibc.build/`.
+`apply.sh` copies the tree, runs the programs in `stages/` in name order on the copy, and then copies `overlay/` over it. It skips the stages that `stages/landed.txt` names, because their output is on `main` and a stage does not accept its own output. `build.sh` compiles the copy with make and writes times and failures to `/tmp/pe/glibc.build/`.
 
 The workflows run on `main` only, so the Nix gates of the branch run by hand on a scratch worktree that holds the output:
 
@@ -29,27 +29,25 @@ A stage is one program that takes the tree as its argument and rewrites it in pl
 - `20-keeps.py` moves `keeps` to the shared file `GlibcEnv.v` and rewrites the `libio/` disjunctions to it.
 - `30-tactics.py` ports proofs to the one step-tactic library `GlibcTactics.v`.
 - `50-program.py` removes repeated program arguments from calls between proofs. It collects their world, registry, environment and ghost instances in `GlibcProgram`, and `Defines` supplies function-lookup facts. Converted callers infer the context; old-style callers construct it with `program_of`. The forty intermediate audits listed in `check/audit-changes.json` retain their original names with equivalent bundled statements. Endpoints retain their original types and assumptions.
-- `60-rules` replaces rule applications by wrapper tactics that discharge the standard side conditions.
+- `60-memory-rules.py` replaces applications of six memory rules by wrapper tactics that discharge the standard side conditions. It changes proof scripts only, and it checks that every declaration keeps its text.
 
 The cutover is split in two, so that the flat layout could land before the later stages were ready. Stages 10 to 30 are the first cutover, which is on `main`. Stages 50 and 60 are the second cutover.
 
 Several files define tactics with the same short name, such as `arith`. Stage `10` keeps each use bound to the definition it had before. It reorders the imports of the file when that is enough, and otherwise it writes the use with its file name, as in `StrlenLoop.arith`. The reviewed names are listed in `flatten-name-baseline.json`, and the stage fails when a new one appears.
 
-Stages `10`, `15`, `20`, `30` and `50` are on the branch. Stage `60` is developed on the branch `proof-eng-rules`.
-
 ## Regenerating the stage-50 evidence
 
-The packet describes one source snapshot. After merging main, regenerate it from the original, unconverted tree with this command, after sourcing `env.sh`:
+The packet describes one source snapshot. After merging main, regenerate it from the tree of `main` with this command, after sourcing `env.sh`:
 
 ```sh
 python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --regenerate nanofil/rocq/glibc
 ```
 
-The command applies the stages and compiles both sides of stage 50, using the original imports to choose concrete or abstract runtimes. For each output tree it writes `50-program.txt`, `50-program.elaborated.json` and `50-program.equivalence.v` under `TREE.program/`. It retains the trees and logs under `.amp/in/orb-backup/program-regeneration-*` and prints their location. It also updates the committed declaration list for review. Generated types and proofs stay out of git; `check/audit-changes.json` preserves the forty reviewed old types and adapter mappings. Regeneration does not approve new changes or a cutover.
+The command applies the stages and compiles both sides of stage 50, once at the interpreter's runtime and once at the abstract runtime. The abstract run covers every file that `runtime-concrete.txt` does not list and that imports no listed file. For each output tree it writes `50-program.txt`, `50-program.elaborated.json` and `50-program.equivalence.v` under `TREE.program/`. It retains the trees and logs under `.amp/in/orb-backup/program-regeneration-*` and prints their location. It also updates the committed declaration list for review. Generated types and proofs stay out of git; `check/audit-changes.json` preserves the forty reviewed old types and adapter mappings. Regeneration does not approve new changes or a cutover.
 
-For a custom abstract run, `check.py partition ORIGINAL_TREE --output DIR` writes `general-targets.txt` from the original compiler import graph. Pass that list as `PE_PROGRAM_TARGETS` with `PE_RUNTIME=abstract`; the runtime setting alone does not select the general files. Regeneration and the cutover runner do this automatically.
+For a custom abstract run, `check.py partition TREE --output DIR` writes `general-targets.txt` from `runtime-concrete.txt` and the compiler's import graph. Pass that list as `PE_PROGRAM_TARGETS` with `PE_RUNTIME=abstract`; the runtime setting alone does not select the general files. Regeneration and the cutover runner do this automatically.
 
-Run `python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --check TREE` against a converted tree to regenerate and validate its packet. The command needs the input snapshot and compiler metadata that `apply.sh` retains in `TREE.program/`. It reproduces the transformation, checks the reviewed declaration list and old types, then compiles both adapter directions. Four workers compile shards grouped by source directory, each containing at most sixteen pairs and one MiB of adapter source. Each worker has a five-minute limit.
+Run `python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --check TREE` against a converted tree to regenerate and validate its packet. The command needs the input snapshot and compiler metadata that `apply.sh` retains in `TREE.program/`. It reproduces the transformation, including the stages that run after stage 50, checks the reviewed declaration list and old types, then compiles both adapter directions. Four workers compile shards grouped by source directory, each containing at most sixteen pairs and one MiB of adapter source. Each worker has a five-minute limit.
 
 Concrete adapters must print Closed. Abstract adapters may depend only on the declared runtime's fields: old and new statements must have identical assumption names and types, and each direction may use only a subset. The check verifies each field's identity and type with Rocq and writes the per-pair results to `TREE.program/check/assumptions.json`. Concrete success does not authorize abstract evidence; the checker requires a separate successful run for each runtime.
 
