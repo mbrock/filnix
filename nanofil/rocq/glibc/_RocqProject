@@ -357,6 +357,7 @@ getopt/GetoptScanChar.v
 getopt/GetoptDashRet.v
 getopt/GetoptLongOnlyRet.v
 getopt/GetoptLongOnlyShort.v
+getopt/GetoptWRet.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v
