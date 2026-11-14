@@ -24,6 +24,7 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxCmp GetoptLongPfxMark GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require CutoffCode CutoffLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -86,6 +87,14 @@ Definition getopt_cutoff_rule : Prop :=
   ⊢ ▷ (∀ x, ⌜0 <= x < 2 ^ 32⌝ -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : gexpr) {{ Φ }}.
+(** The function reads the thread's stack size, so a caller that can
+    supply that memory states the rule with a resource C. The call
+    borrows C and gives it back with some 32-bit integer. *)
+Definition getopt_cutoff_rule_with (C : iProp Σ) : Prop :=
+  forall f e ls l d args rest j n Φ, map_option (arg_x ge e) args = Some [WInt n] ->
+  ⊢ C -∗ ▷ (C -∗ ∀ x, ⌜0 <= x < 2 ^ 32⌝ -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+    WP (ERun (mkFrame f e ls None
+      (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : gexpr) {{ Φ }}.
 Definition getopt_malloc_rule (M : iProp Σ) : Prop :=
   forall f e ls l d v rest j n Φ, arg_x ge e (Arg L v) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
   ⊢ M -∗ ▷ (∀ p, M -∗ (⌜p = null⌝ ∨ ∃ base, ⌜p = mkPtr base (Obj base) /\ 0 < base /\ base mod 16 = 0 /\
@@ -102,6 +111,27 @@ Definition getopt_memset_rule : Prop :=
        WP (ERun (mkFrame f (put d (WPtr (mkPtr b (Obj b))) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None (Exec l (Call (CResult d P) (Global (TAtom "__GI_memset")) args :: rest) j)) : gexpr)
       {{ Φ }}.
+
+(** The rule without resources serves any C, because C is just carried along. *)
+Lemma getopt_cutoff_rule_with_any C : getopt_cutoff_rule -> getopt_cutoff_rule_with C.
+Proof.
+  intros Hcut f e ls l d args rest j n Φ Hx. iIntros "HC HK".
+  iApply Hcut; [exact Hx|]. iNext. iIntros (x Hx32). iApply ("HK" with "HC"). done.
+Qed.
+
+(** A cutoff rule for C also holds when the caller carries R beside C. *)
+Lemma getopt_cutoff_rule_with_sep R C : getopt_cutoff_rule_with C -> getopt_cutoff_rule_with (R ∗ C).
+Proof.
+  intros Hcut f e ls l d args rest j n Φ Hx. iIntros "[HR HC] HK".
+  iApply (Hcut with "HC"); [exact Hx|]. iNext. iIntros "HC". iApply ("HK" with "[$HR $HC]").
+Qed.
+
+(** A malloc rule for M also holds when the caller carries R beside M. *)
+Lemma getopt_malloc_rule_sep M R : getopt_malloc_rule M -> getopt_malloc_rule (M ∗ R).
+Proof.
+  intros Hmal f e ls l d v rest j n Φ Hx Hn. iIntros "[HM HR] HK".
+  iApply (Hmal with "HM"); [exact Hx | exact Hn|]. iNext. iIntros (p) "HM Hp". iApply ("HK" with "[$HM $HR] Hp").
+Qed.
 End alloc_values.
 Section alloc.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -112,10 +142,28 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The parser asks __libc_alloca_cutoff whether a set of a given size
     may live in its frame. The function reads the size of the thread's
-    stack. A caller supplies this rule for it: the call returns some
-    32-bit integer and needs no resources. The rule remains a recorded
-    dependency on the thread's stack data, which this proof does not
-    show valid. *)
+    stack. The older rule [getopt_cutoff_rule] takes no resources and
+    stays as a recorded dependency. The resource-aware rule
+    [getopt_cutoff_rule_with] lends the memory that the function reads,
+    and the lemma below proves it from glibc's code. *)
+
+(** The cutoff's rule does not have to be assumed, since glibc's code
+    for it is proved. That code reads how big the thread's stack is. So
+    whoever can lend that number and the thread's state for one call
+    gets the rule, and gets both back. *)
+Lemma getopt_cutoff_rule_with_loan (G : iProp Σ) dq :
+  registry (TAtom "zthread_self_cookie") = Some OsThread.os_self_contract ->
+  find_fn ge (TAtom "zthread_self_cookie") = None ->
+  Term.lookup (TAtom "zthread_self_cookie") (ge_globals ge) = None ->
+  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined CutoffCode.glibc_libc_alloca_cutoff) ->
+  (G ⊢ CutoffLogic.cutoff_loan dq ∗ (CutoffLogic.cutoff_loan dq -∗ G)) ->
+  getopt_cutoff_rule_with w0 registry ge G.
+Proof.
+  intros Hs Hsf Hss Hg Hl f e ls l d args rest j n Φ Hx. iIntros "HG HK".
+  iDestruct (Hl with "HG") as "[HL Hback]".
+  iApply (CutoffLogic.wp_call_alloca_cutoff_loan Hs Hsf Hss with "HL"); [exact Hg | exact Hx |].
+  iNext. iIntros "HL" (x Hx32). iApply ("HK" with "[HL Hback]"); [iApply ("Hback" with "HL") | done].
+Qed.
 
 (** A caller supplies this rule for malloc. The allocator's own state
     M goes in and comes back. The call returns null, or a fresh heap
@@ -140,9 +188,9 @@ Ltac palloc_brp := iApply wp_branch; [vx | iNext]; close_br.
     marks the entry k and goes on to the next entry. The set may be null
     after a failed malloc, and the parser then records the ambiguity in
     the flag a. When the set came from malloc, the flag m is 1. *)
-Lemma wp_pfx_alloc ks e (M : iProp Σ) n j k Φ :
+Lemma wp_pfx_alloc_with ks e (M : iProp Σ) n j k Φ :
   avoids ks palloc_names = true -> avoids ks pmark_names = true ->
-  (getopt_cutoff_rule w0 registry ge) -> (getopt_malloc_rule w0 registry ge) M -> (getopt_memset_rule w0 registry ge) ->
+  (getopt_cutoff_rule_with w0 registry ge M) -> (getopt_malloc_rule w0 registry ge) M -> (getopt_memset_rule w0 registry ge) ->
   lookup (TAtom "pr.9") e = Some (WInt n) -> lookup (TAtom "pr.39") e = Some (WInt 0) ->
   lookup (TAtom "pr.30") e = Some (WInt 0) -> lookup (TAtom "pr.42") e = Some (WInt (Z.of_nat j)) ->
   lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) -> lookup (TAtom "v90") e = Some (WInt 0) ->
@@ -215,7 +263,7 @@ Proof.
     iRight. iExists base. iFrame. iPureIntro. destruct Hb as (Hb1 & Hb2 & Hb3).
     split; [reflexivity|]. split; [lia|]. split; [exact Hb2 | exact Hb3]. }
   step. step. palloc_int "v186" n.
-  iApply Hcut; [vx |]. iNext. iIntros (x Hx). step. step. pcmp_br.
+  iApply (Hcut with "HM"); [vx |]. iNext. iIntros "HM" (x Hx). step. step. pcmp_br.
   - step. step. step. step. pcmp_br.
     + step. iApply (Hmal with "HM"); [vx | apply Z.mod_pos_bound; lia |]. rewrite (Z.mod_small n (2 ^ 64)); [|lia]. iNext. iIntros (p) "HM Hp". step. step.
       iDestruct "Hp" as "[-> | (%base & %Hb & Ho)]".
@@ -230,6 +278,52 @@ Proof.
     + iApply ("H182" with "H184 [%] HM"). split; [xkeep | repeat split; lk_prove].
   - step. iApply wp_branch; [vx | iNext]. close_br.
     iApply ("H182" with "H184 [%] HM"). split; [xkeep | repeat split; lk_prove].
+Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
+Lemma wp_pfx_alloc ks e (M : iProp Σ) n j k Φ :
+  avoids ks palloc_names = true -> avoids ks pmark_names = true ->
+  (getopt_cutoff_rule w0 registry ge) -> (getopt_malloc_rule w0 registry ge) M -> (getopt_memset_rule w0 registry ge) ->
+  lookup (TAtom "pr.9") e = Some (WInt n) -> lookup (TAtom "pr.39") e = Some (WInt 0) ->
+  lookup (TAtom "pr.30") e = Some (WInt 0) -> lookup (TAtom "pr.42") e = Some (WInt (Z.of_nat j)) ->
+  lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) -> lookup (TAtom "v90") e = Some (WInt 0) ->
+  Z.of_nat j < n -> Z.of_nat k < n -> n < 2 ^ 31 ->
+  M -∗
+  (∀ e' P a m s, ⌜keeps ks e e' /\ (P = TAtom "L214" \/ P = TAtom "L172") /\
+      lookup (TAtom "pr.35") e' = Some (WInt a) /\ lookup (TAtom "pr.26") e' = Some (WInt m) /\
+      lookup (TAtom "pr.18") e' = Some (WPtr s) /\ (a = 0 \/ a = 1) /\ (m = 0 \/ (m = 1 /\ s <> null))⌝ -∗
+     amb_set n s -∗ M -∗
+     WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L175") (Some (TAtom "L171")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros Hks Hksm Hcut.
+  exact (wp_pfx_alloc_with ks e M n j k Φ Hks Hksm (getopt_cutoff_rule_with_any w0 registry ge M Hcut)).
+Qed.
+
+(** The same holds when the cutoff borrows a resource G of its own. The
+    caller carries G beside the allocator's state M, and gets both back. *)
+Lemma wp_pfx_alloc_sep ks e (M G : iProp Σ) n j k Φ :
+  avoids ks palloc_names = true -> avoids ks pmark_names = true ->
+  (getopt_cutoff_rule_with w0 registry ge G) -> (getopt_malloc_rule w0 registry ge) M -> (getopt_memset_rule w0 registry ge) ->
+  lookup (TAtom "pr.9") e = Some (WInt n) -> lookup (TAtom "pr.39") e = Some (WInt 0) ->
+  lookup (TAtom "pr.30") e = Some (WInt 0) -> lookup (TAtom "pr.42") e = Some (WInt (Z.of_nat j)) ->
+  lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) -> lookup (TAtom "v90") e = Some (WInt 0) ->
+  Z.of_nat j < n -> Z.of_nat k < n -> n < 2 ^ 31 ->
+  M -∗ G -∗
+  (∀ e' P a m s, ⌜keeps ks e e' /\ (P = TAtom "L214" \/ P = TAtom "L172") /\
+      lookup (TAtom "pr.35") e' = Some (WInt a) /\ lookup (TAtom "pr.26") e' = Some (WInt m) /\
+      lookup (TAtom "pr.18") e' = Some (WPtr s) /\ (a = 0 \/ a = 1) /\ (m = 0 \/ (m = 1 /\ s <> null))⌝ -∗
+     amb_set n s -∗ M -∗ G -∗
+     WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L175") (Some (TAtom "L171")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros Hks Hksm Hcut Hmal Hset H9 H39 H30 H42 H13 H90 Hj Hk Hn. iIntros "HM HG HK".
+  iApply (wp_pfx_alloc_with ks e (M ∗ G) n j k with "[$HM $HG] [HK]");
+    [exact Hks | exact Hksm | apply getopt_cutoff_rule_with_sep, Hcut | apply getopt_malloc_rule_sep, Hmal | exact Hset
+    | exact H9 | exact H39 | exact H30 | exact H42 | exact H13 | exact H90 | exact Hj | exact Hk | exact Hn |].
+  iIntros (e' P a m s Hp) "Hs [HM HG]". iApply ("HK" with "[//] Hs HM HG").
 Qed.
 
 End alloc.

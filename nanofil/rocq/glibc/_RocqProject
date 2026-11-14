@@ -105,6 +105,7 @@ stdlib/StdlibSpecs.v
 stdlib/AllocLogic.v
 stdlib/AtexitLogic.v
 string/WordString.v
+nptl/CutoffLogic.v
 zsys/OsRegistry.v
 getopt/GetoptBytes.v
 getopt/GetoptState.v
@@ -459,4 +460,3 @@ getopt/GetoptWOptSession.v
 GlibcTactics.v
 GlibcSym.v
 libio/LibioTactics.v
-nptl/CutoffLogic.v

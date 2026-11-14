@@ -65,9 +65,9 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     the flag m, which says the set came from malloc, and the set s of n
     bytes. It records the ambiguity as described above and goes on to
     the next entry. The flags stay 0 or 1, and m is 1 only with a set. *)
-Lemma wp_pfx_set ks e (M : iProp Σ) n j k a m s pe Φ :
+Lemma wp_pfx_set_with ks e (M : iProp Σ) n j k a m s pe Φ :
   avoids ks pset_names = true -> avoids ks palloc_names = true -> avoids ks pmark_names = true ->
-  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_cutoff_rule_with w0 registry ge M -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   lookup (TAtom "pr.9") e = Some (WInt n) -> lookup (TAtom "pr.39") e = Some (WInt a) ->
   lookup (TAtom "pr.30") e = Some (WInt m) -> lookup (TAtom "pr.21") e = Some (WPtr s) ->
   lookup (TAtom "pr.42") e = Some (WInt (Z.of_nat j)) -> lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) ->
@@ -101,7 +101,7 @@ Proof.
   - step. step. step. iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
     + unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. iApply wp_branch; [vx | iNext]. close_br.
       assert (m = 0) as -> by (destruct Hm as [? | [_ ?]]; [assumption | contradiction]).
-      iApply (wp_pfx_alloc ks _ M n j k with "HM");
+      iApply (wp_pfx_alloc_with ks _ M n j k with "HM");
         [exact Hksa | exact Hksm | exact Hcut | exact Hmal | exact Hset | lk_prove | lk_prove | lk_prove | lk_prove
         | lk_prove | lk_prove | lia | lia | lia |].
       iIntros (e' P a' m' s' (Hk' & HP & H35 & H26 & H18 & Ha' & Hm')) "Hs HM".
@@ -117,6 +117,53 @@ Proof.
       iApply ("HK" $! e' P 0 m (mkPtr sb (Obj sb)) with "[%] Hs HM").
       split; [eapply keeps_trans; [|exact Hk']; xkeep|].
       split; [right; split; [exact HP|]; repeat split; viakeep Hkt | tauto].
+Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
+Lemma wp_pfx_set ks e (M : iProp Σ) n j k a m s pe Φ :
+  avoids ks pset_names = true -> avoids ks palloc_names = true -> avoids ks pmark_names = true ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  lookup (TAtom "pr.9") e = Some (WInt n) -> lookup (TAtom "pr.39") e = Some (WInt a) ->
+  lookup (TAtom "pr.30") e = Some (WInt m) -> lookup (TAtom "pr.21") e = Some (WPtr s) ->
+  lookup (TAtom "pr.42") e = Some (WInt (Z.of_nat j)) -> lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) ->
+  lookup (TAtom "v14") e = Some (WInt pe) -> lookup (TAtom "v90") e = Some (WInt 0) ->
+  Z.of_nat j < n -> Z.of_nat k < n -> n < 2 ^ 31 -> (a = 0 \/ a = 1) -> (m = 0 \/ (m = 1 /\ s <> null)) ->
+  0 <= pe < 2 ^ 32 ->
+  amb_set n s -∗ M -∗
+  (∀ e' P a' m' s', ⌜keeps ks e e' /\ pfx_out P e' a' m' s' /\ (a' = 0 \/ a' = 1) /\ (m' = 0 \/ (m' = 1 /\ s' <> null))⌝ -∗
+     amb_set n s' -∗ M -∗
+     WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L126") (Some (TAtom "L155")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros Hks Hksa Hksm Hcut.
+  exact (wp_pfx_set_with ks e M n j k a m s pe Φ Hks Hksa Hksm (getopt_cutoff_rule_with_any w0 registry ge M Hcut)).
+Qed.
+
+(** The same holds when the cutoff borrows a resource G of its own,
+    which the caller carries beside M and gets back. *)
+Lemma wp_pfx_set_sep ks e (M G : iProp Σ) n j k a m s pe Φ :
+  avoids ks pset_names = true -> avoids ks palloc_names = true -> avoids ks pmark_names = true ->
+  getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  lookup (TAtom "pr.9") e = Some (WInt n) -> lookup (TAtom "pr.39") e = Some (WInt a) ->
+  lookup (TAtom "pr.30") e = Some (WInt m) -> lookup (TAtom "pr.21") e = Some (WPtr s) ->
+  lookup (TAtom "pr.42") e = Some (WInt (Z.of_nat j)) -> lookup (TAtom "pr.13") e = Some (WInt (Z.of_nat k)) ->
+  lookup (TAtom "v14") e = Some (WInt pe) -> lookup (TAtom "v90") e = Some (WInt 0) ->
+  Z.of_nat j < n -> Z.of_nat k < n -> n < 2 ^ 31 -> (a = 0 \/ a = 1) -> (m = 0 \/ (m = 1 /\ s <> null)) ->
+  0 <= pe < 2 ^ 32 ->
+  amb_set n s -∗ M -∗ G -∗
+  (∀ e' P a' m' s', ⌜keeps ks e e' /\ pfx_out P e' a' m' s' /\ (a' = 0 \/ a' = 1) /\ (m' = 0 \/ (m' = 1 /\ s' <> null))⌝ -∗
+     amb_set n s' -∗ M -∗ G -∗
+     WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L126") (Some (TAtom "L155")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros Hks Hksa Hksm Hcut Hmal Hset H9 H39 H30 H21 H42 H13 H14 H90 Hj Hk Hn Ha Hm Hpe. iIntros "Hs HM HG HK".
+  iApply (wp_pfx_set_with ks e (M ∗ G) n j k a m s pe with "Hs [$HM $HG] [HK]");
+    [exact Hks | exact Hksa | exact Hksm | apply getopt_cutoff_rule_with_sep, Hcut | apply getopt_malloc_rule_sep, Hmal
+    | exact Hset | exact H9 | exact H39 | exact H30 | exact H21 | exact H42 | exact H13 | exact H14 | exact H90
+    | exact Hj | exact Hk | exact Hn | exact Ha | exact Hm | exact Hpe |].
+  iIntros (e' P a' m' s' Hp) "Hs [HM HG]". iApply ("HK" with "[//] Hs HM HG").
 Qed.
 
 End set.
