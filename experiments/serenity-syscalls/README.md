@@ -21,9 +21,10 @@ when compiling with Fil-C:
 
 Everything here was run against SerenityOS at
 [`1a00c247`](https://github.com/SerenityOS/serenity/commit/1a00c247b06730267fd6b0dc9f700a435c3e66b4)
-and filnix's `filcc` (clang 20.1.8, Fil-C 0.687). `./check.sh` reproduces all of
-it from a fresh clone in a few minutes; most of the time goes to building
-libpizlo.
+and filnix's `filcc` (clang 20.1.8, Fil-C 0.687). Code that is not pizlonated,
+such as libpizlo's core and Serenity itself, builds with Nixpkgs' clang 23.1.3,
+which has Serenity's driver upstream. `./check.sh` reproduces all of it from a
+fresh clone in a few minutes; most of the time goes to building libpizlo.
 
 ## What is here
 
@@ -43,7 +44,9 @@ libpizlo.
 | `libpizlo/split_zsys.py` | moves libpizlo's Linux syscall layer out of `filc_runtime.c` into its own backend file |
 | `libpizlo/libpizlo-split.nix`, `libpizlo/syscall_smoke.c` | builds the split libpizlo for Linux and compares it with the stock one |
 | `libpizlo/serenity-core.sh` | compiles the split core for `x86_64-pc-serenity` and sorts what it still needs |
-| `check.sh` | runs all of the above from a fresh clone |
+| `toolchain/serenity-clang23.sh` | builds a Serenity cross toolchain from Nixpkgs' clang 23, then Serenity itself, and boots it in QEMU |
+| `toolchain/smoke.sh` | the script the booted system runs on its serial console |
+| `check.sh` | runs all of the above from a fresh clone, except the toolchain script |
 
 ## Results
 
@@ -257,8 +260,59 @@ and link into one shared object. It has 407 undefined symbols:
   signals, mmap, `dlopen` and the `long double` math functions;
 - 3 are compiler-rt's CPU feature symbols (`__cpu_model` and two others).
 
-So the core needs nothing from the lower libc that Serenity lacks. What remains
-is the backend itself.
+So the core needs nothing from the lower libc that Serenity lacks. Linking it
+with `--no-undefined` against the `libc.so` and `libsystem.so` that the clang 23
+toolchain builds confirms this: exactly the 313 natives stay unresolved, and
+nothing else. What remains is the backend itself.
+
+## A Serenity toolchain from Nixpkgs clang 23
+
+Serenity's `Toolchain/BuildClang.sh` builds a whole LLVM at a pinned commit of
+LLVM main (24.0.0git) with six patches. Clang has had a SerenityOS driver
+upstream since LLVM commit `934f795064`, which is in release 23 and not in 22,
+so the cross compiler no longer needs patching. Clang 23 defines `__serenity__`
+and `__unix__` for `x86_64-pc-serenity`, and links with `ld.lld` against
+`/usr/lib/Loader.so`, `crt0.o` and `-lc`. Clang 20, 21 and 22 parse the triple
+but know nothing else about it; for linking they fall back to `/usr/bin/gcc`.
+
+`toolchain/serenity-clang23.sh` takes clang, lld and the LLVM tools for 23.1.3
+from Nixpkgs' binary cache and lays them out as `Toolchain/Local/clang`, where
+Serenity's CMake toolchain file looks. It builds only the Serenity target's
+runtimes, which Nixpkgs does not have:
+
+- compiler-rt's builtins and crt files from 23.1.3, to match the compiler;
+- libunwind, libc++abi and libc++ from the LLVM commit Serenity pins, with
+  Serenity's libc++ patch (0005). The patch does not apply cleanly to 23.1.3's
+  locale code, and libc++ supports being built by the latest released clang.
+
+Serenity's other five LLVM patches are not needed. Two build LLVM to run on
+Serenity, one adds `/usr/local` to the driver's search paths, one enables
+profiling and one is for RISC-V.
+
+The script has to work around four things:
+
+- Clang finds libc++ headers, runtime libraries and `ld.lld` relative to its
+  own binary, which lives in the Nix store. The wrappers run clang through a
+  symlink in `Toolchain/Local/clang/bin` with `-no-canonical-prefixes`, and give
+  it a writable copy of its resource directory.
+- Serenity's LibC links `libc++.a` into `libc.so`, so the runtimes have to be
+  built with `-fPIC`; otherwise `ld.lld` rejects local-exec TLS relocations.
+- Serenity's top-level `CMakeLists.txt` refuses any compiler but the exact LLVM
+  commit it pins. The script edits the expected version to 23.1.3.
+- The disk image script loop-mounts the image as root, and `sudo` drops `PATH`,
+  so the script runs it under `sudo env PATH=...`.
+
+The runtimes take about a minute on 16 cores. With them, Serenity builds all
+6,076 targets of its default build, kernel included, without a failure. The
+disk image boots headless in QEMU without KVM, in about four seconds of guest
+time. In self-test mode it runs `smoke.sh`, which ran `true`, `echo`, `cat`,
+`ls`, `expr`, LibJS and the AK `TestVector` and `TestString` programs, all
+passing, and then shut the machine down.
+
+Fil-C's clang is still LLVM 20 and has no Serenity target. The Fil-C parts of
+the spike therefore compile with `-c` and set `__serenity__` themselves. A
+Fil-C on LLVM 23 would bring the driver along; until then, a backport of
+`934f795064` is the smaller change.
 
 ## Notes for the driver work (step 4)
 
@@ -284,7 +338,7 @@ is the backend itself.
    table and returning `ENOSYS` for unknown numbers.
 3. Report the `setregid` bug upstream.
 4. Write `filc_zsys_serenity.c`, starting with the natives a static `true`
-   needs. Then build libpizlo with Serenity's toolchain against a normally
+   needs. Then build libpizlo with the clang 23 toolchain against a normally
    compiled Serenity LibC under a renamed library file. Its symbols keep their
    ordinary names, since the compiler already prefixes the pizlonated side with
    `pizlonated_`. Add the `x86_64-pc-serenity` triple to the filcc driver, and

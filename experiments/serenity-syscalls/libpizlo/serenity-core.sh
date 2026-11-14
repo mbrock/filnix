@@ -9,22 +9,28 @@
 # object, and sorts its undefined symbols into syscall natives still to write,
 # functions Serenity's LibC implements, and anything else.
 #
-# Usage: serenity-core.sh SERENITY_CHECKOUT WORKDIR
+# Given a Serenity build directory made by toolchain/serenity-clang23.sh, it
+# also links the core against that build's libc.so, libsystem.so and
+# compiler-rt with --no-undefined, which leaves exactly the symbols nothing on
+# Serenity provides yet.
+#
+# Usage: serenity-core.sh SERENITY_CHECKOUT WORKDIR [SERENITY_BUILD_DIR]
 set -euo pipefail
 
 S=$1
 work=$2
+sbuild=${3:-}
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(git -C "$here" rev-parse --show-toplevel)
 nix() { command nix --extra-experimental-features 'nix-command flakes' "$@"; }
 
-libpas=$(nix eval --raw "$repo#filcc.sources.libpas-src")
+libpas=$(nix eval --raw "${FILNIX:-$repo}#filcc.sources.libpas-src")
 paths=$(nix build --no-link --print-out-paths --inputs-from "$repo" \
-  nixpkgs#llvmPackages_20.clang-unwrapped nixpkgs#llvmPackages_20.clang-unwrapped.lib \
-  nixpkgs#binutils-unwrapped nixpkgs#ruby)
+  nixpkgs#llvmPackages_23.clang-unwrapped nixpkgs#llvmPackages_23.clang-unwrapped.lib \
+  nixpkgs#llvmPackages_23.lld nixpkgs#ruby)
 clang=$(grep -E -- '-clang-[0-9.]+$' <<<"$paths")/bin/clang
-res=$(grep -E -- '-clang-[0-9.]+-lib$' <<<"$paths")/lib/clang/20
-ld=$(grep -E -- '-binutils-[0-9.]+$' <<<"$paths")/bin/ld.bfd
+res=$(grep -E -- '-clang-[0-9.]+-lib$' <<<"$paths")/lib/clang/23
+ld=$(grep -E -- '-lld-[0-9.]+$' <<<"$paths")/bin/ld.lld
 ruby=$(grep -E -- '-ruby-' <<<"$paths")/bin/ruby
 
 rm -rf "$work/libpas" "$work/obj"
@@ -44,7 +50,7 @@ failed=0
 for f in $srcs; do
   if ! "$clang" -resource-dir "$res" --target=x86_64-pc-serenity -fPIC -pthread -nostdinc \
       -isystem "$res/include" -isystem "$S/Userland/Libraries/LibC" -isystem ../filc/include \
-      -I"$S" -I"$S/Userland/Libraries" -D__serenity__ -D__unix__ \
+      -I"$S" -I"$S/Userland/Libraries" \
       -g -O3 -W -Werror -fno-strict-aliasing -DPAS_FILC=1 \
       -c "$f" -o "$work/obj/$(basename "$f" .c).o" 2>"$work/err.log"; then
     failed=$((failed + 1))
@@ -74,3 +80,13 @@ while read -r sym; do
   esac
 done <"$work/undefined.txt"
 echo "undefined: $(wc -l <"$work/undefined.txt") = $natives syscall natives for the Serenity backend + $libc implemented by Serenity LibC + other:${other:- none}"
+
+if [ -n "$sbuild" ]; then
+  tc=$(cd "$sbuild/../../Toolchain/Local/clang" && pwd)
+  "$tc/bin/ld.lld" -shared --no-undefined --error-limit=0 -o "$work/libpizlo-serenity-linked.so" "$work"/obj/*.o \
+    "$sbuild/Userland/Libraries/LibC/libc.so" "$sbuild/Userland/Libraries/LibSystem/libsystem.so" \
+    "$tc/lib/clang/23/lib/x86_64-unknown-serenity/libclang_rt.builtins.a" 2>&1 |
+    sed -n 's/^ld.lld: error: undefined symbol: //p' | sort -u >"$work/unresolved.txt" || true
+  echo "linked against $sbuild: $(wc -l <"$work/unresolved.txt") unresolved," \
+    "$(grep -vc '^filc_native_zsys_' "$work/unresolved.txt" || true) of them not syscall natives"
+fi

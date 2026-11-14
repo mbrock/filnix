@@ -22,6 +22,10 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(git -C "$here" rev-parse --show-toplevel)
+# The flake whose filcc the Fil-C steps use. It defaults to this checkout; set
+# FILNIX to another filnix checkout when this one's filcc is not in the binary
+# cache yet. Serenity's clang 23 always comes from this checkout's Nixpkgs.
+export FILNIX=${FILNIX:-$repo}
 work=${WORK:-$(mktemp -d)}
 SERENITY_REV=1a00c247b06730267fd6b0dc9f700a435c3e66b4
 S=${SERENITY:-$work/serenity}
@@ -41,10 +45,10 @@ python3 "$here/gen.py" "$S" "$here/generated"
 
 # Fil-C's compiler pieces, without the filnix wrappers that add glibc headers.
 nix() { command nix --extra-experimental-features 'nix-command flakes' "$@"; }
-filc=$(nix eval --raw "$repo#filcc.components.outPath")
-filc0=$(nix eval --raw "$repo#filcc.components.filc0")
-libcxx=$(nix eval --raw "$repo#filcc.components.filc-libcxx")
-nix build --no-link "$repo#filcc.components"
+filc=$(nix eval --raw "$FILNIX#filcc.components.outPath")
+filc0=$(nix eval --raw "$FILNIX#filcc.components.filc0")
+libcxx=$(nix eval --raw "$FILNIX#filcc.components.filc-libcxx")
+nix build --no-link "$FILNIX#filcc.components"
 res=$(grep -o -- '-resource-dir [^ ]*' "$filc/bin/clang++" | cut -d' ' -f2)
 
 # Fil-C's driver adds -internal-isystem /usr/include for its Linux target
@@ -104,10 +108,11 @@ for sc in mmap mremap futex create_thread set_mmap_name ptrace; do
   grep -o 'static assertion failed: .*' "$work/refused.log" | sed 's/static assertion failed: //' | sort -u | paste -sd';' -
 done
 
-cxx=$(nix build --no-link --print-out-paths "$repo#filcc")/bin/clang++
+cxx=$(nix build --no-link --print-out-paths "$FILNIX#filcc")/bin/clang++
 
 step "libpizlo with its Linux syscall layer split out: same behavior on Linux"
-split=$(nix build --impure --no-link --print-out-paths -f "$here/libpizlo/libpizlo-split.nix")
+split=$(nix build --impure --no-link --print-out-paths -f "$here/libpizlo/libpizlo-split.nix" \
+  --arg flake "builtins.getFlake \"$FILNIX\"")
 "${cxx%++}" -O1 "$here/libpizlo/syscall_smoke.c" -o "$work/smoke" -lpthread
 "$work/smoke" >"$work/smoke-stock.txt"
 LD_LIBRARY_PATH=$split/lib "$work/smoke" >"$work/smoke-split.txt"
@@ -115,11 +120,11 @@ diff "$work/smoke-stock.txt" "$work/smoke-split.txt"
 echo "stock and split agree on $(wc -l <"$work/smoke-split.txt") checks"
 
 step "libpizlo core built for x86_64-pc-serenity"
-"$here/libpizlo/serenity-core.sh" "$S" "$work/serenity-core"
+"$here/libpizlo/serenity-core.sh" "$S" "$work/serenity-core" ${SERENITY_BUILD:-}
 
 step "building the split libpizlo with the spike natives"
 spike=$(nix build --impure --no-link --print-out-paths --expr "
-  let flake = builtins.getFlake \"$repo\"; in
+  let flake = builtins.getFlake \"$FILNIX\"; in
   import $here/libpizlo/libpizlo-split.nix {
     inherit flake;
     libpizlo = import $here/libpizlo-spike.nix { filcc = flake.packages.x86_64-linux.filcc; };
