@@ -55,10 +55,13 @@ initrd to hand over, but the Fil-C 256 PID 1 then died at once after
 switch-root, silently: systemd points its stdio at /dev/null before the
 runtime prints its panic.
 
-So the port now builds Nixpkgs' own 260.4, with
-[patches/systemd-260-filc.patch](../patches/systemd-260-filc.patch): upstream
+So the port now builds Nixpkgs' own systemd, with
+[patches/systemd-262-filc.patch](../patches/systemd-262-filc.patch): upstream
 Fil-C's changes rebased (version script, signal reset, bus error maps
-without ELF sections), plus what 260 needs. Its header lists each change.
+without ELF sections), plus what 260 and 262 need. Its header lists each
+change. Systemd 262 (Nixpkgs 26.11) keeps its command-line verbs and
+options in ELF sections, which Fil-C cannot link; the patch does not
+handle that yet.
 The ones that matter at run time:
 
 - `pidfd_spawn()` in the Fil-C glibc stops the program

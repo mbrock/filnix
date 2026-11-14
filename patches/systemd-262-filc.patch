@@ -1,5 +1,5 @@
-systemd 260 for Fil-C. Rebased from upstream Fil-C's systemd 256.4 patch
-(ports/patch/systemd-256.4.patch), plus what 260 needs:
+systemd 262 for Fil-C. Rebased from upstream Fil-C's systemd 256.4 patch
+(ports/patch/systemd-256.4.patch), plus what 260 needs, rebased onto 262:
 
 - meson.build: link with --version-script= (upstream), and pass the
   src/include/override headers with -I: the Fil-C driver puts
@@ -11,10 +11,12 @@ systemd 260 for Fil-C. Rebased from upstream Fil-C's systemd 256.4 patch
   SIGBUS on a truncated mmap'd journal kills the reader instead.
 - process-util.c: no pidfd_spawn(); the Fil-C glibc's asserts on it. Plain
   posix_spawn() works.
-- src/libc/*.c: Fil-C's syscall() stops the program on a number it does
-  not support; return ENOSYS instead for the raw wrappers (bpf, ioprio,
-  kcmp, open_tree_attr, pivot_root, quotactl_fd, setxattrat,
-  removexattrat, rt_tgsigqueueinfo), where systemd has fallbacks.
+- src/libc: Fil-C's syscall() stops the program on a number it does not
+  support. 262 generates the raw wrappers with DEFINE_SYSCALL_SHIM; the
+  ones where systemd has fallbacks (bpf, ioprio, kcmp, open_tree_attr,
+  pivot_root, quotactl_fd, setxattrat, removexattrat, rt_tgsigqueueinfo)
+  use DEFINE_FILC_ENOSYS_SYSCALL_SHIM, which under Fil-C reports ENOSYS
+  when libc lacks the symbol instead of calling syscall().
 - capability-util.c, reboot-util.c, raw-clone.c: the same for the raw
   capget/capset, reboot and clone calls, which PID 1 makes. capget and
   capset go through glibc's wrappers; reboot through glibc's reboot()
@@ -32,11 +34,16 @@ systemd 260 for Fil-C. Rebased from upstream Fil-C's systemd 256.4 patch
 - bus-error.c/.h: look the bus error maps up in a static list instead of
   an ELF section (upstream's approach, simplified).
 
+Not handled: 262's verb and option tables (src/shared/verbs.h, options.h)
+are __start_/__stop_ ELF sections, which Fil-C cannot link
+(docs/filc-findings.md), and the options are block-scope statics inside
+each parse_argv(), so constructors cannot register them.
+
 diff --git a/meson.build b/meson.build
-index 706e961..fceb0bc 100644
+index 2db5138..dcd0a8c 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -2046,9 +2046,11 @@ dbus_programs = []
+@@ -1842,9 +1842,11 @@ dbus_programs = []
  boot_stubs = []
  
  # This is similar to system_includes below, but for passing custom_target().
@@ -50,7 +57,7 @@ index 706e961..fceb0bc 100644
          '-isystem', meson.project_build_root()  / 'src/include/uapi',
          '-isystem', meson.project_source_root() / 'src/include/uapi',
  ]
-@@ -2060,9 +2062,9 @@ system_includes = [
+@@ -1856,9 +1858,9 @@ system_includes = [
                  # and meson puts the directories in the reversed order. Hence, a directory with a lower
                  # priority must be listed earlier.
                  'src/include/uapi',
@@ -60,8 +67,8 @@ index 706e961..fceb0bc 100644
 +        include_directories('src/include/override'),
  ]
  
- if get_option('libc') == 'musl'
-@@ -2119,7 +2121,7 @@ libsystemd = shared_library(
+ libc_include_dir = 'src/include' / get_option('libc')
+@@ -1921,7 +1923,7 @@ libsystemd = shared_library(
          link_args : ['-shared',
                       # Make sure our library is never deleted from memory, so that our open logging fds don't leak on dlopen/dlclose cycles.
                       '-z', 'nodelete',
@@ -70,7 +77,7 @@ index 706e961..fceb0bc 100644
          link_with : [libc_wrapper_static,
                       libbasic_static],
          link_whole : [libsystemd_static],
-@@ -2166,7 +2168,7 @@ libudev = shared_library(
+@@ -1967,7 +1969,7 @@ libudev = shared_library(
          include_directories : includes,
          implicit_include_directories : false,
          link_args : ['-shared',
@@ -78,8 +85,8 @@ index 706e961..fceb0bc 100644
 +                     '--version-script=' + libudev_sym_path],
          link_with : [libsystemd_static],
          link_whole : libudev_basic,
-         dependencies : [threads,
-@@ -2680,7 +2682,7 @@ foreach dict : modules
+         dependencies : [userspace],
+@@ -2555,7 +2557,7 @@ foreach dict : modules
          kwargs += {
                  'link_args' : [
                          kwargs.get('link_args', []),
@@ -89,7 +96,7 @@ index 706e961..fceb0bc 100644
                  'link_depends' : [
                          kwargs.get('link_depends', []),
 diff --git a/src/basic/build-path.c b/src/basic/build-path.c
-index ddbaf4e..5530c99 100644
+index 44e04d9..bbbba67 100644
 --- a/src/basic/build-path.c
 +++ b/src/basic/build-path.c
 @@ -77,6 +77,12 @@ static int get_runpath(const char **ret) {
@@ -106,7 +113,7 @@ index ddbaf4e..5530c99 100644
          if (phdr == 0)
                  return -ENOTRECOVERABLE;
 diff --git a/src/basic/capability-util.c b/src/basic/capability-util.c
-index 29434dc..5ca5e64 100644
+index 18942d4..d16f6ca 100644
 --- a/src/basic/capability-util.c
 +++ b/src/basic/capability-util.c
 @@ -20,6 +20,18 @@
@@ -147,10 +154,10 @@ index 29434dc..5ca5e64 100644
  
  unsigned cap_last_cap(void) {
 diff --git a/src/basic/process-util.c b/src/basic/process-util.c
-index e3d6b39..c7b3324 100644
+index 9790e4b..dfb557a 100644
 --- a/src/basic/process-util.c
 +++ b/src/basic/process-util.c
-@@ -55,6 +55,13 @@
+@@ -56,6 +56,13 @@
  #include "time-util.h"
  #include "user-util.h"
  
@@ -164,7 +171,7 @@ index e3d6b39..c7b3324 100644
  /* The kernel limits userspace processes to TASK_COMM_LEN (16 bytes), but allows higher values for its own
   * workers, e.g. "kworker/u9:3-kcryptd/253:0". Let's pick a fixed smallish limit that will work for the kernel.
   */
-@@ -1330,6 +1337,12 @@ pid_t clone_with_nested_stack(int (*fn)(void *), int flags, void *userdata) {
+@@ -1398,6 +1405,12 @@ pid_t clone_with_nested_stack(int (*fn)(void *), int flags, void *userdata) {
           * forwards we'll allocate one more and place the stack address in the middle. Except that we also
           * want it page aligned, hence we'll allocate one page more. Makes 3. */
  
@@ -178,7 +185,7 @@ index e3d6b39..c7b3324 100644
          mystack = alloca(ps*3);
          mystack = (uint8_t*) mystack + ps; /* move pointer one page ahead since stacks usually grow backwards */
 diff --git a/src/basic/random-util.c b/src/basic/random-util.c
-index d05be6f..04eb747 100644
+index 0a56223..d3379e0 100644
 --- a/src/basic/random-util.c
 +++ b/src/basic/random-util.c
 @@ -46,7 +46,11 @@ static void fallback_random_bytes(void *p, size_t n) {
@@ -260,7 +267,7 @@ index a530476..142fdcf 100644
  
          if (n_installed == 1)
 diff --git a/src/basic/signal-util.c b/src/basic/signal-util.c
-index ae7bfa6..8c2e909 100644
+index aceafd3..91082b5 100644
 --- a/src/basic/signal-util.c
 +++ b/src/basic/signal-util.c
 @@ -1,5 +1,6 @@
@@ -282,215 +289,144 @@ index ae7bfa6..8c2e909 100644
                   * EINVAL for them. */
                  r = RET_NERRNO(sigaction(sig, &sigaction_default, NULL));
 diff --git a/src/libc/bpf.c b/src/libc/bpf.c
-index 4a7498e..339bff2 100644
+index d87dcb1..2a9e2a0 100644
 --- a/src/libc/bpf.c
 +++ b/src/libc/bpf.c
-@@ -1,11 +1,18 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -4,7 +4,7 @@
  
-+#include <errno.h>
- #include <sys/bpf.h>
- #include <sys/syscall.h>
- #include <unistd.h>
+ #include "libc-shim.h"
  
- #if !HAVE_BPF
- int missing_bpf(int cmd, union bpf_attr *attr, size_t size) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_bpf, cmd, attr, size);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(bpf, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(bpf, int,
+                     int, cmd,
+                     union bpf_attr *, attr,
+                     size_t, size)
 diff --git a/src/libc/ioprio.c b/src/libc/ioprio.c
-index 5bb6404..71fcd39 100644
+index 0536931..b019219 100644
 --- a/src/libc/ioprio.c
 +++ b/src/libc/ioprio.c
-@@ -1,17 +1,30 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -4,11 +4,11 @@
  
-+#include <errno.h>
- #include <sys/ioprio.h>
- #include <sys/syscall.h>
- #include <unistd.h>
+ #include "libc-shim.h"
  
- #if !HAVE_IOPRIO_GET
- int missing_ioprio_get(int which, int who) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_ioprio_get, which, who);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(ioprio_get, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(ioprio_get, int,
+                     int, which,
+                     int, who)
  
- #if !HAVE_IOPRIO_SET
- int missing_ioprio_set(int which, int who, int ioprio) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_ioprio_set, which, who, ioprio);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(ioprio_set, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(ioprio_set, int,
+                     int, which,
+                     int, who,
+                     int, ioprio)
 diff --git a/src/libc/kcmp.c b/src/libc/kcmp.c
-index aafff99..c89fd7c 100644
+index 0f73f85..f553cc3 100644
 --- a/src/libc/kcmp.c
 +++ b/src/libc/kcmp.c
-@@ -1,11 +1,18 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -4,7 +4,7 @@
  
-+#include <errno.h>
- #include <sys/kcmp.h>
- #include <sys/syscall.h>
- #include <unistd.h>
+ #include "libc-shim.h"
  
- #if !HAVE_KCMP
- int missing_kcmp(pid_t pid1, pid_t pid2, int type, unsigned long idx1, unsigned long idx2) {
+-DEFINE_SYSCALL_SHIM(kcmp, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(kcmp, int,
+                     pid_t, pid1,
+                     pid_t, pid2,
+                     int, type,
+diff --git a/src/libc/libc-shim.h b/src/libc/libc-shim.h
+index 4377b71..8e77def 100644
+--- a/src/libc/libc-shim.h
++++ b/src/libc/libc-shim.h
+@@ -71,6 +71,15 @@
+                 return syscall(__NR_##func, _SHIM_NAME(__VA_ARGS__));                                \
+         }
+ 
++/* Fil-C's syscall() stops the program on a number it does not support. For the raw wrappers
++ * where systemd has fallbacks, report ENOSYS when libc lacks the symbol instead, as
++ * DEFINE_LIBC_ERRNO_SHIM does; elsewhere this is DEFINE_SYSCALL_SHIM. */
 +#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
++#define DEFINE_FILC_ENOSYS_SYSCALL_SHIM DEFINE_LIBC_ERRNO_SHIM
++#else
++#define DEFINE_FILC_ENOSYS_SYSCALL_SHIM DEFINE_SYSCALL_SHIM
 +#endif
-         return syscall(__NR_kcmp, pid1, pid2, type, idx1, idx2);
- }
- #endif
++
+ /* Like DEFINE_SYSCALL_SHIM but for libc helpers that have no corresponding syscall and report errors
+  * by returning the positive errno value directly (posix_spawn-family convention). If the libc symbol
+  * is missing at runtime, ENOSYS is returned. */
 diff --git a/src/libc/mount.c b/src/libc/mount.c
-index 1d324ef..828a8b8 100644
+index 3e626e8..c4b1be4 100644
 --- a/src/libc/mount.c
 +++ b/src/libc/mount.c
-@@ -1,5 +1,6 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -39,7 +39,7 @@ DEFINE_SYSCALL_SHIM(mount_setattr, int,
+                     struct mount_attr *, attr,
+                     size_t, size)
  
-+#include <errno.h>
- #include <sys/mount.h>
- #include <sys/syscall.h>
- #include <unistd.h>
-@@ -42,6 +43,12 @@ int missing_mount_setattr(int dfd, const char *path, unsigned flags, struct moun
- 
- #if !HAVE_OPEN_TREE_ATTR
- int missing_open_tree_attr(int dfd, const char *filename, unsigned int flags, struct mount_attr *attr, size_t size) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_open_tree_attr, dfd, filename, flags, attr, size);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(open_tree_attr, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(open_tree_attr, int,
+                     int, dfd,
+                     const char *, filename,
+                     unsigned int, flags,
 diff --git a/src/libc/quota.c b/src/libc/quota.c
-index 19695df..15e51c9 100644
+index 08a7e5b..e783b0b 100644
 --- a/src/libc/quota.c
 +++ b/src/libc/quota.c
-@@ -1,11 +1,18 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -4,7 +4,7 @@
  
-+#include <errno.h>
- #include <sys/quota.h>
- #include <sys/syscall.h>
- #include <unistd.h>
+ #include "libc-shim.h"
  
- #if !HAVE_QUOTACTL_FD
- int missing_quotactl_fd(int fd, int cmd, int id, void *addr) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_quotactl_fd, fd, cmd, id, addr);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(quotactl_fd, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(quotactl_fd, int,
+                     int, fd,
+                     int, cmd,
+                     int, id,
 diff --git a/src/libc/signal.c b/src/libc/signal.c
-index 1908331..9814d41 100644
+index 9370491..fce2e75 100644
 --- a/src/libc/signal.c
 +++ b/src/libc/signal.c
-@@ -1,11 +1,18 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -4,7 +4,7 @@
  
-+#include <errno.h>
- #include <signal.h>
- #include <sys/syscall.h>
- #include <unistd.h>
+ #include "libc-shim.h"
  
- #if !HAVE_RT_TGSIGQUEUEINFO
- int missing_rt_tgsigqueueinfo(pid_t tgid, pid_t tid, int sig, siginfo_t *info) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_rt_tgsigqueueinfo, tgid, tid, sig, info);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(rt_tgsigqueueinfo, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(rt_tgsigqueueinfo, int,
+                     pid_t, tgid,
+                     pid_t, tid,
+                     int, sig,
 diff --git a/src/libc/unistd.c b/src/libc/unistd.c
-index 8172863..1271bf8 100644
+index 22fb704..1b0dee4 100644
 --- a/src/libc/unistd.c
 +++ b/src/libc/unistd.c
-@@ -1,10 +1,17 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -2,6 +2,6 @@
  
-+#include <errno.h>
- #include <sys/syscall.h>
- #include <unistd.h>
+ #include "libc-shim.h"
  
- #if !HAVE_PIVOT_ROOT
- int missing_pivot_root(const char *new_root, const char *put_old) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_pivot_root, new_root, put_old);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(pivot_root, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(pivot_root, int,
+                     const char *, new_root,
+                     const char *, put_old)
 diff --git a/src/libc/xattr.c b/src/libc/xattr.c
-index 68fa97a..fdfde0a 100644
+index 668faa7..bb83986 100644
 --- a/src/libc/xattr.c
 +++ b/src/libc/xattr.c
-@@ -1,17 +1,30 @@
- /* SPDX-License-Identifier: LGPL-2.1-or-later */
+@@ -4,7 +4,7 @@
  
-+#include <errno.h>
- #include <sys/syscall.h>
- #include <sys/xattr.h>
- #include <unistd.h>
+ #include "libc-shim.h"
  
- #if !HAVE_SETXATTRAT
- int missing_setxattrat(int fd, const char *path, int at_flags, const char *name, const struct xattr_args *args, size_t size) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_setxattrat, fd, path, at_flags, name, args, size);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(setxattrat, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(setxattrat, int,
+                     int, fd,
+                     const char *, path,
+                     int, at_flags,
+@@ -12,7 +12,7 @@ DEFINE_SYSCALL_SHIM(setxattrat, int,
+                     const struct xattr_args *, args,
+                     size_t, size)
  
- #if !HAVE_REMOVEXATTRAT
- int missing_removexattrat(int fd, const char *path, int at_flags, const char *name) {
-+#ifdef __FILC__
-+        /* Fil-C's syscall() aborts on syscalls it does not support ("filc user error: unsupported
-+         * syscall"), so report ENOSYS, which callers already handle, instead. */
-+        errno = ENOSYS;
-+        return -1;
-+#endif
-         return syscall(__NR_removexattrat, fd, path, at_flags, name);
- }
- #endif
+-DEFINE_SYSCALL_SHIM(removexattrat, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(removexattrat, int,
+                     int, fd,
+                     const char *, path,
+                     int, at_flags,
 diff --git a/src/libsystemd/sd-bus/bus-error.c b/src/libsystemd/sd-bus/bus-error.c
-index bc0164c..b405584 100644
+index bee843e..6f36950 100644
 --- a/src/libsystemd/sd-bus/bus-error.c
 +++ b/src/libsystemd/sd-bus/bus-error.c
 @@ -3,6 +3,7 @@
@@ -517,26 +453,19 @@ index bc0164c..b405584 100644
  
  /* Additional maps registered with sd_bus_error_add_map() are in this
   * NULL terminated array */
-@@ -83,23 +87,12 @@ static int bus_error_name_to_errno(const char *name) {
-                                 }
-                         }
+@@ -85,16 +89,12 @@ static int bus_error_name_to_errno(const char *name) {
  
--        const sd_bus_error_map *elf_map = ALIGN_PTR(__start_SYSTEMD_BUS_ERROR_MAP);
--        while (elf_map < __stop_SYSTEMD_BUS_ERROR_MAP) {
+         assert_cc(sizeof(sd_bus_error_map) % sizeof(void*) == 0);
+ 
+-        for (const sd_bus_error_map *m = __start_SYSTEMD_BUS_ERROR_MAP; m < __stop_SYSTEMD_BUS_ERROR_MAP; m++) {
 -                /* For magic ELF error maps, the end marker might appear in the middle of things, since
--                 * multiple maps might appear in the same section. Hence, let's skip over it, but realign
--                 * the pointer to the next 8 byte boundary, which is the selected alignment for the arrays. */
--                if (elf_map->code == BUS_ERROR_MAP_END_MARKER) {
--                        elf_map = ALIGN_PTR(elf_map + 1);
--                        continue;
--                }
+-                 * multiple maps might appear in the same section. Skip over it. */
 -
--                if (streq(elf_map->name, name)) {
--                        assert(elf_map->code > 0);
--                        return elf_map->code;
+-                if (m->code != BUS_ERROR_MAP_END_MARKER &&
+-                    streq(m->name, name)) {
+-                        assert(m->code > 0);
+-                        return m->code;
 -                }
--
--                elf_map++;
 -        }
 +        for (const sd_bus_error_map* const *map = builtin_error_maps; *map; map++)
 +                for (const sd_bus_error_map *m = *map; m->code != BUS_ERROR_MAP_END_MARKER; m++)
@@ -548,15 +477,14 @@ index bc0164c..b405584 100644
          return EIO;
  }
 diff --git a/src/libsystemd/sd-bus/bus-error.h b/src/libsystemd/sd-bus/bus-error.h
-index 038af86..959c64c 100644
+index 3d98de1..1f709e4 100644
 --- a/src/libsystemd/sd-bus/bus-error.h
 +++ b/src/libsystemd/sd-bus/bus-error.h
-@@ -35,18 +35,13 @@ const char* _bus_error_message(const sd_bus_error *e, int error, char buf[static
-  * warn for the unknown attribute, so just disable -Wattributes.
+@@ -34,17 +34,13 @@ const char* _bus_error_message(const sd_bus_error *e, int error, char buf[static
+  * discarded by ld --gc-sections -z start-stop-gc.
   */
  
 -#define BUS_ERROR_MAP_ELF_REGISTER                                      \
--        _Pragma("GCC diagnostic ignored \"-Wattributes\"")              \
 -        _section_("SYSTEMD_BUS_ERROR_MAP")                              \
 -        _used_                                                          \
 -        _retain_                                                        \
@@ -592,7 +520,7 @@ index 00cdd60..be56d6c 100644
  
          *ret_id = id128_digest(&data, sizeof(data));
 diff --git a/src/shared/reboot-util.c b/src/shared/reboot-util.c
-index 55ec6c0..2b9131c 100644
+index 758b7a2..1a859f6 100644
 --- a/src/shared/reboot-util.c
 +++ b/src/shared/reboot-util.c
 @@ -1,6 +1,7 @@
@@ -603,8 +531,8 @@ index 55ec6c0..2b9131c 100644
  #include <sys/syscall.h>
  #include <unistd.h>
  
-@@ -28,7 +29,18 @@
- #include "virt.h"
+@@ -53,7 +54,18 @@ assert_cc(sizeof(struct zboot_header) == 0x20);
+ assert_cc(offsetof(struct zboot_header, comp_type) == 0x18);
  
  int raw_reboot(int cmd, const void *arg) {
 +#ifdef __FILC__

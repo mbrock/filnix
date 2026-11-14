@@ -421,8 +421,9 @@ in
 
   (for pkgs.zlib [
     (pin "1.4" "sha256-At0Vl4NnenScBK290CtVuKK8x+BU9Rt2tUkZmpFq1YQ=")
-    # Included in 1.4; applying Nixpkgs' older fix would reverse it.
+    # Included in 1.4; applying Nixpkgs' older fixes would reverse them.
     (skipPatch "export-variable.patch")
+    (skipPatch "cve-2026-85091.patch")
     (patch ./ports/patch/zlib-1.4.patch)
   ])
 
@@ -620,7 +621,7 @@ in
   ])
 
   (for pkgs.libuv [
-    (patch ./ports/patch/libuv-1.52.1.patch)
+    (patch ./ports/patch/libuv-1.53.0.patch)
     (skipTests "one test failed")
   ])
 
@@ -3033,13 +3034,14 @@ in
   ])
 
   {
-    # Nixpkgs' own systemd (260); systemdMinimal and systemdLibs derive from
+    # Nixpkgs' own systemd (262); systemdMinimal and systemdLibs derive from
     # this port through .override, so all three get the same fixes.
-    # patches/systemd-260-filc.patch rebases upstream Fil-C's 256.4 patch
-    # (ports/patch/systemd-256.4.patch) and adds what 260 needs; its
-    # header lists each change.
+    # patches/systemd-262-filc.patch rebases upstream Fil-C's 256.4 patch
+    # (ports/patch/systemd-256.4.patch) and adds what 260 and 262 need; its
+    # header lists each change, and the verb and option tables it does not
+    # handle yet.
     systemd = for pkgs.systemd [
-      (patch ./patches/systemd-260-filc.patch)
+      (patch ./patches/systemd-262-filc.patch)
       (arg { withKexectools = false; })
       (arg { withLibseccomp = false; })
       # EFI/BPF/kexec emit kernel or firmware code, outside Fil-C userspace.
@@ -3487,6 +3489,21 @@ in
       withGui = false;
       withNativeCompiler = false;
     })
+    # Nixpkgs 26.11 has SWI-Prolog 10.0.2, which the port's patch does not
+    # fit; keep 9.2.9 and its postPatch (10's edits desktop/make_icns.sh).
+    (use (old: {
+      version = "9.2.9";
+      src = pkgs.fetchFromGitHub {
+        owner = "SWI-Prolog";
+        repo = "swipl";
+        tag = "V9.2.9";
+        hash = "sha256-M0stUwiD3Auz5OsmgVJFWg2RAswu42UUp8bafqZOC7A=";
+        fetchSubmodules = true;
+      };
+      postPatch = ''
+        echo "user:file_search_path(pack, '$out/lib/swipl/extra-pack')." >> boot/init.pl
+      '';
+    }))
     (patch ./patches/swi-prolog-9.2.9-filc.patch)
     (use (old: {
       buildInputs = builtins.filter (
