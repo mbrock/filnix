@@ -1,5 +1,5 @@
 {
-  "total": 236,
+  "total": 238,
   "files": {
     "StrlenBits.v": [
       "byte_cases"
@@ -137,6 +137,10 @@
     ],
     "getopt/GetoptLongUnrec.v": [
       "lmsg"
+    ],
+    "getopt/GetoptLongW.v": [
+      "w_vx",
+      "w_side"
     ],
     "getopt/GetoptOptArg.v": [
       "rawa"
