@@ -345,6 +345,7 @@ getopt/GetoptScanJoin.v
 getopt/GetoptEntryPre.v
 getopt/GetoptEntryCall.v
 getopt/GetoptLongCap.v
+getopt/GetoptShortCap.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v
