@@ -420,4 +420,5 @@ getopt/GetoptLongChoice.v
 getopt/GetoptLongSingle.v
 getopt/GetoptWOptSession.v
 GlibcTactics.v
+GlibcSym.v
 libio/LibioTactics.v

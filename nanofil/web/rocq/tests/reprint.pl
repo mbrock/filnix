@@ -257,6 +257,9 @@ pt(tmatch(K, Subject, Bs)) :-
     forall(member(tbr(Ps, T), Bs), ( write(" | "), pt_parts(Ps), write(" => "), pt(T) )), write(" end").
 pt(call(N, Ps)) :- format("~w ", [N]), pt_parts(Ps).
 pt(tlet(n(_, N), V, B)) :- format("(let ~w := ", [N]), pt(V), write(" in "), pt(B), write(")").
+pt(tletrec(n(_, N), Args, V, B)) :-
+    format("(let rec ~w ", [N]), names(Args), write(" := "), pt(V), write(" in "), pt(B), write(")").
+pt(teval(Ws, E)) :- write("eval "), atomic_list_concat(Ws, ' ', W), write(W), write(" in "), pr(E).
 pt(empty).
 
 pt_subject(goal) :- write("goal").

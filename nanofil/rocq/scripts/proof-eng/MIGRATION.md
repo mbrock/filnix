@@ -2,7 +2,7 @@
 
 This note is for someone who writes proofs in `nanofil/rocq/glibc/`. At cutover the output of the stages in this directory replaces the tree on `main`. Every file changes once. The audited endpoints keep their statements. This note lists what an author writes differently afterwards and how to convert a file that is not merged yet.
 
-The first three sections describe the first cutover, which is on `main`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes the second cutover, which adds stages 50 and 60. The last section says how the tree stays general in the runtime and what that asks of an author.
+The first three sections describe the first cutover, which is on `main`: flat files, the shared `keeps` definition and the one tactic library. The sections on the program context and on the memory-rule tactics describe the second cutover, which adds stages 50 and 60. The last section says how the tree stays general in the runtime and what that asks of an author.
 
 ## Converting an unmerged file
 
@@ -110,6 +110,40 @@ Specification predicates such as `overflow_spec` retain their parameters. Partia
 A linked program has one function table and one computed certificate. After editing a table, run `python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --refresh-tables TREE` and compile it again. The command generates the indexed instances from the rows; authors do not maintain a second list.
 
 The [README](README.md#regenerating-the-stage-50-evidence) gives the single regeneration command for the three packet files, which are build outputs rather than committed pages. Run it after merging main and review the resulting declaration list and types. `50-program.py --check TREE` regenerates evidence from the retained input, verifies the transformation, and compiles the adapters in bounded parallel shards. It preserves the reviewed old types of the forty intermediate audits and checks each runtime separately.
+
+## Memory rules have wrapper tactics (stage 60, second cutover)
+
+A load, a store or a read check applies one memory rule and then discharges the same side conditions each time: the instruction's shape, the value, the capability and the address arithmetic. Six tactics apply the rule and discharge those conditions. The proof names the ownership hypotheses and the one solver that differs between uses.
+
+Before, in `getopt/GetoptColon.v`:
+
+```coq
+iApply (wp_raw_load_pointer_dq with "Hl Hnext Hcc");
+  [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+iApply (wp_check_read_dq registry (os_wi w0) ge with "Hcl");
+  [reflexivity | vx | exact Hccap | arith | arith | arith |].
+iApply (wp_raw_load_sub_bytes_dq with "Hcl Hct");
+  [reflexivity | vx | reflexivity | apply extended_chr | exact Hccap | arith |].
+```
+
+After:
+
+```coq
+load_pointer_dq "Hl Hnext Hcc" by arith.
+check_read_dq "Hcl" by arith.
+load_bytes_dq "Hcl Hct" decode (apply extended_chr) by arith.
+```
+
+| Tactic | Rule | Library |
+| --- | --- | --- |
+| `load_pointer H by side` | `wp_raw_load_pointer` | `GlibcTactics.v` |
+| `load_pointer_dq H by side` | `wp_raw_load_pointer_dq` | `GlibcTactics.v` |
+| `store_pointer H by side preserving world` | `wp_raw_store_pointer` | `GlibcTactics.v` |
+| `check_read_dq H by side` | `wp_check_read_dq` | `libio/LibioTactics.v` |
+| `load_bytes_dq H decode d by side` | `wp_raw_load_sub_bytes_dq` | `libio/LibioTactics.v` |
+| `store_word H by side preserving world` | `wp_raw_store_w` | `libio/LibioTactics.v` |
+
+A wrapper leaves the rule's continuation as the one remaining goal, as the `iApply` did, so the `iNext` and `iIntros` that follow stay as they were. The stage converts an application only when its side conditions have the standard shape. An application with another solver in some position keeps its `iApply`, and a new proof may write either form.
 
 ## Proofs stay general in the runtime
 

@@ -32,6 +32,16 @@ test(existing_instances, [forall(member(Prefix, ["", "Local ", "#[global] "]))])
     string_codes(Text, Cs), rocq_syntax:rocq_parse_codes(Cs, Items, _),
     assertion(Items = [dir(_, ['Existing', 'Instance', program_heap])]).
 
+test(recursive_let_and_evaluation) :-
+    fence_dom(["Ltac count n := let rec walk x acc := lazymatch x with O => acc | S ?k => walk k constr:(S acc) end in let z := eval vm_compute in (n + 2) in walk z constr:(0)."], DOM),
+    assertion(sub_term(element(span, [class=kw], ['let rec']), DOM)),
+    assertion(sub_term(element(span, [class=kw], [eval]), DOM)),
+    assertion(sub_term(element(span, [class=kw], [lazymatch]), DOM)),
+    assertion((sub_term(element(div, Attrs, _), DOM), memberchk(class='clause rq-ltac', Attrs))),
+    text_of(DOM, Text),
+    assertion(sub_atom(Text, _, _, _, vm_compute)),
+    assertion((sub_term(element(span, As, _), DOM), memberchk('data-v'=acc, As))).
+
 test(match_in_let_value, [forall(member(Body,
     ["idtac K", "lazymatch type of I with ?Q => idtac K end"]))]) :-
     format(string(Tactic),

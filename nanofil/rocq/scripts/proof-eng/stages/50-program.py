@@ -1092,7 +1092,9 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
               'From Glibc Require Import GlibcProgram.',
               *['Require Import Glibc.' + f[:-2].replace('/', '.') + '.' for f in files]]
     record = '{| program_world := w; program_registry := r; program_ge := g; program_inv := inv; program_heap := heap |}'
-    reviewed = {(d['file'], d['name']): d for d in json.loads((HERE / 'check/audit-changes.json').read_text())['declarations']}
+    review = json.loads((HERE / 'check/audit-changes.json').read_text())
+    reviewed = {(d['file'], d['name']): d for d in review['declarations']}
+    refreshed_pins = False
     for i, c in enumerate(changes):
         rel, name = c['file'], c['name']
         rows.append(f'{c["kind"]}\t{rel}\t{name}')
@@ -1105,7 +1107,14 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
         approval = reviewed.get((rel, original))
         if approval:
             if normalized(tokens(old['type'])) != normalized(tokens(approval['before'])):
-                raise ValueError(f'50-program: reviewed original statement changed: {rel}:{original}')
+                if not os.environ.get('PE_REFRESH_AUDIT_PINS'):
+                    raise ValueError(f'50-program: reviewed original statement changed: {rel}:{original}')
+                # A landing on main changed this original statement after its
+                # review. The caller reviews each printed pair and commits the
+                # new pin; the adapters below are proved against the new type.
+                print(f'program: refreshed reviewed original statement: {rel}:{original}', flush=True)
+                approval['before'] = old['type']
+                refreshed_pins = True
             i = approval['reviewed_adapters'][0].removeprefix('program_old_to_new_')
         else:
             i = 'auto_' + str(i)
@@ -1146,6 +1155,8 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
         # Include unchanged dependencies, especially Fix: a different runtime
         # must not reuse evidence for this source boundary.
         rows.append(f'# output-sha256\t{rel}\t{source_digest(path)}')
+    if refreshed_pins:
+        (HERE / 'check/audit-changes.json').write_text(json.dumps(review, indent=2) + '\n')
     proof.write_text('\n\n'.join(proofs) + '\n')
     manifest.write_text('\n'.join(rows) + '\n')
     subprocess.run([sys.executable, str(HERE / 'check/expectations.py'), 'export', str(manifest), str(report_path)], check=True)
@@ -1177,6 +1188,13 @@ def prepare_evidence(tree: Path, refresh_review=False):
             subprocess.run([sys.executable, __file__, str(expected), '--source', str(before),
                             '--metadata', str(metadata_path)], env=env,
                            stdout=log, stderr=subprocess.STDOUT, check=True)
+            # apply.sh runs the later stages on the output of this one, and
+            # the tree under check is the result of all of them.
+            landed = {line.split('#')[0].strip() for line in (HERE / 'stages/landed.txt').read_text().splitlines()}
+            for stage in sorted((HERE / 'stages').glob('*.py')):
+                if stage.name > Path(__file__).name and stage.name not in landed:
+                    subprocess.run([sys.executable, '-I', str(stage), str(expected)], env=env,
+                                   stdout=log, stderr=subprocess.STDOUT, check=True)
         actual_files = {str(p.relative_to(tree)) for p in tree.rglob('*.v')}
         expected_files = {str(p.relative_to(expected)) for p in expected.rglob('*.v')}
         if actual_files != expected_files:
@@ -1463,6 +1481,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('tree', type=Path)
     parser.add_argument('--check', action='store_true', help='validate source guards and compile every bidirectional adapter')
+    parser.add_argument('--refresh-review', action='store_true', help='with --check, record the generated declaration list for review instead of comparing it')
     parser.add_argument('--regenerate', action='store_true', help='apply all stages to an original tree and regenerate concrete/abstract evidence')
     parser.add_argument('--refresh-tables', action='store_true', help='regenerate indexed instances after editing program-table rows')
     parser.add_argument('--inspect', action='store_true')
@@ -1485,7 +1504,7 @@ def main():
         regenerate(tree)
         return
     if args.check:
-        check_evidence(tree)
+        check_evidence(tree, refresh_review=args.refresh_review)
         return
     if args.candidates:
         if not args.source:
