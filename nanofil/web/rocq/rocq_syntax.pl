@@ -837,7 +837,7 @@ tactic_unit(tletrec(N, Args, V, B)) --> tk(kw(let)), tk(id(rec)), !,
 tactic_unit(tlet(N, V, B)) --> tk(kw(let)), !, name_or_hole(N), tk(sym(':=')),
     upto_in(Ts), { phrase(tactic(V), Ts) }, tk(kw(in)), tactic(B).
 tactic_unit(teval(Ws, E)) --> tk(id(eval)), !, eval_words(Ws), tk(kw(in)), term(E).
-tactic_unit(select(S, T)) --> [t(K, _, _)], { K = num(S) ; K = id(S), S == all }, tk(sym(':')), !, tactic(T).
+tactic_unit(select(S, T)) --> tactic_selector(S), tk(sym(':')), !, tactic(T).
 tactic_unit(do(N, T)) --> tk(id(do)), !,
     [t(K, _, _)], { K = num(N) ; K = id(N) }, tactic_unit(T).
 tactic_unit(prefix(by, T)) --> tk(id(by)), !, tactic(T).
@@ -864,6 +864,12 @@ tactic_unit(call(N, [terms([E|Es])])) --> tactic_name(N), { memberchk(N, [exists
 tactic_unit(call(N, [intro(Ps)|Rest])) --> tactic_name(N), { memberchk(N, [intro, intros]) },
     intro_patterns(Ps), { Ps \== [] }, tactic_parts(Rest), !.
 tactic_unit(call(N, Ps)) --> tactic_name(N), !, tactic_parts(Ps).
+
+% Numeric lists select only the named goals, retaining their written order.
+tactic_selector(all) --> tk(id(all)).
+tactic_selector(S) --> tk(num(N)), selector_numbers(Ns), { atomic_list_concat([N|Ns], ',', S) }.
+selector_numbers([N|Ns]) --> tk(p(',')), tk(num(N)), !, selector_numbers(Ns).
+selector_numbers([]) --> [].
 
 upto_in([]) --> peek(kw(in)).
 upto_in([T|Ts]) --> [T], upto_in(Ts).

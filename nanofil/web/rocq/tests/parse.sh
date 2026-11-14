@@ -229,6 +229,13 @@ Goal forall a : nat, a = a.
 Proof. do 0 intro. intro a. reflexivity. Qed.
 Goal True /\ True.
 Proof. do 2 split || (split; exact I). Qed.
+(* A list selects nonadjacent goals without changing the intervening goal. *)
+Goal (1 = 1) /\ ((2 = 2) /\ (3 = 3)).
+Proof.
+  split; [|split].
+  1,3: reflexivity.
+  change (2 = 2). reflexivity.
+Qed.
 (* The first tactic after a focus opener must not be swallowed. *)
 Goal True /\ (True /\ True).
 Proof.

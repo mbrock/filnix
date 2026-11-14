@@ -7,7 +7,7 @@
     The executor preserves this [[phi]] assignment rule when it crosses
     blocks, and its theorem proves the resulting [[weakest-precondition]]. *)
 
-From iris.proofmode Require Import proofmode.
+From iris.proofmode Require Import proofmode reduction.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool Lia.
@@ -292,6 +292,215 @@ Qed.
 
 End sound.
 
+(** ## Returning named proof contexts
+
+    The executor can return a proof context directly instead of rebuilding it
+    with framing tactics. A single relation records which caller hypotheses
+    become available after a step, so each path can reuse that relation. *)
+
+Import environments Term.
+Open Scope Z_scope.
+
+(** Matching a returned cell consumes its old name, so no path assigns the same name twice. *)
+Fixpoint sym_pick_name (fs : facts) (a : atom) (slots : list (ident * atom)) :
+    option (ident * list (ident * atom)) :=
+  match slots with
+  | [] => None
+  | (n, b) :: slots =>
+      if atom_slot fs a b then Some (n, slots)
+      else match sym_pick_name fs a slots with
+           | Some (m, rest) => Some (m, (n, b) :: rest)
+           | None => None
+           end
+  end.
+
+(** The output names follow the heap's new order, including the order produced by stores. *)
+Fixpoint sym_output_names (fs : facts) (slots : list (ident * atom)) (h : list atom) : option (list ident) :=
+  match h with
+  | [] => Some []
+  | a :: h =>
+      match sym_pick_name fs a slots with
+      | Some (n, rest) => option_map (cons n) (sym_output_names fs rest h)
+      | None => None
+      end
+  end.
+
+(** A named tree retains the executor's leaves and adds their computed hypothesis names. *)
+Inductive named_tree : Type :=
+  | NLeaf (l : name) (lf : leaf) (names : option (list ident))
+  | NSplit (c : zexp) (yes no : named_tree).
+
+(** Naming is part of the same computation that evaluates the function's blocks. *)
+Fixpoint sym_name_tree fs slots (t : stree) : named_tree :=
+  match t with
+  | TLeaf l lf => NLeaf l lf (sym_output_names fs slots (st_heap (leaf_state lf)))
+  | TSplit c yes no => NSplit c (sym_name_tree fs slots yes) (sym_name_tree fs slots no)
+  end.
+
+(** Erasing names recovers the execution tree without changing any branch or state. *)
+Fixpoint sym_erase_names (t : named_tree) : stree :=
+  match t with
+  | NLeaf l lf _ => TLeaf l lf
+  | NSplit c yes no => TSplit c (sym_erase_names yes) (sym_erase_names no)
+  end.
+
+(** Hypothesis naming does not affect the executor's result. *)
+Lemma sym_name_tree_sound fs slots t : sym_erase_names (sym_name_tree fs slots t) = t.
+Proof. induction t; cbn; congruence. Qed.
+
+(** Advancing each hypothesis advances both the persistent and spatial interpretations of its environment. *)
+Lemma sym_env_later {Σ : gFunctors} (Γ Γ' : environments.env (iProp Σ)) :
+  env_Forall2 (fun P Q => P ⊢ ▷ Q) Γ Γ' ->
+  (env_and_persistently Γ ⊢ ▷ env_and_persistently Γ') /\
+  (([∗] Γ) ⊢ ▷ ([∗] Γ')).
+Proof.
+  intros H. induction H as [|Γ Γ' i P Q HΓ [Hp Hs] HP]; cbn.
+  - split; apply bi.later_intro.
+  - split.
+    + rewrite HP -bi.later_persistently Hp -bi.later_and. done.
+    + rewrite HP Hs -bi.later_sep. done.
+Qed.
+
+(** The relation preserves hypothesis names and validity while moving the whole context through one later. *)
+Lemma sym_envs_later {Σ : gFunctors} (Δ Δ' : envs (iProp Σ)) :
+  envs_Forall2 (fun P Q => P ⊢ ▷ Q) Δ Δ' ->
+  of_envs Δ ⊢ ▷ of_envs Δ'.
+Proof.
+  intros [Hp Hs]. rewrite !of_envs_eq !bi.later_and.
+  apply bi.and_mono.
+  - iIntros "%Hwf". iNext. iPureIntro.
+    destruct Hwf as [Hwp Hws Hd]. constructor.
+    + eapply env_Forall2_wf; eassumption.
+    + eapply env_Forall2_wf; eassumption.
+    + intros i. destruct (Hd i) as [H|H]; [left|right]; eapply env_Forall2_fresh; eassumption.
+  - apply bi.and_mono; [exact (proj1 (sym_env_later _ _ Hp))|exact (proj2 (sym_env_later _ _ Hs))].
+Qed.
+
+(** Resource names have no logical meaning, but their number must match the returned ownership atoms. *)
+Fixpoint sym_named_heap `{!gen_heapGS piece pval Σ} (ρ : valuation)
+    (names : list ident) (h : list atom) : option (environments.env (iProp Σ)) :=
+  match names, h with
+  | [], [] => Some Enil
+  | n :: names, a :: h =>
+      match sym_named_heap ρ names h with
+      | Some Γ => Some (Esnoc Γ n (atom_den ρ a))
+      | None => None
+      end
+  | _, _ => None
+  end.
+
+(** Naming the returned atoms preserves their separating conjunction. *)
+Lemma sym_named_heap_sound `{!gen_heapGS piece pval Σ} ρ names h Γ :
+  sym_named_heap ρ names h = Some Γ -> heap_den ρ h ⊣⊢ ([∗] Γ).
+Proof.
+  revert h Γ. induction names as [|n names IH]; intros [|a h] Γ; cbn [sym_named_heap]; try discriminate.
+  - intros H. injection H as <-. done.
+  - destruct (sym_named_heap ρ names h) as [Γ'|] eqn:E; [|discriminate].
+    intros H. injection H as <-. cbn [heap_den env_to_list]. rewrite (IH _ _ E). done.
+Qed.
+
+(** A leaf resumes at a jump target or at the first instruction the executor could not handle. *)
+Definition sym_leaf_frame ρ f e ls l lf : frame :=
+  let s := leaf_state lf in
+  mkFrame f (apply_ups ρ (st_ups s) e) ls None
+    (match lf with
+     | LGoto t _ => Enter (edge_label t) (Some l)
+     | LBranch c t1 t2 _ => Enter (edge_label (if zden ρ c =? 0 then t2 else t1)) (Some l)
+     | LStop _ insts j _ => Exec l insts j
+     end).
+
+(** Jump leaves provide a step; stopped leaves require their continuation immediately. *)
+Definition sym_leaf_later (lf : leaf) : bool :=
+  match lf with LStop _ _ _ _ => false | _ => true end.
+
+(** Returning resources appends their computed names to the caller's untouched context. *)
+Definition sym_return_env `{!gen_heapGS piece pval Σ} ρ names h (Δ : envs (iProp Σ)) : option (envs (iProp Σ)) :=
+  match names with
+  | Some ns => match sym_named_heap ρ ns h with Some Γ => envs_app false Γ Δ | None => None end
+  | None => None
+  end.
+
+Section context_sound.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context {world : Type} (registry : name -> option (contract world))
+  (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
+Local Instance sym_context_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
+  nanofil_irisGS registry wi ge.
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+
+(** The caller must justify each path's arithmetic conditions before using its returned memory permissions.
+    The continuation receives those permissions under their computed names. *)
+Fixpoint sym_context_goals ρ f e ls Φ (Δ Δlater : envs (iProp Σ)) (t : named_tree) : Prop :=
+  match t with
+  | NLeaf l lf names =>
+      obs_den wi ρ (st_obs (leaf_state lf)) /\
+      match sym_return_env ρ names (st_heap (leaf_state lf)) (if sym_leaf_later lf then Δlater else Δ) with
+      | Some Δout => envs_entails Δout (WP (ERun (sym_leaf_frame ρ f e ls l lf) : gexpr) {{ Φ }})
+      | None => False
+      end
+  | NSplit c yes no =>
+      (zden ρ c <> 0 -> sym_context_goals ρ f e ls Φ Δ Δlater yes) /\
+      (zden ρ c = 0 -> sym_context_goals ρ f e ls Φ Δ Δlater no)
+  end.
+
+(** Appending the named heap supplies exactly the resources expected by the continuation. *)
+Lemma sym_return_env_sound ρ names h Δ Δout :
+  sym_return_env ρ names h Δ = Some Δout ->
+  of_envs Δ ∗ heap_den ρ h ⊢ of_envs Δout.
+Proof.
+  unfold sym_return_env. destruct names as [ns|]; [|discriminate].
+  destruct (sym_named_heap ρ ns h) as [Γ|] eqn:E; [|discriminate].
+  intros Happ. rewrite (sym_named_heap_sound _ _ _ _ E).
+  iIntros "[HΔ Hheap]". iApply (envs_app_sound _ _ _ _ Happ with "HΔ Hheap").
+Qed.
+
+(** Crossing a jump lets the caller use permissions guarded by one execution step.
+    Each continuation also receives the memory permissions returned by its path. *)
+Lemma sym_context_goals_sound ρ f e ls Φ Δ Δlater t :
+  envs_Forall2 (fun P Q => P ⊢ ▷ Q) Δ Δlater ->
+  sym_context_goals ρ f e ls Φ Δ Δlater t ->
+  of_envs Δ ⊢ stree_den registry wi ge ρ f e ls Φ (sym_erase_names t).
+Proof.
+  intros Hlater. induction t as [l lf names|c yes IHyes no IHno].
+  - destruct lf; cbn [sym_context_goals sym_erase_names stree_den leaf_den sym_leaf_later leaf_state sym_leaf_frame];
+      intros [Hobs Hgoal].
+    all: match type of Hgoal with context [sym_return_env ?ρ ?ns ?h ?Δ] =>
+      destruct (sym_return_env ρ ns h Δ) as [Δout|] eqn:E; [|contradiction] end.
+    all: rewrite envs_entails_unseal in Hgoal.
+    all: iIntros "HΔ"; iSplit; [done|].
+    1,2: iDestruct (sym_envs_later _ _ Hlater with "HΔ") as "HΔ"; iNext.
+    all: iIntros "Hheap _"; iApply Hgoal; iApply (sym_return_env_sound _ _ _ _ _ E with "[$HΔ $Hheap]").
+  - cbn [sym_context_goals sym_erase_names stree_den]. intros [Hy Hn].
+    iIntros "HΔ". iSplit.
+    + iIntros "%Hc". iApply (IHyes (Hy Hc) with "HΔ").
+    + iIntros "%Hc". iApply (IHno (Hn Hc) with "HΔ").
+Qed.
+
+(** The caller selects named memory permissions for execution and retains the remaining hypotheses.
+    This theorem connects those hypotheses directly to the computed run's continuations. *)
+Theorem tac_sym_func_sound Δ Δrest Δlater names p Ps fs se h f e ls cuts fuel l insts j ρ Φ tree :
+  envs_lookup_delete_list false names Δ = Some (p, Ps, Δrest) ->
+  Ps = map (atom_den ρ) h ->
+  envs_Forall2 (fun P Q => P ⊢ ▷ Q) Δrest Δlater ->
+  facts_hold ρ fs -> env_models ρ se e ->
+  sym_name_tree fs (combine names h) (sym_func ge f cuts fuel fs (mkSState se [] h []) l insts j) = tree ->
+  sym_context_goals ρ f e ls Φ Δrest Δlater tree ->
+  envs_entails Δ (WP (ERun (mkFrame f e ls None (Exec l insts j)) : gexpr) {{ Φ }}).
+Proof.
+  intros Htake -> Hlater Hfacts Henv <- Hgoals. rewrite envs_entails_unseal.
+  rewrite (envs_lookup_delete_list_sound _ _ _ _ _ _ Htake) bi.intuitionistically_if_elim.
+  assert (Hheap : ([∗] map (atom_den ρ) h) ⊣⊢ heap_den ρ h).
+  { clear Htake Hlater Hfacts Henv Hgoals.
+    induction h; cbn [heap_den List.map]; [done|]. rewrite big_op.big_sepL_cons IHh. done. }
+  rewrite Hheap. iIntros "[Hheap Hrest]".
+  iApply (sym_func_sound registry wi ge fs se h f e ls cuts fuel l insts j ρ Φ Hfacts Henv with "Hheap").
+  rewrite -(sym_name_tree_sound fs (combine names h)
+    (sym_func ge f cuts fuel fs (mkSState se [] h []) l insts j)).
+  iApply (sym_context_goals_sound _ _ _ _ _ _ _ _ Hlater Hgoals with "Hrest").
+Qed.
+
+End context_sound.
+
 (** A list of arithmetic conditions becomes one conjunction, so a solver can normalize shared expressions once. *)
 Fixpoint sym_conjunction {A : Type} (P : A -> Prop) (xs : list A) : Prop :=
   match xs with [] => True | x :: xs => P x /\ sym_conjunction P xs end.
@@ -329,88 +538,103 @@ Ltac sym_native call finish :=
   let checked := constr:(ltac:(native_cast_no_check (eq_refl tree)) : call = tree) in
   finish tree checked.
 
-(** The collector identifies explicit guarded hypotheses without unfolding the assertions describing memory. *)
-Ltac sym_later_names env :=
-  lazymatch env with
-  | environments.Enil => constr:(@nil ident)
-  | environments.Esnoc ?rest ?n ?P =>
-      let names := sym_later_names rest in
-      lazymatch P with (▷ _)%I => constr:(n :: names) | _ => names end
-  end.
-
-(** When only the caller's continuation needs to advance a step, the tactic leaves unrelated memory permissions alone.
-    Other proof contexts use the ordinary later tactic. *)
-Ltac sym_next :=
-  lazymatch goal with
-  | |- environments.envs_entails (environments.Envs ?persistent ?spatial _) _ =>
-      let ps := sym_later_names persistent in
-      let ss := sym_later_names spatial in
-      lazymatch ps with
-      | [] => lazymatch ss with
-          | [?n] => iRevert n; iApply sym_later_wand; iIntros n
-          | _ => iNext
-          end
-      | _ => iNext
-      end
-  end.
-
 (** Arithmetic is solved together when possible; other conditions remain available as individual goals. *)
 Ltac sym_solve_obligations solve :=
   apply sym_conjunction_sound;
   cbn [sym_conjunction]; sym_den_simpl;
   first [solve [solve] | repeat split; try solve].
 
-(** Each leaf returns its resources after discharging the accumulated arithmetic conditions. *)
-Ltac sym_tree_finish fs h rho names solve tree :=
+(** Selected hypotheses are removed without reducing the assertions they contain. *)
+Ltac sym_take names delta :=
+  lazymatch names with
+  | [] => constr:(envs_lookup_delete_list_nil delta false)
+  | ?n :: ?rest =>
+      let entry := pm_eval (envs_lookup_delete false n delta) in
+      lazymatch entry with
+      | Some (?p, ?P, ?next) =>
+          let tail := sym_take rest next in
+          lazymatch type of tail with
+          | _ = Some (?q, ?Ps, ?out) =>
+              constr:(envs_lookup_delete_list_cons delta next out false n rest p q P Ps eq_refl tail)
+          end
+      end
+  end.
+
+(** Explicit guards are stripped while other assertions keep their current form. *)
+Ltac sym_guard_env gamma :=
+  lazymatch gamma with
+  | Enil => lazymatch type of gamma with environments.env ?A =>
+      constr:(env_Forall2_nil (fun P Q : A => P ⊢ ▷ Q)) end
+  | Esnoc ?rest ?n ?P =>
+      let tail := sym_guard_env rest in
+      lazymatch type of tail with
+      | env_Forall2 _ _ ?out =>
+          lazymatch P with
+          | (▷ ?Q)%I =>
+              let step := constr:(ltac:(reflexivity) : P ⊢ ▷ Q) in
+              constr:(env_Forall2_snoc (fun X Y => X ⊢ ▷ Y) rest out n P Q tail step)
+          | _ => constr:(env_Forall2_snoc (fun X Y => X ⊢ ▷ Y) rest out n P P tail (bi.later_intro P))
+          end
+      end
+  end.
+
+(** Named leaves expose ordinary proof goals without framing or restoring names through Iris tactics. *)
+Ltac sym_context_finish solve tree :=
   lazymatch tree with
-  | TSplit ?c ?yes ?no =>
-      cbn [stree_den]; iSplit;
-      [let H := fresh "Hsym_yes" in iIntros (H); cbn [zden cden vz vp vr nth nth_error] in H;
-       sym_tree_finish fs h rho names solve yes |
-       let H := fresh "Hsym_no" in iIntros (H); cbn [zden cden vz vp vr nth nth_error] in H;
-       sym_tree_finish fs h rho names solve no]
-  | TLeaf ?l ?lf =>
-      cbn [stree_den leaf_den st_obs st_heap st_env st_ups];
-      iSplit; [iPureIntro; unfold obs_den; sym_solve_obligations solve |
-      lazymatch lf with LStop ?why _ _ _ => idtac "sym_frun stopped:" why | _ => sym_next end;
-      let Hnew := iFresh in let Henv := fresh "Hsym_env" in
-      iIntros Hnew; iIntros (Henv);
-      iEval (cbn [heap_den atom_den wden cden zden vz vp vr nth nth_error]; rewrite ?sym_ptr_eta) in Hnew;
-      let hs := eval cbn [leaf_state st_heap] in (st_heap (leaf_state lf)) in
-      sym_restore fs hs h names Hnew;
-      clear Henv;
-      cbn [apply_ups fold_left fst snd wden cden zden vz vp vr nth nth_error edge_label];
+  | NSplit ?c ?yes ?no =>
+      split; [let H := fresh "Hsym_yes" in intros H; cbn [zden cden vz vp vr nth nth_error] in H; sym_context_finish solve yes |
+              let H := fresh "Hsym_no" in intros H; cbn [zden cden vz vp vr nth nth_error] in H; sym_context_finish solve no]
+  | NLeaf ?l ?lf ?names =>
+      cbn [sym_context_goals leaf_state st_obs st_heap];
+      split; [unfold obs_den; sym_solve_obligations solve |
+      lazymatch lf with LStop ?why _ _ _ => idtac "sym_frun stopped:" why | _ => idtac end;
+      cbn [sym_return_env sym_named_heap leaf_state st_heap sym_leaf_later];
+      lazymatch goal with
+      | |- match ?app with Some _ => _ | None => _ end =>
+          let out := pm_eval app in change app with out
+      end;
+      unfold sym_leaf_frame;
+      cbn [leaf_state st_ups apply_ups fold_left fst snd
+        atom_den wden cden zden vz vp vr nth nth_error edge_label];
       rewrite ?sym_ptr_eta]
   end.
 
-(** After following the selected blocks, the proof author receives one goal for each remaining path. *)
-Ltac sym_tree_checked fs h rho names solve tree checked :=
-  rewrite checked; sym_tree_finish fs h rho names solve tree.
-
-(** Each quoted permission comes from its named hypothesis, including resource-free null capabilities. *)
-Ltac sym_heap_exact names :=
-  lazymatch names with
-  | [] => done
-  | ?n :: ?rest => iSplitL n; [iExact n | sym_heap_exact rest]
+(** Execution uses the same memory interpretation as the caller.
+    The tactic reads this interpretation from the program instance before constructing its proof. *)
+Ltac sym_context_rule instance :=
+  lazymatch instance with
+  | @nanofil_irisGS ?lc ?sigma ?inv ?heap ?world ?reg ?wi ?ge =>
+      constr:(@tac_sym_func_sound lc sigma inv heap world reg wi ltac:(typeclasses eauto) ge)
+  | _ => let next := eval red in instance in sym_context_rule next
   end.
 
 (** The soundness theorem connects the single computed tree to the caller's execution goal. *)
 Ltac sym_func_finish cs se h rho names cuts solve conv bs :=
   let fs := constr:(mkFacts bs cs) in
+  let rule := lazymatch goal with |- @envs_entails _ _ _ (@wp _ _ _ _ ?W _ _ _ _) =>
+    lazymatch W with @wp' _ _ _ ?instance => sym_context_rule instance end end in
   lazymatch goal with
-  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame ?f ?e ?ls None (Exec ?l ?insts ?j))) ?Phi) =>
+  | |- environments.envs_entails ?delta (wp _ _ (_ (mkFrame ?f ?e ?ls None (Exec ?l ?insts ?j))) ?Phi) =>
       let fuel := eval vm_compute in (List.length (fn_blocks f)) in
-      let Hheap := iFresh in
-      let selected := eval vm_compute in (String.append "[" (String.append (String.concat " " names) "]")) in
-      iAssert (heap_den rho h) with selected as Hheap;
-      [sym_den_simpl; sym_heap_exact names |];
-      iApply (sym_func_sound _ _ _ fs se h f e ls cuts fuel l insts j rho Phi with Hheap);
-      [unfold facts_hold; split; sym_forall_side solve |
-       unfold env_models; sym_forall_side ltac:(lk_prove) |
-       lazymatch goal with
-       | |- environments.envs_entails _ (stree_den _ _ _ _ _ _ _ _ ?call) =>
-           conv call ltac:(sym_tree_checked fs h rho names solve)
-       end]
+      let ids := eval vm_compute in (map INamed names) in
+      let take := sym_take ids delta in
+      lazymatch type of take with
+      | _ = Some (?p, ?Ps, ?rest) =>
+        lazymatch rest with Envs ?persistent ?spatial ?counter =>
+          let hp := sym_guard_env persistent in let hs := sym_guard_env spatial in
+          lazymatch type of hp with env_Forall2 _ _ ?pp =>
+          lazymatch type of hs with env_Forall2 _ _ ?ss =>
+          let later := constr:(Envs pp ss counter) in
+          let guard := constr:(@Build_envs_Forall2 _ _ (fun P Q => P ⊢ ▷ Q) rest later hp hs) in
+          refine (rule delta rest later ids p Ps fs se h f e ls cuts fuel l insts j rho Phi _ take _ guard _ _ _ _);
+          [sym_den_simpl; reflexivity |
+           unfold facts_hold; split; sym_forall_side solve |
+           unfold env_models; sym_forall_side ltac:(lk_prove) |
+           lazymatch goal with |- ?call = _ => conv call ltac:(fun tree checked => exact checked) end |
+           lazymatch goal with |- sym_context_goals _ _ _ _ _ _ _ _ _ _ ?tree => sym_context_finish solve tree end]
+          end end
+        end
+      end
   end.
 
 (** The caller chooses cut labels, an obligation solver and a checked conversion method. *)
@@ -459,4 +683,19 @@ Proof.
   sym_frun_with "" [TAtom "done"] ltac:(sym_lia) ltac:(sym_native). done.
 Qed.
 
+(** A jump makes both guarded permissions available while preserving an unguarded continuation. *)
+Example sym_guarded_context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
+    {world : Type} (registry : name -> option (contract world))
+    (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi}
+    ge e (P Q : iProp Σ) Φ :
+  let _ := nanofil_irisGS registry wi ge in
+  ▷ P -∗ ▷ Q -∗
+  (P -∗ Q -∗ WP (ERun (mkFrame sym_swap_function e [] None (Enter (TAtom "done") (Some (TAtom "entry"))))) {{ Φ }}) -∗
+  WP (ERun (mkFrame sym_swap_function e [] None (Exec (TAtom "entry") [] (JGoto (To (TAtom "done")))))) {{ Φ }}.
+Proof.
+  intros ?. iIntros "HP HQ HK". sym_frun "" [TAtom "done"].
+  iApply ("HK" with "HP HQ").
+Qed.
+
 Print Assumptions sym_func_sound.
+Print Assumptions tac_sym_func_sound.
