@@ -1,10 +1,8 @@
 From Glibc Require Import GlibcProgram.
-(** This file proves the triple of `c: _IO_doallocbuf` (LibioReadCode.v) on an
-    unbuffered stream with no buffer: it installs the one byte
-    `c: _shortbuf` inside the `c: FILE` itself with
-    `c: _IO_setb(fp, fp->_shortbuf, fp->_shortbuf + 1, 0)`. *)
+(** An unbuffered stream without a buffer uses its internal one-byte buffer.
+    This proof follows `c: _IO_doallocbuf` up to the call that installs that buffer. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -34,8 +32,7 @@ Context `{Hsetbf : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** `c: _IO_setb` on a stream with no buffer, as LibioSetb.v's
-    [wp_glibc__IO_setb] proves it with the old buffer null. *)
+(** The buffer-setting function accepts a stream whose old buffer is null. *)
 Context (Hsetb_null : forall fr fb freg fl oe nb ne a Φ,
   call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
@@ -58,13 +55,13 @@ Lemma wp_glibc__IO_doallocbuf_short fr fb freg fl mode oe Φ :
 Proof.
   intros Hfr Hfb Hal Hend Hfreg Hub Hmd. injection Hfr as <-.
   iIntros "Hl Hfl [%Hm Hmb] Hb Hbe HK". unfold file_size in Hend. unfold io_unbuffered in Hub.
-  step. step. norm. check "Hl".
-  load_pointer "Hl Hb [//]" by ar.
-  iNext. iIntros "Hl Hb _". step. step. branch.
-  step. check "Hl". iDestruct "Hfl" as "[%Hfl Hflb]". load_s32_group "Hl Hflb". step. step.
-  assert (Hl2 : 0 <= Z.land fl 2 < 2 ^ 32) by (apply land_lt32; lia). branch_as true.
-  step. step. norm. check "Hl". load_s32_group "Hl Hmb". step. step. step. destruct Hmd as [-> | ->]; branch.
-  all: step; step; step; norm; iApply wp_call_bind; [vx | exact Hsetbf | reflexivity |]; iNext;
+  step.
+  iAssert (live fb freg ∗ live_cap CNone freg)%I with "[Hl]" as "[Hl Hnull]"; [iFrame; done|].
+  iDestruct "Hfl" as "[%Hfl Hflb]".
+  unfold null, int_bytes.
+  destruct Hmd as [-> | ->].
+  all: sym_frun "Hl Hb Hnull Hflb Hmb" (@nil name).
+  all: iClear "Hnull"; iApply wp_call_bind; [vx | exact Hsetbf | reflexivity |]; iNext;
     iApply (Hsetb_null _ fb freg fl oe _ _ 0 with "Hl [$Hflb //] Hb Hbe"); try first [reflexivity | libio_side];
     iNext; iIntros "Hl Hfl Hb Hbe"; iExists _; iSplit; [iPureIntro; reflexivity|]; iNext;
     iApply wp_ret_void; iNext; iApply ("HK" with "Hl Hfl [$Hmb //] Hb Hbe").

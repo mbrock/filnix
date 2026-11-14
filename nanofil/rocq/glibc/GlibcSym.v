@@ -530,8 +530,13 @@ Fixpoint zclean (fs : facts) (x : zexp) : zexp :=
           match cond_bit c k x y with Some v => ZK v | None => ZCmp c k a' b' end
       | _, _ => ZCmp c k a' b'
       end
-  | ZBits o a b => ZBits o (zclean fs a) (zclean fs b)
-  | ZExt n a => ZExt n (zclean fs a)
+  | ZBits o a b =>
+      match zclean fs a, zclean fs b with
+      | ZK x, ZK y => ZK (bitden o x y)
+      | a', b' => ZBits o a' b'
+      end
+  | ZExt n a =>
+      match zclean fs a with ZK x => ZK (extension n x) | a' => ZExt n a' end
   | ZShift o k a b => ZShift o k (zclean fs a) (zclean fs b)
   | _ => x
   end.
@@ -546,8 +551,9 @@ Proof.
   - destruct (zclean fs x1); destruct (zclean fs x2);
       cbn in IHx1, IHx2; cbn [zden]; rewrite <- IHx1, <- IHx2;
       try reflexivity. destruct (cond_bit c k z z0) eqn:E; cbn [zden]; rewrite ?E; reflexivity.
-  - cbn. now rewrite IHx1 IHx2.
-  - cbn. now rewrite IHx.
+  - destruct (zclean fs x1); destruct (zclean fs x2);
+      cbn in IHx1, IHx2; cbn [zden]; now rewrite <- IHx1, <- IHx2.
+  - destruct (zclean fs x); cbn in IHx; cbn [zden]; now rewrite <- IHx.
   - cbn. now rewrite IHx1 IHx2.
 Qed.
 
@@ -1959,6 +1965,12 @@ Ltac sym_quote_z rho t :=
           let qb := sym_quote_z r1 b in
           lazymatch qb with (?b', ?r2) => constr:((ZSub a' b', r2)) end
         end
+    | Z.land ?a ?b =>
+        let qa := sym_quote_z rho a in
+        lazymatch qa with (?a', ?r1) =>
+          let qb := sym_quote_z r1 b in
+          lazymatch qb with (?b', ?r2) => constr:((ZBits BAnd a' b', r2)) end
+        end
     | ptr_addr ?p =>
         let q := sym_intern p ps in
         lazymatch q with (?n, ?ps') => constr:((ZAddr n, mkVal zs ps' rs)) end
@@ -2073,7 +2085,8 @@ Ltac sym_context seen :=
   | H : ?P |- _ =>
       let relevant := lazymatch P with
         | Z.le _ _ => idtac | Z.lt _ _ => idtac
-        | @eq cap _ _ => idtac | @eq Z _ _ => idtac | lookup _ _ = Some _ => idtac
+        | @eq cap _ _ => idtac | @eq Z _ _ => idtac | @not (@eq Z _ _) => idtac
+        | lookup _ _ = Some _ => idtac
         | _ /\ _ => idtac
         end in
       let unseen := sym_not_in P seen in
@@ -2145,13 +2158,21 @@ Ltac sym_limits props x lo hi :=
       lazymatch bounds with (?lo', ?hi') => sym_limits ps x lo' hi' end
   end.
 
-(** The tactic reads alignment equations from the caller's hypotheses. *)
+(** The tactic reads alignment equations and nonzero values from the caller's hypotheses. *)
 Ltac sym_congruences rho props bs :=
   lazymatch props with
   | [] => bs
   | ?P :: ?ps =>
       let next := match goal with
         | _ => lazymatch P with
+          | ?x <> 0 =>
+              let q := sym_quote_z rho x in
+              lazymatch q with (?sx, rho) =>
+                constr:(mkBound (ZCmp Eq W sx (ZK 0)) 0 1 ::
+                  mkBound (ZCmp Ne W sx (ZK 0)) 1 2 ::
+                  mkBound (ZCmp Eq L sx (ZK 0)) 0 1 ::
+                  mkBound (ZCmp Ne L sx (ZK 0)) 1 2 :: bs)
+              end
           | ?x mod ?m = ?r =>
               let m := eval cbv in m in let ml := sym_literal m in
               let r := eval cbv in r in let rl := sym_literal r in
@@ -2235,12 +2256,22 @@ Ltac sym_den_simpl :=
     vz vp vr nth nth_error bd_exp bd_lo bd_hi f_bounds f_caps fst snd
     apply_ups fold_left]; rewrite ?sym_ptr_eta.
 
+(** A nonzero value makes equality with zero false and inequality with zero true. *)
+Ltac sym_nonzero_side :=
+  cbn [cond_bit bitden];
+  match goal with |- context [?x =? 0] =>
+    let E := fresh "Hsym_nonzero" in
+    assert (E : (x =? 0) = false) by (apply Z.eqb_neq; assumption);
+    rewrite E; clear E; cbn; lia
+  end.
+
 (** Each unsolved arithmetic condition remains a separate, ordinary Coq goal. *)
 Ltac sym_forall_side solve :=
   cbn [f_bounds f_caps];
   lazymatch goal with
   | |- Forall _ [] => apply Forall_nil
-  | |- Forall _ (_ :: _) => apply Forall_cons; [sym_den_simpl; try solve | sym_forall_side solve]
+  | |- Forall _ (_ :: _) => apply Forall_cons;
+      [sym_den_simpl; first [sym_nonzero_side | try solve] | sym_forall_side solve]
   | _ => sym_den_simpl; try solve
   end.
 
