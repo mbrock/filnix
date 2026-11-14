@@ -61,7 +61,7 @@ Lemma hi_entry_single_own : pts hi_entry_single_ps ==∗
   single_ro hge 73808 (mkRegion 73808 73816 GlobalData Live).
 Proof.
   iIntros "H". iMod (ptsq_persist (DfracOwn 1) _ with "H") as "#H".
-  iModIntro. rewrite /single_ro. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
+  iModIntro. rewrite /single_ro /FileInv.ML.bytesq. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
   iEval (rewrite /hi_entry_single_ps /ptsq; cbn [big_opL]) in "H".
   iDestruct "H" as "(Hl & Hb & _)". iFrame "Hl Hb". iSplit; iEmpIntro.
 Qed.

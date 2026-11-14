@@ -125,6 +125,19 @@ Definition xfields (w0 : os_world) (eb fb : Z) (nb : option (Z * Z)) : iProp Σ 
 Definition xos (w0 : os_world) (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (nb : option (Z * Z))
     : iProp Σ := xfields w0 eb fb nb ∗ X fb nb.
 
+(** A caller keeps its own stream resources beside the output fields.
+    The proof-mode instance separates these groups when a proof opens the state. *)
+#[global] Instance xos_into_sep w0 eb X fb nb :
+  IntoSep (xos w0 eb X fb nb) (xfields w0 eb fb nb) (X fb nb).
+Proof. unfold xos. apply _. Qed.
+
+(** Framing can assemble auxiliary stream state from its fields without
+    opening unrelated stream state in the caller's resources. *)
+#[global] Instance xos_frame p R w0 eb X fb nb Q :
+  Frame p R (xfields w0 eb fb nb ∗ X fb nb) Q ->
+  Frame p R (xos w0 eb X fb nb) Q.
+Proof. unfold xos. intros H. exact H. Qed.
+
 (** A run of bytes at a share is its first j bytes and the rest. *)
 Lemma bytesq_split dq b o ys (j : nat) : (j <= length ys)%nat ->
   bytesq dq b o ys ⊣⊢ bytesq dq b o (take j ys) ∗ bytesq dq b (o + Z.of_nat j) (drop j ys).
@@ -133,6 +146,9 @@ Proof.
 Qed.
 
 End defs.
+(** Automatic framing leaves unrelated auxiliary stream state closed. The structural
+    instances above still support deliberate construction and destruction. *)
+#[global] Hint Opaque xos : typeclass_instances.
 
 Import ProgramAbbreviations.
 Section rules_values.
@@ -267,7 +283,7 @@ Proof.
         eapply same_out_trans; [|exact Hsame]. same_tac.
 Qed.
 
-#[local] Hint Opaque bytesq wbuf xos vtables_ro : typeclass_instances.
+#[local] Hint Opaque vtables_ro : typeclass_instances.
 
 (** The final block sends any remaining bytes through generic string output.
     It combines that byte count with the bytes already written and returns the total. *)

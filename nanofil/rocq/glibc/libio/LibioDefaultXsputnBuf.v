@@ -1,30 +1,14 @@
 From Glibc Require Import GlibcProgram.
-(** The write side of a stream, as the string output functions
-    `c: _IO_default_xsputn`, `c: _IO_new_file_xsputn` and `c: puts`
-    see it, and the call of the jump table's overflow they make.
+(** Buffered string output owns the stream's buffer pointers and the memory they describe.
+    Before allocation, all eight pointers are null.
+    After allocation, the read pointers start at the buffer's base and the write pointers stay within its bounds.
 
-    A stream that only writes keeps its eight buffer pointers as a
-    flush leaves them ([wbuf]): the read pointer, read end, read base
-    and write base at the buffer's base, the write pointer and write end
-    anywhere in the buffer, and the base and end of the buffer. Before
-    the first write there is no buffer and every pointer is null. The
-    buffer is a heap object at a multiple of 8, owned whole, its life,
-    every byte (each below 256) and every aux slot, with any contents
-    ([wroom]): the copies of LibioDefaultXsputnCopy.v need the slots,
-    and a flush needs the bytes.
+    The buffer owns every data byte and hidden capability slot in its heap allocation.
+    Copying preserves those slots, and flushing reads the bytes.
+    Shared source memory instead supplies an [[separation-logic|ownership share]] that the caller receives back.
 
-    The rest of the stream (its flags, descriptor, lock and the rest)
-    is what the overflow reads and writes: [overflow_spec] states the
-    call of `c: _IO_new_file_overflow(f, ch)` through the jump table
-    over [wbuf] and that rest, any predicate of the stream and its
-    buffer. LibioOverflow*.v proves the function; here it is a
-    premise.
-
-    | Lemma | Use |
-    |---|---|
-    | [bytes_at], [bytes_put] | one byte of a buffer, read or written |
-    | [bytesq_at] | one byte of a source at a share |
-    | [wbuf_room] | the room of a stream with a buffer | *)
+    Overflow may change the stream's flags, descriptor and other fields alongside its write buffer.
+    Its contract keeps those additional resources separate and guarantees a buffer even when output fails. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -40,15 +24,16 @@ From Glibc Require Import Fix.
 
 (** ## Environments *)
 
-(** e' answers every name outside the names S as e does. *)
+(** Output loops assign temporary names while retaining the caller's other bindings.
+    Two environments agree outside a list when every name not in that list has the same lookup result. *)
 Definition same_out {A : Type} (S : list name) (e e' : list (name * A)) : Prop :=
   forall x, existsb (name_eqb x) S = false -> lookup x e' = lookup x e.
 
-(** Every environment answers as itself. *)
+(** Every environment agrees with itself outside any list of names. *)
 Lemma same_out_refl {A : Type} S (e : list (name * A)) : same_out S e e.
 Proof. intros x _. reflexivity. Qed.
 
-(** A [put] of one of the names S keeps [same_out] S. *)
+(** Assigning a listed temporary name preserves every lookup outside the list. *)
 Lemma same_out_put {A : Type} S k (v : A) e e' :
   existsb (name_eqb k) S = true -> same_out S e e' -> same_out S e (put k v e').
 Proof.
@@ -56,26 +41,26 @@ Proof.
   destruct (name_eqb x k) eqn:E; [|reflexivity]. apply term_eqb_eq in E. subst. rewrite Hx in Hk. discriminate.
 Qed.
 
-(** [same_out] composes. *)
+(** Agreement outside the same list survives two successive environment changes. *)
 Lemma same_out_trans {A : Type} S (e1 e2 e3 : list (name * A)) :
   same_out S e1 e2 -> same_out S e2 e3 -> same_out S e1 e3.
 Proof. intros H1 H2 x Hx. rewrite (H2 x Hx). exact (H1 x Hx). Qed.
 
-(** Prove [same_out] S e e' for e' a run of [put]s of names of S over e. *)
+(** Repeated assignments to listed names preserve every other environment binding. *)
 Ltac same_tac :=
   repeat (apply same_out_put; [reflexivity|]); first [apply same_out_refl | eassumption].
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The base of the buffer nb, the heap object b of sz bytes, or null. *)
+(** A stream's buffer starts at its heap object's base, or is null before allocation. *)
 Definition nb_base (nb : option (Z * Z)) : ptr :=
   match nb with Some (b, _) => mkPtr b (Obj b) | None => null end.
 
-(** The end of the buffer nb, or null. *)
+(** A stream's buffer ends just past its allocated bytes, or is null before allocation. *)
 Definition nb_end (nb : option (Z * Z)) : ptr :=
   match nb with Some (b, sz) => mkPtr (b + sz) (Obj b) | None => null end.
 
-(** p points into the buffer b of sz bytes, or just past it. *)
+(** A buffer pointer retains its object's capability and lies within the allocation or just past its end. *)
 Definition in_buf (b sz : Z) (p : ptr) : Prop := ptr_cap p = Obj b /\ b <= ptr_addr p <= b + sz.
 
 (** A writable buffer comes from the heap and owns every byte and
@@ -93,30 +78,40 @@ Import LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG 
 Section buf.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** [wroom] nb wp we: no buffer, both pointers null, or the heap
-    buffer nb, owned whole as [room_ok] says. *)
+(** An unallocated buffer has two null write pointers.
+    An allocated buffer owns its heap storage and bounds both pointers. *)
 Definition wroom (nb : option (Z * Z)) (wp we : ptr) : iProp Σ :=
   match nb with
   | None => ⌜wp = null /\ we = null⌝
   | Some (b, sz) => ∃ reg xs cs, ⌜room_ok b sz reg xs cs wp we⌝ ∗ live b reg ∗ bytes b 0 xs ∗ auxes b 0 cs
   end.
 
-(** [wcells] fb nb: the six buffer pointers of the stream fb other
-    than the write pointer and end: the read pointer, read end, read
-    base and write base at the buffer's base, and the base and end of
-    the buffer. *)
+(** Six stream fields identify the buffer's base and end between output calls.
+    The three read pointers and write base all point to the buffer's base. *)
 Definition wcells (fb : Z) (nb : option (Z * Z)) : iProp Σ :=
   pcell fb off_read_ptr (nb_base nb) ∗ pcell fb 16 (nb_base nb) ∗ pcell fb 24 (nb_base nb) ∗
   pcell fb off_write_base (nb_base nb) ∗ pcell fb off_buf_base (nb_base nb) ∗ pcell fb off_buf_end (nb_end nb).
 
-(** [wbuf] fb nb wp we: the eight buffer pointers of the stream fb,
-    the write pointer wp and end we and the others ([wcells]), and the
-    buffer ([wroom]). *)
+(** The write-buffer assertion owns all eight buffer-pointer fields and the buffer's storage. *)
 Definition wbuf (fb : Z) (nb : option (Z * Z)) (wp we : ptr) : iProp Σ :=
   wcells fb nb ∗ pcell fb off_write_ptr wp ∗ pcell fb off_write_end we ∗ wroom nb wp we.
 
-(** Owning one byte of a list of bytes from offset 0 is owning it,
-    the bytes before and the bytes after. *)
+(** A buffer's pointer fields and storage can be used separately.
+    The proof-mode instance exposes them when a proof opens buffer ownership. *)
+#[global] Instance wbuf_into_sep fb nb wp we :
+  IntoSep (wbuf fb nb wp we) (wcells fb nb)
+    (pcell fb off_write_ptr wp ∗ pcell fb off_write_end we ∗ wroom nb wp we).
+Proof. unfold wbuf. apply _. Qed.
+
+(** Framing can assemble a buffer from its fields without opening an
+    unrelated buffer already owned by the caller. *)
+#[global] Instance wbuf_frame p R fb nb wp we Q :
+  Frame p R (wcells fb nb ∗ pcell fb off_write_ptr wp ∗
+    pcell fb off_write_end we ∗ wroom nb wp we) Q ->
+  Frame p R (wbuf fb nb wp we) Q.
+Proof. unfold wbuf. intros H. exact H. Qed.
+
+(** Reading a selected byte splits its ownership from the bytes before and after it. *)
 Lemma bytes_at b xs (k : nat) x : xs !! k = Some x ->
   bytes b 0 xs ⊣⊢ bytes b 0 (take k xs) ∗ ibyte b (Z.of_nat k) x ∗ bytes b (Z.of_nat k + 1) (drop (S k) xs).
 Proof.
@@ -126,8 +121,7 @@ Proof.
   iSplit; [iIntros "($ & $ & $)" | iIntros "($ & [$ _] & $)"].
 Qed.
 
-(** Writing one byte: the bytes around it and the new byte are the
-    list with it replaced. *)
+(** Writing a selected byte changes only that entry in the owned byte list. *)
 Lemma bytes_put b xs (k : nat) y : (k < length xs)%nat ->
   bytes b 0 (take k xs) ∗ ibyte b (Z.of_nat k) y ∗ bytes b (Z.of_nat k + 1) (drop (S k) xs) ⊢
   bytes b 0 (<[k := y]> xs).
@@ -136,7 +130,7 @@ Proof.
   rewrite take_insert_ge; [|lia]. rewrite drop_insert_lt; [|lia]. done.
 Qed.
 
-(** Owning one byte of bytes at a share, and the rest back. *)
+(** A shared reader can borrow one byte and then return it to recover the whole source. *)
 Lemma bytesq_at dq b o ys (k : nat) y : ys !! k = Some y ->
   bytesq dq b o ys ⊢ bytesq dq b (o + Z.of_nat k) [y] ∗ (bytesq dq b (o + Z.of_nat k) [y] -∗ bytesq dq b o ys).
 Proof.
@@ -147,8 +141,7 @@ Proof.
   iSplitL "Hy"; [cbn; iFrame; done|]. iIntros "(Hy & _)". iFrame.
 Qed.
 
-(** Owning a run of bytes at a share, its middle c bytes from j, and
-    the whole back. *)
+(** A shared reader can borrow a contiguous source range and return it to recover the whole source. *)
 Lemma bytesq_sub dq b o ys (j c : nat) : (j + c <= length ys)%nat ->
   bytesq dq b o ys ⊢ bytesq dq b (o + Z.of_nat j) (take c (drop j ys)) ∗
     (bytesq dq b (o + Z.of_nat j) (take c (drop j ys)) -∗ bytesq dq b o ys).
@@ -160,14 +153,16 @@ Proof.
   iIntros "(H1 & H2 & H3)". iFrame "H2". iIntros "H2". iFrame.
 Qed.
 
-(** A stream with a buffer: its room's pieces, and the buffer back
-    from any new contents and write pointer in it. *)
+(** An allocated buffer exposes its storage and the bounds on its current write pointers. *)
 Lemma wroom_some b sz wp we :
   wroom (Some (b, sz)) wp we ⊣⊢
   ∃ reg xs cs, ⌜room_ok b sz reg xs cs wp we⌝ ∗ live b reg ∗ bytes b 0 xs ∗ auxes b 0 cs.
 Proof. reflexivity. Qed.
 
 End buf.
+(** Automatic framing leaves unrelated owned buffers closed. The structural
+    instances above still support deliberate construction and destruction. *)
+#[global] Hint Opaque wbuf : typeclass_instances.
 
 Import ProgramAbbreviations.
 Section ovf_values.
@@ -199,17 +194,13 @@ End ovf_values.
 Section ovf.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** What `c: _IO_new_file_overflow(f, ch)` returns: ch, or 0 when ch
-    is `c: EOF` and the flush succeeded, or `c: EOF` on failure. *)
+(** Successful overflow returns the input byte, or zero when the input requests a flush.
+    Failure returns EOF instead. *)
 
-(** The call `c: _IO_new_file_overflow(f, ch)` of a byte ch or of
-    `c: EOF`, through the jump table of a narrow stream: over the
-    stream's life, its jump table pointer, its buffer pointers and
-    buffer ([wbuf]) and the rest of it, os fb nb, it returns as
-    [ovf_ret] says. It leaves an allocated buffer even when output
-    fails, so callers can retain that fact without assuming success. *)
+(** Overflow borrows the stream's lifetime, jump-table pointer, write buffer and remaining resources.
+    It returns those resources with updated buffer pointers and guarantees a buffer even on failure. *)
 
 End ovf.

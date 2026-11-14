@@ -102,7 +102,7 @@ Proof.
     + (* No room: L22. *)
       branch_as true. step.
       iAssert (wbuf fb (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))) with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
-      { iFrame. iPureIntro. exact Hok. }
+      { iFrame "Hwc Hwp Hwe Hbl Hxs Hcs". iPureIntro. exact Hok. }
       iApply (wp_dx_L22 os fb freg vb vreg (Some (b, sz)) (mkPtr wa (Obj b)) (mkPtr ea (Obj b))
                 dq b' reg' so c' ys t with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try close_side.
       all: first [intros _; discriminate | lk_fin].
@@ -156,7 +156,7 @@ Proof.
   iApply (wp_glibc__IO_default_xsputn with "Hvt Hl Hvtp Hwb Hos Hl' Hys"); try eassumption.
   { cbn [fs_args default_xsputn_spec] in Hfr. exact Hfr. }
   iNext. iIntros (k nb' wp' we' Hk) "Hl Hvtp Hwb Hos Hl' Hys".
-  iApply "HK". iExists k, nb', wp', we'. iFrame. iPureIntro. tauto.
+  iApply "HK". iExists k, nb', wp', we'. iFrame "Hl Hvtp Hwb Hos Hl' Hys". iPureIntro. tauto.
 Qed.
 
 End rules.

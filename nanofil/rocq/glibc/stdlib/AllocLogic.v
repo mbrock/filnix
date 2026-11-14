@@ -206,7 +206,8 @@ Ltac l7 n Hn Hk :=
   iDestruct "Hpost" as (base [-> Hb]) "Hobj";
   iExists _; iSplit; [iPureIntro; reflexivity|]; nx;
   iApply wp_ret; [reflexivity | reflexivity |]; nx;
-  iApply ("HΦ" with "[%] Hobj [-]"); [assumption | rewrite /tcache_idle; iFrame; iPureIntro; lia].
+  iApply ("HΦ" with "[%] Hobj [-]");
+  [assumption | rewrite /tcache_idle; iFrame "Hmpl Hmpc Htcl Htcc Hdl Hbins"; iPureIntro; lia].
 
 (** After computing the chunk size, the tcache prelude reads
     `mp_.tcache_max_bytes` and compares it with the request. The tactic

@@ -140,9 +140,11 @@ Ltac call_spec_apply rule x :=
             pose proof (bi.wand_elim_r' P K Q
               ltac:(iIntros "HK HP"; iApply (Hcall with "HP HK"))) as Happly;
             iApply Happly; clear Hcall Happly;
-            cbn [fs_pre]; iFrame "#"; iFrame;
+            cbn [fs_pre];
             first [iSplitR; [iPureIntro | let v := fresh "v" in iIntros (v) "Hpost"]
-                  | let v := fresh "v" in iIntros (v) "Hpost"]
+                  | iFrame "#"; iFrame;
+                    first [iSplitR; [iPureIntro | let v := fresh "v" in iIntros (v) "Hpost"]
+                          | let v := fresh "v" in iIntros (v) "Hpost"]]
         end ]
   end.
 

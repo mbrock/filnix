@@ -21,8 +21,8 @@ Open Scope list_scope.
     The following piece lists track those shadow locations separately,
     while keeping their offsets aligned with the corresponding byte lists. *)
 
-(** A consecutive list of shadow capabilities becomes one owned piece
-    per offset through [aux_ps], beginning at offset o in object b. *)
+(** A buffer's shadow storage assigns one capability to each byte offset.
+    The piece list records those capabilities from the requested starting offset. *)
 Definition aux_ps (b o : Z) (cs : list cap) : list (piece * pval) :=
   zip_with (fun i c => (PAux b i, VAux c)) (seqZ o (Z.of_nat (length cs))) cs.
 
@@ -93,8 +93,8 @@ Proof.
   injection E as -> ->. eauto.
 Qed.
 
-(** Every offset within a capability list has a corresponding shadow
-    piece key, allowing an ownership proof to locate that slot. *)
+(** A proof can locate any shadow slot whose offset falls within the
+    buffer's recorded list of capabilities. *)
 Lemma aux_ps_key b o cs i : 0 <= i < Z.of_nat (length cs) -> PAux b (o + i) ∈ (aux_ps b o cs).*1.
 Proof.
   intros Hi. rewrite aux_ps_keys. apply list_elem_of_fmap_2. apply elem_of_seqZ. lia.
@@ -495,6 +495,10 @@ Definition bytes (b o : Z) (xs : list Z) : iProp Σ := pts (byte_ps b o xs).
     range, retaining its recorded values without exclusive write permission. *)
 Definition bytesq (dq : dfrac) (b o : Z) (xs : list Z) : iProp Σ := ptsq dq (byte_ps b o xs).
 
+(** Read-only byte ownership remains available after a proof uses it. *)
+#[global] Instance bytesq_persistent b o xs : Persistent (bytesq DfracDiscarded b o xs).
+Proof. unfold bytesq. apply _. Qed.
+
 (** A buffer needs ownership of its hidden pointer capabilities when
     an operation copies or clears the pointers stored in that buffer.
     The assertion [auxes] records those capabilities in consecutive
@@ -776,10 +780,13 @@ Qed.
 
 End calls.
 End mem.
+(** Automatic framing keeps a byte share intact instead of inspecting each
+    byte. Proofs that need individual bytes can unfold the definition explicitly. *)
+#[global] Hint Opaque bytesq : typeclass_instances.
 End MemLogicOn.
 
-(** The module [MemLogic] creates its own program-logic instance and
-    supplies the buffer assertions and instruction rules from [MemLogicOn]. *)
+(** Clients can use these buffer assertions and instruction rules with a
+    standalone program logic, without supplying an existing logic instance. *)
 Module MemLogic (R : Runtime).
 Module LG0 := Logic R.
 Include MemLogicOn R LG0.
