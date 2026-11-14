@@ -349,6 +349,7 @@ getopt/GetoptShortCap.v
 getopt/GetoptKnownCap.v
 getopt/GetoptKnownRet.v
 getopt/GetoptCharRet.v
+getopt/GetoptEntryChar.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v
