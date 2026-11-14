@@ -14,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld FileInv HelloGlibcMainWitness.
 From stdpp Require Import list.
-From Glibc Require AllocLogic FileInv HelloGlibcMainWitness.
+From Glibc Require AllocLogic FileInv HelloGlibcMainWitness CutoffLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -73,6 +73,21 @@ Definition witness_all : list (piece * pval) :=
 (** A finite computation checks that none of these ownership keys overlap. *)
 Lemma witness_all_distinct : NoDup witness_all.*1.
 Proof. apply hello_witness_unique_sound. vm_compute. reflexivity. Qed.
+
+(** Hello's cutoff theorem takes the thread's stack size from the
+    starting memory. That size is eight bytes at a fixed offset in the
+    thread's descriptor. In this image those bytes fit on the
+    descriptor's page, and no other piece uses their keys, whatever
+    value the bytes hold. *)
+Lemma witness_stack_cell sz :
+  NoDup (witness_all ++ cell 53248 CutoffLogic.off_stackblock_size sz).*1 /\
+  53248 + CutoffLogic.off_stackblock_size + 8 <= r_end (hello_witness_region 53248).
+Proof.
+  assert (Hk : (cell 53248 CutoffLogic.off_stackblock_size sz).*1 =
+    (cell 53248 CutoffLogic.off_stackblock_size 0).*1) by reflexivity.
+  split; [rewrite fmap_app Hk -fmap_app; apply hello_witness_unique_sound; vm_compute; reflexivity|].
+  vm_compute. intros H. discriminate H.
+Qed.
 
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.

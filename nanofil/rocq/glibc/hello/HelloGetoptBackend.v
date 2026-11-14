@@ -322,3 +322,135 @@ Proof.
     (getopt_cutoff_rule_with_loan (glibc_program := program_of w0 glibc_os_registry ge) G dq
       ltac:(reflexivity) Hsf Hss Hcf Hln)).
 Qed.
+
+(** ## Where the stack size comes from
+
+    Hello's streams do not own the bytes that hold the stack size, so
+    the theorem above makes its caller lend them. The theorem below
+    finds them in the starting memory instead. It splits off the eight
+    bytes at offset 1720 of the thread's descriptor and freezes them
+    once, and every call then copies the frozen share. The caller's loan
+    only has to cover the cleanup state, which the streams already own.
+
+    The stack size may hold any value sz. In the pinned glibc, startup
+    stores the end of the initial stack there before main runs. The
+    theorem does not rely on that store. It only asks that the starting
+    memory holds those bytes and that nobody else owns them. *)
+
+(** Every allowed execution of Hello with glibc's getopt_long avoids
+    panics, stuck steps and contract failures, when the starting memory
+    holds the thread's stack size beside glibc's objects and Hello's
+    table. *)
+Theorem hello_never_panics_getopt_stack Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0
+    penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ts sz :
+  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
+  find_fn ge (TAtom "getopt_long") = Some (Defined glibc_getopt_long) ->
+  find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal) ->
+  find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r) ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_memset") = Some (Defined glibc_memset) ->
+  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined CutoffCode.glibc_libc_alloca_cutoff) ->
+  find_fn ge (TAtom "zthread_self_cookie") = None -> Term.lookup (TAtom "zthread_self_cookie") (ge_globals ge) = None ->
+  ow_self w0 = mkPtr ts (Obj ts) ->
+  Term.lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
+  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
+  Term.lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)) ->
+  0 < oe -> oe + 4 <= r_end roe -> r_end roe <= 2 ^ 48 ->
+  Term.lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)) ->
+  0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
+  0 < ho_oa o -> 0 < ho_oi o -> 0 < ho_se o ->
+  Term.lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some (mkPtr bdd (Ro bdd)) ->
+  0 < bdd -> bdd mod 8 = 0 -> bdd + 8 <= r_end rdd -> r_end rdd <= 2 ^ 48 ->
+  Term.lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some (mkPtr b7 (Ro b7)) ->
+  0 < b7 -> b7 mod 8 = 0 -> b7 + 8 <= r_end r7 -> r_end r7 <= 2 ^ 48 ->
+  Term.lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some (mkPtr b0 (Ro b0)) ->
+  0 < b0 -> b0 mod 8 = 0 -> b0 + 8 <= r_end r0 -> r_end r0 <= 2 ^ 48 ->
+  Term.lookup (TAtom "hello#parse_options.longopts.64") (ge_globals ge) = Some (mkPtr tb (Ro tb)) ->
+  0 < tb -> tb mod 8 = 0 -> tb + 136 <= r_end treg -> r_end treg <= 2 ^ 48 ->
+  Term.lookup (TAtom "hello#str.69") (ge_globals ge) = Some (mkPtr b5 (Ro b5)) ->
+  0 < b1 -> b1 mod 8 = 0 -> b1 + 16 <= r_end r1 -> r_end r1 <= 2 ^ 48 ->
+  0 < b2 -> b2 mod 8 = 0 -> b2 + 16 <= r_end r2 -> r_end r2 <= 2 ^ 48 ->
+  0 < b3 -> b3 mod 8 = 0 -> b3 + 8 <= r_end r3 -> r_end r3 <= 2 ^ 48 ->
+  0 < b4 -> b4 mod 8 = 0 -> b4 + 8 <= r_end r4 -> r_end r4 <= 2 ^ 48 ->
+  0 < b5 -> b5 mod 8 = 0 -> b5 + 8 <= r_end r5 -> r_end r5 <= 2 ^ 48 ->
+  Term.lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  Term.lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
+  Term.lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  Term.lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  Term.lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  Term.lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  Term.lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  Term.lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  Term.lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  Term.lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
+  R.ready s m -> live_disjoint m ->
+  agrees m (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++
+    getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++
+    cell ts CutoffLogic.off_stackblock_size sz)) ->
+  os_wi w0 m w (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++
+    getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++
+    cell ts CutoffLogic.off_stackblock_size sz)) ->
+  NoDup (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++
+    getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++
+    cell ts CutoffLogic.off_stackblock_size sz).*1 ->
+  map_disjoint h1 (list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++
+    getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++
+    cell ts CutoffLogic.off_stackblock_size sz)) ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+    exists (debt : HelloCore w0 ge o) (G : iProp Σ) (T : ptr -> ptr -> iProp Σ),
+    getenv_rule w0 glibc_os_registry ge G /\ getopt_diag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\
+    getopt_ldiag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\
+    (G ⊢ tcb_cleanup_inv (ow_self w0) ∗ (tcb_cleanup_inv (ow_self w0) -∗ G)) /\
+    (hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o debt)) /\
+    (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
+      hello_ro_rest ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
+      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
+      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i)) ->
+  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
+    m s w fuel (fun _ => True).
+Proof.
+  intros Hk Hy Hos Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp Hgms Hcf Hsf Hss Hts Hgb Hgb0 Hgb8 Hgbe Hgbr Hoe Hoe0 Hoee Hoer
+    Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0 H146 Hd0 Hd8 Hde Hdr H147 H70 H78 H7e H7r H150 H00 H08 H0e H0r
+    Htb Htb0 Htb8 Htbe Htbr H69 Hb10 Hb18 Hb1e Hb1r Hb20 Hb28 Hb2e Hb2r Hb30 Hb38 Hb3e Hb3r
+    Hb40 Hb48 Hb4e Hb4r Hb50 Hb58 Hb5e Hb5r
+    H145 H148 H149 H138 H139 H140 H141 H142 H143 H144 Hargc Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
+  apply (hello_getopt_table_core_sep Σ w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo
+    bdd rdd b7 r7 b0 r0 tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 (cell ts CutoffLogic.off_stackblock_size sz));
+    try assumption.
+  intros HinvG HheapG.
+  destruct (Hstart HinvG HheapG) as (debt & G & T & Hge & Hdg & Hld & Hln & Hg & Hpre).
+  set (C := CutoffLogic.stack_size_cell (glibc_program := program_of w0 glibc_os_registry ge)
+    (ow_self w0) DfracDiscarded sz).
+  exists debt, C. split; [exact (CutoffLogic.stack_size_own (glibc_program := program_of w0 glibc_os_registry ge) ts sz Hts)|].
+  split; [|exact Hpre].
+  assert (Hloan : G ∗ □ C ⊢
+    CutoffLogic.cutoff_loan (glibc_program := program_of w0 glibc_os_registry ge) DfracDiscarded ∗
+    (CutoffLogic.cutoff_loan (glibc_program := program_of w0 glibc_os_registry ge) DfracDiscarded -∗ G ∗ □ C)).
+  { iIntros "[HG #HC]". iDestruct (Hln with "HG") as "[Ht Hb]".
+    iSplitL "Ht"; [iFrame "Ht"; iExists sz; iExact "HC"|].
+    iIntros "[Ht _]". iSplitL; [iApply ("Hb" with "Ht") | iExact "HC"]. }
+  assert (HgC : hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ □ C ⊢
+    (G ∗ □ C) ∗ (G ∗ □ C -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ □ C)).
+  { iIntros "(Hio & Hpv & #HC)". iDestruct (Hg with "[$Hio $Hpv]") as "[HG Hb]".
+    iSplitL "HG"; [iFrame "HG HC"|]. iIntros "[HG _]". iDestruct ("Hb" with "HG") as "[Hio Hpv]".
+    iFrame "Hio Hpv HC". }
+  exact (hello_getopt_ix_ro_sep w0 ge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp (hk_gi_strlen _ _ Hk)
+    gb greg Hgb Hgb0 Hgb8 Hgbe Hgbr oe roe oo roo Hoe Hoe0 Hoee Hoer Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0
+    (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0)) penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom
+    [45; 45] [45] [45; 87; 32] H146 H147 H150 H145 H148 H149 H138 H139 H140 H141 H142 H143 H144
+    (G ∗ □ C) (hello_tcache o) (fun mid q => T mid q ∗ □ C)%I
+    (getenv_rule_sep w0 glibc_os_registry ge G (□ C) Hge)
+    (getopt_diag_rule_sep w0 glibc_os_registry ge G (□ C) T (ho_err o) dom Hdg)
+    (getopt_ldiag_rule_sep w0 glibc_os_registry ge G (□ C) T (ho_err o) dom Hld)
+    (hello_malloc_rule w0 ge o Hk) (hello_memset_rule w0 ge o Hk Hgms) (hello_free_rule w0 ge o Hk)
+    (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4))
+    (hello_ro_tcache ge o) (□ C)%I av ar
+    (getopt_cutoff_rule_with_loan (glibc_program := program_of w0 glibc_os_registry ge) (G ∗ □ C) DfracDiscarded
+      ltac:(reflexivity) Hsf Hss Hcf Hloan) HgC).
+Qed.

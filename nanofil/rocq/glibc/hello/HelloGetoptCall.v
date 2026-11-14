@@ -286,23 +286,43 @@ Proof.
   iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo"; [iSplitL "HS"; [iExact "HS" | iExact "Hgo"] | iExact "Hstr"].
 Qed.
 
+(** The loop's contract does not care how its state is written down.
+    When two descriptions of the state are equivalent, a call that keeps
+    one also keeps the other. *)
+Lemma loop_getopt_iff av ar (S S' : list ptr -> Z -> iProp Σ) :
+  (forall ps i, S ps i ⊣⊢ S' ps i) -> loop_getopt w0 ge o D av ar S -> loop_getopt w0 ge o D av ar S'.
+Proof.
+  intros HS Hl ps a i. destruct (Hl ps a i) as (gf & Hgf & Hfr & Ht).
+  exists gf. split; [exact Hgf|]. split; [exact Hfr|]. intros fr Φ Hf.
+  iIntros "(Hro & Hio & Hpv & Hav & Hps & Hc & HS) HQ".
+  iApply (Ht fr Φ Hf with "[Hro Hio Hpv Hav Hps Hc HS]").
+  { iFrame "Hro Hio Hpv Hav Hps Hc". by rewrite HS. }
+  iIntros (r) "(%x & %ps' & %a' & %i' & %Hx & Hio & Hpv & Hav & Hc & HS & Hstr)".
+  iApply "HQ". iExists x, ps', a', i'. iSplit; [done|]. iFrame "Hio Hpv Hav Hc Hstr". by rewrite -HS.
+Qed.
+
 (** Hello already shares the memory that malloc reads, so nobody needs
     to lend it. Only getenv and the warning printers still borrow from the
     streams and the private state. *)
 Context (Hro_m : hello_ro ge o ⊢ M)
   (Hg : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D)).
 
-(** With that, each call to glibc's getopt_long does what the loop
-    expects of it, also when the cutoff borrows G. *)
-Lemma hello_getopt_ix_ro_with av ar :
+(** Hello's loop can carry one more resource R beside the parser's
+    object. Each call to getopt_long then lends R together with the
+    streams and the private state. Getenv, the warning printers and the
+    alloca cutoff borrow G from those three, and the call gives all of
+    it back. Hello puts the frozen stack size in R, because the cutoff
+    reads it. *)
+Lemma hello_getopt_ix_ro_sep (R : iProp Σ) av ar :
   getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
-  loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals)%I.
+  (hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R)) ->
+  loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals ∗ R)%I.
 Proof.
-  intros Hcw.
+  intros Hcw HgR.
   intros ps a i. destruct (hello_getopt_lend_with av ar ps a i Hcw) as (gf & Hgf & Hfr & Ht).
   exists gf. split; [exact Hgf|]. split; [exact Hfr|]. intros fr Φ Hf.
-  iIntros "(#Hro & Hio & Hpv & Hav & #Hps & Hc & HS & Hgo) HQ".
-  iDestruct (Hg with "[Hio Hpv]") as "[HG Hback]"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
+  iIntros "(#Hro & Hio & Hpv & Hav & #Hps & Hc & HS & Hgo & HR) HQ".
+  iDestruct (HgR with "[$Hio $Hpv $HR]") as "[HG Hback]".
   iDestruct (Hro_m with "Hro") as "HM".
   iApply (Ht fr Φ Hf with "[Hgo HG HM Hav Hc HS]").
   { iSplitR; [iExact "Hro"|]. iSplitL "Hgo HG HM".
@@ -310,10 +330,21 @@ Proof.
     iSplitL "Hav"; [iExact "Hav"|]. iSplitR; [iExact "Hps"|]. iSplitL "Hc"; [iExact "Hc" | iExact "HS"]. }
   iIntros (r) "(%x & %ps' & %a' & %i' & %Hx & Hp & Hav & Hc & HS & Hstr)".
   iDestruct (hello_getopt_priv_split with "Hp") as "(Hgo & HG & _)".
-  iDestruct ("Hback" with "HG") as "[Hio Hpv]".
+  iDestruct ("Hback" with "HG") as "(Hio & Hpv & HR)".
   iApply "HQ". iExists x, ps', a', i'. iSplit; [iPureIntro; exact Hx|].
   iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|]. iSplitL "Hav"; [iExact "Hav"|].
-  iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo"; [iSplitL "HS"; [iExact "HS" | iExact "Hgo"] | iExact "Hstr"].
+  iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo HR"; [iFrame "HS Hgo HR" | iExact "Hstr"].
+Qed.
+
+(** With that, each call to glibc's getopt_long does what the loop
+    expects of it, also when the cutoff borrows G. *)
+Lemma hello_getopt_ix_ro_with av ar :
+  getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
+  loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals)%I.
+Proof.
+  intros Hcw. apply (loop_getopt_iff av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals ∗ emp)%I).
+  { intros ps i. by rewrite bi.sep_emp. }
+  apply (hello_getopt_ix_ro_sep emp av ar Hcw). rewrite !bi.sep_emp. exact Hg.
 Qed.
 
 (** Callers that need no resource for the cutoff keep this form. *)
