@@ -299,6 +299,86 @@ Qed.
 (** A program can call getopt_long safely. If the call returns the code
     c, the argument in optarg is a readable string. The program also
     gets back the session, the public cells and everything it lent. *)
+Lemma wp_getopt_long_str_with e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+    (G : iProp Σ) T fp dom se sereg mid mid' pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F
+    pfx7 pxs7 pfx0 pxs0 penv c Φ :
+  lookup (TAtom "v0") e = Some (WInt n) -> lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
+  lookup (TAtom "v4") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WPtr lo) ->
+  lookup (TAtom "v8") e = Some (WPtr li) ->
+  find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal) ->
+  find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r) ->
+  lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr b (Obj b)) ->
+  lookup (TAtom "optind") (ge_globals ge) = Some (mkPtr oi (Obj oi)) ->
+  lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)) ->
+  lookup (TAtom "optarg") (ge_globals ge) = Some (mkPtr oa (Obj oa)) ->
+  lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)) ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < oi -> oi + 4 <= r_end roi -> r_end roi <= 2 ^ 48 ->
+  0 < oe -> oe + 4 <= r_end roe -> r_end roe <= 2 ^ 48 ->
+  0 < oa -> oa mod 8 = 0 -> oa + 8 <= r_end roa -> r_end roa <= 2 ^ 48 ->
+  0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
+  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some pfx7 ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx0 ->
+  getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  str_code (drop (opt_skip os) os) los c ->
+  copy_in_view b r av ar ps i err -∗
+  live oi roi -∗ int_cell oi 0 i -∗ live oe roe -∗ int_cell oe 0 err -∗
+  live oa roa -∗ pcell oa 0 a0 -∗ live oo roo -∗ int_cell oo 0 c0 -∗
+  word_string DfracDiscarded p os -∗ G -∗ liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ word_string DfracDiscarded pdd sdd -∗
+  opt_table lo los -∗ word_string DfracDiscarded pfx7 pxs7 -∗ word_string DfracDiscarded pfx0 pxs0 -∗
+  flags_own F -∗ M -∗ longind_own li -∗
+  (∀ x i' c' a' ps', ⌜Permutation ps ps' /\ 0 <= x < 2 ^ 32⌝ -∗ getopt_session b r av ar ps' i' -∗
+     live oi roi -∗ int_cell oi 0 i' -∗ live oe roe -∗ int_cell oe 0 err -∗
+     live oa roa -∗ pcell oa 0 a' -∗ live oo roo -∗ int_cell oo 0 c' -∗
+     live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
+     arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
+  WP (ERun (mkFrame glibc_getopt_long e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+Proof.
+  intros H0 H2 H4 H6 H8 Hfi Hfr Hgd Hgi Hge Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer
+    Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hgp Hp7 Hp0 Hcut Hmal Hset
+    Hlrule Hfree Hgsn Hgl H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlen Hn Hse0 Hsea Hsee Hser Hcode.
+  iIntros "(%i0 & %e0 & Hl & Hb0 & Hb4 & Hpre) Hoi Hi Hoe He Hoa Hpa Hoo Hc #Hos HG #Hsl #Hsc Ha Hcl #Hs #Hdd
+    #Ht #Hp7 #Hp0 HF HM Hli HK".
+  iApply (GetoptLongWrapper.wp_getopt_long e n (mkPtr av (Obj av)) p lo li b r oi roi oe roe oa roa oo roo i err
+            a0 c0 i0 e0 (str_rest b r av ar ps G F M li c) Φ
+            with "Hoi Hi Hoe He Hoa Hpa Hoo Hc Hl Hb0 Hb4 [Hpre HG Ha Hcl HF HM Hli] [HK]"); try (assumption || lia).
+  - iIntros (cf Hcf) "Hl Hb0 Hb4". iSpecialize ("Hpre" with "Hl Hb0 Hb4").
+    iApply (wp_getopt_call_parse_arg_with cf n av ar p os lo li 0 0 penv b r ps i G T fp dom se sereg mid mid' pdd sdd M
+              f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0
+              (wrap_post b r (str_rest b r av ar ps G F M li c))
+              with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli [ ]"); try (assumption || lia).
+    iApply (call_parse_rets_str with "Hs"); assumption.
+  - iIntros (x i' c' a' Hx) "[Hrest #Hstr] Hl Hb0 Hb8 Hb16 Hoi Hi Hoe He Hoa Hpa Hoo Hc".
+    iDestruct "Hrest" as (ps' cur) "(%Hp & Hcur & Hw & Ha & Hcl & #Hs' & HG & HF & HM & Hli & Hca)".
+    iSpecialize ("Hw" with "Hl Hb0 Hb8 Hb16 Hcur").
+    iApply ("HK" with "[%] Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha Hcl Hs' HG HF HM Hli Hca Hstr"). exact Hp.
+Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
 Lemma wp_getopt_long_str e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
     (G : iProp Σ) T fp dom se sereg mid mid' pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F
     pfx7 pxs7 pfx0 pxs0 penv c Φ :
@@ -358,24 +438,8 @@ Lemma wp_getopt_long_str e n av ar p os lo li b r ps i err oi roi oe roe oa roa 
      arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_long e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros H0 H2 H4 H6 H8 Hfi Hfr Hgd Hgi Hge Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer
-    Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hgp Hp7 Hp0 Hcut Hmal Hset
-    Hlrule Hfree Hgsn Hgl H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlen Hn Hse0 Hsea Hsee Hser Hcode.
-  iIntros "(%i0 & %e0 & Hl & Hb0 & Hb4 & Hpre) Hoi Hi Hoe He Hoa Hpa Hoo Hc #Hos HG #Hsl #Hsc Ha Hcl #Hs #Hdd
-    #Ht #Hp7 #Hp0 HF HM Hli HK".
-  iApply (GetoptLongWrapper.wp_getopt_long e n (mkPtr av (Obj av)) p lo li b r oi roi oe roe oa roa oo roo i err
-            a0 c0 i0 e0 (str_rest b r av ar ps G F M li c) Φ
-            with "Hoi Hi Hoe He Hoa Hpa Hoo Hc Hl Hb0 Hb4 [Hpre HG Ha Hcl HF HM Hli] [HK]"); try (assumption || lia).
-  - iIntros (cf Hcf) "Hl Hb0 Hb4". iSpecialize ("Hpre" with "Hl Hb0 Hb4").
-    iApply (wp_getopt_call_parse_arg cf n av ar p os lo li 0 0 penv b r ps i G T fp dom se sereg mid mid' pdd sdd M
-              f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0
-              (wrap_post b r (str_rest b r av ar ps G F M li c))
-              with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli [ ]"); try (assumption || lia).
-    iApply (call_parse_rets_str with "Hs"); assumption.
-  - iIntros (x i' c' a' Hx) "[Hrest #Hstr] Hl Hb0 Hb8 Hb16 Hoi Hi Hoe He Hoa Hpa Hoo Hc".
-    iDestruct "Hrest" as (ps' cur) "(%Hp & Hcur & Hw & Ha & Hcl & #Hs' & HG & HF & HM & Hli & Hca)".
-    iSpecialize ("Hw" with "Hl Hb0 Hb8 Hb16 Hcur").
-    iApply ("HK" with "[%] Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha Hcl Hs' HG HF HM Hli Hca Hstr"). exact Hp.
+  intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 H38 H39 H40 H41 Hcut.
+  exact (wp_getopt_long_str_with e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 H38 H39 H40 H41 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
 
 (** ## The call as the program makes it
@@ -419,6 +483,83 @@ Qed.
     the null cell and the strings of the words, and it gets them back in
     the same form over the reordered words. Everything else is as in the
     rule above. *)
+Lemma wp_getopt_long_str_call_with cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
+    (G : iProp Σ) T fp dom se sereg mid mid' pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F
+    pfx7 pxs7 pfx0 pxs0 penv c Φ :
+  call_frame glibc_getopt_long
+    [WInt (Z.of_nat (List.length ps)); WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li] = Some cf ->
+  find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal) ->
+  find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r) ->
+  lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr b (Obj b)) ->
+  lookup (TAtom "optind") (ge_globals ge) = Some (mkPtr oi (Obj oi)) ->
+  lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)) ->
+  lookup (TAtom "optarg") (ge_globals ge) = Some (mkPtr oa (Obj oa)) ->
+  lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)) ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < oi -> oi + 4 <= r_end roi -> r_end roi <= 2 ^ 48 ->
+  0 < oe -> oe + 4 <= r_end roe -> r_end roe <= 2 ^ 48 ->
+  0 < oa -> oa mod 8 = 0 -> oa + 8 <= r_end roa -> r_end roa <= 2 ^ 48 ->
+  0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
+  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some pfx7 ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx0 ->
+  getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
+  Z.of_nat (List.length ps) < 2 ^ 31 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  str_code (drop (opt_skip os) os) los c ->
+  copy_in_view b r av ar ps i err -∗
+  live oi roi -∗ int_cell oi 0 i -∗ live oe roe -∗ int_cell oe 0 err -∗
+  live oa roa -∗ pcell oa 0 a0 -∗ live oo roo -∗ int_cell oo 0 c0 -∗
+  word_string DfracDiscarded p os -∗ G -∗ liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live av ar -∗ ([∗ list] k ↦ q ∈ ps ++ [null], pcell av (8 * Z.of_nat k) q) -∗
+  ([∗ list] q ∈ ps, ∃ s, word_string DfracDiscarded q s) -∗ word_string DfracDiscarded pdd sdd -∗
+  opt_table lo los -∗ word_string DfracDiscarded pfx7 pxs7 -∗ word_string DfracDiscarded pfx0 pxs0 -∗
+  flags_own F -∗ M -∗ longind_own li -∗
+  (∀ x i' c' a' ps', ⌜Permutation ps ps' /\ 0 <= x < 2 ^ 32⌝ -∗ getopt_session b r av ar ps' i' -∗
+     live oi roi -∗ int_cell oi 0 i' -∗ live oe roe -∗ int_cell oe 0 err -∗
+     live oa roa -∗ pcell oa 0 a' -∗ live oo roo -∗ int_cell oo 0 c' -∗
+     live av ar -∗ ([∗ list] k ↦ q ∈ ps' ++ [null], pcell av (8 * Z.of_nat k) q) -∗
+     ([∗ list] q ∈ ps', ∃ s, word_string DfracDiscarded q s) -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
+     arg_cap a' -∗
+     arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
+  WP (ERun cf : gexpr) {{ Φ }}.
+Proof.
+  intros Hcf. rewrite getopt_long_call_frame in Hcf. injection Hcf as <-. intros.
+  iIntros "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli HK".
+  iDestruct (argv_cells_null with "Hcl") as "[Hcl Hnull]".
+  iApply (wp_getopt_long_str_with (getopt_long_env (Z.of_nat (List.length ps)) av p lo li) (Z.of_nat (List.length ps))
+            av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M
+            f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ
+            with "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli [Hnull HK]");
+    try (reflexivity || assumption || lia).
+  iIntros (x i' c' a' ps' [Hp Hx]) "Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha Hcl Hs' HG HF HM Hli Hca Hstr".
+  iEval (rewrite (Permutation_length Hp)) in "Hnull".
+  iApply ("HK" with "[%] Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha [Hcl Hnull] Hs' HG HF HM Hli Hca Hstr");
+    [split; assumption|].
+  iApply argv_cells_null. iSplitL "Hcl"; [iExact "Hcl" | iExact "Hnull"].
+Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
 Lemma wp_getopt_long_str_call cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0
     (G : iProp Σ) T fp dom se sereg mid mid' pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F
     pfx7 pxs7 pfx0 pxs0 penv c Φ :
@@ -480,19 +621,8 @@ Lemma wp_getopt_long_str_call cf av ar p os lo li b r ps i err oi roi oe roe oa 
      arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
 Proof.
-  intros Hcf. rewrite getopt_long_call_frame in Hcf. injection Hcf as <-. intros.
-  iIntros "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli HK".
-  iDestruct (argv_cells_null with "Hcl") as "[Hcl Hnull]".
-  iApply (wp_getopt_long_str (getopt_long_env (Z.of_nat (List.length ps)) av p lo li) (Z.of_nat (List.length ps))
-            av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M
-            f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ
-            with "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli [Hnull HK]");
-    try (reflexivity || assumption || lia).
-  iIntros (x i' c' a' ps' [Hp Hx]) "Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha Hcl Hs' HG HF HM Hli Hca Hstr".
-  iEval (rewrite (Permutation_length Hp)) in "Hnull".
-  iApply ("HK" with "[%] Hw Hoi Hi Hoe He Hoa Hpa Hoo Hc Ha [Hcl Hnull] Hs' HG HF HM Hli Hca Hstr");
-    [split; assumption|].
-  iApply argv_cells_null. iSplitL "Hcl"; [iExact "Hcl" | iExact "Hnull"].
+  intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 Hcut.
+  exact (wp_getopt_long_str_call_with cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
 
 End long_str.

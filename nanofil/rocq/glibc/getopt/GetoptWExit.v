@@ -155,7 +155,7 @@ Qed.
     k0 of the word q. The caller says what happens in each of the three
     cases, and it learns which entry chose the argument. The step before
     kept the names in kc and kr and set v455 and chk137. *)
-Lemma w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
+Lemma w_exit_bridge_arg_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
     (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
   incl char_ret_keys kc -> In (TAtom "v8") kc -> incl known_req_keys kr -> In (TAtom "v6") kr ->
   In (TAtom "v8") kr ->
@@ -167,7 +167,7 @@ Lemma w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
   find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
-  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
   find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
@@ -238,14 +238,110 @@ Proof.
   assert (Hc1' : ptr_add (ptr_add q (Z.of_nat k0)) 1 = ptr_add q (Z.of_nat (S k0))) by (rewrite wos_ptr_add; f_equal; lia).
   iEval (rewrite Ht1) in "Hib". iEval (rewrite Hc1') in "Hcur".
   iDestruct (ws_suffix p os (opt_skip os) (GetoptColon.opt_skip_le os) with "Hos") as "#Hpo".
-  iApply (wp_getopt_w_ret_arg e3 (TAtom "L524") i n 87 pe (ptr_add p (Z.of_nat (opt_skip os))) (drop (opt_skip os) os)
+  iApply (wp_getopt_w_ret_arg_with e3 (TAtom "L524") i n 87 pe (ptr_add p (Z.of_nat (opt_skip os))) (drop (opt_skip os) os)
     oo a b r av ar ps G T fp dom se sereg mid M f138 f139 f140 f141 lmid mid3 mid4 lo los F pfx pxs q sq k0 li
     er ord fst lst Φ
     with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca HK");
     try (assumption || lia).
 Qed.
 
+(** Callers that need no resource for the cutoff keep this form. *)
+Lemma w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
+    (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
+  incl char_ret_keys kc -> In (TAtom "v8") kc -> incl known_req_keys kr -> In (TAtom "v6") kr ->
+  In (TAtom "v8") kr ->
+  entry_env e1 n (mkPtr av (Obj av)) (ptr_add p (Z.of_nat (opt_skip os))) lo li lonly b pe ->
+  keeps kc e1 e2 -> keeps kr e2 e3 -> lookup (TAtom "v455") e2 = Some (WInt (chr_w (sbyte (drop k0 sq) 0))) ->
+  lookup (TAtom "chk137") e2 = Some (WPtr (mkPtr (b + 32) (Obj b))) -> sbyte (drop k0 sq) 0 = 87 ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z ->
+  ps !! Z.to_nat i = Some q -> (k0 < List.length sq)%nat ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n -> 0 <= pe < 2 ^ 32 ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < av -> av mod 8 = 0 -> av + 8 * (n + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  0 <= ord <= 2 -> 0 <= fst <= lst -> lst <= i ->
+  opt_table lo los -∗ word_string DfracDiscarded q sq -∗ word_string DfracDiscarded p os -∗
+  word_string DfracDiscarded pfx pxs -∗ liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live b r -∗ int_cell b 0 (if sbyte (drop k0 sq) 1 =? 0 then i + 1 else i) -∗ int_cell b 4 er -∗
+  int_cell b 8 oo -∗ pcell b 16 a -∗ int_cell b 24 1 -∗ pcell b 32 (ptr_add (ptr_add q (Z.of_nat k0)) 1) -∗
+  int_cell b 40 ord -∗ int_cell b 44 fst -∗ int_cell b 48 lst -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
+  w_ret_exits_arg b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
+  WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 Hcut.
+  exact (w_exit_bridge_arg_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
+Qed.
+
 (** The same bridge serves a caller that handles the cases without the relation. *)
+Lemma w_exit_bridge_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
+    (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
+  incl char_ret_keys kc -> In (TAtom "v8") kc -> incl known_req_keys kr -> In (TAtom "v6") kr ->
+  In (TAtom "v8") kr ->
+  entry_env e1 n (mkPtr av (Obj av)) (ptr_add p (Z.of_nat (opt_skip os))) lo li lonly b pe ->
+  keeps kc e1 e2 -> keeps kr e2 e3 -> lookup (TAtom "v455") e2 = Some (WInt (chr_w (sbyte (drop k0 sq) 0))) ->
+  lookup (TAtom "chk137") e2 = Some (WPtr (mkPtr (b + 32) (Obj b))) -> sbyte (drop k0 sq) 0 = 87 ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
+  getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z ->
+  ps !! Z.to_nat i = Some q -> (k0 < List.length sq)%nat ->
+  0 <= i < n -> n < 2 ^ 31 -> Z.of_nat (List.length ps) = n -> 0 <= pe < 2 ^ 32 ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < av -> av mod 8 = 0 -> av + 8 * (n + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  0 <= ord <= 2 -> 0 <= fst <= lst -> lst <= i ->
+  opt_table lo los -∗ word_string DfracDiscarded q sq -∗ word_string DfracDiscarded p os -∗
+  word_string DfracDiscarded pfx pxs -∗ liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live b r -∗ int_cell b 0 (if sbyte (drop k0 sq) 1 =? 0 then i + 1 else i) -∗ int_cell b 4 er -∗
+  int_cell b 8 oo -∗ pcell b 16 a -∗ int_cell b 24 1 -∗ pcell b 32 (ptr_add (ptr_add q (Z.of_nat k0)) 1) -∗
+  int_cell b 40 ord -∗ int_cell b 44 fst -∗ int_cell b 48 lst -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
+  w_ret_exits b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
+  WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros. iIntros "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca HK".
+  iApply (w_exit_bridge_arg_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca");
+    try eassumption.
+  iApply w_ret_exits_weaken. iExact "HK".
+Qed.
+
+(** Callers that need no resource for the cutoff keep this form. *)
 Lemma w_exit_bridge kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
     (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
   incl char_ret_keys kc -> In (TAtom "v8") kc -> incl known_req_keys kr -> In (TAtom "v6") kr ->
@@ -288,10 +384,8 @@ Lemma w_exit_bridge kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 
   WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
     {{ Φ }}.
 Proof.
-  intros. iIntros "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca HK".
-  iApply (w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca");
-    try eassumption.
-  iApply w_ret_exits_weaken. iExact "HK".
+  intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 Hcut.
+  exact (w_exit_bridge_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
 
 (** ## The three W exits
