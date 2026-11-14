@@ -28,8 +28,10 @@ A stage is one program that takes the tree as its argument and rewrites it in pl
 - `15-code.py` regenerates the code modules for the flat layout.
 - `20-keeps.py` moves `keeps` to the shared file `GlibcEnv.v` and rewrites the `libio/` disjunctions to it.
 - `30-tactics.py` ports proofs to the one step-tactic library `GlibcTactics.v`.
-- `50-program` shortens the statements of rule lemmas. On main each lemma takes one premise for each function that its proof looks up in the linked program, and each caller passes all of them. The stage gives a rules section one context for the linked program instead. The context `GlibcProgram` replaces the section's local `irisGS` instance, and the class `Defines` replaces its `find_fn` premises. A lemma that the audit names keeps its name and type, and it is proved from an implementation named `FILE_NAME_program`.
-- `60-rules` replaces rule applications by wrapper tactics that discharge the standard side conditions.
+
+The cutover is split in two, so that the flat layout can land before the later stages are ready. This branch holds the four stages of the first cutover.
+
+Two more stages are developed on the branches `proof-eng` and `proof-eng-rules`. They are not on this branch, and they land in a second cutover after they pass the same gates.
 
 Several files define tactics with the same short name, such as `arith`. Stage `10` keeps each use bound to the definition it had before. It reorders the imports of the file when that is enough, and otherwise it writes the use with its file name, as in `StrlenLoop.arith`. The reviewed names are listed in `flatten-name-baseline.json`, and the stage fails when a new one appears.
 

@@ -2,7 +2,7 @@
 
 This note is for someone who writes proofs in `nanofil/rocq/glibc/`. At cutover the output of the stages in this directory replaces the tree on `main`. Every file changes once. The statements of the audited theorems do not change. This note lists what an author writes differently afterwards and how to convert a file that is not merged yet.
 
-The first three sections describe changes that are already on the branch `proof-eng`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes a reviewed design that is not on the branch yet. The last section covers one open question, which is how the tree stays general in the runtime.
+The first three sections describe the changes of the first cutover, which are on the branch `proof-eng-flat`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes a design that is developed on the branch `proof-eng` and lands in a second cutover. The last section covers one open question, which is how the tree stays general in the runtime.
 
 ## Converting an unmerged file
 
@@ -97,7 +97,7 @@ Three more conventions hold.
 - The three side-condition solvers have distinct names: `concrete_side`, `libio_side` and `close_side`. A proof names the one it needs. No file calls a bare `side`.
 - `lint-tactics.py TREE --max N` counts the `Ltac` definitions outside the two libraries, and cutover fixes `N`. A helper that is specific to one proof may stay in its file. A tactic that steps an instruction or applies a memory rule belongs in the library.
 
-## One program context (stage 50, not on the branch yet)
+## One program context (stage 50, second cutover)
 
 A rules section today takes the world, the registry, the global environment and one `find_fn` hypothesis for each function it calls, and it declares a local `irisGS` instance. After stage 50 a converted section takes one `GlibcProgram` context, and a `Defines` instance says that the program defines a function. A caller no longer passes the `find_fn` facts by position. In the trial `hge_output_overflow` passes 19 arguments where it passed 31.
 
