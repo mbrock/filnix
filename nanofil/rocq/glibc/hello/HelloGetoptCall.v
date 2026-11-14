@@ -269,6 +269,34 @@ Proof.
   iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo"; [iSplitL "HS"; [iExact "HS" | iExact "Hgo"] | iExact "Hstr"].
 Qed.
 
+(** Hello already shares the memory that malloc reads, so nobody needs
+    to lend it. Only getenv and the warning printers still borrow from the
+    streams and the private state. *)
+Context (Hro_m : hello_ro ge o ⊢ M)
+  (Hg : hello_stdio w0 ge o ∗ hd_priv w0 ge o D ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D)).
+
+(** With that, each call to glibc's getopt_long does what the loop
+    expects of it. *)
+Lemma hello_getopt_ix_ro av ar :
+  loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals)%I.
+Proof.
+  intros ps a i. destruct (hello_getopt_lend av ar ps a i) as (gf & Hgf & Hfr & Ht).
+  exists gf. split; [exact Hgf|]. split; [exact Hfr|]. intros fr Φ Hf.
+  iIntros "(#Hro & Hio & Hpv & Hav & #Hps & Hc & HS & Hgo) HQ".
+  iDestruct (Hg with "[Hio Hpv]") as "[HG Hback]"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
+  iDestruct (Hro_m with "Hro") as "HM".
+  iApply (Ht fr Φ Hf with "[Hgo HG HM Hav Hc HS]").
+  { iSplitR; [iExact "Hro"|]. iSplitL "Hgo HG HM".
+    { iApply hello_getopt_priv_split. iSplitL "Hgo"; [iExact "Hgo"|]. iSplitL "HG"; [iExact "HG" | iExact "HM"]. }
+    iSplitL "Hav"; [iExact "Hav"|]. iSplitR; [iExact "Hps"|]. iSplitL "Hc"; [iExact "Hc" | iExact "HS"]. }
+  iIntros (r) "(%x & %ps' & %a' & %i' & %Hx & Hp & Hav & Hc & HS & Hstr)".
+  iDestruct (hello_getopt_priv_split with "Hp") as "(Hgo & HG & _)".
+  iDestruct ("Hback" with "HG") as "[Hio Hpv]".
+  iApply "HQ". iExists x, ps', a', i'. iSplit; [iPureIntro; exact Hx|].
+  iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|]. iSplitL "Hav"; [iExact "Hav"|].
+  iSplitL "Hc"; [iExact "Hc"|]. iSplitL "HS Hgo"; [iSplitL "HS"; [iExact "HS" | iExact "Hgo"] | iExact "Hstr"].
+Qed.
+
 End call.
 
 (** ## Hello with glibc's getopt_long

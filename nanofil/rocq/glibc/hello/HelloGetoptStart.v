@@ -67,6 +67,70 @@ Proof.
     apply (bool_decide_unpack _). vm_compute. exact I.
 Qed.
 
+(** ## The startup argument
+
+    The startup theorems in this file and in HelloGetoptBackend.v differ
+    only in how they obtain the loop's contract for getopt_long. The two
+    lemmas below take that contract as an assumption and do the rest of
+    the work: they split the starting memory, build glibc's objects and
+    Hello's table from it, and run Hello's main function. *)
+
+(** Hello runs safely when each call to getopt_long keeps the loop's
+    promise, and glibc's objects start zeroed beside the rest of memory. *)
+Lemma hello_getopt_start_core Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 n1 n2 n3 n4 :
+  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
+  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
+  0 < bdd -> bdd mod 8 = 0 -> bdd + 8 <= r_end rdd -> r_end rdd <= 2 ^ 48 ->
+  0 < b7 -> b7 mod 8 = 0 -> b7 + 8 <= r_end r7 -> r_end r7 <= 2 ^ 48 ->
+  0 < b0 -> b0 mod 8 = 0 -> b0 + 8 <= r_end r0 -> r_end r0 <= 2 ^ 48 ->
+  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
+  R.ready s m -> live_disjoint m -> agrees m (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
+  os_wi w0 m w (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) -> NoDup (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0).*1 ->
+  map_disjoint h1 (list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+    exists debt : HelloCore w0 ge o,
+    loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
+      hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
+        [45; 45] [45] [45; 87; 32] n1 n2 n3 n4)%I /\
+    (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
+      hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
+      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
+      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i ∗
+      opt_table (sym_ptr ge "hello#parse_options.longopts.64") (hello_los n1 n2 n3 n4) ∗
+      word_string DfracDiscarded (sym_ptr ge "hello#str.69") s_optstring)) ->
+  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
+    m s w fuel (fun _ => True).
+Proof.
+  intros Hk Hy Hos Hgb0 Hgb8 Hgbe Hgbr Hd0 Hd8 Hde Hdr H70 H78 H7e H7r H00 H08 H0e H0r
+    -> Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
+  apply (heap_labelled_safe Σ glibc_os_registry (os_wi w0) ge _ m s w _ (fun _ => True) Hr Hd Ha Hw).
+  intros HinvG HheapG.
+  destruct (Hstart HinvG HheapG) as (debt & Hix & Hpre).
+  rewrite big_sepM_union; [|exact Hdisj].
+  rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hnd].
+  iIntros "[H1 HP]".
+  iAssert (pts (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) with "[HP]" as "HP";
+    [rewrite /pts; iExact "HP"|].
+  rewrite /getopt_start_ps. iDestruct (pts_app with "HP") as "[Hz HP]".
+  iDestruct (pts_app with "HP") as "[He HP]". iDestruct (pts_app with "HP") as "[Ho HP]".
+  iDestruct (pts_app with "HP") as "[Hdd HP]". iDestruct (pts_app with "HP") as "[H7 H0]".
+  iMod (Hpre with "H1") as "(#Hro & #Hps & (%Hav & Havl & Hcl) & Hn & HX & Hio & Hpv & Hgo & #Ht & #H69)".
+  iMod (getopt_lits_own with "Hdd H7 H0") as "(#Hdd & #H7 & #H0)"; try assumption.
+  iDestruct (int_global_own with "He") as "[Hel Hec]"; [lia|].
+  iDestruct (int_global_own with "Ho") as "[Hol Hoc]"; [lia|].
+  destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
+  iApply (HelloGlibcMainFull.main_full_state w0 ge o debt _ _
+    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos debt c) Hy av ar p0 ps x y z a i _ _ Hi Hix
+    with "Hro Hps [Havl Hcl] Hn HX Hio Hpv Hgo [Hz Hel Hec Hol Hoc]").
+  - iSplit; [iPureIntro; split_and!; assumption|]. iSplitL "Havl"; [iExact "Havl" | iExact "Hcl"].
+  - iSplitL "Hz".
+    { iApply (hello_getopt_state_pieces with "Hz"); try assumption; cbn [length] in *; lia. }
+    iExists 1, 63. iSplitL "Hel"; [iExact "Hel"|]. iSplitL "Hec"; [iExact "Hec"|].
+    iSplitL "Hol"; [iExact "Hol"|]. iSplitL "Hoc"; [iExact "Hoc"|]. iSplitR; [iExact "H69"|].
+    iSplitR; [iExact "Ht"|]. iSplitR; [iExact "Hdd"|]. iSplitR; [iExact "H7" | iExact "H0"].
+Qed.
+
 (** ## The theorem
 
     Hello should be safe when glibc's option parser starts the way the
@@ -139,37 +203,17 @@ Theorem hello_never_panics_getopt_start Σ {HinvP : invGpreS Σ} {HheapP : gen_h
 Proof.
   intros Hk Hy Hos Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp Hgb Hgb0 Hgb8 Hgbe Hgbr Hoe Hoe0 Hoee Hoer
     Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0 H146 Hd0 Hd8 Hde Hdr H147 H70 H78 H7e H7r H150 H00 H08 H0e H0r
-    H145 H148 H149 H138 H139 H140 H141 H142 H143 H144 -> Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
-  apply (heap_labelled_safe Σ glibc_os_registry (os_wi w0) ge _ m s w _ (fun _ => True) Hr Hd Ha Hw).
+    H145 H148 H149 H138 H139 H140 H141 H142 H143 H144 Hargc Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
+  apply (hello_getopt_start_core Σ w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo
+    bdd rdd b7 r7 b0 r0 n1 n2 n3 n4); try assumption.
   intros HinvG HheapG.
   destruct (Hstart HinvG HheapG) as (debt & G & M & T & Hge & Hdg & Hld & Hcu & Hma & Hms & Hfr & Hgm & Hpre).
-  pose proof (hello_getopt_ix_own w0 ge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp (hk_gi_strlen _ _ Hk)
+  exists debt. split; [|exact Hpre].
+  exact (hello_getopt_ix_own w0 ge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp (hk_gi_strlen _ _ Hk)
     gb greg Hgb Hgb0 Hgb8 Hgbe Hgbr oe roe oo roo Hoe Hoe0 Hoee Hoer Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0
     (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0)) penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom
     [45; 45] [45] [45; 87; 32] H146 H147 H150 H145 H148 H149 H138 H139 H140 H141 H142 H143 H144
-    G M T Hge Hdg Hld Hcu Hma Hms Hfr n1 n2 n3 n4 Hgm av ar) as Hix.
-  rewrite big_sepM_union; [|exact Hdisj].
-  rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hnd].
-  iIntros "[H1 HP]".
-  iAssert (pts (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) with "[HP]" as "HP";
-    [rewrite /pts; iExact "HP"|].
-  rewrite /getopt_start_ps. iDestruct (pts_app with "HP") as "[Hz HP]".
-  iDestruct (pts_app with "HP") as "[He HP]". iDestruct (pts_app with "HP") as "[Ho HP]".
-  iDestruct (pts_app with "HP") as "[Hdd HP]". iDestruct (pts_app with "HP") as "[H7 H0]".
-  iMod (Hpre with "H1") as "(#Hro & #Hps & (%Hav & Havl & Hcl) & Hn & HX & Hio & Hpv & Hgo & #Ht & #H69)".
-  iMod (getopt_lits_own with "Hdd H7 H0") as "(#Hdd & #H7 & #H0)"; try assumption.
-  iDestruct (int_global_own with "He") as "[Hel Hec]"; [lia|].
-  iDestruct (int_global_own with "Ho") as "[Hol Hoc]"; [lia|].
-  destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
-  iApply (HelloGlibcMainFull.main_full_state w0 ge o debt _ _
-    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos debt c) Hy av ar p0 ps x y z a i _ _ Hi Hix
-    with "Hro Hps [Havl Hcl] Hn HX Hio Hpv Hgo [Hz Hel Hec Hol Hoc]").
-  - iSplit; [iPureIntro; split_and!; assumption|]. iSplitL "Havl"; [iExact "Havl" | iExact "Hcl"].
-  - iSplitL "Hz".
-    { iApply (hello_getopt_state_pieces with "Hz"); try assumption; cbn [length] in *; lia. }
-    iExists 1, 63. iSplitL "Hel"; [iExact "Hel"|]. iSplitL "Hec"; [iExact "Hec"|].
-    iSplitL "Hol"; [iExact "Hol"|]. iSplitL "Hoc"; [iExact "Hoc"|]. iSplitR; [iExact "H69"|].
-    iSplitR; [iExact "Ht"|]. iSplitR; [iExact "Hdd"|]. iSplitR; [iExact "H7" | iExact "H0"].
+    G M T Hge Hdg Hld Hcu Hma Hms Hfr n1 n2 n3 n4 Hgm av ar).
 Qed.
 
 (** ## Reading Hello's table from memory
@@ -222,6 +266,75 @@ Proof.
 Qed.
 
 End rest.
+
+(** Hello runs safely when each call to getopt_long keeps the loop's
+    promise, and Hello's table and glibc's objects start as loaded. *)
+Lemma hello_getopt_table_core Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0
+    tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 :
+  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
+  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
+  0 < bdd -> bdd mod 8 = 0 -> bdd + 8 <= r_end rdd -> r_end rdd <= 2 ^ 48 ->
+  0 < b7 -> b7 mod 8 = 0 -> b7 + 8 <= r_end r7 -> r_end r7 <= 2 ^ 48 ->
+  0 < b0 -> b0 mod 8 = 0 -> b0 + 8 <= r_end r0 -> r_end r0 <= 2 ^ 48 ->
+  Term.lookup (TAtom "hello#parse_options.longopts.64") (ge_globals ge) = Some (mkPtr tb (Ro tb)) ->
+  0 < tb -> tb mod 8 = 0 -> tb + 136 <= r_end treg -> r_end treg <= 2 ^ 48 ->
+  Term.lookup (TAtom "hello#str.69") (ge_globals ge) = Some (mkPtr b5 (Ro b5)) ->
+  0 < b1 -> b1 mod 8 = 0 -> b1 + 16 <= r_end r1 -> r_end r1 <= 2 ^ 48 ->
+  0 < b2 -> b2 mod 8 = 0 -> b2 + 16 <= r_end r2 -> r_end r2 <= 2 ^ 48 ->
+  0 < b3 -> b3 mod 8 = 0 -> b3 + 8 <= r_end r3 -> r_end r3 <= 2 ^ 48 ->
+  0 < b4 -> b4 mod 8 = 0 -> b4 + 8 <= r_end r4 -> r_end r4 <= 2 ^ 48 ->
+  0 < b5 -> b5 mod 8 = 0 -> b5 + 8 <= r_end r5 -> r_end r5 <= 2 ^ 48 ->
+  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
+  R.ready s m -> live_disjoint m -> agrees m (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
+  os_wi w0 m w (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) -> NoDup (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0).*1 -> map_disjoint h1 (list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+    exists debt : HelloCore w0 ge o,
+    loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
+      hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
+        [45; 45] [45] [45; 87; 32] (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)))%I /\
+    (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
+      hello_ro_rest ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
+      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
+      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i)) ->
+  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
+    m s w fuel (fun _ => True).
+Proof.
+  intros Hk Hy Hos Hgb0 Hgb8 Hgbe Hgbr Hd0 Hd8 Hde Hdr H70 H78 H7e H7r H00 H08 H0e H0r
+    Htb Htb0 Htb8 Htbe Htbr H69 Hb10 Hb18 Hb1e Hb1r Hb20 Hb28 Hb2e Hb2r Hb30 Hb38 Hb3e Hb3r
+    Hb40 Hb48 Hb4e Hb4r Hb50 Hb58 Hb5e Hb5r -> Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
+  set (tab := hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5) in *.
+  set (st := getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0) in *.
+  rewrite list_to_map_app map_union_assoc in Ha, Hw.
+  rewrite list_to_map_app map_disjoint_union_r in Hdisj. destruct Hdisj as [Hd1 Hd2].
+  rewrite fmap_app NoDup_app in Hnd. destruct Hnd as (Hn1 & Hn12 & Hn2).
+  assert (Hd12 : map_disjoint (list_to_map tab : gmap piece pval) (list_to_map st)).
+  { apply map_disjoint_list_to_map_l, Forall_forall. intros [k v] Hin.
+    apply not_elem_of_list_to_map_1, Hn12, list_elem_of_fmap. exists (k, v). split; [reflexivity | exact Hin]. }
+  assert (E69 : sym_ptr ge "hello#str.69" = mkPtr b5 (Ro b5)) by (rewrite /sym_ptr H69; reflexivity).
+  assert (Etb : sym_ptr ge "hello#parse_options.longopts.64" = mkPtr tb (Ro tb)) by (rewrite /sym_ptr Htb; reflexivity).
+  apply (hello_getopt_start_core Σ w0 ge o m s w (h1 ∪ list_to_map tab) _ av ar p0 ps x y z a i c fuel
+    gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)));
+    try (assumption || reflexivity).
+  - by apply map_disjoint_union_l_2.
+  - intros HinvG HheapG.
+    destruct (Hstart HinvG HheapG) as (debt & Hix & Hpre).
+    exists debt. split; [exact Hix|].
+    rewrite big_sepM_union; [|exact Hd1].
+    rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hn1].
+    iIntros "[H1 HT]". iAssert (pts tab) with "[HT]" as "HT"; [rewrite /pts; iExact "HT"|].
+    rewrite /tab /hello_tab_ps. iDestruct (pts_app with "HT") as "[Ht HT]".
+    iDestruct (pts_app with "HT") as "[L1 HT]". iDestruct (pts_app with "HT") as "[L2 HT]".
+    iDestruct (pts_app with "HT") as "[L3 HT]". iDestruct (pts_app with "HT") as "[L4 L5]".
+    iMod (Hpre with "H1") as "(#Hro & Hps & Hav & Hn & HX & Hio & Hpv & Hgo)".
+    iMod (hello_table_own_ro with "Ht L1 L2 L3 L4 L5") as "(#Htab & #Hos & #Hts)"; try assumption.
+    iModIntro. rewrite E69 Etb.
+    iSplitR; [iApply hello_ro_join; rewrite E69 Etb; iSplitR; [iExact "Hro"|];
+      iSplitR; [iExists s_optstring; iExact "Hos" | iExact "Hts"]|].
+    iSplitL "Hps"; [iExact "Hps"|]. iSplitL "Hav"; [iExact "Hav"|]. iSplitL "Hn"; [iExact "Hn"|].
+    iSplitL "HX"; [iExact "HX"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
+    iSplitL "Hgo"; [iExact "Hgo"|]. iSplitR; [iExact "Htab" | iExact "Hos"].
+Qed.
 
 (** Every allowed execution of Hello with glibc's getopt_long avoids
     panics, stuck steps and contract failures when glibc's objects and
@@ -294,37 +407,15 @@ Proof.
     Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0 H146 Hd0 Hd8 Hde Hdr H147 H70 H78 H7e H7r H150 H00 H08 H0e H0r
     Htb Htb0 Htb8 Htbe Htbr H69 Hb10 Hb18 Hb1e Hb1r Hb20 Hb28 Hb2e Hb2r Hb30 Hb38 Hb3e Hb3r
     Hb40 Hb48 Hb4e Hb4r Hb50 Hb58 Hb5e Hb5r
-    H145 H148 H149 H138 H139 H140 H141 H142 H143 H144 -> Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
-  set (tab := hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5) in *.
-  set (st := getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0) in *.
-  rewrite list_to_map_app map_union_assoc in Ha, Hw.
-  rewrite list_to_map_app map_disjoint_union_r in Hdisj. destruct Hdisj as [Hd1 Hd2].
-  rewrite fmap_app NoDup_app in Hnd. destruct Hnd as (Hn1 & Hn12 & Hn2).
-  assert (Hd12 : map_disjoint (list_to_map tab : gmap piece pval) (list_to_map st)).
-  { apply map_disjoint_list_to_map_l, Forall_forall. intros [k v] Hin.
-    apply not_elem_of_list_to_map_1, Hn12, list_elem_of_fmap. exists (k, v). split; [reflexivity | exact Hin]. }
-  assert (E69 : sym_ptr ge "hello#str.69" = mkPtr b5 (Ro b5)) by (rewrite /sym_ptr H69; reflexivity).
-  assert (Etb : sym_ptr ge "hello#parse_options.longopts.64" = mkPtr tb (Ro tb)) by (rewrite /sym_ptr Htb; reflexivity).
-  apply (hello_never_panics_getopt_start Σ w0 ge o m s w (h1 ∪ list_to_map tab) _ av ar p0 ps x y z a i c fuel
-    gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom
-    (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)));
-    try (assumption || reflexivity).
-  - by apply map_disjoint_union_l_2.
-  - intros HinvG HheapG.
-    destruct (Hstart HinvG HheapG) as (debt & G & M & T & Hge & Hdg & Hld & Hcu & Hma & Hms & Hfr & Hgm & Hpre).
-    exists debt, G, M, T. split_and!; try assumption.
-    rewrite big_sepM_union; [|exact Hd1].
-    rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hn1].
-    iIntros "[H1 HT]". iAssert (pts tab) with "[HT]" as "HT"; [rewrite /pts; iExact "HT"|].
-    rewrite /tab /hello_tab_ps. iDestruct (pts_app with "HT") as "[Ht HT]".
-    iDestruct (pts_app with "HT") as "[L1 HT]". iDestruct (pts_app with "HT") as "[L2 HT]".
-    iDestruct (pts_app with "HT") as "[L3 HT]". iDestruct (pts_app with "HT") as "[L4 L5]".
-    iMod (Hpre with "H1") as "(#Hro & Hps & Hav & Hn & HX & Hio & Hpv & Hgo)".
-    iMod (hello_table_own_ro with "Ht L1 L2 L3 L4 L5") as "(#Htab & #Hos & #Hts)"; try assumption.
-    iModIntro. rewrite E69 Etb.
-    iSplitR; [iApply hello_ro_join; rewrite E69 Etb; iSplitR; [iExact "Hro"|];
-      iSplitR; [iExists s_optstring; iExact "Hos" | iExact "Hts"]|].
-    iSplitL "Hps"; [iExact "Hps"|]. iSplitL "Hav"; [iExact "Hav"|]. iSplitL "Hn"; [iExact "Hn"|].
-    iSplitL "HX"; [iExact "HX"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
-    iSplitL "Hgo"; [iExact "Hgo"|]. iSplitR; [iExact "Htab" | iExact "Hos"].
+    H145 H148 H149 H138 H139 H140 H141 H142 H143 H144 Hargc Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
+  apply (hello_getopt_table_core Σ w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo
+    bdd rdd b7 r7 b0 r0 tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5); try assumption.
+  intros HinvG HheapG.
+  destruct (Hstart HinvG HheapG) as (debt & G & M & T & Hge & Hdg & Hld & Hcu & Hma & Hms & Hfr & Hgm & Hpre).
+  exists debt. split; [|exact Hpre].
+  exact (hello_getopt_ix_own w0 ge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp (hk_gi_strlen _ _ Hk)
+    gb greg Hgb Hgb0 Hgb8 Hgbe Hgbr oe roe oo roo Hoe Hoe0 Hoee Hoer Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0
+    (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0)) penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom
+    [45; 45] [45] [45; 87; 32] H146 H147 H150 H145 H148 H149 H138 H139 H140 H141 H142 H143 H144
+    G M T Hge Hdg Hld Hcu Hma Hms Hfr (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)) Hgm av ar).
 Qed.
