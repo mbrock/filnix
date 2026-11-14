@@ -29,6 +29,12 @@ mod = {f: os.path.basename(f)[:-2] for f in files}
 if len(set(mod.values())) != len(files):
     raise ValueError('two proof files share a base name')
 text = {f: open(os.path.join(src, f)).read() for f in files}
+# A file may give its logic parameter another name than LG0. Bring it to the
+# common form, a parameter LG0 and an alias of the file's own name, so that
+# the rest of the stage lifts it like every other wrapper.
+OTHER_LOGIC = re.compile(r'^([ \t]*Module [A-Za-z0-9_]+ \(R : Runtime\)) \((?!LG0\b)([A-Za-z0-9_]+) : LogicSig R\)\.[ \t]*\n', re.M)
+for f in files:
+    text[f] = OTHER_LOGIC.sub(lambda m: f'{m[1]} (LG0 : LogicSig R).\nModule {m[2]} := LG0.\n', text[f])
 with open(args.comment_table) as table:
     comment_table = {row['file']: row for row in json.load(table)}
 for f, row in comment_table.items():
@@ -321,6 +327,8 @@ for f in files:
         s = logic_alias.sub(lambda m: prefix + ('' if m[1] == 'LG0' else 'Module ' + m[1] + ' := LG0.'), s)
     if re.search(r'^Module (?:Type )?\w+\s+\(R\s*:', code_only(s), re.M):
         raise ValueError(f'{f}: runtime parameter was not specialized')
+    if re.search(r'^Module \w+\s+\(\w+\s*:\s*LogicSig R\)', code_only(s), re.M):
+        raise ValueError(f'{f}: a wrapper over the logic instance was not lifted')
     if 'InterpRuntime' in code_only(s) and 'InterpRuntime' not in code:
         raise ValueError(f'{f}: conversion introduced an interpreter dependency')
     used.discard(mod[f])
