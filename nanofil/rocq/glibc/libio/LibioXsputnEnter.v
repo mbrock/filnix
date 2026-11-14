@@ -1,6 +1,6 @@
 From Glibc Require Import GlibcProgram.
-(** The count of `c: _IO_new_file_xsputn` (LibioXsputnBase.v
-    describes the function): the bytes that fit before a flush.
+(** The stream writer computes how many bytes fit before it must flush.
+    Line buffering also checks whether those bytes contain a newline.
 
     ```
     if ((f->_flags & _IO_LINE_BUF) && (f->_flags & _IO_CURRENTLY_PUTTING))
@@ -12,12 +12,11 @@ From Glibc Require Import GlibcProgram.
       count = f->_IO_write_end - f->_IO_write_ptr;
     ```
 
-    [wp_xs_L18] is the line-buffered way, with LibioXsputnBase.v's
-    [wp_xs_scan]; [wp_xs_L19] the other; both go on at
-    LibioXsputnFill.v's [wp_xs_L20]. A stream's write pointer and end
-    lie in its buffer ([wroom_ptrs]). *)
+    The line-buffered path scans backward for the last newline that fits.
+    The other path uses the space between the write pointer and write end.
+    Both paths then continue with the buffer-filling proof. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -60,8 +59,8 @@ Qed.
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-(** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
-    LibioXsputnBase.v asks. *)
+(** The program supplies glibc's copy routines and default stream writer.
+    Memory moves use the registered external contract. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
@@ -74,14 +73,14 @@ Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
   (Hfwq : fwq_spec w0 registry ge).
 
 
-(** Expressions of the language. *)
+(** The execution goal uses the language selected by the program context. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A lookup premise, through the environment's puts. *)
+(** Environment lookups reduce through earlier assignments before arithmetic identifies the resulting values. *)
 Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
-(** Block `c: L19` on: the room up to the write end, or none. *)
+(** The ordinary path computes the space up to the write end, or zero when no space remains. *)
 Lemma wp_xs_L19 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
@@ -103,26 +102,28 @@ Proof.
   iIntros "#Hvt Hl Hvtp (Hwc & Hwp & Hwe & Hroom) Hos Hl' Hys HK".
   iDestruct (wroom_ptrs with "Hroom") as "[%Hp Hroom]". destruct Hp as (Hwpc & Hwec & Hwpa & Hwea & Hend & Hdif).
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
-  step. step. check "Hl". iEval (rewrite -Hwec) in "Hbl". load "Hl" "Hwe" "Hbl". iEval (rewrite Hwec) in "Hbl".
-  step. iEval (rewrite -Hwpc) in "Hbl". load "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". step. step. step.
-  destruct (Z_lt_le_dec (ptr_addr wp) (ptr_addr we)) as [Hlt | Hge].
+  step.
+  sym_frun "Hl Hwe Hwp Hbl" [TAtom "L20"].
   - (* L73: the room. *)
-    branch_as false. step. step. iEval (rewrite -Hwec) in "Hbl". load "Hl" "Hwe" "Hbl". iEval (rewrite Hwec) in "Hbl".
-    step. iEval (rewrite -Hwpc) in "Hbl". load "Hl" "Hwp" "Hbl". iEval (rewrite Hwpc) in "Hbl". step. step. step. step. step.
+    assert (Hlt : ptr_addr wp < ptr_addr we).
+    { cbn [cond_bit] in Hsym_yes.
+      destruct (Z.ltb_spec (ptr_addr wp) (ptr_addr we)); [assumption|].
+      cbn in Hsym_yes. contradiction. }
+    step.
     iDestruct ("Hroom" with "Hbl") as "Hroom".
     iApply (wp_xs_L20 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys 0 (ptr_addr we - ptr_addr wp) with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe $Hroom] Hos Hl' Hys HK");
       try close_side.
     all: unfold n in *; try lia. all: lookups; try reflexivity. all: do 2 f_equal; unwrap2; lia.
   - (* No room: L20 with none. *)
-    branch_as true. step. iDestruct ("Hroom" with "Hbl") as "Hroom".
+    step. iDestruct ("Hroom" with "Hbl") as "Hroom".
     iApply (wp_xs_L20 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys 0 0 with "Hvt Hl Hvtp [$Hwc $Hwp $Hwe $Hroom] Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia. all: lookups; reflexivity.
 Qed.
 
-(** Block `c: L18` on: the room up to the buffer's end, and when that
-    holds all n bytes, the count up to the last newline among them. *)
+(** The line-buffered path computes the space up to the buffer's end.
+    When the input fits, it scans for the last newline to decide whether to flush. *)
 Lemma wp_xs_L18 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->

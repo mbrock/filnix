@@ -1883,7 +1883,13 @@ Ltac sym_run_with names solve :=
     end
   end.
 
-(** The default solver normalizes constant-divisor equations before trying integer arithmetic. *)
-Ltac sym_lia := first [assumption | reflexivity | lia | Z.div_mod_to_equations; lia].
+(** The default solver tries integer arithmetic first, then removes remainders whose inputs already fit.
+    Only the remaining goals need division and modulo equations. *)
+Ltac sym_lia := first [assumption | reflexivity | lia |
+  progress (repeat match goal with
+    | |- context [?x mod ?m] =>
+        let H := fresh "Hmod" in assert (H : 0 <= x < m) by lia;
+        rewrite (Z.mod_small x m H); clear H
+    end); lia | Z.div_mod_to_equations; lia].
 
 Ltac sym_run names := sym_run_with names ltac:(sym_lia).
