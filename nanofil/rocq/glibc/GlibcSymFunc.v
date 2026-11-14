@@ -292,6 +292,25 @@ Qed.
 
 End sound.
 
+(** A list of arithmetic conditions becomes one conjunction, so a solver can normalize shared expressions once. *)
+Fixpoint sym_conjunction {A : Type} (P : A -> Prop) (xs : list A) : Prop :=
+  match xs with [] => True | x :: xs => P x /\ sym_conjunction P xs end.
+
+(** The solver proves the arithmetic conditions together; this lemma returns them as the list the executor requires. *)
+Lemma sym_conjunction_sound {A : Type} (P : A -> Prop) xs :
+  sym_conjunction P xs -> Forall P xs.
+Proof.
+  induction xs as [|x xs IH]; cbn [sym_conjunction]; intros H.
+  - constructor.
+  - destruct H as [Hx Hxs]. constructor; [exact Hx|apply IH; exact Hxs].
+Qed.
+
+(** The caller may use its continuation after one execution step.
+    This rule advances that permission without examining the caller's memory. *)
+Lemma sym_later_wand {Σ : gFunctors} (P Q : iProp Σ) :
+  (P -∗ Q) -∗ ▷ P -∗ ▷ Q.
+Proof. iIntros "HK HP". iNext. iApply ("HK" with "HP"). Qed.
+
 (** ## Running the executor from a proof
 
     The proof author names the memory permissions that the function may use
@@ -310,6 +329,37 @@ Ltac sym_native call finish :=
   let checked := constr:(ltac:(native_cast_no_check (eq_refl tree)) : call = tree) in
   finish tree checked.
 
+(** The collector identifies explicit guarded hypotheses without unfolding the assertions describing memory. *)
+Ltac sym_later_names env :=
+  lazymatch env with
+  | environments.Enil => constr:(@nil ident)
+  | environments.Esnoc ?rest ?n ?P =>
+      let names := sym_later_names rest in
+      lazymatch P with (▷ _)%I => constr:(n :: names) | _ => names end
+  end.
+
+(** When only the caller's continuation needs to advance a step, the tactic leaves unrelated memory permissions alone.
+    Other proof contexts use the ordinary later tactic. *)
+Ltac sym_next :=
+  lazymatch goal with
+  | |- environments.envs_entails (environments.Envs ?persistent ?spatial _) _ =>
+      let ps := sym_later_names persistent in
+      let ss := sym_later_names spatial in
+      lazymatch ps with
+      | [] => lazymatch ss with
+          | [?n] => iRevert n; iApply sym_later_wand; iIntros n
+          | _ => iNext
+          end
+      | _ => iNext
+      end
+  end.
+
+(** Arithmetic is solved together when possible; other conditions remain available as individual goals. *)
+Ltac sym_solve_obligations solve :=
+  apply sym_conjunction_sound;
+  cbn [sym_conjunction]; sym_den_simpl;
+  first [solve [solve] | repeat split; try solve].
+
 (** Each leaf returns its resources after discharging the accumulated arithmetic conditions. *)
 Ltac sym_tree_finish fs h rho names solve tree :=
   lazymatch tree with
@@ -321,8 +371,8 @@ Ltac sym_tree_finish fs h rho names solve tree :=
        sym_tree_finish fs h rho names solve no]
   | TLeaf ?l ?lf =>
       cbn [stree_den leaf_den st_obs st_heap st_env st_ups];
-      iSplit; [iPureIntro; unfold obs_den; sym_forall_side solve |
-      lazymatch lf with LStop ?why _ _ _ => idtac "sym_frun stopped:" why | _ => iNext end;
+      iSplit; [iPureIntro; unfold obs_den; sym_solve_obligations solve |
+      lazymatch lf with LStop ?why _ _ _ => idtac "sym_frun stopped:" why | _ => sym_next end;
       let Hnew := iFresh in let Henv := fresh "Hsym_env" in
       iIntros Hnew; iIntros (Henv);
       iEval (cbn [heap_den atom_den wden cden zden vz vp vr nth nth_error]; rewrite ?sym_ptr_eta) in Hnew;
@@ -337,6 +387,13 @@ Ltac sym_tree_finish fs h rho names solve tree :=
 Ltac sym_tree_checked fs h rho names solve tree checked :=
   rewrite checked; sym_tree_finish fs h rho names solve tree.
 
+(** Each quoted permission comes from its named hypothesis, including resource-free null capabilities. *)
+Ltac sym_heap_exact names :=
+  lazymatch names with
+  | [] => done
+  | ?n :: ?rest => iSplitL n; [iExact n | sym_heap_exact rest]
+  end.
+
 (** The soundness theorem connects the single computed tree to the caller's execution goal. *)
 Ltac sym_func_finish cs se h rho names cuts solve conv bs :=
   let fs := constr:(mkFacts bs cs) in
@@ -346,7 +403,7 @@ Ltac sym_func_finish cs se h rho names cuts solve conv bs :=
       let Hheap := iFresh in
       let selected := eval vm_compute in (String.append "[" (String.append (String.concat " " names) "]")) in
       iAssert (heap_den rho h) with selected as Hheap;
-      [sym_den_simpl; iFrame |];
+      [sym_den_simpl; sym_heap_exact names |];
       iApply (sym_func_sound _ _ _ fs se h f e ls cuts fuel l insts j rho Phi with Hheap);
       [unfold facts_hold; split; sym_forall_side solve |
        unfold env_models; sym_forall_side ltac:(lk_prove) |

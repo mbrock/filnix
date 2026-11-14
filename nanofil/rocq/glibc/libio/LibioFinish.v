@@ -1,15 +1,15 @@
 From Glibc Require Import GlibcProgram.
-(** The jump table's `c: __finish` of a stream `c: fclose` has closed
-    and unlinked: `c: _IO_new_file_finish(fp, 0)` (LibioUnlinkCode.v,
-    libio/fileops.c) sees `c: _fileno` -1 and calls
-    `c: _IO_default_finish(fp, 0)` (libio/genops.c), which finds no
-    buffer, no markers and no backup area, calls `c: _IO_un_link` on
-    the unlinked stream, a no-op (LibioUnlink.v's
-    [wp_glibc__IO_un_link_unlinked], whose triple is
-    [unlink_unlinked_spec]), and returns ([wp_glibc__IO_default_finish_closed],
-    [wp_glibc__IO_new_file_finish_closed]). *)
+(** Finishing a closed, unlinked stream leaves its memory unchanged.
+    The file-specific routine sees that the file descriptor is -1 and
+    calls the default routine. That routine finds no buffer, markers,
+    or backup area to release. Its unlink call does nothing because
+    the stream is already unlinked.
 
-From Glibc Require Import GlibcTactics LibioTactics.
+    These proofs preserve the caller's [[separation-logic|ownership]] of the stream and
+    its lock. The default routine uses one symbolic run for the
+    blocks preceding the unlink call, then applies the callee's contract. *)
+
+From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -59,18 +59,14 @@ Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
 Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
 
 
-(** Expressions of the language. *)
+(** The execution goal uses the language selected by the program context. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** `c: _IO_un_link`'s triple on an unlinked stream, as LibioUnlink.v's
-    [wp_glibc__IO_un_link_unlinked] states it. *)
-
-(** [unlink_unlinked_spec] holds. *)
+(** The caller supplies the unlink contract for an already unlinked stream. *)
 Context (Hunl_spec : (unlink_unlinked_spec w0 registry ge)).
 
-(** `c: _IO_default_finish(fp, 0)` of a closed, unlinked stream: no
-    buffer (`c: _IO_buf_base` null), no markers, no backup area
-    (`c: _IO_save_base` null), and a lock: nothing changes. *)
+(** The default finish routine preserves a closed stream whose buffer,
+    markers, and backup area are null. The stream still owns its lock. *)
 Lemma wp_glibc__IO_default_finish_closed fr fb freg fl lb lbreg Φ :
   call_frame glibc__IO_default_finish [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -85,18 +81,20 @@ Proof.
   iIntros "Hl Hfl Hbb H80 H96 Hlp Hll HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iApply (wp_live_fit1 with "Hll"). iIntros ([Hl0 Hl48]) "Hll".
-  step. step. check "Hl". load_null "Hl" "Hbb". step. step. branch. step. branch.
-  step. step. check "Hl". load_null "Hl" "H96". step. step. step. step. step. branch.
-  step. step. check "Hl". load_null "Hl" "H80". step. step. branch.
-  step. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
+  step.
+  iAssert (live fb freg ∗ live_cap CNone freg)%I with "[Hl]" as "[Hl Hnull]"; [iFrame; done|].
+  unfold null.
+  sym_frun "Hl Hbb H96 H80 Hnull" (@nil name).
+  iClear "Hnull".
+  iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
   iApply (Hunl_spec with "Hl Hfl"); try close_side.
   iNext. iIntros "Hl Hfl". resume.
   step. check "Hl". load "Hl" "Hlp" "Hll". step. step. branch_as false. step. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hl Hfl Hbb H80 H96 Hlp Hll").
 Qed.
 
-(** `c: _IO_new_file_finish(fp, 0)` of a closed, unlinked stream
-    (`c: _fileno` -1): [wp_glibc__IO_default_finish_closed]. *)
+(** The file-specific finish routine delegates to the default routine
+    when the stream's file descriptor is -1. *)
 Lemma wp_glibc__IO_new_file_finish_closed fr fb freg fl lb lbreg Φ :
   call_frame glibc__IO_new_file_finish [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
