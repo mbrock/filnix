@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "stage": "50-program",
+  "reviewed_from": "c6c7ea277775d144c89eb7979175897dc2389b64",
+  "declarations": [
+    {
+      "file": "getopt/GetoptLongArg.v",
+      "name": "wp_long_found"
+    },
+    {
+      "file": "getopt/GetoptLongDiag.v",
+      "name": "wp_getopt_ldiag_missing"
+    },
+    {
+      "file": "getopt/GetoptLongDiag.v",
+      "name": "wp_getopt_ldiag_noarg"
+    },
+    {
+      "file": "getopt/GetoptLongEq.v",
+      "name": "wp_long_eq"
+    },
+    {
+      "file": "getopt/GetoptLongExact.v",
+      "name": "wp_long_exact_loop"
+    },
+    {
+      "file": "getopt/GetoptLongMiss.v",
+      "name": "wp_long_miss"
+    },
+    {
+      "file": "getopt/GetoptLongMissOnly.v",
+      "name": "wp_long_miss_only"
+    },
+    {
+      "file": "getopt/GetoptLongPre.v",
+      "name": "wp_long_pre"
+    },
+    {
+      "file": "getopt/GetoptLongReq.v",
+      "name": "wp_long_req"
+    },
+    {
+      "file": "getopt/GetoptLongScan.v",
+      "name": "wp_getopt_long_scan"
+    },
+    {
+      "file": "getopt/GetoptLongScan.v",
+      "name": "wp_half_check_read_dq"
+    },
+    {
+      "file": "getopt/GetoptLongScan.v",
+      "name": "wp_long_scan_loop"
+    },
+    {
+      "file": "getopt/GetoptLongStore.v",
+      "name": "int_at_store"
+    },
+    {
+      "file": "getopt/GetoptLongStore.v",
+      "name": "wp_long_store"
+    },
+    {
+      "file": "getopt/GetoptLongTail.v",
+      "name": "wp_long_miss_tail"
+    },
+    {
+      "file": "getopt/GetoptLongTail.v",
+      "name": "wp_long_next"
+    },
+    {
+      "file": "getopt/GetoptLongUnrec.v",
+      "name": "wp_long_unrec"
+    },
+    {
+      "file": "getopt/GetoptShortOpt.v",
+      "name": "wp_half_check_read_dq"
+    },
+    {
+      "file": "hi_atexit/HiAtexitPrintfOverflowHeap.v",
+      "name": "hi_printf_heap_file_overflow"
+    },
+    {
+      "file": "hi_atexit/HiAtexitPrintfOverflowHeap.v",
+      "name": "hi_printf_heap_file_overflow_with"
+    },
+    {
+      "file": "hi_atexit/HiAtexitXsputn.v",
+      "name": "hi_file_write_dq"
+    },
+    {
+      "file": "hi_atexit/HiAtexitXsputn.v",
+      "name": "hi_xsputn"
+    },
+    {
+      "file": "stdio/PrintfBufferFlushDirect.v",
+      "name": "wp_printf_buffer_flush_direct"
+    },
+    {
+      "file": "stdio/PrintfBufferFlushFull.v",
+      "name": "wp_printf_buffer_flush_full"
+    },
+    {
+      "file": "stdio/PrintfBufferFlushInline.v",
+      "name": "wp_printf_buffer_flush_inline_full"
+    },
+    {
+      "file": "stdio/PrintfBufferFlushInlineRoom.v",
+      "name": "wp_printf_buffer_flush_inline_room"
+    },
+    {
+      "file": "stdio/PrintfBufferOverflowEntry.v",
+      "name": "wp_printf_overflow_entry"
+    },
+    {
+      "file": "stdio/PrintfBufferOverflowHeapCaller.v",
+      "name": "wp_printf_overflow_heap_caller"
+    },
+    {
+      "file": "stdio/PrintfBufferOverflowHeapSwitch.v",
+      "name": "wp_printf_overflow_heap_switch"
+    },
+    {
+      "file": "stdio/PrintfBufferOverflowStaging.v",
+      "name": "wp_printf_overflow_staging"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnCall.v",
+      "name": "wp_printf_xsputn_call"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnCaller.v",
+      "name": "wp_printf_xsputn_caller"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnEntry.v",
+      "name": "wp_printf_xsputn_entry"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnHeapSwitch.v",
+      "name": "wp_printf_xsputn_heap_switch"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnPrelude.v",
+      "name": "wp_printf_xsputn_prelude"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnReturn.v",
+      "name": "wp_printf_xsputn_complete"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnReturn.v",
+      "name": "wp_printf_xsputn_mismatch"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnStaging.v",
+      "name": "wp_printf_xsputn_staging"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnSwitch.v",
+      "name": "wp_printf_xsputn_switch_null"
+    },
+    {
+      "file": "stdio/PrintfBufferXsputnSwitch.v",
+      "name": "wp_printf_xsputn_switch_owned"
+    }
+  ]
+}
