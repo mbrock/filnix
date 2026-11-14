@@ -1,11 +1,9 @@
 From Glibc Require Import GlibcProgram.
-(** The last blocks of `c: _IO_new_do_write` (LibioDoWrite.v
-    describes it), from `c: iw_1.L122`: the write end is the buffer's
-    base when the stream is line-buffered or unbuffered, else its end,
-    and the result is 0 when the write took all n bytes, else
-    `c: EOF` ([wp_do_write_end]). *)
+(** After a write, glibc resets the stream's write end according to its buffering mode.
+    A line-buffered or unbuffered stream uses the buffer's base; other streams use its end.
+    The function returns zero after a complete write and EOF after a short write. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -31,8 +29,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** Block `c: iw_1.L122` of `c: _IO_new_do_write` to its return, the
-    mode being 0 and r of the n bytes written. *)
+(** A stream in narrow mode resets its write end and reports whether the write was complete. *)
 Lemma wp_do_write_end fb freg fl bb breg we be n r e from Φ :
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
@@ -53,31 +50,15 @@ Proof.
   intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hv0 Hc0 Hc16 Hv114 Hv4 Hv67. unfold file_size in Hend.
   destruct be as [bea bec]. cbn in Hbe, Hbec. subst bec.
   iIntros "Hl Hbl Hfl Hwe Hbase Hbend HK".
-  step. check "Hl". iDestruct "Hfl" as "[%Hfl0 Hfl]". load_s32_group "Hl Hfl". step. step. step.
-  assert (Hm514 : 0 <= Z.land fl 514 < 2 ^ 32) by (apply land_lt32; lia).
-  destruct (Z.land fl 514 =? 0) eqn:E514; [apply Z.eqb_eq in E514 | apply Z.eqb_neq in E514].
-  - step. branch_as true. step. step. norm. check "Hl".
-    load_pointer "Hl Hbend Hbl" by ar.
-    iNext. iIntros "Hl Hbend Hbl". step. step. check "Hl".
-    store_pointer "Hl Hwe" by (ar) preserving wi_store.
-    iNext. iIntros "Hl Hwe". step. step. step. step. step.
-    destruct (Z.eq_dec r n) as [-> | Hrn].
-    + branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.
-      iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with true by (symmetry; apply Z.eqb_eq; exact E514). iExact "Hwe".
-    + branch_as true. step. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
-      replace (r =? n) with false by (symmetry; apply Z.eqb_neq; exact Hrn).
-      iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with true by (symmetry; apply Z.eqb_eq; exact E514). iExact "Hwe".
-  - step. branch_as false. step. step. norm. check "Hl".
-    load_pointer "Hl Hbase Hbl" by ar.
-    iNext. iIntros "Hl Hbase Hbl". step. step. check "Hl".
-    store_pointer "Hl Hwe" by (ar) preserving wi_store.
-    iNext. iIntros "Hl Hwe". step. step. step. step. step.
-    destruct (Z.eq_dec r n) as [-> | Hrn].
-    + branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext. rewrite Z.eqb_refl.
-      iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with false by (symmetry; apply Z.eqb_neq; exact E514). iExact "Hwe".
-    + branch_as true. step. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
-      replace (r =? n) with false by (symmetry; apply Z.eqb_neq; exact Hrn).
-      iApply ("HK" with "Hl Hbl [$Hfl //] [Hwe] Hbase Hbend"). replace (Z.land fl 514 =? 0) with false by (symmetry; apply Z.eqb_neq; exact E514). iExact "Hwe".
+  step. iDestruct "Hfl" as "[%Hfl0 Hfl]". unfold int_bytes, base.
+  sym_frun_with "Hl Hbl Hfl Hwe Hbase Hbend" (@nil name)
+    ltac:(first [GlibcSym.sym_lia | eexists; split; [reflexivity|]; unfold GlibcSym.cell_pieces; wi_store]) ltac:(sym_vm).
+  all: cbn [cond_bit GlibcSym.bitden] in *.
+  all: destruct (Z.land fl 514 =? 0) eqn:E514; destruct (r =? n) eqn:Ern; cbn in *;
+    try (exfalso; GlibcSym.sym_lia).
+  all: iApply wp_ret; [reflexivity | vx |]; iNext.
+  all: rewrite Z.mod_small; [|lia].
+  all: iApply ("HK" with "Hl Hbl [$Hfl //] Hwe Hbase Hbend").
 Qed.
 
 End rules.
