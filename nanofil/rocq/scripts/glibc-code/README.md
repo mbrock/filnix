@@ -188,11 +188,13 @@ The `unavailable` list identifies their tags when no selected unit supplies a de
 The Gallina `records` table gives each record's size and alignment. Its
 `fields` table gives each tag, field, byte offset, type size and type alignment.
 The `field_offset` lookup returns `None` for a missing entry.
-`libio/FileLayoutChecks.v` compares the existing offset constants with these
-entries by computation, including all twelve instances of `off_ptr`.
-It also checks the jump-table slots and stream-object size.
-Neither the invariants nor existing proofs change, and no soundness theorem
-takes a generated layout table as a premise.
+`libio/FileInv.v` extracts its offsets, jump-table slots and stream-object
+size from these entries during elaboration. Missing entries stop compilation.
+The resulting definitions contain the same numerals as before, so existing
+proofs still unfold them without evaluating a table lookup.
+`libio/FileLayoutChecks.v` checks that the affine `off_ptr` formula agrees
+with all twelve consecutive pointer fields. No soundness theorem takes a
+generated layout table as a premise.
 
 ## Driver compatibility
 
