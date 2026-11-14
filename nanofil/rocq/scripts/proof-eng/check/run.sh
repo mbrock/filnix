@@ -59,6 +59,7 @@ run cache-preflight python3 "$out/worktree/scripts/ci-cache-check.py" --flake "$
   packages.x86_64-linux.filcc-staging packages.x86_64-linux.site-swipl
 run before-build bash "$here/../build.sh" "$before" "$jobs"
 run after-build bash "$here/../build.sh" "$after" "$jobs"
+run abstract-general bash "$here/../abstract-general.sh" "$after" "$out/abstract-general" "$jobs"
 run runtime-partition python3 "$here/check.py" partition "$before" --output "$out/runtime-partition"
 if [ -s "$out/runtime-partition/general-targets.txt" ]; then
   run abstract-apply env PE_RUNTIME=abstract \
