@@ -12,9 +12,13 @@
 #
 # stages/landed.txt names the stages whose output is on main. They are
 # skipped, because a stage does not accept its own output as input.
+# PE_STAGES=all runs every stage: use it on a tree in the layout that
+# main had before the first cutover, such as an old checkout that holds
+# a proof file which was never merged.
 #
-# With PE_RUNTIME=abstract the copy declares the runtime of Fix.v as an
-# abstract Runtime before any stage runs, as abstract-general.sh does.
+# With PE_RUNTIME=abstract a flat copy declares the runtime of Fix.v as
+# an abstract Runtime before any stage runs, as abstract-general.sh does.
+# Stage 10 makes that choice when it writes Fix.v for an old-layout tree.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src=$1
@@ -23,7 +27,7 @@ rm -rf "$dst"
 mkdir -p "$(dirname "$dst")"
 cp -r "$src" "$dst"
 find "$dst" \( -name '*.vo*' -o -name '*.glob' -o -name '.*.aux' \) -delete
-if [ "${PE_RUNTIME:-interp}" = abstract ]; then
+if [ "${PE_RUNTIME:-interp}" = abstract ] && [ -f "$dst/Fix.v" ]; then
   binding='Module R := InterpRuntime.'
   if [ "$(grep -cxF "$binding" "$dst/Fix.v")" != 1 ]; then
     echo "apply: Fix.v must bind the interpreter runtime exactly once" >&2
@@ -32,6 +36,9 @@ if [ "${PE_RUNTIME:-interp}" = abstract ]; then
   sed -i "s/^$binding\$/Declare Module R : Runtime./" "$dst/Fix.v"
 fi
 landed=$(sed 's/#.*//; s/[[:space:]]*$//; /^$/d' "$here/stages/landed.txt")
+if [ "${PE_STAGES:-}" = all ]; then
+  landed=
+fi
 for stage in "$here"/stages/*.py; do
   if grep -qxF "$(basename "$stage")" <<<"$landed"; then
     continue
