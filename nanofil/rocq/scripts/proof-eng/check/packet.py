@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 from check import Tree, uncomment, compare
-from expectations import Expectations
+from expectations import Expectations, manifest_files
 from audit_changes import reviewed, receipt, tree_digest, evidence_hashes, AuditChanges, interpreter_covers, stage50_present
 
 HERE = Path(__file__).resolve().parent
@@ -36,6 +36,10 @@ def unchanged_tactics(before, after, plugin, manifest, output, inventory=None):
         (output.parent / '30-tactics.audit.log').write_text(log)
         if audited.returncode or 'Axioms:' in log or log.count('Closed under the global context') != 1:
             raise ValueError('step_named_rule is not Closed; see 30-tactics.audit.log')
+    check_inventory(after, output, inventory)
+
+
+def check_inventory(after, output, inventory=None):
     inventory = inventory or HERE.parent / 'tactic-inventory.json'
     command = [sys.executable, str(HERE.parent / 'lint-tactics.py'), str(after), '--check-inventory']
     lint = subprocess.run(command + ['--inventory', str(inventory)],
@@ -68,7 +72,7 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
              'This packet is review material, not authorization to land.',
              'Hosted workflow status is not evidence; use the local Nix verdicts.', '']
     failures = []
-    files = sorted(manifests.glob('*.txt'))
+    files = manifest_files(manifests)
     if not stage50_present():
         files = [p for p in files if p.stem != '50-program']
     elif manifests == HERE / 'expected-statement-changes' and not any(p.stem == '50-program' for p in files):
@@ -77,6 +81,12 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
         files = [p for p in files if p.stem == '50-program']
     if not files:
         failures.append('No reviewed stage manifests are present')
+    if not stage50_only and not any(p.stem == '30-tactics' for p in files):
+        try:
+            check_inventory(tree, output, tactic_inventory)
+            lines += ['PASS: tactic inventory and inventory-minus-one rejection control.', '']
+        except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
+            failures.append(f'tactic inventory: {error}')
     for manifest in files:
         try:
             if manifest.stem == '50-program':
@@ -196,7 +206,7 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
             lines += ['PASS: stage --check ties the equivalences to its transformation guards.', '']
         except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
             failures.append(f'{manifest.stem}: {error}')
-    lines += ['## Verdict', ''] + (['FAIL: ' + x for x in failures] if failures else ['PASS: statement-changing stages have compiled equivalence evidence; stage 30 has unchanged-statement evidence.'])
+    lines += ['## Verdict', ''] + (['FAIL: ' + x for x in failures] if failures else ['PASS: active reviewed stages have compiled evidence.'])
     output.write_text('\n'.join(lines) + '\n')
     for failure in failures:
         print('FAIL', failure)
