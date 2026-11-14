@@ -52,9 +52,9 @@ Import LD
   LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
   LD.LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
 
-(** The two-dash call reads these parameters, which keep their values through the choice. *)
+(** The two-dash call and the short options read these names, which keep their values through the choice. *)
 Definition choice_keys : list name := Eval vm_compute in
-  List.map TAtom ["v0"; "v2"; "pr.1"; "v6"; "v8"; "v10"; "v12"; "pr.3"]%string.
+  List.map TAtom ["v0"; "v2"; "pr.1"; "v6"; "v8"; "v10"; "v12"; "pr.3"; "v80"; "chk2"; "chk20"]%string.
 
 (** This tactic takes a parameter's value through the choice. *)
 Ltac choice_lk Hk :=
