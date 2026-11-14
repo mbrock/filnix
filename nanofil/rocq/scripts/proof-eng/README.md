@@ -39,7 +39,7 @@ Stages `10`, `15`, `20` and `30` are on the branch. Stage `50` is being checked 
 
 `../glibc-code/skeleton.py` prints block-lemma statement skeletons from a manifest's linked IR. It is not a stage, and `../glibc-code/README.md` describes it.
 
-`lint-tactics.py TREE --max N` counts the `Ltac` definitions outside the library and fails when there are more than `N`.
+`lint-tactics.py TREE --max N` counts the `Ltac` definitions outside the library and fails when there are more than `N`. With `--check-inventory` it compares the tree with `tactic-inventory.json`, which lists the definitions of the tree that the stages produce from the cutover revision of main. It fails when the tree has more definitions than the list, and it prints each definition that the list does not have. `--write-inventory` records the list again after a reviewed change.
 
 `sentence-times.py LOGS TREE` reports where a build spends its time. `LOGS` is the `sentence-timings` directory in the output of the Nix glibc gate, which holds the `rocq c -time` output of each file. Without an option the program prints the time per kind of sentence. `--file NAME` prints the slowest sentences of one file, and `--over 5` prints every sentence that took more than five seconds. `--write LIST` records the sentences over the limit, and `--check LIST` fails when a sentence over the limit is not in the list. The gate does not run the check yet.
 

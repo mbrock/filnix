@@ -95,7 +95,7 @@ Three more conventions hold.
 
 - A field offset is registered where it is defined, with `Hint Unfold off_… : offs`. The address solvers `ar` and `a2` keep their names and unfold offsets with `autounfold with offs`, so a new field needs that one line and no change to a tactic.
 - The three side-condition solvers have distinct names: `concrete_side`, `libio_side` and `close_side`. A proof names the one it needs. No file calls a bare `side`.
-- `lint-tactics.py TREE --max N` counts the `Ltac` definitions outside the two libraries, and cutover fixes `N`. A helper that is specific to one proof may stay in its file. A tactic that steps an instruction or applies a memory rule belongs in the library.
+- `lint-tactics.py TREE --check-inventory` counts the `Ltac` definitions outside the two libraries and fails when the tree has more than `tactic-inventory.json` lists. The list is recorded from the tree that lands at cutover. A helper that is specific to one proof may stay in its file. A tactic that steps an instruction or applies a memory rule belongs in the library.
 
 ## One program context (stage 50, second cutover)
 

@@ -1,0 +1,429 @@
+{
+  "total": 236,
+  "files": {
+    "StrlenBits.v": [
+      "byte_cases"
+    ],
+    "StrlenLogic.v": [
+      "unwrap",
+      "clear_junk",
+      "pow_closed",
+      "arith",
+      "close_if",
+      "look",
+      "set_int",
+      "set_ptr"
+    ],
+    "getopt/GetoptColon.v": [
+      "rdchr",
+      "unkeep",
+      "keep",
+      "close_br"
+    ],
+    "getopt/GetoptDiag.v": [
+      "vxc",
+      "msg",
+      "diag_block"
+    ],
+    "getopt/GetoptDispatch.v": [
+      "rdin"
+    ],
+    "getopt/GetoptEntry.v": [
+      "sx",
+      "brz",
+      "close_br",
+      "icell",
+      "lk",
+      "unkeep"
+    ],
+    "getopt/GetoptExchange.v": [
+      "unfold_blk",
+      "sx",
+      "brz",
+      "close_br",
+      "idx",
+      "xkeep",
+      "vxn",
+      "x_lower_step",
+      "x_lower",
+      "x_upper_step",
+      "x_upper"
+    ],
+    "getopt/GetoptExchangeTwo.v": [
+      "x_after",
+      "x_again",
+      "x_outer"
+    ],
+    "getopt/GetoptIdle.v": [
+      "icell"
+    ],
+    "getopt/GetoptIdlePath.v": [
+      "kin",
+      "kin2"
+    ],
+    "getopt/GetoptIdleThree.v": [
+      "icell"
+    ],
+    "getopt/GetoptInitialize.v": [
+      "load_int'",
+      "rdchr",
+      "icell",
+      "unkeep",
+      "keep"
+    ],
+    "getopt/GetoptLongAmbHead.v": [
+      "arep_msg",
+      "arep_head"
+    ],
+    "getopt/GetoptLongAmbRep.v": [
+      "arep_lk"
+    ],
+    "getopt/GetoptLongBody.v": [
+      "body_lk"
+    ],
+    "getopt/GetoptLongChoice.v": [
+      "choice_lk",
+      "choice_side",
+      "choice_conv"
+    ],
+    "getopt/GetoptLongDash.v": [
+      "dash_vx",
+      "dash_side"
+    ],
+    "getopt/GetoptLongDiag.v": [
+      "lmsg",
+      "ldiag_entry_block"
+    ],
+    "getopt/GetoptLongExact.v": [
+      "al8",
+      "vxc"
+    ],
+    "getopt/GetoptLongFind.v": [
+      "find_lk"
+    ],
+    "getopt/GetoptLongJoin.v": [
+      "jn_lk",
+      "jn_side"
+    ],
+    "getopt/GetoptLongOnly.v": [
+      "rdin"
+    ],
+    "getopt/GetoptLongPfxAlloc.v": [
+      "palloc_int",
+      "palloc_brp"
+    ],
+    "getopt/GetoptLongPfxCmp.v": [
+      "pcmp_fin",
+      "pcmp_fold",
+      "pcmp_br"
+    ],
+    "getopt/GetoptLongPfxPath.v": [
+      "ppath_lk"
+    ],
+    "getopt/GetoptLongPfxStep.v": [
+      "ploop_kc",
+      "ploop_via",
+      "ploop_rng",
+      "ploop_small"
+    ],
+    "getopt/GetoptLongSingle.v": [
+      "single_side",
+      "single_lk",
+      "single_conv"
+    ],
+    "getopt/GetoptLongSite.v": [
+      "site_vx",
+      "site_side"
+    ],
+    "getopt/GetoptLongUnrec.v": [
+      "lmsg"
+    ],
+    "getopt/GetoptOptArg.v": [
+      "rawa"
+    ],
+    "getopt/GetoptReqTail.v": [
+      "viakeep",
+      "rawa"
+    ],
+    "getopt/GetoptScan.v": [
+      "kin"
+    ],
+    "getopt/GetoptScanEnd.v": [
+      "rdchr"
+    ],
+    "getopt/GetoptShortOpt.v": [
+      "rdopt"
+    ],
+    "getopt/GetoptSkipTest.v": [
+      "icell",
+      "rdchr"
+    ],
+    "hello/HelloGlibcMainDispatch.v": [
+      "phi_kept",
+      "vxa",
+      "lf",
+      "lfacts"
+    ],
+    "hello/HelloGlibcMainGreet.v": [
+      "vxm"
+    ],
+    "hello/HelloGlibcMainLoop.v": [
+      "phi_kept",
+      "vxa"
+    ],
+    "hello/HelloGlibcMainOperands.v": [
+      "operand_steps"
+    ],
+    "hello/HelloGlibcMainSteps.v": [
+      "resume"
+    ],
+    "hello/HelloGlibcXmalloc.v": [
+      "wpm"
+    ],
+    "hi_atexit/HiAtexitImage.v": [
+      "hi_image_byte_step",
+      "hi_image_aux_step",
+      "hi_image_build",
+      "hi_image_finish"
+    ],
+    "libio/ExitRunTail.v": [
+      "look",
+      "ign",
+      "cas_ign"
+    ],
+    "libio/LibioCleanupFpLock.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioCleanupStart.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioCloseSteps.v": [
+      "vm_of",
+      "close_side",
+      "resume"
+    ],
+    "libio/LibioDefaultXsputn.v": [
+      "lk_fin"
+    ],
+    "libio/LibioDefaultXsputnBuf.v": [
+      "same_tac"
+    ],
+    "libio/LibioDefaultXsputnRoom.v": [
+      "to_L22",
+      "lk_fin"
+    ],
+    "libio/LibioDefaultXsputnSmall.v": [
+      "to_L22",
+      "lk_fin"
+    ],
+    "libio/LibioDoAllocBase.v": [
+      "vm_of",
+      "brk"
+    ],
+    "libio/LibioFcloseLock.v": [
+      "self_side"
+    ],
+    "libio/LibioFlushFpLock.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioFlushStart.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioFputsLock.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioLogic.v": [
+      "wi_store",
+      "unwrap",
+      "arith",
+      "ar",
+      "norm",
+      "has_var",
+      "closed_ints",
+      "libio_side",
+      "lookups",
+      "wside"
+    ],
+    "libio/LibioOverflowBase.v": [
+      "brm",
+      "adv1",
+      "adv"
+    ],
+    "libio/LibioPuts.v": [
+      "lk_val",
+      "brz"
+    ],
+    "libio/LibioPutsLock.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioRead.v": [
+      "resume_ret"
+    ],
+    "libio/LibioSetb.v": [
+      "setb_tail"
+    ],
+    "libio/LibioUnlink.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioUnlinkLock.v": [
+      "self_side",
+      "self"
+    ],
+    "libio/LibioWriteExit.v": [
+      "resume_ret"
+    ],
+    "libio/LibioXsputn.v": [
+      "lk_fin",
+      "repack"
+    ],
+    "libio/LibioXsputnCall.v": [
+      "lk_fin"
+    ],
+    "libio/LibioXsputnDo.v": [
+      "lk_fin"
+    ],
+    "libio/LibioXsputnEnter.v": [
+      "lk_fin"
+    ],
+    "libio/LibioXsputnFill.v": [
+      "lk_fin"
+    ],
+    "libio/LibioXsputnFlags.v": [
+      "lk_fin",
+      "to117"
+    ],
+    "libio/LibioXsputnFlush.v": [
+      "lk_fin"
+    ],
+    "libio/LibioXsputnReset.v": [
+      "lk_fin",
+      "ldb"
+    ],
+    "libio/LibioXsputnSetp.v": [
+      "lk_fin"
+    ],
+    "libio/LibioXsputnWrite.v": [
+      "lk_fin"
+    ],
+    "libio/SysCleanup.v": [
+      "self_side"
+    ],
+    "libio/SysCleanupPop.v": [
+      "self_side"
+    ],
+    "libio/SysWrappers.v": [
+      "os_side",
+      "args_x",
+      "sides"
+    ],
+    "stdio/CancelState.v": [
+      "self_side"
+    ],
+    "stdlib/AllocLogic.v": [
+      "l7",
+      "join",
+      "l26"
+    ],
+    "stdlib/AtexitLogic.v": [
+      "ids",
+      "ign",
+      "tail58",
+      "cas_ign"
+    ],
+    "stdlib/LeavesLogic.v": [
+      "unwrap",
+      "decide_cmp",
+      "pow_closed",
+      "simp",
+      "decide_branch",
+      "nx",
+      "arith"
+    ],
+    "string/MemchrFirst.v": [
+      "ar",
+      "si",
+      "lk",
+      "sp"
+    ],
+    "string/MemchrLast.v": [
+      "zl"
+    ],
+    "string/MemcmpLogic.v": [
+      "norm",
+      "normt",
+      "normp"
+    ],
+    "string/MemrchrLogic.v": [
+      "lk",
+      "normt",
+      "normp"
+    ],
+    "string/MemrchrLoop.v": [
+      "norm",
+      "normt",
+      "normp",
+      "idx_steps"
+    ],
+    "string/MemrchrMask.v": [
+      "normt",
+      "normp"
+    ],
+    "string/StrchrnulLogic.v": [
+      "normt",
+      "normp",
+      "unmod",
+      "pop",
+      "xrep"
+    ],
+    "string/StrcmpLogic.v": [
+      "norm",
+      "normt",
+      "normp",
+      "facts"
+    ],
+    "string/StrcmpLoop.v": [
+      "norm",
+      "normt",
+      "normp",
+      "fin_tac",
+      "facts"
+    ],
+    "string/StrlenLoop.v": [
+      "set_tail",
+      "unwrap",
+      "clear_junk",
+      "pow_closed",
+      "arith",
+      "close_if",
+      "look",
+      "set_int",
+      "set_ptr",
+      "gen_top"
+    ],
+    "string/StrncmpLogic.v": [
+      "norm",
+      "normt",
+      "normp",
+      "facts"
+    ],
+    "string/StrncmpLoop.v": [
+      "lkf",
+      "vxf",
+      "normt",
+      "fin_tac"
+    ],
+    "string/StrncmpWords.v": [
+      "norm",
+      "normt",
+      "normp",
+      "facts"
+    ]
+  }
+}

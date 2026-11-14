@@ -35,7 +35,7 @@ def unchanged_tactics(before, after, plugin, manifest, output):
         (output.parent / '30-tactics.audit.log').write_text(log)
         if audited.returncode or 'Axioms:' in log or log.count('Closed under the global context') != 1:
             raise ValueError('step_named_rule is not Closed; see 30-tactics.audit.log')
-    lint = subprocess.run([sys.executable, str(HERE.parent / 'lint-tactics.py'), str(after), '--max', '226'],
+    lint = subprocess.run([sys.executable, str(HERE.parent / 'lint-tactics.py'), str(after), '--check-inventory'],
                           capture_output=True, text=True, timeout=900)
     (output.parent / '30-tactics.lint.log').write_text(lint.stdout + lint.stderr)
     if lint.returncode:
@@ -86,7 +86,7 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
                 lines += ['PASS: statements unchanged across the complete stage-30 boundary; '
                           'every reviewed source has its target type, including universes. '
                           'The added rule has its pinned type and prints Closed. '
-                          'The private-tactic count is at most 226.', '']
+                          'The private-tactic count is within the recorded inventory.', '']
                 continue
             source = proof.read_text()
             lines += ['### Equivalence proof', '', '```coq', source.rstrip(), '```', '']

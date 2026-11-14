@@ -189,7 +189,7 @@ both, then pass `--stage30-before BEFORE --stage30-after AFTER --plugin PLUGIN`
 to `packet.py`. The packet compares every declaration across that boundary,
 requires all eight reviewed sources to equal their five targets including
 universes, checks the added rule against its pinned type and audits it Closed,
-and runs `lint-tactics.py --max 226`. No equivalence lemma is required for this
+and runs `lint-tactics.py --check-inventory`. No equivalence lemma is required for this
 statement-preserving stage. `run.sh` prepares and checks these trees itself.
 
 `python3 check/packet.py POST_TREE --output cutover-packet.md`, run from the

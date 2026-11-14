@@ -16,6 +16,11 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("tree", type=Path)
 parser.add_argument("--max", type=int, dest="maximum")
 parser.add_argument("--json", action="store_true")
+parser.add_argument("--inventory", type=Path, default=Path(__file__).parent / "tactic-inventory.json",
+                    help="the reviewed private definitions of the cutover tree")
+parser.add_argument("--write-inventory", action="store_true", help="record this tree's private definitions")
+parser.add_argument("--check-inventory", action="store_true",
+                    help="fail when the tree has more private definitions than the inventory")
 args = parser.parse_args()
 files = {}
 libraries = {}
@@ -33,4 +38,20 @@ else:
     for path, names in files.items():
         print(f"{path}: {len(names)}: {' '.join(names)}")
     print(f"{total} Ltac definitions outside the shared libraries in {len(files)} files")
-raise SystemExit(args.maximum is not None and total > args.maximum)
+if args.write_inventory:
+    args.inventory.write_text(json.dumps(dict(total=total, files=files), indent=2) + "\n")
+failed = args.maximum is not None and total > args.maximum
+if args.check_inventory:
+    inventory = json.loads(args.inventory.read_text())
+    if sum(map(len, inventory["files"].values())) != inventory["total"]:
+        raise SystemExit(f"{args.inventory}: the total does not match the listed definitions")
+    for path, names in files.items():
+        known = list(inventory["files"].get(path, []))
+        for name in names:
+            if name in known:
+                known.remove(name)
+            else:
+                print(f"not in the inventory: {path}: {name}")
+    print(f"the inventory records {inventory['total']} definitions")
+    failed = failed or total > inventory["total"]
+raise SystemExit(failed)
