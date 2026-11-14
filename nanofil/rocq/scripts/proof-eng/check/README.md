@@ -69,6 +69,10 @@ candidate, with the original functor instantiated at `InterpRuntime`. Every
 other original file must compile and compare against the abstract candidate.
 The report retains the dependency output, the file partition, and declaration
 counts for each runtime. Compilation success never chooses a file's runtime.
+`check.py partition ORIGINAL --output DIRECTORY` exports that same partition
+and a `general-targets.txt` file. The full command passes those original general
+targets to stage 50 through `PE_PROGRAM_TARGETS`, so the abstract conversion
+covers their complete dependency closure without rebuilding concrete entrypoints.
 
 The source selects lemmas, theorems, corollaries, and definitions explicitly
 returning `Prop`. Rocq's `.glob` supplies their module scopes. Each probe
@@ -99,6 +103,12 @@ errors. `report.txt` lists each changed, added, or removed statement with its
 file, name, and both normalized statements. Missing or stale objects in the
 selected trees fail the overall check, even when other files compare equal.
 
+For generation, `--discovery` treats the expectation file as a candidate list:
+unchanged candidates do not produce "expected change was not observed" errors.
+Every discovered difference remains unaccepted, even if a matching pin exists.
+Compiler, probe, and inventory errors still fail. This mode gathers evidence;
+the ordinary comparison and packet checks decide acceptance.
+
 ## Reproduce and compare the campaign audits
 
 We audit Hello twice because its concrete and abstract runtimes expose different
@@ -116,7 +126,8 @@ An optional `assumption-aliases.json` in that directory maps exact module prefix
 such as `Fix.R` to `AuditRuntime`. The audit comparison checks every assumption's
 full printed type after those explicit renamings, not just the twelve names.
 It also compares each audited statement using the qualified printer and the
-statement checker's module resolver. Closed proofs with changed statements fail.
+statement checker's module resolver. Changed statements fail unless they meet
+the exact stage-50 permission described below, even when their proofs are Closed.
 
 ```sh
 python3 nanofil/rocq/scripts/proof-eng/check/audit.py BEFORE \
@@ -157,8 +168,8 @@ may move to one destination only when every source is listed, present, and
 equal to the destination. The declaration's universe names move with it.
 Proof aliases are compared by type rather than by proof body. An unchanged
 move can pass without a statement exemption. Other changes require an exact pair of
-elaborated statements in the companion `.elaborated.json` file. Audited query
-names cannot be exempted. The report prints every accepted change and both types.
+elaborated statements in the companion `.elaborated.json` file. The report prints
+every accepted change and both types. Audited endpoints cannot be exempted.
 
 To capture a stage's review material, compile its immediate before and after
 trees, then run the checker restricted to the manifest's files. Replace
@@ -200,6 +211,38 @@ runs `python3 stages/STAGE.py --check POST_TREE` to connect the equivalences to
 the stage's source guards. Missing files, extra declarations, open proofs, and
 failed stage validation prevent a passing packet. `run.sh` appends its revisions,
 local gate verdicts, and complete statement differences to this packet.
+
+Stage 50 generates its three evidence files under `POST_TREE.program/` rather
+than committing them. The packet invokes `50-program.py --check POST_TREE`
+first, then reads those files. That command validates the reviewed action list
+and source guards, regenerates the evidence, and compiles and audits adapters
+in bounded shards. The packet does not repeat the monolithic compilation.
+
+`audit-changes.json` identifies exactly forty intermediate declarations by file
+and name. It retains their reviewed old types, implementation names, and adapter
+names from `c6c7ea2`. A generated baseline cannot replace those old types. Each
+accepted change requires an exact elaborated pair and both checked adapters;
+a name on the list alone grants no permission. Audit reports also record the
+resolved declaration identity and the tree's source digest. The new declaration
+must retain the old declaration's assumption names and types.
+
+The interpreter adapters must print Closed. Abstract adapters may use only
+qualified fields of the declared `Glibc.Fix.R` module. The old and new statements
+must list identical assumption names and types, and each adapter's assumptions
+must be a subset of that set with the same types. The same declaration must
+also have Closed interpreter adapters. Reports label this evidence
+"abstract: runtime fields only" and give each pair's field count, not "Closed".
+Equivalence source cannot introduce axioms, parameters, admitted proofs, or a
+declared module. Endpoint protection and Hello's twelve-assumption contract
+remain unchanged.
+
+A successful stage-50 packet writes `OUTPUT.stage50.json` beside its Markdown
+report. This local receipt binds the generated evidence, reviewed action list,
+reviewed old types, and tree sources by hashes. Both `check.py` and
+`compare-audits.py` accept `--stage50-evidence RECEIPT`; repeat it for the two
+runtimes. Missing or stale evidence fails. `packet.py --stage50-only` checks
+the additional abstract boundary without repeating the other stages. Pass its
+Closed counterpart with `--interpreter-evidence CONCRETE_RECEIPT`.
 
 ## Test that the checks reject mutations
 

@@ -11,6 +11,7 @@ import tempfile
 
 from check import Tree, uncomment, compare
 from expectations import Expectations
+from audit_changes import reviewed, receipt, tree_digest, evidence_hashes, AuditChanges, interpreter_covers
 
 HERE = Path(__file__).resolve().parent
 
@@ -42,21 +43,44 @@ def unchanged_tactics(before, after, plugin, manifest, output):
         raise ValueError('stage 30 tactic budget failed; see 30-tactics.lint.log')
 
 
-def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plugin=None):
+def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plugin=None,
+           stage50_only=False, interpreter_evidence=None):
+    tree = tree.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
+    evidence = output.with_suffix('.stage50.json')
+    evidence.unlink(missing_ok=True)
     lines = ['# Proof-engineering cutover packet', '',
              'This packet is review material, not authorization to land.',
              'Hosted workflow status is not evidence; use the local Nix verdicts.', '']
     failures = []
     files = sorted(manifests.glob('*.txt'))
+    if stage50_only:
+        files = [p for p in files if p.stem == '50-program']
     if not files:
         failures.append('No reviewed stage manifests are present')
     for manifest in files:
-        lines += ['## ' + manifest.stem, '', '### Declaration list and source guards', '',
-                  '```text', manifest.read_text().rstrip(), '```', '']
-        pins = manifest.with_suffix('.elaborated.json')
-        proof = manifest.with_suffix('.equivalence.v')
         try:
+            if manifest.stem == '50-program':
+                source_hash = tree_digest(tree)
+                checked = subprocess.run([sys.executable, str(HERE.parent / 'stages/50-program.py'),
+                                          '--check', str(tree.resolve())],
+                                         capture_output=True, text=True, timeout=7200)
+                (output.parent / '50-program.validation.log').write_text(checked.stdout + checked.stderr)
+                if checked.returncode:
+                    raise ValueError('stage --check failed; see 50-program.validation.log')
+                runtimes = re.findall(r'^program-runtime: (concrete|abstract)$', checked.stdout, re.M)
+                reports = re.findall(r'^program-assumption-evidence: (.+)$', checked.stdout, re.M)
+                if len(runtimes) != 1 or len(reports) != 1:
+                    raise ValueError('stage --check did not report its runtime and assumption evidence')
+                validation = json.loads(Path(reports[0]).read_text())
+                if validation['runtime'] != runtimes[0]:
+                    raise ValueError('stage runtime disagrees with its assumption evidence')
+                manifest = tree.resolve().parent / (tree.name + '.program/50-program.txt')
+                hashes = evidence_hashes(manifest)
+            lines += ['## ' + manifest.stem, '', '### Declaration list and source guards', '',
+                      '```text', manifest.read_text().rstrip(), '```', '']
+            pins = manifest.with_suffix('.elaborated.json')
+            proof = manifest.with_suffix('.equivalence.v')
             rules = Expectations(manifest)
             data = json.loads(pins.read_text())
             if data['version'] != 1:
@@ -68,7 +92,8 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
             protected = {n for group in json.loads((HERE / 'audit-contracts.json').read_text()).values() for n in group}
             for change in changes:
                 key = (change['file'], change['name'])
-                if change['kind'] not in rules.rows[key] or change['name'] in protected:
+                permitted = manifest.stem == '50-program' and key in reviewed() and change['kind'] == 'changed'
+                if change['kind'] not in rules.rows[key] or (change['name'] in protected and not permitted):
                     raise ValueError('unapproved or audited declaration: ' + str(key))
                 lines += [f"### {change['kind']} {change['file']}:{change['name']}", '']
                 for side in ('before', 'after'):
@@ -90,6 +115,30 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
                 continue
             source = proof.read_text()
             lines += ['### Equivalence proof', '', '```coq', source.rstrip(), '```', '']
+            if manifest.stem == '50-program':
+                # Stage 50 validates exact source/evidence inventories and uses
+                # bounded shards, auditing every direction in each shard.
+                if re.search(r'\b(?:Axioms?|Parameters?|Admitted)\b|\bDeclare\s+Module\b', uncomment(source)):
+                    raise ValueError('stage-50 equivalence source introduces assumptions')
+                result = receipt(tree, manifest, validation)
+                if result['tree_sha256'] != source_hash or result['evidence'] != hashes:
+                    raise ValueError('source or evidence changed during validation')
+                if result['runtime'] == 'abstract':
+                    concrete = AuditChanges([interpreter_evidence] if interpreter_evidence else [])
+                    if not interpreter_covers(validation['pairs'], concrete.receipts):
+                        raise ValueError('abstract pairs lack matching Closed interpreter evidence')
+                evidence.write_text(json.dumps(result, indent=2) + '\n')
+                if result['runtime'] == 'abstract':
+                    counts = {f"{e['file']}:{e['name']}": len(e['before']) for e in validation['pairs']}
+                    lines += ['PASS: abstract: runtime fields only. Field counts by pair:', '',
+                              '```json', json.dumps(counts, indent=2), '```', '',
+                              'Every pair also has matching Closed interpreter adapters.', '']
+                else:
+                    lines += ['PASS: interpreter adapters are Closed.', '']
+                lines += ['PASS: stage 50 validates source guards and compiles and audits both '
+                          'adapter directions through its bounded-shard checker. '
+                          'Changed audits additionally require identical assumptions and exact type pairs.', '']
+                continue
             # Copy to a legal basename, then audit every proved declaration,
             # not only whichever Print Assumptions the author happened to add.
             names = re.findall(r"\b(?:Lemma|Theorem|Corollary)\s+([\w']+)", uncomment(source))
@@ -143,6 +192,9 @@ if __name__ == '__main__':
     parser.add_argument('--stage30-before', type=Path)
     parser.add_argument('--stage30-after', type=Path)
     parser.add_argument('--plugin', type=Path)
+    parser.add_argument('--stage50-only', action='store_true', help='validate the additional abstract stage-50 boundary')
+    parser.add_argument('--interpreter-evidence', type=Path, help='required Closed counterpart for an abstract stage-50 packet')
     args = parser.parse_args()
     raise SystemExit(packet(args.tree, args.manifests, args.output,
-                           args.stage30_before, args.stage30_after, args.plugin))
+                           args.stage30_before, args.stage30_after, args.plugin, args.stage50_only,
+                           args.interpreter_evidence))

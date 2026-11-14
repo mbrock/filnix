@@ -16,6 +16,7 @@ import tempfile
 
 from check import PATH, Tree
 from expectations import Expectations
+from audit_changes import tree_digest
 
 HERE = Path(__file__).resolve().parent
 
@@ -44,6 +45,7 @@ def audit(tree, layout, contracts, output, groups=None):
     if aliases_file.exists():
         aliases.update(json.loads(aliases_file.read_text()))
     library = Tree(tree)
+    source_digest = tree_digest(tree)
     moves = Expectations(HERE / 'expected-statement-changes')
     report = {}
     for group, targets in contracts.items():
@@ -104,10 +106,16 @@ def audit(tree, layout, contracts, output, groups=None):
                 for i in range(0, len(chunks), 2):
                     chunks[i] = re.sub(PATH, lambda m: 'Glibc.' + m[0] if m[0].startswith('Audit.') else m[0], chunks[i])
                 normalized = moves.canonical(context.normalize(''.join(chunks), {}, concrete=not bool(allowed)))
+                reference = statement[1].strip().split()[0].removeprefix('@')
+                if reference.startswith('Audit.'):
+                    reference = 'Glibc.' + reference
+                declaration = moves.canonical(context.normalize(reference, {}, concrete=not bool(allowed)))
                 results[name] = {'pass': valid, 'assumptions': assumptions, 'expected': allowed,
                                  'statement': statement[1].strip(), 'raw': text, 'types': types,
-                                 'qualified': True, 'normalized_statement': normalized}
-            report[group] = {'pass': all(r['pass'] for r in results.values()), 'targets': results}
+                                 'qualified': True, 'normalized_statement': normalized,
+                                 'declaration': declaration}
+            report[group] = {'pass': all(r['pass'] for r in results.values()), 'targets': results,
+                             'tree_sha256': source_digest}
         except (ValueError, subprocess.TimeoutExpired, OSError) as e:
             report[group] = {'pass': False, 'error': str(e)}
         print(f"{'PASS' if report[group]['pass'] else 'FAIL'} audit {group}", flush=True)

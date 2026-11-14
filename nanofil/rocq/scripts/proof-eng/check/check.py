@@ -17,6 +17,7 @@ import tempfile
 import textwrap
 
 from expectations import Expectations
+from audit_changes import AuditChanges, tree_digest
 
 HERE = Path(__file__).resolve().parent
 IDENT = r"[\w']+"
@@ -97,7 +98,7 @@ class Tree:
                             self.signatures[full] = params
                         if params and kind != 'Type':
                             self.functors[full] = params
-                            if re.fullmatch(r'\s*\(R : Runtime\)(?: \(LG0 : LogicSig R\))?', tail):
+                            if re.fullmatch(rf'\s*\(R : Runtime\)(?: \({IDENT} : LogicSig R\))?', tail):
                                 self.flattened.add(full)
                         signature = re.search(rf'(?:^|\))\s*:\s*({PATH})', tail)
                         if signature:
@@ -453,37 +454,44 @@ def run_probe(tree, rel, decls, out, plugin, inside=False, concrete=False):
     return result
 
 
+def runtime_partition(before, out):
+    out.mkdir(parents=True, exist_ok=True)
+    runtime_roots = {rel for rel, path in before.files.items()
+                     if re.search(r'\bInterpRuntime\b', uncomment(path.read_text()))}
+    interpreter_closure = set(runtime_roots)
+    dep = subprocess.run(['rocq', 'dep', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                          '-R', str(before.root), 'Glibc', *map(str, before.files.values())],
+                         text=True, capture_output=True, check=True)
+    (out / 'runtime-dependencies.txt').write_text(dep.stdout + dep.stderr)
+    objects = {str(path.with_suffix('.vo')): rel for rel, path in before.files.items()}
+    dependencies = {}
+    for line in dep.stdout.splitlines():
+        targets, separator, prerequisites = line.partition(':')
+        if separator:
+            for target in targets.split():
+                if target in objects:
+                    dependencies[objects[target]] = {objects[p] for p in prerequisites.split() if p in objects}
+    if set(dependencies) != set(before.files):
+        raise ValueError('rocq dep did not cover every original file')
+    while True:
+        more = {f for f, deps in dependencies.items() if deps & interpreter_closure}
+        if more <= interpreter_closure:
+            break
+        interpreter_closure.update(more)
+    return {'roots': sorted(runtime_roots), 'concrete': sorted(interpreter_closure),
+            'general': sorted(set(before.files) - interpreter_closure)}
+
+
 def compare(args):
     before, after = Tree(args.before), Tree(args.after)
     abstract = Tree(args.abstract_after) if args.abstract_after else None
     out = Path(args.output).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    interpreter_closure = set()
-    runtime_roots = set()
-    if abstract:
-        runtime_roots = {rel for rel, path in before.files.items()
-                         if re.search(r'\bInterpRuntime\b', uncomment(path.read_text()))}
-        interpreter_closure = set(runtime_roots)
-        dep = subprocess.run(['rocq', 'dep', '-R', os.environ['PE_MODEL'], 'Nanofil',
-                              '-R', str(before.root), 'Glibc', *map(str, before.files.values())],
-                             text=True, capture_output=True, check=True)
-        (out / 'runtime-dependencies.txt').write_text(dep.stdout + dep.stderr)
-        objects = {str(path.with_suffix('.vo')): rel for rel, path in before.files.items()}
-        dependencies = {}
-        for line in dep.stdout.splitlines():
-            targets, separator, prerequisites = line.partition(':')
-            if separator:
-                for target in targets.split():
-                    if target in objects:
-                        dependencies[objects[target]] = {objects[p] for p in prerequisites.split() if p in objects}
-        if set(dependencies) != set(before.files):
-            raise ValueError('rocq dep did not cover every original file')
-        while True:
-            more = {f for f, deps in dependencies.items() if deps & interpreter_closure}
-            if more <= interpreter_closure:
-                break
-            interpreter_closure.update(more)
-    rules = Expectations(args.expectations)
+    partition = runtime_partition(before, out) if abstract else None
+    interpreter_closure = set(partition['concrete']) if partition else set()
+    evidence_paths = getattr(args, 'stage50_evidence', [])
+    evidence = AuditChanges(evidence_paths)
+    rules = Expectations(args.expectations, [r['manifest'] for r in evidence.receipts])
     plugin = Path(args.plugin).resolve()
     files = sorted(set(before.files) | set(after.files))
     if args.files:
@@ -495,9 +503,7 @@ def compare(args):
         raise ValueError('no files selected')
     results = {'mode': args.mode, 'files': {}, 'errors': [], 'differences': [], 'runtime_by_file': {}}
     if abstract:
-        results['runtime_partition'] = {'roots': sorted(runtime_roots),
-                                        'concrete': sorted(interpreter_closure),
-                                        'general': sorted(set(before.files) - interpreter_closure)}
+        results['runtime_partition'] = partition
     def check_file(rel):
         sides = []
         errors = []
@@ -552,6 +558,9 @@ def compare(args):
         if (not args.files or source[0] in files or target[0] in files) and source not in origins.get(target, ()):
             results['errors'].append(f'reviewed move source absent: {source[0]}:{source[1]}')
     protected = {name for group in json.loads((HERE / 'audit-contracts.json').read_text()).values() for name in group}
+    digests = ({'concrete': tree_digest(after.root),
+                'abstract': tree_digest(abstract.root if abstract else after.root)}
+               if evidence_paths else {})
     observed = set()
     for key in sorted(set(left) | set(right)):
         rel, name = key
@@ -565,11 +574,15 @@ def compare(args):
             d = {'file': rel, 'name': name,
                  'kind': 'added' if a is None else 'removed' if b is None else 'moved' if moved else 'changed',
                  'before': a, 'after': b, 'origin': list(origin), 'origins': [list(s) for s in sources]}
-            d['accepted'] = rules.accepts(d) and name not in protected
+            permitted = evidence.permits(key, a['normalized'] if a else None,
+                                         b['normalized'] if b else None,
+                                         digests.get(results['runtime_by_file'].get(rel)))
+            d['accepted'] = (not getattr(args, 'discovery', False) and rules.accepts(d) and
+                             (name not in protected or permitted))
             results['differences'].append(d)
             observed.add(key)
     for key in set(rules.rows) - observed:
-        if key[0] in files:
+        if key[0] in files and not getattr(args, 'discovery', False):
             results['errors'].append(f'expected change was not observed: {key[0]}:{key[1]}')
     results['declaration_counts'] = {
         runtime: {side: sum(len(sides[i] or {}) for rel, sides in results['files'].items()
@@ -602,13 +615,25 @@ def compare(args):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('mode', choices=['statements'])
+    p.add_argument('mode', choices=['statements', 'partition'])
     p.add_argument('before')
-    p.add_argument('after')
-    p.add_argument('--plugin', required=True)
+    p.add_argument('after', nargs='?')
+    p.add_argument('--plugin')
     p.add_argument('--output', required=True)
     p.add_argument('--expectations', default=str(HERE / 'expected-statement-changes'))
     p.add_argument('--jobs', type=int, default=4)
     p.add_argument('--files', nargs='+')
+    p.add_argument('--discovery', action='store_true', help='allow unchanged candidates; never accept discovered differences')
+    p.add_argument('--stage50-evidence', action='append', default=[], help='source-bound packet receipt; repeat for both runtimes')
     p.add_argument('--abstract-after', help='compare general files abstractly and the original interpreter dependency closure concretely')
-    raise SystemExit(compare(p.parse_args()))
+    args = p.parse_args()
+    if args.mode == 'partition':
+        out = Path(args.output).resolve()
+        partition = runtime_partition(Tree(args.before), out)
+        (out / 'report.json').write_text(json.dumps(partition, indent=2) + '\n')
+        (out / 'general-targets.txt').write_text(''.join(f[:-2] + '.vo\n' for f in partition['general']))
+        print('Original runtime partition:', ', '.join(f'{len(v)} {k}' for k, v in partition.items()))
+        raise SystemExit(0)
+    if not args.after or not args.plugin:
+        p.error('statements requires AFTER and --plugin')
+    raise SystemExit(compare(args))
