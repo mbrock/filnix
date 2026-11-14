@@ -25,6 +25,7 @@
     from the top owns what the handlers above it left.
     `_IO_cleanup` is a call rule over R 0 ([cleanup_rule]). *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -32,6 +33,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry ExitRunCode.
+From Glibc Require AtexitLogic LeavesLogic OsExit OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -57,51 +60,25 @@ Proof. intros H. cbn. rewrite H. reflexivity. Qed.
 Ltac look H := repeat (rewrite lookup_after_put_other; [|reflexivity]); exact H.
 
 (** The value premise of a step: by computation, or through [look]. *)
-Ltac vx :=
-  first
-    [ reflexivity
-    | cbn [map2_option map_option flight_arg_x flight_cap arg_x];
-      repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
-        match goal with H : lookup n _ = Some ?x |- _ =>
-          rewrite (value_x_tmp g E k n x); [|look H] end end;
-      reflexivity ].
 
-(** The definitions and the end over the [[runtime]] R and the Logic
-    instance LG0. *)
-Module ExitRunTailOn (R : Runtime) (LG0 : LogicSig R).
-Module AX := AtexitOn R LG0.
-Module OE := OsExitOn R LG0.
+
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG AX.ML AX.LV AX OE.OW OE.
+Import L LG AtexitLogic.ML LeavesLogic AtexitLogic OsWorld OsExit.
 
 Local Opaque glibc___run_exit_handlers.
 
 (** Close the instance premise a rule's eapply leaves. *)
-Ltac ins := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
+
 
 (** One step whose premises reduce, by the instruction it runs, values
     read as [vx] does: a pure let, a flight, entering a block, or a
     goto. *)
-Ltac st :=
-  lazymatch goal with
-  | |- environments.envs_entails _ (wp _ _ (ERun (mkFrame _ _ _ _ ?pos)) _) =>
-      lazymatch pos with
-      | Exec _ (Let _ _ _ _ :: _) _ =>
-          eapply step_wand; [eapply wp_let; ins; [reflexivity | reflexivity | vx | intros ?; reflexivity] |]
-      | Exec _ (Flight _ _ _ _ :: _) _ =>
-          eapply step_wand; [eapply wp_flight; ins; [vx | reflexivity | vx] |]
-      | Enter _ _ =>
-          eapply step_wand; [eapply wp_enter; ins; [reflexivity | reflexivity] |]; cbn [b_insts b_jump]
-      | Exec _ nil (JGoto _) => eapply step_wand; [eapply wp_goto; ins | ]
-      end
-  end.
+
 
 (** A let copying the global s, bound to p in the genv by Hs. *)
-Ltac st_global Hs :=
-  eapply step_wand;
-    [eapply wp_let; ins;
-       [reflexivity | reflexivity | cbn [map2_option value_x]; rewrite Hs; reflexivity | intros ?; reflexivity] |].
+
 
 (** A write's world premise, from [wi_ignores] H of its object, as
     AtexitLogic.v's. *)
@@ -115,7 +92,7 @@ Ltac ign H :=
 Ltac cas_ign H := intros _; ign H.
 
 (** A branch, its condition read as [vx] does and simplified. *)
-Ltac br := eapply step_wand; [eapply wp_branch; ins; vx |]; decide_branch.
+
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -198,44 +175,43 @@ Proof.
   iIntros "((_ & %Hc) & Hll & Hlb & Hdl & Hdb & Hcl & Hcc & Hfl & Hfc & Hil & Hnext & Hidx & _ & Hspares) HP HK".
   cbn [xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg xo_funcs xo_funcs_reg xo_init xo_init_reg
     List.length Z.of_nat].
-  eapply step_wand; [eapply wp_enter; ins; [reflexivity | destruct from; reflexivity] |]; cbn [b_insts b_jump]. st.
-  rule1 "Hil" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
-  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_load; ins; [reflexivity | reflexivity | reflexivity | arith]).
-  st. br. st.
-  rule1 "Hil" ltac:(eapply wp_half_check_read; ins;
+  eapply step_wand; [eapply wp_enter; inst; [reflexivity | destruct from; reflexivity] |]; cbn [b_insts b_jump]. step.
+  rule1 "Hil" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule2 "Hil" "Hidx" ltac:(eapply wp_raw_load; inst; [reflexivity | reflexivity | reflexivity | arith]).
+  step. (branch_symbolic; LeavesLogic.decide_branch). step.
+  rule1 "Hil" ltac:(eapply wp_half_check_read; inst;
     [reflexivity | vx | reflexivity | left; reflexivity | arith | arith | arith | arith | arith]).
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 null ibr with "Hil Hnext []");
     [reflexivity | reflexivity | reflexivity | arith | arith | arith | done |]. nx. iIntros "Hil Hnext _".
-  rule1 "Hfl" ltac:(eapply wp_renew; ins; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hfl" "Hfc" ltac:(eapply wp_raw_store_pointer; ins;
+  rule1 "Hfl" ltac:(eapply wp_renew; inst; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hfl" "Hfc" ltac:(eapply wp_raw_store_pointer; inst;
     [reflexivity | reflexivity | reflexivity | arith | arith | ign Hwfs]).
-  rule1 "Hfl" ltac:(eapply wp_renew; ins; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
+  rule1 "Hfl" ltac:(eapply wp_renew; inst; [reflexivity | vx | reflexivity | reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 null fsr with "Hfl Hfc []");
     [reflexivity | reflexivity | reflexivity | arith | arith | arith | done |]. nx. iIntros "Hfl Hfc _".
-  st. st. br. st.
-  rule1 "Hfl" ltac:(eapply wp_check_read; ins; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
+  rule1 "Hfl" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 null fsr with "Hfl Hfc []");
     [reflexivity | reflexivity | reflexivity | arith | arith | arith | done |]. nx. iIntros "Hfl Hfc _".
-  st. st. st. br. st. st_global Hgdn.
-  rule1 "Hdl" ltac:(eapply wp_check; ins; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
-  rule2 "Hdl" "Hdb" ltac:(eapply wp_raw_store_byte; ins;
+  step. step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step_global Hgdn.
+  rule1 "Hdl" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
+  rule2 "Hdl" "Hdb" ltac:(eapply wp_raw_store_byte; inst;
     [reflexivity | reflexivity | reflexivity | arith | ign Hwdn]).
-  st_global Hglk.
-  rule1 "Hll" ltac:(eapply wp_check_read; ins;
+  step_global Hglk.
+  rule1 "Hll" ltac:(eapply wp_check_read; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 [1; 0; 0; 0] (WInt 1)
             (DfracOwn 1) (DfracOwn 1) with "Hll Hlb");
     [reflexivity | reflexivity | reflexivity | reflexivity | left; reflexivity | arith |]. nx. iIntros "Hll Hlb".
-  st. st.
-  rule1 "Hll" ltac:(eapply wp_half_check; ins;
+  step. step.
+  rule1 "Hll" ltac:(eapply wp_half_check; inst;
     [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith | arith | arith]).
-  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; ins;
+  rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; inst;
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity | arith | arith
      | cas_ign Hwlk]). rewrite lock_release.
-  st. br. st. st. br. st. st. br. st.
-  iApply ("HK" with "HP"). iNext. iIntros (n). st. st.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
+  iApply ("HK" with "HP"). iNext. iIntros (n). step. step.
   iApply wp_zsys_exit_soft; [reflexivity | exact Hxf | exact Hxg | vx].
 Qed.
 
 End rules.
-End ExitRunTailOn.

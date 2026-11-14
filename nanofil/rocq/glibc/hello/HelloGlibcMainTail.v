@@ -7,6 +7,7 @@
     The allocator, errno lookup, deallocation and exit calls use their
     concrete library proofs. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,17 +18,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
   HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp HelloGlibcMainOperands.
+From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainOperands HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion LibioLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The greeting-ending proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainTailOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The operand module supplies the state passed into the greeting. *)
-Module Op := HelloGlibcMainOperandsOn R LG0.
-Import Op Op.Hp Op.Hp.He Op.Hp.He.Vn Op.Hp.He.Vn.Lp Op.Hp.He.Vn.Lp.Dp Op.Hp.He.Vn.Lp.Dp.St Op.Hp.He.Vn.Lp.Dp.St.S
-  Op.Hp.He.Vn.Lp.Dp.St.S.D Op.Hp.He.Vn.Lp.Dp.St.S.D.FB Op.Hp.He.Vn.Lp.Dp.St.S.D.SW
-  Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.ML Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.LG
-  Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.L Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.OW Op.Hp.He.Vn.Lp.Dp.St.S.D.SW.FI.
+Import HelloGlibcMainOperands HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section tail.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -84,12 +82,12 @@ Lemma join_fail e Ψ :
 Proof.
   iIntros "#Hro [Hio Hpv] Hn HX". pose proof (hy_eb_at _ _ Hy) as (He0 & Hee & Her).
   iPoseProof "Hro" as "(_ & _ & _ & _ & _ & _ & #Hel & _)".
-  st.
+  step.
   iApply (wp_call_ptr w0 ge _ _ _ (fun q => ⌜q = mkPtr (ho_eb o) (Obj (ho_eb o))⌝)%I with "[]");
     [eapply fn_triple_mono; [exact (hl_errno _ _ _ _ _ _ Lb)|]; iIntros (r) "->"; iExists _; iSplit; done |
      reflexivity | done |].
   iNext. iIntros (q ->).
-  iApply (ST.wp_check_read_dq with "Hel"); [reflexivity | vx | left; reflexivity | arith | arith | arith |].
+  iApply (LibioLogic.wp_check_read_dq with "Hel"); [reflexivity | vx | left; reflexivity | arith | arith | arith |].
   iNext. iIntros "_".
   iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & (%bs & %cs & %Hbc & Hen))".
   rewrite pts_app. iDestruct "Hen" as "[Hb Ha]". destruct Hbc as [Hb4 Hc4].
@@ -97,7 +95,7 @@ Proof.
             with "Hel Hb");
     [reflexivity | vx | exact Hb4 | reflexivity | left; reflexivity | arith |].
   iNext. iIntros "_ Hb".
-  st_global (hy_lits _ _ Hy "hello#str.82" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.82" ltac:(cbn; tauto)).
   iApply (wp_call_never with "[-]");
     [eapply (hd_error_conv _ _ _ D _ X); exact (hl_exit _ _ _ _ _ _ Lb 1) | vx |].
   iSplitR; [iExact "Hro"|].
@@ -116,7 +114,7 @@ Lemma join_print e bd n ws Ψ :
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "L29") (Some (TAtom "iw_1.join")))) : gexpr) {{ Ψ }}.
 Proof.
   intros H23 Hbd Hw. iIntros "#Hro [Hio Hpv] Hn HX Hwb".
-  st. st_global (hy_lits _ _ Hy "hello#str.83" ltac:(cbn; tauto)).
+  step. step_global (hy_lits _ _ Hy "hello#str.83" ltac:(cbn; tauto)).
   iApply (wp_call_int with "[Hio Hpv Hwb]");
     [exact (hd_wprintf _ _ _ D bd n ws Hw) | vx |
      iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hwb"] |].
@@ -130,4 +128,3 @@ Proof.
 Qed.
 
 End tail.
-End HelloGlibcMainTailOn.

@@ -5,6 +5,8 @@
     This file joins the proofs of those steps into one lemma for the
     whole path, from the clamp to the end-of-scan test. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpCode
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptExchangeTwo GetoptExchangeThree GetoptIdle GetoptIdleThree GetoptPermute GetoptClamp
   GetoptSkipTest GetoptSkip GetoptDash GetoptDashTest.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptClamp GetoptDashTest GetoptExchange GetoptInitialize GetoptSkip GetoptSkipTest GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,22 +30,17 @@ Definition idle_names : list name :=
 (** These names hold what the steps after the clamp read. *)
 Definition clamp_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; "chk2"]%string.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptIdlePathOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The clamp module proves the clamp and the first exchange. *)
-Module C := GetoptClampOn R LG0.
 (** The skip module proves the nonoption skip loop. *)
-Module S := GetoptSkipOn R LG0.
 (** The "--" test module proves the test and the second exchange. *)
-Module DT := GetoptDashTestOn R LG0.
-Import S.T S.T.X S.T.X.I S.T.X.I.S S.T.X.I.S.FI S.T.X.I.S.FI.ML S.T.X.I.S.FI.LG S.T.X.I.S.FI.L
-  S.T.X.I.ST S.T.X.I.GB S.T.X.A.
+Import GetoptSkipTest GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section path.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance path_stable : SafepointStable (os_wi w0) := S.T.X.I.OW.os_wi_stable w0.
+Local Instance path_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance path_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -87,7 +86,7 @@ Proof.
   apply avoids_app in Hks as [Hksk Hks]. apply avoids_app in Hks as [Hkx3 Hks].
   apply avoids_app in Hks as [Hkd Hkt].
   iIntros "Hl Hi Ho Hf Hla Ha Hc #Hs #Hdd HK".
-  iApply (C.wp_getopt_clamp w0 registry ge (ks ++ clamp_keys) e fr0 n i o f l b r av ar ps
+  iApply (GetoptClamp.wp_getopt_clamp w0 registry ge (ks ++ clamp_keys) e fr0 n i o f l b r av ar ps
             with "Hl Hi Ho Hf Hla Ha Hc Hs [HK]");
     [ apply avoids_app_r; [exact Hkx2 | vm_compute; reflexivity]
     | apply avoids_app_r; [exact Hkc | vm_compute; reflexivity]
@@ -97,13 +96,13 @@ Proof.
   - iIntros (e1 ps1 f1 l1 (Hp1 & Hk1 & _ & Hf1 & H23 & _)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
     apply keeps_app in Hk1 as [Hk1 Hk1'].
     assert (Hlen1 : Z.of_nat (List.length ps1) = n) by (rewrite -(Permutation_length Hp1); exact Hlen).
-    iApply (S.wp_getopt_skip w0 registry ge (ks ++ DT.dash_keys) e1 i n l1 b r av ar ps1
+    iApply (GetoptSkip.wp_getopt_skip w0 registry ge (ks ++ GetoptDashTest.dash_keys) e1 i n l1 b r av ar ps1
               with "Hl Hi Hla Ha Hc Hs1 [Ho Hf HK]");
       [ apply avoids_app_r; [exact Hksk | vm_compute; reflexivity]
       | kin Hk1' Hv0 | kin Hk1' Hv2 | kin Hk1' Hv12 | kin Hk1' Hc2 | exact H23
       | lia | lia | exact Hlen1 | lia | lia | lia | lia | lia | lia | lia | lia |].
     iIntros (e2 i2 (Hk2 & Hi2)) "Hl Hi Hla Ha Hc #Hs2". apply keeps_app in Hk2 as [Hk2 Hk2'].
-    iApply (DT.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e2 i2 n f1 i2 b r av ar ps1 pdd sdd
+    iApply (GetoptDashTest.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e2 i2 n f1 i2 b r av ar ps1 pdd sdd
               with "Hl Hi Hf Hla Ha Hc Hs2 Hdd [Ho HK]");
       [ apply avoids_app_r; [exact Hkx3 | vm_compute; reflexivity]
       | apply avoids_app_r; [exact Hkd | vm_compute; reflexivity]
@@ -118,7 +117,7 @@ Proof.
     split; [lia|]. split; [lia|]. split; [lia|]. kin2 Hk3' Hk2' H23.
   - iIntros (e1 l1 (Hk1 & _ & Hl1 & H23 & _)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
     apply keeps_app in Hk1 as [Hk1 Hk1'].
-    iApply (DT.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e1 i n f l1 b r av ar ps pdd sdd
+    iApply (GetoptDashTest.wp_getopt_dash_end w0 registry ge (ks ++ [TAtom "chk23"]) e1 i n f l1 b r av ar ps pdd sdd
               with "Hl Hi Hf Hla Ha Hc Hs1 Hdd [Ho HK]");
       [ apply avoids_app_r; [exact Hkx3 | vm_compute; reflexivity]
       | apply avoids_app_r; [exact Hkd | vm_compute; reflexivity]
@@ -133,4 +132,3 @@ Proof.
 Qed.
 
 End path.
-End GetoptIdlePathOn.

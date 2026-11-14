@@ -20,6 +20,7 @@
     counter, and static buffer, any external world must satisfy
     [wi_ignores] for those three objects. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -27,6 +28,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import StdlibCode GlibcLogic LeavesLogic.
+From Glibc Require GlibcLogic LeavesLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -131,15 +134,11 @@ Qed.
     belongs to the same object by applying [ids_of]. *)
 Ltac ids := apply ids_of; cbn; repeat constructor.
 
-(** The module [AtexitOn] proves the `c: atexit` specifications over an
-    arbitrary [[runtime]] R and logic instance LG0. *)
-Module AtexitOn (R : Runtime) (LG0 : LogicSig R).
-Module GL := GlibcLogicOn R LG0.
+
 Module ML := MemLogicOn R LG0.
-Module LV := LeavesOn R LG0.
 Module LG := LG0.
 Module L := LG.L.
-Import L LG GL ML LV.
+Import L LG GlibcLogic ML LeavesLogic.
 
 Local Opaque new_exitfn_fn internal_atexit_fn cxa_atexit_fn atexit_fn.
 
@@ -183,57 +182,41 @@ Ltac ign H :=
 (** Applying a step rule creates a side condition showing that the world
     stays valid across garbage-collection safepoints. The tactic [inst]
     closes that [SafepointStable] obligation by typeclass search. *)
-Ltac inst := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
+
 
 (** The tactic [st] advances the proof by one symbolic IR step,
     dispatching on whether the frame sits at a let binding, a
     [[flight]], a block entry, or a jump. *)
-Ltac st :=
-  lazymatch goal with
-  | |- environments.envs_entails _ (wp _ _ (ERun (mkFrame _ _ _ _ ?pos)) _) =>
-      lazymatch pos with
-      | Exec _ (Let _ _ _ _ :: _) _ =>
-          eapply step_wand;
-            [eapply wp_let; inst; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity] |]
-      | Exec _ (Flight _ _ _ _ :: _) _ =>
-          eapply step_wand; [eapply wp_flight; inst; [reflexivity | reflexivity | reflexivity] |]
-      | Enter _ _ =>
-          eapply step_wand; [eapply wp_enter; inst; [reflexivity | reflexivity] |]; cbn [b_insts b_jump]
-      | Exec _ [] (JGoto _) => eapply step_wand; [eapply wp_goto; inst |]
-      end
-  end.
+
 
 (** Functions in this file load global addresses such as
     `__exit_funcs_lock` and `__new_exitfn_called`. The tactic
     [st_global] steps past a global pointer load using its binding
     hypothesis Hs. *)
-Ltac st_global Hs :=
-  eapply step_wand;
-    [eapply wp_let; inst;
-       [reflexivity | reflexivity | cbn [map2_option value_x]; rewrite Hs; reflexivity | intros ?; reflexivity] |].
+
 
 (** The tactic [br] steps across a conditional branch and immediately
     simplifies its boolean condition. *)
-Ltac br := eapply step_wand; [eapply wp_branch; inst; reflexivity |]; decide_branch.
+
 
 (** Both branches of `__new_exitfn` finish by claiming the chosen slot
     and updating the global call counter. The tactic [tail58] steps
     through that shared tail block `L121`, marks slot k in use, and
     returns its pointer. *)
 Ltac tail58 k c Hc Hgcl Hwib Hwcl :=
-  st;
+  step;
   rule1 "Hil" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]);
   rule2 "Hil" "Hfl0" ltac:(eapply wp_raw_store; inst;
     [reflexivity | reflexivity | reflexivity | arith | ign Hwib]);
-  st_global Hgcl;
+  step_global Hgcl;
   rule1 "Hcl" ltac:(eapply wp_check_read; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]);
   rule2 "Hcl" "Hcc" ltac:(eapply wp_raw_load; inst; [reflexivity | reflexivity | reflexivity | arith]);
-  rewrite (Z.mod_small c (2 ^ 64)); [|lia]; st;
+  rewrite (Z.mod_small c (2 ^ 64)); [|lia]; step;
   rule1 "Hcl" ltac:(eapply wp_renew; inst;
     [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith]);
   rule2 "Hcl" "Hcc" ltac:(eapply wp_raw_store; inst; [reflexivity | reflexivity | reflexivity | arith | ign Hwcl]);
-  st; st; iApply wp_ret; [reflexivity | reflexivity |]; nx; simp.
+  step; step; iApply wp_ret; [reflexivity | reflexivity |]; nx; simp.
 
 (** Each slot in an `exit_function_list` block holds a 32-byte record at
     offset o. Predicate [slot] owns the flavor integer v together with
@@ -303,39 +286,39 @@ Proof.
   unfold exit_block. remember (Z.of_nat (List.length ents)) as k eqn:Ek. assert (Hk' : 0 <= k < 32) by lia.
   iIntros "(Hdl & Hdb & Hcl & Hcc & Hfl & Hfc & Hil & Hnext & Hidx & Hents & Hspares) HΦ".
   rewrite (spares_cons ib k Hk'). iDestruct "Hspares" as "[(%v0 & %y & %z & %w & Hfl0 & Hy & Hz & Hw) Hspares]".
-  st. st_global Hgdn.
+  step. step_global Hgdn.
   rule1 "Hdl" ltac:(eapply wp_check_read; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
   rule2 "Hdl" "Hdb" ltac:(eapply wp_raw_load_byte; inst;
-    [reflexivity | reflexivity | reflexivity | reflexivity | left; reflexivity | arith]). br. st.
+    [reflexivity | reflexivity | reflexivity | reflexivity | left; reflexivity | arith]). (branch_symbolic; LeavesLogic.decide_branch). step.
   rule1 "Hfl" ltac:(eapply wp_check_read; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Hfl Hfc Hil");
     [reflexivity | reflexivity | reflexivity | arith | arith | arith |].
-  nx. iIntros "Hfl Hfc Hil". cbn [live_cap]. st. st. st. st. st. br. st. st.
+  nx. iIntros "Hfl Hfc Hil". cbn [live_cap]. step. step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step.
   rule1 "Hil" ltac:(eapply wp_check_read; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
   rule2 "Hil" "Hidx" ltac:(eapply wp_raw_load; inst;
-    [reflexivity | reflexivity | reflexivity | arith]). st. st. st. br.
+    [reflexivity | reflexivity | reflexivity | arith]). step. step. step. (branch_symbolic; LeavesLogic.decide_branch).
   destruct (Z.ltb_spec 0 k) as [Hpos|Hzero]; simp.
   - destruct (lookup_lt_is_Some_2 ents (Z.to_nat (k - 1))) as [e He]; [lia|].
     iDestruct (big_sepL_lookup_acc _ ents _ e He with "Hents") as "[(Hef & Hex) Hents]".
     rewrite Z2Nat.id; [|lia].
-    st. st. st. st. st. simp.
+    step. step. step. step. step. simp.
     rule1 "Hil" ltac:(eapply wp_check_read; inst;
       [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
     rule2 "Hil" "Hef" ltac:(eapply wp_raw_load; inst;
       [reflexivity | reflexivity | reflexivity | arith]). iDestruct ("Hents" with "[$Hef $Hex]") as "Hents".
-    st. br. st. br. st. st. br. st. st. st. st. br.
-    st. st. st. st. st. st. simp.
+    step. (branch_symbolic; LeavesLogic.decide_branch). step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch).
+    step. step. step. step. step. step. simp.
     rule1 "Hil" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
     rule2 "Hil" "Hidx" ltac:(eapply wp_raw_store; inst;
-      [reflexivity | reflexivity | reflexivity | arith | ign Hwib]). st. st. st. st. br.
+      [reflexivity | reflexivity | reflexivity | arith | ign Hwib]). step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch).
     tail58 k c Hc Hgcl Hwib Hwcl. rewrite Zmod_mod.
     replace (ib + 16 + k * 32) with (ib + 16 + 32 * k) by lia.
     iApply "HΦ". iFrame "Hdl Hdb Hcl Hcc Hfl Hfc Hil Hnext Hidx Hents Hspares". iExists y, z, w.
     iFrame "Hfl0 Hy Hz Hw".
-  - assert (k = 0) as -> by lia. st. br. st. st.
+  - assert (k = 0) as -> by lia. step. (branch_symbolic; LeavesLogic.decide_branch). step. step.
     rule1 "Hil" ltac:(eapply wp_renew; inst;
       [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith]).
     rule2 "Hil" "Hidx" ltac:(eapply wp_raw_store; inst;
@@ -344,11 +327,11 @@ Proof.
       [reflexivity | reflexivity | reflexivity | left; reflexivity | arith | arith | arith | arith | arith]).
     iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 null ibr with "Hil Hnext []");
       [reflexivity | reflexivity | reflexivity | arith | arith | arith | done |]. nx. iIntros "Hil Hnext _".
-    st. st. st. st. st. br. st. st. br. st. br. st. st. st. br. st. st. st. br. st. st. st.
+    step. step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step. (branch_symbolic; LeavesLogic.decide_branch). step. step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step. step.
     rule1 "Hil" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
     rule2 "Hil" "Hidx" ltac:(eapply wp_raw_store; inst;
       [reflexivity | reflexivity | reflexivity | arith | ign Hwib]).
-    st. st. st. st. br. tail58 0 c Hc Hgcl Hwib Hwcl. rewrite Zmod_mod Z.mul_0_r !Z.add_0_r.
+    step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch). tail58 0 c Hc Hgcl Hwib Hwcl. rewrite Zmod_mod Z.mul_0_r !Z.add_0_r.
     iApply "HΦ". iFrame "Hdl Hdb Hcl Hcc Hfl Hfc Hil Hnext Hidx Hents Hspares". iExists y, z, w.
     iFrame "Hfl0 Hy Hz Hw".
 Qed.
@@ -405,12 +388,12 @@ Proof.
   iIntros "((%Hk32 & %Hc) & Hll & Hlb & Hdl & Hdb & Hcl & Hcc & Hfl & Hfc & Hblk) HΦ".
   cbn [xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg xo_funcs xo_funcs_reg xo_init xo_init_reg]
     in *.
-  st. st. st. st. br. st. st_global Hglk.
+  step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step_global Hglk.
   rule1 "Hll" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
   rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; inst;
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity | arith | arith
      | cas_ign Hwlk]). rewrite lock_take.
-  st. br. st. st. br. st.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   eapply step_wand; [eapply wp_call_bind; inst; [reflexivity | exact Hnf | apply new_exitfn_frame] |].
   iApply (wp_new_exitfn (mkExitObjs lk lkr dn dnr cl clr fs fsr ib ibr) ents c
             with "[$Hdl $Hdb $Hcl $Hcc $Hfl $Hfc $Hblk]");
@@ -420,16 +403,16 @@ Proof.
   cbn [xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg xo_funcs xo_funcs_reg xo_init xo_init_reg].
   remember (Z.of_nat (List.length ents)) as k eqn:Ek. assert (Hk' : 0 <= k < 32) by lia.
   iExists _. iSplit; [iPureIntro; reflexivity|]. nx. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  st. st. br. st. st.
+  step. step. (branch_symbolic; LeavesLogic.decide_branch). step. step.
   rule1 "Hil" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]).
   rule2 "Hil" "Hy" ltac:(eapply wp_raw_store_pointer; inst;
     [reflexivity | reflexivity | reflexivity | arith | arith | ign Hwib]).
-  st.
+  step.
   rule1 "Hil" ltac:(eapply wp_half_check; inst;
     [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith | arith | arith]).
   rule2 "Hil" "Hz" ltac:(eapply wp_raw_store_pointer; inst;
     [reflexivity | reflexivity | reflexivity | arith | arith | ign Hwib]).
-  st.
+  step.
   rule1 "Hil" ltac:(eapply wp_half_check; inst;
     [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith | arith | arith]).
   rule2 "Hil" "Hw" ltac:(eapply wp_raw_store_pointer; inst;
@@ -437,19 +420,19 @@ Proof.
   rule1 "Hil" ltac:(eapply wp_half_check; inst;
     [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith | arith | arith]).
   rule2 "Hil" "Hf" ltac:(eapply wp_raw_store; inst; [reflexivity | reflexivity | reflexivity | arith | ign Hwib]).
-  st_global Hglk.
+  step_global Hglk.
   rule1 "Hll" ltac:(eapply wp_check_read; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]).
   iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 [1; 0; 0; 0] (WInt 1)
             (DfracOwn 1) (DfracOwn 1) with "Hll Hlb");
     [reflexivity | reflexivity | reflexivity | reflexivity | left; reflexivity | arith |]. nx. iIntros "Hll Hlb".
-  st. st.
+  step. step.
   rule1 "Hll" ltac:(eapply wp_half_check; inst;
     [reflexivity | reflexivity | reflexivity | reflexivity | arith | arith | arith | arith | arith]).
   rule2 "Hll" "Hlb" ltac:(eapply wp_raw_cas_w; inst;
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity | arith | arith
      | cas_ign Hwlk]). rewrite lock_release.
-  st. br. st. st. br. st.
+  step. (branch_symbolic; LeavesLogic.decide_branch). step. step. (branch_symbolic; LeavesLogic.decide_branch). step.
   iApply wp_ret; [reflexivity | reflexivity |]. nx.
   rewrite (Z.mod_small 4 (2 ^ 64)); [|lia].
   iApply "HΦ". rewrite /exit_funcs_inv.
@@ -472,7 +455,7 @@ Lemma wp_glibc_cxa_atexit x ents c fnp argp dsop Φ :
        [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
   intros Hlay Hgl Hwi (Hnf & Hia & _) Hk Hfp. pose proof Hgl as Hg_. destruct Hg_ as (_ & _ & _ & Hgfs).
-  iIntros "Hinv HΦ". st. st_global Hgfs.
+  iIntros "Hinv HΦ". step. step_global Hgfs.
   eapply step_wand; [eapply wp_call_bind; inst; [reflexivity | exact Hia | apply internal_atexit_frame] |].
   iApply (wp_internal_atexit with "Hinv");
     [exact Hlay | exact Hgl | exact Hwi | exact Hk | exact Hfp | exact Hnf |].
@@ -492,7 +475,7 @@ Lemma wp_glibc_atexit x ents c fnp Φ :
   WP (ERun (mkFrame atexit_fn [(TAtom "v0", WPtr fnp)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
   intros Hlay Hgl Hwi Hfns Hk Hfp. pose proof Hfns as Hf_. destruct Hf_ as (_ & _ & Hca).
-  iIntros "Hinv HΦ". st.
+  iIntros "Hinv HΦ". step.
   eapply step_wand; [eapply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WPtr fnp; WPtr null; WPtr null]); inst;
     [reflexivity | exact Hca | apply cxa_atexit_frame] |].
   iApply (wp_glibc_cxa_atexit with "Hinv");
@@ -502,4 +485,3 @@ Proof.
 Qed.
 
 End rules.
-End AtexitOn.

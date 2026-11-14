@@ -11,6 +11,7 @@
     cancel type nor reaches `c: __pthread_unwind`: each run is one path
     of loads and stores, taken here step by step. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode FileInv LibioLogic SysWrappers.
+From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -28,10 +31,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module SysCleanupOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -65,20 +66,20 @@ Lemma wp_glibc___libc_cleanup_push_defer fr bb breg bo pv xs Φ :
 Proof.
   intros Hfr Hbb Hbo Hal Hend Hbreg Hxs. injection Hfr as <-.
   iIntros "(%tb & %treg & %jb & %Ht & Htl & Hcl & Hjb & Hch) Hbl Hpv Hct HK".
-  destruct Ht as (Hself & Htb & Htal & Htend & Htreg). enter.
-  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [rewrite Hself; cbn; lia|]. iNext.
-  unfold off_cancelhandling in Htend. rewrite Hself. st. st. norm. chk "Htl".
+  destruct Ht as (Hself & Htb & Htal & Htend & Htreg). step.
+  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [rewrite Hself; cbn; lia|]. iNext.
+  unfold off_cancelhandling in Htend. rewrite Hself. step. step. norm. check "Htl".
   iApply (wp_raw_load_pointer with "Htl Hcl [//]"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Htl Hcl _". chk "Hbl".
+  iNext. iIntros "Htl Hcl _". check "Hbl".
   iApply (wp_raw_store_pointer with "Hbl Hpv"); [reflexivity | reflexivity | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hbl Hpv". st. norm. chk "Htl".
+  iNext. iIntros "Hbl Hpv". step. norm. check "Htl".
   iDestruct "Hch" as "[%Hch0 Hch]".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hch"); [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
     left; reflexivity | ar |].
-  iNext. iIntros "Htl Hch". st. st. st. closed_ints. br. st. st. st. closed_ints. br. st. st. st. norm.
-  chk "Hbl".
+  iNext. iIntros "Htl Hch". step. step. step. closed_ints. branch. step. step. step. closed_ints. branch. step. step. step. norm.
+  check "Hbl".
   iApply (wp_raw_store_w with "Hbl Hct"); [reflexivity | reflexivity | reflexivity | ar | exact Hxs | wi_store |].
-  iNext. iIntros "Hbl Hct". st. norm. chk "Htl".
+  iNext. iIntros "Hbl Hct". step. norm. check "Htl".
   iApply (wp_raw_store_pointer with "Htl Hcl"); [reflexivity | reflexivity | reflexivity | ar | ar | wi_store |].
   iNext. iIntros "Htl Hcl". iApply wp_ret_void. iNext.
   iApply ("HK" with "[Htl Hcl Hjb Hch] Hbl Hpv [Hct]").
@@ -88,4 +89,3 @@ Proof.
 Qed.
 
 End rules.
-End SysCleanupOn.

@@ -12,6 +12,7 @@
     called. The write is [wp_glibc__IO_new_file_write], reached
     through `c: _IO_file_jumps`' write slot. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +21,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers LibioDoWriteRet.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -28,10 +31,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoWriteCallOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -128,10 +129,10 @@ Proof.
   unfold io_vtables_size in Hvend.
   assert (Hn : n < 2 ^ 63) by lia.
   iDestruct "Hfl" as "[%Hfl0 Hfl]".
-  st. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl"); [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file, io_vtables_size in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". st. st. st. st. st. brv true.
-  st. st. norm.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
+  step. step. norm.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
@@ -141,17 +142,16 @@ Proof.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hfw) | apply (ge_fn_check _ _ _ Hfw) | vx |
     apply (ge_fn_find _ _ _ Hfw) | reflexivity | reflexivity |].
   iNext. rewrite (Z.mod_small n (2 ^ 64)); [|lia].
-  iApply (Hfw_spec with "Hl [$Hfl //] Hfl2 Hfd Htw Hoff Hbl Hxs Herr"); try side.
+  iApply (Hfw_spec with "Hl [$Hfl //] Hfl2 Hfd Htw Hoff Hbl Hxs Herr"); try libio_side.
   iNext. iIntros (r fl' tw' off' [Hpost Hfl']) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   assert (Hr : 0 <= r <= n) by (destruct Hpost as [[-> _] | [? _]]; lia).
   rewrite (Z.mod_small r (2 ^ 64)); [|lia].
   iApply (Hret_spec with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol");
-    try side.
+    try libio_side.
   iNext. iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol".
   iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp").
   split; [exact Hpost | exact Hfl'].
 Qed.
 
 End rules.
-End LibioDoWriteCallOn.

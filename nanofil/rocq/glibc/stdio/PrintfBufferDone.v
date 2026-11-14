@@ -5,6 +5,7 @@
 
     The rule follows the actual checked body of glibc's completion function.
     It does not yet cover a live buffer's count or overflow paths. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers PrintfStateCode.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The proof shares the existing [[runtime]], heap ownership and OS interpretation. *)
-Module PrintfBufferDoneOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -44,14 +45,13 @@ Lemma wp_printf_buffer_done_failed fr bb breg Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hbb Hal Hend Hreg. injection Hfr as <-.
-  iIntros "Hl [%Hm Hmode] HK". enter. st. norm. chk "Hl".
+  iIntros "Hl [%Hm Hmode] HK". step. step. norm. check "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hmode");
     [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
      left; reflexivity | ar |].
-  iNext. iIntros "Hl Hmode". st. closed_ints. br. st.
+  iNext. iIntros "Hl Hmode". step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Hl [Hmode]"). iSplit; [iPureIntro; lia|iExact "Hmode"].
 Qed.
 
 End rules.
-End PrintfBufferDoneOn.

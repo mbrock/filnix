@@ -5,6 +5,7 @@
     Reading these pointers does not change the FILE or printf buffer.
     This proof establishes which function printf will call and how many bytes
     it will request. It does not prove the call itself. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioPutsInv LibioXsputnCode PrintfBufferFileCode PrintfBufferXsputnReturn.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -21,11 +24,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The table reads use the caller's existing memory and OS interpretation. *)
-Module PrintfBufferXsputnPreludeOn (R : Runtime) (LG0 : LogicSig R).
-Module PI := LibioPutsInvOn R LG0.
-Module CS := PI.CS.
-Import PI CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -73,25 +73,25 @@ Proof.
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & Hslots)".
   unfold io_vtables_size in Hvend.
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
-  iNext. cbn [b_insts b_jump]. fs.
+  iNext. cbn [b_insts b_jump]. step.
   iApply (wp_raw_load_pointer_self w0 registry ge with "Hb Hptr");
     [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
-  iNext. iIntros "Hb Hptr". fs. fs. fs. fs. fs. fchk "Hb".
+  iNext. iIntros "Hb Hptr". step. step. step. step. step. check "Hb".
   iApply (wp_raw_load_pointer_dq with "Hb Hfp Hf");
     [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |].
-  iNext. iIntros "Hb Hfp Hf". fs. chkq "Hf".
+  iNext. iIntros "Hb Hfp Hf". step. check_shared "Hf".
   iApply (wp_raw_load_pointer_dq with "Hf Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file; lia |].
-  iNext. iIntros "Hf Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true. fs. fs.
+  iNext. iIntros "Hf Hvtp #Hvl'". step. step. step. step. step. branch_as true. step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'");
     [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsx Hfc");
     [reflexivity | vx | right; reflexivity | a2 | a2 | apply (ge_fn_addr _ _ _ Hfn) |].
-  iNext. iIntros "_ _ _". fs. fchk "Hb".
+  iNext. iIntros "_ _ _". step. check "Hb".
   iApply (wp_raw_load_pointer_dq with "Hb Hfp Hf");
     [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |].
-  iNext. iIntros "Hb Hfp Hf". fs.
+  iNext. iIntros "Hb Hfp Hf". step.
   iApply ("HK" $! _ with "[%] Hb Hf Hptr Hfp Hvtp").
   split_and!; lookups; try reflexivity.
   - do 3 f_equal; cbn [ptr_addr ptr_cap]; unwrap2; lia.
@@ -99,4 +99,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferXsputnPreludeOn.

@@ -2,6 +2,8 @@
     the upper swap loop of the second copy, which moves the shorter upper
     block of options below the skipped nonoptions. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -19,17 +23,15 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptSwap3UpperOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exchange module supplies the swap scripts. *)
-Module X := GetoptExchangeOn R LG0.
-Import X X.I X.I.S X.I.S.FI X.I.S.FI.ML X.I.S.FI.LG X.I.S.FI.L X.I.ST X.I.GB X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section exchange.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance xchg_stable : SafepointStable (os_wi w0) := I.OW.os_wi_stable w0.
+Local Instance xchg_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance xchg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -57,4 +59,3 @@ Lemma wp_x3_upper ks e fr i bot mid top av ar n ps Φ :
 Proof. x_upper e fr i ps bot mid top av. Qed.
 
 End exchange.
-End GetoptSwap3UpperOn.

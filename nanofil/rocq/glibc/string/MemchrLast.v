@@ -12,6 +12,7 @@
     loop, and [MemchrFirst] and [MemchrLogic] handle the entry block and
     first partial word. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +20,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode.
+From Glibc Require WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -265,21 +268,12 @@ Ltac zl := change (2 ^ 64) with 18446744073709551616 in *; change (2 ^ 48) with 
 (** To resolve IR temporary arguments during symbolic execution, [vx]
     looks up each temporary in the environment hypotheses and evaluates
     the remaining argument expressions. *)
-Ltac vx :=
-  cbn [map2_option map_option flight_arg_x flight_cap arg_x];
-  repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
-    match goal with H : lookup n _ = Some ?x |- _ =>
-      rewrite (value_x_tmp g E k n x); [|look H] end end;
-  reflexivity.
 
-(** To share the final-word and half-check rules across caller modules,
-    [MemchrLastOn] instantiates them over a [[runtime]] R and a program
-    logic instance LG0. *)
-Module MemchrLastOn (R : Runtime) (LG0 : LogicSig R).
-Module WS := WordStringOn R LG0.
+
+
 Module LG := LG0.
 Module L := LG.L.
-Import L LG WS.
+Import L LG WordString.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -296,12 +290,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** To step past pure instructions without manual boilerplate, [st]
     advances one pure `let`, [[flight]], block entry, or `goto` step
     whose premises reduce. *)
-Ltac st :=
-  first
-    [ iApply wp_let; [reflexivity | reflexivity | vx | intros ?; reflexivity | iNext]
-    | iApply wp_flight; [vx | reflexivity | vx | iNext]
-    | iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]]
-    | iApply wp_goto; iNext ].
+
 
 (** When a [[half_check]] verifies a read through pointer p against an
     already-checked capability proof `p1`, [wp_half_check_read_dq]
@@ -354,37 +343,36 @@ Proof.
   pose proof (Z.mod_pos_bound E 8 ltac:(lia)) as HE8.
   apply Forall_cons_1 in Hr as [Hw0 Hr]. cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   pose proof (Nat2Z.is_nonneg (List.length ws)) as Hws.
-  st. st. rewrite Hq (Z.mod_small (b + o)); [|zl]. rewrite (Z.mod_small (E - E mod 8)); [|zl].
+  step. step. rewrite Hq (Z.mod_small (b + o)); [|zl]. rewrite (Z.mod_small (E - E mod 8)); [|zl].
   iApply wp_branch; [reflexivity|]. iNext. rewrite HA Z.eqb_refl. cbn [negb].
   change (0 mod 2 ^ 32 =? 0) with true. cbn [edge_label].
-  st. do 6 st. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
+  step. do 6 step. rewrite !(Z.mod_small w (2 ^ 64) Hw0) rep_mod.
   set_int "iw_9.iw_1.iw_1.v13" (loop_mask (Z.lxor w (rep c))).
   iApply wp_branch; [reflexivity|]. iNext.
   rewrite (Z.mod_small (loop_mask _) (2 ^ 64) (loop_mask_range _)) Zmod_0_l.
   destruct (hit_last w ws (c mod 256) (b + o) E r ltac:(zl) Hhit)
     as [(j & Hj & Hcj & Hlj & ->) | (Hn & ->)].
   + destruct (mask_first w c j Hj Hcj Hlj) as [Hm Ht]. rewrite (proj2 (Z.eqb_neq _ _) Hm). close_if.
-    st. st. iApply wp_branch; [reflexivity|]. iNext.
+    step. step. iApply wp_branch; [reflexivity|]. iNext.
     rewrite (Z.mod_small (loop_mask _) (2 ^ 64) (loop_mask_range _)) Zmod_0_l (proj2 (Z.eqb_neq _ _) Hm).
-    close_if. do 16 (st; gen_top).
+    close_if. do 16 (step; gen_top).
     set_tail "iw_10.iw_3.iw_1.iw_1.v22" (loop_mask (Z.lxor w (rep c))). rewrite Ht.
-    st. st. set_int "iw_10.iw_3.iw_1.iw_1.v23" (8 * j + 7).
-    st. set_int "iw_10.iw_3.iw_1.v27" j. st. set_int "v121" j. st. set_ptr "v122" (b + o + j).
-    st. set_int "v128" (b + o + j). st.
+    step. step. set_int "iw_10.iw_3.iw_1.iw_1.v23" (8 * j + 7).
+    step. set_int "iw_10.iw_3.iw_1.v27" j. step. set_int "v121" j. step. set_ptr "v122" (b + o + j).
+    step. set_int "v128" (b + o + j). step.
     iApply wp_branch; [reflexivity|]. iNext.
     rewrite (Z.mod_small E (2 ^ 64)); [|zl]. rewrite (Z.mod_small (b + o + j) (2 ^ 64)); [|zl].
     destruct (Z.leb_spec (b + o + j) E) as [Hle|Hle].
     * replace ((if b + o + j <=? E then 1 else 0) mod 2 ^ 32 =? 0) with false
         by (rewrite (proj2 (Z.leb_le _ _) Hle); reflexivity).
-      cbn [edge_label]. st. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+      cbn [edge_label]. step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
       cbn [hit_ptr]. rewrite Z2Nat.id; [|lia]. rewrite Hq. iApply ("HK" with "Hl Hps").
     * replace ((if b + o + j <=? E then 1 else 0) mod 2 ^ 32 =? 0) with true
         by (rewrite (proj2 (Z.leb_gt _ _) Hle); reflexivity).
-      cbn [edge_label]. st. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+      cbn [edge_label]. step. iApply wp_ret; [reflexivity | reflexivity |]. iNext.
       iApply ("HK" with "Hl Hps").
   + rewrite (mask_none w c Hn). close_if.
-    st. iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply ("HK" with "Hl Hps").
+    step. iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply ("HK" with "Hl Hps").
 Qed.
 
 End rules.
-End MemchrLastOn.

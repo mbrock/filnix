@@ -10,6 +10,8 @@
     checked against `c: __io_vtables` as in LibioDoWriteCall.v; a
     narrow stream's is `c: _IO_file_jumps`, which passes. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +20,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsLock LibioPutsUnlock.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv LibioPutsLock LibioPutsUnlock OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -29,11 +33,8 @@ Local Arguments Z.opp : simpl nomatch.
 (** The jump of block `c: L163` of `c: puts`, on the flag `c: v179`. *)
 Definition pu_j163 : jump := JBranch (Tmp (TAtom "v179")) (To (TAtom "L180")) (To (TAtom "L181")).
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioPutsCallOn (R : Runtime) (LG0 : LogicSig R).
-Module PU := LibioPutsUnlockOn R LG0.
-Import PU PU.PL PU.PL.PI PU.PL.PI.CS PU.PL.PI.CS.SW PU.PL.PI.CS.SW.FI.ML PU.PL.PI.CS.SW.FI.LG
-  PU.PL.PI.CS.SW.FI.L PU.PL.PI.CS.SW.OW PU.PL.PI.CS.SW.FI PU.PL.PI.CS.SW.ST.
+
+Import LibioPutsUnlock LibioPutsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -63,8 +64,7 @@ Lemma wp_puts_L162_for e p dq s so soreg fb Φ :
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) -> so mod 8 = 0 -> so + 8 <= r_end soreg ->
   vtables_ro ge vb vreg -∗ live so soreg -∗ pcell so 0 fp -∗
   F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
-  ▷ (∀ e' c, ⌜(forall x, x = TAtom "v0" \/ x = TAtom "v6" \/ x = TAtom "v12" \/ x = TAtom "chk1" ->
-                lookup x e' = lookup x e) /\ lookup (TAtom "v179") e' = Some (WInt c)⌝ -∗
+  ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v179") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 fp -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗
      word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_puts e' [] None (Exec (TAtom "L163") [] pu_j163)) : sexpr) {{ Φ }}) -∗
@@ -85,18 +85,18 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iApply (wp_live_fit1 w0 registry ge with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   (* L162: stdout's jump table, within `c: __io_vtables`. *)
-  fs. fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl". fs. fchk "Hl".
+  step. step. check "Hso". load "Hso" "Hsoc" "Hl". step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_1.join: the `c: xsputn` slot, called on stdout, the string and its length. *)
-  fs. fs.
+  step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsx Hfc");
     [reflexivity | vx | right; reflexivity | a2 | a2 | apply (ge_fn_addr _ _ _ Hxs_fn) |].
   iNext. iIntros "_ _ _".
-  fs. fchk "Hso". fldp "Hso" "Hsoc" "Hl".
+  step. check "Hso". load "Hso" "Hsoc" "Hl".
   iApply wp_check_function; [vx | apply (ge_fn_check _ _ _ Hxs_fn) |]. iNext.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hxs_fn) | apply (ge_fn_check _ _ _ Hxs_fn) | vx |
     apply (ge_fn_find _ _ _ Hxs_fn) | reflexivity | reflexivity |].
@@ -105,9 +105,9 @@ Proof.
     [left; split; [right; reflexivity | reflexivity]|].
   iApply (Hxs with "Hf Hstr HRx"); [reflexivity|].
   iNext. iIntros (r Hr) "Hf Hstr HRx". resume.
-  fs. fs. iApply wp_enter; [reflexivity | vx | iNext].
+  step. step. iApply wp_enter; [reflexivity | vx | iNext].
   iApply ("HK" with "[%] Hso Hsoc Hf Hstr HRx").
-  split; [intros x Hx; destruct Hx as [-> | [-> | [-> | ->]]]; lookups; reflexivity | lk_prove].
+  split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
 Qed.
 
 End rules.
@@ -119,4 +119,3 @@ Definition wp_puts_L162 `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   wp_puts_L162_for w0 registry ge vb vreg Rx (file_at vb (ow_self w0))
     (fun _ => file_at vb (ow_self w0)) (file_at_open vb (ow_self w0)) Hxs_fn Hxs.
 
-End LibioPutsCallOn.

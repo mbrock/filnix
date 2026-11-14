@@ -11,6 +11,7 @@
     the model's own ([heap_fns]); a program that links glibc's
     `c: free` proves it from that function's triple. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +20,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
   SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -55,10 +58,8 @@ Proof.
   apply land_lt32; lia.
 Qed.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioSetbOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -105,30 +106,27 @@ Lemma bytes_le_eq b o x y n : x = y -> bytes b o (le_bytes x n) -∗ bytes b o (
 Proof. intros ->. auto. Qed.
 
 (** A signed 32-bit load of an owned [int_cell]'s bytes. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | ar |];
-  iNext; iIntros H.
+
 
 (** The stores of `c: _IO_setb`'s new base, end and flags, from block
     `c: L10` to the return. *)
 Ltac setb_tail a fl :=
-  st; norm; chk "Hl";
+  step; norm; check "Hl";
   iApply (wp_raw_store_pointer with "Hl Hb"); [vx | vx | reflexivity | ar | ar | wi_store |];
-  iNext; iIntros "Hl Hb"; st; norm; chk "Hl";
+  iNext; iIntros "Hl Hb"; step; norm; check "Hl";
   iApply (wp_raw_store_pointer with "Hl He"); [vx | vx | reflexivity | ar | ar | wi_store |];
   iNext; iIntros "Hl He";
   destruct (Z.eq_dec a 0) as [-> | Ha0];
-  [ brv true; st; chk "Hl"; load_int "Hl Hfl"; st; chk "Hl"; 
+  [ branch_as true; step; check "Hl"; load_s32_group "Hl Hfl"; step; check "Hl"; 
     iApply (wp_raw_store_w with "Hl Hfl"); [vx | vx | reflexivity | ar | reflexivity | wi_store |];
-    iNext; iIntros "Hl Hfl"; st; st; iApply wp_ret_void; iNext; 
+    iNext; iIntros "Hl Hfl"; step; step; iApply wp_ret_void; iNext; 
     iApply ("HK" with "Hl [Hfl] Hb He"); iSplit; [iPureIntro; apply setb_flags_range; assumption|];
     unfold setb_flags, io_user_buf, int_bytes; cbn [Z.eqb];
     iApply (bytes_le_eq with "Hfl"); change (1 mod 2 ^ 32) with 1; repeat (rewrite (Z.mod_small fl); [|lia]);
     apply Z.mod_small, lor1_lt32; lia
-  | brv false; st; chk "Hl"; load_int "Hl Hfl"; st; chk "Hl";
+  | branch_as false; step; check "Hl"; load_s32_group "Hl Hfl"; step; check "Hl";
     iApply (wp_raw_store_w with "Hl Hfl"); [vx | vx | reflexivity | ar | reflexivity | wi_store |];
-    iNext; iIntros "Hl Hfl"; st; st; iApply wp_ret_void; iNext;
+    iNext; iIntros "Hl Hfl"; step; step; iApply wp_ret_void; iNext;
     iApply ("HK" with "Hl [Hfl] Hb He"); iSplit; [iPureIntro; apply setb_flags_range; assumption|];
     unfold setb_flags, io_user_buf, int_bytes; replace (a =? 0) with false by (symmetry; apply Z.eqb_neq; assumption);
     iApply (bytes_le_eq with "Hfl"); change (4294967294 mod 2 ^ 32) with 4294967294;
@@ -149,7 +147,7 @@ Lemma wp_setb_tail fb freg fl ob oe nb ne a e from Φ :
   WP (ERun (mkFrame glibc__IO_setb e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
 Proof.
   intros Hfb Hal Hend Hfreg Ha Hv0 Hc0 Hv2 Hv4 Hv6.
-  iIntros "Hl [%Hf Hfl] Hb He HK". st. setb_tail a fl.
+  iIntros "Hl [%Hf Hfl] Hb He HK". step. setb_tail a fl.
 Qed.
 
 (** `c: _IO_setb(fp, b, eb, a)`, the old base [old_base]: the old
@@ -165,22 +163,21 @@ Lemma wp_glibc__IO_setb fr fb freg fl ob oe nb ne a Φ :
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
   intros Hfr Hfb Hal Hend Hfreg Ha. injection Hfr as <-.
-  iIntros "Hl [%Hf Hfl] Hb He Hob HK". unfold file_size in Hend. enter. st. norm. chk "Hl".
+  iIntros "Hl [%Hf Hfl] Hb He Hob HK". unfold file_size in Hend. step. step. norm. check "Hl".
   iDestruct "Hob" as "[-> | (%bb & %breg & %Hbb & Hbl)]".
   - iApply (wp_raw_load_pointer with "Hl Hb [//]"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hb _". st. st. br. st. br.
-    iApply (wp_setb_tail with "Hl [$Hfl //] Hb He HK"); try side.
+    iNext. iIntros "Hl Hb _". step. step. branch. step. branch.
+    iApply (wp_setb_tail with "Hl [$Hfl //] Hb He HK"); try libio_side.
   - destruct Hbb as (-> & Hk & Hb0 & Hb64 & Huser).
     iApply (wp_raw_load_pointer with "Hl Hb Hbl"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hb Hbl". st. st. brv false. st. chk "Hl". load_int "Hl Hfl". st. st. st.
-    unfold io_user_buf in Huser. st. brv false. st. st.
+    iNext. iIntros "Hl Hb Hbl". step. step. branch_as false. step. check "Hl". load_s32_group "Hl Hfl". step. step. step.
+    unfold io_user_buf in Huser. step. branch_as false. step. step.
     iApply (wp_raw_load_pointer with "Hl Hb Hbl"); [reflexivity | reflexivity | reflexivity | ar | ar | cbn; lia |].
     iNext. iIntros "Hl Hb Hbl".
     iApply (Hfree with "Hbl"); [reflexivity | exact Hk | lia |].
-    iNext. st.
-    iApply (wp_setb_tail with "Hl [$Hfl //] Hb He HK"); try side.
+    iNext. step.
+    iApply (wp_setb_tail with "Hl [$Hfl //] Hb He HK"); try libio_side.
   Unshelve. exact freg.
 Qed.
 
 End rules.
-End LibioSetbOn.

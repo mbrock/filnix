@@ -8,6 +8,7 @@
     `c: free(fp)`: the result is `c: pr.1`, the close's
     ([wp_fclose_L8]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioUnlinkCode LibioFcloseCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFinish.
+From Glibc Require FileInv LibioCloseSteps LibioFinish LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,10 +27,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFcloseTailOn (R : Runtime) (LG0 : LogicSig R).
-Module FN := LibioFinishOn R LG0.
-Import FN FN.CS FN.CS.SW FN.CS.SW.FI.ML FN.CS.SW.FI.LG FN.CS.SW.FI.L FN.CS.SW.OW FN.CS.SW.FI FN.CS.SW.ST.
+
+Import LibioFinish SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -113,18 +114,18 @@ Proof.
   unfold file_size in Hfend.
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* `c: _IO_un_link(fp)`. *)
-  fs. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
-  iApply (Hunl_spec with "Hs Htcb Hl Hfl Hlp Hlb Hio Hlives"); try side.
+  step. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
+  iApply (Hunl_spec with "Hs Htcb Hl Hfl Hlp Hlb Hio Hlives"); try close_side.
   iNext. iIntros "Htcb Hl Hfl Hlp Hlb Hio Hlives Hlinks". resume.
   (* The jump table's `c: __finish`. *)
   iPoseProof (vtables_slot ge vb vreg slot_finish "_IO_new_file_finish" with "Hvt") as "#Hsf"; [cbn; tauto|].
   iAssert (live_capq DfracDiscarded (ptr_cap (sym_ptr ge "_IO_new_file_finish")) vreg) as "Hcap".
   { rewrite (ge_fn_cap _ _ _ Hff). done. }
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)". unfold io_vtables_size in Hvend.
-  fs. fchk "Hl".
+  step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true. fs. fs.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true. step. step.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | a2 | a2 | a2 |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsf Hcap");
@@ -137,17 +138,17 @@ Proof.
   iDestruct "Hlb" as "(%Hb & Hbl & Hb0 & Hb4 & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
   iApply (wp_live_fit1 w0 registry ge with "Hbl"). iIntros ([Hb0' Hb48]) "Hbl".
   pose proof (unlink_has fl) as Hun. assert (0 <= Z.land fl 4294967167 < 2 ^ 32) by (apply land_lt32; lia).
-  iApply (FN.wp_glibc__IO_new_file_finish_closed w0 registry ge Hunl Hdf Hunl_unlinked
-            with "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl"); try side.
+  iApply (LibioFinish.wp_glibc__IO_new_file_finish_closed w0 registry ge Hunl Hdf Hunl_unlinked
+            with "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl"); try close_side.
   iNext. iIntros "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl". resume.
   (* `c: _mode` 0 or -1, not wide; no backup area; fp is stdout. *)
   iDestruct "Hmode" as "[%Hmr Hmode]".
-  fs. fchk "Hl". fldi "Hl" "Hmode". fs.
+  step. check "Hl". load_s32 "Hl" "Hmode". step.
   assert (Esx : (sign_extension (2 ^ 32) (2 ^ 31) (0 mod 2 ^ 32) <? sign_extension (2 ^ 32) (2 ^ 31) (md mod 2 ^ 32))
                 = false) by (destruct Hmd as [-> | ->]; reflexivity).
-  rewrite Esx. clear Esx. fbr.
-  fs. fs. fchk "Hl". fldn "Hl" "H80". fs. fs. fs. fbr.
-  fs. fs. fs. fs. fs. fbrv true. fs. fs. fs. fs. fs. fs. fbrv false. fs. fbr. fs.
+  rewrite Esx. clear Esx. branch.
+  step. step. check "Hl". load_null "Hl" "H80". step. step. step. branch.
+  step. step. step. step. step. branch_as true. step. step. step. step. step. step. branch_as false. step. branch. step.
   iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (Z.mod_small p1 (2 ^ 32)); [|lia].
   iApply ("HK" with "Htcb Hl Hfl Hlp [Hbl Hb0 Hb4 Hbo] Hio Hlives Hlinks Hfd [Hmode] Hvtp Hbb H80 H96").
   - iFrame. iPureIntro. split_and!; assumption.
@@ -155,4 +156,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioFcloseTailOn.

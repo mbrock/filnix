@@ -13,6 +13,7 @@
     their share ([fwq_spec]), and `c: _cur_column` is 0; then
     LibioXsputnReset.v's [wp_xs_L70] goes on. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -24,6 +25,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags
   LibioXsputnReset.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnFlags LibioXsputnReset LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -36,14 +39,8 @@ Local Arguments Z.opp : simpl nomatch.
 Lemma land_err_seen fl : Z.land fl io_is_appending = 0 -> Z.land (Z.lor fl io_err_seen) io_is_appending = 0.
 Proof. intros H. rewrite Z.land_lor_distr_l H. reflexivity. Qed.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnCallOn (R : Runtime) (LG0 : LogicSig R).
-Module XR := LibioXsputnResetOn R LG0.
-Import XR XR.XF XR.XF.XS XR.XF.XS.XB XR.XF.XS.XB.DX XR.XF.XS.XB.DX.RM XR.XF.XS.XB.DX.RM.SM.TL XR.XF.XS.XB.DX.RM.SM.TL.BY
-  XR.XF.XS.XB.DX.RM.SM.TL.BY.BF XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI
-  XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -108,12 +105,12 @@ Proof.
   { rewrite (ge_fn_cap _ _ _ Hfw). done. }
   iPoseProof "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)".
   unfold io_vtables_size in Hvend.
-  fs. fs. norm. fchk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_2.iw_2.join: the write slot and the call. *)
-  fs. fs. norm.
+  step. step. norm.
   iApply (wp_check_read_dq with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
@@ -139,9 +136,9 @@ Proof.
   assert (Hr : 0 <= r <= d) by (destruct Hpost as [[-> _] | [? _]]; lia).
   resume. rewrite (Z.mod_small r (2 ^ 64)); [|lia].
   (* `c: _cur_column` is 0: no adjustment; iw_2.L70. *)
-  fs. fchk "Hl".
+  step. check "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hcol"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |].
-  iNext. iIntros "Hl Hcol". fbr. fs. fbr.
+  iNext. iIntros "Hl Hcol". branch. step. branch.
   iAssert (xos w0 eb X fb nb) with "[Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX]" as "Hos".
   { assert (Happ' : Z.land fl' io_is_appending = 0).
     { destruct Hpost as [[_ ->] | [_ ->]]; [exact Happ | apply land_err_seen; exact Happ]. }
@@ -151,9 +148,8 @@ Proof.
     tauto. }
   iApply (wp_xs_L70 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf eb X fb freg vb vreg nb wp we
             dq b' reg' so c' ys T d r with "Hvt Hl Hvtp Hwbf Hos Hl' Hys HK");
-    try side.
+    try close_side.
   all: unfold n in *; try lia. all: lk_fin.
 Qed.
 
 End rules.
-End LibioXsputnCallOn.

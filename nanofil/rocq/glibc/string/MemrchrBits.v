@@ -11,6 +11,7 @@
     models the leading-zero bit count [head], and proves that [keep_low]
     clears any marks at or past the end of the search window. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Memory.

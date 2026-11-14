@@ -2,6 +2,7 @@
     The cancellation flag remains disabled when the diagnostic calls exit.
     This proof follows the actual flag update and saves the previous state
     in caller-owned memory; it does not supply an exit or cleanup contract. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -9,6 +10,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers PrintfStateCode.
+From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -17,11 +20,9 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The function obtains the current thread's address from the [[runtime]]
-    before it reads or changes that thread's cancellation flag. *)
-Module CancelStateOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+(** The function obtains the current thread's address before it reads or
+    changes that thread's cancellation flag. *)
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -52,26 +53,26 @@ Lemma wp_cancel_disable_save fr tb treg sb sreg so prior Φ :
 Proof.
   intros Hfr Hself Htb Htal Htend Htreg Hsb Hso Hsend Hsreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] Hsl [%Hprior Hsave] HK".
-  enter. st. closed_ints. br. st. st. st. st. closed_ints. br. st.
-  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side;
+  step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
+  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
-  st. norm. chk "Htl".
+  step. norm. check "Htl".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
     [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
      left; reflexivity | ar |].
-  iNext. iIntros "Htl Hcb". st. st. st. closed_ints. br.
-  st. st. st. st. st. st. st.
-  brv false. st. st. closed_ints. br. st. st. st.
-  chk "Hsl".
+  iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
+  step. step. step. step. step. step. step.
+  branch_as false. step. step. closed_ints. branch. step. step. step.
+  check "Hsl".
   iApply (wp_raw_store_w with "Hsl Hsave");
     [reflexivity | reflexivity | reflexivity | ar | reflexivity | wi_store |].
   iNext. iIntros "Hsl Hsave".
-  st. st. st. closed_ints. br. st. st. norm. chk "Htl".
+  step. step. step. closed_ints. branch. step. step. norm. check "Htl".
   iApply (wp_raw_cas_w with "Htl Hcb");
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity |
      ar | ar | intros _; wi_store |].
   iNext. iIntros "Htl Hcb".
-  st. closed_ints. br. st. closed_ints. br. st. st. st. closed_ints. br. st.
+  step. closed_ints. branch. step. closed_ints. branch. step. step. step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Htl [Hcb] Hsl [Hsave]").
   - iSplit; [iPureIntro; lia|iAssumption].
@@ -90,21 +91,21 @@ Lemma wp_cancel_restore fr tb treg Φ :
 Proof.
   intros Hfr Hself Htb Htal Htend Htreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] HK".
-  enter. st. closed_ints. br. st. st. st. st. closed_ints. br. st.
-  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side;
+  step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
+  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
-  st. norm. chk "Htl".
+  step. norm. check "Htl".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
     [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
      left; reflexivity | ar |].
-  iNext. iIntros "Htl Hcb". st. st. st. closed_ints. br.
-  st. st. st. st. st. st. st. closed_ints. br.
-  st. st. closed_ints. br. st. st. norm. chk "Htl".
+  iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
+  step. step. step. step. step. step. step. closed_ints. branch.
+  step. step. closed_ints. branch. step. step. norm. check "Htl".
   iApply (wp_raw_cas_w with "Htl Hcb");
     [left; reflexivity | reflexivity | reflexivity | reflexivity | reflexivity |
      ar | ar | intros _; wi_store |].
   iNext. iIntros "Htl Hcb".
-  st. closed_ints. br. st. closed_ints. br. st. st. st. closed_ints. br. st.
+  step. closed_ints. branch. step. closed_ints. branch. step. step. step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Htl [Hcb]"). iSplit; [iPureIntro; lia|iAssumption].
 Qed.
@@ -123,19 +124,19 @@ Lemma wp_cancel_disabled_save fr tb treg sb sreg so prior Φ :
 Proof.
   intros Hfr Hself Htb Htal Htend Htreg Hsb Hso Hsend Hsreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] Hsl [%Hprior Hsave] HK".
-  enter. st. closed_ints. br. st. st. st. st. closed_ints. br. st.
-  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side;
+  step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
+  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
-  st. norm. chk "Htl".
+  step. norm. check "Htl".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
     [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
      left; reflexivity | ar |].
-  iNext. iIntros "Htl Hcb". st. st. st. closed_ints. br.
-  st. st. st. st. st. st. st.
-  brv false. st. st. closed_ints. br. st. chk "Hsl".
+  iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
+  step. step. step. step. step. step. step.
+  branch_as false. step. step. closed_ints. branch. step. check "Hsl".
   iApply (wp_raw_store_w with "Hsl Hsave");
     [reflexivity | reflexivity | reflexivity | ar | reflexivity | wi_store |].
-  iNext. iIntros "Hsl Hsave". st. st. st. closed_ints. br. st.
+  iNext. iIntros "Hsl Hsave". step. step. step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Htl [Hcb] Hsl [Hsave]").
   - iSplit; [iPureIntro; lia|iAssumption].
@@ -154,18 +155,17 @@ Lemma wp_cancel_keep_disabled fr tb treg Φ :
 Proof.
   intros Hfr Hself Htb Htal Htend Htreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] HK".
-  enter. st. closed_ints. br. st. st. st. st. closed_ints. br. st.
-  iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side;
+  step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
+  iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side;
     [rewrite Hself; cbn; lia|]. iNext. rewrite Hself.
-  st. norm. chk "Htl".
+  step. norm. check "Htl".
   iApply (wp_raw_load_sub_bytes_dq with "Htl Hcb");
     [reflexivity | reflexivity | reflexivity | cbn; reflexivity |
      left; reflexivity | ar |].
-  iNext. iIntros "Htl Hcb". st. st. st. closed_ints. br.
-  st. st. st. st. st. st. st. closed_ints. br. st. st. closed_ints. br. st.
+  iNext. iIntros "Htl Hcb". step. step. step. closed_ints. branch.
+  step. step. step. step. step. step. step. closed_ints. branch. step. step. closed_ints. branch. step.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "Htl [Hcb]"). iSplit; [iPureIntro; lia|iAssumption].
 Qed.
 
 End rules.
-End CancelStateOn.

@@ -3,6 +3,7 @@
     file names its actual initial image and checks the finite pieces
     that glibc's allocator reads before allocating stdout's buffer. *)
 
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List.
 From stdpp Require Import list_numbers.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run Pieces Heap.

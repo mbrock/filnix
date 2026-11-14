@@ -8,6 +8,7 @@
     up the buffer and leaves the stream closed
     ([wp_glibc__IO_file_close_maybe_unlink]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode LibioCloseItCode
   FileInv LibioLogic SysWrappers LibioSetb LibioCloseSteps LibioCloseItEnd LibioCloseItMid.
+From Glibc Require FileInv LibioCloseItEnd LibioCloseItMid LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,11 +27,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCloseItOn (R : Runtime) (LG0 : LogicSig R).
-Module CM := LibioCloseItMidOn R LG0.
-Import CM CM.CE CM.CE.CS CM.CE.CS.SW CM.CE.CS.SW.FI.ML CM.CE.CS.SW.FI.LG CM.CE.CS.SW.FI.L CM.CE.CS.SW.OW
-  CM.CE.CS.SW.FI CM.CE.CS.SW.ST.
+
+Import LibioCloseItMid LibioCloseItEnd SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -87,10 +87,10 @@ Definition do_write_zero_spec : Prop := forall fr fp data Φ,
     and LibioCloseItMid.v's `c: _IO_file_close`, `c: _IO_setb` and
     `c: _IO_unsave_markers`. *)
 Context (Hdw : do_write_spec) (Hdw0 : do_write_zero_spec).
-Context (Hclose : CM.close_spec w0 registry ge).
+Context (Hclose : LibioCloseItMid.close_spec w0 registry ge).
 Context (Hsetb_spec : setb_spec w0 registry ge).
 Context (fum : func) (Hfum : find_fn ge (TAtom "__GI__IO_unsave_markers") = Some (Defined fum)).
-Context (Hum : CM.unsave_spec w0 registry ge fum).
+Context (Hum : LibioCloseItMid.unsave_spec w0 registry ge fum).
 
 (** `c: _IO_file_close_maybe_unlink(fp, 0)` of an open stream,
     un-oriented or narrow (`c: _mode` md 0 or -1), whose n pending
@@ -144,15 +144,15 @@ Proof.
   assert (0 <= Z.land fl 2048 < 2 ^ 32) by (apply land_lt32; lia).
   iDestruct "Hfd" as "[_ Hfd]". iDestruct "Hfl" as "[_ Hfl]". iDestruct "Hmode" as "[%Hmr Hmode]".
   (* start, L7, L23, L24, L16: open, writable, putting, narrow. *)
-  fs. fs. fchk "Hl". fldi "Hl" "Hfd". fs. fbrv true.
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fs. fbrv false.
-  fs. fldi "Hl" "Hfl". fs. fs. fs. fs. fbrv false.
-  fs. fs. fchk "Hl". fldi "Hl" "Hmode". fs.
+  step. step. check "Hl". load_s32 "Hl" "Hfd". step. branch_as true.
+  step. check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
+  step. load_s32 "Hl" "Hfl". step. step. step. step. branch_as false.
+  step. step. check "Hl". load_s32 "Hl" "Hmode". step.
   assert (Esx : (sign_extension (2 ^ 32) (2 ^ 31) (md mod 2 ^ 32) <=? sign_extension (2 ^ 32) (2 ^ 31) (0 mod 2 ^ 32))
                 = true) by (destruct Hmd as [-> | ->]; reflexivity).
-  rewrite Esx. clear Esx. fbr.
+  rewrite Esx. clear Esx. branch.
   (* L31: `c: _IO_do_write(fp, write_base, write_ptr - write_base)`. *)
-  fs. fs. fchk "Hl". fldp "Hl" "Hwb" "Hbl". fs. fldp "Hl" "Hwp" "Hbl". fldp "Hl" "Hwb" "Hbl". fs. fs. fs.
+  step. step. check "Hl". load "Hl" "Hwb" "Hbl". step. load "Hl" "Hwp" "Hbl". load "Hl" "Hwb" "Hbl". step. step. step.
   assert (E50 : ((bb + i + n) mod 2 ^ 64 - (bb + i) mod 2 ^ 64) mod 2 ^ 64 = n).
   { rewrite (Z.mod_small (bb + i + n) (2 ^ 64)); [|lia]. rewrite (Z.mod_small (bb + i) (2 ^ 64)); [|lia].
     rewrite Z.mod_small; lia. }
@@ -165,27 +165,27 @@ Proof.
   { (* No pending bytes: `c: _IO_new_do_write` returns 0 at once, and L18 runs. *)
     assert (Hl0 : Z.of_nat (length xs) = 0) by exact Hn0.
     assert (Hxs0 : xs = []) by (destruct xs; [reflexivity | cbn [length] in Hl0; lia]). subst xs.
-    iApply Hdw0; [reflexivity |]. iNext. resume. fs.
-    iApply (CM.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
+    iApply Hdw0; [reflexivity |]. iNext. resume. step.
+    iApply (LibioCloseItMid.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
               with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
-      first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try side; try exact Hmd].
+      first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
     { iRight. iExists bb, breg. iFrame "Hbl". iPureIntro. split_and!; try done; try lia. }
     iNext. iIntros (k Hk) "Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H80 H96".
     iApply ("HK" $! 0 fl k tw with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol Hmode Hvtp
               H80 H96").
     split; [left; split; reflexivity | exact Hk]. }
   iApply (Hdw with "Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp");
-    try side; try exact Hmd; try lia.
+    try close_side; try exact Hmd; try lia.
   iNext. iIntros (r fl' tw' off' [Hpost Hfl']) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase
-    Hbend Hcol Hmode Hvtp". resume. fs.
+    Hbend Hcol Hmode Hvtp". resume. step.
   (* L18 to the return. *)
   assert (Ep3 : (if r =? Z.of_nat (length xs) then 0 else 2 ^ 32 - 1) mod 2 ^ 32 =
                 (if r =? Z.of_nat (length xs) then 0 else 2 ^ 32 - 1))
     by (destruct (r =? Z.of_nat (length xs)); reflexivity).
   rewrite Ep3. try rewrite Ep3.
-  iApply (CM.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
+  iApply (LibioCloseItMid.wp_close_it_L18 w0 registry ge Hfc Hsetb Hclose Hsetb_spec fum Hfum Hum
             with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
-    first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try side; try exact Hmd].
+    first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
   { iRight. iExists bb, breg. iFrame "Hbl". iPureIntro. split_and!; try done; try lia.
     destruct Hpost as [(_ & ->) | (_ & ->)]; [exact Hub|].
     rewrite Z.land_lor_distr_l. rewrite Hub. reflexivity. }
@@ -197,4 +197,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioCloseItOn.

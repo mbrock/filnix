@@ -12,15 +12,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers AllocLogic LibioDoAllocBuf LibioOverflowAllocSetg LibioOverflowAlloc
   HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitDoAlloc HiAtexitOverflow.
+From Glibc Require LibioDoAllocBuf LibioOverflowAlloc LibioOverflowAllocSetg.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The buffer allocation call uses the common interpreter logic. *)
-Module HAB := LibioDoAllocBufOn InterpRuntime HLG.
 (** The new buffer's read pointers use the common interpreter logic. *)
-Module HOAS := LibioOverflowAllocSetgOn InterpRuntime HLG.
 (** The first overflow uses the common interpreter logic. *)
-Module HOA := LibioOverflowAllocOn InterpRuntime HLG.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -46,19 +44,19 @@ Context (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate)
 
 (** A stream without a buffer calls the proved buffer allocator. *)
 Definition hi_doallocbuf :=
-  HAB.wp_glibc__IO_doallocbuf_alloc w0 registry ge Hda
+  LibioDoAllocBuf.wp_glibc__IO_doallocbuf_alloc w0 registry ge Hda
     (hi_malloc_state dq mp tc dummy mpr tcr dr)
     (hi_doallocate w0 registry ge Hreg Hext Hstat Hfstat Hmaj Hisatty Hsetb Hfree_fn Hfh Hzf Hzg
        Hmalloc_fn Hmalloc2 dq mp tc dummy mpr tcr dr Hmp Htc).
 
 (** The new buffer becomes the stream's read and write area. *)
 Definition hi_ovf_L33 :=
-  HOAS.wp_ovf_L33 w0 registry ge Hdab (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doallocbuf
+  LibioOverflowAllocSetg.wp_ovf_L33 w0 registry ge Hdab (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_doallocbuf
     (hi_ovf_L35 w0 registry ge Hreg Hext Hwrite Hfw Hdwf).
 
 (** The first overflow allocates its buffer and then sends the byte. *)
 Definition hi_overflow_alloc :=
-  HOA.wp_glibc__IO_new_file_overflow_alloc w0 registry ge
+  LibioOverflowAlloc.wp_glibc__IO_new_file_overflow_alloc w0 registry ge
     (hi_malloc_state dq mp tc dummy mpr tcr dr) hi_ovf_L33.
 
 End rules.

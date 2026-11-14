@@ -8,6 +8,8 @@
     of the stderr pointer, the read of the program name from the
     argument vector, and the arguments that it passes. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -38,20 +42,18 @@ Definition diag_msg (ge : genv) (mid : ptr) : Prop :=
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid \/
   lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptDiagOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exchange module supplies the argument vector and its tactics. *)
-Module X := GetoptExchangeOn R LG0.
-Import X X.I X.I.S X.I.S.FI X.I.S.FI.ML X.I.S.FI.LG X.I.S.FI.L X.I.ST X.I.GB X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 Section diag.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance diag_stable : SafepointStable (os_wi w0) := X.I.OW.os_wi_stable w0.
+Local Instance diag_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance diag_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -106,13 +108,13 @@ Ltac diag_block :=
   iAssert (∃ s0, word_string DfracDiscarded q0 s0)%I as (s0) "#Hws";
   [unfold argv_strs; rewrite big_sepL_cons; iDestruct "Hs" as "[H _]"; iExact "H"|];
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]";
-  en; st;
+  step; step;
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
     [reflexivity | vx | left; reflexivity | arith | arith | arith |];
   iNext; iIntros "_";
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]";
   iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | arith | arith | exact Hfp |];
-  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"); st; st;
+  iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"); step; step;
   iApply (Hgt with "HG"); [msg | vx |]; iNext; iIntros (q) "HT";
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Ha");
     [reflexivity | vx | left; reflexivity | arith | arith | arith |];
@@ -121,7 +123,7 @@ Ltac diag_block :=
   iNext; iIntros "Ha Hc0 _";
   match goal with Hc : lookup (TAtom "v455") _ = Some (WInt ?c) |- _ =>
     iApply (Hfx _ _ _ _ _ _ _ _ _ _ _ _ c with "HT Hws"); [msg | assumption | vxc c |] end;
-  iNext; iIntros (x) "HG"; st;
+  iNext; iIntros (x) "HG"; step;
   iApply ("HK" with "[%] Ha [Hc0 Hcl] HG"); [xkeep | iFrame].
 
 (** Each report reads the stream pointer from the global stderr, which
@@ -180,4 +182,3 @@ Lemma wp_getopt_diag_missing ks e fr (G : iProp Σ) T fp dom se sereg mid c av a
 Proof. intros. diag_block. Qed.
 
 End diag.
-End GetoptDiagOn.

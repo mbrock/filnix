@@ -4,6 +4,7 @@
 
     The rule covers the first three instructions of the captured overflow
     block. It requires no stream backend contract and preserves every field. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,13 +13,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode PrintfBufferOverflowReturn.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The pointer read uses the caller's existing memory and OS interpretation. *)
-Module PrintfBufferOverflowPreludeOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -49,7 +50,7 @@ Lemma wp_printf_overflow_prelude e from bb breg fb freg dqf Φ :
 Proof.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hv0 Hchk. iIntros "Hb Hfp Hf HK".
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
-  iNext. cbn [b_insts b_jump]. fs. fchk "Hb".
+  iNext. cbn [b_insts b_jump]. step. check "Hb".
   iApply (wp_raw_load_pointer_dq with "Hb Hfp Hf");
     [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |].
   iNext. iIntros "Hb Hfp Hf".
@@ -58,4 +59,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferOverflowPreludeOn.

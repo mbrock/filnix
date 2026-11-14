@@ -7,6 +7,7 @@
     `c: fp->_chain->_prevchain = fp->_prevchain` when there is a next
     stream ([next_link]), then [wp_unlink_L179] to the return. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic
   SysWrappers SysCleanup LibioCloseSteps LibioUnlinkTail.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioUnlinkTail OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -23,10 +26,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The lemmas over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioUnlinkMidOn (R : Runtime) (LG0 : LogicSig R).
-Module UT := LibioUnlinkTailOn R LG0.
-Import UT UT.CS UT.CS.SW UT.CS.SW.FI.ML UT.CS.SW.FI.LG UT.CS.SW.FI.L UT.CS.SW.OW UT.CS.SW.FI UT.CS.SW.ST.
+
+Import LibioUnlinkTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section list.
 Context `{!gen_heapGS piece pval Σ}.
@@ -167,21 +168,20 @@ Proof.
   unfold file_size in Hfend. subst qp fp.
   iApply (wp_live_fit1 w0 registry ge with "Hql"). iIntros ([Hq0 Hq48]) "Hql".
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  fs. fs. fchk "Hl". fldp "Hl" "Hpc" "Hql". fs. fchk "Hl".
+  step. step. check "Hl". load "Hl" "Hpc" "Hql". step. check "Hl".
   iDestruct "Hnx" as "[-> | (%nb & %nreg & %Hn & Hnl & Hnp)]".
-  - fldn "Hl" "Hch". fchk "Hql". fstp "Hql" "Hqc". fs. fs. fbr.
-    iApply (wp_unlink_L179 with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl Hcp Hct"); try side.
+  - load_null "Hl" "Hch". check "Hql". store "Hql" "Hqc". step. step. branch.
+    iApply (wp_unlink_L179 with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl Hcp Hct"); try close_side.
     iNext. iIntros "Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl".
     iApply ("HK" with "Hl Hfl Hlp Hlb Hpc Hch Hql Hqc [] Hrl Hrc Hlk Htcb Hcl"). iLeft. done.
   - destruct Hn as (-> & Hnb & Hnal & Hnend & Hnreg). unfold file_size in Hnend.
     iApply (wp_live_fit1 w0 registry ge with "Hnl"). iIntros ([Hn0 Hn48]) "Hnl".
-    fldp "Hl" "Hch" "Hnl". fchk "Hql". fstp "Hql" "Hqc". fs. fs. fbrv false.
-    fs. fs. fchk "Hnl". fstp "Hnl" "Hnp". fs.
-    iApply (wp_unlink_L179 with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl Hcp Hct"); try side.
+    load "Hl" "Hch" "Hnl". check "Hql". store "Hql" "Hqc". step. step. branch_as false.
+    step. step. check "Hnl". store "Hnl" "Hnp". step.
+    iApply (wp_unlink_L179 with "Hs Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl Hcp Hct"); try close_side.
     iNext. iIntros "Hl Hfl Hlp Hlb Hrl Hrc Hlk Htcb Hcl".
     iApply ("HK" with "Hl Hfl Hlp Hlb Hpc Hch Hql Hqc [Hnl Hnp] Hrl Hrc Hlk Htcb Hcl"). iRight.
     iExists nb, nreg. iFrame. iPureIntro. unfold file_size. split_and!; done || lia.
 Qed.
 
 End rules.
-End LibioUnlinkMidOn.

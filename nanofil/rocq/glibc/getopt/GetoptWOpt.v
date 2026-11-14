@@ -8,6 +8,8 @@
     vector only below the argument count, and it writes only the fields
     of its own state. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptWTail.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptReqTail GetoptState GetoptWTail LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -25,18 +29,15 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptWOptOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The W tail module supplies the argument vector and its tactics. *)
-Module WT := GetoptWTailOn R LG0.
-Import WT WT.RT WT.RT.D WT.RT.D.X WT.RT.D.X.I WT.RT.D.X.I.S WT.RT.D.X.I.S.FI WT.RT.D.X.I.S.FI.ML WT.RT.D.X.I.S.FI.LG
-  WT.RT.D.X.I.S.FI.L WT.RT.D.X.I.ST WT.RT.D.X.I.GB WT.RT.D.X.A.
+Import GetoptWTail GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section wopt.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance wopt_stable : SafepointStable (os_wi w0) := WT.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance wopt_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance wopt_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -97,7 +98,7 @@ Proof.
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   pose proof (sbyte_in_len t 0 Ht0) as Hlt. pose proof (sbyte_range t 1 Hch) as Ht1r.
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
-  en. st.
+  step. step.
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq");
     [reflexivity | vx | left; reflexivity | arith | arith | unfold ptr_add; cbn [ptr_addr]; lia |].
   iNext. iIntros "Hl Hcur _".
@@ -107,24 +108,24 @@ Proof.
     [reflexivity | vx | exact Hcap' | rawa | rawa | apply Z.mod_1_r |]; iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap' | rawa |].
-  iNext; iIntros "_ _". iClear "Hbl Hbt". st.
+  iNext; iIntros "_ _". iClear "Hbl Hbt". step.
   rewrite (Z.mod_small (chr_w (sbyte t 1)) (2 ^ 32)); [|apply chr_w_range].
   change (0 mod 2 ^ 32) with 0. rewrite chr_w_eqb; [|lia|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte t 1) 0) as [E1 | E1]; close_br.
   2: {
-    en. st. st.
+    step. step. step.
     iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq");
       [reflexivity | vx | left; reflexivity | arith | arith | unfold ptr_add; cbn [ptr_addr]; lia |].
-    iNext. iIntros "Hl Hcur _". chk "Hl".
+    iNext. iIntros "Hl Hcur _". check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hab". st. iDestruct "HK" as "[HK _]".
+    iNext. iIntros "Hl Hab". step. iDestruct "HK" as "[HK _]".
     iApply (wp_getopt_wstore w0 registry ge ks e0 _ _ (ptr_add cur 1) rq with "Hcapq Hl Hab Hcur [Hib Hoo Ha Hcl HG HK]");
       [ exact Hks | xkeep | lk_prove | lk_prove | lk_prove | unfold ptr_add; cbn [ptr_addr]; lia | exact Hb | exact Hal
       | exact Hend | exact Hr |].
     iIntros (e') "%Hk' Hl Hab Hcur".
     iApply ("HK" with "[%] Hl Hib Hoo Hab Hcur Ha Hcl HG"). split; [exact Hk' | exact E1]. }
   iDestruct "Hib" as "[%Hi0 Hib]".
-  en. chk "Hl". load_int "Hl Hib". st. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia].
+  step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia].
   rewrite (Z.mod_small n (2 ^ 32)); [|lia].
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (i + 1) n) as [En | En]; close_br.
   - iDestruct "HK" as "[_ [_ HK]]".
@@ -141,12 +142,12 @@ Proof.
     destruct (lookup_lt_is_Some_2 ps j) as [q Hq]; [lia|].
     iDestruct (big_sepL_lookup with "Hs") as (s1) "#Hws1"; [exact Hq|].
     iDestruct (argv_str_cap with "Hws1") as (rq1) "[#Hcapq1 %Hq1]".
-    en. st. load_int "Hl Hib". st. st. st. idx (i + 1). chk "Ha".
+    step. step. load_s32_using ltac:(arith) "Hl Hib". step. step. step. idx (i + 1). check "Ha".
     iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
     iApply (wp_raw_load_pointer_dq with "Ha Hcj Hcapq1"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-    iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). chk "Hl".
+    iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). check "Hl".
     iApply (wp_raw_store_pointer with "Hl Hab"); [vx | vx | reflexivity | arith | arith | wi_store |].
-    iNext. iIntros "Hl Hab". st.
+    iNext. iIntros "Hl Hab". step.
     iApply (wp_getopt_wstore w0 registry ge ks e0 _ _ q rq1 with "Hcapq1 Hl Hab Hcur [Hib Hoo Ha Hcl HG HK]");
       [ exact Hks | xkeep | lk_prove | lk_prove | lk_prove | exact Hq1 | exact Hb | exact Hal | exact Hend | exact Hr |].
     iIntros (e') "%Hk' Hl Hab Hcur".
@@ -156,4 +157,3 @@ Proof.
 Qed.
 
 End wopt.
-End GetoptWOptOn.

@@ -4,6 +4,7 @@
     the buffer's end ([wp_ovf_L113]). LibioOverflowSetpRest.v proves
     the rest of the block. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioOverflowBase LibioOverflowSetpRest.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowSetpOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -95,10 +96,9 @@ Proof.
   iApply (wp_raw_store_pointer with "Hl Hwe"); [vx | vx | reflexivity | ar | ar | wi_store |].
   iNext. iIntros "Hl Hwe".
   iApply (HL113r with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
-    try first [reflexivity | side | lk_prove |
+    try first [reflexivity | libio_side | lk_prove |
       iApply (ovf_state_base with "Hbl Hxs [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
         try first [assumption | reflexivity | cbn; lia]].
 Qed.
 
 End rules.
-End LibioOverflowSetpOn.

@@ -4,6 +4,8 @@
     The parser reads the entry's name only inside the caller's table
     and only through glibc's strncmp, and it stops at the null name. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop StrncmpLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,31 +30,15 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The search's test of an entry starts in this block. *)
 Definition plo_blk98 : block := Eval vm_compute in plo_blk "L98".
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPfxIterOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The step module supplies the step after a second match, the set, the option table and the tactics. *)
-Module LPT := GetoptLongPfxStepOn R LG0.
-Import LPT LPT.LPS LPT.LPS.LPA LPT.LPS.LPA.LPM LPT.LPS.LPA.LPM.LPC LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section iter.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance iter_stable : SafepointStable (os_wi w0) := LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance iter_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance iter_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -114,7 +102,7 @@ Proof.
     assert (k = List.length os) as -> by lia.
     iApply (wp_raw_load_pointer_dq with "Htl Hnul []");
       [reflexivity | vx | exact Htc | rawa | al8 | cbn; lia | unfold live_capq; cbn; done |].
-    iNext. iIntros "_ _ _". st. st. iApply wp_branch; [vx | iNext]. close_br.
+    iNext. iIntros "_ _ _". step. step. iApply wp_branch; [vx | iNext]. close_br.
     iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl Hcur HF Hs HM"). split; [xkeep|]. repeat split; lk_prove. }
   destruct (lookup_lt_is_Some_2 os k Hlt) as [y Hy].
   iDestruct (big_sepL_lookup with "Hes") as "(#Hn & #Hnws & _)"; [exact Hy|].
@@ -122,22 +110,22 @@ Proof.
   iDestruct (ws_shape with "Hnws") as %(Hchn & Hnp & Hne).
   iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
     [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
-  iNext. iIntros "_ _ _". st. st.
+  iNext. iIntros "_ _ _". step. step.
   rewrite (Z.mod_small (ptr_addr (lo_name y)) (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
   rewrite (proj2 (Z.eqb_neq (ptr_addr (lo_name y)) 0)); [|lia].
   iApply wp_branch; [vx | iNext]. close_br.
-  en. iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
+  step. iApply (wp_raw_load_pointer_dq with "Htl Hn Hcapn");
     [reflexivity | vx | exact Htc | rawa | al8 | exact Hn0 |].
-  iNext. iIntros "_ _ _". st. chk "Hl".
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
+  iNext. iIntros "_ _ _". step. check "Hl".
+  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |].
   iNext. iIntros "Hl Hcur _".
   pose proof (eq_len_le s) as Hle. iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
-  iApply (SN.wp_call_glibc_strncmp registry (os_wi w0) ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (Z.of_nat (eq_len s))
+  iApply (StrncmpLogic.wp_call_glibc_strncmp registry (os_wi w0) ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (Z.of_nat (eq_len s))
     with "Hnws Hws"); [lia | vxc (Z.of_nat (eq_len s)) | exact Hgn | reflexivity |].
-  iNext. iIntros "_ _". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st.
+  iNext. iIntros "_ _". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step.
   iDestruct "HK" as "[_ HK]".
   destruct (Z.eqb _ (0 mod 2 ^ 32)) eqn:Ecmp; iApply wp_branch; [vx | iNext | vx | iNext]; close_br.
-  2: { st. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] Hl Hcur HF Hs HM").
+  2: { step. ploop_small. pcmp_fold "L108" plo_blk108. iApply ("HK" with "[%] Hl Hcur HF Hs HM").
        split; [xkeep|]. split; [exact Hlt|]. split; [unfold pfx_at; repeat split; lk_prove|].
        repeat split; try lk_prove; first [apply pfx_first_S; exact Hf | assumption]. }
   iApply (wp_pfx_step w0 registry ge ks _ M k lo os F b s lonly pe p w a m sp with "Ht0 HF Hs HM");
@@ -151,4 +139,3 @@ Unshelve. all: first [exact treg | exact DfracDiscarded | idtac].
 Qed.
 
 End iter.
-End GetoptLongPfxIterOn.

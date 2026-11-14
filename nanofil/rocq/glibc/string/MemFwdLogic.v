@@ -17,6 +17,7 @@
     assuming a `c: malloc` contract that returns null or a fresh
     16-aligned allocation. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -24,6 +25,8 @@ From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenWord OsWorld OsRegistry MemFwdCode.
+From Glibc Require OsWorld StrlenWord.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -142,15 +145,11 @@ Qed.
     those primitives to verify `c: memset`, `c: memcpy`, `c: mempcpy`,
     and `c: strdup`. *)
 
-(** This functor packages the forward memory-function specifications
-    over a [[runtime]] R and a program logic instance LG0. *)
-Module MemFwdLogicOn (R : Runtime) (LG0 : LogicSig R).
+
 Module ML := MemLogicOn R LG0.
 Module SL := ML.SL.
 Module LG := ML.LG.
 Module L := LG.L.
-Module OW := OsWorldOn R LG0.
-Module SW := StrlenWordOn R LG0.
 Import L LG SL ML.
 
 (** Wrapping a contract with [void_only] restricts its ABI to void
@@ -178,7 +177,7 @@ Context (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os
 
 (** The OS world invariant `os_wi w0` remains stable across runtime
     safepoints. *)
-Local Instance memfwd_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance memfwd_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** To step through IR instructions in [[separation-logic|separation logic]],
     [memfwd_irisGS] connects the contract registry and the OS world
     invariant to the Iris program logic. *)
@@ -494,7 +493,7 @@ Proof.
     pose proof (Z.mod_pos_bound (ptr_addr p mod 8 + Z.of_nat (length s) + 8) 8 ltac:(lia)). lia. }
   iDestruct (word_string_intro with "Hw") as "Hs"; [exact Hs|].
   iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
-  iApply (SW.wp_call_glibc_strlen registry (os_wi w0) ge with "Hs"); [reflexivity | exact Hsl | reflexivity |].
+  iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hs"); [reflexivity | exact Hsl | reflexivity |].
   iNext. iIntros "Hs".
   iApply wp_let; [reflexivity | reflexivity | reflexivity | intros ?; reflexivity | iNext].
   iApply (Hm _ _ _ _ _ _ _ _ (Z.of_nat (length s) + 1)); [cbn; rewrite !Z.mod_small; first [reflexivity | lia] | lia |].
@@ -543,4 +542,3 @@ Proof.
 Qed.
 
 End rules.
-End MemFwdLogicOn.

@@ -9,6 +9,7 @@
     state. Whoever discharges the contracts chooses that state, and the
     initial heap must supply it. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic HelloName.
 From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv SysWrappers AtexitLogic AllocLogic
   LibioLogic HelloGlibcProgCells HelloGlibcMainStreams HelloGlibcMainAlloc.
+From Glibc Require FileInv LibioLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -74,21 +77,20 @@ Definition wide_terminated (ws : list Z) : Prop :=
 (** The wide buffer requests n bytes with sixteen-byte alignment. *)
 Definition wreq (n : Z) : alloc_req := heap_req 16 n.
 
-(** These definitions share one [[runtime]] and logic instance. *)
-Module HelloGlibcDebtsOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The flush interface supplies the concrete stream predicates needed at exit. *)
-Module FB := HelloGlibcMainStreamsOn R LG0.
+Module FB := HelloGlibcMainStreamsOn.
 (** The resource namespace shares file ownership and OS preservation rules. *)
 Module SW.
 (** File ownership includes the thread cleanup fields. *)
-Module FI := FileInvOn R LG0.
+Module FI := FileInv.
 (** The OS interpretation supplies its safepoint rules. *)
-Module OW := HelloGlibcWorldOn R LG0.
+Module OW := HelloGlibcWorldOn.
 (** The step rules support checked reads of shared stream cells. *)
-Module ST := LibioStepOn R LG0.
+Module ST := LibioLogic.
 End SW.
 (** The allocation interface supplies ownership of the idle tcache. *)
-Module AL := HelloGlibcMainAllocOn R LG0.
+Module AL := HelloGlibcMainAllocOn.
 Import FB SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI.
 
 Section debts.
@@ -299,4 +301,3 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
 }.
 
 End debts.
-End HelloGlibcDebtsOn.

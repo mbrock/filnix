@@ -5,6 +5,7 @@
 
     These arithmetic facts support the instruction proof of completion.
     They do not establish that a formatter produces any particular count. *)
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith Bool Lia.
 From Nanofil Require Import Ops Interval.
 Open Scope Z_scope.

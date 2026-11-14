@@ -8,6 +8,7 @@
     no futex wake, pops the cleanup buffer and returns the flush's
     result. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlus
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
   LibioCleanupStart.
+From Glibc Require FileInv LibioCleanupFpLock LibioCleanupFpUnlock LibioCleanupMode LibioCleanupStart LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,15 +29,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCleanupLockOn (R : Runtime) (LG0 : LogicSig R).
-Module CT := LibioCleanupStartOn R LG0.
-Import CT CT.CU CT.CU.CM CT.CU.CM.CL CT.CU.CM.CL.FA CT.CU.CM.CL.FA.FB CT.CU.CM.CL.FA.FB.FT CT.CU.CM.CL.FA.FB.FT.FS
-  CT.CU.CM.CL.FA.FB.FT.FS.FC CT.CU.CM.CL.FA.FB.FT.FS.FC.FU CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL
-  CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW
-  CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG
-  CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.L CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.OW
-  CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI CT.CU.CM.CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioCleanupStart LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -74,11 +70,11 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
   iApply (wp_live_fit1 w0 registry ge with "Hkl"). iIntros ([Hlk0 Hlk48]) "Hkl".
   (* iw_1.L23, iw_1.L24: the owner null. *)
-  fs. fs. fs. fchk "Hkl". fldn "Hkl" "Hko". fs. fs. fs. fs. fs. fbr.
+  step. step. step. check "Hkl". load_null "Hkl" "Hko". step. step. step. step. step. branch.
   (* iw_1.L17: the lock word 1, the owner the cookie. *)
-  fs. fs. fchk "Hkl". fsti "Hkl" "Hk0". fs. fs. fchk "Hkl". fstp "Hkl" "Hko". fs.
+  step. step. check "Hkl". store_int "Hkl" "Hk0". step. step. check "Hkl". store "Hkl" "Hko". step.
   (* iw_1.L14: the head of the list. *)
-  fs. fs. fchk "Hla". fldp "Hla" "Hlah" "Hhl". iApply wp_goto. iNext.
+  step. step. check "Hla". load "Hla" "Hlah" "Hhl". iApply wp_goto. iNext.
   iApply ("HK" with "[%] Hla Hlah Hhl [Hkl Hk0 Hk4 Hko]").
   - split_and!; lk_prove.
   - iFrame. iPureIntro. unfold int_bytes. split_and!; lia.
@@ -112,11 +108,11 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hll"). iIntros ([Hlk0 Hlk48]) "Hll".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* iw_1.L386, iw_1.L395, iw_1.L396: single threaded, the count 0. *)
-  fs. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fs. fchk "Hll". fldi "Hll" "Hl4". fs. fs. fs. fbr.
+  step. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. step. check "Hll". load_s32 "Hll" "Hl4". step. step. step. branch.
   (* iw_1.L389: the owner null, then the lock word 0. *)
-  fs. fs. fs. fchk "Hll". fstp "Hll" "Hlo". fs. fchk "Hll".
-  iDestruct "Hl0" as "[%Hl0r Hl0]". fsti "Hll" "Hl0". fs. fs.
+  step. step. step. check "Hll". store "Hll" "Hlo". step. check "Hll".
+  iDestruct "Hl0" as "[%Hl0r Hl0]". store_int "Hll" "Hl0". step. step.
   (* iw_1.L448: pop the cleanup buffer and return. *)
   iApply wp_call_bind; [vx | exact Hpop | reflexivity |]. iNext.
   iApply (Hpop_spec with "Htcb Hcl Hcp Hct"); [reflexivity | lia | exact Hcal | lia | lia |].
@@ -127,4 +123,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioCleanupLockOn.

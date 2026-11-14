@@ -3,6 +3,7 @@
     byte was stored, which returns the byte, or `c: EOF` when the write
     failed ([wp_ovf_L264]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,6 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioOverflowBase.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -19,10 +22,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowFlushOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -85,20 +86,20 @@ Proof.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hbb & Hbe & Hbreg & Hsz & Hkr & Hxl & Hxr & Hwec & Hwea).
-  st. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hwb Hbl". st. norm. chk "Hl".
+  iNext. iIntros "Hl Hwb Hbl". step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
   iNext. iIntros "Hl Hwp Hbl".
   iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hwb Hbl". st. st. st. norm.
+  iNext. iIntros "Hl Hwb Hbl". step. step. step. norm.
   iDestruct (bytes_take_drop bb 0 xs (Z.to_nat k) with "Hxs") as "[Hxs Hxs2]"; [lia|].
   replace (bb + k - bb) with (Z.of_nat (length (take (Z.to_nat k) xs))) by (rewrite length_take; lia).
   iDestruct "Hfx" as "(Hf2 & Hfd & Herr & Hcol & Hmode & Hvtp)".
   iApply wp_call_bind; [vx | exact Hdwf | reflexivity |]. iNext.
   iDestruct "Hfl" as "[%Hflr Hflb]".
   iApply (Hdw with "Hvt Hl [$Hflb //] Hf2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp");
-    try first [rewrite Z.mod_small; [reflexivity | rewrite length_take; lia] | side | rewrite length_take; lia |
+    try first [rewrite Z.mod_small; [reflexivity | rewrite length_take; lia] | libio_side | rewrite length_take; lia |
                apply Forall_take; exact Hxr].
   iNext. iIntros (r fl' tw' off' [Hpost Hfl']) "Hl Hfl Hf2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp".
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
@@ -109,13 +110,12 @@ Proof.
   iDestruct (ovf_state_base with "Hbl Hxs [$Hfl //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend") as "Hst";
     try first [lia | tauto].
   iCombine "Hf2 Hfd Herr Hcol Hmode Hvtp" as "Hfx".
-  st. destruct Hpost as [[-> ->] | [Hr ->]].
-  - rewrite Z.eqb_refl. br. st. st. iApply wp_ret; [reflexivity | vx |]. iNext.
+  step. destruct Hpost as [[-> ->] | [Hr ->]].
+  - rewrite Z.eqb_refl. branch. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     rewrite (ret_byte ch Hch). iApply ("HK" with "[%] Hl Hfx Hst"). split; left; reflexivity.
-  - replace (r =? _) with false by (symmetry; apply Z.eqb_neq; lia). br. st.
+  - replace (r =? _) with false by (symmetry; apply Z.eqb_neq; lia). branch. step.
     iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hfx Hst"). split; right; reflexivity.
 Qed.
 
 End rules.
-End LibioOverflowFlushOn.

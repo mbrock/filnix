@@ -12,6 +12,7 @@
     | `c: _IO_setb` | HiAtexitSetb.v, with glibc's `c: free` |
     | `c: _IO_unsave_markers` | LibioGenLeaves.v | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,16 +22,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode LibioGenCode
   LibioUnlinkCode LibioCloseItCode FileInv LibioLogic SysWrappers AllocLogic LibioRead LibioGenLeaves
   LibioCloseIt HiAtexitBase HiAtexitDoWrite HiAtexitSetb.
+From Glibc Require FileInv LibioCloseIt LibioCloseItMid LibioDoWrite LibioGenLeaves LibioLogic LibioRead OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** `c: _IO_file_close`, at [HLG]. *)
-Module HRD := LibioReadOn InterpRuntime HLG.
 (** `c: _IO_unsave_markers` and `c: __call_tls_dtors`, at [HLG]. *)
-Module HGV := LibioGenLeavesOn InterpRuntime HLG.
 (** `c: _IO_file_close_maybe_unlink`, at [HLG]. *)
-Module HCI := LibioCloseItOn InterpRuntime HLG.
-Import HRD HRD.SW HRD.SW.FI.ML HRD.SW.FI.LG HRD.SW.FI.L HRD.SW.OW HRD.SW.FI HRD.SW.ST.
+Import LibioRead SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -53,19 +52,19 @@ Local Instance hi_close_it_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ
 
 (** LibioCloseItMid.v's [close_spec]: LibioRead.v's
     [wp_glibc__IO_file_close], ge's `c: __close_nocancel` glibc's. *)
-Lemma hi_close : HCI.CM.close_spec w0 registry ge.
+Lemma hi_close : LibioCloseItMid.close_spec w0 registry ge.
 Proof.
   intros fr fb freg fd eb Φ Hfr Hfb Hfal Hfend Hfreg He.
-  exact (HRD.wp_glibc__IO_file_close w0 registry ge Hreg Hext fr fb freg fd eb Φ Hfr Hcn Hfb Hfal Hfend Hfreg He).
+  exact (LibioRead.wp_glibc__IO_file_close w0 registry ge Hreg Hext fr fb freg fd eb Φ Hfr Hcn Hfb Hfal Hfend Hfreg He).
 Qed.
 
 (** LibioCloseIt.v's [wp_glibc__IO_file_close_maybe_unlink] with its
     callees proved. *)
 Definition hi_close_it :=
-  HCI.wp_glibc__IO_file_close_maybe_unlink w0 registry ge Hfc Hsetb Hdwf
+  LibioCloseIt.wp_glibc__IO_file_close_maybe_unlink w0 registry ge Hfc Hsetb Hdwf
     (hi_do_write_mode w0 registry ge Hreg Hext Hwrite Hfw)
-    (HDW.wp_glibc__IO_new_do_write_zero w0 registry ge)
+    (LibioDoWrite.wp_glibc__IO_new_do_write_zero w0 registry ge)
     hi_close (hi_setb w0 registry ge Hfree_fn Hfh Hzf Hzg)
-    glibc__IO_unsave_markers Hfum (HGV.unsave_spec_holds w0 registry ge).
+    glibc__IO_unsave_markers Hfum (LibioGenLeaves.unsave_spec_holds w0 registry ge).
 
 End rules.

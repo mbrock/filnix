@@ -19,6 +19,7 @@
     - [spn_L16] is the "lt-" test, by glibc's own strncmp
       ([wp_call_glibc_strncmp]), and the stores after it. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -27,6 +28,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrrchrLogic StrncmpCode StrcmpBits
   StrncmpBits StrncmpLogic MemFwdLogic.
+From Glibc Require OsWorld StrncmpLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -139,14 +142,11 @@ Proof.
   rewrite Nat2Z.inj_add Z.add_assoc. reflexivity.
 Qed.
 
-(** The cells and calls over the [[runtime]] R and the Logic instance LG0. *)
-Module HelloGlibcProgCellsOn (R : Runtime) (LG0 : LogicSig R).
+
 (** Byte pieces' shares. *)
 Module ML := MemLogicOn R LG0.
 (** glibc's strncmp. *)
-Module SC := StrncmpLogicOn R LG0.
 (** The world's rules. *)
-Module OW := OsWorldOn R LG0.
 (** The Logic instance. *)
 Module LG := LG0.
 (** Its language. *)
@@ -170,7 +170,7 @@ Context (pb nb sb : Z) (preg nreg sreg : region) (tp : ptr)
   (Hsb_cell : 0 <= sb /\ sb mod 8 = 0 /\ sb + 8 <= r_end sreg /\ r_end sreg <= 2 ^ 48).
 
 (** [os_wi] w0 survives safepoints. *)
-Local Instance pn_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance pn_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The Iris instance of the registry and [os_wi] w0. *)
 Local Instance pn_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
@@ -364,7 +364,7 @@ Proof.
   destruct (str_shape_addr _ _ _ _ _ Hs) as [Ha0 Ha48]. destruct (lt_res s (base_idx s) Hch) as [Hr Hres].
   iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext. gen_env.
   iDestruct (word_string_lend dq p s (base_idx s) Hdq Hj with "Hs") as (dq') "[Hsuf Hback]".
-  iApply (SC.wp_call_glibc_strncmp registry (os_wi w0) ge _ _ _ _ _ _ _ _ _ dq' DfracDiscarded
+  iApply (StrncmpLogic.wp_call_glibc_strncmp registry (os_wi w0) ge _ _ _ _ _ _ _ _ _ dq' DfracDiscarded
             (ptr_add p (Z.of_nat (base_idx s))) tp (drop (base_idx s) s) lt_bytes 3 with "Hsuf Hlt");
     [lia | word_premise | exact Hstrncmp | reflexivity |].
   iNext. iIntros "Hsuf _". iDestruct ("Hback" with "Hsuf") as "Hs".
@@ -390,4 +390,3 @@ Proof.
 Qed.
 
 End progname.
-End HelloGlibcProgCellsOn.

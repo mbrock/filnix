@@ -1,0 +1,9 @@
+# Files that need the interpreter's runtime, one path per line. Every other
+# file under rocq/glibc must compile when Fix.v declares R as an abstract
+# Runtime, and a listed file must not. The scheduled check
+# nanofil-glibc-abstract and scripts/proof-eng/abstract-general.sh test both.
+
+# hi_atexit_never_panics starts the labelled execution at the allocation
+# cursor 4294969872, and R.state is a number only at the interpreter's
+# runtime.
+hi_atexit/HiAtexitSafe.v

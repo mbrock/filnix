@@ -6,11 +6,13 @@
     the caller's pointers, so the vector stays a permutation of the
     original arguments. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -54,7 +56,6 @@ Proof.
 Qed.
 
 (** The scanner owns every argument pointer cell of the vector it permutes. *)
-Module GetoptArgvOn (R : Runtime) (LG0 : LogicSig R).
 Import LG0 LG0.L.
 
 Section argv.
@@ -91,4 +92,3 @@ Proof.
 Qed.
 
 End argv.
-End GetoptArgvOn.

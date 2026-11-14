@@ -22,6 +22,7 @@
     FileInv.v's [io_list_inv], which the proofs of `c: puts`,
     `c: fclose` and `c: exit` start from. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -30,6 +31,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   LibioStdfilesCode.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -46,10 +49,8 @@ Definition sf_L2 : block := Eval vm_compute in
   match find_block (TAtom "L2") (fn_blocks glibc_stdfiles_init) with
   | Some b => b | None => mkBlock (TAtom "L2") [] [] JRetVoid end.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioStdfilesOn (R : Runtime) (LG0 : LogicSig R).
-Module CS := LibioCloseStepsOn R LG0.
-Import CS CS.SW CS.SW.FI.ML CS.SW.FI.LG CS.SW.FI.L CS.SW.OW CS.SW.FI CS.SW.ST.
+
+Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -98,15 +99,15 @@ Proof.
   cbn [sf_L2 b_insts b_jump].
   destruct fs as [|f fs].
   - (* The link is null: the loop ends. *)
-    cbn [head_ptr]. fchk "Hl". fldn "Hl" "Hc". fs. fs. fs. fbr.
-    fs. iApply wp_ret_void. iNext. iApply ("HK" with "Hl Hc [//] [//]").
+    cbn [head_ptr]. check "Hl". load_null "Hl" "Hc". step. step. step. branch.
+    step. iApply wp_ret_void. iNext. iApply ("HK" with "Hl Hc [//] [//]").
   - cbn [chain_pre head_ptr]. iDestruct "Hpre" as "(Hsl & (%fb' & %x & %Hf' & Hpc & Hch) & Hpre)".
     iDestruct "Hsl" as (fb freg (Hf & Hfb & Hfal & Hfend & Hfreg)) "Hlf". rewrite Hf in Hf'.
     injection Hf' as <-. subst f. unfold file_size in Hfend.
     (* The link names the stream fb: its _prevchain becomes the link's address. *)
-    fchk "Hl". fldp "Hl" "Hc" "Hlf". fs. fs. fs. fbrv false.
-    fs. fldp "Hl" "Hc" "Hlf". fs. fchk "Hlf". fstp "Hlf" "Hpc".
-    fchk "Hl". fldp "Hl" "Hc" "Hlf". fs. fs. iApply wp_enter; [reflexivity | vx | iNext].
+    check "Hl". load "Hl" "Hc" "Hlf". step. step. step. branch_as false.
+    step. load "Hl" "Hc" "Hlf". step. check "Hlf". store "Hlf" "Hpc".
+    check "Hl". load "Hl" "Hc" "Hlf". step. step. iApply wp_enter; [reflexivity | vx | iNext].
     iApply ("IH" $! fs _ fb freg off_chain with "[%] Hlf Hch Hpre").
     { split_and!; [rewrite Symbolic.lookup_after_put_same; do 3 f_equal; unfold off_chain; cbn [ptr_addr ptr_cap];
                    unwrap2; lia | unfold off_chain; lia | unfold off_chain; Z.div_mod_to_equations; lia
@@ -158,7 +159,7 @@ Proof.
   iDestruct (stdfile_chain_pre fo [fi] with "Ho Hpre") as "Hpre".
   iDestruct (stdfile_chain_pre fe [fo; fi] with "He Hpre") as "Hpre".
   iApply (wp_live_fit1 w0 registry ge with "Hla"). iIntros ([Hla0 Hla48]) "Hla".
-  fs. fs. fs. iApply wp_enter; [reflexivity | vx | iNext].
+  step. step. step. iApply wp_enter; [reflexivity | vx | iNext].
   iApply (wp_stdfiles_loop Φ $! [fe; fo; fi] _ la lareg 0 with "[%] Hla Hc Hpre").
   { split_and!; [rewrite Z.add_0_r; lk_prove | lia | rewrite Z.add_0_r; exact Hlal | lia | lia]. }
   iNext. iIntros "Hla Hc Hlinks Hlives".
@@ -167,4 +168,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioStdfilesOn.

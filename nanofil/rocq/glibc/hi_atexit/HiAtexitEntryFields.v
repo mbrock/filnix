@@ -4,6 +4,7 @@
     the existing library rules. Read-only fields retain their original
     bounds and [[separation-logic]] ownership requirements. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
@@ -11,9 +12,10 @@ From stdpp Require Import list.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import FileInv WordString HiAtexitBase HiAtexitGe HiAtexitCloseIt
   HiAtexitInitial HiAtexitInitialAlloc HiAtexitCleanup HiAtexitPrepare.
+From Glibc Require FileInv LibioFlushInv OsWorld.
 Import ListNotations.
 Open Scope Z_scope.
-Import HFL HFL.FI HLG HLG.L HGV.ER.XL.XT.OE.OW.
+Import LibioFlushInv FileInv HLG HLG.L OsWorld.
 
 (** Every jump-table slot carries the actual linked function pointer. *)
 Definition hi_entry_vtables_ps : list (piece * pval) :=
