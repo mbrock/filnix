@@ -33,6 +33,9 @@ systemd 262 for Fil-C. Rebased from upstream Fil-C's systemd 256.4 patch
   place.
 - bus-error.c/.h: look the bus error maps up in a static list instead of
   an ELF section (upstream's approach, simplified).
+- sd-dlopen.h (262): SD_ELF_NOTE_DLOPEN_ANCHORED's anchor symbol is
+  defined in assembly, which a Fil-C C reference cannot reach; use the
+  plain note, as on clang before 18.
 
 Not handled: 262's verb and option tables (src/shared/verbs.h, options.h)
 are __start_/__stop_ ELF sections, which Fil-C cannot link
@@ -550,3 +553,20 @@ index 758b7a2..1a859f6 100644
  }
  
  bool reboot_parameter_is_valid(const char *parameter) {
+diff --git a/src/systemd/sd-dlopen.h b/src/systemd/sd-dlopen.h
+index 1d9e0b8..dc9f259 100644
+--- a/src/systemd/sd-dlopen.h
++++ b/src/systemd/sd-dlopen.h
+@@ -179,8 +179,10 @@ extern "C" {
+ #define SD_ELF_NOTE_DLOPEN(feature, description, priority, ...) \
+         _SD_ELF_NOTE_DLOPEN(_SD_DLOPEN_JSON(feature, description, priority, __VA_ARGS__))
+ 
+-/* The anchored note requires LLVM >= 18 (see above). Fall back to the non-anchored note on older clang. */
+-#if defined(__clang__) && !defined(__apple_build_version__) && __clang_major__ < 18
++/* The anchored note requires LLVM >= 18 (see above). Fall back to the non-anchored note on older clang.
++ * Fil-C: the anchor is defined in assembly, but a C reference to it becomes a pizlonated getter that the
++ * linker cannot find, so use the non-anchored note there too. */
++#if defined(__FILC__) || (defined(__clang__) && !defined(__apple_build_version__) && __clang_major__ < 18)
+ #  define SD_ELF_NOTE_DLOPEN_ANCHORED(tag, feature, description, priority, ...) \
+         SD_ELF_NOTE_DLOPEN(feature, description, priority, __VA_ARGS__)
+ #else

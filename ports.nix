@@ -3115,6 +3115,15 @@ in
 
       # this seems to not be a real problem
       (use { autoPatchelfIgnoreMissingDeps = [ "*" ]; })
+      # systemdLibs installs only the devel, libsystemd and libudev tags;
+      # build only systemd's alias targets of the same names. The rest of
+      # 262 needs its verb and option tables (see the patch).
+      (use (
+        old:
+        pkgs.lib.optionalAttrs ((old.mesonInstallTags or [ ]) != [ ]) {
+          ninjaFlags = (old.ninjaFlags or [ ]) ++ old.mesonInstallTags;
+        }
+      ))
     ];
   }
 
