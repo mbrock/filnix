@@ -26,3 +26,4 @@ done
 if [ -d "$here/overlay" ]; then
   cp -r "$here/overlay/." "$dst/"
 fi
+python3 -I "$here/stages/10-flatten.py" "$dst" --check-names-only
