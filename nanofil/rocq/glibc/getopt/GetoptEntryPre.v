@@ -230,8 +230,8 @@ Proof.
   iIntros "[%Hp (%s & Hs & %Hj & #Hk)] #Hos HG HK".
   destruct Hp as (Hav & Hal & Hfit & Har & Hn & Hjn).
   iAssert (∃ tail, ⌜gs_next s = null⌝ ∨ word_string DfracDiscarded (gs_next s) tail)%I as (tail) "#Hc".
-  { iDestruct "Hk" as "[[_ [%Hn0 | (%t & Ht)]] | [_ Hcu]]"; [by iExists []; iLeft | by iExists t; iRight|].
-    iDestruct (getopt_cursor_read with "Hcu") as "[%Hn0 | (%t & Ht & _)]"; [by iExists []; iLeft | by iExists t; iRight]. }
+  { iDestruct "Hk" as "[[_ [%Hn0 | (%t & Ht)]] | [_ Hcu]]"; [iExists []; by iLeft | iExists t; by iRight|].
+    iDestruct (getopt_cursor_read with "Hcu") as "[%Hn0 | (%t & Ht & _)]"; [iExists []; by iLeft | iExists t; by iRight]. }
   iAssert ⌜needs_init s \/ gs_initialized s = 1 /\ 0 <= gs_order s <= 2 /\
     getopt_bounds (Z.of_nat (length ps)) j s⌝%I as %Hkp.
   { iDestruct "Hk" as "[[%H _] | [%H _]]"; iPureIntro; [left | right]; exact H. }
