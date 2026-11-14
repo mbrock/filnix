@@ -112,6 +112,10 @@ jobs:
               (builtins.attrValues m.vo ++ builtins.attrValues m.reprint ++ [ m m.driver m.parse ]))'
             echo; nix eval --raw "$c.$ROOT.outPath"; echo
             nix eval --raw "$c.$ROOT.corpus.outPath"; echo
+            # The Rocq 9.3 package set (nanofil/nix/rocq-packages.nix), which no
+            # public cache has.
+            nix eval --raw --impure --expr 'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };
+                r = import ./nanofil/nix/rocq-packages.nix { inherit pkgs; }; in builtins.concatStringsSep "\n" (map (d: d.outPath) [ r.rocq-core r.stdlib r.stdpp r.iris ])'; echo
           } | while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
       - uses: actions/upload-artifact@v4
         if: always()
