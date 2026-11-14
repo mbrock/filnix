@@ -176,7 +176,7 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
                 queries = []
                 for i, (name, scope, _) in enumerate(declarations):
                     qualified = (scope + '.' if scope else '') + name
-                    queries += [f'Goal True. idtac "PACKET_{i}". Abort.',
+                    queries += [f'Goal True. Proof. idtac "PACKET_{i}". Abort.',
                                 f'Print Assumptions {qualified}.']
                 path.write_text(source + '\n' + '\n'.join(queries) + '\n')
                 audited = subprocess.run(command, capture_output=True, text=True, timeout=900)

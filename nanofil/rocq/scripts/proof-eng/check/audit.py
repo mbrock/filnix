@@ -60,11 +60,11 @@ def audit(tree, layout, contracts, output, groups=None):
             if name not in targets or name in found:
                 raise ValueError(f'{group}: unexpected/duplicate query {term}')
             found.append(name)
-            return (f'Goal True. idtac "PE_STATEMENT_{name}". Abort.\n'
+            return (f'Goal True. Proof. idtac "PE_STATEMENT_{name}". Abort.\n'
                     f'Set Printing All. Set Printing Depth 1000000. Set Printing Width 1000000. Check @{term}.\n'
-                    f'Goal True. idtac "PE_AUDIT_{name}". Abort.\n'
+                    f'Goal True. Proof. idtac "PE_AUDIT_{name}". Abort.\n'
                     f'Print Assumptions {term}.\n'
-                    f'Goal True. idtac "PE_END_{name}". Abort.')
+                    f'Goal True. Proof. idtac "PE_END_{name}". Abort.')
         try:
             source = re.sub(r'Print Assumptions\s+([\w.\']+)\s*\.', query, source)
             if set(found) != set(targets):
