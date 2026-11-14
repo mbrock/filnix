@@ -73,6 +73,9 @@ sent(thm(_, Kw, n(_, N), Bs, Ty)) :- !,
     format("~w ~w", [Kw, N]), binders(Bs), write(" : "), pr(Ty), write(".\n").
 sent(tacdef(_, n(_, N), Args, T)) :- !,
     format("Ltac ~w ", [N]), names(Args), write(" := "), pt(T), write(".\n").
+sent(tacnotation(_, Parts, T)) :- !,
+    write("Tactic Notation "), maplist(tactic_notation_part, Parts),
+    write(" := "), pt(T), write(".\n").
 sent(decl(_, 'Context', Gs)) :- Gs \= [bs(_)], !,
     write("Context"), forall(member(g(Ns, Ty), Gs), ( write(" ("), names(Ns), write(" : "), pr(Ty), write(")") )), write(".\n").
 sent(decl(_, Kw, [g(Ns, Ty)])) :- !,
@@ -81,6 +84,11 @@ sent(decl(_, Kw, [bs(Bs)])) :- !, write(Kw), binders(Bs), write(".\n").
 sent(decl(_, Kw, Gs)) :- !,
     format("~w", [Kw]), forall(member(g(Ns, Ty), Gs), ( write(" ("), names(Ns), write(" : "), pr(Ty), write(")") )), write(".\n").
 sent(S) :- arg(1, S, P), src(P).
+
+tactic_notation_part(literal(S)) :-
+    split_string(S, "\"", "", Parts), atomics_to_string(Parts, "\"\"", Escaped),
+    format("\"~s\" ", [Escaped]).
+tactic_notation_part(argument(K, n(_, N))) :- format("~w(~w) ", [K, N]).
 
 def(def(_, Kw, n(_, N), Bs, Ty, Body)) :-
     format("~w ~w", [Kw, N]), binders(Bs), opt_type(Ty),

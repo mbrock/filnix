@@ -360,6 +360,9 @@ vernac(P, thm(P, Kw, N, Bs, Ty)) -->
 vernac(P, thm(P, 'Goal', none, [], Ty)) --> tk(id('Goal')), !, term(Ty).
 vernac(P, tacdef(P, N, Args, Body)) -->
     tk(id('Ltac')), !, name(N), tactic_params(Args), tk(sym(':=')), tactic(Body).
+vernac(P, tacnotation(P, Parts, Body)) -->
+    tk(id('Tactic')), tk(id('Notation')), !,
+    tactic_notation_parts(Parts), tk(sym(':=')), tactic(Body).
 vernac(P, decl(P, Kw, Gs)) -->
     tk(id(Kw)), { memberchk(Kw, ['Axiom', 'Axioms', 'Parameter', 'Parameters', 'Conjecture', 'Hypothesis',
                                  'Hypotheses', 'Variable', 'Variables', 'Context']) }, !,
@@ -801,6 +804,11 @@ rocq_tactic_tokens(Ts, T) :- phrase(tactic(T), Ts), !.
 
 tactic_params([N|Ns]) --> name(N), !, tactic_params(Ns).
 tactic_params([]) --> [].
+
+tactic_notation_parts([literal(S)|Ps]) --> tk(str(S)), !, tactic_notation_parts(Ps).
+tactic_notation_parts([argument(K, N)|Ps]) -->
+    tk(id(K)), tk(p('(')), name(N), tk(p(')')), !, tactic_notation_parts(Ps).
+tactic_notation_parts([]) --> [].
 
 % Choice binds more tightly than sequencing; prefixes bind more tightly
 % than either. Parentheses and dispatch brackets retain that scope.

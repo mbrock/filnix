@@ -289,44 +289,36 @@ Ltac check H :=
 (** ## Applying memory rules
 
     A load or store needs facts about its address, alignment, and owned memory.
-    These wrappers prove the routine facts and leave the others for the caller
-    before returning to the program's [[separation-logic]] proof. *)
+    Each wrapper supplies the fixed checks and uses the caller's arithmetic solver
+    for addresses. A failed check reports its position before the [[separation-logic]] proof continues. *)
 
-Create HintDb glibc_memory.
-
-(** Files can register their existing arithmetic and world-preservation solvers in this database.
-    A failed solver leaves the original goal and its hypotheses unchanged. *)
-Ltac memory_side :=
-  try solve [eassumption | reflexivity | vx | left; reflexivity | right; reflexivity |
-             eauto 1 with glibc_memory | cbn; lia | a2].
-
-(** Some loads need a specific pointer value or byte sequence.
-    The caller passes the rule with those choices and the names of its owned resources. *)
-Ltac memory_rule rule H :=
-  iApply (rule with H);
-    [memory_side | memory_side | memory_side | memory_side | memory_side | memory_side |].
+(** This tactic requires a side condition to close and identifies it when the supplied proof fails. *)
+Ltac memory_condition wrapper position proof :=
+  first [solve [proof] | fail 1 wrapper "side condition" position].
 
 (** This wrapper loads a pointer using fractional ownership of the cells and object lives. *)
-Ltac load_pointer_dq rule H := memory_rule rule H.
-
-(** This wrapper checks read access using fractional ownership of the object's life. *)
-Ltac check_read_dq rule H := memory_rule rule H.
-
-(** This wrapper loads a narrow integer from a fractionally owned byte sequence.
-    The caller's conversion proof chooses the symbolic form of the loaded value. *)
-Ltac load_bytes_dq rule H decode :=
-  iApply (rule with H);
-    [memory_side | memory_side | memory_side | first [solve [decode] | memory_side] |
-     memory_side | memory_side |].
+Tactic Notation "load_pointer_dq" constr(H) "by" tactic3(side) :=
+  iApply (wp_raw_load_pointer_dq with H);
+    [memory_condition "load_pointer_dq" 1 ltac:(reflexivity) |memory_condition "load_pointer_dq" 2 ltac:(vx)
+    |memory_condition "load_pointer_dq" 3 ltac:(first [eassumption | left; reflexivity | right; reflexivity])
+    |memory_condition "load_pointer_dq" 4 side |memory_condition "load_pointer_dq" 5 side
+    |memory_condition "load_pointer_dq" 6 ltac:(first [eassumption | solve [lia] | side]) |].
 
 (** This wrapper stores a pointer and proves that the store preserves the world invariant. *)
-Ltac store_pointer rule H := memory_rule rule H.
+Tactic Notation "store_pointer" constr(H) "by" tactic3(side) "preserving" tactic3(world) :=
+  iApply (wp_raw_store_pointer with H);
+    [memory_condition "store_pointer" 1 ltac:(vx) |memory_condition "store_pointer" 2 ltac:(vx)
+    |memory_condition "store_pointer" 3 ltac:(reflexivity)
+    |memory_condition "store_pointer" 4 side |memory_condition "store_pointer" 5 side
+    |memory_condition "store_pointer" 6 world |].
 
 (** This wrapper loads a pointer using full ownership of its cell and object lives. *)
-Ltac load_pointer rule H := memory_rule rule H.
-
-(** This wrapper stores an integer's bytes while preserving the world invariant. *)
-Ltac store_word rule H := memory_rule rule H.
+Tactic Notation "load_pointer" constr(H) "by" tactic3(side) :=
+  iApply (wp_raw_load_pointer with H);
+    [memory_condition "load_pointer" 1 ltac:(reflexivity) |memory_condition "load_pointer" 2 ltac:(vx)
+    |memory_condition "load_pointer" 3 ltac:(reflexivity)
+    |memory_condition "load_pointer" 4 side |memory_condition "load_pointer" 5 side
+    |memory_condition "load_pointer" 6 ltac:(first [eassumption | solve [cbn; lia] | side]) |].
 
 (** ## Concrete executions
 

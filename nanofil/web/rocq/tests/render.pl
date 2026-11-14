@@ -8,6 +8,12 @@
 
 :- begin_tests(rocq_render).
 
+test(tactic_notation_body) :-
+    string_codes("Tactic Notation \"load_cell\" constr(H) \"by\" tactic3(side) := iApply (rule with H); [reflexivity | side |].", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    assertion(Items = [tacnotation(_, [literal("load_cell"), argument(constr, n(_, 'H')),
+        literal("by"), argument(tactic3, n(_, side))], dispatch(_, [_, _, _]))]).
+
 test(match_in_let_value, [forall(member(Body,
     ["idtac K", "lazymatch type of I with ?Q => idtac K end"]))]) :-
     format(string(Tactic),
