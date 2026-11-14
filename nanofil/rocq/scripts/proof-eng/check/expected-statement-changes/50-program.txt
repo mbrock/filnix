@@ -29,6 +29,7 @@ changed	getopt/GetoptDiag.v	wp_getopt_diag_wmissing
 changed	getopt/GetoptDispatch.v	wp_getopt_choice
 changed	getopt/GetoptEntry.v	wp_getopt_entry
 changed	getopt/GetoptEntry.v	wp_getopt_entry_init
+changed	getopt/GetoptEntrySession.v	wp_getopt_entry_session
 changed	getopt/GetoptExchangeThree.v	wp_x3_loop
 changed	getopt/GetoptExchangeTwo.v	wp_x2_loop
 changed	getopt/GetoptIdle.v	wp_x2_exchange
@@ -45,6 +46,7 @@ changed	getopt/GetoptLongAmbTail.v	wp_amb_tail
 changed	getopt/GetoptLongArg.v	wp_long_found
 changed	getopt/GetoptLongBody.v	wp_long_body
 changed	getopt/GetoptLongCall.v	wp_call_glibc_process_long_option
+changed	getopt/GetoptLongChoice.v	wp_getopt_long_choice
 changed	getopt/GetoptLongDash.v	wp_getopt_dash_session
 changed	getopt/GetoptLongDash.v	wp_getopt_long_dash
 changed	getopt/GetoptLongDiag.v	wp_getopt_ldiag_missing
@@ -74,12 +76,16 @@ changed	getopt/GetoptLongScan.v	wp_getopt_long_scan
 changed	getopt/GetoptLongScan.v	wp_half_check_read_dq
 changed	getopt/GetoptLongScan.v	wp_long_scan_end
 changed	getopt/GetoptLongScan.v	wp_long_scan_loop
+changed	getopt/GetoptLongSingle.v	wp_getopt_single_session
 changed	getopt/GetoptLongSite.v	wp_getopt_long_only_call
 changed	getopt/GetoptLongStore.v	int_at_store
 changed	getopt/GetoptLongStore.v	wp_long_store
 changed	getopt/GetoptLongTail.v	wp_long_miss_tail
 changed	getopt/GetoptLongTail.v	wp_long_next
 changed	getopt/GetoptLongUnrec.v	wp_long_unrec
+changed	getopt/GetoptLongW.v	wp_getopt_long_w
+changed	getopt/GetoptLongW.v	wp_getopt_w_session
+changed	getopt/GetoptLongWrapper.v	wp_getopt_long
 changed	getopt/GetoptOptArg.v	wp_getopt_optarg
 changed	getopt/GetoptPermute.v	wp_getopt_permute
 changed	getopt/GetoptReqArg.v	wp_getopt_reqarg
@@ -92,6 +98,7 @@ changed	getopt/GetoptReturn.v	wp_getopt_argv_end
 changed	getopt/GetoptReturn.v	wp_getopt_nonopt
 changed	getopt/GetoptScan.v	wp_getopt_scan
 changed	getopt/GetoptScanEnd.v	wp_getopt_scan_end
+changed	getopt/GetoptScanSession.v	scan_exits_session
 changed	getopt/GetoptShort.v	wp_getopt_char
 changed	getopt/GetoptShortOpt.v	wp_getopt_argkind
 changed	getopt/GetoptShortOpt.v	wp_getopt_known
@@ -105,8 +112,12 @@ changed	getopt/GetoptSwap2Upper.v	wp_x2_upper
 changed	getopt/GetoptSwap3Lower.v	wp_x3_lower
 changed	getopt/GetoptSwap3Upper.v	wp_x3_upper
 changed	getopt/GetoptWOpt.v	wp_getopt_wopt
+changed	getopt/GetoptWOptSession.v	wp_getopt_wopt_session
 changed	getopt/GetoptWTail.v	wp_getopt_wmiss
 changed	getopt/GetoptWTail.v	wp_getopt_wstore
+changed	getopt/GetoptWrapper.v	wp_getopt_internal
+changed	getopt/GetoptWrapper.v	wp_getopt_internal_in
+changed	getopt/GetoptWrapper.v	wp_getopt_internal_out
 changed	hello/HelloGlibcLeaf.v	mbszero_glibc
 changed	hello/HelloGlibcLeaf.v	memeq_glibc
 changed	hello/HelloGlibcLeaf.v	streq_glibc
