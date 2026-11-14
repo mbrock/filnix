@@ -39,6 +39,8 @@ Stages `10`, `15`, `20` and `30` are on the branch. Stage `50` is being checked 
 
 `lint-tactics.py TREE --max N` counts the `Ltac` definitions outside the library and fails when there are more than `N`.
 
+`sentence-times.py LOGS TREE` reports where a build spends its time. `LOGS` is the `sentence-timings` directory in the output of the Nix glibc gate, which holds the `rocq c -time` output of each file. Without an option the program prints the time per kind of sentence. `--file NAME` prints the slowest sentences of one file, and `--over 5` prints every sentence that took more than five seconds. `--write LIST` records the sentences over the limit, and `--check LIST` fails when a sentence over the limit is not in the list. The gate does not run the check yet.
+
 ## Rules for a stage
 
 - A stage recognizes patterns. It never names a line number, and it names a file only when that file is the subject of the stage. The lanes add and change files every day, and the stage must convert a file it has never seen.
