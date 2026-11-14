@@ -11,12 +11,12 @@ import tempfile
 
 from check import Tree, uncomment, compare
 from expectations import Expectations
-from audit_changes import reviewed, receipt, tree_digest, evidence_hashes, AuditChanges, interpreter_covers
+from audit_changes import reviewed, receipt, tree_digest, evidence_hashes, AuditChanges, interpreter_covers, stage50_present
 
 HERE = Path(__file__).resolve().parent
 
 
-def unchanged_tactics(before, after, plugin, manifest, output):
+def unchanged_tactics(before, after, plugin, manifest, output, inventory=None):
     """Check the complete stage boundary, not just the relocated declarations."""
     if before is None or after is None or plugin is None:
         raise ValueError('stage 30 requires --stage30-before, --stage30-after and --plugin')
@@ -36,15 +36,30 @@ def unchanged_tactics(before, after, plugin, manifest, output):
         (output.parent / '30-tactics.audit.log').write_text(log)
         if audited.returncode or 'Axioms:' in log or log.count('Closed under the global context') != 1:
             raise ValueError('step_named_rule is not Closed; see 30-tactics.audit.log')
-    lint = subprocess.run([sys.executable, str(HERE.parent / 'lint-tactics.py'), str(after), '--check-inventory'],
+    inventory = inventory or HERE.parent / 'tactic-inventory.json'
+    command = [sys.executable, str(HERE.parent / 'lint-tactics.py'), str(after), '--check-inventory']
+    lint = subprocess.run(command + ['--inventory', str(inventory)],
                           capture_output=True, text=True, timeout=900)
     (output.parent / '30-tactics.lint.log').write_text(lint.stdout + lint.stderr)
     if lint.returncode:
         raise ValueError('stage 30 tactic budget failed; see 30-tactics.lint.log')
+    data = json.loads(inventory.read_text())
+    owner = next((f for f, names in data['files'].items() if names), None)
+    if owner is None:
+        raise ValueError('tactic inventory is empty; cannot run count-minus-one control')
+    data['files'][owner].pop()
+    data['total'] -= 1
+    control = output.parent / '30-tactics.inventory-minus-one.json'
+    control.write_text(json.dumps(data, indent=2) + '\n')
+    rejected = subprocess.run(command + ['--inventory', str(control)],
+                              capture_output=True, text=True, timeout=900)
+    (output.parent / '30-tactics.lint-control.log').write_text(rejected.stdout + rejected.stderr)
+    if rejected.returncode != 1:
+        raise ValueError('tactic count-minus-one control did not exit 1; see 30-tactics.lint-control.log')
 
 
 def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plugin=None,
-           stage50_only=False, interpreter_evidence=None):
+           stage50_only=False, interpreter_evidence=None, tactic_inventory=None):
     tree = tree.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     evidence = output.with_suffix('.stage50.json')
@@ -54,6 +69,10 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
              'Hosted workflow status is not evidence; use the local Nix verdicts.', '']
     failures = []
     files = sorted(manifests.glob('*.txt'))
+    if not stage50_present():
+        files = [p for p in files if p.stem != '50-program']
+    elif manifests == HERE / 'expected-statement-changes' and not any(p.stem == '50-program' for p in files):
+        failures.append('stage 50 is present but its reviewed manifest is missing')
     if stage50_only:
         files = [p for p in files if p.stem == '50-program']
     if not files:
@@ -107,11 +126,12 @@ def packet(tree, manifests, output, stage30_before=None, stage30_after=None, plu
             if manifest.stem == '30-tactics':
                 if any(kinds - {'moved', 'added'} for kinds in rules.rows.values()):
                     raise ValueError('stage 30 cannot exempt statement changes')
-                unchanged_tactics(stage30_before, stage30_after, plugin, manifest, output)
+                unchanged_tactics(stage30_before, stage30_after, plugin, manifest, output, tactic_inventory)
                 lines += ['PASS: statements unchanged across the complete stage-30 boundary; '
                           'every reviewed source has its target type, including universes. '
                           'The added rule has its pinned type and prints Closed. '
-                          'The private-tactic count is within the recorded inventory.', '']
+                          'The private-tactic count is within the recorded inventory, and '
+                          'the count-minus-one inventory control exits 1.', '']
                 continue
             source = proof.read_text()
             lines += ['### Equivalence proof', '', '```coq', source.rstrip(), '```', '']
@@ -192,9 +212,10 @@ if __name__ == '__main__':
     parser.add_argument('--stage30-before', type=Path)
     parser.add_argument('--stage30-after', type=Path)
     parser.add_argument('--plugin', type=Path)
+    parser.add_argument('--tactic-inventory', type=Path, help='reviewed inventory; defaults to the pipeline inventory')
     parser.add_argument('--stage50-only', action='store_true', help='validate the additional abstract stage-50 boundary')
     parser.add_argument('--interpreter-evidence', type=Path, help='required Closed counterpart for an abstract stage-50 packet')
     args = parser.parse_args()
     raise SystemExit(packet(args.tree, args.manifests, args.output,
                            args.stage30_before, args.stage30_after, args.plugin, args.stage50_only,
-                           args.interpreter_evidence))
+                           args.interpreter_evidence, args.tactic_inventory))

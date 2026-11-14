@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import copy
 
-from audit_changes import receipt, reference, tree_digest
+from audit_changes import receipt, reference, tree_digest, stage50_present, AuditChanges, reviewed
 
 HERE = Path(__file__).resolve().parent
 
@@ -75,6 +75,22 @@ class Checks(unittest.TestCase):
                 {'file': key[0], 'name': key[1], 'kind': 'changed', 'before': 'old type', 'after': 'new type'}]}))
             checked = {'file': key[0], 'name': key[1], 'adapters': ['forward', 'reverse'],
                        'before': {}, 'after': {}, 'directions': [{}, {}]}
+            if not stage50_present():
+                self.assertEqual(reviewed(), set())
+                with self.assertRaisesRegex(ValueError, 'stage 50 is absent'):
+                    receipt(tree, manifest, {'runtime': 'concrete', 'pairs': [checked]})
+                with self.assertRaisesRegex(ValueError, 'stage 50 is absent'):
+                    AuditChanges([root / 'stale-receipt.json'])
+                paths = [root / 'before.json', root / 'after.json']
+                for path, statement in zip(paths, ('old type', 'new type')):
+                    target = {'pass': True, 'qualified': True, 'types': {}, 'raw': 'Closed under the global context',
+                              'declaration': reference(key), 'normalized_statement': statement}
+                    path.write_text(json.dumps({'test': {'pass': True, 'targets': {key[1]: target}}}))
+                command = ['python3', str(HERE / 'compare-audits.py'), *map(str, paths)]
+                self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+                paths[1].write_text(paths[0].read_text())
+                self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+                return
             concrete = receipt(tree, manifest, {'runtime': 'concrete', 'pairs': [checked]})
             fields = {'Glibc.Fix.R.state': 'Type'}
             abstract_checked = checked | {'before': fields, 'after': fields, 'directions': [fields, {}]}
@@ -139,13 +155,15 @@ class Checks(unittest.TestCase):
                 path.write_text(source)
                 subprocess.run(['rocq', 'c', '-q', '-R', str(tree), 'Glibc', str(path)],
                                check=True, capture_output=True)
-            base = 'Lemma target : True. Proof. exact I. Qed.\n'
+            base = 'Ltac private := idtac. Lemma target : True. Proof. exact I. Qed.\n'
             rule = 'Lemma step_named_rule : True. Proof. exact I. Qed.\n'
             for tree in (before, after):
                 compile(tree, 'Toy', base)
             compile(after, 'GlibcTactics', rule)
             manifest = manifests / '30-tactics.txt'
             manifest.write_text('added\tGlibcTactics.v\tstep_named_rule\n')
+            inventory = root / 'inventory.json'
+            inventory.write_text(json.dumps({'total': 1, 'files': {'Toy.v': ['private']}}))
             subprocess.run(['python3', str(HERE / 'check.py'), 'statements', str(before), str(after),
                             '--plugin', os.environ['PE_CHECK_PLUGIN'], '--expectations', str(manifest),
                             '--output', str(root / 'capture')], capture_output=True)
@@ -153,18 +171,21 @@ class Checks(unittest.TestCase):
                             str(root / 'capture/report.json')], check=True, capture_output=True)
             command = ['python3', str(HERE / 'packet.py'), str(after), '--manifests', str(manifests),
                        '--stage30-before', str(before), '--stage30-after', str(after),
+                       '--tactic-inventory', str(inventory),
                        '--plugin', os.environ['PE_CHECK_PLUGIN'], '--output', str(root / 'packet.md')]
             def packet(expected):
                 result = subprocess.run(command, capture_output=True, text=True)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
             packet(0)
+            self.assertEqual(json.loads((root / '30-tactics.inventory-minus-one.json').read_text())['total'], 0)
+            self.assertIn('1 Ltac definitions', (root / '30-tactics.lint-control.log').read_text())
             compile(after, 'Toy', 'Lemma target : False -> False. Proof. auto. Qed.\n')
             packet(1)
             compile(after, 'Toy', base)
             compile(after, 'GlibcTactics', 'Axiom planted : True.\n' + rule.replace('exact I', 'exact planted'))
             packet(1)
             compile(after, 'GlibcTactics', rule)
-            compile(after, 'Toy', base + ''.join(f'Ltac extra{i} := idtac.\n' for i in range(227)))
+            compile(after, 'Toy', base + 'Ltac extra := idtac.\n')
             packet(1)
 
     def test_original_runtime_partition(self):

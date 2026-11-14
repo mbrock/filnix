@@ -12,7 +12,13 @@ import re
 HERE = Path(__file__).resolve().parent
 
 
+def stage50_present():
+    return (HERE.parent / 'stages/50-program.py').is_file()
+
+
 def reviewed():
+    if not stage50_present():
+        return set()
     data = json.loads((HERE / 'audit-changes.json').read_text())
     if data['version'] != 1 or data['stage'] != '50-program':
         raise ValueError('unsupported audit-change policy')
@@ -66,6 +72,8 @@ def interpreter_covers(pairs, receipts):
 
 def receipt(tree, manifest, validation):
     """Call only after this stage's source-bound --check succeeds."""
+    if not stage50_present():
+        raise ValueError('stage 50 is absent; audited statement changes are forbidden')
     adapters = {}
     for line in manifest.read_text().splitlines():
         fields = line.split('\t')
@@ -107,6 +115,8 @@ def receipt(tree, manifest, validation):
 class AuditChanges:
     def __init__(self, paths=()):
         self.receipts = []
+        if paths and not stage50_present():
+            raise ValueError('stage 50 is absent; audit-change receipts cannot be used')
         for path in paths:
             data = json.loads(Path(path).read_text())
             manifest = Path(data['manifest'])

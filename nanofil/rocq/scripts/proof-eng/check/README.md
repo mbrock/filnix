@@ -22,8 +22,9 @@ The compiled-statement check still runs separately.
 `PE_QUERY_JOBS` controls statement queries and defaults to two. The original
 Hello audit can consume substantial memory, so campaign audits run sequentially.
 The output directory retains logs, reports, sources, and objects. An explicit
-second argument selects a historical baseline for diagnosis; such a run cannot
-return a successful cutover verdict.
+second argument pins the baseline for an agreed cutover. Such a run reports the
+exact revision and makes no claim that it is the latest main. Without that
+argument, the command still requires main to remain unchanged during the run.
 
 Only the exit statuses of these local commands count. The hosted docs and Rocq
 workflows can report success after a failed Nix build because their logging
@@ -200,7 +201,9 @@ both, then pass `--stage30-before BEFORE --stage30-after AFTER --plugin PLUGIN`
 to `packet.py`. The packet compares every declaration across that boundary,
 requires all eight reviewed sources to equal their five targets including
 universes, checks the added rule against its pinned type and audits it Closed,
-and runs `lint-tactics.py --check-inventory`. No equivalence lemma is required for this
+and runs `lint-tactics.py --check-inventory`. It also removes one listed definition
+from a copy of the inventory, adjusts its total, and requires the lint to exit 1
+against that copy. No equivalence lemma is required for this
 statement-preserving stage. `run.sh` prepares and checks these trees itself.
 
 `python3 check/packet.py POST_TREE --output cutover-packet.md`, run from the
@@ -212,13 +215,19 @@ the stage's source guards. Missing files, extra declarations, open proofs, and
 failed stage validation prevent a passing packet. `run.sh` appends its revisions,
 local gate verdicts, and complete statement differences to this packet.
 
-Stage 50 generates its three evidence files under `POST_TREE.program/` rather
+When `stages/50-program.py` is absent, the packet has no stage-50 row and expects
+no `POST_TREE.program` evidence. All audited statements must remain identical;
+old stage-50 receipts cannot grant permission. The empty `audit-changes.json`
+policy records this first-cutover restriction. Restoring the stage activates
+the later-cutover checks without an extra enable flag.
+
+When present, stage 50 generates its three evidence files under `POST_TREE.program/` rather
 than committing them. The packet invokes `50-program.py --check POST_TREE`
 first, then reads those files. That command validates the reviewed action list
 and source guards, regenerates the evidence, and compiles and audits adapters
 in bounded shards. The packet does not repeat the monolithic compilation.
 
-`audit-changes.json` identifies exactly forty intermediate declarations by file
+The later-cutover `audit-changes.json` identifies exactly forty intermediate declarations by file
 and name. It retains their reviewed old types, implementation names, and adapter
 names from `c6c7ea2`. A generated baseline cannot replace those old types. Each
 accepted change requires an exact elaborated pair and both checked adapters;
