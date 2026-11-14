@@ -539,7 +539,11 @@ Ltac sym_native call finish :=
   finish tree checked.
 
 (** Arithmetic is solved together when possible; other conditions remain available as individual goals. *)
-Ltac sym_solve_obligations solve :=
+Ltac sym_solve_obligations fs Hfacts solve :=
+  apply (obs_residual_sound _ _ fs _ Hfacts);
+  lazymatch goal with |- Forall ?P ?os =>
+    let residual := eval vm_compute in os in change (Forall P residual)
+  end;
   apply sym_conjunction_sound;
   cbn [sym_conjunction]; sym_den_simpl;
   first [solve [solve] | repeat split; try solve].
@@ -579,14 +583,14 @@ Ltac sym_guard_env gamma :=
   end.
 
 (** Named leaves expose ordinary proof goals without framing or restoring names through Iris tactics. *)
-Ltac sym_context_finish solve tree :=
+Ltac sym_context_finish fs Hfacts solve tree :=
   lazymatch tree with
   | NSplit ?c ?yes ?no =>
-      split; [let H := fresh "Hsym_yes" in intros H; cbn [zden cden vz vp vr nth nth_error] in H; sym_context_finish solve yes |
-              let H := fresh "Hsym_no" in intros H; cbn [zden cden vz vp vr nth nth_error] in H; sym_context_finish solve no]
+      split; [let H := fresh "Hsym_yes" in intros H; cbn [zden cden vz vp vr nth nth_error] in H; sym_context_finish fs Hfacts solve yes |
+              let H := fresh "Hsym_no" in intros H; cbn [zden cden vz vp vr nth nth_error] in H; sym_context_finish fs Hfacts solve no]
   | NLeaf ?l ?lf ?names =>
       cbn [sym_context_goals leaf_state st_obs st_heap];
-      split; [unfold obs_den; sym_solve_obligations solve |
+      split; [unfold obs_den; sym_solve_obligations fs Hfacts solve |
       lazymatch lf with LStop ?why _ _ _ => idtac "sym_frun stopped:" why | _ => idtac end;
       cbn [sym_return_env sym_named_heap leaf_state st_heap sym_leaf_later];
       lazymatch goal with
@@ -611,6 +615,8 @@ Ltac sym_context_rule instance :=
 (** The soundness theorem connects the single computed tree to the caller's execution goal. *)
 Ltac sym_func_finish cs se h rho names cuts solve conv bs :=
   let fs := constr:(mkFacts bs cs) in
+  let Hfacts := fresh "Hsym_facts" in
+  assert (Hfacts : facts_hold rho fs) by (unfold facts_hold; split; sym_forall_side solve);
   let rule := lazymatch goal with |- @envs_entails _ _ _ (@wp _ _ _ _ ?W _ _ _ _) =>
     lazymatch W with @wp' _ _ _ ?instance => sym_context_rule instance end end in
   lazymatch goal with
@@ -628,10 +634,11 @@ Ltac sym_func_finish cs se h rho names cuts solve conv bs :=
           let guard := constr:(@Build_envs_Forall2 _ _ (fun P Q => P ⊢ ▷ Q) rest later hp hs) in
           refine (rule delta rest later ids p Ps fs se h f e ls cuts fuel l insts j rho Phi _ take _ guard _ _ _ _);
           [sym_den_simpl; reflexivity |
-           unfold facts_hold; split; sym_forall_side solve |
+           exact Hfacts |
            unfold env_models; sym_forall_side ltac:(lk_prove) |
            lazymatch goal with |- ?call = _ => conv call ltac:(fun tree checked => exact checked) end |
-           lazymatch goal with |- sym_context_goals _ _ _ _ _ _ _ _ _ _ ?tree => sym_context_finish solve tree end]
+           lazymatch goal with |- sym_context_goals _ _ _ _ _ _ _ _ _ _ ?tree => sym_context_finish fs Hfacts solve tree end];
+          try clear Hfacts
           end end
         end
       end
@@ -651,7 +658,8 @@ Ltac sym_frun_with names cuts solve conv :=
         lazymatch qe with (?se, ?r2) => let qc := sym_quote_caps r2 props in
           lazymatch qc with (?cs, ?rho) =>
             let terms := sym_bound_terms rho in
-            sym_bounds props terms constr:(@nil bound)
+            let congruences := sym_congruences rho props constr:(@nil bound) in
+            sym_bounds props terms congruences
               ltac:(sym_func_finish cs se h rho names cuts solve conv)
           end end
     end
@@ -697,5 +705,17 @@ Proof.
   iApply ("HK" with "HP HQ").
 Qed.
 
+(** An aligned base stays aligned after a whole-cell offset, but not after a partial-cell offset.
+    The same computation handles subtraction and leaves an unrecorded base unknown. *)
+Example sym_alignment_residues :
+  let fs := mkFacts [mkBound (ZMod (ZV 0) 8) 0 1] [] in
+  (zwrap fs (ZAdd (ZV 0) (ZK 24)) 8,
+   zwrap fs (ZAdd (ZV 0) (ZK 3)) 8,
+   zwrap fs (ZSub (ZV 0) (ZK 3)) 8,
+   zresidue fs (ZV 1) 8) = (ZK 0, ZK 3, ZK 5, None).
+Proof. reflexivity. Qed.
+
+Print Assumptions zresidue_sound.
+Print Assumptions ob_decide_sound.
 Print Assumptions sym_func_sound.
 Print Assumptions tac_sym_func_sound.

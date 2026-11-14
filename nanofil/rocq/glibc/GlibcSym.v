@@ -351,6 +351,14 @@ Fixpoint zrange (fs : facts) (x : zexp) : option (Z * Z) :=
           | _, _ => None
           end
       | ZMod _ m => if 0 <? m then Some (0, m - 1) else None
+      | ZCmp c k a b =>
+          match zrange fs a, zrange fs b with
+          | Some (lo, hi), Some (lo', hi') =>
+              if (lo =? hi) && (lo' =? hi') then
+                match cond_bit c k lo lo' with Some v => Some (v, v) | None => None end
+              else None
+          | _, _ => None
+          end
       | ZExt n _ => Some (sym_ext_range n)
       | ZBits BAnd a b =>
           match zrange fs a, zrange fs b with
@@ -362,10 +370,34 @@ Fixpoint zrange (fs : facts) (x : zexp) : option (Z * Z) :=
       end
   end.
 
-(** A wrap disappears only when the entire inferred interval fits its modulus. *)
+(** Alignment facts describe a remainder rather than an interval on the address.
+    A singleton bound on a remainder records its congruence class.
+    Addition and subtraction preserve these classes without inspecting the valuation. *)
+Fixpoint zresidue (fs : facts) (x : zexp) (m : Z) : option Z :=
+  match known_range (f_bounds fs) (ZMod x m) with
+  | Some (lo, hi) => if lo =? hi then Some lo else None
+  | None =>
+      match x with
+      | ZK z => Some (z mod m)
+      | ZAdd a b =>
+          match zresidue fs a m, zresidue fs b m with
+          | Some a, Some b => Some ((a + b) mod m)
+          | _, _ => None
+          end
+      | ZSub a b =>
+          match zresidue fs a m, zresidue fs b m with
+          | Some a, Some b => Some ((a - b) mod m)
+          | _, _ => None
+          end
+      | _ => None
+      end
+  end.
+
+(** A wrap becomes a constant when its congruence is known.
+    Otherwise it disappears only when the entire inferred interval fits its modulus. *)
 Definition zwrap (fs : facts) (x : zexp) (m : Z) : zexp :=
-  match x with
-  | ZK z => ZK (z mod m)
+  match zresidue fs x m with
+  | Some r => ZK r
   | _ =>
       match zrange fs x with
       | Some (lo, hi) => if (0 <=? lo) && (hi <? m) then x else ZMod x m
@@ -404,6 +436,15 @@ Proof.
   - destruct (0 <? m) eqn:Em; [|discriminate].
     apply Z.ltb_lt in Em. intros H. inversion H; subst.
     pose proof (Z.mod_pos_bound (zden ρ x) m Em). cbn. lia.
+  - destruct (zrange fs x1) as [[a b]|] eqn:E1; [|discriminate].
+    destruct (zrange fs x2) as [[d e]|] eqn:E2; [|discriminate].
+    destruct ((a =? b) && (d =? e)) eqn:Es; [|discriminate].
+    apply andb_true_iff in Es as [Hab Hde].
+    apply Z.eqb_eq in Hab. apply Z.eqb_eq in Hde.
+    specialize (IHx1 _ _ eq_refl). specialize (IHx2 _ _ eq_refl).
+    assert (Hx : zden ρ x1 = a) by lia. assert (Hy : zden ρ x2 = d) by lia.
+    destruct (cond_bit c k a d) as [v|] eqn:Ec; [|discriminate].
+    intros H. injection H as <- <-. cbn [zden]. rewrite Hx Hy Ec. lia.
   - destruct o; try discriminate.
     destruct (zrange fs x1) as [[a b]|] eqn:E1; [|discriminate].
     destruct (zrange fs x2) as [[c d]|] eqn:E2; [|discriminate].
@@ -416,12 +457,36 @@ Proof.
     destruct n; inversion H; subst; exact H0.
 Qed.
 
+(** Every computed residue equals the remainder of the represented integer. *)
+Lemma zresidue_sound ρ fs x m r : facts_hold ρ fs ->
+  zresidue fs x m = Some r -> zden ρ x mod m = r.
+Proof.
+  intros Hfs. revert r. induction x; intros r; cbn [zresidue];
+    destruct (known_range (f_bounds fs) _) as [[lo hi]|] eqn:E;
+    try (destruct (lo =? hi) eqn:He; [|discriminate];
+      intros H; injection H as <-; apply Z.eqb_eq in He;
+      pose proof (known_range_sound _ _ _ _ _ (proj1 Hfs) E) as Hr;
+      cbn [zden] in *; lia);
+    try discriminate.
+  - intros H. now injection H as <-.
+  - destruct (zresidue fs x1 m) as [a|] eqn:Ea; [|discriminate].
+    destruct (zresidue fs x2 m) as [b|] eqn:Eb; [|discriminate].
+    intros H. injection H as <-. cbn [zden].
+    rewrite Zplus_mod. now rewrite (IHx1 _ eq_refl) (IHx2 _ eq_refl).
+  - destruct (zresidue fs x1 m) as [a|] eqn:Ea; [|discriminate].
+    destruct (zresidue fs x2 m) as [b|] eqn:Eb; [|discriminate].
+    intros H. injection H as <-. cbn [zden].
+    rewrite Zminus_mod. now rewrite (IHx1 _ eq_refl) (IHx2 _ eq_refl).
+Qed.
+
 (** Removing a redundant wrap does not change the represented integer. *)
 Lemma zwrap_sound ρ fs x m : facts_hold ρ fs ->
   zden ρ (zwrap fs x m) = zden ρ x mod m.
 Proof.
-  intros Hfs. unfold zwrap. destruct x; try reflexivity;
-    destruct (zrange fs _) as [[lo hi]|] eqn:E; try reflexivity;
+  intros Hfs. unfold zwrap.
+  destruct (zresidue fs x m) as [r|] eqn:Er.
+  - cbn [zden]. symmetry. eapply zresidue_sound; eauto.
+  - destruct (zrange fs _) as [[lo hi]|] eqn:E; try reflexivity;
     destruct ((0 <=? lo) && (hi <? m)) eqn:H; try reflexivity;
     apply andb_true_iff in H as [Hl Hh]; apply Z.leb_le in Hl; apply Z.ltb_lt in Hh;
     symmetry; apply Z.mod_small; pose proof (zrange_sound _ _ _ _ _ Hfs E); lia.
@@ -1291,6 +1356,47 @@ Definition ob_den (ρ : valuation) (o : ob) : Prop :=
 (** All conditions of a list hold. *)
 Definition obs_den (ρ : valuation) (os : list ob) : Prop := Forall (ob_den ρ) os.
 
+(** Bounds and congruences settle arithmetic conditions before the caller invokes a solver.
+    Store conditions still require the caller's interpretation of memory. *)
+Definition ob_decide (fs : facts) (o : ob) : bool :=
+  match o with
+  | OEq a b => zlinear_eqb fs a b
+  | OLe a b | OLt a b =>
+      match zrange fs (zclean fs a), zrange fs (zclean fs b) with
+      | Some (_, hi), Some (lo, _) =>
+          match o with OLe _ _ => hi <=? lo | _ => hi <? lo end
+      | _, _ => false
+      end
+  | _ => false
+  end.
+
+(** A successful decision proves the original condition, not a weakened replacement. *)
+Lemma ob_decide_sound ρ fs o : facts_hold ρ fs ->
+  ob_decide fs o = true -> ob_den ρ o.
+Proof.
+  intros Hfs. destruct o; cbn [ob_decide ob_den]; try discriminate.
+  1,2: destruct (zrange fs (zclean fs a)) as [[al ah]|] eqn:Ea; [|discriminate];
+    destruct (zrange fs (zclean fs b)) as [[bl bh]|] eqn:Eb; [|discriminate];
+    pose proof (zrange_sound _ _ _ _ _ Hfs Ea) as Ha;
+    pose proof (zrange_sound _ _ _ _ _ Hfs Eb) as Hb;
+    rewrite (zclean_sound _ _ _ Hfs) in Ha;
+    rewrite (zclean_sound _ _ _ Hfs) in Hb.
+  - intros H. apply Z.leb_le in H. lia.
+  - intros H. apply Z.ltb_lt in H. lia.
+  - apply zlinear_eqb_sound; exact Hfs.
+Qed.
+
+(** Filtering retains every condition whose truth the domain cannot establish. *)
+Lemma obs_residual_sound ρ fs os : facts_hold ρ fs ->
+  Forall (ob_den ρ) (filter (fun o => negb (ob_decide fs o)) os) ->
+  Forall (ob_den ρ) os.
+Proof.
+  intros Hfs. induction os as [|o os IH]; cbn; [constructor|].
+  destruct (ob_decide fs o) eqn:E; cbn.
+  - intros H. constructor; [eapply ob_decide_sound; eauto|auto].
+  - intros H. inversion H; subst. constructor; auto.
+Qed.
+
 (** A leaf describes what remains to prove. After a jump or a branch the
     rest of the proof comes after at least one step, so it may use
     hypotheses guarded by a [[later-modality]]. The new atoms and the
@@ -1967,7 +2073,7 @@ Ltac sym_context seen :=
   | H : ?P |- _ =>
       let relevant := lazymatch P with
         | Z.le _ _ => idtac | Z.lt _ _ => idtac
-        | @eq cap _ _ => idtac | lookup _ _ = Some _ => idtac
+        | @eq cap _ _ => idtac | @eq Z _ _ => idtac | lookup _ _ = Some _ => idtac
         | _ /\ _ => idtac
         end in
       let unseen := sym_not_in P seen in
@@ -2037,6 +2143,26 @@ Ltac sym_limits props x lo hi :=
         | _ => constr:((lo, hi))
         end in
       lazymatch bounds with (?lo', ?hi') => sym_limits ps x lo' hi' end
+  end.
+
+(** The tactic reads alignment equations from the caller's hypotheses. *)
+Ltac sym_congruences rho props bs :=
+  lazymatch props with
+  | [] => bs
+  | ?P :: ?ps =>
+      let next := match goal with
+        | _ => lazymatch P with
+          | ?x mod ?m = ?r =>
+              let m := eval cbv in m in let ml := sym_literal m in
+              let r := eval cbv in r in let rl := sym_literal r in
+              let q := sym_quote_z rho x in
+              lazymatch q with (?sx, rho) =>
+                let hi := eval vm_compute in (r + 1) in
+                constr:(mkBound (ZMod sx m) r hi :: bs)
+              end
+          end
+        | _ => bs
+        end in sym_congruences rho ps next
   end.
 
 (** Every valuation entry supplies an atomic expression that may have useful bounds. *)
