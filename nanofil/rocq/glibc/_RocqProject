@@ -348,6 +348,7 @@ getopt/GetoptLongCap.v
 getopt/GetoptShortCap.v
 getopt/GetoptKnownCap.v
 getopt/GetoptKnownRet.v
+getopt/GetoptCharRet.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v
