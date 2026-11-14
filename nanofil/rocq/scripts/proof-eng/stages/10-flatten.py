@@ -16,6 +16,8 @@ parser.add_argument('tree')
 parser.add_argument('--runtime', choices=('interp', 'abstract'),
                     default=os.environ.get('PE_RUNTIME', 'interp'))
 parser.add_argument('--name-report', help='write the duplicate-name and unqualified-use audit as JSON')
+parser.add_argument('--check-names-only', action='store_true',
+                    help='check duplicate names without rewriting the input tree')
 parser.add_argument('--name-baseline', default=os.path.join(os.path.dirname(__file__), '..', 'flatten-name-baseline.json'),
                     help='reviewed duplicated names allowed to have unqualified uses')
 parser.add_argument('--notation-report', help='write imported notation-string collisions as JSON')
@@ -29,10 +31,16 @@ mod = {f: os.path.basename(f)[:-2] for f in files}
 if len(set(mod.values())) != len(files):
     raise ValueError('two proof files share a base name')
 text = {f: open(os.path.join(src, f)).read() for f in files}
+# A file may give its logic parameter another name than LG0. Bring it to the
+# common form, a parameter LG0 and an alias of the file's own name, so that
+# the rest of the stage lifts it like every other wrapper.
+OTHER_LOGIC = re.compile(r'^([ \t]*Module [A-Za-z0-9_]+ \(R : Runtime\)) \((?!LG0\b)([A-Za-z0-9_]+) : LogicSig R\)\.[ \t]*\n', re.M)
+for f in files:
+    text[f] = OTHER_LOGIC.sub(lambda m: f'{m[1]} (LG0 : LogicSig R).\nModule {m[2]} := LG0.\n', text[f])
 with open(args.comment_table) as table:
     comment_table = {row['file']: row for row in json.load(table)}
 for f, row in comment_table.items():
-    if text.get(f, '').count(row['original']) != 1:
+    if not args.check_names_only and text.get(f, '').count(row['original']) != 1:
         raise ValueError(f'{f}: expected exactly one original comment from {args.comment_table}')
 HDR = re.compile(r'^[ \t]*Module ([A-Za-z0-9_]+) \(R : Runtime\)(?: \(LG0 : LogicSig R\))?\.[ \t]*\n', re.M)
 functor_file = {}
@@ -175,6 +183,9 @@ with open(args.name_baseline) as baseline:
     unknown = sorted(name_report.keys() - set(json.load(baseline)))
 if unknown:
     raise ValueError(f'new duplicated names with unqualified uses: {unknown}; review {args.name_baseline}')
+if args.check_names_only:
+    print(f'@@proof-eng duplicate-name check passed: {len(name_report)} reviewed names')
+    sys.exit(0)
 notation_collisions = []
 removed_comments = []
 shadowed = []
@@ -321,6 +332,8 @@ for f in files:
         s = logic_alias.sub(lambda m: prefix + ('' if m[1] == 'LG0' else 'Module ' + m[1] + ' := LG0.'), s)
     if re.search(r'^Module (?:Type )?\w+\s+\(R\s*:', code_only(s), re.M):
         raise ValueError(f'{f}: runtime parameter was not specialized')
+    if re.search(r'^Module \w+\s+\(\w+\s*:\s*LogicSig R\)', code_only(s), re.M):
+        raise ValueError(f'{f}: a wrapper over the logic instance was not lifted')
     if 'InterpRuntime' in code_only(s) and 'InterpRuntime' not in code:
         raise ValueError(f'{f}: conversion introduced an interpreter dependency')
     used.discard(mod[f])

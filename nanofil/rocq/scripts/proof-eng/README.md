@@ -24,15 +24,20 @@ nix build -L /tmp/pe-wt#checks.x86_64-linux.nanofil-glibc
 
 A stage is one program that takes the tree as its argument and rewrites it in place. The number in its name fixes the order.
 
-- `10-flatten.py` removes the `XOn (R : Runtime) (LG0 : LogicSig R)` functor wrappers and their aliases. Files name their dependencies by file name over the one instance in `Fix.v`.
-- `20-keeps` moves `keeps` to the shared logic and rewrites the `libio/` disjunctions to it.
-- `30-tactics` ports proofs to the one step-tactic library `GlibcTactics.v`.
-- `40-rules` replaces rule applications by wrapper tactics.
-- `50-program` replaces `find_fn` premises and local `irisGS` instances by the `Defines` class and the `GlibcProgram` context.
+- `10-flatten.py` makes every file an ordinary file over one fixed logic. On main each file is a functor over a runtime and a logic, and each importer applies it again, which costs compile time and object size. The stage removes the `XOn (R : Runtime) (LG0 : LogicSig R)` wrappers and their aliases, and a file then names a dependency by its file name. The one logic instance is in `Fix.v`.
+- `15-code.py` regenerates the code modules for the flat layout.
+- `20-keeps.py` moves `keeps` to the shared file `GlibcEnv.v` and rewrites the `libio/` disjunctions to it.
+- `30-tactics.py` ports proofs to the one step-tactic library `GlibcTactics.v`.
+- `50-program` shortens the statements of rule lemmas. On main each lemma takes one premise for each function that its proof looks up in the linked program, and each caller passes all of them. The stage gives a rules section one context for the linked program instead. The context `GlibcProgram` replaces the section's local `irisGS` instance, and the class `Defines` replaces its `find_fn` premises. A lemma that the audit names keeps its name and type, and it is proved from an implementation named `FILE_NAME_program`.
+- `60-rules` replaces rule applications by wrapper tactics that discharge the standard side conditions.
 
 Several files define tactics with the same short name, such as `arith`. Stage `10` keeps each use bound to the definition it had before. It reorders the imports of the file when that is enough, and otherwise it writes the use with its file name, as in `StrlenLoop.arith`. The reviewed names are listed in `flatten-name-baseline.json`, and the stage fails when a new one appears.
 
-Stages `10`, `15-code.py` (which regenerates the code modules for the flat layout) and `20` exist so far.
+Stages `10`, `15`, `20` and `30` are on the branch. Stage `50` is being checked before it is pushed, and stage `60` is developed on the branch `proof-eng-rules`.
+
+`../glibc-code/skeleton.py` prints block-lemma statement skeletons from a manifest's linked IR. It is not a stage, and `../glibc-code/README.md` describes it.
+
+`lint-tactics.py TREE --max N` counts the `Ltac` definitions outside the library and fails when there are more than `N`.
 
 ## Rules for a stage
 
