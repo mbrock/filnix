@@ -12,6 +12,7 @@
     bytes are [buf_own]'s. LibioPutsNl.v walks the block that uses
     them. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +21,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString LibioGenCode LibioXsputnCode LibioPutsInv LibioPutsLock LibioPutsUnlock LibioPutsCall LibioPutsMode.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -28,11 +31,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioPutsBufOn (R : Runtime) (LG0 : LogicSig R).
-Module PM := LibioPutsModeOn R LG0.
-Import PM.PC.PU.PL.PI PM.PC.PU.PL.PI.CS PM.PC.PU.PL.PI.CS.SW PM.PC.PU.PL.PI.CS.SW.FI.ML PM.PC.PU.PL.PI.CS.SW.FI.LG
-  PM.PC.PU.PL.PI.CS.SW.FI.L PM.PC.PU.PL.PI.CS.SW.OW PM.PC.PU.PL.PI.CS.SW.FI PM.PC.PU.PL.PI.CS.SW.ST.
+
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** One byte's [bytes] is its [ibyte]. *)
 Lemma bytes_one `{!gen_heapGS piece pval Σ} b o x : bytes b o [x] ⊣⊢ ibyte b o x.
@@ -147,4 +147,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioPutsBufOn.

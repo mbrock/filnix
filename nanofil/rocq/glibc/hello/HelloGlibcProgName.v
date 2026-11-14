@@ -23,6 +23,7 @@
     the parameter nonnull, and `argc >= 1` makes `argv[0]` a string).
     The literals are read-only [word_string]s. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -31,6 +32,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrchrCode MemchrLast StrlenWord
   StrrchrLogic StrncmpCode HelloGlibcProgCells HelloGlibcProgLibs.
+From Glibc Require HelloGlibcProgCells HelloGlibcProgLibs OsWorld StrrchrLogic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -40,14 +43,10 @@ Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
-(** `set_program_name` over the [[runtime]] R and the Logic instance LG0. *)
-Module HelloGlibcProgNameOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The "/.libs/" test and what follows it. *)
-Module PL := HelloGlibcProgLibsOn R LG0.
 (** glibc's strrchr. *)
-Module SR := StrrchrLogicOn R LG0.
 (** The world's rules. *)
-Module OW := PL.OW.
 (** The Logic instance. *)
 Module LG := LG0.
 (** Its language. *)
@@ -76,17 +75,17 @@ Context (pb nb sb : Z) (preg nreg sreg : region) (lp tp : ptr)
   (Hsb_cell : 0 <= sb /\ sb mod 8 = 0 /\ sb + 8 <= r_end sreg /\ r_end sreg <= 2 ^ 48).
 
 (** [os_wi] w0 survives safepoints. *)
-Local Instance pn_stable : SafepointStable (os_wi w0) := OW.os_wi_stable w0.
+Local Instance pn_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The Iris instance of the registry and [os_wi] w0. *)
 Local Instance pn_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry (os_wi w0) ge.
 (** The expressions of the language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** HelloGlibcProgCells.v's [memcmp_spec] for this genv. *)
-Local Notation memcmp_spec := (PL.PC.memcmp_spec w0 registry ge).
+Local Notation memcmp_spec := (HelloGlibcProgCells.memcmp_spec w0 registry ge).
 (** The three cells, holding x, y and z. *)
-Local Notation name_cells := (PL.PC.name_cells pb nb sb preg nreg sreg).
+Local Notation name_cells := (HelloGlibcProgCells.name_cells pb nb sb preg nreg sreg).
 (** From L8 on. *)
-Local Notation spn_L8 := (PL.spn_L8 w0 registry ge Hmemeq Hstrncmp pb nb sb preg nreg sreg lp tp Hpb Hnb Hsb Hlp Htp
+Local Notation spn_L8 := (HelloGlibcProgLibs.spn_L8 w0 registry ge Hmemeq Hstrncmp pb nb sb preg nreg sreg lp tp Hpb Hnb Hsb Hlp Htp
   Hpb_cell Hnb_cell Hsb_cell).
 
 (** glibc and Hello's `set_program_name(argv0)`: on the string s at p,
@@ -94,7 +93,7 @@ Local Notation spn_L8 := (PL.spn_L8 w0 registry ge Hmemeq Hstrncmp pb nb sb preg
     `program_invocation_name` a pointer to the byte [name_idx] of s,
     and into `program_invocation_short_name` one to its byte
     [short_idx], and hands the string back. *)
-Lemma set_program_name_glibc (Hm : SR.memrchr_spec registry (os_wi w0) ge) (Hcmp : memcmp_spec)
+Lemma set_program_name_glibc (Hm : StrrchrLogic.memrchr_spec registry (os_wi w0) ge) (Hcmp : memcmp_spec)
     dq p s x0 y0 z0 Φ :
   (dq = DfracDiscarded \/ exists q, dq = DfracOwn q) ->
   word_string dq p s -∗ word_string DfracDiscarded lp libs_bytes -∗ word_string DfracDiscarded tp lt_bytes -∗
@@ -107,7 +106,7 @@ Proof.
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)". iDestruct (word_string_intro with "Hw") as "Hs"; [exact Hs|].
   destruct (str_shape_addr _ _ _ _ _ Hs) as [Ha0 Ha48].
   iApply wp_enter; [exact find_s_start | reflexivity |]. iNext. cbn [b_insts b_jump s_start].
-  iApply (SR.wp_call_glibc_strrchr registry (os_wi w0) ge Hm _ _ _ _ _ _ _ _ _ dq p s 47 with "Hs");
+  iApply (StrrchrLogic.wp_call_glibc_strrchr registry (os_wi w0) ge Hm _ _ _ _ _ _ _ _ _ dq p s 47 with "Hs");
     [reflexivity | lia | exact Hstrrchr | exact Hstrlen | reflexivity |].
   iNext. iIntros "Hs". change (47 mod 256) with 47.
   destruct (last_byte 47 (s ++ [0])) as [t|] eqn:Ht; cbn [hit_ptr]; gen_env.
@@ -129,4 +128,3 @@ Proof.
 Qed.
 
 End progname.
-End HelloGlibcProgNameOn.

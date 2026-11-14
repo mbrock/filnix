@@ -4,6 +4,7 @@
 
     This proof supplies the storage needed by the L40 selection. It does not
     prove the preceding stream call or assume that such a call accepts all bytes. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,16 +13,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode PrintfBufferXsputnSwitch PrintfStreamHeap.
+From Glibc Require FileInv LibioCloseSteps LibioLogic LibioOverflowBase LibioPutsInv OsWorld PrintfBufferXsputnSwitch PrintfStreamHeap SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The heap view and selection share the caller's memory and OS interpretation. *)
-Module PrintfBufferXsputnHeapSwitchOn (R : Runtime) (LG0 : LogicSig R).
-Module HS := PrintfStreamHeapOn R LG0.
-Module XS := PrintfBufferXsputnSwitchOn R LG0.
-Import HS HS.PS.PI HS.PS.PI.CS HS.PS.PI.CS.SW HS.PS.PI.CS.SW.FI.ML
-  HS.PS.PI.CS.SW.FI.LG HS.PS.PI.CS.SW.FI.L HS.PS.PI.CS.SW.OW
-  HS.PS.PI.CS.SW.FI HS.PS.PI.CS.SW.ST.
+
+Import PrintfStreamHeap LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -60,15 +58,14 @@ Proof.
   assert (Hwe : we = mkPtr (db + eo) (Obj db)).
   { destruct we as [a c]. cbn in *. subst c. f_equal; lia. }
   rewrite Hwe.
-  iApply (XS.wp_printf_xsputn_switch_owned w0 registry ge Hswitch e from bb breg fb freg
+  iApply (PrintfBufferXsputnSwitch.wp_printf_xsputn_switch_owned w0 registry ge Hswitch e from bb breg fb freg
     db dreg k eo (DfracOwn 1%Qp) (DfracOwn 1%Qp)
     with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try assumption; try (unfold file_size in *; lia).
   iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".
   iApply ("HK" $! db k eo with "Hb Hfp [Hf Hd Hxs Hfl Htw Hoff H0 H1 H2 H3 Hwp Hwe H6 H7 Hrest] Hbase Hptr Hend").
   iExists fb, freg, st, db, dreg, sz, k, we, xs, fl, tw, off, col.
   iFrame "Hf Hrest". iSplit; [done|].
-  rewrite /OB.ovf_state Hwe. iFrame. iPureIntro. rewrite -Hwe. exact Hd.
+  rewrite /LibioOverflowBase.ovf_state Hwe. iFrame. iPureIntro. rewrite -Hwe. exact Hd.
 Qed.
 
 End rules.
-End PrintfBufferXsputnHeapSwitchOn.

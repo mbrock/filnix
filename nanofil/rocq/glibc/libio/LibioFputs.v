@@ -25,6 +25,8 @@
     | the result, 1 or `c: EOF` | `c: L162`, `c: L106` | here |
     | the release | `c: L107` | LibioFputsUnlock.v | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -34,6 +36,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString StrlenLogic LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsMode LibioFputsLock
   LibioFputsUnlock LibioFputsCall.
+From Glibc Require FileInv LibioCloseSteps LibioFputsCall LibioFputsLock LibioFputsUnlock LibioLogic LibioPutsInv OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -42,11 +46,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFputsOn (R : Runtime) (LG0 : LogicSig R).
-Module FC := LibioFputsCallOn R LG0.
-Import FC FC.FU FC.FU.PL FC.FU.PL.PI FC.FU.PL.PI.CS FC.FU.PL.PI.CS.SW FC.FU.PL.PI.CS.SW.FI.ML
-  FC.FU.PL.PI.CS.SW.FI.LG FC.FU.PL.PI.CS.SW.FI.L FC.FU.PL.PI.CS.SW.OW FC.FU.PL.PI.CS.SW.FI FC.FU.PL.PI.CS.SW.ST.
+
+Import LibioFputsCall LibioFputsUnlock LibioFputsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -112,7 +113,7 @@ Proof.
     [iExists lb, lreg; iSplit; done|].
   (* The orientation and the write. *)
   iApply (wp_fputs_L113 w0 registry ge vb vreg Rx Hxs_fn Hxs with "Hvt Hf Hstr HRx"); try eassumption.
-  iNext. iIntros (e1 c (Hsame & Hc)) "Hf Hstr HRx".
+  iNext. iIntros (e1 c (Hsame & Hc)) "Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   assert (Hv2' : lookup (TAtom "v2") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hc0' : lookup (TAtom "chk0") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   clear Hsame. unfold fp_j162.
@@ -120,7 +121,7 @@ Proof.
   lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] => destruct (n =? 0) end;
     cbn [edge_label].
   - (* The write fell short: L106, then L107 with `c: EOF`. *)
-    fs. fs. iApply wp_enter; [reflexivity | vx | iNext].
+    step. step. iApply wp_enter; [reflexivity | vx | iNext].
     iApply (wp_fputs_L107 _ (2 ^ 32 - 1) with "Hs Hf"); [lk_prove | lk_prove | lookups; reflexivity | lia |].
     iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr Hf HRx"). right. reflexivity.
   - (* The whole string written: L107 with 1. *)
@@ -130,4 +131,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioFputsOn.

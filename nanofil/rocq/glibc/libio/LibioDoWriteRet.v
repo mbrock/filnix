@@ -3,6 +3,7 @@
     r of the n bytes: `c: _cur_column` is 0, so `c: _IO_adjust_column`
     is not called, then the end of the call ([wp_do_write_ret]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,6 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioDoWriteCode FileInv
   LibioLogic SysWrappers.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,10 +29,8 @@ Definition dw_join : block := Eval vm_compute in
   match find_block (TAtom "iw_1.iw_2.join") (fn_blocks glibc__IO_new_do_write) with
   | Some b => b | None => mkBlock (TAtom "iw_1.iw_2.join") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoWriteRetOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -85,14 +86,13 @@ Proof.
   intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hmd Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.
   iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol HK".
   cbn [dw_join b_insts b_jump skipn].
-  st. norm. chk "Hl".
+  step. norm. check "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hcol"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |].
-  iNext. iIntros "Hl Hcol". br. st. br.
+  iNext. iIntros "Hl Hcol". branch. step. branch.
   iApply (Htail_spec with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
-    try side.
+    try libio_side.
   iNext. iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend".
   iApply ("HK" with "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol").
 Qed.
 
 End rules.
-End LibioDoWriteRetOn.

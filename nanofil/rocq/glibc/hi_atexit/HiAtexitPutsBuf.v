@@ -3,6 +3,7 @@
     and heap origin through the pointer loads and byte store. The
     close proof needs all three even after output has failed. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,14 +12,11 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioDefaultXsputnBuf HiAtexitBase HiAtexitGe HiAtexitOutputState.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioLogic LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB XB.DX.RM.SM.TL.BY.BF XB.DX.RM.SM.TL.BY.BF.CP
-  XB.DX.RM.SM.TL.BY.BF.CP.CS XB.DX.RM.SM.TL.BY.BF.CP.CS.SW
-  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.ML XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.LG
-  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.L XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.OW
-  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.ST.
+Import LibioXsputnSetp.
+Import LibioXsputnBase LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

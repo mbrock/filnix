@@ -5,6 +5,7 @@
     The parser consumes the bytes before the terminating NUL. Its result
     describes syntax, not successful output or a proof of glibc's formatter.
     Callers must separately own the format string and its terminator. *)
+From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List Bool Lia.
 Import ListNotations.
 Open Scope Z_scope.

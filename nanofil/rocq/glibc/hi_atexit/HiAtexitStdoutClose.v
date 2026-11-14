@@ -3,6 +3,7 @@
     stream fields to the proved close callback. The caller still
     supplies the actual stream list and thread cleanup resources. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,12 +12,12 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   HiAtexitBase HiAtexitGe HiAtexitFclose HiAtexitCloseStdout HiAtexitOutputClose HiAtexitStdout.
+From Glibc Require FileInv LibioCloseSteps LibioFcloseTail LibioLogic LibioPutsInv LibioPutsLock OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
-Import HP.PN.PB.PM.PC.PU.PL.
-Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
-  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
-Import HFC.FU.FT.
+Import LibioPutsLock.
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioFcloseTail.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

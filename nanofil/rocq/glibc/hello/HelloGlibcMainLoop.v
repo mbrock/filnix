@@ -8,6 +8,7 @@
     The end-of-options result leaves the loop; every other result
     reaches the dispatch proof. Guarded induction justifies the back edges. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,15 +19,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart
   HelloGlibcMainDispatch.
+From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The option-loop proof shares one [[runtime]] and logic instance. *)
-Module HelloGlibcMainLoopOn (R : Runtime) (LG0 : LogicSig R).
+
 (** Dispatch supplies the option branches and their shared step rules. *)
-Module Dp := HelloGlibcMainDispatchOn R LG0.
-Import Dp Dp.St Dp.St.S Dp.St.S.D Dp.St.S.D.FB Dp.St.S.D.SW
-  Dp.St.S.D.SW.FI.ML Dp.St.S.D.SW.FI.LG Dp.St.S.D.SW.FI.L Dp.St.S.D.SW.OW Dp.St.S.D.SW.FI.
+Import HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section loop.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -68,13 +68,13 @@ Proof.
   assert (Hlose : lose = 0 \/ lose = 1).
   { destruct Hent as [[_ ->] | [[_ ->] | [_ [_ Hl]]]]; auto. }
   (* Enter iw_1.L8: pr.2 is lose. *)
-  eapply step_wand; [eapply (wp_enter _ _ _ _ _ _ _ _ _ (put (TAtom "iw_1.pr.2") (WInt lose) e)); ins;
+  eapply step_wand; [eapply (wp_enter _ _ _ _ _ _ _ _ _ (put (TAtom "iw_1.pr.2") (WInt lose) e)); inst;
     [reflexivity | destruct Hent as [[-> ->] | [[-> ->] | [[-> | ->] [Hpr _]]]];
      [vx | vx | phi_kept Hpr | phi_kept Hpr]] |].
   cbn [b_insts b_jump].
   (* getopt_long (argc, argv, "g:t", longopts, NULL). *)
-  st_global (hy_lits _ _ Hy "hello#str.69" ltac:(cbn; tauto)).
-  st_global (hy_lits _ _ Hy "hello#parse_options.longopts.64" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#str.69" ltac:(cbn; tauto)).
+  step_global (hy_lits _ _ Hy "hello#parse_options.longopts.64" ltac:(cbn; tauto)).
   iDestruct "Hav" as "(%Havp & Havl & Havs)".
   assert (Hargc : Z.of_nat (length ps) mod 2 ^ 32 = Z.of_nat (length ps)).
   { apply Z.mod_small. destruct Havp as (_ & _ & H31 & _). split; [lia|].
@@ -98,20 +98,19 @@ Proof.
   { rewrite -(big_opL_permutation (fun q => str_ro q) ps ps' Hperm). iExact "Hps". }
   pose proof (Permutation_length Hperm) as Hlen.
   (* Whether getopt_long returned -1. *)
-  st.
+  step.
   destruct (Z.eq_dec code 4294967295) as [-> | Hn1].
   { (* The end of the options. *)
-    br. iDestruct "HK" as "[_ [_ HK]]".
+    (branch_symbolic; LeavesLogic.decide_branch). iDestruct "HK" as "[_ [_ HK]]".
     iPoseProof (loop_res_fold with "Hav Hps' Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
     iApply ("HK" $! _ ps' a' i' g lose with "[%] Hr").
     split; [|split; [lk_prove | exact Hlose]].
     split; [rewrite -Hlen; unfold start_vars; repeat split; lk_prove | split; [exact Hb4 | split; [exact Hb6 | lia]]]. }
   (* Any other code: the dispatch, with the loop as its way back. *)
-  br. iPoseProof (loop_res_fold with "Hav Hps' Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
+  (branch_symbolic; LeavesLogic.decide_branch). iPoseProof (loop_res_fold with "Hav Hps' Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
   iApply (loop_dispatch w0 ge o D X Hy av ar b4 b6 pn sn Φ _ lose ps' a' i' g code with "Hro Hr Hga IH HK");
     [| lk_prove | exact Hlose | lk_prove | exact Hcode | exact Hn1].
   split; [rewrite -Hlen; unfold start_vars; repeat split; lk_prove | split; [exact Hb4 | split; [exact Hb6 | lia]]].
 Qed.
 
 End loop.
-End HelloGlibcMainLoopOn.

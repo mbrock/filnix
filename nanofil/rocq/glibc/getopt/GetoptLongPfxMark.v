@@ -5,6 +5,8 @@
     set, and it proves the marking of one entry safe: the parser writes
     only a byte of the set, and only below the count of entries. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,6 +19,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxCmp GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -32,18 +36,9 @@ Definition pmark_names : list name := Eval vm_compute in
 (** The parser decides here whether it marks the current entry. *)
 Definition plo_blk172 : block := Eval vm_compute in plo_blk "L172".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPfxMarkOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The comparison module supplies the option table, the targets and the tactics. *)
-Module LPC := GetoptLongPfxCmpOn R LG0.
-Import LPC LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT
-  LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section set.
 Context `{!gen_heapGS piece pval Σ}.
@@ -72,7 +67,7 @@ Section mark.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance mark_stable : SafepointStable (os_wi w0) := LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance mark_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance mark_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -93,9 +88,9 @@ Lemma wp_amb_mark f e ls l d a rest j sb sreg xs t Φ :
 Proof.
   intros Ha Ht Hsb Hend Hr. iIntros "Hl Hx HK".
   destruct (lookup_lt_is_Some_2 xs t Ht) as [x Hx].
-  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | arith | arith | apply Z.mod_1_r |].
+  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | apply Z.mod_1_r |].
   iNext. iIntros "Hl". rewrite (bytes_at sb xs t x Hx). iDestruct "Hx" as "(Hx0 & Hb & Hx1)".
-  iApply (wp_raw_store_byte with "Hl Hb"); [vx | vx | reflexivity | arith | wi_store |].
+  iApply (wp_raw_store_byte with "Hl Hb"); [vx | vx | reflexivity | StrlenLoop.arith | wi_store |].
   iNext. iIntros "Hl Hb". iApply ("HK" with "Hl"). change (1 mod 256) with 1.
   rewrite (bytes_at sb (<[t := 1]> xs) t 1); [|apply list_lookup_insert_eq; exact Ht].
   rewrite take_insert_ge; [|lia]. rewrite drop_insert_lt; [|lia]. iFrame.
@@ -116,22 +111,21 @@ Lemma wp_pfx_mark ks e n s k Φ :
 Proof.
   intros Hks H18 H13 Hk Hn. iIntros "Hs HK". cbn [b_insts b_jump plo_blk172].
   iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
-  - st. st. unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0.
+  - step. step. unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0.
     iApply wp_branch; [vx | iNext]. close_br.
     iApply ("HK" with "[%] []"); [split; [xkeep | right; reflexivity] | by iLeft].
-  - destruct Hs as (-> & Hk' & Hsb & Hend & Hr & Hlen). st. st.
+  - destruct Hs as (-> & Hk' & Hsb & Hend & Hr & Hlen). step. step.
     rewrite (Z.mod_small sb (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
     rewrite (proj2 (Z.eqb_neq sb 0)); [|lia].
-    iApply wp_branch; [vx | iNext]. close_br. en. st. st. norm.
+    iApply wp_branch; [vx | iNext]. close_br. step. step. step. norm.
     rewrite (sx_nonneg (Z.of_nat k)); [|lia].
     match goal with |- context [put (TAtom "v223") (WPtr {| ptr_addr := ?X; ptr_cap := Obj sb |})] =>
       replace X with (sb + Z.of_nat k) by (rewrite !Z.mod_small; lia) end.
     iApply (wp_amb_mark with "Hl Hx"); [lk_prove | lia | lia | lia | lia |].
-    iNext. iIntros "Hl Hx". st.
+    iNext. iIntros "Hl Hx". step.
     iApply ("HK" with "[%] [Hl Hx]"); [split; [xkeep | left; reflexivity]|].
     iRight. iExists sb, sreg, (<[k := 1]> xs). iFrame. iPureIntro.
     repeat split; try assumption. rewrite length_insert. exact Hlen.
 Qed.
 
 End mark.
-End GetoptLongPfxMarkOn.

@@ -6,6 +6,8 @@
     parser may skip the step, mark the option in the set it has, or make
     the set first. It writes only bytes of a set that it owns. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +20,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxMark GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -43,28 +47,15 @@ Definition pfx_out (P : name) (e : env) (a m : Z) (s : ptr) : Prop :=
 (** The choice starts in this block. *)
 Definition plo_blk126 : block := Eval vm_compute in plo_blk "L126".
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongPfxSetOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The allocation module supplies the callee rules, the set, the option table and the tactics. *)
-Module LPA := GetoptLongPfxAllocOn R LG0.
-Import LPA LPA.LPM LPA.LPM.LPC LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section set.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance set_stable : SafepointStable (os_wi w0) := LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance set_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance set_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -97,19 +88,19 @@ Proof.
   assert (Ha32 : 0 <= a < 2 ^ 32) by (destruct Ha as [-> | ->]; lia).
   assert (Hm32 : 0 <= m < 2 ^ 32) by (destruct Hm as [-> | [-> _]]; lia).
   assert (Hksk : avoids (palloc_keys ++ ks) pmark_names = true) by (rewrite avoids_app_l Hksm; reflexivity).
-  st. st. rewrite (Z.mod_small a (2 ^ 32)) //. change (0 mod 2 ^ 32) with 0.
+  step. step. rewrite (Z.mod_small a (2 ^ 32)) //. change (0 mod 2 ^ 32) with 0.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec a 0) as [-> | Ha0]; repeat close_br.
   2: { iApply ("HK" with "[%] Hs HM"). split; [xkeep|]. split; [left; repeat split; lk_prove | tauto]. }
-  st. st. rewrite (Z.mod_small pe (2 ^ 32)) //. try change (0 mod 2 ^ 32) with 0.
+  step. step. rewrite (Z.mod_small pe (2 ^ 32)) //. try change (0 mod 2 ^ 32) with 0.
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec pe 0) as [-> | Hpe0]; repeat close_br.
-  - st. rewrite (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
+  - step. rewrite (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
     iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n s k with "Hs");
       [exact Hksk | lk_prove | lk_prove | lia | lia |].
     iIntros (e' P (Hk' & HP)) "Hs". apply keeps_app in Hk' as [Hkt Hk'].
     iApply ("HK" $! e' P 1 m s with "[%] Hs HM").
     split; [eapply keeps_trans; [|exact Hk']; xkeep|].
     split; [right; split; [exact HP|]; repeat split; viakeep Hkt | tauto].
-  - st. st. st. iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
+  - step. step. step. iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
     + unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0. iApply wp_branch; [vx | iNext]. close_br.
       assert (m = 0) as -> by (destruct Hm as [? | [_ ?]]; [assumption | contradiction]).
       iApply (wp_pfx_alloc w0 registry ge ks _ M n j k with "HM");
@@ -120,7 +111,7 @@ Proof.
       split; [eapply keeps_trans; [|exact Hk']; xkeep|]. split; [right; repeat split; assumption | tauto].
     + pose proof Hs as (-> & Hsk & Hsb & Hse & Hsr & Hlen). cbn [ptr_addr].
       rewrite (Z.mod_small sb (2 ^ 64)); [|lia]. change (0 mod 2 ^ 64) with 0.
-      rewrite (proj2 (Z.eqb_neq sb 0)); [|lia]. iApply wp_branch; [vx | iNext]. close_br. st.
+      rewrite (proj2 (Z.eqb_neq sb 0)); [|lia]. iApply wp_branch; [vx | iNext]. close_br. step.
       rewrite (Z.mod_small m (2 ^ 32)) //. pcmp_fold "L172" plo_blk172.
       iApply (wp_pfx_mark w0 registry ge (palloc_keys ++ ks)%list _ n (mkPtr sb (Obj sb)) k with "[Hl Hx]");
         [exact Hksk | lk_prove | lk_prove | lia | lia | iRight; iExists sb, sreg, xs; iFrame; done |].
@@ -131,4 +122,3 @@ Proof.
 Qed.
 
 End set.
-End GetoptLongPfxSetOn.

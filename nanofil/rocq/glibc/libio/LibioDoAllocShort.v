@@ -3,6 +3,7 @@
     `c: _shortbuf` inside the `c: FILE` itself with
     `c: _IO_setb(fp, fp->_shortbuf, fp->_shortbuf + 1, 0)`. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,6 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
   LibioSetb.
+From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -19,10 +22,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoAllocShortOn (R : Runtime) (LG0 : LogicSig R).
-Module SW := SysWrappersOn R LG0.
-Import SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -58,18 +59,17 @@ Lemma wp_glibc__IO_doallocbuf_short fr fb freg fl mode oe Φ :
 Proof.
   intros Hfr Hfb Hal Hend Hfreg Hub Hmd. injection Hfr as <-.
   iIntros "Hl Hfl [%Hm Hmb] Hb Hbe HK". unfold file_size in Hend. unfold io_unbuffered in Hub.
-  enter. st. norm. chk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer with "Hl Hb [//]"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-  iNext. iIntros "Hl Hb _". st. st. br.
-  st. chk "Hl". iDestruct "Hfl" as "[%Hfl Hflb]". load_int "Hl Hflb". st. st.
-  assert (Hl2 : 0 <= Z.land fl 2 < 2 ^ 32) by (apply land_lt32; lia). brv true.
-  st. st. norm. chk "Hl". load_int "Hl Hmb". st. st. st. destruct Hmd as [-> | ->]; br.
-  all: st; st; st; norm; iApply wp_call_bind; [vx | exact Hsetbf | reflexivity |]; iNext;
-    iApply (Hsetb_null _ fb freg fl oe _ _ 0 with "Hl [$Hflb //] Hb Hbe"); try first [reflexivity | side];
+  iNext. iIntros "Hl Hb _". step. step. branch.
+  step. check "Hl". iDestruct "Hfl" as "[%Hfl Hflb]". load_s32_group "Hl Hflb". step. step.
+  assert (Hl2 : 0 <= Z.land fl 2 < 2 ^ 32) by (apply land_lt32; lia). branch_as true.
+  step. step. norm. check "Hl". load_s32_group "Hl Hmb". step. step. step. destruct Hmd as [-> | ->]; branch.
+  all: step; step; step; norm; iApply wp_call_bind; [vx | exact Hsetbf | reflexivity |]; iNext;
+    iApply (Hsetb_null _ fb freg fl oe _ _ 0 with "Hl [$Hflb //] Hb Hbe"); try first [reflexivity | libio_side];
     iNext; iIntros "Hl Hfl Hb Hbe"; iExists _; iSplit; [iPureIntro; reflexivity|]; iNext;
     iApply wp_ret_void; iNext; iApply ("HK" with "Hl Hfl [$Hmb //] Hb Hbe").
   Unshelve. all: exact freg.
 Qed.
 
 End rules.
-End LibioDoAllocShortOn.

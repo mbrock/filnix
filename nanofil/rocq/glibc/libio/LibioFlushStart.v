@@ -8,6 +8,7 @@
     cookie. Last it reads the head of the list, a stream whose life
     the caller lends ([live_cap]) or null. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +17,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean.
+From Glibc Require FileInv LibioCloseSteps LibioFlushClean LibioLogic OsThread OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -24,11 +27,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioFlushStartOn (R : Runtime) (LG0 : LogicSig R).
-Module FC := LibioFlushCleanOn R LG0.
-Import FC FC.FU.FL.CS FC.FU.FL.CS.SW FC.FU.FL.CS.SW.FI.ML FC.FU.FL.CS.SW.FI.LG FC.FU.FL.CS.SW.FI.L
-  FC.FU.FL.CS.SW.OW FC.FU.FL.CS.SW.FI FC.FU.FL.CS.SW.ST.
+
+Import LibioFlushClean LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -66,7 +66,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's
     cookie, not null (H). *)
-Ltac self H := iApply (OTh.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
+Ltac self H := iApply (OsThread.wp_zthread_self_cookie w0 registry ge); try self_side; [exact H|]; iNext.
 
 (** `c: _IO_flush_all ()` from its frame fr to the head of its loop:
     the cleanup buffer cb is pushed, `c: list_all_lock` is held once
@@ -101,27 +101,26 @@ Proof.
   iApply (wp_live_fit1 w0 registry ge with "Hkl"). iIntros ([Hlk0 Hlk48]) "Hkl".
   iApply (wp_live_fit w0 registry ge with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
   (* start: the cleanup buffer, pushed. *)
-  fs. iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
+  step. iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |].
   iNext. iIntros (cb [Hcb [Hcal Hcend]]) "Hobj". cbn in Hcal, Hcend.
   change (Z.pos (32 + 15) / 16 * 16) with 32 in Hcend.
   assert (Hcal8 : cb mod 8 = 0) by (Z.div_mod_to_equations; lia).
   iDestruct (obj32 with "Hobj") as "(Hcl & Hc0 & Hc8 & Hc16 & Hc24)".
   set (creg := mkRegion cb (cb + 32) Heap Live). assert (Hcre : r_end creg = cb + 32) by reflexivity.
-  fs. fs. fchk "Hcl". fstp "Hcl" "Hc8". fchk "Hcl". fstp "Hcl" "Hc0".
+  step. step. check "Hcl". store "Hcl" "Hc8". check "Hcl". store "Hcl" "Hc0".
   iApply wp_call_bind; [vx | exact Hpush | reflexivity |]. iNext.
   iApply (Hpush_spec with "Htcb Hcl Hc24 Hc16"); [reflexivity | lia | exact Hcal8 | lia | lia | reflexivity |].
   iNext. iIntros "Htcb Hcl Hc24 Hc16". resume.
   (* start, L24, L25, L18: single threaded, the owner null; take the lock. *)
-  self Hsz. fs. chkp "Hsl". ldbp "Hsl Hsb". fs. fbr.
-  fs. fs. fs. fchk "Hkl". fldn "Hkl" "Hko". fs. fs. fs. fs. fs. fbr.
-  fs. fs. fchk "Hkl". fsti "Hkl" "Hk0". fs. fs. fchk "Hkl". fstp "Hkl" "Hko". fs.
+  self Hsz. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
+  step. step. step. check "Hkl". load_null "Hkl" "Hko". step. step. step. step. step. branch.
+  step. step. check "Hkl". store_int "Hkl" "Hk0". step. step. check "Hkl". store "Hkl" "Hko". step.
   (* L15: the head of the list. *)
-  fs. fs. fchk "Hla". fldp "Hla" "Hlah" "Hhl". fs.
+  step. step. check "Hla". load "Hla" "Hlah" "Hhl". step.
   iApply ("HK" $! _ cb creg with "[%] Htcb Hcl Hc24 Hc16 Hla Hlah Hhl [Hkl Hk0 Hk4 Hko]").
   - split_and!; try lk_prove; lia.
   - iFrame. iPureIntro. unfold int_bytes. split_and!; lia.
 Qed.
 
 End rules.
-End LibioFlushStartOn.

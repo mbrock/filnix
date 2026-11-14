@@ -7,6 +7,8 @@
     string only up to its terminator and writes only the fields of its
     own state. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,6 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule
   GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld StrchrnulLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -41,28 +45,22 @@ Proof.
   - rewrite (Z.mod_small x (2 ^ 32)); [|lia]. apply Z.mod_small. lia.
 Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptShortOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The exchange module supplies the argument vector and its tactics. *)
-Module X := GetoptExchangeOn R LG0.
-Import X X.I X.I.S X.I.S.FI X.I.S.FI.ML X.I.S.FI.LG X.I.S.FI.L X.I.ST X.I.GB X.A.
+Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 (** The strchr module proves glibc's own strchr. *)
-Module SC := StrchrnulLogicOn R LG0.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
-Ltac en := iApply wp_enter; [reflexivity | reflexivity | iNext]; cbn [b_insts b_jump].
+
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
-Ltac load_int H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
-    [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
-  iNext; iIntros H.
+
 
 Section short.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance short_stable : SafepointStable (os_wi w0) := X.I.OW.os_wi_stable w0.
+Local Instance short_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance short_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -109,9 +107,9 @@ Proof.
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
-  en. st. chk "Hl".
+  step. step. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-  iNext. iIntros "Hl Hcur _". st. chk "Hl".
+  iNext. iIntros "Hl Hcur _". step. check "Hl".
   iApply (wp_raw_store_pointer with "Hl Hcur"); [vx | vx | reflexivity | arith | arith | wi_store |].
   iNext. iIntros "Hl Hcur".
   assert (Ha1 : (ptr_addr cur mod 2 ^ 64 + 1 mod 2 ^ 64) mod 2 ^ 64 = ptr_addr cur + 1)
@@ -126,9 +124,9 @@ Proof.
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |].
   iNext; iIntros "_ _". iClear "Hbl Hbt".
   pose proof (sbyte_range t 0 Hch) as Ht0r.
-  iApply (SC.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");
+  iApply (StrchrnulLogic.wp_call_glibc_strchr registry (os_wi w0) ge with "Hpo");
     [vx | apply Z.mod_pos_bound; lia | exact Hg | exact Hgn | reflexivity |].
-  iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. norm. chk "Hl".
+  iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapq"); [reflexivity | vx | left; reflexivity | arith | arith | cbn [ptr_addr]; lia |].
   iNext. iIntros "Hl Hcur _". norm.
   iDestruct (ws_byte cur t 1 with "Hws") as (bb1 breg1) "(%Hbb & #Hbl & #Hbt)"; [lia|].
@@ -138,7 +136,7 @@ Proof.
   iNext; iIntros "_".
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap' | arith |].
-  iNext; iIntros "_ _". iClear "Hbl Hbt". st.
+  iNext; iIntros "_ _". iClear "Hbl Hbt". step.
   pose proof (sbyte_range t 1 Hch) as Ht1r. rewrite chr_cmp; [|lia|lia].
   rewrite (Z.mod_small (chr_w (sbyte t 0)) (2 ^ 32)); [|apply chr_w_range].
   rewrite (chr_w_byte (sbyte t 0)); [|lia].
@@ -158,26 +156,26 @@ Proof.
     rewrite orb_false_r in H459.
     destruct (k <? List.length so)%nat eqn:Ek.
     - apply Nat.ltb_lt in Ek. pose proof (eq_sym Hhit) as Hx. apply Z.eqb_eq in Hx.
-      en. st. st. iApply wp_branch; [vx | iNext].
+      step. step. step. iApply wp_branch; [vx | iNext].
       rewrite (Z.mod_small (ptr_addr po + Z.of_nat k) (2 ^ 64)); [|lia].
       rewrite (proj2 (Z.eqb_neq (ptr_addr po + Z.of_nat k) (0 mod 2 ^ 64))); [|rewrite Zmod_0_l; lia]. cbn [edge_label].
-      en. st. st. en. rewrite chr_cmp; [|lia|lia].
+      step. step. step. step. rewrite chr_cmp; [|lia|lia].
       iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec x 58) as [E58 | E58]; close_br.
-      { en. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[HK _]".
+      { step. iApply wp_branch; [vx | iNext]. close_br. iDestruct "HK" as "[HK _]".
         iApply ("HK" with "[%] Hl Hi Hcur"). split; [xkeep | lk_prove]. }
-      en. st. st. en. rewrite chr_cmp; [|lia|lia].
+      step. step. step. step. rewrite chr_cmp; [|lia|lia].
       iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec x 59) as [E59 | E59]; close_br.
       { iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl Hi Hcur"). split; [xkeep | lk_prove]. }
       iDestruct "HK" as "[_ HK]". iApply ("HK" $! _ k with "[%] Hl Hi Hcur").
       split; [xkeep|]. split; [lk_prove|]. split; [exact Ek|].
       split; [unfold sbyte; exact Hx|]. split; [exact E58|]. split; [exact E59|]. split; lk_prove.
-    - en. st. st. iApply wp_branch; [vx | iNext]. close_br.
-      en. iApply wp_branch; [vx | iNext]. close_br. en. iApply wp_branch; [vx | iNext]. close_br.
+    - step. step. step. iApply wp_branch; [vx | iNext]. close_br.
+      step. iApply wp_branch; [vx | iNext]. close_br. step. iApply wp_branch; [vx | iNext]. close_br.
       iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] Hl Hi Hcur"). split; [xkeep | lk_prove]. }
   iApply wp_branch; [vx | iNext]. destruct (Z.eqb_spec (sbyte t 1) 0) as [E1 | E1]; close_br.
-  - en. chk "Hl". load_int "Hl Hib". st. norm. chk "Hl".
+  - step. check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
     iApply (wp_raw_store_w with "Hl Hib"); [vx | vx | reflexivity | arith | reflexivity | wi_store |].
-    iNext. iIntros "Hl Hib". st.
+    iNext. iIntros "Hl Hib". step.
     iApply ("HL462" $! _ _ (i + 1) with "[%] Hl [Hib] Hcur").
     { split; [xkeep|]. split; [reflexivity|]. repeat split; lk_prove. }
     iSplit; [iPureIntro; lia|]. rewrite (Z.mod_small (i + 1) (2 ^ 32)); [iAssumption | lia].
@@ -186,4 +184,3 @@ Proof.
 Qed.
 
 End short.
-End GetoptShortOn.

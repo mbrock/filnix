@@ -3,6 +3,7 @@
     linked initial image and constructs the stronger stdout predicate
     used by puts. It does not assume the stream-list constructor ran. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
@@ -10,12 +11,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld FileInv LibioDefaultXsputnBuf LibioXsputnBase
   HiAtexitBase HiAtexitAlloc HiAtexitInitial HiAtexitInitialAlloc HiAtexitOutputState HiAtexitStdout.
 From stdpp Require Import list.
+From Glibc Require FileInv LibioDefaultXsputnBuf LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld.
 Import ListNotations.
 Open Scope Z_scope.
-Import HP.PN.PB.PM.PC.PU.PL.
-Import PI PI.CS.SW.FI PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L PI.CS.SW.OW.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB XB.DX.RM.SM.TL.BY.BF.
+Import LibioPutsLock.
+Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L OsWorld.
+Import LibioXsputnSetp.
+Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 (** Stdout's static object contains the complete FILE and jump pointer. *)
 Definition hi_stdout_reg : region := mkRegion 69808 70032 GlobalData Live.

@@ -12,6 +12,7 @@
     `c: _mode` and, since `c: _IO_USER_LOCK` is clear, goes on to
     release the lock at `c: iw_1.L306` (LibioCleanupFpUnlock.v). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,6 +22,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioCleanupCode FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock.
+From Glibc Require FileInv LibioCleanupFpLock LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -29,13 +32,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioCleanupModeOn (R : Runtime) (LG0 : LogicSig R).
-Module CL := LibioCleanupFpLockOn R LG0.
-Import CL CL.FA CL.FA.FB CL.FA.FB.FT CL.FA.FB.FT.FS CL.FA.FB.FT.FS.FC CL.FA.FB.FT.FS.FC.FU
-  CL.FA.FB.FT.FS.FC.FU.FL CL.FA.FB.FT.FS.FC.FU.FL.CS CL.FA.FB.FT.FS.FC.FU.FL.CS.SW
-  CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.ML CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.LG CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI.L
-  CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.OW CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.FI CL.FA.FB.FT.FS.FC.FU.FL.CS.SW.ST.
+
+Import LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -49,10 +47,7 @@ Local Instance cleanup_mode_irisGS : irisGS_gen hlc (nanofil_lang registry ge) �
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A branch on a mode test, decided by the equation E. *)
-Ltac fbrm E :=
-  eapply step_wand; [eapply wp_branch; inst; vx |]; rewrite E;
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := vm_of c in change c with c' end; cbn [edge_label].
+
 
 (** Block `c: iw_1.L93` of `c: _IO_cleanup` to block `c: iw_1.L306`,
     the locked stream fb in `c: iw_1.pr.1` and `c: chk13`: with no
@@ -80,18 +75,17 @@ Proof.
   assert (0 <= Z.land fl 2 < 2 ^ 32) by (apply land_lt32; lia).
   iApply (wp_live_fit1 w0 registry ge with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* iw_1.L93, iw_1.L194, iw_1.L203: no backup area, and narrow. *)
-  fs. fs. fchk "Hl". fldn "Hl" "H80". fs. fs. fs. fbr.
-  fs. fs. fchk "Hl". fldi "Hl" "Hmd". fs. fbrm (narrow_sgt md Hmd). fs. fbr.
+  step. step. check "Hl". load_null "Hl" "H80". step. step. step. branch.
+  step. step. check "Hl". load_s32 "Hl" "Hmd". step. branch_rewrite (narrow_sgt md Hmd). step. branch.
   (* iw_1.L191: `c: _IO_UNBUFFERED`, or else the mode is 0. *)
-  fs. fchk "Hl". fldi "Hl" "Hfl". fs. fs.
+  step. check "Hl". load_s32 "Hl" "Hfl". step. step.
   destruct (Z.eqb_spec (Z.land fl 2) 0) as [Hb | Hb].
   1: assert (md = 0) as -> by (destruct Hub as [Hub | Hub]; [contradiction | exact Hub]);
-    fbrv false; fs; fs; fchk "Hl"; fldi "Hl" "Hmd"; fs; fs; fs; fbr.
-  2: fbrv true; fs; fbr.
+    branch_as false; step; step; check "Hl"; load_s32 "Hl" "Hmd"; step; step; step; branch.
+  2: branch_as true; step; branch.
   (* iw_1.L291: the mode -1, and `c: _IO_USER_LOCK` clear. *)
-  all: fs; fs; fchk "Hl"; fsti "Hl" "Hmd"; fchk "Hl"; fldi "Hl" "Hfl"; fs; fs; brv false.
+  all: step; step; check "Hl"; store_int "Hl" "Hmd"; check "Hl"; load_s32 "Hl" "Hfl"; step; step; branch_as false.
   all: iApply ("HK" with "[%] Hl [Hfl] [Hmd] H80"); [split_and!; lk_prove | iSplit; done | iSplit; done].
 Qed.
 
 End rules.
-End LibioCleanupModeOn.

@@ -4,6 +4,7 @@
     LibioDoAllocMode.v and LibioDoAllocTail.v prove. A failed stat goes
     straight to the allocation with `c: BUFSIZ`, 8192 bytes. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,6 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase.
+From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -20,10 +23,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDoAllocOn (R : Runtime) (LG0 : LogicSig R).
-Module DB := LibioDoAllocBaseOn R LG0.
-Import DB DB.SW DB.SW.FI.ML DB.SW.FI.LG DB.SW.FI.L DB.SW.OW DB.SW.FI DB.SW.ST.
+
+Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -118,18 +119,18 @@ Proof.
   { rewrite (ge_fn_cap _ _ _ Hstatf). done. }
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & Hslots)".
   unfold io_vtables_size in Hvend.
-  enter.
+  step.
   iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
                     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |].
   iNext. iIntros (sb (Hsb0 & Hsb16 & Hsb48)) "Ho".
   iDestruct (obj_blk with "Ho") as "[Hsl Hsk]"; [vm_compute; congruence|]. cbn [req_extent req_kind heap_req] in *.
   replace ((144 + 15) / 16 * 16) with 144 in * by reflexivity.
-  st. norm. chk "Hl". load_int "Hl Hfdb". st. brv false.
-  st. st. norm. chk "Hl".
+  step. norm. check "Hl". load_s32_group "Hl Hfdb". step. branch_as false.
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". st. st. st. st. st. brv true.
-  st. st. norm.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
+  step. step. norm.
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hss Hfc");
@@ -140,20 +141,19 @@ Proof.
     apply (ge_fn_find _ _ _ Hstatf) | reflexivity | reflexivity |].
   iNext.
   iApply (Hstat_spec _ fb freg fd sb _ 0 eb with "Hl [$Hfdb //] Hsl [Hsk] Herr");
-    try first [rewrite Z.add_0_r; reflexivity | side | unfold stat_size; cbn; lia].
+    try first [rewrite Z.add_0_r; reflexivity | libio_side | unfold stat_size; cbn; lia].
   { unfold stat_size. iExact "Hsk". }
   iNext. iIntros (k Hk) "Hl [_ Hfdb] Hsl Hsk Herr". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
-  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. st. st. st. st. destruct Hk as [-> | ->]; br.
+  cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. step. step. step. destruct Hk as [-> | ->]; branch.
   - iDestruct "Hsk" as (xs cs [Hxl Hcl]) "Hps". rewrite pts_app. iDestruct "Hps" as "[Hxs _]".
     iDestruct (stat_fields with "Hxs") as "(Hb1 & Hb2 & Hb3)"; [exact Hxl|].
-    iApply (HL5 with "Hl Hfl [$Hfdb //] Herr Hb Hbe HM Hsl Hb1 Hb2 Hb3 [HK Hvtp]"); try side;
+    iApply (HL5 with "Hl Hfl [$Hfdb //] Herr Hb Hbe HM Hsl Hb1 Hb2 Hb3 [HK Hvtp]"); try libio_side;
       try (rewrite length_take length_drop Hxl; reflexivity).
     iNext. iApply ("HK" with "Hvtp").
-  - iApply (HL7 _ _ _ _ 8192 with "Hl Hfl Hb Hbe HM"); try side.
+  - iApply (HL7 _ _ _ _ 8192 with "Hl Hfl Hb Hbe HM"); try libio_side.
     + right. auto.
     + iNext. iIntros (bb Hbb) "Hl Hfl Hb Hbe Hbo HM".
       iApply ("HK" with "Hvtp [%] Hl Hfl [$Hfdb //] Hb Hbe Hbo Herr HM"). split; [left; reflexivity | lia].
 Qed.
 
 End rules.
-End LibioDoAllocOn.

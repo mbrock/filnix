@@ -12,6 +12,8 @@
     argument, and a nonempty suffix sends it to the block that reads the
     next option character. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,6 +22,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
   GetoptInitialize.
+From Glibc Require FileInv GetoptBytes GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -57,11 +61,9 @@ Definition getopt_blk68 : block := Eval vm_compute in
   match find_block (TAtom "L68") (fn_blocks glibc_getopt_internal_r) with
   | Some b => b | None => mkBlock (TAtom "L68") [] [] JUnreachable end.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptColonOn (R : Runtime) (LG0 : LogicSig R).
+
 (** Initialization supplies the private-field and byte modules. *)
-Module I := GetoptInitializeOn R LG0.
-Import I I.S I.S.FI I.S.FI.ML I.S.FI.LG I.S.FI.L I.ST I.GB.
+Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes.
 
 (** After the colon check, the scanner also reads the skipped option string. *)
 Definition colon_keys : list name := TAtom "pr.1" :: entry_keys.
@@ -79,7 +81,7 @@ Section colon.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance colon_stable : SafepointStable (os_wi w0) := I.OW.os_wi_stable w0.
+Local Instance colon_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance colon_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -122,17 +124,17 @@ Proof.
   intros Hv4. iIntros "#Hos HK". cbn [b_insts b_jump getopt_blk30].
   iDestruct (ws_shape with "Hos") as %(Hch & Hp0 & Hpe).
   rdchr "Hos" p os 0%nat. pose proof (sbyte_range os 0 Hch) as Hc0r.
-  st. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
+  step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
   destruct (Z.eqb_spec (sbyte os 0) 45) as [E45|E45]; cbn [edge_label].
-  { rewrite (opt_skip_minus os E45). st. br. st. st. st. st.
+  { rewrite (opt_skip_minus os E45). step. branch. step. step. step. step.
     rewrite (addr_add (ptr_addr p) 1); [|lia|lia|lia]. iApply ("HK" with "[%]"). keep. }
-  st. iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
+  step. iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |]. iNext. iIntros "_ _".
-  st. st. st. rewrite chr_cmp; [|lia|lia].
+  step. step. step. rewrite chr_cmp; [|lia|lia].
   destruct (Z.eqb_spec (sbyte os 0) 43) as [E43|E43].
-  { rewrite (opt_skip_plus os E43). br. st. st. st. st.
+  { rewrite (opt_skip_plus os E43). branch. step. step. step. step.
     rewrite (addr_add (ptr_addr p) 1); [|lia|lia|lia]. iApply ("HK" with "[%]"). keep. }
-  rewrite (opt_skip_other os E45 E43). br. st.
+  rewrite (opt_skip_other os E45 E43). branch. step.
   assert (Ep : ptr_add p (Z.of_nat 0) = p) by (destruct p; unfold ptr_add; cbn; f_equal; lia).
   iEval (rewrite Ep) in "HK". iApply ("HK" with "[%]"). keep.
 Qed.
@@ -177,10 +179,10 @@ Proof.
     with "[HK]" as "HL68".
   { iIntros (e2 fr (Hk & H19 & Hphi)) "Hl Hnext". unkeep Hk.
     iApply wp_enter; [reflexivity | exact Hphi | iNext]. cbn [b_insts b_jump getopt_blk68].
-    st. chk "Hl". iDestruct "Hcur" as "[%Hn | #Hw]".
+    step. check "Hl". iDestruct "Hcur" as "[%Hn | #Hw]".
     - subst cur. iApply (wp_raw_load_pointer_dq with "Hl Hnext []");
         [reflexivity | vx | left; reflexivity | arith | arith | cbn; lia | done |].
-      iNext. iIntros "Hl Hnext _". st. st. st. br. st. br. iDestruct "HK" as "[HK _]".
+      iNext. iIntros "Hl Hnext _". step. step. step. branch. step. branch. iDestruct "HK" as "[HK _]".
       iApply ("HK" with "[%] Hl Hnext"). split; [|left; reflexivity].
       split; [keep|]. rewrite (addr_add b 32); [repeat split; vx | lia | lia | lia].
     - iDestruct (ws_shape with "Hw") as %(Hcht & Hcp0 & Hcpe).
@@ -190,10 +192,10 @@ Proof.
       { by destruct Hccap as [-> | ->]. }
       iApply (wp_raw_load_pointer_dq with "Hl Hnext Hcc");
         [reflexivity | vx | left; reflexivity | arith | arith | lia |].
-      iNext. iIntros "Hl Hnext _". st. st. st.
+      iNext. iIntros "Hl Hnext _". step. step. step.
       assert (Ez : (ptr_addr cur mod 2 ^ 64 =? 0 mod 2 ^ 64) = false)
         by (apply Z.eqb_neq; rewrite !Z.mod_small; lia).
-      iApply wp_branch; [vx | iNext]. rewrite Ez. close_br. st. st.
+      iApply wp_branch; [vx | iNext]. rewrite Ez. close_br. step. step.
       iApply (wp_raw_load_pointer_dq with "Hl Hnext Hcc");
         [reflexivity | vx | left; reflexivity | arith | arith | lia |].
       iNext. iIntros "Hl Hnext _".
@@ -202,7 +204,7 @@ Proof.
       iApply (wp_raw_load_sub_bytes_dq with "Hcl Hct");
         [reflexivity | vx | reflexivity | apply extended_chr | exact Hccap | arith |].
       iNext. iIntros "_ _". pose proof (sbyte_range tail 0 Hcht) as Htr.
-      st. st. st. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
+      step. step. step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
       destruct (Z.eqb_spec (sbyte tail 0) 0) as [Et|Et]; close_br.
       + apply (sbyte_zero tail 0 Hcht) in Et; [|lia]. iDestruct "HK" as "[HK _]".
         iApply ("HK" with "[%] Hl Hnext"). split; [|right; by destruct tail].
@@ -213,15 +215,14 @@ Proof.
   iDestruct (ws_shape with "Hsuf") as %(Hch & Hq0 & Hqe).
   rdchr "Hsuf" (ptr_add p (Z.of_nat (opt_skip os))) (drop (opt_skip os) os) 0%nat.
   pose proof (sbyte_range _ 0 Hch) as Hcr.
-  st. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
+  step. iApply wp_branch; [vx | iNext]. rewrite chr_cmp; [|lia|lia].
   rewrite (sbyte_drop os (opt_skip os) 0 Hsk) Nat.add_0_r.
   destruct (Z.eqb_spec (sbyte os (opt_skip os)) 58) as [E58|E58]; close_br.
   - iApply ("HL68" with "[%] Hl Hnext"). split; [keep|]. split; [vx|].
     unfold print_errors. rewrite (proj2 (Z.eqb_eq _ _) E58). vx.
-  - st. st. iApply ("HL68" with "[%] Hl Hnext"). split; [keep|]. split; [vx|].
+  - step. step. iApply ("HL68" with "[%] Hl Hnext"). split; [keep|]. split; [vx|].
     unfold print_errors. rewrite (proj2 (Z.eqb_neq _ _) E58). rewrite -(Z.mod_small err (2 ^ 32)); [vx | lia].
   Unshelve. exact r. exact DfracDiscarded.
 Qed.
 
 End colon.
-End GetoptColonOn.

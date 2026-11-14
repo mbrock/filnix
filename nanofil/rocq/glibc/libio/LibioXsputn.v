@@ -18,6 +18,7 @@
     | LibioXsputnCall.v, LibioXsputnReset.v, LibioXsputnFlags.v, LibioXsputnSetp.v | `c: new_do_write` inlined |
     | LibioXsputnBase.v | the scan and `c: L178`, the rest to `c: _IO_default_xsputn` | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -31,6 +32,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioXsputnReset LibioXsputnCall LibioXsputnDo
   LibioXsputnWrite LibioXsputnFlush
   LibioXsputnFill LibioXsputnEnter.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnDo LibioXsputnEnter LibioXsputnFill LibioXsputnFlags LibioXsputnFlush LibioXsputnReset LibioXsputnSetp LibioXsputnWrite OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -39,14 +42,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnOn (R : Runtime) (LG0 : LogicSig R).
-Module XE := LibioXsputnEnterOn R LG0.
-Import XE XE.XL XE.XL.XU XE.XL.XU.XW XE.XL.XU.XW.XD XE.XL.XU.XW.XD.XC XE.XL.XU.XW.XD.XC.XR XE.XL.XU.XW.XD.XC.XR.XF XE.XL.XU.XW.XD.XC.XR.XF.XS XE.XL.XU.XW.XD.XC.XR.XF.XS.XB XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY
-  XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.ML XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI.L XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.OW XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.FI
-  XE.XL.XU.XW.XD.XC.XR.XF.XS.XB.DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioXsputnEnter LibioXsputnFill LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -97,35 +94,34 @@ Proof.
   intros n Hfr Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy. injection Hfr as <-.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb (Hxf & HX) Hl' Hys HK".
-  fs. fs.
+  step. step.
   destruct (Z.eq_dec n 0) as [Hn0 | Hn0].
   { (* No bytes: L12 returns 0. *)
-    fbrv false. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+    branch_as false. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HX] Hl' Hys").
     split; [right; rewrite Zmod_0_l; unfold n; lia | intros Hpos; lia]. }
-  fbrv true. fs.
+  branch_as true. step.
   iDestruct "Hxf" as (fl f2 fd tw off m Hfs) "(Hfl & Hrest)". iDestruct "Hfl" as "[%Hfl32 Hfl]".
   assert (H512 : 0 <= Z.land fl 512 < 2 ^ 32) by (apply land_lt32; lia).
   assert (H2048 : 0 <= Z.land fl 2048 < 2 ^ 32) by (apply land_lt32; lia).
-  fchk "Hl". fldi "Hl" "Hfl". fs.
+  check "Hl". load_s32 "Hl" "Hfl". step.
   destruct (Z.land fl 512 =? 0) eqn:E512; [apply Z.eqb_eq in E512 | apply Z.eqb_neq in E512].
   - (* Not line-buffered: L25, then L19. *)
-    fbrv true. fs. fbrv true. repack fl f2 fd tw off m eb X fb nb.
+    branch_as true. step. branch_as true. repack fl f2 fd tw off m eb X fb nb.
     iApply (wp_xs_L19 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
-              dq b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
+              dq b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
     all: unfold n in *; try lia. all: lk_fin.
   - (* L24: currently putting? *)
-    fbrv false. fs. fldi "Hl" "Hfl". fs. fs. fs. fs.
+    branch_as false. step. load_s32 "Hl" "Hfl". step. step. step. step.
     destruct (Z.land fl 2048 =? 0) eqn:E2048; [apply Z.eqb_eq in E2048 | apply Z.eqb_neq in E2048].
-    + fbrv true. repack fl f2 fd tw off m eb X fb nb.
+    + branch_as true. repack fl f2 fd tw off m eb X fb nb.
       iApply (wp_xs_L19 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
-                dq b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
+                dq b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
       all: unfold n in *; try lia. all: lk_fin.
-    + fbrv false. repack fl f2 fd tw off m eb X fb nb.
+    + branch_as false. repack fl f2 fd tw off m eb X fb nb.
       iApply (wp_xs_L18 w0 registry ge Hmove Hmove_fn Hmove_sym Hcpy Hpcpy Hdxf Hfw Hfwq eb X fb freg vb vreg nb wp we
-                dq b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try side.
+                dq b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hl' Hys HK"); try close_side.
       all: unfold n in *; try lia. all: lk_fin.
 Qed.
 
 End rules.
-End LibioXsputnOn.

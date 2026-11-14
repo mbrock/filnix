@@ -22,12 +22,14 @@
     into concrete literals so symbolic expressions do not build up across
     steps. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules ExternalCalls ExternalMachine Pieces Heap Language Logic.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -39,9 +41,7 @@ Open Scope list_scope.
     arbitrary [Runtime] and [LogicSig] instance so any program proof can
     import them directly. *)
 
-(** The functor [GlibcLogicOn] packages the shared tactics, read-only load
-    rule, and adequacy theorem over a runtime and program-logic instance. *)
-Module GlibcLogicOn (R : Runtime) (LG0 : LogicSig R).
+
 Module LG := LG0.
 Module L := LG.L.
 Module P := LG.P.
@@ -59,47 +59,29 @@ Import L LG.
     existential variable, [vm_eq] computes the left-hand side with the
     virtual machine, unifies the right-hand side with that normal form,
     and closes the equation by computation. *)
-Ltac vm_eq :=
-  match goal with |- ?l = ?r => let v := eval vm_compute in l in unify r v end;
-  vm_compute; reflexivity.
+
 
 (** When a step rule asks for a pure fact about concrete numbers or
     pointers, [side] proves that fact by running the virtual machine. *)
-Ltac side :=
-  lazymatch goal with
-  | |- forall _ : mem, _ => intros ?; vm_eq
-  | |- ptr_cap _ = _ \/ ptr_cap _ = _ => right; reflexivity
-  | |- _ <= _ => vm_compute; congruence
-  | |- _ = _ => vm_eq
-  end.
+
 
 (** To keep a frame's environment from accumulating unevaluated updates,
     [replace_env] proves by computation that the current environment
     equals a normalized environment and rewrites the goal to use the
     normalized form. *)
-Ltac replace_env e e' :=
-  assert (Henv : e = e') by (vm_compute; reflexivity); try rewrite Henv; clear Henv.
+
 
 (** After an instruction updates a [[temporary]] variable, [norm_env]
     evaluates the frame's environment with the virtual machine and
     replaces it in place with a list of concrete values. *)
-Ltac norm_env :=
-  match goal with
-  | |- context [mkFrame ?f ?e ?ls ?d ?pt] => let e' := eval vm_compute in e in replace_env e e'
-  end.
+
 
 (** When a function executes on concrete values, [step] advances the
     current basic block by one instruction and normalizes the resulting
     frame environment. It handles pure bindings, pointer-arithmetic
     [[flight]] instructions, conditional branches, unconditional jumps,
     and block entries. *)
-Ltac step :=
-  first
-    [ iApply wp_let; [side | side | side | side | iNext; norm_env]
-    | iApply wp_flight; [side | side | side | iNext; norm_env]
-    | iApply wp_branch; [side | iNext; cbn [edge_label Z.eqb Pos.eqb]]
-    | iApply wp_goto; iNext
-    | iApply wp_enter; [side | side | iNext; norm_env; cbn [b_insts b_jump]] ].
+
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -171,7 +153,6 @@ Proof.
       [iExact "Hpts" | exact Hn].
 Qed.
 
-End GlibcLogicOn.
 
 (** When a program proof finishes, it closes its logical assumptions by
     supplying a state bundle that tracks invariants and memory ownership.

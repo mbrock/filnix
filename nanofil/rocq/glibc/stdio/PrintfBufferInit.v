@@ -6,6 +6,7 @@
     This proof composes the actual checked initializer with the proved
     switch body. It preserves the stream fields and staging bytes without
     assuming that any later output succeeds. *)
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,6 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferFileCode PrintfBufferStage PrintfBufferDirect.
+From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferDirect PrintfBufferStage SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -22,12 +25,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The initializer and its callee use the same memory and OS model. *)
-Module PrintfBufferInitOn (R : Runtime) (LG0 : LogicSig R).
-Module BS := PrintfBufferStageOn R LG0.
-Module BD := PrintfBufferDirectOn R LG0.
-Import BS.PI.CS BS.PI.CS.SW BS.PI.CS.SW.FI.ML BS.PI.CS.SW.FI.LG BS.PI.CS.SW.FI.L
-  BS.PI.CS.SW.OW BS.PI.CS.SW.FI BS.PI.CS.SW.ST.
+
+Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -61,15 +60,15 @@ Lemma wp_printf_buffer_init_null fr bb breg fb freg oldbase oldptr oldend oldfp 
 Proof.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg. injection Hfr as <-.
   iIntros "Hb Hf Hwp Hwe Hbase Hptr Hend Hw [%Hm Hm] Hfp HK".
-  enter. fs. fs. fchk "Hb". fstp "Hb" "Hbase".
-  fs. fchk "Hb". fstp "Hb" "Hptr".
-  fs. fchk "Hb". fstp "Hb" "Hend".
-  fs. fchk "Hb". fstl "Hb" "Hw".
-  fs. fchk "Hb". fsti "Hb" "Hm".
-  fs. fchk "Hb". fstp "Hb" "Hfp".
+  step. step. step. check "Hb". store "Hb" "Hbase".
+  step. check "Hb". store "Hb" "Hptr".
+  step. check "Hb". store "Hb" "Hend".
+  step. check "Hb". store_long "Hb" "Hw".
+  step. check "Hb". store_int "Hb" "Hm".
+  step. check "Hb". store "Hb" "Hfp".
   iApply wp_call_bind; [vx | exact Hswitch | reflexivity |]. iNext.
-  iApply (BS.wp_printf_buffer_switch_null w0 registry ge _ bb breg fb freg
-    with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend"); try side.
+  iApply (PrintfBufferStage.wp_printf_buffer_switch_null w0 registry ge _ bb breg fb freg
+    with "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
   iNext. iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend".
   resume. iApply wp_ret_void. iNext.
   iApply ("HK" with "Hb Hf Hwp Hwe Hbase Hptr Hend Hw [Hm] Hfp").
@@ -102,22 +101,22 @@ Lemma wp_printf_buffer_init_owned fr bb breg fb freg db dreg bo eo dqf dqd
 Proof.
   cbn zeta. intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hdb Hbo Heo Hdp Hde Hdr.
   injection Hfr as <-. iIntros "Hb Hf Hd Hwp Hwe Hbase Hptr Hend Hw [%Hm Hm] Hfp HK".
-  enter. fs. fs. fchk "Hb". fstp "Hb" "Hbase".
-  fs. fchk "Hb". fstp "Hb" "Hptr".
-  fs. fchk "Hb". fstp "Hb" "Hend".
-  fs. fchk "Hb". fstl "Hb" "Hw".
-  fs. fchk "Hb". fsti "Hb" "Hm".
-  fs. fchk "Hb". fstp "Hb" "Hfp".
+  step. step. step. check "Hb". store "Hb" "Hbase".
+  step. check "Hb". store "Hb" "Hptr".
+  step. check "Hb". store "Hb" "Hend".
+  step. check "Hb". store_long "Hb" "Hw".
+  step. check "Hb". store_int "Hb" "Hm".
+  step. check "Hb". store "Hb" "Hfp".
   iApply wp_call_bind; [vx | exact Hswitch | reflexivity |]. iNext.
   destruct (Z.ltb_spec bo eo) as [Hspace|Hspace].
-  - iApply (BD.wp_printf_buffer_switch_direct w0 registry ge _ bb breg fb freg db dreg bo eo
-      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try side.
+  - iApply (PrintfBufferDirect.wp_printf_buffer_switch_direct w0 registry ge _ bb breg fb freg db dreg bo eo
+      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
     iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".
     resume. iApply wp_ret_void. iNext.
     iApply ("HK" with "Hb Hf Hd Hwp Hwe Hbase Hptr Hend Hw [Hm] Hfp").
     iSplit; [iPureIntro; lia|iExact "Hm"].
-  - iApply (BS.wp_printf_buffer_switch_staging w0 registry ge _ bb breg fb freg db dreg bo eo
-      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try side.
+  - iApply (PrintfBufferStage.wp_printf_buffer_switch_staging w0 registry ge _ bb breg fb freg db dreg bo eo
+      with "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); try close_side.
     iNext. iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend".
     resume. iApply wp_ret_void. iNext.
     iApply ("HK" with "Hb Hf Hd Hwp Hwe Hbase Hptr Hend Hw [Hm] Hfp").
@@ -125,4 +124,3 @@ Proof.
 Qed.
 
 End rules.
-End PrintfBufferInitOn.

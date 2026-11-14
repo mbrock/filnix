@@ -6,6 +6,7 @@
     proof modules. Later composition therefore reuses the results
     without repeating the large proof substitutions. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,6 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   HelloLeaf.
 From Glibc Require Import OsWorld OsRegistry WordString StrlenLogic StrcmpBits StrncmpBits StrncmpCode
   LeavesLogic StrlenWord StrncmpLogic MemFwdLogic HelloGlibcDebts HelloGlibcLibsT.
+From Glibc Require LeavesLogic MemFwdLogic OsWorld StrlenWord StrncmpLogic.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -31,7 +34,7 @@ Lemma mod16_mod8' b : b mod 16 = 0 -> b mod 8 = 0.
 Proof. intros H. apply Z.mod_divide; [lia|]. apply Z.mod_divide in H; [|lia]. destruct H as [k ->]. exists (2 * k). lia. Qed.
 
 (** This interface exposes the proved string and memory call contracts. *)
-Module Type HelloLibsStrSig (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0).
+Module Type HelloLibsStrSig (D : HelloDebtsT).
 Import LG0 LG0.L D D.SW.FI.ML.
 (** `mbszero` zeroes the 16-byte object b, over glibc's `memset`. *)
 Parameter libs_mbszero : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv)
@@ -61,15 +64,15 @@ Parameter libs_errno : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w
 End HelloLibsStrSig.
 
 (** The implementation proves the triples over the caller's runtime and logic. *)
-Module HelloGlibcLibsStrOn (R : Runtime) (LG0 : LogicSig R) (D : HelloDebtsT R LG0) : HelloLibsStrSig R LG0 D.
+Module HelloGlibcLibsStrOn (D : HelloDebtsT) : HelloLibsStrSig D.
 (** The memory proof supplies the memset call used by mbszero. *)
-Module MF := MemFwdLogicOn R LG0.
+Module MF := MemFwdLogic.
 (** The length proof reads glibc strings one word at a time. *)
-Module SL := StrlenWordOn R LG0.
+Module SL := StrlenWord.
 (** The comparison proof bounds the number of bytes read. *)
-Module SN := StrncmpLogicOn R LG0.
+Module SN := StrncmpLogic.
 (** The leaf proofs provide the concrete errno call. *)
-Module LV := LeavesOn R LG0.
+Module LV := LeavesLogic.
 Import LG0 LG0.L D D.SW.FI.ML.
 
 Section libs.
@@ -104,7 +107,7 @@ Qed.
 Context (w0 : os_world) (ge : genv) (o : hello_objs).
 
 (** [os_wi] w0 survives safepoints. *)
-Local Instance str_stable : SafepointStable (os_wi w0) := MF.OW.os_wi_stable w0.
+Local Instance str_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses glibc's OS registry and concrete world interpretation. *)
 Local Instance str_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) Σ :=
   nanofil_irisGS glibc_os_registry (os_wi w0) ge.
@@ -123,7 +126,7 @@ Proof.
   destruct (hk_zmemset _ _ Hk) as [Hzf Hzs].
   rewrite mbszero_entry.
   iApply wp_enter; [exact find_z_start | reflexivity |]. iNext. cbn [b_insts b_jump z_start].
-  iApply (MF.wp_call_glibc_memset w0 glibc_os_registry ge eq_refl Hzf Hzs _ _ _ _ _ _ _ _ _
+  iApply (MemFwdLogic.wp_call_glibc_memset w0 glibc_os_registry ge eq_refl Hzf Hzs _ _ _ _ _ _ _ _ _
     b (mkRegion b (b + 16) Heap Live) 0 (replicate 8 0) (replicate 8 CNone) 0 with "Hl Hx Hc");
     [reflexivity | exact (hk_memset _ _ Hk) | reflexivity | cbn; lia | cbn; lia |
      apply mod16_mod8'; exact Hb16 | reflexivity | lia | cbn; lia | reflexivity |].
@@ -143,7 +146,7 @@ Proof.
   assert (E : call_frame glibc_strlen [WPtr p] =
               Some (mkFrame glibc_strlen [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None))) by reflexivity.
   rewrite E in Hfr. injection Hfr as <-. iIntros "Hs HK".
-  iApply (SL.wp_glibc_strlen_ws glibc_os_registry (os_wi w0) ge with "Hs"). iIntros "Hs".
+  iApply (StrlenWord.wp_glibc_strlen_ws glibc_os_registry (os_wi w0) ge with "Hs"). iIntros "Hs".
   iApply "HK". iSplit; [done | iExact "Hs"].
 Qed.
 
@@ -160,7 +163,7 @@ Proof.
               Some (mkFrame glibc_strncmp [(TAtom "v4", WInt 3); (TAtom "v2", WPtr p2); (TAtom "v0", WPtr p1)] []
                       None (Enter (TAtom "start") None))) by reflexivity.
   rewrite E in Hfr. injection Hfr as <-. iIntros "[H1 H2] HK".
-  iApply (SN.strncmp_entry glibc_os_registry (os_wi w0) ge DfracDiscarded DfracDiscarded p1 p2 s1 s2 3
+  iApply (StrncmpLogic.strncmp_entry glibc_os_registry (os_wi w0) ge DfracDiscarded DfracDiscarded p1 p2 s1 s2 3
     with "H1 H2"); [lia | right; reflexivity |]. iIntros "_ _".
   iApply "HK". iExists _. iPureIntro. split; [reflexivity | apply strcmp_res_range].
 Qed.
@@ -176,7 +179,7 @@ Proof.
   assert (E : call_frame errno_location_fn [] =
               Some (mkFrame errno_location_fn [] [] None (Enter (TAtom "start") None))) by reflexivity.
   rewrite E in Hfr. injection Hfr as <-. iIntros "_ HK".
-  iApply (LV.wp_glibc_errno_location glibc_os_registry (os_wi w0) ge); [exact (hk_errno_at _ _ Hk)|].
+  iApply (LeavesLogic.wp_glibc_errno_location glibc_os_registry (os_wi w0) ge); [exact (hk_errno_at _ _ Hk)|].
   iApply "HK". done.
 Qed.
 

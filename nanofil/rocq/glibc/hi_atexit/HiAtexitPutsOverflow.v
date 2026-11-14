@@ -3,6 +3,7 @@
     overflow function. This file connects both calls to the linked
     program's proofs while retaining the stream and allocator state. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,14 +14,14 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrap
   LibioGenCode LibioOverflowGen LibioXsputnBase LibioDefaultXsputnBuf AllocLogic
   HiAtexitBase HiAtexitGe HiAtexitFns HiAtexitSetb HiAtexitAlloc HiAtexitXsputnOverflow
   HiAtexitOutputState HiAtexitStdout HiAtexitOverflowRules.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioLogic LibioOverflowGen LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import HP.PN.PB.PM.PC.PU.PL.
-Import PI PI.CS PI.CS.SW PI.CS.SW.FI.ML PI.CS.SW.FI.LG PI.CS.SW.FI.L
-  PI.CS.SW.OW PI.CS.SW.FI PI.CS.SW.ST.
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB XB.DX.RM.SM.TL.BY.BF.
+Import LibioPutsLock.
+Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioXsputnSetp.
+Import LibioXsputnBase LibioDefaultXsputnBuf.
 Local Opaque HiAtexitFns.hi_ge.
 
 Section rules.
@@ -62,7 +63,7 @@ Proof.
   iDestruct "Hxf" as (fl f2 fd tw off m Hp)
     "(Hfl & Hfl2 & Hfd & Htw & Hoff & Hcol & Hmode & Herr)".
   destruct Hp as (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160).
-  iApply (HOG.wp_glibc___overflow w0 glibc_os_registry hge (hi_ge_overflow _)
+  iApply (LibioOverflowGen.wp_glibc___overflow w0 glibc_os_registry hge (hi_ge_overflow _)
     fr fb freg 10 m vb vreg with "Hvt Hl Hmode Hvtp"); try assumption; try lia.
   iNext. iIntros (fr' Hfr') "Hl Hmode Hvtp".
   iApply (hge_output_overflow eb Heb fr' fb freg nb wp we 10 vb vreg with

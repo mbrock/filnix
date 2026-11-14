@@ -5,6 +5,7 @@
     `c: L196` when the buffer is full and to block `c: L198` otherwise
     ([wp_ovf_L18]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioOverflowBase.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -21,10 +24,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowSendOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -108,35 +109,35 @@ Proof.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hbb & Hbe & Hbreg & Hsz & Hkr & Hxl & Hxr & Hwec & Hwea).
   iDestruct "Hfl" as "[%Hflr Hflb]".
-  st. st. destruct Hch as [Hch | ->].
-  - assert (Hne : ch <> 2 ^ 32 - 1) by lia. brv true.
-    st. st. norm. chk "Hl".
+  step. step. destruct Hch as [Hch | ->].
+  - assert (Hne : ch <> 2 ^ 32 - 1) by lia. branch_as true.
+    step. step. norm. check "Hl".
     iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hwp Hbl". st. norm. chk "Hl".
+    iNext. iIntros "Hl Hwp Hbl". step. norm. check "Hl".
     iApply (wp_raw_load_pointer with "Hl Hbend Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hbend Hbl". st. st. st.
+    iNext. iIntros "Hl Hbend Hbl". step. step. step.
     destruct (Z.eq_dec k sz) as [-> | Hks].
-    + brv false.
+    + branch_as false.
       iApply (HL196 with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend]");
-        try first [side | lk_prove |
+        try first [libio_side | lk_prove |
           iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
       iNext. iIntros (r k' we' xs' fl' tw' off' [Hr Hfl']) "Hl Hfx Hst".
       iApply ("HK" with "[%] Hl Hfx Hst"). split; [|exact Hfl'].
       destruct Hr as [-> | ->]; [right; rewrite (proj2 (Z.eqb_neq _ _) Hne); reflexivity | left; reflexivity].
-    + brv true. assert (Hks' : k < sz) by lia.
+    + branch_as true. assert (Hks' : k < sz) by lia.
       iApply (HL198 _ _ _ _ _ _ _ _ _ _ _ _ k with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend]");
-        try first [side | lk_prove |
+        try first [libio_side | lk_prove |
           iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
       iNext. iIntros (r k' we' xs' fl' tw' off' [Hr Hfl']) "Hl Hfx Hst".
       iApply ("HK" with "[%] Hl Hfx Hst"). split; [|exact Hfl'].
       destruct Hr as [-> | ->]; [right; rewrite (proj2 (Z.eqb_neq _ _) Hne); reflexivity | left; reflexivity].
-  - br. st. st. norm. chk "Hl".
+  - branch. step. step. norm. check "Hl".
     iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hwb Hbl". st. norm. chk "Hl".
+    iNext. iIntros "Hl Hwb Hbl". step. norm. check "Hl".
     iApply (wp_raw_load_pointer with "Hl Hwp Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
     iNext. iIntros "Hl Hwp Hbl".
     iApply (wp_raw_load_pointer with "Hl Hwb Hbl"); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |].
-    iNext. iIntros "Hl Hwb Hbl". st. st. st. norm.
+    iNext. iIntros "Hl Hwb Hbl". step. step. step. norm.
     replace (bb + k - bb) with k by lia.
     iApply wp_call_bind; [vx | exact Hdwf | reflexivity |]. iNext.
     destruct (Z.eq_dec k 0) as [-> | Hk0].
@@ -147,7 +148,7 @@ Proof.
         [split; [right; reflexivity | left; reflexivity] |
          iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
     + iApply (Hovdw with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend]");
-        try first [rewrite Z.mod_small; [reflexivity | lia] | side |
+        try first [rewrite Z.mod_small; [reflexivity | lia] | libio_side |
          iApply (ovf_state_intro with "Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend"); (assumption || lia)].
       iNext. iIntros (r we' fl' tw' off' Hpost) "Hl Hfx Hst".
       iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
@@ -157,4 +158,3 @@ Proof.
 Qed.
 
 End rules.
-End LibioOverflowSendOn.

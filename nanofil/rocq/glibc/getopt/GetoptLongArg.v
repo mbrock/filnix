@@ -8,6 +8,8 @@
     the block that tests the found entry to each of the parser's
     returns. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,6 +21,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits Strle
   StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongEq GetoptLongExact GetoptLongPre GetoptLongReq GetoptLongScan GetoptLongStore GetoptLongTail GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -52,22 +56,15 @@ Definition long_arg (s : list Z) (has i n : Z) (cur a : ptr) (ps : list ptr) (i'
   (sbyte s (eq_len s) = 0 /\ has <> 1 /\ i' = i + 1 /\ a' = a) \/
   (sbyte s (eq_len s) = 0 /\ has = 1 /\ i + 1 < n /\ i' = i + 2 /\ a' = nth (Z.to_nat (i + 1)) ps null).
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongArgOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The first-blocks module supplies the steps that this file composes. *)
-Module LP := GetoptLongPreOn R LG0.
-Import LP LP.LQE LP.LQE.LQ LP.LQE.LQ.LL LP.LQE.LQ.LL.LT LP.LQE.LQ.LL.LT.LD LP.LQE.LQ.LL.LT.LD.LE LP.LQE.LQ.LL.LT.LD.LE.LS
-  LP.LQE.LQ.LL.LT.LD.LE.LS.RT LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 Section arg.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the parser's safepoints. *)
-Local Instance arg_stable : SafepointStable (os_wi w0) := LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance arg_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance arg_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -205,4 +202,3 @@ Proof.
 Qed.
 
 End arg.
-End GetoptLongArgOn.

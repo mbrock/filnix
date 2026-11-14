@@ -42,6 +42,7 @@
     | [wp_xs_scan] | the newline scan, blocks `c: L50` to `c: L59` |
     | [wp_xs_L178] | `c: _IO_default_xsputn` of the rest and the return | *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -51,6 +52,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnTail LibioDefaultXsputn.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -106,13 +109,8 @@ Proof.
   rewrite -Z.land_assoc Hmask in Hfixed. exact Hfixed.
 Qed.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioXsputnBaseOn (R : Runtime) (LG0 : LogicSig R).
-Module DX := LibioDefaultXsputnOn R LG0.
-Import DX DX.RM DX.RM.SM.TL DX.RM.SM.TL.BY DX.RM.SM.TL.BY.BF DX.RM.SM.TL.BY.BF.CP DX.RM.SM.TL.BY.BF.CP.CS
-  DX.RM.SM.TL.BY.BF.CP.SW DX.RM.SM.TL.BY.BF.CP.SW.FI.ML DX.RM.SM.TL.BY.BF.CP.SW.FI.LG
-  DX.RM.SM.TL.BY.BF.CP.SW.FI.L DX.RM.SM.TL.BY.BF.CP.SW.OW DX.RM.SM.TL.BY.BF.CP.SW.FI
-  DX.RM.SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section defs.
 Context `{!gen_heapGS piece pval Σ}.
@@ -237,13 +235,13 @@ Proof.
   intros n Hc' Hso Hyend Hyreg Hy Hcr.
   iLöb as "IH". iIntros (e i Φ (Hv2 & Hp14 & Hv39 & Hi)) "Hl' Hys HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [xs_L50 b_insts b_jump]. fs. fs. fs.
+  cbn [xs_L50 b_insts b_jump]. step. step. step.
   destruct (Z.eq_dec i 0) as [-> | Hi0].
   - (* p is s: no newline; L20 from L50. *)
-    fbrv true. fs.
+    branch_as true. step.
     iApply ("HK" $! _ cnt0 0 with "[%] Hl' Hys").
     split; [same_tac|]. split_and!; [lookups; unwrap2; reflexivity | lookups; reflexivity | left; split; reflexivity].
-  - fbrv false. fs. fs.
+  - branch_as false. step. step.
     set (j := Z.to_nat (i - 1)).
     destruct (lookup_lt_is_Some_2 ys j ltac:(lia)) as [y Hyj].
     pose proof (Forall_lookup_1 _ _ _ _ Hy Hyj) as Hyr.
@@ -254,16 +252,16 @@ Proof.
     iNext. iIntros "Hl'".
     iApply (wp_raw_load_sub_bytes_dq with "Hl' Hy1");
       [reflexivity | vx | reflexivity | reflexivity | exact Hc' | cbn; unfold raw_address; unwrap2; lia |].
-    iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hys". fs.
+    iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hys". step.
     destruct (Z.eq_dec y 10) as [-> | Hy10].
     + (* A newline at j: L59, the count j + 1, then L20. *)
-      fbrv false. fs. fs. fs. fs. fs. fs.
+      branch_as false. step. step. step. step. step. step.
       iApply ("HK" $! _ i 1 with "[%] Hl' Hys").
       split; [same_tac|]. split_and!; [|lookups; reflexivity|right; split; [reflexivity | lia]].
       lookups. do 2 f_equal. cbn [ptr_addr]. unfold raw_address. unwrap2. lia.
     + eapply step_wand; [eapply wp_branch; inst; vx |].
       rewrite (sb_ne_nl y Hyr Hy10). change ((if false then 1 else 0) mod 2 ^ 32 =? 0) with true.
-      cbn [edge_label]. fs.
+      cbn [edge_label]. step.
       iApply ("IH" $! _ (i - 1) with "[%] Hl' Hys [HK]").
       * split_and!; [lookups; reflexivity | | lookups; reflexivity | lia | lia].
         lookups. do 3 f_equal. cbn [ptr_addr]. unfold raw_address. unwrap2. lia.
@@ -293,12 +291,12 @@ Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Ht Hd Htd Hv0 Hv4 Hp3 Hv175 Hp1.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [xs_L178 b_insts b_jump]. fs.
+  cbn [xs_L178 b_insts b_jump]. step.
   destruct (Z.eq_dec t 0) as [-> | Ht0].
   - (* Nothing left: L122 returns n. *)
-    fbrv true. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+    branch_as true. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [right; unwrap2; lia | intros _; exact Hnb].
-  - fbrv false. fs. fs.
+  - branch_as false. step. step.
     set (j := Z.to_nat (n - t)).
     iEval (rewrite (bytesq_split dq b' so ys j); [|lia]) in "Hys". iDestruct "Hys" as "[Hys1 Hys2]".
     assert (Hlj : Z.of_nat (length (drop j ys)) = t) by (rewrite length_drop; lia).
@@ -312,11 +310,10 @@ Proof.
       | lia | lia | exact Hyreg | apply Forall_drop; exact Hy |].
     iNext. iIntros (k nb' wp' we' [Hk Hprogress]) "Hl Hvtp Hwb Hos Hl' Hys2". resume.
     rewrite Hlj in Hk. rewrite (Z.mod_small k); [|lia].
-    fs. fs. fs. fs. iApply wp_ret; [reflexivity | vx |]. iNext.
+    step. step. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' [Hys1 Hys2]").
     { split; [right; unwrap2; lia | intros _; apply Hprogress; rewrite Hlj; lia]. }
     iApply (bytesq_split dq b' so ys j); [lia|]. iFrame.
 Qed.
 
 End rules.
-End LibioXsputnBaseOn.

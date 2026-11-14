@@ -15,6 +15,7 @@
     `c: L16`, is the loop's head, a premise here ([dx_loop]), which
     LibioDefaultXsputn.v proves by Löb induction. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -24,6 +25,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnBytes.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -42,11 +45,8 @@ Definition dx_L22 : block := Eval vm_compute in
   match find_block (TAtom "L22") (fn_blocks glibc__IO_default_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L22") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDefaultXsputnTailOn (R : Runtime) (LG0 : LogicSig R).
-Module BY := LibioDefaultXsputnBytesOn R LG0.
-Import BY BY.BF BY.BF.CP BY.BF.CP.CS BY.BF.CP.SW BY.BF.CP.SW.FI.ML BY.BF.CP.SW.FI.LG BY.BF.CP.SW.FI.L
-  BY.BF.CP.SW.OW BY.BF.CP.SW.FI BY.BF.CP.SW.ST.
+
+Import LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -107,30 +107,30 @@ Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hso Hyend Hyreg Hy Ht Hprogress Hv0 Hc0 Hv4 Hp8 Hp3. unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [dx_L22 b_insts b_jump]. st.
+  cbn [dx_L22 b_insts b_jump]. step.
   destruct (Z.eq_dec t 0) as [-> | Ht0].
   { (* No byte left: L100, then L19 returns n. *)
-    fbrv false. fs. fbr. fs. fs.
+    branch_as false. step. branch. step. step.
     iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [unwrap2; lia|]. exact Hprogress. }
-  fbrv true.
+  branch_as true.
   (* L99: the jump table, checked against `c: __io_vtables`. *)
   iPoseProof (vtables_slot ge vb vreg slot_overflow "_IO_new_file_overflow" with "Hvt") as "#Hsw"; [cbn; tauto|].
   iAssert (live_capq DfracDiscarded (ptr_cap (sym_ptr ge "_IO_new_file_overflow")) vreg) as "Hfc".
   { rewrite (ge_fn_cap _ _ _ Hfo). done. }
   iPoseProof "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)".
   unfold io_vtables_size in Hvend.
-  fs. fs. norm. fchk "Hl".
+  step. step. norm. check "Hl".
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". fs. fs. fs. fs. fs. fbrv true.
+  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
   (* iw_1.join: the overflow slot, the next byte, and the call. *)
-  fs. fs. norm.
+  step. step. norm.
   iApply (wp_check_read_dq with "Hvl'"); [reflexivity | vx | right; reflexivity | ar | ar | ar |].
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hfo) |].
-  iNext. iIntros "_ _ _". fs.
+  iNext. iIntros "_ _ _". step.
   set (j := Z.to_nat (n - t)).
   destruct (lookup_lt_is_Some_2 ys j ltac:(lia)) as [y Hyj].
   iDestruct (bytesq_at _ _ _ _ j y Hyj with "Hys") as "[Hy1 Hyb]".
@@ -140,7 +140,7 @@ Proof.
   iNext. iIntros "Hl'".
   iApply (wp_raw_load_sub_bytes_dq with "Hl' Hy1");
     [reflexivity | vx | reflexivity | reflexivity | exact Hc' | cbn; unfold raw_address; unwrap2; lia |].
-  iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hys". fs.
+  iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hys". step.
   iApply wp_check_function; [vx | apply (ge_fn_check _ _ _ Hfo) |]. iNext.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hfo) | apply (ge_fn_check _ _ _ Hfo) | vx |
     apply (ge_fn_find _ _ _ Hfo) | reflexivity | reflexivity |].
@@ -155,18 +155,17 @@ Proof.
   assert (Hr32 : 0 <= r < 2 ^ 32).
   { destruct Hr as [-> | ->]; [lia|]. destruct (ch =? 2 ^ 32 - 1); lia. }
   rewrite (Z.mod_small r); [|lia].
-  st. fs. fs.
+  step. step. step.
   destruct (Z.eq_dec r (2 ^ 32 - 1)) as [-> | Hne].
   - (* `c: EOF`: L19 returns n - t. *)
-    fbrv false. fs. fs.
+    branch_as false. step. step.
     iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [unwrap2; lia|]. intros _. exact Hnb.
   - (* The byte went: L96 runs the loop again on t - 1. *)
-    fbrv true. fs. fs. fs. fs.
+    branch_as true. step. step. step. step.
     iApply ("IH" with "[%] Hl Hvtp Hwb Hos Hl' Hys HK").
     unfold n in *. split_and!; try (lookups; reflexivity); try lia; try (intros _; exact Hnb).
     all: lookups; first [do 3 f_equal; cbn [ptr_addr]; unwrap2; lia | do 2 f_equal; unwrap2; lia].
 Qed.
 
 End rules.
-End LibioDefaultXsputnTailOn.

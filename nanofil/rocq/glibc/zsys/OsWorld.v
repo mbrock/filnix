@@ -53,6 +53,7 @@
     buffers, [wp_os_errno_call] for calls that also set `c: errno`, and
     [wp_os_noreturn] for calls that exit the process. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -60,6 +61,7 @@ From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -249,10 +251,8 @@ Qed.
     [[weakest-precondition|weakest-precondition]] rules for `zsys_*`
     calls. *)
 
-(** The functor [OsWorldOn] instantiates the world-invariant stability
-    lemmas and `zsys_*` call rules for a given [[runtime]] and program
-    logic. *)
-Module OsWorldOn (R : Runtime) (LG0 : LogicSig R).
+(** The lemmas below establish world-invariant stability and provide
+    separation-logic proof rules for calls to `zsys_*` functions. *)
 Module LG := LG0.
 Module L := LG.L.
 Import L LG.
@@ -505,4 +505,3 @@ Qed.
 
 End call.
 End rule.
-End OsWorldOn.

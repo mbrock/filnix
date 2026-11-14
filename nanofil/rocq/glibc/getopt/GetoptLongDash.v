@@ -5,6 +5,7 @@
     call with the restoration of the session, so the caller receives the
     answer together with a session at the new index. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,6 +19,8 @@ From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode Strch
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
   GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSession.
+From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongPfxAlloc GetoptLongSession GetoptLongStore GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,30 +33,10 @@ Local Arguments Z.opp : simpl nomatch.
 Lemma dash_nth_error (l : list ptr) k x : l !! k = Some x -> nth_error l k = Some x.
 Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discriminate; auto. Qed.
 
-(** Every proof below runs on the caller's [[runtime]] and logic instance. *)
-Module GetoptLongDashOn (R : Runtime) (LG0 : LogicSig R).
+
 (** The call module supplies the rule for a call of the parser. *)
-Module LCL := GetoptLongCallOn R LG0.
 (** The session module restores the session after a return. *)
-Module LSS := GetoptLongSessionOn R LG0.
-Import LCL
-  LSS
-  LCL.LJN.LJF.LJM.LPB
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.ML
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.LG
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.S.FI.L
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.ST
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.GB
-  LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.A.
+Import GetoptLongCall GetoptLongSession GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
 
 (** This tactic evaluates arguments through assignments and drops their wraps to 32 bits. *)
 Ltac dash_vx :=
@@ -62,7 +45,7 @@ Ltac dash_vx :=
     |- context [lookup ?k ?E] =>
       let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H
     end;
-  unwrap; reflexivity.
+  StrlenLoop.unwrap; reflexivity.
 
 (** A call needs facts about its arguments, such as their values and ranges, and this tactic proves them. *)
 Ltac dash_side :=
@@ -75,7 +58,7 @@ Section dash.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 (** The OS interpretation survives the scanner's safepoints. *)
-Local Instance dash_stable : SafepointStable (os_wi w0) := LCL.LJN.LJF.LJM.LPB.LPF.LPP.LAR.LAO.LAH.LAL.LAI.LAP.LAT.LPE.LPL.LPI.LPT.LPS.LPA.LPM.LPC.LM.LOM.LU.LA.LP.LQE.LQ.LL.LT.LD.LE.LS.RT.D.X.I.OW.os_wi_stable w0.
+Local Instance dash_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** The program logic uses the caller's registry and OS interpretation. *)
 Local Instance dash_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
@@ -119,20 +102,20 @@ Lemma wp_getopt_long_dash e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
   live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo -∗ pcell b 16 a -∗ pcell b 32 cur -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
-  (∀ x, LCL.LJN.LJF.LJM.plo_res b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) -∗
+  (∀ x, GetoptLongJoinMiss.plo_res b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
 Proof.
   intros Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
-  unfold long_call, long_jump. st.
-  iApply (LCL.wp_call_glibc_process_long_option w0 registry ge _ _ _ _ _ _ _ _ _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
+  unfold long_call, long_jump. step.
+  iApply (GetoptLongCall.wp_call_glibc_process_long_option w0 registry ge _ _ _ _ _ _ _ _ _ G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try dash_side.
   iNext. iIntros (x) "Hres". iExists _. iSplit; [done|]. iNext.
   iDestruct "Hres" as (i' oo' a' c') "(Hl & Hib & Hoob & Hab & Hcur & Ha & Hcl & HG & HF & HM & Hli & %Hp)".
   destruct Hp as (Hi' & Hc' & Ha' & Hxr & Hxf).
   iApply (wp_ret registry (os_wi w0) ge _ _ _ _ _ (WInt x)); [reflexivity | dash_vx |]. iNext.
-  iApply "HK". iApply (LCL.LJN.LJF.LJM.plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli"); assumption.
+  iApply "HK". iApply (GetoptLongJoinMiss.plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli"); assumption.
 Qed.
 
 (** A caller of getopt needs the next call to be safe as well, so
@@ -178,7 +161,7 @@ Lemma wp_getopt_dash_session e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   live b r -∗ int_cell b 0 i -∗ int_cell b 4 er -∗ int_cell b 8 oo -∗ pcell b 16 a -∗ int_cell b 24 1 -∗
   pcell b 32 (ptr_add q 2) -∗ int_cell b 40 ord -∗ int_cell b 44 fst -∗ int_cell b 48 lst -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
-  (∀ x i', ⌜(i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n))%Z⌝ -∗ LSS.S.getopt_session b r av ar ps i' -∗
+  (∀ x i', ⌜(i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n))%Z⌝ -∗ GetoptState.getopt_session b r av ar ps i' -∗
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
 Proof.
@@ -197,10 +180,10 @@ Proof.
   destruct Hp as (Hi' & Hc' & _ & _ & _).
   iApply ("HK" $! x i' with "[%] [-Ha Hcl HG HF HM Hli] Ha Hcl HG HF HM Hli"); [exact Hi'|].
   set (s0 := mkGetoptState i er oo a 1 (ptr_add q 2) ord fst lst).
-  iApply (LSS.long_session b r av ar ps s0 i' oo' a' c' (drop 2 sq)
+  iApply (GetoptLongSession.long_session b r av ar ps s0 i' oo' a' c' (drop 2 sq)
     with "[] Hws Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla");
     try (unfold getopt_bounds; cbn; lia); try (cbn; lia); try reflexivity; try exact Hc'.
-  unfold LSS.S.getopt_cursor. unfold s0. cbn [gs_next gs_last gs_ind]. destruct (drop 2 sq) as [|t0 t] eqn:Ht0.
+  unfold GetoptState.getopt_cursor. unfold s0. cbn [gs_next gs_last gs_ind]. destruct (drop 2 sq) as [|t0 t] eqn:Ht0.
   - iRight. iLeft. iExact "Hws".
   - iRight. iRight. iExists q, (take 2 sq), (drop 2 sq). iSplit; [iPureIntro|].
     + rewrite Ht0. split; [lia|]. split; [by apply dash_nth_error|]. split; [discriminate|].
@@ -209,4 +192,3 @@ Proof.
 Qed.
 
 End dash.
-End GetoptLongDashOn.

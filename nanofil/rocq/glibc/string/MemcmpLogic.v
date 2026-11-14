@@ -17,6 +17,7 @@
     [[capability]], so the subsequent [[check]] always traps with
     `null_capability`. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -24,6 +25,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Panics Language Logic StringLogic MemLogic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop MemcmpCode.
+From Glibc Require StrcmpLoop WordString.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -63,20 +66,16 @@ Definition memcmp_blk89 : block := Eval vm_compute in
   match find_block (TAtom "L89") (fn_blocks glibc_memcmp) with
   | Some b => b | None => mkBlock (TAtom "L89") [] [] JUnreachable end.
 
-(** This functor packages the small-buffer `memcmp` proofs over a
-    [[runtime]] R and a program logic instance LG0. *)
-Module MemcmpLogicOn (R : Runtime) (LG0 : LogicSig R).
+
 (** Module [SL] supplies the step rules for symbolic execution. *)
-Module SL := StrcmpLoopOn R LG0.
 (** Module [ML] provides ownership predicates for byte slices. *)
 Module ML := MemLogicOn R LG0.
 (** Module [WS] provides word-window and fractional read helpers. *)
-Module WS := SL.WS.
 (** Module [LG] re-exports the program logic instance. *)
 Module LG := LG0.
 (** Module [L] re-exports the core logic definitions. *)
 Module L := LG.L.
-Import L LG WS SL ML.
+Import L LG WordString StrcmpLoop ML.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -92,33 +91,28 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Tactic [sl] advances one pure `let` instruction while keeping its
     result expression symbolic. *)
-Ltac sl := eapply (s_let registry wi ge); [reflexivity | reflexivity | reflexivity | intros ?; reflexivity |].
+
 (** Tactic [sf] advances one [[flight]] instruction in the proof mode. *)
-Ltac sf := eapply (s_flight registry wi ge); [reflexivity | reflexivity | reflexivity |].
+
 (** Tactic [en] steps into the target block and exposes its instructions
     and terminator. *)
-Ltac en := eapply (s_enter registry wi ge); [reflexivity | reflexivity |]; cbn [b_insts b_jump].
+
 (** Tactic [sg] follows an unconditional `goto` and immediately enters the
     destination block. *)
-Ltac sg := eapply (s_goto registry wi ge); en.
+
 (** Tactic [sb] advances one conditional `branch` while keeping its
     condition expression symbolic. *)
-Ltac sb := eapply (s_branch registry wi ge); [reflexivity|].
+
 (** To resolve IR temporary arguments during symbolic execution, [vx]
     looks up each temporary in the environment hypotheses and evaluates
     the remaining argument expressions. *)
-Ltac vx :=
-  cbn [map2_option map_option flight_arg_x flight_cap arg_x];
-  repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
-    match goal with H : lookup n _ = Some ?x |- _ =>
-      rewrite (value_x_tmp g E k n x); [|look H] end end;
-  reflexivity.
+
 (** Tactic [sl'] advances one `let` instruction whose arguments are
     resolved via [vx]. *)
-Ltac sl' := eapply (s_let registry wi ge); [reflexivity | reflexivity | vx | intros ?; reflexivity |].
+
 (** Tactic [sf'] advances one [[flight]] instruction whose arguments are
     resolved via [vx]. *)
-Ltac sf' := eapply (s_flight registry wi ge); [vx | reflexivity | vx |].
+
 (** Tactic [norm] rewrites the integer stored in temporary `name` to `v`
     using tactic `tac`. *)
 Ltac norm name v tac :=
@@ -214,9 +208,9 @@ Proof.
   intros Hb Hb' Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy.
   remember (List.length xs - i)%nat as k eqn:Hk.
   revert i e Hk. induction k as [|k IH]; intros i e Hk Hi Htake H0 H2 H10 H13;
-    iIntros "Hl Hx Hl' Hy HK"; cbn [memcmp_blk89 b_insts b_jump]; sl; sb.
+    iIntros "Hl Hx Hl' Hy HK"; cbn [memcmp_blk89 b_insts b_jump]; step_symbolic; branch_symbolic.
   - (* No bytes left: they are equal. *)
-    close_if. en.
+    close_if. step.
     assert (E : xs = ys).
     { rewrite <- (take_ge xs i), <- (take_ge ys i); [exact Htake | lia | lia]. }
     eapply (s_ret registry wi ge _ _ _ _ _ _ (cmp_bytes xs ys mod 2 ^ 32)); [reflexivity | reflexivity | |].
@@ -224,34 +218,34 @@ Proof.
     iApply ("HK" with "Hl Hx Hl' Hy").
   - rewrite (Z.mod_small (Z.of_nat (S k))); [|lia]. change (0 mod 2 ^ 64) with 0.
     rewrite (proj2 (Z.eqb_neq (Z.of_nat (S k)) 0)); [|lia].
-    close_if. en.
+    close_if. step.
     destruct (lookup_lt_is_Some_2 xs i ltac:(lia)) as [x Hxi].
     destruct (lookup_lt_is_Some_2 ys i ltac:(lia)) as [y Hyi].
     assert (Hx8 : 0 <= x < 256) by exact (proj1 (Forall_lookup _ _) Hx i x Hxi).
     assert (Hy8 : 0 <= y < 256) by exact (proj1 (Forall_lookup _ _) Hy i y Hyi).
-    sl'. match goal with |- context [put (TAtom "lc.13") (WInt ?X) _] => replace X with (Z.of_nat i) end.
-    2:{ arith. } sf'. normp "v95" (b + o + Z.of_nat i).
+    step_symbolic. match goal with |- context [put (TAtom "lc.13") (WInt ?X) _] => replace X with (Z.of_nat i) end.
+    2:{ arith. } step. normp "v95" (b + o + Z.of_nat i).
     iApply (wp_bytes_byte _ _ _ _ _ _ _ _ _ _ dq1 b reg o xs i x with "Hl Hx");
       [reflexivity | exact Hc | reflexivity | exact Hxi | exact Hx8 | exact Ho | exact Hend | exact Hr |].
     iIntros "Hl Hx".
-    sl. normt x ltac:(arith).
-    sl'. norm "lc.16" (Z.of_nat i) ltac:(arith). sf'. normp "v100" (b' + o' + Z.of_nat i).
+    step_symbolic. normt x ltac:(arith).
+    step_symbolic. norm "lc.16" (Z.of_nat i) ltac:(arith). step. normp "v100" (b' + o' + Z.of_nat i).
     iApply (wp_bytes_byte _ _ _ _ _ _ _ _ _ _ dq2 b' reg' o' ys i y with "Hl' Hy");
       [reflexivity | exact Hc' | reflexivity | exact Hyi | exact Hy8 | exact Ho' | rewrite Hly; exact Hend' | exact Hr' |].
     iIntros "Hl' Hy".
-    sl. normt y ltac:(arith).
-    sl. normt (b + o + Z.of_nat (S i)) ltac:(arith). sl. normt (b' + o' + Z.of_nat (S i)) ltac:(arith).
-    sl. normt ((x - y) mod 2 ^ 64) ltac:(arith). sl. sb. rewrite Zmod_mod. change (0 mod 2 ^ 64) with 0.
+    step_symbolic. normt y ltac:(arith).
+    step_symbolic. normt (b + o + Z.of_nat (S i)) ltac:(arith). step_symbolic. normt (b' + o' + Z.of_nat (S i)) ltac:(arith).
+    step_symbolic. normt ((x - y) mod 2 ^ 64) ltac:(arith). step_symbolic. branch_symbolic. rewrite Zmod_mod. change (0 mod 2 ^ 64) with 0.
     destruct (Z.eq_dec x y) as [<-|Hne].
     + (* Equal bytes: the next. *)
       assert (Hk' : Z.of_nat k < 2 ^ 48) by lia.
-      rewrite Z.sub_diag Zmod_0_l. close_if. en. sl. normt (Z.of_nat k) ltac:(arith). sg.
+      rewrite Z.sub_diag Zmod_0_l. close_if. step. step_symbolic. normt (Z.of_nat k) ltac:(arith). (step; step).
       norm "pr.3" (Z.of_nat k) ltac:(arith). norm "pr.6" (b + o + Z.of_nat (S i)) ltac:(arith).
       norm "pr.12" (b' + o' + Z.of_nat (S i)) ltac:(arith).
       iApply (IH (S i) with "Hl Hx Hl' Hy HK"); [lia | lia | | look H0 | look H2 | look H10 | look H13].
       rewrite !(take_S_r _ _ _ Hxi) (take_S_r _ _ _ Hyi) Htake. reflexivity.
     + (* Different bytes: their difference. *)
-      rewrite (proj2 (Z.eqb_neq _ 0)); [|change (2 ^ 64) with 18446744073709551616; Z.div_mod_to_equations; lia]. close_if. en.
+      rewrite (proj2 (Z.eqb_neq _ 0)); [|change (2 ^ 64) with 18446744073709551616; Z.div_mod_to_equations; lia]. close_if. step.
       eapply (s_ret registry wi ge _ _ _ _ _ _ (cmp_bytes xs ys mod 2 ^ 32)); [reflexivity | reflexivity | |].
       { rewrite (cmp_bytes_drop xs ys i Htake) (drop_S _ _ _ Hxi) (drop_S _ _ _ Hyi). cbn [cmp_bytes].
         rewrite (proj2 (Z.eqb_neq _ _) Hne). arith. }
@@ -274,7 +268,7 @@ Lemma wp_glibc_memcmp_small fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ :
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof.
   intros Hfr H16 Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HK".
-  cbn in Hfr. injection Hfr as <-. en.
+  cbn in Hfr. injection Hfr as <-. step.
   iApply (wp_read_fact (liveq dq1 b reg ∗ liveq dq2 b' reg')%I
             (fun m => live_at m b reg /\ live_at m b' reg' /\ objects_fit (m_regions m)) (0 <= b /\ 0 <= b')
             with "[$Hl $Hl']").
@@ -283,9 +277,9 @@ Proof.
   { intros m (Hlv & Hlv' & Hfit). split; [apply (Hfit b reg (proj1 Hlv)) | apply (Hfit b' reg' (proj1 Hlv'))]. }
   { intros m fuel _. eapply rule_let; reflexivity. }
   iNext. iIntros ([Hb Hb']) "[Hl Hl']".
-  normt (b + o) ltac:(arith). sl. normt (b' + o') ltac:(arith). sl. sb.
+  normt (b + o) ltac:(arith). step_symbolic. normt (b' + o') ltac:(arith). step_symbolic. branch_symbolic.
   rewrite (Z.mod_small (Z.of_nat (List.length xs))); [|arith].
-  change (16 mod 2 ^ 64) with 16. rewrite (proj2 (Z.leb_gt 16 _)); [|lia]. close_if. en.
+  change (16 mod 2 ^ 64) with 16. rewrite (proj2 (Z.leb_gt 16 _)); [|lia]. close_if. step.
   norm "pr.3" (Z.of_nat (List.length xs - 0)) ltac:(arith). norm "pr.6" (b + o + Z.of_nat 0) ltac:(arith).
   norm "pr.12" (b' + o' + Z.of_nat 0) ltac:(arith).
   iApply (byte_loop _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Hl Hx Hl' Hy HK"); done || lia.
@@ -324,4 +318,3 @@ Proof.
 Qed.
 
 End rules.
-End MemcmpLogicOn.

@@ -4,20 +4,20 @@
     losing any part of the string, including the bytes surrounding
     it in the first and last words. *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import StrlenBits StrlenLogic WordString LibioDefaultXsputnBuf HiAtexitBase HiAtexitOutputState.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioXsputnSetp SysWrappers.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The byte borrowing rules use the interpreter's memory logic. *)
-Import HXS.XE.XL.XU.XW.XD.XC.XR.XF.XS.
-Import XB.DX.RM.SM.TL.BY.BF XB.DX.RM.SM.TL.BY.BF.CP XB.DX.RM.SM.TL.BY.BF.CP.CS
-  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.ML
-  XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.LG XB.DX.RM.SM.TL.BY.BF.CP.CS.SW.FI.L.
+Import LibioXsputnSetp.
+Import LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L.
 
 (** The byte pieces owned by a word window are exactly the pieces
     owned by its flattened byte sequence. *)

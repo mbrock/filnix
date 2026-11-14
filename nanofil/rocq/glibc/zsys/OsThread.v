@@ -34,6 +34,7 @@
     interpretation [os_wi] keeps its object identity registered in memory
     across every program step. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -41,6 +42,8 @@ From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic.
 From Glibc Require Import OsBlocks OsWorld.
+From Glibc Require OsWorld.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -78,12 +81,9 @@ Definition os_self_contract : contract os_world :=
     [[weakest-precondition|weakest precondition]] rule lets its proof
     continue with that pointer under the same OS world. *)
 
-(** To verify C functions that call `c: zthread_self_cookie`,
-    [OsThreadOn] lifts the contract above into a separation-logic proof
-    rule for a given [[runtime]] and program logic. *)
-Module OsThreadOn (R : Runtime) (LG0 : LogicSig R).
-Module OW := OsWorldOn R LG0.
-Import OW OW.L OW.LG.
+(** The rules below lift the contract above into separation-logic proof rules
+    for C functions that call `c: zthread_self_cookie`. *)
+Import OsWorld OsWorld.L OsWorld.LG.
 
 (** When an invocation of [os_self_contract] returns to its caller, it
     leaves the OS world unchanged and yields the thread cookie [ow_self]. *)
@@ -134,4 +134,3 @@ Proof.
 Qed.
 
 End rule.
-End OsThreadOn.

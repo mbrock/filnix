@@ -5,6 +5,7 @@
     `c: _IO_CURRENTLY_PUTTING` is set, and the narrow stream goes on to
     block `c: L162` ([wp_ovf_L113_rest]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,6 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
   SysWrappers LibioOverflowBase.
+From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -26,10 +29,8 @@ Definition ovf_b113 : block := Eval vm_compute in
   match find_block (TAtom "L113") (fn_blocks glibc__IO_new_file_overflow) with
   | Some b => b | None => mkBlock (TAtom "L113") [] [] JRetVoid end.
 
-(** The triples over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioOverflowSetpRestOn (R : Runtime) (LG0 : LogicSig R).
-Module OB := LibioOverflowBaseOn R LG0.
-Import OB OB.SW OB.SW.FI.ML OB.SW.FI.LG OB.SW.FI.L OB.SW.OW OB.SW.FI OB.SW.ST.
+
+Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -89,20 +90,19 @@ Proof.
   iApply (wp_raw_store_pointer with "Hl Hrp"); [vx | vx | reflexivity | ar | ar | wi_store |].
   iNext. iIntros "Hl Hrp". adv.
   iApply (wp_raw_store_pointer with "Hl Hrb"); [vx | vx | reflexivity | ar | ar | wi_store |].
-  iNext. iIntros "Hl Hrb". adv. load_int "Hl Hflb". adv.
+  iNext. iIntros "Hl Hrb". adv. load_s32_group "Hl Hflb". adv.
   iApply (wp_raw_store_w with "Hl Hflb"); [vx | vx | reflexivity | ar | reflexivity | wi_store |].
   iNext. iIntros "Hl Hflb".
   assert (Hlo : 0 <= Z.lor fl 2048 < 2 ^ 32) by (apply lor_lt32; lia).
   try change (2048 mod 2 ^ 32) with 2048. try (rewrite (Z.mod_small fl); [|lia]).
   try (rewrite (Z.mod_small (Z.lor fl 2048)); [|lia]).
   iDestruct "Hfx" as "(Hf2 & Hfd & Herr & Hcol & [%Hm Hmb] & Hvtp)".
-  adv. load_int "Hl Hmb". adv. brm Hmd.
+  adv. load_s32_group "Hl Hmb". adv. brm Hmd.
   assert (Happ' : Z.land (Z.lor fl 2048) io_is_appending = 0) by (rewrite land_lor_const; [exact Happ | reflexivity]).
   iApply (HL162 with "Hvt Hl [$Hf2 $Hfd $Herr $Hcol $Hmb $Hvtp //] [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
-    try first [side | lk_prove |
+    try first [libio_side | lk_prove |
       iApply (ovf_state_base with "Hbl Hxs [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
         try first [assumption | reflexivity | cbn; lia]].
 Qed.
 
 End rules.
-End LibioOverflowSetpRestOn.

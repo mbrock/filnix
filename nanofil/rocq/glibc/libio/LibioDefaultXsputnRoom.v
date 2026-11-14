@@ -19,6 +19,7 @@
     (`c: L65`), then goes on at `c: L51` and `c: L22`
     (LibioDefaultXsputnTail.v's [wp_dx_L22]). *)
 
+From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -28,6 +29,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
   LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnBytes LibioDefaultXsputnTail LibioDefaultXsputnSmall.
+From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnSmall LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
+From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -41,11 +44,8 @@ Definition dx_L44 : block := Eval vm_compute in
   match find_block (TAtom "L44") (fn_blocks glibc__IO_default_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L44") [] [] JRetVoid end.
 
-(** The rules over the [[runtime]] R and [LogicSig] LG0. *)
-Module LibioDefaultXsputnRoomOn (R : Runtime) (LG0 : LogicSig R).
-Module SM := LibioDefaultXsputnSmallOn R LG0.
-Import SM SM.TL SM.TL.BY SM.TL.BY.BF SM.TL.BY.BF.CP SM.TL.BY.BF.CP.CS SM.TL.BY.BF.CP.SW SM.TL.BY.BF.CP.SW.FI.ML
-  SM.TL.BY.BF.CP.SW.FI.LG SM.TL.BY.BF.CP.SW.FI.L SM.TL.BY.BF.CP.SW.OW SM.TL.BY.BF.CP.SW.FI SM.TL.BY.BF.CP.SW.ST.
+
+Import LibioDefaultXsputnSmall LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -66,7 +66,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Block `c: L51` on, from any of its three predecessors, to
     [wp_dx_L22]: enter it, subtract the count, enter `c: L22`. *)
-Ltac to_L22 := fs; fs; fs; fs.
+Ltac to_L22 := step; step; step; step.
 
 (** A lookup premise of [wp_dx_L22], through the environment's puts. *)
 Ltac lk_fin := lookups; first [reflexivity | do 2 f_equal; unwrap2; lia | do 3 f_equal; cbn [ptr_addr]; unwrap2; lia].
@@ -100,15 +100,15 @@ Proof.
   destruct Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [_ Hwa] & [_ Hea] & Hheap). cbn in Hwa, Hea.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK".
   iApply (wp_live_fit w0 registry ge with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [dx_L44 b_insts b_jump]. st.
+  cbn [dx_L44 b_insts b_jump]. step.
   destruct (Z_le_gt_dec cnt 20) as [Hsmall | Hbig].
   - (* L50: at most 20 bytes. *)
-    fbrv true.
+    branch_as true.
     iApply (wp_dx_L50 w0 registry ge os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cnt
-              with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK"); try side.
+              with "Hvt Hl Hvtp Hwc Hwp Hwe Hbl Hxs Hcs Hos Hl' Hys IH HK"); try close_side.
     unfold room_ok, in_buf. cbn. split_and!; first [reflexivity | assumption | lia].
   - (* L49: past 20 bytes, `c: __mempcpy`. *)
-    assert (Hbig' : 20 < cnt) by lia. fbrv false. fs. fs. norm. fldp "Hl" "Hwp" "Hbl".
+    assert (Hbig' : 20 < cnt) by lia. branch_as false. step. step. norm. load "Hl" "Hwp" "Hbl".
     set (ysub := take (Z.to_nat cnt) (drop (Z.to_nat (n - t)) ys)).
     assert (Hls : Z.of_nat (length ysub) = cnt).
     { unfold ysub. rewrite length_take_le; [lia|]. rewrite length_drop. lia. }
@@ -123,16 +123,15 @@ Proof.
     { unfold ysub. apply Forall_take, Forall_drop. exact Hy. }
     iNext. iIntros "Hbl Hbuf Hl' Hsub". iDestruct ("Hysb" with "Hsub") as "Hys".
     iDestruct "Hbuf" as (xs' cs') "(%Hl3 & Hxs & Hcs)". cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-    fchk "Hl". fstp "Hl" "Hwp". fs. fs. to_L22.
+    check "Hl". store "Hl" "Hwp". step. step. to_L22.
     iAssert (wbuf fb (Some (b, sz)) (mkPtr (wa + cnt) (Obj b)) (mkPtr ea (Obj b)))
       with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
     { rewrite Hls. replace (b + (wa - b) + cnt) with (wa + cnt) by lia. iFrame. iPureIntro.
       unfold room_ok, in_buf. cbn. destruct Hl3 as (H1 & H2 & H3).
       split_and!; first [reflexivity | assumption | lia]. }
     iApply (wp_dx_L22 w0 registry ge os fb freg vb vreg (Some (b, sz)) (mkPtr (wa + cnt) (Obj b))
-              (mkPtr ea (Obj b)) dq b' reg' so c' ys (t - cnt) with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try side.
+              (mkPtr ea (Obj b)) dq b' reg' so c' ys (t - cnt) with "Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK"); try close_side.
     all: unfold n in *; first [intros _; discriminate | lk_fin].
 Qed.
 
 End rules.
-End LibioDefaultXsputnRoomOn.

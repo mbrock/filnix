@@ -8,25 +8,27 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic MemLogic.
 From Glibc Require Import FileInv LibioFlushBody OsWorld.
+From Glibc Require FileInv LibioFlushBody OsWorld.
+From Glibc Require Import Fix.
 Open Scope Z_scope.
 Import ListNotations.
 
 (** The OS interface exports the safepoint rule without the syscall proof tree. *)
-Module Type HelloWorldSig (R : Runtime) (LG0 : LogicSig R).
+Module Type HelloWorldSig.
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Parameter os_wi_stable : forall w0, LG0.SafepointStable (os_wi w0).
 End HelloWorldSig.
 
 (** The existing OS proof implements the safepoint interface. *)
-Module HelloGlibcWorldOn (R : Runtime) (LG0 : LogicSig R) : HelloWorldSig R LG0.
-Include OsWorldOn R LG0.
+Module HelloGlibcWorldOn : HelloWorldSig.
+Include OsWorld.
 End HelloGlibcWorldOn.
 
 (** The interface defines stream ownership without exporting flush proofs. *)
-Module Type HelloStreamsSig (R : Runtime) (LG0 : LogicSig R).
+Module Type HelloStreamsSig.
 (** The file invariants share the caller's logic instance. *)
-Module FI := FileInvOn R LG0.
-Import LG0 LG0.L FI FI.ML.
+Module FI := FileInv.
+Import LG0 LG0.L FileInv FileInv.ML.
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.
 (** The stream owns a live, aligned file object. *)
@@ -48,13 +50,13 @@ End resources.
 End HelloStreamsSig.
 
 (** The existing flush proof implements these exact resource definitions. *)
-Module HelloGlibcMainStreamsOn (R : Runtime) (LG0 : LogicSig R) : HelloStreamsSig R LG0.
+Module HelloGlibcMainStreamsOn : HelloStreamsSig.
 (** The file invariants share the caller's logic instance. *)
-Module FI := FileInvOn R LG0.
+Module FI := FileInv.
 (** The flush proof supplies both resource definitions. *)
-Module F := LibioFlushBodyOn R LG0.
+Module F := LibioFlushBody.
 (** The stream owns a live, aligned file object. *)
-Definition stream_life := @F.stream_life.
+Definition stream_life := @LibioFlushBody.stream_life.
 (** The narrow stream has no pending output and owns an unlocked lock. *)
-Definition exit_stream := @F.exit_stream.
+Definition exit_stream := @LibioFlushBody.exit_stream.
 End HelloGlibcMainStreamsOn.

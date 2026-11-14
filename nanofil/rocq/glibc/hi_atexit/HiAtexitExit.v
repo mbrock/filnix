@@ -4,6 +4,7 @@
     thread and single-thread flag; it does not identify that state with
     the untouched loader image or prove process startup. *)
 
+From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,10 +14,10 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsRegistry FileInv AtexitLogic ExitRun ExitRunCode
   HiAtexitBase HiAtexitFns HiAtexitGe HiAtexitCloseIt HiAtexitCloseStdout
   HiAtexitStdout HiAtexitStdoutClose HiAtexitCleanup HiAtexitExitEnv.
+From Glibc Require AtexitLogic ExitRun ExitRunTail FileInv LibioFlushInv LibioGenLeaves.
 Import ListNotations.
 Open Scope Z_scope.
-Import HGV.ER HGV.ER.XL.XT HGV.ER.XL.XT.AX HLG HLG.L
-  HFL HFL.FI.
+Import ExitRun ExitRunTail AtexitLogic HLG HLG.L LibioFlushInv FileInv.
 
 (** The remaining streams are stderr and stdin, in list order. *)
 Definition hi_exit_streams : list ptr := [mkPtr 69328 (Obj 69328); mkPtr 69568 (Obj 69568)].
@@ -114,7 +115,7 @@ Proof.
     (fun n => match n with O => hi_exit_tail_state w0 | S _ => hi_exit_callback_state w0 s end)
     with "Hinv Hlock HP [] [] []");
     [exact Henv | exact Hlock | exact (hi_find___run_exit_handlers _) | | |].
-  - iApply (HGV.dtors_rule_tls w0 hge (hi_find___GI___call_tls_dtors _)).
+  - iApply (LibioGenLeaves.dtors_rule_tls w0 hge (hi_find___GI___call_tls_dtors _)).
   - rewrite big_sepL_singleton. iApply hi_exit_handler; assumption.
   - rewrite /hi_exit_tail_state. iApply hi_cleanup_rule; [vm_compute; reflexivity|cbn; lia].
 Qed.
