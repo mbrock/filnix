@@ -1,10 +1,9 @@
 From Glibc Require Import GlibcProgram.
-(** The second half of block `c: iw_1.L70` of `c: _IO_new_do_write`
-    (LibioDoWrite.v describes it), from its fourth store on:
-    `c: _IO_setp(fp, base, base)` and the mode's test, then the last
-    blocks ([wp_do_write_setp]). *)
+(** After a write, the stream resets its write pointers and tests its mode.
+    One symbolic run covers the pointer stores and the mode test.
+    The continuation chooses the write end and returns the result. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,8 +21,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Block `c: iw_1.L70` of `c: _IO_new_do_write`; LibioDoWriteTail.v
-    runs its first 16 instructions, `c: _IO_setg(fp, base, base, base)`. *)
+(** The reset block first restores the read pointers, then resets the write pointers.
+    LibioDoWriteTail.v proves the first sixteen instructions of this block. *)
 Definition dw_L70 : block := Eval vm_compute in
   match find_block (TAtom "iw_1.L70") (fn_blocks glibc__IO_new_do_write) with
   | Some b => b | None => mkBlock (TAtom "iw_1.L70") [] [] JRetVoid end.
@@ -36,8 +35,8 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The last blocks, as LibioDoWriteEnd.v proves them
-    ([wp_do_write_end]). *)
+(** The continuation chooses the write end from the stream flags and returns the write result.
+    LibioDoWriteEnd.v proves this contract. *)
 Context (Hend_spec : forall fb freg fl bb breg we be n r e from Φ,
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
@@ -56,11 +55,9 @@ Context (Hend_spec : forall fb freg fl bb breg we be n r e from Φ,
   WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L122") (Some from))) : sexpr) {{ Φ }}).
 
 
-(** The rest of block `c: iw_1.L70` after `c: _IO_setg`, to the
-    return: the write base and pointer the base, and the write end the
-    base when `c: _flags` has `c: _IO_LINE_BUF` or `c: _IO_UNBUFFERED`
-    (514), the narrow mode being 0 or -1 (`c: _mode <= 0`), else the
-    buffer's end. *)
+(** Both write pointers return to the buffer's base after the read pointers have been reset.
+    Line-buffered and unbuffered streams also set the write end to that base.
+    Other streams retain the buffer's end as their write end. *)
 Lemma wp_do_write_setp fb freg fl bb breg wb wp we be n r e mode Φ :
   let base := mkPtr bb (Obj bb) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= fl < 2 ^ 32 ->
@@ -86,14 +83,12 @@ Proof.
   destruct be as [bea bec]. cbn in Hbe, Hbec. subst bec.
   iIntros "Hl Hbl Hfl Hmode Hwb Hwp Hwe Hbase Hbend HK".
   cbn [dw_L70 b_insts b_jump skipn].
-  step. step. norm. check "Hl".
-  load_pointer "Hl Hbase Hbl" by ar.
-  iNext. iIntros "Hl Hbase Hbl". check "Hl".
-  store_pointer "Hl Hwp" by (ar) preserving wi_store.
-  iNext. iIntros "Hl Hwp". check "Hl".
-  store_pointer "Hl Hwb" by (ar) preserving wi_store.
-  iNext. iIntros "Hl Hwb". step. step. norm. check "Hl". iDestruct "Hmode" as "[%Hm0 Hmode]". load_s32_group "Hl Hmode".
-  step. destruct Hmd as [-> | ->]; branch.
+  iDestruct "Hmode" as "[%Hm0 Hmode]". unfold int_bytes, base.
+  sym_frun_with "Hl Hbl Hbase Hwp Hwb Hmode" [TAtom "iw_1.L122"]
+    ltac:(first [GlibcSym.sym_lia | eexists; split; [reflexivity|]; unfold GlibcSym.cell_pieces; wi_store]) ltac:(sym_vm).
+  all: destruct Hmd as [-> | ->].
+  all: try (exfalso; vm_compute in Hsym_yes; contradiction).
+  all: try (exfalso; vm_compute in Hsym_no; discriminate).
   all: iApply (Hend_spec with "Hl Hbl Hfl Hwe Hbase Hbend"); try libio_side;
     iNext; iIntros "Hl Hbl Hfl Hwe Hbase Hbend";
     iApply ("HK" with "Hl Hbl Hfl [$Hmode //] Hwb Hwp Hwe Hbase Hbend").
