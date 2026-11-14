@@ -175,19 +175,21 @@ class Generator:
         self.compiled = {}
         self.layout_files = {}
 
-    def layouts(self, paths, functions):
-        specs = []
-        for obj, unit in units(paths):
-            source = self.capture / (unit + '.i')
-            if source not in self.layout_files:
-                env = self.env.copy()
+    def layout_file(self, source, captured=True):
+        if source not in self.layout_files:
+            env, flags = self.env.copy(), []
+            if captured:
                 extra, flags = self.survey.cc_options(Path(str(source)[:-2] + '.cmd').read_text())
                 env.update(extra)
-                path = self.work / f'layout{len(self.layout_files)}.term'
-                path.write_text(run([NF / 'bin/nanofil', *flags, 'cc-layouts', source],
-                                    cwd=NF / 'src', env=env))
-                self.layout_files[source] = path
-            specs.append(f'{obj}={self.layout_files[source]}')
+            path = self.work / f'layout{len(self.layout_files)}.term'
+            path.write_text(run([NF / 'bin/nanofil', *flags, 'cc-layouts', source],
+                                cwd=NF / 'src', env=env))
+            self.layout_files[source] = path
+        return self.layout_files[source]
+
+    def layouts(self, paths, functions):
+        specs = [f'{obj}={self.layout_file(self.capture / (unit + ".i"))}'
+                 for obj, unit in units(paths)]
         return json.loads(run([self.swipl, HERE / 'layout.pl', ','.join(functions), *specs], env=self.env))
 
     def compile(self, source, mode, captured=True):
@@ -223,10 +225,18 @@ class Generator:
         lower, layout = fixture_prefix(name), cfg["layout"]
         mode = cfg.get("mode", "checked")
         specs = []
+        access_units = []
         if source:
-            specs.append(f"{lower}={self.compile(NF / source, mode, False)}")
+            compiled = self.compile(NF / source, mode, False)
+            specs.append(f"{lower}={compiled}")
+            if self.sources:
+                access_units.extend(['--unit', f'{lower}={compiled}={self.layout_file(NF / source, False)}'])
         for obj, unit in units(paths):
-            specs.append(f"{obj}={self.compile(self.capture / (unit + '.i'), mode)}")
+            unit_source = self.capture / (unit + '.i')
+            compiled = self.compile(unit_source, mode)
+            specs.append(f"{obj}={compiled}")
+            if self.sources:
+                access_units.extend(['--unit', f'{obj}={compiled}={self.layout_file(unit_source)}'])
         entry = roots
         if not source and layout != "getopt":
             entry = {"libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots", "stdlib": "stdlib_root"}.get(layout, lower + "_roots")
@@ -234,8 +244,9 @@ class Generator:
             root = self.work / "roots.term"
             root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
             specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
-        return self.prolog("link.pl", (["--context"] if self.sources else []) +
-                           (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
+        linked = self.prolog("link.pl", (["--context"] if self.sources else []) +
+                             (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
+        return linked, access_units
 
     def generate(self, manifest, output, cfg=None):
         if cfg is None:
@@ -265,13 +276,13 @@ class Generator:
             cache_key = (roots, unit_rows, source)
             if cache_key not in linked_cache:
                 linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)
-            linked = linked_cache[cache_key]
+            linked, access_units = linked_cache[cache_key]
             if self.sources:
                 term = self.work / "source.term"
                 term.write_text(linked)
                 facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
                 block_facts = json.loads(run([NF / 'bin/nanofil', '--script', HERE / 'block-facts.pl',
-                                              term, *fns.split()], env=self.env))
+                                              term, *fns.split(), *access_units], env=self.env))
                 for filename, text in source_tables(name, lower, facts, layout, NF,
                                                     block_definitions(block_facts)).items():
                     (output / filename).write_text(text)
@@ -281,7 +292,8 @@ class Generator:
                       f'live-in {sum(len(b["live_in"]) for b in bs)}; '
                       f'live-out {sum(len(b["live_out"]) for b in bs)}; accesses {len(accesses)}; '
                       f'rooted {sum(a["root"] is not None for a in accesses)}; '
-                      f'constant-root-offset {sum(a["root_offset"] is not None for a in accesses)}', flush=True)
+                      f'constant-root-offset {sum(a["root_offset"] is not None for a in accesses)}; '
+                      f'paths {sum(a["path"] != "opaque" for a in accesses)}/{len(accesses)}', flush=True)
                 located = sum(r["source"] is not None for r in facts)
                 blocks = sum(r["blocks"] for r in facts)
                 locations = sum(len(r["block_src"]) for r in facts)

@@ -12,7 +12,7 @@ Open Scope string_scope.
 Open Scope Z_scope.
 
 
-From Glibc Require Import HiAtexitModule HiAtexitSrcFiles HiAtexitSrc01 HiAtexitSrc02 HiAtexitSrc03 HiAtexitSrc04 HiAtexitSrc05 HiAtexitSrc06 HiAtexitSrc07.
+From Glibc Require Import HiAtexitModule HiAtexitSrcFiles HiAtexitSrc01 HiAtexitSrc02 HiAtexitSrc03 HiAtexitSrc04 HiAtexitSrc05 HiAtexitSrc06 HiAtexitSrc07 HiAtexitSrc08.
 Module HiAtexitSrc.
 Include HiAtexitSrcFiles.
 Include HiAtexitSrc01.
@@ -22,6 +22,7 @@ Include HiAtexitSrc04.
 Include HiAtexitSrc05.
 Include HiAtexitSrc06.
 Include HiAtexitSrc07.
+Include HiAtexitSrc08.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
 Definition source_blocks : list (string * option (list name)) := Eval lazy in

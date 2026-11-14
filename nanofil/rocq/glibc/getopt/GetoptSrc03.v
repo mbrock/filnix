@@ -39,12 +39,13 @@ Definition live_in : list (name * list name) :=
 Definition live_out : list (name * list name) :=
   [((TAtom "start"), [])].
 
-(** Each access records its instruction index, address, byte offset, optional width,
-    read and write flags, optional root temporary and optional offset from that root.
-    A local address names an invocation-local object, not a pointer temporary.
-    Variable-sized runtime accesses have no fixed width. *)
-Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
-  [((TAtom "start"), [(3%N, (TApp "tmp" [(TAtom "v16")]), (0), (Some 4), true, false, (Some (TAtom "v16")), (Some (0))); (5%N, (TApp "tmp" [(TAtom "v15")]), (0), (Some 4), false, true, (Some (TAtom "v15")), (Some (0))); (10%N, (TApp "tmp" [(TAtom "v20")]), (0), (Some 4), true, false, (Some (TAtom "v20")), (Some (0))); (12%N, (TApp "tmp" [(TAtom "v19")]), (0), (Some 4), false, true, (Some (TAtom "v18")), (Some (4))); (18%N, (TApp "tmp" [(TAtom "v32")]), (0), (Some 4), true, false, (Some (TAtom "v32")), (Some (0))); (20%N, (TApp "tmp" [(TAtom "v31")]), (0), (Some 4), false, true, (Some (TAtom "v31")), (Some (0))); (25%N, (TApp "tmp" [(TAtom "v36")]), (0), (Some 8), true, false, (Some (TAtom "v35")), (Some (16))); (27%N, (TApp "tmp" [(TAtom "v34")]), (0), (Some 8), false, true, (Some (TAtom "v34")), (Some (0))); (32%N, (TApp "tmp" [(TAtom "v40")]), (0), (Some 4), true, false, (Some (TAtom "v39")), (Some (8))); (34%N, (TApp "tmp" [(TAtom "v38")]), (0), (Some 4), false, true, (Some (TAtom "v38")), (Some (0)))])].
+(** Stop messages can name a C field instead of reporting only an address.
+    Source origins and completed layouts supply the field path; unresolved paths use "opaque".
+    These paths guide messages and annotations, not memory-safety arguments.
+    Local addresses name storage owned by this invocation.
+    Accesses with runtime byte counts have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z * string)) :=
+  [((TAtom "start"), [(3%N, (TApp "tmp" [(TAtom "v16")]), (0), (Some 4), true, false, (Some (TAtom "v16")), (Some (0)), "opaque"); (5%N, (TApp "tmp" [(TAtom "v15")]), (0), (Some 4), false, true, (Some (TAtom "v15")), (Some (0)), "getopt_data.optind"); (10%N, (TApp "tmp" [(TAtom "v20")]), (0), (Some 4), true, false, (Some (TAtom "v20")), (Some (0)), "opaque"); (12%N, (TApp "tmp" [(TAtom "v19")]), (0), (Some 4), false, true, (Some (TAtom "v18")), (Some (4)), "getopt_data.opterr"); (18%N, (TApp "tmp" [(TAtom "v32")]), (0), (Some 4), true, false, (Some (TAtom "v32")), (Some (0)), "getopt_data.optind"); (20%N, (TApp "tmp" [(TAtom "v31")]), (0), (Some 4), false, true, (Some (TAtom "v31")), (Some (0)), "opaque"); (25%N, (TApp "tmp" [(TAtom "v36")]), (0), (Some 8), true, false, (Some (TAtom "v35")), (Some (16)), "getopt_data.optarg"); (27%N, (TApp "tmp" [(TAtom "v34")]), (0), (Some 8), false, true, (Some (TAtom "v34")), (Some (0)), "opaque"); (32%N, (TApp "tmp" [(TAtom "v40")]), (0), (Some 4), true, false, (Some (TAtom "v39")), (Some (8)), "getopt_data.optopt"); (34%N, (TApp "tmp" [(TAtom "v38")]), (0), (Some 4), false, true, (Some (TAtom "v38")), (Some (0)), "opaque")])].
 
 
 End fn__getopt_internal.
@@ -72,11 +73,12 @@ Definition live_in : list (name * list name) :=
 Definition live_out : list (name * list name) :=
   [((TAtom "start"), [])].
 
-(** Each access records its instruction index, address, byte offset, optional width,
-    read and write flags, optional root temporary and optional offset from that root.
-    A local address names an invocation-local object, not a pointer temporary.
-    Variable-sized runtime accesses have no fixed width. *)
-Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
+(** Stop messages can name a C field instead of reporting only an address.
+    Source origins and completed layouts supply the field path; unresolved paths use "opaque".
+    These paths guide messages and annotations, not memory-safety arguments.
+    Local addresses name storage owned by this invocation.
+    Accesses with runtime byte counts have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z * string)) :=
   [((TAtom "start"), [])].
 
 

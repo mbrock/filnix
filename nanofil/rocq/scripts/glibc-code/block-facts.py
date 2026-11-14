@@ -27,14 +27,15 @@ def block_definitions(functions):
                 distance = 'None' if access['root_offset'] is None else f'(Some ({access["root_offset"]}))'
                 reads, writes = str(access['read']).lower(), str(access['write']).lower()
                 accesses.append(f'({access["index"]}%N, {a}, ({access["offset"]}), {width}, '
-                                f'{reads}, {writes}, {root}, {distance})')
+                                f'{reads}, {writes}, {root}, {distance}, {string(access["path"])})')
             blocks.append(f'({atom(block["label"])}, {listing(accesses)})')
         text += f'''
-(** Each access records its instruction index, address, byte offset, optional width,
-    read and write flags, optional root temporary and optional offset from that root.
-    A local address names an invocation-local object, not a pointer temporary.
-    Variable-sized runtime accesses have no fixed width. *)
-Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z)) :=
+(** Stop messages can name a C field instead of reporting only an address.
+    Source origins and completed layouts supply the field path; unresolved paths use "opaque".
+    These paths guide messages and annotations, not memory-safety arguments.
+    Local addresses name storage owned by this invocation.
+    Accesses with runtime byte counts have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z * string)) :=
   {listing(blocks)}.
 
 '''

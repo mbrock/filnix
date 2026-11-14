@@ -127,6 +127,29 @@ The `footprint` table gives the address and constant byte offset for each
 explicit access, in instruction order. Each entry also records the zero-based
 instruction index, byte width and read and write flags.
 
+Readable stops need field names rather than byte offsets. The last footprint
+component is a string path such as `fp->_IO_write_ptr`, `fp->_lock->owner`
+or `fp->embedded.owner`. The string `opaque` means that neither source
+origins nor a complete layout resolved the access.
+
+Casts can make a pointer refer to a different record type. When the source
+names a field through a cast, a stop message should retain that field name.
+The generator therefore prefers a unique source path over a lookup using
+the pointer's declared type. The printed path omits the cast. Reading a
+pointer field and following the stored pointer describe different accesses.
+
+When the source expression does not identify a field, a constant offset
+may still select one from a complete C layout. The generator walks embedded
+records with their own offsets and treats a loaded pointer as a new root.
+Record numbers belong to one translation unit. The generator matches each
+linked function's context to its original unit before reading those numbers.
+
+Ambiguous union members require a selecting source expression. Padding,
+unresolved arithmetic and unresolved subscripts remain `opaque`; the generator
+does not guess a nearby field. Paths support stop messages and annotation
+keys only. They add no premise to a soundness theorem, and compilation
+checks only their enclosing block labels, not their source accuracy.
+
 An address computed by advancing another pointer can still refer to that
 pointer's object. The table records this root temporary and the constant
 distance from it when known. Flight lower donors and the existing guard-chain
@@ -146,9 +169,11 @@ the membership computation, so temporary sets and access records stay out
 of its VM code. Large fixtures split definitions into numbered files by
 size, while the main file retains the single check.
 
-The generator reports block counts, liveness entries, accesses and resolved roots.
+The generator reports block counts, liveness entries, accesses, resolved roots and path coverage.
 `test-block-facts.py` checks phi edges, local objects, byte widths and the
 difference between constant and dynamic root offsets through the analysis command.
+It also checks nested field paths, layout-only recovery, union ambiguity,
+translation-unit scoping and accesses through loaded buffer pointers.
 
 The tables do not describe which earlier range checks remain available at a block's exit.
 The check-reuse pass calculates those `avail` facts but discards its exit maps.
