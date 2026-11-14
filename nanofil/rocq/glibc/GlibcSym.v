@@ -14,11 +14,10 @@
     running the executor inside a proof costs one computation instead
     of a tactic step per instruction.
 
-    The executor assigns numbers to unknown integers, pointers and object
-    regions. A valuation maps those numbers back to the proof's values.
-    Unused hypotheses stay in the proof context, as [[separation-logic]]
-    permits. This version handles lets, flights, checks, and loads and
-    stores at constant offsets within one block. *)
+    Unknown pointer addresses and integer values need not prevent execution.
+    The executor keeps expressions for them and stores their actual values
+    separately, in a valuation. It uses only the memory permissions named
+    by the caller and preserves the others, as [[separation-logic]] permits. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -33,10 +32,9 @@ Open Scope Z_scope.
 
 (** ## Symbolic integers, capabilities and words
 
-    A temporary in a block holds an integer or a pointer whose parts
-    are known only as expressions over the proof's variables. These
-    types describe such values, and the valuation gives each variable
-    the value it has in the proof. *)
+    A block may add an offset to a pointer whose address is unknown.
+    The executor records the addition as an expression rather than
+    requiring a concrete result. The valuation supplies the unknown values. *)
 
 (** An integer expression is built from constants, integer variables,
     the address of a pointer variable, the end of a region variable,
@@ -53,8 +51,8 @@ Inductive zexp : Type :=
   | ZMod (a : zexp) (m : Z)
   | ZCmp (c : cond) (k : class) (a b : zexp).
 
-(** A capability is absent, a writable or read-only object at a base
-    address, or the unknown capability of a pointer variable. *)
+(** A capability identifies a writable or read-only object by its base address.
+    It can also be absent or supplied by a pointer variable. *)
 Inductive scap : Type :=
   | SCNone
   | SCObj (b : zexp)
@@ -191,14 +189,13 @@ Inductive stop_reason : Type :=
   | UnsupportedJump (j : jump)
   | NotYet.
 
-(** The final state records the known temporaries, the
-    assignments made in order, the atoms owned now, and the conditions
-    left for the proof. *)
+(** An assignment changes a temporary, and a store changes a cell.
+    The state tracks both changes and collects conditions that the caller must prove. *)
 Record sstate : Type := mkSState {
   st_env : senv; st_ups : list (name * sword); st_heap : list atom; st_obs : list ob }.
 
-(** An execution ends at a jump to a target, at a branch on a symbolic
-    condition, or stopped before the instructions rest and the jump j. *)
+(** Execution either reaches a goto or branch, or stops at an unsupported instruction.
+    A stopped execution returns the instructions and jump that remain to be handled. *)
 Inductive leaf : Type :=
   | LGoto (t : target) (s : sstate)
   | LBranch (c : zexp) (t1 t2 : target) (s : sstate)
@@ -961,9 +958,9 @@ Fixpoint sym_exec (ge : genv) (fs : facts) (s : sstate) (insts : list inst) (j :
 (** ## The executor
 
     The executor walks the block's instructions with the facts, the
-    known environment and the owned atoms. It is defined here as a
-    stub that stops at once, so that the statements below are fixed
-    before the implementation is written. *)
+    known environment and the owned atoms. A supported instruction updates
+    this description; an unsupported instruction returns control to the
+    ordinary step tactics with a reason for stopping. *)
 
 (** [sym_block] ge fs se h l insts j runs the instructions insts and the
     jump j of the block labelled l, starting from the known environment
@@ -1480,12 +1477,13 @@ Proof.
       exists (os' ++ os). rewrite H H' app_assoc. reflexivity.
 Qed.
 
-(** Reading a leaf's pure conditions leaves its continuation available to the proof. *)
+(** Arithmetic facts can be used more than once, unlike ownership of a memory cell.
+    The proof copies those facts here and keeps the original requirement for later. *)
 Lemma leaf_den_obs ρ f e ls l Φ lf :
   leaf_den ρ f e ls l Φ lf ⊢ ⌜obs_den ρ (st_obs (leaf_state lf))⌝ ∗ leaf_den ρ f e ls l Φ lf.
 Proof. destruct lf; cbn [leaf_den leaf_state]; iIntros "[%H HK]"; iFrame; auto. Qed.
 
-(** Induction over the instruction list combines the reflected instruction rules. *)
+(** Each successful instruction preserves enough information to justify the next instruction in the block. *)
 Lemma sym_exec_rule ρ fs insts j s f e ls l Φ :
   facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
   heap_den ρ (st_heap s) -∗ leaf_den ρ f e ls l Φ (sym_exec ge fs s insts j) -∗
@@ -1618,7 +1616,7 @@ Ltac sym_quote_r rho reg :=
     lazymatch q with (?n, ?rs') => constr:((n, mkVal zs ps rs')) end
   end.
 
-(** The four supported ownership assertions are quoted without unfolding their ghost state. *)
+(** The tactic recognizes cell and lifetime permissions by name, without inspecting their implementation. *)
 Ltac sym_quote_atom rho P :=
   lazymatch P with
   | live ?b ?reg =>
@@ -1665,14 +1663,17 @@ Ltac sym_not_in x xs :=
 Ltac sym_context seen :=
   match goal with
   | H : ?P |- _ =>
-      let sort := type of P in
-      let check := constr_eq sort Prop in
+      let relevant := lazymatch P with
+        | Z.le _ _ => idtac | Z.lt _ _ => idtac
+        | @eq cap _ _ => idtac | lookup _ _ = Some _ => idtac
+        | _ /\ _ => idtac
+        end in
       let unseen := sym_not_in P seen in
       sym_context constr:(P :: seen)
   | _ => seen
   end.
 
-(** Conjunctions expose their bounds and equations to the quotation pass. *)
+(** When a hypothesis joins two facts, the tactic collects each fact separately. *)
 Ltac sym_flatten props :=
   lazymatch props with
   | [] => props
@@ -1826,18 +1827,6 @@ Ltac sym_restore fs h old names H :=
       end
   end.
 
-(** The new lookup facts remain available to ordinary stepping tactics and later symbolic runs. *)
-Ltac sym_expose_env H :=
-  lazymatch type of H with
-  | env_models _ _ _ => unfold env_models in H; sym_expose_env H
-  | Forall _ [] => clear H
-  | Forall _ (_ :: _) =>
-      let Hlk := fresh "Hsym_lookup" in let Htail := fresh "Hsym_env" in
-      inversion H as [|? ? Hlk Htail]; subst; clear H;
-      cbn [fst snd wden cden zden vz vp vr nth nth_error apply_ups fold_left] in Hlk;
-      rewrite ?sym_ptr_eta in Hlk; sym_expose_env Htail
-  end.
-
 (** One computation supplies the leaf, and the cast lets the kernel check that computed result. *)
 Ltac sym_finish fs se h rho names solve :=
   lazymatch goal with
@@ -1863,14 +1852,18 @@ Ltac sym_finish fs se h rho names solve :=
           iEval (cbn [heap_den atom_den wden cden zden vz vp vr nth nth_error]; rewrite ?sym_ptr_eta) in Hnew;
           let hs := eval cbn [leaf_state st_heap] in (st_heap (leaf_state lf)) in
           sym_restore fs hs h names Hnew;
-          sym_expose_env Henv;
+          clear Henv;
           cbn [apply_ups fold_left fst snd wden cden zden vz vp vr nth nth_error edge_label];
           rewrite ?sym_ptr_eta]
       end]
   | _ => fail "sym_run: expected a block-entry WP with no pending fault"
   end.
 
-(** The entry tactic quotes ownership, lookup facts, capability equations, and integer bounds. *)
+(** Once bounds are collected, the other quoted facts complete the executor's input. *)
+Ltac sym_finish_bounds cs se h rho names solve bs :=
+  sym_finish constr:(mkFacts bs cs) se h rho names solve.
+
+(** The caller supplies resource names; the tactic reads the other facts from the context. *)
 Ltac sym_run_with names solve :=
   iStartProof; autounfold with offs in *;
   let names := String.words names in
@@ -1884,8 +1877,8 @@ Ltac sym_run_with names solve :=
         lazymatch qe with (?se, ?r2) => let qc := sym_quote_caps r2 props in
           lazymatch qc with (?cs, ?rho) =>
             let terms := sym_bound_terms rho in
-            sym_bounds props terms constr:(@nil bound) ltac:(fun bs =>
-              sym_finish constr:(mkFacts bs cs) se h rho names solve)
+            sym_bounds props terms constr:(@nil bound)
+              ltac:(sym_finish_bounds cs se h rho names solve)
           end end
     end
   end.

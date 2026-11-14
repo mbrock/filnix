@@ -172,6 +172,29 @@ Ltac from_context :=
   multimatch goal with
   | [ H : ?P /\ ?Q |- ?Q ] => exact (proj2 H)
   end.
+(* Local recursion retains its parameters and nested let boundaries. *)
+Ltac successor_count n :=
+  let rec count x acc :=
+    lazymatch x with
+    | O => acc
+    | S ?k => let next := constr:(S acc) in count k next
+    end in
+  count n constr:(2).
+(* The first in belongs to eval, and the second belongs to let. *)
+Ltac computed_count n :=
+  let x := eval vm_compute in (n + 3) in
+  let y := successor_count x in
+  exact y.
+Goal nat.
+Proof.
+  let x := eval cbn [Nat.add] in (2 + 5) in
+  let y := successor_count x in
+  constr_eq y constr:(9); exact y.
+Defined.
+Definition counted : nat.
+Proof. computed_count 6. Defined.
+Goal counted = 11.
+Proof. reflexivity. Qed.
 Goal forall P Q : Prop, P /\ Q -> Q.
 Proof. intros P Q H. finish H. Qed.
 Goal forall P Q : Prop, P /\ Q -> Q.
