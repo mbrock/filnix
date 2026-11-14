@@ -60,6 +60,8 @@ stdlib/GetenvSrc.v
 stdlib/GetenvEntry.v
 stdlib/GetenvName.v
 stdlib/GetenvCompare.v
+stdlib/GetenvScan.v
+stdlib/GetenvStatic.v
 nptl/CutoffCode.v
 nptl/CutoffLayout.v
 nptl/CutoffSrc.v
