@@ -59,9 +59,10 @@ Import HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibc
 
 Section operands.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloDebts w0 ge o) (X0 X : iProp Σ)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
   (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
-  (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr).
+  (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
+  (S : list ptr -> Z -> iProp Σ).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Local Instance operands_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
@@ -233,11 +234,11 @@ Qed.
 
 (** The operand check either proceeds to the greeting or exits with status one. *)
 Lemma main_operands Φ :
-  hello_ro ge o -∗ join_cont Φ -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn "iw_1.L10" "iw_1.L8" Φ.
+  hello_ro ge o -∗ join_cont Φ -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L10" "iw_1.L8" Φ.
 Proof.
   iIntros "#Hro HJ" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
   destruct Hf as ((H0 & H2 & H4 & H6 & Hc1) & Hb4 & Hb6 & Hi).
-  iDestruct "Hr" as "(Hav & #Hps & (Hoal & Hoac & Hoil & Hoic) & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6)".
+  iDestruct "Hr" as "(Hav & #Hps & (Hoal & Hoac & Hoil & Hoic) & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".
   iPoseProof (names_intro o pn sn with "Hnc Hpn Hsn") as "Hn".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
   step. destruct Hlose as [-> | ->].

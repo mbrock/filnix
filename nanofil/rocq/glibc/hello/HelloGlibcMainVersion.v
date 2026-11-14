@@ -27,9 +27,10 @@ Import HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcM
 
 Section version.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloDebts w0 ge o) (X0 X : iProp Σ)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
   (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
-  (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr).
+  (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
+  (S : list ptr -> Z -> iProp Σ).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Local Instance version_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
@@ -118,10 +119,10 @@ Qed.
 
 (** The version branch runs from the loop exit to successful termination. *)
 Lemma main_version Φ :
-  hello_ro ge o -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn "iw_1.L21" "iw_1.L19" Φ.
+  hello_ro ge o -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L21" "iw_1.L19" Φ.
 Proof.
   iIntros "#Hro" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
-  iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6)".
+  iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".
   iPoseProof "Hro" as "(_ & _ & #Hsol & #Hsoc & _)".
   iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & Hen)".
   step. step_global (hy_so _ _ Hy).

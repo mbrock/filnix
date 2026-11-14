@@ -29,9 +29,10 @@ Import HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibc
 
 Section help.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloDebts w0 ge o) (X0 X : iProp Σ)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
   (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
-  (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr).
+  (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
+  (S : list ptr -> Z -> iProp Σ).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Local Instance help_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
@@ -45,7 +46,7 @@ Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
 
 (** The help branch prints the usage text before exiting. *)
 Lemma main_help Φ :
-  hello_ro ge o -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn "iw_1.L39" "iw_1.L50" Φ.
+  hello_ro ge o -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L39" "iw_1.L50" Φ.
 Proof.
   iIntros "#Hro" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
   iDestruct "Hr" as "(_ & _ & _ & _ & _ & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & _)".

@@ -363,6 +363,7 @@ getopt/GetoptCallParse.v
 getopt/GetoptWrapParse.v
 getopt/GetoptLongStr.v
 hello/HelloGetoptTable.v
+hello/HelloGetoptState.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v
@@ -398,6 +399,7 @@ hello/HelloGlibcMainFull.v
 libio/LibioXsputn.v
 getopt/GetoptLongPfxAlloc.v
 hello/HelloGlibcJoin.v
+hello/HelloGlibcJoinIx.v
 hi_atexit/HiAtexitXsputnRules.v
 getopt/GetoptLongPfxSet.v
 hi_atexit/HiAtexitOutputState.v

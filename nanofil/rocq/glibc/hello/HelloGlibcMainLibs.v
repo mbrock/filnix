@@ -24,7 +24,7 @@ Definition exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
 (** The initially empty handler list becomes a one-callback list. *)
 Parameter hello_libs : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (debt : D.HelloDebts w0 ge o) c,
+  forall (debt : D.HelloCore w0 ge o) c,
   D.HelloLibs w0 ge o (D.hd_priv w0 ge o debt)
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.
@@ -48,7 +48,7 @@ Section libs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (o : hello_objs) (Hk : hello_link ge o) (Hos : hello_os_layout w0 o).
 (** The initially empty handler list becomes a one-callback list. *)
-Lemma hello_libs (debt : D.HelloDebts w0 ge o) c :
+Lemma hello_libs (debt : D.HelloCore w0 ge o) c :
   D.HelloLibs w0 ge o (D.hd_priv w0 ge o debt)
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.

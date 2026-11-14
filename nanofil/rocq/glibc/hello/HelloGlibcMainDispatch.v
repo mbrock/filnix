@@ -41,8 +41,9 @@ Import HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.F
 
 Section dispatch.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloDebts w0 ge o) (X : iProp Σ)
-  (Hy : hello_layout ge o) (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr).
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X : iProp Σ)
+  (Hy : hello_layout ge o) (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
+  (S : list ptr -> Z -> iProp Σ).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Local Instance dispatch_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
@@ -56,11 +57,14 @@ Local Notation gval := (language.val (nanofil_lang glibc_os_registry ge)).
 
 (** The loop owns the argument vector, option globals, greeting cell,
     name cells, exit handlers, streams and conversion state. The callees
-    retain their private state, and all argument strings remain read-only. *)
+    retain their private state, and all argument strings remain read-only.
+    The loop also carries S, the option parser's own state at the current
+    vector and index. Only the parser's contract reads S; every other call
+    leaves it alone. *)
 Definition loop_res (ps : list ptr) (a : ptr) (i : Z) (g : ptr) : iProp Σ :=
   argv_own av ar ps ∗ ([∗ list] q ∈ ps, str_ro q) ∗ getopt_cells o a i ∗ gcell b4 g ∗ str_ro g ∗
   ncells o pn pn sn ∗ str_ro pn ∗ str_ro sn ∗ X ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
-  obj b6 (heap_req 4 8).
+  obj b6 (heap_req 4 8) ∗ S ps i.
 
 (** A loop exit passes the invariant and the bounded error flag to its target block. *)
 Definition loop_exit (lab from : string) (Φ : gval -> iProp Σ) : iProp Σ :=
@@ -98,13 +102,14 @@ Definition loop_again (Φ : gval -> iProp Σ) : iProp Σ :=
 Lemma loop_res_fold ps a i g :
   argv_own av ar ps -∗ ([∗ list] q ∈ ps, str_ro q) -∗ getopt_cells o a i -∗ gcell b4 g -∗ str_ro g -∗
   ncells o pn pn sn -∗ str_ro pn -∗ str_ro sn -∗ X -∗ hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗
-  obj b6 (heap_req 4 8) -∗ loop_res ps a i g.
+  obj b6 (heap_req 4 8) -∗ S ps i -∗ loop_res ps a i g.
 Proof.
-  iIntros "H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12".
+  iIntros "H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13".
   iSplitL "H1"; [iExact "H1"|]. iSplitL "H2"; [iExact "H2"|]. iSplitL "H3"; [iExact "H3"|].
   iSplitL "H4"; [iExact "H4"|]. iSplitL "H5"; [iExact "H5"|]. iSplitL "H6"; [iExact "H6"|].
   iSplitL "H7"; [iExact "H7"|]. iSplitL "H8"; [iExact "H8"|]. iSplitL "H9"; [iExact "H9"|].
-  iSplitL "H10"; [iExact "H10"|]. iSplitL "H11"; [iExact "H11" | iExact "H12"].
+  iSplitL "H10"; [iExact "H10"|]. iSplitL "H11"; [iExact "H11"|].
+  iSplitL "H12"; [iExact "H12" | iExact "H13"].
 Qed.
 
 (** Storing a new greeting renews the checked pointer before updating its cell. *)
@@ -141,13 +146,13 @@ Lemma loop_dispatch Φ e lose ps a i g code :
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L19") (Some (TAtom "iw_1.L8")))) : gexpr) {{ Φ }}.
 Proof.
   intros Hf Hpr Hlose Hv15 Hcode Hn1. iIntros "#Hro Hr Hga IH HK".
-  iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6)".
+  iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".
   pose proof Hf as ((H0 & H2 & H4 & H6 & Hc1) & Hb4 & Hb6 & Hi).
   step. step.
   destruct (Z.eq_dec code 129) as [-> | H129].
   { (* --version. *)
     (branch_symbolic; LeavesLogic.decide_branch). iDestruct "HK" as "[HK _]".
-    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
+    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6 HS") as "Hr".
     iApply ("HK" $! _ ps a i g lose with "[%] Hr"). lfacts. }
   (branch_symbolic; LeavesLogic.decide_branch). step. step.
   destruct (Z.eq_dec code 103) as [-> | H103].
@@ -164,14 +169,14 @@ Proof.
     iApply wp_goto. iNext. cbn [edge_label].
     iAssert (getopt_cells o a i) with "[Hoal Hoac Hoil Hoic]" as "Hgo".
     { iSplitL "Hoal"; [iExact "Hoal"|]. iSplitL "Hoac"; [iExact "Hoac"|]. iSplitL "Hoil"; [iExact "Hoil" | iExact "Hoic"]. }
-    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Ha Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
+    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Ha Hnc Hpn Hsn HX Hio Hpv Hb6 HS") as "Hr".
     iApply ("IH" $! "iw_1.L35"%string _ lose ps a i a with "[%] Hr HK").
     split; [right; right; split; [left; reflexivity | split; [lk_prove | exact Hlose]]|]. lf. }
   (branch_symbolic; LeavesLogic.decide_branch). step. step.
   destruct (Z.eq_dec code 128) as [-> | H128].
   { (* --help. *)
     (branch_symbolic; LeavesLogic.decide_branch). iDestruct "HK" as "[_ [HK _]]".
-    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
+    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6 HS") as "Hr".
     iApply ("HK" $! _ ps a i g lose with "[%] Hr"). lfacts. }
   (branch_symbolic; LeavesLogic.decide_branch). step. step.
   destruct (Z.eq_dec code 116) as [-> | H116].
@@ -180,12 +185,12 @@ Proof.
     iAssert (str_ro (sym_ptr ge "hello#str.76")) as "#Ht"; [iApply (lit_ro with "Hro"); cbn; tauto|].
     iApply (greeting_store with "Hgc"); [lk_prove | lk_prove | lk_prove | exact Hb4 |]. iIntros "Hgc".
     iApply wp_goto. iNext. cbn [edge_label].
-    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Ht Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
+    iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Ht Hnc Hpn Hsn HX Hio Hpv Hb6 HS") as "Hr".
     iApply ("IH" $! "iw_1.L42"%string _ lose ps a i (sym_ptr ge "hello#str.76") with "[%] Hr HK").
     split; [right; right; split; [right; reflexivity | split; [lk_prove | exact Hlose]]|]. lf. }
   (* Any other option: an unknown one, and pr.2 becomes 1. *)
   iApply wp_branch; [vx|]. iNext. decide_branch.
-  iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6") as "Hr".
+  iPoseProof (loop_res_fold with "Hav Hps Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6 HS") as "Hr".
   iApply ("IH" $! "iw_1.L52"%string _ 1 ps a i g with "[%] Hr HK").
   split; [right; left; split; reflexivity|]. lf.
 Qed.

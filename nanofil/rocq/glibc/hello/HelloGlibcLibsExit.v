@@ -27,7 +27,7 @@ Definition hello_exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp
 (** Exit invokes the registered callback and never returns to main. *)
 Parameter libs_exit : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (debt : D.HelloDebts w0 ge o) c n,
+  forall (debt : D.HelloCore w0 ge o) c n,
   D.fn_triple w0 ge (TAtom "exit") [WInt n]
     (D.hello_ro ge o ∗ D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
@@ -96,7 +96,7 @@ Proof.
 Qed.
 
 (** Exit invokes the registered callback and never returns to main. *)
-Lemma libs_exit (debt : D.HelloDebts w0 ge o) c n :
+Lemma libs_exit (debt : D.HelloCore w0 ge o) c n :
   D.fn_triple w0 ge (TAtom "exit") [WInt n]
     (D.hello_ro ge o ∗ D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
