@@ -294,7 +294,7 @@ in
   )
 
   {
-    # `abseil-cpp` is an alias of this LTS branch, so both names get the port.
+    # ports/overlay.nix points `abseil-cpp` at this LTS branch.
     abseil-cpp_202601 = for pkgs.abseil-cpp_202601 [
       # Upstream Fil-C's port: Status, Cord, Mutex and BitGenRef keep
       # pointers in integer words, which drops their capabilities.
@@ -601,6 +601,17 @@ in
   {
     libjpeg_turbo = (
       for pkgs.libjpeg_turbo [
+        # 3.2 moved the SIMD dispatch into simd/ and rewrote the Arm sources
+        # the SIMDe patch below changes; keep 3.1.4 until it is rebased.
+        (use {
+          version = "3.1.4";
+          src = pkgs.fetchFromGitHub {
+            owner = "libjpeg-turbo";
+            repo = "libjpeg-turbo";
+            tag = "3.1.4";
+            hash = "sha256-mxmJejgUqS6OC0U0gHsHHe74X0MTVBY5OCbqxIyWa3Q=";
+          };
+        })
         (patch ./ports/patch/libjpeg-turbo-3.0.1.patch)
         # The x86-64 SIMD extensions are NASM assembly; build the Arm Neon
         # intrinsics instead, translated to SSE by the SIMDe headers.
@@ -1816,11 +1827,11 @@ in
   ])
 
   (for pkgs.libsepol [
-    (patch ./ports/patch/libsepol-3.9.patch)
+    (patch ./ports/patch/libsepol-3.11.patch)
   ])
 
   (for pkgs.libselinux [
-    (patch ./ports/patch/libselinux-3.9.patch)
+    (patch ./ports/patch/libselinux-3.11.patch)
   ])
 
   (for pkgs.keyutils [
@@ -2150,6 +2161,8 @@ in
       libsysprof-capture = null;
       # Keep the bootstrap GLib free of scanner inputs as well as GIR output.
       withIntrospection = false;
+      # 2.80's meson.build checks for packaging, which GLib 2.90 dropped.
+      python3 = pkgs.buildPackages.python3.withPackages (p: [ p.packaging ]);
     })
     (skipTests "many failures")
     (use {

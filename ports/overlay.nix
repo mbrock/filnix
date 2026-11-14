@@ -1141,6 +1141,11 @@ portDSL.makeOverlay portList final prev
   emacs-nox = final.emacs;
   emacs30-nox = final.emacs;
 
+  # Nixpkgs 26.11 moved the abseil-cpp alias to LTS 202608, which has no
+  # Fil-C port; without the port protobuf crashes FilPizlonator. Keep the
+  # ported 202601 branch until 202608 is ported.
+  abseil-cpp = final.abseil-cpp_202601;
+
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;
   };

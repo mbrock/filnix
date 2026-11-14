@@ -105,6 +105,8 @@ let
           libsysprof-capture = null;
           # The Fil-C GI port supplies the target GLib GIRs.
           withIntrospection = false;
+          # 2.80's meson.build checks for packaging, which GLib 2.90 dropped.
+          python3 = bh.python3.withPackages (p: [ p.packaging ]);
         })
         (use {
           doCheck = false;
