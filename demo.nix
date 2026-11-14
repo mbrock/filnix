@@ -29,17 +29,17 @@ in
         meta.mainProgram = "ttyd-emacs-demo";
       });
 
+  # Lua 5.5 since Nixpkgs 26.11, which luaffi now needs. luabitop (5.1 and
+  # 5.2; 5.3 has bitwise operators) and lua-pam (before 5.4) do not build.
   lua-with-stuff = pkgsFilc.lua5.withPackages (
     ps: with ps; [
       lpeg
       luafilesystem
-      luabitop
       luadbi
       luadbi-sqlite3
       luaffi
       lua-ffi-zlib
       luaposix
-      lua-pam
     ]
   );
 

@@ -29,7 +29,6 @@ let
       tpmSupport = false;
       smbdSupport = false;
       libiscsiSupport = false;
-      glusterfsSupport = false;
       cephSupport = false;
     }
   );
