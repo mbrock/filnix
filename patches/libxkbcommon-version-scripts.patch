@@ -1,9 +1,11 @@
 Only the version-script changes from the upstream 1.11 port apply to our
 1.13 source. Its X11 test hunk has drifted and is unnecessary with X11 disabled.
 
+diff --git a/meson.build b/meson.build
+index 2066cbc..ec45098 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -165,12 +165,12 @@ configh_data.set('WIN32_LEAN_AND_MEAN', 1)
+@@ -306,12 +306,12 @@ configh_data.set('WIN32_LEAN_AND_MEAN', 1)
  
  xkbcommon_map = meson.current_source_dir() / 'xkbcommon.map'
  
@@ -11,7 +13,7 @@ Only the version-script changes from the upstream 1.11 port apply to our
 +# Supports --version-script?
  meson_test_map = meson.current_source_dir() / 'test/meson_test.map'
  have_version_script = cc.links(
-     'int main() { return 0; }',
+     'int main(void) { return 0; }',
 -    args: f'-Wl,--version-script=@meson_test_map@',
 -    name: '-Wl,--version-script',
 +    args: f'--version-script=@meson_test_map@',
@@ -19,7 +21,7 @@ Only the version-script changes from the upstream 1.11 port apply to our
  )
  
  map_to_def = find_program('scripts/map-to-def')
-@@ -254,7 +254,7 @@ libxkbcommon_sources = [
+@@ -397,7 +397,7 @@ libxkbcommon_sources = [
  libxkbcommon_link_args = []
  libxkbcommon_link_deps = []
  if have_version_script
@@ -28,7 +30,7 @@ Only the version-script changes from the upstream 1.11 port apply to our
      libxkbcommon_link_deps += 'xkbcommon.map'
  elif cc.get_argument_syntax() == 'msvc'
      libxkbcommon_def = custom_target('xkbcommon.def',
-@@ -323,7 +323,7 @@ You can disable X11 support with -Denable-x11=false.''')
+@@ -480,7 +480,7 @@ You can disable X11 support with -Denable-x11=false.''')
      libxkbcommon_x11_link_args = []
      libxkbcommon_x11_link_deps = []
      if have_version_script
@@ -37,7 +39,7 @@ Only the version-script changes from the upstream 1.11 port apply to our
          libxkbcommon_x11_link_deps += 'xkbcommon-x11.map'
      elif cc.get_argument_syntax() == 'msvc'
          libxkbcommon_x11_def = custom_target('xkbcommon-x11.def',
-@@ -402,7 +402,7 @@ if get_option('enable-xkbregistry')
+@@ -561,7 +561,7 @@ if get_option('enable-xkbregistry')
      libxkbregistry_link_args = []
      libxkbregistry_link_deps = []
      if have_version_script

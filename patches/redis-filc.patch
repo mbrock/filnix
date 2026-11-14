@@ -54,10 +54,10 @@ index beb6bc8..eb9effd 100644
  #define rdb_fsync_range(fd,off,size) sync_file_range(fd,off,size,SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE)
  #elif defined(__APPLE__)
 diff --git a/src/lazyfree.c b/src/lazyfree.c
-index f9cde4e..95ff18c 100644
+index 43969e2..b0ee7e8 100644
 --- a/src/lazyfree.c
 +++ b/src/lazyfree.c
-@@ -278,7 +278,7 @@ static void protectClientReplyObjects(void) {
+@@ -281,7 +281,7 @@ static void protectClientReplyObjects(void) {
                          str_ref->obj = new_obj;
                      }
                  }
@@ -66,7 +66,7 @@ index f9cde4e..95ff18c 100644
              }
          }
  
-@@ -304,7 +304,7 @@ static void protectClientReplyObjects(void) {
+@@ -307,7 +307,7 @@ static void protectClientReplyObjects(void) {
                                  str_ref->obj = new_obj;
                              }
                          }
@@ -76,10 +76,10 @@ index f9cde4e..95ff18c 100644
                  }
              }
 diff --git a/src/logreqres.c b/src/logreqres.c
-index a769eb1..8255729 100644
+index 3b14564..f5dedb2 100644
 --- a/src/logreqres.c
 +++ b/src/logreqres.c
-@@ -120,7 +120,7 @@ static size_t reqresAppendEncodedBuffer(client *c, char *buf, size_t len) {
+@@ -121,7 +121,7 @@ static size_t reqresAppendEncodedBuffer(client *c, char *buf, size_t len) {
              /* Append trailing CRLF */
              ret += reqresAppendBuffer(c, str_ref->crlf, 2);
          }
@@ -89,7 +89,7 @@ index a769eb1..8255729 100644
  
      return ret;
 diff --git a/src/networking.c b/src/networking.c
-index 3bcd74e..18d91ed 100644
+index b9f4274..bc95cd1 100644
 --- a/src/networking.c
 +++ b/src/networking.c
 @@ -121,6 +121,7 @@ int authRequired(client *c) {
@@ -100,7 +100,7 @@ index 3bcd74e..18d91ed 100644
  
      /* passing NULL as conn it is possible to create a non connected client.
       * This is useful since all the commands needs to be executed
-@@ -369,14 +370,14 @@ int prepareClientToWrite(client *c) {
+@@ -374,14 +375,14 @@ int prepareClientToWrite(client *c) {
   * -------------------------------------------------------------------------- */
  
  static int tryAddPayload(client *c, char *buf, size_t *used, size_t size, uint8_t type, const void *payload, size_t len) {
@@ -117,7 +117,7 @@ index 3bcd74e..18d91ed 100644
  
      /* Track referenced reply bytes for copy avoidance. */
      if (type == BULK_STR_REF) {
-@@ -427,7 +428,7 @@ static void _addReplyPayloadToList(client *c, list *reply_list, const char *payl
+@@ -432,7 +433,7 @@ static void _addReplyPayloadToList(client *c, list *reply_list, const char *payl
          /* Create a new node, make sure it is allocated to at
           * least PROTO_REPLY_CHUNK_BYTES */
          size_t usable_size;
@@ -126,7 +126,7 @@ index 3bcd74e..18d91ed 100644
          size_t size = required_size < PROTO_REPLY_CHUNK_BYTES ? PROTO_REPLY_CHUNK_BYTES : required_size;
          tail = zmalloc_usable(size + sizeof(clientReplyBlock), &usable_size);
          /* take over the allocation's internal fragmentation */
-@@ -1979,7 +1980,7 @@ static size_t computeUnsharedReplyBytes(char *buf, size_t bufpos) {
+@@ -2008,7 +2009,7 @@ static size_t computeUnsharedReplyBytes(char *buf, size_t bufpos) {
              if (str_ref->obj != NULL && str_ref->obj->refcount == 1)
                  total += sdslen(str_ref->obj->ptr);
          }
@@ -135,7 +135,7 @@ index 3bcd74e..18d91ed 100644
      }
      return total;
  }
-@@ -2130,7 +2131,7 @@ static void releaseBufReferences(client *c, char *buf, size_t bufpos) {
+@@ -2161,7 +2162,7 @@ static void releaseBufReferences(client *c, char *buf, size_t bufpos) {
              serverAssert(header->payload_type == PLAIN_REPLY);
          }
  
@@ -144,7 +144,7 @@ index 3bcd74e..18d91ed 100644
      }
  }
  
-@@ -2502,7 +2503,7 @@ static void processEncodedBufferForWrite(ReplyIOV *reply_iov, char *start_ptr, c
+@@ -2540,7 +2541,7 @@ static void processEncodedBufferForWrite(ReplyIOV *reply_iov, char *start_ptr, c
          }
  
          offset = 0;
@@ -153,7 +153,7 @@ index 3bcd74e..18d91ed 100644
      }
  }
  
-@@ -2546,7 +2547,7 @@ static payloadHeader *processSentDataInEncodedBuffer(client *c, char *start_ptr,
+@@ -2585,7 +2586,7 @@ static payloadHeader *processSentDataInEncodedBuffer(client *c, char *start_ptr,
              *sentlen = 0;
          }
  
@@ -163,10 +163,10 @@ index 3bcd74e..18d91ed 100644
  
      return (ptr == end_ptr) ? NULL : (payloadHeader *)ptr;
 diff --git a/src/object.c b/src/object.c
-index 697ed6e..d0e31e8 100644
+index 2b57ccf..23921c9 100644
 --- a/src/object.c
 +++ b/src/object.c
-@@ -861,7 +861,7 @@ void dismissObject(robj *o, size_t size_hint) {
+@@ -874,7 +874,7 @@ void dismissObject(robj *o, size_t size_hint) {
  
      /* Currently we use zmadvise_dontneed only when we use jemalloc with Linux.
       * so we avoid these pointless loops when they're not going to do anything. */
@@ -217,7 +217,7 @@ index 6252717..db690b5 100644
  		swapfunc(a, b, es, swaptype)
  
 diff --git a/src/server.c b/src/server.c
-index b1bafa0..3e0ebc7 100644
+index e8cd65f..dc9fd64 100644
 --- a/src/server.c
 +++ b/src/server.c
 @@ -84,6 +84,14 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
@@ -235,7 +235,7 @@ index b1bafa0..3e0ebc7 100644
  /* Snapshot of server.stat_total_client_process_input_buff_events used in
   * beforeSleep() to detect event loop cycles where client input buffers
   * were processed. */
-@@ -7557,7 +7565,7 @@ void dismissMemoryInChild(void) {
+@@ -7648,7 +7656,7 @@ void dismissMemoryInChild(void) {
  
      /* Currently we use zmadvise_dontneed only when we use jemalloc with Linux.
       * so we avoid these pointless loops when they're not going to do anything. */
@@ -245,10 +245,10 @@ index b1bafa0..3e0ebc7 100644
      listNode *ln;
  
 diff --git a/src/server.h b/src/server.h
-index 2a6fa5f..baa228a 100644
+index b4285df..9b09c90 100644
 --- a/src/server.h
 +++ b/src/server.h
-@@ -1129,10 +1129,24 @@ typedef enum {
+@@ -1149,10 +1149,24 @@ typedef enum {
   * Each chunk contains header followed by payload
   * The packed attribute is specified because buffer is accessed at arbitrary offsets,
   * so no benefit in data structure padding and applying packed saves the space in the buffer  */
@@ -273,7 +273,7 @@ index 2a6fa5f..baa228a 100644
  static_assert(offsetof(payloadHeader, payload_len) == 0, "payload_len must be at offset 0 to avoid unaligned access");
  
  /* To avoid copy of whole string in reply buffer
-@@ -1149,7 +1163,7 @@ typedef struct __attribute__((__packed__)) bulkStrRef {
+@@ -1169,7 +1183,7 @@ typedef struct __attribute__((__packed__)) bulkStrRef {
  typedef struct clientReplyBlock {
      size_t size, used;
      char buf_encoded;
@@ -282,7 +282,7 @@ index 2a6fa5f..baa228a 100644
  } clientReplyBlock;
  
  /* Replication buffer blocks is the list of replBufBlock.
-@@ -3056,6 +3070,31 @@ typedef struct {
+@@ -3189,6 +3203,31 @@ typedef struct {
   *----------------------------------------------------------------------------*/
  
  extern struct redisServer server;
@@ -328,20 +328,29 @@ index 1080198..5e41a16 100644
  
  /* Add the specified client id / timeout as a key in the radix tree we use
 diff --git a/src/tracking.c b/src/tracking.c
-index c235d58..26ac0b3 100644
+index aefc8c0..44bb79c 100644
 --- a/src/tracking.c
 +++ b/src/tracking.c
-@@ -625,7 +625,7 @@ void trackingBroadcastInvalidationMessages(void) {
-             raxSeek(&ri2,"^",NULL,0);
-             while(raxNext(&ri2)) {
-                 client *c;
--                memcpy(&c,ri2.key,sizeof(c));
-+                c = clientFromBytes(ri2.key);
-                 if (c->flags & CLIENT_TRACKING_NOLOOP) {
-                     /* This client may have certain keys excluded. */
-                     sds adhoc = trackingBuildBroadcastReply(c,bs->keys);
+@@ -639,7 +639,7 @@ static void trackingBcastInvalidationsForPrefix(bcastState *bs) {
+     raxSeek(&ri,"^",NULL,0);
+     while(raxNext(&ri)) {
+         client *c;
+-        memcpy(&c,ri.key,sizeof(c));
++        c = clientFromBytes(ri.key);
+ 
+         if (c->flags & CLIENT_TRACKING_NOLOOP) {
+             sds proto = trackingBuildBroadcastReply(c->user, c, bs->keys);
+@@ -682,7 +682,7 @@ static int bcastStateHasUser(bcastState *bs, user *u) {
+     raxSeek(&ri,"^",NULL,0);
+     while(raxNext(&ri)) {
+         client *c;
+-        memcpy(&c,ri.key,sizeof(c));
++        c = clientFromBytes(ri.key);
+         if (c->user == u) {
+             raxStop(&ri);
+             return 1;
 diff --git a/src/zmalloc.c b/src/zmalloc.c
-index 5b84ccb..62a6c5c 100644
+index 61f428a..251d8d8 100644
 --- a/src/zmalloc.c
 +++ b/src/zmalloc.c
 @@ -690,7 +690,10 @@ void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {

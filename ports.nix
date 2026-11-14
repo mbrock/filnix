@@ -2258,11 +2258,8 @@ in
   ])
 
   (for pkgs.weston [
-    # The test runner collected its tests from a linker section; register
-    # them from constructors instead (upstream Fil-C's 12.0.5 patch).
-    (patch ./ports/patch/weston-15.0.1.patch)
-    # Nixpkgs' Neat VNC 1.0 update; the VNC backend is off.
-    (skipPatch "8a1c91e771312d1e0d0cd92495ef717402784dae.patch")
+    # Weston 16's test runner lists its tests in an array instead of a
+    # linker section, so upstream Fil-C's runner patch is no longer needed.
     (arg { pipewireSupport = false; })
     (arg { rdpSupport = false; })
     (arg { remotingSupport = false; })
@@ -2479,6 +2476,9 @@ in
     (addCMakeFlag "-DIEX_HAVE_CONTROL_REGISTER_SUPPORT=OFF")
     (addCMakeFlag "-DIEX_HAVE_SIGCONTEXT_CONTROL_REGISTER_SUPPORT=OFF")
     (addCMakeFlag "-DOJPH_DISABLE_SIMD=ON")
+    # 3.5 compresses with zstd and, without one installed, builds a vendored
+    # copy whose decoder includes x86-64 assembly; use the ported zstd.
+    (link final.zstd)
     (use (old: {
       # The exhaustive threaded tile matrix exceeds CTest's 1500-second
       # default with Fil-C under load. Keep the whole test, with a larger bound.
@@ -2825,6 +2825,17 @@ in
       final.python3.withPackages (ps: [ ps.setuptools ])
     }/bin/python3")
     (configure "PYTHON_CONFIG=${final.python3}/bin/python3-config")
+    (use (old: {
+      # 5.0 asks the kernel for its label with raw lsm_*_self_attr
+      # syscalls when <linux/lsm.h> exists, which Fil-C's syscall() does not
+      # support (and sizes a buffer with a VLA in a union, which Clang
+      # rejects). Under Fil-C, read /proc/self/attr as before.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/kernel.c \
+          --replace-fail '#ifdef HAVE_LINUX_LSM_H' '#if defined(HAVE_LINUX_LSM_H) && !defined(__FILC__)' \
+          --replace-fail '#if defined(HAVE_LINUX_LSM_H) &&' '#if defined(HAVE_LINUX_LSM_H) && !defined(__FILC__) &&'
+      '';
+    }))
   ])
 
   {
@@ -3277,6 +3288,8 @@ in
   (for pkgs.redis [
     # Aligned encoded reply buffers; no madvise on the heap after fork.
     (patch ./patches/redis-filc.patch)
+    # sd_notify only; full systemd 262 does not link yet (see the systemd port).
+    (arg { systemd = final.systemdLibs; })
     (use (old: {
       makeFlags = old.makeFlags ++ [
         # Redis's default -O3 turns on LTO, which Fil-C does not have.
@@ -3482,7 +3495,7 @@ in
 
   {
     tinycc = for pkgs.tinycc [
-      (patch ./patches/tinycc-alignment.patch)
+      # The 2026 snapshot word-aligns its tiny allocator itself (TAL_ALIGN).
       (use (old: {
         preConfigure = ''
           echo ${old.version} > VERSION

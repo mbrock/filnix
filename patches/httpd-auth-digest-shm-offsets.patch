@@ -1,15 +1,17 @@
 diff --git a/modules/aaa/mod_auth_digest.c b/modules/aaa/mod_auth_digest.c
-index f10af0d..2299b14 100644
+index 0267a83..6fd6aeb 100644
 --- a/modules/aaa/mod_auth_digest.c
 +++ b/modules/aaa/mod_auth_digest.c
-@@ -120,13 +120,18 @@ typedef struct digest_config_struct {
+@@ -130,15 +130,20 @@ typedef apr_uint32_t client_id_t;
  
  typedef struct hash_entry {
-     unsigned long      key;                     /* the key for this entry    */
+     client_id_t        key;                     /* the key for this entry    */
 -    struct hash_entry *next;                    /* next entry in the bucket  */
 +    apr_rmm_off_t      next;                    /* next entry in the bucket  */
-     unsigned long      nonce_count;             /* for nonce-count checking  */
-     char               last_nonce[NONCE_LEN+1]; /* for one-time nonce's      */
+     unsigned long      nonce_count;             /* highest nonce-count seen
+                                                  * for last_nonce_time       */
+     apr_time_t         last_nonce_time;         /* nonce of the last request
+                                                  * accepted for this client  */
  } client_entry;
  
 +/* The shared table links its entries by offset, never by pointer: each
@@ -23,7 +25,7 @@ index f10af0d..2299b14 100644
      unsigned long   tbl_len;
      unsigned long   num_entries;
      unsigned long   num_created;
-@@ -258,6 +263,16 @@ static apr_status_t rmm_free(apr_rmm_t *rmm, void *alloc)
+@@ -270,6 +275,16 @@ static apr_status_t rmm_free(apr_rmm_t *rmm, void *alloc)
      return apr_rmm_free(rmm, offset);
  }
  
@@ -37,10 +39,10 @@ index f10af0d..2299b14 100644
 +    return entry ? apr_rmm_offset_get(client_rmm, entry) : 0;
 +}
 +
- #if APR_HAS_SHARED_MEMORY
- 
  static int initialize_tables(server_rec *s, apr_pool_t *ctx)
-@@ -312,14 +327,14 @@ static int initialize_tables(server_rec *s, apr_pool_t *ctx)
+ {
+     unsigned long idx;
+@@ -321,14 +336,14 @@ static int initialize_tables(server_rec *s, apr_pool_t *ctx)
      }
  
      client_list = rmm_malloc(client_rmm, sizeof(*client_list) +
@@ -58,7 +60,7 @@ index f10af0d..2299b14 100644
      }
      client_list->tbl_len     = num_buckets;
      client_list->num_entries = 0;
-@@ -668,7 +683,7 @@ static const char *set_shmem_size(cmd_parms *cmd, void *config,
+@@ -571,7 +586,7 @@ static const char *set_shmem_size(cmd_parms *cmd, void *config,
                            size_str, NULL);
      }
  
@@ -67,14 +69,12 @@ index f10af0d..2299b14 100644
      if (size < min) {
          return apr_psprintf(cmd->pool, "size in AuthDigestShmemSize too small: "
                             "%ld < %ld", size, min);
-@@ -776,19 +791,19 @@ static client_entry *get_client(unsigned long key, const request_rec *r)
-     if (!key || !client_shm)  return NULL;
+@@ -679,17 +694,17 @@ static client_entry *find_client(client_id_t key)
+     }
  
      bucket = key % client_list->tbl_len;
 -    entry  = client_list->table[bucket];
 +    entry  = entry_at(client_list->table[bucket]);
- 
-     apr_global_mutex_lock(client_lock);
  
      while (entry && key != entry->key) {
          prev  = entry;
@@ -89,8 +89,8 @@ index f10af0d..2299b14 100644
 +        client_list->table[bucket] = entry_off(entry);
      }
  
-     apr_global_mutex_unlock(client_lock);
-@@ -818,7 +833,7 @@ static long gc(server_rec *s)
+     return entry;
+@@ -821,7 +836,7 @@ static unsigned long gc(server_rec *s)
      /* garbage collect all last entries */
  
      for (idx = 0; idx < client_list->tbl_len; idx++) {
@@ -99,7 +99,7 @@ index f10af0d..2299b14 100644
          prev  = NULL;
  
          if (!entry) {
-@@ -828,13 +843,13 @@ static long gc(server_rec *s)
+@@ -831,13 +846,13 @@ static unsigned long gc(server_rec *s)
  
          while (entry->next) {   /* find last entry */
              prev  = entry;
@@ -116,7 +116,7 @@ index f10af0d..2299b14 100644
          }
          if (entry) {                    /* remove entry */
              apr_status_t err;
-@@ -903,7 +918,7 @@ static client_entry *add_client(unsigned long key, client_entry *info,
+@@ -903,7 +918,7 @@ static int add_client(client_id_t key, client_entry *info, server_rec *s)
      memcpy(entry, info, sizeof(client_entry));
      entry->key  = key;
      entry->next = client_list->table[bucket];
@@ -125,12 +125,12 @@ index f10af0d..2299b14 100644
      client_list->num_created++;
      client_list->num_entries++;
  
-@@ -1145,7 +1160,7 @@ static const char *gen_nonce(apr_pool_t *p, apr_time_t now, const char *opaque,
- static client_entry *gen_client(const request_rec *r)
+@@ -1143,7 +1158,7 @@ static const char *gen_nonce(apr_pool_t *p, apr_time_t now, const char *opaque,
+ static client_id_t client_generate(const request_rec *r)
  {
-     unsigned long op;
--    client_entry new_entry = { 0, NULL, 0, "" }, *entry;
-+    client_entry new_entry = { 0, 0, 0, "" }, *entry;
+     client_id_t op = apr_atomic_inc32(client_id_counter);
+-    client_entry new_entry = { 0, NULL, 0, 0 };
++    client_entry new_entry = { 0, 0, 0, 0 };
  
-     if (!opaque_cntr) {
-         return NULL;
+     /* The counter wraps after 2^32 clients: skip an id of zero, which means
+      * "no client" and which add_client() would refuse. */

@@ -310,16 +310,12 @@ let
                           )
                         ];
                       });
+                      # Nixpkgs points the OOM tests 8.4.27 added (they spawn CGI
+                      # with -n) at the built filter module; older releases have
+                      # no such tests.
                       filter = pprev.extensions.filter.overrideAttrs (
-                        old:
-                        final.lib.optionalAttrs (final.lib.versionAtLeast version "8.4.27") {
-                          # These new OOM tests spawn CGI with -n, which omits
-                          # Nixpkgs' shared filter module. Keep testing the OOM,
-                          # not an undefined filter_input() function.
-                          postPatch = (old.postPatch or "") + ''
-                            substituteInPlace ext/filter/tests/oom_filter_{default_encoded,input,input_array}.phpt \
-                              --replace-fail "'-n'," "'-n', '-d', 'extension=$PWD/ext/filter/modules/filter.so',"
-                          '';
+                        final.lib.optionalAttrs (final.lib.versionOlder version "8.4.27") {
+                          postConfigure = "";
                         }
                       );
                       pcntl = pprev.extensions.pcntl.overrideAttrs (old: {
