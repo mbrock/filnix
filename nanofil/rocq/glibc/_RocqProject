@@ -338,6 +338,7 @@ libio/LibioCleanupStart.v
 libio/LibioXsputnFlags.v
 getopt/GetoptLongEq.v
 getopt/GetoptScanChoice.v
+getopt/GetoptScanJoin.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v
