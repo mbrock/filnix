@@ -100,7 +100,8 @@ Qed.
 
 (** An integer expression is built from constants, integer variables,
     the address of a pointer variable, the end of a region variable,
-    sums, differences, remainders by a constant, and comparisons. The
+    sums, differences, remainders by a constant, comparisons, bit operations,
+    extensions and shifts. The
     comparison [ZCmp] c k a b is one when a and b of class k satisfy c,
     and zero otherwise, as the IR's `cmp` instruction computes. *)
 Inductive zexp : Type :=
@@ -982,6 +983,14 @@ Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
                 match o with
                 | Check lo hi _ al =>
                     inr (sbind d p (sobserve (check_obs fs b addr r lo hi al) s))
+                | Renew lo hi _ al =>
+                    match extra with
+                    | Some (SWPtr _ c1) =>
+                        if cequal fs c1 (SCObj b) then
+                          inr (sbind d p (sobserve (check_obs fs b addr r lo hi al) s))
+                        else inl (NotObject c1)
+                    | _ => inl fallback
+                    end
                 | HalfCheck _ lo hi _ al =>
                     match extra with
                     | Some (SWPtr _ c1) =>
@@ -1023,6 +1032,7 @@ Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
     end in
   match o, k, xs with
   | Check _ _ _ _, A, [p] => access p None
+  | Renew _ _ _ _, A, [p1; p] => access p (Some p1)
   | HalfCheck _ _ _ _ _, A, [p1; p] => access p (Some p1)
   | RawLoad LdL _, _, [p] => access p None
   | RawLoad (LdNarrow _) _, _, [p] => access p None
@@ -1130,11 +1140,11 @@ Fixpoint sym_exec (ge : genv) (fs : facts) (s : sstate) (insts : list inst) (j :
 
 (** [sym_block] ge fs se h l insts j runs the instructions insts and the
     jump j of the block labelled l, starting from the known environment
-    se and the atoms h. The implementation must handle general lets of
-    [Add], [Sub], [Ptoi], [Copy] and [Cmp], flights, [Check] and
-    [HalfCheck] with [Obj] capabilities, [RawLoad] of a 64-bit integer,
-    [RawLoadPointer], [RawStore] of a 64-bit integer and
-    [RawStorePointer]. It finds an atom by comparing base expressions
+    se and the atoms h. It handles integer arithmetic, flag operations,
+    shifts, extensions, copies, comparisons and flights. Memory operations
+    include checks, half checks, renewals, integer and pointer loads,
+    narrow loads, and 64-bit integer and pointer stores with writable object capabilities.
+    It finds an atom by comparing base expressions
     and offsets after removing wraps that the bounds make redundant,
     settles comparisons between constants itself, and leaves every
     other condition as an [ob]. *)
@@ -1157,6 +1167,22 @@ Example sym_check_pointer_goto ge :
       st_heap s = h /\ List.length (st_obs s) = 6%nat
   | _ => False
   end.
+Proof. vm_compute. repeat split; reflexivity. Qed.
+
+(** Renewal preserves the new address, but rejects an earlier check of a different object's capability. *)
+Example sym_renew_run ge :
+  let run c := sym_block ge (mkFacts [] [])
+    [(TAtom "old", SWPtr (ZK 4100) c);
+     (TAtom "new", SWPtr (ZK 4104) (SCObj (ZK 4096)))]
+    [ALive (ZK 4096) 0] (TAtom "entry")
+    [Let (TAtom "checked") A (Renew 0 8 Read 8) [Tmp (TAtom "old"); Tmp (TAtom "new")]]
+    (JGoto (To (TAtom "next"))) in
+  (match run (SCObj (ZK 4096)) with
+   | LGoto _ s => lookup (TAtom "checked") (st_env s) = Some (SWPtr (ZK 4104) (SCObj (ZK 4096))) /\
+       st_heap s = [ALive (ZK 4096) 0] /\ List.length (st_obs s) = 3%nat
+   | _ => False
+   end) /\
+  (match run (SCObj (ZK 8192)) with LStop (NotObject _) _ _ _ => True | _ => False end).
 Proof. vm_compute. repeat split; reflexivity. Qed.
 
 (** Loads at each sign boundary distinguish sign extension from zero extension and preserve the owned bytes. *)
@@ -1387,6 +1413,33 @@ Proof.
   iNext. iIntros "Hl". iApply "HK". iFrame.
 Qed.
 
+(** Renewal reuses a matching capability and checks the new address against the live object's bounds. *)
+Lemma sym_renew_rule ρ fs h pre life post f e ls l d lo hi mode al args rest j classes a1 c1 a c b Φ :
+  facts_hold ρ fs ->
+  op_arg_classes (Renew lo hi mode al) A = Some classes ->
+  map2_option (value_x ge e) classes args = Some [wden ρ (SWPtr a1 c1); wden ρ (SWPtr a c)] ->
+  object_base fs c = Some b -> cequal fs c1 (SCObj b) = true ->
+  pick_atom (is_live fs b) h = Some (pre, life, post) ->
+  obs_den ρ (check_obs fs b a (atom_region life) lo hi al) ->
+  heap_den ρ h -∗
+  ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWPtr a c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi mode al) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs Hclasses Hargs Hobj Hsame Hp Hobs.
+  pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
+  pose proof (cequal_sound _ _ _ _ Hfs Hsame) as Hcap1.
+  cbn [cden] in Hcap1.
+  destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hlive].
+  rewrite (heap_den_pick _ _ _ _ _ _ Hp) (is_live_den _ _ _ _ Hfs Hlive).
+  destruct (nth_error (vr ρ) (atom_region life)) as [reg|] eqn:Hr; last first.
+  { iIntros "[Hfalse _] _". iDestruct "Hfalse" as %[]. }
+  destruct (check_obs_sound _ _ _ _ _ _ _ _ _ Hfs Hr Hobs) as [Hlo [Hhi Hal]].
+  iIntros "[Hl Hrest] HK".
+  iApply (wp_renew with "Hl");
+    [exact Hclasses|exact Hargs|cbn; congruence|exact Hcap|exact Hlo|exact Hhi|exact Hal|].
+  iNext. iIntros "Hl". iApply "HK". iFrame.
+Qed.
+
 (** A reflected half check also proves that both pointers name the same live object. *)
 Lemma sym_half_check_rule ρ fs h pre life post f e ls l d bd lo hi mode al args rest j classes a1 c1 a c b Φ :
   facts_hold ρ fs ->
@@ -1612,6 +1665,7 @@ Proof.
   all: repeat match goal with p : (_ * _)%type |- _ => destruct p end.
   all: iIntros "Hheap HK".
   all: first [iApply (sym_check_rule with "Hheap") |
+    iApply (sym_renew_rule with "Hheap") |
     iApply (sym_half_check_rule with "Hheap") |
     iApply (sym_load_rule with "Hheap") |
     iApply (sym_load_narrow_rule with "Hheap") |
