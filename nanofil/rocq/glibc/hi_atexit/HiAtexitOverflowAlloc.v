@@ -26,22 +26,24 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
 Context (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat)
-  (Hfstat : find_fn ge (TAtom "__GI___fstat64") = Some (Defined glibc___fstat64))
-  (Hmaj : find_fn ge (TAtom "__gnu_dev_major") = Some (Defined glibc___gnu_dev_major))
-  (Hisatty : find_fn ge (TAtom "__isatty_nostatus") = Some (Defined glibc___isatty_nostatus))
-  (Hsetb : find_fn ge (TAtom "__GI__IO_setb") = Some (Defined glibc__IO_setb)).
-Context (Hfree_fn : find_fn ge (TAtom "free") = Some (Defined free_fn)) (Hfh : frees_heap (ge_free ge))
+  (Hfstat : Defines ge "__GI___fstat64" glibc___fstat64)
+  (Hmaj : Defines ge "__gnu_dev_major" glibc___gnu_dev_major)
+  (Hisatty : Defines ge "__isatty_nostatus" glibc___isatty_nostatus)
+  (Hsetb : Defines ge "__GI__IO_setb" glibc__IO_setb).
+Context (Hfree_fn : Defines ge "free" free_fn) (Hfh : frees_heap (ge_free ge))
   (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None).
-Context (Hmalloc_fn : find_fn ge (TAtom "malloc") = Some (Defined malloc_fn))
-  (Hmalloc2 : find_fn ge (TAtom "malloc#__libc_malloc2") = Some (Defined malloc2_fn)).
+Context (Hmalloc_fn : Defines ge "malloc" malloc_fn)
+  (Hmalloc2 : Defines ge "malloc#__libc_malloc2" malloc2_fn).
+Existing Instances Hfstat Hmaj Hisatty Hsetb Hfree_fn Hmalloc_fn Hmalloc2.
 Context (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region).
 Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc))).
 Context (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate)
-  (Hdab : find_fn ge (TAtom "__GI__IO_doallocbuf") = Some (Defined glibc__IO_doallocbuf))
-  (Hwrite : find_fn ge (TAtom "__GI___write") = Some (Defined glibc___libc_write))
+  (Hdab : Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf)
+  (Hwrite : Defines ge "__GI___write" glibc___libc_write)
   (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hdwf : find_fn ge (TAtom "_IO_new_do_write") = Some (Defined glibc__IO_new_do_write)).
+  (Hdwf : Defines ge "_IO_new_do_write" glibc__IO_new_do_write).
+Existing Instances Hdab Hwrite Hdwf.
 
 (** A stream without a buffer calls the proved buffer allocator. *)
 Definition hi_doallocbuf :=

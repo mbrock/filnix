@@ -1,18 +1,10 @@
 From Glibc Require Import GlibcProgram.
-(** This file shows that `c: _IO_cleanup ()` behaves at exit as
-    ExitRunTail.v's [cleanup_rule] says, for the streams still open,
-    with no premise left about the functions it calls.
+(** Process exit flushes and cleans up the streams that remain open.
+    This file connects that operation to the exit handler's cleanup contract.
+    It discharges the cleanup-buffer premises using the proved push and pop functions.
 
-    LibioCleanup.v proves the function over two premises,
-    `c: __libc_cleanup_push_defer`'s and
-    `c: __libc_cleanup_pop_restore`'s triples for a buffer at offset 0
-    ([push_spec], [pop_spec]). This file proves both from SysCleanup.v
-    and SysCleanupPop.v ([push_spec_holds], [pop_spec_holds]), so
-    [wp_glibc__IO_cleanup_exit] needs only the functions ge defines.
-    [cleanup_rule_io] is [cleanup_rule] over any streams whose flush
-    leaves [exit_stream]s, and [cleanup_rule_exit] is it for
-    [exit_stream]s themselves, as the unused `c: stdin` and the
-    unbuffered `c: stderr` are after `c: close_stdout`. *)
+    The caller supplies the linked function bindings and ownership of the stream list.
+    Cleanup supports both streams with pending output and streams that have nothing to flush. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -40,10 +32,10 @@ Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
 
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** [push_spec] holds: it is SysCleanup.v's triple at offset 0. *)
+(** Pushing a cleanup buffer satisfies the stream traversal's contract at offset zero. *)
 Lemma push_spec_holds : push_spec w0 registry ge.
 Proof.
   intros fr cb creg pv xs Φ Hfr Hcb Hcal Hcend Hcreg Hxs.
@@ -55,7 +47,7 @@ Proof.
   iApply ("HK" with "Htcb Hcl Hc24 Hc16").
 Qed.
 
-(** [pop_spec] holds: it is SysCleanupPop.v's triple at offset 0. *)
+(** Popping that buffer restores the thread's cleanup state at offset zero. *)
 Lemma pop_spec_holds : pop_spec w0 registry ge.
 Proof.
   intros fr cb creg Φ Hfr Hcb Hcal Hcend Hcreg.
@@ -68,9 +60,8 @@ Proof.
   iNext. iIntros "Htcb Hcl Hcp Hct". iApply ("HK" with "Htcb Hcl Hcp Hct").
 Qed.
 
-(** LibioCleanup.v's [wp_glibc__IO_cleanup], its premises about the
-    cleanup buffer's push and pop discharged: what is left is that ge
-    defines the callees as glibc does. *)
+(** Cleanup flushes the stream list and restores the thread's cleanup fields.
+    The linked functions discharge the traversal's buffer-management premises. *)
 Lemma wp_glibc__IO_cleanup_exit fr (P : ptr -> iProp Σ) fs sb sreg fcp Φ :
   find_fn ge (TAtom "__GI___libc_cleanup_push_defer") = Some (Defined glibc___libc_cleanup_push_defer) ->
   find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") = Some (Defined glibc___libc_cleanup_pop_restore) ->
@@ -93,15 +84,13 @@ End rules.
 Section exit.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (Hext : sys_external ge).
-Context (Hpush : find_fn ge (TAtom "__GI___libc_cleanup_push_defer") =
-                 Some (Defined glibc___libc_cleanup_push_defer)).
-Context (Hpop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") =
-                Some (Defined glibc___libc_cleanup_pop_restore)).
-Context (Hflush : find_fn ge (TAtom "__GI__IO_flush_all") = Some (Defined glibc__IO_flush_all)).
-Context (Hcl : find_fn ge (TAtom "_IO_cleanup") = Some (Defined glibc__IO_cleanup)).
+Context (Hpush : Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer).
+Context (Hpop : Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore).
+Context (Hflush : Defines ge "__GI__IO_flush_all" glibc__IO_flush_all).
+Context (Hcl : Defines ge "_IO_cleanup" glibc__IO_cleanup).
+Existing Instances Hpush Hpop Hflush Hcl.
 
-(** The Iris instance of user glibc's OS registry and world, as
-    ExitRunTail.v's. *)
+(** The state interpretation connects cleanup execution to the OS world and registry. *)
 Local Instance cleanup_rule_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) Σ :=
   nanofil_irisGS glibc_os_registry (os_wi w0) ge.
 
@@ -109,10 +98,8 @@ Local Instance cleanup_rule_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_regis
 Lemma holds_os_glibc : holds_os glibc_os_registry.
 Proof. intros n c H. exact H. Qed.
 
-(** ExitRunTail.v's [cleanup_rule] for the streams fs of
-    [io_list_inv], each with its life and P, whose flush is the
-    [flush_body] from P to an [exit_stream], with the thread's cleanup
-    fields and `c: __libc_single_threaded` set. *)
+(** Cleanup consumes the stream list after flushing each stream into its exit state.
+    The caller supplies the thread's cleanup fields and the single-threaded flag. *)
 Lemma cleanup_rule_io (P : ptr -> iProp Σ) fs sb sreg fcp :
   flush_body w0 glibc_os_registry ge P (exit_stream false) ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
@@ -126,8 +113,7 @@ Proof.
   iNext. iIntros (r Hr) "_ _ _". resume. iApply "HK".
 Qed.
 
-(** [cleanup_rule_io] for streams that are [exit_stream]s already,
-    with nothing to flush ([flush_body_exit]). *)
+(** Streams already in their exit state satisfy the same cleanup rule without further output. *)
 Lemma cleanup_rule_exit fs sb sreg fcp :
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   ⊢ ExitRunTail.cleanup_rule w0 ge (single_ro ge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge fs ∗

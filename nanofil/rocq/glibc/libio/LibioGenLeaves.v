@@ -1,20 +1,10 @@
 From Glibc Require Import GlibcProgram.
-(** Two leaves of user glibc's genops unit (LibioGenCode.v) that the
-    exit path calls: `c: __call_tls_dtors`, which `c: exit` runs before
-    the atexit handlers, and `c: _IO_unsave_markers`, which
-    `c: _IO_file_close_it` runs before it closes a stream.
+(** Process exit runs thread-local destructors and discards stream backup markers.
+    This fixture has no registered thread-local destructors, so their function returns immediately.
+    A stream with null marker and backup pointers also needs no cleanup writes.
 
-    In this build `c: __call_tls_dtors` is one block that returns at
-    once, since no thread-local destructor can be registered without
-    `c: __cxa_thread_atexit_impl`'s list, which the fixture keeps empty.
-    So it is ExitRun.v's [dtors_rule] from any resource to itself
-    ([dtors_rule_tls]).
-
-    `c: _IO_unsave_markers(fp)` reads `c: fp->_markers` (offset 96)
-    and `c: fp->_IO_backup_base` (offset 80, the field glibc 2.44's
-    `c: _IO_have_backup` tests). When both are null it writes nothing
-    and calls nothing ([wp_glibc__IO_unsave_markers]), which is
-    LibioCloseItMid.v's [unsave_spec] for it ([unsave_spec_holds]). *)
+    These proofs preserve the memory each caller lends and supply the contracts
+    used by the exit and stream-close paths. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -50,17 +40,11 @@ End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The frame of `c: _IO_unsave_markers(fp)` for the stream fb. *)
-
-(** That is the frame the call of `c: _IO_unsave_markers` with fp builds. *)
-
-(** `c: _IO_unsave_markers(fp)` of the 8-aligned stream fb, whose
-    224 bytes its life covers, with `c: _markers` and
-    `c: _IO_backup_base` null: it reads both cells and returns,
-    writing nothing. *)
+(** Discarding markers reads the stream's marker and backup pointers.
+    When both are null, the function returns without changing either cell. *)
 Lemma wp_glibc__IO_unsave_markers fb freg Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg ->
   live fb freg -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
@@ -75,8 +59,7 @@ Proof.
   step. iApply wp_ret_void. iNext. iApply ("HK" with "Hl H80 H96").
 Qed.
 
-(** LibioCloseItMid.v's [unsave_spec] holds of glibc's
-    `c: _IO_unsave_markers`. *)
+(** The marker cleanup proof supplies the contract used when closing a stream. *)
 Lemma unsave_spec_holds : LibioCloseItMid.unsave_spec w0 registry ge glibc__IO_unsave_markers.
 Proof.
   intros fb. exists (unsave_frame fb). split; [apply unsave_frame_call|].
@@ -89,10 +72,10 @@ End rules.
 Section dtors.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv).
-Context (Hdt : find_fn ge (TAtom "__GI___call_tls_dtors") = Some (Defined glibc___call_tls_dtors)).
+Context (Hdt : Defines ge "__GI___call_tls_dtors" glibc___call_tls_dtors).
+Existing Instance Hdt.
 
-(** `c: __call_tls_dtors ()` returns at once: ExitRun.v's
-    [dtors_rule] holds from any resource P to itself. *)
+(** The empty destructor function returns immediately and preserves the caller's resources. *)
 Lemma dtors_rule_tls (P : iProp Σ) : ⊢ ExitRun.dtors_rule w0 ge P P.
 Proof.
   iIntros (f e ls lab rest j Ψ) "HP HK".
