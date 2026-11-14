@@ -1,0 +1,325 @@
+--- a/libpas/src/libpas/filc_runtime.c
++++ b/libpas/src/libpas/filc_runtime.c
+@@ -83,55 +83,120 @@
+ #include <sys/mman.h>
+ #include <poll.h>
+ #include <sys/file.h>
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/sendfile.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <futex_calls.h>
++#endif
+ #include <dirent.h>
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/random.h>
++#endif
+ #if !PAS_COSMO
+ /* The cosmo flavor doesn't provide these Linux-only system call surfaces at
+    all; the zsys_* forwarders for them panic under PAS_COSMO (see below), so
+    the headers aren't needed there and don't even exist in yolocosmo. */
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/epoll.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/eventfd.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/xattr.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/signalfd.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/swap.h>
++#endif
+ #ifdef __x86_64__
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/io.h>
+ #endif
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/personality.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/fsuid.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/inotify.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/klog.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/timerfd.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/quota.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/timex.h>
++#endif
+ #endif /* !PAS_COSMO */
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/sysinfo.h>
++#endif
+ #include <sched.h>
+ #include <sys/prctl.h>
++#if PAS_OS(SERENITY)
++#include <serenity.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <linux/landlock.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/syscall.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <linux/perf_event.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <linux/hw_breakpoint.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <linux/seccomp.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <linux/filter.h>
++#endif
+ #if !PAS_COSMO
+ /* SysV IPC surfaces don't exist in cosmo; the zsys_* forwarders for them
+    panic under PAS_COSMO.  (Leaving these includes un-gated would make them
+    resolve to whatever <sys/sem.h>-alikes the build host's toolchain has.) */
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/ipc.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/sem.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/shm.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/msg.h>
++#endif
+ #endif /* !PAS_COSMO */
+ #include <grp.h>
+ #include <math.h>
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/mount.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/statfs.h>
++#endif
+ #include <sys/statvfs.h>
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/reboot.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <linux/keyctl.h>
++#endif
+ #include <fenv.h>
+ #include <dlfcn.h>
+ 
+@@ -152,13 +217,19 @@
+ #endif /* PAS_COSMO */
+ 
+ #if PAS_GLIBC
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/pidfd.h>
++#endif
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <sys/fanotify.h>
+ #endif
++#endif
+ 
+ #ifdef __x86_64__
++#if !PAS_OS(SERENITY) /* Linux-only header */
+ #include <asm/prctl.h>
+ #endif
++#endif
+ 
+ #ifndef SYS_statmount
+ #define SYS_statmount 457
+@@ -446,15 +517,23 @@
+ {
+     static const bool verbose = false;
+     
++    char* stack;
++    size_t stack_size;
++#if PAS_OS(SERENITY)
++    /* Serenity has no pthread_getattr_np, but the kernel reports the bounds. */
++    uintptr_t stack_base;
++    if (get_stack_bounds(&stack_base, &stack_size))
++        return create_null_stack_limit();
++    stack = (char*)stack_base;
++#else
+     pthread_attr_t attr;
+ 
+     if (pthread_getattr_np(pthread_self(), &attr))
+         return create_null_stack_limit();
+     
+-    char* stack;
+-    size_t stack_size;
+     if (pthread_attr_getstack(&attr, (void**)&stack, &stack_size))
+         return create_null_stack_limit();
++#endif
+ 
+     if (verbose)
+         pas_log("stack = %p, stack_size = %zu\n", stack, stack_size);
+@@ -512,6 +591,14 @@
+ static void add_cpu_indicator_globals(void);
+ #endif
+ 
++#if PAS_OS(SERENITY)
++/* yolo glibc exports the signals it reserves for itself. Serenity's LibC
++   reserves one, SIGCANCEL, for pthread cancellation (LibC/pthread.cpp). */
++static int libc_internal_signals[] = { SIGCANCEL };
++static unsigned num_libc_internal_signals = 1;
++#define sigdelsetyolo sigdelset
++#endif
++
+ static bool is_unsafe_signal_for_kill(int signum)
+ {
+     unsigned index;
+--- a/libpas/src/libpas/filc_runtime.h
++++ b/libpas/src/libpas/filc_runtime.h
+@@ -215,6 +215,9 @@
+    than the max-plus-one that musl's is. Cosmo's NSIG macro is the same value
+    but is a compile-time constant. */
+ #define FILC_MAX_USER_SIGNUM              NSIG
++#elif PAS_OS(SERENITY)
++/* Serenity has NSIG (one more than the last signal) but no _NSIG. */
++#define FILC_MAX_USER_SIGNUM              (NSIG - 1)
+ #else /* PAS_COSMO -> so !PAS_COSMO */
+ #define FILC_MAX_USER_SIGNUM              (_NSIG - 1)
+ #endif /* PAS_COSMO -> so end of !PAS_COSMO */
+--- a/libpas/src/libpas/filc_start_program.c
++++ b/libpas/src/libpas/filc_start_program.c
+@@ -32,6 +32,11 @@
+ #define AT_MAX_KEY 51
+ #endif /* PAS_COSMO */
+ 
++#if PAS_OS(SERENITY)
++/* Serenity's highest auxv key is AT_EXE_SIZE (Kernel/API/POSIX/sys/auxv.h). */
++#define AT_MAX_KEY 33
++#endif /* PAS_OS(SERENITY) */
++
+ #if LIBPAS_ENABLED && PAS_ENABLE_FILC
+ 
+ #include "filc_native.h"
+--- a/libpas/src/libpas/pas_committed_pages_vector.c
++++ b/libpas/src/libpas/pas_committed_pages_vector.c
+@@ -95,7 +95,7 @@
+     }
+ #elif PAS_OS(LINUX)
+     PAS_SYSCALL(mincore(object, size, (unsigned char*)vector->raw_data));
+-#elif !PAS_OS(OPENBSD)
++#elif !PAS_OS(OPENBSD) && !PAS_OS(SERENITY)
+     PAS_SYSCALL(mincore(object, size, vector->raw_data));
+ #else
+     memset(vector->raw_data, 1, num_pages);
+--- a/libpas/src/libpas/pas_committed_pages_vector.h
++++ b/libpas/src/libpas/pas_committed_pages_vector.h
+@@ -76,7 +76,7 @@
+         pas_log("vector->raw_data[%zu] = %u\n",
+                 page_index, (unsigned)(unsigned char)vector->raw_data[page_index]);
+     }
+-#if PAS_OS(LINUX) || defined(_WIN32) || PAS_OS(OPENBSD)
++#if PAS_OS(LINUX) || defined(_WIN32) || PAS_OS(OPENBSD) || PAS_OS(SERENITY)
+     return vector->raw_data[page_index];
+ #else
+     return vector->raw_data[page_index] & (MINCORE_REFERENCED |
+--- a/libpas/src/libpas/pas_monotonic_time.c
++++ b/libpas/src/libpas/pas_monotonic_time.c
+@@ -72,7 +72,7 @@
+     return result;
+ }
+ 
+-#elif PAS_OS(LINUX) || PAS_OS(FREEBSD)
++#elif PAS_OS(LINUX) || PAS_OS(FREEBSD) || PAS_OS(SERENITY)
+ 
+ uint64_t pas_get_current_monotonic_time_nanoseconds(void)
+ {
+--- a/libpas/src/libpas/pas_platform.h
++++ b/libpas/src/libpas/pas_platform.h
+@@ -53,7 +53,9 @@
+ #ifndef _GNU_SOURCE
+ #define _GNU_SOURCE
+ #endif
++#if __has_include(<features.h>)
+ #include <features.h>
++#endif
+ 
+ #ifdef __USE_GNU
+ #define PAS_GLIBC 1
+@@ -186,6 +188,10 @@
+ #define PAS_OS_OPENBSD 1
+ #endif
+ 
++#if defined(__serenity__)
++#define PAS_OS_SERENITY 1
++#endif
++
+ #if defined(WIN32) || defined(_WIN32)
+ #define PAS_OS_WINDOWS 1
+ #endif
+--- a/libpas/src/libpas/pas_thread_local_cache.c
++++ b/libpas/src/libpas/pas_thread_local_cache.c
+@@ -252,9 +252,9 @@
+     getname_result = pthread_getname_np(thread, thread_name, sizeof(thread_name));
+ #endif
+     if (!getname_result)
+-        pas_log("[%d] thread %p has name %s\n", pas_getpid(), (void*)thread, thread_name);
++        pas_log("[%d] thread %p has name %s\n", pas_getpid(), (void*)(uintptr_t)thread, thread_name);
+     else
+-        pas_log("[%d] thread %p does not have name\n", pas_getpid(), (void*)thread);
++        pas_log("[%d] thread %p does not have name\n", pas_getpid(), (void*)(uintptr_t)thread);
+ #else /* !PAS_OS(OPENBSD) -> so PAS_OS(OPENBSD) */
+     PAS_UNUSED_PARAM(thread);
+ #endif /* !PAS_OS(OPENBSD) -> so end of PAS_OS(OPENBSD) */
+@@ -288,7 +288,7 @@
+ #endif
+ 
+     if (verbose) {
+-        pas_log("[%d] TLC %p created with thread %p\n", pas_getpid(), thread_local_cache, (void*)thread_local_cache->thread);
++        pas_log("[%d] TLC %p created with thread %p\n", pas_getpid(), thread_local_cache, (void*)(uintptr_t)thread_local_cache->thread);
+         dump_thread_diagnostics(thread_local_cache->thread);
+     }
+     
+--- a/libpas/src/libpas/pas_utils.h
++++ b/libpas/src/libpas/pas_utils.h
+@@ -1662,7 +1662,19 @@
+ #else /* _WIN32 -> so !_WIN32 */
+ typedef pthread_t pas_system_thread_id;
+ static inline pas_system_thread_id pas_get_current_system_thread_id(void) { return pthread_self(); }
+-#if PAS_OS(DARWIN) || PAS_OS(FREEBSD) || PAS_OS(OPENBSD) || (PAS_OS(LINUX) && !PAS_GLIBC && !PAS_COSMO && PAS_COMPILER(CLANG))
++#if PAS_OS(SERENITY)
++/* Serenity's pthread_t is a 32-bit thread id, so a pointer-sized CAS on it
++   would also overwrite the next four bytes. */
++_Static_assert(sizeof(pas_system_thread_id) == sizeof(uint32_t), "Serenity pthread_t is 32-bit");
++#define PAS_SYSTEM_THREAD_ID_FORMAT "%d"
++#define PAS_NULL_SYSTEM_THREAD_ID 0
++static inline bool pas_system_thread_id_weak_cas(pas_system_thread_id* ptr,
++                                                 pas_system_thread_id expected,
++                                                 pas_system_thread_id new_value)
++{
++    return pas_compare_and_swap_uint32_weak((uint32_t*)ptr, (uint32_t)expected, (uint32_t)new_value);
++}
++#elif PAS_OS(DARWIN) || PAS_OS(FREEBSD) || PAS_OS(OPENBSD) || (PAS_OS(LINUX) && !PAS_GLIBC && !PAS_COSMO && PAS_COMPILER(CLANG))
+ #define PAS_SYSTEM_THREAD_ID_FORMAT "%p"
+ #define PAS_NULL_SYSTEM_THREAD_ID NULL
+ static inline bool pas_system_thread_id_weak_cas(pas_system_thread_id* ptr,
+@@ -1727,8 +1739,12 @@
+ #ifdef _WIN32
+     return !memcmp(a, b, size);
+ #else
++#if PAS_OS(SERENITY)
++    return !memcmp(a, b, size); /* Serenity's LibC has no bcmp. */
++#else
+     return !bcmp(a, b, size);
+ #endif
++#endif
+ }
+ 
+ PAS_API void pas_reasonably_fill_sigset(sigset_t* set);

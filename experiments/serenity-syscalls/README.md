@@ -39,6 +39,10 @@ libpizlo.
 | `runtime/marshal_check.cpp` | compiles the marshaller against Serenity's headers |
 | `runtime/filc_serenity_spike.c`, `runtime/addsig.rb`, `libpizlo-spike.nix` | a libpizlo with seven `zsys_serenity_*` natives whose kernel trap is emulated with Linux calls |
 | `demo/` | a pizlonated program that calls those natives as Serenity's LibC does, seven attacks, five compile-time mistakes |
+| `libpizlo/libpas-serenity.patch` | platform edits that let libpizlo's core compile for Serenity |
+| `libpizlo/split_zsys.py` | moves libpizlo's Linux syscall layer out of `filc_runtime.c` into its own backend file |
+| `libpizlo/libpizlo-split.nix`, `libpizlo/syscall_smoke.c` | builds the split libpizlo for Linux and compares it with the stock one |
+| `libpizlo/serenity-core.sh` | compiles the split core for `x86_64-pc-serenity` and sorts what it still needs |
 | `check.sh` | runs all of the above from a fresh clone |
 
 ## Results
@@ -209,6 +213,53 @@ inotify, timerfd, personality, sys/io.h). The direct route is a pizlonated
 Serenity LibC on top of `zsys_serenity_*`, where both sides share Serenity's
 headers and nothing needs translating.
 
+## libpizlo's core on Serenity
+
+libpizlo's shared parts (the libpas allocator, the FUGC collector, capability
+checks, threads and signal delivery) can stay one source for Linux and
+Serenity. Only the syscall layer needs a Serenity backend, because it is shaped
+like Linux.
+
+`split_zsys.py` makes that boundary explicit. It moves all 313
+`filc_native_zsys_*` functions out of `filc_runtime.c`, together with the 34
+static helpers and struct types that only they use, into `filc_zsys_linux.c`.
+That is 5,661 lines, and `filc_runtime.c` keeps the remaining 10,270.
+`filc_runtime.c` then includes `filc_zsys_serenity.c` or `filc_zsys_linux.c` at
+its end, so the moved code still sees every static it used before. On Linux the
+split library builds under libpizlo's own `-W -Werror`, exports the same 318
+`zsys` natives, and gives output identical to the stock library on
+`syscall_smoke.c`. That program covers file I/O, fork and wait, pthreads, mmap,
+poll, epoll with a pointer in its data, eventfd, signals, getrandom, clocks and
+readdir. The spike's demo and attacks also behave the same on top of the split.
+
+`libpas-serenity.patch` adds 135 lines across 9 files so the core compiles for
+Serenity. The changes are:
+
+- a `PAS_OS(SERENITY)` platform macro;
+- guards around about 30 Linux-only headers;
+- `memcmp` instead of `bcmp`, which Serenity's LibC lacks;
+- `NSIG - 1` for the highest signal, because Serenity has no `_NSIG`;
+- Serenity's highest auxv key, `AT_EXE_SIZE`;
+- the kernel's `get_stack_bounds()` in place of `pthread_getattr_np`;
+- `SIGCANCEL` as the one signal Serenity's LibC reserves for itself;
+- a 32-bit compare-and-swap for `pthread_t`.
+
+The last change fixes a real bug, not a warning. Serenity's `pthread_t` is an
+`int`, and libpas compared and swapped it as a pointer-sized word, which would
+also overwrite the next four bytes.
+
+With the patch and an empty Serenity backend, all 178 libpizlo objects compile
+for `x86_64-pc-serenity` against Serenity's LibC headers at `-O3 -W -Werror`,
+and link into one shared object. It has 407 undefined symbols:
+
+- 313 are the `zsys` natives that the Serenity backend has to provide;
+- 91 are functions Serenity's LibC already implements, such as pthreads,
+  signals, mmap, `dlopen` and the `long double` math functions;
+- 3 are compiler-rt's CPU feature symbols (`__cpu_model` and two others).
+
+So the core needs nothing from the lower libc that Serenity lacks. What remains
+is the backend itself.
+
 ## Notes for the driver work (step 4)
 
 - Fil-C's driver adds `-internal-isystem /usr/include` for its Linux target even
@@ -232,6 +283,9 @@ headers and nothing needs translating.
    runtime-owned ones. Add `zsys_serenity_dynamic`, dispatching on the same
    table and returning `ENOSYS` for unknown numbers.
 3. Report the `setregid` bug upstream.
-4. Build libpizlo against Serenity's Kernel/API and a yolo Serenity LibC with
-   prefixed symbols, add the `x86_64-pc-serenity` triple to the filcc driver,
-   and try a static `true`, `echo` and `cat` in QEMU.
+4. Write `filc_zsys_serenity.c`, starting with the natives a static `true`
+   needs. Then build libpizlo with Serenity's toolchain against a normally
+   compiled Serenity LibC under a renamed library file. Its symbols keep their
+   ordinary names, since the compiler already prefixes the pizlonated side with
+   `pizlonated_`. Add the `x86_64-pc-serenity` triple to the filcc driver, and
+   try a static `true`, `echo` and `cat` in QEMU.

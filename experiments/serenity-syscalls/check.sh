@@ -9,12 +9,15 @@
 #      Syscall.h, without and then with the typed LibSystem/syscall.h;
 #   5. compile the trusted marshaller for every generic params struct, and
 #      check that the six special structs are refused;
-#   6. build libpizlo with the spike natives, then build and run demo/:
-#      well-formed calls, seven attacks, five compile-time mistakes.
+#   6. build libpizlo with its Linux syscall layer split out of the core
+#      (libpizlo/), and check on Linux that it behaves like the stock build;
+#   7. build that core for x86_64-pc-serenity and sort its undefined symbols;
+#   8. build the split libpizlo with the spike natives, then build and run
+#      demo/: well-formed calls, seven attacks, five compile-time mistakes.
 #
-# Steps 3 to 5 compile in "Serenity mode": Fil-C's clang with Serenity's own
-# LibC, AK and Kernel/API headers instead of glibc. Nothing here runs on
-# Serenity; step 6 runs on Linux with a Linux emulation of the kernel trap.
+# Steps 3 to 5 and 7 compile for Serenity: Serenity's own LibC, AK and
+# Kernel/API headers instead of glibc. Nothing here runs on Serenity; step 8
+# runs on Linux with a Linux emulation of the kernel trap.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -101,9 +104,26 @@ for sc in mmap mremap futex create_thread set_mmap_name ptrace; do
   grep -o 'static assertion failed: .*' "$work/refused.log" | sed 's/static assertion failed: //' | sort -u | paste -sd';' -
 done
 
-step "building libpizlo with the spike natives"
-spike=$(nix build --impure --no-link --print-out-paths -f "$here/libpizlo-spike.nix")
 cxx=$(nix build --no-link --print-out-paths "$repo#filcc")/bin/clang++
+
+step "libpizlo with its Linux syscall layer split out: same behavior on Linux"
+split=$(nix build --impure --no-link --print-out-paths -f "$here/libpizlo/libpizlo-split.nix")
+"${cxx%++}" -O1 "$here/libpizlo/syscall_smoke.c" -o "$work/smoke" -lpthread
+"$work/smoke" >"$work/smoke-stock.txt"
+LD_LIBRARY_PATH=$split/lib "$work/smoke" >"$work/smoke-split.txt"
+diff "$work/smoke-stock.txt" "$work/smoke-split.txt"
+echo "stock and split agree on $(wc -l <"$work/smoke-split.txt") checks"
+
+step "libpizlo core built for x86_64-pc-serenity"
+"$here/libpizlo/serenity-core.sh" "$S" "$work/serenity-core"
+
+step "building the split libpizlo with the spike natives"
+spike=$(nix build --impure --no-link --print-out-paths --expr "
+  let flake = builtins.getFlake \"$repo\"; in
+  import $here/libpizlo/libpizlo-split.nix {
+    inherit flake;
+    libpizlo = import $here/libpizlo-spike.nix { filcc = flake.packages.x86_64-linux.filcc; };
+  }")
 
 step "demo: well-formed calls (Linux emulation of the trap)"
 "$cxx" -std=c++20 -O1 "$here/demo/demo.cpp" -o "$work/demo" -L"$spike/lib"
