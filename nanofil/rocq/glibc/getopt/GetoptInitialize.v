@@ -106,6 +106,15 @@ Definition getenv_rule (G : iProp Σ) : Prop :=
   ⊢ G -∗ ▷ (∀ q, G -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
          (Exec l (Call (CResult d P) (Global (TAtom "__GI_getenv")) args :: rest) j)) : gexpr) {{ Φ }}.
+(** Getenv uses only part of what a caller lends it. When the caller
+    lends more, such as memory that the parser needs later, the call
+    still works. Getenv gives back what it borrowed, and the extra part
+    R stays untouched beside G. *)
+Lemma getenv_rule_sep (G R : iProp Σ) : getenv_rule G -> getenv_rule (G ∗ R).
+Proof.
+  intros Hg f e ls l d args rest j x Φ Hx. iIntros "[HG HR] HK".
+  iApply (Hg with "HG"); [exact Hx|]. iNext. iIntros (q) "HG". iApply ("HK" with "[$HG $HR]").
+Qed.
 Definition entry_keys : list name :=
   List.map TAtom ["v0"; "v2"; "v4"; "v6"; "v8"; "v10"; "v12"; "v14"; "v19"; "chk0"; "chk1"; "chk2"]%string.
 End initialize_values.

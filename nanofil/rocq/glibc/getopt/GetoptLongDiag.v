@@ -94,6 +94,28 @@ Definition getopt_ldiag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom
      ⊢ G -∗ ▷ (∀ x, G -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
        WP (ERun (mkFrame f e ls None
             (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}).
+(** The warnings about long options work the same way. When a caller
+    lends more than G, the extra part R rides along with T between the
+    translation and the print. *)
+Lemma getopt_ldiag_rule_sep (G R : iProp Σ) T fp dom :
+  getopt_ldiag_rule G T fp dom -> getopt_ldiag_rule (G ∗ R) (fun mid q => T mid q ∗ R)%I fp dom.
+Proof.
+  intros (Hd & Hf & Hcap & Hgt & Hfx & H140 & H141).
+  refine (conj Hd (conj Hf (conj _ (conj _ (conj _ (conj _ _)))))).
+  - iIntros "[HG HR]". iDestruct (Hcap with "HG") as (dq reg) "[Hc Hb]".
+    iExists dq, reg. iFrame "Hc". iIntros "Hc". iFrame "HR". iApply ("Hb" with "Hc").
+  - intros f e ls l d args rest j mid Φ Hm Hx. iIntros "[HG HR] HK".
+    iApply (Hgt with "HG"); [exact Hm | exact Hx |]. iNext. iIntros (q) "HT". iApply ("HK" with "[$HT $HR]").
+  - intros f e ls l d args rest j mid q a0 s0 pfx sp nm sn Φ Hm Hx. iIntros "[HT HR] Ha Hp Hn HK".
+    iApply (Hfx with "HT Ha Hp Hn"); [exact Hm | exact Hx |]. iNext. iIntros (x) "HG".
+    iApply ("HK" with "[$HG $HR]").
+  - intros f e ls l d args rest j fmt pfx sp nm sn Φ Hm Hx. iIntros "[HG HR] Hp Hn HK".
+    iApply (H140 with "HG Hp Hn"); [exact Hm | exact Hx |]. iNext. iIntros (x) "HG".
+    iApply ("HK" with "[$HG $HR]").
+  - intros f e ls l d args rest j fmt Φ Hm Hx. iIntros "[HG HR] HK".
+    iApply (H141 with "HG"); [exact Hm | exact Hx |]. iNext. iIntros (x) "HG".
+    iApply ("HK" with "[$HG $HR]").
+Qed.
 End ldiag_values.
 Section ldiag.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

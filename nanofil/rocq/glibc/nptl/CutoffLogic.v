@@ -277,6 +277,18 @@ Qed.
 Definition stack_size_cell (self : ptr) (dq : dfrac) (sz : Z) : iProp Σ :=
   ∃ tb, ⌜self = mkPtr tb (Obj tb)⌝ ∗ icellq dq tb off_stackblock_size sz.
 
+(** The cutoff only reads the stack size, so the eight bytes that hold
+    it can be frozen when Hello's main starts. After that nobody can
+    change them, and every call to the cutoff can copy the frozen share.
+    The lemma does not say where the bytes come from. The caller must
+    find them in the starting memory. *)
+Lemma stack_size_own tb sz : ow_self w0 = mkPtr tb (Obj tb) ->
+  pts (cell tb off_stackblock_size sz) ==∗ □ stack_size_cell (ow_self w0) DfracDiscarded sz.
+Proof.
+  intros Hs. iIntros "H". rewrite pts_ptsq. iMod (ptsq_persist with "H") as "#H".
+  iModIntro. iModIntro. iExists tb. iSplit; [done | iExact "H"].
+Qed.
+
 (** A call borrows the cleanup lifetime and the stack-size bytes and
     returns both, binding d to the function's answer. *)
 Lemma wp_call_alloca_cutoff_tcb f e ls l d args rest j n dq sz Φ :

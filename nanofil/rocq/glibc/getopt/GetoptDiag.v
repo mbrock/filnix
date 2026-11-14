@@ -78,6 +78,22 @@ Definition getopt_diag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom 
        ▷ (∀ x, G -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
        WP (ERun (mkFrame f e ls None
             (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}).
+(** Getopt prints a warning in two calls: one fetches the translated
+    message, and the other prints it. These rules also hold when the
+    caller lends more than G. The extra part R waits beside the message
+    between the two calls and comes back with G. *)
+Lemma getopt_diag_rule_sep (G R : iProp Σ) T fp dom :
+  getopt_diag_rule G T fp dom -> getopt_diag_rule (G ∗ R) (fun mid q => T mid q ∗ R)%I fp dom.
+Proof.
+  intros (Hd & Hf & Hcap & Hgt & Hfx). refine (conj Hd (conj Hf (conj _ (conj _ _)))).
+  - iIntros "[HG HR]". iDestruct (Hcap with "HG") as (dq reg) "[Hc Hb]".
+    iExists dq, reg. iFrame "Hc". iIntros "Hc". iFrame "HR". iApply ("Hb" with "Hc").
+  - intros f e ls l d args rest j mid Φ Hm Hx. iIntros "[HG HR] HK".
+    iApply (Hgt with "HG"); [exact Hm | exact Hx |]. iNext. iIntros (q) "HT". iApply ("HK" with "[$HT $HR]").
+  - intros f e ls l d args rest j mid q a0 s0 c Φ Hm Hc Hx. iIntros "[HT HR] Hs HK".
+    iApply (Hfx with "HT Hs"); [exact Hm | exact Hc | exact Hx |]. iNext. iIntros (x) "HG".
+    iApply ("HK" with "[$HG $HR]").
+Qed.
 End diag_values.
 Section diag.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
