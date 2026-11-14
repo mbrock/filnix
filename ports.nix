@@ -2051,8 +2051,8 @@ in
   ])
 
   (for pkgs.fontconfig [
-    # ports/patch/fontconfig-2.15.0.patch rebased onto Nixpkgs' 2.17.
-    (patch ./patches/fontconfig-2.17-filc.patch)
+    # ports/patch/fontconfig-2.15.0.patch rebased onto Nixpkgs' 2.18.
+    (patch ./patches/fontconfig-2.18-filc.patch)
     (use {
       postPatch = ''
         sed -i 's/ftglue.c/ftglue.c fcfilc.h fcfilc.c/' src/Makefile.am

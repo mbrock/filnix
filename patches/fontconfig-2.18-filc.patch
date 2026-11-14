@@ -1,12 +1,13 @@
-Subject: Fil-C pointer/offset conversions for fontconfig 2.17
+Subject: Fil-C pointer/offset conversions for fontconfig 2.18
 Origin: Filnix, rebased from ports/patch/fontconfig-2.15.0.patch
 Upstream-Status: Not submitted
 
-Nixpkgs 26.05 packages fontconfig 2.17.1, whose clang-formatted fcint.h no
-longer matches the extracted 2.15.0 port. The change is otherwise identical:
-serialized offsets are converted through FcPtrToOffsetImpl and
-FcOffsetToPtrImpl so decoded pointers keep their capability. Replace this
-with the extracted patch once upstream ports a 2.17 release.
+Nixpkgs 26.11 packages fontconfig 2.18.3, whose clang-formatted fcint.h no
+longer matches the extracted 2.15.0 port (2.18 also computes offsets
+through uintptr_t). The change is otherwise identical: serialized offsets
+are converted through FcPtrToOffsetImpl and FcOffsetToPtrImpl so decoded
+pointers keep their capability. Replace this with the extracted patch once
+upstream ports a 2.18 release.
 
 diff --git a/src/fcfilc.c b/src/fcfilc.c
 new file mode 100644
@@ -66,11 +67,11 @@ index 0000000..ed5bff9
 +}
 +
 diff --git a/src/fcint.h b/src/fcint.h
-index 8046cc8..5cc68fa 100644
+index 00f7053..fb994a8 100644
 --- a/src/fcint.h
 +++ b/src/fcint.h
-@@ -151,6 +151,9 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
- #define FcStrdup(s)                    ((FcChar8 *)strdup ((const char *)(s)))
+@@ -155,6 +155,9 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
+ 
  #define FcFree(s)                      (free ((FcChar8 *)(s)))
  
 +ptrdiff_t FcPtrToOffsetImpl(const void* base, const void* ptr);
@@ -79,15 +80,15 @@ index 8046cc8..5cc68fa 100644
  /*
   * Serialized data structures use only offsets instead of pointers
   * A low bit of 1 indicates an offset.
-@@ -166,10 +169,10 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
- #define FcOffsetDecode(p)              (((intptr_t)(p)) & ~1)
+@@ -170,10 +173,10 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
+ #define FcOffsetDecode(p)              (((uintptr_t)(p)) & ~1)
  
  /* Compute pointer offset */
--#define FcPtrToOffset(b, p)            ((ptrdiff_t)((intptr_t)(p) - (intptr_t)(b)))
+-#define FcPtrToOffset(b, p)            ((ptrdiff_t)((uintptr_t)(p) - (uintptr_t)(b)))
 +#define FcPtrToOffset(b, p)            FcPtrToOffsetImpl (b, p)
  
  /* Given base address, offset and type, return a pointer */
--#define FcOffsetToPtr(b, o, t)         ((t *)((intptr_t)(b) + (ptrdiff_t)(o)))
+-#define FcOffsetToPtr(b, o, t)         ((t *)((uintptr_t)(b) + (ptrdiff_t)(o)))
 +#define FcOffsetToPtr(b, o, t)         ((t *)FcOffsetToPtrImpl (b, o))
  
  /* Given base address, encoded offset and type, return a pointer */
