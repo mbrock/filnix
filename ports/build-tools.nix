@@ -105,9 +105,19 @@ let
           libsysprof-capture = null;
           # The Fil-C GI port supplies the target GLib GIRs.
           withIntrospection = false;
-          # 2.80's meson.build checks for packaging, which GLib 2.90 dropped.
-          python3 = bh.python3.withPackages (p: [ p.packaging ]);
         })
+        # 2.80's meson.build and gdbus-codegen import packaging, which GLib
+        # 2.90 dropped, and Nixpkgs with it: restore Nixpkgs 26.05's handling.
+        (use (old: {
+          nativeBuildInputs = old.nativeBuildInputs ++ [
+            bh.python3Packages.packaging
+            bh.python3Packages.wrapPython
+          ];
+          preFixup = (old.preFixup or "") + ''
+            buildPythonPath ${bh.python3Packages.packaging}
+            patchPythonScript "$dev/share/glib-2.0/codegen/utils.py"
+          '';
+        }))
         (use {
           doCheck = false;
           mesonFlags = [

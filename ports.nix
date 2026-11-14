@@ -2161,9 +2161,20 @@ in
       libsysprof-capture = null;
       # Keep the bootstrap GLib free of scanner inputs as well as GIR output.
       withIntrospection = false;
-      # 2.80's meson.build checks for packaging, which GLib 2.90 dropped.
-      python3 = pkgs.buildPackages.python3.withPackages (p: [ p.packaging ]);
     })
+    # 2.80's meson.build and gdbus-codegen import packaging, which GLib 2.90
+    # dropped, and Nixpkgs with it: restore Nixpkgs 26.05's handling. The
+    # codegen runs on the build Python.
+    (use (old: {
+      nativeBuildInputs = old.nativeBuildInputs ++ [
+        pkgs.python3Packages.packaging
+        pkgs.python3Packages.wrapPython
+      ];
+      preFixup = (old.preFixup or "") + ''
+        buildPythonPath ${pkgs.python3Packages.packaging}
+        patchPythonScript "$dev/share/glib-2.0/codegen/utils.py"
+      '';
+    }))
     (skipTests "many failures")
     (use {
       mesonFlags = [
