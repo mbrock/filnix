@@ -5,16 +5,18 @@ contract and its existing extreme-size test, adding a boundary check.
 
 --- a/src/mem.c
 +++ b/src/mem.c
-@@ -4,11 +4,15 @@
+@@ -3,6 +3,7 @@
+ 
  #include "avif/avif.h"
  
- #include <assert.h>
 +#include <stdint.h>
  #include <stdlib.h>
  
  void * avifAlloc(size_t size)
- {
-     assert(size != 0); // Implementation-defined. See https://en.cppreference.com/w/cpp/memory/c/malloc
+@@ -14,6 +15,9 @@
+     if (size == 0) {
+         return NULL;
+     }
 +    if (size > PTRDIFF_MAX) {
 +        return NULL;
 +    }

@@ -895,6 +895,9 @@ portDSL.makeOverlay portList final prev
       # Bundled extensions build from the unpatched PHP source.
       filcOverrides = _: pprev: {
         extensions = pprev.extensions // {
+          # Nixpkgs 26.11 points PHP 8.5's oom_filter_*.phpt tests at the
+          # built module; 7.4 has no such tests.
+          filter = pprev.extensions.filter.overrideAttrs { postConfigure = ""; };
           # The probes run programs, so the cross build assumed an iconv
           # without errno that honours //IGNORE; glibc's sets errno and
           # fails on //IGNORE.

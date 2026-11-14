@@ -2228,11 +2228,16 @@ in
           }/bin/python3"
         ];
         outputs = builtins.filter (output: output != "devdoc") old.outputs;
-        # The installed scanner also needs this when inspecting downstream
+        # The installed scanner also needs ldd when inspecting downstream
         # dumpers; a build-only PATH entry would leave those scans broken.
+        # Meson 1.12 keys override_find_program() by machine, defaulting
+        # to the host, so gir/ and tests/ no longer found the in-tree
+        # scanner (a host program that runs here) with a native lookup.
         postPatch = (old.postPatch or "") + ''
           substituteInPlace giscanner/shlibs.py \
             --replace-fail "['ldd', binary.args[0]]" "['${pkgs.glibc.bin}/bin/ldd', binary.args[0]]"
+          substituteInPlace gir/meson.build tests/meson.build \
+            --replace-fail "find_program('g-ir-scanner', native: true" "find_program('g-ir-scanner'"
         '';
         # GLib's bootstrap build has no scanner. Install the GLib metadata
         # generated here, which GI 1.80 otherwise keeps only for its tests.
@@ -2496,7 +2501,17 @@ in
   ])
 
   (for pkgs.libmemcached [
-    (patch ./patches/libmemcached-clang.patch)
+    # The tests' vendored Catch2 installs its crash handler on an
+    # alternate signal stack, and Fil-C has no sigaltstack.
+    (addCFlag "-DCATCH_CONFIG_NO_POSIX_SIGNALS")
+    (use (old: {
+      # "set too big" makes one char (make_unique<char>(len)) and sends
+      # len bytes from it; Fil-C stopped the out-of-bounds sendmsg().
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace test/tests/memcached/udp.cpp --replace-fail \
+          'make_unique<char>(len)' 'make_unique<char[]>(len)'
+      '';
+    }))
   ])
 
   (for pkgs.rdkafka [
@@ -2563,6 +2578,12 @@ in
       (patch ./patches/ghostscript-filc.patch)
     ];
   }
+
+  # slapd links libsystemd for sd_notify. Full systemd 262 (and so
+  # systemdMinimal) does not link yet; see the systemd port.
+  (for pkgs.openldap [
+    (arg { systemdMinimal = final.systemdLibs; })
+  ])
 
   (for pkgs.dbus [
     (arg { systemdMinimal = final.systemdLibs; })
