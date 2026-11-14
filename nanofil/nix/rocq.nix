@@ -170,6 +170,16 @@ let
       ../rocq/theories
     ];
   };
+  runtimeEvidence = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../rocq/theories/core/Runtime.v
+      ../docs/runtime-axioms.md
+      ../tests/runtime_signature.py
+      ../tests/runtime_signature_test.py
+      (lib.fileset.fileFilter (file: lib.hasPrefix "axiom-" file.name && file.hasExt "c") ../tests/c/prog)
+    ];
+  };
   driver = pkgs.stdenv.mkDerivation {
     name = "nanofil-rocq-driver";
     dontUnpack = true;
@@ -208,7 +218,7 @@ let
   model =
     pkgs.runCommand "nanofil-rocq-model"
       {
-        nativeBuildInputs = rocqInputs;
+        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
         passthru = {
           inherit
             vo
@@ -223,6 +233,8 @@ let
         };
       }
       ''
+        python3 ${runtimeEvidence}/tests/runtime_signature.py ${runtimeEvidence}
+        python3 ${runtimeEvidence}/tests/runtime_signature_test.py ${runtimeEvidence}
         cd ${theorySrc}/rocq
         # Axioms and parameters only inside Runtime.v's module type, which
         # InterpRuntime discharges; no Admitted anywhere.
