@@ -4,7 +4,7 @@
     It preserves arbitrary caller resources without requiring a usable
     stream buffer or an operating-system write contract. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import GlibcTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -38,11 +38,7 @@ Lemma wp_xsputn_zero fr fp src (P : iProp Σ) Φ :
 Proof.
   intros Hfr. injection Hfr as <-. iIntros "HP HK".
   iApply wp_enter; [reflexivity | reflexivity |]. iNext.
-  cbn [b_insts b_jump].
-  iApply wp_let; [reflexivity | reflexivity | reflexivity | intros; reflexivity |].
-  iNext. iApply wp_branch; [reflexivity |]. iNext.
-  iApply wp_enter; [reflexivity | reflexivity |]. iNext.
-  cbn [b_insts b_jump].
+  sym_frun "" (@nil name).
   iApply wp_ret; [reflexivity | reflexivity |]. iNext.
   iApply ("HK" with "HP").
 Qed.
