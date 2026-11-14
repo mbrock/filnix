@@ -15,7 +15,7 @@ tree() {
   mkdir -p "$tmp/$1/sub"
   cat >"$tmp/$1/Fix.v" <<'EOF'
 From Nanofil Require Import Runtime.
-Module R := InterpRuntime.
+Module R : Runtime := InterpRuntime.
 EOF
   cat >"$tmp/$1/General.v" <<'EOF'
 From Glibc Require Import Fix.
@@ -33,7 +33,14 @@ EOF
 # expect NAME STATUS PATTERN: the check of tree NAME exits with STATUS,
 # and for a failure its report has a line that matches PATTERN.
 expect() {
-  bash "$here/build.sh" "$tmp/$1" 4 >/dev/null 2>&1
+  # Build the concrete objects with a transparent binding, then restore
+  # the sealed source that abstract-general.sh expects as its input.
+  local binding='Module R : Runtime := InterpRuntime.'
+  if grep -qxF "$binding" "$tmp/$1/Fix.v"; then
+    sed -i 's/^Module R : Runtime := InterpRuntime\.$/Module R := InterpRuntime./' "$tmp/$1/Fix.v"
+    bash "$here/build.sh" "$tmp/$1" 4 >/dev/null 2>&1
+    sed -i 's/^Module R := InterpRuntime\.$/Module R : Runtime := InterpRuntime./' "$tmp/$1/Fix.v"
+  fi
   bash "$here/abstract-general.sh" "$tmp/$1" "$tmp/$1.out" 4 >"$tmp/$1.log" 2>&1
   local status=$?
   if [ "$status" != "$2" ]; then
@@ -104,7 +111,7 @@ fault listed-status-124 'exit 124' 'the compiler exited with status 124.*'
 fault listed-status-2 'exit 2' 'the compiler exited with status 2.*'
 
 tree unbound
-sed -i 's/^Module R := InterpRuntime\.$/Declare Module R : Runtime./' "$tmp/unbound/Fix.v"
+sed -i 's/^Module R : Runtime := InterpRuntime\.$/Declare Module R : Runtime./' "$tmp/unbound/Fix.v"
 expect unbound 2 ''
 
 if [ "$failures" != 0 ]; then

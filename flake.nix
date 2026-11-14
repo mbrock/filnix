@@ -369,8 +369,8 @@
                 }).model;
             };
             # Every glibc proof file that does not need the interpreter's
-            # runtime, compiled against an abstract one. It runs twice
-            # daily; the push check compiles only Hello's files this way.
+            # runtime compiles against an abstract one twice daily, with
+            # assumption audits. The push check uses a sealed runtime.
             nanofil-glibc-abstract =
               (import ./nanofil/nix/glibc.nix {
                 inherit pkgs;
