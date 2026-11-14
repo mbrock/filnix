@@ -1,7 +1,6 @@
 From Glibc Require Import GlibcProgram.
-(** The fill of `c: _IO_new_file_xsputn` (LibioXsputnBase.v describes
-    the function), from block `c: L20`, with the count of bytes that
-    fit and the flush flag the line-buffer test chose:
+(** The file stream writer copies bytes into its buffer before handling
+    any pending flush. This module verifies that copy and its byte count:
 
     ```
     if (count > 0)
@@ -10,10 +9,9 @@ From Glibc Require Import GlibcProgram.
         s += count; to_do -= count; }
     ```
 
-    [wp_xs_L101] copies the count into the buffer at the write pointer
-    by LibioDefaultXsputnCopy.v's [wp_call_mempcpy_in], from the
-    caller's bytes at their share, and [wp_xs_L20] takes the smaller of
-    the count and n; both go on at LibioXsputnFlush.v's [wp_xs_L96]. *)
+    The writer caps the count at the number of source bytes remaining.
+    It preserves the caller's source ownership while copying into the
+    stream buffer, then continues to the flush decision. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -30,6 +28,8 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioXsputnWrite LibioXsputnFlush.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnDo LibioXsputnFlags LibioXsputnFlush LibioXsputnReset LibioXsputnSetp LibioXsputnWrite OsWorld SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec.
+From Glibc Require StringSpecs.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -38,12 +38,12 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Block `c: L20` of `c: _IO_new_file_xsputn`, after its phis. *)
+(** This block begins the fill after the writer has measured the available space. *)
 Definition xs_L20b : block := Eval vm_compute in
   match find_block (TAtom "L20") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L20") [] [] JRetVoid end.
 
-(** Block `c: L101`, after its phi: the copy. *)
+(** This block copies the chosen count and advances the write pointer. *)
 Definition xs_L101 : block := Eval vm_compute in
   match find_block (TAtom "L101") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L101") [] [] JRetVoid end.
@@ -54,8 +54,7 @@ Import LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXspu
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-(** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
-    LibioXsputnBase.v asks. *)
+(** The linked program provides glibc's copy functions and default stream writer. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
@@ -68,15 +67,14 @@ Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
   (Hfwq : fwq_spec w0 registry ge).
 
 
-(** Expressions of the language. *)
+(** This abbreviation selects expressions in the caller's linked program. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A lookup premise, through the environment's puts. *)
+(** This tactic checks the source pointer and byte counts after updates to the environment. *)
 Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
-(** Block `c: L101` on: the c bytes from s, at most n and the room
-    from the write pointer to the buffer's end, copied there. *)
+(** The writer copies c source bytes into available buffer space and advances its write pointer. *)
 Lemma wp_xs_L101 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf c e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
@@ -107,13 +105,12 @@ Proof.
   set (ysub := take (Z.to_nat c) ys).
   assert (Hls : Z.of_nat (length ysub) = c) by (unfold ysub; rewrite length_take_le; lia).
   iDestruct (bytesq_sub _ _ _ _ 0 (Z.to_nat c) with "Hys") as "[Hsub Hysb]"; [lia|].
-  iApply (wp_call_mempcpy_in Hmove Hmove_fn Hmove_sym _ _ _ _ _ _ _ _ _ b reg xs cs (wa - b) dq b'
-            reg' (so + Z.of_nat 0) c' ysub with "Hbl Hxs Hcs Hl' Hsub");
-    [exact Hcpy | | exact Hpcpy | reflexivity | exact Hc' | lia | lia | exact Hb8 | exact Hb8' | lia | lia | lia
-    | lia | lia | lia | exact Hx | |].
+  call_spec with (inr (b, reg, wa - b, xs, cs, dq, b', reg', so + Z.of_nat 0, c', ysub)).
   { cbn -[put]. lookups. rewrite Hls. repeat f_equal; first [lia | unwrap2; reflexivity]. }
-  { unfold ysub. apply Forall_take. exact Hy. }
-  iNext. iIntros "Hbl Hbuf Hl' Hsub". iDestruct ("Hysb" with "Hsub") as "Hys".
+  { repeat split; try assumption; try lia. unfold ysub. apply Forall_take. exact Hy. }
+  iDestruct "Hpost" as "(-> & Hbl & Hbuf & Hl' & Hsub)".
+  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
+  iDestruct ("Hysb" with "Hsub") as "Hys".
   iDestruct "Hbuf" as (xs' cs') "(%Hl3 & Hxs & Hcs)". cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   check "Hl". store "Hl" "Hwp". step. step. step. step.
   iAssert (wbuf fb (Some (b, sz)) (mkPtr (wa + c) (Obj b)) we) with "[Hwc Hwp Hwe Hbl Hxs Hcs]" as "Hwb".
@@ -126,9 +123,8 @@ Proof.
   all: unfold n in *; try lia; try (intros _; discriminate). all: lk_fin.
 Qed.
 
-(** Block `c: L20` on, cnt bytes of room from the write pointer and
-    the flush flag mf: the copy of the smaller of cnt and n when cnt is
-    not 0 ([wp_xs_L101]), then [wp_xs_L96]. *)
+(** The writer fills available space with at most n bytes before deciding whether to flush.
+    If the buffer is full, it proceeds directly to the flush decision. *)
 Lemma wp_xs_L20 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf cnt e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
