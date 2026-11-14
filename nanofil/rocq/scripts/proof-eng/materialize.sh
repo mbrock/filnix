@@ -24,6 +24,8 @@ tmp=$(mktemp -d)
 "$here/apply.sh" "$dir/nanofil/rocq/glibc" "$tmp/glibc"
 rm -rf "$dir/nanofil/rocq/glibc"
 mv "$tmp/glibc" "$dir/nanofil/rocq/glibc"
-rmdir "$tmp"
+# Stage 50 retains compiler metadata and its input beside the output tree.
+# Materialization only needs the output; regeneration retains review evidence.
+rm -rf "$tmp"
 git -C "$dir" add -A nanofil/rocq/glibc
 git -C "$dir" status --short | awk '{ n[substr($0, 1, 1)]++ } END { for (k in n) printf "%s %d\n", k, n[k] }'

@@ -1,8 +1,8 @@
 # What changes for a proof author at cutover
 
-This note is for someone who writes proofs in `nanofil/rocq/glibc/`. At cutover the output of the stages in this directory replaces the tree on `main`. Every file changes once. The statements of the audited theorems do not change. This note lists what an author writes differently afterwards and how to convert a file that is not merged yet.
+This note is for someone who writes proofs in `nanofil/rocq/glibc/`. At cutover the output of the stages in this directory replaces the tree on `main`. Every file changes once. The audited endpoints keep their statements. This note lists what an author writes differently afterwards and how to convert a file that is not merged yet.
 
-The first three sections describe the changes of the first cutover, which are on the branch `proof-eng-flat`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes a design that is developed on the branch `proof-eng` and lands in a second cutover. The last section says how the tree stays general in the runtime and what that asks of an author.
+The first three sections describe the first cutover, which is on `main`: flat files, the shared `keeps` definition and the one tactic library. The section on the program context describes the second cutover, which adds stages 50 and 60. The last section says how the tree stays general in the runtime and what that asks of an author.
 
 ## Converting an unmerged file
 
@@ -99,13 +99,17 @@ Three more conventions hold.
 
 ## One program context (stage 50, second cutover)
 
-A rules section today takes the world, the registry, the global environment and one `find_fn` hypothesis for each function it calls, and it declares a local `irisGS` instance. After stage 50 a converted section takes one `GlibcProgram` context, and a `Defines` instance says that the program defines a function. A caller no longer passes the `find_fn` facts by position. In the trial `hge_output_overflow` passes 19 arguments where it passed 31.
+A converted rules section takes one `GlibcProgram` context instead of separate world, registry, environment and ghost-state parameters. Its Iris instance comes from that bundle. A `Defines` instance supplies each function-lookup fact, so callers no longer pass those facts by position.
 
-Stage 50 leaves three kinds of declaration alone.
+Import `ProgramAbbreviations` once in a converted file to use `w0`, `registry` and `ge`. A converted caller writes `iApply (wp_live_fit1 with "Hl")`; instance search supplies its program. An old-style caller supplies `(glibc_program := program_of w0 registry ge)` when applying a bundled rule. A converted proof can still use an old-style rule: `Defines` is the same lookup equality, and the bundle provides its original world and ghost instances.
 
-- A lemma that the audit contracts name keeps its name and its type. It becomes a wrapper that is proved from an implementation named `FILE_NAME_program`, so `Print Assumptions` on the audited name still covers the proof. Converted sections call the `_program` implementation. The stage prints every pair.
-- A specification predicate such as `overflow_spec` keeps its original parameters.
-- A section that is partial or pure keeps its original interface, so that it gains no ghost-state or world premise. The stage prints each such section with its reason.
+The forty audited intermediate declarations listed in `check/audit-changes.json` take bundled statements under their original names. They have no compatibility wrappers. The packet records their full old and new types and proves both directions with the same resources and ghost instances. Every endpoint retains its name, type and assumptions; the permission applies only to the listed file/name pairs.
+
+Specification predicates such as `overflow_spec` retain their parameters. Partial and pure interfaces gain no world or ghost-state premise, and noncanonical sections keep their existing setup. The stage prints retained sections with their reasons. Stronger program facts and allocator premises remain explicit.
+
+A linked program has one function table and one computed certificate. After editing a table, run `python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --refresh-tables TREE` and compile it again. The command generates the indexed instances from the rows; authors do not maintain a second list.
+
+The [README](README.md#regenerating-the-stage-50-evidence) gives the single regeneration command for the three packet files, which are build outputs rather than committed pages. Run it after merging main and review the resulting declaration list and types. `50-program.py --check TREE` regenerates evidence from the retained input, verifies the transformation, and compiles the adapters in bounded parallel shards. It preserves the reviewed old types of the forty intermediate audits and checks each runtime separately.
 
 ## Proofs stay general in the runtime
 

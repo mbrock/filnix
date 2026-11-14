@@ -456,8 +456,16 @@ def run_probe(tree, rel, decls, out, plugin, inside=False, concrete=False):
 
 def runtime_partition(before, out):
     out.mkdir(parents=True, exist_ok=True)
-    runtime_roots = {rel for rel, path in before.files.items()
-                     if re.search(r'\bInterpRuntime\b', uncomment(path.read_text()))}
+    listed = Path(before.root) / 'runtime-concrete.txt'
+    if listed.exists():
+        # A flat tree binds the runtime once, in Fix.v, and lists the files
+        # that need the interpreter. abstract-general.sh checks that list.
+        runtime_roots = {line.split('#')[0].strip() for line in listed.read_text().splitlines()} - {''}
+        if not runtime_roots <= set(before.files):
+            raise ValueError('runtime-concrete.txt lists a file that does not exist')
+    else:
+        runtime_roots = {rel for rel, path in before.files.items()
+                         if re.search(r'\bInterpRuntime\b', uncomment(path.read_text()))}
     interpreter_closure = set(runtime_roots)
     dep = subprocess.run(['rocq', 'dep', '-R', os.environ['PE_MODEL'], 'Nanofil',
                           '-R', str(before.root), 'Glibc', *map(str, before.files.values())],

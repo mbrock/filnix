@@ -8,6 +8,30 @@
 
 :- begin_tests(rocq_render).
 
+test(tactic_notation_body) :-
+    string_codes("Tactic Notation \"load_cell\" constr(H) \"by\" tactic3(side) := iApply (rule with H); [reflexivity | side |].", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    assertion(Items = [tacnotation(_, [literal("load_cell"), argument(constr, n(_, 'H')),
+        literal("by"), argument(tactic3, n(_, side))], dispatch(_, [_, _, _]))]).
+
+test(singleton_class) :-
+    string_codes("Class Defines (g : G) (n : string) (f : F) : Prop := defines : lookup g n = Some f.", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    assertion(Items = [rec(_, 'Class', n(_, 'Defines'), _, _, singleton,
+        [field(_, defines, [], bin(_, =, _, _), none)])]).
+
+test(named_generalizing_binder) :-
+    string_codes("Context `{P : !Program (hlc := hlc) Σ} `{H : !Defines ge \"name\" fn}.", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    assertion(Items = [decl(_, 'Context', [bs([
+        b(_, gen('{', [bang(cast(_, id(_, 'P'), app(_, _, _)))]), [], none),
+        b(_, gen('{', [bang(cast(_, id(_, 'H'), app(_, _, [_, str(_, "name"), _])))]), [], none)])])]).
+
+test(existing_instances, [forall(member(Prefix, ["", "Local ", "#[global] "]))]) :-
+    string_concat(Prefix, "Existing Instance program_heap.", Text),
+    string_codes(Text, Cs), rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    assertion(Items = [dir(_, ['Existing', 'Instance', program_heap])]).
+
 test(match_in_let_value, [forall(member(Body,
     ["idtac K", "lazymatch type of I with ?Q => idtac K end"]))]) :-
     format(string(Tactic),
