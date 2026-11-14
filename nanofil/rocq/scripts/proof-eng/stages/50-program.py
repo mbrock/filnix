@@ -1416,8 +1416,13 @@ def compile_targets(tree: Path, targets: list[str]) -> set[str]:
             continue
         selected.add(target)
         pending.extend(p for p in graph[target] if p in graph)
-    subprocess.run(['rocq', 'makefile', *flags, *files, '-o', 'Makefile.program'], cwd=tree, check=True)
-    subprocess.run(['make', '-j12', '-f', 'Makefile.program', *targets], cwd=tree, check=True)
+    work = tree.parent / (tree.name + '.program')
+    work.mkdir(parents=True, exist_ok=True)
+    build_flags = ['-R', os.environ['PE_MODEL'], 'Nanofil', '-R', str(tree.resolve()), 'Glibc']
+    build_files = [str((tree / f).resolve()) for f in files]
+    build_targets = [str((tree / t).resolve()) for t in targets]
+    subprocess.run(['rocq', 'makefile', *build_flags, *build_files, '-o', 'Makefile.program'], cwd=work, check=True)
+    subprocess.run(['make', '-j12', '-f', 'Makefile.program', *build_targets], cwd=work, check=True)
     return {t[:-1] for t in selected}
 
 
