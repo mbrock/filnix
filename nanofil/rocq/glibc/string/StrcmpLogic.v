@@ -21,6 +21,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpCode StrcmpBits StrcmpLoop.
 From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -271,6 +272,30 @@ Lemma wp_glibc_strcmp_ws dq1 dq2 p1 p2 s1 s2 Φ :
              (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof. apply strcmp_entry. left. reflexivity. Qed.
 
+(** Comparison returns both string shares, even when the pointers alias. *)
+Definition strcmp_spec : fspec Σ :=
+  FSpec (dfrac * dfrac * ptr * ptr * list Z * list Z)
+    (fun '(_, _, p1, p2, _, _) => [WPtr p1; WPtr p2])
+    (fun '(dq1, dq2, p1, p2, s1, s2) => word_string dq1 p1 s1 ∗ word_string dq2 p2 s2)%I
+    (fun '(dq1, dq2, p1, p2, s1, s2) v =>
+      ⌜v = Ret (WInt (strcmp_res s1 s2))⌝ ∗ word_string dq1 p1 s1 ∗ word_string dq2 p2 s2)%I.
+
+(** The entry proof accepts the parameter order produced by argument binding. *)
+Lemma strcmp_spec_valid g : find_fn ge g = Some (Defined glibc_strcmp) ->
+  HasSpec registry wi ge g strcmp_spec.
+Proof.
+  intros Hg [[[[[dq1 dq2] p1] p2] s1] s2]. exists glibc_strcmp. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strcmp_spec].
+  iIntros "[H1 H2] HK". iApply (strcmp_entry with "H1 H2"); [right; reflexivity|].
+  iIntros "H1 H2". iApply "HK". by iFrame.
+Qed.
+
+(** Linked callers supply the comparison function's definition by name. *)
+#[global] Instance strcmp_has_spec n `{!Defines ge n glibc_strcmp} :
+  HasSpec registry wi ge (TAtom n) strcmp_spec.
+Proof. apply strcmp_spec_valid. apply defines. Qed.
+
 (** Theorem [wp_call_glibc_strcmp] lets any caller invoke `__GI_strcmp`
     by name g, returning [strcmp_res] and both [word_string]
     permissions. *)
@@ -282,10 +307,9 @@ Lemma wp_call_glibc_strcmp f e ls l r g args rest j dq1 dq2 p1 p2 s1 s2 cf' Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hg Hr. iIntros "H1 H2 HK".
-  iApply (wp_call_bind registry wi ge _ _ _ _ _ _ _ _ _ _ _
-            (mkFrame glibc_strcmp [(TAtom "v2", WPtr p2); (TAtom "v0", WPtr p1)] [] None (Enter (TAtom "start") None))
-            with "[H1 H2 HK]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply (strcmp_entry with "H1 H2"); [right; reflexivity|]. iIntros "H1 H2". iExists cf'. iSplit; [done|]. iNext.
+  pose proof (strcmp_spec_valid g Hg) as Hspec.
+  iApply (wp_call_spec registry wi ge g strcmp_spec (dq1, dq2, p1, p2, s1, s2) with "[$H1 $H2]"); [exact Hx|].
+  iIntros (v) "(-> & H1 & H2)". iExists cf'. iSplit; [done|]. iNext.
   iApply ("HK" with "H1 H2").
 Qed.
 

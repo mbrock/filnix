@@ -19,6 +19,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrlenWord StrchrCode MemchrLast.
 From Glibc Require StrlenWord WordString.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -43,9 +44,8 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-(** To step through IR instructions in [[separation-logic|separation logic]],
-    [rules_irisGS] connects the contract registry and world invariant `wi`
-    to the Iris program logic. *)
+(** Each instruction must preserve the caller's interpretation of memory.
+    This instance supplies that interpretation to [[separation-logic|separation logic]]. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
 (** This shorthand names the expression type of the instantiated
     language. *)
@@ -96,6 +96,33 @@ Proof.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply ("HK" with "Hs").
 Qed.
 
+(** Backward search preserves the string and returns its last matching byte. *)
+Definition strrchr_spec : fspec Σ :=
+  FSpec (dfrac * ptr * list Z * Z)
+    (fun '(_, p, _, c) => [WPtr p; WInt c])
+    (fun '(dq, p, s, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ word_string dq p s)%I
+    (fun '(dq, p, s, c) v =>
+      ⌜v = Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0]))))⌝ ∗ word_string dq p s)%I.
+
+(** Strrchr first measures the string and then searches backwards, preserving the caller's ownership. *)
+Lemma strrchr_spec_valid (Hm : memrchr_spec) g :
+  find_fn ge g = Some (Defined glibc_strrchr) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  HasSpec registry wi ge g strrchr_spec.
+Proof.
+  intros Hg Hsl [[[dq p] s] c]. exists glibc_strrchr. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strrchr_spec].
+  iIntros "[%Hc Hs] HK". iApply (wp_glibc_strrchr_ws Hm with "Hs"); [exact Hsl | exact Hc|].
+  iIntros "Hs". iApply "HK". by iFrame.
+Qed.
+
+(** A linked program must provide both helper functions before a caller can search backwards. *)
+#[global] Instance strrchr_has_spec n `{!Defines ge n glibc_strrchr,
+    !Defines ge "__GI_strlen" glibc_strlen} (Hm : memrchr_spec) :
+  HasSpec registry wi ge (TAtom n) strrchr_spec.
+Proof. apply (strrchr_spec_valid Hm); apply defines. Qed.
+
 (** When a caller invokes `c: strrchr(p, c)` in a module providing
     `__GI_strlen` and [memrchr_spec], [wp_call_glibc_strrchr] resumes
     the caller with the last matching byte or null and restores the
@@ -110,9 +137,10 @@ Lemma wp_call_glibc_strrchr (Hm : memrchr_spec) f e ls l r g args rest j dq p s 
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hc Hg Hsl Hr. iIntros "Hs HK".
-  iApply (wp_call_bind with "[Hs HK]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply (wp_glibc_strrchr_ws Hm with "Hs"); [exact Hsl | exact Hc |].
-  iIntros "Hs". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
+  pose proof (strrchr_spec_valid Hm g Hg Hsl) as Hspec.
+  iApply (wp_call_spec registry wi ge g strrchr_spec (dq, p, s, c) with "[Hs]");
+    [exact Hx | by iFrame |].
+  iIntros (v) "[-> Hs]". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
 End rules.

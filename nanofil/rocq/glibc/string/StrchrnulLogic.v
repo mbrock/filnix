@@ -24,6 +24,7 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCod
   StrcmpCode StrcmpBits StrcmpLoop.
 From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -435,6 +436,30 @@ Proof.
     iIntros "W". iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
+(** Searching for a byte or NUL preserves the caller's string share. *)
+Definition strchrnul_spec : fspec Σ :=
+  FSpec (dfrac * ptr * list Z * Z)
+    (fun '(_, p, _, c) => [WPtr p; WInt c])
+    (fun '(dq, p, s, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ word_string dq p s)%I
+    (fun '(dq, p, s, c) v =>
+      ⌜v = Ret (WPtr (ptr_add p (Z.of_nat (chr_idx (c mod 256) s))))⌝ ∗ word_string dq p s)%I.
+
+(** The search frame establishes the contract for any matching function name. *)
+Lemma strchrnul_spec_valid g : find_fn ge g = Some (Defined glibc_strchrnul) ->
+  HasSpec registry wi ge g strchrnul_spec.
+Proof.
+  intros Hg [[[dq p] s] c]. exists glibc_strchrnul. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strchrnul_spec].
+  iIntros "[%Hc Hs] HK". iApply (wp_glibc_strchrnul_ws with "Hs"); [exact Hc|].
+  iIntros "Hs". iApply "HK". by iFrame.
+Qed.
+
+(** Linked callers supply strchrnul's definition through the program context. *)
+#[global] Instance strchrnul_has_spec n `{!Defines ge n glibc_strchrnul} :
+  HasSpec registry wi ge (TAtom n) strchrnul_spec.
+Proof. apply strchrnul_spec_valid. apply defines. Qed.
+
 (** Calling a global function g bound to [glibc_strchrnul] on a
     [word_string] at any share resumes the caller with the pointer to
     the first `c mod 256` or to NUL, and restores the string. *)
@@ -447,9 +472,10 @@ Lemma wp_call_glibc_strchrnul f e ls l r g args rest j dq p s c cf' Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hc Hg Hr. iIntros "Hs HK".
-  iApply (wp_call_bind with "[Hs HK]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply (wp_glibc_strchrnul_ws with "Hs"); [exact Hc |].
-  iIntros "Hs". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
+  pose proof (strchrnul_spec_valid g Hg) as Hspec.
+  iApply (wp_call_spec registry wi ge g strchrnul_spec (dq, p, s, c) with "[Hs]");
+    [exact Hx | by iFrame |].
+  iIntros (v) "[-> Hs]". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
 (** After `c: strchrnul` returns, `c: strchr` loads the byte at that
@@ -520,6 +546,32 @@ Proof.
   - step. (step; step). iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
+(** Strchr returns null when the search stops at a different byte. *)
+Definition strchr_spec : fspec Σ :=
+  FSpec (dfrac * ptr * list Z * Z)
+    (fun '(_, p, _, c) => [WPtr p; WInt c])
+    (fun '(dq, p, s, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ word_string dq p s)%I
+    (fun '(dq, p, s, c) v =>
+      ⌜v = Ret (WPtr (strchr_ptr p (c mod 256) s))⌝ ∗ word_string dq p s)%I.
+
+(** The strchr frame uses the linked strchrnul implementation to establish its result. *)
+Lemma strchr_spec_valid g : find_fn ge g = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  HasSpec registry wi ge g strchr_spec.
+Proof.
+  intros Hg Hnul [[[dq p] s] c]. exists glibc_strchr. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strchr_spec].
+  iIntros "[%Hc Hs] HK". iApply (wp_glibc_strchr_ws with "Hs"); [exact Hnul | exact Hc|].
+  iIntros "Hs". iApply "HK". by iFrame.
+Qed.
+
+(** Linked callers supply definitions of strchr and its strchrnul dependency. *)
+#[global] Instance strchr_has_spec n `{!Defines ge n glibc_strchr,
+    !Defines ge "__GI___strchrnul" glibc_strchrnul} :
+  HasSpec registry wi ge (TAtom n) strchr_spec.
+Proof. apply strchr_spec_valid; apply defines. Qed.
+
 (** When a caller invokes `c: strchr` in a module that links
     `__GI___strchrnul` to [glibc_strchrnul], [wp_call_glibc_strchr]
     resumes the caller with the matching byte pointer or null and
@@ -533,9 +585,10 @@ Lemma wp_call_glibc_strchr f e ls l r g args rest j dq p s c cf' Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hc Hg Hn Hr. iIntros "Hs HK".
-  iApply (wp_call_bind with "[Hs HK]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply (wp_glibc_strchr_ws with "Hs"); [exact Hn | exact Hc |].
-  iIntros "Hs". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
+  pose proof (strchr_spec_valid g Hg Hn) as Hspec.
+  iApply (wp_call_spec registry wi ge g strchr_spec (dq, p, s, c) with "[Hs]");
+    [exact Hx | by iFrame |].
+  iIntros (v) "[-> Hs]". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
 End rules.

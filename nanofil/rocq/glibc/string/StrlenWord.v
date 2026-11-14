@@ -22,6 +22,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop.
 From Glibc Require StrlenLoop WordString.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -157,6 +158,29 @@ Proof.
   iIntros "Hl Hw". iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
+(** The length contract preserves the caller's share of the string. *)
+Definition strlen_spec : fspec Σ :=
+  FSpec (dfrac * ptr * list Z)
+    (fun '(_, p, _) => [WPtr p])
+    (fun '(dq, p, s) => word_string dq p s)
+    (fun '(dq, p, s) v => ⌜v = Ret (WInt (Z.of_nat (List.length s)))⌝ ∗ word_string dq p s)%I.
+
+(** Any name resolving to strlen satisfies the same length contract. *)
+Lemma strlen_spec_valid g : find_fn ge g = Some (Defined glibc_strlen) ->
+  HasSpec registry wi ge g strlen_spec.
+Proof.
+  intros Hg [[dq p] s]. exists glibc_strlen. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strlen_spec].
+  iIntros "Hs HK". iApply (wp_glibc_strlen_ws with "Hs").
+  iIntros "Hs". iApply "HK". by iFrame.
+Qed.
+
+(** Linked programs provide the lookup fact through their function definitions. *)
+#[global] Instance strlen_has_spec n `{!Defines ge n glibc_strlen} :
+  HasSpec registry wi ge (TAtom n) strlen_spec.
+Proof. apply strlen_spec_valid. apply defines. Qed.
+
 (** Calling a global function g bound to [glibc_strlen] on a
     [word_string] at any share resumes the caller with the string's
     length and restores the [word_string]. *)
@@ -167,8 +191,9 @@ Lemma wp_call_glibc_strlen f e ls l r g args rest j dq p s cf' Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hg Hr. iIntros "Hs HK".
-  iApply (wp_call_bind with "[Hs HK]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply (wp_glibc_strlen_ws with "Hs"). iIntros "Hs". iExists cf'. iSplit; [done|]. iNext.
+  pose proof (strlen_spec_valid g Hg) as Hspec.
+  iApply (wp_call_spec registry wi ge g strlen_spec (dq, p, s) with "Hs"); [exact Hx|].
+  iIntros (v) "[-> Hs]". iExists cf'. iSplit; [done|]. iNext.
   iApply ("HK" with "Hs").
 Qed.
 

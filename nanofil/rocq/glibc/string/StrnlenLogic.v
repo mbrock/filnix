@@ -21,6 +21,7 @@ From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCod
   MemchrFirst MemchrLogic.
 From Glibc Require MemchrLast MemchrLogic WordString.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -90,6 +91,30 @@ Proof.
   iIntros "Hl Hw". iApply "HK". iExists b, reg, ws. by iFrame.
 Qed.
 
+(** The bounded NUL search preserves the string and reports its first terminator. *)
+Definition memchr_nul_spec : fspec Σ :=
+  FSpec (dfrac * ptr * list Z * Z)
+    (fun '(_, p, _, n) => [WPtr p; WInt 0; WInt n])
+    (fun '(dq, p, s, n) => ⌜0 <= n < 2 ^ 64⌝ ∗ word_string dq p s)%I
+    (fun '(dq, p, s, n) v => ⌜v = Ret (WPtr (hit_ptr p (nul_hit s n)))⌝ ∗ word_string dq p s)%I.
+
+(** Memchr searches for the terminator without consuming the caller's string ownership. *)
+Lemma memchr_nul_spec_valid g : find_fn ge g = Some (Defined glibc_memchr) ->
+  HasSpec registry wi ge g memchr_nul_spec.
+Proof.
+  intros Hg [[[dq p] s] n]. exists glibc_memchr. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post memchr_nul_spec].
+  iIntros "[%Hn Hs] HK". iApply (wp_glibc_memchr_nul with "Hs");
+    [exact Hn | reflexivity | reflexivity | reflexivity |].
+  iIntros "Hs". iApply "HK". by iFrame.
+Qed.
+
+(** The linked program identifies the memchr implementation used by callers. *)
+#[global] Instance memchr_nul_has_spec n `{!Defines ge n glibc_memchr} :
+  HasSpec registry wi ge (TAtom n) memchr_nul_spec.
+Proof. apply memchr_nul_spec_valid. apply defines. Qed.
+
 (** When a caller invokes `c: memchr(p, 0, n)` on a [word_string],
     [wp_call_glibc_memchr_nul] resumes the caller with the pointer for
     [nul_hit] and restores the string. *)
@@ -101,9 +126,10 @@ Lemma wp_call_glibc_memchr_nul f e ls l r g args rest j dq p s n cf' Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hn Hg Hr. iIntros "Hs HK".
-  iApply (wp_call_bind with "[Hs HK]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply (wp_glibc_memchr_nul with "Hs"); [exact Hn | reflexivity | reflexivity | reflexivity |].
-  iIntros "Hs". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
+  pose proof (memchr_nul_spec_valid g Hg) as Hspec.
+  iApply (wp_call_spec registry wi ge g memchr_nul_spec (dq, p, s, n) with "[Hs]");
+    [exact Hx | by iFrame |].
+  iIntros (v) "[-> Hs]". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
 (** Executing a call [[frame]] of [glibc_strnlen] on a [word_string] at
@@ -143,6 +169,32 @@ Proof.
     iApply ("HK" with "Hs").
 Qed.
 
+(** The bounded length contract returns the smaller of the length and limit. *)
+Definition strnlen_spec : fspec Σ :=
+  FSpec (dfrac * ptr * list Z * Z)
+    (fun '(_, p, _, n) => [WPtr p; WInt n])
+    (fun '(dq, p, s, n) => ⌜0 <= n < 2 ^ 64⌝ ∗ word_string dq p s)%I
+    (fun '(dq, p, s, n) v =>
+      ⌜v = Ret (WInt (Z.min (Z.of_nat (List.length s)) n))⌝ ∗ word_string dq p s)%I.
+
+(** Strnlen uses the linked memchr definition to establish its length contract. *)
+Lemma strnlen_spec_valid g : find_fn ge g = Some (Defined glibc_strnlen) ->
+  find_fn ge (TAtom "__GI_memchr") = Some (Defined glibc_memchr) ->
+  HasSpec registry wi ge g strnlen_spec.
+Proof.
+  intros Hg Hm [[[dq p] s] n]. exists glibc_strnlen. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strnlen_spec].
+  iIntros "[%Hn Hs] HK". iApply (wp_glibc_strnlen_ws with "Hs"); [exact Hm | exact Hn |].
+  iIntros "Hs". iApply "HK". by iFrame.
+Qed.
+
+(** Linked callers provide definitions of both strnlen and its memchr dependency. *)
+#[global] Instance strnlen_has_spec n `{!Defines ge n glibc_strnlen,
+    !Defines ge "__GI_memchr" glibc_memchr} :
+  HasSpec registry wi ge (TAtom n) strnlen_spec.
+Proof. apply strnlen_spec_valid; apply defines. Qed.
+
 (** When a caller invokes `c: strnlen(p, n)` through a module whose
     `__GI_memchr` resolves to [glibc_memchr], [wp_call_glibc_strnlen]
     resumes the caller with the capped length and restores the string. *)
@@ -156,9 +208,10 @@ Lemma wp_call_glibc_strnlen f e ls l r g args rest j dq p s n cf' Φ :
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hx Hn Hg Hm Hr. iIntros "Hs HK".
-  iApply (wp_call_bind with "[Hs HK]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply (wp_glibc_strnlen_ws with "Hs"); [exact Hm | exact Hn |].
-  iIntros "Hs". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
+  pose proof (strnlen_spec_valid g Hg Hm) as Hspec.
+  iApply (wp_call_spec registry wi ge g strnlen_spec (dq, p, s, n) with "[Hs]");
+    [exact Hx | by iFrame |].
+  iIntros (v) "[-> Hs]". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
 End rules.

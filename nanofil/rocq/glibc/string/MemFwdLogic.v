@@ -28,6 +28,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenWord OsWorld OsRegistry MemFwdCode.
 From Glibc Require OsWorld StrlenWord.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcProgram GlibcSpec.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -382,6 +383,41 @@ Proof.
       iApply ("HK" with "Hl Hx [Hcs] Hl' Hy"). iExists cs'. iFrame "Hcs". iPureIntro. apply length_aux_now.
 Qed.
 
+(** Filling a block returns its destination and preserves ownership of every slot. *)
+Definition memset_spec : fspec Σ :=
+  FSpec (Z * region * Z * list Z * list cap * Z)
+    (fun '(b, _, o, xs, _, c) =>
+      [WPtr (mkPtr (b + o) (Obj b)); WInt c; WInt (Z.of_nat (length xs))])
+    (fun '(b, reg, o, xs, cs, c) =>
+      ⌜0 <= c < 2 ^ 32 /\ Z.of_nat (length xs) < 2 ^ 64 /\ b mod 8 = 0 /\ o mod 8 = 0 /\
+        0 <= o /\ b + o + Z.of_nat (length xs) <= r_end reg /\ length cs = length xs⌝ ∗
+      live b reg ∗ bytes b o xs ∗ auxes b o cs)%I
+    (fun '(b, reg, o, xs, cs, c) v =>
+      ⌜v = Ret (WPtr (mkPtr (b + o) (Obj b)))⌝ ∗ live b reg ∗
+      bytes b o (replicate (length xs) (c mod 256)) ∗ auxes b o (clear_slots o cs))%I.
+
+(** The existing runtime fill rule establishes memset's frame contract. *)
+Lemma memset_spec_valid g : find_fn ge g = Some (Defined glibc_memset) ->
+  HasSpec registry (os_wi w0) ge g memset_spec.
+Proof.
+  intros Hg [[[[[b reg] o] xs] cs] c]. exists glibc_memset. split; [exact Hg|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post memset_spec].
+  iIntros "(%Hp & Hl & Hx & Hcs) HK".
+  destruct Hp as (Hc & Hn & Hb8 & Ho8 & Ho & Hend & Hlen).
+  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
+  iApply (wp_zmemset with "Hl Hx Hcs");
+    [reflexivity | cbn; rewrite Z.mod_small; [reflexivity | lia] | cbn; rewrite Z.mod_small; [reflexivity | lia]
+    | exact Hc | exact Hb8 | exact Ho8 | exact Ho | exact Hend | exact Hlen |].
+  iNext. iIntros "Hl Hx Hcs". iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply "HK". by iFrame.
+Qed.
+
+(** Linked callers provide memset's definition alongside the runtime fill contract. *)
+#[global] Instance memset_has_spec n `{!Defines ge n glibc_memset} :
+  HasSpec registry (os_wi w0) ge (TAtom n) memset_spec.
+Proof. apply memset_spec_valid. apply defines. Qed.
+
 (** Calling a global function g bound to [glibc_memset] fills an owned
     8-aligned block with `c mod 256`, clears touched capability slots,
     and resumes the caller with the destination pointer. *)
@@ -398,13 +434,47 @@ Lemma wp_call_glibc_memset f e ls lab r g args rest j b reg o xs cs c cf' Φ :
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
 Proof.
   intros Hx Hg Hres Hc Hn Hb8 Ho8 Ho Hend Hlen. iIntros "Hl Hx Hcs HK".
-  iApply (wp_call_bind with "[-]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
-  iApply (wp_zmemset with "Hl Hx Hcs");
-    [reflexivity | cbn; rewrite Z.mod_small; [reflexivity | lia] | cbn; rewrite Z.mod_small; [reflexivity | lia]
-    | exact Hc | exact Hb8 | exact Ho8 | exact Ho | exact Hend | exact Hlen |].
-  iNext. iIntros "Hl Hx Hcs". iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  pose proof (memset_spec_valid g Hg) as Hspec.
+  iApply (wp_call_spec registry (os_wi w0) ge g memset_spec (b, reg, o, xs, cs, c) with "[Hl Hx Hcs]");
+    [exact Hx | iFrame; done |].
+  iIntros (v) "(-> & Hl & Hx & Hcs)".
   iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hcs").
+Qed.
+
+(** Copying a block preserves the shared source and returns ownership of its destination.
+    The final pointer distinguishes memcpy from mempcpy. *)
+Definition copy_spec (past : bool) : fspec Σ :=
+  FSpec (Z * region * Z * list Z * list cap * dfrac * Z * region * Z * cap * list Z)
+    (fun '(b, _, o, xs, _, _, b', _, o', c', _) =>
+      [WPtr (mkPtr (b + o) (Obj b)); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length xs))])
+    (fun '(b, reg, o, xs, cs, dq, b', reg', o', c', ys) =>
+      ⌜(c' = Obj b' \/ c' = Ro b') /\ Z.of_nat (length xs) < 2 ^ 64 /\
+        b mod 8 = 0 /\ o mod 8 = 0 /\ b' mod 8 = 0 /\ 0 <= o /\ 0 <= o' /\
+        b + o + Z.of_nat (length xs) <= r_end reg /\ b' + o' + Z.of_nat (length xs) <= r_end reg' /\
+        length ys = length xs /\ length cs = length xs /\ Forall (fun y => 0 <= y < 256) ys /\
+        (if past then 0 <= b /\ b + o + Z.of_nat (length xs) < 2 ^ 64 else True)⌝ ∗
+      live b reg ∗ bytes b o xs ∗ auxes b o cs ∗ liveq dq b' reg' ∗ bytesq dq b' o' ys)%I
+    (fun '(b, reg, o, xs, cs, dq, b', reg', o', c', ys) v =>
+      ⌜v = Ret (WPtr (mkPtr (if past then (b + o + Z.of_nat (length xs))%Z else (b + o)%Z) (Obj b)))⌝ ∗
+      live b reg ∗ bytes b o ys ∗ (∃ cs', ⌜length cs' = length xs⌝ ∗ auxes b o cs') ∗
+      liveq dq b' reg' ∗ bytesq dq b' o' ys)%I.
+
+(** The runtime move rule establishes memcpy's contract without exposing a caller frame. *)
+Lemma memcpy_spec_valid g : find_fn ge g = Some (Defined glibc_memcpy) ->
+  HasSpec registry (os_wi w0) ge g (copy_spec false).
+Proof.
+  intros Hg [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
+  exists glibc_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
+  intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_spec].
+  iIntros "(%Hp & Hl & Hx & Hcs & Hl' & Hy) HK".
+  destruct Hp as (Hc' & Hn & Hb8 & Ho8 & Hb8' & Ho & Ho' & Hend & Hend' & Hly & Hlc & Hy & _).
+  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
+  iApply (wp_zmemmove with "Hl Hx Hcs Hl' Hy");
+    [reflexivity | reflexivity | exact Hc' | cbn; rewrite Z.mod_small; [reflexivity | lia]
+    | exact Hb8 | exact Ho8 | exact Hb8' | exact Ho | exact Ho' | exact Hend | exact Hend'
+    | exact Hly | exact Hlc | exact Hy |].
+  iNext. iIntros "Hl Hx Hcs Hl' Hy". iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply "HK". by iFrame.
 Qed.
 
 (** Calling a global function g bound to [glibc_memcpy] copies bytes `ys`
@@ -427,14 +497,35 @@ Lemma wp_call_glibc_memcpy f e ls lab r g args rest j b reg o xs cs dq b' reg' o
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
 Proof.
   intros Hx Hg Hres Hc' Hn Hb8 Ho8 Hb8' Ho Ho' Hend Hend' Hly Hlc Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
-  iApply (wp_call_bind with "[-]"); [exact Hx | exact Hg | reflexivity |]. iNext.
+  pose proof (memcpy_spec_valid g Hg) as Hspec.
+  iApply (wp_call_spec registry (os_wi w0) ge g (copy_spec false)
+    (b, reg, o, xs, cs, dq, b', reg', o', c', ys) with "[Hl Hx Hcs Hl' Hy]");
+    [exact Hx | iFrame; done |].
+  iIntros (v) "(-> & Hl & Hx & Hcs & Hl' & Hy)".
+  iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hcs Hl' Hy").
+Qed.
+
+(** Mempcpy uses the same copy resources but returns the pointer after the copied bytes. *)
+Lemma mempcpy_spec_valid g : find_fn ge g = Some (Defined glibc_mempcpy) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  HasSpec registry (os_wi w0) ge g (copy_spec true).
+Proof.
+  intros Hg Hcpy [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
+  exists glibc_mempcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
+  intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_spec].
+  iIntros "(%Hp & Hl & Hx & Hcs & Hl' & Hy) HK".
+  destruct Hp as (Hc' & Hn & Hb8 & Ho8 & Hb8' & Ho & Ho' & Hend & Hend' & Hly & Hlc & Hy & Hb0 & Hbound).
   iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
-  iApply (wp_zmemmove with "Hl Hx Hcs Hl' Hy");
-    [reflexivity | reflexivity | exact Hc' | cbn; rewrite Z.mod_small; [reflexivity | lia]
+  iApply (wp_call_glibc_memcpy with "Hl Hx Hcs Hl' Hy");
+    [cbn; rewrite (Z.mod_small (Z.of_nat _)); [reflexivity | lia] | exact Hcpy | reflexivity | exact Hc' | lia
     | exact Hb8 | exact Ho8 | exact Hb8' | exact Ho | exact Ho' | exact Hend | exact Hend'
     | exact Hly | exact Hlc | exact Hy |].
-  iNext. iIntros "Hl Hx Hcs Hl' Hy". iApply wp_ret; [reflexivity | reflexivity |]. iNext.
-  iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hcs Hl' Hy").
+  iNext. iIntros "Hl Hx Hcs Hl' Hy".
+  iApply wp_flight; [reflexivity | reflexivity | reflexivity |]. iNext.
+  iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply "HK". iFrame. iPureIntro. cbn.
+  rewrite (Z.mod_small (b + o)); [|lia]. rewrite (Z.mod_small (Z.of_nat _)); [|lia].
+  rewrite (Z.mod_small (b + o + _)); [reflexivity | lia].
 Qed.
 
 (** Calling a global function g bound to [glibc_mempcpy] delegates to
@@ -457,18 +548,12 @@ Lemma wp_call_glibc_mempcpy f e ls lab r g args rest j b reg o xs cs dq b' reg' 
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
 Proof.
   intros Hcpy Hx Hg Hres Hc' Hb0 Hn Hb8 Ho8 Hb8' Ho Ho' Hend Hend' Hly Hlc Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
-  iApply (wp_call_bind with "[-]"); [exact Hx | exact Hg | reflexivity |]. iNext.
-  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
-  iApply (wp_call_glibc_memcpy with "Hl Hx Hcs Hl' Hy");
-    [cbn; rewrite (Z.mod_small (Z.of_nat _)); [reflexivity | lia] | exact Hcpy | reflexivity | exact Hc' | lia
-    | exact Hb8 | exact Ho8 | exact Hb8' | exact Ho | exact Ho' | exact Hend | exact Hend'
-    | exact Hly | exact Hlc | exact Hy |].
-  iNext. iIntros "Hl Hx Hcs Hl' Hy".
-  iApply wp_flight; [reflexivity | reflexivity | reflexivity |]. iNext.
-  iApply wp_ret; [reflexivity | reflexivity |]. iNext.
-  iExists cf'. iSplit; [|iNext; iApply ("HK" with "Hl Hx Hcs Hl' Hy")]. iPureIntro.
-  rewrite -Hres. cbn. rewrite (Z.mod_small (b + o)); [|lia]. rewrite (Z.mod_small (Z.of_nat _)); [|lia].
-  rewrite (Z.mod_small (b + o + _)); [reflexivity | lia].
+  pose proof (mempcpy_spec_valid g Hg Hcpy) as Hspec.
+  iApply (wp_call_spec registry (os_wi w0) ge g (copy_spec true)
+    (b, reg, o, xs, cs, dq, b', reg', o', c', ys) with "[Hl Hx Hcs Hl' Hy]");
+    [exact Hx | iFrame; iPureIntro; repeat split; try assumption; lia |].
+  iIntros (v) "(-> & Hl & Hx & Hcs & Hl' & Hy)".
+  iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hcs Hl' Hy").
 Qed.
 
 (** Predicate [malloc_out] describes the result of allocating n bytes:
