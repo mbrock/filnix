@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Migrate OS program contexts using argument metadata from compiled Rocq files.
 
-Audited public names retain their original interfaces as wrappers proved from
-implementations named FILE_NAME_program, with the uniform suffix _program.
-The file prefix prevents new duplicate short names. Converted callers use the
-implementations; callers retaining their old context use the public wrappers.
+The forty reviewed intermediate audits use bundled statements under their
+original names. check/audit-changes.json identifies those exact declarations.
+Other audited public names retain their interfaces; any necessary wrapper
+uses an implementation named FILE_NAME_program, with the suffix _program.
 
 PE_PROGRAM_TARGETS can name .vo targets for a partial audit. Only their Rocq
 dependency closure is compiled and converted; normal runs process the full tree.
@@ -27,10 +27,19 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 
 
 HERE = Path(__file__).resolve().parents[1]
 PROTECTED = {name for group in json.loads((HERE / 'check/audit-contracts.json').read_text()).values() for name in group}
+
+
+def reviewed_audit(file, name):
+    review = json.loads((HERE / 'check/audit-changes.json').read_text())
+    if review['version'] != 1 or review['stage'] != '50-program':
+        raise ValueError('50-program: unsupported audit review')
+    return any(d['file'] == str(file) and d['name'] == name for d in review['declarations'])
 
 
 def protected_name(name):
@@ -213,7 +222,7 @@ class Conversion:
 
     @property
     def wrapped(self):
-        return not self.retained and protected_name(self.name)
+        return not self.retained and protected_name(self.name) and not reviewed_audit(self.metadata['file'], self.name)
 
     @property
     def implementation(self):
@@ -263,14 +272,13 @@ def section_edits(source: Source, metadata: dict, calls=()):
                     if group[0].text in ('`', '.'):
                         continue
                     colon = next(i for i, t in enumerate(group) if t.text == ':')
-                    for token in group[1:colon]:
-                        name = token.text
-                        if name in ('w0', 'registry', 'ge'):
-                            continue
+                    names = [t.text for t in group[1:colon] if t.text not in ('w0', 'registry', 'ge')]
+                    if names:
+                        name = names[0]
                         typ, implicit = bindings[name]
                         defined = defines_type(typ)
                         if defined:
-                            replacement.append(f'Context `{{{name} : !{defined}}}.')
+                            replacement.extend(f'`{{{n} : !{defined}}}' for n in names)
                         else:
                             start, end = group[colon+1].start, group[-2].end
                             typ = source.text[start:end]
@@ -278,10 +286,15 @@ def section_edits(source: Source, metadata: dict, calls=()):
                                 if start <= a <= b <= end:
                                     typ = typ[:a-start] + text + typ[b-start:]
                             left, right = ('{', '}') if implicit else ('(', ')')
-                            replacement.append(f'Context {left}{name} : {typ}{right}.')
-                replacement = '\n'.join(replacement)
+                            replacement.append(f'{left}{" ".join(names)} : {typ}{right}')
+                replacement = 'Context ' + '\n  '.join(replacement) + '.' if replacement else ''
             edits.append((sentence[0].start, sentence[-1].end, replacement))
-        edits.append((section.iris[0].start, section.iris[-1].end, ''))
+        start = section.iris[0].start
+        previous = max((t.end for t in source.ts if t.end <= start), default=0)
+        gap = source.text[previous:start]
+        if gap.strip().startswith('(**') and gap.strip().endswith('*)'):
+            start = previous + gap.index('(**')
+        edits.append((start, section.iris[-1].end, ''))
         lifted = []
         wrappers = []
         for name in section.declarations:
@@ -332,9 +345,9 @@ def section_edits(source: Source, metadata: dict, calls=()):
                 if name not in needed:
                     continue
                 left, right = ('{', '}') if implicit else ('(', ')')
-                setup.append(f'Context {left}{name} : {typ}{right}.')
-                if name in ('invGS_gen0', 'gen_heapGS0'):
-                    setup.append(f'Existing Instance {name}.')
+                setup.append(f'{left}{name} : {typ}{right}')
+            setup = ['Context ' + '\n  '.join(setup) + '.'] if setup else []
+            setup.extend(f'Existing Instance {name}.' for name in ('invGS_gen0', 'gen_heapGS0') if name in needed)
             if {'hlc', 'Σ', 'invGS_gen0', 'gen_heapGS0', 'w0', 'registry', 'ge'} <= needed:
                 setup.append(source.text[section.iris[0].start:section.iris[-1].end])
                 setup.extend(source.text[s[0].start:s[-1].end] for s in sentences(source.ts)
@@ -474,7 +487,8 @@ def rewrite_calls(source: Source, conversions: dict, reserved: list[tuple], call
         args = application(source, index)
         if not args:
             if not local and current:
-                edits.append((token.start, token.end, '(' + callee + ' (glibc_program := glibc_program))'))
+                if callee != token.text:
+                    edits.append((token.start, token.end, callee))
             elif not local:
                 section = next((s for s in source.sections if s.iris and s.start < token.start < s.end), None)
                 if section:
@@ -514,16 +528,14 @@ def rewrite_calls(source: Source, conversions: dict, reserved: list[tuple], call
             if supplied_program != {'w0', 'registry', 'ge'}:
                 fail(source, token, f'partial program application of {key}: {sorted(supplied_program)}')
             same_program = current and all(values[n] == n for n in ('w0', 'registry', 'ge')) and not explicit
-            if same_program:
-                extra = ' (glibc_program := glibc_program)'
-            else:
+            if not same_program:
                 if explicit:
                     required = ('hlc', 'Σ', 'invGS_gen0', 'gen_heapGS0', 'w0', 'registry', 'ge')
                     if not all(n in values for n in required):
                         fail(source, token, f'explicit application of {key} does not provide the canonical ghost instances')
-                    packed = '@program_of ' + ' '.join('(' + values[n] + ')' for n in required)
+                    packed = '@program_of ' + ' '.join(term_argument(values[n]) for n in required)
                 else:
-                    packed = 'program_of ' + ' '.join('(' + values[n] + ')' for n in ('w0', 'registry', 'ge'))
+                    packed = 'program_of ' + ' '.join(term_argument(values[n]) for n in ('w0', 'registry', 'ge'))
                 extra = f' (glibc_program := {packed})'
         if not any(name in removed for name, *_ in mapped):
             continue
@@ -549,7 +561,48 @@ def rewrite_calls(source: Source, conversions: dict, reserved: list[tuple], call
     return edits
 
 
+def term_argument(text: str) -> str:
+    ts = tokens(text)
+    return text if len(ts) == 1 or (ts[0].text == '(' and list(groups(ts)) == [(0, len(ts))]) else '(' + text + ')'
+
+
 def apply_edits(source: Source, edits: list[tuple[int, int, str]]) -> str:
+    # Remove the whitespace belonging to deleted arguments, not unrelated
+    # indentation, strings or comments. Join adjacent deletions first.
+    deletions = []
+    for start, end, replacement in sorted(set(edits)):
+        if replacement or start == end:
+            continue
+        if deletions and not source.text[deletions[-1][1]:start].strip():
+            deletions[-1] = (deletions[-1][0], end)
+        else:
+            deletions.append((start, end))
+    edits = [(a, b, t) for a, b, t in edits if t or a == b]
+    for start, end in deletions:
+        replacement = ''
+        line = source.text.rfind('\n', 0, start) + 1
+        after = source.text.find('\n', end)
+        after = len(source.text) if after < 0 else after
+        if not source.text[line:start].strip() and not source.text[end:after].strip():
+            start, end = line, min(after + 1, len(source.text))
+        else:
+            multiline = '\n' in source.text[start:end]
+            original_start, original_end = start, end
+            while start > line and source.text[start-1] in ' \t':
+                start -= 1
+            while end < len(source.text) and source.text[end] in ' \t':
+                end += 1
+            if multiline:
+                if end < len(source.text) and source.text[end] not in '\n.,)':
+                    last_line = source.text.rfind('\n', 0, end) + 1
+                    indent = re.match(r'[ \t]*', source.text[last_line:]).group()
+                    replacement = '\n' + indent
+            elif ((start != original_start or end != original_end) and
+                  end < len(source.text) and source.text[end] not in '\n.,)'):
+                replacement = source.text[line:original_start] if start == line else ' '
+            if start == line and start and end < len(source.text) and source.text[end] in '.,)':
+                start -= 1
+        edits.append((start, end, replacement))
     edits = sorted(set(edits), reverse=True)
     result = source.text
     previous = len(result) + 1
@@ -997,7 +1050,7 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
     changes = sorted(report['differences'], key=lambda d: (d['file'], d['name']))
     if any(c['kind'] not in ('changed', 'added') for c in changes):
         raise ValueError('50-program: an exported declaration disappeared')
-    if any(protected_name(c['name']) for c in changes):
+    if any(protected_name(c['name']) and not reviewed_audit(c['file'], c['name']) for c in changes):
         raise ValueError('50-program: an audited endpoint changed')
     out = after.parent / (after.name + '.program/evidence')
     requests = list(changes)
@@ -1010,7 +1063,7 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
             implementations[(change['file'], change['name'])] = original
             requests.append(dict(change, kind='changed', name=original, after_name=change['name']))
     types, conversions = evidence_types(before, after, metadata, requests, plugin.resolve(), out)
-    manifest = HERE / 'check/expected-statement-changes/50-program.txt'
+    manifest = after.parent / (after.name + '.program/50-program.txt')
     proof = manifest.with_suffix('.equivalence.v')
     pins = manifest.with_suffix('.elaborated.json')
     rows = ['# Stage 50 bundles exactly the existing world, environment, registry and ghost instances.',
@@ -1021,6 +1074,7 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
               'From Glibc Require Import GlibcProgram.',
               *['Require Import Glibc.' + f[:-2].replace('/', '.') + '.' for f in files]]
     record = '{| program_world := w; program_registry := r; program_ge := g; program_inv := inv; program_heap := heap |}'
+    reviewed = {(d['file'], d['name']): d for d in json.loads((HERE / 'check/audit-changes.json').read_text())['declarations']}
     for i, c in enumerate(changes):
         rel, name = c['file'], c['name']
         rows.append(f'{c["kind"]}\t{rel}\t{name}')
@@ -1030,6 +1084,13 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
         if c['kind'] != 'changed' and original == name:
             continue
         old, new = types['before'][rel][original], types['after'][rel][original]
+        approval = reviewed.get((rel, original))
+        if approval:
+            if normalized(tokens(old['type'])) != normalized(tokens(approval['before'])):
+                raise ValueError(f'50-program: reviewed original statement changed: {rel}:{original}')
+            i = approval['reviewed_adapters'][0].removeprefix('program_old_to_new_')
+        else:
+            i = 'auto_' + str(i)
         for side, value in [('before', old), ('after', new)]:
             rows.append(f'# {side}\t{rel}\t{name}\t' + ' '.join(value['type'].split()))
         conv = conversions.get(Path(rel).stem + '.' + original)
@@ -1075,27 +1136,72 @@ def emit_evidence(before: Path, after: Path, metadata: dict, report_path: Path, 
     print(f'program: emitted {len(changes)} exact statement changes; equivalence compilation is still required')
 
 
-def append_evidence(report: Path):
-    """Append another checked runtime boundary without changing its proofs."""
-    manifest = HERE / 'check/expected-statement-changes/50-program.txt'
-    pins = manifest.with_suffix('.elaborated.json')
-    source = manifest.read_text()
-    old = f'# evidence-sha256\t{pins.name}\t{hashlib.sha256(pins.read_bytes()).hexdigest()}'
-    if source.splitlines().count(old) != 1:
-        raise ValueError('50-program: existing elaborated evidence guard does not match')
-    subprocess.run([sys.executable, str(HERE / 'check/expectations.py'), 'export',
-                    str(manifest), str(report), '--append'], check=True)
-    new = f'# evidence-sha256\t{pins.name}\t{hashlib.sha256(pins.read_bytes()).hexdigest()}'
-    manifest.write_text(source.replace(old, new))
+def prepare_evidence(tree: Path, refresh_review=False):
+    """Reproduce the transformation before regenerating its runtime evidence."""
+    out = tree.parent / (tree.name + '.program')
+    before, metadata_path = out / 'before', out / 'metadata/arguments.json'
+    if not before.is_dir() or not metadata_path.exists():
+        raise ValueError('50-program: --check needs the before snapshot and metadata retained by apply.sh')
+    selected = {str(p.relative_to(before)) for p in before.rglob('*.v') if p.with_suffix('.vo').exists()}
+    for rel in selected:
+        load_references(read_source(before / rel))
+    # Re-running the source transformation ties adapters to actual output,
+    # without committing a digest for every campaign file.
+    with tempfile.TemporaryDirectory(prefix='expected-', dir=out) as tmp:
+        expected = Path(tmp)
+        for path in before.rglob('*.v'):
+            target = expected / path.relative_to(before)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+        env = dict(os.environ)
+        env.pop('PE_PROGRAM_TARGETS', None)
+        with (out / 'reproduce.log').open('w') as log:
+            subprocess.run([sys.executable, __file__, str(expected), '--source', str(before),
+                            '--metadata', str(metadata_path)], env=env,
+                           stdout=log, stderr=subprocess.STDOUT, check=True)
+        actual_files = {str(p.relative_to(tree)) for p in tree.rglob('*.v')}
+        expected_files = {str(p.relative_to(expected)) for p in expected.rglob('*.v')}
+        if actual_files != expected_files:
+            raise ValueError('50-program: output inventory does not match the transformation')
+        for rel in actual_files:
+            if source_digest(tree / rel) != source_digest(expected / rel):
+                raise ValueError(f'50-program: output differs from the transformation: {rel}')
+    selected.add('GlibcProgram.v')
+    compile_targets(tree, [f[:-1] + 'o' for f in sorted(selected)])
+    plugin = out / 'plugin'
+    subprocess.run(['bash', str(HERE / 'check/plugin.sh'), str(plugin)], check=True)
+    candidates = out / 'candidates.txt'
+    statement_candidates(before, tree, candidates)
+    command = [sys.executable, str(HERE / 'check/check.py'), 'statements', str(before), str(tree),
+               '--plugin', str(plugin), '--expectations', str(candidates), '--output', str(out / 'statements'),
+               '--discovery', '--files', *sorted(selected)]
+    with (out / 'statements.log').open('w') as log:
+        run = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)
+    report = out / 'statements/report.json'
+    if run.returncode not in (0, 1) or not report.exists() or json.loads(report.read_text())['errors']:
+        raise ValueError(f'50-program: incomplete statement comparison: {out / "statements.log"}')
+    emit_evidence(before, tree, json.loads(metadata_path.read_text()), report, plugin)
+    manifest = out / '50-program.txt'
+    actions = sorted(line for line in manifest.read_text().splitlines() if line and not line.startswith('#'))
+    review = HERE / 'check/expected-statement-changes/50-program.txt'
+    if refresh_review:
+        review.write_text('# Reviewed stage-50 declarations; exact types and adapters are generated under TREE.program/.\n' + '\n'.join(actions) + '\n')
+    else:
+        approved = sorted(line for line in review.read_text().splitlines() if line and not line.startswith('#') and line.split('\t')[1] in selected)
+        if actions != approved:
+            raise ValueError('50-program: generated declaration set differs from the reviewed list')
+    return manifest
 
 
-def check_evidence(tree: Path):
-    manifest = HERE / 'check/expected-statement-changes/50-program.txt'
+def check_evidence(tree: Path, refresh_review=False):
+    manifest = prepare_evidence(tree, refresh_review)
     proof = manifest.with_suffix('.equivalence.v')
     pins = manifest.with_suffix('.elaborated.json')
     changed, pairs, guards = set(), {}, {}
     added, wrappers, inventory = set(), set(), set()
     hashes = {}
+    abstract = 'Declare Module R : Runtime' in normalized(tokens((tree / 'Fix.v').read_text()))
+    abstract_compiled = {str(p.relative_to(tree)) for p in tree.rglob('*.v') if p.with_suffix('.vo').exists()}
     for line in manifest.read_text().splitlines():
         fields = line.split('\t')
         if fields[0] == 'changed':
@@ -1126,9 +1232,10 @@ def check_evidence(tree: Path):
     for path, digest in guards.items():
         if source_digest(tree / path) != digest:
             raise ValueError(f'50-program: transformed source guard failed: {path}')
-        load_references(read_source(tree / path))
-        if not (tree / path).with_suffix('.vo').exists():
-            raise ValueError(f'50-program: transformed source has not compiled: {path}')
+        if not abstract or path in abstract_compiled:
+            load_references(read_source(tree / path))
+            if not (tree / path).with_suffix('.vo').exists():
+                raise ValueError(f'50-program: transformed source has not compiled: {path}')
     if not guards or 'GlibcProgram.v' not in guards:
         raise ValueError('50-program: missing transformed-source or bundle guards')
     for path in (proof, pins):
@@ -1139,19 +1246,134 @@ def check_evidence(tree: Path):
     expected = [name for names in pairs.values() for name in names]
     if sorted(actual) != sorted(expected) or len(set(expected)) != len(expected):
         raise ValueError('50-program: equivalence declarations do not match the declaration manifest')
-    if any(t.text in ('Admitted', 'Axiom', 'Axioms', 'Parameter', 'Parameters') for t in tokens(source)):
+    if any(t.text in ('Admitted', 'Axiom', 'Axioms', 'Parameter', 'Parameters', 'Declare') for t in tokens(source)):
         raise ValueError('50-program: equivalence evidence may not assume its result')
     out = tree.parent / (tree.name + '.program/check')
+    selected = abstract_compiled if abstract else None
+    evidence = compile_equivalence(tree, source, out, selected)
+    count = 2 * len(evidence)
+    expected_count = sum(2 for file, name in changed if selected is None or file in selected)
+    if count != expected_count:
+        raise ValueError('50-program: not every declared direction was compiled and audited')
+    result = 'unchanged runtime assumptions' if abstract else 'Closed'
+    print(f'program: {expected_count // 2} changed declarations; {count} directions compiled; {result}; source guards match')
+    print('program-runtime: ' + ('abstract' if abstract else 'concrete'))
+    print('program-assumptions: ' + ('unchanged-runtime' if abstract else 'closed'))
+    report = out / 'assumptions.json'
+    report.write_text(json.dumps({'runtime': 'abstract' if abstract else 'concrete', 'pairs': evidence}, indent=2) + '\n')
+    print(f'program-assumption-evidence: {report.resolve()}')
+
+
+def compile_equivalence(tree: Path, source: str, out: Path, selected=None):
+    """Compile every adapter in bounded independent units, with four workers."""
+    started = time.monotonic()
     out.mkdir(parents=True, exist_ok=True)
-    target = out / 'ProgramEquivalence.v'
-    target.write_text(source + '\n' + '\n'.join(f'Print Assumptions {name}.' for name in actual) + '\n')
-    run = subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
-                          '-R', str(tree), 'Glibc', str(target)],
-                         text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900)
-    target.with_suffix('.log').write_text(run.stdout)
-    if run.returncode or 'Axioms:' in run.stdout or run.stdout.count('Closed under the global context') != len(actual):
-        raise ValueError(f'50-program: equivalence compilation or Closed audit failed: {target.with_suffix(".log")}')
-    print(f'program: {len(changed)} changed declarations; {len(actual)} directions compiled and Closed; source guards match')
+    markers = list(re.finditer(r"(?m)^\(\* ([\w/]+\.v): [\w.']+\. \*\)$", source))
+    if not markers:
+        raise ValueError('50-program: missing adapter source boundaries')
+    header = source[:markers[0].start()]
+    if any(s[0].text not in ('From', 'Require') for s in sentences(tokens(header))):
+        raise ValueError('50-program: adapter prelude must contain imports only')
+    if selected is not None:
+        header = '\n'.join(line for line in header.splitlines() if not line.startswith('Require Import Glibc.') or
+                           line[len('Require Import Glibc.'):-1].replace('.', '/') + '.v' in selected) + '\n'
+    plugin = out.parent / 'plugin'
+    if not (plugin / 'META').exists():
+        subprocess.run(['bash', str(HERE / 'check/plugin.sh'), str(plugin)], check=True)
+    header = f'Declare ML Module "{plugin.name}".\n' + header
+    environment = dict(os.environ)
+    environment['OCAMLPATH'] = str(plugin.parent) + ':' + environment.get('OCAMLPATH', '')
+    chunks = []
+    visited = []
+    for i, marker in enumerate(markers):
+        body = source[marker.start():markers[i+1].start() if i+1 < len(markers) else len(source)]
+        visited.append(body)
+        if selected is not None and marker[1] not in selected:
+            continue
+        # A source file may contain many adapters. Bound each process to
+        # sixteen pairs and one MiB, rejecting an oversized individual pair.
+        if len(body.encode()) > 1024 * 1024:
+            raise ValueError(f'50-program: adapter exceeds one MiB: {marker[1]}')
+        directory = str(Path(marker[1]).parent)
+        if (not chunks or chunks[-1][0] != directory or chunks[-1][2] == 16 or
+                len((chunks[-1][1] + body).encode()) > 1024 * 1024):
+            chunks.append([directory, '', 0])
+        chunks[-1][1] += body
+        chunks[-1][2] += 1
+    assert source[:markers[0].start()] + ''.join(visited) == source
+    print(f'program: checking {len(chunks)} adapter shards with four workers', flush=True)
+    sys.path.insert(0, str(HERE / 'check'))
+    from audit import assumption_types
+
+    def compile_one(item):
+        i, (rel, body, _) = item
+        target = out / f'ProgramEquivalence{i:04d}.v'
+        names = re.findall(r"\b(?:Lemma|Theorem|Corollary)\s+([\w']+)", normalized(tokens(header + body)))
+        queries = []
+        for name in names:
+            queries += [f'Goal True. idtac "PE_ASSUMPTIONS_{name}". Abort.', f'Print Assumptions {name}.']
+        for number in re.findall(r'Definition program_before_(\w+)\b', body):
+            for side in ('before', 'after'):
+                name = f'program_{side}_{number}'
+                queries += [f'Goal True. idtac "PE_ASSUMPTIONS_{name}". Abort.', f'Print Assumptions {name}.']
+        target.write_text(header + body + '\nSet Printing All. Set Printing Depth 1000000. Set Printing Width 1000000.\n' + '\n'.join(queries) + '\n')
+        run = subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                              '-R', str(tree), 'Glibc', str(target)], text=True,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300, env=environment)
+        target.with_suffix('.log').write_text(run.stdout)
+        if run.returncode or '...' in run.stdout or '…' in run.stdout:
+            raise ValueError(f'50-program: equivalence compilation or Closed audit failed: {target.with_suffix(".log")}')
+        parts = re.split(r'PE_ASSUMPTIONS_(\w+)\n', run.stdout)
+        facts = {parts[j]: assumption_types(parts[j+1], {}) for j in range(1, len(parts), 2)}
+        valid = len(facts) == len(queries) // 2
+        runtime_fields = {n for assumptions in facts.values() for n in assumptions}
+        if selected is None:
+            valid &= not runtime_fields and run.stdout.count('Closed under the global context') == len(facts)
+        elif runtime_fields:
+            # Ask Rocq about the declared Runtime signature and its actual
+            # fields. A similarly named constant outside that module cannot
+            # authorize an assumption.
+            probe = target.with_name(target.stem + 'Runtime.v')
+            field_queries = ['Print Module Type Nanofil.core.Runtime.Runtime.']
+            ordered_fields = sorted(runtime_fields)
+            for k, n in enumerate(ordered_fields):
+                field_queries += [f'Goal True. idtac "PE_FIELD_{k}". Abort.', f'Locate {n}.', f'Print Assumptions {n}.']
+            probe.write_text(header + '\nSet Printing All. Set Printing Depth 1000000. Set Printing Width 1000000.\n' + '\n'.join(field_queries))
+            checked = subprocess.run(['rocq', 'c', '-q', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                                      '-R', str(tree), 'Glibc', str(probe)], text=True,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300, env=environment)
+            probe.with_suffix('.log').write_text(checked.stdout)
+            segments = re.split(r'PE_FIELD_(\w+)\n', checked.stdout)
+            declared = set(re.findall(r'\b(?:Parameter|Axiom)\s+(\w+)\b', segments[0]))
+            actual_fields, identities = {}, {}
+            for j in range(1, len(segments), 2):
+                located = re.search(r'^Constant (Glibc\.Fix\.R\.\w+)\b', segments[j+1], re.M)
+                if not located:
+                    raise ValueError(f'50-program: assumption is not a declared runtime field: {ordered_fields[int(segments[j])]}')
+                identities[ordered_fields[int(segments[j])]] = located[1]
+                actual_fields.update(assumption_types(segments[j+1], {}))
+            valid &= checked.returncode == 0 and all(n.split('.')[-1] in declared for n in identities.values())
+            valid &= all(actual_fields.get(n) == typ for assumptions in facts.values() for n, typ in assumptions.items())
+            facts = {name: {identities[n]: typ for n, typ in assumptions.items()} for name, assumptions in facts.items()}
+        records = []
+        blocks = re.split(r"(?m)^\(\* ([\w/]+\.v): ([\w.']+)\. \*\)$", body)
+        for j in range(1, len(blocks), 3):
+            file, declaration, text = blocks[j:j+3]
+            number = re.search(r'Definition program_before_(\w+)\b', text)[1]
+            old, new, forward, reverse = [facts.get(f'program_{side}_{number}') for side in ('before', 'after', 'old_to_new', 'new_to_old')]
+            valid &= old is not None and new == old and all(d is not None and d.items() <= old.items() for d in (forward, reverse))
+            records.append({'file': file, 'name': declaration,
+                            'adapters': [f'program_old_to_new_{number}', f'program_new_to_old_{number}'],
+                            'before': old, 'after': new, 'directions': [forward, reverse]})
+        if not valid:
+            raise ValueError(f'50-program: adapter assumptions changed: {target.with_suffix(".log")}')
+        print(f'program: shard {i+1}/{len(chunks)} audited: {rel}', flush=True)
+        return records
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        evidence = [pair for records in pool.map(compile_one, enumerate(chunks)) for pair in records]
+    print(f'program: {2 * len(evidence)} directions compiled and audited in {time.monotonic()-started:.2f}s', flush=True)
+    return evidence
 
 
 def compile_targets(tree: Path, targets: list[str]) -> set[str]:
@@ -1181,17 +1403,73 @@ def compile_targets(tree: Path, targets: list[str]) -> set[str]:
     return {t[:-1] for t in selected}
 
 
+def regenerate(original: Path):
+    """Rebuild both runtime boundaries and replace the complete review packet."""
+    backup = HERE.parents[3] / '.amp/in/orb-backup'
+    backup.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix='program-regeneration-', dir=backup))
+    print(f'program: retaining regeneration trees and logs in {work}', flush=True)
+    def apply(destination, environment):
+        with destination.with_suffix('.apply.log').open('w') as log:
+            subprocess.run([str(HERE / 'apply.sh'), str(original), str(destination)],
+                           env=environment, stdout=log, stderr=subprocess.STDOUT, check=True)
+        return destination.parent / (destination.name + '.program/before')
+
+    env = dict(os.environ)
+    env.pop('PE_PROGRAM_TARGETS', None)
+    env['PE_RUNTIME'] = 'concrete'
+    after = work / 'concrete'
+    before = apply(after, env)
+    subprocess.run([str(HERE / 'build.sh'), str(after), '12'], check=True)
+    check_evidence(after, refresh_review=True)
+
+    # Runtime choice comes from the original source, never from transformed
+    # imports or a hardcoded list of example programs.
+    files = {str(p.relative_to(original)): p for p in original.rglob('*.v')}
+    roots = {f for f, p in files.items() if any(t.text == 'InterpRuntime' for t in tokens(p.read_text()))}
+    dep = subprocess.run(['rocq', 'dep', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                          '-R', str(original), 'Glibc', *map(str, files.values())],
+                         text=True, capture_output=True, check=True)
+    (work / 'runtime-dependencies.txt').write_text(dep.stdout + dep.stderr)
+    objects = {str(p.with_suffix('.vo')): f for f, p in files.items()}
+    graph = {}
+    for line in dep.stdout.splitlines():
+        targets, separator, dependencies = line.partition(':')
+        if separator:
+            for target in targets.split():
+                if target in objects:
+                    graph[objects[target]] = {objects[p] for p in dependencies.split() if p in objects}
+    if set(graph) != set(files):
+        raise ValueError('50-program: dependency graph does not cover every original source')
+    concrete = set(roots)
+    while True:
+        more = {f for f, deps in graph.items() if deps & concrete} - concrete
+        if not more:
+            break
+        concrete.update(more)
+    general = sorted(set(files) - concrete)
+    (work / 'runtime-partition.json').write_text(json.dumps(
+        {'roots': sorted(roots), 'concrete': sorted(concrete), 'general': general}, indent=2) + '\n')
+    env['PE_RUNTIME'] = 'abstract'
+    env['PE_PROGRAM_TARGETS'] = ' '.join(f[:-1] + 'o' for f in general)
+    abstract = work / 'abstract'
+    abstract_before = apply(abstract, env)
+    selected = compile_targets(abstract, env['PE_PROGRAM_TARGETS'].split())
+    check_evidence(abstract)
+    print(f'program: regenerated and checked all three packet files; retained trees: {work}', flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('tree', type=Path)
     parser.add_argument('--check', action='store_true', help='validate source guards and compile every bidirectional adapter')
+    parser.add_argument('--regenerate', action='store_true', help='apply all stages to an original tree and regenerate concrete/abstract evidence')
     parser.add_argument('--refresh-tables', action='store_true', help='regenerate indexed instances after editing program-table rows')
     parser.add_argument('--inspect', action='store_true')
     parser.add_argument('--metadata', type=Path)
     parser.add_argument('--source', type=Path, help='read a compiled pre-stage tree without modifying it')
     parser.add_argument('--candidates', type=Path, help='write statement-discovery candidates comparing --source with tree')
     parser.add_argument('--emit-evidence', type=Path, help='emit the three review files from a complete statement report')
-    parser.add_argument('--append-evidence', type=Path, help='append exact checked runtime pairs and renew their digest')
     parser.add_argument('--plugin', type=Path, help='compiled checker printer plugin for evidence queries')
     args = parser.parse_args()
     tree = args.tree.resolve()
@@ -1203,11 +1481,11 @@ def main():
         parser.error('--source requires --metadata from that source tree')
     if 'PE_MODEL' not in os.environ:
         raise SystemExit('50-program: source proof-eng/env.sh before running this stage')
+    if args.regenerate:
+        regenerate(tree)
+        return
     if args.check:
         check_evidence(tree)
-        return
-    if args.append_evidence:
-        append_evidence(args.append_evidence)
         return
     if args.candidates:
         if not args.source:
@@ -1220,6 +1498,8 @@ def main():
         emit_evidence(source_tree, tree, json.loads(args.metadata.read_text()), args.emit_evidence, args.plugin)
         return
     sources = [read_source(p) for p in sorted(source_tree.rglob('*.v'))]
+    if args.source and args.metadata:
+        sources = [s for s in sources if s.path.with_suffix('.vo').exists()]
     relevant = [s for s in sources if any(x.canonical for x in s.sections)]
     targets = os.environ.get('PE_PROGRAM_TARGETS', '').split()
     if targets and args.metadata:

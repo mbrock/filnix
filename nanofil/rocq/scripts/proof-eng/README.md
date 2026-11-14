@@ -28,12 +28,28 @@ A stage is one program that takes the tree as its argument and rewrites it in pl
 - `15-code.py` regenerates the code modules for the flat layout.
 - `20-keeps.py` moves `keeps` to the shared file `GlibcEnv.v` and rewrites the `libio/` disjunctions to it.
 - `30-tactics.py` ports proofs to the one step-tactic library `GlibcTactics.v`.
-- `50-program` shortens the statements of rule lemmas. On main each lemma takes one premise for each function that its proof looks up in the linked program, and each caller passes all of them. The stage gives a rules section one context for the linked program instead. The context `GlibcProgram` replaces the section's local `irisGS` instance, and the class `Defines` replaces its `find_fn` premises. A lemma that the audit names keeps its name and type, and it is proved from an implementation named `FILE_NAME_program`.
+- `50-program.py` removes repeated program arguments from calls between proofs. It collects their world, registry, environment and ghost instances in `GlibcProgram`, and `Defines` supplies function-lookup facts. Converted callers infer the context; old-style callers construct it with `program_of`. The forty intermediate audits listed in `check/audit-changes.json` retain their original names with equivalent bundled statements. Endpoints retain their original types and assumptions.
 - `60-rules` replaces rule applications by wrapper tactics that discharge the standard side conditions.
 
 Several files define tactics with the same short name, such as `arith`. Stage `10` keeps each use bound to the definition it had before. It reorders the imports of the file when that is enough, and otherwise it writes the use with its file name, as in `StrlenLoop.arith`. The reviewed names are listed in `flatten-name-baseline.json`, and the stage fails when a new one appears.
 
-Stages `10`, `15`, `20` and `30` are on the branch. Stage `50` is being checked before it is pushed, and stage `60` is developed on the branch `proof-eng-rules`.
+Stages `10`, `15`, `20`, `30` and `50` are on the branch. Stage `60` is developed on the branch `proof-eng-rules`.
+
+## Regenerating the stage-50 evidence
+
+The packet describes one source snapshot. After merging main, regenerate it from the original, unconverted tree with this command, after sourcing `env.sh`:
+
+```sh
+python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --regenerate nanofil/rocq/glibc
+```
+
+The command applies the stages and compiles both sides of stage 50, using the original imports to choose concrete or abstract runtimes. For each output tree it writes `50-program.txt`, `50-program.elaborated.json` and `50-program.equivalence.v` under `TREE.program/`. It retains the trees and logs under `.amp/in/orb-backup/program-regeneration-*` and prints their location. It also updates the committed declaration list for review. Generated types and proofs stay out of git; `check/audit-changes.json` preserves the forty reviewed old types and adapter mappings. Regeneration does not approve new changes or a cutover.
+
+Run `python3 nanofil/rocq/scripts/proof-eng/stages/50-program.py --check TREE` against a converted tree to regenerate and validate its packet. The command needs the input snapshot and compiler metadata that `apply.sh` retains in `TREE.program/`. It reproduces the transformation, checks the reviewed declaration list and old types, then compiles both adapter directions. Four workers compile shards grouped by source directory, each containing at most sixteen pairs and one MiB of adapter source. Each worker has a five-minute limit.
+
+Concrete adapters must print Closed. Abstract adapters may depend only on the declared runtime's fields: old and new statements must have identical assumption names and types, and each direction may use only a subset. The check verifies each field's identity and type with Rocq and writes the per-pair results to `TREE.program/check/assumptions.json`. Concrete success does not authorize abstract evidence; the checker requires a separate successful run for each runtime.
+
+Stage 50 does not remove every local instance or lookup expression. Specification predicates and partial interfaces retain their parameters, while noncanonical sections retain their original setup. The stage prints each retained section and its reason. It leaves stronger program facts, absent-symbol facts and allocator premises explicit.
 
 `../glibc-code/skeleton.py` prints block-lemma statement skeletons from a manifest's linked IR. It is not a stage, and `../glibc-code/README.md` describes it.
 
