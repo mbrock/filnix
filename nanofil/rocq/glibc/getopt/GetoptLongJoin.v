@@ -112,7 +112,7 @@ Lemma wp_long_join e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f139 f
   lookup (TAtom "v8") e = Some (WPtr li) -> lookup (TAtom "v10") e = Some (WInt lonly) ->
   lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->
   lookup (TAtom "v14") e = Some (WInt pe) -> lookup (TAtom "v16") e = Some (WPtr pfx) ->
-  ps !! Z.to_nat i = Some q -> sbyte sq 0 <> 0 ->
+  ps !! Z.to_nat i = Some q -> (lonly <> 0 -> sbyte sq 0 <> 0) ->
   0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
