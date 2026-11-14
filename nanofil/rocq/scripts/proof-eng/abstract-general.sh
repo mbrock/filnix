@@ -4,10 +4,11 @@
 #
 #   . env.sh; abstract-general.sh TREE OUT [JOBS]    # default: 8 jobs
 #
-# TREE is a flat tree: the output of apply.sh, or rocq/glibc of main after
-# the first cutover. OUT must not exist. The check copies TREE to
-# OUT/glibc, replaces the one runtime binding of Fix.v by
-# "Declare Module R : Runtime.", and compiles every file with build.sh.
+# TREE is a flat tree that build.sh has already compiled: the output of
+# apply.sh, or rocq/glibc of main after the first cutover. OUT must not
+# exist. The check copies the sources of TREE to OUT/glibc, replaces the
+# one runtime binding of Fix.v by "Declare Module R : Runtime.", and
+# compiles every file with build.sh.
 #
 # TREE/runtime-concrete.txt lists the files that need the interpreter's
 # runtime, one path per line, with "#" comments. The check fails when
@@ -17,8 +18,10 @@
 #     listed file;
 #   - a listed file compiles, so that no file can leave the check by
 #     being listed without need;
-#   - a listed file fails for a reason other than a Fix.R field or a
-#     listed import, or does not exist.
+#   - a listed file does not exist, or has no object in TREE. The two
+#     trees differ only in the runtime binding, so a file that compiles
+#     in TREE and not in the copy fails because of the runtime and for
+#     no other reason.
 #
 # OUT/report.txt names every file on the wrong side, and OUT/glibc.build
 # holds the logs and times of build.sh.
@@ -62,12 +65,9 @@ status=0
     sed 's/^/FAIL does not compile against the abstract runtime and is not listed: /'
   comm -13 "$out/failed.txt" "$out/listed.txt" | grep -xFf "$out/all.txt" |
     sed 's/^/FAIL listed file compiles against the abstract runtime; remove it from runtime-concrete.txt: /'
-  # A listed file must fail on a runtime field, or on the import of
-  # another listed file, in which case make never starts its compiler.
-  comm -12 "$out/failed.txt" "$out/listed.txt" | while read -r f; do
-    log=$out/glibc.build/logs/$f.log
-    if [ -f "$log" ] && ! grep -q 'Fix\.R\.' "$log"; then
-      echo "FAIL listed file fails without naming a Fix.R field: $f"
+  comm -12 "$out/all.txt" "$out/listed.txt" | while read -r f; do
+    if [ ! -f "$tree/${f%.v}.vo" ]; then
+      echo "FAIL listed file has no object in TREE, so it does not compile at the interpreter's runtime either: $f"
     fi
   done
 } >"$out/report.txt"

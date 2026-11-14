@@ -109,6 +109,6 @@ Stage 50 leaves three kinds of declaration alone.
 
 ## What is not decided: generality in the runtime
 
-`hello_never_panics` holds for every `Runtime`, and the audit checks that by listing twelve runtime assumptions. `Fix.v` therefore has two forms. The stages write `Module R := InterpRuntime.` by default, and with `PE_RUNTIME=abstract` they write `Declare Module R : Runtime.`. A file that does not depend on `InterpRuntime` compiles against both.
+`hello_never_panics` holds for every `Runtime`, and the audit checks that by listing twelve runtime assumptions. `Fix.v` therefore has two forms. The stages write `Module R := InterpRuntime.` by default, and with `PE_RUNTIME=abstract` they write `Declare Module R : Runtime.`. A file that does not depend on `InterpRuntime` compiles against both. On main `57908a2`, 413 of the 414 files do. The exception is `hi_atexit/HiAtexitSafe.v`, whose theorem starts the interpreter at a numeric allocation cursor, and `runtime-concrete.txt` lists it. `abstract-general.sh` checks that the listed files are exactly the files that the abstract runtime rejects.
 
 Until the layout is chosen, keep to one rule that holds under every option: a file names `InterpRuntime` only when its theorem is about the interpreter, as the `hi_atexit` endpoints are. Every other file uses `R` and `LG0` from `Fix.v` and nothing that is specific to the interpreter.
