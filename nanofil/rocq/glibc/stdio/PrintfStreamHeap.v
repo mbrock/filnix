@@ -143,7 +143,7 @@ Lemma printf_heap_stream_with_forget B w0 vb self fp mode flags2 held :
 Proof.
   iIntros "(%fb & %freg & %st & %bb & %breg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp &
     Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvt & Htail & _)".
-  iExists fb, freg, st, bb, breg, sz, k, we, xs, fl, tw, off, col. iFrame. done.
+  iExists fb, freg, st, bb, breg, sz, k, we, xs, fl, tw, off, col. iFrame "Hl Hst Hf2 Hfd Hcol Hmd Hvt Htail". done.
 Qed.
 
 (** A caller can borrow the FILE lifetime for its checked pointer load.
@@ -194,7 +194,8 @@ Proof.
     cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset fs_codecvt fs_wide
       fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable big_opL length].
     rewrite Hmode Hflags2 Hvt Hcolumn.
-    iFrame. iSplit; [done|]. iSplit; [iPureIntro; rewrite length_app; cbn; lia|].
+    iFrame "Hfl H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 Hfd Hf2 Hold Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htw Hvt".
+    iSplit; [done|]. iSplit; [iPureIntro; rewrite length_app; cbn; lia|].
     rewrite bytes_app. cbn [length]. iFrame.
   - iExists breg, xs. iFrame. iPureIntro. tauto.
 Qed.
