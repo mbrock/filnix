@@ -358,3 +358,7 @@ getopt/GetoptLongAmbRep.v
 getopt/GetoptLongPfxPath.v
 getopt/GetoptLongFind.v
 getopt/GetoptLongBody.v
+getopt/GetoptLongJoinMiss.v
+getopt/GetoptLongJoinFound.v
+getopt/GetoptLongJoin.v
+getopt/GetoptLongCall.v
