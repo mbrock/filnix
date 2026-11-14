@@ -295,6 +295,8 @@ getopt/GetoptBytes.v
 getopt/GetoptInitialize.v
 getopt/GetoptColon.v
 getopt/GetoptEntry.v
+getopt/GetoptWrapper.v
+getopt/GetoptLongWrapper.v
 getopt/GetoptArgv.v
 getopt/GetoptExchange.v
 getopt/GetoptSwap2Lower.v
@@ -315,6 +317,9 @@ getopt/GetoptIdlePath.v
 getopt/GetoptReturn.v
 getopt/GetoptScanEnd.v
 getopt/GetoptScan.v
+getopt/GetoptScanSession.v
+getopt/GetoptEntryScan.v
+getopt/GetoptScanChoice.v
 getopt/GetoptCursor.v
 getopt/GetoptLongOnly.v
 getopt/GetoptDispatch.v
