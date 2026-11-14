@@ -54,7 +54,7 @@ Qed.
                                       check=True, text=True, capture_output=True).stdout
             output = run()
             result = path.read_text()
-            self.assertIn('wp_raw_store_w: rewritten 1, left 2 (explicit rule terms 1)', output)
+            self.assertIn('wp_raw_store_w: rewritten 2, left 1 (explicit rule terms 0)', output)
             self.assertIn('wp_raw_load_sub_bytes_dq: rewritten 1, left 0', output)
             self.assertIn('2 declarations byte-identical', output)
             self.assertIn('From Glibc Require Import LibioTactics GlibcTactics WordString.', result)
@@ -68,7 +68,7 @@ Qed.
             self.assertIn('load_bytes_dq "[Hl Hb]" decode (apply extended_chr) by ar', result)
             self.assertIn('store_word "Hl Hb" by (ar) preserving wi_store', result)
             self.assertIn('load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8]', result)
-            self.assertIn('iApply (wp_raw_store_w registry (os_wi w0) ge with "Hl Hb")', result)
+            self.assertNotIn('iApply (wp_raw_store_w registry (os_wi w0) ge with "Hl Hb")', result)
             self.assertIn('custom [left | right]', result)
             self.assertIn(source.splitlines()[0], result)
             self.assertIn(source.splitlines()[2], result)
@@ -79,6 +79,37 @@ Qed.
                 'wp_check_read_dq with "Htl"'))
             run()
             self.assertEqual(path.read_text(), result)
+
+    def test_context_arguments(self):
+        cases = {
+            'wp_raw_load_pointer_dq': ('load_pointer_dq', 'reflexivity|vx|left; reflexivity|ar|ar|lia|'),
+            'wp_check_read_dq': ('check_read_dq', 'reflexivity|vx|exact Hcap|ar|ar|apply Z.mod_1_r|'),
+            'wp_raw_load_sub_bytes_dq': ('load_bytes_dq', 'reflexivity|vx|reflexivity|apply extended_chr|exact Hcap|ar|'),
+            'wp_raw_load_pointer': ('load_pointer', 'reflexivity|vx|reflexivity|ar|ar|lia|'),
+            'wp_raw_store_pointer': ('store_pointer', 'vx|vx|reflexivity|ar|ar|wi_store|'),
+            'wp_raw_store_w': ('store_word', 'vx|vx|reflexivity|ar|reflexivity|wi_store|'),
+        }
+        with tempfile.TemporaryDirectory(prefix="memory-rules-test-") as directory:
+            path = Path(directory) / 'Unseen.v'
+            for rule, (wrapper, solvers) in cases.items():
+                for context in ('registry (os_wi w0) ge', 'w0 registry ge',
+                                'registry ( os_wi  w0 )\n ge',
+                                'registry (os_wi other_world) ge', 'w0 other_registry ge',
+                                'w0 registry other_ge', 'w0 registry ge (p := ptr)',
+                                'registry ge w0'):
+                    with self.subTest(rule=rule, context=context):
+                        call = f'iApply ({rule} {context} with "Hl"); [{solvers}]'
+                        source = 'From Glibc Require Import GlibcTactics.\nLemma unseen : True.\nProof.\n' + call + '.\nQed.\n'
+                        path.write_text(source)
+                        subprocess.run([sys.executable, '-I', str(STAGE), directory],
+                                       check=True, text=True, capture_output=True)
+                        result = path.read_text()
+                        if context in ('registry (os_wi w0) ge', 'w0 registry ge',
+                                       'registry ( os_wi  w0 )\n ge'):
+                            self.assertNotIn(call, result)
+                            self.assertIn(f'{wrapper} "Hl"', result)
+                        else:
+                            self.assertEqual(source, result)
 
 
 if __name__ == '__main__':
