@@ -1,0 +1,23 @@
+sudo: no RTLD_NEXT lookups under Fil-C
+
+Nixpkgs 26.11's sudo carries the CVE-2026-96512 fix, which makes sudo call
+unsetenv("TZ") at startup. sudo's own unsetenv() hook looks up the libc one
+with dlsym(RTLD_NEXT, ...), and Fil-C's dlsym() stops the program on
+RTLD_NEXT ("cannot access pointer with null object" in zsys_dlsym), so
+every sudo invocation died. sudo already supports platforms without
+RTLD_NEXT: sudo_dso_findsym() returns NULL, and the putenv, setenv and
+unsetenv hooks use sudo's replacements instead. Take that branch under
+Fil-C.
+
+--- a/lib/util/sudo_dso.c
++++ b/lib/util/sudo_dso.c
+@@ -339,7 +339,8 @@
+      * Not all implementations support the special handles.
+      */
+     if (handle == SUDO_DSO_NEXT) {
+-# ifdef RTLD_NEXT
++	/* Fil-C's dlsym() stops the program on RTLD_NEXT. */
++# if defined(RTLD_NEXT) && !defined(__FILC__)
+ 	handle = RTLD_NEXT;
+ # else
+ 	errno = ENOENT;

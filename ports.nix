@@ -3134,6 +3134,14 @@ in
     (use { dontAutoPatchelf = true; })
   ])
 
+  (for pkgs.kmod [
+    (patch ./patches/kmod-filc-finit-module.patch)
+  ])
+
+  (for pkgs.sudo [
+    (patch ./patches/sudo-filc-no-rtld-next.patch)
+  ])
+
   {
     # Nixpkgs' own systemd (262); systemdMinimal and systemdLibs derive from
     # this port through .override, so all three get the same fixes.

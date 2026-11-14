@@ -1,0 +1,30 @@
+kmod: load modules through the Fil-C runtime's finit_module
+
+libkmod's finit_module() wrapper calls syscall(__NR_finit_module), and
+Fil-C's syscall() stops the program on a number it does not support
+("unsupported syscall: 313"). kmod takes that path whenever a module is
+uncompressed or uses the kernel's own compression. Nixpkgs 26.11's kernel
+sets CONFIG_MODULE_DECOMPRESS for its .ko.xz modules (26.05's did not),
+so systemd 262 as PID 1 in the initrd stopped while loading autofs4. Under Fil-C the wrapper calls zsys_finit_module(), the runtime's
+implementation of the same system call.
+
+--- a/shared/missing.h
++++ b/shared/missing.h
+@@ -25,9 +25,17 @@
+ 
+ #ifndef HAVE_FINIT_MODULE
+ #include <errno.h>
++#ifdef __FILC__
++#include <pizlonated_syscalls.h>
++#endif
+ 
+ static inline int finit_module(int fd, const char *uargs, int flags)
+ {
++#ifdef __FILC__
++	/* Fil-C's syscall() stops the program on a number it does not know;
++	 * the runtime makes this one itself. */
++	return zsys_finit_module(fd, uargs, flags);
++#endif
+ 	if (__NR_finit_module == -1) {
+ 		errno = ENOSYS;
+ 		return -1;

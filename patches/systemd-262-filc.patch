@@ -14,9 +14,14 @@ systemd 262 for Fil-C. Rebased from upstream Fil-C's systemd 256.4 patch
 - src/libc: Fil-C's syscall() stops the program on a number it does not
   support. 262 generates the raw wrappers with DEFINE_SYSCALL_SHIM; the
   ones where systemd has fallbacks (bpf, ioprio, kcmp, open_tree_attr,
-  pivot_root, quotactl_fd, setxattrat, removexattrat, rt_tgsigqueueinfo)
-  use DEFINE_FILC_ENOSYS_SYSCALL_SHIM, which under Fil-C reports ENOSYS
-  when libc lacks the symbol instead of calling syscall().
+  pivot_root, quotactl_fd, setxattrat, removexattrat, rt_tgsigqueueinfo,
+  kexec_file_load) use DEFINE_FILC_ENOSYS_SYSCALL_SHIM, which under Fil-C
+  reports ENOSYS when libc lacks the symbol instead of calling syscall().
+  missing_epoll_pwait2() calls glibc's epoll_pwait2() under Fil-C, which
+  goes through the runtime; sd-event's loop otherwise stopped PID 1.
+  openat2 is the opposite case: the Fil-C glibc's openat2() makes the call
+  with inline assembly, which stops the program (systemd-executor died in
+  chaseat()), so the shim calls syscall(), which the runtime supports.
 - capability-util.c, reboot-util.c, raw-clone.c: the same for the raw
   capget/capset, reboot and clone calls, which PID 1 makes. capget and
   capset go through glibc's wrappers; reboot through glibc's reboot()
@@ -354,6 +359,44 @@ index d87dcb1..2a9e2a0 100644
                      int, cmd,
                      union bpf_attr *, attr,
                      size_t, size)
+diff --git a/src/libc/epoll.c b/src/libc/epoll.c
+index 9bd1645..3afdc73 100644
+--- a/src/libc/epoll.c
++++ b/src/libc/epoll.c
+@@ -21,6 +21,12 @@ int missing_epoll_pwait2(
+                 return -1;
+         }
+ 
++#if defined(__FILC__)
++        /* Fil-C: syscall() stops the program on epoll_pwait2, but glibc's wrapper goes through the
++         * runtime, which makes the call. */
++        return epoll_pwait2(fd, events, maxevents, timeout, /* sigmask= */ NULL);
++#endif
++
+         /* Convert struct timespec to struct __kernel_timespec, as they may differ. */
+         struct __kernel_timespec t, *p = NULL;
+         if (timeout) {
+diff --git a/src/libc/fcntl.c b/src/libc/fcntl.c
+index 8fd78ca..3d1e8ab 100644
+--- a/src/libc/fcntl.c
++++ b/src/libc/fcntl.c
+@@ -4,8 +4,16 @@
+ 
+ #include "libc-shim.h"
+ 
++#if defined(__FILC__)
++/* Fil-C: glibc's openat2() makes the system call with inline assembly, which stops the program, while
++ * the runtime's syscall() supports openat2 and checks its pointers. */
++int openat2_shim(int dfd, const char *filename, const struct open_how *how, size_t usize) {
++        return syscall(__NR_openat2, dfd, filename, how, usize);
++}
++#else
+ DEFINE_SYSCALL_SHIM(openat2, int,
+                     int, dfd,
+                     const char *, filename,
+                     const struct open_how *, how,
+                     size_t, usize)
++#endif
 diff --git a/src/libc/ioprio.c b/src/libc/ioprio.c
 index 0536931..b019219 100644
 --- a/src/libc/ioprio.c
@@ -385,6 +428,19 @@ index 0f73f85..f553cc3 100644
                      pid_t, pid1,
                      pid_t, pid2,
                      int, type,
+diff --git a/src/libc/kexec.c b/src/libc/kexec.c
+index 051253d..b034073 100644
+--- a/src/libc/kexec.c
++++ b/src/libc/kexec.c
+@@ -5,7 +5,7 @@
+ #include "libc-shim.h"
+ 
+ #ifdef __NR_kexec_file_load
+-DEFINE_SYSCALL_SHIM(kexec_file_load, int,
++DEFINE_FILC_ENOSYS_SYSCALL_SHIM(kexec_file_load, int,
+                     int, kernel_fd,
+                     int, initrd_fd,
+                     unsigned long, cmdline_len,
 diff --git a/src/libc/libc-shim.h b/src/libc/libc-shim.h
 index 4377b71..8e77def 100644
 --- a/src/libc/libc-shim.h

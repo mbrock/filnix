@@ -59,9 +59,14 @@ So the port now builds Nixpkgs' own systemd, with
 [patches/systemd-262-filc.patch](../patches/systemd-262-filc.patch): upstream
 Fil-C's changes rebased (version script, signal reset, bus error maps
 without ELF sections), plus what 260 and 262 need. Its header lists each
-change. Systemd 262 (Nixpkgs 26.11) keeps its command-line verbs and
-options in ELF sections, which Fil-C cannot link; the patch does not
-handle that yet.
+change. Systemd 262 (Nixpkgs 26.11) collects its command-line verbs and
+options in ELF sections and walks them from `__start_` to `__stop_`, which
+Fil-C cannot do. Under Fil-C each table registers itself from a
+constructor instead. Options are statics inside each `parse_argv()`, so
+[patches/systemd-filc-option-tables.py](../patches/systemd-filc-option-tables.py),
+which the port runs in postPatch, first moves them to file scope. Every
+program that supports `--introspect-cli` gives the same JSON and `--help`
+as native systemd 262.
 The ones that matter at run time:
 
 - `pidfd_spawn()` in the Fil-C glibc stops the program
@@ -72,7 +77,21 @@ The ones that matter at run time:
   instead of returning ENOSYS. systemd's raw wrappers (kcmp, bpf, ioprio,
   pivot_root, quotactl_fd, setxattrat, rt_tgsigqueueinfo, …) return ENOSYS
   under Fil-C, where systemd has fallbacks. kcmp mattered: Fil-C's `fcntl()`
-  rejects `F_DUPFD_QUERY`, so `same_fd()` fell through to it.
+  rejects `F_DUPFD_QUERY`, so `same_fd()` fell through to it. 262 calls
+  epoll_pwait2 raw, which stopped PID 1's event loop; under Fil-C it goes
+  through glibc's `epoll_pwait2()`. The Fil-C glibc's own `openat2()` makes
+  the call with inline assembly, which stopped `systemd-executor` in
+  `chaseat()` for every service; systemd calls `syscall(SYS_openat2)`
+  instead, which the runtime supports.
+- Pointers stored in integers lose their capability: 262's `COMMAND()`
+  kept its description in `Verb.data` (a `uintptr_t`), and `prctl_safe()`
+  passes buffers as `unsigned long`. The patch gives `Verb` a pointer field
+  and calls `prctl()` directly where it takes a buffer.
+- 262 writes its `.note.dlopen` notes with inline assembly inside each
+  `dlopen_*()` function, which stops a Fil-C program when it runs. Under
+  Fil-C the payload is a retained string that
+  [ports/restore-dlopen-notes.py](../ports/restore-dlopen-notes.py) turns
+  back into notes.
 - PID 1 died at once in the initrd on `syscall(SYS_capget)`
   (`filc user error: unsupported syscall: 125` in `have_effective_cap`).
   capget and capset now go through glibc's wrappers, `raw_reboot()` through
@@ -101,7 +120,7 @@ The ones that matter at run time:
   The notes' JSON survives as data, so the port's postFixup puts them back
   with objcopy ([ports/restore-dlopen-notes.py](../ports/restore-dlopen-notes.py)).
 
-systemdMinimal and systemdLibs derive from the port, so they are 260 too.
+systemdMinimal and systemdLibs derive from the port, so they are 262 too.
 
 ### Runtime and glibc fixes
 
@@ -312,6 +331,17 @@ These came up once PID 1 reached multi-user.target:
   drops the capability (`rb_tree_remove_node`: "cannot write pointer with
   null object"); fixed by the finix thread's
   `patches/dhcpcd-10.3-rbtree-pointer.patch`.
+- kmod: Nixpkgs 26.11's kernel sets `CONFIG_MODULE_DECOMPRESS`, so libkmod
+  passes the `.ko.xz` files to `finit_module`, which its wrapper made with
+  raw `syscall()`. PID 1 stopped in the initrd while loading autofs4
+  ("unsupported syscall: 313").
+  [patches/kmod-filc-finit-module.patch](../patches/kmod-filc-finit-module.patch)
+  calls the runtime's `zsys_finit_module()`.
+- sudo: Nixpkgs 26.11's CVE-2026-96512 fix makes sudo `unsetenv("TZ")` at
+  startup, and sudo's `unsetenv()` hook looks up libc's with
+  `dlsym(RTLD_NEXT, …)`, which Fil-C's `dlsym()` refuses, so every sudo
+  stopped. [patches/sudo-filc-no-rtld-next.patch](../patches/sudo-filc-no-rtld-next.patch)
+  takes sudo's existing branch for platforms without `RTLD_NEXT`.
 - kbd: autoPatchelfHook, there only for `.note.dlopen`, replaced the
   RUNPATH and dropped the Fil-C runtime, so `loadkeys` (and
   systemd-vconsole-setup) could not start. Turned off; kbd uses
