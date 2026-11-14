@@ -364,6 +364,8 @@ getopt/GetoptLongJoin.v
 getopt/GetoptLongCall.v
 getopt/GetoptLongSite.v
 getopt/GetoptLongSession.v
+getopt/GetoptEntryBridge.v
+getopt/GetoptEntrySession.v
 getopt/GetoptLongDash.v
 getopt/GetoptLongChoice.v
 getopt/GetoptLongSingle.v
