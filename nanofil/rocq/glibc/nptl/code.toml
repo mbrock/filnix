@@ -1,0 +1,5 @@
+layout = "string"
+layouts = true
+fixtures = '''
+Cutoff|__libc_alloca_cutoff|nptl/alloca_cutoff.os|__GI___libc_alloca_cutoff
+'''

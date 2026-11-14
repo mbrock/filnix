@@ -58,6 +58,9 @@ stdlib/StdlibCode.v
 stdlib/GetenvCode.v
 stdlib/GetenvSrc.v
 stdlib/GetenvEntry.v
+nptl/CutoffCode.v
+nptl/CutoffLayout.v
+nptl/CutoffSrc.v
 string/MallocCode.v
 string/MemFwdCode.v
 string/MemcmpCode.v
@@ -456,3 +459,4 @@ getopt/GetoptWOptSession.v
 GlibcTactics.v
 GlibcSym.v
 libio/LibioTactics.v
+nptl/CutoffLogic.v
