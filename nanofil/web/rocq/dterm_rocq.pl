@@ -56,7 +56,10 @@ main :-
     (   select(A, Args, Files), atom_concat('--prolog=', Dir, A)
     ->  index_prolog(Dir), nb_setval(rq_prolog, '../'),
         % C in comments is drawn from nanofil's parse (c/c_draw.pl).
-        nb_setval(c_src_dir, Dir), nb_setval(c_play_root, '../play/')
+        nb_setval(c_src_dir, Dir), nb_setval(c_play_root, '../play/'),
+        % Load the C frontend here, before the workers fork, rather than
+        % in the middle of whichever large page first draws C.
+        (   current_predicate(c_draw:c_ready/0) -> ignore(c_draw:c_ready) ; true )
     ;   Files = Args, nb_setval(rq_prolog, none)
     ),
     maplist(read_or_report(Root), Files, Read),
