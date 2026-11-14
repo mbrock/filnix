@@ -315,10 +315,14 @@ Proof.
     iEval (rewrite (bytesq_split dq b' so ys j); [|lia]) in "Hys". iDestruct "Hys" as "[Hys1 Hys2]".
     assert (Hlj : Z.of_nat (length (drop j ys)) = t) by (rewrite length_drop; lia).
     pose proof (default_xsputn_has_spec Hmove Hmove_fn Hmove_sym "__GI__IO_default_xsputn") as Hspec.
-    call_spec with (xos w0 eb X, fb, freg, vb, vreg, nb, wp, we, dq, b', reg',
-      so + Z.of_nat j, c', drop j ys).
+    let rule := call_spec_rule in
+      pose proof (rule (xos w0 eb X, fb, freg, vb, vreg, nb, wp, we, dq, b', reg',
+        so + Z.of_nat j, c', drop j ys)) as Hcall.
+    iApply (Hcall with "[Hvt Hl Hvtp Hwb Hos Hl' Hys2]").
     { cbn -[put]. lookups. rewrite Hlj. do 5 f_equal; unfold j; unwrap2; lia. }
-    { split_and!; try assumption; try lia. apply Forall_drop; exact Hy. }
+    { cbn [fs_pre default_xsputn_spec]. iFrame "Hvt Hl Hvtp Hwb Hos Hl' Hys2".
+      iPureIntro. split_and!; try assumption; try lia. apply Forall_drop; exact Hy. }
+    iIntros (v) "Hpost".
     iDestruct "Hpost" as (k nb' wp' we') "(%Hout & Hl & Hvtp & Hwb & Hos & Hl' & Hys2)".
     destruct Hout as [-> [Hk Hprogress]]. resume.
     rewrite Hlj in Hk. rewrite (Z.mod_small k); [|lia].
@@ -326,6 +330,7 @@ Proof.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' [Hys1 Hys2]").
     { split; [right; unwrap2; lia | intros _; apply Hprogress; rewrite Hlj; lia]. }
     iApply (bytesq_split dq b' so ys j); [lia|]. iFrame.
+    Unshelve. exact (os_wi_stable w0).
 Qed.
 
 End rules.
