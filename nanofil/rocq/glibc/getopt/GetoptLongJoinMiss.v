@@ -76,6 +76,54 @@ Proof.
   iExists i', oo', a', c'. iFrame. iPureIntro. auto.
 Qed.
 
+(** A caller that reads the argument must know which entry chose it.
+    The relation below says that the parser returned -1, '?', ':' or 0.
+    Otherwise it returned the value of an entry y of the table os that
+    stores no flag, and then the new index i' and the argument a' follow
+    long_arg for the argument kind of y. *)
+Definition plo_arg_case (ps : list ptr) (i n : Z) (cur : ptr) (s : list Z) (a : ptr) (os : list lopt)
+    (x i' : Z) (a' : ptr) : Prop :=
+  (x = 4294967295 \/ x = 63 \/ x = 58 \/ x = 0 \/
+   exists y, y ∈ os /\ lo_flag y = null /\ x = lo_val y mod 2 ^ 32 /\ long_arg s (lo_has y) i n cur a ps i' a')%Z.
+
+(** This is the state after a return, together with the relation above
+    for the index and the argument that the parser left. *)
+Definition plo_res_arg (b : Z) (r : region) (av : Z) (ar : region) (ps : list ptr) (li : ptr) (F : list ptr)
+    (G M : iProp Σ) (i n : Z) (cur : ptr) (s : list Z) (a : ptr) (os : list lopt) (x : Z) : iProp Σ :=
+  ∃ i' oo' a' c', live b r ∗ int_cell b 0 i' ∗ int_cell b 8 oo' ∗ pcell b 16 a' ∗ pcell b 32 c' ∗
+    live av ar ∗ argv_cells av ps ∗ G ∗ flags_own F ∗ M ∗ longind_own li ∗
+    ⌜((i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n)) /\
+      (c' = null \/ (c' = cur /\ i' = i) \/ c' = ptr_add cur (Z.of_nat (List.length s))) /\
+      (a' = a \/ a' = ptr_add cur (Z.of_nat (eq_len s) + 1) \/ a' = nth (Z.to_nat (i + 1)) ps null) /\
+      0 <= x < 2 ^ 32 /\ (x = 4294967295 -> (c' = cur /\ i' = i) \/
+        exists y, y ∈ os /\ lo_flag y = null /\ lo_val y mod 2 ^ 32 = 4294967295))%Z⌝ ∗
+    ⌜plo_arg_case ps i n cur s a os x i' a'⌝.
+
+(** A caller that does not read the argument can forget the relation. *)
+Lemma plo_res_arg_old b r av ar ps li F (G M : iProp Σ) i n cur s a os x :
+  plo_res_arg b r av ar ps li F G M i n cur s a os x ⊢ plo_res b r av ar ps li F G M i n cur s a os x.
+Proof.
+  iIntros "(%i' & %oo' & %a' & %c' & Hl & Hi & Ho & Ha & Hc & Hav & Hcl & HG & HF & HM & Hli & %H & _)".
+  iExists i', oo', a', c'. iFrame. done.
+Qed.
+
+(** The pieces of a return, its facts and the relation make up the
+    stronger state. *)
+Lemma plo_res_arg_intro b r av ar ps li F (G M : iProp Σ) i n cur s a os x i' oo' a' c' :
+  (i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n))%Z ->
+  c' = null \/ (c' = cur /\ i' = i) \/ c' = ptr_add cur (Z.of_nat (List.length s)) ->
+  a' = a \/ a' = ptr_add cur (Z.of_nat (eq_len s) + 1) \/ a' = nth (Z.to_nat (i + 1)) ps null ->
+  (0 <= x < 2 ^ 32)%Z -> (x = 4294967295 -> (c' = cur /\ i' = i) \/
+    exists y, y ∈ os /\ lo_flag y = null /\ lo_val y mod 2 ^ 32 = 4294967295)%Z ->
+  plo_arg_case ps i n cur s a os x i' a' ->
+  live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+  live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
+  plo_res_arg b r av ar ps li F G M i n cur s a os x.
+Proof.
+  intros Hi Hc Ha Hr Hx Harg. iIntros "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli".
+  iExists i', oo', a', c'. iFrame. iSplit; iPureIntro; [auto | exact Harg].
+Qed.
+
 End res.
 
 Import ProgramAbbreviations.
@@ -88,7 +136,54 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The parser found no option for the word q at index i. Each of its
     two returns gives the caller the value x of the return and the state
-    that plo_res describes. *)
+    that plo_res_arg describes, so the caller also learns that the value
+    is '?' or -1. *)
+Lemma wp_long_join_miss_arg ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid av ar ps q sq po so pfx sp cur s
+    i n lonly pe oo a li F b r os Φ :
+  avoids ks lmiss_names = true -> avoids ks lonly_names = true -> avoids ks lunrec_names = true ->
+  getopt_ldiag_rule w0 registry ge G T fp dom ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some mid ->
+  lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) -> lookup (TAtom "v4") e = Some (WPtr po) ->
+  lookup (TAtom "v10") e = Some (WInt lonly) -> lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->
+  lookup (TAtom "v14") e = Some (WInt pe) -> lookup (TAtom "v16") e = Some (WPtr pfx) ->
+  lookup (TAtom "v90") e = Some (WInt 0) -> lookup (TAtom "pr.7") e = Some (WPtr null) ->
+  lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
+  ps !! Z.to_nat i = Some q -> (lonly <> 0 -> sbyte sq 0 <> 0) ->
+  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> 0 <= lonly < 2 ^ 32 -> 0 <= pe < 2 ^ 32 ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  word_string DfracDiscarded q sq -∗ word_string DfracDiscarded po so -∗ word_string DfracDiscarded pfx sp -∗
+  word_string DfracDiscarded cur s -∗ liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live b r -∗ int_cell b 0 i -∗ int_cell b 8 oo -∗ pcell b 16 a -∗ pcell b 32 cur -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
+  (∀ e' l rv x, ⌜keeps ks e e' /\ value_x ge e' W rv = Some (WInt x)⌝ -∗
+     plo_res_arg b r av ar ps li F G M i n cur s a os x -∗
+     WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame glibc_process_long_option e [] None
+              (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
+Proof.
+  intros Hks Hkso Hksu Hrule Hg Hgn Hse Hmid H2 H4 H10 H12 H14 H16 H90 H7 Hc0 Hq Hq0 Hi Hn Hlen Hlo Hpe
+    Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
+  iIntros "#Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
+  iApply (GetoptLongMiss.wp_long_miss ks e G T fp dom se sereg mid av ar ps q sq po so pfx sp cur s i n lonly pe oo b r
+    with "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hcur Ha Hcl Hs HG"); try assumption.
+  iSplit.
+  - iIntros (e' Hk') "Hl Hib Hoob Hcur Ha Hcl HG".
+    iApply ("HK" $! e' _ (Const 63) 63 with "[%] [-]"); [split; [exact Hk' | reflexivity]|].
+    iApply (plo_res_arg_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli");
+      [lia | left; reflexivity | left; reflexivity | lia | intros Hx; lia | right; left; reflexivity].
+  - iIntros (e' (Hk' & Hlo')) "Hl Hib Hoob Hcur Ha Hcl HG".
+    iApply ("HK" $! e' _ (Const 4294967295) 4294967295 with "[%] [-]"); [split; [exact Hk' | reflexivity]|].
+    iApply (plo_res_arg_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli");
+      [lia | right; left; split; reflexivity | left; reflexivity | lia | intros _; left; split; reflexivity |
+       left; reflexivity].
+Qed.
+
+(** Callers that ignore which entry chose the argument use this rule. *)
 Lemma wp_long_join_miss ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid av ar ps q sq po so pfx sp cur s
     i n lonly pe oo a li F b r os Φ :
   avoids ks lmiss_names = true -> avoids ks lonly_names = true -> avoids ks lunrec_names = true ->
@@ -117,19 +212,10 @@ Lemma wp_long_join_miss ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
 Proof.
-  intros Hks Hkso Hksu Hrule Hg Hgn Hse Hmid H2 H4 H10 H12 H14 H16 H90 H7 Hc0 Hq Hq0 Hi Hn Hlen Hlo Hpe
-    Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
-  iIntros "#Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
-  iApply (GetoptLongMiss.wp_long_miss ks e G T fp dom se sereg mid av ar ps q sq po so pfx sp cur s i n lonly pe oo b r
-    with "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hcur Ha Hcl Hs HG"); try assumption.
-  iSplit.
-  - iIntros (e' Hk') "Hl Hib Hoob Hcur Ha Hcl HG".
-    iApply ("HK" $! e' _ (Const 63) 63 with "[%] [-]"); [split; [exact Hk' | reflexivity]|].
-    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli"); [lia | left; reflexivity | left; reflexivity | lia | intros Hx; lia].
-  - iIntros (e' (Hk' & Hlo')) "Hl Hib Hoob Hcur Ha Hcl HG".
-    iApply ("HK" $! e' _ (Const 4294967295) 4294967295 with "[%] [-]"); [split; [exact Hk' | reflexivity]|].
-    iApply (plo_res_intro with "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli");
-      [lia | right; left; split; reflexivity | left; reflexivity | lia | intros _; left; split; reflexivity].
+  intros. iIntros "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli HK".
+  iApply (wp_long_join_miss_arg ks e G T fp dom M se sereg mid av ar ps q sq po so pfx sp cur s i n lonly pe oo a li F b r os Φ with "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
+    try eassumption.
+  iIntros (e' l rv x Hk) "H". iApply ("HK" with "[%] [H]"); [exact Hk | by iApply plo_res_arg_old].
 Qed.
 
 End miss.

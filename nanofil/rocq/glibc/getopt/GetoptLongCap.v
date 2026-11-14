@@ -112,4 +112,23 @@ Proof.
   - iPureIntro. cbn. lia.
 Qed.
 
+(** A caller that knows which entry chose the argument needs the
+    capability of that same pointer. The lemma below gives it when the
+    parser started from a null argument. *)
+Lemma plo_arg_capped_null ps i cur s a' (ar : region) :
+  a' = null \/ a' = ptr_add cur (Z.of_nat (eq_len s) + 1) \/ a' = nth (Z.to_nat (i + 1)) ps null ->
+  word_string DfracDiscarded cur s -∗ argv_strs ps -∗
+  (∃ ra, live_capq DfracDiscarded (ptr_cap a') ra) ∗ ⌜0 <= ptr_addr a' < 2 ^ 64⌝.
+Proof.
+  intros Ha. iIntros "#Hws #Hs". destruct Ha as [-> | [-> | ->]].
+  - iSplit; [by iExists ar | iPureIntro; cbn; lia].
+  - iDestruct (ws_shape with "Hws") as %(_ & Hc0 & Hce). pose proof (eq_len_le s).
+    iDestruct (argv_str_cap with "Hws") as (rc) "[Hcc _]".
+    iSplitL "Hcc"; [by iExists rc|]. iPureIntro. unfold ptr_add; cbn. lia.
+  - destruct (Nat.lt_ge_cases (Z.to_nat (i + 1)) (List.length ps)) as [Hlt | Hge].
+    + iDestruct (argv_strs_cap ps (Z.to_nat (i + 1)) Hlt with "Hs") as (rn) "[Hcn %Hn]".
+      iSplitL "Hcn"; [by iExists rn | done].
+    + rewrite (nth_overflow ps null Hge). iSplit; [by iExists ar | iPureIntro; cbn; lia].
+Qed.
+
 End cap.

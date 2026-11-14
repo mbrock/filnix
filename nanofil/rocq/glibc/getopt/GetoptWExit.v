@@ -99,6 +99,52 @@ Definition w_ret_exits (b : Z) (r : region) (av : Z) (ar : region) (ps : list pt
       live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
       Φ (Ret (WInt (if sbyte so 0 =? 58 then 58 else 63)))).
 
+(** The same three cases can also hand the caller the relation that
+    names the entry behind the argument, in both cases where the parser
+    runs. *)
+Definition w_ret_exits_arg (b : Z) (r : region) (av : Z) (ar : region) (ps : list ptr) (los : list lopt) (li : ptr)
+    (F : list ptr) (G M : iProp Σ) (i n c : Z) (a : ptr) (so : list Z) (q : ptr) (sq : list Z) (k0 : nat)
+    (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
+  (∀ x i' oo' a' c',
+      ⌜sbyte sq (S k0) <> 0 /\
+        plo_ret_case ps i n (ptr_add q (Z.of_nat (S k0))) (drop (S k0) sq) null los x i' a' c' /\
+        plo_arg_case ps i n (ptr_add q (Z.of_nat (S k0))) (drop (S k0) sq) null los x i' a'⌝ -∗
+      live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+      (live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+         getopt_session b r av ar ps i') -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
+      Φ (Ret (WInt x))) ∧
+   (∀ s2 x i' oo' a' c',
+      ⌜sbyte sq (S k0) = 0 /\ i + 1 < n /\
+        plo_ret_case ps (i + 1) n (nth (Z.to_nat (i + 1)) ps null) s2 null los x i' a' c' /\
+        plo_arg_case ps (i + 1) n (nth (Z.to_nat (i + 1)) ps null) s2 null los x i' a'⌝ -∗
+      word_string DfracDiscarded (nth (Z.to_nat (i + 1)) ps null) s2 -∗
+      live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+      (live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+         getopt_session b r av ar ps i') -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
+      Φ (Ret (WInt x))) ∧
+   (⌜sbyte sq (S k0) = 0 /\ (i + 1)%Z = n⌝ -∗
+      live b r -∗ int_cell b 0 n -∗ int_cell b 8 c -∗ pcell b 16 a -∗ pcell b 32 (ptr_add q (Z.of_nat (S k0))) -∗
+      (live b r -∗ int_cell b 0 n -∗ int_cell b 8 c -∗ pcell b 16 a -∗ pcell b 32 (ptr_add q (Z.of_nat (S k0))) -∗
+         getopt_session b r av ar ps n) -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
+      Φ (Ret (WInt (if sbyte so 0 =? 58 then 58 else 63)))).
+
+(** A caller that handles the three cases without the relation also
+    handles them with it. *)
+Lemma w_ret_exits_weaken b r av ar ps los li F (G M : iProp Σ) i n c a so q sq k0 Φ :
+  w_ret_exits b r av ar ps los li F G M i n c a so q sq k0 Φ ⊢
+  w_ret_exits_arg b r av ar ps los li F G M i n c a so q sq k0 Φ.
+Proof.
+  iIntros "H". unfold w_ret_exits, w_ret_exits_arg. iSplit; [|iSplit].
+  - iIntros (x i' oo' a' c' (Hs & Hp & _)). iDestruct "H" as "[H _]".
+    iApply ("H" $! x i' oo' a' c' with "[%]"). exact (conj Hs Hp).
+  - iIntros (s2 x i' oo' a' c' (Hs & Hin & Hp & _)). iDestruct "H" as "[_ [H _]]".
+    iApply ("H" $! s2 x i' oo' a' c' with "[%]"). exact (conj Hs (conj Hin Hp)).
+  - iDestruct "H" as "[_ [_ H]]". iExact "H".
+Qed.
+
 (** ## One bridge for every W exit
 
     A proof for each place on its own would repeat the same steps three
@@ -107,9 +153,9 @@ Definition w_ret_exits (b : Z) (r : region) (av : Z) (ar : region) (ps : list pt
 
 (** This lemma finishes "-W" after getopt has read the letter at byte
     k0 of the word q. The caller says what happens in each of the three
-    cases. The step before kept the names in kc and kr and set v455 and
-    chk137. *)
-Lemma w_exit_bridge kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
+    cases, and it learns which entry chose the argument. The step before
+    kept the names in kc and kr and set v455 and chk137. *)
+Lemma w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
     (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
   incl char_ret_keys kc -> In (TAtom "v8") kc -> incl known_req_keys kr -> In (TAtom "v6") kr ->
   In (TAtom "v8") kr ->
@@ -147,7 +193,7 @@ Lemma w_exit_bridge kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 
   int_cell b 8 oo -∗ pcell b 16 a -∗ int_cell b 24 1 -∗ pcell b 32 (ptr_add (ptr_add q (Z.of_nat k0)) 1) -∗
   int_cell b 40 ord -∗ int_cell b 44 fst -∗ int_cell b 48 lst -∗
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
-  w_ret_exits b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
+  w_ret_exits_arg b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
     {{ Φ }}.
 Proof.
@@ -192,11 +238,60 @@ Proof.
   assert (Hc1' : ptr_add (ptr_add q (Z.of_nat k0)) 1 = ptr_add q (Z.of_nat (S k0))) by (rewrite wos_ptr_add; f_equal; lia).
   iEval (rewrite Ht1) in "Hib". iEval (rewrite Hc1') in "Hcur".
   iDestruct (ws_suffix p os (opt_skip os) (GetoptColon.opt_skip_le os) with "Hos") as "#Hpo".
-  iApply (wp_getopt_w_ret e3 (TAtom "L524") i n 87 pe (ptr_add p (Z.of_nat (opt_skip os))) (drop (opt_skip os) os)
+  iApply (wp_getopt_w_ret_arg e3 (TAtom "L524") i n 87 pe (ptr_add p (Z.of_nat (opt_skip os))) (drop (opt_skip os) os)
     oo a b r av ar ps G T fp dom se sereg mid M f138 f139 f140 f141 lmid mid3 mid4 lo los F pfx pxs q sq k0 li
     er ord fst lst Φ
     with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca HK");
     try (assumption || lia).
+Qed.
+
+(** The same bridge serves a caller that handles the cases without the relation. *)
+Lemma w_exit_bridge kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst
+    (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
+  incl char_ret_keys kc -> In (TAtom "v8") kc -> incl known_req_keys kr -> In (TAtom "v6") kr ->
+  In (TAtom "v8") kr ->
+  entry_env e1 n (mkPtr av (Obj av)) (ptr_add p (Z.of_nat (opt_skip os))) lo li lonly b pe ->
+  keeps kc e1 e2 -> keeps kr e2 e3 -> lookup (TAtom "v455") e2 = Some (WInt (chr_w (sbyte (drop k0 sq) 0))) ->
+  lookup (TAtom "chk137") e2 = Some (WPtr (mkPtr (b + 32) (Obj b))) -> sbyte (drop k0 sq) 0 = 87 ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z ->
+  ps !! Z.to_nat i = Some q -> (k0 < List.length sq)%nat ->
+  0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> 0 <= pe < 2 ^ 32 ->
+  0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
+  0 < av -> av mod 8 = 0 -> av + 8 * (n + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  0 <= ord <= 2 -> 0 <= fst <= lst -> lst <= i ->
+  opt_table lo los -∗ word_string DfracDiscarded q sq -∗ word_string DfracDiscarded p os -∗
+  word_string DfracDiscarded pfx pxs -∗ liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live b r -∗ int_cell b 0 (if sbyte (drop k0 sq) 1 =? 0 then i + 1 else i) -∗ int_cell b 4 er -∗
+  int_cell b 8 oo -∗ pcell b 16 a -∗ int_cell b 24 1 -∗ pcell b 32 (ptr_add (ptr_add q (Z.of_nat k0)) 1) -∗
+  int_cell b 40 ord -∗ int_cell b 44 fst -∗ int_cell b 48 lst -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
+  w_ret_exits b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
+  WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
+    {{ Φ }}.
+Proof.
+  intros. iIntros "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca HK".
+  iApply (w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca");
+    try eassumption.
+  iApply w_ret_exits_weaken. iExact "HK".
 Qed.
 
 (** ## The three W exits
@@ -281,7 +376,57 @@ Definition long_only_w_exit (n av : Z) (ar : region) (p : ptr) (os : list Z) (lo
 
 (** getopt is safe when it reads W in a resumed group. The caller lends
     the parser's resources and handles the three cases. It needs no proof
-    for the argument, because the argument is null. *)
+    for the argument, because the argument is null. The returns of the
+    parser keep the relation that names the entry behind the argument,
+    and the caller gets the string of the word. *)
+Lemma entry_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
+  incl char_ret_keys ks -> In (TAtom "v8") ks -> incl known_req_keys ks2 -> In (TAtom "v6") ks2 ->
+  In (TAtom "v8") ks2 ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 - 1 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  Z.of_nat (List.length ps) = n ->
+  opt_table lo los -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded p os -∗
+  liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗ argv_strs ps -∗
+  flags_own F -∗ M -∗ longind_own li -∗
+  (∀ s q sq k0, ⌜entry_resume_facts n av ar b r ps j s q sq k0⌝ -∗ word_string DfracDiscarded q sq -∗
+     w_ret_exits_arg b r av ar ps los li F G M j n 87 null (drop (opt_skip os) os) q sq k0 Φ) -∗
+  entry_w_exit n av ar p os lo li lonly b r ps j G ks ks2 Φ.
+Proof.
+  intros Hinc Hc8 Hinr Hr6 Hr8 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hn Hse0 Hsea Hsee Hser Hlen.
+  iIntros "#Ht #Hpfx #Hos #Hsl #Hsc #Hs HF HM Hli HK".
+  iIntros (e' e2 e3 s q sq k0 k (Hfacts & Henv & Hk2 & Hk3 & H455 & Hk & Hkw & H459 & H137 & H87 & H59 & Hlo))
+    "#Hwq #Hwc Hl Hib Her Hoo Hab Hini Hcur Hor Hfi Hla Ha Hcl HG".
+  pose proof Hfacts as (_ & Hind & Hini1 & Hord & Hbd & Hj & Hq & Hk0 & Hsk & Hnx & Hla' & Hb & Hal & Hend & Hr &
+    Hav & Hala & Hda & Hra).
+  rewrite Hkw in H87. unfold getopt_bounds in Hbd.
+  iDestruct "Her" as "[%Her0 Her]". iEval (rewrite Hnx) in "Hcur". iPoseProof arg_cap_null as "Hca".
+  iApply (w_exit_bridge_arg ks ks2 e' e2 e3 n av ar p os lo li lonly (print_errors os (gs_err s)) b r ps j q sq k0
+    (gs_opt s) null (gs_err s) (gs_order s) (gs_first s) (gs_last s) G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ
+    with "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib [Her] Hoo Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca [HK]");
+    try (assumption || lia || exact (print_errors_range os (gs_err s) Her0)).
+  - by iSplit.
+  - iApply ("HK" $! s q sq k0 with "[%] Hwq"). exact Hfacts.
+Qed.
+
+(** The same exit serves a caller that handles the cases without the relation. *)
 Lemma entry_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
   incl char_ret_keys ks -> In (TAtom "v8") ks -> incl known_req_keys ks2 -> In (TAtom "v6") ks2 ->
   In (TAtom "v8") ks2 ->
@@ -313,25 +458,66 @@ Lemma entry_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp d
      w_ret_exits b r av ar ps los li F G M j n 87 null (drop (opt_skip os) os) q sq k0 Φ) -∗
   entry_w_exit n av ar p os lo li lonly b r ps j G ks ks2 Φ.
 Proof.
-  intros Hinc Hc8 Hinr Hr6 Hr8 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hn Hse0 Hsea Hsee Hser Hlen.
-  iIntros "#Ht #Hpfx #Hos #Hsl #Hsc #Hs HF HM Hli HK".
-  iIntros (e' e2 e3 s q sq k0 k (Hfacts & Henv & Hk2 & Hk3 & H455 & Hk & Hkw & H459 & H137 & H87 & H59 & Hlo))
-    "#Hwq #Hwc Hl Hib Her Hoo Hab Hini Hcur Hor Hfi Hla Ha Hcl HG".
-  pose proof Hfacts as (_ & Hind & Hini1 & Hord & Hbd & Hj & Hq & Hk0 & Hsk & Hnx & Hla' & Hb & Hal & Hend & Hr &
-    Hav & Hala & Hda & Hra).
-  rewrite Hkw in H87. unfold getopt_bounds in Hbd.
-  iDestruct "Her" as "[%Her0 Her]". iEval (rewrite Hnx) in "Hcur". iPoseProof arg_cap_null as "Hca".
-  iApply (w_exit_bridge ks ks2 e' e2 e3 n av ar p os lo li lonly (print_errors os (gs_err s)) b r ps j q sq k0
-    (gs_opt s) null (gs_err s) (gs_order s) (gs_first s) (gs_last s) G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ
-    with "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib [Her] Hoo Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca [HK]");
-    try (assumption || lia || exact (print_errors_range os (gs_err s) Her0)).
-  - by iSplit.
-  - iApply ("HK" $! s q sq k0). iPureIntro. exact Hfacts.
+  intros. iIntros "Ht Hpfx Hos Hsl Hsc Hs HF HM Hli HK".
+  iApply (entry_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hpfx Hos Hsl Hsc Hs HF HM Hli");
+    try eassumption.
+  iIntros (s q sq k0 Hf) "_". iApply w_ret_exits_weaken. iApply ("HK" $! s q sq k0 with "[%]"). exact Hf.
 Qed.
 
-(** A new cluster that starts with W is safe. The word is the one the
-    scan found, at index i' of the reordered vector, and the W is its
-    second byte. The argument is null there as well. *)
+(** A new cluster that starts with W is safe. The word is the one that
+    the scan found, and the W is its second byte. The argument is null
+    there as well, and each return of the parser says which entry chose
+    the argument. *)
+Lemma scan_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
+  incl char_ret_keys ks -> In (TAtom "v8") ks -> incl known_req_keys ks2 -> In (TAtom "v6") ks2 ->
+  In (TAtom "v8") ks2 ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> n < 2 ^ 31 - 1 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  opt_table lo los -∗ word_string DfracDiscarded pfx pxs -∗ word_string DfracDiscarded p os -∗
+  flags_own F -∗ M -∗ longind_own li -∗
+  (∀ s s' w ps' i' f' l', ⌜scan_cluster_facts n av ar b r ps j s s' w ps' i' f' l'⌝ -∗
+     word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
+     w_ret_exits_arg b r av ar ps' los li F G M i' n 87 null (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) -∗
+  scan_w_exit n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ.
+Proof.
+  intros Hinc Hc8 Hinr Hr6 Hr8 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hn Hse0 Hsea Hsee Hser.
+  iIntros "#Ht #Hpfx #Hos HF HM Hli HK".
+  iIntros (e1 e2 e3 s s' w ps' i' f' l' k (Hfacts & Henv & Hk2 & Hk3 & H455 & Hk & Hkw & H459 & H137 & H87 & H59 & Hlo))
+    "#Hws Hl Hib Her Hoo Hab Hini Hcur Hor Hfi Hla #Hsl #Hsc Ha Hcl #Hs HG".
+  pose proof Hfacts as (Hst & Hj & Hini1 & Hord & Harg & Hp & Hlen & Hfl' & Hli' & Hii & Hw0 & Hw1 & Hb & Hal & Hend &
+    Hr & Hav & Hala & Hda & Hra).
+  rewrite Hkw in H87. pose proof (sbyte_in_len w 1 Hw1) as Hlw.
+  assert (Hnq : ps' !! Z.to_nat i' = Some (nth (Z.to_nat i') ps' null)).
+  { destruct (lookup_lt_is_Some_2 ps' (Z.to_nat i')) as [q Hq]; [lia|]. by rewrite (nth_lookup_Some _ _ _ _ Hq). }
+  iDestruct "Her" as "[%Her0 Her]". rewrite (GetoptScanChar.entry_state_err _ _ Hst) in Her0.
+  iPoseProof arg_cap_null as "Hca".
+  iApply (w_exit_bridge_arg ks ks2 e1 e2 e3 n av ar p os lo li lonly (print_errors os (gs_err s)) b r ps' i'
+    (nth (Z.to_nat i') ps' null) w 1 (gs_opt s') null (gs_err s') (gs_order s') f' l' G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ
+    with "Ht Hws Hos Hpfx Hsl Hsc Hl Hib [Her] Hoo Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca [HK]");
+    try (assumption || lia || exact (print_errors_range os (gs_err s) Her0)).
+  - rewrite (GetoptScanChar.entry_state_err _ _ Hst). by iSplit.
+  - iApply ("HK" $! s s' w ps' i' f' l' with "[%] Hws Hs"). exact Hfacts.
+Qed.
+
+(** The same exit serves a caller that handles the cases without the relation. *)
 Lemma scan_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ :
   incl char_ret_keys ks -> In (TAtom "v8") ks -> incl known_req_keys ks2 -> In (TAtom "v6") ks2 ->
   In (TAtom "v8") ks2 ->
@@ -362,23 +548,11 @@ Lemma scan_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp do
      w_ret_exits b r av ar ps' los li F G M i' n 87 null (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) -∗
   scan_w_exit n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ.
 Proof.
-  intros Hinc Hc8 Hinr Hr6 Hr8 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hn Hse0 Hsea Hsee Hser.
-  iIntros "#Ht #Hpfx #Hos HF HM Hli HK".
-  iIntros (e1 e2 e3 s s' w ps' i' f' l' k (Hfacts & Henv & Hk2 & Hk3 & H455 & Hk & Hkw & H459 & H137 & H87 & H59 & Hlo))
-    "#Hws Hl Hib Her Hoo Hab Hini Hcur Hor Hfi Hla #Hsl #Hsc Ha Hcl #Hs HG".
-  pose proof Hfacts as (Hst & Hj & Hini1 & Hord & Harg & Hp & Hlen & Hfl' & Hli' & Hii & Hw0 & Hw1 & Hb & Hal & Hend &
-    Hr & Hav & Hala & Hda & Hra).
-  rewrite Hkw in H87. pose proof (sbyte_in_len w 1 Hw1) as Hlw.
-  assert (Hnq : ps' !! Z.to_nat i' = Some (nth (Z.to_nat i') ps' null)).
-  { destruct (lookup_lt_is_Some_2 ps' (Z.to_nat i')) as [q Hq]; [lia|]. by rewrite (nth_lookup_Some _ _ _ _ Hq). }
-  iDestruct "Her" as "[%Her0 Her]". rewrite (GetoptScanChar.entry_state_err _ _ Hst) in Her0.
-  iPoseProof arg_cap_null as "Hca".
-  iApply (w_exit_bridge ks ks2 e1 e2 e3 n av ar p os lo li lonly (print_errors os (gs_err s)) b r ps' i'
-    (nth (Z.to_nat i') ps' null) w 1 (gs_opt s') null (gs_err s') (gs_order s') f' l' G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ
-    with "Ht Hws Hos Hpfx Hsl Hsc Hl Hib [Her] Hoo Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca [HK]");
-    try (assumption || lia || exact (print_errors_range os (gs_err s) Her0)).
-  - rewrite (GetoptScanChar.entry_state_err _ _ Hst). by iSplit.
-  - iApply ("HK" $! s s' w ps' i' f' l' with "[%] Hws Hs"). exact Hfacts.
+  intros. iIntros "Ht Hpfx Hos HF HM Hli HK".
+  iApply (scan_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hpfx Hos HF HM Hli");
+    try eassumption.
+  iIntros (s s' w ps' i' f' l' Hf) "Hws Hs". iApply w_ret_exits_weaken.
+  iApply ("HK" $! s s' w ps' i' f' l' with "[%] Hws Hs"). exact Hf.
 Qed.
 
 (** In long-only mode, getopt first gives "-Wfoo" to the long-option

@@ -361,6 +361,7 @@ getopt/GetoptWRet.v
 getopt/GetoptWExit.v
 getopt/GetoptCallParse.v
 getopt/GetoptWrapParse.v
+getopt/GetoptLongStr.v
 hello/HelloGlibcMainLoop.v
 libio/LibioCleanupLock.v
 libio/LibioXsputnReset.v

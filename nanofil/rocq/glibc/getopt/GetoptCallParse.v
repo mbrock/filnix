@@ -155,6 +155,107 @@ Definition call_parse_rets (n av : Z) (ar : region) (p : ptr) (os : list Z) (li 
          getopt_session b r av ar ps i') -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))).
 
+(** A caller that reads the argument needs more from some returns. In
+    the form below, a long return also says which entry chose the
+    argument. A long return and a short return also give the string of
+    the word that the argument comes from. *)
+Definition call_parse_rets_arg (n av : Z) (ar : region) (p : ptr) (os : list Z) (li : ptr) (lonly b : Z) (r : region)
+    (ps : list ptr) (j : Z) (G : iProp Σ) (se : Z) (sereg : region) (fp : ptr) (los : list lopt) (F : list ptr)
+    (M : iProp Σ) (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
+  (∀ s s' ps' x i' a', ⌜entry_state s s' /\ gs_ind s = j /\ Permutation ps ps' /\
+        scan_ret_case n (gs_ind s') (gs_order s') ps' x i' a'⌝ -∗
+      live b r -∗ int_cell b 0 i' -∗ int_cell b 8 (gs_opt s') -∗ pcell b 16 a' -∗ pcell b 32 (gs_next s') -∗
+      (live b r -∗ int_cell b 0 i' -∗ int_cell b 8 (gs_opt s') -∗ pcell b 16 a' -∗ pcell b 32 (gs_next s') -∗
+         getopt_session b r av ar ps' i') -∗
+      liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ arg_cap a' -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))) ∧
+  (∀ s s' w ps' i' f' l' x i'' oo' a' c',
+     ⌜scan_cluster_facts n av ar b r ps j s s' w ps' i' f' l' /\ sbyte w 1 = 45 /\
+       plo_ret_case ps' i' n (ptr_add (nth (Z.to_nat i') ps' null) 2) (drop 2 w) null los x i'' a' c' /\
+       plo_arg_case ps' i' n (ptr_add (nth (Z.to_nat i') ps' null) 2) (drop 2 w) null los x i'' a'⌝ -∗
+     word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+     (live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+        getopt_session b r av ar ps' i'') -∗
+     liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+     live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
+     arg_cap a' -∗ Φ (Ret (WInt x))) ∧
+  (∀ s s' w ps' i' f' l' x i'' oo' a' c',
+      ⌜scan_cluster_facts n av ar b r ps j s s' w ps' i' f' l' /\ lonly mod 2 ^ 32 <> 0 /\ sbyte w 1 <> 45 /\
+        x <> 4294967295 /\
+        plo_ret_case ps' i' n (ptr_add (nth (Z.to_nat i') ps' null) 1) (drop 1 w) null los x i'' a' c'⌝ -∗
+      live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+      (live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+         getopt_session b r av ar ps' i'') -∗
+      liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
+      arg_cap a' -∗ Φ (Ret (WInt x))) ∧
+  (∀ s s' w ps' i' f' l' oo' a' x i'' oo'' a'' c'',
+      ⌜scan_cluster_facts n av ar b r ps j s s' w ps' i' f' l' /\ lonly mod 2 ^ 32 <> 0 /\ sbyte w 1 <> 45 /\
+        (a' = null \/ a' = ptr_add (ptr_add (nth (Z.to_nat i') ps' null) 1) (Z.of_nat (eq_len (drop 1 w)) + 1) \/
+         a' = nth (Z.to_nat (i' + 1)) ps' null) /\
+        char_ret_case ps' n i' oo' (ptr_add (nth (Z.to_nat i') ps' null) 1) a' (drop 1 w)
+          (drop (opt_skip os) os) x i'' oo'' a'' c''⌝ -∗
+      live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo'' -∗ pcell b 16 a'' -∗ pcell b 32 c'' -∗
+      (live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo'' -∗ pcell b 16 a'' -∗ pcell b 32 c'' -∗
+         getopt_session b r av ar ps' i'') -∗
+      liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
+      arg_cap a'' -∗ Φ (Ret (WInt x))) ∧
+  (∀ s s' w ps' i' f' l' a',
+     ⌜scan_cluster_facts n av ar b r ps j s s' w ps' i' f' l' /\ lonly mod 2 ^ 32 <> 0 /\ sbyte w 1 <> 45 /\
+       (a' = null \/ a' = ptr_add (ptr_add (nth (Z.to_nat i') ps' null) 1) (Z.of_nat (eq_len (drop 1 w)) + 1) \/
+        a' = nth (Z.to_nat (i' + 1)) ps' null)⌝ -∗
+     word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
+     w_ret_exits b r av ar ps' los li F G M i' n 87 a' (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) ∧
+  (∀ s s' w ps' i' f' l' x i'' oo' a' c',
+      ⌜scan_cluster_facts n av ar b r ps j s s' w ps' i' f' l' /\
+        char_ret_case ps' n i' (gs_opt s') (ptr_add (nth (Z.to_nat i') ps' null) 1) null (drop 1 w)
+          (drop (opt_skip os) os) x i'' oo' a' c'⌝ -∗
+      word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+      (live b r -∗ int_cell b 0 i'' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+         getopt_session b r av ar ps' i'') -∗
+      liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ arg_cap a' -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))) ∧
+  (∀ s s' w ps' i' f' l', ⌜scan_cluster_facts n av ar b r ps j s s' w ps' i' f' l'⌝ -∗
+     word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
+     w_ret_exits_arg b r av ar ps' los li F G M i' n 87 null (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) ∧
+  (∀ s q sq k0, ⌜entry_resume_facts n av ar b r ps j s q sq k0⌝ -∗ word_string DfracDiscarded q sq -∗
+     w_ret_exits_arg b r av ar ps los li F G M j n 87 null (drop (opt_skip os) os) q sq k0 Φ) ∧
+  (∀ s q sq k0 x i' oo' a' c',
+      ⌜entry_resume_facts n av ar b r ps j s q sq k0 /\
+        char_ret_case ps n j (gs_opt s) (gs_next s) null (drop k0 sq) (drop (opt_skip os) os) x i' oo' a' c'⌝ -∗
+      word_string DfracDiscarded q sq -∗ live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+      (live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+         getopt_session b r av ar ps i') -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))).
+
+(** A caller that handles the nine kinds without the relation also
+    handles them with it. *)
+Lemma call_parse_rets_weaken n av ar p os li lonly b r ps j (G : iProp Σ) se sereg fp los F (M : iProp Σ) Φ :
+  call_parse_rets n av ar p os li lonly b r ps j G se sereg fp los F M Φ ⊢
+  call_parse_rets_arg n av ar p os li lonly b r ps j G se sereg fp los F M Φ.
+Proof.
+  iIntros "H". unfold call_parse_rets, call_parse_rets_arg.
+  iSplit; [iDestruct "H" as "(H & _)"; iExact "H"|].
+  iSplit.
+  { iDestruct "H" as "(_ & H & _)". iIntros (s s' w ps' i' f' l' x i'' oo' a' c' (Hf & H45 & Hc & _)) "_".
+    iApply ("H" $! s s' w ps' i' f' l' x i'' oo' a' c' with "[%]"). exact (conj Hf (conj H45 Hc)). }
+  iSplit; [iDestruct "H" as "(_ & _ & H & _)"; iExact "H"|].
+  iSplit; [iDestruct "H" as "(_ & _ & _ & H & _)"; iExact "H"|].
+  iSplit; [iDestruct "H" as "(_ & _ & _ & _ & H & _)"; iExact "H"|].
+  iSplit.
+  { iDestruct "H" as "(_ & _ & _ & _ & _ & H & _)". iIntros (s s' w ps' i' f' l' x i'' oo' a' c' Hc) "_".
+    iApply ("H" $! s s' w ps' i' f' l' x i'' oo' a' c' with "[%]"). exact Hc. }
+  iSplit.
+  { iDestruct "H" as "(_ & _ & _ & _ & _ & _ & H & _)". iIntros (s s' w ps' i' f' l' Hf) "Hws Hs".
+    iApply w_ret_exits_weaken. iApply ("H" $! s s' w ps' i' f' l' with "[%] Hws Hs"). exact Hf. }
+  iSplit.
+  { iDestruct "H" as "(_ & _ & _ & _ & _ & _ & _ & H & _)". iIntros (s q sq k0 Hf) "_".
+    iApply w_ret_exits_weaken. iApply ("H" $! s q sq k0 with "[%]"). exact Hf. }
+  iDestruct "H" as "(_ & _ & _ & _ & _ & _ & _ & _ & H)". iIntros (s q sq k0 x i' oo' a' c' Hc) "_".
+  iApply ("H" $! s q sq k0 x i' oo' a' c' with "[%]"). exact Hc.
+Qed.
+
 (** ## One rule for the call
 
     The rule below starts at the call of the parser and ends at one of
@@ -165,8 +266,91 @@ Definition call_parse_rets (n av : Z) (ar : region) (p : ptr) (os : list Z) (li 
     only one path runs. *)
 
 (** A call of the parser is safe, and it ends in one of the returns of
-    [call_parse_rets]. The count of words must stay below 2^31 - 1, and
+    [call_parse_rets_arg]. The count of words must stay below 2^31 - 1, and
     the option table must not use -1 as a value with a null flag. *)
+Lemma wp_getopt_call_parse_arg cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom se sereg mid mid'
+    pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ :
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
+  call_frame glibc_getopt_internal_r
+    [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
+  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some pfx7 ->
+  lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx0 ->
+  getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
+  getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
+  lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) los -> (List.length los < 2 ^ 31)%Z -> no_neg1_val los ->
+  0 <= lonly < 2 ^ 32 -> Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
+  liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ word_string DfracDiscarded pdd sdd -∗
+  opt_table lo los -∗ word_string DfracDiscarded pfx7 pxs7 -∗ word_string DfracDiscarded pfx0 pxs0 -∗
+  flags_own F -∗ M -∗ longind_own li -∗
+  call_parse_rets_arg n av ar p os li lonly b r ps j G se sereg fp los F M Φ -∗
+  WP (ERun cf : gexpr) {{ Φ }}.
+Proof.
+  intros Hgc Hdd Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hgp Hp7 Hp0 Hcut Hmal Hset Hlrule Hfree Hgsn Hgl
+    H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlo Hlen Hn Hse0 Hsea Hsee Hser.
+  iIntros "Hpre #Hos HG #Hsl #Hsc Ha Hcl #Hs #Hdd #Ht #Hp7 #Hp0 HF HM Hli HK".
+  unfold call_parse_rets_arg.
+  iApply (wp_getopt_entry_dispatch_ws call_char_keys call_req_keys entry_scan_keys entry_scan_keys cf n av ar p os lo li
+            lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd Φ
+            with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd [-]"); try call_keys; try assumption.
+  iSplit.
+  { iDestruct "HK" as "(H1 & _)". iIntros (s s' ps' x i' a' Hc) "Hl Hi Ho Hab Hcur Hw _ _ Ha Hcl Hs' HG Hca".
+    iApply ("H1" with "[%] Hl Hi Ho Hab Hcur Hw Hsl Hsc Ha Hcl Hs' HG Hca HF HM Hli"). exact Hc. }
+  iSplit; [iSplit|].
+  - unfold scan_long_exits. iSplit.
+    + iDestruct "HK" as "(_ & H2 & _)".
+      iApply (scan_dash_exit_arg entry_scan_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg
+                f138 f139 f140 f141 lmid mid3 mid4 pdd sdd los F Φ with "Ht Hdd Hos HF HM Hli H2");
+        try call_keys; try assumption.
+    + iApply (scan_long_only_exit entry_scan_keys entry_scan_keys n av ar p os lo li lonly b r ps j G T fp dom M
+                se sereg f138 f139 f140 f141 lmid mid3 mid4 pfx7 pxs7 los F Φ with "Ht Hp7 Hos HF HM Hli [HK]");
+        try call_keys; try assumption.
+      iSplit; [iDestruct "HK" as "(_ & _ & H3 & _)"; iExact "H3" |].
+      iApply (long_only_fallback_char entry_scan_keys entry_scan_keys call_char_keys call_req_keys n av ar p os lo li
+                lonly b r ps j G T fp dom se sereg mid mid' F M Φ with "Hos [HK]"); try call_keys; try assumption.
+      unfold long_only_short_exits. iSplit; [|iDestruct "HK" as "(_ & _ & _ & H4 & _)"; iExact "H4"].
+      iDestruct "HK" as "(_ & _ & _ & _ & H5 & _)".
+      iApply (long_only_w_ret call_char_keys call_req_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid
+                f138 f139 f140 f141 lmid mid3 mid4 los F pfx0 pxs0 Φ with "Ht Hp0 Hos H5"); try call_keys; try assumption.
+  - unfold scan_char_exits. iSplit.
+    + iDestruct "HK" as "(_ & _ & _ & _ & _ & _ & H7 & _)".
+      iApply (scan_w_ret_arg call_char_keys call_req_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid
+                f138 f139 f140 f141 lmid mid3 mid4 los F pfx0 pxs0 Φ with "Ht Hp0 Hos HF HM Hli H7");
+        try call_keys; try assumption.
+    + iDestruct "HK" as "(_ & _ & _ & _ & _ & H6 & _)".
+      iIntros (s s' w ps' i' f' l' x i'' oo' a' c' Hc) "Hws Hl Hi Ho Hab Hcur Hw _ _ Ha Hcl Hs' HG Hca".
+      iApply ("H6" with "[%] Hws Hl Hi Ho Hab Hcur Hw Hsl Hsc Ha Hcl Hs' HG Hca HF HM Hli"). exact Hc.
+  - iSplit.
+    + iDestruct "HK" as "(_ & _ & _ & _ & _ & _ & _ & H8 & _)".
+      iApply (entry_w_ret_arg call_char_keys call_req_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid
+                f138 f139 f140 f141 lmid mid3 mid4 los F pfx0 pxs0 Φ with "Ht Hp0 Hos Hsl Hsc Hs HF HM Hli H8");
+        try call_keys; try assumption.
+    + iDestruct "HK" as "(_ & _ & _ & _ & _ & _ & _ & _ & H9)".
+      iIntros (s q sq k0 x i' oo' a' c' Hc) "Hwq Hl Hi Ho Hab Hcur Hw Ha Hcl HG Hca".
+      iApply ("H9" with "[%] Hwq Hl Hi Ho Hab Hcur Hw Ha Hcl HG Hca HF HM Hli"). exact Hc.
+Qed.
+
+(** Callers that need neither the entry nor the string use this rule. *)
 Lemma wp_getopt_call_parse cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom se sereg mid mid'
     pdd sdd (M : iProp Σ) f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ :
   find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
@@ -205,48 +389,10 @@ Lemma wp_getopt_call_parse cf n av ar p os lo li lonly pc penv b r ps j (G : iPr
   call_parse_rets n av ar p os li lonly b r ps j G se sereg fp los F M Φ -∗
   WP (ERun cf : gexpr) {{ Φ }}.
 Proof.
-  intros Hgc Hdd Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hgp Hp7 Hp0 Hcut Hmal Hset Hlrule Hfree Hgsn Hgl
-    H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlo Hlen Hn Hse0 Hsea Hsee Hser.
-  iIntros "Hpre #Hos HG #Hsl #Hsc Ha Hcl #Hs #Hdd #Ht #Hp7 #Hp0 HF HM Hli HK".
-  unfold call_parse_rets.
-  iApply (wp_getopt_entry_dispatch call_char_keys call_req_keys entry_scan_keys entry_scan_keys cf n av ar p os lo li
-            lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd Φ
-            with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd [-]"); try call_keys; try assumption.
-  iSplit.
-  { iDestruct "HK" as "(H1 & _)". iIntros (s s' ps' x i' a' Hc) "Hl Hi Ho Hab Hcur Hw _ _ Ha Hcl Hs' HG Hca".
-    iApply ("H1" with "[%] Hl Hi Ho Hab Hcur Hw Hsl Hsc Ha Hcl Hs' HG Hca HF HM Hli"). exact Hc. }
-  iSplit; [iSplit|].
-  - unfold scan_long_exits. iSplit.
-    + iDestruct "HK" as "(_ & H2 & _)".
-      iApply (scan_dash_exit entry_scan_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg
-                f138 f139 f140 f141 lmid mid3 mid4 pdd sdd los F Φ with "Ht Hdd Hos HF HM Hli H2");
-        try call_keys; try assumption.
-    + iApply (scan_long_only_exit entry_scan_keys entry_scan_keys n av ar p os lo li lonly b r ps j G T fp dom M
-                se sereg f138 f139 f140 f141 lmid mid3 mid4 pfx7 pxs7 los F Φ with "Ht Hp7 Hos HF HM Hli [HK]");
-        try call_keys; try assumption.
-      iSplit; [iDestruct "HK" as "(_ & _ & H3 & _)"; iExact "H3" |].
-      iApply (long_only_fallback_char entry_scan_keys entry_scan_keys call_char_keys call_req_keys n av ar p os lo li
-                lonly b r ps j G T fp dom se sereg mid mid' F M Φ with "Hos [HK]"); try call_keys; try assumption.
-      unfold long_only_short_exits. iSplit; [|iDestruct "HK" as "(_ & _ & _ & H4 & _)"; iExact "H4"].
-      iDestruct "HK" as "(_ & _ & _ & _ & H5 & _)".
-      iApply (long_only_w_ret call_char_keys call_req_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid
-                f138 f139 f140 f141 lmid mid3 mid4 los F pfx0 pxs0 Φ with "Ht Hp0 Hos H5"); try call_keys; try assumption.
-  - unfold scan_char_exits. iSplit.
-    + iDestruct "HK" as "(_ & _ & _ & _ & _ & _ & H7 & _)".
-      iApply (scan_w_ret call_char_keys call_req_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid
-                f138 f139 f140 f141 lmid mid3 mid4 los F pfx0 pxs0 Φ with "Ht Hp0 Hos HF HM Hli H7");
-        try call_keys; try assumption.
-    + iDestruct "HK" as "(_ & _ & _ & _ & _ & H6 & _)".
-      iIntros (s s' w ps' i' f' l' x i'' oo' a' c' Hc) "Hl Hi Ho Hab Hcur Hw _ _ Ha Hcl Hs' HG Hca".
-      iApply ("H6" with "[%] Hl Hi Ho Hab Hcur Hw Hsl Hsc Ha Hcl Hs' HG Hca HF HM Hli"). exact Hc.
-  - iSplit.
-    + iDestruct "HK" as "(_ & _ & _ & _ & _ & _ & _ & H8 & _)".
-      iApply (entry_w_ret call_char_keys call_req_keys n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid
-                f138 f139 f140 f141 lmid mid3 mid4 los F pfx0 pxs0 Φ with "Ht Hp0 Hos Hsl Hsc Hs HF HM Hli H8");
-        try call_keys; try assumption.
-    + iDestruct "HK" as "(_ & _ & _ & _ & _ & _ & _ & _ & H9)".
-      iIntros (s q sq k0 x i' oo' a' c' Hc) "Hl Hi Ho Hab Hcur Hw Ha Hcl HG Hca".
-      iApply ("H9" with "[%] Hl Hi Ho Hab Hcur Hw Ha Hcl HG Hca HF HM Hli"). exact Hc.
+  intros. iIntros "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli HK".
+  iApply (wp_getopt_call_parse_arg cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli");
+    try eassumption.
+  iApply call_parse_rets_weaken. iExact "HK".
 Qed.
 
 End call_parse.

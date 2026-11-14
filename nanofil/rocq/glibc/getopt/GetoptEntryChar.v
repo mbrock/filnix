@@ -131,7 +131,90 @@ Definition entry_scan_exit (n av : Z) (ar : region) (p : ptr) (os : list Z) (lo 
     way that [char_ret_case] lists. The entry blocks clear the argument
     before the step, so the caller needs no evidence for it. The count of
     words must stay below 2^31 - 1, so that a step by two still fits in
-    the index. *)
+    the index. A return after a resumed character also gives the string
+    of the word. *)
+Lemma wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom
+    se sereg mid mid' Φ :
+  avoids ks char_names = true -> incl char_ret_keys ks ->
+  avoids ks2 opt_names = true -> avoids ks2 req_names = true -> avoids ks2 diag_names = true ->
+  avoids ks2 ret_names = true -> incl known_req_keys ks2 ->
+  call_frame glibc_getopt_internal_r
+    [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
+  GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  getopt_diag_rule w0 registry ge G T fp dom ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
+  lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
+  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  Z.of_nat (List.length ps) = n -> n < 2 ^ 31 - 1 ->
+  0 < se -> se mod 8 = 0 -> se + 8 <= r_end sereg -> r_end sereg <= 2 ^ 48 ->
+  getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
+  liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗
+  live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗
+  ((liveq DfracDiscarded se sereg -∗ pcellq DfracDiscarded se 0 fp -∗ live av ar -∗ argv_cells av ps -∗
+      entry_scan_exit n av ar p os lo li lonly b r ps j G Φ) ∧
+   (∀ e' e2 e3 s q sq k0 k,
+      ⌜entry_resume_facts n av ar b r ps j s q sq k0 /\
+        entry_env e' n (mkPtr av (Obj av)) (ptr_add p (Z.of_nat (opt_skip os))) lo li lonly b
+          (print_errors os (gs_err s)) /\
+        keeps ks e' e2 /\ keeps ks2 e2 e3 /\ lookup (TAtom "v455") e2 = Some (WInt (chr_w (sbyte (drop k0 sq) 0))) /\
+        (k < List.length (drop (opt_skip os) os))%nat /\ sbyte (drop (opt_skip os) os) k = sbyte (drop k0 sq) 0 /\
+        lookup (TAtom "v459") e2 = Some (WPtr (ptr_add (ptr_add p (Z.of_nat (opt_skip os))) (Z.of_nat k))) /\
+        lookup (TAtom "chk137") e2 = Some (WPtr (mkPtr (b + 32) (Obj b))) /\
+        sbyte (drop (opt_skip os) os) k = 87 /\ sbyte (drop (opt_skip os) os) (S k) = 59 /\
+        ptr_addr lo mod 2 ^ 64 <> 0⌝ -∗
+      word_string DfracDiscarded q sq -∗ word_string DfracDiscarded (gs_next s) (drop k0 sq) -∗
+      live b r -∗ int_cell b 0 (if sbyte (drop k0 sq) 1 =? 0 then j + 1 else j) -∗ int_cell b 4 (gs_err s) -∗
+      int_cell b 8 (gs_opt s) -∗ pcell b 16 null -∗ int_cell b 24 1 -∗ pcell b 32 (ptr_add (gs_next s) 1) -∗
+      int_cell b 40 (gs_order s) -∗ int_cell b 44 (gs_first s) -∗ int_cell b 48 (gs_last s) -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗
+      WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
+        {{ Φ }}) ∧
+   (∀ s q sq k0 x i' oo' a' c',
+      ⌜entry_resume_facts n av ar b r ps j s q sq k0 /\
+        char_ret_case ps n j (gs_opt s) (gs_next s) null (drop k0 sq) (drop (opt_skip os) os) x i' oo' a' c'⌝ -∗
+      word_string DfracDiscarded q sq -∗ live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+      (live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
+         getopt_session b r av ar ps i') -∗
+      live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
+  WP (ERun cf : gexpr) {{ Φ }}.
+Proof.
+  intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hlen Hn Hse0 Hsea Hsee Hser.
+  iIntros "Hpre #Hos HG Hsl Hsc Ha Hcl #Hs HK".
+  iApply (wp_getopt_entry_call cf n av ar p os lo li lonly pc penv b r ps j G Φ with "Hpre Hos HG [-]");
+    try assumption.
+  iSplit; [iDestruct "HK" as "[HK _]"; iApply ("HK" with "Hsl Hsc Ha Hcl") |].
+  iIntros (e' s q sq k0 Hf) "#Hq #Hws Hl Hib Her Hoob Hab Hini Hcur Hord Hfi Hla HG".
+  destruct Hf as (Henv & Hfacts).
+  pose proof Hfacts as (Hni & Hj & Hin & Hor & Hbd & Hjn & Hqj & Hk0 & Hsk & Hnx & Hla' & Hb & Hal & Hend & Hr &
+    Hav & Hala & Hda & Hra).
+  iDestruct "Her" as "[%Herr Her]".
+  iDestruct (ws_suffix p os (opt_skip os) (opt_skip_le os) with "Hos") as "#Hpo".
+  iPoseProof arg_cap_null as "Hnull".
+  assert (Ht0 : sbyte (drop k0 sq) 0 <> 0) by (rewrite sbyte_drop; [rewrite Nat.add_0_r; exact Hsk | lia]).
+  iApply (wp_getopt_char_ret ks ks2 e' (TAtom "L83") j n (print_errors os (gs_err s)) (gs_next s) (drop k0 sq)
+            (ptr_add p (Z.of_nat (opt_skip os))) (drop (opt_skip os) os) (gs_opt s) null lo li lonly b r av ar ps
+            G T fp dom se sereg mid mid' Φ
+            with "Hws Hpo Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG Hnull [-]");
+    try (assumption || lia || exact (print_errors_range os (gs_err s) Herr)).
+  iSplit.
+  - iDestruct "HK" as "[_ [HK _]]". iIntros (e2 e3 k Hp) "Hl Hib Hoob Hab Hcur Ha Hcl HG _".
+    iApply ("HK" $! e' e2 e3 s q sq k0 k with "[%] Hq Hws Hl Hib [Her] Hoob Hab Hini Hcur Hord Hfi Hla Ha Hcl HG");
+      [exact (conj Hfacts (conj Henv Hp)) | by iSplit].
+  - iDestruct "HK" as "[_ [_ HK]]". iIntros (x i' oo' a' c' Hc) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hca".
+    iApply ("HK" $! s q sq k0 x i' oo' a' c' with "[%] Hq Hl Hib Hoob Hab Hcur [Her Hini Hord Hfi Hla] Ha Hcl HG Hca");
+      [exact (conj Hfacts Hc) |].
+    iIntros "Hl Hib Hoob Hab Hcur". subst j.
+    iPoseProof (entry_resume_cursor n av ar b r ps (gs_ind s) s q sq k0 Hfacts Hlen with "Hq") as "Hcu".
+    iAssert (int_cell b 4 (gs_err s)) with "[Her]" as "Her"; [by iSplit|].
+    iAssert (int_cell b 24 (gs_initialized s)) with "[Hini]" as "Hini"; [by rewrite Hin|].
+    subst n.
+    iApply (char_ret_session b r av ar ps s (gs_opt s) (drop k0 sq) (drop (opt_skip os) os) x i' oo' null a' c'
+              with "Hcu Hws Hl Hib Her Hoob Hab Hini Hcur Hord Hfi Hla"); try (assumption || lia).
+Qed.
+
+(** The same call serves a caller that needs no string of the word. *)
 Lemma wp_getopt_entry_char ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) T fp dom
     se sereg mid mid' Φ :
   avoids ks char_names = true -> incl char_ret_keys ks ->
@@ -179,38 +262,13 @@ Lemma wp_getopt_entry_char ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
 Proof.
-  intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hlen Hn Hse0 Hsea Hsee Hser.
-  iIntros "Hpre #Hos HG Hsl Hsc Ha Hcl #Hs HK".
-  iApply (wp_getopt_entry_call cf n av ar p os lo li lonly pc penv b r ps j G Φ with "Hpre Hos HG [-]");
-    try assumption.
-  iSplit; [iDestruct "HK" as "[HK _]"; iApply ("HK" with "Hsl Hsc Ha Hcl") |].
-  iIntros (e' s q sq k0 Hf) "#Hq #Hws Hl Hib Her Hoob Hab Hini Hcur Hord Hfi Hla HG".
-  destruct Hf as (Henv & Hfacts).
-  pose proof Hfacts as (Hni & Hj & Hin & Hor & Hbd & Hjn & Hqj & Hk0 & Hsk & Hnx & Hla' & Hb & Hal & Hend & Hr &
-    Hav & Hala & Hda & Hra).
-  iDestruct "Her" as "[%Herr Her]".
-  iDestruct (ws_suffix p os (opt_skip os) (opt_skip_le os) with "Hos") as "#Hpo".
-  iPoseProof arg_cap_null as "Hnull".
-  assert (Ht0 : sbyte (drop k0 sq) 0 <> 0) by (rewrite sbyte_drop; [rewrite Nat.add_0_r; exact Hsk | lia]).
-  iApply (wp_getopt_char_ret ks ks2 e' (TAtom "L83") j n (print_errors os (gs_err s)) (gs_next s) (drop k0 sq)
-            (ptr_add p (Z.of_nat (opt_skip os))) (drop (opt_skip os) os) (gs_opt s) null lo li lonly b r av ar ps
-            G T fp dom se sereg mid mid' Φ
-            with "Hws Hpo Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG Hnull [-]");
-    try (assumption || lia || exact (print_errors_range os (gs_err s) Herr)).
-  iSplit.
-  - iDestruct "HK" as "[_ [HK _]]". iIntros (e2 e3 k Hp) "Hl Hib Hoob Hab Hcur Ha Hcl HG _".
-    iApply ("HK" $! e' e2 e3 s q sq k0 k with "[%] Hq Hws Hl Hib [Her] Hoob Hab Hini Hcur Hord Hfi Hla Ha Hcl HG");
-      [exact (conj Hfacts (conj Henv Hp)) | by iSplit].
-  - iDestruct "HK" as "[_ [_ HK]]". iIntros (x i' oo' a' c' Hc) "Hl Hib Hoob Hab Hcur Ha Hcl HG Hca".
-    iApply ("HK" $! s q sq k0 x i' oo' a' c' with "[%] Hl Hib Hoob Hab Hcur [Her Hini Hord Hfi Hla] Ha Hcl HG Hca");
-      [exact (conj Hfacts Hc) |].
-    iIntros "Hl Hib Hoob Hab Hcur". subst j.
-    iPoseProof (entry_resume_cursor n av ar b r ps (gs_ind s) s q sq k0 Hfacts Hlen with "Hq") as "Hcu".
-    iAssert (int_cell b 4 (gs_err s)) with "[Her]" as "Her"; [by iSplit|].
-    iAssert (int_cell b 24 (gs_initialized s)) with "[Hini]" as "Hini"; [by rewrite Hin|].
-    subst n.
-    iApply (char_ret_session b r av ar ps s (gs_opt s) (drop k0 sq) (drop (opt_skip os) os) x i' oo' null a' c'
-              with "Hcu Hws Hl Hib Her Hoob Hab Hini Hcur Hord Hfi Hla"); try (assumption || lia).
+  intros. iIntros "Hpre Hos HG Hsl Hsc Ha Hcl Hs HK".
+  iApply (wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' Φ with "Hpre Hos HG Hsl Hsc Ha Hcl Hs");
+    try eassumption.
+  iSplit; [iDestruct "HK" as "[H _]"; iExact "H"|].
+  iSplit; [iDestruct "HK" as "[_ [H _]]"; iExact "H"|].
+  iDestruct "HK" as "[_ [_ H]]". iIntros (s q sq k0 x i' oo' a' c' Hc) "_".
+  iApply ("H" $! s q sq k0 x i' oo' a' c' with "[%]"). exact Hc.
 Qed.
 
 End entry_char.
