@@ -386,9 +386,9 @@ let
     in
     ported
     // rec {
-      # Emacs package sets using our ported emacs30
-      emacsPackages = prev.emacsPackagesFor ported.emacs30;
-      emacs30Packages = prev.emacsPackagesFor ported.emacs30;
+      # Emacs package sets using our ported Emacs
+      emacsPackages = prev.emacsPackagesFor ported.emacs;
+      emacs30Packages = prev.emacsPackagesFor ported.emacs;
 
       # Python aliases - python312 is explicitly named, provides both python3 and python312
       python3 = ported.python312;
@@ -401,9 +401,11 @@ let
       perlPackages = lib.dontRecurseIntoAttrs perl5Packages;
 
       # Nixpkgs' default moved to Ruby 3.4 (YJIT needs a Rust target); keep
-      # the ported 3.3, as the default was before.
+      # the ported 3.3, as the default was before. Nixpkgs 26.11 removed
+      # ruby_3_3 and its package set.
       ruby = ported.ruby_3_3;
-      rubyPackages = final.rubyPackages_3_3;
+      rubyPackages_3_3 = lib.recurseIntoAttrs ported.ruby_3_3.gems;
+      rubyPackages = rubyPackages_3_3;
 
       # Nixpkgs only defines glibc locales for isGnu hosts, so for Fil-C
       # glibcLocales was null and packages that export LC_ALL=en_US.UTF-8 got

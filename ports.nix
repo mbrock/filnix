@@ -2147,9 +2147,6 @@ in
       libsysprof-capture = null;
       # Keep the bootstrap GLib free of scanner inputs as well as GIR output.
       withIntrospection = false;
-      # gdbus-codegen runs on the build Python (3.13); the Fil-C set's
-      # packaging is for the ported 3.12, leaving codegen's path empty.
-      python3Packages = pkgs.python3Packages;
     })
     (skipTests "many failures")
     (use {
@@ -2248,16 +2245,13 @@ in
     (arg { pipewireSupport = false; })
     (arg { rdpSupport = false; })
     (arg { remotingSupport = false; })
-    (arg { vaapiSupport = false; })
     (arg { vncSupport = false; })
     (arg { xwaylandSupport = false; })
     (arg { lcmsSupport = false; })
     (addMesonFlag "-Dsystemd=false")
   ])
 
-  (for pkgs.seatd [
-    (arg { systemd = final.systemdLibs; })
-  ])
+  (for pkgs.seatd [ ])
 
   (for pkgs.alsa-lib [
     # ALSA's .symver module assembly is not part of the Fil-C ABI.
@@ -2400,8 +2394,6 @@ in
     (removeMesonFlag "-Dgstreamer")
     (addMesonFlag "-Dgstreamer=disabled")
     (addMesonFlag "-Dgstreamer-device-provider=disabled")
-    # PipeWire links libsystemd; it does not need the service manager's programs.
-    (arg { systemd = final.systemdLibs; })
     # ROC's build takes ragel (and so colm and a target GCC) from the
     # host package set.
     (arg { rocSupport = false; })
@@ -3352,13 +3344,11 @@ in
     (arg { enableMagnet = true; })
     (arg { enableWebDAV = true; })
     (arg { enablePam = true; })
-    (arg { lua5_1 = pkgs.lua5; })
     (skipCheck "test suite issues")
   ])
 
   (for pkgs.tor [
     (arg {
-      systemd = final.systemdLibs;
       libseccomp = null;
       # libcap = null;
     })
@@ -3556,9 +3546,11 @@ in
     }))
   ])
 
-  (for pkgs.wasm3 [
-    markAsNotNecessarilyInsecure
-  ])
+  {
+    wasm3 = for ./ports/wasm3.nix [
+      markAsNotNecessarilyInsecure
+    ];
+  }
 
   {
     kittydoom = for ./packages/kitty-doom.nix [ ];
@@ -3574,8 +3566,11 @@ in
 
   # ━━━ Emacs ━━━
 
+  # The Fil-C Emacs is mbrock's 30.1 fork with the Comphack native compiler,
+  # built from Nixpkgs' Emacs recipe (31.1 in Nixpkgs 26.11). pkgsFilc.emacs30
+  # stays an alias for it (ports/overlay.nix).
   {
-    emacs30 = for pkgs.emacs30 [
+    emacs = for pkgs.emacs [
       (arg {
         gnutls = null;
         dbus = null;
@@ -3597,7 +3592,6 @@ in
         withAlsaLib = false;
         withGlibNetworking = false;
         withXinput2 = false;
-        withJansson = true;
         # The fork below is a git tree without a generated configure.
         srcRepo = true;
       })
@@ -3611,11 +3605,35 @@ in
           hash = "sha256-E/weXr9KaUMSZiVHMphPsfhvlX9RgeUpQSuH52JwQUY=";
         };
       })
-      # Nixpkgs' patches target 30.2; the fork is based on 30.1.
-      (skipPatch "02_all_ts-query-pred.patch")
-      (patch ./patches/emacs-fork-ts-query-pred.patch)
-      (skipPatch "CVE-2026-79992.patch")
-      (patch ./patches/emacs-fork-CVE-2026-79992.patch)
+      # The patches Nixpkgs 26.05 applied to Emacs 30.2, not the 31.1 ones;
+      # two of them are rebased onto the fork, which is based on 30.1.
+      (use {
+        patches = [
+          (pkgs.fetchpatch {
+            name = "fix-off-by-one-mistake-80851-CVE-2026-6861.patch";
+            url = "https://cgit.git.savannah.gnu.org/cgit/emacs.git/patch/?id=8f535370b9efbc91673b20c6987a5cae4f6dc562";
+            hash = "sha256-ny44eIi8DUa9pQhVGzhGz4H6FXU4+ki86SITLXhkwpw=";
+          })
+          ./patches/emacs-inhibit-lexical-cookie-warning-67916-30.patch
+          (pkgs.fetchpatch {
+            # tree-sitter 0.26 compatibility fix, see https://bugs.gentoo.org/970856
+            url = "https://gitweb.gentoo.org/proj/emacs-patches.git/plain/emacs/30.2/01_all_treesit-0.26.patch?id=d0f47979806d9be5a190fdb4ffa1bde439b2d616";
+            hash = "sha256-3pWeRxjAhr3ntBR3xDhoDUZDjU6xICU23NUpb/Vl6R4=";
+          })
+          ./patches/emacs-fork-ts-query-pred.patch
+          (pkgs.fetchpatch {
+            name = "nullify-read-symbol-shorthands-around-risky-intern-calls-80574.patch";
+            url = "https://cgit.git.savannah.gnu.org/cgit/emacs.git/patch/?id=8466eb44991707d128110bdc549fad14c8e1d61e";
+            hash = "sha256-SyRCay2MahCJovtzBHA9M1H9hXhtD5IG3ZFSEUwaWlg=";
+          })
+          ./patches/emacs-fork-CVE-2026-79992.patch
+          (pkgs.fetchpatch {
+            name = "CVE-2024-53920.patch";
+            url = "https://cgit.git.savannah.gnu.org/cgit/emacs.git/patch/?id=abc802ee2eb0b1663349ddf22a461f8e54a383fb";
+            hash = "sha256-ViRD4E27WDs7lLO6YPNroMo3Zq5/ASqMlmNtVI1V/Lo=";
+          })
+        ];
+      })
       (configure "--with-gnutls=ifavailable")
       (configure "--with-dumping=none")
       (configure "--with-pdumper=no")
@@ -3704,7 +3722,7 @@ in
   ])
 
   {
-    glibmm = for pkgs.glibmm [ (patch ./patches/glibmm-gtype.patch) ];
+    glibmm_2_4 = for pkgs.glibmm_2_4 [ (patch ./patches/glibmm-gtype.patch) ];
     # glibmm 2.88 needs GLib 2.87; 2.80 is the newest series that accepts
     # the Fil-C GLib 2.80.
     glibmm_2_68 = for pkgs.glibmm_2_68 [

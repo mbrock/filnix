@@ -65,6 +65,9 @@
               localSystem = system;
               crossSystem.config = "${pkgs.stdenv.hostPlatform.parsed.cpu.name}-unknown-linux-gnufilc0";
               config.permittedInsecurePackages = permittedInsecurePackages;
+              # Nixpkgs 26.11 marks GTK 2 broken to announce its removal; it
+              # still builds, natively and for Fil-C.
+              config.problems.handlers."gtk+".broken = "ignore";
               config.replaceCrossStdenv =
                 { buildPackages, baseStdenv }:
                 let

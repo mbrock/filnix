@@ -151,11 +151,8 @@ let
               # PHP 8.5 matches with a PCRE2 whose interpreter avoids Fil-C's
               # slow paths (see the patch); PHP 8.4 keeps Nixpkgs' choice.
               pcre2 =
-                let
-                  pcre2 = final.pcre2.override { withJitSealloc = false; };
-                in
                 if is85 then
-                  pcre2.overrideAttrs (old: {
+                  final.pcre2.overrideAttrs (old: {
                     patches = (old.patches or [ ]) ++ [
                       ../patches/pcre2-10.48-filc-match.patch
                       # Skips the tests that the libtool wrapper and the
@@ -170,7 +167,7 @@ let
                     doCheck = true;
                   })
                 else
-                  pcre2;
+                  final.pcre2;
               # Bundled extensions build from the unpatched PHP source.
               packageOverrides =
                 _: pprev:
@@ -1137,10 +1134,12 @@ portDSL.makeOverlay portList final prev
     inherit (final) getent getconf;
   };
 
-  # The emacs30 port has no GUI; the -nox variants come from Nixpkgs' Emacs
-  # scope and would miss the port (and bring native compilation along).
-  emacs-nox = final.emacs30;
-  emacs30-nox = final.emacs30;
+  # The Emacs port (the 30.1 fork, ports.nix) has no GUI; the -nox variants
+  # come from Nixpkgs' Emacs scope and would miss the port (and bring native
+  # compilation along). emacs30 was its name before Nixpkgs 26.11.
+  emacs30 = final.emacs;
+  emacs-nox = final.emacs;
+  emacs30-nox = final.emacs;
 
   tree-sitter = final.callPackage ./tree-sitter.nix {
     inherit (prev) tree-sitter;

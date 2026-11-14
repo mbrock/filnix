@@ -68,6 +68,8 @@ let
     "cava"
     "sfml_2"
     "SDL_compat"
+    # SDL_compat's name from Nixpkgs 26.11.
+    "sdl12-compat"
     "smpeg"
   ];
   knownNames = [ "pipewire" ] ++ pipewireConsumers;

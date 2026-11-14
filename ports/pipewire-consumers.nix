@@ -114,10 +114,7 @@ in
   wireplumber = for "wireplumber" [
     (patch ../patches/wireplumber-gtype.patch)
     (patch ../patches/wireplumber-pointer-properties.patch)
-    (arg {
-      systemd = final.systemdLibs;
-      enableDocs = false;
-    })
+    (arg { enableDocs = false; })
     (use (old: {
       doCheck = true;
       nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [ pkgs.dbus ];
