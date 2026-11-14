@@ -206,8 +206,8 @@ Qed.
 (** Predicate [walks] states that [checked_insts] accepts an instruction
     suffix from its entry facts to its exit facts with some fuel
     bound. *)
-Definition walks (s : src) (is : list inst) (live out : list fact) : Prop :=
-  exists n, checked_insts s n is live = Some out.
+Definition walks (s : src) (instructions : list inst) (live out : list fact) : Prop :=
+  exists n, checked_insts s n instructions live = Some out.
 
 (** With no instructions left, the pass ends with the facts it had. *)
 Lemma walks_nil : forall s live out, walks s [] live out -> out = live.

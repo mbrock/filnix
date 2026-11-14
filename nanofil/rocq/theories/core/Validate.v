@@ -227,8 +227,8 @@ Definition definitions_dominate (f : func) (doms : nmap (Z * Z)) : bool :=
   forallb (fun b =>
              if negb (is_reachable doms (b_label b)) then true else
              let l := b_label b in
-             let fix insts (is : list inst) (i : Z) : bool :=
-               match is with
+             let fix insts (instructions : list inst) (i : Z) : bool :=
+               match instructions with
                | [] => forallb (dominated_use doms l i) (jump_uses (b_jump b))
                | ins :: rest => forallb (dominated_use doms l i) (inst_uses ins)
                                 && insts rest (i + 1)
@@ -507,7 +507,7 @@ Definition term_sig (t : term) : option sig :=
   | TApp "func" [_; lk; r; TList ps; TList bs] =>
       Some (mkSig lk (map (fun p => match p with TApp "param" [k; _] => k | _ => p end) ps) r
                   (term_eqb r (TAtom "data") || existsb (fun b => match b with
-                                     | TApp "block" [_; _; TList is; _] => existsb is_va_args is
+                                     | TApp "block" [_; _; TList instructions; _] => existsb is_va_args instructions
                                      | _ => false
                                      end) bs))
   | _ => None
@@ -1853,9 +1853,9 @@ Definition checked_inst_rest (s : src) (i : inst) (rest : list inst) (live : lis
     to each instruction in turn. It returns the live facts that still hold
     at the end of the block, or `None` if any instruction in the block is
     rejected. *)
-Fixpoint checked_insts (s : src) (fuel : nat) (is : list inst) (live : list fact)
+Fixpoint checked_insts (s : src) (fuel : nat) (instructions : list inst) (live : list fact)
   : option (list fact) :=
-  match is with
+  match instructions with
   | [] => Some live
   | i :: rest =>
       match fuel with
@@ -2049,8 +2049,8 @@ Definition module_checked (md : module) : bool :=
                                             || checked_jump (b_jump b)) (fn_blocks f)
              | IOutside _ (TApp "func" [_; _; _; _; TList bs]) =>
                  existsb (fun b => match b with
-                                   | TApp "block" [_; _; TList is; j] =>
-                                       existsb checked_inst_term is || checked_jump_term j
+                                   | TApp "block" [_; _; TList instructions; j] =>
+                                       existsb checked_inst_term instructions || checked_jump_term j
                                    | _ => false
                                    end) bs
              | _ => false
@@ -2247,11 +2247,11 @@ Definition calls_global (it : item) (n : name) : bool :=
                                           end) (b_insts b)) (fn_blocks f)
   | IOutside _ (TApp "func" [_; _; _; _; TList bs]) =>
       existsb (fun b => match b with
-                        | TApp "block" [_; _; TList is; _] =>
+                        | TApp "block" [_; _; TList instructions; _] =>
                             existsb (fun i => match i with
                                               | TApp "call" [_; TApp "global" [g]; _] => term_eqb g n
                                               | _ => false
-                                              end) is
+                                              end) instructions
                         | _ => false
                         end) bs
   | _ => false

@@ -771,7 +771,7 @@ Lemma ptsq_split q1 q2 ps :
   ptsq (DfracOwn (q1 + q2)) ps ⊣⊢ ptsq (DfracOwn q1) ps ∗ ptsq (DfracOwn q2) ps.
 Proof.
   rewrite /ptsq -big_sepL_sep. apply big_sepL_proper. intros _ lv _.
-  exact (@fractional _ (fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) _ q1 q2).
+  exact (fractional (Φ := fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) q1 q2).
 Qed.
 
 (** Any fractional share of a piece list can be permanently frozen by

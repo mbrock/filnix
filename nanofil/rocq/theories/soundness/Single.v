@@ -85,9 +85,9 @@ Definition point_site (f : func) (pt : point) : option (name * Z) :=
   match pt with
   | Snapshot _ _ => None
   | Enter l _ => Some (l, -1)
-  | Exec l is _ =>
+  | Exec l instructions _ =>
       match find_block l (fn_blocks f) with
-      | Some b => Some (l, Z.of_nat (length (b_insts b) - length is))
+      | Some b => Some (l, Z.of_nat (length (b_insts b) - length instructions))
       | None => None
       end
   end.
@@ -121,10 +121,10 @@ Definition shaped (md : module) (fr : frame) : Prop :=
   match fr_at fr with
   | Snapshot _ l => entry_label f = Some l
   | Enter l from => is_reachable (fn_doms f) l = true /\ (from = None -> entry_label f = Some l)
-  | Exec l is j =>
+  | Exec l instructions j =>
       is_reachable (fn_doms f) l = true /\
       exists b k, find_block l (fn_blocks f) = Some b /\ (k <= length (b_insts b))%nat /\
-        is = skipn k (b_insts b) /\ j = b_jump b
+        instructions = skipn k (b_insts b) /\ j = b_jump b
   end.
 
 (** The helper [result_names] lists the temporary names bound by a call
@@ -539,12 +539,12 @@ Qed.
 (** When an active frame is executing inside block l, its function
     belongs to the module, block l is reachable, and its remaining
     instructions form a suffix of l starting at some index k. *)
-Lemma shaped_exec : forall md fr l is j,
-  shaped md fr -> fr_at fr = Exec l is j ->
+Lemma shaped_exec : forall md fr l instructions j,
+  shaped md fr -> fr_at fr = Exec l instructions j ->
   In (IFunc (fr_fn fr)) md /\ is_reachable (fn_doms (fr_fn fr)) l = true /\
   exists b k, find_block l (fn_blocks (fr_fn fr)) = Some b /\ (k <= length (b_insts b))%nat /\
-    is = skipn k (b_insts b) /\ j = b_jump b.
-Proof. intros md fr l is j H Ha. unfold shaped in H. cbv zeta in H. rewrite Ha in H. exact H. Qed.
+    instructions = skipn k (b_insts b) /\ j = b_jump b.
+Proof. intros md fr l instructions j H Ha. unfold shaped in H. cbv zeta in H. rewrite Ha in H. exact H. Qed.
 
 (** The instruction at index k of block l is i. *)
 Lemma site_inst : forall md f l b k s n i',
