@@ -88,7 +88,12 @@ jobs:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           { nix eval --raw .#checks.x86_64-linux.nanofil-glibc --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ builtins.attrValues g.abstractHello.vo ++ [ g.abstractHello g.probes g ]))'; echo; } |
+              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ builtins.attrValues g.abstractHello.vo ++ [ g.abstractHello g.probes g ]))'; echo
+            # The Rocq 9.3 package set (nanofil/nix/rocq-packages.nix), which no
+            # public cache has.
+            nix eval --raw --impure --expr 'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };
+                r = import ./nanofil/nix/rocq-packages.nix { inherit pkgs; }; in builtins.concatStringsSep "\n" (map (d: d.outPath) [ r.rocq-core r.stdlib r.stdpp r.iris ])'; echo
+          } |
             while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
       - uses: actions/upload-artifact@v4
         if: always()
