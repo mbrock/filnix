@@ -77,7 +77,7 @@ and compiling without an implementation check that separate requirement.
 An axiom listed by `rocqchk` is not necessarily an unproved assumption.
 In Rocq 9.3, the checker also lists proved lemmas when a sealed module
 hides their bodies. The repository's
-[sealed-module reproduction](../rocq/scripts/proof-eng/rocq93/rocqchk-sealed/run.sh)
+[sealed-module reproduction](../rocq/scripts/rocq93/rocqchk-sealed/run.sh)
 shows this over-reporting alongside a Closed `Print Assumptions` result.
 The sealed `Fix.R` hides proved runtime lemmas in the same way.
 

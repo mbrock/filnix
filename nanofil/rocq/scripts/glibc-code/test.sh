@@ -11,7 +11,6 @@ python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
   --rocq-function glibc_strcmp >"$work/strcmp-skeleton"
 grep -F 'WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \
   "$work/strcmp-skeleton"
-python3 -I "$here/generate.py" "$capture" --output "$work/legacy"
 python3 -I "$here/generate.py" "$capture"
 python3 -I "$here/generate.py" "$capture" --form shared-prelude --output "$work/staged"
 python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged"
@@ -40,7 +39,7 @@ mkdir -p "$work/nanofil/rocq/scripts/glibc-code" "$work/nanofil/rocq/glibc/strin
 cp "$here/sync-proof-styles.py" "$work/nanofil/rocq/scripts/glibc-code/"
 cp "$here/../../glibc/string/code.toml" "$work/nanofil/rocq/glibc/string/"
 mkdir -p "$work/styles/string"
-cp "$work/legacy/string/"*.v "$work/styles/string/"
+cp "$work/staged/string/"*Code.v "$work/styles/string/"
 python3 - "$work/styles/string" <<'PY'
 from pathlib import Path
 import re
@@ -95,7 +94,8 @@ reject_sync missing-default 'missing fixture:'
 mv "$work/Strncmp-valid.v" "$work/styles/string/StrncmpCode.v"
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
 cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/string/code.toml"
-cp "$here/generate.py" "$here/prelude.py" "$here/source.py" "$here/select.pl" "$work/nanofil/rocq/scripts/glibc-code/"
+cp "$here/generate.py" "$here/prelude.py" "$here/source.py" "$here/source.pl" "$here/select.pl" "$work/nanofil/rocq/scripts/glibc-code/"
+cp "$here/../../glibc/CodePrelude.v" "$work/nanofil/rocq/glibc/"
 for part in bin src survey bench; do ln -s "$here/../../../$part" "$work/nanofil/$part"; done
 for script in gallina.pl link.pl; do ln -s "$here/../$script" "$work/nanofil/rocq/scripts/$script"; done
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" \

@@ -1,6 +1,6 @@
-# Rocq 9.3.0 with stdlib 9.2.0, std++ bd38c741 and Iris 7e9583b2, built
-# with OCaml 5.4.1 from the repository's own nixpkgs. Only the Nanofil
-# proof derivations (rocq.nix, glibc.nix) and the proof-eng scripts use
+# This package set builds Rocq 9.3.0, stdlib 9.2.0, std++ bd38c741 and
+# Iris 7e9583b2 with OCaml 5.4.1 from the repository's own nixpkgs. Only the Nanofil
+# proof derivations (rocq.nix, glibc.nix) and the glibc-tools scripts use
 # these packages, so the Fil-C toolchain and nixpkgs pin are unchanged.
 #
 # The native compiler is enabled in ondemand mode: files compile to .vo

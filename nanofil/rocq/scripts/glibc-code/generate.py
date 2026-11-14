@@ -18,7 +18,7 @@ NF = HERE.parents[2]
 GLIBC = NF / "rocq/glibc"
 shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
-PRELUDE = HERE.parent / "proof-eng/overlay/CodePrelude.v"
+PRELUDE = GLIBC / "CodePrelude.v"
 
 
 def run(args, *, cwd=NF, data=None, env=None):
@@ -302,10 +302,8 @@ def main():
     parser.add_argument("--tree", type=Path, default=GLIBC, help="tree to compare or update")
     parser.add_argument("--output", type=Path, help="write generated files to a separate tree")
     parser.add_argument("--update", action="store_true")
-    parser.add_argument("--form", choices=("legacy", "shared-prelude"), default="legacy",
-                        help="output form (default: legacy until cutover)")
-    parser.add_argument("--legacy", dest="form", action="store_const", const="legacy",
-                        help=argparse.SUPPRESS)
+    parser.add_argument("--form", choices=("shared-prelude",), default="shared-prelude",
+                        help="output form (shared-prelude)")
     args = parser.parse_args()
     if args.output and args.update:
         parser.error("choose --output or --update")
@@ -320,17 +318,16 @@ def main():
         if len(manifests) != len(set(args.directory)):
             parser.error("unknown directory")
     status = 0
-    if args.form == "shared-prelude":
-        prelude = (args.output or args.tree) / "CodePrelude.v"
-        if args.output or args.update:
-            prelude.parent.mkdir(parents=True, exist_ok=True)
-            prelude.write_bytes(PRELUDE.read_bytes())
-        elif not prelude.exists() or prelude.read_bytes() != PRELUDE.read_bytes():
-            print(f"shared prelude differs or is missing: {prelude}")
-            status = 1
+    prelude = (args.output or args.tree) / "CodePrelude.v"
+    if args.output or args.update:
+        prelude.parent.mkdir(parents=True, exist_ok=True)
+        prelude.write_bytes(PRELUDE.read_bytes())
+    elif not prelude.exists() or prelude.read_bytes() != PRELUDE.read_bytes():
+        print(f"shared prelude differs or is missing: {prelude}")
+        status = 1
     with tempfile.TemporaryDirectory(prefix="glibc-code-") as tmp:
         work = Path(tmp)
-        generator = Generator(args.capture.resolve(), work, sources=args.form == "shared-prelude")
+        generator = Generator(args.capture.resolve(), work, sources=True)
         for manifest in manifests:
             styles = tomllib.loads(manifest.read_text()).get("proof_styles", {})
             rel = manifest.parent.relative_to(GLIBC)
@@ -350,7 +347,7 @@ def main():
             different = 0
             for path in generated:
                 text = computed_proofs(path.read_text(), styles.get(path.name, "vm_compute"))
-                path.write_text(shared(text) if args.form == "shared-prelude" else text)
+                path.write_text(shared(text))
                 destination = (args.output / rel if args.output else target) / path.name
                 if args.output or args.update:
                     destination.parent.mkdir(parents=True, exist_ok=True)

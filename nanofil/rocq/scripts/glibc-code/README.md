@@ -26,16 +26,14 @@ nanofil/rocq/glibc/code.sh /tmp/glibc-pp
 nanofil/rocq/glibc/code.sh --update /tmp/glibc-pp
 ```
 
-The `--form` setting selects `legacy` (the default until cutover) or
-`shared-prelude`. The legacy form reproduces the committed files on main.
-The shared form imports `CodePrelude.v` from the pipeline's overlay.
-The legacy form does not need that overlay. Do not update the
-committed `.v` files on `proof-eng`. Write a separate tree instead:
+The generator emits only the shared-prelude form used by the committed
+fixtures. It reads the canonical `rocq/glibc/CodePrelude.v` and imports its
+helpers rather than repeating them in each file. To inspect output without
+updating the checkout, write a separate tree:
 
 ```sh
 nanofil/rocq/glibc/code.sh /tmp/glibc-pp
 nanofil/rocq/glibc/code.sh /tmp/glibc-pp --form shared-prelude --output /tmp/generated-code
-nanofil/rocq/scripts/proof-eng/check/code.sh /tmp/glibc-pp /tmp/staged-glibc
 ```
 
 `--directory string` selects one directory; `--directory .` selects only
@@ -121,7 +119,6 @@ old individual success messages. All drivers now use `/tmp/glibc-pp` if no
 capture is supplied and that directory exists; root and stdlib previously
 asked Nix for the capture, and getopt required an argument. `KEEP` no longer
 retains temporary files. Python 3.11 or newer is required for TOML parsing.
-The early `--legacy` spelling remains an alias for `--form legacy`.
 
 ## Add a unit or function
 
@@ -156,7 +153,7 @@ new driver or slicer.
 Every function in a fixture row must be defined in its linked units. A missing
 function fails generation and names the manifest row, rather than silently
 emitting an empty decoded body. Run `test.sh CAPTURE` to check this rejection,
-both output forms, fixture corruption and the manifest proof-style switch.
+shared-prelude output, fixture corruption and the manifest proof-style switch.
 
 ## Start a block lemma
 
@@ -241,16 +238,14 @@ Review and commit its manifest changes before running the regeneration check.
 
 ## Integrate the check
 
-`proof-eng/check/code.sh CAPTURE TREE` is the standalone gate entry point.
+`rocq/glibc/code.sh CAPTURE --tree TREE` checks a separate tree.
 A Nix caller needs the compiler sources, these generator scripts, manifests,
 fixture hashes, the checked tree, Python 3.11 or newer, SWI-Prolog, coreutils,
 and `FILCC` set to the staging compiler. Supply the capture as a derivation
 input; the script needs neither Nix nor network access when it receives that
-path. This pipeline entry point explicitly selects `--form shared-prelude`,
-as does stage 15's helper transformation. Use the root driver for legacy
-checks. Stage 15 copies the canonical prelude into the staged tree and factors
-the existing helpers without changing terms or proofs.
-`nanofil/nix/glibc.nix` has not been changed.
+path. The generator reads the canonical prelude from `rocq/glibc` and emits
+shared-prelude fixtures by default. Use `--output TREE` to write a separate
+tree, or `--update` to update the comparison tree.
 
 The capture built successfully in an orb at
 `/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44`.
