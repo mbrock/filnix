@@ -117,7 +117,7 @@ Lemma wp_long_join_miss ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid
   lookup (TAtom "v14") e = Some (WInt pe) -> lookup (TAtom "v16") e = Some (WPtr pfx) ->
   lookup (TAtom "v90") e = Some (WInt 0) -> lookup (TAtom "pr.7") e = Some (WPtr null) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
-  ps !! Z.to_nat i = Some q -> sbyte sq 0 <> 0 ->
+  ps !! Z.to_nat i = Some q -> (lonly <> 0 -> sbyte sq 0 <> 0) ->
   0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> 0 <= lonly < 2 ^ 32 -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->

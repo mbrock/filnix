@@ -35,6 +35,22 @@ Definition lmiss_names : list name := Eval vm_compute in
 Definition lmiss_keys : list name := Eval vm_compute in
   List.map TAtom ["v2"; "v12"; "v14"; "v16"; "chk0"]%string.
 
+(** The parser reads the second byte of the word at the index only in
+    long-only mode, so the word needs a first byte only in that mode. The
+    W option calls the parser with long-only mode off, and the next word
+    that it passes may be empty. These three controls show what the
+    condition allows. With long-only mode off, an empty word meets it. *)
+Lemma miss_word_ctl_off : (0 <> 0 -> sbyte [] 0 <> 0)%Z.
+Proof. lia. Qed.
+
+(** In long-only mode an empty word fails the condition. *)
+Lemma miss_word_ctl_empty : ~ (1 <> 0 -> sbyte [] 0 <> 0)%Z.
+Proof. unfold sbyte. cbn. lia. Qed.
+
+(** In long-only mode a word that starts with a dash meets the condition. *)
+Lemma miss_word_ctl_dash : (1 <> 0 -> sbyte [45] 0 <> 0)%Z.
+Proof. unfold sbyte. cbn. lia. Qed.
+
 (** Every proof below runs on the caller's [[runtime]] and logic instance. *)
 Module GetoptLongMissOn (R : Runtime) (LG0 : LogicSig R).
 (** The long-only module supplies the long-only test, the report, the option table and the tactics. *)
@@ -64,7 +80,8 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     return -1 without a write and leave the word to the short options.
     Otherwise it reports the word as unrecognized. Then it steps the
     index past the word and clears its cursor. It stores 0 as the bad
-    option and answers '?'. The report keeps G. *)
+    option and answers '?'. The report keeps G. The parser reads the
+    word q only in long-only mode, so q needs a first byte only then. *)
 Lemma wp_long_miss ks e (G : iProp Σ) T fp dom se sereg mid av ar ps q sq po so pfx sp cur s i n lonly pe oo b r Φ :
   avoids ks lmiss_names = true -> avoids ks lonly_names = true -> avoids ks lunrec_names = true ->
   getopt_ldiag_rule w0 registry ge G T fp dom ->
@@ -77,7 +94,7 @@ Lemma wp_long_miss ks e (G : iProp Σ) T fp dom se sereg mid av ar ps q sq po so
   lookup (TAtom "v14") e = Some (WInt pe) -> lookup (TAtom "v16") e = Some (WPtr pfx) ->
   lookup (TAtom "v90") e = Some (WInt 0) -> lookup (TAtom "pr.7") e = Some (WPtr null) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->
-  ps !! Z.to_nat i = Some q -> sbyte sq 0 <> 0 ->
+  ps !! Z.to_nat i = Some q -> (lonly <> 0 -> sbyte sq 0 <> 0) ->
   0 <= i < n -> n < 2 ^ 31 - 1 -> Z.of_nat (List.length ps) = n -> 0 <= lonly < 2 ^ 32 -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   0 < av -> av mod 8 = 0 -> av + 8 * n <= r_end ar -> r_end ar <= 2 ^ 48 ->
@@ -123,7 +140,7 @@ Proof.
   { en. iApply wp_branch; [vx | iNext]. close_br. en. iApply wp_branch; [vx | iNext]. close_br.
     iApply ("HL332" with "[%] Hl Hib Hoo Hcur Ha Hcl HG HK"). split; [xkeep|]. repeat split; lk_prove. }
   iApply (wp_long_miss_only w0 registry ge (lmiss_keys ++ ks) _ cur s q sq po so i n b r av ar ps with "Hwq Hpo Hws Hl Hib Hcur Ha Hcl");
-    [rewrite avoids_app_l; rewrite Hkso; vm_compute; reflexivity | exact Hg | exact Hgn | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hq | exact Hq0 | exact Hi
+    [rewrite avoids_app_l; rewrite Hkso; vm_compute; reflexivity | exact Hg | exact Hgn | lk_prove | lk_prove | lk_prove | lk_prove | lk_prove | exact Hq | exact (Hq0 El) | exact Hi
     | exact Hn | exact Hlen | exact Hb | exact Hal | exact Hend | exact Hr | exact Hav | exact Hala | exact Hda
     | exact Hra |].
   iSplit.
