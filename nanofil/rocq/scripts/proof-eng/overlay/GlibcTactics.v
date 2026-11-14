@@ -286,6 +286,48 @@ Ltac check H :=
   | _ => fail "check: expected a check, half check, or renew"
   end.
 
+(** ## Applying memory rules
+
+    A load or store needs facts about its address, alignment, and owned memory.
+    These wrappers prove the routine facts and leave the others for the caller
+    before returning to the program's [[separation-logic]] proof. *)
+
+Create HintDb glibc_memory.
+
+(** Files can register their existing arithmetic and world-preservation solvers in this database.
+    A failed solver leaves the original goal and its hypotheses unchanged. *)
+Ltac memory_side :=
+  try solve [eassumption | reflexivity | vx | left; reflexivity | right; reflexivity |
+             eauto 1 with glibc_memory | cbn; lia | a2].
+
+(** Some loads need a specific pointer value or byte sequence.
+    The caller passes the rule with those choices and the names of its owned resources. *)
+Ltac memory_rule rule H :=
+  iApply (rule with H);
+    [memory_side | memory_side | memory_side | memory_side | memory_side | memory_side |].
+
+(** This wrapper loads a pointer using fractional ownership of the cells and object lives. *)
+Ltac load_pointer_dq rule H := memory_rule rule H.
+
+(** This wrapper checks read access using fractional ownership of the object's life. *)
+Ltac check_read_dq rule H := memory_rule rule H.
+
+(** This wrapper loads a narrow integer from a fractionally owned byte sequence.
+    The caller's conversion proof chooses the symbolic form of the loaded value. *)
+Ltac load_bytes_dq rule H decode :=
+  iApply (rule with H);
+    [memory_side | memory_side | memory_side | first [solve [decode] | memory_side] |
+     memory_side | memory_side |].
+
+(** This wrapper stores a pointer and proves that the store preserves the world invariant. *)
+Ltac store_pointer rule H := memory_rule rule H.
+
+(** This wrapper loads a pointer using full ownership of its cell and object lives. *)
+Ltac load_pointer rule H := memory_rule rule H.
+
+(** This wrapper stores an integer's bytes while preserving the world invariant. *)
+Ltac store_word rule H := memory_rule rule H.
+
 (** ## Concrete executions
 
     A proof on fixed input data can compute each updated environment instead of keeping symbolic expressions.
