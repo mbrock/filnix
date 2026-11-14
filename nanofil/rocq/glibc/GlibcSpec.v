@@ -105,10 +105,14 @@ Ltac spec_inputs T :=
   | _ => open_constr:(_ : T)
   end.
 
-(** A bundled caller selects its named contract, supplies owned memory, and
+(** A caller selects a local or bundled contract, supplies owned memory, and
     receives the outcome together with the contract's postcondition. *)
 Ltac call_spec_rule :=
   lazymatch goal with
+  | H : HasSpec ?registry ?wi ?ge ?n ?s |-
+      context [mkFrame ?f ?e ?ls None (Exec ?lab (Call ?r (Global ?n) ?args :: ?rest) ?j)] =>
+      open_constr:(fun x => wp_call_spec registry wi ge n s (HasSpec0 := H)
+        x f e ls lab r args rest j _)
   | P : @GlibcProgram ?hlc ?Σ |-
       context [mkFrame ?f ?e ?ls None (Exec ?lab (Call ?r (Global ?n) ?args :: ?rest) ?j)] =>
       let s := open_constr:(_ : fspec Σ) in
@@ -136,7 +140,7 @@ Ltac call_spec_apply rule x :=
             pose proof (bi.wand_elim_r' P K Q
               ltac:(iIntros "HK HP"; iApply (Hcall with "HP HK"))) as Happly;
             iApply Happly; clear Hcall Happly;
-            cbn [fs_pre]; iFrame;
+            cbn [fs_pre]; iFrame "#"; iFrame;
             first [iSplitR; [iPureIntro | let v := fresh "v" in iIntros (v) "Hpost"]
                   | let v := fresh "v" in iIntros (v) "Hpost"]
         end ]

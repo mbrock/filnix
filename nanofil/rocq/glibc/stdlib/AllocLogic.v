@@ -20,7 +20,7 @@
     releases a live heap object, and [wp_glibc_free_null] ignores a null
     pointer. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec StdlibSpecs.
 From Stdlib Require Import ZArith Lia.
 From Glibc Require Import StrlenBits.
 From Glibc Require GlibcLogic LeavesLogic.
@@ -130,6 +130,17 @@ Proof.
   iApply ("HΦ" with "[%] Hobj"). exact Hb.
 Qed.
 
+(** A linked allocator provides its object contract to named callers. *)
+#[global] Instance malloc2_has_spec n `{!Defines ge n malloc2_fn} :
+  HasSpec registry wi ge (TAtom n) (malloc2_spec wi).
+Proof.
+  intros k. exists malloc2_fn. split; [apply defines|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr. injection Hfr as <-.
+  cbn [fs_pre fs_post malloc2_spec]. iIntros "%Hpre HK". destruct Hpre as [Hn Hk].
+  iApply wp_libc_malloc2; [exact Hn | exact Hk |].
+  iIntros (base Hb) "Hobj". iApply "HK". iExists base. by iFrame.
+Qed.
+
 (** Calling `c: free` on a non-null pointer to a live heap object b
     delegates to `zgc_free`. Provided the global environment models
     heap deallocation with [frees_heap] and freeing b preserves [wi],
@@ -186,13 +197,14 @@ Proof. reflexivity. Qed.
     which calls `__libc_malloc2` and returns its result. The tactic
     [l7] steps through that call using [wp_libc_malloc2] and restores
     [tcache_idle] to the caller. *)
-Ltac l7 n Hn Hk Hm2 :=
+Ltac l7 n Hn Hk :=
   step;
-  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WInt n] malloc2_fn _);
-    [transitivity (Some [WInt (n mod 2 ^ 64)]); [reflexivity | rewrite Z.mod_small; [reflexivity | lia]]
-    | exact Hm2 | apply malloc2_frame |];
-  nx; iApply (wp_libc_malloc2 with "[-]"); [exact Hn | exact Hk |];
-  iIntros (base) "%Hb Hobj"; iExists _; iSplit; [iPureIntro; reflexivity|]; nx;
+  call_spec with n;
+  [ transitivity (Some [WInt (n mod 2 ^ 64)]); [reflexivity | rewrite Z.mod_small; [reflexivity | lia]]
+  | split; [exact Hn | exact Hk]
+  | ];
+  iDestruct "Hpost" as (base [-> Hb]) "Hobj";
+  iExists _; iSplit; [iPureIntro; reflexivity|]; nx;
   iApply wp_ret; [reflexivity | reflexivity |]; nx;
   iApply ("HΦ" with "[%] Hobj [-]"); [assumption | rewrite /tcache_idle; iFrame; iPureIntro; lia].
 
@@ -248,23 +260,25 @@ Lemma wp_glibc_malloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
   WP (ERun (mkFrame malloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
   intros Hn Hk Hmp Htc Hm2. iIntros "Hidle HΦ".
+  assert (Hm2_def : Defines ge "malloc#__libc_malloc2" malloc2_fn) by exact Hm2.
+  pose proof (malloc2_has_spec "malloc#__libc_malloc2") as Hspec.
   iDestruct "Hidle" as "(%Hlay & Hmpl & Hmpc & Htcl & Htcc & Hdl & Hbins)".
   destruct Hlay as (Hm0 & Hmend & Ht0 & Ht8 & Htend & Hd0 & Hd8 & Hdend).
   step. step. (branch_symbolic; LeavesLogic.decide_branch).
   destruct (Z.ltb_spec 9223372036854775807 n) as [Hbig|Hsmall]; simp.
   - join Hmp.
-    l7 n Hn Hk Hm2.
+    l7 n Hn Hk.
   - step. step. step. step. (branch_symbolic; LeavesLogic.decide_branch).
     destruct (Z.ltb_spec (n + 8 + 15) 32) as [Hs32|Hb32]; simp.
-    + join Hmp. l26 0 Htc dq dummy_reg. l7 n Hn Hk Hm2.
+    + join Hmp. l26 0 Htc dq dummy_reg. l7 n Hn Hk.
     + step. step. step. simp. rewrite land_align16; [|lia].
       remember (n + 8 + 15 - (n + 8 + 15) mod 16) as nb eqn:Enb.
       assert (Hnb : 32 <= nb <= n + 23) by (subst nb; Z.div_mod_to_equations; lia).
       clear Enb. join Hmp.
       destruct (Z.ltb_spec nb 1041) as [Hlt|Hge]; simp.
       * assert (Hi : 0 <= (nb - 32) / 16 < 64) by (Z.div_mod_to_equations; lia).
-        l26 ((nb - 32) / 16) Htc dq dummy_reg. l7 n Hn Hk Hm2.
-      * l7 n Hn Hk Hm2.
+        l26 ((nb - 32) / 16) Htc dq dummy_reg. l7 n Hn Hk.
+      * l7 n Hn Hk.
 Qed.
 
 End rules.

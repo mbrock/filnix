@@ -1,7 +1,6 @@
 From Glibc Require Import GlibcProgram.
-(** The state, the premises and the last blocks of
-    `c: _IO_new_file_xsputn(f, s, n)` (LibioXsputnCode.v), the jump
-    table's string output of a narrow stream:
+(** Narrow stream output fills its buffer, flushes complete blocks and writes any remaining bytes.
+    This file describes its state and proves the newline scan and final output blocks.
 
     ```
     if (n <= 0) return 0;
@@ -22,26 +21,12 @@ From Glibc Require Import GlibcProgram.
     return n - to_do;
     ```
 
-    The stream is LibioDefaultXsputnBuf.v's: its life, its jump table
-    pointer and its write side [wbuf], and a rest that the overflow
-    reads, here [xos]: the fields the function and `c: new_do_write`
-    read or write ([xfields]) and any other predicate X of the stream
-    and its buffer. The fields keep what LibioDoWriteCall.v asks of
-    `c: new_do_write`: no `c: _IO_IS_APPENDING`, `c: _cur_column` 0 and
-    a narrow mode, 0 or -1, which `c: puts` sets.
+    The stream owns its write buffer and the fields used by overflow and direct writes.
+    Those fields require a narrow stream with appending disabled and its column set to zero.
+    The caller can retain additional resources for the stream and buffer through a separate predicate.
 
-    The source is n bytes ys of an object b' at any share dq, read-only
-    like a string literal, so the jump table's write must take a share:
-    [fwq_spec] is LibioWrite.v's [wp_glibc__IO_new_file_write] over
-    [liveq] and [bytesq] instead of [live] and [bytes], a premise here.
-
-    | Name | Part |
-    |---|---|
-    | [xfields], [xos] | the stream's fields beside [wbuf] |
-    | [fwq_spec] | the jump table's write of bytes at a share |
-    | [xs_post] | what the function leaves |
-    | [wp_xs_scan] | the newline scan, blocks `c: L50` to `c: L59` |
-    | [wp_xs_L178] | `c: _IO_default_xsputn` of the rest and the return | *)
+    The source may be shared read-only memory, such as a string literal.
+    Every write therefore returns the caller's [[separation-logic|ownership share]] of that memory. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -55,6 +40,7 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode MemFwdCode FileInv
   LibioDefaultXsputnTail LibioDefaultXsputn.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec LibioStreamSpecs.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -63,22 +49,22 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** Block `c: L50` of `c: _IO_new_file_xsputn`, the scan's head, after its phi. *)
+(** The newline scan starts at this block after selecting its current pointer. *)
 Definition xs_L50 : block := Eval vm_compute in
   match find_block (TAtom "L50") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L50") [] [] JRetVoid end.
 
-(** Block `c: L20`, after its phis: the count and the flush flag. *)
+(** The scan leaves its byte count and flush flag at this block. *)
 Definition xs_L20 : block := Eval vm_compute in
   match find_block (TAtom "L20") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L20") [] [] JRetVoid end.
 
-(** Block `c: L178`, after its phi: the bytes left. *)
+(** The final output block receives the number of bytes still unwritten. *)
 Definition xs_L178 : block := Eval vm_compute in
   match find_block (TAtom "L178") (fn_blocks glibc__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L178") [] [] JRetVoid end.
 
-(** The names the scan binds, with the two phis of `c: L20`. *)
+(** The scan assigns these local names and preserves every other binding. *)
 Definition xs_scan_names : list name :=
   map TAtom ["pr.14"; "v56"; "v57"; "v58"; "v63"; "chk4"; "v64"; "v65"; "v68"; "v70"; "v71"; "pr.10"; "pr.6"].
 
@@ -208,7 +194,7 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
   `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
 
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The stream's write function borrows the source bytes instead of owning
@@ -224,11 +210,9 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** A byte other than a newline, loaded signed and widened, is not
     the newline's code. *)
 
-(** The newline scan, blocks `c: L50` to `c: L59`, at the head with p
-    at offset i of the n bytes ys from offset so of b': it reads back
-    from p for a `c: '\n'` and enters `c: L20` with count cnt0 and no
-    flush when none is found, or with the count up to and including the
-    last one and a flush. *)
+(** The scan searches backward for the last newline in the requested source range.
+    Finding one selects the bytes through that newline and requests a flush.
+    Otherwise, the scan keeps the original count and leaves flushing disabled. *)
 Lemma wp_xs_scan dq b' reg' so c' ys cnt0 :
   let n := Z.of_nat (length ys) in
   c' = Obj b' \/ c' = Ro b' -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
@@ -283,9 +267,10 @@ Proof.
         eapply same_out_trans; [|exact Hsame]. same_tac.
 Qed.
 
-(** Block `c: L178` on, t bytes left past s, d of them just written:
-    `c: _IO_default_xsputn` of the t bytes from s + d, when there are
-    any, and the return of n less those it left. *)
+#[local] Hint Opaque bytesq wbuf xos vtables_ro : typeclass_instances.
+
+(** The final block sends any remaining bytes through generic string output.
+    It combines that byte count with the bytes already written and returns the total. *)
 Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
@@ -313,15 +298,13 @@ Proof.
     set (j := Z.to_nat (n - t)).
     iEval (rewrite (bytesq_split dq b' so ys j); [|lia]) in "Hys". iDestruct "Hys" as "[Hys1 Hys2]".
     assert (Hlj : Z.of_nat (length (drop j ys)) = t) by (rewrite length_drop; lia).
-    iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ ([WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b' + (so + Z.of_nat j)) c'); WInt (Z.of_nat (length (drop j ys)))]));
-      [| exact Hdxf | reflexivity |].
+    pose proof (default_xsputn_has_spec Hmove Hmove_fn Hmove_sym "__GI__IO_default_xsputn") as Hspec.
+    call_spec with (xos w0 eb X, fb, freg, vb, vreg, nb, wp, we, dq, b', reg',
+      so + Z.of_nat j, c', drop j ys).
     { cbn -[put]. lookups. rewrite Hlj. do 5 f_equal; unfold j; unwrap2; lia. }
-    iNext.
-    iApply (wp_glibc__IO_default_xsputn Hmove Hmove_fn Hmove_sym _ (xos w0 eb X) fb freg vb
-              vreg nb wp we dq b' reg' (so + Z.of_nat j) c' (drop j ys) with "Hvt Hl Hvtp Hwb Hos Hl' Hys2");
-      [reflexivity | exact Hov | exact Hfo | exact Hfb | exact Hfal | exact Hfend | exact Hfreg | exact Hc' | exact Hb8'
-      | lia | lia | exact Hyreg | apply Forall_drop; exact Hy |].
-    iNext. iIntros (k nb' wp' we' [Hk Hprogress]) "Hl Hvtp Hwb Hos Hl' Hys2". resume.
+    { split_and!; try assumption; try lia. apply Forall_drop; exact Hy. }
+    iDestruct "Hpost" as (k nb' wp' we') "(%Hout & Hl & Hvtp & Hwb & Hos & Hl' & Hys2)".
+    destruct Hout as [-> [Hk Hprogress]]. resume.
     rewrite Hlj in Hk. rewrite (Z.mod_small k); [|lia].
     step. step. step. step. iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' [Hys1 Hys2]").

@@ -1,8 +1,6 @@
 From Glibc Require Import GlibcProgram.
-(** The triple of `c: _IO_default_xsputn(f, s, n)` (LibioGenCode.v),
-    the generic string output of libio, which `c: _IO_new_file_xsputn`
-    hands the bytes that are left once it has filled and flushed the
-    buffer:
+(** Generic string output fills the stream buffer and sends remaining bytes through its overflow function.
+    The file-specific output function uses this loop after filling and flushing its own buffer.
 
     ```
     more = n;
@@ -17,22 +15,12 @@ From Glibc Require Import GlibcProgram.
     return n - more;
     ```
 
-    The source is n bytes ys of an object b' owned at any share dq,
-    such as a [word_string]'s, and is handed back. The stream is its
-    life, its jump table pointer, its write side ([wbuf]) and a rest os
-    that only the overflow reads; the overflow is
-    `c: _IO_new_file_overflow` through the jump table, taken as the
-    premise [overflow_spec]. The result is the count k of bytes the
-    function wrote, at most n ([dx_post]): n when every overflow
-    succeeded, fewer when one returned `c: EOF`.
+    The caller lends an [[separation-logic|ownership share]] of the source and receives it back unchanged.
+    The stream owns its write buffer, jump table pointer and fields needed by overflow.
+    Output returns the number of bytes written, which may be short when an overflow fails.
 
-    | Lemma | Part |
-    |---|---|
-    | [wp_dx_loop] | the loop's head, block `c: L16`, by Löb induction |
-    | [wp_glibc__IO_default_xsputn] | the whole function |
-
-    The fill is LibioDefaultXsputnRoom.v's, the end of a round
-    LibioDefaultXsputnTail.v's. *)
+    The loop proof joins the existing buffer-fill and end-of-round proofs.
+    The named contract exposes the resulting stream state without its internal execution frames. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -46,6 +34,7 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLo
   LibioDefaultXsputnBytes LibioDefaultXsputnTail LibioDefaultXsputnRoom.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec LibioStreamSpecs.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -69,16 +58,15 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
   `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}.
 
 
-(** Expressions of the language. *)
+(** The expression type uses this caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** A lookup premise of a block lemma, through the environment's puts. *)
+(** Environment lookups recover the values preserved across the loop's local assignments. *)
 Ltac lk_fin := lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_ptr; unwrap2; lia].
 
-(** The loop's head, block `c: L16`, for every count left, by Löb
-    induction: with no room, the round ends at once
-    ([wp_dx_L22]); with room, it is filled ([wp_dx_L44]). *)
+(** Each loop iteration fills available room and then handles any remaining byte through overflow.
+    [[later-modality|Löb induction]] supplies the continuation for the next iteration. *)
 Lemma wp_dx_loop os fb freg vb vreg dq b' reg' so c' ys Φ :
   let n := Z.of_nat (length ys) in
   overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
@@ -126,10 +114,8 @@ Proof.
     all: lk_fin.
 Qed.
 
-(** `c: _IO_default_xsputn(f, s, n)` of the n bytes ys from offset so
-    of the object b', owned at the share dq: it writes k of them, at
-    most n, into the stream's buffer or through the jump table's
-    overflow, and hands the stream and the source back ([dx_post]). *)
+(** Generic string output writes at most the requested number of bytes.
+    Its result returns the updated stream together with the borrowed source memory. *)
 Lemma wp_glibc__IO_default_xsputn fr os fb freg vb vreg nb wp we dq b' reg' so c' ys Φ :
   let n := Z.of_nat (length ys) in
   call_frame glibc__IO_default_xsputn [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b' + so) c'); WInt n] = Some fr ->
@@ -155,6 +141,22 @@ Proof.
     iEval (unfold dx_loop; cbv zeta) in "Hloop".
     iApply ("Hloop" $! _ n with "[%] Hl Hvtp Hwb Hos Hl' Hys HK").
     unfold n in *. split_and!; try lia. all: lk_fin.
+Qed.
+
+(** A linked generic output function provides the stream-and-source contract. *)
+#[global] Instance default_xsputn_has_spec g `{!Defines ge g glibc__IO_default_xsputn} :
+  HasSpec registry (os_wi w0) ge (TAtom g) default_xsputn_spec.
+Proof.
+  intros [[[[[[[[[[[[[os fb] freg] vb] vreg] nb] wp] we] dq] b] reg] so] c] ys].
+  exists glibc__IO_default_xsputn. split; [apply defines|].
+  split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  cbn [fs_pre fs_post default_xsputn_spec].
+  iIntros "(%Hpre & #Hvt & Hl & Hvtp & Hwb & Hos & Hl' & Hys) HK".
+  destruct Hpre as (Hov & Hfo & Hfb & Hal & Hend & Hfreg & Hcap & Hb8 & Hso & Hysend & Hreg & Hys).
+  iApply (wp_glibc__IO_default_xsputn with "Hvt Hl Hvtp Hwb Hos Hl' Hys"); try eassumption.
+  { cbn [fs_args default_xsputn_spec] in Hfr. exact Hfr. }
+  iNext. iIntros (k nb' wp' we' Hk) "Hl Hvtp Hwb Hos Hl' Hys".
+  iApply "HK". iExists k, nb', wp', we'. iFrame. iPureIntro. tauto.
 Qed.
 
 End rules.

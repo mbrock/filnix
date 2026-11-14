@@ -95,6 +95,7 @@ LenLogic.v
 SayLogic.v
 getopt/GetoptModule.v
 hi_atexit/HiAtexitModule.v
+stdlib/StdlibSpecs.v
 stdlib/AllocLogic.v
 stdlib/AtexitLogic.v
 string/WordString.v
@@ -215,6 +216,7 @@ getopt/GetoptWrapper.v
 hi_atexit/HiAtexitInitialAlloc.v
 libio/LibioCloseIt.v
 libio/LibioDefaultXsputnBuf.v
+libio/LibioStreamSpecs.v
 libio/LibioFcloseLock.v
 libio/LibioFlushClean.v
 libio/LibioFputsUnlock.v
