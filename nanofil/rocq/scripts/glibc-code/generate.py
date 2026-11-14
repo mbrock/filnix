@@ -3,6 +3,7 @@
 import argparse
 import difflib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -16,6 +17,7 @@ HERE = Path(__file__).resolve().parent
 NF = HERE.parents[2]
 GLIBC = NF / "rocq/glibc"
 shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
+source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
 PRELUDE = HERE.parent / "proof-eng/overlay/CodePrelude.v"
 
 
@@ -154,9 +156,10 @@ Proof. vm_compute. reflexivity. Qed.
 
 
 class Generator:
-    def __init__(self, capture, work):
+    def __init__(self, capture, work, sources=False):
         self.capture = capture
         self.work = work
+        self.sources = sources
         self.env = os.environ.copy()
         for name in ("NANOFIL_STD", "NANOFIL_COMMON", "NANOFIL_MATH_ERRNO", "NANOFIL_STATE"):
             self.env.pop(name, None)
@@ -178,13 +181,13 @@ class Generator:
             extra, flags = self.survey.cc_options(Path(str(source)[:-2] + ".cmd").read_text())
             env.update(extra)
         command = [NF / "bin/nanofil"]
-        if mode == "checked":
+        if mode == "checked" and not self.sources:
             text = run(command + ["-O", *flags, "checked-terms", source], cwd=NF / "src", env=env)
         else:
             ir = self.work / f"unit{len(self.compiled)}.ir"
-            ir.write_text(run(command + (["-O"] if mode == "trap" else []) +
+            ir.write_text(run(command + (["-O"] if mode in ("trap", "checked") else []) +
                               flags + ["cc-ir", source], cwd=NF / "src", env=env))
-            args = (["--script", "../bench/trap-checked.pl", ir] if mode == "trap"
+            args = (["--script", "../bench/trap-checked.pl", ir] if mode in ("trap", "checked")
                     else ["-O", "outcomes", ir])
             text = run(command + args, cwd=NF / "src", env=env)
             if mode == "outcomes":
@@ -213,7 +216,8 @@ class Generator:
             root = self.work / "roots.term"
             root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
             specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
-        return self.prolog("link.pl", (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
+        return self.prolog("link.pl", (["--context"] if self.sources else []) +
+                           (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
 
     def generate(self, manifest, output, cfg=None):
         if cfg is None:
@@ -238,6 +242,20 @@ class Generator:
             if cache_key not in linked_cache:
                 linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)
             linked = linked_cache[cache_key]
+            if self.sources:
+                term = self.work / "source.term"
+                term.write_text(linked)
+                facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
+                (output / (name + "Src.v")).write_text(source_tables(name, lower, facts, layout, NF))
+                located = sum(r["source"] is not None for r in facts)
+                blocks = sum(r["blocks"] for r in facts)
+                locations = sum(len(r["block_src"]) for r in facts)
+                temps = sum(r["temps"] for r in facts)
+                named = sum(len(r["temp_names"]) for r in facts)
+                heads = sum(len(r["loop_heads"]) for r in facts)
+                print(f"{name}Src: functions {located}/{len(facts)} located; "
+                      f"blocks {locations}/{blocks} located; temps {named}/{temps} named; "
+                      f"loop heads {heads}", flush=True)
             if fns.split():
                 selected = self.work / "linked.term"
                 selected.write_text(linked)
@@ -270,6 +288,10 @@ class Generator:
                     text += decoded(lower, fns, layout)
                 elif layout in ("stdio", "buffer"):
                     text = stdio(text, lower, fns, layout)
+                if self.sources and layout in ("libio", "stdio", "buffer"):
+                    text = text.replace("From Stdlib Require Import String ZArith List Ascii.",
+                                        "From Glibc Require Import GlibcTactics.\n"
+                                        "From Stdlib Require Import String ZArith List Ascii.")
                 (output / (name + "Code.v")).write_text(text)
 
 
@@ -308,7 +330,7 @@ def main():
             status = 1
     with tempfile.TemporaryDirectory(prefix="glibc-code-") as tmp:
         work = Path(tmp)
-        generator = Generator(args.capture.resolve(), work)
+        generator = Generator(args.capture.resolve(), work, sources=args.form == "shared-prelude")
         for manifest in manifests:
             styles = tomllib.loads(manifest.read_text()).get("proof_styles", {})
             rel = manifest.parent.relative_to(GLIBC)

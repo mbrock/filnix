@@ -45,6 +45,68 @@ generated sources and, in shared form, the prelude; it never reads the compariso
 If the capture argument is omitted, the generator uses `/tmp/glibc-pp` or
 builds `survey/glibc/capture.nix`.
 
+## Use source hints
+
+The shared-prelude form also emits `<Name>Src.v` beside each code fixture.
+Each sidecar imports its fixture and groups its tables under
+`<Name>Src.fn_<symbol>`, replacing punctuation in the linked symbol with
+underscores. For example, `LibioXsputnSrc.fn__IO_new_file_xsputn.loop_heads`
+contains the optional cut labels for that function.
+
+The `source` definition holds the C function's file and line, or `None` when
+its context has no function location. The `block_src` table maps each located
+block label to a file and line. Paths under `nanofil` are relative to that
+directory, so the generated tables do not depend on the checkout location.
+The generator visits phi sites, instruction sites in
+index order, then the jump, and takes the first located origin. A generated
+origin without a location may cite a located parent. Blocks without any
+located site have no entry; the generator does not invent a function-level
+fallback for them.
+
+The `temp_names` table maps recorded temporaries to their C declaration names.
+It includes only `value` records with a `named(_, value)` primary hint and
+a matching binding, even when optimization has removed the temporary.
+It excludes `history` records and address or piece hints.
+Shadowed declarations may give different temporaries the same spelling.
+The `loop_heads` list comes from `cfg.pl`'s dominators and natural-loop
+analysis. It covers reachable natural loops, not every irreducible cycle.
+
+Changing a function's blocks can leave old labels in its source tables.
+The sidecar rejects those labels during compilation. Each function's
+`labels_valid` lemma uses `vm_compute` to check that the decoded module
+defines the function and contains every label in both label tables.
+The check does not establish that a source location or C name is accurate.
+The sidecars contain definitions and computed proofs, with no axioms.
+
+Proofs must remain sound when these hints are wrong. Names and locations
+serve only lemma names, stop messages and annotation keys; soundness
+theorems must not take them as premises. The second executor stage accepts
+any list of cut labels for `sym_func`, so it can use the generated loop
+headers without trusting the analysis that found them.
+
+The shared generator retains existing context records through the checked
+stage using `cc-ir` and `bench/trap-checked.pl`; it does not change the compiler.
+It passes `--context` to `link.pl`, which renames context function names
+alongside local definitions and retains only surviving functions' records.
+Context references neither extract archive members nor retain dead code.
+Without that flag, the linker's output stays unchanged. The legacy generator
+does not emit sidecars or change its compilation path.
+
+Generate into a separate tree to leave existing code fixtures untouched:
+
+```sh
+nanofil/rocq/glibc/libio/code.sh /tmp/glibc-pp --form shared-prelude --output /tmp/generated-code
+cp /tmp/generated-code/libio/*Src.v nanofil/rocq/glibc/libio/
+nanofil/rocq/glibc/libio/code.sh /tmp/glibc-pp --form shared-prelude
+```
+
+The generator reports how many functions and blocks have locations and how
+many recorded or current temporaries have names. It also counts natural-loop headers.
+The source-table test checks that linking preserves the default bytes and
+selects the right context records. It checks site order, missing locations,
+recorded names and loop headers without a capture. The test driver runs this
+test before its capture checks.
+
 ## Driver compatibility
 
 All eight driver paths still accept `[--update] [GLIBC_PP]`. Checks return 0

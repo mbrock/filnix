@@ -23,24 +23,27 @@
 % | `init` items | a constructor or destructor entry (`init(ctor, P)`, `init(dtor, P)` data) is refused by default; `--ctors` keeps it and roots its target, but does not itself run startup or exit: their effects remain proof obligations |
 %
 % Items keep their objects' order, ordinary objects the order given,
-% extracted members their extraction order. Context items are dropped.
+% extracted members their extraction order. Context items are dropped unless
+% --context retains the records belonging to each surviving function.
 
 :- initialization(main, main).
 
 main :-
     set_stream(user_output, encoding(utf8)),
     current_prolog_flag(argv, Args0),
-    ( select('--ctors', Args0, Args) -> Ctors = true ; Args = Args0, Ctors = false ),
+    ( select('--context', Args0, Args1) -> Context = true ; Args1 = Args0, Context = false ),
+    ( select('--ctors', Args1, Args) -> Ctors = true ; Args = Args1, Ctors = false ),
     Args = [Entry|Specs],
     objects(Specs, Objects0, Archive),
     extract(Entry, Objects0, Archive, Objects),
     maplist(check_ctors(Ctors), Objects),
-    findall(I, (member(object(_, Is), Objects), member(I, Is)), Items00),
+    findall(I, (member(object(_, Is), Objects), member(I, Is), \+ is_context(I)), Items00),
     exclude(overridden(Items00), Items00, Items0),
     exported_unique(Items0),
     findall(N, member(data(N, init(_, _), _, _), Items0), InitNames),
     reachable([Entry|InitNames], Items0, [], Names),
-    include(kept(Names), Items0, Items),
+    findall(I, (member(object(_, Is), Objects), member(I, Is),
+                linked_item(Context, Names, Items0, Is, I)), Items),
     print_module(Items).
 
 objects([], [], []).
@@ -53,9 +56,8 @@ objects([Spec|Specs], [O|Objects], Archive) :-
 object(Spec, object(Obj, Items)) :-
     atomic_list_concat([Obj, File], '=', Spec),
     read_file_to_terms(File, [module(Items0)], [encoding(utf8)]),
-    exclude(is_context, Items0, Items1),
-    convlist(local_name, Items1, Locals),
-    maplist(rename(Obj, Locals), Items1, Items).
+    convlist(local_name, Items0, Locals),
+    maplist(rename(Obj, Locals), Items0, Items).
 
 check_ctors(true, _) :- !.
 check_ctors(false, object(Obj, Items0)) :-
@@ -94,6 +96,8 @@ rename(Obj, Locals, data(N0, L, A, Is0), data(N, L, A, Is)) :- !,
     local(Obj, Locals, N0, N), refs(Obj, Locals, Is0, Is).
 rename(Obj, Locals, alias(N0, L, T0), alias(N, L, T)) :- !,
     local(Obj, Locals, N0, N), local(Obj, Locals, T0, T).
+rename(Obj, Locals, context(N0, Rs), context(N, Rs)) :- !,
+    local(Obj, Locals, N0, N).
 rename(_, _, I, I).
 
 local(Obj, Locals, N0, N) :-
@@ -150,11 +154,18 @@ reachable([N|Todo], Items, Seen, Names) :-
 named(I, Ns) :- findall(N, sub_name(I, N), Ns).
 
 sub_name(alias(_, _, T), T) :- !.
+sub_name(context(_, _), _) :- !, fail.
 sub_name(global(N), N).
 sub_name(sym(N, _), N).
 sub_name(T, N) :- compound(T), T \= global(_), T \= sym(_, _), arg(_, T, A), sub_name(A, N).
 
 kept(Names, I) :- item_name(I, N), memberchk(N, Names).
+
+linked_item(true, Names, Winners, Object, context(N, _)) :- !,
+    member(F, Object), F = func(N, _, _, _, _),
+    memberchk(F, Winners), memberchk(N, Names).
+linked_item(_, Names, Winners, _, I) :-
+    \+ is_context(I), memberchk(I, Winners), kept(Names, I).
 
 print_module(Items) :-
     format("module(["),
