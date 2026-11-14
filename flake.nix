@@ -521,10 +521,16 @@
             php-stealmybitcoin = import ./tests/php-stealmybitcoin.nix {
               inherit pkgs;
               native =
-                (pkgs.php84.overrideAttrs (old: {
-                  dontStrip = true;
-                  separateDebugInfo = false;
-                })).withExtensions
+                (
+                  (pkgs.php84.override {
+                    version = "8.4.25";
+                    hash = "sha256-lSzMF4Uma5WPSh3PxYDgjqu7efRCItHv8ZK82Y2R9uM=";
+                  }).overrideAttrs
+                    (old: {
+                      dontStrip = true;
+                      separateDebugInfo = false;
+                    })
+                ).withExtensions
                   (
                     { enabled, ... }:
                     map (

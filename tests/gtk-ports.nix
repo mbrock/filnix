@@ -45,7 +45,7 @@ assert !(hasPatch "meson-gtype.patch" pkgs.meson);
 assert builtins.all (name: build.${name}.drvPath == pkgs.${name}.drvPath) [
   "pango"
   "gtk3"
-  "glibmm"
+  "glibmm_2_4"
   "cairo"
   "sdl2-compat"
 ];

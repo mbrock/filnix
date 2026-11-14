@@ -19,7 +19,9 @@ pkgsFilc.stdenv.mkDerivation {
   buildPhase = ''
     $CC ${./gtk2-runtime.c} $(pkg-config --cflags --libs gtk+-2.0) -o gtk-check
     export HOME="$TMPDIR" XDG_CACHE_HOME="$TMPDIR/cache" NO_AT_BRIDGE=1 GTK_MODULES=gail
-    export GTK_PATH=${pkgsFilc.gtk-engine-murrine}/lib/gtk-2.0
+    export GTK_PATH=${
+      pkgsFilc.callPackage ./gtk2-runtime-murrine/package.nix { }
+    }/lib/gtk-2.0
     Xvfb :7 -screen 0 800x600x24 -nolisten tcp > xvfb.log 2>&1 &
     server_pid=$!
     trap 'kill "$server_pid" 2>/dev/null || true' EXIT

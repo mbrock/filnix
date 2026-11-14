@@ -19,6 +19,6 @@ let
     };
 in
 {
-  glibmm = check pkgsFilc.glibmm "giomm-2.4";
+  glibmm = check pkgsFilc.glibmm_2_4 "giomm-2.4";
   glibmm_2_68 = check pkgsFilc.glibmm_2_68 "giomm-2.68";
 }
