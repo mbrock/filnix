@@ -250,6 +250,7 @@ stdio/PrintfStreamHeap.v
 string/MemrchrMask.v
 string/StrchrnulLogic.v
 string/StrnlenLogic.v
+string/StringSpecs.v
 getopt/GetoptExchangeTwo.v
 getopt/GetoptLongOnly.v
 getopt/GetoptReqTail.v

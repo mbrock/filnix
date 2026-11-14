@@ -1,26 +1,13 @@
 From Glibc Require Import GlibcProgram.
-(** A copy into a stream's buffer at any offset, as `c: _IO_default_xsputn`
-    and `c: _IO_new_file_xsputn` make with `c: __mempcpy(f->_IO_write_ptr,
-    s, count)`: glibc's own `mempcpy` (MemFwdCode.v), which calls
-    `memcpy` and then libpizlo's `c: zmemmove` at a void site.
+(** Stream output copies bytes into a buffer whose write pointer need
+    not be aligned. This module verifies those copies through glibc's
+    memcpy and mempcpy implementations.
 
-    MemFwdLogic.v's [wp_call_glibc_mempcpy] copies into a block that
-    starts at a multiple of 8, as a fresh object does. A write pointer
-    may be anywhere in its buffer, and `c: zmemmove` empties the aux
-    slot of each word the copy touches, the one holding the first
-    byte included, which may start before it. Here the caller owns the
-    whole buffer, its bytes and slots from offset 0, the object at a
-    multiple of 8, so every touched slot is its own: the copy of n
-    bytes from offset o leaves the buffer holding the bytes memory
-    then holds ([bytes_now]) and the slots it holds ([aux_now]), every
-    byte below 256, and no piece outside the buffer changes
-    ([copy_in_after]).
-
-    | Triple | Call |
-    |---|---|
-    | [wp_zmemmove_in] | `c: zmemmove(d, s, n)` at a void site |
-    | [wp_call_memcpy_in] | glibc's `memcpy`, returning d |
-    | [wp_call_mempcpy_in] | glibc's `mempcpy`, returning d + n | *)
+    A copy clears the [[aux|capability slot]] of every word it touches.
+    The first slot may therefore begin before the destination pointer.
+    The caller owns the whole buffer, including those earlier slots,
+    so it can account for every change. After the copy, it recovers
+    the buffer's bytes and slots and retains its share of the source. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -33,12 +20,17 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode MemFwdLogic Fil
   LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
+From Glibc Require Import GlibcSpec.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** ## The buffer after a copy *)
 
-(** The bytes of memory m at the n offsets from 0 of the object b. *)
+(** A copy changes only part of the destination buffer. The following
+    definitions describe the whole buffer afterwards and preserve ownership
+    of memory outside it. *)
+
+(** This function reads the first n bytes of object b from memory. *)
 Definition bytes_now (m : mem) (b : Z) (n : nat) : list Z :=
   map (fun i => m_bytes m (b + (0 + Z.of_nat i))) (seq 0 n).
 
@@ -46,11 +38,8 @@ Definition bytes_now (m : mem) (b : Z) (n : nat) : list Z :=
 Lemma length_bytes_now m b n : length (bytes_now m b n) = n.
 Proof. unfold bytes_now. by rewrite length_map length_seq. Qed.
 
-(** A copy of the bytes ys of the object b', owned without their
-    slots, into offset o of the whole buffer xs, cs of the live object
-    b, at a multiple of 8: afterwards the buffer's pieces are the bytes
-    and slots memory holds, every byte below 256, and every piece
-    outside it keeps its agreement. *)
+(** Copying into an aligned buffer preserves memory agreement outside the buffer.
+    The destination retains valid bytes even when the write pointer is unaligned. *)
 Lemma copy_in_after m m' b reg xs cs o b' reg' o' ys c' :
   live_disjoint m -> live_at m b reg -> live_at m b' reg' -> b mod 8 = 0 -> length cs = length xs ->
   0 <= o -> o + Z.of_nat (length ys) <= Z.of_nat (length xs) ->
@@ -113,11 +102,12 @@ Qed.
 
 (** ## Over a Logic instance *)
 
+(** The remaining proofs connect physical copies to the caller's memory ownership.
+    They use the same [[separation-logic]] interpretation as the surrounding stream code. *)
 
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
-(** A call of [void_only] c is a call of c, as MemFwdLogic.v's
-    [invoke_void_only] says. *)
+(** Restricting a runtime contract to void calls does not change the memory effects it permits. *)
 Lemma invoke_void {world} (c : contract world) r args xs s m w trace en s' m' w' :
   M.E.invoke (void_only c) r args xs s m w trace en s' m' w' -> M.E.invoke c r args xs s m w trace en s' m' w'.
 Proof.
@@ -132,6 +122,7 @@ Section rules_values.
 Context {Σ : gFunctors}
   {gen_heapGS0 : gen_heapGS piece pval Σ}.
 Existing Instance gen_heapGS0.
+(** The destination retains its original size and valid bytes after a copy. *)
 Definition buf_after (b : Z) (n : nat) : iProp Σ :=
   ∃ xs' cs', ⌜length xs' = n /\ length cs' = n /\ Forall (fun x => 0 <= x < 256) xs'⌝ ∗
     bytes b 0 xs' ∗ auxes b 0 cs'.
@@ -144,19 +135,13 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
 
-(** [os_wi] w0 survives safepoints. *)
+(** Garbage collection preserves the OS state used to interpret this caller's memory. *)
 Local Instance copy_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
-(** The expressions of the language. *)
+(** This abbreviation selects expressions in the caller's linked program. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** What the buffer of the live object b holds after a copy into it:
-    some bytes, below 256, and slots, as many as before. *)
-
-(** A void call of `c: zmemmove` of the bytes ys from offset o' of the
-    live object b', owned at the share dq through the capability c',
-    to offset o of the whole buffer xs, cs of another live object b, at
-    a multiple of 8: the buffer holds what [buf_after] says, and the
-    source comes back. *)
+(** The runtime move preserves the source's ownership share and returns the whole destination buffer.
+    The destination's bytes remain valid, and its size does not change. *)
 Lemma wp_zmemmove_in f e ls lab vd vs vn rest j b reg xs cs o dq b' reg' o' c' ys Φ :
   arg_x ge e (Arg P vd) = Some (WPtr (mkPtr (b + o) (Obj b))) ->
   arg_x ge e (Arg P vs) = Some (WPtr (mkPtr (b' + o') c')) -> c' = Obj b' \/ c' = Ro b' ->
@@ -240,8 +225,42 @@ Proof.
       split; [apply length_bytes_now|]. split; [unfold cs'; apply length_aux_now | exact Hby].
 Qed.
 
-(** A call of glibc's `memcpy` ([glibc_memcpy]) as [wp_zmemmove_in]:
-    the caller resumes with the destination. *)
+(** A stream copy owns its whole destination buffer, including slots before
+    an unaligned write pointer. Both copy functions preserve this ownership. *)
+Definition copy_in_spec (past : bool) : fspec Σ :=
+  FSpec (Z * region * Z * list Z * list cap * dfrac * Z * region * Z * cap * list Z)
+    (fun '(b, _, o, _, _, _, b', _, o', c', ys) =>
+      [WPtr (mkPtr (b + o) (Obj b)); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length ys))])
+    (fun '(b, reg, o, xs, cs, dq, b', reg', o', c', ys) =>
+      ⌜(c' = Obj b' \/ c' = Ro b') /\ Z.of_nat (length ys) < 2 ^ 64 /\
+        b mod 8 = 0 /\ b' mod 8 = 0 /\ 0 <= o /\ 0 <= o' /\
+        o + Z.of_nat (length ys) <= Z.of_nat (length xs) /\
+        b + Z.of_nat (length xs) <= r_end reg /\ b' + o' + Z.of_nat (length ys) <= r_end reg' /\
+        length cs = length xs /\ Forall (fun x => 0 <= x < 256) xs /\ Forall (fun y => 0 <= y < 256) ys /\
+        (if past then 0 <= b /\ b + Z.of_nat (length xs) < 2 ^ 64 else True)⌝ ∗
+      live b reg ∗ bytes b 0 xs ∗ auxes b 0 cs ∗ liveq dq b' reg' ∗ bytesq dq b' o' ys)%I
+    (fun '(b, reg, o, xs, cs, dq, b', reg', o', c', ys) v =>
+      ⌜v = Ret (WPtr (mkPtr (if past then (b + o + Z.of_nat (length ys))%Z else (b + o)%Z) (Obj b)))⌝ ∗
+      live b reg ∗ buf_after b (length xs) ∗ liveq dq b' reg' ∗ bytesq dq b' o' ys)%I.
+
+(** The whole-buffer move rule establishes memcpy's stream-copy contract. *)
+Lemma memcpy_in_spec_valid g : find_fn ge g = Some (Defined glibc_memcpy) ->
+  HasSpec registry (os_wi w0) ge g (copy_in_spec false).
+Proof.
+  intros Hg [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
+  exists glibc_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
+  intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_in_spec].
+  iIntros "(%Hp & Hl & Hx & Hcs & Hl' & Hy) HK".
+  destruct Hp as (Hc' & Hn & Hb8 & Hb8' & Ho & Ho' & Hon & Hend & Hend' & Hlc & Hx & Hy & _).
+  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
+  iApply (wp_zmemmove_in with "Hl Hx Hcs Hl' Hy");
+    [reflexivity | reflexivity | exact Hc' | cbn; rewrite Z.mod_small; [reflexivity | lia]
+    | exact Hb8 | exact Hb8' | exact Ho | exact Ho' | exact Hon | exact Hend | exact Hend' | exact Hlc | exact Hx | exact Hy |].
+  iNext. iIntros "Hl Hx Hl' Hy". iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply "HK". by iFrame.
+Qed.
+
+(** Calling memcpy preserves the whole buffer and resumes the caller with the destination pointer. *)
 Lemma wp_call_memcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' c' ys cf' Φ :
   map_option (arg_x ge e) args =
     Some [WPtr (mkPtr (b + o) (Obj b)); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length ys))] ->
@@ -258,18 +277,38 @@ Lemma wp_call_memcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' c
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : sexpr) {{ Φ }}.
 Proof.
   intros Hxa Hg Hres Hc' Hn Hb8 Hb8' Ho Ho' Hon Hend Hend' Hlc Hx Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
-  iApply (wp_call_bind with "[-]"); [exact Hxa | exact Hg | reflexivity |]. iNext.
-  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
-  iApply (wp_zmemmove_in with "Hl Hx Hcs Hl' Hy");
-    [reflexivity | reflexivity | exact Hc' | cbn; rewrite Z.mod_small; [reflexivity | lia]
-    | exact Hb8 | exact Hb8' | exact Ho | exact Ho' | exact Hon | exact Hend | exact Hend' | exact Hlc | exact Hx | exact Hy |].
-  iNext. iIntros "Hl Hx Hl' Hy". iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  pose proof (memcpy_in_spec_valid g Hg) as Hspec.
+  call_spec.
+  { done. }
+  iDestruct "Hpost" as "(-> & Hl & Hx & Hl' & Hy)".
   iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hl' Hy").
 Qed.
 
-(** A call of glibc's `mempcpy` ([glibc_mempcpy]), which calls
-    `memcpy` by its name `__GI_memcpy`, as [wp_call_memcpy_in]: the
-    caller resumes with the pointer just past the bytes copied. *)
+(** Mempcpy's frame uses the whole-buffer memcpy contract before advancing its result pointer. *)
+Lemma mempcpy_in_spec_valid g : find_fn ge g = Some (Defined glibc_mempcpy) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  HasSpec registry (os_wi w0) ge g (copy_in_spec true).
+Proof.
+  intros Hg Hcpy [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
+  exists glibc_mempcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
+  intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_in_spec].
+  iIntros "(%Hp & Hl & Hx & Hcs & Hl' & Hy) HK".
+  destruct Hp as (Hc' & Hn & Hb8 & Hb8' & Ho & Ho' & Hon & Hend & Hend' & Hlc & Hx & Hy & Hb0 & Hbound).
+  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
+  pose proof (memcpy_in_spec_valid (TAtom "__GI_memcpy") Hcpy) as Hspec.
+  call_spec with (b, reg, o, xs, cs, dq, b', reg', o', c', ys).
+  { cbn; rewrite (Z.mod_small (Z.of_nat _)); [reflexivity | lia]. }
+  { repeat split; try assumption; lia. }
+  iDestruct "Hpost" as "(-> & Hl & Hx & Hl' & Hy)".
+  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
+  iApply wp_flight; [reflexivity | reflexivity | reflexivity |]. iNext.
+  iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply "HK". iFrame. iPureIntro. cbn.
+  rewrite (Z.mod_small (b + o)); [|lia]. rewrite (Z.mod_small (Z.of_nat _)); [|lia].
+  rewrite (Z.mod_small (b + o + _)); [reflexivity | lia].
+Qed.
+
+(** Calling mempcpy preserves the whole buffer and returns the pointer just after the copied bytes. *)
 Lemma wp_call_mempcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' c' ys cf' Φ :
   find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
   map_option (arg_x ge e) args =
@@ -287,17 +326,11 @@ Lemma wp_call_mempcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' 
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : sexpr) {{ Φ }}.
 Proof.
   intros Hcpy Hxa Hg Hres Hc' Hb0 Hn Hb8 Hb8' Ho Ho' Hon Hend Hend' Hlc Hx Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
-  iApply (wp_call_bind with "[-]"); [exact Hxa | exact Hg | reflexivity |]. iNext.
-  iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
-  iApply (wp_call_memcpy_in with "Hl Hx Hcs Hl' Hy");
-    [cbn; rewrite (Z.mod_small (Z.of_nat _)); [reflexivity | lia] | exact Hcpy | reflexivity | exact Hc' | lia
-    | exact Hb8 | exact Hb8' | exact Ho | exact Ho' | exact Hon | exact Hend | exact Hend' | exact Hlc | exact Hx | exact Hy |].
-  iNext. iIntros "Hl Hx Hl' Hy".
-  iApply wp_flight; [reflexivity | reflexivity | reflexivity |]. iNext.
-  iApply wp_ret; [reflexivity | reflexivity |]. iNext.
-  iExists cf'. iSplit; [|iNext; iApply ("HK" with "Hl Hx Hl' Hy")]. iPureIntro.
-  rewrite -Hres. cbn. rewrite (Z.mod_small (b + o)); [|lia]. rewrite (Z.mod_small (Z.of_nat _)); [|lia].
-  rewrite (Z.mod_small (b + o + _)); [reflexivity | lia].
+  pose proof (mempcpy_in_spec_valid g Hg Hcpy) as Hspec.
+  call_spec with (b, reg, o, xs, cs, dq, b', reg', o', c', ys).
+  { repeat split; try assumption; lia. }
+  iDestruct "Hpost" as "(-> & Hl & Hx & Hl' & Hy)".
+  iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hl Hx Hl' Hy").
 Qed.
 
 End rules.
