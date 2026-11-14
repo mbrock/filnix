@@ -63,12 +63,12 @@ rejects `.glob` files whose source digest is stale. `--files GlibcLogic.v`
 restricts a diagnostic run; the full command never restricts coverage.
 
 The full command builds a second candidate with `PE_RUNTIME=abstract`. It uses
-that candidate for every file that compiles there. A missing abstract object
-may fall back to the concrete candidate only if the original file depends on
-an interpreter-specific file. The checker derives those dependencies from
-compiled references and instantiates the original functor with `InterpRuntime`
-for that comparison. It records the choice for each file. A failure elsewhere
-in the abstract build is an error, not permission to change the runtime.
+`rocq dep` on the original tree to find every file that names `InterpRuntime`
+or depends on a file that does. Those files are compared against the concrete
+candidate, with the original functor instantiated at `InterpRuntime`. Every
+other original file must compile and compare against the abstract candidate.
+The report retains the dependency output, the file partition, and declaration
+counts for each runtime. Compilation success never chooses a file's runtime.
 
 The source selects lemmas, theorems, corollaries, and definitions explicitly
 returning `Prop`. Rocq's `.glob` supplies their module scopes. Each probe
@@ -101,12 +101,12 @@ selected trees fail the overall check, even when other files compare equal.
 
 ## Reproduce and compare the campaign audits
 
-`audit-contracts.json` lists the assumptions each campaign query may use.
-An empty list means that Rocq must print "Closed under the global context".
-Hello has two checks until the runtime design is chosen. With `InterpRuntime`,
-it must print Closed. With an abstract runtime, it must retain its original
-statement and twelve runtime assumptions, including their types. Comparing all
-statements still reports the loss of runtime generality as a change.
+We audit Hello twice because its concrete and abstract runtimes expose different
+assumptions. The concrete proof must print "Closed under the global context".
+The abstract proof must retain its original statement and twelve assumptions,
+including their types. `audit-contracts.json` records the permitted assumptions
+for every query; an empty list requires Closed. The statement comparison uses
+the original dependency graph to choose which runtime to compare.
 
 `layouts/original/` contains the lead's original query files, including the
 regression proofs and count-wrap controls inside those queries. A layout is data:
@@ -177,8 +177,20 @@ The first command fails until the differences are approved. The export refuses
 missing queries or unlisted differences. Review the exported before/after
 statements before committing the JSON. Repeating the check then accepts those
 exact pairs but rejects an additional alteration to an already listed lemma.
+Use `export --append` to retain an independently elaborated runtime variant
+without replacing the existing pair. Both pairs remain explicit in the packet;
+the comparison does not substitute one runtime for another.
 Each intentional stage also supplies a `.equivalence.v` proof for the cutover
 packet; the declaration list alone does not establish equivalence.
+
+Stage 30 instead supplies unchanged-statement evidence. `tactics-boundary.sh`
+creates its complete before and after trees from the original sources. Build
+both, then pass `--stage30-before BEFORE --stage30-after AFTER --plugin PLUGIN`
+to `packet.py`. The packet compares every declaration across that boundary,
+requires all eight reviewed sources to equal their five targets including
+universes, checks the added rule against its pinned type and audits it Closed,
+and runs `lint-tactics.py --max 226`. No equivalence lemma is required for this
+statement-preserving stage. `run.sh` prepares and checks these trees itself.
 
 `python3 check/packet.py POST_TREE --output cutover-packet.md`, run from the
 pipeline directory, assembles the three files into one document. It checks that

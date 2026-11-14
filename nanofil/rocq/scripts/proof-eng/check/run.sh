@@ -63,9 +63,14 @@ run abstract-apply env PE_RUNTIME=abstract bash "$here/../apply.sh" "$before" "$
 if bash "$here/../build.sh" "$out/abstract" "$jobs" >"$out/abstract-build.log" 2>&1; then
   echo 'PASS abstract-build' | tee -a "$out/verdicts.txt"
 else
-  echo 'PARTIAL abstract-build (statement check validates every concrete fallback)' | tee -a "$out/verdicts.txt"
+  echo 'PARTIAL abstract-build (statement check requires every original general file)' | tee -a "$out/verdicts.txt"
 fi
-run packet python3 "$here/packet.py" "$after" --output "$out/cutover-packet.md"
+run tactics-boundary bash "$here/tactics-boundary.sh" "$before" "$out/tactics-boundary"
+run tactics-before-build bash "$here/../build.sh" "$out/tactics-boundary/before" "$jobs"
+run tactics-after-build bash "$here/../build.sh" "$out/tactics-boundary/after" "$jobs"
+run packet python3 "$here/packet.py" "$after" --output "$out/cutover-packet.md" \
+  --stage30-before "$out/tactics-boundary/before" --stage30-after "$out/tactics-boundary/after" \
+  --plugin "$out/plugin"
 run statements python3 "$here/check.py" statements "$before" "$after" \
   --abstract-after "$out/abstract" --plugin "$out/plugin" --output "$out/statements" --jobs "${PE_QUERY_JOBS:-2}"
 run before-audits python3 "$here/audit.py" "$before" --output "$out/before-audits"

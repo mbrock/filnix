@@ -195,8 +195,22 @@ class Tree:
                     for param, typ in params:
                         if typ.strip() == 'Runtime':
                             arg = 'PER'
-                        elif typ.strip() in ('LogicSig R', 'LogicSig InterpRuntime'):
-                            arg = 'PELG'
+                        elif re.fullmatch(rf'LogicSig\s+{PATH}', typ.strip()):
+                            captured = typ.split()[1]
+                            runtime_arg = bindings.get(captured)
+                            if runtime_arg == 'PER':
+                                arg = 'PELG'
+                            else:
+                                if captured == 'InterpRuntime':
+                                    runtime_arg = captured
+                                elif base + '.' + captured in self.aliases:
+                                    runtime_arg = base + '.' + captured
+                                elif captured == 'R' and re.search(r'\bRequire Import Fix\s*\.', uncomment(self.files[rel].read_text())):
+                                    runtime_arg = self.modules['Fix'] + '.R'
+                                else:
+                                    raise ValueError(f'cannot resolve captured runtime {captured} for {full}')
+                                arg = f'PELogic{len(roots)}_{len(args)}'
+                                setup.append(f'Module {arg} := Logic {runtime_arg}.')
                         else:
                             typ = re.sub(PATH, lambda m: bindings.get(m[0], self.module_types.get(m[0], m[0])), typ)
                             arg = f'PEArg{len(roots)}_{len(args)}'
@@ -236,7 +250,7 @@ class Tree:
             if name in ('InterpRuntime', 'Nanofil.core.Runtime.InterpRuntime'):
                 return 'Nanofil.core.Runtime.InterpRuntime'
             if name in dict(self.functors.get(context, [])) and dict(self.functors[context])[name] == 'Runtime':
-                return '@RuntimeAbstract'
+                return 'Nanofil.core.Runtime.InterpRuntime' if concrete else '@RuntimeAbstract'
             full = context + '.' + name
             if name.startswith('Glibc.'):
                 full = name
@@ -441,24 +455,35 @@ def run_probe(tree, rel, decls, out, plugin, inside=False, concrete=False):
 def compare(args):
     before, after = Tree(args.before), Tree(args.after)
     abstract = Tree(args.abstract_after) if args.abstract_after else None
+    out = Path(args.output).resolve()
+    out.mkdir(parents=True, exist_ok=True)
     interpreter_closure = set()
+    runtime_roots = set()
     if abstract:
-        interpreter_closure = {rel for rel, path in before.files.items()
-                               if re.search(r'\bInterpRuntime\b', uncomment(path.read_text()))}
+        runtime_roots = {rel for rel, path in before.files.items()
+                         if re.search(r'\bInterpRuntime\b', uncomment(path.read_text()))}
+        interpreter_closure = set(runtime_roots)
+        dep = subprocess.run(['rocq', 'dep', '-R', os.environ['PE_MODEL'], 'Nanofil',
+                              '-R', str(before.root), 'Glibc', *map(str, before.files.values())],
+                             text=True, capture_output=True, check=True)
+        (out / 'runtime-dependencies.txt').write_text(dep.stdout + dep.stderr)
+        objects = {str(path.with_suffix('.vo')): rel for rel, path in before.files.items()}
         dependencies = {}
-        for rel, path in before.files.items():
-            glob = path.with_suffix('.glob')
-            references = set(re.findall(r'^R\d+:\d+ (Glibc\.[\w.]+)', glob.read_text(), re.M)) if glob.exists() else set()
-            dependencies[rel] = {f for f, scope in before.scopes.items() if scope in references}
+        for line in dep.stdout.splitlines():
+            targets, separator, prerequisites = line.partition(':')
+            if separator:
+                for target in targets.split():
+                    if target in objects:
+                        dependencies[objects[target]] = {objects[p] for p in prerequisites.split() if p in objects}
+        if set(dependencies) != set(before.files):
+            raise ValueError('rocq dep did not cover every original file')
         while True:
             more = {f for f, deps in dependencies.items() if deps & interpreter_closure}
             if more <= interpreter_closure:
                 break
             interpreter_closure.update(more)
     rules = Expectations(args.expectations)
-    out = Path(args.output).resolve()
     plugin = Path(args.plugin).resolve()
-    out.mkdir(parents=True, exist_ok=True)
     files = sorted(set(before.files) | set(after.files))
     if args.files:
         unknown = set(args.files) - set(files)
@@ -468,18 +493,22 @@ def compare(args):
     if not files:
         raise ValueError('no files selected')
     results = {'mode': args.mode, 'files': {}, 'errors': [], 'differences': [], 'runtime_by_file': {}}
+    if abstract:
+        results['runtime_partition'] = {'roots': sorted(runtime_roots),
+                                        'concrete': sorted(interpreter_closure),
+                                        'general': sorted(set(before.files) - interpreter_closure)}
     def check_file(rel):
         sides = []
         errors = []
         candidate = after
         concrete = False
         if abstract:
-            if rel in abstract.files and abstract.files[rel].with_suffix('.vo').exists():
-                candidate = abstract
-            elif rel in interpreter_closure:
+            if rel in interpreter_closure:
                 concrete = True
             else:
-                return rel, [None, None], ['abstract build failed outside interpreter closure: ' + rel]
+                candidate = abstract
+                if rel in candidate.files and not candidate.files[rel].with_suffix('.vo').exists():
+                    return rel, [None, None], ['general file failed to compile abstractly: ' + rel]
         results['runtime_by_file'][rel] = 'concrete' if concrete else 'abstract'
         for label, tree in [('before', before), ('after', candidate)]:
             if rel not in tree.files:
@@ -541,6 +570,11 @@ def compare(args):
     for key in set(rules.rows) - observed:
         if key[0] in files:
             results['errors'].append(f'expected change was not observed: {key[0]}:{key[1]}')
+    results['declaration_counts'] = {
+        runtime: {side: sum(len(sides[i] or {}) for rel, sides in results['files'].items()
+                            if results['runtime_by_file'].get(rel) == runtime)
+                  for i, side in enumerate(('before', 'after'))}
+        for runtime in ('abstract', 'concrete')}
     (out / 'report.json').write_text(json.dumps(results, indent=2) + '\n')
     lines = []
     for d in results['differences']:
@@ -575,5 +609,5 @@ if __name__ == '__main__':
     p.add_argument('--expectations', default=str(HERE / 'expected-statement-changes'))
     p.add_argument('--jobs', type=int, default=4)
     p.add_argument('--files', nargs='+')
-    p.add_argument('--abstract-after', help='prefer compiled abstract files; allow concrete fallback only in the interpreter dependency closure')
+    p.add_argument('--abstract-after', help='compare general files abstractly and the original interpreter dependency closure concretely')
     raise SystemExit(compare(p.parse_args()))
