@@ -1,5 +1,5 @@
 {
-  "total": 238,
+  "total": 241,
   "files": {
     "StrlenBits.v": [
       "byte_cases"
@@ -161,6 +161,11 @@
     "getopt/GetoptSkipTest.v": [
       "icell",
       "rdchr"
+    ],
+    "getopt/GetoptWOptSession.v": [
+      "wos_lk",
+      "wos_side",
+      "wos_conv"
     ],
     "hello/HelloGlibcMainDispatch.v": [
       "phi_kept",
