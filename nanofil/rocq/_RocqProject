@@ -15,6 +15,7 @@ theories/core/Cfg.v
 theories/core/Values.v
 theories/core/Memory.v
 theories/core/Runtime.v
+theories/core/RuntimeWitness.v
 theories/core/Ops.v
 theories/core/Semantics.v
 theories/core/Run.v

@@ -1,24 +1,93 @@
-# The runtime as axioms
+# The runtime and the proof boundaries
 
-Campaign 2 of [formal.md](formal.md): one page of facts about the Fil-C
-runtime that the Rocq model takes as given, stated at the runtime's
-interface, each with a native test that would fail if the fact were
-stated in the obvious stronger way the runtime does not promise. In
-Rocq the page is `Module Type Runtime` in
-[Runtime.v](../rocq/theories/core/Runtime.v), line for line with the table
-below; [rocq.md](rocq.md) describes the rest of the model.
+The glibc proofs assume interfaces rather than the implementation of the
+runtime that ships. Each boundary needs a specification, a model that
+satisfies it, and native probes that compare its claims with Fil-C.
+These provide different evidence: a model witnesses consistency, while
+native probes can refute a claim about the implementation.
 
-Read against the staging Fil-C the toolchain pins: mbrock/fil-c at
+Allocation and collection must preserve the bounds and identities that
+memory checks rely on. [Runtime.v](../rocq/theories/core/Runtime.v)
+states these requirements as `Module Type Runtime`.
+The table below pairs each claim with a native probe.
+[rocq.md](rocq.md) explains the model, and [formal.md](formal.md)
+places this work in the wider proof campaign.
+
+## Three boundaries
+
+The runtime signature describes allocation, free and collector actions.
+[RuntimeWitness.v](../rocq/theories/core/RuntimeWitness.v) checks that
+`InterpRuntime` implements that signature without adding axioms.
+This is a consistency witness, not a proof about the native runtime:
+the interpreter is not the runtime that ships. The `axiom-*.c` probes
+below test the native implementation separately.
+
+External calls can change memory and produce output without executing
+the code covered by a glibc proof. Their contracts describe the changes,
+returns and observations that proofs may assume.
+[ExternalCalls.v](../rocq/theories/external/ExternalCalls.v) defines
+this interface, and [glibc/zsys](../rocq/glibc/zsys/OsRegistry.v)
+supplies contracts for libpizlo. Constructive examples show permitted
+calls, while the [zsys probes](zsys.md) test libpizlo under filcc.
+An example does not prove that every native behavior satisfies a contract.
+
+[G1](glibc-ir.md#assumption-g1-the-proofs-are-about-nanofils-ir-of-glibc)
+requires nanofil and filcc to give glibc functions the same behavior,
+safety checks and object layout. It belongs in the same pattern, but
+does not yet have a formal signature or a model witnessing that native
+correspondence. It remains a named written assumption. Compiler
+differential tests supply examples, not a proof of G1; the zsys probes
+test the primitive boundary, not G1 for glibc code.
+
+## What the build checks
+
+Most glibc proofs should work with any runtime that meets the interface.
+They should not depend on the interpreter's choice to represent allocator
+states as integers. The planned default enforces this by hiding the
+interpreter's definitions behind the runtime signature. In `Fix.v`, the
+binding becomes `Module R : Runtime := InterpRuntime.`
+
+The abstract build supplies no implementation at all: it declares
+`R : Runtime` and compares Rocq's reported assumptions with an explicit
+allowlist. A separate build keeps the interpreter's definitions visible
+for the concrete layer below. This binding change follows the campaign's
+second cutover; this page does not claim it has landed yet.
+
+`nanofil-rocq` compiles the witness and runs
+[runtime_signature.py](../tests/runtime_signature.py). The gate requires
+each logical signature field to have a table row. A real axiom must
+name an existing native probe; a derived lemma may instead name the
+axiom it follows from. The gate includes predicate parameters and
+bookkeeping obligations. A probe named for bookkeeping checks the
+corresponding native operation, not the interpreter's private representation.
+
+Rocq's `Print Assumptions` report is evidence, not a guarantee. The
+[campaign ledger](https://ampcode.com/artifacts/campaign-ledger-proof-automation-for-the-glibc-proofs-defe5a84-33de-4f52-b9b1-abc8197ea1ba)
+records issue #16646 as open in Rocq 9.3.0: applying a functor can make
+the report incomplete. `Fix.v` applies the functor `Logic R`, so the
+limitation matters here. Even a correct report saying “Closed” would
+not show that a proof used only the public interface. Hiding definitions
+and compiling without an implementation check that separate requirement.
+
+The native source references below describe the pinned staging Fil-C:
+mbrock/fil-c at
 [`18b6663a2785`](https://github.com/mbrock/fil-c/commit/18b6663a2785c8eba6cc2a544a7711e19fc448c7),
-the `coreRev` of `lib/filc-staging.json`. Revisit whenever Filnix bumps
-it. Build the reference tree with
-`nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-staging-ref-src`;
-the runtime paths below are relative to `libpas/src/libpas/` there.
+the `coreRev` of `lib/filc-staging.json`. These references need review
+whenever Filnix updates that pin. The command
+`nix build -o /tmp/filc-ref .#lib.x86_64-linux.filc-staging-ref-src`
+builds the reference tree. Runtime paths below are relative to
+`libpas/src/libpas/` there.
 
 ## The axioms
 
 | Axiom | Statement | Native test | Source |
 | --- | --- | --- | --- |
+| `ready` | The runtime's bookkeeping permits allocation in the supplied memory; this is a predicate parameter, not an assertion that every memory is ready. | [axiom-fresh.c](../tests/c/prog/axiom-fresh.c) tests allocation from native runtime states. | `Runtime.ready`; the witness supplies the interpreter invariant. |
+| `safepoint` | The relation describes possible collector transitions; this predicate parameter does not promise that a transition exists. | [axiom-collector-live.c](../tests/c/prog/axiom-collector-live.c) tests native collector transitions. | `Runtime.safepoint`; the witness supplies an unchanged-memory model. |
+| `freed_bounds` | A freed object in ready memory has empty bounds; this is an initial-state bookkeeping obligation. | [axiom-lifetime.c](../tests/c/prog/axiom-lifetime.c) tests that aliases trap after free. | `free_impl` empties the bounds. |
+| `ready_kept` | Ordinary in-bounds writes and object lifetime endings preserve allocator readiness. | [axiom-fresh.c](../tests/c/prog/axiom-fresh.c) tests further allocation after writes and free. | The witness proves preservation of its private invariant. |
+| `safepoint_ready` | Collector transitions preserve allocator readiness. | [axiom-rooting.c](../tests/c/prog/axiom-rooting.c) tests allocations and collections with retained roots. | The witness proves preservation of its private invariant. |
+| `safepoint_lifetime` | Collector transitions preserve object lifetimes; this lemma follows from `collector_live`. | [axiom-collector-live.c](../tests/c/prog/axiom-collector-live.c) tests live and freed objects across collection. | `Runtime.collector_live`. |
 | `fresh_allocation` | an allocation the runtime makes has a `fresh` base: no identity the memory has, live or freed, aligned, overlapping no object, ending at or below 2^64, reading as zero with no stored capability; for a runtime state `ready` for the memory | [axiom-fresh.c](../tests/c/prog/axiom-fresh.c): new objects read zero; a freed object's capability, still held, traps after collections and thousands of allocations of its size | `filc_runtime.c` `finish_allocate_small`/`_large` (zero mode), `fugc.h:170–181` |
 | `address_space` | where the runtime is `ready`, every object lies in [0, 2^48] (`objects_fit`), so no address inside one wraps, two addresses of one object are less than 2^63 apart, and an address that wrapped below 0, read signed, is below every object; the runtime's `alloc` may refuse, and the run then traps `out_of_memory` | [axiom-address.c](../tests/c/prog/axiom-address.c): heap objects of 1 byte to 1 GiB, static and initialized data and an address-taken local end below 2^48; `malloc(2^48)` traps as too big, and `malloc(2^48 - 1)`, within the size limit, traps out of memory | `filc_runtime.h` `filc_prepare_allocate_object` (`FILC_MAX_ALLOCATION_SIZE`, `PAS_MAX_ADDRESS`), `FILC_OBJECT_AUX_PTR_MASK` (object addresses stored in 48 bits), `pas_config.h` `PAS_ADDRESS_BITS` 48 |
 | `non_moving` | at a safepoint no byte moves or changes: the collector writes no object's contents and no address word | [axiom-nonmoving.c](../tests/c/prog/axiom-nonmoving.c): addresses of live and freed objects, and live contents, unchanged across six collections | Manifesto.md, "Non-moving" |
@@ -39,27 +108,23 @@ in a forked child with its stderr closed, so each program exits 0.
 
 ## How the model uses them
 
-The model is one thread's. The collector's rewriting of a stored
-capability to a freed object is what the program finds changed at a
-safepoint, the module type's `safepoint` relation, and nowhere else: no
-region changes there (`collector_live`). Fil-C's runtime never frees an
-object by itself. A signal handler can, and Fil-C runs one only at a
-pollcheck, but a handler is code the program installed, not the
-runtime's, as is a thread it starts. In the model, installing a handler
-(`signal`, `sigaction`) or starting a thread (`pthread_create`) is a
-call to an external with no contract, which ends the run as a failure,
-so no theorem covers a program past that point. The model takes a run
-to be the program's whole execution after the trusted entry, with no
-handler installed and no other program thread when it starts; a
-constructor, a preloaded library or a native caller that installed one
-is outside it, and no libc contract may admit installing a handler or
-starting a thread. A handler a program does install is to be verified
-as program code under the same logic, with an invariant that it frees
-only what it was handed. A pointer store's aux exit is a native
-safepoint between a check and its access, which the validator keeps
-facts across, so such a handler must also not free an object whose
-check is in flight; otherwise the theorems would weaken to "checked,
-or freed since its check".
+The model describes one thread without installed signal handlers.
+At a safepoint, the collector can replace a stored capability to an
+already-freed object with one that still traps. It cannot change object
+bounds, lifetimes or bytes. A handler can free an object, but a handler
+is program code, not a collector action.
+
+Calls that install handlers or start threads have no contract in this
+model. They end the modeled run as a failure, so no theorem covers
+execution beyond them. The trusted entry must also exclude handlers
+and other threads installed by constructors, preloaded libraries or
+native callers. No libc contract may silently admit either operation.
+
+Covering handlers would require proving that they free only objects
+they own and never invalidate a check before its access. This includes
+the native safepoint in a pointer store's aux exit. Without that rule,
+safety would mean “checked, or freed since its check”, rather than the
+current promise.
 
 Until 2026-11 the `safepoint` relation also stood for the thread's
 signal handlers, and its axiom `safepoint_lifetime` let a safepoint
@@ -139,6 +204,73 @@ Its `ready` says every object lies between 0 and Next, empty if freed,
 Next is at most 2^48, and nothing at or above Next has been written. Run.v's `Driver` runs over any `Runtime`, and the
 gates run `Driver InterpRuntime`.
 
+## The concrete layer
+
+The glibc layer is named by
+[runtime-concrete.txt](../rocq/glibc/runtime-concrete.txt). Its current
+member is `hi_atexit/HiAtexitSafe.v`: both safety and initialized-entry
+statements use the exact integer allocator cursor 4294969872 where the
+logic expects a runtime state. They are statements about a prepared
+interpreter image, not arbitrary implementations of `Runtime`.
+Their statements remain unchanged. The sealed-default design compiles
+this file's import closure again with a transparent `Fix.v`; it does not
+make every glibc proof transparent to accommodate this one theorem.
+
+Several `hi_atexit` preparation files name `InterpRuntime` directly.
+That alone does not require a transparent `Fix.v`: a file can construct
+interpreter data without equating it with the abstract logic's state.
+The compiler rejection check distinguishes the two cases.
+
+### Interpreter references outside glibc
+
+The following inventory covers every theory file that names
+`InterpRuntime`, including comments and generic theorem specializations.
+These files are outside the glibc binding change. The original inventory
+contains 38 files; the new explicit witness adds one more. A mention is
+not itself evidence that the whole file requires a transparent runtime.
+
+| File under `rocq/theories` | Why it names the interpreter |
+| --- | --- |
+| `core/Run.v` | Its comment explains how the generic driver becomes the reference runner. |
+| `core/Runtime.v` | It defines the interpreter model and proves the signature's obligations. |
+| `core/RuntimeWitness.v` | It checks that the interpreter implements the runtime signature. |
+| `core/Transport.v` | It instantiates the executable driver used by extraction. |
+| `hello_contracts/ExternalMachineFixtures.v` | It constructs concrete external-call machine transitions and rejection controls. |
+| `hello_contracts/HelloDiagnosticChecks.v` | It builds diagnostic memory and proves readiness for concrete invocation checks. |
+| `hello_contracts/HelloStdio.v` | It instantiates the logic for stream transfer and callback fixtures. |
+| `hello_contracts/HelloWorld.v` | It constructs ready worlds for the concrete Hello checks. |
+| `hello_contracts/Libc.v` | It specializes libc contracts for concrete call examples. |
+| `hello_contracts/LibcCallFixtures.v` | It checks string, memory and allocation contracts on concrete memories. |
+| `hello_contracts/LibcDiagnosticLogic.v` | It checks the diagnostic logic on concrete stream fixtures. |
+| `hello_contracts/LibcErrnoLogic.v` | It checks errno ownership across concrete stream calls. |
+| `hello_contracts/LibcExit.v` | It checks exit-status conversion on a concrete call. |
+| `hello_contracts/LibcStreamAdapter.v` | It checks stream-token adaptation on concrete return and error cases. |
+| `hello_contracts/LibcStreamTokens.v` | It instantiates stream-token checks with the concrete logic. |
+| `hello_contracts/LibcStreams.v` | It supplies concrete stream-call fixtures. |
+| `hello_contracts/Linked.v` | It checks linked-call resolution with concrete globals and free. |
+| `hello_contracts/Locale.v` | It checks locale calls and resource failures at concrete allocator states. |
+| `hello_contracts/StartupFixtures.v` | It instantiates startup examples. |
+| `programs/Buffer.v` | It specializes the generic buffer safety theorem. |
+| `programs/BufferLogic.v` | It specializes the buffer logic proof. |
+| `programs/Composition.v` | It checks stream-prefix composition on the Hi fixture. |
+| `programs/CountLogic.v` | It checks the count entry point on concrete memory. |
+| `programs/CtLt.v` | It specializes the constant-time comparison safety theorem. |
+| `programs/Cycle.v` | It specializes the cyclic program safety theorem. |
+| `programs/Hi.v` | It checks concrete Hi runs and external-call outcomes. |
+| `programs/HiLogic.v` | It proves fixture readiness and checks Hi's logic instance. |
+| `programs/Program.v` | It checks application, shutdown and completion transitions on concrete states. |
+| `programs/ScanLogic.v` | It checks the scan entry point on concrete memory. |
+| `programs/SlotLogic.v` | It proves readiness and instantiates the slot logic. |
+| `programs/Sum.v` | It specializes the sum program safety theorem. |
+| `soundness/Chain.v` | It specializes hull soundness for interpreter execution. |
+| `soundness/Doomed.v` | It specializes doomed-frame soundness for interpreter execution. |
+| `soundness/Guard.v` | It specializes guard soundness for interpreter execution. |
+| `soundness/Identity.v` | It specializes identity persistence for interpreter execution. |
+| `soundness/Persistence.v` | It specializes evidence persistence for interpreter execution. |
+| `soundness/Renew.v` | It specializes renew soundness for interpreter execution. |
+| `soundness/Single.v` | It specializes single-check soundness for interpreter execution. |
+| `soundness/Soundness.v` | It specializes the overall validator soundness theorem. |
+
 ## Trusted libc outside the runtime module type
 
 The [libc contracts](libc-contracts.md#trusted-entry-and-host-boundaries)
@@ -175,8 +307,9 @@ limits. No axiom was added outside or inside the module type for them.
 
 ## Readiness
 
-Three more obligations of the module type are about the runtime's own
-bookkeeping rather than Fil-C, so they have no native test.
+Three more obligations of the module type concern the runtime's own
+bookkeeping rather than Fil-C. Their table rows link probes of the
+corresponding native operations, not tests of that bookkeeping.
 `freed_bounds`: no freed object of a memory the runtime is ready in has
 bounds (`freed_empty`). Every free and the end of every invocation
 already empty them (`lifetime_step`, `region_step`), so it constrains
