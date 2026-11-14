@@ -814,8 +814,12 @@ tactic_then(L, T) --> tk(p(';')), !,
 tactic_then(T, T) --> [].
 
 %  let x := v in t: the body is the rest of the sequence.
+tactic_unit(tletrec(N, Args, V, B)) --> tk(kw(let)), tk(id(rec)), !,
+    name(N), tactic_params(Args), tk(sym(':=')),
+    upto_in(Ts), { phrase(tactic(V), Ts) }, tk(kw(in)), tactic(B).
 tactic_unit(tlet(N, V, B)) --> tk(kw(let)), !, name_or_hole(N), tk(sym(':=')),
     upto_in(Ts), { phrase(tactic(V), Ts) }, tk(kw(in)), tactic(B).
+tactic_unit(teval(Ws, E)) --> tk(id(eval)), !, eval_words(Ws), tk(kw(in)), term(E).
 tactic_unit(select(S, T)) --> [t(K, _, _)], { K = num(S) ; K = id(S), S == all }, tk(sym(':')), !, tactic(T).
 tactic_unit(do(N, T)) --> tk(id(do)), !,
     [t(K, _, _)], { K = num(N) ; K = id(N) }, tactic_unit(T).
@@ -838,7 +842,7 @@ tactic_unit(call(N, [intro(Ps)|Rest])) --> tactic_name(N), { memberchk(N, [intro
     intro_patterns(Ps), { Ps \== [] }, tactic_parts(Rest), !.
 tactic_unit(call(N, Ps)) --> tactic_name(N), !, tactic_parts(Ps).
 
-upto_in([]) --> peek(kw(in)), !.
+upto_in([]) --> peek(kw(in)).
 upto_in([T|Ts]) --> [T], upto_in(Ts).
 
 witnesses([E|Es]) --> tk(p(',')), !, term(E), witnesses(Es).
