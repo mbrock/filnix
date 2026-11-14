@@ -27,12 +27,13 @@ From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
-  ExternalCalls Pieces Heap Language Logic StringLogic MemLogic.
+  ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloMain.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv StrchrCode StrcmpCode StrncmpCode StrlenLogic
   GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
   GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr
-  HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop HelloGlibcJoinIx.
-From Glibc Require FileInv GetoptLongStr GetoptLongStore HelloGlibcDebts HelloGetoptState HelloGlibcJoinIx.
+  AtexitLogic HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop HelloGlibcJoinIx.
+From Glibc Require FileInv GetoptLongStr GetoptLongStore HelloGlibcDebts HelloGetoptState HelloGlibcJoin
+  HelloGlibcJoinIx.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -186,3 +187,82 @@ Qed.
 Definition hello_debts_ix : HelloDebtsIx w0 ge o := mkHelloDebtsIx w0 ge o D gb greg hello_getopt_ix.
 
 End call.
+
+(** ## Hello with glibc's getopt_long
+
+    A reader of Hello's safety theorem wants to know that the option
+    parser is glibc's real code, not a promise about it. The theorem
+    below gives that answer. When Hello calls getopt_long, the program
+    runs glibc's parser, whose proof is above. What remains for the
+    caller is the rest of the C library, the places of glibc's data, and
+    the parser's object at the start, matching argv and optind. Facts
+    about memory are stated for every [[ghost-state]] that the proof may
+    create, because the proof creates it only when it starts. *)
+
+(** Every allowed execution of Hello with glibc's getopt_long avoids
+    panics, stuck steps and contract failures. *)
+Theorem hello_never_panics_getopt Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+    w0 ge o m s w h0 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo
+    pdd pfx7 pfx0 penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom sdd pxs7 pxs0 n1 n2 n3 n4 :
+  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
+  find_fn ge (TAtom "getopt_long") = Some (Defined glibc_getopt_long) ->
+  find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal) ->
+  find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r) ->
+  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  Term.lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
+  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
+  Term.lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)) ->
+  0 < oe -> oe + 4 <= r_end roe -> r_end roe <= 2 ^ 48 ->
+  Term.lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)) ->
+  0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
+  0 < ho_oa o -> 0 < ho_oi o -> 0 < ho_se o ->
+  Term.lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
+  Term.lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some pfx7 ->
+  Term.lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx0 ->
+  Term.lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  Term.lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
+  Term.lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
+  Term.lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
+  Term.lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
+  Term.lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
+  Term.lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
+  Term.lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
+  Term.lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
+  Term.lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
+  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
+  R.ready s m -> live_disjoint m -> agrees m h0 -> os_wi w0 m w h0 ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
+    exists (debt : HelloCore w0 ge o) (G M : iProp Σ) (T : ptr -> ptr -> iProp Σ),
+    getenv_rule w0 glibc_os_registry ge G /\ getopt_diag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\
+    getopt_ldiag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\ getopt_cutoff_rule w0 glibc_os_registry ge /\
+    getopt_malloc_rule w0 glibc_os_registry ge M /\ getopt_memset_rule w0 glibc_os_registry ge /\
+    getopt_free_rule w0 glibc_os_registry ge /\
+    (hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ⊢
+      hello_getopt_priv ge oe roe oo roo pdd pfx7 pfx0 sdd pxs7 pxs0 G M n1 n2 n3 n4 ∗
+      (hello_getopt_priv ge oe roe oo roo pdd pfx7 pfx0 sdd pxs7 pxs0 G M n1 n2 n3 n4 -∗
+         hello_stdio w0 ge o ∗ hd_priv w0 ge o debt)) /\
+    (([∗ map] l ↦ v ∈ h0, pointsto l (DfracOwn 1) v) ⊢
+      hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
+      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
+      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i ∗
+      hello_getopt_state gb greg av ar (p0 :: ps) i)) ->
+  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
+    m s w fuel (fun _ => True).
+Proof.
+  intros Hk Hy Hos Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp Hgb Hgb0 Hgb8 Hgbe Hgbr Hoe Hoe0 Hoee Hoer
+    Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0 H146 H147 H150 H145 H148 H149 H138 H139 H140 H141 H142 H143 H144
+    Hargc Hi Hr Hd Ha Hw Hstart.
+  apply (hello_never_panics_ix Σ w0 ge o m s w h0 argc av ar p0 ps x y z a i c fuel Hk Hy Hos Hargc Hi Hr Hd Ha Hw).
+  intros HinvG HheapG.
+  destruct (Hstart HinvG HheapG) as (debt & G & M & T & Hge & Hdg & Hld & Hcu & Hma & Hms & Hfr & Hsp & Hpre).
+  exists (hello_debts_ix w0 ge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp (hk_gi_strlen _ _ Hk)
+    gb greg Hgb Hgb0 Hgb8 Hgbe Hgbr oe roe oo roo Hoe Hoe0 Hoee Hoer Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0
+    pdd pfx7 pfx0 penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom sdd pxs7 pxs0
+    H146 H147 H150 H145 H148 H149 H138 H139 H140 H141 H142 H143 H144
+    G M T Hge Hdg Hld Hcu Hma Hms Hfr n1 n2 n3 n4 Hsp).
+  exact Hpre.
+Qed.
