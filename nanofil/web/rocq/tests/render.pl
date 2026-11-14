@@ -20,6 +20,15 @@ test(singleton_class) :-
     assertion(Items = [rec(_, 'Class', n(_, 'Defines'), _, _, singleton,
         [field(_, defines, [], bin(_, =, _, _), none)])]).
 
+test(sealed_module_definition) :-
+    fence_dom(["Module R : Runtime := InterpRuntime.", "Module LG0 := Logic R."], DOM),
+    assertion(sub_term(element(span, [class='op wide colon'], [':']), DOM)),
+    assertion(sub_term('Runtime', DOM)),
+    assertion(sub_term('InterpRuntime', DOM)),
+    findall(Attrs, (sub_term(element(div, Attrs, _), DOM),
+        memberchk(class='clause rq-module-def', Attrs)), Modules),
+    assertion(Modules = [_, _]).
+
 test(named_generalizing_binder) :-
     string_codes("Context `{P : !Program (hlc := hlc) Σ} `{H : !Defines ge \"name\" fn}.", Cs),
     rocq_syntax:rocq_parse_codes(Cs, Items, _),
