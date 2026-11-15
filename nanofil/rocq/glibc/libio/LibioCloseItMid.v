@@ -1,13 +1,8 @@
 From Glibc Require Import GlibcProgram.
-(** The end of `c: _IO_file_close_maybe_unlink(fp, unlink)`
-    (LibioCloseItCode.v; glibc 2.44's name for `c: _IO_file_close_it`,
-    libio/fileops.c), from block `c: L18`, after any pending output was
-    written: `c: _IO_unsave_markers`, the jump table's `c: __close`
-    (`c: _IO_file_close`, LibioRead.v), `c: _IO_setb(fp, NULL, NULL, 0)`
-    (LibioSetb.v), every read and write pointer null, and the flags,
-    file descriptor and offset of a closed stream
-    ([wp_close_it_L18]). `c: fclose` passes `c: unlink` 0, and so does
-    this triple. *)
+(** After handling pending output, close_it discards markers and closes the
+    descriptor through the stream's jump table. These blocks then reset the
+    stream using the supplied buffer contract. Like fclose, this path passes
+    zero for unlink; removing the stream from a list belongs to its caller. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -65,37 +60,27 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close).
 Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
 
-(** Expressions of the language. *)
+(** Expressions use the caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** `c: _IO_file_close`'s triple, LibioRead.v's [wp_glibc__IO_file_close]. *)
-
-(** [close_spec] holds. *)
+(** The descriptor-close rule preserves the stream and returns either result. *)
 Context (Hclose : (close_spec w0 registry ge)).
 
 
-(** `c: _IO_setb`'s triple, LibioSetb.v's [wp_glibc__IO_setb], as
-    LibioCloseItEnd.v states it. *)
-Context (Hsetb_spec : LibioCloseItEnd.setb_spec w0 registry ge).
-(** What `c: _IO_unsave_markers` does to a stream fb without markers
-    (`c: _markers`, offset 96, null) or a backup area
-    (`c: _IO_backup_base`, offset 80, null): nothing, for the function
-    fum ge defines as it. LibioGenLeaves.v proves it of glibc's. *)
-
-(** [unsave_spec] holds of ge's `c: _IO_unsave_markers`. *)
+(** The setb rule receives the old buffer resource without inspecting it here. *)
+Context (B : Z -> Z -> ptr -> iProp Σ)
+  (Hsetb_spec : LibioCloseItEnd.setb_spec_with w0 registry ge B).
+(** Marker cleanup preserves null marker and backup pointers.
+    LibioGenLeaves proves this contract for the captured glibc function. *)
 Context (fum : func)
   `{Hfum : !Defines ge "__GI__IO_unsave_markers" fum}.
 Context (Hum : (unsave_spec w0 registry ge) fum).
 
 
-(** Block `c: L18` of `c: _IO_file_close_maybe_unlink(fp, 0)` to its
-    return, `c: pr.3` the result of writing pending output: the
-    stream's descriptor is closed, k the result; its buffer is given
-    up ([old_base]); the read and write pointers, `c: _IO_buf_base`
-    and `c: _IO_buf_end` are null; `c: _flags` is [closed_flags],
-    `c: _fileno` and `c: _offset` -1; the result is k if not 0, else
-    `c: pr.3`. *)
-Lemma wp_close_it_L18 e e' from a0 p3 fb freg fl f2 fd off md ob oe p8 p16 p24 p32 p40 p48 vb vreg eb Φ :
+(** The descriptor close determines the result when it fails; otherwise the
+    saved write result determines it. Both paths reset buffer pointers,
+    flags, descriptor and offset, while preserving errno ownership. *)
+Lemma wp_close_it_L18_with e e' from a0 p3 fb freg fl f2 fd off md ob oe p8 p16 p24 p32 p40 p48 vb vreg eb Φ :
   let fp := mkPtr fb (Obj fb) in
   (forall b, find_block (TAtom "L18") (fn_blocks glibc__IO_file_close_maybe_unlink) = Some b ->
              phis_env ge (b_phis b) (Some from) e = Some e') ->
@@ -111,7 +96,7 @@ Lemma wp_close_it_L18 e e' from a0 p3 fb freg fl f2 fd off md ob oe p8 p16 p24 p
   icell fb off_offset off -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   errno_any eb -∗
   pcell fb 8 p8 -∗ pcell fb 16 p16 -∗ pcell fb 24 p24 -∗ pcell fb 32 p32 -∗ pcell fb 40 p40 -∗ pcell fb 48 p48 -∗
-  pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗ old_base fl ob -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
+  pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗ B fb fl ob -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
   ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗
      live fb freg -∗ int_cell fb off_flags (closed_flags fl) -∗ int_cell fb off_flags2 f2 -∗
      int_cell fb off_fileno (2 ^ 32 - 1) -∗ icell fb off_offset (2 ^ 64 - 1) -∗ int_cell fb off_mode md -∗
@@ -162,7 +147,7 @@ Proof.
   rewrite Esx. clear Esx. branch.
   assert (Hkr : 0 <= k < 2 ^ 32) by (destruct Hk as [-> | ->]; lia).
   rewrite (Z.mod_small k (2 ^ 32)); [|exact Hkr]. rewrite (Z.mod_small k (2 ^ 32)); [|exact Hkr].
-  iApply (LibioCloseItEnd.wp_close_it_L223 Hsetb_spec
+  iApply (LibioCloseItEnd.wp_close_it_L223_with B Hsetb_spec
             with "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe Hob"); try close_side.
   iNext. iIntros "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe".
   iAssert (int_cell fb off_mode md) with "[Hmode]" as "Hmode"; [iSplit; [done | iExact "Hmode"]|].
@@ -172,3 +157,14 @@ Proof.
 Qed.
 
 End rules.
+
+Section legacy.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close).
+Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+(** Existing callers still supply the original heap-buffer setb contract. *)
+Definition wp_close_it_L18 (Hclose : close_spec w0 registry ge)
+    (Hsetb_spec : LibioCloseItEnd.setb_spec w0 registry ge) (fum : func)
+    `{Hfum : !Defines ge "__GI__IO_unsave_markers" fum} (Hum : unsave_spec w0 registry ge fum) :=
+  wp_close_it_L18_with Hfc Hclose (fun _ => LibioCloseItEnd.old_base) Hsetb_spec fum Hum.
+End legacy.

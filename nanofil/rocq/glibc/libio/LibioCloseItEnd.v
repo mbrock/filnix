@@ -1,9 +1,8 @@
 From Glibc Require Import GlibcProgram.
-(** The last blocks of `c: _IO_file_close_maybe_unlink(fp, 0)`
-    (LibioCloseItCode.v), from `c: L223`, the descriptor closed:
-    `c: _IO_setb(fp, NULL, NULL, 0)`, the read and write pointers null,
-    and the flags, descriptor and offset of a closed stream
-    ([wp_close_it_L223]). LibioCloseIt.v runs the blocks before. *)
+(** Closing a descriptor leaves the stream's buffer pointers to reset.
+    These final blocks call setb and record the closed flags, descriptor and
+    offset. The caller supplies the old buffer's resource contract, so the
+    same instruction proof supports heap buffers and in-object short buffers. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -24,15 +23,14 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The flags of a closed stream: `c: _IO_LINKED` kept, the rest
-    `c: _IO_MAGIC | CLOSED_FILEBUF_FLAGS` (`c: 0xFBAD240C`). *)
+(** Closed flags preserve IO_LINKED and set the remaining bits to 0xFBAD240C. *)
 Definition closed_flags (fl : Z) : Z := Z.lor (Z.land fl 128) 4222428172.
 
-(** `c: _IO_setb`'s `c: _IO_USER_BUF` bit leaves `c: _IO_LINKED` alone. *)
+(** Setting USER_BUF leaves the IO_LINKED bit unchanged. *)
 Lemma land_lor1_128 fl : Z.land (Z.lor fl 1) 128 = Z.land fl 128.
 Proof. rewrite Z.land_lor_distr_l. change (Z.land 1 128) with 0. apply Z.lor_0_r. Qed.
 
-(** [closed_flags] is an `c: int`'s bits. *)
+(** The closed flags fit in a 32-bit integer. *)
 Lemma closed_flags_range fl : 0 <= fl -> 0 <= closed_flags fl < 2 ^ 32.
 Proof.
   intros H. unfold closed_flags. assert (0 <= Z.land fl 128 < 2 ^ 32) by (apply land_lt32; lia).
@@ -59,38 +57,33 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition old_base (fl : Z) (ob : ptr) : iProp Σ :=
   ⌜ob = null⌝ ∨ ∃ bb breg, ⌜ob = mkPtr bb (Obj bb) /\ r_kind breg = Heap /\ 0 < bb /\ bb < 2 ^ 64 /\
                             Z.land fl io_user_buf = 0⌝ ∗ live bb breg.
-Definition setb_spec : Prop := forall fr fb freg fl ob oe nb ne a Φ,
+Definition setb_spec_with (B : Z -> Z -> ptr -> iProp Σ) : Prop := forall fr fb freg fl ob oe nb ne a Φ,
   call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗
-  old_base fl ob -∗
+  B fb fl ob -∗
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
      pcell fb off_buf_end ne -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
+Definition setb_spec : Prop := setb_spec_with (fun _ => old_base).
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
 
 
-(** Expressions of the language. *)
+(** Expressions use the caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** [old_base] fl ob, as LibioSetb.v's: the old base ob is null, or a
-    live heap buffer the stream owns, `c: _IO_USER_BUF` clear in fl. *)
+(** The setb rule consumes the supplied buffer resource when replacing its
+    pointers. Heap callers supply a buffer lifetime; short-buffer callers
+    supply only the pointer shape and USER_BUF fact. *)
+Context (B : Z -> Z -> ptr -> iProp Σ) (Hsetb_spec : setb_spec_with w0 registry ge B).
 
-(** `c: _IO_setb`'s triple, LibioSetb.v's [wp_glibc__IO_setb]. *)
-
-(** [setb_spec] holds. *)
-Context (Hsetb_spec : (setb_spec w0 registry ge)).
-
-(** Block `c: L223` of `c: _IO_file_close_maybe_unlink(fp, 0)` to its
-    return, `c: pr.3` the result of writing pending output and k that
-    of `c: __close`: the stream's buffer is given up ([old_base]),
-    its read and write pointers and buffer are null, `c: _flags` is
-    [closed_flags], `c: _fileno` and `c: _offset` -1, and the result is
-    k if not 0, else `c: pr.3`. *)
-Lemma wp_close_it_L223 e from p3 k fb freg fl fd off ob oe p8 p16 p24 p32 p40 p48 Φ :
+(** The final blocks reset the stream even when descriptor close failed.
+    They return that failure if present; otherwise they return the saved
+    pending-output result. Buffer disposal follows the supplied setb contract. *)
+Lemma wp_close_it_L223_with e from p3 k fb freg fl fd off ob oe p8 p16 p24 p32 p40 p48 Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "v0") e = Some (WPtr fp) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (fb + off_fileno) (Obj fb))) ->
@@ -101,7 +94,7 @@ Lemma wp_close_it_L223 e from p3 k fb freg fl fd off ob oe p8 p16 p24 p32 p40 p4
   0 <= fl < 2 ^ 32 -> 0 <= p3 < 2 ^ 32 -> k = 0 \/ k = 2 ^ 32 - 1 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_fileno fd -∗ icell fb off_offset off -∗
   pcell fb 8 p8 -∗ pcell fb 16 p16 -∗ pcell fb 24 p24 -∗ pcell fb 32 p32 -∗ pcell fb 40 p40 -∗ pcell fb 48 p48 -∗
-  pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗ old_base fl ob -∗
+  pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗ B fb fl ob -∗
   ▷ (live fb freg -∗ int_cell fb off_flags (closed_flags fl) -∗ int_cell fb off_fileno (2 ^ 32 - 1) -∗
      icell fb off_offset (2 ^ 64 - 1) -∗
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
@@ -143,3 +136,11 @@ Proof.
 Qed.
 
 End rules.
+
+Section legacy.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+(** Existing heap-buffer callers retain their original resource contract. *)
+Definition wp_close_it_L223 (Hsetb_spec : setb_spec w0 registry ge) :=
+  wp_close_it_L223_with (fun _ => old_base) Hsetb_spec.
+End legacy.

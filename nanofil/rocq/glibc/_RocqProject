@@ -139,6 +139,7 @@ libio/LibioDoWriteSetp.v
 libio/LibioOverflowBase.v
 libio/LibioRead.v
 libio/LibioSetb.v
+libio/LibioSetbShort.v
 libio/LibioWriteExit.v
 libio/SysCleanup.v
 libio/SysCleanupPop.v
@@ -234,6 +235,7 @@ libio/LibioFcloseLock.v
 libio/LibioFlushClean.v
 libio/LibioFputsUnlock.v
 libio/LibioGenLeaves.v
+libio/LibioCloseItShort.v
 libio/LibioPutsUnlock.v
 libio/LibioUnlinkLock.v
 libio/LibioWriteDq.v
