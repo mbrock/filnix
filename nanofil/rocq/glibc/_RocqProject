@@ -311,6 +311,7 @@ stdio/FflushAcquire.v
 stdio/FflushClosed.v
 stdio/FflushShort.v
 stdio/ErrorFlushShort.v
+stdio/ErrorReportEnoent.v
 string/MemchrFirst.v
 string/MemrchrBits.v
 string/StrncmpWords.v
