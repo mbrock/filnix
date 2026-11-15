@@ -496,6 +496,7 @@ getopt/GetoptLongPfxMark.v
 hello/HelloGlibcMainFull.v
 libio/LibioXsputn.v
 getopt/GetoptLongPfxAlloc.v
+getopt/GetoptMallocGlibc.v
 hello/HelloGlibcJoin.v
 hello/HelloGlibcJoinIx.v
 hello/HelloGetoptCall.v
