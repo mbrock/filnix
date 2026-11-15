@@ -45,6 +45,21 @@ def units(text):
             yield obj, paths[0]
 
 
+def manifest_units(cfg, root=NF):
+    """The manifest's unit rows, after the units listed in its units_files."""
+    listed = [u for f in cfg.get("units_files", []) for u in rows((root / f).read_text())]
+    return ("- " + " ".join(listed) + "\n" if listed else "") + cfg.get("units", "")
+
+
+def check_units(capture, where, unit_rows):
+    """Refuse a repeated or uncaptured unit before compiling any of them."""
+    names = [unit for _, unit in units(unit_rows)]
+    repeated = sorted({u for u in names if names.count(u) > 1})
+    absent = [u for u in names if not (capture / (u + ".i")).is_file()]
+    if repeated or absent:
+        raise ValueError(f"{where}: units repeated {repeated}, absent from the capture {absent}")
+
+
 def fixture_prefix(name):
     return {"HiAtexit": "hi_atexit", "PrintfState": "printf_state",
             "PrintfBufferIo": "printf_buffer_io", "PrintfBufferFile": "printf_buffer_file"}.get(name, name.lower())
@@ -228,11 +243,6 @@ class Generator:
         terms = sorted(out.rglob("*.term"), key=lambda t: "./" + str(t.relative_to(out)))
         return [(t.name.removesuffix(".o.term").removeprefix(cfg.get("object_prefix", "")), t) for t in terms]
 
-    def unit_text(self, cfg):
-        """The manifest's unit rows, after the units listed in its units_file."""
-        listed = rows((NF / cfg["units_file"]).read_text()) if "units_file" in cfg else []
-        return ("- " + " ".join(listed) + "\n" if listed else "") + cfg.get("units", "")
-
     def reference(self, spec):
         """Link the fixture row named DIRECTORY/NAME exactly as its own manifest does."""
         directory, name = spec.split("/")
@@ -240,7 +250,7 @@ class Generator:
         row = next(r for r in rows(cfg["fixtures"]) if r.split("|")[0] == name)
         _, roots, paths, _, *program = row.split("|")
         linked, _ = self.link(cfg, name, roots or cfg.get("roots", ""),
-                              "- " + paths if paths else self.unit_text(cfg), program[0] if program else "")
+                              "- " + paths if paths else manifest_units(cfg), program[0] if program else "")
         path = self.work / "reference.term"
         path.write_text(linked)
         return path
@@ -324,7 +334,7 @@ class Generator:
                 raise ValueError(f"expected NAME|ROOTS|UNITS|FUNCTIONS[|PROGRAM]: {row}")
             name, roots, paths, fns, *program = fields
             roots = roots or cfg.get("roots", "")
-            unit_rows = "- " + paths if paths else self.unit_text(cfg)
+            unit_rows = "- " + paths if paths else manifest_units(cfg)
             lower = fixture_prefix(name)
             source = program[0] if program else ""
             if self.sources and cfg.get('layouts', False):
@@ -334,6 +344,8 @@ class Generator:
                 missing = sorted({r['tag'] for r in layouts if r.get('missing', False)} - tags)
                 print(f'{name}Layout: {len(tags)} record entries; unavailable {missing}', flush=True)
             cache_key = (roots, unit_rows, source)
+            if layout == "image":
+                check_units(self.capture, f"{manifest}: fixture row {row}", unit_rows)
             if cache_key not in linked_cache:
                 linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)
             linked, access_units = linked_cache[cache_key]

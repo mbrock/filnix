@@ -1,19 +1,13 @@
 # GNU Hello linked with the 321 user glibc units of nix/hello-glibc.nix,
-# restricted to the names that the gettext route calls. The unit list is
-# survey/glibc/run/units.txt and the 16 siblings that hello-glibc.nix adds.
+# restricted to the names that the gettext route calls. Both read the
+# survey's units and the siblings that Hello adds from the same two files.
 layout = "image"
 mode = "checked"
 ctors = true
 roots = "main"
 objects = "checks.x86_64-linux.nanofil-hello-fixture.captured"
 object_prefix = "libhello_a-"
-units_file = "survey/glibc/run/units.txt"
-units = '''
-- io/fcntl_nocancel.os libio/iofgets_u.os libio/iofputws_u.os misc/mremap.os
-- nptl/alloca_cutoff.os posix/sched_cpucount.os stdio-common/printf_buffer_puts_1.os
-- stdlib/abs.os stdlib/atexit.oS stdlib/dbl2mpn.os stdlib/divrem.os stdlib/ldbl2mpn.os
-- wcsmbs/mbsrtowcs.os wcsmbs/mbsrtowcs_l.os wcsmbs/wcsrtombs.os wcsmbs/wmemmove.os
-'''
+units_files = ["survey/glibc/run/units.txt", "survey/glibc/run/hello-siblings.txt"]
 compare = "intl/GettextLink"
 fixtures = '''
 HelloGettextImage|||__GI_mempcpy __GI_memcpy __GI___dcgettext __dcigettext __GI_stpcpy __GI___tfind __current_locale_name __GI___pthread_rwlock_rdlock __GI___pthread_rwlock_unlock

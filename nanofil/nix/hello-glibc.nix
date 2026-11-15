@@ -11,28 +11,12 @@
   filcc,
 }:
 let
-  # The 305 survey units plus atexit.oS and all 15 shared-libc siblings.
-  # There are 321 distinct units, not 320: the sibling list has 15 entries.
+  # The 305 survey units plus atexit.oS and the 15 other shared-libc
+  # siblings that Hello reaches, 321 distinct units in all. The sibling
+  # list is a file so that rocq/glibc/hello/code.toml links the same set.
   units = pkgs.writeText "hello-glibc-units.txt" (
     builtins.readFile ../survey/glibc/run/units.txt
-    + ''
-      io/fcntl_nocancel.os
-      libio/iofgets_u.os
-      libio/iofputws_u.os
-      misc/mremap.os
-      nptl/alloca_cutoff.os
-      posix/sched_cpucount.os
-      stdio-common/printf_buffer_puts_1.os
-      stdlib/abs.os
-      stdlib/atexit.oS
-      stdlib/dbl2mpn.os
-      stdlib/divrem.os
-      stdlib/ldbl2mpn.os
-      wcsmbs/mbsrtowcs.os
-      wcsmbs/mbsrtowcs_l.os
-      wcsmbs/wcsrtombs.os
-      wcsmbs/wmemmove.os
-    ''
+    + builtins.readFile ../survey/glibc/run/hello-siblings.txt
   );
   inherit
     (import ../survey/glibc/mixed.nix {

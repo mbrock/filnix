@@ -1,0 +1,16 @@
+io/fcntl_nocancel.os
+libio/iofgets_u.os
+libio/iofputws_u.os
+misc/mremap.os
+nptl/alloca_cutoff.os
+posix/sched_cpucount.os
+stdio-common/printf_buffer_puts_1.os
+stdlib/abs.os
+stdlib/atexit.oS
+stdlib/dbl2mpn.os
+stdlib/divrem.os
+stdlib/ldbl2mpn.os
+wcsmbs/mbsrtowcs.os
+wcsmbs/mbsrtowcs_l.os
+wcsmbs/wcsrtombs.os
+wcsmbs/wmemmove.os

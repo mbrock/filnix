@@ -2,8 +2,11 @@
 """Check that image.pl keeps exact items and refuses selections a lookup could not trust."""
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import tempfile
+import time
+import tomllib
 
 HERE = Path(__file__).resolve().parent
 SWIPL = os.environ.get("SWIPL", "swipl")
@@ -48,4 +51,33 @@ with tempfile.TemporaryDirectory() as tmp:
             [F.format(n="f"), "alias(g,export,f)", "alias(h,export,g)"], "h")
     refused(work, "f differs from the reference image", IMAGE, ["alias(g,weak,f)"], "g")
     refused(work, "f differs from the reference image", IMAGE, [F.format(n="f"), F.format(n="f")], "f")
-print("image selection: alias closure, exact terms and eight refusals passed")
+
+# Hello's manifest reads the unit files that nix/hello-glibc.nix reads. A changed
+# sibling must stop generation before any unit compiles.
+generate = runpy.run_path(str(HERE / "generate.py"))
+manifest = tomllib.loads((HERE.parents[1] / "glibc/hello/code.toml").read_text())
+with tempfile.TemporaryDirectory() as tmp:
+    root, capture = Path(tmp) / "nanofil", Path(tmp) / "capture"
+    names = []
+    for name in manifest["units_files"]:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text((HERE.parents[2] / name).read_text())
+        names += [u for u in path.read_text().split()]
+    for unit in names:
+        (capture / (unit + ".i")).parent.mkdir(parents=True, exist_ok=True)
+        (capture / (unit + ".i")).touch()
+    unit_rows = generate["manifest_units"](manifest, root)
+    assert [u for _, u in generate["units"](unit_rows)] == names and len(set(names)) == 321
+    generate["check_units"](capture, "hello", unit_rows)
+    siblings = root / manifest["units_files"][1]
+    original = siblings.read_text()
+    for old, new in (("stdlib/abs.os", "stdlib/absent.os"), ("stdlib/abs.os", names[0])):
+        siblings.write_text(original.replace(old, new, 1))
+        started = time.monotonic()
+        try:
+            generate["check_units"](capture, "hello", generate["manifest_units"](manifest, root))
+            raise AssertionError(f"accepted a changed sibling: {new}")
+        except ValueError as error:
+            assert new in str(error) and time.monotonic() - started < 1, error
+print("image selection: alias closure, exact terms, eight refusals and two unit-list refusals passed")

@@ -279,8 +279,12 @@ within the compile budget. The `image` layout in `hello/code.toml` links that
 whole image and keeps only the items that a proof needs. The manifest's
 `objects` setting names a flake output whose `*.term` files are the program's
 checked objects, and `object_prefix` is stripped from their names, as
-`nix/hello-fixture.nix` does. The `units_file` setting lists the glibc units
-before the manifest's own `units` rows.
+`nix/hello-fixture.nix` does. The `units_files` setting names files of glibc
+units to link before the manifest's own `units` rows. Hello's manifest names
+`survey/glibc/run/units.txt` and `hello-siblings.txt`, the two files that
+`nix/hello-glibc.nix` also reads, so both link the same 321 units. Generation
+stops before compiling anything when a unit repeats or is missing from the
+capture.
 
 `image.pl` keeps each name in `FUNCTIONS` and the target of each kept alias,
 with their terms and order unchanged. It stops generation when a name or a
