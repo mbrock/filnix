@@ -252,6 +252,8 @@ stdio/ErrorCall.v
 stdio/ErrorEntry.v
 stdio/ErrorRestore.v
 stdio/ErrorTail.v
+stdio/ErrorText.v
+stdio/ErrorTextTail.v
 stdio/FileSyncClosed.v
 stdio/FflushUnlock.v
 stdio/FflushAcquire.v
