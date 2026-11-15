@@ -214,6 +214,8 @@ stdio/CancelState.v
 stdio/PrintfBufferDone.v
 stdio/PrintfBufferSkip.v
 stdio/PrintfBufferWriteStaging.v
+stdio/PrintfStagingCopy.v
+stdio/PrintfBufferWriteWindow.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
