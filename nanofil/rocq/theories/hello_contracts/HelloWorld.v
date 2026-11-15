@@ -9,6 +9,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   ExternalCalls LibcCalls ExternalMachine Startup Locale Stdio Shutdown Getopt Libc LibcStreams
   Machine StepRules Pieces Heap ContractFrame StringLogic LibcStringLogic MemLogic LibcMemLogic LentLogic LocaleLogic GetoptLogic
   HelloModule HelloLeaf HelloName HelloReach HelloMain HelloStdio Logic.
+From Nanofil Require Import HelloStreamChecks.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

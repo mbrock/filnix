@@ -10,6 +10,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Exte
   Stdio Shutdown Streams Formatting Libc LibcStreams Pieces Heap ContractFrame Logic
   StringLogic LibcStringLogic MemLogic LibcMemLogic LentLogic Locale LibcStreamLogic LibcErrnoLogic LibcStreamTokens
   LibcStreamAdapter LibcDiagnosticLogic HelloModule HelloLeaf HelloReach HelloStdio.
+From Nanofil Require Import HelloStreamChecks.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
