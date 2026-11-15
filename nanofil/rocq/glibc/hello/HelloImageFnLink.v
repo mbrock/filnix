@@ -6,16 +6,15 @@
     different main or a different malloc there.
 
     This file checks main and every function field of hello_link against
-    the whole decoded image. Most of them hold, with the bodies that the
-    record names. Four do not. The image's malloc, __new_exitfn and
-    __internal_atexit bodies refer to their module's private objects
-    under the names glibc_malloc#... and glibc_cxa_atexit#..., while the
-    record's bodies use malloc#... and cxa_atexit#.... For the same
-    reason the image has no function malloc#__libc_malloc2, so the record
-    as written cannot hold for this image.
+    the whole decoded image, with the bodies that the record names. The
+    stdlib and hi_atexit fixtures, from which the malloc and atexit
+    bodies come, name the private objects of malloc and cxa_atexit as
+    the genuine link does, glibc_malloc#... and glibc_cxa_atexit#..., so
+    those bodies match the image too.
 
     The file checks names and bodies only. It does not say that Hello
-    starts from this image, and it proves no object or layout field. *)
+    starts from this image. Apart from the symbol of malloc's parameter
+    object, it proves no object or layout field. *)
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap HelloLeaf HelloName.
@@ -53,14 +52,16 @@ Proof. vm_compute. discriminate. Qed.
 
 (** ## The function fields that hold *)
 
-(** These are the calls of hello_link whose bodies the image matches,
-    paired with the bodies that the record names. *)
+(** These are all the calls of hello_link, paired with the bodies that
+    the record names. *)
 Definition hello_image_fns : list (string * func) :=
   [("mbszero", mbszero_fn); ("memset", glibc_memset); ("set_program_name", set_program_name_fn);
    ("strrchr", glibc_strrchr); ("__GI_strlen", glibc_strlen); ("__GI___memrchr", glibc_memrchr);
    ("memcmp", glibc_memcmp); ("memeq", memeq_fn); ("strncmp", glibc_strncmp); ("strlen", glibc_strlen);
-   ("__errno_location", errno_location_fn); ("xmalloc", xmalloc_fn); ("free", free_fn);
-   ("atexit", atexit_fn); ("__cxa_atexit", cxa_atexit_fn); ("exit", glibc_exit);
+   ("__errno_location", errno_location_fn); ("xmalloc", xmalloc_fn); ("malloc", malloc_fn);
+   ("glibc_malloc#__libc_malloc2", malloc2_fn); ("free", free_fn); ("atexit", atexit_fn);
+   ("__new_exitfn", new_exitfn_fn); ("__internal_atexit", internal_atexit_fn);
+   ("__cxa_atexit", cxa_atexit_fn); ("exit", glibc_exit);
    ("__run_exit_handlers", glibc___run_exit_handlers); ("__GI___call_tls_dtors", glibc___call_tls_dtors);
    ("__GI___libc_cleanup_push_defer", glibc___libc_cleanup_push_defer);
    ("__GI___libc_cleanup_pop_restore", glibc___libc_cleanup_pop_restore);
@@ -77,7 +78,7 @@ Lemma hello_link_fns ge o : hello_link ge o ->
   Forall (fun nf => find_fn ge (TAtom (fst nf)) = Some (Defined (snd nf))) hello_image_fns /\
   Forall (fun s => find_fn ge (TAtom s) = None /\ lookup (TAtom s) (ge_globals ge) = None) hello_image_absent.
 Proof.
-  intros H. destruct (hk_exit_fns _ _ H) as (_ & _ & Hc). destruct (hk_frees _ _ H) as (_ & Hz).
+  intros H. destruct (hk_exit_fns _ _ H) as (Hn & Hi & Hc). destruct (hk_frees _ _ H) as (_ & Hz).
   split.
   - unfold hello_image_fns.
     apply Forall_cons; [exact (hk_mbszero _ _ H)|]. apply Forall_cons; [exact (hk_memset _ _ H)|].
@@ -86,8 +87,9 @@ Proof.
     apply Forall_cons; [exact (hk_memcmp _ _ H)|]. apply Forall_cons; [exact (hk_memeq _ _ H)|].
     apply Forall_cons; [exact (hk_strncmp _ _ H)|]. apply Forall_cons; [exact (hk_strlen _ _ H)|].
     apply Forall_cons; [exact (hk_errno _ _ H)|]. apply Forall_cons; [exact (hk_xmalloc _ _ H)|].
+    apply Forall_cons; [exact (hk_malloc _ _ H)|]. apply Forall_cons; [exact (hk_malloc2 _ _ H)|].
     apply Forall_cons; [exact (hk_free _ _ H)|]. apply Forall_cons; [exact (hk_atexit _ _ H)|].
-    apply Forall_cons; [exact Hc|]. apply Forall_cons; [exact (hk_exit _ _ H)|].
+    apply Forall_cons; [exact Hn|]. apply Forall_cons; [exact Hi|]. apply Forall_cons; [exact Hc|]. apply Forall_cons; [exact (hk_exit _ _ H)|].
     apply Forall_cons; [exact (hk_run_exit _ _ H)|]. apply Forall_cons; [exact (hk_dtors _ _ H)|].
     apply Forall_cons; [exact (hk_push _ _ H)|]. apply Forall_cons; [exact (hk_pop _ _ H)|].
     apply Forall_cons; [exact (hk_flush _ _ H)|]. apply Forall_cons; [exact (hk_cleanup _ _ H)|].
@@ -129,35 +131,35 @@ Proof.
     rewrite forallb_forall in C. apply List.Forall_forall. intros s Hs. exact (absent_ok_sound _ _ _ fr _ Hi (C s Hs)).
 Qed.
 
-(** ## The fields that fail
+(** ## malloc's names
 
-    The image compiles malloc and the atexit functions in modules named
-    glibc_malloc and glibc_cxa_atexit, so their private objects carry
-    those prefixes. The record's bodies were extracted from a link that
-    named the modules malloc and cxa_atexit. The lemmas below record the
-    exact disagreement; nothing here renames either side. *)
+    malloc calls a private helper and reads a private parameter object.
+    The genuine link names both with the prefix glibc_malloc, and so does
+    the record now. The lemmas below show that the object has a symbol,
+    and that the old unprefixed names are gone from the image. *)
 
-(** The record's helper malloc#__libc_malloc2 is not in the image. *)
-Lemma hello_image_no_malloc2 g fr :
-  find_fn (mkGenv hello_image_module g fr) (TAtom "malloc#__libc_malloc2") = None.
-Proof. vm_compute. reflexivity. Qed.
-
-(** The record's object malloc#mp_ has no symbol in the image. *)
-Lemma hello_image_no_mp g m : initial_memory hello_image_module = Some (g, m) -> lookup (TAtom "malloc#mp_") g = None.
+(** The parameter object glibc_malloc#mp_ has its own symbol. *)
+Lemma hello_image_mp g m : initial_memory hello_image_module = Some (g, m) ->
+  lookup (TAtom "glibc_malloc#mp_") g = Some (mkPtr 170192 (Obj 170192)).
 Proof.
-  intros Hi. assert (C : absent_ok hello_image_module "malloc#mp_" = true) by (vm_compute; reflexivity).
-  exact (proj2 (absent_ok_sound _ _ _ (fun _ _ => None) _ Hi C)).
+  intros Hi.
+  assert (C : option_map (fun gm => lookup (TAtom "glibc_malloc#mp_") (fst gm)) (initial_memory hello_image_module) =
+    Some (Some (mkPtr 170192 (Obj 170192)))) by (vm_compute; reflexivity).
+  rewrite Hi in C. injection C as C. exact C.
 Qed.
 
-(** The three bodies differ from the record's, here in the names of
-    their private objects and helper. *)
-Lemma hello_image_bodies_differ g fr :
-  find_fn (mkGenv hello_image_module g fr) (TAtom "malloc") <> Some (Defined malloc_fn) /\
-  find_fn (mkGenv hello_image_module g fr) (TAtom "__new_exitfn") <> Some (Defined new_exitfn_fn) /\
-  find_fn (mkGenv hello_image_module g fr) (TAtom "__internal_atexit") <> Some (Defined internal_atexit_fn).
-Proof. split; [|split]; vm_compute; discriminate. Qed.
+(** The old names malloc#__libc_malloc2 and malloc#mp_ are absent. *)
+Lemma hello_image_old_malloc_absent g m fr : initial_memory hello_image_module = Some (g, m) ->
+  find_fn (mkGenv hello_image_module g fr) (TAtom "malloc#__libc_malloc2") = None /\
+  lookup (TAtom "malloc#mp_") g = None.
+Proof.
+  intros Hi. assert (C1 : absent_ok hello_image_module "malloc#__libc_malloc2" = true) by (vm_compute; reflexivity).
+  assert (C2 : absent_ok hello_image_module "malloc#mp_" = true) by (vm_compute; reflexivity).
+  split; [exact (proj1 (absent_ok_sound _ _ _ fr _ Hi C1)) | exact (proj2 (absent_ok_sound _ _ _ fr _ Hi C2))].
+Qed.
 
-(** So no environment over the image satisfies hello_link as written,
-    whatever its symbols, free function and objects. *)
-Theorem hello_image_not_link g fr o : ~ hello_link (mkGenv hello_image_module g fr) o.
-Proof. intros H. pose proof (hk_malloc2 _ _ H) as E. rewrite hello_image_no_malloc2 in E. discriminate E. Qed.
+(** The check tells bodies apart: a call of __new_exitfn does not find
+    the body of __internal_atexit. *)
+Example hello_image_swapped_refused g fr :
+  find_fn (mkGenv hello_image_module g fr) (TAtom "__new_exitfn") <> Some (Defined internal_atexit_fn).
+Proof. vm_compute. discriminate. Qed.

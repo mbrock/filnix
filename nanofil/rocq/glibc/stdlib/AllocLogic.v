@@ -60,8 +60,8 @@ Open Scope list_scope.
     `__GI___libc_malloc`. *)
 Definition malloc_fn : func := Eval vm_compute in stdlib_fn "__GI___libc_malloc".
 (** [malloc2_fn] extracts the decoded IR body of `__libc_malloc2`,
-    which `c: link.pl` renames to `malloc#__libc_malloc2`. *)
-Definition malloc2_fn : func := Eval vm_compute in stdlib_fn "malloc#__libc_malloc2".
+    which `c: link.pl` renames to `glibc_malloc#__libc_malloc2`. *)
+Definition malloc2_fn : func := Eval vm_compute in stdlib_fn "glibc_malloc#__libc_malloc2".
 (** [free_fn] extracts the decoded IR body of glibc's
     `__GI___libc_free`. *)
 Definition free_fn : func := Eval vm_compute in stdlib_fn "__GI___libc_free".
@@ -251,9 +251,9 @@ Ltac l26 i Htc dq dummy_reg :=
     tcache globals and [alloc_keeps] holds. *)
 Lemma wp_glibc_malloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
   0 <= n < 2 ^ 64 -> alloc_keeps n ->
-  lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp_b (Obj mp_b)) ->
+  lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mp_b (Obj mp_b)) ->
   lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc_b (Obj tc_b)) ->
-  find_fn ge (TAtom "malloc#__libc_malloc2") = Some (Defined malloc2_fn) ->
+  find_fn ge (TAtom "glibc_malloc#__libc_malloc2") = Some (Defined malloc2_fn) ->
   tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
   (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
      obj base (heap_req 16 n) -∗ tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
@@ -261,8 +261,8 @@ Lemma wp_glibc_malloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
   WP (ERun (mkFrame malloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
   intros Hn Hk Hmp Htc Hm2. iIntros "Hidle HΦ".
-  assert (Hm2_def : Defines ge "malloc#__libc_malloc2" malloc2_fn) by exact Hm2.
-  pose proof (malloc2_has_spec "malloc#__libc_malloc2") as Hspec.
+  assert (Hm2_def : Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn) by exact Hm2.
+  pose proof (malloc2_has_spec "glibc_malloc#__libc_malloc2") as Hspec.
   iDestruct "Hidle" as "(%Hlay & Hmpl & Hmpc & Htcl & Htcc & Hdl & Hbins)".
   destruct Hlay as (Hm0 & Hmend & Ht0 & Ht8 & Htend & Hd0 & Hd8 & Hdend).
   step. step. (branch_symbolic; LeavesLogic.decide_branch).

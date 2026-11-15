@@ -84,7 +84,7 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 
 End fn_main.
 
-Module fn_malloc___libc_malloc2.
+Module fn_glibc_malloc___libc_malloc2.
 
 (** This location identifies the C function definition when its context records contain one. *)
 Definition source : option (string * N) := Some (file_25, 3065%N).
@@ -116,7 +116,7 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
   [((TAtom "start"), [])].
 
 
-End fn_malloc___libc_malloc2.
+End fn_glibc_malloc___libc_malloc2.
 
 Module fn___GI___libc_malloc.
 
@@ -220,7 +220,7 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 
 End fn___libc_calloc.
 
-Module fn_malloc_malloc_printerr.
+Module fn_glibc_malloc_malloc_printerr.
 
 (** This location identifies the C function definition when its context records contain one. *)
 Definition source : option (string * N) := Some (file_25, 5135%N).
@@ -252,7 +252,7 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
   [((TAtom "start"), [])].
 
 
-End fn_malloc_malloc_printerr.
+End fn_glibc_malloc_malloc_printerr.
 
 Module fn___internal_atexit.
 

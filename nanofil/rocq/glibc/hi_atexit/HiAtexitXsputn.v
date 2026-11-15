@@ -42,11 +42,11 @@ Context `{Hfree_fn : !Defines ge "free" free_fn}
   (Hzf : find_fn ge zgc_free_name = None)
   (Hzg : lookup zgc_free_name (ge_globals ge) = None).
 Context `{Hmalloc_fn : !Defines ge "malloc" malloc_fn}
-  `{Hmalloc2 : !Defines ge "malloc#__libc_malloc2" malloc2_fn}.
+  `{Hmalloc2 : !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn}.
 Context (dq : dfrac)
   (mp tc dummy : Z)
   (mpr tcr dr : region).
-Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
+Context (Hmp : lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc))).
 Context (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate)
   `{Hdab : !Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}
@@ -108,7 +108,7 @@ End rules.
 Section linked.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region).
-Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals hge) = Some (mkPtr mp (Obj mp)))
+Context (Hmp : lookup (TAtom "glibc_malloc#mp_") (ge_globals hge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals hge) = Some (mkPtr tc (Obj tc))).
 
 (** The linked program binds every function used by string output.

@@ -35,11 +35,11 @@ End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hmalloc_fn : !Defines ge "malloc" malloc_fn}
-  `{Hmalloc2 : !Defines ge "malloc#__libc_malloc2" malloc2_fn}.
+  `{Hmalloc2 : !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn}.
 Context (dq : dfrac)
   (mp tc dummy : Z)
   (mpr tcr dr : region).
-Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
+Context (Hmp : lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc))).
 
 

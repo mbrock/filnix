@@ -29,7 +29,7 @@ Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L.
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region).
-Context (Hmp : lookup (TAtom "malloc#mp_") (ge_globals hge) = Some (mkPtr mp (Obj mp)))
+Context (Hmp : lookup (TAtom "glibc_malloc#mp_") (ge_globals hge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals hge) = Some (mkPtr tc (Obj tc))).
 
 (** Puts runs with the linked program's actual OS registry. *)
