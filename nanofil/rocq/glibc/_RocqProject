@@ -83,6 +83,12 @@ stdlib/GetenvHello.v
 nptl/CutoffCode.v
 nptl/CutoffLayout.v
 nptl/CutoffSrc.v
+nptl/RdlockCode.v
+nptl/RdlockLayout.v
+nptl/RdlockSrc.v
+nptl/RwunlockCode.v
+nptl/RwunlockLayout.v
+nptl/RwunlockSrc.v
 string/MallocCode.v
 string/MemFwdCode.v
 string/MemcmpCode.v
@@ -130,6 +136,8 @@ stdlib/AllocLogic.v
 stdlib/AtexitLogic.v
 string/WordString.v
 nptl/CutoffLogic.v
+nptl/RdlockLogic.v
+nptl/RwunlockLogic.v
 zsys/OsRegistry.v
 getopt/GetoptBytes.v
 getopt/GetoptState.v
@@ -384,6 +392,7 @@ intl/DcgettextC.v
 intl/DcgettextStpcpy.v
 intl/DcgettextTfind.v
 intl/DcgettextLocale.v
+intl/DcgettextRwlock.v
 getopt/GetoptSkipTest.v
 hello/HelloGlibcDebts.v
 libio/LibioCleanupFpLock.v
