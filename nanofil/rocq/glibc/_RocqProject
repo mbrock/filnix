@@ -248,6 +248,8 @@ stdio/FxprintfLock.v
 stdio/FxprintfCall.v
 stdio/ErrorCall.v
 stdio/ErrorEntry.v
+stdio/ErrorRestore.v
+stdio/ErrorTail.v
 stdio/FileSyncClosed.v
 stdio/FflushUnlock.v
 stdio/FflushAcquire.v
