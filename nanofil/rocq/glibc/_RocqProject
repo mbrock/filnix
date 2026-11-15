@@ -275,6 +275,7 @@ stdio/VfxprintfCall.v
 stdio/FxprintfNormalNull.v
 stdio/ErrorCall.v
 stdio/ErrorEntry.v
+stdio/ErrorPrefix.v
 stdio/ErrorRestore.v
 stdio/ErrorTail.v
 stdio/ErrorNewline.v
