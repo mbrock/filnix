@@ -262,6 +262,180 @@ Proof.
       exact (Hlm f141 (or_intror (or_intror eq_refl))) | exact Hfm141 | exact Hargs].
 Qed.
 
+(** ## Lending errno to the formatter
+
+    A real formatter may write errno, for example when a write fails,
+    so it needs the errno cell while it runs. The rules above leave that
+    cell beside the translation's resources, and a formatter whose F
+    claimed errno too would ask for the same cell twice. The rules below
+    take errno out of the held resources at each print and lend it to the
+    formatter once, beside F. The formatter hands errno back with some
+    value, and the rules rebuild the same G. *)
+
+(** The formatter returns errno with any bytes, F, and a stream that is
+    not wide. *)
+Definition dgx_qe : Prop := forall x m, Q x m ⊢ ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ ∗ errno_any eb ∗ F.
+
+(** The rules below need the same program and global cells as the rules
+    above. Only the promise about what the formatter returns changes:
+    it must now hand errno back as well. *)
+Definition dgx_premises_e (v : Z) : Prop :=
+  hello_link ge ob /\ hello_gettext_link ge /\
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) /\
+  rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid /\ rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid /\ rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid /\
+  locale_cells gb go greg lp lb lreg /\
+  (0 < rb /\ 0 <= ro /\ (rb + ro) mod 8 = 0 /\ rb + ro + 8 <= r_end rreg /\ r_end rreg <= 2 ^ 48) /\
+  dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec /\
+  dci_bounds db dbreg nb ib ic ireg k sec secreg /\ 0 <= v < 2 ^ 32 /\
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) /\
+  ptr_addr (ow_self w0) <> 0 /\ 0 <= ptr_addr (ow_self w0) < 2 ^ 64 /\
+  lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom /\ 0 <= ptr_addr fp < 2 ^ 64 /\
+  dgx_qe.
+
+(** A formatter that returns errno also returns F, so the translation
+    can still use the facts of the rules above. *)
+Lemma dgx_premises_of_e v : dgx_premises_e v -> dgx_premises v.
+Proof.
+  intros (A1 & A2 & A3 & A4 & A5 & A6 & A7 & A8 & A9 & A10 & A11 & A12 & A13 & A14 & A15 & A16 & A17 & Hqe).
+  refine (conj A1 (conj A2 (conj A3 (conj A4 (conj A5 (conj A6 (conj A7 (conj A8 (conj A9 (conj A10 (conj A11
+    (conj A12 (conj A13 (conj A14 (conj A15 (conj A16 (conj A17 _))))))))))))))))).
+  intros x m. iIntros "HQ". iDestruct (Hqe x m with "HQ") as "($ & _ & $)".
+Qed.
+
+(** The resources before a translation hold errno's bytes once, and
+    the rest of them accepts any new bytes. *)
+Lemma dgx_errno v bs : dgx_before v bs ⊢ errno_own eb bs ∗ (∀ bs', errno_own eb bs' -∗ dgx_before v bs').
+Proof.
+  unfold dgx_before, dcg_before_v. iIntros "(H1 & H2 & H3 & H4 & H5 & H6 & H7 & He)".
+  iSplitL "He"; [iExact "He"|]. iIntros (bs') "He". iSplitL "H1"; [iExact "H1"|].
+  iSplitL "H2"; [iExact "H2"|]. iSplitL "H3"; [iExact "H3"|]. iSplitL "H4"; [iExact "H4"|].
+  iSplitL "H5"; [iExact "H5"|]. iSplitL "H6"; [iExact "H6"|]. iSplitL "H7"; [iExact "H7"|]. iExact "He".
+Qed.
+
+(** A print lends the stream to the wrapper, and the wrapper lends the
+    errno cell and F to the formatter. The caller keeps the rest of its
+    resources. After the call it gets the stream back in the mode that
+    the formatter left, and errno back with new bytes. *)
+Lemma dgx_loan_e K Kb fmt :
+  0 <= ptr_addr fmt < 2 ^ 64 ->
+  (Lm ⊢ ∃ dq reg, live_capq dq (ptr_cap fmt) reg ∗ (live_capq dq (ptr_cap fmt) reg -∗ Lm)) ->
+  dgx_qe -> (K ∗ errno_any eb ⊢ Kb) ->
+  fx_loan ((K ∗ errno_any eb) ∗ dgx_stream ∗ Lm) vb sb sreg fp fmt (errno_any eb ∗ F) Q (Kb ∗ dgx_stream ∗ Lm).
+Proof.
+  intros Hfr Hl Hqe Hk. unfold fx_loan, dgx_stream.
+  iIntros "((HK & He) & (#Hs & %mode & %flags2 & %held & %Hp & Hst & Ho & HF) & HL)".
+  iDestruct (Hl with "HL") as (dq reg) "[Hc HL]".
+  iExists mode, flags2, held, dq, reg. iSplit; [iPureIntro; tauto|]. iSplitR; [iExact "Hs"|].
+  iSplitL "Hst"; [iExact "Hst"|]. iSplitL "Ho"; [iExact "Ho"|]. iSplitL "Hc"; [iExact "Hc"|].
+  iSplitL "He HF"; [iSplitL "He"; [iExact "He" | iExact "HF"]|].
+  iIntros (x mode') "Hst Ho Hc HQ". iDestruct (Hqe x mode' with "HQ") as "(%Hm & He & HF)".
+  iSplitL "HK He"; [iApply Hk; iSplitL "HK"; [iExact "HK" | iExact "He"]|]. iSplitR "Hc HL"; [|iApply ("HL" with "Hc")].
+  iSplitR; [iExact "Hs"|]. iExists mode', flags2, held. iFrame "Hst Ho HF". iPureIntro. tauto.
+Qed.
+
+(** After the print, the caller puts errno back with the resources that
+    it kept. The bytes of errno do not matter, because G does not fix
+    them. *)
+Lemma dgx_errno_back v :
+  (∀ bs', errno_own eb bs' -∗ dgx_before v bs') ∗ errno_any eb ⊢ ∃ bs, dgx_before v bs.
+Proof. iIntros "[HK [%bs He]]". iExists bs. iApply ("HK" with "He"). Qed.
+
+(** Printing a translated message takes T and gives G back, and the
+    formatter borrows errno once. *)
+Lemma dgx_print_t_e v mid q ys X f e ls l d args rest j Φ :
+  dgx_premises_e v -> 0 <= ptr_addr mid < 2 ^ 64 -> forallb snapshot_word ys = true ->
+  (Lm ⊢ ∃ dq reg, live_capq dq (ptr_cap mid) reg ∗ (live_capq dq (ptr_cap mid) reg -∗ Lm)) ->
+  fx_format vb fp mid ys ((errno_any eb ∗ F) ∗ X) Q ->
+  map_option (arg_x ge e) args = Some (WPtr fp :: WPtr q :: ys) ->
+  ⊢ dgx_T v mid q -∗ X -∗ ▷ (∀ x, dgx_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+    WP (ERun (mkFrame f e ls None
+      (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hp Hmr Hys Hlm Hfm Hargs. pose proof Hp as (Hk & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hfn & Hself & Hselfr & _ & _ & Hqe).
+  iIntros "((%bs & HA) & HS & HL) HX HK". iDestruct (dgx_cycle with "HA") as "[%Hq HB]". subst q.
+  iDestruct (dgx_errno with "HB") as "[He HB]".
+  iAssert (errno_any eb) with "[He]" as "He"; [iExists _; iExact "He"|].
+  iApply (wp_call_fx_loan Hreg (hk_sys _ _ Hk)
+    (((∀ bs', errno_own eb bs' -∗ dgx_before v bs') ∗ errno_any eb) ∗ dgx_stream ∗ Lm) (dgx_G v)
+    vb sb sreg fp mid ys (errno_any eb ∗ F) X Q with "[$HB $He $HS $HL] HX [HK]");
+    [exact Hfn | exact Hself | exact Hselfr | exact Hargs | exact Hys | | exact Hfm |].
+  - apply dgx_loan_e; [exact Hmr | exact Hlm | exact Hqe | apply dgx_errno_back].
+  - iNext. iIntros (x) "HG". iApply ("HK" $! (x mod 2 ^ 32) with "HG").
+Qed.
+
+(** Printing an untranslated format takes G and gives G back, and the
+    formatter borrows errno once. *)
+Lemma dgx_print_g_e v fmt ys X f e ls l d args rest j Φ :
+  dgx_premises_e v -> 0 <= ptr_addr fmt < 2 ^ 64 -> forallb snapshot_word ys = true ->
+  (Lm ⊢ ∃ dq reg, live_capq dq (ptr_cap fmt) reg ∗ (live_capq dq (ptr_cap fmt) reg -∗ Lm)) ->
+  fx_format vb fp fmt ys ((errno_any eb ∗ F) ∗ X) Q ->
+  map_option (arg_x ge e) args = Some (WPtr fp :: WPtr fmt :: ys) ->
+  ⊢ dgx_G v -∗ X -∗ ▷ (∀ x, dgx_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+    WP (ERun (mkFrame f e ls None
+      (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hp Hmr Hys Hlm Hfm Hargs. pose proof Hp as (Hk & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hfn & Hself & Hselfr & _ & _ & Hqe).
+  iIntros "((%bs & HB) & HS & HL) HX HK". iDestruct (dgx_errno with "HB") as "[He HB]".
+  iAssert (errno_any eb) with "[He]" as "He"; [iExists _; iExact "He"|].
+  iApply (wp_call_fx_loan Hreg (hk_sys _ _ Hk)
+    (((∀ bs', errno_own eb bs' -∗ dgx_before v bs') ∗ errno_any eb) ∗ dgx_stream ∗ Lm) (dgx_G v)
+    vb sb sreg fp fmt ys (errno_any eb ∗ F) X Q with "[$HB $He $HS $HL] HX [HK]");
+    [exact Hfn | exact Hself | exact Hselfr | exact Hargs | exact Hys | | exact Hfm |].
+  - apply dgx_loan_e; [exact Hmr | exact Hlm | exact Hqe | apply dgx_errno_back].
+  - iNext. iIntros (x) "HG". iApply ("HK" $! (x mod 2 ^ 32) with "HG").
+Qed.
+
+(** This is the short-option rule with errno lent to the formatter. *)
+Lemma hello_getopt_diag_rule_gettext_e v :
+  dgx_premises_e v -> (forall mid, diag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) -> dgx_lends (diag_msg ge) ->
+  (forall mid a0 s0 c, diag_msg ge mid -> 0 <= c < 2 ^ 32 ->
+     fx_format vb fp mid [WPtr a0; WInt c] ((errno_any eb ∗ F) ∗ word_string DfracDiscarded a0 s0) Q) ->
+  getopt_diag_rule w0 registry ge (dgx_G v) (dgx_T v) fp dom.
+Proof.
+  intros Hp Hm Hlm Hfm. pose proof (dgx_premises_of_e v Hp) as Ho.
+  pose proof Hp as (_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hd & Hf & _).
+  refine (conj Hd (conj Hf (conj (dgx_cap v) (conj _ _)))).
+  - intros f e ls l d args rest j mid Φ Hmid Hargs. exact (dgx_translate v _ f e ls l d args rest j mid Φ Ho Hm Hmid Hargs).
+  - intros f e ls l d args rest j mid q a0 s0 c Φ Hmid Hc Hargs.
+    pose proof (Hm mid Hmid). eapply (dgx_print_t_e v mid q [WPtr a0; WInt c]); first [exact Hp | lia | reflexivity | exact (Hlm mid Hmid) |
+      exact (Hfm mid a0 s0 c Hmid Hc) | exact Hargs].
+Qed.
+
+(** This is the long-option rule with errno lent to the formatter. *)
+Lemma hello_getopt_ldiag_rule_gettext_e v :
+  dgx_premises_e v -> (forall mid, ldiag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  dgx_lends (fun p => ldiag_msg ge p \/ p = f140 \/ p = f141) ->
+  lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 -> 0 <= ptr_addr f140 < 2 ^ 64 ->
+  lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 -> 0 <= ptr_addr f141 < 2 ^ 64 ->
+  (forall mid a0 s0 pfx sp nm sn, ldiag_msg ge mid ->
+     fx_format vb fp mid [WPtr a0; WPtr pfx; WPtr nm]
+       ((errno_any eb ∗ F) ∗ (word_string DfracDiscarded a0 s0 ∗ word_string DfracDiscarded pfx sp ∗
+         word_string DfracDiscarded nm sn)) Q) ->
+  (forall pfx sp nm sn, fx_format vb fp f140 [WPtr pfx; WPtr nm]
+     ((errno_any eb ∗ F) ∗ (word_string DfracDiscarded pfx sp ∗ word_string DfracDiscarded nm sn)) Q) ->
+  fx_format vb fp f141 [] ((errno_any eb ∗ F) ∗ True) Q ->
+  getopt_ldiag_rule w0 registry ge (dgx_G v) (dgx_T v) fp dom.
+Proof.
+  intros Hp Hm Hlm H140 Hr140 H141 Hr141 Hfm Hfm140 Hfm141. pose proof (dgx_premises_of_e v Hp) as Ho.
+  pose proof Hp as (_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hd & Hf & _).
+  refine (conj Hd (conj Hf (conj (dgx_cap v) (conj _ (conj _ (conj _ _)))))).
+  - intros f e ls l d args rest j mid Φ Hmid Hargs. exact (dgx_translate v _ f e ls l d args rest j mid Φ Ho Hm Hmid Hargs).
+  - intros f e ls l d args rest j mid q a0 s0 pfx sp nm sn Φ Hmid Hargs. iIntros "HT Ha Hp Hn HK".
+    pose proof (Hm mid Hmid).
+    iApply (dgx_print_t_e v mid q [WPtr a0; WPtr pfx; WPtr nm]
+      (word_string DfracDiscarded a0 s0 ∗ word_string DfracDiscarded pfx sp ∗ word_string DfracDiscarded nm sn)%I with "HT [$Ha $Hp $Hn] HK"); first [exact Hp | lia | reflexivity |
+      exact (Hlm mid (or_introl Hmid)) | exact (Hfm mid a0 s0 pfx sp nm sn Hmid) | exact Hargs].
+  - intros f e ls l d args rest j fmt pfx sp nm sn Φ Hfmt Hargs. rewrite H140 in Hfmt. injection Hfmt as <-.
+    iIntros "HG Hp Hn HK".
+    iApply (dgx_print_g_e v f140 [WPtr pfx; WPtr nm] (word_string DfracDiscarded pfx sp ∗ word_string DfracDiscarded nm sn)%I with "HG [$Hp $Hn] HK"); first [exact Hp | exact Hr140 | reflexivity |
+      exact (Hlm f140 (or_intror (or_introl eq_refl))) | exact (Hfm140 pfx sp nm sn) | exact Hargs].
+  - intros f e ls l d args rest j fmt Φ Hfmt Hargs. rewrite H141 in Hfmt. injection Hfmt as <-.
+    iIntros "HG HK".
+    iApply (dgx_print_g_e v f141 [] True%I with "HG [//] HK"); first [exact Hp | exact Hr141 | reflexivity |
+      exact (Hlm f141 (or_intror (or_intror eq_refl))) | exact Hfm141 | exact Hargs].
+Qed.
+
 (** ## Controls *)
 
 (** The rules ask for the same premises when the flag reads 0, 1 or
@@ -310,5 +484,47 @@ Proof.
   intros H. assert (Hp : ⊢ (⌜1 = 0 \/ 1 = 2 ^ 32 - 1⌝ : iProp Σ)).
   { iDestruct (H 0 1 with "[//]") as "[$ _]". }
   apply sbi.pure_soundness in Hp. lia.
+Qed.
+(** Errno changes twice in each report. The translation returns
+    errno's bytes in the four-byte form, and the formatter then writes
+    any bytes it likes. Here a first report keeps [1; 2; 3; 4] through
+    the translation and the formatter writes EBADF, 9. The second report
+    keeps 9 through its translation, and its formatter writes 0. *)
+Example dgx_errno_cycle_controls v mid1 qa mid2 qb :
+  (dgx_after v [1; 2; 3; 4] mid1 qa ⊢ ⌜qa = mid1⌝ ∗ errno_own eb [1; 2; 3; 4] ∗
+     (errno_own eb [9; 0; 0; 0] -∗ ∃ bs, dgx_before v bs)) /\
+  (dgx_after v [9; 0; 0; 0] mid2 qb ⊢ ⌜qb = mid2⌝ ∗ errno_own eb [9; 0; 0; 0] ∗
+     (errno_own eb [0; 0; 0; 0] -∗ ∃ bs, dgx_before v bs)) /\
+  ([1; 2; 3; 4] <> [9; 0; 0; 0] /\ [9; 0; 0; 0] <> [0; 0; 0; 0]).
+Proof.
+  assert (H : forall bs bs2 mid q, le_bytes (dci_w bs) 4 = bs ->
+    dgx_after v bs mid q ⊢ ⌜q = mid⌝ ∗ errno_own eb bs ∗ (errno_own eb bs2 -∗ ∃ bs, dgx_before v bs)).
+  { intros bs bs2 mid q Hb. iIntros "HA". iDestruct (dgx_cycle with "HA") as "[$ HB]". rewrite Hb.
+    iDestruct (dgx_errno with "HB") as "[$ HB]". iIntros "He". iExists bs2. iApply ("HB" with "He"). }
+  split; [apply H; vm_compute; reflexivity|]. split; [apply H; vm_compute; reflexivity|]. split; discriminate.
+Qed.
+
+(** A formatter that owns nothing of its own still works. It gets the
+    errno cell from the loan, not from F, and it meets the rules'
+    promise by handing errno back with a narrow stream. *)
+Example dgx_empty_frame_controls :
+  (F ⊣⊢ emp) -> (forall x m, Q x m ⊣⊢ ⌜m = 0⌝ ∗ errno_any eb) -> dgx_qe /\ (errno_any eb ∗ F ⊣⊢ errno_any eb).
+Proof.
+  intros HF HQ. split.
+  - intros x m. rewrite HQ HF. iIntros "[-> He]". iSplit; [iPureIntro; left; reflexivity|]. iFrame "He".
+  - rewrite HF. apply bi.sep_emp.
+Qed.
+
+(** Errno's bytes have one owner. If F also claimed errno, G would ask
+    for the same cell twice, and no state could hold it. *)
+Example dgx_duplicate_errno_refused v : (F ⊢ errno_any eb ∗ True) -> dgx_G v ⊢ False.
+Proof.
+  intros HF. unfold dgx_G, dgx_stream. iIntros "((%bs & HB) & (_ & %mode & %flags2 & %held & _ & _ & _ & HF) & _)".
+  iDestruct (dgx_errno with "HB") as "[He _]". iDestruct (HF with "HF") as "[[%bs' He'] _]".
+  iDestruct "He" as (cs) "([%Hl _] & He)". iDestruct "He'" as (cs') "([%Hl' _] & He')".
+  destruct bs as [|b0 bs]; [discriminate|]. destruct bs' as [|b0' bs']; [discriminate|].
+  rewrite byte_ps_cons byte_ps_cons /pts /ptsq /=. iDestruct "He" as "[He _]". iDestruct "He'" as "[He' _]".
+  iDestruct (pointsto_valid_2 with "He He'") as %[Hv _].
+  rewrite dfrac_op_own dfrac_valid_own in Hv. exfalso. apply (Qp.not_add_le_l 1 1). exact Hv.
 Qed.
 End rules.
