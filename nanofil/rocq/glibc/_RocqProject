@@ -283,6 +283,7 @@ stdio/ErrorText.v
 stdio/ErrorTextPrint.v
 stdio/ErrorTextNormal.v
 stdio/ErrorTextTail.v
+stdio/ErrorTextTailNormal.v
 stdio/ErrorFallback.v
 stdio/ErrorFailure.v
 stdio/ErrorMessage.v

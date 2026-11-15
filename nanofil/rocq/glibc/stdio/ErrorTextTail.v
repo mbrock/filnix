@@ -43,6 +43,63 @@ Context (Hfxcall : ⊢ R -∗ WP (ERun newlineframe : gexpr)
     WP (ERun flushframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
       live_capq dq (ptr_cap stderr) rreg ∗ Q }}).
 
+(** Text printing and the newline borrow the same stderr resources in turn.
+    A separate resource exchange prepares the newline after text returns;
+    zero errno instead prepares it directly from the original resources. *)
+Lemma wp_error_text_tail_zero_loans (P U : iProp Σ)
+    (Hnewline_loan : ⊢ live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗
+      WP (ERun newlineframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
+        live sb sreg ∗ pcell sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ S }})
+    e from errnum fmt ap mode cb nb nreg count
+    textfmt strerrorfn (borrowed : ptr -> iProp Σ) Φ :
+  error_inputs e 0 errnum fmt ap mode cb -> 0 <= errnum < 2 ^ 32 ->
+  lookup (TAtom "error_message_count") (ge_globals ge) = Some (mkPtr nb (Obj nb)) ->
+  0 < nb -> nb + 4 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
+  lookup (TAtom "glibc_error#str.252") (ge_globals ge) = Some textfmt ->
+  find_fn ge (TAtom "__GI___strerror_r") = Some (Defined strerrorfn) ->
+  (forall b, exists fr, call_frame strerrorfn [WInt errnum;WPtr (mkPtr b (Obj b));WInt 1024] = Some fr /\
+    (⊢ obj b (heap_req 4 1024) -∗ P -∗ WP (ERun fr : gexpr)
+      {{ v, ∃ p, ⌜v = Ret (WPtr p)⌝ ∗ error_text_buffer borrowed b p ∗ T }})) ->
+  (forall b p, exists fr, call_frame newlinefn [WPtr null;WPtr textfmt;WPtr p] = Some fr /\
+    (⊢ live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗
+      error_text_buffer borrowed b p -∗ T -∗ WP (ERun fr : gexpr)
+      {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live sb sreg ∗ pcell sb 0 stderr ∗
+        live_capq dq (ptr_cap stderr) rreg ∗ error_text_buffer borrowed b p ∗ U }})) ->
+  ((if decide (errnum = 0) then P else U) ⊢ R) ->
+  live nb nreg -∗ int_cell nb 0 count -∗
+  live tb treg -∗ int_cell tb 792 1 -∗
+  live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+  live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ P -∗ E -∗
+  (live nb nreg -∗ int_cell nb 0 ((count + 1) mod 2 ^ 32) -∗ error_text_scratch borrowed errnum -∗
+    live tb treg -∗ int_cell tb 792 old -∗
+    live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+    live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
+  WP (ERun (mkFrame glibc_error_internal e [] None
+    (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
+Proof.
+  intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hready.
+  iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HP HE HK".
+  iApply (wp_error_text_loan _ _ 0 errnum fmt ap mode cb nb nreg count textfmt strerrorfn newlinefn
+    borrowed (live sb sreg ∗ pcell sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg)%I P T U
+    (live tb treg ∗ int_cell tb 792 1 ∗
+      live cb (mkRegion cb (cb + 16) Heap Live) ∗ int_cell cb 0 old ∗ E)%I
+    with "Hnl Hcount [$Hsl $Hsp $Hr] HP [$Ht $Hflag $Hcl $Hsaved $HE] [HK]"); try assumption.
+  { intros b p. destruct (Htextcall b p) as (fr & Hframe & Hcall).
+    exists fr. split; [done |]. iIntros "(Hsl & Hsp & Hr) Hb HT".
+    iApply (wp_wand with "[Hsl Hsp Hr Hb HT]"); [iApply (Hcall with "Hsl Hsp Hr Hb HT") |].
+    iIntros (v) "H". iDestruct "H" as (r ->) "(Hsl & Hsp & Hr & Hb & HU)".
+    iExists r. iFrame. done. }
+  iIntros (e' predecessor Hinputs') "Hnl Hcount Hscratch (Hsl & Hsp & Hr) HU (Ht & Hflag & Hcl & Hsaved & HE)".
+  iPoseProof (Hready with "HU") as "HR".
+  iApply (wp_error_tail_loan Hreg Hext tb treg old sb sreg stderr dq rreg
+    newline newlinefn newlineframe flushfn flushframe R S Q
+    (live nb nreg ∗ int_cell nb 0 ((count + 1) mod 2 ^ 32) ∗ error_text_scratch borrowed errnum ∗ E)%I
+    with "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR [$Hnl $Hcount $Hscratch $HE]"); try assumption; try exact Hinputs'; try lia.
+  iSplit; [|iIntros (e'' Hnz); contradiction].
+  iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HQ (Hnl & Hcount & Hscratch & HE)".
+  iApply ("HK" with "Hnl Hcount Hscratch Ht Hflag Hcl Hsaved Hsl Hsp Hr HQ HE").
+Qed.
+
 (** The saved errno argument may be any 32-bit word. Zero skips errno text;
     nonzero lends the allocated buffer to strerror and retains its result.
     The newline and stderr-flush contracts allow failure in either case. *)
@@ -76,19 +133,13 @@ Lemma wp_error_text_tail_zero_loan
 Proof.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
-  iApply (wp_error_text _ _ 0 errnum fmt ap mode cb nb nreg count textfmt strerrorfn newlinefn
-    borrowed R T (live tb treg ∗ int_cell tb 792 1 ∗
-      live cb (mkRegion cb (cb + 16) Heap Live) ∗ int_cell cb 0 old ∗
-      live sb sreg ∗ pcell sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ E)%I
-    with "Hnl Hcount HR [$Ht $Hflag $Hcl $Hsaved $Hsl $Hsp $Hr $HE]"); try assumption.
-  iIntros (e' predecessor Hinputs') "Hnl Hcount Hscratch HR (Ht & Hflag & Hcl & Hsaved & Hsl & Hsp & Hr & HE)".
-  iApply (wp_error_tail_loan Hreg Hext tb treg old sb sreg stderr dq rreg
-    newline newlinefn newlineframe flushfn flushframe R S Q
-    (live nb nreg ∗ int_cell nb 0 ((count + 1) mod 2 ^ 32) ∗ error_text_scratch borrowed errnum ∗ E)%I
-    with "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR [$Hnl $Hcount $Hscratch $HE]"); try assumption; try exact Hinputs'; try lia.
-  iSplit; [|iIntros (e'' Hnz); contradiction].
-  iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HQ (Hnl & Hcount & Hscratch & HE)".
-  iApply ("HK" with "Hnl Hcount Hscratch Ht Hflag Hcl Hsaved Hsl Hsp Hr HQ HE").
+  iApply (wp_error_text_tail_zero_loans R R Hnewline_loan with
+    "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK"); try eassumption.
+  { intros b p. destruct (Htextcall b p) as (fr & Hframe & Hcall).
+    exists fr. split; [done |]. iIntros "Hsl Hsp Hr Hb HT".
+    iApply (wp_wand with "[Hb HT]"); [iApply (Hcall with "Hb HT") |].
+    iIntros (v) "H". iDestruct "H" as (r ->) "[Hb HR]". iExists r. iFrame. done. }
+  destruct (decide (errnum = 0)); done.
 Qed.
 
 (** The original newline contract can leave stderr with its caller. This
