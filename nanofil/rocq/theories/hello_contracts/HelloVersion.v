@@ -453,17 +453,20 @@ Local Ltac version_branch :=
 
 Local Ltac version_goto := version_pure (wp_goto registry wi ge); iNext.
 
-(** The cached block facts let instruction proofs keep the array helper's body opaque. *)
-Local Ltac arn_enter blk :=
+(** Cached block facts let both version helpers keep their complete function bodies opaque. *)
+Local Ltac version_enter blocks blk :=
   let rule := uconstr:(wp_enter registry wi ge _ _ _ _ _ blk) in
   version_pure rule;
-  [cbn [edge_label]; match goal with |- find_block (TAtom ?s) _ = _ =>
+  [match goal with |- find_block ?lab ?body = ?result =>
+     let lab' := eval vm_compute in lab in change (find_block lab' body = result)
+   end;
+   match goal with |- find_block (TAtom ?s) _ = _ =>
      let Hblocks := fresh "Hblocks" in
-     pose proof find_arn_blocks as Hblocks;
+     pose proof blocks as Hblocks;
      rewrite Forall_forall in Hblocks;
      apply (Hblocks (s, blk));
      repeat first [apply elem_of_cons; left; reflexivity | apply elem_of_cons; right]
-   end | reflexivity |].
+   end | word_premise |].
 
 (** These are the stdio contracts for the six exact version calls.
     The mixed pointer/int classes are checked before any output result;
@@ -561,15 +564,15 @@ Proof.
   assert (Hv8 : lookup (TAtom "v8") e = Some (WPtr (mkPtr b (Obj b)))) by reflexivity.
   assert (Hv10 : lookup (TAtom "v10") e = Some (WInt 4)) by reflexivity.
   clearbody e.
-  arn_enter arn_start. iNext.
+  version_enter find_arn_blocks arn_start. iNext.
   cbn [b_insts b_jump arn_start]. version_let. version_let.
   version_branch.
-  arn_enter arn_L12. iNext.
+  version_enter find_arn_blocks arn_L12. iNext.
   cbn [b_insts b_jump arn_L12]. version_let.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; left; reflexivity | word_premise | reflexivity |].
   iNext. iIntros (n0) "Hps". gen_env. version_goto.
-  arn_enter arn_L14. iNext.
+  version_enter find_arn_blocks arn_L14. iNext.
   cbn [b_insts b_jump arn_L14]. version_let. version_let. version_let.
   iApply (wp_version_output with "Hps");
     [unfold version_output_args; right; left; reflexivity | word_premise | reflexivity |].
@@ -584,19 +587,19 @@ Proof.
     [unfold version_output_args; right; right; right; right; left; reflexivity | word_premise | reflexivity |].
   iNext. iIntros (n4) "Hps". gen_env. version_let.
   version_branch.
-  arn_enter arn_L263. iNext.
+  version_enter find_arn_blocks arn_L263. iNext.
   cbn [b_insts b_jump arn_L263]. version_let.
   version_branch.
-  arn_enter arn_L267. iNext.
+  version_enter find_arn_blocks arn_L267. iNext.
   cbn [b_insts b_jump arn_L267]. version_let.
   version_branch.
-  arn_enter arn_L273. iNext.
+  version_enter find_arn_blocks arn_L273. iNext.
   cbn [b_insts b_jump arn_L273]. version_let.
   version_branch.
-  arn_enter arn_L275. iNext.
+  version_enter find_arn_blocks arn_L275. iNext.
   cbn [b_insts b_jump arn_L275]. version_let.
   version_branch.
-  arn_enter arn_L82. iNext.
+  version_enter find_arn_blocks arn_L82. iNext.
   cbn [b_insts b_jump arn_L82]. version_let. version_let.
   iApply (wp_check with "Hl");
     [reflexivity | word_premise | reflexivity | addr_premise | cbn [r_end]; addr_premise | addr_premise |].
@@ -640,7 +643,7 @@ Proof.
     [unfold version_output_args; right; right; right; right; right; left; reflexivity |
      word_premise | reflexivity |].
   iNext. iIntros (n5) "Hps". version_goto.
-  arn_enter arn_L47. iNext.
+  version_enter find_arn_blocks arn_L47. iNext.
   cbn [b_insts b_jump arn_L47]. iApply wp_ret_void. iNext.
   iApply ("HΦ" with "Hps Hl [H0 H1 H2 H3]"). rewrite /version_author_cells. iFrame.
 Qed.
@@ -714,20 +717,6 @@ Proof. reflexivity. Qed.
 
 (** Each counting-loop step uses the saved equations rather than expanding the complete C function. *)
 Local Opaque version_etc_va_fn.
-
-Local Ltac va_enter blk :=
-  let rule := uconstr:(wp_enter registry wi ge _ _ _ _ _ blk) in
-  version_pure rule;
-  [match goal with |- find_block ?lab ?blocks = ?result =>
-     let lab' := eval vm_compute in lab in change (find_block lab' blocks = result)
-   end;
-   match goal with |- find_block (TAtom ?s) _ = _ =>
-     let Hblocks := fresh "Hblocks" in
-     pose proof find_va_blocks as Hblocks;
-     rewrite Forall_forall in Hblocks;
-     apply (Hblocks (s, blk));
-     repeat first [apply elem_of_cons; left; reflexivity | apply elem_of_cons; right]
-   end | word_premise |].
 
 (** Program-local allocations preserve the caller's opaque world. *)
 Context (Kversion_alloc : forall size m wd h base,
@@ -806,10 +795,10 @@ Proof.
   version_let. gen_env.
   version_let. rewrite ?Hxmod ?Hxne. gen_env.
   version_goto.
-  va_enter va_L19. iNext. gen_env.
+  version_enter find_va_blocks va_L19. iNext. gen_env.
   cbn [b_insts b_jump va_L19].
   version_branch.
-  va_enter va_L14. iNext.
+  version_enter find_va_blocks va_L14. iNext.
   cbn [b_insts b_jump va_L14]. version_let. gen_env.
   iApply ("HK" with "[%] Hps Hcursor Hsl Hsource Hl Hdest").
   split; [unfold version_va_saved; repeat split; word_premise | word_premise].
@@ -819,10 +808,10 @@ Qed.
 Local Ltac version_va_round addr src dst text :=
   iRename src into "Hsource"; iRename dst into "Hdest";
   version_goto;
-  va_enter va_L12; iNext; gen_env;
+  version_enter find_va_blocks va_L12; iNext; gen_env;
   cbn [b_insts b_jump va_L12]; version_let; gen_env;
   version_branch;
-  va_enter va_L18; iNext;
+  version_enter find_va_blocks va_L18; iNext;
   cbn [b_insts b_jump va_L18]; version_let; gen_env;
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ addr);
     [word_premise | cbn; f_equal; f_equal;
@@ -877,7 +866,7 @@ Proof.
     - apply Z.mod_divide; [lia | exact Hsmod]. }
   iIntros "Hps Hcursor Hsl Hs0 Hs1 Hs2 Hs3 Hs4 HK".
   rewrite version_etc_va_entry.
-  va_enter va_start. iNext.
+  version_enter find_va_blocks va_start. iNext.
   cbn [b_insts b_jump va_start].
   iApply (wp_alloc _ _ _ _ _ _ _ _ _ _ _ _ _ 80);
     [reflexivity | lia | unfold max_allocation_size; lia |
@@ -902,10 +891,10 @@ Proof.
   version_va_round (b + 24) "Hs3" "H3" "hello#str.75".
   iEval (rewrite H64) in "Hcursor".
   version_goto.
-  va_enter va_L12. iNext. gen_env.
+  version_enter find_va_blocks va_L12. iNext. gen_env.
   cbn [b_insts b_jump va_L12]. version_let. gen_env.
   version_branch.
-  va_enter va_L18. iNext.
+  version_enter find_va_blocks va_L18. iNext.
   cbn [b_insts b_jump va_L18]. version_let. gen_env.
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (b + 32));
     [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]. iNext. gen_env.
@@ -921,10 +910,10 @@ Proof.
        apply Kversion_store |]. iNext. iIntros "Hl H4".
     version_let. gen_env. version_let. gen_env. version_let. gen_env.
     version_goto.
-    va_enter va_L19. iNext. gen_env.
+    version_enter find_va_blocks va_L19. iNext. gen_env.
     cbn [b_insts b_jump va_L19].
     version_branch.
-    va_enter va_L15. iNext.
+    version_enter find_va_blocks va_L15. iNext.
     cbn [b_insts b_jump va_L15].
     iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ version_etc_arn_fn
       (invocation version_etc_arn_fn
