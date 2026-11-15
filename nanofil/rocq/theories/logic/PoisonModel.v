@@ -2152,7 +2152,7 @@ Lemma let_tstep_pure_scalar : forall pol ge e ps d k o args,
 Proof.
   intros pol ge e ps d k o args Ez Ep HkP HkA HkF.
   unfold let_tstep; rewrite Ez.
-  destruct k; try contradiction; destruct o; try discriminate Ep; reflexivity.
+  destruct o; try discriminate Ep; destruct k; try contradiction; reflexivity.
 Qed.
 
 Lemma leak_of_pure_scalar : forall pol ge c l d k o args rest j,
@@ -3337,7 +3337,6 @@ Proof.
   intros o k xs m why m' Hp Hop.
   destruct o; try discriminate Hp;
     unfold op_res, op_res_int, additive_res, float_arithmetic, float_convert, float_integer in Hop;
-    destruct k;
     repeat match type of Hop with
     | context [match ?x with _ => _ end] =>
         lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x; try discriminate Hop end
