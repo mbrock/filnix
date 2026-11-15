@@ -292,6 +292,7 @@ stdio/ErrorTailNormal.v
 stdio/ErrorText.v
 stdio/ErrorTextPrint.v
 stdio/StrerrorEnoent.v
+stdio/StrerrorEnoentLoan.v
 stdio/ErrorTextNormal.v
 stdio/ErrorTextTail.v
 stdio/ErrorTextTailNormal.v
@@ -299,6 +300,7 @@ stdio/ErrorFallback.v
 stdio/ErrorFailure.v
 stdio/ErrorMessage.v
 stdio/ErrorMessageNarrow.v
+stdio/ErrorErrnoLoan.v
 stdio/ErrorMessageNormal.v
 stdio/ErrorReport.v
 stdio/ErrorReportNormal.v
