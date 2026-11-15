@@ -272,6 +272,25 @@ function fails generation and names the manifest row, rather than silently
 emitting an empty decoded body. Run `test.sh CAPTURE` to check this rejection,
 shared-prelude output, fixture corruption and the manifest proof-style switch.
 
+## Select from a large linked image
+
+GNU Hello linked with all the user glibc it reaches is too large to decode
+within the compile budget. The `image` layout in `hello/code.toml` links that
+whole image and keeps only the items that a proof needs. The manifest's
+`objects` setting names a flake output whose `*.term` files are the program's
+checked objects, and `object_prefix` is stripped from their names, as
+`nix/hello-fixture.nix` does. The `units_file` setting lists the glibc units
+before the manifest's own `units` rows.
+
+`image.pl` keeps each name in `FUNCTIONS` and the target of each kept alias,
+with their terms and order unchanged. It stops generation when a name or a
+target is missing, has more than one item, or is not a function or an alias.
+The `compare` setting names another fixture, such as `intl/GettextLink`, and
+each kept item must be the same term in that fixture's image. These checks run
+on the whole image, which Rocq never sees. The generated file therefore states
+them in a provenance section, with digests of the objects, the units and the
+whole image. `test-image.py` checks these refusals on small images.
+
 ## Start a block lemma
 
 `skeleton.py` links one manifest fixture and prints statement skeletons for

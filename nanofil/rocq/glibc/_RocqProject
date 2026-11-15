@@ -427,6 +427,8 @@ getopt/GetoptReturn.v
 getopt/GetoptSkip.v
 hello/HelloGlibcLibsT.v
 hello/HelloGettextLink.v
+hello/HelloGettextImageCode.v
+hello/HelloGettextImage.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v

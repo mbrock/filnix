@@ -8,6 +8,7 @@ trap 'rm -rf "$work"' EXIT
 python3 -I "$here/test-blocks.py"
 python3 -I "$here/test-source.py"
 python3 -I "$here/test-block-facts.py"
+python3 -I "$here/test-image.py"
 python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
   --rocq-function glibc_strcmp >"$work/strcmp-skeleton"
 grep -F 'WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \

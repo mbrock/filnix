@@ -2,6 +2,7 @@
 """Regenerate glibc code fixtures from the per-directory code.toml manifests."""
 import argparse
 import difflib
+import hashlib
 import importlib.util
 import json
 import os
@@ -174,6 +175,7 @@ class Generator:
         spec.loader.exec_module(self.survey)
         self.compiled = {}
         self.layout_files = {}
+        self.built = {}
 
     def layout_file(self, source, captured=True):
         if source not in self.layout_files:
@@ -217,6 +219,62 @@ class Generator:
         self.compiled[key] = path
         return path
 
+    def objects(self, cfg):
+        """Name a flake output's checked object terms as nix/hello-fixture.nix does."""
+        if cfg["objects"] not in self.built:
+            self.built[cfg["objects"]] = Path(run(["nix", "build", "--no-link", "--print-out-paths",
+                                                   f"{NF.parent}#{cfg['objects']}"], cwd=NF.parent).strip())
+        out = self.built[cfg["objects"]]
+        terms = sorted(out.rglob("*.term"), key=lambda t: "./" + str(t.relative_to(out)))
+        return [(t.name.removesuffix(".o.term").removeprefix(cfg.get("object_prefix", "")), t) for t in terms]
+
+    def unit_text(self, cfg):
+        """The manifest's unit rows, after the units listed in its units_file."""
+        listed = rows((NF / cfg["units_file"]).read_text()) if "units_file" in cfg else []
+        return ("- " + " ".join(listed) + "\n" if listed else "") + cfg.get("units", "")
+
+    def reference(self, spec):
+        """Link the fixture row named DIRECTORY/NAME exactly as its own manifest does."""
+        directory, name = spec.split("/")
+        cfg = tomllib.loads((GLIBC / directory / "code.toml").read_text())
+        row = next(r for r in rows(cfg["fixtures"]) if r.split("|")[0] == name)
+        _, roots, paths, _, *program = row.split("|")
+        linked, _ = self.link(cfg, name, roots or cfg.get("roots", ""),
+                              "- " + paths if paths else self.unit_text(cfg), program[0] if program else "")
+        path = self.work / "reference.term"
+        path.write_text(linked)
+        return path
+
+    def provenance(self, cfg, objects, unit_rows, linked, report):
+        """Say where an image fixture came from and what the producer checked on it."""
+        def digest(pairs):
+            lines = "".join(f"{n} {hashlib.sha256(Path(p).read_bytes()).hexdigest()}\n" for n, p in pairs)
+            return hashlib.sha256(lines.encode()).hexdigest()
+        unit_terms = [(unit, self.compiled[(str(self.capture / (unit + ".i")), cfg.get("mode", "checked"), True)])
+                      for _, unit in units(unit_rows)]
+        checks = "".join(f"    - {line}\n" for line in report.splitlines())
+        return f'''
+(** ## Provenance
+
+    The producer linked GNU Hello's {len(objects)} checked objects with {len(unit_terms)} user glibc
+    units by `rocq/scripts/link.pl --ctors {cfg.get("roots", "")}`. The objects come from the
+    flake output `{cfg["objects"]}`, and the units come from
+    the capture `{self.capture}`.
+    These SHA-256 digests identify the inputs and the result:
+
+    - objects, by name and term digest: `{digest(objects)}`
+    - units, by name and term digest: `{digest(unit_terms)}`
+    - the whole linked image: `{hashlib.sha256(linked.encode()).hexdigest()}`
+
+    The image is too large to decode here, so the fixture keeps only the
+    items below. On the whole image, the producer checked that each of
+    these names has exactly one item, and that the item is the same term
+    as in the image of the `{cfg["compare"]}` fixture. Rocq sees only the
+    selection and does not check these facts.
+
+{checks}*)
+'''
+
     def prolog(self, script, args, data=None):
         return run([self.swipl, NF / "rocq/scripts" / script, *args], data=data, env=self.env)
 
@@ -226,6 +284,8 @@ class Generator:
         mode = cfg.get("mode", "checked")
         specs = []
         access_units = []
+        if cfg.get("objects"):
+            specs.extend(f"{obj}={term}" for obj, term in self.objects(cfg))
         if source:
             compiled = self.compile(NF / source, mode, False)
             specs.append(f"{lower}={compiled}")
@@ -235,16 +295,16 @@ class Generator:
             unit_source = self.capture / (unit + '.i')
             compiled = self.compile(unit_source, mode)
             specs.append(f"{obj}={compiled}")
-            if self.sources:
+            if self.sources and layout != "image":
                 access_units.extend(['--unit', f'{obj}={compiled}={self.layout_file(unit_source)}'])
         entry = roots
-        if not source and layout != "getopt":
+        if not source and layout not in ("getopt", "image"):
             entry = {"libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots", "stdlib": "stdlib_root"}.get(layout, lower + "_roots")
             items = ",".join(f"item(p,sym('{r}',0))" for r in roots.split())
             root = self.work / "roots.term"
             root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
             specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
-        linked = self.prolog("link.pl", (["--context"] if self.sources else []) +
+        linked = self.prolog("link.pl", (["--context"] if self.sources and layout != "image" else []) +
                              (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
         return linked, access_units
 
@@ -264,7 +324,7 @@ class Generator:
                 raise ValueError(f"expected NAME|ROOTS|UNITS|FUNCTIONS[|PROGRAM]: {row}")
             name, roots, paths, fns, *program = fields
             roots = roots or cfg.get("roots", "")
-            unit_rows = "- " + paths if paths else cfg.get("units", "")
+            unit_rows = "- " + paths if paths else self.unit_text(cfg)
             lower = fixture_prefix(name)
             source = program[0] if program else ""
             if self.sources and cfg.get('layouts', False):
@@ -277,7 +337,7 @@ class Generator:
             if cache_key not in linked_cache:
                 linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)
             linked, access_units = linked_cache[cache_key]
-            if self.sources:
+            if self.sources and layout != "image":
                 term = self.work / "source.term"
                 term.write_text(linked)
                 facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
@@ -303,7 +363,17 @@ class Generator:
                 print(f"{name}Src: functions {located}/{len(facts)} located; "
                       f"blocks {locations}/{blocks} located; temps {named}/{temps} named; "
                       f"loop heads {heads}", flush=True)
-            if fns.split():
+            if layout == "image":
+                whole, report = self.work / "image.term", self.work / "image.report"
+                whole.write_text(linked)
+                try:
+                    selection = run([self.swipl, HERE / "image.pl", whole, self.reference(cfg["compare"]),
+                                     report, *fns.split()], env=self.env)
+                except subprocess.CalledProcessError as error:
+                    raise ValueError(f"{manifest}: fixture row {row}: image selection failed") from error
+                provenance = self.provenance(cfg, self.objects(cfg), unit_rows, linked, report.read_text())
+                linked = selection
+            elif fns.split():
                 selected = self.work / "linked.term"
                 selected.write_text(linked)
                 try:
@@ -323,6 +393,8 @@ class Generator:
                 "getopt": f"user glibc's {unit_description} units linked from {roots}",
                 "stdio": "the pinned user-glibc 2.44 cancellation and printf-buffer completion units",
                 "buffer": "the pinned user-glibc 2.44 printf-buffer units",
+                "image": f"GNU Hello linked with its {len(unit_names)} user glibc units from {roots}, "
+                         f"restricted to {fns} and their alias targets by rocq/scripts/glibc-code/image.pl",
             }[layout]
             text = self.prolog("gallina.pl", ([] if layout in ("program", "stdlib") else ["--chunk"]) +
                                [lower, description, checker], linked)
@@ -333,6 +405,8 @@ class Generator:
             else:
                 if layout in ("string", "libio"):
                     text += decoded(lower, fns, layout)
+                elif layout == "image":
+                    text += provenance + decoded(lower, "", "string")
                 elif layout in ("stdio", "buffer"):
                     text = stdio(text, lower, fns, layout)
                 if self.sources and layout in ("libio", "stdio", "buffer"):

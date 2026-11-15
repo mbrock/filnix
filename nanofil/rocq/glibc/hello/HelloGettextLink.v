@@ -15,7 +15,9 @@ From Glibc Require Import GlibcProgram.
 
     This check does not cover all of Hello. Hello links many more units
     than gettext needs, and its full link might resolve a name another
-    way, so a caller must still show that it does not. The caller also
+    way, so a caller must still show that it does not.
+    HelloGettextImage.v checks the record against a selection from
+    Hello's own link, relying on checks that the producer makes. The caller also
     lends the memory that gettext reads, three locks and errno, and
     nothing here says how startup prepares them. *)
 From Glibc Require Import GlibcTactics LibioTactics.
