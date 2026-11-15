@@ -106,8 +106,9 @@ Definition dci_rest_l (lk1 lk2 lkt : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' M : 
   dci_rdlock_rule lk1 L1 L1' /\ dci_rdlock_rule lk2 L2 L2' /\
   dci_unlock_rule lk1 L1' L1'' /\ dci_unlock_rule lk2 L2' L2''.
 
-(** The translation needs the rules above and a rule for the query, and
-    the real query now supplies the last one. *)
+(** The translation should not need a separate promise about the locale
+    query. Once the caller describes the other functions and lends the
+    two locale cells, nothing else is missing. *)
 Lemma dci_rest_cur `{!Defines ge "__current_locale_name" glibc_current_locale_name}
     lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M gb go greg dqg lp lb lreg dql dqn cv dqt treg :
   dci_rest_l lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M ->
