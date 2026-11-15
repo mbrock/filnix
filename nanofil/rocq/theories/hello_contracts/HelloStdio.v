@@ -93,8 +93,12 @@ Qed.
     These are distinct objects, not duplicate ownership of equal text. *)
 Definition hello_diagnostic_literals : list String.string :=
   ["closeout#str.55"; "closeout#str.53"].
-Definition hello_diagnostic_pieces : list (piece * pval) :=
+Definition hello_diagnostic_pieces : list (piece * pval) := Eval vm_compute in
   flat_map hello_literal_pieces hello_diagnostic_literals.
+
+Local Lemma hello_diagnostic_pieces_unfold :
+  hello_diagnostic_pieces = flat_map hello_literal_pieces hello_diagnostic_literals.
+Proof. vm_compute. reflexivity. Qed.
 
 Lemma hello_diagnostic_shape : forall s, In s hello_diagnostic_literals ->
   string_ok (version_literal s) (ptr_addr (version_literal s))
@@ -113,7 +117,7 @@ Proof.
     (b := ptr_addr (version_literal s)) (reg := hello_literal_region s).
   - apply hello_diagnostic_shape. exact Hin.
   - apply all_agree_intro. intros l v Hlv. apply Ha, Howned.
-    apply list_elem_of_In. unfold hello_diagnostic_pieces. apply in_flat_map.
+    apply list_elem_of_In. rewrite hello_diagnostic_pieces_unfold. apply in_flat_map.
     exists s. split; [exact Hin|]. apply list_elem_of_In. exact Hlv.
 Qed.
 
@@ -960,11 +964,11 @@ End HelloCallbackChecks.
 (** The open-only rule is exercised on the very same logic as the
     callback controls, with an inhabited paired interpretation. *)
 Module HelloPermissionChecks.
+Import HelloCallbackChecks.
 Module P := StreamPermissionChecks.
 Module T := StreamTokenChecks.
 Module F := LibcStreamChecks.
 Module LG := StreamHandleChecks.LG.
-Module H := HelloStdioOn InterpRuntime LG.
 Import LG LG.L.
 
 Definition close_wi := stream_tokens_wi (fun _ _ => True) P.out P.err 5120 0.
@@ -1071,8 +1075,8 @@ End HelloPermissionChecks.
     owned stage is consumed. No assumption supplies either compatibility
     premise of the wrapper. Native safepoints are identity in this fixture. *)
 Module HelloTransferChecks.
+Import HelloCallbackChecks.
 Module LG := StreamHandleChecks.LG.
-Module H := HelloStdioOn InterpRuntime LG.
 Module F := LibcStreamChecks.
 Module T := StreamTokenChecks.
 Module P := StreamPermissionChecks.
@@ -1242,22 +1246,20 @@ End HelloTransferChecks.
 (** Consume the entry ticket INSIDE WP, use the resulting permission
     for an actual fclose instruction and retain all independent frames. *)
 Module HelloTransferWPChecks.
-Module X := HelloTransferChecks.
-Module LG := X.LG.
-Module H := X.H.
+Import HelloCallbackChecks HelloTransferChecks.
 Module P := StreamPermissionChecks.
 Import LG LG.L.
 
 Lemma close_restored : forall m w h m' w' ys,
   (forall l v, (l, v) ∈ permission_ps P.out P.err (token_handle P.out) ++
     byte_ps 5120 0 [0; 0; 0; 0] -> h !! l = Some v) ->
-  X.callback_wi m w h ->
-  X.pair_wi m' w' (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) h) ->
-  X.callback_wi m' w' (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) h).
+  callback_wi m w h ->
+  pair_wi m' w' (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) h) ->
+  callback_wi m' w' (overwrite (closed_ps P.out ++ byte_ps 5120 0 ys) h).
 Proof.
   intros m w h m' w' ys Hl [_ [[Hs (_ & _ & _ & _ & Hfresh)]|Hs]] Hw.
   - exfalso.
-    assert (Hin : (PLive (token_base P.out), VLive (token_region P.out)) ∈ X.pair_ps).
+    assert (Hin : (PLive (token_base P.out), VLive (token_region P.out)) ∈ pair_ps).
     { apply elem_of_app. left. apply elem_of_cons. left. reflexivity. }
     specialize (Hfresh _ _ Hin).
     assert (Hold : h !! PLive (token_base P.out) = Some (VLive (token_region P.out))).
@@ -1273,37 +1275,37 @@ Qed.
 
 Section iris.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Local Instance test_stable : SafepointStable X.callback_wi := X.callback_stable.
+Local Instance test_stable : SafepointStable callback_wi := callback_stable.
 Local Instance test_irisGS : irisGS_gen hlc
     (nanofil_lang HelloPermissionChecks.registry HelloPermissionChecks.ge) Σ :=
-  nanofil_irisGS HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge.
+  nanofil_irisGS HelloPermissionChecks.registry callback_wi HelloPermissionChecks.ge.
 
 Example transfer_close_return :
-  pts [(PName X.stage, X.before)] -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗ pts X.unrelated -∗
+  pts [(PName stage, before)] -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗ pts unrelated -∗
   WP (ERun (mkFrame HelloPermissionChecks.stub HelloPermissionChecks.entry_env [] None
     (Exec (TAtom "body")
       [Call (CResult (TAtom "r") W) (Global (TAtom "fclose")) [Arg P (Tmp (TAtom "p"))]]
       (JRet (Tmp (TAtom "r"))))) : language.expr
     (nanofil_lang HelloPermissionChecks.registry HelloPermissionChecks.ge))
   {{ result, ∃ n ys, ⌜result = Ret (WInt n) /\ length ys = 4%nat⌝ ∗
-    pts [(PName X.stage, X.after)] ∗ pts (closed_ps P.out) ∗
+    pts [(PName stage, after)] ∗ pts (closed_ps P.out) ∗
     pts (open_permission_ps P.err (token_handle P.err)) ∗
-    pts (byte_ps 5120 0 ys) ∗ pts X.unrelated }}.
+    pts (byte_ps 5120 0 ys) ∗ pts unrelated }}.
 Proof.
   iIntros "Hstage Herrno Hother".
-  iApply (H.wp_callback_transfer HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge
-    (pts [(PName X.stage, X.before)])
-    (pts [(PName X.stage, X.after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
+  iApply (H.wp_callback_transfer HelloPermissionChecks.registry callback_wi HelloPermissionChecks.ge
+    (pts [(PName stage, before)])
+    (pts [(PName stage, after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
       pts (open_permission_ps P.err (token_handle P.err)))%I _ _ with "Hstage [Herrno Hother]").
-  - intros σ. iApply (H.hello_callback_transfer X.callback_wi (fun _ _ => True) P.out P.err 5120 0
-      X.stage X.before X.after X.entry_admitted X.entry_restored).
-    + unfold X.stage. lia.
+  - intros σ. iApply (H.hello_callback_transfer callback_wi (fun _ _ => True) P.out P.err 5120 0
+      stage before after entry_admitted entry_restored).
+    + unfold stage. lia.
     + discriminate.
     + discriminate.
     + discriminate.
     + intros m. exact I.
   - iIntros "(Hstage & Ho & He)".
-    iApply (H.wp_permission_fclose HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge
+    iApply (H.wp_permission_fclose HelloPermissionChecks.registry callback_wi HelloPermissionChecks.ge
       (fun _ _ => True) (fun _ _ _ _ => False) (fun _ _ _ _ _ => False)
       P.out P.err 5120 0 (token_handle P.out) [0; 0; 0; 0]
       HelloPermissionChecks.stub HelloPermissionChecks.entry_env [] (TAtom "body") (TAtom "r")
@@ -1317,7 +1319,7 @@ Proof.
     + reflexivity.
     + reflexivity.
     + iNext. iIntros (n ys) "%Hgood Ho Herrno". destruct Hgood as [Hn Hys].
-      iApply (wp_ret HelloPermissionChecks.registry X.callback_wi HelloPermissionChecks.ge
+      iApply (wp_ret HelloPermissionChecks.registry callback_wi HelloPermissionChecks.ge
         HelloPermissionChecks.stub _ (TAtom "body") (Tmp (TAtom "r")) W (WInt n));
         [reflexivity| |].
       * change (Some (WInt (n mod 2 ^ 32)) = Some (WInt n)).
@@ -1331,9 +1333,7 @@ End HelloTransferWPChecks.
 (** Pointer-universal queries on the same callback interpretation and
     supplied machine. These are logical contract/resource controls. *)
 Module HelloQueryChecks.
-Module X := HelloTransferChecks.
-Module LG := X.LG.
-Module H := X.H.
+Import HelloCallbackChecks HelloTransferChecks.
 Module P := StreamPermissionChecks.
 Module F := LibcStreamChecks.
 Import LG LG.L.
@@ -1351,9 +1351,9 @@ Lemma spec_choice : forall g k,
 Proof. intros g k [[-> ->]|[-> ->]]; [right|left]; split; reflexivity. Qed.
 
 Lemma query_restored : forall p m w h m' w',
-  X.callback_wi m w h ->
+  callback_wi m w h ->
   (forall l v, (l, v) ∈ permission_ps P.out P.err p -> h !! l = Some v) ->
-  X.pair_wi m' w' h -> X.callback_wi m' w' h.
+  pair_wi m' w' h -> callback_wi m' w' h.
 Proof.
   intros p m w h m' w' [_ [[Hs (_ & _ & _ & _ & Hfresh)]|Hs]] Hl Hw.
   - exfalso.
@@ -1361,7 +1361,7 @@ Proof.
         VLive (token_region (permission_descriptor P.out P.err p))) ∈ permission_ps P.out P.err p).
     { apply elem_of_cons. left. reflexivity. }
     assert (Hpair : (PLive (token_base (permission_descriptor P.out P.err p)),
-        VLive (token_region (permission_descriptor P.out P.err p))) ∈ X.pair_ps).
+        VLive (token_region (permission_descriptor P.out P.err p))) ∈ pair_ps).
     { destruct (permission_selected P.out P.err p) as [-> | ->]; apply elem_of_app;
         [left|right]; apply elem_of_cons; left; reflexivity. }
     specialize (Hfresh _ _ Hpair). specialize (Hl _ _ Hlife). congruence.
@@ -1369,7 +1369,7 @@ Proof.
 Qed.
 
 Definition query_heap : gmap piece pval :=
-  <[PName X.stage := X.after]> (overwrite X.pair_ps X.entry_heap).
+  <[PName stage := after]> (overwrite pair_ps entry_heap).
 Definition query_handle (stdout : bool) := if stdout then token_handle P.out else token_handle P.err.
 Definition query_name (error : bool) := if error then TAtom "ferror" else TAtom "__fpending".
 Definition query_class (error : bool) := if error then W else L.
@@ -1382,12 +1382,12 @@ Proof.
   intros stdout l v Hin. destruct stdout.
   - change ((l, v) ∈ open_permission_ps P.out (token_handle P.out)) in Hin.
     apply list_elem_of_In in Hin. destruct Hin as [E|[E|[]]]; injection E as <- <-.
-    all: unfold query_heap, X.pair_ps, X.entry_heap;
+    all: unfold query_heap, pair_ps, entry_heap;
       cbn [open_permission_ps overwrite app fst snd P.out P.err token_base token_key];
       repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
   - change ((l, v) ∈ open_permission_ps P.err (token_handle P.err)) in Hin.
     apply list_elem_of_In in Hin. destruct Hin as [E|[E|[]]]; injection E as <- <-.
-    all: unfold query_heap, X.pair_ps, X.entry_heap;
+    all: unfold query_heap, pair_ps, entry_heap;
       cbn [open_permission_ps overwrite app fst snd P.out P.err token_base token_key];
       repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
 Qed.
@@ -1445,10 +1445,10 @@ Example query_matrix : forall error stdout,
   stream_call_pre F.model [WPtr (query_handle stdout)] conversion_mem (F.world true) /\
   exists n, n = query_result error stdout /\
     0 <= n < 2 ^ (if class_eqb (query_class error) W then 32 else 64) /\
-    agrees conversion_mem query_heap /\ X.callback_wi conversion_mem (F.world true) query_heap.
+    agrees conversion_mem query_heap /\ callback_wi conversion_mem (F.world true) query_heap.
 Proof.
   intros error stdout.
-  destruct X.transfer_endpoint as (Ha & Hw & Hrest).
+  destruct transfer_endpoint as (Ha & Hw & Hrest).
   assert (Hwhich : (spec (query_name error) = ferror_contract F.model /\ query_class error = W) \/
       (spec (query_name error) = fpending_contract F.model /\ query_class error = L)).
   { destruct error; [left|right]; split; reflexivity. }
@@ -1466,25 +1466,25 @@ Qed.
 
 Section iris.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Local Instance test_stable : SafepointStable X.callback_wi := X.callback_stable.
+Local Instance test_stable : SafepointStable callback_wi := callback_stable.
 Local Instance test_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
-  nanofil_irisGS registry X.callback_wi ge.
+  nanofil_irisGS registry callback_wi ge.
 
 (** Use the existing contract bridge, with actual outside/unbound facts
     for this empty ge, not an assumed full Hello linkage. *)
 Example query_return g k p other :
   (g = TAtom "__fpending" /\ k = L) \/ (g = TAtom "ferror" /\ k = W) ->
   pts (permission_ps P.out P.err p) -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗
-  pts [(PName X.stage, X.after)] -∗ pts other -∗
+  pts [(PName stage, after)] -∗ pts other -∗
   WP (ERun (mkFrame (stub k) (entry_env p) [] None
     (Exec (TAtom "body") [Call (CResult (TAtom "r") k) (Global g) [Arg P (Tmp (TAtom "p"))]]
       (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
   {{ result, ∃ n, ⌜result = Ret (WInt n) /\ 0 <= n < 2 ^ (if class_eqb k W then 32 else 64)⌝ ∗
     pts (permission_ps P.out P.err p) ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
-    pts [(PName X.stage, X.after)] ∗ pts other }}.
+    pts [(PName stage, after)] ∗ pts other }}.
 Proof.
   intros Hwhich. iIntros "Ho Herrno Hstage Hother".
-  iApply (H.C.wp_close_contract registry X.callback_wi ge (stub k) (entry_env p) [] (TAtom "body")
+  iApply (H.C.wp_close_contract registry callback_wi ge (stub k) (entry_env p) [] (TAtom "body")
     (TAtom "r") k g [Arg P (Tmp (TAtom "p"))] [] (JRet (Tmp (TAtom "r"))) (spec g) [WPtr p]
     (permission_ps P.out P.err p ++ byte_ps 5120 0 [0; 0; 0; 0])
     (fun _ => permission_ps P.out P.err p ++ byte_ps 5120 0 [0; 0; 0; 0])
@@ -1516,7 +1516,7 @@ Proof.
     eapply query_restored; eauto.
   - rewrite pts_app. iFrame.
   - iNext. iIntros (n ys Hn) "Hps". rewrite pts_app. iDestruct "Hps" as "[Ho Herrno]".
-    iApply (wp_ret registry X.callback_wi ge (stub k) _ (TAtom "body") (Tmp (TAtom "r")) k (WInt n));
+    iApply (wp_ret registry callback_wi ge (stub k) _ (TAtom "body") (Tmp (TAtom "r")) k (WInt n));
       [reflexivity| |].
     + destruct Hwhich as [[_ ->]|[_ ->]].
       * change (Some (WInt (n mod 2 ^ 64)) = Some (WInt n)).
@@ -1530,22 +1530,22 @@ Qed.
     returns both, along with consumed stage, errno and unrelated name. *)
 Example transfer_query_return (error stdout : bool) :
   let opposite := if stdout then P.err else P.out in
-  pts [(PName X.stage, X.before)] -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗ pts X.unrelated -∗
+  pts [(PName stage, before)] -∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) -∗ pts unrelated -∗
   WP (ERun (mkFrame (stub (query_class error)) (entry_env (query_handle stdout)) [] None
     (Exec (TAtom "body")
       [Call (CResult (TAtom "r") (query_class error)) (Global (query_name error)) [Arg P (Tmp (TAtom "p"))]]
       (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
   {{ result, ∃ n, ⌜result = Ret (WInt n) /\ 0 <= n < 2 ^ (if class_eqb (query_class error) W then 32 else 64)⌝ ∗
     pts (permission_ps P.out P.err (query_handle stdout)) ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
-    pts [(PName X.stage, X.after)] ∗ pts (open_permission_ps opposite (token_handle opposite) ++ X.unrelated) }}.
+    pts [(PName stage, after)] ∗ pts (open_permission_ps opposite (token_handle opposite) ++ unrelated) }}.
 Proof.
   intro opposite. iIntros "Hstage Herrno Hother".
-  iApply (H.wp_callback_transfer registry X.callback_wi ge (pts [(PName X.stage, X.before)])
-    (pts [(PName X.stage, X.after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
+  iApply (H.wp_callback_transfer registry callback_wi ge (pts [(PName stage, before)])
+    (pts [(PName stage, after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
       pts (open_permission_ps P.err (token_handle P.err)))%I _ _ with "Hstage [Herrno Hother]").
-  - intros σ. iApply (H.hello_callback_transfer X.callback_wi (fun _ _ => True) P.out P.err 5120 0
-      X.stage X.before X.after X.entry_admitted X.entry_restored).
-    + unfold X.stage. lia.
+  - intros σ. iApply (H.hello_callback_transfer callback_wi (fun _ _ => True) P.out P.err 5120 0
+      stage before after entry_admitted entry_restored).
+    + unfold stage. lia.
     + discriminate.
     + discriminate.
     + discriminate.

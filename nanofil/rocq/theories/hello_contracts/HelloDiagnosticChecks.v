@@ -15,9 +15,9 @@ Open Scope Z_scope.
 Open Scope list_scope.
 
 Module HelloDiagnosticChecks.
+Import HelloCallbackChecks.
 Module F := LibcStreamChecks.
 Module T := StreamTokenChecks.
-Module H := HelloCallbackChecks.H.
 Module LG := StreamHandleChecks.LG.
 Module Reach := HelloReach InterpRuntime.
 Import LG LG.L.
@@ -57,7 +57,7 @@ Qed.
 
 Lemma heap_agrees : forall opened, agrees memory (heap opened).
 Proof.
-  intros opened l v Hl.
+  intros opened l v Hl. unfold heap in Hl.
   destruct (lookup_overwrite hello_diagnostic_pieces HelloErrnoChecks.heap l v Hl)
     as [Hin|[_ Hold]].
   - eapply all_agree_elem; [exact literals_agree|exact Hin].
@@ -198,6 +198,7 @@ Proof.
   assert (Hoff : pieces_off (errno_keys 5120 0) (stream_data_heap 1024 2048 (heap opened))
     memory (span_contains (errno_span 5120 0))).
   { intros l v Hl Hnot. apply stream_data_lookup in Hl as [Hl _].
+    unfold heap in Hl.
     destruct (lookup_overwrite hello_diagnostic_pieces HelloErrnoChecks.heap l v Hl)
       as [Hin|[_ Hold]].
     - apply list_elem_of_In in Hin. vm_compute in Hin.
@@ -526,7 +527,7 @@ Proof.
       [reflexivity|reflexivity|].
     iNext. iExists ys. iSplit.
     + iPureIntro. split; [reflexivity|exact Hlen].
-    + iFrame "Hps He".
+    + iSplitL "Hps"; iAssumption.
 Qed.
 
 End iris.
