@@ -142,6 +142,7 @@ libio/LibioOverflowBase.v
 libio/LibioRead.v
 libio/LibioSetb.v
 libio/LibioSetbShort.v
+libio/LibioPendingShort.v
 libio/LibioWriteExit.v
 libio/SysCleanup.v
 libio/SysCleanupPop.v
@@ -429,6 +430,7 @@ hello/HelloGetoptStart.v
 hello/HelloGetoptBackend.v
 hello/HelloCloseStream.v
 hello/HelloCloseErrno.v
+hello/HelloCloseShort.v
 hi_atexit/HiAtexitXsputnRules.v
 getopt/GetoptLongPfxSet.v
 hi_atexit/HiAtexitOutputState.v
