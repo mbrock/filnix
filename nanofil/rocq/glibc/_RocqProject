@@ -454,6 +454,7 @@ hello/HelloStrchrImageCode.v
 hello/HelloStrchrImage.v
 hello/HelloGettextLinkV.v
 hello/HelloGetoptDiagGettext.v
+hello/HelloGetoptDiagTcb.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v
