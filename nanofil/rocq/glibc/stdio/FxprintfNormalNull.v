@@ -4,11 +4,11 @@
     The caller must still prove what the formatter does with the supplied
     format and arguments; its result may indicate failure.
 
-    This does not yet prove error's newline call. Its existing contract
-    does not give the callee access to stderr. The caller must lend its
-    pointer and stream to that call. The initial stream has a free lock,
-    but earlier calls must preserve it. The captured error body takes no
-    outer stderr lock. *)
+    Printing a newline requires access to stderr, just like printing any
+    other text. The existing proof of error does not yet give its newline
+    call that access. It must lend the stderr pointer and stream to the
+    call and recover them afterward. The stream's lock is initially free;
+    earlier calls must preserve that state. Error itself takes no outer lock. *)
 From Glibc Require Import GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
