@@ -262,6 +262,7 @@ libio/LibioFclose.v
 libio/LibioFlushStart.v
 libio/LibioPutsCall.v
 libio/LibioUnlink.v
+libio/LibioFcloseShort.v
 stdio/PrintfBufferOverflowStaging.v
 stdio/PrintfBufferXsputnStaging.v
 stdio/PrintfStreamHeap.v
