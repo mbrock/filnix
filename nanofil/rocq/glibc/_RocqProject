@@ -288,6 +288,7 @@ stdio/ErrorTextTailNormal.v
 stdio/ErrorFallback.v
 stdio/ErrorFailure.v
 stdio/ErrorMessage.v
+stdio/ErrorMessageNarrow.v
 stdio/ErrorReport.v
 stdio/FileSyncClosed.v
 stdio/FflushUnlock.v
