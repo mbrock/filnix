@@ -519,6 +519,7 @@ hello/HelloGetoptStart.v
 hello/HelloGetoptBackend.v
 hello/HelloClosedStdout.v
 hello/HelloErrorClosed.v
+hello/HelloErrorPrefix.v
 hello/HelloErrorCall.v
 hello/HelloErrorReturning.v
 hello/HelloErrorNormal.v
