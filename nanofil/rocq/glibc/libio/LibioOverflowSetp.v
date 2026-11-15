@@ -53,6 +53,58 @@ Context (HL113r : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw of
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Exec (TAtom "L113") rest j)) : sexpr) {{ Φ }}).
 
+(** Each rule application repeats the whole current frame, so a long proof
+    walks the same environment and instruction list once per step. These
+    tactics keep both behind local definitions: the environment is named
+    after every step, the remaining instructions are a chain of definitions
+    whose bodies hold one instruction each, and only the next instruction is
+    shown. The block's final jump stays named until no instruction is left. The rules see the same frame up to unfolding those definitions. *)
+Local Ltac chain_tail L :=
+  lazymatch L with
+  | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
+  end.
+Local Ltac tidy :=
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ [] ?J))) _) => is_var J; unfold J
+  end;
+  repeat lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
+      lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: _) ?J))) _) =>
+      first [is_var J | let X := fresh "J" in set (X := J)]
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
+      lazymatch e with put _ _ _ => let E := fresh "Env" in set (E := e) end
+  end.
+(** When a function calls another one, the proof uses the callee's
+    specification, and every premise it gives up repeats what happens after
+    the call. This tactic names that remainder and the callee's starting
+    state first, and the caller unfolds the remainder when the call returns. *)
+Local Ltac name_post :=
+  lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ ?F) ?Q) =>
+      let X := fresh "Post" in set (X := Q); let Y := fresh "Callee" in set (Y := F)
+  end.
+(** This tactic runs the stream's steps up to its next load, store, call
+    or branch, and it applies the naming above after each step. *)
+Local Ltac advt := repeat (adv1; tidy).
+
+(** A callee needs the values of some variables, and expanding every named
+    environment to find them would repeat the frame again. This tactic
+    looks through one definition per step and proves the value by arithmetic. *)
+Local Ltac lk_tidy :=
+  lazymatch goal with |- lookup ?k ?E = Some _ =>
+    let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H;
+    first [reflexivity | do 2 f_equal; unwrap2; lia
+      | do 3 f_equal; cbn [ptr_addr ptr_cap]; first [reflexivity | autounfold with offs; unwrap2; lia]]
+  end.
+
 (** Block `c: L113`: the switch to putting on a buffer whose read
     pointers are at its base. *)
 Lemma wp_ovf_L113 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 wp0 we0 from e Φ :
@@ -81,20 +133,20 @@ Proof.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ Hbk He Hmd Hbb Hbe Hbreg Hsz Hxl Hxr Hv0 Hv2 Hc0 Hc6 Hc24 Hc25.
   iIntros "#Hvt Hl Hfx Hbl Hxs [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".
   unfold file_size in Hend.
-  adv. load_pointer "Hl Hrp Hbl" by ar.
-  iNext. iIntros "Hl Hrp Hbl". adv.
+  tidy. step_entailment ltac:(idtac); tidy. advt. load_pointer "Hl Hrp Hbl" by ar.
+  iNext. iIntros "Hl Hrp Hbl". tidy. advt.
   store_pointer "Hl Hwp" by (ar) preserving wi_store.
-  iNext. iIntros "Hl Hwp". adv.
+  iNext. iIntros "Hl Hwp". tidy. advt.
   load_pointer "Hl Hwp Hbl" by ar.
-  iNext. iIntros "Hl Hwp Hbl". adv.
+  iNext. iIntros "Hl Hwp Hbl". tidy. advt.
   store_pointer "Hl Hwb" by (ar) preserving wi_store.
-  iNext. iIntros "Hl Hwb". adv.
+  iNext. iIntros "Hl Hwb". tidy. advt.
   load_pointer "Hl Hbend Hbl" by ar.
-  iNext. iIntros "Hl Hbend Hbl". adv.
+  iNext. iIntros "Hl Hbend Hbl". tidy. advt.
   store_pointer "Hl Hwe" by (ar) preserving wi_store.
-  iNext. iIntros "Hl Hwe".
+  iNext. iIntros "Hl Hwe". tidy.
   iApply (HL113r with "Hvt Hl Hfx [Hbl Hxs Hflb Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend] HK");
-    try first [reflexivity | libio_side | lk_prove |
+    try first [reflexivity | libio_side | lk_prove | lk_tidy |
       iApply (ovf_state_base with "Hbl Hxs [$Hflb //] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend");
         try first [assumption | reflexivity | cbn; lia]].
 Qed.

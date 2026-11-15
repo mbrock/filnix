@@ -94,6 +94,53 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     the others. Once it has consumed any input, it retains the fact
     that the stream has a buffer. *)
 
+(** Each rule application repeats the whole current frame, so a long proof
+    walks the same environment and instruction list once per step. These
+    tactics keep both behind local definitions: the environment is named
+    after every step, the remaining instructions are a chain of definitions
+    whose bodies hold one instruction each, and only the next instruction is
+    shown. The block's final jump stays named until no instruction is left. The rules see the same frame up to unfolding those definitions. *)
+Local Ltac chain_tail L :=
+  lazymatch L with
+  | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
+  end.
+Local Ltac tidy :=
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ [] ?J))) _) => is_var J; unfold J
+  end;
+  repeat lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
+      lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: _) ?J))) _) =>
+      first [is_var J | let X := fresh "J" in set (X := J)]
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
+      lazymatch e with put _ _ _ => let E := fresh "Env" in set (E := e) end
+  end.
+(** When a function calls another one, the proof uses the callee's
+    specification, and every premise it gives up repeats what happens after
+    the call. This tactic names that remainder and the callee's starting
+    state first, and the caller unfolds the remainder when the call returns. *)
+Local Ltac name_post :=
+  lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ ?F) ?Q) =>
+      let X := fresh "Post" in set (X := Q); let Y := fresh "Callee" in set (Y := F)
+  end.
+(** The loop needs the values of some variables. This tactic finds each
+    value by looking through one named environment at a time, and then it
+    proves the value by arithmetic. *)
+Local Ltac lk_tidy :=
+  lazymatch goal with |- lookup ?k ?E = Some _ =>
+    let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H;
+    first [reflexivity | do 3 f_equal; cbn [ptr_addr]; unwrap2; lia | do 2 f_equal; unwrap2; lia]
+  end.
+
 (** Block `c: L22` on, t bytes left and s at the next: return n - t
     when none are left; else hand the next byte to the jump table's
     overflow and return n - t if it fails, or run the loop again on
@@ -118,40 +165,40 @@ Proof.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hso Hyend Hyreg Hy Ht Hprogress Hv0 Hc0 Hv4 Hp8 Hp3. unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK".
   iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
-  cbn [dx_L22 b_insts b_jump]. step.
+  cbn [dx_L22 b_insts b_jump]. tidy. step; tidy.
   destruct (Z.eq_dec t 0) as [-> | Ht0].
   { (* No byte left: L100, then L19 returns n. *)
-    branch_as false. step. branch. step. step.
+    branch_as false; tidy. step; tidy. branch; tidy. step; tidy. step; tidy.
     iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [unwrap2; lia|]. exact Hprogress. }
-  branch_as true.
+  branch_as true; tidy.
   (* L99: the jump table, checked against `c: __io_vtables`. *)
   iPoseProof (vtables_slot ge vb vreg slot_overflow "_IO_new_file_overflow" with "Hvt") as "#Hsw"; [cbn; tauto|].
   iAssert (live_capq DfracDiscarded (ptr_cap (sym_ptr ge "_IO_new_file_overflow")) vreg) as "Hfc".
   { rewrite (ge_fn_cap _ _ _ Hfo). done. }
   iPoseProof "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)".
   unfold io_vtables_size in Hvend.
-  step. step. norm. check "Hl".
+  step; tidy. step. norm; tidy. check "Hl"; tidy.
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
+  iNext. iIntros "Hl Hvtp #Hvl'". tidy. step; tidy. step; tidy. step; tidy. step; tidy. step; tidy. branch_as true; tidy.
   (* iw_1.join: the overflow slot, the next byte, and the call. *)
-  step. step. norm.
-  check_read_dq "Hvl'" by ar.
-  iNext. iIntros "_".
+  step; tidy. step. norm; tidy.
+  check_read_dq "Hvl'" by ar; tidy.
+  iNext. iIntros "_". tidy.
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hfo) |].
-  iNext. iIntros "_ _ _". step.
+  iNext. iIntros "_ _ _". tidy. step; tidy.
   set (j := Z.to_nat (n - t)).
   destruct (lookup_lt_is_Some_2 ys j ltac:(lia)) as [y Hyj].
   iDestruct (bytesq_at _ _ _ _ j y Hyj with "Hys") as "[Hy1 Hyb]".
   iApply (wp_check_read_dq with "Hl'");
     [reflexivity | vx | exact Hc' | cbn; unfold raw_address; unwrap2; lia | cbn; unfold raw_address; unwrap2; lia
     | apply Z.mod_1_r |].
-  iNext. iIntros "Hl'".
+  iNext. iIntros "Hl'". tidy.
   iApply (wp_raw_load_sub_bytes_dq with "Hl' Hy1");
     [reflexivity | vx | reflexivity | reflexivity | exact Hc' | cbn; unfold raw_address; unwrap2; lia |].
-  iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hys". step.
+  iNext. iIntros "Hl' Hy1". iDestruct ("Hyb" with "Hy1") as "Hys". tidy. step; tidy.
   iApply wp_check_function; [vx | apply (ge_fn_check _ _ _ Hfo) |]. iNext.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hfo) | apply (ge_fn_check _ _ _ Hfo) | vx |
     apply (ge_fn_find _ _ _ Hfo) | reflexivity | reflexivity |].
@@ -161,22 +208,23 @@ Proof.
   { unfold ch. match goal with |- context [?Y mod 256] =>
       pose proof (Z.mod_pos_bound Y 256 ltac:(lia)); set (Z0 := Y mod 256) in * end.
     rewrite (Z.mod_small Z0); [|lia]. rewrite (Z.mod_small Z0); [|lia]. lia. }
+  name_post.
   iApply (Hov with "Hvt Hl Hvtp Hwb Hos"); [reflexivity | left; exact Hch | exact Hfb | exact Hfal | unfold file_size; lia | exact Hfreg |].
-  iNext. iIntros (r nb' wp' we' [Hr Hnb]) "Hl Hvtp Hwb Hos". resume.
+  iNext. iIntros (r nb' wp' we' [Hr Hnb]) "Hl Hvtp Hwb Hos". unfold Post. resume.
   assert (Hr32 : 0 <= r < 2 ^ 32).
   { destruct Hr as [-> | ->]; [lia|]. destruct (ch =? 2 ^ 32 - 1); lia. }
-  rewrite (Z.mod_small r); [|lia].
-  step. step. step.
+  rewrite (Z.mod_small r); [|lia]. tidy.
+  step; tidy. step; tidy. step; tidy.
   destruct (Z.eq_dec r (2 ^ 32 - 1)) as [-> | Hne].
   - (* `c: EOF`: L19 returns n - t. *)
-    branch_as false. step. step.
+    branch_as false; tidy. step; tidy. step; tidy.
     iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" with "[%] Hl Hvtp Hwb Hos Hl' Hys"). split; [unwrap2; lia|]. intros _. exact Hnb.
   - (* The byte went: L96 runs the loop again on t - 1. *)
-    branch_as true. step. step. step. step.
+    branch_as true; tidy. step; tidy. step; tidy. step; tidy. step; tidy.
     iApply ("IH" with "[%] Hl Hvtp Hwb Hos Hl' Hys HK").
-    unfold n in *. split_and!; try (lookups; reflexivity); try lia; try (intros _; exact Hnb).
-    all: lookups; first [do 3 f_equal; cbn [ptr_addr]; unwrap2; lia | do 2 f_equal; unwrap2; lia].
+    unfold n in *. split_and!; try lk_tidy; try lia; try (intros _; exact Hnb).
+    all: first [lk_tidy | unwrap2; lia].
 Qed.
 
 End rules.

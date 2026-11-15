@@ -106,6 +106,48 @@ Context (fum : func)
   `{Hfum : !Defines ge "__GI__IO_unsave_markers" fum}.
 Context (Hum : LibioCloseItMid.unsave_spec w0 registry ge fum).
 
+(** Each rule application repeats the whole current frame, so a long proof
+    walks the same environment and instruction list once per step. These
+    tactics keep both behind local definitions: the environment is named
+    after every step, the remaining instructions are a chain of definitions
+    whose bodies hold one instruction each, and only the next instruction is
+    shown. The block's final jump stays named until no instruction is left. The rules see the same frame up to unfolding those definitions. *)
+Local Ltac chain_tail L :=
+  lazymatch L with
+  | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
+  end.
+(** This tactic only shows the next instruction, or the jump after the
+    last one, and leaves the environment as it is. *)
+Local Ltac show :=
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ [] ?J))) _) => is_var J; unfold J
+  end.
+Local Ltac tidy :=
+  show;
+  repeat lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
+      lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: _) ?J))) _) =>
+      first [is_var J | let X := fresh "J" in set (X := J)]
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
+      lazymatch e with put _ _ _ => let E := fresh "Env" in set (E := e) end
+  end.
+(** When a function calls another one, the proof uses the callee's
+    specification, and every premise it gives up repeats what happens after
+    the call. This tactic names that remainder and the callee's starting
+    state first, and the caller unfolds the remainder when the call returns. *)
+Local Ltac name_post :=
+  lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ ?F) ?Q) =>
+      let X := fresh "Post" in set (X := Q); let Y := fresh "Callee" in set (Y := F)
+  end.
 (** `c: _IO_file_close_maybe_unlink(fp, 0)` of an open stream,
     un-oriented or narrow (`c: _mode` md 0 or -1), whose n pending
     bytes xs, none or some, sit at offset i of its heap buffer bb:
@@ -158,28 +200,29 @@ Proof.
   assert (0 <= Z.land fl 2048 < 2 ^ 32) by (apply land_lt32; lia).
   iDestruct "Hfd" as "[_ Hfd]". iDestruct "Hfl" as "[_ Hfl]". iDestruct "Hmode" as "[%Hmr Hmode]".
   (* start, L7, L23, L24, L16: open, writable, putting, narrow. *)
-  step. step. check "Hl". load_s32 "Hl" "Hfd". step. branch_as true.
-  step. check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
-  step. load_s32 "Hl" "Hfl". step. step. step. step. branch_as false.
-  step. step. check "Hl". load_s32 "Hl" "Hmode". step.
+  tidy. step; tidy. step; tidy. check "Hl"; tidy. load_s32 "Hl" "Hfd"; tidy. step; tidy. branch_as true; tidy.
+  step; tidy. check "Hl"; tidy. load_s32 "Hl" "Hfl"; tidy. step; tidy. step; tidy. branch_as false; tidy.
+  step; tidy. load_s32 "Hl" "Hfl"; tidy. step; tidy. step; tidy. step; tidy. step; tidy. branch_as false; tidy.
+  step; tidy. step; tidy. check "Hl"; tidy. load_s32 "Hl" "Hmode"; tidy. step.
   assert (Esx : (sign_extension (2 ^ 32) (2 ^ 31) (md mod 2 ^ 32) <=? sign_extension (2 ^ 32) (2 ^ 31) (0 mod 2 ^ 32))
                 = true) by (destruct Hmd as [-> | ->]; reflexivity).
-  rewrite Esx. clear Esx. branch.
+  rewrite Esx. clear Esx. branch; tidy.
   (* L31: `c: _IO_do_write(fp, write_base, write_ptr - write_base)`. *)
-  step. step. check "Hl". load "Hl" "Hwb" "Hbl". step. load "Hl" "Hwp" "Hbl". load "Hl" "Hwb" "Hbl". step. step. step.
+  step; tidy. step; tidy. check "Hl"; tidy. load "Hl" "Hwb" "Hbl"; tidy. step; tidy. load "Hl" "Hwp" "Hbl"; tidy.
+  load "Hl" "Hwb" "Hbl"; show. step; show. step; show. step; show.
   assert (E50 : ((bb + i + n) mod 2 ^ 64 - (bb + i) mod 2 ^ 64) mod 2 ^ 64 = n).
   { rewrite (Z.mod_small (bb + i + n) (2 ^ 64)); [|lia]. rewrite (Z.mod_small (bb + i) (2 ^ 64)); [|lia].
     rewrite Z.mod_small; lia. }
-  rewrite E50. clear E50.
+  rewrite E50. clear E50. tidy.
   iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
   iAssert (int_cell fb off_fileno fd) with "[Hfd]" as "Hfd"; [iSplit; [done | iExact "Hfd"]|].
   iAssert (int_cell fb off_mode md) with "[Hmode]" as "Hmode"; [iSplit; [done | iExact "Hmode"]|].
-  iApply wp_call_bind; [vx | exact Hdwf | reflexivity |]. iNext. rewrite (Z.mod_small n (2 ^ 64)); [|lia].
+  iApply wp_call_bind; [vx | exact Hdwf | reflexivity |]. iNext. rewrite (Z.mod_small n (2 ^ 64)); [|lia]. name_post.
   destruct (Z.eq_dec n 0) as [Hn0 | Hn0].
   { (* No pending bytes: `c: _IO_new_do_write` returns 0 at once, and L18 runs. *)
     assert (Hl0 : Z.of_nat (length xs) = 0) by exact Hn0.
     assert (Hxs0 : xs = []) by (destruct xs; [reflexivity | cbn [length] in Hl0; lia]). subst xs.
-    iApply Hdw0; [reflexivity |]. iNext. resume. step.
+    iApply Hdw0; [reflexivity |]. iNext. unfold Post. resume. show. step; tidy.
     iApply (LibioCloseItMid.wp_close_it_L18 Hfc Hclose Hsetb_spec fum Hum
               with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
       first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
@@ -191,12 +234,12 @@ Proof.
   iApply (Hdw with "Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp");
     try close_side; try exact Hmd; try lia.
   iNext. iIntros (r fl' tw' off' [Hpost Hfl']) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase
-    Hbend Hcol Hmode Hvtp". resume. step.
+    Hbend Hcol Hmode Hvtp". unfold Post. resume. show. step; show.
   (* L18 to the return. *)
   assert (Ep3 : (if r =? Z.of_nat (length xs) then 0 else 2 ^ 32 - 1) mod 2 ^ 32 =
                 (if r =? Z.of_nat (length xs) then 0 else 2 ^ 32 - 1))
     by (destruct (r =? Z.of_nat (length xs)); reflexivity).
-  rewrite Ep3. try rewrite Ep3.
+  rewrite Ep3. try rewrite Ep3. tidy.
   iApply (LibioCloseItMid.wp_close_it_L18 Hfc Hclose Hsetb_spec fum Hum
             with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hbl] H80 H96");
     first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
