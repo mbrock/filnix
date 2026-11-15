@@ -56,6 +56,8 @@ stdio/PrintfCountBits.v
 stdio/PrintfStateCode.v
 stdio/FxprintfCode.v
 stdio/FxprintfSrc.v
+stdio/FxprintfNormalCode.v
+stdio/FxprintfNormalSrc.v
 stdio/ErrorCode.v
 stdio/ErrorSrc.v
 stdio/FileSyncCode.v
@@ -258,6 +260,13 @@ stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
 stdio/FxprintfLock.v
 stdio/FxprintfCall.v
+stdio/FxprintfNormalCall.v
+stdio/VfxprintfReturn.v
+stdio/VfxprintfNarrow.v
+stdio/VfxprintfAcquire.v
+stdio/VfxprintfSelect.v
+stdio/VfxprintfCall.v
+stdio/FxprintfNormalNull.v
 stdio/ErrorCall.v
 stdio/ErrorEntry.v
 stdio/ErrorRestore.v

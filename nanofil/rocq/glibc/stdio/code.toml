@@ -25,6 +25,7 @@ layout = "string"
 mode = "checked"
 fixtures = '''
 Fxprintf|__fxprintf_nocancel|stdio-common/fxprintf.os|__fxprintf_nocancel
+FxprintfNormal|__fxprintf|stdio-common/fxprintf.os|__fxprintf __vfxprintf
 '''
 
 [[batch]]
