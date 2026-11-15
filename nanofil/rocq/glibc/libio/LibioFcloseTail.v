@@ -80,6 +80,29 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (Hunl_spec : (unlink_spec w0 registry ge))
   (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
 
+(** Each rule application repeats the whole current frame, so a long proof
+    walks the same environment and instruction list once per step. These
+    tactics keep both behind local definitions: the environment is named
+    after every step, the remaining instructions are a chain of definitions
+    whose bodies hold one instruction each, and only the next instruction is
+    shown. The rules see the same frame up to unfolding those definitions. *)
+Local Ltac chain_tail L :=
+  lazymatch L with
+  | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
+  end.
+Local Ltac tidy :=
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
+  end;
+  repeat lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
+      lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
+      lazymatch e with put _ _ _ => let E := fresh "Env" in set (E := e) end
+  end.
+
 (** Closing either static output stream removes it from the stream list
     but does not free its object. The stdout case stops before looking up
     stderr; the stderr case compares all three standard-stream addresses.
@@ -117,18 +140,19 @@ Proof.
   unfold file_size in Hfend.
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   (* `c: _IO_un_link(fp)`. *)
-  step. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
+  step; tidy. iApply wp_call_bind; [vx | exact Hunl | reflexivity |]. iNext.
   iApply (Hunl_spec with "Hs Htcb Hl Hfl Hlp Hlb Hio Hlives"); try close_side.
-  iNext. iIntros "Htcb Hl Hfl Hlp Hlb Hio Hlives Hlinks". resume.
+  iNext. iIntros "Htcb Hl Hfl Hlp Hlb Hio Hlives Hlinks". resume; tidy.
   (* The jump table's `c: __finish`. *)
   iPoseProof (vtables_slot ge vb vreg slot_finish "_IO_new_file_finish" with "Hvt") as "#Hsf"; [cbn; tauto|].
   iAssert (live_capq DfracDiscarded (ptr_cap (sym_ptr ge "_IO_new_file_finish")) vreg) as "Hcap".
   { rewrite (ge_fn_cap _ _ _ Hff). done. }
+  set (fin := "_IO_new_file_finish").
   iDestruct "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)". unfold io_vtables_size in Hvend.
-  step. check "Hl".
+  step; tidy. check "Hl"; tidy.
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true. step. step.
+  iNext. iIntros "Hl Hvtp #Hvl'". tidy. step; tidy. step; tidy. step; tidy. step; tidy. step; tidy. branch_as true; tidy. step; tidy. step; tidy.
   check_read_dq "Hvl'" by a2.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsf Hcap");
@@ -143,16 +167,16 @@ Proof.
   pose proof (unlink_has fl) as Hun. assert (0 <= Z.land fl 4294967167 < 2 ^ 32) by (apply land_lt32; lia).
   iApply (LibioFinish.wp_glibc__IO_new_file_finish_closed Hunl_unlinked
             with "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl"); try close_side.
-  iNext. iIntros "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl". resume.
+  iNext. iIntros "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl". resume; tidy.
   (* Narrow or unoriented streams have no wide cleanup here. *)
   iDestruct "Hmode" as "[%Hmr Hmode]".
-  step. check "Hl". load_s32 "Hl" "Hmode". step.
+  step; tidy. check "Hl"; tidy. load_s32 "Hl" "Hmode"; tidy. step.
   assert (Esx : (sign_extension (2 ^ 32) (2 ^ 31) (0 mod 2 ^ 32) <? sign_extension (2 ^ 32) (2 ^ 31) (md mod 2 ^ 32))
                 = false) by (destruct Hmd as [-> | ->]; reflexivity).
-  rewrite Esx. clear Esx. branch.
-  step. step. check "Hl". load_null "Hl" "H80". step. step. step. branch.
+  rewrite Esx. clear Esx. branch; tidy.
+  step; tidy. step; tidy. check "Hl"; tidy. load_null "Hl" "H80"; tidy. step; tidy. step; tidy. step; tidy. branch; tidy.
   destruct Hstatic as [-> | (Hout & Houtr & Hgerr)].
-  all: repeat first [step | branch_as true | branch_as false].
+  all: repeat first [step; tidy | branch_as true; tidy | branch_as false; tidy].
   all: iApply wp_ret; [reflexivity | vx |]; iNext; rewrite (Z.mod_small p1 (2 ^ 32)); [|lia].
   all: iApply ("HK" with "Htcb Hl Hfl Hlp [Hbl Hb0 Hb4 Hbo] Hio Hlives Hlinks Hfd [Hmode] Hvtp Hbb H80 H96").
   all: first [iFrame; iPureIntro; split_and!; assumption | iSplit; [done | iExact "Hmode"]].

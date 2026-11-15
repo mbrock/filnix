@@ -73,6 +73,39 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
+(** Each rule application repeats the whole current frame, so a long proof
+    walks the same environment and instruction list once per step. These
+    tactics keep both behind local definitions: the environment is named
+    after every step, the remaining instructions are a chain of definitions
+    whose bodies hold one instruction each, and only the next instruction is
+    shown. The rules see the same frame up to unfolding those definitions. *)
+Local Ltac chain_tail L :=
+  lazymatch L with
+  | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
+  end.
+Local Ltac tidy :=
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
+  end;
+  repeat lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
+      lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
+      lazymatch e with put _ _ _ => let E := fresh "Env" in set (E := e) end
+  end.
+(** A callee needs the values of some variables, and expanding every named
+    environment to find them would repeat the frame again. This tactic
+    looks through one definition per step and proves the value by arithmetic. *)
+Local Ltac lk_tidy :=
+  first [assumption |
+    lazymatch goal with |- lookup ?k ?E = Some _ =>
+      let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H;
+      first [reflexivity | do 2 f_equal; unwrap2; lia
+        | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]
+    end].
+
 (** Block `c: L168` on, the overflow done, T of the n bytes left
     from s, d of them to write directly: the write of the d bytes
     through the jump table, then the rest. *)
@@ -101,28 +134,28 @@ Proof.
     Hv0 Hc0 Hc11 Hc14 Hc15 Hv4 Hp5 Hv174 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwbf Hos Hl' Hys HK".
-  cbn [xs_L168 b_insts b_jump]. step. step.
+  cbn [xs_L168 b_insts b_jump]. tidy. step; tidy. step; tidy.
   destruct (Z.eq_dec d 0) as [-> | Hd0].
   { (* Nothing to write directly: L178 on the T left. *)
-    branch_as true. step.
+    branch_as true; tidy. step; tidy.
     iApply (wp_xs_L178 Hmove Hmove_fn Hmove_sym eb X fb freg vb vreg nb wp we
               dq b' reg' so c' ys T 0 with "Hvt Hl Hvtp Hwbf Hos Hl' Hys HK"); try close_side.
-    all: unfold n in *; try lia. all: lk_fin. }
-  branch_as false. step.
+    all: unfold n in *; try lia. all: lk_tidy. }
+  branch_as false; tidy. step; tidy.
   iDestruct "Hwbf" as "((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom)".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
   iDestruct "Hos" as "(Hxf & HX)".
   iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
   iDestruct "Hfl" as "[%Hfl32 Hfl]". iDestruct "Hfl2" as "[%Hf2r Hfl2]".
   (* iw_2.start: not appending. *)
-  check "Hl". load_s32 "Hl" "Hfl". step. unfold io_is_appending in Happ. branch_as true.
+  check "Hl"; tidy. load_s32 "Hl" "Hfl"; tidy. step; tidy. unfold io_is_appending in Happ. branch_as true; tidy.
   (* iw_2.L8: the read end is the write base. *)
-  step. step. load "Hl" "Hre" "Hbl". step. load "Hl" "Hwb" "Hbl". step. step. step. branch_as true.
+  step; tidy. step; tidy. load "Hl" "Hre" "Hbl"; tidy. step; tidy. load "Hl" "Hwb" "Hbl"; tidy. step; tidy. step; tidy. step; tidy. branch_as true; tidy.
   iDestruct ("Hroom" with "Hbl") as "Hroom".
   iApply (wp_xs_L9 Hmove Hmove_fn Hmove_sym Hfw Hfwq eb X fb freg vb vreg nb wp we
             dq b' reg' so c' ys T d fl f2 fd tw off m with "Hvt Hl Hvtp [$Hrp $Hre $Hrb $Hwb $Hbb $Hbe $Hwp $Hwe $Hroom]
             [$Hfl //] [$Hfl2 //] Hfdc Htw Hoff Hcol Hmode Herr HX Hl' Hys HK"); try close_side.
-  all: unfold n in *; try lia. all: lk_fin.
+  all: unfold n in *; try lia. all: lk_tidy.
 Qed.
 
 End rules.
