@@ -58,7 +58,7 @@ def main():
         if cfg["layout"] in ("stdio", "buffer"):
             hashes = "buffer-fixtures.sha256" if cfg["layout"] == "buffer" else "fixtures.sha256"
             generator["run"](["sha256sum", "-c", manifest.parent / hashes], cwd=gen.capture)
-        linked = gen.link(cfg, name, roots or cfg.get("roots", ""),
+        linked, _ = gen.link(cfg, name, roots or cfg.get("roots", ""),
                           "- " + paths if paths else cfg.get("units", ""),
                           program[0] if program else "")
         term = work / "linked.term"
