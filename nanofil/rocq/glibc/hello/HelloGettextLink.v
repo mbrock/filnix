@@ -7,15 +7,17 @@ From Glibc Require Import GlibcProgram.
     Hello's own record already says where malloc, free and strlen live.
     It is silent about the other functions that gettext calls and about
     memmove. So a second, smaller record lists only those missing facts.
-    Whoever links Hello must prove the second record, because nothing in
-    this module shows that the link provides it.
 
-    The record cannot simply be checked against the code we captured.
-    Gettext calls stpcpy by a name that the captured stpcpy does not
-    define, so the record has to assume that the link adds that name.
-    The caller also lends the memory that gettext reads, its three locks
-    and errno, and this module says nothing about how startup provides
-    them. *)
+    We checked those facts against a real link of the units that
+    gettext needs. In that link every name that gettext calls finds the
+    code that the proofs ran, even the stpcpy name that a smaller
+    fixture loses.
+
+    This check does not cover all of Hello. Hello links many more units
+    than gettext needs, and its full link might resolve a name another
+    way, so a caller must still show that it does not. The caller also
+    lends the memory that gettext reads, three locks and errno, and
+    nothing here says how startup prepares them. *)
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -28,7 +30,7 @@ From Glibc Require Import AllocLogic HiAtexitAlloc HiAtexitModule HelloGlibcDebt
 From Glibc Require Import StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode.
 From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
 From Glibc Require Import DcgettextCode DcigettextCode DcigettextPreRules DcigettextRoute.
-From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal.
+From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal GettextLinkCode.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -187,10 +189,10 @@ Definition gettext_calls (f : func) : list name :=
     (fn_blocks f).
 
 (** The lookup calls stpcpy and mempcpy through `__GI_stpcpy` and
-    `__GI_mempcpy`. Neither object defines that spelling: each defines a
-    triple-underscore name and the plain alias. The hi_atexit image,
-    which is linked, does alias `__GI_mempcpy` to the captured mempcpy,
-    but no capture aliases `__GI_stpcpy`. *)
+    `__GI_mempcpy`. The small fixtures do not keep those spellings,
+    because each one is linked from the plain name alone and the linker
+    drops aliases that nothing uses. The hi_atexit image, which never
+    calls stpcpy, keeps only the mempcpy alias. *)
 Example gettext_link_gaps :
   In (TAtom "__GI_stpcpy") (gettext_calls glibc_dcigettext) /\
   In (TAtom "__GI_mempcpy") (gettext_calls glibc_dcigettext) /\
@@ -214,3 +216,22 @@ Example gettext_link_fresh :
     ["__GI_mempcpy"; "__GI_memcpy"; "__GI___dcgettext"; "__dcigettext"; "__GI_stpcpy"; "__GI___tfind";
      "__current_locale_name"; "__GI___pthread_rwlock_rdlock"; "__GI___pthread_rwlock_unlock"; "zmemmove"]%string.
 Proof. repeat constructor; cbn; intuition discriminate. Qed.
+
+(** ## The linked gettext image
+
+    The linker starts from dcgettext and keeps what it reaches. Glibc
+    declares `__GI_stpcpy` as a weak alias of `__GI___stpcpy`, and the
+    image keeps it because the lookup calls it. *)
+Example gettext_image_aliases :
+  find_alias (TAtom "__GI_stpcpy") gettextlink_module = Some (TAtom "__GI___stpcpy") /\
+  find_alias (TAtom "__GI_mempcpy") gettextlink_module = Some (TAtom "__GI___mempcpy").
+Proof. split; vm_compute; reflexivity. Qed.
+
+(** We want to know whether a real link gives gettext the functions
+    that its proofs assumed. It does: in this link, each name that
+    gettext calls runs the same code that the proofs ran, and memmove
+    stays undefined. Only the list of globals is left for the caller,
+    who must say that none of them is named memmove. *)
+Lemma hello_gettext_link_image gl fr :
+  lookup (TAtom "zmemmove") gl = None -> hello_gettext_link (mkGenv gettextlink_module gl fr).
+Proof. intros H. constructor; try (vm_compute; reflexivity). split; [vm_compute; reflexivity | exact H]. Qed.

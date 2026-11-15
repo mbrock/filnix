@@ -5,4 +5,5 @@ Dcgettext|__GI___dcgettext|intl/dcgettext.os|__GI___dcgettext
 Dcigettext|__dcigettext|intl/dcigettext.os|__dcigettext
 Tfind|__GI___tfind|misc/tsearch.os|__GI___tfind
 Localename|__current_locale_name|locale/localename.os|__current_locale_name
+GettextLink|__GI___dcgettext|intl/dcgettext.os intl/dcigettext.os string/stpcpy.os string/mempcpy.os string/memcpy.os misc/tsearch.os locale/localename.os nptl/pthread_rwlock_rdlock.os nptl/pthread_rwlock_unlock.os|
 '''

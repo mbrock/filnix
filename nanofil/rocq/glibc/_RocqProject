@@ -72,6 +72,12 @@ intl/TfindCode.v
 intl/TfindSrc.v
 intl/LocalenameCode.v
 intl/LocalenameSrc.v
+intl/GettextLinkCode.v
+intl/GettextLinkSrcFiles.v
+intl/GettextLinkSrc01.v
+intl/GettextLinkSrc02.v
+intl/GettextLinkSrc03.v
+intl/GettextLinkSrc.v
 stdlib/StdlibCode.v
 stdlib/GetenvCode.v
 stdlib/GetenvSrc.v
