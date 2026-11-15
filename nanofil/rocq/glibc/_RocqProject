@@ -64,6 +64,15 @@ stdio/FileSyncCode.v
 stdio/FileSyncSrc.v
 stdio/FflushCode.v
 stdio/FflushSrc.v
+stdio/StrerrorCode.v
+stdio/StrerrorSrc.v
+stdio/ErrlistCode.v
+stdio/ErrlistSrc.v
+stdio/ErrlistDataCode.v
+stdio/ErrlistDataSrcFiles.v
+stdio/ErrlistDataSrc.v
+stdio/ErrlistFacts.v
+stdio/ErrlistEnoent.v
 intl/DcgettextCode.v
 intl/DcgettextSrc.v
 intl/DcigettextCode.v
@@ -282,6 +291,7 @@ stdio/ErrorNewline.v
 stdio/ErrorTailNormal.v
 stdio/ErrorText.v
 stdio/ErrorTextPrint.v
+stdio/StrerrorEnoent.v
 stdio/ErrorTextNormal.v
 stdio/ErrorTextTail.v
 stdio/ErrorTextTailNormal.v
