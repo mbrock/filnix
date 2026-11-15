@@ -458,6 +458,8 @@ hello/HelloGetoptCall.v
 hello/HelloGetoptStart.v
 hello/HelloGetoptBackend.v
 hello/HelloClosedStdout.v
+hello/HelloErrorClosed.v
+hello/HelloErrorCall.v
 hello/HelloCloseStreamRetain.v
 hello/HelloCloseStream.v
 hello/HelloCloseErrno.v
