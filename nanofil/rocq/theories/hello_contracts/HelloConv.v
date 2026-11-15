@@ -32,6 +32,10 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 Open Scope Z_scope.
 Open Scope list_scope.
 
+Local Arguments Z.add : simpl nomatch.
+Local Arguments Z.sub : simpl nomatch.
+Local Arguments Z.mul : simpl nomatch.
+
 Module HelloConvOn (R : Runtime) (LG0 : LogicSig R).
 Module HLo := HelloLocaleOn R LG0.
 Module HL := HLo.HL.
@@ -42,6 +46,8 @@ Module LG := ML.LG.
 Module L := LG.L.
 Module LB := LibcOn R L.M.
 Import L LG SL ML LL HL HLo.
+
+Local Hint Opaque pts live bytes auxes pcell rpl_fn mbs_fn : typeclass_instances.
 
 (** ## mbrtowc's triple *)
 
