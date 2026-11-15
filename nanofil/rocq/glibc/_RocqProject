@@ -229,6 +229,7 @@ stdio/FormatterSuffixScan.v
 stdio/FormatterSuffixReturn.v
 stdio/FormatterSuffixWrite.v
 stdio/FormatterStringFinish.v
+stdio/FormatterPercentString.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
