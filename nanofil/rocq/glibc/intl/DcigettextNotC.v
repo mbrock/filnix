@@ -13,10 +13,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic GetoptBytes DcigettextCode.
+From Glibc Require Import DcigettextPreRules.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic DcigettextPreRules.DciVL.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -54,5 +55,31 @@ Qed.
     and "en_US". *)
 Example dci_c_byte_controls : chr_w 67 = 67 /\ (chr_w 80 =? 67) = false /\ (chr_w 101 =? 67) = false.
 Proof. repeat split. Qed.
+
+(** The prefix tests the message id before it touches errno or a lock. A
+    null message id makes the lookup return null at once, so that call
+    needs none of the lock, locale, cache or errno resources. *)
+Lemma wp_dci_null_msgid e Φ :
+  lookup (TAtom "v2") e = Some (WPtr null) ->
+  ▷ Φ (Ret (WPtr null)) -∗
+  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hv2. iIntros "HK".
+  step.
+  iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
+    intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |]. iNext. iIntros (xs [Hxs [Hxsal Hxsend]]) "Hxo".
+  iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
+    intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |]. iNext. iIntros (rl _) "_".
+  iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
+    intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |]. iNext. iIntros (sb _) "_".
+  change (req_align (heap_req 8 8)) with 16 in Hxsal. change (req_extent (heap_req 8 8)) with 16 in Hxsend.
+  iDestruct (obj_zero_block with "Hxo") as "(Hxl & Hxb & Hxa)"; [vm_compute; discriminate|].
+  change (req_extent (heap_req 8 8)) with 16. change (req_kind (heap_req 8 8)) with Heap.
+  iDestruct (zero_cell_prefix xs 0 8 with "Hxb Hxa") as "(Hxc & _ & _)".
+  set (xreg := mkRegion xs (xs + 16) Heap Live). assert (Hxre : r_end xreg = xs + 16) by reflexivity.
+  assert (Hxs8 : xs mod 8 = 0) by (Z.div_mod_to_equations; lia).
+  check "Hxl". store "Hxl" "Hxc". step. step. step. branch. step.
+  iApply wp_ret; [reflexivity | vx |]. iNext. iExact "HK".
+Qed.
 
 End rules.

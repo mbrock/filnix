@@ -342,6 +342,8 @@ getopt/GetoptDash.v
 getopt/GetoptLongDiag.v
 getopt/GetoptDiagFx.v
 intl/DcigettextExit.v
+intl/DcigettextPreRules.v
+intl/DcigettextPre.v
 intl/DcigettextC.v
 intl/DcigettextNotC.v
 getopt/GetoptSkipTest.v
