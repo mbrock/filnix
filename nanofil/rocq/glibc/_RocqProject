@@ -221,6 +221,7 @@ stdio/FormatterLiteral.v
 stdio/FormatterStringArg.v
 stdio/FormatterRegistration.v
 stdio/FormatterStringTable.v
+stdio/FormatterStringDispatch.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
