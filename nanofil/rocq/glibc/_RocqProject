@@ -540,6 +540,7 @@ hello/HelloErrorNormal.v
 hello/HelloErrorTextNormal.v
 hello/HelloErrorPrefixReturning.v
 hello/HelloErrorReportNormal.v
+hello/HelloErrorFlushShort.v
 hello/HelloCloseStreamRetain.v
 hello/HelloCloseStream.v
 hello/HelloCloseErrno.v
