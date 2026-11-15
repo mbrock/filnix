@@ -56,6 +56,10 @@ stdio/PrintfCountBits.v
 stdio/PrintfStateCode.v
 stdio/FxprintfCode.v
 stdio/FxprintfSrc.v
+intl/DcgettextCode.v
+intl/DcgettextSrc.v
+intl/DcigettextCode.v
+intl/DcigettextSrc.v
 stdlib/StdlibCode.v
 stdlib/GetenvCode.v
 stdlib/GetenvSrc.v
@@ -333,6 +337,9 @@ getopt/GetoptClamp.v
 getopt/GetoptDash.v
 getopt/GetoptLongDiag.v
 getopt/GetoptDiagFx.v
+intl/DcigettextExit.v
+intl/DcigettextC.v
+intl/DcigettextNotC.v
 getopt/GetoptSkipTest.v
 hello/HelloGlibcDebts.v
 libio/LibioCleanupFpLock.v
