@@ -66,6 +66,8 @@ intl/DcgettextCode.v
 intl/DcgettextSrc.v
 intl/DcigettextCode.v
 intl/DcigettextSrc.v
+intl/TfindCode.v
+intl/TfindSrc.v
 stdlib/StdlibCode.v
 stdlib/GetenvCode.v
 stdlib/GetenvSrc.v
@@ -358,6 +360,7 @@ getopt/GetoptClamp.v
 getopt/GetoptDash.v
 getopt/GetoptLongDiag.v
 getopt/GetoptDiagFx.v
+intl/TfindEmpty.v
 intl/DcigettextExit.v
 intl/DcigettextFail.v
 intl/DcigettextPreRules.v
@@ -370,6 +373,7 @@ intl/DcigettextNotC.v
 intl/DcigettextRoute.v
 intl/DcgettextC.v
 intl/DcgettextStpcpy.v
+intl/DcgettextTfind.v
 getopt/GetoptSkipTest.v
 hello/HelloGlibcDebts.v
 libio/LibioCleanupFpLock.v

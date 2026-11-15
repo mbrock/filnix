@@ -3,4 +3,5 @@ mode = "checked"
 fixtures = '''
 Dcgettext|__GI___dcgettext|intl/dcgettext.os|__GI___dcgettext
 Dcigettext|__dcigettext|intl/dcigettext.os|__dcigettext
+Tfind|__GI___tfind|misc/tsearch.os|__GI___tfind
 '''
