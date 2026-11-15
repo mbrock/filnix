@@ -4,7 +4,7 @@ From Glibc Require Import GlibcProgram.
     path from a free lock and preserve the saved close result. The shared
     unlock proof supports either static output stream. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics LibioTactics LibioFcloseAcquire.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -62,33 +62,7 @@ Lemma wp_fclose_start fr fb freg fl lb lbreg sb sreg Φ :
      WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L13") (Some from))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof.
-  intros fp Hfr. injection Hfr as <-. intros Hfb Hfal Hfend Hfreg Hfl Hul. subst fp.
-  iIntros "#Hs Htcb Hl Hfl Hlp Hlk HK".
-  unfold file_size in Hfend.
-  pose proof Hul as Hul'. unfold has, io_user_lock in Hul'. apply negb_false_iff, Z.eqb_eq in Hul'.
-  assert (0 <= Z.land fl 32768 < 2 ^ 32) by (rewrite Hul'; lia).
-  iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).
-  iDestruct "Htcb" as (tb treg jb Ht) "Htcb". pose proof Ht as (Hself & Htb & _).
-  iAssert (tcb_cleanup_inv (ow_self w0)) with "[Htcb]" as "Htcb".
-  { iExists tb, treg, jb. iSplit; [iPureIntro; exact Ht | iExact "Htcb"]. }
-  assert (Hsz : ptr_addr (ow_self w0) <> 0) by (rewrite Hself; cbn; lia).
-  iDestruct "Hlk" as "(%Hk & Hbl' & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hk as (Hkal & Hkend & Hkreg).
-  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
-  iApply (wp_live_fit1 with "Hbl'"). iIntros ([Hl0 Hl48]) "Hbl'".
-  iApply (wp_live_fit with "Hsl"). iIntros ([Hsb0 Hsb48]) "_".
-  iDestruct "Hfl" as "[%Hflr Hfl]".
-  (* start, L18 to L23: the lock is free and the process single-threaded. *)
-  step. check "Hl". load_s32 "Hl" "Hfl". step. step. branch_as false.
-  step. iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact Hsz|]. iNext.
-  step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
-  step. step. check "Hl". load "Hl" "Hlp" "Hbl'". step. check "Hbl'". load_null "Hbl'" "Hbo". step. step. step. step. step. branch.
-  step. step. check "Hl". load "Hl" "Hlp" "Hbl'". check "Hbl'". store_int "Hbl'" "Hb0". load "Hl" "Hlp" "Hbl'". step.
-  check "Hbl'". store "Hbl'" "Hbo". step.
-  iAssert (lock_state lb lbreg 1 0 (ow_self w0)) with "[Hbl' Hb0 Hb4 Hbo]" as "Hlk".
-  { iSplit; [iPureIntro; lia|]. iFrame "Hbl'". iSplitL "Hb0"; [iSplit; [done | iExact "Hb0"]|].
-    iSplitL "Hb4"; [iSplit; [done | iExact "Hb4"]|]. iExact "Hbo". }
-  iAssert (int_cell fb off_flags fl) with "[Hfl]" as "Hfl"; [iSplit; [done | iExact "Hfl"]|].
-  cbn [edge_label]. iApply ("HK" with "[%] Htcb Hl Hfl Hlp Hlk"). split; lk_prove.
+  apply (LibioFcloseAcquire.wp_fclose_start Hreg Hext).
 Qed.
 
 (** The unlock path releases this thread's stream lock before running the

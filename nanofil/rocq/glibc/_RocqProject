@@ -231,6 +231,7 @@ hi_atexit/HiAtexitInitialAlloc.v
 libio/LibioCloseIt.v
 libio/LibioDefaultXsputnBuf.v
 libio/LibioStreamSpecs.v
+libio/LibioFcloseAcquire.v
 libio/LibioFcloseLock.v
 libio/LibioFlushClean.v
 libio/LibioFputsUnlock.v
