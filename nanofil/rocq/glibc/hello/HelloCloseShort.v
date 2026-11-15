@@ -115,4 +115,76 @@ Proof.
       iApply ("HK" with "[%] [$Htcb $Hio $Hlives $Herr $HE]"); auto
   end.
 Qed.
+
+Context `{!Defines ge "close_stream" close_stream_fn}
+  `{!Defines ge "_exit" glibc__exit}.
+
+(** Once stdout is settled, Hello closes stderr. If close_stream returns
+    zero, the callback returns with the remaining streams and global cells.
+    Otherwise Hello reads the configured failure status and calls _exit.
+    The existing OS rule proves that this call cannot return. *)
+Lemma wp_hello_close_stdout_stderr_short_empty e pre post fb freg fl f2 fd off rp re rb we be eb vb vreg
+    lb lbreg sb sreg fcp pin pout md sc screg xc xcreg status (E : iProp Σ) Φ :
+  let fp := mkPtr fb (Obj fb) in
+  let buf := mkPtr (fb + off_shortbuf) (Obj fb) in
+  let cells := (live sc screg ∗ pcell sc 0 fp ∗ live xc xcreg ∗ int_cell xc 0 status)%I in
+  let Q := (tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge (pre ++ post) ∗
+    ([∗ list] g ∈ pre ++ post, stream_life g) ∗ errno_any eb ∗ cells ∗ E)%I in
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sc (Obj sc)) ->
+  0 < sc -> sc mod 8 = 0 -> sc + 8 <= r_end screg -> r_end screg <= 2 ^ 63 ->
+  lookup (TAtom "exit_failure") (ge_globals ge) = Some (mkPtr xc (Obj xc)) ->
+  0 < xc -> xc + 4 <= r_end xcreg -> r_end xcreg <= 2 ^ 63 ->
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
+  lookup (TAtom "_IO_2_1_stderr_") (ge_globals ge) = Some fp ->
+  lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout -> ptr_addr pout <> fb ->
+  0 <= ptr_addr pout < 2 ^ 64 ->
+  lookup (TAtom "_IO_2_1_stdin_") (ge_globals ge) = Some pin -> ptr_addr pin <> fb ->
+  0 <= ptr_addr pin < 2 ^ 64 ->
+  lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  0 <= f2 < 2 ^ 32 -> Z.land f2 32 = 0 -> Z.land f2 io_need_lock = 0 -> 0 <= fd < 2 ^ 31 ->
+  0 <= fl < 2 ^ 32 -> Z.land fl io_no_writes = 0 -> Z.land fl io_currently_putting <> 0 ->
+  Z.land fl io_user_buf <> 0 -> has fl io_user_lock = false ->
+  has fl io_linked = true -> has fl io_is_filebuf = true ->
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) -> 0 < lb -> md = 0 ∨ md = 2 ^ 32 - 1 ->
+  vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
+  live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
+  icell fb off_offset off -∗ errno_any eb -∗
+  pcell fb 8 rp -∗ pcell fb 16 re -∗ pcell fb 24 rb -∗ pcell fb 32 buf -∗ pcell fb 40 buf -∗
+  pcell fb 48 we -∗ pcell fb off_buf_base buf -∗ pcell fb off_buf_end be -∗
+  int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  pcell fb 80 null -∗ pcell fb 96 null -∗
+  pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗
+  io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗ cells -∗ E -∗
+  (Q -∗ Φ RetVoid) -∗
+  WP (ERun (mkFrame close_stdout_fn e [] None
+    (Enter (TAtom "L91") (Some (TAtom "L8")))) : gexpr) {{ Φ }}.
+Proof.
+  intros fp buf cells Q Hstderr Hsc Hsca Hsce Hscr Hexit Hxc Hxce Hxcr
+    Hglobal Hgerr Hgout Hout Houtr Hgin Hin Hinr Hcleanup Hfcr Hfb Hfal Hfend Hfreg
+    Hf2r Hf232 Hnl Hfdr Hfl Hnw Hcp Hub Hul Hlnk Hfb8 He Hlb Hmd. subst fp buf.
+  iIntros "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Hoff Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hmode Hvtp
+    H80 H96 Hlp Hlk Hio Hlives (Hsc & Hsp & Hxc & Hstatus) HE HK".
+  unfold file_size in Hfend.
+  iApply (wp_live_fit1 with "Hsc"). iIntros ([Hsc0 Hsc48]) "Hsc".
+  iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
+  step. step. check "Hsc". load "Hsc" "Hsp" "Hl".
+  iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
+  iApply (wp_hello_close_stream_stderr_short_empty
+    pre post fb freg fl f2 fd off rp re rb we be eb vb vreg lb lbreg sb sreg fcp pin pout md
+    (cells ∗ E)%I with "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Hoff Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend
+      Hmode Hvtp H80 H96 Hlp Hlk Hio Hlives [Hsc Hsp Hxc Hstatus HE]"); try assumption.
+  { iFrame. }
+  iIntros (r Hr) "(Htcb & Hio & Hlives & Herr & (Hsc & Hsp & Hxc & Hstatus) & HE)".
+  resume. destruct Hr as [-> | ->].
+  - step. branch. step. iApply wp_ret_void. iNext.
+    iApply "HK". iFrame.
+  - step. branch. step. step.
+    iApply (wp_live_fit1 with "Hxc"). iIntros ([Hxc0 Hxc48]) "Hxc".
+    check "Hxc". iEval (unfold int_cell) in "Hstatus".
+    iDestruct "Hstatus" as "[%Hstatus Hbytes]".
+    load_s32 "Hxc" "Hbytes".
+    iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
+    iApply (SysWrappers.wp_glibc__exit Hreg Hext). reflexivity.
+Qed.
 End close.
