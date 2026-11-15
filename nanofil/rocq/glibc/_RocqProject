@@ -86,6 +86,8 @@ string/MemrchrCode.v
 string/StrchrCode.v
 string/StrcmpCode.v
 string/StrncmpCode.v
+string/StpcpyCode.v
+string/StpcpySrc.v
 zsys/OsBlocks.v
 GlibcLogic.v
 getopt/GetoptArgv.v
@@ -161,6 +163,11 @@ stdio/PrintfBufferDone.v
 stdio/PrintfBufferSkip.v
 string/MemchrLast.v
 string/StrcmpLoop.v
+string/StpcpyBytes.v
+string/StpcpyTail.v
+string/StpcpyShift.v
+string/StpcpyWords.v
+string/StpcpyLogic.v
 string/StrlenWord.v
 string/StrncmpBits.v
 getopt/GetoptColon.v

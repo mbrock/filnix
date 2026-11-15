@@ -1,0 +1,77 @@
+(** These tables connect checked function bodies to C declarations and source lines.
+    Names and locations support annotations and diagnostic messages, not soundness premises.
+    Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
+    Live sets and memory footprints guide execution but cannot justify a memory access.
+    Computation checks that every recorded block label belongs to the decoded function.
+    The code generator reproduces this file from the capture; do not edit it. *)
+
+From Stdlib Require Import String List Bool NArith ZArith.
+From Glibc Require Import CodePrelude.
+Import ListNotations.
+Open Scope string_scope.
+Open Scope Z_scope.
+
+
+From Glibc Require Import StpcpyCode.
+Module StpcpySrc.
+
+Definition file_0 : string := "stpcpy.c".
+
+Module fn___GI___stpcpy.
+
+(** This location identifies the C function definition when its context records contain one. *)
+Definition source : option (string * N) := Some (file_0, 100%N).
+
+(** Each entry records the first located site in a block, in execution order. *)
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 104%N)); ((TAtom "L9"), (file_0, 104%N)); ((TAtom "L10"), (file_0, 107%N)); ((TAtom "L21"), (file_0, 110%N)); ((TAtom "L11"), (file_0, 105%N)); ((TAtom "L12"), (file_0, 114%N)); ((TAtom "iw_1.L5"), (file_0, 46%N)); ((TAtom "iw_1.L13"), (file_0, 55%N)); ((TAtom "iw_1.iw_2.L7"), (file_0, 36%N)); ((TAtom "iw_1.iw_2.L8"), (file_0, 38%N)); ((TAtom "iw_1.iw_2.L9"), (file_0, 36%N)); ((TAtom "L37"), (file_0, 115%N)); ((TAtom "iw_2.L34"), (file_0, 65%N)); ((TAtom "iw_2.L49"), (file_0, 84%N)); ((TAtom "iw_2.L36"), (file_0, 91%N)); ((TAtom "iw_2.L53"), (file_0, 69%N)); ((TAtom "iw_2.iw_4.L7"), (file_0, 36%N)); ((TAtom "iw_2.iw_4.L8"), (file_0, 38%N)); ((TAtom "iw_2.iw_4.L9"), (file_0, 36%N)); ((TAtom "L38"), (file_0, 115%N))].
+
+(** These recorded temporaries have a primary value hint naming their C declaration. *)
+Definition temp_names : list (name * string) :=
+  [((TAtom "iw_1.iw_1.iw_1.iw_1.v0"), "c_in"); ((TAtom "iw_1.iw_1.iw_1.iw_1.v5"), "c_in"); ((TAtom "iw_1.iw_1.iw_1.iw_2.v0"), "c_in"); ((TAtom "iw_1.iw_1.iw_1.iw_2.v5"), "c_in"); ((TAtom "iw_1.iw_1.iw_1.v0"), "x"); ((TAtom "iw_1.iw_1.iw_1.v12"), "msb"); ((TAtom "iw_1.iw_1.iw_1.v3"), "lsb"); ((TAtom "iw_1.iw_1.iw_1.v5"), "msb"); ((TAtom "iw_1.iw_1.iw_1.v6"), "x"); ((TAtom "iw_1.iw_1.iw_1.v7"), "lsb"); ((TAtom "iw_1.iw_1.iw_1.v9"), "x"); ((TAtom "iw_1.iw_1.v0"), "x"); ((TAtom "iw_1.iw_1.v2"), "x"); ((TAtom "iw_1.iw_2.iw_1.v0"), "x"); ((TAtom "iw_1.iw_2.iw_1.v14"), "x"); ((TAtom "iw_1.iw_2.iw_1.v16"), "idx"); ((TAtom "iw_1.iw_2.iw_1.v2"), "idx"); ((TAtom "iw_1.iw_2.iw_1.v8"), "x"); ((TAtom "iw_1.iw_2.iw_1.v9"), "idx"); ((TAtom "iw_1.iw_2.pr.1"), "d"); ((TAtom "iw_1.iw_2.pr.2"), "i"); ((TAtom "iw_1.iw_2.v0"), "dest"); ((TAtom "iw_1.iw_2.v11"), "i"); ((TAtom "iw_1.iw_2.v14"), "word"); ((TAtom "iw_1.iw_2.v15"), "i"); ((TAtom "iw_1.iw_2.v18"), "c"); ((TAtom "iw_1.iw_2.v19"), "d"); ((TAtom "iw_1.iw_2.v2"), "word"); ((TAtom "iw_1.iw_2.v20"), "c"); ((TAtom "iw_1.iw_2.v24"), "c"); ((TAtom "iw_1.iw_2.v27"), "i"); ((TAtom "iw_1.iw_2.v28"), "i"); ((TAtom "iw_1.iw_2.v29"), "d"); ((TAtom "iw_1.iw_2.v30"), "d"); ((TAtom "iw_1.iw_2.v31"), "d"); ((TAtom "iw_1.iw_2.v5"), "dest"); ((TAtom "iw_1.pr.1"), "dst"); ((TAtom "iw_1.pr.2"), "src"); ((TAtom "iw_1.pr.3"), "word"); ((TAtom "iw_1.pr.4"), "word"); ((TAtom "iw_1.v0"), "dst"); ((TAtom "iw_1.v10"), "word"); ((TAtom "iw_1.v14"), "word"); ((TAtom "iw_1.v18"), "dst"); ((TAtom "iw_1.v19"), "dst"); ((TAtom "iw_1.v2"), "src"); ((TAtom "iw_1.v20"), "word"); ((TAtom "iw_1.v21"), "dst"); ((TAtom "iw_1.v22"), "word"); ((TAtom "iw_1.v8"), "src"); ((TAtom "iw_1.v9"), "src"); ((TAtom "iw_2.iw_1.iw_1.iw_1.v0"), "c_in"); ((TAtom "iw_2.iw_1.iw_1.iw_1.v5"), "c_in"); ((TAtom "iw_2.iw_1.iw_1.iw_2.v0"), "c_in"); ((TAtom "iw_2.iw_1.iw_1.iw_2.v5"), "c_in"); ((TAtom "iw_2.iw_1.iw_1.v0"), "x"); ((TAtom "iw_2.iw_1.iw_1.v12"), "msb"); ((TAtom "iw_2.iw_1.iw_1.v3"), "lsb"); ((TAtom "iw_2.iw_1.iw_1.v5"), "msb"); ((TAtom "iw_2.iw_1.iw_1.v6"), "x"); ((TAtom "iw_2.iw_1.iw_1.v7"), "lsb"); ((TAtom "iw_2.iw_1.iw_1.v9"), "x"); ((TAtom "iw_2.iw_1.v0"), "x"); ((TAtom "iw_2.iw_1.v2"), "x"); ((TAtom "iw_2.iw_2.iw_1.iw_1.v0"), "c_in"); ((TAtom "iw_2.iw_2.iw_1.iw_1.v5"), "c_in"); ((TAtom "iw_2.iw_2.iw_1.iw_2.v0"), "c_in"); ((TAtom "iw_2.iw_2.iw_1.iw_2.v5"), "c_in"); ((TAtom "iw_2.iw_2.iw_1.v0"), "x"); ((TAtom "iw_2.iw_2.iw_1.v12"), "msb"); ((TAtom "iw_2.iw_2.iw_1.v3"), "lsb"); ((TAtom "iw_2.iw_2.iw_1.v5"), "msb"); ((TAtom "iw_2.iw_2.iw_1.v6"), "x"); ((TAtom "iw_2.iw_2.iw_1.v7"), "lsb"); ((TAtom "iw_2.iw_2.iw_1.v9"), "x"); ((TAtom "iw_2.iw_2.v0"), "x"); ((TAtom "iw_2.iw_2.v2"), "x"); ((TAtom "iw_2.iw_3.iw_1.iw_1.v0"), "c_in"); ((TAtom "iw_2.iw_3.iw_1.iw_1.v5"), "c_in"); ((TAtom "iw_2.iw_3.iw_1.iw_2.v0"), "c_in"); ((TAtom "iw_2.iw_3.iw_1.iw_2.v5"), "c_in"); ((TAtom "iw_2.iw_3.iw_1.v0"), "x"); ((TAtom "iw_2.iw_3.iw_1.v12"), "msb"); ((TAtom "iw_2.iw_3.iw_1.v3"), "lsb"); ((TAtom "iw_2.iw_3.iw_1.v5"), "msb"); ((TAtom "iw_2.iw_3.iw_1.v6"), "x"); ((TAtom "iw_2.iw_3.iw_1.v7"), "lsb"); ((TAtom "iw_2.iw_3.iw_1.v9"), "x"); ((TAtom "iw_2.iw_3.v0"), "x"); ((TAtom "iw_2.iw_3.v2"), "x"); ((TAtom "iw_2.iw_4.iw_1.v0"), "x"); ((TAtom "iw_2.iw_4.iw_1.v14"), "x"); ((TAtom "iw_2.iw_4.iw_1.v16"), "idx"); ((TAtom "iw_2.iw_4.iw_1.v2"), "idx"); ((TAtom "iw_2.iw_4.iw_1.v8"), "x"); ((TAtom "iw_2.iw_4.iw_1.v9"), "idx"); ((TAtom "iw_2.iw_4.pr.1"), "d"); ((TAtom "iw_2.iw_4.pr.2"), "i"); ((TAtom "iw_2.iw_4.v0"), "dest"); ((TAtom "iw_2.iw_4.v11"), "i"); ((TAtom "iw_2.iw_4.v14"), "word"); ((TAtom "iw_2.iw_4.v15"), "i"); ((TAtom "iw_2.iw_4.v18"), "c"); ((TAtom "iw_2.iw_4.v19"), "d"); ((TAtom "iw_2.iw_4.v2"), "word"); ((TAtom "iw_2.iw_4.v20"), "c"); ((TAtom "iw_2.iw_4.v24"), "c"); ((TAtom "iw_2.iw_4.v27"), "i"); ((TAtom "iw_2.iw_4.v28"), "i"); ((TAtom "iw_2.iw_4.v29"), "d"); ((TAtom "iw_2.iw_4.v30"), "d"); ((TAtom "iw_2.iw_4.v31"), "d"); ((TAtom "iw_2.iw_4.v5"), "dest"); ((TAtom "iw_2.pr.1"), "dst"); ((TAtom "iw_2.pr.10"), "w2b"); ((TAtom "iw_2.pr.2"), "dst"); ((TAtom "iw_2.pr.3"), "dst"); ((TAtom "iw_2.pr.4"), "dst"); ((TAtom "iw_2.pr.5"), "src"); ((TAtom "iw_2.pr.6"), "w2a"); ((TAtom "iw_2.pr.7"), "w2"); ((TAtom "iw_2.pr.8"), "w2"); ((TAtom "iw_2.pr.9"), "w2b"); ((TAtom "iw_2.v0"), "dst"); ((TAtom "iw_2.v11"), "ofs"); ((TAtom "iw_2.v12"), "sh_1"); ((TAtom "iw_2.v15"), "sh_1"); ((TAtom "iw_2.v16"), "sh_2"); ((TAtom "iw_2.v18"), "w2a"); ((TAtom "iw_2.v19"), "sh_1"); ((TAtom "iw_2.v2"), "src"); ((TAtom "iw_2.v23"), "sh_2"); ((TAtom "iw_2.v25"), "w2"); ((TAtom "iw_2.v29"), "w2"); ((TAtom "iw_2.v37"), "src"); ((TAtom "iw_2.v38"), "src"); ((TAtom "iw_2.v39"), "w2b"); ((TAtom "iw_2.v4"), "ofs"); ((TAtom "iw_2.v40"), "w2a"); ((TAtom "iw_2.v41"), "sh_1"); ((TAtom "iw_2.v43"), "w2b"); ((TAtom "iw_2.v44"), "sh_2"); ((TAtom "iw_2.v46"), "w2"); ((TAtom "iw_2.v50"), "w2"); ((TAtom "iw_2.v55"), "dst"); ((TAtom "iw_2.v56"), "dst"); ((TAtom "iw_2.v57"), "w2"); ((TAtom "iw_2.v61"), "w2b"); ((TAtom "iw_2.v65"), "w2b"); ((TAtom "iw_2.v66"), "w2b"); ((TAtom "iw_2.v67"), "sh_1"); ((TAtom "iw_2.v69"), "sh_2"); ((TAtom "iw_2.v7"), "src"); ((TAtom "iw_2.v72"), "w2"); ((TAtom "iw_2.v73"), "dst"); ((TAtom "iw_2.v74"), "w2"); ((TAtom "iw_2.v8"), "src"); ((TAtom "iw_2.v9"), "w2a"); ((TAtom "pr.1"), "dest"); ((TAtom "pr.2"), "src"); ((TAtom "pr.3"), "len"); ((TAtom "v0"), "dest"); ((TAtom "v13"), "len"); ((TAtom "v16"), "src"); ((TAtom "v17"), "src"); ((TAtom "v18"), "c"); ((TAtom "v19"), "dest"); ((TAtom "v2"), "src"); ((TAtom "v20"), "c"); ((TAtom "v24"), "c"); ((TAtom "v26"), "dest"); ((TAtom "v28"), "len"); ((TAtom "v29"), "len"); ((TAtom "v30"), "dest"); ((TAtom "v31"), "dest"); ((TAtom "v33"), "src"); ((TAtom "v35"), "ofs"); ((TAtom "v39"), "ofs"); ((TAtom "v41"), "dest"); ((TAtom "v42"), "src"); ((TAtom "v44"), "dest"); ((TAtom "v45"), "src"); ((TAtom "v46"), "ofs"); ((TAtom "v48"), "ofs"); ((TAtom "v5"), "dest"); ((TAtom "v8"), "len")].
+
+(** The compiler finds these reachable natural-loop headers using dominators. *)
+Definition loop_heads : list name := [(TAtom "L9"); (TAtom "iw_1.L5"); (TAtom "iw_1.iw_2.L7"); (TAtom "iw_2.L34"); (TAtom "iw_2.iw_4.L7")].
+
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2")]); ((TAtom "L9"), []); ((TAtom "L10"), [(TAtom "pr.1"); (TAtom "pr.2"); (TAtom "pr.3")]); ((TAtom "L21"), [(TAtom "pr.1")]); ((TAtom "L11"), [(TAtom "pr.1"); (TAtom "pr.3"); (TAtom "v17")]); ((TAtom "L12"), [(TAtom "pr.1"); (TAtom "pr.2")]); ((TAtom "iw_1.L5"), []); ((TAtom "iw_1.L13"), [(TAtom "iw_1.pr.1"); (TAtom "iw_1.v10"); (TAtom "iw_1.v9")]); ((TAtom "iw_1.iw_2.L7"), [(TAtom "iw_1.v10")]); ((TAtom "iw_1.iw_2.L8"), [(TAtom "iw_1.iw_2.pr.1"); (TAtom "iw_1.iw_2.pr.2"); (TAtom "iw_1.v10")]); ((TAtom "iw_1.iw_2.L9"), [(TAtom "iw_1.iw_2.pr.1"); (TAtom "iw_1.iw_2.pr.2"); (TAtom "iw_1.v10")]); ((TAtom "L37"), [(TAtom "pr.1"); (TAtom "pr.2"); (TAtom "v35")]); ((TAtom "iw_2.L34"), [(TAtom "iw_2.v12"); (TAtom "iw_2.v16")]); ((TAtom "iw_2.L49"), [(TAtom "iw_2.pr.2"); (TAtom "iw_2.v12"); (TAtom "iw_2.v16"); (TAtom "iw_2.v38"); (TAtom "iw_2.v39"); (TAtom "iw_2.v46")]); ((TAtom "iw_2.L36"), [(TAtom "iw_2.v12"); (TAtom "iw_2.v16"); (TAtom "iw_2.v39"); (TAtom "iw_2.v56")]); ((TAtom "iw_2.L53"), []); ((TAtom "iw_2.iw_4.L7"), [(TAtom "iw_2.pr.8")]); ((TAtom "iw_2.iw_4.L8"), [(TAtom "iw_2.iw_4.pr.1"); (TAtom "iw_2.iw_4.pr.2"); (TAtom "iw_2.pr.8")]); ((TAtom "iw_2.iw_4.L9"), [(TAtom "iw_2.iw_4.pr.1"); (TAtom "iw_2.iw_4.pr.2"); (TAtom "iw_2.pr.8")]); ((TAtom "L38"), [])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v8")]); ((TAtom "L9"), [(TAtom "pr.1"); (TAtom "pr.2"); (TAtom "pr.3")]); ((TAtom "L10"), [(TAtom "pr.1"); (TAtom "pr.3"); (TAtom "v17")]); ((TAtom "L21"), []); ((TAtom "L11"), [(TAtom "v17"); (TAtom "v29"); (TAtom "v31")]); ((TAtom "L12"), [(TAtom "pr.1"); (TAtom "pr.2"); (TAtom "v35")]); ((TAtom "iw_1.L5"), [(TAtom "iw_1.pr.1"); (TAtom "iw_1.v10"); (TAtom "iw_1.v9")]); ((TAtom "iw_1.L13"), [(TAtom "iw_1.v19"); (TAtom "iw_1.v9")]); ((TAtom "iw_1.iw_2.L7"), [(TAtom "iw_1.iw_2.pr.1"); (TAtom "iw_1.iw_2.pr.2"); (TAtom "iw_1.v10")]); ((TAtom "iw_1.iw_2.L8"), [(TAtom "iw_1.iw_2.pr.1"); (TAtom "iw_1.iw_2.pr.2"); (TAtom "iw_1.v10")]); ((TAtom "iw_1.iw_2.L9"), [(TAtom "iw_1.iw_2.v28"); (TAtom "iw_1.iw_2.v30"); (TAtom "iw_1.v10")]); ((TAtom "L37"), [(TAtom "iw_2.v12"); (TAtom "iw_2.v16"); (TAtom "iw_2.v25"); (TAtom "iw_2.v8"); (TAtom "iw_2.v9"); (TAtom "pr.1")]); ((TAtom "iw_2.L34"), [(TAtom "iw_2.pr.2"); (TAtom "iw_2.v12"); (TAtom "iw_2.v16"); (TAtom "iw_2.v38"); (TAtom "iw_2.v39"); (TAtom "iw_2.v46")]); ((TAtom "iw_2.L49"), [(TAtom "iw_2.v12"); (TAtom "iw_2.v16"); (TAtom "iw_2.v38"); (TAtom "iw_2.v39"); (TAtom "iw_2.v56")]); ((TAtom "iw_2.L36"), [(TAtom "iw_2.v56"); (TAtom "iw_2.v72")]); ((TAtom "iw_2.L53"), [(TAtom "iw_2.pr.4"); (TAtom "iw_2.pr.8")]); ((TAtom "iw_2.iw_4.L7"), [(TAtom "iw_2.iw_4.pr.1"); (TAtom "iw_2.iw_4.pr.2"); (TAtom "iw_2.pr.8")]); ((TAtom "iw_2.iw_4.L8"), [(TAtom "iw_2.iw_4.pr.1"); (TAtom "iw_2.iw_4.pr.2"); (TAtom "iw_2.pr.8")]); ((TAtom "iw_2.iw_4.L9"), [(TAtom "iw_2.iw_4.v28"); (TAtom "iw_2.iw_4.v30"); (TAtom "iw_2.pr.8")]); ((TAtom "L38"), [])].
+
+(** Stop messages can name a C field instead of reporting only an address.
+    Source origins and completed layouts supply the field path; unresolved paths use "opaque".
+    These paths guide messages and annotations, not memory-safety arguments.
+    Local addresses name storage owned by this invocation.
+    Accesses with runtime byte counts have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z * string)) :=
+  [((TAtom "start"), []); ((TAtom "L9"), []); ((TAtom "L10"), [(2%N, (TApp "tmp" [(TAtom "pr.2")]), (0), (Some 1), true, false, (Some (TAtom "pr.2")), (Some (0)), "opaque"); (4%N, (TApp "tmp" [(TAtom "pr.1")]), (0), (Some 1), false, true, (Some (TAtom "pr.1")), (Some (0)), "opaque")]); ((TAtom "L21"), []); ((TAtom "L11"), []); ((TAtom "L12"), []); ((TAtom "iw_1.L5"), [(2%N, (TApp "tmp" [(TAtom "iw_1.pr.2")]), (0), (Some 8), true, false, (Some (TAtom "iw_1.pr.2")), (Some (0)), "opaque")]); ((TAtom "iw_1.L13"), [(2%N, (TApp "tmp" [(TAtom "iw_1.pr.1")]), (0), (Some 8), false, true, (Some (TAtom "iw_1.pr.1")), (Some (0)), "opaque")]); ((TAtom "iw_1.iw_2.L7"), []); ((TAtom "iw_1.iw_2.L8"), [(6%N, (TApp "tmp" [(TAtom "iw_1.iw_2.pr.1")]), (0), (Some 1), false, true, (Some (TAtom "iw_1.iw_2.pr.1")), (Some (0)), "opaque")]); ((TAtom "iw_1.iw_2.L9"), []); ((TAtom "L37"), [(3%N, (TApp "tmp" [(TAtom "v47")]), (0), (Some 8), true, false, (Some (TAtom "pr.2")), None, "opaque")]); ((TAtom "iw_2.L34"), [(2%N, (TApp "tmp" [(TAtom "iw_2.pr.5")]), (0), (Some 8), true, false, (Some (TAtom "iw_2.pr.5")), (Some (0)), "opaque")]); ((TAtom "iw_2.L49"), [(2%N, (TApp "tmp" [(TAtom "iw_2.pr.2")]), (0), (Some 8), false, true, (Some (TAtom "iw_2.pr.2")), (Some (0)), "opaque")]); ((TAtom "iw_2.L36"), []); ((TAtom "iw_2.L53"), []); ((TAtom "iw_2.iw_4.L7"), []); ((TAtom "iw_2.iw_4.L8"), [(6%N, (TApp "tmp" [(TAtom "iw_2.iw_4.pr.1")]), (0), (Some 1), false, true, (Some (TAtom "iw_2.iw_4.pr.1")), (Some (0)), "opaque")]); ((TAtom "iw_2.iw_4.L9"), []); ((TAtom "L38"), [])].
+
+
+End fn___GI___stpcpy.
+
+(** Projection keeps instruction bodies out of the VM code used by the membership check. *)
+Definition source_blocks : list (string * option (list name)) := Eval lazy in
+  map (fun n => (n,
+    match find_direct (TAtom n) stpcpy_module with
+    | Some (Defined f) => Some (map b_label (fn_blocks f))
+    | _ => None
+    end)) ["__GI___stpcpy"].
+
+(** Projection keeps live sets and memory access records out of the membership computation. *)
+Definition table_labels : list (string * list name) := Eval lazy in
+  [("__GI___stpcpy", app (map fst fn___GI___stpcpy.block_src) (app (map fst fn___GI___stpcpy.live_in) (app (map fst fn___GI___stpcpy.live_out) (app (map fst fn___GI___stpcpy.footprint) (fn___GI___stpcpy.loop_heads)))))].
+
+(** One computation rejects missing functions and stale labels across all tables in this fixture. *)
+Lemma labels_valid :
+  forallb (fun row =>
+  match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
+  | Some (_, Some labels) =>
+      forallb (fun l => existsb (name_eqb l) labels)
+        (snd row)
+  | _ => false
+  end) table_labels = true.
+Proof. vm_compute. reflexivity. Qed.
+
+End StpcpySrc.
