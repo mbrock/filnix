@@ -2191,7 +2191,7 @@ Proof.
     as (_ & _ & p & k & Hargs & Hd & [(b & Hr & Hend)|(why & born & Hend & _)]); [|discriminate Hend].
   injection Hargs as <-. injection Hend as Hb. subst b.
   assert (Hoff : 0 <= off <= 16).
-  { destruct Hcases as [C|[C|[C|[C|[C|[C|[C|[]]]]]]]]; injection C as <- <- <- <-; lia. }
+  { clear -Hcases. destruct Hcases as [C|[C|[C|[C|[C|[C|[C|[]]]]]]]]; injection C as <- <- <- <-; lia. }
   assert (Hk : k = 16 - off).
   { eapply terminated_length_unique; [exact (proj1 Hd)|exact (proj1 (strdup_fixture_domain off Hoff))]. }
   subst k. destruct Hr as [Hmalloc Hcopy].
@@ -2201,8 +2201,9 @@ Proof.
   destruct (Hold 1024 ltac:(exists 1024, (mkRegion 1024 1053 Heap Live); split; [reflexivity|simpl; lia])) as [Hsb Hsa].
   destruct (copy_result_cells _ _ _ _ _ (2 ^ 32 + offset) Hcopy) as [Hbytes Haux].
   rewrite Hbytes, Haux, Hsb, Hsa.
+  clear -Hcases.
   destruct Hcases as [C|[C|[C|[C|[C|[C|[C|[]]]]]]]]; injection C as <- <- <- <-.
-  all: repeat split; reflexivity.
+  all: vm_compute; repeat split; reflexivity.
 Qed.
 
 (** A fixed registry computes exact NUL-inclusive sources and request
@@ -2349,10 +2350,11 @@ Proof.
     as (_ & _ & dst & src & k & Hargs & Hd & Hresult & Hend).
   injection Hargs as <- <-.
   assert (Hoff : 0 <= off <= 16).
-  { destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]; injection H as <- <- <- <- <- <-; lia. }
+  { clear -Hcases. destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]; injection H as <- <- <- <- <- <-; lia. }
   assert (Hk : k = 16 - off).
   { eapply terminated_length_unique; [exact (proj1 Hd)|exact (proj1 (strdup_fixture_domain off Hoff))]. }
   subst k. destruct (string_copy_cells _ _ _ _ _ a Hresult) as [Hb Ha]. rewrite Hb, Ha, Hend.
+  clear -Hcases end_return.
   destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]; injection H as <- <- <- <- <- <-;
     destruct end_return; vm_compute; repeat split; reflexivity.
 Qed.
