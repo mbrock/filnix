@@ -63,6 +63,28 @@ fi
 grep -E 'stdio: [0-9]+ files, 3 differ, 1 stale' "$work/rejected"
 grep -E 'getopt: [0-9]+ files, 0 differ, 1 stale' "$work/rejected"
 
+# The whole-image slices: a changed atom, a missing decoder, a reordered
+# join and two stale slices must all fail.
+python3 - "$work/staged/hello" <<'PY'
+from pathlib import Path
+import re
+import sys
+hello = Path(sys.argv[1])
+p = hello / 'HelloImageCode01.v'
+p.write_text(re.sub(r'TAtom "([^"]+)"', r'TAtom "\1_changed"', p.read_text(), count=1))
+(hello / 'HelloImageDec03.v').unlink()
+p = hello / 'HelloImageTerm.v'
+first, second = re.findall(r'hello_image_items_\d+', p.read_text().split('Definition hello_image_term')[1])[:2]
+p.write_text(p.read_text().replace(f'{first} ++ {second}', f'{second} ++ {first}', 1))
+(hello / 'HelloImageCode999.v').write_text('stale\n')
+(hello / 'HelloImageDec99.v').write_text('stale\n')
+PY
+if python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged" \
+    --directory hello >"$work/rejected-hello"; then
+  echo "generator accepted corrupt whole-image slices" >&2; exit 1
+fi
+grep -E 'hello: [0-9]+ files, 3 differ, 2 stale' "$work/rejected-hello"
+
 # Exercise the style-sync CLI in an isolated copy, never in the real manifests.
 mkdir -p "$work/nanofil/rocq/scripts/glibc-code" "$work/nanofil/rocq/glibc/string"
 cp "$here/sync-proof-styles.py" "$work/nanofil/rocq/scripts/glibc-code/"
@@ -151,4 +173,20 @@ if python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" \
 fi
 grep -F 'missing function in linked units: absent_lane_function' "$work/missing.log"
 grep -F 'fixture row Strcmp|strcmp|string/strcmp.os|__GI_strcmp absent_lane_function' "$work/missing.log"
-echo 'code generator: byte parity, corrupt-fixture rejection, manifest proof styles and missing-function rejection passed'
+
+# The whole-image layout owns one fixture and selects nothing; a row that
+# names functions must stop before anything is linked.
+mkdir -p "$work/nanofil/rocq/glibc/hello"
+cat >"$work/nanofil/rocq/glibc/hello/code.toml" <<'TOML'
+layout = "linked_image"
+mode = "checked"
+fixtures = '''
+HelloImage|||main
+'''
+TOML
+if python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" --directory hello \
+    --output "$work/linked-refused" >"$work/linked-refused.log" 2>&1; then
+  echo 'generator accepted a whole-image row that selects functions' >&2; exit 1
+fi
+grep -F 'linked_image layout owns the HelloImage fixture and selects no functions' "$work/linked-refused.log"
+echo 'code generator: byte parity, corrupt-fixture rejection, manifest proof styles and missing-function and whole-image row rejection passed'

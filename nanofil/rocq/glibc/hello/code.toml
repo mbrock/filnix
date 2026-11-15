@@ -29,3 +29,17 @@ compare = "string/Strchr"
 fixtures = '''
 HelloStrchrImage|||__GI_strchr __GI___strchrnul
 '''
+
+# The same image, whole. slice.py cuts it at whole items and blocks, and the
+# generator decodes the slices in groups, so no file decodes the whole term.
+[[batch]]
+layout = "linked_image"
+mode = "checked"
+ctors = true
+roots = "main"
+objects = "checks.x86_64-linux.nanofil-hello-fixture.captured"
+object_prefix = "libhello_a-"
+units_files = ["survey/glibc/run/units.txt", "survey/glibc/run/hello-siblings.txt"]
+fixtures = '''
+HelloImage|||
+'''

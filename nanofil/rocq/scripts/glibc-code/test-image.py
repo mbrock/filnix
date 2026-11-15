@@ -80,4 +80,33 @@ with tempfile.TemporaryDirectory() as tmp:
             raise AssertionError(f"accepted a changed sibling: {new}")
         except ValueError as error:
             assert new in str(error) and time.monotonic() - started < 1, error
-print("image selection: alias closure, exact terms, eight refusals and two unit-list refusals passed")
+
+# The whole image decodes in groups of slices, in slice order, and a group
+# counts the block files that a slice imports.
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp)
+    def slice_file(n, size, uses=""):
+        imports = f"From Glibc Require Import {uses}.\n" if uses else ""
+        (out / f"HelloImageCode{n}.v").write_text(imports + "x" * size + "\n")
+    slice_file("01", 400_000)
+    slice_file("03", 300_000)
+    slice_file("02", 1_000, "HelloImageCode03")
+    slice_file("04", 600_000)
+    (out / "HelloImageTerm.v").write_text("Definition hello_image_term : term :=\n"
+        "  TApp \"module\" [TList (hello_image_items_01 ++ hello_image_items_02 ++ hello_image_items_04)].\n")
+    generate["image_decoders"](out, 321, "main", "(** provenance *)\n")
+    assert sorted(p.name for p in out.glob("HelloImageDec*.v")) == ["HelloImageDec01.v", "HelloImageDec02.v"]
+    assert "Import HelloImageCode01 HelloImageCode02." in (out / "HelloImageDec01.v").read_text()
+    assert "hello_image_items_01 ++ hello_image_items_02." in (out / "HelloImageDec01.v").read_text()
+    assert "Import HelloImageCode04." in (out / "HelloImageDec02.v").read_text()
+    joined = (out / "HelloImageCode.v").read_text()
+    assert "hello_image_md_01 ++ hello_image_md_02." in joined and "(** provenance *)" in joined
+    assert "exact hello_image_dec_02." in joined
+    # A join that names a slice with no file stops generation.
+    (out / "HelloImageCode04.v").unlink()
+    try:
+        generate["image_decoders"](out, 321, "main", "")
+        raise AssertionError("accepted a join that names a missing slice")
+    except FileNotFoundError:
+        pass
+print("image selection: alias closure, exact terms, eight refusals and two unit-list refusals, ordered decode groups and a missing slice passed")
