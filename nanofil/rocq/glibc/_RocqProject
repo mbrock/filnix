@@ -223,6 +223,7 @@ stdio/FormatterRegistration.v
 stdio/FormatterStringTable.v
 stdio/FormatterStringDispatch.v
 stdio/FormatterStringLength.v
+stdio/FormatterStringWrite.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
