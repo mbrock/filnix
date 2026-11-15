@@ -332,6 +332,7 @@ libio/LibioPutsNl.v
 getopt/GetoptClamp.v
 getopt/GetoptDash.v
 getopt/GetoptLongDiag.v
+getopt/GetoptDiagFx.v
 getopt/GetoptSkipTest.v
 hello/HelloGlibcDebts.v
 libio/LibioCleanupFpLock.v
