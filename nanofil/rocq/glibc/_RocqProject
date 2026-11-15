@@ -444,6 +444,7 @@ hello/HelloCloseDispatch.v
 hello/HelloCloseStdout.v
 hello/HelloCloseDiagnostic.v
 hello/HelloCloseNamed.v
+hello/HelloCloseCallback.v
 hi_atexit/HiAtexitXsputnRules.v
 getopt/GetoptLongPfxSet.v
 hi_atexit/HiAtexitOutputState.v
