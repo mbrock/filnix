@@ -389,9 +389,10 @@ Proof.
       rewrite snapshot_values_regions object_region_allocated Z.eqb_refl. reflexivity.
 Qed.
 
-(** Reading the hidden snapshot pointer changes only frame state, not
-    memory ownership. The rule [wp_va_args] binds that pointer at the
-    requested offset and continues the proof. *)
+(** A function locates its copied arguments before reading them.
+    This operation adds an offset to the pointer saved on entry and
+    stores the result in a local variable. It does not change memory
+    or require ownership of the argument cells. *)
 Lemma wp_va_args f e ls l d off rest j p Φ :
   lookup va_snapshot e = Some (WPtr p) ->
   ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e)
@@ -420,11 +421,12 @@ Proof.
   split; [exact (rule_va_arg _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hargs Hres) | exact Hrest].
 Qed.
 
-(** Reading a pointer argument changes only the mutable cursor, even
-    when that argument is a terminating null pointer. The rule
-    [wp_va_arg_pointer] returns the snapshot cell and all additional
-    source pieces unchanged to the continuation. *)
-Lemma wp_va_arg_pointer f e ls l d args rest j cb cr sb sr off x ps Φ :
+(** Reading a pointer argument changes the cursor, not the object that
+    the pointer addresses. The caller lends any ownership share of that
+    target, including a discarded share, to recover its capability.
+    The cursor and snapshot retain full ownership. The continuation
+    receives every source share unchanged and the advanced cursor. *)
+Lemma wp_va_arg_pointer_shared f e ls l d args rest j cb cr sb sr off x dq ps Φ :
   map2_option (value_x ge e) [P] args = Some [WPtr (mkPtr cb (Obj cb))] ->
   cb mod 8 = 0 -> 0 < sb -> 0 <= off -> sb + off + 8 <= r_end sr -> r_end sr <= 2 ^ 48 ->
   (sb + off) mod 8 = 0 -> 0 <= ptr_addr x < 2 ^ 64 ->
@@ -435,9 +437,9 @@ Lemma wp_va_arg_pointer f e ls l d args rest j cb cr sb sr off x ps Φ :
     wi m w h -> wi (store_bytes m cb 8 (sb + off + 8)) w
       (overwrite (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) h)) ->
   pts (va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb))) -∗
-  live sb sr -∗ pcell sb off x -∗ pts ps -∗
+  live sb sr -∗ pcell sb off x -∗ ptsq dq ps -∗
   ▷ (pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
-    live sb sr -∗ pcell sb off x -∗ pts ps -∗
+    live sb sr -∗ pcell sb off x -∗ ptsq dq ps -∗
     WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : vexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d P VaArg args :: rest) j)) : vexpr) {{ Φ }}.
 Proof.
@@ -445,29 +447,28 @@ Proof.
   set (before := va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb))).
   set (after := va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))).
   set (reads := [(PLive sb, VLive sr); (PAux sb off, VAux (ptr_cap x))] ++
-    cell sb off (ptr_addr x) ++ ps).
+    cell sb off (ptr_addr x)).
   iIntros "Hcursor Hsl Hsc Hps HK".
-  iAssert (pts (before ++ reads)) with "[Hcursor Hsl Hsc Hps]" as "Hpieces".
+  iAssert (pts (before ++ reads)) with "[Hcursor Hsl Hsc]" as "Hpieces".
   { rewrite pts_app. iFrame "Hcursor".
     replace reads with ([(PLive sb, VLive sr)] ++
-      ((PAux sb off, VAux (ptr_cap x)) :: cell sb off (ptr_addr x)) ++ ps) by reflexivity.
+      ((PAux sb off, VAux (ptr_cap x)) :: cell sb off (ptr_addr x))) by reflexivity.
     rewrite !pts_app.
-    iFrame "Hsl Hsc Hps". }
+    iFrame "Hsl Hsc". }
   iDestruct (pts_keys_nodup with "Hpieces") as %Hnd.
   rewrite fmap_app in Hnd. apply NoDup_app in Hnd as (_ & Hseparate & _).
-  iApply (wp_va_arg f e ls l d P args rest j (mkPtr cb (Obj cb)) (WPtr x)
-    (before ++ reads) (after ++ reads) (fun m => store_bytes m cb 8 (sb + off + 8))
-    with "Hpieces [HK]").
-  - exact Hargs.
+  iApply (wp_write_with registry wi ge (ptsq dq ps) (fun m => all_agree m ps)
+    (before ++ reads) (after ++ reads) _ _ []
+    (fun m => store_bytes m cb 8 (sb + off + 8)) with "Hpieces Hps [HK]").
   - rewrite !fmap_app. unfold before, after, va_cursor_ps, cell. reflexivity.
-  - intros m (Hagree & Hd & _).
+  - iIntros (σ) "Hσ Hps". iDestruct (ptsq_facts with "Hσ Hps") as %(Hagree & _).
+    done.
+  - intros m fuel (Hagree & Hd & _) Hps.
     apply all_agree_app in Hagree as [Hcur Hreads].
     unfold before, va_cursor_ps in Hcur. cbn [all_agree fst snd] in Hcur.
     destruct Hcur as (Hclive & Hcaux & Hcbytes).
     unfold reads in Hreads. cbn [all_agree fst snd] in Hreads.
-    destruct Hreads as (Hslive & Hsaux & Hrest).
-    change (all_agree m (cell sb off (ptr_addr x) ++ ps)) in Hrest.
-    destruct (proj1 (all_agree_app m (cell sb off (ptr_addr x)) ps) Hrest) as [Hsbytes Hps].
+    destruct Hreads as (Hslive & Hsaux & Hsbytes).
     destruct (cell_bounds _ _ _ _ _ Hclive Hcbytes) as [Hc0 Hcend].
     destruct (cell_store_ok m cb cr 0 cb (sb + off + 8) Hd Hclive Hc0 ltac:(lia) ltac:(lia))
       as [Hnew Hframe].
@@ -478,8 +479,7 @@ Proof.
         + exact (list_elem_of_fmap_2 fst _ _ Hin).
       - apply (all_agree_elem _ reads k v); [|exact Hin].
         unfold reads. cbn [all_agree fst snd]. split; [exact Hslive |].
-        split; [exact Hsaux |].
-        apply (proj2 (all_agree_app m (cell sb off (ptr_addr x)) ps)). auto. }
+        split; [exact Hsaux | exact Hsbytes]. }
     assert (Hslive' : live_at (store_bytes m cb 8 (sb + off + 8)) sb sr).
     { exact Hslive. }
     assert (Hsaux' : agree_piece (store_bytes m cb 8 (sb + off + 8))
@@ -488,7 +488,7 @@ Proof.
     assert (Hsbytes' : all_agree (store_bytes m cb 8 (sb + off + 8))
       (cell sb off (ptr_addr x))).
     { apply all_agree_intro. intros k v Hin. apply (all_agree_elem _ reads k v Hframe_reads).
-      unfold reads. apply elem_of_app. right. apply elem_of_app. left. exact Hin. }
+      unfold reads. apply elem_of_app. right. exact Hin. }
     assert (Hcursor : load_bytes m cb 8 = sb + off).
     { replace cb with (cb + 0) at 1 by lia.
       rewrite (cell_load m cb cr 0 (sb + off) (cb + 0) Hclive Hcbytes eq_refl).
@@ -499,6 +499,8 @@ Proof.
       exact (aux_piece_holds _ _ _ _ _ Hclive Hcaux). }
     assert (Hresult_cap : aux_at (store_bytes m cb 8 (sb + off + 8)) (sb + off) = ptr_cap x).
     { unfold aux_at. pose proof (aux_piece_holds _ _ _ _ _ Hslive' Hsaux') as Haux.
+      (* Target agreement comes from the borrowed share. The cursor store
+         leaves regions unchanged, so its lifetime fact still applies. *)
       destruct Htarget as [Hnull | (xb & xr & [Hobj | Hro] & Hmember)].
       - apply aux_holds_live; [exact Haux | auto].
       - apply aux_holds_live; [exact Haux |]. right. exists xb, xr. split; [exact Hobj |].
@@ -506,7 +508,8 @@ Proof.
       - rewrite Hro in Haux |- *. apply (aux_holds_ro _ _ _ xr Haux).
         exact (all_agree_elem _ _ _ _ Hps Hmember). }
     split.
-    + apply (va_arg_pointer m (mkPtr cb (Obj cb)) (sb + off) (Ro sb)
+    + eapply rule_va_arg; [exact Hargs |].
+      apply (va_arg_pointer m (mkPtr cb (Obj cb)) (sb + off) (Ro sb)
         (store_bytes m cb 8 (sb + off + 8)) x).
       * cbn [ptr_addr ptr_cap]. apply (access_obj _ _ cr); [exact (proj1 Hclive) | lia | lia | exact Hcb].
       * exact Hcursor.
@@ -533,16 +536,34 @@ Proof.
     + apply Hwi; [|exact Hw]. intros k v Hin. apply Hown.
       apply elem_of_app. left. exact Hin.
     + intros k v Hin. apply Hown. apply elem_of_app. right. exact Hin.
-  - iNext. iIntros "Hpieces". iEval (rewrite pts_app) in "Hpieces".
+  - iNext. iIntros "Hpieces Hps". iEval (rewrite pts_app) in "Hpieces".
     iDestruct "Hpieces" as "[Hcursor Hreads]".
     iEval (rewrite /reads; rewrite pts_app) in "Hreads".
-    iDestruct "Hreads" as "[Hhead Htail]".
-    iEval (rewrite pts_app) in "Htail". iDestruct "Htail" as "[Hsc Hps]".
+    iDestruct "Hreads" as "[Hhead Hsc]".
     iEval (rewrite /pts !big_sepL_cons) in "Hhead".
     iDestruct "Hhead" as "(Hsl & Hsa & _)".
     iApply ("HK" with "Hcursor [Hsl] [Hsa Hsc] Hps");
       rewrite /live /pcell /pts; iFrame; done.
 Qed.
+
+(** The original full-ownership rule is the full-share instance. *)
+Lemma wp_va_arg_pointer f e ls l d args rest j cb cr sb sr off x ps Φ :
+  map2_option (value_x ge e) [P] args = Some [WPtr (mkPtr cb (Obj cb))] ->
+  cb mod 8 = 0 -> 0 < sb -> 0 <= off -> sb + off + 8 <= r_end sr -> r_end sr <= 2 ^ 48 ->
+  (sb + off) mod 8 = 0 -> 0 <= ptr_addr x < 2 ^ 64 ->
+  (ptr_cap x = CNone \/ exists xb xr,
+    (ptr_cap x = Obj xb \/ ptr_cap x = Ro xb) /\ (PLive xb, VLive xr) ∈ ps) ->
+  (forall m w h,
+    (forall k v, (k, v) ∈ va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb)) -> h !! k = Some v) ->
+    wi m w h -> wi (store_bytes m cb 8 (sb + off + 8)) w
+      (overwrite (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) h)) ->
+  pts (va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb))) -∗
+  live sb sr -∗ pcell sb off x -∗ pts ps -∗
+  ▷ (pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
+    live sb sr -∗ pcell sb off x -∗ pts ps -∗
+    WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : vexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d P VaArg args :: rest) j)) : vexpr) {{ Φ }}.
+Proof. apply (wp_va_arg_pointer_shared f e ls l d args rest j cb cr sb sr off x (DfracOwn 1) ps Φ). Qed.
 
 (** Reading an integer argument rounds the cursor up to an eight-byte
     boundary and loads either four or eight low bytes. The rule
