@@ -789,6 +789,14 @@ Qed.
     callers. These lemmas show that the [[stage|checked IR]] machine keeps
     the suspended value and taint environments synchronized. *)
 
+Local Opaque Z.pow load_bytes.
+
+Ltac pcase_outer x :=
+  lazymatch x with
+  | match ?y with _ => _ end => pcase_outer y
+  | _ => destruct x
+  end.
+
 Ltac pcases H :=
   repeat (cbv zeta in H;
     match type of H with
@@ -798,6 +806,25 @@ Ltac pcases H :=
         | _ => destruct x; try discriminate H
         end
     end).
+
+(** A let instruction leaves suspended callers untouched, including when
+    allocation chooses a fresh base. This equation lets the stack proofs
+    reuse that fact without inspecting every operation again. *)
+Local Lemma let_tstep_callers pol ge e te pm paux d k o args cs :
+  let_tstep pol ge e (mkPState te cs pm paux) d k o args =
+  match let_tstep pol ge e (mkPState te [] pm paux) d k o args with
+  | TNext ps => TNext (mkPState (ps_tenv ps) cs (ps_mem ps) (ps_aux ps))
+  | TFresh f => TFresh (fun base =>
+      mkPState (ps_tenv (f base)) cs (ps_mem (f base)) (ps_aux (f base)))
+  | other => other
+  end.
+Proof.
+  unfold let_tstep, check_ptr_bounds_taint.
+  repeat (cbn beta iota zeta; cbn [ps_tenv ps_callers ps_mem ps_aux];
+    first [reflexivity | lazymatch goal with
+      | |- (match ?x with _ => _ end) = _ => pcase_outer x
+      end]).
+Qed.
 
 (** A step from empty caller stacks keeps value and taint callers synchronized. *)
 Lemma pstep_nil_callers pol ge fr te m pm paux fuel c' ps' :
@@ -838,21 +865,11 @@ Proof.
       cbn [inst_tstep ps_tenv ps_callers ps_mem ps_aux fr_env] in Et; cbv zeta in Et; try discriminate Et.
     + (* Let *)
       assert (Hps_nil : ps_callers ps0 = []).
-      { unfold let_tstep, check_ptr_bounds_taint in Et;
-          destruct (is_zero_idiom o k args); [injection Et as <-; reflexivity|];
-          destruct o; try discriminate Et;
-          repeat (cbv zeta in Et;
-            match type of Et with
-            | context [match ?x with _ => _ end] =>
-                lazymatch x with
-                | context [match _ with _ => _ end] => fail
-                | _ => destruct x; try discriminate Et
-                end
-            end);
-          injection Et as <-; reflexivity. }
+      { pose proof (let_tstep_callers pol ge (fr_env fr) te pm paux d k o args []) as H.
+        rewrite Et in H. injection H as H. rewrite H. reflexivity. }
       destruct out as [| |g xs pd| |]; cbn in Es; try discriminate Es.
       * injection Es as <-; exists []; split; [reflexivity | symmetry; exact Hps_nil].
-      * exfalso.
+      * exfalso. clear - Eis Edr Ed.
         destruct (special_let o) eqn:Esl;
           [destruct o; try discriminate Esl; cbn [inst_step] in Eis; pcases Eis;
              unfold bind_res in Eis; pcases Eis; inversion Eis; subst;
@@ -944,6 +961,7 @@ Proof.
         try (destruct (call_frame g xs); discriminate Es); try discriminate Es.
       injection Es as _ <-. destruct (kk base) as [[? ?] ?]; reflexivity. }
   split; [exact Hc|].
+  clear - Et Ed.
   unfold tstep in Et; cbn [c_frame c_fuel ps_tenv ps_callers ps_mem ps_aux] in Et; rewrite Ed in Et.
   destruct (fr_at fr) as [| |l [|i rest] j]; try discriminate Et.
   - destruct (fuel =? 0); [discriminate Et|]; destruct (find_block _ _); [|discriminate Et];
@@ -952,10 +970,8 @@ Proof.
   - destruct i as [d kk o args | | | | | | x sz | | ];
       cbn [inst_tstep ps_tenv ps_callers ps_mem ps_aux fr_env] in Et; cbv zeta in Et;
       try solve [pcases Et; discriminate Et].
-    + unfold let_tstep, check_ptr_bounds_taint in Et.
-      destruct (is_zero_idiom o kk args); [discriminate Et|].
-      destruct o; try discriminate Et; try solve [pcases Et; discriminate Et].
-      pcases Et; injection Et as <-; reflexivity.
+    + pose proof (let_tstep_callers pol ge (fr_env fr) te pm paux d kk o args []) as H.
+      rewrite Et in H. injection H as H. rewrite H. reflexivity.
     + injection Et as <-; reflexivity.
 Qed.
 
@@ -1009,55 +1025,45 @@ Proof.
         | Exec _ [] (JRet v) => True
         | Exec _ [] JRetVoid => True
         | _ =>
+            tstep pol ge c ps =
             match tstep pol ge c0 ps0 with
             | TNext ps0' =>
-                tstep pol ge c ps =
                   TNext (mkPState (ps_tenv ps0') (ps_callers ps0' ++ pcs_tcallers pcs)
                                   (ps_mem ps0') (ps_aux ps0'))
-            | TDone ots => tstep pol ge c ps = TDone ots
+            | TDone ots => TDone ots
             | TFresh tps0 =>
-                tstep pol ge c ps =
                   TFresh (fun base =>
                     mkPState (ps_tenv (tps0 base)) (ps_callers (tps0 base) ++ pcs_tcallers pcs)
                              (ps_mem (tps0 base)) (ps_aux (tps0 base)))
-            | TFault why => tstep pol ge c ps = TFault why
-            | TStuck why => tstep pol ge c ps = TStuck why
+            | TFault why => TFault why
+            | TStuck why => TStuck why
             end
         end
     end).
-  { unfold tstep, c0, ps0, c, ps; cbn [c_frame c_fuel ps_tenv ps_callers ps_mem ps_aux].
-    destruct (fr_doomed fr); [split; reflexivity|].
-    destruct (fr_at fr) as [xs l | l from | l [|i rest] j]; auto.
-    - destruct (fuel =? 0); [reflexivity|].
-      destruct (find_block _ _); [|reflexivity].
-      destruct (phis_tenv _ _ _); reflexivity.
-    - destruct j as [t | v t1 t2 | v | vs | | ]; auto;
-        cbn [jump_tstep ps_tenv ps_callers ps_mem ps_aux]; cbv zeta; try reflexivity.
-      destruct (value_t te W v) as [[tv| |]|]; try reflexivity.
-      destruct (t_branch tv); reflexivity.
-    - destruct i as [d k o args | d o args lw | w off v av | off v av es | r cl args | r cl args | x sz | file line | tq];
-        cbn [inst_tstep ps_tenv ps_callers ps_mem ps_aux fr_env]; cbv zeta; try reflexivity.
-      + unfold let_tstep, check_ptr_bounds_taint; cbn [ps_tenv ps_callers ps_mem ps_aux app]; cbv zeta.
-        destruct (is_zero_idiom o k args); [reflexivity|].
-        destruct o; try reflexivity;
-          repeat (cbv zeta; cbn [ps_tenv ps_callers ps_mem ps_aux app];
-            match goal with |- context [match ?x with _ => _ end] =>
-              lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x; try reflexivity end end).
-      + destruct (map_option _ _); [|reflexivity]; destruct (flight_cap_t _ _); [|reflexivity];
-          destruct (op_checks_vartime _ _ _ && _); reflexivity.
-      + repeat (cbv zeta; match goal with |- context [match ?x with _ => _ end] =>
-          lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x; try reflexivity end end).
-      + repeat (cbv zeta; match goal with |- context [match ?x with _ => _ end] =>
-          lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x; try reflexivity end end).
-      + destruct cl as [| |fn]; try reflexivity.
-        destruct (map_option (arg_t te) args) as [wts|]; [|reflexivity].
-        destruct (find_fn ge fn) as [[gf|outfn]|]; try reflexivity.
-        * destruct (variadic_func gf); [reflexivity|].
-          destruct (call_tenv gf wts); reflexivity.
-        * destruct (lookup fn (ge_globals ge)); [reflexivity|].
-          destruct (is_free_name fn); [|reflexivity].
-          repeat (cbv zeta; match goal with |- context [match ?x with _ => _ end] =>
-            lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x; try reflexivity end end). }
+  { clear Hsc. abstract (
+      unfold tstep, c0, ps0, c, ps;
+      cbn [c_frame c_fuel ps_tenv ps_callers ps_mem ps_aux];
+      destruct (fr_doomed fr); [split; reflexivity|];
+      destruct (fr_at fr) as [xs l | l from | l [|i rest] j]; auto;
+      [ destruct (fuel =? 0); [reflexivity|];
+        destruct (find_block _ _); [|reflexivity];
+        destruct (phis_tenv _ _ _); reflexivity
+      | destruct j as [t | v t1 t2 | v | vs | | ]; auto;
+        cbn [jump_tstep ps_tenv ps_callers ps_mem ps_aux]; cbv zeta; try reflexivity;
+        destruct (value_t te W v) as [[tv| |]|]; try reflexivity;
+        destruct (t_branch tv); reflexivity
+      | destruct i as [d k o args | d o args lw | w off v av | off v av es | r cl args | r cl args | x sz | file line | tq];
+        cbn [inst_tstep ps_tenv ps_callers ps_mem ps_aux fr_env]; cbv zeta; try reflexivity;
+        try solve [
+          pose proof (let_tstep_callers pol ge (fr_env fr) te pm paux d k o args []) as Hnil;
+          pose proof (let_tstep_callers pol ge (fr_env fr) te pm paux d k o args (pcs_tcallers pcs)) as Hcs;
+          destruct (let_tstep pol ge (fr_env fr) (mkPState te [] pm paux) d k o args);
+          rewrite Hcs; try reflexivity; injection Hnil as Hnil; rewrite Hnil; reflexivity];
+        try unfold let_tstep, check_ptr_bounds_taint;
+        repeat (cbn beta iota zeta; cbn [ps_tenv ps_callers ps_mem ps_aux app];
+          first [reflexivity | lazymatch goal with
+            | |- (match ?x with _ => _ end) = _ => pcase_outer x
+            end]) ]). }
   (* Handle the two returning jumps explicitly, then use Htstep_nonret everywhere else. *)
   destruct (fr_doomed fr) eqn:Ed.
   { unfold pstep, tstep, c0, ps0, c, ps; cbn [c_frame]; rewrite Ed. eexists; reflexivity. }
@@ -1106,19 +1112,17 @@ Proof.
         destruct (returned_env r RetVoid (fr_env cf)) as [e'|] eqn:Ere; cbn;
         try reflexivity; eexists; reflexivity.
   - (* Non-return point *)
-    assert (Ht : match tstep pol ge c0 ps0 with
+    assert (Ht : tstep pol ge c ps = match tstep pol ge c0 ps0 with
                  | TNext ps0' =>
-                     tstep pol ge c ps =
                        TNext (mkPState (ps_tenv ps0') (ps_callers ps0' ++ pcs_tcallers pcs)
                                        (ps_mem ps0') (ps_aux ps0'))
-                 | TDone ots => tstep pol ge c ps = TDone ots
+                 | TDone ots => TDone ots
                  | TFresh tps0 =>
-                     tstep pol ge c ps =
                        TFresh (fun base =>
                          mkPState (ps_tenv (tps0 base)) (ps_callers (tps0 base) ++ pcs_tcallers pcs)
                                   (ps_mem (tps0 base)) (ps_aux (tps0 base)))
-                 | TFault why => tstep pol ge c ps = TFault why
-                 | TStuck why => tstep pol ge c ps = TStuck why
+                 | TFault why => TFault why
+                 | TStuck why => TStuck why
                  end).
     { destruct (fr_at fr) as [| |l [|] []] eqn:Eat; try exact Htstep_nonret;
         [exfalso; exact (Hnr1 l v eq_refl) | exfalso; exact (Hnr3 l eq_refl)]. }
@@ -1590,6 +1594,8 @@ Definition pibyte b o x pb : iProp Σ :=
 Definition ppcell b o (p : ptr) pb tc : iProp Σ :=
   pts ((PAux b o, VAux (ptr_cap p)) :: cell b o (ptr_addr p)) ∗
   ppts ((PPAux b o, VPAux tc) :: pcell_ps b o pb).
+
+Local Hint Opaque pts ptsq ppts pptsq : typeclass_instances.
 
 (** Fractional memory ownership reveals the physical facts needed by a
     read, without granting permission to change the poison heap. *)
