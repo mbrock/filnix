@@ -2125,8 +2125,8 @@ Lemma pure_scalar_doomed : forall ge fr m d k o args out0,
   doomed_result ge fr m (Let d k o args) out0 = Some (out0, None).
 Proof.
   intros ge fr m d k o args out0 Hd Hp.
-  unfold doomed_result; rewrite Hd.
-  destruct k; destruct o; try discriminate Hp; destruct out0 as [|[]| | |]; reflexivity.
+  rewrite doomed_result_other by (destruct o; try discriminate Hp; destruct k; reflexivity).
+  destruct out0 as [|[]| | |]; rewrite Hd; reflexivity.
 Qed.
 
 Lemma let_tstep_pure_scalar : forall pol ge e ps d k o args,
@@ -2185,6 +2185,33 @@ Local Lemma pstep_next_iff pol ge c ps c' ps' :
 Proof.
   unfold pstep. destruct (tstep pol ge c ps), (step ge c);
     split; intros H; try discriminate H; injection H as <- <-; reflexivity.
+Qed.
+
+(** The taint checker rejects [CheckAhead] before it can execute.
+    Other instructions cannot mark a healthy frame as doomed. These
+    facts let both executions omit the same check for deferred faults. *)
+Local Lemma inst_tstep_next_not_ahead pol ge fr ps i ps' :
+  inst_tstep pol ge fr ps i = TNext ps' -> ahead_inst i = false.
+Proof.
+  destruct i; try reflexivity. destruct k; try reflexivity.
+  destruct o; try reflexivity. destruct args as [|v [|v' args]]; try reflexivity.
+  discriminate.
+Qed.
+
+Local Lemma step_exec_plain ge c l i rest j :
+  fr_at (c_frame c) = Exec l (i :: rest) j ->
+  fr_doomed (c_frame c) = None -> ahead_inst i = false ->
+  step ge c =
+    or_stuck "instruction"
+      (match inst_step ge (c_frame c) (c_mem c) i with
+       | None => None
+       | Some out => Some (inst_next c l rest j out None)
+       end).
+Proof.
+  intros Hat Hd Ha. unfold step. rewrite Hat, Hd.
+  destruct (inst_step ge (c_frame c) (c_mem c) i) as [out|]; [|reflexivity].
+  rewrite doomed_result_other by exact Ha.
+  destruct out as [|[]| | |]; rewrite Hd; reflexivity.
 Qed.
 
 (** When branch checking is enabled, a single instrumented step keeps
@@ -2305,7 +2332,12 @@ Proof.
         eexists; split; [reflexivity|].
         unfold ct_rel; cbn; repeat split; auto; congruence.
   - (* Instruction *)
-    unfold step in Hp1; rewrite Eat1, Hd1 in Hp1; cbn [or_stuck] in Hp1.
+    assert (Ha : ahead_inst i = false).
+    { apply (inst_tstep_next_not_ahead pol ge (c_frame c1) ps i ps').
+      exact (f_equal fst Hp1). }
+    rewrite (step_exec_plain _ _ _ _ _ _ Eat1 Hd1 Ha) in Hp1.
+    rewrite (step_exec_plain _ _ _ _ _ _ (eq_sym Hat) Hd2 Ha).
+    cbn [or_stuck] in Hp1.
     destruct i as [d k o args | d o args lw | w off v av | off v av es | r cl args | r cl args | x sz | file line | tq];
       cbn [inst_tstep] in Hp1; try discriminate Hp1.
     + (* Let *)
@@ -2380,7 +2412,7 @@ Proof.
              cbn beta iota zeta in Hp1.
              destruct (op_res o k xs1 (c_mem c1)) as [[[r1| |] m1'| |]|] eqn:Eop1;
                try (try (rewrite pure_scalar_doomed in Hp1 by assumption); cbn in Hp1; discriminate Hp1).
-             rewrite pure_scalar_doomed in Hp1 by assumption; cbn in Hp1.
+             cbn in Hp1.
              injection Hp1 as <- <-.
              destruct (scalar_let_step_rel pol ge _ _ (c_mem c1) (c_mem c2) ps d k o args cls wts ts xs1 r1 m1'
                          Epure HkP HkA HkF
@@ -2396,14 +2428,15 @@ Proof.
              rewrite Ecls, Ewts, Ets; cbv zeta; rewrite Evt.
              rewrite inst_step_let by (apply pure_scalar_special_let; exact Epure); cbv zeta.
              rewrite Ecls; cbn beta iota zeta; rewrite Exs2; cbn beta iota zeta.
-             rewrite Eop2; rewrite pure_scalar_doomed by assumption; cbn.
+             rewrite Eop2; cbn.
              eexists; split; [reflexivity|].
              unfold ct_rel; cbn; repeat split; auto; congruence. }
         -- (* pure_scalar_op o = false *)
            unfold let_tstep in Hp1; rewrite Ezero in Hp1.
            destruct o; try discriminate Epure; try discriminate Hp1;
              try rename align into al;
-             try (rewrite inst_step_let in Hp1 by reflexivity).
+             try (rewrite inst_step_let in Hp1 by reflexivity);
+             try (rewrite inst_step_let by reflexivity).
            ++ (* Copy *)
               destruct args as [|v [|]]; try discriminate Hp1.
               destruct (value_t (ps_tenv ps) k v) as [wt|] eqn:Ewt; [|discriminate Hp1].
@@ -2510,7 +2543,7 @@ Proof.
               destruct Heq_all as (-> & -> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               cbn [ptr_addr ptr_cap] in Hp1.
-              destruct (cap_eqb qc2 c2p) eqn:Ece; [|cbn in Hp1; rewrite Hd1 in Hp1; discriminate Hp1].
+              destruct (cap_eqb qc2 c2p) eqn:Ece; [|cbn in Hp1; discriminate Hp1].
               unfold access_res, renew_res in Hp1; rewrite Hreg in Hp1.
               destruct (cap_access_res c2p (m_regions (c_mem c2)) (raw_address a2 lo) (hi - lo) r al) as [[[]|why|why]|] eqn:Ecap;
                 cbn in Hp1; rewrite ?Hd1 in Hp1; cbn in Hp1; try discriminate Hp1.
@@ -2557,7 +2590,7 @@ Proof.
               destruct Heq_caps as (-> & -> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               cbn [ptr_addr ptr_cap] in Hp1.
-              destruct (cap_eqb lc2 c2p && cap_eqb hc2 c2p) eqn:Ece; [|cbn in Hp1; rewrite Hd1 in Hp1; discriminate Hp1].
+              destruct (cap_eqb lc2 c2p && cap_eqb hc2 c2p) eqn:Ece; [|cbn in Hp1; discriminate Hp1].
               unfold access_res, renew_res in Hp1; rewrite Hreg in Hp1.
               destruct (cap_access_res c2p (m_regions (c_mem c2)) (raw_address a2 lo) (hi - lo) r al) as [[[]|why|why]|] eqn:Ecap;
                 cbn in Hp1; rewrite ?Hd1 in Hp1; cbn in Hp1; try discriminate Hp1.
@@ -2597,7 +2630,7 @@ Proof.
               destruct Heq_all as (-> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               cbn [ptr_addr ptr_cap] in Hp1.
-              destruct (cap_eqb qc2 c2p) eqn:Ece; [|cbn in Hp1; rewrite Hd1 in Hp1; discriminate Hp1].
+              destruct (cap_eqb qc2 c2p) eqn:Ece; [|cbn in Hp1; discriminate Hp1].
               unfold access_res in Hp1; rewrite Hreg in Hp1.
               destruct (cap_access_res c2p (m_regions (c_mem c2)) (raw_address a2 lo) (hi - lo) r al) as [chk1|] eqn:Ecap; [|discriminate Hp1].
               cbn in Hp1.
@@ -2730,7 +2763,7 @@ Proof.
               destruct Ep as (-> & -> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               cbn [ptr_addr ptr_cap] in Hp1.
-              destruct (cap_eqb uc2 c2p && (us2 =? hi - lo)) eqn:Ece; [|cbn in Hp1; rewrite Hd1 in Hp1; discriminate Hp1].
+              destruct (cap_eqb uc2 c2p && (us2 =? hi - lo)) eqn:Ece; [|cbn in Hp1; discriminate Hp1].
               unfold access_res in Hp1; rewrite Hreg in Hp1.
               destruct (cap_access_res c2p (m_regions (c_mem c2)) (raw_address a2 lo) (hi - lo) r al) as [[[]|why|why]|] eqn:Ecap; cbn in Hp1; rewrite ?Hd1 in Hp1; try discriminate Hp1.
               cbn in Hp1; injection Hp1 as <- <-.
@@ -2791,10 +2824,7 @@ Proof.
               assert (Ha_eq : a1 = a2) by (destruct (Z.eq_dec a1 a2); [auto | exfalso; pose proof (proj1 Hwa n) as ->; discriminate Etba]).
               assert (Hc_eq : c1p = c2p) by (apply (cap_eq_of_not_all tc); [exact (proj2 Hwa) | intros ->; discriminate Etbc]).
               subst a2 c2p.
-              destruct (op_arg_classes (RawLoad t off) k) eqn:Eocls; try discriminate Hp1.
-              assert (Eclasses : l0 = [A]) by (destruct t, k; cbn in Eocls; congruence).
-              subst l0.
-              cbn in Hp1; rewrite Ewa1 in Hp1; cbn in Hp1.
+              cbn [op_arg_classes map2_option] in Hp1; rewrite Ewa1 in Hp1; cbn in Hp1.
               unfold int_load_res, access_res in Hp1; rewrite Hreg in Hp1.
               assert (Esz : match t with LdL | LdD => 8 | LdS => 4 | LdX => 10 | LdNarrow n => fst (narrow_type n) end = load_type_bytes t)
                 by (destruct t; reflexivity).
@@ -2808,7 +2838,8 @@ Proof.
                 mem_load_taint (ps_mem ps) (raw_address a1 off) (load_type_bytes t) = taint_all).
               { destruct (range_load_rel_nat (c_mem c1) (c_mem c2) (ps_mem ps) (Z.to_nat (load_type_bytes t)) (raw_address a1 off) Hmem)
                   as [Hall | Htall]; [left; exact (load_bytes_eq_on _ _ _ _ Hall) | right; exact Htall]. }
-              destruct t as [| | | | nt], k; cbn in Eocls; try discriminate Eocls; cbn in Hp1; try discriminate Hp1;
+              destruct t as [| | | | nt]; try (match goal with nt : narrow |- _ => destruct k end);
+                cbn in Hp1; try discriminate Hp1;
                 injection Hp1 as <- <-;
                 (split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; rewrite Ewa1, Ewa2; reflexivity|]);
                 unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn [andb orb];
@@ -3350,7 +3381,12 @@ Proof.
   unfold step, or_stuck in Es; rewrite Eat, Hd in Es.
   destruct i as [d k o args | d o args lw | w off v av | off v av es | r cl args | r cl args | x sz | file line | tq];
     cbn [inst_tstep] in Hp; try discriminate Hp;
-    try solve [exfalso; clear - Es Hd; cbn [inst_step] in Es; rewrite ?Hd in Es; cbn in Es; discriminate Es].
+    try solve [
+      match type of Es with
+      | context [inst_step _ _ _ (Loc _ _)] => idtac
+      | context [inst_step _ _ _ (Touch _)] => idtac
+      end;
+      exfalso; clear - Es Hd; cbn [inst_step] in Es; rewrite ?Hd in Es; cbn in Es; discriminate Es].
   - (* Let *)
     unfold let_tstep in Hp.
     destruct (is_zero_idiom o k args) eqn:Ez.
