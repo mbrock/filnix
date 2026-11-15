@@ -51,3 +51,10 @@ Strerror|__GI___strerror_r|string/_strerror.os locale/SYS_libc.os|__GI___strerro
 Errlist|__get_errlist|stdio-common/errlist.os|__get_errlist
 ErrlistData|_sys_errlist_internal _sys_errlist_internal_len|stdio-common/errlist-data-gen.os|
 '''
+
+[[batch]]
+layout = "formatter"
+mode = "checked"
+fixtures = '''
+Formatter|__vfprintf_internal|stdio-common/vfprintf-internal.os|__vfprintf_internal __printf_buffer
+'''

@@ -325,7 +325,7 @@ class Generator:
                 self.generate(manifest, output, batch)
         layout = cfg["layout"]
         checker = str(manifest.parent.relative_to(NF) / ("buffer-code.sh" if layout == "buffer" else "code.sh"))
-        if layout in ("stdio", "buffer"):
+        if layout in ("stdio", "buffer", "formatter"):
             run(["sha256sum", "-c", manifest.parent / ("buffer-fixtures.sha256" if layout == "buffer" else "fixtures.sha256")], cwd=self.capture)
         linked_cache = {}
         for row in rows(cfg["fixtures"]):
@@ -333,6 +333,8 @@ class Generator:
             if len(fields) not in (4, 5):
                 raise ValueError(f"expected NAME|ROOTS|UNITS|FUNCTIONS[|PROGRAM]: {row}")
             name, roots, paths, fns, *program = fields
+            if layout == "formatter" and name != "Formatter":
+                raise ValueError("formatter layout owns the Formatter fixture")
             roots = roots or cfg.get("roots", "")
             unit_rows = "- " + paths if paths else manifest_units(cfg)
             lower = fixture_prefix(name)
@@ -355,7 +357,7 @@ class Generator:
                 facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
                 block_facts = json.loads(run([NF / 'bin/nanofil', '--script', HERE / 'block-facts.pl',
                                               term, *fns.split(), *access_units], env=self.env))
-                for filename, text in source_tables(name, lower, facts, layout, NF,
+                for filename, text in source_tables(name, lower, facts, "libio" if layout == "formatter" else layout, NF,
                                                     block_definitions(block_facts)).items():
                     (output / filename).write_text(text)
                 bs = [b for r in block_facts for b in r['blocks']]
@@ -405,15 +407,30 @@ class Generator:
                 "getopt": f"user glibc's {unit_description} units linked from {roots}",
                 "stdio": "the pinned user-glibc 2.44 cancellation and printf-buffer completion units",
                 "buffer": "the pinned user-glibc 2.44 printf-buffer units",
+                "formatter": "the complete linked pinned user-glibc 2.44 vfprintf unit",
                 "image": f"GNU Hello linked with its {len(unit_names)} user glibc units from {roots}, "
                          f"restricted to {fns} and their alias targets by rocq/scripts/glibc-code/image.pl",
             }[layout]
             text = self.prolog("gallina.pl", ([] if layout in ("program", "stdlib") else ["--chunk"]) +
                                [lower, description, checker], linked)
-            if layout in ("hi_atexit", "getopt"):
+            if layout in ("hi_atexit", "getopt", "formatter"):
                 whole = self.work / "whole.v"
                 whole.write_text(text)
                 run(["python3", "-I", HERE / "slice.py", whole, output, layout])
+                if layout == "formatter":
+                    text = '''(** This module decodes the complete captured formatter, including its
+    unsupported paths. The decoding equality is not a formatting contract.
+    stdio/code.sh regenerates this file from the pinned capture. Do not edit. *)
+From Stdlib Require Import String ZArith List.
+From Glibc Require Import CodePrelude FormatterTerm.
+Import ListNotations.
+Open Scope string_scope.
+Open Scope Z_scope.
+'''
+                    definitions = decoded(lower, fns, "string").replace(
+                        "The function named n of the module, or an empty one.",
+                        "Lookup selects the named function, with an empty fallback when it is absent.")
+                    (output / (name + "Code.v")).write_text(text + definitions)
             else:
                 if layout in ("string", "libio"):
                     text += decoded(lower, fns, layout)
@@ -481,7 +498,7 @@ def main():
                     if old.exists():
                         stale.add(old)
             # Only numbered slices are exclusively owned by a slicer.
-            for prefix in (() if args.output else ("HiAtexit", "Getopt")):
+            for prefix in (() if args.output else ("HiAtexit", "Getopt", "Formatter")):
                 if any(p.name.startswith(prefix + "Code") for p in generated):
                     stale.update(p for p in target.glob(prefix + "Code[0-9]*.v") if not (out / p.name).exists())
             different = 0

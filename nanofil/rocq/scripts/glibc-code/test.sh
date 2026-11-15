@@ -9,6 +9,32 @@ python3 -I "$here/test-blocks.py"
 python3 -I "$here/test-source.py"
 python3 -I "$here/test-block-facts.py"
 python3 -I "$here/test-image.py"
+# A formatter block that exceeds the packing budget cannot be split or omitted.
+python3 - "$here/slice.py" "$work" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+work = Path(sys.argv[2])
+source = work / 'oversized.v'
+source.write_text('''From Stdlib Require Import String ZArith List Ascii.
+From Nanofil Require Import Term.
+Definition formatter_term : term :=
+  TApp "module" [TList [
+    TApp "func" [TAtom "f"; TAtom "export"; TAtom "void"; TList [];
+      TList [
+        TApp "block" [TAtom "start"; TList [];
+          TList [
+''' + '            TAtom "instruction";\n' * 501 + '''            TAtom "instruction"];
+          TAtom "ret"]]]
+  ]].
+''')
+out = work / 'oversized'
+out.mkdir()
+result = subprocess.run([sys.executable, '-I', sys.argv[1], source, out, 'formatter'],
+                        capture_output=True, text=True)
+assert result.returncode != 0 and 'AssertionError' in result.stderr, result
+assert not list(out.iterdir()), 'oversized block produced a partial fixture'
+PY
 python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
   --rocq-function glibc_strcmp >"$work/strcmp-skeleton"
 grep -F 'WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \
@@ -28,12 +54,13 @@ p = tree / 'stdio/PrintfBufferFileCode.v'
 p.write_text(p.read_text().replace('Proof. vm_compute. reflexivity. Qed.', 'Proof. exact I. Qed.', 1))
 (tree / 'stdio/PrintfBufferIoCode.v').unlink()
 (tree / 'getopt/GetoptCode99.v').write_text('stale\n')
+(tree / 'stdio/FormatterCode99.v').write_text('stale\n')
 PY
 if python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged" \
     --directory stdio --directory getopt >"$work/rejected"; then
   echo "generator accepted corrupt fixtures" >&2; exit 1
 fi
-grep -E 'stdio: [0-9]+ files, 3 differ, 0 stale' "$work/rejected"
+grep -E 'stdio: [0-9]+ files, 3 differ, 1 stale' "$work/rejected"
 grep -E 'getopt: [0-9]+ files, 0 differ, 1 stale' "$work/rejected"
 
 # Exercise the style-sync CLI in an isolated copy, never in the real manifests.

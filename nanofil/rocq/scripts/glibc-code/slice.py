@@ -1,6 +1,6 @@
 """Slice gallina.pl output at whole-item and whole-block boundaries.
 
-    python3 -I slice.py INPUT.v OUTDIR [hi_atexit|getopt]
+    python3 -I slice.py INPUT.v OUTDIR [hi_atexit|getopt|formatter]
 
 Both historical profiles use this packing algorithm. Only their budgets,
 definition names and presentation differ. The term lines remain unchanged.
@@ -13,8 +13,8 @@ BUDGET = 525  # lines of items or blocks in one file
 
 
 def main(src, outdir, profile="hi_atexit"):
-    budget = 500 if profile == "getopt" else BUDGET
-    prefix = "getopt" if profile == "getopt" else "hi"
+    budget = 500 if profile in ("getopt", "formatter") else BUDGET
+    prefix = profile if profile in ("getopt", "formatter") else "hi"
     lines = open(src, encoding="utf-8").read().split("\n")
     top = lines.index('  TApp "module" [TList [')
     end = lines.index("  ]].")
@@ -67,7 +67,7 @@ def main(src, outdir, profile="hi_atexit"):
         names = []
         chunk = []
         for b in blocks:
-            if profile == "getopt":
+            if profile in ("getopt", "formatter"):
                 assert len(b) <= budget
             if chunk and count(chunk) + len(b) > budget:
                 files.append(("blocks", chunk))
@@ -81,8 +81,8 @@ def main(src, outdir, profile="hi_atexit"):
         cur.append(item)
     flush()
 
-    if profile == "getopt":
-        render_getopt(files, outdir)
+    if profile in ("getopt", "formatter"):
+        render_getopt(files, outdir, profile)
         return
 
     unit_count = re.search(r"with its (\d+) user glibc units", "\n".join(header)).group(1)
@@ -142,35 +142,42 @@ def main(src, outdir, profile="hi_atexit"):
     print(n)
 
 
-def render_getopt(files, destination):
+def render_getopt(files, destination, profile="getopt"):
+    stem = "Formatter" if profile == "formatter" else "Getopt"
     header = [
         "(** This file contains part of glibc's checked option-parser module.",
         "    getopt/code.sh regenerates it from the pinned capture. Do not edit. *)",
         "", "From Stdlib Require Import String ZArith List Ascii.",
         "From Nanofil Require Import Term.",
     ]
+    if profile == "formatter":
+        header[:2] = [
+            "(** This file retains complete items or blocks of glibc's checked formatter.",
+            "    stdio/code.sh regenerates it from the pinned capture. Do not edit. *)",
+        ]
     for k, (kind, elements) in enumerate(files, 1):
-        uses = sorted(set(re.findall(r"getopt_blocks_(\d+)", str(elements))))
+        uses = sorted(set(re.findall(rf"{profile}_blocks_(\d+)", str(elements))))
         out = header.copy()
         if uses:
-            out.append("From Glibc Require Import " + " ".join(f"GetoptCode{n}" for n in uses) + ".")
+            out.append("From Glibc Require Import " + " ".join(f"{stem}Code{n}" for n in uses) + ".")
         out += ["Import ListNotations.", "Open Scope string_scope.", "Open Scope Z_scope.",
                 "", "(** Character atoms retain their byte values. *)",
                 "Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).",
                 "", f"(** These {kind} retain their order in the linked module. *)",
-                f"Definition getopt_{kind}_{k:02} : list term :=", "  ["]
+                f"Definition {profile}_{kind}_{k:02} : list term :=", "  ["]
         for j, element in enumerate(elements):
             out += element[:-1] + [element[-1] + (";" if j + 1 < len(elements) else "")]
         out += ["  ]."]
         assert len(out) <= 700
-        pathlib.Path(destination, f"GetoptCode{k:02}.v").write_text("\n".join(out) + "\n")
+        pathlib.Path(destination, f"{stem}Code{k:02}.v").write_text("\n".join(out) + "\n")
     ns = [f"{k:02}" for k, (kind, _) in enumerate(files, 1) if kind == "items"]
-    out = header + ["From Glibc Require Import " + " ".join(f"GetoptCode{n}" for n in ns) + ".",
+    out = header + ["From Glibc Require Import " + " ".join(f"{stem}Code{n}" for n in ns) + ".",
                     "Import ListNotations.", "Open Scope string_scope.", "",
                     "(** The linked module joins every generated item without changing its order. *)",
-                    "Definition getopt_term : term :=",
-                    '  TApp "module" [TList (' + " ++ ".join(f"getopt_items_{n}" for n in ns) + ")]."]
-    pathlib.Path(destination, "GetoptTerm.v").write_text("\n".join(out) + "\n")
+                    f"Definition {profile}_term : term :=",
+                    '  TApp "module" [TList (' + " ++ ".join(f"{profile}_items_{n}" for n in ns) + ")]."]
+    assert len(out) <= 700
+    pathlib.Path(destination, f"{stem}Term.v").write_text("\n".join(out) + "\n")
 
 
 if __name__ == "__main__":
