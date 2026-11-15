@@ -460,6 +460,7 @@ hello/HelloGetoptDiagGettext.v
 hello/HelloGetoptDiagTcb.v
 hello/HelloGetoptDiagLock.v
 hello/HelloGetoptDiagMsgs.v
+hello/HelloGettextSuffix.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v
