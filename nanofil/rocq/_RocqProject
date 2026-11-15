@@ -105,6 +105,10 @@ theories/hello_contracts/LibcDiagnosticLogic.v
 theories/hello_contracts/HelloStdio.v
 theories/hello_contracts/HelloDiagnosticChecks.v
 theories/hello_contracts/HelloConvDefs.v
+theories/hello_contracts/HelloConvCall.v
+theories/hello_contracts/HelloConvRpl.v
+theories/hello_contracts/HelloConvWindow.v
+theories/hello_contracts/HelloConvLoop.v
 theories/hello_contracts/HelloConv.v
 theories/hello_contracts/GetoptLogic.v
 theories/hello_contracts/HelloMain.v
