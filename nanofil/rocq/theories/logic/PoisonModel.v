@@ -1938,12 +1938,12 @@ Proof.
   assert (Hw_int : exists n1, w1 = WInt n1 /\ m1' = m1).
   { pose proof (Hm_indep m1) as E. rewrite Hop1 in E. injection E as <-.
     clear - Hpure HkP HkA HkF Hop1.
-    destruct o; try discriminate Hpure; destruct k; try contradiction;
+    destruct o; try discriminate Hpure;
       cbv beta iota zeta delta [op_res op_res_int float_integer additive_res alu] in Hop1;
       cbn in Hop1; try discriminate Hop1;
       repeat match type of Hop1 with
       | context [match ?x with _ => _ end] =>
-          lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x eqn:?; cbn in Hop1; try discriminate Hop1 end
+          lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x eqn:?; cbn in Hop1; try contradiction; try discriminate Hop1 end
       end;
       injection Hop1 as <-; eexists; split; reflexivity. }
   destruct Hw_int as (n1 & -> & ->).
@@ -3380,7 +3380,12 @@ Proof.
   pose proof (pstep_erases pol ge c ps) as Es; rewrite Hp in Es.
   unfold pstep in Hp; rewrite Es in Hp.
   unfold tstep in Hp; rewrite Hd, Eat in Hp.
-  unfold step, or_stuck in Es; rewrite Eat, Hd in Es.
+  assert (Ha : ahead_inst i = false).
+  { clear - Hp. destruct i; try reflexivity. destruct k; try reflexivity.
+    destruct o; try reflexivity. destruct args as [|v [|v' args]]; try reflexivity.
+    discriminate Hp. }
+  rewrite (step_exec_plain _ _ _ _ _ _ Eat Hd Ha) in Es.
+  unfold or_stuck in Es.
   destruct i as [d k o args | d o args lw | w off v av | off v av es | r cl args | r cl args | x sz | file line | tq];
     cbn [inst_tstep] in Hp; try discriminate Hp;
     try solve [
@@ -3436,11 +3441,7 @@ Proof.
            assert (Eop_al : op_res (Alloc al) k [WInt sz] (c_mem c) = op_res_int (Alloc al) k [WInt sz] (c_mem c))
              by (destruct k; reflexivity).
            rewrite Eop_al in Es; cbn [op_res_int] in Es.
-           assert (Ed_al : forall ge0 fr0 m0 out0, fr_doomed fr0 = None ->
-                     doomed_result ge0 fr0 m0 (Let d k (Alloc al) [v]) out0 = Some (out0, None))
-             by (intros ? ? ? [|[]| | |] H0; unfold doomed_result; rewrite H0; destruct k; reflexivity).
-           destruct (max_allocation_size <? sz) eqn:Ebig; cbn beta iota zeta in Es;
-             rewrite (Ed_al _ _ _ _ Hd) in Es; cbn in Es; [|discriminate Es].
+           destruct (max_allocation_size <? sz) eqn:Ebig; cbn in Es; [|discriminate Es].
            injection Es as <-.
            injection Hp as <-.
            split; [reflexivity | split; [reflexivity | exists d, k, al, v, sz; auto]].
