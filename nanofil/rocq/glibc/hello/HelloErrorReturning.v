@@ -95,7 +95,19 @@ Definition error_returned : iProp Σ :=
     either directly or through a callback. It then prints the message and
     restores cancellation. Flushing stderr still needs its own contract:
     the proof for closed stdout does not apply to that open stream. *)
-Lemma wp_call_error_returning_zero_loan
+Lemma wp_call_error_returning_zero_loans (RP RQ : iProp Σ)
+    (Hexchange_text : forall r en md, error_message_returned rfb rfreg eb ereg r en md ∗ U r en md ⊢ RP)
+    (Hstrloan : forall b, exists fr,
+      call_frame strerrorfn [WInt errnum;WPtr (mkPtr b (Obj b));WInt 1024] = Some fr /\
+      (⊢ obj b (heap_req 4 1024) -∗ RP -∗ WP (ERun fr : gexpr)
+        {{ v, ∃ p, ⌜v = Ret (WPtr p)⌝ ∗ error_text_buffer borrowed b p ∗ T }}))
+    (Htextloan : forall b p, exists fr,
+      call_frame fxfn [WPtr null;WPtr textfmt;WPtr p] = Some fr /\
+      (⊢ live rsb rsreg -∗ pcell rsb 0 (mkPtr rfb (Obj rfb)) -∗ liveq rdq rfb rfreg -∗
+        error_text_buffer borrowed b p -∗ T -∗ WP (ERun fr : gexpr)
+        {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live rsb rsreg ∗ pcell rsb 0 (mkPtr rfb (Obj rfb)) ∗
+          liveq rdq rfb rfreg ∗ error_text_buffer borrowed b p ∗ RQ }}))
+    (Hready_text : (if decide (errnum = 0) then RP else RQ) ⊢ R)
     (Hnewline_loan : ⊢ live rsb rsreg -∗ pcell rsb 0 (mkPtr rfb (Obj rfb)) -∗ liveq rdq rfb rfreg -∗ R -∗
       WP (ERun newlineframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
         live rsb rsreg ∗ pcell rsb 0 (mkPtr rfb (Obj rfb)) ∗ liveq rdq rfb rfreg ∗ S }})
@@ -148,12 +160,12 @@ Proof.
   iIntros (env from saved Hinputs) "Ht Hflag Hsavedl Hsaved Ho Hp Hready [Hva Hcleanup]".
   iDestruct (Hpost with "Hready") as "(Hnl & Hcount & Hsl & Hsp & Hfl & HP & HK)".
   destruct (Hformat ap) as (fr & Hframe & Hcall).
-  iApply (wp_error_report_zero_loan Hreg Hext tb treg state rsb rsreg rfb rdq rfreg
+  iApply (wp_error_report_zero_loans Hreg Hext tb treg state rsb rsreg rfb rdq rfreg
     newline fxfn newlineframe glibc__IO_fflush flushframe R S Q T
     (loan ∗ private ∗ error_cleanup_fields tb jb ∗ K)%I
     Hstate Hself Htb Hta Hte Htr Hcancel Hgstderr Hrsb Hrsa Hrse Hrsr Hrptr
     Hnewline Hfx Hnewlineframe Hflush Hflushframe Hstderrflush
-    eb ereg wide widefn wideframe cursor P U Hwide Hwidefn Hwideframe Hwidecall Hexchange
+    eb ereg wide widefn wideframe cursor P U Hwide Hwidefn Hwideframe Hwidecall RP RQ Hexchange_text
     Hnewline_loan env from errnum fmt ap 0 saved countb countreg count textfmt strerrorfn formatter fr borrowed
     with "Hnl Hcount Ht Hflag Hsavedl Hsaved Hsl Hsp Hfl Hva HP [$Ho $Hp $Hcleanup $HK]");
     try eassumption.
@@ -162,6 +174,63 @@ Proof.
   iExists ap, saved. iSplitL "Ht Hflag Hcleanup".
   { unfold error_thread_ready. iExists tb, treg, jb. iFrame. done. }
   iFrame "Ho Hp Hsavedl Hsaved Hnl Hcount Hscratch Hsl Hsp Hfl Hva HQ HK".
+Qed.
+
+(** Some callers keep stderr ownership while their text printer runs.
+    This proof lets them use the original interface without lending that
+    ownership to the printer. *)
+Lemma wp_call_error_returning_zero_loan
+    (Hnewline_loan : ⊢ live rsb rsreg -∗ pcell rsb 0 (mkPtr rfb (Obj rfb)) -∗ liveq rdq rfb rfreg -∗ R -∗
+      WP (ERun newlineframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
+        live rsb rsreg ∗ pcell rsb 0 (mkPtr rfb (Obj rfb)) ∗ liveq rdq rfb rfreg ∗ S }})
+    f e ls l args rest j
+    vbreg sb sreg prefix prefixframe cbname cbfn cbframe (D E : iProp Σ) Φ :
+  let flush := error_closed_flush fb vb lb lbreg vbreg sb sreg D in
+  map_option (arg_x ge e) args = Some (WInt 0 :: WInt errnum :: WPtr fmt :: ys) ->
+  find_fn ge (TAtom "error") = Some (Defined glibc_error) ->
+  forallb snapshot_word ys = true -> 0 <= errnum < 2 ^ 32 ->
+  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
+  state = 0 \/ state = 1 ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
+  0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
+  0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  lookup (TAtom "error_print_progname") (ge_globals ge) = Some (mkPtr pb (Obj pb)) ->
+  0 < pb -> pb mod 8 = 0 -> pb + 8 <= r_end preg -> r_end preg <= 2 ^ 63 ->
+  0 <= ptr_addr callback < 2 ^ 64 ->
+  lookup (TAtom "program_invocation_name") (ge_globals ge) = Some (mkPtr nb (Obj nb)) ->
+  0 < nb -> nb mod 8 = 0 -> nb + 8 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
+  0 <= ptr_addr pname < 2 ^ 64 ->
+  lookup (TAtom "glibc_error#str.255") (ge_globals ge) = Some prefix ->
+  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined glibc__IO_fflush) ->
+  find_fn ge (TAtom "__fxprintf") = Some (Defined fxfn) ->
+  call_frame fxfn [WPtr null;WPtr prefix;WPtr pname] = Some prefixframe ->
+  (⊢ live_capq dqn (ptr_cap pname) namer -∗ flush -∗
+    WP (ERun prefixframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
+      live_capq dqn (ptr_cap pname) namer ∗ Ready }}) ->
+  (ptr_addr callback <> 0 -> ptr_cap callback = Fn cbname) ->
+  (ptr_addr callback <> 0 -> function_check_res ge callback = Some ok) ->
+  find_fn ge cbname = Some (Defined cbfn) ->
+  indirect_call_conv cbfn CVoid [] [] = Some (Converted [] None) ->
+  call_frame cbfn [] = Some cbframe ->
+  (⊢ flush -∗ WP (ERun cbframe : gexpr) {{ v, ⌜v = RetVoid⌝ ∗ Ready }}) ->
+  error_thread_ready state -∗ loan -∗ private -∗ flush -∗ E -∗
+  ▷ (error_returned -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros flush Hargs Hpublic Hys Herr Hinternal Hstate Hcancel
+    Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr Hcu
+    Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hfxframe Hfxcall
+    Hcap Hcheck Hcbfn Hconv Hcbframe Hcbcall.
+  iIntros "Ht Ho Hp Hflush HE HK".
+  iApply (wp_call_error_returning_zero_loans R R Hexchange Hstrcall with
+    "Ht Ho Hp Hflush HE HK"); try eassumption.
+  { intros b p. destruct (Htextcall b p) as (fr & Hframe & Hcall).
+    exists fr. split; [done |]. iIntros "Hsl Hsp Hfl Hb HT".
+    iApply (wp_wand with "[Hb HT]"); [iApply (Hcall with "Hb HT") |].
+    iIntros (v) "H". iDestruct "H" as (r ->) "[Hb HR]". iExists r. iFrame. done. }
+  destruct (decide (errnum = 0)); done.
 Qed.
 
 (** Existing callers can keep ownership of stderr while the newline prints.
