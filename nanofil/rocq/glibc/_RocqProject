@@ -81,6 +81,9 @@ intl/TfindCode.v
 intl/TfindSrc.v
 intl/LocalenameCode.v
 intl/LocalenameSrc.v
+intl/LocaleConstCode.v
+intl/LocaleConstSrcFiles.v
+intl/LocaleConstSrc.v
 intl/GettextLinkCode.v
 intl/GettextLinkSrcFiles.v
 intl/GettextLinkSrc01.v
@@ -461,6 +464,7 @@ hello/HelloGetoptDiagTcb.v
 hello/HelloGetoptDiagLock.v
 hello/HelloGetoptDiagMsgs.v
 hello/HelloGettextSuffix.v
+hello/HelloGettextLocaleConst.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v
