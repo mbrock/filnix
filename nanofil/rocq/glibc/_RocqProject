@@ -54,6 +54,8 @@ stdio/PrintfBufferFileCode.v
 stdio/PrintfBufferIoCode.v
 stdio/PrintfCountBits.v
 stdio/PrintfStateCode.v
+stdio/FxprintfCode.v
+stdio/FxprintfSrc.v
 stdlib/StdlibCode.v
 stdlib/GetenvCode.v
 stdlib/GetenvSrc.v
@@ -221,6 +223,10 @@ stdio/PrintfBufferXsputnEntry.v
 stdio/PrintfBufferXsputnPrelude.v
 stdio/PrintfBufferXsputnZero.v
 stdio/PrintfStreamInv.v
+stdio/FxprintfStream.v
+stdio/FxprintfJoin.v
+stdio/FxprintfTail.v
+stdio/FxprintfCall.v
 string/MemchrFirst.v
 string/MemrchrBits.v
 string/StrncmpWords.v
