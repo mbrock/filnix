@@ -417,6 +417,7 @@ getopt/GetoptLongStore.v
 getopt/GetoptReturn.v
 getopt/GetoptSkip.v
 hello/HelloGlibcLibsT.v
+hello/HelloGettextLink.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v
