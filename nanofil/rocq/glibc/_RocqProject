@@ -367,6 +367,7 @@ intl/DcigettextC.v
 intl/DcigettextNotC.v
 intl/DcigettextRoute.v
 intl/DcgettextC.v
+intl/DcgettextStpcpy.v
 getopt/GetoptSkipTest.v
 hello/HelloGlibcDebts.v
 libio/LibioCleanupFpLock.v

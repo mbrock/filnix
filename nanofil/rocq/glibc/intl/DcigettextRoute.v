@@ -62,6 +62,31 @@ Definition dci_callees (lk1 lk2 lkt rt tc : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T
   dci_rdlock_rule lk1 L1 L1' /\ dci_rdlock_rule lk2 L2 L2' /\
   dci_unlock_rule lk1 L1' L1'' /\ dci_unlock_rule lk2 L2' L2''.
 
+(** This predicate collects every callee rule except the one for
+    stpcpy, because the proof of the captured stpcpy replaces that one. *)
+Definition dci_others (lk1 lk2 lkt rt tc : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' K C M : iProp Σ) (cv : ptr) : Prop :=
+  registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) /\
+  find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None /\
+  heap_fns ge /\ getopt_malloc_rule w0 registry ge M /\ dci_locale_rule 5 C cv /\
+  dci_rdlock_rule lkt T T' /\ dci_unlock_rule lkt T' T'' /\
+  (forall sb, dci_tfind_miss_rule (mkPtr sb (Obj sb)) rt tc K) /\
+  dci_rdlock_rule lk1 L1 L1' /\ dci_rdlock_rule lk2 L2 L2' /\
+  dci_unlock_rule lk1 L1' L1'' /\ dci_unlock_rule lk2 L2' L2''.
+
+(** The real stpcpy needs its buffer to hold valid bytes before each
+    call, so this predicate pairs the other callee rules with that
+    stpcpy rule. *)
+Definition dci_callees_r (lk1 lk2 lkt rt tc : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' K C M : iProp Σ) (cv : ptr) : Prop :=
+  dci_stpcpy_rule_r /\ dci_others lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
+
+(** The old callee rules give the new ones. *)
+Lemma dci_callees_r_of lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv :
+  dci_callees lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_callees_r lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
+Proof.
+  intros (H1 & H2 & H3 & Hcpy & H) . split; [exact (dci_stpcpy_rule_r_of Hcpy) | unfold dci_others; tauto].
+Qed.
+
 (** These are the globals. The binding list head lives at db, entry 5 of
     the category index lives at ib + 5, and the privilege flag lives at
     sec. *)
@@ -111,11 +136,11 @@ Definition dci_reads (dom : ptr) (ds : list Z) (dqd : dfrac) (nb : Z) (nc : cap)
     5 and no plural. It returns the message id on every path. The caller
     gets back the memory it lent, the callee resources in their final
     states, and errno holding the 32-bit value that it held at entry. *)
-Lemma wp_dci_route e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+Lemma wp_dci_route_r e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     msgid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
       !Defines ge "__GI_memcpy" glibc_memcpy} :
-  dci_callees lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_callees_r lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
   lookup (TAtom "v0") e = Some (WPtr dom) -> lookup (TAtom "v2") e = Some (WPtr msgid) ->
@@ -126,7 +151,7 @@ Lemma wp_dci_route e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic 
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros (Hmv & Hmvf & Hmvs & Hcpy & Hheap & Hmal & Hloc & Hrt1 & Hut & Htf & Hr1 & Hr2 & Hu1 & Hu2)
+  intros (Hcpy & Hmv & Hmvf & Hmvs & Hheap & Hmal & Hloc & Hrt1 & Hut & Htf & Hr1 & Hr2 & Hu1 & Hu2)
     (Hlkt & Hrt & Htc & Hge & Hlk1 & Hlk2 & Hdb & Hdd & Hcn & Hci & H276 & H277 & Hsec)
     ((Hdb0 & Hdb8 & Hdbend & Hdbr) & Hic & (Hib0 & Hibend & Hibr) & (Hk & Hnb & Hnbk) & (Hsec0 & Hsec4 & Hsecend & Hsecr))
     Hv0 Hv2 Hv6 Hv10 Hm.
@@ -146,7 +171,7 @@ Proof.
   { iIntros "_ _ HL1 HL2 Herr Hcat Hdom HM".
     iApply ("HΦ" with "[$Hdom $Hcat $Hcv $H276 $H277 $Hnl $Hnc $Hil $Hib $Hsecl $Hsecb] HL1 HL2 HT HK HC HM Herr"). }
   iIntros (e3 xd (Henv3 & Hv224 & Hv9' & Hv226 & Hv232 & Hxd0 & Hxd16 & Hxdend)) "Ho Hcat Hdom HM Hxl Hxc HL1 HL2 Herr".
-  iApply (wp_dci_copy eb Herr _ xs xreg _ _ _ _ _ _ _ _ _ _ _ xd p276 p277 _ _ L1' L1'' L2' L2''
+  iApply (wp_dci_copy_r eb Herr _ xs xreg _ _ _ _ _ _ _ _ _ _ _ xd p276 p277 _ _ L1' L1'' L2' L2''
     with "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HL1 HL2 Herr"); try first [eassumption | lia].
   iNext. iSplit.
   { iIntros "_ _ HL1 HL2 Herr Hcat Hdom HM".
@@ -160,4 +185,22 @@ Proof.
   iNext. iIntros "_ _ Hsecl Hsecb HL1 HL2 Herr".
   iApply ("HΦ" with "[$Hdom $Hcat $Hcv $H276 $H277 $Hnl $Hnc $Hil $Hib $Hsecl $Hsecb] HL1 HL2 HT HK HC HM Herr").
 Qed.
+
+(** This corollary keeps the statement of the route that assumed the old
+    stpcpy rule. *)
+Lemma wp_dci_route e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    msgid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy} :
+  dci_callees lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  lookup (TAtom "v0") e = Some (WPtr dom) -> lookup (TAtom "v2") e = Some (WPtr msgid) ->
+  lookup (TAtom "v6") e = Some (WInt 0) -> lookup (TAtom "v10") e = Some (WInt 5) -> 0 < ptr_addr msgid < 2 ^ 64 ->
+  dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
+  L1 -∗ L2 -∗ T -∗ K -∗ C -∗ M -∗ errno_own eb bs -∗
+  ▷ (dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
+     L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
+  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+Proof. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply wp_dci_route_r; first [exact Hr | exact _]. Qed.
 End rules.
