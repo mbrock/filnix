@@ -443,6 +443,7 @@ hello/HelloCloseShort.v
 hello/HelloCloseDispatch.v
 hello/HelloCloseStdout.v
 hello/HelloCloseDiagnostic.v
+hello/HelloCloseNamed.v
 hi_atexit/HiAtexitXsputnRules.v
 getopt/GetoptLongPfxSet.v
 hi_atexit/HiAtexitOutputState.v
