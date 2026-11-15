@@ -2,9 +2,9 @@
     wrapper takes the stream's recursive lock, sets bit 2 of the
     `c: _flags2` bitfield while the formatter __vfprintf_internal runs,
     then restores the bitfield and releases the lock. This module proves
-    the wrapper's entry, which copies the variadic arguments and takes the
-    lock, and composes it with FxprintfTail.v and FxprintfJoin.v into one
-    rule for the whole call.
+    the wrapper's entry, which copies the variadic arguments and checks
+    the stream, and composes it with FxprintfLock.v, FxprintfTail.v and
+    FxprintfJoin.v into one rule for the whole call.
 
     The rule applies when the stream is a real narrow stream whose lock is
     free or already held by this thread. It does not apply when the caller
@@ -21,7 +21,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfCode FxprintfStream FxprintfTail.
+  PrintfStreamInv FxprintfCode FxprintfStream FxprintfLock.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -46,11 +46,6 @@ Lemma fx_call_frame fp fmt ys :
   call_frame glibc_fxprintf_nocancel (WPtr fp :: WPtr fmt :: ys) = Some (fx_frame fp fmt ys).
 Proof. reflexivity. Qed.
 
-(** This fact records where the argument copy lies. The proof keeps it
-    as one opaque fact so that arithmetic in the lock code does not carry it. *)
-Definition fx_snap_ok (sb : Z) (xs : list word) : Prop :=
-  0 < sb /\ sb mod 16 = 0 /\ sb + req_extent (fx_req xs) <= 2 ^ 48.
-
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -69,18 +64,19 @@ Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H
 
 (** The wrapper preserves the stream's flags2 word and lock state, and the
     caller's share of the format string's lifetime. The formatter may leave
-    the stream at another mode, and the wrapper returns its result reduced
+    the stream at another mode, which the formatter's result resource Q
+    can record, and the wrapper returns its result reduced
     to a C int. The thread cookie must be a nonnull 64-bit address, and a
     held lock count must leave room for one more acquisition. *)
-Lemma wp_fxprintf vb sb sreg fp fmt ys mode flags2 held dqf regf (R : iProp Σ) (Q : Z -> iProp Σ) Φ :
+Lemma wp_fxprintf_at vb sb sreg fp fmt ys mode flags2 held dqf regf (R : iProp Σ) (Q : Z -> Z -> iProp Σ) Φ :
   forallb snapshot_word ys = true -> ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
   0 <= ptr_addr fmt < 2 ^ 64 ->
   mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
-  fx_vfprintf_rule vb fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q ->
+  fx_vfprintf_rule_at vb fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q ->
   single_ro ge sb sreg -∗ printf_stream vb (ow_self w0) fp mode flags2 held -∗
   fx_owner (ow_self w0) held -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
   ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
-     live_capq dqf (ptr_cap fmt) regf -∗ Q x -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
+     live_capq dqf (ptr_cap fmt) regf -∗ Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (fx_frame fp fmt ys) : gexpr) {{ Φ }}.
 Proof.
   intros Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
@@ -124,64 +120,58 @@ Proof.
   iDestruct "Hfl" as "[_ Hfl]".
   check "Hl". load_s32 "Hl" "Hfl". step. step. unfold io_user_lock in Hul. branch_as false.
   step. self Hself. step. check_persistent "Hsl". load_byte_persistent "Hsl Hsb". step. branch.
-  iDestruct "Hk" as (lb lreg ->) "Hlk".
-  destruct held as [c|]; cbn [fx_cnt fx_owner] in *.
-  - destruct (Hcnt c eq_refl) as [Hc0 Hc1]. iDestruct "Ho" as (dqo rego) "Ho".
-    iDestruct "Hlk" as "(%Hb & Hbl & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
-    iApply (wp_live_fit1 with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
-    step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl".
-    iApply (wp_raw_load_pointer_dq with "Hbl Hbo Ho"); [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hselfr |].
-    iNext. iIntros "Hbl Hbo Ho".
-    step. step. step. step. branch_symbolic.
-    assert (Hown : (((if ptr_addr (ow_self w0) mod 2 ^ 64 =? (0 mod 2 ^ 64) mod 2 ^ 64 then 1 else 0)
-      mod 2 ^ 32) mod 2 ^ 32 =? 0) = true).
-    { change ((0 mod 2 ^ 64) mod 2 ^ 64) with 0. rewrite (Z.mod_small (ptr_addr (ow_self w0))); [|lia].
-      destruct (Z.eqb_spec (ptr_addr (ow_self w0)) 0); [lia | reflexivity]. }
-    rewrite Hown. cbn [edge_label].
-    step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl".
-    iApply (wp_raw_load_pointer_dq with "Hbl Hbo Ho"); [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hselfr |].
-    iNext. iIntros "Hbl Hbo Ho".
-    step. step. step. branch_symbolic. rewrite Z.eqb_refl. cbn [negb edge_label]. change (0 mod 2 ^ 32 =? 0) with true.
-    cbn [edge_label].
-    step. step. load "Hl" "Hlp" "Hbl". step. check "Hbl". load_s32 "Hbl" "Hb4". step. check "Hbl".
-    store_int "Hbl" "Hb4".
-    assert (Hc' : (c mod 2 ^ 32 + 1 mod 2 ^ 32) mod 2 ^ 32 = c + 1).
-    { change (1 mod 2 ^ 32) with 1. rewrite (Z.mod_small c); [|lia]. apply Z.mod_small. lia. }
-    iEval (rewrite Hc' (Z.mod_small (c + 1)); [|lia]) in "Hb4". step. cbn [edge_label].
-    iAssert (lock_inv (ow_self w0) (mkPtr lb (Obj lb)) (Some (c + 1))) with "[Hbl Hb0 Hb4 Hbo]" as "Hlk".
-    { iExists lb, lreg. iSplit; [done|]. iFrame "Hbl Hbo". iSplitR; [iPureIntro; lia|].
-      iSplitL "Hb0"; [iSplit; [iPureIntro; unfold int_bytes; lia | iExact "Hb0"]|].
-      iSplit; [iPureIntro; lia | iExact "Hb4"]. }
-    iDestruct ("Hclose" $! flags2 (Some (c + 1)) with "[%] Hl [Hfl] Hf2 Hmd Hlp Hlk") as "Hst".
-    { exact Hnl. }
-    { iSplit; [done | iExact "Hfl"]. }
-    iApply (wp_fx_tail _ (TAtom "L53") vb sb sreg fb cb sb' fmt ys mode flags2 (Some c) dqf regf R Q
-      with "Hs Hst Hcur Hsnap Hfc HR [HK Ho]").
-    all: cycle 11.
-    { iNext. iIntros (x md) "Hst Hfc HQ". iApply ("HK" with "Hst [Ho] Hfc HQ"). iExists dqo, rego. iExact "Ho". }
-    all: first [exact (proj1 Hok) | exact (proj1 (proj2 Hok)) | exact (proj2 (proj2 Hok)) | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | lk_prove].
-  - iDestruct "Hlk" as "(%Hb & Hbl & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
-    iApply (wp_live_fit1 with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
-    step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". load_null "Hbl" "Hbo".
-    step. step. step. step. branch.
-    step. step. check "Hl". load "Hl" "Hlp" "Hbl". check "Hbl". store_int "Hbl" "Hb0".
-    load "Hl" "Hlp" "Hbl". step. check "Hbl". store "Hbl" "Hbo". step. cbn [edge_label].
-    iAssert (lock_inv (ow_self w0) (mkPtr lb (Obj lb)) (Some 0)) with "[Hbl Hb0 Hb4 Hbo]" as "Hlk".
-    { iExists lb, lreg. iSplit; [done|]. iFrame "Hbl Hbo". iSplitR; [iPureIntro; lia|].
-      iSplitL "Hb0"; [iSplit; [iPureIntro; lia | iExact "Hb0"]|].
-      iSplit; [iPureIntro; lia | iExact "Hb4"]. }
-    iDestruct ("Hclose" $! flags2 (Some 0) with "[%] Hl [Hfl] Hf2 Hmd Hlp Hlk") as "Hst".
-    { exact Hnl. }
-    { iSplit; [done | iExact "Hfl"]. }
-    iApply (wp_fx_tail _ (TAtom "L26") vb sb sreg fb cb sb' fmt ys mode flags2 None dqf regf R Q
-      with "Hs Hst Hcur Hsnap Hfc HR [HK Ho]").
-    all: cycle 11.
-    { iNext. iIntros (x md) "Hst Hfc HQ". iApply ("HK" with "Hst Ho Hfc HQ"). }
-    all: first [exact (proj1 Hok) | exact (proj1 (proj2 Hok)) | exact (proj2 (proj2 Hok)) | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | lk_prove].
+  iDestruct ("Hclose" $! flags2 held with "[%] Hl [Hfl] Hf2 Hmd Hlp Hk") as "Hst".
+  { exact Hnl. }
+  { iSplit; [done | iExact "Hfl"]. }
+  iApply (wp_fx_lock _ vb sb sreg fb cb sb' fmt ys mode flags2 held dqf regf R Q with "Hs Hst Ho Hcur Hsnap Hfc HR HK");
+    first [exact Hself | exact Hselfr | exact Hok | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | lk_prove].
+Qed.
+
+(** The same holds when the result resource ignores the returned mode. *)
+Lemma wp_fxprintf vb sb sreg fp fmt ys mode flags2 held dqf regf (R : iProp Σ) (Q : Z -> iProp Σ) Φ :
+  forallb snapshot_word ys = true -> ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
+  0 <= ptr_addr fmt < 2 ^ 64 ->
+  mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
+  fx_vfprintf_rule vb fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q ->
+  single_ro ge sb sreg -∗ printf_stream vb (ow_self w0) fp mode flags2 held -∗
+  fx_owner (ow_self w0) held -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
+  ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
+     live_capq dqf (ptr_cap fmt) regf -∗ Q x -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
+  WP (ERun (fx_frame fp fmt ys) : gexpr) {{ Φ }}.
+Proof.
+  intros Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
+  exact (wp_fxprintf_at vb sb sreg fp fmt ys mode flags2 held dqf regf R (fun x _ => Q x) Φ
+    Hys Hself Hselfr Hfmtr Hmode Hcnt (fx_vfprintf_rule_at_of _ _ _ _ _ _ _ _ _ Hfmt)).
 Qed.
 
 (** A caller that executes `c: __fxprintf_nocancel (fp, fmt, ...)` resumes
     with the same resources and the wrapper's result in its destination. *)
+Lemma wp_call_fxprintf_at f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 held dqf regf
+    (R : iProp Σ) (Q : Z -> Z -> iProp Σ) Φ :
+  map_option (arg_x ge e) args = Some (WPtr fp :: WPtr fmt :: ys) ->
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) ->
+  forallb snapshot_word ys = true -> ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
+  0 <= ptr_addr fmt < 2 ^ 64 ->
+  mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
+  fx_vfprintf_rule_at vb fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q ->
+  single_ro ge sb sreg -∗ printf_stream vb (ow_self w0) fp mode flags2 held -∗
+  fx_owner (ow_self w0) held -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
+  ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
+     live_capq dqf (ptr_cap fmt) regf -∗ Q x mode' -∗
+     WP (ERun (mkFrame f (put d (WInt (x mod 2 ^ 32)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hargs Hfn Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
+  iIntros "#Hs Hst Ho Hfc HR HK".
+  iApply (wp_call_bind registry (os_wi w0) ge); [exact Hargs | exact Hfn | apply fx_call_frame |].
+  iNext. iApply (wp_fxprintf_at with "Hs Hst Ho Hfc HR"); try eassumption.
+  iNext. iIntros (x md) "Hst Ho Hfc HQ".
+  iExists (mkFrame f (put d (WInt ((x mod 2 ^ 32) mod 2 ^ 32)) e) ls None (Exec l rest j)).
+  iSplit; [done|]. iNext. rewrite Z.mod_mod; [|lia]. iApply ("HK" with "Hst Ho Hfc HQ").
+Qed.
+
+(** The call-site rule also holds when the result resource ignores the mode. *)
 Lemma wp_call_fxprintf f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 held dqf regf
     (R : iProp Σ) (Q : Z -> iProp Σ) Φ :
   map_option (arg_x ge e) args = Some (WPtr fp :: WPtr fmt :: ys) ->
@@ -199,12 +189,8 @@ Lemma wp_call_fxprintf f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 h
     (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof.
   intros Hargs Hfn Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
-  iIntros "#Hs Hst Ho Hfc HR HK".
-  iApply (wp_call_bind registry (os_wi w0) ge); [exact Hargs | exact Hfn | apply fx_call_frame |].
-  iNext. iApply (wp_fxprintf with "Hs Hst Ho Hfc HR"); try eassumption.
-  iNext. iIntros (x md) "Hst Ho Hfc HQ".
-  iExists (mkFrame f (put d (WInt ((x mod 2 ^ 32) mod 2 ^ 32)) e) ls None (Exec l rest j)).
-  iSplit; [done|]. iNext. rewrite Z.mod_mod; [|lia]. iApply ("HK" with "Hst Ho Hfc HQ").
+  exact (wp_call_fxprintf_at f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 held dqf regf R
+    (fun x _ => Q x) Φ Hargs Hfn Hys Hself Hselfr Hfmtr Hmode Hcnt (fx_vfprintf_rule_at_of _ _ _ _ _ _ _ _ _ Hfmt)).
 Qed.
 
 End rules.

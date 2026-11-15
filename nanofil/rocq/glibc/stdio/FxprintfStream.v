@@ -256,14 +256,14 @@ Section rule.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** Proving the wrapper safe still leaves the formatting itself open, so a
-    caller states what it knows about that step in this rule. The wrapper
-    passes the stream at the temporary flags, with the lock taken once more
-    than the caller held it, and the caller adds its own resource R. The
-    formatter must give the stream back at the same flags and lock count,
-    with the caller's result resource Q, and it may leave the stream at
-    another mode. This definition is an open obligation of the caller, not
-    a proof of formatting. *)
+(** Formatting is the one step of the call that the wrapper's proof does
+    not cover. A caller therefore states what it knows about the
+    formatter, and this rule is the form of that statement. The formatter
+    receives the stream with bit 2 of flags2 set and the lock taken once
+    more than before the call, together with the caller's resource R. It
+    must return the stream with the same flags and lock count, together
+    with the caller's result resource Q, though it may change the stream's
+    mode. The caller owes this rule, and nothing in this file proves it. *)
 Definition fx_vfprintf_rule (vb : Z) (fp fmt : ptr) (xs : list word) (mode flags2 : Z)
     (held : option Z) (R : iProp Σ) (Q : Z -> iProp Σ) : Prop :=
   forall f e ls l d args rest j ap Φ,
@@ -273,5 +273,27 @@ Definition fx_vfprintf_rule (vb : Z) (fp fmt : ptr) (xs : list word) (mode flags
           WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
       WP (ERun (mkFrame f e ls None
         (Exec l (Call (CResult d W) (Global (TAtom "__vfprintf_internal")) args :: rest) j)) : gexpr) {{ Φ }}.
+
+(** A caller that prints more than once must know the orientation the
+    formatter leaves behind, because the wrapper accepts only an
+    unoriented or narrow stream. This variant lets the result resource Q
+    depend on that returned mode as well as on the result. *)
+Definition fx_vfprintf_rule_at (vb : Z) (fp fmt : ptr) (xs : list word) (mode flags2 : Z)
+    (held : option Z) (R : iProp Σ) (Q : Z -> Z -> iProp Σ) : Prop :=
+  forall f e ls l d args rest j ap Φ,
+    map_option (arg_x ge e) args = Some [WPtr fp; WPtr fmt; WPtr ap; WInt 0] ->
+    ⊢ printf_stream vb (ow_self w0) fp mode (Z.lor flags2 2) (Some (fx_cnt held)) -∗ R -∗ fx_va ap xs -∗
+      ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' (Z.lor flags2 2) (Some (fx_cnt held)) -∗ Q x mode' -∗
+          WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+      WP (ERun (mkFrame f e ls None
+        (Exec l (Call (CResult d W) (Global (TAtom "__vfprintf_internal")) args :: rest) j)) : gexpr) {{ Φ }}.
+
+(** A caller that does not care about the stream's orientation can keep
+    the older rule, because it says the same thing as this one with a
+    result resource that ignores the mode. *)
+Lemma fx_vfprintf_rule_at_of vb fp fmt xs mode flags2 held R Q :
+  fx_vfprintf_rule vb fp fmt xs mode flags2 held R Q ->
+  fx_vfprintf_rule_at vb fp fmt xs mode flags2 held R (fun x _ => Q x).
+Proof. intros H. exact H. Qed.
 
 End rule.

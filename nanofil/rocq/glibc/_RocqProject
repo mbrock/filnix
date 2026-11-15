@@ -227,6 +227,7 @@ stdio/PrintfStreamInv.v
 stdio/FxprintfStream.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
+stdio/FxprintfLock.v
 stdio/FxprintfCall.v
 string/MemchrFirst.v
 string/MemrchrBits.v
