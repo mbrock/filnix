@@ -20,6 +20,14 @@ PARAMETERS = {
     ('hello/HelloGlibcMainStreams.v', 'HelloWorldSig'): {'os_wi_stable'},
     ('hi_atexit/HiAtexitCleanup.v', 'HiCleanupSig'): {'hi_cleanup_rule'},
 }
+# Under theories, only these module types may declare assumptions. InterpRuntime
+# supplies Runtime's fields; HelloMain and HelloJoin supply their bases' fields
+# when they include their proof phases.
+THEORY_SIGNATURES = {
+    ('theories', 'core', 'Runtime.v'): 'Runtime',
+    ('theories', 'hello_contracts', 'HelloMainInterface.v'): 'HelloMainBase',
+    ('theories', 'hello_contracts', 'HelloJoinInterface.v'): 'HelloJoinBase',
+}
 
 def tokens(text):
     i, line, depth = 0, 1, 0
@@ -81,11 +89,12 @@ def scan(path, abstract_fix=None):
         else:
             if re.search(r'\bAdmitted\b', raw):
                 errors.append(f'{path}:{line}: legacy filter forbids Admitted')
-            if parts[-3:] == ('theories', 'core', 'Runtime.v'):
-                if raw.startswith('Module Type Runtime.'):
-                    skip = 'Runtime'
+            allowed = THEORY_SIGNATURES.get(parts[-3:])
+            if allowed:
+                if re.match(rf'Module Type {allowed}\b', raw):
+                    skip = allowed
                 if skip:
-                    if raw.startswith('End Runtime.'):
+                    if raw.startswith(f'End {skip}.'):
                         skip = None
                     continue
         if re.search(r'\b(?:Admitted|Axiom|Axioms|Parameter|Conjecture)\b', raw):
@@ -96,7 +105,7 @@ def scan(path, abstract_fix=None):
             return
         signature = any(k == 'signature' for k, _ in stack)
         signatures = [n for k, n in stack if k == 'signature']
-        runtime_signature = parts[-3:] == ('theories', 'core', 'Runtime.v') and signatures == ['Runtime']
+        theory_signature = parts[-3:] in THEORY_SIGNATURES and signatures == [THEORY_SIGNATURES[parts[-3:]]]
         section = any(k == 'section' for k, _ in stack)
         for i in range(len(words) - 1):
             if words[i:i+2] == ['Declare', 'Module']:
@@ -108,14 +117,14 @@ def scan(path, abstract_fix=None):
                         ['Declare', 'Module', 'NM', ':', 'HelloLibsNameSig', 'D'],
                     ]
                 )
-                if not named_site and (abstract_fix is None or path.resolve() != Path(abstract_fix).resolve()):
+                if not named_site and not theory_signature and (abstract_fix is None or path.resolve() != Path(abstract_fix).resolve()):
                     errors.append(f'{path}:{cmd[i][1]}: forbidden Declare Module')
         for i, (w, line) in enumerate(cmd):
-            declaration_allowed = runtime_signature if namespace == 'theories' else signature
+            declaration_allowed = theory_signature if namespace == 'theories' else signature
             if w in {'Parameter', 'Parameters'}:
                 fields = words[i+1:words.index(':', i+1)] if ':' in words[i+1:] else []
                 listed = PARAMETERS.get(('/'.join(parts[-2:]), signatures[0]), set()) if len(signatures) == 1 and parts[-3] == 'glibc' else set()
-                declaration_allowed = runtime_signature or bool(fields) and set(fields) <= listed
+                declaration_allowed = theory_signature or bool(fields) and set(fields) <= listed
             if w in {'admit', 'Admitted'} or (w in DECL and not declaration_allowed) or (w in LOCAL and not signature and not section):
                 errors.append(f'{path}:{line}: forbidden {w}')
         # Do not let an unsupported wrapper leave the scope stack stale.
