@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   HelloModule HelloLeaf HelloClose.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
   SysCode LibioReadCode LibioDoWriteCode LibioGenCode LibioUnlinkCode LibioCloseItCode LibioFcloseCode
-  FileInv LibioLogic SysWrappers AllocLogic LibioCloseSteps LibioRead HiAtexitFclose.
+  FileInv LibioLogic SysWrappers AllocLogic LibioCloseSteps LibioRead HiAtexitFclose HelloCloseStreamRetain.
 From Glibc Require LibioFcloseTail.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
@@ -108,38 +108,14 @@ Proof.
     Hfdr Hfl Happ Hnw Hcp Hub Hul Hlnk Hfb8 He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hlb Hmd.
   iIntros "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol
     Hmode Hvtp H72 H80 H96 Hlp Hlk Hio Hlives HE HK".
-  subst fp wb base. unfold file_size in Hfend.
-  unfold hello_close_stream_frame. step.
-  iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
-  iApply (LibioRead.wp_glibc___fpending _ _ _ md (mkPtr (bb + i + n) (Obj bb)) (mkPtr (bb + i) (Obj bb)) breg
-    with "Hl Hmode Hwp Hwb Hbl");
-    [reflexivity | close_side | close_side | close_side | close_side | exact Hmd | reflexivity | cbn; lia | cbn; lia |].
-  iNext. iIntros "Hl Hmode Hwp Hwb Hbl". resume. step.
-  iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
-  iApply (LibioRead.wp_glibc__IO_ferror with "Hl Hfl Hfl2");
-    [reflexivity | close_side | close_side | close_side | close_side | exact Hnl |].
-  iNext. iIntros "Hl Hfl Hfl2". resume. step.
-  iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
-  iApply (hi_fclose_stdout Hreg Hext Hfw Hfh Hzf Hzg Hfc Hff _ pre post fb freg fl f2 fd tw off bb breg i xs
-    rp rb we be eb vb vreg lb lbreg sb sreg fcp pin md
-    with "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase
-      Hbend Hcol Hmode Hvtp H72 H80 H96 Hlp Hlk Hio Hlives").
-  all: lazymatch goal with
-  | |- environments.envs_entails _ _ => idtac
-  | |- _ => first [assumption | reflexivity | lia]
-  end.
-  iNext. iIntros (r fl' k tw' [Hpost Hk])
-    "Htcb _ _ _ _ _ _ Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol Hmd Hvtp H72 H80 H96 Hlp Hlk Hio Hlives Hchain".
-  iClear "H8 H16 H24 H32 H40 H48 Hbb Hbe Hcol Hmd Hvtp H72 H80 H96 Hlp Hlk Hchain".
-  resume.
-  iAssert Q with "[$Htcb $Hio $Hlives $Herr $HE]" as "HQ".
-  repeat first [step | branch_cases].
-  all: lazymatch goal with
-  | |- context [Call _ (Global (TAtom "__errno_location")) _] =>
-    iDestruct "HK" as "[HK _]"; iApply ("HK" with "[%] [%] HQ");
-      [auto | eexists; reflexivity]
-  | |- _ => iApply wp_ret; [reflexivity | reflexivity |]; iNext;
-    iDestruct "HK" as "[_ HK]"; iApply ("HK" with "[%] HQ"); auto
-  end.
+  iApply (wp_hello_close_stream_stdout_retained Hreg Hext Hfw Hfh Hzf Hzg Hfc Hff
+    pre post fb freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg lb lbreg sb sreg fcp pin md E
+    with "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend
+      Hcol Hmode Hvtp H72 H80 H96 Hlp Hlk Hio Hlives HE"); try assumption.
+  iSplit.
+  - iIntros (e l Hl' Hk) "(Htcb & Hio & Hlives & Herr & _ & HE)".
+    iDestruct "HK" as "[HK _]". iApply ("HK" with "[%] [%] [$Htcb $Hio $Hlives $Herr $HE]"); assumption.
+  - iIntros (r Hr) "(Htcb & Hio & Hlives & Herr & _ & HE)".
+    iDestruct "HK" as "[_ HK]". iApply ("HK" with "[%] [$Htcb $Hio $Hlives $Herr $HE]"). exact Hr.
 Qed.
 End close.
