@@ -26,3 +26,10 @@ mode = "checked"
 fixtures = '''
 Fxprintf|__fxprintf_nocancel|stdio-common/fxprintf.os|__fxprintf_nocancel
 '''
+
+[[batch]]
+layout = "string"
+mode = "checked"
+fixtures = '''
+Error|error|misc/error.os|__error __error_internal
+'''

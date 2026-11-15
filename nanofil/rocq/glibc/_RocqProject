@@ -56,6 +56,8 @@ stdio/PrintfCountBits.v
 stdio/PrintfStateCode.v
 stdio/FxprintfCode.v
 stdio/FxprintfSrc.v
+stdio/ErrorCode.v
+stdio/ErrorSrc.v
 intl/DcgettextCode.v
 intl/DcgettextSrc.v
 intl/DcigettextCode.v
@@ -233,6 +235,7 @@ stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
 stdio/FxprintfLock.v
 stdio/FxprintfCall.v
+stdio/ErrorCall.v
 string/MemchrFirst.v
 string/MemrchrBits.v
 string/StrncmpWords.v
