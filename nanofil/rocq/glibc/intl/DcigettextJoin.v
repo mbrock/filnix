@@ -19,7 +19,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString StrlenLogic StrlenWord.
-From Glibc Require Import GetoptLongPfxAlloc DcigettextCode DcigettextExit DcigettextPreRules DcigettextFail.
+From Glibc Require Import GetoptLongPfxAlloc DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -55,12 +55,12 @@ Qed.
     enough for the category name, the domain and five more bytes, and it
     goes on to the right conjunct. If malloc fails, the lookup returns
     through the left conjunct with the exit resources. *)
-Lemma wp_dci_join e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd lk1 lk2 U1 U1' U2 U2' bs M Φ
+Lemma wp_dci_join_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd lk1 lk2 U1 U1' U2 U2' bs M Φ
     `{!Defines ge "__GI_strlen" glibc_strlen} :
   dci_pre_env e xs rl sb dom msgid cv s -> lookup (TAtom "iw_3.v7") e = Some (WPtr cv) ->
   lookup (TAtom "iw_2.v9") e = Some (WPtr cp) -> 0 <= s < 2 ^ 32 ->
   0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xreg -> r_end xreg <= 2 ^ 48 ->
-  heap_fns ge -> getopt_malloc_rule w0 registry ge M ->
+  dci_free_rule -> getopt_malloc_rule w0 registry ge M ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   lookup (TAtom "_nl_state_lock") (ge_globals ge) = Some lk1 ->
   lookup (TAtom "__libc_setlocale_lock") (ge_globals ge) = Some lk2 ->
@@ -97,7 +97,7 @@ Proof.
   { unfold n. lia. }
   iNext. iIntros (p) "HM [-> | (%xd & %Hxd & Ho)]".
   - step. step. branch.
-    iApply (wp_dci_fail_join eb Herr with "Hxl Hxc HU1 HU2 Herr"); try first [exact Hheap | exact Hge | exact Hlk1 |
+    iApply (wp_dci_fail_join_fr eb Herr with "Hxl Hxc HU1 HU2 Herr"); try first [exact Hheap | exact Hge | exact Hlk1 |
       exact Hlk2 | exact Hu1 | exact Hu2 | exact Hs | lia | lk_prove].
     iNext. iIntros "Hxl Hxc HU1 HU2 Herr". iDestruct "HK" as "[HK _]".
     iApply ("HK" with "Hxl Hxc HU1 HU2 Herr Hcat Hdom HM").
@@ -113,4 +113,31 @@ Proof.
     rewrite (Z.mod_small (Z.of_nat (length ds)) (2 ^ 64)); [|lia].
     unfold dci_pre_env. split_and!; try lk_prove; try lia.
 Qed.
+
+(** The older statement takes the model's free, which meets the rule. *)
+Lemma wp_dci_join e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd lk1 lk2 U1 U1' U2 U2' bs M Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen} :
+  dci_pre_env e xs rl sb dom msgid cv s -> lookup (TAtom "iw_3.v7") e = Some (WPtr cv) ->
+  lookup (TAtom "iw_2.v9") e = Some (WPtr cp) -> 0 <= s < 2 ^ 32 ->
+  0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xreg -> r_end xreg <= 2 ^ 48 ->
+  heap_fns ge -> getopt_malloc_rule w0 registry ge M ->
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
+  lookup (TAtom "_nl_state_lock") (ge_globals ge) = Some lk1 ->
+  lookup (TAtom "__libc_setlocale_lock") (ge_globals ge) = Some lk2 ->
+  dci_unlock_rule lk1 U1 U1' -> dci_unlock_rule lk2 U2 U2' ->
+  word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
+  live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
+  ▷ ((live xs xreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗
+      word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗ Φ (Ret (WPtr msgid))) ∧
+     (∀ e' xd, ⌜dci_pre_env e' xs rl sb dom msgid cv s /\
+         lookup (TAtom "v224") e' = Some (WPtr cv) /\ lookup (TAtom "iw_2.v9") e' = Some (WPtr cp) /\
+         lookup (TAtom "v226") e' = Some (WInt (Z.of_nat (length ds))) /\
+         lookup (TAtom "v232") e' = Some (WPtr (mkPtr xd (Obj xd))) /\
+         0 < xd /\ xd mod 16 = 0 /\ xd + req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) <= 2 ^ 48⌝ -∗
+      obj xd (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) -∗
+      word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
+      live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
+      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}.
+Proof. intros. eapply wp_dci_join_fr; eauto using dci_free_rule_heap. Qed.
 End rules.

@@ -30,7 +30,8 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenL
 From Glibc Require Import LibioSetb StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic.
 From Glibc Require Import RdlockCode RwunlockCode RdlockLogic RwunlockLogic.
 From Glibc Require Import GetoptLongPfxAlloc GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextExit DcigettextPreRules DcigettextRoute DcgettextC.
+From Glibc Require Import DcgettextCode DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
+From Glibc Require Import DcgettextC.
 From Glibc Require Import DcgettextStpcpy DcgettextTfind DcgettextLocale.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -104,10 +105,68 @@ Proof.
     first [apply dci_rdlock_rule_rw | apply dci_unlock_rule_rw]; assumption.
 Qed.
 
+(** A program that links glibc's free needs the rule for free in place
+    of [heap_fns], so this predicate makes that one change. *)
+Definition dci_rest_rwf (M : iProp Σ) : Prop :=
+  registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) /\
+  find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None /\
+  dci_free_rule /\ getopt_malloc_rule w0 registry ge M.
+
+(** The model's free meets that rule. *)
+Lemma dci_rest_rwf_of M : dci_rest_rw M -> dci_rest_rwf M.
+Proof. intros (H1 & H2 & H3 & H4 & H5). split_and!; try assumption. exact (dci_free_rule_heap H4). Qed.
+
+(** The real locks answer here as well. *)
+Lemma dci_rest_l_rwf `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+    lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M :
+  dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
+  dci_rest_lf lk1 lk2 lkt (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 (r1 + 8) cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid)
+    (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid) (rw_held a2 ar2 (r2 + 8) cw2 sh2 fl2 q2 tb tbreg i2 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
+    (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid) (rw_held a3 ar3 (r3 + 8) cw3 sh3 fl3 q3 tb tbreg i3 tid) (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid) M.
+Proof.
+  intros (H1 & H2 & H3 & H4 & H5) R1 R2 Rt. unfold dci_rest_lf. split_and!; try assumption;
+    first [apply dci_rdlock_rule_rw | apply dci_unlock_rule_rw]; assumption.
+Qed.
+
 (** ## The translation without lock premises *)
 
 (** A getopt diagnostic calls dcgettext, and this lemma proves that call
     with the real stpcpy, tfind, locale query and locks. *)
+Lemma wp_dcgettext_c_rwf f e ls l d args rest j mid dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
+    lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
+      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+  dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
+  locale_cells gb go greg lp lb lreg ->
+  0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
+  dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] -> 0 < ptr_addr mid < 2 ^ 64 ->
+  dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
+      (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs -∗
+  ▷ (∀ q, dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
+      (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs mid q -∗
+      WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hh H1 H2 Ht. pose proof (dci_rest_l_rwf lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
+    lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
+  intros Hl Hrb Hro Hal Hend Hrg Hg Hbd Hargs Hmid. iIntros "Hb HK".
+  iApply (wp_dcgettext_c_locf eb Herr with "Hb HK"); first [exact Hr | eassumption | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma wp_dcgettext_c_rw f e ls l d args rest j mid dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid Φ
@@ -134,15 +193,41 @@ Lemma wp_dcgettext_c_rw f e ls l d args rest j mid dom ds dqd nb nc k cat dqc cv
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
-  intros Hh H1 H2 Ht. pose proof (dci_rest_l_rw lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
-    lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
-  intros Hl Hrb Hro Hal Hend Hrg Hg Hbd Hargs Hmid. iIntros "Hb HK".
-  iApply (wp_dcgettext_c_loc eb Herr with "Hb HK"); first [exact Hr | eassumption | exact _].
-Qed.
+Proof. intros Hh. eapply wp_dcgettext_c_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
 
 (** This lemma builds the short-option translation premise in the same
     way. *)
+Lemma dcg_diag_translate_rwf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
+    lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
+      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+  dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
+  locale_cells gb go greg lp lb lreg ->
+  0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
+  dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, diag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  diag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
+      (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
+      (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    dom.
+Proof.
+  intros Hh H1 H2 Ht. pose proof (dci_rest_l_rwf lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
+    lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
+  eapply (dcg_diag_translate_locf eb Herr); first [exact Hr | eassumption | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_diag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
@@ -167,14 +252,41 @@ Lemma dcg_diag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
-  intros Hh H1 H2 Ht. pose proof (dci_rest_l_rw lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
-    lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
-  eapply (dcg_diag_translate_loc eb Herr); first [exact Hr | eassumption | exact _].
-Qed.
+Proof. intros Hh. eapply dcg_diag_translate_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
 
 (** This lemma builds the long-option translation premise in the same
     way. *)
+Lemma dcg_ldiag_translate_rwf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
+    lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
+      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+  dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
+  locale_cells gb go greg lp lb lreg ->
+  0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
+  dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, ldiag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  ldiag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
+      (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
+      (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    dom.
+Proof.
+  intros Hh H1 H2 Ht. pose proof (dci_rest_l_rwf lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
+    lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
+  eapply (dcg_ldiag_translate_locf eb Herr); first [exact Hr | eassumption | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_ldiag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
@@ -199,11 +311,7 @@ Lemma dcg_ldiag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
-  intros Hh H1 H2 Ht. pose proof (dci_rest_l_rw lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
-    lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
-  eapply (dcg_ldiag_translate_loc eb Herr); first [exact Hr | eassumption | exact _].
-Qed.
+Proof. intros Hh. eapply dcg_ldiag_translate_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
 
 (** ## Controls
 

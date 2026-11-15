@@ -31,7 +31,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString.
 From Glibc Require Import LibioSetb StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic.
 From Glibc Require Import GetoptLongPfxAlloc GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextExit DcigettextPreRules DcigettextRoute DcgettextC.
+From Glibc Require Import DcgettextCode DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
+From Glibc Require Import DcgettextC.
 From Glibc Require Import DcgettextStpcpy DcgettextTfind.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -120,6 +121,33 @@ Proof.
   unfold dci_rest. split_and!; try assumption. apply dci_locale_rule_cur; assumption.
 Qed.
 
+(** A program that links glibc's free needs the rule for free in place
+    of [heap_fns], so this predicate makes that one change. *)
+Definition dci_rest_lf (lk1 lk2 lkt : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' M : iProp Σ) : Prop :=
+  registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) /\
+  find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None /\
+  dci_free_rule /\ getopt_malloc_rule w0 registry ge M /\
+  dci_rdlock_rule lkt T T' /\ dci_unlock_rule lkt T' T'' /\
+  dci_rdlock_rule lk1 L1 L1' /\ dci_rdlock_rule lk2 L2 L2' /\
+  dci_unlock_rule lk1 L1' L1'' /\ dci_unlock_rule lk2 L2' L2''.
+
+(** The model's free meets that rule. *)
+Lemma dci_rest_lf_of lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M :
+  dci_rest_l lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M.
+Proof. intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4). Qed.
+
+(** The real locale query answers here as well. *)
+Lemma dci_rest_cur_f `{!Defines ge "__current_locale_name" glibc_current_locale_name}
+    lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M gb go greg dqg lp lb lreg dql dqn cv dqt treg :
+  dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M ->
+  locale_cells gb go greg lp lb lreg -> 0 <= ptr_addr cv < 2 ^ 64 ->
+  dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T''
+    (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M cv.
+Proof.
+  intros (H1 & H2 & H3 & H4 & H5 & H7 & H8 & H9 & H10 & H11 & H12) Hl Hcv.
+  unfold dci_rest_f. split_and!; try assumption. apply dci_locale_rule_cur; assumption.
+Qed.
+
 (** These lemmas say nothing about a thread whose message locale is not
     C. Such a thread holds another name in entry 5, and a caller cannot
     lend that entry as holding the "C" string unless the two pointers are
@@ -137,6 +165,34 @@ Qed.
 
 (** A getopt diagnostic calls dcgettext, and this lemma proves that call
     with the real stpcpy, tfind and locale query. *)
+Lemma wp_dcgettext_c_locf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
+    sec dqs secreg mid lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg
+    gb go greg dqg lp lb lreg dql dqn dqt treg Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
+      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+  dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
+  0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
+  dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] -> 0 < ptr_addr mid < 2 ^ 64 ->
+  dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1 L2 T
+    (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs -∗
+  ▷ (∀ q, dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+        L1'' L2'' T'' (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg)
+        M bs mid q -∗
+      WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hargs Hmid. iIntros "Hb HK".
+  iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
+  pose proof (dci_rest_cur_f _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
+  iApply (wp_dcgettext_c_tff eb Herr with "Hb HK"); first [exact Hc | eassumption | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma wp_dcgettext_c_loc f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg
     gb go greg dqg lp lb lreg dql dqn dqt treg Φ
@@ -157,15 +213,34 @@ Lemma wp_dcgettext_c_loc f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p2
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
-  intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hargs Hmid. iIntros "Hb HK".
-  iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
-  pose proof (dci_rest_cur _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
-  iApply (wp_dcgettext_c_tf eb Herr with "Hb HK"); first [exact Hc | eassumption | exact _].
-Qed.
+Proof. intros Hr. eapply wp_dcgettext_c_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 
 (** This lemma builds the short-option translation premise in the same
     way. *)
+Lemma dcg_diag_translate_locf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
+      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+  dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
+  0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
+  dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, diag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  diag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      L1 L2 T (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    dom.
+Proof.
+  intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hm f e ls l d args rest j mid Φ Hmsg Hargs. iIntros "Hb HK".
+  iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
+  pose proof (dci_rest_cur_f _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
+  iApply (dcg_diag_translate_tff eb Herr with "Hb HK"); first [exact Hc | eassumption | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_diag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -182,15 +257,34 @@ Lemma dcg_diag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
-  intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hm f e ls l d args rest j mid Φ Hmsg Hargs. iIntros "Hb HK".
-  iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
-  pose proof (dci_rest_cur _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
-  iApply (dcg_diag_translate_tf eb Herr with "Hb HK"); first [exact Hc | eassumption | exact _].
-Qed.
+Proof. intros Hr. eapply dcg_diag_translate_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 
 (** This lemma builds the long-option translation premise in the same
     way. *)
+Lemma dcg_ldiag_translate_locf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
+      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+  dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
+  0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
+  dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, ldiag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  ldiag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      L1 L2 T (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
+    dom.
+Proof.
+  intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hm f e ls l d args rest j mid Φ Hmsg Hargs. iIntros "Hb HK".
+  iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
+  pose proof (dci_rest_cur_f _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
+  iApply (dcg_ldiag_translate_tff eb Herr with "Hb HK"); first [exact Hc | eassumption | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_ldiag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -207,10 +301,5 @@ Lemma dcg_ldiag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
-  intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hm f e ls l d args rest j mid Φ Hmsg Hargs. iIntros "Hb HK".
-  iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
-  pose proof (dci_rest_cur _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
-  iApply (dcg_ldiag_translate_tf eb Herr with "Hb HK"); first [exact Hc | eassumption | exact _].
-Qed.
+Proof. intros Hr. eapply dcg_ldiag_translate_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 End rules.

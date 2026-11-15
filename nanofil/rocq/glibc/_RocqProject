@@ -389,6 +389,7 @@ getopt/GetoptLongDiag.v
 getopt/GetoptDiagFx.v
 intl/TfindEmpty.v
 intl/LocalenameLogic.v
+intl/DcigettextFree.v
 intl/DcigettextExit.v
 intl/DcigettextFail.v
 intl/DcigettextPreRules.v
@@ -404,6 +405,7 @@ intl/DcgettextStpcpy.v
 intl/DcgettextTfind.v
 intl/DcgettextLocale.v
 intl/DcgettextRwlock.v
+intl/DcgettextReal.v
 getopt/GetoptSkipTest.v
 hello/HelloGlibcDebts.v
 libio/LibioCleanupFpLock.v

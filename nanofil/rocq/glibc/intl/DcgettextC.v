@@ -66,6 +66,35 @@ End resources.
     given. When getopt calls the wrapper with its domain, a nonnull message
     and the message category, the wrapper runs the C-locale route. The
     caller then gets back the same message and the resources it lent. *)
+Lemma wp_dcgettext_c_f f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
+    sec dqs secreg mid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext} :
+  dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] -> 0 < ptr_addr mid < 2 ^ 64 ->
+  dcg_before dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1 L2 T K C M bs -∗
+  ▷ (∀ q, dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+        L1'' L2'' T'' K C M bs mid q -∗
+      WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hcal Hglo Hbnd Hargs Hm. iIntros "(Hr & HL1 & HL2 & HT & HK & HC & HM & Herr) HΦ".
+  iApply wp_call_bind; [exact Hargs | apply defines | reflexivity |]. iNext.
+  step.
+  iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
+  iApply (wp_dci_route_f eb Herr with "Hr HL1 HL2 HT HK HC HM Herr"); try first [eassumption | reflexivity].
+  iNext. iIntros "Hr HL1 HL2 HT HK HC HM Herr".
+  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
+  iApply wp_ret; [reflexivity | vx |]. iNext.
+  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
+  iApply ("HΦ" with "[$Hr $HL1 $HL2 $HT $HK $HC $HM $Herr]"). done.
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma wp_dcgettext_c_r f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -81,18 +110,7 @@ Lemma wp_dcgettext_c_r f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
-  intros Hcal Hglo Hbnd Hargs Hm. iIntros "(Hr & HL1 & HL2 & HT & HK & HC & HM & Herr) HΦ".
-  iApply wp_call_bind; [exact Hargs | apply defines | reflexivity |]. iNext.
-  step.
-  iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
-  iApply (wp_dci_route_r eb Herr with "Hr HL1 HL2 HT HK HC HM Herr"); try first [eassumption | reflexivity].
-  iNext. iIntros "Hr HL1 HL2 HT HK HC HM Herr".
-  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  iApply wp_ret; [reflexivity | vx |]. iNext.
-  iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
-  iApply ("HΦ" with "[$Hr $HL1 $HL2 $HT $HK $HC $HM $Herr]"). done.
-Qed.
+Proof. intros Hc. eapply wp_dcgettext_c_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement that assumed the old stpcpy rule. *)
 Lemma wp_dcgettext_c f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
@@ -118,6 +136,25 @@ Proof. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
     translated, and the wrapper rule proves that assumption in the C
     locale. It applies to each message the parser translates, once the
     caller shows that those messages have nonzero addresses. *)
+Lemma dcg_diag_translate_f dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext} :
+  dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, diag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  diag_translate (dcg_before dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      L1 L2 T K C M bs)
+    (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
+    dom.
+Proof.
+  intros Hcal Hglo Hbnd Hmsg f e ls l d args rest j mid Φ Hd Hargs.
+  iIntros "HG HK". iApply (wp_dcgettext_c_f with "HG HK"); try eassumption. exact (Hmsg mid Hd).
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_diag_translate_r dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -131,10 +168,7 @@ Lemma dcg_diag_translate_r dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg 
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
-  intros Hcal Hglo Hbnd Hmsg f e ls l d args rest j mid Φ Hd Hargs.
-  iIntros "HG HK". iApply (wp_dcgettext_c_r with "HG HK"); try eassumption. exact (Hmsg mid Hd).
-Qed.
+Proof. intros Hc. eapply dcg_diag_translate_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement that assumed the old stpcpy rule. *)
 Lemma dcg_diag_translate dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
@@ -153,6 +187,25 @@ Lemma dcg_diag_translate dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib
 Proof. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply dcg_diag_translate_r; first [exact Hr | exact _]. Qed.
 
 (** The long-option premise follows in the same way. *)
+Lemma dcg_ldiag_translate_f dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext} :
+  dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, ldiag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  ldiag_translate (dcg_before dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      L1 L2 T K C M bs)
+    (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
+    dom.
+Proof.
+  intros Hcal Hglo Hbnd Hmsg f e ls l d args rest j mid Φ Hd Hargs.
+  iIntros "HG HK". iApply (wp_dcgettext_c_f with "HG HK"); try eassumption. exact (Hmsg mid Hd).
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_ldiag_translate_r dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -166,10 +219,7 @@ Lemma dcg_ldiag_translate_r dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
-  intros Hcal Hglo Hbnd Hmsg f e ls l d args rest j mid Φ Hd Hargs.
-  iIntros "HG HK". iApply (wp_dcgettext_c_r with "HG HK"); try eassumption. exact (Hmsg mid Hd).
-Qed.
+Proof. intros Hc. eapply dcg_ldiag_translate_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement that assumed the old stpcpy rule. *)
 Lemma dcg_ldiag_translate dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg

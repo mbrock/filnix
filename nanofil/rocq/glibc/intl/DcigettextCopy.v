@@ -25,7 +25,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioSetb WordString StrlenLogic StrlenWord.
 From Glibc Require Import MemFwdCode MemFwdLogic LibioDefaultXsputnCopy.
-From Glibc Require Import GetoptLongPfxAlloc DcigettextCode DcigettextExit DcigettextPreRules DcigettextFail.
+From Glibc Require Import GetoptLongPfxAlloc DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -101,7 +101,7 @@ Ltac vx_len n :=
     second malloc fails, the left continuation receives the exit
     resources. Otherwise the right continuation receives both buffers: xd
     with valid bytes and the two-byte buffer sl that holds zeros. *)
-Lemma wp_dci_copy_r e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
+Lemma wp_dci_copy_r_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
       !Defines ge "__GI_memcpy" glibc_memcpy} :
   registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
@@ -112,7 +112,7 @@ Lemma wp_dci_copy_r e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p27
   lookup (TAtom "v232") e = Some (WPtr (mkPtr xd (Obj xd))) ->
   0 < xd -> xd mod 16 = 0 -> xd + req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) <= 2 ^ 48 ->
   0 <= s < 2 ^ 32 -> 0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xreg -> r_end xreg <= 2 ^ 48 ->
-  heap_fns ge -> getopt_malloc_rule w0 registry ge M ->
+  dci_free_rule -> getopt_malloc_rule w0 registry ge M ->
   lookup (TAtom "glibc_dcigettext#str.276") (ge_globals ge) = Some p276 ->
   lookup (TAtom "glibc_dcigettext#str.277") (ge_globals ge) = Some p277 ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
@@ -182,7 +182,7 @@ Proof.
   iApply (Hmal _ _ _ _ _ _ _ _ 2 with "HM"); [vx | lia |].
   iNext. iIntros (p) "HM [-> | (%sl & %Hsl & Hso)]".
   - step. step. branch.
-    iApply (wp_dci_fail_name eb Herr _ xs xreg xd xr with "Hxl Hxc Hdl HU1 HU2 Herr");
+    iApply (wp_dci_fail_name_fr eb Herr _ xs xreg xd xr with "Hxl Hxc Hdl HU1 HU2 Herr");
       try first [exact Hheap | exact Hge | exact Hlk1 | exact Hlk2 | exact Hu1 | exact Hu2 | exact Hs | reflexivity |
         lia | lk_prove].
     iNext. iIntros "Hxl Hxc HU1 HU2 Herr". iDestruct "HK" as "[HK _]".
@@ -202,6 +202,42 @@ Proof.
     replace (bd + (da - bd)) with da in Hpr1 by lia.
     unfold dci_pre_env. split_and!; try lk_prove; lia.
 Qed.
+
+(** The older statement takes the model's free, which meets the rule. *)
+Lemma wp_dci_copy_r e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy} :
+  registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
+  find_fn ge (TAtom "zmemmove") = None -> lookup (TAtom "zmemmove") (ge_globals ge) = None ->
+  dci_stpcpy_rule_r ->
+  dci_pre_env e xs rl sb dom msgid cv s -> lookup (TAtom "v224") e = Some (WPtr cv) ->
+  lookup (TAtom "iw_2.v9") e = Some (WPtr cp) -> lookup (TAtom "v226") e = Some (WInt (Z.of_nat (length ds))) ->
+  lookup (TAtom "v232") e = Some (WPtr (mkPtr xd (Obj xd))) ->
+  0 < xd -> xd mod 16 = 0 -> xd + req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) <= 2 ^ 48 ->
+  0 <= s < 2 ^ 32 -> 0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xreg -> r_end xreg <= 2 ^ 48 ->
+  heap_fns ge -> getopt_malloc_rule w0 registry ge M ->
+  lookup (TAtom "glibc_dcigettext#str.276") (ge_globals ge) = Some p276 ->
+  lookup (TAtom "glibc_dcigettext#str.277") (ge_globals ge) = Some p277 ->
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
+  lookup (TAtom "_nl_state_lock") (ge_globals ge) = Some lk1 ->
+  lookup (TAtom "__libc_setlocale_lock") (ge_globals ge) = Some lk2 ->
+  dci_unlock_rule lk1 U1 U1' -> dci_unlock_rule lk2 U2 U2' ->
+  obj xd (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) -∗
+  word_string dqc cp cat -∗ word_string dqd dom ds -∗ word_string DfracDiscarded cv [67] -∗
+  word_string DfracDiscarded p276 [47] -∗ word_string DfracDiscarded p277 [46; 109; 111] -∗ M -∗
+  live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
+  ▷ ((live xs xreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗
+      word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗ Φ (Ret (WPtr msgid))) ∧
+     (∀ e' sl, ⌜dci_pre_env e' xs rl sb dom msgid cv s /\ lookup (TAtom "v224") e' = Some (WPtr cv) /\
+         lookup (TAtom "v232") e' = Some (WPtr (mkPtr xd (Obj xd))) /\
+         lookup (TAtom "v254") e' = Some (WPtr (mkPtr sl (Obj sl))) /\ 0 < sl /\ sl + 16 <= 2 ^ 48⌝ -∗
+      live xd (mkRegion xd (xd + req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5))) Heap Live) -∗
+      live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗
+      word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
+      live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
+      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+Proof. intros. eapply wp_dci_copy_r_fr; eauto using dci_free_rule_heap. Qed.
 
 (** Callers written against the old stpcpy rule still get the same
     statement of the copy block. *)

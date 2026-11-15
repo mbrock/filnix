@@ -24,7 +24,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioSetb WordString StrlenLogic StrlenWord.
-From Glibc Require Import MemFwdCode GetoptLongPfxAlloc DcigettextCode DcigettextExit DcigettextPreRules.
+From Glibc Require Import MemFwdCode GetoptLongPfxAlloc DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules.
 From Glibc Require Import DcigettextPre DcigettextDom DcigettextJoin DcigettextCopy DcigettextC.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -87,6 +87,41 @@ Proof.
   intros (H1 & H2 & H3 & Hcpy & H) . split; [exact (dci_stpcpy_rule_r_of Hcpy) | unfold dci_others; tauto].
 Qed.
 
+(** Hello uses glibc's own free, so the route cannot assume that the
+    machine frees memory itself. This predicate therefore asks for a rule
+    that says what one call to free does. Every other callee rule stays
+    as it was. *)
+Definition dci_others_f (lk1 lk2 lkt rt tc : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' K C M : iProp Σ) (cv : ptr) : Prop :=
+  registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) /\
+  find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None /\
+  dci_free_rule /\ getopt_malloc_rule w0 registry ge M /\ dci_locale_rule 5 C cv /\
+  dci_rdlock_rule lkt T T' /\ dci_unlock_rule lkt T' T'' /\
+  (forall sb, dci_tfind_miss_rule (mkPtr sb (Obj sb)) rt tc K) /\
+  dci_rdlock_rule lk1 L1 L1' /\ dci_rdlock_rule lk2 L2 L2' /\
+  dci_unlock_rule lk1 L1' L1'' /\ dci_unlock_rule lk2 L2' L2''.
+
+(** The route also calls stpcpy, so this predicate adds the stpcpy rule
+    to the rules above. *)
+Definition dci_callees_f (lk1 lk2 lkt rt tc : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' K C M : iProp Σ) (cv : ptr) : Prop :=
+  dci_stpcpy_rule_r /\ dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
+
+(** A program without its own free still meets the new rule, because
+    the machine's free does what the rule says. So the older predicate
+    gives the new one. *)
+Lemma dci_others_f_of lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv :
+  dci_others lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
+Proof.
+  intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4).
+Qed.
+
+(** The same conversion works when the stpcpy rule comes along with the
+    other rules. *)
+Lemma dci_callees_f_of lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv :
+  dci_callees_r lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
+Proof. intros [Hs Ho]. split; [exact Hs | exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho)]. Qed.
+
 (** These are the globals. The binding list head lives at db, entry 5 of
     the category index lives at ib + 5, and the privilege flag lives at
     sec. *)
@@ -136,11 +171,11 @@ Definition dci_reads (dom : ptr) (ds : list Z) (dqd : dfrac) (nb : Z) (nc : cap)
     5 and no plural. It returns the message id on every path. The caller
     gets back the memory it lent, the callee resources in their final
     states, and errno holding the 32-bit value that it held at entry. *)
-Lemma wp_dci_route_r e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+Lemma wp_dci_route_f e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     msgid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
       !Defines ge "__GI_memcpy" glibc_memcpy} :
-  dci_callees_r lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
   lookup (TAtom "v0") e = Some (WPtr dom) -> lookup (TAtom "v2") e = Some (WPtr msgid) ->
@@ -165,13 +200,13 @@ Proof.
   pose proof (dci_w_range bs) as Hs.
   iApply (wp_dci_dom with "Hnl Hnc Hil Hib Hcv HC"); try first [eassumption | lia].
   iNext. iIntros (e2 (Henv2 & Hv7 & Hv9)) "Hnl Hnc Hil Hib HC".
-  iApply (wp_dci_join eb Herr _ xs xreg _ _ _ _ _ _ _ _ _ _ _ _ _ L1' L1'' L2' L2'' with "Hcat Hdom HM Hxl Hxc HL1 HL2 Herr");
+  iApply (wp_dci_join_fr eb Herr _ xs xreg _ _ _ _ _ _ _ _ _ _ _ _ _ L1' L1'' L2' L2'' with "Hcat Hdom HM Hxl Hxc HL1 HL2 Herr");
     try first [eassumption | lia].
   iNext. iSplit.
   { iIntros "_ _ HL1 HL2 Herr Hcat Hdom HM".
     iApply ("HΦ" with "[$Hdom $Hcat $Hcv $H276 $H277 $Hnl $Hnc $Hil $Hib $Hsecl $Hsecb] HL1 HL2 HT HK HC HM Herr"). }
   iIntros (e3 xd (Henv3 & Hv224 & Hv9' & Hv226 & Hv232 & Hxd0 & Hxd16 & Hxdend)) "Ho Hcat Hdom HM Hxl Hxc HL1 HL2 Herr".
-  iApply (wp_dci_copy_r eb Herr _ xs xreg _ _ _ _ _ _ _ _ _ _ _ xd p276 p277 _ _ L1' L1'' L2' L2''
+  iApply (wp_dci_copy_r_fr eb Herr _ xs xreg _ _ _ _ _ _ _ _ _ _ _ xd p276 p277 _ _ L1' L1'' L2' L2''
     with "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HL1 HL2 Herr"); try first [eassumption | lia].
   iNext. iSplit.
   { iIntros "_ _ HL1 HL2 Herr Hcat Hdom HM".
@@ -180,11 +215,28 @@ Proof.
     "Hdl Hsl Hb0 Hb1 Hcat Hdom HM Hxl Hxc HL1 HL2 Herr".
   assert (0 <= req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5))) by (cbn; Z.div_mod_to_equations; lia).
   pose proof Henv4 as (Hv17 & Hc0 & _ & _ & _ & Hv2' & Hv6' & _ & _ & Hv69 & _).
-  iApply (wp_dci_c_locale eb Herr e4 cv sl _ 0 0 sec secreg dqs xs xreg xd _ (dci_w bs) msgid lk1 lk2 L1' L1'' L2' L2''
+  iApply (wp_dci_c_locale_fr eb Herr e4 cv sl _ 0 0 sec secreg dqs xs xreg xd _ (dci_w bs) msgid lk1 lk2 L1' L1'' L2' L2''
     with "Hcv Hsecl Hsecb Hsl Hb0 Hb1 Hxl Hxc Hdl HL1 HL2 Herr"); try first [eassumption | reflexivity | cbn [r_end]; lia].
   iNext. iIntros "_ _ Hsecl Hsecb HL1 HL2 Herr".
   iApply ("HΦ" with "[$Hdom $Hcat $Hcv $H276 $H277 $Hnl $Hnc $Hil $Hib $Hsecl $Hsecb] HL1 HL2 HT HK HC HM Herr").
 Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
+Lemma wp_dci_route_r e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    msgid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy} :
+  dci_callees_r lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  lookup (TAtom "v0") e = Some (WPtr dom) -> lookup (TAtom "v2") e = Some (WPtr msgid) ->
+  lookup (TAtom "v6") e = Some (WInt 0) -> lookup (TAtom "v10") e = Some (WInt 5) -> 0 < ptr_addr msgid < 2 ^ 64 ->
+  dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
+  L1 -∗ L2 -∗ T -∗ K -∗ C -∗ M -∗ errno_own eb bs -∗
+  ▷ (dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
+     L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
+  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+Proof. intros Hc. eapply wp_dci_route_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement of the route that assumed the old
     stpcpy rule. *)

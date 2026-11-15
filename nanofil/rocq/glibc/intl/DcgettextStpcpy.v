@@ -79,6 +79,26 @@ Qed.
 
 (** This lemma restates the wrapper rule of DcgettextC.v so that it uses
     the captured stpcpy instead of a rule for it. *)
+Lemma wp_dcgettext_c_stpf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
+    sec dqs secreg mid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+  dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] -> 0 < ptr_addr mid < 2 ^ 64 ->
+  dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1 L2 T K C M bs -∗
+  ▷ (∀ q, dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+        L1'' L2'' T'' K C M bs mid q -∗
+      WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (wp_dcgettext_c_f eb Herr); first [exact Hr | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma wp_dcgettext_c_stp f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -94,12 +114,28 @@ Lemma wp_dcgettext_c_stp f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p2
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
-  intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (wp_dcgettext_c_r eb Herr); first [exact Hr | exact _].
-Qed.
+Proof. intros Ho. eapply wp_dcgettext_c_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
 
 (** This lemma builds the short-option translation premise from the
     captured stpcpy. *)
+Lemma dcg_diag_translate_stpf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+  dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, diag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  diag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      L1 L2 T K C M bs)
+    (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
+    dom.
+Proof.
+  intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (dcg_diag_translate_f eb Herr); first [exact Hr | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_diag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -113,11 +149,27 @@ Lemma dcg_diag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
       L1 L2 T K C M bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
-  intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (dcg_diag_translate_r eb Herr); first [exact Hr | exact _].
-Qed.
+Proof. intros Ho. eapply dcg_diag_translate_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
 
 (** This lemma builds the long-option translation premise in the same way. *)
+Lemma dcg_ldiag_translate_stpf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
+    lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
+      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+  dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
+  dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
+  dci_bounds db dbreg nb ib ic ireg k sec secreg ->
+  (forall mid, ldiag_msg ge mid -> 0 < ptr_addr mid < 2 ^ 64) ->
+  ldiag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
+      L1 L2 T K C M bs)
+    (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
+    dom.
+Proof.
+  intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (dcg_ldiag_translate_f eb Herr); first [exact Hr | exact _].
+Qed.
+
+(** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_ldiag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
@@ -131,9 +183,7 @@ Lemma dcg_ldiag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
       L1 L2 T K C M bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
-  intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (dcg_ldiag_translate_r eb Herr); first [exact Hr | exact _].
-Qed.
+Proof. intros Ho. eapply dcg_ldiag_translate_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
 End rules.
 
 (** ## The counterexample to the old rule

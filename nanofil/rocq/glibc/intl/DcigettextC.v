@@ -21,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextCode DcigettextExit.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextCode DcigettextFree DcigettextExit.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -80,8 +80,8 @@ Ltac ldchr :=
     sl and the domain-file string xd. It returns the message id with the
     locks released, errno restored to s, and the slot and the flag share
     given back. *)
-Lemma wp_dci_c_locale e cv sl sreg a0 a1 sec secreg dqs xs xsreg xd xreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ :
-  heap_fns ge -> lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
+Lemma wp_dci_c_locale_fr e cv sl sreg a0 a1 sec secreg dqs xs xsreg xd xreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ :
+  dci_free_rule -> lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   lookup (TAtom "_nl_state_lock") (ge_globals ge) = Some lk1 ->
   lookup (TAtom "__libc_setlocale_lock") (ge_globals ge) = Some lk2 ->
   dci_unlock_rule lk1 U1 U1' -> dci_unlock_rule lk2 U2 U2' ->
@@ -133,10 +133,33 @@ Proof.
   iApply (wp_raw_load_byte with "Hl Hb1"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ra |].
   iNext. iIntros "Hl Hb1".
   step. branch. step. branch. step. branch.
-  iApply (wp_dci_exit eb Herr _ xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs
+  iApply (wp_dci_exit_fr eb Herr _ xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs
     with "Hxl Hxc Hdl Hl HU1 HU2 Herr [HK Hsecl Hsecb]");
     try first [exact Hheap | exact Hge | exact Hlk1 | exact Hlk2 | exact Hu1 | exact Hu2 | exact Hs | lia | lk_prove].
   iNext. iIntros "Hxl Hxc HU1 HU2 Herr". iApply ("HK" with "Hxl Hxc Hsecl [Hsecb] HU1 HU2 Herr").
   iSplit; [done | iExact "Hsecb"].
 Qed.
+
+(** The older statement takes the model's free, which meets the rule. *)
+Lemma wp_dci_c_locale e cv sl sreg a0 a1 sec secreg dqs xs xsreg xd xreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ :
+  heap_fns ge -> lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
+  lookup (TAtom "_nl_state_lock") (ge_globals ge) = Some lk1 ->
+  lookup (TAtom "__libc_setlocale_lock") (ge_globals ge) = Some lk2 ->
+  dci_unlock_rule lk1 U1 U1' -> dci_unlock_rule lk2 U2 U2' ->
+  lookup (TAtom "__libc_enable_secure") (ge_globals ge) = Some (mkPtr sec (Obj sec)) ->
+  0 < sec -> sec mod 4 = 0 -> sec + 4 <= r_end secreg -> r_end secreg <= 2 ^ 48 ->
+  lookup (TAtom "v224") e = Some (WPtr cv) -> lookup (TAtom "v254") e = Some (WPtr (mkPtr sl (Obj sl))) ->
+  lookup (TAtom "v17") e = Some (WPtr (mkPtr xs (Obj xs))) -> lookup (TAtom "chk0") e = Some (WPtr (mkPtr xs (Obj xs))) ->
+  lookup (TAtom "v232") e = Some (WPtr (mkPtr xd (Obj xd))) ->
+  lookup (TAtom "v69") e = Some (WInt s) -> 0 <= s < 2 ^ 32 -> lookup (TAtom "v6") e = Some (WInt 0) ->
+  lookup (TAtom "v2") e = Some (WPtr msgid) ->
+  0 < sl -> sl + 2 <= r_end sreg -> r_end sreg <= 2 ^ 48 -> r_kind sreg = Heap ->
+  0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xsreg -> r_end xsreg <= 2 ^ 48 -> r_kind xreg = Heap -> 0 < xd < 2 ^ 64 ->
+  word_string DfracDiscarded cv [67] -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 0 -∗
+  live sl sreg -∗ ibyte sl 0 a0 -∗ ibyte sl 1 a1 -∗ live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗
+  U1 -∗ U2 -∗ errno_own eb bs -∗
+  ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 0 -∗ U1' -∗ U2' -∗
+     errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
+  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
+Proof. intros. eapply wp_dci_c_locale_fr; eauto using dci_free_rule_heap. Qed.
 End rules.
