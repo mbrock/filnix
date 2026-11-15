@@ -571,7 +571,11 @@ Qed.
     [[unchecked]]. *)
 Lemma va_arg_reason : forall k p m p0 r, va_arg_res k p m = Some p0 -> fst p0 = RUnchecked r -> False.
 Proof.
-  unfold va_arg_res. intros k p m p0 r H Hr. cases H; injection H as <-; discriminate Hr.
+  intros k p m [value m0] r H Hr. cbn in Hr. subst value.
+  unfold va_arg_res in H.
+  cases H;
+    apply (f_equal (fun q => match q with Some (RUnchecked _, _) => true | _ => false end)) in H;
+    discriminate H.
 Qed.
 
 (** A [[cas]] instruction fails only through its access check, so it never
