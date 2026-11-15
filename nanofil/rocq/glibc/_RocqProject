@@ -69,6 +69,7 @@ stdio/FormatterSrcFiles.v
 stdio/FormatterSrc01.v
 stdio/FormatterSrc02.v
 stdio/FormatterSrc.v
+stdio/FormatterScan.v
 stdio/PrintfBufferFileCode.v
 stdio/PrintfBufferIoCode.v
 stdio/PrintfCountBits.v
@@ -212,6 +213,7 @@ libio/SysCleanupPop.v
 stdio/CancelState.v
 stdio/PrintfBufferDone.v
 stdio/PrintfBufferSkip.v
+stdio/PrintfBufferWriteStaging.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
