@@ -410,8 +410,11 @@ intl/DcigettextDom.v
 intl/DcigettextJoin.v
 intl/DcigettextCopy.v
 intl/DcigettextC.v
+intl/DcigettextCName.v
+intl/DcigettextSecure.v
 intl/DcigettextNotC.v
 intl/DcigettextRoute.v
+intl/DcigettextRouteV.v
 intl/DcgettextC.v
 intl/DcgettextStpcpy.v
 intl/DcgettextTfind.v
@@ -432,6 +435,8 @@ hello/HelloGlibcLibsT.v
 hello/HelloGettextLink.v
 hello/HelloGettextImageCode.v
 hello/HelloGettextImage.v
+hello/HelloStrchrImageCode.v
+hello/HelloStrchrImage.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v

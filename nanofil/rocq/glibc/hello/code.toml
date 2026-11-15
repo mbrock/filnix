@@ -12,3 +12,20 @@ compare = "intl/GettextLink"
 fixtures = '''
 HelloGettextImage|||__GI_mempcpy __GI_memcpy __GI___dcgettext __dcigettext __GI_stpcpy __GI___tfind __current_locale_name __GI___pthread_rwlock_rdlock __GI___pthread_rwlock_unlock
 '''
+
+# The same image, restricted to the strchr pair that the privileged branch
+# of the locale test calls. The gettext image does not link strchr, so
+# these items are compared with the image of the string fixture that
+# defines them.
+[[batch]]
+layout = "image"
+mode = "checked"
+ctors = true
+roots = "main"
+objects = "checks.x86_64-linux.nanofil-hello-fixture.captured"
+object_prefix = "libhello_a-"
+units_files = ["survey/glibc/run/units.txt", "survey/glibc/run/hello-siblings.txt"]
+compare = "string/Strchr"
+fixtures = '''
+HelloStrchrImage|||__GI_strchr __GI___strchrnul
+'''

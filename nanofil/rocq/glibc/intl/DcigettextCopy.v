@@ -100,8 +100,9 @@ Ltac vx_len n :=
     name cv that reads "C" and the two literals of the file name. If the
     second malloc fails, the left continuation receives the exit
     resources. Otherwise the right continuation receives both buffers: xd
-    with valid bytes and the two-byte buffer sl that holds zeros. *)
-Lemma wp_dci_copy_r_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
+    with valid bytes and the sixteen-byte buffer sl, which is aligned to
+    16 and holds zeros. *)
+Lemma wp_dci_copy_w_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
     `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
       !Defines ge "__GI_memcpy" glibc_memcpy} :
   registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
@@ -127,9 +128,9 @@ Lemma wp_dci_copy_r_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗ Φ (Ret (WPtr msgid))) ∧
      (∀ e' sl, ⌜dci_pre_env e' xs rl sb dom msgid cv s /\ lookup (TAtom "v224") e' = Some (WPtr cv) /\
          lookup (TAtom "v232") e' = Some (WPtr (mkPtr xd (Obj xd))) /\
-         lookup (TAtom "v254") e' = Some (WPtr (mkPtr sl (Obj sl))) /\ 0 < sl /\ sl + 16 <= 2 ^ 48⌝ -∗
+         lookup (TAtom "v254") e' = Some (WPtr (mkPtr sl (Obj sl))) /\ 0 < sl /\ sl + 16 <= 2 ^ 48 /\ sl mod 16 = 0⌝ -∗
       live xd (mkRegion xd (xd + req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5))) Heap Live) -∗
-      live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗
+      live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗ bytes sl 2 (replicate 14 0) -∗
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
@@ -191,16 +192,59 @@ Proof.
     rewrite obj_zero_block; [|vm_compute; discriminate].
     change (req_extent (heap_req 16 2)) with 16. change (req_kind (heap_req 16 2)) with Heap.
     change (replicate (Z.to_nat 16) 0) with ([0] ++ [0] ++ replicate 14 0)%list.
-    rewrite !bytes_app. iDestruct "Hso" as "(Hsl & (Hb0 & Hb1 & _) & _)".
+    rewrite !bytes_app. iDestruct "Hso" as "(Hsl & (Hb0 & Hb1 & Hbs) & _)".
     step. step.
     assert (Hnn : ((if ptr_addr (mkPtr sl (Obj sl)) mod 2 ^ 64 =? 0 mod 2 ^ 64 mod 2 ^ 64 then 1 else 0) mod 2 ^ 32 =? 0) = true).
     { cbn [ptr_addr]. change (0 mod 2 ^ 64 mod 2 ^ 64) with 0. rewrite (Z.mod_small sl); [|lia].
       destruct (Z.eqb_spec sl 0); [lia | reflexivity]. }
     branch_symbolic. rewrite Hnn. cbn [edge_label].
     iDestruct "HK" as "[_ HK]".
-    iApply ("HK" with "[%] Hdl Hsl Hb0 Hb1 Hcat Hdom HM Hxl Hxc HU1 HU2 Herr").
+    iApply ("HK" with "[%] Hdl Hsl Hb0 Hb1 Hbs Hcat Hdom HM Hxl Hxc HU1 HU2 Herr").
     replace (bd + (da - bd)) with da in Hpr1 by lia.
     unfold dci_pre_env. split_and!; try lk_prove; lia.
+Qed.
+
+(** The older statement drops the bytes that the locale test does not
+    read when the flag is zero. *)
+Lemma wp_dci_copy_r_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
+      !Defines ge "__GI_memcpy" glibc_memcpy} :
+  registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
+  find_fn ge (TAtom "zmemmove") = None -> lookup (TAtom "zmemmove") (ge_globals ge) = None ->
+  dci_stpcpy_rule_r ->
+  dci_pre_env e xs rl sb dom msgid cv s -> lookup (TAtom "v224") e = Some (WPtr cv) ->
+  lookup (TAtom "iw_2.v9") e = Some (WPtr cp) -> lookup (TAtom "v226") e = Some (WInt (Z.of_nat (length ds))) ->
+  lookup (TAtom "v232") e = Some (WPtr (mkPtr xd (Obj xd))) ->
+  0 < xd -> xd mod 16 = 0 -> xd + req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) <= 2 ^ 48 ->
+  0 <= s < 2 ^ 32 -> 0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xreg -> r_end xreg <= 2 ^ 48 ->
+  dci_free_rule -> getopt_malloc_rule w0 registry ge M ->
+  lookup (TAtom "glibc_dcigettext#str.276") (ge_globals ge) = Some p276 ->
+  lookup (TAtom "glibc_dcigettext#str.277") (ge_globals ge) = Some p277 ->
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
+  lookup (TAtom "_nl_state_lock") (ge_globals ge) = Some lk1 ->
+  lookup (TAtom "__libc_setlocale_lock") (ge_globals ge) = Some lk2 ->
+  dci_unlock_rule lk1 U1 U1' -> dci_unlock_rule lk2 U2 U2' ->
+  obj xd (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) -∗
+  word_string dqc cp cat -∗ word_string dqd dom ds -∗ word_string DfracDiscarded cv [67] -∗
+  word_string DfracDiscarded p276 [47] -∗ word_string DfracDiscarded p277 [46; 109; 111] -∗ M -∗
+  live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
+  ▷ ((live xs xreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗
+      word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗ Φ (Ret (WPtr msgid))) ∧
+     (∀ e' sl, ⌜dci_pre_env e' xs rl sb dom msgid cv s /\ lookup (TAtom "v224") e' = Some (WPtr cv) /\
+         lookup (TAtom "v232") e' = Some (WPtr (mkPtr xd (Obj xd))) /\
+         lookup (TAtom "v254") e' = Some (WPtr (mkPtr sl (Obj sl))) /\ 0 < sl /\ sl + 16 <= 2 ^ 48⌝ -∗
+      live xd (mkRegion xd (xd + req_extent (heap_req 16 (Z.of_nat (length cat + length ds) + 5))) Heap Live) -∗
+      live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗
+      word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
+      live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
+      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+Proof.
+  intros. iIntros "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HU1 HU2 Herr HK".
+  iApply (wp_dci_copy_w_fr with "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HU1 HU2 Herr"); try eassumption.
+  iNext. iSplit; [iDestruct "HK" as "[HK _]"; iExact "HK" |].
+  iIntros (e' sl (Hq1 & Hq2 & Hq3 & Hq4 & Hq5 & Hq6 & _)) "Hdl Hsl Hb0 Hb1 _". iDestruct "HK" as "[_ HK]".
+  iApply ("HK" with "[%] Hdl Hsl Hb0 Hb1"). split_and!; assumption.
 Qed.
 
 (** The older statement takes the model's free, which meets the rule. *)
