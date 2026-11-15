@@ -379,12 +379,7 @@ Module HP := HelloProgNameOn R LG0.
 Module GL := GetoptLogicOn R LG0.
 Module HV := HelloVersionOn R LG0.
 Module HLo := HelloLocaleOn R LG0.
-Module HL := HLo.HL.
-Module LL := HL.LL.
-Module ML := HL.ML.
-Module SL := ML.SL.
-Module LG := LG0.
-Module L := LG.L.
+Import HLo HL ML LG.
 Module GR := GetoptRefinementOn R L.M.
 Import L LG SL ML LL HL.
 

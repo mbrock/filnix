@@ -53,19 +53,13 @@ Proof. split; [right; exists d; reflexivity | exists c, v; reflexivity]. Qed.
 
 Module HelloJoin (R : Runtime).
 Module HM := HelloMain R.
-Module LG0 := HM.LG0.
+Import HM HM.HLo HM.HLo.HL HM.HLo.ML HM.LG0.
 Module HC := HelloConvOn R LG0.
 Module HCl := HelloCloseOn R LG0.
-Module HP := HM.HP.
-Module HV := HM.HV.
-Module HLo := HM.HLo.
-Module HL := HM.HL.
-Module LL := HM.LL.
-Module ML := HM.ML.
-Module SL := HM.SL.
-Module LG := LG0.
-Module L := LG.L.
 Import L LG SL ML LL HL.
+
+Local Hint Opaque pts bytes auxes live pcell main_fn xmalloc_fn
+  HP.HN.literals HP.HN.name_cells : typeclass_instances.
 
 Section join.
 Context (registry : name -> option (contract libc_world))
@@ -475,13 +469,15 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Local Instance join_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
 
+Local Hint Opaque join_irisGS : typeclass_instances.
+
 (** The expressions of the language. *)
 Local Notation jexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Enter a block of a function f, read from the linked module. *)
 Local Ltac jn_enter blk :=
   iApply (wp_enter _ _ _ _ _ _ _ _ blk);
-  [vm_compute; reflexivity | word_premise |]; iNext;
+  [abstract (vm_cast_no_check (eq_refl (Some blk))) | word_premise |]; iNext;
   cbn [b_insts b_jump main_block xmalloc_block hblk].
 
 (** xmalloc(n): malloc's contract has no null return, as running out of
@@ -750,7 +746,8 @@ Lemma main_full s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix b61 r61 rg rt rc rp 
 Proof.
   intros Hhd Hcs Hix Lxe Lce.
   iIntros "Hb Has Ht Hlit Hcells Hks Hcod Hs80 Hv Hh H61 Hc Hp Herr Hjs Hgr Htr".
-  iApply (HM.main_to_join with "Hb Has Ht Hlit Hcells Hks Hcod Hs80 Hv Hh H61").
+  pose proof (HM.main_to_join registry wi ge) as Hmain.
+  iApply (Hmain with "Hb Has Ht Hlit Hcells Hks Hcod Hs80 Hv Hh H61").
   all: try eassumption.
   (* --help's query of LC_MESSAGES, from the general query premise. *)
   1: intros ?m ?w ?h ?p ?t Hw Hk; eapply Hset_query_pre; [exact Hw | exact Hk | reflexivity].
