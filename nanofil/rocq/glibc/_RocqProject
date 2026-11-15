@@ -225,6 +225,7 @@ stdio/FormatterStringDispatch.v
 stdio/FormatterStringLength.v
 stdio/FormatterStringWrite.v
 stdio/FormatterStringRead.v
+stdio/FormatterSuffixScan.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
