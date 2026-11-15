@@ -1,13 +1,10 @@
 From Glibc Require Import GlibcProgram.
-(** The end of `c: _IO_new_fclose(fp)` (LibioFcloseCode.v,
-    libio/iofclose.c) for stdout, from block `c: L8`, after
-    `c: _IO_file_close_it` and the unlock: `c: _IO_un_link(fp)`
-    (LibioUnlink.v's [wp_glibc__IO_un_link], whose triple is
-    [unlink_spec]), the jump table's `c: __finish`
-    (LibioFinish.v's [wp_glibc__IO_new_file_finish_closed]), no backup
-    area to free, and, since fp is `c: _IO_2_1_stdout_`, no
-    `c: free(fp)`: the result is `c: pr.1`, the close's
-    ([wp_fclose_L8]). *)
+(** Closing a standard output stream must remove it from glibc's list
+    without freeing the static stream object. This proof follows the
+    end of fclose after the buffer has been released and the lock freed.
+    It runs the unlink and finish calls, checks the standard-stream
+    addresses, and returns the saved close result, including failure.
+    Both stdout and stderr use the same instruction proof. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -76,31 +73,24 @@ Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
 Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
 
 
-(** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** [stream_life] g, as LibioUnlinkMid.v's: the life of the stream g. *)
-
-(** `c: _IO_un_link`'s triple on a linked stream, as LibioUnlink.v's
-    [wp_glibc__IO_un_link] states it (4294967167 is `c: ~_IO_LINKED`). *)
-
-(** The triples the tail calls. *)
+(** The unlink call removes the stream from the list. The finish call
+    may invoke unlink again, when the stream is already unlinked. *)
 Context (Hunl_spec : (unlink_spec w0 registry ge))
   (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
 
-(** Clearing `c: _IO_LINKED` leaves a stream unlinked. *)
-
-(** Block `c: L8` of `c: _IO_new_fclose(fp)` for stdout (the symbol
-    `c: _IO_2_1_stdout_`, not `c: _IO_2_1_stdin_`), whose close gave
-    p1, to its return: fp leaves the list pre ++ fp :: post, its
-    `c: __finish` runs, and since fp is stdout it is not freed. The
-    stream is un-oriented or narrow, `c: _mode` md 0 or -1, so the
-    wide part is skipped. *)
-Lemma wp_fclose_L8 e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin md Φ :
+(** Closing either static output stream removes it from the stream list
+    but does not free its object. The stdout case stops before looking up
+    stderr; the stderr case compares all three standard-stream addresses.
+    The stream is narrow or unoriented, and its buffer is already gone. *)
+Lemma wp_fclose_L8_static_output e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin pout md Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "v0") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
   lookup (TAtom "pr.1") e = Some (WInt p1) -> 0 <= p1 < 2 ^ 32 ->
-  lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some fp ->
+  lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout ->
+  (pout = fp \/ (ptr_addr pout <> fb /\ 0 <= ptr_addr pout < 2 ^ 64 /\
+    lookup (TAtom "_IO_2_1_stderr_") (ge_globals ge) = Some fp)) ->
   lookup (TAtom "_IO_2_1_stdin_") (ge_globals ge) = Some pin -> ptr_addr pin <> fb ->
   0 <= ptr_addr pin < 2 ^ 64 ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
@@ -122,7 +112,7 @@ Lemma wp_fclose_L8 e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pi
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
   WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
 Proof.
-  intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd. subst fp.
+  intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hstatic Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd. subst fp.
   iIntros "#Hvt #Hs Htcb Hl Hfl Hlp Hlb Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK".
   unfold file_size in Hfend.
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
@@ -154,18 +144,88 @@ Proof.
   iApply (LibioFinish.wp_glibc__IO_new_file_finish_closed Hunl_unlinked
             with "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl"); try close_side.
   iNext. iIntros "Hl Hfd Hfl Hbb H80 H96 Hlp Hbl". resume.
-  (* `c: _mode` 0 or -1, not wide; no backup area; fp is stdout. *)
+  (* Narrow or unoriented streams have no wide cleanup here. *)
   iDestruct "Hmode" as "[%Hmr Hmode]".
   step. check "Hl". load_s32 "Hl" "Hmode". step.
   assert (Esx : (sign_extension (2 ^ 32) (2 ^ 31) (0 mod 2 ^ 32) <? sign_extension (2 ^ 32) (2 ^ 31) (md mod 2 ^ 32))
                 = false) by (destruct Hmd as [-> | ->]; reflexivity).
   rewrite Esx. clear Esx. branch.
   step. step. check "Hl". load_null "Hl" "H80". step. step. step. branch.
-  step. step. step. step. step. branch_as true. step. step. step. step. step. step. branch_as false. step. branch. step.
-  iApply wp_ret; [reflexivity | vx |]. iNext. rewrite (Z.mod_small p1 (2 ^ 32)); [|lia].
-  iApply ("HK" with "Htcb Hl Hfl Hlp [Hbl Hb0 Hb4 Hbo] Hio Hlives Hlinks Hfd [Hmode] Hvtp Hbb H80 H96").
-  - iFrame. iPureIntro. split_and!; assumption.
-  - iSplit; [done | iExact "Hmode"].
+  destruct Hstatic as [-> | (Hout & Houtr & Hgerr)].
+  all: repeat first [step | branch_as true | branch_as false].
+  all: iApply wp_ret; [reflexivity | vx |]; iNext; rewrite (Z.mod_small p1 (2 ^ 32)); [|lia].
+  all: iApply ("HK" with "Htcb Hl Hfl Hlp [Hbl Hb0 Hb4 Hbo] Hio Hlives Hlinks Hfd [Hmode] Hvtp Hbb H80 H96").
+  all: first [iFrame; iPureIntro; split_and!; assumption | iSplit; [done | iExact "Hmode"]].
+Qed.
+
+(** The original stdout rule needs no stderr lookup because its address
+    comparison succeeds before execution reaches that lookup. *)
+Lemma wp_fclose_L8 e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin md Φ :
+  let fp := mkPtr fb (Obj fb) in
+  lookup (TAtom "v0") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
+  lookup (TAtom "pr.1") e = Some (WInt p1) -> 0 <= p1 < 2 ^ 32 ->
+  lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some fp ->
+  lookup (TAtom "_IO_2_1_stdin_") (ge_globals ge) = Some pin -> ptr_addr pin <> fb ->
+  0 <= ptr_addr pin < 2 ^ 64 ->
+  lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  0 <= fl < 2 ^ 32 -> has fl io_user_lock = false -> has fl io_linked = true -> 0 < lb ->
+  md = 0 \/ md = 2 ^ 32 - 1 ->
+  vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
+  live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
+  lock_state lb lbreg 0 0 null -∗
+  io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
+  int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
+  ▷ (tcb_cleanup_inv (ow_self w0) -∗ live fb freg -∗ int_cell fb off_flags (Z.land fl 4294967167) -∗
+     pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗
+     io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
+     (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗
+     int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗
+     pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+     pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
+  WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
+Proof.
+  intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd.
+  apply (wp_fclose_L8_static_output e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin fp md Φ);
+    try assumption. left. reflexivity.
+Qed.
+
+(** Stderr takes the third static-object comparison, after failing the
+    stdin and stdout comparisons. The saved close result is returned
+    unchanged, even when closing failed. Errno and other caller memory
+    can remain framed throughout this tail. *)
+Lemma wp_fclose_L8_stderr e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin pout md Φ :
+  let fp := mkPtr fb (Obj fb) in
+  lookup (TAtom "v0") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
+  lookup (TAtom "pr.1") e = Some (WInt p1) -> 0 <= p1 < 2 ^ 32 ->
+  lookup (TAtom "_IO_2_1_stderr_") (ge_globals ge) = Some fp ->
+  lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout -> ptr_addr pout <> fb ->
+  0 <= ptr_addr pout < 2 ^ 64 ->
+  lookup (TAtom "_IO_2_1_stdin_") (ge_globals ge) = Some pin -> ptr_addr pin <> fb ->
+  0 <= ptr_addr pin < 2 ^ 64 ->
+  lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  0 <= fl < 2 ^ 32 -> has fl io_user_lock = false -> has fl io_linked = true -> 0 < lb ->
+  md = 0 \/ md = 2 ^ 32 - 1 ->
+  vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
+  live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
+  lock_state lb lbreg 0 0 null -∗
+  io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
+  int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+  pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
+  ▷ (tcb_cleanup_inv (ow_self w0) -∗ live fb freg -∗ int_cell fb off_flags (Z.land fl 4294967167) -∗
+     pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗
+     io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
+     (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗
+     int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗
+     pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
+     pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
+  WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
+Proof.
+  intros fp Hv0 Hc0 Hp1 Hp1r Hgerr Hgout Hout Houtr Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd.
+  apply (wp_fclose_L8_static_output e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin pout md Φ);
+    try assumption. right. auto.
 Qed.
 
 End rules.
