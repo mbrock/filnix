@@ -280,6 +280,8 @@ stdio/ErrorTail.v
 stdio/ErrorNewline.v
 stdio/ErrorTailNormal.v
 stdio/ErrorText.v
+stdio/ErrorTextPrint.v
+stdio/ErrorTextNormal.v
 stdio/ErrorTextTail.v
 stdio/ErrorFallback.v
 stdio/ErrorFailure.v
