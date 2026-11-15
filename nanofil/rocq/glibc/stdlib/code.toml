@@ -2,8 +2,8 @@ layout = "stdlib"
 mode = "trap"
 roots = "malloc free calloc atexit __cxa_atexit __errno_location __ctype_b_loc __ctype_get_mb_cur_max mbsinit iswprint"
 units = '''
-malloc malloc/malloc.os
-cxa_atexit stdlib/cxa_atexit.os
+glibc_malloc malloc/malloc.os
+glibc_cxa_atexit stdlib/cxa_atexit.os
 atexit stdlib/atexit.oS
 errno csu/errno.os
 errno_loc csu/errno-loc.os

@@ -212,7 +212,7 @@ Proof. repeat split; vm_compute; first [reflexivity | tauto]. Qed.
 Example gettext_link_fresh :
   Forall (fun n => ~ In n ["mbszero"; "memset"; "set_program_name"; "strrchr"; "__GI_strlen"; "__GI___memrchr";
                            "memcmp"; "memeq"; "strncmp"; "strlen"; "__errno_location"; "xmalloc"; "malloc";
-                           "malloc#__libc_malloc2"; "free"; "atexit"; "exit"; "__run_exit_handlers";
+                           "glibc_malloc#__libc_malloc2"; "free"; "atexit"; "exit"; "__run_exit_handlers";
                            "__GI___call_tls_dtors"; "__GI___libc_cleanup_push_defer";
                            "__GI___libc_cleanup_pop_restore"; "__GI__IO_flush_all"; "_IO_cleanup"; "close_stdout"]%string)
     ["__GI_mempcpy"; "__GI_memcpy"; "__GI___dcgettext"; "__dcigettext"; "__GI_stpcpy"; "__GI___tfind";

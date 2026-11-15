@@ -75,7 +75,7 @@ Definition HiAtexitFns_hi_ge_program_table : list (string * func) :=
   ("__GI_memcpy", glibc_memcpy) ::
   ("__GI___libc_malloc", malloc_fn) ::
   ("malloc", malloc_fn) ::
-  ("malloc#__libc_malloc2", malloc2_fn) ::
+  ("glibc_malloc#__libc_malloc2", malloc2_fn) ::
   ("__GI___libc_free", free_fn) ::
   ("free", free_fn) ::
   ("__new_exitfn", new_exitfn_fn) ::
@@ -329,9 +329,9 @@ Lemma hi_find_malloc : Defines hi_ge "malloc" malloc_fn.
 Proof. exact (defines_from_table_nth hi_ge HiAtexitFns_hi_ge_program_table 47 "malloc" malloc_fn HiAtexitFns_hi_ge_program_table_correct eq_refl). Qed.
 #[global] Existing Instance hi_find_malloc.
 
-(** A call of `malloc#__libc_malloc2` runs [malloc2_fn]. *)
-Lemma hi_find_malloc___libc_malloc2 : Defines hi_ge "malloc#__libc_malloc2" malloc2_fn.
-Proof. exact (defines_from_table_nth hi_ge HiAtexitFns_hi_ge_program_table 48 "malloc#__libc_malloc2" malloc2_fn HiAtexitFns_hi_ge_program_table_correct eq_refl). Qed.
+(** A call of `glibc_malloc#__libc_malloc2` runs [malloc2_fn]. *)
+Lemma hi_find_malloc___libc_malloc2 : Defines hi_ge "glibc_malloc#__libc_malloc2" malloc2_fn.
+Proof. exact (defines_from_table_nth hi_ge HiAtexitFns_hi_ge_program_table 48 "glibc_malloc#__libc_malloc2" malloc2_fn HiAtexitFns_hi_ge_program_table_correct eq_refl). Qed.
 #[global] Existing Instance hi_find_malloc___libc_malloc2.
 
 (** A call of `__GI___libc_free` runs [free_fn]. *)

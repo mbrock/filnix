@@ -38,7 +38,7 @@ Definition file_9 : string := "wcfuncs.c".
 (** Decoding once lets all source tables share the same checked function bodies. *)
 Definition source_module : module := Eval vm_compute in code_module stdlib_term.
 
-Module fn_malloc___libc_malloc2.
+Module fn_glibc_malloc___libc_malloc2.
 
 (** This location identifies the C function definition when its context records contain one. *)
 Definition source : option (string * N) := Some (file_6, 3065%N).
@@ -70,7 +70,7 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
   [((TAtom "start"), [])].
 
 
-End fn_malloc___libc_malloc2.
+End fn_glibc_malloc___libc_malloc2.
 
 Module fn___GI___libc_malloc.
 
@@ -174,7 +174,7 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 
 End fn___libc_calloc.
 
-Module fn_malloc_malloc_printerr.
+Module fn_glibc_malloc_malloc_printerr.
 
 (** This location identifies the C function definition when its context records contain one. *)
 Definition source : option (string * N) := Some (file_6, 5135%N).
@@ -206,7 +206,7 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
   [((TAtom "start"), [])].
 
 
-End fn_malloc_malloc_printerr.
+End fn_glibc_malloc_malloc_printerr.
 
 Module fn___internal_atexit.
 
@@ -520,11 +520,11 @@ Definition source_blocks : list (string * option (list name)) := Eval lazy in
     match find_direct (TAtom n) source_module with
     | Some (Defined f) => Some (map b_label (fn_blocks f))
     | _ => None
-    end)) ["malloc#__libc_malloc2"; "__GI___libc_malloc"; "__GI___libc_free"; "__libc_calloc"; "malloc#malloc_printerr"; "__internal_atexit"; "__GI___cxa_atexit"; "__new_exitfn"; "atexit"; "__GI___errno_location"; "__mbsinit"; "__iswprint"; "__ctype_b_loc"; "__ctype_get_mb_cur_max"].
+    end)) ["glibc_malloc#__libc_malloc2"; "__GI___libc_malloc"; "__GI___libc_free"; "__libc_calloc"; "glibc_malloc#malloc_printerr"; "__internal_atexit"; "__GI___cxa_atexit"; "__new_exitfn"; "atexit"; "__GI___errno_location"; "__mbsinit"; "__iswprint"; "__ctype_b_loc"; "__ctype_get_mb_cur_max"].
 
 (** Projection keeps live sets and memory access records out of the membership computation. *)
 Definition table_labels : list (string * list name) := Eval lazy in
-  [("malloc#__libc_malloc2", app (map fst fn_malloc___libc_malloc2.block_src) (app (map fst fn_malloc___libc_malloc2.live_in) (app (map fst fn_malloc___libc_malloc2.live_out) (app (map fst fn_malloc___libc_malloc2.footprint) (fn_malloc___libc_malloc2.loop_heads))))); ("__GI___libc_malloc", app (map fst fn___GI___libc_malloc.block_src) (app (map fst fn___GI___libc_malloc.live_in) (app (map fst fn___GI___libc_malloc.live_out) (app (map fst fn___GI___libc_malloc.footprint) (fn___GI___libc_malloc.loop_heads))))); ("__GI___libc_free", app (map fst fn___GI___libc_free.block_src) (app (map fst fn___GI___libc_free.live_in) (app (map fst fn___GI___libc_free.live_out) (app (map fst fn___GI___libc_free.footprint) (fn___GI___libc_free.loop_heads))))); ("__libc_calloc", app (map fst fn___libc_calloc.block_src) (app (map fst fn___libc_calloc.live_in) (app (map fst fn___libc_calloc.live_out) (app (map fst fn___libc_calloc.footprint) (fn___libc_calloc.loop_heads))))); ("malloc#malloc_printerr", app (map fst fn_malloc_malloc_printerr.block_src) (app (map fst fn_malloc_malloc_printerr.live_in) (app (map fst fn_malloc_malloc_printerr.live_out) (app (map fst fn_malloc_malloc_printerr.footprint) (fn_malloc_malloc_printerr.loop_heads))))); ("__internal_atexit", app (map fst fn___internal_atexit.block_src) (app (map fst fn___internal_atexit.live_in) (app (map fst fn___internal_atexit.live_out) (app (map fst fn___internal_atexit.footprint) (fn___internal_atexit.loop_heads))))); ("__GI___cxa_atexit", app (map fst fn___GI___cxa_atexit.block_src) (app (map fst fn___GI___cxa_atexit.live_in) (app (map fst fn___GI___cxa_atexit.live_out) (app (map fst fn___GI___cxa_atexit.footprint) (fn___GI___cxa_atexit.loop_heads))))); ("__new_exitfn", app (map fst fn___new_exitfn.block_src) (app (map fst fn___new_exitfn.live_in) (app (map fst fn___new_exitfn.live_out) (app (map fst fn___new_exitfn.footprint) (fn___new_exitfn.loop_heads))))); ("atexit", app (map fst fn_atexit.block_src) (app (map fst fn_atexit.live_in) (app (map fst fn_atexit.live_out) (app (map fst fn_atexit.footprint) (fn_atexit.loop_heads))))); ("__GI___errno_location", app (map fst fn___GI___errno_location.block_src) (app (map fst fn___GI___errno_location.live_in) (app (map fst fn___GI___errno_location.live_out) (app (map fst fn___GI___errno_location.footprint) (fn___GI___errno_location.loop_heads))))); ("__mbsinit", app (map fst fn___mbsinit.block_src) (app (map fst fn___mbsinit.live_in) (app (map fst fn___mbsinit.live_out) (app (map fst fn___mbsinit.footprint) (fn___mbsinit.loop_heads))))); ("__iswprint", app (map fst fn___iswprint.block_src) (app (map fst fn___iswprint.live_in) (app (map fst fn___iswprint.live_out) (app (map fst fn___iswprint.footprint) (fn___iswprint.loop_heads))))); ("__ctype_b_loc", app (map fst fn___ctype_b_loc.block_src) (app (map fst fn___ctype_b_loc.live_in) (app (map fst fn___ctype_b_loc.live_out) (app (map fst fn___ctype_b_loc.footprint) (fn___ctype_b_loc.loop_heads))))); ("__ctype_get_mb_cur_max", app (map fst fn___ctype_get_mb_cur_max.block_src) (app (map fst fn___ctype_get_mb_cur_max.live_in) (app (map fst fn___ctype_get_mb_cur_max.live_out) (app (map fst fn___ctype_get_mb_cur_max.footprint) (fn___ctype_get_mb_cur_max.loop_heads)))))].
+  [("glibc_malloc#__libc_malloc2", app (map fst fn_glibc_malloc___libc_malloc2.block_src) (app (map fst fn_glibc_malloc___libc_malloc2.live_in) (app (map fst fn_glibc_malloc___libc_malloc2.live_out) (app (map fst fn_glibc_malloc___libc_malloc2.footprint) (fn_glibc_malloc___libc_malloc2.loop_heads))))); ("__GI___libc_malloc", app (map fst fn___GI___libc_malloc.block_src) (app (map fst fn___GI___libc_malloc.live_in) (app (map fst fn___GI___libc_malloc.live_out) (app (map fst fn___GI___libc_malloc.footprint) (fn___GI___libc_malloc.loop_heads))))); ("__GI___libc_free", app (map fst fn___GI___libc_free.block_src) (app (map fst fn___GI___libc_free.live_in) (app (map fst fn___GI___libc_free.live_out) (app (map fst fn___GI___libc_free.footprint) (fn___GI___libc_free.loop_heads))))); ("__libc_calloc", app (map fst fn___libc_calloc.block_src) (app (map fst fn___libc_calloc.live_in) (app (map fst fn___libc_calloc.live_out) (app (map fst fn___libc_calloc.footprint) (fn___libc_calloc.loop_heads))))); ("glibc_malloc#malloc_printerr", app (map fst fn_glibc_malloc_malloc_printerr.block_src) (app (map fst fn_glibc_malloc_malloc_printerr.live_in) (app (map fst fn_glibc_malloc_malloc_printerr.live_out) (app (map fst fn_glibc_malloc_malloc_printerr.footprint) (fn_glibc_malloc_malloc_printerr.loop_heads))))); ("__internal_atexit", app (map fst fn___internal_atexit.block_src) (app (map fst fn___internal_atexit.live_in) (app (map fst fn___internal_atexit.live_out) (app (map fst fn___internal_atexit.footprint) (fn___internal_atexit.loop_heads))))); ("__GI___cxa_atexit", app (map fst fn___GI___cxa_atexit.block_src) (app (map fst fn___GI___cxa_atexit.live_in) (app (map fst fn___GI___cxa_atexit.live_out) (app (map fst fn___GI___cxa_atexit.footprint) (fn___GI___cxa_atexit.loop_heads))))); ("__new_exitfn", app (map fst fn___new_exitfn.block_src) (app (map fst fn___new_exitfn.live_in) (app (map fst fn___new_exitfn.live_out) (app (map fst fn___new_exitfn.footprint) (fn___new_exitfn.loop_heads))))); ("atexit", app (map fst fn_atexit.block_src) (app (map fst fn_atexit.live_in) (app (map fst fn_atexit.live_out) (app (map fst fn_atexit.footprint) (fn_atexit.loop_heads))))); ("__GI___errno_location", app (map fst fn___GI___errno_location.block_src) (app (map fst fn___GI___errno_location.live_in) (app (map fst fn___GI___errno_location.live_out) (app (map fst fn___GI___errno_location.footprint) (fn___GI___errno_location.loop_heads))))); ("__mbsinit", app (map fst fn___mbsinit.block_src) (app (map fst fn___mbsinit.live_in) (app (map fst fn___mbsinit.live_out) (app (map fst fn___mbsinit.footprint) (fn___mbsinit.loop_heads))))); ("__iswprint", app (map fst fn___iswprint.block_src) (app (map fst fn___iswprint.live_in) (app (map fst fn___iswprint.live_out) (app (map fst fn___iswprint.footprint) (fn___iswprint.loop_heads))))); ("__ctype_b_loc", app (map fst fn___ctype_b_loc.block_src) (app (map fst fn___ctype_b_loc.live_in) (app (map fst fn___ctype_b_loc.live_out) (app (map fst fn___ctype_b_loc.footprint) (fn___ctype_b_loc.loop_heads))))); ("__ctype_get_mb_cur_max", app (map fst fn___ctype_get_mb_cur_max.block_src) (app (map fst fn___ctype_get_mb_cur_max.live_in) (app (map fst fn___ctype_get_mb_cur_max.live_out) (app (map fst fn___ctype_get_mb_cur_max.footprint) (fn___ctype_get_mb_cur_max.loop_heads)))))].
 
 (** One computation rejects missing functions and stale labels across all tables in this fixture. *)
 Lemma labels_valid :

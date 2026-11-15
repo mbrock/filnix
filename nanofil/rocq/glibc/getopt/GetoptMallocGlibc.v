@@ -30,9 +30,9 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
     links glibc's own. Given the bindings of malloc, its inner allocator
     and the cache globals, this lemma proves the rule, and every answer
     it gives is a fresh object. *)
-Lemma getopt_malloc_rule_glibc `{!Defines ge "malloc" malloc_fn, !Defines ge "malloc#__libc_malloc2" malloc2_fn}
+Lemma getopt_malloc_rule_glibc `{!Defines ge "malloc" malloc_fn, !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn}
     dq mp tc dummy mpr tcr dr :
-  lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)) ->
+  lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)) ->
   lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc)) ->
   getopt_malloc_rule w0 registry ge (hi_malloc_state dq mp tc dummy mpr tcr dr).
 Proof.

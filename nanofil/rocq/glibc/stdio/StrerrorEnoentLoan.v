@@ -72,7 +72,7 @@ Context `{!Defines ge "__get_errlist" glibc_get_errlist,
   !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
   !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
   !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
-  !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn, !Defines ge "malloc#__libc_malloc2" malloc2_fn}.
+  !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn, !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn}.
 Context (Hheap : dci_heap_glibc mpb tcb)
   (Hlk1 : rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid) (Hlk2 : rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid)
   (Hlkt : rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid) (Hlocale : locale_cells gb go greg lp lb lreg)

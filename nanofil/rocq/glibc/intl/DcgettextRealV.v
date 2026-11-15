@@ -138,7 +138,7 @@ Lemma wp_dcgettext_c_real_v f e ls l d args rest j mid dom ds dqd nb nc k cat dq
       !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
       !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
       !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
-      !Defines ge "malloc#__libc_malloc2" malloc2_fn} :
+      !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} :
   dci_heap_glibc mpb tcb -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -180,7 +180,7 @@ Lemma dcg_diag_translate_real_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb d
       !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
       !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
       !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
-      !Defines ge "malloc#__libc_malloc2" malloc2_fn} :
+      !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} :
   dci_heap_glibc mpb tcb -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -214,7 +214,7 @@ Lemma dcg_ldiag_translate_real_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb 
       !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
       !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
       !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
-      !Defines ge "malloc#__libc_malloc2" malloc2_fn} :
+      !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} :
   dci_heap_glibc mpb tcb -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->

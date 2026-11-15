@@ -2,8 +2,8 @@ layout = "hi_atexit"
 ctors = true
 roots = "main"
 units = '''
-malloc malloc/malloc.os
-cxa_atexit stdlib/cxa_atexit.os
+glibc_malloc malloc/malloc.os
+glibc_cxa_atexit stdlib/cxa_atexit.os
 atexit stdlib/atexit.oS
 errno csu/errno.os
 errno_loc csu/errno-loc.os

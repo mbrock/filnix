@@ -60,9 +60,9 @@ Local Ltac wpm := first [ reflexivity | compute_premise ].
 Lemma wp_hello_xmalloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
   0 <= n < 2 ^ 64 ->
   find_fn ge (TAtom "malloc") = Some (Defined malloc_fn) ->
-  lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mp_b (Obj mp_b)) ->
+  lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mp_b (Obj mp_b)) ->
   lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc_b (Obj tc_b)) ->
-  find_fn ge (TAtom "malloc#__libc_malloc2") = Some (Defined malloc2_fn) ->
+  find_fn ge (TAtom "glibc_malloc#__libc_malloc2") = Some (Defined malloc2_fn) ->
   AllocLogic.tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
   ▷ (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
        obj base (heap_req 16 n) -∗ AllocLogic.tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗

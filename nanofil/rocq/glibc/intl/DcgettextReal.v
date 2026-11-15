@@ -55,7 +55,7 @@ Context (Hreg : holds_os registry) (Hext : sys_external ge).
     to leave the runtime's free and `c: zmemmove` to the runtime. *)
 Definition dci_heap_glibc (mpb tcb : Z) : Prop :=
   frees_heap (ge_free ge) /\ find_fn ge zgc_free_name = None /\ lookup zgc_free_name (ge_globals ge) = None /\
-  lookup (TAtom "malloc#mp_") (ge_globals ge) = Some (mkPtr mpb (Obj mpb)) /\
+  lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mpb (Obj mpb)) /\
   lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tcb (Obj tcb)) /\
   find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None.
 
@@ -64,7 +64,7 @@ Definition dci_heap_glibc (mpb tcb : Z) : Prop :=
     contract, glibc's free gives the free rule, and glibc's malloc gives
     the malloc rule over a share of the idle cache. *)
 Lemma dci_rest_rwf_glibc `{!Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
-      !Defines ge "malloc#__libc_malloc2" malloc2_fn} dq mpb tcb dmb mpr tcr dr :
+      !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} dq mpb tcb dmb mpr tcr dr :
   dci_heap_glibc mpb tcb -> dci_rest_rwf (hi_malloc_state dq mpb tcb dmb mpr tcr dr).
 Proof.
   intros (Hfh & Hzf & Hzg & Hmp & Htc & Hmf & Hmd). split_and!.
@@ -90,7 +90,7 @@ Lemma wp_dcgettext_c_real f e ls l d args rest j mid dom ds dqd nb nc k cat dqc 
       !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
       !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
       !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
-      !Defines ge "malloc#__libc_malloc2" malloc2_fn} :
+      !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} :
   dci_heap_glibc mpb tcb -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -125,7 +125,7 @@ Lemma dcg_diag_translate_real dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
       !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
       !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
       !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
-      !Defines ge "malloc#__libc_malloc2" malloc2_fn} :
+      !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} :
   dci_heap_glibc mpb tcb -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -158,7 +158,7 @@ Lemma dcg_ldiag_translate_real dom ds dqd nb nc k cat dqc cv p276 p277 db dqb db
       !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
       !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
       !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
-      !Defines ge "malloc#__libc_malloc2" malloc2_fn} :
+      !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} :
   dci_heap_glibc mpb tcb -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
