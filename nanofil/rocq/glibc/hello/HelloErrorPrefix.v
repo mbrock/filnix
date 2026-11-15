@@ -32,6 +32,40 @@ Let loan := (live gb greg ∗ pcell gb 0 (mkPtr efb (Obj efb)) ∗ live efb efre
 Let fields := error_prefix_fields efb fl elb elreg.
 Let name := error_prefix_name pname nameb namer dqb chars.
 
+(** The prefix returns the fields that the following message needs. This
+    rule keeps the closed stdout state aside while stderr is borrowed,
+    then passes both streams to the caller's resource exchange. *)
+Lemma wp_error_closed_prefix vbreg sb sreg (D R Ready : iProp Σ) (Q : Z -> Z -> iProp Σ) :
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
+  0 < gb -> gb mod 8 = 0 -> gb + 8 <= r_end greg -> r_end greg <= 2 ^ 63 ->
+  0 < efb -> efb mod 8 = 0 -> efb + 224 <= r_end efreg -> r_end efreg <= 2 ^ 63 ->
+  Z.land fl 32768 = 0 -> 0 <= xb < 2 ^ 64 -> md = 0 \/ md = 2 ^ 32 - 1 ->
+  ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
+  find_fn ge (TAtom "__vfxprintf") = Some (Defined glibc_vfxprintf) ->
+  (D ⊢ loan ∗ fields md xb xreg ∗ name ∗ R) ->
+  (forall r md', error_closed_flush fb vb lb lbreg vbreg sb sreg
+    (loan ∗ fields md' xb xreg ∗ name ∗ Q r md') ⊢ Ready) ->
+  (forall fx_ap, vfxprintf_formatter efb efreg fl elb elreg (mkPtr xb (Ro xb)) fx_ap 0 md DfracDiscarded xreg
+    (fun q => fx_va q [WPtr null;WPtr (mkPtr xb (Ro xb));WPtr pname])
+    (bytesq DfracDiscarded xb 0 [37;115;58;32;0] ∗ live_capq dqn (ptr_cap pname) namer ∗ name ∗ R)%I
+    (fun r => bytesq DfracDiscarded xb 0 [37;115;58;32;0] ∗ live_capq dqn (ptr_cap pname) namer ∗
+      name ∗ ∃ md', int_cell efb 192 md' ∗ Q r md')%I) ->
+  live_capq dqn (ptr_cap pname) namer -∗ error_closed_flush fb vb lb lbreg vbreg sb sreg D -∗
+  WP (ERun (fxprintf_normal_frame null (mkPtr xb (Ro xb)) [WPtr pname]) : gexpr)
+    {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live_capq dqn (ptr_cap pname) namer ∗ Ready }}.
+Proof.
+  intros Hg Hgb Hga Hge Hgr Hefb Hefa Hefe Hefr Huser Hxb Hmd Hself Hselfr Hvfx Hlend Hready Hformat.
+  iIntros "Hname (Hclosed & #Hvt & #Hslot & #Hs & HD)".
+  iDestruct (Hlend with "HD") as "((Hgl & Hgp & Hl) & Hfields & Hbytes & HR)".
+  iApply (wp_wand with "[Hname Hclosed Hgl Hgp Hl Hfields Hbytes HR]").
+  { iApply (wp_error_prefix Hreg Hext efb efreg fl elb elreg md xb xreg sb sreg gb greg
+      pname nameb namer dqn dqb chars R (closed_stdout_fields fb vb lb lbreg) Q
+      with "Hname [$Hs $Hgl $Hgp $Hl $Hfields $Hbytes $HR] Hclosed"); assumption. }
+  iIntros (v) "H". iDestruct "H" as (r md' ->) "(Hname & Hgl & Hgp & Hl & Hfields & Hbytes & HQ & Hclosed)".
+  iExists (r mod 2 ^ 32). iSplit; [done |]. iFrame "Hname".
+  iApply (Hready r md'). unfold error_closed_flush, loan. iFrame "Hclosed Hvt Hslot Hs Hgl Hgp Hl Hfields Hbytes HQ".
+Qed.
+
 (** Before printing the message, the caller receives the stream and name
     memory that it lent to prefix printing. The caller must show that these
     resources suffice for the continuation. A custom program-name callback
@@ -89,16 +123,8 @@ Proof.
     error_closed_flush fb vb lb lbreg vbreg sb sreg D -∗
     WP (ERun (fxprintf_normal_frame null (mkPtr xb (Ro xb)) [WPtr pname]) : gexpr)
       {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live_capq dqn (ptr_cap pname) namer ∗ Ready }}).
-  { iIntros "Hname (Hclosed & #Hvt & #Hslot & #Hs & HD)".
-    iDestruct (Hlend with "HD") as "((Hgl & Hgp & Hl) & Hfields & Hbytes & HR)".
-    iApply (wp_wand with "[Hname Hclosed Hgl Hgp Hl Hfields Hbytes HR]").
-    { iApply (wp_error_prefix Hreg Hext efb efreg fl elb elreg md xb xreg sb sreg gb greg
-        pname nameb namer dqn dqb chars R (closed_stdout_fields fb vb lb lbreg) Q
-        with "Hname [$Hs $Hgl $Hgp $Hl $Hfields $Hbytes $HR] Hclosed");
-        try assumption; rewrite Hself; cbn; lia. }
-    iIntros (v) "H". iDestruct "H" as (r md' ->) "(Hname & Hgl & Hgp & Hl & Hfields & Hbytes & HQ & Hclosed)".
-    iExists (r mod 2 ^ 32). iSplit; [done |]. iFrame "Hname".
-    iApply (Hready r md'). unfold error_closed_flush, loan. iFrame "Hclosed Hvt Hslot Hs Hgl Hgp Hl Hfields Hbytes HQ". }
+  { apply (wp_error_closed_prefix vbreg sb sreg D R Ready Q);
+      try assumption; rewrite Hself; cbn; lia. }
   iIntros "Ht Hstate Hout Hprivate HD HE HK".
   iApply (wp_error_closed_entry fb freg vb lb lbreg ob oreg pb preg callback dqc cbr nb nreg pname dqn namer
     Hreg Hext Hsync status errnum fmt ap mode tb treg state vbreg sb sreg
