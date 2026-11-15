@@ -33,3 +33,11 @@ mode = "checked"
 fixtures = '''
 Error|error|misc/error.os|__error __error_internal
 '''
+
+[[batch]]
+layout = "libio"
+mode = "checked"
+fixtures = '''
+Fflush|__GI__IO_fflush|libio/iofflush.os|__GI__IO_fflush
+FileSync|_IO_new_file_sync|libio/fileops.os|_IO_new_file_sync
+'''
