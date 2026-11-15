@@ -291,6 +291,7 @@ stdio/ErrorMessage.v
 stdio/ErrorMessageNarrow.v
 stdio/ErrorMessageNormal.v
 stdio/ErrorReport.v
+stdio/ErrorReportNormal.v
 stdio/FileSyncClosed.v
 stdio/FflushUnlock.v
 stdio/FflushAcquire.v
