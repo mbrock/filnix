@@ -1938,7 +1938,7 @@ Proof.
   assert (Hw_int : exists n1, w1 = WInt n1 /\ m1' = m1).
   { pose proof (Hm_indep m1) as E. rewrite Hop1 in E. injection E as <-.
     clear - Hpure HkP HkA HkF Hop1.
-    destruct k; try contradiction; destruct o; try discriminate Hpure;
+    destruct o; try discriminate Hpure; destruct k; try contradiction;
       cbv beta iota zeta delta [op_res op_res_int float_integer additive_res alu] in Hop1;
       cbn in Hop1; try discriminate Hop1;
       repeat match type of Hop1 with
@@ -2299,7 +2299,9 @@ Proof.
           - destruct (wt_at_class rk' wt) as [wt'|] eqn:Ewt'; [|discriminate Erte].
             destruct (word_at_class rk' w1) as [y1|] eqn:Ey1; [|discriminate Erce1].
             injection Erte as <-; injection Erce1 as <-.
-            destruct rk', wt, w1, w2; cbn in *; try contradiction Hw; try discriminate Ewt'; try discriminate Ey1;
+            destruct rk', wt; cbn in Ewt'; try discriminate Ewt';
+              destruct w1; cbn in Ey1; try discriminate Ey1;
+              destruct w2; cbn in *; try contradiction Hw;
               injection Ewt' as <-; injection Ey1 as <-;
               eexists; (split; [reflexivity|]); apply env_rel_put; try exact Hcenv; cbn in *;
               try (intros Hne; apply Hw; congruence); exact Hw.
@@ -3963,6 +3965,37 @@ Proof.
   - right; left; reflexivity.
 Qed.
 
+(** Only allocation instructions can ask the taint checker for a fresh
+    address. Classifying that result first avoids exploring operational
+    outcomes for instructions that cannot allocate. *)
+Local Lemma pstep_fresh_tstep pol ge c ps q k :
+  pstep pol ge c ps = PFresh q k ->
+  exists kt, tstep pol ge c ps = TFresh kt.
+Proof.
+  unfold pstep. destruct (tstep pol ge c ps) eqn:Ht;
+    try (destruct (step ge c); discriminate).
+  intros _. eauto.
+Qed.
+
+Local Lemma inst_tstep_fresh_kind pol ge fr ps i kt :
+  inst_tstep pol ge fr ps i = TFresh kt ->
+  match i with
+  | Let _ _ (Alloc _) _ | LocalAlloc _ _ => True
+  | _ => False
+  end.
+Proof.
+  intros H. destruct i; cbn [inst_tstep] in H; try exact I.
+  1: (destruct o; try exact I; unfold let_tstep, check_ptr_bounds_taint in H).
+  all: repeat (cbv zeta in H;
+    match type of H with
+    | context [match ?x with _ => _ end] =>
+        lazymatch x with
+        | context [match _ with _ => _ end] => fail
+        | _ => destruct x; try discriminate H
+        end
+    end); discriminate H.
+Qed.
+
 (** Heap and stack allocations must request identical sizes and
     alignments across both runs so the allocator picks the same address
     for each. When the first run pauses to allocate memory, any related
@@ -3983,6 +4016,7 @@ Theorem pstep_ct_fresh : forall pol ge c1 c2 ps q k1,
        ct_rel (fst (k1 base)) (fst (k2 base)) (snd (k1 base))).
 Proof.
   intros pol ge c1 c2 ps q k1 Hcb Hrel Hp1.
+  destruct (pstep_fresh_tstep _ _ _ _ _ _ Hp1) as [kt Ht].
   destruct Hrel as (Hfn & Hloc & Hd1 & Hd2 & Hat & Hfuel & Hreg & Hcallers & Henv & Hmem & Haux).
   unfold pstep in *. unfold tstep in Hp1; rewrite Hd1 in Hp1.
   destruct (fr_at (c_frame c1)) as [xs l | l from | l [|i rest] j] eqn:Eat1; try discriminate Hp1.
@@ -4004,34 +4038,15 @@ Proof.
         [destruct (step _ _); discriminate Hp1 | destruct (returned_tenv _ _ _); [destruct (step _ _) |]; discriminate Hp1].
     + destruct (step _ _); discriminate Hp1.
   - (* Exec l (i :: rest) j *)
+    unfold tstep in Ht; rewrite Hd1, Eat1 in Ht.
+    pose proof (inst_tstep_fresh_kind _ _ _ _ _ _ Ht) as Hkind.
+    clear Ht kt.
     destruct i as [d k o args | d o args lw | w off v av | off v av es | r cl args | r cl args | x sz | file line | tq];
-      cbn [inst_tstep] in Hp1; try discriminate Hp1;
-      try solve [
-        exfalso; clear - Hp1;
-        repeat (cbv zeta in Hp1;
-          match type of Hp1 with
-          | context [match ?x with _ => _ end] =>
-              lazymatch x with
-              | step _ _ => destruct x; discriminate Hp1
-              | context [match _ with _ => _ end] => fail
-              | _ => destruct x; try discriminate Hp1
-              end
-          end)].
+      try contradiction Hkind; cbn [inst_tstep] in Hp1.
     + (* Let: only Alloc produces TFresh *)
       unfold let_tstep, check_ptr_bounds_taint in Hp1.
       destruct (is_zero_idiom o k args) eqn:Ez; [destruct (step _ _); discriminate Hp1|].
-      destruct o; try discriminate Hp1;
-        try solve [
-          exfalso; clear - Hp1;
-          repeat (cbv zeta in Hp1;
-            match type of Hp1 with
-            | context [match ?x with _ => _ end] =>
-                lazymatch x with
-                | step _ _ => destruct x; discriminate Hp1
-                | context [match _ with _ => _ end] => fail
-                | _ => destruct x; try discriminate Hp1
-                end
-            end)].
+      destruct o; try contradiction Hkind.
       (* Alloc align *)
       rename align into al.
       destruct args as [|v [|]]; try discriminate Hp1.
