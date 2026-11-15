@@ -67,6 +67,55 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
+(** Each rule application repeats the whole current frame, so a long proof
+    walks the same environment and instruction list once per step. These
+    tactics keep both behind local definitions: the environment is named
+    after every step, the remaining instructions are a chain of definitions
+    whose bodies hold one instruction each, and only the next instruction is
+    shown. The block's final jump stays named until no instruction is left. The rules see the same frame up to unfolding those definitions. *)
+Local Ltac chain_tail L :=
+  lazymatch L with
+  | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
+  end.
+Local Ltac tidy :=
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ [] ?J))) _) => is_var J; unfold J
+  end;
+  repeat lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
+      lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: _) ?J))) _) =>
+      first [is_var J | let X := fresh "J" in set (X := J)]
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
+      lazymatch e with put _ _ _ => let E := fresh "Env" in set (E := e) end
+  end.
+(** When a function calls another one, the proof uses the callee's
+    specification, and every premise it gives up repeats what happens after
+    the call. This tactic names that remainder and the callee's starting
+    state first, and the caller unfolds the remainder when the call returns. *)
+Local Ltac name_post :=
+  lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ ?F) ?Q) =>
+      let X := fresh "Post" in set (X := Q); let Y := fresh "Callee" in set (Y := F)
+  end.
+(** A callee needs the values of some variables, and expanding every named
+    environment to find them would repeat the frame again. This tactic
+    looks through one definition per step and proves the value by arithmetic. *)
+Local Ltac lk_tidy :=
+  first [assumption |
+    lazymatch goal with |- lookup ?k ?E = Some _ =>
+      let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H;
+      first [reflexivity | do 2 f_equal; unwrap2; lia
+        | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]
+    end].
+
 (** Block `c: iw_2.L9` on, the stream's fields apart: the write of
     the d bytes from s, of the T left, through the jump table. *)
 Lemma wp_xs_L9 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d fl f2 fd tw off m e Φ :
@@ -105,13 +154,13 @@ Proof.
   { rewrite (ge_fn_cap _ _ _ Hfw). done. }
   iPoseProof "Hvt" as "((%Hvg & %Hvend & %Hval & %Hvb & %Hvreg) & Hvl & _)".
   unfold io_vtables_size in Hvend.
-  step. step. norm. check "Hl".
+  step; tidy. step. norm; tidy. check "Hl"; tidy.
   iApply (wp_raw_load_pointer_dq with "Hl Hvtp Hvl");
     [reflexivity | vx | left; reflexivity | ar | ar | cbn; unfold vt_file in *; lia |].
-  iNext. iIntros "Hl Hvtp #Hvl'". step. step. step. step. step. branch_as true.
+  iNext. iIntros "Hl Hvtp #Hvl'". tidy. step; tidy. step; tidy. step; tidy. step; tidy. step; tidy. branch_as true; tidy.
   (* iw_2.iw_2.join: the write slot and the call. *)
-  step. step. norm.
-  check_read_dq "Hvl'" by ar.
+  step; tidy. step. norm; tidy.
+  check_read_dq "Hvl'" by ar; tidy.
   iNext. iIntros "_".
   iApply (wp_raw_load_pointer_dq with "Hvl' Hsw Hfc");
     [reflexivity | vx | right; reflexivity | ar | ar | apply (ge_fn_addr _ _ _ Hfw) |].
@@ -119,14 +168,14 @@ Proof.
   iApply wp_check_function; [vx | apply (ge_fn_check _ _ _ Hfw) |]. iNext.
   iApply wp_raw_call_bind; [vx | apply (ge_fn_cap _ _ _ Hfw) | apply (ge_fn_check _ _ _ Hfw) | vx |
     apply (ge_fn_find _ _ _ Hfw) | reflexivity | reflexivity |].
-  iNext.
+  iNext. name_post.
   set (j := Z.to_nat (n - T)).
   iDestruct (bytesq_sub _ _ _ _ j (Z.to_nat d) with "Hys") as "[Hsub Hysb]"; [lia|].
   set (zs := take (Z.to_nat d) (drop j ys)).
   assert (Hlz : Z.of_nat (length zs) = d) by (unfold zs; rewrite length_take_le; [lia | rewrite length_drop; lia]).
   iApply (Hfwq _ fb freg fl f2 fd tw off dq b' reg' (so + Z.of_nat j) c' zs eb
             with "Hl Hfl Hfl2 Hfdc Htw Hoff Hl' Hsub Herr").
-  1: { rewrite Hlz. rewrite (Z.mod_small d (2 ^ 64)); [|lia].
+  1: { unfold Callee. rewrite Hlz. rewrite (Z.mod_small d (2 ^ 64)); [|lia].
         replace (b' + so + (n - T)) with (b' + (so + Z.of_nat j)) by (unfold j; lia). reflexivity. }
   all: try (unfold zs; apply Forall_take, Forall_drop; exact Hy).
   all: try (unfold j in *; lia).
@@ -134,11 +183,11 @@ Proof.
   iNext. iIntros (r fl' tw' off' [Hpost Hfl']) "Hl Hfl Hfl2 Hfdc Htw Hoff Hl' Hsub Herr".
   rewrite Hlz in Hpost. iDestruct ("Hysb" with "Hsub") as "Hys".
   assert (Hr : 0 <= r <= d) by (destruct Hpost as [[-> _] | [? _]]; lia).
-  resume. rewrite (Z.mod_small r (2 ^ 64)); [|lia].
+  unfold Post. resume. rewrite (Z.mod_small r (2 ^ 64)); [|lia]. tidy.
   (* `c: _cur_column` is 0: no adjustment; iw_2.L70. *)
-  step. check "Hl".
+  step; tidy. check "Hl"; tidy.
   load_bytes_dq "Hl Hcol" decode (reflexivity) by ar.
-  iNext. iIntros "Hl Hcol". branch. step. branch.
+  iNext. iIntros "Hl Hcol". tidy. branch; tidy. step; tidy. branch; tidy.
   iAssert (xos w0 eb X fb nb) with "[Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX]" as "Hos".
   { assert (Happ' : Z.land fl' io_is_appending = 0).
     { destruct Hpost as [[_ ->] | [_ ->]]; [exact Happ | apply land_err_seen; exact Happ]. }
@@ -149,7 +198,7 @@ Proof.
   iApply (wp_xs_L70 Hmove Hmove_fn Hmove_sym eb X fb freg vb vreg nb wp we
             dq b' reg' so c' ys T d r with "Hvt Hl Hvtp Hwbf Hos Hl' Hys HK");
     try close_side.
-  all: unfold n in *; try lia. all: lk_fin.
+  all: unfold n in *; try lia. all: lk_tidy.
 Qed.
 
 End rules.

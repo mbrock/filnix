@@ -60,6 +60,44 @@ Local Instance hi_close_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 
+(** Each rule application repeats the whole current frame, so a long proof
+    walks the same environment and instruction list once per step. These
+    tactics keep both behind local definitions: the environment is named
+    after every step, the remaining instructions are a chain of definitions
+    whose bodies hold one instruction each, and only the next instruction is
+    shown. The block's final jump stays named until no instruction is left. The rules see the same frame up to unfolding those definitions. *)
+Local Ltac chain_tail L :=
+  lazymatch L with
+  | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
+  end.
+Local Ltac tidy :=
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ [] ?J))) _) => is_var J; unfold J
+  end;
+  repeat lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
+      lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: _) ?J))) _) =>
+      first [is_var J | let X := fresh "J" in set (X := J)]
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
+      lazymatch e with put _ _ _ => let E := fresh "Env" in set (E := e) end
+  end.
+(** When a function calls another one, the proof uses the callee's
+    specification, and every premise it gives up repeats what happens after
+    the call. This tactic names that remainder and the callee's starting
+    state first, and the caller unfolds the remainder when the call returns. *)
+Local Ltac name_post :=
+  lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ ?F) ?Q) =>
+      let X := fresh "Post" in set (X := Q); let Y := fresh "Callee" in set (Y := F)
+  end.
 (** HiAtexitFclose.v's [hi_fclose_stdout] in [hge]: every premise about
     the genv by computation. *)
 Definition hge_fclose_stdout :=
@@ -117,33 +155,37 @@ Proof.
   iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hso"). iIntros ([Hso0 Hso48]) "Hso".
   iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iApply (wp_live_fit1 (glibc_program := program_of w0 glibc_os_registry hge) with "Hbl"). iIntros ([Hb0 Hb48]) "Hbl".
-  unfold hi_close_frame. step. step. check "Hso". load "Hso" "Hsoc" "Hl".
+  unfold hi_close_frame. step; tidy. step; tidy. check "Hso"; tidy. load "Hso" "Hsoc" "Hl"; tidy.
   (* `c: __fpending(stdout)`. *)
-  iApply wp_call_bind; [vx | exact (hi_find___fpending _) | reflexivity |]. iNext.
+  iApply wp_call_bind; [vx | exact (hi_find___fpending _) | reflexivity |]. iNext. name_post.
   iApply (LibioRead.wp_glibc___fpending (glibc_program := program_of w0 glibc_os_registry hge) _ _ _ md (mkPtr (bb + i + Z.of_nat (length xs)) (Obj bb)) (mkPtr (bb + i) (Obj bb)) breg
             with "Hl Hmode Hwp Hwb Hbl"); [reflexivity | close_side | close_side | close_side | close_side | exact Hmd | reflexivity
                                             | cbn; lia | cbn; lia |].
-  iNext. iIntros "Hl Hmode Hwp Hwb Hbl". resume.
-  step. step. check "Hso". load "Hso" "Hsoc" "Hl".
+  iNext. iIntros "Hl Hmode Hwp Hwb Hbl". unfold Post; tidy. resume; tidy.
+  step; tidy. step; tidy. check "Hso"; tidy. load "Hso" "Hsoc" "Hl"; tidy.
   (* `c: ferror(stdout)`. *)
-  iApply wp_call_bind; [vx | exact (hi_find_ferror _) | reflexivity |]. iNext.
+  iApply wp_call_bind; [vx | exact (hi_find_ferror _) | reflexivity |]. iNext. name_post.
   iApply (LibioRead.wp_glibc__IO_ferror (glibc_program := program_of w0 glibc_os_registry hge) with "Hl Hfl Hfl2"); [reflexivity | close_side | close_side | close_side
                                                                                  | close_side | exact Hnl |].
-  iNext. iIntros "Hl Hfl Hfl2". resume.
-  step. step. check "Hso". load "Hso" "Hsoc" "Hl".
+  iNext. iIntros "Hl Hfl Hfl2". unfold Post; tidy. resume; tidy.
+  step; tidy. step; tidy. check "Hso"; tidy. load "Hso" "Hsoc" "Hl"; tidy.
   (* `c: fclose(stdout)`. *)
-  iApply wp_call_bind; [vx | exact (hi_find_fclose _) | reflexivity |]. iNext.
-  iApply (hge_fclose_stdout _ pre post 69808 freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg lb lbreg
-            sb sreg fcp pin md with "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase
+  iApply wp_call_bind; [vx | exact (hi_find_fclose _) | reflexivity |]. iNext. name_post.
+  epose proof (hge_fclose_stdout _ pre post 69808 freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg lb lbreg
+            sb sreg fcp pin md _) as Hfcs.
+  (* The triple's continuation is named so each consumed premise does not repeat it. *)
+  cbv zeta in Hfcs.
+  lazymatch type of Hfcs with context [bi_wand (bi_later ?K) _] => let X := fresh "Kfc" in set (X := K) in Hfcs end.
+  iApply (Hfcs with "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase
             Hbend Hcol Hmode Hvtp H72 H80 H96 Hlp Hlk Hio Hlives").
   all: lazymatch goal with
        | |- environments.envs_entails _ _ => idtac
        | |- _ => first [assumption | reflexivity | vm_compute; reflexivity | lia]
        end.
-  iNext. iIntros (r fl' k tw' [Hpost Hk]) "Htcb _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hio Hlives _".
-  resume. iClear "Hso Hsoc". step.
+  unfold Kfc. iNext. iIntros (r fl' k tw' [Hpost Hk]) "Htcb _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hio Hlives _".
+  unfold Post. resume. iClear "Hso Hsoc". tidy. step; tidy.
   (* The branches: `c: _exit(1)`, or the return. *)
-  all: repeat first [step | branch_cases].
+  all: repeat first [step; tidy | branch_cases; tidy].
   all: lazymatch goal with
        | |- context [Exec _ (Call _ (Global (TAtom "_exit")) _ :: _) _] =>
            iApply wp_call_bind; [vx | exact (hi_find__exit _) | reflexivity |]; iNext;

@@ -85,7 +85,7 @@ Context (Hunl_spec : (unlink_spec w0 registry ge))
     tactics keep both behind local definitions: the environment is named
     after every step, the remaining instructions are a chain of definitions
     whose bodies hold one instruction each, and only the next instruction is
-    shown. The rules see the same frame up to unfolding those definitions. *)
+    shown. The block's final jump stays named until no instruction is left. The rules see the same frame up to unfolding those definitions. *)
 Local Ltac chain_tail L :=
   lazymatch L with
   | _ :: ?R => first [lazymatch R with _ :: _ => chain_tail R end | let X := fresh "I" in set (X := L)]
@@ -94,9 +94,16 @@ Local Ltac tidy :=
   try lazymatch goal with
   | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ ?L _))) _) => is_var L; unfold L
   end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ [] ?J))) _) => is_var J; unfold J
+  end;
   repeat lazymatch goal with
   | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: ?R) _))) _) =>
       lazymatch R with _ :: _ => chain_tail R end
+  end;
+  try lazymatch goal with
+  | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ _ _ _ (Exec _ (_ :: _) ?J))) _) =>
+      first [is_var J | let X := fresh "J" in set (X := J)]
   end;
   try lazymatch goal with
   | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ _ _)) _) =>
