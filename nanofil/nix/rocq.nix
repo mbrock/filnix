@@ -278,13 +278,17 @@ let
         python3 ${runtimeEvidence}/tests/runtime_signature_test.py ${runtimeEvidence}
         test -e ${kernelFlags}
         cd ${theorySrc}/rocq
-        # Axioms and parameters only inside Runtime.v's module type, which
-        # InterpRuntime discharges; no Admitted anywhere.
+        # InterpRuntime supplies Runtime's fields. HelloMain supplies
+        # HelloMainBase's fields when including its proof phases.
+        # Only these named module types may declare
+        # axioms or parameters; no Admitted is allowed anywhere.
         if grep -rnw Admitted theories ||
-          grep -rnwE 'Axiom|Axioms|Parameter|Conjecture' --exclude=Runtime.v theories ||
+          grep -rnwE 'Axiom|Axioms|Parameter|Conjecture' --exclude=Runtime.v --exclude=HelloMainInterface.v theories ||
+          sed '/^Module Type HelloMainBase (R : Runtime)\./,/^End HelloMainBase\./d' theories/hello_contracts/HelloMainInterface.v |
+          grep -nwE 'Axiom|Axioms|Parameter|Conjecture' ||
           sed '/^Module Type Runtime\./,/^End Runtime\./d' theories/core/Runtime.v |
           grep -nwE 'Axiom|Axioms|Parameter|Conjecture'; then
-          echo "rocq: no Admitted, and no Axiom outside the runtime module type" >&2
+          echo "rocq: no Admitted, and no Axiom outside Runtime or HelloMainBase" >&2
           exit 1
         fi
         # The per-file derivations import what rocq dep says each file needs.
