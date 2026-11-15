@@ -293,9 +293,12 @@ stdio/ErrorMessageNormal.v
 stdio/ErrorReport.v
 stdio/ErrorReportNormal.v
 stdio/FileSyncClosed.v
+stdio/FileSyncShort.v
 stdio/FflushUnlock.v
 stdio/FflushAcquire.v
 stdio/FflushClosed.v
+stdio/FflushShort.v
+stdio/ErrorFlushShort.v
 string/MemchrFirst.v
 string/MemrchrBits.v
 string/StrncmpWords.v
