@@ -128,12 +128,12 @@ Definition emit_output_args (stdout : ptr) : list (name * list word) :=
 (** The helpers over any runtime and caller-supplied world. *)
 Module HelloVersionOn (R : Runtime) (LG0 : LogicSig R).
 Module HL := HelloLeafOn R LG0.
-Module ML := HL.ML.
-Module SL := ML.SL.
-Module LG := ML.LG.
-Module L := LG.L.
+Module L := HL.L.
 Module VL := VariadicLogicOn R LG0.
-Import L LG SL ML HL VL.
+Import L HL.LG HL.SL HL.ML HL VL.
+
+Local Hint Opaque pts live bytes auxes pcell version_literal
+  proper_name_fn emit_bug_reporting_address_fn version_etc_arn_fn : typeclass_instances.
 
 Section version.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -372,6 +372,8 @@ Definition version_author_cells (b : Z) : iProp Σ :=
   pcell b 16 (version_literal "hello#str.74") ∗
   pcell b 24 (version_literal "hello#str.75").
 
+Local Hint Opaque version_author_cells : typeclass_instances.
+
 (** The pure literal copies in the reachable array helper are linked. *)
 Lemma arn_literal_lookup s :
   In s ["version-etc#str.41"; "version_etc_copyright"; "version-etc#str.43";
@@ -470,7 +472,9 @@ Proof.
   pose proof (arn_literal_lookup "version-etc#str.46" ltac:(simpl; tauto)) as H46.
   pose proof (arn_literal_lookup "version-etc#str.47" ltac:(simpl; tauto)) as H47.
   pose proof (arn_literal_lookup "version-etc#str.51" ltac:(simpl; tauto)) as H51.
-  iIntros "Hps Hl (H0 & H1 & H2 & H3) HΦ". rewrite version_etc_arn_entry.
+  iIntros "Hps Hl Ha HΦ".
+  iEval (unfold version_author_cells) in "Ha".
+  iDestruct "Ha" as "(H0 & H1 & H2 & H3)". rewrite version_etc_arn_entry.
   set (e := [(TAtom "v10", WInt 4); (TAtom "v8", WPtr (mkPtr b (Obj b)));
     (TAtom "v6", WPtr (version_literal "hello#str.71"));
     (TAtom "v4", WPtr (version_literal "hello#str.63"));
@@ -568,6 +572,7 @@ Qed.
 
 (** The variadic counting helper in the linked program. *)
 Definition version_etc_va_fn : func := Eval vm_compute in hello_fn "version_etc_va".
+Local Hint Opaque version_etc_va_fn : typeclass_instances.
 (** The allocation block of the counting helper. *)
 Definition va_start : block := Eval vm_compute in hblk version_etc_va_fn "start".
 (** The loop header binds the current author count. *)
@@ -716,13 +721,19 @@ Local Ltac version_va_round addr src dst text :=
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]; iNext;
   cbn [b_insts b_jump va_L18]; version_let; gen_env;
   iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ addr);
-    [word_premise | cbn; f_equal; f_equal; addr_premise | word_premise |]; iNext; gen_env;
+    [word_premise | cbn; f_equal; f_equal;
+       match goal with
+       | Hb : 0 < ?b, Hbend : ?b + 80 <= 2 ^ 48 |- _ =>
+           clear - Hb Hbend; addr_premise
+       end | word_premise |]; iNext; gen_env;
   iApply (version_va_round_step with "Hps Hcursor Hsl Hsource Hl Hdest");
     [unfold version_va_saved; repeat split; word_premise | word_premise |
      repeat progress (cbn -[load_bytes store_bytes]; use_facts_goal);
        repeat (f_equal; try lia) |
      vm_compute; split; congruence | assumption | assumption | lia | lia | assumption |
-     addr_premise | assumption | lia | lia | assumption | addr_premise |
+     multimatch goal with H : _ mod 8 = 0 |- _ => clear - H; solve [addr_premise] end |
+     assumption | lia | lia | assumption |
+     multimatch goal with H : _ mod 8 = 0 |- _ => clear - H; solve [addr_premise] end |
      vm_compute; split; congruence |
      right; exists (ptr_addr (version_literal text)), (author_reg text);
        split; [right; vm_compute; reflexivity | apply Hauthor_live; simpl; tauto] |];
@@ -848,12 +859,14 @@ Definition version_snapshot_cells sb : list (piece * pval) :=
     cell sb 56 (ptr_addr (version_literal "hello#str.75"))) ++
   ((PAux sb 64, VAux CNone) :: cell sb 64 0).
 
-(** The selected cells have distinct life, byte, and capability keys. *)
+(** The selected cells have distinct life, byte, and capability keys.
+    Their constructors and offsets distinguish them without inspecting stored pointer values. *)
 Lemma version_snapshot_cells_nodup sb : NoDup (version_snapshot_cells sb).*1.
 Proof.
-  unfold version_snapshot_cells, cell. cbn.
-  repeat constructor; intros Hin;
-    repeat (apply elem_of_cons in Hin; destruct Hin as [Hin | Hin]); inversion Hin.
+  apply (NoDup_fmap_1 (fun p => match p with
+    | PLive _ => (0, 0) | PByte _ o => (1, o)
+    | PAux _ o => (2, o) | PName k => (3, k) end)).
+  apply (bool_decide_eq_true_1 _). vm_compute. reflexivity.
 Qed.
 
 (** The selected cells are populated by argument indices four through
