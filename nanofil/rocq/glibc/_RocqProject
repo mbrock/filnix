@@ -807,6 +807,7 @@ hello/HelloImageKeptRefused.v
 hello/HelloImageGettextLink.v
 hello/HelloImageStart.v
 hello/HelloImageStartRefused.v
+hello/HelloImageFnLink.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v
