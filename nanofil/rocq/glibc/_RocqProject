@@ -216,6 +216,8 @@ stdio/PrintfBufferSkip.v
 stdio/PrintfBufferWriteStaging.v
 stdio/PrintfStagingCopy.v
 stdio/PrintfBufferWriteWindow.v
+stdio/FormatterLiteralWrite.v
+stdio/FormatterLiteral.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
