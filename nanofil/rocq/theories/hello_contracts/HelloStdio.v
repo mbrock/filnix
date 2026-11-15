@@ -379,10 +379,10 @@ Qed.
     below type-check invocation transport across the helper aliases. *)
 Module HelloStdioOn (R : Runtime) (LG0 : LogicSig R).
 Module LG := LG0.
-Module V := HelloVersionOn R LG0.
+Module V. Include HelloVersionOn R LG0. End V.
 Module M := V.L.M.
 Module SL := LibcStreamLogicOn R LG0.
-Module C := HelloCloseOn R LG0.
+Module C. Include HelloCloseOn R LG0. End C.
 Module X := LibcExitOn R C.L.M.
 Module A := LibcStreamAdapterOn R LG0.
 Module D := LibcDiagnosticLogicOn R LG0.
