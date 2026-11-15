@@ -57,6 +57,8 @@ Module LG := ML.LG.
 Module L := LG.L.
 Import L LG SL ML HL.
 
+Local Hint Opaque pts live bytes auxes pcell close_stream_fn close_stdout_fn : typeclass_instances.
+
 Section close.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
@@ -203,6 +205,8 @@ Qed.
 Context (stream_ps closed_ps : ptr -> list (piece * pval)).
 (** Ownership of a usable stream's represented pieces. *)
 Let stream p : iProp Σ := pts (stream_ps p).
+
+Local Hint Opaque stream : typeclass_instances.
 
 (** Query specs, including their exact ABI and pure frame obligations.
     The query preserves the original owned pieces and libc world. *)
@@ -563,6 +567,8 @@ Definition close_cells (fs : list Z) : iProp Σ :=
   live 65584 freg ∗ bytes 65584 0 (replicate 8 0) ∗ auxes 65584 0 [CNone] ∗
   live 65616 ireg ∗ ibyte 65616 0 0 ∗ live 65776 xreg ∗ bytes 65776 0 fs.
 
+Local Hint Opaque close_cells : typeclass_instances.
+
 (** The module's symbols put closeout's statics and literals there. *)
 Lemma close_lookups :
   lookup (TAtom "closeout#file_name") (ge_globals ge) = Some (mkPtr 65584 (Obj 65584)) /\
@@ -640,6 +646,7 @@ Lemma close_stdout_L91 e xs fs Φ :
   WP (ERun (mkFrame close_stdout_fn e [] None (Enter (TAtom "L91") (Some (TAtom "L8")))) : cexpr) {{ Φ }}.
 Proof.
   intros Hxs Hfs. iIntros "Hs Hcells Hl Hx Hd HΦ".
+  iEval (unfold close_cells) in "Hcells".
   iDestruct "Hcells" as "(Hol & Hoc & Hsl & Hsc & Hfl & Hfb & Hfa & Hil & Hib & Hxl & Hxb)".
   destruct close_lookups as (_ & _ & Hfailure & _).
   co_enter "L91". close_let.
@@ -685,6 +692,7 @@ Lemma close_stdout_spec xs fs Φ :
   WP (ERun (invocation close_stdout_fn []) : cexpr) {{ Φ }}.
 Proof.
   intros Hxs Hfs. iIntros "Hout Herr Hcells Hl Hx Hd HΦ".
+  iEval (unfold close_cells) in "Hcells".
   iDestruct "Hcells" as "(Hol & Hoc & Hsl & Hsc & Hfl & Hfb & Hfa & Hil & Hib & Hxl & Hxb)".
   destruct close_lookups as (_ & Hignore & _).
   change (invocation close_stdout_fn []) with
