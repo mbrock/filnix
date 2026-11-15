@@ -50,7 +50,11 @@ Context (Hfxcall : ⊢ R -∗ WP (ERun newlineframe : gexpr)
 (** Exiting the process requires different work from returning to the caller.
     For nonzero status, this rule stops before the call to __GI_exit and
     leaves cancellation disabled. The saved flag remains available there. *)
-Lemma wp_error_tail e from status errnum fmt ap mode cb Φ :
+Lemma wp_error_tail_loan
+    (Hnewline_loan : ⊢ live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗
+      WP (ERun newlineframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
+        live sb sreg ∗ pcell sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ S }})
+    e from status errnum fmt ap mode cb Φ :
   error_inputs e status errnum fmt ap mode cb -> 0 <= status < 2 ^ 32 ->
   live tb treg -∗ int_cell tb 792 1 -∗
   live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
@@ -71,8 +75,8 @@ Proof.
   iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
   step. step.
   iApply wp_call_bind; [vx | exact Hfx | exact Hfxframe |]. iNext.
-  iApply (wp_wand with "[HR]"); [iApply (Hfxcall with "HR") |].
-  iIntros (v) "H". iDestruct "H" as (r ->) "HS". resume.
+  iApply (wp_wand with "[Hsl Hsp Hr HR]"); [iApply (Hnewline_loan with "Hsl Hsp Hr HR") |].
+  iIntros (v) "H". iDestruct "H" as (r ->) "(Hsl & Hsp & Hr & HS)". resume.
   step. iApply (wp_live_fit1 with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
   check "Hsl".
   iApply (wp_raw_load_pointer_dq with "Hsl Hsp Hr");
@@ -92,6 +96,31 @@ Proof.
   - branch_as false. iDestruct "HK" as "[_ HK]".
     iApply ("HK" with "[%] [%] Ht Hflag Hcl Hsaved Hsl Hsp Hr HQ HE"); [exact Hz |].
     unfold error_inputs. repeat split; lk_prove.
+Qed.
+
+(** A newline contract that does not use stderr can keep the same ownership
+    outside the call. This recovers the original tail rule unchanged. *)
+Lemma wp_error_tail e from status errnum fmt ap mode cb Φ :
+  error_inputs e status errnum fmt ap mode cb -> 0 <= status < 2 ^ 32 ->
+  live tb treg -∗ int_cell tb 792 1 -∗
+  live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+  live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗ E -∗
+  ((live tb treg -∗ int_cell tb 792 old -∗
+      live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+      live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) ∧
+    (∀ e', ⌜status <> 0⌝ -∗ ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
+      live tb treg -∗ int_cell tb 792 1 -∗
+      live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+      live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗
+      WP (ERun (mkFrame glibc_error_internal e' [] None
+        (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame glibc_error_internal e [] None
+    (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
+Proof.
+  intros Hinputs Hrange. iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
+  iApply (wp_error_tail_loan with "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK"); try assumption.
+  iIntros "Hsl Hsp Hr HR". iApply (wp_wand with "[HR]"); [iApply (Hfxcall with "HR") |].
+  iIntros (v) "H". iDestruct "H" as (r ->) "HS". iExists r. iFrame. done.
 Qed.
 
 (** Hello passes status zero to error. Its returning tail therefore needs

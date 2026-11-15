@@ -271,6 +271,8 @@ stdio/ErrorCall.v
 stdio/ErrorEntry.v
 stdio/ErrorRestore.v
 stdio/ErrorTail.v
+stdio/ErrorNewline.v
+stdio/ErrorTailNormal.v
 stdio/ErrorText.v
 stdio/ErrorTextTail.v
 stdio/ErrorFallback.v
