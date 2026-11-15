@@ -52,17 +52,32 @@ Let translation := enoent_translation eb dom dqd nb nc k cat dqc cv p276 p277 db
 Lemma enoent_translation_borrow bs :
   live tb tbreg ∗ enoent_translation_pack bs ⊣⊢ translation bs.
 Proof.
-  rewrite /enoent_translation_pack /translation /enoent_translation /dcg_before_v /rw_held /rw_self
-    /live /liveq /int_cell /int_cellq /bytes /bytesq.
   assert (Hsplit : forall ps, pts ps ⊣⊢
     ptsq (DfracOwn (1 / 2)) ps ∗ ptsq (DfracOwn (1 / 2 / 2)) ps ∗ ptsq (DfracOwn (1 / 2 / 2)) ps).
   { intros ps. rewrite -(ptsq_split (1 / 2 / 2) (1 / 2 / 2)) Qp.div_2
       -(ptsq_split (1 / 2) (1 / 2)) Qp.div_2. done. }
-  rewrite !Hsplit. iSplit.
-  - iIntros "((Ht1 & Ht2 & Ht3) & (Hr & H1 & H2 & H3 & HK & HC & HM & He) & %Htid & Hi1 & Hi2 & Hi3)".
-    iFrame. done.
-  - iIntros "(Hr & (H1 & Ht1 & %Htid & Hi1) & (H2 & Ht2 & _ & Hi2) & (H3 & Ht3 & _ & Hi3) & HK & HC & HM & He)".
-    iFrame. done.
+  assert (Hl : live tb tbreg ⊣⊢ liveq (DfracOwn (1 / 2)) tb tbreg ∗ liveq (DfracOwn (1 / 2 / 2)) tb tbreg ∗
+    liveq (DfracOwn (1 / 2 / 2)) tb tbreg) by (rewrite /live /liveq; apply Hsplit).
+  assert (Hi : int_cell tb 720 tid ⊣⊢ int_cellq (DfracOwn (1 / 2)) tb 720 tid ∗
+    int_cellq (DfracOwn (1 / 2 / 2)) tb 720 tid ∗ int_cellq (DfracOwn (1 / 2 / 2)) tb 720 tid).
+  { rewrite /int_cell /int_cellq /bytes /bytesq Hsplit. iSplit.
+    - iIntros "(%H & A & B & C)". iSplitL "A"; [iSplit; [done | iExact "A"]|].
+      iSplitL "B"; iSplit; done.
+    - iIntros "((%H & A) & (_ & B) & (_ & C))". iSplit; [done|]. iSplitL "A"; [iExact "A"|].
+      iSplitL "B"; [iExact "B" | iExact "C"]. }
+  rewrite /enoent_translation_pack /translation /enoent_translation /dcg_before_v /rw_held /rw_self Hl Hi. iSplit.
+  - iIntros "((Ht1 & Ht2 & Ht3) & (Hr & H1 & H2 & H3 & HK & HC & HM & He) & Hi1 & Hi2 & Hi3)".
+    iSplitL "Hr"; [iExact "Hr"|].
+    iSplitL "H1 Ht1 Hi1"; [iSplitL "H1"; [iExact "H1"|]; iSplitL "Ht1"; [iExact "Ht1" | iExact "Hi1"]|].
+    iSplitL "H2 Ht2 Hi2"; [iSplitL "H2"; [iExact "H2"|]; iSplitL "Ht2"; [iExact "Ht2" | iExact "Hi2"]|].
+    iSplitL "H3 Ht3 Hi3"; [iSplitL "H3"; [iExact "H3"|]; iSplitL "Ht3"; [iExact "Ht3" | iExact "Hi3"]|].
+    iSplitL "HK"; [iExact "HK"|]. iSplitL "HC"; [iExact "HC"|]. iSplitL "HM"; [iExact "HM" | iExact "He"].
+  - iIntros "(Hr & (H1 & Ht1 & Hi1) & (H2 & Ht2 & Hi2) & (H3 & Ht3 & Hi3) & HK & HC & HM & He)".
+    iSplitL "Ht1 Ht2 Ht3"; [iSplitL "Ht1"; [iExact "Ht1"|]; iSplitL "Ht2"; [iExact "Ht2" | iExact "Ht3"]|].
+    iSplitR "Hi1 Hi2 Hi3"; [|iSplitL "Hi1"; [iExact "Hi1"|]; iSplitL "Hi2"; [iExact "Hi2" | iExact "Hi3"]].
+    iSplitL "Hr"; [iExact "Hr"|]. iSplitL "H1"; [iExact "H1"|]. iSplitL "H2"; [iExact "H2"|].
+    iSplitL "H3"; [iExact "H3"|]. iSplitL "HK"; [iExact "HK"|]. iSplitL "HC"; [iExact "HC"|].
+    iSplitL "HM"; [iExact "HM" | iExact "He"].
 Qed.
 
 Context `{!Defines ge "__get_errlist" glibc_get_errlist,
