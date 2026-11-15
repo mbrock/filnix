@@ -433,6 +433,8 @@ hello/HelloGetoptBackend.v
 hello/HelloCloseStream.v
 hello/HelloCloseErrno.v
 hello/HelloCloseShort.v
+hello/HelloCloseDispatch.v
+hello/HelloCloseStdout.v
 hi_atexit/HiAtexitXsputnRules.v
 getopt/GetoptLongPfxSet.v
 hi_atexit/HiAtexitOutputState.v
