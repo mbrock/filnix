@@ -22,6 +22,8 @@ Open Scope list_scope.
 (** Main's function, read from the linked module. *)
 Definition main_fn : func := Eval vm_compute in hello_fn "main".
 
+Local Hint Opaque main_fn : typeclass_instances.
+
 (** A block of main. *)
 Definition main_block (s : String.string) : block := hblk main_fn s.
 
@@ -386,6 +388,9 @@ Module L := LG.L.
 Module GR := GetoptRefinementOn R L.M.
 Import L LG SL ML LL HL.
 
+Local Hint Opaque pts bytes auxes live pcell
+  HP.HN.literals HP.HN.name_cells : typeclass_instances.
+
 Section main.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (registry : name -> option (contract libc_world))
@@ -394,6 +399,8 @@ Context (registry : name -> option (contract libc_world))
 (** The Iris instance of the registry and wi. *)
 Local Instance main_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
+
+Local Hint Opaque main_irisGS : typeclass_instances.
 
 (** The expressions of the language. *)
 Local Notation mexpr := (language.expr (nanofil_lang registry ge)).
@@ -512,17 +519,15 @@ Context (atexit_spec : contract libc_world)
     cell. *)
 Lemma zero_pcell b : bytes b 0 (replicate 8 0) ∗ auxes b 0 [CNone] ⊣⊢ pcell b 0 (mkPtr 0 CNone).
 Proof.
-  rewrite /bytes /auxes /pcell -pts_app.
-  assert (E : byte_ps b 0 (replicate 8 0) ++ aux_ps b 0 [CNone] = cell b 0 0 ++ [(PAux b 0, VAux CNone)]).
-  { vm_compute. reflexivity. }
-  rewrite E pts_app. cbn [ptr_addr ptr_cap]. rewrite /pts !big_sepL_cons big_sepL_nil.
-  iSplit; [iIntros "[H [A _]]"; iFrame | iIntros "[A H]"; iFrame].
+  change (pts (cell b 0 0) ∗ pts [(PAux b 0, VAux CNone)] ⊣⊢
+    pts ([(PAux b 0, VAux CNone)] ++ cell b 0 0)).
+  rewrite pts_app. apply bi.sep_comm.
 Qed.
 
 (** Enter a block of main. *)
 Ltac mn_enter s :=
   iApply (wp_enter _ _ _ _ _ _ _ _ (main_block s));
-  [vm_compute; reflexivity | word_premise |]; iNext;
+  [abstract (vm_cast_no_check (eq_refl (Some (main_block s)))) | word_premise |]; iNext;
   cbn [b_insts b_jump main_block hblk].
 
 (** mbszero at the start of an object: [mbszero_spec] at offset 0. *)
@@ -602,11 +607,13 @@ Proof.
   iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. gen_env.
   (* argv[0], the program's name. *)
   iApply (wp_check_read with "Hal");
-    [reflexivity | word_premise | left; reflexivity | addr_premise | addr_premise | addr_premise |].
+    [reflexivity | word_premise | left; reflexivity | addr_premise | addr_premise |
+     cbn [ptr_addr]; unfold raw_address; drop_wraps_goal; rewrite Z.add_0_r; exact Hav8 |].
   iNext. iIntros "Hal". gen_env.
   iDestruct "Hs0" as "[%Hok0 Hps0]". pose proof Hok0 as (Hc0 & Hb0 & Hbp0 & Hsend0 & H480 & Hbs0).
   iApply (wp_raw_load_pointer_in with "Hal Ha0 Hps0");
-    [reflexivity | word_premise | left; reflexivity | addr_premise | addr_premise | lia |
+    [reflexivity | word_premise | left; reflexivity | addr_premise |
+     rewrite Z.add_0_r; exact Hav8 | lia |
      intros xb Hxb; exists r0; destruct Hc0 as [Hc0 | Hc0]; rewrite Hc0 in Hxb;
      destruct Hxb as [Hxb | Hxb]; try discriminate Hxb; injection Hxb as <-;
      apply elem_of_cons; left; reflexivity |].
@@ -1141,7 +1148,7 @@ Proof.
   pose proof Hargc as Hargc'.
   (* Enter iw_1.L8: pr.2 is lose. *)
   iApply (wp_enter _ _ _ _ _ _ _ _ (main_block "iw_1.L8") (put (TAtom "iw_1.pr.2") (WInt lose) e)).
-  { vm_compute. reflexivity. }
+  { abstract (vm_cast_no_check (eq_refl (Some (main_block "iw_1.L8")))). }
   { destruct Hent as [[-> ->] | [[-> ->] | [[-> | ->] [Hpr _]]]]; word_premise. }
   iNext. cbn [b_insts b_jump main_block hblk]. gen_env.
   (* getopt_long(argc, argv, "g:t", longopts, NULL). *)
@@ -1773,7 +1780,7 @@ Proof.
   pose proof Hargc as Hargc'.
   (* Enter iw_1.L8: pr.2 is lose. *)
   iApply (wp_enter _ _ _ _ _ _ _ _ (main_block "iw_1.L8") (put (TAtom "iw_1.pr.2") (WInt lose) e)).
-  { vm_compute. reflexivity. }
+  { abstract (vm_cast_no_check (eq_refl (Some (main_block "iw_1.L8")))). }
   { destruct Hent as [[-> ->] | [[-> ->] | [[-> | ->] [Hpr _]]]]; word_premise. }
   iNext. cbn [b_insts b_jump main_block hblk]. gen_env.
   (* getopt_long(argc, argv, "g:t", longopts, NULL) returns 129. *)
@@ -2007,6 +2014,7 @@ Proof.
   { apply (proj1 (proj2 Hlinked)). vm_compute. reflexivity. }
   destruct (name_life x0 Hname) as [Hxr Hxlife].
   pose proof Hpn_end as Hpn_end'.
+  rewrite /HP.HN.name_cells.
   iIntros "#Hk Hps H61 (Hpl & Hpc & Hnl & Hnc & Hsl & Hsc)".
   rewrite /loop_exit. iIntros (e ps cs a ix g lose _) "(Hb & Has & Ht & Hl4 & Hp4)".
   iPoseProof "Hk" as "[%Hpk _]". destruct Hpk as (Hp0 & Hpt & _).
@@ -2142,6 +2150,7 @@ Proof.
   { apply (proj1 (proj2 Hlinked)). vm_compute. reflexivity. }
   destruct (name_life x0 Hname) as [Hxr Hxlife].
   pose proof Hpn_end as Hpn_end'.
+  rewrite /HP.HN.name_cells.
   iIntros "Hps Has (Hpl & Hpc & Hnl & Hnc & Hsl & Hsc)".
   mn_enter "iw_1.L113".
   (* stderr's stream. *)
