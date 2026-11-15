@@ -422,6 +422,7 @@ intl/DcgettextTfind.v
 intl/DcgettextLocale.v
 intl/DcgettextRwlock.v
 intl/DcgettextReal.v
+intl/DcgettextRealV.v
 getopt/GetoptSkipTest.v
 hello/HelloGlibcDebts.v
 libio/LibioCleanupFpLock.v
@@ -438,6 +439,7 @@ hello/HelloGettextImageCode.v
 hello/HelloGettextImage.v
 hello/HelloStrchrImageCode.v
 hello/HelloStrchrImage.v
+hello/HelloGettextLinkV.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v
