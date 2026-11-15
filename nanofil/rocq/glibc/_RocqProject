@@ -236,6 +236,7 @@ stdio/FxprintfTail.v
 stdio/FxprintfLock.v
 stdio/FxprintfCall.v
 stdio/ErrorCall.v
+stdio/ErrorEntry.v
 string/MemchrFirst.v
 string/MemrchrBits.v
 string/StrncmpWords.v
