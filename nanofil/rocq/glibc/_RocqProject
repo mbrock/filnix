@@ -468,6 +468,7 @@ hello/HelloGettextSuffix.v
 hello/HelloGettextLocaleConst.v
 hello/HelloGettextDomain.v
 hello/HelloImageErase.v
+hello/HelloImageEraseMem.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
 libio/LibioCleanupMode.v
