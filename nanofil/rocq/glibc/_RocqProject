@@ -219,6 +219,7 @@ stdio/PrintfBufferWriteWindow.v
 stdio/FormatterLiteralWrite.v
 stdio/FormatterLiteral.v
 stdio/FormatterStringArg.v
+stdio/FormatterRegistration.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
