@@ -232,6 +232,8 @@ stdio/FormatterStringFinish.v
 stdio/FormatterPercentString.v
 stdio/FormatterStringJoin.v
 stdio/FormatterInitialScan.v
+stdio/FormatterEntry.v
+stdio/FormatterEntryString.v
 string/MemchrLast.v
 string/StrcmpLoop.v
 string/StpcpyBytes.v
