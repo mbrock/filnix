@@ -57,7 +57,7 @@ Module LG := ML.LG.
 Module L := LG.L.
 Import L LG SL ML HL.
 
-Local Hint Opaque pts live bytes auxes pcell close_stream_fn close_stdout_fn : typeclass_instances.
+Local Hint Opaque pts live bytes auxes pcell ibyte close_stream_fn close_stdout_fn : typeclass_instances.
 
 Section close.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -67,6 +67,7 @@ Context {world : Type} (registry : name -> option (contract world))
 (** The instance used by all closeout triples. *)
 Local Instance close_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry wi ge.
+Local Hint Opaque close_irisGS : typeclass_instances.
 (** Expressions in the linked program. *)
 Local Notation cexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -323,13 +324,14 @@ Context (Heo : 0 <= eo) (Herange : 0 <= eb + eo < 2 ^ 64) (Heend : eb + eo + 4 <
 
 (** Find a stream-close block without unfolding the module in a proof. *)
 Ltac cs_enter s :=
-  iApply (wp_enter _ _ _ _ _ _ _ _ (cs_block s));
+  iApply (wp_enter _ _ _ _ _ _ _ _ (cs_block s) _ _);
   [vm_compute; reflexivity | word_premise |]; iNext;
   cbn [b_insts b_jump cs_block hblk].
 
 (** A pure instruction, with the environment kept abstract. *)
 Ltac close_let :=
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |];
+  iApply (wp_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _);
+  [reflexivity | reflexivity | word_premise | intros m; word_premise |];
   iNext; gen_env.
 
 (** After the error decision, close_stream returns zero or EOF, clearing
@@ -352,10 +354,10 @@ Proof.
     cs_enter "L17". destruct (Z.eq_dec n 0) as [->|Hnz].
     + close_let. iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
       cs_enter "L38". iApply wp_close_errno. iNext. gen_env.
-      iApply (wp_check with "Hl"); [reflexivity|word_premise|reflexivity|unfold ep; addr_premise|unfold ep; addr_premise|unfold ep; addr_premise|].
+      iApply (wp_check with "Hl"); [reflexivity|word_premise|reflexivity|unfold ep; clear - Heo Herange; addr_premise|unfold ep; clear - Herange Heend; addr_premise|apply Z.mod_1_r|].
       iNext. iIntros "Hl". gen_env.
       iApply (wp_raw_store_w with "Hl Hx");
-        [word_premise|word_premise|reflexivity|unfold ep; addr_premise|exact Hlen|apply Kerrno|].
+        [word_premise|word_premise|reflexivity|unfold ep; clear - Herange; addr_premise|exact Hlen|apply Kerrno|].
       iNext. iIntros "Hl Hx". iApply wp_goto. iNext. cs_enter "L40".
       iApply wp_ret; [reflexivity|reflexivity|]. iNext.
       iApply ("HΦ" $! 4294967295 (le_bytes 0 4) with "[%] Hl Hx").
@@ -401,7 +403,7 @@ Proof.
       * iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
         cs_enter "L27". iApply wp_close_errno. iNext. gen_env.
         iApply (wp_check with "Hl");
-          [reflexivity|word_premise|reflexivity|unfold ep; addr_premise|unfold ep; addr_premise|unfold ep; addr_premise|].
+          [reflexivity|word_premise|reflexivity|unfold ep; clear - Heo Herange; addr_premise|unfold ep; clear - Herange Heend; addr_premise|apply Z.mod_1_r|].
         iNext. iIntros "Hl". gen_env.
         iApply (wp_close_load_w with "Hl Hx"); [word_premise|exact Herange|exact Hys|].
         iNext. iIntros "Hl Hx". gen_env.
@@ -584,7 +586,7 @@ Qed.
 
 (** Enter one of close_stdout's blocks. *)
 Ltac co_enter s :=
-  iApply (wp_enter _ _ _ _ _ _ _ _ (co_block s));
+  iApply (wp_enter _ _ _ _ _ _ _ _ (co_block s) _ _);
   [vm_compute; reflexivity | word_premise |]; iNext;
   cbn [b_insts b_jump co_block hblk].
 
@@ -605,22 +607,16 @@ Proof.
   iAssert (pcell 65584 0 (mkPtr 0 CNone)) with "[Hfb Hfa]" as "Hfc".
   { iApply close_file_name. iFrame. }
   co_enter "L0". close_let. close_let. close_let.
-  iApply (wp_check with "Hfl").
-  - reflexivity.
-  - word_premise.
-  - reflexivity.
-  - change (65584 <= 65584). lia.
-  - change (65584 + 8 <= r_end freg). exact Hfend.
-  - reflexivity.
-  -
+  iApply (wp_check with "Hfl");
+    [reflexivity|word_premise|reflexivity|apply Z.le_refl|exact Hfend|reflexivity|].
   iNext. iIntros "Hfl". gen_env.
   iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ freg with "Hfl Hfc []");
-    [reflexivity|word_premise|reflexivity|addr_premise|reflexivity|cbn; lia|done|].
+    [reflexivity|word_premise|reflexivity|reflexivity|reflexivity|vm_compute; split; congruence|done|].
   iNext. iIntros "Hfl Hfc _". gen_env. close_let. close_let.
   iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
   co_enter "L61". iApply wp_close_errno. iNext. gen_env.
   iApply (wp_check with "Hl");
-    [reflexivity|word_premise|reflexivity|unfold ep; addr_premise|unfold ep; addr_premise|unfold ep; addr_premise|].
+    [reflexivity|word_premise|reflexivity|unfold ep; clear - Heo Herange; addr_premise|unfold ep; clear - Herange Heend; addr_premise|apply Z.mod_1_r|].
   iNext. iIntros "Hl". gen_env.
   iApply (wp_close_load_w with "Hl Hx"); [word_premise|exact Herange|exact Hxs|].
   iNext. iIntros "Hl Hx". gen_env. close_let.
@@ -629,9 +625,9 @@ Proof.
     [word_premise|unfold fmt; word_premise|unfold text; word_premise|apply close_w_range|exact Hxs|].
   iNext. iIntros (ys Hys) "Hd Hx". iApply wp_goto. iNext. co_enter "L26". close_let.
   iApply (wp_check with "Hxl");
-    [reflexivity|word_premise|reflexivity|addr_premise|addr_premise|addr_premise|].
+    [reflexivity|word_premise|reflexivity|apply Z.le_refl|exact Hxend|reflexivity|].
   iNext. iIntros "Hxl". gen_env.
-  iApply (wp_close_load_w with "Hxl Hxb"); [word_premise|cbn; lia|exact Hfs|].
+  iApply (wp_close_load_w with "Hxl Hxb"); [word_premise|vm_compute; split; congruence|exact Hfs|].
   iNext. iIntros "Hxl Hxb". gen_env. pose proof (close_w_range fs) as Hfr.
   iApply wp_close_exit; [word_premise|apply close_w_range].
 Qed.
@@ -647,7 +643,7 @@ Lemma close_stdout_L91 e xs fs Φ :
 Proof.
   intros Hxs Hfs. iIntros "Hs Hcells Hl Hx Hd HΦ".
   iEval (unfold close_cells) in "Hcells".
-  iDestruct "Hcells" as "(Hol & Hoc & Hsl & Hsc & Hfl & Hfb & Hfa & Hil & Hib & Hxl & Hxb)".
+  iDestruct "Hcells" as "(Hol & Hoc & Hsl & Hsc & Htail)".
   destruct close_lookups as (_ & _ & Hfailure & _).
   co_enter "L91". close_let.
   assert (Esb : raw_address sb 0 = sb) by (unfold raw_address; rewrite Z.add_0_r; apply Z.mod_small; exact Hsb).
@@ -669,14 +665,15 @@ Proof.
   destruct Hr as [-> | ->].
   - iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
     co_enter "L89". iApply wp_ret_void. iNext.
-    iApply ("HΦ" $! ys with "[%] [Hol Hoc Hsl Hsc Hfl Hfb Hfa Hil Hib Hxl Hxb] Hl Hx Hd");
-      [exact Hys|rewrite /close_cells; iFrame].
+    iApply ("HΦ" $! ys with "[%] [Hol Hoc Hsl Hsc Htail] Hl Hx Hd");
+      [exact Hys|rewrite /close_cells; iFrame "Hol Hoc Hsl Hsc Htail"].
   - iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    iDestruct "Htail" as "(_ & _ & _ & _ & _ & Hxl & Hxb)".
     co_enter "L87". close_let.
     iApply (wp_check with "Hxl");
-      [reflexivity|word_premise|reflexivity|addr_premise|addr_premise|addr_premise|].
+      [reflexivity|word_premise|reflexivity|apply Z.le_refl|exact Hxend|reflexivity|].
     iNext. iIntros "Hxl". gen_env.
-    iApply (wp_close_load_w with "Hxl Hxb"); [word_premise|cbn; lia|exact Hfs|].
+    iApply (wp_close_load_w with "Hxl Hxb"); [word_premise|vm_compute; split; congruence|exact Hfs|].
     iNext. iIntros "Hxl Hxb". gen_env. pose proof (close_w_range fs) as Hfr.
     iApply wp_close_exit; [word_premise|apply close_w_range].
 Qed.
@@ -693,7 +690,7 @@ Lemma close_stdout_spec xs fs Φ :
 Proof.
   intros Hxs Hfs. iIntros "Hout Herr Hcells Hl Hx Hd HΦ".
   iEval (unfold close_cells) in "Hcells".
-  iDestruct "Hcells" as "(Hol & Hoc & Hsl & Hsc & Hfl & Hfb & Hfa & Hil & Hib & Hxl & Hxb)".
+  iDestruct "Hcells" as "(Hol & Hoc & Htail)".
   destruct close_lookups as (_ & Hignore & _).
   change (invocation close_stdout_fn []) with
     (mkFrame close_stdout_fn [] [] None (Enter (TAtom "start") None)).
@@ -718,15 +715,16 @@ Proof.
   - iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
     co_enter "L8".
     iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
-    iApply (close_stdout_L91 with "Herr [Hol Hoc Hsl Hsc Hfl Hfb Hfa Hil Hib Hxl Hxb] Hl Hx Hd HΦ");
-      [exact Hys|exact Hfs|rewrite /close_cells; iFrame].
+    iApply (close_stdout_L91 with "Herr [Hol Hoc Htail] Hl Hx Hd HΦ");
+      [exact Hys|exact Hfs|rewrite /close_cells; iFrame "Hol Hoc Htail"].
   - iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+    iDestruct "Htail" as "(_ & _ & Hfl & Hfb & Hfa & Hil & Hib & Hxl & Hxb)".
     co_enter "L7". close_let.
     iApply (wp_check with "Hil");
-      [reflexivity|word_premise|reflexivity|addr_premise|addr_premise|addr_premise|].
+      [reflexivity|word_premise|reflexivity|apply Z.le_refl|exact Hiend|reflexivity|].
     iNext. iIntros "Hil". gen_env.
     iApply (wp_raw_load_byte with "Hil Hib");
-      [reflexivity|word_premise|reflexivity|reflexivity|left; reflexivity|addr_premise|].
+      [reflexivity|word_premise|reflexivity|reflexivity|left; reflexivity|reflexivity|].
     iNext. iIntros "Hil Hib". gen_env.
     iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
     co_enter "L12". close_let. iApply wp_goto. iNext. co_enter "L8".
