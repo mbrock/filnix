@@ -27,6 +27,10 @@ Import LibioXsputnBase LibioDefaultXsputnBuf.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Opaque HiAtexitFns.hi_ge.
+(** The read-only vtables can be shared freely, and the proof below
+    keeps a shared copy. Rocq should take that fact from its stated
+    instance; unfolding the vtables to rederive it costs ten seconds. *)
+Local Opaque vtables_ro.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
