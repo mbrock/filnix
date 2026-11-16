@@ -91,23 +91,14 @@ Proof.
     |c s w site spec xs trace why s' m' w' Hsite Hreg Hargs Hcall
     |c s w site why Hsite Hreject
     |c s w site spec xs trace values s' m' w' Hsite Hreg Hargs Hcall Henv]; simpl.
-  - apply M.step_core. exact Hcore.
-  - apply M.step_core_end; assumption.
-  - apply M.step_core_stuck; assumption.
-  - eapply M.step_core_refusal; eauto.
-  - destruct (selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs) as [-> ->].
-    eapply M.step_return; [exact Hsite|reflexivity|exact Hargs| |exact Henv].
-    eapply C.program_invoke_projects; eauto.
-  - destruct (selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs) as [-> ->].
-    eapply M.step_exit; [exact Hsite|reflexivity|exact Hargs|].
-    eapply C.program_invoke_projects; eauto.
-  - destruct (selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs) as [-> ->].
-    eapply M.step_resource; [exact Hsite|reflexivity|exact Hargs|].
-    eapply C.program_invoke_projects; eauto.
-  - exfalso. eapply M.admissible_not_rejected; [eapply reached_admissible; eauto|exact Hreject].
-  - destruct (selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs) as [-> ->].
-    eapply M.step_bad_return; [exact Hsite|reflexivity|exact Hargs| |exact Henv].
-    eapply C.program_invoke_projects; eauto.
+  all: try solve [apply M.step_core; exact Hcore | apply M.step_core_end; assumption
+    | apply M.step_core_stuck; assumption | eapply M.step_core_refusal; eauto].
+  all: try solve [exfalso; eapply M.admissible_not_rejected;
+    [eapply reached_admissible; eauto|exact Hreject]].
+  all: destruct (selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs) as [-> ->].
+  all: apply C.program_invoke_projects in Hcall.
+  all: first [eapply M.step_return | eapply M.step_exit | eapply M.step_resource | eapply M.step_bad_return];
+    try eassumption; try reflexivity.
 Qed.
 
 (** Stream evolution also preserves the extra world obligations. *)
