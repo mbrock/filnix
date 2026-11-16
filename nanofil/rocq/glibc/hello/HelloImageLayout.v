@@ -146,7 +146,7 @@ Lemma hello_layout_check g m : initial_memory hello_image_module = Some (g, m) -
 Proof.
   intros Hi.
   assert (C : option_map (fun gm => hello_layout_ok gm.1 gm.2) (initial_memory hello_image_module) =
-    Some true) by (vm_cast_no_check (eq_refl (Some true))).
+    Some true) by (rewrite HelloImageLoad.hello_loaded_eq; vm_cast_no_check (eq_refl (Some true))).
   rewrite Hi in C. injection C as C. exact C.
 Qed.
 

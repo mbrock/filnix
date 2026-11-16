@@ -46,4 +46,4 @@ Lemma hello_image_layout_refused :
      bool_decide (m_aux gm.2 (91744 + 104) = Obj 91744),
      fn_check_ok (mkGenv hello_image_module gm.1 (fun _ _ => None)) (mkPtr 65568 (Fn (TAtom "close_stdout")))))
     (initial_memory hello_image_module) = Some (false, false, false, false, false, false, true).
-Proof. vm_cast_no_check (eq_refl (Some (false, false, false, false, false, false, true))). Qed.
+Proof. rewrite HelloImageLoad.hello_loaded_eq. vm_cast_no_check (eq_refl (Some (false, false, false, false, false, false, true))). Qed.

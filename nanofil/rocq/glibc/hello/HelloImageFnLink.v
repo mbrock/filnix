@@ -144,7 +144,7 @@ Lemma hello_image_mp g m : initial_memory hello_image_module = Some (g, m) ->
 Proof.
   intros Hi.
   assert (C : option_map (fun gm => lookup (TAtom "glibc_malloc#mp_") (fst gm)) (initial_memory hello_image_module) =
-    Some (Some (mkPtr 170192 (Obj 170192)))) by (vm_compute; reflexivity).
+    Some (Some (mkPtr 170192 (Obj 170192)))) by (rewrite HelloImageLoad.hello_loaded_eq; vm_compute; reflexivity).
   rewrite Hi in C. injection C as C. exact C.
 Qed.
 
