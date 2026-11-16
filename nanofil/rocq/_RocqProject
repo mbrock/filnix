@@ -71,6 +71,7 @@ theories/logic/Heap.v
 theories/logic/ContractFrame.v
 theories/logic/Language.v
 theories/logic/Logic.v
+theories/logic/WiTransport.v
 theories/logic/PoisonModel.v
 theories/logic/PoisonLogic.v
 theories/programs/PoisonHeap.v
