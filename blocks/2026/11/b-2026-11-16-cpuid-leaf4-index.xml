@@ -1,0 +1,42 @@
+<block id="b-2026-11-16-cpuid-leaf4-index" kind="finding" actor="T-01a1e5db-7d42-718a-b478-bc4320862200" model="anthropic/claude-fable-5-2" created="2026-11-16T21:22:17Z">
+  <title>A CPUID source that never ends its leaf 4 list makes glibc's startup read out of bounds</title>
+  <about path="nanofil/rocq/glibc/zsys/OsCpuid.v"/>
+  <about path="nanofil/rocq/glibc/hi_atexit/HiAtexitCode36.v"/>
+  <tag name="formal"/>
+  <tag name="glibc"/>
+  <tag name="memory-safety"/>
+  <p>The Hello proof now starts at <c>__libc_start_main</c>, and the second thing that function does is call <c>init_cpu_features</c>. That function asks the processor about itself with CPUID, so a proof that it never panics has to cover every answer the processor could give. One sequence of answers makes the Fil-C build of user glibc 2.44 panic.</p>
+  <p>The function <c>get_common_cache_info</c> in <c>sysdeps/x86/dl-cacheinfo.h</c> counts the threads that share a cache. On an Intel processor it reads CPUID leaf 4 one subleaf at a time. Since glibc 2.44 it first looks in a small table of answers that <c>handle_intel</c> saved earlier. Lines 851 to 864 are the start of the loop:</p>
+  <pre lang="c">          int i = 0;
+
+          /* Query until cache level 2 and 3 are enumerated.  */
+          int check = 0x1 | (threads_l3 == 0) &lt;&lt; 1;
+          do
+            {
+              if (cache != NULL &amp;&amp; i &lt; cache->leaf4_valid)
+                eax = cache->leaf4[i][0], ebx = cache->leaf4[i][1],
+                ecx = cache->leaf4[i][2], edx = cache->leaf4[i][3];
+              else
+                /* Do not attempt to cache queries at this point,
+                   because get_common_cache_info is called last.  */
+                __cpuid_count (4, i, eax, ebx, ecx, edx);
+              i++;</pre>
+  <p>The loop ends at line 901 with <c>while (check)</c>. It stops early when an answer reports cache type 0, and <c>check</c> becomes zero once the awaited cache levels have been reported. Nothing else bounds <c>i</c>, and the table <c>leaf4</c> has 16 rows.</p>
+  <p>A processor describes one cache in each answer and marks the end of the list with an answer whose cache type is 0. The loop relies on that end mark, and a processor that answered as follows would never give it.</p>
+  <ul>
+    <li>The vendor is GenuineIntel, the highest basic leaf is at least 4, and bit 28 of leaf 1 EDX is set.</li>
+    <li>Leaf 2 answers EAX = 1 and zero in the other three registers. With that answer <c>handle_intel</c> finds no cache and saves no leaf 4 answer.</li>
+    <li>Leaf 4 answers EAX = 0x21 for every subleaf, which describes a level 1 data cache.</li>
+  </ul>
+  <p>The loop is then waiting for a level 2 cache that never comes. After 2^31 queries the counter wraps to the least <c>int</c>. The test on line 857 compares that negative number with a saved count of zero and succeeds, and line 858 reads <c>cache->leaf4[i]</c> about 32 GiB below the table.</p>
+  <p>The proof is about the compiled program, so the instruction that fails has to be found there as well. The compiled function keeps the counter in a 32-bit temporary. One block adds one to it and lets the sum wrap. Another block compares it with the saved count as a signed number. A third block scales it to an offset in the table and checks that four bytes are readable at that address.</p>
+  <p>That last check fails when the counter is negative. A failed bounds check is a Fil-C panic, so the process stops there and reads nothing. Anyone who wants to read the code can find it in <a path="nanofil/rocq/glibc/hi_atexit/HiAtexitCode36.v">HiAtexitCode36.v</a>. The function is named <ir>glibc_libc_start#get_common_cache_info</ir> there, and the check binds <ir>chk9</ir> in its block <ir>L90</ir>.</p>
+  <claim status="stated">
+    <p>Nobody has seen this panic on a machine, because it needs a CPUID source that no real processor provides. I found the path with a program that follows the compiled code and keeps a range for each value. I wrote that program for this proof and have not yet proved it correct, so I confirmed the path by reading the compiled code and the C source.</p>
+  </claim>
+  <p>No real processor answers this way. Intel's manual says that leaf 4 returns zeros for a subleaf past the last cache, and zeros have cache type 0. The answers have to come from a hostile or broken CPUID source, such as a hypervisor that intercepts the instruction.</p>
+  <p>Upstream glibc has the same loop. The table of saved answers arrived in glibc 2.44, and the lines above are the same in the <c>glibc-2.44</c> tag and in upstream's current master branch. Fil-C's copy of the file differs from the tag only where two <c>bsr</c> assembly statements became <c>__builtin_clz</c>. Through glibc 2.43 the loop called <c>__cpuid_count (4, i++, ...)</c> with no table, so an endless list could only keep it running. In a native build the overflow of <c>i</c> is undefined behavior, and I have not tested what such a build does.</p>
+  <p>A fix would bound the counter, for example by leaving the loop when <c>i</c> reaches the number of rows. That is a change to user glibc, which this repository treats as a toolchain change that needs its own review, and it is not this proof's to make.</p>
+  <p>Because the fix is not ours to make, the proof of <c>init_cpu_features</c> has to assume that the processor ends its list. This is a design that is not written yet. The assumption says that a leaf 4 query with subleaf 0x7fffffff reports cache type 0, which is the weakest fact that stops the counter before it wraps. It will be a boolean <c>ow_leaf4_ends</c> of the OS world, and the contract in <a path="nanofil/rocq/glibc/zsys/OsCpuid.v">OsCpuid.v</a> will give the fact to a caller when the boolean is true.</p>
+  <p>The same unproved program reports no other failing check in <c>init_cpu_features</c> or in the functions it calls, whatever CPUID and XGETBV answer.</p>
+</block>
