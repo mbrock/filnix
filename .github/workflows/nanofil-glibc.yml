@@ -26,6 +26,7 @@ on:
       - nanofil/tests/rocq_time_test.py
       - nanofil/tests/rocq_runtime_audit.py
       - nanofil/tests/rocq_reject.py
+      - nanofil/tests/rocq_interface.py
       - nanofil/tests/hello_premises.py
       - nanofil/web/rocq/rocq_syntax.pl
       - nanofil/web/rocq/tests/parse.sh
@@ -98,7 +99,7 @@ jobs:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           { nix eval --raw .#checks.x86_64-linux.nanofil-glibc --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ [ g.probes g ]))'; echo
+              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.check ++ builtins.attrValues g.exports ++ [ g.interfaces g.probes g ]))'; echo
             # The Rocq 9.3 package set (nanofil/nix/rocq-packages.nix), which no
             # public cache has.
             nix eval --raw --impure --expr 'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };

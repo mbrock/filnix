@@ -1,7 +1,9 @@
 # The glibc check compiles every proof under rocq/glibc. Each file gets
 # its own derivation, with only the compiled Nanofil and Glibc files in
 # its transitive imports. A theory edit therefore rebuilds its importers,
-# not every glibc proof.
+# not every glibc proof. Where a file's importers load its interface
+# rather than the file (checkVo below), an edit to one of its Qed proofs
+# or to a comment rebuilds only the file itself.
 #
 # ```sh
 # nix build -L .#checks.x86_64-linux.nanofil-glibc
@@ -127,14 +129,16 @@ let
         mkdir -p theories glibc/${dirOf path.${n}}
         ${link objects n}
         cp ${source n} glibc/${path.${n}}.v
-        # No Admitted, and no axiom outside a module type.
-        python3 ${../tests/assumption_scan.py} \
-          ${
-            lib.optionalString (
-              toString (source n) == toString abstractFix
-            ) "--abstract-fix glibc/${path.${n}}.v"
-          } \
-          glibc/${path.${n}}.v
+        ${lib.optionalString (prefix != "interface-") ''
+          # No Admitted, and no axiom outside a module type.
+          python3 ${../tests/assumption_scan.py} \
+            ${
+              lib.optionalString (
+                toString (source n) == toString abstractFix
+              ) "--abstract-fix glibc/${path.${n}}.v"
+            } \
+            glibc/${path.${n}}.v
+        ''}
         start=$(date +%s%N)
         # Keep the watchdog's status through capture, including failed compiles.
         if python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
@@ -153,11 +157,67 @@ let
           "$(wc -l <glibc/${path.${n}}.v)" ${path.${n}} >$out/time
       '';
   source = n: glibc + "/${path.${n}}.v";
-  sealedVo = lib.genAttrs generalNames (
+  # The push check compiles each general file twice at most. checkVo
+  # compiles the file itself, which checks all of its proofs. An imported
+  # file whose interface (tests/rocq_interface.py) replaces at least one
+  # Qed proof by Admitted also has ifaceVo, the compiled interface, and
+  # that is what its importers load; every other file's importers load
+  # its checkVo. Both compile against the exported objects of the file's
+  # imports. The interface's derivation takes its text, not the file, so
+  # an edit to a replaced proof or to a comment recompiles the file's
+  # checkVo and nothing else. Opaque proofs are invisible to importers, so
+  # this checks what a chain of full compiles checks, except universe
+  # constraints that only a replaced proof adds; the abstract check's full
+  # chain of compiles still sees those twice daily.
+  interfaces =
+    pkgs.runCommand "nanofil-glibc-interfaces"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        python3 ${../tests/rocq_interface.py} --tree ${glibcSrc}/rocq/glibc $out
+      '';
+  # Reading the interfaces is an import from a derivation. Dropping the
+  # string context makes each interface's derivation depend on its text
+  # alone, not on every source file that the run above read.
+  replaced = lib.listToAttrs (
+    map
+      (
+        l:
+        let
+          w = lib.splitString " " l;
+        in
+        lib.nameValuePair (baseNameOf (builtins.elemAt w 0)) (
+          lib.toInt (builtins.elemAt w 1)
+        )
+      )
+      (
+        lib.filter (l: l != "") (
+          lib.splitString "\n" (builtins.readFile "${interfaces}/replaced")
+        )
+      )
+  );
+  interfaceSource =
+    n:
+    pkgs.writeText "${n}.v" (
+      builtins.unsafeDiscardStringContext (
+        builtins.readFile "${interfaces}/${path.${n}}.v"
+      )
+    );
+  # A file that no general file imports needs no interface.
+  imported = lib.genAttrs (lib.unique (
+    lib.concatMap (n: imports.${n}) generalNames
+  )) (_: true);
+  exported = n: replaced.${n} > 0 && imported ? ${n};
+  ifaceVo = lib.genAttrs (lib.filter exported generalNames) (
+    compile "interface-" exportVo interfaceSource
+  );
+  checkVo = lib.genAttrs generalNames (
     n:
     assert lib.assertMsg (!importsConcrete n)
       "glibc.nix: ${path.${n}}.v imports a file of runtime-concrete.txt, so list it there too";
-    compile "" sealedVo source n
+    compile "" exportVo source n
+  );
+  exportVo = lib.genAttrs generalNames (
+    n: if exported n then ifaceVo.${n} else checkVo.${n}
   );
   concreteClosure = lib.unique (
     lib.concatMap (n: closure.${n} ++ [ n ]) concreteNames
@@ -167,7 +227,7 @@ let
       n: if n == "Fix" then concreteFix else source n
     )
   );
-  vo = sealedVo // lib.getAttrs concreteNames concreteVo;
+  vo = exportVo // lib.getAttrs concreteNames concreteVo;
   # Rebuild Hello's entire Glibc closure against one abstract runtime.
   # No interpreter Glibc object may enter this graph through an import.
   helloNames = closure.HelloNeverPanics ++ [ "HelloNeverPanics" ];
@@ -233,7 +293,7 @@ let
             rocq c -q -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v | tee $out/verdict
         ''
     );
-  sealedRejected = rejected "sealed-" sealedVo;
+  sealedRejected = rejected "sealed-" exportVo;
   abstractRejected = rejected "abstract-" abstractVo;
   # rocq_reject.py itself: it accepts a type error from Rocq, and
   # refuses a file that compiles, a timeout, a signal, an unexpected
@@ -248,6 +308,8 @@ let
       ../tests/rocq_runtime_audit.py
       ../tests/test_scan.py
       ../tests/test_nested_audit.py
+      ../tests/rocq_interface.py
+      ../tests/rocq_interface_test.py
     ];
   };
   rejectTests =
@@ -261,6 +323,7 @@ let
         python3 ${rejectTestSrc}/tests/rocq_reject_test.py -v 2>&1 | tee $out/log
         python3 ${rejectTestSrc}/tests/test_scan.py
         python3 ${rejectTestSrc}/tests/test_nested_audit.py
+        python3 ${rejectTestSrc}/tests/rocq_interface_test.py
         touch $out/passed
       '';
   # The scheduled check nanofil-glibc-abstract: every general file
@@ -381,7 +444,7 @@ let
         printf '%s\n' "-R ../theories Nanofil" "-R . Glibc" >project/glibc/_RocqProject
         (
           cd project
-          ${link (if lib.elem n concreteNames then concreteVo else sealedVo) n}
+          ${link (if lib.elem n concreteNames then concreteVo else exportVo) n}
         )
         mkdir -p project/glibc/${dirOf path.${n}}
         cp ${glibc + "/${path.${n}}.v"} project/glibc/${path.${n}}.v
@@ -471,7 +534,15 @@ pkgs.runCommand "nanofil-glibc"
         concrete
         concreteVo
         sealedRejected
+        closure
+        modelClosure
         ;
+      # The push check's per-file compiles, which glibc-tools/affected.sh
+      # builds for the edited files and their importers, and the objects
+      # importers load, which glibc-tools/warm.sh copies into a tree.
+      check = checkVo;
+      exports = exportVo;
+      inherit interfaces;
     };
   }
   ''
@@ -517,7 +588,7 @@ pkgs.runCommand "nanofil-glibc"
     fi
     mkdir $out
     cat ${
-      lib.concatMapStringsSep " " (n: "${sealedVo.${n}}/time") generalNames
+      lib.concatMapStringsSep " " (n: "${checkVo.${n}}/time") generalNames
     } | tee $out/timings.log
     # Build-time totals (AGENTS.md, Rocq proof speed); a readout, nothing
     # fails on it. An edit here never rebuilds a theory, so only Glibc
@@ -525,7 +596,7 @@ pkgs.runCommand "nanofil-glibc"
     python3 ${../tests/rocq_totals.py} --label glibc --namespace Glibc $out/timings.log $TMPDIR/nixdep | tee $out/totals
     mkdir $out/sentence-timings
     ${lib.concatMapStrings (
-      n: "cp ${sealedVo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
+      n: "cp ${checkVo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
     ) generalNames}
     cat ${probes}/log | tee $out/probes.log
     echo "@@glibc ${toString (builtins.length generalNames)} files compiled"
