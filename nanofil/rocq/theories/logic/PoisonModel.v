@@ -1924,29 +1924,18 @@ Lemma pure_scalar_op_rel : forall pol o k cls xs1 xs2 wts ts m1 m2 w1 m1',
     (n1 <> n2 -> join_taints ts = taint_all).
 Proof.
   intros pol o k cls xs1 xs2 wts ts m1 m2 w1 m1' Hpure HkP HkA HkF Hcls Hlen Hfor Hsc Hvt Hop1.
-  assert (Hm_indep : forall mm, op_res o k xs1 mm = Some (OpRes (RVal w1) mm)).
-  { intros mm. destruct o; try discriminate Hpure;
-      unfold op_res, op_res_int, float_integer in Hop1 |- *;
-      repeat match type of Hop1 with
-      | context [match ?x with _ => _ end] =>
-          lazymatch x with
-          | m1 => fail
-          | _ => destruct x eqn:?; cbn in Hop1 |- *; try discriminate Hop1
-          end
-      end;
-      injection Hop1 as <- <-; reflexivity. }
-  assert (Hw_int : exists n1, w1 = WInt n1 /\ m1' = m1).
-  { pose proof (Hm_indep m1) as E. rewrite Hop1 in E. injection E as <-.
-    clear - Hpure HkP HkA HkF Hop1.
+  assert (Hw_int : exists n1, w1 = WInt n1 /\ m1' = m1 /\
+    forall mm, op_res o k xs1 mm = Some (OpRes (RVal (WInt n1)) mm)).
+  { clear - Hpure HkP HkA HkF Hop1.
     destruct o; try discriminate Hpure;
-      cbv beta iota zeta delta [op_res op_res_int float_integer additive_res alu] in Hop1;
+      cbv beta iota zeta delta [op_res op_res_int float_integer additive_res alu] in Hop1 |- *;
       cbn in Hop1; try discriminate Hop1;
       repeat match type of Hop1 with
       | context [match ?x with _ => _ end] =>
           lazymatch x with context [match _ with _ => _ end] => fail | _ => destruct x eqn:?; cbn in Hop1; try contradiction; try discriminate Hop1 end
       end;
-      injection Hop1 as <-; eexists; split; reflexivity. }
-  destruct Hw_int as (n1 & -> & ->).
+      injection Hop1 as <- <-; eexists; repeat split; reflexivity. }
+  destruct Hw_int as (n1 & -> & -> & Hm_indep).
   destruct (scalar_args_eq_or_all wts xs1 xs2 ts Hfor Hsc Hlen) as [<- | Hall].
   - exists n1, n1. repeat split; [exact (Hm_indep m2) | congruence].
   - assert (Hnknown : op_vartime_class o k <> Some VTKnown).
@@ -1954,21 +1943,21 @@ Proof.
       destruct (pol_vartime pol); discriminate Hvt. }
     destruct (scalar_args_shapes wts xs1 xs2 ts Hfor Hsc Hlen)
       as [(-> & ->) | [(a1 & a2 & -> & ->) | [(a1 & b1 & a2 & b2 & -> & ->) | Hge3]]].
-    + destruct o; try discriminate Hpure; destruct k; try congruence;
+    + clear - Hpure HkP HkA HkF Hop1.
+      destruct k; try congruence; destruct o; try discriminate Hpure;
         cbv beta iota zeta delta [op_res op_res_int float_integer additive_res alu] in Hop1;
         cbn in Hop1; try destruct (fmt_of _); cbn in Hop1; discriminate Hop1.
-    + destruct o; try discriminate Hpure;
+    + clear - Hpure HkP HkA HkF Hop1 Hnknown Hall.
+      destruct k; try congruence; destruct o; try discriminate Hpure;
         try (exfalso; apply Hnknown; reflexivity);
-        destruct k; try congruence;
         cbv beta iota zeta delta [op_res op_res_int float_arithmetic additive_res alu integer_source signed] in Hop1 |- *;
         cbn in Hop1 |- *; try (destruct (fmt_of _); cbn in Hop1 |- *); try discriminate Hop1;
         try match goal with H : context [modulus ?ik] |- _ => destruct ik; cbn in H |- *; try discriminate H end;
         try match goal with |- context [match ?sg with Signed => _ | Unsigned => _ end] => destruct sg; cbn in Hop1 |- *; try discriminate Hop1 end;
         eexists n1, _; (split; [reflexivity | split; [reflexivity | split; [reflexivity | intros _; exact Hall]]]).
-    + destruct o; try discriminate Hpure;
+    + clear - Hpure HkP HkA HkF Hop1 Hnknown Hall.
+      destruct k; try congruence; destruct o; try discriminate Hpure;
         try (exfalso; apply Hnknown; reflexivity);
-        try (destruct (float_class k) eqn:Efc; [exfalso; apply Hnknown; cbn; rewrite Efc; reflexivity|]);
-        destruct k; try congruence; try discriminate Efc;
         cbv beta iota zeta delta [op_res op_res_int float_arithmetic additive_res alu cond_bit signed shift_factor] in Hop1 |- *;
         cbn in Hop1 |- *; try discriminate Hop1;
         try match goal with |- context [fmt_of ?ck] =>
@@ -1981,6 +1970,7 @@ Proof.
     + destruct xs1 as [|x1 [|y1 [|z1 xs1']]]; cbn in Hge3; try lia.
       destruct (scalar_args_three wts x1 y1 z1 xs1' xs2 ts Hfor Hsc Hlen)
         as (a1 & b1 & c1 & a2 & b2 & c2 & xs2' & -> & -> & -> & -> & Hlen').
+      clear - Hpure HkP HkA HkF Hop1 Hall Hlen'.
       destruct o; try discriminate Hpure;
         try solve [exfalso; destruct k; try congruence;
           cbv beta iota zeta delta [op_res op_res_int float_integer float_arithmetic additive_res alu] in Hop1;
@@ -2152,7 +2142,7 @@ Lemma let_tstep_pure_scalar : forall pol ge e ps d k o args,
 Proof.
   intros pol ge e ps d k o args Ez Ep HkP HkA HkF.
   unfold let_tstep; rewrite Ez.
-  destruct o; try discriminate Ep; destruct k; try contradiction; reflexivity.
+  destruct k; try contradiction; destruct o; try discriminate Ep; reflexivity.
 Qed.
 
 Lemma leak_of_pure_scalar : forall pol ge c l d k o args rest j,
@@ -2374,7 +2364,8 @@ Proof.
            destruct Hclasses as [-> | [-> | [-> | (HkP & HkA & HkF)]]].
            1: { (* k = P: only Add or Sub allowed *)
              unfold let_tstep in Hp1; rewrite Ezero in Hp1.
-             destruct o; try discriminate Epure; try (cbn in Hp1; discriminate Hp1).
+             pose proof (f_equal fst Hp1) as Ht.
+             destruct o; try discriminate Epure; try discriminate Ht; clear Ht.
              all: destruct args as [|pv [|ov [|]]]; try discriminate Hp1.
              all: try solve [cbn [op_arg_classes map2_option] in Hp1;
                destruct (value_t (ps_tenv ps) P pv); cbn in Hp1;
@@ -2431,7 +2422,8 @@ Proof.
              unfold ct_rel; cbn; repeat split; auto; congruence. }
         -- (* pure_scalar_op o = false *)
            unfold let_tstep in Hp1; rewrite Ezero in Hp1.
-           destruct o; try discriminate Epure; try discriminate Hp1;
+           pose proof (f_equal fst Hp1) as Ht.
+           destruct o; try discriminate Epure; try discriminate Ht; clear Ht;
              try rename align into al;
              try (rewrite inst_step_let in Hp1 by reflexivity);
              try (rewrite inst_step_let by reflexivity).
@@ -2441,16 +2433,18 @@ Proof.
               cbn [op_arg_classes map2_option] in Hp1.
               destruct (value_x ge (fr_env (c_frame c1)) k v) as [w1|] eqn:Ew1; [|discriminate Hp1].
               destruct (value_rel ge _ _ _ k v w1 wt Henv Ew1 Ewt) as (w2 & Ew2 & Hw).
-              destruct k; cbn [op_res fmt_of float_arithmetic op_res_int alu] in Hp1;
-                try (destruct w1; try discriminate Hp1);
-                injection Hp1 as <- <-;
-                (split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; reflexivity|]);
-                unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn; rewrite Ewt;
-                cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ew2;
-                try (destruct wt, w2; try contradiction Hw); cbn;
-                eexists; (split; [reflexivity|]);
-                unfold ct_rel; cbn; repeat split; auto; try congruence;
-                apply env_rel_put; assumption.
+              assert (Ecopy : op_res Copy k [w1] (c_mem c1) = Some (OpRes (RVal w1) (c_mem c1)) /\
+                forall m, op_res Copy k [w2] m = Some (OpRes (RVal w2) m)).
+              { clear - Hp1 Hw. destruct k; cbn [op_res fmt_of float_arithmetic op_res_int alu] in Hp1 |- *;
+                  try solve [split; reflexivity]; destruct w1; try discriminate Hp1;
+                  (split; [reflexivity|intros; destruct wt, w2; try contradiction Hw; reflexivity]). }
+              destruct Ecopy as [Ec1 Ec2]. rewrite Ec1 in Hp1; cbn in Hp1; injection Hp1 as <- <-.
+              split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; reflexivity|].
+              unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn -[op_res]; rewrite Ewt.
+              cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ew2; cbn beta iota zeta; rewrite Ec2; cbn.
+              eexists; split; [reflexivity|].
+              unfold ct_rel; cbn; repeat split; auto; try congruence.
+              apply env_rel_put; assumption.
            ++ (* Ptoi *)
               destruct args as [|v [|]]; try discriminate Hp1.
               destruct (value_t (ps_tenv ps) P v) as [[ta | ta tc | ]|] eqn:Ewt; try discriminate Hp1;
@@ -2526,18 +2520,18 @@ Proof.
               destruct (value_x ge (fr_env (c_frame c1)) P v) as [w1|] eqn:Ew1; [|discriminate Hp1].
               destruct (value_rel ge _ _ _ A q1v wq1 (WTPtr qa qc) Henv Ewq1 Ewq) as (wq2 & Ewq2 & Hwq).
               destruct (value_rel ge _ _ _ P v w1 (WTPtr ta tc) Henv Ew1 Ewt) as (w2 & Ew2 & Hw).
-              destruct wq1 as [|[qa1 qc1]|], wq2 as [|[qa2 qc2]|], w1 as [|[a1 c1p]|], w2 as [|[a2 c2p]|];
-                try contradiction Hwq; try contradiction Hw.
+              destruct wq1 as [|[qa1 qc1]|]; try contradiction Hwq;
+                destruct wq2 as [|[qa2 qc2]|]; try contradiction Hwq.
+              destruct w1 as [|[a1 c1p]|]; try contradiction Hw;
+                destruct w2 as [|[a2 c2p]|]; try contradiction Hw.
               assert (Heq_all : qa1 = qa2 /\ qc1 = qc2 /\ a1 = a2 /\ c1p = c2p).
               { cbn in Hwq, Hw. repeat split.
                 - destruct (Z.eq_dec qa1 qa2); [auto | exfalso; apply Hta; rewrite (proj1 Hwq n), taint_join_all_l; reflexivity].
-                - destruct (cap_eqb qc1 qc2) eqn:Ec;
-                    [destruct qc1, qc2; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hwq ltac:(intros ->; destruct qc2; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_l; reflexivity].
+                - apply (cap_eq_of_not_all qc); [exact (proj2 Hwq)|].
+                  intros ->; apply Htc; rewrite taint_join_all_l; reflexivity.
                 - destruct (Z.eq_dec a1 a2); [auto | exfalso; apply Hta; rewrite (proj1 Hw n), taint_join_all_r; reflexivity].
-                - destruct (cap_eqb c1p c2p) eqn:Ec;
-                    [destruct c1p, c2p; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hw ltac:(intros ->; destruct c2p; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_r; reflexivity]. }
+                - apply (cap_eq_of_not_all tc); [exact (proj2 Hw)|].
+                  intros ->; apply Htc; rewrite taint_join_all_r; reflexivity. }
               destruct Heq_all as (-> & -> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               cbn [ptr_addr ptr_cap] in Hp1.
@@ -2575,16 +2569,13 @@ Proof.
               destruct w1 as [|[a1 c1p]|], w2 as [|[a2 c2p]|]; try contradiction Hw.
               assert (Heq_caps : lc1 = lc2 /\ hc1 = hc2 /\ a1 = a2 /\ c1p = c2p).
               { cbn in Hwql, Hwqh, Hw. repeat split.
-                - destruct (cap_eqb lc1 lc2) eqn:Ec;
-                    [destruct lc1, lc2; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hwql ltac:(intros ->; destruct lc2; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_l; reflexivity].
-                - destruct (cap_eqb hc1 hc2) eqn:Ec;
-                    [destruct hc1, hc2; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hwqh ltac:(intros ->; destruct hc2; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_l, taint_join_all_r; reflexivity].
+                - apply (cap_eq_of_not_all cl0); [exact (proj2 Hwql)|].
+                  intros ->; apply Htc; rewrite taint_join_all_l; reflexivity.
+                - apply (cap_eq_of_not_all ch0); [exact (proj2 Hwqh)|].
+                  intros ->; apply Htc; rewrite taint_join_all_l, taint_join_all_r; reflexivity.
                 - destruct (Z.eq_dec a1 a2); [auto | exfalso; apply Hta; rewrite (proj1 Hw n), !taint_join_all_r; reflexivity].
-                - destruct (cap_eqb c1p c2p) eqn:Ec;
-                    [destruct c1p, c2p; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hw ltac:(intros ->; destruct c2p; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), !taint_join_all_r; reflexivity]. }
+                - apply (cap_eq_of_not_all tc); [exact (proj2 Hw)|].
+                  intros ->; apply Htc; rewrite !taint_join_all_r; reflexivity. }
               destruct Heq_caps as (-> & -> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               cbn [ptr_addr ptr_cap] in Hp1.
@@ -2614,17 +2605,17 @@ Proof.
               destruct (value_x ge (fr_env (c_frame c1)) P v) as [w1|] eqn:Ew1; [|discriminate Hp1].
               destruct (value_rel ge _ _ _ A q1v wq1 (WTPtr qa qc) Henv Ewq1 Ewq) as (wq2 & Ewq2 & Hwq).
               destruct (value_rel ge _ _ _ P v w1 (WTPtr ta tc) Henv Ew1 Ewt) as (w2 & Ew2 & Hw).
-              destruct wq1 as [|[qa1 qc1]|], wq2 as [|[qa2 qc2]|], w1 as [|[a1 c1p]|], w2 as [|[a2 c2p]|];
-                try contradiction Hwq; try contradiction Hw.
+              destruct wq1 as [|[qa1 qc1]|]; try contradiction Hwq;
+                destruct wq2 as [|[qa2 qc2]|]; try contradiction Hwq.
+              destruct w1 as [|[a1 c1p]|]; try contradiction Hw;
+                destruct w2 as [|[a2 c2p]|]; try contradiction Hw.
               assert (Heq_all : qc1 = qc2 /\ a1 = a2 /\ c1p = c2p).
               { cbn in Hwq, Hw. repeat split.
-                - destruct (cap_eqb qc1 qc2) eqn:Ec;
-                    [destruct qc1, qc2; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hwq ltac:(intros ->; destruct qc2; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_l; reflexivity].
+                - apply (cap_eq_of_not_all qc); [exact (proj2 Hwq)|].
+                  intros ->; apply Htc; rewrite taint_join_all_l; reflexivity.
                 - destruct (Z.eq_dec a1 a2); [auto | exfalso; apply Hta; rewrite (proj1 Hw n), taint_join_all_r; reflexivity].
-                - destruct (cap_eqb c1p c2p) eqn:Ec;
-                    [destruct c1p, c2p; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hw ltac:(intros ->; destruct c2p; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_r; reflexivity]. }
+                - apply (cap_eq_of_not_all tc); [exact (proj2 Hw)|].
+                  intros ->; apply Htc; rewrite taint_join_all_r; reflexivity. }
               destruct Heq_all as (-> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               cbn [ptr_addr ptr_cap] in Hp1.
@@ -2660,9 +2651,7 @@ Proof.
               destruct w1 as [|[a1 c1p]|], w2 as [|[a2 c2p]|]; try contradiction Hw.
               assert (Ep : a1 = a2 /\ c1p = c2p) by
                 (cbn in Hw; split; [destruct (Z.eq_dec a1 a2); [auto | exfalso; apply Hta, (proj1 Hw); auto]
-                                   |destruct (cap_eqb c1p c2p) eqn:Ec;
-                                     [destruct c1p, c2p; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                                     |exfalso; apply Htc, (proj2 Hw); intros ->; destruct c2p; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate]]).
+                                   |exact (cap_eq_of_not_all tc _ _ (proj2 Hw) Htc)]).
               destruct Ep as [<- <-].
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
               rewrite Hreg in Hp1.
@@ -2689,14 +2678,14 @@ Proof.
               destruct (value_x ge (fr_env (c_frame c1)) W gv) as [wg1|] eqn:Ewg1; [|discriminate Hp1].
               destruct (value_rel ge _ _ _ P v w1 (WTPtr ta tc) Henv Ew1 Ewt) as (w2 & Ew2 & Hw).
               destruct (value_rel ge _ _ _ W gv wg1 (WTInt tg) Henv Ewg1 Ewg) as (wg2 & Ewg2 & Hwg).
-              destruct w1 as [|[a1 c1p]|], w2 as [|[a2 c2p]|], wg1 as [ng1| |], wg2 as [ng2| |];
-                try contradiction Hw; try contradiction Hwg.
+              destruct w1 as [|[a1 c1p]|]; try contradiction Hw;
+                destruct w2 as [|[a2 c2p]|]; try contradiction Hw.
+              destruct wg1 as [ng1| |]; try contradiction Hwg;
+                destruct wg2 as [ng2| |]; try contradiction Hwg.
               assert (Ep : a1 = a2 /\ c1p = c2p /\ ng1 = ng2).
               { cbn in Hw, Hwg; repeat split.
                 - destruct (Z.eq_dec a1 a2); [auto | exfalso; apply Hta, (proj1 Hw); auto].
-                - destruct (cap_eqb c1p c2p) eqn:Ec;
-                    [destruct c1p, c2p; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc, (proj2 Hw); intros ->; destruct c2p; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate].
+                - exact (cap_eq_of_not_all tc _ _ (proj2 Hw) Htc).
                 - destruct (Z.eq_dec ng1 ng2); [auto | exfalso; pose proof (Hwg n) as ->; discriminate Etbg]. }
               destruct Ep as (-> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
@@ -2746,17 +2735,17 @@ Proof.
               destruct (value_x ge (fr_env (c_frame c1)) L uv) as [wu1|] eqn:Ewu1; [|discriminate Hp1].
               destruct (value_rel ge _ _ _ P v w1 (WTPtr ta tc) Henv Ew1 Ewt) as (w2 & Ew2 & Hw).
               destruct (value_rel ge _ _ _ L uv wu1 (WTLimit uc ul) Henv Ewu1 Ewu) as (wu2 & Ewu2 & Hwu).
-              destruct w1 as [|[a1 c1p]|], w2 as [|[a2 c2p]|], wu1 as [| |uc1 us1], wu2 as [| |uc2 us2];
-                try contradiction Hw; try contradiction Hwu.
+              destruct w1 as [|[a1 c1p]|]; try contradiction Hw;
+                destruct w2 as [|[a2 c2p]|]; try contradiction Hw.
+              destruct wu1 as [| |uc1 us1]; try contradiction Hwu;
+                destruct wu2 as [| |uc2 us2]; try contradiction Hwu.
               assert (Ep : a1 = a2 /\ c1p = c2p /\ uc1 = uc2 /\ us1 = us2).
               { cbn in Hw, Hwu; repeat split.
                 - destruct (Z.eq_dec a1 a2); [auto | exfalso; apply Hta, (proj1 Hw); auto].
-                - destruct (cap_eqb c1p c2p) eqn:Ec;
-                    [destruct c1p, c2p; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj2 Hw ltac:(intros ->; destruct c2p; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_l; reflexivity].
-                - destruct (cap_eqb uc1 uc2) eqn:Ec;
-                    [destruct uc1, uc2; cbn in Ec; try discriminate; try reflexivity; try (apply Z.eqb_eq in Ec; congruence); apply term_eqb_eq in Ec; congruence
-                    |exfalso; apply Htc; rewrite (proj1 Hwu ltac:(intros ->; destruct uc2; cbn in Ec; try rewrite Z.eqb_refl in Ec; try rewrite term_eqb_refl in Ec; discriminate)), taint_join_all_l, taint_join_all_r; reflexivity].
+                - apply (cap_eq_of_not_all tc); [exact (proj2 Hw)|].
+                  intros ->; apply Htc; rewrite taint_join_all_l; reflexivity.
+                - apply (cap_eq_of_not_all uc); [exact (proj1 Hwu)|].
+                  intros ->; apply Htc; rewrite taint_join_all_l, taint_join_all_r; reflexivity.
                 - destruct (Z.eq_dec us1 us2); [auto | exfalso; apply Htc; rewrite (proj2 Hwu n), !taint_join_all_r; reflexivity]. }
               destruct Ep as (-> & -> & -> & ->).
               destruct k; cbn [op_res fmt_of op_res_int] in Hp1; try discriminate Hp1.
