@@ -131,17 +131,14 @@ Lemma rule_alloc : forall ge f e ls l d k al args rest j cs m fuel size,
                               cs (allocated m (heap_req al size) base) fuel).
 Proof.
   intros ge f e ls l d k al args rest j cs m fuel size Hx Hs.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) m
-                 (Let d k (Alloc al) args) =
-               Some (IFresh (heap_req al size)
-                       (fun base => (put d (WPtr (mkPtr base (Obj base))) e, ls,
-                                     allocated m (heap_req al size) base)))).
-  { destruct k; cbn - [map2_option heap_req allocated max_allocation_size]; rewrite Hx;
+  apply (rule_inst ge f e ls l _ rest j cs m fuel
+    (IFresh (heap_req al size) (fun base =>
+      (put d (WPtr (mkPtr base (Obj base))) e, ls, allocated m (heap_req al size) base)))).
+  - destruct k; cbn - [map2_option heap_req allocated max_allocation_size]; rewrite Hx;
       cbn - [heap_req allocated max_allocation_size];
       replace (max_allocation_size <? size) with false by (symmetry; apply Z.ltb_ge; exact Hs);
-      reflexivity. }
-  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_fresh_none; reflexivity).
-  reflexivity.
+      reflexivity.
+  - apply doomed_result_fresh_none. reflexivity.
 Qed.
 
 (** ## Flights and stores
@@ -165,11 +162,9 @@ Lemma rule_flight : forall ge f e ls l d o args lw rest j cs m fuel xs n c,
   Next (mkConfig (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j)) cs m fuel).
 Proof.
   intros ge f e ls l d o args lw rest j cs m fuel xs n c Hx Ha Hc.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) m
-                 (Flight d o args lw) = Some (IContinue (put d (WPtr (mkPtr n c)) e) ls m)).
-  { cbn - [map_option alu flight_cap]. rewrite Hx, Ha, Hc. reflexivity. }
-  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_continue; reflexivity).
-  reflexivity.
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue (put d (WPtr (mkPtr n c)) e) ls m)).
+  - cbn - [map_option alu flight_cap]. rewrite Hx, Ha, Hc. reflexivity.
+  - apply doomed_result_continue. reflexivity.
 Qed.
 
 (** A raw integer store writes a value of width w at a byte offset from an
@@ -185,11 +180,9 @@ Lemma rule_raw_store : forall ge f e ls l w off v a rest j cs m fuel vk x p m',
   Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
 Proof.
   intros ge f e ls l w off v a rest j cs m fuel vk x p m' Hw Hv Ha Hs.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (RawStore w off v a :: rest) j)) m
-                 (RawStore w off v a) = Some (IContinue e ls m')).
-  { cbn - [width_value_class value_x store_res raw_address]. rewrite Hw, Hv, Ha, Hs. reflexivity. }
-  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_continue; reflexivity).
-  reflexivity.
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e ls m')).
+  - cbn - [width_value_class value_x store_res raw_address]. rewrite Hw, Hv, Ha, Hs. reflexivity.
+  - apply doomed_result_continue. reflexivity.
 Qed.
 
 (** In Fil-C, storing a pointer writes its capability into shadow [[aux]]
@@ -205,12 +198,10 @@ Lemma rule_raw_store_pointer : forall ge f e ls l off v a es rest j cs m fuel xp
   Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
 Proof.
   intros ge f e ls l off v a es rest j cs m fuel xp p m' Hv Ha Hc Hs.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (RawStorePointer off v a es :: rest) j)) m
-                 (RawStorePointer off v a es) = Some (IContinue e ls m')).
-  { cbn - [value_x access_res pointer_store_effects raw_address]. rewrite Hv, Ha, Hc. cbn - [pointer_store_effects raw_address].
-    rewrite Hs. reflexivity. }
-  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_continue; reflexivity).
-  reflexivity.
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e ls m')).
+  - cbn - [value_x access_res pointer_store_effects raw_address]. rewrite Hv, Ha, Hc.
+    cbn - [pointer_store_effects raw_address]. rewrite Hs. reflexivity.
+  - apply doomed_result_continue. reflexivity.
 Qed.
 
 (** ## Calls
@@ -253,12 +244,10 @@ Lemma rule_free_sym : forall ge fnm f e ls l v rest j cs m fuel x m',
   Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
 Proof.
   intros ge fnm f e ls l v rest j cs m fuel x m' Hn Hf Hd Hx Hfree.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j))
-                 m (Call CVoid (Global fnm) [Arg P v]) = Some (IContinue e ls m')).
-  { cbn - [arg_x find_fn lookup ge_free is_free_name]. rewrite Hx, Hf. unfold external_call. rewrite Hd, Hn.
-    cbn - [ge_free]. rewrite Hfree. reflexivity. }
-  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_continue; reflexivity).
-  reflexivity.
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e ls m')).
+  - cbn - [arg_x find_fn lookup ge_free is_free_name]. rewrite Hx, Hf. unfold external_call. rewrite Hd, Hn.
+    cbn - [ge_free]. rewrite Hfree. reflexivity.
+  - apply doomed_result_continue. reflexivity.
 Qed.
 
 (** Specializing [rule_free_sym] to standard C's `c: free` symbol gives the
@@ -557,12 +546,7 @@ Lemma access_ro_read : forall m b reg a size al,
   object_region b (m_regions m) = Some reg ->
   b <= a -> a + size <= r_end reg -> a mod al = 0 ->
   access_res m a (Ro b) size Read al = Some ok.
-Proof.
-  intros m b reg a size al Hr H1 H2 H3. unfold access_res, cap_access_res. rewrite Hr.
-  replace ((b <=? a) && (a + size <=? r_end reg)) with true
-    by (symmetry; apply andb_true_iff; split; [apply Z.leb_le | apply Z.leb_le]; lia).
-  unfold readonly_access_res, aligned_res. rewrite H3. reflexivity.
-Qed.
+Proof. intros. eapply access_read; eauto. Qed.
 
 (** When an 8-byte write access through a capability succeeds, storing a
     64-bit integer writes its 8 little-endian bytes into primary memory at
@@ -665,13 +649,11 @@ Lemma rule_alloc_too_big : forall ge f e ls l d k al args rest j cs m fuel size,
   Done (Trap TooBig).
 Proof.
   intros ge f e ls l d k al args rest j cs m fuel size Hx Hs.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) m
-                 (Let d k (Alloc al) args) = Some (IStop (Trap TooBig))).
-  { destruct k; cbn - [map2_option max_allocation_size]; rewrite Hx; cbn - [max_allocation_size];
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IStop (Trap TooBig))).
+  - destruct k; cbn - [map2_option max_allocation_size]; rewrite Hx; cbn - [max_allocation_size];
       replace (max_allocation_size <? size) with true by (symmetry; apply Z.ltb_lt; exact Hs);
-      reflexivity. }
-  rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (destruct k; reflexivity).
-  reflexivity.
+      reflexivity.
+  - destruct k; reflexivity.
 Qed.
 
 (** ## Calls through function pointers
