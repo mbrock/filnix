@@ -300,10 +300,8 @@ Proof.
     iApply wp_enter; [exact find_r_L27 | reflexivity |]. iNext. cbn [b_insts b_jump r_L27].
     iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
     set (c := S (length t)).
-    iAssert (bytes b 0 (take c xs) ∗ bytes b (0 + Z.of_nat (length (take c xs))) (drop c xs))%I
-      with "[Hx]" as "[Hx1 Hx2]"; [rewrite -bytes_app take_drop; iExact "Hx"|].
-    iAssert (auxes b 0 (take c cs) ∗ auxes b (0 + Z.of_nat (length (take c cs))) (drop c cs))%I
-      with "[Hcs]" as "[Hc1 Hc2]"; [rewrite -auxes_app take_drop; iExact "Hcs"|].
+    iDestruct (bytes_take_drop b 0 xs c with "Hx") as "[Hx1 Hx2]"; [lia|].
+    iDestruct (auxes_take_drop b 0 cs c with "Hcs") as "[Hc1 Hc2]"; [lia|].
     assert (Hc : length (take c xs) = c) by (rewrite length_take; lia).
     assert (Hcc : length (take c cs) = c) by (rewrite length_take; lia).
     iApply (wp_memcpy_lent with "Hk Hl Hx1 Hc1");
@@ -317,7 +315,7 @@ Proof.
     iApply wp_ret; [reflexivity | reflexivity |]. iNext.
     assert (Ec : take (length (take c xs)) (t ++ [0]) = t ++ [0])
       by (rewrite Hc take_ge; [reflexivity | rewrite length_app; cbn [length]; unfold c; lia]).
-    rewrite Ec Hc Hcc. rewrite Hc in Hcs1.
+    rewrite Ec. rewrite Hc in Hcs1.
     iApply ("HΦ" $! 0 t ((t ++ [0]) ++ drop c xs) (cs1 ++ drop c cs) with "[%] Hl [Hx1 Hx2] [Hc1 Hc2]").
     + split; [|rewrite length_app length_drop; lia]. split; [left; auto|]. split.
       * rewrite !length_app length_drop. cbn [length]. unfold c. lia.
@@ -341,13 +339,10 @@ Proof.
        apply (f_equal length) in Ed; rewrite length_drop in Ed; cbn in Ed; lia].
     assert (Eb : forall y, byte_ps b (Z.of_nat c) [y] = [(PByte b (Z.of_nat c), VByte y)])
       by (intros y; rewrite byte_ps_cons; reflexivity).
-    iAssert (bytes b 0 (take c xs) ∗ bytes b (0 + Z.of_nat (length (take c xs))) (drop c xs))%I
-      with "[Hx]" as "[Hx1 Hx2]"; [rewrite -bytes_app take_drop; iExact "Hx"|].
-    rewrite Ed Hc Z.add_0_l /bytes Eb. iEval (rewrite -/(ibyte b (Z.of_nat c) x)) in "Hx2".
+    iDestruct (bytes_take_drop b 0 xs c with "Hx") as "[Hx1 Hx2]"; [unfold c; lia|].
+    rewrite Ed Z.add_0_l /bytes Eb. iEval (rewrite -/(ibyte b (Z.of_nat c) x)) in "Hx2".
     rewrite -/(bytes b 0 (take c xs)).
-    iAssert (auxes b 0 (take c cs) ∗ auxes b (0 + Z.of_nat (length (take c cs))) (drop c cs))%I
-      with "[Hcs]" as "[Hc1 Hc2]"; [rewrite -auxes_app take_drop; iExact "Hcs"|].
-    rewrite Hcc.
+    iDestruct (auxes_take_drop b 0 cs c with "Hcs") as "[Hc1 Hc2]"; [unfold c; lia|].
     iApply (wp_memcpy_lent with "Hk Hl Hx1 Hc1");
       [exact wi_lent | exact Hmemcpy | apply linked_outside; [exact Hlinked | reflexivity] |
        apply linked_unbound; [exact Hlinked | reflexivity] | cbn; rewrite Z.add_0_r; reflexivity |
