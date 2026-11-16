@@ -130,8 +130,9 @@ filnix.org (pages/, docs/, nanofil/docs/, blocks/, the text in packages/site/, a
 
 ### Compiler and Runtime Review
 
-- Before adopting changes to Fil-C compiler semantics, capability tracking, GC, or glibc/runtime behavior, develop the proposed approach and consult Oracle about soundness and alternatives. Give it the relevant code and invariants while leaving room for independent analysis.
+- A change to the Fil-C toolchain itself needs an Oracle review before it lands. That covers the compiler and its instrumentation, capability tracking, the GC, and the runtime or user glibc as built for nixpkgs. Develop the proposed approach, then give Oracle the relevant code and invariants and ask about soundness and alternatives, leaving room for independent analysis.
 - Resolve review findings and run targeted regressions before updating the toolchain pin. Passing package tests alone does not establish memory safety. This review requirement does not apply to ordinary package-local build fixes.
+- Modeling and proof work, such as the nanofil semantics, Rocq rules and contracts, and proofs over captured IR, does not need this review. For that work Fable (anthropic/claude-fable-5-2) is a recommended oracle for checking a new rule or contract, and sometimes a good model to run a hard proof. Asking it is a judgment call, not a gate.
 
 ### Nanofil checks
 
