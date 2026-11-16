@@ -34,10 +34,7 @@ Proof. intros A k v ps. simpl. unfold name_eqb. rewrite term_eqb_refl. reflexivi
 Lemma lookup_put_other : forall (A : Type) k d (v : A) ps,
   name_eqb k d = false -> lookup k (put d v ps) = lookup k ps.
 Proof.
-  intros A k d v ps H. simpl. rewrite H. induction ps as [|[k' v'] ps IH]; simpl; auto.
-  destruct (name_eqb d k') eqn:E; simpl.
-  - apply term_eqb_eq in E. subst k'. rewrite H. exact IH.
-  - destruct (name_eqb k k'); auto.
+  intros A k d v ps H. rewrite Maps.lookup_put_name, H. reflexivity.
 Qed.
 
 (** ## What a fact means
@@ -322,10 +319,7 @@ Lemma cap_access_res_checked : forall c rs a size r al why,
   cap_access_res c rs a size r al <> Some (RUnchecked why).
 Proof.
   unfold cap_access_res, readonly_access_res, aligned_res. intros c rs a size r al why H.
-  destruct c; try discriminate H;
-    destruct (object_region _ _); try discriminate H;
-    destruct (_ && _); try discriminate H; try destruct r; try discriminate H;
-    destruct (_ =? 0); discriminate H.
+  cases H.
 Qed.
 
 (** Whenever a check-like instruction continues, it leaves memory
@@ -670,9 +664,7 @@ Proof.
     destruct args as [|a1 [|a2 [|a3 [|a4 args]]]]; simpl in Hf, Hg; try discriminate Hf;
     injection Hf as <-; injection Hg as <-; cbn [f_q f_p f_lo f_hi f_r f_al].
   all: unfold checked_inst_rest in H; cbn zeta in H.
-  all: repeat match type of H with
-              | context [match ?x with _ => _ end] => destruct x eqn:?; try discriminate H
-              end.
+  all: cases H.
   all: injection H as <- <-; eexists; split; [reflexivity|].
   all: repeat match goal with E : (_ && _) = true |- _ => apply andb_true_iff in E as [? ?] end.
   all: split; [assumption | reflexivity].
@@ -687,9 +679,7 @@ Lemma checked_inst_rest_local : forall s q x off bytes r al rest live rest' live
   exists access, rest = access :: rest' /\ live' = evidence_after access (kill q live).
 Proof.
   intros s q x off bytes r al rest live rest' live' H. unfold checked_inst_rest in H. cbn zeta in H.
-  repeat match type of H with
-         | context [match ?y with _ => _ end] => destruct y eqn:?; try discriminate H
-         end.
+  cases H.
   injection H as <- <-. eauto.
 Qed.
 
