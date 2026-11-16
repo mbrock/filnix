@@ -391,10 +391,8 @@ Proof.
         -- destruct (libc_stream_open (fun _ _ => True) (fun _ _ _ _ => False)
              (fun _ _ _ _ _ => False) conversion_mem (F.world opened) (file_handle F.err_file)
              F.err_file (F.ready opened) ltac:(destruct opened; reflexivity)) as [info Hopen].
-           destruct Hopen as [Hr [Hlookup Hrest]].
-           assert (info = mkStreamInfo 2 stdout_initial 3) as ->.
-           { destruct opened; injection Hlookup; auto. }
-           exact (conj Hr (conj Hlookup Hrest)).
+           replace (mkStreamInfo 2 stdout_initial 3) with info; [exact Hopen|].
+           destruct opened; injection (proj1 (proj2 Hopen)); auto.
         -- split; [discriminate|destruct opened; discriminate].
     + exists 0, 0, fmt, []. split; [reflexivity|lia].
   - exists 0, fmt, []. split; [reflexivity|lia].
