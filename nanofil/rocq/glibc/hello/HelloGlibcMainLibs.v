@@ -1,5 +1,5 @@
 (** This file constructs HelloLibs from the concrete library proofs.
-    Only the close_stdout callback uses HelloDebts; glibc registers and
+    Only the close_stdout callback uses HelloCore; glibc registers and
     invokes that callback using its proved exit-handler machinery. *)
 
 From Glibc Require Import GlibcTactics.

@@ -1,9 +1,22 @@
-(** Hello's option parser asks whether POSIXLY_CORRECT is set. The call
-    needs permission to read that name and the environment it searches.
-    This proof obtains the name from initial memory and preserves access
-    to it across parser calls. It also keeps the stack size readable for
-    glibc's allocation cutoff. The caller still supplies contracts for
-    diagnostic output and the other unproved parts of Hello. *)
+(** This file states and proves Hello's safety theorem: GNU Hello,
+    linked with userland glibc, never panics, gets stuck or breaks a
+    contract when it runs from main. It is the one endpoint of the Hello
+    proof, and its premises are what remains open.
+
+    Most of Hello's library calls run glibc's own proved code: the option
+    parser getopt_long with its string, allocation and alloca-cutoff
+    callees, getenv, and the calls in HelloGlibcJoin.v. The calls that
+    print, convert or read the locale are still contracts, the fields of
+    [HelloCore], and so are the two printers of getopt's warnings.
+
+    Nobody has proved yet what glibc does before main, so the caller
+    describes the memory that main starts with. Some of it is just what
+    the loader writes into the program image, such as the parser's
+    globals and Hello's table of long options. The rest is what startup
+    would have set up, such as the streams and the arguments. Each object
+    also needs an address, which the caller names. A script in
+    nanofil/tests lists and counts all these premises, and CI prints the
+    count. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -27,11 +40,14 @@ Open Scope list_scope.
     The existing literal representation adds the terminator and word padding. *)
 Definition posixly_correct_bytes : list Z := [80;79;83;73;88;76;89;95;67;79;82;82;69;67;84].
 
-(** Initial memory must contain the name, its terminator, and the thread's
-    stack size at the addresses chosen by the linked program. The caller
+(** Every allowed execution of Hello's main function avoids panics, stuck
+    steps and contract failures. Initial memory must contain the name,
+    its terminator, and the thread's stack size at the addresses chosen
+    by the linked program, beside glibc's parser objects and Hello's
+    option table. The caller
     also supplies readable environment globals, an array, and its strings.
     Neither the stack-size value nor the parser's valid index is fixed here. *)
-Theorem hello_never_panics_getopt_env Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
+Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0
     bn rn mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ts sz
     entries ep dq dqa dqt bc rc be re counter :

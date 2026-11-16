@@ -1,7 +1,7 @@
 (** This file states the library obligations that remain in GNU Hello's
     safety proof. Milestone M4 covers option parsing, narrow output and
     the close callback. Milestone M6 covers locale and wide-character
-    conversion and output. The [HelloDebts] record gives each call a
+    conversion and output. The [HelloCore] record gives each call a
     [[separation logic]] contract over the concrete OS world.
 
     These contracts describe the actual streams, strings and global
@@ -205,8 +205,8 @@ Definition names : iProp Σ := ∃ x y z, ncells x y z ∗ str_ro x ∗ str_ro y
     Milestone M6 covers locale queries, conversion and wide output.
     Milestone M4 covers the other calls, including the close callback.
     Fatal error reporting never returns. Error reporting and the close
-    callback may read the program-name cells. The option parser's
-    contract is stated separately below, because it comes in two forms. *)
+    callback may read the program-name cells. glibc's option parser is
+    proved over its own code, so its contract is not a field here. *)
 Record HelloCore : Type := mkHelloCore {
   hd_priv : iProp Σ;
   hd_setlocale_all :
@@ -259,23 +259,6 @@ Record HelloCore : Type := mkHelloCore {
       (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I
 }.
 
-(** The original contract of getopt_long accepts any public index i and
-    names no state of the parser. [HelloDebts] adds it to the other
-    contracts. The indexed contract in HelloGlibcJoinIx.v instead ties the
-    parser's private object to the vector and to i. *)
-Record HelloDebts : Type := mkHelloDebts {
-  hd_base : HelloCore;
-  hd_getopt : forall av ar ps a i,
-    fn_triple (TAtom "getopt_long")
-      [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av)); WPtr (sym_ptr ge "hello#str.69");
-       WPtr (sym_ptr ge "hello#parse_options.longopts.64"); WPtr null]
-      (hello_ro ∗ hello_stdio ∗ hd_priv hd_base ∗ argv_own av ar ps ∗ ([∗ list] q ∈ ps, str_ro q) ∗ getopt_cells a i)%I
-      (fun r => ∃ code ps' a' i', ⌜r = Ret (WInt code) /\ 0 <= code < 2 ^ 32 /\ Permutation ps ps' /\
-                                   0 <= i' <= Z.of_nat (length ps)⌝ ∗
-                  hello_stdio ∗ hd_priv hd_base ∗ argv_own av ar ps' ∗ getopt_cells a' i' ∗
-                  (if code =? 103 then str_ro a' else True))%I
-}.
-
 (** The concrete library bridges establish these call contracts.
     Registration changes the exit-handler state from X0 to X, and exit
     consumes X while invoking the close callback. HelloGlibcMainLibs.v
@@ -310,6 +293,3 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
 }.
 
 End debts.
-
-(** A proof that uses only the other contracts accepts the full record. *)
-Coercion hd_base : HelloDebts >-> HelloCore.

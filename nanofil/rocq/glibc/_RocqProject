@@ -119,7 +119,6 @@ stdlib/GetenvCompare.v
 stdlib/GetenvScan.v
 stdlib/GetenvStatic.v
 stdlib/GetenvCall.v
-stdlib/GetenvHello.v
 nptl/CutoffCode.v
 nptl/CutoffLayout.v
 nptl/CutoffSrc.v
@@ -904,10 +903,10 @@ libio/LibioXsputn.v
 getopt/GetoptLongPfxAlloc.v
 getopt/GetoptMallocGlibc.v
 hello/HelloGlibcJoin.v
-hello/HelloGlibcJoinIx.v
 hello/HelloGetoptCall.v
 hello/HelloGetoptStart.v
 hello/HelloGetoptBackend.v
+hello/HelloNeverPanics.v
 hello/HelloClosedStdout.v
 hello/HelloErrorClosed.v
 hello/HelloErrorPrefix.v

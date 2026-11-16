@@ -1,20 +1,16 @@
 From Glibc Require Import GlibcProgram.
-(** Hello's safety theorem with glibc's getopt_long, in HelloGetoptCall.v,
-    lets the streams and the callees' private state lend the parser its
-    globals, its strings and Hello's option table. A reader then cannot
-    tell where those objects come from at startup. This file states the
-    theorem so that the loop carries those objects next to the parser's
-    private object, and the loan covers only the backends' resources G
-    and M.
+(** When Hello starts, glibc's option parser has not run, so its objects
+    still hold what the loader wrote: the zeroed parser object, the error
+    flag holding 1, the option character holding 63, and the three
+    strings "--", "-" and "-W ". Hello's option table, its names and its
+    option string are also in the starting memory. This file takes all
+    of those objects from there and runs Hello's main function, given a
+    contract for each call to getopt_long that carries the parser's
+    objects beside its private state.
 
-    When Hello starts, glibc's option parser has not run, so its objects
-    still hold what the loader wrote. The theorems here take those objects
-    from the program's starting memory: the zeroed parser object, the
-    error flag holding 1, the option character holding 63, and the three
-    strings "--", "-" and "-W ". The second theorem also takes Hello's
-    option table, its names and its option string from there. The rest
-    of memory supplies everything else. Every address is a parameter,
-    and the caller states that all these pieces have distinct keys. *)
+    Hello's safety theorem combines the last lemma here with a proof that
+    glibc's parser keeps that promise on every call. The objects may sit
+    at any addresses, and the caller says they do not overlap. *)
 
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -69,11 +65,10 @@ Qed.
 
 (** ## The startup argument
 
-    The startup theorems in this file and in HelloGetoptBackend.v differ
-    only in how they obtain the loop's contract for getopt_long. The two
-    lemmas below take that contract as an assumption and do the rest of
-    the work: they split the starting memory, build glibc's objects and
-    Hello's table from it, and run Hello's main function. *)
+    The lemmas below take the loop's contract for getopt_long as an
+    assumption and do the rest of the work. They split the starting
+    memory, build glibc's objects and Hello's table from it, and run
+    Hello's main function. *)
 
 (** Hello's main function runs safely if two things hold. Each call to
     getopt_long must keep the promise that the loop relies on, and
@@ -136,133 +131,12 @@ Proof.
     iSplitR; [iExact "Ht"|]. iSplitR; [iExact "Hdd"|]. iSplitR; [iExact "H7" | iExact "H0"].
 Qed.
 
-(** The original form takes no extra pieces. *)
-Lemma hello_getopt_start_core Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
-    w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 n1 n2 n3 n4 :
-  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
-  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
-  0 < bdd -> bdd mod 8 = 0 -> bdd + 8 <= r_end rdd -> r_end rdd <= 2 ^ 48 ->
-  0 < b7 -> b7 mod 8 = 0 -> b7 + 8 <= r_end r7 -> r_end r7 <= 2 ^ 48 ->
-  0 < b0 -> b0 mod 8 = 0 -> b0 + 8 <= r_end r0 -> r_end r0 <= 2 ^ 48 ->
-  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
-  R.ready s m -> live_disjoint m -> agrees m (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  os_wi w0 m w (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) -> NoDup (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0).*1 ->
-  map_disjoint h1 (list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists debt : HelloCore w0 ge o,
-    loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
-      hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
-        [45; 45] [45] [45; 87; 32] n1 n2 n3 n4)%I /\
-    (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
-      hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
-      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i ∗
-      opt_table (sym_ptr ge "hello#parse_options.longopts.64") (hello_los n1 n2 n3 n4) ∗
-      word_string DfracDiscarded (sym_ptr ge "hello#str.69") s_optstring)) ->
-  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
-    m s w fuel (fun _ => True).
-Proof.
-  intros Hk Hy Hos Hgb0 Hgb8 Hgbe Hgbr Hd0 Hd8 Hde Hdr H70 H78 H7e H7r H00 H08 H0e H0r
-    Hargc Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
-  apply (hello_getopt_start_core_sep Σ w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel
-    gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 n1 n2 n3 n4 []); rewrite ?app_nil_r; try assumption.
-  intros HinvG HheapG. destruct (Hstart HinvG HheapG) as (debt & Hix & Hpre).
-  exists debt, emp%I. split; [by iIntros "_ !> !>"|]. split; [|exact Hpre].
-  eapply HelloGetoptCall.loop_getopt_iff; [|exact Hix].
-  intros ??. by rewrite bi.intuitionistically_emp bi.sep_emp.
-Qed.
-
-(** ## The theorem
-
-    Hello should be safe when glibc's option parser starts the way the
-    loader leaves it, not only when a caller hands the parser a suitable
-    state. The theorem below starts glibc's objects from the starting
-    memory. It still asks where the linked program put them, and it asks
-    for the rest of the program's resources as before. Read-only text
-    must be frozen before it is shared, so that last request may freeze
-    it. It also supplies Hello's option table and option string. *)
-
-(** Every allowed execution of Hello with glibc's getopt_long avoids
-    panics, stuck steps and contract failures when glibc's objects start
-    with their initial values beside the rest of the program. *)
-Theorem hello_never_panics_getopt_start Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
-    w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0
-    penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom n1 n2 n3 n4 :
-  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
-  find_fn ge (TAtom "getopt_long") = Some (Defined glibc_getopt_long) ->
-  find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal) ->
-  find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r) ->
-  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
-  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
-  Term.lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
-  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
-  Term.lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)) ->
-  0 < oe -> oe + 4 <= r_end roe -> r_end roe <= 2 ^ 48 ->
-  Term.lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)) ->
-  0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
-  0 < ho_oa o -> 0 < ho_oi o -> 0 < ho_se o ->
-  Term.lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some (mkPtr bdd (Ro bdd)) ->
-  0 < bdd -> bdd mod 8 = 0 -> bdd + 8 <= r_end rdd -> r_end rdd <= 2 ^ 48 ->
-  Term.lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some (mkPtr b7 (Ro b7)) ->
-  0 < b7 -> b7 mod 8 = 0 -> b7 + 8 <= r_end r7 -> r_end r7 <= 2 ^ 48 ->
-  Term.lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some (mkPtr b0 (Ro b0)) ->
-  0 < b0 -> b0 mod 8 = 0 -> b0 + 8 <= r_end r0 -> r_end r0 <= 2 ^ 48 ->
-  Term.lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
-  Term.lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
-  Term.lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Term.lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
-  Term.lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
-  Term.lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
-  Term.lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
-  Term.lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
-  Term.lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
-  Term.lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
-  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
-  R.ready s m -> live_disjoint m ->
-  agrees m (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  os_wi w0 m w (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  NoDup (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0).*1 ->
-  map_disjoint h1 (list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : HelloCore w0 ge o) (G M : iProp Σ) (T : ptr -> ptr -> iProp Σ),
-    getenv_rule w0 glibc_os_registry ge G /\ getopt_diag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\
-    getopt_ldiag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\ getopt_cutoff_rule w0 glibc_os_registry ge /\
-    getopt_malloc_rule w0 glibc_os_registry ge M /\ getopt_memset_rule w0 glibc_os_registry ge /\
-    getopt_free_rule w0 glibc_os_registry ge /\
-    (hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ⊢ (G ∗ M) ∗ (G ∗ M -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o debt)) /\
-    (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
-      hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
-      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i ∗
-      opt_table (sym_ptr ge "hello#parse_options.longopts.64") (hello_los n1 n2 n3 n4) ∗
-      word_string DfracDiscarded (sym_ptr ge "hello#str.69") s_optstring)) ->
-  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
-    m s w fuel (fun _ => True).
-Proof.
-  intros Hk Hy Hos Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp Hgb Hgb0 Hgb8 Hgbe Hgbr Hoe Hoe0 Hoee Hoer
-    Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0 H146 Hd0 Hd8 Hde Hdr H147 H70 H78 H7e H7r H150 H00 H08 H0e H0r
-    H145 H148 H149 H138 H139 H140 H141 H142 H143 H144 Hargc Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
-  apply (hello_getopt_start_core Σ w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo
-    bdd rdd b7 r7 b0 r0 n1 n2 n3 n4); try assumption.
-  intros HinvG HheapG.
-  destruct (Hstart HinvG HheapG) as (debt & G & M & T & Hge & Hdg & Hld & Hcu & Hma & Hms & Hfr & Hgm & Hpre).
-  exists debt. split; [|exact Hpre].
-  exact (hello_getopt_ix_own w0 ge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp (hk_gi_strlen _ _ Hk)
-    gb greg Hgb Hgb0 Hgb8 Hgbe Hgbr oe roe oo roo Hoe Hoe0 Hoee Hoer Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0
-    (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0)) penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom
-    [45; 45] [45] [45; 87; 32] H146 H147 H150 H145 H148 H149 H138 H139 H140 H141 H142 H143 H144
-    G M T Hge Hdg Hld Hcu Hma Hms Hfr n1 n2 n3 n4 Hgm av ar).
-Qed.
-
 (** ## Reading Hello's table from memory
 
-    The theorem above asks the rest of memory for Hello's option table
-    and option string, although Hello's read-only literals already share
-    the same bytes as plain strings. A proof of Hello's startup could not
-    supply both from separate memory. The theorem below therefore reads
+    Hello's option table and option string are bytes in the program
+    image, and Hello's read-only literals already share those bytes as
+    plain strings. A proof of Hello's startup could not hand them out a
+    second time from separate memory. The lemma below therefore reads
     the table, its names and the option string from the starting memory.
     It freezes those bytes once and derives the table and both strings
     from them, so the rest of memory supplies only the other literals. *)
@@ -377,131 +251,4 @@ Proof.
     iSplitL "Hps"; [iExact "Hps"|]. iSplitL "Hav"; [iExact "Hav"|]. iSplitL "Hn"; [iExact "Hn"|].
     iSplitL "HX"; [iExact "HX"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
     iSplitL "Hgo"; [iExact "Hgo"|]. iSplitR; [iExact "Htab" | iExact "Hos"].
-Qed.
-
-(** The original form takes no extra pieces. *)
-Lemma hello_getopt_table_core Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
-    w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0
-    tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 :
-  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
-  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
-  0 < bdd -> bdd mod 8 = 0 -> bdd + 8 <= r_end rdd -> r_end rdd <= 2 ^ 48 ->
-  0 < b7 -> b7 mod 8 = 0 -> b7 + 8 <= r_end r7 -> r_end r7 <= 2 ^ 48 ->
-  0 < b0 -> b0 mod 8 = 0 -> b0 + 8 <= r_end r0 -> r_end r0 <= 2 ^ 48 ->
-  Term.lookup (TAtom "hello#parse_options.longopts.64") (ge_globals ge) = Some (mkPtr tb (Ro tb)) ->
-  0 < tb -> tb mod 8 = 0 -> tb + 136 <= r_end treg -> r_end treg <= 2 ^ 48 ->
-  Term.lookup (TAtom "hello#str.69") (ge_globals ge) = Some (mkPtr b5 (Ro b5)) ->
-  0 < b1 -> b1 mod 8 = 0 -> b1 + 16 <= r_end r1 -> r_end r1 <= 2 ^ 48 ->
-  0 < b2 -> b2 mod 8 = 0 -> b2 + 16 <= r_end r2 -> r_end r2 <= 2 ^ 48 ->
-  0 < b3 -> b3 mod 8 = 0 -> b3 + 8 <= r_end r3 -> r_end r3 <= 2 ^ 48 ->
-  0 < b4 -> b4 mod 8 = 0 -> b4 + 8 <= r_end r4 -> r_end r4 <= 2 ^ 48 ->
-  0 < b5 -> b5 mod 8 = 0 -> b5 + 8 <= r_end r5 -> r_end r5 <= 2 ^ 48 ->
-  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
-  R.ready s m -> live_disjoint m -> agrees m (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  os_wi w0 m w (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) -> NoDup (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0).*1 -> map_disjoint h1 (list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists debt : HelloCore w0 ge o,
-    loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
-      hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
-        [45; 45] [45] [45; 87; 32] (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)))%I /\
-    (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
-      hello_ro_rest ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
-      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i)) ->
-  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
-    m s w fuel (fun _ => True).
-Proof.
-  intros Hk Hy Hos Hgb0 Hgb8 Hgbe Hgbr Hd0 Hd8 Hde Hdr H70 H78 H7e H7r H00 H08 H0e H0r
-    Htb Htb0 Htb8 Htbe Htbr H69 Hb10 Hb18 Hb1e Hb1r Hb20 Hb28 Hb2e Hb2r Hb30 Hb38 Hb3e Hb3r
-    Hb40 Hb48 Hb4e Hb4r Hb50 Hb58 Hb5e Hb5r Hargc Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
-  apply (hello_getopt_table_core_sep Σ w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo
-    bdd rdd b7 r7 b0 r0 tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 []); rewrite ?app_nil_r; try assumption.
-  intros HinvG HheapG. destruct (Hstart HinvG HheapG) as (debt & Hix & Hpre).
-  exists debt, emp%I. split; [by iIntros "_ !> !>"|]. split; [|exact Hpre].
-  eapply HelloGetoptCall.loop_getopt_iff; [|exact Hix].
-  intros ??. by rewrite bi.intuitionistically_emp bi.sep_emp.
-Qed.
-
-(** Every allowed execution of Hello with glibc's getopt_long avoids
-    panics, stuck steps and contract failures when glibc's objects and
-    Hello's option table start in their loader state beside the rest of
-    the program. *)
-Theorem hello_never_panics_getopt_table Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
-    w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo bdd rdd b7 r7 b0 r0
-    penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 :
-  hello_link ge o -> hello_layout ge o -> hello_os_layout w0 o ->
-  find_fn ge (TAtom "getopt_long") = Some (Defined glibc_getopt_long) ->
-  find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal) ->
-  find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r) ->
-  find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option) ->
-  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
-  Term.lookup (TAtom "glibc_getopt#getopt_data") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
-  0 < gb -> gb mod 8 = 0 -> gb + 56 <= r_end greg -> r_end greg <= 2 ^ 48 ->
-  Term.lookup (TAtom "opterr") (ge_globals ge) = Some (mkPtr oe (Obj oe)) ->
-  0 < oe -> oe + 4 <= r_end roe -> r_end roe <= 2 ^ 48 ->
-  Term.lookup (TAtom "optopt") (ge_globals ge) = Some (mkPtr oo (Obj oo)) ->
-  0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
-  0 < ho_oa o -> 0 < ho_oi o -> 0 < ho_se o ->
-  Term.lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some (mkPtr bdd (Ro bdd)) ->
-  0 < bdd -> bdd mod 8 = 0 -> bdd + 8 <= r_end rdd -> r_end rdd <= 2 ^ 48 ->
-  Term.lookup (TAtom "glibc_getopt#str.147") (ge_globals ge) = Some (mkPtr b7 (Ro b7)) ->
-  0 < b7 -> b7 mod 8 = 0 -> b7 + 8 <= r_end r7 -> r_end r7 <= 2 ^ 48 ->
-  Term.lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some (mkPtr b0 (Ro b0)) ->
-  0 < b0 -> b0 mod 8 = 0 -> b0 + 8 <= r_end r0 -> r_end r0 <= 2 ^ 48 ->
-  Term.lookup (TAtom "hello#parse_options.longopts.64") (ge_globals ge) = Some (mkPtr tb (Ro tb)) ->
-  0 < tb -> tb mod 8 = 0 -> tb + 136 <= r_end treg -> r_end treg <= 2 ^ 48 ->
-  Term.lookup (TAtom "hello#str.69") (ge_globals ge) = Some (mkPtr b5 (Ro b5)) ->
-  0 < b1 -> b1 mod 8 = 0 -> b1 + 16 <= r_end r1 -> r_end r1 <= 2 ^ 48 ->
-  0 < b2 -> b2 mod 8 = 0 -> b2 + 16 <= r_end r2 -> r_end r2 <= 2 ^ 48 ->
-  0 < b3 -> b3 mod 8 = 0 -> b3 + 8 <= r_end r3 -> r_end r3 <= 2 ^ 48 ->
-  0 < b4 -> b4 mod 8 = 0 -> b4 + 8 <= r_end r4 -> r_end r4 <= 2 ^ 48 ->
-  0 < b5 -> b5 mod 8 = 0 -> b5 + 8 <= r_end r5 -> r_end r5 <= 2 ^ 48 ->
-  Term.lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
-  Term.lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
-  Term.lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid ->
-  Term.lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
-  Term.lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
-  Term.lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
-  Term.lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
-  Term.lookup (TAtom "glibc_getopt#str.142") (ge_globals ge) = Some lmid ->
-  Term.lookup (TAtom "glibc_getopt#str.143") (ge_globals ge) = Some mid3 ->
-  Term.lookup (TAtom "glibc_getopt#str.144") (ge_globals ge) = Some mid4 ->
-  argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
-  R.ready s m -> live_disjoint m ->
-  agrees m (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  os_wi w0 m w (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  NoDup (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0).*1 ->
-  map_disjoint h1 (list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0)) ->
-  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : HelloCore w0 ge o) (G M : iProp Σ) (T : ptr -> ptr -> iProp Σ),
-    getenv_rule w0 glibc_os_registry ge G /\ getopt_diag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\
-    getopt_ldiag_rule w0 glibc_os_registry ge G T (ho_err o) dom /\ getopt_cutoff_rule w0 glibc_os_registry ge /\
-    getopt_malloc_rule w0 glibc_os_registry ge M /\ getopt_memset_rule w0 glibc_os_registry ge /\
-    getopt_free_rule w0 glibc_os_registry ge /\
-    (hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ⊢ (G ∗ M) ∗ (G ∗ M -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o debt)) /\
-    (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
-      hello_ro_rest ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
-      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i)) ->
-  labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
-    m s w fuel (fun _ => True).
-Proof.
-  intros Hk Hy Hos Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp Hgb Hgb0 Hgb8 Hgbe Hgbr Hoe Hoe0 Hoee Hoer
-    Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0 H146 Hd0 Hd8 Hde Hdr H147 H70 H78 H7e H7r H150 H00 H08 H0e H0r
-    Htb Htb0 Htb8 Htbe Htbr H69 Hb10 Hb18 Hb1e Hb1r Hb20 Hb28 Hb2e Hb2r Hb30 Hb38 Hb3e Hb3r
-    Hb40 Hb48 Hb4e Hb4r Hb50 Hb58 Hb5e Hb5r
-    H145 H148 H149 H138 H139 H140 H141 H142 H143 H144 Hargc Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
-  apply (hello_getopt_table_core Σ w0 ge o m s w h1 argc av ar p0 ps x y z a i c fuel gb greg oe roe oo roo
-    bdd rdd b7 r7 b0 r0 tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5); try assumption.
-  intros HinvG HheapG.
-  destruct (Hstart HinvG HheapG) as (debt & G & M & T & Hge & Hdg & Hld & Hcu & Hma & Hms & Hfr & Hgm & Hpre).
-  exists debt. split; [|exact Hpre].
-  exact (hello_getopt_ix_own w0 ge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp (hk_gi_strlen _ _ Hk)
-    gb greg Hgb Hgb0 Hgb8 Hgbe Hgbr oe roe oo roo Hoe Hoe0 Hoee Hoer Hoo Hoo0 Hooe Hoor Hoa0 Hoi0 Hse0
-    (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0)) penv mid mid' f138 f139 f140 f141 lmid mid3 mid4 dom
-    [45; 45] [45] [45; 87; 32] H146 H147 H150 H145 H148 H149 H138 H139 H140 H141 H142 H143 H144
-    G M T Hge Hdg Hld Hcu Hma Hms Hfr (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)) Hgm av ar).
 Qed.

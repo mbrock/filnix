@@ -4,7 +4,7 @@
     are distinct, so Iris can allocate all these resources together.
 
     This witness checks the resource contracts, not the remaining M4 and
-    M6 call proofs. It does not claim to construct HelloDebts. *)
+    M6 call proofs. It does not claim to construct HelloCore. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.

@@ -654,7 +654,7 @@ file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsCleanup.v',
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcLibsExit.v',
     "The concrete exit proof invokes Hello's registered callback and cleans up the streams.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainLibs.v',
-    "The completed library record combines concrete proofs, leaving only the explicit HelloDebts.").
+    "The completed library record combines concrete proofs, leaving only the explicit HelloCore contracts.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainLibsCalls.v',
     "The sealed string and program-name call group keeps library composition within its compile budget.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainWitness.v',
@@ -684,7 +684,9 @@ file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainGreet.v',
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainFull.v',
     "The complete main triple joins initialization, option parsing and every exit branch.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcJoin.v',
-    "Heap adequacy gives hello_never_panics under the concrete initial resources and explicit M4 and M6 obligations.").
+    "One application of the library functor gives every Hello proof the same exit-handler state.").
+file_blurb('nanofil/rocq/glibc/hello/HelloNeverPanics.v',
+    "Hello's one safety theorem, hello_never_panics, whose premises are the open obligations.").
 
 %  Live campaign: rocq/glibc/stdlib/
 file_blurb('nanofil/rocq/glibc/stdlib/AllocLogic.v',

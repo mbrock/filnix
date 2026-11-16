@@ -26,6 +26,7 @@ on:
       - nanofil/tests/rocq_time_test.py
       - nanofil/tests/rocq_runtime_audit.py
       - nanofil/tests/rocq_reject.py
+      - nanofil/tests/hello_premises.py
       - nanofil/web/rocq/rocq_syntax.pl
       - nanofil/web/rocq/tests/parse.sh
       - nanofil/web/rocq/tests/reprint.pl
@@ -71,6 +72,10 @@ jobs:
           skipPush: true
       - name: Require the cached staging toolchain
         run: python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
+      # hello_premises.py parses hello_never_panics's statement; the number
+      # it prints is the Hello proof's progress measure.
+      - name: Count the open premises of hello_never_panics
+        run: python3 nanofil/tests/hello_premises.py
       - name: Compile, reprint and probe glibc contracts
         run: |
           set -o pipefail
