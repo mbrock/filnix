@@ -239,11 +239,8 @@ Lemma jump_step_ids : forall ge c l j c', jump_step ge c l j = Next c' -> ids (c
 Proof.
   unfold jump_step, edge_step. intros ge c l j c' H.
   cases H; unstuck H.
-  all: first
-    [ match goal with E : return_step _ _ = Next _ |- _ => exact (return_step_ids _ _ _ E) end
-    | inversion H; subst;
-      first [ exact (ids_refl _)
-            | match goal with E : return_step _ _ = Next _ |- _ => exact (return_step_ids _ _ _ E) end ] ].
+  all: try solve [eapply return_step_ids; eassumption].
+  all: inversion H; subst; eauto using ids_refl, return_step_ids.
 Qed.
 
 (** Any non-allocating configuration [[step]] preserves every object
