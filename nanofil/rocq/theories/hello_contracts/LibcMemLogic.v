@@ -551,10 +551,7 @@ Lemma wp_strcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "strcpy")) [Arg P vd; Arg P vs] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
-  intros Hreg Hfn Hdata Hpd Hps Hb0 Ho Hend Hlen Hwi. iIntros "Hl Hx Hs HK".
-  iApply (wp_string_copy false (TAtom "strcpy") with "Hl Hx Hs HK"); done.
-Qed.
+Proof. intros. apply (wp_string_copy false (TAtom "strcpy")); done. Qed.
 
 (** Calling stpcpy uses the scalar string-copy rule but returns the
     copied terminator's pointer, as [wp_stpcpy] specializes the general contract. *)
@@ -573,10 +570,7 @@ Lemma wp_stpcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "stpcpy")) [Arg P vd; Arg P vs] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
-  intros Hreg Hfn Hdata Hpd Hps Hb0 Ho Hend Hlen Hwi. iIntros "Hl Hx Hs HK".
-  iApply (wp_string_copy true (TAtom "stpcpy") with "Hl Hx Hs HK"); done.
-Qed.
+Proof. intros. apply (wp_string_copy true (TAtom "stpcpy")); done. Qed.
 
 (** Calling memcmp preserves both owned byte ranges and returns an
     integer, but [wp_memcmp] does not specify that integer's sign or value.
