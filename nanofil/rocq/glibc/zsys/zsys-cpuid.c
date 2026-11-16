@@ -5,6 +5,9 @@
 //   writes      zcpuid writes its four results and nothing beside them: the
 //               bytes around each 4-byte slot keep their values, the results
 //               are those of the CPUID instruction, errno untouched
+//   bytes       each result slot is four bytes that assemble little-endian
+//               to the register, so each byte is below 256 (cpuid_bytes;
+//               true of any byte a C program reads)
 //   count       zcpuid(leaf) is zcpuid_count(leaf, 0), and a subleaf is
 //               passed on (leaf 4's subleaves 0 and 1 are both read)
 //   leaf4       leaf 4 reports no cache (type 0, eax & 31) at subleaf
@@ -78,6 +81,18 @@ int main(void) {
     if (i % 3 != 1)
       guards &= r[i] == 0xa5a5a5a5u;
   printf("writes %d %d %d\n", guards, r[1] == a && r[4] == b && r[7] == c && r[10] == d, errno == 1234);
+
+  const unsigned char *rb = (const unsigned char *)r;
+  int bytes = 1;
+  for (int k = 1; k < 12; k += 3) {
+    unsigned v = 0;
+    for (int i = 0; i < 4; i++) {
+      bytes &= rb[4 * k + i] < 256;
+      v |= (unsigned)rb[4 * k + i] << (8 * i);
+    }
+    bytes &= v == r[k];
+  }
+  printf("bytes %d\n", bytes);
 
   unsigned x[4], y[4], z[4];
   zcpuid(4, &x[0], &x[1], &x[2], &x[3]);

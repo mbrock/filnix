@@ -173,6 +173,14 @@ Definition cpuid_leaf4_ends (sub : bool) (xs : list word) (m' : mem) (w : os_wor
     spans_apart pa pb -> spans_apart pa pc -> spans_apart pa pd ->
     load_bytes m' (ptr_addr pa) 4 mod 32 = 0.
 
+(** The runtime stores each register with one 32-bit store, so every
+    byte of the four result spans holds a number below 256. A caller
+    that reads a result back one byte at a time relies on
+    [cpuid_bytes]. *)
+Definition cpuid_bytes (sub : bool) (xs : list word) (m' : mem) : Prop :=
+  forall leaf pa pb pc pd, cpuid_args sub xs = Some (leaf, (pa, pb, pc, pd)) ->
+    forall p i, In p [pa; pb; pc; pd] -> 0 <= i < 4 -> 0 <= m_bytes m' (ptr_addr p + i) < 256.
+
 (** The contract [os_cpuid_contract] packages these predicates for a
     call that returns nothing. It emits no trace events, allocates and
     frees no objects, leaves the world unchanged, and allows capability
@@ -183,7 +191,8 @@ Definition os_cpuid_contract (sub : bool) : contract os_world :=
     (fun _ _ _ _ _ => False)
     (fun _ _ w born trace _ w' => born = [] /\ w' = w /\ trace = [])
     (fun xs _ w born trace ending m' w' => born = [] /\ w' = w /\ trace = [] /\
-       ending = CallReturn [] /\ cpuid_osxsave sub xs m' w /\ cpuid_leaf4_ends sub xs m' w)
+       ending = CallReturn [] /\ cpuid_osxsave sub xs m' w /\ cpuid_leaf4_ends sub xs m' w /\
+       cpuid_bytes sub xs m')
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
 
@@ -232,13 +241,28 @@ Qed.
 
 (** When an invocation of [os_cpuid_contract] returns, it leaves the
     world unchanged, returns no values, and its final memory satisfies
-    [cpuid_osxsave] and [cpuid_leaf4_ends]. *)
+    [cpuid_osxsave], [cpuid_leaf4_ends] and [cpuid_bytes]. *)
 Lemma os_cpuid_returns sub r args xs s m w trace values s' m' w' :
   M.E.invoke (os_cpuid_contract sub) r args xs s m w trace (CallReturn values) s' m' w' ->
-  w' = w /\ values = [] /\ cpuid_osxsave sub xs m' w /\ cpuid_leaf4_ends sub xs m' w.
+  w' = w /\ values = [] /\ cpuid_osxsave sub xs m' w /\ cpuid_leaf4_ends sub xs m' w /\
+  cpuid_bytes sub xs m'.
 Proof.
   intros Hi. destruct (os_invoke_returned _ _ _ _ _ _ _ _ _ _ _ _ Hi)
-    as (_ & born & _ & _ & -> & _ & He & Hx & H4). injection He as ->. auto.
+    as (_ & born & _ & _ & -> & _ & He & Hx & H4 & Hb). injection He as ->. auto.
+Qed.
+
+(** Suppose a caller owns four bytes of a live object and the memory
+    holds a number below 256 at each of their addresses. Then each
+    owned byte is below 256. *)
+Lemma cpuid_block_bytes m b reg o xs :
+  live_at m b reg -> all_agree m (byte_ps b o xs) -> length xs = 4%nat ->
+  (forall i, 0 <= i < 4 -> 0 <= m_bytes m (b + o + i) < 256) ->
+  Forall (fun x => 0 <= x < 256) xs.
+Proof.
+  intros Hlv Hag Hlen Hm. apply Forall_lookup_2. intros i x Hx.
+  destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hag Hx) as (<- & _).
+  pose proof (lookup_lt_Some _ _ _ Hx) as Hi. rewrite Hlen in Hi.
+  replace (b + (o + Z.of_nat i)) with (b + o + Z.of_nat i) by lia. apply Hm. lia.
 Qed.
 
 (** When an invocation of [os_xgetbv_contract] returns, it leaves the
@@ -259,21 +283,31 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
     OS contract registry. *)
 Local Notation zexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The ECX block that a CPUID call returns holds four bytes whose
-    little-endian value has bit 27 equal to [ow_osxsave], provided the
-    call asked for leaf 1 and its EDX block lies elsewhere. *)
+(** A CPUID call returns each result block as four bytes below 256. *)
+Definition cpuid_blk (b o : Z) : iProp Σ :=
+  ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\ Forall (fun x => 0 <= x < 256) xs⌝ ∗
+    pts (byte_ps b o xs ++ aux_ps b o cs).
+
+(** A caller that does not need the byte bounds can forget them. *)
+Lemma cpuid_blk_any b o : cpuid_blk b o -∗ blk_any b o 4.
+Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
+
+(** The ECX block that a CPUID call returns holds four bytes below 256
+    whose little-endian value has bit 27 equal to [ow_osxsave],
+    provided the call asked for leaf 1 and its EDX block lies
+    elsewhere. *)
 Definition cpuid_ecx (leaf bc oc bd od : Z) : iProp Σ :=
-  ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\
+  ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\ Forall (fun x => 0 <= x < 256) xs /\
             (leaf = 1 -> bd + od + 4 <= bc + oc \/ bc + oc + 4 <= bd + od ->
              Z.testbit (of_bytes xs) 27 = ow_osxsave w0)⌝ ∗
     pts (byte_ps bc oc xs ++ aux_ps bc oc cs).
 
-(** A CPUID call returns its EAX block as four bytes. Their
+(** A CPUID call returns its EAX block as four bytes below 256. Their
     little-endian value has cache type zero when three conditions hold.
     The world satisfies [ow_leaf4_ends], the call asked for leaf 4 at
     subleaf 0x7fffffff, and the three other blocks lie elsewhere. *)
 Definition cpuid_eax (leaf subleaf ba oa bb ob bc oc bd od : Z) : iProp Σ :=
-  ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\
+  ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\ Forall (fun x => 0 <= x < 256) xs /\
             (ow_leaf4_ends w0 = true -> leaf = 4 -> subleaf = 2 ^ 31 - 1 ->
              bb + ob + 4 <= ba + oa \/ ba + oa + 4 <= bb + ob ->
              bc + oc + 4 <= ba + oa \/ ba + oa + 4 <= bc + oc ->
@@ -294,9 +328,9 @@ Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Q
     blocks. The assertion Q stands for whatever the caller owns that
     shows the four blocks lie in live objects, usually the lifetimes of
     those objects, and the call returns it unchanged. The call returns
-    the four blocks with unknown contents, except that the EAX block
-    carries the fact of [cpuid_eax] and the ECX block carries the fact
-    of [cpuid_ecx]. *)
+    the four blocks with unknown bytes below 256. In addition, the EAX
+    block carries the fact of [cpuid_eax] and the ECX block carries
+    the fact of [cpuid_ecx]. *)
 Lemma wp_cpuid (sub : bool) f e ls lab args rest j xs leaf ba oa bb ob bc oc bd od (Q : iProp Σ) Φ :
   let g := TAtom (if sub then "zcpuid_count" else "zcpuid")%string in
   registry g = Some (os_cpuid_contract sub) -> find_fn ge g = None -> lookup g (ge_globals ge) = None ->
@@ -306,8 +340,8 @@ Lemma wp_cpuid (sub : bool) f e ls lab args rest j xs leaf ba oa bb ob bc oc bd 
   (forall σ, heap_interp (os_wi w0) σ -∗ Q -∗
      ⌜Forall (blk_live (ls_mem σ)) [(bc, oc, 4); (ba, oa, 4); (bb, ob, 4); (bd, od, 4)]⌝) ->
   Q -∗ blk_any ba oa 4 -∗ blk_any bb ob 4 -∗ blk_any bc oc 4 -∗ blk_any bd od 4 -∗
-  ▷ (Q -∗ cpuid_eax leaf (cpuid_subleaf sub xs) ba oa bb ob bc oc bd od -∗ blk_any bb ob 4 -∗
-     cpuid_ecx leaf bc oc bd od -∗ blk_any bd od 4 -∗
+  ▷ (Q -∗ cpuid_eax leaf (cpuid_subleaf sub xs) ba oa bb ob bc oc bd od -∗ cpuid_blk bb ob -∗
+     cpuid_ecx leaf bc oc bd od -∗ cpuid_blk bd od -∗
      WP (ERun (mkFrame f e ls None (Exec lab rest j)) : zexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call CVoid (Global g) args :: rest) j)) : zexpr) {{ Φ }}.
 Proof.
@@ -323,7 +357,8 @@ Proof.
   - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ (HQ & Hbl)".
     iDestruct (Hlive with "Hσ HQ") as %Hl. iDestruct (os_heap_world with "Hσ") as %[Hw _].
     pose proof Hinv as Hinv0. rewrite Hw in Hinv0.
-    destruct (os_cpuid_returns _ _ _ _ _ _ _ _ _ _ _ _ Hinv0) as (-> & -> & Hbit & Hend).
+    destruct (os_cpuid_returns _ _ _ _ _ _ _ _ _ _ _ _ Hinv0) as (-> & -> & Hbit & Hend & Hbytes).
+    pose proof (fun p Hp i Hi => Hbytes _ _ _ _ _ Hargs p i Hp Hi) as Hlt.
     iMod (os_call_return w0 _ _ _ _ _ _ _ _ _ _ bl Hinv (eq_sym Hw) eq_refl with "Hσ Hbl") as "(Hσ & Hbl)";
       [|exact Hl|].
     { cbn [contract_writes os_cpuid_contract]. unfold os_cpuid_writes. rewrite Hargs. cbn [cpuid_spans].
@@ -332,7 +367,8 @@ Proof.
         [exists ba, oa, 4 | exists bb, ob, 4 | exists bc, oc, 4 | exists bd, od, 4];
         (split; [cbn; tauto | lia]). }
     iDestruct (Hlive with "Hσ HQ") as %Hl'. inversion_clear Hl' as [|? ? (reg & Hlv & _) Hl''].
-    inversion_clear Hl'' as [|? ? (rega & Hlva & _) _].
+    inversion_clear Hl'' as [|? ? (rega & Hlva & _) Hl3].
+    inversion_clear Hl3 as [|? ? (regb & Hlvb & _) Hl4]. inversion_clear Hl4 as [|? ? (regd & Hlvd & _) _].
     rewrite /bl /blks !big_sepL_cons big_sepL_nil. cbn [fst snd].
     iDestruct "Hbl" as "(Hc & Ha & Hb & Hd & _)".
     iDestruct "Hc" as (ys cs) "[%Hlen Hc]". destruct Hlen as [Hy Hcs].
@@ -342,13 +378,23 @@ Proof.
     iDestruct (pts_facts with "Hσ Ha") as %(Haga & _). apply all_agree_app in Haga as [Haga _].
     pose proof (bytes_load _ _ _ _ _ Hlva Haga) as Hlda. rewrite Hya in Hlda.
     change (Z.of_nat (Z.to_nat 4)) with 4 in Hlda.
+    iDestruct "Hb" as (yb cb) "[%Hlen Hb]". destruct Hlen as [Hyb Hcb].
+    iDestruct (pts_facts with "Hσ Hb") as %(Hagb & _). apply all_agree_app in Hagb as [Hagb _].
+    iDestruct "Hd" as (yd cd) "[%Hlen Hd]". destruct Hlen as [Hyd Hcd].
+    iDestruct (pts_facts with "Hσ Hd") as %(Hagd & _). apply all_agree_app in Hagd as [Hagd _].
     iModIntro. iExists e. iSplit; [done|]. iFrame "Hσ".
-    iApply ("HK" with "HQ [Ha] Hb [Hc] Hd").
+    iApply ("HK" with "HQ [Ha] [Hb] [Hc] [Hd]").
     + iExists ya, ca. iFrame "Ha". iPureIntro. split; [exact Hya|]. split; [exact Hca|].
+      split; [apply (cpuid_block_bytes _ _ _ _ _ Hlva Haga Hya); intros i Hi; exact (Hlt (mkPtr (ba + oa) (Obj ba)) ltac:(cbn; tauto) i Hi)|].
       intros Hw4 -> Hs Hb Hc Hd. rewrite <- Hlda. exact (Hend Hw4 _ _ _ _ Hargs Hs Hb Hc Hd).
+    + iExists yb, cb. iFrame "Hb". iPureIntro. split; [exact Hyb|]. split; [exact Hcb|].
+      apply (cpuid_block_bytes _ _ _ _ _ Hlvb Hagb Hyb); intros i Hi; exact (Hlt (mkPtr (bb + ob) (Obj bb)) ltac:(cbn; tauto) i Hi).
     + iExists ys, cs. iFrame "Hc". iPureIntro.
-      split; [exact Hy|]. split; [exact Hcs|]. intros -> Hdis. rewrite <- Hld.
-      exact (Hbit _ _ _ _ Hargs Hdis).
+      split; [exact Hy|]. split; [exact Hcs|].
+      split; [apply (cpuid_block_bytes _ _ _ _ _ Hlv Hag Hy); intros i Hi; exact (Hlt (mkPtr (bc + oc) (Obj bc)) ltac:(cbn; tauto) i Hi)|].
+      intros -> Hdis. rewrite <- Hld. exact (Hbit _ _ _ _ Hargs Hdis).
+    + iExists yd, cd. iFrame "Hd". iPureIntro. split; [exact Hyd|]. split; [exact Hcd|].
+      apply (cpuid_block_bytes _ _ _ _ _ Hlvd Hagd Hyd); intros i Hi; exact (Hlt (mkPtr (bd + od) (Obj bd)) ltac:(cbn; tauto) i Hi).
 Qed.
 
 (** When a C function calls `c: zxgetbv()` in an OS world whose kernel
