@@ -40,7 +40,7 @@ Definition hi_initial_list_ps : list (piece * pval) :=
 
 (** The constructor's entire input image agrees with the linked memory. *)
 Lemma hi_initial_list_agree : all_agree hi_m0 hi_initial_list_ps.
-Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
+Proof. apply hi_m0_pieces. vm_compute. reflexivity. Qed.
 
 (** The constructor and puts can own their inputs together without
     sharing a field. In particular, only puts owns stdout's object token. *)

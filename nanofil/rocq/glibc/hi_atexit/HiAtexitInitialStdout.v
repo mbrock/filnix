@@ -41,7 +41,7 @@ Definition hi_stdout_ps : list (piece * pval) :=
 
 (** Every stdout and lock piece agrees with the actual initial image. *)
 Lemma hi_stdout_agree : all_agree hi_m0 hi_stdout_ps.
-Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
+Proof. apply hi_m0_pieces. vm_compute. reflexivity. Qed.
 
 (** The thread's initial error cell contains four zero bytes and
     four empty shadow slots, as the system-call rules require. *)
@@ -54,7 +54,7 @@ Definition hi_initial_output_ps : list (piece * pval) :=
 
 (** The entire output image agrees with the linked initial memory. *)
 Lemma hi_initial_output_agree : all_agree hi_m0 hi_initial_output_ps.
-Proof. apply checked_pieces_all_agree. vm_cast_no_check (eq_refl true). Qed.
+Proof. apply hi_m0_pieces. vm_cast_no_check (eq_refl true). Qed.
 
 (** All three output resources can coexist in this image. This checks
     their union, not just each resource in isolation. *)
