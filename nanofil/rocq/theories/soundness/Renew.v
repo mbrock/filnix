@@ -139,38 +139,27 @@ Proof.
     pose proof (object_region_base _ _ _ E) as Hbase.
   all: assert (Haligned : forall x, x mod al1 = 0 -> (x + (off - lo1)) mod al = 0)
          by (intros x Hx; apply aligned_add; [exact Hal | exact (aligned_divisor _ _ _ Hal Hx Hal1) | exact Hoff]).
-  all: destruct (Hp _ _ E) as [E' | E'].
-  - (* the object as it was *)
-    pose proof (Hfit _ _ E') as Hend.
-    rewrite E', (raw_address_within A lo1 off Hlo ltac:(lia)).
-    replace ((base <=? raw_address A lo1 + (off - lo1)) && (raw_address A lo1 + (off - lo1) + size <=? r_end reg))
-      with true by (symmetry; apply andb_true_iff; split; apply Z.leb_le; lia).
-    injection H as H. rewrite (aligned_res_ok _ _ (Haligned _ (aligned_res_mod _ _ H))).
-    exists ok, (RVal (WPtr p)). split; [reflexivity|]. split; [reflexivity | discriminate].
-  - (* freed: the access traps out of bounds, on a freed object *)
-    rewrite E'. simpl. rewrite Hbase.
+  (* Both capability kinds trap when the object has been freed. *)
+  all: destruct (Hp _ _ E) as [E' | E']; [|
+    rewrite E'; simpl; rewrite Hbase;
     replace ((base <=? raw_address A off) && (raw_address A off + size <=? base)) with false
       by (symmetry; apply andb_false_iff; destruct (Z.le_gt_cases base (raw_address A off));
-          [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia]).
-    exists (RTrap OutOfBounds), (RTrap OutOfBounds). split; [reflexivity|].
-    unfold renew_res. rewrite Hc, E'. split; [reflexivity | discriminate].
-  - (* read-only, as it was: a read passes, a write traps read-only *)
-    pose proof (Hfit _ _ E') as Hend.
-    rewrite E', (raw_address_within A lo1 off Hlo ltac:(lia)).
+          [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia]);
+    exists (RTrap OutOfBounds), (RTrap OutOfBounds); split; [reflexivity|];
+    unfold renew_res; rewrite Hc, E'; split; [reflexivity | discriminate]].
+  (* If the object is unchanged, the renewed span still fits its bounds. *)
+  all: pose proof (Hfit _ _ E') as Hend;
+    rewrite E', (raw_address_within A lo1 off Hlo ltac:(lia));
     replace ((base <=? raw_address A lo1 + (off - lo1)) && (raw_address A lo1 + (off - lo1) + size <=? r_end reg))
       with true by (symmetry; apply andb_true_iff; split; apply Z.leb_le; lia).
+  - injection H as H. rewrite (aligned_res_ok _ _ (Haligned _ (aligned_res_mod _ _ H))).
+    exists ok, (RVal (WPtr p)). split; [reflexivity|]. split; [reflexivity | discriminate].
+  - (* A read-only capability allows reads but traps on writes. *)
     destruct r1; simpl in H; [|discriminate H]. injection H as H.
     pose proof (Haligned _ (aligned_res_mod _ _ H)) as Ha.
     destruct r; simpl; rewrite ?(aligned_res_ok _ _ Ha).
     + exists ok, (RVal (WPtr p)). split; [reflexivity|]. split; [reflexivity | discriminate].
     + exists (RTrap Readonly), (RTrap Readonly). split; [reflexivity|]. split; [reflexivity | discriminate].
-  - (* read-only, freed: as an object freed *)
-    rewrite E'. simpl. rewrite Hbase.
-    replace ((base <=? raw_address A off) && (raw_address A off + size <=? base)) with false
-      by (symmetry; apply andb_false_iff; destruct (Z.le_gt_cases base (raw_address A off));
-          [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia]).
-    exists (RTrap OutOfBounds), (RTrap OutOfBounds). split; [reflexivity|].
-    unfold renew_res. rewrite Hc, E'. split; [reflexivity | discriminate].
 Qed.
 
 (** ## Renewing over a hull
