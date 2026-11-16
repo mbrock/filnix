@@ -510,9 +510,7 @@ Proof.
   split; unfold out_file, err_file, libc_file_ready; split; [discriminate| |discriminate|].
   all: split; [apply Hread; auto|].
   all: split; [simpl; lia|].
-  all: split; [constructor|].
-  all: split; [constructor|].
-  all: split; [constructor|apply empty_file_errno; lia].
+  all: do 3 (split; [constructor|]); apply empty_file_errno; lia.
 Qed.
 
 (** Closed stdout is a nonempty represented state, not a vacuous pre. *)
