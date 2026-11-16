@@ -203,24 +203,17 @@ Lemma pframe_within ks m m' b reg pm pm' paux paux' :
 Proof.
   intros Hreg Hd Hlv Hpm Hpaux l v Hnot Hag.
   destruct l as [b' o | b' o], v as [pb | tc]; cbn [agree_ppiece] in *; try contradiction.
-  - destruct Hag as [Hr Hin]. unfold registered, in_live in *. rewrite Hreg.
+  all: destruct Hag as [Hr Hin]; unfold registered, in_live in *; rewrite Hreg;
     split; [exact Hr | intros reg' E' L'].
-    destruct (Hin reg' E' L') as (Ho & He & Hval).
+  all: destruct (Hin reg' E' L') as (Ho & He & Hval);
     split; [exact Ho | split; [exact He |]].
-    destruct (decide (pm' (b' + o) = pm (b' + o))) as [-> | Hne]; [exact Hval|].
-    exfalso. destruct (Hpm (b' + o) Hne) as [Hbounds Hin_ks].
-    destruct (Z.eq_dec b' b) as [-> | Hbne].
-    + replace (b + o - b) with o in Hin_ks by lia. exact (Hnot Hin_ks).
-    + destruct (Hd b reg b' reg' Hlv (conj E' L') (not_eq_sym Hbne)); lia.
-  - destruct Hag as [Hr Hin]. unfold registered, in_live in *. rewrite Hreg.
-    split; [exact Hr | intros reg' E' L'].
-    destruct (Hin reg' E' L') as (Ho & He & Hval).
-    split; [exact Ho | split; [exact He |]].
-    destruct (decide (paux' (b' + o) = paux (b' + o))) as [-> | Hne]; [exact Hval|].
-    exfalso. destruct (Hpaux (b' + o) Hne) as [Hbounds Hin_ks].
-    destruct (Z.eq_dec b' b) as [-> | Hbne].
-    + replace (b + o - b) with o in Hin_ks by lia. exact (Hnot Hin_ks).
-    + destruct (Hd b reg b' reg' Hlv (conj E' L') (not_eq_sym Hbne)); lia.
+  1: (destruct (decide (pm' (b' + o) = pm (b' + o))) as [-> | Hne];
+      [exact Hval | exfalso; destruct (Hpm (b' + o) Hne) as [Hbounds Hin_ks]]).
+  2: (destruct (decide (paux' (b' + o) = paux (b' + o))) as [-> | Hne];
+      [exact Hval | exfalso; destruct (Hpaux (b' + o) Hne) as [Hbounds Hin_ks]]).
+  all: destruct (Z.eq_dec b' b) as [-> | Hbne].
+  1,3: replace (b + o - b) with o in Hin_ks by lia; exact (Hnot Hin_ks).
+  all: destruct (Hd b reg b' reg' Hlv (conj E' L') (not_eq_sym Hbne)); lia.
 Qed.
 
 Lemma pobj_ps_id base q l v : (l, v) ∈ pobj_ps base q -> ppiece_id l = base.
