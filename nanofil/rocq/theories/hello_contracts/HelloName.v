@@ -215,7 +215,7 @@ Proof.
   iApply (wp_raw_store_pointer with "Hls Hcs");
     [word_premise | word_premise | reflexivity | addr_premise | addr_premise | apply Ksb |].
   iNext. iIntros "Hls Hcs".
-  iApply wp_ret_void. iNext. iApply "HΦ". iFrame.
+  iApply wp_ret_void. iNext. iApply ("HΦ" with "[$Hlp $Hcp $Hln $Hcn $Hls $Hcs]").
 Qed.
 
 (** Take every branch of the goal's conditions: each path is safe. *)
@@ -277,10 +277,8 @@ Proof.
   iAssert (string p b reg ys) with "[$Hps]" as "Hs"; [done|].
   pose proof Hok as (Hcap & Hb0 & Hb1 & Hb2 & Hb3 & Hys). cbn [b_insts b_jump s_L8].
   assert (Hjz : Z.of_nat j <= Z.of_nat (length ys)) by lia.
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext. gen_env.
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext. gen_env.
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext. gen_env.
-  iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext. gen_env.
+  do 4 (iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |];
+    iNext; gen_env).
   destruct (Nat.lt_ge_cases j 7) as [Hj7 | Hj7].
   - (* Fewer than seven bytes precede the base name. *)
     assert (Hz7 : Z.of_nat j < 7) by lia.
@@ -352,15 +350,13 @@ Proof.
   iNext. iIntros (q Hq) "Hs".
   destruct Hq as [-> | (i & Hi & ->)].
   - (* No slash: the base name is argv[0]. *)
-    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
-    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    do 2 (iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]; iNext).
     iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [reflexivity|]. iNext. cbn [Z.eqb edge_label].
     iApply wp_enter; [exact find_s_L8 | reflexivity |]. iNext.
     iApply (spn_L8 _ _ _ _ _ 0 with "Hs Hlit Hc HΦ");
       [destruct p; cbn; rewrite Z.add_0_r; reflexivity | reflexivity | lia].
   - (* A slash at i: the base name starts after it. *)
-    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
-    iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]. iNext.
+    do 2 (iApply wp_let; [reflexivity | reflexivity | word_premise | intros m; word_premise |]; iNext).
     iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
     iApply wp_enter; [exact find_s_L6 | reflexivity |]. iNext. cbn [b_insts b_jump s_L6].
     iApply (wp_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ (ptr_addr p + Z.of_nat (S i)));
