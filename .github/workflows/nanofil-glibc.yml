@@ -105,6 +105,12 @@ jobs:
                 r = import ./nanofil/nix/rocq-packages.nix { inherit pkgs; }; in builtins.concatStringsSep "\n" (map (d: d.outPath) [ r.rocq-core r.stdlib r.stdpp r.iris ])'; echo
           } |
             while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
+      # nanofil/AGENTS.md, Rocq proof speed: serial time, critical path,
+      # edit-to-result time and files over the 60 s soft warning, printed
+      # by the aggregate check whenever it rebuilds.
+      - name: Summarize Rocq build-time totals
+        if: always()
+        run: grep -ho '@@rocq-totals.*' nanofil-glibc.log | awk '!seen[$0]++' | sed 's/^@@rocq-totals /- /' >>"$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

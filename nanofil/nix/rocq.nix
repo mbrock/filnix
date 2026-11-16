@@ -143,11 +143,19 @@ let
           ${link n}
         )
         cp ${theories + "/${path.${n}}.v"} project/theories/${path.${n}}.v
+        start=$(date +%s%N)
         PARSE_TMP=$PWD/verdicts PARSE_IN_PLACE=1 python3 ${watch} --label "Rocq reprint ${path.${n}}.v" \
           --warn-after 120 --timeout 900 -- bash ${parseSrc}/web/rocq/tests/parse.sh --check 0 "$PWD/project/theories/${path.${n}}.v"
+        ms=$((($(date +%s%N) - start) / 1000000))
         grep -q '^ok' verdicts/verdict-0
         mkdir $out
         cp verdicts/verdict-0 $out/verdict
+        # The reprint compiles the whole file again, so its time tracks
+        # the compile's within a few percent. The compile derivation does
+        # not record it, because changing that derivation would rebuild
+        # every glibc object that links it.
+        printf '@@rocq %4d.%01ds %5d lines %s.v\n' $((ms / 1000)) $((ms % 1000 / 100)) \
+          "$(wc -l <project/theories/${path.${n}}.v)" ${path.${n}} >$out/time
       ''
   );
   # parse.sh's own Ltac, term and Iris fixtures.
@@ -160,13 +168,19 @@ let
         mkdir $out
         cp log $out/
       '';
-  parse = pkgs.runCommand "nanofil-rocq-parse" { } ''
+  parse = pkgs.runCommand "nanofil-rocq-parse" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     mkdir $out
     {
       ${lib.concatMapStrings (n: "cat ${reprint.${n}}/verdict\n") names}
       cat ${fixtures}/log
     } | tee $out/verdicts
     echo "parse: $(grep -c '^ok' $out/verdicts) files read and reprinted"
+    # Build-time totals and the soft per-file warning (AGENTS.md, Rocq
+    # proof speed), from the reprints' times and the theories' imports.
+    cat ${lib.concatMapStringsSep " " (n: "${reprint.${n}}/time") names} >$out/timings.log
+    cat >$out/deps <<'EOF'
+    ${lib.concatMapStrings (n: "${n}: ${toString imports.${n}}\n") names}EOF
+    python3 ${../tests/rocq_totals.py} --label theories $out/timings.log $out/deps | tee $out/totals
   '';
   theorySrc = lib.fileset.toSource {
     root = ../.;

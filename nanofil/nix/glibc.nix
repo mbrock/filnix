@@ -400,6 +400,8 @@ let
       ../tests/rocq_time.py
       ../tests/watch.py
       ../tests/rocq_time_test.py
+      ../tests/rocq_totals.py
+      ../tests/rocq_totals_test.py
       ./glibc.nix
     ];
   };
@@ -410,6 +412,7 @@ let
         set -o pipefail
         mkdir $out
         python3 ${timingTestSrc}/tests/rocq_time_test.py -v 2>&1 | tee $out/log
+        python3 ${timingTestSrc}/tests/rocq_totals_test.py -v 2>&1 | tee -a $out/log
         touch $out/passed
       '';
   glibcSrc = lib.fileset.toSource {
@@ -419,7 +422,7 @@ let
 in
 pkgs.runCommand "nanofil-glibc"
   {
-    nativeBuildInputs = rocqInputs;
+    nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
     passthru = {
       inherit
         vo
@@ -485,6 +488,10 @@ pkgs.runCommand "nanofil-glibc"
     cat ${
       lib.concatMapStringsSep " " (n: "${vo.${n}}/time") names
     } | tee $out/timings.log
+    # Build-time totals and the soft per-file warning (AGENTS.md, Rocq
+    # proof speed). An edit here never rebuilds a theory, so only Glibc
+    # imports count.
+    python3 ${../tests/rocq_totals.py} --label glibc --namespace Glibc $out/timings.log $TMPDIR/nixdep | tee $out/totals
     mkdir $out/sentence-timings
     ${lib.concatMapStrings (
       n: "cp ${vo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
