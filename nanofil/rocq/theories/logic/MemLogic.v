@@ -371,9 +371,8 @@ Proof.
   replace (b' + o' + (b + (o + i) - (b + o))) with (b' + (o' + i)) by lia.
   replace ((b' + (o' + i)) mod 8 =? 0) with true.
   - destruct (i + 8 <=? n); reflexivity.
-  - symmetry. apply Z.eqb_eq. pose proof (Z.div_mod b' 8 ltac:(lia)). pose proof (Z.div_mod o' 8 ltac:(lia)).
-    pose proof (Z.div_mod i 8 ltac:(lia)). pose proof (Z.div_mod (b' + (o' + i)) 8 ltac:(lia)).
-    pose proof (Z.mod_pos_bound (b' + (o' + i)) 8 ltac:(lia)). lia.
+  - symmetry. apply Z.eqb_eq.
+    by rewrite (Z.add_mod b' (o' + i) 8 ltac:(lia)) (Z.add_mod o' i 8 ltac:(lia)) Hb' Ho' Hi8.
 Qed.
 
 (** An aligned block copy installs the source bytes and the shadow
@@ -579,8 +578,7 @@ Lemma string_window p b reg ys k n :
 Proof.
   intros Hk. iIntros "[%Hok Hs]".
   assert (E : ys ++ [0] = take k ys ++ take n (drop k ys) ++ (drop (k + n) ys ++ [0])).
-  { rewrite app_assoc app_assoc. f_equal. rewrite -{1}(take_drop k ys). rewrite -app_assoc. f_equal.
-    rewrite -{1}(take_drop n (drop k ys)) drop_drop. reflexivity. }
+  { by rewrite -{1}(take_drop k ys) -{1}(take_drop n (drop k ys)) drop_drop !app_assoc. }
   assert (Lk : length (take k ys) = k) by (rewrite length_take; lia).
   rewrite /string_ps E !byte_ps_app Lk.
   rewrite /live /bytes /pts big_sepL_cons !big_sepL_app big_sepL_singleton.
