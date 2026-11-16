@@ -14,6 +14,7 @@
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith Lia List Bool.
 From Nanofil Require Import Memory.
+From Nanofil Require Import Lanes.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -275,19 +276,10 @@ Proof.
     ltac:(vm_compute; reflexivity) b Hb) as H. apply andb_true_iff in H as [H1 H2]. lia.
 Qed.
 
-(** [first_mask_byte] lifts [first_mask_on_byte] to a full 64-bit word,
-    showing that byte i of [first_mask] is 128 when byte i of x is zero
-    and 0 otherwise. *)
+(** A computed lane check shows that each byte of the mask is 128
+    exactly when the corresponding input byte is zero. *)
 Lemma first_mask_byte x i : 0 <= i < 8 -> byte_of (first_mask x) i = if byte_of x i =? 0 then 128 else 0.
-Proof.
-  intros Hi. unfold first_mask.
-  repeat rewrite ?byte_of_mod64, ?byte_of_lxor, ?byte_of_lor, ?byte_all64, ?byte_ones7 by lia.
-  rewrite byte_of_add by
-    (lia || (intros j Hj; rewrite byte_of_mod64, byte_of_land, byte_of_mod64, byte_ones7 by lia;
-             pose proof (land127 (byte_of x j) (byte_of_range x j)); lia)).
-  rewrite byte_of_mod64, byte_of_land, byte_of_mod64, byte_ones7 by lia.
-  apply first_mask_on_byte, byte_of_range.
-Qed.
+Proof. intros Hi. unfold first_mask. sw_lanes. Qed.
 
 (** [loop_mask] models glibc's `c: find_zero_low` from `c: string-fzb.h`
     with 64-bit wrapping. Because subtraction can borrow across bytes,
@@ -313,15 +305,7 @@ Qed.
     [loop_mask] to the single-byte formula. *)
 Lemma loop_mask_byte' x j i : j <= 8 -> (forall i, 0 <= i < j -> byte_of x i <> 0) -> 0 <= i <= j -> i < 8 ->
   byte_of (loop_mask x) i = Z.land (Z.land ((byte_of x i - 1) mod 256) (Z.lxor (byte_of x i) 255)) 128.
-Proof.
-  intros Hj Hnz Hi H8. unfold loop_mask.
-  rewrite byte_of_land, byte_highs, !byte_of_mod64, byte_of_land, !byte_of_mod64, byte_of_lxor, byte_of_mod64,
-    byte_all64 by lia.
-  rewrite (byte_of_sub _ _ j i Hj); [| |lia].
-  - rewrite byte_lows, byte_of_mod64 by lia. reflexivity.
-  - intros k Hk. rewrite byte_lows, byte_of_mod64 by lia.
-    pose proof (byte_of_range x k). specialize (Hnz k Hk). lia.
-Qed.
+Proof. intros Hj Hnz Hi H8. unfold loop_mask. sw_lanes. Qed.
 
 (** Below the first zero byte j of x, [loop_mask_below] proves that
     every byte of [loop_mask] is 0. *)
