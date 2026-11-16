@@ -62,10 +62,8 @@ Proof.
   intros Hst. split. intros s m s' m' w h Hsp (Hr & Hw & Ha).
   destruct (Hst _ _ _ _ _ Hsp Hr Hw) as [Hr' Hw'].
   split; [exact Hr'|]. split; [exact Hw'|].
-  intros sp a Hin Hs (l & v & reg & Hl & Hm & [E Hlive] & Hb). apply (Ha sp a Hin Hs).
-  rewrite (R.collector_live _ _ _ _ Hsp) in E. exists l, v, reg. split; [exact Hl|]. split; [exact Hm|].
-  split; [|exact Hb].
-  split; [exact E | exact Hlive].
+  intros sp a Hin Hs. unfold owned_live, live_at.
+  rewrite (R.collector_live _ _ _ _ Hsp). exact (Ha sp a Hin Hs).
 Qed.
 
 (** Whenever puts returns normally, its contract supplies exactly one
