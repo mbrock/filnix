@@ -349,10 +349,10 @@ Lemma jump_step_next : forall ge c l j c',
 Proof.
   intros ge c l j c' H. unfold jump_step in H.
   destruct j as [t | v t1 t2 | v | vs | | ].
-  - left. exists t. split; [reflexivity|].
+  1: { left. exists t. split; [reflexivity|].
     assert (H' : edge_step c l t = Next c') by (destruct (fr_doomed (c_frame c)); exact H).
-    exact (proj1 (edge_step_next' _ _ _ _ H')).
-  - left.
+    exact (proj1 (edge_step_next' _ _ _ _ H')). }
+  1: { left.
     assert (H' : or_stuck "branch"
                    (let* x := value_x ge (fr_env (c_frame c)) W v in
                     match x with
@@ -361,15 +361,11 @@ Proof.
                     end) = Next c') by (destruct (fr_doomed (c_frame c)); exact H).
     apply or_stuck_next in H'. unfold taken_target.
     destruct (value_x ge (fr_env (c_frame c)) W v) as [[n| |]|]; try discriminate H'.
-    injection H' as H'. eexists. split; [reflexivity|]. exact (proj1 (edge_step_next' _ _ _ _ H')).
-  - destruct (fr_doomed (c_frame c)) eqn:Ew; [discriminate H|]. right. split; [reflexivity|].
-    apply or_stuck_next in H. destruct (fn_ret _); try discriminate H.
-    destruct (value_x _ _ _ _); [injection H as H; eauto | discriminate H].
-  - destruct (fr_doomed (c_frame c)) eqn:Ew; [discriminate H|]. right. split; [reflexivity|].
-    apply or_stuck_next in H. destruct (fn_ret _); try discriminate H.
-    destruct (map2_option _ _ _); [injection H as H; eauto | discriminate H].
-  - destruct (fr_doomed (c_frame c)) eqn:Ew; [discriminate H|]. right. eauto.
-  - destruct (fr_doomed (c_frame c)); discriminate H.
+    injection H' as H'. eexists. split; [reflexivity|]. exact (proj1 (edge_step_next' _ _ _ _ H')). }
+  all: destruct (fr_doomed (c_frame c)) eqn:Ew; try discriminate H.
+  all: right; split; [reflexivity|].
+  all: try (eexists; exact H).
+  all: apply or_stuck_next in H; cases H; injection H as H; eauto.
 Qed.
 
 (** ### What holds where
