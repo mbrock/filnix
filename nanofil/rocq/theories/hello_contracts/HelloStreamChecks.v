@@ -337,17 +337,13 @@ Definition query_result (error stdout : bool) : Z := if error then (if stdout th
 Lemma query_lookups : forall stdout l v,
   (l, v) ∈ permission_ps P.out P.err (query_handle stdout) -> query_heap !! l = Some v.
 Proof.
-  intros stdout l v Hin. destruct stdout.
-  - change ((l, v) ∈ open_permission_ps P.out (token_handle P.out)) in Hin.
-    apply list_elem_of_In in Hin. destruct Hin as [E|[E|[]]]; injection E as <- <-.
-    all: unfold query_heap, pair_ps, entry_heap;
-      cbn [open_permission_ps overwrite app fst snd P.out P.err token_base token_key];
-      repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
-  - change ((l, v) ∈ open_permission_ps P.err (token_handle P.err)) in Hin.
-    apply list_elem_of_In in Hin. destruct Hin as [E|[E|[]]]; injection E as <- <-.
-    all: unfold query_heap, pair_ps, entry_heap;
-      cbn [open_permission_ps overwrite app fst snd P.out P.err token_base token_key];
-      repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
+  intros stdout l v Hin. destruct stdout;
+    [change ((l, v) ∈ open_permission_ps P.out (token_handle P.out)) in Hin|
+     change ((l, v) ∈ open_permission_ps P.err (token_handle P.err)) in Hin].
+  all: apply list_elem_of_In in Hin; destruct Hin as [E|[E|[]]]; injection E as <- <-.
+  all: unfold query_heap, pair_ps, entry_heap;
+    cbn [open_permission_ps overwrite app fst snd P.out P.err token_base token_key];
+    repeat (rewrite lookup_insert_ne; [|discriminate]); apply lookup_insert_eq.
 Qed.
 
 (** Non-one sticky error, rather than normalizing every nonzero result. *)
