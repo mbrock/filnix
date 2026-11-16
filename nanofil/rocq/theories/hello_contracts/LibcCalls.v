@@ -1029,6 +1029,15 @@ Qed.
 Module LibcCallsOn (R : Runtime) (M : ExternalMachineSig R).
 Include M.E.
 
+(** Pure contracts return without changing memory or the logical world.
+    Their invocation proofs extract this endpoint and rule out resource failure. *)
+Local Ltac pure_invocation :=
+  intros until 1;
+  match goal with Hcall : invoke _ _ _ _ _ _ _ _ _ _ _ _ |- _ => inversion Hcall; subst end;
+  [ match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end
+  | contradiction ].
+
 (** Independent representation and cell admission construct a real call
     in the logical relation; this is not a native termination theorem. *)
 Theorem errno_location_return : forall world cell rep r args s m (w : world),
@@ -1101,12 +1110,7 @@ Theorem strnlen_invocation : forall world r args xs s m (w : world) trace ending
   invoke (strnlen_contract world) r args xs s m w trace ending s' m' w' ->
   trace = [] /\ m' = m /\ w' = w /\
   exists p n k, xs = [WPtr p; WInt n] /\ bounded_length m p n k /\ ending = CallReturn [WInt k].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** Input-only string authority constructs an actual pure invocation.
     This is specification nonvacuity, not native execution or termination. *)
@@ -1136,12 +1140,7 @@ Theorem strlen_invocation : forall world r args xs s m (w : world) trace ending 
   invoke (strlen_contract world) r args xs s m w trace ending s' m' w' ->
   trace = [] /\ m' = m /\ w' = w /\
   exists p k, xs = [WPtr p] /\ terminated_length m p k /\ ending = CallReturn [WInt k].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** Any specified first match or miss has a permitted pure invocation. *)
 Theorem memchr_return : forall world r args p c n q s m (w : world),
@@ -1181,12 +1180,7 @@ Theorem memchr_invocation : forall world r args xs s m (w : world) trace ending 
   trace = [] /\ m' = m /\ w' = w /\
   exists p c n q, xs = [WPtr p; WInt c; WInt n] /\ memchr_result m p c n q /\
     ending = CallReturn [WPtr q].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** Runtime readiness bounds the consumed prefix, NOT the maximum count.
     A first-byte hit with SIZE_MAX need not authorize p + SIZE_MAX. *)
@@ -1241,12 +1235,7 @@ Theorem memcmp_invocation : forall world r args xs s m (w : world) trace ending 
   trace = [] /\ m' = m /\ w' = w /\
   exists p q n bits, xs = [WPtr p; WPtr q; WInt n] /\ memcmp_result m p q n bits /\
     ending = CallReturn [WInt bits].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** Any legal strncmp result admits a pure invocation. Its result
     predicate already includes the two independent input witnesses. *)
@@ -1290,12 +1279,7 @@ Theorem strncmp_invocation : forall world r args xs s m (w : world) trace ending
   trace = [] /\ m' = m /\ w' = w /\
   exists p q n bits, xs = [WPtr p; WPtr q; WInt n] /\ strncmp_result m p q n bits /\
     ending = CallReturn [WInt bits].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** Every legal sign and magnitude constructs a pure strcmp invocation.
     The result predicate already contains independent input authority. *)
@@ -1339,12 +1323,7 @@ Theorem strcmp_invocation : forall world r args xs s m (w : world) trace ending 
   trace = [] /\ m' = m /\ w' = w /\
   exists p q bits, xs = [WPtr p; WPtr q] /\ strcmp_result m p q bits /\
     ending = CallReturn [WInt bits].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** A specified first match or miss constructs a pure pointer return
     from the independent ABI and canonical-int admission obligations. *)
@@ -1390,12 +1369,7 @@ Theorem strchr_invocation : forall world r args xs s m (w : world) trace ending 
   trace = [] /\ m' = m /\ w' = w /\
   exists p c q, xs = [WPtr p; WInt c] /\ 0 <= c < 2 ^ 32 /\ strchr_result m p c q /\
     ending = CallReturn [WPtr q].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** ABI, canonical int and a specified last match or miss suffice for
     an actual pure invocation, with no borrowed auxiliary authority. *)
@@ -1441,12 +1415,7 @@ Theorem strrchr_invocation : forall world r args xs s m (w : world) trace ending
   trace = [] /\ m' = m /\ w' = w /\
   exists p c q, xs = [WPtr p; WInt c] /\ 0 <= c < 2 ^ 32 /\ strrchr_result m p c q /\
     ending = CallReturn [WPtr q].
-Proof.
-  intros world r args xs s m w trace ending s' m' w' Hcall. inversion Hcall; subst.
-  - match goal with Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
-      destruct Hpost as (_ & Htrace & Hmem & Hworld & Hresult); auto end.
-  - contradiction.
-Qed.
+Proof. pure_invocation. Qed.
 
 (** A successful runtime answer constructs an actual malloc call;
     readiness supplies freshness, rather than assuming it of callers. *)
