@@ -16,6 +16,27 @@ nanofil/rocq/scripts/glibc-tools/one.sh /tmp/glibc libio/LibioPutsNl.v -time
 
 `sentence-times.py LOGS TREE` reads the Nix gate's `sentence-timings/` logs. Use `--file NAME` to inspect one file or `--over 5` to list sentences taking more than five seconds. Its optional `--write LIST` and `--check LIST` record and compare a reviewed list; the gate does not run that comparison.
 
+## Check an edit before pushing
+
+Before you push, check the files you edited and the files that import them. `affected.sh` builds them with the push check's own per-file derivations and takes every other object from the binary cache. Without arguments, it checks the `.v` files under `rocq/theories` and `rocq/glibc` that differ from `origin/main`. Nix recompiles an importer only when the interface of one of its imports changed. `--list` prints the files without building them. Nix sees a new file only after `git add -N FILE`.
+
+Importers never look inside a Qed proof, so the check gives an imported glibc file an interface for them to load. The interface is the file with its comments removed and its Qed proofs replaced by `Admitted` (`tests/rocq_interface.py`). A proof inside a `Section` stays unless it has a `Proof using` clause, because Rocq adds the section variables that the proof uses to the lemma's type. An edit to a replaced proof or a comment then compiles that file alone. An edit to a statement, a definition or a kept proof also compiles the importers.
+
+```sh
+nanofil/rocq/scripts/glibc-tools/affected.sh
+nanofil/rocq/scripts/glibc-tools/affected.sh --list nanofil/rocq/glibc/GlibcEnv.v
+```
+
+## Start from cached objects
+
+A fresh orb can start from compiled objects instead of a cold build. `warm.sh` copies the objects that importers load from the binary cache into a tree, which defaults to the checkout's `nanofil/rocq/glibc`. It gives them one modification time, later than every source. `build.sh` then compiles the files edited since the cached commit and every file that imports them, because make knows nothing of interfaces. It reports the files of `runtime-concrete.txt` as failures, because they need the concrete runtime and the tree's `Fix.v` seals it.
+
+```sh
+. nanofil/rocq/scripts/glibc-tools/env.sh
+nanofil/rocq/scripts/glibc-tools/warm.sh
+nanofil/rocq/scripts/glibc-tools/build.sh nanofil/rocq/glibc 16
+```
+
 ## Write a proof
 
 Proofs share one runtime and logic instead of creating a new instance for each importer. Import `Fix.v` to obtain the sealed runtime `R` and logic `LG0`, and name dependencies by their files. Use the runtime's public laws rather than its interpreter's integer allocator state.
@@ -46,7 +67,7 @@ The [generator guide](../glibc-code/README.md) describes captured code fixtures 
 
 ## Check the runtime boundary
 
-The push gate compiles general proofs with a sealed runtime and the concrete layer's closure with a transparent interpreter. The abstract gate runs twice daily, including Hello's exact assumption comparison and an allowlist audit of every top-level proof.
+The push gate compiles general proofs with a sealed runtime. The concrete check compiles the concrete layer's closure with a transparent interpreter, twice daily and on pushes that touch that layer, `Fix.v` or the runtime. The abstract gate runs twice daily, including Hello's exact assumption comparison and an allowlist audit of every top-level proof.
 
 `abstract-general.sh TREE OUT` checks an existing source copy with an abstract runtime. Its input has the sealed `Fix.v` binding and concrete objects previously compiled with a transparent binding. It requires exactly the failures listed in `runtime-concrete.txt` and accepts only compiler errors located in the listed files. `abstract-general-test.sh` exercises that script on small trees.
 

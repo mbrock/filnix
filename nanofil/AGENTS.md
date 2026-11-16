@@ -116,6 +116,24 @@ critical path of a full rebuild, the time from editing a random line to
 its file's result and to rechecking its importers, and the slowest
 files. CI times vary by about 2x with load, so read them as rough.
 
+Before pushing a Rocq edit, compile the files you edited and every file
+that imports them, not the whole gate:
+
+```sh
+nanofil/rocq/scripts/glibc-tools/affected.sh
+```
+
+It takes the `.v` files under `rocq/theories` and `rocq/glibc` that
+differ from `origin/main` and builds them and their importers with the
+push checks' own per-file derivations. Every other object comes from
+Cachix, and an importer recompiles only when an interface it loads
+changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them. The files in
+`glibc/runtime-concrete.txt` belong to `nanofil-glibc-concrete`, which
+runs twice daily and on pushes that touch them; build it when you edit
+one. For many edits in a row, `glibc-tools/warm.sh` copies the cached
+objects into the checkout so that `build.sh` compiles only what changed
+(`glibc-tools/README.md`).
+
 When a proof feels slow, see where its time goes with `rocq c -q -time
 -R theories Nanofil FILE.v`; the glibc gate also prints sentences over
 5 s. Fix what the profile shows. `Print Assumptions` audits are queries,
