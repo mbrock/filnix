@@ -45,8 +45,8 @@ Open Scope Z_scope.
     handler registered when e is true, and that has a dlerror handler
     registered when d is true. It copies every other field from w0. *)
 Definition start_world (w0 : os_world) (c : ptr) (e d : bool) : os_world :=
-  mkOsWorld (if e then Some (ow_errno_cell w0) else None) c (ow_log_fd w0) (ow_fds w0) (ow_osxsave w0)
-    (ow_errno_cell w0) d (ow_leaf4_ends w0).
+  mkOsWorld (if e then Some (ow_errno_cell w0) else None) c (ow_log_fd w0) (ow_fds w0) (ow_facts w0)
+    (ow_errno_cell w0) d.
 
 (** The ghost value records the cookie and the two flags, each flag as 0
     or 1. *)

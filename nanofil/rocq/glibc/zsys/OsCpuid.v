@@ -52,7 +52,7 @@ From Glibc Require Import GlibcProgram.
     unless the operating system has set the OSXSAVE bit of control
     register CR4. The processor reports that bit to user code as bit 27
     of the ECX register that CPUID leaf 1 returns, and glibc reads XCR0
-    only after it has seen that bit. The field [ow_osxsave] of [os_world]
+    only after it has seen that bit. The assumption [ow_osxsave] about [os_world]
     records whether the kernel enabled XSAVE. The contracts connect the
     two calls through it: `c: zxgetbv` requires [ow_osxsave], and a
     leaf 1 answer has ECX bit 27 equal to [ow_osxsave].
@@ -65,10 +65,10 @@ From Glibc Require Import GlibcProgram.
     mark, because it counts the subleaves in a signed 32-bit integer
     and uses the count as an index into a table of sixteen rows. A list
     that never ended would let the count wrap to a negative number, and
-    the index would then fail its bounds check. The field
-    [ow_leaf4_ends] of [os_world] records that the list has ended by
+    the index would then fail its bounds check. The assumption
+    [ow_leaf4_ends] about [os_world] records that the list has ended by
     subleaf 0x7fffffff, which is the last subleaf the count reaches
-    before it wraps. When the field is true, a leaf 4 answer for that
+    before it wraps. When the assumption holds, a leaf 4 answer for that
     subleaf has cache type zero. A proof that needs the loop to stop
     takes [ow_leaf4_ends] as a hypothesis, and no other proof depends
     on it.
@@ -88,6 +88,18 @@ From Glibc Require OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
+
+(** ## The two assumptions
+
+    The record [os_world] holds named assumptions in [ow_facts]. The two
+    readers below name the assumptions that this file's contracts use. *)
+
+(** The kernel enabled XSAVE by setting CR4.OSXSAVE, which `c: zxgetbv`
+    needs. *)
+Definition ow_osxsave (w : os_world) : bool := ow_facts w "osxsave"%string.
+
+(** CPUID leaf 4 reports no cache at its last subleaf, 0x7fffffff. *)
+Definition ow_leaf4_ends (w : os_world) : bool := ow_facts w "leaf4_ends"%string.
 
 (** ## The CPUID contracts
 

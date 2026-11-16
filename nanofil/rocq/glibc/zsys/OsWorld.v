@@ -69,6 +69,7 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith List Lia.
+From Stdlib Require String.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks.
@@ -83,17 +84,28 @@ Open Scope Z_scope.
     what a valid world requires of memory. *)
 
 (** The [os_world] record holds the thread and file-descriptor state
-    outside a C module that `zsys_*` calls read or check. *)
+    outside a C module that `zsys_*` calls read or check.
+
+    Every glibc proof imports this record, so a change to its fields
+    recompiles all of them. A new assumption about the machine or the
+    kernel is therefore not a new field. It is a new name in [ow_facts],
+    and the file that owns the assumption defines a reader for it, as
+    [OsCpuid](OsCpuid.v) does for `osxsave`. Only the files that use the
+    reader are then recompiled. *)
 Record os_world : Type := mkOsWorld {
   ow_errno : option ptr;  (* pointer to the calling thread's `c: int errno` cell, once allocated *)
   ow_self : ptr;          (* the thread cookie returned by `c: zthread_self_cookie()` (userland glibc's `c: struct pthread`) *)
   ow_log_fd : option Z;   (* libpizlo's internal log descriptor, if logging to a file *)
   ow_fds : list Z;        (* file descriptors the program uses *)
-  ow_osxsave : bool;      (* whether the kernel enabled XSAVE (CR4.OSXSAVE), which `c: zxgetbv` needs *)
+  ow_facts : String.string -> bool; (* the named assumptions about the machine and the kernel that hold *)
   ow_errno_cell : ptr;    (* the `c: errno` cell that the image's registered errno handler stores to *)
-  ow_dlerror : bool;      (* whether startup has registered the dlerror handler *)
-  ow_leaf4_ends : bool    (* whether CPUID leaf 4 reports no cache at its last subleaf, 0x7fffffff *)
+  ow_dlerror : bool       (* whether startup has registered the dlerror handler *)
 }.
+
+(** A concrete world lists the assumptions that hold in it by name, and
+    [facts_of] turns that list into the map that [ow_facts] expects. *)
+Definition facts_of (names : list String.string) : String.string -> bool :=
+  fun n => existsb (String.eqb n) names.
 
 (** When a system call fails, libpizlo stores the error number into the
     calling thread's `c: errno` variable through `c: filc_set_errno`.
