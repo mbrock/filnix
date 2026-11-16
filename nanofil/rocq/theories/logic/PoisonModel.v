@@ -2447,20 +2447,22 @@ Proof.
               apply env_rel_put; assumption.
            ++ (* Ptoi *)
               destruct args as [|v [|]]; try discriminate Hp1.
+              assert (Eptoi : forall w m, op_res Ptoi k [w] m =
+                match w with WPtr p => Some (OpRes (RVal (WInt (ptr_addr p))) m) | _ => None end)
+                by (intros; destruct k, w; reflexivity).
               destruct (value_t (ps_tenv ps) P v) as [[ta | ta tc | ]|] eqn:Ewt; try discriminate Hp1;
                 cbn [inst_step op_arg_classes map2_option] in Hp1;
                 destruct (value_x ge (fr_env (c_frame c1)) P v) as [w1|] eqn:Ew1; try discriminate Hp1;
                 destruct (value_rel ge _ _ _ P v w1 _ Henv Ew1 Ewt) as (w2 & Ew2 & Hw);
                 destruct w1 as [|p1|], w2 as [|p2|]; try contradiction Hw;
-                cbn [op_res op_res_int alu] in Hp1;
-                destruct k; try discriminate Hp1;
-                try (cbn [fmt_of] in Hp1; injection Hp1 as <- <-;
-                     (split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; reflexivity|]);
-                     unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn; rewrite Ewt;
-                     cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ew2; cbn;
-                     eexists; (split; [reflexivity|]);
-                     unfold ct_rel; cbn; repeat split; auto; try congruence;
-                     apply env_rel_put; [exact Henv | exact (proj1 Hw)]).
+                rewrite Eptoi in Hp1; cbn in Hp1; try discriminate Hp1.
+              injection Hp1 as <- <-.
+              split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; reflexivity|].
+              unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn -[op_res]; rewrite Ewt.
+              cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ew2; cbn beta iota zeta; rewrite Eptoi; cbn.
+              eexists; split; [reflexivity|].
+              unfold ct_rel; cbn; repeat split; auto; try congruence.
+              apply env_rel_put; [exact Henv | exact (proj1 Hw)].
            ++ (* Itop *)
               destruct args as [|v [|]]; try discriminate Hp1.
               destruct (value_t (ps_tenv ps) L v) as [[ta| | ]|] eqn:Ewt; try discriminate Hp1.
@@ -2468,14 +2470,15 @@ Proof.
               destruct (value_x ge (fr_env (c_frame c1)) L v) as [w1|] eqn:Ew1; [|discriminate Hp1].
               destruct (value_rel ge _ _ _ L v w1 (WTInt ta) Henv Ew1 Ewt) as (w2 & Ew2 & Hw).
               destruct w1 as [n1| |], w2 as [n2| |]; try contradiction Hw.
-              destruct k; cbn [op_res fmt_of op_res_int alu] in Hp1; try discriminate Hp1;
-                injection Hp1 as <- <-;
-                (split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; reflexivity|]);
-                unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn; rewrite Ewt;
-                cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ew2; cbn;
-                eexists; (split; [reflexivity|]);
-                unfold ct_rel; cbn; repeat split; auto; try congruence;
-                (apply env_rel_put; [exact Henv | cbn; split; [exact Hw | congruence]]).
+              assert (Eitop : forall z m, op_res Itop k [WInt z] m = Some (OpRes (RVal (WPtr (mkPtr z CNone))) m))
+                by (intros; destruct k; reflexivity).
+              rewrite Eitop in Hp1; cbn in Hp1; injection Hp1 as <- <-.
+              split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; reflexivity|].
+              unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn -[op_res]; rewrite Ewt.
+              cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ew2; cbn beta iota zeta; rewrite Eitop; cbn.
+              eexists; split; [reflexivity|].
+              unfold ct_rel; cbn; repeat split; auto; try congruence.
+              apply env_rel_put; [exact Henv | cbn; split; [exact Hw | congruence]].
            ++ (* Alloc: returns TFresh or TDone, never TNext *)
               destruct args as [|v [|]]; try discriminate Hp1.
               destruct (value_x ge _ L v) as [[sz| |]|]; try discriminate Hp1.
@@ -2813,32 +2816,28 @@ Proof.
               subst a2 c2p.
               cbn [op_arg_classes map2_option] in Hp1; rewrite Ewa1 in Hp1; cbn in Hp1.
               unfold int_load_res, access_res in Hp1; rewrite Hreg in Hp1.
-              assert (Esz : match t with LdL | LdD => 8 | LdS => 4 | LdX => 10 | LdNarrow n => fst (narrow_type n) end = load_type_bytes t)
-                by (destruct t; reflexivity).
-              rewrite Esz in Hp1.
+              fold (load_type_bytes t) in Hp1.
               destruct (cap_access_res c1p (m_regions (c_mem c2)) (raw_address a1 off) (load_type_bytes t) Read 1)
                 as [[[]| |]|] eqn:Ecap; cbn in Hp1; rewrite ?Hd1 in Hp1; try discriminate Hp1;
                 try solve [destruct k; discriminate Hp1].
-              assert (Hld_rel :
-                load_bytes (c_mem c1) (raw_address a1 off) (load_type_bytes t) =
-                load_bytes (c_mem c2) (raw_address a1 off) (load_type_bytes t) \/
-                mem_load_taint (ps_mem ps) (raw_address a1 off) (load_type_bytes t) = taint_all).
-              { destruct (range_load_rel_nat (c_mem c1) (c_mem c2) (ps_mem ps) (Z.to_nat (load_type_bytes t)) (raw_address a1 off) Hmem)
-                  as [Hall | Htall]; [left; exact (load_bytes_eq_on _ _ _ _ Hall) | right; exact Htall]. }
-              destruct t as [| | | | nt]; try (match goal with nt : narrow |- _ => destruct k end);
-                cbn in Hp1; try discriminate Hp1;
-                injection Hp1 as <- <-;
-                (split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; rewrite Ewa1, Ewa2; reflexivity|]);
-                unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn [andb orb];
-                rewrite Ewa2, Ewta, Etia, Hcb, Etba, Etbc, Etic;
-                cbn [ptr_addr]; cbn [load_type_bytes] in Enl |- *; rewrite Enl;
-                cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ewa2;
-                cbn [op_res fmt_of op_res_int int_load_res ptr_addr ptr_cap];
-                unfold int_load_res, access_res; cbn [load_type_bytes] in Ecap; rewrite Ecap; cbn;
-                eexists; (split; [reflexivity|]);
-                unfold ct_rel; cbn; repeat split; auto; try congruence;
-                (apply env_rel_put; [exact Henv | cbn; intros Hne; destruct Hld_rel as [E|Hall];
-                  [exfalso; apply Hne; repeat first [exact E | reflexivity | progress f_equal] | exact Hall]]).
+              assert (Hconvert : exists f : Z -> Z, forall z,
+                (match t with LdNarrow n => match extended n k z with Some w => Some (RVal w) | None => None end
+                 | _ => Some (RVal (WInt z)) end) = Some (RVal (WInt (f z)))).
+              { clear - Hp1. destruct t as [| | | | nt]; try (match goal with nt : narrow |- _ => destruct k end);
+                  cbn in Hp1; try discriminate Hp1; eexists; intros; reflexivity. }
+              destruct Hconvert as [f Hconvert]. rewrite Hconvert in Hp1; cbn in Hp1; injection Hp1 as <- <-.
+              split; [unfold leak_of; rewrite Eat1, <- Hat; cbn; rewrite Ewa1, Ewa2; reflexivity|].
+              unfold tstep, step; rewrite Hd2, <- Hat; cbn [inst_tstep]; unfold let_tstep; rewrite Ezero; cbn [andb orb].
+              rewrite Ewa2, Ewta, Etia, Hcb, Etba, Etbc, Etic; cbn [ptr_addr]; rewrite Enl.
+              cbn [or_stuck inst_step op_arg_classes map2_option]; rewrite Ewa2.
+              cbn [op_res fmt_of op_res_int int_load_res ptr_addr ptr_cap].
+              unfold int_load_res, access_res; fold (load_type_bytes t); rewrite Ecap; cbn beta iota zeta; rewrite Hconvert; cbn.
+              eexists; split; [reflexivity|].
+              unfold ct_rel; cbn; repeat split; auto; try congruence.
+              apply env_rel_put; [exact Henv|cbn; intros Hne].
+              destruct (range_load_rel_nat (c_mem c1) (c_mem c2) (ps_mem ps) (Z.to_nat (load_type_bytes t)) (raw_address a1 off) Hmem)
+                as [Hall | Htall]; [|exact Htall].
+              exfalso; apply Hne; f_equal; exact (load_bytes_eq_on _ _ _ _ Hall).
            ++ (* RawLoadPointer *)
               destruct args as [|av [|]]; try discriminate Hp1.
               destruct (value_x ge (fr_env (c_frame c1)) A av) as [[|[a1 c1p]|]|] eqn:Ewa1; try discriminate Hp1.
