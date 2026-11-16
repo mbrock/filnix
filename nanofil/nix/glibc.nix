@@ -12,6 +12,11 @@
 # import lists with rocq dep and records each file's compile time. The
 # separate nanofil-rocq check still compiles and checks the entire model.
 #
+# The files of rocq/glibc/runtime-concrete.txt need the interpreter's
+# runtime. The push check does not compile them; nanofil-glibc-concrete
+# compiles them with their import closures at that runtime, and
+# nanofil-glibc-abstract compiles every other file at an abstract one.
+#
 # The grammar round trip of a glibc file is not part of the check, because
 # it compiles the file a second time whenever anything the file imports
 # changes. Run it for one file by hand when the site's parser changes:
@@ -422,6 +427,30 @@ let
         python3 ${timingTestSrc}/tests/rocq_totals_test.py -v 2>&1 | tee -a $out/log
         touch $out/passed
       '';
+  # The check nanofil-glibc-concrete: each listed file compiles with its
+  # whole import closure at the interpreter's runtime, and is rejected at
+  # the sealed one. It recompiles about 270 files to check one theorem,
+  # so it runs twice daily and on pushes that touch a listed file, Fix.v
+  # or the runtime, not in the push check.
+  concrete =
+    pkgs.runCommand "nanofil-glibc-concrete"
+      {
+        passthru = {
+          vo = concreteVo;
+          rejected = sealedRejected;
+        };
+      }
+      ''
+        mkdir $out
+        ${lib.concatMapStrings (
+          n: "cat ${sealedRejected.${n}}/verdict | tee -a $out/rejected.log\n"
+        ) (lib.attrNames sealedRejected)}
+        cat ${
+          lib.concatMapStringsSep " " (n: "${concreteVo.${n}}/time") concreteClosure
+        } >$out/timings.log
+        echo "@@glibc concrete ${toString (builtins.length concreteClosure)} files compiled, ${toString (builtins.length (lib.attrNames sealedRejected))} listed files rejected at the sealed runtime"
+        touch $out/passed
+      '';
   glibcSrc = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.fileFilter (f: f.hasExt "v") glibc;
@@ -439,6 +468,7 @@ pkgs.runCommand "nanofil-glibc"
         timingTests
         abstractHello
         abstractGeneral
+        concrete
         concreteVo
         sealedRejected
         ;
@@ -448,12 +478,6 @@ pkgs.runCommand "nanofil-glibc"
     set -o pipefail
     test -f ${timingTests}/passed
     test -f ${rejectTests}/passed
-    ${lib.concatMapStrings (n: "cat ${sealedRejected.${n}}/verdict\n") (
-      lib.attrNames sealedRejected
-    )}
-    ${lib.concatMapStrings (
-      n: "test -f ${concreteVo.${n}}/${n}.vo\n"
-    ) concreteClosure}
     # The dependency guard needs sources, not the aggregate model objects.
     # Check both namespaces, including imports through another Glibc file.
     cp -r ${glibcSrc}/rocq/glibc glibc
@@ -493,7 +517,7 @@ pkgs.runCommand "nanofil-glibc"
     fi
     mkdir $out
     cat ${
-      lib.concatMapStringsSep " " (n: "${vo.${n}}/time") names
+      lib.concatMapStringsSep " " (n: "${sealedVo.${n}}/time") generalNames
     } | tee $out/timings.log
     # Build-time totals (AGENTS.md, Rocq proof speed); a readout, nothing
     # fails on it. An edit here never rebuilds a theory, so only Glibc
@@ -501,8 +525,8 @@ pkgs.runCommand "nanofil-glibc"
     python3 ${../tests/rocq_totals.py} --label glibc --namespace Glibc $out/timings.log $TMPDIR/nixdep | tee $out/totals
     mkdir $out/sentence-timings
     ${lib.concatMapStrings (
-      n: "cp ${vo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
-    ) names}
+      n: "cp ${sealedVo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
+    ) generalNames}
     cat ${probes}/log | tee $out/probes.log
-    echo "@@glibc ${toString (builtins.length names)} files compiled"
+    echo "@@glibc ${toString (builtins.length generalNames)} files compiled"
   ''

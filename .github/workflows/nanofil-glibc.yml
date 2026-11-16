@@ -98,7 +98,7 @@ jobs:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           { nix eval --raw .#checks.x86_64-linux.nanofil-glibc --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ builtins.attrValues g.reprint ++ builtins.attrValues g.concreteVo ++ builtins.attrValues g.sealedRejected ++ [ g.probes g ]))'; echo
+              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.vo ++ [ g.probes g ]))'; echo
             # The Rocq 9.3 package set (nanofil/nix/rocq-packages.nix), which no
             # public cache has.
             nix eval --raw --impure --expr 'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };
@@ -120,8 +120,8 @@ jobs:
             glibc-units.log
           retention-days: 3
 
-  # The push check seals the runtime and rebuilds the concrete closure.
-  # This job also removes the implementation and audits assumptions for
+  # The push check seals the runtime; nanofil-glibc-concrete.yml checks
+  # the files that need the interpreter's runtime. This job removes the implementation and audits assumptions for
   # every top-level proof, including Hello's exact twelve-field list.
   abstract:
     if: github.event_name != 'push'

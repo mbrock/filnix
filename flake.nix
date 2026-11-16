@@ -381,6 +381,19 @@
                     filcc = filcc-staging;
                   }).model;
               }).abstractGeneral;
+            # The files that need the interpreter's runtime, compiled with
+            # their import closures at that runtime, and rejected at the
+            # sealed one: twice daily and when they or the runtime change.
+            nanofil-glibc-concrete =
+              (import ./nanofil/nix/glibc.nix {
+                inherit pkgs;
+                filcc = filcc-staging;
+                model =
+                  (import ./nanofil/nix/rocq.nix {
+                    inherit pkgs;
+                    filcc = filcc-staging;
+                  }).model;
+              }).concrete;
             nanofil-backend = import ./nanofil/nix/backend.nix {
               inherit pkgs;
               filcc = filcc-staging;
