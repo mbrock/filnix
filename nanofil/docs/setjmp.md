@@ -14,8 +14,13 @@ writes the term as it is, for example
 
 The C frontend recognizes resolved direct function symbols after ordinary
 argument checking/conversion, including symbol renames. Taking a setjmp
-function's address is rejected. The interpreter and plain backend refuse
-nonlocal returns with explicit diagnostics rather than approximate them.
+function's address is rejected. The plain backend refuses setjmp with an
+explicit diagnostic. The interpreter and the Rocq model (`op_res_int` in
+`rocq/theories/core/Ops.v`) execute only the first return: a checked
+8-byte pointer store into `Buf`, which traps as that store does, of a
+pointer with no capability standing for the runtime's jmpbuf, and then
+the result 0. They do not model a second return, so a longjmp stays an
+external call the interpreter cannot run and the model is stuck on.
 The longjmp family uses ordinary Fil-C calls.
 
 ## Frame and snapshot design

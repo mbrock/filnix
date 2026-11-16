@@ -577,6 +577,17 @@ Proof.
     discriminate H.
 Qed.
 
+(** A checked store, such as the jump-buffer store of `c: setjmp`,
+    either traps or writes, and never returns [[unchecked]]. *)
+Lemma store_res_checked : forall w m a c x p0 why,
+  store_res w m a c x = Some p0 -> fst p0 = RUnchecked why -> False.
+Proof.
+  unfold store_res. intros w m a c x p0 why H Hr.
+  destruct w, x; try discriminate H; cases H; injection H as <-; cbn in Hr; try discriminate Hr;
+    match goal with E : access_res _ _ _ _ _ _ = Some (RUnchecked _) |- _ =>
+      exact (access_res_checked _ _ _ _ _ _ _ E _ eq_refl) end.
+Qed.
+
 (** A [[cas]] instruction fails only through its access check, so it never
     reports an alias or wrong limit. *)
 Lemma cas_reason : forall t k m a c e n r m' why,
@@ -635,6 +646,9 @@ Proof.
   all: try (match goal with Ea : access_res _ _ _ _ _ _ = Some ?x, E : renew_res ?x _ _ = Some (RUnchecked _) |- _ =>
               destruct (renew_res_not_alias _ _ _ _ (access_res_checked _ _ _ _ _ _ _ Ea) E) as [E' | [(w' & E') | E']];
               try discriminate E'; injection E' as ->; destruct Hr; discriminate end).
+  all: try (match goal with E : store_res _ _ _ _ _ = Some ?p0, H3 : checked_res (fst ?p0) _ = RUnchecked _ |- _ =>
+              destruct (fst p0) eqn:F; simpl in H3; try discriminate H3;
+              exact (store_res_checked _ _ _ _ _ _ _ E F) end).
   all: match goal with E : half_res _ _ _ = RUnchecked _ |- _ =>
          unfold half_res in E; cases E; injection E as <-; destruct Hr; discriminate end.
 Qed.

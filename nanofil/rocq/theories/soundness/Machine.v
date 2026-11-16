@@ -229,15 +229,28 @@ Proof.
            | cbn in E; injection E as <-; reflexivity] end.
 Qed.
 
-(** An integer op changes memory only by a [[cas]], which is kept and
-    changes no region; every other one leaves memory as it is. *)
+(** A store changes bytes and capabilities but never the region list,
+    so the objects that existed before it still exist after it. *)
+Lemma store_res_regions : forall w m a c x r m',
+  store_res w m a c x = Some (r, m') -> m_regions m' = m_regions m.
+Proof.
+  unfold store_res. intros w m a c x r m' H.
+  destruct w, x; try discriminate; cases H; inversion H; subst; reflexivity.
+Qed.
+
+(** An integer op changes memory only by a [[cas]] or by the jump-buffer
+    store of `c: setjmp`, both kept and changing no region; every other
+    one leaves memory as it is. *)
 Lemma op_res_int_kept : forall o k xs m r m',
   op_res_int o k xs m = Some (OpRes r m') -> kept m m' /\ m_regions m' = m_regions m.
 Proof.
   unfold op_res_int. intros o k xs m r m' H. destruct o; cases H; inversion H; subst;
     try (split; [apply kept_refl | reflexivity]).
-  match goal with E : cas_res _ _ _ _ _ _ _ = Some ?rm |- _ =>
-    destruct rm; exact (cas_res_kept _ _ _ _ _ _ _ _ _ E) end.
+  - match goal with E : cas_res _ _ _ _ _ _ _ = Some ?rm |- _ =>
+      destruct rm; exact (cas_res_kept _ _ _ _ _ _ _ _ _ E) end.
+  - match goal with E : store_res _ _ _ _ _ = Some ?rm |- _ =>
+      destruct rm; exact (conj (store_res_kept _ _ _ _ _ _ _ E)
+                               (store_res_regions _ _ _ _ _ _ _ E)) end.
 Qed.
 
 (** An op that gives a result changes memory as [kept] allows. *)

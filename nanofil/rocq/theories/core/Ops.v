@@ -596,8 +596,15 @@ Definition integer_source (ik : class) (sg : signedness) (x : Z) : option Z :=
     operations in the core subset: heap [[alloc|allocation]], capability
     [[check|checks]] and their [[reuse]] forms, [[raw-access|raw loads]]
     and raw [[cas]], pointer addition and subtraction, and integer [alu]
-    operations. It returns `None` when the operands have the wrong form
-    or when an operation such as [Setjmp] is stuck in the semantics. *)
+    operations. It also gives `c: setjmp` its first return: the
+    operation stores a pointer to a fresh jump-buffer object into the
+    caller's buffer with an ordinary checked 8-byte pointer store, and
+    returns 0. The stored capability is [CNone], because the runtime's
+    jump-buffer object is a special object that refuses every load and
+    store, and the stored address is 0 because the model does not
+    choose the runtime's address. A second return from `c: setjmp` is
+    not modelled, so every `c: longjmp` stays stuck. The function
+    returns `None` when the operands have the wrong form. *)
 Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
   let pure (x : option word) := let* w := x in Some (OpRes (RVal w) m) in
   let with_mem (r : option (res word)) := let* r' := r in Some (OpRes r' m) in
@@ -692,6 +699,9 @@ Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option o
       | RVal _ => let* x := pointer_load_effects m b es in Some (OpRes (RVal (WPtr x)) m)
       | RTrap why | RUnchecked why => Some (OpRes (RUnchecked why) m)
       end
+  | Setjmp _, W, [WPtr p; _] =>
+      let* rm := store_res Wp m (ptr_addr p) (ptr_cap p) (WPtr (mkPtr 0 CNone)) in
+      Some (OpRes (checked_res (fst rm) (WInt 0)) (snd rm))
   | RawCas t off, _, [WPtr p; e; n] =>
       let* rm := cas_res t k m (raw_address (ptr_addr p) off) (ptr_cap p) e n in
       Some (OpRes (raw_res (fst rm)) (snd rm))

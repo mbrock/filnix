@@ -2460,8 +2460,33 @@ test(setjmp_contract) :-
         ])
     ], Null),
     module_mode(Null, filc),
-    catch(run(Null, f, [], 100, _), nanofil_error(Msg), true),
-    Msg == 'interpreter does not support setjmp/nonlocal returns',
+    % The first return stores the jmpbuf through Buf's capability with
+    % an 8-byte pointer store's check and returns 0; the stored pointer
+    % refuses data accesses.
+    run(Null, f, [], 100, trap(null_capability)),
+    ir_module([
+        func(f, local, w, [param(l, tmp(n)), param(l, tmp(off))], [
+            block(s, [], [
+                let(tmp(obj), p, alloc(8), [tmp(n)]),
+                let(tmp(buf), p, add, [tmp(obj), tmp(off)]),
+                let(tmp(x), w, setjmp('_setjmp'), [tmp(buf), const(0)])
+            ], ret(tmp(x)))
+        ]),
+        func(g, local, w, [], [
+            block(s, [], [
+                let(tmp(buf), p, alloc(8), [const(8)]),
+                let(tmp(x), w, setjmp(setjmp), [tmp(buf), const(0)]),
+                let(tmp(j), p, load(p), [tmp(buf)]),
+                let(tmp(v), w, load(sw), [tmp(j)])
+            ], ret(tmp(v)))
+        ])
+    ], Store),
+    module_mode(Store, filc),
+    forall(member(Args-Want, [[8, 0]-ret(0),
+                              [16, 8]-ret(0), [16, 12]-trap(out_of_bounds),
+                              [24, 4]-trap(misaligned)]),
+           once(run(Store, f, Args, 100, Want))),
+    once(run(Store, g, [], 100, trap(null_capability))),
     rejected_with([
         func(f, local, w, [], [
             block(s, [], [

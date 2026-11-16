@@ -73,6 +73,9 @@ Proof.
               destruct x; cbn [checked_res] in H; try discriminate H;
               exact (access_res_checked _ _ _ _ _ _ _ E _ eq_refl) end).
   all: try (unfold float_integer in H; cases H; fail).
+  all: try (match goal with E : store_res _ _ _ _ _ = Some ?p0 |- _ =>
+              injection H as H3 _; destruct (fst p0) eqn:F; cbn [checked_res] in H3;
+              try discriminate H3; exact (store_res_checked _ _ _ _ _ _ _ E F) end).
   all: match goal with E : va_arg_res _ _ _ = Some ?p0 |- _ =>
          injection H as H3 _; exact (va_arg_reason _ _ _ _ _ E H3) end.
 Qed.

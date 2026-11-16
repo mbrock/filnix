@@ -881,8 +881,14 @@ op_res(Op, K, Mode, Xs, S0, Res, S) :-
 
 % kind_res(+Kind, +Op, +K, +Mode, +Args, +S0, -Res, -S): as op_res/7, for
 % Op of Kind. Loads and allocs use the memory; the rest is arithmetic.
-kind_res(setjmp, _, _, _, _, _, _, _) :-
-    throw(nanofil_error('interpreter does not support setjmp/nonlocal returns')).
+% A setjmp's first return (docs/setjmp.md): the checked pointer store of
+% the runtime's jmpbuf into Buf, which traps as that store does, then 0.
+% The jmpbuf is a special object no load or store may use, so the stored
+% pointer is ptr(0, none). A second return is not modelled: longjmp is
+% an external call.
+kind_res(setjmp, setjmp(_), w, filc, [Buf, _], s(Mem0, Fuel), Res, s(Mem, Fuel)) :-
+    store_res(filc, p, Mem0, Buf, ptr(0, none), Res0, Mem),
+    checked_res(Res0, 0, Res).
 kind_res(load, load(T), K, Mode, Args, S0, Res, S) :-
     load_op_res(T, K, Mode, Args, S0, Res, S).
 kind_res(atomic_load, atomic_load(p), K, Mode, Args, S0, Res, S) :-
