@@ -227,14 +227,7 @@ Proof.
     step_symbolic. match goal with |- context [put (TAtom "lc.13") (WInt ?X) _] => replace X with (Z.of_nat i) end.
     2:{ arith. } step. normp "v95" (b + o + Z.of_nat i).
     pose proof (lookup_lt_Some _ _ _ Hxi) as Hilt.
-    iApply (wp_check_read_dq with "Hl");
-      [reflexivity | reflexivity | exact Hc | arith | arith | apply Z.mod_1_r |].
-    iNext. iIntros "Hl".
-    sym_run "Hl Hx".
-    iApply (wp_check_read_dq with "Hl'");
-      [reflexivity | reflexivity | exact Hc' | arith | arith | apply Z.mod_1_r |].
-    iNext. iIntros "Hl'".
-    sym_run "Hl' Hy".
+    sym_run "Hl Hx Hl' Hy".
     cbn [cond_bit]. rewrite ?Zmod_mod.
     destruct (Z.eq_dec x y) as [<-|Hne].
     + (* Equal bytes: the next. *)

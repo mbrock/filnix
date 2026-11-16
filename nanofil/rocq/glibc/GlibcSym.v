@@ -1062,12 +1062,16 @@ Definition is_live (fs : facts) (b : zexp) (a : atom) : bool :=
 Definition atom_region (a : atom) : nat :=
   match a with ALive _ r | ALiveCap _ r | ALiveQ _ _ r => r | _ => O end.
 
+(** A pointer may name an object through either writable or read-only permission. *)
+Definition creadable (fs : facts) (c : scap) (b : zexp) : bool :=
+  cequal fs c (SCObj b) || cequal fs c (SCRo b) ||
+  existsb (fun f => match f with FReadable c' b' =>
+    csame fs c c' && zlinear_eqb fs b b' end) (f_reads fs).
+
 (** A byte slice permits reads through either writable or read-only capabilities. *)
 Definition is_bytes (fs : facts) (c : scap) (a : atom) : bool :=
   match a with
-  | ABytes _ b _ _ => cequal fs c (SCObj b) || cequal fs c (SCRo b) ||
-      existsb (fun f => match f with FReadable c' b' =>
-        csame fs c c' && zlinear_eqb fs b b' end) (f_reads fs)
+  | ABytes _ b _ _ => creadable fs c b
   | _ => false
   end.
 
@@ -1085,9 +1089,9 @@ Definition read_fraction (ρ : valuation) (a : atom) : option dfrac :=
   | _ => Some (DfracOwn 1)
   end.
 
-(** Selecting a byte slice identifies a capability accepted by the read rule. *)
-Lemma is_bytes_sound ρ fs c q b o l :
-  facts_hold ρ fs -> is_bytes fs c (ABytes q b o l) = true ->
+(** A successful permission test identifies the object that the pointer can read. *)
+Lemma creadable_sound ρ fs c b :
+  facts_hold ρ fs -> creadable fs c b = true ->
   cden ρ c = Obj (zden ρ b) \/ cden ρ c = Ro (zden ρ b).
 Proof.
   intros Hfs H. apply orb_true_iff in H as [H|H].
@@ -1100,6 +1104,12 @@ Proof.
     pose proof (proj2 (proj2 Hfs)) as Hr. rewrite Forall_forall in Hr.
     specialize (Hr _ Hin). cbn [readable_den] in Hr. now rewrite Hc Hb.
 Qed.
+
+(** Selecting a byte slice identifies a capability accepted by the read rule. *)
+Lemma is_bytes_sound ρ fs c q b o l :
+  facts_hold ρ fs -> is_bytes fs c (ABytes q b o l) = true ->
+  cden ρ c = Obj (zden ρ b) \/ cden ρ c = Ro (zden ρ b).
+Proof. apply creadable_sound. Qed.
 
 (** The caller proves that the selected slice contains the requested byte. *)
 Definition sbyte_memory (fs : facts) (s : sstate) (d : name)
@@ -1154,6 +1164,19 @@ Definition check_obs (fs : facts) (b addr : zexp) (r : nat) (lo hi al : Z) : lis
   let a := sraw fs addr lo in
   [OLe b a; OLe (ZAdd a (ZK (hi - lo))) (ZEnd r); OEq (ZMod a al) (ZK 0)].
 
+(** A shared lifetime is enough to check a pointer before a read. *)
+Definition is_read_check (fs : facts) (c : scap) (a : atom) : bool :=
+  match a with ALiveQ _ b _ => creadable fs c b | _ => false end.
+
+(** The check records bounds and alignment without requiring exclusive ownership of the object's lifetime. *)
+Definition sread_check (fs : facts) (s : sstate) (d : name)
+    (lo hi al : Z) (a : zexp) (c : scap) (why : stop_reason) : (stop_reason + sstate)%type :=
+  match pick_atom (is_read_check fs c) (st_heap s) with
+  | Some (_, ALiveQ _ b r, _) =>
+      inr (sbind d (SWPtr a c) (sobserve (check_obs fs b a r lo hi al) s))
+  | _ => inl why
+  end.
+
 (** Checks and loads preserve owned memory and assign their result to a temporary. *)
 Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
     (xs : list sword) (fallback : stop_reason) : (stop_reason + sstate)%type :=
@@ -1162,6 +1185,7 @@ Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
       match o, k, p with
       | RawLoad (LdNarrow Ub) off, W, SWPtr a c
       | RawLoad (LdNarrow Ub) off, L, SWPtr a c => sbyte_memory fs s d off a c
+      | Check lo hi Read al, A, SWPtr a c => sread_check fs s d lo hi al a c why
       | _, _, _ => inl why
       end in
     match p with
@@ -1685,6 +1709,34 @@ Proof.
   iNext. iIntros "Hl". iApply "HK". iFrame.
 Qed.
 
+(** The read check preserves its shared lifetime and binds the checked pointer. *)
+Lemma sym_check_read_rule ρ fs h pre post f e ls l d lo hi al args rest j classes a c q b r Φ :
+  facts_hold ρ fs ->
+  op_arg_classes (Check lo hi Read al) A = Some classes ->
+  map2_option (value_x ge e) classes args = Some [wden ρ (SWPtr a c)] ->
+  pick_atom (is_read_check fs c) h = Some (pre, ALiveQ q b r, post) ->
+  obs_den ρ (check_obs fs b a r lo hi al) ->
+  heap_den ρ h -∗
+  ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWPtr a c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs Hclasses Hargs Hp Hobs.
+  destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hcap].
+  apply (creadable_sound _ _ _ _ Hfs) in Hcap.
+  rewrite (heap_den_pick _ _ _ _ _ _ Hp). cbn [atom_den].
+  destruct (nth_error (vfrac ρ) q) as [dq|] eqn:Hq; [|iIntros "[[] _] _"].
+  destruct (nth_error (vr ρ) r) as [reg|] eqn:Hr; [|iIntros "[[] _] _"].
+  destruct (check_obs_sound _ _ _ _ _ _ _ _ _ Hfs Hr Hobs) as [Hlo [Hhi Hal]].
+  iIntros "[Hl Hrest] HK".
+  iApply (wp_read_dq registry wi ge dq _ _ _ [] with "Hl").
+  - intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf.
+    destruct Hf as [[E _] _].
+    apply rule_let with (classes := classes) (xs := [wden ρ (SWPtr a c)]);
+      [reflexivity | exact Hclasses | exact Hargs |].
+    apply op_check. exact (access_read _ _ _ _ _ _ _ Hcap E Hlo Hhi Hal).
+  - iNext. iIntros "Hl". iApply "HK". iFrame.
+Qed.
+
 (** Renewal reuses a matching capability and checks the new address against the live object's bounds. *)
 Lemma sym_renew_rule ρ fs h pre life post f e ls l d lo hi mode al args rest j classes a1 c1 a c b Φ :
   facts_hold ρ fs ->
@@ -2007,6 +2059,27 @@ Proof.
   apply env_models_put. exact Henv.
 Qed.
 
+(** A shared read check updates the destination while preserving all known temporaries and ownership. *)
+Lemma sread_check_rule ρ fs s s' f e ls l d lo hi al args rest j classes a c why Φ :
+  facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
+  op_arg_classes (Check lo hi Read al) A = Some classes ->
+  map2_option (value_x ge (apply_ups ρ (st_ups s) e)) classes args = Some [wden ρ (SWPtr a c)] ->
+  sread_check fs s d lo hi al a c why = inr s' -> obs_den ρ (st_obs s') ->
+  heap_den ρ (st_heap s) -∗ ▷ next_den ρ f e ls l rest j Φ s' -∗
+  WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None
+    (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs Henv Hclasses Hargs Hstep Hobs.
+  unfold sread_check in Hstep. sym_cases Hstep.
+  injection Hstep as <-. unfold next_den. rewrite apply_ups_sbind.
+  cbn [sbind sobserve st_env st_heap st_ups st_obs] in Hobs |- *.
+  apply Forall_app in Hobs as [_ Hobs].
+  repeat match goal with p : (_ * _)%type |- _ => destruct p end.
+  iIntros "Hheap HK". iApply (sym_check_read_rule with "Hheap"); try eassumption.
+  iNext. iIntros "Hheap". iApply ("HK" with "Hheap"). iPureIntro.
+  apply env_models_put. exact Henv.
+Qed.
+
 (** Successful memory lets preserve the environment and ownership described by their state. *)
 Lemma smemory_rule ρ fs s s' f e ls l d k op args rest j classes xs why Φ :
   facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
@@ -2019,6 +2092,7 @@ Proof.
   intros Hfs Henv Hclasses Hargs Hstep Hobs.
   unfold smemory in Hstep. sym_cases Hstep.
   all: try solve [eapply sbyte_memory_rule; try eassumption; auto].
+  all: try solve [eapply sread_check_rule; eassumption].
   all: injection Hstep as <-; unfold next_den; rewrite apply_ups_sbind;
     cbn [sbind sobserve st_env st_heap st_ups st_obs] in Hobs |- *.
   all: try (apply Forall_app in Hobs as [_ Hobs]).
@@ -2108,6 +2182,15 @@ Proof.
   injection H as <-. eexists. reflexivity.
 Qed.
 
+(** A shared read check appends its bounds without dropping older obligations. *)
+Lemma sread_check_obs fs s d lo hi al a c why s' :
+  sread_check fs s d lo hi al a c why = inr s' ->
+  exists os, st_obs s' = st_obs s ++ os.
+Proof.
+  intros H. unfold sread_check in H. sym_cases H.
+  injection H as <-. eexists. reflexivity.
+Qed.
+
 (** Instructions append conditions rather than forgetting conditions from earlier instructions. *)
 Lemma sym_step_obs fs s i s' : sym_step ge fs s i = inr s' ->
   exists os, st_obs s' = st_obs s ++ os.
@@ -2115,6 +2198,7 @@ Proof.
   intros H. unfold sym_step in H. sym_cases H.
   all: try unfold smemory in H; try unfold sstore in H; sym_cases H.
   all: try solve [eapply sbyte_memory_obs; eassumption].
+  all: try solve [eapply sread_check_obs; eassumption].
   all: injection H as <-; cbn [sbind sobserve st_obs];
     first [eexists; reflexivity | exists []; rewrite app_nil_r; reflexivity].
 Qed.
