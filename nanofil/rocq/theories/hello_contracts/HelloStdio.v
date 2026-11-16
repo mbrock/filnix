@@ -261,9 +261,7 @@ Proof.
   { intros l v Hin. apply Howned, elem_of_app. left. exact Hin. }
   destruct (permission_known _ _ _ _ _ _ _ _ _ Hw Hps) as [Hp _].
   set (dt := permission_descriptor out err p) in *.
-  assert (Hcall' : M.E.invoke (fclose_contract (libc_stream_model rep requests wide))
-    r args [WPtr (token_handle dt)] s m w trace (CallReturn values) s' m' w').
-  { rewrite <- Hp. exact Hcall. }
+  pose proof Hcall as Hcall'. rewrite Hp in Hcall'.
   destruct (A.close_frame rep requests wide out err b o dt r args s m w trace values s' m' w' h xs
     (permission_selected out err p) Hcall' Ha Hd Hr Hw Hxs) as (ys & Hys & Hkeys & Ha' & Hd' & Hr' & Hw').
   { intros l v Hin. apply Howned, elem_of_app. right. exact Hin. }
