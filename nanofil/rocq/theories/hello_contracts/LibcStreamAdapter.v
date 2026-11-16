@@ -377,21 +377,10 @@ Proof.
     (Hout & Herr & _ & _ & _ & _ & _ & _ & Hother).
   assert (Hne : same_file (libc_stderr w) (libc_stdout w) = false).
   { unfold same_file. apply andb_false_iff. left. apply Z.eqb_neq. congruence. }
-  destruct Hwhich as [[-> ->]|[-> ->]].
-  - rewrite same_file_refl in Hother. destruct Hother as (Hfile & Hopen & Hstate).
-    assert (Hlookup : libc_file_at w' (libc_stderr w) = libc_file_at w (libc_stderr w)).
-    { unfold libc_file_at. rewrite Hout Herr Hne same_file_refl Hopen Hfile. reflexivity. }
-    assert (Hprotocol : libc_stream_state w' (libc_stderr w) = libc_stream_state w (libc_stderr w)).
-    { unfold libc_stream_state. rewrite Hout Herr Hne same_file_refl Hstate. reflexivity. }
-    split; [exact Hlookup|]. split; [|exact Hprotocol].
-    unfold libc_stream_at. rewrite Hlookup Hout Hprotocol. reflexivity.
-  - rewrite Hne in Hother. destruct Hother as (Hfile & Hopen & Hstate).
-    assert (Hlookup : libc_file_at w' (libc_stdout w) = libc_file_at w (libc_stdout w)).
-    { unfold libc_file_at. rewrite Hout same_file_refl Hopen Hfile. reflexivity. }
-    assert (Hprotocol : libc_stream_state w' (libc_stdout w) = libc_stream_state w (libc_stdout w)).
-    { unfold libc_stream_state. rewrite Hout same_file_refl Hstate. reflexivity. }
-    split; [exact Hlookup|]. split; [|exact Hprotocol].
-    unfold libc_stream_at. rewrite Hlookup Hout Hprotocol. reflexivity.
+  destruct Hwhich as [[-> ->]|[-> ->]];
+    rewrite ?same_file_refl ?Hne in Hother; destruct Hother as (Hfile & Hopen & Hstate);
+    unfold libc_stream_at, libc_file_at, libc_stream_state;
+    rewrite Hout Herr ?same_file_refl ?Hne Hopen Hfile Hstate; repeat split; reflexivity.
 Qed.
 
 Module LibcStreamAdapterOn (R : Runtime) (LG : StreamFrameLogic R).
