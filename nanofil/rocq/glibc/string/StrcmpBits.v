@@ -16,6 +16,7 @@ From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From Stdlib Require Import ZArith Lia List Bool.
 From Nanofil Require Import Syntax Values Memory Ops.
+From Nanofil Require Import Lanes.
 From Glibc Require Import StrlenBits StrlenLogic WordString.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -303,12 +304,7 @@ Definition cmp_mask (x y : Z) : Z :=
 (** Masking each byte to its low seven bits and adding 127 never carries
     across byte boundaries. *)
 Lemma add_ones7 z i : 0 <= i < 8 -> byte_of (Z.land z ones7 mod 2 ^ 64 + ones7) i = Z.land (byte_of z i) 127 + 127.
-Proof.
-  intros Hi. rewrite byte_of_add; [| |lia].
-  - rewrite byte_of_mod64; [|lia]. rewrite byte_of_land; [|lia]. rewrite byte_ones7; [reflexivity|lia].
-  - intros j Hj. rewrite byte_of_mod64; [|lia]. rewrite byte_of_land; [|lia]. rewrite byte_ones7; [|lia].
-    pose proof (land127 (byte_of z j) (byte_of_range z j)). lia.
-Qed.
+Proof. intros Hi. sw_lanes. Qed.
 
 (** Exhaustive evaluation confirms that the byte-level formula of
     [cmp_mask] yields 128 when b1 is 0 or differs from b2, and 0
@@ -330,16 +326,7 @@ Qed.
     differs from byte i of y, and 0 otherwise. *)
 Lemma cmp_mask_byte x y i : 0 <= i < 8 ->
   byte_of (cmp_mask x y) i = if (byte_of x i =? 0) || negb (byte_of x i =? byte_of y i) then 128 else 0.
-Proof.
-  intros Hi. assert (Hi0 : 0 <= i) by lia. unfold cmp_mask.
-  change (9187201950435737471 mod 2 ^ 64) with ones7. change (9259542123273814144 mod 2 ^ 64) with highs.
-  change (-1 mod 2 ^ 64) with all64.
-  pose proof (fun z => byte_of_mod64 z i Hi) as M. pose proof (fun a b => byte_of_land a b i Hi0) as La.
-  pose proof (fun a b => byte_of_lor a b i Hi0) as Lo. pose proof (fun a b => byte_of_lxor a b i Hi0) as Lx.
-  pose proof (fun z => add_ones7 z i Hi) as Ad.
-  do 6 rewrite ?M ?La ?Lo ?Lx ?Ad ?(byte_ones7 i Hi) ?(byte_highs i Hi) ?(byte_all64 i Hi).
-  apply cmp_on_bytes; apply byte_of_range.
-Qed.
+Proof. intros Hi. unfold cmp_mask. sw_lanes. Qed.
 
 (** The value of [cmp_mask] x y always fits in an unsigned 64-bit word. *)
 Lemma cmp_mask_range x y : 0 <= cmp_mask x y < 2 ^ 64.
