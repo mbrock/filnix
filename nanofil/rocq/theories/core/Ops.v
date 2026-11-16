@@ -601,8 +601,9 @@ Definition integer_source (ik : class) (sg : signedness) (x : Z) : option Z :=
     caller's buffer with an ordinary checked 8-byte pointer store, and
     returns 0. The stored capability is [CNone], because the runtime's
     jump-buffer object is a special object that refuses every load and
-    store, and the stored address is 0 because the model does not
-    choose the runtime's address. A second return from `c: setjmp` is
+    store. The stored address is the buffer's own address, which is
+    nonzero like the runtime's object, so the pointer never compares
+    equal to null and `c: free` through it traps. A second return from `c: setjmp` is
     not modelled, so every `c: longjmp` stays stuck. The function
     returns `None` when the operands have the wrong form. *)
 Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option op_out :=
@@ -700,7 +701,7 @@ Definition op_res_int (o : op) (k : class) (xs : list word) (m : mem) : option o
       | RTrap why | RUnchecked why => Some (OpRes (RUnchecked why) m)
       end
   | Setjmp _, W, [WPtr p; _] =>
-      let* rm := store_res Wp m (ptr_addr p) (ptr_cap p) (WPtr (mkPtr 0 CNone)) in
+      let* rm := store_res Wp m (ptr_addr p) (ptr_cap p) (WPtr (mkPtr (ptr_addr p) CNone)) in
       Some (OpRes (checked_res (fst rm) (WInt 0)) (snd rm))
   | RawCas t off, _, [WPtr p; e; n] =>
       let* rm := cas_res t k m (raw_address (ptr_addr p) off) (ptr_cap p) e n in

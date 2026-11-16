@@ -19,7 +19,8 @@ explicit diagnostic. The interpreter and the Rocq model (`op_res_int` in
 `rocq/theories/core/Ops.v`) execute only the first return: a checked
 8-byte pointer store into `Buf`, which traps as that store does, of a
 pointer with no capability standing for the runtime's jmpbuf, and then
-the result 0. They do not model a second return, so a longjmp stays an
+the result 0. The stored pointer's address is `Buf`'s own, so like the
+jmpbuf it is not null, and `free` through it traps. They do not model a second return, so a longjmp stays an
 external call the interpreter cannot run and the model is stuck on.
 The longjmp family uses ordinary Fil-C calls.
 

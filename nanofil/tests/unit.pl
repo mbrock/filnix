@@ -2462,7 +2462,7 @@ test(setjmp_contract) :-
     module_mode(Null, filc),
     % The first return stores the jmpbuf through Buf's capability with
     % an 8-byte pointer store's check and returns 0; the stored pointer
-    % refuses data accesses.
+    % refuses data accesses but is not null.
     run(Null, f, [], 100, trap(null_capability)),
     ir_module([
         func(f, local, w, [param(l, tmp(n)), param(l, tmp(off))], [
@@ -2479,6 +2479,23 @@ test(setjmp_contract) :-
                 let(tmp(j), p, load(p), [tmp(buf)]),
                 let(tmp(v), w, load(sw), [tmp(j)])
             ], ret(tmp(v)))
+        ]),
+        func(isnull, local, w, [], [
+            block(s, [], [
+                let(tmp(buf), p, alloc(8), [const(8)]),
+                let(tmp(x), w, setjmp(setjmp), [tmp(buf), const(0)]),
+                let(tmp(j), p, load(p), [tmp(buf)]),
+                let(tmp(a), l, ptoi, [tmp(j)]),
+                let(tmp(z), w, cmp(eq, l), [tmp(a), const(0)])
+            ], ret(tmp(z)))
+        ]),
+        func(freed, local, void, [], [
+            block(s, [], [
+                let(tmp(buf), p, alloc(8), [const(8)]),
+                let(tmp(x), w, setjmp(setjmp), [tmp(buf), const(0)]),
+                let(tmp(j), p, load(p), [tmp(buf)]),
+                call(void, global(free), [arg(p, tmp(j))])
+            ], ret)
         ])
     ], Store),
     module_mode(Store, filc),
@@ -2487,6 +2504,9 @@ test(setjmp_contract) :-
                               [24, 4]-trap(misaligned)]),
            once(run(Store, f, Args, 100, Want))),
     once(run(Store, g, [], 100, trap(null_capability))),
+    % Like the runtime's jmpbuf, the stored pointer is not null.
+    once(run(Store, isnull, [], 100, ret(0))),
+    once(run(Store, freed, [], 100, trap(invalid_free))),
     rejected_with([
         func(f, local, w, [], [
             block(s, [], [

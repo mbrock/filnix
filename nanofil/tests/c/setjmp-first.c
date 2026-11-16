@@ -1,13 +1,17 @@
 // The first return of setjmp stores the runtime's jmpbuf into the
 // caller's buffer with a checked 8-byte pointer store and returns 0; the
 // interpreter models only that return (docs/setjmp.md). A buffer the
-// store cannot write traps, out of bounds or misaligned.
+// store cannot write traps, out of bounds or misaligned. The stored
+// pointer is not null, and free through it traps.
 #include <setjmp.h>
+#include <stdlib.h>
 
 // run: $global_buf
 // run: $local_buf 13
 // run: $small_buf
 // run: $misaligned_buf
+// run: $stored_not_null
+// run: $free_stored
 
 static jmp_buf b;
 static char small[16];
@@ -33,4 +37,17 @@ int small_buf(void) {
 
 int misaligned_buf(void) {
     return _setjmp(*(jmp_buf *)((char *)words + 4));
+}
+
+int stored_not_null(void) {
+    static jmp_buf c;
+    setjmp(c);
+    return *(void **)c != NULL;
+}
+
+int free_stored(void) {
+    static jmp_buf c;
+    setjmp(c);
+    free(*(void **)c);
+    return 7;
 }
