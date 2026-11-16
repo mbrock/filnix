@@ -18,6 +18,7 @@ errno_loc csu/errno-loc.os
 - posix/environ.os stdlib/getrandom.os dlfcn/libc_dlerror_result.os elf/enbl-secure.os
 - elf/dl-tunables.os elf/dl-support.os resource/getrlimit64.os csu/init-first.os misc/init-misc.os
 - string/strrchr.os time/clock_gettime.os string/memrchr.os
+- locale/global-locale.os locale/C-ctype.os
 '''
 fixtures = '''
 HiAtexit||||rocq/glibc/hi_atexit.c
