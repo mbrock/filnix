@@ -569,19 +569,15 @@ Proof.
   intros rep requests r args category p s m w trace values s' m' w' Hnonnull Hcall.
   destruct (setlocale_setter_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hnonnull Hcall)
     as (_ & Hready & _).
-  assert (Hcat : In category locale_categories).
-  { inversion Hcall; subst.
-    match goal with Hpre : contract_pre _ _ _ _ |- _ =>
-      destruct Hpre as (_ & (_ & cat & q & Hxs & Hcat & _) & _)
-    end. injection Hxs as <- <-. exact Hcat. }
-  assert (Hpost :
-    setlocale_post [WInt category; WPtr p] m (libc_locale (fst w)) [] trace
-      (CallReturn values) m' (libc_locale (fst w'))).
-  { inversion Hcall; subst. assumption. }
-  destruct Hpost as (cat & q & Hxs & Hpost). injection Hxs as <- <-.
+  inversion Hcall; subst.
+  match goal with Hpre : contract_pre _ _ _ _, Hpost : contract_post _ _ _ _ _ _ _ _ _ |- _ =>
+    destruct Hpre as (_ & (_ & cat & q & Hxs & Hcat & _) & _);
+    destruct Hpost as (cat' & q' & Hxs' & Hresult)
+  end.
+  injection Hxs as <- <-. injection Hxs' as <- <-.
   assert (Hquery : locale_query [WInt category; WPtr p] = false)
     by (apply Z.eqb_neq; exact Hnonnull).
-  rewrite Hquery in Hpost. destruct Hpost as [[Hret Hunchanged]|[Hret Hselected]];
+  rewrite Hquery in Hresult. destruct Hresult as [[Hret Hunchanged]|[Hret Hselected]];
     injection Hret as ->; [left; auto|right; split; [reflexivity|]].
   split; [exact Hselected|].
   exact (proj1 (proj2 (libc_name rep m' w' category Hready Hcat))).
