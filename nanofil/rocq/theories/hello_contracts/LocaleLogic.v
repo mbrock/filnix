@@ -295,9 +295,8 @@ Proof.
   rewrite Hq in Hpre. destruct Hpre as (Hready & Hdel & _).
   unfold setlocale_contract in Hpost. cbn [contract_post] in Hpost.
   destruct Hpost as (c' & p' & Hxs & Hend). injection Hxs as <- <-. rewrite Hq in Hend.
-  exists (match values with [WPtr q] => q | _ => mkPtr 0 CNone end), (current_names w'),
-    (codec_ps (locale_codec w')).
   destruct Hend as [[Hv _] | [Hv _]]; injection Hv as ->.
+  all: eexists; exists (current_names w'), (codec_ps (locale_codec w')).
   all: split; [reflexivity|]; split; [auto|].
   all: split; [eexists; reflexivity|]; split; [reflexivity|].
   all: split; [constructor; [intros m0; exact I | constructor]|].
