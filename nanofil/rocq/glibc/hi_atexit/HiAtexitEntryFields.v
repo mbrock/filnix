@@ -19,18 +19,18 @@ Import LibioFlushInv FileInv HLG HLG.L OsWorld.
 
 (** Every jump-table slot carries the actual linked function pointer. *)
 Definition hi_entry_vtables_ps : list (piece * pval) :=
-  [(PLive 71072, VLive (mkRegion 71072 73424 GlobalData Live))] ++
-  concat (map (fun sl => hi_pointer_ps 71072 (vt_file + sl.1) (sym_ptr hge sl.2)) file_jumps).
+  [(PLive 73504, VLive (mkRegion 73504 75856 GlobalData Live))] ++
+  concat (map (fun sl => hi_pointer_ps 73504 (vt_file + sl.1) (sym_ptr hge sl.2)) file_jumps).
 
 (** The host-prepared single-thread flag has value one. *)
 Definition hi_entry_single_ps : list (piece * pval) :=
-  [(PLive 73808, VLive (mkRegion 73808 73816 GlobalData Live)); (PByte 73808 0, VByte 1)].
+  [(PLive 76240, VLive (mkRegion 76240 76248 GlobalData Live)); (PByte 76240 0, VByte 1)].
 
 (** The program reads its global stdout pointer and one aligned word
     containing hello and the terminating zero byte. *)
 Definition hi_entry_program_ps : list (piece * pval) :=
-  concat [[(PLive 70976, VLive (mkRegion 70976 70984 GlobalData Live))];
-    hi_pointer_ps 70976 0 (mkPtr 69808 (Obj 69808));
+  concat [[(PLive 73408, VLive (mkRegion 73408 73416 GlobalData Live))];
+    hi_pointer_ps 73408 0 (mkPtr 72240 (Obj 72240));
     [(PLive 65568, VLive (mkRegion 65568 65576 GlobalData Live))]; cell 65568 0 478560413032].
 
 (** The saved jump-buffer pointer remains a parameter. The cleanup
@@ -46,7 +46,7 @@ Context `{!gen_heapGS piece pval Σ}.
 (** Discarding the table's full share produces the persistent shares
     used by the existing call rules. No extra ownership is assumed. *)
 Lemma hi_entry_vtables_own : pts hi_entry_vtables_ps ==∗
-  vtables_ro hge 71072 (mkRegion 71072 73424 GlobalData Live).
+  vtables_ro hge 73504 (mkRegion 73504 75856 GlobalData Live).
 Proof.
   iIntros "H". iMod (ptsq_persist (DfracOwn 1) _ with "H") as "#H".
   iModIntro. rewrite /vtables_ro. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
@@ -58,7 +58,7 @@ Qed.
 
 (** The initialized byte supplies the persistent single-thread flag. *)
 Lemma hi_entry_single_own : pts hi_entry_single_ps ==∗
-  single_ro hge 73808 (mkRegion 73808 73816 GlobalData Live).
+  single_ro hge 76240 (mkRegion 76240 76248 GlobalData Live).
 Proof.
   iIntros "H". iMod (ptsq_persist (DfracOwn 1) _ with "H") as "#H".
   iModIntro. rewrite /single_ro /FileInv.ML.bytesq. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
@@ -69,8 +69,8 @@ Qed.
 (** The string predicate includes its aligned read window, not just
     the five visible characters. *)
 Lemma hi_entry_program_own : pts hi_entry_program_ps ⊢
-  live 70976 (mkRegion 70976 70984 GlobalData Live) ∗
-  pcell 70976 0 (mkPtr 69808 (Obj 69808)) ∗
+  live 73408 (mkRegion 73408 73416 GlobalData Live) ∗
+  pcell 73408 0 (mkPtr 72240 (Obj 72240)) ∗
   word_string (DfracOwn 1) (mkPtr 65568 (Ro 65568)) [104; 101; 108; 108; 111].
 Proof.
   rewrite /hi_entry_program_ps hi_pts_concat. cbn [big_opL].

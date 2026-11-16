@@ -68,7 +68,7 @@ Lemma hi_puts_L180 s e so soreg fb eb vb vreg Φ :
   WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
 Proof.
   intros Hgso Hsoal Hsoend Heb.
-  assert (Hsofixed : so = 70976) by (vm_compute in Hgso; congruence). subst so.
+  assert (Hsofixed : so = 73408) by (vm_compute in Hgso; congruence). subst so.
   iIntros "Hso Hsoc Hf [#Hvt HM] HK".
   iDestruct "Hf" as (fb' freg nb wp we lb (Hfp & Hfb & Hal & Hend & Hreg & Hlb & Hprogress))
     "(Hl & Hvtp & Hwb & Hxf & Htail)". injection Hfp as <-.

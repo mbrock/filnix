@@ -22,21 +22,21 @@ Import LibioStdfiles FileInv FileInv.ML FileInv.LG FileInv.L.
 
 (** The static list runs from stderr through stdout to stdin. *)
 Definition hi_initial_streams : list ptr :=
-  [mkPtr 69328 (Obj 69328); mkPtr 69808 (Obj 69808); mkPtr 69568 (Obj 69568)].
+  [mkPtr 71760 (Obj 71760); mkPtr 72240 (Obj 72240); mkPtr 72000 (Obj 72000)].
 
 (** These pieces exclude stdout's life, which the puts image already
     owns. The constructor borrows that life and returns all three. *)
 Definition hi_initial_list_ps : list (piece * pval) :=
-  concat [[(PLive 69328, VLive (mkRegion 69328 69552 GlobalData Live))];
-    [(PLive 69568, VLive (mkRegion 69568 69792 GlobalData Live))];
-    hi_pointer_ps 69328 184 null; hi_pointer_ps 69328 104 (mkPtr 69808 (Obj 69808));
-    hi_pointer_ps 69808 184 null; hi_pointer_ps 69808 104 (mkPtr 69568 (Obj 69568));
-    hi_pointer_ps 69568 184 null; hi_pointer_ps 69568 104 null;
-    [(PLive 70048, VLive (mkRegion 70048 70056 GlobalData Live))];
-    hi_pointer_ps 70048 0 (mkPtr 69328 (Obj 69328));
-    [(PLive 69216, VLive (mkRegion 69216 69232 GlobalData Live))];
-    byte_ps 69216 0 (int_bytes 0); byte_ps 69216 4 (int_bytes 0); hi_pointer_ps 69216 8 null;
-    [(PLive 69248, VLive (mkRegion 69248 69256 GlobalData Live))]; hi_pointer_ps 69248 0 null].
+  concat [[(PLive 71760, VLive (mkRegion 71760 71984 GlobalData Live))];
+    [(PLive 72000, VLive (mkRegion 72000 72224 GlobalData Live))];
+    hi_pointer_ps 71760 184 null; hi_pointer_ps 71760 104 (mkPtr 72240 (Obj 72240));
+    hi_pointer_ps 72240 184 null; hi_pointer_ps 72240 104 (mkPtr 72000 (Obj 72000));
+    hi_pointer_ps 72000 184 null; hi_pointer_ps 72000 104 null;
+    [(PLive 72480, VLive (mkRegion 72480 72488 GlobalData Live))];
+    hi_pointer_ps 72480 0 (mkPtr 71760 (Obj 71760));
+    [(PLive 71648, VLive (mkRegion 71648 71664 GlobalData Live))];
+    byte_ps 71648 0 (int_bytes 0); byte_ps 71648 4 (int_bytes 0); hi_pointer_ps 71648 8 null;
+    [(PLive 71680, VLive (mkRegion 71680 71688 GlobalData Live))]; hi_pointer_ps 71680 0 null].
 
 (** The constructor's entire input image agrees with the linked memory. *)
 Lemma hi_initial_list_agree : all_agree hi_m0 hi_initial_list_ps.
@@ -60,25 +60,25 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
     stream-list invariant from its static input. It returns every
     stream's life so the caller can restore stdout's output predicate. *)
 Lemma hi_initial_list_construct Φ :
-  pts hi_initial_list_ps -∗ live 69808 hi_stdout_reg -∗
+  pts hi_initial_list_ps -∗ live 72240 hi_stdout_reg -∗
   ▷ (io_list_inv hge hi_initial_streams -∗ ([∗ list] f ∈ hi_initial_streams, stream_live f) -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_stdfiles_init [] [] None (Enter (TAtom "start") None)) : sexpr) {{ Φ }}.
 Proof.
   rewrite /hi_initial_list_ps hi_pts_concat. cbn [big_opL].
   iIntros "(He & Hi & Hep & Hec & Hop & Hoc & Hip & Hic & Hla & Hlac & Hlk & Hlk0 & Hlk4 & Hlk8 & Hrf & Hrfc & _) Ho HK".
   iApply (wp_glibc_stdfiles_init (glibc_program := program_of w0 glibc_os_registry hge) _
-    (mkPtr 69328 (Obj 69328)) (mkPtr 69808 (Obj 69808)) (mkPtr 69568 (Obj 69568))
-    70048 (mkRegion 70048 70056 GlobalData Live) 69216 (mkRegion 69216 69232 GlobalData Live)
-    69248 (mkRegion 69248 69256 GlobalData Live)
+    (mkPtr 71760 (Obj 71760)) (mkPtr 72240 (Obj 72240)) (mkPtr 72000 (Obj 72000))
+    72480 (mkRegion 72480 72488 GlobalData Live) 71648 (mkRegion 71648 71664 GlobalData Live)
+    71680 (mkRegion 71680 71688 GlobalData Live)
     with "Hla Hlac [He Hep Hec] [Ho Hop Hoc] [Hi Hip Hic] [Hlk Hlk0 Hlk4 Hlk8] Hrf Hrfc HK");
     [reflexivity | vm_compute; reflexivity | vm_compute; reflexivity | vm_compute; reflexivity
     | vm_compute; reflexivity | vm_compute; intuition congruence
     | vm_compute; reflexivity | vm_compute; intuition congruence | | | |].
-  - iExists 69328, (mkRegion 69328 69552 GlobalData Live). iFrame "He Hep Hec".
+  - iExists 71760, (mkRegion 71760 71984 GlobalData Live). iFrame "He Hep Hec".
     iPureIntro. vm_compute. intuition congruence.
-  - iExists 69808, hi_stdout_reg. iFrame "Ho Hop Hoc".
+  - iExists 72240, hi_stdout_reg. iFrame "Ho Hop Hoc".
     iPureIntro. vm_compute. intuition congruence.
-  - iExists 69568, (mkRegion 69568 69792 GlobalData Live). iFrame "Hi Hip Hic".
+  - iExists 72000, (mkRegion 72000 72224 GlobalData Live). iFrame "Hi Hip Hic".
     iPureIntro. vm_compute. intuition congruence.
   - unfold lock_state, int_cell. iFrame "Hlk Hlk0 Hlk4 Hlk8".
     iPureIntro. vm_compute. intuition congruence.

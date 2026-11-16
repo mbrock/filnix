@@ -25,19 +25,19 @@ Proof.
 Qed.
 
 (** The allocator's configuration occupies this static region. *)
-Definition hi_mp_reg : region := mkRegion 66464 66600 GlobalData Live.
+Definition hi_mp_reg : region := mkRegion 68800 68936 GlobalData Live.
 
 (** The thread-cache pointer occupies this TLS region. *)
-Definition hi_tc_reg : region := mkRegion 66624 66632 GlobalData Live.
+Definition hi_tc_reg : region := mkRegion 68992 69000 GlobalData Live.
 
 (** The empty cache bins belong to the read-only dummy object. *)
-Definition hi_dummy_reg : region := mkRegion 65680 66448 GlobalData Live.
+Definition hi_dummy_reg : region := mkRegion 65888 66656 GlobalData Live.
 
 (** The allocator reads these three objects in this exact image. *)
 Lemma hi_allocator_regions :
-  object_region 66464 (m_regions hi_m0) = Some hi_mp_reg /\
-  object_region 66624 (m_regions hi_m0) = Some hi_tc_reg /\
-  object_region 65680 (m_regions hi_m0) = Some hi_dummy_reg.
+  object_region 68800 (m_regions hi_m0) = Some hi_mp_reg /\
+  object_region 68992 (m_regions hi_m0) = Some hi_tc_reg /\
+  object_region 65888 (m_regions hi_m0) = Some hi_dummy_reg.
 Proof. vm_compute. repeat split; reflexivity. Qed.
 
 (** A pointer's image includes its capability slot and address bytes. *)
@@ -47,11 +47,11 @@ Definition hi_pointer_ps (b o : Z) (p : ptr) : list (piece * pval) :=
 (** Before allocating a buffer, glibc reads its configuration and empty
     cache bins. This list records those fields and their owning objects. *)
 Definition hi_allocator_ps : list (piece * pval) :=
-  concat [[(PLive 66464, VLive hi_mp_reg)]; cell 66464 120 1041;
-    [(PLive 66624, VLive hi_tc_reg)]; (PAux 66624 0, VAux (Ro 65680)) :: cell 66624 0 65680;
-    [(PLive 65680, VLive hi_dummy_reg)];
-    concat (map (fun i => (PAux 65680 (152 + 8 * i), VAux CNone) ::
-      cell 65680 (152 + 8 * i) 0) (seqZ 0 64))].
+  concat [[(PLive 68800, VLive hi_mp_reg)]; cell 68800 120 1041;
+    [(PLive 68992, VLive hi_tc_reg)]; (PAux 68992 0, VAux (Ro 65888)) :: cell 68992 0 65888;
+    [(PLive 65888, VLive hi_dummy_reg)];
+    concat (map (fun i => (PAux 65888 (152 + 8 * i), VAux CNone) ::
+      cell 65888 (152 + 8 * i) 0) (seqZ 0 64))].
 
 (** Every allocator piece agrees with the actual initial image,
     including the pointer capabilities and every empty cache bin. *)

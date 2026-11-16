@@ -23,7 +23,7 @@ Proof. induction pss as [|ps pss IH]; cbn [concat]; rewrite ?pts_app ?IH; done. 
 (** Puts can use the allocator's initial fields directly. The proof
     supplies its allocation precondition without assuming extra storage. *)
 Lemma hi_allocator_own : pts hi_allocator_ps ⊢
-  hi_malloc_state (DfracOwn 1) 66464 66624 65680 hi_mp_reg hi_tc_reg hi_dummy_reg.
+  hi_malloc_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg.
 Proof.
   rewrite /hi_allocator_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hmp & Hmax & Htc & Htcp & Hdm & Hbins & _)".

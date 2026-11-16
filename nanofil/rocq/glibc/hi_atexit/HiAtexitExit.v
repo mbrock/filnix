@@ -20,7 +20,7 @@ Open Scope Z_scope.
 Import ExitRun ExitRunTail AtexitLogic HLG HLG.L LibioFlushInv FileInv.
 
 (** The remaining streams are stderr and stdin, in list order. *)
-Definition hi_exit_streams : list ptr := [mkPtr 69328 (Obj 69328); mkPtr 69568 (Obj 69568)].
+Definition hi_exit_streams : list ptr := [mkPtr 71760 (Obj 71760); mkPtr 72000 (Obj 72000)].
 
 (** Atexit receives the actual linked close callback's function pointer. *)
 Definition hi_close_ptr : ptr := mkPtr 65536 (Fn (TAtom "hi_atexit#close_stdout_hi")).
@@ -31,19 +31,19 @@ Context `{!gen_heapGS piece pval Σ}.
 (** Cleanup owns the initialized thread and remaining streams, with
     no pending output in either stream. *)
 Definition hi_exit_tail_state (w0 : os_world) : iProp Σ :=
-  single_ro hge 73808 (mkRegion 73808 73816 GlobalData Live) ∗
+  single_ro hge 76240 (mkRegion 76240 76248 GlobalData Live) ∗
   tcb_cleanup_inv (ow_self w0) ∗ io_list_inv hge hi_exit_streams ∗
   [∗ list] g ∈ hi_exit_streams, stream_life g ∗ exit_stream false g.
 
 (** The callback additionally owns stdout after puts and its global
     pointer. The other streams keep their fields while stdout closes. *)
 Definition hi_exit_callback_state (w0 : os_world) (s : list Z) : iProp Σ :=
-  vtables_ro hge 71072 (mkRegion 71072 73424 GlobalData Live) ∗
-  single_ro hge 73808 (mkRegion 73808 73816 GlobalData Live) ∗
+  vtables_ro hge 73504 (mkRegion 73504 75856 GlobalData Live) ∗
+  single_ro hge 76240 (mkRegion 76240 76248 GlobalData Live) ∗
   tcb_cleanup_inv (ow_self w0) ∗
-  live 70976 (mkRegion 70976 70984 GlobalData Live) ∗ pcell 70976 0 (mkPtr 69808 (Obj 69808)) ∗
-  hi_stdout_after w0 68176 71072 s (mkPtr 69808 (Obj 69808)) None ∗
-  io_list_inv hge [mkPtr 69328 (Obj 69328); mkPtr 69808 (Obj 69808); mkPtr 69568 (Obj 69568)] ∗
+  live 73408 (mkRegion 73408 73416 GlobalData Live) ∗ pcell 73408 0 (mkPtr 72240 (Obj 72240)) ∗
+  hi_stdout_after w0 70608 73504 s (mkPtr 72240 (Obj 72240)) None ∗
+  io_list_inv hge [mkPtr 71760 (Obj 71760); mkPtr 72240 (Obj 72240); mkPtr 72000 (Obj 72000)] ∗
   [∗ list] g ∈ hi_exit_streams, stream_life g ∗ exit_stream false g.
 
 End resources.
@@ -63,18 +63,18 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 
 (** Closing stdout returns the resources for the remaining cleanup.
     Output errors may instead end the process; success is not assumed. *)
-Lemma hi_exit_callback s : s <> [] -> ow_errno w0 = Some (mkPtr 68176 (Obj 68176)) ->
+Lemma hi_exit_callback s : s <> [] -> ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) ->
   hi_exit_callback_state w0 s -∗
   WP (ERun hi_close_frame : sexpr) {{ o, ⌜o = RetVoid⌝ ∗ hi_exit_tail_state w0 }}.
 Proof.
   intros Hs Heb. rewrite /hi_exit_callback_state.
   iIntros "(Hvt & #Hs & Htcb & Hso & Hsoc & Hout & Hio & Hrest)".
   iDestruct (big_sepL_sep with "Hrest") as "[Hlives Hfields]".
-  iApply (hi_stdout_after_close w0 s [mkPtr 69328 (Obj 69328)] [mkPtr 69568 (Obj 69568)]
-    (mkPtr 69808 (Obj 69808)) 68176 71072 (mkRegion 71072 73424 GlobalData Live)
-    73808 (mkRegion 73808 73816 GlobalData Live)
-    (mkPtr 68672 (Fn (TAtom "glibc_genops#flush_cleanup"))) (mkPtr 69568 (Obj 69568))
-    70976 (mkRegion 70976 70984 GlobalData Live)
+  iApply (hi_stdout_after_close w0 s [mkPtr 71760 (Obj 71760)] [mkPtr 72000 (Obj 72000)]
+    (mkPtr 72240 (Obj 72240)) 70608 73504 (mkRegion 73504 75856 GlobalData Live)
+    76240 (mkRegion 76240 76248 GlobalData Live)
+    (mkPtr 71104 (Fn (TAtom "glibc_genops#flush_cleanup"))) (mkPtr 72000 (Obj 72000))
+    73408 (mkRegion 73408 73416 GlobalData Live)
     with "Hvt Hs Htcb Hso Hsoc Hout Hio Hlives");
     [exact Hs | vm_compute; reflexivity | reflexivity | cbn; lia
     | vm_compute; reflexivity | vm_compute; reflexivity | cbn; lia | cbn; lia
@@ -85,7 +85,7 @@ Proof.
 Qed.
 
 (** The linked handler has the calling convention that atexit expects. *)
-Lemma hi_exit_handler s : s <> [] -> ow_errno w0 = Some (mkPtr 68176 (Obj 68176)) ->
+Lemma hi_exit_handler s : s <> [] -> ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) ->
   ⊢ exit_handler w0 hge 0 (hi_close_ptr, null, null)
     (hi_exit_callback_state w0 s) (hi_exit_tail_state w0).
 Proof.
@@ -101,16 +101,16 @@ Qed.
     The remaining premises describe the registration objects and OS
     world, not unproved call rules. *)
 Lemma hi_exit_after_puts s Φ :
-  s <> [] -> ow_errno w0 = Some (mkPtr 68176 (Obj 68176)) ->
+  s <> [] -> ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) ->
   loop_env w0 hge hi_exit_objs ->
-  exit_lock_env w0 hge 73728 (mkRegion 73728 73744 GlobalData Live) ->
+  exit_lock_env w0 hge 76160 (mkRegion 76160 76176 GlobalData Live) ->
   exit_funcs_inv hi_exit_objs [(hi_close_ptr, null, null)] 1 -∗
-  exit_lock_free 73728 (mkRegion 73728 73744 GlobalData Live) -∗
+  exit_lock_free 76160 (mkRegion 76160 76176 GlobalData Live) -∗
   hi_exit_callback_state w0 s -∗
   WP (ERun (mkFrame glibc_exit [(TAtom "v0", WInt 0)] [] None (Enter (TAtom "start") None)) : sexpr) {{ Φ }}.
 Proof.
   intros Hs Heb Henv Hlock. iIntros "Hinv Hlock HP".
-  iApply (wp_glibc_exit w0 hge hi_exit_objs 73728 (mkRegion 73728 73744 GlobalData Live)
+  iApply (wp_glibc_exit w0 hge hi_exit_objs 76160 (mkRegion 76160 76176 GlobalData Live)
     [(hi_close_ptr, null, null)] 1 0 (hi_exit_callback_state w0 s)
     (fun n => match n with O => hi_exit_tail_state w0 | S _ => hi_exit_callback_state w0 s end)
     with "Hinv Hlock HP [] [] []");

@@ -43,16 +43,16 @@ Context `{!gen_heapGS piece pval Σ}.
 (** Main owns the initialized streams, thread, allocator and empty
     callback array. The string includes the aligned window strlen reads. *)
 Definition hi_main_state (w0 : os_world) : iProp Σ :=
-  vtables_ro hge 71072 (mkRegion 71072 73424 GlobalData Live) ∗
-  single_ro hge 73808 (mkRegion 73808 73816 GlobalData Live) ∗
+  vtables_ro hge 73504 (mkRegion 73504 75856 GlobalData Live) ∗
+  single_ro hge 76240 (mkRegion 76240 76248 GlobalData Live) ∗
   tcb_cleanup_inv (ow_self w0) ∗
-  live 70976 (mkRegion 70976 70984 GlobalData Live) ∗ pcell 70976 0 (mkPtr 69808 (Obj 69808)) ∗
-  hi_stdout_before w0 68176 71072 (mkPtr 69808 (Obj 69808)) 0 None ∗
-  hi_malloc_state (DfracOwn 1) 66464 66624 65680 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
-  io_list_inv hge [mkPtr 69328 (Obj 69328); mkPtr 69808 (Obj 69808); mkPtr 69568 (Obj 69568)] ∗
+  live 73408 (mkRegion 73408 73416 GlobalData Live) ∗ pcell 73408 0 (mkPtr 72240 (Obj 72240)) ∗
+  hi_stdout_before w0 70608 73504 (mkPtr 72240 (Obj 72240)) 0 None ∗
+  hi_malloc_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
+  io_list_inv hge [mkPtr 71760 (Obj 71760); mkPtr 72240 (Obj 72240); mkPtr 72000 (Obj 72000)] ∗
   ([∗ list] g ∈ hi_exit_streams, stream_life g ∗ exit_stream false g) ∗
   word_string (DfracOwn 1) (mkPtr 65568 (Ro 65568)) [104; 101; 108; 108; 111] ∗
-  exit_funcs_inv hi_exit_objs [] 0 ∗ exit_lock_free 73728 (mkRegion 73728 73744 GlobalData Live).
+  exit_funcs_inv hi_exit_objs [] 0 ∗ exit_lock_free 76160 (mkRegion 76160 76176 GlobalData Live).
 
 End resources.
 
@@ -74,9 +74,9 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
     is arbitrary because exit, including the error callback path, ends
     the process rather than returning to main. *)
 Lemma hi_main_wp Φ :
-  ow_errno w0 = Some (mkPtr 68176 (Obj 68176)) -> ptr_addr (ow_self w0) <> 0 ->
+  ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) -> ptr_addr (ow_self w0) <> 0 ->
   loop_env w0 hge hi_exit_objs ->
-  exit_lock_env w0 hge 73728 (mkRegion 73728 73744 GlobalData Live) ->
+  exit_lock_env w0 hge 76160 (mkRegion 76160 76176 GlobalData Live) ->
   hi_main_state w0 -∗ WP (ERun hi_main_frame : sexpr) {{ Φ }}.
 Proof.
   intros Heb Hself Henv Hlock. pose proof Henv as (Hlay & Hgl & Hwi & _).
@@ -97,7 +97,7 @@ Proof.
   cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step_global Hstr.
   eapply step_wand; [eapply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WPtr (mkPtr 65568 (Ro 65568))]); inst;
     [reflexivity | exact (hi_find_puts _) | reflexivity] |].
-  iApply (hi_puts w0 (DfracOwn 1) 66464 66624 65680 hi_mp_reg hi_tc_reg hi_dummy_reg
+  iApply (hi_puts w0 (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg
     with "Hvt Hs Hstr Hso Hsoc Hout HM");
     [vm_compute; reflexivity | vm_compute; reflexivity | reflexivity
     | vm_compute; reflexivity | reflexivity | cbn; lia | exact Heb | exact Hself |].

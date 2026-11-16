@@ -14,7 +14,7 @@ Open Scope Z_scope.
 (** Preparation leaves an address untouched when it lies outside the
     single-thread flag, cancellation field and listed pointer fields. *)
 Definition hi_entry_untouched tb jb a : Prop :=
-  ~ (73808 <= a < 73809) /\ ~ (tb + 792 <= a < tb + 796) /\
+  ~ (76240 <= a < 76241) /\ ~ (tb + 792 <= a < tb + 796) /\
   Forall (fun ap => ~ (ap.1 <= a < ap.1 + 8)) (hi_entry_ptrs tb jb).
 
 (** A bounded byte store leaves every address outside its span alone. *)
@@ -60,7 +60,7 @@ Lemma hi_entry_writes_preserve m tb jb a : hi_entry_untouched tb jb a ->
 Proof.
   intros (Hflag & Hcancel & Hptr). unfold hi_entry_writes.
   destruct (hi_host_ptrs_outside _
-    (store_bytes (store_bytes m 73808 1 1) (tb + 792) 4 0) _ Hptr) as [Hb Ha].
+    (store_bytes (store_bytes m 76240 1 1) (tb + 792) 4 0) _ Hptr) as [Hb Ha].
   rewrite Hb, Ha. split; [|reflexivity].
   rewrite hi_bytes_outside by (replace (tb + 792 + 4) with (tb + 796) by lia; exact Hcancel).
   apply hi_bytes_outside. exact Hflag.

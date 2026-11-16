@@ -12,11 +12,11 @@ Open Scope Z_scope.
 (** The registration lock, completion flag, counter, list head and
     handler array occupy these linked static objects. *)
 Definition hi_exit_objs : exit_objs :=
-  mkExitObjs 66864 (mkRegion 66864 66872 GlobalData Live)
-    73696 (mkRegion 73696 73704 GlobalData Live)
-    66896 (mkRegion 66896 66904 GlobalData Live)
-    66832 (mkRegion 66832 66840 GlobalData Live)
-    66928 (mkRegion 66928 67968 GlobalData Live).
+  mkExitObjs 69296 (mkRegion 69296 69304 GlobalData Live)
+    76128 (mkRegion 76128 76136 GlobalData Live)
+    69328 (mkRegion 69328 69336 GlobalData Live)
+    69264 (mkRegion 69264 69272 GlobalData Live)
+    69360 (mkRegion 69360 70400 GlobalData Live).
 
 (** Every registration access fits its actual static object. *)
 Lemma hi_exit_layout : exit_layout hi_exit_objs.

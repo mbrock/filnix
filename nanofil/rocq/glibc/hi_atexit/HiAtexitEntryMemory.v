@@ -37,7 +37,7 @@ Qed.
     future allocations. Both the static image and thread object end
     below the new allocation cursor. *)
 Lemma hi_entry_writes_ready next m tb jb :
-  73809 <= next -> tb + 2560 <= next -> InterpRuntime.ready next m ->
+  76241 <= next -> tb + 2560 <= next -> InterpRuntime.ready next m ->
   InterpRuntime.ready next (hi_entry_writes m tb jb).
 Proof.
   intros Hstatic Htcb Hr. unfold hi_entry_writes, hi_entry_ptrs.
@@ -81,9 +81,9 @@ Qed.
 (** Errno remains the linked, permanent global-data object. This
     checks the physical region, not only an ownership token. *)
 Lemma hi_entry_errno jb :
-  permanent_errno (hi_entry_mem jb) (mkPtr 68176 (Obj 68176)).
+  permanent_errno (hi_entry_mem jb) (mkPtr 70608 (Obj 70608)).
 Proof.
-  exists 68176, (mkRegion 68176 68184 GlobalData Live).
+  exists 70608, (mkRegion 70608 70616 GlobalData Live).
   repeat split; try reflexivity; cbn; lia.
 Qed.
 
@@ -97,7 +97,7 @@ Proof.
   - intros p Hp. injection Hp as <-. split; [apply hi_entry_errno|].
     intros reg Hh. specialize (Hag _ _ Hh). cbn [agree_piece] in Hag.
     destruct Hag as [Hreg Hlive].
-    change (Some (mkRegion 68176 68184 GlobalData Live) = Some reg) in Hreg.
+    change (Some (mkRegion 70608 70616 GlobalData Live) = Some reg) in Hreg.
     injection Hreg as <-. reflexivity.
   - split.
     + intros Hnz b [Hb|Hb]; [|discriminate Hb].

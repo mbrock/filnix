@@ -27,9 +27,9 @@ Definition hi_tcb_req : alloc_req := heap_req 16 2560.
     cleanup pointers. The saved jump-buffer pointer is a parameter;
     preparation does not require it to be null. *)
 Definition hi_entry_ptrs (tb : Z) (jb : ptr) : list (Z * ptr) :=
-  [(69512, mkPtr 70048 (Obj 70048));
-   (69992, mkPtr 69432 (Obj 69328));
-   (69752, mkPtr 69912 (Obj 69808));
+  [(71944, mkPtr 72480 (Obj 72480));
+   (72424, mkPtr 71864 (Obj 71760));
+   (72184, mkPtr 72344 (Obj 72240));
    (tb, mkPtr tb (Obj tb)); (tb + 16, mkPtr tb (Obj tb));
    (tb + 776, null); (tb + 784, jb)].
 
@@ -42,13 +42,13 @@ Definition hi_host_ptr (m : mem) (ap : Z * ptr) : mem :=
     makes no claim that all other real-startup memory is unchanged. *)
 Definition hi_entry_writes (m : mem) (tb : Z) (jb : ptr) : mem :=
   fold_left hi_host_ptr (hi_entry_ptrs tb jb)
-    (store_bytes (store_bytes m 73808 1 1) (tb + 792) 4 0).
+    (store_bytes (store_bytes m 76240 1 1) (tb + 792) 4 0).
 
 (** System calls identify this thread by its new object's pointer.
     The program uses the three standard descriptors and no log file.
     Its error cell remains at the linked TLS address. *)
 Definition hi_entry_world (tb : Z) : os_world :=
-  mkOsWorld (Some (mkPtr 68176 (Obj 68176))) (mkPtr tb (Obj tb)) None [0; 1; 2].
+  mkOsWorld (Some (mkPtr 70608 (Obj 70608))) (mkPtr tb (Obj tb)) None [0; 1; 2].
 
 (** Allocation failure produces no prepared state and performs none
     of the finite writes. Success registers the new region before
@@ -105,7 +105,7 @@ Lemma hi_entry_fields jb :
   m_aux (hi_entry_mem jb) 4294967296 = Obj 4294967296 /\
   load_bytes (hi_entry_mem jb) 4294967312 8 = 4294967296 /\
   m_aux (hi_entry_mem jb) 4294967312 = Obj 4294967296 /\
-  load_bytes (hi_entry_mem jb) 73808 1 = 1 /\
+  load_bytes (hi_entry_mem jb) 76240 1 = 1 /\
   load_bytes (hi_entry_mem jb) 4294968088 4 = 0.
 Proof. vm_compute. repeat split; reflexivity. Qed.
 
@@ -113,10 +113,10 @@ Proof. vm_compute. repeat split; reflexivity. Qed.
     object's capability. This checks the flag byte, cancellation word,
     stream links and all four thread pointers at their actual alignments. *)
 Lemma hi_entry_write_access jb :
-  access_res (hi_entry_mem jb) 73808 (Obj 73808) 1 Write 1 = Some (RVal tt) /\
+  access_res (hi_entry_mem jb) 76240 (Obj 76240) 1 Write 1 = Some (RVal tt) /\
   access_res (hi_entry_mem jb) 4294968088 (Obj 4294967296) 4 Write 4 = Some (RVal tt) /\
   Forall (fun ac => access_res (hi_entry_mem jb) ac.1.1 ac.2 8 Write 8 = Some (RVal tt))
     (combine (hi_entry_ptrs 4294967296 jb)
-      [Obj 69328; Obj 69808; Obj 69568; Obj 4294967296; Obj 4294967296;
+      [Obj 71760; Obj 72240; Obj 72000; Obj 4294967296; Obj 4294967296;
        Obj 4294967296; Obj 4294967296]).
 Proof. vm_compute. repeat constructor. Qed.

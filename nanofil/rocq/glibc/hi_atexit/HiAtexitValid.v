@@ -1,7 +1,8 @@
 (** nanofil's validator must accept a module before the compiler
     trusts its checks, and the linked hi_atexit program is no
     exception. This file runs the validator on the whole program,
-    hi_atexit.c with its 32 glibc units, and shows that it accepts it. *)
+    hi_atexit.c with the glibc units it links, and shows that it
+    accepts it. *)
 
 From Glibc Require Import GlibcTactics.
 From Nanofil Require Import Syntax ValidFast.

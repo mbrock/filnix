@@ -18,7 +18,7 @@ Import ExitRun ExitRunTail AtexitLogic.
     kind. Physical stores also leave every registered region unchanged,
     so neither errno's region nor the thread cookie is invalidated. *)
 Lemma hi_exit_os_ignores w0 b e :
-  ow_errno w0 = Some (mkPtr 68176 (Obj 68176)) -> b <> 68176 ->
+  ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) -> b <> 70608 ->
   wi_ignores (os_wi w0) b e.
 Proof.
   intros He Hne m wd h ps a n x c Ha Hn Hids Hw.
@@ -27,8 +27,8 @@ Proof.
   { intros eb Heb Hg. pose proof (proj1 Hw) as ->.
     rewrite He in Heb. injection Heb as <-.
     apply errno_life_overwrite; [|exact Hg]. intros reg' Hin.
-    assert (Hin' : PLive 68176 ∈ ps.*1).
-    { apply list_elem_of_fmap. exists (PLive 68176, VLive reg'). split; [reflexivity|exact Hin]. }
+    assert (Hin' : PLive 70608 ∈ ps.*1).
+    { apply list_elem_of_fmap. exists (PLive 70608, VLive reg'). split; [reflexivity|exact Hin]. }
     pose proof (Hids _ Hin') as Hid. cbn in Hid. congruence. }
   split; (split; [exact (proj1 Hw)|]);
     apply (os_inv_step m _ wd h); try exact (proj2 Hw).
@@ -40,7 +40,7 @@ Qed.
 (** All handler-loop writes preserve the fixed OS interpretation.
     The two external-call lookups are checked in the actual program. *)
 Lemma hi_loop_env w0 :
-  ow_errno w0 = Some (mkPtr 68176 (Obj 68176)) -> loop_env w0 hge hi_exit_objs.
+  ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) -> loop_env w0 hge hi_exit_objs.
 Proof.
   intros He. unfold loop_env.
   split; [exact hi_exit_layout|]. split; [exact hi_exit_globals|].
@@ -57,9 +57,9 @@ Qed.
     lock cannot change the error cell or thread cookie. The cookie
     call resolves to the actual external function. *)
 Lemma hi_exit_lock_env w0 :
-  ow_errno w0 = Some (mkPtr 68176 (Obj 68176)) ->
+  ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) ->
   0 < ptr_addr (ow_self w0) < 2 ^ 64 ->
-  exit_lock_env w0 hge 73728 (mkRegion 73728 73744 GlobalData Live).
+  exit_lock_env w0 hge 76160 (mkRegion 76160 76176 GlobalData Live).
 Proof.
   intros He Hself. unfold exit_lock_env.
   split; [lia|]. split; [reflexivity|]. split; [cbn; lia|].

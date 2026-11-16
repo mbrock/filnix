@@ -18,16 +18,16 @@ Import LibioFlushInv FileInv HLG HLG.L.
 (** The backward pointers name the preceding link, including the list
     head for stderr. The list lock and current-stream pointer are idle. *)
 Definition hi_entry_list_ps : list (piece * pval) :=
-  concat [hi_pointer_ps 69328 184 (mkPtr 70048 (Obj 70048));
-    hi_pointer_ps 69328 104 (mkPtr 69808 (Obj 69808));
-    hi_pointer_ps 69808 184 (mkPtr 69432 (Obj 69328));
-    hi_pointer_ps 69808 104 (mkPtr 69568 (Obj 69568));
-    hi_pointer_ps 69568 184 (mkPtr 69912 (Obj 69808)); hi_pointer_ps 69568 104 null;
-    [(PLive 70048, VLive (mkRegion 70048 70056 GlobalData Live))];
-    hi_pointer_ps 70048 0 (mkPtr 69328 (Obj 69328));
-    [(PLive 69216, VLive (mkRegion 69216 69232 GlobalData Live))];
-    byte_ps 69216 0 (int_bytes 0); byte_ps 69216 4 (int_bytes 0); hi_pointer_ps 69216 8 null;
-    [(PLive 69248, VLive (mkRegion 69248 69256 GlobalData Live))]; hi_pointer_ps 69248 0 null].
+  concat [hi_pointer_ps 71760 184 (mkPtr 72480 (Obj 72480));
+    hi_pointer_ps 71760 104 (mkPtr 72240 (Obj 72240));
+    hi_pointer_ps 72240 184 (mkPtr 71864 (Obj 71760));
+    hi_pointer_ps 72240 104 (mkPtr 72000 (Obj 72000));
+    hi_pointer_ps 72000 184 (mkPtr 72344 (Obj 72240)); hi_pointer_ps 72000 104 null;
+    [(PLive 72480, VLive (mkRegion 72480 72488 GlobalData Live))];
+    hi_pointer_ps 72480 0 (mkPtr 71760 (Obj 71760));
+    [(PLive 71648, VLive (mkRegion 71648 71664 GlobalData Live))];
+    byte_ps 71648 0 (int_bytes 0); byte_ps 71648 4 (int_bytes 0); hi_pointer_ps 71648 8 null;
+    [(PLive 71680, VLive (mkRegion 71680 71688 GlobalData Live))]; hi_pointer_ps 71680 0 null].
 
 (** Each remaining stream has null read and write pointers and a free
     lock. Cleanup needs no buffer object for those null capabilities. *)
@@ -42,8 +42,8 @@ Definition hi_entry_stream_ps (fb lk fl fd : Z) : list (piece * pval) :=
 
 (** Stderr precedes stdin after the close callback removes stdout. *)
 Definition hi_entry_rest_ps : list (piece * pval) :=
-  hi_entry_stream_ps 69328 70144 4222427270 2 ++
-  hi_entry_stream_ps 69568 70080 4222427272 0.
+  hi_entry_stream_ps 71760 72576 4222427270 2 ++
+  hi_entry_stream_ps 72000 72512 4222427272 0.
 
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.
@@ -51,18 +51,18 @@ Context `{!gen_heapGS piece pval Σ}.
 (** Cleanup can traverse the initialized list in both directions.
     It also finds the list lock free. *)
 Lemma hi_entry_list_own : pts hi_entry_list_ps ⊢
-  io_list_inv hge [mkPtr 69328 (Obj 69328); mkPtr 69808 (Obj 69808); mkPtr 69568 (Obj 69568)].
+  io_list_inv hge [mkPtr 71760 (Obj 71760); mkPtr 72240 (Obj 72240); mkPtr 72000 (Obj 72000)].
 Proof.
   rewrite /hi_entry_list_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hep & Hec & Hop & Hoc & Hip & Hic & Hla & Hlac & Hlk & Hlk0 & Hlk4 & Hlk8 & Hrf & Hrfc & _)".
-  iExists 70048, (mkRegion 70048 70056 GlobalData Live),
-    69216, (mkRegion 69216 69232 GlobalData Live),
-    69248, (mkRegion 69248 69256 GlobalData Live).
+  iExists 72480, (mkRegion 72480 72488 GlobalData Live),
+    71648, (mkRegion 71648 71664 GlobalData Live),
+    71680, (mkRegion 71680 71688 GlobalData Live).
   iSplitR; [iPureIntro; vm_compute; intuition congruence|].
   iFrame "Hla Hlac Hrf Hrfc". iSplitL "Hep Hec Hop Hoc Hip Hic".
-  - cbn [chain_links head_ptr]. iExists 69328. iSplitR; [done|]. iFrame "Hep Hec".
-    iExists 69808. iSplitR; [done|]. iFrame "Hop Hoc".
-    iExists 69568. iSplitR; [done|]. iFrame "Hip Hic".
+  - cbn [chain_links head_ptr]. iExists 71760. iSplitR; [done|]. iFrame "Hep Hec".
+    iExists 72240. iSplitR; [done|]. iFrame "Hop Hoc".
+    iExists 72000. iSplitR; [done|]. iFrame "Hip Hic".
   - rewrite /lock_state /int_cell. iFrame "Hlk Hlk0 Hlk4 Hlk8".
     iPureIntro. vm_compute. intuition congruence.
 Qed.
@@ -94,7 +94,7 @@ Qed.
 
 (** The remaining two streams can be owned together in list order. *)
 Lemma hi_entry_rest_own : pts hi_entry_rest_ps ⊢
-  [∗ list] g ∈ [mkPtr 69328 (Obj 69328); mkPtr 69568 (Obj 69568)],
+  [∗ list] g ∈ [mkPtr 71760 (Obj 71760); mkPtr 72000 (Obj 72000)],
     stream_life g ∗ exit_stream false g.
 Proof.
   rewrite /hi_entry_rest_ps pts_app. cbn [big_opL]. iIntros "[He Hi]".

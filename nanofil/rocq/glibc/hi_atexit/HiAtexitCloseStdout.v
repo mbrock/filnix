@@ -171,7 +171,7 @@ Proof.
   step; tidy. step; tidy. check "Hso"; tidy. load "Hso" "Hsoc" "Hl"; tidy.
   (* `c: fclose(stdout)`. *)
   iApply wp_call_bind; [vx | exact (hi_find_fclose _) | reflexivity |]. iNext. name_post.
-  epose proof (hge_fclose_stdout _ pre post 69808 freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg lb lbreg
+  epose proof (hge_fclose_stdout _ pre post 72240 freg fl f2 fd tw off bb breg i xs rp rb we be eb vb vreg lb lbreg
             sb sreg fcp pin md _) as Hfcs.
   (* The triple's continuation is named so each consumed premise does not repeat it. *)
   cbv zeta in Hfcs.
