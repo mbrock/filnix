@@ -54,8 +54,7 @@ Qed.
     aligned. *)
 Lemma aligned_add : forall a d aa, 0 < aa -> a mod aa = 0 -> d mod aa = 0 -> (a + d) mod aa = 0.
 Proof.
-  intros a d aa Haa Ha Hd. apply Z.mod_divide in Ha; [|lia]. apply Z.mod_divide in Hd; [|lia].
-  apply Z.mod_divide; [lia|]. apply Z.divide_add_r; assumption.
+  intros a d aa Haa Ha Hd. rewrite Z.add_mod, Ha, Hd by lia. apply Z.mod_0_l; lia.
 Qed.
 
 (** Adding a non-negative delta to a checked offset yields the same
@@ -116,11 +115,9 @@ Proof.
     replace ((base <=? raw_address a lo + (off - lo)) &&
              (raw_address a lo + (off - lo) + size <=? r_end reg)) with true
       by (symmetry; apply andb_true_iff; split; apply Z.leb_le; lia).
-  - injection H as H. f_equal. apply aligned_res_ok, aligned_add; auto.
-    apply (aligned_divisor _ al); auto using aligned_res_mod.
-  - destruct r; simpl in H; [|discriminate H]. destruct need; simpl in Hr; [|discriminate Hr].
-    injection H as H. simpl. f_equal. apply aligned_res_ok, aligned_add; auto.
-    apply (aligned_divisor _ al); auto using aligned_res_mod.
+  2: destruct r; simpl in H; [|discriminate H]; destruct need; simpl in Hr; [|discriminate Hr].
+  all: injection H as H; simpl; f_equal; apply aligned_res_ok, aligned_add; auto.
+  all: apply (aligned_divisor _ al); auto using aligned_res_mod.
 Qed.
 
 (** An access check that passes at some alignment passes at alignment
