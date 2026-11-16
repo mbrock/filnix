@@ -17,7 +17,7 @@ Import ListNotations.
 
 (** No two items of the linked image share a name. *)
 Lemma hello_image_names : NoDup (map item_key hello_image_module).
-Proof. apply names_distinct_sound. vm_compute. reflexivity. Qed.
+Proof. apply names_distinct_sound. vm_cast_no_check (eq_refl true). Qed.
 
 (** The cached placement records symbols and regions without expanding byte functions. *)
 Definition hello_placement := Eval vm_compute in

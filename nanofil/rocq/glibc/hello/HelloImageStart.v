@@ -112,7 +112,7 @@ Lemma hello_start_check :
   | Some (g, m') => pieces_ok hello_start_keep hello_start_kept g m' hello_start_ps && hello_start_places g
   | None => false
   end = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. vm_cast_no_check (eq_refl true). Qed.
 
 (** ## The objects in the genuine memory
 

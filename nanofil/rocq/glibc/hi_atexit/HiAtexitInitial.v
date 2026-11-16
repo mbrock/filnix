@@ -56,7 +56,7 @@ Definition hi_allocator_ps : list (piece * pval) :=
 (** Every allocator piece agrees with the actual initial image,
     including the pointer capabilities and every empty cache bin. *)
 Lemma hi_allocator_agree : all_agree hi_m0 hi_allocator_ps.
-Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
+Proof. apply checked_pieces_all_agree. vm_cast_no_check (eq_refl true). Qed.
 
 (** The finite key check compares object identities and offsets
     without constructing equality proofs for every pair of bytes.

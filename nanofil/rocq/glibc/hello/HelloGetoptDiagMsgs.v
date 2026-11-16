@@ -266,7 +266,7 @@ Qed.
 
 (** Every piece of the nine strings agrees with the image. *)
 Lemma dgx_msg_fixture_agrees : all_agree getopt_memory (dgx_msg_ps dgx_msg_fixture).
-Proof. apply checked_pieces_all_agree. unfold getopt_memory. vm_compute. reflexivity. Qed.
+Proof. apply checked_pieces_all_agree. unfold getopt_memory. vm_cast_no_check (eq_refl true). Qed.
 
 (** These are the bases of the parser's starting pieces in the image. *)
 Definition getopt_start_fixture_ps : list (piece * pval) :=

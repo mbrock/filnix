@@ -39,13 +39,13 @@ Definition hi_initial_exit_ps : list (piece * pval) :=
 (** The loader leaves the handler array empty and the locks free.
     This check includes the stored pointers in every unused slot. *)
 Lemma hi_initial_exit_agree : all_agree hi_m0 hi_initial_exit_ps.
-Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
+Proof. apply checked_pieces_all_agree. vm_cast_no_check (eq_refl true). Qed.
 
 (** Registration, output and the stream-list constructor can own their
     inputs simultaneously: no object or field occurs twice. *)
 Lemma hi_initial_exit_output_list_nodup :
   NoDup (hi_initial_exit_ps ++ hi_initial_list_ps ++ hi_initial_output_ps).*1.
-Proof. apply hi_unique_sound. vm_compute. reflexivity. Qed.
+Proof. apply hi_unique_sound. vm_cast_no_check (eq_refl true). Qed.
 
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.

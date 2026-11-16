@@ -44,4 +44,4 @@ Lemma hello_refused :
       pieces_ok hello_keep hello_kept g m' (libc_domain_ps hello_domain_base.1 hello_domain_base.2)
   | None => false
   end = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. vm_cast_no_check (eq_refl true). Qed.

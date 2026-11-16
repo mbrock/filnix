@@ -25,7 +25,7 @@ Definition hello_module : module :=
 
 (** The fixture decodes to [hello_module]. *)
 Lemma hello_decodes : decode_module hello_term = Some hello_module.
-Proof. vm_compute. reflexivity. Qed.
+Proof. vm_cast_no_check (eq_refl (Some hello_module)). Qed.
 
 (** The [[validator]] accepts the linked module: every function of the
     [[core subset]], every name unique ([valid]). Each object was

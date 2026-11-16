@@ -37,4 +37,4 @@ Lemma hello_start_refused :
       pieces_ok hello_start_keep hello_start_kept g m' [(PAux 68672 0, VAux (Ro 69456))]
   | None => false
   end = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. vm_cast_no_check (eq_refl true). Qed.

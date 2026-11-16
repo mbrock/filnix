@@ -23,7 +23,7 @@ Definition hi_module : module := Eval vm_compute in
 
 (** The term decodes to [hi_module]. *)
 Lemma hi_decodes : decode_module hi_atexit_term = Some hi_module.
-Proof. vm_compute. reflexivity. Qed.
+Proof. vm_cast_no_check (eq_refl (Some hi_module)). Qed.
 
 (** The module's symbols, as laying it out places them. *)
 Definition hi_globals : list (name * ptr) := Eval vm_compute in

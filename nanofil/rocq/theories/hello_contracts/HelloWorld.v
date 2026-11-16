@@ -590,7 +590,7 @@ Lemma entry_keys_unique : NoDup (map fst entry_pieces).
 Proof.
   pose (eqp := (ltac:(intros x y; change ({x = y} + {x <> y});
     decide equality; apply Z.eq_dec) : EqDecision piece)).
-  apply (@bool_decide_eq_true _ (@NoDup_dec piece eqp _)). vm_compute. reflexivity.
+  apply (@bool_decide_eq_true _ (@NoDup_dec piece eqp _)). vm_cast_no_check (eq_refl true).
 Qed.
 
 (** Every piece in the single initial resource bundle agrees.
@@ -598,7 +598,7 @@ Qed.
     region of each piece by computation, rather than expanding a
     universally quantified region once per literal byte. *)
 Lemma entry_pieces_agree : all_agree entry_memory entry_pieces.
-Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
+Proof. apply checked_pieces_all_agree. vm_cast_no_check (eq_refl true). Qed.
 
 Local Opaque entry_pieces.
 
