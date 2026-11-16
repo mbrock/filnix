@@ -1,0 +1,7 @@
+size 16
+mono 0 1 1
+odd 0
+einval -1 1 1 1 1
+short 1
+readonly 1
+null 1

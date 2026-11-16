@@ -26,7 +26,10 @@ Definition start_fn (n : string) : func :=
   | _ => mkFunc (TAtom n) (TAtom "local") RVoid [] []
   end.
 
-(** ## Thread setup *)
+(** ## Thread setup
+
+    Two functions give the process its thread object. Their bodies come
+    first because the other startup proofs run after them. *)
 
 (** This constant is the body of `c: __libc_setup_tls`, which allocates
     the thread object and makes it the thread's cookie. *)
@@ -46,7 +49,12 @@ Lemma start_tls_init_tp_defined :
   find_direct (TAtom "__tls_init_tp") hi_module = Some (Defined start_tls_init_tp_fn).
 Proof. vm_compute. reflexivity. Qed.
 
-(** ## The two handlers *)
+(** ## The two handlers
+
+    `c: __libc_start_main` registers an errno handler and a dlerror
+    handler with the runtime. The errno handler's body is already fixed
+    by its registration contract, so only the dlerror handler's body
+    appears here. *)
 
 (** This constant is the body of the dlerror handler that
     `c: __libc_start_main` registers. *)
@@ -57,7 +65,11 @@ Lemma start_dlerror_handler_defined :
   find_direct (TAtom "glibc_libc_start#dlerror_handler") hi_module = Some (Defined start_dlerror_handler_fn).
 Proof. vm_compute. reflexivity. Qed.
 
-(** ## Early initialization *)
+(** ## Early initialization
+
+    `c: __libc_early_init` sets up the character tables, reads several
+    tunables and starts the allocator. The bodies below are the parts of
+    that work which the proofs so far cover. *)
 
 (** This constant is the body of `c: __tunable_get_val`, which copies a
     tunable's value out of the tunable table. *)
@@ -84,4 +96,18 @@ Definition start_ctype_init_fn : func := Eval vm_compute in start_fn "__GI___cty
 (** The image defines `c: __ctype_init` with that body. *)
 Lemma start_ctype_init_defined :
   find_direct (TAtom "__GI___ctype_init") hi_module = Some (Defined start_ctype_init_fn).
+Proof. vm_compute. reflexivity. Qed.
+
+(** ## Constructors
+
+    The image registers three constructors, which the runner calls before
+    `c: main`. Their bodies come from the same image. *)
+
+(** This constant is the body of `c: check_stdfiles_vtables`, which
+    checks that the three standard streams use glibc's own jump table. *)
+Definition start_check_vtables_fn : func := Eval vm_compute in start_fn "glibc_vtables#check_stdfiles_vtables".
+
+(** The image defines `c: check_stdfiles_vtables` with that body. *)
+Lemma start_check_vtables_defined :
+  find_direct (TAtom "glibc_vtables#check_stdfiles_vtables") hi_module = Some (Defined start_check_vtables_fn).
 Proof. vm_compute. reflexivity. Qed.

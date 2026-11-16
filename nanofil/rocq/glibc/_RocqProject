@@ -192,6 +192,8 @@ zsys/OsWrite.v
 zsys/OsWritev.v
 zsys/OsStartCalls.v
 zsys/OsGetrlimit.v
+zsys/OsGetrandom.v
+zsys/OsClockGettime.v
 zsys/OsStart.v
 zsys/StartCtors.v
 zsys/StartState.v
@@ -204,6 +206,12 @@ startup/StartCode.v
 startup/StartLogic.v
 startup/StartTls.v
 startup/StartHandlers.v
+startup/StartTunableGetValSpec.v
+startup/StartTunableGetVal.v
+startup/StartPthreadTunablesSpec.v
+startup/StartPthreadTunables.v
+startup/StartCtorVtablesSpec.v
+startup/StartCtorVtables.v
 stdlib/StdlibSpecs.v
 stdlib/AllocLogic.v
 stdlib/AtexitLogic.v

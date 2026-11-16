@@ -33,7 +33,7 @@ From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory ExternalCalls.
 From Glibc Require Import OsWorld OsWrite OsWritev OsFstat OsIoctl OsLseek OsClose OsExit OsThread OsCpuid
-  OsStartCalls OsGetrlimit.
+  OsStartCalls OsGetrlimit OsGetrandom OsClockGettime.
 Import ListNotations.
 Open Scope string_scope.
 
@@ -90,6 +90,8 @@ Definition glibc_os_contracts : list (string * contract os_world) := [
   ("zregister_sys_errno_handler", os_errno_register_contract);
   ("zregister_sys_dlerror_handler", os_dlerror_register_contract);
   ("zsys_getrlimit", os_getrlimit_contract);
+  ("zsys_getrandom", os_getrandom_contract);
+  ("zsys_clock_gettime", os_clock_gettime_contract);
   ("zmemmove", void_only (memmove_contract os_world));
   ("zmemset", void_only (memset_contract os_world))
 ].
@@ -108,7 +110,7 @@ Fixpoint os_find (s : name) (cs : list (string * contract os_world)) : option (c
     glibc proofs. *)
 Definition glibc_os_registry (s : name) : option (contract os_world) := os_find s glibc_os_contracts.
 
-(** Looking up any of the twenty-one modeled libpizlo symbols in
+(** Looking up any of the twenty-three modeled libpizlo symbols in
     [glibc_os_registry] returns its contract from this directory or from
     [ExternalCalls](../../theories/external/ExternalCalls.v). *)
 Example glibc_os_registry_hits :
@@ -131,6 +133,8 @@ Example glibc_os_registry_hits :
   glibc_os_registry (TAtom "zregister_sys_errno_handler") = Some os_errno_register_contract /\
   glibc_os_registry (TAtom "zregister_sys_dlerror_handler") = Some os_dlerror_register_contract /\
   glibc_os_registry (TAtom "zsys_getrlimit") = Some os_getrlimit_contract /\
+  glibc_os_registry (TAtom "zsys_getrandom") = Some os_getrandom_contract /\
+  glibc_os_registry (TAtom "zsys_clock_gettime") = Some os_clock_gettime_contract /\
   glibc_os_registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) /\
   glibc_os_registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)).
 Proof. repeat split. Qed.
