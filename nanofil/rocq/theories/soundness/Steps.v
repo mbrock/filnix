@@ -211,19 +211,13 @@ Lemma step_exec_cons : forall ge c l i rest j r,
 Proof.
   intros ge c l i rest j r Ha Hs Hd Hst. unfold step in Hs. rewrite Ha in Hs.
   destruct (fr_doomed (c_frame c)) as [w|] eqn:Ew.
-  - destruct (ahead_transparent i) eqn:Et; [|subst r; exfalso; eapply Hd; reflexivity].
-    split; [right; reflexivity|].
-    destruct (inst_step ge (c_frame c) (c_mem c) i) as [out0|] eqn:Ei;
-      [|subst r; exfalso; eapply Hst; reflexivity].
-    destruct (doomed_result ge (c_frame c) (c_mem c) i out0) as [od|] eqn:Eo;
-      [|subst r; exfalso; eapply Hst; reflexivity].
-    exists out0, od. split; [first [exact Ei | reflexivity] | split; [first [exact Eo | reflexivity] | exact Hs]].
-  - split; [left; reflexivity|].
-    destruct (inst_step ge (c_frame c) (c_mem c) i) as [out0|] eqn:Ei;
-      [|subst r; exfalso; eapply Hst; reflexivity].
-    destruct (doomed_result ge (c_frame c) (c_mem c) i out0) as [od|] eqn:Eo;
-      [|subst r; exfalso; eapply Hst; reflexivity].
-    exists out0, od. split; [first [exact Ei | reflexivity] | split; [first [exact Eo | reflexivity] | exact Hs]].
+  1: destruct (ahead_transparent i) eqn:Et; [|subst r; exfalso; eapply Hd; reflexivity].
+  all: split; [auto|].
+  all: destruct (inst_step ge (c_frame c) (c_mem c) i) as [out0|] eqn:Ei;
+    [|subst r; exfalso; eapply Hst; reflexivity].
+  all: destruct (doomed_result ge (c_frame c) (c_mem c) i out0) as [od|] eqn:Eo;
+    [|subst r; exfalso; eapply Hst; reflexivity].
+  all: exists out0, od; split; [first [exact Ei | reflexivity] | split; [first [exact Eo | reflexivity] | exact Hs]].
 Qed.
 
 (** Entering a block looks up its definition by label, evaluates its
@@ -251,9 +245,7 @@ Lemma step_enter_fresh : forall ge c l from q k,
 Proof.
   intros ge c l from q k Ha H. unfold step in H. rewrite Ha in H.
   destruct (c_fuel c =? 0); [discriminate H|]. apply or_stuck_fresh in H.
-  destruct (find_block _ _) as [b|]; simpl in H; [|discriminate H].
-  unfold phis_env in H. destruct from; [|destruct (b_phis b)]; simpl in H; try discriminate H.
-  destruct (fold_left _ _ _); discriminate H.
+  cases H.
 Qed.
 
 (** When a variadic C function is called with no extra arguments, its
