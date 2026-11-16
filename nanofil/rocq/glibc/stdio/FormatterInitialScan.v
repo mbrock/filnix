@@ -2,7 +2,7 @@
     For a format beginning with percent, the initial literal write has
     length zero. These rules follow that scan and the subsequent byte
     read without deriving caller memory or registration values from startup. *)
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSym.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -70,17 +70,11 @@ Proof.
   iNext. iIntros "Hl Hcell Hsl".
   iAssert (liveq dq sb sr) with "[Hsl]" as "Hsl".
   { destruct Hcap as [Hc | Hc]; iEval (cbn [ptr_cap]; rewrite Hc) in "Hsl"; iExact "Hsl". }
-  check_read_dq "Hsl" by ar. iNext. iIntros "Hsl".
-  assert (Hparts : byte_ps sb (ptr_addr p - sb) [37;115;0] =
-    (byte_ps sb (ptr_addr p - sb) [37] ++ byte_ps sb (ptr_addr p - sb + 1) [115;0])%list).
-  { rewrite !byte_ps_cons. reflexivity. }
-  iEval (unfold MemFwdLogic.ML.bytesq; cbn [app]; rewrite Hparts ptsq_app) in "Hbytes".
-  iDestruct "Hbytes" as "[Hpercent Hrest]".
-  load_bytes_dq "Hsl Hpercent" decode (reflexivity) by ar.
-  iNext. iIntros "Hsl Hpercent". step. closed_ints. branch.
-  iApply ("HK" with "Hl Hcell [Hsl Hpercent Hrest Hback]").
-  iApply ("Hback" with "Hsl [Hpercent Hrest]").
-  rewrite /MemFwdLogic.ML.bytesq /= Hparts ptsq_app. iFrame.
+  assert (Hpercent : ([37;115] ++ [0])%list !! 0%nat = Some 37) by reflexivity.
+  sym_run_with "Hsl Hbytes" ltac:(cbn [app length]; sym_lia).
+  closed_ints. cbn [edge_label].
+  iApply ("HK" with "Hl Hcell [Hsl Hbytes Hback]").
+  iApply ("Hback" with "Hsl Hbytes").
 Qed.
 (** A format beginning with percent has no literal text to copy first.
     Glibc still calls the writer with length zero and checks whether
