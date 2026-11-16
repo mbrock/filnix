@@ -296,16 +296,11 @@ Lemma snapshot_kept : forall xs a m,
 Proof.
   induction xs as [|x xs IH]; simpl; intros a m Hin.
   - apply kept_refl.
-  - destruct x as [n | p | c size].
-    + eapply kept_trans; [|apply IH].
-      * apply store_bytes_kept. intros b Hb. apply Hin. lia.
-      * intros b Hb. apply in_object_store_bytes, Hin. lia.
-    + eapply kept_trans; [|apply IH].
-      * eapply kept_trans; [|apply store_aux_kept].
-        -- apply store_bytes_kept. intros b Hb. apply Hin. lia.
-        -- apply in_object_store_bytes, Hin. lia.
-      * intros b Hb. apply in_object_store_aux, in_object_store_bytes, Hin. lia.
-    + apply IH. intros b Hb. apply Hin. lia.
+  - destruct x as [n | p | c size];
+      [ eapply kept_trans; [apply store_bytes_kept | apply IH]
+      | eapply kept_trans; [eapply kept_trans; [apply store_bytes_kept | apply store_aux_kept] | apply IH]
+      | apply IH ].
+    all: try (intros b Hb); apply Hin; lia.
 Qed.
 
 (** A heap request's extent covers its size: the runtime is asked for
