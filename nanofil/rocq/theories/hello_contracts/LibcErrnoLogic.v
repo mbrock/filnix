@@ -351,22 +351,12 @@ Proof.
     + intros l v Hl. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin|[_ Hold]];
         [exact (all_agree_elem _ _ _ _ Hafter Hin)|exact (Ha' l v Hold)].
     + split; [exact Hd'|]. split; [exact Hr'|].
-      destruct Hwi' as (Hready & He & Hroots & Hrel & Hoff).
-      assert (Hlookup : memory_keys_from (overwrite after (overwrite (byte_ps b o ys) h))
-          (overwrite (byte_ps b o ys) h)).
-      { intros l v Hl _. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin|[_ Hold]]; [|eauto].
-        assert (Hkey : l ∈ before.*1).
-        { rewrite <- Hsame. apply list_elem_of_fmap. exists (l, v). auto. }
-        apply list_elem_of_fmap in Hkey as ([l0 old] & E & Hinold). simpl in E. subst l0.
-        exists old. exact (Hbefore l old Hinold). }
-      split; [exact Hready|]. split; [exact He|]. split; [|split].
-      * intros root a Hin Hspan (l & v & reg & Hl & Hmem & Hlive & Hrange).
-        destruct (Hlookup l v Hl Hmem) as [old Hold]. apply (Hroots root a Hin Hspan).
-        exists l, old, reg. exact (conj Hold (conj Hmem (conj Hlive Hrange))).
-      * intros base l v Hin Hl Hmem. destruct (Hlookup l v Hl Hmem) as [old Hold].
-        exact (Hrel base l old Hin Hold Hmem).
-      * intros l v Hl Hnot. destruct l as [base|base off|base off|key]; try exact I.
-        all: destruct (Hlookup _ _ Hl I) as [old Hold]; exact (Hoff _ old Hold Hnot).
+      eapply errno_wi_heap; [exact Hwi'|].
+      intros l v Hl _. destruct (lookup_overwrite _ _ _ _ Hl) as [Hin|[_ Hold]]; [|eauto].
+      assert (Hkey : l ∈ before.*1).
+      { rewrite <- Hsame. apply list_elem_of_fmap. exists (l, v). auto. }
+      apply list_elem_of_fmap in Hkey as ([l0 old] & E & Hinold). simpl in E. subst l0.
+      exists old. exact (Hbefore l old Hinold).
 Qed.
 
 End LibcErrnoLogicOn.
