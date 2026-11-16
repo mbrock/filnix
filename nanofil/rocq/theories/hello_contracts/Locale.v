@@ -336,10 +336,7 @@ Proof.
   - split; [exact Hready|]. exists category, p. split; [reflexivity|].
     split; [exact Hcat|]. right. exists bytes. exact Hstr.
   - split.
-    + change (E.effects (locale_sources [WInt category; WPtr p] m w)
-        (locale_writes [WInt category; WPtr p] w) (locale_releases [WInt category; WPtr p] w)
-        (fun align size => locale_query [WInt category; WPtr p] = false /\
-          requests [WInt category; WPtr p] m w align size) s m [] s' m' born).
+    + cbn [setlocale_contract contract_sources contract_writes contract_releases contract_requests].
       unfold locale_writes, locale_releases. rewrite Hquery.
       rewrite Hquery in He. exact He.
     + split; [reflexivity|]. rewrite Hquery. split; [exact Hr'|]. split; [exact Hd|].
