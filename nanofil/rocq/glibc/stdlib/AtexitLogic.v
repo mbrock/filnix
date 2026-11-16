@@ -20,7 +20,7 @@
     counter, and static buffer, any external world must satisfy
     [wi_ignores] for those three objects. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -442,6 +442,31 @@ Proof.
   iFrame "Hil Hnext Hidx Hents Hspares". iFrame "Hf Hy Hz Hw".
 Qed.
 
+(** The registration wrappers share their ownership contract. The internal
+    entry point also receives the address of the handler-list head. *)
+Local Definition registration_spec (internal : bool) : fspec Σ :=
+  FSpec (exit_objs * list (ptr * ptr * ptr) * Z * ptr * ptr * ptr)
+    (fun '(x, ents, c, f, a, d) =>
+      if internal then [WPtr f; WPtr a; WPtr d; WPtr (mkPtr (xo_funcs x) (Obj (xo_funcs x)))]
+      else [WPtr f; WPtr a; WPtr d])
+    (fun '(x, ents, c, f, a, d) =>
+      ⌜exit_layout x /\ exit_globals ge x /\ exit_wi x /\ exit_fns ge /\
+        (List.length ents < 32)%nat /\ 0 < ptr_addr f < 2 ^ 64⌝ ∗ exit_funcs_inv x ents c)%I
+    (fun '(x, ents, c, f, a, d) v =>
+      ⌜v = Ret (WInt 0)⌝ ∗ exit_funcs_inv x (ents ++ [(f, a, d)]) ((c + 1) mod 2 ^ 64))%I.
+
+(** Calling the internal entry point registers a handler and returns zero. *)
+Local Instance internal_atexit_has_spec n (Hfn : Defines ge n internal_atexit_fn) :
+  HasSpec registry wi ge (TAtom n) (registration_spec true).
+Proof.
+  intros [[[[[x ents] c] f] a] d]. exists internal_atexit_fn.
+  split; [exact Hfn|]. split; [eexists; apply internal_atexit_frame|].
+  intros fr Φ Hfr. rewrite internal_atexit_frame in Hfr. injection Hfr as <-.
+  cbn [fs_pre fs_post registration_spec]. iIntros "[(%Hl & %Hg & %Hw & %Hfs & %Hk & %Hf) HI] HK".
+  iApply (wp_internal_atexit with "HI"); [exact Hl | exact Hg | exact Hw | exact Hk | exact Hf | exact (proj1 Hfs) |].
+  iIntros "HI". iApply "HK". iFrame. done.
+Qed.
+
 (** Calling `__cxa_atexit` supplies `&__exit_funcs` implicitly and
     delegates to `__internal_atexit`. Theorem [wp_glibc_cxa_atexit]
     proves that registering a non-null handler appends the entry
@@ -454,13 +479,25 @@ Lemma wp_glibc_cxa_atexit x ents c fnp argp dsop Φ :
   WP (ERun (mkFrame cxa_atexit_fn [(TAtom "v4", WPtr dsop); (TAtom "v2", WPtr argp); (TAtom "v0", WPtr fnp)]
        [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros Hlay Hgl Hwi (Hnf & Hia & _) Hk Hfp. pose proof Hgl as Hg_. destruct Hg_ as (_ & _ & _ & Hgfs).
+  intros Hlay Hgl Hwi Hfns Hk Hfp. pose proof Hgl as Hg_. destruct Hg_ as (_ & _ & _ & Hgfs).
+  pose proof (internal_atexit_has_spec _ (proj1 (proj2 Hfns))) as Hspec.
   iIntros "Hinv HΦ". step. step_global Hgfs.
-  eapply step_wand; [eapply wp_call_bind; inst; [reflexivity | exact Hia | apply internal_atexit_frame] |].
-  iApply (wp_internal_atexit with "Hinv");
-    [exact Hlay | exact Hgl | exact Hwi | exact Hk | exact Hfp | exact Hnf |].
-  iIntros "Hinv". iExists _. iSplit; [iPureIntro; reflexivity|]. nx. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
+  call_spec with (x, ents, c, fnp, argp, dsop); [repeat (split; [assumption|]); assumption|].
+  iDestruct "Hpost" as "[-> Hinv]". iExists _. iSplit; [iPureIntro; reflexivity|]. nx. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iApply ("HΦ" with "Hinv").
+Qed.
+
+(** The public C++ registration wrapper establishes the same result without
+    requiring callers to pass the handler-list address. *)
+Local Instance cxa_atexit_has_spec n (Hfn : Defines ge n cxa_atexit_fn) :
+  HasSpec registry wi ge (TAtom n) (registration_spec false).
+Proof.
+  intros [[[[[x ents] c] f] a] d]. exists cxa_atexit_fn.
+  split; [exact Hfn|]. split; [eexists; apply cxa_atexit_frame|].
+  intros fr Φ Hfr. rewrite cxa_atexit_frame in Hfr. injection Hfr as <-.
+  cbn [fs_pre fs_post registration_spec]. iIntros "[(%Hl & %Hg & %Hw & %Hfs & %Hk & %Hf) HI] HK".
+  iApply (wp_glibc_cxa_atexit with "HI"); [exact Hl | exact Hg | exact Hw | exact Hfs | exact Hk | exact Hf |].
+  iIntros "HI". iApply "HK". iFrame. done.
 Qed.
 
 (** Calling `c: atexit` is a thin wrapper that calls `__cxa_atexit`
@@ -474,13 +511,10 @@ Lemma wp_glibc_atexit x ents c fnp Φ :
   (exit_funcs_inv x (ents ++ [(fnp, null, null)]) ((c + 1) mod 2 ^ 64) -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun (mkFrame atexit_fn [(TAtom "v0", WPtr fnp)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof.
-  intros Hlay Hgl Hwi Hfns Hk Hfp. pose proof Hfns as Hf_. destruct Hf_ as (_ & _ & Hca).
+  intros Hlay Hgl Hwi Hfns Hk Hfp. pose proof (cxa_atexit_has_spec _ (proj2 (proj2 Hfns))) as Hspec.
   iIntros "Hinv HΦ". step.
-  eapply step_wand; [eapply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ [WPtr fnp; WPtr null; WPtr null]); inst;
-    [reflexivity | exact Hca | apply cxa_atexit_frame] |].
-  iApply (wp_glibc_cxa_atexit with "Hinv");
-    [exact Hlay | exact Hgl | exact Hwi | exact Hfns | exact Hk | exact Hfp |].
-  iIntros "Hinv". iExists _. iSplit; [iPureIntro; reflexivity|]. nx. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
+  call_spec with (x, ents, c, fnp, null, null); [repeat (split; [assumption|]); assumption|].
+  iDestruct "Hpost" as "[-> Hinv]". iExists _. iSplit; [iPureIntro; reflexivity|]. nx. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iApply ("HΦ" with "Hinv").
 Qed.
 
