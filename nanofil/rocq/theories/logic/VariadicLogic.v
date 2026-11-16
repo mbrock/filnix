@@ -480,15 +480,7 @@ Proof.
       - apply (all_agree_elem _ reads k v); [|exact Hin].
         unfold reads. cbn [all_agree fst snd]. split; [exact Hslive |].
         split; [exact Hsaux | exact Hsbytes]. }
-    assert (Hslive' : live_at (store_bytes m cb 8 (sb + off + 8)) sb sr).
-    { exact Hslive. }
-    assert (Hsaux' : agree_piece (store_bytes m cb 8 (sb + off + 8))
-      (PAux sb off) (VAux (ptr_cap x))).
-    { apply (all_agree_elem _ reads _ _ Hframe_reads). unfold reads. cbn. right. left. }
-    assert (Hsbytes' : all_agree (store_bytes m cb 8 (sb + off + 8))
-      (cell sb off (ptr_addr x))).
-    { apply all_agree_intro. intros k v Hin. apply (all_agree_elem _ reads k v Hframe_reads).
-      unfold reads. apply elem_of_app. right. exact Hin. }
+    pose proof Hframe_reads as (Hslive' & Hsaux' & Hsbytes').
     assert (Hcursor : load_bytes m cb 8 = sb + off).
     { replace cb with (cb + 0) at 1 by lia.
       rewrite (cell_load m cb cr 0 (sb + off) (cb + 0) Hclive Hcbytes eq_refl).
@@ -622,9 +614,7 @@ Proof.
         + exact (list_elem_of_fmap_2 fst _ _ Hin).
       - apply (all_agree_elem _ reads k' v'); [|exact Hin].
         unfold reads. cbn [all_agree fst snd]. split; [exact Hslive | exact Hsbytes]. }
-    assert (Hsbytes' : all_agree (store_bytes m cb 8 (sb + off + n)) (cell sb off v)).
-    { apply all_agree_intro. intros k' v' Hin. apply (all_agree_elem _ reads k' v' Hframe_reads).
-      unfold reads. apply elem_of_app. right. exact Hin. }
+    pose proof Hframe_reads as (_ & Hsbytes').
     assert (Hcursor : load_bytes m cb 8 = cur).
     { replace cb with (cb + 0) at 1 by lia.
       rewrite (cell_load m cb cr 0 cur (cb + 0) Hclive Hcbytes eq_refl). apply Z.mod_small. lia. }
