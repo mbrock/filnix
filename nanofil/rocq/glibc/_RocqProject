@@ -59,6 +59,7 @@ hi_atexit/HiAtexitCode47.v
 hi_atexit/HiAtexitCode48.v
 hi_atexit/HiAtexitCode49.v
 hi_atexit/HiAtexitCode50.v
+hi_atexit/HiAtexitCode51.v
 libio/ExitRunCode.v
 libio/LibioCleanupCode.v
 libio/LibioCloseItCode.v

@@ -19,11 +19,11 @@ Module HiAtexitSrc01.
 Module fn_hi_atexit_close_stdout_hi.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_31, 10%N).
+Definition source : option (string * N) := Some (file_34, 10%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_31, 11%N)); ((TAtom "L19"), (file_31, 14%N)); ((TAtom "L20"), (file_31, 14%N)); ((TAtom "L15"), (file_31, 15%N)); ((TAtom "L28"), (file_31, 15%N)); ((TAtom "L29"), (file_31, 15%N)); ((TAtom "L24"), (file_31, 16%N)); ((TAtom "L17"), (file_31, 10%N))].
+  [((TAtom "start"), (file_34, 11%N)); ((TAtom "L19"), (file_34, 14%N)); ((TAtom "L20"), (file_34, 14%N)); ((TAtom "L15"), (file_34, 15%N)); ((TAtom "L28"), (file_34, 15%N)); ((TAtom "L29"), (file_34, 15%N)); ((TAtom "L24"), (file_34, 16%N)); ((TAtom "L17"), (file_34, 10%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -53,11 +53,11 @@ End fn_hi_atexit_close_stdout_hi.
 Module fn_main.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_31, 20%N).
+Definition source : option (string * N) := Some (file_34, 20%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_31, 21%N))].
+  [((TAtom "start"), (file_34, 21%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -87,11 +87,11 @@ End fn_main.
 Module fn_glibc_malloc__dl_tunable_set_mmap_threshold.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 231%N).
+Definition source : option (string * N) := Some (file_30, 231%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 231%N))].
+  [((TAtom "start"), (file_30, 231%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -121,11 +121,11 @@ End fn_glibc_malloc__dl_tunable_set_mmap_threshold.
 Module fn_glibc_malloc__dl_tunable_set_mmaps_max.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 232%N).
+Definition source : option (string * N) := Some (file_30, 232%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 232%N))].
+  [((TAtom "start"), (file_30, 232%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -155,11 +155,11 @@ End fn_glibc_malloc__dl_tunable_set_mmaps_max.
 Module fn_glibc_malloc__dl_tunable_set_top_pad.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 233%N).
+Definition source : option (string * N) := Some (file_30, 233%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 233%N))].
+  [((TAtom "start"), (file_30, 233%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -189,11 +189,11 @@ End fn_glibc_malloc__dl_tunable_set_top_pad.
 Module fn_glibc_malloc__dl_tunable_set_perturb_byte.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 234%N).
+Definition source : option (string * N) := Some (file_30, 234%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 234%N))].
+  [((TAtom "start"), (file_30, 234%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -223,11 +223,11 @@ End fn_glibc_malloc__dl_tunable_set_perturb_byte.
 Module fn_glibc_malloc__dl_tunable_set_trim_threshold.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 235%N).
+Definition source : option (string * N) := Some (file_30, 235%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 235%N))].
+  [((TAtom "start"), (file_30, 235%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -257,11 +257,11 @@ End fn_glibc_malloc__dl_tunable_set_trim_threshold.
 Module fn_glibc_malloc__dl_tunable_set_arena_max.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 236%N).
+Definition source : option (string * N) := Some (file_30, 236%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 236%N))].
+  [((TAtom "start"), (file_30, 236%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -291,11 +291,11 @@ End fn_glibc_malloc__dl_tunable_set_arena_max.
 Module fn_glibc_malloc__dl_tunable_set_arena_test.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 237%N).
+Definition source : option (string * N) := Some (file_30, 237%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 237%N))].
+  [((TAtom "start"), (file_30, 237%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -325,11 +325,11 @@ End fn_glibc_malloc__dl_tunable_set_arena_test.
 Module fn_glibc_malloc__dl_tunable_set_tcache_max.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 239%N).
+Definition source : option (string * N) := Some (file_30, 239%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 239%N)); ((TAtom "iw_1.iw_1.start"), (file_51, 1136%N)); ((TAtom "iw_1.iw_1.L4"), (file_51, 1139%N)); ((TAtom "iw_1.iw_1.L76"), (file_51, 1139%N)); ((TAtom "iw_1.iw_1.join"), (file_51, 4810%N)); ((TAtom "iw_1.iw_2.start"), (file_3, 79%N)); ((TAtom "iw_1.iw_2.iw_1.iw_1.L3"), (file_3, 79%N)); ((TAtom "iw_1.iw_2.iw_1.iw_1.L4"), (file_3, 79%N)); ((TAtom "iw_1.L43"), (file_51, 4810%N)); ((TAtom "iw_1.L51"), (file_51, 4819%N)); ((TAtom "iw_1.L58"), (file_51, 4820%N)); ((TAtom "iw_1.L60"), (file_51, 4821%N)); ((TAtom "iw_1.join"), (file_27, 239%N))].
+  [((TAtom "start"), (file_30, 239%N)); ((TAtom "iw_1.iw_1.start"), (file_54, 1136%N)); ((TAtom "iw_1.iw_1.L4"), (file_54, 1139%N)); ((TAtom "iw_1.iw_1.L76"), (file_54, 1139%N)); ((TAtom "iw_1.iw_1.join"), (file_54, 4810%N)); ((TAtom "iw_1.iw_2.start"), (file_3, 79%N)); ((TAtom "iw_1.iw_2.iw_1.iw_1.L3"), (file_3, 79%N)); ((TAtom "iw_1.iw_2.iw_1.iw_1.L4"), (file_3, 79%N)); ((TAtom "iw_1.L43"), (file_54, 4810%N)); ((TAtom "iw_1.L51"), (file_54, 4819%N)); ((TAtom "iw_1.L58"), (file_54, 4820%N)); ((TAtom "iw_1.L60"), (file_54, 4821%N)); ((TAtom "iw_1.join"), (file_30, 239%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -359,11 +359,11 @@ End fn_glibc_malloc__dl_tunable_set_tcache_max.
 Module fn_glibc_malloc__dl_tunable_set_tcache_count.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 240%N).
+Definition source : option (string * N) := Some (file_30, 240%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 240%N)); ((TAtom "iw_1.L9"), (file_51, 4834%N)); ((TAtom "iw_1.join"), (file_27, 240%N))].
+  [((TAtom "start"), (file_30, 240%N)); ((TAtom "iw_1.L9"), (file_54, 4834%N)); ((TAtom "iw_1.join"), (file_30, 240%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -393,11 +393,11 @@ End fn_glibc_malloc__dl_tunable_set_tcache_count.
 Module fn_glibc_malloc__dl_tunable_set_hugetlb.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 242%N).
+Definition source : option (string * N) := Some (file_30, 242%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 242%N)); ((TAtom "iw_1.L20"), (file_51, 4889%N)); ((TAtom "iw_1.L21"), (file_51, 4892%N)); ((TAtom "iw_1.L36"), (file_51, 4899%N)); ((TAtom "iw_1.L39"), (file_51, 4903%N)); ((TAtom "iw_1.L54"), (file_51, 4904%N)); ((TAtom "iw_1.L55"), (file_51, 4904%N)); ((TAtom "iw_1.L47"), (file_51, 4906%N)); ((TAtom "iw_1.L40"), (file_51, 4914%N)); ((TAtom "iw_1.iw_2.L3"), (file_4, 76%N)); ((TAtom "iw_1.iw_2.L4"), (file_4, 75%N)); ((TAtom "iw_1.L30"), (file_51, 4921%N)); ((TAtom "iw_1.L80"), (file_51, 4922%N)); ((TAtom "iw_1.L86"), (file_51, 4922%N)); ((TAtom "iw_1.L87"), (file_51, 4922%N)); ((TAtom "iw_1.join"), (file_27, 242%N))].
+  [((TAtom "start"), (file_30, 242%N)); ((TAtom "iw_1.L20"), (file_54, 4889%N)); ((TAtom "iw_1.L21"), (file_54, 4892%N)); ((TAtom "iw_1.L36"), (file_54, 4899%N)); ((TAtom "iw_1.L39"), (file_54, 4903%N)); ((TAtom "iw_1.L54"), (file_54, 4904%N)); ((TAtom "iw_1.L55"), (file_54, 4904%N)); ((TAtom "iw_1.L47"), (file_54, 4906%N)); ((TAtom "iw_1.L40"), (file_54, 4914%N)); ((TAtom "iw_1.iw_2.L3"), (file_4, 76%N)); ((TAtom "iw_1.iw_2.L4"), (file_4, 75%N)); ((TAtom "iw_1.L30"), (file_54, 4921%N)); ((TAtom "iw_1.L80"), (file_54, 4922%N)); ((TAtom "iw_1.L86"), (file_54, 4922%N)); ((TAtom "iw_1.L87"), (file_54, 4922%N)); ((TAtom "iw_1.join"), (file_30, 242%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -427,11 +427,11 @@ End fn_glibc_malloc__dl_tunable_set_hugetlb.
 Module fn___ptmalloc_init.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_27, 248%N).
+Definition source : option (string * N) := Some (file_30, 248%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_27, 268%N)); ((TAtom "iw_1.L0"), (file_51, 2791%N)); ((TAtom "iw_1.L12"), (file_51, 2801%N)); ((TAtom "iw_1.L18"), (file_51, 2801%N)); ((TAtom "iw_1.L19"), (file_51, 2801%N)); ((TAtom "iw_1.L28"), (file_51, 2801%N)); ((TAtom "iw_1.iw_2.join"), (file_51, 2801%N)); ((TAtom "iw_1.L29"), (file_51, 2801%N)); ((TAtom "iw_1.L37"), (file_51, 2801%N)); ((TAtom "iw_1.iw_3.join"), (file_51, 2801%N)); ((TAtom "iw_1.L38"), (file_51, 2801%N)); ((TAtom "iw_1.L13"), (file_51, 2806%N)); ((TAtom "iw_1.join"), (file_27, 260%N)); ((TAtom "L0"), (file_27, 261%N)); ((TAtom "L2"), (file_27, 264%N)); ((TAtom "iw_2.L4"), (file_51, 1677%N)); ((TAtom "iw_2.L5"), (file_51, 1683%N)); ((TAtom "iw_2.L7"), (file_51, 1688%N)); ((TAtom "iw_2.L26"), (file_51, 1690%N)); ((TAtom "iw_2.L28"), (file_51, 1692%N)); ((TAtom "L68"), (file_27, 281%N)); ((TAtom "L69"), (file_27, 281%N)); ((TAtom "L61"), (file_27, 287%N)); ((TAtom "L77"), (file_27, 288%N)); ((TAtom "L79"), (file_27, 289%N)); ((TAtom "L63"), (file_27, 248%N))].
+  [((TAtom "start"), (file_30, 268%N)); ((TAtom "iw_1.L0"), (file_54, 2791%N)); ((TAtom "iw_1.L12"), (file_54, 2801%N)); ((TAtom "iw_1.L18"), (file_54, 2801%N)); ((TAtom "iw_1.L19"), (file_54, 2801%N)); ((TAtom "iw_1.L28"), (file_54, 2801%N)); ((TAtom "iw_1.iw_2.join"), (file_54, 2801%N)); ((TAtom "iw_1.L29"), (file_54, 2801%N)); ((TAtom "iw_1.L37"), (file_54, 2801%N)); ((TAtom "iw_1.iw_3.join"), (file_54, 2801%N)); ((TAtom "iw_1.L38"), (file_54, 2801%N)); ((TAtom "iw_1.L13"), (file_54, 2806%N)); ((TAtom "iw_1.join"), (file_30, 260%N)); ((TAtom "L0"), (file_30, 261%N)); ((TAtom "L2"), (file_30, 264%N)); ((TAtom "iw_2.L4"), (file_54, 1677%N)); ((TAtom "iw_2.L5"), (file_54, 1683%N)); ((TAtom "iw_2.L7"), (file_54, 1688%N)); ((TAtom "iw_2.L26"), (file_54, 1690%N)); ((TAtom "iw_2.L28"), (file_54, 1692%N)); ((TAtom "L68"), (file_30, 281%N)); ((TAtom "L69"), (file_30, 281%N)); ((TAtom "L61"), (file_30, 287%N)); ((TAtom "L77"), (file_30, 288%N)); ((TAtom "L79"), (file_30, 289%N)); ((TAtom "L63"), (file_30, 248%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -461,11 +461,11 @@ End fn___ptmalloc_init.
 Module fn_glibc_malloc___libc_malloc2.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_51, 3065%N).
+Definition source : option (string * N) := Some (file_54, 3065%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_51, 3069%N))].
+  [((TAtom "start"), (file_54, 3069%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -495,11 +495,11 @@ End fn_glibc_malloc___libc_malloc2.
 Module fn___GI___libc_malloc.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_51, 3102%N).
+Definition source : option (string * N) := Some (file_54, 3102%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_51, 1136%N)); ((TAtom "iw_1.L4"), (file_51, 1139%N)); ((TAtom "iw_1.L76"), (file_51, 1139%N)); ((TAtom "iw_1.join"), (file_51, 3108%N)); ((TAtom "L26"), (file_51, 3110%N)); ((TAtom "L43"), (file_51, 3114%N)); ((TAtom "iw_2.start"), (file_51, 2879%N)); ((TAtom "iw_2.iw_1.L22"), (file_51, 2857%N)); ((TAtom "iw_2.iw_1.L38"), (file_51, 2860%N)); ((TAtom "iw_3.start"), (file_3, 79%N)); ((TAtom "iw_3.iw_1.iw_1.L3"), (file_3, 79%N)); ((TAtom "iw_3.iw_1.iw_1.L4"), (file_3, 79%N)); ((TAtom "iw_4.iw_1.L18"), (file_51, 2887%N)); ((TAtom "iw_4.iw_1.L25"), (file_51, 2888%N)); ((TAtom "iw_4.iw_1.L26"), (file_51, 2888%N)); ((TAtom "iw_4.iw_1.L19"), (file_51, 2892%N)); ((TAtom "iw_4.iw_1.join"), (file_51, 2919%N)); ((TAtom "iw_4.L18"), (file_51, 2919%N)); ((TAtom "iw_4.L19"), (file_51, 2919%N)); ((TAtom "iw_4.iw_2.start"), (file_51, 2851%N)); ((TAtom "iw_4.iw_2.L7"), (file_51, 2852%N)); ((TAtom "iw_4.iw_2.L8"), (file_51, 2854%N)); ((TAtom "iw_4.iw_2.L9"), (file_51, 2850%N)); ((TAtom "iw_4.iw_2.L22"), (file_51, 2857%N)); ((TAtom "iw_4.iw_2.L24"), (file_51, 2859%N)); ((TAtom "iw_4.iw_2.L38"), (file_51, 2860%N)); ((TAtom "iw_4.iw_2.L39"), (file_51, 2862%N)); ((TAtom "iw_4.iw_2.L40"), (file_51, 2864%N)); ((TAtom "iw_4.join"), (file_51, 3121%N)); ((TAtom "L72"), (file_51, 3122%N)); ((TAtom "L7"), (file_51, 3127%N))].
+  [((TAtom "start"), (file_54, 1136%N)); ((TAtom "iw_1.L4"), (file_54, 1139%N)); ((TAtom "iw_1.L76"), (file_54, 1139%N)); ((TAtom "iw_1.join"), (file_54, 3108%N)); ((TAtom "L26"), (file_54, 3110%N)); ((TAtom "L43"), (file_54, 3114%N)); ((TAtom "iw_2.start"), (file_54, 2879%N)); ((TAtom "iw_2.iw_1.L22"), (file_54, 2857%N)); ((TAtom "iw_2.iw_1.L38"), (file_54, 2860%N)); ((TAtom "iw_3.start"), (file_3, 79%N)); ((TAtom "iw_3.iw_1.iw_1.L3"), (file_3, 79%N)); ((TAtom "iw_3.iw_1.iw_1.L4"), (file_3, 79%N)); ((TAtom "iw_4.iw_1.L18"), (file_54, 2887%N)); ((TAtom "iw_4.iw_1.L25"), (file_54, 2888%N)); ((TAtom "iw_4.iw_1.L26"), (file_54, 2888%N)); ((TAtom "iw_4.iw_1.L19"), (file_54, 2892%N)); ((TAtom "iw_4.iw_1.join"), (file_54, 2919%N)); ((TAtom "iw_4.L18"), (file_54, 2919%N)); ((TAtom "iw_4.L19"), (file_54, 2919%N)); ((TAtom "iw_4.iw_2.start"), (file_54, 2851%N)); ((TAtom "iw_4.iw_2.L7"), (file_54, 2852%N)); ((TAtom "iw_4.iw_2.L8"), (file_54, 2854%N)); ((TAtom "iw_4.iw_2.L9"), (file_54, 2850%N)); ((TAtom "iw_4.iw_2.L22"), (file_54, 2857%N)); ((TAtom "iw_4.iw_2.L24"), (file_54, 2859%N)); ((TAtom "iw_4.iw_2.L38"), (file_54, 2860%N)); ((TAtom "iw_4.iw_2.L39"), (file_54, 2862%N)); ((TAtom "iw_4.iw_2.L40"), (file_54, 2864%N)); ((TAtom "iw_4.join"), (file_54, 3121%N)); ((TAtom "L72"), (file_54, 3122%N)); ((TAtom "L7"), (file_54, 3127%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -529,11 +529,11 @@ End fn___GI___libc_malloc.
 Module fn___GI___libc_free.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_51, 3138%N).
+Definition source : option (string * N) := Some (file_54, 3138%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_51, 3142%N))].
+  [((TAtom "start"), (file_54, 3142%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -563,11 +563,11 @@ End fn___GI___libc_free.
 Module fn___libc_calloc.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_51, 3539%N).
+Definition source : option (string * N) := Some (file_54, 3539%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_51, 3544%N)); ((TAtom "L5"), (file_51, 3546%N)); ((TAtom "L41"), (file_51, 3551%N))].
+  [((TAtom "start"), (file_54, 3544%N)); ((TAtom "L5"), (file_54, 3546%N)); ((TAtom "L41"), (file_54, 3551%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -597,11 +597,11 @@ End fn___libc_calloc.
 Module fn_glibc_malloc_malloc_printerr.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_51, 5135%N).
+Definition source : option (string * N) := Some (file_54, 5135%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_51, 5139%N))].
+  [((TAtom "start"), (file_54, 5139%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -631,11 +631,11 @@ End fn_glibc_malloc_malloc_printerr.
 Module fn___internal_atexit.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_35, 32%N).
+Definition source : option (string * N) := Some (file_38, 32%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_35, 41%N)); ((TAtom "L10"), (file_35, 41%N)); ((TAtom "L11"), (file_35, 43%N)); ((TAtom "L29"), (file_35, 43%N)); ((TAtom "L30"), (file_35, 43%N)); ((TAtom "L34"), (file_35, 43%N)); ((TAtom "L23"), (file_35, 44%N)); ((TAtom "L46"), (file_35, 48%N)); ((TAtom "L59"), (file_35, 48%N)); ((TAtom "L60"), (file_35, 48%N)); ((TAtom "L71"), (file_35, 48%N)); ((TAtom "L66"), (file_35, 49%N)); ((TAtom "L48"), (file_35, 53%N)); ((TAtom "L103"), (file_35, 57%N)); ((TAtom "L104"), (file_35, 57%N)); ((TAtom "L115"), (file_35, 57%N)); ((TAtom "L110"), (file_35, 58%N))].
+  [((TAtom "start"), (file_38, 41%N)); ((TAtom "L10"), (file_38, 41%N)); ((TAtom "L11"), (file_38, 43%N)); ((TAtom "L29"), (file_38, 43%N)); ((TAtom "L30"), (file_38, 43%N)); ((TAtom "L34"), (file_38, 43%N)); ((TAtom "L23"), (file_38, 44%N)); ((TAtom "L46"), (file_38, 48%N)); ((TAtom "L59"), (file_38, 48%N)); ((TAtom "L60"), (file_38, 48%N)); ((TAtom "L71"), (file_38, 48%N)); ((TAtom "L66"), (file_38, 49%N)); ((TAtom "L48"), (file_38, 53%N)); ((TAtom "L103"), (file_38, 57%N)); ((TAtom "L104"), (file_38, 57%N)); ((TAtom "L115"), (file_38, 57%N)); ((TAtom "L110"), (file_38, 58%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -665,11 +665,11 @@ End fn___internal_atexit.
 Module fn___GI___cxa_atexit.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_35, 65%N).
+Definition source : option (string * N) := Some (file_38, 65%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_35, 68%N))].
+  [((TAtom "start"), (file_38, 68%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -699,11 +699,11 @@ End fn___GI___cxa_atexit.
 Module fn___new_exitfn.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_35, 78%N).
+Definition source : option (string * N) := Some (file_38, 78%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_35, 86%N)); ((TAtom "L6"), (file_35, 89%N)); ((TAtom "L8"), (file_35, 91%N)); ((TAtom "L14"), (file_35, 84%N)); ((TAtom "L15"), (file_35, 93%N)); ((TAtom "L25"), (file_35, 84%N)); ((TAtom "L26"), (file_35, 94%N)); ((TAtom "L28"), (file_35, 97%N)); ((TAtom "L47"), (file_35, 101%N)); ((TAtom "L17"), (file_35, 84%N)); ((TAtom "L63"), (file_35, 104%N)); ((TAtom "L64"), (file_35, 104%N)); ((TAtom "L56"), (file_35, 108%N)); ((TAtom "L70"), (file_35, 110%N)); ((TAtom "L78"), (file_35, 110%N)); ((TAtom "L79"), (file_35, 111%N)); ((TAtom "L88"), (file_35, 115%N)); ((TAtom "L72"), (file_35, 81%N)); ((TAtom "L100"), (file_35, 122%N)); ((TAtom "L57"), (file_35, 129%N)); ((TAtom "L58"), (file_35, 83%N)); ((TAtom "L121"), (file_35, 136%N)); ((TAtom "L123"), (file_35, 140%N))].
+  [((TAtom "start"), (file_38, 86%N)); ((TAtom "L6"), (file_38, 89%N)); ((TAtom "L8"), (file_38, 91%N)); ((TAtom "L14"), (file_38, 84%N)); ((TAtom "L15"), (file_38, 93%N)); ((TAtom "L25"), (file_38, 84%N)); ((TAtom "L26"), (file_38, 94%N)); ((TAtom "L28"), (file_38, 97%N)); ((TAtom "L47"), (file_38, 101%N)); ((TAtom "L17"), (file_38, 84%N)); ((TAtom "L63"), (file_38, 104%N)); ((TAtom "L64"), (file_38, 104%N)); ((TAtom "L56"), (file_38, 108%N)); ((TAtom "L70"), (file_38, 110%N)); ((TAtom "L78"), (file_38, 110%N)); ((TAtom "L79"), (file_38, 111%N)); ((TAtom "L88"), (file_38, 115%N)); ((TAtom "L72"), (file_38, 81%N)); ((TAtom "L100"), (file_38, 122%N)); ((TAtom "L57"), (file_38, 129%N)); ((TAtom "L58"), (file_38, 83%N)); ((TAtom "L121"), (file_38, 136%N)); ((TAtom "L123"), (file_38, 140%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -733,11 +733,11 @@ End fn___new_exitfn.
 Module fn_atexit.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_33, 40%N).
+Definition source : option (string * N) := Some (file_36, 40%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_33, 46%N))].
+  [((TAtom "start"), (file_36, 46%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -767,11 +767,11 @@ End fn_atexit.
 Module fn___fpending.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_32, 20%N).
+Definition source : option (string * N) := Some (file_35, 20%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_32, 23%N)); ((TAtom "L2"), (file_32, 24%N)); ((TAtom "L3"), (file_32, 26%N))].
+  [((TAtom "start"), (file_35, 23%N)); ((TAtom "L2"), (file_35, 24%N)); ((TAtom "L3"), (file_35, 26%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=

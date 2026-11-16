@@ -19,11 +19,11 @@ Module HiAtexitSrc04.
 Module fn__IO_new_file_seekoff.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 968%N).
+Definition source : option (string * N) := Some (file_44, 968%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1034%N)); ((TAtom "iw_1.start"), (file_41, 906%N)); ((TAtom "iw_1.L4"), (file_41, 908%N)); ((TAtom "iw_1.L34"), (file_41, 915%N)); ((TAtom "iw_1.L35"), (file_41, 915%N)); ((TAtom "iw_1.L30"), (file_41, 917%N)); ((TAtom "iw_1.iw_1.L10"), (file_30, 1049%N)); ((TAtom "iw_1.iw_1.join"), (file_41, 917%N)); ((TAtom "iw_1.L48"), (file_41, 921%N)); ((TAtom "iw_1.L32"), (file_41, 925%N)); ((TAtom "iw_1.L60"), (file_41, 926%N)); ((TAtom "iw_1.L61"), (file_41, 932%N)); ((TAtom "iw_1.L76"), (file_41, 933%N)); ((TAtom "iw_1.L77"), (file_41, 936%N)); ((TAtom "iw_1.L6"), (file_41, 902%N)); ((TAtom "iw_1.L102"), (file_41, 940%N)); ((TAtom "iw_1.L103"), (file_41, 942%N)); ((TAtom "iw_1.iw_2.L10"), (file_30, 1049%N)); ((TAtom "iw_1.iw_2.join"), (file_41, 942%N)); ((TAtom "iw_1.L104"), (file_41, 902%N)); ((TAtom "iw_1.L124"), (file_41, 947%N)); ((TAtom "iw_1.L136"), (file_41, 947%N)); ((TAtom "iw_1.L137"), (file_41, 947%N)); ((TAtom "iw_1.L131"), (file_41, 953%N)); ((TAtom "iw_1.L133"), (file_41, 957%N)); ((TAtom "iw_1.L149"), (file_41, 961%N)); ((TAtom "iw_1.join"), (file_41, 979%N)); ((TAtom "L14"), (file_41, 983%N)); ((TAtom "L30"), (file_41, 983%N)); ((TAtom "L31"), (file_41, 983%N)); ((TAtom "L53"), (file_41, 986%N)); ((TAtom "L54"), (file_41, 986%N)); ((TAtom "L65"), (file_41, 996%N)); ((TAtom "L66"), (file_41, 996%N)); ((TAtom "L61"), (file_41, 997%N)); ((TAtom "L63"), (file_41, 999%N)); ((TAtom "L74"), (file_41, 1002%N)); ((TAtom "L83"), (file_41, 1004%N)); ((TAtom "iw_2.L4"), (file_30, 1059%N)); ((TAtom "iw_2.join"), (file_41, 1005%N)); ((TAtom "L85"), (file_41, 1007%N)); ((TAtom "L131"), (file_41, 1016%N)); ((TAtom "L145"), (file_41, 1021%N)); ((TAtom "L159"), (file_41, 1024%N)); ((TAtom "L169"), (file_41, 1035%N)); ((TAtom "iw_3.L10"), (file_30, 1049%N)); ((TAtom "iw_3.join"), (file_41, 1035%N)); ((TAtom "L183"), (file_41, 1035%N)); ((TAtom "L184"), (file_41, 1035%N)); ((TAtom "L171"), (file_41, 1037%N)); ((TAtom "L129"), (file_41, 1012%N)); ((TAtom "L196"), (file_41, 1012%N)); ((TAtom "L198"), (file_41, 1012%N)); ((TAtom "L130"), (file_41, 968%N)); ((TAtom "L211"), (file_41, 1050%N)); ((TAtom "L212"), (file_41, 1050%N)); ((TAtom "L221"), (file_41, 1050%N)); ((TAtom "L222"), (file_41, 1050%N)); ((TAtom "L202"), (file_41, 1053%N)); ((TAtom "L249"), (file_41, 1055%N)); ((TAtom "L250"), (file_41, 1055%N)); ((TAtom "L243"), (file_41, 1057%N)); ((TAtom "L204"), (file_41, 1067%N)); ((TAtom "L300"), (file_41, 1071%N)); ((TAtom "L322"), (file_41, 1073%N)); ((TAtom "L323"), (file_41, 972%N)); ((TAtom "iw_4.L10"), (file_30, 1049%N)); ((TAtom "iw_4.join"), (file_41, 1078%N)); ((TAtom "L345"), (file_41, 1080%N)); ((TAtom "L347"), (file_41, 1081%N)); ((TAtom "L354"), (file_41, 1085%N)); ((TAtom "iw_5.L10"), (file_30, 1049%N)); ((TAtom "iw_5.join"), (file_41, 1085%N)); ((TAtom "L369"), (file_41, 1085%N)); ((TAtom "L370"), (file_41, 1085%N)); ((TAtom "L384"), (file_41, 1091%N)); ((TAtom "L391"), (file_41, 1091%N)); ((TAtom "L355"), (file_41, 973%N)); ((TAtom "L152"), (file_41, 968%N)); ((TAtom "iw_6.L10"), (file_30, 1049%N)); ((TAtom "iw_6.join"), (file_41, 1105%N)); ((TAtom "L458"), (file_41, 1108%N)); ((TAtom "L460"), (file_41, 1113%N)); ((TAtom "L503"), (file_41, 1121%N)); ((TAtom "iw_7.L10"), (file_30, 1049%N)); ((TAtom "iw_7.join"), (file_41, 1121%N)); ((TAtom "L505"), (file_41, 1123%N))].
+  [((TAtom "start"), (file_44, 1034%N)); ((TAtom "iw_1.start"), (file_44, 906%N)); ((TAtom "iw_1.L4"), (file_44, 908%N)); ((TAtom "iw_1.L34"), (file_44, 915%N)); ((TAtom "iw_1.L35"), (file_44, 915%N)); ((TAtom "iw_1.L30"), (file_44, 917%N)); ((TAtom "iw_1.iw_1.L10"), (file_33, 1049%N)); ((TAtom "iw_1.iw_1.join"), (file_44, 917%N)); ((TAtom "iw_1.L48"), (file_44, 921%N)); ((TAtom "iw_1.L32"), (file_44, 925%N)); ((TAtom "iw_1.L60"), (file_44, 926%N)); ((TAtom "iw_1.L61"), (file_44, 932%N)); ((TAtom "iw_1.L76"), (file_44, 933%N)); ((TAtom "iw_1.L77"), (file_44, 936%N)); ((TAtom "iw_1.L6"), (file_44, 902%N)); ((TAtom "iw_1.L102"), (file_44, 940%N)); ((TAtom "iw_1.L103"), (file_44, 942%N)); ((TAtom "iw_1.iw_2.L10"), (file_33, 1049%N)); ((TAtom "iw_1.iw_2.join"), (file_44, 942%N)); ((TAtom "iw_1.L104"), (file_44, 902%N)); ((TAtom "iw_1.L124"), (file_44, 947%N)); ((TAtom "iw_1.L136"), (file_44, 947%N)); ((TAtom "iw_1.L137"), (file_44, 947%N)); ((TAtom "iw_1.L131"), (file_44, 953%N)); ((TAtom "iw_1.L133"), (file_44, 957%N)); ((TAtom "iw_1.L149"), (file_44, 961%N)); ((TAtom "iw_1.join"), (file_44, 979%N)); ((TAtom "L14"), (file_44, 983%N)); ((TAtom "L30"), (file_44, 983%N)); ((TAtom "L31"), (file_44, 983%N)); ((TAtom "L53"), (file_44, 986%N)); ((TAtom "L54"), (file_44, 986%N)); ((TAtom "L65"), (file_44, 996%N)); ((TAtom "L66"), (file_44, 996%N)); ((TAtom "L61"), (file_44, 997%N)); ((TAtom "L63"), (file_44, 999%N)); ((TAtom "L74"), (file_44, 1002%N)); ((TAtom "L83"), (file_44, 1004%N)); ((TAtom "iw_2.L4"), (file_33, 1059%N)); ((TAtom "iw_2.join"), (file_44, 1005%N)); ((TAtom "L85"), (file_44, 1007%N)); ((TAtom "L131"), (file_44, 1016%N)); ((TAtom "L145"), (file_44, 1021%N)); ((TAtom "L159"), (file_44, 1024%N)); ((TAtom "L169"), (file_44, 1035%N)); ((TAtom "iw_3.L10"), (file_33, 1049%N)); ((TAtom "iw_3.join"), (file_44, 1035%N)); ((TAtom "L183"), (file_44, 1035%N)); ((TAtom "L184"), (file_44, 1035%N)); ((TAtom "L171"), (file_44, 1037%N)); ((TAtom "L129"), (file_44, 1012%N)); ((TAtom "L196"), (file_44, 1012%N)); ((TAtom "L198"), (file_44, 1012%N)); ((TAtom "L130"), (file_44, 968%N)); ((TAtom "L211"), (file_44, 1050%N)); ((TAtom "L212"), (file_44, 1050%N)); ((TAtom "L221"), (file_44, 1050%N)); ((TAtom "L222"), (file_44, 1050%N)); ((TAtom "L202"), (file_44, 1053%N)); ((TAtom "L249"), (file_44, 1055%N)); ((TAtom "L250"), (file_44, 1055%N)); ((TAtom "L243"), (file_44, 1057%N)); ((TAtom "L204"), (file_44, 1067%N)); ((TAtom "L300"), (file_44, 1071%N)); ((TAtom "L322"), (file_44, 1073%N)); ((TAtom "L323"), (file_44, 972%N)); ((TAtom "iw_4.L10"), (file_33, 1049%N)); ((TAtom "iw_4.join"), (file_44, 1078%N)); ((TAtom "L345"), (file_44, 1080%N)); ((TAtom "L347"), (file_44, 1081%N)); ((TAtom "L354"), (file_44, 1085%N)); ((TAtom "iw_5.L10"), (file_33, 1049%N)); ((TAtom "iw_5.join"), (file_44, 1085%N)); ((TAtom "L369"), (file_44, 1085%N)); ((TAtom "L370"), (file_44, 1085%N)); ((TAtom "L384"), (file_44, 1091%N)); ((TAtom "L391"), (file_44, 1091%N)); ((TAtom "L355"), (file_44, 973%N)); ((TAtom "L152"), (file_44, 968%N)); ((TAtom "iw_6.L10"), (file_33, 1049%N)); ((TAtom "iw_6.join"), (file_44, 1105%N)); ((TAtom "L458"), (file_44, 1108%N)); ((TAtom "L460"), (file_44, 1113%N)); ((TAtom "L503"), (file_44, 1121%N)); ((TAtom "iw_7.L10"), (file_33, 1049%N)); ((TAtom "iw_7.join"), (file_44, 1121%N)); ((TAtom "L505"), (file_44, 1123%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -53,11 +53,11 @@ End fn__IO_new_file_seekoff.
 Module fn__IO_file_seekoff_mmap.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1127%N).
+Definition source : option (string * N) := Some (file_44, 1127%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1136%N)); ((TAtom "L9"), (file_41, 1137%N)); ((TAtom "L11"), (file_41, 1139%N)); ((TAtom "L28"), (file_41, 1141%N)); ((TAtom "L34"), (file_41, 1142%N)); ((TAtom "L36"), (file_41, 1127%N)); ((TAtom "L30"), (file_41, 1127%N)); ((TAtom "L54"), (file_41, 1150%N)); ((TAtom "L71"), (file_41, 1155%N)); ((TAtom "L85"), (file_41, 1146%N)); ((TAtom "L87"), (file_41, 1146%N)); ((TAtom "L53"), (file_41, 1127%N)); ((TAtom "L90"), (file_41, 1163%N)); ((TAtom "L92"), (file_41, 1167%N)); ((TAtom "iw_1.L10"), (file_30, 1049%N)); ((TAtom "iw_1.join"), (file_41, 1167%N)); ((TAtom "L108"), (file_41, 1169%N)); ((TAtom "L110"), (file_41, 1171%N)); ((TAtom "L116"), (file_41, 1175%N)); ((TAtom "L117"), (file_41, 1179%N)); ((TAtom "L118"), (file_41, 1182%N))].
+  [((TAtom "start"), (file_44, 1136%N)); ((TAtom "L9"), (file_44, 1137%N)); ((TAtom "L11"), (file_44, 1139%N)); ((TAtom "L28"), (file_44, 1141%N)); ((TAtom "L34"), (file_44, 1142%N)); ((TAtom "L36"), (file_44, 1127%N)); ((TAtom "L30"), (file_44, 1127%N)); ((TAtom "L54"), (file_44, 1150%N)); ((TAtom "L71"), (file_44, 1155%N)); ((TAtom "L85"), (file_44, 1146%N)); ((TAtom "L87"), (file_44, 1146%N)); ((TAtom "L53"), (file_44, 1127%N)); ((TAtom "L90"), (file_44, 1163%N)); ((TAtom "L92"), (file_44, 1167%N)); ((TAtom "iw_1.L10"), (file_33, 1049%N)); ((TAtom "iw_1.join"), (file_44, 1167%N)); ((TAtom "L108"), (file_44, 1169%N)); ((TAtom "L110"), (file_44, 1171%N)); ((TAtom "L116"), (file_44, 1175%N)); ((TAtom "L117"), (file_44, 1179%N)); ((TAtom "L118"), (file_44, 1182%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -87,11 +87,11 @@ End fn__IO_file_seekoff_mmap.
 Module fn__IO_file_seekoff_maybe_mmap.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1189%N).
+Definition source : option (string * N) := Some (file_44, 1189%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1197%N)); ((TAtom "iw_1.L10"), (file_30, 1049%N)); ((TAtom "iw_1.join"), (file_41, 1197%N)); ((TAtom "L19"), (file_41, 1199%N)); ((TAtom "L21"), (file_41, 1201%N))].
+  [((TAtom "start"), (file_44, 1197%N)); ((TAtom "iw_1.L10"), (file_33, 1049%N)); ((TAtom "iw_1.join"), (file_44, 1197%N)); ((TAtom "L19"), (file_44, 1199%N)); ((TAtom "L21"), (file_44, 1201%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -121,11 +121,11 @@ End fn__IO_file_seekoff_maybe_mmap.
 Module fn___GI__IO_file_read.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1205%N).
+Definition source : option (string * N) := Some (file_44, 1205%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1208%N)); ((TAtom "L6"), (file_41, 1208%N)); ((TAtom "L7"), (file_41, 1208%N)); ((TAtom "L8"), (file_41, 1208%N))].
+  [((TAtom "start"), (file_44, 1208%N)); ((TAtom "L6"), (file_44, 1208%N)); ((TAtom "L7"), (file_44, 1208%N)); ((TAtom "L8"), (file_44, 1208%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -155,11 +155,11 @@ End fn___GI__IO_file_read.
 Module fn___GI__IO_file_seek.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1214%N).
+Definition source : option (string * N) := Some (file_44, 1214%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1217%N))].
+  [((TAtom "start"), (file_44, 1217%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -189,11 +189,11 @@ End fn___GI__IO_file_seek.
 Module fn___GI__IO_file_stat.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1221%N).
+Definition source : option (string * N) := Some (file_44, 1221%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1224%N))].
+  [((TAtom "start"), (file_44, 1224%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -223,11 +223,11 @@ End fn___GI__IO_file_stat.
 Module fn__IO_file_close_mmap.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1228%N).
+Definition source : option (string * N) := Some (file_44, 1228%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1232%N))].
+  [((TAtom "start"), (file_44, 1232%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -257,11 +257,11 @@ End fn__IO_file_close_mmap.
 Module fn___GI__IO_file_close.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1239%N).
+Definition source : option (string * N) := Some (file_44, 1239%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1244%N))].
+  [((TAtom "start"), (file_44, 1244%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -291,11 +291,11 @@ End fn___GI__IO_file_close.
 Module fn__IO_new_file_write.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_41, 1248%N).
+Definition source : option (string * N) := Some (file_44, 1248%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_41, 1252%N)); ((TAtom "L8"), (file_41, 1251%N)); ((TAtom "L9"), (file_41, 1254%N)); ((TAtom "L14"), (file_41, 1254%N)); ((TAtom "L15"), (file_41, 1254%N)); ((TAtom "L16"), (file_41, 1254%N)); ((TAtom "L38"), (file_41, 1260%N)); ((TAtom "L40"), (file_41, 1263%N)); ((TAtom "L10"), (file_41, 1267%N)); ((TAtom "L61"), (file_41, 1269%N)); ((TAtom "L63"), (file_41, 1270%N))].
+  [((TAtom "start"), (file_44, 1252%N)); ((TAtom "L8"), (file_44, 1251%N)); ((TAtom "L9"), (file_44, 1254%N)); ((TAtom "L14"), (file_44, 1254%N)); ((TAtom "L15"), (file_44, 1254%N)); ((TAtom "L16"), (file_44, 1254%N)); ((TAtom "L38"), (file_44, 1260%N)); ((TAtom "L40"), (file_44, 1263%N)); ((TAtom "L10"), (file_44, 1267%N)); ((TAtom "L61"), (file_44, 1269%N)); ((TAtom "L63"), (file_44, 1270%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=

@@ -1,31 +1,40 @@
 (** A proof about hi_atexit.c has to run the program together with the
     glibc code it calls, so it needs that whole program as one Rocq
     module. This file decodes the linked term that hi_atexit/code.sh
-    printed into that module and lays out its globals, the addresses
-    every symbol gets in the program's initial memory.
+    printed and appends the constructor runner that libpizlo provides
+    as `c: zrun_deferred_global_ctors`, which `c: __libc_start_main`
+    calls. The result is the program's single module. The file also
+    lays out its globals, the addresses every symbol gets in the
+    program's initial memory.
 
-    | Name | Meaning |
-    |---|---|
-    | [hi_module] | the decoded module |
-    | [hi_decodes] | the term decodes to it |
-    | [hi_globals], [hi_layout] | the globals its initial memory places | *)
+    The runner's three items come after every linked item, so they move
+    no existing symbol; [HiStartImage] checks that by computation. *)
 
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Transport Semantics Run.
-From Glibc Require Import HiAtexitTerm.
+From Glibc Require Import HiAtexitTerm StartCtors.
 Import ListNotations.
 Open Scope string_scope.
 
-(** The linked module. *)
-Definition hi_module : module := Eval vm_compute in
+(** This module is what the linked term decodes to, before the runner
+    is appended. *)
+Definition hi_decoded : module := Eval vm_compute in
   match decode_module hi_atexit_term with Some md => md | None => [] end.
 
-(** The term decodes to [hi_module]. *)
-Lemma hi_decodes : decode_module hi_atexit_term = Some hi_module.
-Proof. vm_cast_no_check (eq_refl (Some hi_module)). Qed.
+(** The term decodes to [hi_decoded]. *)
+Lemma hi_decodes : decode_module hi_atexit_term = Some hi_decoded.
+Proof. vm_cast_no_check (eq_refl (Some hi_decoded)). Qed.
 
-(** The module's symbols, as laying it out places them. *)
+(** The program is the decoded module followed by its constructor
+    runner. *)
+Definition hi_module : module := Eval vm_compute in with_ctor_runner hi_decoded.
+
+(** The program is exactly the decoded module with the runner appended. *)
+Lemma hi_module_runner : hi_module = with_ctor_runner hi_decoded.
+Proof. vm_cast_no_check (eq_refl hi_module). Qed.
+
+(** Laying out the program places each of its symbols at this pointer. *)
 Definition hi_globals : list (name * ptr) := Eval vm_compute in
   match initial_memory hi_module with Some (g, _) => g | None => [] end.
 

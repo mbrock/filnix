@@ -2,9 +2,8 @@
     its real linked image, beginning at `c: __libc_start_main`. The
     startup world, its contracts and the constructor runner are defined
     for any linked image, so a few facts must tie them to this one. This
-    module checks those facts by computation. A proof that hi_atexit
-    never panics from [initial_memory] cites them when it adopts the
-    image with the runner appended.
+    module checks those facts by computation for [hi_module], which is
+    the decoded image with the runner appended.
 
     ## What is checked
 
@@ -23,37 +22,40 @@ From Glibc Require Import HiAtexitModule OsStartCalls StartCtors.
 Import ListNotations.
 Open Scope string_scope.
 
-(** ## The image with its runner *)
+(** ## The image with its runner
 
-(** This module is the hi_atexit image followed by its constructor
-    runner. *)
-Definition hi_start_module : module := with_ctor_runner hi_module.
+    [hi_module] is the decoded image followed by its runner. These
+    lemmas check that the decoded image allows the runner and that
+    appending it moves nothing. *)
 
-(** No item of the image uses a runner name. *)
-Lemma hi_ctor_names_fresh : ctor_names_fresh hi_module = true.
+(** No item of the decoded image uses a runner name. *)
+Lemma hi_ctor_names_fresh : ctor_names_fresh hi_decoded = true.
 Proof. vm_compute. reflexivity. Qed.
 
 (** The image registers its three constructors: `c: _IO_stdfiles_init`,
     `c: check_stdfiles_vtables` and `c: _init_first`. *)
 Lemma hi_ctor_names :
-  ctor_names hi_module = [TAtom "glibc_stdfiles#_IO_stdfiles_init"; TAtom "glibc_vtables#check_stdfiles_vtables";
-                          TAtom "glibc_init_first#_init_first"].
+  ctor_names hi_decoded = [TAtom "glibc_stdfiles#_IO_stdfiles_init"; TAtom "glibc_vtables#check_stdfiles_vtables";
+                           TAtom "glibc_init_first#_init_first"].
 Proof. vm_compute. reflexivity. Qed.
 
-(** In the image with the runner, the runner symbol is the runner for
-    three constructors. *)
-Lemma hi_start_runner : find_direct ctor_runner_name hi_start_module = Some (Defined (ctor_runner 3)).
-Proof. exact (with_ctor_runner_defines _ hi_ctor_names_fresh). Qed.
+(** In the program, the runner symbol is the runner for three
+    constructors. *)
+Lemma hi_start_runner : find_direct ctor_runner_name hi_module = Some (Defined (ctor_runner 3)).
+Proof. rewrite hi_module_runner. exact (with_ctor_runner_defines _ hi_ctor_names_fresh). Qed.
 
 (** Appending the runner keeps the address and capability of every
-    symbol of the image. [initial_memory_globals] relates this layout to
-    the one [initial_memory] gives. *)
+    symbol of the decoded image. [initial_memory_globals] relates this
+    layout to the one [initial_memory] gives. *)
 Lemma hi_start_keeps_globals :
-  forallb (fun '(n, p) =>
-    match match module_globals hi_start_module with Some g => lookup n g | None => None end with
-    | Some q => andb (Z.eqb (ptr_addr p) (ptr_addr q)) (cap_eqb (ptr_cap p) (ptr_cap q))
-    | None => false
-    end) hi_globals = true.
+  match module_globals hi_decoded with
+  | Some g0 => forallb (fun '(n, p) =>
+      match lookup n hi_globals with
+      | Some q => andb (Z.eqb (ptr_addr p) (ptr_addr q)) (cap_eqb (ptr_cap p) (ptr_cap q))
+      | None => false
+      end) g0
+  | None => false
+  end = true.
 Proof. vm_compute. reflexivity. Qed.
 
 (** ## The errno handler *)

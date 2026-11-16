@@ -53,11 +53,11 @@ End fn___libc_start_main.
 Module fn_glibc_libc_start_futex_wake.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_6, 170%N).
+Definition source : option (string * N) := Some (file_8, 170%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_6, 173%N)); ((TAtom "L17"), (file_6, 173%N)); ((TAtom "L18"), (file_6, 173%N)); ((TAtom "L14"), (file_6, 173%N)); ((TAtom "L11"), (file_6, 173%N)); ((TAtom "L29"), (file_6, 173%N)); ((TAtom "L30"), (file_6, 173%N))].
+  [((TAtom "start"), (file_8, 173%N)); ((TAtom "L17"), (file_8, 173%N)); ((TAtom "L18"), (file_8, 173%N)); ((TAtom "L14"), (file_8, 173%N)); ((TAtom "L11"), (file_8, 173%N)); ((TAtom "L29"), (file_8, 173%N)); ((TAtom "L30"), (file_8, 173%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
