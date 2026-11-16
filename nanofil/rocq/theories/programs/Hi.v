@@ -414,31 +414,20 @@ Proof.
     |c s w site spec xs trace why s' m' w' Hsite Hreg Hargs Hcall
     |c s w site why Hsite Hreject
     |c s w site spec xs trace values s' m' w' Hsite Hreg Hargs Hcall Henv].
-  - destruct ms as [c s], ms' as [c' s']. eapply hi_body_core; eauto.
-  - apply hi_body_end. eapply hi_body_core_end; eauto.
-  - destruct (hi_body_stuck_external _ _ _ _ Hinv Hstuck) as [site Hsite].
-    exfalso. exact (Hnone site Hsite).
-  - exfalso. exact (hi_body_no_fresh _ _ _ _ _ Hinv Hfresh).
-  - destruct (hi_selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs)
-      as (m & fuel & -> & -> & -> & ->).
-    destruct (hi_puts_end _ _ _ _ _ _ _ _ _ _ Hcall) as [(n & Hend)|(why & Hend & _)];
-      inversion Hend; subst.
-    rewrite hi_return_environment in Henv. injection Henv as <-. apply hi_body_return.
-  - destruct (hi_selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs)
-      as (m & fuel & -> & -> & -> & ->).
-    destruct (hi_puts_end _ _ _ _ _ _ _ _ _ _ Hcall) as [(n & Hend)|(why & Hend & _)]; discriminate Hend.
-  - destruct (hi_selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs)
-      as (m & fuel & -> & -> & -> & ->).
-    destruct (hi_puts_end _ _ _ _ _ _ _ _ _ _ Hcall) as [(n & Hend)|(resource & Hend & Hresource & _)];
-      inversion Hend; subst.
-    apply hi_body_end. right; right. exists resource. auto.
-  - destruct (hi_reached_call_admissible _ _ _ _ Hinv Hsite) as [_ Hadmit].
-    exfalso. exact (M.admissible_not_rejected _ _ _ _ _ _ _ Hadmit Hreject).
-  - destruct (hi_selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs)
-      as (m & fuel & -> & -> & -> & ->).
-    destruct (hi_puts_end _ _ _ _ _ _ _ _ _ _ Hcall) as [(n & Hend)|(why & Hend & _)];
-      inversion Hend; subst.
-    rewrite hi_return_environment in Henv. discriminate.
+  { destruct ms as [c s], ms' as [c' s']. eapply hi_body_core; eauto. }
+  { apply hi_body_end. eapply hi_body_core_end; eauto. }
+  { destruct (hi_body_stuck_external _ _ _ _ Hinv Hstuck) as [site Hsite].
+    exfalso. exact (Hnone site Hsite). }
+  { exfalso. exact (hi_body_no_fresh _ _ _ _ _ Hinv Hfresh). }
+  all: try solve [destruct (hi_reached_call_admissible _ _ _ _ Hinv Hsite) as [_ Hadmit];
+    exfalso; exact (M.admissible_not_rejected _ _ _ _ _ _ _ Hadmit Hreject)].
+  all: destruct (hi_selected_call _ _ _ _ _ _ Hinv Hsite Hreg Hargs)
+    as (m & fuel & -> & -> & -> & ->).
+  all: destruct (hi_puts_end _ _ _ _ _ _ _ _ _ _ Hcall)
+    as [(n & Hend)|(resource & Hend & Hresource & _)]; inversion Hend; subst.
+  - rewrite hi_return_environment in Henv. injection Henv as <-. apply hi_body_return.
+  - apply hi_body_end. right; right. exists resource. auto.
+  - rewrite hi_return_environment in Henv. discriminate.
 Qed.
 
 (** Safety covers every represented finite run, including arbitrarily many
