@@ -1,18 +1,24 @@
-# The glibc check compiles every proof under rocq/glibc and validates its
-# grammar round trip. Each file gets its own derivation, with only the
-# compiled Nanofil and Glibc files in its transitive imports. A theory
-# edit therefore rebuilds its importers, not every glibc proof.
+# The glibc check compiles every proof under rocq/glibc. Each file gets
+# its own derivation, with only the compiled Nanofil and Glibc files in
+# its transitive imports. A theory edit therefore rebuilds its importers,
+# not every glibc proof.
 #
 # ```sh
 # nix build -L .#checks.x86_64-linux.nanofil-glibc
 # ```
 #
 # The check rejects unfinished proofs and assumptions declared outside a
-# module type. It compiles each file's reprinted source against the same
-# imported objects, and runs the native zsys-*.c probes with filcc. It
-# compares the import lists with rocq dep and records each file's compile
-# time. The separate nanofil-rocq check still compiles and checks the
-# entire model.
+# module type. It runs the native zsys-*.c probes with filcc, compares the
+# import lists with rocq dep and records each file's compile time. The
+# separate nanofil-rocq check still compiles and checks the entire model.
+#
+# The grammar round trip of a glibc file is not part of the check, because
+# it compiles the file a second time whenever anything the file imports
+# changes. Run it for one file by hand when the site's parser changes:
+#
+# ```sh
+# nix build -L .#checks.x86_64-linux.nanofil-glibc.reprint.OsCpuid
+# ```
 #
 # The fixture check in rocq/glibc/code.sh confirms that Code.v files are
 # nanofil's current products. It needs the user glibc capture from
@@ -341,7 +347,8 @@ let
         echo "@@glibc abstract Hello ${toString (builtins.length helloNames)} files compiled"
         touch $out/passed
       '';
-  # The grammar check (web/rocq/tests/parse.sh), one file at a time:
+  # The grammar check (web/rocq/tests/parse.sh), one file at a time and
+  # by hand, since the aggregate check does not build it:
   # reprint it with every subterm in parentheses and compile the reprint
   # against the original objects of its imports, in a project laid out
   # as rocq/ is, with the model's theories beside glibc.
@@ -496,9 +503,6 @@ pkgs.runCommand "nanofil-glibc"
     ${lib.concatMapStrings (
       n: "cp ${vo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
     ) names}
-    cat ${
-      lib.concatMapStringsSep " " (n: "${reprint.${n}}/verdict") names
-    } | tee $out/verdicts
     cat ${probes}/log | tee $out/probes.log
-    echo "@@glibc ${toString (builtins.length names)} files compiled and reprinted"
+    echo "@@glibc ${toString (builtins.length names)} files compiled"
   ''

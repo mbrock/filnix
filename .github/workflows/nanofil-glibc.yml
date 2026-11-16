@@ -76,7 +76,7 @@ jobs:
       # it prints is the Hello proof's progress measure.
       - name: Count the open premises of hello_never_panics
         run: python3 nanofil/tests/hello_premises.py
-      - name: Compile, reprint and probe glibc contracts
+      - name: Compile and probe glibc contracts
         run: |
           set -o pipefail
           python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 3600 -- \
