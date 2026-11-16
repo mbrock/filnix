@@ -177,7 +177,9 @@ Lemma sum_progress : forall free n pt e m fuel,
   step (sum_ge free) (mkConfig (mkFrame sum_fn e [] None pt) [] m fuel) = Done (Ret (WInt 10)).
 Proof.
   intros free n pt e m fuel Hn [Hb Hr].
-  set (pts := sum_points) in Hn |- *. vm_compute in pts.
+  let points := eval vm_compute in sum_points in pose (pts := points).
+  assert (Hpts : sum_points = pts) by (vm_compute; reflexivity).
+  rewrite Hpts in Hn |- *. clear Hpts.
   set (f := sum_fn). vm_compute in f.
   do 59 (destruct n as [|n]; [point_step Hn Hb Hr fuel|]).
   destruct n; discriminate.
@@ -225,13 +227,11 @@ Proof.
   intros st st' Hs (n & pt & e & Hn & Hc & Hm).
   destruct Hs as [c c' s E | c q k s base s' E _ _ | c s s' m' _ Hsp]; cbn [fst snd] in Hc, Hm |- *;
     change (P.program_genv sum_module sum_globals) with (sum_ge R.free) in *.
-  - rewrite Hc in E. destruct (sum_progress R.free n pt e (c_mem c) (c_fuel c) Hn Hm)
-      as [(pt' & e' & fuel' & Hn' & E') | [E' | E']]; rewrite E' in E; try discriminate.
-    injection E as <-. exists (S n), pt', e'. cbn [c_mem c_fuel]. auto.
-  - rewrite Hc in E. destruct (sum_progress R.free n pt e (c_mem c) (c_fuel c) Hn Hm)
-      as [(pt' & e' & fuel' & Hn' & E') | [E' | E']]; rewrite E' in E; discriminate.
-  - exists n, pt, e. rewrite Hc. unfold P.RM.with_mem; cbn [c_mem c_fuel c_frame c_callers]. split; [exact Hn|]. split; [reflexivity|].
-    eapply mem_ok_safepoint; eauto.
+  3: { exists n, pt, e. rewrite Hc. unfold P.RM.with_mem; cbn [c_mem c_fuel c_frame c_callers].
+       split; [exact Hn|]. split; [reflexivity|]. eapply mem_ok_safepoint; eauto. }
+  all: rewrite Hc in E; destruct (sum_progress R.free n pt e (c_mem c) (c_fuel c) Hn Hm)
+    as [(pt' & e' & fuel' & Hn' & E') | [E' | E']]; rewrite E' in E; try discriminate.
+  injection E as <-. exists (S n), pt', e'. cbn [c_mem c_fuel]. auto.
 Qed.
 
 (** By induction on machine steps, every state reachable from [sum_inv]
@@ -239,8 +239,7 @@ Qed.
 Lemma sum_reachable : forall st st',
   P.RM.mreachable (P.program_genv sum_module sum_globals) st st' -> sum_inv st -> sum_inv st'.
 Proof.
-  intros st st' H. induction H as [st st' Hs | st | st1 st2 st3 _ IH1 _ IH2]; auto.
-  apply sum_mstep; assumption.
+  intros st st' H. induction H; eauto using sum_mstep.
 Qed.
 
 (** No state satisfying [sum_inv] can fail, because [sum_progress] rules
