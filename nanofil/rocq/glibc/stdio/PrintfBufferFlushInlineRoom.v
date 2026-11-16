@@ -33,6 +33,11 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
+Local Ltac load_shared H :=
+  iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
+    [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |];
+  iNext; iIntros H.
+
 (** Reads from printf's header borrow the FILE lifetime for their target. *)
 
 
