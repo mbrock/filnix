@@ -18,6 +18,7 @@
     `null_capability`. *)
 
 From Glibc Require Import GlibcTactics.
+From Glibc Require Import GlibcSym.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -225,17 +226,16 @@ Proof.
     assert (Hy8 : 0 <= y < 256) by exact (proj1 (Forall_lookup _ _) Hy i y Hyi).
     step_symbolic. match goal with |- context [put (TAtom "lc.13") (WInt ?X) _] => replace X with (Z.of_nat i) end.
     2:{ arith. } step. normp "v95" (b + o + Z.of_nat i).
-    iApply (wp_bytes_byte _ _ _ _ _ _ _ _ _ _ dq1 b reg o xs i x with "Hl Hx");
-      [reflexivity | exact Hc | reflexivity | exact Hxi | exact Hx8 | exact Ho | exact Hend | exact Hr |].
-    iIntros "Hl Hx".
-    step_symbolic. normt x ltac:(arith).
-    step_symbolic. norm "lc.16" (Z.of_nat i) ltac:(arith). step. normp "v100" (b' + o' + Z.of_nat i).
-    iApply (wp_bytes_byte _ _ _ _ _ _ _ _ _ _ dq2 b' reg' o' ys i y with "Hl' Hy");
-      [reflexivity | exact Hc' | reflexivity | exact Hyi | exact Hy8 | exact Ho' | rewrite Hly; exact Hend' | exact Hr' |].
-    iIntros "Hl' Hy".
-    step_symbolic. normt y ltac:(arith).
-    step_symbolic. normt (b + o + Z.of_nat (S i)) ltac:(arith). step_symbolic. normt (b' + o' + Z.of_nat (S i)) ltac:(arith).
-    step_symbolic. normt ((x - y) mod 2 ^ 64) ltac:(arith). step_symbolic. branch_symbolic. rewrite Zmod_mod. change (0 mod 2 ^ 64) with 0.
+    pose proof (lookup_lt_Some _ _ _ Hxi) as Hilt.
+    iApply (wp_check_read_dq with "Hl");
+      [reflexivity | reflexivity | exact Hc | arith | arith | apply Z.mod_1_r |].
+    iNext. iIntros "Hl".
+    sym_run "Hl Hx".
+    iApply (wp_check_read_dq with "Hl'");
+      [reflexivity | reflexivity | exact Hc' | arith | arith | apply Z.mod_1_r |].
+    iNext. iIntros "Hl'".
+    sym_run "Hl' Hy".
+    cbn [cond_bit]. rewrite ?Zmod_mod.
     destruct (Z.eq_dec x y) as [<-|Hne].
     + (* Equal bytes: the next. *)
       assert (Hk' : Z.of_nat k < 2 ^ 48) by lia.

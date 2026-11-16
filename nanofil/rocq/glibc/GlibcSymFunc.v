@@ -62,7 +62,8 @@ Definition branch_facts (fs : facts) (c : zexp) (yes : bool) : facts :=
   match zrange fs c with
   | Some (lo, hi) =>
       if (0 <=? lo) && (hi <=? 1) then
-        mkFacts (mkBound c (if yes then 1 else 0) (if yes then 2 else 1) :: f_bounds fs) (f_caps fs)
+        mkFactsWithReads (mkBound c (if yes then 1 else 0) (if yes then 2 else 1) :: f_bounds fs)
+          (f_caps fs) (f_reads fs)
       else fs
   | None => fs
   end.
@@ -614,13 +615,14 @@ Ltac sym_context_rule instance :=
 
 (** The soundness theorem connects the single computed tree to the caller's execution goal. *)
 Ltac sym_func_finish cs se h rho names cuts solve conv bs :=
-  let fs := constr:(mkFacts bs cs) in
+  let fs := eval cbn [f_caps f_reads] in (mkFactsWithReads bs (f_caps cs) (f_reads cs)) in
   let Hfacts := fresh "Hsym_facts" in
   assert (Hfacts : facts_hold rho fs) by (unfold facts_hold; split; sym_forall_side solve);
   let rule := lazymatch goal with |- @envs_entails _ _ _ (@wp _ _ _ _ ?W _ _ _ _) =>
     lazymatch W with @wp' _ _ _ ?instance => sym_context_rule instance end end in
   lazymatch goal with
   | |- environments.envs_entails ?delta (wp _ _ (_ (mkFrame ?f ?e ?ls None (Exec ?l ?insts ?j))) ?Phi) =>
+      sym_closed_names se; sym_closed_names insts; sym_closed_names j;
       let fuel := eval vm_compute in (List.length (fn_blocks f)) in
       let ids := eval vm_compute in (map INamed names) in
       let take := sym_take ids delta in
@@ -650,12 +652,18 @@ Ltac sym_frun_with names cuts solve conv :=
   let names := String.words names in
   let props := sym_context constr:(@nil Prop) in
   let props := sym_flatten props in
-  let qh := sym_quote_heap constr:(mkVal [] [] []) names in
+  tryif (lazymatch goal with
+    | |- environments.envs_entails _ (wp _ _ (_ (mkFrame ?f ?e _ None (Exec _ ?insts ?j))) _) =>
+        sym_closed_name f; sym_closed_names e; sym_closed_names props;
+        sym_closed_names insts; sym_closed_names j; sym_closed_names cuts
+    end)
+  then (
+  let qh := sym_quote_heap constr:(mkValuation [] [] [] [] []) names in
   lazymatch qh with (?h, ?r1) =>
     lazymatch goal with
     | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ None (Exec _ _ _))) _) =>
         let qe := sym_quote_env r1 props e in
-        lazymatch qe with (?se, ?r2) => let qc := sym_quote_caps r2 props in
+        lazymatch qe with (?se, ?r2) => let qc := sym_quote_facts r2 props in
           lazymatch qc with (?cs, ?rho) =>
             let terms := sym_bound_terms rho in
             let congruences := sym_congruences rho props constr:(@nil bound) in
@@ -663,7 +671,8 @@ Ltac sym_frun_with names cuts solve conv :=
               ltac:(sym_func_finish cs se h rho names cuts solve conv)
           end end
     end
-  end.
+  end)
+  else idtac "sym_frun stopped: symbolic register name".
 
 (** Ordinary calls use virtual-machine conversion and the block executor's arithmetic solver. *)
 Ltac sym_frun names cuts := sym_frun_with names cuts ltac:(sym_lia) ltac:(sym_vm).

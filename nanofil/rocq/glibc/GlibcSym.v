@@ -103,7 +103,8 @@ Qed.
     sums, differences, remainders by a constant, comparisons, bit operations,
     extensions and shifts. The
     comparison [ZCmp] c k a b is one when a and b of class k satisfy c,
-    and zero otherwise, as the IR's `cmp` instruction computes. *)
+    and zero otherwise, as the IR's `cmp` instruction computes.
+    Byte-list lookups and lengths support loops whose index is not yet known. *)
 Inductive zexp : Type :=
   | ZK (z : Z)
   | ZV (n : nat)
@@ -115,7 +116,9 @@ Inductive zexp : Type :=
   | ZCmp (c : cond) (k : class) (a b : zexp)
   | ZBits (o : bitop) (a b : zexp)
   | ZExt (n : narrow) (a : zexp)
-  | ZShift (o : shiftop) (k : class) (a b : zexp).
+  | ZShift (o : shiftop) (k : class) (a b : zexp)
+  | ZNth (l : nat) (i : zexp)
+  | ZLen (l : nat).
 
 (** A capability identifies a writable or read-only object by its base address.
     It can also be absent or supplied by a pointer variable. *)
@@ -132,9 +135,14 @@ Inductive sword : Type :=
   | SWInt (x : zexp)
   | SWPtr (a : zexp) (c : scap).
 
-(** The valuation gives the integer variables, the pointer variables
-    and the region variables their values in the proof. *)
-Record valuation : Type := mkVal { vz : list Z; vp : list ptr; vr : list region }.
+(** Each symbolic variable refers to a concrete value stored here, including
+    byte lists and the ownership fractions needed to read them. *)
+Record valuation : Type := mkValuation {
+  vz : list Z; vp : list ptr; vr : list region;
+  vbytes : list (list Z); vfrac : list dfrac }.
+
+(** This constructor builds a valuation with no byte lists or fractions. *)
+Definition mkVal zs ps rs := mkValuation zs ps rs [] [].
 
 (** Evaluation gives an integer expression its value. A variable outside the
     valuation reads as zero, and so does a comparison whose class the
@@ -152,7 +160,31 @@ Fixpoint zden (ρ : valuation) (x : zexp) : Z :=
   | ZBits o a b => bitden o (zden ρ a) (zden ρ b)
   | ZExt n a => extension n (zden ρ a)
   | ZShift o k a b => shiftden o k (zden ρ a) (zden ρ b)
+  | ZNth l i => nth (Z.to_nat (zden ρ i)) (nth l (vbytes ρ) []) 0 mod 256
+  | ZLen l => Z.of_nat (length (nth l (vbytes ρ) []))
   end.
+
+(** A byte lookup is unsigned even when its valuation contains arbitrary integers. *)
+Lemma zden_nth_range ρ l i : 0 <= zden ρ (ZNth l i) < 256.
+Proof. apply Z.mod_pos_bound. lia. Qed.
+
+(** A successful lookup exposes the byte's low eight bits. *)
+Lemma zden_nth_lookup ρ l i xs x :
+  nth_error (vbytes ρ) l = Some xs ->
+  0 <= zden ρ i -> xs !! Z.to_nat (zden ρ i) = Some x ->
+  zden ρ (ZNth l i) = x mod 256.
+Proof.
+  intros Hl Hi Hx. cbn [zden].
+  rewrite (nth_error_nth _ _ [] Hl).
+  now rewrite (nth_lookup_Some _ _ _ _ Hx).
+Qed.
+
+(** An already bounded byte is returned without a residual modulus. *)
+Lemma zden_nth_lookup_range ρ l i xs x :
+  nth_error (vbytes ρ) l = Some xs ->
+  0 <= zden ρ i -> xs !! Z.to_nat (zden ρ i) = Some x ->
+  0 <= x < 256 -> zden ρ (ZNth l i) = x.
+Proof. intros Hl Hi Hx Hr. rewrite (zden_nth_lookup _ _ _ _ _ Hl Hi Hx). now apply Z.mod_small. Qed.
 
 (** Evaluation replaces a symbolic capability's variables with their values. *)
 Definition cden (ρ : valuation) (c : scap) : cap :=
@@ -180,13 +212,27 @@ Definition wden (ρ : valuation) (w : sword) : word :=
 (** A bound says that lo ≤ x < hi for the integer expression x. *)
 Record bound : Type := mkBound { bd_exp : zexp; bd_lo : Z; bd_hi : Z }.
 
-(** The facts are a list of bounds and a list of capability equations. *)
-Record facts : Type := mkFacts { f_bounds : list bound; f_caps : list (scap * scap) }.
+(** A read may use either capability kind without deciding which one the pointer carries. *)
+Inductive readable_fact : Type := FReadable (c : scap) (b : zexp).
 
-(** The facts hold under ρ when every bound and every equation does. *)
+(** The facts keep readable capability alternatives separate from equations and integer bounds. *)
+Record facts : Type := mkFactsWithReads {
+  f_bounds : list bound; f_caps : list (scap * scap); f_reads : list readable_fact }.
+
+(** Existing callers construct facts without additional readable capability alternatives. *)
+Definition mkFacts bs cs := mkFactsWithReads bs cs [].
+
+(** A readable capability names the owned object, whether writable or read-only. *)
+Definition readable_den (ρ : valuation) (f : readable_fact) : Prop :=
+  match f with FReadable c b =>
+    cden ρ c = Obj (zden ρ b) \/ cden ρ c = Ro (zden ρ b)
+  end.
+
+(** The caller must justify every collected bound, pointer equality and permission to read. *)
 Definition facts_hold (ρ : valuation) (fs : facts) : Prop :=
   Forall (fun bd => bd_lo bd <= zden ρ (bd_exp bd) < bd_hi bd) (f_bounds fs) /\
-  Forall (fun ce => cden ρ (fst ce) = cden ρ (snd ce)) (f_caps fs).
+  Forall (fun ce => cden ρ (fst ce) = cden ρ (snd ce)) (f_caps fs) /\
+  Forall (readable_den ρ) (f_reads fs).
 
 (** ## The environment
 
@@ -222,7 +268,9 @@ Inductive atom : Type :=
   | ACell (b o v : zexp)
   | APCell (b o a : zexp) (c : scap)
   | ALiveCap (c : scap) (r : nat)
-  | ANarrow (n : narrow) (b o v : zexp).
+  | ANarrow (n : narrow) (b o v : zexp)
+  | ABytes (q : nat) (b o : zexp) (l : nat)
+  | ALiveQ (q : nat) (b : zexp) (r : nat).
 
 (** ## What the executor returns
 
@@ -251,6 +299,7 @@ Inductive ob : Type :=
 Inductive stop_reason : Type :=
   | NoLive (b : zexp)
   | NoCell (b o : zexp)
+  | NoBytes (b o : zexp)
   | NoLiveCap (c : scap)
   | NotObject (c : scap)
   | UnknownTmp (n : name)
@@ -291,6 +340,8 @@ Fixpoint zsame (a b : zexp) : bool :=
   match a, b with
   | ZK x, ZK y => Z.eqb x y
   | ZV x, ZV y | ZAddr x, ZAddr y | ZEnd x, ZEnd y => Nat.eqb x y
+  | ZNth l i, ZNth m j => Nat.eqb l m && zsame i j
+  | ZLen l, ZLen m => Nat.eqb l m
   | ZAdd a b, ZAdd c d | ZSub a b, ZSub c d => zsame a c && zsame b d
   | ZMod a m, ZMod b n => zsame a b && Z.eqb m n
   | ZCmp c k a b, ZCmp d l x y =>
@@ -360,6 +411,7 @@ Fixpoint zrange (fs : facts) (x : zexp) : option (Z * Z) :=
           | _, _ => None
           end
       | ZExt n _ => Some (sym_ext_range n)
+      | ZNth _ _ => Some (0, 255)
       | ZBits BAnd a b =>
           match zrange fs a, zrange fs b with
           | Some (lo, hi), Some (lo', hi') =>
@@ -455,6 +507,7 @@ Proof.
     pose proof (Interval.land_le (zden ρ x1) (zden ρ x2) ltac:(lia) ltac:(lia)). lia.
   - intros H. pose proof (sym_ext_range_sound n (zden ρ x)).
     destruct n; inversion H; subst; exact H0.
+  - intros H. injection H as <- <-. pose proof (zden_nth_range ρ l x). lia.
 Qed.
 
 (** Every computed residue equals the remainder of the represented integer. *)
@@ -538,6 +591,7 @@ Fixpoint zclean (fs : facts) (x : zexp) : zexp :=
   | ZExt n a =>
       match zclean fs a with ZK x => ZK (extension n x) | a' => ZExt n a' end
   | ZShift o k a b => ZShift o k (zclean fs a) (zclean fs b)
+  | ZNth l i => ZNth l (zclean fs i)
   | _ => x
   end.
 
@@ -555,6 +609,7 @@ Proof.
       cbn in IHx1, IHx2; cbn [zden]; now rewrite <- IHx1, <- IHx2.
   - destruct (zclean fs x); cbn in IHx; cbn [zden]; now rewrite <- IHx.
   - cbn. now rewrite IHx1 IHx2.
+  - cbn [zden]. now rewrite IHx.
 Qed.
 
 (** A linear form records one coefficient for each non-additive expression. *)
@@ -823,7 +878,7 @@ Proof.
   intros Hfs. unfold cequal. rewrite orb_true_iff. intros [H|H].
   - eapply csame_sound; eauto.
   - apply existsb_exists in H as [[x y] [Hin H]].
-    pose proof (proj2 Hfs) as Hcs. rewrite Forall_forall in Hcs.
+    pose proof (proj1 (proj2 Hfs)) as Hcs. rewrite Forall_forall in Hcs.
     specialize (Hcs _ Hin). cbn in Hcs, H.
     apply orb_true_iff in H as [H|H]; apply andb_true_iff in H as [H1 H2];
       apply (csame_sound _ _ _ _ Hfs) in H1; apply (csame_sound _ _ _ _ Hfs) in H2; congruence.
@@ -846,7 +901,7 @@ Lemma object_base_sound ρ fs c b : facts_hold ρ fs ->
   object_base fs c = Some b -> cden ρ c = Obj (zden ρ b).
 Proof.
   intros Hfs. destruct c; cbn [object_base];
-    try (eapply object_find_sound; [exact Hfs|exact (proj2 Hfs)]).
+    try (eapply object_find_sound; [exact Hfs|exact (proj1 (proj2 Hfs))]).
   intros H. injection H as <-. reflexivity.
 Qed.
 
@@ -1005,7 +1060,69 @@ Definition is_live (fs : facts) (b : zexp) (a : atom) : bool :=
 
 (** Both forms of lifetime ownership carry a region number. *)
 Definition atom_region (a : atom) : nat :=
-  match a with ALive _ r | ALiveCap _ r => r | _ => O end.
+  match a with ALive _ r | ALiveCap _ r | ALiveQ _ _ r => r | _ => O end.
+
+(** A byte slice permits reads through either writable or read-only capabilities. *)
+Definition is_bytes (fs : facts) (c : scap) (a : atom) : bool :=
+  match a with
+  | ABytes _ b _ _ => cequal fs c (SCObj b) || cequal fs c (SCRo b) ||
+      existsb (fun f => match f with FReadable c' b' =>
+        csame fs c c' && zlinear_eqb fs b b' end) (f_reads fs)
+  | _ => false
+  end.
+
+(** Byte reads also accept a fraction of the object's lifetime. *)
+Definition is_read_live (fs : facts) (b : zexp) (a : atom) : bool :=
+  match a with
+  | ALiveQ _ b' _ => zlinear_eqb fs b b'
+  | _ => is_live fs b a
+  end.
+
+(** Full lifetime atoms retain their original exclusive permission. *)
+Definition read_fraction (ρ : valuation) (a : atom) : option dfrac :=
+  match a with
+  | ALiveQ q _ _ => nth_error (vfrac ρ) q
+  | _ => Some (DfracOwn 1)
+  end.
+
+(** Selecting a byte slice identifies a capability accepted by the read rule. *)
+Lemma is_bytes_sound ρ fs c q b o l :
+  facts_hold ρ fs -> is_bytes fs c (ABytes q b o l) = true ->
+  cden ρ c = Obj (zden ρ b) \/ cden ρ c = Ro (zden ρ b).
+Proof.
+  intros Hfs H. apply orb_true_iff in H as [H|H].
+  - apply orb_true_iff in H as [H|H];
+      apply (cequal_sound _ _ _ _ Hfs) in H; [left|right]; exact H.
+  - apply existsb_exists in H as [[c' b'] [Hin H]].
+    apply andb_true_iff in H as [Hc Hb].
+    apply (csame_sound _ _ _ _ Hfs) in Hc.
+    apply (zlinear_eqb_sound _ _ _ _ Hfs) in Hb.
+    pose proof (proj2 (proj2 Hfs)) as Hr. rewrite Forall_forall in Hr.
+    specialize (Hr _ Hin). cbn [readable_den] in Hr. now rewrite Hc Hb.
+Qed.
+
+(** The caller proves that the selected slice contains the requested byte. *)
+Definition sbyte_memory (fs : facts) (s : sstate) (d : name)
+    (off : Z) (a : zexp) (c : scap) : (stop_reason + sstate)%type :=
+  let addr := sraw fs a off in
+  match pick_atom (is_bytes fs c) (st_heap s) with
+  | Some (pre, ABytes q b o l, post) =>
+      match pick_atom (is_read_live fs b) (pre ++ post) with
+      | Some _ =>
+          let i := zclean fs (ZSub addr (ZAdd b o)) in
+          inr (sbind d (SWInt (ZNth l i))
+            (sobserve [OLe (ZK 0) i; OLt i (ZLen l)] s))
+      | None => inl (NoLive b)
+      end
+  | _ =>
+      match c with
+      | SCObj b | SCRo b => inl (NoBytes b (ZSub addr b))
+      | _ => match object_base fs c with
+             | Some b => inl (NoBytes b (ZSub addr b))
+             | None => inl (NotObject c)
+             end
+      end
+  end.
 
 (** Cell selection compares both the object's base and the full access address. *)
 Definition is_cell (fs : facts) (pointer : bool) (b addr : zexp) (a : atom) : bool :=
@@ -1041,14 +1158,20 @@ Definition check_obs (fs : facts) (b addr : zexp) (r : nat) (lo hi al : Z) : lis
 Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
     (xs : list sword) (fallback : stop_reason) : (stop_reason + sstate)%type :=
   let access p extra :=
+    let missing why :=
+      match o, k, p with
+      | RawLoad (LdNarrow Ub) off, W, SWPtr a c
+      | RawLoad (LdNarrow Ub) off, L, SWPtr a c => sbyte_memory fs s d off a c
+      | _, _, _ => inl why
+      end in
     match p with
     | SWInt _ => inl fallback
     | SWPtr addr c =>
         match object_base fs c with
-        | None => inl (NotObject c)
+        | None => missing (NotObject c)
         | Some b =>
             match pick_atom (is_live fs b) (st_heap s) with
-            | None => inl (NoLive b)
+            | None => missing (NoLive b)
             | Some (pre, live, post) =>
                 let r := atom_region live in
                 match o with
@@ -1083,7 +1206,7 @@ Definition smemory (fs : facts) (s : sstate) (d : name) (k : class) (o : op)
                     | Some m, Some (_, ANarrow t _ _ v, _) =>
                         inr (sbind d (SWInt (zextend fs n
                           (zwrap fs v (2 ^ (8 * fst (narrow_type t)))) m)) s)
-                    | _, _ => inl (NoCell b (ZSub a b))
+                    | _, _ => missing (NoCell b (ZSub a b))
                     end
                 | RawLoadPointer off [AuxRead; LowerResolve; AddressRead] =>
                     let a := sraw fs addr off in
@@ -1202,6 +1325,18 @@ Fixpoint sym_exec (ge : genv) (fs : facts) (s : sstate) (insts : list inst) (j :
       end
   end.
 
+(** A known instruction prefix stops before inspecting its opaque suffix. *)
+Fixpoint sym_prefix (ge : genv) (fs : facts) (s : sstate)
+    (prefix rest : list inst) (j : jump) : leaf :=
+  match prefix with
+  | [] => LStop NotYet rest j s
+  | i :: prefix =>
+      match sym_step ge fs s i with
+      | inl why => LStop why ((i :: prefix) ++ rest) j s
+      | inr s' => sym_prefix ge fs s' prefix rest j
+      end
+  end.
+
 (** ## The executor
 
     The executor walks the block's instructions with the facts, the
@@ -1310,6 +1445,16 @@ Definition atom_den (ρ : valuation) (a : atom) : iProp Σ :=
   | APCell b o a c => pcell (zden ρ b) (zden ρ o) (mkPtr (zden ρ a) (cden ρ c))
   | ALiveCap c r => match nth_error (vr ρ) r with Some reg => live_cap (cden ρ c) reg | None => False end
   | ANarrow n b o v => sym_ML.bytes (zden ρ b) (zden ρ o) (sym_bytes n (zden ρ v))
+  | ABytes q b o l =>
+      match nth_error (vfrac ρ) q, nth_error (vbytes ρ) l with
+      | Some dq, Some xs => sym_ML.bytesq dq (zden ρ b) (zden ρ o) xs
+      | _, _ => False
+      end
+  | ALiveQ q b r =>
+      match nth_error (vfrac ρ) q, nth_error (vr ρ) r with
+      | Some dq, Some reg => liveq dq (zden ρ b) reg
+      | _, _ => False
+      end
   end.
 
 (** A list of atoms means their separating conjunction, written so that
@@ -1469,6 +1614,21 @@ Proof.
     rewrite H. reflexivity.
   - apply (cequal_sound _ _ _ _ Hfs) in H. cbn [cden] in H.
     cbn [atom_den atom_region]. rewrite <- H. destruct (nth_error (vr ρ) r); reflexivity.
+Qed.
+
+(** A selected read lifetime exposes its fraction without strengthening ownership. *)
+Lemma is_read_live_den ρ fs b a :
+  facts_hold ρ fs -> is_read_live fs b a = true ->
+  atom_den ρ a ⊣⊢
+    match read_fraction ρ a, nth_error (vr ρ) (atom_region a) with
+    | Some dq, Some reg => liveq dq (zden ρ b) reg
+    | _, _ => False
+    end.
+Proof.
+  intros Hfs. destruct a; cbn [is_read_live]; intros H;
+    try (rewrite (is_live_den _ _ _ _ Hfs H); reflexivity).
+  apply (zlinear_eqb_sound _ _ _ _ Hfs) in H.
+  cbn [atom_den read_fraction atom_region]. rewrite H. reflexivity.
 Qed.
 
 (** A matching target lifetime prevents collection from changing a loaded capability. *)
@@ -1648,6 +1808,71 @@ Proof.
   - iNext. iIntros "Hl Hcell". iApply "HK". iFrame.
 Qed.
 
+(** Reading one byte preserves the complete slice and its lifetime permission. *)
+Lemma sym_load_bytes_rule ρ fs h pre post pre' life post'
+    f e ls l d k off args rest j classes a c q b o bl Φ :
+  facts_hold ρ fs -> (k = W \/ k = L) ->
+  op_arg_classes (RawLoad (LdNarrow Ub) off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [wden ρ (SWPtr a c)] ->
+  pick_atom (is_bytes fs c) h = Some (pre, ABytes q b o bl, post) ->
+  pick_atom (is_read_live fs b) (pre ++ post) = Some (pre', life, post') ->
+  let i := zclean fs (ZSub (sraw fs a off) (ZAdd b o)) in
+  obs_den ρ [OLe (ZK 0) i; OLt i (ZLen bl)] ->
+  heap_den ρ h -∗
+  ▷ (heap_den ρ h -∗
+     WP (ERun (mkFrame f (put d (wden ρ (SWInt (ZNth bl i))) e)
+       ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Let d k (RawLoad (LdNarrow Ub) off) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs Hk Hclasses Hargs Hb Hl i Hobs.
+  destruct (pick_atom_sound _ _ _ _ _ Hb) as [_ Hbytes].
+  destruct (pick_atom_sound _ _ _ _ _ Hl) as [_ Hlive].
+  pose proof (is_bytes_sound _ _ _ _ _ _ _ Hfs Hbytes) as Hcap.
+  rewrite (heap_den_pick _ _ _ _ _ _ Hb) (heap_den_pick _ _ _ _ _ _ Hl)
+    (is_read_live_den _ _ _ _ Hfs Hlive).
+  cbn [atom_den].
+  destruct (nth_error (vfrac ρ) q) as [dq|] eqn:Hq;
+    [|iIntros "[[] _] _"].
+  destruct (nth_error (vbytes ρ) bl) as [xs|] eqn:Hxs;
+    [|iIntros "[[] _] _"].
+  destruct (read_fraction ρ life) as [dq'|] eqn:Hq';
+    [|iIntros "(_ & [] & _) _"].
+  destruct (nth_error (vr ρ) (atom_region life)) as [reg|] eqn:Hr;
+    [|iIntros "(_ & [] & _) _"].
+  inversion Hobs as [|? ? Hlo Htail]; subst.
+  inversion Htail as [|? ? Hhi _]; subst.
+  cbn [ob_den zden] in Hlo, Hhi.
+  rewrite (nth_error_nth _ _ [] Hxs) in Hhi.
+  destruct (lookup_lt_is_Some_2 xs (Z.to_nat (zden ρ i)) ltac:(lia)) as [x Hx].
+  unfold wden.
+  rewrite (zden_nth_lookup _ _ _ _ _ Hxs Hlo Hx).
+  assert (Ha : raw_address (zden ρ a) off = zden ρ b + (zden ρ o + zden ρ i)).
+  { unfold i. rewrite (zclean_sound _ _ _ Hfs). cbn [zden].
+    rewrite (sraw_sound _ _ _ _ Hfs). ring. }
+  iIntros "(Hb & Hl & Hrest) HK".
+  iApply (wp_read_with registry wi ge
+    (liveq dq' (zden ρ b) reg ∗ sym_ML.bytesq dq (zden ρ b) (zden ρ o) xs)%I
+    (fun m => live_at m (zden ρ b) reg /\ all_agree m (StringLogic.byte_ps (zden ρ b) (zden ρ o) xs))
+    _ _ [] with "[$Hl $Hb] [HK Hrest]").
+  - iIntros (σ) "Hσ [Hl Hb]".
+    iDestruct (ptsq_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (ptsq_facts with "Hσ Hb") as %(Hbs & _). iPureIntro. auto.
+  - intros m fuel [Hlv Hbs].
+    destruct (StringLogic.byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs Hx) as (Hv & Hstart & Hend).
+    rewrite Z2Nat.id in Hv Hstart Hend; [|exact Hlo].
+    apply rule_let with (classes := classes) (xs := [wden ρ (SWPtr a c)]);
+      [reflexivity|exact Hclasses|exact Hargs|].
+    cbn [wden]. rewrite (op_raw_load_byte m k Ub _ off eq_refl).
+    + cbn [ptr_addr]. rewrite Ha Hv. unfold extended. destruct Hk as [-> | ->];
+        cbn [modulus extension option_map]; rewrite Z.mod_small;
+        try reflexivity; pose proof (Z.mod_pos_bound x 256 ltac:(lia)); lia.
+    + cbn [ptr_addr ptr_cap]. rewrite Ha.
+      apply (access_read _ (zden ρ b) reg);
+        [exact Hcap|exact (proj1 Hlv)|lia|lia|apply Z.mod_1_r].
+  - iNext. iIntros "[Hl Hb]". iApply "HK". iFrame.
+Qed.
+
 (** A reflected pointer load returns both source ownership and the loaded pointer's target lifetime. *)
 Lemma sym_load_pointer_rule ρ fs h pre life post pre' post' pre'' target post''
     f e ls l d off args rest j classes a c b b' o v vc Φ :
@@ -1760,6 +1985,28 @@ Local Ltac sym_cases H :=
     | context [match ?x with _ => _ end] => let E := fresh "E" in destruct x eqn:E
     end].
 
+(** The byte evaluator binds its result and retains all previously collected conditions. *)
+Lemma sbyte_memory_rule ρ fs s s' f e ls l d k off args rest j classes a c Φ :
+  facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
+  (k = W \/ k = L) ->
+  op_arg_classes (RawLoad (LdNarrow Ub) off) k = Some classes ->
+  map2_option (value_x ge (apply_ups ρ (st_ups s) e)) classes args = Some [wden ρ (SWPtr a c)] ->
+  sbyte_memory fs s d off a c = inr s' -> obs_den ρ (st_obs s') ->
+  heap_den ρ (st_heap s) -∗ ▷ next_den ρ f e ls l rest j Φ s' -∗
+  WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None
+    (Exec l (Let d k (RawLoad (LdNarrow Ub) off) args :: rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs Henv Hk Hclasses Hargs Hstep Hobs.
+  unfold sbyte_memory in Hstep. sym_cases Hstep.
+  injection Hstep as <-. unfold next_den. rewrite apply_ups_sbind.
+  cbn [sbind sobserve st_env st_heap st_ups st_obs] in Hobs |- *.
+  apply Forall_app in Hobs as [_ Hobs].
+  repeat match goal with p : (_ * _)%type |- _ => destruct p end.
+  iIntros "Hheap HK". iApply (sym_load_bytes_rule with "Hheap"); try eassumption.
+  iNext. iIntros "Hheap". iApply ("HK" with "Hheap"). iPureIntro.
+  apply env_models_put. exact Henv.
+Qed.
+
 (** Successful memory lets preserve the environment and ownership described by their state. *)
 Lemma smemory_rule ρ fs s s' f e ls l d k op args rest j classes xs why Φ :
   facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
@@ -1771,6 +2018,7 @@ Lemma smemory_rule ρ fs s s' f e ls l d k op args rest j classes xs why Φ :
 Proof.
   intros Hfs Henv Hclasses Hargs Hstep Hobs.
   unfold smemory in Hstep. sym_cases Hstep.
+  all: try solve [eapply sbyte_memory_rule; try eassumption; auto].
   all: injection Hstep as <-; unfold next_den; rewrite apply_ups_sbind;
     cbn [sbind sobserve st_env st_heap st_ups st_obs] in Hobs |- *.
   all: try (apply Forall_app in Hobs as [_ Hobs]).
@@ -1852,12 +2100,21 @@ Proof.
       eapply svalue_sound; eassumption.
 Qed.
 
+(** A byte read appends its index bounds without dropping older obligations. *)
+Lemma sbyte_memory_obs fs s d off a c s' : sbyte_memory fs s d off a c = inr s' ->
+  exists os, st_obs s' = st_obs s ++ os.
+Proof.
+  intros H. unfold sbyte_memory in H. sym_cases H.
+  injection H as <-. eexists. reflexivity.
+Qed.
+
 (** Instructions append conditions rather than forgetting conditions from earlier instructions. *)
 Lemma sym_step_obs fs s i s' : sym_step ge fs s i = inr s' ->
   exists os, st_obs s' = st_obs s ++ os.
 Proof.
   intros H. unfold sym_step in H. sym_cases H.
   all: try unfold smemory in H; try unfold sstore in H; sym_cases H.
+  all: try solve [eapply sbyte_memory_obs; eassumption].
   all: injection H as <-; cbn [sbind sobserve st_obs];
     first [eexists; reflexivity | exists []; rewrite app_nil_r; reflexivity].
 Qed.
@@ -1921,6 +2178,44 @@ Proof.
   intros Hfs Henv. apply (sym_exec_rule ρ fs insts j (mkSState se [] h []) f e ls l Φ Hfs Henv).
 Qed.
 
+(** A prefix retains the conditions accumulated before its opaque suffix. *)
+Lemma sym_prefix_obs fs prefix rest j s :
+  exists os, st_obs (leaf_state (sym_prefix ge fs s prefix rest j)) = st_obs s ++ os.
+Proof.
+  revert s. induction prefix as [|i prefix IH]; intros s; cbn [sym_prefix].
+  - exists []. cbn [leaf_state]. now rewrite app_nil_r.
+  - destruct (sym_step ge fs s i) as [why|s'] eqn:E.
+    + exists []. cbn [leaf_state]. now rewrite app_nil_r.
+    + destruct (IH s') as [os H]. destruct (sym_step_obs _ _ _ _ E) as [os' H'].
+      exists (os' ++ os). now rewrite H H' app_assoc.
+Qed.
+
+(** A block may end with code that the executor cannot inspect, so the proof leaves that code to the caller. *)
+Lemma sym_prefix_rule ρ fs prefix rest j s f e ls l Φ :
+  facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
+  heap_den ρ (st_heap s) -∗ leaf_den ρ f e ls l Φ (sym_prefix ge fs s prefix rest j) -∗
+  WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None (Exec l (prefix ++ rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs. revert s. induction prefix as [|i prefix IH]; intros s Henv; cbn [sym_prefix app].
+  - cbn [leaf_den]. iIntros "Hheap [_ HK]". iApply ("HK" with "Hheap []"). done.
+  - destruct (sym_step ge fs s i) as [why|s'] eqn:E.
+    + cbn [leaf_den app]. iIntros "Hheap [_ HK]". iApply ("HK" with "Hheap []"). done.
+    + iIntros "Hheap HK". iDestruct (leaf_den_obs with "HK") as "[%Hobs HK]".
+      destruct (sym_prefix_obs fs prefix rest j s') as [os Hos]. rewrite Hos in Hobs.
+      apply Forall_app in Hobs as [Hobs _].
+      iApply (sym_step_rule _ _ _ _ _ _ _ _ _ _ _ _ Hfs Henv E Hobs with "Hheap").
+      iNext. iIntros "Hheap %Henv'". iApply (IH with "Hheap HK"). exact Henv'.
+Qed.
+
+(** Quoting only the concrete prefix needs no information about the remaining instructions. *)
+Theorem sym_prefix_sound fs se h f e ls l prefix rest j ρ Φ :
+  facts_hold ρ fs -> env_models ρ se e ->
+  heap_den ρ h -∗ leaf_den ρ f e ls l Φ (sym_prefix ge fs (mkSState se [] h []) prefix rest j) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (prefix ++ rest) j)) : gexpr) {{ Φ }}.
+Proof.
+  intros Hfs Henv. apply (sym_prefix_rule ρ fs prefix rest j (mkSState se [] h []) f e ls l Φ Hfs Henv).
+Qed.
+
 End sound.
 
 (** ## Quoting a proof context
@@ -1948,11 +2243,39 @@ Ltac sym_literal x :=
   let rec pos p := lazymatch p with xH => idtac | xO ?p => pos p | xI ?p => pos p end in
   lazymatch x with Z0 => idtac | Zpos ?p => pos p | Zneg ?p => pos p end.
 
+(** Open register names cannot be compared by the executor's computation. *)
+Ltac sym_closed_name n :=
+  tryif (has_evar n) then (fail 0) else (
+  let symbolic := match goal with
+    | x : _ |- _ => lazymatch n with context [x] => constr:(true) end
+    | _ => constr:(false)
+    end in
+  lazymatch symbolic with false => idtac end).
+
+(** The guard checks name positions without evaluating symbolic values or an opaque instruction tail. *)
+Ltac sym_closed_names t :=
+  let ty := type of t in
+  lazymatch ty with
+  | name => sym_closed_name t
+  | term => sym_closed_name t
+  | _ => lazymatch t with
+      | ?f ?x => sym_closed_names f; sym_closed_names x
+      | _ => idtac
+      end
+  end.
+
 (** Arithmetic is quoted structurally, while unknown integer expressions become variables. *)
 Ltac sym_quote_z rho t :=
   let t := eval cbn [ptr_addr r_end] in t in
-  lazymatch rho with mkVal ?zs ?ps ?rs =>
+  lazymatch rho with mkValuation ?zs ?ps ?rs ?bs ?qs =>
     lazymatch t with
+    | Z.modulo (nth (Z.to_nat ?i) ?xs 0) 256 =>
+        let qi := sym_quote_z rho i in
+        lazymatch qi with (?i', mkValuation ?zs' ?ps' ?rs' ?bs' ?qs') =>
+          let ql := sym_intern xs bs' in
+          lazymatch ql with (?l, ?bs'') =>
+            constr:((ZNth l i', mkValuation zs' ps' rs' bs'' qs')) end
+        end
     | Z.add ?a ?b =>
         let qa := sym_quote_z rho a in
         lazymatch qa with (?a', ?r1) =>
@@ -1973,10 +2296,13 @@ Ltac sym_quote_z rho t :=
         end
     | ptr_addr ?p =>
         let q := sym_intern p ps in
-        lazymatch q with (?n, ?ps') => constr:((ZAddr n, mkVal zs ps' rs)) end
+        lazymatch q with (?n, ?ps') => constr:((ZAddr n, mkValuation zs ps' rs bs qs)) end
     | r_end ?r =>
         let q := sym_intern r rs in
-        lazymatch q with (?n, ?rs') => constr:((ZEnd n, mkVal zs ps rs')) end
+        lazymatch q with (?n, ?rs') => constr:((ZEnd n, mkValuation zs ps rs' bs qs)) end
+    | Z.of_nat (length ?xs) =>
+        let q := sym_intern xs bs in
+        lazymatch q with (?n, ?bs') => constr:((ZLen n, mkValuation zs ps rs bs' qs)) end
     | _ =>
         let q := match goal with
           | _ =>
@@ -1989,7 +2315,7 @@ Ltac sym_quote_z rho t :=
                 let literal := sym_literal v in constr:((ZK v, rho))
               end
           | _ => let q := sym_intern t zs in
-              lazymatch q with (?n, ?zs') => constr:((ZV n, mkVal zs' ps rs)) end
+              lazymatch q with (?n, ?zs') => constr:((ZV n, mkValuation zs' ps rs bs qs)) end
           end in q
     end
   end.
@@ -2005,9 +2331,9 @@ Ltac sym_quote_c rho c :=
       lazymatch q with (?b', ?r) => constr:((SCRo b', r)) end
   | _ =>
       let p := lazymatch c with ptr_cap ?p => p | _ => constr:(mkPtr 0 c) end in
-      lazymatch rho with mkVal ?zs ?ps ?rs =>
+      lazymatch rho with mkValuation ?zs ?ps ?rs ?bs ?qs =>
         let q := sym_intern p ps in
-        lazymatch q with (?n, ?ps') => constr:((SCOf n, mkVal zs ps' rs)) end
+        lazymatch q with (?n, ?ps') => constr:((SCOf n, mkValuation zs ps' rs bs qs)) end
       end
   end.
 
@@ -2027,18 +2353,45 @@ Ltac sym_quote_w rho w :=
 
 (** A region receives its own index, separate from integer and pointer variables. *)
 Ltac sym_quote_r rho reg :=
-  lazymatch rho with mkVal ?zs ?ps ?rs =>
+  lazymatch rho with mkValuation ?zs ?ps ?rs ?bs ?qs =>
     let q := sym_intern reg rs in
-    lazymatch q with (?n, ?rs') => constr:((n, mkVal zs ps rs')) end
+    lazymatch q with (?n, ?rs') => constr:((n, mkValuation zs ps rs' bs qs)) end
+  end.
+
+(** Ownership shares receive stable indices before the executor collects bounds. *)
+Ltac sym_quote_q rho dq :=
+  lazymatch rho with mkValuation ?zs ?ps ?rs ?bs ?qs =>
+    let q := sym_intern dq qs in
+    lazymatch q with (?n, ?qs') => constr:((n, mkValuation zs ps rs bs qs')) end
+  end.
+
+(** A byte slice retains its original list and fractional permission. *)
+Ltac sym_quote_bytes rho dq b o xs :=
+  let qb := sym_quote_z rho b in
+  lazymatch qb with (?b', ?r1) => let qo := sym_quote_z r1 o in
+    lazymatch qo with (?o', ?r2) => let qq := sym_quote_q r2 dq in
+      lazymatch qq with (?q, mkValuation ?zs ?ps ?rs ?bs ?qs) =>
+        let ql := sym_intern xs bs in
+        lazymatch ql with (?l, ?bs') =>
+          constr:((ABytes q b' o' l, mkValuation zs ps rs bs' qs))
+        end
+      end
+    end
   end.
 
 (** The tactic recognizes cell and lifetime permissions by name, without inspecting their implementation. *)
 Ltac sym_quote_atom rho P :=
-  lazymatch P with
+  let rho := eval cbv beta delta [mkVal] in rho in
+  match P with
   | live ?b ?reg =>
       let qb := sym_quote_z rho b in
       lazymatch qb with (?b', ?r1) => let qr := sym_quote_r r1 reg in
         lazymatch qr with (?r, ?r2) => constr:((ALive b' r, r2)) end end
+  | liveq ?dq ?b ?reg =>
+      let qb := sym_quote_z rho b in
+      lazymatch qb with (?b', ?r1) => let qr := sym_quote_r r1 reg in
+        lazymatch qr with (?r, ?r2) => let qq := sym_quote_q r2 dq in
+          lazymatch qq with (?q, ?r3) => constr:((ALiveQ q b' r, r3)) end end end
   | live_cap ?c ?reg =>
       let qc := sym_quote_c rho c in
       lazymatch qc with (?c', ?r1) => let qr := sym_quote_r r1 reg in
@@ -2053,18 +2406,22 @@ Ltac sym_quote_atom rho P :=
       lazymatch qb with (?b', ?r1) => let qo := sym_quote_z r1 o in
         lazymatch qo with (?o', ?r2) => let qp := sym_quote_w r2 constr:(WPtr p) in
           lazymatch qp with (SWPtr ?a ?c, ?r3) => constr:((APCell b' o' a c, r3)) end end end
+  | ?byte_assertion ?dq ?b ?o ?xs =>
+      let checked := constr:(eq_refl P : P = sym_ML.bytesq dq b o xs) in
+      sym_quote_bytes rho dq b o xs
   | ?byte_assertion ?b ?o ?bs =>
       let checked := constr:(eq_refl P : P = sym_ML.bytes b o bs) in
       let bs := eval cbv beta delta [sym_bytes] in bs in
-      lazymatch bs with
+      match bs with
       | le_bytes ?v ?sz =>
           let n := lazymatch sz with 1%nat => constr:(Ub) | 2%nat => constr:(Uh) | 4%nat => constr:(Uw) end in
           let qb := sym_quote_z rho b in
           lazymatch qb with (?b', ?r1) => let qo := sym_quote_z r1 o in
             lazymatch qo with (?o', ?r2) => let qv := sym_quote_z r2 v in
               lazymatch qv with (?v', ?r3) => constr:((ANarrow n b' o' v', r3)) end end end
+      | _ => sym_quote_bytes rho constr:(DfracOwn 1) b o bs
       end
-  | _ => fail "sym_run: expected live, icell, pcell, narrow bytes, or live_cap; found" P
+  | _ => fail "sym_run: expected live, liveq, icell, pcell, bytes, bytesq, or live_cap; found" P
   end.
 
 (** Named spatial hypotheses become an ordered list of ownership atoms. *)
@@ -2093,6 +2450,8 @@ Ltac sym_context seen :=
       let relevant := lazymatch P with
         | Z.le _ _ => idtac | Z.lt _ _ => idtac
         | @eq cap _ _ => idtac | @eq Z _ _ => idtac | @not (@eq Z _ _) => idtac
+        | ?c = Obj ?b \/ ?c = Ro ?b => idtac
+        | ?c = Ro ?b \/ ?c = Obj ?b => idtac
         | lookup _ _ = Some _ => idtac
         | _ /\ _ => idtac
         end in
@@ -2142,6 +2501,35 @@ Ltac sym_quote_caps rho props :=
         lazymatch qb with (?b', ?r2) => let qs := sym_quote_caps r2 ps in
           lazymatch qs with (?cs, ?r3) => constr:(((a', b') :: cs, r3)) end end end
   | _ :: ?ps => sym_quote_caps rho ps
+  end.
+
+(** A pointer may permit writes or only reads; other disjunctions do not establish permission to read. *)
+Ltac sym_quote_reads rho props :=
+  lazymatch props with
+  | [] => constr:((@nil readable_fact, rho))
+  | ?P :: ?ps =>
+      let found := lazymatch P with
+        | ?c = Obj ?b \/ ?c = Ro ?b => constr:(Some (c, b))
+        | ?c = Ro ?b \/ ?c = Obj ?b => constr:(Some (c, b))
+        | _ => constr:(@None (cap * Z))
+        end in
+      lazymatch found with
+      | None => sym_quote_reads rho ps
+      | Some (?c, ?b) =>
+          let qc := sym_quote_c rho c in
+          lazymatch qc with (?c', ?r1) => let qb := sym_quote_z r1 b in
+            lazymatch qb with (?b', ?r2) => let qr := sym_quote_reads r2 ps in
+              lazymatch qr with (?rs, ?r3) => constr:((FReadable c' b' :: rs, r3)) end
+            end
+          end
+      end
+  end.
+
+(** Equations and read facts share the same valuation but retain separate meanings. *)
+Ltac sym_quote_facts rho props :=
+  let qc := sym_quote_caps rho props in
+  lazymatch qc with (?cs, ?r1) => let qr := sym_quote_reads r1 props in
+    lazymatch qr with (?rs, ?r2) => constr:((mkFactsWithReads [] cs rs, r2)) end
   end.
 
 (** Closed endpoints in the context give candidate bounds for an atomic integer. *)
@@ -2204,9 +2592,12 @@ Ltac sym_bound_terms rho :=
   let rec rs xs n := lazymatch xs with
     | [] => constr:(@nil (zexp * Z))
     | ?x :: ?xs => let rest := rs xs constr:(S n) in constr:((ZEnd n, r_end x) :: rest) end in
-  lazymatch rho with mkVal ?zz ?pp ?rr =>
+  let rec bs xs n := lazymatch xs with
+    | [] => constr:(@nil (zexp * Z))
+    | ?x :: ?xs => let rest := bs xs constr:(S n) in constr:((ZLen n, Z.of_nat (length x)) :: rest) end in
+  lazymatch rho with mkValuation ?zz ?pp ?rr ?bb ?qq =>
     let zz' := zs zz constr:(O) in let pp' := ps pp constr:(O) in let rr' := rs rr constr:(O) in
-    eval cbn [app] in (zz' ++ pp' ++ rr')
+    let bb' := bs bb constr:(O) in eval cbn [app] in (zz' ++ pp' ++ rr' ++ bb')
   end.
 
 (** Candidate intervals enter the facts only after arithmetic proves both endpoints. *)
@@ -2241,6 +2632,10 @@ Definition atom_slot (fs : facts) (a b : atom) : bool :=
   | ANarrow n x o _, ANarrow m y p _ =>
       Z.eqb (fst (narrow_type n)) (fst (narrow_type m)) &&
       zlinear_eqb fs x y && zlinear_eqb fs o p
+  | ABytes q x o l, ABytes r y p m =>
+      Nat.eqb q r && Nat.eqb l m && zlinear_eqb fs x y && zlinear_eqb fs o p
+  | ALiveQ q x r, ALiveQ p y s =>
+      Nat.eqb q p && Nat.eqb r s && zlinear_eqb fs x y
   | _, _ => false
   end.
 
@@ -2259,8 +2654,8 @@ Ltac sym_atom_name fs a old names :=
 
 (** Denotation reduction leaves the program's environment updates and arithmetic visible. *)
 Ltac sym_den_simpl :=
-  cbn [facts_hold env_models obs_den ob_den heap_den atom_den wden cden zden
-    vz vp vr nth nth_error bd_exp bd_lo bd_hi f_bounds f_caps fst snd
+  cbn [facts_hold readable_den env_models obs_den ob_den heap_den atom_den wden cden zden
+    vz vp vr vbytes vfrac nth nth_error bd_exp bd_lo bd_hi f_bounds f_caps f_reads fst snd
     apply_ups fold_left]; rewrite ?sym_ptr_eta.
 
 (** A nonzero value makes equality with zero false and inequality with zero true. *)
@@ -2274,8 +2669,9 @@ Ltac sym_nonzero_side :=
 
 (** Each unsolved arithmetic condition remains a separate, ordinary Coq goal. *)
 Ltac sym_forall_side solve :=
-  cbn [f_bounds f_caps];
+  cbn [mkFacts f_bounds f_caps f_reads];
   lazymatch goal with
+  | |- _ /\ _ => split; sym_forall_side solve
   | |- Forall _ [] => apply Forall_nil
   | |- Forall _ (_ :: _) => apply Forall_cons;
       [sym_den_simpl; first [sym_nonzero_side | try solve] | sym_forall_side solve]
@@ -2296,15 +2692,40 @@ Ltac sym_restore fs h old names H :=
       end
   end.
 
+(** Known byte lookups recover the caller's values without exposing address-to-index arithmetic. *)
+Ltac sym_byte_values solve :=
+  try (progress (repeat match goal with
+    | H : ?xs !! ?n = Some ?x |- context [nth (Z.to_nat ?i) ?xs 0] =>
+        let E := fresh "Hsym_index" in
+        assert (E : i = Z.of_nat n) by solve;
+        rewrite E Nat2Z.id (nth_lookup_Some _ _ _ _ H); clear E
+    end);
+    cbn [extension];
+    repeat match goal with
+    | |- context [?x mod ?m] =>
+        let H := fresh "Hsym_range" in
+        assert (H : 0 <= x < m) by lia;
+        rewrite (Z.mod_small x m H); clear H
+    end).
+
 (** One computation supplies the leaf, and the cast lets the kernel check that computed result. *)
 Ltac sym_finish fs se h rho names solve :=
   lazymatch goal with
   | |- environments.envs_entails _ (wp _ _ (_ (mkFrame ?f ?e ?ls None (Exec ?l ?insts ?j))) ?Phi) =>
+      sym_closed_names se; sym_closed_names insts; sym_closed_names j;
       let Hheap := iFresh in
       let selected := eval vm_compute in (String.append "[" (String.append (String.concat " " names) "]")) in
       iAssert (heap_den rho h) with selected as Hheap;
       [sym_den_simpl; iFrame |];
-      iApply (sym_sound _ _ _ fs se h f e ls l insts j rho Phi with Hheap);
+      let rec split_prefix xs := lazymatch xs with
+        | ?i :: ?xs => let tail := split_prefix xs in
+            lazymatch tail with (?prefix, ?rest) => constr:((i :: prefix, rest)) end
+        | _ => constr:((@nil inst, xs)) end in
+      let parts := split_prefix insts in
+      lazymatch parts with
+        | (_, []) => iApply (sym_sound _ _ _ fs se h f e ls l insts j rho Phi with Hheap)
+        | (?prefix, ?rest) => iApply (sym_prefix_sound _ _ _ fs se h f e ls l prefix rest j rho Phi with Hheap)
+      end;
       [unfold facts_hold; split; sym_forall_side solve |
        unfold env_models; sym_forall_side ltac:(lk_prove) |
       lazymatch goal with
@@ -2318,19 +2739,20 @@ Ltac sym_finish fs se h rho names solve :=
           lazymatch lf with LStop ?why _ _ _ => idtac "sym_run stopped:" why | _ => iNext end;
           let Hnew := iFresh in let Henv := fresh "Hsym_env" in
           iIntros Hnew; iIntros (Henv);
-          iEval (cbn [heap_den atom_den wden cden zden vz vp vr nth nth_error]; rewrite ?sym_ptr_eta) in Hnew;
+          iEval (cbn [heap_den atom_den wden cden zden vz vp vr vbytes vfrac nth nth_error]; rewrite ?sym_ptr_eta) in Hnew;
           let hs := eval cbn [leaf_state st_heap] in (st_heap (leaf_state lf)) in
           sym_restore fs hs h names Hnew;
           clear Henv;
-          cbn [apply_ups fold_left fst snd wden cden zden vz vp vr nth nth_error edge_label];
-          rewrite ?sym_ptr_eta]
+          cbn [apply_ups fold_left fst snd wden cden zden vz vp vr vbytes vfrac nth nth_error edge_label];
+          rewrite ?sym_ptr_eta; sym_byte_values solve]
       end]
   | _ => fail "sym_run: expected a block-entry WP with no pending fault"
   end.
 
 (** Once bounds are collected, the other quoted facts complete the executor's input. *)
 Ltac sym_finish_bounds cs se h rho names solve bs :=
-  sym_finish constr:(mkFacts bs cs) se h rho names solve.
+  let fs := eval cbn [f_caps f_reads] in (mkFactsWithReads bs (f_caps cs) (f_reads cs)) in
+  sym_finish fs se h rho names solve.
 
 (** The caller supplies resource names; the tactic reads the other facts from the context. *)
 Ltac sym_run_with names solve :=
@@ -2338,23 +2760,31 @@ Ltac sym_run_with names solve :=
   let names := String.words names in
   let props := sym_context constr:(@nil Prop) in
   let props := sym_flatten props in
-  let qh := sym_quote_heap constr:(mkVal [] [] []) names in
+  tryif (lazymatch goal with
+    | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ None (Exec _ ?insts ?j))) _) =>
+        sym_closed_names e; sym_closed_names props;
+        sym_closed_names insts; sym_closed_names j
+    end)
+  then (
+  let qh := sym_quote_heap constr:(mkValuation [] [] [] [] []) names in
   lazymatch qh with (?h, ?r1) =>
     lazymatch goal with
     | |- environments.envs_entails _ (wp _ _ (_ (mkFrame _ ?e _ None (Exec _ _ _))) _) =>
         let qe := sym_quote_env r1 props e in
-        lazymatch qe with (?se, ?r2) => let qc := sym_quote_caps r2 props in
+        lazymatch qe with (?se, ?r2) => let qc := sym_quote_facts r2 props in
           lazymatch qc with (?cs, ?rho) =>
             let terms := sym_bound_terms rho in
             sym_bounds props terms constr:(@nil bound)
               ltac:(sym_finish_bounds cs se h rho names solve)
           end end
     end
-  end.
+  end)
+  else idtac "sym_run stopped: symbolic register name".
 
 (** The default solver tries integer arithmetic first, then removes remainders whose inputs already fit.
     Only the remaining goals need division and modulo equations. *)
 Ltac sym_lia := first [assumption | reflexivity | lia |
+  match goal with H : ?P \/ ?Q |- ?Q \/ ?P => clear -H; tauto end |
   progress (repeat match goal with
     | |- context [?x mod ?m] =>
         let H := fresh "Hmod" in assert (H : 0 <= x < m) by lia;
