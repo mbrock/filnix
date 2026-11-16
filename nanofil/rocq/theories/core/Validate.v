@@ -413,43 +413,26 @@ Definition any_class (k : class) : bool := negb (proof_class k).
     function-call proof. *)
 Definition op_result_ok (o : op) (k : class) : bool :=
   match o with
-  | Add | Sub | Copy => any_class k
-  | Mul | Div => int_class k || float_class k
-  | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl => int_class k
-  | Neg => int_class k || float_class k
-  | Select => int_class k
-  | Ptoi => class_eqb k L
-  | Itop => class_eqb k P
+  | Add | Sub | Copy | VaArg => any_class k
+  | Mul | Div | Neg | Cast => int_class k || float_class k
+  | Udiv | Rem | Urem | And | Or | Xor | Sar | Shr | Shl | Select
+  | FloatToInt _ _ | RawLoad (LdNarrow _) _ | RawCas (CasNarrow _) _ => int_class k
+  | Ptoi | Limit _ | RawLoad LdL _ | RawCas CasL _ => class_eqb k L
+  | Itop | Alloc _ | RawLoadPointer _ _ | RawCas CasP _ | VaArgs => class_eqb k P
   | Cmp _ ck => if float_class ck then class_eqb k W else int_class k
   | Ext t => match t with Sw | Uw => class_eqb k L | _ => int_class k end
   | ExtF Single => class_eqb k Double || class_eqb k Extended
-  | ExtF Double => class_eqb k Extended
+  | ExtF Double | RawLoad LdX _ => class_eqb k Extended
   | ExtF _ => false
-  | Truncd => class_eqb k Single
+  | Truncd | RawLoad LdS _ => class_eqb k Single
   | Truncx => class_eqb k Single || class_eqb k Double
-  | FloatToInt _ _ => int_class k
-  | IntToFloat _ _ => float_class k
-  | Cast => int_class k || float_class k
-  | Sqrt => float_class k
-  | Alloc _ => class_eqb k P
+  | IntToFloat _ _ | Sqrt => float_class k
   | Check _ _ _ _ | CheckAhead _ _ _ _ _ | Renew _ _ _ _ | RenewHull _ _ _ _
   | HalfCheck _ _ _ _ _ | RenewIf _ _ _ _ | CheckLimit _ _ _ _ | CheckLocal _ _ _ _ _ =>
       class_eqb k A
-  | SpanTest _ _ => class_eqb k W
-  | Limit _ => class_eqb k L
+  | SpanTest _ _ | Setjmp _ => class_eqb k W
   | CheckFunction => class_eqb k F
-  | RawLoad LdL _ => class_eqb k L
-  | RawLoad LdS _ => class_eqb k Single
   | RawLoad LdD _ => class_eqb k Double
-  | RawLoad LdX _ => class_eqb k Extended
-  | RawLoad (LdNarrow _) _ => int_class k
-  | RawLoadPointer _ _ => class_eqb k P
-  | RawCas CasL _ => class_eqb k L
-  | RawCas CasP _ => class_eqb k P
-  | RawCas (CasNarrow _) _ => int_class k
-  | VaArgs => class_eqb k P
-  | VaArg => any_class k
-  | Setjmp _ => class_eqb k W
   end.
 
 (** ## Signatures
