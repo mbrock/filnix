@@ -327,14 +327,11 @@ Lemma copy_c_bytes_outside : forall bytes m a b,
   m_bytes (copy_c_bytes m a bytes) b = m_bytes m b.
 Proof.
   induction bytes as [|head rest IH]; intros m a b Hout.
-  - simpl. destruct ((a <=? b) && (b <? a + 1)) eqn:E; [|reflexivity].
-    apply andb_true_iff in E as [E1 E2]. apply Z.leb_le in E1. apply Z.ltb_lt in E2. simpl in Hout. lia.
-  - change (m_bytes (copy_c_bytes (store_bytes m a 1 head) (a + 1) rest) b = m_bytes m b).
-    change (b < a \/ a + Z.of_nat (S (length rest)) + 1 <= b) in Hout.
-    rewrite Nat2Z.inj_succ in Hout. rewrite IH by lia.
-    simpl. destruct ((a <=? b) && (b <? a + 1)) eqn:E; [|reflexivity].
-    apply andb_true_iff in E as [E1 E2]. apply Z.leb_le in E1. apply Z.ltb_lt in E2.
-    lia.
+  all: cbn [copy_c_bytes].
+  2: rewrite IH by (simpl length in Hout; rewrite Nat2Z.inj_succ in Hout; lia).
+  all: simpl; destruct ((a <=? b) && (b <? a + 1)) eqn:E; [|reflexivity].
+  all: apply andb_true_iff in E as [E1 E2]; apply Z.leb_le in E1; apply Z.ltb_lt in E2;
+    simpl in Hout; lia.
 Qed.
 
 (** When every byte in bytes is non-zero and fits in an unsigned byte,
@@ -646,10 +643,7 @@ Proof.
   intros bytes sources roots releases requests s m born base s' Hr Hbytes Hmax Hrequest Ha.
   set (size := Z.of_nat (length bytes) + 1). set (q := heap_req 16 size).
   assert (Hsize : 0 < size) by (unfold size; lia).
-  assert (Hfit : size <= req_extent q).
-  { unfold q, heap_req. simpl.
-    pose proof (Z.mod_pos_bound (size + 15) 16 ltac:(lia)).
-    pose proof (Z.div_mod (size + 15) 16 ltac:(lia)). lia. }
+  assert (Hfit : size <= req_extent q) by (apply startup_extent; exact Hsize).
   destruct (R.fresh_allocation s m q base s' Hr ltac:(simpl; lia) ltac:(lia) Ha) as [Hfresh Hr1].
   assert (Hreg : object_region base (m_regions (allocated m q base)) =
     Some (mkRegion base (base + req_extent q) Heap Live)).
@@ -668,12 +662,8 @@ Proof.
   destruct (E.effects_preserve _ _ _ _ _ _ _ _ _ _ He Hr) as [Hr' Hpersist].
   assert (Haccess : access_res (copy_c_bytes (allocated m q base) base bytes)
     base (Obj base) size Write 1 = Some ok).
-  { unfold access_res. rewrite copy_c_bytes_regions. unfold cap_access_res. rewrite Hreg.
-    change (Some (if (base <=? base) && (base + size <=? base + req_extent q)
-      then aligned_res base 1 else RTrap OutOfBounds) = Some ok).
-    assert (((base <=? base) && (base + size <=? base + req_extent q)) = true) as E.
-    { apply andb_true_iff. split; apply Z.leb_le; lia. }
-    rewrite E. unfold aligned_res. rewrite Z.mod_1_r. reflexivity. }
+  { eapply startup_table_access;
+      [rewrite copy_c_bytes_regions; exact Hreg|lia|lia|apply Z.mod_1_r]. }
   split; [exact He|]. split; [exact Hr'|]. split; [exact Hpersist|]. split.
   - split; [exact Haccess|]. apply copied_string_bytes. exact Hbytes.
   - split.
@@ -770,6 +760,7 @@ Proof.
     destruct (R.alloc s (heap_req 16 (Z.of_nat (length text) + 1))) as [[base s1]|] eqn:Ha;
       [|discriminate Hcopy].
     inversion Hallowed as [|head tail [Hbytes [Hmax Hrequest]] Hrest]; subst head tail.
+    cbn [length] in Hhi. rewrite Nat2Z.inj_succ in Hhi.
     set (q := heap_req 16 (Z.of_nat (length text) + 1)).
     set (m1 := copy_c_bytes (allocated m q base) base text).
     set (m2 := startup_store m1 cursor (mkPtr base (Obj base))).
@@ -785,8 +776,7 @@ Proof.
     { apply local_store_pointer.
       - intros a Hrange. right. exists table, (mkRegion table end_ Heap Live).
         split; [simpl; auto|]. split; [exact Htable1|].
-        change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi.
-        rewrite Nat2Z.inj_succ in Hhi. repeat split; simpl; try reflexivity; lia.
+        repeat split; simpl; try reflexivity; lia.
       - right. right. right. exists base. simpl. auto. }
     assert (Hr2 : R.ready s1 m2) by (eapply R.ready_kept; [exact Hr1|apply local_effect_kept in Hstore; exact Hstore]).
     assert (Hframe2 : startup_frame m m2 cursor (cursor + 8)).
@@ -798,12 +788,11 @@ Proof.
         (cursor + 8 * Z.of_nat (S (length rest))) by (rewrite Nat2Z.inj_succ; lia).
       eapply startup_frame_slot; [exact Hframe2| | |exact Hsent].
       - intros a Hrange. exists table, (mkRegion table end_ Heap Live). split; [exact Htable|].
-        simpl. change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi. lia.
+        simpl. rewrite Nat2Z.inj_succ in Hrange. lia.
       - intros a Hrange. rewrite Nat2Z.inj_succ in Hrange. lia. }
     destruct (IH s1 m2 (base :: born) (cursor + 8) s' m' born' sources roots releases requests table end_
       Hcopy Hr2 Hrest ltac:(simpl; auto) Htable2 ltac:(lia)
-      ltac:(change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi;
-        rewrite Nat2Z.inj_succ in Hhi; lia)
+      ltac:(lia)
       ltac:(rewrite Z.add_mod by lia; rewrite Halign; reflexivity) Hsent2)
       as (He2 & Hr' & Hp2 & Hframe3 & Hslots).
     split.
@@ -818,8 +807,7 @@ Proof.
         -- exists (mkPtr base (Obj base)). split.
            ++ eapply startup_frame_slot; [exact Hframe3| |intros; lia|].
               ** intros a Hrange. exists table, (mkRegion table end_ Heap Live). split; [exact Htable2|].
-                 simpl. change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi.
-                 rewrite Nat2Z.inj_succ in Hhi. lia.
+                 simpl. lia.
               ** apply pointer_slot_written. exact Hbase.
            ++ split; [|exact Hslots].
               assert (Hdis : forall a, base <= a < base + Z.of_nat (length text) + 1 ->
@@ -832,8 +820,7 @@ Proof.
                 intros a Hrange. simpl in Hrange. specialize (Hdis a Hrange). lia. }
               eapply startup_frame_string; [exact Hframe3|exact Hstring2|].
               intros a Hrange. simpl in Hrange. specialize (Hdis a Hrange).
-              change (cursor + 8 * (Z.of_nat (S (length rest)) + 1) <= end_) in Hhi.
-              rewrite Nat2Z.inj_succ in Hhi. lia.
+              lia.
 Qed.
 
 (** A complete vector copy allocates the pointer array first and then fills
