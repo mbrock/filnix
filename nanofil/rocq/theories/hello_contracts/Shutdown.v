@@ -326,16 +326,8 @@ Example shutdown_dynamic_lifo : forall q,
     (mkShutdown (HandedOff SoftExit) 31 [] [2; 3; 1]%nat q).
 Proof.
   intros q.
-  eapply shutdown_next; [apply shutdown_tls|].
-  eapply shutdown_next; [apply shutdown_invoke|].
-  eapply shutdown_next; [apply shutdown_register; simpl; intuition congruence|].
-  eapply shutdown_next; [apply shutdown_return|].
-  eapply shutdown_next; [apply shutdown_invoke|].
-  eapply shutdown_next; [apply shutdown_return|].
-  eapply shutdown_next; [apply shutdown_invoke|].
-  eapply shutdown_next; [apply shutdown_return|].
-  eapply shutdown_next; [apply shutdown_cleanup|].
-  eapply shutdown_next; [apply shutdown_soft|]. constructor.
+  repeat (eapply shutdown_next; [constructor; simpl; intuition congruence|]).
+  constructor.
 Qed.
 
 (** Recursive exit abandons the active callback and supplies -1 to older ones. *)
@@ -346,14 +338,8 @@ Example shutdown_recursive_status : forall q,
     (mkShutdown (HandedOff SoftExit) (-1) [] [2; 1]%nat q).
 Proof.
   intros q.
-  eapply shutdown_next; [apply shutdown_tls|].
-  eapply shutdown_next; [apply shutdown_invoke|].
-  eapply shutdown_next; [apply shutdown_recursive|].
-  eapply shutdown_next; [apply shutdown_tls|].
-  eapply shutdown_next; [apply shutdown_invoke|].
-  eapply shutdown_next; [apply shutdown_return|].
-  eapply shutdown_next; [apply shutdown_cleanup|].
-  eapply shutdown_next; [apply shutdown_soft|]. constructor.
+  repeat (eapply shutdown_next; [constructor|]).
+  constructor.
 Qed.
 
 (** An active registration instance cannot be registered again with its old token. *)
