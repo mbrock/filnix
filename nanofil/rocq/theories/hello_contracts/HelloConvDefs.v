@@ -105,17 +105,13 @@ Proof.
   intros Hl Ho He Hin. unfold block_ps in Hin. apply elem_of_cons in Hin as [Hin|Hin].
   { injection Hin as -> ->. exact Hl. }
   assert (Hreg : registered m' b) by (destruct Hl as [E _]; unfold registered; congruence).
-  apply elem_of_app in Hin as [Hin|Hin].
-  - apply byte_ps_elem in Hin as (i & x & Hx & -> & ->).
-    unfold mem_bytes in Hx. apply list_lookup_fmap_Some in Hx as (i' & -> & Hi).
-    apply lookup_seq in Hi as [-> Hi]. cbn [agree_piece].
-    split; [exact Hreg|]. intros reg' E L. destruct Hl as [E0 _]. rewrite E0 in E. injection E as <-.
-    split; [lia|]. split; [lia|]. f_equal. lia.
-  - apply aux_ps_elem in Hin as (i & c & Hc & -> & ->).
-    unfold mem_auxes in Hc. apply list_lookup_fmap_Some in Hc as (i' & -> & Hi).
-    apply lookup_seq in Hi as [-> Hi]. cbn [agree_piece].
-    split; [exact Hreg|]. intros reg' E L. destruct Hl as [E0 _]. rewrite E0 in E. injection E as <-.
-    split; [lia|]. split; [lia|]. left. f_equal. lia.
+  apply elem_of_app in Hin as [Hin|Hin];
+    [apply byte_ps_elem in Hin as (i & x & Hvalue & -> & ->); unfold mem_bytes in Hvalue
+    |apply aux_ps_elem in Hin as (i & c & Hvalue & -> & ->); unfold mem_auxes in Hvalue].
+  all: apply list_lookup_fmap_Some in Hvalue as (i' & -> & Hi).
+  all: apply lookup_seq in Hi as [-> Hi]; cbn [agree_piece].
+  all: split; [exact Hreg|]; intros reg' E L; destruct Hl as [E0 _]; rewrite E0 in E; injection E as <-.
+  all: split; [lia|]; split; [lia|]; try left; f_equal; lia.
 Qed.
 
 (** A byte or aux piece of a live object, inside its bounds at an
