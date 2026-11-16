@@ -131,7 +131,18 @@ let
     pkgs.swi-prolog
     pkgs.python3
   ];
-  reprint = lib.genAttrs names (
+  # A file a generator writes says "Do not edit" in its header. Its
+  # reprint checks the grammar on no text a person wrote, so the parse
+  # check reads only the hand-written theories.
+  handWritten = lib.filter (
+    n:
+    !lib.hasInfix "do not edit" (
+      lib.toLower (
+        builtins.substring 0 1000 (builtins.readFile (theories + "/${path.${n}}.v"))
+      )
+    )
+  ) names;
+  reprint = lib.genAttrs handWritten (
     n:
     pkgs.runCommand "nanofil-rocq-reprint-${n}"
       { nativeBuildInputs = parseInputs; }
@@ -173,14 +184,14 @@ let
       ''
         mkdir $out
         {
-          ${lib.concatMapStrings (n: "cat ${reprint.${n}}/verdict\n") names}
+          ${lib.concatMapStrings (n: "cat ${reprint.${n}}/verdict\n") handWritten}
           cat ${fixtures}/log
         } | tee $out/verdicts
         echo "parse: $(grep -c '^ok' $out/verdicts) files read and reprinted"
         # Build-time totals (AGENTS.md, Rocq proof speed), from the reprints'
         # times and the theories' imports. A readout; nothing fails on it.
         cat ${
-          lib.concatMapStringsSep " " (n: "${reprint.${n}}/time") names
+          lib.concatMapStringsSep " " (n: "${reprint.${n}}/time") handWritten
         } >$out/timings.log
         cat >$out/deps <<'EOF'
         ${lib.concatMapStrings (n: "${n}: ${toString imports.${n}}\n") names}EOF

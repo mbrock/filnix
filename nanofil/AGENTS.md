@@ -271,6 +271,13 @@ exemplars):
 - Run `../scripts/prose-check -v --all-comments --max-passages 64 FILE.v`
   to check every comment passage in a `.v` file.
 
+A `.v` file that a generator writes, such as an IR fixture, says
+"Do not edit" in its header, within its first 1000 bytes. The site,
+its cross-file index, the proof capture and the parse check skip every
+such file, and a link to one is drawn as plain text. A new generator
+writes that phrase into its header, and a hand-written file never
+contains it there.
+
 ## Working alongside other threads
 
 Several threads may work on nanofil at once, each owning one workstream.

@@ -242,7 +242,11 @@ def capture(project, output, replay=""):
         # start once the file's imports are compiled. The longest chain of
         # compiles still waiting on a job goes first; costs are unknown,
         # so each job counts one.
-        replayed = [f for f in files if f.startswith(replay)]
+        # A file a generator writes says "Do not edit" in its header; it
+        # is compiled for its importers but has no proofs anyone reads.
+        def generated(f):
+            return "do not edit" in (work / f).read_text(encoding="utf-8")[:1000].lower()
+        replayed = [f for f in files if f.startswith(replay) and not generated(f)]
         needed = set()
 
         def need(f):

@@ -112,14 +112,14 @@ def stdio(text, prefix, fns, layout):
     without treating either function as an external contract.
 
     rocq/glibc/stdio/code.sh reproduces these terms from the pinned capture
-    with gallina.pl. Regenerate this file rather than editing it. *)'''
+    with gallina.pl. Do not edit. *)'''
     if buffer:
         header = '''(** These checked bodies implement printf-buffer operations in user-glibc 2.44.
     They retain the source's failure paths and calls into stream operations;
     decoding these bodies does not establish contracts for those calls.
 
     rocq/glibc/stdio/buffer-code.sh reproduces these terms from the pinned
-    capture with gallina.pl. Regenerate this file rather than editing it. *)'''
+    capture with gallina.pl. Do not edit. *)'''
     tail = f'''
 From Nanofil Require Import Syntax Transport Semantics.
 

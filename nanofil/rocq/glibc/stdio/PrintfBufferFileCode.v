@@ -3,7 +3,7 @@
     decoding these bodies does not establish contracts for those calls.
 
     rocq/glibc/stdio/buffer-code.sh reproduces these terms from the pinned
-    capture with gallina.pl. Regenerate this file rather than editing it. *)
+    capture with gallina.pl. Do not edit. *)
 
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Ascii.

@@ -3,7 +3,7 @@
     without treating either function as an external contract.
 
     rocq/glibc/stdio/code.sh reproduces these terms from the pinned capture
-    with gallina.pl. Regenerate this file rather than editing it. *)
+    with gallina.pl. Do not edit. *)
 
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Ascii.

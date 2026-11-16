@@ -43,7 +43,7 @@ for manifest in sorted(manifests.rglob("code.toml")):
         if not file.is_file():
             parser.error(f"missing fixture: {file}")
         text = file.read_text()
-        if "Do not edit." not in text and "Regenerate this file rather than editing it." not in text:
+        if "Do not edit." not in text:
             parser.error(f"unrecognized generated header in {file}")
         blocks = re.compile(r"^\s*Proof\.(.*?)\bQed\.", re.M | re.S)
         proofs = [" ".join(match[1].split()) for match in blocks.finditer(text)]
