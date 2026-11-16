@@ -305,22 +305,11 @@ Lemma phis_env_other : forall ge phis from e0 e a,
 Proof.
   intros ge phis from e0 e a H Ha. unfold phis_env in H. destruct from as [pred|];
     [|destruct phis; [injection H as <-; reflexivity | discriminate H]].
-  assert (G : forall ps acc e', ~ In a (map phi_name ps) ->
-            (forall ea, acc = Some ea -> lookup a ea = lookup a e0) ->
-            fold_left (fun acc ph => let* e := acc in
-                         match ph with
-                         | Phi d k pairs => let* v := lookup pred pairs in
-                                            let* x := value_x ge e0 k v in Some (put d x e)
-                         end) ps acc = Some e' -> lookup a e' = lookup a e0).
-  { intros ps. induction ps as [|[d k pairs] ps IH]; intros acc e1 Hn Hacc Hf; simpl in Hf.
-    - exact (Hacc _ Hf).
-    - eapply (IH _ e1 (fun Hin => Hn (or_intror Hin))); [|exact Hf].
-      intros ea Ea. destruct acc as [eb|]; [|discriminate Ea]. simpl in Ea.
-      destruct (lookup pred pairs) as [v|]; [|discriminate Ea]. simpl in Ea.
-      destruct (value_x ge e0 k v); [|discriminate Ea]. simpl in Ea. injection Ea as <-.
-      rewrite lookup_put_ne by (intros ->; apply Hn; left; reflexivity).
-      exact (Hacc _ eq_refl). }
-  apply (G phis (Some e0) e Ha); [intros ea E; injection E as <-; reflexivity | exact H].
+  eapply (fold_env_other _ phi_name _ phis a); [|exact Ha|exact H].
+  intros ea [d k pairs] e' E. simpl in E.
+  destruct (lookup pred pairs) as [v|]; [|discriminate E].
+  destruct (value_x ge e0 k v); [|discriminate E]. injection E as <-.
+  cbn [phi_name]. rewrite lookup_put. destruct (name_eqb a d); reflexivity.
 Qed.
 
 (** A call's result changes only the names it defines. *)
@@ -332,20 +321,12 @@ Proof.
   - destruct (word_at_class k x); [|discriminate H]. injection H as <-.
     apply lookup_put_ne. intros ->. apply Ha. left. reflexivity.
   - destruct (negb _); [discriminate H|].
-    assert (G : forall ps acc e', (forall p, In p ps -> In (fst (fst p)) (map fst rs)) ->
-              (forall ea, acc = Some ea -> lookup a ea = lookup a e) ->
-              fold_left (fun acc rx => let* e := acc in
-                           let* y := word_at_class (snd (fst rx)) (snd rx) in
-                           Some (put (fst (fst rx)) y e)) ps acc = Some e' -> lookup a e' = lookup a e).
-    { intros ps. induction ps as [|p ps IH]; intros acc e1 Hps Hacc Hf; simpl in Hf.
-      - exact (Hacc _ Hf).
-      - eapply (IH _ e1 (fun q Hq => Hps q (or_intror Hq))); [|exact Hf].
-        intros ea Ea. destruct acc as [eb|]; [|discriminate Ea]. simpl in Ea.
-        destruct (word_at_class _ _); [|discriminate Ea]. simpl in Ea. injection Ea as <-.
-        rewrite lookup_put_ne by (intros E; apply Ha; rewrite E; exact (Hps p (or_introl eq_refl))).
-        exact (Hacc _ eq_refl). }
-    apply (G (combine rs xs) (Some e) e'); [| intros ea E; injection E as <-; reflexivity | exact H].
-    intros [[n k] y] Hp. apply in_map_iff. exists (n, k). split; [reflexivity | exact (in_combine_l _ _ _ _ Hp)].
+    eapply (fold_env_other _ (fun rx => fst (fst rx)) _ (combine rs xs) a); [| |exact H].
+    + intros ea [[n k] y] e1 E. simpl in E.
+      destruct (word_at_class k y); [|discriminate E]. injection E as <-.
+      cbn [fst snd]. rewrite lookup_put. destruct (name_eqb a n); reflexivity.
+    + intros Hin. apply in_map_iff in Hin as [[[n k] y] [E Hp]]. simpl in E. subst n.
+      apply Ha, in_map_iff. exists (a, k). split; [reflexivity | exact (in_combine_l _ _ _ _ Hp)].
 Qed.
 
 (** A call's result names are the names it defines. *)
