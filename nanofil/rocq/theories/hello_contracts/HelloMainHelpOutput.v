@@ -1,4 +1,4 @@
-(** The help path borrows literal and argument strings for its output calls.
+(** The version and help paths borrow strings for their output calls.
     These proofs preserve those strings and handle the locale-dependent
     translation instructions and the final exit status. *)
 From iris.proofmode Require Import proofmode.
@@ -174,6 +174,134 @@ Context (version_ps : list (piece * pval)) (author_reg : String.string -> region
     fresh m (heap_req 16 72) sb -> wi m wd h ->
     wi (snapshot_values (HV.version_main_args stream) sb (allocated m (heap_req 16 72) sb)) wd
       (overwrite (snapshot_ps (HV.version_main_args stream) sb (heap_req 16 72)) h)).
+Local Notation main_version_lookup := (MainFacts.main_version_lookup ge Hlinked).
+
+Lemma wp_main_proper_name e ls lab d v rest j p Φ :
+  arg_x ge e (Arg P v) = Some (WPtr p) ->
+  ▷ WP (ERun (mkFrame main_fn (put d (WPtr p) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }} -∗
+  WP (ERun (mkFrame main_fn e ls None (Exec lab
+    (Call (CResult d P) (Global (TAtom "proper_name")) [Arg P v] :: rest) j)) : mexpr) {{ Φ }}.
+Proof.
+  intros Hv. iIntros "HK".
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ proper_name_fn (invocation proper_name_fn [WPtr p])).
+  1: cbn [map_option]; rewrite Hv; reflexivity.
+  1: unfold find_fn; rewrite (proj1 Hlinked); vm_compute; reflexivity.
+  1: reflexivity.
+  iNext. iApply (HV.proper_name_spec registry wi ge).
+  iNext. iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. iExact "HK".
+Qed.
+
+Lemma main_version b4 b6 Φ :
+  pts version_ps -∗ loop_exit b4 b6 "iw_1.L21"%string "iw_1.L19"%string Φ.
+Proof using Type SafepointStable0 section_irisGS Hlinked Hnb_cell Hsb_cell Hav Hargc Hcells
+  Hexit Hexit_abi Hexit_pre Hexit_post Hstdout_g wi_stdout Hauthor_live
+  Hversion_reg Hversion_ret Hversion_abi Hversion_pre Hversion_frame
+  Kversion_alloc Kversion_store Kversion_cursor Kversion_snapshot.
+  pose proof (main_version_lookup "hello#str.70" ltac:(simpl; tauto)) as H70.
+  pose proof (main_version_lookup "hello#str.63" ltac:(simpl; tauto)) as H63.
+  pose proof (main_version_lookup "hello#str.71" ltac:(simpl; tauto)) as H71.
+  pose proof (main_version_lookup "hello#str.72" ltac:(simpl; tauto)) as H72.
+  pose proof (main_version_lookup "hello#str.73" ltac:(simpl; tauto)) as H73.
+  pose proof (main_version_lookup "hello#str.74" ltac:(simpl; tauto)) as H74.
+  pose proof (main_version_lookup "hello#str.75" ltac:(simpl; tauto)) as H75.
+  iIntros "Hps". rewrite /loop_exit. iIntros (e ps cs a i g lose _) "_".
+  mn_enter "iw_1.L21".
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hstdout_g; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_check. exact (proj1 (wi_stdout _ _ _ Hw)). }
+  iNext. iIntros "_". gen_env.
+  iApply (wp_world_let_with registry wi ge []); [reflexivity | reflexivity | word_premise | | rewrite /pts /=; done |].
+  { intros m w h Hw _. apply op_raw_load_pointer; apply (wi_stdout _ _ _ Hw). }
+  iNext. iIntros "_". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H70; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H63; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H71; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H72; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H73; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H74; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite H75; reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_main_proper_name; [word_premise|]. iNext. gen_env.
+  iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ HV.version_etc_fn
+            (invocation HV.version_etc_fn (HV.version_main_args stream)));
+    [word_premise | unfold find_fn; rewrite (proj1 Hlinked); vm_compute; reflexivity | reflexivity |].
+  iNext.
+  iApply (HV.version_etc_spec registry wi ge Hlinked stream version_ps author_reg Hauthor_live
+            version_spec Hversion_reg Hversion_ret Hversion_abi Hversion_pre Hversion_frame
+            Kversion_alloc Kversion_store Kversion_cursor Kversion_snapshot with "Hps").
+  iNext. iIntros "_". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. gen_env.
+  iApply (wp_main_exit _ _ _ _ _ _ _ 0); [reflexivity | lia].
+Qed.
+
+(** The first option selects version output when its contract permits only code 129.
+    The loop preserves its resources until it reaches the version block. *)
+Lemma loop_version b4 b6 from e lose ps cs a i g Φ :
+  loop_entry from e lose -> loop_facts e b4 b6 ps cs i g ->
+  (forall c, 0 <= c < 2 ^ 32 -> getopt_step a i [WInt c] -> c = 129) ->
+  loop_res b4 ps cs a i g -∗ loop_exit b4 b6 "iw_1.L21"%string "iw_1.L19"%string Φ -∗
+  WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom from)))) : mexpr) {{ Φ }}.
+Proof.
+  intros Hent Hf Hlaw. unfold loop_res, loop_exit.
+  iIntros "(Hb & Hs & Ht & Hl4 & Hp4) HK".
+  destruct Hf as ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg).
+  assert (Hlose : lose = 0 \/ lose = 1).
+  { destruct Hent as [[_ ->] | [[_ ->] | [_ [_ Hl]]]]; auto. }
+  destruct getopt_globals as (G69 & G64 & _). pose proof Hlinked as (Hm & Hglob & _).
+  pose proof Hargc as Hargc'.
+  iApply (wp_enter _ _ _ _ _ _ _ _ (main_block "iw_1.L8") (put (TAtom "iw_1.pr.2") (WInt lose) e)).
+  { abstract (vm_cast_no_check (eq_refl (Some (main_block "iw_1.L8")))). }
+  { destruct Hent as [[-> ->] | [[-> ->] | [[-> | ->] [Hpr _]]]]; word_premise. }
+  iNext. cbn [b_insts b_jump main_block hblk]. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite (Hglob _ _ G69); reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | cbn; rewrite (Hglob _ _ G64); reflexivity | intros ?m; word_premise |].
+  iNext. gen_env.
+  iApply (wp_main_getopt with "Hb Hs Ht"); [word_premise | exact Ho | exact Hc | exact Hi |].
+  iNext. iIntros (code ps' cs' a' i' (Ho' & Hc' & Hi' & Hint & _ & Hstep)) "Hb Hs Ht".
+  pose proof (Z.mod_pos_bound code (2 ^ 32) ltac:(lia)) as Hcr.
+  pose proof (Hlaw _ Hcr Hstep) as E129. rewrite E129. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  mn_enter "iw_1.L19".
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 1); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  iApply ("HK" $! _ ps' cs' a' i' g lose with "[%] [$Hb $Hs $Ht $Hl4 $Hp4]").
+  split; [|split; [assumption | exact Hlose]].
+  split; [repeat split; assumption|]. split; [assumption|]. split; [exact Hfr|]. auto.
+Qed.
+
+(** Initialization supplies the loop resources and the first option selects version output.
+    Main then prints the version information and calls exit. *)
+Lemma main_to_version s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
+  sargs = s0 :: srest -> argv_caps cs0 (map arg_ptr sargs) -> 0 <= ix <= Z.of_nat (length sargs) ->
+  (forall c, 0 <= c < 2 ^ 32 -> getopt_step a ix [WInt c] -> c = 129) ->
+  pts (block_ps av ar 0 (argv_bytes (map arg_ptr sargs)) cs0) -∗ pts (flat_map arg_ps sargs) -∗
+  pts (getopt_ps a ix) -∗
+  HP.HN.literals r3 r4 -∗ HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
+  ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ pts (codec_ps c0) -∗
+  string empty_ptr 69968 r80 [] -∗ pts version_ps -∗
+  WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
+Proof.
+  intros Hhd Hcs Hix Hlaw. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 Hv".
+  iApply (main_to_L8 with "Hb Hs Ht Hlit Hcells Hks Hcod Hs80"); [exact Hhd | exact Hcs | exact Hix |].
+  iNext. iIntros (e b4 b6 i k q new c' _ Hf) "Hres _ _ _ _ _ _ _ _ _ _ _ _".
+  iApply (loop_version b4 b6 "start"%string e 0 with "Hres [Hv]").
+  - left. split; reflexivity.
+  - exact Hf.
+  - exact Hlaw.
+  - iApply (main_version with "Hv").
+Qed.
+
 (** Querying the messages locale returns its borrowed name without
     changing memory or libc's state. *)
 Context (Hquery_pre : forall m w h p t, wi m w h -> h !! PName 5 = Some (VName p t) ->
