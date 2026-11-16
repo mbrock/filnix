@@ -577,9 +577,7 @@ Proof.
     destruct (nm_find b preds) as [ps|]; [|rewrite label_idoms_none in H; discriminate H].
     destruct (filter _ ps) as [|first others]; [rewrite label_idoms_none in H; discriminate H|].
     destruct (fold_left _ others (Some first)) as [nw|]; [|rewrite label_idoms_none in H; discriminate H].
-    destruct (nm_find b t) as [old|].
-    + destruct (name_eqb old nw); exact (IH _ _ _ H).
-    + exact (IH _ _ _ H).
+    destruct (nm_find b t) as [old|]; [destruct (name_eqb old nw)|]; exact (IH _ _ _ H).
 Qed.
 
 (** The fixpoint loop stops as soon as a sweep over the blocks makes no
@@ -598,13 +596,11 @@ Proof.
     destruct (nm_find b preds) as [ps|] eqn:Ep; [|rewrite label_idoms_none in H; discriminate H].
     destruct (filter _ ps) as [|first others] eqn:Ef; [rewrite label_idoms_none in H; discriminate H|].
     destruct (fold_left _ others (Some first)) as [nw|] eqn:Ec; [|rewrite label_idoms_none in H; discriminate H].
-    destruct (nm_find b t) as [old|] eqn:Eo.
-    + destruct (name_eqb old nw) eqn:En.
-      * apply name_eqb_true in En. subst old. destruct (IH _ _ H) as [-> Hall]. split; [reflexivity|].
-        intros b' [<- | Hin]; [|exact (Hall _ Hin)].
-        exists ps, first, others, nw. auto.
-      * apply label_idoms_changed in H. discriminate H.
-    + apply label_idoms_changed in H. discriminate H.
+    destruct (nm_find b t) as [old|] eqn:Eo; [destruct (name_eqb old nw) eqn:En|];
+      try (apply label_idoms_changed in H; discriminate H).
+    apply name_eqb_true in En. subst old. destruct (IH _ _ H) as [-> Hall]. split; [reflexivity|].
+    intros b' [<- | Hin]; [|exact (Hall _ Hin)].
+    exists ps, first, others, nw. auto.
 Qed.
 
 (** The map M that `idom_fixpoint/5` returns is a fixpoint: one more sweep
@@ -632,11 +628,9 @@ Proof.
     destruct (filter _ ps) as [|first others]; [rewrite label_idoms_none in H; discriminate H|].
     destruct (fold_left _ others (Some first)) as [nw|]; [|rewrite label_idoms_none in H; discriminate H].
     assert (Hkb : name_eqb k b = false) by (apply name_eqb_false; intros ->; apply Hk; left; reflexivity).
-    destruct (nm_find b t) as [old|].
-    + destruct (name_eqb old nw).
-      * exact (IH _ _ _ _ _ (fun Hin => Hk (or_intror Hin)) H).
-      * rewrite (IH _ _ _ _ _ (fun Hin => Hk (or_intror Hin)) H), nm_find_add, Hkb. reflexivity.
-    + rewrite (IH _ _ _ _ _ (fun Hin => Hk (or_intror Hin)) H), nm_find_add, Hkb. reflexivity.
+    destruct (nm_find b t) as [old|]; [destruct (name_eqb old nw)|];
+      rewrite (IH _ _ _ _ _ (fun Hin => Hk (or_intror Hin)) H);
+      try rewrite nm_find_add, Hkb; reflexivity.
 Qed.
 
 (** A label k outside the sweep list ls keeps its initial parent across
