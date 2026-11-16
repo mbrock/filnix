@@ -1978,9 +1978,16 @@ Ltac sym_quote_z rho t :=
         let q := sym_intern r rs in
         lazymatch q with (?n, ?rs') => constr:((ZEnd n, mkVal zs ps rs')) end
     | _ =>
-        let v := eval cbv in t in
         let q := match goal with
-          | _ => let literal := sym_literal v in constr:((ZK v, rho))
+          | _ =>
+              let closed := match goal with
+                | x : _ |- _ => lazymatch t with context [x] => constr:(false) end
+                | _ => constr:(true)
+                end in
+              lazymatch closed with true =>
+                let v := eval cbv in t in
+                let literal := sym_literal v in constr:((ZK v, rho))
+              end
           | _ => let q := sym_intern t zs in
               lazymatch q with (?n, ?zs') => constr:((ZV n, mkVal zs' ps rs)) end
           end in q
