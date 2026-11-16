@@ -15,6 +15,13 @@ Module InterpExternal := LibcCalls InterpRuntime.
 (** The list-string bridge instantiated with the interpreter's ready memory. *)
 Module InterpStrings := StringLengths InterpRuntime.
 
+(** Each call must match its declared return type and arguments. This tactic
+    checks that match and leaves the memory and result obligations to each fixture. *)
+Local Ltac fixture_call rule :=
+  apply rule; try solve
+    [split; [first [left; reflexivity | right; eexists; reflexivity]|];
+       repeat eexists; reflexivity].
+
 (** The bytes of hello. *)
 Definition hello_bytes : list Z := [104; 101; 108; 108; 111].
 (** A read-only pointer to the string, at address 1024. *)
@@ -422,8 +429,7 @@ Example strnlen_exact_bound :
     [WPtr hello_ptr; WInt 6] InterpRuntime.start high_byte_mem tt
     [] (CallReturn [WInt 6]) InterpRuntime.start high_byte_mem tt.
 Proof.
-  apply InterpExternal.strnlen_return.
-  - split; [left; reflexivity|]. exists (Const 0), (Const 6). reflexivity.
+  fixture_call InterpExternal.strnlen_return.
   - split; [vm_compute; split; congruence|]. split; [lia|]. split.
     + exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
     + split; [reflexivity|]. split; [|lia]. intros i Hi.
@@ -555,8 +561,7 @@ Example strlen_boundary_calls : forall offset count,
     [WPtr (mkPtr (1024 + offset) (Ro 1024))] InterpRuntime.start strlen_high_mem tt
     [] (CallReturn [WInt count]) InterpRuntime.start strlen_high_mem tt.
 Proof.
-  intros offset count Hcase. apply InterpExternal.strlen_return.
-  - split; [right; exists (TAtom "length"); reflexivity|]. exists (Const 0). reflexivity.
+  intros offset count Hcase. fixture_call InterpExternal.strlen_return.
   - apply strlen_boundary_length. exact Hcase.
 Qed.
 
@@ -647,8 +652,7 @@ Example memchr_first_call :
     [WPtr hello_ptr; WInt 511; WInt 6] InterpRuntime.start high_byte_mem tt
     [] (CallReturn [WPtr (mkPtr 1025 (Ro 1024))]) InterpRuntime.start high_byte_mem tt.
 Proof.
-  apply InterpExternal.memchr_return.
-  - split; [right; eexists; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.memchr_return.
   - apply memchr_high_input. vm_compute; split; congruence.
   - exact memchr_high_first.
 Qed.
@@ -721,8 +725,7 @@ Example memchr_early_call :
     [WPtr hello_ptr; WInt 128; WInt (2 ^ 64 - 1)] InterpRuntime.start high_byte_mem tt
     [] (CallReturn [WPtr hello_ptr]) InterpRuntime.start high_byte_mem tt.
 Proof.
-  apply InterpExternal.memchr_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.memchr_return.
   - exact memchr_early_hit.
   - left. exists 0. split; [vm_compute; split; congruence|]. split; [reflexivity|].
     split; [intros; lia|reflexivity].
@@ -757,8 +760,7 @@ Example memchr_final_nul_calls : forall n,
 Proof.
   intros n Hn. assert (Hbound : 6 <= n < 2 ^ 64).
   { destruct Hn as [<- | [<- | [<- | []]]]; vm_compute; split; congruence. }
-  apply InterpExternal.memchr_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.memchr_return.
   - apply memchr_final_nul_input. exact Hbound.
   - left. exists 5. split; [lia|]. split; [reflexivity|]. split; [|reflexivity].
     intros i Hi. assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4) by lia.
@@ -794,8 +796,7 @@ Example memchr_match_at_count_ignored :
     [WPtr hello_ptr; WInt 0; WInt 5] InterpRuntime.start hello_mem tt
     [] (CallReturn [WPtr (mkPtr 0 CNone)]) InterpRuntime.start hello_mem tt.
 Proof.
-  apply InterpExternal.memchr_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.memchr_return.
   - apply memchr_input_full; [vm_compute; split; congruence|].
     split; [vm_compute; split; congruence|]. split.
     + exists 1024, (mkRegion 1024 1030 GlobalData Live). split; [right; reflexivity|]. auto.
@@ -815,8 +816,7 @@ Example memchr_crosses_nul :
     [] (CallReturn [WPtr (mkPtr 1028 (Ro 1024))])
     InterpRuntime.start (store_bytes hello_mem 1025 1 0) tt.
 Proof.
-  apply InterpExternal.memchr_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.memchr_return.
   - split; [vm_compute; split; congruence|]. split; [vm_compute; split; congruence|].
     exists 4. split; [lia|]. split.
     + change (readable_bytes (store_bytes hello_mem 1025 1 0) hello_ptr 5).
@@ -918,8 +918,7 @@ Example memcmp_negative_magnitudes : forall bits, In bits [2 ^ 32 - 2; 2 ^ 32 - 
     [WPtr hello_ptr; WPtr (mkPtr 1025 (Ro 1024)); WInt 5] InterpRuntime.start high_byte_mem tt
     [] (CallReturn [WInt bits]) InterpRuntime.start high_byte_mem tt.
 Proof.
-  intros bits Hbits. apply InterpExternal.memcmp_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  intros bits Hbits. fixture_call InterpExternal.memcmp_return.
   - apply (high_five_readable 0). lia.
   - apply (high_five_readable 1). lia.
   - split.
@@ -935,8 +934,7 @@ Example memcmp_positive_magnitudes : forall bits, In bits [2; 7; 512] ->
     [WPtr (mkPtr 1025 (Ro 1024)); WPtr hello_ptr; WInt 5] InterpRuntime.start high_byte_mem tt
     [] (CallReturn [WInt bits]) InterpRuntime.start high_byte_mem tt.
 Proof.
-  intros bits Hbits. apply InterpExternal.memcmp_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  intros bits Hbits. fixture_call InterpExternal.memcmp_return.
   - apply (high_five_readable 1). lia.
   - apply (high_five_readable 0). lia.
   - split.
@@ -967,8 +965,7 @@ Example memcmp_identical :
     [WPtr hello_ptr; WPtr hello_ptr; WInt 5] InterpRuntime.start high_byte_mem tt
     [] (CallReturn [WInt 0]) InterpRuntime.start high_byte_mem tt.
 Proof.
-  apply InterpExternal.memcmp_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.memcmp_return.
   - apply (high_five_readable 0). lia.
   - apply (high_five_readable 0). lia.
   - split; [vm_compute; split; congruence|]. exists Datatypes.Eq.
@@ -1018,8 +1015,7 @@ Example memcmp_zero_one_past :
     [WPtr (mkPtr 1030 (Ro 1024)); WPtr (mkPtr 1030 (Ro 1024)); WInt 0]
     InterpRuntime.start hello_mem tt [] (CallReturn [WInt 0]) InterpRuntime.start hello_mem tt.
 Proof.
-  apply InterpExternal.memcmp_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.memcmp_return.
   - destruct (proj1 memchr_zero_one_past) as (_ & _ & k & Hk & Hread & _).
     assert (k = 0) by lia. subst. exact Hread.
   - destruct (proj1 memchr_zero_one_past) as (_ & _ & k & Hk & Hread & _).
@@ -1105,8 +1101,7 @@ Example strncmp_shared_nul_huge :
     InterpRuntime.start string_compare_mem tt [] (CallReturn [WInt 0])
     InterpRuntime.start string_compare_mem tt.
 Proof.
-  apply InterpExternal.strncmp_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.strncmp_return.
   - destruct (string_compare_lengths (2 ^ 64 - 1) ltac:(vm_compute; split; congruence)) as (Hl & Hr & _).
     exists 1, 1. split; [exact Hl|]. split; [exact Hr|].
     split; [vm_compute; split; congruence|]. exists Datatypes.Eq. split; [|reflexivity].
@@ -1169,8 +1164,7 @@ Example strncmp_zero_one_past :
     [WPtr (mkPtr 1030 (Ro 1024)); WPtr (mkPtr 1030 (Ro 1024)); WInt 0]
     InterpRuntime.start hello_mem tt [] (CallReturn [WInt 0]) InterpRuntime.start hello_mem tt.
 Proof.
-  apply InterpExternal.strncmp_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.strncmp_return.
   - exists 0, 0. split; [exact strnlen_zero_one_past|]. split; [exact strnlen_zero_one_past|].
     split; [vm_compute; split; congruence|]. exists Datatypes.Eq. split; [|reflexivity].
     left. split; [reflexivity|intros i Hi; change (0 <= i < 0) in Hi; lia].
@@ -1186,8 +1180,7 @@ Proof.
   destruct (InterpExternal.strnlen_invocation _ _ _ _ _ _ _ _ _ _ _ _ strnlen_exact_bound)
     as (_ & _ & _ & p & n & k & Hargs & Hlength & Hending).
   injection Hargs as <- <-. injection Hending as <-.
-  apply InterpExternal.strncmp_return.
-  - split; [left; reflexivity|]. eexists _, _, _. reflexivity.
+  fixture_call InterpExternal.strncmp_return.
   - exists 6, 6. split; [exact Hlength|]. split; [exact Hlength|].
     split; [vm_compute; split; congruence|]. exists Datatypes.Eq.
     split; [left; split; reflexivity|reflexivity].
@@ -1249,8 +1242,7 @@ Example strcmp_shared_nul :
     [WPtr hello_ptr; WPtr (mkPtr 2048 (Ro 2048))] InterpRuntime.start string_compare_mem tt
     [] (CallReturn [WInt 0]) InterpRuntime.start string_compare_mem tt.
 Proof.
-  apply InterpExternal.strcmp_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strcmp_return.
   - destruct string_compare_terminated as (Hl & Hr & _).
     exists 1, 1. split; [exact Hl|]. split; [exact Hr|].
     split; [vm_compute; split; congruence|]. exists Datatypes.Eq. split; [|reflexivity].
@@ -1340,8 +1332,7 @@ Example strcmp_identical_calls : forall offset count,
     InterpRuntime.start strlen_high_mem tt [] (CallReturn [WInt 0])
     InterpRuntime.start strlen_high_mem tt.
 Proof.
-  intros offset count Hcase. apply InterpExternal.strcmp_return.
-  - split; [right; exists (TAtom "compared"); reflexivity|]. eexists _, _. reflexivity.
+  intros offset count Hcase. fixture_call InterpExternal.strcmp_return.
   - pose proof (strlen_boundary_length offset count Hcase) as Hl.
     exists count, count. split; [exact Hl|]. split; [exact Hl|].
     split; [vm_compute; split; congruence|]. exists Datatypes.Eq.
@@ -1355,8 +1346,7 @@ Example strcmp_overlap :
     [WPtr hello_ptr; WPtr (mkPtr 1025 (Ro 1024))] InterpRuntime.start strlen_high_mem tt
     [] (CallReturn [WInt (2 ^ 32 - 512)]) InterpRuntime.start strlen_high_mem tt.
 Proof.
-  apply InterpExternal.strcmp_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strcmp_return.
   - exists 5, 4. split; [apply (strlen_boundary_length 0 5); simpl; auto|].
     split; [apply (strlen_boundary_length 1 4); simpl; auto|].
     split; [vm_compute; split; congruence|]. exists Datatypes.Lt. split; [|reflexivity].
@@ -1420,8 +1410,7 @@ Example strchr_first_call :
     InterpRuntime.start hello_mem tt [] (CallReturn [WPtr (mkPtr 1026 (Ro 1024))])
     InterpRuntime.start hello_mem tt.
 Proof.
-  apply InterpExternal.strchr_return.
-  - split; [right; eexists; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strchr_return.
   - vm_compute; split; congruence.
   - exact strchr_hello_first.
 Qed.
@@ -1450,8 +1439,7 @@ Example strchr_high_calls : forall c, In c [511; 2 ^ 32 - 1] ->
     InterpRuntime.start strlen_high_mem tt [] (CallReturn [WPtr (mkPtr 1025 (Ro 1024))])
     InterpRuntime.start strlen_high_mem tt.
 Proof.
-  intros c Hcase. apply InterpExternal.strchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  intros c Hcase. fixture_call InterpExternal.strchr_return.
   - destruct Hcase as [<- | [<- | []]]; vm_compute; split; congruence.
   - exists 5. split; [apply (strlen_boundary_length 0 5); simpl; auto|].
     left. exists 1. split; [lia|]. split.
@@ -1474,8 +1462,7 @@ Proof.
   assert (Hlength : terminated_length strlen_high_mem (mkPtr (1024 + offset) (Ro 1024)) (5 - offset)).
   { apply strlen_boundary_length. destruct Hcase as [H|[H|[H|[H|[H|[]]]]]];
       injection H as <- <-; simpl; auto. }
-  apply InterpExternal.strchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strchr_return.
   - destruct Hcase as [H|[H|[H|[H|[H|[]]]]]]; injection H as <- <-;
       vm_compute; split; congruence.
   - exists (5 - offset). split; [exact Hlength|].
@@ -1499,8 +1486,7 @@ Example strchr_stops_at_nul :
     InterpRuntime.start string_compare_mem tt [] (CallReturn [WPtr (mkPtr 0 CNone)])
     InterpRuntime.start string_compare_mem tt.
 Proof.
-  apply InterpExternal.strchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strchr_return.
   - vm_compute; split; congruence.
   - exists 1. split; [exact (proj1 string_compare_terminated)|]. right. split; [|reflexivity].
     intros i Hi. assert (i = 0 \/ i = 1) by lia. destruct H as [-> | ->]; discriminate.
@@ -1514,8 +1500,7 @@ Example strchr_object_source :
     InterpRuntime.start hello_mem tt [] (CallReturn [WPtr (mkPtr 1026 (Obj 1024))])
     InterpRuntime.start hello_mem tt.
 Proof.
-  apply InterpExternal.strchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strchr_return.
   - vm_compute; split; congruence.
   - exists 5. split.
     + destruct strlen_hello_bridge as [(Hn & Hk & _ & Ha & Hbytes & Hnul) Hmax].
@@ -1584,8 +1569,7 @@ Example strrchr_last_call :
     InterpRuntime.start hello_mem tt [] (CallReturn [WPtr (mkPtr 1027 (Ro 1024))])
     InterpRuntime.start hello_mem tt.
 Proof.
-  apply InterpExternal.strrchr_return.
-  - split; [right; eexists; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strrchr_return.
   - vm_compute; split; congruence.
   - exact strrchr_hello_last.
 Qed.
@@ -1614,8 +1598,7 @@ Example strrchr_high_calls : forall c, In c [511; 2 ^ 32 - 1] ->
     InterpRuntime.start strlen_high_mem tt [] (CallReturn [WPtr (mkPtr 1028 (Ro 1024))])
     InterpRuntime.start strlen_high_mem tt.
 Proof.
-  intros c Hcase. apply InterpExternal.strrchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  intros c Hcase. fixture_call InterpExternal.strrchr_return.
   - destruct Hcase as [<- | [<- | []]]; vm_compute; split; congruence.
   - exists 5. split; [apply (strlen_boundary_length 0 5); simpl; auto|].
     left. exists 4. split; [lia|]. split.
@@ -1638,8 +1621,7 @@ Proof.
   assert (Hlength : terminated_length strlen_high_mem (mkPtr (1024 + offset) (Ro 1024)) (5 - offset)).
   { apply strlen_boundary_length. destruct Hcase as [H|[H|[H|[H|[H|[]]]]]];
       injection H as <- <-; simpl; auto. }
-  apply InterpExternal.strrchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strrchr_return.
   - destruct Hcase as [H|[H|[H|[H|[H|[]]]]]]; injection H as <- <-;
       vm_compute; split; congruence.
   - exists (5 - offset). split; [exact Hlength|].
@@ -1658,8 +1640,7 @@ Example strrchr_stops_at_nul :
     InterpRuntime.start string_compare_mem tt [] (CallReturn [WPtr (mkPtr 0 CNone)])
     InterpRuntime.start string_compare_mem tt.
 Proof.
-  apply InterpExternal.strrchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strrchr_return.
   - vm_compute; split; congruence.
   - exists 1. split; [exact (proj1 string_compare_terminated)|]. right. split; [|reflexivity].
     intros i Hi. assert (i = 0 \/ i = 1) by lia. destruct H as [-> | ->]; discriminate.
@@ -1689,8 +1670,7 @@ Example strrchr_object_source :
     InterpRuntime.start hello_mem tt [] (CallReturn [WPtr (mkPtr 1027 (Obj 1024))])
     InterpRuntime.start hello_mem tt.
 Proof.
-  apply InterpExternal.strrchr_return.
-  - split; [left; reflexivity|]. eexists _, _. reflexivity.
+  fixture_call InterpExternal.strrchr_return.
   - vm_compute; split; congruence.
   - exists 5. split.
     + destruct strlen_hello_bridge as [(Hn & Hk & _ & Ha & Hbytes & Hnul) Hmax].
@@ -1761,8 +1741,7 @@ Example memset_boundary_calls : forall offset c n,
     (CallReturn [WPtr (mkPtr (1024 + offset) (Obj 1024))]) InterpRuntime.start
     (memset_memory memset_fixture (mkPtr (1024 + offset) (Obj 1024)) c n) tt.
 Proof.
-  intros offset c n Hcases. apply InterpExternal.memset_admitted.
-  - split; [right; eexists; reflexivity|]. eexists _, _, _. reflexivity.
+  intros offset c n Hcases. fixture_call InterpExternal.memset_admitted.
   - apply memset_fixture_domain;
       destruct Hcases as [H|[H|[H|[H|[H|[]]]]]]; injection H as <- <- <-;
       vm_compute; intuition congruence.
@@ -1949,8 +1928,7 @@ Example copy_boundary_calls : forall overlap end_return d src n,
     InterpRuntime.start (copy_memory copy_fixture (mkPtr (1024 + d) (Obj 1024))
       (mkPtr (1024 + src) (Ro 1024)) n) tt.
 Proof.
-  intros overlap end_return d src n Hcases. apply InterpExternal.copy_admitted.
-  - split; [right; eexists; reflexivity|]. eexists _, _, _. reflexivity.
+  intros overlap end_return d src n Hcases. fixture_call InterpExternal.copy_admitted.
   - apply copy_fixture_domain; destruct Hcases as [H|[H|[H|[H|[H|[H|[H|[H|[H|[H|[H|[]]]]]]]]]]]];
       injection H as <- <- <- <- <-; vm_compute; intuition congruence.
 Qed.
@@ -2317,8 +2295,7 @@ Example string_copy_boundary_calls : forall end_return d off,
     InterpRuntime.start (string_copy_memory strdup_fixture (mkPtr (1024 + d) (Obj 1024))
       (mkPtr (1024 + off) (Ro 1024)) (16 - off + 1)) tt.
 Proof.
-  intros end_return d off Hcases. apply InterpExternal.string_copy_admitted.
-  - split; [left; reflexivity|do 2 eexists; reflexivity].
+  intros end_return d off Hcases. fixture_call InterpExternal.string_copy_admitted.
   - apply string_copy_fixture_domain; destruct Hcases as [H|[H|[H|[H|[]]]]];
       injection H as <- <-; lia.
 Qed.
