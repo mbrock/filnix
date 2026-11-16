@@ -91,7 +91,7 @@ Proof.
   intros m1 m c base reg a size r al p Hc E Hb He Hs Hp Hpc.
   pose proof (object_region_base _ _ _ E) as Hrb.
   unfold access_res, cap_access_res, readonly_access_res, aligned_res.
-  destruct (Hp _ _ E) as [E' | E']; destruct Hc as [-> | ->]; rewrite E'.
+  destruct (Hp _ _ E) as [E' | E']; [destruct Hc as [-> | ->]; rewrite E'|].
   - (* an object as it was: the access is inside *)
     replace ((base <=? a) && (a + size <=? r_end reg)) with true
       by (symmetry; apply andb_true_iff; split; apply Z.leb_le; lia).
@@ -103,18 +103,11 @@ Proof.
     destruct r; [destruct (a mod al =? 0)|]; eexists; (split; [reflexivity|]);
       first [left; reflexivity | right; eexists; split; [reflexivity | discriminate]].
   - (* freed since: out of bounds, on a freed object *)
-    simpl. rewrite Hrb.
-    replace ((base <=? a) && (a + size <=? base)) with false
-      by (symmetry; apply andb_false_iff; destruct (Z.le_gt_cases base a);
-          [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia]).
-    eexists. split; [reflexivity|]. right. unfold renew_res. rewrite Hpc, E'.
-    eexists. split; [reflexivity | discriminate].
-  - simpl. rewrite Hrb.
-    replace ((base <=? a) && (a + size <=? base)) with false
-      by (symmetry; apply andb_false_iff; destruct (Z.le_gt_cases base a);
-          [right; apply Z.leb_gt; lia | left; apply Z.leb_gt; lia]).
-    eexists. split; [reflexivity|]. right. unfold renew_res. rewrite Hpc, E'.
-    eexists. split; [reflexivity | discriminate].
+    destruct Hc as [-> | ->]; rewrite E'; simpl; rewrite Hrb.
+    all: replace ((base <=? a) && (a + size <=? base)) with false
+      by (symmetry; apply andb_false_iff; right; apply Z.leb_gt; lia).
+    all: eexists; split; [reflexivity|]; right; unfold renew_res; rewrite Hpc, E'.
+    all: eexists; split; [reflexivity | discriminate].
 Qed.
 
 (** Turning an access check result into a plain check outcome never
