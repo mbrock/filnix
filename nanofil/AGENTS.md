@@ -106,47 +106,20 @@ separately, retaining the complete cross-file index and actual states.
 
 ## Rocq proof speed
 
-The Rocq proofs have no hard per-file time limit. In November 2026 a
-25 s cap per file led workers to split files to meet it. Those splits
-added total CPU: 25% for HelloMain and HelloJoin, and 12% for HelloStdio.
-The time of one file also varied by 1.5 to 2 times between CI runs, so
-the cap could not be judged reliably. Proof speed is now judged by three
-totals, which `tests/rocq_totals.py` computes. The aggregate checks print
-them as `@@rocq-totals` lines whenever they rebuild: `nanofil-rocq-parse`
-for `theories/` and `nanofil-glibc` for `glibc/`. The workflows copy
-those lines into the job summary.
+There are no time limits or timing gates on the Rocq proofs; do not
+split, tune or re-time files to meet a number, and do not wait on CI
+for timings. The time stays visible instead. The aggregate checks
+(`nanofil-rocq-parse` for `theories/`, `nanofil-glibc` for `glibc/`)
+print `@@rocq-totals` lines whenever they rebuild, and the workflows copy
+them into the job summary (`tests/rocq_totals.py`): the serial time, the
+critical path of a full rebuild, the time from editing a random line to
+its file's result and to rechecking its importers, and the slowest
+files. CI times vary by about 2x with load, so read them as rough.
 
-- The serial time is the summed time of every file.
-- The critical path is the longest chain of imports. It is the wall time
-  of a full rebuild with unlimited cores.
-- The edit-to-result time covers an edit to a random source line. The
-  report gives the time until that file is checked, and the time to
-  recheck every file that imports it.
-
-The same report prints a soft warning for each file over 60 s. The
-warning means "profile this file", not "split it". The watchdog's 120 s
-warning and 900 s timeout per file only catch hung builds.
-
-Per-file times come from whichever builder made each cached object, so
-compare totals across commits rather than one file in one run. To claim
-a speedup, time the files before and after on one machine, one `rocq c
--q` process per file and the median of a few cold runs, and give the
-totals in the commit message.
-
-To make a proof faster:
-
-1. Profile its sentences first: `rocq c -q -time -R theories Nanofil
-   FILE.v` prints the time of each sentence, and the glibc gate already
-   reports every sentence over 5 s. Then fix the cause that the profile
-   shows. Each big win so far came from one targeted change, such as
-   framing opacity, `vm_cast_no_check` on a closed computation, `Import`
-   in place of a module alias, or `Local Opaque`.
-2. Split a file only along the proof's own structure, such as one phase
-   or one function, and only when the new files' summed time is no
-   higher than the old file's. Each new file pays about 2 s to load its
-   imports, and each `Include` of a functor elaborates it again.
-3. Leave `Print Assumptions` audits out of compile budgets. An audit is
-   a query; run it in the audit and scheduled jobs.
+When a proof feels slow, see where its time goes with `rocq c -q -time
+-R theories Nanofil FILE.v`; the glibc gate also prints sentences over
+5 s. Fix what the profile shows. `Print Assumptions` audits are queries,
+not compiles.
 
 ## Local iteration
 

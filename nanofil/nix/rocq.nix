@@ -168,20 +168,24 @@ let
         mkdir $out
         cp log $out/
       '';
-  parse = pkgs.runCommand "nanofil-rocq-parse" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-    mkdir $out
-    {
-      ${lib.concatMapStrings (n: "cat ${reprint.${n}}/verdict\n") names}
-      cat ${fixtures}/log
-    } | tee $out/verdicts
-    echo "parse: $(grep -c '^ok' $out/verdicts) files read and reprinted"
-    # Build-time totals and the soft per-file warning (AGENTS.md, Rocq
-    # proof speed), from the reprints' times and the theories' imports.
-    cat ${lib.concatMapStringsSep " " (n: "${reprint.${n}}/time") names} >$out/timings.log
-    cat >$out/deps <<'EOF'
-    ${lib.concatMapStrings (n: "${n}: ${toString imports.${n}}\n") names}EOF
-    python3 ${../tests/rocq_totals.py} --label theories $out/timings.log $out/deps | tee $out/totals
-  '';
+  parse =
+    pkgs.runCommand "nanofil-rocq-parse" { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        mkdir $out
+        {
+          ${lib.concatMapStrings (n: "cat ${reprint.${n}}/verdict\n") names}
+          cat ${fixtures}/log
+        } | tee $out/verdicts
+        echo "parse: $(grep -c '^ok' $out/verdicts) files read and reprinted"
+        # Build-time totals (AGENTS.md, Rocq proof speed), from the reprints'
+        # times and the theories' imports. A readout; nothing fails on it.
+        cat ${
+          lib.concatMapStringsSep " " (n: "${reprint.${n}}/time") names
+        } >$out/timings.log
+        cat >$out/deps <<'EOF'
+        ${lib.concatMapStrings (n: "${n}: ${toString imports.${n}}\n") names}EOF
+        python3 ${../tests/rocq_totals.py} --label theories $out/timings.log $out/deps | tee $out/totals
+      '';
   theorySrc = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [

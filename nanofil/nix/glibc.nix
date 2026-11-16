@@ -488,8 +488,8 @@ pkgs.runCommand "nanofil-glibc"
     cat ${
       lib.concatMapStringsSep " " (n: "${vo.${n}}/time") names
     } | tee $out/timings.log
-    # Build-time totals and the soft per-file warning (AGENTS.md, Rocq
-    # proof speed). An edit here never rebuilds a theory, so only Glibc
+    # Build-time totals (AGENTS.md, Rocq proof speed); a readout, nothing
+    # fails on it. An edit here never rebuilds a theory, so only Glibc
     # imports count.
     python3 ${../tests/rocq_totals.py} --label glibc --namespace Glibc $out/timings.log $TMPDIR/nixdep | tee $out/totals
     mkdir $out/sentence-timings

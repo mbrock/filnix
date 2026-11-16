@@ -54,16 +54,13 @@ class Totals(unittest.TestCase):
         self.assertAlmostEqual(rebuild, 3685 / 112)
         self.assertAlmostEqual(path, 3085 / 112)
 
-    def test_warning_only_over_threshold(self):
+    def test_report(self):
         out = subprocess.run(
-            [sys.executable, str(HERE / "rocq_totals.py"), "--label", "t", "--warn", "15", "--namespace", "Glibc",
+            [sys.executable, str(HERE / "rocq_totals.py"), "--label", "t", "--namespace", "Glibc",
              self.times, self.deps],
             check=True, capture_output=True, text=True).stdout
-        warnings = [line for line in out.splitlines() if "warning:" in line]
-        self.assertEqual(len(warnings), 1)
-        self.assertIn("C.v took 20.0s", warnings[0])
         self.assertIn("4 files, serial 36.0s, critical path 30.0s", out)
-
+        self.assertIn("slowest: C 20s, A 10s, D 5s, B 1s", out)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""Print the build-time totals of a Rocq tree, and warn about slow files.
+"""Print how long a Rocq tree takes to build, so the time is visible.
 
-A per-file time limit says little on its own: splitting a file moves time
-around without lowering the total, and one run's time for a file varies
-by 1.5-2x in CI. This report prints the numbers the project judges proof
-speed by (nanofil/AGENTS.md, Rocq proof speed):
+This is a readout, not a gate: nothing fails on these numbers. It prints
 
 - serial: the summed time of every file, what one core pays to build
   the tree;
@@ -15,8 +12,7 @@ speed by (nanofil/AGENTS.md, Rocq proof speed):
   summed time to recheck it and everything that imports it, and that
   recheck's longest chain.
 
-It also prints a soft warning for each file over --warn seconds. The
-warning means "profile this file's sentences", not "split it".
+It also lists the slowest files.
 
 TIMES holds one line per file, as the per-file derivations write them:
 "@@LABEL <seconds>s <lines> lines <path>.v". DEPS holds "name: dep dep"
@@ -105,7 +101,6 @@ def totals(time, lines, deps):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--label", required=True)
-    parser.add_argument("--warn", type=float, default=60)
     parser.add_argument("--namespace", help="the logical prefix of this tree's files, such as Glibc")
     parser.add_argument("times")
     parser.add_argument("deps")
@@ -120,13 +115,8 @@ def main():
           f"({' <- '.join(f'{n} {time[n]:.0f}s' for n in slow)})")
     print(f"{p} edit a random line: {own:.1f}s to that file's result, "
           f"{rebuild:.1f}s to recheck its importers serially, {path:.1f}s with unlimited cores")
-    for n in sorted(time, key=time.get, reverse=True):
-        if time[n] < args.warn:
-            break
-        print(f"{p} warning: {n}.v took {time[n]:.1f}s (over {args.warn:g}s); "
-              f"profile its sentences with rocq c -time before splitting it")
-    print(f"{p} times come from whichever builder made each cached object; "
-          f"compare totals across commits, not single files")
+    top = sorted(time, key=time.get, reverse=True)[:10]
+    print(f"{p} slowest: {', '.join(f'{n} {time[n]:.0f}s' for n in top)}")
 
 
 if __name__ == "__main__":

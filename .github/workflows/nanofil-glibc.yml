@@ -106,8 +106,8 @@ jobs:
           } |
             while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
       # nanofil/AGENTS.md, Rocq proof speed: serial time, critical path,
-      # edit-to-result time and files over the 60 s soft warning, printed
-      # by the aggregate check whenever it rebuilds.
+      # edit-to-result time and the slowest files, printed by the
+      # aggregate check whenever it rebuilds. A readout, not a gate.
       - name: Summarize Rocq build-time totals
         if: always()
         run: grep -ho '@@rocq-totals.*' nanofil-glibc.log | awk '!seen[$0]++' | sed 's/^@@rocq-totals /- /' >>"$GITHUB_STEP_SUMMARY" || true
