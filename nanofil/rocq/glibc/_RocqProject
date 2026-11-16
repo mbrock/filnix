@@ -204,8 +204,14 @@ hi_atexit/HiAtexitModule.v
 zsys/HiStartImage.v
 startup/StartCode.v
 startup/StartLogic.v
-startup/StartTls.v
-startup/StartHandlers.v
+startup/StartTlsInitTpSpec.v
+startup/StartTlsInitTp.v
+startup/StartSetupTlsSpec.v
+startup/StartSetupTls.v
+startup/StartErrnoHandlerSpec.v
+startup/StartErrnoHandler.v
+startup/StartDlerrorHandlerSpec.v
+startup/StartDlerrorHandler.v
 startup/StartTunableGetValSpec.v
 startup/StartTunableGetVal.v
 startup/StartPthreadTunablesSpec.v
