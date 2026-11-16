@@ -78,14 +78,12 @@ Qed.
 Lemma doomed_result_stop ge fr m i out od o :
   doomed_result ge fr m i out = Some od -> fst od = IStop o -> returning o -> out = IStop o.
 Proof.
-  intros H Hf Hr. destruct (ahead_inst i) eqn:Ea.
-  - destruct i as [d k op args | | | | | | | | ]; try discriminate Ea. destruct k; try discriminate Ea.
-    destruct op; try discriminate Ea. destruct args as [|v [|v' args]]; try discriminate Ea.
-    unfold doomed_result in H. cases H; inversion H; subst; cbn in Hf; try discriminate Hf;
-      try (injection Hf as <-; cbn in Hr; tauto); auto.
-  - rewrite (doomed_result_other _ _ _ _ _ Ea) in H.
-    cases H; inversion H; subst; cbn in Hf; try discriminate Hf;
-      try (injection Hf as <-; cbn in Hr; tauto); auto.
+  intros H Hf Hr. destruct (ahead_inst i) eqn:Ea;
+    [destruct i as [d k op args | | | | | | | | ]; try discriminate Ea; destruct k; try discriminate Ea;
+     destruct op; try discriminate Ea; destruct args as [|v [|v' args]]; try discriminate Ea;
+     unfold doomed_result in H | rewrite (doomed_result_other _ _ _ _ _ Ea) in H].
+  all: cases H; inversion H; subst; cbn in Hf; try discriminate Hf;
+    try (injection Hf as <-; cbn in Hr; tauto); auto.
 Qed.
 
 (** A stop produced while executing an instruction is not a function
@@ -231,9 +229,8 @@ Lemma return_cons fr cf pd cs m m' fuel o :
   end.
 Proof.
   intros E. unfold return_step, resume. cbn. rewrite E.
-  destruct (match pd_conv pd with None => Some o | Some (cw, kw) => converted_outcome cw kw o end);
-    [|reflexivity].
-  destruct (returned_env _ _ _); reflexivity.
+  destruct (pd_conv pd) as [[cw kw]|]; cbn; [destruct (converted_outcome cw kw o)|];
+    try reflexivity; destruct (returned_env _ _ _); reflexivity.
 Qed.
 
 (** Once a function's locals have been invalidated, returning with no
@@ -289,10 +286,7 @@ Qed.
 (** The labelled machine and this language instantiate the same core
     machine definitions, so [labelled_core_step] translates a step between their relation instances. *)
 Lemma labelled_core_step ge ms ms' : M.P.I.RM.mstep ge ms ms' -> RM.mstep ge ms ms'.
-Proof.
-  intros H. destruct H; [eapply RM.mstep_next | eapply RM.mstep_alloc | eapply RM.mstep_safepoint];
-    eassumption.
-Qed.
+Proof. destruct 1; econstructor; eassumption. Qed.
 
 (** ## The language
 
