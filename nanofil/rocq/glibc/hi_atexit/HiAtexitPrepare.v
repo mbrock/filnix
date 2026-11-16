@@ -48,7 +48,7 @@ Definition hi_entry_writes (m : mem) (tb : Z) (jb : ptr) : mem :=
     The program uses the three standard descriptors and no log file.
     Its error cell remains at the linked TLS address. *)
 Definition hi_entry_world (tb : Z) : os_world :=
-  mkOsWorld (Some (mkPtr 70608 (Obj 70608))) (mkPtr tb (Obj tb)) None [0; 1; 2].
+  mkOsWorld (Some (mkPtr 70608 (Obj 70608))) (mkPtr tb (Obj tb)) None [0; 1; 2] true.
 
 (** Allocation failure produces no prepared state and performs none
     of the finite writes. Success registers the new region before

@@ -22,6 +22,10 @@
     wrappers replace these pointers or descriptor lists, [os_wi] pins the
     world state to a fixed `w0` for the entire run.
 
+    The record also says whether the kernel enabled XSAVE. That fact
+    decides whether `c: zxgetbv` may run, as [OsCpuid](OsCpuid.v)
+    explains, and it never changes.
+
     ## Why errno needs no apartness premise
 
     In userland glibc, `c: __thread int errno` is exported thread-local
@@ -77,7 +81,8 @@ Record os_world : Type := mkOsWorld {
   ow_errno : option ptr;  (* pointer to the calling thread's `c: int errno` cell, once allocated *)
   ow_self : ptr;          (* the thread cookie returned by `c: zthread_self_cookie()` (userland glibc's `c: struct pthread`) *)
   ow_log_fd : option Z;   (* libpizlo's internal log descriptor, if logging to a file *)
-  ow_fds : list Z         (* file descriptors the program uses *)
+  ow_fds : list Z;        (* file descriptors the program uses *)
+  ow_osxsave : bool       (* whether the kernel enabled XSAVE (CR4.OSXSAVE), which `c: zxgetbv` needs *)
 }.
 
 (** When a system call fails, libpizlo stores the error number into the
