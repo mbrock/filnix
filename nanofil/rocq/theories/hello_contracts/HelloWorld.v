@@ -431,11 +431,7 @@ Proof.
   generalize dependent image_words.
   intros ws. induction ws as [|[[p n] x] ws IH]; intros Houtside; [reflexivity|].
   inversion Houtside as [|? ? Hspan Htail]; subst.
-  change ((if (p <=? a) && (a <? p + n) then byte_of x (a - p)
-    else fold_right (fun aw old =>
-      if (fst (fst aw) <=? a) && (a <? fst (fst aw) + snd (fst aw))
-      then byte_of (snd aw) (a - fst (fst aw)) else old)
-      (m_bytes image_seed a) ws) = m_bytes image_seed a).
+  cbn [fold_right fst snd].
   assert (Htest : (p <=? a) && (a <? p + n) = false).
   { apply andb_false_iff. destruct Hspan as [Hspan|Hspan].
     - left. apply Z.leb_gt. exact Hspan.
