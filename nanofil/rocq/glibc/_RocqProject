@@ -199,6 +199,10 @@ SayLogic.v
 getopt/GetoptModule.v
 hi_atexit/HiAtexitModule.v
 zsys/HiStartImage.v
+startup/StartCode.v
+startup/StartLogic.v
+startup/StartTls.v
+startup/StartHandlers.v
 stdlib/StdlibSpecs.v
 stdlib/AllocLogic.v
 stdlib/AtexitLogic.v
