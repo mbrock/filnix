@@ -150,6 +150,9 @@ Module L := LG.L.
 Module P := LG.P.
 Import L LG.
 
+Local Hint Opaque buffer_fn b_start b_L6 b_L7 b_L24 b_L25 b_L27
+  live icell pts : typeclass_instances.
+
 (** The global environment links `buffer` against R's `free` handler. *)
 Local Notation bge := (P.program_genv buffer_module buffer_globals).
 (** Expressions in this language run over `buffer` with no external calls. *)
