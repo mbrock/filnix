@@ -7,9 +7,11 @@
     Glibc startup allocates a thread object, initializes its self
     pointers and records that the process has one thread. The pinned
     sources for those operations are libc-tls.c, x86-64 tls.h and
-    libc_early_init.c. The native probe records the object's 2560-byte
-    size and cleanup-field offsets. Other real-startup effects are
-    outside this projection. *)
+    libc_early_init.c. The prepared object has 2560 bytes, which is more
+    than the real one: glibc allocates `c: sizeof (struct pthread)`, and
+    filcc, nanofil and a native run all give 2496 bytes. Both sizes cover
+    every field the later proofs read, the last at offset 792. Other
+    real-startup effects are outside this projection. *)
 
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import ZArith List Lia.
