@@ -161,26 +161,68 @@ Proof.
   etrans; [exact HP | apply bi.wand_entails; exact HPQ].
 Qed.
 
+Local Lemma version_later (Δ : environments.envs (iProp Σ)) (P : iProp Σ) :
+  environments.envs_entails Δ P -> environments.envs_entails Δ (▷ P).
+Proof.
+  rewrite !environments.envs_entails_unseal. intros H.
+  etrans; [exact H | apply bi.later_intro].
+Qed.
+
+Local Tactic Notation "iNext" :=
+  lazymatch goal with |- environments.envs_entails ?Δ _ =>
+    lazymatch Δ with
+    | context[(▷ ?P)%I] => iNext (1%nat)
+    | _ => apply version_later
+    end
+  end.
+
 Local Ltac version_pure rule :=
   eapply version_step; [eapply rule |].
+
+Local Lemma version_lookup_put e k v x w :
+  name_eqb x k = false -> lookup x e = Some w ->
+  lookup x (put k (v : word) e) = Some w.
+Proof. intros Hne Hx. rewrite lookup_after_put_other; assumption. Qed.
 
 (** Register updates transport lookup facts directly instead of rewriting each large goal. *)
 Local Ltac gen_env :=
   repeat match goal with
   | |- context[put ?k ?v ?e] =>
       is_var e;
+      let used := lazymatch goal with |- environments.envs_entails _ ?P =>
+        lazymatch P with
+        | context[mkFrame version_etc_arn_fn _ _ _ (Exec ?lab ?rest ?j)] =>
+          let heading := lazymatch lab with
+            | TAtom "start" => constr:([TAtom "v2"; TAtom "v4"; TAtom "v6"])
+            | _ => constr:(@nil name)
+            end in
+          constr:((rest, j, heading, [TAtom "v0"; TAtom "v8"; TAtom "v10"]))
+        | context[mkFrame _ _ _ _ (Exec _ ?rest ?j)] =>
+          constr:((rest, j,
+            [TAtom "v0"; TAtom "v2"; TAtom "v4"; TAtom "v6"; TAtom "v8";
+             TAtom "v11"; TAtom "pr.1"; TAtom "v31"]))
+        | _ => constr:(k)
+        end
+      end in
+      let e' := fresh "e" in pose (e' := put k v e);
       let H := fresh "Hput" in
       pose proof (lookup_after_put_same word k v e) as H;
+      change (lookup k e' = Some v) in H;
       repeat match goal with
       | H' : lookup ?x e = Some ?w |- _ =>
-          first [let Hnew := fresh "Hlookup" in
-                 assert (Hnew : lookup x (put k v e) = Some w)
-                   by exact (eq_trans (lookup_after_put_other word x k v e eq_refl) H')
-                | idtac];
-          clear H'
+          first [lazymatch used with context[x] => idtac end;
+            apply (version_lookup_put e k v x w eq_refl) in H';
+            change (lookup x e' = Some w) in H' | clear H']
       end;
-      let e' := fresh "e" in set (e' := put k v e) in *; clearbody e'; try clear e
+      fold e'; clearbody e'; try clear e
   end.
+
+Local Hint Extern 0 (MaybeIntoLaterN _ _ (pts _) _) =>
+  apply maybe_into_laterN_default : typeclass_instances.
+Local Hint Extern 0 (MaybeIntoLaterN _ _ (live _ _) _) =>
+  apply maybe_into_laterN_default : typeclass_instances.
+Local Hint Extern 0 (MaybeIntoLaterN _ _ (pcell _ _ _) _) =>
+  apply maybe_into_laterN_default : typeclass_instances.
 
 (** Array reads need only the allocation bounds and its alignment. *)
 Local Ltac addr_premise :=
@@ -193,7 +235,7 @@ Local Ltac addr_premise :=
 (** Premise evaluation rewrites only register lookups that actually occur in the goal. *)
 Local Ltac word_premise :=
   first [reflexivity |
-    repeat progress (cbn -[load_bytes store_bytes]; try unfold sign_extension;
+    repeat progress (cbn -[load_bytes store_bytes version_literal]; try unfold sign_extension;
       repeat match goal with
       | H : lookup ?n ?e = Some ?v |- context[lookup ?n ?e] => rewrite H
       | H : object_region ?b (m_regions ?m) = Some ?r |-
@@ -449,6 +491,11 @@ Local Ltac version_branch :=
 
 Local Ltac version_goto := version_pure (wp_goto registry wi ge); iNext.
 
+Local Lemma version_find_block f blocks s b :
+  Forall (fun lb => find_block (TAtom lb.1) (fn_blocks f) = Some lb.2) blocks ->
+  (s, b) ∈ blocks -> find_block (TAtom s) (fn_blocks f) = Some b.
+Proof. rewrite Forall_forall. intros H Hin. exact (H _ Hin). Qed.
+
 (** Cached block facts let both version helpers keep their complete function bodies opaque. *)
 Local Ltac version_enter blocks blk :=
   let rule := uconstr:(wp_enter registry wi ge _ _ _ _ _ blk) in
@@ -457,10 +504,7 @@ Local Ltac version_enter blocks blk :=
      let lab' := eval vm_compute in lab in change (find_block lab' body = result)
    end;
    match goal with |- find_block (TAtom ?s) _ = _ =>
-     let Hblocks := fresh "Hblocks" in
-     pose proof blocks as Hblocks;
-     rewrite Forall_forall in Hblocks;
-     apply (Hblocks (s, blk));
+     eapply version_find_block; [exact blocks |];
      repeat first [apply elem_of_cons; left; reflexivity | apply elem_of_cons; right]
    end | word_premise |].
 
@@ -545,8 +589,7 @@ Proof.
   pose proof (arn_literal_lookup "version-etc#str.47" ltac:(simpl; tauto)) as H47.
   pose proof (arn_literal_lookup "version-etc#str.51" ltac:(simpl; tauto)) as H51.
   iIntros "Hps Hl Ha HΦ".
-  iEval (unfold version_author_cells) in "Ha".
-  iDestruct "Ha" as "(H0 & H1 & H2 & H3)". rewrite version_etc_arn_entry.
+  rewrite version_etc_arn_entry.
   set (e := [(TAtom "v10", WInt 4); (TAtom "v8", WPtr (mkPtr b (Obj b)));
     (TAtom "v6", WPtr (version_literal "hello#str.71"));
     (TAtom "v4", WPtr (version_literal "hello#str.63"));
@@ -595,6 +638,8 @@ Proof.
   version_branch.
   version_enter find_arn_blocks arn_L82. iNext.
   cbn [b_insts b_jump arn_L82]. version_let. version_let.
+  iEval (unfold version_author_cells) in "Ha".
+  iDestruct "Ha" as "(H0 & H1 & H2 & H3)".
   iApply (wp_check with "Hl");
     [reflexivity | word_premise | reflexivity | addr_premise | cbn [r_end]; addr_premise | addr_premise |].
   iNext. iIntros "Hl". gen_env.
@@ -775,14 +820,15 @@ Proof.
   assert (Hxmod : ptr_addr x mod 2 ^ 64 = ptr_addr x) by (apply Z.mod_small; lia).
   assert (Hxne : (ptr_addr x =? 0) = false) by (apply Z.eqb_neq; lia).
   iIntros "Hps Hcursor Hsl Hsource Hl Hdest HK". cbn [va_read_body].
-  iApply (wp_va_arg_pointer with "Hcursor Hsl Hsource Hps");
+  iApply (wp_va_arg_pointer registry wi ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+    with "Hcursor Hsl Hsource Hps");
     [word_premise | exact Hcb | exact Hsb | exact Hoff | exact Hsend | exact Hsmax |
      exact Hsal | lia | exact Htarget | apply Kversion_cursor |].
   iNext. iIntros "Hcursor Hsl Hsource Hps". gen_env.
-  iApply (wp_check with "Hl");
+  iApply (wp_check registry wi ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with "Hl");
     [reflexivity | word_premise | reflexivity | addr_premise |
      cbn [r_end]; addr_premise | addr_premise |]. iNext. iIntros "Hl". gen_env.
-  iApply (wp_raw_store_pointer with "Hl Hdest");
+  iApply (wp_raw_store_pointer registry wi ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with "Hl Hdest");
     [word_premise | word_premise | reflexivity | addr_premise | addr_premise |
      apply Kversion_store |]. iNext. iIntros "Hl Hdest".
   version_let. rewrite ?Hxmod. gen_env.
@@ -813,13 +859,14 @@ Local Ltac version_va_round addr src dst text :=
        | Hb : 0 < ?b, Hbend : ?b + 80 <= 2 ^ 48 |- _ =>
            clear - Hb Hbend; addr_premise
        end | word_premise |]; iNext; gen_env;
-  iApply (version_va_round_step with "Hps Hcursor Hsl Hsource Hl Hdest");
+  iApply (version_va_round_step _ _ _ _ _ _ _ _ _ _ _ with "Hps Hcursor Hsl Hsource Hl Hdest");
     [unfold version_va_saved; repeat split; word_premise | word_premise |
-     repeat progress (cbn -[load_bytes store_bytes]; use_facts_goal);
+     repeat progress (cbn -[load_bytes store_bytes version_literal]; use_facts_goal);
        repeat (f_equal; try lia) |
-     vm_compute; split; congruence | assumption | assumption | lia | lia | assumption |
+     vm_compute; split; congruence | assumption | assumption | vm_compute; congruence |
+     multimatch goal with H : Z.le _ _ |- _ => clear - H; solve [lia] end | assumption |
      multimatch goal with H : _ mod 8 = 0 |- _ => clear - H; solve [addr_premise] end |
-     assumption | lia | lia | assumption |
+     assumption | vm_compute; congruence | vm_compute; congruence | assumption |
      multimatch goal with H : _ mod 8 = 0 |- _ => clear - H; solve [addr_premise] end |
      vm_compute; split; congruence |
      right; exists (ptr_addr (version_literal text)), (author_reg text);
@@ -988,7 +1035,7 @@ Proof.
   { iApply (big_sepL_submseteq with "Hps"). apply NoDup_submseteq.
     - apply (NoDup_fmap_1 fst). apply version_snapshot_cells_nodup.
     - apply version_snapshot_cells_member. }
-  rewrite /version_snapshot_cells !pts_app /pcell /live. iExact "Hps".
+  iEval (rewrite /version_snapshot_cells !pts_app) in "Hps". iExact "Hps".
 Qed.
 
 (** The public variadic wrapper in the linked program. *)
