@@ -76,8 +76,11 @@ Definition ctor_names (md : module) : list name :=
 
     The runner needs a private table and a private flag, and it needs a
     function body that reads them. This section writes all three in the
-    model's IR. The body keeps the access proofs for the flag and the
-    table, and the three saved arguments, in temporaries. *)
+    model's IR. As compiled code does, the body copies each global's
+    address into a temporary before checking it, because the validator
+    accepts checks only on temporaries. It keeps the access proofs for
+    the flag and the table, and the three saved arguments, in
+    temporaries. *)
 
 (** This name is the libpizlo symbol that `c: __libc_start_main` calls. *)
 Definition ctor_runner_name : name := TAtom "zrun_deferred_global_ctors".
@@ -94,35 +97,43 @@ Definition ctor_flag_name : name := TAtom "zrun_deferred_global_ctors#did_run".
     i-th constructor pointer at 24 + 8 i. *)
 Definition ctor_table_size (n : nat) : Z := 24 + 8 * Z.of_nat n.
 
-(** Calling the i-th constructor takes three instructions: load its
-    pointer from the table, check that the pointer is a function entry,
-    and call it with the saved arguments. A constructor with fewer
-    parameters ignores the extra arguments, as in the runtime. *)
+(** The runner reads every constructor pointer from the table before
+    it calls the first one. A call ends the evidence of the table's
+    check, so the validator would reject a table read after a call; the
+    table is read-only, so reading it early changes nothing. *)
+Definition ctor_load (i : nat) : inst :=
+  Let (TApp "ctor" [TInt (Z.of_nat i)]) P (RawLoadPointer (24 + 8 * Z.of_nat i) load_effects) [Tmp (TAtom "table")].
+
+(** Calling the i-th constructor takes two instructions: check that its
+    pointer is a function entry, and call it with the saved arguments. A
+    constructor with fewer parameters ignores the extra arguments, as in
+    the runtime. *)
 Definition ctor_call (i : nat) : list inst :=
   let p := TApp "ctor" [TInt (Z.of_nat i)] in
   let f := TApp "ctor_fn" [TInt (Z.of_nat i)] in
-  [Let p P (RawLoadPointer (24 + 8 * Z.of_nat i) load_effects) [Tmp (TAtom "table")];
-   Let f F CheckFunction [Tmp p];
+  [Let f F CheckFunction [Tmp p];
    RawCall CVoid (Tmp f) [Arg W (Tmp (TAtom "argc")); Arg P (Tmp (TAtom "argv")); Arg P (Tmp (TAtom "environ"))]].
 
 (** This function is the runner for an image with n constructors. Its
     entry block reads the flag and branches. The block `twice` traps, and
-    the block `run` sets the flag, reads the arguments and calls the n
-    constructors in table order. *)
+    the block `run` sets the flag, reads the arguments and the n
+    constructor pointers, and calls the constructors in table order. *)
 Definition ctor_runner (n : nat) : func :=
   mkFunc ctor_runner_name (TAtom "export") RVoid []
     [mkBlock (TAtom "start") []
-       [Let (TAtom "flag") A (Check 0 1 Write 1) [Global ctor_flag_name];
+       [Let (TAtom "flag_ptr") P Copy [Global ctor_flag_name];
+        Let (TAtom "flag") A (Check 0 1 Write 1) [Tmp (TAtom "flag_ptr")];
         Let (TAtom "done") W (RawLoad (LdNarrow Ub) 0) [Tmp (TAtom "flag")]]
        (JBranch (Tmp (TAtom "done")) (To (TAtom "twice")) (To (TAtom "run")));
      mkBlock (TAtom "twice") [] [] JUnreachable;
      mkBlock (TAtom "run") []
        (app [RawStore Wb 0 (Const 1) (Tmp (TAtom "flag"));
-         Let (TAtom "table") A (Check 0 (ctor_table_size n) Read 8) [Global ctor_table_name];
+         Let (TAtom "table_ptr") P Copy [Global ctor_table_name];
+         Let (TAtom "table") A (Check 0 (ctor_table_size n) Read 8) [Tmp (TAtom "table_ptr")];
          Let (TAtom "argc") W (RawLoad (LdNarrow Sw) 0) [Tmp (TAtom "table")];
          Let (TAtom "argv") P (RawLoadPointer 8 load_effects) [Tmp (TAtom "table")];
          Let (TAtom "environ") P (RawLoadPointer 16 load_effects) [Tmp (TAtom "table")]]
-        (flat_map ctor_call (seq 0 n)))
+        (app (map ctor_load (seq 0 n)) (flat_map ctor_call (seq 0 n))))
        JRetVoid].
 
 (** The model appends three items, which are the table, the flag and the
