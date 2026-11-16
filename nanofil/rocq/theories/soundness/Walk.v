@@ -452,14 +452,8 @@ Proof.
   intros i q p lo al live. unfold hull_covered.
   destruct (raw_access i) as [[[[q' x] off] need]|]; [|reflexivity].
   destruct (access_size_align x) as [size aa]. cbv zeta.
-  assert (E : forall (live : list fact),
-    flat_map (fun f => match pointer_distance [] (f_p f) p with
-                       | Some d => if near_offset d && near_offset (f_lo f + d) && near_offset (f_hi f + d)
-                                   then [(f_lo f + d, f_hi f + d, f_r f)] else []
-                       | None => []
-                       end) live = []).
-  { intros l. induction l as [|a rest IH]; [reflexivity|]. cbn [flat_map]. rewrite pointer_distance_nil. exact IH. }
-  rewrite E. cbn [existsb]. rewrite !andb_false_r. reflexivity.
+  induction live as [|a live IH]; cbn [flat_map]; [|rewrite pointer_distance_nil; exact IH].
+  cbn [existsb]. rewrite !andb_false_r. reflexivity.
 Qed.
 
 (** Function [entry_label] returns the label of a function's first
