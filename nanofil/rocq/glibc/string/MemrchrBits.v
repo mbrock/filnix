@@ -204,10 +204,8 @@ Lemma marks_byte w c i : 0 <= i < 8 ->
   byte_of (first_mask (Z.lxor w (rep c))) i = if byte_of w i =? c mod 256 then 128 else 0.
 Proof.
   intros Hi. rewrite first_mask_byte; [|exact Hi].
-  destruct (Z.eqb_spec (byte_of (Z.lxor w (rep c)) i) 0) as [E|E];
-    destruct (Z.eqb_spec (byte_of w i) (c mod 256)) as [E'|E']; try reflexivity.
-  - exfalso. apply E'. apply xor_zero; [exact Hi | exact E].
-  - exfalso. apply E. apply xor_zero; [exact Hi | exact E'].
+  apply (f_equal (fun b : bool => if b then 128 else 0)).
+  apply Bool.eq_true_iff_eq. rewrite !Z.eqb_eq. apply xor_zero, Hi.
 Qed.
 
 (** The fast zero test [loop_mask] returns zero on `w` XOR `[rep] c` if
