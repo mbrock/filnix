@@ -263,9 +263,7 @@ Qed.
 (** [name_eqb] is symmetric. *)
 Lemma name_eqb_sym_d : forall a b, name_eqb a b = name_eqb b a.
 Proof.
-  intros a b. destruct (name_eqb a b) eqn:E; symmetry.
-  - apply name_eqb_true in E. subst. apply name_eqb_true. reflexivity.
-  - apply name_eqb_false. intros ->. apply name_eqb_false in E. exact (E eq_refl).
+  intros a b. apply eq_true_iff_eq. rewrite !name_eqb_true. split; congruence.
 Qed.
 
 (** Any position recorded by [inst_positions] for block l from index j
