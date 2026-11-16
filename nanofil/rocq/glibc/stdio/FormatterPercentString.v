@@ -5,7 +5,7 @@
     A second rule first checks that no custom conversions are registered.
     The caller must supply the three null pointers that glibc checks.
     Neither rule initializes those pointers or proves startup behavior. *)
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSym.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -64,21 +64,12 @@ Proof.
   check "Hl". store "Hl" "Hcell".
   iAssert (liveq dq sb sr) with "[Hsl]" as "Hsl".
   { destruct Hcap as [Hc | Hc]; iEval (cbn [ptr_cap]; rewrite Hc) in "Hsl"; iExact "Hsl". }
-  check_read_dq "Hsl" by (cbn [ptr_add ptr_addr]; ar).
-  iNext. iIntros "Hsl".
-  assert (Hparts : byte_ps sb (ptr_addr p - sb) [37;115;0] =
-    byte_ps sb (ptr_addr p - sb) [37] ++ byte_ps sb (ptr_addr p - sb + 1) [115] ++
-    byte_ps sb (ptr_addr p - sb + 1 + 1) [0]).
-  { rewrite !byte_ps_cons. reflexivity. }
-  iEval (unfold MemFwdLogic.ML.bytesq; cbn [app]; rewrite Hparts !ptsq_app) in "Hbytes".
-  iDestruct "Hbytes" as "(Hpercent & Hletter & Hnul)".
-  load_bytes_dq "Hsl Hletter" decode (reflexivity) by (cbn [ptr_add ptr_addr]; ar).
-  iNext. iIntros "Hsl Hletter".
-  step. step. closed_ints. branch. step. step. closed_ints. step.
+  assert (Hletter : ([37;115] ++ [0]) !! 1%nat = Some 115) by reflexivity.
+  sym_run_with "Hsl Hbytes" ltac:(cbn [app length]; sym_lia).
+  closed_ints. cbn [edge_label]. step. step. closed_ints. step.
   iApply wp_enter; [reflexivity | vx |]. iNext. branch.
-  iApply ("HK" with "Hl Hcell [Hsl Hpercent Hletter Hnul Hback]").
-  iApply ("Hback" with "Hsl [Hpercent Hletter Hnul]").
-  rewrite /MemFwdLogic.ML.bytesq /= Hparts !ptsq_app. iFrame.
+  iApply ("HK" with "Hl Hcell [Hsl Hbytes Hback]").
+  iApply ("Hback" with "Hsl Hbytes").
 Qed.
 (** Glibc uses its built-in parser when no custom conversions are
     registered. The caller supplies three null pointers for the proof
