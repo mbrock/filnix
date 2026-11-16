@@ -162,8 +162,7 @@ Lemma transparent_defs : forall i, ahead_transparent i = true ->
   inst_temp_defs i = [] \/ exists d k, inst_temp_defs i = [(d, k)].
 Proof.
   intros i H. destruct i; simpl; eauto.
-  unfold ahead_transparent, evidence_preserving in H. simpl in H. discriminate H.
-  unfold ahead_transparent, evidence_preserving in H. simpl in H. discriminate H.
+  all: unfold ahead_transparent, evidence_preserving in H; simpl in H; discriminate H.
 Qed.
 
 (** An instruction can carry a bounds obligation backward only if it never
@@ -1013,15 +1012,13 @@ Lemma doomed_result_cases : forall ge fr m i out od,
   (exists w why, out = IStop (Unchecked w) /\ fr_doomed fr = Some why /\ od = (IStop (Trap (Early why)), Some why)).
 Proof.
   intros ge fr m i out od H.
-  assert (Hother : ahead_inst i = false -> od = (out, fr_doomed fr) \/
-            (exists w why, out = IStop (Unchecked w) /\ fr_doomed fr = Some why /\
-               od = (IStop (Trap (Early why)), Some why))).
-  { intros Ea. rewrite (doomed_result_other _ _ _ _ _ Ea) in H.
+  destruct (ahead_inst i) eqn:Ea.
+  2: {
+    rewrite (doomed_result_other _ _ _ _ _ Ea) in H.
     destruct out as [e l m' | oc | g xs pd | q k | x]; try (injection H as <-; left; reflexivity).
     destruct oc as [x | xs | | | t | why | why | ]; try (injection H as <-; left; reflexivity).
     destruct (fr_doomed fr) as [w0|] eqn:Ed; [|injection H as <-; left; reflexivity].
-    destruct why; injection H as <-; first [left; reflexivity | right; eauto]. }
-  destruct (ahead_inst i) eqn:Ea; [|destruct (Hother eq_refl) as [E | E]; [left; exact E | right; right; exact E]].
+    destruct why; injection H as <-; first [left; reflexivity | right; right; eauto]. }
   destruct i as [d k o args | | | | | | | | ]; try discriminate Ea. destruct k; try discriminate Ea.
   destruct o; try discriminate Ea. destruct args as [|v [|v' args]]; try discriminate Ea.
   unfold doomed_result in H.
@@ -1398,21 +1395,15 @@ Proof.
   destruct (step_found _ _ _ _ _ _ Hh) as [Ht [(Hh' & Hnd) | (q & x & off & rs & p & k' & Hra & Hq & Hch & Hon & _ & Hkh & ->)]].
   2: { (* the access that would meet the need stops *)
     exfalso.
-    destruct (inst_next_next _ _ _ _ _ _ _ Hnx) as [(e1 & l1 & m1 & Ho & _) | (g & xs & pd & callee & Ho & _ & _)].
-    - destruct (doomed_result_cases _ _ _ _ _ _ Hdr)
-        as [Eod | [(d & lo & hi & r & al & ahi & v & pv & w & -> & _) | (w & why & -> & _ & Eod)]].
-      + rewrite Eod in Ho. simpl in Ho. subst out0.
-        exact (need_access_stops ge md c l i b k n pn kl hreq q x off rs p k' e1 l1 m1
-                 Hmd Hin Hr Hb Hki Hpt0 Hfit Hsc Hn Hkl Hdmem Hra Hq Hch Hon Hkh Hle Hi).
-      + discriminate Hra.
-      + rewrite Eod in Ho. discriminate Ho.
-    - destruct (doomed_result_cases _ _ _ _ _ _ Hdr)
-        as [Eod | [(d & lo & hi & r & al & ahi & v & pv & w & -> & _) | (w & why & -> & _ & Eod)]].
-      + rewrite Eod in Ho. simpl in Ho. subst out0.
-        destruct (inst_step_call_shape _ _ _ _ _ _ _ Hi) as (_ & [(r & cl & args & ->) | (r & cl & args & ->)]);
-          discriminate Hra.
-      + discriminate Hra.
-      + rewrite Eod in Ho. discriminate Ho. }
+    destruct (inst_next_next _ _ _ _ _ _ _ Hnx) as [(e1 & l1 & m1 & Ho & _) | (g & xs & pd & callee & Ho & _ & _)];
+      destruct (doomed_result_cases _ _ _ _ _ _ Hdr)
+        as [Eod | [(d & lo & hi & r & al & ahi & v & pv & w & -> & _) | (w & why & -> & _ & Eod)]];
+      try discriminate Hra; try (rewrite Eod in Ho; discriminate Ho).
+    all: rewrite Eod in Ho; simpl in Ho; subst out0.
+    - exact (need_access_stops ge md c l i b k n pn kl hreq q x off rs p k' e1 l1 m1
+               Hmd Hin Hr Hb Hki Hpt0 Hfit Hsc Hn Hkl Hdmem Hra Hq Hch Hon Hkh Hle Hi).
+    - destruct (inst_step_call_shape _ _ _ _ _ _ _ Hi) as (_ & [(r & cl & args & ->) | (r & cl & args & ->)]);
+        discriminate Hra. }
   destruct (inst_next_next _ _ _ _ _ _ _ Hnx) as [(e1 & l1 & m1 & Ho & ->) | (g & xs & pd & callee & Ho & _ & _)].
   2: { exfalso.
     destruct (doomed_result_cases _ _ _ _ _ _ Hdr)
