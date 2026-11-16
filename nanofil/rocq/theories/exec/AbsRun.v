@@ -1,10 +1,7 @@
-(** The first real step of glibc's startup is `c: init_cpu_features`,
-    which asks the processor about itself with CPUID and XGETBV and
-    stores what it learns. A proof that this step never panics has to
-    hold for every answer the processor could give, and the function
-    and its callees are several thousand IR instructions long. This
-    module is the first half of a checker that is meant to carry out
-    that proof by computation.
+(** A proof that a function never panics has to hold for every input,
+    and a function of several thousand IR instructions is too long to
+    step through by hand. This module is the first half of a checker
+    that is meant to carry out such a proof by computation.
 
     The checker runs a function on abstract values. An integer is a
     constant or a named unknown with a range. A pointer is an object
@@ -13,10 +10,17 @@
     bounds check, a store, a call or a jump could go wrong for some
     value in those ranges.
 
+    A call of a function with a body is matched against a specification
+    of that function. A call of anything else goes to a hook that the
+    user of the checker supplies, so that the checker itself knows no
+    system call. The checker can also carry one fact about the world
+    outside the program, which it calls the guard, and which a hook may
+    require before a call.
+
     This checker is not proved sound. Nothing in this file is a theorem
     about a program, so a successful run is evidence and not a proof.
     The soundness proof against the program logic is being written.
-    [CpuInfer](CpuInfer.v) finds the loop invariants that a run needs. *)
+    [AbsInfer](AbsInfer.v) finds the loop invariants that a run needs. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics.
@@ -37,10 +41,22 @@ Inductive aval : Type :=
 | VA
 | VF (g : name).
 
-Inductive abyte : Type := BK (z : Z) | BOf (s : nat) (i : Z) | BIn (lo hi : Z) | BR | BX | BE (s : nat).
+(** An abstract byte says what the checker knows about one byte of
+    memory. The byte is a constant, or it is byte [i] of the symbol
+    [s], or it lies in a range, or nothing is known about it. Two more
+    forms attach one fact to an unknown byte. Bit [k] of a [BGuard k]
+    byte is set only when the guard holds. The bits under [mask] of a
+    [BEnd s key mask] byte are zero when the symbol [s] equals [key]. *)
+Inductive abyte : Type :=
+| BK (z : Z) | BOf (s : nat) (i : Z) | BIn (lo hi : Z) | BR
+| BGuard (k : Z) | BEnd (s : nat) (key mask : Z).
 
-(** A flag records one fact about a symbol that an interval cannot express. *)
-Inductive flag : Type := FBit | FNz | FEnd (s : nat) | FEndNz (s : nat).
+(** A flag records one fact about a symbol that an interval cannot
+    express. The guard holds when bit [n] of a symbol with [FBit n] is
+    set, and when a symbol with [FNz] is not zero. A symbol with
+    [FEnd s key mask] has zero bits under [mask] when [s] equals [key],
+    and a symbol with [FEndNz s key] is zero when [s] equals [key]. *)
+Inductive flag : Type := FBit (n : Z) | FNz | FEnd (s : nat) (key mask : Z) | FEndNz (s : nat) (key : Z).
 
 Inductive aaux : Type := XNone | XObj (o : nat) | XAny.
 
@@ -59,7 +75,7 @@ Record astate : Type := mkSt {
   st_flags : list (nat * flag);
   st_lin : list (nat * nat * Z);
   st_objs : list (option aobj);
-  st_osx : bool
+  st_guard : bool
 }.
 
 Inductive cval : Type :=
@@ -68,15 +84,15 @@ Inductive cval : Type :=
 Record cstate : Type := mkCs {
   cs_env : list (name * cval);
   cs_objs : list (option aobj);
-  cs_osx : bool
+  cs_guard : bool
 }.
 
 Record fspec : Type := mkSpec {
   sp_args : list cval;
   sp_pre : list (option aobj);
-  sp_osx : bool;
+  sp_guard : bool;
   sp_post : list (option aobj);
-  sp_osx' : bool;
+  sp_guard' : bool;
   sp_ret : option cval
 }.
 
@@ -124,13 +140,13 @@ Definition rng (st : astate) (a : aint) : Z * Z :=
 
 Definition fresh (st : astate) (lo hi : Z) : nat * astate :=
   (length (st_bnd st),
-   mkSt (st_env st) (st_bnd st ++ [(lo, hi)]) (st_flags st) (st_lin st) (st_objs st) (st_osx st)).
+   mkSt (st_env st) (st_bnd st ++ [(lo, hi)]) (st_flags st) (st_lin st) (st_objs st) (st_guard st)).
 
 Definition mk (st : astate) (lo hi : Z) : aint * astate :=
   if lo =? hi then (K lo, st) else let (s, st') := fresh st lo hi in (S s, st').
 
 Definition set_bnd (st : astate) (bnd : list (Z * Z)) : astate :=
-  mkSt (st_env st) bnd (st_flags st) (st_lin st) (st_objs st) (st_osx st).
+  mkSt (st_env st) bnd (st_flags st) (st_lin st) (st_objs st) (st_guard st).
 
 Definition meet (s : nat) (lo hi : Z) (bnd : list (Z * Z)) : list (Z * Z) :=
   let (l, h) := nth s bnd (0, 0) in list_set s (Z.max l lo, Z.min h hi) bnd.
@@ -150,35 +166,36 @@ Definition set_rng (st : astate) (a : aint) (lo hi : Z) : astate :=
   end.
 
 Definition set_env (st : astate) (e : list (name * aval)) : astate :=
-  mkSt e (st_bnd st) (st_flags st) (st_lin st) (st_objs st) (st_osx st).
+  mkSt e (st_bnd st) (st_flags st) (st_lin st) (st_objs st) (st_guard st).
 
 Definition bind (st : astate) (d : name) (v : aval) : astate := set_env st ((d, v) :: st_env st).
 
 Definition set_objs (st : astate) (os : list (option aobj)) : astate :=
-  mkSt (st_env st) (st_bnd st) (st_flags st) (st_lin st) os (st_osx st).
+  mkSt (st_env st) (st_bnd st) (st_flags st) (st_lin st) os (st_guard st).
 
-Definition set_osx (st : astate) (b : bool) : astate :=
+Definition set_guard (st : astate) (b : bool) : astate :=
   mkSt (st_env st) (st_bnd st) (st_flags st) (st_lin st) (st_objs st) b.
 
 Definition add_flag (st : astate) (s : nat) (fl : flag) : astate :=
-  mkSt (st_env st) (st_bnd st) ((s, fl) :: st_flags st) (st_lin st) (st_objs st) (st_osx st).
+  mkSt (st_env st) (st_bnd st) ((s, fl) :: st_flags st) (st_lin st) (st_objs st) (st_guard st).
 
 Definition add_lin (st : astate) (t s : nat) (c : Z) : astate :=
-  mkSt (st_env st) (st_bnd st) (st_flags st) ((t, s, c) :: st_lin st) (st_objs st) (st_osx st).
+  mkSt (st_env st) (st_bnd st) (st_flags st) ((t, s, c) :: st_lin st) (st_objs st) (st_guard st).
 
 Definition flag_eqb (a b : flag) : bool :=
   match a, b with
-  | FBit, FBit | FNz, FNz => true
-  | FEnd s, FEnd t | FEndNz s, FEndNz t => Nat.eqb s t
+  | FBit n, FBit m => n =? m
+  | FNz, FNz => true
+  | FEnd s k m, FEnd t k' m' => Nat.eqb s t && (k =? k') && (m =? m')
+  | FEndNz s k, FEndNz t k' => Nat.eqb s t && (k =? k')
   | _, _ => false
   end.
 
 Definition has_flag (st : astate) (s : nat) (fl : flag) : bool :=
   existsb (fun f => Nat.eqb (fst f) s && flag_eqb (snd f) fl) (st_flags st).
 
-(** The function [flag_syms] lists the symbols that the flags on [s] name,
-    for the flags that [pick] selects. *)
-Definition flag_syms (st : astate) (s : nat) (pick : flag -> option nat) : list nat :=
+(** The function [flag_picks] lists what [pick] selects from the flags on [s]. *)
+Definition flag_picks {A : Type} (st : astate) (s : nat) (pick : flag -> option A) : list A :=
   flat_map (fun f => if Nat.eqb (fst f) s then match pick (snd f) with Some u => [u] | None => [] end else [])
            (st_flags st).
 
@@ -207,14 +224,14 @@ Definition sub_sym (s t u : nat) : nat := if Nat.eqb u s then t else u.
 Definition sub_byte (s t : nat) (b : abyte) : abyte :=
   match b with
   | BOf u i => BOf (sub_sym s t u) i
-  | BE u => BE (sub_sym s t u)
+  | BEnd u key mask => BEnd (sub_sym s t u) key mask
   | _ => b
   end.
 
 Definition sub_flag (s t : nat) (fl : flag) : flag :=
   match fl with
-  | FEnd u => FEnd (sub_sym s t u)
-  | FEndNz u => FEndNz (sub_sym s t u)
+  | FEnd u key mask => FEnd (sub_sym s t u) key mask
+  | FEndNz u key => FEndNz (sub_sym s t u) key
   | _ => fl
   end.
 
@@ -225,7 +242,7 @@ Definition sub_state (s t : nat) (st : astate) : astate :=
   mkSt (map (fun nv => (fst nv, sub_aval s t (snd nv))) (st_env st)) (st_bnd st)
        (map (fun f => (sub_sym s t (fst f), sub_flag s t (snd f))) (st_flags st))
        (map (fun l => let '(a, b, c) := l in (sub_sym s t a, sub_sym s t b, c)) (st_lin st))
-       (map (option_map (sub_obj s t)) (st_objs st)) (st_osx st).
+       (map (option_map (sub_obj s t)) (st_objs st)) (st_guard st).
 
 (** * Refinement by a comparison *)
 
@@ -278,16 +295,14 @@ Definition half (k : class) : Z := match k with W => 2 ^ 31 | _ => 2 ^ 63 end.
 Definition nonneg_half (st : astate) (k : class) (a : aint) : bool :=
   let (lo, hi) := rng st a in (0 <=? lo) && (hi <? half k).
 
-Definition last4 : Z := 2 ^ 31 - 1.
-
-(** A nonzero flagged symbol shows that the OS enabled XSAVE, or that a
-    leaf 4 query did not ask for the last subleaf. *)
+(** A nonzero flagged symbol shows that the guard holds, or that the
+    symbol its flag names differs from the flag's key. *)
 Definition note_nonzero (st : astate) (a : aint) : option astate :=
   match a with
   | S s =>
-      fold_left (fun acc u => let* st' := acc in ref_ne st' (S u) (K last4))
-                (flag_syms st s (fun fl => match fl with FEndNz u => Some u | _ => None end))
-                (Some (if has_flag st s FNz then set_osx st true else st))
+      fold_left (fun acc uk => let* st' := acc in ref_ne st' (S (fst uk)) (K (snd uk)))
+                (flag_picks st s (fun fl => match fl with FEndNz u key => Some (u, key) | _ => None end))
+                (Some (if has_flag st s FNz then set_guard st true else st))
   | K _ => Some st
   end.
 
@@ -331,13 +346,20 @@ Definition tmp_at (k : class) (v : aval) (st : astate) : option (aval * astate) 
   | _ => None
   end.
 
+(** A pointer whose offset is one known number names one place. *)
+Definition exact_ptr (st : astate) (v : aval) : option (nat * Z) :=
+  match v with
+  | VP o a => let (lo, hi) := rng st a in if lo =? hi then Some (o, lo) else None
+  | _ => None
+  end.
+
 Section exec.
 
-(** The interpreter is given three things about the program around the
-    function. Every state numbers the global data objects in [gobjs] first.
+(** The interpreter is given four things about the program around the
+    function. The hook [builtin] answers calls of functions without a body. Every state numbers the global data objects in [gobjs] first.
     A pointer may name one of the function symbols in [fnames], and [specs]
     gives the specifications of the callees. *)
-Variable leaf4 : bool.
+Variable builtin : name -> call_result -> list aval -> astate -> option (option astate).
 Variable gobjs : list name.
 Variable fnames : list name.
 Variable specs : name -> list fspec.
@@ -434,9 +456,6 @@ Definition abin (o : op) (k : class) (x y : aint) (st : astate) : option (aint *
 Definition int_cond (c : cond) : bool :=
   match c with Le | Lt | Ge | Gt | Ord | Unord => false | _ => true end.
 
-Definition is_pow27 (y : aint) : bool := match y with K 134217728 => true | _ => false end.
-Definition is_31 (y : aint) : bool := match y with K 31 => true | _ => false end.
-
 (** A comparison result used as a number is 0 or 1, and is known when
     one of its two outcomes is impossible. *)
 Definition as_int (v : aval) (st : astate) : aval * astate :=
@@ -474,14 +493,16 @@ Definition aop_int (o : op) (k : class) (xs : list aval) (st : astate) : option 
       end
   | And, [VI (S s); VI y] =>
       let? (r, st') := abin And k (S s) y st in
-      Some (VI r, match r with
-                  | S t =>
-                      let st1 := if is_pow27 y && has_flag st s FBit then add_flag st' t FNz else st' in
-                      if is_31 y then
-                        fold_left (fun acc u => add_flag acc t (FEndNz u))
-                                  (flag_syms st s (fun fl => match fl with FEnd u => Some u | _ => None end)) st1
-                      else st1
-                  | K _ => st'
+      Some (VI r, match r, y with
+                  | S t, K c =>
+                      let bits := flag_picks st s (fun fl => match fl with FBit n => Some n | _ => None end) in
+                      let st1 := if existsb (fun n => (0 <=? n) && (c =? 2 ^ n)) bits then add_flag st' t FNz else st' in
+                      fold_left (fun acc uk => add_flag acc t (FEndNz (fst uk) (snd uk)))
+                                (flag_picks st s (fun fl => match fl with
+                                                            | FEnd u key mask => if mask =? c then Some (u, key) else None
+                                                            | _ => None
+                                                            end)) st1
+                  | _, _ => st'
                   end)
   | Add, [VI (S s); VI (K c)] =>
       let* m := modulus_of k in
@@ -532,12 +553,21 @@ Fixpoint win_sym (s : nat) (i : Z) (ws : list abyte) : bool :=
   end.
 
 Definition has_bx (ws : list abyte) : bool :=
-  existsb (fun b => match b with BX | BE _ => true | _ => false end) ws.
+  existsb (fun b => match b with BGuard _ | BEnd _ _ _ => true | _ => false end) ws.
 
 (** A loaded integer inherits the flags of the bytes it was read from. *)
 Definition load_flags (ws : list abyte) (w : Z) (t : nat) (st : astate) : astate :=
-  let st1 := match w, nth 3 ws BR with 4, BX => add_flag st t FBit | _, _ => st end in
-  match ws with BE u :: _ => add_flag st1 t (FEnd u) | _ => st1 end.
+  let st1 := fst (fold_left (fun (acc : astate * Z) (b : abyte) =>
+                               (match b with
+                                | BGuard k =>
+                                    if (0 <=? k) && (k <? 8) then add_flag (fst acc) t (FBit (8 * snd acc + k))
+                                    else fst acc
+                                | _ => fst acc
+                                end, snd acc + 1)) ws (st, 0)) in
+  match ws with
+  | BEnd u key mask :: _ => if (0 <=? mask) && (mask <? 256) then add_flag st1 t (FEnd u key mask) else st1
+  | _ => st1
+  end.
 
 Fixpoint sym_bytes (s : nat) (i : Z) (n : nat) : list abyte :=
   match n with O => [] | Datatypes.S n' => BOf s i :: sym_bytes s (i + 1) n' end.
@@ -562,7 +592,7 @@ Definition load_exact (st : astate) (ws : list abyte) (w : Z) : aint * astate * 
       | [b] =>
           let (lo, hi) := byte_rng st b in
           let (t, st') := fresh st lo hi in
-          (S t, load_flags ws w t st', match b with BX | BE _ => None | _ => Some [BOf t 0] end)
+          (S t, load_flags ws w t st', match b with BGuard _ | BEnd _ _ _ => None | _ => Some [BOf t 0] end)
       | _ =>
           let (t, st') := fresh st 0 (2 ^ (8 * w) - 1) in
           if has_bx ws then
@@ -768,13 +798,13 @@ Definition byte_le (st : astate) (b t : abyte) : bool :=
   match t with
   | BR => true
   | BK z => let (lo, hi) := byte_rng st b in
-            match b with BR | BX | BE _ => false | _ => (lo =? z) && (hi =? z) end
+            match b with BR | BGuard _ | BEnd _ _ _ => false | _ => (lo =? z) && (hi =? z) end
   | BIn lo' hi' => let (lo, hi) := byte_rng st b in (lo' <=? lo) && (hi <=? hi')
-  | BX => match b with
-          | BX => true
-          | _ => st_osx st || (let (lo, hi) := byte_rng st b in (0 <=? lo) && (hi <? 8))
+  | BGuard k => match b with
+          | BGuard k' => k =? k'
+          | _ => st_guard st || (let (lo, hi) := byte_rng st b in (0 <=? lo) && (hi <? 2 ^ k))
           end
-  | BOf _ _ | BE _ => false
+  | BOf _ _ | BEnd _ _ _ => false
   end.
 
 Definition aux_le (x t : aaux) : bool :=
@@ -802,14 +832,14 @@ Definition close_byte (st : astate) (b : abyte) : abyte :=
                  let (lo, hi) := rng st (S s) in
                  if (0 <=? lo) && (hi <? 256) then (if lo =? hi then BK lo else BIn lo hi) else BR
                else let (lo, hi) := rng st (S s) in if lo =? hi then BK (byte_of lo i) else BR
-  | BE _ => BR
+  | BEnd _ _ _ => BR
   | _ => b
   end.
 
 Definition close_obj (st : astate) (ob : aobj) : aobj :=
   mkObj (o_ro ob) (o_align ob) (map (close_byte st) (o_bytes ob)) (o_aux ob).
 
-Definition open_byte (b : abyte) : abyte := match b with BOf _ _ | BE _ => BR | _ => b end.
+Definition open_byte (b : abyte) : abyte := match b with BOf _ _ | BEnd _ _ _ => BR | _ => b end.
 
 Definition open_obj (ob : aobj) : aobj :=
   mkObj (o_ro ob) (o_align ob) (map open_byte (o_bytes ob)) (o_aux ob).
@@ -831,7 +861,7 @@ Definition env_le (st : astate) (te : list (name * cval)) : bool :=
                      end) te.
 
 Definition entails (st : astate) (t : cstate) : bool :=
-  env_le st (cs_env t) && objs_le st (st_objs st) (cs_objs t) && (implb (cs_osx t) (st_osx st)).
+  env_le st (cs_env t) && objs_le st (st_objs st) (cs_objs t) && (implb (cs_guard t) (st_guard st)).
 
 Fixpoint open_env (te : list (name * cval)) (st : astate) : astate :=
   match te with
@@ -843,57 +873,9 @@ Fixpoint open_env (te : list (name * cval)) (st : astate) : astate :=
   end.
 
 Definition open_state (t : cstate) : astate :=
-  open_env (cs_env t) (mkSt [] [] [] [] (map (option_map open_obj) (cs_objs t)) (cs_osx t)).
+  open_env (cs_env t) (mkSt [] [] [] [] (map (option_map open_obj) (cs_objs t)) (cs_guard t)).
 
 (** * Calls *)
-
-Definition is_atom (n : name) (s : string) : bool := name_eqb n (TAtom s).
-
-Definition exact_ptr (st : astate) (v : aval) : option (nat * Z) :=
-  match v with
-  | VP o a => let (lo, hi) := rng st a in if lo =? hi then Some (o, lo) else None
-  | _ => None
-  end.
-
-(** The four result blocks of a CPUID call must be writable four-byte
-    spans that do not overlap. *)
-Definition disjoint4 (ps : list (nat * Z)) : bool :=
-  let fix go (ps : list (nat * Z)) :=
-    match ps with
-    | [] => true
-    | (o, k) :: ps' =>
-        forallb (fun q => negb (Nat.eqb o (fst q)) || (k + 4 <=? snd q) || (snd q + 4 <=? k)) ps' && go ps'
-    end in
-  go ps.
-
-Definition cpuid_out (st : astate) (p : nat * Z) (bytes : list abyte) : option astate :=
-  let (o, k) := p in
-  let* ob := get_obj st o in
-  if negb (o_ro ob) && (0 <=? k) && (k + 4 <=? o_size ob) then
-    Some (put_obj st o (Some (mkObj (o_ro ob) (o_align ob) (splice k bytes (o_bytes ob))
-                                (splice k (repeat XAny 4) (o_aux ob)))))
-  else None.
-
-Definition acpuid (leaf : aval) (subleaf : option aint) (ps : list aval) (st : astate) : option astate :=
-  match leaf, ps with
-  | VI l, [pa; pb; pc; pd] =>
-      let* a := exact_ptr st pa in
-      let* b := exact_ptr st pb in
-      let* c := exact_ptr st pc in
-      let* d := exact_ptr st pd in
-      if disjoint4 [a; b; c; d] then
-        let one := match rng st l with (1, 1) => true | _ => false end in
-        let ends := match rng st l, subleaf with
-                    | (4, 4), Some (S s) => if leaf4 then [BE s; BR; BR; BR] else repeat BR 4
-                    | _, _ => repeat BR 4
-                    end in
-        let* st1 := cpuid_out st a ends in
-        let* st2 := cpuid_out st1 b (repeat BR 4) in
-        let* st3 := cpuid_out st2 c (if one then [BR; BR; BR; BX] else repeat BR 4) in
-        cpuid_out st3 d (repeat BR 4)
-      else None
-  | _, _ => None
-  end.
 
 (** A call is matched against one specification of the callee. Object
     [nglob + j] of the specification is the object that argument [j] points to. *)
@@ -965,10 +947,10 @@ Definition same_shape (pre post : list (option aobj)) : bool :=
   all2 (fun p q => match p, q with None, None | Some _, Some _ => true | _, _ => false end) pre post.
 
 Definition call_spec (r : call_result) (args : list aval) (st : astate) (sp : fspec) : option astate :=
-  if args_le st 0 args (sp_args sp) && implb (sp_osx sp) (st_osx st) && same_shape (sp_pre sp) (sp_post sp) then
+  if args_le st 0 args (sp_args sp) && implb (sp_guard sp) (st_guard st) && same_shape (sp_pre sp) (sp_post sp) then
     let* st1 := take_objs st args 0 (sp_pre sp) in
     let* st2 := give_objs st1 args 0 (sp_post sp) in
-    bind_result r (sp_ret sp) (set_osx st2 (st_osx st2 || sp_osx' sp))
+    bind_result r (sp_ret sp) (set_guard st2 (st_guard st2 || sp_guard' sp))
   else None.
 
 Fixpoint first_spec (r : call_result) (args : list aval) (st : astate) (sps : list fspec) : option astate :=
@@ -983,26 +965,14 @@ Fixpoint first_spec (r : call_result) (args : list aval) (st : astate) (sps : li
 Definition arg_classes (args : list arg) : list class := map (fun a => match a with Arg k _ => k end) args.
 Definition arg_values (args : list arg) : list value := map (fun a => match a with Arg _ v => v end) args.
 
+(** A call first asks [builtin], which answers for the functions that
+    have no body. Any other call needs a specification of the callee. *)
 Definition acall (r : call_result) (g : name) (args : list arg) (st : astate) : option astate :=
   let? (xs, st1) := avalues (arg_classes args) (arg_values args) st in
-  if is_atom g "zcpuid" then
-    match r, xs with
-    | CVoid, l :: ps => acpuid l None ps st1
-    | _, _ => None
-    end
-  else if is_atom g "zcpuid_count" then
-    match r, xs with
-    | CVoid, l :: VI s :: ps => acpuid l (Some s) ps st1
-    | _, _ => None
-    end
-  else if is_atom g "zxgetbv" then
-    match r, xs with
-    | CResult d L, [] =>
-        if st_osx st1 then let (s, st2) := fresh st1 0 (2 ^ 64 - 1) in Some (bind st2 d (VI (S s)))
-        else None
-    | _, _ => None
-    end
-  else first_spec r xs st1 (specs g).
+  match builtin g r xs st1 with
+  | Some res => res
+  | None => first_spec r xs st1 (specs g)
+  end.
 
 (** * Instructions *)
 

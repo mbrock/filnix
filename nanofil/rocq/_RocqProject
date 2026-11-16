@@ -122,3 +122,5 @@ theories/hello_contracts/LibcMemLogic.v
 theories/hello_contracts/LibcStringLogic.v
 theories/hello_contracts/ExternalMachineFixtures.v
 theories/hello_contracts/StartupFixtures.v
+theories/exec/AbsRun.v
+theories/exec/AbsInfer.v

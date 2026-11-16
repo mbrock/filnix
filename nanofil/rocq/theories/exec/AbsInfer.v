@@ -1,4 +1,4 @@
-(** The interpreter in [CpuAbs](CpuAbs.v) follows one path of a function
+(** The interpreter in [AbsRun](AbsRun.v) follows one path of a function
     on abstract values and stops at chosen labels, which this module
     calls cuts. A function with loops needs an invariant at every cut,
     so that a path which returns to the cut can stop there. This module
@@ -13,7 +13,7 @@
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Maps.
-From Glibc Require Import CpuAbs.
+From Nanofil Require Import AbsRun.
 Import ListNotations.
 Open Scope list_scope.
 Open Scope Z_scope.
@@ -200,12 +200,12 @@ Definition join_val (w : option (list Z)) (a b : cval) : option cval :=
   | _, _ => Some CA
   end.
 
-Definition st0 (osx : bool) : astate := mkSt [] [] [] [] [] osx.
+Definition st0 (guard : bool) : astate := mkSt [] [] [] [] [] guard.
 
-Definition join_byte (w : option (list Z)) (osx osx' : bool) (a b : abyte) : abyte :=
+Definition join_byte (w : option (list Z)) (g g' : bool) (a b : abyte) : abyte :=
   match a, b with
-  | BX, _ => if byte_le (st0 osx') b BX then BX else BR
-  | _, BX => if byte_le (st0 osx) a BX then BX else BR
+  | BGuard k, _ => if byte_le (st0 g') b (BGuard k) then BGuard k else BR
+  | _, BGuard k => if byte_le (st0 g) a (BGuard k) then BGuard k else BR
   | (BK _ | BIn _ _), (BK _ | BIn _ _) =>
       let (lo, hi) := byte_rng (st0 false) a in
       let (lo', hi') := byte_rng (st0 false) b in
@@ -227,12 +227,12 @@ Fixpoint zip2 {A : Type} (f : A -> A -> A) (xs ys : list A) : list A :=
   | _, _ => []
   end.
 
-Definition join_obj (w : option (list Z)) (osx osx' : bool) (a b : option aobj) : option aobj :=
+Definition join_obj (w : option (list Z)) (g g' : bool) (a b : option aobj) : option aobj :=
   match a, b with
   | Some x, Some y =>
       if Bool.eqb (o_ro x) (o_ro y) && (o_align x =? o_align y)
          && Nat.eqb (length (o_bytes x)) (length (o_bytes y)) then
-        Some (mkObj (o_ro x) (o_align x) (zip2 (join_byte w osx osx') (o_bytes x) (o_bytes y))
+        Some (mkObj (o_ro x) (o_align x) (zip2 (join_byte w g g') (o_bytes x) (o_bytes y))
                 (zip2 join_aux (o_aux x) (o_aux y)))
       else None
   | _, _ => None
@@ -246,8 +246,8 @@ Definition join_state (w : option (list Z)) (a b : cstate) : cstate :=
                                         end
                             | None => []
                             end) (cs_env a))
-       (zip2 (join_obj w (cs_osx a) (cs_osx b)) (cs_objs a) (cs_objs b))
-       (cs_osx a && cs_osx b).
+       (zip2 (join_obj w (cs_guard a) (cs_guard b)) (cs_objs a) (cs_objs b))
+       (cs_guard a && cs_guard b).
 
 Definition cval_le (a b : cval) : bool :=
   match a, b with
@@ -265,19 +265,19 @@ Definition cs_le (a b : cstate) : bool :=
                      | Some c => cval_le c (snd nc)
                      | None => false
                      end) (cs_env b)
-  && objs_le (st0 (cs_osx a)) (cs_objs a) (cs_objs b) && implb (cs_osx b) (cs_osx a).
+  && objs_le (st0 (cs_guard a)) (cs_objs a) (cs_objs b) && implb (cs_guard b) (cs_guard a).
 
 Definition close_state (live : list name) (st : astate) : cstate :=
   mkCs (flat_map (fun n => match lookup n (st_env st) with
                            | Some v => [(n, close_val st v)]
                            | None => []
                            end) live)
-       (map (option_map (close_obj st)) (st_objs st)) (st_osx st).
+       (map (option_map (close_obj st)) (st_objs st)) (st_guard st).
 
 (** * Running a function from a specification *)
 
 Section infer.
-Variable leaf4 : bool.
+Variable builtin : name -> call_result -> list aval -> astate -> option (option astate).
 Variable gobjs : list name.
 Variable fnames : list name.
 Variable specs : name -> list fspec.
@@ -294,17 +294,17 @@ Definition entry_state (sp : fspec) : astate :=
                bind st' (snd (fst pc)) v)
             (combine (fn_params f) (sp_args sp))
             (mkSt [] [] [] [] (pad (nglob gobjs + length (fn_params f)) (map (option_map open_obj) (sp_pre sp)))
-                  (sp_osx sp)).
+                  (sp_guard sp)).
 
 Definition entry_label : name :=
   match fn_blocks f with b :: _ => b_label b | [] => TAtom "" end.
 
 Definition run_entry (sp : fspec) : list leaf :=
-  run leaf4 gobjs fnames specs f cuts fuel entry_label None (entry_state sp).
+  run builtin gobjs fnames specs f cuts fuel entry_label None (entry_state sp).
 
 Definition run_cut (l : name) (t : cstate) : list leaf :=
   match find_block l (fn_blocks f) with
-  | Some b => body leaf4 gobjs fnames specs f cuts fuel l (b_insts b) (b_jump b) (open_state t)
+  | Some b => body builtin gobjs fnames specs f cuts fuel l (b_insts b) (b_jump b) (open_state t)
   | None => [LFail l None (open_state t)]
   end.
 
@@ -413,9 +413,9 @@ Definition infer (sp : fspec) (n : nat) : acc :=
 Definition complete (sp : fspec) (a : acc) : fspec :=
   match a_ret a with
   | Some (rv, c) =>
-      mkSpec (sp_args sp) (sp_pre sp) (sp_osx sp)
+      mkSpec (sp_args sp) (sp_pre sp) (sp_guard sp)
              (zip2 (fun p q => match p with Some _ => q | None => None end) (sp_pre sp) (cs_objs c))
-             (cs_osx c) rv
+             (cs_guard c) rv
   | None => sp
   end.
 
@@ -427,7 +427,7 @@ Definition ret_ok (sp : fspec) (v : option aval) (st : astate) : bool :=
   | None, None => true
   | _, _ => false
   end
-  && objs_le st (st_objs st) (sp_post sp) && implb (sp_osx' sp) (st_osx st).
+  && objs_le st (st_objs st) (sp_post sp) && implb (sp_guard' sp) (st_guard st).
 
 Definition leaf_ok (sp : fspec) (inv : list (name * cstate)) (lf : leaf) : bool :=
   match lf with
@@ -450,25 +450,28 @@ Definition layout (f : func) : name -> Z :=
                           (nm_empty, 0)) in
   fun l => match nm_find l m with Some k => k | None => 0 end.
 
-Definition plan (leaf4 : bool) (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition plan (builtin : name -> call_result -> list aval -> astate -> option (option astate))
+    (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : acc :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
-  infer leaf4 gobjs fnames specs f cuts fuel (liveness f) delay (thresholds f) split (layout f) sp n.
+  infer builtin gobjs fnames specs f cuts fuel (liveness f) delay (thresholds f) split (layout f) sp n.
 
-Definition check (leaf4 : bool) (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition check (builtin : name -> call_result -> list aval -> astate -> option (option astate))
+    (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : bool :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
-  let a := plan leaf4 gobjs fnames specs f nocut split fuel n delay sp in
-  verify leaf4 gobjs fnames specs f cuts fuel sp (map (fun e => (e_lab e, e_inv e)) (a_tab a)).
+  let a := plan builtin gobjs fnames specs f nocut split fuel n delay sp in
+  verify builtin gobjs fnames specs f cuts fuel sp (map (fun e => (e_lab e, e_inv e)) (a_tab a)).
 
 (** A caller uses the completed specification only when it passes the check. *)
-Definition solve (leaf4 : bool) (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition solve (builtin : name -> call_result -> list aval -> astate -> option (option astate))
+    (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : option fspec :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
-  let a := plan leaf4 gobjs fnames specs f nocut split fuel n delay sp in
+  let a := plan builtin gobjs fnames specs f nocut split fuel n delay sp in
   let sp' := complete sp a in
   match a_fail a with
-  | [] => if verify leaf4 gobjs fnames specs f cuts fuel sp' (map (fun e => (e_lab e, e_inv e)) (a_tab a))
+  | [] => if verify builtin gobjs fnames specs f cuts fuel sp' (map (fun e => (e_lab e, e_inv e)) (a_tab a))
           then Some sp' else None
   | _ => None
   end.
