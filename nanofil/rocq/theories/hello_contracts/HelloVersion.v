@@ -376,8 +376,8 @@ Proof.
     (mkFrame emit_bug_reporting_address_fn [] [] None (Enter (TAtom "start") None)).
   iApply wp_enter; [exact find_emit_bug_reporting_address_start | reflexivity |]. iNext.
   cbn [b_insts b_jump emit_bug_reporting_address_start].
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
+  do 2 (version_pure (wp_let registry wi ge);
+    [reflexivity | reflexivity | word_premise | intros m; reflexivity |]; iNext).
   version_pure wp_world_let; [reflexivity | reflexivity | word_premise | |].
   { intros m w h Hw. apply op_check. exact (proj1 (wi_stdout _ _ _ Hw)). }
   iNext.
@@ -387,22 +387,18 @@ Proof.
   iApply (wp_emit_output with "Hps");
     [unfold emit_output_args; left; reflexivity | word_premise | reflexivity |].
   iNext. iIntros (n0) "Hps".
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
+  do 3 (version_pure (wp_let registry wi ge);
+    [reflexivity | reflexivity | word_premise | intros m; reflexivity |]; iNext).
   iApply (wp_emit_output with "Hps");
     [unfold emit_output_args; right; left; reflexivity | word_premise | reflexivity |].
   iNext. iIntros (n1) "Hps".
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
+  do 4 (version_pure (wp_let registry wi ge);
+    [reflexivity | reflexivity | word_premise | intros m; reflexivity |]; iNext).
   iApply (wp_emit_output with "Hps");
     [unfold emit_output_args; right; right; left; reflexivity | word_premise | reflexivity |].
   iNext. iIntros (n2) "Hps".
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
-  version_pure (wp_let registry wi ge); [reflexivity | reflexivity | word_premise | intros m; reflexivity |]. iNext.
+  do 3 (version_pure (wp_let registry wi ge);
+    [reflexivity | reflexivity | word_premise | intros m; reflexivity |]; iNext).
   iApply (wp_emit_output with "Hps");
     [unfold emit_output_args; right; right; right; left; reflexivity | word_premise | reflexivity |].
   iNext. iIntros (n3) "Hps". iApply wp_ret_void. iNext. iApply ("HΦ" with "Hps").
@@ -538,10 +534,8 @@ Lemma version_etc_arn_spec b Φ :
      WPtr (mkPtr b (Obj b)); WInt 4]) : hexpr) {{ Φ }}.
 Proof.
   intros Hb Hmod Hend.
-  assert (Hmod8 : b mod 8 = 0).
-  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 b).
-    - exists 2. reflexivity.
-    - apply Z.mod_divide; [lia | exact Hmod]. }
+  assert (Hmod8 : b mod 8 = 0) by
+    (apply Z.mod_divide; [lia|]; eapply Z.divide_trans; [exists 2; reflexivity|now apply Z.mod_divide]).
   pose proof (arn_literal_lookup "version-etc#str.41" ltac:(simpl; tauto)) as H41.
   pose proof (arn_literal_lookup "version_etc_copyright" ltac:(simpl; tauto)) as Hcopyright.
   pose proof (arn_literal_lookup "version-etc#str.43" ltac:(simpl; tauto)) as H43.
@@ -860,10 +854,8 @@ Lemma version_etc_va_spec cb cr sb sr Φ :
      WPtr (mkPtr cb (Obj cb))]) : hexpr) {{ Φ }}.
 Proof.
   intros Hcb Hsb Hsmod Hsend Hsmax.
-  assert (Hs8 : sb mod 8 = 0).
-  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 sb).
-    - exists 2. reflexivity.
-    - apply Z.mod_divide; [lia | exact Hsmod]. }
+  assert (Hs8 : sb mod 8 = 0) by
+    (apply Z.mod_divide; [lia|]; eapply Z.divide_trans; [exists 2; reflexivity|now apply Z.mod_divide]).
   iIntros "Hps Hcursor Hsl Hs0 Hs1 Hs2 Hs3 Hs4 HK".
   rewrite version_etc_va_entry.
   version_enter find_va_blocks va_start. iNext.
@@ -873,23 +865,19 @@ Proof.
      intros m wd h base Hf Hw; apply Kversion_alloc; [simpl; tauto | exact Hf | exact Hw] |].
   iNext. iIntros (b [Hb [Hbmod Hbend]]) "Hobj".
   change (b mod 16 = 0) in Hbmod. change (b + 80 <= 2 ^ 48) in Hbend.
-  assert (Hb8 : b mod 8 = 0).
-  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 b).
-    - exists 2. reflexivity.
-    - apply Z.mod_divide; [lia | exact Hbmod]. }
+  assert (Hb8 : b mod 8 = 0) by
+    (apply Z.mod_divide; [lia|]; eapply Z.divide_trans; [exists 2; reflexivity|now apply Z.mod_divide]).
   iDestruct (version_array_zero with "Hobj") as "(Hl & H0 & H1 & H2 & H3 & H4)".
-  assert (H40 : sb + 32 + 8 = sb + 40) by lia.
-  assert (H48 : sb + 40 + 8 = sb + 48) by lia.
-  assert (H56 : sb + 48 + 8 = sb + 56) by lia.
-  assert (H64 : sb + 56 + 8 = sb + 64) by lia.
-  version_va_round b "Hs0" "H0" "hello#str.72".
-  iEval (rewrite H40) in "Hcursor".
-  version_va_round (b + 8) "Hs1" "H1" "hello#str.73".
-  iEval (rewrite H48) in "Hcursor".
-  version_va_round (b + 16) "Hs2" "H2" "hello#str.74".
-  iEval (rewrite H56) in "Hcursor".
-  version_va_round (b + 24) "Hs3" "H3" "hello#str.75".
-  iEval (rewrite H64) in "Hcursor".
+  let rec round addr src dst text :=
+    version_va_round addr src dst text;
+    iEval (rewrite <- Z.add_assoc) in "Hcursor";
+    repeat match goal with H : lookup _ ?e = Some _ |- _ =>
+      lazymatch goal with |- context[e] => fail | _ => clear H end
+    end
+  in round b "Hs0" "H0" "hello#str.72";
+     round (b + 8) "Hs1" "H1" "hello#str.73";
+     round (b + 16) "Hs2" "H2" "hello#str.74";
+     round (b + 24) "Hs3" "H3" "hello#str.75".
   version_goto.
   version_enter find_va_blocks va_L12. iNext. gen_env.
   cbn [b_insts b_jump va_L12]. version_let. gen_env.
@@ -926,8 +914,7 @@ Proof.
        rewrite /version_author_cells; iFrame |].
     iNext. iIntros "Hps Hl Ha". iExists _. iSplit; [iPureIntro; reflexivity |].
     iNext. iApply wp_ret_void. iNext.
-    assert (H72 : sb + 64 + 8 = sb + 72) by lia.
-    iEval (rewrite H72) in "Hcursor".
+    iEval (rewrite <- Z.add_assoc) in "Hcursor".
     iApply ("HK" with "Hps Hcursor Hsl Hs0 Hs1 Hs2 Hs3 Hs4").
 Qed.
 
@@ -1056,10 +1043,8 @@ Proof.
      intros m wd h base Hf Hw; apply Kversion_alloc; [simpl; tauto | exact Hf | exact Hw] |].
   iNext. iIntros (cb [Hcb [Hcmod Hcend]]) "Hobj".
   change (cb mod 16 = 0) in Hcmod. change (cb + 32 <= 2 ^ 48) in Hcend.
-  assert (Hc8 : cb mod 8 = 0).
-  { apply Z.mod_divide; [lia |]. apply (Z.divide_trans 8 16 cb).
-    - exists 2. reflexivity.
-    - apply Z.mod_divide; [lia | exact Hcmod]. }
+  assert (Hc8 : cb mod 8 = 0) by
+    (apply Z.mod_divide; [lia|]; eapply Z.divide_trans; [exists 2; reflexivity|now apply Z.mod_divide]).
   iDestruct (version_cursor_zero with "Hobj") as "[Hcl Hc]".
   iApply wp_va_args; [reflexivity |]. iNext.
   iApply (wp_check with "Hcl");
@@ -1072,12 +1057,8 @@ Proof.
   iEval (cbn [ptr_addr]; rewrite Hwrap) in "Hc".
   iAssert (pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live)
     (mkPtr (sb + 32) (Ro sb)))) with "[Hcl Hc]" as "Hcursor".
-  { replace (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live)
-      (mkPtr (sb + 32) (Ro sb))) with
-      ([(PLive cb, VLive (mkRegion cb (cb + 32) Heap Live))] ++
-        ((PAux cb 0, VAux (Ro sb)) :: cell cb 0 (sb + 32))) by reflexivity.
-    rewrite pts_app.
-    iFrame "Hcl Hc". }
+  { iApply (pts_app [(PLive cb, VLive (mkRegion cb (cb + 32) Heap Live))]
+      ((PAux cb 0, VAux (Ro sb)) :: cell cb 0 (sb + 32))). iFrame "Hcl Hc". }
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ version_etc_va_fn
     (invocation version_etc_va_fn
       [WPtr stream; WPtr (version_literal "hello#str.70");
