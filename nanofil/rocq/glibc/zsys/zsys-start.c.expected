@@ -1,0 +1,10 @@
+setcookie 1 1 1 1 1 1
+nullcookie 1
+restore 1
+id 1 1 1 1
+self 1 1 1
+selfread 1
+sigmask 1
+errno2 1
+dlerror2 1
+ctors2 1

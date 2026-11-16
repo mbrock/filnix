@@ -26,6 +26,13 @@
     decides whether `c: zxgetbv` may run, as [OsCpuid](OsCpuid.v)
     explains, and it never changes.
 
+    Startup code changes some of this state before `c: main` runs. It sets
+    the thread cookie, and it registers the handlers through which
+    libpizlo sets `c: errno` and the `c: dlerror` message. The world
+    therefore also records which cell the errno handler writes and whether
+    the dlerror handler is registered. A separate module,
+    [OsStart](OsStart.v), lets those parts change during startup.
+
     ## Why errno needs no apartness premise
 
     In userland glibc, `c: __thread int errno` is exported thread-local
@@ -82,7 +89,9 @@ Record os_world : Type := mkOsWorld {
   ow_self : ptr;          (* the thread cookie returned by `c: zthread_self_cookie()` (userland glibc's `c: struct pthread`) *)
   ow_log_fd : option Z;   (* libpizlo's internal log descriptor, if logging to a file *)
   ow_fds : list Z;        (* file descriptors the program uses *)
-  ow_osxsave : bool       (* whether the kernel enabled XSAVE (CR4.OSXSAVE), which `c: zxgetbv` needs *)
+  ow_osxsave : bool;      (* whether the kernel enabled XSAVE (CR4.OSXSAVE), which `c: zxgetbv` needs *)
+  ow_errno_cell : ptr;    (* the `c: errno` cell that the image's registered errno handler stores to *)
+  ow_dlerror : bool       (* whether startup has registered the dlerror handler *)
 }.
 
 (** When a system call fails, libpizlo stores the error number into the

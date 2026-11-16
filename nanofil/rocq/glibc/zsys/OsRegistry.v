@@ -2,8 +2,8 @@
     call to a libpizlo entry point looks up its [[external call|contract]]
     in a symbol table. This module builds that table, [glibc_os_registry],
     over the shared state [os_world] from [OsWorld](OsWorld.v). It
-    combines the system-call, thread and processor-query contracts from this
-    directory with the memory-copy and memory-fill contracts for `c: zmemmove` and
+    combines the system-call, thread, processor-query and startup contracts
+    from this directory with the memory-copy and memory-fill contracts for `c: zmemmove` and
     `c: zmemset` from
     [ExternalCalls](../../theories/external/ExternalCalls.v). Any call to
     an unmodeled symbol, such as `c: abort`, `c: zsys_dlopen`, or
@@ -32,7 +32,8 @@
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory ExternalCalls.
-From Glibc Require Import OsWorld OsWrite OsWritev OsFstat OsIoctl OsLseek OsClose OsExit OsThread OsCpuid.
+From Glibc Require Import OsWorld OsWrite OsWritev OsFstat OsIoctl OsLseek OsClose OsExit OsThread OsCpuid
+  OsStartCalls OsGetrlimit.
 Import ListNotations.
 Open Scope string_scope.
 
@@ -82,6 +83,13 @@ Definition glibc_os_contracts : list (string * contract os_world) := [
   ("zcpuid", os_cpuid_contract false);
   ("zcpuid_count", os_cpuid_contract true);
   ("zxgetbv", os_xgetbv_contract);
+  ("zthread_set_self_cookie", os_set_cookie_contract);
+  ("zthread_self_id", os_self_id_contract);
+  ("zthread_self", os_thread_self_contract);
+  ("zmake_setjmp_save_sigmask", os_setjmp_sigmask_contract);
+  ("zregister_sys_errno_handler", os_errno_register_contract);
+  ("zregister_sys_dlerror_handler", os_dlerror_register_contract);
+  ("zsys_getrlimit", os_getrlimit_contract);
   ("zmemmove", void_only (memmove_contract os_world));
   ("zmemset", void_only (memset_contract os_world))
 ].
@@ -100,7 +108,7 @@ Fixpoint os_find (s : name) (cs : list (string * contract os_world)) : option (c
     glibc proofs. *)
 Definition glibc_os_registry (s : name) : option (contract os_world) := os_find s glibc_os_contracts.
 
-(** Looking up any of the fourteen modeled libpizlo symbols in
+(** Looking up any of the twenty-one modeled libpizlo symbols in
     [glibc_os_registry] returns its contract from this directory or from
     [ExternalCalls](../../theories/external/ExternalCalls.v). *)
 Example glibc_os_registry_hits :
@@ -116,6 +124,13 @@ Example glibc_os_registry_hits :
   glibc_os_registry (TAtom "zcpuid") = Some (os_cpuid_contract false) /\
   glibc_os_registry (TAtom "zcpuid_count") = Some (os_cpuid_contract true) /\
   glibc_os_registry (TAtom "zxgetbv") = Some os_xgetbv_contract /\
+  glibc_os_registry (TAtom "zthread_set_self_cookie") = Some os_set_cookie_contract /\
+  glibc_os_registry (TAtom "zthread_self_id") = Some os_self_id_contract /\
+  glibc_os_registry (TAtom "zthread_self") = Some os_thread_self_contract /\
+  glibc_os_registry (TAtom "zmake_setjmp_save_sigmask") = Some os_setjmp_sigmask_contract /\
+  glibc_os_registry (TAtom "zregister_sys_errno_handler") = Some os_errno_register_contract /\
+  glibc_os_registry (TAtom "zregister_sys_dlerror_handler") = Some os_dlerror_register_contract /\
+  glibc_os_registry (TAtom "zsys_getrlimit") = Some os_getrlimit_contract /\
   glibc_os_registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) /\
   glibc_os_registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)).
 Proof. repeat split. Qed.

@@ -189,10 +189,16 @@ zsys/OsLseek.v
 zsys/OsThread.v
 zsys/OsWrite.v
 zsys/OsWritev.v
+zsys/OsStartCalls.v
+zsys/OsGetrlimit.v
+zsys/OsStart.v
+zsys/StartCtors.v
+zsys/StartState.v
 LenLogic.v
 SayLogic.v
 getopt/GetoptModule.v
 hi_atexit/HiAtexitModule.v
+zsys/HiStartImage.v
 stdlib/StdlibSpecs.v
 stdlib/AllocLogic.v
 stdlib/AtexitLogic.v
