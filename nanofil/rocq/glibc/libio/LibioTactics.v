@@ -14,7 +14,7 @@ Open Scope Z_scope.
 (** This wrapper loads a narrow integer from a fractionally owned byte sequence.
     The caller's conversion proof chooses the symbolic form of the loaded value. *)
 Tactic Notation "load_bytes_dq" constr(H) "decode" tactic3(decode) "by" tactic3(side) :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
+  iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [memory_condition "load_bytes_dq" 1 ltac:(reflexivity) |memory_condition "load_bytes_dq" 2 ltac:(vx)
     |memory_condition "load_bytes_dq" 3 ltac:(first [reflexivity | eassumption])
     |memory_condition "load_bytes_dq" 4 decode
@@ -23,7 +23,7 @@ Tactic Notation "load_bytes_dq" constr(H) "decode" tactic3(decode) "by" tactic3(
 
 (** This wrapper stores an integer's bytes while preserving the world invariant. *)
 Tactic Notation "store_word" constr(H) "by" tactic3(side) "preserving" tactic3(world) :=
-  iApply (wp_raw_store_w with H);
+  iApply (wp_raw_store_w _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [memory_condition "store_word" 1 ltac:(vx) |memory_condition "store_word" 2 ltac:(vx)
     |memory_condition "store_word" 3 ltac:(reflexivity)
     |memory_condition "store_word" 4 side
@@ -33,7 +33,7 @@ Tactic Notation "store_word" constr(H) "by" tactic3(side) "preserving" tactic3(w
 (** This wrapper checks read access using fractional ownership of the object's life.
     The rule stays here because it is supplied by [LibioLogic], rather than the generic instruction library. *)
 Tactic Notation "check_read_dq" constr(H) "by" tactic3(side) :=
-  iApply (wp_check_read_dq with H);
+  iApply (wp_check_read_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [memory_condition "check_read_dq" 1 ltac:(reflexivity)
     |memory_condition "check_read_dq" 2 ltac:(first [solve [vx] | eassumption])
     |memory_condition "check_read_dq" 3 ltac:(first [eassumption | left; reflexivity | right; reflexivity])
@@ -79,19 +79,19 @@ Ltac store_long Hl Hc :=
 
 (** This tactic loads an integer using a group containing its life and bytes. *)
 Ltac load_s32_group H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
+  iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | ar |];
   iNext; iIntros H.
 
 (** A caller can supply its own bounds solver when its arithmetic facts need different normalization. *)
 Ltac load_s32_using bounds H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
+  iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | bounds |];
   iNext; iIntros H.
 
 (** This tactic reads a pointer through fractional ownership of the base object. *)
 Ltac load_shared H :=
-  iApply (wp_raw_load_pointer_dq with H);
+  iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [reflexivity | vx | left; reflexivity | a2 | a2 | a2 |];
   iNext; iIntros H.
 
@@ -104,39 +104,39 @@ Ltac load_self_using rule H :=
 
 (** This tactic loads one byte using a group containing its life and byte. *)
 Ltac load_byte_group H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
+  iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |];
   iNext; iIntros H.
 
 (** This tactic stores an integer using a group containing its life and bytes. *)
 Ltac store_int_group H :=
-  iApply (wp_raw_store_w with H); [vx | vx | reflexivity | ar | reflexivity | wi_store |];
+  iApply (wp_raw_store_w _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H); [vx | vx | reflexivity | ar | reflexivity | wi_store |];
   iNext; iIntros H.
 
 (** This tactic loads a pointer using the grouped life and cell resources. *)
 Ltac load_group H :=
-  iApply (wp_raw_load_pointer with H); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |];
+  iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H); [reflexivity | vx | reflexivity | ar | ar | cbn; lia |];
   iNext; iIntros H.
 
 (** This tactic stores a pointer using the grouped life and cell resources. *)
 Ltac store_group H :=
-  iApply (wp_raw_store_pointer with H); [vx | vx | reflexivity | ar | ar | wi_store |];
+  iApply (wp_raw_store_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H); [vx | vx | reflexivity | ar | ar | wi_store |];
   iNext; iIntros H.
 
 (** This tactic checks a read through a shared life token and returns that token. *)
 Ltac check_shared H :=
-  iApply (wp_check_read_dq with H);
+  iApply (wp_check_read_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [reflexivity | vx | first [left; reflexivity | right; reflexivity] | ar | ar | ar |];
   iNext; iIntros H.
 
 (** This tactic loads a byte whose ownership remains in the persistent context. *)
 Ltac load_byte_persistent H :=
-  iApply (wp_raw_load_sub_bytes_dq with H);
+  iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ar |];
   iNext; iIntros "_ _".
 
 (** This tactic checks a read whose life token remains in the persistent context. *)
 Ltac check_persistent H :=
-  iApply (wp_check_read_dq with H);
+  iApply (wp_check_read_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [reflexivity | vx | first [left; reflexivity | right; reflexivity] | ar | ar | ar |];
   iNext; iIntros "_".

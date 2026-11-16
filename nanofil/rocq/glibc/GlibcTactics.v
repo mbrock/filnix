@@ -298,7 +298,7 @@ Ltac memory_condition wrapper position proof :=
 
 (** This wrapper loads a pointer using fractional ownership of the cells and object lives. *)
 Tactic Notation "load_pointer_dq" constr(H) "by" tactic3(side) :=
-  iApply (wp_raw_load_pointer_dq with H);
+  iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [memory_condition "load_pointer_dq" 1 ltac:(reflexivity) |memory_condition "load_pointer_dq" 2 ltac:(vx)
     |memory_condition "load_pointer_dq" 3 ltac:(first [eassumption | left; reflexivity | right; reflexivity])
     |memory_condition "load_pointer_dq" 4 side |memory_condition "load_pointer_dq" 5 side
@@ -306,7 +306,7 @@ Tactic Notation "load_pointer_dq" constr(H) "by" tactic3(side) :=
 
 (** This wrapper stores a pointer and proves that the store preserves the world invariant. *)
 Tactic Notation "store_pointer" constr(H) "by" tactic3(side) "preserving" tactic3(world) :=
-  iApply (wp_raw_store_pointer with H);
+  iApply (wp_raw_store_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [memory_condition "store_pointer" 1 ltac:(vx) |memory_condition "store_pointer" 2 ltac:(vx)
     |memory_condition "store_pointer" 3 ltac:(reflexivity)
     |memory_condition "store_pointer" 4 side |memory_condition "store_pointer" 5 side
@@ -314,7 +314,7 @@ Tactic Notation "store_pointer" constr(H) "by" tactic3(side) "preserving" tactic
 
 (** This wrapper loads a pointer using full ownership of its cell and object lives. *)
 Tactic Notation "load_pointer" constr(H) "by" tactic3(side) :=
-  iApply (wp_raw_load_pointer with H);
+  iApply (wp_raw_load_pointer _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with H);
     [memory_condition "load_pointer" 1 ltac:(reflexivity) |memory_condition "load_pointer" 2 ltac:(vx)
     |memory_condition "load_pointer" 3 ltac:(reflexivity)
     |memory_condition "load_pointer" 4 side |memory_condition "load_pointer" 5 side
