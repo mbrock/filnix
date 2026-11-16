@@ -31,7 +31,7 @@ Proof. vm_compute. reflexivity. Qed.
     [[core subset]], every name unique ([valid]). Each object was
     valid alone; this is the link. *)
 Lemma hello_valid : valid hello_module = Some true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. vm_cast_no_check (eq_refl (Some true)). Qed.
 
 (** The function of the module named n, or an empty one. *)
 Definition hello_fn (n : string) : func :=
