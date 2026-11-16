@@ -14,7 +14,7 @@ def inventory(path):
             current = []
         else:
             current.append((word, line))
-    scopes, pending, proofs, unsupported = [], None, [], []
+    scopes, pending, proofs, unsupported, applications = [], None, [], [], []
     signatures = {}
     for cmd in commands:
         if not cmd:
@@ -48,6 +48,15 @@ def inventory(path):
             pending = None
         elif words[0] == 'Section':
             scopes.append({'kind': 'section', 'name': words[1]})
+        elif words[0] == 'Include':
+            applications.append({'name': '', 'body': words[1:],
+                                 'scope': [dict(s) for s in scopes if s['kind'] != 'section'],
+                                 'line': cmd[start][1]})
+        elif words[0] == 'Module' and ':=' in words:
+            j = 2 if words[1] in {'Import', 'Export', 'Type'} else 1
+            applications.append({'name': words[j], 'body': words[words.index(':=')+1:],
+                                 'scope': [dict(s) for s in scopes if s['kind'] != 'section'],
+                                 'line': cmd[start][1]})
         elif words[0] == 'Module' and ':=' not in words:
             kind = 'signature' if words[1] == 'Type' else 'module'
             j = 2 if words[1] in {'Type', 'Import', 'Export'} else 1
@@ -68,7 +77,7 @@ def inventory(path):
         elif words[0] == 'End' and scopes:
             scopes.pop()
     return {'file': str(path), 'proofs': proofs, 'unclassified_endings': unsupported,
-            'signatures': signatures}
+            'applications': applications, 'signatures': signatures}
 
 if __name__ == '__main__':
     paths = sorted(p for arg in sys.argv[1:] for p in Path(arg).rglob('*.v'))

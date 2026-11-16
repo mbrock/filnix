@@ -261,13 +261,19 @@ let
         passthru = {
           vo = abstractVo;
           rejected = abstractRejected;
-          inherit rejectTests abstractHello abstractAudit;
+          inherit
+            rejectTests
+            abstractHello
+            abstractAudit
+            applicationCoverage
+            ;
         };
       }
       ''
         test -f ${rejectTests}/passed
         test -f ${abstractHello}/passed
         mkdir $out
+        cp ${applicationCoverage}/coverage.json $out/application-coverage.json
         cat ${
           lib.concatMapStringsSep " " (n: "${abstractAudit.${n}}/summary") generalNames
         } >$out/audit-summary
@@ -279,6 +285,34 @@ let
         ) (lib.attrNames abstractRejected)}
         echo "@@glibc abstract general ${toString (builtins.length generalNames)} files compiled, ${toString (builtins.length concreteNames)} listed files rejected"
         touch $out/passed
+      '';
+  applicationCoverage =
+    pkgs.runCommand "nanofil-glibc-application-coverage"
+      {
+        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
+        OCAMLRUNPARAM = "o=200";
+      }
+      ''
+        mkdir -p sources/rocq full-abstract $out
+        cp -r ${../rocq/theories} sources/rocq/theories
+        cp -r ${glibc} sources/rocq/glibc
+        python3 ${../tests/assumption_scan.py} sources/rocq/theories sources/rocq/glibc
+        python3 ${../tests}/proof_inventory.py sources/rocq/theories sources/rocq/glibc >proof-inventory.json
+        python3 ${../tests}/application_inventory.py proof-inventory.json >application-inventory.json
+        ${lib.concatMapStrings (n: ''
+          mkdir -p full-abstract/glibc/${dirOf path.${n}}
+          ln -s ${abstractVo.${n}}/${n}.vo full-abstract/glibc/${path.${n}}.vo
+        '') generalNames}
+        ${lib.concatStrings (
+          lib.mapAttrsToList (n: output: ''
+            mkdir -p full-abstract/theories/${dirOf model.path.${n}}
+            ln -s ${output}/${n}.vo full-abstract/theories/${model.path.${n}}.vo
+          '') model.vo
+        )}
+        python3 ${watch} --label "glibc application assumptions" --warn-after 120 --timeout 900 -- \
+          python3 ${../tests}/query_applications.py "$PWD"
+        python3 ${../tests}/finish_coverage.py "$PWD"
+        cp application-coverage.json $out/coverage.json
       '';
   abstractAudit = lib.genAttrs generalNames (
     n:
