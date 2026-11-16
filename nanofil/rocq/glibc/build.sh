@@ -11,14 +11,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 theories=${1:-$here/../theories}
 cd "$here"
-if find . -name '*.v' -print0 | sort -z | xargs -0 awk '
-  skip == "" && /^Module Type [A-Za-z0-9_]/ { skip = $3; sub(/[ .(].*/, "", skip); next }
-  skip != "" { if ($0 ~ "^End " skip "\\.") skip = ""; next }
-  { print FILENAME ":" FNR ": " $0 }' |
-  grep -wE 'Admitted|Axiom|Axioms|Parameter|Conjecture'; then
-  echo "glibc: no Admitted and no axioms" >&2
-  exit 1
-fi
+python3 "$here/../../tests/assumption_scan.py" .
 for f in $(grep '\.v$' _RocqProject); do
   start=$(date +%s%N)
   rocq compile -R "$theories" Nanofil -R . Glibc "$f"

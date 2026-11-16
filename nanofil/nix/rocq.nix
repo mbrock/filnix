@@ -278,15 +278,8 @@ let
         python3 ${runtimeEvidence}/tests/runtime_signature_test.py ${runtimeEvidence}
         test -e ${kernelFlags}
         cd ${theorySrc}/rocq
-        # Axioms and parameters only inside Runtime.v's module type, which
-        # InterpRuntime discharges; no Admitted anywhere.
-        if grep -rnw Admitted theories ||
-          grep -rnwE 'Axiom|Axioms|Parameter|Conjecture' --exclude=Runtime.v theories ||
-          sed '/^Module Type Runtime\./,/^End Runtime\./d' theories/core/Runtime.v |
-          grep -nwE 'Axiom|Axioms|Parameter|Conjecture'; then
-          echo "rocq: no Admitted, and no Axiom outside the runtime module type" >&2
-          exit 1
-        fi
+        python3 ${../tests}/test_scan.py
+        python3 ${../tests/assumption_scan.py} theories
         # The per-file derivations import what rocq dep says each file needs.
         rocq dep -R theories Nanofil $(find theories -name '*.v' | sort) |
           awk 'function base(p,  a, k) { k = split(p, a, "/"); sub(/\..*/, "", a[k]); return a[k] }

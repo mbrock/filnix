@@ -117,13 +117,13 @@ let
         ${link objects n}
         cp ${source n} glibc/${path.${n}}.v
         # No Admitted, and no axiom outside a module type.
-        if awk 'skip == "" && /^Module Type [A-Za-z0-9_]/ { skip = $3; sub(/[ .(].*/, "", skip); next }
-          skip != "" { if ($0 ~ "^End " skip "\\.") skip = ""; next }
-          { print FILENAME ":" FNR ": " $0 }' glibc/${path.${n}}.v |
-          grep -wE 'Admitted|Axiom|Axioms|Parameter|Conjecture'; then
-          echo "glibc: no Admitted, and no axiom outside a module type" >&2
-          exit 1
-        fi
+        python3 ${../tests/assumption_scan.py} \
+          ${
+            lib.optionalString (
+              toString (source n) == toString abstractFix
+            ) "--abstract-fix glibc/${path.${n}}.v"
+          } \
+          glibc/${path.${n}}.v
         start=$(date +%s%N)
         # Keep the watchdog's status through capture, including failed compiles.
         if python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
@@ -232,6 +232,11 @@ let
     fileset = lib.fileset.unions [
       ../tests/rocq_reject.py
       ../tests/rocq_reject_test.py
+      ../tests/assumption_scan.py
+      ../tests/proof_inventory.py
+      ../tests/rocq_runtime_audit.py
+      ../tests/test_scan.py
+      ../tests/test_nested_audit.py
     ];
   };
   rejectTests =
@@ -243,6 +248,8 @@ let
         set -o pipefail
         mkdir $out
         python3 ${rejectTestSrc}/tests/rocq_reject_test.py -v 2>&1 | tee $out/log
+        python3 ${rejectTestSrc}/tests/test_scan.py
+        python3 ${rejectTestSrc}/tests/test_nested_audit.py
         touch $out/passed
       '';
   # The scheduled check nanofil-glibc-abstract: every general file
@@ -285,7 +292,7 @@ let
         ${link abstractVo n}
         ln -s ${abstractVo.${n}}/${n}.vo glibc/${path.${n}}.vo
         python3 ${watch} --label "glibc abstract audit ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
-          python3 ${../tests/rocq_runtime_audit.py} ${abstractVo.${n}}/${n}.glob $out
+          python3 ${rejectTestSrc}/tests/rocq_runtime_audit.py ${abstractSource n} ${abstractVo.${n}}/${n}.glob $out
       ''
   );
   abstractHello =
