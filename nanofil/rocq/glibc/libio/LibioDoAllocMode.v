@@ -14,7 +14,7 @@ From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode File
   LibioSetb LibioDoAllocBase.
 From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
-From Glibc Require Import GlibcSpec LibioSpecs.
+From Glibc Require Import GlibcSpec LibioSpecs GlibcSymCall.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -131,11 +131,7 @@ Proof.
   - step. step. norm. check "Hsl".
     iApply (wp_raw_load_bytes8 with "Hsl Hb2"); [reflexivity | vx | exact Hl2 | reflexivity | ar |].
     iNext. iIntros "Hsl Hb2".
-    call_spec.
-    { apply Z.mod_pos_bound; lia. }
-    iDestruct "Hpost" as %->.
-    iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-    step. brk Ej.
+    sym_go "" ([TAtom "L42"; TAtom "L43"]).
     + step. step. step. step. brk Ek.
       * step. branch. iApply (HL33 with "Hl Hfl Hb Hbe HM Hsl Hb3"); try libio_side.
         iNext. iIntros (bb sz Hbb) "Hl Hfl Hb Hbe Hbo HM".

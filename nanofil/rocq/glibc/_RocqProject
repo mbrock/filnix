@@ -982,4 +982,5 @@ getopt/GetoptLongSingle.v
 getopt/GetoptWOptSession.v
 GlibcTactics.v
 GlibcSym.v
+GlibcSymCall.v
 libio/LibioTactics.v
