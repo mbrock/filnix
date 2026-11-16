@@ -2034,7 +2034,8 @@ Local Ltac sym_cases H :=
     lazymatch type of H with
     | inl _ = inr _ => discriminate
     | None = Some _ => discriminate
-    | context [match ?x with _ => _ end] => let E := fresh "E" in destruct x eqn:E
+    | context [match ?x with _ => _ end] =>
+        first [is_var x; destruct x | let E := fresh "E" in destruct x eqn:E]
     end].
 
 (** The byte evaluator binds its result and retains all previously collected conditions. *)
@@ -2098,12 +2099,14 @@ Proof.
   all: try (apply Forall_app in Hobs as [_ Hobs]).
   all: repeat match goal with p : (_ * _)%type |- _ => destruct p end.
   all: iIntros "Hheap HK".
-  all: first [iApply (sym_check_rule with "Hheap") |
-    iApply (sym_renew_rule with "Hheap") |
-    iApply (sym_half_check_rule with "Hheap") |
-    iApply (sym_load_rule with "Hheap") |
-    iApply (sym_load_narrow_rule with "Hheap") |
-    iApply (sym_load_pointer_rule with "Hheap")]; try eassumption.
+  all: lazymatch type of Hclasses with
+    | op_arg_classes (Check _ _ _ _) _ = _ => iApply (sym_check_rule with "Hheap")
+    | op_arg_classes (Renew _ _ _ _) _ = _ => iApply (sym_renew_rule with "Hheap")
+    | op_arg_classes (HalfCheck _ _ _ _ _) _ = _ => iApply (sym_half_check_rule with "Hheap")
+    | op_arg_classes (RawLoad LdL _) _ = _ => iApply (sym_load_rule with "Hheap")
+    | op_arg_classes (RawLoad (LdNarrow _) _) _ = _ => iApply (sym_load_narrow_rule with "Hheap")
+    | op_arg_classes (RawLoadPointer _ _) _ = _ => iApply (sym_load_pointer_rule with "Hheap")
+    end; try eassumption.
   all: try (iNext; iIntros "Hheap"; iApply ("HK" with "Hheap"); iPureIntro;
     apply env_models_put; exact Henv).
   all: try eassumption.
