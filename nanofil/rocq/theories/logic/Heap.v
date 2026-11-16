@@ -266,13 +266,11 @@ Definition checked_piece (m : mem) (l : piece) (v : pval) : Prop :=
 Lemma checked_piece_sound m l v : checked_piece m l v -> agree_piece m l v.
 Proof.
   destruct l, v; cbn [checked_piece agree_piece]; try tauto.
-  - destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|tauto].
-    intros H. split; [unfold registered; congruence|].
-    intros reg' E' Hlive. rewrite E in E'. injection E' as <-. exact (H Hlive).
-  - destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|tauto].
-    intros H. split; [unfold registered; congruence|].
-    intros reg' E' Hlive. rewrite E in E'. injection E' as <-.
-    destruct (H Hlive) as (Ho & Hb & Ha). repeat split; try assumption. left. exact Ha.
+  all: destruct (object_region b (m_regions m)) as [reg|] eqn:E; [|tauto];
+    intros H; split; [unfold registered; congruence|];
+    intros reg' E' Hlive; rewrite E in E'; injection E' as <-.
+  - exact (H Hlive).
+  - destruct (H Hlive) as (Ho & Hb & Ha). repeat split; try assumption. left. exact Ha.
 Qed.
 
 (** Because [checked_piece] only inspects finite records and integer
@@ -391,8 +389,7 @@ Proof.
     rewrite store_bytes_other; [exact Hb|]. intros Hin'.
     destruct (Z.eq_dec b' b) as [->|Hne].
     + apply Hn. replace o' with (o + (o' - o)) by lia. apply Hks. lia.
-    + apply (live_apart m b reg b' reg' (b' + o') (b' + o') Hd Hl (conj E L)); [congruence|lia|lia|].
-      destruct Hl as [El Ll]. destruct (Hd b reg b' reg' (conj El Ll) (conj E L)); [congruence| |]; lia.
+    + destruct (Hd b reg b' reg' Hl (conj E L)); [congruence| |]; lia.
   - unfold registered, in_live, aux_holds in *. rewrite !regions_store_bytes aux_store_bytes. exact Ha.
 Qed.
 
@@ -521,13 +518,11 @@ Lemma ptr_store_ok m b reg a c x :
   frame_ok ([(PLive b, VLive reg); (PAux b 0, VAux c)] ++ cell b 0 x).*1 m (store_bytes (store_aux m a c) a 8 x).
 Proof.
   intros Hd Hl He ->. set (m1 := store_aux m b c).
-  assert (Hd1 : live_disjoint m1) by (apply (live_disjoint_regions m); [reflexivity|exact Hd]).
-  assert (Hl1 : live_at m1 b reg) by (apply (live_at_regions m); [reflexivity|exact Hl]).
-  destruct (cell_store_ok m1 b reg 0 b x Hd1 Hl1 ltac:(lia) ltac:(lia) ltac:(lia)) as [Hc Hf].
+  destruct (cell_store_ok m1 b reg 0 b x Hd Hl ltac:(lia) ltac:(lia) ltac:(lia)) as [Hc Hf].
   split; [reflexivity|]. split.
   - apply all_agree_app. split; [|exact Hc]. cbn [all_agree fst snd agree_piece].
     split; [|split; [|exact I]].
-    + apply (live_at_regions m); [reflexivity|exact Hl].
+    + exact Hl.
     + unfold registered, in_live, aux_holds. rewrite regions_store_bytes aux_store_bytes.
       unfold m1. rewrite regions_store_aux aux_store_aux. destruct Hl as [E L].
       split; [congruence|]. intros reg' E' _. rewrite E in E'. injection E' as <-.
