@@ -4020,23 +4020,10 @@ Proof.
   destruct Hrel as (Hfn & Hloc & Hd1 & Hd2 & Hat & Hfuel & Hreg & Hcallers & Henv & Hmem & Haux).
   unfold pstep in *. unfold tstep in Hp1; rewrite Hd1 in Hp1.
   destruct (fr_at (c_frame c1)) as [xs l | l from | l [|i rest] j] eqn:Eat1; try discriminate Hp1.
-  - destruct (c_fuel c1 =? 0); [destruct (step _ _); discriminate Hp1|].
-    destruct (find_block _ _); [|discriminate Hp1].
-    destruct (phis_tenv _ _ _); [|discriminate Hp1].
-    destruct (step _ _); discriminate Hp1.
-  - destruct j as [t | v t1 t2 | v | vs | | ]; cbn [jump_tstep] in Hp1; try discriminate Hp1.
-    + destruct (step _ _); discriminate Hp1.
-    + destruct (value_t _ W v) as [[tv| |]|]; try discriminate Hp1.
-      destruct (t_branch tv); [discriminate Hp1|].
-      destruct (step _ _); discriminate Hp1.
-    + destruct (fn_ret _); try discriminate Hp1.
-      destruct (value_t _ _ v); [|discriminate Hp1].
-      unfold return_tstep in Hp1; destruct (ps_callers ps) as [|[? r] ?];
-        [destruct (step _ _); discriminate Hp1 | destruct (returned_tenv _ _ _); [destruct (step _ _) |]; discriminate Hp1].
-    + destruct (fn_ret _); try discriminate Hp1.
-      unfold return_tstep in Hp1; destruct (ps_callers ps) as [|[? r] ?];
-        [destruct (step _ _); discriminate Hp1 | destruct (returned_tenv _ _ _); [destruct (step _ _) |]; discriminate Hp1].
-    + destruct (step _ _); discriminate Hp1.
+  - unfold tstep in Ht; rewrite Hd1, Eat1 in Ht.
+    clear -Ht. cases Ht.
+  - unfold tstep in Ht; rewrite Hd1, Eat1 in Ht.
+    clear -Ht. destruct j; unfold jump_tstep, return_tstep in Ht; cases Ht; discriminate Ht.
   - (* Exec l (i :: rest) j *)
     unfold tstep in Ht; rewrite Hd1, Eat1 in Ht.
     pose proof (inst_tstep_fresh_kind _ _ _ _ _ _ Ht) as Hkind.
