@@ -150,10 +150,7 @@ Proof.
   intros md f b i Hmd Hin Hb Hi Hr. destruct (inst_valid _ _ _ _ Hmd Hin Hb Hi) as [cls Hvi].
   destruct Hr as [(q & k & t & off & args & ->) | [(q & k & off & es & args & ->) |
                   [(wd & off & v & a & ->) | [(off & v & a & es & ->) | (q & k & t & off & args & ->)]]]].
-  - destruct k; destruct args as [|[n | n | g] [|v2 args]]; simpl in Hvi;
-      repeat match goal with H : (_ && _) = true |- _ => apply andb_true_iff in H as [? ?] end;
-      try discriminate; simpl; discriminate.
-  - destruct k; destruct args as [|[n | n | g] [|v2 args]]; simpl in Hvi;
+  1,2,5: destruct k; destruct args as [|[n | n | g] [|v2 args]]; simpl in Hvi;
       repeat match goal with H : (_ && _) = true |- _ => apply andb_true_iff in H as [? ?] end;
       try discriminate; simpl; discriminate.
   - simpl in Hvi. destruct (width_value_ok wd); [|discriminate Hvi].
@@ -161,9 +158,6 @@ Proof.
     simpl. discriminate.
   - simpl in Hvi. apply andb_true_iff in Hvi as [_ Hvi].
     destruct a as [n | n | g]; simpl in Hvi; try discriminate Hvi. simpl. discriminate.
-  - destruct k; destruct args as [|[n | n | g] args]; simpl in Hvi;
-      repeat match goal with H : (_ && _) = true |- _ => apply andb_true_iff in H as [? ?] end;
-      try discriminate; simpl; discriminate.
 Qed.
 
 (** ## Undoomed execution steps
@@ -180,8 +174,8 @@ Lemma undoomed_result : forall ge fr m i out od,
   fr_doomed fr = None -> doomed_result ge fr m i out = Some od ->
   fst od = out \/ exists e locals m', fst od = IContinue e locals m'.
 Proof.
-  intros ge fr m i out od Hd H. unfold doomed_result in H. rewrite Hd in H.
-  cases H; injection H as <-; simpl; first [left; reflexivity | right; do 3 eexists; reflexivity].
+  intros ge fr m i out od Hd H.
+  destruct (doomed_result_fresh _ _ _ _ _ _ Hd H) as [-> | (e & w & ->)]; simpl; eauto.
 Qed.
 
 (** When a function return finishes the entire program run, [return_step]
