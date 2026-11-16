@@ -22,6 +22,7 @@ on:
       - nanofil/nix/rocq-packages.nix
       - nanofil/tests/par.sh
       - nanofil/tests/watch.py
+      - nanofil/tests/kernel_flags_test.py
       - "nanofil/tests/filc/**"
       - "nanofil/tests/c/**"
       - nanofil/web/rocq/rocq_syntax.pl

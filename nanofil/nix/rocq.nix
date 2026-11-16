@@ -182,9 +182,45 @@ let
       ../docs/runtime-axioms.md
       ../tests/runtime_signature.py
       ../tests/runtime_signature_test.py
-      (lib.fileset.fileFilter (file: lib.hasPrefix "axiom-" file.name && file.hasExt "c") ../tests/c/prog)
+      (lib.fileset.fileFilter (
+        file: lib.hasPrefix "axiom-" file.name && file.hasExt "c"
+      ) ../tests/c/prog)
     ];
   };
+  kernelSources = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../rocq/scripts/kernel-flags.py
+      ../tests/kernel_flags_test.py
+      ../rocq/_RocqProject
+      (lib.fileset.fileFilter (
+        file:
+        file.hasExt "v"
+        || builtins.elem file.name [
+          "_RocqProject"
+          "_CoqProject"
+        ]
+      ) ../rocq/theories)
+      (lib.fileset.fileFilter (
+        file:
+        file.hasExt "v"
+        || builtins.elem file.name [
+          "_RocqProject"
+          "_CoqProject"
+        ]
+      ) ../rocq/glibc)
+    ];
+  };
+  kernelFlags =
+    pkgs.runCommand "nanofil-rocq-kernel-flags"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        python3 ${watch} --label "Rocq kernel flags" -- \
+          python3 ${kernelSources}/rocq/scripts/kernel-flags.py \
+          ${kernelSources}/rocq/theories ${kernelSources}/rocq/glibc ${kernelSources}/rocq/_RocqProject
+        python3 ${kernelSources}/tests/kernel_flags_test.py
+        touch $out
+      '';
   driver = pkgs.stdenv.mkDerivation {
     name = "nanofil-rocq-driver";
     dontUnpack = true;
@@ -240,6 +276,7 @@ let
       ''
         python3 ${runtimeEvidence}/tests/runtime_signature.py ${runtimeEvidence}
         python3 ${runtimeEvidence}/tests/runtime_signature_test.py ${runtimeEvidence}
+        test -e ${kernelFlags}
         cd ${theorySrc}/rocq
         # Axioms and parameters only inside Runtime.v's module type, which
         # InterpRuntime discharges; no Admitted anywhere.
@@ -434,7 +471,7 @@ pkgs.runCommand
   (if full then "nanofil-rocq-full-check" else "nanofil-rocq-check")
   {
     passthru = {
-      inherit model;
+      inherit model kernelFlags;
       inherit (model) parse;
       corpus = corpusCheck;
     };
