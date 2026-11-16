@@ -239,11 +239,8 @@ Lemma next_inv : forall ge md c c' s,
   step ge c = Next c' -> inv ge md (c, s) -> inv ge md (c', s).
 Proof.
   intros ge md c c' s Hge Hmd Hr Hs H.
-  destruct (fr_at (c_frame c)) as [xs l | l from | l [|i rest] j] eqn:Ha.
-  - exact (next_inv_snapshot _ _ _ _ _ _ _ Hge Hmd Hr Ha Hs H).
-  - exact (next_inv_enter _ _ _ _ _ _ _ Hge Hmd Hr Ha Hs H).
-  - exact (next_inv_jump _ _ _ _ _ _ _ Hge Hmd Hr Ha Hs H).
-  - exact (next_inv_inst _ _ _ _ _ _ _ _ _ Hge Hmd Hr Ha Hs H).
+  destruct (fr_at (c_frame c)) as [xs l | l from | l [|i rest] j] eqn:Ha;
+    eauto using next_inv_snapshot, next_inv_enter, next_inv_jump, next_inv_inst.
 Qed.
 
 (** The pass relies on no fact across an allocation, of a heap object
@@ -369,10 +366,8 @@ Theorem mstep_inv : forall ge md st st',
   ready_state st -> mstep ge st st' -> inv ge md st -> inv ge md st'.
 Proof.
   intros ge md st st' Hge Hmd Hr Hs H.
-  destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' Hd Hact].
-  - eapply next_inv; eauto.
-  - eapply alloc_inv; eauto.
-  - eapply safepoint_inv; eauto.
+  destruct Hs as [c c' s E | c q k s base s' E He Hal | c s s' m' Hd Hact];
+    eauto using next_inv, alloc_inv, safepoint_inv.
 Qed.
 
 (** From a ready start where it holds, [inv] holds in every state a
