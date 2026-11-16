@@ -2229,12 +2229,9 @@ Theorem pstep_ct_sound : forall pol ge c1 c2 ps c1' ps',
   exists c2', pstep pol ge c2 ps = PNext c2' ps' /\ ct_rel c1' c2' ps'.
 Proof.
   intros pol ge c1 c2 ps c1' ps' Hcb Hfree Hrel Hp1.
-  pose proof (pstep_erases pol ge c1 ps) as Hstep.
-  rewrite Hp1 in Hstep.
   apply pstep_next_iff in Hp1.
   setoid_rewrite pstep_next_iff.
   destruct Hrel as (Hfn & Hloc & Hd1 & Hd2 & Hat & Hfuel & Hreg & Hcallers & Henv & Hmem & Haux).
-  unfold pstep in *.
   unfold tstep in Hp1. rewrite Hd1 in Hp1.
   destruct (fr_at (c_frame c1)) as [xs l | l from | l [|i rest] j] eqn:Eat1.
   - discriminate Hp1.
@@ -2343,7 +2340,7 @@ Proof.
     destruct i as [d k o args | d o args lw | w off v av | off v av es | r cl args | r cl args | x sz | file line | tq];
       cbn [inst_tstep] in Hp1; try discriminate Hp1.
     + (* Let *)
-      clear Hstep Hfree.
+      clear Hfree.
       destruct (is_zero_idiom o k args) eqn:Ezero.
       * unfold let_tstep in Hp1; rewrite Ezero in Hp1.
         unfold is_zero_idiom in Ezero; apply andb_true_iff in Ezero as [Hint Exy].
@@ -2413,8 +2410,7 @@ Proof.
              destruct (map2_option (value_x ge (fr_env (c_frame c1))) cls args) as [xs1|] eqn:Exs1; [|discriminate Hp1].
              cbn beta iota zeta in Hp1.
              destruct (op_res o k xs1 (c_mem c1)) as [[[r1| |] m1'| |]|] eqn:Eop1;
-               try (try (rewrite pure_scalar_doomed in Hp1 by assumption); cbn in Hp1; discriminate Hp1).
-             cbn in Hp1.
+               cbn in Hp1; try discriminate Hp1.
              injection Hp1 as <- <-.
              destruct (scalar_let_step_rel pol ge _ _ (c_mem c1) (c_mem c2) ps d k o args cls wts ts xs1 r1 m1'
                          Epure HkP HkA HkF
@@ -3018,8 +3014,7 @@ Proof.
       destruct cl as [| |fn]; try discriminate Hp1.
       destruct (map_option (arg_t (ps_tenv ps)) args) as [wts|] eqn:Ewts; [|discriminate Hp1].
       cbn [inst_step] in Hp1.
-      unfold step in Hstep; rewrite Eat1, Hd1 in Hstep; cbn [inst_step] in Hstep.
-      destruct (map_option (arg_x ge (fr_env (c_frame c1))) args) as [xs1|] eqn:Exs1; [|discriminate Hstep].
+      destruct (map_option (arg_x ge (fr_env (c_frame c1))) args) as [xs1|] eqn:Exs1; [|discriminate Hp1].
       destruct (call_args_rel ge _ _ _ args xs1 wts Henv Exs1 Ewts) as (xs2 & Exs2 & Hxlen & Hxfor).
       cbn in Hp1.
       destruct (find_fn ge fn) as [[g | outfn]|] eqn:Efn; try discriminate Hp1.
