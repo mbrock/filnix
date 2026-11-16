@@ -1,4 +1,4 @@
-(** Main converts the greeting into wide characters and prints it.
+(** Main borrows the greeting and allocates storage for its wide-character conversion.
     A failed conversion reports errno and exits; a successful conversion
     prints the buffer, frees it, and exits normally. *)
 
@@ -16,12 +16,10 @@ Open Scope list_scope.
 
 From Nanofil Require Import HelloJoinInterface HelloJoinFacts HelloMainBase HelloMainFacts.
 Import MainDefinitions MainFacts JoinDefinitions.
-From Nanofil Require Import HelloJoinGreeting.
 Module HelloJoinFinish (R : Runtime) (B : HelloJoinBase R).
 Import B B.HM B.HM.LG0 B.HM.LG0.L B.HM.HLo.HL B.HM.HLo.HL.ML B.HM.HLo.HL.ML.CSL.
 Local Hint Opaque pts bytes auxes live pcell main_fn xmalloc_fn
   HP.HN.literals HP.HN.name_cells : typeclass_instances.
-Include HelloJoinGreeting R B.
 Section join.
 Context (registry : name -> option (contract libc_world))
   (wi : mem -> libc_world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
@@ -410,9 +408,82 @@ Local Ltac jn_enter blk :=
   [abstract (vm_cast_no_check (eq_refl (Some blk))) | word_premise |]; iNext;
   cbn [b_insts b_jump main_block xmalloc_block hblk].
 
-Local Notation greeting_string := (greeting_string av sargs Hargs).
-Local Notation xmalloc_spec := (xmalloc_spec registry wi ge Hlinked Kalloc sargs Hmalloc).
-Local Notation heap_req_covers := (heap_req_covers sargs).
+(** xmalloc(n) returns fresh storage for n bytes.
+    Allocation failure ends execution rather than returning null, so this call cannot reach abort. *)
+Lemma xmalloc_spec n Φ :
+  0 <= n < 2 ^ 64 ->
+  ▷ (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
+       obj base (heap_req 16 n) -∗ Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
+  WP (ERun (invocation xmalloc_fn [WInt n]) : jexpr) {{ Φ }}.
+Proof.
+  intros Hn. iIntros "HK".
+  change (invocation xmalloc_fn [WInt n]) with
+    (mkFrame xmalloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)).
+  jn_enter (xmalloc_block "start").
+  iApply (wp_malloc registry wi ge _ _ _ _ _ _ _ _ n);
+    [exact Hmalloc | apply linked_outside; first [exact Hlinked | reflexivity] |
+     apply linked_unbound; first [exact Hlinked | reflexivity] |
+     cbn; rewrite Z.mod_small; [reflexivity | exact Hn] | exact Hn |
+     intros m wd h base Hf Hw; exact (Kalloc _ _ _ _ _ Hf Hw) |].
+  iNext. iIntros (base (Hb0 & Hb16 & Hbend & _)) "Hobj". gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  iApply wp_let; [reflexivity | reflexivity | word_premise | intros ?m; word_premise |]. iNext. gen_env.
+  (* The base is not null: on to the join, not to xalloc_die. *)
+  assert (Hq : 0 <= req_extent (heap_req 16 n)).
+  { cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos |]; lia. }
+  assert (Eb : (base mod 2 ^ 64 =? 0 mod 2 ^ 64) = false).
+  { apply Z.eqb_neq. rewrite Zmod_0_l. rewrite (Z.mod_small base); lia. }
+  cbn [ptr_addr]. rewrite Eb.
+  iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
+  jn_enter (xmalloc_block "iw_1.join").
+  iApply wp_ret; [reflexivity | reflexivity |]. iNext.
+  iApply ("HK" with "[%] Hobj"). auto.
+Qed.
+
+(** Borrowing one argument string preserves ownership of the remaining arguments. *)
+Lemma arg_string_split args s :
+  In s args -> string_ok (arg_ptr s) (arg_base s) (arg_region s) (arg_text s) ->
+  pts (flat_map arg_ps args) -∗
+  string (arg_ptr s) (arg_base s) (arg_region s) (arg_text s) ∗
+  (string (arg_ptr s) (arg_base s) (arg_region s) (arg_text s) -∗ pts (flat_map arg_ps args)).
+Proof.
+  intros Hin Hok. destruct (in_split _ _ Hin) as (l1 & l2 & ->).
+  rewrite flat_map_app. cbn [flat_map]. rewrite !pts_app.
+  iIntros "(H1 & Hs & H2)". iSplitL "Hs"; [iSplit; [iPureIntro; exact Hok | iExact "Hs"]|].
+  iIntros "[_ Hs]". iFrame.
+Qed.
+
+(** The greeting b4's cell holds in the loop is a string main owns: the
+    default literal, the traditional one, or a suffix of an argument
+    that getopt lent as optarg. It is given back after use. *)
+Lemma greeting_string g rg rt :
+  HM.greeting_ok av sargs g ->
+  pts (flat_map arg_ps sargs) -∗ string greeting_ptr 70000 rg greeting_bytes -∗
+  string traditional_ptr 69808 rt traditional_bytes -∗
+  ∃ b reg bs, string g b reg bs ∗
+    (string g b reg bs -∗ pts (flat_map arg_ps sargs) ∗ string greeting_ptr 70000 rg greeting_bytes ∗
+       string traditional_ptr 69808 rt traditional_bytes).
+Proof.
+  intros [-> | [-> | [(q & text & off & Hin & Hoff & ->) _]]]; iIntros "Ha Hg Ht".
+  - iExists _, _, _. iFrame "Hg". iIntros "Hg". iFrame.
+  - iExists _, _, _. iFrame "Ht". iIntros "Ht". iFrame.
+  - cbn [hello_input getopt_arguments] in Hin. apply in_map_iff in Hin as (s & E & Hs).
+    injection E as <- <-.
+    pose proof (proj1 (List.Forall_forall _ _) Hargs s Hs) as Hok.
+    iDestruct (arg_string_split sargs s Hs Hok with "Ha") as "[Hs Hback]".
+    iDestruct (string_suffix _ _ _ _ (Z.to_nat off) with "Hs") as "[Hsuf Hsback]"; [lia|].
+    rewrite Z2Nat.id; [|lia].
+    iExists _, _, _. iFrame "Hsuf". iIntros "Hsuf". iFrame "Hg Ht".
+    iApply "Hback". iApply "Hsback". iExact "Hsuf".
+Qed.
+
+(** A heap request's extent covers its size. *)
+Lemma heap_req_covers n : 0 <= n -> n <= req_extent (heap_req 16 n).
+Proof.
+  intros Hn. cbn. pose proof (Z.div_mod (n + 15) 16 ltac:(lia)).
+  pose proof (Z.mod_pos_bound (n + 15) 16 ltac:(lia)). lia.
+Qed.
+
 (** Main loads and measures the greeting after option parsing finishes.
     It allocates space for the converted characters and their terminator, then converts the string into that buffer. *)
 Lemma main_join b4 b6 (new : Z -> ptr * list Z) c' rg rt rc rp xe ce Φ :
@@ -426,7 +497,7 @@ Lemma main_join b4 b6 (new : Z -> ptr * list Z) c' rg rt rc rp xe ce Φ :
   HM.operand_exit registry wi ge av ar sargs b4 b6 "iw_1.join"%string "iw_1.L60"%string
     (fun lose i => lose = 0 /\ i = Z.of_nat (length sargs)) Φ.
 Proof using registry wi SafepointStable0 ge Hlinked Kalloc nb sb rep requests Hsetlocale Hlent Kpstore av ar sargs Hargs exit_spec Hexit Hexit_abi Hexit_pre Hexit_post diag_spec Hdiag_reg valid audit Hmbrtowc Hvalid0 Hbytes errno Hlibc Haudit Kmbrtowc Hset_query_pre Hset_query Hstrlen Hmemcpy Hstrcmp Kcopy Kbyte Kstore Hmemchr Herrno_reg Hmalloc eb eo er Herrno_at Herrno_range join_ps Hjoin_lookup Herror_abi Herror_pre Herror_fatal Herrno_cell wprintf_spec Hwprintf_reg Hwprintf_ret Hwprintf_abi Hwprintf_pre Hwprintf_frame Hfree Kfree hlc Σ invGS_gen0 gen_heapGS0.
-  clear - registry wi SafepointStable0 ge Hlinked Kalloc nb sb rep requests Hsetlocale Hlent Kpstore av ar sargs Hargs exit_spec Hexit Hexit_abi Hexit_pre Hexit_post diag_spec Hdiag_reg valid audit Hmbrtowc Hvalid0 Hbytes errno Hlibc Haudit Kmbrtowc Hset_query_pre Hset_query Hstrlen Hmemcpy Hstrcmp Kcopy Kbyte Kstore Hmemchr Herrno_reg Hmalloc eb eo er Herrno_at Herrno_range join_ps Hjoin_lookup Herror_abi Herror_pre Herror_fatal Herrno_cell wprintf_spec Hwprintf_reg Hwprintf_ret Hwprintf_abi Hwprintf_pre Hwprintf_frame Hfree Kfree hlc Σ invGS_gen0 gen_heapGS0.
+  clear - section_join_irisGS registry wi SafepointStable0 ge Hlinked Kalloc nb sb rep requests Hsetlocale Hlent Kpstore av ar sargs Hargs exit_spec Hexit Hexit_abi Hexit_pre Hexit_post diag_spec Hdiag_reg valid audit Hmbrtowc Hvalid0 Hbytes errno Hlibc Haudit Kmbrtowc Hset_query_pre Hset_query Hstrlen Hmemcpy Hstrcmp Kcopy Kbyte Kstore Hmemchr Herrno_reg Hmalloc eb eo er Herrno_at Herrno_range join_ps Hjoin_lookup Herror_abi Herror_pre Herror_fatal Herrno_cell wprintf_spec Hwprintf_reg Hwprintf_ret Hwprintf_abi Hwprintf_pre Hwprintf_frame Hfree Kfree hlc Σ invGS_gen0 gen_heapGS0.
   intros (Hb60 & Hb616 & Hb648) Lxe Lce.
   iIntros "#Hlent Hcod Hl6 Hy6 Hc6 Hcs Hps Herr Hjs Hgr Htr". rewrite /HM.operand_exit.
   iIntros (e ps cs a i g lose (Hf & Hpr & Hlose & Hi)) "(_ & Has & _ & Hl4 & Hp4)".

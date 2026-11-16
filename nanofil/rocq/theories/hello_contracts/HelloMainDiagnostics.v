@@ -13,11 +13,10 @@ Open Scope Z_scope.
 Open Scope list_scope.
 Import HelloMainBase.MainDefinitions MainFacts.
 
-From Nanofil Require Import HelloMainVersion HelloMainOptions HelloMainOperands HelloMainHelp.
+From Nanofil Require Import HelloMainOptions HelloMainOperands HelloMainHelp.
 Module HelloMainDiagnostics (R : Runtime) (B : HelloMainInterface.HelloMainBase R).
 Import B B.LG0 B.LG0.L B.HLo.HL B.HLo.HL.ML B.HLo.HL.ML.CSL.
 Include HelloMainOptions.HelloMainOptions R B.
-Include HelloMainVersion.HelloMainVersion R B.
 Include HelloMainOperands.HelloMainOperands R B.
 Include HelloMainHelp.HelloMainHelp R B.
 Section main.
