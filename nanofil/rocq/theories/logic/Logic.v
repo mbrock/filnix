@@ -1290,9 +1290,9 @@ Lemma wp_raw_store_byte f e ls l off v a rest j p b reg o x y Φ :
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Wb off v a :: rest) j)) : lexpr) {{ Φ }}.
 Proof.
   intros Hv Ha Hp Hoff Hwi. iIntros "Hl Hc HK".
-  iApply (wp_write [(PLive b, VLive reg); (PByte b o, VByte x)] [(PLive b, VLive reg); (PByte b o, VByte (y mod 256))]
+  iApply (wp_write ([(PLive b, VLive reg)] ++ [(PByte b o, VByte x)]) ([(PLive b, VLive reg)] ++ [(PByte b o, VByte (y mod 256))])
             _ _ [] (fun m => store_bytes m (b + o) 1 y) with "[Hl Hc] [HK]");
-    [reflexivity | | exact Hwi | rewrite /live /ibyte /pts !big_sepL_cons; iDestruct "Hl" as "[$ _]"; iFrame |].
+    [reflexivity | | exact Hwi | rewrite pts_app; iFrame |].
   - intros m fuel (Hf & Hd & _). cbn [all_agree agree_piece fst snd] in Hf.
     destruct Hf as [Hlv [[Hreg Hin] _]]. destruct (Hin reg (proj1 Hlv) (proj2 Hlv)) as (Ho & He & _).
     split; [|split; [reflexivity|split; [|split]]].
@@ -1310,8 +1310,7 @@ Proof.
         exfalso. apply andb_true_iff in Hr as [H1 H2]. apply Z.leb_le in H1. apply Z.ltb_lt in H2.
         apply H; [lia|]. replace (a' - b) with o by lia. cbn. right. left.
       * intros a' _. reflexivity.
-  - iNext. iIntros "H". rewrite /live /ibyte /pts !big_sepL_cons. iDestruct "H" as "(Hl & Hc & _)".
-    iApply ("HK" with "[Hl] [Hc]"); iFrame; done.
+  - iNext. iIntros "H". rewrite pts_app. iDestruct "H" as "[Hl Hc]". iApply ("HK" with "Hl Hc").
 Qed.
 
 (** A successful heap allocation returns ownership of the fresh object
