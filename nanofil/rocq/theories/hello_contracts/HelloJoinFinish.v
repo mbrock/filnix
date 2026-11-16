@@ -17,7 +17,7 @@ Open Scope list_scope.
 From Nanofil Require Import HelloJoinInterface HelloJoinFacts HelloMainBase HelloMainFacts.
 Import MainDefinitions MainFacts JoinDefinitions.
 Module HelloJoinFinish (R : Runtime) (B : HelloJoinBase R).
-Import B B.HM B.HM.LG0 B.HM.LG0.L B.HM.HLo.HL B.HM.HLo.HL.ML B.HM.HLo.HL.ML.CSL.
+Import B B.LG0 B.LG0.L B.HLo.HL B.HLo.HL.ML B.HLo.HL.ML.CSL.
 Local Hint Opaque pts bytes auxes live pcell main_fn xmalloc_fn
   HP.HN.literals HP.HN.name_cells : typeclass_instances.
 Section join.
@@ -457,7 +457,7 @@ Qed.
     default literal, the traditional one, or a suffix of an argument
     that getopt lent as optarg. It is given back after use. *)
 Lemma greeting_string g rg rt :
-  HM.greeting_ok av sargs g ->
+  greeting_ok av sargs g ->
   pts (flat_map arg_ps sargs) -∗ string greeting_ptr 70000 rg greeting_bytes -∗
   string traditional_ptr 69808 rt traditional_bytes -∗
   ∃ b reg bs, string g b reg bs ∗
@@ -487,19 +487,19 @@ Qed.
 (** Main loads and measures the greeting after option parsing finishes.
     It allocates space for the converted characters and their terminator, then converts the string into that buffer. *)
 Lemma main_join b4 b6 (new : Z -> ptr * list Z) c' rg rt rc rp xe ce Φ :
-  HM.fresh_ok b6 -> length xe = 4%nat -> length ce = 4%nat ->
+  fresh_ok b6 -> length xe = 4%nat -> length ce = 4%nat ->
   ([∗ list] k ∈ locale_categories, LL.lent k (new k).1 (new k).2) -∗ pts (codec_ps c') -∗
   live b6 (mkRegion b6 (b6 + 16) Heap Live) -∗ bytes b6 0 (replicate 8 0) -∗
   auxes b6 0 (clear_slots 0 (replicate 8 CNone)) -∗
   string c_ptr 65824 rc c_bytes -∗ string posix_ptr 65856 rp posix_bytes -∗
   pts (block_ps eb er eo xe ce) -∗ pts join_ps -∗
   string greeting_ptr 70000 rg greeting_bytes -∗ string traditional_ptr 69808 rt traditional_bytes -∗
-  HM.operand_exit registry wi ge av ar sargs b4 b6 "iw_1.join"%string "iw_1.L60"%string
+  operand_exit registry wi ge av ar sargs b4 b6 "iw_1.join"%string "iw_1.L60"%string
     (fun lose i => lose = 0 /\ i = Z.of_nat (length sargs)) Φ.
 Proof using registry wi SafepointStable0 ge Hlinked Kalloc nb sb rep requests Hsetlocale Hlent Kpstore av ar sargs Hargs exit_spec Hexit Hexit_abi Hexit_pre Hexit_post diag_spec Hdiag_reg valid audit Hmbrtowc Hvalid0 Hbytes errno Hlibc Haudit Kmbrtowc Hset_query_pre Hset_query Hstrlen Hmemcpy Hstrcmp Kcopy Kbyte Kstore Hmemchr Herrno_reg Hmalloc eb eo er Herrno_at Herrno_range join_ps Hjoin_lookup Herror_abi Herror_pre Herror_fatal Herrno_cell wprintf_spec Hwprintf_reg Hwprintf_ret Hwprintf_abi Hwprintf_pre Hwprintf_frame Hfree Kfree hlc Σ invGS_gen0 gen_heapGS0.
   clear - section_join_irisGS registry wi SafepointStable0 ge Hlinked Kalloc nb sb rep requests Hsetlocale Hlent Kpstore av ar sargs Hargs exit_spec Hexit Hexit_abi Hexit_pre Hexit_post diag_spec Hdiag_reg valid audit Hmbrtowc Hvalid0 Hbytes errno Hlibc Haudit Kmbrtowc Hset_query_pre Hset_query Hstrlen Hmemcpy Hstrcmp Kcopy Kbyte Kstore Hmemchr Herrno_reg Hmalloc eb eo er Herrno_at Herrno_range join_ps Hjoin_lookup Herror_abi Herror_pre Herror_fatal Herrno_cell wprintf_spec Hwprintf_reg Hwprintf_ret Hwprintf_abi Hwprintf_pre Hwprintf_frame Hfree Kfree hlc Σ invGS_gen0 gen_heapGS0.
   intros (Hb60 & Hb616 & Hb648) Lxe Lce.
-  iIntros "#Hlent Hcod Hl6 Hy6 Hc6 Hcs Hps Herr Hjs Hgr Htr". rewrite /HM.operand_exit.
+  iIntros "#Hlent Hcod Hl6 Hy6 Hc6 Hcs Hps Herr Hjs Hgr Htr". rewrite /operand_exit.
   iIntros (e ps cs a i g lose (Hf & Hpr & Hlose & Hi)) "(_ & Has & _ & Hl4 & Hp4)".
   pose proof Hf as ((H0 & H2 & H4 & H6 & H11) & Hc1 & (Hb40 & Hb416 & Hb448) & Ho & Hc & Hix & Hg).
   iDestruct (greeting_string g rg rt Hg with "Has Hgr Htr") as (gb greg gbs) "[Hgs _]".

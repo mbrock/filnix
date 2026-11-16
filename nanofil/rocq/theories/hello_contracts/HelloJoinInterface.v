@@ -16,7 +16,6 @@ Open Scope list_scope.
 From Nanofil Require Import HelloMainBase HelloMainFacts.
 Import MainDefinitions MainFacts.
 Module Type HelloJoinBase (R : Runtime).
-Module HM.
 Declare Module LG0 : LogicSig R.
 Import LG0 LG0.L.
 Module HLo.
@@ -319,8 +318,7 @@ Arguments main_to_join {hlc Σ invGS_gen0 gen_heapGS0} (registry wi)%_function_s
   diag_spec Hdiag_reg Hdiag_ret (Hdiag_abi Hdiag_pre Hdiag_post)%_function_scope s0 srest%_list_scope
   r3 r4 x0 x1 y0 old%_function_scope c0 r80 cs0%_list_scope a (ix b61)%_Z_scope r61 Φ%_function_scope
   _ _ _.
-End HM.
-Import HM HM.LG0 HM.LG0.L HM.HLo.HL HM.HLo.HL.ML HM.HLo.HL.ML.CSL.
+Import LG0 LG0.L HLo.HL HLo.HL.ML HLo.HL.ML.CSL.
 Module HC.
 Module LB.
 Definition errno_contract (rep : mem -> libc_world -> Prop) : contract libc_world :=

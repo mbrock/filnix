@@ -17,7 +17,7 @@ From Nanofil Require Import HelloJoinInterface HelloJoinFacts HelloMainBase Hell
 Import MainDefinitions MainFacts JoinDefinitions.
 From Nanofil Require Import HelloJoinFinish.
 Module HelloJoinComplete (R : Runtime) (B : HelloJoinBase R).
-Import B B.HM B.HM.LG0 B.HM.LG0.L B.HM.HLo.HL B.HM.HLo.HL.ML B.HM.HLo.HL.ML.CSL.
+Import B B.LG0 B.LG0.L B.HLo.HL B.HLo.HL.ML B.HLo.HL.ML.CSL.
 Local Hint Opaque pts bytes auxes live pcell main_fn xmalloc_fn
   HP.HN.literals HP.HN.name_cells : typeclass_instances.
 Include HelloJoinFinish R B.
@@ -426,7 +426,7 @@ Lemma main_full s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix b61 r61 rg rt rc rp 
 Proof using registry wi SafepointStable0 ge Hlinked Kalloc Hmemset Kmemset Hstrrchr Hmemcmp Hstrncmp pn nreg sreg nb sb Hnb Hsb Hpn_end Hnb_cell Hsb_cell Kpn Knb Ksb rep requests Hsetlocale Hlent Hset_pre Kset Kpstore atexit_spec Hatexit Hatexit_ret Hatexit_abi Hatexit_pre Katexit av ar sargs Hav Hargc Hargs initialized running grequests transition Hgetopt optarg_cell optind_cell Hgetopt_wi Htable Hgetopt_env Hgetopt_apart Kgetopt Hoptarg_g Hcells Hoptind_g exit_spec Hexit Hexit_abi Hexit_pre Hexit_post stdout_cell stream Hstdout_g wi_stdout version_ps author_reg Hauthor_live version_spec Hversion_reg Hversion_ret Hversion_abi Hversion_pre Hversion_frame Kversion_alloc Kversion_store Kversion_cursor Kversion_snapshot stderr_cell errstream Hstderr_g wi_stderr help_ps output_spec Hhelp_reg Hhelp_ret Hhelp_abi Hhelp_pre Hhelp_frame Houtput_reg Houtput_ret Houtput_abi Houtput_pre Houtput_frame diag_spec Hdiag_reg Hdiag_ret Hdiag_abi Hdiag_pre Hdiag_post valid audit Hmbrtowc Hvalid0 Hbytes errno Hlibc Haudit Kmbrtowc Hset_query_pre Hset_query Hstrlen Hmemcpy Hstrcmp Kcopy Kbyte Kstore Hmemchr Herrno_reg Hmalloc eb eo er Herrno_at Herrno_range join_ps Hjoin_lookup Herror_abi Herror_pre Herror_fatal Herrno_cell wprintf_spec Hwprintf_reg Hwprintf_ret Hwprintf_abi Hwprintf_pre Hwprintf_frame Hfree Kfree hlc Σ invGS_gen0 gen_heapGS0.
   intros Hhd Hcs Hix Lxe Lce.
   iIntros "Hb Has Ht Hlit Hcells Hks Hcod Hs80 Hv Hh H61 Hc Hp Herr Hjs Hgr Htr".
-  pose proof (HM.main_to_join registry wi ge) as Hmain.
+  pose proof (main_to_join registry wi ge) as Hmain.
   iApply (Hmain with "Hb Has Ht Hlit Hcells Hks Hcod Hs80 Hv Hh H61").
   all: try eassumption.
   (* --help's query of LC_MESSAGES, from the general query premise. *)

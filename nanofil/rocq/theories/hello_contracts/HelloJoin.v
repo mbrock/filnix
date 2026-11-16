@@ -17,10 +17,10 @@ Open Scope list_scope.
 From Nanofil Require Import HelloJoinFacts HelloJoinComplete.
 Include JoinDefinitions.
 Module HelloJoin (R : Runtime).
-Module HM. Include HelloMain R. End HM.
-Module HC. Include HelloConvOn R HM.LG0. End HC.
-Module HCl. Include HelloCloseOn R HM.LG0. End HCl.
-Import HM.LG0 HM.LG0.L.
+Include HelloMain R.
+Module HC. Include HelloConvOn R LG0. End HC.
+Module HCl. Include HelloCloseOn R LG0. End HCl.
+Import LG0 LG0.L.
 Local Instance join_irisGS (registry : name -> option (contract libc_world))
   (wi : mem -> libc_world -> gmap piece pval -> Prop) (ge : genv)
   {hlc Σ} `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
