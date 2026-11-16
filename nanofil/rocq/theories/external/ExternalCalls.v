@@ -501,24 +501,15 @@ Lemma bounded_prefix_readable : forall m p n k count,
   0 <= count <= k + (if k <? n then 1 else 0) -> readable_bytes m p count.
 Proof.
   intros m p n k count (Hn & Hk & Hlive & Ha & Hbytes & Hnul) Hcount.
-  assert (Hsmall : count <= n).
+  assert (Hextent : 0 <= k + (if k <? n then 1 else 0) <= n).
   { destruct (k <? n) eqn:E; [apply Z.ltb_lt in E|apply Z.ltb_ge in E]; lia. }
-  split; [lia|]. split; [exact Hlive|]. split.
-  - destruct Hlive as (base & reg & [Hcap | Hcap] & Hreg & _);
-      unfold access_res in *; rewrite Hcap in *; cbn in *; rewrite Hreg in *.
-    all: destruct ((base <=? ptr_addr p) &&
-      (ptr_addr p + (k + (if k <? n then 1 else 0)) <=? r_end reg)) eqn:E;
-      [|discriminate].
-    all: apply andb_true_iff in E; destruct E as [Hlo Hhi];
-      apply Z.leb_le in Hlo; apply Z.leb_le in Hhi.
-    all: assert (E : (base <=? ptr_addr p) && (ptr_addr p + count <=? r_end reg) = true)
-      by (apply andb_true_iff; split; apply Z.leb_le; lia).
-    all: rewrite E; exact Ha.
-  - intros i Hi. destruct (Z_lt_dec i k).
-    + specialize (Hbytes i ltac:(lia)). lia.
-    + assert (Hiend : i = k /\ k < n).
-      { destruct (k <? n) eqn:E; [apply Z.ltb_lt in E|apply Z.ltb_ge in E]; lia. }
-      destruct Hiend as [-> Hkn]. rewrite Hnul by exact Hkn. lia.
+  eapply readable_bytes_prefix; [|exact Hcount].
+  split; [lia|]. split; [exact Hlive|]. split; [exact Ha|].
+  intros i Hi. destruct (Z_lt_dec i k).
+  - specialize (Hbytes i ltac:(lia)). lia.
+  - assert (Hiend : i = k /\ k < n).
+    { destruct (k <? n) eqn:E; [apply Z.ltb_lt in E|apply Z.ltb_ge in E]; lia. }
+    destruct Hiend as [-> Hkn]. rewrite Hnul by exact Hkn. lia.
 Qed.
 
 (** Since a NUL-terminated string of length k always has k < 2^64 - 1,
