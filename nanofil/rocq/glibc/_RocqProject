@@ -201,6 +201,7 @@ LenLogic.v
 SayLogic.v
 getopt/GetoptModule.v
 hi_atexit/HiAtexitModule.v
+hi_atexit/HiAtexitStartRun.v
 zsys/HiStartImage.v
 startup/StartCode.v
 startup/StartLogic.v
