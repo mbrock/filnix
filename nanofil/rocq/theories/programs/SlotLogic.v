@@ -181,7 +181,7 @@ Qed.
 (** This functor constructs the Iris safety proof for `slot.c` over any
     [[runtime]] R. *)
 Module SlotLogic (R : Runtime).
-Module ML := LibcMemLogic R.
+Module ML. Include LibcMemLogic R. End ML.
 Module SL := ML.SL.
 Module LG := ML.LG.
 Module L := LG.L.
@@ -190,6 +190,9 @@ Import L LG SL ML.
 (** The global environment links `slot.c`'s symbols with R's `free`
     handler. *)
 Definition slot_ge : genv := mkGenv slot_module slot_globals R.free.
+
+Local Hint Opaque slot_ge slot_module slot_registry slot_globals
+  fill_fn use_fn f_start f_L4 f_L6 u_start live bytes auxes icell pcell pts : typeclass_instances.
 
 (** Looking up `fill` in [slot_ge] resolves to the compiled helper
     function. *)
@@ -529,7 +532,7 @@ End SlotLogic.
 
 (** Instantiating the Iris functor with the interpreter's runtime yields a
     concrete safety theorem for `slot.c`. *)
-Module InterpSlotLogic := SlotLogic InterpRuntime.
+Module InterpSlotLogic. Include SlotLogic InterpRuntime. End InterpSlotLogic.
 
 (** The module's initial memory contains both static objects with all bytes
     set to zero and all [[aux]] slots empty. *)
