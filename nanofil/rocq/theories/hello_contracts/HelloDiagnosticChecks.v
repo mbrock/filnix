@@ -325,14 +325,12 @@ Proof.
     (mkStreamInfo 2 (mkStream ByteOriented (text ++ [10]) false) 3),
     [text; [10]], [text; [10]], [Accept (text ++ [10])].
   split; [reflexivity|]. split.
-  - pose proof (hello_diagnostic_owned "closeout#str.55" memory (heap opened)
-      (or_introl eq_refl) (heap_owned opened) (heap_agrees opened)) as Hfmt.
-    change (c_string memory (mkPtr 65744 (Ro 65744)) [37;115]) in Hfmt. exact Hfmt.
+  - exact (hello_diagnostic_owned "closeout#str.55" memory (heap opened)
+      (or_introl eq_refl) (heap_owned opened) (heap_agrees opened)).
   - split.
     + rewrite <- (app_nil_r text). apply format_string; [|constructor].
-      pose proof (hello_diagnostic_owned "closeout#str.53" memory (heap opened)
-        (or_intror (or_introl eq_refl)) (heap_owned opened) (heap_agrees opened)) as Htext.
-      change (c_string memory (mkPtr 65680 (Ro 65680)) text) in Htext. exact Htext.
+      exact (hello_diagnostic_owned "closeout#str.53" memory (heap opened)
+        (or_intror (or_introl eq_refl)) (heap_owned opened) (heap_agrees opened)).
     + split; [reflexivity|]. split.
       * repeat (constructor; [exists []; reflexivity|]). constructor.
       * split; [destruct opened; reflexivity|]. split.
