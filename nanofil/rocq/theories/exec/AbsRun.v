@@ -347,6 +347,15 @@ Definition tmp_at (k : class) (v : aval) (st : astate) : option (aval * astate) 
   end.
 
 (** A pointer whose offset is one known number names one place. *)
+(** A hook answers a call of a function without a body. It is given
+    the function's name, where the result goes, the classes of the
+    arguments and their values. It answers [None] when the function is
+    not one of its own, [Some None] when the call may go wrong, and
+    otherwise the state after the call. *)
+Definition hook : Type := name -> call_result -> list class -> list aval -> astate -> option (option astate).
+
+Definition class_plain (k : class) : bool := match k with W | L | P => true | _ => false end.
+
 Definition exact_ptr (st : astate) (v : aval) : option (nat * Z) :=
   match v with
   | VP o a => let (lo, hi) := rng st a in if lo =? hi then Some (o, lo) else None
@@ -356,12 +365,14 @@ Definition exact_ptr (st : astate) (v : aval) : option (nat * Z) :=
 Section exec.
 
 (** The interpreter is given four things about the program around the
-    function. The hook [builtin] answers calls of functions without a body. Every state numbers the global data objects in [gobjs] first.
-    A pointer may name one of the function symbols in [fnames], and [specs]
+    function. The hook [builtin] answers calls of functions without a
+    body. Every state numbers the global data objects in [gobjs] first.
+    The list [fnames] gives the functions that a pointer may name, each
+    with the classes of its parameters and its return type, and [specs]
     gives the specifications of the callees. *)
-Variable builtin : name -> call_result -> list aval -> astate -> option (option astate).
+Variable builtin : hook.
 Variable gobjs : list name.
-Variable fnames : list name.
+Variable fnames : list (name * (list class * ret_type)).
 Variable specs : name -> list fspec.
 
 Definition nglob : nat := length gobjs.
@@ -379,7 +390,7 @@ Definition avalue (k : class) (v : value) (st : astate) : option (aval * astate)
   | Global s =>
       match index_of s gobjs with
       | Some o => Some (VP o (K 0), st)
-      | None => if mem_name s fnames then Some (VF s, st) else Some (VA, st)
+      | None => match lookup s fnames with Some _ => Some (VF s, st) | None => Some (VA, st) end
       end
   end.
 
@@ -416,6 +427,35 @@ Definition ext_top (t : narrow) (k : class) (m : Z) : Z :=
   | _ => m - 1
   end.
 
+(** Arithmetic on two integers of which one is a symbol works on their
+    ranges. Both operands must already lie in the class. *)
+Definition abin_rng (o : op) (k : class) (m : Z) (x y : aint) (st : astate) : option (aint * astate) :=
+  let (xlo, xhi) := rng st x in
+  let (ylo, yhi) := rng st y in
+  if negb ((0 <=? xlo) && (xhi <? m) && (0 <=? ylo) && (yhi <? 2 ^ 64)) then None else
+  match o with
+  | Add => Some (clamp st m (xlo + ylo) (xhi + yhi))
+  | Sub => Some (clamp st m (xlo - yhi) (xhi - ylo))
+  | Mul => Some (clamp st m (xlo * ylo) (xhi * yhi))
+  | And => Some (mk st 0 (Z.min xhi yhi))
+  | Or | Xor => Some (mk st 0 (2 ^ (Z.log2 (Z.max xhi yhi) + 1) - 1))
+  | Shl =>
+      match y with
+      | K c => let p := 2 ^ (c mod (match k with W => 32 | _ => 64 end)) in
+               Some (clamp st m (xlo * p) (xhi * p))
+      | _ => Some (mk st 0 (m - 1))
+      end
+  | Shr =>
+      match y with
+      | K c => let p := 2 ^ (c mod (match k with W => 32 | _ => 64 end)) in
+               Some (mk st (xlo / p) (xhi / p))
+      | _ => Some (mk st 0 xhi)
+      end
+  | Udiv => Some (mk st 0 xhi)
+  | Div => if (xhi <? half k) && (yhi <? half k) then Some (mk st 0 xhi) else Some (mk st 0 (m - 1))
+  | _ => None
+  end.
+
 Definition abin (o : op) (k : class) (x y : aint) (st : astate) : option (aint * astate) :=
   let* m := modulus_of k in
   match x, y with
@@ -424,33 +464,7 @@ Definition abin (o : op) (k : class) (x y : aint) (st : astate) : option (aint *
       | Some (WInt r) => Some (K r, st)
       | _ => None
       end
-  | _, _ =>
-      let (xlo, xhi) := rng st x in
-      let (ylo, yhi) := rng st y in
-      if negb ((0 <=? xlo) && (xhi <? m) && (0 <=? ylo) && (yhi <? 2 ^ 64)) then None else
-      match o with
-      | Add => Some (clamp st m (xlo + ylo) (xhi + yhi))
-      | Sub => Some (clamp st m (xlo - yhi) (xhi - ylo))
-      | Mul => Some (clamp st m (xlo * ylo) (xhi * yhi))
-      | And => Some (mk st 0 (Z.min xhi yhi))
-      | Or | Xor => Some (mk st 0 (2 ^ (Z.log2 (Z.max xhi yhi) + 1) - 1))
-      | Shl =>
-          match y with
-          | K c => let p := 2 ^ (c mod (match k with W => 32 | _ => 64 end)) in
-                   Some (clamp st m (xlo * p) (xhi * p))
-          | _ => Some (mk st 0 (m - 1))
-          end
-      | Shr =>
-          match y with
-          | K c => let p := 2 ^ (c mod (match k with W => 32 | _ => 64 end)) in
-                   Some (mk st (xlo / p) (xhi / p))
-          | _ => Some (mk st 0 xhi)
-          end
-      | Sar => if xhi <? half k then Some (mk st 0 xhi) else Some (mk st 0 (m - 1))
-      | Udiv => Some (mk st 0 xhi)
-      | Div => if (xhi <? half k) && (yhi <? half k) then Some (mk st 0 xhi) else Some (mk st 0 (m - 1))
-      | _ => None
-      end
+  | _, _ => abin_rng o k m x y st
   end.
 
 Definition int_cond (c : cond) : bool :=
@@ -476,10 +490,34 @@ Fixpoint as_ints (vs : list aval) (st : astate) : list aval * astate :=
                 let (xs, st2) := as_ints vs' st1 in (x :: xs, st2)
   end.
 
+(** An "and" with a constant mask and an addition of a constant keep a
+    fact about their first operand. The result of the "and" inherits
+    the flags that the mask selects, and the result of the addition
+    differs from the operand by the constant when it does not wrap. *)
+Definition aflags (o : op) (k : class) (a b r : aint) (st st' : astate) : astate :=
+  match o, a, b, r with
+  | And, S s, K c, S t =>
+      let bits := flag_picks st s (fun fl => match fl with FBit n => Some n | _ => None end) in
+      let st1 := if existsb (fun n => (0 <=? n) && (c =? 2 ^ n)) bits then add_flag st' t FNz else st' in
+      fold_left (fun acc uk => add_flag acc t (FEndNz (fst uk) (snd uk)))
+                (flag_picks st s (fun fl => match fl with
+                                            | FEnd u key mask => if mask =? c then Some (u, key) else None
+                                            | _ => None
+                                            end)) st1
+  | Add, S s, K c, S t =>
+      match modulus_of k with
+      | Some m => let (lo, hi) := rng st (S s) in
+                  if (0 <=? lo + c) && (hi + c <? m) then add_lin st' t s c else st'
+      | None => st'
+      end
+  | _, _, _, _ => st'
+  end.
+
 Definition aop_int (o : op) (k : class) (xs : list aval) (st : astate) : option (aval * astate) :=
   match o, xs with
   | Cmp c ck, [VI a; VI b] =>
       if int_cond c && match ck with W | L => true | _ => false end then Some (VC c ck a b, st) else None
+  | Cmp _ _, _ => None
   | Ext t, [VI a] =>
       let* m := modulus_of k in
       let (lo, hi) := rng st a in
@@ -491,35 +529,14 @@ Definition aop_int (o : op) (k : class) (xs : list aval) (st : astate) : option 
       | K z => Some (VI (K ((- z) mod m)), st)
       | _ => let (r, st') := mk st 0 (m - 1) in Some (VI r, st')
       end
-  | And, [VI (S s); VI y] =>
-      let? (r, st') := abin And k (S s) y st in
-      Some (VI r, match r, y with
-                  | S t, K c =>
-                      let bits := flag_picks st s (fun fl => match fl with FBit n => Some n | _ => None end) in
-                      let st1 := if existsb (fun n => (0 <=? n) && (c =? 2 ^ n)) bits then add_flag st' t FNz else st' in
-                      fold_left (fun acc uk => add_flag acc t (FEndNz (fst uk) (snd uk)))
-                                (flag_picks st s (fun fl => match fl with
-                                                            | FEnd u key mask => if mask =? c then Some (u, key) else None
-                                                            | _ => None
-                                                            end)) st1
-                  | _, _ => st'
-                  end)
-  | Add, [VI (S s); VI (K c)] =>
-      let* m := modulus_of k in
-      let? (r, st') := abin Add k (S s) (K c) st in
-      let (lo, hi) := rng st (S s) in
-      Some (VI r, match r with
-                  | S t => if (0 <=? lo + c) && (hi + c <? m) then add_lin st' t s c else st'
-                  | K _ => st'
-                  end)
-  | (Add | Sub | Mul | And | Or | Xor | Shl | Shr | Sar | Udiv | Div), [VI a; VI b] =>
-      let? (r, st') := abin o k a b st in Some (VI r, st')
+  | _, [VI a; VI b] =>
+      let? (r, st') := abin o k a b st in Some (VI r, aflags o k a b r st st')
   | _, _ => None
   end.
 
 Definition aop (o : op) (k : class) (xs : list aval) (st : astate) : option (aval * astate) :=
   match o, xs with
-  | Copy, [x] => Some (x, st)
+  | Copy, [x] => match k with Single | Double | Extended => None | _ => Some (x, st) end
   | Ptoi, [VN a] => Some (VI a, st)
   | Ptoi, [(VP _ _ | VA | VF _)] => Some (VJ, st)
   | (Copy | Ptoi), _ => None
@@ -732,15 +749,15 @@ Definition same_obj (p q : aval) : bool :=
 
 Definition signed64 (z : Z) : Z := if z <? 2 ^ 63 then z else z - 2 ^ 64.
 
-Definition aflight (p : aval) (x : aval) (q : option aval) (st : astate) : option (aval * astate) :=
+Definition aflight (p x q : aval) (st : astate) : option (aval * astate) :=
   match x with
   | VI x =>
       let any := match p, q with
-                 | (VP _ _ | VN _ | VA | VF _), (None | Some (VP _ _ | VN _ | VA | VF _)) => Some (VA, st)
+                 | (VP _ _ | VN _ | VA | VF _), (VP _ _ | VN _ | VA | VF _) => Some (VA, st)
                  | _, _ => None
                  end in
       match p, q with
-      | VP o a, Some (VP o' _) =>
+      | VP o a, VP o' _ =>
           if Nat.eqb o o' then
             let (alo, ahi) := rng st a in
             let (xlo, xhi) := rng st x in
@@ -863,6 +880,19 @@ Definition env_le (st : astate) (te : list (name * cval)) : bool :=
 Definition entails (st : astate) (t : cstate) : bool :=
   env_le st (cs_env t) && objs_le st (st_objs st) (cs_objs t) && (implb (cs_guard t) (st_guard st)).
 
+(** A closed state may describe fewer objects than the state that
+    entails it, and the objects beyond its list are then forgotten. It
+    must not mention a forgotten object, and it must keep the first
+    [n0] objects, which are the ones the function was given. *)
+Definition cval_in (n : nat) (c : cval) : bool := match c with CP o _ _ => Nat.ltb o n | _ => true end.
+
+Definition aux_in (n : nat) (x : aaux) : bool := match x with XObj o => Nat.ltb o n | _ => true end.
+
+Definition cstate_ok (n0 : nat) (t : cstate) : bool :=
+  let n := length (cs_objs t) in
+  Nat.leb n0 n && forallb (fun nc => cval_in n (snd nc)) (cs_env t)
+  && forallb (fun o => match o with Some ob => forallb (aux_in n) (o_aux ob) | None => true end) (cs_objs t).
+
 Fixpoint open_env (te : list (name * cval)) (st : astate) : astate :=
   match te with
   | [] => st
@@ -932,6 +962,9 @@ Fixpoint give_objs (st : astate) (args : list aval) (i : nat) (post : list (opti
       else None
   end.
 
+Definition same_shape (pre post : list (option aobj)) : bool :=
+  all2 (fun p q => match p, q with None, None | Some _, Some _ => true | _, _ => false end) pre post.
+
 Definition bind_result (r : call_result) (ret : option cval) (st : astate) : option astate :=
   match r, ret with
   | CVoid, _ => Some st
@@ -943,11 +976,20 @@ Definition bind_result (r : call_result) (ret : option cval) (st : astate) : opt
   | _, _ => None
   end.
 
-Definition same_shape (pre post : list (option aobj)) : bool :=
-  all2 (fun p q => match p, q with None, None | Some _, Some _ => true | _, _ => false end) pre post.
+(** A specification is usable when it names one object for every
+    global and one for every argument, when its postcondition describes
+    the same objects as its precondition, and when every capability
+    and every returned pointer that it mentions belongs to a global. *)
+Definition obj_global (o : option aobj) : bool :=
+  match o with Some t => forallb aux_global (o_aux t) | None => true end.
+
+Definition spec_ok (sp : fspec) : bool :=
+  Nat.eqb (length (sp_pre sp)) (nglob + length (sp_args sp)) && same_shape (sp_pre sp) (sp_post sp)
+  && forallb obj_global (sp_pre sp) && forallb obj_global (sp_post sp)
+  && match sp_ret sp with Some (CP o _ _) => Nat.ltb o nglob | _ => true end.
 
 Definition call_spec (r : call_result) (args : list aval) (st : astate) (sp : fspec) : option astate :=
-  if args_le st 0 args (sp_args sp) && implb (sp_guard sp) (st_guard st) && same_shape (sp_pre sp) (sp_post sp) then
+  if args_le st 0 args (sp_args sp) && implb (sp_guard sp) (st_guard st) && spec_ok sp then
     let* st1 := take_objs st args 0 (sp_pre sp) in
     let* st2 := give_objs st1 args 0 (sp_post sp) in
     bind_result r (sp_ret sp) (set_guard st2 (st_guard st2 || sp_guard' sp))
@@ -969,7 +1011,7 @@ Definition arg_values (args : list arg) : list value := map (fun a => match a wi
     have no body. Any other call needs a specification of the callee. *)
 Definition acall (r : call_result) (g : name) (args : list arg) (st : astate) : option astate :=
   let? (xs, st1) := avalues (arg_classes args) (arg_values args) st in
-  match builtin g r xs st1 with
+  match builtin g r (arg_classes args) xs st1 with
   | Some res => res
   | None => first_spec r xs st1 (specs g)
   end.
@@ -1025,7 +1067,7 @@ Definition ainst (i : inst) (st : astate) : option astate :=
               match x with VF g => Some (bind st1 d x) | _ => None end
           | _, _ => None
           end
-      | Add | Sub | Mul | Div | Udiv | And | Or | Xor | Sar | Shr | Shl | Neg | Copy | Ptoi
+      | Add | Sub | Mul | Div | Udiv | And | Or | Xor | Shr | Shl | Neg | Copy | Ptoi
       | Cmp _ _ | Ext _ =>
           let* classes := op_arg_classes o k in
           let? (xs, st1) := avalues classes args st in
@@ -1033,16 +1075,10 @@ Definition ainst (i : inst) (st : astate) : option astate :=
           Some (bind st2 d v)
       | _ => None
       end
-  | Flight d Add [FAddress p; fx] lw =>
+  | Flight d Add [FAddress p; FValue x] (LowerOf q) =>
       let? (pv, st1) := avalue P p st in
-      let? (xv, st2) := match fx with
-                        | FValue x => avalue L x st1
-                        | FAddress _ => None
-                        end in
-      let? (qv, st3) := match lw with
-                        | LowerNone => Some (None, st2)
-                        | LowerOf q => let? (q', st') := avalue P q st2 in Some (Some q', st')
-                        end in
+      let? (xv, st2) := avalue L x st1 in
+      let? (qv, st3) := avalue P q st2 in
       let? (v, st4) := aflight pv xv qv st3 in
       Some (bind st4 d v)
   | RawStore w off v a =>
@@ -1059,8 +1095,12 @@ Definition ainst (i : inst) (st : astate) : option astate :=
       let? (c, st1) := avalue F callee st in
       match c with
       | VF g =>
-          let? (xs, st2) := avalues (arg_classes args) (arg_values args) st1 in
-          first_spec r xs st2 (specs g)
+          let* sg := lookup g fnames in
+          if all2 class_eqb (arg_classes args) (fst sg) && forallb class_plain (fst sg)
+             && same_words (result_words r) (return_words (snd sg)) then
+            let? (xs, st2) := avalues (arg_classes args) (arg_values args) st1 in
+            first_spec r xs st2 (specs g)
+          else None
       | _ => None
       end
   | _ => None

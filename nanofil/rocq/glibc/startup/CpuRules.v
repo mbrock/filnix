@@ -72,16 +72,17 @@ Definition acpuid (leaf4 : bool) (leaf : aval) (subleaf : option aint) (ps : lis
 
 (** The hook answers the three calls and leaves every other call to the
     specifications. With [leaf4] set, it assumes that the leaf 4 list ends. *)
-Definition cpu_builtin (leaf4 : bool) (g : name) (r : call_result) (xs : list aval) (st : astate)
-  : option (option astate) :=
+Definition cpu_builtin (leaf4 : bool) (g : name) (r : call_result) (ks : list class) (xs : list aval)
+    (st : astate) : option (option astate) :=
   if is_atom g "zcpuid" then
     Some match r, xs with
-         | CVoid, l :: ps => acpuid leaf4 l None ps st
+         | CVoid, l :: ps => if all2 class_eqb ks [W; P; P; P; P] then acpuid leaf4 l None ps st else None
          | _, _ => None
          end
   else if is_atom g "zcpuid_count" then
     Some match r, xs with
-         | CVoid, l :: VI s :: ps => acpuid leaf4 l (Some s) ps st
+         | CVoid, l :: VI s :: ps =>
+             if all2 class_eqb ks [W; W; P; P; P; P] then acpuid leaf4 l (Some s) ps st else None
          | _, _ => None
          end
   else if is_atom g "zxgetbv" then

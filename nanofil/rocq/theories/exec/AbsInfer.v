@@ -141,8 +141,10 @@ Fixpoint before (l p : name) (bs : list block) : bool :=
                 else if name_eqb (b_label b) p then false else before l p bs'
   end.
 
-(** A block that two edges enter is a cut, unless it only chooses between
-    them by phis and none of its predecessors follows it in the layout. *)
+(** The checker needs an invariant wherever two paths meet, and such a
+    block is called a cut. A block with two predecessors is a cut,
+    unless it only chooses between them by phis and every predecessor
+    comes before it in the layout. *)
 Definition default_cuts (f : func) : list name :=
   let pt := pred_table f in
   flat_map (fun b =>
@@ -277,9 +279,9 @@ Definition close_state (live : list name) (st : astate) : cstate :=
 (** * Running a function from a specification *)
 
 Section infer.
-Variable builtin : name -> call_result -> list aval -> astate -> option (option astate).
+Variable builtin : hook.
 Variable gobjs : list name.
-Variable fnames : list name.
+Variable fnames : list (name * (list class * ret_type)).
 Variable specs : name -> list fspec.
 Variable f : func.
 Variable cuts : list name.
@@ -438,6 +440,8 @@ Definition leaf_ok (sp : fspec) (inv : list (name * cstate)) (lf : leaf) : bool 
 
 Definition verify (sp : fspec) (inv : list (name * cstate)) : bool :=
   match local_objects f with [] => true | _ => false end && negb (variadic_func f)
+  && spec_ok gobjs sp && Nat.eqb (length (sp_args sp)) (length (fn_params f))
+  && forallb (fun lt => cstate_ok (nglob gobjs + length (fn_params f)) (snd lt)) inv
   && forallb (leaf_ok sp inv) (run_entry sp)
   && forallb (fun lt => forallb (leaf_ok sp inv) (run_cut (fst lt) (snd lt))) inv.
 
@@ -450,22 +454,22 @@ Definition layout (f : func) : name -> Z :=
                           (nm_empty, 0)) in
   fun l => match nm_find l m with Some k => k | None => 0 end.
 
-Definition plan (builtin : name -> call_result -> list aval -> astate -> option (option astate))
-    (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition plan (builtin : hook)
+    (gobjs : list name) (fnames : list (name * (list class * ret_type))) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : acc :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
   infer builtin gobjs fnames specs f cuts fuel (liveness f) delay (thresholds f) split (layout f) sp n.
 
-Definition check (builtin : name -> call_result -> list aval -> astate -> option (option astate))
-    (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition check (builtin : hook)
+    (gobjs : list name) (fnames : list (name * (list class * ret_type))) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : bool :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
   let a := plan builtin gobjs fnames specs f nocut split fuel n delay sp in
   verify builtin gobjs fnames specs f cuts fuel sp (map (fun e => (e_lab e, e_inv e)) (a_tab a)).
 
 (** A caller uses the completed specification only when it passes the check. *)
-Definition solve (builtin : name -> call_result -> list aval -> astate -> option (option astate))
-    (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition solve (builtin : hook)
+    (gobjs : list name) (fnames : list (name * (list class * ret_type))) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : option fspec :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
   let a := plan builtin gobjs fnames specs f nocut split fuel n delay sp in
