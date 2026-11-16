@@ -468,13 +468,8 @@ Lemma exit_pop_skip : forall p older selected rest,
   exit_registry_pending (mkExitBlock p (older ++ [selected]) :: rest) =
     exit_registry_pending (mkExitBlock p older :: rest).
 Proof.
-  intros p older selected rest [-> | ->].
-  - change (exit_pending (older ++ [FreeSlot]) ++ exit_registry_pending rest =
-      exit_pending older ++ exit_registry_pending rest).
-    rewrite exit_pending_skip_free. reflexivity.
-  - change (exit_pending (older ++ [ReservedSlot]) ++ exit_registry_pending rest =
-      exit_pending older ++ exit_registry_pending rest).
-    rewrite exit_pending_skip_reserved. reflexivity.
+  intros p older selected rest [-> | ->]; cbn [exit_registry_pending flat_map block_slots];
+    rewrite ?exit_pending_skip_free, ?exit_pending_skip_reserved; reflexivity.
 Qed.
 
 (** The installed pop constructs the existing logical callback-entry edge;
