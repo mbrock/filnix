@@ -13,6 +13,7 @@
 %
 % | Step | Meaning |
 % | --- | --- |
+% | ENTRY | one name, or several separated by commas, such as `main,__libc_start_main` for a program whose startup runs before main |
 % | `local` names | a function or data item with `local` or `ro(local)` linkage is its object's own: renamed `OBJECT#NAME`, with every `global(NAME)` and `sym(NAME, Off)` of that object |
 % | other names | exported items are shared: one definition each, or the link fails |
 % | kept items | the items reachable from ENTRY through `global/1` and `sym/2`, the only ways a run names an item; the rest cannot run or be read, so they are left out |
@@ -34,14 +35,16 @@ main :-
     ( select('--context', Args0, Args1) -> Context = true ; Args1 = Args0, Context = false ),
     ( select('--ctors', Args1, Args) -> Ctors = true ; Args = Args1, Ctors = false ),
     Args = [Entry|Specs],
+    atomic_list_concat(Entries, ',', Entry),
     objects(Specs, Objects0, Archive),
-    extract(Entry, Objects0, Archive, Objects),
+    extract(Entries, Objects0, Archive, Objects),
     maplist(check_ctors(Ctors), Objects),
     findall(I, (member(object(_, Is), Objects), member(I, Is), \+ is_context(I)), Items00),
     exclude(overridden(Items00), Items00, Items0),
     exported_unique(Items0),
     findall(N, member(data(N, init(_, _), _, _), Items0), InitNames),
-    reachable([Entry|InitNames], Items0, [], Names),
+    append(Entries, InitNames, Roots),
+    reachable(Roots, Items0, [], Names),
     findall(I, (member(object(_, Is), Objects), member(I, Is),
                 linked_item(Context, Names, Items0, Is, I)), Items),
     print_module(Items).
@@ -70,14 +73,14 @@ check_ctors(false, object(Obj, Items0)) :-
 % Pull one member at a time, then recompute demand, including references
 % introduced by that member. A declaration never counts as a definition.
 extract(_, Objects, [], Objects) :- !.
-extract(Entry, Objects0, Archive0, Objects) :-
+extract(Entries, Objects0, Archive0, Objects) :-
     findall(I, (member(object(_, Is), Objects0), member(I, Is)), Items),
-    findall(N, ( ( N = Entry ; member(I, Items), sub_name(I, N) ),
+    findall(N, ( ( member(N, Entries) ; member(I, Items), sub_name(I, N) ),
                  \+ (member(D, Items), item_name(D, N), \+ declaration(D)) ), Ns0),
     sort(Ns0, Ns),
     (   select(O, Archive0, Archive), O = object(_, Is),
         member(D, Is), \+ declaration(D), item_name(D, N), memberchk(N, Ns)
-    ->  append(Objects0, [O], Objects1), extract(Entry, Objects1, Archive, Objects)
+    ->  append(Objects0, [O], Objects1), extract(Entries, Objects1, Archive, Objects)
     ;   Objects = Objects0
     ).
 
