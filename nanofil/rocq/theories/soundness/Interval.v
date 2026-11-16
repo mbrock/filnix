@@ -295,21 +295,11 @@ Proof.
     + injection H as <- <-. split; [|exact Hm]. intros lo hi E. subst r0. exact (Hm _ _ _ _ Em).
     + assert (Hrec : rec_ok (fun v k m => oi once f v k (depth + 1) m))
         by (intros a k' m0 r0 m1 Hm0 E; exact (IH _ _ _ _ _ _ Hm0 E)).
-      assert (Hres : forall r0 m0,
-                (if depth <? 32 then
-                   match lookup n once with
-                   | Some (DInst (Let n' k' o args)) =>
-                       if name_eqb n' n && class_eqb k' k then
-                         match op_interval (fun v k m => oi once f v k (depth + 1) m) o args k m with
-                         | (Some (lo, hi), m1) => if interval_fits k lo hi then (Some (lo, hi), m1) else (None, m)
-                         | (None, _) => (None, m)
-                         end
-                       else (None, m)
-                   | _ => (None, m)
-                   end
-                 else (None, m)) = (r0, m0) ->
-                (forall lo hi, r0 = Some (lo, hi) -> iv (Tmp n) k lo hi) /\ memo_ok m0).
-      { intros r0 m0 E.
+      match type of H with (let '(_, _) := ?x in _) = _ =>
+        destruct x as [r0 m0] eqn:Ex end.
+      injection H as <- <-.
+      assert (Hres : (forall lo hi, r0 = Some (lo, hi) -> iv (Tmp n) k lo hi) /\ memo_ok m0).
+      { pose proof Ex as E.
         destruct (depth <? 32); [|no_answer E Hm].
         destruct (lookup n once) as [[| ph | i]|] eqn:El;
           try (no_answer E Hm).
@@ -326,9 +316,7 @@ Proof.
             exact (Ho _ _ eq_refl Ef).
           + injection E as <- <-. split; [intros lo hi E; discriminate E | exact Hm].
         - injection E as <- <-. split; [intros lo hi E; discriminate E | exact Hm]. }
-      match type of H with (let '(_, _) := ?x in _) = _ =>
-        destruct x as [r0 m0] eqn:Ex end.
-      injection H as <- <-. destruct (Hres _ _ eq_refl) as [Hr Hm0]. split; [exact Hr|].
+      destruct Hres as [Hr Hm0]. split; [exact Hr|].
       apply memo_ok_cons; [exact Hm0 | exact Hr].
 Qed.
 
