@@ -18,7 +18,7 @@ Definition hello_image_md_11 : module := Eval vm_compute in
 
 (** The item terms decode to these items. *)
 Lemma hello_image_dec_11 : decode_items hello_image_terms_11 = Some hello_image_md_11.
-Proof. vm_compute. reflexivity. Qed.
+Proof. vm_cast_no_check (eq_refl (Some hello_image_md_11)). Qed.
 
 (** No run of zeros in these items is negative. *)
 Lemma hello_image_zero_11 : zero_nonneg hello_image_md_11 = true.
