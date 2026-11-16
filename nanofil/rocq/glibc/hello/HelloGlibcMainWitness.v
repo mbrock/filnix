@@ -119,7 +119,7 @@ Definition hello_witness_objects : hello_objs :=
 (** The world has a real errno pointer, a non-null thread cookie and standard descriptors. *)
 Definition hello_witness_world : os_world :=
   mkOsWorld (Some (mkPtr 49152 (Obj 49152))) (mkPtr 53248 (Obj 53248)) None [0; 1; 2] true
-    (mkPtr 49152 (Obj 49152)) true.
+    (mkPtr 49152 (Obj 49152)) true true.
 
 (** The additional OS layout premise has an explicit concrete instance. *)
 Lemma hello_witness_os_layout : hello_os_layout hello_witness_world hello_witness_objects.

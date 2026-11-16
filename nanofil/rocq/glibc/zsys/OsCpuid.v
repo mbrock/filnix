@@ -47,18 +47,34 @@ From Glibc Require Import GlibcProgram.
     processor chooses them and a hypervisor may choose them for it. A
     proof that calls `c: zcpuid` must therefore be safe for every answer.
 
-    There is one exception, which `c: zxgetbv` needs. The XGETBV
-    instruction raises an invalid-opcode fault, which kills the process,
+    There are two exceptions. The first is the one that `c: zxgetbv`
+    needs. The XGETBV instruction raises an invalid-opcode fault, which kills the process,
     unless the operating system has set the OSXSAVE bit of control
     register CR4. The processor reports that bit to user code as bit 27
     of the ECX register that CPUID leaf 1 returns, and glibc reads XCR0
     only after it has seen that bit. The field [ow_osxsave] of [os_world]
     records whether the kernel enabled XSAVE. The contracts connect the
     two calls through it: `c: zxgetbv` requires [ow_osxsave], and a
-    leaf 1 answer has ECX bit 27 equal to [ow_osxsave]. That is the only
-    assumption these contracts make about the processor. They also
-    assume that CPUID itself does not fault, which Linux guarantees after
-    `c: execve` resets `c: ARCH_SET_CPUID`. *)
+    leaf 1 answer has ECX bit 27 equal to [ow_osxsave].
+
+    The second exception is an assumption about the processor that a
+    proof may choose to make. Leaf 4 describes one cache in each
+    subleaf, and a processor ends the list with an answer whose cache
+    type is zero. The cache type is the low five bits of EAX. The
+    function `c: get_common_cache_info` in glibc relies on that end
+    mark, because it counts the subleaves in a signed 32-bit integer
+    and uses the count as an index into a table of sixteen rows. A list
+    that never ended would let the count wrap to a negative number, and
+    the index would then fail its bounds check. The field
+    [ow_leaf4_ends] of [os_world] records that the list has ended by
+    subleaf 0x7fffffff, which is the last subleaf the count reaches
+    before it wraps. When the field is true, a leaf 4 answer for that
+    subleaf has cache type zero. A proof that needs the loop to stop
+    takes [ow_leaf4_ends] as a hypothesis, and no other proof depends
+    on it.
+
+    The contracts also assume that CPUID itself does not fault, which
+    Linux guarantees after `c: execve` resets `c: ARCH_SET_CPUID`. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -119,6 +135,32 @@ Definition cpuid_osxsave (sub : bool) (xs : list word) (m' : mem) (w : os_world)
     ptr_addr pd + 4 <= ptr_addr pc \/ ptr_addr pc + 4 <= ptr_addr pd ->
     Z.testbit (load_bytes m' (ptr_addr pc) 4) 27 = ow_osxsave w.
 
+(** A call of `c: zcpuid` asks for subleaf zero, and a call of
+    `c: zcpuid_count` passes its subleaf as the second argument. *)
+Definition cpuid_subleaf (sub : bool) (xs : list word) : Z :=
+  match sub, xs with
+  | true, _ :: WInt s :: _ => s
+  | _, _ => 0
+  end.
+
+(** Two result pointers satisfy [spans_apart] when their four-byte
+    spans do not overlap. *)
+Definition spans_apart (p q : ptr) : Prop :=
+  ptr_addr q + 4 <= ptr_addr p \/ ptr_addr p + 4 <= ptr_addr q.
+
+(** A caller that walks the leaf 4 list needs to know that the list
+    ends. The runtime stores EAX first, so the processor's EAX stays in
+    memory when the three later spans do not overlap the EAX span. The
+    predicate [cpuid_leaf4_ends] says that the cache type in that EAX
+    is zero. It says so for a leaf 4 call with subleaf 0x7fffffff, in a
+    world that satisfies [ow_leaf4_ends]. *)
+Definition cpuid_leaf4_ends (sub : bool) (xs : list word) (m' : mem) (w : os_world) : Prop :=
+  ow_leaf4_ends w = true ->
+  forall pa pb pc pd, cpuid_args sub xs = Some (4, (pa, pb, pc, pd)) ->
+    cpuid_subleaf sub xs = 2 ^ 31 - 1 ->
+    spans_apart pa pb -> spans_apart pa pc -> spans_apart pa pd ->
+    load_bytes m' (ptr_addr pa) 4 mod 32 = 0.
+
 (** The contract [os_cpuid_contract] packages these predicates for a
     call that returns nothing. It emits no trace events, allocates and
     frees no objects, leaves the world unchanged, and allows capability
@@ -129,7 +171,7 @@ Definition os_cpuid_contract (sub : bool) : contract os_world :=
     (fun _ _ _ _ _ => False)
     (fun _ _ w born trace _ w' => born = [] /\ w' = w /\ trace = [])
     (fun xs _ w born trace ending m' w' => born = [] /\ w' = w /\ trace = [] /\
-       ending = CallReturn [] /\ cpuid_osxsave sub xs m' w)
+       ending = CallReturn [] /\ cpuid_osxsave sub xs m' w /\ cpuid_leaf4_ends sub xs m' w)
     (fun _ => False)
     (fun why => In why [NullCapability; OutOfBounds; Readonly; ArgumentSize; ReturnSize]).
 
@@ -178,13 +220,13 @@ Qed.
 
 (** When an invocation of [os_cpuid_contract] returns, it leaves the
     world unchanged, returns no values, and its final memory satisfies
-    [cpuid_osxsave]. *)
+    [cpuid_osxsave] and [cpuid_leaf4_ends]. *)
 Lemma os_cpuid_returns sub r args xs s m w trace values s' m' w' :
   M.E.invoke (os_cpuid_contract sub) r args xs s m w trace (CallReturn values) s' m' w' ->
-  w' = w /\ values = [] /\ cpuid_osxsave sub xs m' w.
+  w' = w /\ values = [] /\ cpuid_osxsave sub xs m' w /\ cpuid_leaf4_ends sub xs m' w.
 Proof.
   intros Hi. destruct (os_invoke_returned _ _ _ _ _ _ _ _ _ _ _ _ Hi)
-    as (_ & born & _ & _ & -> & _ & He & Hx). injection He as ->. auto.
+    as (_ & born & _ & _ & -> & _ & He & Hx & H4). injection He as ->. auto.
 Qed.
 
 (** When an invocation of [os_xgetbv_contract] returns, it leaves the
@@ -214,6 +256,24 @@ Definition cpuid_ecx (leaf bc oc bd od : Z) : iProp Σ :=
              Z.testbit (of_bytes xs) 27 = ow_osxsave w0)⌝ ∗
     pts (byte_ps bc oc xs ++ aux_ps bc oc cs).
 
+(** A CPUID call returns its EAX block as four bytes. Their
+    little-endian value has cache type zero when three conditions hold.
+    The world satisfies [ow_leaf4_ends], the call asked for leaf 4 at
+    subleaf 0x7fffffff, and the three other blocks lie elsewhere. *)
+Definition cpuid_eax (leaf subleaf ba oa bb ob bc oc bd od : Z) : iProp Σ :=
+  ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\
+            (ow_leaf4_ends w0 = true -> leaf = 4 -> subleaf = 2 ^ 31 - 1 ->
+             bb + ob + 4 <= ba + oa \/ ba + oa + 4 <= bb + ob ->
+             bc + oc + 4 <= ba + oa \/ ba + oa + 4 <= bc + oc ->
+             bd + od + 4 <= ba + oa \/ ba + oa + 4 <= bd + od ->
+             of_bytes xs mod 32 = 0)⌝ ∗
+    pts (byte_ps ba oa xs ++ aux_ps ba oa cs).
+
+(** A caller that does not need the cache type can forget it. *)
+Lemma cpuid_eax_any leaf subleaf ba oa bb ob bc oc bd od :
+  cpuid_eax leaf subleaf ba oa bb ob bc oc bd od -∗ blk_any ba oa 4.
+Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
+
 (** A caller that does not need the bit can forget it. *)
 Lemma cpuid_ecx_any leaf bc oc bd od : cpuid_ecx leaf bc oc bd od -∗ blk_any bc oc 4.
 Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
@@ -222,8 +282,9 @@ Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Q
     blocks. The assertion Q stands for whatever the caller owns that
     shows the four blocks lie in live objects, usually the lifetimes of
     those objects, and the call returns it unchanged. The call returns
-    the four blocks with unknown contents, except that the ECX block
-    carries the fact of [cpuid_ecx]. *)
+    the four blocks with unknown contents, except that the EAX block
+    carries the fact of [cpuid_eax] and the ECX block carries the fact
+    of [cpuid_ecx]. *)
 Lemma wp_cpuid (sub : bool) f e ls lab args rest j xs leaf ba oa bb ob bc oc bd od (Q : iProp Σ) Φ :
   let g := TAtom (if sub then "zcpuid_count" else "zcpuid")%string in
   registry g = Some (os_cpuid_contract sub) -> find_fn ge g = None -> lookup g (ge_globals ge) = None ->
@@ -233,7 +294,8 @@ Lemma wp_cpuid (sub : bool) f e ls lab args rest j xs leaf ba oa bb ob bc oc bd 
   (forall σ, heap_interp (os_wi w0) σ -∗ Q -∗
      ⌜Forall (blk_live (ls_mem σ)) [(bc, oc, 4); (ba, oa, 4); (bb, ob, 4); (bd, od, 4)]⌝) ->
   Q -∗ blk_any ba oa 4 -∗ blk_any bb ob 4 -∗ blk_any bc oc 4 -∗ blk_any bd od 4 -∗
-  ▷ (Q -∗ blk_any ba oa 4 -∗ blk_any bb ob 4 -∗ cpuid_ecx leaf bc oc bd od -∗ blk_any bd od 4 -∗
+  ▷ (Q -∗ cpuid_eax leaf (cpuid_subleaf sub xs) ba oa bb ob bc oc bd od -∗ blk_any bb ob 4 -∗
+     cpuid_ecx leaf bc oc bd od -∗ blk_any bd od 4 -∗
      WP (ERun (mkFrame f e ls None (Exec lab rest j)) : zexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call CVoid (Global g) args :: rest) j)) : zexpr) {{ Φ }}.
 Proof.
@@ -249,7 +311,7 @@ Proof.
   - iNext. iIntros (σ trace values s' m' w' Hinv) "Hσ (HQ & Hbl)".
     iDestruct (Hlive with "Hσ HQ") as %Hl. iDestruct (os_heap_world with "Hσ") as %[Hw _].
     pose proof Hinv as Hinv0. rewrite Hw in Hinv0.
-    destruct (os_cpuid_returns _ _ _ _ _ _ _ _ _ _ _ _ Hinv0) as (-> & -> & Hbit).
+    destruct (os_cpuid_returns _ _ _ _ _ _ _ _ _ _ _ _ Hinv0) as (-> & -> & Hbit & Hend).
     iMod (os_call_return w0 _ _ _ _ _ _ _ _ _ _ bl Hinv (eq_sym Hw) eq_refl with "Hσ Hbl") as "(Hσ & Hbl)";
       [|exact Hl|].
     { cbn [contract_writes os_cpuid_contract]. unfold os_cpuid_writes. rewrite Hargs. cbn [cpuid_spans].
@@ -257,16 +319,24 @@ Proof.
       destruct Hin as [<- | [<- | [<- | [<- | []]]]]; cbn in Hs;
         [exists ba, oa, 4 | exists bb, ob, 4 | exists bc, oc, 4 | exists bd, od, 4];
         (split; [cbn; tauto | lia]). }
-    iDestruct (Hlive with "Hσ HQ") as %Hl'. inversion_clear Hl' as [|? ? (reg & Hlv & _) _].
+    iDestruct (Hlive with "Hσ HQ") as %Hl'. inversion_clear Hl' as [|? ? (reg & Hlv & _) Hl''].
+    inversion_clear Hl'' as [|? ? (rega & Hlva & _) _].
     rewrite /bl /blks !big_sepL_cons big_sepL_nil. cbn [fst snd].
     iDestruct "Hbl" as "(Hc & Ha & Hb & Hd & _)".
     iDestruct "Hc" as (ys cs) "[%Hlen Hc]". destruct Hlen as [Hy Hcs].
     iDestruct (pts_facts with "Hσ Hc") as %(Hag & _). apply all_agree_app in Hag as [Hag _].
     pose proof (bytes_load _ _ _ _ _ Hlv Hag) as Hld. rewrite Hy in Hld. change (Z.of_nat (Z.to_nat 4)) with 4 in Hld.
+    iDestruct "Ha" as (ya ca) "[%Hlen Ha]". destruct Hlen as [Hya Hca].
+    iDestruct (pts_facts with "Hσ Ha") as %(Haga & _). apply all_agree_app in Haga as [Haga _].
+    pose proof (bytes_load _ _ _ _ _ Hlva Haga) as Hlda. rewrite Hya in Hlda.
+    change (Z.of_nat (Z.to_nat 4)) with 4 in Hlda.
     iModIntro. iExists e. iSplit; [done|]. iFrame "Hσ".
-    iApply ("HK" with "HQ Ha Hb [Hc] Hd"). iExists ys, cs. iFrame "Hc". iPureIntro.
-    split; [exact Hy|]. split; [exact Hcs|]. intros -> Hdis. rewrite <- Hld.
-    exact (Hbit _ _ _ _ Hargs Hdis).
+    iApply ("HK" with "HQ [Ha] Hb [Hc] Hd").
+    + iExists ya, ca. iFrame "Ha". iPureIntro. split; [exact Hya|]. split; [exact Hca|].
+      intros Hw4 -> Hs Hb Hc Hd. rewrite <- Hlda. exact (Hend Hw4 _ _ _ _ Hargs Hs Hb Hc Hd).
+    + iExists ys, cs. iFrame "Hc". iPureIntro.
+      split; [exact Hy|]. split; [exact Hcs|]. intros -> Hdis. rewrite <- Hld.
+      exact (Hbit _ _ _ _ Hargs Hdis).
 Qed.
 
 (** When a C function calls `c: zxgetbv()` in an OS world whose kernel

@@ -169,7 +169,7 @@ Definition thresholds (f : func) : list Z :=
     (flat_map (fun b => flat_map (fun i => match i with
                                            | Let _ _ (Cmp _ _) [_; Const c] | Let _ _ (Cmp _ _) [Const c; _] => [c]
                                            | _ => []
-                                           end) (b_insts b)) (fn_blocks f)) [].
+                                           end) (b_insts b)) (fn_blocks f)) [2 ^ 31 - 1].
 
 Definition up_to (ths : list Z) (h : Z) : Z :=
   match find (fun t => h <=? t) ths with
@@ -200,7 +200,7 @@ Definition join_val (w : option (list Z)) (a b : cval) : option cval :=
   | _, _ => Some CA
   end.
 
-Definition st0 (osx : bool) : astate := mkSt [] [] [] [] osx.
+Definition st0 (osx : bool) : astate := mkSt [] [] [] [] [] osx.
 
 Definition join_byte (w : option (list Z)) (osx osx' : bool) (a b : abyte) : abyte :=
   match a, b with
@@ -277,6 +277,7 @@ Definition close_state (live : list name) (st : astate) : cstate :=
 (** * Running a function from a specification *)
 
 Section infer.
+Variable leaf4 : bool.
 Variable gobjs : list name.
 Variable fnames : list name.
 Variable specs : name -> list fspec.
@@ -292,18 +293,18 @@ Definition entry_state (sp : fspec) : astate :=
                let (v, st') := open_val (snd pc) st in
                bind st' (snd (fst pc)) v)
             (combine (fn_params f) (sp_args sp))
-            (mkSt [] [] [] (pad (nglob gobjs + length (fn_params f)) (map (option_map open_obj) (sp_pre sp)))
+            (mkSt [] [] [] [] (pad (nglob gobjs + length (fn_params f)) (map (option_map open_obj) (sp_pre sp)))
                   (sp_osx sp)).
 
 Definition entry_label : name :=
   match fn_blocks f with b :: _ => b_label b | [] => TAtom "" end.
 
 Definition run_entry (sp : fspec) : list leaf :=
-  run gobjs fnames specs f cuts fuel entry_label None (entry_state sp).
+  run leaf4 gobjs fnames specs f cuts fuel entry_label None (entry_state sp).
 
 Definition run_cut (l : name) (t : cstate) : list leaf :=
   match find_block l (fn_blocks f) with
-  | Some b => body gobjs fnames specs f cuts fuel l (b_insts b) (b_jump b) (open_state t)
+  | Some b => body leaf4 gobjs fnames specs f cuts fuel l (b_insts b) (b_jump b) (open_state t)
   | None => [LFail l None (open_state t)]
   end.
 
@@ -436,7 +437,8 @@ Definition leaf_ok (sp : fspec) (inv : list (name * cstate)) (lf : leaf) : bool 
   end.
 
 Definition verify (sp : fspec) (inv : list (name * cstate)) : bool :=
-  forallb (leaf_ok sp inv) (run_entry sp)
+  match local_objects f with [] => true | _ => false end && negb (variadic_func f)
+  && forallb (leaf_ok sp inv) (run_entry sp)
   && forallb (fun lt => forallb (leaf_ok sp inv) (run_cut (fst lt) (snd lt))) inv.
 
 End infer.
@@ -448,25 +450,25 @@ Definition layout (f : func) : name -> Z :=
                           (nm_empty, 0)) in
   fun l => match nm_find l m with Some k => k | None => 0 end.
 
-Definition plan (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition plan (leaf4 : bool) (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : acc :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
-  infer gobjs fnames specs f cuts fuel (liveness f) delay (thresholds f) split (layout f) sp n.
+  infer leaf4 gobjs fnames specs f cuts fuel (liveness f) delay (thresholds f) split (layout f) sp n.
 
-Definition check (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition check (leaf4 : bool) (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : bool :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
-  let a := plan gobjs fnames specs f nocut split fuel n delay sp in
-  verify gobjs fnames specs f cuts fuel sp (map (fun e => (e_lab e, e_inv e)) (a_tab a)).
+  let a := plan leaf4 gobjs fnames specs f nocut split fuel n delay sp in
+  verify leaf4 gobjs fnames specs f cuts fuel sp (map (fun e => (e_lab e, e_inv e)) (a_tab a)).
 
 (** A caller uses the completed specification only when it passes the check. *)
-Definition solve (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
+Definition solve (leaf4 : bool) (gobjs fnames : list name) (specs : name -> list fspec) (f : func) (nocut split : list name)
     (fuel n delay : nat) (sp : fspec) : option fspec :=
   let cuts := filter (fun l => negb (mem_name l nocut)) (default_cuts f) in
-  let a := plan gobjs fnames specs f nocut split fuel n delay sp in
+  let a := plan leaf4 gobjs fnames specs f nocut split fuel n delay sp in
   let sp' := complete sp a in
   match a_fail a with
-  | [] => if verify gobjs fnames specs f cuts fuel sp' (map (fun e => (e_lab e, e_inv e)) (a_tab a))
+  | [] => if verify leaf4 gobjs fnames specs f cuts fuel sp' (map (fun e => (e_lab e, e_inv e)) (a_tab a))
           then Some sp' else None
   | _ => None
   end.

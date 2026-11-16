@@ -7,6 +7,8 @@
 //               are those of the CPUID instruction, errno untouched
 //   count       zcpuid(leaf) is zcpuid_count(leaf, 0), and a subleaf is
 //               passed on (leaf 4's subleaves 0 and 1 are both read)
+//   leaf4       leaf 4 reports no cache (type 0, eax & 31) at subleaf
+//               0x7fffffff, which is what ow_leaf4_ends assumes of a machine
 //   order       the four stores go eax, ebx, ecx, edx: four equal pointers
 //               leave edx, so the contract speaks of ecx only when the edx
 //               span lies elsewhere
@@ -83,6 +85,10 @@ int main(void) {
   zcpuid_count(4, 1, &z[0], &z[1], &z[2], &z[3]);
   __cpuid_count(4, 1, a, b, c, d);
   printf("count %d %d\n", !memcmp(x, y, sizeof x), z[0] == a && z[1] == b && z[2] == c && z[3] == d);
+
+  unsigned e[4];
+  zcpuid_count(4, 0x7fffffff, &e[0], &e[1], &e[2], &e[3]);
+  printf("leaf4 %d\n", (e[0] & 0x1f) == 0);
 
   unsigned same = 0;
   zcpuid(0, &same, &same, &same, &same);

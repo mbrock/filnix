@@ -91,7 +91,8 @@ Record os_world : Type := mkOsWorld {
   ow_fds : list Z;        (* file descriptors the program uses *)
   ow_osxsave : bool;      (* whether the kernel enabled XSAVE (CR4.OSXSAVE), which `c: zxgetbv` needs *)
   ow_errno_cell : ptr;    (* the `c: errno` cell that the image's registered errno handler stores to *)
-  ow_dlerror : bool       (* whether startup has registered the dlerror handler *)
+  ow_dlerror : bool;      (* whether startup has registered the dlerror handler *)
+  ow_leaf4_ends : bool    (* whether CPUID leaf 4 reports no cache at its last subleaf, 0x7fffffff *)
 }.
 
 (** When a system call fails, libpizlo stores the error number into the

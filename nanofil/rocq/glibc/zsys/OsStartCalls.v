@@ -71,16 +71,16 @@ Open Scope Z_scope.
 
 (** Setting the thread cookie to c replaces [ow_self] with c. *)
 Definition with_self (w : os_world) (c : ptr) : os_world :=
-  mkOsWorld (ow_errno w) c (ow_log_fd w) (ow_fds w) (ow_osxsave w) (ow_errno_cell w) (ow_dlerror w).
+  mkOsWorld (ow_errno w) c (ow_log_fd w) (ow_fds w) (ow_osxsave w) (ow_errno_cell w) (ow_dlerror w) (ow_leaf4_ends w).
 
 (** Registering the errno handler makes [ow_errno_cell] the cell that
     later failing system calls write. *)
 Definition with_errno (w : os_world) : os_world :=
-  mkOsWorld (Some (ow_errno_cell w)) (ow_self w) (ow_log_fd w) (ow_fds w) (ow_osxsave w) (ow_errno_cell w) (ow_dlerror w).
+  mkOsWorld (Some (ow_errno_cell w)) (ow_self w) (ow_log_fd w) (ow_fds w) (ow_osxsave w) (ow_errno_cell w) (ow_dlerror w) (ow_leaf4_ends w).
 
 (** Registering the dlerror handler sets [ow_dlerror]. *)
 Definition with_dlerror (w : os_world) : os_world :=
-  mkOsWorld (ow_errno w) (ow_self w) (ow_log_fd w) (ow_fds w) (ow_osxsave w) (ow_errno_cell w) true.
+  mkOsWorld (ow_errno w) (ow_self w) (ow_log_fd w) (ow_fds w) (ow_osxsave w) (ow_errno_cell w) true (ow_leaf4_ends w).
 
 (** ## Calls that only read runtime state
 
