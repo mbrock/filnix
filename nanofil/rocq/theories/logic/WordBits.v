@@ -534,10 +534,8 @@ Definition repeat_byte (c : Z) : Z := c * lows.
 Lemma byte_repeat_byte c i : 0 <= c < 256 -> 0 <= i < 8 -> byte_of (repeat_byte c) i = c.
 Proof.
   intros Hc Hi. apply Z.eqb_eq.
-  assert (H : forallb (fun i => forallb (fun c => byte_of (repeat_byte c) i =? c)
-    (map Z.of_nat (seq 0 256))) idx8 = true) by (vm_compute; reflexivity).
-  rewrite forallb_forall in H. specialize (H i (idx8_cases i Hi)).
-  exact (all_bytes (fun c => byte_of (repeat_byte c) i =? c) H c Hc).
+  apply (all_bytes (fun c => byte_of (repeat_byte c) i =? c)); [|exact Hc].
+  byte_cases i; vm_compute; reflexivity.
 Qed.
 
 (** Exclusive-or with a repeated byte produces zero exactly at matching
