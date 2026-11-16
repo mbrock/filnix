@@ -484,11 +484,7 @@ Proof.
   rewrite !pts_app !ppts_app.
   iDestruct "Hv" as "(Hl & [[Hc _] _])".
   iDestruct "Hp" as "([Hpc _] & _)".
-  assert (Ecell : ((fun i => (PByte c i, VByte 0)) <$> [0; 1; 2; 3; 4; 5; 6; 7]) = cell c 0 0)
-    by (vm_compute; reflexivity).
-  assert (Epcell : ((fun i => (PPByte c i, VPByte pb_clean)) <$> [0; 1; 2; 3; 4; 5; 6; 7]) = pcell_ps c 0 pb_clean)
-    by (vm_compute; reflexivity).
-  rewrite Ecell Epcell. iFrame.
+  iFrame "Hl". iSplitL "Hc"; iAssumption.
 Qed.
 
 (** Every iteration of [checked_loop_fn] checks both pointers, selects on
