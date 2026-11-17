@@ -926,6 +926,7 @@ hello/HelloImageStart.v
 hello/HelloImageStartRefused.v
 hello/HelloImageFnLink.v
 hello/HelloImageLayout.v
+startup/CpuHello.v
 hello/HelloImageLayoutRefused.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
