@@ -207,8 +207,9 @@ Definition os_cpuid_contract (sub : bool) : contract os_world :=
 Definition os_xgetbv_abi (r : call_result) (args : list arg) : Prop :=
   (r = CVoid \/ exists d, r = CResult d L) /\ args = [].
 
-(** The contract [os_xgetbv_contract] requires [ow_osxsave], changes
-    neither memory nor the world, and returns some 64-bit integer. *)
+(** A program may read XCR0 only when the kernel enabled XSAVE. The
+    contract requires that, changes neither memory nor the world, and
+    returns some 64-bit integer. *)
 Definition os_xgetbv_contract : contract os_world :=
   mkContract os_world (RClass L) os_xgetbv_abi
     (fun xs _ w => xs = [] /\ ow_osxsave w = true)
@@ -265,6 +266,17 @@ Proof.
   replace (b + (o + Z.of_nat i)) with (b + o + Z.of_nat i) by lia. apply Hm. lia.
 Qed.
 
+(** The contract states its facts for result spans whose addresses do
+    not overlap. Two blocks that lie apart in live objects have such
+    addresses, because live objects do not overlap. *)
+Lemma cpuid_blocks_apart m b o b' o' :
+  live_disjoint m -> blk_live m (b, o, 4) -> blk_live m (b', o', 4) ->
+  b <> b' \/ o' + 4 <= o \/ o + 4 <= o' -> b' + o' + 4 <= b + o \/ b + o + 4 <= b' + o'.
+Proof.
+  intros Hd (r1 & L1 & H1 & _ & E1) (r2 & L2 & H2 & _ & E2) Ha. cbn in H1, E1, H2, E2.
+  destruct (Z.eq_dec b b') as [->|Hne]; [lia|]. destruct (Hd b r1 b' r2 L1 L2 Hne); lia.
+Qed.
+
 (** When an invocation of [os_xgetbv_contract] returns, it leaves the
     world unchanged and yields one integer below 2^64. *)
 Lemma os_xgetbv_returns r args xs s m w trace values s' m' w' :
@@ -292,14 +304,19 @@ Definition cpuid_blk (b o : Z) : iProp Σ :=
 Lemma cpuid_blk_any b o : cpuid_blk b o -∗ blk_any b o 4.
 Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
 
-(** The ECX block that a CPUID call returns holds four bytes below 256
-    whose little-endian value has bit 27 equal to [ow_osxsave],
-    provided the call asked for leaf 1 and its EDX block lies
-    elsewhere. *)
+(** Two four-byte blocks lie apart when they belong to different
+    objects or their offsets do not overlap. A caller that owns the
+    blocks can decide this from the objects alone, without knowing
+    their addresses. *)
+Definition blocks_apart (b o b' o' : Z) : Prop := b <> b' \/ o' + 4 <= o \/ o + 4 <= o'.
+
+(** A CPUID call returns its ECX block as four bytes below 256. Bit 27
+    of their little-endian value says whether the kernel enabled XSAVE.
+    The bit equals [ow_osxsave] when the call asked for leaf 1 and the
+    EDX block lies apart from the ECX block. *)
 Definition cpuid_ecx (leaf bc oc bd od : Z) : iProp Σ :=
   ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\ Forall (fun x => 0 <= x < 256) xs /\
-            (leaf = 1 -> bd + od + 4 <= bc + oc \/ bc + oc + 4 <= bd + od ->
-             Z.testbit (of_bytes xs) 27 = ow_osxsave w0)⌝ ∗
+            (leaf = 1 -> blocks_apart bc oc bd od -> Z.testbit (of_bytes xs) 27 = ow_osxsave w0)⌝ ∗
     pts (byte_ps bc oc xs ++ aux_ps bc oc cs).
 
 (** A CPUID call returns its EAX block as four bytes below 256. Their
@@ -309,9 +326,7 @@ Definition cpuid_ecx (leaf bc oc bd od : Z) : iProp Σ :=
 Definition cpuid_eax (leaf subleaf ba oa bb ob bc oc bd od : Z) : iProp Σ :=
   ∃ xs cs, ⌜length xs = 4%nat /\ length cs = 4%nat /\ Forall (fun x => 0 <= x < 256) xs /\
             (ow_leaf4_ends w0 = true -> leaf = 4 -> subleaf = 2 ^ 31 - 1 ->
-             bb + ob + 4 <= ba + oa \/ ba + oa + 4 <= bb + ob ->
-             bc + oc + 4 <= ba + oa \/ ba + oa + 4 <= bc + oc ->
-             bd + od + 4 <= ba + oa \/ ba + oa + 4 <= bd + od ->
+             blocks_apart ba oa bb ob -> blocks_apart ba oa bc oc -> blocks_apart ba oa bd od ->
              of_bytes xs mod 32 = 0)⌝ ∗
     pts (byte_ps ba oa xs ++ aux_ps ba oa cs).
 
@@ -324,13 +339,16 @@ Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Q
 Lemma cpuid_ecx_any leaf bc oc bd od : cpuid_ecx leaf bc oc bd od -∗ blk_any bc oc 4.
 Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
 
-(** A call of `c: zcpuid` or `c: zcpuid_count` lends four 4-byte result
-    blocks. The assertion Q stands for whatever the caller owns that
-    shows the four blocks lie in live objects, usually the lifetimes of
-    those objects, and the call returns it unchanged. The call returns
-    the four blocks with unknown bytes below 256. In addition, the EAX
-    block carries the fact of [cpuid_eax] and the ECX block carries
-    the fact of [cpuid_ecx]. *)
+(** A C function that asks the processor a question passes four
+    pointers, and the processor writes one 32-bit answer through each.
+    The caller gives up the four 4-byte blocks for the call and gets
+    them back holding unknown bytes below 256. The caller also shows
+    that the four blocks lie in live objects. The assertion Q stands
+    for whatever it owns that shows this, usually the lifetimes of
+    those objects, and the call returns Q unchanged. The EAX block
+    comes back with the cache type fact and the ECX block comes back
+    with the XSAVE bit fact. Both facts ask only that the blocks
+    involved do not overlap. *)
 Lemma wp_cpuid (sub : bool) f e ls lab args rest j xs leaf ba oa bb ob bc oc bd od (Q : iProp Σ) Φ :
   let g := TAtom (if sub then "zcpuid_count" else "zcpuid")%string in
   registry g = Some (os_cpuid_contract sub) -> find_fn ge g = None -> lookup g (ge_globals ge) = None ->
@@ -366,13 +384,16 @@ Proof.
       destruct Hin as [<- | [<- | [<- | [<- | []]]]]; cbn in Hs;
         [exists ba, oa, 4 | exists bb, ob, 4 | exists bc, oc, 4 | exists bd, od, 4];
         (split; [cbn; tauto | lia]). }
-    iDestruct (Hlive with "Hσ HQ") as %Hl'. inversion_clear Hl' as [|? ? (reg & Hlv & _) Hl''].
+    iDestruct (Hlive with "Hσ HQ") as %Hl'. pose proof Hl' as Hl2.
+    inversion_clear Hl2 as [|? ? Lc Hl2']. inversion_clear Hl2' as [|? ? La Hl2].
+    inversion_clear Hl2 as [|? ? Lb Hl2']. inversion_clear Hl2' as [|? ? Ld _].
+    inversion_clear Hl' as [|? ? (reg & Hlv & _) Hl''].
     inversion_clear Hl'' as [|? ? (rega & Hlva & _) Hl3].
     inversion_clear Hl3 as [|? ? (regb & Hlvb & _) Hl4]. inversion_clear Hl4 as [|? ? (regd & Hlvd & _) _].
     rewrite /bl /blks !big_sepL_cons big_sepL_nil. cbn [fst snd].
     iDestruct "Hbl" as "(Hc & Ha & Hb & Hd & _)".
     iDestruct "Hc" as (ys cs) "[%Hlen Hc]". destruct Hlen as [Hy Hcs].
-    iDestruct (pts_facts with "Hσ Hc") as %(Hag & _). apply all_agree_app in Hag as [Hag _].
+    iDestruct (pts_facts with "Hσ Hc") as %(Hag & Hdj & _). apply all_agree_app in Hag as [Hag _].
     pose proof (bytes_load _ _ _ _ _ Hlv Hag) as Hld. rewrite Hy in Hld. change (Z.of_nat (Z.to_nat 4)) with 4 in Hld.
     iDestruct "Ha" as (ya ca) "[%Hlen Ha]". destruct Hlen as [Hya Hca].
     iDestruct (pts_facts with "Hσ Ha") as %(Haga & _). apply all_agree_app in Haga as [Haga _].
@@ -386,13 +407,15 @@ Proof.
     iApply ("HK" with "HQ [Ha] [Hb] [Hc] [Hd]").
     + iExists ya, ca. iFrame "Ha". iPureIntro. split; [exact Hya|]. split; [exact Hca|].
       split; [apply (cpuid_block_bytes _ _ _ _ _ Hlva Haga Hya); intros i Hi; exact (Hlt (mkPtr (ba + oa) (Obj ba)) ltac:(cbn; tauto) i Hi)|].
-      intros Hw4 -> Hs Hb Hc Hd. rewrite <- Hlda. exact (Hend Hw4 _ _ _ _ Hargs Hs Hb Hc Hd).
+      intros Hw4 -> Hs Hb Hc Hd. rewrite <- Hlda.
+      exact (Hend Hw4 _ _ _ _ Hargs Hs (cpuid_blocks_apart _ _ _ _ _ Hdj La Lb Hb)
+               (cpuid_blocks_apart _ _ _ _ _ Hdj La Lc Hc) (cpuid_blocks_apart _ _ _ _ _ Hdj La Ld Hd)).
     + iExists yb, cb. iFrame "Hb". iPureIntro. split; [exact Hyb|]. split; [exact Hcb|].
       apply (cpuid_block_bytes _ _ _ _ _ Hlvb Hagb Hyb); intros i Hi; exact (Hlt (mkPtr (bb + ob) (Obj bb)) ltac:(cbn; tauto) i Hi).
     + iExists ys, cs. iFrame "Hc". iPureIntro.
       split; [exact Hy|]. split; [exact Hcs|].
       split; [apply (cpuid_block_bytes _ _ _ _ _ Hlv Hag Hy); intros i Hi; exact (Hlt (mkPtr (bc + oc) (Obj bc)) ltac:(cbn; tauto) i Hi)|].
-      intros -> Hdis. rewrite <- Hld. exact (Hbit _ _ _ _ Hargs Hdis).
+      intros -> Hdis. rewrite <- Hld. exact (Hbit _ _ _ _ Hargs (cpuid_blocks_apart _ _ _ _ _ Hdj Lc Ld Hdis)).
     + iExists yd, cd. iFrame "Hd". iPureIntro. split; [exact Hyd|]. split; [exact Hcd|].
       apply (cpuid_block_bytes _ _ _ _ _ Hlvd Hagd Hyd); intros i Hi; exact (Hlt (mkPtr (bd + od) (Obj bd)) ltac:(cbn; tauto) i Hi).
 Qed.
