@@ -12,7 +12,7 @@
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run Pieces.
 From Glibc Require Import OsStartCalls StartLogic StartLibcStartMain StartLsmImage
-  HelloImageModule HelloImageLoad HelloImageFnLink.
+  HelloImageModule HelloImageLoad HelloImageEraseMem.
 Import ListNotations.
 Open Scope Z_scope.
 

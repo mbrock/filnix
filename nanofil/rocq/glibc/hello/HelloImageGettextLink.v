@@ -17,23 +17,6 @@ From Glibc Require Import GettextLinkCode HelloGettextImageCode HelloGettextLink
 From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageLoad.
 Import ListNotations.
 
-(** ## A name that no item carries has no symbol *)
-
-(** The loader binds only the names of items: placement binds functions,
-    outside functions and data objects, and alias resolution binds
-    aliases. A name that no item carries therefore has no symbol. *)
-Lemma loaded_absent md g m n :
-  initial_memory md = Some (g, m) -> ~ In n (map item_key md) -> lookup n g = None.
-Proof.
-  intros Hi Hn. unfold initial_memory in Hi.
-  destruct (fold_left layout md (Some (data_base, [], []))) as [[[a g0] rs]|] eqn:El; [|discriminate Hi].
-  cbv beta iota zeta in Hi. destruct (fold_left alias_global md (Some g0)) as [g1|] eqn:Ea; [|discriminate Hi].
-  cbv beta iota zeta in Hi. destruct (fold_left (contents g1) md _); [|discriminate Hi]. injection Hi as <- _.
-  rewrite (alias_fold_lookup n md g0 g1 Ea).
-  - exact (layout_fold_lookup n md _ _ _ _ _ _ El Hn).
-  - intros a' lk t Hin E. subst a'. apply Hn. exact (in_map item_key _ _ Hin).
-Qed.
-
 (** ## The lookups in the whole image *)
 
 (** For every name that gettext calls or reaches through an alias, the

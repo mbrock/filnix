@@ -16,7 +16,7 @@
     nothing about which module the program actually loads. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Maps Run Pieces.
+From Nanofil Require Import Term Syntax Values Memory Maps Run Semantics Pieces.
 From Glibc Require Import HelloImageErase.
 Import ListNotations.
 Open Scope Z_scope.
@@ -614,3 +614,40 @@ Lemma failure_erased_away :
   names_distinct (map item_key unknown) = true /\ zero_nonneg unknown = true /\
   initial_memory unknown = None /\ option_map fst (initial_memory (erase keep_x unknown)) <> None.
 Proof. vm_compute. repeat (split; [first [reflexivity | discriminate] |]). discriminate. Qed.
+
+(** ## A name that no item carries has no symbol *)
+
+(** The loader binds only the names of items: placement binds functions,
+    outside functions and data objects, and alias resolution binds
+    aliases. A name that no item carries therefore has no symbol. *)
+Lemma loaded_absent md g m n :
+  initial_memory md = Some (g, m) -> ~ In n (map item_key md) -> lookup n g = None.
+Proof.
+  intros Hi Hn. unfold initial_memory in Hi.
+  destruct (fold_left layout md (Some (data_base, [], []))) as [[[a g0] rs]|] eqn:El; [|discriminate Hi].
+  cbv beta iota zeta in Hi. destruct (fold_left alias_global md (Some g0)) as [g1|] eqn:Ea; [|discriminate Hi].
+  cbv beta iota zeta in Hi. destruct (fold_left (contents g1) md _); [|discriminate Hi]. injection Hi as <- _.
+  rewrite (alias_fold_lookup n md g0 g1 Ea).
+  - exact (layout_fold_lookup n md _ _ _ _ _ _ El Hn).
+  - intros a' lk t Hin E. subst a'. apply Hn. exact (in_map item_key _ _ Hin).
+Qed.
+
+(** A name that no item of a module carries finds no function and has
+    no symbol, so a check of the decoded items settles both. *)
+Definition absent_ok (md : module) (s : string) : bool :=
+  match find_direct (TAtom s) md, find_alias (TAtom s) md with
+  | None, None => negb (existsb (name_eqb (TAtom s)) (map item_key md))
+  | _, _ => false
+  end.
+
+Lemma absent_ok_sound md g m fr s : initial_memory md = Some (g, m) -> absent_ok md s = true ->
+  find_fn (mkGenv md g fr) (TAtom s) = None /\ lookup (TAtom s) g = None.
+Proof.
+  intros Hi. unfold absent_ok. destruct (find_direct (TAtom s) md) eqn:Hd; [discriminate|].
+  destruct (find_alias (TAtom s) md) eqn:Ha; [discriminate|]. intros Hk. split.
+  - unfold find_fn. cbn [ge_module]. rewrite Hd, Ha. reflexivity.
+  - apply (loaded_absent _ _ m _ Hi). intros Hin.
+    assert (E : existsb (name_eqb (TAtom s)) (map item_key md) = true).
+    { apply existsb_exists. exists (TAtom s). split; [exact Hin | apply term_eqb_refl]. }
+    rewrite E in Hk. discriminate.
+Qed.

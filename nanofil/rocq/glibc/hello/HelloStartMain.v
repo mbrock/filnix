@@ -21,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic HelloMain.
 From Glibc Require Import OsWorld OsRegistry OsStart StartCtors StartLogic StartCallMainSpec StartCallMain
-  StartCtorRunnerSpec StartCtorRunner StartLibcStartMain HelloImageModule HelloImageFnLink
+  StartCtorRunnerSpec StartCtorRunner StartLibcStartMain HelloImageModule HelloImageFnLink HelloImageEraseMem
   HelloGlibcDebts HelloGlibcLibsT HelloStartBridge HelloImageLoad HelloImageEarly
   StartCode StartTunableGetValSpec StartTunableGetVal StartTunableIsInitializedSpec StartTunableIsInitialized
   StartClockGettimeSpec StartClockGettime StartGetrlimitSpec StartGetrlimit StartCtypeInitSpec StartCtypeInit

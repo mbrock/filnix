@@ -17,7 +17,7 @@ From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap.
 From Glibc Require Import Fix GlibcProgram GlibcSpec OsWorld OsCpuid OsRegistry HelloImageModule HelloImageLoad
-  HelloImageFnLink CpuSetup CpuSound CpuInit CpuInitSpec CpuSpec CpuPlace.
+  HelloImageEraseMem CpuSetup CpuSound CpuInit CpuInitSpec CpuSpec CpuPlace.
 Import ListNotations.
 Open Scope string_scope.
 

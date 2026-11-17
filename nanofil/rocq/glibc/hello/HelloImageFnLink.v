@@ -98,26 +98,6 @@ Proof.
   - apply Forall_cons; [exact (hk_zmemset _ _ H)|]. apply Forall_cons; [exact Hz|]. exact (hk_sys _ _ H).
 Qed.
 
-(** A name that no item of a module carries finds no function and has
-    no symbol, so a check of the decoded items settles both. *)
-Definition absent_ok (md : module) (s : string) : bool :=
-  match find_direct (TAtom s) md, find_alias (TAtom s) md with
-  | None, None => negb (existsb (name_eqb (TAtom s)) (map item_key md))
-  | _, _ => false
-  end.
-
-Lemma absent_ok_sound md g m fr s : initial_memory md = Some (g, m) -> absent_ok md s = true ->
-  find_fn (mkGenv md g fr) (TAtom s) = None /\ lookup (TAtom s) g = None.
-Proof.
-  intros Hi. unfold absent_ok. destruct (find_direct (TAtom s) md) eqn:Hd; [discriminate|].
-  destruct (find_alias (TAtom s) md) eqn:Ha; [discriminate|]. intros Hk. split.
-  - unfold find_fn. cbn [ge_module]. rewrite Hd, Ha. reflexivity.
-  - apply (loaded_absent _ _ m _ Hi). intros Hin.
-    assert (E : existsb (name_eqb (TAtom s)) (map item_key md) = true).
-    { apply existsb_exists. exists (TAtom s). split; [exact Hin | apply term_eqb_refl]. }
-    rewrite E in Hk. discriminate.
-Qed.
-
 (** In the whole image, main and each listed call find the expected
     body, and no item carries a name that must stay outside. *)
 Theorem hello_image_fn_link g m fr : initial_memory hello_image_module = Some (g, m) ->
