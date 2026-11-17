@@ -61,8 +61,8 @@ Proof. reflexivity. Qed.
 
 Section putc.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (R : Z * region * Z * Z -> iProp Σ).
-Context `{!Callees [(TAtom "__printf_buffer_putc_1", putc_spec R)] }.
+Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context `{!Callees [(TAtom "__printf_buffer_putc_1", putc_spec k R)] }.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** ## The block table *)
@@ -71,7 +71,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition putc_vals (bb c : Z) : list (string * word) :=
   [("buf", WPtr (mkPtr bb (Obj bb))); ("ch", WInt c)].
 
-Definition putc_post (bb : Z) (o : outcome) : iProp Σ := (⌜o = RetVoid⌝ ∗ printf_out R bb)%I.
+Definition putc_post (bb : Z) (o : outcome) : iProp Σ := (⌜o = RetVoid⌝ ∗ printf_out k R bb)%I.
 
 (** The function starts with a usable buffer, and so does the block
     that calls the flushing function. The block that stores the
@@ -79,16 +79,17 @@ Definition putc_post (bb : Z) (o : outcome) : iProp Σ := (⌜o = RetVoid⌝ ∗
     that returns needs no parameter, so its signature is empty. *)
 Definition putc_blocks : list bspec :=
   [BSpec "start" None (cut_in putc_cuts "start") (Z * Z) (fun '(bb, c) => putc_vals bb c)
-     (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out R bb)%I (fun '(bb, _) => putc_post bb);
+     (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out k R bb)%I (fun '(bb, _) => putc_post bb);
    BSpec "L4" None (cut_in putc_cuts "L4") (Z * Z * region * pwin * Z * Z)
      (fun '(bb, c, _, _, _, _) => putc_vals bb c)
      (fun '(bb, c, breg, w, written, mode) =>
-        ⌜0 <= c < 2 ^ 32 /\ pw_ptr w < pw_end w⌝ ∗ printf_buf bb breg w written mode ∗ R (pw_place w))%I
+        ⌜0 <= c < 2 ^ 32 /\ pw_ptr w < pw_end w /\ (mode = mode_failed \/ mode = k)⌝ ∗
+        printf_buf bb breg w written mode ∗ R (pw_place w))%I
      (fun '(bb, _, _, _, _, _) => putc_post bb);
    BSpec "L5" None (cut_in putc_cuts "L5") (Z * Z) (fun '(bb, c) => putc_vals bb c)
-     (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out R bb)%I (fun '(bb, _) => putc_post bb);
+     (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out k R bb)%I (fun '(bb, _) => putc_post bb);
    BSpec "L6" None (cut_in putc_cuts "L6") Z (fun bb => putc_vals bb 0)
-     (fun bb => printf_out R bb) putc_post].
+     (fun bb => printf_out k R bb) putc_post].
 
 (** ## The blocks *)
 
@@ -97,23 +98,23 @@ Proof using Type*.
   apply blocks_close. iIntros "#IH". repeat iSplit; [| | | | done]; iModIntro.
   - (* start: is the window full? *)
     iIntros ([bb c] e from Φ) "_ %He [%Hc Hout] HK". cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *.
-    c_env_open He. iDestruct "Hout" as (breg w written mode) "[Hbuf HR]". buf_open "Hbuf".
+    c_env_open He. iDestruct "Hout" as (breg w written mode) "(%Hmd & Hbuf & HR)". buf_open "Hbuf".
     block_enter. step. check "Hl". load_window "Hl" "Hptr" "Hwl".
     step. check "Hl". load_window "Hl" "Hend" "Hwl". step. step. step. branch_eqn E.
     + goto_block "IH" "HK" 2%nat with (bb, c).
       iSplit; [done|]. out_close "HR" with w. exact Hw.
     + goto_block "IH" "HK" 1%nat with (bb, c, breg, w, written, mode).
       iSplit; [iPureIntro|iSplitR "HR"; [buf_close; exact Hw|iExact "HR"]].
-      split; [exact Hc|]. assert (pw_ptr w <> pw_end w); [|unfold pwin_ok in Hw; lia].
+      split; [exact Hc|]. split; [|exact Hmd]. assert (pw_ptr w <> pw_end w); [|unfold pwin_ok in Hw; lia].
       intros Heq. rewrite Heq Z.eqb_refl in E. discriminate E.
   - (* L4: store the character and advance the write pointer. *)
-    iIntros ([[[[[bb c] breg] w] written] mode] e from Φ) "_ %He [[%Hc %Hfree] [Hbuf HR]] HK".
+    iIntros ([[[[[bb c] breg] w] written] mode] e from Φ) "_ %He [(%Hc & %Hfree & %Hmd) [Hbuf HR]] HK".
     cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *. c_env_open He. buf_open "Hbuf".
     block_enter. step. load_window "Hl" "Hptr" "Hwl". step. check "Hl". store "Hl" "Hptr". step.
-    iDestruct (win_live_acc with "Hl Hwl") as "[Hwo Hback]". iDestruct "Hbytes" as (xs) "[%Hlen Hbytes]".
-    iDestruct (window_byte w xs Hw Hfree Hlen with "Hbytes") as (x) "[Hx Hrest]". unfold pwin_ok in Hw.
+    iDestruct (win_live_acc with "Hl Hwl") as "[Hwo Hback]".
+    iDestruct (window_byte w Hw Hfree with "Hwin") as (x) "[Hx Hrest]". unfold pwin_ok in Hw.
     check "Hwo". rule2 "Hwo" "Hx" ltac:(eapply wp_raw_store_byte; inst; [vx | vx | reflexivity | a2 | wi_store]).
-    iDestruct ("Hback" with "Hwo") as "[Hl Hwl]". iDestruct ("Hrest" with "Hx") as "Hbytes". step.
+    iDestruct ("Hback" with "Hwo") as "[Hl Hwl]". iDestruct ("Hrest" with "[%] Hx") as "Hwin"; [apply Z.mod_pos_bound; lia|]. step.
     goto_block "IH" "HK" 3%nat with bb. cbn [ptr_addr ptr_cap]. unwrap2.
     out_close "HR" with (PWin (pw_obj w) (pw_reg w) (pw_base w) (pw_ptr w + 1) (pw_end w)).
     unfold pwin_ok. cbn [pw_obj pw_reg pw_base pw_ptr pw_end]. lia.
@@ -133,7 +134,7 @@ Qed.
 (** The compiled `c: __printf_buffer_putc` meets [putc_spec] in any
     program that defines it. *)
 Lemma putc_has_spec `{!Defines ge "glibc_vfprintf_internal#__printf_buffer_putc" glibc_printf_buffer_putc} :
-  HasSpec registry (os_wi w0) ge (TAtom "glibc_vfprintf_internal#__printf_buffer_putc") (putc_spec R).
+  HasSpec registry (os_wi w0) ge (TAtom "glibc_vfprintf_internal#__printf_buffer_putc") (putc_spec k R).
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ putc_blocks); [exact defines | reflexivity | reflexivity | | exact putc_table].
   intros [bb c]. eexists _, (bb, c). split; [reflexivity|]. split; [c_env_close|].

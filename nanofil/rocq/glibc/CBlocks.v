@@ -181,7 +181,7 @@ Tactic Notation "call_callee" "with" uconstr(x) "giving" constr(Hs) :=
       let H := constr:(ltac:(typeclasses eauto with typeclass_instances call_specs) :
         HasSpec (@program_registry hlc Σ P) (os_wi (@program_world hlc Σ P)) (@program_ge hlc Σ P) n s) in
       iApply (wp_call_callee n s (HasSpec0 := H) x);
-        [vx
+        [vxu
         | iSplitL Hs;
             [cbn [fs_pre]
             | cbn [fs_post]; let v := fresh "v" in iIntros (v) "Hpost"]]
@@ -203,7 +203,7 @@ Ltac block_enter :=
     with an edge. The hypothesis H says which block the function came
     from, and the phi nodes read their values along that edge. *)
 Ltac block_enter_from H :=
-  cbn [edge_fits bs_from] in H; subst;
+  cbn [edge_fits bs_from] in H; lazymatch type of H with ?from = _ => subst from end;
   iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]].
 
 (** The tactic [branch_eqn] takes a conditional jump and leaves one
@@ -213,6 +213,24 @@ Ltac branch_eqn E :=
   eapply step_wand; [eapply wp_branch; inst; vx |];
   lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] =>
     destruct (n =? 0) eqn:E end; cbn [edge_label].
+
+(** The condition of a jump is an integer that the compiled code
+    computed from comparisons, so the hypothesis E that [branch_eqn]
+    leaves is hard to read. The tactic [branch_fact] replaces E with
+    the comparisons themselves, as hypotheses about the integers that
+    were compared. It closes the goal when E cannot hold. *)
+Ltac branch_flag :=
+  change (1 mod 2 ^ 32) with 1; change (0 mod 2 ^ 32) with 0;
+  change (1 mod 2 ^ 64) with 1; change (0 mod 2 ^ 64) with 0.
+
+Ltac branch_fact E :=
+  revert E; unwrap2; branch_flag;
+  repeat match goal with
+    | |- context [?x =? ?y] => innermost x; innermost y; destruct (Z.eqb_spec x y); branch_flag
+    | |- context [?x <? ?y] => innermost x; innermost y; destruct (Z.ltb_spec x y); branch_flag
+    | |- context [?x <=? ?y] => innermost x; innermost y; destruct (Z.leb_spec x y); branch_flag
+    end;
+  intros E; try discriminate E; try (exfalso; lia); clear E.
 
 (** The tactic [c_env_close] proves that the current environment fits a
     signature, by looking up each temporary and comparing addresses

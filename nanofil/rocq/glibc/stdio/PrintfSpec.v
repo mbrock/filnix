@@ -22,7 +22,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv WordString PrintfStreamInv FxprintfStream
-  NarrowFormat NarrowArgs FormatterCode FormatterStringTable CStruct PrintfLayout PrintfOut.
+  NarrowFormat NarrowArgs FormatterCode FormatterStringTable CStruct PrintfLayout PrintfOut StrchrnulLogic.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -131,13 +131,113 @@ Definition vfprintf_spec : fspec Σ :=
 
 (** ## Appending to a buffer *)
 
+(** Each contract below has the two parameters of the invariant
+    [printf_out]. The first parameter k is the mode that the buffer is
+    in while it has not failed. The second parameter R owns what the
+    function that flushes the buffer needs, such as the stream. *)
+
 (** `c: __printf_buffer_putc (buf, ch)` appends one character. It
     keeps the buffer usable with the same backend. The out-of-line
     `c: __printf_buffer_putc_1` has the same contract. *)
-Definition putc_spec (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+Definition putc_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec (Z * Z) (fun '(bb, c) => [WPtr (mkPtr bb (Obj bb)); WInt c])
-    (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out R bb)%I
-    (fun '(bb, c) o => ⌜o = RetVoid⌝ ∗ printf_out R bb)%I.
+    (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out k R bb)%I
+    (fun '(bb, c) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb)%I.
+
+(** `c: __printf_buffer_has_failed (buf)` reads the buffer's mode and
+    answers 1 when an earlier append has failed. The invariant does
+    not say which mode the buffer is in, so a caller must handle both
+    answers. *)
+Definition has_failed_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+  FSpec Z (fun bb => [WPtr (mkPtr bb (Obj bb))])
+    (fun bb => printf_out k R bb)
+    (fun bb o => ∃ b, ⌜o = Ret (WInt b) /\ (b = 0 \/ b = 1)⌝ ∗ printf_out k R bb)%I.
+
+(** `c: __printf_buffer_flush (buf)` makes room in the window. It
+    answers 1 when the window has a free byte afterwards, and the
+    buffer has then not failed. It answers 0 when the buffer has
+    failed. The postcondition shows the window, so that a caller can
+    use the free byte. *)
+Definition flush_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+  FSpec Z (fun bb => [WPtr (mkPtr bb (Obj bb))])
+    (fun bb => printf_out k R bb)
+    (fun bb o => ∃ b breg w written mode,
+       ⌜o = Ret (WInt b) /\ (b = 0 \/ b = 1) /\ (mode = mode_failed \/ mode = k) /\
+        (b = 1 -> pw_ptr w < pw_end w)⌝ ∗
+       printf_buf bb breg w written mode ∗ R (pw_place w))%I.
+
+(** `c: __printf_buffer_write (buf, s, count)` appends the first count
+    bytes of the string at s. The caller keeps the string. *)
+Definition write_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+  FSpec (Z * dfrac * ptr * list Z * Z)
+    (fun '(bb, _, p, _, n) => [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt n])
+    (fun '(bb, dq, p, s, n) => ⌜0 <= n <= Z.of_nat (length s)⌝ ∗ printf_out k R bb ∗ word_string dq p s)%I
+    (fun '(bb, dq, p, s, _) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb ∗ word_string dq p s)%I.
+
+(** `c: memcpy (dest, src, n)` copies n bytes into a window. The
+    caller lends the window with its capability slots, the lifetime of
+    the window's object and a reader's share of the source bytes, and
+    it gets all of them back. The window starts at an 8-aligned
+    address, because the copy rewrites whole capability slots. This is
+    the contract of `c: memcpy` that the appending functions use. *)
+Definition win_copy_spec : fspec Σ :=
+  FSpec (Z * region * Z * Z * Z * dfrac * Z * region * ptr * list Z)
+    (fun '(b, _, _, _, a, _, _, _, q, ys) => [WPtr (mkPtr a (Obj b)); WPtr q; WInt (Z.of_nat (length ys))])
+    (fun '(b, reg, lo, hi, a, dq, sb, sreg, q, ys) =>
+       ⌜b mod 8 = 0 /\ lo mod 8 = 0 /\ b <= lo /\ lo <= a /\ a + Z.of_nat (length ys) <= hi /\ hi <= r_end reg /\
+        (ptr_cap q = Obj sb \/ ptr_cap q = Ro sb) /\ sb mod 8 = 0 /\ sb <= ptr_addr q /\
+        ptr_addr q + Z.of_nat (length ys) <= r_end sreg /\ Z.of_nat (length ys) < 2 ^ 64 /\
+        Forall (fun y => 0 <= y < 256) ys⌝ ∗
+       live b reg ∗ win_own b lo hi ∗ liveq dq sb sreg ∗ bytesq dq sb (ptr_addr q - sb) ys)%I
+    (fun '(b, reg, lo, hi, a, dq, sb, sreg, q, ys) o =>
+       ⌜o = Ret (WPtr (mkPtr a (Obj b)))⌝ ∗
+       live b reg ∗ win_own b lo hi ∗ liveq dq sb sreg ∗ bytesq dq sb (ptr_addr q - sb) ys)%I.
+
+(** ## The formatter's loop *)
+
+(** `c: __find_specmb (format)` returns a pointer to the first percent
+    sign of a string, or to its end when it has none. *)
+Definition find_spec_spec : fspec Σ :=
+  FSpec (dfrac * ptr * list Z) (fun '(_, p, _) => [WPtr p])
+    (fun '(dq, p, s) => word_string dq p s)
+    (fun '(dq, p, s) o => ⌜o = Ret (WPtr (ptr_add p (Z.of_nat (chr_idx 37 s))))⌝ ∗ word_string dq p s)%I.
+
+(** The record [pb_in] is the logical input of a call of the loop
+    that walks a format. It names the buffer, the format with its
+    parsed directives, the argument cursor and errno. *)
+Record pb_in : Type := PbIn {
+  pb_buf : Z;
+  pb_fmt : ptr; pb_dq : dfrac; pb_bytes : list Z;
+  pb_ds : list narrow_directive;
+  pb_ap : ptr; pb_skip : Z; pb_xs : list word; pb_rest : list word;
+  pb_eb : Z
+}.
+
+(** `c: __printf_buffer (buf, format, ap, 0)` appends the formatted
+    text to the buffer. The contract has the premises of
+    [vfprintf_spec], with a usable buffer in the place of the stream.
+    Its parameter cover says which directives a proof handles, so that
+    a proof of some conversions states exactly what it covers. The
+    function returns nothing. A failure shows only in the buffer's
+    mode, which the invariant hides. *)
+Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z * region * Z * Z -> iProp Σ) :
+    fspec Σ :=
+  FSpec pb_in
+    (fun x => [WPtr (mkPtr (pb_buf x) (Obj (pb_buf x))); WPtr (pb_fmt x); WPtr (pb_ap x); WInt 0])
+    (fun x =>
+       ⌜parse_narrow (pb_bytes x) = Some (pb_ds x) /\ Forall cover (pb_ds x) /\
+        narrow_progress (pb_ds x) (skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x)) (pb_rest x) /\
+        ow_errno w0 = Some (mkPtr (pb_eb x) (Obj (pb_eb x)))⌝ ∗
+       printf_out k R (pb_buf x) ∗
+       word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ va_at (pb_ap x) (pb_skip x) (pb_xs x) ∗
+       ([∗ list] a ∈ pb_xs x, str_arg a) ∗ errno_any (pb_eb x) ∗ printf_ro)%I
+    (fun x o => ⌜o = RetVoid⌝ ∗ printf_out k R (pb_buf x) ∗
+       word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ errno_any (pb_eb x))%I.
+
+(** A literal byte and the conversion `%s` are the directives of the
+    formats that print only strings. *)
+Definition lit_or_str (d : narrow_directive) : Prop :=
+  match d with FmtLit _ | FmtStr => True | _ => False end.
 
 (** ## The file-backed buffer *)
 
@@ -183,8 +283,9 @@ Definition fwin_ptrs (cs : option fchars) : ptr * ptr :=
   | None => (null, null)
   end.
 
-(** The predicate [fwin_stream] owns what the choice reads: the
-    stream's write pointer and write end, a reader's share of the
+(** Both functions read two fields of the stream to make the choice:
+    the write pointer and the write end. The predicate [fwin_stream]
+    owns these two fields. It also owns a reader's share of the
     stream's lifetime, and a reader's share of the lifetime of the
     character buffer when the stream has one. *)
 Definition fwin_stream (i : fwin_in) : iProp Σ :=

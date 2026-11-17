@@ -455,6 +455,8 @@ stdio/PrintfLayout.v
 stdio/PrintfOut.v
 stdio/PrintfSpec.v
 stdio/PrintfPutc.v
+stdio/PrintfCopy.v
+stdio/PrintfWrite.v
 stdio/PrintfFileInit.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v

@@ -215,13 +215,14 @@ Ltac c_env_split H ns :=
 Ltac c_env_sig :=
   lazymatch goal with
   | |- c_env ?s ?e ?v =>
-      let s' := eval vm_compute in s in let v' := eval hnf in v in change (c_env s' e v')
+      let s' := eval vm_compute in s in let v0 := eval hnf in v in let v' := eval cbn in v0 in
+      change (c_env s' e v')
   end.
 
 Ltac c_env_open H :=
   lazymatch type of H with
   | c_env ?s ?e ?v =>
-      let s' := eval vm_compute in s in let v' := eval hnf in v in
+      let s' := eval vm_compute in s in let v0 := eval hnf in v in let v' := eval cbn in v0 in
       let ns := eval vm_compute in (hyp_names s' []) in
       change (c_env s' e v') in H;
       let T := type of H in
