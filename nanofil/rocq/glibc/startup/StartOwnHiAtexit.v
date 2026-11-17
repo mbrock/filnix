@@ -2,9 +2,9 @@
     runtime calls `c: __libc_start_main`, in every state that
     [StartState](../zsys/StartState.v) allows. The proof of the startup
     body takes the memory that startup reads and writes as separate
-    resources, and earlier modules list that memory as eight lists of
+    resources, and earlier modules list that memory as nine lists of
     pieces of the loader's image. This module shows that every start
-    state holds all eight lists, and turns them into owned resources.
+    state holds all nine lists, and turns them into owned resources.
 
     A start state keeps every object of the loader's image, except that
     it fills in the constructor table. The step from a kept image to
@@ -19,7 +19,7 @@ From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld StartCtors StartState StartOwn HiAtexitModule HiAtexitInitial
   HiAtexitInitialList StartInitFirstImage StartImageCpu StartVtablesImage StartImageEarly
-  HiAtexitStartBridge StartImageDisjoint StartImageUnique StartLsmImage.
+  HiAtexitStartBridge StartImageDisjoint StartImageUnique StartLsmImage HiAtexitInitialStdout.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -44,21 +44,34 @@ Definition hi_lsm_ps : list (piece * pval) :=
 Lemma hi_lsm_agree : all_agree hi_m0 hi_lsm_ps.
 Proof. apply hi_m0_pieces. vm_cast_no_check (eq_refl true). Qed.
 
-(** ## The eight lists in every start state
+(** ## Stdout's life
+
+    The stream constructor links stdout into the list of open streams,
+    so it needs stdout's life. No other list holds that life, because
+    the image proofs about output own it on their own. *)
+
+(** This list holds stdout's life as the image leaves it. *)
+Definition hi_stdout_life_ps : list (piece * pval) := [(PLive 72240, VLive hi_stdout_reg)].
+
+(** The loader's image holds stdout alive in its region. *)
+Lemma hi_stdout_life_agree : all_agree hi_m0 hi_stdout_life_ps.
+Proof. apply hi_m0_pieces. vm_cast_no_check (eq_refl true). Qed.
+
+(** ## The nine lists in every start state
 
     The lists are the CPU globals, the memory of early init and of the
     constructor runner, the inputs of the three constructors, the
-    frame that startup hands to main unchanged, and the globals of the
-    startup body. The loader's image
+    frame that startup hands to main unchanged, the globals of the
+    startup body and stdout's life. The loader's image
     holds all of them, and none is a byte of the constructor table. *)
 
 (** These are all the pieces that hi_atexit's startup owns or hands to
     main unchanged. *)
 Definition hi_start_all_ps : list (piece * pval) :=
   hi_cpu_globals_ps ++ hi_early_ps ++ hi_runner_ps ++ hi_initial_list_ps ++ hi_init_first_ps ++
-  hi_vtables_ps ++ hi_start_kept_ps ++ hi_lsm_ps.
+  hi_vtables_ps ++ hi_start_kept_ps ++ hi_lsm_ps ++ hi_stdout_life_ps.
 
-(** No object and no byte occurs twice in the eight lists. *)
+(** No object and no byte occurs twice in the nine lists. *)
 Lemma hi_start_all_nodup : NoDup hi_start_all_ps.*1.
 Proof. apply pieces_unique_sound. vm_cast_no_check (eq_refl true). Qed.
 
@@ -74,7 +87,8 @@ Proof.
   apply (proj2 (all_agree_app _ hi_init_first_ps _)). split; [exact hi_init_first_agree|].
   apply (proj2 (all_agree_app _ hi_vtables_ps _)). split; [exact hi_vtables_agree|].
   apply (proj2 (all_agree_app _ hi_start_kept_ps _)). split; [exact hi_start_kept_agree|].
-  exact hi_lsm_agree.
+  apply (proj2 (all_agree_app _ hi_lsm_ps _)). split; [exact hi_lsm_agree|].
+  exact hi_stdout_life_agree.
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the
@@ -95,7 +109,7 @@ Proof.
 Qed.
 
 (** Every state in which the runtime can start hi_atexit holds all
-    eight lists. *)
+    nine lists. *)
 Theorem hi_start_agree w0 m w xs :
   start_state hi_module w0 m w xs -> all_agree m hi_start_all_ps.
 Proof.
@@ -115,29 +129,29 @@ Proof.
   - exact hi_start_all_off.
 Qed.
 
-(** ## Owning the eight lists
+(** ## Owning the nine lists
 
     Each startup call needs to own the memory it touches, apart from
     what the other calls touch. The whole run starts by owning every
     piece of the start memory, and since no piece appears twice, that
-    ownership splits into the eight lists, one separate
+    ownership splits into the nine lists, one separate
     [[separation-logic]] resource each. *)
 
 Section own.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** The heap of all eight lists is the eight lists' points-to
+(** The heap of all nine lists is the nine lists' points-to
     assertions side by side. *)
 Lemma hi_start_own :
   ([∗ map] l ↦ v ∈ list_to_map hi_start_all_ps, pointsto l (DfracOwn 1) v) ⊣⊢
   pts hi_cpu_globals_ps ∗ pts hi_early_ps ∗ pts hi_runner_ps ∗ pts hi_initial_list_ps ∗
-  pts hi_init_first_ps ∗ pts hi_vtables_ps ∗ pts hi_start_kept_ps ∗ pts hi_lsm_ps.
+  pts hi_init_first_ps ∗ pts hi_vtables_ps ∗ pts hi_start_kept_ps ∗ pts hi_lsm_ps ∗ pts hi_stdout_life_ps.
 Proof using Type.
   etrans; [exact (pts_map hi_start_all_ps hi_start_all_nodup)|].
   unfold hi_start_all_ps.
   rewrite (pts_app hi_cpu_globals_ps) (pts_app hi_early_ps) (pts_app hi_runner_ps)
     (pts_app hi_initial_list_ps) (pts_app hi_init_first_ps) (pts_app hi_vtables_ps)
-    (pts_app hi_start_kept_ps).
+    (pts_app hi_start_kept_ps) (pts_app hi_lsm_ps).
   done.
 Qed.
 
@@ -147,7 +161,7 @@ End own.
 
     The runtime's own objects, argv, environ and the auxiliary vector,
     are heap objects. The image of hi_atexit has none, so the runtime's
-    objects never share a piece with the eight lists. *)
+    objects never share a piece with the nine lists. *)
 
 (** No region of hi_atexit's initial memory is a heap region. *)
 Lemma hi_no_heap_regions : no_heap_regions hi_m0.
