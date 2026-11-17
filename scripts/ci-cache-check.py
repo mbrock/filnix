@@ -7,7 +7,8 @@ references through narinfo lookups on filc.cachix.org, falling back to
 cache.nixos.org for ordinary dependencies. The outputs themselves of the
 attributes in scripts/swa-cache-outputs.txt (disk images, container
 tarballs) are looked up in the swa cache instead; their dependencies are
-not. Nothing is downloaded or built.
+not. When the swa cache does not answer, those outputs count as not cached.
+Nothing is downloaded or built.
 Exits 1 naming the roots whose closures are incomplete, 2 if evaluation
 or the cache check itself fails. Only missing paths count as incomplete.
 
@@ -58,6 +59,12 @@ def narinfo(cache, path):
             text = response.read().decode()
     except urllib.error.HTTPError as error:
         if error.code == 404:
+            return None
+        raise
+    except (urllib.error.URLError, TimeoutError):
+        # The swa cache is optional and often offline: its outputs then
+        # count as not cached rather than failing the check.
+        if cache == SWA_CACHE:
             return None
         raise
     for line in text.splitlines():
