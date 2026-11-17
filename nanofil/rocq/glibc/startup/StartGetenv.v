@@ -36,46 +36,57 @@ Definition getenv_image_ok (ge : genv) (bc : Z) (rc : region) (be : Z) (re : reg
 Lemma lookup_nth_error_eq {A} (l : list A) k x : l !! k = Some x -> nth_error l k = Some x.
 Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discriminate; auto. Qed.
 
+(** These are the entries that `c: getenv` scans for an environment
+    array env of the start state. Each entry's pointer is the base of
+    its own string, and its region is the one memory records for it. *)
+Definition env_entry (m : mem) (q : Z * list Z) : getenv_entry := EnvEntry (mkPtr q.1 (Obj q.1)) q.2 (reg_of m q.1).
+Definition env_entries (m : mem) (env : Z * list (Z * list Z)) : list getenv_entry := map (env_entry m) env.2.
+
+(** The entries hold the array's strings. *)
+Lemma env_entries_text m env : map entry_text (env_entries m env) = map snd env.2.
+Proof. rewrite /env_entries map_map. reflexivity. Qed.
+
 Section own.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
-(** A frozen string at the base of its own object holds a copyable
-    share of that object's life. *)
-Lemma obj_string_live b s : word_string DfracDiscarded (mkPtr b (Obj b)) s ⊢ ∃ reg, liveq DfracDiscarded b reg.
+(** A start string can be frozen. Then it is a read-only string, and
+    it also holds a copyable share of its object's life in the region
+    that memory records. *)
+Lemma start_str_ro m q : c_string m q.1 q.2 ->
+  live q.1 (reg_of m q.1) -∗ bytes q.1 0 (str_bytes q.2) ==∗
+  word_string DfracDiscarded (mkPtr q.1 (Obj q.1)) q.2 ∗ liveq DfracDiscarded q.1 (reg_of m q.1).
 Proof using Type.
-  iIntros "Hw". iDestruct "Hw" as (b' reg ws Hsh) "[Hl _]".
-  destruct (ss_cap _ _ _ _ _ Hsh) as [E|E]; [|discriminate]. cbn in E. injection E as <-.
-  iExists reg. iExact "Hl".
+  intros Hc. iIntros "L B". iDestruct (str_wwin m q Hc with "L B") as (ws Hs) "[L W]".
+  iMod (ptsq_persist with "L") as "#L". iMod (ptsq_persist with "W") as "#W". iModIntro.
+  iSplit; [|iExact "L"]. iExists q.1, (reg_of m q.1), ws. iSplit; [done|]. rewrite /wwin. iFrame "L W".
 Qed.
 
 (** The scan reads one cell for each slot of the array. Those cells come
     from the slots at offsets o, o + 8 and onward, the null slot, and a
-    frozen string for each slot. The entries have the array's texts. *)
-Lemma env_cells_own b o (ss : list (Z * list Z)) :
+    frozen string with its life for each slot. *)
+Lemma env_cells_own m b o (ss : list (Z * list Z)) :
   ([∗ list] i ↦ q ∈ ss, pcell b (o + 8 * Z.of_nat i) (mkPtr q.1 (Obj q.1))) -∗
   pcell b (o + 8 * Z.of_nat (length ss)) null -∗
-  ([∗ list] q ∈ ss, word_string DfracDiscarded (mkPtr q.1 (Obj q.1)) q.2) -∗
-  ∃ es, ⌜map entry_text es = map snd ss⌝ ∗ getenv_cells (DfracOwn 1) DfracDiscarded b o es.
+  ([∗ list] q ∈ ss, word_string DfracDiscarded (mkPtr q.1 (Obj q.1)) q.2 ∗ liveq DfracDiscarded q.1 (reg_of m q.1)) -∗
+  getenv_cells (DfracOwn 1) DfracDiscarded b o (map (env_entry m) ss).
 Proof using Type.
-  revert o. induction ss as [|q ss IH]; intros o; cbn [big_opL length].
-  - iIntros "_ Hn _". iExists []. iSplit; [done|]. cbn [getenv_cells].
+  revert o. induction ss as [|q ss IH]; intros o; cbn [big_opL length List.map].
+  - iIntros "_ Hn _". cbn [getenv_cells]. rewrite /pcellq -pts_ptsq.
     by replace (o + 8 * Z.of_nat 0) with o by lia.
-  - iIntros "[Hq Hs] Hn [#Hw Hws]". replace (o + 8 * Z.of_nat 0) with o by lia.
-    iDestruct (obj_string_live with "Hw") as (reg) "#Hl".
-    iDestruct (IH (o + 8) with "[Hs] [Hn] Hws") as (es Hes) "Hc".
+  - iIntros "[Hq Hs] Hn [[#Hw #Hl] Hws]". replace (o + 8 * Z.of_nat 0) with o by lia.
+    iDestruct (IH (o + 8) with "[Hs] [Hn] Hws") as "Hc".
     { iApply (big_sepL_impl with "Hs"). iIntros "!>" (k x _) "H".
       by replace (o + 8 * Z.of_nat (S k)) with (o + 8 + 8 * Z.of_nat k) by lia. }
     { by replace (o + 8 * Z.of_nat (S (length ss))) with (o + 8 + 8 * Z.of_nat (length ss)) by lia. }
-    iExists (EnvEntry (mkPtr q.1 (Obj q.1)) q.2 reg :: es). iSplit; [iPureIntro; cbn; by rewrite Hes|].
-    cbn [getenv_cells entry_ptr entry_text entry_region ptr_cap live_capq].
-    iSplitL "Hq"; [iExact "Hq"|]. iSplitR; [iExact "Hl"|]. iSplitR; [iExact "Hw"|]. iExact "Hc".
+    cbn [getenv_cells env_entry entry_ptr entry_text entry_region ptr_cap live_capq].
+    iSplitL "Hq"; [rewrite /LG0.pcellq; iExact "Hq"|]. iSplitR; [iExact "Hl"|]. iSplitR; [iExact "Hw"|iExact "Hc"].
 Qed.
 
-(** After the constructors have run, a run owns the two globals, with
-    `c: __environ` pointing at the environment array, and the array with
-    its strings as [StartOwn]'s [array_own] gives them. From these it
-    can own what `c: getenv` reads. The counter starts at zero, and the
-    entries' texts are the strings of the start state. *)
+(** Each call of `c: getenv` reads two globals and the environment
+    array. Once the constructors have run, a run owns all of them:
+    `c: __environ` points at the array, and the array holds its strings.
+    So the run can own what the scan reads. The counter starts at zero,
+    and the entries are the strings of the start state. *)
 Lemma getenv_own m (env : Z * list (Z * list Z)) bc rc be re :
   string_array m env.1 env.2 ->
   live bc rc -∗ icell bc 0 0 -∗ live be re -∗ pcell be 0 (mkPtr env.1 (Obj env.1)) -∗
@@ -83,31 +94,30 @@ Lemma getenv_own m (env : Z * list (Z * list Z)) bc rc be re :
   ([∗ list] i ↦ q ∈ env.2, pcell env.1 (8 * Z.of_nat i) (mkPtr q.1 (Obj q.1))) -∗
   pcell env.1 (8 * Z.of_nat (length env.2)) null -∗
   ([∗ list] q ∈ env.2, live q.1 (reg_of m q.1) ∗ bytes q.1 0 (str_bytes q.2)) ==∗
-  ∃ es, ⌜map entry_text es = map snd env.2⌝ ∗
-    getenv_globals (DfracOwn 1) bc rc be re 0 (mkPtr env.1 (Obj env.1)) ∗
-    getenv_storage (DfracOwn 1) DfracDiscarded (mkPtr env.1 (Obj env.1)) es.
+  getenv_globals (DfracOwn 1) bc rc be re 0 (mkPtr env.1 (Obj env.1)) ∗
+  getenv_storage (DfracOwn 1) DfracDiscarded (mkPtr env.1 (Obj env.1)) (env_entries m env).
 Proof using Type.
-  destruct env as [b ss]. cbn [fst snd]. intros (Hh & Hs & _).
+  destruct env as [b ss]. rewrite /env_entries. cbn [fst snd]. intros (Hh & Hs & _).
   pose proof Hh as (reg & [Er _] & _ & H0 & Ha & He & Hr).
-  assert (Rg : reg_of m b = reg) by (unfold reg_of; rewrite Er; reflexivity). rewrite Rg.
+  assert (Rg : reg_of m b = reg) by (unfold reg_of; rewrite Er; reflexivity).
   iIntros "Lc Hc Le He La Hsl Hn Hstr".
-  iAssert (|==> [∗ list] q ∈ ss, word_string DfracDiscarded (mkPtr q.1 (Obj q.1)) q.2)%I with "[Hstr]" as ">#Hw".
+  iAssert (|==> [∗ list] q ∈ ss, word_string DfracDiscarded (mkPtr q.1 (Obj q.1)) q.2 ∗
+    liveq DfracDiscarded q.1 (reg_of m q.1))%I with "[Hstr]" as ">Hw".
   { iApply big_sepL_bupd. iApply (big_sepL_impl with "Hstr"). iIntros "!>" (k q Hk) "[L B]".
     destruct q as [sb s]. destruct (Hs k sb s (lookup_nth_error_eq _ _ _ Hk)) as [_ Hc].
-    iMod (word_string_persist with "[L B]") as "#W"; [iApply (str_word_string m (sb, s) Hc with "L B")|].
-    by iModIntro. }
-  iDestruct (env_cells_own b 0 ss with "[Hsl] [Hn] Hw") as (es Hes) "Hcells".
+    iApply (start_str_ro m (sb, s) Hc with "L B"). }
+  iDestruct (env_cells_own m b 0 ss with "[Hsl] [Hn] Hw") as "Hcells".
   { iApply (big_sepL_impl with "Hsl"). iIntros "!>" (k x _) "H". by rewrite Z.add_0_l. }
   { by rewrite Z.add_0_l. }
-  iModIntro. iExists es. iSplit; [done|]. iFrame "Lc Hc Le He". iRight.
+  rewrite Rg. iModIntro. rewrite /getenv_globals /liveq /icellq /pcellq -!pts_ptsq. iFrame "Lc Hc Le He". iRight.
   iExists b, reg, 0. iSplit; [iPureIntro; by rewrite Z.add_0_r|]. rewrite /getenv_vector.
-  assert (Le : length es = length ss) by (rewrite -(length_map entry_text es) Hes length_map; reflexivity).
+  assert (Le : length (map (env_entry m) ss) = length ss) by apply length_map.
   assert (Hd : 8 * (Z.of_nat (length ss) + 1) <= (8 * (Z.of_nat (length ss) + 1) + 15) / 16 * 16)
     by (Z.div_mod_to_equations; lia).
   assert (H8 : b mod 8 = 0).
   { apply Z.mod_divide; [lia|]. destruct (proj1 (Z.mod_divide b 16 ltac:(lia)) Ha) as [k ->]. exists (2 * k). lia. }
   iSplit; [iPureIntro; rewrite Le Z.add_0_r; split_and!; lia|].
-  iSplitL "La"; [iExact "La"|iExact "Hcells"].
+  rewrite /liveq -pts_ptsq. iSplitL "La"; [iExact "La"|iExact "Hcells"].
 Qed.
 
 (** A full share of any pieces is two halves. *)

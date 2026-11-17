@@ -346,10 +346,13 @@ Proof.
 Qed.
 
 (** Owning a start string's life and its padded bytes is owning it as
-    a [word_string], which is how string routines and `c: __init_misc`
-    take it. *)
-Lemma str_word_string m q : c_string m q.1 q.2 ->
-  live q.1 (reg_of m q.1) -∗ bytes q.1 0 (str_bytes q.2) -∗ word_string (DfracOwn 1) (mkPtr q.1 (Obj q.1)) q.2.
+    a window of words in the string's own region. The region is the one
+    that memory records for the string, which a reader of the
+    environment needs to know. *)
+Lemma str_wwin m q : c_string m q.1 q.2 ->
+  live q.1 (reg_of m q.1) -∗ bytes q.1 0 (str_bytes q.2) -∗
+  ∃ ws, ⌜str_shape (mkPtr q.1 (Obj q.1)) q.1 (reg_of m q.1) ws q.2⌝ ∗
+    wwin (DfracOwn 1) q.1 (reg_of m q.1) (wstart (mkPtr q.1 (Obj q.1)) - q.1) ws.
 Proof using Type.
   destruct q as [b s]. cbn [fst snd]. intros (Hh & Hc & Hz & _).
   pose proof Hh as (reg & [Er Lr] & _ & H0 & Ha & He & Hs).
@@ -368,7 +371,7 @@ Proof using Type.
     - apply List.Forall_forall. intros x Hx. apply repeat_spec in Hx as ->. lia. }
   destruct (words_of_ok n (str_bytes s) Ln Hby) as (Ew & Bw & Lw).
   assert (Hb8 : b mod 8 = 0) by (Z.div_mod_to_equations; lia).
-  iIntros "L B". iExists b, reg, (words_of n (str_bytes s)).
+  iIntros "L B". iExists (words_of n (str_bytes s)).
   iSplitR.
   - iPureIntro.
     assert (Hr : 8 * ((Z.of_nat (length s) + 8) / 8) <= (Z.of_nat (length s) + 1 + 15) / 16 * 16)
@@ -382,6 +385,15 @@ Proof using Type.
       exfalso. assert (Z.of_nat (length s) < 8 * ((Z.of_nat (length s) + 8) / 8)) by (Z.div_mod_to_equations; lia).
       lia.
   - rewrite /wwin /wstart. cbn [ptr_addr]. rewrite Hb8 Z.sub_0_r Z.sub_diag start_words_ps_bytes Ew. iFrame.
+Qed.
+
+(** So owning them is owning the string as a [word_string], which is
+    how string routines and `c: __init_misc` take it. *)
+Lemma str_word_string m q : c_string m q.1 q.2 ->
+  live q.1 (reg_of m q.1) -∗ bytes q.1 0 (str_bytes q.2) -∗ word_string (DfracOwn 1) (mkPtr q.1 (Obj q.1)) q.2.
+Proof using Type.
+  intros Hc. iIntros "L B". iDestruct (str_wwin m q Hc with "L B") as (ws Hs) "W".
+  iExists q.1, (reg_of m q.1), ws. iSplit; [done|iExact "W"].
 Qed.
 
 End own.
