@@ -239,6 +239,7 @@ startup/StartCtorRunnerSpec.v
 startup/StartCtorRunner.v
 startup/StartCallMainSpec.v
 startup/StartCallMain.v
+startup/StartLibcStartMain.v
 startup/StartPtmallocInitSpec.v
 startup/StartPtmallocInit.v
 startup/StartPthreadTunablesSpec.v
