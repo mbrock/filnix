@@ -107,6 +107,12 @@ stdio/PrintfStateNames.v
 stdio/FxprintfCode.v
 stdio/FxprintfSrc.v
 stdio/FxprintfNames.v
+stdio/FprintfCode.v
+stdio/FprintfSrc.v
+stdio/FprintfNames.v
+stdio/PrintfCode.v
+stdio/PrintfSrc.v
+stdio/PrintfNames.v
 stdio/FxprintfNormalCode.v
 stdio/FxprintfNormalSrc.v
 stdio/FxprintfNormalNames.v
@@ -448,6 +454,7 @@ stdio/PrintfBufferXsputnEntry.v
 stdio/PrintfBufferXsputnPrelude.v
 stdio/PrintfBufferXsputnZero.v
 stdio/PrintfStreamInv.v
+stdio/FileTidy.v
 stdio/FxprintfStream.v
 stdio/PrintfLayout.v
 stdio/PrintfOut.v
@@ -456,6 +463,7 @@ stdio/PrintfPutc.v
 stdio/PrintfCopy.v
 stdio/PrintfWrite.v
 stdio/PrintfSmall.v
+stdio/PrintfWrap.v
 stdio/PrintfFileInit.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v

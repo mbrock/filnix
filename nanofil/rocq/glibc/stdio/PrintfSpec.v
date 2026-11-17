@@ -21,8 +21,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic VariadicLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv WordString PrintfStreamInv FxprintfStream
-  NarrowFormat NarrowArgs FormatterCode FormatterStringTable CStruct PrintfLayout PrintfOut StrchrnulLogic.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle LibioFputsSpec WordString PrintfStreamInv
+  FileTidy FxprintfStream NarrowFormat NarrowArgs FormatterCode FormatterStringTable CStruct PrintfLayout PrintfOut StrchrnulLogic.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -107,11 +107,75 @@ Definition va_at (ap : ptr) (skip : Z) (xs : list word) : iProp Σ :=
 Record vfp_in : Type := VfpIn {
   vi_vb : Z;                      (* the stream jump tables *)
   vi_fp : ptr;                    (* the stream *)
-  vi_mode : Z; vi_flags2 : Z; vi_held : option Z;
+  vi_fd : Z;                      (* the stream's descriptor *)
+  vi_flags2 : Z; vi_held : option Z;
   vi_fmt : ptr; vi_dq : dfrac; vi_bytes : list Z;
   vi_ds : list narrow_directive;  (* the parsed format *)
   vi_ap : ptr; vi_skip : Z; vi_xs : list word; vi_rest : list word;
   vi_eb : Z                       (* errno *)
+}.
+
+(** The formatter is safe only for some formats and arguments, and
+    the predicate [vfp_fits] collects what it needs of them. The
+    format must parse in the narrow grammar. The arguments after the
+    named ones must fit its conversions: a pointer for each `%s` and an
+    integer for each `%c` and `%d`. The cursor must stand at the start
+    of an argument, and each argument is 8 bytes wide. The formatter
+    takes the stream's lock once more, so the count of a lock that this
+    thread holds must have room for one more. When the buffer is full
+    the formatter writes to the stream's descriptor, so that descriptor
+    must be open. *)
+Definition vfp_fits (x : vfp_in) : Prop :=
+  parse_narrow (vi_bytes x) = Some (vi_ds x) /\
+  narrow_fits (vi_ds x) (skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x)) (vi_rest x) /\
+  0 <= vi_skip x /\ vi_skip x mod 8 = 0 /\
+  (forall c, vi_held x = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) /\
+  ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x))) /\ In (vi_fd x) (ow_fds w0).
+
+(** `c: __vfprintf_internal (fp, fmt, ap, 0)` is safe when the format
+    and the arguments meet [vfp_fits] and the stream is tidy, as
+    [file_tidy] says. Each argument after the named ones must be an
+    integer, null or a read-only string. The contract asks nothing of
+    the named arguments that the cursor has already passed, because
+    the formatter never reads them. The formatter reads the stream's
+    jump table and the flag that says the process has one thread, as
+    `c: fputs` does, so the caller lends [fputs_ro] too. The function
+    returns an int and gives back the format and errno. It gives back
+    the stream as tidy as it got it, with the same descriptor, the same
+    second flags word and the same lock state. *)
+Definition vfprintf_spec : fspec Σ :=
+  FSpec vfp_in
+    (fun x => [WPtr (vi_fp x); WPtr (vi_fmt x); WPtr (vi_ap x); WInt 0])
+    (fun x =>
+       ⌜vfp_fits x⌝ ∗
+       file_tidy (vi_vb x) (ow_self w0) (vi_fp x) (vi_fd x) (vi_flags2 x) (vi_held x) ∗
+       word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ va_at (vi_ap x) (vi_skip x) (vi_xs x) ∗
+       ([∗ list] a ∈ skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x), str_arg a) ∗ errno_any (vi_eb x) ∗
+       printf_ro ∗ fputs_ro (vi_vb x))%I
+    (fun x o =>
+       ∃ n, ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
+       file_tidy (vi_vb x) (ow_self w0) (vi_fp x) (vi_fd x) (vi_flags2 x) (vi_held x) ∗
+       word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ errno_any (vi_eb x))%I.
+
+(** ### The older form of the contract *)
+
+(** Two kinds of caller reach the formatter in Hello. The first kind
+    is `c: fprintf` and `c: printf`, and their proofs use the contract
+    above. The second kind is the error messages of `c: getopt`, and
+    their proofs are older than that contract. Those proofs use the
+    contract below, which describes the stream in an older way. The
+    older description leaves out a part of the stream's buffer that the
+    formatter needs when it copies text into the buffer. So the
+    contract below cannot be proved for a stream that has a buffer on
+    the heap. It stays here, under its own name, until the proofs for
+    `c: getopt` use [vfprintf_spec]. *)
+Record vfs_in : Type := VfsIn {
+  vs_vb : Z; vs_fp : ptr;
+  vs_mode : Z; vs_flags2 : Z; vs_held : option Z;
+  vs_fmt : ptr; vs_dq : dfrac; vs_bytes : list Z;
+  vs_ds : list narrow_directive;
+  vs_ap : ptr; vs_skip : Z; vs_xs : list word; vs_rest : list word;
+  vs_eb : Z
 }.
 
 (** A stream starts without an orientation, and the first narrow or
@@ -129,32 +193,24 @@ Definition narrow_mode (mode : Z) : Z := if mode =? 0 then 2 ^ 32 - 1 else mode.
 Lemma narrow_mode_stays mode : mode = 0 \/ mode = 2 ^ 32 - 1 -> narrow_mode mode = 2 ^ 32 - 1.
 Proof. intros [-> | ->]; reflexivity. Qed.
 
-(** `c: __vfprintf_internal (fp, fmt, ap, 0)` is safe when the format
-    parses in the narrow grammar and the arguments after the named ones
-    fit its conversions, as [narrow_fits] says. The format must get a
-    pointer for each `%s` and an integer for each `%c` and `%d`. The
-    cursor must stand at the start of an argument, which is 8 bytes
-    wide. Each of those arguments must be an integer, null or a
-    read-only string. The contract asks nothing of the named
-    arguments that the cursor has already passed, because the
-    formatter never reads them. The function returns an int and gives
-    back the stream, the format and errno. The stream has the mode
-    that [narrow_mode] gives. *)
-Definition vfprintf_spec : fspec Σ :=
-  FSpec vfp_in
-    (fun x => [WPtr (vi_fp x); WPtr (vi_fmt x); WPtr (vi_ap x); WInt 0])
+(** The older form asks of the format and the arguments what
+    [vfprintf_spec] asks. It gives back the stream in the mode that
+    [narrow_mode] gives. *)
+Definition vfprintf_stream_spec : fspec Σ :=
+  FSpec vfs_in
+    (fun x => [WPtr (vs_fp x); WPtr (vs_fmt x); WPtr (vs_ap x); WInt 0])
     (fun x =>
-       ⌜parse_narrow (vi_bytes x) = Some (vi_ds x) /\
-        narrow_fits (vi_ds x) (skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x)) (vi_rest x) /\
-        0 <= vi_skip x /\ vi_skip x mod 8 = 0 /\
-        ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x)))⌝ ∗
-       printf_stream (vi_vb x) (ow_self w0) (vi_fp x) (vi_mode x) (vi_flags2 x) (vi_held x) ∗
-       word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ va_at (vi_ap x) (vi_skip x) (vi_xs x) ∗
-       ([∗ list] a ∈ skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x), str_arg a) ∗ errno_any (vi_eb x) ∗ printf_ro)%I
+       ⌜parse_narrow (vs_bytes x) = Some (vs_ds x) /\
+        narrow_fits (vs_ds x) (skipn (Z.to_nat (vs_skip x / 8)) (vs_xs x)) (vs_rest x) /\
+        0 <= vs_skip x /\ vs_skip x mod 8 = 0 /\
+        ow_errno w0 = Some (mkPtr (vs_eb x) (Obj (vs_eb x)))⌝ ∗
+       printf_stream (vs_vb x) (ow_self w0) (vs_fp x) (vs_mode x) (vs_flags2 x) (vs_held x) ∗
+       word_string (vs_dq x) (vs_fmt x) (vs_bytes x) ∗ va_at (vs_ap x) (vs_skip x) (vs_xs x) ∗
+       ([∗ list] a ∈ skipn (Z.to_nat (vs_skip x / 8)) (vs_xs x), str_arg a) ∗ errno_any (vs_eb x) ∗ printf_ro)%I
     (fun x o =>
        ∃ n, ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
-       printf_stream (vi_vb x) (ow_self w0) (vi_fp x) (narrow_mode (vi_mode x)) (vi_flags2 x) (vi_held x) ∗
-       word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ errno_any (vi_eb x))%I.
+       printf_stream (vs_vb x) (ow_self w0) (vs_fp x) (narrow_mode (vs_mode x)) (vs_flags2 x) (vs_held x) ∗
+       word_string (vs_dq x) (vs_fmt x) (vs_bytes x) ∗ errno_any (vs_eb x))%I.
 
 (** ## The variadic wrappers *)
 
@@ -164,14 +220,16 @@ Definition vfprintf_spec : fspec Σ :=
     read-only copy of all its arguments on entry. Each wrapper points a
     cursor past the named arguments in that copy and passes the cursor
     on. The contracts below are therefore the formatter's contract
-    without the cursor, stated over the arguments of the call. *)
+    without the cursor, stated over the arguments of the call. A
+    program calls a wrapper on a stream that it has not locked, so the
+    contracts take an idle stream and give one back. *)
 
 (** The record [pf_in] is the logical input of a call of a wrapper.
     Its field pf_ys holds the arguments after the format. *)
 Record pf_in : Type := PfIn {
   pf_vb : Z;                      (* the stream jump tables *)
   pf_fp : ptr;                    (* the stream *)
-  pf_mode : Z; pf_flags2 : Z; pf_held : option Z;
+  pf_fd : Z;                      (* the stream's descriptor *)
   pf_fmt : ptr; pf_dq : dfrac; pf_bytes : list Z;
   pf_ds : list narrow_directive;  (* the parsed format *)
   pf_ys : list word; pf_rest : list word;
@@ -180,25 +238,28 @@ Record pf_in : Type := PfIn {
 
 (** A wrapper asks of the format and its arguments what the formatter
     asks. The format must parse in the narrow grammar. The arguments
-    after the format must fit its conversions, and each of them must be
-    an integer, null or a read-only string. The entry copy holds only
-    integers and pointers, so each argument must be one of the two. *)
+    after the format must fit its conversions. The entry copy holds
+    only integers and pointers, so each argument must be one of the
+    two. The stream's descriptor must be open. *)
 Definition pf_fits (x : pf_in) : Prop :=
   parse_narrow (pf_bytes x) = Some (pf_ds x) /\ narrow_fits (pf_ds x) (pf_ys x) (pf_rest x) /\
-  forallb snapshot_word (pf_ys x) = true /\ ow_errno w0 = Some (mkPtr (pf_eb x) (Obj (pf_eb x))).
+  forallb snapshot_word (pf_ys x) = true /\
+  ow_errno w0 = Some (mkPtr (pf_eb x) (Obj (pf_eb x))) /\ In (pf_fd x) (ow_fds w0).
 
-(** A wrapper borrows the stream, the format, the string arguments,
-    errno and the formatter's read-only data. *)
+(** A wrapper borrows an idle stream, the format, errno and the
+    read-only data of the formatter and of `c: fputs`. Each argument
+    after the format must be an integer, null or a read-only string. *)
 Definition pf_pre (x : pf_in) : iProp Σ :=
-  printf_stream (pf_vb x) (ow_self w0) (pf_fp x) (pf_mode x) (pf_flags2 x) (pf_held x) ∗
+  file_idle (pf_vb x) (ow_self w0) (pf_fp x) (pf_fd x) ∗
   word_string (pf_dq x) (pf_fmt x) (pf_bytes x) ∗
-  ([∗ list] a ∈ pf_ys x, str_arg a) ∗ errno_any (pf_eb x) ∗ printf_ro.
+  ([∗ list] a ∈ pf_ys x, str_arg a) ∗ errno_any (pf_eb x) ∗ printf_ro ∗ fputs_ro (pf_vb x).
 
-(** A wrapper returns the formatter's int. It gives back the stream in
-    the mode that [narrow_mode] gives, the format and errno. *)
+(** A wrapper returns the formatter's int. It gives back the format
+    and errno, and the stream is idle again with the same descriptor,
+    so that a call of `c: fputs` or another print can follow. *)
 Definition pf_post (x : pf_in) (o : outcome) : iProp Σ :=
   ∃ n, ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
-  printf_stream (pf_vb x) (ow_self w0) (pf_fp x) (narrow_mode (pf_mode x)) (pf_flags2 x) (pf_held x) ∗
+  file_idle (pf_vb x) (ow_self w0) (pf_fp x) (pf_fd x) ∗
   word_string (pf_dq x) (pf_fmt x) (pf_bytes x) ∗ errno_any (pf_eb x).
 
 (** `c: fprintf (fp, fmt, ...)` formats to the stream fp. *)
@@ -306,8 +367,9 @@ Record pb_in : Type := PbIn {
 }.
 
 (** `c: __printf_buffer (buf, format, ap, 0)` appends the formatted
-    text to the buffer. The contract has the premises of
-    [vfprintf_spec], with a usable buffer in the place of the stream.
+    text to the buffer. The contract asks of the format and the
+    arguments what [vfprintf_spec] asks, and it has a usable buffer in
+    the place of the stream.
     Its parameter cover says which directives a proof handles, so that
     a proof of some conversions states exactly what it covers. The
     function returns nothing. A failure shows only in the buffer's

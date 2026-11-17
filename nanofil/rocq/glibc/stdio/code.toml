@@ -40,6 +40,15 @@ Error|error|misc/error.os|__error __error_internal
 '''
 
 [[batch]]
+layout = "string"
+mode = "checked"
+names = true
+fixtures = '''
+Fprintf|__fprintf|stdio-common/fprintf.os|__fprintf
+Printf|__printf|stdio-common/printf.os|__printf
+'''
+
+[[batch]]
 layout = "libio"
 mode = "checked"
 fixtures = '''

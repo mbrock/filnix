@@ -184,7 +184,7 @@ Context (Herr : ow_errno w = Some (mkPtr eb (Obj eb))).
 (** Nobody has proved glibc's formatter or the C locale after startup
     yet. Until then, the formatter's contract and the place of the
     locale's cells are hypotheses. *)
-Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_internal") vfprintf_spec}.
+Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_internal") vfprintf_stream_spec}.
 Context (gb go : Z) (greg : region) (dqg : dfrac) (lp : ptr) (lb : Z) (lreg : region) (dql dqn dqt : dfrac)
   (treg : region) (cv : ptr) (Hloc : locale_cells gb go greg lp lb lreg).
 

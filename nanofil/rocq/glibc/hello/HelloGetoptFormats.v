@@ -3,8 +3,9 @@
     `c: __vfprintf_internal`. The diagnostic rules of
     [HelloGetoptDiagLock](HelloGetoptDiagLock.v) ask the caller for one
     premise per format, [fx_format], which says what the formatter call
-    does. This module derives those premises from the formatter's
-    contract [vfprintf_spec] for the nine formats that getopt uses.
+    does. This module derives those premises from the older form of the
+    formatter's contract, [vfprintf_stream_spec], for the nine formats
+    that getopt uses.
 
     Nobody has proved the formatter yet, so this module assumes its
     contract. Once the formatter is proved, getopt's prints need no
@@ -46,7 +47,7 @@ Ltac narrow_args_by :=
 
 Section bridge.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hvf : !HasSpec registry (os_wi w0) ge (TAtom "__vfprintf_internal") vfprintf_spec}.
+Context `{Hvf : !HasSpec registry (os_wi w0) ge (TAtom "__vfprintf_internal") vfprintf_stream_spec}.
 Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 
 (** A call of the formatter on a narrow or unoriented stream leaves a
@@ -62,14 +63,14 @@ Lemma fx_rule_of_vfprintf vb fp fmt bytes ds ys mode flags2 held (R : iProp Σ) 
 Proof using Herr Hvf.
   intros Hp Ha Hm HR f e ls l d args rest j ap Φ Hargs.
   iIntros "Hs HR Hva HK". iDestruct (HR with "HR") as (dq) "(He & Hf & #Hro & Hys & HQ)".
-  iApply (wp_call_spec registry (os_wi w0) ge _ vfprintf_spec
-    (VfpIn vb fp mode (Z.lor flags2 2) (Some (fx_cnt held)) fmt dq bytes ds ap 16 (WPtr fp :: WPtr fmt :: ys) [] eb)
+  iApply (wp_call_spec registry (os_wi w0) ge _ vfprintf_stream_spec
+    (VfsIn vb fp mode (Z.lor flags2 2) (Some (fx_cnt held)) fmt dq bytes ds ap 16 (WPtr fp :: WPtr fmt :: ys) [] eb)
     with "[Hs Hf Hva Hys He]"); [exact Hargs| |].
-  - cbn [fs_pre vfprintf_spec vi_vb vi_fp vi_mode vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
+  - cbn [fs_pre vfprintf_stream_spec vs_vb vs_fp vs_mode vs_flags2 vs_held vs_fmt vs_dq vs_bytes vs_ds vs_ap vs_skip vs_xs vs_rest vs_eb].
     change (skipn (Z.to_nat (16 / 8)) (WPtr fp :: WPtr fmt :: ys)) with ys.
     iFrame "Hs Hf Hys He Hro". iSplit; [iPureIntro; split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | exact Herr]|].
     iExact "Hva".
-  - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_mode vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
+  - iIntros (v). cbn [fs_post vfprintf_stream_spec vs_vb vs_fp vs_mode vs_flags2 vs_held vs_fmt vs_dq vs_bytes vs_eb].
     iIntros "(%n & [-> %Hn] & Hs & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
     cbn. rewrite (Z.mod_small n); [|lia]. rewrite (narrow_mode_stays mode Hm).
     iApply ("HK" with "Hs"). iApply ("HQ" with "He Hf").
