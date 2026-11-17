@@ -48,15 +48,15 @@ Definition hello_start_keep (n : name) : bool := existsb (name_eqb n) (map TAtom
     hold 1 and optopt to hold 63 before the first call. This list states
     those values and the three strings at the linked addresses. *)
 Definition hello_image_getopt_ps : list (piece * pval) :=
-  getopt_start_ps 176448 (gd 176448 176504) 176560 (gd 176560 176568) 176624 (gd 176624 176632)
-    177040 (gd 177040 177048) 177072 (gd 177072 177080) 177216 (gd 177216 177224).
+  getopt_start_ps (img_a "glibc_getopt#getopt_data") (img_gd "glibc_getopt#getopt_data") (img_a "opterr") (img_gd "opterr") (img_a "optopt") (img_gd "optopt")
+    (img_a "glibc_getopt#str.146") (img_gd "glibc_getopt#str.146") (img_a "glibc_getopt#str.147") (img_gd "glibc_getopt#str.147") (img_a "glibc_getopt#str.150") (img_gd "glibc_getopt#str.150").
 
 (** These are Hello's table, its four names and its option string. The
     loader puts them where it puts them in Hello's own module, because
     Hello's items come first in the link. *)
 Definition hello_image_tab_ps : list (piece * pval) :=
-  hello_tab_ps 68672 (gd 68672 68832) 69456 69488 69520 69552 69584
-    (gd 69456 69472) (gd 69488 69504) (gd 69520 69528) (gd 69552 69560) (gd 69584 69592).
+  hello_tab_ps (img_a "hello#parse_options.longopts.64") (img_gd "hello#parse_options.longopts.64") (img_a "hello#str.65") (img_a "hello#str.66") (img_a "hello#str.67") (img_a "hello#str.68") (img_a "hello#str.69")
+    (img_gd "hello#str.65") (img_gd "hello#str.66") (img_gd "hello#str.67") (img_gd "hello#str.68") (img_gd "hello#str.69").
 
 (** HelloGetoptStart.v's table theorem reads exactly this list, table
     first, followed by any extra pieces. *)
@@ -78,14 +78,14 @@ Qed.
 
 (** These are the nine read-only objects with their bases. *)
 Definition hello_start_ro : list (string * Z) :=
-  [("glibc_getopt#str.146", 177040); ("glibc_getopt#str.147", 177072); ("glibc_getopt#str.150", 177216);
-   ("hello#parse_options.longopts.64", 68672); ("hello#str.65", 69456); ("hello#str.66", 69488);
-   ("hello#str.67", 69520); ("hello#str.68", 69552); ("hello#str.69", 69584)]%string.
+  [(img_sym "glibc_getopt#str.146"); (img_sym "glibc_getopt#str.147"); (img_sym "glibc_getopt#str.150");
+   (img_sym "hello#parse_options.longopts.64"); (img_sym "hello#str.65"); (img_sym "hello#str.66");
+   (img_sym "hello#str.67"); (img_sym "hello#str.68"); (img_sym "hello#str.69")]%string.
 
 (** The symbols of the image place all twelve objects. *)
 Definition hello_start_places (g : list (name * ptr)) : bool :=
-  lookup_obj g "glibc_getopt#getopt_data" 176448 && lookup_obj g "opterr" 176560 &&
-  lookup_obj g "optopt" 176624 && forallb (fun nb : string * Z => lookup_ro g nb.1 nb.2) hello_start_ro.
+  lookup_obj g "glibc_getopt#getopt_data" (img_a "glibc_getopt#getopt_data") && lookup_obj g "opterr" (img_a "opterr") &&
+  lookup_obj g "optopt" (img_a "optopt") && forallb (fun nb : string * Z => lookup_ro g nb.1 nb.2) hello_start_ro.
 
 (** ## The check on the erased image
 
@@ -125,10 +125,10 @@ Proof. vm_cast_no_check (eq_refl true). Qed.
     aligned address and hold all the words it reads. These bases do. *)
 Lemma hello_start_fit :
   let fit b r n := 0 < b /\ b mod 8 = 0 /\ b + n <= r_end r /\ r_end r <= 2 ^ 48 in
-  fit 176448 (gd 176448 176504) 56 /\ fit 177040 (gd 177040 177048) 8 /\ fit 177072 (gd 177072 177080) 8 /\
-  fit 177216 (gd 177216 177224) 8 /\ fit 68672 (gd 68672 68832) 136 /\ fit 69456 (gd 69456 69472) 16 /\
-  fit 69488 (gd 69488 69504) 16 /\ fit 69520 (gd 69520 69528) 8 /\ fit 69552 (gd 69552 69560) 8 /\
-  fit 69584 (gd 69584 69592) 8.
+  fit (img_a "glibc_getopt#getopt_data") (img_gd "glibc_getopt#getopt_data") 56 /\ fit (img_a "glibc_getopt#str.146") (img_gd "glibc_getopt#str.146") 8 /\ fit (img_a "glibc_getopt#str.147") (img_gd "glibc_getopt#str.147") 8 /\
+  fit (img_a "glibc_getopt#str.150") (img_gd "glibc_getopt#str.150") 8 /\ fit (img_a "hello#parse_options.longopts.64") (img_gd "hello#parse_options.longopts.64") 136 /\ fit (img_a "hello#str.65") (img_gd "hello#str.65") 16 /\
+  fit (img_a "hello#str.66") (img_gd "hello#str.66") 16 /\ fit (img_a "hello#str.67") (img_gd "hello#str.67") 8 /\ fit (img_a "hello#str.68") (img_gd "hello#str.68") 8 /\
+  fit (img_a "hello#str.69") (img_gd "hello#str.69") 8.
 Proof. cbv zeta. unfold gd. cbn [r_end]. split_and!; first [lia | reflexivity]. Qed.
 
 (** The loader succeeds on the linked image. Its symbols place the twelve
@@ -137,9 +137,9 @@ Proof. cbv zeta. unfold gd. cbn [r_end]. split_and!; first [lia | reflexivity]. 
     capability to its name, because the loader writes one there. The
     flag slots and the terminator hold no capability. *)
 Theorem hello_image_start : exists g m, initial_memory hello_image_module = Some (g, m) /\
-  Term.lookup (TAtom "glibc_getopt#getopt_data") g = Some (mkPtr 176448 (Obj 176448)) /\
-  Term.lookup (TAtom "opterr") g = Some (mkPtr 176560 (Obj 176560)) /\
-  Term.lookup (TAtom "optopt") g = Some (mkPtr 176624 (Obj 176624)) /\
+  Term.lookup (TAtom "glibc_getopt#getopt_data") g = Some (mkPtr (img_a "glibc_getopt#getopt_data") (Obj (img_a "glibc_getopt#getopt_data"))) /\
+  Term.lookup (TAtom "opterr") g = Some (mkPtr (img_a "opterr") (Obj (img_a "opterr"))) /\
+  Term.lookup (TAtom "optopt") g = Some (mkPtr (img_a "optopt") (Obj (img_a "optopt"))) /\
   Forall (fun nb : string * Z => Term.lookup (TAtom nb.1) g = Some (mkPtr nb.2 (Ro nb.2))) hello_start_ro /\
   all_agree m hello_start_ps /\ NoDup hello_start_ps.*1.
 Proof.
@@ -166,10 +166,10 @@ Qed.
 (** These are the bases of the twelve objects, and the bases of the
     fifteen constants. *)
 Definition hello_start_bases : list Z :=
-  [176448; 176560; 176624; 177040; 177072; 177216; 68672; 69456; 69488; 69520; 69552; 69584].
+  [(img_a "glibc_getopt#getopt_data"); (img_a "opterr"); (img_a "optopt"); (img_a "glibc_getopt#str.146"); (img_a "glibc_getopt#str.147"); (img_a "glibc_getopt#str.150"); (img_a "hello#parse_options.longopts.64"); (img_a "hello#str.65"); (img_a "hello#str.66"); (img_a "hello#str.67"); (img_a "hello#str.68"); (img_a "hello#str.69")].
 
 Definition hello_kept_bases : list Z :=
-  [169056; 168992; 164944; hello_domain_base.1] ++ hello_msg_bases.*1 ++ hello_suffix_bases.*1.
+  [(img_a "_nl_category_names"); (img_a "_nl_category_name_idxs"); (img_a "_nl_C_name"); hello_domain_base.1] ++ hello_msg_bases.*1 ++ hello_suffix_bases.*1.
 
 (** Every key of a selection names an object at one of its bases, and no
     base of one selection is a base of the other. So the twelve objects

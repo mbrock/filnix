@@ -23,7 +23,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap.
 From Glibc Require Import FileInv AtexitLogic HelloGlibcDebts.
-From Glibc Require Import HelloGetoptTable HelloImageEraseMem HelloImageModule HelloImageKept HelloImageStart.
+From Glibc Require Import HelloGetoptTable HelloImageEraseMem HelloImageModule HelloImageKept HelloImageStart HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -38,45 +38,45 @@ Open Scope Z_scope.
     streams are glibc's static FILE objects for stderr, stdout and
     stdin, and the exit objects are those of atexit and exit. *)
 Definition hello_image_objs : hello_objs :=
-  mkHelloObjs (mkPtr 92304 (Obj 92304)) (mkPtr 91824 (Obj 91824)) (mkPtr 92064 (Obj 92064))
-    93504 (gd 93504 93512) 93472 (gd 93472 93480)
-    176528 (gd 176528 176536) 176592 (gd 176592 176600)
-    93920 (gd 93920 96272) 174768 (gd 174768 174776) 70288 (gd 70288 70296)
-    (mkExitObjs 196144 (gd 196144 196152) 197488 (gd 197488 197496) 196176 (gd 196176 196184)
-       196112 (gd 196112 196120) 196208 (gd 196208 197248))
-    197520 (gd 197520 197536) (mkPtr 65568 (Fn (TAtom "close_stdout")))
-    (mkPtr 90240 (Fn (TAtom "glibc_genops#flush_cleanup")))
-    172848 (gd 172848 172984) 173040 (gd 173040 173048) 169936 (gd 169936 170704)
-    66080 174368 174336 (gd 66080 66088) (gd 174368 174376) (gd 174336 174344)
-    (mkPtr 66112 (Ro 66112)) (mkPtr 66144 (Ro 66144)).
+  mkHelloObjs (mkPtr (img_a "_IO_2_1_stdout_") (Obj (img_a "_IO_2_1_stdout_"))) (mkPtr (img_a "_IO_2_1_stderr_") (Obj (img_a "_IO_2_1_stderr_"))) (mkPtr (img_a "_IO_2_1_stdin_") (Obj (img_a "_IO_2_1_stdin_")))
+    (img_a "stdout") (img_gd "stdout") (img_a "stderr") (img_gd "stderr")
+    (img_a "optarg") (img_gd "optarg") (img_a "optind") (img_gd "optind")
+    (img_a "__io_vtables") (img_gd "__io_vtables") (img_a "__libc_single_threaded") (img_gd "__libc_single_threaded") (img_a "errno") (img_gd "errno")
+    (mkExitObjs (img_a "__exit_funcs_lock") (img_gd "__exit_funcs_lock") (img_a "__exit_funcs_done") (img_gd "__exit_funcs_done") (img_a "__new_exitfn_called") (img_gd "__new_exitfn_called")
+       (img_a "__exit_funcs") (img_gd "__exit_funcs") (img_a "glibc_cxa_atexit#initial") (img_gd "glibc_cxa_atexit#initial"))
+    (img_a "glibc_exit#__exit_lock") (img_gd "glibc_exit#__exit_lock") (mkPtr (img_a "close_stdout") (Fn (TAtom "close_stdout")))
+    (mkPtr (img_a "glibc_genops#flush_cleanup") (Fn (TAtom "glibc_genops#flush_cleanup")))
+    (img_a "glibc_malloc#mp_") (img_gd "glibc_malloc#mp_") (img_a "tcache") (img_gd "tcache") (img_a "glibc_malloc#__tcache_dummy") (img_gd "glibc_malloc#__tcache_dummy")
+    (img_a "program_name") (img_a "__progname_full") (img_a "__progname") (img_gd "program_name") (img_gd "__progname_full") (img_gd "__progname")
+    (mkPtr (img_a "progname#str.3") (Ro (img_a "progname#str.3"))) (mkPtr (img_a "progname#str.4") (Ro (img_a "progname#str.4"))).
 
 (** These symbols name writable objects at the given bases. *)
 Definition hello_image_obj_syms : list (string * Z) :=
-  [("stdout", 93504); ("stderr", 93472); ("optarg", 176528); ("optind", 176592);
-   ("program_name", 66080); ("program_invocation_name", 174368);
-   ("program_invocation_short_name", 174336); ("__libc_errno", 70288);
-   ("glibc_malloc#mp_", 172848); ("tcache", 173040); ("__exit_funcs_lock", 196144);
-   ("__exit_funcs_done", 197488); ("__new_exitfn_called", 196176); ("__exit_funcs", 196112);
-   ("glibc_exit#__exit_lock", 197520); ("__libc_single_threaded_internal", 174768);
-   ("__GI__IO_list_all", 92544); ("_IO_2_1_stderr_", 91824); ("_IO_2_1_stdout_", 92304);
-   ("_IO_2_1_stdin_", 92064)]%string.
+  [(img_sym "stdout"); (img_sym "stderr"); (img_sym "optarg"); (img_sym "optind");
+   (img_sym "program_name"); ("program_invocation_name", (img_a "__progname_full"));
+   ("program_invocation_short_name", (img_a "__progname")); ("__libc_errno", (img_a "errno"));
+   (img_sym "glibc_malloc#mp_"); (img_sym "tcache"); (img_sym "__exit_funcs_lock");
+   (img_sym "__exit_funcs_done"); (img_sym "__new_exitfn_called"); (img_sym "__exit_funcs");
+   (img_sym "glibc_exit#__exit_lock"); ("__libc_single_threaded_internal", (img_a "__libc_single_threaded"));
+   (img_sym "__GI__IO_list_all"); (img_sym "_IO_2_1_stderr_"); (img_sym "_IO_2_1_stdout_");
+   (img_sym "_IO_2_1_stdin_")]%string.
 
 (** These symbols name read-only objects at the given bases. *)
 Definition hello_image_ro_syms : list (string * Z) :=
-  [("progname#str.3", 66112); ("progname#str.4", 66144); ("__io_vtables", 93920);
-   ("glibc_malloc#__tcache_dummy", 169936)]%string.
+  [(img_sym "progname#str.3"); (img_sym "progname#str.4"); (img_sym "__io_vtables");
+   (img_sym "glibc_malloc#__tcache_dummy")]%string.
 
 (** These are the literals that main passes to its callees, each with
     the base of its read-only object. *)
 Definition hello_image_lits : list (string * Z) :=
-  [("hello#str.54", 68848); ("hello#str.55", 68896); ("hello#str.56", 68960); ("hello#str.57", 68992);
-   ("hello#str.58", 69072); ("hello#str.59", 69152); ("hello#str.60", 69216); ("hello#str.61", 69296);
-   ("hello#str.62", 69328); ("hello#str.63", 69424); ("hello#str.69", 69584);
-   ("hello#parse_options.longopts.64", 68672); ("hello#str.70", 69616); ("hello#str.71", 69648);
-   ("hello#str.72", 69680); ("hello#str.73", 69712); ("hello#str.74", 69744); ("hello#str.75", 69776);
-   ("hello#str.76", 69808); ("hello#str.77", 69840); ("hello#str.78", 69872); ("hello#str.79", 69904);
-   ("hello#str.80", 69968); ("hello#str.81", 70000); ("hello#str.82", 70032);
-   ("hello#str.83", 70096)]%string.
+  [(img_sym "hello#str.54"); (img_sym "hello#str.55"); (img_sym "hello#str.56"); (img_sym "hello#str.57");
+   (img_sym "hello#str.58"); (img_sym "hello#str.59"); (img_sym "hello#str.60"); (img_sym "hello#str.61");
+   (img_sym "hello#str.62"); (img_sym "hello#str.63"); (img_sym "hello#str.69");
+   (img_sym "hello#parse_options.longopts.64"); (img_sym "hello#str.70"); (img_sym "hello#str.71");
+   (img_sym "hello#str.72"); (img_sym "hello#str.73"); (img_sym "hello#str.74"); (img_sym "hello#str.75");
+   (img_sym "hello#str.76"); (img_sym "hello#str.77"); (img_sym "hello#str.78"); (img_sym "hello#str.79");
+   (img_sym "hello#str.80"); (img_sym "hello#str.81"); (img_sym "hello#str.82");
+   (img_sym "hello#str.83")]%string.
 
 (** The list names exactly the literals of hello_layout, in order. *)
 Lemma hello_image_lits_names : map fst hello_image_lits = hello_lits.
@@ -84,24 +84,24 @@ Proof. reflexivity. Qed.
 
 (** These symbols name functions at the given addresses. *)
 Definition hello_image_fn_syms : list (string * Z) :=
-  [("close_stdout", 65568); ("glibc_genops#flush_cleanup", 90240)]%string.
+  [(img_sym "close_stdout"); (img_sym "glibc_genops#flush_cleanup")]%string.
 
 (** These are the objects of the record and the three streams, each
     with the end of its region. *)
 Definition hello_image_regs : list (Z * Z) :=
-  [(93504, 93512); (93472, 93480); (176528, 176536); (176592, 176600); (93920, 96272);
-   (174768, 174776); (70288, 70296); (196144, 196152); (197488, 197496); (196176, 196184);
-   (196112, 196120); (196208, 197248); (197520, 197536); (172848, 172984); (173040, 173048);
-   (169936, 170704); (66080, 66088); (174368, 174376); (174336, 174344);
-   (91824, 92048); (92304, 92528); (92064, 92288)].
+  [((img_a "stdout"), (img_e "stdout")); ((img_a "stderr"), (img_e "stderr")); ((img_a "optarg"), (img_e "optarg")); ((img_a "optind"), (img_e "optind")); ((img_a "__io_vtables"), (img_e "__io_vtables"));
+   ((img_a "__libc_single_threaded"), (img_e "__libc_single_threaded")); ((img_a "errno"), (img_e "errno")); ((img_a "__exit_funcs_lock"), (img_e "__exit_funcs_lock")); ((img_a "__exit_funcs_done"), (img_e "__exit_funcs_done")); ((img_a "__new_exitfn_called"), (img_e "__new_exitfn_called"));
+   ((img_a "__exit_funcs"), (img_e "__exit_funcs")); ((img_a "glibc_cxa_atexit#initial"), (img_e "glibc_cxa_atexit#initial")); ((img_a "glibc_exit#__exit_lock"), (img_e "glibc_exit#__exit_lock")); ((img_a "glibc_malloc#mp_"), (img_e "glibc_malloc#mp_")); ((img_a "tcache"), (img_e "tcache"));
+   ((img_a "glibc_malloc#__tcache_dummy"), (img_e "glibc_malloc#__tcache_dummy")); ((img_a "program_name"), (img_e "program_name")); ((img_a "__progname_full"), (img_e "__progname_full")); ((img_a "__progname"), (img_e "__progname"));
+   ((img_a "_IO_2_1_stderr_"), (img_e "_IO_2_1_stderr_")); ((img_a "_IO_2_1_stdout_"), (img_e "_IO_2_1_stdout_")); ((img_a "_IO_2_1_stdin_"), (img_e "_IO_2_1_stdin_"))].
 
 (** These words of the initialized image hold pointers, each with its
     capability: stdout and stderr hold their streams, the list of all
     streams starts at stderr, and each stream's chain field, 104 bytes
     in, points to the next one, ending with a null after stdin. *)
 Definition hello_image_cells : list (Z * Z * cap) :=
-  [(93504, 92304, Obj 92304); (93472, 91824, Obj 91824); (92544, 91824, Obj 91824);
-   (91824 + 104, 92304, Obj 92304); (92304 + 104, 92064, Obj 92064); (92064 + 104, 0, CNone)].
+  [((img_a "stdout"), (img_a "_IO_2_1_stdout_"), Obj (img_a "_IO_2_1_stdout_")); ((img_a "stderr"), (img_a "_IO_2_1_stderr_"), Obj (img_a "_IO_2_1_stderr_")); ((img_a "__GI__IO_list_all"), (img_a "_IO_2_1_stderr_"), Obj (img_a "_IO_2_1_stderr_"));
+   ((img_a "_IO_2_1_stderr_") + 104, (img_a "_IO_2_1_stdout_"), Obj (img_a "_IO_2_1_stdout_")); ((img_a "_IO_2_1_stdout_") + 104, (img_a "_IO_2_1_stdin_"), Obj (img_a "_IO_2_1_stdin_")); ((img_a "_IO_2_1_stdin_") + 104, 0, CNone)].
 
 (** ## The check *)
 
@@ -223,7 +223,7 @@ Proof.
   - intros s Hs. rewrite <- hello_image_lits_names in Hs. apply in_map_iff in Hs as [[n b] [<- Hin]].
     unfold sym_ptr. cbn [ge_globals fst]. rewrite (hello_image_ro_sym n b); [reflexivity|].
     apply in_or_app. right. exact Hin.
-  - exact (hello_image_fn_sym "close_stdout" 65568 (or_introl eq_refl)).
+  - exact (hello_image_fn_sym "close_stdout" (img_a "close_stdout") (or_introl eq_refl)).
 Qed.
 
 (** The choice also satisfies the object and layout fields of
@@ -252,7 +252,7 @@ Proof.
   cbn [ge_globals hello_image_objs ho_pb ho_nb ho_nsb ho_preg ho_nreg ho_nsreg ho_lp ho_tp ho_eb ho_mp ho_tc
     ho_x ho_el ho_elr ho_fcp ho_cp xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg
     xo_funcs xo_funcs_reg xo_init xo_init_reg gd r_end ptr_addr ptr_cap].
-  assert (Hc : Term.lookup (TAtom "close_stdout") g = Some (mkPtr 65568 (Fn (TAtom "close_stdout"))))
+  assert (Hc : Term.lookup (TAtom "close_stdout") g = Some (mkPtr (img_a "close_stdout") (Fn (TAtom "close_stdout"))))
     by exact (hello_image_fn_sym _ _ (or_introl eq_refl)).
   split_and!; try lia; try obj; try ro; try reflexivity.
   - exact (hello_image_fn_sym _ _ (or_intror (or_introl eq_refl))).

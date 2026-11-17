@@ -7,7 +7,7 @@
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Bool.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
-From Glibc Require Import HelloGetoptTable HelloGetoptDiagMsgs HelloGettextDomain.
+From Glibc Require Import HelloGetoptTable HelloGetoptDiagMsgs HelloGettextDomain HelloImageLoad.
 From Glibc Require Import HelloImagePieces HelloImageKept.
 Import ListNotations.
 Open Scope Z_scope.
@@ -27,13 +27,13 @@ Local Definition keep_no_domain (n : name) : bool :=
 
 (** This is the first message with its first byte changed to zero. *)
 Local Definition changed_ps : list (piece * pval) :=
-  lits_ps [(176656, gd 176656 176688)] [0 :: tail (hd [] dgx_msg_texts)].
+  lits_ps [(img_ob "glibc_getopt#str.138")] [0 :: tail (hd [] dgx_msg_texts)].
 
 (** This is the first message, read at the second message's object. *)
-Local Definition moved_ps : list (piece * pval) := lits_ps [(176704, gd 176704 176752)] [hd [] dgx_msg_texts].
+Local Definition moved_ps : list (piece * pval) := lits_ps [(img_ob "glibc_getopt#str.139")] [hd [] dgx_msg_texts].
 
 (** The domain read with an object that ends where it starts. *)
-Local Definition short_ps : list (piece * pval) := libc_domain_ps 165008 (gd 165008 165008).
+Local Definition short_ps : list (piece * pval) := libc_domain_ps (img_a "__GI__libc_intl_domainname") (gd (img_a "__GI__libc_intl_domainname") (img_a "__GI__libc_intl_domainname")).
 
 Lemma hello_refused :
   match initial_memory hello_skel with

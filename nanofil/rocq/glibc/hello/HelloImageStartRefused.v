@@ -7,7 +7,7 @@
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Bool.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
-From Glibc Require Import GetoptInitial HelloGetoptTable HelloImagePieces HelloImageStart.
+From Glibc Require Import GetoptInitial HelloGetoptTable HelloImagePieces HelloImageStart HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -30,11 +30,11 @@ Local Definition keep_no_data (n : name) : bool :=
 Lemma hello_start_refused :
   match initial_memory hello_start_skel with
   | Some (g, m') =>
-      negb (pieces_ok hello_start_keep hello_start_kept g m' (int_global_ps 176560 (gd 176560 176568) 0)) &&
-      negb (pieces_ok hello_start_keep hello_start_kept g m' (getopt_zero_ps 176448 (gd 176448 176512))) &&
-      negb (pieces_ok hello_start_keep hello_start_kept g m' [(PAux 68672 0, VAux CNone)]) &&
-      negb (pieces_ok keep_no_data hello_start_kept g m' (getopt_zero_ps 176448 (gd 176448 176504))) &&
-      pieces_ok hello_start_keep hello_start_kept g m' [(PAux 68672 0, VAux (Ro 69456))]
+      negb (pieces_ok hello_start_keep hello_start_kept g m' (int_global_ps (img_a "opterr") (img_gd "opterr") 0)) &&
+      negb (pieces_ok hello_start_keep hello_start_kept g m' (getopt_zero_ps (img_a "glibc_getopt#getopt_data") (gd (img_a "glibc_getopt#getopt_data") (img_a "glibc_getopt#getopt_data" + 64)))) &&
+      negb (pieces_ok hello_start_keep hello_start_kept g m' [(PAux (img_a "hello#parse_options.longopts.64") 0, VAux CNone)]) &&
+      negb (pieces_ok keep_no_data hello_start_kept g m' (getopt_zero_ps (img_a "glibc_getopt#getopt_data") (img_gd "glibc_getopt#getopt_data"))) &&
+      pieces_ok hello_start_keep hello_start_kept g m' [(PAux (img_a "hello#parse_options.longopts.64") 0, VAux (Ro (img_a "hello#str.65")))]
   | None => false
   end = true.
 Proof. vm_cast_no_check (eq_refl true). Qed.

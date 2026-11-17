@@ -22,7 +22,7 @@ From Nanofil Require HelloClose HelloMain.
 From Glibc Require Import SysWrappers StrlenLogic StrncmpCode MemrchrCode MemcmpCode MemFwdCode StrchrCode
   AllocLogic LeavesLogic AtexitLogic ExitRunCode LibioGenCode SysCode LibioFlushCode LibioCleanupCode
   HelloGlibcLibsT.
-From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageGettextLink.
+From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageGettextLink HelloImageLoad.
 Import ListNotations.
 
 (** ## Hello's entry *)
@@ -140,11 +140,11 @@ Qed.
 
 (** The parameter object glibc_malloc#mp_ has its own symbol. *)
 Lemma hello_image_mp g m : initial_memory hello_image_module = Some (g, m) ->
-  lookup (TAtom "glibc_malloc#mp_") g = Some (mkPtr 172848 (Obj 172848)).
+  lookup (TAtom "glibc_malloc#mp_") g = Some (mkPtr (img_a "glibc_malloc#mp_") (Obj (img_a "glibc_malloc#mp_"))).
 Proof.
   intros Hi.
   assert (C : option_map (fun gm => lookup (TAtom "glibc_malloc#mp_") (fst gm)) (initial_memory hello_image_module) =
-    Some (Some (mkPtr 172848 (Obj 172848)))) by (rewrite HelloImageLoad.hello_loaded_eq; vm_compute; reflexivity).
+    Some (Some (mkPtr (img_a "glibc_malloc#mp_") (Obj (img_a "glibc_malloc#mp_"))))) by (rewrite HelloImageLoad.hello_loaded_eq; vm_compute; reflexivity).
   rewrite Hi in C. injection C as C. exact C.
 Qed.
 
