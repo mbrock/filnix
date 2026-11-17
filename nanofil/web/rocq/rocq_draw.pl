@@ -98,8 +98,12 @@ rocq_index_items(Page, File, Items) :- index_items(Items, [], false, Page, File)
 index_items(Is, Mod, InSec, Page, File) :- forall(member(I, Is), index_item(I, Mod, InSec, Page, File)).
 
 index_item(proved(S, _), Mod, InSec, Page, File) :- !, index_item(S, Mod, InSec, Page, File).
+%  A section's name is not a name Rocq can refer to, so it is indexed
+%  only on its own page: Section lookup in a glibc file must not catch
+%  every reference to Term.v's lookup.
 index_item(block(module(_, Kind, n(_, N), _, _), Body, _), Mod, InSec, Page, File) :- !,
-    add_global(N, Mod, Page, module, File),
+    ( Kind == section -> K = sec(module) ; K = module ),
+    add_global(N, Mod, Page, K, File),
     ( Kind == section -> Mod1 = Mod, InSec1 = true ; append(Mod, [N], Mod1), InSec1 = InSec ),
     index_items(Body, Mod1, InSec1, Page, File).
 index_item(S, Mod, InSec, Page, File) :-
@@ -160,7 +164,7 @@ global_ref(X, Href, Kind) :-
         Hits \== [],
         (   member(Q-Page-K0, Hits) -> P = Page
         ;   page_tree(Page, Tree), Tree \== theories,
-            include([_-PT-_]>>page_tree(PT, Tree), Hits, TreeHits),
+            include([_-PT-_]>>(page_tree(PT, T1), T1 == Tree), Hits, TreeHits),
             TreeHits = [Q-P-K0|_], forall(member(_-P1-_, TreeHits), P1 == P) -> true
         ;   Hits = [Q-P-K0|_], forall(member(_-P1-_, Hits), P1 == P)
         )
@@ -177,9 +181,11 @@ unsec(K, K).
 page_in_scope(Page, P) :-
     (   P == Page -> true
     ;   sub_atom(P, 0, _, _, 'rocq-theories-') -> true
-    ;   page_tree(Page, Tree), page_tree(P, Tree)
+    ;   page_tree(Page, Tree), page_tree(P, Tree0), Tree0 == Tree
     ).
 
+%  page_tree(+Page, -Tree): call it with Tree unbound, since the last
+%  clause would otherwise put any page in theories.
 page_tree(P, backend) :- sub_atom(P, 0, _, _, 'rocq-backend-'), !.
 page_tree(P, glibc) :- sub_atom(P, 0, _, _, 'rocq-glibc-'), !.
 page_tree(P, spikes) :- sub_atom(P, 0, _, _, 'rocq-spikes-'), !.

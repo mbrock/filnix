@@ -23,6 +23,13 @@ test(tactic_notation_body) :-
     assertion(Items = [tacnotation(_, [literal("load_cell"), argument(constr, n(_, 'H')),
         literal("by"), argument(tactic3, n(_, side))], dispatch(_, [_, _, _]))]).
 
+% A theories page sees only theories names and its own; a glibc page's
+% name such as Section lookup must not capture Term.v's lookup.
+test(page_scope) :-
+    assertion(\+ rocq_draw:page_in_scope('rocq-theories-soundness-Evidence', 'rocq-glibc-stdio-ErrlistEnoent')),
+    assertion(rocq_draw:page_in_scope('rocq-glibc-stdio-ErrlistEnoent', 'rocq-glibc-zsys-OsWorld')),
+    assertion(rocq_draw:page_in_scope('rocq-glibc-stdio-ErrlistEnoent', 'rocq-theories-core-Term')).
+
 % In t; [a | b.. | c], b.. covers the goals between a's and c's.
 test(dispatch_rest) :-
     string_codes("Goal True /\\ True. Proof. split; [done..|]. Qed.", Cs),
