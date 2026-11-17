@@ -2,9 +2,9 @@
     runtime calls `c: __libc_start_main`, in every state that
     [StartState](../zsys/StartState.v) allows. The proof of the startup
     body takes the memory that startup reads and writes as separate
-    resources, and earlier modules list that memory as seven lists of
+    resources, and earlier modules list that memory as eight lists of
     pieces of the loader's image. This module shows that every start
-    state holds all seven lists, and turns them into owned resources.
+    state holds all eight lists, and turns them into owned resources.
 
     A start state keeps every object of the loader's image, except that
     it fills in the constructor table. The step from a kept image to
@@ -19,22 +19,48 @@ From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld StartCtors StartState StartOwn HiAtexitModule HiAtexitInitial
   HiAtexitInitialList StartInitFirstImage StartImageCpu StartVtablesImage StartImageEarly
-  HiAtexitStartBridge StartImageDisjoint.
+  HiAtexitStartBridge StartImageDisjoint StartImageUnique StartLsmImage.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The seven lists in every start state
+(** ## The globals of the startup body
+
+    The body of `c: __libc_start_main` itself reads and writes five
+    globals that no startup call owns: the pointer to the auxiliary
+    vector, the secure-mode flag, the debug mask, the flag that asks for
+    thread events and the saved stack end. This list holds each one's
+    life and its bytes as the image leaves them. *)
+
+(** This list gives each of the five globals its region and its bytes
+    in the image. Only `c: __libc_enable_secure` starts nonzero. *)
+Definition hi_lsm_ps : list (piece * pval) :=
+  obj_ps (lo_dx hi_lsm_objs, lo_dxreg hi_lsm_objs) (repeat 0 8%nat) ++
+  obj_ps (lo_es hi_lsm_objs, lo_esreg hi_lsm_objs) [1; 0; 0; 0] ++
+  obj_ps (lo_dm hi_lsm_objs, lo_dmreg hi_lsm_objs) (repeat 0 4%nat) ++
+  obj_ps (lo_re hi_lsm_objs, lo_rereg hi_lsm_objs) [0] ++
+  obj_ps (lo_se hi_lsm_objs, lo_sereg hi_lsm_objs) (repeat 0 8%nat).
+
+(** The loader's image holds those five globals with those bytes. *)
+Lemma hi_lsm_agree : all_agree hi_m0 hi_lsm_ps.
+Proof. apply hi_m0_pieces. vm_cast_no_check (eq_refl true). Qed.
+
+(** ## The eight lists in every start state
 
     The lists are the CPU globals, the memory of early init and of the
-    constructor runner, the inputs of the three constructors, and the
-    frame that startup hands to main unchanged. The loader's image
+    constructor runner, the inputs of the three constructors, the
+    frame that startup hands to main unchanged, and the globals of the
+    startup body. The loader's image
     holds all of them, and none is a byte of the constructor table. *)
 
 (** These are all the pieces that hi_atexit's startup owns or hands to
     main unchanged. *)
 Definition hi_start_all_ps : list (piece * pval) :=
   hi_cpu_globals_ps ++ hi_early_ps ++ hi_runner_ps ++ hi_initial_list_ps ++ hi_init_first_ps ++
-  hi_vtables_ps ++ hi_start_kept_ps.
+  hi_vtables_ps ++ hi_start_kept_ps ++ hi_lsm_ps.
+
+(** No object and no byte occurs twice in the eight lists. *)
+Lemma hi_start_all_nodup : NoDup hi_start_all_ps.*1.
+Proof. apply pieces_unique_sound. vm_cast_no_check (eq_refl true). Qed.
 
 (** The loader's image holds every one of those pieces. Each step names
     its left list, because rewriting the whole sum at once is slow. *)
@@ -47,7 +73,8 @@ Proof.
   apply (proj2 (all_agree_app _ hi_initial_list_ps _)). split; [exact hi_initial_list_agree|].
   apply (proj2 (all_agree_app _ hi_init_first_ps _)). split; [exact hi_init_first_agree|].
   apply (proj2 (all_agree_app _ hi_vtables_ps _)). split; [exact hi_vtables_agree|].
-  exact hi_start_kept_agree.
+  apply (proj2 (all_agree_app _ hi_start_kept_ps _)). split; [exact hi_start_kept_agree|].
+  exact hi_lsm_agree.
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the
@@ -68,7 +95,7 @@ Proof.
 Qed.
 
 (** Every state in which the runtime can start hi_atexit holds all
-    seven lists. *)
+    eight lists. *)
 Theorem hi_start_agree w0 m w xs :
   start_state hi_module w0 m w xs -> all_agree m hi_start_all_ps.
 Proof.
@@ -88,28 +115,29 @@ Proof.
   - exact hi_start_all_off.
 Qed.
 
-(** ## Owning the seven lists
+(** ## Owning the eight lists
 
     Each startup call needs to own the memory it touches, apart from
     what the other calls touch. The whole run starts by owning every
     piece of the start memory, and since no piece appears twice, that
-    ownership splits into the seven lists, one separate
+    ownership splits into the eight lists, one separate
     [[separation-logic]] resource each. *)
 
 Section own.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** The heap of all seven lists is the seven lists' points-to
+(** The heap of all eight lists is the eight lists' points-to
     assertions side by side. *)
 Lemma hi_start_own :
   ([∗ map] l ↦ v ∈ list_to_map hi_start_all_ps, pointsto l (DfracOwn 1) v) ⊣⊢
   pts hi_cpu_globals_ps ∗ pts hi_early_ps ∗ pts hi_runner_ps ∗ pts hi_initial_list_ps ∗
-  pts hi_init_first_ps ∗ pts hi_vtables_ps ∗ pts hi_start_kept_ps.
+  pts hi_init_first_ps ∗ pts hi_vtables_ps ∗ pts hi_start_kept_ps ∗ pts hi_lsm_ps.
 Proof using Type.
-  etrans; [exact (pts_map hi_start_all_ps hi_start_nodup)|].
+  etrans; [exact (pts_map hi_start_all_ps hi_start_all_nodup)|].
   unfold hi_start_all_ps.
   rewrite (pts_app hi_cpu_globals_ps) (pts_app hi_early_ps) (pts_app hi_runner_ps)
-    (pts_app hi_initial_list_ps) (pts_app hi_init_first_ps) (pts_app hi_vtables_ps).
+    (pts_app hi_initial_list_ps) (pts_app hi_init_first_ps) (pts_app hi_vtables_ps)
+    (pts_app hi_start_kept_ps).
   done.
 Qed.
 
