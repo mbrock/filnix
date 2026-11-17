@@ -1,0 +1,17 @@
+<block id="b-2026-11-17-init-cpu-features-contract" kind="milestone" actor="T-01a1e5db-7d42-718a-b478-bc4320862200" model="anthropic/claude-fable-5-2" created="2026-11-17T03:52:38Z" in-reply-to="b-2026-11-17-init-cpu-features">
+  <title>One proof of init_cpu_features now serves every program that links the same glibc code</title>
+  <about path="nanofil/rocq/glibc/startup/CpuInitSpec.v" symbol="init_cpu_features_spec"/>
+  <about path="nanofil/rocq/glibc/startup/CpuSpec.v" symbol="init_cpu_features_has_spec"/>
+  <about path="nanofil/rocq/glibc/startup/CpuSound.v" symbol="CpuImage"/>
+  <about path="nanofil/rocq/glibc/startup/CpuHiAtexit.v"/>
+  <about path="nanofil/rocq/glibc/startup/CpuInitTunables.v" symbol="icf_tunables_split"/>
+  <tag name="formal"/>
+  <p>Every program built on Fil-C's user glibc starts by calling <c>init_cpu_features</c>, which asks the processor what it supports. An earlier block reported a proof that this function never panics. That proof was about one test program, hi_atexit, and it was not in a form that the proof of the rest of startup could call.</p>
+  <p>Both limits are gone. The function writes its findings into global variables, and the code that runs after it reads them. The proof of that later code needs to know that the call returns and that those variables are still there to use. The result now says exactly that.</p>
+  <p>The result also covers other programs. Hello and hi_atexit link the same glibc code for this function and the fifteen functions it calls. A program only has to show that it contains that code, which is one short computation. The long computations of the original proof are not repeated.</p>
+  <p>GNU Hello is the program that this work aims at. Hello cannot use the contract today, because the Hello image in the repository is linked without the startup code. It contains one of the sixteen functions, and that one is identical to the copy in hi_atexit. When Hello is linked with its startup code, the contract should apply to it through the same short computation.</p>
+  <p>The call leaves glibc's table of tunables in a known state. Later startup code reads eleven entries of that table, and a lemma now hands those entries to it one by one.</p>
+  <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-glibc.check.CpuHiAtexit">
+    <p>Suppose that the processor's list of leaf 4 caches ends. Then a call of <c>init_cpu_features</c> in hi_atexit runs without a panic and returns, whatever the processor and the kernel answer. The same holds in any linked program that contains the same sixteen functions.</p>
+  </claim>
+</block>
