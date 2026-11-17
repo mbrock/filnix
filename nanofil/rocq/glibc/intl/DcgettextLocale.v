@@ -66,7 +66,7 @@ Lemma dci_locale_rule_cur `{!Defines ge "__current_locale_name" glibc_current_lo
     gb go greg dqg lp lb lreg dql dqn cv dqt treg :
   locale_cells gb go greg lp lb lreg -> 0 <= ptr_addr cv < 2 ^ 64 ->
   dci_locale_rule 5 (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) cv.
-Proof.
+Proof using Type.
   intros (Hgl & Hgb & Hgo & Hgal & Hgend & Hgreg & Hlc & Hlb & Hlal & Hlend & Hlreg) Hcv f e ls l d args rest j Φ Hargs.
   iIntros "Hc HK". iApply (wp_call_glibc_current_locale_name with "Hc HK"); first [exact Hargs | apply defines | eassumption | lia].
 Qed.
@@ -77,7 +77,7 @@ Qed.
     string "C" it lends, without giving up any part of that string. *)
 Lemma word_string_life p s :
   word_string DfracDiscarded p s ⊢ ∃ reg, live_capq DfracDiscarded (ptr_cap p) reg ∗ ⌜0 <= ptr_addr p < 2 ^ 64⌝.
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hsh & Hlv & _)".
   pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)).
   pose proof (ss_base _ _ _ _ _ Hsh). pose proof (ss_start _ _ _ _ _ Hsh).
@@ -157,7 +157,7 @@ Lemma locale_name_res_other dqg gb go greg lp dql lb lreg dqn cv dqt treg dq cv'
   0 <= ptr_addr cv < 2 ^ 64 -> 0 <= ptr_addr cv' < 2 ^ 64 ->
   locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg -∗
   pcellq dq lb (ptr_addr lp - lb + 128 + 8 * 5) cv' -∗ ⌜cv = cv'⌝.
-Proof.
+Proof using Type.
   intros H1 H2. iIntros "(_ & _ & _ & Hn & _) Ho". iApply (locale_name_entry_agree with "Hn Ho"); assumption.
 Qed.
 
@@ -185,7 +185,7 @@ Lemma wp_dcgettext_c_locf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hargs Hmid. iIntros "Hb HK".
   iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
   pose proof (dci_rest_cur_f _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
@@ -213,7 +213,7 @@ Lemma wp_dcgettext_c_loc f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p2
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof. intros Hr. eapply wp_dcgettext_c_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
+Proof using Type*. intros Hr. eapply wp_dcgettext_c_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 
 (** This lemma builds the short-option translation premise in the same
     way. *)
@@ -233,7 +233,7 @@ Lemma dcg_diag_translate_locf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hm f e ls l d args rest j mid Φ Hmsg Hargs. iIntros "Hb HK".
   iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
   pose proof (dci_rest_cur_f _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
@@ -257,7 +257,7 @@ Lemma dcg_diag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof. intros Hr. eapply dcg_diag_translate_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
+Proof using Type*. intros Hr. eapply dcg_diag_translate_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 
 (** This lemma builds the long-option translation premise in the same
     way. *)
@@ -277,7 +277,7 @@ Lemma dcg_ldiag_translate_locf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb db
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hr Hl Hrb Hro Hal Hend Hreg Hg Hb Hm f e ls l d args rest j mid Φ Hmsg Hargs. iIntros "Hb HK".
   iDestruct (dcg_before_cv with "Hb") as "[%Hcv Hb]".
   pose proof (dci_rest_cur_f _ _ _ _ _ _ _ _ _ _ _ _ _ gb go greg dqg lp lb lreg dql dqn cv dqt treg Hr Hl Hcv) as Hc.
@@ -301,5 +301,5 @@ Lemma dcg_ldiag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof. intros Hr. eapply dcg_ldiag_translate_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
+Proof using Type*. intros Hr. eapply dcg_ldiag_translate_locf; first [exact (dci_rest_lf_of _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 End rules.

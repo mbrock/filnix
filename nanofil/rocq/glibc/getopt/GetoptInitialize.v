@@ -194,7 +194,7 @@ Lemma wp_getopt_initialize_at e n p os b r s pc penv (G : iProp Σ) Φ :
                  [] None (Exec (TAtom "L31") (b_insts getopt_blk31) (b_jump getopt_blk31))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "iw_1.start") (b_insts getopt_blk_init) (b_jump getopt_blk_init))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hget Hpenv Hv4 Hv12 Hv14 Hc0 Hc2 Hb Ha He Hr Hi Hn.
   iIntros "Hl [%Hi0 Hib] [%Hini Hinib] Hnext [%Hord Hordb] [%Hf Hfb] [%Hla Hlab] #Hos HG HK".
   cbn [b_insts b_jump getopt_blk_init].

@@ -68,10 +68,10 @@ Context {Σ : gFunctors}
 Existing Instance gen_heapGS0.
 Lemma liveq_bytesq_ptsq dq b reg o xs :
   liveq dq b reg -∗ bytesq dq b o xs -∗ ptsq dq ([(PLive b, VLive reg)] ++ byte_ps b o xs).
-Proof. iIntros "Hl Hb". rewrite ptsq_app. iFrame. Qed.
+Proof using Type. iIntros "Hl Hb". rewrite ptsq_app. iFrame. Qed.
 Lemma ptsq_liveq_bytesq dq b reg o xs :
   ptsq dq ([(PLive b, VLive reg)] ++ byte_ps b o xs) -∗ liveq dq b reg ∗ bytesq dq b o xs.
-Proof. rewrite ptsq_app. auto. Qed.
+Proof using Type. rewrite ptsq_app. auto. Qed.
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -101,7 +101,7 @@ Lemma wp_zsys_write_dq f e ls lab d a0 a1 a2 rest j fd p n eb dq ps Φ :
              (Exec lab (Call (CResult d L) (Global (TAtom "zsys_write")) [Arg W a0; Arg P a1; Arg L a2]
                         :: rest) j)) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hrg Hfn Hdata Hx He Hin Hrd. iIntros "Hps Herr HK".
   iApply (wp_os_errno_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ eb [] (ptsq dq ps)
             (fun vs => exists k, vs = [WInt k] /\ ((0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1))
@@ -193,7 +193,7 @@ Lemma wp_file_write_call_dq fb freg f2 fd dq b reg c o xs eb t e Φ :
      WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
            : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp. unfold file_size in Hend.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.

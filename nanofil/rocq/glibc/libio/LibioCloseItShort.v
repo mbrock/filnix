@@ -73,7 +73,7 @@ Lemma wp_glibc__IO_file_close_short_empty fr fb freg fl f2 fd off md rp re rb we
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
      pcell fb 80 null -∗ pcell fb 96 null -∗ E -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros sb Hfr. injection Hfr as <-.
   intros Hfb Hfal Hfend Hfreg Hf2r Hf232 Hfdr Hfl Hnw Hcp Hub He Hmd.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend H80 H96 HE HK".

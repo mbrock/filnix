@@ -119,7 +119,7 @@ Lemma plo_res_arg_intro b r av ar ps li F (G M : iProp Σ) i n cur s a os x i' o
   live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
   live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   plo_res_arg b r av ar ps li F G M i n cur s a os x.
-Proof.
+Proof using Type.
   intros Hi Hc Ha Hr Hx Harg. iIntros "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli".
   iExists i', oo', a', c'. iFrame. iSplit; iPureIntro; [auto | exact Harg].
 Qed.
@@ -165,7 +165,7 @@ Lemma wp_long_join_miss_arg ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hkso Hksu Hrule Hg Hgn Hse Hmid H2 H4 H10 H12 H14 H16 H90 H7 Hc0 Hq Hq0 Hi Hn Hlen Hlo Hpe
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
@@ -211,7 +211,7 @@ Lemma wp_long_join_miss ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mid
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli HK".
   iApply (wp_long_join_miss_arg ks e G T fp dom M se sereg mid av ar ps q sq po so pfx sp cur s i n lonly pe oo a li F b r os Φ with "Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try eassumption.

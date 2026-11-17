@@ -163,7 +163,7 @@ Lemma wp_glibc_memrchr_ws fr dq p s c Φ : 0 <= c < 2 ^ 32 ->
   word_string dq p s -∗
   (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0])))))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hcr Hfr. iIntros "(%b & %reg & %ws & %Hs & Hw) HK". cbn in Hfr. injection Hfr as <-.
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hwr Hby Hch].
   destruct p as [a cp]. unfold wstart in *. cbn [ptr_addr ptr_cap] in *.
@@ -184,7 +184,7 @@ Qed.
     [StrrchrLogic.memrchr_spec] contract. *)
 Lemma glibc_memrchr_spec :
   find_fn ge (TAtom "__GI___memrchr") = Some (Defined glibc_memrchr) -> StrrchrLogic.memrchr_spec registry wi ge.
-Proof.
+Proof using SafepointStable0.
   intros Hf. exists glibc_memrchr. split; [exact Hf|]. split; [intros; eexists; reflexivity|].
   intros fr dq p s c Φ Hc Hfr. iIntros "Hs HK". iApply (wp_glibc_memrchr_ws with "Hs HK"); [exact Hc | exact Hfr].
 Qed.

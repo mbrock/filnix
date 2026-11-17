@@ -133,7 +133,7 @@ Lemma wp_pfx_step_with ks e (M : iProp Σ) k lo os F b s lonly pe p w a m sp Φ 
        (Exec (TAtom "L108") (b_insts plo_blk108) (b_jump plo_blk108))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L106") (Some (TAtom "L99")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksc Hkss Hksa Hksm Hcut Hmal Hset Hfl Hos Hpe Hat H3 Hc8 H13 H8 H42 H39 H30 H21 Hf Hk Ha Hm.
   assert (Hks2 : avoids (ploop_keys ++ ks) pcmp_names && avoids (ploop_keys ++ ks) pset_names &&
     avoids (ploop_keys ++ ks) palloc_names && avoids (ploop_keys ++ ks) pmark_names = true)

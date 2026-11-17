@@ -70,7 +70,7 @@ Lemma wp_error_tail_loan
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Hstatusrange. destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
   step. step.
@@ -135,7 +135,7 @@ Lemma wp_error_tail_zero e from errnum fmt ap mode cb Φ :
     live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs. iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
   iApply (wp_error_tail with "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE"); [exact Hinputs | lia |].
   iSplit; [iExact "HK" |]. iIntros (e' Hnz). contradiction.

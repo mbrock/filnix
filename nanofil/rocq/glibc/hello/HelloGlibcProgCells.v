@@ -193,7 +193,7 @@ Lemma word_string_bytes dq p s i n : (i + n <= length s)%nat ->
       ptr_addr p + Z.of_nat (i + n) < r_end reg /\ r_end reg <= 2 ^ 48⌝ ∗
     liveq dq b reg ∗ bytesq dq b (ptr_addr p - b + Z.of_nat i) (take n (drop i s)) ∗
     (liveq dq b reg -∗ bytesq dq b (ptr_addr p - b + Z.of_nat i) (take n (drop i s)) -∗ word_string dq p s).
-Proof.
+Proof using Type.
   intros Hin. iIntros "(%b & %reg & %ws & %Hs & Hl & Hw)".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hwr Hby Hch].
   remember (Z.to_nat (ptr_addr p mod 8)) as k eqn:Ek.
@@ -222,7 +222,7 @@ Qed.
 Lemma word_string_lend dq p s j : (dq = DfracDiscarded \/ exists q, dq = DfracOwn q) -> (j <= length s)%nat ->
   word_string dq p s ⊢ ∃ dq', word_string dq' (ptr_add p (Z.of_nat j)) (drop j s) ∗
     (word_string dq' (ptr_add p (Z.of_nat j)) (drop j s) -∗ word_string dq p s).
-Proof.
+Proof using Type.
   intros Hdq Hj. assert (E : s = take j s ++ drop j s) by (symmetry; apply take_drop).
   assert (Lt : length (take j s) = j) by (apply length_take_le; lia).
   destruct Hdq as [-> | [q ->]].

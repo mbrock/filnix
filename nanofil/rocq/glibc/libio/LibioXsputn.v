@@ -90,7 +90,7 @@ Lemma wp_glibc__IO_new_file_xsputn fr eb X fb freg vb vreg nb wp we dq b' reg' s
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hfr Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy. injection Hfr as <-.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb (Hxf & HX) Hl' Hys HK".

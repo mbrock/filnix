@@ -244,7 +244,7 @@ Lemma wp_zthread_self_id f e ls lab d rest j Φ :
   ▷ (∀ t, ⌜0 < t < 2 ^ 32⌝ -∗ WP (ERun (mkFrame f (put d (WInt t) e) ls None (Exec lab rest j)) : zexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "zthread_self_id")) [] :: rest) j)) : zexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata. iIntros "HK".
   iApply (wp_os_call w0 _ _ _ _ _ _ _ _ _ _ _ _ [] [] True%I
             (fun vs => exists t, vs = [WInt t] /\ 0 < t < 2 ^ 32)
@@ -268,7 +268,7 @@ Lemma wp_zthread_self f e ls lab d rest j Φ :
        WP (ERun (mkFrame f (put d (WPtr (mkPtr a CNone)) e) ls None (Exec lab rest j)) : zexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "zthread_self")) [] :: rest) j)) : zexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata. iIntros "HK".
   iApply (wp_os_call w0 _ _ _ _ _ _ _ _ _ _ _ _ [] [] True%I
             (fun vs => exists a, vs = [WPtr (mkPtr a CNone)] /\ 0 < a < 2 ^ 64)
@@ -292,7 +292,7 @@ Lemma wp_zmake_setjmp_save_sigmask f e ls lab a rest j b Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zmake_setjmp_save_sigmask")) [Arg W a] :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx. iIntros "HK".
   iApply (wp_os_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ [] True%I (fun vs => vs = [])
             with "[//] [] [HK]"); [done | done | done | exact Hreg | exact Hx | | | done | | |].

@@ -50,7 +50,7 @@ Lemma wp_vfxprintf_selected e from :
     lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "L10") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hal Hcall Hend Hext Hfb Hfmtr Hmd Hreg Hregistry Hself Hselfr Huser.
   intros Hselect Hz Hfmt Hap Hflags. iIntros "#Hs Hl Hfl Hlp Hlk Hmd Hfmt HV HR HE HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   iDestruct "Hfl" as "[%Hflr Hfl]".

@@ -256,7 +256,7 @@ Definition vtables_ro (ge : genv) (vb : Z) (vreg : region) : iProp Σ :=
 
 (** [vtables_ro] is persistent. *)
 Global Instance vtables_ro_persistent ge vb vreg : Persistent (vtables_ro ge vb vreg).
-Proof. rewrite /vtables_ro /liveq /pcellq. apply _. Qed.
+Proof using Type. rewrite /vtables_ro /liveq /pcellq. apply _. Qed.
 
 (** One slot of [file_jumps], read from [vtables_ro]. *)
 Lemma vtables_slot ge vb vreg sl n :
@@ -279,7 +279,7 @@ Definition single_ro (ge : genv) (sb : Z) (sreg : region) : iProp Σ :=
 
 (** [single_ro] is persistent. *)
 Global Instance single_ro_persistent ge sb sreg : Persistent (single_ro ge sb sreg).
-Proof. rewrite /single_ro /liveq /bytesq. apply _. Qed.
+Proof using Type. rewrite /single_ro /liveq /bytesq. apply _. Qed.
 
 (** ## The thread's cleanup fields *)
 

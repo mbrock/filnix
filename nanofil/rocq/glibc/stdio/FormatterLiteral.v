@@ -52,7 +52,7 @@ Lemma wp_format_has_not_failed fr bb reg Φ :
   live bb reg -∗ int_cell bb 32 4 -∗
   ▷ (live bb reg -∗ int_cell bb 32 4 -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hb Ha He Hr. injection Hfr as <-. iIntros "Hl [%Hm Hmode] HK".
   step. step. norm. check "Hl".
   load_bytes_dq "Hl Hmode" decode (cbn; reflexivity) by ar.
@@ -92,7 +92,7 @@ Lemma wp_printf_buffer_literal fr bb reg off xs cs dq p s ab areg vb vreg cur
     word_string dq p s -∗ live ab areg -∗ pcell ab 0 (mkPtr cur (Ro vb)) -∗ live vb vreg -∗
     live eb ereg -∗ int_cell eb 0 err -∗ Φ RetVoid) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hcpy Hchr Hscan Hwrite Hfailed Herr Hb Ha He Hr Ho Hn Hroom Hxs Hcs Hx Hlit
     Hab Haa Hae Har Hcur Heb Hee Her.
   injection Hfr as <-.

@@ -348,7 +348,7 @@ Context (w0 : os_world).
     equals `w0` and satisfies [os_inv]. *)
 Lemma os_heap_world σ :
   heap_interp (os_wi w0) σ -∗ ⌜ls_world σ = w0 /\ exists h, os_inv (ls_mem σ) w0 h⌝.
-Proof.
+Proof using Type.
   iIntros "(%h & _ & %Hf)". destruct Hf as (_ & _ & _ & -> & Hi). iPureIntro. eauto.
 Qed.
 
@@ -358,7 +358,7 @@ Qed.
 Lemma os_heap_errno σ eb :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   heap_interp (os_wi w0) σ -∗ ⌜errno_cell (ls_mem σ) (mkPtr eb (Obj eb)) /\ blk_live (ls_mem σ) (eb, 0, 4)⌝.
-Proof.
+Proof using Type.
   intros He. iIntros "Hσ". iDestruct (os_heap_world with "Hσ") as %[_ (h & Hi & _)]. iPureIntro.
   destruct (Hi _ He) as [Hp _]. split; [exact (permanent_errno_cell _ _ Hp)|].
   destruct Hp as (eb' & reg & [= <-] & _ & _ & Hl & _ & Hend). exists reg. cbn. split; [exact Hl|lia].
@@ -372,7 +372,7 @@ Lemma os_heap_ready σ eb fd :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   heap_interp (os_wi w0) σ -∗
   ⌜ls_world σ = w0 /\ ow_log_fd w0 <> Some fd /\ errno_cell (ls_mem σ) (mkPtr eb (Obj eb))⌝.
-Proof.
+Proof using Type.
   intros He Hin. iIntros "Hσ". iDestruct (os_heap_errno with "Hσ") as %[Hc _]; [exact He|].
   iDestruct (os_heap_world with "Hσ") as %[Hw (h & _ & _ & Hfd)]. iPureIntro.
   rewrite Forall_forall in Hfd. auto.
@@ -385,7 +385,7 @@ Lemma errno_roots_out eb bl (extra : list span) w sp a :
   ow_errno w = Some (mkPtr eb (Obj eb)) ->
   (forall sp a, In sp extra -> span_contains sp a -> blk_out bl a) ->
   In sp (extra ++ errno_spans w) -> span_contains sp a -> blk_out ((eb, 0, 4) :: bl) a.
-Proof.
+Proof using Type*.
   intros He Hx Hin Hs. unfold errno_spans in Hin. rewrite He in Hin.
   apply in_app_or in Hin as [Hin | [<- | []]].
   - destruct (Hx _ _ Hin Hs) as (b & o & n & Hb & Ha). exists b, o, n. split; [right; exact Hb | exact Ha].
@@ -402,7 +402,7 @@ Lemma os_call_return (spec : contract os_world) r args xs σ trace values s' m' 
   (forall sp a, In sp (contract_writes spec xs (ls_mem σ) (ls_world σ)) -> span_contains sp a -> blk_out bl a) ->
   Forall (blk_live (ls_mem σ)) bl ->
   heap_interp (os_wi w0) σ -∗ blks bl ==∗ heap_interp (os_wi w0) (mkLstate m' s' (ls_fuel σ) w') ∗ blks bl.
-Proof.
+Proof using Type.
   intros Hinv -> Hrel Hroots Hlive. iIntros "Hσ Hb".
   iDestruct "Hσ" as (h) "[Hh %Hf]". destruct Hf as (Ha & Hd & Hr & [Hw Hi]).
   destruct σ as [m s fuel w]. cbn [ls_mem ls_rt ls_world ls_fuel] in *. subst w.
@@ -463,7 +463,7 @@ Lemma wp_os_call f e ls lab r g args rest j spec xs bl (Q : iProp Σ) (R : list 
        ∃ e', ⌜external_env spec (mkCallSite lab r g args rest j) values e = Some e'⌝ ∗
          WP (ERun (mkFrame f e' ls None (Exec lab rest j)) : oexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : oexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfn Hdata Hfree Hreg Hx Habi Hpre Hrel Hret. iIntros "HQ Hb HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs (Q ∗ blks bl)
             with "[$HQ $Hb] [HK]"); [done | done | done | done | exact Hx | exact Habi | |].
@@ -499,7 +499,7 @@ Lemma wp_os_errno_call f e ls lab r g args rest j spec xs eb bl (Q : iProp Σ) (
        ∃ e', ⌜external_env spec (mkCallSite lab r g args rest j) values e = Some e'⌝ ∗
          WP (ERun (mkFrame f e' ls None (Exec lab rest j)) : oexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : oexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfn Hdata Hfree Hreg Hx Habi He Hpre Hrel Hret. iIntros "HQ Herr Hb HK".
   iApply (wp_os_call _ _ _ _ _ _ _ _ _ _ _ ((eb, 0, 4) :: bl) Q R with "HQ [Herr Hb] [HK]");
     [done | done | done | done | exact Hx | exact Habi | | exact Hrel | exact Hret | |].
@@ -523,7 +523,7 @@ Lemma wp_os_noreturn f e ls lab r g args rest j spec xs (Q : iProp Σ) Φ :
   (forall σ, heap_interp (os_wi w0) σ -∗ Q -∗ ⌜contract_pre spec xs (ls_mem σ) (ls_world σ)⌝) ->
   (forall s m w trace values s' m' w', ~ M.E.invoke spec r args xs s m w trace (CallReturn values) s' m' w') ->
   Q -∗ WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : oexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfn Hdata Hfree Hreg Hx Habi Hpre Hno. iIntros "HQ".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs Q with "HQ []");
     [done | done | done | done | exact Hx | exact Habi | exact Hpre |].

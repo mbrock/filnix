@@ -108,7 +108,7 @@ Lemma wp_raw_load_null f e ls l d off args rest j classes p b reg o Φ :
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
        : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros (Hc Hx Hp Ha Hal) "Hl Hc HK".
   iApply (wp_raw_load_pointer with "Hl Hc [//]");
     [exact Hc | exact Hx | exact Hp | exact Ha | exact Hal | cbn; lia |].

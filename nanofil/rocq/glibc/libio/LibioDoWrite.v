@@ -107,7 +107,7 @@ Lemma wp_glibc__IO_new_do_write_mode fr fb freg fl f2 fd tw off bb breg i xs rp 
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n wb base Hfr. injection Hfr as <-. intros Hn0 Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr Happ He Hb Hi Hbend Hbreg Hy
     Hbe Hbec Hmd.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp HK".
@@ -150,7 +150,7 @@ Lemma wp_glibc__IO_new_do_write fr fb freg fl f2 fd tw off bb breg i xs rp rb wp
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode 0 -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n wb base Hfr Hn0 Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr Happ He Hb Hi Hbend Hbreg Hy Hbe Hbec.
   apply (wp_glibc__IO_new_do_write_mode fr fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb vreg 0 Φ);
     auto.
@@ -184,7 +184,7 @@ Lemma wp_glibc__IO_new_do_write_base fr fb freg fl f2 fd tw off bb breg xs rp rb
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n base Hfr. intros. subst n base.
   pose proof (wp_glibc__IO_new_do_write_mode fr fb freg fl f2 fd tw off bb breg 0 xs rp rb wp we be eb vb vreg mode Φ)
     as Hg. cbv zeta in Hg. rewrite Z.add_0_r in Hg. apply Hg; auto; lia.
@@ -196,7 +196,7 @@ Lemma wp_glibc__IO_new_do_write_zero fr fp data Φ :
   call_frame glibc__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
   ▷ Φ (Ret (WInt 0)) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr. injection Hfr as <-. iIntros "HK". step. step. branch. step. branch. step.
   iApply wp_ret; [reflexivity | vx |]. iNext. iExact "HK".
 Qed.

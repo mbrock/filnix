@@ -39,7 +39,7 @@ Lemma error_retained_exchange rest fb freg vb lb lbreg rb ob oreg sc screg eb ap
     pcellq DfracDiscarded vb (vt_file + 96) (sym_ptr ge "_IO_new_file_sync") ∗
     io_list_inv ge (mkPtr rb (Obj rb) :: rest) ∗
     ([∗ list] g ∈ rest, stream_life g) ∗ stderr_short_fields rb vb ∗ D.
-Proof.
+Proof using Type.
   iIntros "[(Ht & Hio & Hlives & Hfields & Hclosed & #Hslot & HD) ((Hol & Hop) & (Hsl & Hsp) & Herr & Hva)]".
   iDestruct "Hlives" as "[Hrl Hlives]".
   iDestruct "Hrl" as (b rreg [Heq Hbounds]) "Hrl".
@@ -60,7 +60,7 @@ Definition error_message_residual fb eb ereg r en md : iProp Σ :=
 Lemma error_message_resources fb freg eb ereg r en md :
   error_message_returned fb freg eb ereg r en md ∗ error_message_residual fb eb ereg r en md ⊢
   live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ int_cell fb 192 md.
-Proof.
+Proof using Type.
   unfold error_message_returned, error_message_residual, error_mode_own.
   destruct (decide (2 ^ 31 <= r mod 2 ^ 32)); [destruct (decide (en = 12)) |].
   - iIntros "[(_ & Hl & Hnow & _ & Hmode) _]". iFrame.

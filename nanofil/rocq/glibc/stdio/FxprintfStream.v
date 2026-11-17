@@ -225,7 +225,7 @@ Lemma printf_stream_fx vb self fp mode flags2 held :
     (∀ flags2' held', ⌜Z.land flags2' io_need_lock = 0⌝ -∗ live fb freg -∗ int_cell fb off_flags fl -∗
        int_cell fb off_flags2 flags2' -∗ int_cell fb off_mode mode -∗ pcell fb off_lock lp -∗
        lock_inv self lp held' -∗ printf_stream vb self fp mode flags2' held').
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hm & Hmv & Hvt & Hbok & Hf2).
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hflags2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd &
@@ -294,6 +294,6 @@ Definition fx_vfprintf_rule_at (vb : Z) (fp fmt : ptr) (xs : list word) (mode fl
 Lemma fx_vfprintf_rule_at_of vb fp fmt xs mode flags2 held R Q :
   fx_vfprintf_rule vb fp fmt xs mode flags2 held R Q ->
   fx_vfprintf_rule_at vb fp fmt xs mode flags2 held R (fun x _ => Q x).
-Proof. intros H. exact H. Qed.
+Proof using Type. intros H. exact H. Qed.
 
 End rule.

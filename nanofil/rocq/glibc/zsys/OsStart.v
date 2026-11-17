@@ -137,7 +137,7 @@ Local Notation wp_start := (@wp _ _ _ _ (@wp' _ _ _ (nanofil_irisGS registry (os
 Lemma wp_start_of_os c e d dq (ex : sexpr) Φ :
   pointsto (PName k) dq (start_ghost c e d) -∗ wp_os (start_world w0 c e d) ex Φ -∗
   wp_start ex (fun o => pointsto (PName k) dq (start_ghost c e d) ∗ Φ o)%I.
-Proof.
+Proof using Type.
   iApply WT.wp_wi_transport.
   - intros m w h Hk Hw. exact (proj1 (os_wi_start_at _ _ _ _ _ _ _ _ Hk) Hw).
   - intros m w h Hk Hw. exact (proj2 (os_wi_start_at _ _ _ _ _ _ _ _ Hk) Hw).
@@ -147,7 +147,7 @@ Qed.
 Lemma start_heap_world σ c e d dq :
   heap_interp (os_wi_start w0 k) σ -∗ pointsto (PName k) dq (start_ghost c e d) -∗
   ⌜ls_world σ = start_world w0 c e d⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ Hk". iDestruct "Hσ" as (h) "[Hh %Hf]". destruct Hf as (_ & _ & _ & Hw).
   iDestruct (gen_heap_valid with "Hh Hk") as %Hl.
   apply (os_wi_start_at _ _ _ _ _ _ _ _ Hl) in Hw. destruct Hw as [-> _]. done.
@@ -177,7 +177,7 @@ Lemma wp_start_change f e ls lab r g args rest j spec xs c e0 d c' e1 d' (Q : iP
        ∃ e', ⌜external_env spec (mkCallSite lab r g args rest j) [] e = Some e'⌝ ∗
          WP (ERun (mkFrame f e' ls None (Exec lab rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfn Hdata Hfree Hreg Hx Habi Hpre Hret Hinv. iIntros "Hk HQ HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs (pointsto (PName k) (DfracOwn 1) (start_ghost c e0 d) ∗ Q)%I
             with "[$Hk $HQ] [HK]"); [done | done | done | done | exact Hx | exact Habi | |].
@@ -207,7 +207,7 @@ Qed.
 Lemma world_returns pre upd r args xs s m w trace values s' m' w' :
   M.E.invoke (world_contract pre upd) r args xs s m w trace (CallReturn values) s' m' w' ->
   m' = m /\ w' = upd xs w /\ values = [].
-Proof.
+Proof using Type*.
   intros Hi. destruct (os_invoke_returned _ _ _ _ _ _ _ _ _ _ _ _ Hi)
     as (_ & born & _ & _ & _ & -> & -> & He). injection He as ->. auto.
 Qed.
@@ -228,7 +228,7 @@ Lemma wp_zthread_set_self_cookie_start f e ls lab a rest j c e0 d c' (Q : iProp 
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zthread_set_self_cookie")) [Arg P a] :: rest) j)) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx Hself. iIntros "Hk HQ HK".
   iApply (wp_start_change _ _ _ _ _ _ _ _ _ _ _ c e0 d c' e0 d Q with "Hk HQ [HK]");
     [done | done | done | exact Hreg | exact Hx | | | | | ].
@@ -246,7 +246,7 @@ Qed.
     the new cookie. *)
 Lemma self_registered_liveq dq x b reg h m :
   gen_heap_interp h -∗ liveq dq b reg -∗ ⌜agrees m h -> self_registered m (mkPtr x (Obj b))⌝.
-Proof.
+Proof using Type.
   iIntros "Hh Hl". iDestruct (ptsq_lookup with "Hh Hl") as %Hl. iPureIntro.
   intros Ha _ b' [[= <-] | [=]]. pose proof (Ha _ _ (Hl _ _ ltac:(by apply list_elem_of_singleton))) as [E _].
   cbn in E. congruence.
@@ -269,7 +269,7 @@ Lemma wp_zregister_sys_errno_handler_start f e ls lab a rest j c d hp dq eb reg 
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zregister_sys_errno_handler")) [Arg P a] :: rest) j)) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx Hh Hcell Hz H4 Hk Hend. iIntros "Hkey Hl HK".
   iApply (wp_start_change _ _ _ _ _ _ _ _ _ _ _ c false d c true d (liveq dq eb reg) with "Hkey Hl [HK]");
     [done | done | done | exact Hreg | exact Hx | | | | | ].
@@ -299,7 +299,7 @@ Lemma wp_zregister_sys_dlerror_handler_start f e ls lab a rest j c e0 hp n Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zregister_sys_dlerror_handler")) [Arg P a] :: rest) j)) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx Hh. iIntros "Hkey HK".
   iApply (wp_start_change _ _ _ _ _ _ _ _ _ _ _ c e0 false c e0 true True%I with "Hkey [//] [HK]");
     [done | done | done | exact Hreg | exact Hx | | | | | ].

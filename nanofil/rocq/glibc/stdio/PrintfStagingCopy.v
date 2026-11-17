@@ -171,7 +171,7 @@ Lemma wp_zmemmove_window f e ls lab vd vs vn rest j b reg lo xs cs o dq b' reg' 
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zmemmove")) [Arg P vd; Arg P vs; Arg L vn] :: rest) j))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hpd Hps Hc' Hn Hb8 Hlo8 Hb8' Hlo Ho Ho' Hon Hend Hend' Hlc Hx Hy.
   iIntros "Hl Hx Hcs Hl' Hy HK".
   iAssert (⌜b <> b'⌝)%I as %Hne.
@@ -266,7 +266,7 @@ Definition window_copy_spec : fspec Σ :=
     original destination pointer, with the owned window updated. *)
 Lemma memcpy_window_spec_valid g : find_fn ge g = Some (Defined glibc_memcpy) ->
   HasSpec registry (os_wi w0) ge g window_copy_spec.
-Proof.
+Proof using Type*.
   intros Hg [[[[[[[[[[[b reg] lo] xs] cs] o] dq] b'] reg'] o'] c'] ys].
   exists glibc_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post window_copy_spec].
@@ -298,7 +298,7 @@ Lemma wp_call_memcpy_window f e ls lab r g args rest j b reg lo xs cs o dq b' re
   ▷ (live b reg -∗ window_after b lo xs o ys -∗ liveq dq b' reg' -∗ bytesq dq b' o' ys -∗
      WP (ERun cf' : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hxa Hg Hres Hc' Hn Hb8 Hlo8 Hb8' Hlo Ho Ho' Hon Hend Hend' Hlc Hx Hy.
   iIntros "Hl Hx Hcs Hl' Hy HK".
   pose proof (memcpy_window_spec_valid g Hg) as Hspec.

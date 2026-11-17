@@ -28,7 +28,7 @@ Lemma wp_printf_buffer_write_zero fr bb reg p Φ :
   live bb reg -∗ int_cell bb 32 4 -∗
   ▷ (live bb reg -∗ int_cell bb 32 4 -∗ Φ RetVoid) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hb Ha He Hr. injection Hfr as <-. iIntros "Hl [%Hm Hm] HK".
   step. step. norm. check "Hl".
   load_bytes_dq "Hl Hm" decode (cbn; reflexivity) by ar.
@@ -48,7 +48,7 @@ Lemma wp_formatter_suffix_return e cb cr dq p s Φ :
     word_string dq p s -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_printf_buffer e [] None
     (Exec (TAtom "L1150") (skipn 15 (b_insts suffix_block)) (b_jump suffix_block))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hchk Hb Ha He Hr. iIntros "Hl Hcell Hs HK".
   iDestruct (word_string_bytes with "Hs") as (sb sr ws) "(%Hshape & Hsl & Hsbytes & Hback)".
   pose proof Hshape as [Hcap Hsb Hsa Hst Hfit Hspace Hlen Hws Hbytes Hchars].

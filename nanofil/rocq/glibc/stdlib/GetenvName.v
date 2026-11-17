@@ -64,7 +64,7 @@ Lemma getenv_name_guard e p s (G : iProp Σ) Φ :
    end) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
        (Enter (TAtom "L18") (Some (TAtom "L3")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hp. iIntros "#Hname HG HK".
   iDestruct (ws_shape with "Hname") as %(Hchars & Hpos & Hfit).
   iDestruct (ws_byte p s 0 with "Hname") as (b reg) "(%Hb & #Hl & #Hb)"; [lia |].
@@ -108,7 +108,7 @@ Lemma getenv_strlen_slot e p s ep q b reg o qreg dq dqtarget (G : iProp Σ) Φ
        : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
        (Enter (TAtom "L13") (Some (TAtom "L19")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hp Hep Hzero Hcap Haddr Hb Ho Hend Hspace Hal Hq.
   iIntros "#Hname Hl Hslot Htarget HG HK".
   iDestruct (ws_shape with "Hname") as %(_ & Hpos & Hlen). step.
@@ -144,7 +144,7 @@ Lemma getenv_counter_check e old dq bc rc counter (G : iProp Σ) Φ :
        (Enter (TAtom "L3") (Some (TAtom "L35")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
        (Enter (TAtom "L35") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hold Hcounter Hb Hend Hspace. iIntros "Hl Hcell HG HK".
   step. step_global Hcounter.
   check_read_dq "Hl" by (unfold raw_address; cbn; rewrite Z.add_0_r Z.mod_small; lia).
@@ -175,7 +175,7 @@ Lemma getenv_nonnull_entry p s dq bc rc be re counter ep dqtarget reg (G : iProp
    WP (ERun (mkFrame glibc_getenv (getenv_nonnull_env p bc be counter ep) [] None
        (Enter (TAtom "L18") (Some (TAtom "L3")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (getenv_frame p) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal Hep.
   iIntros "#Hname (Hcl & Hcc & Hel & Hec) Htarget HG HK".
   unfold getenv_frame. step. step. step. step_global Hcounter.
@@ -223,7 +223,7 @@ Lemma getenv_first_slot p s dq bc rc be re counter ep b reg o q qreg dqa dqt
           (Enter (TAtom "L41") (Some (TAtom "L32")))) : gexpr) {{ Φ }}
     end) -∗
   WP (ERun (getenv_frame p) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal Hcap Haddr
     Hb Ho Hend Hspace Halarray Hq owned.
   iIntros "#Hname (Hglobals & Hl & Hslot & Htarget & HE) HK".

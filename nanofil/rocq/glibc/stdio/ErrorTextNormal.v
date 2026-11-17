@@ -63,7 +63,7 @@ Lemma wp_error_text_normal e from status errnum fmt ap mode cb countb countreg c
       (Enter (TAtom "iw_2.L92") (Some predecessor))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hal Hend Hext Hfb Hformat Hfr Hfx Hg Hga Hgb Hge Hgr Hmd Hnb Hreg Hself Hselfr Htext Huser Hvfx sb sreg.
   intros Hinputs Herr Hcount Hcb Hce Hcr Hstr Hstrcall.
   iIntros "Hcl Hcount Hgl Hgp Hl HP HE HK".
   iApply (wp_error_text_loan e from status errnum fmt ap mode cb countb countreg count

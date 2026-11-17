@@ -59,7 +59,7 @@ Definition dci_free_rule : Prop := dci_free_null_rule /\ dci_free_live_rule.
     covers that case, so the older statements about the lookup stay
     true. *)
 Lemma dci_free_rule_heap : heap_fns ge -> dci_free_rule.
-Proof.
+Proof using Type.
   intros (Hfh & Hff & Hfd & _). split.
   - intros f e ls l v rest j Φ Hx. iIntros "HK".
     iApply wp_free_null; [exact Hfh | exact Hff | exact Hfd | exact Hx | iExact "HK"].
@@ -78,7 +78,7 @@ Qed.
 Lemma dci_free_rule_glibc `{!Defines ge "free" free_fn} :
   frees_heap (ge_free ge) -> find_fn ge zgc_free_name = None -> lookup zgc_free_name (ge_globals ge) = None ->
   dci_free_rule.
-Proof.
+Proof using Type.
   intros Hfh Hzf Hzg. split.
   - intros f e ls l v rest j Φ Hx. iIntros "HK".
     iApply wp_call_bind; [cbn [map_option]; rewrite Hx; reflexivity | apply defines | reflexivity |]. iNext.

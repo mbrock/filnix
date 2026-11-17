@@ -63,7 +63,7 @@ Lemma wp_file_write_join_dq fb freg f2 fd dq b reg c o xs eb t e Φ :
        (Exec (TAtom "L16") (b_insts fw_L16) (b_jump fw_L16))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None
     (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfb Hal Hend Hfreg Hcalls Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".
   destruct Hcalls as [Hf2 | [Hf2 Hnocancel]].

@@ -24,7 +24,7 @@ Definition error_errno_aux eb : iProp Σ :=
 Lemma error_errno_pack eb now :
   int_cell eb 0 now ∗ error_errno_aux eb ⊣⊢
   ⌜0 <= now < 2 ^ 32⌝ ∗ errno_own eb (le_bytes now 4).
-Proof.
+Proof using Type.
   rewrite /int_cell /int_bytes /bytes /error_errno_aux /errno_own.
   iSplit.
   - iIntros "[[%Hnow Hb] [%cs [%Hcs Ha]]]". iSplit; [done |].
@@ -43,7 +43,7 @@ Lemma error_message_errno_loan fb freg eb ereg r en md :
   error_message_spare fb eb ereg r en md -∗ error_errno_aux eb -∗
   ∃ now, ⌜0 <= now < 2 ^ 32 /\ (r mod 2 ^ 32 < 2 ^ 31 -> now = en)⌝ ∗
     live eb ereg ∗ errno_own eb (le_bytes now 4) ∗ int_cell fb 192 md.
-Proof.
+Proof using Type.
   rewrite /error_message_returned /error_message_spare /error_mode_own.
   destruct (decide (2 ^ 31 <= r mod 2 ^ 32)) as [Hneg | Hpos].
   - iIntros "(_ & Hl & [%now Hnow] & Hmode) Hsp Ha".

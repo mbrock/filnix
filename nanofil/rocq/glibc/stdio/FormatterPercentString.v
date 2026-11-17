@@ -46,7 +46,7 @@ Lemma wp_formatter_percent_string e ls cb cr wb p9 p dq Φ :
       (Enter (TAtom "L113") (Some (TAtom "L118")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L79") (Some (TAtom "L67")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H9 Hw Hv Hchk Hwb Hwe Hcb Hca Hce Hcr. iIntros "Hl Hcell Hs HK".
   iDestruct (word_string_bytes with "Hs") as (sb sr ws) "(%Hshape & Hsl & Hbytes & Hback)".
   pose proof Hshape as [Hcap Hsb Hsa Hst Hfit Hspace Hlen Hws Hby Hch].
@@ -96,7 +96,7 @@ Lemma wp_formatter_registered_string e ls from rb rr mb mr ab ar cb cr wb p9 p d
       (percent_string_env (registration_env e rb mb ab) cb p wb p9) ls None
       (Enter (TAtom "L113") (Some (TAtom "L118")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hrf Hmf Haf H9 Hw Hv Hchk Hrb Hra Hre Hrr Hmb Hma Hme Hmr Hab Haa Hae Har
     Hwb Hwe Hcb Hca Hce Hcr.
   iIntros "Hrl Hrc Hml Hmc Hal Hac Hl Hcell Hs HK".

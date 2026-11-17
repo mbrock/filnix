@@ -141,7 +141,7 @@ Lemma wp_call_error_returning_text_normal_zero f e ls l args rest j
   ▷ (returned -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcount Hcountb Hcounte Hcountr Hexchange Hext Hflushframe Hformat Hgstderr Hmd Hnewline Hnewlineformat Hnlb Hpost Hready_text Hreg Hrfa Hrfb Hrfe Hrfr Hrsa Hrsb Hrse Hrsr Hself Hselfr Hstderrflush Hstr Hstrcall Hsync Htext Htextformat Htxb Huser Hvfx Hwide Hwidecall Hwidefn Hwideframe cbr dqc.
   intros flush Hargs Hpublic Hys Herr Hinternal Hstate Hcancel
     Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr Hcu
     Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hfxframe Hfxcall

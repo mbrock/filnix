@@ -159,7 +159,7 @@ Lemma wp_dcgettext_c_rwf f e ls l d args rest j mid dom ds dqd nb nc k cat dqc c
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hh H1 H2 Ht. pose proof (dci_rest_l_rwf lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
     lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
   intros Hl Hrb Hro Hal Hend Hrg Hg Hbd Hargs Hmid. iIntros "Hb HK".
@@ -193,7 +193,7 @@ Lemma wp_dcgettext_c_rw f e ls l d args rest j mid dom ds dqd nb nc k cat dqc cv
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof. intros Hh. eapply wp_dcgettext_c_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
+Proof using Type*. intros Hh. eapply wp_dcgettext_c_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
 
 (** This lemma builds the short-option translation premise in the same
     way. *)
@@ -221,7 +221,7 @@ Lemma dcg_diag_translate_rwf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hh H1 H2 Ht. pose proof (dci_rest_l_rwf lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
     lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
   eapply (dcg_diag_translate_locf eb Herr); first [exact Hr | eassumption | exact _].
@@ -252,7 +252,7 @@ Lemma dcg_diag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof. intros Hh. eapply dcg_diag_translate_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
+Proof using Type*. intros Hh. eapply dcg_diag_translate_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
 
 (** This lemma builds the long-option translation premise in the same
     way. *)
@@ -280,7 +280,7 @@ Lemma dcg_ldiag_translate_rwf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hh H1 H2 Ht. pose proof (dci_rest_l_rwf lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
     lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M Hh H1 H2 Ht) as Hr.
   eapply (dcg_ldiag_translate_locf eb Herr); first [exact Hr | eassumption | exact _].
@@ -311,7 +311,7 @@ Lemma dcg_ldiag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M bs)
     dom.
-Proof. intros Hh. eapply dcg_ldiag_translate_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
+Proof using Type*. intros Hh. eapply dcg_ldiag_translate_rwf; first [exact (dci_rest_rwf_of _ Hh) | exact _]. Qed.
 
 (** ## Controls
 
@@ -331,5 +331,5 @@ Qed.
 Example rw_ready_rejects lk lb lreg tb treg cw tid :
   ~ rw_ready lk lb lreg tb treg (2 ^ 31 - 8) cw tid /\ ~ rw_ready lk lb lreg tb treg 1 cw tid /\
   ~ rw_ready lk lb lreg tb treg 16 tid tid.
-Proof. unfold rw_ready. split_and!; intros (_ & _ & H1 & H2 & H3); first [lia | discriminate | exact (H3 eq_refl)]. Qed.
+Proof using Type. unfold rw_ready. split_and!; intros (_ & _ & H1 & H2 & H3); first [lia | discriminate | exact (H3 eq_refl)]. Qed.
 End rules.

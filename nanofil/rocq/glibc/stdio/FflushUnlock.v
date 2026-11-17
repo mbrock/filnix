@@ -31,7 +31,7 @@ Lemma wp_fflush_unlock e from k fb freg fl lb lbreg sb sreg (E : iProp Σ) Φ :
   ▷ (live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
     lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt k))) -∗
   WP (ERun (mkFrame glibc__IO_fflush e [] None (Enter (TAtom "L110") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv0 Hc0 Hfrom Hfb Hal Hend Hreg Huser.
   assert (Hkr : 0 <= k < 2 ^ 32) by (destruct Hfrom as [[_ ->] | [_ ->]]; lia).
   iIntros "#Hs Hl Hfl Hlp Hlk HE HK".

@@ -149,7 +149,7 @@ Lemma scan_exits_session ks e n i o err oo c a b r av ar ps Φ :
       int_cell b 44 f' -∗ int_cell b 48 l' -∗ live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L318") [] (b_jump getopt_blk318))) : gexpr)
         {{ Φ }})).
-Proof.
+Proof using Type.
   intros Hn Hlen Ho Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "He Hoo Hin Hcur #Hc HK".
   iSplit; [|iSplit].

@@ -53,7 +53,7 @@ Lemma wp_printf_xsputn_zero_call e fp src bb (P : iProp Σ) Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 7 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hfn SafepointStable0.
   intros Hv0 Hchk Hptr Hfp Hsrc Hcount. iIntros "HP HK".
   cbn [printf_xsputn_block b_insts b_jump skipn].
   iApply wp_check_function; [vx | apply (ge_fn_check _ _ _ Hfn) |]. iNext.
@@ -84,7 +84,7 @@ Lemma wp_printf_xsputn_zero_complete e fp src bb (P : iProp Σ) Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 7 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hfn SafepointStable0.
   intros Hv0 Hchk Hptr Hfp Hsrc Hcount. iIntros "HP HK".
   iApply (wp_printf_xsputn_zero_call e fp src bb P with "HP [HK]"); try assumption.
   iIntros (e' (Hv0' & Hchk' & Hcount' & Hret')) "HP".

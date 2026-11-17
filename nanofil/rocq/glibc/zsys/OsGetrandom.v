@@ -147,7 +147,7 @@ Lemma wp_zsys_getrandom f e ls lab d a0 a1 a2 rest j b reg o n fl eb Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d L) (Global (TAtom "zsys_getrandom")) [Arg P a0; Arg L a1; Arg W a2] :: rest) j))
           : zexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx He Ho Hn Hend. iIntros "Hl Hb Herr HK".
   iApply (wp_os_errno_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ eb [(b, o, n)] (live b reg)
             (fun vs => exists k, vs = [WInt k] /\ (0 <= k <= n \/ k = 2 ^ 64 - 1))

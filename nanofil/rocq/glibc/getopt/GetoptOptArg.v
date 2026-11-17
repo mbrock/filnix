@@ -80,7 +80,7 @@ Lemma wp_getopt_optarg ks e0 e fr i cur t a b r Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L605") (Some (TAtom "L619")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L610") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H12 Hc1 Hc2 Hc20 H137 Hi Ht0 Hb Hal Hend Hr.
   iIntros "#Hws Hl Hib Hab Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).

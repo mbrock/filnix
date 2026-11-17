@@ -106,7 +106,7 @@ Lemma plo_res_capped_null b r av ar ps li F (G M : iProp Σ) i n cur s os x :
   word_string DfracDiscarded cur s -∗ argv_strs ps -∗
   plo_res b r av ar ps li F G M i n cur s null os x -∗
   plo_res_cap b r av ar ps li F G M i n cur s null os x.
-Proof.
+Proof using Type.
   iIntros "#Hws #Hs H". iApply (plo_res_capped _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ar with "Hws Hs [] [] H").
   - done.
   - iPureIntro. cbn. lia.
@@ -119,7 +119,7 @@ Lemma plo_arg_capped_null ps i cur s a' (ar : region) :
   a' = null \/ a' = ptr_add cur (Z.of_nat (eq_len s) + 1) \/ a' = nth (Z.to_nat (i + 1)) ps null ->
   word_string DfracDiscarded cur s -∗ argv_strs ps -∗
   (∃ ra, live_capq DfracDiscarded (ptr_cap a') ra) ∗ ⌜0 <= ptr_addr a' < 2 ^ 64⌝.
-Proof.
+Proof using Type.
   intros Ha. iIntros "#Hws #Hs". destruct Ha as [-> | [-> | ->]].
   - iSplit; [by iExists ar | iPureIntro; cbn; lia].
   - iDestruct (ws_shape with "Hws") as %(_ & Hc0 & Hce). pose proof (eq_len_le s).

@@ -53,7 +53,7 @@ Lemma wp_printf_overflow_entry fr bb breg written Φ :
     WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
       (Enter (TAtom "L74") (Some (TAtom "L62")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hba Hbe Hbr Hw. injection Hfr as <-.
   iIntros "Hb Hbase Hptr Hend Hw HK".
   step. step. check "Hb".

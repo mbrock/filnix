@@ -167,7 +167,7 @@ Definition dgx_msgs (bs : list (Z * region)) : iProp Σ :=
   [∗ list] br; s ∈ bs; dgx_msg_texts, word_string DfracDiscarded (mkPtr br.1 (Ro br.1)) s.
 
 #[global] Instance dgx_msgs_persistent bs : Persistent (dgx_msgs bs).
-Proof. unfold dgx_msgs. apply _. Qed.
+Proof using Type. unfold dgx_msgs. apply _. Qed.
 
 (** The pieces of fitting literals with checked words freeze into their
     strings. *)
@@ -218,7 +218,7 @@ Qed.
 (** The rule for short options prints the strings str.148 and str.149,
     and the resource can lend both. *)
 Lemma dgx_msgs_lends_diag g bs : dgx_msg_at (Semantics.ge_globals g) bs -> dgx_lends (dgx_msgs bs) (diag_msg g).
-Proof.
+Proof using Type.
   intros Hat fmt [H|H]; (eapply dgx_msgs_lend; [exact Hat| |exact H]); apply list_elem_of_In;
     cbn [In dgx_msg_names]; intuition.
 Qed.
@@ -231,7 +231,7 @@ Lemma dgx_msgs_lends_ldiag g bs f140 f141 : dgx_msg_at (Semantics.ge_globals g) 
   Term.lookup (TAtom "glibc_getopt#str.140") (Semantics.ge_globals g) = Some f140 ->
   Term.lookup (TAtom "glibc_getopt#str.141") (Semantics.ge_globals g) = Some f141 ->
   dgx_lends (dgx_msgs bs) (fun p => ldiag_msg g p \/ p = f140 \/ p = f141).
-Proof.
+Proof using Type.
   intros Hat H140 H141 fmt [H | [-> | ->]].
   - apply List.Exists_exists in H as (n & Hin & Hn). eapply dgx_msgs_lend; [exact Hat| |exact Hn].
     apply list_elem_of_In. cbn [In] in Hin. cbn [In dgx_msg_names]. intuition.
@@ -316,7 +316,7 @@ Lemma dgx_msg_fixture_own g : Semantics.ge_globals g = getopt_globals ->
   dgx_lends (dgx_msgs dgx_msg_fixture) (diag_msg g) /\
   dgx_lends (dgx_msgs dgx_msg_fixture)
     (fun p => ldiag_msg g p \/ p = mkPtr 65904 (Ro 65904) \/ p = mkPtr 65936 (Ro 65936)).
-Proof.
+Proof using Type.
   intros Eg. pose proof dgx_msg_fixture_at as Hat. rewrite -Eg in Hat. split_and!.
   - exact (dgx_msgs_own _ dgx_msg_fixture_fit).
   - exact (dgx_msgs_lends_diag g _ Hat).

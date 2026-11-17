@@ -296,7 +296,7 @@ Definition dgx_premises_e (v : Z) : Prop :=
 (** A formatter that returns errno also returns F, so the translation
     can still use the facts of the rules above. *)
 Lemma dgx_premises_of_e v : dgx_premises_e v -> dgx_premises v.
-Proof.
+Proof using Type.
   intros (A1 & A2 & A3 & A4 & A5 & A6 & A7 & A8 & A9 & A10 & A11 & A12 & A13 & A14 & A15 & A16 & A17 & Hqe).
   refine (conj A1 (conj A2 (conj A3 (conj A4 (conj A5 (conj A6 (conj A7 (conj A8 (conj A9 (conj A10 (conj A11
     (conj A12 (conj A13 (conj A14 (conj A15 (conj A16 (conj A17 _))))))))))))))))).
@@ -443,7 +443,7 @@ Qed.
     A value that is not a 32-bit word is refused. *)
 Example dgx_flag_controls :
   (dgx_premises 0 <-> dgx_premises 1) /\ (dgx_premises 1 <-> dgx_premises 3735928559) /\ ~ dgx_premises (2 ^ 32).
-Proof.
+Proof using Type.
   assert (Hmv : forall v v', 0 <= v' < 2 ^ 32 -> dgx_premises v -> dgx_premises v').
   { intros v v' Hv' (A1 & A2 & A3 & A4 & A5 & A6 & A7 & A8 & A9 & A10 & A11 & _ & A13 & A14 & A15 & A16 & A17 & A18).
     exact (conj A1 (conj A2 (conj A3 (conj A4 (conj A5 (conj A6 (conj A7 (conj A8 (conj A9 (conj A10 (conj A11
@@ -456,7 +456,7 @@ Qed.
     the flag with the value it lent. *)
 Example dgx_after_controls v bs mid q :
   dgx_after v bs mid q ⊢ ⌜q = mid⌝ ∗ liveq dqs sec secreg ∗ int_cellq dqs sec 0 v.
-Proof. unfold dgx_after. apply dcg_after_v_flag. Qed.
+Proof using Type. unfold dgx_after. apply dcg_after_v_flag. Qed.
 
 (** Errno's bytes change across a translation, so G cannot fix them.
     Four bytes come back as they were, but two bytes come back as four
@@ -464,7 +464,7 @@ Proof. unfold dgx_after. apply dcg_after_v_flag. Qed.
 Example dgx_errno_controls :
   le_bytes (dci_w [1; 2; 3; 4]) 4 = [1; 2; 3; 4] /\ le_bytes (dci_w [9; 9]) 4 = [0; 0; 0; 0] /\
   (forall v bs mid q, dgx_after v bs mid q ⊢ ⌜q = mid⌝ ∗ ∃ bs', dgx_before v bs').
-Proof.
+Proof using Type.
   split; [vm_compute; reflexivity | split; [vm_compute; reflexivity |]].
   intros v bs mid q. iIntros "H". iDestruct (dgx_cycle with "H") as "[$ H]". iExists _. iExact "H".
 Qed.
@@ -476,11 +476,11 @@ Example dgx_print_controls a0 c pfx nm :
   forallb snapshot_word [WPtr a0; WInt c] = true /\ forallb snapshot_word [WPtr a0; WPtr pfx; WPtr nm] = true /\
   forallb snapshot_word [WPtr pfx; WPtr nm] = true /\ forallb snapshot_word [] = true /\
   ~ (1 = 0 \/ 1 = 2 ^ 32 - 1).
-Proof. split_and!; first [reflexivity | lia]. Qed.
+Proof using Type*. split_and!; first [reflexivity | lia]. Qed.
 (** A formatter that may leave the stream wide cannot meet the rules'
     premise, because the next report needs a stream that is not wide. *)
 Example dgx_wide_refused : ~ (forall (x m : Z), (⌜m = 1⌝ : iProp Σ) ⊢ ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ ∗ F).
-Proof.
+Proof using Type.
   intros H. assert (Hp : ⊢ (⌜1 = 0 \/ 1 = 2 ^ 32 - 1⌝ : iProp Σ)).
   { iDestruct (H 0 1 with "[//]") as "[$ _]". }
   apply sbi.pure_soundness in Hp. lia.
@@ -496,7 +496,7 @@ Example dgx_errno_cycle_controls v mid1 qa mid2 qb :
   (dgx_after v [9; 0; 0; 0] mid2 qb ⊢ ⌜qb = mid2⌝ ∗ errno_own eb [9; 0; 0; 0] ∗
      (errno_own eb [0; 0; 0; 0] -∗ ∃ bs, dgx_before v bs)) /\
   ([1; 2; 3; 4] <> [9; 0; 0; 0] /\ [9; 0; 0; 0] <> [0; 0; 0; 0]).
-Proof.
+Proof using Type.
   assert (H : forall bs bs2 mid q, le_bytes (dci_w bs) 4 = bs ->
     dgx_after v bs mid q ⊢ ⌜q = mid⌝ ∗ errno_own eb bs ∗ (errno_own eb bs2 -∗ ∃ bs, dgx_before v bs)).
   { intros bs bs2 mid q Hb. iIntros "HA". iDestruct (dgx_cycle with "HA") as "[$ HB]". rewrite Hb.
@@ -509,7 +509,7 @@ Qed.
     promise by handing errno back with a narrow stream. *)
 Example dgx_empty_frame_controls :
   (F ⊣⊢ emp) -> (forall x m, Q x m ⊣⊢ ⌜m = 0⌝ ∗ errno_any eb) -> dgx_qe /\ (errno_any eb ∗ F ⊣⊢ errno_any eb).
-Proof.
+Proof using Type.
   intros HF HQ. split.
   - intros x m. rewrite HQ HF. iIntros "[-> He]". iSplit; [iPureIntro; left; reflexivity|]. iFrame "He".
   - rewrite HF. apply bi.sep_emp.
@@ -518,7 +518,7 @@ Qed.
 (** Errno's bytes have one owner. If F also claimed errno, G would ask
     for the same cell twice, and no state could hold it. *)
 Example dgx_duplicate_errno_refused v : (F ⊢ errno_any eb ∗ True) -> dgx_G v ⊢ False.
-Proof.
+Proof using Type.
   intros HF. unfold dgx_G, dgx_stream. iIntros "((%bs & HB) & (_ & %mode & %flags2 & %held & _ & _ & _ & HF) & _)".
   iDestruct (dgx_errno with "HB") as "[He _]". iDestruct (HF with "HF") as "[[%bs' He'] _]".
   iDestruct "He" as (cs) "([%Hl _] & He)". iDestruct "He'" as (cs') "([%Hl' _] & He')".

@@ -102,7 +102,7 @@ Lemma wp_close_it_L223_with e from p3 k fb freg fl fd off ob oe p8 p16 p24 p32 p
      Φ (Ret (WInt (if k =? 0 then p3 else k)))) -∗
   WP (ERun (mkFrame glibc__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L223") (Some from))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hv0 Hc0 Hc1 Hv2 Hp3 Hv220 Hfb Hfal Hfend Hfreg Hfl Hp3r Hk. subst fp.
   iIntros "Hl Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe Hob HK".
   unfold file_size in Hfend.

@@ -109,13 +109,13 @@ Local Instance longstr_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stab
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance longstr_liveq_persistent b0 reg : Persistent (liveq DfracDiscarded b0 reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance longstr_pcellq_persistent b0 o x : Persistent (pcellq DfracDiscarded b0 o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 (** A shared view of the argument's object life can be copied. *)
 Local Instance longstr_capq_persistent c reg : Persistent (live_capq DfracDiscarded c reg).
-Proof. destruct c; cbn; apply _. Qed.
+Proof using Type. destruct c; cbn; apply _. Qed.
 
 (** ## Strings at the argument
 
@@ -129,7 +129,7 @@ Definition arg_str (c x : Z) (a : ptr) : iProp Σ :=
 
 (** The fact can be copied, so every return can keep it. *)
 Local Instance arg_str_persistent c x a : Persistent (arg_str c x a).
-Proof. unfold arg_str. destruct (x =? c); apply _. Qed.
+Proof using Type. unfold arg_str. destruct (x =? c); apply _. Qed.
 
 (** A return with another code needs no string. *)
 Lemma arg_str_other c x a : x <> c -> ⊢ arg_str c x a.
@@ -250,7 +250,7 @@ Lemma call_parse_rets_str n av ar p os li b r ps j (G : iProp Σ) se sereg fp lo
   Z.of_nat (List.length ps) = n -> str_code (drop (opt_skip os) os) los c -> argv_strs ps -∗
   call_parse_rets_arg n av ar p os li 0 b r ps j G se sereg fp los F M
     (wrap_post b r (str_rest b r av ar ps G F M li c)).
-Proof.
+Proof using Type.
   intros Hn Hc. iIntros "#Hs0". unfold call_parse_rets_arg.
   iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit]]]]]]].
   - iIntros (s s' ps' x i' a' (_ & _ & Hp & Hr)) "Hl Hi Ho Hab Hcur Hw _ _ Ha Hcl #Hs HG Hca HF HM Hli".
@@ -357,7 +357,7 @@ Lemma wp_getopt_long_str_with_at e n av ar p os lo li b r ps i err oi roi oe roe
      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_long e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H2 H4 H6 H8 Hfi Hfr Hgd Hgi Hge Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer
     Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hgp Hp7 Hp0 Hcut Hmal Hset
     Hlrule Hfree Hgsn Hgl H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlen Hn Hse0 Hsea Hsee Hser Hcode.
@@ -451,7 +451,7 @@ Lemma wp_getopt_long_str e n av ar p os lo li b r ps i err oi roi oe roe oa roa 
      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_long e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 H38 H39 H40 H41 Hcut.
   exact (wp_getopt_long_str_with e n av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 H38 H39 H40 H41 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -474,7 +474,7 @@ Definition getopt_long_env (n av : Z) (p lo li : ptr) : env :=
 Lemma getopt_long_call_frame n av p lo li :
   call_frame glibc_getopt_long [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li] =
   Some (mkFrame glibc_getopt_long (getopt_long_env n av p lo li) [] None (Enter (TAtom "start") None)).
-Proof. reflexivity. Qed.
+Proof using Type*. reflexivity. Qed.
 
 (** A vector with its null cell holds the cells of the words and one more
     cell after them. The rules of getopt own only the first part, so the
@@ -487,7 +487,7 @@ Proof using Type. unfold argv_cells. rewrite big_sepL_app big_sepL_singleton Nat
 (** A session keeps its index between zero and the count of words. *)
 Lemma getopt_session_index b r av ar ps i :
   getopt_session b r av ar ps i -∗ ⌜0 <= i <= Z.of_nat (List.length ps)⌝ ∗ getopt_session b r av ar ps i.
-Proof.
+Proof using Type.
   iIntros "[%Ha (%s & Hs & %Hb & Hc)]". unfold getopt_bounds in Hb.
   iSplit; [iPureIntro; lia|]. iSplit; [done|]. iExists s. iSplitL "Hs"; [done|]. iSplit; [done | iExact "Hc"].
 Qed.
@@ -557,7 +557,7 @@ Lemma wp_getopt_long_str_call_with_at cf av ar p os lo li b r ps i err oi roi oe
      arg_cap a' -∗
      arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcf. rewrite getopt_long_call_frame in Hcf. injection Hcf as <-. intros.
   iIntros "Hci Hoi Hi Hoe He Hoa Hpa Hoo Hc Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli HK".
   iDestruct (argv_cells_null with "Hcl") as "[Hcl Hnull]".
@@ -646,7 +646,7 @@ Lemma wp_getopt_long_str_call cf av ar p os lo li b r ps i err oi roi oe roe oa 
      arg_cap a' -∗
      arg_str c x a' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 Hcut.
   exact (wp_getopt_long_str_call_with cf av ar p os lo li b r ps i err oi roi oe roe oa roa oo roo a0 c0 G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 penv c Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33 H34 H35 H36 H37 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

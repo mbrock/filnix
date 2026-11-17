@@ -43,7 +43,7 @@ Lemma error_default_prefix_block e from status errnum fmt ap mode cb
       (Enter (TAtom "iw_2.start") (Some (TAtom "L13")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "L13") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hinputs Hn Hnb Hna Hne Hnr Hnu Hprefix Hfx Hfxframe Hfxcall.
   iIntros "Hnl Hnp Hname HS HK". step. step. step.
   iApply (wp_live_fit1 with "Hnl"). iIntros ([Hn0 Hn48]) "Hnl".
@@ -92,7 +92,7 @@ Lemma error_default_start_suffix e status errnum fmt ap mode cb
     WP (ERun (mkFrame glibc_error_internal e' [] None
       (Enter (TAtom "L13") (Some (TAtom "start")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None error_after_cancel) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hinputs Ho Hob Hoa Hoe Hor Hou Hp Hpb Hpa Hpe Hpr Hflush Hff Hflushcall.
   iIntros "Hol Hop Hout Hpl Hpp HR HK". unfold error_after_cancel.
   step. iApply (wp_live_fit1 with "Hol"). iIntros ([Ho0 Ho48]) "Hol".
@@ -156,7 +156,7 @@ Lemma wp_error_internal_default_entry status errnum fmt ap mode tb treg state
     WP (ERun (mkFrame glibc_error_internal e [] None
       (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}) -∗
   WP (ERun (error_internal_frame status errnum fmt ap mode) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hself Htb Htal Hte Htr Hstate Hcancel Ho Hob Hoa Hoe Hor Hou
     Hp Hpb Hpa Hpe Hpr Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hff Hflushcall Hfx Hfxframe Hfxcall.
   iIntros "Ht Hstate Hol Hop Hout Hpl Hpp Hnl Hnp Hname HR HE HK".

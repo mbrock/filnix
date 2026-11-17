@@ -49,7 +49,7 @@ Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 Lemma dci_tfind_miss_rule_empty `{!Defines ge "__GI___tfind" glibc_tfind} key cmp dq rb ro rreg :
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_tfind_miss_rule key (mkPtr (rb + ro) (Obj rb)) cmp (tfind_root dq rb ro rreg).
-Proof.
+Proof using Type.
   intros Hrb Hro Hal Hend Hreg f e ls l d args rest j Φ Hargs. iIntros "[Hl Hp] HK".
   iApply (wp_call_glibc_tfind_empty with "Hl Hp");
     [exact Hargs | apply defines | left; reflexivity | reflexivity | exact Hrb | exact Hro | exact Hal | exact Hend |
@@ -76,7 +76,7 @@ Lemma dci_others_empty `{!Defines ge "__GI___tfind" glibc_tfind} lk1 lk2 lkt tc 
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_rest lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   dci_others lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc L1 L1' L1'' L2 L2' L2'' T T' T'' (tfind_root dq rb ro rreg) C M cv.
-Proof.
+Proof using Type.
   intros Hrb Hro Hal Hend Hreg (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12).
   unfold dci_others. split_and!; try assumption.
   intros sb. apply dci_tfind_miss_rule_empty; assumption.
@@ -104,7 +104,7 @@ Lemma dci_others_empty_f `{!Defines ge "__GI___tfind" glibc_tfind} lk1 lk2 lkt t
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   dci_others_f lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc L1 L1' L1'' L2 L2' L2'' T T' T'' (tfind_root dq rb ro rreg) C M cv.
-Proof.
+Proof using Type.
   intros Hrb Hro Hal Hend Hreg (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12).
   unfold dci_others_f. split_and!; try assumption.
   intros sb. apply dci_tfind_miss_rule_empty; assumption.
@@ -133,7 +133,7 @@ Lemma wp_dcgettext_c_tff f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p2
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hr Hrb Hro Hal Hend Hreg.
   pose proof (dci_others_empty_f lk1 lk2 lkt tc _ _ _ _ _ _ _ _ _ _ _ cv dqr rb ro rreg Hrb Hro Hal Hend Hreg Hr) as Ho.
   eapply (wp_dcgettext_c_stpf eb Herr); first [exact Ho | exact _].
@@ -158,7 +158,7 @@ Lemma wp_dcgettext_c_tf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p27
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof. intros Hr. eapply wp_dcgettext_c_tff; first [exact (dci_rest_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
+Proof using Type*. intros Hr. eapply wp_dcgettext_c_tff; first [exact (dci_rest_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 
 (** This lemma builds the short-option translation premise in the same
     way. *)
@@ -178,7 +178,7 @@ Lemma dcg_diag_translate_tff dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) C M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hr Hrb Hro Hal Hend Hreg.
   pose proof (dci_others_empty_f lk1 lk2 lkt tc _ _ _ _ _ _ _ _ _ _ _ cv dqr rb ro rreg Hrb Hro Hal Hend Hreg Hr) as Ho.
   eapply (dcg_diag_translate_stpf eb Herr); first [exact Ho | exact _].
@@ -201,7 +201,7 @@ Lemma dcg_diag_translate_tf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) C M bs)
     dom.
-Proof. intros Hr. eapply dcg_diag_translate_tff; first [exact (dci_rest_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
+Proof using Type*. intros Hr. eapply dcg_diag_translate_tff; first [exact (dci_rest_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 
 (** This lemma builds the long-option translation premise in the same
     way. *)
@@ -221,7 +221,7 @@ Lemma dcg_ldiag_translate_tff dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) C M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hr Hrb Hro Hal Hend Hreg.
   pose proof (dci_others_empty_f lk1 lk2 lkt tc _ _ _ _ _ _ _ _ _ _ _ cv dqr rb ro rreg Hrb Hro Hal Hend Hreg Hr) as Ho.
   eapply (dcg_ldiag_translate_stpf eb Herr); first [exact Ho | exact _].
@@ -244,5 +244,5 @@ Lemma dcg_ldiag_translate_tf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T''
       (tfind_root dqr rb ro rreg) C M bs)
     dom.
-Proof. intros Hr. eapply dcg_ldiag_translate_tff; first [exact (dci_rest_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
+Proof using Type*. intros Hr. eapply dcg_ldiag_translate_tff; first [exact (dci_rest_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hr) | exact _]. Qed.
 End rules.

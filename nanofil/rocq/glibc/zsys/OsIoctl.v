@@ -230,7 +230,7 @@ Lemma wp_zsys_ioctl f e ls lab d a0 a1 a2 rest j fd req k b reg o eb Φ :
              (Exec lab (Call (CResult d W) (Global (TAtom "zsys_ioctl")) [Arg W a0; Arg W a1; Arg P a2]
                         :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx He Hin Ho Hk Hfit. iIntros "Hl Hb Herr HK".
   iApply (wp_os_errno_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ eb [(b, o, ioctl_n reg b o)] (live b reg)
             (fun vs => exists x, vs = [WInt x] /\ ((0 <= x < 2 ^ 31) \/ x = 2 ^ 32 - 1))
@@ -274,7 +274,7 @@ Lemma wp_zsys_ioctl_lend f e ls lab d a0 a1 a2 rest j fd req k b reg o eb bs Φ 
              (Exec lab (Call (CResult d W) (Global (TAtom "zsys_ioctl")) [Arg W a0; Arg W a1; Arg P a2]
                         :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Hl Hb Herr HK". iApply (wp_zsys_ioctl with "Hl Hb [Herr] HK"); try eassumption.
   by iExists bs.
 Qed.

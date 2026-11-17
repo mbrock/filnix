@@ -65,7 +65,7 @@ Lemma wp_glibc__IO_new_file_overflow fr fb freg ch f2 fd eb mode vb vreg bb breg
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ Hnw Hput He Hmd. injection Hfr as <-.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & [%Hflr Hflb] & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".

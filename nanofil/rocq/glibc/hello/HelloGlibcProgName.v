@@ -102,7 +102,7 @@ Lemma set_program_name_glibc (Hm : StrrchrLogic.memrchr_spec registry (os_wi w0)
   ▷ (word_string dq p s -∗ name_cells (ptr_add p (Z.of_nat (name_idx s))) (ptr_add p (Z.of_nat (name_idx s)))
        (ptr_add p (Z.of_nat (short_idx s))) -∗ Φ RetVoid) -∗
   WP (ERun (invocation set_program_name_fn [WPtr p]) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hdq. iIntros "Hs #Hlibs #Hlt Hc HΦ". rewrite set_program_name_entry.
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)". iDestruct (word_string_intro with "Hw") as "Hs"; [exact Hs|].
   destruct (str_shape_addr _ _ _ _ _ Hs) as [Ha0 Ha48].

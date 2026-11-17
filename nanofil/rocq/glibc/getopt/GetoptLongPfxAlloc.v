@@ -114,21 +114,21 @@ Definition getopt_memset_rule : Prop :=
 
 (** The rule without resources serves any C, because C is just carried along. *)
 Lemma getopt_cutoff_rule_with_any C : getopt_cutoff_rule -> getopt_cutoff_rule_with C.
-Proof.
+Proof using Type.
   intros Hcut f e ls l d args rest j n Φ Hx. iIntros "HC HK".
   iApply Hcut; [exact Hx|]. iNext. iIntros (x Hx32). iApply ("HK" with "HC"). done.
 Qed.
 
 (** A cutoff rule for C also holds when the caller carries R beside C. *)
 Lemma getopt_cutoff_rule_with_sep R C : getopt_cutoff_rule_with C -> getopt_cutoff_rule_with (R ∗ C).
-Proof.
+Proof using Type.
   intros Hcut f e ls l d args rest j n Φ Hx. iIntros "[HR HC] HK".
   iApply (Hcut with "HC"); [exact Hx|]. iNext. iIntros "HC". iApply ("HK" with "[$HR $HC]").
 Qed.
 
 (** A malloc rule for M also holds when the caller carries R beside M. *)
 Lemma getopt_malloc_rule_sep M R : getopt_malloc_rule M -> getopt_malloc_rule (M ∗ R).
-Proof.
+Proof using Type.
   intros Hmal f e ls l d v rest j n Φ Hx Hn. iIntros "[HM HR] HK".
   iApply (Hmal with "HM"); [exact Hx | exact Hn|]. iNext. iIntros (p) "HM Hp". iApply ("HK" with "[$HM $HR] Hp").
 Qed.
@@ -158,7 +158,7 @@ Lemma getopt_cutoff_rule_with_loan (G : iProp Σ) dq :
   find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined CutoffCode.glibc_libc_alloca_cutoff) ->
   (G ⊢ CutoffLogic.cutoff_loan dq ∗ (CutoffLogic.cutoff_loan dq -∗ G)) ->
   getopt_cutoff_rule_with w0 registry ge G.
-Proof.
+Proof using Type.
   intros Hs Hsf Hss Hg Hl f e ls l d args rest j n Φ Hx. iIntros "HG HK".
   iDestruct (Hl with "HG") as "[HL Hback]".
   iApply (CutoffLogic.wp_call_alloca_cutoff_loan Hs Hsf Hss with "HL"); [exact Hg | exact Hx |].
@@ -203,7 +203,7 @@ Lemma wp_pfx_alloc_with ks e (M : iProp Σ) n j k Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L175") (Some (TAtom "L171")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksm Hcut Hmal Hset H9 H39 H30 H42 H13 H90 Hj Hk Hn. iIntros "HM HK".
   assert (Hext : n <= req_extent (heap_req 16 n)) by (cbn; Z.div_mod_to_equations; lia).
   assert (Hksk : avoids (palloc_keys ++ ks) pmark_names = true) by (rewrite avoids_app_l Hksm; reflexivity).
@@ -318,7 +318,7 @@ Lemma wp_pfx_alloc_sep ks e (M G : iProp Σ) n j k Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L175") (Some (TAtom "L171")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksm Hcut Hmal Hset H9 H39 H30 H42 H13 H90 Hj Hk Hn. iIntros "HM HG HK".
   iApply (wp_pfx_alloc_with ks e (M ∗ G) n j k with "[$HM $HG] [HK]");
     [exact Hks | exact Hksm | apply getopt_cutoff_rule_with_sep, Hcut | apply getopt_malloc_rule_sep, Hmal | exact Hset

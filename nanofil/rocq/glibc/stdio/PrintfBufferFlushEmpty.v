@@ -48,7 +48,7 @@ Lemma wp_printf_buffer_flush_empty fr bb breg written Φ :
   ▷ (live bb breg -∗ pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 8 (mkPtr (bb + 48) (Obj bb)) -∗ pcell bb 16 (mkPtr (bb + 49) (Obj bb)) -∗
      icell bb 24 written -∗ Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hba Hbe Hbr Hwritten. injection Hfr as <-.
   iIntros "Hb Hbase Hptr Hend Hw HK".
   step. step. check "Hb".

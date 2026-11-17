@@ -323,7 +323,7 @@ Qed.
     shares and recombines them using [wwin_agree]. *)
 Lemma word_string_split q1 q2 p s :
   word_string (DfracOwn (q1 + q2)) p s ⊣⊢ word_string (DfracOwn q1) p s ∗ word_string (DfracOwn q2) p s.
-Proof.
+Proof using Type.
   iSplit.
   - iIntros "(%b & %reg & %ws & %Hs & Hw)". rewrite wwin_split. iDestruct "Hw" as "[H1 H2]".
     iSplitL "H1"; iExists b, reg, ws; by iFrame.
@@ -337,7 +337,7 @@ Qed.
 (** Any share of a string can be frozen into a persistent read-only
     string by [word_string_persist]. *)
 Lemma word_string_persist dq p s : word_string dq p s ==∗ □ word_string DfracDiscarded p s.
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hs & Hw)". iMod (wwin_persist with "Hw") as "#Hw".
   iModIntro. iModIntro. iExists b, reg, ws. by iFrame "#".
 Qed.
@@ -346,14 +346,14 @@ Qed.
     aliased arguments such as `c: strcmp(p, p)`. Instance
     [word_string_persistent] marks a read-only string as persistent. *)
 Global Instance word_string_persistent p s : Persistent (word_string DfracDiscarded p s).
-Proof. rewrite /word_string. apply _. Qed.
+Proof using Type. rewrite /word_string. apply _. Qed.
 
 (** When a proof constructs a window and a shape witness separately, it
     needs to pack them into the abstract string predicate. Lemma
     [word_string_intro] combines both into [word_string]. *)
 Lemma word_string_intro dq p b reg ws s :
   str_shape p b reg ws s -> wwin dq b reg (wstart p - b) ws -∗ word_string dq p s.
-Proof. iIntros (Hs) "Hw". iExists b, reg, ws. by iFrame. Qed.
+Proof using Type. iIntros (Hs) "Hw". iExists b, reg, ws. by iFrame. Qed.
 
 (** ## Pointers into strings
 
@@ -371,7 +371,7 @@ Lemma str_shape_suffix p b reg ws s1 s2 :
   let j := Z.to_nat ((ptr_addr p mod 8 + Z.of_nat (length s1)) / 8) in
   str_shape (ptr_add p (Z.of_nat (length s1))) b reg (drop j ws) s2 /\
   wstart (ptr_add p (Z.of_nat (length s1))) - b = wstart p - b + 8 * Z.of_nat j.
-Proof.
+Proof using Type*.
   intros [Hc Hb0 Hb8 Hst Hf Hsp Hl Hw Hby Hch] j. unfold wstart, ptr_add in *. cbn [ptr_addr ptr_cap] in *.
   rewrite length_app Nat2Z.inj_add in Hl. rewrite length_app in Hby.
   set (a := ptr_addr p) in *. set (n1 := Z.of_nat (length s1)) in *. set (n2 := Z.of_nat (length s2)) in *.
@@ -405,7 +405,7 @@ Qed.
     leading words. *)
 Lemma word_string_suffix dq p s1 s2 :
   word_string dq p (s1 ++ s2) ⊢ word_string dq (ptr_add p (Z.of_nat (length s1))) s2.
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hs & Hl & Hw)". destruct (str_shape_suffix _ _ _ _ _ _ Hs) as [Hs' Ho].
   iExists b, reg, _. iSplit; [iPureIntro; exact Hs'|]. iFrame "Hl". rewrite Ho.
   rewrite -{1}(take_drop (Z.to_nat ((ptr_addr p mod 8 + Z.of_nat (length s1)) / 8)) ws) words_ps_app ptsq_app.
@@ -422,7 +422,7 @@ Lemma word_string_borrow q1 q2 p s1 s2 :
   word_string (DfracOwn (q1 + q2)) p (s1 ++ s2) ⊢
   word_string (DfracOwn q1) (ptr_add p (Z.of_nat (length s1))) s2 ∗
   (word_string (DfracOwn q1) (ptr_add p (Z.of_nat (length s1))) s2 -∗ word_string (DfracOwn (q1 + q2)) p (s1 ++ s2)).
-Proof.
+Proof using Type.
   iIntros "Hs". iDestruct (word_string_split with "Hs") as "[H1 H2]".
   iDestruct "H2" as "(%b & %reg & %ws & %Hs & Hl2 & Hw2)".
   destruct (str_shape_suffix _ _ _ _ _ _ Hs) as [Hs' Ho].
@@ -478,7 +478,7 @@ Qed.
     literal satisfies [str_shape]. *)
 Lemma word_string_literal b reg ws s :
   str_shape (mkPtr b (Ro b)) b reg ws s -> pts (lit_ps b reg ws) ⊢ word_string (DfracOwn 1) (mkPtr b (Ro b)) s.
-Proof.
+Proof using Type.
   iIntros (Hs) "Hps". iExists b, reg, ws. iSplit; [done|].
   replace (wstart (mkPtr b (Ro b)) - b) with 0 by (unfold wstart; cbn; rewrite (ss_align _ _ _ _ _ Hs); lia).
   rewrite /lit_ps pts_ptsq (ptsq_app _ [_]). iExact "Hps".
@@ -516,7 +516,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Lemma word_string_readable σ dq p s : heap_interp wi σ -∗ word_string dq p s -∗
   ⌜(forall n, 0 <= n <= Z.of_nat (length s) + 1 -> readable_bytes (ls_mem σ) p n) /\
    os_bytes (ls_mem σ) p (Z.of_nat (length s)) = s⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ (%b & %reg & %ws & %Hs & Hl & Hw)".
   iDestruct (ptsq_facts with "Hσ Hl") as %([Hlv _] & _).
   iDestruct (ptsq_facts with "Hσ Hw") as %(Ha & _). iPureIntro. exact (str_shape_bytes _ _ _ _ _ _ Hs Hlv Ha).
@@ -534,7 +534,7 @@ Lemma wp_check_read_dq f e ls l d lo hi al args rest j classes p b reg dq Φ :
   liveq dq b reg -∗
   ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp H1 H2 H3. apply (wp_read_dq registry wi ge dq _ _ _ []). 
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
   apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].

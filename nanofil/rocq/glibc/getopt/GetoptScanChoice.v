@@ -169,7 +169,7 @@ Lemma scan_choice_cells b r av ar (ps' : list ptr) i' s a o f' l' err oo c :
     live b r ∗ int_cell b 0 i' ∗ int_cell b 4 err ∗ int_cell b 8 oo ∗ pcell b 16 a ∗ int_cell b 24 1 ∗
     pcell b 32 c ∗ int_cell b 40 o ∗ int_cell b 44 f' ∗ int_cell b 48 l' ∗
     live av ar ∗ argv_cells av ps' ∗ argv_strs ps'.
-Proof.
+Proof using Type.
   intros Hi. destruct (lookup_lt_is_Some_2 ps' (Z.to_nat i') Hi) as [q Hq].
   iIntros "Hw Hl Hi Ha Ho Hf Hla He Hoo Hin Hc Hva Hvc Hvs".
   rewrite (nth_lookup_Some _ _ _ _ Hq). iExists q. by iFrame.

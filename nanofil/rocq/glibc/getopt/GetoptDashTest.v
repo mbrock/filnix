@@ -140,7 +140,7 @@ Lemma wp_getopt_dash_end ks e i n f l b r av ar ps pdd sdd Φ :
                  (Exec (TAtom "L203") (b_insts getopt_blk203) (b_jump getopt_blk203))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "L119") (b_insts getopt_blk119) (b_jump getopt_blk119))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hkx Hkd Hkt Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc2 Hc23 Hfl Hli Hin Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hi Hf Hla Ha Hc #Hs #Hdd HK".
   iApply (wp_dash_test (ks ++ dash_keys) e i n b r av ar ps pdd sdd with "Hl Hi Ha Hc Hs Hdd [Hf Hla HK]");

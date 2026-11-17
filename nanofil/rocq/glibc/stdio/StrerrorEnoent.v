@@ -76,7 +76,7 @@ Lemma wp_strerror_enoent fr buf len lenb lenr tab tabr mid mr bs (E : iProp Σ) 
   ▷ (enoent_lookup_cells lenb lenr tab tabr mid mr -∗
     enoent_translation (le_bytes (dci_w bs) 4) -∗ E -∗ Φ (Ret (WPtr mid))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Defines0 Defines1 Defines10 Defines11 Defines12 Defines13 Defines2 Defines3 Defines4 Defines5 Defines6 Defines7 Defines8 Defines9 Hbounds Hdomain Herr Hext Hglobals Hheap Hlk1 Hlk2 Hlkt Hlocale Hral Hrb Hre Hreg Hro Hrr Hsecure Hv.
   intros Hfr Hlen Htable Hlenb Hlene Hlenr Htab Htal Htabe Htabr Hmid.
   iIntros "Hlookup Htranslation HE HK". cbn in Hfr. injection Hfr as <-.
   step. iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
@@ -107,7 +107,7 @@ Lemma error_strerror_enoent_call lenb lenr tab tabr mid mb mr bs (E : iProp Σ) 
       WP (ERun fr : gexpr) {{ result, ∃ p, ⌜result = Ret (WPtr p) /\ p = mid⌝ ∗
         error_text_buffer error_borrowed_text b p ∗
         enoent_lookup_cells lenb lenr tab tabr mid mr ∗ enoent_translation (le_bytes (dci_w bs) 4) ∗ E }}).
-Proof.
+Proof using Defines0 Defines1 Defines10 Defines11 Defines12 Defines13 Defines2 Defines3 Defines4 Defines5 Defines6 Defines7 Defines8 Defines9 Hbounds Hdomain Herr Hext Hglobals Hheap Hlk1 Hlk2 Hlkt Hlocale Hral Hrb Hre Hreg Hro Hrr Hsecure Hv.
   intros Hlen Htable Hmessage Hlenb Hlene Hlenr Htab Htal Htabe Htabr Hstring b.
   eexists. split; [reflexivity |]. iIntros "Hobj (Hlookup & Htranslation & #Htext & HE)".
   iDestruct (obj_zero_block with "Hobj") as "(Hbl & Hbytes & Haux)"; [compute; discriminate |].

@@ -74,7 +74,7 @@ Lemma wp_hello_close_stream_stderr_short_empty pre post fb freg fl f2 fd off rp 
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗ E -∗
   (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ Q -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (hello_close_stream_frame fp) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp buf Q Hglobal Hgerr Hgout Hout Houtr Hgin Hin Hinr Hcleanup Hfcr Hfb Hfal Hfend Hfreg
     Hf2r Hf232 Hnl Hfdr Hfl Hnw Hcp Hub Hul Hlnk Hfb8 He Hlb Hmd. subst fp buf.
   iIntros "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Hoff Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hmode Hvtp
@@ -159,7 +159,7 @@ Lemma wp_hello_close_stdout_stderr_short_empty e pre post fb freg fl f2 fd off r
   (Q -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame close_stdout_fn e [] None
     (Enter (TAtom "L91") (Some (TAtom "L8")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp buf cells Q Hstderr Hsc Hsca Hsce Hscr Hexit Hxc Hxce Hxcr
     Hglobal Hgerr Hgout Hout Houtr Hgin Hin Hinr Hcleanup Hfcr Hfb Hfal Hfend Hfreg
     Hf2r Hf232 Hnl Hfdr Hfl Hnw Hcp Hub Hul Hlnk Hfb8 He Hlb Hmd. subst fp buf.

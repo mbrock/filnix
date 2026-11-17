@@ -60,7 +60,7 @@ Lemma wp_printf_overflow_heap_caller e from bb breg fb ch bufmode oldbase oldptr
     pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk.
   assert (Hframed : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
     (fun fp => printf_heap_stream w0 vb self fp mode flags2 held)

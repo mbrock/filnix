@@ -60,7 +60,7 @@ Lemma wp_call_spec n s `{!HasSpec n s} x f e ls lab r args rest j Ψ :
     ⌜resume (mkFrame f e ls None (Exec lab rest j)) (mkPending r None) v = Some cf'⌝ ∗
     ▷ WP (ERun cf' : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global n) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx. destruct (has_spec (n := n) (s := s) x) as (gf & Hg & [fr Hfr] & Ht).
   iIntros "HP HK".
   iApply (wp_call_bind with "[HP HK]"); [exact Hx | exact Hg | exact Hfr |]. iNext.
@@ -73,7 +73,7 @@ Lemma has_spec_weaken n s s' `{!HasSpec n s} :
   (forall y, exists x, fs_args s' y = fs_args s x /\
     (fs_pre s' y ⊢ fs_pre s x ∗ ∀ v, fs_post s x v -∗ fs_post s' y v)) ->
   HasSpec n s'.
-Proof.
+Proof using Type.
   intros Hweak y. destruct (Hweak y) as (x & Hargs & Hpre).
   destruct (has_spec (n := n) (s := s) x) as (gf & Hg & Hfr & Ht).
   exists gf. rewrite Hargs. split; [exact Hg |]. split; [exact Hfr |].
@@ -85,7 +85,7 @@ Qed.
 (** Combining proved contracts preserves each alternative's original guarantees. *)
 Lemma has_spec_choice n s t `{!HasSpec n s, !HasSpec n t} :
   HasSpec n (spec_choice s t).
-Proof.
+Proof using Type.
   intros [x|y]; cbn [fs_args fs_pre fs_post spec_choice].
   - apply (has_spec (s := s)).
   - apply (has_spec (s := t)).
@@ -124,7 +124,14 @@ Ltac call_spec_rule :=
   end.
 
 (** Passing large generated proofs directly to Iris makes calls slow.
-    Local proof names avoid that search, while unsolved argument equations and arithmetic premises remain visible. *)
+    Local proof names avoid that search, while unsolved argument equations and arithmetic premises remain visible.
+
+    Framing the caller's hypotheses into the precondition is most of a
+    call's time. Two measures keep it short. The continuation stays behind
+    [tc_opaque], so hypotheses go into the precondition only. And the
+    memory predicates stay folded while framing: each is a [pts] over a
+    computed list of pieces, and unfolding both sides of every failed match
+    cost about 0.3 s per hypothesis that does not fit. *)
 Ltac call_spec_apply rule x :=
   let T := type of (rule x) in
   lazymatch T with
@@ -137,14 +144,14 @@ Ltac call_spec_apply rule x :=
             let Hcall := fresh "Hcall" in
             pose proof (rule x Hargs) as Hcall;
             let Happly := fresh "Happly" in
-            pose proof (bi.wand_elim_r' P K Q
+            pose proof (bi.wand_elim_r' P (tc_opaque K) Q
               ltac:(iIntros "HK HP"; iApply (Hcall with "HP HK"))) as Happly;
             iApply Happly; clear Hcall Happly;
             cbn [fs_pre];
-            first [iSplitR; [iPureIntro | let v := fresh "v" in iIntros (v) "Hpost"]
-                  | iFrame "#"; iFrame;
-                    first [iSplitR; [iPureIntro | let v := fresh "v" in iIntros (v) "Hpost"]
-                          | let v := fresh "v" in iIntros (v) "Hpost"]]
+            first [iSplitR; [iPureIntro | unfold tc_opaque; let v := fresh "v" in iIntros (v) "Hpost"]
+                  | with_strategy opaque [live liveq icell pcell] (iFrame "#"; iFrame);
+                    first [iSplitR; [iPureIntro | unfold tc_opaque; let v := fresh "v" in iIntros (v) "Hpost"]
+                          | unfold tc_opaque; let v := fresh "v" in iIntros (v) "Hpost"]]
         end ]
   end.
 
@@ -166,3 +173,15 @@ Ltac call_spec :=
 (** A caller can supply an arithmetic decomposition that argument evaluation cannot infer. *)
 Tactic Notation "call_spec" "with" open_constr(x) :=
   let rule := call_spec_rule in call_spec_apply rule x.
+
+(** A callee can have several contracts, such as [__tunable_get_val] for
+    sizes and for integers, and [call_spec] would take the first one that
+    proof search finds. This form names the contract H : HasSpec ... n s
+    and takes the logical input x. *)
+Tactic Notation "call_spec" "using" constr(H) "with" open_constr(x) :=
+  lazymatch type of H with HasSpec ?registry ?wi ?ge ?n ?s =>
+  lazymatch goal with |- context [mkFrame ?f ?e ?ls None (Exec ?lab (Call ?r (Global ?n) ?args :: ?rest) ?j)] =>
+    let rule := open_constr:(fun y => wp_call_spec registry wi ge n s (HasSpec0 := H) y f e ls lab r args rest j _) in
+    call_spec_apply rule x
+  | _ => fail "call_spec using: the next instruction does not call" n
+  end end.

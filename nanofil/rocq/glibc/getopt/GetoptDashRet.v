@@ -122,7 +122,7 @@ Lemma wp_getopt_dash_ret_arg_with e (G : iProp Σ) T fp dom (M : iProp Σ) se se
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hq1 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser Hord Hfst Hlst.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hsl #Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl #Hs HG HF HM Hli HK".
@@ -196,7 +196,7 @@ Lemma wp_getopt_dash_ret_arg e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 Hcut.
   exact (wp_getopt_dash_ret_arg_with e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq n lonly pe i oo b r li er ord fst lst Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -244,7 +244,7 @@ Lemma wp_getopt_dash_ret e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli HK".
   iApply (wp_getopt_dash_ret_arg e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq n lonly pe i oo b r li er ord fst lst Φ with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli");
     try eassumption.
@@ -260,10 +260,10 @@ Qed.
 
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance dashret_liveq_persistent b0 reg : Persistent (liveq DfracDiscarded b0 reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance dashret_pcellq_persistent b0 o x : Persistent (pcellq DfracDiscarded b0 o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 
 (** After the scan, a word with two dashes goes to the parser, and the
     caller must then deal with whatever the parser returns. The word is
@@ -318,7 +318,7 @@ Lemma scan_dash_exit_arg_with ks4 n av ar p os lo li lonly b r ps j (G : iProp �
       live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗
       WP (ERun (mkFrame glibc_getopt_internal_r e1 [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr)
         {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hin4 Hgp Hstr Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3 Hmid4 Hfl Hos
     Hlo Hn Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hos HF HM Hli HK".
@@ -391,7 +391,7 @@ Lemma scan_dash_exit_arg ks4 n av ar p os lo li lonly b r ps j (G : iProp Σ) T 
       live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗
       WP (ERun (mkFrame glibc_getopt_internal_r e1 [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr)
         {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 Hcut.
   exact (scan_dash_exit_arg_with ks4 n av ar p os lo li lonly b r ps j G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 pfx pxs los F Φ H0 H1 H2 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

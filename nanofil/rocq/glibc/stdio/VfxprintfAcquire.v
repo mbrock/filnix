@@ -38,7 +38,7 @@ Lemma wp_vfxprintf_acquire e fb freg fl lb lbreg fmt ap flags md dqf fmtreg sb s
     lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "L24") (Some (TAtom "L10")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hpr Hchk Hz Hfmt Hap Hflags Hfb Hal Hend Hreg Huser Hfmtr Hmd Hself Hselfr Hcall.
   iIntros "#Hs Hl Hfl Hlp Hlk Hmd Hfmt HV HR HE HK".
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).

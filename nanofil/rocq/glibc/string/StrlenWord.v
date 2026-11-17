@@ -61,7 +61,7 @@ Lemma wp_glibc_strlen_dq dq p b reg ws n Φ :
   (liveq dq b reg -∗ ptsq dq (words_ps b (ptr_addr p - ptr_addr p mod 8 - b) ws) -∗ Φ (Ret (WInt (Z.of_nat n)))) -∗
   WP (ERun (mkFrame glibc_strlen [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct p as [a c]. cbn [ptr_addr ptr_cap]. intros Hc Hb0 Hb8 Hba Hend Hreg Hr Hz.
   pose proof (Z.mod_pos_bound a 8 ltac:(lia)) as Hk.
   assert (Hal : b <= a - a mod 8) by (pose proof (Z.div_mod a 8 ltac:(lia)); pose proof (Z.div_mod b 8 ltac:(lia)); nia).
@@ -149,7 +149,7 @@ Lemma wp_glibc_strlen_ws dq p s Φ :
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WInt (Z.of_nat (List.length s))))) -∗
   WP (ERun (mkFrame glibc_strlen [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "(%b & %reg & %ws & %Hs & Hl & Hw) HK".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp _ Hr _ _].
   iApply (wp_glibc_strlen_dq dq p b reg ws (List.length s) with "Hl Hw");
@@ -168,7 +168,7 @@ Definition strlen_spec : fspec Σ :=
 (** Any name resolving to strlen satisfies the same length contract. *)
 Lemma strlen_spec_valid g : find_fn ge g = Some (Defined glibc_strlen) ->
   HasSpec registry wi ge g strlen_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg [[dq p] s]. exists glibc_strlen. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strlen_spec].
@@ -189,7 +189,7 @@ Lemma wp_call_glibc_strlen f e ls l r g args rest j dq p s cf' Φ :
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WInt (Z.of_nat (List.length s)))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hg Hr. iIntros "Hs HK".
   pose proof (strlen_spec_valid g Hg) as Hspec.
   iApply (wp_call_spec registry wi ge g strlen_spec (dq, p, s) with "Hs"); [exact Hx|].

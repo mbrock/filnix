@@ -183,7 +183,7 @@ Lemma word_string_bytes dq p s :
   word_string dq p s ⊢ ∃ b reg ws, ⌜str_shape p b reg ws s⌝ ∗ liveq dq b reg ∗
     bytesq dq b (ptr_addr p - b) (s ++ [0]) ∗
     (liveq dq b reg -∗ bytesq dq b (ptr_addr p - b) (s ++ [0]) -∗ word_string dq p s).
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hs & Hl & Hw)". iExists b, reg, ws. iSplit; [done|].
   pose proof Hs as [_ _ _ _ _ _ Hlen _ Hby _].
   pose proof (Z.mod_pos_bound (ptr_addr p) 8 ltac:(lia)) as Hk.
@@ -399,7 +399,7 @@ Definition memset_spec : fspec Σ :=
 (** The existing runtime fill rule establishes memset's frame contract. *)
 Lemma memset_spec_valid g : find_fn ge g = Some (Defined glibc_memset) ->
   HasSpec registry (os_wi w0) ge g memset_spec.
-Proof.
+Proof using Hset Hset_fn Hset_sym.
   intros Hg [[[[[b reg] o] xs] cs] c]. exists glibc_memset. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post memset_spec].
@@ -432,7 +432,7 @@ Lemma wp_call_glibc_memset f e ls lab r g args rest j b reg o xs cs c cf' Φ :
   ▷ (live b reg -∗ bytes b o (replicate (length xs) (c mod 256)) -∗ auxes b o (clear_slots o cs) -∗
      WP (ERun cf' : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hset Hset_fn Hset_sym.
   intros Hx Hg Hres Hc Hn Hb8 Ho8 Ho Hend Hlen. iIntros "Hl Hx Hcs HK".
   pose proof (memset_spec_valid g Hg) as Hspec.
   iApply (wp_call_spec registry (os_wi w0) ge g memset_spec (b, reg, o, xs, cs, c) with "[Hl Hx Hcs]");
@@ -462,7 +462,7 @@ Definition copy_spec (past : bool) : fspec Σ :=
 (** The runtime move rule establishes memcpy's contract without exposing a caller frame. *)
 Lemma memcpy_spec_valid g : find_fn ge g = Some (Defined glibc_memcpy) ->
   HasSpec registry (os_wi w0) ge g (copy_spec false).
-Proof.
+Proof using Hmove Hmove_fn Hmove_sym.
   intros Hg [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
   exists glibc_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_spec].
@@ -495,7 +495,7 @@ Lemma wp_call_glibc_memcpy f e ls lab r g args rest j b reg o xs cs dq b' reg' o
   ▷ (live b reg -∗ bytes b o ys -∗ (∃ cs', ⌜length cs' = length xs⌝ ∗ auxes b o cs') -∗
      liveq dq b' reg' -∗ bytesq dq b' o' ys -∗ WP (ERun cf' : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hmove Hmove_fn Hmove_sym.
   intros Hx Hg Hres Hc' Hn Hb8 Ho8 Hb8' Ho Ho' Hend Hend' Hly Hlc Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
   pose proof (memcpy_spec_valid g Hg) as Hspec.
   iApply (wp_call_spec registry (os_wi w0) ge g (copy_spec false)
@@ -509,7 +509,7 @@ Qed.
 Lemma mempcpy_spec_valid g : find_fn ge g = Some (Defined glibc_mempcpy) ->
   find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
   HasSpec registry (os_wi w0) ge g (copy_spec true).
-Proof.
+Proof using Hmove Hmove_fn Hmove_sym.
   intros Hg Hcpy [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
   exists glibc_mempcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_spec].
@@ -546,7 +546,7 @@ Lemma wp_call_glibc_mempcpy f e ls lab r g args rest j b reg o xs cs dq b' reg' 
   ▷ (live b reg -∗ bytes b o ys -∗ (∃ cs', ⌜length cs' = length xs⌝ ∗ auxes b o cs') -∗
      liveq dq b' reg' -∗ bytesq dq b' o' ys -∗ WP (ERun cf' : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hmove Hmove_fn Hmove_sym.
   intros Hcpy Hx Hg Hres Hc' Hb0 Hn Hb8 Ho8 Hb8' Ho Ho' Hend Hend' Hly Hlc Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
   pose proof (mempcpy_spec_valid g Hg Hcpy) as Hspec.
   iApply (wp_call_spec registry (os_wi w0) ge g (copy_spec true)

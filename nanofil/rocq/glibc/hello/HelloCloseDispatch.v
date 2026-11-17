@@ -37,7 +37,7 @@ Lemma wp_close_stdout_dispatch e r ib ireg flag eb (E : iProp Σ) Φ :
       WP (ERun (mkFrame close_stdout_fn e' [] None (Enter (TAtom "L0") (Some (TAtom "L8")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame close_stdout_fn e [] None
     (Exec (TAtom "start") (skipn 4 (b_insts (co_block "start"))) (b_jump (co_block "start")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hr [-> | ->] Hignore Hib Hibe Hibr Hflag Hglobal He;
     iIntros "Hil Hib Herr HE HK";
     let b := eval vm_compute in (co_block "start") in change (co_block "start") with b;

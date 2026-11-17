@@ -135,7 +135,7 @@ Context `{!gen_heapGS piece pval Σ}.
     parts of the initial image. *)
 Lemma getopt_private_own : pts getopt_private_pieces ⊢
   getopt_state_own 65584 getopt_private_region getopt_zero.
-Proof.
+Proof using Type.
   rewrite /getopt_private_pieces /concat !pts_app.
   iIntros "(Hl & Hi & He & Ho & Ha & Hz & Hn & Hr & Hf & Ht & _)".
   rewrite /getopt_state_own /getopt_zero /=.
@@ -147,7 +147,7 @@ Qed.
 (** The zeroed fields at an aligned base give the parser its fresh state. *)
 Lemma getopt_zero_ps_own b r : 0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   pts (getopt_zero_ps b r) ⊢ getopt_state_own b r getopt_zero.
-Proof.
+Proof using Type.
   intros Hb H8 He Hr. rewrite /getopt_zero_ps /concat !pts_app.
   iIntros "(Hl & Hi & He & Ho & Ha & Hz & Hn & Hr & Hf & Ht & _)".
   rewrite /getopt_state_own /getopt_zero /=.

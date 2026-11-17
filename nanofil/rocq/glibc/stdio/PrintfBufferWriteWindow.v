@@ -52,7 +52,7 @@ Lemma wp_printf_buffer_write_window fr bb reg off xs cs dq sb sreg so sc ys Φ :
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs off ys -∗
     liveq dq sb sreg -∗ bytesq dq sb so ys -∗ Φ RetVoid) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hcpy Hb Ha He Hr Ho Hn Hroom Hsa Hso Hse Hsc Hxs Hcs Hx Hy.
   injection Hfr as <-. iIntros "Hl [%Hm Hmode] Hptr Hend Hx Hcs Hs Hy HK".
   step. step. norm. check "Hl".

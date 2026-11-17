@@ -184,7 +184,7 @@ Lemma wp_glibc_memchr_dq dq p c n b reg ws r e Φ :
   liveq dq b reg -∗ ptsq dq (words_ps b (wstart p - b) ws) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b (wstart p - b) ws) -∗ Φ (Ret (WPtr (hit_ptr p r)))) -∗
   WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct p as [a c0]. unfold wstart. cbn [ptr_addr ptr_cap]. intros Hc Hb0 Hb8 Hba Hend Hreg Hr Hcr Hn Hhit H0 H2 H4.
   iIntros "Hl Hps HK".
   pose proof (Z.mod_pos_bound a 8 ltac:(lia)) as Hk.

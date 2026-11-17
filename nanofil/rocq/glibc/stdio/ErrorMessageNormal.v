@@ -82,7 +82,7 @@ Lemma wp_error_message_normal e from cb wide widefn wideframe Φ :
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hregistry sb sreg.
   intros Hinputs Hg Hgb Hga Hge Hgr Hfb Hal Hend Hreg Huser Hfmt Hmd Hself Hselfr
     Hstring Herrno Hfn Hwide Hwidefn Hwideframe Hformat Hfallback.
   iIntros "Hgl Hgp Hl HV HR HE HK".

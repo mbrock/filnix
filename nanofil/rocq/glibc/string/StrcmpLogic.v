@@ -270,7 +270,7 @@ Lemma wp_glibc_strcmp_ws dq1 dq2 p1 p2 s1 s2 Φ :
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
   WP (ERun (mkFrame glibc_strcmp [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2)] [] None
              (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof. apply strcmp_entry. left. reflexivity. Qed.
+Proof using SafepointStable0. apply strcmp_entry. left. reflexivity. Qed.
 
 (** Comparison returns both string shares, even when the pointers alias. *)
 Definition strcmp_spec : fspec Σ :=
@@ -283,7 +283,7 @@ Definition strcmp_spec : fspec Σ :=
 (** The entry proof accepts the parameter order produced by argument binding. *)
 Lemma strcmp_spec_valid g : find_fn ge g = Some (Defined glibc_strcmp) ->
   HasSpec registry wi ge g strcmp_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg [[[[[dq1 dq2] p1] p2] s1] s2]. exists glibc_strcmp. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strcmp_spec].
@@ -305,7 +305,7 @@ Lemma wp_call_glibc_strcmp f e ls l r g args rest j dq1 dq2 p1 p2 s1 s2 cf' Φ :
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   ▷ (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hg Hr. iIntros "H1 H2 HK".
   pose proof (strcmp_spec_valid g Hg) as Hspec.
   iApply (wp_call_spec registry wi ge g strcmp_spec (dq1, dq2, p1, p2, s1, s2) with "[$H1 $H2]"); [exact Hx|].

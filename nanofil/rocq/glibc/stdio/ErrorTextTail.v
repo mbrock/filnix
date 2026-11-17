@@ -76,7 +76,7 @@ Lemma wp_error_text_tail_zero_loans (P U : iProp Σ)
     live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hready.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HP HE HK".
   iApply (wp_error_text_loan _ _ 0 errnum fmt ap mode cb nb nreg count textfmt strerrorfn newlinefn
@@ -134,7 +134,7 @@ Lemma wp_error_text_tail_thread_loan (P U : iProp Σ)
     live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hready.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HP HE HK".
   iApply (wp_error_text_loan _ _ 0 errnum fmt ap mode cb nb nreg count textfmt strerrorfn newlinefn
@@ -193,7 +193,7 @@ Lemma wp_error_text_tail_zero_loan
     live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
   iApply (wp_error_text_tail_zero_loans R R Hnewline_loan with
@@ -230,7 +230,7 @@ Lemma wp_error_text_tail_zero e from errnum fmt ap mode cb nb nreg count
     live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
   iApply (wp_error_text_tail_zero_loan with "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK"); try assumption.

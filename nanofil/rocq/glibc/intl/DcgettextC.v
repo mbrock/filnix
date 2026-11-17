@@ -81,7 +81,7 @@ Lemma wp_dcgettext_c_f f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hcal Hglo Hbnd Hargs Hm. iIntros "(Hr & HL1 & HL2 & HT & HK & HC & HM & Herr) HΦ".
   iApply wp_call_bind; [exact Hargs | apply defines | reflexivity |]. iNext.
   step.
@@ -110,7 +110,7 @@ Lemma wp_dcgettext_c_r f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof. intros Hc. eapply wp_dcgettext_c_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
+Proof using Type*. intros Hc. eapply wp_dcgettext_c_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement that assumed the old stpcpy rule. *)
 Lemma wp_dcgettext_c f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
@@ -149,7 +149,7 @@ Lemma dcg_diag_translate_f dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg 
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hcal Hglo Hbnd Hmsg f e ls l d args rest j mid Φ Hd Hargs.
   iIntros "HG HK". iApply (wp_dcgettext_c_f with "HG HK"); try eassumption. exact (Hmsg mid Hd).
 Qed.
@@ -168,7 +168,7 @@ Lemma dcg_diag_translate_r dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg 
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof. intros Hc. eapply dcg_diag_translate_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
+Proof using Type*. intros Hc. eapply dcg_diag_translate_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement that assumed the old stpcpy rule. *)
 Lemma dcg_diag_translate dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
@@ -184,7 +184,7 @@ Lemma dcg_diag_translate dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply dcg_diag_translate_r; first [exact Hr | exact _]. Qed.
+Proof using Type*. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply dcg_diag_translate_r; first [exact Hr | exact _]. Qed.
 
 (** The long-option premise follows in the same way. *)
 Lemma dcg_ldiag_translate_f dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
@@ -200,7 +200,7 @@ Lemma dcg_ldiag_translate_f dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hcal Hglo Hbnd Hmsg f e ls l d args rest j mid Φ Hd Hargs.
   iIntros "HG HK". iApply (wp_dcgettext_c_f with "HG HK"); try eassumption. exact (Hmsg mid Hd).
 Qed.
@@ -219,7 +219,7 @@ Lemma dcg_ldiag_translate_r dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof. intros Hc. eapply dcg_ldiag_translate_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
+Proof using Type*. intros Hc. eapply dcg_ldiag_translate_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement that assumed the old stpcpy rule. *)
 Lemma dcg_ldiag_translate dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
@@ -235,5 +235,5 @@ Lemma dcg_ldiag_translate dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg i
       L1 L2 T K C M bs)
     (dcg_after dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply dcg_ldiag_translate_r; first [exact Hr | exact _]. Qed.
+Proof using Type*. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply dcg_ldiag_translate_r; first [exact Hr | exact _]. Qed.
 End rules.

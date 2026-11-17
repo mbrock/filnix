@@ -67,7 +67,7 @@ Lemma wp_error_message e from status errnum fmt ap mode cb sb sreg fb freg dq eb
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hinputs Hg Hsb Hsa Hse Hsr Hfb Hfmtfn Hfmtframe Hwide Hfn Hframe Hformat Hwidecall.
   destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Hsl Hsp Hfl HV HR HE HK".

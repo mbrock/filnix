@@ -106,7 +106,7 @@ Lemma wp_glibc__IO_new_file_finish_closed fr fb freg fl lb lbreg Φ :
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
      pcell fb off_lock (mkPtr lb (Obj lb)) -∗ live lb lbreg -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hfal Hfend Hfreg Hfl Hlnk Hlb Hlbend. injection Hfr as <-. unfold file_size in Hfend.
   iIntros "Hl [%Hfd Hfd] Hfl Hbb H80 H96 Hlp Hll HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".

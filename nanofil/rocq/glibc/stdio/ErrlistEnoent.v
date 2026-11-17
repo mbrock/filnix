@@ -33,7 +33,7 @@ Lemma wp_get_errlist_enoent fr lb lr tb tr mid mr Φ :
   enoent_lookup_cells lb lr tb tr mid mr -∗
   ▷ (enoent_lookup_cells lb lr tb tr mid mr -∗ Φ (Ret (WPtr mid))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hlen Htable Hlb Hle Hlr Htb Hal Hte Htr Hmid.
   iIntros "(Hll & Hlen & Htl & Hentry & Hml) HK".
   cbn in Hfr. injection Hfr as <-.

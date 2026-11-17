@@ -66,7 +66,7 @@ Lemma wp_close_stdout_diagnostic e nb nreg filename preg xc xreg status eb fmt t
       (Enter (TAtom "L31") (Some (TAtom "L0")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame close_stdout_fn e [] None
     (Enter (TAtom "L0") (Some (TAtom "L8")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hname Hnb Hnba Hnbe Hnbr Hpr Hnamed Htext Hfmt Hexit Hxc Hxce Hxcr Hglobal He Herror Hframe Hcall.
   iIntros "Hnl Hnp Hpl Hxl Hstatus Herr HR HE Hnamed".
   iApply (wp_live_fit1 with "Hnl"). iIntros ([Hn0 Hn48]) "Hnl".

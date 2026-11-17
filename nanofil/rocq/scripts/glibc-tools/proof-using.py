@@ -24,7 +24,7 @@ import re
 import sys
 
 SUGGESTION = re.compile(
-    r"^The proof of (\S+) should start with one of the following commands:\n((?:Proof using[^\n]*\n)+)",
+    r"^The proof of (\S+)\s+should start with one of the following commands:\n((?:Proof using[^\n]*\n)+)",
     re.M,
 )
 

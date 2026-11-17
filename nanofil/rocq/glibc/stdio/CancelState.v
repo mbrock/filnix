@@ -49,7 +49,7 @@ Lemma wp_cancel_disable_save fr tb treg sb sreg so prior Φ :
   live tb treg -∗ int_cell tb 792 0 -∗ live sb sreg -∗ int_cell sb so prior -∗
   ▷ (live tb treg -∗ int_cell tb 792 1 -∗ live sb sreg -∗ int_cell sb so 0 -∗
      Φ (Ret (WInt 0))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hself Htb Htal Htend Htreg Hsb Hso Hsend Hsreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] Hsl [%Hprior Hsave] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
@@ -84,7 +84,7 @@ Lemma wp_cancel_restore fr tb treg Φ :
   live tb treg -∗ int_cell tb 792 1 -∗
   ▷ (live tb treg -∗ int_cell tb 792 0 -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hself Htb Htal Htend Htreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
@@ -115,7 +115,7 @@ Lemma wp_cancel_disabled_save fr tb treg sb sreg so prior Φ :
   live tb treg -∗ int_cell tb 792 1 -∗ live sb sreg -∗ int_cell sb so prior -∗
   ▷ (live tb treg -∗ int_cell tb 792 1 -∗ live sb sreg -∗ int_cell sb so 1 -∗
      Φ (Ret (WInt 0))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hself Htb Htal Htend Htreg Hsb Hso Hsend Hsreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] Hsl [%Hprior Hsave] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.
@@ -143,7 +143,7 @@ Lemma wp_cancel_keep_disabled fr tb treg Φ :
   live tb treg -∗ int_cell tb 792 1 -∗
   ▷ (live tb treg -∗ int_cell tb 792 1 -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hself Htb Htal Htend Htreg. injection Hfr as <-.
   iIntros "Htl [%Hch Hcb] HK".
   step. step. closed_ints. branch. step. step. step. step. closed_ints. branch. step.

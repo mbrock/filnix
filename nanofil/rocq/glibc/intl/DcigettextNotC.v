@@ -54,7 +54,7 @@ Qed.
 (** The same test accepts 'C' and rejects the first letters of "POSIX"
     and "en_US". *)
 Example dci_c_byte_controls : chr_w 67 = 67 /\ (chr_w 80 =? 67) = false /\ (chr_w 101 =? 67) = false.
-Proof. repeat split. Qed.
+Proof using Type*. repeat split. Qed.
 
 (** The prefix tests the message id before it touches errno or a lock. A
     null message id makes the lookup return null at once, so that call
@@ -63,7 +63,7 @@ Lemma wp_dci_null_msgid e Φ :
   lookup (TAtom "v2") e = Some (WPtr null) ->
   ▷ Φ (Ret (WPtr null)) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv2. iIntros "HK".
   step.
   iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |

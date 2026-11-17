@@ -93,7 +93,7 @@ Lemma wp_doalloc_malloc fb freg fl oe sz e Φ :
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate (put (TAtom "pr.2") (WInt sz) e) [] None
               (Exec (TAtom "L7") (b_insts da_L7) (b_jump da_L7))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsz Hv0. iIntros "Hl Hfl Hb He HM HK". cbn [da_L7 b_insts b_jump].
   iApply (Hmalloc _ _ _ _ _ _ _ _ sz with "HM"); [cbn; rewrite Z.mod_small; [reflexivity | lia] | lia |].
   iNext. iIntros (base (Hb0 & Hb16 & Hbext)) "Ho HM".

@@ -109,7 +109,7 @@ Lemma wp_long_pfx_path_with ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L98") (Some (TAtom "L53")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hksl Hksc Hkss Hksa Hksm Hkse Hksr Hksi Hkst Hcut Hmal Hset Hrule Hfree Hgn Hgl Hse H138 H139 H140 H141
     Hfl Hos Hpe Hi Hat H2 H6 H16 H6p Hb Hal Hend Hr Hav Hala Hda Hra Hps Hse0 Hsea Hsee Hser.
   pose proof Hat as (H12 & Hc0 & H48 & H10 & H14 & H90 & H9).
@@ -197,7 +197,7 @@ Lemma wp_long_pfx_path ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L98") (Some (TAtom "L53")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hksl Hksc Hkss Hksa Hksm Hkse Hksr Hksi Hkst Hcut.
   exact (wp_long_pfx_path_with ks e G T fp dom M se sereg f138 f139 f140 f141 av ar ps lo os F pfx pxs cur s lonly pe i oo b r Φ Hksl Hksc Hkss Hksa Hksm Hkse Hksr Hksi Hkst (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

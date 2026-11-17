@@ -72,7 +72,7 @@ Definition stdfile_pre (f next : ptr) : iProp Σ :=
               r_end freg <= 2 ^ 63⌝ ∗
     live fb freg ∗ pcell fb off_prevchain null ∗ pcell fb off_chain next.
 Lemma stdfile_chain_pre f fs : stdfile_pre f (head_ptr fs) -∗ chain_pre fs -∗ chain_pre (f :: fs).
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %Hf & Hl & Hpc & Hch) Hpre". cbn [chain_pre]. iFrame "Hpre".
   pose proof Hf as (-> & _). iSplitL "Hl"; [iExists fb, freg; iFrame "Hl"; done|].
   iExists fb, null. iFrame. done.
@@ -105,7 +105,7 @@ Lemma wp_stdfiles_loop Φ :
        ([∗ list] f ∈ fs, stream_live f) -∗ Φ RetVoid) -∗
     WP (ERun (mkFrame glibc_stdfiles_init e [] None (Exec (TAtom "L2") (b_insts sf_L2) (b_jump sf_L2)))
           : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   iLöb as "IH". iIntros (fs e b breg o (Hp & Ho & Hal & Hend & Hreg)) "Hl Hc Hpre HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hb Hb48]) "Hl".
   cbn [sf_L2 b_insts b_jump].
@@ -154,7 +154,7 @@ Lemma wp_glibc_stdfiles_init fr fe fo fi la lareg lk lkreg rf rfreg Φ :
   lock_state lk lkreg 0 0 null -∗ live rf rfreg -∗ pcell rf 0 null -∗
   ▷ (io_list_inv ge [fe; fo; fi] -∗ ([∗ list] f ∈ [fe; fo; fi], stream_live f) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hgla Hglk Hgrf Hlal Hlaend Hrfal Hrfend. injection Hfr as <-.
   iIntros "Hla Hc He Ho Hi Hlk Hrf Hrfc HK".
   iDestruct (stdfile_chain_pre fi [] with "Hi [//]") as "Hpre".

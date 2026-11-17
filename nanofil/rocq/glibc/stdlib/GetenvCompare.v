@@ -156,7 +156,7 @@ Lemma getenv_compare_entry e p ep q s t old (G : iProp Σ) Φ
        (Enter (TAtom "L32") (Some (TAtom "L34")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
     (Enter (TAtom "L41") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros (Hp & Hep & Hn & Hold & Hz) Hepbound Hq Hnonempty.
   iIntros "#Hs #Ht HG HK".
   iDestruct (ws_shape with "Hs") as %(Hsc & Hsp & Hsf).

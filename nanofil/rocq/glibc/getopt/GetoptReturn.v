@@ -72,7 +72,7 @@ Lemma wp_getopt_argv_end ks e fr i f l b r Φ :
      live b r -∗ int_cell b 0 (if f =? l then i else f) -∗ int_cell b 44 f -∗ int_cell b 48 l -∗
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L275") (Some fr'))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L266") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H12 H0 H2 H23 Hb Hal Hend Hr.
   iIntros "Hl [%Hi0 Hib] [%Hf Hfb] [%Hla Hlab] HK".
   step. step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hfb". step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hlab". step.
@@ -114,7 +114,7 @@ Lemma wp_getopt_nonopt ks e fr i n o a b r av ar ps Φ :
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L318") [] (b_jump getopt_blk318))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L289") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H2 H12 H0 H1 H2' H100 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Hab [%Ho Hob] Ha Hc #Hs HK".
   set (j := Z.to_nat i). assert (Hj : Z.of_nat j = i) by (unfold j; lia).

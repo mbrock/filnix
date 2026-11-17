@@ -71,7 +71,7 @@ Lemma wp_formatter_final_string e from jb jr tb tr dqj dqt p9 p4
     live bb br -∗ int_cell bb 32 4 -∗ pcell bb 8 (mkPtr (bb + bo + Z.of_nat (length s)) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs bo s -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_printf_buffer e [] None (Enter (TAtom "L113") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hs H9 H4 Hv Hz Hfv Hfc Hb Hn Hcount Hj Ht Hstrlen Hchr Hscan Hwrite Hcpy
     Hjb Hje Hjr Htb Hte Htr Hcb Hsb Ho He Hr Ha Hp Hfb Hfa Hfe Hfr Hfp
     Hbb Hba Hbe Hbr Hbo Hlen Hroom Hxs Hcs Hbytes.

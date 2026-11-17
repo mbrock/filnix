@@ -31,7 +31,7 @@ Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 (** Every program step can recover errno's physical bounds from the
     current state interpretation, including after collection or a call. *)
 Lemma close_errno_mem_facts σ : heap_interp (os_wi w0) σ -∗ ⌜close_errno_mem eb (ls_mem σ)⌝.
-Proof.
+Proof using Type*.
   iIntros "Hσ". iDestruct (os_heap_errno w0 σ eb Herr with "Hσ") as %[_ (reg & Hl & _ & _ & Hend)].
   iDestruct "Hσ" as (h) "[_ %Hs]". destruct Hs as (_ & _ & Hr & _).
   destruct (R.address_space _ _ Hr eb reg (proj1 Hl)) as [Hb He].
@@ -44,7 +44,7 @@ Lemma wp_close_errno_check f e ls l d mode v rest j Φ :
   value_x ge e P v = Some (WPtr (mkPtr eb (Obj eb))) ->
   ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr eb (Obj eb))) e) ls None (Exec l rest j)) : gexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check 0 4 mode 1) [v] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hv. iIntros "HK".
   iApply (wp_read_with registry (os_wi w0) ge True%I (close_errno_mem eb) _ _ [] with "[] [HK]").
   - iIntros (σ) "Hσ _". iApply (close_errno_mem_facts with "Hσ").
@@ -65,7 +65,7 @@ Lemma wp_close_errno_load f e ls l dst v rest j bs Φ :
   bytes eb 0 bs -∗
   ▷ (bytes eb 0 bs -∗ WP (ERun (mkFrame f (put dst (WInt (close_w bs)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let dst W (RawLoad (LdNarrow Sw) 0) [v] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hv Hlen. iIntros "Hb HK".
   iApply (wp_read_with registry (os_wi w0) ge (bytes eb 0 bs)
     (fun m => close_errno_mem eb m ∧ all_agree m (byte_ps eb 0 bs)) _ _ [] with "Hb HK").
@@ -100,7 +100,7 @@ Lemma wp_close_errno_zero f e ls l a rest j bs Φ :
   bytes eb 0 bs -∗
   ▷ (bytes eb 0 (le_bytes 0 4) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Ww 0 (Const 0) a :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Ha Hlen. iIntros "Hb HK".
   iApply (wp_write_with registry (os_wi w0) ge True%I (close_errno_mem eb)
     (byte_ps eb 0 bs) (byte_ps eb 0 (le_bytes 0 4)) _ _ [] (fun m => store_bytes m eb 4 0) with "Hb [] [HK]").
@@ -139,7 +139,7 @@ Lemma wp_close_stream_L38 e (E : iProp Σ) Φ :
   (errno_any eb -∗ E -∗ Φ (Ret (WInt (2 ^ 32 - 1)))) -∗
   WP (ERun (mkFrame close_stream_fn e [] None
     (Exec (TAtom "L38") (b_insts (cs_block "L38")) (b_jump (cs_block "L38")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   iIntros "Herr HE HK".
   iApply wp_call_bind; [vx|apply defines|reflexivity|]. iNext.
   iApply (wp_glibc_errno_location registry (os_wi w0) ge _ _ Hglobal). resume.
@@ -164,7 +164,7 @@ Lemma wp_close_stream_L27 e k (E : iProp Σ) Φ :
   (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ errno_any eb -∗ E -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame close_stream_fn e [] None
     (Exec (TAtom "L27") (b_insts (cs_block "L27")) (b_jump (cs_block "L27")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hk. iIntros "Herr HE HK".
   iApply wp_call_bind; [vx|apply defines|reflexivity|]. iNext.
   iApply (wp_glibc_errno_location registry (os_wi w0) ge _ _ Hglobal). resume.
@@ -194,7 +194,7 @@ Qed.
 Lemma close_stream_errno_complete (E : iProp Σ) Φ :
   (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ (errno_any eb ∗ E) -∗ Φ (Ret (WInt r))) -∗
   close_stream_errno_paths (errno_any eb ∗ E) Φ.
-Proof.
+Proof using Type*.
   iIntros "HK" (e l [-> | ->] [k Hk]) "[Herr HE]".
   - iApply (wp_close_stream_L27 with "Herr HE"); [exact Hk|].
     iIntros (r Hr) "Herr HE". iApply ("HK" with "[%] [$Herr $HE]"). exact Hr.
@@ -268,7 +268,7 @@ Lemma wp_hello_close_stream_stdout_full pre post fb freg fl f2 fd tw off bb breg
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗ E -∗
   (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ Q -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (hello_close_stream_frame fp) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n fp wb base Q Herrno Hgout Hgin Hin Hinr Hfcg Hfcr Hfb Hfal Hfend Hfreg Hf22 Hf232 Hnl Hf2r Hfd
     Hfdr Hfl Happ Hnw Hcp Hub Hul Hlnk Hfb8 He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hlb Hmd.
   iIntros "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol

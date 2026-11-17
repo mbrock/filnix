@@ -76,7 +76,7 @@ Lemma wp_long_miss_only ks e cur s q sq po so i n b r av ar ps Φ :
         : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L337") (Some (TAtom "L325")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hg Hgn H2 H4 H12 H90 Hc0 Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "#Hwq #Hpo #Hws Hl [%Hi0 Hib] Hcur Ha Hcl HK".
   iDestruct (argv_str_cap with "Hws") as (rc) "[#Hcapc %Hc0']".

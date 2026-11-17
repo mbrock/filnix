@@ -133,7 +133,7 @@ Qed.
 (** A linked allocator provides its object contract to named callers. *)
 #[global] Instance malloc2_has_spec n `{!Defines ge n malloc2_fn} :
   HasSpec registry wi ge (TAtom n) (malloc2_spec wi).
-Proof.
+Proof using SafepointStable0.
   intros k. exists malloc2_fn. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr. injection Hfr as <-.
   cbn [fs_pre fs_post malloc2_spec]. iIntros "%Hpre HK". destruct Hpre as [Hn Hk].
@@ -168,7 +168,7 @@ Lemma wp_glibc_free_null Φ :
   frees_heap (ge_free ge) -> find_fn ge zgc_free_name = None -> lookup zgc_free_name (ge_globals ge) = None ->
   Φ RetVoid -∗
   WP (ERun (mkFrame free_fn [(TAtom "v0", WPtr null)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hf Hfn Hdata. iIntros "HΦ". step.
   iApply wp_free_null_sym; [reflexivity | exact Hf | exact Hfn | exact Hdata | reflexivity |].
   nx. iApply wp_ret_void. nx. iExact "HΦ".

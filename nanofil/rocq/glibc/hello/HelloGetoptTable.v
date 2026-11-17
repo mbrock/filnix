@@ -379,7 +379,7 @@ Lemma hello_table_own_ro tb treg (b1 b2 b3 b4 b5 : Z) (r1 r2 r3 r4 r5 : region) 
   pts (lit_ps b5 r5 (lit_words s_optstring)) ==∗
   opt_table (mkPtr tb (Ro tb)) (hello_los (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4))) ∗
   word_string DfracDiscarded (mkPtr b5 (Ro b5)) s_optstring ∗ ∃ s, word_string DfracDiscarded (mkPtr tb (Ro tb)) s.
-Proof.
+Proof using Type.
   intros. iIntros "Ht H1 H2 H3 H4 H5".
   iMod (lit_own with "H1") as "#H1"; try (assumption || reflexivity).
   iMod (lit_own with "H2") as "#H2"; try (assumption || reflexivity).
@@ -419,7 +419,7 @@ Qed.
 Lemma hello_getopt_own :
   pts hello_getopt_ps ==∗
   opt_table (mkPtr 68672 (Ro 68672)) hello_fixture_los ∗ word_string DfracDiscarded (mkPtr 69584 (Ro 69584)) s_optstring.
-Proof.
+Proof using Type.
   rewrite /hello_getopt_ps. iIntros "H".
   iDestruct (pts_app with "H") as "[Ht H]". iDestruct (pts_app with "H") as "[H1 H]".
   iDestruct (pts_app with "H") as "[H2 H]". iDestruct (pts_app with "H") as "[H3 H]".

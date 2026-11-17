@@ -127,7 +127,7 @@ Lemma wp_glibc__IO_default_xsputn fr os fb freg vb vreg nb wp we dq b' reg' so c
   wbuf fb nb wp we -∗ os fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ dx_post registry ge os fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hfr Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy. injection Hfr as <-.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
   iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
@@ -146,7 +146,7 @@ Qed.
 (** A linked generic output function provides the stream-and-source contract. *)
 #[global] Instance default_xsputn_has_spec g `{!Defines ge g glibc__IO_default_xsputn} :
   HasSpec registry (os_wi w0) ge (TAtom g) default_xsputn_spec.
-Proof.
+Proof using Type*.
   intros [[[[[[[[[[[[[os fb] freg] vb] vreg] nb] wp] we] dq] b] reg] so] c] ys].
   exists glibc__IO_default_xsputn. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.

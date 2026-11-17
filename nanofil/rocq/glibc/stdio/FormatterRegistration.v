@@ -45,7 +45,7 @@ Lemma wp_formatter_registration e ls from fb fr mb mr ab ar Φ :
       (Enter (TAtom "L79") (Some (TAtom "L67")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hf Hm Ha Hfb Hfa Hfe Hfr Hmb Hma Hme Hmr Hab Haa Hae Har.
   iIntros "Hfl Hfc Hml Hmc Hal Hac HK".
   iApply wp_enter; [reflexivity | destruct from; reflexivity |]. iNext.

@@ -80,7 +80,7 @@ Lemma wp_call_glibc_process_long_option_arg_with f e ls l rd g args rest j (G : 
      ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending rd None) (Ret (WInt x)) = Some cf'⌝ ∗
        ▷ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call rd (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hx Hgp Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3 Hmid4 Hfl Hos Hpe Hlo
     Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
@@ -130,7 +130,7 @@ Lemma wp_call_glibc_process_long_option_arg f e ls l rd g args rest j (G : iProp
      ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending rd None) (Ret (WInt x)) = Some cf'⌝ ∗
        ▷ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call rd (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 Hcut.
   exact (wp_call_glibc_process_long_option_arg_with f e ls l rd g args rest j G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ H0 H1 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -171,7 +171,7 @@ Lemma wp_call_glibc_process_long_option_with f e ls l rd g args rest j (G : iPro
      ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending rd None) (Ret (WInt x)) = Some cf'⌝ ∗
        ▷ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call rd (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli HK".
   iApply (wp_call_glibc_process_long_option_arg_with f e ls l rd g args rest j G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try eassumption.
@@ -214,7 +214,7 @@ Lemma wp_call_glibc_process_long_option f e ls l rd g args rest j (G : iProp Σ)
      ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending rd None) (Ret (WInt x)) = Some cf'⌝ ∗
        ▷ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call rd (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 Hcut.
   exact (wp_call_glibc_process_long_option_with f e ls l rd g args rest j G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ H0 H1 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

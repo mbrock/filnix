@@ -1548,7 +1548,7 @@ Definition ob_decide (fs : facts) (o : ob) : bool :=
 (** A successful decision proves the original condition, not a weakened replacement. *)
 Lemma ob_decide_sound ρ fs o : facts_hold ρ fs ->
   ob_decide fs o = true -> ob_den ρ o.
-Proof.
+Proof using Type.
   intros Hfs. destruct o; cbn [ob_decide ob_den]; try discriminate.
   1,2: destruct (zrange fs (zclean fs a)) as [[al ah]|] eqn:Ea; [|discriminate];
     destruct (zrange fs (zclean fs b)) as [[bl bh]|] eqn:Eb; [|discriminate];
@@ -1565,7 +1565,7 @@ Qed.
 Lemma obs_residual_sound ρ fs os : facts_hold ρ fs ->
   Forall (ob_den ρ) (filter (fun o => negb (ob_decide fs o)) os) ->
   Forall (ob_den ρ) os.
-Proof.
+Proof using Type.
   intros Hfs. induction os as [|o os IH]; cbn; [constructor|].
   destruct (ob_decide fs o) eqn:E; cbn.
   - intros H. constructor; [eapply ob_decide_sound; eauto|auto].
@@ -1602,7 +1602,7 @@ Definition leaf_den (ρ : valuation) (f : func) (e : env) (ls : list (name * opt
 (** Selecting an atom partitions the original list and establishes its selection test. *)
 Lemma pick_atom_sound test h pre a post : pick_atom test h = Some (pre, a, post) ->
   h = pre ++ a :: post /\ test a = true.
-Proof.
+Proof using Type*.
   revert pre a post. induction h as [|x h IH]; intros pre a post; cbn; [discriminate|].
   destruct (test x) eqn:E.
   - intros H. inversion H; subst. auto.
@@ -1612,7 +1612,7 @@ Qed.
 
 (** Concatenating atom lists corresponds to separating their ownership. *)
 Lemma heap_den_app ρ h1 h2 : heap_den ρ (h1 ++ h2) ⊣⊢ heap_den ρ h1 ∗ heap_den ρ h2.
-Proof.
+Proof using Type.
   induction h1 as [|a h1 IH]; cbn [heap_den app].
   - rewrite bi.emp_sep. reflexivity.
   - rewrite IH bi.sep_assoc. reflexivity.
@@ -1621,7 +1621,7 @@ Qed.
 (** A selected atom can be removed and returned without changing the other resources. *)
 Lemma heap_den_pick ρ test h pre a post : pick_atom test h = Some (pre, a, post) ->
   heap_den ρ h ⊣⊢ atom_den ρ a ∗ heap_den ρ (pre ++ post).
-Proof.
+Proof using Type.
   intros H. destruct (pick_atom_sound _ _ _ _ _ H) as [-> _].
   rewrite !heap_den_app /=. iSplit; iIntros "(H1 & H2 & H3)"; iFrame.
 Qed.
@@ -1632,7 +1632,7 @@ Lemma is_live_den ρ fs b a : facts_hold ρ fs -> is_live fs b a = true ->
     match nth_error (vr ρ) (atom_region a) with
     | Some reg => live (zden ρ b) reg | None => False
     end.
-Proof.
+Proof using Type.
   intros Hfs. destruct a; cbn [is_live]; try discriminate; intros H.
   - apply (zlinear_eqb_sound _ _ _ _ Hfs) in H. cbn [atom_den atom_region].
     rewrite H. reflexivity.
@@ -1648,7 +1648,7 @@ Lemma is_read_live_den ρ fs b a :
     | Some dq, Some reg => liveq dq (zden ρ b) reg
     | _, _ => False
     end.
-Proof.
+Proof using Type.
   intros Hfs. destruct a; cbn [is_read_live]; intros H;
     try (rewrite (is_live_den _ _ _ _ Hfs H); reflexivity).
   apply (zlinear_eqb_sound _ _ _ _ Hfs) in H.
@@ -1661,7 +1661,7 @@ Lemma is_cap_den ρ fs c a : facts_hold ρ fs -> is_cap fs c a = true ->
     match nth_error (vr ρ) (atom_region a) with
     | Some reg => live_cap (cden ρ c) reg | None => False
     end.
-Proof.
+Proof using Type.
   intros Hfs. destruct a; cbn [is_cap]; try discriminate; intros H;
     apply (cequal_sound _ _ _ _ Hfs) in H; cbn [atom_den atom_region];
     rewrite H; destruct (nth_error (vr ρ) r); reflexivity.
@@ -1670,7 +1670,7 @@ Qed.
 (** The symbolic access address denotes the same wrapped address as the machine. *)
 Lemma sraw_sound ρ fs a off : facts_hold ρ fs ->
   zden ρ (sraw fs a off) = raw_address (zden ρ a) off.
-Proof. intros Hfs. unfold sraw. rewrite (zwrap_sound _ _ _ _ Hfs). reflexivity. Qed.
+Proof using Type*. intros Hfs. unfold sraw. rewrite (zwrap_sound _ _ _ _ Hfs). reflexivity. Qed.
 
 (** Check obligations supply exactly the bounds and alignment premises of the check rule. *)
 Lemma check_obs_sound ρ fs b a r reg lo hi al : facts_hold ρ fs ->
@@ -1678,7 +1678,7 @@ Lemma check_obs_sound ρ fs b a r reg lo hi al : facts_hold ρ fs ->
   zden ρ b <= raw_address (zden ρ a) lo /\
   raw_address (zden ρ a) lo + (hi - lo) <= r_end reg /\
   raw_address (zden ρ a) lo mod al = 0.
-Proof.
+Proof using Type.
   intros Hfs Hr H. unfold obs_den, check_obs in H.
   inversion H as [|? ? H1 Hs]; subst. inversion Hs as [|? ? H2 Hs']; subst.
   inversion Hs' as [|? ? H3 _]; subst.
@@ -1696,7 +1696,7 @@ Lemma sym_check_rule ρ fs h pre life post f e ls l d lo hi mode al args rest j 
   heap_den ρ h -∗
   ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWPtr a c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi mode al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hclasses Hargs Hobj Hp Hobs.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hlive].
@@ -1719,7 +1719,7 @@ Lemma sym_check_read_rule ρ fs h pre post f e ls l d lo hi al args rest j class
   heap_den ρ h -∗
   ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWPtr a c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hclasses Hargs Hp Hobs.
   destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hcap].
   apply (creadable_sound _ _ _ _ Hfs) in Hcap.
@@ -1748,7 +1748,7 @@ Lemma sym_renew_rule ρ fs h pre life post f e ls l d lo hi mode al args rest j 
   heap_den ρ h -∗
   ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWPtr a c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi mode al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hclasses Hargs Hobj Hsame Hp Hobs.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   pose proof (cequal_sound _ _ _ _ Hfs Hsame) as Hcap1.
@@ -1776,7 +1776,7 @@ Lemma sym_half_check_rule ρ fs h pre life post f e ls l d bd lo hi mode al args
   heap_den ρ h -∗
   ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWPtr a c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi mode al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hclasses Hargs Hobj Hsame Hp Hobs.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   pose proof (cequal_sound _ _ _ _ Hfs Hsame) as Hcap1.
@@ -1804,7 +1804,7 @@ Lemma sym_load_rule ρ fs h pre life post pre' post' f e ls l d k off args rest 
   heap_den ρ h -∗
   ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWInt (zwrap fs v (2 ^ 64)))) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hclasses Hargs Hobj Hp Hcell.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hlive].
@@ -1834,7 +1834,7 @@ Lemma sym_load_narrow_rule ρ fs h pre life post pre' post' f e ls l d k n t off
        (wden ρ (SWInt (zextend fs n (zwrap fs v (2 ^ (8 * fst (narrow_type t)))) m))) e)
        ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hm Hclasses Hargs Hobj Hp Hcell.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hlive].
@@ -1876,7 +1876,7 @@ Lemma sym_load_bytes_rule ρ fs h pre post pre' life post'
        ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Let d k (RawLoad (LdNarrow Ub) off) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hk Hclasses Hargs Hb Hl i Hobs.
   destruct (pick_atom_sound _ _ _ _ _ Hb) as [_ Hbytes].
   destruct (pick_atom_sound _ _ _ _ _ Hl) as [_ Hlive].
@@ -1939,7 +1939,7 @@ Lemma sym_load_pointer_rule ρ fs h pre life post pre' post' pre'' target post''
   ▷ (heap_den ρ h -∗ WP (ERun (mkFrame f (put d (wden ρ (SWPtr v vc)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hclasses Hargs Hobj Hp Hcell Htarget Hobs.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   destruct (pick_atom_sound _ _ _ _ _ Hp) as [_ Hlive].
@@ -1975,7 +1975,7 @@ Lemma sym_store_rule ρ fs h pre life post pre' post' f e ls l off v p rest j a 
   ▷ (heap_den ρ (life :: pre' ++ ACell b' o new :: post') -∗
     WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Wl off v p :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hv Hp Hobj Hlivepick Hcell Hobs.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   destruct (pick_atom_sound _ _ _ _ _ Hlivepick) as [_ Hlive].
@@ -2006,7 +2006,7 @@ Lemma sym_store_pointer_rule ρ fs h pre life post pre' post' f e ls l off v p r
     WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (RawStorePointer off v p [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Hv Hp Hobj Hlivepick Hcell Hal Hobs.
   pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
   destruct (pick_atom_sound _ _ _ _ _ Hlivepick) as [_ Hlive].
@@ -2047,7 +2047,7 @@ Lemma sbyte_memory_rule ρ fs s s' f e ls l d k off args rest j classes a c Φ :
   heap_den ρ (st_heap s) -∗ ▷ next_den ρ f e ls l rest j Φ s' -∗
   WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None
     (Exec l (Let d k (RawLoad (LdNarrow Ub) off) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Henv Hk Hclasses Hargs Hstep Hobs.
   unfold sbyte_memory in Hstep. sym_cases Hstep.
   injection Hstep as <-. unfold next_den. rewrite apply_ups_sbind.
@@ -2068,7 +2068,7 @@ Lemma sread_check_rule ρ fs s s' f e ls l d lo hi al args rest j classes a c wh
   heap_den ρ (st_heap s) -∗ ▷ next_den ρ f e ls l rest j Φ s' -∗
   WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None
     (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Henv Hclasses Hargs Hstep Hobs.
   unfold sread_check in Hstep. sym_cases Hstep.
   injection Hstep as <-. unfold next_den. rewrite apply_ups_sbind.
@@ -2088,7 +2088,7 @@ Lemma smemory_rule ρ fs s s' f e ls l d k op args rest j classes xs why Φ :
   smemory fs s d k op xs why = inr s' -> obs_den ρ (st_obs s') ->
   heap_den ρ (st_heap s) -∗ ▷ next_den ρ f e ls l rest j Φ s' -∗
   WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None (Exec l (Let d k op args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Henv Hclasses Hargs Hstep Hobs.
   unfold smemory in Hstep. sym_cases Hstep.
   all: try solve [eapply sbyte_memory_rule; try eassumption; auto].
@@ -2125,7 +2125,7 @@ Lemma sstore_rule ρ fs s s' f e ls l off v p rest j (pointer : bool) sv sp why 
   WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None
     (Exec l ((if pointer then RawStorePointer off v p [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
               else RawStore Wl off v p) :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Henv Hv Hp Hstep Hobs. unfold sstore in Hstep. sym_cases Hstep.
   all: injection Hstep as <-; unfold next_den;
     cbn [st_env st_heap st_ups st_obs] in Hobs |- *;
@@ -2144,7 +2144,7 @@ Lemma sym_step_rule ρ fs s s' f e ls l i rest j Φ :
   sym_step ge fs s i = inr s' -> obs_den ρ (st_obs s') ->
   heap_den ρ (st_heap s) -∗ ▷ next_den ρ f e ls l rest j Φ s' -∗
   WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None (Exec l (i :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Henv Hstep Hobs. destruct i; cbn [sym_step] in Hstep; try discriminate.
   - destruct (op_arg_classes o k) as [classes|] eqn:Hclasses; [|discriminate].
     destruct (map2_option (svalue ge fs (st_env s)) classes args) as [xs|] eqn:Hargs; [|discriminate].
@@ -2177,7 +2177,7 @@ Qed.
 (** A byte read appends its index bounds without dropping older obligations. *)
 Lemma sbyte_memory_obs fs s d off a c s' : sbyte_memory fs s d off a c = inr s' ->
   exists os, st_obs s' = st_obs s ++ os.
-Proof.
+Proof using Type*.
   intros H. unfold sbyte_memory in H. sym_cases H.
   injection H as <-. eexists. reflexivity.
 Qed.
@@ -2186,7 +2186,7 @@ Qed.
 Lemma sread_check_obs fs s d lo hi al a c why s' :
   sread_check fs s d lo hi al a c why = inr s' ->
   exists os, st_obs s' = st_obs s ++ os.
-Proof.
+Proof using Type*.
   intros H. unfold sread_check in H. sym_cases H.
   injection H as <-. eexists. reflexivity.
 Qed.
@@ -2194,7 +2194,7 @@ Qed.
 (** Instructions append conditions rather than forgetting conditions from earlier instructions. *)
 Lemma sym_step_obs fs s i s' : sym_step ge fs s i = inr s' ->
   exists os, st_obs s' = st_obs s ++ os.
-Proof.
+Proof using Type.
   intros H. unfold sym_step in H. sym_cases H.
   all: try unfold smemory in H; try unfold sstore in H; sym_cases H.
   all: try solve [eapply sbyte_memory_obs; eassumption].
@@ -2210,7 +2210,7 @@ Definition leaf_state (lf : leaf) : sstate :=
 (** A block's final conditions include every condition already present at its entry. *)
 Lemma sym_exec_obs fs insts j s :
   exists os, st_obs (leaf_state (sym_exec ge fs s insts j)) = st_obs s ++ os.
-Proof.
+Proof using Type.
   revert s. induction insts as [|i insts IH]; intros s; cbn [sym_exec].
   - destruct j; cbn [leaf_state]; try solve [exists []; rewrite app_nil_r; reflexivity].
     destruct (svalue ge fs (st_env s) W v) as [[x|a c]|];
@@ -2225,14 +2225,14 @@ Qed.
     The proof copies those facts here and keeps the original requirement for later. *)
 Lemma leaf_den_obs ρ f e ls l Φ lf :
   leaf_den ρ f e ls l Φ lf ⊢ ⌜obs_den ρ (st_obs (leaf_state lf))⌝ ∗ leaf_den ρ f e ls l Φ lf.
-Proof. destruct lf; cbn [leaf_den leaf_state]; iIntros "[%H HK]"; iFrame; auto. Qed.
+Proof using Type. destruct lf; cbn [leaf_den leaf_state]; iIntros "[%H HK]"; iFrame; auto. Qed.
 
 (** Each successful instruction preserves enough information to justify the next instruction in the block. *)
 Lemma sym_exec_rule ρ fs insts j s f e ls l Φ :
   facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
   heap_den ρ (st_heap s) -∗ leaf_den ρ f e ls l Φ (sym_exec ge fs s insts j) -∗
   WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None (Exec l insts j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs. revert s. induction insts as [|i insts IH]; intros s Henv; cbn [sym_exec].
   - destruct j; try solve [cbn [leaf_den]; iIntros "Hheap [_ HK]"; iApply ("HK" with "Hheap []"); done].
     + cbn [leaf_den]. iIntros "Hheap [_ HK]". iApply wp_goto.
@@ -2258,14 +2258,14 @@ Theorem sym_sound fs se h f e ls l insts j ρ Φ :
   facts_hold ρ fs -> env_models ρ se e ->
   heap_den ρ h -∗ leaf_den ρ f e ls l Φ (sym_block ge fs se h l insts j) -∗
   WP (ERun (mkFrame f e ls None (Exec l insts j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Henv. apply (sym_exec_rule ρ fs insts j (mkSState se [] h []) f e ls l Φ Hfs Henv).
 Qed.
 
 (** A prefix retains the conditions accumulated before its opaque suffix. *)
 Lemma sym_prefix_obs fs prefix rest j s :
   exists os, st_obs (leaf_state (sym_prefix ge fs s prefix rest j)) = st_obs s ++ os.
-Proof.
+Proof using Type.
   revert s. induction prefix as [|i prefix IH]; intros s; cbn [sym_prefix].
   - exists []. cbn [leaf_state]. now rewrite app_nil_r.
   - destruct (sym_step ge fs s i) as [why|s'] eqn:E.
@@ -2279,7 +2279,7 @@ Lemma sym_prefix_rule ρ fs prefix rest j s f e ls l Φ :
   facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
   heap_den ρ (st_heap s) -∗ leaf_den ρ f e ls l Φ (sym_prefix ge fs s prefix rest j) -∗
   WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None (Exec l (prefix ++ rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs. revert s. induction prefix as [|i prefix IH]; intros s Henv; cbn [sym_prefix app].
   - cbn [leaf_den]. iIntros "Hheap [_ HK]". iApply ("HK" with "Hheap []"). done.
   - destruct (sym_step ge fs s i) as [why|s'] eqn:E.
@@ -2296,7 +2296,7 @@ Theorem sym_prefix_sound fs se h f e ls l prefix rest j ρ Φ :
   facts_hold ρ fs -> env_models ρ se e ->
   heap_den ρ h -∗ leaf_den ρ f e ls l Φ (sym_prefix ge fs (mkSState se [] h []) prefix rest j) -∗
   WP (ERun (mkFrame f e ls None (Exec l (prefix ++ rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs Henv. apply (sym_prefix_rule ρ fs prefix rest j (mkSState se [] h []) f e ls l Φ Hfs Henv).
 Qed.
 

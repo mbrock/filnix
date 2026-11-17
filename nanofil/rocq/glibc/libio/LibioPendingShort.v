@@ -29,7 +29,7 @@ Lemma wp_glibc___fpending_short_empty fr fb freg md Φ :
   ▷ (live fb freg -∗ int_cell fb off_mode md -∗ pcell fb off_write_ptr buf -∗
      pcell fb off_write_base buf -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros buf Hfr Hfb Hal Hend Hfreg Hmd. injection Hfr as <-. subst buf.
   iIntros "Hl [%Hm Hmode] Hwp Hwb HK". unfold file_size in Hend.
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".

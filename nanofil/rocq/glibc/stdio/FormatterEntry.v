@@ -60,7 +60,7 @@ Lemma wp_formatter_entry fr bb p ab ar flags sb sr cur eb er err Φ :
     WP (ERun (mkFrame glibc_printf_buffer e [] None
       (Exec (TAtom "start") (skipn 19 (b_insts initial_scan_block)) (b_jump initial_scan_block))) : gexpr) {{ Φ }}) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Herr Hab Haa Hae Har Hcur Heb Hee Her.
   injection Hfr as <-. iIntros "Hal Hap Hsl Hel Herr HK". step.
   iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |

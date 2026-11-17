@@ -103,7 +103,7 @@ Lemma wp_getopt_long_dash_arg_with e (G : iProp Σ) T fp dom (M : iProp Σ) se s
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   (∀ x, GetoptLongJoinMiss.plo_res_arg b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
@@ -154,7 +154,7 @@ Lemma wp_getopt_long_dash_arg e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   (∀ x, GetoptLongJoinMiss.plo_res_arg b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 Hcut.
   exact (wp_getopt_long_dash_arg_with e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -196,7 +196,7 @@ Lemma wp_getopt_long_dash e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   live av ar -∗ argv_cells av ps -∗ argv_strs ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   (∀ x, GetoptLongJoinMiss.plo_res b r av ar ps li F G M i n cur s a os x -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli HK".
   iApply (wp_getopt_long_dash_arg e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try eassumption.
@@ -249,7 +249,7 @@ Lemma wp_getopt_dash_session e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
   (∀ x i', ⌜(i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n))%Z⌝ -∗ GetoptState.getopt_session b r av ar ps i' -∗
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hq1 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser Hord Hfst Hlst.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hsl #Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl #Hs HG HF HM Hli HK".

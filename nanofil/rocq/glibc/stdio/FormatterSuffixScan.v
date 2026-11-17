@@ -56,7 +56,7 @@ Lemma wp_formatter_suffix_scan e ls cb cr p dq s n count Φ :
       (Exec (TAtom "L1150") (skipn 9 (b_insts suffix_block)) (b_jump suffix_block))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hn Hcount Hv Hchk Hchr Hscan Hb Ha He Hr Hp.
   iIntros "Hl Hcell Hs HK".
   iDestruct "Hs" as (b reg ws) "[%Hshape [Hsl Hwords]]".

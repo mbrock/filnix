@@ -33,7 +33,7 @@ Definition getenv_storage dq dqt ep entries : iProp Σ :=
 Lemma getenv_storage_value p s dq dqt ep entries :
   word_string DfracDiscarded p s -∗ getenv_storage dq dqt ep entries -∗
   getenv_storage dq dqt ep entries ∗ getenv_value (getenv_result s entries).
-Proof.
+Proof using Type.
   iIntros "#Hname HS". destruct s as [|a s].
   - iFrame. iLeft. done.
   - iDestruct "HS" as "[%Hnull | HS]".
@@ -67,7 +67,7 @@ Lemma getenv_static_nonnull p s entries dq dqa dqt bc rc be re counter b reg o (
    getenv_vector dqa dqt b reg o entries -∗ E -∗
    Φ (Ret (WPtr (getenv_result s entries)))) -∗
   WP (ERun (getenv_frame p) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal.
   iIntros "#Hname Hglobals (%Hbounds & Hl & Hcells) HE HK".
   destruct Hbounds as (Hb & Ho & Hend & Hspace & Halarray).
@@ -110,7 +110,7 @@ Lemma getenv_static_call p s entries ep dq dqa dqt bc rc be re counter (E : iPro
    getenv_value (getenv_result s entries) -∗
    Φ (Ret (WPtr (getenv_result s entries)))) -∗
   WP (ERun (getenv_frame p) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal.
   iIntros "#Hname HG HS HE HK".
   iDestruct (getenv_storage_value with "Hname HS") as "[HS #Hv]".
@@ -135,7 +135,7 @@ Lemma getenv_static_name_contract p s entries ep dq dqa dqt bc rc be re counter 
   0 < be -> be + 8 <= r_end re -> r_end re <= 2 ^ 48 -> be mod 8 = 0 ->
   ⊢ getenv_name_contract
     (getenv_globals dq bc rc be re counter ep ∗ getenv_storage dqa dqt ep entries ∗ E) p s.
-Proof.
+Proof using Type*.
   intros Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal.
   iModIntro. iIntros "#Hname (HG & HS & HE)".
   iApply (getenv_static_call with "Hname HG HS HE"); try eassumption.

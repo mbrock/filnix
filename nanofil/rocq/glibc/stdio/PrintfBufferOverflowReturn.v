@@ -44,7 +44,7 @@ Lemma wp_printf_overflow_eof e bb breg mode Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "L74") (skipn 8 (b_insts printf_overflow_block))
       (b_jump printf_overflow_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hbb Hbe Hbr Hv0 Hchk Hr. iIntros "Hb [%Hm Hm] HK".
   cbn [printf_overflow_block b_insts b_jump skipn].
   step. branch_as false. step. step. check "Hb". store_int "Hb" "Hm".
@@ -64,7 +64,7 @@ Lemma wp_printf_overflow_continue e r Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "L74") (skipn 8 (b_insts printf_overflow_block))
       (b_jump printf_overflow_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hr Hnot Hlookup. iIntros "HK".
   cbn [printf_overflow_block b_insts b_jump skipn].
   step. branch_as true. norm.

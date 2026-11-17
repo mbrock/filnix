@@ -53,7 +53,7 @@ Lemma wp_printf_buffer_write_staging_aligned fr bb reg off xs cs dq sb sreg so s
     (∃ cs', ⌜length cs' = length xs⌝ ∗ auxes bb off cs') -∗
     liveq dq sb sreg -∗ bytesq dq sb so ys -∗ Φ RetVoid) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hcpy Hb Ha He Hr Ho Hoa Hn Hroom Hsa Hso Hse Hsc Hys Hcs Hy.
   injection Hfr as <-. iIntros "Hl [%Hm Hmode] Hptr Hend Hx Hcs Hs Hy HK".
   step. step. norm. check "Hl".

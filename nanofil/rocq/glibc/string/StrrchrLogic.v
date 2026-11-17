@@ -73,7 +73,7 @@ Lemma wp_glibc_strrchr_ws (Hm : memrchr_spec) dq p s c Φ :
   (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0])))))) -∗
   WP (ERun (mkFrame glibc_strrchr [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct Hm as (F & HF & Hfr & Hspec). intros Hsl Hc. iIntros "Hs HK".
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)".
   pose proof Hs as [Hcap Hb0 Hb8 Hst Hf Hsp Hlen Hr Hby Hch].
@@ -109,7 +109,7 @@ Lemma strrchr_spec_valid (Hm : memrchr_spec) g :
   find_fn ge g = Some (Defined glibc_strrchr) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   HasSpec registry wi ge g strrchr_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hsl [[[dq p] s] c]. exists glibc_strrchr. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strrchr_spec].
@@ -121,7 +121,7 @@ Qed.
 #[global] Instance strrchr_has_spec n `{!Defines ge n glibc_strrchr,
     !Defines ge "__GI_strlen" glibc_strlen} (Hm : memrchr_spec) :
   HasSpec registry wi ge (TAtom n) strrchr_spec.
-Proof. apply (strrchr_spec_valid Hm); apply defines. Qed.
+Proof using SafepointStable0. apply (strrchr_spec_valid Hm); apply defines. Qed.
 
 (** When a caller invokes `c: strrchr(p, c)` in a module providing
     `__GI_strlen` and [memrchr_spec], [wp_call_glibc_strrchr] resumes
@@ -135,7 +135,7 @@ Lemma wp_call_glibc_strrchr (Hm : memrchr_spec) f e ls l r g args rest j dq p s 
     (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0]))))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hc Hg Hsl Hr. iIntros "Hs HK".
   pose proof (strrchr_spec_valid Hm g Hg Hsl) as Hspec.
   iApply (wp_call_spec registry wi ge g strrchr_spec (dq, p, s, c) with "[Hs]");

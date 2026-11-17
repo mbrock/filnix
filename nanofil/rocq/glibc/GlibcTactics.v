@@ -92,10 +92,12 @@ Ltac unwrap2 :=
     | |- context [?x mod 4294967296] => rewrite (Z.mod_small x 4294967296); [|lia]
     end.
 
-(** This tactic unfolds registered offsets and proves an address or alignment condition. *)
+(** This tactic unfolds registered offsets and proves an address or alignment condition.
+    It also reads the bounds of a region written out as a record. *)
 Ltac a2 := autounfold with offs;
-  cbn [ptr_addr ptr_cap]; unfold raw_address; rewrite ?Z.add_0_r; clear_junk; unwrap2;
-  first [lia | apply Z.mod_1_r | Z.div_mod_to_equations; lia].
+  cbn [ptr_addr ptr_cap r_base r_end]; unfold raw_address; rewrite ?Z.add_0_r; clear_junk; unwrap2;
+  first [lia | apply Z.mod_1_r | Z.div_mod_to_equations; lia
+        | fail 1 "a2: could not prove this address or alignment condition"].
 
 (** This tactic recognizes an integer expression with no nested comparison. *)
 Ltac innermost X :=
@@ -117,6 +119,12 @@ Ltac decide_ints :=
     These tactics advance the current [[frame]] while keeping the ownership facts
     that later loads and stores will need. *)
 
+(** This tactic requires a side condition to close, and names the
+    condition when the supplied proof fails, instead of the bare "No
+    applicable tactic" of an exhausted [first]. *)
+Ltac memory_condition wrapper position proof :=
+  first [solve [proof] | fail 1 wrapper "side condition" position].
+
 (** This tactic fills the world-stability premise introduced by a rule. *)
 Ltac inst := lazymatch goal with |- SafepointStable _ => exact _ | _ => idtac end.
 
@@ -128,7 +136,17 @@ Ltac vx :=
     | |- context [lookup ?k ?E] =>
         let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove;
         rewrite H; clear H
-    end; reflexivity].
+    end; reflexivity
+  | fail 1 "vx: could not compute the instruction's arguments from the environment"].
+
+(** An argument computed from the temporaries, such as a sum of two of
+    them, may also need its integer wrapping removed before it matches. *)
+Ltac vxu :=
+  first [vx | cbn -[put];
+    repeat match goal with |- context [lookup ?k ?E] =>
+      let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H end;
+    unwrap2; reflexivity
+  | fail 1 "vxu: could not compute the instruction's arguments from the environment"].
 
 (** This tactic finds the instruction in the goal rather than in a hypothesis. *)
 Ltac at_of :=
@@ -167,6 +185,7 @@ Ltac step :=
         | Exec _ (Flight _ _ _ _ :: _) _ => iApply wp_flight; [vx | reflexivity | vx | iNext]
         | Enter _ _ => iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]]
         | Exec _ [] (JGoto _) => iApply wp_goto; iNext
+        | _ => fail "step: expected a pure let, flight, block entry, or goto"
         end
     | _ => step_entailment ltac:(cbn; reflexivity)
     end
@@ -208,7 +227,7 @@ Lemma step_named_rule Δ f e ls l d k o args rest j classes xs X Φ :
     (WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }})) ->
   environments.envs_entails Δ
     (WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : gexpr) {{ Φ }}).
-Proof.
+Proof using SafepointStable0.
   intros Hgen Hclass Hvalues Hop Hnext. eapply step_wand.
   - eapply wp_let; eassumption.
   - exact (Hnext X eq_refl).
@@ -270,19 +289,33 @@ Ltac rule3 H1 H2 H3 t :=
   iRevert H3; iRevert H2; iRevert H1; eapply step_res3; [t |];
   iIntros H1; iIntros H2; iIntros H3.
 
-(** This tactic proves a check, half check, or renew using the object's life token. *)
+(** This tactic proves a check, half check, or renew using the object's
+    life token. A failed side condition is reported by name. *)
 Ltac check H :=
   iStartProof;
   let a := at_of in
   lazymatch a with
   | Exec _ (Let _ _ (Check _ _ _ _) _ :: _) _ =>
-      rule1 H ltac:(eapply wp_check; inst; [reflexivity | vx | reflexivity | a2 | a2 | a2])
+      rule1 H ltac:(eapply wp_check; inst;
+        [reflexivity | memory_condition "check" "argument" ltac:(vx)
+        | memory_condition "check" "capability" ltac:(reflexivity)
+        | memory_condition "check" "lower bound" ltac:(a2) | memory_condition "check" "upper bound" ltac:(a2)
+        | memory_condition "check" "alignment" ltac:(a2)])
   | Exec _ (Let _ _ (HalfCheck _ _ _ _ _) _ :: _) _ =>
       rule1 H ltac:(eapply wp_half_check; inst;
-        [reflexivity | vx | reflexivity | reflexivity | a2 | a2 | lia | a2 | a2])
+        [reflexivity | memory_condition "check" "argument" ltac:(vx)
+        | memory_condition "check" "base capability" ltac:(reflexivity)
+        | memory_condition "check" "capability" ltac:(reflexivity)
+        | memory_condition "check" "lower bound" ltac:(a2) | memory_condition "check" "upper bound" ltac:(a2)
+        | memory_condition "check" "nonempty range" ltac:(lia)
+        | memory_condition "check" "object end" ltac:(a2) | memory_condition "check" "alignment" ltac:(a2)])
   | Exec _ (Let _ _ (Renew _ _ _ _) _ :: _) _ =>
       rule1 H ltac:(eapply wp_renew; inst;
-        [reflexivity | vx | reflexivity | reflexivity | a2 | a2 | a2])
+        [reflexivity | memory_condition "check" "argument" ltac:(vx)
+        | memory_condition "check" "same capability" ltac:(reflexivity)
+        | memory_condition "check" "capability" ltac:(reflexivity)
+        | memory_condition "check" "lower bound" ltac:(a2) | memory_condition "check" "upper bound" ltac:(a2)
+        | memory_condition "check" "alignment" ltac:(a2)])
   | _ => fail "check: expected a check, half check, or renew"
   end.
 
@@ -291,10 +324,6 @@ Ltac check H :=
     A load or store needs facts about its address, alignment, and owned memory.
     Each wrapper supplies the fixed checks and uses the caller's arithmetic solver
     for addresses. A failed check reports its position before the [[separation-logic]] proof continues. *)
-
-(** This tactic requires a side condition to close and identifies it when the supplied proof fails. *)
-Ltac memory_condition wrapper position proof :=
-  first [solve [proof] | fail 1 wrapper "side condition" position].
 
 (** This wrapper loads a pointer using fractional ownership of the cells and object lives. *)
 Tactic Notation "load_pointer_dq" constr(H) "by" tactic3(side) :=

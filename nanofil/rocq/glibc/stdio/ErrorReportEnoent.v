@@ -55,7 +55,7 @@ Definition error_enoent_translation_rest : iProp Σ :=
 
 Lemma error_enoent_translation_pack bs :
   error_enoent_translation_rest ∗ errno_own eb bs ⊣⊢ pack bs.
-Proof.
+Proof using Type.
   rewrite /error_enoent_translation_rest /pack /enoent_translation_pack /dcg_before_v.
   iSplit.
   - iIntros "[(Hr & H1 & H2 & H3 & HK & HC & HM & Hi) He]".
@@ -164,7 +164,7 @@ Lemma error_report_enoent_strcall b :
   exists fr, call_frame glibc_strerror_r [WInt 2;WPtr (mkPtr b (Obj b));WInt 1024] = Some fr /\
     (⊢ obj b (heap_req 4 1024) -∗ live tb tbreg -∗ P -∗ WP (ERun fr : gexpr)
       {{ w, ∃ p, ⌜w = Ret (WPtr p)⌝ ∗ live tb tbreg ∗ error_text_buffer error_borrowed_text b p ∗ text_ready }}).
-Proof.
+Proof using Defines0 Defines1 Defines10 Defines11 Defines12 Defines13 Defines2 Defines3 Defines4 Defines5 Defines6 Defines7 Defines8 Defines9 Hbounds Hdomain Herr Hext Hglobals Hheap Hlen Hlenb Hlene Hlenr Hlk1 Hlk2 Hlkt Hlocale Hmessage Hral Hrb Hre Hreg Hro Hrr Hsecure Hstring Htab Htabe Htable Htabr Htal Hv RT fb fl sb slb slreg sreg static_own tm tn tr.
   destruct (error_strerror_enoent_thread_call eb Herr Hreg Hext dom dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
     ib ic dqi ireg sec dqs secreg v tc dd dq mpb tcb dmb mpr tcr dr dqr rb ro rreg gb go greg dqg lp lb lreg
     dql dqn dqt treg lk1 a1 ar1 r1 cw1 sh1 fl1 lk2 a2 ar2 r2 cw2 sh2 fl2 lkt a3 ar3 r3 cw3 sh3 fl3 tb tbreg tid
@@ -212,7 +212,7 @@ Lemma wp_error_report_enoent e from ap cb countb countreg count Φ :
     live sgb sgreg -∗ pcell sgb 0 (mkPtr fb (Obj fb)) -∗ live fb freg -∗
     error_va ap (WInt 0 :: WInt 2 :: WPtr fmt :: ys) -∗ format_own -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Defines0 Defines1 Defines10 Defines11 Defines12 Defines13 Defines2 Defines3 Defines4 Defines5 Defines6 Defines7 Defines8 Defines9 Hal Hbackup Hbounds Hcancel Hdomain Hend Herr Herrno Hext Hfb Hfframe Hflush Hfmtr Hfmtstring Hfr Hfx Hg Hga Hgb Hge Hglobals Hgr Hheap Hlen Hlenb Hlene Hlenr Hlk1 Hlk2 Hlkt Hlocale Hmd Hmessage Hnewline Hnewlineformat Hnn Hold Hproducer Hral Hrb Hre Hreg Hro Hrr Hsecure Hself Hstr Hstring Hsync Hta Htab Htabe Htable Htabr Htal Htb Hte Htext Htextformat Htm Htn Htr Huser Hv Hvfx Hwide Hwidecall Hwidefn Hwideframe P text_ready.
   intros Hinputs Hcount Hcb Hce Hcr Hformat.
   iIntros "Hcl Hcount Ht Hflag Hbl Hsaved Hgl Hgp Hl HV HP Hrest Haux Hlookup Hstatic HE HK".
   iDestruct "HP" as "(Hs & Hfl & Hlp & Hlk & Hmd & [Hfmt Hbytes] & HRM)".

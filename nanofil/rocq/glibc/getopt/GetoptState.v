@@ -92,7 +92,7 @@ Lemma getopt_session_initial b r av ar ps :
   1 <= Z.of_nat (length ps) < 2 ^ 31 ->
   0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   getopt_state_own b r getopt_zero -∗ getopt_session b r av ar ps 1.
-Proof.
+Proof using Type.
   intros Hn Hav Ha Hfit Hspace. iIntros "Hs". iSplit; [iPureIntro; lia|].
   iExists getopt_zero. iFrame. iSplit; [iPureIntro; by apply getopt_zero_bounds|].
   iLeft. done.
@@ -103,7 +103,7 @@ Qed.
 Lemma getopt_cursor_read ps i s : getopt_cursor ps i s -∗
   ⌜gs_next s = null⌝ ∨ ∃ tail, word_string DfracDiscarded (gs_next s) tail ∗
     ⌜tail <> [] -> 0 <= i < Z.of_nat (length ps) /\ gs_last s <= i⌝.
-Proof.
+Proof using Type.
   iIntros "[Hnull | [Hempty | Hactive]]".
   - iLeft. iExact "Hnull".
   - iRight. iExists []. iFrame. iPureIntro. congruence.

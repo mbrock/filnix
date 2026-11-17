@@ -153,7 +153,7 @@ Lemma char_ret_session b r av ar ps s oo t so x i' oo' a a' c' :
   int_cell b 24 (gs_initialized s) -∗ pcell b 32 c' -∗ int_cell b 40 (gs_order s) -∗
   int_cell b 44 (gs_first s) -∗ int_cell b 48 (gs_last s) -∗
   getopt_session b r av ar ps i'.
-Proof.
+Proof using Type.
   intros Hbd Hlt Hin Hord Ht0 Hb Hal Hend Hr Hav Hala Hda Hra Hcase.
   iIntros "Hcu #Hws Hl Hib Her Hoo Hab Hini Hcur Hord Hfi Hla".
   iDestruct (ws_shape with "Hws") as %(Htc & _ & _).
@@ -217,7 +217,7 @@ Lemma wp_getopt_char_ret ks ks2 e fr i n pe cur t po so oo a lo li lonly b r av 
       live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L75") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hg Hgn Hdiag Hse Hmid' Hmid
     (H0 & H2 & H6 & H8 & H10 & H12 & Hpr1 & Hpr3 & Hc0 & Hc1 & Hc2 & Hc19 & Hc20 & H80)
     Hi Hn Hlen Ht0 Hpe Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
@@ -326,7 +326,7 @@ Lemma wp_getopt_char_session ks ks2 e fr s pe t po so lo li lonly b r av ar ps (
       ⌜char_ret_case ps (Z.of_nat (List.length ps)) (gs_ind s) (gs_opt s) (gs_next s) (gs_arg s) t so x i' oo' a' c'⌝ -∗
       getopt_session b r av ar ps i' -∗ live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L75") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hg Hgn Hdiag Hse Hmid' Hmid Henv Hbd Hlt Hn Hin Hord Ht0 Hpe
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "Hcu #Hws #Hpo Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hord Hfi Hla Ha Hcl #Hs HG Hca HK".

@@ -121,7 +121,7 @@ Qed.
 Lemma witness_thread_ok : pts witness_thread -∗
   tcb_cleanup_inv (ow_self hello_witness_world) ∗ errno_any 49152 ∗
   live 49152 (hello_witness_region 49152).
-Proof.
+Proof using Type.
   rewrite /witness_thread witness_concat. cbn [big_opL].
   iIntros "(Ht & Hc & Hj & Hch & He & Herrno & _)". iSplitL "Ht Hc Hj Hch".
   - iExists 53248, (hello_witness_region 53248), null.
@@ -135,7 +135,7 @@ Qed.
 Lemma witness_readonly_ok : pts witness_readonly ==∗
   vtables_ro witness_ge 16384 (hello_witness_region 16384) ∗
   single_ro witness_ge 98304 (hello_witness_region 98304).
-Proof.
+Proof using Type.
   iIntros "H". iMod (ptsq_persist (DfracOwn 1) with "H") as "#H". iModIntro.
   rewrite /witness_readonly witness_concatq. cbn [big_opL].
   iDestruct "H" as "(Hv & Hslots & Hs & Hb & _)". iSplit.
@@ -156,7 +156,7 @@ Lemma witness_all_resources : pts witness_all ==∗
   single_ro witness_ge 98304 (hello_witness_region 98304) ∗
   AllocLogic.tcache_idle DfracDiscarded 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
-Proof.
+Proof using Type.
   rewrite /witness_all witness_concat. cbn [big_opL]. iIntros "(Hfiles & Hlist & Hthread & Hro & _)".
   rewrite /hello_witness_pieces witness_concat. cbn [big_opL].
   iDestruct "Hfiles" as "(Ho & He & Hi & Ha & _)".

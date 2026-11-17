@@ -59,7 +59,7 @@ Lemma wp_dci_errno_load f e ls l dst v rest j bs Φ :
   bytes eb 0 bs -∗
   ▷ (bytes eb 0 bs -∗ WP (ERun (mkFrame f (put dst (WInt (dci_w bs)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let dst W (RawLoad (LdNarrow Sw) 0) [v] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hv Hlen. iIntros "Hb HK".
   iApply (wp_read_with registry (os_wi w0) ge (bytes eb 0 bs)
     (fun m => dci_errno_mem eb m ∧ all_agree m (byte_ps eb 0 bs)) _ _ [] with "Hb HK").
@@ -135,7 +135,7 @@ Definition dci_tfind_miss_rule (key root cmp : ptr) (K : iProp Σ) : Prop :=
 Lemma dci_search_split sb :
   obj sb (heap_req 8 64) ⊢ live sb (mkRegion sb (sb + 64) Heap Live) ∗ pcell sb 0 null ∗ bytes sb 8 [0; 0; 0; 0] ∗
     pcell sb 16 null ∗ pcell sb 32 null ∗ pcell sb 56 null.
-Proof.
+Proof using Type.
   rewrite obj_zero_block; [|vm_compute; discriminate].
   change (req_extent (heap_req 8 64)) with 64. change (req_kind (heap_req 8 64)) with Heap.
   change (replicate (Z.to_nat 64) 0) with (replicate 8 0 ++ replicate 4 0 ++ replicate 4 0 ++ replicate 8 0 ++

@@ -40,7 +40,7 @@ Lemma wp_printf_buffer_done_failed fr bb breg Φ :
   live bb breg -∗ int_cell bb 32 0 -∗
   ▷ (live bb breg -∗ int_cell bb 32 0 -∗ Φ (Ret (WInt 4294967295))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hal Hend Hreg. injection Hfr as <-.
   iIntros "Hl [%Hm Hmode] HK". step. step. norm. check "Hl".
   load_bytes_dq "Hl Hmode" decode (cbn; reflexivity) by ar.

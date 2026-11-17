@@ -82,7 +82,7 @@ Lemma wp_glibc_memchr_nul dq p s n e Φ :
   lookup (TAtom "v4") e = Some (WInt n) ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (nul_hit s n))))) -∗
   WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hn H0 H2 H4. iIntros "(%b & %reg & %ws & %Hs & Hl & Hw) HK".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp _ Hr _ _].
   iApply (MemchrLogic.wp_glibc_memchr_dq registry wi ge dq p 0 n b reg ws _ e with "Hl Hw");
@@ -101,7 +101,7 @@ Definition memchr_nul_spec : fspec Σ :=
 (** Memchr searches for the terminator without consuming the caller's string ownership. *)
 Lemma memchr_nul_spec_valid g : find_fn ge g = Some (Defined glibc_memchr) ->
   HasSpec registry wi ge g memchr_nul_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg [[[dq p] s] n]. exists glibc_memchr. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post memchr_nul_spec].
@@ -113,7 +113,7 @@ Qed.
 (** The linked program identifies the memchr implementation used by callers. *)
 #[global] Instance memchr_nul_has_spec n `{!Defines ge n glibc_memchr} :
   HasSpec registry wi ge (TAtom n) memchr_nul_spec.
-Proof. apply memchr_nul_spec_valid. apply defines. Qed.
+Proof using SafepointStable0. apply memchr_nul_spec_valid. apply defines. Qed.
 
 (** When a caller invokes `c: memchr(p, 0, n)` on a [word_string],
     [wp_call_glibc_memchr_nul] resumes the caller with the pointer for
@@ -124,7 +124,7 @@ Lemma wp_call_glibc_memchr_nul f e ls l r g args rest j dq p s n cf' Φ :
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WPtr (hit_ptr p (nul_hit s n)))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hn Hg Hr. iIntros "Hs HK".
   pose proof (memchr_nul_spec_valid g Hg) as Hspec.
   iApply (wp_call_spec registry wi ge g memchr_nul_spec (dq, p, s, n) with "[Hs]");
@@ -140,7 +140,7 @@ Lemma wp_glibc_strnlen_ws dq p s n Φ :
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WInt (Z.min (Z.of_nat (List.length s)) n)))) -∗
   WP (ERun (mkFrame glibc_strnlen [(TAtom "v2", WInt n); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hn. iIntros "Hs HK".
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hr Hby Hch].
@@ -181,7 +181,7 @@ Definition strnlen_spec : fspec Σ :=
 Lemma strnlen_spec_valid g : find_fn ge g = Some (Defined glibc_strnlen) ->
   find_fn ge (TAtom "__GI_memchr") = Some (Defined glibc_memchr) ->
   HasSpec registry wi ge g strnlen_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hm [[[dq p] s] n]. exists glibc_strnlen. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strnlen_spec].
@@ -193,7 +193,7 @@ Qed.
 #[global] Instance strnlen_has_spec n `{!Defines ge n glibc_strnlen,
     !Defines ge "__GI_memchr" glibc_memchr} :
   HasSpec registry wi ge (TAtom n) strnlen_spec.
-Proof. apply strnlen_spec_valid; apply defines. Qed.
+Proof using SafepointStable0. apply strnlen_spec_valid; apply defines. Qed.
 
 (** When a caller invokes `c: strnlen(p, n)` through a module whose
     `__GI_memchr` resolves to [glibc_memchr], [wp_call_glibc_strnlen]
@@ -206,7 +206,7 @@ Lemma wp_call_glibc_strnlen f e ls l r g args rest j dq p s n cf' Φ :
     (Ret (WInt (Z.min (Z.of_nat (List.length s)) n))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hn Hg Hm Hr. iIntros "Hs HK".
   pose proof (strnlen_spec_valid g Hg Hm) as Hspec.
   iApply (wp_call_spec registry wi ge g strnlen_spec (dq, p, s, n) with "[Hs]");

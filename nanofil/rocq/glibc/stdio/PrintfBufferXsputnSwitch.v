@@ -44,7 +44,7 @@ Lemma wp_printf_xsputn_switch_null e from bb breg fb freg oldbase oldptr oldend 
      pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L40") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfr Hv0.
   iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend HK".
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
@@ -78,7 +78,7 @@ Lemma wp_printf_xsputn_switch_owned e from bb breg fb freg db dreg bo eo dqf dqd
      pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L40") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   cbn zeta. intros Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfr Hdb Hbo Heo Hdp Hde Hdr Hv0.
   iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend HK".
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].

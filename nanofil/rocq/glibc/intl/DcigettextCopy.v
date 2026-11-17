@@ -83,7 +83,7 @@ Definition dci_stpcpy_rule_r : Prop :=
 
 (** The old rule gives the new one, which only adds a premise. *)
 Lemma dci_stpcpy_rule_r_of : dci_stpcpy_rule -> dci_stpcpy_rule_r.
-Proof. intros H f e ls l d args rest j a b reg xs cs dq q s Φ Ha H1 H2 H3 H4 _. exact (H f e ls l d args rest j a b reg xs cs dq q s Φ Ha H1 H2 H3 H4). Qed.
+Proof using Type. intros H f e ls l d args rest j a b reg xs cs dq q s Φ Ha H1 H2 H3 H4 _. exact (H f e ls l d args rest j a b reg xs cs dq q s Φ Ha H1 H2 H3 H4). Qed.
 
 (** This tactic proves the argument list of the mempcpy call, whose
     length argument is reduced modulo 2^64. *)
@@ -135,7 +135,7 @@ Lemma wp_dci_copy_w_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hmv Hmvf Hmvs Hcpy Henv Hv224 Hv9 Hv226 Hv232 Hxd0 Hxd16 Hxdend Hs Hxs0 Hxs8 Hxsend Hxsr Hheap Hmal
     H276 H277 Hge Hlk1 Hlk2 Hu1 Hu2.
   pose proof Henv as (Hv17 & Hc0 & Hv21 & Hv23 & Hpr1 & Hv2 & Hv6 & Hv10 & Hv32 & Hv69 & Hv90).
@@ -239,7 +239,7 @@ Lemma wp_dci_copy_r_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros. iIntros "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HU1 HU2 Herr HK".
   iApply (wp_dci_copy_w_fr with "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HU1 HU2 Herr"); try eassumption.
   iNext. iSplit; [iDestruct "HK" as "[HK _]"; iExact "HK" |].

@@ -49,7 +49,7 @@ Lemma wp_printf_buffer_switch_null fr bb breg fb freg oldbase oldptr oldend Φ :
      pcell bb 8 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg. injection Hfr as <-.
   iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend HK".
   step. step. check "Hb". load "Hb" "Hfp" "Hf".
@@ -89,7 +89,7 @@ Lemma wp_printf_buffer_switch_staging fr bb breg fb freg db dreg bo eo dqf dqd
      pcell bb 8 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hdb Heo Hspace Hde Hdr. injection Hfr as <-.
   iIntros "Hb Hf Hd Hfp Hwp Hwe Hbase Hptr Hend HK".
   step. step. check "Hb". load_shared "Hb Hfp Hf".

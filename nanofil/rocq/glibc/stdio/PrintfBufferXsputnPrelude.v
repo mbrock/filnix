@@ -60,7 +60,7 @@ Lemma wp_printf_xsputn_prelude e from bb breg fb freg dqf vb vreg n Φ :
         (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L14") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfr Hn Hv0 Hchk Hchk1.
   iIntros "#Hvt Hb Hf Hptr Hfp Hvtp HK".
   iPoseProof (vtables_slot ge vb vreg slot_xsputn "_IO_new_file_xsputn"

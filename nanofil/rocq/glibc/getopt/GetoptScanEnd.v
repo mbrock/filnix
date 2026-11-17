@@ -114,7 +114,7 @@ Lemma wp_getopt_scan_end ks e i n o f l a b r av ar ps Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "L203") (b_insts getopt_blk203) (b_jump getopt_blk203))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks0 Hv0 Hv2 Hv12 Hc0 Hc1 Hc2 Hc23 Hfl Hli Hin Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Hab [%Ho Hob] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".
   pose proof (avoids_app _ _ _ Hks0) as [Hks Hkn].

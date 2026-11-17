@@ -45,7 +45,7 @@ Lemma wp_error_newline (Hregistry : holds_os registry) (Hext : sys_external ge)
   WP (ERun (fxprintf_normal_frame null (mkPtr nb (Ro nb)) []) : gexpr)
     {{ v, ∃ k, ⌜v = Ret (WInt k)⌝ ∗ live gb greg ∗ pcell gb 0 (mkPtr fb (Obj fb)) ∗
       live_capq (DfracOwn 1) (Obj fb) freg ∗ error_newline_done fb fl lb lbreg nb nreg Q }}.
-Proof.
+Proof using Type.
   intros Hg Hgb Hga Hge Hgr Hfb Hal Hend Hreg Huser Hnb Hmd Hself Hselfr Hfn Hformat.
   iIntros "Hgl Hgp Hl (#Hs & (Hfl & Hlp & Hlk & Hmd & Hfmt & Htext) & HR)".
   iApply (wp_fxprintf_normal_null Hregistry Hext fb freg fl lb lbreg (mkPtr nb (Ro nb)) [] md

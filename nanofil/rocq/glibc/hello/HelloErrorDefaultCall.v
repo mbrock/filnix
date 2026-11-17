@@ -62,7 +62,7 @@ Lemma wp_call_error_default_closed f e ls l args rest j status errnum fmt ys sta
   ▷ (Done -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg Hsync.
   intros flush Hargs Hpublic Hys Hstatus Herrnum Hinternal Hstate Hcancel
     Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr
     Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hfxframe Hfxcall Hreport.

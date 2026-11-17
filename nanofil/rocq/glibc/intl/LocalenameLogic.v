@@ -65,7 +65,7 @@ Lemma wp_glibc_current_locale_name e cat gb go greg dqg lp lb lreg dql dqn cv tr
   (liveq dqg gb greg -∗ pcellq dqg gb go lp -∗ liveq dql lb lreg -∗
    pcellq dqn lb (ptr_addr lp - lb + 128 + 8 * cat) cv -∗ live_capq dqt (ptr_cap cv) treg -∗ Φ (Ret (WPtr cv))) -∗
   WP (ERun (mkFrame glibc_current_locale_name e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hg Hv0 Hcat Hgb Hgo Hgal Hgend Hgreg Hlc Hlb Hlal Hlend Hlreg Hcv.
   iIntros "Hgl Hgc Hll Hnc Hct HK".
   step. step_global Hg.
@@ -109,7 +109,7 @@ Lemma wp_call_glibc_current_locale_name f e ls l d g args rest j cat gb go greg 
   ▷ (locale_name_res dqg gb go greg lp dql lb lreg dqn cat cv dqt treg -∗
      WP (ERun (mkFrame f (put d (WPtr cv) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call (CResult d P) (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hargs Hg Hgl Hcat Hgb Hgo Hgal Hgend Hgreg Hlc Hlb Hlal Hlend Hlreg Hcv.
   iIntros "(Hgl & Hgc & Hll & Hnc & Hct) HK".
   iApply wp_call_bind; [exact Hargs | exact Hg | reflexivity |]. iNext.
@@ -123,7 +123,7 @@ Qed.
     holds. *)
 Lemma locale_name_entry_agree dq1 dq2 lb o cv cv' : 0 <= ptr_addr cv < 2 ^ 64 -> 0 <= ptr_addr cv' < 2 ^ 64 ->
   pcellq dq1 lb o cv -∗ pcellq dq2 lb o cv' -∗ ⌜cv = cv'⌝.
-Proof.
+Proof using Type.
   intros H1 H2. iIntros "A B". iDestruct (WordString.ptsq_agree with "A B") as %E; [reflexivity|].
   iPureIntro. destruct cv as [a c], cv' as [a' c']. cbn in H1, H2, E.
   injection E as Ec E0 E1 E2 E3 E4 E5 E6 E7. subst c'. f_equal.

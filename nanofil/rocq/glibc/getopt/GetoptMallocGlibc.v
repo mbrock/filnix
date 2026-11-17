@@ -35,7 +35,7 @@ Lemma getopt_malloc_rule_glibc `{!Defines ge "malloc" malloc_fn, !Defines ge "gl
   lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)) ->
   lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc)) ->
   getopt_malloc_rule w0 registry ge (hi_malloc_state dq mp tc dummy mpr tcr dr).
-Proof.
+Proof using Type.
   intros Hmp Htc f e ls l d v rest j n Φ Hx Hn. iIntros "HM HK".
   iApply (hi_malloc_rule with "HM"); [exact Hmp | exact Htc | exact Hx | exact Hn |].
   iNext. iIntros (base Hb) "Ho HM". iApply ("HK" with "HM"). iRight. iExists base. iFrame. iPureIntro. tauto.

@@ -59,7 +59,7 @@ Lemma wp_error_message_narrow (Hregistry : holds_os registry) (Hext : sys_extern
       (int_cell fb 0 fl ∗ pcell fb 136 (mkPtr lb (Obj lb)) ∗ lock_state lb lbreg 0 0 null ∗
        live_capq dqf (ptr_cap fmt) fmtreg ∗ bytesq dqb fmtb (ptr_addr fmt - fmtb) (chars ++ [0]) ∗
        error_message_spare fb eb ereg r en md' ∗ Q r en md' ∗ E) }}.
-Proof.
+Proof using Type.
   intros Hfb Hal Hend Hreg Huser Hfmt Hmd Hself Hselfr Hstring Herrno Hformat.
   iIntros "Hl HV (#Hs & Hfl & Hlp & Hlk & Hmd & Hfmt & Hbytes & HR) HE".
   iApply (wp_vfxprintf_explicit Hregistry Hext fb freg fl lb lbreg fmt ap flags md dqf fmtreg sb sreg

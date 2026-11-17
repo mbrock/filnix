@@ -69,7 +69,7 @@ Lemma wp_puts_L162_for e p dq s so soreg fb Φ :
      word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_puts e' [] None (Exec (TAtom "L163") [] pu_j163)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L162") (Some (TAtom "L121")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hopen Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv12 Hc1 Hgso Hsoal Hsoend. subst fp.
   iIntros "#Hvt Hso Hsoc Hf Hstr HRx HK".
   iDestruct (word_string_len with "Hstr") as %Hlen.

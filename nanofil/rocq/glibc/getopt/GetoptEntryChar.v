@@ -71,7 +71,7 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma entry_resume_cursor n av ar b r ps j s q sq k0 :
   entry_resume_facts n av ar b r ps j s q sq k0 -> Z.of_nat (List.length ps) = n ->
   word_string DfracDiscarded q sq -∗ getopt_cursor ps j s.
-Proof.
+Proof using Type.
   intros (_ & _ & _ & _ & _ & Hj & Hq & Hk0 & _ & Hnx & Hla & _) Hlen. iIntros "#Hq".
   iRight. iRight. iExists q, (take k0 sq), (drop k0 sq). rewrite take_drop. iFrame "Hq". iPureIntro.
   split_and!; [lia | lia | by apply entry_char_nth_error | | | exact Hla].
@@ -179,7 +179,7 @@ Lemma wp_getopt_entry_char_ws_at ks ks2 cf n av ar p os lo li lonly pc penv b r 
          getopt_session b r av ar ps i') -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hlen Hn Hse0 Hsea Hsee Hser.
   iIntros "Hpre #Hos HG Hsl Hsc Ha Hcl #Hs HK".
   iApply (wp_getopt_entry_call_at cf n av ar p os lo li lonly pc penv b r ps j G Φ with "Hpre Hos HG [-]");
@@ -269,7 +269,7 @@ Lemma wp_getopt_entry_char ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (
          getopt_session b r av ar ps i') -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Hpre Hos HG Hsl Hsc Ha Hcl Hs HK".
   iApply (wp_getopt_entry_char_ws ks ks2 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' Φ with "Hpre Hos HG Hsl Hsc Ha Hcl Hs");
     try eassumption.

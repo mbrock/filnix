@@ -257,7 +257,7 @@ Lemma wp_getopt_entry_scan_char_ws_at ks ks2 ks3 cf n av ar p os lo li lonly pc 
          getopt_session b r av ar ps i') -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hki3 Hks3 Hin3 Hgc Hdd Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hlen Hn
     Hse0 Hsea Hsee Hser.
   iIntros "Hpre #Hos HG Hsl Hsc Ha Hcl #Hs #Hdd HK".
@@ -352,7 +352,7 @@ Lemma wp_getopt_entry_scan_char ks ks2 ks3 cf n av ar p os lo li lonly pc penv b
          getopt_session b r av ar ps i') -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd HK".
   iApply (wp_getopt_entry_scan_char_ws ks ks2 ks3 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd Φ with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd");
     try eassumption.

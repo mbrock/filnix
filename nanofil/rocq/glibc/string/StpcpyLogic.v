@@ -165,7 +165,7 @@ Lemma wp_call_glibc_stpcpy f e ls l d g args rest j bd rd xs o dq q s Φ :
      WP (ERun (mkFrame f (put d (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))) e) ls None (Exec l rest j)) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call (CResult d P) (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hargs Hg Ho Hox Hend. iIntros "Hl Hb Hs HK".
   iApply wp_call_bind; [exact Hargs | exact Hg | reflexivity |]. iNext.
   iApply (wp_glibc_stpcpy with "Hl Hb Hs"); [reflexivity | reflexivity | exact Ho | exact Hox | exact Hend |].

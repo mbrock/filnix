@@ -246,7 +246,7 @@ Definition copy_in_spec (past : bool) : fspec Σ :=
 (** The whole-buffer move rule establishes memcpy's stream-copy contract. *)
 Lemma memcpy_in_spec_valid g : find_fn ge g = Some (Defined glibc_memcpy) ->
   HasSpec registry (os_wi w0) ge g (copy_in_spec false).
-Proof.
+Proof using Type*.
   intros Hg [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
   exists glibc_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_in_spec].
@@ -275,7 +275,7 @@ Lemma wp_call_memcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' c
   ▷ (live b reg -∗ buf_after b (length xs) -∗ liveq dq b' reg' -∗ bytesq dq b' o' ys -∗
      WP (ERun cf' : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hxa Hg Hres Hc' Hn Hb8 Hb8' Ho Ho' Hon Hend Hend' Hlc Hx Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
   pose proof (memcpy_in_spec_valid g Hg) as Hspec.
   call_spec.
@@ -288,7 +288,7 @@ Qed.
 Lemma mempcpy_in_spec_valid g : find_fn ge g = Some (Defined glibc_mempcpy) ->
   find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
   HasSpec registry (os_wi w0) ge g (copy_in_spec true).
-Proof.
+Proof using Type*.
   intros Hg Hcpy [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
   exists glibc_mempcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_in_spec].
@@ -324,7 +324,7 @@ Lemma wp_call_mempcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' 
   ▷ (live b reg -∗ buf_after b (length xs) -∗ liveq dq b' reg' -∗ bytesq dq b' o' ys -∗
      WP (ERun cf' : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hcpy Hxa Hg Hres Hc' Hb0 Hn Hb8 Hb8' Ho Ho' Hon Hend Hend' Hlc Hx Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
   pose proof (mempcpy_in_spec_valid g Hg Hcpy) as Hspec.
   call_spec with (b, reg, o, xs, cs, dq, b', reg', o', c', ys).

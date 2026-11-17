@@ -84,7 +84,7 @@ Definition opt_table (lo : ptr) (os : list lopt) : iProp Σ :=
 
 (** A shared table stays shared. *)
 Global Instance opt_table_persistent lo os : Persistent (opt_table lo os).
-Proof. rewrite /opt_table /opt_entry /int_cellq /pcellq /liveq. apply _. Qed.
+Proof using Type. rewrite /opt_table /opt_entry /int_cellq /pcellq /liveq. apply _. Qed.
 
 End table.
 
@@ -126,7 +126,7 @@ Lemma wp_long_exact_loop ks e (k : nat) cur s lo os b r Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L50") (b_insts plo_blk50) (b_jump plo_blk50))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hgn Hgl. remember (List.length os - k)%nat as m eqn:Hm. revert e k Hm.
   induction m as [m IH] using (well_founded_induction lt_wf).
   intros e k Hm H12 Hc0 H48 Hp2 Hp9 Hk Hos Hb Hal Hend Hr.

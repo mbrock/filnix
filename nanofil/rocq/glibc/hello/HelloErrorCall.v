@@ -35,7 +35,7 @@ Definition error_thread_ready state : iProp Σ :=
 (** The existing cleanup invariant says cancellation is enabled. Unpacking
     it exposes that zero flag and the memory it already owns. *)
 Lemma error_cleanup_exchange : tcb_cleanup_inv (ow_self w0) ⊣⊢ error_thread_ready 0.
-Proof.
+Proof using Type.
   unfold tcb_cleanup_inv, error_thread_ready, error_cleanup_fields.
   iSplit; iIntros "H"; iDestruct "H" as (tb treg jb Hfacts) "(Hl & H1 & H2 & H3)";
     iExists tb, treg, jb; iSplit; try iFrame;
@@ -98,7 +98,7 @@ Lemma wp_call_error_closed f e ls l args rest j status errnum fmt ys state
   ▷ (Done -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg Hsync cbr dqc.
   intros flush Hargs Hpublic Hys Hstatus Herrnum Hinternal Hstate Hcancel
     Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr Hcu
     Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hfxframe Hfxcall

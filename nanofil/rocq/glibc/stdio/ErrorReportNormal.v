@@ -113,7 +113,7 @@ Lemma wp_error_report_normal_zero e from ap cb countb countreg count strerrorfn 
     error_va ap (WInt 0 :: WInt errnum :: WPtr fmt :: ys) -∗ format_own -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hal Hcancel Hend Hentry Herrno Hext Hfb Hfframe Hflush Hflushcall Hfmtr Hfr Hfx Hg Hga Hgb Hge Hgr Hmd Hnewline Hnewlineformat Hnn Hold Hreg Hself Hstring Hta Htb Hte Htext Htext_exchange Htextformat Htm Htn Htr Huser Hvfx Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hcb Hce Hcr Hstr Hstrcall Hready Hformat.
   iIntros "Hcl Hcount Ht Hflag Hbl Hsaved Hgl Hgp Hl HV HP HE HK".
   iDestruct (Hentry with "HP") as "HP".

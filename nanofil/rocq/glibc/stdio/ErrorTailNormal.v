@@ -62,7 +62,7 @@ Lemma wp_error_tail_normal e from status errnum fmt ap mode cb Φ :
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hal Hcancel Hend Hext Hfb Hfframe Hflush Hflushcall Hformat Hfr Hfx Hg Hga Hgb Hge Hgr Hmd Hnb Hnewline Hold Hreg Hself Hta Htb Hte Htr Huser Hvfx.
   intros Hinputs Hstatus. iIntros "Ht Hflag Hcl Hsaved Hgl Hgp Hl HR HE HK".
   iApply (wp_error_tail_loan Hreg Hext tb treg old gb greg (mkPtr fb (Obj fb)) (DfracOwn 1) freg
     (mkPtr nb (Ro nb)) glibc_fxprintf (fxprintf_normal_frame null (mkPtr nb (Ro nb)) []) flushfn flushframe

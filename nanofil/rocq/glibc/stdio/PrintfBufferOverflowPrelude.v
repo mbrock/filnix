@@ -44,7 +44,7 @@ Lemma wp_printf_overflow_prelude e from bb breg fb freg dqf Φ :
          (b_jump printf_overflow_block))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hv0 Hchk. iIntros "Hb Hfp Hf HK".
   iApply wp_enter; [reflexivity | destruct from; reflexivity |].
   iNext. cbn [b_insts b_jump]. step. check "Hb".

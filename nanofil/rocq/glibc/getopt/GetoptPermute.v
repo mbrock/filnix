@@ -76,7 +76,7 @@ Lemma wp_getopt_permute ks e fr f l1 i b r av ar n ps Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None
                  (Exec (TAtom "L159") (b_insts getopt_blk159) (b_jump getopt_blk159))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L117") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hkx Hkc Hv2 Hv12 Hc0 Hc2 Hc23 Hc24 Hfl Hli Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi Hib] [%Ho Hob] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".
   step. step. norm. load_s32_using ltac:(arith) "Hl Hfb". step. norm. load_s32_using ltac:(arith) "Hl Hlab". step.

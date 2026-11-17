@@ -125,7 +125,7 @@ Lemma wp_dci_route_f_v0 e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg i
   ▷ (dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof. intros. iApply wp_dci_route_v; try eassumption; [lia | left; reflexivity]. Qed.
+Proof using Type*. intros. iApply wp_dci_route_v; try eassumption; [lia | left; reflexivity]. Qed.
 
 (** The block at L298 takes the privileged branch exactly when the flag
     is nonzero modulo 2^32. The values 1 and 0xdeadbeef take it, and 0
@@ -134,7 +134,7 @@ Proof. intros. iApply wp_dci_route_v; try eassumption; [lia | left; reflexivity]
 Example dci_secure_branch_controls :
   (0 mod 2 ^ 32 =? 0) = true /\ (1 mod 2 ^ 32 =? 0) = false /\
   (3735928559 mod 2 ^ 32 =? 0) = false /\ (2 ^ 32 mod 2 ^ 32 =? 0) = true.
-Proof. vm_compute. auto. Qed.
+Proof using Type*. vm_compute. auto. Qed.
 
 (** In the privileged branch strchr searches the copied "C" for '/'
     and returns null, while a search for 'C' would return the buffer
@@ -143,5 +143,5 @@ Proof. vm_compute. auto. Qed.
 Example dci_secure_strchr_controls :
   strchr_ptr (mkPtr 4096 (Obj 4096)) 47 [67] = mkPtr 0 CNone /\
   strchr_ptr (mkPtr 4096 (Obj 4096)) 67 [67] = mkPtr 4096 (Obj 4096).
-Proof. vm_compute. auto. Qed.
+Proof using Type*. vm_compute. auto. Qed.
 End rules.

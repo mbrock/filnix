@@ -51,7 +51,7 @@ Lemma wp_half_check_read_dq f e ls l d bd lo hi al args rest j classes p1 p b re
   liveq dq b reg -∗
   ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read_dq registry (os_wi w0) ge dq _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E Lv] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]); [reflexivity | exact Hc | exact Hx |].
@@ -110,7 +110,7 @@ Lemma wp_getopt_argkind ks e0 e fr i cur t po so k a b r Φ :
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L611") (Some (TAtom "L603")))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L510") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H12 H459 H144 Hc1 Hc2 Hc20 H137 Hk Hi Ht0 Hb Hal Hend Hr.
   iIntros "#Hws #Hpo Hl Hib Hab Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).

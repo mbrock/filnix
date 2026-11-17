@@ -103,7 +103,7 @@ Lemma wp_file_write_exit fb freg off n t e from Φ :
   live fb freg -∗ icell fb off_offset off -∗
   ▷ (∀ off', live fb freg -∗ icell fb off_offset off' -∗ Φ (Ret (WInt (n - t)))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfb Hal Hend Hfreg Ht Hn Hv0 Hv4 Ht'. unfold file_size in Hend. iIntros "Hl Hoff HK".
   step. step. step. norm. check "Hl".
   iApply (wp_raw_load with "Hl Hoff"); [reflexivity | vx | reflexivity | ar |]. iNext. iIntros "Hl Hoff".
@@ -128,7 +128,7 @@ Lemma wp_file_write_err fb freg fl off n t e from Φ :
   ▷ (∀ off', live fb freg -∗ int_cell fb off_flags (Z.lor fl io_err_seen) -∗ icell fb off_offset off' -∗
      Φ (Ret (WInt (n - t)))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L38") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfb Hal Hend Hfreg Ht Hn Hfl Hv0 Hv4 Ht' Hc0. unfold file_size in Hend. iIntros "Hl [_ Hfl] Hoff HK".
   step. check "Hl". load_s32_group "Hl Hfl". step. check "Hl".
   store_word "Hl Hfl" by (ar) preserving wi_store.
@@ -158,7 +158,7 @@ Lemma wp_file_write_next fb freg tw t k p e from Φ :
        WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
              : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L40") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfb Hal Hend Hfreg Hk Ht Hp0 Hp64 Hv0 Hv37 Ht' Hp Hc0. unfold file_size in Hend. iIntros "Hl Htw HK".
   step. step. norm. check "Hl".
   iApply (wp_raw_load with "Hl Htw"); [reflexivity | vx | reflexivity | ar |]. iNext. iIntros "Hl Htw".

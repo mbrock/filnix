@@ -115,7 +115,7 @@ Lemma wp_puts_L103_for (G0 : ptr -> Z -> option Z -> iProp Σ)
   ▷ (G0 fp m None -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Exec (TAtom "L103") (b_insts pu_L103) (b_jump pu_L103)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hv12 Hc1 Hr Hrr. subst fp. iIntros "#Hs Hf HK".
   iDestruct (Hopen0 with "Hf") as (fb' freg fl lb) "(%Hp & Hl & Hfl & Hlp & Hlk & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul). injection Hfp as <-.
@@ -140,7 +140,7 @@ Lemma wp_glibc__IO_puts_for fr p dq s so soreg fp mode sb sreg Φ :
   ▷ (∀ r, ⌜puts_ret (Z.of_nat (length s)) r⌝ -∗ word_string dq p s -∗ live so soreg -∗ pcell so 0 fp -∗
      G s fp (oriented mode) None -∗ Rx -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hnl Hopen HopenG Hreg Hwide Hxs Hxs_fn.
   intros Hfr Hstr Hgso Hsoal Hsoend Hsz. iIntros "#Hvt #Hs Hstr Hso Hsoc Hf HRx HK".
   iDestruct (word_string_len with "Hstr") as %Hlen.
   iDestruct (Hopen with "Hf") as (fb freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".

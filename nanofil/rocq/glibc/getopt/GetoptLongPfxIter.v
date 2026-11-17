@@ -82,7 +82,7 @@ Lemma wp_pfx_iter_with ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b 
       (Exec (TAtom "L108") (b_insts plo_blk108) (b_jump plo_blk108))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L98") (b_insts plo_blk98) (b_jump plo_blk98))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksc Hkss Hksa Hksm Hcut Hmal Hset Hgn Hfl Hos Hpe Hb Hal Hend Hr.
   intros Hat H3 H13 H8 H42 H39 H30 H21 Hk Hf Ha Hm.
   assert (Hw32 : 0 <= w < 2 ^ 32) by (destruct Hf as [(_ & ->) | (j & Hj & _ & ->)]; lia).

@@ -53,7 +53,7 @@ Lemma wp_formatter_initial_percent e ls cb cr p dq Φ :
       (Enter (TAtom "L44") (Some (TAtom "L37")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L37") (Some (TAtom "start")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hchk Hcb Hca Hce Hcr. iIntros "Hl Hcell Hs HK".
   iDestruct (word_string_bytes with "Hs") as (sb sr ws) "(%Hshape & Hsl & Hbytes & Hback)".
   pose proof Hshape as [Hcap Hsb Hsa Hst Hfit Hspace Hlen Hws Hby Hch].
@@ -99,7 +99,7 @@ Lemma wp_formatter_initial_scan e ls cb cr old bb br p dq Φ :
       (Enter (TAtom "L44") (Some (TAtom "L37")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Exec (TAtom "start") (skipn 19 (b_insts initial_scan_block)) (b_jump initial_scan_block))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hp Hb Hchr Hscan Hwrite Hfailed Hcb Hca Hce Hcr Hbb Hba Hbe Hbr.
   iIntros "Hcl Hcell Hs Hl Hmode HK".
   iDestruct "Hs" as (sb sr ws) "[%Hshape Hw]".
@@ -173,7 +173,7 @@ Lemma wp_formatter_initial_registered e ls cb cr old bb br p dq rb rr mb mr ab a
       (Enter (TAtom "L79") (Some (TAtom "L67")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Exec (TAtom "start") (skipn 19 (b_insts initial_scan_block)) (b_jump initial_scan_block))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hp Hb Hchr Hscan Hwrite Hfailed Hrf Hmf Haf
     Hcb Hca Hce Hcr Hbb Hba Hbe Hbr Hrb Hra Hre Hrr Hmb Hma Hme Hmr Hab Haa Hae Har.
   iIntros "Hcl Hcell Hs Hl Hmode Hrl Hrc Hml Hmc Hal Hac HK".

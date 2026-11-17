@@ -75,7 +75,7 @@ Lemma wp_getopt_scan_session ks e fr0 n i o f l a err oo c b r av ar ps pdd sdd 
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L291") (Some (TAtom "L303")))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L73") (Some fr0))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hki Hks Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc1 Hc2 Hbd Hlen Ho Hb Hal Hend Hr Hav Hala Hda Hra.
   unfold getopt_bounds in Hbd. cbn in Hbd.
   iIntros "Hl Hi He Hoo Ha Hin Hcur Ho Hf Hla #Hc Hva Hvc Hvs #Hdd HK".

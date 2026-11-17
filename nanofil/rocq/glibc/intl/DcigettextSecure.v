@@ -61,7 +61,7 @@ Lemma wp_dci_sl_strchr f e ls l r args rest j sl sreg cf' Φ :
   live sl sreg -∗ ibyte sl 0 67 -∗ ibyte sl 1 0 -∗ bytes sl 2 (replicate 6 0) -∗
   ▷ (live sl sreg -∗ ibyte sl 0 67 -∗ ibyte sl 1 0 -∗ bytes sl 2 (replicate 6 0) -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global (TAtom "__GI_strchr")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros [Hg Hn] Hx Hsl0 Hsl8 Hslend Hslr Hr. iIntros "Hl Hb0 Hb1 Hbs HK".
   assert (Hws : words_ps sl 0 [67] = byte_ps sl 0 ([67] ++ [0] ++ replicate 6 0)).
   { rewrite words_ps_bytes. reflexivity. }
@@ -124,7 +124,7 @@ Lemma wp_dci_c_secure_tail e cv9 sl sreg a1 sec secreg dqs v xs xsreg xd xreg s 
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 v -∗ U1' -∗ U2' -∗
      errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L298") (Some (TAtom "L304")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hsec Hsec0 Hsec4 Hsecend Hsecr Hv Hlinks Hp19 Hp9 Hsl Hv17 Hc0 Hv232 Hv69 Hs Hv6 Hv2 Hv32
     Hsl0 Hsl8 Hslend Hslr Hsk Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd.
   iIntros "Hsecl [% Hsecb] Hl Hb0 Hb1 Hbs Hxl Hxc Hdl HU1 HU2 Herr HK".
@@ -176,7 +176,7 @@ Lemma wp_dci_c_locale_v_fr e cv sl sreg a0 a1 sec secreg dqs v xs xsreg xd xreg 
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 v -∗ U1' -∗ U2' -∗
      errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hsec Hsec0 Hsec4 Hsecend Hsecr Hv Hlinks Hcv Hsl Hv17 Hc0 Hv232 Hv69 Hs Hv6 Hv2 Hv32
     Hsl0 Hsl8 Hslend Hslr Hsk Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd.
   iIntros "Hcv Hsecl Hsecb Hl Hb0 Hb1 Hbs Hxl Hxc Hdl HU1 HU2 Herr HK".

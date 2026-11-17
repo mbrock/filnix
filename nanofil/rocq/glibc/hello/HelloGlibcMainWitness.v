@@ -151,7 +151,7 @@ Qed.
 Lemma witness_pointers fb ps :
   pts (concat (imap (fun i p => hello_witness_pointer fb (off_ptr i) p) ps)) ⊣⊢
   [∗ list] i ↦ p ∈ ps, pcell fb (off_ptr i) p.
-Proof.
+Proof using Type.
   rewrite witness_imap /pcell /hello_witness_pointer. done.
 Qed.
 
@@ -214,7 +214,7 @@ Qed.
 Lemma witness_alloc_readonly : pts hello_witness_alloc ==∗
   AllocLogic.tcache_idle DfracDiscarded 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
-Proof.
+Proof using Type.
   iIntros "Ha". iMod (ptsq_persist (DfracOwn 1) with "Ha") as "#Ha". iModIntro.
   rewrite /hello_witness_alloc witness_concatq /AllocLogic.tcache_idle. cbn [big_opL].
   iDestruct "Ha" as "(Hmp & Hmax & Htc & Hptr & Hdm & Hbins & _)".
@@ -229,7 +229,7 @@ Lemma witness_resources : pts hello_witness_pieces -∗
   file_inv 16384 (ow_self hello_witness_world) (mkPtr 12288 (Obj 12288)) ∗
   AllocLogic.tcache_idle (DfracOwn 1) 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
-Proof.
+Proof using Type.
   rewrite /hello_witness_pieces witness_concat. cbn [big_opL]. iIntros "(Ho & He & Hi & Ha & _)".
   iSplitL "Ho"; [iApply (witness_file with "Ho"); vm_compute; intuition congruence|].
   iSplitL "He"; [iApply (witness_file with "He"); vm_compute; intuition congruence|].

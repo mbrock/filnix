@@ -101,7 +101,7 @@ Lemma wp_glibc__IO_fputs fr p dq s fp mode sb sreg Φ :
   ▷ (∀ r, ⌜r = 1 \/ r = 2 ^ 32 - 1⌝ -∗ word_string dq p s -∗
      file_at vb (ow_self w0) fp (oriented mode) None -∗ Rx -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg Hxs Hxs_fn.
   intros Hfr Hstr Hsz. iIntros "#Hvt #Hs Hstr Hf HRx HK".
   iDestruct (file_at_open with "Hf") as (fb freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (-> & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv).

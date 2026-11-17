@@ -84,7 +84,7 @@ Definition getopt_diag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom 
     between the two calls and comes back with G. *)
 Lemma getopt_diag_rule_sep (G R : iProp Σ) T fp dom :
   getopt_diag_rule G T fp dom -> getopt_diag_rule (G ∗ R) (fun mid q => T mid q ∗ R)%I fp dom.
-Proof.
+Proof using Type.
   intros (Hd & Hf & Hcap & Hgt & Hfx). refine (conj Hd (conj Hf (conj _ (conj _ _)))).
   - iIntros "[HG HR]". iDestruct (Hcap with "HG") as (dq reg) "[Hc Hb]".
     iExists dq, reg. iFrame "Hc". iIntros "Hc". iFrame "HR". iApply ("Hb" with "Hc").
@@ -173,7 +173,7 @@ Lemma wp_getopt_diag_unknown ks e fr (G : iProp Σ) T fp dom se sereg mid c av a
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L492") (Some (TAtom "L490")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L490") (Some fr))) : gexpr) {{ Φ }}.
-Proof. intros. diag_block. Qed.
+Proof using Type. intros. diag_block. Qed.
 
 (** The missing-argument report of "-W" uses the message str.149. *)
 Lemma wp_getopt_diag_wmissing ks e fr (G : iProp Σ) T fp dom se sereg mid c av ar ps Φ :
@@ -190,7 +190,7 @@ Lemma wp_getopt_diag_wmissing ks e fr (G : iProp Σ) T fp dom se sereg mid c av 
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L553") (Some (TAtom "L551")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L551") (Some fr))) : gexpr) {{ Φ }}.
-Proof. intros. diag_block. Qed.
+Proof using Type. intros. diag_block. Qed.
 
 (** The missing-argument report of a short option uses str.149 too. *)
 Lemma wp_getopt_diag_missing ks e fr (G : iProp Σ) T fp dom se sereg mid c av ar ps Φ :
@@ -207,6 +207,6 @@ Lemma wp_getopt_diag_missing ks e fr (G : iProp Σ) T fp dom se sereg mid c av a
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L662") (Some (TAtom "L660")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L660") (Some fr))) : gexpr) {{ Φ }}.
-Proof. intros. diag_block. Qed.
+Proof using Type. intros. diag_block. Qed.
 
 End diag.

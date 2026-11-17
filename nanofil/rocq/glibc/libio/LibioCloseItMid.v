@@ -107,7 +107,7 @@ Lemma wp_close_it_L18_with e e' from a0 p3 fb freg fl f2 fd off md ob oe p8 p16 
      Φ (Ret (WInt (if k =? 0 then p3 else k)))) -∗
   WP (ERun (mkFrame glibc__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L18") (Some from))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hphi Hv0 Hc0 Ha0 Hc1 Hv2 Hp3 Hfb Hfal Hfend Hfreg Hfl Hf2r Hf2 Hmd Hp3r He. subst fp a0.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe Hob H80 H96 HK".
   unfold file_size in Hfend.

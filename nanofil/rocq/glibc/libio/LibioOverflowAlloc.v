@@ -79,7 +79,7 @@ Lemma wp_glibc__IO_new_file_overflow_alloc fr fb freg ch f2 fd eb mode vb vreg f
      auxes bb 0 (replicate (Z.to_nat sz) CNone) -∗ Mres -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Hfd31 Happ Hnw Hnp Hbk Hub He Hmd. injection Hfr as <-.
   iIntros "#Hvt Hl Hfx [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HM HK". unfold file_size in Hend.
   iDestruct "Hfx" as "(Hf2 & Hfd & Herr & Hcol & Hmode & Hvtp)".

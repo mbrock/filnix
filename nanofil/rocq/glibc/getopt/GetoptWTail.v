@@ -67,7 +67,7 @@ Lemma wp_getopt_wstore ks e0 e fr q rq x b r Φ :
   (∀ e', ⌜keeps ks e0 e'⌝ -∗ live b r -∗ pcell b 16 null -∗ pcell b 32 q -∗
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L533") w_call w_jump)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L533") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H12 Hc1 Hc20 Hq0 Hb Hal Hend Hr.
   iIntros "Hcapq Hl Hab Hcur HK".
   step. step. step. check "Hl".

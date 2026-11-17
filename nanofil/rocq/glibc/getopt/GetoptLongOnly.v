@@ -102,7 +102,7 @@ Lemma wp_getopt_long_only ks e i n c lonly po so b r av ar ps s Φ :
             : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L344") (Some (TAtom "L336")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hg Hgn Hv2 Hv10 Hv12 Hpo Hc2 Hc20 Hc100 Hi Hn Hlen Hs0 Hs1 Hs45 Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "#Hws #Hpo Hl [%Hi0 Hib] Hcur Ha Hc #Hs HK".
   set (j := Z.to_nat i). assert (Hj : Z.of_nat j = i) by (unfold j; lia).

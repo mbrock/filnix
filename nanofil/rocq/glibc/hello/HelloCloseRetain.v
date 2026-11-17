@@ -84,7 +84,7 @@ Lemma wp_hello_close_stream_stdout_full_retained pre post fb freg fl f2 fd tw of
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗ E -∗
   (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ Q -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (hello_close_stream_frame fp) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n fp wb base Q Herrno Hgout Hgin Hin Hinr Hfcg Hfcr Hfb Hfal Hfend Hfreg Hf22 Hf232 Hnl Hf2r Hfd
     Hfdr Hfl Happ Hnw Hcp Hub Hul Hlnk Hfb8 He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hlb Hmd.
   iIntros "Hvt Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol

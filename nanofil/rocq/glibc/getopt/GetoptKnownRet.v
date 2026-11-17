@@ -61,7 +61,7 @@ Lemma wp_known_ret_value ks e fr v Φ :
    fr = TAtom "L639" /\ lookup (TAtom "pr.7") e = Some (WInt v)) ->
   ▷ Φ (Ret (WInt (chr_w v))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L605") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hv. iIntros "HK".
   iApply (GetoptShortRet.wp_getopt_short_ret ks e fr v Φ with "[HK]"); [exact Hks | exact Hv |].
   iIntros (e' (_ & H696)). iApply wp_ret; [reflexivity | |].
@@ -141,7 +141,7 @@ Lemma wp_getopt_known_ret ks e i n c pe cur t po so k a lo oo b r av ar ps (G : 
       Φ (Ret (WInt (chr_w (if sbyte so 0 =? 58 then 58 else 63)))))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L473") (Some (TAtom "L485")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hop Hrq Hdg Hrt Hinc Hdiag Hse Hmid H0 H2 H6 H12 H80 H455 H459 Hpr1 Hpr3 Hc0 Hc1 Hc2 Hc19 Hc20 H137
     Hk Hi Hn Hlen Ht0 Hc Hpe Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Hws #Hpo Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG Hca HK".
@@ -199,7 +199,7 @@ Lemma wp_getopt_unknown_ret ks e fr c pe ix a cx oo b r av ar ps (G : iProp Σ) 
   (live b r -∗ int_cell b 0 ix -∗ int_cell b 8 c -∗ pcell b 16 a -∗ pcell b 32 cx -∗
      live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a -∗ Φ (Ret (WInt 63))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L471") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksd Hrule Hse Hmid H2 H12 H455 Hpe Hc0 Hc Hper Hb Hal Hend Hr Hav Hala Hda Hra Hps
     Hse0 Hsea Hsee Hser.
   iIntros "Hsl Hsc Hl Hi Hoo Hab Hcur Ha Hcl Hs HG Hca HK".

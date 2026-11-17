@@ -40,7 +40,7 @@ Qed.
 #[global] Instance mempcpy_has_spec n `{!Defines ge n glibc_mempcpy,
     !Defines ge "__GI_memcpy" glibc_memcpy} :
   HasSpec registry (os_wi w0) ge (TAtom n) mempcpy_spec.
-Proof.
+Proof using Type*.
   apply has_spec_choice.
   - apply MemFwdLogic.mempcpy_spec_valid; try assumption; apply defines.
   - apply LibioDefaultXsputnCopy.mempcpy_in_spec_valid; try assumption; apply defines.

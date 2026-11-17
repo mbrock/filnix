@@ -69,7 +69,7 @@ Lemma scan_cluster_cursor (ps' : list ptr) i' w err oo o f' l' :
   l' <= i' -> sbyte w 1 <> 0 ->
   word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗
   getopt_cursor ps' i' (mkGetoptState i' err oo null 1 (ptr_add (nth (Z.to_nat i') ps' null) 1) o f' l').
-Proof.
+Proof using Type.
   intros Hq Hi Hli Hw1. iIntros "#Hw". pose proof (sbyte_in_len w 1 Hw1) as Hlw.
   iRight. iRight. iExists (nth (Z.to_nat i') ps' null), (take 1 w), (drop 1 w). rewrite take_drop. iFrame "Hw".
   iPureIntro. cbn [gs_next gs_last]. rewrite length_take_le; [|lia].
@@ -90,10 +90,10 @@ Local Instance scanchar_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_sta
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance scanchar_liveq_persistent b reg : Persistent (liveq DfracDiscarded b reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance scanchar_pcellq_persistent b o x : Persistent (pcellq DfracDiscarded b o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 
 (** ## The exits after the choice
 
@@ -231,7 +231,7 @@ Definition scan_char_exits_ws (n av : Z) (ar : region) (p : ptr) (os : list Z) (
 Lemma scan_char_exits_weaken n av ar p os lo li lonly b r ps j (G : iProp Σ) se sereg fp ks ks2 Φ :
   scan_char_exits n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ ⊢
   scan_char_exits_ws n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ.
-Proof.
+Proof using Type.
   iIntros "H". unfold scan_char_exits, scan_char_exits_ws.
   iSplit; [iDestruct "H" as "[H _]"; iExact "H"|]. iDestruct "H" as "[_ H]".
   iIntros (s s' w ps' i' f' l' x i'' oo' a' c' Hc) "_".
@@ -267,7 +267,7 @@ Lemma scan_choice_char_ws ks ks2 ks4 n av ar p os lo li lonly b r ps j (G : iPro
   (scan_long_exits n av ar p os lo li lonly b r ps j G se sereg fp ks4 Φ ∧
    scan_char_exits_ws n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ) -∗
   scan_choice_exit n av ar p os lo li lonly b r ps j G se sereg fp Φ.
-Proof.
+Proof using Type.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hk4 Hin4 Hg Hgn Hdiag Hse Hmid' Hmid Hn Hse0 Hsea Hsee Hser.
   iIntros "#Hos HK".
   iIntros (e' s s' w ps' i' f' l' (Hst & Hj & Hin & Hord & Harg & Henv & H100 & Hp & Hlen & Hfl & Hli & Hii & Hq &
@@ -343,7 +343,7 @@ Lemma scan_choice_char ks ks2 ks4 n av ar p os lo li lonly b r ps j (G : iProp �
   (scan_long_exits n av ar p os lo li lonly b r ps j G se sereg fp ks4 Φ ∧
    scan_char_exits n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ) -∗
   scan_choice_exit n av ar p os lo li lonly b r ps j G se sereg fp Φ.
-Proof.
+Proof using Type.
   intros. iIntros "Hos HK".
   iApply (scan_choice_char_ws ks ks2 ks4 n av ar p os lo li lonly b r ps j G T fp dom se sereg mid mid' Φ with "Hos");
     try eassumption.
@@ -420,7 +420,7 @@ Lemma wp_getopt_entry_dispatch_ws_at ks ks2 ks3 ks4 cf n av ar p os lo li lonly 
          getopt_session b r av ar ps i') -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hkin Hop Hrq Hdg Hrt Hinc Hki3 Hks3 Hin3 Hk4 Hin4 Hgc Hdd Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid
     Hlen Hn Hse0 Hsea Hsee Hser.
   iIntros "Hpre #Hos HG Hsl Hsc Ha Hcl #Hs #Hdd HK".
@@ -499,7 +499,7 @@ Lemma wp_getopt_entry_dispatch ks ks2 ks3 ks4 cf n av ar p os lo li lonly pc pen
          getopt_session b r av ar ps i') -∗
       live av ar -∗ argv_cells av ps -∗ G -∗ arg_cap a' -∗ Φ (Ret (WInt x)))) -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd HK".
   iApply (wp_getopt_entry_dispatch_ws ks ks2 ks3 ks4 cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd Φ with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd");
     try eassumption.

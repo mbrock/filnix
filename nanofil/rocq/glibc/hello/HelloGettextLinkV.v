@@ -43,7 +43,7 @@ Definition hello_secure_links (v : Z) : Prop :=
   v = 0 \/ Forall (lookup_agrees (ge_module ge) hellostrchrimage_module) hello_strchr_names.
 
 Lemma hello_secure_links_dci v : hello_secure_links v -> v = 0 \/ dci_strchr_links.
-Proof. intros [H | H]; [left; exact H | right; exact (dci_strchr_links_of_agree H)]. Qed.
+Proof using Type. intros [H | H]; [left; exact H | right; exact (dci_strchr_links_of_agree H)]. Qed.
 
 (** ## The translation in Hello's link *)
 
@@ -70,7 +70,7 @@ Lemma wp_dcgettext_c_hello_v f e ls l d args rest j mid dom ds dqd nb nc k cat d
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hk Hg ? ? ? ? ? ? ? ? ? ? ? ? Hs. pose proof (hello_heap_glibc ob Hk Hg) as Hh.
   pose proof (hello_secure_links_dci v Hs) as Hl.
   pose proof (hk_gi_strlen _ _ Hk). pose proof (hk_free _ _ Hk).
@@ -100,7 +100,7 @@ Lemma dcg_diag_translate_hello_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb 
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hello_gettext_cache ob) bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hk Hg ? ? ? ? ? ? ? ? ? ? ? ? Hs Hm f e ls l d args rest j mid Φ Hmsg Hargs.
   iIntros "Hb HK". iApply (wp_dcgettext_c_hello_v with "Hb HK"); try eassumption. exact (Hm mid Hmsg).
 Qed.
@@ -126,7 +126,7 @@ Lemma dcg_ldiag_translate_hello_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hello_gettext_cache ob) bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hk Hg ? ? ? ? ? ? ? ? ? ? ? ? Hs Hm f e ls l d args rest j mid Φ Hmsg Hargs.
   iIntros "Hb HK". iApply (wp_dcgettext_c_hello_v with "Hb HK"); try eassumption. exact (Hm mid Hmsg).
 Qed.

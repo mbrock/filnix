@@ -382,7 +382,7 @@ Lemma wp_glibc_strchrnul_ws dq p s c Φ :
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (ptr_add p (Z.of_nat (chr_idx (c mod 256) s)))))) -∗
   WP (ERun (mkFrame glibc_strchrnul [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc. iIntros "(%b & %reg & %ws & %Hs & W) HK".
   destruct (shape_facts _ _ _ _ _ Hs) as (B1 & S1 & M1 & P1 & K1 & E1 & R1 & N1 & C1).
   pose proof (ss_words _ _ _ _ _ Hs) as F1.
@@ -447,7 +447,7 @@ Definition strchrnul_spec : fspec Σ :=
 (** The search frame establishes the contract for any matching function name. *)
 Lemma strchrnul_spec_valid g : find_fn ge g = Some (Defined glibc_strchrnul) ->
   HasSpec registry wi ge g strchrnul_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg [[[dq p] s] c]. exists glibc_strchrnul. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strchrnul_spec].
@@ -458,7 +458,7 @@ Qed.
 (** Linked callers supply strchrnul's definition through the program context. *)
 #[global] Instance strchrnul_has_spec n `{!Defines ge n glibc_strchrnul} :
   HasSpec registry wi ge (TAtom n) strchrnul_spec.
-Proof. apply strchrnul_spec_valid. apply defines. Qed.
+Proof using SafepointStable0. apply strchrnul_spec_valid. apply defines. Qed.
 
 (** Calling a global function g bound to [glibc_strchrnul] on a
     [word_string] at any share resumes the caller with the pointer to
@@ -470,7 +470,7 @@ Lemma wp_call_glibc_strchrnul f e ls l r g args rest j dq p s c cf' Φ :
     (Ret (WPtr (ptr_add p (Z.of_nat (chr_idx (c mod 256) s))))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hc Hg Hr. iIntros "Hs HK".
   pose proof (strchrnul_spec_valid g Hg) as Hspec.
   iApply (wp_call_spec registry wi ge g strchrnul_spec (dq, p, s, c) with "[Hs]");
@@ -521,7 +521,7 @@ Lemma wp_glibc_strchr_ws dq p s c Φ :
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (strchr_ptr p (c mod 256) s)))) -∗
   WP (ERun (mkFrame glibc_strchr [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hc. iIntros "Hs HK".
   step. iApply (wp_call_glibc_strchrnul with "Hs");
     [cbn; rewrite (Z.mod_small c); [reflexivity | lia] | exact Hc | exact Hg | reflexivity |].
@@ -558,7 +558,7 @@ Definition strchr_spec : fspec Σ :=
 Lemma strchr_spec_valid g : find_fn ge g = Some (Defined glibc_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
   HasSpec registry wi ge g strchr_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hnul [[[dq p] s] c]. exists glibc_strchr. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strchr_spec].
@@ -583,7 +583,7 @@ Lemma wp_call_glibc_strchr f e ls l r g args rest j dq p s c cf' Φ :
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WPtr (strchr_ptr p (c mod 256) s))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hc Hg Hn Hr. iIntros "Hs HK".
   pose proof (strchr_spec_valid g Hg Hn) as Hspec.
   iApply (wp_call_spec registry wi ge g strchr_spec (dq, p, s, c) with "[Hs]");

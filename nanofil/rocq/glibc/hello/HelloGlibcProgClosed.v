@@ -58,13 +58,13 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** glibc's own memcmp at `memcmp` meets HelloGlibcLeaf.v's
     [memcmp_spec], so its [memeq_glibc] needs no premise about it. *)
 Lemma leaf_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) -> HelloGlibcLeaf.memcmp_spec w0 registry ge.
-Proof. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
+Proof using Type. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
 
 (** glibc's own memcmp at `memcmp` meets HelloGlibcProgCells.v's
     [memcmp_spec]. *)
 Lemma cells_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) ->
   HelloGlibcProgCells.memcmp_spec w0 registry ge.
-Proof. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
+Proof using Type. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
 
 (** Hello's callees: glibc's strrchr, which calls glibc's strlen and
     memrchr, Hello's memeq, which calls glibc's memcmp, and glibc's
@@ -104,7 +104,7 @@ Lemma set_program_name_closed dq p s x0 y0 z0 Φ :
   ▷ (word_string dq p s -∗ name_cells (ptr_add p (Z.of_nat (name_idx s))) (ptr_add p (Z.of_nat (name_idx s)))
        (ptr_add p (Z.of_nat (short_idx s))) -∗ Φ RetVoid) -∗
   WP (ERun (invocation set_program_name_fn [WPtr p]) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   apply (HelloGlibcProgName.set_program_name_glibc pb nb sb preg nreg sreg lp tp
            Hpb Hnb Hsb Hlp Htp Hpb_cell Hnb_cell Hsb_cell (MemrchrLogic.glibc_memrchr_spec registry (os_wi w0) ge Hmemrchr)
            (cells_memcmp_spec Hmemcmp)).

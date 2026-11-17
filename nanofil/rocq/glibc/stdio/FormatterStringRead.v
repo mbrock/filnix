@@ -37,7 +37,7 @@ Lemma wp_formatter_string_arg_word e ls from cb cr sb sr off p dq s Φ :
       (Enter (TAtom "L1695") (Some (TAtom "L1825")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L1825") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hcb Hsb Ho He Hr Ha Hp.
   assert (Hwi : forall m w h,
     (forall k v, (k, v) ∈ va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb)) -> h !! k = Some v) ->
@@ -90,7 +90,7 @@ Lemma wp_formatter_table_string_read e ls from jb jr tb tr dqj dqt p9 p4
       (Enter (TAtom "L1831") (Some (TAtom "L1871")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L113") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hs H9 H4 Hv Hzero Hj Ht Hstrlen Hjb Hje Hjr Htb Hte Htr
     Hcb Hsb Ho He Hr Ha Hp.
   iIntros "Hjl Hjb Htl Htb Hc Hl Hx Hs HK".

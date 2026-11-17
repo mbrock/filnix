@@ -53,7 +53,7 @@ Lemma wp_error_closed_prefix vbreg sb sreg (D R Ready : iProp Σ) (Q : Z -> Z ->
   live_capq dqn (ptr_cap pname) namer -∗ error_closed_flush fb vb lb lbreg vbreg sb sreg D -∗
   WP (ERun (fxprintf_normal_frame null (mkPtr xb (Ro xb)) [WPtr pname]) : gexpr)
     {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live_capq dqn (ptr_cap pname) namer ∗ Ready }}.
-Proof.
+Proof using Hext Hreg chars dqb nameb.
   intros Hg Hgb Hga Hge Hgr Hefb Hefa Hefe Hefr Huser Hxb Hmd Hself Hselfr Hvfx Hlend Hready Hformat.
   iIntros "Hname (Hclosed & #Hvt & #Hslot & #Hs & HD)".
   iDestruct (Hlend with "HD") as "((Hgl & Hgp & Hl) & Hfields & Hbytes & HR)".
@@ -114,7 +114,7 @@ Lemma wp_error_closed_entry_prefix status errnum fmt ap mode tb treg state vbreg
   error_closed_report fb freg ob oreg pb preg callback dqc cbr nb nreg pname dqn namer
     tb treg state status errnum fmt ap mode Ready E Φ -∗
   WP (ERun (error_internal_frame status errnum fmt ap mode) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg Hsync chars dqb nameb.
   intros Hself Htb Hta Hte Htr Hstate Hcancel Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr
     Hp Hpb Hpa Hpe Hpr Hcu Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hvfx
     Hg Hgb Hga Hge Hgr Hefb Hefa Hefe Hefr Huser Hxb Hmd Hlend Hready Hformat

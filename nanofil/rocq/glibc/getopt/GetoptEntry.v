@@ -169,7 +169,7 @@ Lemma wp_getopt_entry_init_at e1 fr n av p os lo li lonly pc penv b r s (tail : 
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L73") (Some (TAtom "L83")))) : gexpr)
         {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e1 [] None (Enter (TAtom "iw_1.start") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hget Hpenv (H0 & H2 & H4 & H6 & H8 & H10 & H12 & H14 & H19 & Hc0 & Hc1 & Hc2) Hni Hn Hi Hb Hal Hend Hr.
   iIntros "Hl Hi [%Herr Heb] Ho Ha Hini Hnext Hord Hf Hla #Hos HG HK".
   step. iApply (wp_getopt_initialize_at _ n p os b r s pc penv G
@@ -216,7 +216,7 @@ Lemma wp_getopt_entry_at e n av p os lo li lonly pc penv b r s tail (G : iProp �
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "start") (b_insts getopt_blk_start) (b_jump getopt_blk_start))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hget Hpenv Hv0 Hv2 Hv4 Hv6 Hv8 Hv10 Hv12 Hv14 Hn Hi.
   iIntros "(%Hown & Hl & Hi & He & Ho & Ha & Hini & Hnext & Hord & Hf & Hla) #Hos #Hcur HG HK".
   destruct Hown as (Hb & Hal & Hend & Hr).

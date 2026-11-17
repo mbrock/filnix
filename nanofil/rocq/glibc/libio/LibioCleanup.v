@@ -128,7 +128,7 @@ Lemma wp_glibc__IO_cleanup fr (P : ptr -> iProp Σ) fs sb sreg fcp Φ :
   ▷ (∀ r, ⌜r = 0 \/ r = 2 ^ 32 - 1⌝ -∗ tcb_cleanup_inv (ow_self w0) -∗ io_list_inv ge fs -∗
      ([∗ list] g ∈ fs, stream_life g ∗ exit_stream true g) -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbody Hfr Hfc Hfcr.
   iIntros "#Hs Htcb Hio Hfs HK".
   iApply (wp_cleanup_start Hreg Hext Hpush_spec Hpop_spec

@@ -54,7 +54,7 @@ Lemma wp_formatter_string_write e ls bb reg off xs cs dq p s Φ :
       (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L1831") (Some (TAtom "L1871")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hlen Hp Hwidth Hbuf Hwrite Hcpy Hb Ha He Hr Ho Hn Hroom Hxs Hcs Hx.
   iIntros "Hl Hmode Hptr Hend Hx Hcs Hs HK".
   iApply wp_enter; [reflexivity | vx |]. iNext.

@@ -100,13 +100,13 @@ Qed.
 Example fx_args_controls a0 c pfx nm cp n :
   forallb snapshot_word [WPtr a0; WInt c] = true /\ forallb snapshot_word [WPtr a0; WPtr pfx; WPtr nm] = true /\
   forallb snapshot_word [WPtr pfx; WLimit cp n] = false.
-Proof. repeat split. Qed.
+Proof using Type*. repeat split. Qed.
 
 (** A loan admits the unoriented mode 0 and the narrow mode -1 as a
     32-bit word. It excludes the wide mode 1. *)
 Example fx_mode_controls : (0 = 0 \/ 0 = 2 ^ 32 - 1) /\ (2 ^ 32 - 1 = 0 \/ 2 ^ 32 - 1 = 2 ^ 32 - 1) /\
   ~ (1 = 0 \/ 1 = 2 ^ 32 - 1).
-Proof. lia. Qed.
+Proof using Type*. lia. Qed.
 
 (** ## The short-option rule
 
@@ -147,7 +147,7 @@ Lemma getopt_diag_rule_fx G T vb sb sreg fp dom R Q :
   (⊢ G -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ G)) ->
   diag_translate G T dom -> diag_fx_loan G T vb sb sreg fp R Q -> diag_fx_format vb fp R Q ->
   getopt_diag_rule w0 registry ge G T fp dom.
-Proof.
+Proof using Type*.
   intros Hfn Hself Hselfr Hd Hf Hcap Htr Hl Hfm.
   refine (conj Hd (conj Hf (conj Hcap (conj Htr _)))).
   intros f e ls l d args rest j mid q a0 s0 c Φ Hm Hc Hx. iIntros "HT Ha HK".
@@ -204,7 +204,7 @@ Lemma getopt_ldiag_rule_fx G T vb sb sreg fp dom f140 f141 R Q R140 Q140 R141 Q1
   lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
   fx_loan G vb sb sreg fp f141 R141 Q141 G -> fx_format vb fp f141 [] (R141 ∗ True) Q141 ->
   getopt_ldiag_rule w0 registry ge G T fp dom.
-Proof.
+Proof using Type*.
   intros Hfn Hself Hselfr Hd Hf Hcap Htr Hl Hfm H140 Hl140 Hfm140 H141 Hl141 Hfm141.
   refine (conj Hd (conj Hf (conj Hcap (conj Htr (conj _ (conj _ _)))))).
   - intros f e ls l d args rest j mid q a0 s0 pfx sp nm sn Φ Hm Hx. iIntros "HT Ha Hp Hn HK".

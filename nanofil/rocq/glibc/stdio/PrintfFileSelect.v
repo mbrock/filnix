@@ -28,7 +28,7 @@ Definition printf_selected (bb : Z) (p : ptr) (F : iProp Σ) : iProp Σ :=
     liveq dq db dr ∗ (liveq dq db dr -∗ F)).
 
 Lemma printf_selected_close bb p F : printf_selected bb p F -∗ F.
-Proof.
+Proof using Type.
   iIntros "[[_ HF]|(%db & %dr & %bo & %dq & _ & Hd & HK)]"; first done.
   iApply ("HK" with "Hd").
 Qed.
@@ -42,7 +42,7 @@ Lemma printf_selected_borrow bb br p F :
       db+bo <= r_end dr /\ r_end dr <= 2^63⌝ ∗
     (live bb br -∗ liveq dq1 bb br ∗ liveq dq2 db dr ∗
       (liveq dq1 bb br -∗ liveq dq2 db dr -∗ live bb br ∗ printf_selected bb p F)).
-Proof.
+Proof using Type.
   intros Hb He Hr. iIntros "[[%Hp HF]|(%db & %dr & %bo & %dq & %Hp & Hd & HK)]".
   - subst p. iExists bb, br, 48, (DfracOwn (1/2)%Qp), (DfracOwn (1/2)%Qp).
     iSplit; [iPureIntro; repeat split; try reflexivity; lia|].

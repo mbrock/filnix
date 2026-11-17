@@ -109,7 +109,7 @@ Lemma wp_long_join_arg_with e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f1
      GetoptLongJoinMiss.plo_res_arg b r av ar ps li F G M i n cur s a os x -∗
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3 Hmid4 Hfl Hos Hpe Hlo
     H0 H2 H4 H6 H8 H10 H12 H14 H16 Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
@@ -174,7 +174,7 @@ Lemma wp_long_join_arg e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f1
      GetoptLongJoinMiss.plo_res_arg b r av ar ps li F G M i n cur s a os x -∗
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcut.
   exact (wp_long_join_arg_with e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

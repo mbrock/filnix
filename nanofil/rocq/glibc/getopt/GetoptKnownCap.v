@@ -140,7 +140,7 @@ Lemma wp_getopt_known_cap ks e i n c pe cur t po so k a lo oo b r av ar ps (G : 
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L473") (Some (TAtom "L485")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hop Hrq Hdg Hinc Hdiag Hse Hmid H0 H2 H6 H12 H80 H455 H459 Hpr1 Hpr3 Hc0 Hc1 Hc2 Hc19 Hc20 H137
     Hk Hi Hn Hlen Ht0 Hc Hpe Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Hws #Hpo Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG Hca HK".

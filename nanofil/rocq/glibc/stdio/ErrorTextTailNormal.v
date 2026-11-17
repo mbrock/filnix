@@ -36,7 +36,7 @@ Lemma error_text_to_newline fb fl lb lbreg tn tr nn nr sb sreg (R : iProp Σ) :
       live_capq DfracDiscarded (Ro nn) nr ∗ bytesq DfracDiscarded nn 0 [10;0] ∗ R)%I ⊢
   error_text_newline_ready fb fl lb lbreg nn nr sb sreg
     (live_capq DfracDiscarded (Ro tn) tr ∗ bytesq DfracDiscarded tn 0 [58;32;37;115;0] ∗ R)%I.
-Proof.
+Proof using Type.
   iIntros "H". iDestruct "H" as (r md) "(Hfields & %Hmd & Hs & Hnf & Hnb & HR)".
   iDestruct "Hfields" as "(Hfl & Hlp & Hlk & Hmd & Htf & Htb)".
   iExists md. iSplit; [done |]. unfold error_newline_fields. iFrame.
@@ -100,7 +100,7 @@ Lemma wp_error_text_tail_normal e from errnum fmt ap mode cb countb countreg cou
     live gb greg -∗ pcell gb 0 (mkPtr fb (Obj fb)) -∗ live fb freg -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hal Hcancel Hend Hext Hfb Hfframe Hflush Hflushcall Hfr Hfx Hg Hga Hgb Hge Hgr Hmd Hnewline Hnewlineformat Hnn Hold Hreg Hself Hta Htb Hte Htext Htextformat Htn Htr Huser Hvfx sb sreg.
   intros Hinputs Herr Hcount Hcb Hce Hcr Hstr Hstrcall Hready.
   iIntros "Hcl Hcount Ht Hflag Hbl Hsaved Hgl Hgp Hl HP HE HK".
   iApply (wp_error_text_tail_zero_loans Hreg Hext tb treg old gb greg (mkPtr fb (Obj fb)) (DfracOwn 1) freg

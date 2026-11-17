@@ -50,7 +50,7 @@ Lemma wp_formatter_string_length e ls p dq s Φ :
       (Enter (TAtom "L1831") (Some (TAtom "L1871")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L1695") (Some (TAtom "L1825")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hp Hprec Hwide Hs Hzero Haddr Hstrlen. iIntros "Hs HK".
   iApply wp_enter; [reflexivity | vx |]. iNext.
   cbn [b_insts b_jump]. step. step. branch_as true.

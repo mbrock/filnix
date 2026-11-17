@@ -305,7 +305,7 @@ Lemma wp_half_check_read_dq f e ls l d bd lo hi al args rest j classes p1 p b re
   liveq dq b reg -∗
   ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read_dq registry wi ge dq _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E Lv] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]); [reflexivity | exact Hc | exact Hx |].

@@ -200,7 +200,7 @@ Lemma wp_check_read_dq f e ls l d lo hi al args rest j classes p b reg dq Φ :
   liveq dq b reg -∗
   ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp H1 H2 H3. apply (wp_read_dq _ _ _ _ _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
   apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
@@ -229,7 +229,7 @@ Lemma wp_glibc_errno_location errno_p Φ :
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some errno_p ->
   Φ (Ret (WPtr errno_p)) -∗
   WP (ERun (mkFrame errno_location_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs. iIntros "HΦ". step. step_global Hs.
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iExact "HΦ".
 Qed.
@@ -241,7 +241,7 @@ Lemma wp_glibc_ctype_b_loc tsd_p Φ :
   lookup (TAtom "__libc_tsd_CTYPE_B") (ge_globals ge) = Some tsd_p ->
   Φ (Ret (WPtr tsd_p)) -∗
   WP (ERun (mkFrame ctype_b_loc_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs. iIntros "HΦ". step. step_global Hs.
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iExact "HΦ".
 Qed.
@@ -262,7 +262,7 @@ Lemma wp_glibc_mb_cur_max tb treg lc lb lreg cc cb creg v dq1 dq2 dq3 dq4 dq5 dq
   (liveq dq1 tb treg ∗ pcellq dq2 tb 0 (mkPtr lb lc) ∗ liveq dq3 lb lreg ∗ pcellq dq4 lb 0 (mkPtr cb cc) ∗
      liveq dq5 cb creg ∗ icellq dq6 cb 160 v -∗ Φ (Ret (WInt (v mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame mb_cur_max_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs Hlc Hcc Ht0 Ht8 Htb Hl0 Hl8 Hlb Hc0 Hcb.
   iIntros "(Ht & Htc & Hl & Hlc & Hc & Hv) HΦ". step. step_global Hs.
   check_read_dq "Ht" by arith.
@@ -298,7 +298,7 @@ Qed.
 Lemma wp_glibc_mbsinit_null p Φ :
   ptr_addr p = 0 -> Φ (Ret (WInt 1)) -∗
   WP (ERun (mkFrame mbsinit_fn [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct p as [a c]. cbn [ptr_addr]. intros ->. iIntros "HΦ".
   step. step. step. step. iApply wp_branch; [reflexivity|]. nx. simp. step.
   iApply wp_ret; [reflexivity | reflexivity |]. nx. iExact "HΦ".
@@ -315,7 +315,7 @@ Lemma wp_glibc_mbsinit p b reg o bs dq1 dq2 Φ :
   liveq dq1 b reg -∗ bytesq dq2 b o bs -∗
   (liveq dq1 b reg -∗ bytesq dq2 b o bs -∗ Φ (Ret (WInt (if of_bytes bs mod 2 ^ 32 =? 0 then 1 else 0)))) -∗
   WP (ERun (mkFrame mbsinit_fn [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct p as [a c]. cbn [ptr_addr ptr_cap]. intros Hc -> Ha Ho Hend Hlen.
   iIntros "Hl Hb HΦ". step. step. step. step.
   iApply wp_branch; [reflexivity|]. nx. simp. step.

@@ -63,13 +63,13 @@ Local Instance wrapparse_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_st
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance wrapparse_liveq_persistent b0 reg : Persistent (liveq DfracDiscarded b0 reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance wrapparse_pcellq_persistent b0 o x : Persistent (pcellq DfracDiscarded b0 o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 (** A shared view of the argument's object life can be copied. *)
 Local Instance wrapparse_capq_persistent c reg : Persistent (live_capq DfracDiscarded c reg).
-Proof. destruct c; cbn; apply _. Qed.
+Proof using Type. destruct c; cbn; apply _. Qed.
 
 (** ## What the wrapper receives from the parser
 
@@ -118,7 +118,7 @@ Qed.
 Lemma w_ret_exits_wrap b r av ar ps ps' los li F (G M : iProp Σ) i n c a so q sq k0 :
   Permutation ps ps' -> argv_strs ps' -∗
   w_ret_exits b r av ar ps' los li F G M i n c a so q sq k0 (wrap_post b r (wrap_rest b r av ar ps G F M li)).
-Proof.
+Proof using Type.
   intros Hp. iIntros "#Hs". unfold w_ret_exits. iSplit; [|iSplit].
   - iIntros (x i' oo' a' c' (_ & Hc)) "Hl Hi Ho Hab Hcur Hw Ha Hcl HG HF HM Hli Hca".
     iApply (wrap_ret with "Hl Hi Ho Hab Hcur Hw Ha Hcl Hs HG HF HM Hli Hca"); [exact (plo_ret_x _ _ _ _ _ _ _ _ _ _ _ Hc) | exact Hp].
@@ -142,7 +142,7 @@ Lemma call_parse_rets_wrap n av ar p os li lonly b r ps j (G : iProp Σ) se sere
   argv_strs ps -∗
   call_parse_rets n av ar p os li lonly b r ps j G se sereg fp los F M
     (wrap_post b r (wrap_rest b r av ar ps G F M li)).
-Proof.
+Proof using Type.
   iIntros "#Hs0". unfold call_parse_rets.
   iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit; [|iSplit]]]]]]].
   - iIntros (s s' ps' x i' a' (_ & _ & Hp & Hc)) "Hl Hi Ho Hab Hcur Hw _ _ Ha Hcl Hs HG Hca HF HM Hli".
@@ -272,7 +272,7 @@ Lemma wp_getopt_wrap_parse e n av ar p os lo li lonly pc penv b r ps i err oi ro
      live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H2 H4 H6 H8 H10 H12 Hpc Hfn Hgd Hgi Hge Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer
     Hoa Hoaa Hoae Hoar Hoo Hooe Hoor Hgc Hdd Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hgp Hp7 Hp0 Hcut Hmal Hset
     Hlrule Hfree Hgsn Hgl H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlo Hlen Hn Hse0 Hsea Hsee Hser.

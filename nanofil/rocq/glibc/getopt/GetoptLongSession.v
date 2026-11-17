@@ -78,7 +78,7 @@ Context `{!gen_heapGS piece pval Σ}.
     nonoption, so a state that keeps both keeps the relation. *)
 Lemma long_cursor_keep ps i s s' :
   gs_next s' = gs_next s -> gs_last s' = gs_last s -> getopt_cursor ps i s -∗ getopt_cursor ps i s'.
-Proof.
+Proof using Type.
   intros Hn Hl. iIntros "[H | [H | H]]".
   - iLeft. by rewrite Hn.
   - iRight. iLeft. by rewrite Hn.
@@ -124,7 +124,7 @@ Qed.
     read share of that one byte of the object. *)
 Lemma short_byte_agree p s1 s2 (k : nat) : (k <= length s1)%nat -> (k <= length s2)%nat ->
   word_string DfracDiscarded p s1 -∗ word_string DfracDiscarded p s2 -∗ ⌜sbyte s1 k = sbyte s2 k⌝.
-Proof.
+Proof using Type.
   intros H1 H2. iIntros "W1 W2".
   iDestruct (GetoptBytes.ws_byte p s1 k H1 with "W1") as (b1 reg1) "(%Hb1 & _ & B1)".
   iDestruct (GetoptBytes.ws_byte p s2 k H2 with "W2") as (b2 reg2) "(%Hb2 & _ & B2)".

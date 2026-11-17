@@ -30,7 +30,7 @@ Lemma wp_vfxprintf_return e k fb freg fl lb lbreg sb sreg (E : iProp Σ) Φ :
     lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt k))) -∗
   WP (ERun (mkFrame glibc_vfxprintf e [] None
     (Enter (TAtom "iw_1.join") (Some (TAtom "iw_1.L8")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hpr Hchk Hr Hkr Hfb Hal Hend Hreg Huser.
   iIntros "#Hs Hl Hfl Hlp Hlk HE HK".
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).

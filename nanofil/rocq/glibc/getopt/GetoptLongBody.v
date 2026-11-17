@@ -112,7 +112,7 @@ Lemma wp_long_body_with ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f13
       WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec (TAtom "L307") [] (JRet (Const 63)))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hksn Hksx Hksl Hksc Hkss Hksa Hksm Hkse Hksr Hksi Hkst Hcut Hmal Hset Hrule Hfree Hgn Hgl Hse H138 H139
     H140 H141 Hfl Hos Hpe Hi H2 H6 H10 H12 H14 H16 Hb Hal Hend Hr Hav Hala Hda Hra Hps Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hcur Ha Hcl #Hargs HG HF HM HK".

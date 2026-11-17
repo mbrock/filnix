@@ -134,7 +134,7 @@ Lemma wp_getopt_single_session e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L376") long_only_call long_only_jump)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hneg Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid
     Hmid3 Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hq1 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser Hord Hfst Hlst
     Hc2 Hc20.

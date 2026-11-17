@@ -131,7 +131,7 @@ Lemma wp_getopt_optarg_cap ks e0 e fr i cur t a b r Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L605") (Some (TAtom "L619")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L610") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H12 Hc1 Hc2 Hc20 H137 Hi Ht0 Hb Hal Hend Hr.
   iIntros "#Hws Hl Hib Hab Hcur HK".
   iApply (GetoptOptArg.wp_getopt_optarg ks e0 e fr i cur t a b r Φ with "Hws Hl Hib Hab Hcur [HK]");
@@ -187,7 +187,7 @@ Lemma wp_getopt_reqarg_cap ks e0 e fr i n c pe cur t po so a oo b r av ar ps (G 
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L605") (Some (TAtom "L639")))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L611") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hrq Hdg Hk0 Hdiag Hse Hmid H0 H2 H12 H455 Hpr1 Hpr3 Hc0 Hc1 Hc2 Hc19 Hc20 H137 Hi Hn Hlen Ht0 Hc Hpe
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Hws #Hpo Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG Hca HK".

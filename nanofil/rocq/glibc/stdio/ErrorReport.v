@@ -92,7 +92,7 @@ Lemma wp_error_report_zero_loans (RP RQ : iProp Σ)
     live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hsr Hta Htb Hte Htr Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hready Hfmtfn Hfmtframe Hformat.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hfl HV HP HE HK".
   iApply (wp_error_message _ _ 0 errnum fmt ap mode cb sb sreg fb freg dq eb ereg
@@ -144,7 +144,7 @@ Lemma wp_error_report_zero_loan
     live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hexchange Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hsr Hta Htb Hte Htr Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hfmtfn Hfmtframe Hformat.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hfl HV HP HE HK".
   iApply (wp_error_report_zero_loans R R Hexchange Hnewline_loan with
@@ -186,7 +186,7 @@ Lemma wp_error_report_zero e from errnum fmt ap mode cb nb nreg count
     live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hexchange Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hsr Hta Htb Hte Htr Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hfmtfn Hfmtframe Hformat.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hfl HV HP HE HK".
   iApply (wp_error_report_zero_loan with "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hfl HV HP HE HK"); try assumption.

@@ -51,7 +51,7 @@ Lemma wp_formatter_string_dispatch e ls p9 p4 Φ :
     (Enter (TAtom "L1825") (Some (TAtom "L2206")))) : gexpr) {{ Φ }} -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L114") (Some (TAtom "L113")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hr Hs H9 H4. iIntros "HK".
   iApply wp_enter; [reflexivity | vx |]. iNext.
   cbn [b_insts b_jump]. do 4 step. closed_ints. step. step.
@@ -95,7 +95,7 @@ Lemma wp_formatter_table_string_arg e ls from jb jr tb tr dqj dqt p9 p4
       (Enter (TAtom "L1695") (Some (TAtom "L1825")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L113") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hs H9 H4 Hv Hj Ht Hjb Hje Hjr Htb Hte Htr Hcb Hsb Ho He Hr Ha Hx Htarget.
   iIntros "Hjl Hjb Htl Htb Hc Hl Hx Hps HK".
   iApply (wp_formatter_string_table with "Hjl Hjb Htl Htb"); try assumption.

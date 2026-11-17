@@ -40,7 +40,7 @@ Lemma wp_formatter_suffix_call e cb cr bb dq p s (P Q : iProp Σ) Φ :
     word_string dq p s -∗ Q -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_printf_buffer e [] None
     (Exec (TAtom "L1150") (skipn 9 (b_insts suffix_block)) (b_jump suffix_block))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hchk Hp Hb Hwrite Hcb Hca Hce Hcr Hcall. iIntros "Hl Hcell Hs HP HK".
   iDestruct "Hs" as (sb sr ws) "[%Hshape [Hsl Hwords]]".
   pose proof Hshape as [Hcap Hsb Hsa Hst Hfit Hspace Hlen Hws Hbytes Hchars].
@@ -90,7 +90,7 @@ Lemma wp_formatter_suffix_empty e cb cr bb br dq p n count Φ :
     live bb br -∗ int_cell bb 32 4 -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_printf_buffer e [] None
     (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hn Hcount Hv Hchk Hb Hchr Hscan Hwrite Hcb Hca Hce Hcr Hbb Hba Hbe Hbr Hp.
   iIntros "Hcl Hcell Hs Hl Hmode HK".
   iApply (wp_formatter_suffix_scan e [] cb cr p dq [] n count with "Hcl Hcell Hs"); try assumption.
@@ -138,7 +138,7 @@ Lemma wp_formatter_suffix_literal e cb cr bb br off xs cs dq p s n count Φ :
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs off s -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_printf_buffer e [] None
     (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hmove Hmf Hms Hn Hcount Hv Hchk Hb Hchr Hscan Hwrite Hcpy
     Hcb Hca Hce Hcr Hbb Hba Hbe Hbr Hp Hliteral Ho Hlen Hroom Hxs Hcs Hbytes.
   iIntros "Hcl Hcell Hs Hl Hmode Hptr Hend Hx Hcs HK".

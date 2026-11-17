@@ -58,7 +58,7 @@ Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
     bytes does so, because the string's bytes lie between 1 and 255. The
     copy does not touch the buffer's auxiliary bytes. *)
 Lemma dci_stpcpy_rule_r_proved `{!Defines ge "__GI_stpcpy" glibc_stpcpy} : dci_stpcpy_rule_r.
-Proof.
+Proof using Type.
   intros f e ls l d args rest j a b reg xs cs dq q s Φ Hargs Hba Hfit Hend Hcs Hxs.
   iIntros "Hl Hb Ha Hs HK".
   iDestruct "Hs" as (bq rq wq Hsh) "Hw".
@@ -94,7 +94,7 @@ Lemma wp_dcgettext_c_stpf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (wp_dcgettext_c_f eb Herr); first [exact Hr | exact _].
 Qed.
 
@@ -114,7 +114,7 @@ Lemma wp_dcgettext_c_stp f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p2
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof. intros Ho. eapply wp_dcgettext_c_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
+Proof using Type*. intros Ho. eapply wp_dcgettext_c_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
 
 (** This lemma builds the short-option translation premise from the
     captured stpcpy. *)
@@ -131,7 +131,7 @@ Lemma dcg_diag_translate_stpf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
       L1 L2 T K C M bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (dcg_diag_translate_f eb Herr); first [exact Hr | exact _].
 Qed.
 
@@ -149,7 +149,7 @@ Lemma dcg_diag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbre
       L1 L2 T K C M bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof. intros Ho. eapply dcg_diag_translate_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
+Proof using Type*. intros Ho. eapply dcg_diag_translate_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
 
 (** This lemma builds the long-option translation premise in the same way. *)
 Lemma dcg_ldiag_translate_stpf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
@@ -165,7 +165,7 @@ Lemma dcg_ldiag_translate_stpf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb db
       L1 L2 T K C M bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof.
+Proof using Type*.
   intros Ho. pose proof (conj dci_stpcpy_rule_r_proved Ho) as Hr. eapply (dcg_ldiag_translate_f eb Herr); first [exact Hr | exact _].
 Qed.
 
@@ -183,7 +183,7 @@ Lemma dcg_ldiag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
       L1 L2 T K C M bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs)
     dom.
-Proof. intros Ho. eapply dcg_ldiag_translate_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
+Proof using Type*. intros Ho. eapply dcg_ldiag_translate_stpf; first [exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho) | exact _]. Qed.
 End rules.
 
 (** ## The counterexample to the old rule

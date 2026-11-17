@@ -67,7 +67,7 @@ Lemma exit_handler_void status fnp dsop g gf fr P Q :
   0 <= ptr_addr fnp < 2 ^ 64 -> fn_params gf = [] -> fn_ret gf = RVoid -> variadic_func gf = false ->
   call_frame gf [] = Some fr ->
   (P -∗ WP (ERun fr : gexpr) {{ o, ⌜o = RetVoid⌝ ∗ Q }}) -∗ exit_handler w0 ge status (fnp, null, dsop) P Q.
-Proof.
+Proof using Type.
   intros Hc Hf Hg Ha Hp Hr Hv Hfr. iIntros "H". iExists g, gf, [], fr. iFrame "H". iPureIntro. cbn [fst snd].
   split; [exact Hc|]. split; [exact Hf|]. split; [exact Hg|]. split; [exact Ha|]. split; [cbn; lia|].
   split; [intros b; split; discriminate|]. split; [exact (handler_conv_void gf _ _ _ _ Hp Hr)|].
@@ -109,7 +109,7 @@ Lemma wp_glibc_run_exit_handlers x el elr ents c status (P : iProp Σ) (R : nat 
   WP (ERun (mkFrame glibc___run_exit_handlers [(TAtom "v6", WInt 1); (TAtom "v4", WInt 1);
        (TAtom "v2", WPtr (mkPtr (xo_funcs x) (Obj (xo_funcs x)))); (TAtom "v0", WInt status)] [] None
        (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Henv (He0 & He8 & Hee & Hgel & Hwel & Hself & Hsf & Hsg). pose proof Henv as Henv'.
   destruct x as [lk lkr dn dnr cl clr fs fsr ib ibr].
   destruct Henv' as (Hlay & Hgl & Hwi & Hwdn & Hwfs & Hxf & Hxg).

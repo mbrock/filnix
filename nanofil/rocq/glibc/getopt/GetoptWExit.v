@@ -58,10 +58,10 @@ Local Instance wexit_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance wexit_liveq_persistent b0 reg : Persistent (liveq DfracDiscarded b0 reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance wexit_pcellq_persistent b0 o x : Persistent (pcellq DfracDiscarded b0 o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 
 (** ## What the W option returns
 
@@ -136,7 +136,7 @@ Definition w_ret_exits_arg (b : Z) (r : region) (av : Z) (ar : region) (ps : lis
 Lemma w_ret_exits_weaken b r av ar ps los li F (G M : iProp Σ) i n c a so q sq k0 Φ :
   w_ret_exits b r av ar ps los li F G M i n c a so q sq k0 Φ ⊢
   w_ret_exits_arg b r av ar ps los li F G M i n c a so q sq k0 Φ.
-Proof.
+Proof using Type.
   iIntros "H". unfold w_ret_exits, w_ret_exits_arg. iSplit; [|iSplit].
   - iIntros (x i' oo' a' c' (Hs & Hp & _)). iDestruct "H" as "[H _]".
     iApply ("H" $! x i' oo' a' c' with "[%]"). exact (conj Hs Hp).
@@ -196,7 +196,7 @@ Lemma w_exit_bridge_arg_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i
   w_ret_exits_arg b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hinc Hc8 Hinr Hr6 Hr8 Henv Hk2 Hk3 H455 H137 H87 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree
     Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hq Hk0 Hi Hn Hlen Hpe
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser Hord Hfst Hlst.
@@ -287,7 +287,7 @@ Lemma w_exit_bridge_arg kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq
   w_ret_exits_arg b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 Hcut.
   exact (w_exit_bridge_arg_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -334,7 +334,7 @@ Lemma w_exit_bridge_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q s
   w_ret_exits b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca HK".
   iApply (w_exit_bridge_arg_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hwq Hos Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca");
     try eassumption.

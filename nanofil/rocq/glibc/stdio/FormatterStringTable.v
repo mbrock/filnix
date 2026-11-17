@@ -47,7 +47,7 @@ Lemma wp_formatter_string_table e ls from jb jr tb tr dqj dqt Φ :
       (Enter (TAtom "L114") (Some (TAtom "L113")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_printf_buffer e ls None
     (Enter (TAtom "L113") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hj Ht Hjb Hje Hjr Htb Hte Htr.
   iIntros "Hjl Hjb Htl Htb HK".
   iApply wp_enter; [reflexivity | destruct from; reflexivity |]. iNext.

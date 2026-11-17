@@ -307,7 +307,7 @@ Lemma wp_glibc_strncmp_ws dq1 dq2 p1 p2 s1 s2 n Φ :
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strncmp_res n s1 s2)))) -∗
   WP (ERun (mkFrame glibc_strncmp [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2); (TAtom "v4", WInt n)] [] None
              (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof. intros Hn. apply strncmp_entry; [exact Hn | left; reflexivity]. Qed.
+Proof using SafepointStable0. intros Hn. apply strncmp_entry; [exact Hn | left; reflexivity]. Qed.
 
 (** Bounded comparison preserves both strings and records its limit as a pure premise. *)
 Definition strncmp_spec : fspec Σ :=
@@ -321,7 +321,7 @@ Definition strncmp_spec : fspec Σ :=
 (** The bounded entry proof supplies the named comparison contract. *)
 Lemma strncmp_spec_valid g : find_fn ge g = Some (Defined glibc_strncmp) ->
   HasSpec registry wi ge g strncmp_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hg [[[[[[dq1 dq2] p1] p2] s1] s2] n]. exists glibc_strncmp. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strncmp_spec].
@@ -332,7 +332,7 @@ Qed.
 (** Linked callers supply strncmp's definition through the program context. *)
 #[global] Instance strncmp_has_spec n `{!Defines ge n glibc_strncmp} :
   HasSpec registry wi ge (TAtom n) strncmp_spec.
-Proof. apply strncmp_spec_valid. apply defines. Qed.
+Proof using SafepointStable0. apply strncmp_spec_valid. apply defines. Qed.
 
 (** Theorem [wp_call_glibc_strncmp] lets any caller invoke
     `__GI_strncmp` by name g, returning [strncmp_res] n and both
@@ -344,7 +344,7 @@ Lemma wp_call_glibc_strncmp f e ls l r g args rest j dq1 dq2 p1 p2 s1 s2 n cf' �
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   ▷ (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hn Hx Hg Hr. iIntros "H1 H2 HK".
   pose proof (strncmp_spec_valid g Hg) as Hspec.
   iApply (wp_call_spec registry wi ge g strncmp_spec (dq1, dq2, p1, p2, s1, s2, n) with "[H1 H2]");

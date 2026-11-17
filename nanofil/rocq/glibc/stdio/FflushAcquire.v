@@ -38,7 +38,7 @@ Lemma wp_fflush_acquire fr fb freg fl lb lbreg sb sreg Φ :
     WP (ERun (mkFrame glibc__IO_fflush e [] None
       (Enter (TAtom "L22") (Some (TAtom "L32")))) : gexpr) {{ Φ }}) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hregion Huser Hsz.
   iIntros "#Hs Hl Hfl Hlp Hlk HK". cbn in Hfr. injection Hfr as <-.
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).

@@ -99,7 +99,7 @@ Definition getopt_ldiag_rule (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (fp dom
     translation and the print. *)
 Lemma getopt_ldiag_rule_sep (G R : iProp Σ) T fp dom :
   getopt_ldiag_rule G T fp dom -> getopt_ldiag_rule (G ∗ R) (fun mid q => T mid q ∗ R)%I fp dom.
-Proof.
+Proof using Type.
   intros (Hd & Hf & Hcap & Hgt & Hfx & H140 & H141).
   refine (conj Hd (conj Hf (conj _ (conj _ (conj _ (conj _ _)))))).
   - iIntros "[HG HR]". iDestruct (Hcap with "HG") as (dq reg) "[Hc Hb]".
@@ -198,7 +198,7 @@ Lemma wp_getopt_ldiag_noarg ks e fr (G : iProp Σ) T fp dom se sereg mid av ar p
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L413") (Some (TAtom "L411")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L411") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hrule Hse Hmid H2 H16 H7 Hc51 Hp1 Hx Hse0 Hsea Hsee Hser Hav Hala Hda Hra Hps.
   pose proof (lookup_lt_Some _ _ _ Hx) as Hjl.
   iIntros "#Ht #Hpfx #Hsl #Hsc Ha Hcl #Hs HG HK".
@@ -227,7 +227,7 @@ Lemma wp_getopt_ldiag_missing ks e fr (G : iProp Σ) T fp dom se sereg mid av ar
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L458") (Some (TAtom "L456")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L456") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hrule Hse Hmid H2 H16 H7 Hc51 Hp1 Hx Hse0 Hsea Hsee Hser Hav Hala Hda Hra Hps.
   pose proof (lookup_lt_Some _ _ _ Hx) as Hjl.
   iIntros "#Ht #Hpfx #Hsl #Hsc Ha Hcl #Hs HG HK".

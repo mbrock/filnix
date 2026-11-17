@@ -30,7 +30,7 @@ Lemma wp_file_sync_short_empty fr fb freg fl off (E : iProp Σ) Φ :
   live fb freg -∗ int_cell fb 0 fl -∗ short_sync_fields fb off -∗ E -∗
   ▷ (live fb freg -∗ int_cell fb 0 fl -∗ short_sync_fields fb (2 ^ 64 - 1) -∗
     E -∗ Φ (Ret (WInt 0))) -∗ WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hfb Hal Hend Hreg Hbackup.
   iIntros "Hl Hfl (H8 & H16 & H32 & H40 & Hoff) HE HK".
   iDestruct "Hfl" as "[%Hfl Hfl]".

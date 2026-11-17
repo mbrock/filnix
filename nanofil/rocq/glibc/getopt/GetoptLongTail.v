@@ -101,7 +101,7 @@ Lemma wp_long_miss_tail ks e fr lo os j x p1 po so oo b r Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec (TAtom "L479") [] (JRet (Tmp (TAtom "v484")))))
        : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L458") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H4 H12 H7 Hc0 Hc58 Hp1 Hx Hb Hal Hend Hr. pose proof (lookup_lt_Some _ _ _ Hx) as Hjl.
   iIntros "#Ht #Hpo Hl [%Hoo Hoob] HK".
   iDestruct "Ht" as (tb treg) "(%Ht & #Htl & #Hes & _)". destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).

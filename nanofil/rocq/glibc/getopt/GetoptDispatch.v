@@ -115,7 +115,7 @@ Lemma wp_getopt_choice ks e i n c lo lonly po so b r av ar ps s Φ :
             : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L291") (Some (TAtom "L303")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hg Hgn Hv2 Hv6 Hv10 Hv12 Hpo Hc2 Hc20 Hc100 Hi Hn Hlen Hs0 Hs1 Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "#Hws #Hpo Hl [%Hi0 Hib] Hcur Ha Hc #Hs HK".
   pose proof (avoids_app _ _ _ Hks) as [_ Hks']. apply avoids_app in Hks' as [Hksh Hklo].

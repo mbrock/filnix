@@ -43,7 +43,7 @@ Lemma wp_fxprintf_normal fp fmt ys vfn (vf : ptr -> frame)
     WP (ERun (vf ap) : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ Q r }}) ->
   R -∗ E -∗ ▷ (∀ r, Q r -∗ E -∗ Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (fxprintf_normal_frame fp fmt ys) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hys Hfn Hframe Hcall. iIntros "HR HE HK". unfold fxprintf_normal_frame.
   iApply NormalVL.wp_snapshot; [discriminate | cbn; exact Hys |
     intros ? ? ? ? Hf Hw; exact (os_wi_snapshot _ _ _ _ _ _ _ Hf Hw) |].
@@ -94,7 +94,7 @@ Lemma wp_call_fxprintf_normal f e ls l d args rest j fp fmt ys vfn (vf : ptr -> 
     WP (ERun (mkFrame f (put d (WInt (r mod 2 ^ 32)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hargs Hpublic Hys Hfn Hframe Hcall. iIntros "HR HE HK".
   iApply wp_call_bind; [exact Hargs | exact Hpublic | apply fxprintf_normal_call_frame |]. iNext.
   iApply (wp_fxprintf_normal with "HR HE"); try eassumption.

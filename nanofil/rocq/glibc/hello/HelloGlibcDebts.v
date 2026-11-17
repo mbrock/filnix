@@ -153,7 +153,7 @@ Definition hello_ro : iProp Σ :=
 
 (** [hello_ro] is persistent. *)
 Global Instance hello_ro_persistent : Persistent hello_ro.
-Proof. rewrite /hello_ro /str_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
+Proof using Type. rewrite /hello_ro /str_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
 
 (** Final cleanup owns stdin as the only remaining open stream.
     Its output buffer is empty, and the thread still owns its cleanup fields. *)

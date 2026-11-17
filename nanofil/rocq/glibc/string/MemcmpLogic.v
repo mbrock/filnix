@@ -259,7 +259,7 @@ Lemma wp_glibc_memcmp_small fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ :
   (liveq dq1 b reg -∗ bytesq dq1 b o xs -∗ liveq dq2 b' reg' -∗ bytesq dq2 b' o' ys -∗
    Φ (Ret (WInt (cmp_bytes xs ys mod 2 ^ 32)))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfr H16 Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HK".
   cbn in Hfr. injection Hfr as <-. step.
   iApply (wp_read_fact (liveq dq1 b reg ∗ liveq dq2 b' reg')%I
@@ -300,7 +300,7 @@ Definition memcmp_small_spec : Prop :=
 (** Glibc's `memcmp` satisfies [memcmp_small_spec] whenever the global
     environment binds `memcmp` to [glibc_memcmp]. *)
 Lemma glibc_memcmp_small : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) -> memcmp_small_spec.
-Proof.
+Proof using SafepointStable0.
   intros Hf. exists glibc_memcmp. split; [exact Hf|]. split; [intros; eexists; reflexivity|].
   intros fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ Hfr H16 Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy.
   iIntros "Hl Hx Hl' Hy HK".

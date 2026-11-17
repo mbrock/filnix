@@ -54,7 +54,7 @@ Context `{!gen_heapGS piece pval Σ}.
 
 (** The cursor relation holds only shared strings and pure facts, so it may be used twice. *)
 Local Instance entry_cursor_persistent ps i s : Persistent (getopt_cursor ps i s).
-Proof. unfold getopt_cursor. apply _. Qed.
+Proof using Type. unfold getopt_cursor. apply _. Qed.
 
 (** A caller that wants to call getopt again holds what the previous
     call left behind, called a session. The first blocks of the call

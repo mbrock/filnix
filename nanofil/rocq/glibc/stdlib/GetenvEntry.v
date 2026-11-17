@@ -43,7 +43,7 @@ Lemma getenv_atomic_load f e ls l d off args rest j classes p b reg o x reg' dq1
      WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer off [AtomicRead]) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hx Hp Ha Hal Hrange. iIntros "Hl Hc Hcap HK".
   iApply (wp_read_with registry (os_wi w0) ge
             (liveq dq1 b reg ∗ pcellq dq2 b o x ∗ live_capq dq3 (ptr_cap x) reg')%I
@@ -132,7 +132,7 @@ Lemma getenv_empty_contract p s dq bc rc be re counter (E : iProp Σ) :
   0 < bc -> bc + 8 <= r_end rc -> r_end rc <= 2 ^ 48 ->
   0 < be -> be + 8 <= r_end re -> r_end re <= 2 ^ 48 -> be mod 8 = 0 ->
   ⊢ getenv_name_contract (getenv_globals dq bc rc be re counter null ∗ E) p s.
-Proof.
+Proof using Type.
   intros Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal.
   iModIntro. iIntros "#Hname [HG HE]".
   iApply (getenv_empty with "Hname HG HE"); try eassumption.

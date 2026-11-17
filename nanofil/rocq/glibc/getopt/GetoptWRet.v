@@ -108,7 +108,7 @@ Lemma wp_getopt_w_call_ret_arg_with e (G : iProp Σ) T fp dom (M : iProp Σ) se 
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L533") w_call w_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgp H0 H2 H1 H6 H8 H12 H3 Hstr Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hq Hk Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser Hord Hfst Hlst.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hsl #Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl #Hs HG HF HM Hli HK".
@@ -180,7 +180,7 @@ Lemma wp_getopt_w_call_ret_arg e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L533") w_call w_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 Hcut.
   exact (wp_getopt_w_call_ret_arg_with e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq k n pe j oo b r li er ord fst lst Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -227,7 +227,7 @@ Lemma wp_getopt_w_call_ret e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
      live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L533") w_call w_jump)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli HK".
   iApply (wp_getopt_w_call_ret_arg e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq k n pe j oo b r li er ord fst lst Φ with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli");
     try eassumption.
@@ -324,7 +324,7 @@ Lemma wp_getopt_w_ret_arg_with e fr i n c pe po so oo a b r av ar ps (G : iProp 
       live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
       Φ (Ret (WInt (if sbyte so 0 =? 58 then 58 else 63))))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L508") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hrule Hse Hmid H0 H2 H12 H455 Hpo Hpe H6 H8 Hc0 Hc1 Hc2 Hc19 Hc20 H137 Hgp Hstr Hcut Hmal Hset Hlrule
     Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hq Hk0 Hsk Hi Hn Hlen Hc Hper
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser Hord Hfst Hlst.
@@ -455,7 +455,7 @@ Lemma wp_getopt_w_ret_arg e fr i n c pe po so oo a b r av ar ps (G : iProp Σ) T
       live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
       Φ (Ret (WInt (if sbyte so 0 =? 58 then 58 else 63))))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L508") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 Hcut.
   exact (wp_getopt_w_ret_arg_with e fr i n c pe po so oo a b r av ar ps G T fp dom se sereg mid M f138 f139 f140 f141 lmid mid3 mid4 lo os F pfx pxs q sq k0 li er ord fst lst Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

@@ -81,7 +81,7 @@ Lemma wp_cleanup_start fr (P Q : ptr -> iProp Σ) fs sb sreg fcp Φ :
      WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L23") (Some (TAtom "start")))) : sexpr)
        {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbody Hfr Hfc Hfcr. injection Hfr as <-.
   iIntros "#Hs Htcb Hio Hfs HK".
   (* start: `c: _IO_flush_all ()`. *)

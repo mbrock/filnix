@@ -39,10 +39,10 @@ Local Instance wexit_ret_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_st
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance wexit_ret_liveq_persistent b0 reg : Persistent (liveq DfracDiscarded b0 reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance wexit_ret_pcellq_persistent b0 o x : Persistent (pcellq DfracDiscarded b0 o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 
 (** getopt is safe when it reads W in a resumed group. The caller lends
     the parser's resources and handles the three cases. It needs no proof
@@ -79,7 +79,7 @@ Lemma entry_w_ret_arg_with ks ks2 n av ar p os lo li lonly b r ps j (G : iProp �
   (∀ s q sq k0, ⌜entry_resume_facts n av ar b r ps j s q sq k0⌝ -∗ word_string DfracDiscarded q sq -∗
      w_ret_exits_arg b r av ar ps los li F G M j n 87 null (drop (opt_skip os) os) q sq k0 Φ) -∗
   entry_w_exit n av ar p os lo li lonly b r ps j G ks ks2 Φ.
-Proof.
+Proof using Type.
   intros Hinc Hc8 Hinr Hr6 Hr8 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hn Hse0 Hsea Hsee Hser Hlen.
   iIntros "#Ht #Hpfx #Hos #Hsl #Hsc #Hs HF HM Hli HK".
   iIntros (e' e2 e3 s q sq k0 k (Hfacts & Henv & Hk2 & Hk3 & H455 & Hk & Hkw & H459 & H137 & H87 & H59 & Hlo))
@@ -203,7 +203,7 @@ Lemma scan_w_ret_arg_with ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ
      word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
      w_ret_exits_arg b r av ar ps' los li F G M i' n 87 null (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) -∗
   scan_w_exit n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ.
-Proof.
+Proof using Type.
   intros Hinc Hc8 Hinr Hr6 Hr8 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hn Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hos HF HM Hli HK".
   iIntros (e1 e2 e3 s s' w ps' i' f' l' k (Hfacts & Henv & Hk2 & Hk3 & H455 & Hk & Hkw & H459 & H137 & H87 & H59 & Hlo))
@@ -331,7 +331,7 @@ Lemma long_only_w_ret_with kc kr n av ar p os lo li lonly b r ps j (G : iProp Σ
      word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
      w_ret_exits b r av ar ps' los li F G M i' n 87 a' (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) -∗
   long_only_w_exit n av ar p os lo li lonly b r ps j G se sereg fp kc kr F M Φ.
-Proof.
+Proof using Type.
   intros Hinc Hc8 Hinr Hr6 Hr8 Hrule Hse Hmid Hgp Hstr Hcut Hmal Hset Hlrule Hfree Hgn Hgl Hg Hgc H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hn Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hos HK".
   iIntros (e3 e4 e5 s s' w ps' i' f' l' oo' a' k (Hfacts & Hlo0 & H45 & Ha' & Henv & Hk2 & Hk3 & H455 & Hk & Hkw &

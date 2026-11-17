@@ -51,7 +51,7 @@ Lemma wp_vfxprintf_narrow e from fb freg fl lb lbreg fmt ap flags md dqf fmtreg 
     lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "iw_1.start") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hpr Hchk Hfmt Hap Hflags Hfb Hal Hend Hreg Huser Hfmtr Hmd (fn & fr & Hfn & Hframe & Hcall).
   iIntros "#Hs Hl Hfl Hlp Hlk Hmd Hfmt HV HR HE HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".

@@ -187,7 +187,7 @@ Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i 
      pcell fb 80 null -∗ pcell fb 96 null -∗
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n wb base Hfr. injection Hfr as <-. intros Hfb Hfal Hfend Hfreg Hf22 Hf232 Hf2r Hfd Hfdr Hfl Happ Hnw
     Hcp Hub He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hmd.
   iIntros "#Hvt Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp H80 H96 HK".

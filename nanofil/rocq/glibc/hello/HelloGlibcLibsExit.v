@@ -68,7 +68,7 @@ Qed.
 
 (** The thread cookie and external symbol facts establish the recursive-lock contract. *)
 Lemma hello_exit_lock_env : ExitRun.exit_lock_env w0 ge (ho_el o) (ho_elr o).
-Proof.
+Proof using Type*.
   destruct (hk_el _ _ Hk) as (H0 & H8 & He & Hg).
   split; [exact H0|]. split; [exact H8|]. split; [exact He|]. split; [exact Hg|].
   split; [refine (hello_os_write w0 o _ _ Hos _); cbn; tauto|].

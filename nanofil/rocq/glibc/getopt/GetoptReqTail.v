@@ -75,7 +75,7 @@ Lemma wp_renew_read_dq f e ls l d lo hi al args rest j classes p1 p b reg dq Φ 
   liveq dq b reg -∗
   ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hx Hp1 Hp H1 H2 H3. apply (wp_read_dq registry (os_wi w0) ge dq _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]); [reflexivity | exact Hc | exact Hx |].
@@ -100,7 +100,7 @@ Lemma wp_getopt_miss_tail ks e0 e fr c po so oo x b r Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L605") (Some (TAtom "L639")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L662") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H12 H455 Hc0 Hc19 Hpo Hc20 Hc Hb Hal Hend Hr.
   iIntros "#Hpo Hl [%Hoo Hoob] Hcur HK".
   iDestruct (ws_shape with "Hpo") as %(Hcho & Hpop & Hpoe).
@@ -154,7 +154,7 @@ Lemma wp_getopt_reqmiss ks e0 e fr c pe po so oo x b r av ar ps (G : iProp Σ) T
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L605") (Some (TAtom "L639")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L653") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksd Hk0 Hrule Hse Hmid H2 H12 H455 Hpo Hpe Hc0 Hc19 Hc20 Hc Hper Hb Hal Hend Hr Hav Hala Hda Hra Hps
     Hse0 Hsea Hsee Hser.
   iIntros "#Hpo #Hsl #Hsc Hl Hoo Hcur Ha Hcl #Hs HG HK".

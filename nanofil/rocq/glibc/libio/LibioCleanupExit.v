@@ -73,7 +73,7 @@ Lemma wp_glibc__IO_cleanup_exit fr (P : ptr -> iProp Σ) fs sb sreg fcp Φ :
   ▷ (∀ r, ⌜r = 0 \/ r = 2 ^ 32 - 1⌝ -∗ tcb_cleanup_inv (ow_self w0) -∗ io_list_inv ge fs -∗
      ([∗ list] g ∈ fs, stream_life g ∗ exit_stream true g) -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hpush Hpop Hflush. apply (wp_glibc__IO_cleanup Hreg Hext).
   - exact push_spec_holds.
   - exact pop_spec_holds.
@@ -118,7 +118,7 @@ Lemma cleanup_rule_exit fs sb sreg fcp :
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   ⊢ ExitRunTail.cleanup_rule w0 ge (single_ro ge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge fs ∗
                            [∗ list] g ∈ fs, stream_life g ∗ exit_stream false g).
-Proof.
+Proof using Hcl Hext Hflush Hpop Hpush.
   intros Hfc Hfcr. apply (cleanup_rule_io (exit_stream false) fs sb sreg fcp); [|exact Hfc | exact Hfcr].
   apply (flush_body_exit (glibc_program := program_of w0 glibc_os_registry ge) holds_os_glibc Hext).
 Qed.

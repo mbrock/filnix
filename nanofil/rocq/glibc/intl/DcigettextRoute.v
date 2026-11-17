@@ -83,7 +83,7 @@ Definition dci_callees_r (lk1 lk2 lkt rt tc : ptr) (L1 L1' L1'' L2 L2' L2'' T T'
 Lemma dci_callees_r_of lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv :
   dci_callees lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_callees_r lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
-Proof.
+Proof using Type.
   intros (H1 & H2 & H3 & Hcpy & H) . split; [exact (dci_stpcpy_rule_r_of Hcpy) | unfold dci_others; tauto].
 Qed.
 
@@ -120,7 +120,7 @@ Qed.
 Lemma dci_callees_f_of lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv :
   dci_callees_r lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
-Proof. intros [Hs Ho]. split; [exact Hs | exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho)]. Qed.
+Proof using Type. intros [Hs Ho]. split; [exact Hs | exact (dci_others_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Ho)]. Qed.
 
 (** These are the globals. The binding list head lives at db, entry 5 of
     the category index lives at ib + 5, and the privilege flag lives at

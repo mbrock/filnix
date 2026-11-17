@@ -91,7 +91,7 @@ Lemma wp_check_read_cell_dq f e ls l d lo hi al args rest j classes p b reg o v 
   liveq dq1 b reg -∗ icellq dq2 b o v -∗
   ▷ (liveq dq1 b reg -∗ icellq dq2 b o v -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha Hw Hal. iIntros "Hl Hc HK".
   iApply (wp_read_with registry wi ge (liveq dq1 b reg ∗ icellq dq2 b o v)
             (fun m => live_at m b reg /\ all_agree m (cell b o v)) _ _ [] with "[$Hl $Hc] [HK]").
@@ -133,7 +133,7 @@ Lemma wp_glibc_alloca_cutoff_cell fr n dq1 dq2 tb treg sz Φ :
   liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗
   ▷ (liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗ Φ (Ret (WInt (cutoff_bit n sz)))) -∗
   WP (ERun fr : cexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hown Htb Hend. injection Hfr as <-. unfold off_stackblock_size in *. cbn in Hend.
   iIntros "Hl Hc HK".
   assert (Eq : forall x, x mod 2 ^ 64 mod 2 ^ 64 / 2 ^ ((2 mod 2 ^ 32) mod 64) = x mod 2 ^ 64 / 4).
@@ -190,7 +190,7 @@ Lemma wp_glibc_alloca_cutoff fr n dq1 dq2 tb treg sz Φ :
   liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗
   ▷ (liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗ Φ (Ret (WInt (cutoff_bit n sz)))) -∗
   WP (ERun fr : cexpr) {{ Φ }}.
-Proof. intros Hfr Hown Htb Hend Hreg. apply wp_glibc_alloca_cutoff_cell; [exact Hfr | exact Hown | exact Htb | lia]. Qed.
+Proof using Type*. intros Hfr Hown Htb Hend Hreg. apply wp_glibc_alloca_cutoff_cell; [exact Hfr | exact Hown | exact Htb | lia]. Qed.
 
 (** A call site that binds the result to d continues with that answer. *)
 Lemma wp_call_alloca_cutoff f e ls l d args rest j n dq1 dq2 tb treg sz Φ :
@@ -202,7 +202,7 @@ Lemma wp_call_alloca_cutoff f e ls l d args rest j n dq1 dq2 tb treg sz Φ :
      WP (ERun (mkFrame f (put d (WInt (cutoff_bit n sz)) e) ls None (Exec l rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hg Hx Hown Htb Hend Hreg. iIntros "Hl Hc HK".
   iApply wp_call_bind; [exact Hx | exact Hg | reflexivity |]. iNext.
   iApply (wp_glibc_alloca_cutoff with "Hl Hc"); [reflexivity | exact Hown | exact Htb | exact Hend | exact Hreg |].
@@ -226,7 +226,7 @@ Definition thread_stack_ro : iProp Σ :=
 
 (** The read-only share can be copied freely. *)
 Global Instance thread_stack_ro_persistent : Persistent thread_stack_ro.
-Proof. rewrite /thread_stack_ro /liveq /icellq /ptsq. apply _. Qed.
+Proof using Type. rewrite /thread_stack_ro /liveq /icellq /ptsq. apply _. Qed.
 
 (** With the read-only share, the call returns a 32-bit answer for any
     request, which is the form the parser's rule asks for. *)
@@ -237,7 +237,7 @@ Lemma wp_call_alloca_cutoff_ro f e ls l d args rest j n Φ :
   ▷ (∀ x, ⌜0 <= x < 2 ^ 32⌝ -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hg Hx. iIntros "(%tb & %treg & %sz & %Ht & Hl & Hc) HK". destruct Ht as (Hown & Htb & Hend & Hreg).
   iApply (wp_call_alloca_cutoff with "Hl Hc"); [exact Hg | exact Hx | exact Hown | exact Htb | exact Hend | exact Hreg |].
   iNext. iIntros "_ _". iApply "HK". iPureIntro. unfold cutoff_bit. destruct (_ <=? _); lia.
@@ -254,7 +254,7 @@ Qed.
 
 (** The read-only share contradicts the whole lifetime that the stream cleanup owns. *)
 Lemma tcb_cleanup_thread_stack_ro : tcb_cleanup_inv (ow_self w0) ∗ thread_stack_ro ⊢ False.
-Proof.
+Proof using Type.
   iIntros "[(%tb & %treg & %jb & %Ht & Hl & _) (%tb' & %treg' & %sz & %Ht' & Hq & _)]".
   destruct Ht as (Hs & _). destruct Ht' as (Hs' & _). rewrite Hs in Hs'. injection Hs' as <-.
   rewrite /live /liveq /pts /ptsq /=. iDestruct "Hl" as "[Hl _]". iDestruct "Hq" as "[Hq _]".
@@ -299,7 +299,7 @@ Lemma wp_call_alloca_cutoff_tcb f e ls l d args rest j n dq sz Φ :
      WP (ERun (mkFrame f (put d (WInt (cutoff_bit n sz)) e) ls None (Exec l rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hg Hx. iIntros "(%tb & %treg & %jb & %Ht & Hl & Hcl & Hjb & Hch) (%tb' & %Hs' & Hc) HK".
   pose proof Ht as (Hs & Htb & _ & Hend & Hreg). rewrite Hs in Hs'. injection Hs' as <-.
   iApply wp_call_bind; [exact Hx | exact Hg | reflexivity |]. iNext.
@@ -328,7 +328,7 @@ Lemma wp_call_alloca_cutoff_loan f e ls l d args rest j n dq Φ :
      WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hg Hx. iIntros "(Ht & %sz & Hc) HK".
   iApply (wp_call_alloca_cutoff_tcb with "Ht Hc"); [exact Hg | exact Hx |].
   iNext. iIntros "Ht Hc". iApply ("HK" with "[Ht Hc]"); [iFrame "Ht"; iExists sz; iExact "Hc"|].

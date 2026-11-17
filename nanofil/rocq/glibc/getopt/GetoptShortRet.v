@@ -81,7 +81,7 @@ Lemma wp_getopt_unknown ks e fr c pe oo b r av ar ps (G : iProp Σ) T fp dom se 
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L492") [] (b_jump getopt_blk492))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L471") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksd Hrule Hse Hmid H2 H12 H455 Hpe Hc0 Hc Hper Hb Hal Hend Hr Hav Hala Hda Hra Hps
     Hse0 Hsea Hsee Hser.
   iIntros "#Hsl #Hsc Hl [%Hoo Hoob] Ha Hcl #Hs HG HK".
@@ -119,7 +119,7 @@ Lemma wp_getopt_short_ret ks e fr v Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L605") [] (b_jump getopt_blk605))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L605") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hv. iIntros "HK".
   destruct Hv as [[[-> | ->] Hv] | [-> Hv]];
     step; step; iApply ("HK" with "[%]"); (split; [xkeep | rewrite chr_w_mod32; lk_prove]).

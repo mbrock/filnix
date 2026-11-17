@@ -69,7 +69,7 @@ Lemma wp_hello_xmalloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
        Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
   WP (ERun (mkFrame xmalloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hn Hm Hmp Htc Hm2. iIntros "Hidle HK".
   iApply (wp_enter _ _ _ _ _ _ _ _ (hblk xmalloc_fn "start")); [vm_compute; reflexivity | wpm |]. iNext.
   cbn [b_insts b_jump hblk].

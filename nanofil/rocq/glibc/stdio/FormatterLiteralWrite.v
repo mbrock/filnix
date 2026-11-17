@@ -42,7 +42,7 @@ Lemma wp_printf_buffer_write_word fr bb reg off xs cs dq p s Φ :
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs off s -∗
     word_string dq p s -∗ Φ RetVoid) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hcpy Hb Ha He Hr Ho Hn Hroom Hxs Hcs Hx.
   iIntros "Hl Hmode Hptr Hend Hx Hcs Hs HK".
   iDestruct (word_string_bytes with "Hs") as (sb sreg ws) "(%Hs & Hsl & Hbytes & Hback)".

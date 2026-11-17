@@ -92,7 +92,7 @@ Lemma wp_long_join_found_arg ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sere
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksq Hkse Hkst Hksd Hrule Hse Hmid3 Hmid4 H0 H2 H4 H8 H12 H14 H16 H90 Hp12 H7 Hp1 Hc0 Hc1 Hx Hos Hf
     Hi Hn Hlen Hpe Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hpo #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
@@ -156,7 +156,7 @@ Lemma wp_long_join_found ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg mi
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hpfx Hpo Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli HK".
   iApply (wp_long_join_found_arg ks e G T fp dom M se sereg mid3 mid4 av ar ps lo os j x pfx sp po so cur s i n pe oo a b r li F Φ with "Ht Hpfx Hpo Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try eassumption.

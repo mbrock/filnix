@@ -33,7 +33,7 @@ Definition getenv_at_rule (G : iProp Σ) (p : ptr) : Prop :=
     This lets the parser carry the stack-size cell needed by its cutoff. *)
 Lemma getenv_at_rule_sep (G R : iProp Σ) p :
   getenv_at_rule G p -> getenv_at_rule (G ∗ R) p.
-Proof.
+Proof using Type.
   intros Hg f e ls l d args rest j Φ Hargs. iIntros "[HG HR] HK".
   iApply (Hg with "HG"); [exact Hargs|]. iNext. iIntros (q) "HG".
   iApply ("HK" with "[$HG $HR]").
@@ -54,7 +54,7 @@ Lemma wp_call_getenv_readable f e ls l d args rest j p s (G : iProp Σ) Φ :
     WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI_getenv")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hargs. iIntros "#Hcontract #Hname HG HK".
   iApply (wp_call_bind registry (os_wi w0) ge); [exact Hargs|apply defines|apply getenv_call_frame|].
   iNext. iPoseProof ("Hcontract" with "Hname HG") as "Hcall".
@@ -69,7 +69,7 @@ Qed.
 Lemma getenv_name_at_rule (G : iProp Σ) p s :
   (⊢ getenv_name_contract G p s) ->
   getenv_at_rule w0 registry ge (G ∗ word_string DfracDiscarded p s) p.
-Proof.
+Proof using Type*.
   intros Hcontract f e ls l d args rest j Φ Hargs. iIntros "[HG #Hname] HK".
   iApply (wp_call_getenv_readable with "[] Hname HG"); [exact Hargs|iApply Hcontract|].
   iNext. iIntros (q) "HG". iApply ("HK" with "[$HG $Hname]").
@@ -96,7 +96,7 @@ Lemma wp_call_getenv_static f e ls l d args rest j p s entries ep dq dqa dqt
       (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI_getenv")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hargs Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal.
   iIntros "#Hname HG HS HE HK".
   iApply (wp_call_bind registry (os_wi w0) ge); [exact Hargs|apply defines|apply getenv_call_frame|].

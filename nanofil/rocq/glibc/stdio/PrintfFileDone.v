@@ -28,7 +28,7 @@ Lemma wp_printf_file_done_failed fr bb br Φ :
   live bb br -∗ int_cell bb 32 0 -∗
   ▷ (live bb br -∗ int_cell bb 32 0 -∗ Φ (Ret (WInt 4294967295))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hb Ha He Hr. injection Hfr as <-.
   iIntros "Hb [%Hm Hmode] HK".
   step. step. check "Hb".
@@ -74,7 +74,7 @@ Lemma wp_printf_file_done_flush fr bb br eb er mode
     pcell bb 16 stop -∗ icell bb 24 written -∗
     live eb er -∗ int_cell eb 0 err -∗ R m base cur stop written -∗
     Φ (Ret (WInt result))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hflushfn Hdonefn Herr Hb Ha He Hr Hmode Heb Hee Her Hflush Hborrow.
   injection Hfr as <-. iIntros "Hb [%Hm Hmode] HP HK".
   step. step. check "Hb".

@@ -38,7 +38,7 @@ Lemma wp_fflush_short_empty fr fb freg fl off md lb lbreg sb sreg vb vreg (E : i
     pcell fb 216 (mkPtr (vb + vt_file) (Ro vb)) -∗
     pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hregion Huser Hbackup Hself Hmd.
   iIntros "#Hvt #Hslot #Hs Hl Hfl Hfields Hmd Hvtp Hlp Hlk HE HK".
   iApply (wp_fflush_acquire Hreg Hext with "Hs Hl Hfl Hlp Hlk"); try close_side; try assumption.

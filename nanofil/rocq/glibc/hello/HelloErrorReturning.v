@@ -146,7 +146,7 @@ Lemma wp_call_error_returning_zero_loans (RP RQ : iProp Σ)
   ▷ (error_returned -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcount Hcountb Hcounte Hcountr Hext Hflushframe Hformat Hformatter Hgstderr Hnewline Hnewlineframe Hpost Hreg Hrptr Hrsa Hrsb Hrse Hrsr Hstderrflush Hstr Hsync Htext Hwide Hwidecall Hwidefn Hwideframe.
   intros flush Hargs Hpublic Hys Herr Hinternal Hstate Hcancel
     Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr Hcu
     Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hfxframe Hfxcall
@@ -218,7 +218,7 @@ Lemma wp_call_error_returning_zero_loan
   ▷ (error_returned -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcount Hcountb Hcounte Hcountr Hexchange Hext Hflushframe Hformat Hformatter Hgstderr Hnewline Hnewlineframe Hpost Hreg Hrptr Hrsa Hrsb Hrse Hrsr Hstderrflush Hstr Hstrcall Hsync Htext Htextcall Hwide Hwidecall Hwidefn Hwideframe.
   intros flush Hargs Hpublic Hys Herr Hinternal Hstate Hcancel
     Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr Hcu
     Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hfxframe Hfxcall
@@ -270,7 +270,7 @@ Lemma wp_call_error_returning_zero f e ls l args rest j
   ▷ (error_returned -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcount Hcountb Hcounte Hcountr Hexchange Hext Hflushframe Hformat Hformatter Hgstderr Hnewline Hnewlinecall Hnewlineframe Hpost Hreg Hrptr Hrsa Hrsb Hrse Hrsr Hstderrflush Hstr Hstrcall Hsync Htext Htextcall Hwide Hwidecall Hwidefn Hwideframe.
   intros flush Hargs Hpublic Hys Herr Hinternal Hstate Hcancel
     Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr Hcu
     Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hfxframe Hfxcall

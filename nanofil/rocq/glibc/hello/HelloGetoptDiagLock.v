@@ -294,7 +294,7 @@ Qed.
 Example dlk_bad_controls sh fl :
   ~ dlk_ready (mkDlk (-8) (tid + 1) sh fl) /\ ~ dlk_ready (mkDlk 4 (tid + 1) sh fl) /\
   ~ dlk_ready (mkDlk (2 ^ 31 - 8) (tid + 1) sh fl) /\ ~ dlk_ready (mkDlk 0 tid sh fl).
-Proof. unfold dlk_ready; cbn. split_and!; intros (H1 & H2 & H3 & H4); first [lia | vm_compute in H2; discriminate | vm_compute in H3; discriminate | apply H4; reflexivity]. Qed.
+Proof using Type. unfold dlk_ready; cbn. split_and!; intros (H1 & H2 & H3 & H4); first [lia | vm_compute in H2; discriminate | vm_compute in H3; discriminate | apply H4; reflexivity]. Qed.
 
 (** A caller may report twice, and between the reports getenv may
     borrow the bookkeeping. Each report may change errno. This example

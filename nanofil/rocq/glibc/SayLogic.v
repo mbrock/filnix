@@ -269,7 +269,7 @@ Lemma strlen_msg_spec Φ :
   pts msg_ps -∗ (pts msg_ps -∗ Φ (Ret (WInt 13))) -∗
   WP (ERun (mkFrame strlen_fn [(TAtom "v0", WPtr msg_ptr)] [] None (Enter (TAtom "start") None)) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros "Hps HΦ". rewrite /msg_ps !pts_app. iDestruct "Hps" as "(Hl & H0 & H1)".
   iApply (StrlenLogic.wp_glibc_strlen say_registry (os_wi w0) say_ge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 13
             with "Hl [H0 H1]").
@@ -293,7 +293,7 @@ Qed.
 Lemma main_spec eb :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In 1 (ow_fds w0) ->
   pts msg_ps -∗ errno_any eb -∗ WP (ERun main_entry : sexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
-Proof.
+Proof using Type.
   intros He Hfd. iIntros "Hps Herr". repeat concrete_step.
   iApply wp_call_bind; [concrete_side | exact find_strlen | concrete_side |]. iNext.
   iApply (strlen_msg_spec with "Hps"). iIntros "Hps".

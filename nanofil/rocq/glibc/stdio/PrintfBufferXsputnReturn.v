@@ -46,7 +46,7 @@ Lemma wp_printf_xsputn_mismatch e bb breg mode r n Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 9 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hbb Hbe Hbr Hr Hn Hneq Hv0 Hchk Hret Hcount.
   iIntros "Hb [%Hm Hm] HK".
   cbn [printf_xsputn_block b_insts b_jump skipn].
@@ -67,7 +67,7 @@ Lemma wp_printf_xsputn_complete e n Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 9 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hn Hret Hcount. iIntros "HK".
   cbn [printf_xsputn_block b_insts b_jump skipn].
   step. branch_as true. norm. rewrite Z.eqb_refl. iExact "HK".

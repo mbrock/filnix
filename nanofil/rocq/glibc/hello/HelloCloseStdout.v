@@ -119,7 +119,7 @@ Lemma wp_hello_close_stdout_to_diagnostic rest fb freg fl f2 fd tw off bb breg i
   ((∀ e, state -∗ WP (ERun (mkFrame close_stdout_fn e [] None
       (Enter (TAtom "L0") (Some (TAtom "L8")))) : gexpr) {{ Φ }}) ∧ (done -∗ Φ RetVoid)) -∗
   WP (ERun (mkFrame close_stdout_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n fp ep wb cells state done Hgstdout Hob Hoba Hobe Hobr Hgstderr Hsc Hsca Hsce Hscr
     Hgexit Hxc Hxce Hxcr Hgignore Hib Hibe Hibr Hflag Hglobal Hgout Hgerr Hdistinct Hgin Hin Hinerr Hinr
     Hcleanup Hfcr Hfb Hfal Hfend Hfreg Hf22 Hf232 Hnl Hf2r Hfd Hfdr Hfl Happ Hnw Hcp Hub Hul Hlnk Hfb8

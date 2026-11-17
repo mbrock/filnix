@@ -46,7 +46,7 @@ Lemma wp_printf_buffer_done_count fr bb breg db dreg bo used written mode dq1 dq
      pcell bb 0 (mkPtr (db + bo) (Obj db)) -∗
      pcell bb 8 (mkPtr (db + bo + used) (Obj db)) -∗ icell bb 24 written -∗
      Φ (Ret (WInt (written + used)))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hal Hend Hreg Hdb Hbo Hused Hdend Hdreg Hw Htotal Hmode.
   injection Hfr as <-. iIntros "Hl Hd [%Hm Hmode] Hbase Hptr Hwritten HK".
   step. step. norm.

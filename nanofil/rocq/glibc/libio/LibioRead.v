@@ -55,7 +55,7 @@ Lemma wp_glibc___fpending fr fb freg mode wp wb reg' Φ :
   ▷ (live fb freg -∗ int_cell fb off_mode mode -∗ pcell fb off_write_ptr wp -∗ pcell fb off_write_base wb -∗
      live_cap (ptr_cap wp) reg' -∗ Φ (Ret (WInt ((ptr_addr wp - ptr_addr wb) mod 2 ^ 64)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hfb Hal Hend Hfreg Hmode Hcap Hwp Hwb. injection Hfr as <-.
   iIntros "Hl [%Hm Hmode] Hwp Hwb Hc HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hmode". step.
@@ -82,7 +82,7 @@ Lemma wp_glibc__IO_ferror fr fb freg fl f2 Φ :
   ▷ (live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗
      Φ (Ret (WInt (if Z.land fl io_err_seen =? 0 then 0 else 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hfb Hal Hend Hfreg Hnl. injection Hfr as <-.
   iIntros "Hl [%Hf Hfl] [%Hf2 Hfl2] HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfl2". step. step. step. step.
@@ -113,7 +113,7 @@ Lemma wp_glibc__IO_file_close fr fb freg fd eb Φ :
   ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ live fb freg -∗ int_cell fb off_fileno fd -∗ errno_any eb -∗
      Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfn Hfb Hal Hend Hfreg He. injection Hfr as <-.
   iIntros "Hl [%Hfd Hfdb] Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".
@@ -137,7 +137,7 @@ Lemma wp_glibc__IO_file_stat fr fb freg fd b reg o eb Φ :
   ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ live fb freg -∗ int_cell fb off_fileno fd -∗ live b reg -∗
      blk_any b o stat_size -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfn Hfb Hal Hend Hfreg He Hin Ho Hst. injection Hfr as <-.
   iIntros "Hl [%Hfd Hfdb] Hbl Hb Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".

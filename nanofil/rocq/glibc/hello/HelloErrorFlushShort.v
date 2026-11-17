@@ -175,7 +175,7 @@ Lemma wp_call_error_returning_short_zero f e ls l args rest j
   ▷ (returned -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hbackup Hcount Hcountb Hcounte Hcountr Hentry Herrno Hexchange Hext Hflushframe Hfmtr Hformat Hgstderr Hmd Hmmd Hnewline Hnewlineformat Hnlb Hpost Hready_text Hreg Hrfa Hrfb Hrfe Hrfr Hrsa Hrsb Hrse Hrsr Hself Hselfr Hstr Hstrcall Hstring Hsync Htext Htextformat Htxb Huser Hvfx Hwide Hwidecall Hwidefn Hwideframe Q cbr dqc.
   intros flush Hargs Hpublic Hys Herr Hinternal Hstate Hcancel
     Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr Hp Hpb Hpa Hpe Hpr Hcu
     Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hfx Hpxb Hpmd Hlend Hready_prefix Hprefixformat

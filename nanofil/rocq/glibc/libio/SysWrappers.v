@@ -115,7 +115,7 @@ Lemma wp_glibc___libc_write fr fd p n eb ps Φ :
   pts ps -∗ errno_any eb -∗
   ▷ (∀ k, ⌜(0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1⌝ -∗ pts ps -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". step.
   iApply (OsWrite.wp_zsys_write with "Hps Herr"); sides.
   iNext. iIntros (k Hk) "Hps Herr".
@@ -136,7 +136,7 @@ Lemma wp_glibc___fstat64 fr fd b reg o eb Φ :
   ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ live b reg -∗ blk_any b o stat_size -∗ errno_any eb -∗
        Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfd He Hin Ho Hend. injection Hfr as <-. iIntros "Hl Hb Herr HK". step.
   iApply (OsFstat.wp_zsys_fstat with "Hl Hb Herr");
     sides.
@@ -156,7 +156,7 @@ Lemma wp_glibc___lseek64 fr fd off wh eb Φ :
   errno_any eb -∗
   ▷ (∀ k, ⌜(0 <= k < 2 ^ 63) \/ k = 2 ^ 64 - 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfd Hoff Hwh He Hin. injection Hfr as <-. iIntros "Herr HK". step.
   iApply (OsLseek.wp_zsys_lseek with "Herr");
     sides.
@@ -175,7 +175,7 @@ Lemma wp_glibc___close_nocancel fr fd eb Φ :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   errno_any eb -∗ ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". step.
   iApply (OsClose.wp_zsys_close with "Herr"); sides.
   iNext. iIntros (k Hk) "Herr".
@@ -188,7 +188,7 @@ Lemma wp_glibc___close_nocancel_nostatus fr fd eb Φ :
   call_frame glibc___close_nocancel_nostatus [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   errno_any eb -∗ ▷ (errno_any eb -∗ Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfd He. injection Hfr as <-. iIntros "Herr HK". step.
   iApply (OsClose.wp_zsys_close with "Herr"); sides.
   iNext. iIntros (k Hk) "Herr". iApply wp_ret_void. iNext. iApply ("HK" with "Herr").
@@ -203,7 +203,7 @@ Lemma wp_glibc___isatty_nostatus fr fd eb Φ :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   errno_any eb -∗ ▷ (∀ r, ⌜r = 0 \/ r = 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfd He Hin. injection Hfr as <-. iIntros "Herr HK". step.
   iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
                     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |].

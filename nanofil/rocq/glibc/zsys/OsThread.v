@@ -117,7 +117,7 @@ Lemma wp_zthread_self_cookie f e ls lab d rest j Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "zthread_self_cookie")) [] :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hz. iIntros "HK".
   iApply (wp_os_call w0 _ _ _ _ _ _ _ _ _ _ _ _ [] [] True%I (fun vs => vs = [WPtr (ow_self w0)])
             with "[//] [] [HK]"); [done | done | done | exact Hreg | done | | | done | | |].

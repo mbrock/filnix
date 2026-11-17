@@ -146,7 +146,7 @@ Lemma entry_scan_cells b r s' :
   (live b r ∗ int_cell b 0 (gs_ind s') ∗ pcell b 16 null ∗ int_cell b 40 (gs_order s') ∗
      int_cell b 44 (gs_first s') ∗ int_cell b 48 (gs_last s')) ∗
   (int_cell b 4 (gs_err s') ∗ int_cell b 8 (gs_opt s') ∗ int_cell b 24 1 ∗ pcell b 32 (gs_next s')).
-Proof.
+Proof using Type.
   intros Hin Ha. rewrite Hin Ha.
   iIntros "Hl Hi He Ho Ha Hn Hc Hr Hf Hla". iFrame.
 Qed.

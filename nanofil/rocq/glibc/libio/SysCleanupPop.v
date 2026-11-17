@@ -54,7 +54,7 @@ Lemma wp_glibc___libc_cleanup_pop_restore fr bb breg bo Φ :
   ▷ (tcb_cleanup_inv (ow_self w0) -∗ live bb breg -∗ pcell bb (bo + 24) null -∗ int_cell bb (bo + 16) 0 -∗
      Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hbb Hbo Hal Hend Hbreg. injection Hfr as <-.
   iIntros "(%tb & %treg & %jb & %Ht & Htl & Hcl & Hjb & Hch) Hbl Hpv [%Hct0 Hct] HK".
   destruct Ht as (Hself & Htb & Htal & Htend & Htreg). step.

@@ -75,7 +75,7 @@ Lemma wp_printf_buffer_final_string fr bb br bo xs cs fp dqf
     live bb br -∗ int_cell bb 32 4 -∗ pcell bb 8 (mkPtr (bb+bo+Z.of_nat (length s)) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb+176) (Obj bb)) -∗ window_after bb 48 xs bo s -∗ Φ RetVoid) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hshare Herr Hrf Hmf Hgf Hj Ht Hstrlen Hchr Hscan Hwrite Hfailed Hcpy
     Hbb Hba Hbe Hbr Hbo Hlen Hroom Hxs Hcs Hbytes Hab Haa Hae Har
     Hsb Ho He Hr Ha Hp Heb Hee Her Hrb Hra Hre Hrr Hmb Hma Hme Hmr

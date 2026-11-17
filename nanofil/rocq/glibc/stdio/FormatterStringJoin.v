@@ -31,7 +31,7 @@ Lemma final_format_tail dq p :
   word_string dq p [37;115] -∗
   ∃ dt, word_string dt (ptr_add p 2) [] ∗
     (word_string dt (ptr_add p 2) [] -∗ word_string dq p [37;115]).
-Proof.
+Proof using Type.
   intros [-> | [q ->]].
   - iIntros "#Hs". iExists DfracDiscarded. iSplit.
     + iApply (word_string_suffix DfracDiscarded p [37;115] [] with "Hs").
@@ -93,7 +93,7 @@ Lemma wp_formatter_registered_final_string e from rb rr mb mr ab ar
     live bb br -∗ int_cell bb 32 4 -∗ pcell bb 8 (mkPtr (bb + bo + Z.of_nat (length s)) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs bo s -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_printf_buffer e [] None (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hshare Hrf Hmf Haf H9 Hw Hv Hfv Hfc Hb Hj Ht Hstrlen Hchr Hscan Hwrite Hcpy
     Hrb Hra Hre Hrr Hmb Hma Hme Hmr Hab Haa Hae Har Hjb Hje Hjr Htb Hte Htr
     Hcb Hsb Ho He Hr Ha Hp Hfb Hfa Hfe Hfr Hwb Hwe Hbb Hba Hbe Hbr Hbo Hlen Hroom Hxs Hcs Hbytes.

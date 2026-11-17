@@ -56,7 +56,7 @@ Lemma wp_closed_stdout_fflush (Hreg : holds_os registry) (Hext : sys_external ge
   single_ro ge sb sreg -∗ live fb freg -∗ (closed_stdout_fields fb vb lb lbreg ∗ E) -∗
   WP (ERun fr : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
     live fb freg ∗ (closed_stdout_fields fb vb lb lbreg ∗ E) }}.
-Proof.
+Proof using Type.
   intros Hfr Hfb Hal Hend Hregion Hself.
   iIntros "#Hvt #Hslot #Hs Hl ((Hfl & H8 & H16 & H32 & H40 & Hoff & Hvtp & Hlp & Hlk) & HE)".
   iApply (wp_fflush_closed Hreg Hext Hsync with "Hvt Hslot Hs Hl Hfl H8 H16 H32 H40 Hoff Hvtp Hlp Hlk HE");

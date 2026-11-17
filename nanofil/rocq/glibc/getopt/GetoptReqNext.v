@@ -65,7 +65,7 @@ Lemma wp_getopt_reqnext ks e0 e fr i n c a x b r av ar ps Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L605") (Some (TAtom "L639")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L654") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H2 H12 H455 Hc1 Hc2 Hc20 Hc177 Hi Hin Hn Hlen Hc Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Hab Hcur Ha Hcl #Hs HK".
   set (j := Z.to_nat (i + 1)). assert (Hj : Z.of_nat j = i + 1) by (unfold j; lia).
@@ -108,7 +108,7 @@ Lemma wp_getopt_reqrest ks e0 e fr i c cur t a b r Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L605") (Some (TAtom "L639")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L637") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H12 H455 Hc1 Hc2 Hc20 H137 Hi Hc Hb Hal Hend Hr.
   iIntros "#Hws Hl [%Hi0 Hib] Hab Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).

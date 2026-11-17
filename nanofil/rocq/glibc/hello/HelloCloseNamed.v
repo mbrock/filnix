@@ -69,7 +69,7 @@ Lemma wp_close_stdout_named e b xs (E : iProp Σ) Φ :
   live xc xreg -∗ int_cell xc 0 status -∗ errno_any eb -∗ R -∗ E -∗
   WP (ERun (mkFrame close_stdout_fn e [] None
     (Enter (TAtom "L31") (Some (TAtom "L0")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Defines0 Defines1 Hcall He Herror Hexit Hext Hfmt Hframe Hglobal Hname Hnb Hnba Hnbe Hpr Hqcall Hqframe Hquote Hreg Hxc Hxce.
   intros Htext Hstr. iIntros "Hnl Hnp Hpl Hbytes Hxl Hstatus Herr HR HE".
   step. iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
   iApply (wp_glibc_errno_location registry (os_wi w0) ge _ _ Hglobal). resume.
@@ -113,7 +113,7 @@ Lemma wp_close_stdout_diagnostics e unnamedfmt namedfmt unnamedframe (F E : iPro
   live xc xreg -∗ int_cell xc 0 status -∗ errno_any eb -∗ R -∗ F -∗ E -∗
   WP (ERun (mkFrame close_stdout_fn e [] None
     (Enter (TAtom "L0") (Some (TAtom "L8")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Defines0 Defines1 Hcall He Herror Hexit Hext Hfmt Hframe Hglobal Hname Hnb Hnba Hnbe Hnbr Hpr Hqcall Hqframe Hquote Hreg Hxc Hxce Hxcr.
   intros Hnamed Htext Hunnamed Huframe Hucall Hread.
   iIntros "Hnl Hnp Hpl Hxl Hstatus Herr HR HF HE".
   iApply (wp_close_stdout_diagnostic Hreg Hext e nb nreg filename preg xc xreg status eb unnamedfmt text namedfmt

@@ -100,7 +100,7 @@ Lemma wp_dci_c_locale_fr e cv sl sreg a0 a1 sec secreg dqs xs xsreg xd xreg s ms
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 0 -∗ U1' -∗ U2' -∗
      errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hsec Hsec0 Hsec4 Hsecend Hsecr Hcv Hsl Hv17 Hc0 Hv232 Hv69 Hs Hv6 Hv2
     Hsl0 Hslend Hslr Hsk Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd.
   iIntros "#Hw Hsecl [% Hsecb] Hl Hb0 Hb1 Hxl Hxc Hdl HU1 HU2 Herr HK".

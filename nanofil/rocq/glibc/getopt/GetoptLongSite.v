@@ -167,7 +167,7 @@ Lemma wp_getopt_long_only_call_keep_with ks e (G : iProp Σ) T fp dom (M : iProp
        {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L376") long_only_call long_only_jump)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hneg Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoob Hab Hcur Ha Hcl #Hs HG HF HM Hli HK".
@@ -234,7 +234,7 @@ Lemma wp_getopt_long_only_call_keep ks e (G : iProp Σ) T fp dom (M : iProp Σ) 
        {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L376") long_only_call long_only_jump)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 Hcut.
   exact (wp_getopt_long_only_call_keep_with ks e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -289,7 +289,7 @@ Lemma wp_getopt_long_only_call e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg
        {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Exec (TAtom "L376") long_only_call long_only_jump)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgp H0 H2 H1 H6 H8 H10 H12 H3 Hstr Hneg Hcut Hmal Hset Hrule Hfree Hgn Hgl Hg Hgc Hse H138 H139 H140 H141 Hmid Hmid3
     Hmid4 Hfl Hos Hpe Hlo Hq Hq0 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli HK".

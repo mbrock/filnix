@@ -49,7 +49,7 @@ Lemma wp_printf_file_flush fr bb br fb vr xs written :
       pcell bb 16 (mkPtr (bb+176) (Obj bb)) ∗ F (mkPtr fb (Obj fb))) ∨
      (∃ start stop, int_cell bb 32 4 ∗ pcell bb 0 start ∗ pcell bb 8 start ∗
       pcell bb 16 stop ∗ printf_selected bb start (F (mkPtr fb (Obj fb))))) }}.
-Proof.
+Proof using Type*.
   cbn zeta. intros Hfr Hb Ha He Hr Hfb Hfa Hlen Hxs Hw.
   iIntros "#Hvt Hb Hbase Hcur Hend Hw Hfp Hxs Hmode HF HE".
   iApply (wp_printf_xsputn_staging F E Hfn Hcall fr bb br fb vb vr xs 4 written

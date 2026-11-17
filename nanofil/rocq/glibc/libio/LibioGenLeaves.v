@@ -50,7 +50,7 @@ Lemma wp_glibc__IO_unsave_markers fb freg Φ :
   live fb freg -∗ pcell fb 80 null -∗ pcell fb 96 null -∗
   ▷ (live fb freg -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ RetVoid) -∗
   WP (ERun (unsave_frame fb) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfb Hfal Hfend. unfold file_size in Hfend.
   iIntros "Hl H80 H96 HK". unfold unsave_frame.
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
@@ -61,7 +61,7 @@ Qed.
 
 (** The marker cleanup proof supplies the contract used when closing a stream. *)
 Lemma unsave_spec_holds : LibioCloseItMid.unsave_spec w0 registry ge glibc__IO_unsave_markers.
-Proof.
+Proof using Type.
   intros fb. exists (unsave_frame fb). split; [apply unsave_frame_call|].
   intros freg Φ Hfb Hfal Hfend. iIntros "Hl H80 H96 HK".
   iApply (wp_glibc__IO_unsave_markers with "Hl H80 H96 HK"); assumption.

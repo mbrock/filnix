@@ -172,7 +172,7 @@ Lemma wp_glibc__IO_setb fr fb freg fl ob oe nb ne a Φ :
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
      pcell fb off_buf_end ne -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hfreg Ha. injection Hfr as <-.
   iIntros "Hl [%Hf Hfl] Hb He Hob HK". unfold file_size in Hend. step. step. norm. check "Hl".
   iDestruct "Hob" as "[-> | (%bb & %breg & %Hbb & Hbl)]".

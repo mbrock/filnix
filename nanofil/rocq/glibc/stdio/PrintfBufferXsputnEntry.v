@@ -54,7 +54,7 @@ Lemma wp_printf_xsputn_entry fr bb breg n written Φ :
     WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
       (Enter (TAtom "L14") (Some (TAtom "start")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hba Hbe Hbr Hn Hw. injection Hfr as <-.
   iIntros "Hb Hbase Hptr Hend Hw HK".
   step. step. check "Hb".

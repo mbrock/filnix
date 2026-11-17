@@ -207,7 +207,7 @@ Lemma wp_zsys_writev f e ls lab d a0 a1 a2 rest j fd iov cnt tot eb ps Φ :
              (Exec lab (Call (CResult d L) (Global (TAtom "zsys_writev")) [Arg W a0; Arg P a1; Arg W a2]
                         :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx He Hin Hrd. iIntros "Hps Herr HK".
   iApply (wp_os_errno_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ eb [] (pts ps)
             (fun vs => exists k, vs = [WInt k] /\ ((0 <= k <= tot /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1))

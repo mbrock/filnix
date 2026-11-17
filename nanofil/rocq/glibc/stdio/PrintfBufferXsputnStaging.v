@@ -67,7 +67,7 @@ Lemma wp_printf_xsputn_staging fr bb breg fb vb vreg xs mode written Φ :
     WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
       (Enter (TAtom "L40") (Some (TAtom "iw_1.join")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   cbn zeta. intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hlen Hxs Hw Hborrow.
   set (P := (pcell bb 0 (mkPtr (bb + 48) (Obj bb)) ∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) ∗

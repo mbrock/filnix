@@ -134,7 +134,7 @@ Lemma wp_hello_close_stdout_callback_retained rest fb freg fl f2 fd tw off bb br
   io_list_inv ge (ep :: fp :: rest) -∗ ([∗ list] g ∈ ep :: rest, stream_life g) -∗
   cells -∗ stderr_short_fields rb vb -∗ caller -∗ (done -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame close_stdout_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n fp ep wb cells caller loan done Hname Hnb Hnba Hnbe Hnbr Hpr Hnamed Htext Hfmt Hunnamed
     Hquote Hqframe Herror Hframe Huframe Hqcall Hcall Hucall Hread
     Hgstdout Hob Hoba Hobe Hobr Hgstderr Hsc Hsca Hsce Hscr Hgexit Hxc Hxce Hxcr

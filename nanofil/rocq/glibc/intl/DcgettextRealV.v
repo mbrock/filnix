@@ -77,7 +77,7 @@ Lemma dcg_after_v_flag dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib d
     L1'' L2'' T'' K C M bs mid q :
   dcg_after_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v L1'' L2'' T'' K C M bs mid q ⊢
   ⌜q = mid⌝ ∗ liveq dqs sec secreg ∗ int_cellq dqs sec 0 v.
-Proof. iIntros "(-> & (_ & _ & _ & _ & _ & _ & _ & _ & _ & Hl & Hc) & _)". iFrame. done. Qed.
+Proof using Type. iIntros "(-> & (_ & _ & _ & _ & _ & _ & _ & _ & _ & Hl & Hc) & _)". iFrame. done. Qed.
 
 (** The translation lends the string "C" at cv, so cv is a machine word. *)
 Lemma dcg_before_v_cv dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v L1 L2 T K C M bs :
@@ -157,7 +157,7 @@ Lemma wp_dcgettext_c_real_v f e ls l d args rest j mid dom ds dqd nb nc k cat dq
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hh H1 H2 Ht Hl Hrb Hro Hal Hend Hrg Hg Hbd Hv Hlinks Hargs Hmid. iIntros "Hb HK".
   iDestruct (dcg_before_v_cv with "Hb") as "[%Hcv Hb]".
   pose proof (dci_rest_l_rwf Hreg Hext lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2
@@ -197,7 +197,7 @@ Lemma dcg_diag_translate_real_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb d
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hh H1 H2 Ht Hl Hrb Hro Hal Hend Hrg Hg Hbd Hv Hlinks Hm f e ls l d args rest j mid Φ Hmsg Hargs.
   iIntros "Hb HK". iApply (wp_dcgettext_c_real_v with "Hb HK"); try eassumption. exact (Hm mid Hmsg).
 Qed.
@@ -231,7 +231,7 @@ Lemma dcg_ldiag_translate_real_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb 
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hh H1 H2 Ht Hl Hrb Hro Hal Hend Hrg Hg Hbd Hv Hlinks Hm f e ls l d args rest j mid Φ Hmsg Hargs.
   iIntros "Hb HK". iApply (wp_dcgettext_c_real_v with "Hb HK"); try eassumption. exact (Hm mid Hmsg).
 Qed.

@@ -70,7 +70,7 @@ Lemma wp_pfx_loop_with ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b 
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L98") (b_insts plo_blk98) (b_jump plo_blk98))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksc Hkss Hksa Hksm Hcut Hmal Hset Hgn Hfl Hos Hpe Hb Hal Hend Hr.
   remember (List.length os - k)%nat as d eqn:Hd. revert e k p w a m sp Hd.
   induction d as [d IH] using (well_founded_induction lt_wf).

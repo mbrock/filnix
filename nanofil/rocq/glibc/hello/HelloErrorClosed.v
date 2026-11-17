@@ -30,7 +30,7 @@ Definition error_stdout_loan : iProp Σ :=
 Lemma error_stdout_exchange :
   (live ob oreg ∗ pcell ob 0 (mkPtr fb (Obj fb))) ∗ closed_stdout fb freg vb lb lbreg
   ⊣⊢ error_stdout_loan ∗ closed_stdout_fields fb vb lb lbreg.
-Proof.
+Proof using Type.
   unfold error_stdout_loan, closed_stdout. iSplit.
   - iIntros "((Ho & Hp) & Hl & Hfields)". iFrame.
   - iIntros "((Ho & Hp & Hl) & Hfields)". iFrame.
@@ -104,7 +104,7 @@ Lemma wp_error_closed_entry status errnum fmt ap mode tb treg state
   error_closed_flush vbreg sb sreg D -∗ E -∗
   error_closed_report tb treg state status errnum fmt ap mode Q E Φ -∗
   WP (ERun (error_internal_frame status errnum fmt ap mode) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg Hsync.
   intros Hself Htb Hta Hte Htr Hstate Hcancel Ho Hob Hoa Hoe Hor Hfb Hfa Hfe Hfr
     Hp Hpb Hpa Hpe Hpr Hcu Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush
     Hfx Hfxframe Hfxcall Hcap Hcheck Hcbfn Hconv Hcbframe Hcbcall.

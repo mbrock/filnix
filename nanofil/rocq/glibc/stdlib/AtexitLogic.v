@@ -381,7 +381,7 @@ Lemma wp_internal_atexit x ents c fnp argp dsop Φ :
   WP (ERun (mkFrame internal_atexit_fn [(TAtom "v6", WPtr (mkPtr (xo_funcs x) (Obj (xo_funcs x))));
        (TAtom "v4", WPtr dsop); (TAtom "v2", WPtr argp); (TAtom "v0", WPtr fnp)] [] None
        (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct x as [lk lkr dn dnr cl clr fs fsr ib ibr]. intros Hlay Hgl Hwi Hk Hfp Hnf.
   pose proof Hlay as Hl_. destruct Hl_ as (Hl0 & Hl4 & Hle & _ & _ & _ & _ & _ & _ & _ & Hi0 & Hi8 & Hie).
   pose proof Hgl as Hg_. destruct Hg_ as (Hglk & _). pose proof Hwi as Hw_. destruct Hw_ as (Hwlk & _ & Hwib).
@@ -458,7 +458,7 @@ Local Definition registration_spec (internal : bool) : fspec Σ :=
 (** Calling the internal entry point registers a handler and returns zero. *)
 Local Instance internal_atexit_has_spec n (Hfn : Defines ge n internal_atexit_fn) :
   HasSpec registry wi ge (TAtom n) (registration_spec true).
-Proof.
+Proof using SafepointStable0.
   intros [[[[[x ents] c] f] a] d]. exists internal_atexit_fn.
   split; [exact Hfn|]. split; [eexists; apply internal_atexit_frame|].
   intros fr Φ Hfr. rewrite internal_atexit_frame in Hfr. injection Hfr as <-.
@@ -478,7 +478,7 @@ Lemma wp_glibc_cxa_atexit x ents c fnp argp dsop Φ :
   (exit_funcs_inv x (ents ++ [(fnp, argp, dsop)]) ((c + 1) mod 2 ^ 64) -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun (mkFrame cxa_atexit_fn [(TAtom "v4", WPtr dsop); (TAtom "v2", WPtr argp); (TAtom "v0", WPtr fnp)]
        [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hlay Hgl Hwi Hfns Hk Hfp. pose proof Hgl as Hg_. destruct Hg_ as (_ & _ & _ & Hgfs).
   pose proof (internal_atexit_has_spec _ (proj1 (proj2 Hfns))) as Hspec.
   iIntros "Hinv HΦ". step. step_global Hgfs.
@@ -491,7 +491,7 @@ Qed.
     requiring callers to pass the handler-list address. *)
 Local Instance cxa_atexit_has_spec n (Hfn : Defines ge n cxa_atexit_fn) :
   HasSpec registry wi ge (TAtom n) (registration_spec false).
-Proof.
+Proof using SafepointStable0.
   intros [[[[[x ents] c] f] a] d]. exists cxa_atexit_fn.
   split; [exact Hfn|]. split; [eexists; apply cxa_atexit_frame|].
   intros fr Φ Hfr. rewrite cxa_atexit_frame in Hfr. injection Hfr as <-.

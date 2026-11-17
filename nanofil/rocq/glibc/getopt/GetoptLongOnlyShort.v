@@ -48,10 +48,10 @@ Local Instance los_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance los_liveq_persistent b0 reg : Persistent (liveq DfracDiscarded b0 reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance los_pcellq_persistent b0 o x : Persistent (pcellq DfracDiscarded b0 o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 
 (** ## The exits of the fallback
 
@@ -154,7 +154,7 @@ Lemma long_only_fallback_char ks kz kc kr n av ar p os lo li lonly b r ps j (G :
   word_string DfracDiscarded p os -∗
   long_only_short_exits n av ar p os lo li lonly b r ps j G se sereg fp kc kr F M Φ -∗
   long_only_fallback_exit n av ar p os lo li lonly b r ps j G se sereg fp ks F M Φ.
-Proof.
+Proof using Type.
   intros Hks Hkz Hinz Hkc Hkin Hop Hrq Hdg Hrt Hinc Hg Hgn Hdiag Hse Hmid' Hmid Hn Hse0 Hsea Hsee Hser.
   iIntros "#Hos HK".
   iIntros (e1 e2 s s' w ps' i' f' l' oo' a' (Hfacts & Hlo0 & H45 & Henv1 & Hk2 & Ha'))

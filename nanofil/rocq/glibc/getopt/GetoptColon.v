@@ -118,7 +118,7 @@ Lemma wp_getopt_resume e p os Φ :
                  [] None (Exec (TAtom "L31") (b_insts getopt_blk31) (b_jump getopt_blk31))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "L30") (b_insts getopt_blk30) (b_jump getopt_blk30))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv4. iIntros "#Hos HK". cbn [b_insts b_jump getopt_blk30].
   iDestruct (ws_shape with "Hos") as %(Hch & Hp0 & Hpe).
   rdchr "Hos" p os 0%nat. pose proof (sbyte_range os 0 Hch) as Hc0r.

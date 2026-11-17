@@ -26,7 +26,7 @@ Lemma printf_heap_vtable_borrow w0 vb self mode flags2 held fb :
     liveq dqf fb freg ∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) ∗
     (liveq dqf fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
       printf_heap_stream_with B w0 vb self (mkPtr fb (Obj fb)) mode flags2 held).
-Proof.
+Proof using Type.
   iIntros "(%fb' & %freg & %st & %db & %dreg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp & Hf & Hst & Hf2 & Hfd & Hcol & Hmd & Hvt & Htail)".
   pose proof Hp as (Hfp & Hfb & Hfa & Hfe & Hfr & _).
   injection Hfp as Heq. subst fb'.

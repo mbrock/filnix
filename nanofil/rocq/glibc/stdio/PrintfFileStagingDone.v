@@ -57,7 +57,7 @@ Lemma wp_printf_file_staging_done fr bb br fb vr xs written prior Φ :
     Φ (Ret (WInt (if Z.eq_dec m 0 then 4294967295
       else if Z_lt_dec total (2^31) then total else 4294967295)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   cbn zeta. intros Hfr Hflushfn Hdonefn Herr Hb Ha He Hr Hfb Hfa Hlen Hxs Hw Heb Hee Her.
   set (n := Z.of_nat (length xs)).
   set (total := (written+n) mod 2^64).

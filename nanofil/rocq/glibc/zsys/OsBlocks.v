@@ -187,12 +187,12 @@ Definition blks (bl : list (Z * Z * Z)) : iProp Σ := [∗ list] x ∈ bl, blk_a
 
 (** Owning the empty list of blocks requires no resources. *)
 Lemma blks_nil : ⊢ blks [].
-Proof. unfold blks. by rewrite big_sepL_nil. Qed.
+Proof using Type. unfold blks. by rewrite big_sepL_nil. Qed.
 
 (** Owning a non-empty list of blocks splits into owning the first block
     and separately owning the remaining blocks. *)
 Lemma blks_cons b o n bl : blks ((b, o, n) :: bl) ⊣⊢ blk_any b o n ∗ blks bl.
-Proof. unfold blks. by rewrite big_sepL_cons. Qed.
+Proof using Type. unfold blks. by rewrite big_sepL_cons. Qed.
 
 (** In userland glibc, the calling thread's `c: int errno` variable is a
     4-byte integer at offset 0 of its thread-local object. When a proof
@@ -211,7 +211,7 @@ Definition errno_any (eb : Z) : iProp Σ := ∃ bs, errno_own eb bs.
     [OsWorld](OsWorld.v) treat `c: errno` just like any other borrowed
     output buffer. *)
 Lemma errno_any_blk eb : errno_any eb ⊣⊢ blk_any eb 0 4.
-Proof.
+Proof using Type.
   iSplit.
   - iIntros "(%bs & %cs & %Hl & Hp)". iExists bs, cs. iFrame. done.
   - iIntros "(%xs & %cs & %Hl & Hp)". iExists xs, cs. iFrame. done.
@@ -228,7 +228,7 @@ Lemma blk_return h m' b o n K :
   gen_heap_interp h -∗ blk_any b o n ==∗
   gen_heap_interp (overwrite (blk_now m' b o n) h) ∗ blk_any b o n ∗
   ⌜agrees_except K m' (overwrite (blk_now m' b o n) h)⌝.
-Proof.
+Proof using Type.
   intros Ha (reg & [E L] & Ho & Hn & Hend). cbn in E, Ho, Hn, Hend.
   iIntros "Hh (%xs & %cs & [%Hx %Hc] & Hp)".
   iMod (pts_update _ _ (blk_now m' b o n) with "Hh Hp") as "[Hh Hp]".
@@ -257,7 +257,7 @@ Qed.
     therefore leaves every object's liveness record unchanged. *)
 Lemma overwrite_live ps h b :
   PLive b ∉ ps.*1 -> overwrite ps h !! PLive b = h !! PLive b.
-Proof.
+Proof using Type*.
   induction ps as [|[l v] ps IH]; intros Hn; [reflexivity|]. cbn [overwrite fst snd].
   cbn [fmap list_fmap fst] in Hn. apply not_elem_of_cons in Hn as [Hne Hn].
   rewrite lookup_insert_ne; [exact (IH Hn) | congruence].
@@ -271,7 +271,7 @@ Lemma blks_return bl h m' K :
   agrees_except (blks_keys bl ++ K) m' h -> Forall (blk_live m') bl ->
   gen_heap_interp h -∗ blks bl ==∗ ∃ h', gen_heap_interp h' ∗ blks bl ∗
     ⌜agrees_except K m' h' /\ forall b, h' !! PLive b = h !! PLive b⌝.
-Proof.
+Proof using Type.
   revert h. induction bl as [|x bl IH]; intros h Ha Hl; iIntros "Hh Hb".
   - iModIntro. iExists h. iFrame "Hh Hb". done.
   - destruct x as [[b o] n]. iDestruct (big_sepL_cons with "Hb") as "[Hb Hbs]". cbn [fst snd].

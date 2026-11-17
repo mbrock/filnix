@@ -205,7 +205,7 @@ Lemma loop_spec b reg c a ws o e from t q Φ :
   live b reg -∗ pts (words_ps b o ws) -∗
   (live b reg -∗ pts (words_ps b o ws) -∗ Φ (Ret (WInt (b + o + Z.of_nat t - a)))) -∗
   WP (ERun (mkFrame glibc_strlen e [] None (Enter (TAtom "L28") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   revert o e from t q. induction ws as [|w ws IH]; intros o e from t q Hc Ho Hb8 Hal Ha Hend Hreg Hr Hz Hqa Hqc Hphi Hv4.
   { destruct Hz as [Hz _]. cbn in Hz. discriminate. }
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
@@ -286,7 +286,7 @@ Lemma wp_glibc_strlen p b reg ws n Φ :
   (live b reg -∗ pts (words_ps b (ptr_addr p - ptr_addr p mod 8 - b) ws) -∗ Φ (Ret (WInt (Z.of_nat n)))) -∗
   WP (ERun (mkFrame glibc_strlen [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct p as [a c]. cbn [ptr_addr ptr_cap]. intros Hc Hb0 Hb8 Hba Hend Hreg Hr Hz.
   pose proof (Z.mod_pos_bound a 8 ltac:(lia)) as Hk.
   assert (Hal : b <= a - a mod 8) by (pose proof (Z.div_mod a 8 ltac:(lia)); pose proof (Z.div_mod b 8 ltac:(lia)); nia).

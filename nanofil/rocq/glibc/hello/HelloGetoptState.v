@@ -45,21 +45,21 @@ Definition hello_getopt_state (b : Z) (r : region) (av : Z) (ar : region) (ps : 
 (** A session that a call leaves at its own index is admissible. *)
 Lemma hello_getopt_state_session b r av ar ps i :
   getopt_session b r av ar ps i ⊢ hello_getopt_state b r av ar ps i.
-Proof. iIntros "H". iLeft. iExists i. iFrame "H". iPureIntro. left. reflexivity. Qed.
+Proof using Type. iIntros "H". iLeft. iExists i. iFrame "H". iPureIntro. left. reflexivity. Qed.
 
 (** Zeroed storage is admissible at any index within the count. *)
 Lemma hello_getopt_state_zero b r av ar ps i :
   0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   1 <= Z.of_nat (length ps) < 2 ^ 31 -> 0 <= i <= Z.of_nat (length ps) ->
   getopt_state_own b r getopt_zero ⊢ hello_getopt_state b r av ar ps i.
-Proof. intros. iIntros "H". iRight. iFrame "H". iPureIntro. split_and!; lia. Qed.
+Proof using Type. intros. iIntros "H". iRight. iFrame "H". iPureIntro. split_and!; lia. Qed.
 
 (** The loader leaves the parser's object zeroed, so its pieces give such a state. *)
 Lemma hello_getopt_state_loader av ar ps i :
   0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   1 <= Z.of_nat (length ps) < 2 ^ 31 -> 0 <= i <= Z.of_nat (length ps) ->
   pts getopt_private_pieces ⊢ hello_getopt_state 65584 getopt_private_region av ar ps i.
-Proof.
+Proof using Type.
   intros. rewrite getopt_private_own. by apply hello_getopt_state_zero.
 Qed.
 
@@ -70,7 +70,7 @@ Lemma hello_getopt_state_pieces b r av ar ps i :
   0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   1 <= Z.of_nat (length ps) < 2 ^ 31 -> 0 <= i <= Z.of_nat (length ps) ->
   pts (getopt_zero_ps b r) ⊢ hello_getopt_state b r av ar ps i.
-Proof.
+Proof using Type.
   intros. etrans; [apply getopt_zero_ps_own; assumption | apply hello_getopt_state_zero; assumption].
 Qed.
 
@@ -82,7 +82,7 @@ Lemma hello_getopt_state_pieces_ctl b r av ar ps i :
   0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   Z.of_nat (length ps) = 2147483647 -> 0 <= i <= 2147483647 ->
   ~ (1 <= 2147483648 < 2 ^ 31) /\ (pts (getopt_zero_ps b r) ⊢ hello_getopt_state b r av ar ps i).
-Proof. intros. split; [lia|]. apply hello_getopt_state_pieces; lia. Qed.
+Proof using Type. intros. split; [lia|]. apply hello_getopt_state_pieces; lia. Qed.
 
 End state.
 
@@ -98,7 +98,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** Each of these states lets the wrapper copy the index i into the object. *)
 Lemma hello_getopt_state_copy_in b r av ar ps i err :
   hello_getopt_state b r av ar ps i ⊢ copy_in_view b r av ar ps i err.
-Proof.
+Proof using Type.
   iIntros "[(%i0 & %Hi & Hs) | (%H & Hz)]".
   - iApply (session_copy_in with "Hs"). exact Hi.
   - destruct H as (H1 & H2 & H3 & H4 & H5 & H6). iApply (zero_copy_in with "Hz"); assumption.

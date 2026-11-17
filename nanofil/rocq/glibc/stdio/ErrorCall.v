@@ -67,7 +67,7 @@ Lemma wp_error_wrapper status errnum fmt ys
     WP (ERun (internal_frame ap) : gexpr) {{ v, ⌜v = RetVoid⌝ ∗ Q }}) ->
   R -∗ E -∗ ▷ (Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (error_frame status errnum fmt ys) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hys Hstatus Herrnum Hfn Hframe Hcall. iIntros "HR HE HK".
   unfold error_frame.
   iApply ErrorVL.wp_snapshot; [discriminate | cbn; exact Hys |
@@ -124,7 +124,7 @@ Lemma wp_call_error_wrapper f e ls l args rest j status errnum fmt ys
     WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hargs Hpublic Hys Hstatus Herrnum Hfn Hframe Hcall. iIntros "HR HE HK".
   iApply wp_call_bind; [exact Hargs | exact Hpublic | apply error_call_frame |]. iNext.
   iApply (wp_error_wrapper with "HR HE"); try eassumption.

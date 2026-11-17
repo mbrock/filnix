@@ -218,7 +218,7 @@ Example sym_call_void (P : iProp Σ) g f e lab Φ
   P -∗ ▷ (P -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame f e [] None
     (Exec lab [Call CVoid (Global g) []] JRetVoid)) : expr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HP HK". sym_call "HP". sym_ret. iApply ("HK" with "HP").
 Qed.
 
@@ -227,7 +227,7 @@ Example sym_go_void (P : iProp Σ) g f e lab Φ
   P -∗ ▷ (P -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame f e [] None
     (Exec lab [Call CVoid (Global g) []; Call CVoid (Global g) []] JRetVoid)) : expr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HP HK". sym_go "HP" (@nil name). iApply ("HK" with "HP").
 Qed.
 
@@ -236,7 +236,7 @@ Example sym_call_unselected (P : iProp Σ) g f e lab Φ
   P -∗ ▷ (P -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame f e [] None
     (Exec lab [Call CVoid (Global g) []] JRetVoid)) : expr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HP HK".
   assert_fails ltac:(solve [sym_go "" (@nil name); iApply ("HK" with "HP")]).
   sym_go "HP" (@nil name). iApply ("HK" with "HP").
@@ -247,7 +247,7 @@ Example sym_call_ambiguous (P : iProp Σ) g f e lab Φ
   P -∗ P -∗ ▷ (P ∗ P -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame f e [] None
     (Exec lab [Call CVoid (Global g) []] JRetVoid)) : expr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HA HB HK". sym_go "HA HB" (@nil name). iApply "HK". iFrame.
 Qed.
 
@@ -260,7 +260,7 @@ Example sym_go_scalar (P : iProp Σ) g e lab Φ
   WP (ERun (mkFrame sym_scalar_function e [] None
     (Exec lab [Call (CResult (TAtom "answer") W) (Global g) []]
       (JRet (Tmp (TAtom "answer"))))) : expr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HP HK". sym_go "HP" (@nil name). iApply ("HK" with "HP").
 Qed.
 
@@ -272,14 +272,14 @@ Example sym_call_exists (P : iProp Σ) g e lab Φ
   WP (ERun (mkFrame sym_scalar_function e [] None
     (Exec lab [Call (CResult (TAtom "answer") W) (Global g) []]
       (JRet (Tmp (TAtom "answer"))))) : expr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HP HK". sym_call "HP". sym_ret. iApply ("HK" with "HP").
 Qed.
 
 Example sym_go_cut f e Φ :
   WP (ERun (mkFrame f e [] None (Enter (TAtom "cut") None)) : expr) {{ Φ }} -∗
   WP (ERun (mkFrame f e [] None (Enter (TAtom "cut") None)) : expr) {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros "HK". sym_go "" [TAtom "cut"]. iExact "HK".
 Qed.
 
@@ -288,14 +288,14 @@ Example sym_go_unsupported Φ :
     (Exec (TAtom "entry") [] JUnreachable)) : expr) {{ Φ }} -∗
   WP (ERun (mkFrame sym_scalar_function [] [] None
     (Exec (TAtom "entry") [] JUnreachable)) : expr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HK". sym_go "" (@nil name). iExact "HK".
 Qed.
 
 Example sym_go_fuel f e lab Φ :
   WP (ERun (mkFrame f e [] None (Exec lab [] JRetVoid)) : expr) {{ Φ }} -∗
   WP (ERun (mkFrame f e [] None (Exec lab [] JRetVoid)) : expr) {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros "HK". sym_go_loop "" (@nil name) O. iExact "HK".
 Qed.
 
@@ -309,7 +309,7 @@ Context (Htriple : fn_triple registry (os_wi w0) ge (TAtom "sym_example") [] P
   (fun r => (⌜r = RetVoid⌝ ∗ P)%I)).
 Local Instance sym_example_spec :
   HasSpec registry (os_wi w0) ge (TAtom "sym_example") (sym_keep_spec P RetVoid).
-Proof. intros []. exact Htriple. Qed.
+Proof using Type*. intros []. exact Htriple. Qed.
 
 (** Instance search also finds a registered contract that was not posed as a hypothesis. *)
 Example sym_go_instance f e lab Φ :
@@ -317,7 +317,7 @@ Example sym_go_instance f e lab Φ :
   WP (ERun (mkFrame f e [] None
     (Exec lab [Call CVoid (Global (TAtom "sym_example")) []] JRetVoid)) :
     language.expr (nanofil_lang registry ge)) {{ Φ }}.
-Proof.
+Proof using Type*.
   iIntros "HP HK". sym_go "HP" (@nil name). iApply ("HK" with "HP").
 Qed.
 End instance_example.

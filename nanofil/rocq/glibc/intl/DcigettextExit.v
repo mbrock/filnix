@@ -47,7 +47,7 @@ Definition dci_errno_mem eb m :=
 
 (** The state interpretation supplies those bounds at every step. *)
 Lemma dci_errno_mem_facts σ : heap_interp (os_wi w0) σ -∗ ⌜dci_errno_mem eb (ls_mem σ)⌝.
-Proof.
+Proof using Type*.
   iIntros "Hσ". iDestruct (os_heap_errno w0 σ eb Herr with "Hσ") as %[_ (reg & Hl & _ & _ & Hend)].
   iDestruct "Hσ" as (h) "[_ %Hs]". destruct Hs as (_ & _ & Hr & _).
   destruct (R.address_space _ _ Hr eb reg (proj1 Hl)) as [Hb He].
@@ -60,7 +60,7 @@ Lemma wp_dci_errno_check f e ls l d mode v rest j Φ :
   value_x ge e P v = Some (WPtr (mkPtr eb (Obj eb))) ->
   ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr eb (Obj eb))) e) ls None (Exec l rest j)) : gexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check 0 4 mode 1) [v] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hv. iIntros "HK".
   iApply (wp_read_with registry (os_wi w0) ge True%I (dci_errno_mem eb) _ _ [] with "[] [HK]").
   - iIntros (σ) "Hσ _". iApply (dci_errno_mem_facts with "Hσ").
@@ -82,7 +82,7 @@ Lemma wp_dci_errno_store f e ls l a x s rest j bs Φ :
   bytes eb 0 bs -∗
   ▷ (bytes eb 0 (le_bytes s 4) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Ww 0 x a :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Ha Hx Hlen. iIntros "Hb HK".
   iApply (wp_write_with registry (os_wi w0) ge True%I (dci_errno_mem eb)
     (byte_ps eb 0 bs) (byte_ps eb 0 (le_bytes s 4)) _ _ [] (fun m => store_bytes m eb 4 s) with "Hb [] [HK]").

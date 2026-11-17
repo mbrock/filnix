@@ -302,7 +302,7 @@ Definition cpuid_blk (b o : Z) : iProp Σ :=
 
 (** A caller that does not need the byte bounds can forget them. *)
 Lemma cpuid_blk_any b o : cpuid_blk b o -∗ blk_any b o 4.
-Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
+Proof using Type. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
 
 (** Two four-byte blocks lie apart when they belong to different
     objects or their offsets do not overlap. A caller that owns the
@@ -333,11 +333,11 @@ Definition cpuid_eax (leaf subleaf ba oa bb ob bc oc bd od : Z) : iProp Σ :=
 (** A caller that does not need the cache type can forget it. *)
 Lemma cpuid_eax_any leaf subleaf ba oa bb ob bc oc bd od :
   cpuid_eax leaf subleaf ba oa bb ob bc oc bd od -∗ blk_any ba oa 4.
-Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
+Proof using Type. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
 
 (** A caller that does not need the bit can forget it. *)
 Lemma cpuid_ecx_any leaf bc oc bd od : cpuid_ecx leaf bc oc bd od -∗ blk_any bc oc 4.
-Proof. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
+Proof using Type. iIntros "(%xs & %cs & (% & % & _) & Hp)". iExists xs, cs. iFrame. done. Qed.
 
 (** A C function that asks the processor a question passes four
     pointers, and the processor writes one 32-bit answer through each.
@@ -362,7 +362,7 @@ Lemma wp_cpuid (sub : bool) f e ls lab args rest j xs leaf ba oa bb ob bc oc bd 
      cpuid_ecx leaf bc oc bd od -∗ cpuid_blk bd od -∗
      WP (ERun (mkFrame f e ls None (Exec lab rest j)) : zexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call CVoid (Global g) args :: rest) j)) : zexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros g Hreg Hfn Hdata Hx Habi Hargs Hlive. iIntros "HQ Ha Hb Hc Hd HK".
   set (bl := [(bc, oc, 4); (ba, oa, 4); (bb, ob, 4); (bd, od, 4)]).
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (os_cpuid_contract sub) xs (Q ∗ blks bl)
@@ -432,7 +432,7 @@ Lemma wp_zxgetbv f e ls lab d rest j Φ :
      WP (ERun (mkFrame f (put d (WInt v) e) ls None (Exec lab rest j)) : zexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d L) (Global (TAtom "zxgetbv")) [] :: rest) j)) : zexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hosx. iIntros "HK".
   iApply (wp_os_call w0 _ _ _ _ _ _ _ _ _ _ _ _ [] [] True%I (fun vs => exists v, 0 <= v < 2 ^ 64 /\ vs = [WInt v])
             with "[//] [] [HK]"); [done | done | done | exact Hreg | done | | | done | | |].

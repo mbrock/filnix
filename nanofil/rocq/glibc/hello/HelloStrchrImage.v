@@ -64,7 +64,7 @@ Import ProgramAbbreviations.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Lemma dci_strchr_links_of_agree :
   Forall (lookup_agrees (ge_module ge) hellostrchrimage_module) hello_strchr_names -> dci_strchr_links.
-Proof. exact (hello_strchr_links_of_agree ge). Qed.
+Proof using Type. exact (hello_strchr_links_of_agree ge). Qed.
 End program.
 
 (** ### Trying the lemma on made-up modules

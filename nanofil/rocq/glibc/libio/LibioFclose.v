@@ -178,7 +178,7 @@ Lemma wp_glibc__IO_new_fclose_stdout fr pre post fb freg fl f2 fd tw off bb breg
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗
      Φ (Ret (WInt (if k =? 0 then (if r =? n then 0 else 2 ^ 32 - 1) else k)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n fp wb base Hfr Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hf22 Hf232 Hf2r Hfd Hfdr Hfl Happ
     Hnw Hcp Hub Hul Hlnk Hfb8 He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hlb Hmd. subst fp wb base.
   iIntros "#Hvt #Hs Htcb Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol Hmode Hvtp

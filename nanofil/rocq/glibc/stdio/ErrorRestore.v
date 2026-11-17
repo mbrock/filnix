@@ -33,7 +33,7 @@ Lemma wp_error_restore_cancel old fr tb treg Φ :
   live tb treg -∗ int_cell tb 792 1 -∗
   ▷ (live tb treg -∗ int_cell tb 792 old -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr [-> | ->] Hself Htb Hta Hte Htr; iIntros "Ht Hflag HK".
   - iApply (wp_cancel_restore Hreg Hext with "Ht Hflag HK"); assumption.
   - iApply (wp_cancel_keep_disabled Hreg Hext with "Ht Hflag HK"); assumption.
@@ -52,7 +52,7 @@ Lemma wp_error_restore e from status errnum fmt ap mode cb old tb treg (E : iPro
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.join") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hinputs Hold Hself Htb Hta Hte Htr Hcancel.
   destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Ht Hflag Hl Hsaved HE HK".
@@ -80,7 +80,7 @@ Lemma error_restored_cleanup tb treg jb :
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   live tb treg -∗ int_cell tb 792 0 -∗
   pcell tb off_cleanup null -∗ pcell tb off_cleanup_jmp jb -∗ tcb_cleanup_inv (ow_self w0).
-Proof.
+Proof using Type.
   intros Hself Htb Hta Hte Htr. iIntros "Ht Hflag Hcleanup Hjmp".
   unfold tcb_cleanup_inv. iExists tb, treg, jb. iSplit.
   - iPureIntro. unfold off_cancelhandling. repeat split; auto; lia.

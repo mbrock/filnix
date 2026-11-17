@@ -37,7 +37,7 @@ Lemma error_rw_ready_region lk a ar tb before after r cw tid :
   rw_ready lk a ar tb before r cw tid ->
   tb + 796 <= r_end after -> r_end after <= 2 ^ 63 ->
   rw_ready lk a ar tb after r cw tid.
-Proof.
+Proof using Type.
   unfold rw_ready, rw_place. intros ((? & ? & ? & ? & ? & ? & ? & ? & ?) & ? & ? & ? & ?) ? ?.
   repeat split; try assumption; lia.
 Qed.
@@ -198,7 +198,7 @@ Lemma wp_call_error_enoent_zero f e ls l args rest j (D E : iProp Σ) Φ :
   ▷ (returned -∗ E -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call CVoid (Global (TAtom "error")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Defines0 Defines1 Defines10 Defines11 Defines12 Defines13 Defines2 Defines3 Defines4 Defines5 Defines6 Defines7 Defines8 Defines9 Hal Hbackup Hbounds Hcancel Hcount Hcountb Hcounte Hcountr Hdomain Hend Herr Herrno Hext Hfb Hfframe Hflush Hfmtr Hfmtstring Hformat Hfr Hfx Hg Hga Hgb Hge Hglobals Hgr Hheap Hlen Hlenb Hlene Hlenr Hlk1 Hlk2 Hlkt Hlocale Hmd Hmessage Hnewline Hnewlineformat Hnn Hold Hpost Hproducer Hral Hrb Hre Hreg Hro Hrr Hsecure Hself Hstr Hstring Hsync Htab Htabe Htable Htabr Htal Htext Htextformat Htm Htn Huser Hv Hvfx Hwide Hwidecall Hwidefn Hwideframe Q.
   intros flush Hargs Hpublic Hys Hinternal Ho Hob Hoa Hoe Hor Hofb Hofa Hofe Hofr
     Hp Hpb Hpa Hpe Hpr Hn Hnb Hna Hne Hnr Hnu Hprefix Hpxb Hpmd Hself0 Hselfr Hlend Hready Hprefixformat.
   iIntros "Ht Ho Hp Hflush HE HK".

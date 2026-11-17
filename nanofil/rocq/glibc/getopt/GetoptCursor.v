@@ -85,7 +85,7 @@ Lemma wp_getopt_short_cursor ks e fr i n c b r av ar ps Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L75") (Some (TAtom "L338")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L338") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hv2 Hv12 Hc2 Hc20 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Hcur Ha Hc #Hs HK".
   set (j := Z.to_nat i). assert (Hj : Z.of_nat j = i) by (unfold j; lia).
@@ -125,7 +125,7 @@ Lemma wp_getopt_long_cursor ks e fr i n c b r av ar ps Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L376") long_only_call long_only_jump))
            : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L376") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hv2 Hv12 Hc2 Hc20 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Hcur Ha Hc #Hs HK".
   set (j := Z.to_nat i). assert (Hj : Z.of_nat j = i) by (unfold j; lia).

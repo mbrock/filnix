@@ -62,7 +62,7 @@ Context `{!gen_heapGS piece pval Σ}.
 
 (** The cursor relation holds only shared strings and pure facts, so it may be used twice. *)
 Local Instance ep_cursor_persistent ps i s : Persistent (getopt_cursor ps i s).
-Proof. unfold getopt_cursor. apply _. Qed.
+Proof using Type. unfold getopt_cursor. apply _. Qed.
 
 (** ## What the first blocks need after the copy
 
@@ -100,7 +100,7 @@ Lemma session_entry_pre b r av ar ps i j err :
   j = i \/ j = 0 ->
   getopt_session b r av ar ps i ⊢ ∃ i0 e0, live b r ∗ int_cell b 0 i0 ∗ int_cell b 4 e0 ∗
     (live b r -∗ int_cell b 0 j -∗ int_cell b 4 err -∗ getopt_entry_pre b r av ar ps j).
-Proof.
+Proof using Type.
   intros Hj. iIntros "[%Hav (%s & (%Hb & Hl & Hi & He & Ho & Ha & Hn & Hx & Hr & Hf & Hla) & %Hbd & Hk)]".
   iExists (gs_ind s), (gs_err s). iFrame "Hl Hi He". iIntros "Hl Hi He".
   iSplit; [iPureIntro; unfold getopt_bounds in Hbd; destruct Hj; subst; lia|].
@@ -151,7 +151,7 @@ Lemma entry_pre_select b r (ps : list ptr) j s s' (tail : list Z) :
   pcell b 16 (gs_arg s') ∗ int_cell b 24 (gs_initialized s') ∗ pcell b 32 (gs_next s') ∗
   int_cell b 40 (gs_order s') ∗ int_cell b 44 (gs_first s') ∗ int_cell b 48 (gs_last s') ∗
   (⌜gs_next s' = null⌝ ∨ word_string DfracDiscarded (gs_next s') []).
-Proof.
+Proof using Type.
   intros Hn Hj Hi Hk Hst Hnt. iIntros "#Hc (%Hb & Hl & Hi & He & Ho & Ha & Hn & Hx & Hr & Hf & Hla)". iFrame.
   subst j. destruct Hst as [(Hni & o & Ho & ->) | (Hni & ->)].
   - iSplit; [|by iLeft]. iPureIntro. unfold init_state, getopt_bounds.
@@ -174,7 +174,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The cursor relation holds only shared strings and pure facts, so it may be used twice. *)
 Local Instance epw_cursor_persistent ps i s : Persistent (getopt_cursor ps i s).
-Proof. unfold getopt_cursor. apply _. Qed.
+Proof using Type. unfold getopt_cursor. apply _. Qed.
 
 (** ## The first blocks after the copy
 
@@ -225,7 +225,7 @@ Lemma wp_getopt_entry_pre_at e n av ar p os lo li lonly pc penv b r ps j (G : iP
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "start") (b_insts getopt_blk_start) (b_jump getopt_blk_start))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hget Hpenv H0 H2 H4 H6 H8 H10 H12 H14 Hlen. subst n.
   iIntros "[%Hp (%s & Hs & %Hj & #Hk)] #Hos HG HK".
   destruct Hp as (Hav & Hal & Hfit & Har & Hn & Hjn).

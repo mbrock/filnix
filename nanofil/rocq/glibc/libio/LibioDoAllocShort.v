@@ -52,7 +52,7 @@ Lemma wp_glibc__IO_doallocbuf_short fr fb freg fl mode oe Φ :
      pcell fb off_buf_base (mkPtr (fb + off_shortbuf) (Obj fb)) -∗
      pcell fb off_buf_end (mkPtr (fb + off_shortbuf + 1) (Obj fb)) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hfreg Hub Hmd. injection Hfr as <-.
   iIntros "Hl Hfl [%Hm Hmb] Hb Hbe HK". unfold file_size in Hend. unfold io_unbuffered in Hub.
   step.

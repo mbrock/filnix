@@ -58,7 +58,7 @@ Lemma wp_glibc_tfind_empty e key rt rb ro rreg dq cmp Φ :
   liveq dq rb rreg -∗ pcellq dq rb ro null -∗
   (liveq dq rb rreg -∗ pcellq dq rb ro null -∗ Φ (Ret (WPtr null))) -∗
   WP (ERun (mkFrame glibc_tfind e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv0 Hv2 Hv4 Hc Ha Hrb Hro Hal Hend Hreg. iIntros "Hl Hp HK".
   step. step. step. step. branch_symbolic.
   rewrite Ha (Z.mod_small (rb + ro)); [|lia]. change ((0 mod 2 ^ 64) mod 2 ^ 64) with 0.
@@ -83,7 +83,7 @@ Lemma wp_call_glibc_tfind_empty f e ls l d g args rest j key rt rb ro rreg dq cm
   ▷ (liveq dq rb rreg -∗ pcellq dq rb ro null -∗
      WP (ERun (mkFrame f (put d (WPtr null) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call (CResult d P) (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hargs Hg Hc Ha Hrb Hro Hal Hend Hreg. iIntros "Hl Hp HK".
   iApply wp_call_bind; [exact Hargs | exact Hg | reflexivity |]. iNext.
   iApply (wp_glibc_tfind_empty with "Hl Hp"); [reflexivity | reflexivity | reflexivity | exact Hc | exact Ha | lia | lia | exact Hal | exact Hend | exact Hreg |].
@@ -95,7 +95,7 @@ Qed.
     address cannot also be lent as an empty root. *)
 Lemma tfind_root_nonempty dq1 dq2 rb ro p : 0 <= ptr_addr p < 2 ^ 64 ->
   pcellq dq1 rb ro p -∗ pcellq dq2 rb ro null -∗ ⌜p = null⌝.
-Proof.
+Proof using Type.
   intros Hp. iIntros "H1 H2". iDestruct (WordString.ptsq_agree with "H1 H2") as %E; [reflexivity|].
   iPureIntro. destruct p as [a c]. cbn in Hp, E. injection E as Ec E0 E1 E2 E3 E4 E5 E6 E7. subst c.
   assert (a = 0) as ->; [|reflexivity].

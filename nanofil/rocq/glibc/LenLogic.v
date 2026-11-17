@@ -224,7 +224,7 @@ Lemma strlen_msg_spec Φ :
   pts msg_ps -∗ (pts msg_ps -∗ Φ (Ret (WInt 12))) -∗
   WP (ERun (mkFrame strlen_fn [(TAtom "v0", WPtr msg_ptr)] [] None (Enter (TAtom "start") None)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros "Hps HΦ". rewrite /msg_ps !pts_app. iDestruct "Hps" as "(Hl & H0 & H1)".
   iApply (StrlenLogic.wp_glibc_strlen no_contracts no_world lge msg_ptr msg_base msg_reg [msg_w0; msg_w1] 12
             with "Hl [H0 H1]").
@@ -246,7 +246,7 @@ Qed.
 Lemma main_spec :
   pts msg_ps -∗
   WP (ERun (mkFrame main_fn [] [] None (Enter (TAtom "start") None)) : lexpr) {{ o, ⌜o = Ret (WInt 12)⌝ }}.
-Proof.
+Proof using Type.
   iIntros "Hps". repeat concrete_step.
   iApply wp_call_bind; [concrete_side | exact find_strlen | concrete_side |]. iNext.
   iApply (strlen_msg_spec with "Hps"). iIntros "_".

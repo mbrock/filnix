@@ -87,7 +87,7 @@ Lemma wp_printf_xsputn_call e fp bb breg dq xs Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 7 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbb Hba Hlen Hbe Hbr Hxs Hv0 Hchk Hptr Hfp Hsrc Hcount.
   iIntros "HF HE Hb Hxs HK". cbn [printf_xsputn_block b_insts b_jump skipn].
   iApply wp_check_function; [vx | apply (ge_fn_check _ _ _ Hfn) |]. iNext.

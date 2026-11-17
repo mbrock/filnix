@@ -168,7 +168,7 @@ Lemma wp_zsys_exit_soft f e ls lab a0 rest j bits Φ :
   ⊢ WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zsys_exit_soft")) [Arg W a0] :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx.
   iApply (wp_os_noreturn w0 _ _ _ _ _ _ _ _ _ _ _ _ _ True%I with "[//]");
     [done | done | done | exact Hreg | exact Hx | split; [done | eexists; reflexivity] | |].
@@ -186,7 +186,7 @@ Lemma wp_zsys_exit_hard f e ls lab a0 rest j bits Φ :
   ⊢ WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zsys_exit_hard")) [Arg W a0] :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx.
   iApply (wp_os_noreturn w0 _ _ _ _ _ _ _ _ _ _ _ _ _ True%I with "[//]");
     [done | done | done | exact Hreg | exact Hx | split; [done | eexists; reflexivity] | |].

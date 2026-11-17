@@ -140,7 +140,7 @@ Lemma wp_zsys_lseek f e ls lab d a0 a1 a2 rest j fd off wh eb Φ :
              (Exec lab (Call (CResult d L) (Global (TAtom "zsys_lseek")) [Arg W a0; Arg L a1; Arg W a2]
                         :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx He Hin. iIntros "Herr HK".
   iApply (wp_os_errno_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ eb [] True%I
             (fun vs => exists k, vs = [WInt k] /\ ((0 <= k < 2 ^ 63) \/ k = 2 ^ 64 - 1))
@@ -170,6 +170,6 @@ Lemma wp_zsys_lseek_lend f e ls lab d a0 a1 a2 rest j fd off wh eb bs Φ :
              (Exec lab (Call (CResult d L) (Global (TAtom "zsys_lseek")) [Arg W a0; Arg L a1; Arg W a2]
                         :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof. intros. iIntros "Herr HK". iApply (wp_zsys_lseek with "[Herr] HK"); try eassumption. by iExists bs. Qed.
+Proof using Type. intros. iIntros "Herr HK". iApply (wp_zsys_lseek with "[Herr] HK"); try eassumption. by iExists bs. Qed.
 
 End rule.

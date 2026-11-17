@@ -91,7 +91,7 @@ Lemma wp_glibc___overflow fr fb freg ch mode vb vreg Φ :
      live fb freg -∗ int_cell fb off_mode (2 ^ 32 - 1) -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      WP (ERun fr' : sexpr) {{ o, ∃ r, ⌜o = Ret (WInt r) /\ 0 <= r < 2 ^ 32⌝ ∗ Φ (Ret (WInt r)) }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hfreg Hch Hmd. injection Hfr as <-.
   iIntros "#Hvt Hl [%Hm Hmb] Hvtp HK". unfold file_size in Hend.
   iPoseProof (vtables_slot ge vb vreg slot_overflow "_IO_new_file_overflow" with "Hvt") as "#Hso"; [cbn; tauto|].

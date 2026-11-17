@@ -161,7 +161,7 @@ Lemma wp_call_fxprintf_at f e ls l d args rest j vb sb sreg fp fmt ys mode flags
      WP (ERun (mkFrame f (put d (WInt (x mod 2 ^ 32)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hargs Hfn Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
   iIntros "#Hs Hst Ho Hfc HR HK".
   iApply (wp_call_bind registry (os_wi w0) ge); [exact Hargs | exact Hfn | apply fx_call_frame |].
@@ -187,7 +187,7 @@ Lemma wp_call_fxprintf f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 h
      WP (ERun (mkFrame f (put d (WInt (x mod 2 ^ 32)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hargs Hfn Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
   exact (wp_call_fxprintf_at f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 held dqf regf R
     (fun x _ => Q x) Φ Hargs Hfn Hys Hself Hselfr Hfmtr Hmode Hcnt (fx_vfprintf_rule_at_of _ _ _ _ _ _ _ _ _ Hfmt)).

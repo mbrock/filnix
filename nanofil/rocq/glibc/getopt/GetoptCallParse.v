@@ -70,10 +70,10 @@ Local Instance callparse_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_st
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A shared view of the stream's liveness can be copied. *)
 Local Instance callparse_liveq_persistent b0 reg : Persistent (liveq DfracDiscarded b0 reg).
-Proof. unfold liveq. apply _. Qed.
+Proof using Type. unfold liveq. apply _. Qed.
 (** A shared view of a pointer cell can be copied. *)
 Local Instance callparse_pcellq_persistent b0 o x : Persistent (pcellq DfracDiscarded b0 o x).
-Proof. unfold pcellq. apply _. Qed.
+Proof using Type. unfold pcellq. apply _. Qed.
 
 (** ## The returns of a call
 
@@ -234,7 +234,7 @@ Definition call_parse_rets_arg (n av : Z) (ar : region) (p : ptr) (os : list Z) 
 Lemma call_parse_rets_weaken n av ar p os li lonly b r ps j (G : iProp Σ) se sereg fp los F (M : iProp Σ) Φ :
   call_parse_rets n av ar p os li lonly b r ps j G se sereg fp los F M Φ ⊢
   call_parse_rets_arg n av ar p os li lonly b r ps j G se sereg fp los F M Φ.
-Proof.
+Proof using Type.
   iIntros "H". unfold call_parse_rets, call_parse_rets_arg.
   iSplit; [iDestruct "H" as "(H & _)"; iExact "H"|].
   iSplit.
@@ -305,7 +305,7 @@ Lemma wp_getopt_call_parse_arg_with_at cf n av ar p os lo li lonly pc penv b r p
   flags_own F -∗ M -∗ longind_own li -∗
   call_parse_rets_arg n av ar p os li lonly b r ps j G se sereg fp los F M Φ -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgc Hdd Hcf Hget Hpenv Hg Hgn Hdiag Hse Hmid' Hmid Hgp Hp7 Hp0 Hcut Hmal Hset Hlrule Hfree Hgsn Hgl
     H138 H139 H140 H141 Hlmid Hmid3 Hmid4 Hfl Hos Hneg Hlo Hlen Hn Hse0 Hsea Hsee Hser.
   iIntros "Hpre #Hos HG #Hsl #Hsc Ha Hcl #Hs #Hdd #Ht #Hp7 #Hp0 HF HM Hli HK".
@@ -396,7 +396,7 @@ Lemma wp_getopt_call_parse_arg cf n av ar p os lo li lonly pc penv b r ps j (G :
   flags_own F -∗ M -∗ longind_own li -∗
   call_parse_rets_arg n av ar p os li lonly b r ps j G se sereg fp los F M Φ -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 Hcut.
   exact (wp_getopt_call_parse_arg_with cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -439,7 +439,7 @@ Lemma wp_getopt_call_parse cf n av ar p os lo li lonly pc penv b r ps j (G : iPr
   flags_own F -∗ M -∗ longind_own li -∗
   call_parse_rets n av ar p os li lonly b r ps j G se sereg fp los F M Φ -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli HK".
   iApply (wp_getopt_call_parse_arg cf n av ar p os lo li lonly pc penv b r ps j G T fp dom se sereg mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 los F pfx7 pxs7 pfx0 pxs0 Φ with "Hpre Hos HG Hsl Hsc Ha Hcl Hs Hdd Ht Hp7 Hp0 HF HM Hli");
     try eassumption.

@@ -98,7 +98,7 @@ Lemma wp_half_check_read_dq f e ls l d bd lo hi al args rest j classes p1 p b re
   liveq dq b reg -∗
   ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi Read al) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read_dq registry (os_wi w0) ge dq _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E Lv] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]); [reflexivity | exact Hc | exact Hx |].
@@ -123,7 +123,7 @@ Lemma wp_long_scan_end ks e0 e fr cur s b r Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L50") (Some (TAtom "L30")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L30") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hk0 H12 Hc0 Hp1 Hc1 Hb Hal Hend Hr. iIntros "#Hws Hl Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
@@ -159,7 +159,7 @@ Lemma wp_long_scan_loop ks e (j : nat) cur s b r Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L27") (b_insts plo_blk27) (b_jump plo_blk27))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks. remember (eq_len s - j)%nat as m eqn:Hm. revert e j Hm.
   induction m as [m IH] using (well_founded_induction lt_wf).
   intros e j Hm H12 Hc0 Hp1 Hj Hb Hal Hend Hr. iIntros "#Hws Hl Hcur HK".
@@ -216,7 +216,7 @@ Lemma wp_getopt_long_scan ks e cur s b r Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L50") (Some (TAtom "L30")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H12 Hb Hal Hend Hr. iIntros "#Hws Hl Hcur HK".
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]".
   step. step. norm. check "Hl".

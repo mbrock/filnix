@@ -47,7 +47,7 @@ Qed.
 Lemma wp_xsputn_zero_returns fr fp src (P : iProp Σ) :
   call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr src; WInt 0] = Some fr ->
   P -∗ WP (ERun fr : sexpr) {{ r, ⌜r = Ret (WInt 0)⌝ ∗ P }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfr. iIntros "HP".
   iApply (wp_xsputn_zero fr fp src P with "HP []"); [exact Hfr |].
   iNext. iIntros "HP". iFrame "HP". done.

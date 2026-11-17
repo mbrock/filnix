@@ -130,7 +130,7 @@ Lemma wp_getopt_internal_in e n av p lo li lonly pc b r oi roi oe roe i err i0 e
      WP (ERun (mkFrame glibc_getopt_internal (put (TAtom "v30") (WInt x) e2) [] None
                  (Exec (TAtom "start") getopt_wrap_after (b_jump getopt_wrap_blk))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H2 H4 H6 H8 H10 H12 Hn Hlo Hpc Hfn Hgd Hgi Hge Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer.
   iIntros "Hli [%Hi Hib] Hle [%He Heb] Hl [%Hi0 Hb0] [%He0 Hb4] HR HK".
   step. step. step. norm. check "Hli". ld "Hli Hib". check "Hl". sw "Hl Hb0".
@@ -173,7 +173,7 @@ Lemma wp_getopt_internal_out e x i' c' a' ra b r oi roi oa roa oo roo i a0 c0 Φ
      Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal (put (TAtom "v30") (WInt x) e) [] None
               (Exec (TAtom "start") getopt_wrap_after (b_jump getopt_wrap_blk))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hx Ha' Hgd Hgi Hga Hgo Hb Hal Hend Hr Hoi Hoie Hoir Hoa Hoaa Hoae Hoar Hoo Hooe Hoor.
   iIntros "Hl [%Hi' Hb0] [%Hc' Hb8] Hb16 Hcap Hli [%Hi Hib] Hla Hab Hlo [%Hc Hcb] HK".
   unfold getopt_wrap_after, getopt_wrap_blk. cbn [b_jump].
@@ -231,7 +231,7 @@ Lemma wp_getopt_internal e n av p lo li lonly pc b r oi roi oe roe oa roa oo roo
      live oi roi -∗ int_cell oi 0 i' -∗ live oe roe -∗ int_cell oe 0 err -∗
      live oa roa -∗ pcell oa 0 a' -∗ live oo roo -∗ int_cell oo 0 c' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_internal e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H2 H4 H6 H8 H10 H12 Hn Hlo Hpc Hfn Hgd Hgi Hge Hga Hgo
     Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer Hoa Hoaa Hoae Hoar Hoo Hooe Hoor.
   iIntros "Hli Hi Hle He Hla Hab Hlo Hc Hl Hb0 Hb4 HR HK".

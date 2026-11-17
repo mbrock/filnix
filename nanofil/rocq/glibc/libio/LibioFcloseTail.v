@@ -141,7 +141,7 @@ Lemma wp_fclose_L8_static_output e from p1 pre post fb freg fl lb lbreg sb sreg 
      pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
   WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hstatic Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd. subst fp.
   iIntros "#Hvt #Hs Htcb Hl Hfl Hlp Hlb Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 HK".
   unfold file_size in Hfend.
@@ -253,7 +253,7 @@ Lemma wp_fclose_L8_stderr e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb 
      pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
   WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hv0 Hc0 Hp1 Hp1r Hgerr Hgout Hout Houtr Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd.
   apply (wp_fclose_L8_static_output e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin pout md Φ);
     try assumption. right. auto.

@@ -304,7 +304,7 @@ Qed.
 Example dtx_layout_controls :
   SysLayout.field_offset "struct pthread"%string "tid"%string = Some 720 /\ off_cancelhandling = 792 /\
   (forall reg, tb + off_cancelhandling + 4 <= r_end reg -> tb + 720 + 4 <= r_end reg).
-Proof.
+Proof using Type.
   split; [vm_compute; reflexivity|]. assert (Hoff : off_cancelhandling = 792) by reflexivity.
   split; [exact Hoff|]. intros reg H. rewrite Hoff in H. lia.
 Qed.
@@ -317,7 +317,7 @@ Example dtx_repeat_controls v :
     tcb_cleanup_inv (ow_self w0) ∗ (tcb_cleanup_inv (ow_self w0) -∗
       ∃ bs2, errno_own eb bs2 ∗ (errno_own eb [0; 0; 0; 0] -∗
         tcb_cleanup_inv (ow_self w0) ∗ (tcb_cleanup_inv (ow_self w0) -∗ dtx_G v)))).
-Proof.
+Proof using Type.
   iIntros "HG". iDestruct (dtx_errno with "HG") as (bs) "[He Hb]". iExists bs. iFrame "He". iIntros "He".
   iDestruct ("Hb" with "He") as "HG". iDestruct (dtx_lend with "HG") as "[$ Hb]". iIntros "Ht".
   iDestruct ("Hb" with "Ht") as "HG". iDestruct (dtx_errno with "HG") as (bs2) "[He Hb]". iExists bs2.
@@ -333,7 +333,7 @@ Example dtx_frame_refused tbreg' q1' q2' q3' v :
   dgx_G eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg ob dqr rb ro rreg
     gb go greg dqg lp lb lreg dql dqn dqt treg a1 ar1 r1 cw1 sh1 fl1 q1' i1 a2 ar2 r2 cw2 sh2 fl2 q2' i2
     a3 ar3 r3 cw3 sh3 fl3 q3' i3 tb tbreg' tid vb sb sreg fp F Lm v ∗ tcb_cleanup_inv (ow_self w0) ⊢ False.
-Proof.
+Proof using Type.
   intros Hs. unfold dgx_G, dgx_before, dcg_before_v, rw_held.
   iIntros "[((%bs & _ & (_ & Hl1 & _) & _) & _) Ht]".
   iDestruct "Ht" as (tb2 treg2 jb) "(%Hc & Hl & _)". destruct Hc as (Hs' & _). rewrite Hs in Hs'. injection Hs' as <-.

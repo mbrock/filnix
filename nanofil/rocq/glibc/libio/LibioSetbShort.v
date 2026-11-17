@@ -29,7 +29,7 @@ Lemma wp_glibc__IO_setb_short fr fb freg fl oe nb ne a Φ :
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
      pcell fb off_buf_end ne -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hfb Hal Hend Hfreg Ha Huser. injection Hfr as <-.
   iIntros "Hl [%Hf Hfl] Hb He HK". unfold file_size in Hend.
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".

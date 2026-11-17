@@ -40,7 +40,7 @@ Definition printf_stream (vb : Z) (self fp : ptr) (mode flags2 : Z)
 (** Hiding the saved cancellation flags preserves the exact mode and held count. *)
 Lemma printf_stream_forget vb self fp mode flags2 held :
   printf_stream vb self fp mode flags2 held -∗ file_at vb self fp mode held.
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   iExists fb, freg, st, nb, vt. iFrame. iPureIntro. tauto.
 Qed.
@@ -49,7 +49,7 @@ Qed.
     Choosing that value does not add ownership or impose a new restriction. *)
 Lemma file_at_printf_stream vb self fp mode held :
   file_at vb self fp mode held ⊣⊢ ∃ flags2, printf_stream vb self fp mode flags2 held.
-Proof.
+Proof using Type.
   iSplit.
   - iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
     iExists (fs_flags2 st), fb, freg, st, nb, vt. iFrame. iPureIntro. tauto.
@@ -62,7 +62,7 @@ Lemma printf_stream_lock vb self fp mode flags2 held :
   printf_stream vb self fp mode flags2 held -∗
   ∃ lp, lock_inv self lp held ∗
     (∀ held', lock_inv self lp held' -∗ printf_stream vb self fp mode flags2 held').
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   iExists (fs_lock st). iFrame "Hk". iIntros (held') "Hk".
   iExists fb, freg, st, nb, vt. iFrame. done.
@@ -77,7 +77,7 @@ Lemma printf_stream_flags2 vb self fp mode flags2 held :
     live fb freg ∗ int_cell fb off_flags2 flags2 ∗
     (∀ flags2', ⌜Z.land flags2' io_need_lock = 0⌝ -∗ live fb freg -∗
       int_cell fb off_flags2 flags2' -∗ printf_stream vb self fp mode flags2' held).
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hm & Hmv & Hvt & Hbok & Hf2).
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hflags2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd &

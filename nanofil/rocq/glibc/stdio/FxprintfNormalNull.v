@@ -43,7 +43,7 @@ Lemma wp_fxprintf_normal_null fb freg fl lb lbreg fmt ys md dqf fmtreg sb sreg g
     (∃ ap, fx_va ap (WPtr null :: WPtr fmt :: ys)) -∗ Q r -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (fxprintf_normal_frame null fmt ys) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hys Hfn Hg Hgb Hga Hge Hgr Hfb Hal Hend Hreg Huser Hfmtr Hmd Hself Hselfr Hcall.
   iIntros "#Hs Hgl Hgp Hl Hfl Hlp Hlk Hmd Hfmt HR HE HK".
   set (P := (single_ro ge sb sreg ∗ live gb greg ∗ pcell gb 0 (mkPtr fb (Obj fb)) ∗ live fb freg ∗ int_cell fb 0 fl ∗

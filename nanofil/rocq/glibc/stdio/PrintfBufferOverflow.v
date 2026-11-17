@@ -51,7 +51,7 @@ Lemma wp_printf_buffer_done_overflow fr bb breg db dreg bo used written mode dq1
      pcell bb 8 (mkPtr (db + bo + used) (Obj db)) -∗ icell bb 24 written -∗
      live eb ereg -∗ int_cell eb eo 75 -∗
      Φ (Ret (WInt 4294967295))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Herr Hbb Hal Hend Hreg Hdb Hbo Hused Hdend Hdreg Hw Htotal Hmode Heb Heo Heend Hereg.
   injection Hfr as <-. iIntros "Hl Hd [%Hm Hmode] Hbase Hptr Hwritten Hel [%Hprior Herrno] HK".
   step. step. norm.

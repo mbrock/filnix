@@ -59,7 +59,7 @@ Lemma wp_glibc_rwunlock_read fr lb lreg r cw sh tb treg dqt dqi tid Φ :
   ▷ (live lb lreg -∗ int_cell lb 0 (r - 8) -∗ int_cell lb 24 cw -∗ int_cell lb 28 sh -∗
      liveq dqt tb treg -∗ int_cellq dqi tb 720 tid -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hself Htb Htend Htreg Hlb Hlal Hlend Hlreg Hr Hr8 Hcw. injection Hfr as <-.
   iIntros "Hl [%Hr0 Hrb] [%Hcw0 Hcwb] [%Hsh0 Hshb] Htl [%Htid0 Htidb] HK".
   repeat step. check "Hl".
@@ -115,7 +115,7 @@ Lemma wp_call_glibc_rwunlock `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_
      WP (ERun (mkFrame f (put d (WInt 0) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__GI___pthread_rwlock_unlock")) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hargs (-> & Hlb & Hlal & Hlend & Hlreg & Hself & Htb & Htend & Htreg) Hr Hr8 Hcw.
   iIntros "[(Hl & Hr & Hcw & Hsh & Hfl) [Htl Hti]] HK".
   iApply wp_call_bind; [exact Hargs | apply defines | reflexivity |]. iNext.

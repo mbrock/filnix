@@ -65,7 +65,7 @@ Definition getenv_value r : iProp Σ :=
 Lemma getenv_cells_value p s dq dqt b o entries : s <> [] ->
   word_string DfracDiscarded p s -∗ getenv_cells dq dqt b o entries -∗
   getenv_cells dq dqt b o entries ∗ getenv_value (getenv_scan_result s entries).
-Proof.
+Proof using Type.
   intros Hne. revert o. induction entries as [|x xs IH]; intros o;
     iIntros "#Hname Hcells"; cbn [getenv_cells getenv_scan_result].
   - iFrame. iLeft. done.
@@ -110,7 +110,7 @@ Lemma getenv_scan_load e (first : bool) p cursor n old q b reg o qr dq dqt (G : 
       : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
     (Enter (TAtom "L32") (Some (TAtom (if first then "L13" else "L34"))))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hp Hcursor Hn Hold Hz -> Hb Ho Hend Hspace Hal Hq.
   iIntros "Hl Hcell Htarget HG HK".
   destruct first; step;

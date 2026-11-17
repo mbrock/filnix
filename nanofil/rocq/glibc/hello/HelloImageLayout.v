@@ -162,21 +162,21 @@ Proof using Type*. exact (hello_layout_check g m Hi). Qed.
 
 Lemma hello_image_obj_sym n b : In (n, b) hello_image_obj_syms ->
   Term.lookup (TAtom n) g = Some (mkPtr b (Obj b)).
-Proof.
+Proof using Type*.
   intros Hin. pose proof parts as H. unfold hello_layout_ok in H. repeat rewrite andb_true_iff in H.
   apply lookup_obj_ok. exact (proj1 (forallb_forall _ _) (proj1 (proj1 (proj1 (proj1 H)))) (n, b) Hin).
 Qed.
 
 Lemma hello_image_ro_sym n b : In (n, b) (hello_image_ro_syms ++ hello_image_lits) ->
   Term.lookup (TAtom n) g = Some (mkPtr b (Ro b)).
-Proof.
+Proof using Type*.
   intros Hin. pose proof parts as H. unfold hello_layout_ok in H. repeat rewrite andb_true_iff in H.
   apply lookup_ro_ok. exact (proj1 (forallb_forall _ _) (proj2 (proj1 (proj1 (proj1 H)))) (n, b) Hin).
 Qed.
 
 Lemma hello_image_fn_sym n a : In (n, a) hello_image_fn_syms ->
   Term.lookup (TAtom n) g = Some (mkPtr a (Fn (TAtom n))).
-Proof.
+Proof using Type*.
   intros Hin. pose proof parts as H. unfold hello_layout_ok in H. repeat rewrite andb_true_iff in H.
   apply lookup_fn_ok. exact (proj1 (forallb_forall _ _) (proj2 (proj1 (proj1 H))) (n, a) Hin).
 Qed.
@@ -185,7 +185,7 @@ Qed.
     that the loader registers, so no proof can enlarge one. *)
 Theorem hello_image_regions :
   Forall (fun be : Z * Z => object_region be.1 (m_regions m) = Some (gd be.1 be.2)) hello_image_regs.
-Proof.
+Proof using Type*.
   pose proof parts as H. unfold hello_layout_ok in H. repeat rewrite andb_true_iff in H.
   apply List.Forall_forall. intros be Hin.
   exact (bool_decide_eq_true_1 _ (proj1 (forallb_forall _ _) (proj2 (proj1 H)) be Hin)).
@@ -195,7 +195,7 @@ Qed.
     This says what the loader wrote, not who owns the words. *)
 Theorem hello_image_stream_cells :
   Forall (fun c : Z * Z * cap => load_bytes m c.1.1 8 = c.1.2 /\ m_aux m c.1.1 = c.2) hello_image_cells.
-Proof.
+Proof using Type*.
   pose proof parts as H. unfold hello_layout_ok in H. repeat rewrite andb_true_iff in H.
   apply List.Forall_forall. intros c Hin.
   pose proof (proj1 (forallb_forall _ _) (proj2 H) c Hin) as Hc. apply andb_true_iff in Hc as [Hb Ha].
@@ -206,7 +206,7 @@ Qed.
     record hello_layout asks only that the literal has a symbol. *)
 Theorem hello_image_lits_ro :
   Forall (fun nb : string * Z => Term.lookup (TAtom nb.1) g = Some (mkPtr nb.2 (Ro nb.2))) hello_image_lits.
-Proof.
+Proof using Type*.
   apply List.Forall_forall. intros [n b] Hin. apply hello_image_ro_sym. apply in_or_app. right. exact Hin.
 Qed.
 

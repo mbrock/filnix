@@ -42,7 +42,7 @@ Lemma wp_error_fallback e status errnum fmt ap mode cb sb sreg fb freg dq md
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L67") (Some (TAtom "iw_2.L23")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hinputs Hg Hsb Hsa Hse Hsr Hfb Hfe Hfr Hwide Hfn Hframe Hcall.
   destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Hsl Hsp Hfl [%Hmd Hmb] HR HE HK".

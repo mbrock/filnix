@@ -45,7 +45,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The cursor relation holds only shared strings and pure facts, so it may be used twice. *)
 Local Instance es_cursor_persistent ps i s : Persistent (getopt_cursor ps i s).
-Proof. unfold getopt_cursor. apply _. Qed.
+Proof using Type. unfold getopt_cursor. apply _. Qed.
 
 (** A caller that calls getopt again must know where the first blocks
     of the call leave it. These blocks read the environment when they
@@ -93,7 +93,7 @@ Lemma wp_getopt_entry_session e n av ar p os lo li lonly pc penv b r ps i (G : i
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "start") (b_insts getopt_blk_start) (b_jump getopt_blk_start))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hget Hpenv H0 H2 H4 H6 H8 H10 H12 H14 Hlen.
   iIntros "Hss #Hos HG HK".
   iDestruct (entry_pre with "Hss") as (s tail) "(%Hav & Hs & [%Hbd %Hi0] & #Hk & #Hc)".

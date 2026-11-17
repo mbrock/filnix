@@ -103,7 +103,7 @@ Lemma printf_copy_buffer_open fb bb breg sz k we xs fl tw off :
   LibioOverflowBase.ovf_state fb bb breg sz k we xs fl tw off -∗ printf_copy_buffer bb sz -∗
   LibioDefaultXsputnBuf.wbuf fb (Some (bb, sz)) (mkPtr (bb + k) (Obj bb)) we ∗
   int_cell fb off_flags fl ∗ icell fb off_total_written tw ∗ icell fb off_offset off.
-Proof.
+Proof using Type.
   intros Hheap.
   iIntros "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)
     (%Hal & %cs & %Hlc & Hcs)".
@@ -122,7 +122,7 @@ Lemma printf_copy_buffer_close fb bb sz wp we fl tw off :
   icell fb off_total_written tw -∗ icell fb off_offset off -∗
   ∃ breg xs k, ⌜r_kind breg = Heap⌝ ∗
     LibioOverflowBase.ovf_state fb bb breg sz k we xs fl tw off ∗ printf_copy_buffer bb sz.
-Proof.
+Proof using Type.
   iIntros "((Hrp & Hre & Hrb & Hwb & Hbase & Hbend) & Hwp & Hwe & Hroom) Hfl Htw Hoff".
   iDestruct "Hroom" as (breg xs cs Hp) "(Hbl & Hxs & Hcs)".
   destruct Hp as (Hb & Hal & Hsz & Hend & Hreg & Hlx & Hlc & Hx & [Hpc Hpa] & [Hec Hea] & Hheap).
@@ -139,7 +139,7 @@ Qed.
 Lemma printf_heap_stream_with_forget B w0 vb self fp mode flags2 held :
   printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
   printf_heap_stream w0 vb self fp mode flags2 held.
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %bb & %breg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp &
     Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvt & Htail & _)".
   iExists fb, freg, st, bb, breg, sz, k, we, xs, fl, tw, off, col. iFrame "Hl Hst Hf2 Hfd Hcol Hmd Hvt Htail". done.
@@ -151,7 +151,7 @@ Lemma printf_heap_stream_with_live B w0 vb self fp mode flags2 held :
   printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
   ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗
     (live_capq dq (ptr_cap fp) reg -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held).
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %bb & %breg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp & Hl & Hrest)".
   pose proof Hp as (Hfp & _). subst fp.
   iExists (DfracOwn 1%Qp), freg. iFrame "Hl". iIntros "Hl".
@@ -164,7 +164,7 @@ Lemma printf_heap_stream_live w0 vb self fp mode flags2 held :
   printf_heap_stream w0 vb self fp mode flags2 held -∗
   ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗
     (live_capq dq (ptr_cap fp) reg -∗ printf_heap_stream w0 vb self fp mode flags2 held).
-Proof. exact (printf_heap_stream_with_live (fun _ _ => emp%I) w0 vb self fp mode flags2 held). Qed.
+Proof using Type. exact (printf_heap_stream_with_live (fun _ _ => emp%I) w0 vb self fp mode flags2 held). Qed.
 
 (** The stronger heap view returns an ordinary diagnostic stream with the
     same mode, cancellation flags and held count. This implication does not
@@ -172,7 +172,7 @@ Proof. exact (printf_heap_stream_with_live (fun _ _ => emp%I) w0 vb self fp mode
 Lemma printf_heap_stream_forget w0 vb self fp mode flags2 held :
   printf_heap_stream w0 vb self fp mode flags2 held -∗
   printf_stream vb self fp mode flags2 held.
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %bb & %breg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp &
     Hl & Hst & Hf2 & Hfd & Hcol0 & Hmd & Hvt & Htail & _)".
   destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hheap & Hmode & Hnarrow & Hflags2 & Hvt & Hcolumn &

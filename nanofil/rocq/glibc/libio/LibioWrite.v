@@ -125,7 +125,7 @@ Lemma wp_file_write_loop fb freg fl f2 fd b reg o xs eb Φ :
        Φ (Ret (WInt r))) -∗
     WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
           : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr He Hb Ho Hbend Hreg' Hy. unfold file_size in Hend.
   iLöb as "IH". iIntros (e t tw off (Hv0 & Hv4 & Ht & Hp & Htr)) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
@@ -180,7 +180,7 @@ Lemma wp_glibc__IO_new_file_write fr fb freg fl f2 fd tw off b reg o xs eb Φ :
      icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ live b reg -∗ bytes b o xs -∗ errno_any eb -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr. injection Hfr as <-. intros. iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   step. step. iApply wp_enter; [reflexivity | reflexivity | iNext].
   iApply (wp_file_write_loop with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try eassumption.

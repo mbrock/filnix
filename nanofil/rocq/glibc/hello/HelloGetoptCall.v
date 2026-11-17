@@ -152,7 +152,7 @@ Lemma hello_getopt_lend_with_at av ar ps a i :
                                  0 <= i' <= Z.of_nat (length ps)⌝ ∗
                 hello_getopt_priv ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗
                 hello_getopt_state gb greg av ar ps' i' ∗ (if code =? 103 then str_ro a' else True))%I.
-Proof.
+Proof using H138 H139 H140 H141 H142 H143 H144 H145 H146 H147 H148 H149 H150 Hchr Hchrn Hcmp Hdiag Hfree Hgb Hgb0 Hgb8 Hgbe Hgbr Hgi Hgl Hgr Hldiag Hlen Hmalloc Hmemset Hncmp Hoa0 Hoe Hoe0 Hoee Hoer Hoi0 Hoo Hoo0 Hooe Hoor Hplo Hse0 Hy.
   intros Hnamed Hcw.
   exists glibc_getopt_long. split; [exact Hgl|].
   split; [eexists; apply getopt_long_call_frame|]. intros fr Φ Hfr.
@@ -209,7 +209,7 @@ Definition hello_getopt_globals : iProp Σ :=
 
 (** What a call borrows splits into the parser's own objects and what the backends use. *)
 Lemma hello_getopt_priv_split : hello_getopt_priv ⊣⊢ hello_getopt_globals ∗ G ∗ M.
-Proof.
+Proof using Type.
   iSplit.
   - iIntros "(%err & %c0 & Hel & Hec & Hol & Hoc & HG & HM & #H69 & #Ht & #Hdd & #H7 & #H0)".
     iSplitR "HG HM"; [|iSplitL "HG"; [iExact "HG" | iExact "HM"]].
@@ -237,7 +237,7 @@ Lemma hello_getopt_ix_ro_sep_at (R : iProp Σ) av ar :
   getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
   (hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R)) ->
   loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals ∗ R)%I.
-Proof.
+Proof using H138 H139 H140 H141 H142 H143 H144 H145 H146 H147 H148 H149 H150 Hchr Hchrn Hcmp Hdiag Hfree Hgb Hgb0 Hgb8 Hgbe Hgbr Hgi Hgl Hgr Hldiag Hlen Hmalloc Hmemset Hncmp Hoa0 Hoe Hoe0 Hoee Hoer Hoi0 Hoo Hoo0 Hooe Hoor Hplo Hro_m Hse0 Hy.
   intros Hnamed Hcw HgR.
   intros ps a i. destruct (hello_getopt_lend_with_at av ar ps a i Hnamed Hcw) as (gf & Hgf & Hfr & Ht).
   exists gf. split; [exact Hgf|]. split; [exact Hfr|]. intros fr Φ Hf.

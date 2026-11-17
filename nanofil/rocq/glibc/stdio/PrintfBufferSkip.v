@@ -42,7 +42,7 @@ Lemma wp_printf_buffer_write_skip fr bb breg src count mode Φ :
   live bb breg -∗ int_cell bb 32 mode -∗
   ▷ (live bb breg -∗ int_cell bb 32 mode -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hal Hend Hreg Hskip. injection Hfr as <-.
   iIntros "Hl [%Hm Hmode] HK". step. step. norm. check "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hmode");
@@ -67,7 +67,7 @@ Lemma wp_printf_buffer_flush_failed fr bb breg Φ :
   live bb breg -∗ int_cell bb 32 0 -∗
   ▷ (live bb breg -∗ int_cell bb 32 0 -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hal Hend Hreg. injection Hfr as <-.
   iIntros "Hl [%Hm Hmode] HK". step. step. norm. check "Hl".
   load_bytes_dq "Hl Hmode" decode (cbn; reflexivity) by ar.

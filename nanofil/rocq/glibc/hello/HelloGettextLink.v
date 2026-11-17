@@ -71,7 +71,7 @@ Definition hello_gettext_cache (ob : hello_objs) : iProp Σ :=
 (** Most heap facts already follow from Hello's own record. The new
     record adds only the two facts about memmove. *)
 Lemma hello_heap_glibc ob : hello_link ge ob -> hello_gettext_link ge -> dci_heap_glibc (ho_mp ob) (ho_tc ob).
-Proof.
+Proof using Type.
   intros Hk Hg. destruct (hk_frees _ _ Hk) as (Hfh & Hzf & Hzg).
   split_and!; first [exact Hfh | exact Hzf | exact Hzg | exact (hk_mp _ _ Hk) | exact (hk_tc _ _ Hk)
                     | exact (proj1 (hg_zmemmove _ Hg)) | exact (proj2 (hg_zmemmove _ Hg))].
@@ -102,7 +102,7 @@ Lemma wp_dcgettext_c_hello f e ls l d args rest j mid dom ds dqd nb nc k cat dqc
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hk Hg. pose proof (hello_heap_glibc ob Hk Hg) as Hh.
   pose proof (hk_gi_strlen _ _ Hk). pose proof (hk_free _ _ Hk).
   pose proof (hk_malloc _ _ Hk). pose proof (hk_malloc2 _ _ Hk).
@@ -130,7 +130,7 @@ Lemma dcg_diag_translate_hello dom ds dqd nb nc k cat dqc cv p276 p277 db dqb db
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hello_gettext_cache ob) bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hk Hg. pose proof (hello_heap_glibc ob Hk Hg) as Hh.
   pose proof (hk_gi_strlen _ _ Hk). pose proof (hk_free _ _ Hk).
   pose proof (hk_malloc _ _ Hk). pose proof (hk_malloc2 _ _ Hk).
@@ -158,7 +158,7 @@ Lemma dcg_ldiag_translate_hello dom ds dqd nb nc k cat dqc cv p276 p277 db dqb d
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hello_gettext_cache ob) bs)
     dom.
-Proof.
+Proof using Type*.
   intros Hk Hg. pose proof (hello_heap_glibc ob Hk Hg) as Hh.
   pose proof (hk_gi_strlen _ _ Hk). pose proof (hk_free _ _ Hk).
   pose proof (hk_malloc _ _ Hk). pose proof (hk_malloc2 _ _ Hk).

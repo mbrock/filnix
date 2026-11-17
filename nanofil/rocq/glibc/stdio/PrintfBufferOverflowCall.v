@@ -79,7 +79,7 @@ Lemma wp_printf_overflow_call e bb breg fp ch Φ :
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "L74") (skipn 3 (b_insts printf_overflow_block))
       (b_jump printf_overflow_block))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbb Hbe Hbr Hch Hv0 Hchk Hfp. iIntros "Hb Hch HF HE HK".
   cbn [printf_overflow_block b_insts b_jump skipn].
   step. check "Hb".

@@ -114,7 +114,7 @@ Lemma wp_getopt_entry_call_at cf n av ar p os lo li lonly pc penv b r ps j (G : 
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   getopt_entry_exits n av ar p os lo li lonly b r ps j G Φ -∗
   WP (ERun cf : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcf Hget Hpenv Hlen. rewrite getopt_r_call_frame in Hcf. injection Hcf as <-.
   iIntros "Hpre Hos HG HK".
   iApply wp_enter; [exact getopt_r_find_start | reflexivity |]. iNext.
@@ -149,7 +149,7 @@ Lemma getopt_callee_session n av ar p os lo li lonly pc penv b r ps i j err (G :
               [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] =
             Some cf⌝ -∗
        live b r -∗ int_cell b 0 j -∗ int_cell b 4 err -∗ WP (ERun cf : gexpr) {{ Φ }}).
-Proof.
+Proof using Type.
   intros Hj Hget Hpenv Hlen. iIntros "Hss #Hos HG HK".
   iAssert ⌜1 <= n < 2 ^ 31⌝%I as %Hn.
   { iDestruct "Hss" as "[_ (%s & _ & %Hbd & _)]". iPureIntro. unfold getopt_bounds in Hbd. lia. }
@@ -173,7 +173,7 @@ Lemma getopt_callee_zero n av ar p os lo li lonly pc penv b r ps j err (G : iPro
               [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] =
             Some cf⌝ -∗
        live b r -∗ int_cell b 0 j -∗ int_cell b 4 err -∗ WP (ERun cf : gexpr) {{ Φ }}).
-Proof.
+Proof using Type.
   intros Hav Hal Hfit Har Hn Hj Hget Hpenv Hlen. subst n. iIntros "Hz #Hos HG HK".
   iDestruct (GetoptEntryPre.zero_entry_pre b r av ar ps j err with "Hz") as "(Hl & Hi & He & Hw)"; try assumption.
   iFrame "Hl Hi He". iIntros (cf Hcf) "Hl Hi He". iDestruct ("Hw" with "Hl Hi He") as "Hpre".

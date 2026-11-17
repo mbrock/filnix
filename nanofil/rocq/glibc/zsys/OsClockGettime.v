@@ -148,7 +148,7 @@ Lemma wp_zsys_clock_gettime f e ls lab d a0 a1 rest j clk b reg o eb Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "zsys_clock_gettime")) [Arg W a0; Arg P a1] :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx He Ho Hend. iIntros "Hl Hb Herr HK".
   iApply (wp_os_errno_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ eb [(b, o, timespec_size)] (live b reg)
             (fun vs => vs = [WInt 0] \/ vs = [WInt (2 ^ 32 - 1)])

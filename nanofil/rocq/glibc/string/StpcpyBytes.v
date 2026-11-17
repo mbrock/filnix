@@ -168,7 +168,7 @@ Lemma wp_raw_store_l_bytes f e ls l off v a rest j p b reg o xs y Φ :
   live b reg -∗ bytes b o xs -∗
   ▷ (live b reg -∗ bytes b o (le_bytes y 8) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Ha Hp Hoff Hlen Hwi. iIntros "Hl Hx HK".
   iApply (wp_write _ _ _ ((PLive b, VLive reg) :: byte_ps b o xs) ((PLive b, VLive reg) :: byte_ps b o (le_bytes y 8))
             _ _ [] (fun m => store_bytes m (b + o) 8 y) with "[Hl Hx] [HK]");

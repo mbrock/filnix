@@ -40,7 +40,7 @@ Lemma wp_vfxprintf_null gb greg :
     lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (vfxprintf_frame null fmt ap flags) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hal Hcall Hend Hext Hfb Hfmtr Hmd Hreg Hregistry Hself Hselfr Huser.
   intros Hg Hgb Hga Hge Hgr. iIntros "#Hs Hgl Hgp Hl Hfl Hlp Hlk Hmd Hfmt HV HR HE HK".
   iApply (wp_live_fit1 with "Hgl"). iIntros ([Hg0 Hg48]) "Hgl".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
@@ -63,7 +63,7 @@ Lemma wp_vfxprintf_explicit :
     lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (vfxprintf_frame (mkPtr fb (Obj fb)) fmt ap flags) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hal Hcall Hend Hext Hfb Hfmtr Hmd Hreg Hregistry Hself Hselfr Huser.
   iIntros "#Hs Hl Hfl Hlp Hlk Hmd Hfmt HV HR HE HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
   unfold vfxprintf_frame. step. step. step. step. branch_as true.

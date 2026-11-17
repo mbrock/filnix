@@ -76,7 +76,7 @@ Lemma wp_glibc__IO_new_fclose_stderr_short_empty fr pre post fb freg fl f2 fd of
      io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗ E -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp buf Hfr Hgerr Hgout Hout Houtr Hgin Hin Hinr Hcleanup Hfcr Hfb Hfal Hfend Hfreg
     Hf2r Hf232 Hfdr Hfl Hnw Hcp Hub Hul Hlnk Hfb8 He Hlb Hmd. subst fp buf.
   iIntros "#Hvt #Hs Htcb Hl Hfl Hfl2 Hfd Hoff Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hmode Hvtp

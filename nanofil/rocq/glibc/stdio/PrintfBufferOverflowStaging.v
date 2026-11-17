@@ -61,7 +61,7 @@ Lemma wp_printf_overflow_staging fr bb breg fb ch mode written Φ :
     WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
       (Enter (TAtom "L88") (Some (TAtom "L74")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfrg Hch Hw Hborrow.
   set (P := (pcell bb 0 (mkPtr (bb + 48) (Obj bb)) ∗
     pcell bb 8 (mkPtr (bb + 49) (Obj bb)) ∗

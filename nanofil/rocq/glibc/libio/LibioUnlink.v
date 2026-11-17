@@ -63,7 +63,7 @@ Lemma wp_glibc__IO_un_link_unlinked fr fb freg fl Φ :
   live fb freg -∗ int_cell fb off_flags fl -∗
   ▷ (live fb freg -∗ int_cell fb off_flags fl -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hfb Hfal Hfend Hfreg Hfl Hlnk. injection Hfr as <-. unfold file_size in Hfend.
   unfold has, io_linked in Hlnk. apply negb_false_iff, Z.eqb_eq in Hlnk.
   assert (0 <= Z.land fl 128 < 2 ^ 32) by (rewrite Hlnk; lia).
@@ -95,7 +95,7 @@ Lemma wp_glibc__IO_un_link fr pre post fb freg fl lb lbreg sb sreg fcp Φ :
      io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hfr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk. injection Hfr as <-. unfold file_size in Hfend.
   subst fp.
   unfold has, io_linked, io_user_lock in Hlnk, Hul.

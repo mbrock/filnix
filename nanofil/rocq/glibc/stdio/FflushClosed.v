@@ -95,7 +95,7 @@ Lemma wp_fflush_closed fr fb freg fl off lb lbreg sb sreg vb vreg (E : iProp Σ)
     icell fb 144 (2 ^ 64 - 1) -∗ pcell fb 216 (mkPtr (vb + vt_file) (Ro vb)) -∗
     pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hfb Hal Hend Hregion Huser Hbackup Hself.
   iIntros "#Hvt #Hslot #Hs Hl Hfl H8 H16 H32 H40 Hoff Hvtp Hlp Hlk HE HK".
   iApply (wp_fflush_acquire Hreg Hext with "Hs Hl Hfl Hlp Hlk"); try close_side; try assumption.

@@ -54,7 +54,7 @@ Lemma wp_printf_buffer_init_null fr bb breg fb freg oldbase oldptr oldend oldfp 
      pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗
      icell bb 24 0 -∗ int_cell bb 32 4 -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg. injection Hfr as <-.
   iIntros "Hb Hf Hwp Hwe Hbase Hptr Hend Hw [%Hm Hm] Hfp HK".
   step. step. step. check "Hb". store "Hb" "Hbase".
@@ -95,7 +95,7 @@ Lemma wp_printf_buffer_init_owned fr bb breg fb freg db dreg bo eo dqf dqd
      pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗
      icell bb 24 0 -∗ int_cell bb 32 4 -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   cbn zeta. intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hdb Hbo Heo Hdp Hde Hdr.
   injection Hfr as <-. iIntros "Hb Hf Hd Hwp Hwe Hbase Hptr Hend Hw [%Hm Hm] Hfp HK".
   step. step. step. check "Hb". store "Hb" "Hbase".

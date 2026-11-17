@@ -62,7 +62,7 @@ Lemma wp_printf_xsputn_caller e from bb breg fb vb vreg xs mode Φ :
       (Enter (TAtom "L40") (Some (TAtom "iw_1.join")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L14") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   cbn zeta. intros Hbb Hba Hbe Hbr Hfb Hfa Hlen Hxs Hv0 Hchk Hchk1 Hborrow.
   iIntros "#Hvt Hb Hptr Hfp Hxs Hm HF HE Hfail Hselect".
   iDestruct (Hborrow with "HF") as (freg dqf (Hfe & Hfr)) "(Hf & Hvtp & Hclose)".

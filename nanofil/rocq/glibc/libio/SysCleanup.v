@@ -62,7 +62,7 @@ Lemma wp_glibc___libc_cleanup_push_defer fr bb breg bo pv xs Φ :
   ▷ (tcb_pushed (ow_self w0) (mkPtr (bb + bo) (Obj bb)) -∗ live bb breg -∗ pcell bb (bo + 24) null -∗
      int_cell bb (bo + 16) 0 -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hbb Hbo Hal Hend Hbreg Hxs. injection Hfr as <-.
   iIntros "(%tb & %treg & %jb & %Ht & Htl & Hcl & Hjb & Hch) Hbl Hpv Hct HK".
   destruct Ht as (Hself & Htb & Htal & Htend & Htreg). step.

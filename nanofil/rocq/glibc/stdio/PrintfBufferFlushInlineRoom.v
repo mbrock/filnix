@@ -64,7 +64,7 @@ Lemma wp_printf_buffer_flush_inline_room fr bb breg fb freg bo used eo written o
      pcell bb 8 (mkPtr (fb + bo + used) (Obj fb)) -∗
      pcell bb 16 (mkPtr (fb + eo) (Obj fb)) -∗ icell bb 24 ((written + used) mod 2 ^ 64) -∗
      Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfrg Hbo Hused Hspace Hde
     Hstage Hsingle Hw. injection Hfr as <-.
   iIntros "Hb Hf Hfp Hwp Hwe Hbase Hptr Hend Hw HK".

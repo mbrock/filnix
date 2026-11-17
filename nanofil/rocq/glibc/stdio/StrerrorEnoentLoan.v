@@ -51,7 +51,7 @@ Let translation := enoent_translation eb dom dqd nb nc k cat dqc cv p276 p277 db
     lifetime permission would prevent the caller from recovering full ownership. *)
 Lemma enoent_translation_borrow bs :
   live tb tbreg ∗ enoent_translation_pack bs ⊣⊢ translation bs.
-Proof.
+Proof using Type.
   assert (Hsplit : forall ps, pts ps ⊣⊢
     ptsq (DfracOwn (1 / 2)) ps ∗ ptsq (DfracOwn (1 / 2 / 2)) ps ∗ ptsq (DfracOwn (1 / 2 / 2)) ps).
   { intros ps. rewrite -(ptsq_split (1 / 2 / 2) (1 / 2 / 2)) Qp.div_2
@@ -114,7 +114,7 @@ Lemma error_strerror_enoent_thread_call lenb lenr tab tabr mid mb mr bs (E : iPr
       WP (ERun fr : gexpr) {{ result, ∃ p, ⌜result = Ret (WPtr p) /\ p = mid⌝ ∗
         live tb tbreg ∗ error_text_buffer error_borrowed_text b p ∗
         enoent_lookup_cells lenb lenr tab tabr mid mr ∗ enoent_translation_pack (le_bytes (dci_w bs) 4) ∗ E }}).
-Proof.
+Proof using Defines0 Defines1 Defines10 Defines11 Defines12 Defines13 Defines2 Defines3 Defines4 Defines5 Defines6 Defines7 Defines8 Defines9 Hbounds Hdomain Herr Hext Hglobals Hheap Hlk1 Hlk2 Hlkt Hlocale Hral Hrb Hre Hreg Hro Hrr Hsecure Hv.
   intros Hlen Htable Hmessage Hlenb Hlene Hlenr Htab Htal Htabe Htabr Hstring b.
   destruct (error_strerror_enoent_call eb Herr Hreg Hext dom dqd nb nc k cat dqc cv p276 p277 db dqb dbreg
     ib ic dqi ireg sec dqs secreg v tc dd dq mpb tcb dmb mpr tcr dr dqr rb ro rreg gb go greg dqg lp lb lreg

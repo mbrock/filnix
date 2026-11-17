@@ -53,7 +53,7 @@ Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 
 (** A call may reuse a read-only pointer argument. *)
 Global Instance arg_ro_ptr_persistent q : Persistent (arg_ro o (WPtr q)).
-Proof. rewrite /arg_ro. apply _. Qed.
+Proof using Type. rewrite /arg_ro. apply _. Qed.
 
 (** The caller keeps the bounded integer returned by this call. *)
 Lemma wp_call_int g xs P Q f e ls lab d args rest j Ψ :

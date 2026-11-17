@@ -118,7 +118,7 @@ Lemma wp_error_internal_entry status errnum fmt ap mode tb treg state
     WP (ERun (mkFrame glibc_error_internal e [] None
       (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}) -∗
   WP (ERun (error_internal_frame status errnum fmt ap mode) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hself Htb Htal Hte Htr Hstate Hcancel Ho Hob Hoa Hoe Hor Hou
     Hp Hpb Hpa Hpe Hpr Hcu Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush Hff Hflushcall
     Hfx Hfxframe Hfxcall Hcap Hcheck Hcbfn Hconv Hcbframe Hcbcall.

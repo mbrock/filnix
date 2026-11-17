@@ -36,7 +36,7 @@ Definition error_text_scratch (borrowed : ptr -> iProp Σ) errnum : iProp Σ :=
 
 Lemma error_count_unsigned n : 0 <= n < 2 ^ 32 ->
   extended Uw W (of_bytes (le_bytes n 4)) = Some (WInt n).
-Proof. intros Hn. rewrite of_bytes_int; [|exact Hn]. cbn. by rewrite !(Z.mod_small n (2 ^ 32)). Qed.
+Proof using Type*. intros Hn. rewrite of_bytes_int; [|exact Hn]. cbn. by rewrite !(Z.mod_small n (2 ^ 32)). Qed.
 
 (** Every report increments the counter, including reports with no errno
     text. This proof follows those instructions and the buffer allocation;
@@ -63,7 +63,7 @@ Lemma wp_error_text_loan e from status errnum fmt ap mode cb nb nreg count
       (Enter (TAtom "iw_2.L92") (Some predecessor))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hinputs Herrrange Hglobal Hnb Hne Hnr Htext Hstr Hfx Hstrcall Hfxcall.
   destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Hl [%Hcount Hbytes] HL HR HE HK".

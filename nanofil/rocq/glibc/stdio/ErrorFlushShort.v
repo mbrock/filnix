@@ -41,7 +41,7 @@ Lemma wp_error_flush_short (Hreg : holds_os registry) (Hext : sys_external ge)
     error_newline_done fb fl lb lbreg nn nr
       (fun _ md => ⌜md = 0 \/ md = 2 ^ 32 - 1⌝ ∗
         error_short_flush_resources fb (2 ^ 64 - 1) vb vreg sb sreg ∗ E)%I }}.
-Proof.
+Proof using Type.
   intros Hfr Hfb Hal Hend Hregion Huser Hbackup Hself.
   iIntros "Hl Hdone". iDestruct "Hdone" as (r md) "[(Hfl & Hlp & Hlk & Hmd & Hfmt & Hbytes) [%Hnarrow [HR HE]]]".
   iDestruct "HR" as "(Hfields & Hvtp & #Hvt & #Hslot & #Hs)".

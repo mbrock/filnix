@@ -222,7 +222,7 @@ Lemma sym_follow_rule ρ f e ls cuts next fs s l t Φ :
     stree_den ρ f e ls Φ (next fs' s' l' insts j) ⊢ run_den ρ f e ls l' insts j Φ s') ->
   stree_den ρ f e ls Φ (sym_follow ge f cuts next fs s l t) ⊢
   leaf_den registry wi ge ρ f e ls l Φ (LGoto t s).
-Proof.
+Proof using SafepointStable0.
   intros Hfs IH. unfold sym_follow.
   destruct (existsb (name_eqb (edge_label t)) cuts); [done|].
   destruct (find_block (edge_label t) (fn_blocks f)) as [b|] eqn:Hb; [|done].
@@ -244,7 +244,7 @@ Lemma sym_func_rule ρ f e ls cuts fuel fs s l insts j Φ :
   facts_hold ρ fs ->
   stree_den ρ f e ls Φ (sym_func ge f cuts fuel fs s l insts j) ⊢
   run_den ρ f e ls l insts j Φ s.
-Proof.
+Proof using SafepointStable0.
   revert fs s l insts j. induction fuel as [|fuel IH]; intros fs s l insts j Hfs.
   all: assert (Hleaf : stree_den ρ f e ls Φ (sym_func ge f cuts
       ltac:(first [exact (S fuel) | exact O]) fs s l insts j) ⊢
@@ -285,7 +285,7 @@ Theorem sym_func_sound fs se h f e ls cuts fuel l insts j ρ Φ :
   facts_hold ρ fs -> env_models ρ se e ->
   heap_den ρ h -∗ stree_den ρ f e ls Φ (sym_func ge f cuts fuel fs (mkSState se [] h []) l insts j) -∗
   WP (ERun (mkFrame f e ls None (Exec l insts j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfs He. iIntros "Hheap H".
   iDestruct (sym_func_rule with "H") as "[_ HK]"; [exact Hfs|].
   iApply ("HK" with "Hheap []"). done.
@@ -448,7 +448,7 @@ Fixpoint sym_context_goals ρ f e ls Φ (Δ Δlater : envs (iProp Σ)) (t : name
 Lemma sym_return_env_sound ρ names h Δ Δout :
   sym_return_env ρ names h Δ = Some Δout ->
   of_envs Δ ∗ heap_den ρ h ⊢ of_envs Δout.
-Proof.
+Proof using Type.
   unfold sym_return_env. destruct names as [ns|]; [|discriminate].
   destruct (sym_named_heap ρ ns h) as [Γ|] eqn:E; [|discriminate].
   intros Happ. rewrite (sym_named_heap_sound _ _ _ _ E).
@@ -461,7 +461,7 @@ Lemma sym_context_goals_sound ρ f e ls Φ Δ Δlater t :
   envs_Forall2 (fun P Q => P ⊢ ▷ Q) Δ Δlater ->
   sym_context_goals ρ f e ls Φ Δ Δlater t ->
   of_envs Δ ⊢ stree_den registry wi ge ρ f e ls Φ (sym_erase_names t).
-Proof.
+Proof using Type.
   intros Hlater. induction t as [l lf names|c yes IHyes no IHno].
   - destruct lf; cbn [sym_context_goals sym_erase_names stree_den leaf_den sym_leaf_later leaf_state sym_leaf_frame];
       intros [Hobs Hgoal].
@@ -487,7 +487,7 @@ Theorem tac_sym_func_sound Δ Δrest Δlater names p Ps fs se h f e ls cuts fuel
   sym_name_tree fs (combine names h) (sym_func ge f cuts fuel fs (mkSState se [] h []) l insts j) = tree ->
   sym_context_goals ρ f e ls Φ Δrest Δlater tree ->
   envs_entails Δ (WP (ERun (mkFrame f e ls None (Exec l insts j)) : gexpr) {{ Φ }}).
-Proof.
+Proof using SafepointStable0.
   intros Htake -> Hlater Hfacts Henv <- Hgoals. rewrite envs_entails_unseal.
   rewrite (envs_lookup_delete_list_sound _ _ _ _ _ _ Htake) bi.intuitionistically_if_elim.
   assert (Hheap : ([∗] map (atom_den ρ) h) ⊣⊢ heap_den ρ h).

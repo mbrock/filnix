@@ -133,7 +133,7 @@ Lemma wp_glibc___gnu_dev_major fr d Φ :
   call_frame glibc___gnu_dev_major [WInt d] = Some fr -> 0 <= d < 2 ^ 64 ->
   ▷ Φ (Ret (WInt (dev_major d))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hd. injection Hfr as <-. iIntros "HK". step. step. step. step. step. step. step. step. step.
   iApply wp_ret; [reflexivity | vx |]. iNext. rewrite dev_major_eq; [iExact "HK" | exact Hd].
 Qed.
@@ -158,7 +158,7 @@ Lemma wp_raw_load_bytes8 f e ls l d k off args rest j classes p b reg o bs Φ :
   ▷ (live b reg -∗ bytes b o bs -∗
      WP (ERun (mkFrame f (put d (WInt (of_bytes bs)) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hx Hlen Hp Ha. iIntros "Hl Hb HK".
   iApply (wp_read_with _ _ _ (live b reg ∗ bytes b o bs)
             (fun m => live_at m b reg /\ all_agree m (byte_ps b o bs)) _ _ [] with "[$Hl $Hb] [HK]").

@@ -154,7 +154,7 @@ Lemma wp_zsys_close f e ls lab d a0 rest j fd eb Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "zsys_close")) [Arg W a0] :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hreg Hfn Hdata Hx He. iIntros "Herr HK".
   iApply (wp_os_errno_call w0 _ _ _ _ _ _ _ _ _ _ _ _ _ eb [] True%I
             (fun vs => vs = [WInt 0] \/ vs = [WInt (2 ^ 32 - 1)])
@@ -184,6 +184,6 @@ Lemma wp_zsys_close_lend f e ls lab d a0 rest j fd eb bs Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "zsys_close")) [Arg W a0] :: rest) j)) : zexpr)
     {{ Φ }}.
-Proof. intros. iIntros "Herr HK". iApply (wp_zsys_close with "[Herr] HK"); try eassumption. by iExists bs. Qed.
+Proof using Type. intros. iIntros "Herr HK". iApply (wp_zsys_close with "[Herr] HK"); try eassumption. by iExists bs. Qed.
 
 End rule.

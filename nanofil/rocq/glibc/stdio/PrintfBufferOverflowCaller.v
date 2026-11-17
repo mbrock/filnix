@@ -53,7 +53,7 @@ Lemma wp_printf_overflow_caller e from bb breg fb ch mode Φ :
       (Enter (TAtom "L88") (Some (TAtom "L74")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk Hborrow.
   iIntros "Hb Hfp Hch Hm HF HE Hfail Hselect".
   iDestruct (Hborrow with "HF") as (freg dqf) "[Hf Hclose]".
