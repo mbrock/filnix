@@ -23,6 +23,12 @@ test(tactic_notation_body) :-
     assertion(Items = [tacnotation(_, [literal("load_cell"), argument(constr, n(_, 'H')),
         literal("by"), argument(tactic3, n(_, side))], dispatch(_, [_, _, _]))]).
 
+% Rocq 9.2 deprecates Notation x := t for Abbreviation x := t.
+test(abbreviation) :-
+    string_codes("Abbreviation twice f x := (f (f x)) (only parsing).", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    assertion(Items = [notation(_, 'Abbreviation', "twice f x", paren(_, app(_, id(_, f), _)), ['(', only, parsing, ')'])]).
+
 test(singleton_class) :-
     string_codes("Class Defines (g : G) (n : string) (f : F) : Prop := defines : lookup g n = Some f.", Cs),
     rocq_syntax:rocq_parse_codes(Cs, Items, _),

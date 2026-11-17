@@ -370,7 +370,7 @@ vernac(P, decl(P, Kw, Gs)) -->
                                  'Hypotheses', 'Variable', 'Variables', 'Context']) }, !,
     decl_groups(Gs).
 vernac(P, notation(P, Kw, S, E, Mods)) -->
-    tk(id(Kw)), { memberchk(Kw, ['Notation', 'Infix']) }, !,
+    tk(id(Kw)), { memberchk(Kw, ['Notation', 'Infix', 'Abbreviation']) }, !,
     ( tk(str(S)) -> [] ; tk(id(A)), names0(Ps), { maplist([n(_, X), X]>>true, Ps, Xs), atomic_list_concat([A|Xs], ' ', S0), atom_string(S0, S) } ),
     tk(sym(':=')), atom(E), mods(Mods).
 vernac(P, module(P, Kind, N, Bs, Open)) -->
