@@ -954,6 +954,7 @@ hello/HelloImageEarly.v
 hello/HelloStartKeptAlloc.v
 hello/HelloStartKept.v
 hello/HelloImageDisjoint.v
+hello/HelloStartAssembly.v
 startup/StartLsmHello.v
 hello/HelloImageLayoutRefused.v
 hello/HelloGlibcMainSteps.v
