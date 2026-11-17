@@ -3,31 +3,35 @@
     with userland glibc, never panics, gets stuck or breaks a contract
     in any state that [StartState](../zsys/StartState.v) allows for its
     image. In those states the caller no longer describes main's memory,
-    because the loader's image and the startup code supply it.
+    because the loader's image and the startup code supply it. Startup
+    never returns to the runtime, so the theorem also says that no run
+    returns normally.
 
     The premises say what remains open. Standard output and
     standard error are open descriptors, the process environment
-    selects the C locale, the allocator's cursor is ready, and the
-    environment's free releases heap objects. The calls
-    that print, convert or read the locale are still contracts, the
-    fields of [HelloCore], and so are the two printers of getopt's
-    warnings. A script in nanofil/tests lists and counts these premises,
-    and CI prints the count.
+    selects the C locale, the processor reports its caches in the way
+    glibc reads them, the allocator's cursor is ready, and the
+    environment's free releases heap objects. The calls that print,
+    convert or read the locale are still contracts, the fields of
+    [HelloCore], and so are the two printers of getopt's warnings. A
+    script in nanofil/tests lists and counts these premises, and CI
+    prints the count.
 
-    This is a draft. The proof of the startup body for Hello is being
-    assembled in [HelloStartAssembly](HelloStartAssembly.v), and until it
-    is done the theorem takes its conclusion as a section hypothesis.
-    The older theorem that starts at main stays in
-    [HelloNeverPanics](HelloNeverPanics.v) until then. *)
+    The proof divides the start memory into the objects that each part
+    of startup uses, as [HelloStartAssembly](HelloStartAssembly.v)
+    lists them, and then runs the startup body and main with
+    [HelloStartWp](HelloStartWp.v). The older theorem that starts at
+    main stays in [HelloNeverPanics](HelloNeverPanics.v) for now. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
-From Stdlib Require Import String ZArith List Lia.
+From Stdlib Require Import String ZArith List Lia Permutation.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Language Logic HelloLeaf.
-From Glibc Require Import LocaleEnv GlibcProgram OsWorld OsRegistry FileInv GetoptDiag GetoptLongDiag HelloGlibcDebts
-  StartCode StartState StartLibcStartMain HelloImageModule HelloImageLoad HelloImageLayout.
+From Glibc Require Import LocaleEnv GlibcProgram OsWorld OsRegistry OsStart OsCpuid FileInv GetoptDiag GetoptLongDiag
+  HelloGlibcDebts StartCode StartState StartJoin StartLibcStartMain HelloImageModule HelloImageLoad HelloImageLayout
+  HelloImageEarly HelloStartAssembly HelloStartFacts HelloStartWp.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -36,57 +40,49 @@ Open Scope Z_scope.
 Definition hello_start_ge (frt : word -> mem -> option (res unit * mem)) : genv :=
   mkGenv hello_image_module img_globals frt.
 
-(** The theorem still assumes these contracts. For each ghost state,
-    the library calls of [HelloCore] keep their contracts in every world
-    that startup can end in, and so do the two printers of getopt's
-    warnings. *)
-Definition hello_start_contracts Σ (w0 : os_world) frt (dom : ptr) : Prop :=
-  forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : forall tb, HelloCore (final_world w0 tb) (hello_start_ge frt) hello_image_objs),
-    forall tb, exists (G : iProp Σ) (T : ptr -> ptr -> iProp Σ),
-    getopt_diag_rule (final_world w0 tb) glibc_os_registry (hello_start_ge frt) G T (ho_err hello_image_objs) dom /\
-    getopt_ldiag_rule (final_world w0 tb) glibc_os_registry (hello_start_ge frt) G T (ho_err hello_image_objs) dom.
-
-Section draft.
-
-(** ## The assembly, for now a hypothesis
-
-    The assembly will show that every start state gives a heap that
-    agrees with its memory and its world, and from which the startup
-    body runs safely. This hypothesis states exactly that. *)
-Context (Hasm : forall Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} w0 m w xs frt dom,
-  start_state hello_image_module w0 m w xs -> In 1 (ow_fds w0) -> In 2 (ow_fds w0) -> start_c_locale m xs -> frees_heap frt ->
-  hello_start_contracts Σ w0 frt dom ->
-  exists h0, live_disjoint m /\ agrees m h0 /\ os_wi w0 m w h0 /\
-  forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    ([∗ map] l ↦ v ∈ h0, pointsto l (DfracOwn 1) v) ⊢
-      let _ : irisGS_gen HasNoLc (nanofil_lang glibc_os_registry (hello_start_ge frt)) Σ :=
-        nanofil_irisGS glibc_os_registry (os_wi w0) (hello_start_ge frt) in
-      WP (ERun (invocation start_libc_start_main_fn xs) :
-            language.expr (nanofil_lang glibc_os_registry (hello_start_ge frt))) {{ o, ⌜True⌝ }}).
+(** The startup body takes its five arguments into a frame. *)
+Lemma hello_start_frame a b c d e :
+  exists fr, call_frame start_libc_start_main_fn [WPtr a; WInt b; WPtr c; WPtr d; WPtr e] = Some fr.
+Proof. eexists. reflexivity. Qed.
 
 (** ## The theorem *)
 
 (** Every run of Hello from a state in which the runtime can start it
-    avoids panics, stuck steps and contract failures. *)
+    avoids panics, stuck steps and contract failures, and it never
+    returns. The last premise gives the open contracts. For each ghost
+    state, it chooses the library calls of [HelloCore]. For every
+    environment array and thread object, it gives the two printers of
+    getopt's warnings as [hello_tb_contracts] states them. *)
 Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     w0 m s w xs frt dom fuel :
   start_state hello_image_module w0 m w xs ->
   In 1 (ow_fds w0) -> In 2 (ow_fds w0) -> start_c_locale m xs ->
+  ow_leaf4_ends w0 = true ->
   R.ready s m ->
   frees_heap frt ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
     exists (debt : forall tb, HelloCore (final_world w0 tb) (hello_start_ge frt) hello_image_objs),
-    forall tb, exists (G : iProp Σ) (T : ptr -> ptr -> iProp Σ),
-    getopt_diag_rule (final_world w0 tb) glibc_os_registry (hello_start_ge frt) G T (ho_err hello_image_objs) dom /\
-    getopt_ldiag_rule (final_world w0 tb) glibc_os_registry (hello_start_ge frt) G T (ho_err hello_image_objs) dom) ->
+    forall b ss, nth_error xs 3 = Some (WPtr (mkPtr b (Obj b))) -> string_array m b ss ->
+    forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 -> hello_tb_contracts w0 m frt debt (b, ss) dom tb) ->
   labelled_safe glibc_os_registry (hello_start_ge frt) (invocation start_libc_start_main_fn xs)
-    m s w fuel (fun _ => True).
-Proof using Hasm.
-  intros Hst H1 H2 Hl Hr Hf Hc.
-  destruct (Hasm Σ HinvP HheapP w0 m w xs frt dom Hst H1 H2 Hl Hf Hc) as (h0 & Hd & Ha & Hw & Hwp).
-  exact (heap_labelled_safe Σ glibc_os_registry (os_wi w0) (hello_start_ge frt)
-    (invocation start_libc_start_main_fn xs) m s w h0 (fun _ => True) Hr Hd Ha Hw Hwp fuel).
+    m s w fuel (fun _ => False).
+Proof.
+  intros Hst _ _ _ Hleaf Hr Hf Hc.
+  destruct Hst as (g & m0 & mainp & tb & argc & argv & env & av & aps & order & Hi & Hm & Ht & Hxs & Hargc & Hargc2 &
+    Ha & He & Hv & Hd & Hk & Hord & Hct & Hos & Hnd).
+  destruct (hello_first_heap g m0 m w0 w tb argc argv env av aps order 0 Hi Ht Ha He Hv Hd Hk Hord Hct Hos Hnd)
+    as (Nd & Agr & Wi).
+  destruct (hello_loaded_tables g m0 Hi) as [-> _].
+  assert (Etb : tb = hello_runner_objs.2.1) by (vm_compute in Ht; injection Ht as E _; symmetry; exact E).
+  subst tb. rewrite hello_main_sym in Hm. injection Hm as <-. subst xs.
+  destruct (hello_start_frame (mkPtr (img_a "main") (Fn (TAtom "main"))) argc (mkPtr argv.1 (Obj argv.1))
+    (mkPtr env.1 (Obj env.1)) (mkPtr av (Obj av))) as [fr Hfr].
+  unfold invocation. rewrite Hfr. destruct Hos as (Herr & _ & _).
+  apply (heap_labelled_safe Σ glibc_os_registry (os_wi_start w0 0) (hello_start_ge frt) fr m s w _ (fun _ => False)
+    Hr Hd Agr Wi).
+  intros HinvG HheapG. destruct (Hc HinvG HheapG) as [debt Hdebt]. iIntros "H".
+  iDestruct (start_ps_own with "H") as "(L & T & A & E & V & K)"; [exact Nd|].
+  iApply (hello_start_wp w0 0 m0 m frt Hi debt fr argv env av aps order argc dom Hleaf Hf Herr Hfr Ha He Hv
+    Hargc Hargc2 Hord with "L T A E V K").
+  intros tb Htb Htb2. destruct env as [b ss]. exact (Hdebt b ss eq_refl He tb Htb Htb2).
 Qed.
-
-End draft.

@@ -35,8 +35,9 @@ RECORDS = {
     'HelloCore': GLIBC / 'hello' / 'HelloGlibcDebts.v',
 }
 NOT_PREMISES = {'hd_priv'}
-SECTION_LABELS = {'Hasm': 'startup assembly (pending)'}
+SECTION_LABELS = {}
 PREMISE_LABELS = {
+    'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
     'frees_heap': "runtime contract: the environment's free frees heap objects",
     'start_c_locale': 'environment: the process environment selects the C locale',
 }
@@ -115,7 +116,10 @@ def premises():
     if 'HelloCore' in choices:
         out += [f'HelloCore.{f}' for f in record_fields('HelloCore') if f not in NOT_PREMISES]
     body = split_top(body.strip(), ' in ')[-1]
-    out += split_top(body, '/\\')
+    for c in split_top(body, '/\\'):
+        if 'hello_tb_contracts' in c:
+            c = f"contracts: getopt's diagnostic printers and the build of hd_priv ({c.rsplit('-> ', 1)[-1]})"
+        out.append(c)
     used = m[2].split()
     if used[:1] == ['using']:
         for h in used[1:]:
