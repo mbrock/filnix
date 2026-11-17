@@ -1,5 +1,6 @@
 // Browser regression check against the generated site, served over HTTP.
-// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765 [--pages-only | --declarations-only] [320 390 768 1280]
+// node nanofil/web/rocq/tests/layout.mjs http://localhost:8765 [--pages-only | --declarations-only] [--shard=K/N] [320 390 768 1280]
+// --shard=K/N sweeps every Nth page from the K-th, so CI can split the sweep across jobs.
 // Requires agent-browser; uses the real model, not simplified UI fixtures.
 import { execFileSync } from "node:child_process";
 
@@ -7,7 +8,10 @@ const base = process.argv[2];
 if (!base) throw new Error("Pass the generated site's HTTP base URL");
 const pagesOnly = process.argv.includes("--pages-only");
 const declarationsOnly = process.argv.includes("--declarations-only");
-const args = process.argv.slice(3).filter(a => !["--pages-only", "--declarations-only"].includes(a));
+const shardArg = process.argv.find(a => a.startsWith("--shard="))?.slice(8) ?? "1/1";
+const [shard, shards] = shardArg.split("/").map(Number);
+if (!(shards >= 1 && shard >= 1 && shard <= shards)) throw new Error("Pass --shard=K/N with 1 <= K <= N");
+const args = process.argv.slice(3).filter(a => !["--pages-only", "--declarations-only"].includes(a) && !a.startsWith("--shard="));
 const widths = args.length ? args.map(Number) : [320, 390, 768, 1280];
 if (widths.some(w => ![320, 390, 768, 1280].includes(w))) throw new Error("Unknown test width");
 const detailWidths = pagesOnly || declarationsOnly ? [] : widths;
@@ -130,9 +134,10 @@ try {
   const pages = JSON.parse(browser("eval", `[...new Set([...document.querySelectorAll('a[href]')]
     .map(a => a.getAttribute('href')).filter(h => /^[^/]+[.]html$/.test(h) && h !== 'index.html'))]`));
   if (!pages.some(p => p.includes("Machine"))) throw new Error("missing Machine page in index");
+  const sweep = ["index.html", ...pages].filter((_, i) => i % shards === shard - 1);
   for (const width of sweepWidths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
-    for (const page of ["index.html", ...pages]) {
+    for (const page of sweep) {
       console.log(`${new Date().toISOString()} checking ${page}${pagesOnly ? "" : " and its proof steps"} at ${width}px`);
       browser("open", `${base}/nanofil/rocq/${page}`);
       check(fitsPage);
@@ -393,7 +398,7 @@ try {
   browser("network", "route", "*", "--abort", "--resource-type", "script");
   for (const width of sweepWidths.filter(w => w <= 390)) {
     browser("set", "viewport", String(width), "900", "2");
-    for (const page of ["index.html", ...pages]) {
+    for (const page of sweep) {
       console.log(`${new Date().toISOString()} checking ${page} without scripts at ${width}px`);
       browser("open", `${base}/nanofil/rocq/${page}`);
       check(`

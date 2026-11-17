@@ -14,12 +14,12 @@ permissions:
   contents: read
 
 jobs:
-  browser:
+  # Every browser job checks the same release, even if Site publishes meanwhile.
+  live:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    concurrency:
-      group: site-browser
-      cancel-in-progress: false
+    outputs:
+      sha: ${{ steps.live.outputs.sha }}
+      url: ${{ steps.live.outputs.url }}
     steps:
       - name: Select the immutable live release
         id: live
@@ -28,9 +28,18 @@ jobs:
           [[ $sha =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "url=https://filnix.org/__releases/$sha" >> "$GITHUB_OUTPUT"
+
+  browser:
+    needs: live
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    concurrency:
+      group: site-browser
+      cancel-in-progress: false
+    steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.live.outputs.sha }}
+          ref: ${{ needs.live.outputs.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -40,7 +49,7 @@ jobs:
           agent-browser install --with-deps
       - name: Check site pages at both phone widths
         env:
-          SITE: ${{ steps.live.outputs.url }}
+          SITE: ${{ needs.live.outputs.url }}
         run: |
           set -o pipefail
           python3 nanofil/tests/watch.py --label 'Phone pages' --timeout 900 -- \
@@ -49,23 +58,51 @@ jobs:
         run: |
           python3 nanofil/tests/watch.py --label 'Rocq navigation' -- \
             node nanofil/web/rocq/tests/navigation.mjs
-      - name: Check every Rocq page at both phone widths
-        env:
-          SITE: ${{ steps.live.outputs.url }}
-        run: |
-          set -o pipefail
-          for width in 320 390; do
-            python3 nanofil/tests/watch.py --label "Rocq pages ${width}px" --timeout 1200 -- \
-              node nanofil/web/rocq/tests/layout.mjs "$SITE" --pages-only "$width" \
-              2>&1 | tee "rocq-phone-${width}.log"
-          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: site-browser-logs
-          path: |
-            site-phone.log
-            rocq-phone-*.log
+          path: site-phone.log
+          retention-days: 3
+
+  # Each Rocq page loads twice per width, so one job per width and
+  # quarter of the pages keeps every sweep well inside its budget.
+  rocq-pages:
+    needs: live
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        width: [320, 390]
+        shard: [1, 2, 3, 4]
+    concurrency:
+      group: site-rocq-pages-${{ matrix.width }}-${{ matrix.shard }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.live.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install the browser
+        run: |
+          npm install --global agent-browser@0.38.1
+          agent-browser install --with-deps
+      - name: Check a quarter of the Rocq pages at one phone width
+        env:
+          SITE: ${{ needs.live.outputs.url }}
+        run: |
+          set -o pipefail
+          python3 nanofil/tests/watch.py --label "Rocq pages ${{ matrix.width }}px ${{ matrix.shard }}/4" --timeout 1200 -- \
+            node nanofil/web/rocq/tests/layout.mjs "$SITE" --pages-only --shard=${{ matrix.shard }}/4 ${{ matrix.width }} \
+            2>&1 | tee rocq-phone.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rocq-phone-${{ matrix.width }}-${{ matrix.shard }}
+          path: rocq-phone.log
           retention-days: 3
 
   retention:
