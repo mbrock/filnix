@@ -220,8 +220,10 @@ Proof using Type.
     frl frb md tot vtp), nb, vt. unfold file_fields.
   cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset fs_codecvt fs_wide
     fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable big_opL length].
-  iSplitR; [iPureIntro; split_and!; try assumption;
-    [reflexivity | exact (buf_ptrs_set4 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hbok Hin)]|].
+  pose proof (buf_ptrs_set4 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hbok Hin) as Hbok'.
+  assert (Hok' : flags_ok (mkFstate fl [p0; p1; p2; p3; wp'; p5; p6; p7; p8; p9; p10; p11] fd f2 old col' lk off
+    cv wd frl frb md tot vtp)) by (eapply (flags_ok_ptrs _ _ _ _ Hok Hbok); [exact Hbok' | reflexivity | reflexivity]).
+  iSplitR; [iPureIntro; split_and!; try assumption; reflexivity|].
   iFrame "Hl Hb Hk Hfl H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 Hfd Hf2 Hold Hcol Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htot
     Hvtp". iSplit; done.
 Qed.

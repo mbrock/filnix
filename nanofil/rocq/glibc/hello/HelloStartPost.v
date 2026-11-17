@@ -204,24 +204,6 @@ Proof using Type.
   iModIntro. iFrame "A B C D E F". done.
 Qed.
 
-(** These are stderr's resources at the call of `c: main`: its life,
-    its jump table pointer and the fields that the linker set. *)
-Definition hello_stderr_start : iProp Σ :=
-  stream_live (ho_err o) ∗
-  pcell (img_a "_IO_2_1_stderr_") 216 (mkPtr (img_a "__io_vtables" + 336) (Ro (img_a "__io_vtables"))) ∗
-  pts (hello_stream_kept_ps (img_a "_IO_2_1_stderr_") 4222427270 2 (img_a "glibc_stdfiles#_IO_stdfile_2_lock")
-    (img_gd "glibc_stdfiles#_IO_stdfile_2_lock") (img_a "glibc_stdfiles#_IO_wide_data_2")).
-
-(** The linker marks stderr as unbuffered, but not as having a user
-    buffer. Glibc sets that second flag only when it first gives stderr
-    its one-byte buffer. The stream invariant [file_inv] asks for both
-    flags at once, so stderr does not meet it when main starts. The
-    main lemma below therefore takes stderr's invariant as a premise. *)
-Lemma hello_stderr_flags :
-  ~ flags_ok (hello_kept_state 4222427270 2 (img_a "glibc_stdfiles#_IO_stdfile_2_lock")
-      (img_a "glibc_stdfiles#_IO_wide_data_2") (img_a "__io_vtables")).
-Proof. intros (_ & _ & _ & _ & _ & _ & H). vm_compute in H. specialize (H eq_refl). discriminate. Qed.
-
 (** The jump table of the frame holds ge's file functions. *)
 Lemma hello_jumps_syms : hello_jumps_kept_ps =
   List.concat ((fun sl : Z * string => hello_pointer_ps (ho_vb o) (vt_file + sl.1) (sym_ptr ge sl.2)) <$> file_jumps).
@@ -232,9 +214,8 @@ Qed.
 
 (** We want main to start from what startup leaves behind. This lemma
     shows that startup's memory and the thread's cleanup fields are
-    enough, if stderr meets the stream invariant at the start. *)
+    enough. *)
 Lemma hello_start_post_main w av ar p0 ps y z :
-  (hello_stderr_start -∗ file_inv (ho_vb o) (ow_self w) (ho_err o)) -∗
   hello_start_post av ar p0 ps y z -∗ tcb_cleanup_inv (ow_self w) ==∗ hello_start_main_res w av ar p0 ps y z.
 Proof using Hi.
   pose proof hello_jumps_syms as Ej.
@@ -247,7 +228,7 @@ Proof using Hi.
     vm_compute. split; reflexivity. }
   destruct E3 as [E3 E4]. destruct Pv as [Pv Ps].
   rewrite /hello_start_post /hello_start_kept_ps.
-  iIntros "Herrf (Hk & Hlist & (Le & Lo & Li & _) & Vi & Vo & Ve & Lvt & Lsb & Hsb & Leb & Herr & Lmp &
+  iIntros "(Hk & Hlist & (Le & Lo & Li & _) & Vi & Vo & Ve & Lvt & Lsb & Hsb & Leb & Herr & Lmp &
     Lnb & Hnb & Lns & Hns & #Hargs & Hav) Htcb".
   iDestruct (pts_app with "Hk") as "[Hal Hk]". iDestruct (pts_app with "Hk") as "[Hex Hk]".
   iDestruct (pts_app with "Hk") as "[Hst Hk]". iDestruct (pts_app with "Hk") as "[Hio Hlit]".
@@ -262,8 +243,8 @@ Proof using Hi.
     [vm_compute; intuition congruence..|].
   iDestruct (hello_start_file_own _ _ _ _ _ _ _ (ow_self w) with "Li Vi Sin") as "Fi";
     [vm_compute; intuition congruence..|].
-  iDestruct ("Herrf" with "[Le Ve Ser]") as "Fe".
-  { iSplitL "Le"; [iExact "Le"|]. iSplitL "Ve"; [iExact "Ve"|iExact "Ser"]. }
+  iDestruct (hello_start_file_own _ _ _ _ _ _ _ (ow_self w) with "Le Ve Ser") as "Fe";
+    [vm_compute; intuition congruence..|].
   iMod (ptsq_persist with "Lso") as "#Lso". iMod (ptsq_persist with "Hso") as "#Hso".
   iMod (ptsq_persist with "Lse") as "#Lse". iMod (ptsq_persist with "Hse") as "#Hse".
   iMod (ptsq_persist with "Lvt") as "#Lvt". iMod (ptsq_persist with "Hjmp") as "#Hjmp".

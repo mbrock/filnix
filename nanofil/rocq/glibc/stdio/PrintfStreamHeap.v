@@ -50,6 +50,19 @@ Proof.
   rewrite !Z.lor_0_r. tauto.
 Qed.
 
+(** A heap stream's buffer pointers are never null, so moving them
+    within the buffer keeps the flags valid. *)
+Lemma heap_file_flags_ptrs st bb sz k we fl tw off k' we' tw' off' :
+  flags_ok (heap_file_state st bb sz k we fl tw off) ->
+  flags_ok (heap_file_state st bb sz k' we' fl tw' off').
+Proof.
+  unfold flags_ok, heap_file_state. cbn [fs_flags fs_flags2 fs_ptrs].
+  intros (H1 & H2 & H3 & H4 & H5 & H6 & H7).
+  refine (conj H1 (conj H2 (conj H3 (conj H4 (conj H5 (conj H6 _)))))).
+  intros Hu. destruct (H7 Hu) as [Hub | Hn]; [left; exact Hub|].
+  cbn in Hn. unfold null in Hn. congruence.
+Qed.
+
 Section streams.
 Context `{!gen_heapGS piece pval Σ}.
 

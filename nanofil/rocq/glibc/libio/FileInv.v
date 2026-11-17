@@ -386,12 +386,34 @@ Definition buf_ptrs_ok (fb : Z) (nb : nbuf) (ps : list ptr) : Prop :=
 
 (** What [file_inv] asks of the flags: the magic, a file stream, no
     backup area, and the user-lock and need-lock bits clear, so the
-    lock macros take the lock and `c: _IO_ferror` does not. *)
+    lock macros take the lock and `c: _IO_ferror` does not. An
+    unbuffered stream marks its one-byte buffer as a user buffer, which
+    glibc does when it first gives the stream that buffer. Before then
+    its buffer pointers are all null, as the linker leaves stderr. *)
 Definition flags_ok (st : fstate) : Prop :=
   0 <= fs_flags st < 2 ^ 32 /\ Z.land (fs_flags st) 4294901760 = io_magic /\
   has (fs_flags st) io_is_filebuf = true /\ has (fs_flags st) io_in_backup = false /\
   has (fs_flags st) io_user_lock = false /\ Z.land (fs_flags2 st) io_need_lock = 0 /\
-  (has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_user_buf = true).
+  (has (fs_flags st) io_unbuffered = true ->
+   has (fs_flags st) io_user_buf = true \/ take 8 (fs_ptrs st) = replicate 8 null).
+
+(** A stream whose flags pass [flags_ok] still passes when its buffer
+    pointers change and still fit the same buffer. An unbuffered stream
+    without a user buffer has no buffer at all, and every pointer of
+    such a stream stays null. *)
+Lemma flags_ok_ptrs fb nb st st' :
+  flags_ok st -> buf_ptrs_ok fb nb (fs_ptrs st) -> buf_ptrs_ok fb nb (fs_ptrs st') ->
+  fs_flags st' = fs_flags st -> fs_flags2 st' = fs_flags2 st -> flags_ok st'.
+Proof using Type.
+  intros (H1 & H2 & H3 & H4 & H5 & H6 & H7) Hb Hb' Ef Ef2. unfold flags_ok. rewrite Ef Ef2.
+  refine (conj H1 (conj H2 (conj H3 (conj H4 (conj H5 (conj H6 _)))))).
+  intros Hu. destruct (H7 Hu) as [Hub | Hnull]; [left; exact Hub | right].
+  assert (E : nth 6 (fs_ptrs st) null = nth 6 (take 8 (fs_ptrs st)) null).
+  { destruct (fs_ptrs st) as [|a0 [|a1 [|a2 [|a3 [|a4 [|a5 [|a6 l]]]]]]]; reflexivity. }
+  rewrite Hnull in E. cbn in E.
+  destruct nb; cbn [buf_ptrs_ok] in Hb, Hb' |- *; try exact Hb';
+    destruct Hb as (Hb6 & _); rewrite E in Hb6; discriminate Hb6.
+Qed.
 
 (** The buffer object of [NbHeap], owned with its life, any bytes. *)
 Definition buf_own (nb : nbuf) : iProp Σ :=

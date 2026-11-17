@@ -64,7 +64,7 @@ Proof using Type*.
   iNext. iIntros (r k' we' xs' fl' tw' off' [Hr Hfl'])
     "Hl (Hf2 & Hfd & Herr & Hcol & Hmd & Hvtp) Hst".
   assert (Hok' : flags_ok (heap_file_state st bb sz k' we' fl' tw' off')).
-  { change (flags_ok (heap_file_state st bb sz k we fl' tw off)).
+  { apply (heap_file_flags_ptrs st bb sz k we fl' tw off).
     destruct Hfl' as [-> | ->]; [exact Hok | apply heap_file_flags_error; exact Hok]. }
   assert (Hmask : forall mask, Z.land io_err_seen mask = 0 -> Z.land fl' mask = Z.land fl mask).
   { intros mask Hmask. destruct Hfl' as [-> | ->]; [reflexivity|].
