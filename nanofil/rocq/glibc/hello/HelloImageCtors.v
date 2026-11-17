@@ -27,7 +27,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import GlibcProgram GlibcSpec OsWorld OsRegistry FileInv LibioStdfiles
-  StartInitMiscSpec StartInitFirstSpec StartStdfilesInitSpec.
+  StartInitMiscSpec StartInitFirstSpec StartStdfilesInitSpec StartCtorVtablesSpec.
 From Glibc Require Import HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad
   HelloImageKept HelloImageStart.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioStdfiles.
@@ -47,7 +47,7 @@ Open Scope Z_scope.
 Definition hello_ctor_names : list string :=
   ["__libc_argc"; "__libc_argv"; "__environ"; "__progname"; "__progname_full"; "glibc_init_misc#str.61";
    "_IO_2_1_stderr_"; "_IO_2_1_stdout_"; "_IO_2_1_stdin_";
-   "__GI__IO_list_all"; "glibc_genops#list_all_lock"; "glibc_genops#run_fp"]%string.
+   "__GI__IO_list_all"; "glibc_genops#list_all_lock"; "glibc_genops#run_fp"; "__io_vtables"]%string.
 
 Definition hello_ctor_keep (n : name) : bool := existsb (name_eqb n) (map TAtom hello_ctor_names).
 
@@ -90,8 +90,18 @@ Definition hello_initial_list_ps : list (piece * pval) :=
     [(PLive (img_a "glibc_genops#run_fp"), VLive (img_gd "glibc_genops#run_fp"))];
     hello_pointer_ps (img_a "glibc_genops#run_fp") 0 null].
 
-(** Both constructors read these pieces. *)
-Definition hello_ctor_ps : list (piece * pval) := hello_initial_list_ps ++ hello_init_first_ps.
+(** The check of the stream tables reads the table pointer of each
+    stream, which lands 336 bytes into the read-only array of tables, and
+    it needs the array to be alive. The lifetimes of the streams come
+    from the list above. *)
+Definition hello_vtables_ps : list (piece * pval) :=
+  let vb := img_a "__io_vtables" in
+  let vt f := (PAux f 216, VAux (Ro vb)) :: cell f 216 (vb + 336) in
+  vt (img_a "_IO_2_1_stdin_") ++ vt (img_a "_IO_2_1_stdout_") ++ vt (img_a "_IO_2_1_stderr_") ++
+  [(PLive vb, VLive (img_gd "__io_vtables"))].
+
+(** The three constructors read these pieces. *)
+Definition hello_ctor_ps : list (piece * pval) := hello_initial_list_ps ++ hello_init_first_ps ++ hello_vtables_ps.
 
 (** These are the eleven writable objects with their addresses. *)
 Definition hello_ctor_objs : list (string * Z) :=
@@ -99,9 +109,11 @@ Definition hello_ctor_objs : list (string * Z) :=
    (img_sym "__progname_full"); (img_sym "_IO_2_1_stderr_"); (img_sym "_IO_2_1_stdout_"); (img_sym "_IO_2_1_stdin_");
    (img_sym "__GI__IO_list_all"); (img_sym "glibc_genops#list_all_lock"); (img_sym "glibc_genops#run_fp")]%string.
 
-(** The symbols of the image name each of them at its address. *)
+(** The symbols of the image name each of them at its address, and they
+    name the array of tables as read-only data. *)
 Definition hello_ctor_places (g : list (name * ptr)) : bool :=
-  forallb (fun nb : string * Z => lookup_obj g nb.1 nb.2) hello_ctor_objs.
+  forallb (fun nb : string * Z => lookup_obj g nb.1 nb.2) hello_ctor_objs &&
+  lookup_ro g "__io_vtables" (img_a "__io_vtables").
 
 (** ## The check on the erased image
 
@@ -139,20 +151,23 @@ Proof. vm_cast_no_check (eq_refl true). Qed.
     addresses that the lists use. *)
 Theorem hello_image_ctors g m : initial_memory hello_image_module = Some (g, m) ->
   Forall (fun nb : string * Z => Term.lookup (TAtom nb.1) g = Some (mkPtr nb.2 (Obj nb.2))) hello_ctor_objs /\
-  all_agree m hello_ctor_ps /\ NoDup hello_ctor_ps.*1.
+  all_agree m hello_ctor_ps /\ NoDup hello_ctor_ps.*1 /\
+  Term.lookup (TAtom "__io_vtables") g = Some (mkPtr (img_a "__io_vtables") (Ro (img_a "__io_vtables"))).
 Proof.
   intros E.
   destruct (image_pieces hello_ctor_keep hello_ctor_kept hello_image_module g m hello_ctor_ps
     hello_ctor_kept_incl E hello_image_names hello_image_zero) as (m' & E' & _ & P).
   pose proof hello_ctor_check as C. rewrite <- hello_ctor_skel_eq, E' in C.
   apply andb_true_iff in C as [Cp Cg]. split_and!.
-  - unfold hello_ctor_places in Cg. rewrite forallb_forall in Cg. apply List.Forall_forall.
+  - unfold hello_ctor_places in Cg. apply andb_true_iff in Cg as [Cg _].
+    rewrite forallb_forall in Cg. apply List.Forall_forall.
     intros nb Hnb. exact (lookup_obj_ok _ _ _ (Cg nb Hnb)).
   - exact (P Cp).
   - apply (NoDup_fmap_1 (fun p => match p with
       | PLive b => 4 * 512 * b | PByte b o => 4 * (512 * b + o) + 1
       | PAux b o => 4 * (512 * b + o) + 2 | _ => 3 end)).
     apply (bool_decide_unpack _). vm_compute. exact I.
+  - unfold hello_ctor_places in Cg. apply andb_true_iff in Cg as [_ Cv]. exact (lookup_ro_ok _ _ _ Cv).
 Qed.
 
 (** ## The records of the contracts *)
@@ -249,6 +264,25 @@ Proof using Hi.
     iPureIntro. vm_compute. intuition congruence.
   - unfold lock_state, int_cell. iFrame "Hlk Hlk0 Hlk4 Hlk8". iPureIntro. vm_compute. intuition congruence.
   - iFrame "Hrf Hrfc".
+Qed.
+
+(** The check of the stream tables asks that the program names the three
+    streams and the array of tables, and that each stream is aligned and
+    large enough. Hello meets that. The caller builds the precondition
+    from these facts, the pieces of [hello_vtables_ps] and the lifetimes
+    of the streams. *)
+Lemma hello_vtables_ok :
+  vtables_globals (glibc_program := hello_program)
+    (img_a "_IO_2_1_stdin_") (img_a "_IO_2_1_stdout_") (img_a "_IO_2_1_stderr_") (img_a "__io_vtables") /\
+  stream_ok (img_a "_IO_2_1_stdin_") (img_gd "_IO_2_1_stdin_") /\
+  stream_ok (img_a "_IO_2_1_stdout_") hello_stdout_reg /\
+  stream_ok (img_a "_IO_2_1_stderr_") (img_gd "_IO_2_1_stderr_").
+Proof using Hi.
+  pose proof hello_ctor_lookups as L. unfold hello_ctor_objs in L.
+  repeat (apply Forall_cons_1 in L as [? L]). cbn [fst snd] in *.
+  pose proof (proj2 (proj2 (proj2 (hello_image_ctors g m Hi)))) as Lv.
+  unfold vtables_globals, stream_ok, hello_stdout_reg, program_ge. cbn [program_of ge_globals].
+  split_and!; first [eassumption | reflexivity | cbn [r_end]; lia].
 Qed.
 
 End image.
