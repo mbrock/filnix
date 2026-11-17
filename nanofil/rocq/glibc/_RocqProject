@@ -229,6 +229,10 @@ startup/StartEarlyInit.v
 startup/StartStdfilesInitSpec.v
 startup/StartStdfilesInit.v
 startup/StartStdfilesImage.v
+startup/StartInitMiscSpec.v
+startup/StartInitMisc.v
+startup/StartInitFirstSpec.v
+startup/StartInitFirst.v
 startup/StartPtmallocInitSpec.v
 startup/StartPtmallocInit.v
 startup/StartPthreadTunablesSpec.v
