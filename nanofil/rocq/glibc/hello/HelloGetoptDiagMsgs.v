@@ -173,7 +173,7 @@ Proof. unfold dgx_msgs. apply _. Qed.
     strings. *)
 Lemma lits_own bs ts : Forall2 lit_fit bs ts -> Forall (fun s => lit_ok s = true) ts ->
   pts (lits_ps bs ts) ==∗ [∗ list] br; s ∈ bs; ts, word_string DfracDiscarded (mkPtr br.1 (Ro br.1)) s.
-Proof.
+Proof using Type.
   unfold lits_ps. induction 1 as [|[b reg] s bs ts Hf _ IH]; intros Hok; [by iIntros "_ !>"|].
   apply Forall_cons in Hok as [Hs Hok]. destruct Hf as (H0 & H8 & He & Hr).
   cbn [zip_with List.concat]. rewrite pts_app. iIntros "[H Hs]".
@@ -186,7 +186,7 @@ Qed.
     freeze into those strings. HelloGetoptStart.v asks extra startup
     pieces for exactly this kind of frozen resource. *)
 Lemma dgx_msgs_own bs : Forall2 lit_fit bs dgx_msg_texts -> pts (dgx_msg_ps bs) ==∗ □ dgx_msgs bs.
-Proof.
+Proof using Type.
   intros Hf. iIntros "H". iMod (lits_own with "H") as "#H"; [exact Hf | exact dgx_msg_texts_ok|].
   iModIntro. iModIntro. iExact "H".
 Qed.
@@ -202,7 +202,7 @@ Qed.
     nine strings a symbol names. *)
 Lemma dgx_msgs_lend gs bs n p : dgx_msg_at gs bs -> n ∈ dgx_msg_names -> Term.lookup (TAtom n) gs = Some p ->
   dgx_msgs bs ⊢ ∃ dq reg, live_capq dq (ptr_cap p) reg ∗ (live_capq dq (ptr_cap p) reg -∗ dgx_msgs bs).
-Proof.
+Proof using Type.
   intros Hat Hn Hp. apply list_elem_of_lookup_1 in Hn as (k & Hk).
   destruct (Forall2_lookup_l _ _ _ _ _ Hat Hk) as ([b reg] & Hb & Hl). rewrite Hp in Hl. injection Hl as ->.
   destruct (lookup_lt_is_Some_2 dgx_msg_texts k) as [s Hs].

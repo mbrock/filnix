@@ -132,7 +132,7 @@ Lemma wp_pfx_loop ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b r lon
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L98") (b_insts plo_blk98) (b_jump plo_blk98))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 Hcut.
   exact (wp_pfx_loop_with ks e M k p w a m sp cur s lo os F b r lonly pe Φ H0 H1 H2 H3 H4 (getopt_cutoff_rule_with_any w0 registry ge M Hcut)).
 Qed.

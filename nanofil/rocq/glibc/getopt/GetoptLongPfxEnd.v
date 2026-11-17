@@ -67,7 +67,7 @@ Lemma wp_pfx_end ks e n p w a m sp Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L101") (Some (TAtom "L98")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H8 H42 H39 H30 H21 Hw Ha Hm. iIntros "Hs HK".
   step. step. step. iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
   - unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0.

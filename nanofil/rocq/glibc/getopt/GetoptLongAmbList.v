@@ -70,7 +70,7 @@ Lemma wp_amb_list ks e (G : iProp Σ) T fp dom se sereg f140 f141 lo os pfx ps (
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L273") (b_insts plo_blk273) (b_jump plo_blk273))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hrule Hse H140 H141.
   remember (List.length os - k)%nat as d eqn:Hd. revert e k Hd.
   induction d as [d IH] using (well_founded_induction lt_wf).

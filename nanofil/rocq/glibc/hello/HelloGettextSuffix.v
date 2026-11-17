@@ -82,7 +82,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Lemma dci_suffix_own b1 r1 b2 r2 : lit_fit (b1, r1) [47] -> lit_fit (b2, r2) [46; 109; 111] ->
   pts (dci_suffix_ps [(b1, r1); (b2, r2)]) ==∗
   □ (word_string DfracDiscarded (mkPtr b1 (Ro b1)) [47] ∗ word_string DfracDiscarded (mkPtr b2 (Ro b2)) [46; 109; 111]).
-Proof.
+Proof using Type.
   intros H1 H2. iIntros "H". unfold dci_suffix_ps.
   iMod (lits_own with "H") as "#H"; [exact (List.Forall2_cons _ _ H1 (List.Forall2_cons _ _ H2 (List.Forall2_nil _))) | exact dci_suffix_texts_ok|].
   rewrite !big_sepL2_cons. iDestruct "H" as "(H1 & H2 & _)". iModIntro. iModIntro. iSplit; [iExact "H1" | iExact "H2"].
@@ -92,7 +92,7 @@ Qed.
     reads. A frozen read-only string holds a copyable share of that
     liveness at its own base. *)
 Lemma ro_string_live b s : word_string DfracDiscarded (mkPtr b (Ro b)) s ⊢ ∃ reg, liveq DfracDiscarded b reg.
-Proof.
+Proof using Type.
   iIntros "Hw". iDestruct "Hw" as (b' reg ws Hsh) "[Hl _]".
   destruct (ss_cap _ _ _ _ _ Hsh) as [E|E]; [discriminate|]. cbn in E. injection E as <-.
   iExists reg. iExact "Hl".

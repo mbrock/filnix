@@ -155,7 +155,7 @@ Lemma wp_zmemmove_in f e ls lab vd vs vn rest j b reg xs cs o dq b' reg' o' c' y
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zmemmove")) [Arg P vd; Arg P vs; Arg L vn] :: rest) j))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hpd Hps Hc' Hn Hb8 Hb8' Ho Ho' Hon Hend Hend' Hlc Hx Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
   iAssert (⌜b <> b'⌝)%I as %Hne.
   { rewrite /live /liveq /pts /ptsq !big_sepL_singleton. cbn [fst snd].

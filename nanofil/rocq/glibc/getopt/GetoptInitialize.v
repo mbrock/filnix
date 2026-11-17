@@ -112,7 +112,7 @@ Definition getenv_rule (G : iProp Σ) : Prop :=
     still works. Getenv gives back what it borrowed, and the extra part
     R stays untouched beside G. *)
 Lemma getenv_rule_sep (G R : iProp Σ) : getenv_rule G -> getenv_rule (G ∗ R).
-Proof.
+Proof using Type.
   intros Hg f e ls l d args rest j x Φ Hx. iIntros "[HG HR] HK".
   iApply (Hg with "HG"); [exact Hx|]. iNext. iIntros (q) "HG". iApply ("HK" with "[$HG $HR]").
 Qed.
@@ -120,7 +120,7 @@ Qed.
     name. This implication does not turn readability into a legacy rule. *)
 Lemma getenv_rule_at (G : iProp Σ) p :
   getenv_rule G -> getenv_at_rule w0 registry ge G p.
-Proof. intros Hget f e ls l d args rest j Φ Hargs. exact (Hget f e ls l d args rest j (WPtr p) Φ Hargs). Qed.
+Proof using Type. intros Hget f e ls l d args rest j Φ Hargs. exact (Hget f e ls l d args rest j (WPtr p) Φ Hargs). Qed.
 Definition entry_keys : list name :=
   List.map TAtom ["v0"; "v2"; "v4"; "v6"; "v8"; "v10"; "v12"; "v14"; "v19"; "chk0"; "chk1"; "chk2"]%string.
 End initialize_values.

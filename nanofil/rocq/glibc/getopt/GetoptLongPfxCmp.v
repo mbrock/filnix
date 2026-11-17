@@ -73,7 +73,7 @@ Lemma flag_capq F f :
   f = null \/ f ∈ F ->
   flags_own F ⊢ ∃ reg, ⌜0 <= ptr_addr f < 2 ^ 64⌝ ∗ live_capq (DfracOwn 1) (ptr_cap f) reg ∗
     (live_capq (DfracOwn 1) (ptr_cap f) reg -∗ flags_own F).
-Proof.
+Proof using Type.
   intros [-> | Hin]; iIntros "HF".
   - iExists (mkRegion 0 0 Heap Live). iSplit; [iPureIntro; cbn; lia|]. unfold live_capq; cbn.
     iSplit; [done|]. iIntros "_". iExact "HF".
@@ -119,7 +119,7 @@ Lemma wp_long_pfx_cmp ks e lo os j x k y lonly F Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L118") (Some (TAtom "L106")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H10 H8 H3 Hc8 Hx Hy Hos Hfx Hfy.
   pose proof (lookup_lt_Some _ _ _ Hx) as Hjl. pose proof (lookup_lt_Some _ _ _ Hy) as Hkl.
   iIntros "#Ht HF HK".

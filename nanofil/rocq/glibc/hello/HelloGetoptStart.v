@@ -167,7 +167,7 @@ Definition hello_ro_rest (ge : genv) (o : hello_objs) : iProp Σ :=
 Lemma hello_ro_join ge o :
   hello_ro_rest ge o ∗ str_ro (sym_ptr ge "hello#str.69") ∗ str_ro (sym_ptr ge "hello#parse_options.longopts.64") ⊢
   hello_ro ge o.
-Proof.
+Proof using Type.
   rewrite /hello_ro_rest /hello_ro.
   iIntros "((#A & #B & #C & #D & #E & #F & #G & #H & #I & #J & #L) & #S & #T)".
   iSplitR; [iExact "A"|]. iSplitR; [iExact "B"|]. iSplitR; [iExact "C"|]. iSplitR; [iExact "D"|].

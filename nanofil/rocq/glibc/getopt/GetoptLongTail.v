@@ -66,7 +66,7 @@ Lemma wp_long_next ks e fr i n a b r av ar ps Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L398") (Some (TAtom "L439"))))
        : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L439") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H2 H12 Hc0 Hc47 Hc59 Hi Hlt Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Hab Ha Hcl #Hs HK".
   set (k := Z.to_nat (i + 1)). assert (Hkk : Z.of_nat k = i + 1) by (unfold k; lia).

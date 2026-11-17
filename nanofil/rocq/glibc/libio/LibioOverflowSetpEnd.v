@@ -90,7 +90,7 @@ Lemma wp_ovf_L162 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off from 
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L162") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using HL18.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ He Hmd Hv0 Hv2 Hc0 Hc30 Hc34 Hc39.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & [%Hflr Hflb] & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
@@ -138,7 +138,7 @@ Lemma wp_ovf_L35 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 wp
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L35") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using HL113.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ Hbk He Hmd Hbb Hbe Hbreg Hsz Hxl Hxr Hv0 Hv2 Hc0 Hc6.
   iIntros "#Hvt Hl Hfx Hbl Hxs [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".
   unfold file_size in Hend.

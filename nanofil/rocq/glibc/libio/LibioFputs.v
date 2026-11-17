@@ -76,7 +76,7 @@ Lemma wp_fputs_L107 e r fb m sb sreg Φ :
   ▷ (file_at vb (ow_self w0) fp m None -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Exec (TAtom "L107") (b_insts fp_L107) (b_jump fp_L107)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hv2 Hc0 Hr Hrr. subst fp. iIntros "#Hs Hf HK".
   iDestruct (file_at_open with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.

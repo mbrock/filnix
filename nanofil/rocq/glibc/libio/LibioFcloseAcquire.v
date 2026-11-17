@@ -42,7 +42,7 @@ Lemma wp_fclose_start fr fb freg fl lb lbreg sb sreg Φ :
      pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 1 0 (ow_self w0) -∗
      WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L13") (Some from))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hfr. injection Hfr as <-. intros Hfb Hfal Hfend Hfreg Hfl Hul. subst fp.
   iIntros "#Hs Htcb Hl Hfl Hlp Hlk HK".
   unfold file_size in Hfend.

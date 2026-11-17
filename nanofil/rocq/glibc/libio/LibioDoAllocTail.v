@@ -125,7 +125,7 @@ Lemma wp_doalloc_L7 fb freg fl oe sz from e Φ :
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsz Hfrom Hv0. iIntros "Hl Hfl Hb He HM HK".
   destruct Hfrom as [[-> (v & Hv & Hvs)] | [[-> | ->] ->]]; step;
     [rewrite Hvs | change (8192 mod 2 ^ 64) with 8192 | change (8192 mod 2 ^ 64) with 8192].
@@ -147,7 +147,7 @@ Lemma wp_doalloc_L28 fb freg fl oe sb sreg bs3 from e Φ :
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L28") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hv4 Hc4.
   iIntros "Hl Hfl Hb He HM Hsl Hb3 HK".
   step. step. norm. check "Hsl".
@@ -186,7 +186,7 @@ Lemma wp_doalloc_L33 fb freg fl oe sb sreg bs3 from e Φ :
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hc0 Hv4 Hc4.
   iIntros "Hl [%Hfl Hflb] Hb He HM Hsl Hb3 HK". unfold file_size in Hend.
   step. check "Hl". load_s32_group "Hl Hflb". step. check "Hl".

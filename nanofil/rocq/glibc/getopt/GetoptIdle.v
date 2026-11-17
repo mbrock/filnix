@@ -50,7 +50,7 @@ Context {Σ : gFunctors}
   {gen_heapGS0 : gen_heapGS piece pval Σ}.
 Existing Instance gen_heapGS0.
 Lemma cell_mod b o x : 0 <= x < 2 ^ 32 -> bytes b o (le_bytes (x mod 2 ^ 32) 4) ⊢ int_cell b o x.
-Proof. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
+Proof using Type. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
 End idle_values.
 Section idle.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -84,7 +84,7 @@ Lemma wp_x2_exchange ks e fr f l i b r av ar n ps Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L159") (Some (TAtom "iw_2.L18")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "iw_2.start") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hv2 Hv12 Hc0 Hc2 Hc23 Hc24 Hfl Hli Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   pose proof (avoids_app _ _ _ Hks) as [Hko Hke].
   iIntros "Hl [%Hi Hib] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".

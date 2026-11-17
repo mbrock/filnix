@@ -43,7 +43,7 @@ Lemma main_full_state av ar p0 ps x y z a i (S : list ptr -> Z -> iProp Σ) Φ :
   S (p0 :: ps) i -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length (p0 :: ps))); WPtr (mkPtr av (Obj av))]) :
     language.expr (nanofil_lang glibc_os_registry ge)) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hi Hgr. iIntros "#Hro #Hps Hav Hnc HX0 Hio Hpv Hgo HS".
   iApply (main_start w0 ge o debt X0 X Lb Hy av ar p0 ps x y z with "Hro Hps Hav Hnc HX0 Hio Hpv").
   iNext. iIntros (e b4 b6 pn sn [Hvars [Hb4 Hb6]]) "Hav Hnc #Hpn #Hsn HX Hio Hpv Hgc Hb6".

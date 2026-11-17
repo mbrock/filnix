@@ -136,7 +136,7 @@ Lemma wp_xs_L168 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d e Φ :
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L168") (b_insts xs_L168) (b_jump xs_L168)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hnb Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hd HT
     Hv0 Hc0 Hc11 Hc14 Hc15 Hv4 Hp5 Hv174 Hp1.
   unfold file_size in Hfend.

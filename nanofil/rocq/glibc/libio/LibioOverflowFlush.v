@@ -80,7 +80,7 @@ Lemma wp_ovf_L264 fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off 
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L264") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfb Hal Hend Hfreg Hch Hk Hf2 Hf2r Hfd Happ He Hmd Hv0 Hv2 Hc0 Hc47.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".

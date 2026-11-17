@@ -240,7 +240,7 @@ Lemma os_keeps b o reg x xp : forall m wd h,
   os_wi w0 m wd h ->
   os_wi w0 (store_bytes (store_aux m (b + o) (ptr_cap xp)) (b + o) 8 (ptr_addr xp)) wd
     (overwrite ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp)) h).
-Proof.
+Proof using Type.
   intros m wd h Hh Hw. apply (os_wi_store w0 m); [reflexivity | | exact Hw].
   intros l v Hin. destruct l; try exact I. apply Hh.
   apply elem_of_app in Hin as [Hin | Hin]; [apply elem_of_app; left; exact Hin|].
@@ -303,7 +303,7 @@ Lemma memeq_call (Hcmp : (memcmp_spec w0 registry ge)) dq1 dq2 q q' n b reg o xs
   ▷ (liveq dq1 b reg -∗ bytesq dq1 b o xs -∗ liveq dq2 b' reg' -∗ bytesq dq2 b' o' ys -∗
      Φ (Ret (WInt (if decide (xs = ys) then 1 else 0)))) -∗
   WP (ERun (invocation memeq_fn [WPtr q; WPtr q'; WInt n]) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   destruct Hcmp as (F & HF & Hfr & Hspec). destruct q as [a c], q' as [a' c']. cbn [ptr_addr ptr_cap].
   intros Hb0 H16 -> -> -> Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HΦ". rewrite memeq_entry.
   assert (Hn : Z.of_nat (length xs) < 2 ^ 64) by lia.
@@ -334,7 +334,7 @@ Lemma spn_L18 e x z x0 y0 z0 Φ :
   (name_cells pb nb sb preg nreg sreg) x0 y0 z0 -∗ ▷ ((name_cells pb nb sb preg nreg sreg) x x z -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L18") (b_insts s_L18) (b_jump s_L18)))
         : gexpr) {{ Φ }}.
-Proof.
+Proof using Hnb Hnb_cell Hpb Hpb_cell Hsb Hsb_cell.
   intros Hx Hz. destruct Hpb_cell as (Hp0 & Hp8 & Hpend & Hp48).
   destruct Hnb_cell as (Hn0 & Hn8 & Hnend & Hn48). destruct Hsb_cell as (Hs0 & Hs8 & Hsend & Hs48).
   iIntros "(Hlp & Hcp & Hln & Hcn & Hls & Hcs) HΦ". cbn [b_insts b_jump s_L18].
@@ -377,7 +377,7 @@ Lemma spn_L16 dq p s e x0 y0 z0 Φ :
        (ptr_add p (Z.of_nat (short_idx s))) -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L16") (b_insts s_L16) (b_jump s_L16)))
         : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hdq Hlib Hv15. iIntros "Hs #Hlt Hc HΦ". cbn [b_insts b_jump s_L16].
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)". iDestruct (word_string_intro with "Hw") as "Hs"; [exact Hs|].
   pose proof (ss_chars _ _ _ _ _ Hs) as Hch. pose proof (base_idx_le s) as Hj.

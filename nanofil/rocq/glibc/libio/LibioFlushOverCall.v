@@ -117,7 +117,7 @@ Lemma wp_flush_L240 e fb freg fl f2 fd md c breg arp are awb awp vb vreg r cb a3
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L240") (Some (TAtom "L211")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hp5 Hc13 Hc31 Hp4 Hv3 Hr Hfb Hfal Hfend Hfreg Hmd Hfd. subst fp.
   pose proof Hfend as Hfend'. unfold file_size in Hfend.
   iIntros "#Hvt Hl Hfl Hf2 Hmd Hfd Hrp Hre Hwb Hwp Hbc Hvtp HR HK".

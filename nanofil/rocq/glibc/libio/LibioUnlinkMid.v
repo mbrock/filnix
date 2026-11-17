@@ -50,7 +50,7 @@ Lemma chain_split pre f post pb po :
     pcell qb qo f ∗ chain_links (mkPtr (qb + qo) (Obj qb)) (f :: post) ∗
     (pcell qb qo (head_ptr post) -∗ chain_links (mkPtr (qb + qo) (Obj qb)) post -∗
      chain_links (mkPtr (pb + po) (Obj pb)) (pre ++ post) ∗ pcell pb po (head_ptr (pre ++ post))).
-Proof.
+Proof using Type.
   revert pb po. induction pre as [|g pre IH]; intros pb po; cbn [app].
   - iIntros "Hc Hp". iExists pb, po. iFrame "Hc Hp". iSplit; [iPureIntro; left; auto|]. iIntros "$ $".
   - cbn [chain_links head_ptr]. iIntros "(%gb & -> & Hgp & Hgc & Hc) Hp".
@@ -84,7 +84,7 @@ Lemma unlink_split la lareg pre fb post :
     (live qb qreg -∗ pcell qb qo (head_ptr post) -∗ next_link (head_ptr post) (mkPtr (qb + qo) (Obj qb)) -∗
      live la lareg ∗ pcell la 0 (head_ptr (pre ++ post)) ∗ chain_links (mkPtr la (Obj la)) (pre ++ post) ∗
      [∗ list] g ∈ pre ++ post, stream_life g).
-Proof.
+Proof using Type.
   intros Hal Hend.
   assert (E : mkPtr la (Obj la) = mkPtr (la + 0) (Obj la)) by (rewrite Z.add_0_r; reflexivity). rewrite E.
   iIntros "Hla Hh Hc Hs". iDestruct (big_sepL_app with "Hs") as "[Hpre Hpst]".
@@ -159,7 +159,7 @@ Lemma wp_unlink_L185 e from fb freg fl lb lbreg qb qo qreg nx cb creg lk lkreg r
      live rf rfreg -∗ pcell rf 0 null -∗ lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗
      live cb creg -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L185") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros qp fp Hglk Hgrf Hv0 Hc0 Hv10 Hv183 Hfb Hfal Hfend Hfreg Hfl Hul Hqo Hqal Hqend Hcb Hcal Hcend Hcreg
     Hral Hrend.
   iIntros "#Hs Hl Hfl Hlp Hlb Hpc Hch Hql Hqc Hnx Hrl Hrc Hlk Htcb Hcl Hcp Hct HK".

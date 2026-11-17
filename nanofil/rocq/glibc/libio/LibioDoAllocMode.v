@@ -86,7 +86,7 @@ Lemma wp_doalloc_L48 fb freg fl fd eb oe sb sreg bs3 from e Φ :
   pcell fb off_buf_base null -∗ pcell fb off_buf_end oe -∗ Mres -∗ live sb sreg -∗ bytes sb 56 bs3 -∗
   ▷ doalloc_k Mres fb freg fl fd eb Φ -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L48") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using HL28 HL33 Hext Hisatty Hreg.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 He Hfd Hv0 Hc0 Hv4 Hc4.
   iIntros "Hl Hfl [%Hfdr Hfdb] Herr Hb Hbe HM Hsl Hb3 HK". unfold file_size in Hend.
   step. step. norm. check "Hl". load_s32_group "Hl Hfdb".
@@ -121,7 +121,7 @@ Lemma wp_doalloc_L5 fb freg fl fd eb oe sb sreg bs1 bs2 bs3 e Φ :
   ▷ doalloc_k Mres fb freg fl fd eb Φ -∗
   WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L5") (Some (TAtom "L13")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl1 Hl2 Hl3 He Hfd Hv0 Hc0 Hv4.
   iIntros "Hl Hfl Hfd Herr Hb Hbe HM Hsl Hb1 Hb2 Hb3 HK".
   step. step. norm. check "Hsl".

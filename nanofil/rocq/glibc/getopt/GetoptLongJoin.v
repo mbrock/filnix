@@ -217,7 +217,7 @@ Lemma wp_long_join e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f139 f
      GetoptLongJoinMiss.plo_res b r av ar ps li F G M i n cur s a os x -∗
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec l [] (JRet rv))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli HK".
   iApply (wp_long_join_arg e G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 av ar ps lo os F pfx pxs po so q sq cur s n lonly pe i oo a b r li Φ with "Ht Hwq Hpo Hpfx Hws Hsl Hsc Hl Hib Hoob Hab Hcur Ha Hcl Hs HG HF HM Hli");
     try eassumption.

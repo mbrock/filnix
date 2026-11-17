@@ -54,6 +54,6 @@ Lemma wp_x3_upper ks e fr i bot mid top av ar n ps Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "iw_3.L16") (Some (TAtom "iw_3.L103")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "iw_3.L100") (Some fr))) : gexpr) {{ Φ }}.
-Proof. x_upper e fr i ps bot mid top av. Qed.
+Proof using Type. x_upper e fr i ps bot mid top av. Qed.
 
 End exchange.

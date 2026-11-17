@@ -66,7 +66,7 @@ Lemma wp_cleanup_L306 e r fb freg lb lbreg rf rfreg sb sreg x cb nx nreg Φ :
           : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L306") (Some (TAtom "iw_1.L291"))))
        : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hgrf Hp1 Hc13 Hv1 Hv2 Hnx Hfb Hfal Hfend Hfreg Hral Hrend. subst fp.
   unfold file_size in Hfend.
   iIntros "#Hs Hl Hlp Hlb Hrl Hrc Hch Hnl HK".

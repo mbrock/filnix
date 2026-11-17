@@ -80,7 +80,7 @@ Lemma wp_ovf_do_write fr fb freg f2 fd eb mode vb vreg bb breg sz k we xs fl tw 
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz 0 we' xs fl' tw' off' -∗
      Φ (Ret (WInt (if r =? k then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hdw.
   intros Hfr Hfb Hal Hend Hfreg Hk Hf2 Hf2r Hfd Happ He Hmd.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".

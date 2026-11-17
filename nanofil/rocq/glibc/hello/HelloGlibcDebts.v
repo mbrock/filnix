@@ -116,7 +116,7 @@ Lemma wp_call_fn g xs P Q f e ls lab r args rest j Ψ :
   P -∗ (∀ v, Q v -∗ ∃ cf', ⌜resume (mkFrame f e ls None (Exec lab rest j)) (mkPending r None) v = Some cf'⌝ ∗
                           ▷ WP (ERun cf' : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros (gf & Hg & [fr Hfr] & Ht) Hx. iIntros "HP HK".
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ xs gf fr); [exact Hx | exact Hg | exact Hfr |]. iNext.
   iApply (Ht fr _ Hfr with "HP"). iIntros (v) "HQ". iApply ("HK" with "HQ").

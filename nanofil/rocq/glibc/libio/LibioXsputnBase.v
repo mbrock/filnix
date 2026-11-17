@@ -129,19 +129,19 @@ Definition xos (w0 : os_world) (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (f
     The proof-mode instance separates these groups when a proof opens the state. *)
 #[global] Instance xos_into_sep w0 eb X fb nb :
   IntoSep (xos w0 eb X fb nb) (xfields w0 eb fb nb) (X fb nb).
-Proof. unfold xos. apply _. Qed.
+Proof using Type. unfold xos. apply _. Qed.
 
 (** Framing can assemble auxiliary stream state from its fields without
     opening unrelated stream state in the caller's resources. *)
 #[global] Instance xos_frame p R w0 eb X fb nb Q :
   Frame p R (xfields w0 eb fb nb ∗ X fb nb) Q ->
   Frame p R (xos w0 eb X fb nb) Q.
-Proof. unfold xos. intros H. exact H. Qed.
+Proof using Type. unfold xos. intros H. exact H. Qed.
 
 (** A run of bytes at a share is its first j bytes and the rest. *)
 Lemma bytesq_split dq b o ys (j : nat) : (j <= length ys)%nat ->
   bytesq dq b o ys ⊣⊢ bytesq dq b o (take j ys) ∗ bytesq dq b (o + Z.of_nat j) (drop j ys).
-Proof.
+Proof using Type.
   intros H. rewrite -{1}(take_drop j ys) /bytesq byte_ps_app ptsq_app length_take_le; [done | lia].
 Qed.
 
@@ -192,7 +192,7 @@ Definition xs_post (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg
     liveq dq b' reg' -∗ bytesq dq b' so ys -∗ Φ (Ret (WInt r)).
 Lemma sb_ne_nl z : 0 <= z < 256 -> z <> 10 ->
   ((sign_extension 256 128 (z + 0) mod 2 ^ 32) mod 2 ^ 32 =? 10 mod 2 ^ 32) = false.
-Proof.
+Proof using Type*.
   intros Hz H10. unfold sign_extension. rewrite Z.add_0_r (Z.mod_small z 256); [|lia].
   apply Z.eqb_neq. destruct (128 <=? z); Z.div_mod_to_equations; lia.
 Qed.
@@ -244,7 +244,7 @@ Lemma wp_xs_scan dq b' reg' so c' ys cnt0 :
              : sexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L50") (b_insts xs_L50) (b_jump xs_L50)))
           : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros n Hc' Hso Hyend Hyreg Hy Hcr.
   iLöb as "IH". iIntros (e i Φ (Hv2 & Hp14 & Hv39 & Hi)) "Hl' Hys HK".
   iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".
@@ -301,7 +301,7 @@ Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
   ▷ (xs_post w0 registry ge) eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L178") (b_insts xs_L178) (b_jump xs_L178)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Ht Hd Htd Hv0 Hv4 Hp3 Hv175 Hp1.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
   iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".

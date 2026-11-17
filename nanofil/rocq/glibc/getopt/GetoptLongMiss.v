@@ -106,7 +106,7 @@ Lemma wp_long_miss ks e (G : iProp Σ) T fp dom se sereg mid av ar ps q sq po so
         : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hkso Hksu Hrule Hg Hgn Hse Hmid H2 H4 H10 H12 H14 H16 H90 H7 Hc0 Hq Hq0 Hi Hn Hlen Hlo Hpe
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Hwq #Hpo #Hpfx #Hws #Hsl #Hsc Hl Hib Hoo Hcur Ha Hcl #Hs HG HK".

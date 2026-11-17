@@ -81,7 +81,7 @@ Lemma wp_dx_bytes fb freg b reg sz k0 cnt dq b' reg' so c' ys j0 wp0 :
              : sexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L76") (b_insts dx_L76) (b_jump dx_L76)))
           : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfb Hfal Hfend Hfreg Hb Hbend Hbreg Hk0 Hkc Hc' Hso Hj0 Hjc Hyend Hyreg. unfold file_size in Hfend.
   iLöb as "IH". iIntros (e i xs Φ (Hv0 & Hc0 & Hi & Hp10 & Hp6 & Hir & Hlx & Hx)) "Hl Hwp Hbl Hxs Hl' Hy HK".
   iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".

@@ -55,7 +55,7 @@ Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 Lemma gcell_store b4 :
   obj b4 (heap_req 8 8) ⊢ live b4 (mkRegion b4 (b4 + 16) Heap Live) ∗ pcell b4 0 null ∗
     bytes b4 8 (replicate 8 0) ∗ auxes b4 1 (replicate 15 CNone).
-Proof.
+Proof using Type.
   rewrite (obj_zero_block b4 _); [|vm_compute; congruence].
   change (req_extent (heap_req 8 8)) with 16. change (req_kind (heap_req 8 8)) with Heap.
   change (replicate (Z.to_nat 16) 0) with (replicate 8 0 ++ replicate 8 0).
@@ -76,7 +76,7 @@ Lemma main_start av ar p0 ps' x y z Φ :
        gcell b4 (sym_ptr ge "hello#str.81") -∗ obj b6 (heap_req 4 8) -∗
        WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom "start")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av))]) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros ps. iIntros "#Hro #Hps Hav Hnc HX0 Hio Hpv HK".
   rewrite main_entry. step.
   (* b4, the greeting's cell. *)

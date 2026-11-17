@@ -76,7 +76,7 @@ Lemma wp_long_unrec ks e fr (G : iProp Σ) T fp dom se sereg mid av ar ps pfx sp
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec (TAtom "L366") [] (JRet (Const 63)))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L332") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hrule Hse Hmid H2 H12 H14 H16 Hc0 Hi Hpe Hb Hal Hend Hr Hav Hala Hda Hra Hps Hse0 Hsea Hsee Hser.
   iIntros "#Hpfx #Hwc #Hsl #Hsc Hl [%Hi0 Hib] [%Hoo Hoob] Hcur Ha Hcl #Hs HG HK".
   iDestruct (argv_str_cap with "Hwc") as (rc) "[#Hcapc %Hc0']".

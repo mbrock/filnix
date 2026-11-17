@@ -134,7 +134,7 @@ Qed.
 (** A pass over an [over_stream] writes its buffer out and leaves an
     [exit_stream] not yet unbuffered, the result r or EOF. *)
 Lemma flush_body_over : flush_body w0 registry ge ((over_stream ge) Rest) (exit_stream false).
-Proof.
+Proof using Type*.
   intros e fb freg rf rfreg sb sreg x r cb nx nreg Φ fp Hgrf Hp5 Hp4 Hv3 Hv88 Hsz Hr Hnx Hfb Hfal Hfend Hfreg
     Hral Hrend.
   iIntros "#Hs Hl HP Hrl Hrc Hch Hnl HK".
@@ -165,7 +165,7 @@ Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : ge
 Lemma flush_body_or (P1 P2 Q : ptr -> iProp Σ) :
   flush_body w0 registry ge P1 Q -> flush_body w0 registry ge P2 Q ->
   flush_body w0 registry ge (fun g => P1 g ∨ P2 g)%I Q.
-Proof.
+Proof using Type.
   intros H1 H2 e fb freg rf rfreg sb sreg x r cb nx nreg Φ fp ? ? ? ? ? ? ? ? ? ? ? ? ? ?.
   iIntros "Hs Hl [HP | HP]".
   - iApply (H1 with "Hs Hl HP"); assumption.

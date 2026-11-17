@@ -87,7 +87,7 @@ Lemma scan_session b r av ar ps i err oo a c o f l :
   live b r -∗ int_cell b 0 i -∗ int_cell b 4 err -∗ int_cell b 8 oo -∗ pcell b 16 a -∗
   int_cell b 24 1 -∗ pcell b 32 c -∗ int_cell b 40 o -∗ int_cell b 44 f -∗ int_cell b 48 l -∗
   getopt_session b r av ar ps i.
-Proof.
+Proof using Type.
   intros Hn Hfl Hln Hfi Ho Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hc Hl Hi He Hoo Ha Hin Hcur Ho Hf Hla".
   iSplit; [iPureIntro; lia|]. iExists (mkGetoptState i err oo a 1 c o f l).

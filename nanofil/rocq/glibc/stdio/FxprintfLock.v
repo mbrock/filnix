@@ -58,7 +58,7 @@ Lemma wp_fx_lock e vb sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R : iP
   ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
      live_capq dqf (ptr_cap fmt) regf -∗ Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None (Enter (TAtom "L32") (Some (TAtom "L21")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp xs Hpr Hc2 Hv2 Hv13 Hv9 Hv25 Hself Hselfr Hok Hfmtr Hmode Hcnt Hfmt.
   iIntros "#Hs Hst Ho Hcur Hsnap Hfc HR HK".
   iDestruct (printf_stream_fx with "Hst") as (fb' freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".

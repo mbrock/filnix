@@ -78,7 +78,7 @@ Lemma wp_live_fit dq b reg fr Φ :
   liveq dq b reg -∗
   (⌜0 <= b /\ r_end reg <= 2 ^ 48⌝ -∗ liveq dq b reg -∗ WP (ERun fr : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros "Hl HK". rewrite !wp_unfold /wp_pre /=. iIntros (σ ns κ κs nt) "Hσ".
   iDestruct (ptsq_facts with "Hσ Hl") as %(Hag & _ & Hfit).
   cbn [all_agree agree_piece fst snd] in Hag. destruct Hag as [[Hreg _] _].
@@ -91,7 +91,7 @@ Lemma wp_live_fit1 b reg fr Φ :
   live b reg -∗
   (⌜0 <= b /\ r_end reg <= 2 ^ 48⌝ -∗ live b reg -∗ WP (ERun fr : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros "Hl HK". rewrite /live pts_ptsq. iApply (wp_live_fit with "Hl").
   iIntros (H) "Hl". rewrite -pts_ptsq. iApply ("HK" with "[//] Hl").
 Qed.
@@ -127,7 +127,7 @@ Lemma file_inv_live vb self g :
   file_inv vb self g ⊢
   ∃ gb greg, ⌜g = mkPtr gb (Obj gb) /\ 0 < gb /\ gb mod 8 = 0 /\ gb + file_size <= r_end greg /\
               r_end greg <= 2 ^ 63⌝ ∗ live gb greg ∗ (live gb greg -∗ file_inv vb self g).
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %held & %Hp & Hl & Hrest)".
   destruct Hp as (-> & Hal & Hfb & Hend & Hreg & Hp).
   iExists fb, freg. iFrame "Hl". iSplit; [iPureIntro; repeat split; assumption|]. iIntros "Hl".
@@ -136,11 +136,11 @@ Qed.
 
 (** Eight zero bytes and an empty slot are a null pointer's cell. *)
 Lemma byte_ps_cell0 b o : byte_ps b o (replicate 8 0) = cell b o 0.
-Proof. unfold byte_ps, cell, seqZ. rewrite Nat2Z.id. simpl. repeat (f_equal; try lia; try reflexivity). Qed.
+Proof using Type*. unfold byte_ps, cell, seqZ. rewrite Nat2Z.id. simpl. repeat (f_equal; try lia; try reflexivity). Qed.
 
 (** A null pointer's cell, from an empty slot and eight zero bytes. *)
 Lemma pcell_null_of b o : auxes b o [CNone] ∗ bytes b o (replicate 8 0) ⊢ pcell b o null.
-Proof.
+Proof using Type.
   rewrite /bytes byte_ps_cell0 /auxes /pcell /aux_ps /pts. cbn -[cell]. unfold seqZ. simpl. rewrite ?Z.add_0_l.
   iIntros "[[$ _] $]".
 Qed.
@@ -153,7 +153,7 @@ Qed.
 Lemma obj32 b : obj b (heap_req 8 32) ⊢
   live b (mkRegion b (b + 32) Heap Live) ∗ pcell b 0 null ∗ pcell b 8 null ∗ bytes b 16 [0; 0; 0; 0] ∗
   pcell b 24 null.
-Proof.
+Proof using Type.
   rewrite obj_zero_block; [|vm_compute; congruence]. cbn [req_extent req_kind heap_req].
   replace ((32 + 15) / 16 * 16) with 32 by reflexivity.
   change (replicate (Z.to_nat 32) 0) with

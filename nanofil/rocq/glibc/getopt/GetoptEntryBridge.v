@@ -67,7 +67,7 @@ Lemma entry_pre b r av ar ps i :
     getopt_state_own b r s ∗ ⌜getopt_bounds (Z.of_nat (length ps)) i s /\ 0 <= gs_ind s <= Z.of_nat (length ps)⌝ ∗
     (⌜s = getopt_zero /\ i = 1⌝ ∨ (⌜gs_initialized s = 1 /\ gs_ind s = i /\ 0 <= gs_order s <= 2⌝ ∗ getopt_cursor ps i s)) ∗
     (⌜gs_next s = null⌝ ∨ word_string DfracDiscarded (gs_next s) tail).
-Proof.
+Proof using Type.
   iIntros "[%Hav (%s & Hs & %Hbd & Hk)]".
   iDestruct "Hk" as "[[%Hz %Hi] | [%Hin #Hcu]]".
   - iExists s, []. iFrame "Hs". iSplit; [done|]. iSplit; [iPureIntro; subst; split; [exact Hbd | unfold getopt_bounds in Hbd; cbn in *; lia]|].
@@ -100,7 +100,7 @@ Lemma entry_select b r (ps : list ptr) i s s' (tail : list Z) :
   pcell b 16 (gs_arg s') ∗ int_cell b 24 (gs_initialized s') ∗ pcell b 32 (gs_next s') ∗
   int_cell b 40 (gs_order s') ∗ int_cell b 44 (gs_first s') ∗ int_cell b 48 (gs_last s') ∗
   (⌜gs_next s' = null⌝ ∨ word_string DfracDiscarded (gs_next s') []).
-Proof.
+Proof using Type.
   intros Hbd Hk Hst Hnt. iIntros "#Hc (%Hb & Hl & Hi & He & Ho & Ha & Hn & Hx & Hr & Hf & Hla)". iFrame.
   unfold getopt_bounds in Hbd. destruct Hst as [(Hni & o & Ho & ->) | (Hni & ->)].
   - iSplit; [|by iLeft]. iPureIntro. destruct Hk as [[-> ->] | (Hin & Hi & Hor)].
@@ -134,7 +134,7 @@ Lemma entry_cluster b r ps i s s' (tail : list Z) :
     live b r ∗ int_cell b 0 i ∗ int_cell b 4 (gs_err s) ∗ int_cell b 8 (gs_opt s) ∗ pcell b 16 null ∗
     int_cell b 24 1 ∗ pcell b 32 (gs_next s) ∗ int_cell b 40 (gs_order s) ∗ int_cell b 44 (gs_first s) ∗
     int_cell b 48 (gs_last s).
-Proof.
+Proof using Type.
   intros Hbd Hst Hni Hnn Htn. iIntros "Hk #Ht (%Hb & Hl & Hi & He & Ho & Ha & Hn & Hx & Hr & Hf & Hla)".
   destruct Hst as [(Hni' & _) | (_ & ->)]; [done|].
   iDestruct "Hk" as "[[%Hz _] | [(%Hin & %Hi & %Hor) #Hcu]]".

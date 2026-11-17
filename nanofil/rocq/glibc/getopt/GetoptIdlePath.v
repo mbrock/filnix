@@ -77,7 +77,7 @@ Lemma wp_getopt_idle ks e fr0 n i o f l b r av ar ps pdd sdd Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None
                  (Exec (TAtom "L203") (b_insts getopt_blk203) (b_jump getopt_blk203))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L73") (Some fr0))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc2 Hfl Hln Hfi Hin Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   unfold idle_names in Hks.
   apply avoids_app in Hks as [Hkx2 Hks]. apply avoids_app in Hks as [Hkc Hks].

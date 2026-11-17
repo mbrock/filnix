@@ -106,7 +106,7 @@ Lemma wp_getopt_wmiss ks e0 e fr c pe po so oo b r av ar ps (G : iProp Σ) T fp 
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L570") [] (b_jump getopt_blk570))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L544") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksd Hk0 Hrule Hse Hmid H2 H12 H455 Hpo Hpe Hc0 Hc19 Hc Hper Hb Hal Hend Hr Hav Hala Hda Hra Hps
     Hse0 Hsea Hsee Hser.
   iIntros "#Hpo #Hsl #Hsc Hl [%Hoo Hoob] Ha Hcl #Hs HG HK".

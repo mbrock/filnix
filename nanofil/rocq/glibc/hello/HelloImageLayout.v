@@ -158,7 +158,7 @@ Context (g : list (name * ptr)) (m : mem) (fr : word -> mem -> option (res unit 
 Local Notation ge := (mkGenv hello_image_module g fr).
 
 Local Lemma parts : hello_layout_ok g m = true.
-Proof. exact (hello_layout_check g m Hi). Qed.
+Proof using Type*. exact (hello_layout_check g m Hi). Qed.
 
 Lemma hello_image_obj_sym n b : In (n, b) hello_image_obj_syms ->
   Term.lookup (TAtom n) g = Some (mkPtr b (Obj b)).

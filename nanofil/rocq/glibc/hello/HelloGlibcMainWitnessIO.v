@@ -95,7 +95,7 @@ Context `{!gen_heapGS piece pval Σ}.
 (** The lock image establishes the concrete unlocked-lock predicate. *)
 Lemma witness_lock_ok b : b mod 8 = 0 -> b + 4096 <= 2 ^ 63 ->
   pts (witness_lock b) -∗ lock_state b (hello_witness_region b) 0 0 null.
-Proof.
+Proof using Type.
   intros Hb He. rewrite /witness_lock witness_concat. cbn [big_opL].
   iIntros "(Hl & Hk & Hc & Ho & _)". iSplit; [iPureIntro; change (b mod 8 = 0 /\ b + 16 <= b + 4096 /\ b + 4096 <= 2 ^ 63); lia|].
   iFrame "Hl Ho". iSplitL "Hk"; iSplit; try iPureIntro; try lia; iAssumption.
@@ -104,7 +104,7 @@ Qed.
 (** The explicit forward and backward links establish the open-stream list. *)
 Lemma witness_list_ok : pts witness_list -∗
   io_list_inv witness_ge [mkPtr 8192 (Obj 8192); mkPtr 4096 (Obj 4096); mkPtr 12288 (Obj 12288)].
-Proof.
+Proof using Type.
   rewrite /witness_list witness_concat. cbn [big_opL].
   iIntros "(Hla & Hhead & Hep & Hen & Hop & Hon & Hip & Hin & Hlk & Hrf & Hrun & _)".
   iExists 86016, (hello_witness_region 86016), 90112, (hello_witness_region 90112),

@@ -103,7 +103,7 @@ Lemma wp_xs_L117 eb X fb freg vb vreg nb we we' dq b' reg' so c' ys T d r e Φ :
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "iw_2.L117") (b_insts xs_L117) (b_jump xs_L117)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Hv0 Hc0 Hv114 Hv136 Hv4 Hp5 Hv67 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwc Hwp Hwe Hroom Hos Hl' Hys HK".

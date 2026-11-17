@@ -85,7 +85,7 @@ Lemma wp_skip_test ks e i n b r av ar ps Φ :
    (∀ e2 fr, ⌜keeps ks e e2⌝ -∗ live b r -∗ bytes b 0 (int_bytes i) -∗ live av ar -∗ argv_cells av ps -∗
       WP (ERun (mkFrame glibc_getopt_internal_r e2 [] None (Enter (TAtom "L160") (Some fr))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L166") (Some (TAtom "L159")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hv2 Hc57 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hib Ha Hc #Hs HLs".
   assert (Hi0 : 0 <= i < 2 ^ 32) by lia.

@@ -56,7 +56,7 @@ Definition amb_set (n : Z) (s : ptr) : iProp Σ :=
 Lemma bytes_at b xs t x :
   xs !! t = Some x ->
   bytes b 0 xs ⊣⊢ bytes b 0 (take t xs) ∗ ibyte b (Z.of_nat t) x ∗ bytes b (Z.of_nat t + 1) (drop (S t) xs).
-Proof.
+Proof using Type.
   intros Hx. pose proof (lookup_lt_Some _ _ _ Hx) as Ht.
   rewrite (bytes_take_drop b 0 xs t); [|lia]. rewrite (drop_S _ _ _ Hx).
   rewrite /bytes /ibyte /pts byte_ps_cons big_sepL_cons big_sepL_singleton !Z.add_0_l. done.
@@ -83,7 +83,7 @@ Lemma wp_amb_mark f e ls l d a rest j sb sreg xs t Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Let d A (Check 0 1 Write 1) [Tmp a] :: RawStore Wb 0 (Const 1) (Tmp d) :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Ha Ht Hsb Hend Hr. iIntros "Hl Hx HK".
   destruct (lookup_lt_is_Some_2 xs t Ht) as [x Hx].
   iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | apply Z.mod_1_r |].
@@ -106,7 +106,7 @@ Lemma wp_pfx_mark ks e n s k Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L172") (b_insts plo_blk172) (b_jump plo_blk172))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H18 H13 Hk Hn. iIntros "Hs HK". cbn [b_insts b_jump plo_blk172].
   iDestruct "Hs" as "[-> | (%sb & %sreg & %xs & %Hs & Hl & Hx)]".
   - step. step. unfold null; cbn [ptr_addr]. change (0 mod 2 ^ 64) with 0.

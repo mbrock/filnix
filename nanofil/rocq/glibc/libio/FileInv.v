@@ -261,7 +261,7 @@ Proof. rewrite /vtables_ro /liveq /pcellq. apply _. Qed.
 (** One slot of [file_jumps], read from [vtables_ro]. *)
 Lemma vtables_slot ge vb vreg sl n :
   In (sl, n) file_jumps -> vtables_ro ge vb vreg -∗ pcellq DfracDiscarded vb (vt_file + sl) (sym_ptr ge n).
-Proof.
+Proof using Type.
   iIntros (Hin) "(_ & _ & Hs)". apply list_elem_of_In in Hin.
   iApply (big_sepL_elem_of (fun sl => pcellq DfracDiscarded vb (vt_file + sl.1) (sym_ptr ge sl.2)) _ (sl, n)
             with "Hs"). exact Hin.

@@ -68,7 +68,7 @@ Definition plo_res_cap (b : Z) (r : region) (av : Z) (ar : region) (ps : list pt
 (** Consumers of the original return state can drop the new fact. *)
 Lemma plo_res_cap_old b r av ar ps li F (G M : iProp Σ) i n cur s a os x :
   plo_res_cap b r av ar ps li F G M i n cur s a os x ⊢ plo_res b r av ar ps li F G M i n cur s a os x.
-Proof.
+Proof using Type.
   iIntros "(%i' & %oo' & %a' & %c' & Hl & Hi & Ho & Ha & Hc & Hav & Hcl & HG & HF & HM & Hli & _ & _ & %H)".
   iExists i', oo', a', c'. iFrame. done.
 Qed.
@@ -84,7 +84,7 @@ Lemma plo_res_capped b r av ar ps li F (G M : iProp Σ) i n cur s a os x ra :
   live_capq DfracDiscarded (ptr_cap a) ra -∗ ⌜0 <= ptr_addr a < 2 ^ 64⌝ -∗
   plo_res b r av ar ps li F G M i n cur s a os x -∗
   plo_res_cap b r av ar ps li F G M i n cur s a os x.
-Proof.
+Proof using Type.
   iIntros "#Hws #Hs Hca %Ha (%i' & %oo' & %a' & %c' & Hl & Hi & Ho & Hab & Hc & Hav & Hcl & HG & HF & HM & Hli & %H)".
   iAssert ((∃ ra', live_capq DfracDiscarded (ptr_cap a') ra') ∗ ⌜0 <= ptr_addr a' < 2 ^ 64⌝)%I with "[Hca]" as "[Hcap %Hr]".
   { destruct H as (_ & _ & [-> | [-> | ->]] & _).

@@ -56,7 +56,7 @@ Lemma wp_puts_unlock e r fb freg fl lb lbreg sb sreg Φ :
      lock_state lb lbreg 0 0 null -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Exec (TAtom "L103") (b_insts pu_L103) (b_jump pu_L103)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hv12 Hc1 Hr Hrr Hfb Hfal Hfend Hfreg Hfl Hul. subst fp.
   unfold file_size in Hfend.
   assert (Hcu' : Z.land (fl mod 2 ^ 32) (32768 mod 2 ^ 32) mod 2 ^ 32 = 0).

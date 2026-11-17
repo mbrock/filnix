@@ -41,7 +41,7 @@ Lemma exit_block_pop b reg ents :
   ([∗ list] i ∈ seqZ (Z.of_nat (List.length ents) + 1) (32 - (Z.of_nat (List.length ents) + 1)),
      spare b (16 + 32 * i)) ⊢
   exit_block b reg ents.
-Proof.
+Proof using Type.
   intros Hk. rewrite /exit_block (spares_cons b (Z.of_nat (List.length ents))); [|lia].
   iIntros "($ & $ & $ & $ & $ & $)".
 Qed.
@@ -84,7 +84,7 @@ Lemma exit_loop x ents c status e from (R : nat -> iProp Σ) Φ :
   exit_held x ents c -∗ R (List.length ents) -∗
   ([∗ list] i ↦ en ∈ ents, exit_handler w0 ge (status mod 2 ^ 32) en (R (S i)) (R i)) -∗ cleanup_rule w0 ge (R 0%nat) -∗
   WP (ERun (mkFrame glibc___run_exit_handlers e [] None (Enter (TAtom "L101") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   revert e from. induction ents as [|en pre IH] using rev_ind; intros e from Henv Hvars.
   { iIntros "Hx HR _ HK". iApply (exit_tail with "Hx HR HK"); [exact Henv | exact Hvars]. }
   pose proof Henv as Henv'. destruct x as [lk lkr dn dnr cl clr fs fsr ib ibr].

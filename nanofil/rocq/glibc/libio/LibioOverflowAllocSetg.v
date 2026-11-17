@@ -115,7 +115,7 @@ Lemma wp_ovf_L33 fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 we0 oe 
      auxes bb 0 (replicate (Z.to_nat sz) CNone) -∗ Mres -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Hfd31 Happ Hnw Hnp Hbk Hub He Hmd Hv0 Hv2 Hc0 Hc6.
   iIntros "#Hvt Hl Hfx [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HM HK". unfold file_size in Hend.
   iDestruct "Hfx" as "(Hf2 & Hfd & Herr & Hcol & Hmode & Hvtp)". adv.

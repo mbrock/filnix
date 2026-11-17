@@ -64,7 +64,7 @@ Lemma wp_fputs_start fr p dq s fb freg fl lb lbreg sb sreg Φ :
      lock_state lb lbreg 1 0 (ow_self w0) -∗
      WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L113") (Some (TAtom "L29")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hfr Hstr Hsz Hfb Hfal Hfend Hfreg Hfl Hul. injection Hfr as <-. subst fp.
   unfold file_size in Hfend. assert (0 <= Z.land fl 32768 < 2 ^ 32) by (rewrite Hul; lia).
   iIntros "#Hs Hstr Hl [_ Hfl] Hlp Hlb HK".

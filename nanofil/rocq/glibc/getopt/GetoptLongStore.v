@@ -75,7 +75,7 @@ Lemma int_at_store f e ls l v a rest jp p w w' Φ :
   int_at p w -∗
   ▷ (int_at p w' -∗ WP (ERun (mkFrame f e ls None (Exec l rest jp)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Ww 0 v a :: rest) jp)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ha Hw. iIntros "Hp HK". iDestruct "Hp" as (tb treg) "(%Hp & Hl & [%Hw0 Hb])".
   destruct Hp as (Hc & Htb & Hal & Hend & Hr).
   iApply (wp_raw_store_w with "Hl Hb"); [exact Hv | exact Ha | exact Hc | unfold raw_address; rewrite Z.mod_small; lia | reflexivity | wi_store |].
@@ -103,7 +103,7 @@ Lemma wp_long_store ks e fr li F lo os j x Φ :
       WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec (TAtom "L496") [] (JRet (Tmp (TAtom "v511")))))
         : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L398") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H8 H90 H12 H7 Hx Hos Hf. pose proof (lookup_lt_Some _ _ _ Hx) as Hjl.
   iIntros "#Ht Hli [%Hnd HF] HK".
   iDestruct "Ht" as (tb treg) "(%Ht & #Htl & #Hes & _)". destruct Ht as (Htc & Htb & Htlo & Hta & Hte & Htr).

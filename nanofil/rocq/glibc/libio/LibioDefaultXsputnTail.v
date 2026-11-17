@@ -161,7 +161,7 @@ Lemma wp_dx_L22 os fb freg vb vreg nb wp we dq b' reg' so c' ys t e Φ :
   ▷ (dx_post registry ge) os fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L22") (b_insts dx_L22) (b_jump dx_L22)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hso Hyend Hyreg Hy Ht Hprogress Hv0 Hc0 Hv4 Hp8 Hp3. unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys IH HK".
   iApply (wp_live_fit with "Hl'"). iIntros ([Hb'0 _]) "Hl'".

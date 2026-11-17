@@ -158,7 +158,7 @@ Qed.
 
 (** The pieces of an integer object give the cell that the parser writes. *)
 Lemma int_global_own b r v : 0 <= v < 2 ^ 32 -> pts (int_global_ps b r v) ⊢ live b r ∗ int_cell b 0 v.
-Proof.
+Proof using Type.
   intros Hv. rewrite /int_global_ps (pts_app [_]). iIntros "[Hl Hb]".
   iFrame "Hl". rewrite /int_cell /int_bytes /bytes. iFrame "Hb". iPureIntro. exact Hv.
 Qed.

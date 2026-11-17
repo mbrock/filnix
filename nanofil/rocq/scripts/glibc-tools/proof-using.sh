@@ -47,11 +47,19 @@ for f in $todo; do
 done
 # Recompile only the rewritten files, in import order. Their types do not
 # depend on their importers, which the Nix gate compiles.
-(cd "$tree" && make -k -j16 -f "$tree.build/Makefile" $(printf '%s\n' $todo | sed 's/\.v$/.vo/')) \
-  >"$out/build.log" 2>&1 || status=1
-grep '^FAIL' "$out/build.log" && status=1
+(cd "$tree" && rocq dep -R "$PE_MODEL" Nanofil -R . Glibc $(find . -name '*.v' | sed 's|^\./||' | sort)) \
+  >"$out/deps" 2>"$out/dep.err"
+cat >"$out/Makefile" <<MK
+%.vo: %.v
+	@rocq c -q -R $PE_MODEL Nanofil -R . Glibc \$< >$out/logs/\$(subst /,_,\$<).build 2>&1 || (echo "FAIL \$<"; exit 1)
+include $out/deps
+MK
+if ! (cd "$tree" && make -k -j16 -f "$out/Makefile" $(printf '%s\n' $todo | sed 's/\.v$/.vo/')) >"$out/build.log" 2>&1; then
+  echo "proof-using.sh: recompiling the rewritten files failed; see $out/build.log" >&2
+  status=1
+fi
 printf '%s\n' $todo | xargs -P 16 -I{} bash -c 'query {} '"$out/after"
-if grep -l '^Error' "$out"/before/* "$out"/after/*; then
+if grep -l '^Error:' "$out"/before/* "$out"/after/*; then
   echo "proof-using.sh: a type query failed" >&2
   status=1
 elif ! diff -r "$out/before" "$out/after" >"$out/types.diff"; then

@@ -71,7 +71,7 @@ Lemma wp_cleanup_L82 e fb freg fl lb lbreg rf rfreg sb sreg x r cb Φ :
           (Enter (TAtom "iw_1.L93") (Some (TAtom "iw_1.L103")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L82") (Some (TAtom "iw_1.L81")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hgrf Hp1 Hv1 Hv2 Hsz Hfb Hfal Hfend Hfreg Hfl Hul Hral Hrend. subst fp.
   unfold file_size in Hfend. assert (0 <= Z.land fl 32768 < 2 ^ 32) by (rewrite Hul; lia).
   iIntros "#Hs Hl [_ Hfl] Hlp Hlb Hrl Hrc HK".

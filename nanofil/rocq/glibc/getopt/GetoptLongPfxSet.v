@@ -80,7 +80,7 @@ Lemma wp_pfx_set_with ks e (M : iProp Σ) n j k a m s pe Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L126") (Some (TAtom "L155")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksa Hksm Hcut Hmal Hset H9 H39 H30 H21 H42 H13 H14 H90 Hj Hk Hn Ha Hm Hpe.
   iIntros "Hs HM HK".
   assert (Ha32 : 0 <= a < 2 ^ 32) by (destruct Ha as [-> | ->]; lia).
@@ -135,7 +135,7 @@ Lemma wp_pfx_set ks e (M : iProp Σ) n j k a m s pe Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L126") (Some (TAtom "L155")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksa Hksm Hcut.
   exact (wp_pfx_set_with ks e M n j k a m s pe Φ Hks Hksa Hksm (getopt_cutoff_rule_with_any w0 registry ge M Hcut)).
 Qed.
@@ -157,7 +157,7 @@ Lemma wp_pfx_set_sep ks e (M G : iProp Σ) n j k a m s pe Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L126") (Some (TAtom "L155")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksa Hksm Hcut Hmal Hset H9 H39 H30 H21 H42 H13 H14 H90 Hj Hk Hn Ha Hm Hpe. iIntros "Hs HM HG HK".
   iApply (wp_pfx_set_with ks e (M ∗ G) n j k a m s pe with "Hs [$HM $HG] [HK]");
     [exact Hks | exact Hksa | exact Hksm | apply getopt_cutoff_rule_with_sep, Hcut | apply getopt_malloc_rule_sep, Hmal

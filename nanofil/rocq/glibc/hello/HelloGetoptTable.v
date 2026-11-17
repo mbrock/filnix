@@ -249,7 +249,7 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma lit_own b reg s :
   0 < b -> b mod 8 = 0 -> b + 8 * Z.of_nat (List.length (lit_words s)) <= r_end reg -> r_end reg <= 2 ^ 48 ->
   lit_ok s = true -> pts (lit_ps b reg (lit_words s)) ==∗ word_string DfracDiscarded (mkPtr b (Ro b)) s.
-Proof.
+Proof using Type.
   intros Hb H8 Hfit Hsp Hok. iIntros "H".
   iDestruct (word_string_literal with "H") as "H"; [exact (lit_shape b reg s Hb H8 Hfit Hsp Hok)|].
   iMod (word_string_persist with "H") as "#H". by iModIntro.
@@ -261,7 +261,7 @@ Lemma entries_own tb o os :
   Forall (fun x => 0 <= lo_has x < 2 ^ 32 /\ 0 <= lo_val x < 2 ^ 32) os ->
   ptsq DfracDiscarded (entries_ps tb o os) -∗ ([∗ list] x ∈ os, word_string DfracDiscarded (lo_name x) (lo_str x)) -∗
   [∗ list] k ↦ x ∈ os, opt_entry tb (o + 32 * Z.of_nat k) x.
-Proof.
+Proof using Type.
   revert o. induction os as [|x r IH]; intros o Hr; [by iIntros|].
   inversion Hr as [|? ? [Hh Hv] Hr']; subst. cbn [entries_ps]. rewrite /entry_ps !ptsq_app.
   iIntros "((Hn & Hh & Hf & Hv) & Hr) [Hw Hws]". rewrite big_sepL_cons. iSplitL "Hn Hh Hf Hv Hw".
@@ -278,7 +278,7 @@ Lemma table_view tb treg os :
   Forall (fun x => 0 <= lo_has x < 2 ^ 32 /\ 0 <= lo_val x < 2 ^ 32) os ->
   ptsq DfracDiscarded (table_ps tb treg os) -∗ ([∗ list] x ∈ os, word_string DfracDiscarded (lo_name x) (lo_str x)) -∗
   opt_table (mkPtr tb (Ro tb)) os.
-Proof.
+Proof using Type.
   intros Hb H8 Hfit Hsp Hr. iIntros "#H #Hws". rewrite /table_ps !ptsq_app.
   iDestruct "H" as "(Hl & He & Ht)". iExists tb, treg. cbn [ptr_addr ptr_cap].
   iSplit; [iPureIntro; split_and!; [right; reflexivity | lia | lia | exact H8 | lia | exact Hsp] |].
@@ -294,7 +294,7 @@ Lemma table_own tb treg os :
   Forall (fun x => 0 <= lo_has x < 2 ^ 32 /\ 0 <= lo_val x < 2 ^ 32) os ->
   pts (table_ps tb treg os) -∗ ([∗ list] x ∈ os, word_string DfracDiscarded (lo_name x) (lo_str x)) ==∗
   opt_table (mkPtr tb (Ro tb)) os.
-Proof.
+Proof using Type.
   intros. iIntros "H #Hws". rewrite pts_ptsq.
   iMod (ptsq_persist with "H") as "#H". iModIntro. iApply (table_view with "H Hws"); assumption.
 Qed.
@@ -304,7 +304,7 @@ Qed.
 Lemma cstr_prefix (bs : list Z) : Forall (fun c => 0 <= c < 256) bs -> 0 ∈ bs ->
   exists s, take (S (List.length s)) bs = s ++ [0] /\ Forall (fun c => 0 < c < 256) s /\
     (List.length s < List.length bs)%nat.
-Proof.
+Proof using Type*.
   induction bs as [|c bs IH]; intros Hr Hz; [inversion Hz|].
   inversion Hr as [|? ? Hc Hr']; subst.
   destruct (decide (c = 0)) as [->|Hne].
@@ -318,7 +318,7 @@ Qed.
     zero form a string of at most seven characters in that one word. *)
 Lemma word_cstr_shape tb treg w : 0 < tb -> tb mod 8 = 0 -> tb + 8 <= r_end treg -> r_end treg <= 2 ^ 48 ->
   0 <= w < 2 ^ 48 -> exists s, str_shape (mkPtr tb (Ro tb)) tb treg [w] s.
-Proof.
+Proof using Type*.
   intros Hb H8 Hfit Hsp Hw.
   assert (H7 : byte_of w 7 = 0) by (unfold byte_of; rewrite Z.div_small; [reflexivity | lia]).
   destruct (cstr_prefix (wbytes [w])) as (s & Hs & Hc & Hl).
@@ -350,7 +350,7 @@ Qed.
 Lemma table_str tb treg x os :
   0 < tb -> tb mod 8 = 0 -> tb + 8 <= r_end treg -> r_end treg <= 2 ^ 48 -> 0 <= ptr_addr (lo_name x) < 2 ^ 48 ->
   ptsq DfracDiscarded (table_ps tb treg (x :: os)) ⊢ ∃ s, word_string DfracDiscarded (mkPtr tb (Ro tb)) s.
-Proof.
+Proof using Type.
   intros Hb H8 Hfit Hsp Hw.
   destruct (word_cstr_shape tb treg (ptr_addr (lo_name x)) Hb H8 Hfit Hsp Hw) as [s Hs].
   rewrite /table_ps. iIntros "H". iDestruct (ptsq_app with "H") as "[Hl H]".
@@ -408,7 +408,7 @@ Lemma hello_table_own tb treg (b1 b2 b3 b4 b5 : Z) (r1 r2 r3 r4 r5 : region) :
   pts (lit_ps b5 r5 (lit_words s_optstring)) ==∗
   opt_table (mkPtr tb (Ro tb)) (hello_los (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4))) ∗
   word_string DfracDiscarded (mkPtr b5 (Ro b5)) s_optstring.
-Proof.
+Proof using Type.
   intros. iIntros "Ht H1 H2 H3 H4 H5".
   iMod (hello_table_own_ro with "Ht H1 H2 H3 H4 H5") as "(Ht & H5 & _)"; try assumption.
   iModIntro. iSplitL "Ht"; [iExact "Ht" | iExact "H5"].
@@ -437,7 +437,7 @@ Lemma getopt_lits_own b1 b2 b3 (r1 r2 r3 : region) :
   pts (lit_ps b3 r3 (lit_words [45; 87; 32])) ==∗
   word_string DfracDiscarded (mkPtr b1 (Ro b1)) [45; 45] ∗ word_string DfracDiscarded (mkPtr b2 (Ro b2)) [45] ∗
   word_string DfracDiscarded (mkPtr b3 (Ro b3)) [45; 87; 32].
-Proof.
+Proof using Type.
   intros. iIntros "H1 H2 H3".
   iMod (lit_own with "H1") as "#H1"; try (assumption || reflexivity).
   iMod (lit_own with "H2") as "#H2"; try (assumption || reflexivity).

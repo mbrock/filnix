@@ -100,7 +100,7 @@ Lemma wp_flush_start fr la lareg lk lkreg h hreg sb sreg fcp Φ :
      WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L82") (Some (TAtom "L15")))) : sexpr)
        {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hgla Hglk Hfc Hfcr Hlaal Hlaend Hh. injection Hfr as <-.
   iIntros "#Hs Htcb Hla Hlah Hhl Hlk HK".
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend).

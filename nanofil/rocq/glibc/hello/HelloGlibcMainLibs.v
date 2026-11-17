@@ -52,7 +52,7 @@ Lemma hello_libs (debt : D.HelloCore w0 ge o) c :
   D.HelloLibs w0 ge o (D.hd_priv w0 ge o debt)
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.
-Proof.
+Proof using Hk Hos.
   constructor.
   - exact (C.ST.libs_mbszero w0 ge o Hk).
   - exact (C.NM.libs_name w0 ge o Hk).

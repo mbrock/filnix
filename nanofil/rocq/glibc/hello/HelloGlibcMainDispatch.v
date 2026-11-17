@@ -103,7 +103,7 @@ Lemma loop_res_fold ps a i g :
   argv_own av ar ps -∗ ([∗ list] q ∈ ps, str_ro q) -∗ getopt_cells o a i -∗ gcell b4 g -∗ str_ro g -∗
   ncells o pn pn sn -∗ str_ro pn -∗ str_ro sn -∗ X -∗ hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗
   obj b6 (heap_req 4 8) -∗ S ps i -∗ loop_res ps a i g.
-Proof.
+Proof using Type.
   iIntros "H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13".
   iSplitL "H1"; [iExact "H1"|]. iSplitL "H2"; [iExact "H2"|]. iSplitL "H3"; [iExact "H3"|].
   iSplitL "H4"; [iExact "H4"|]. iSplitL "H5"; [iExact "H5"|]. iSplitL "H6"; [iExact "H6"|].
@@ -125,7 +125,7 @@ Lemma greeting_store f e ls lab d v rest j g q Φ :
                   RawStorePointer 0 (Tmp v) (Tmp d)
                     [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite] :: rest) j)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc1 H4 Hv (Hb40 & Hb416 & Hb448). iIntros "(Hl4 & Hp4 & Hy4 & Hc4) HK".
   rule1 "Hl4" ltac:(eapply wp_renew; inst;
     [reflexivity | vx | reflexivity | reflexivity | arith | cbn [r_end]; arith | arith]).
@@ -144,7 +144,7 @@ Lemma loop_dispatch Φ e lose ps a i g code :
   hello_ro ge o -∗ loop_res ps a i g -∗ (if code =? 103 then str_ro a else True) -∗ ▷ loop_again Φ -∗
   loop_exits Φ -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L19") (Some (TAtom "iw_1.L8")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hy.
   intros Hf Hpr Hlose Hv15 Hcode Hn1. iIntros "#Hro Hr Hga IH HK".
   iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".
   pose proof Hf as ((H0 & H2 & H4 & H6 & Hc1) & Hb4 & Hb6 & Hi).

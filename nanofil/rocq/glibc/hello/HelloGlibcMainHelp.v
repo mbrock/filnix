@@ -47,7 +47,7 @@ Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
 (** The help branch prints the usage text before exiting. *)
 Lemma main_help Φ :
   hello_ro ge o -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L39" "iw_1.L50" Φ.
-Proof.
+Proof using Hy Lb.
   iIntros "#Hro" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
   iDestruct "Hr" as "(_ & _ & _ & _ & _ & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & _)".
   iPoseProof "Hro" as "(_ & _ & #Hsol & #Hsoc & _)".

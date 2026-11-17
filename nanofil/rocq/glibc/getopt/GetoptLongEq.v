@@ -81,7 +81,7 @@ Lemma wp_long_eq ks e fr (G : iProp Σ) T fp dom se sereg mid av ar ps lo os j x
       WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec (TAtom "L413") [] (JRet (Const 63)))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L396") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksd Hrule Hse Hmid H2 H12 H14 H16 H7 Hp1 Hc0 Hx Hpe
     Hb Hal Hend Hr Hav Hala Hda Hra Hps Hse0 Hsea Hsee Hser.
   pose proof (lookup_lt_Some _ _ _ Hx) as Hjl.

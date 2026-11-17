@@ -61,7 +61,7 @@ Lemma wp_call_int g xs P Q f e ls lab d args rest j Ψ :
   P -∗ ▷ (∀ n, ⌜0 <= n < 2 ^ 32⌝ -∗ Q -∗ WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr)
              {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Ht Hx. iIntros "HP HK". iApply (wp_call_fn with "HP"); [exact Ht | exact Hx |].
   iIntros (v) "(%n & [-> %Hn] & HQ)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   cbn. rewrite (Z.mod_small n); [|lia]. iApply ("HK" with "[//] HQ").
@@ -74,7 +74,7 @@ Lemma wp_call_intn g xs P (Q : Z -> iProp Σ) f e ls lab d args rest j Ψ :
   P -∗ ▷ (∀ n, ⌜0 <= n < 2 ^ 32⌝ -∗ Q n -∗
             WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Ht Hx. iIntros "HP HK". iApply (wp_call_fn with "HP"); [exact Ht | exact Hx |].
   iIntros (v) "(%n & [-> %Hn] & HQ)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   cbn. rewrite (Z.mod_small n); [|lia]. iApply ("HK" with "[//] HQ").
@@ -83,7 +83,7 @@ Qed.
 (** A triple's postcondition may be weakened. *)
 Lemma fn_triple_mono g xs P Q Q' :
   fn_triple w0 ge g xs P Q -> (forall r, Q r ⊢ Q' r) -> fn_triple w0 ge g xs P Q'.
-Proof.
+Proof using Type.
   intros (gf & Hg & Hfr & Ht) HQ. exists gf. split; [exact Hg|]. split; [exact Hfr|].
   intros fr Φ Hf. iIntros "HP HK". iApply (Ht fr Φ Hf with "HP"). iIntros (r) "HQ". iApply "HK".
   iApply (HQ with "HQ").
@@ -94,7 +94,7 @@ Lemma wp_call_ptr g xs Pr (Q : ptr -> iProp Σ) f e ls lab d args rest j Ψ :
   fn_triple w0 ge g xs Pr (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ Q q)%I -> map_option (arg_x ge e) args = Some xs ->
   Pr -∗ ▷ (∀ q, Q q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Ht Hx. iIntros "HP HK". iApply (wp_call_fn with "HP"); [exact Ht | exact Hx |].
   iIntros (v) "(%q & -> & HQ)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   iApply ("HK" with "HQ").
@@ -105,7 +105,7 @@ Lemma wp_call_void g xs P Q f e ls lab args rest j Ψ :
   fn_triple w0 ge g xs P (fun r => ⌜r = RetVoid⌝ ∗ Q)%I -> map_option (arg_x ge e) args = Some xs ->
   P -∗ ▷ (Q -∗ WP (ERun (mkFrame f e ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call CVoid (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Ht Hx. iIntros "HP HK". iApply (wp_call_fn with "HP"); [exact Ht | exact Hx |].
   iIntros (v) "[-> HQ]". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext. iApply ("HK" with "HQ").
 Qed.
@@ -114,14 +114,14 @@ Qed.
 Lemma wp_call_never g xs P r f e ls lab args rest j Ψ :
   fn_triple w0 ge g xs P (fun _ => False)%I -> map_option (arg_x ge e) args = Some xs ->
   P -∗ WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Ht Hx. iIntros "HP". iApply (wp_call_fn with "HP"); [exact Ht | exact Hx |]. iIntros (v) "[]".
 Qed.
 
 (** Eight zero bytes and an empty slot at offset 0 are a null pointer's
     cell. *)
 Lemma zero_pcell b : bytes b 0 (replicate 8 0) ∗ auxes b 0 [CNone] ⊣⊢ pcell b 0 null.
-Proof.
+Proof using Type.
   rewrite /bytes /auxes /pcell -pts_app.
   assert (E : byte_ps b 0 (replicate 8 0) ++ aux_ps b 0 [CNone] = cell b 0 0 ++ [(PAux b 0, VAux CNone)]).
   { vm_compute. reflexivity. }
@@ -138,7 +138,7 @@ Lemma wp_argv_load f e ls lab d c rest j av ar ps a k Ψ :
                                     (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead])
                                              [Tmp c] :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hc -> Hk. iIntros "(%Hav & Hl & Hs) #Hps HK". destruct Hav as (Hav0 & Hav8 & H31 & Havend & Har).
   assert (Hlk : (ps ++ [null]) !! k = Some (nth k (ps ++ [null]) null)).
   { destruct (lookup_lt_is_Some_2 (ps ++ [null]) k) as [x Hx]; [rewrite length_app /=; lia|].
@@ -173,7 +173,7 @@ Qed.
 
 (** A literal of `main` is a read-only string. *)
 Lemma lit_ro s : In s hello_lits -> hello_ro ge o ⊢ str_ro (sym_ptr ge s).
-Proof.
+Proof using Type.
   intros Hs. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hl)".
   iApply (big_sepL_elem_of with "Hl"). apply list_elem_of_In. exact Hs.
 Qed.
@@ -181,7 +181,7 @@ Qed.
 (** A read-only string's pointer has a live capability at a persistent
     share, and its address is a machine word. *)
 Lemma str_ro_cap q : str_ro q ⊢ ∃ reg, live_capq DfracDiscarded (ptr_cap q) reg ∗ ⌜0 <= ptr_addr q < 2 ^ 64⌝.
-Proof.
+Proof using Type.
   iIntros "(%s & %b & %reg & %ws & %Hsh & Hlv & _)".
   pose proof (Z.mod_pos_bound (ptr_addr q) 8 ltac:(lia)).
   pose proof (ss_base _ _ _ _ _ Hsh). pose proof (ss_start _ _ _ _ _ Hsh).
@@ -193,14 +193,14 @@ Qed.
 (** A suffix of a read-only string is a read-only string. *)
 Lemma str_ro_suffix p s (k : nat) : (k <= length s)%nat ->
   word_string DfracDiscarded p s ⊢ str_ro (ptr_add p (Z.of_nat k)).
-Proof.
+Proof using Type.
   intros Hk. rewrite -{1}(take_drop k s). iIntros "H". iExists (drop k s).
   iPoseProof (word_string_suffix with "H") as "H". rewrite length_take_le; [iExact "H" | exact Hk].
 Qed.
 
 (** A read-only string satisfies the output calls' argument contract. *)
 Lemma str_ro_arg q : str_ro q ⊢ arg_ro o (WPtr q).
-Proof.
+Proof using Type.
   iIntros "(%s & Hs)". iRight. iExists q, s, O. iFrame "Hs". iPureIntro. split; [|lia].
   destruct q as [qa qc]. rewrite /ptr_add /=. f_equal. lia.
 Qed.
@@ -214,7 +214,7 @@ Lemma wp_load_str f e ls lab d c rest j b reg x dq1 dq2 Ψ :
      WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead])
                                              [Tmp c] :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hc Hb0 Hb8. iIntros "Hl Hp Hs HK". iDestruct (str_ro_cap with "Hs") as (reg') "[Hk %Hq]".
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ b reg 0 x reg' dq1 dq2 DfracDiscarded
             with "Hl Hp Hk");
@@ -232,7 +232,7 @@ Lemma wp_load_stream f e ls lab d c rest j sb sreg g Ψ :
      WP (ERun (mkFrame f (put d (WPtr g) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead])
                                              [Tmp c] :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hc Hb0 Hb8. iIntros "Hl Hp Hf HK".
   iDestruct "Hf" as "(%fb & %freg & %st & %nb & %vt & %held & %Hp & Hfl & Hrest)".
   pose proof Hp as (Hg & Hal & Hfb & Hend & Hreg & _).

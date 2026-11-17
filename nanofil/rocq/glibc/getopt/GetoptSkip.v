@@ -42,7 +42,7 @@ Context {Σ : gFunctors}
   {gen_heapGS0 : gen_heapGS piece pval Σ}.
 Existing Instance gen_heapGS0.
 Lemma skip_cell b o x : 0 <= x < 2 ^ 32 -> bytes b o (le_bytes (x mod 2 ^ 32) 4) ⊢ int_cell b o x.
-Proof. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
+Proof using Type. intros Hx. rewrite Z.mod_small; [|lia]. iIntros "H". by iSplit. Qed.
 End skip_values.
 Section skip.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -74,7 +74,7 @@ Lemma wp_getopt_skip ks e i n l b r av ar ps Φ :
                  (Exec (TAtom "L119") (b_insts getopt_blk119) (b_jump getopt_blk119))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "L159") (b_insts getopt_blk159) (b_jump getopt_blk159))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hv0 Hv2 Hv12 Hc2 Hc23 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   remember (Z.to_nat (n - i)) as m eqn:Hms. revert e i Hv0 Hv2 Hv12 Hc2 Hc23 Hi Hms.
   induction m as [m IH] using (well_founded_induction lt_wf). intros e i Hv0 Hv2 Hv12 Hc2 Hc23 Hi Hms.

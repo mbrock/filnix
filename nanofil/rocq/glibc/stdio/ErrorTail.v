@@ -116,7 +116,7 @@ Lemma wp_error_tail e from status errnum fmt ap mode cb Φ :
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Hrange. iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
   iApply (wp_error_tail_loan with "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK"); try assumption.
   iIntros "Hsl Hsp Hr HR". iApply (wp_wand with "[HR]"); [iApply (Hfxcall with "HR") |].

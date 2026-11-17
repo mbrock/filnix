@@ -73,7 +73,7 @@ Lemma wp_long_pre ks e lo j cur s c0 i b r Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L87") (b_insts plo_blk87) (b_jump plo_blk87))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H12 H90 H7 Hp1 Hc0 Hc1 Hlo Hlj Hi Hb Hal Hend Hr.
   iIntros "#Hws Hl [%Hi0 Hib] Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe). pose proof (eq_len_le s) as Hle.

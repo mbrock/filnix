@@ -67,7 +67,7 @@ Lemma cleanup_pass e fb freg rf rfreg sb sreg r cb nx nreg Φ :
           : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L82") (Some (TAtom "iw_1.L81")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hgrf Hp1 Hv1 Hv2 Hsz Hnx Hfb Hfal Hfend Hfreg Hral Hrend.
   iIntros "#Hs Hl HX Hrl Hrc Hnc Hnl HK".
   iDestruct "HX" as (fb' fl f2 fd md lb lbreg c breg arp are awb awp Hx)

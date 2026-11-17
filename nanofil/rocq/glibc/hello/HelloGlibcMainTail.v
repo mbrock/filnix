@@ -45,7 +45,7 @@ Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
 
 (** A string's length is below 2^48: its words fit the address space. *)
 Lemma str_len_bound dq p s : word_string dq p s ⊢ ⌜Z.of_nat (length s) < 2 ^ 48⌝.
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hsh & _)". iPureIntro.
   pose proof (ss_base _ _ _ _ _ Hsh). pose proof (ss_start _ _ _ _ _ Hsh). pose proof (ss_len _ _ _ _ _ Hsh).
   pose proof (ss_fit _ _ _ _ _ Hsh). pose proof (ss_space _ _ _ _ _ Hsh). unfold wstart in *.
@@ -56,7 +56,7 @@ Qed.
 (** `xmalloc`'s zeroed object for n bytes is a wide buffer holding
     zeros. *)
 Lemma obj_wbuf bd n : 0 <= n -> obj bd (wreq n) ⊢ wbuf bd n (replicate (Z.to_nat (req_extent (wreq n))) 0).
-Proof.
+Proof using Type.
   intros Hn. rewrite (obj_zero_block bd _); [|unfold wreq, heap_req; cbn; apply Z.mul_nonneg_nonneg; [apply Z.div_pos |]; lia].
   iIntros "(Hl & Hb & Ha)". iExists _. iFrame. iPureIntro. rewrite !length_replicate. split; reflexivity.
 Qed.
@@ -68,7 +68,7 @@ Lemma wp_call_long g xs P (Q : Z -> iProp Σ) f e ls lab d args rest j Ψ :
   P -∗ ▷ (∀ n, ⌜0 <= n < 2 ^ 64⌝ -∗ Q n -∗
             WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d L) (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Ht Hx. iIntros "HP HK". iApply (wp_call_fn with "HP"); [exact Ht | exact Hx |].
   iIntros (v) "(%n & [-> %Hn] & HQ)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   cbn. rewrite (Z.mod_small n); [|lia]. iApply ("HK" with "[//] HQ").
@@ -79,7 +79,7 @@ Qed.
 Lemma join_fail e Ψ :
   hello_ro ge o -∗ io -∗ names o -∗ X -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "L34") (Some (TAtom "iw_1.join")))) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type*.
   iIntros "#Hro [Hio Hpv] Hn HX". pose proof (hy_eb_at _ _ Hy) as (He0 & Hee & Her).
   iPoseProof "Hro" as "(_ & _ & _ & _ & _ & _ & #Hel & _)".
   step.
@@ -112,7 +112,7 @@ Lemma join_print e bd n ws Ψ :
   lookup (TAtom "v23") e = Some (WPtr (mkPtr bd (Obj bd))) -> 0 < bd -> wide_terminated ws ->
   hello_ro ge o -∗ io -∗ names o -∗ X -∗ wbuf bd n ws -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "L29") (Some (TAtom "iw_1.join")))) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type*.
   intros H23 Hbd Hw. iIntros "#Hro [Hio Hpv] Hn HX Hwb".
   step. step_global (hy_lits _ _ Hy "hello#str.83" ltac:(cbn; tauto)).
   iApply (wp_call_int with "[Hio Hpv Hwb]");

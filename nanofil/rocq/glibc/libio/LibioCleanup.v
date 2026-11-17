@@ -82,7 +82,7 @@ Lemma cleanup_loop rest prev e from r cb rf rfreg sb sreg Φ :
      WP (ERun (mkFrame glibc__IO_cleanup e' [] None (Enter (TAtom "iw_1.L386") (Some (TAtom "iw_1.L81"))))
           : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L81") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg.
   intros Hgrf Hral Hrend Hsz. revert prev e from.
   induction rest as [|g rest IH]; intros prev e from Hph Hv1 Hv2; cbn [head_ptr] in Hph.
   - iIntros "#Hs Hrl Hrc Hch Hfs HK".

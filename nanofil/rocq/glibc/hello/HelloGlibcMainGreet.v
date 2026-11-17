@@ -53,7 +53,7 @@ Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
 Lemma greet_len x : 0 <= x < 2 ^ 48 ->
   (x mod 2 ^ 64 + 1 mod 2 ^ 64) mod 2 ^ 64 = x + 1 /\
   ((x + 1) mod 2 ^ 64 * 2 ^ ((2 mod 2 ^ 32) mod 64)) mod 2 ^ 64 = 4 * (x + 1).
-Proof.
+Proof using Type*.
   intros Hx. change (2 ^ ((2 mod 2 ^ 32) mod 64)) with 4.
   change (2 ^ 48) with 281474976710656 in Hx. change (2 ^ 64) with 18446744073709551616.
   rewrite (Z.mod_small x); [|lia]. rewrite (Z.mod_small 1); [|lia]. rewrite (Z.mod_small (x + 1)); [|lia].
@@ -62,7 +62,7 @@ Qed.
 
 (** The greeting branch converts the selected text and prints it or reports an error. *)
 Lemma main_join Φ : hello_ro ge o -∗ join_cont w0 ge o D X b4 b6 Φ.
-Proof.
+Proof using Hy Lb.
   iIntros "#Hro" (e g [(H4 & Hc1 & H6) [Hb4 Hb6]]) "Hgc #Hg Hb6 Hio Hn HX".
   pose proof Hb4 as (Hb40 & Hb416 & Hb448).
   iDestruct "Hgc" as "(Hl4 & Hp4 & Hy4 & Hc4)".

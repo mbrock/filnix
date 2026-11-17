@@ -93,6 +93,7 @@ STATEMENT = {
     "Lemma", "Theorem", "Fact", "Remark", "Corollary", "Proposition",
     "Instance", "Definition", "Example", "Let", "Fixpoint", "Property",
 }
+DEFINITION = {"Instance", "Definition", "Example", "Let", "Fixpoint"}
 PREFIX = {"Local", "Global", "Program", "Polymorphic", "Monomorphic", "#[global]", "#[local]", "#[export]"}
 
 
@@ -121,7 +122,12 @@ def rewrite(text, sugg):
             stack.append("M")
         elif head == "End" and stack:
             stack.pop()
-        name = declared(w) if ":=" not in text[ss[i][0] : ss[i][1]] else None
+        # A definition's body follows :=, but a lemma's statement can hold
+        # one too, as in let n := e or <[k := v]>.
+        name = declared(w)
+        kw = next((x for x in w if x not in PREFIX and not x.startswith("#[")), "")
+        if name and kw in DEFINITION and ":=" in text[ss[i][0] : ss[i][1]]:
+            name = None
         if name and "S" in stack and pending and pending[0][0] == name and i + 1 < len(ss):
             # The proof's first sentence, and its end.
             j = i + 1

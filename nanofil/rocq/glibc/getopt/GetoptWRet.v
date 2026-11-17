@@ -529,7 +529,7 @@ Lemma wp_getopt_w_ret e fr i n c pe po so oo a b r av ar ps (G : iProp Σ) T fp 
       live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a -∗
       Φ (Ret (WInt (if sbyte so 0 =? 58 then 58 else 63))))) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L508") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca HK".
   iApply (wp_getopt_w_ret_arg e fr i n c pe po so oo a b r av ar ps G T fp dom se sereg mid M f138 f139 f140 f141 lmid mid3 mid4 lo os F pfx pxs q sq k0 li er ord fst lst Φ with "Ht Hwq Hpo Hpfx Hsl Hsc Hl Hib Her Hoob Hab Hini Hcur Hor Hfi Hla Ha Hcl Hs HG HF HM Hli Hca");
     try eassumption.

@@ -58,7 +58,7 @@ Lemma obj_set b n :
   0 <= n ->
   obj b (heap_req 16 n) ⊢ live b (mkRegion b (b + req_extent (heap_req 16 n)) Heap Live) ∗
     bytes b 0 (replicate (Z.to_nat n) 0) ∗ auxes b 0 (replicate (Z.to_nat n) CNone).
-Proof.
+Proof using Type.
   intros Hn. assert (He : 0 <= req_extent (heap_req 16 n)) by (cbn; Z.div_mod_to_equations; lia).
   rewrite (obj_zero_block b _ He).
   assert (Hd : Z.to_nat (req_extent (heap_req 16 n)) = (Z.to_nat n + (Z.to_nat (req_extent (heap_req 16 n)) - Z.to_nat n))%nat)
@@ -296,7 +296,7 @@ Lemma wp_pfx_alloc ks e (M : iProp Σ) n j k Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L108") (Some P))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L175") (Some (TAtom "L171")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksm Hcut.
   exact (wp_pfx_alloc_with ks e M n j k Φ Hks Hksm (getopt_cutoff_rule_with_any w0 registry ge M Hcut)).
 Qed.

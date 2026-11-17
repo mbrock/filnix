@@ -133,16 +133,16 @@ Context `{!gen_heapGS piece pval Σ}.
 
 (** Ownership of a concatenation splits into ownership of its component images. *)
 Lemma witness_concat pss : pts (concat pss) ⊣⊢ [∗ list] ps ∈ pss, pts ps.
-Proof. induction pss as [|ps pss IH]; cbn [concat]; rewrite ?pts_app ?IH; done. Qed.
+Proof using Type. induction pss as [|ps pss IH]; cbn [concat]; rewrite ?pts_app ?IH; done. Qed.
 
 (** Read-only images split into the same disjoint component images. *)
 Lemma witness_concatq dq pss : ptsq dq (concat pss) ⊣⊢ [∗ list] ps ∈ pss, ptsq dq ps.
-Proof. induction pss as [|ps pss IH]; cbn [concat]; rewrite ?ptsq_app ?IH; done. Qed.
+Proof using Type. induction pss as [|ps pss IH]; cbn [concat]; rewrite ?ptsq_app ?IH; done. Qed.
 
 (** Indexed field images keep the same indices when their ownership is split. *)
 Lemma witness_imap {A} (f : nat -> A -> list (piece * pval)) ps :
   pts (concat (imap f ps)) ⊣⊢ [∗ list] i ↦ p ∈ ps, pts (f i p).
-Proof.
+Proof using Type.
   revert f. induction ps as [|p ps IH]; intros f; cbn [imap concat];
     rewrite ?pts_app ?big_sepL_cons ?IH; done.
 Qed.
@@ -159,7 +159,7 @@ Qed.
 Lemma witness_fields fb vb lb fd : 0 <= fd < 2 ^ 32 ->
   pts (hello_witness_fields fb (hello_witness_state vb lb fd)) -∗
   file_fields fb (hello_witness_state vb lb fd).
-Proof.
+Proof using Type.
   intros Hfd. rewrite /hello_witness_fields witness_concat. cbn [big_opL]. rewrite witness_pointers.
   rewrite /file_fields /hello_witness_state.
   cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset
@@ -184,7 +184,7 @@ Lemma witness_file fb vb lb fd self :
   0 < fb -> fb mod 8 = 0 -> fb + 4096 <= 2 ^ 63 ->
   lb mod 8 = 0 -> lb + 4096 <= 2 ^ 63 -> 0 <= fd < 2 ^ 32 ->
   pts (hello_witness_file fb vb lb fd) -∗ file_inv vb self (mkPtr fb (Obj fb)).
-Proof.
+Proof using Type.
   intros Hfb Hfa Hfe Hla Hle Hfd. rewrite /hello_witness_file witness_concat. cbn [big_opL].
   iIntros "(Hf & Hfields & Hl & Hlk & Hcnt & Howner & _)".
   iExists fb, (hello_witness_region fb), (hello_witness_state vb lb fd), NbNone, vt_file, None.
@@ -203,7 +203,7 @@ Qed.
 Lemma witness_alloc : pts hello_witness_alloc -∗
   AllocLogic.tcache_idle (DfracOwn 1) 32768 36864 40960
     (hello_witness_region 32768) (hello_witness_region 36864) (hello_witness_region 40960).
-Proof.
+Proof using Type.
   rewrite /hello_witness_alloc witness_concat /AllocLogic.tcache_idle. cbn [big_opL].
   iIntros "(Hmp & Hmax & Htc & Hptr & Hdm & Hbins & _)". iSplit; [iPureIntro; vm_compute; intuition congruence|].
   iFrame "Hmp Hmax Htc Hptr Hdm".

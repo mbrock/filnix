@@ -93,7 +93,7 @@ Lemma wp_xs_L101 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf c e Φ :
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L101") (b_insts xs_L101) (b_jump xs_L101)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hc Hroom Hmf Hv0 Hc0 Hv2 Hv4 Hp6 Hp9.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp (Hwc & Hwp & Hwe & Hroom) Hos Hl' Hys HK".
@@ -143,7 +143,7 @@ Lemma wp_xs_L20 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf cnt e Φ :
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L20") (b_insts xs_L20b) (b_jump xs_L20b)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hn0 Hcnt Hroom Hend Hmf Hv0 Hc0 Hv2 Hv4 Hp6 Hp10.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".
   iAssert (⌜0 <= ptr_addr wp⌝)%I as %Hwp0.

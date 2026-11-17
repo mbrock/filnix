@@ -194,7 +194,7 @@ Lemma wp_long_find ks e (G : iProp Σ) T fp dom (M : iProp Σ) se sereg f138 f13
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L50") (b_insts plo_blk50) (b_jump plo_blk50))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 Hcut.
   exact (wp_long_find_with ks e G T fp dom M se sereg f138 f139 f140 f141 av ar ps lo os F pfx pxs cur s lonly pe i oo b r Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

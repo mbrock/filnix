@@ -96,7 +96,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** A pass over an [exit_stream] calls nothing and leaves the stream
     as it was, the result unchanged. *)
 Lemma flush_body_exit : (flush_body w0 registry ge) (exit_stream false) (exit_stream false).
-Proof.
+Proof using Type*.
   intros e fb freg rf rfreg sb sreg x r cb nx nreg Φ fp Hgrf Hp5 Hp4 Hv3 Hv88 Hsz Hr Hnx Hfb Hfal Hfend Hfreg
     Hral Hrend.
   iIntros "#Hs Hl HP Hrl Hrc Hch Hnl HK".

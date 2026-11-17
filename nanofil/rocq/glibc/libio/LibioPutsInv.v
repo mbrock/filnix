@@ -107,7 +107,7 @@ Definition file_at (vb : Z) (self fp : ptr) (mode : Z) (held : option Z) : iProp
 
 (** [file_inv] is [file_at] at some mode and lock state. *)
 Lemma file_inv_at vb self fp : file_inv vb self fp ⊣⊢ ∃ mode held, file_at vb self fp mode held.
-Proof.
+Proof using Type.
   iSplit.
   - iIntros "(%fb & %freg & %st & %nb & %vt & %held & %Hp & Hl & Hf & Hk & Hb)".
     destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hmv & Hvt & Hbok).
@@ -122,7 +122,7 @@ Lemma file_at_live vb self fp mode held :
   file_at vb self fp mode held ⊢
   ∃ fb freg, ⌜fp = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\
               r_end freg <= 2 ^ 63⌝ ∗ live fb freg ∗ (live fb freg -∗ file_at vb self fp mode held).
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   pose proof Hp as (-> & Hal & Hfb & Hend & Hreg & _).
   iExists fb, freg. iFrame "Hl". iSplitR; [iPureIntro; split_and!; first [reflexivity | assumption]|].
@@ -148,7 +148,7 @@ Definition file_open (vb : Z) (self : ptr) (F : ptr -> Z -> option Z -> iProp Σ
     without restricting its descriptor, flags or buffer to stdout's. *)
 Lemma file_at_open vb self fp mode held :
   file_at vb self fp mode held ⊢ file_open vb self (file_at vb self) fp mode held.
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   destruct Hp as (-> & Hal & Hfb & Hend & Hreg & Hok & Hm & Hmv & Hvt & Hbok).
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hf2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd & Hfrl & Hfrb &
@@ -181,7 +181,7 @@ Definition file_lock_open (self fp : ptr) (F : option Z -> iProp Σ) (held : opt
     mode, jump table and buffer unchanged. *)
 Lemma file_at_lock vb self fp mode held :
   file_at vb self fp mode held ⊢ file_lock_open self fp (file_at vb self fp mode) held.
-Proof.
+Proof using Type.
   iIntros "Hf".
   iDestruct (file_at_open with "Hf") as (fb freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hflr & Hul & Hmv).
@@ -202,7 +202,7 @@ Lemma file_at_nl vb self fp mode held :
     live fb freg ∗ pcell fb off_write_ptr wp ∗ pcell fb off_write_end we ∗ bytes fb off_column col ∗ buf_own nb ∗
     (∀ wp' col', ⌜in_buf fb nb wp' /\ length col' = 8%nat⌝ -∗ live fb freg -∗ pcell fb off_write_ptr wp' -∗
        pcell fb off_write_end we -∗ bytes fb off_column col' -∗ buf_own nb -∗ file_at vb self fp mode held).
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
   destruct Hp as (-> & Hal & Hfb & Hend & Hreg & Hok & Hm & Hmv & Hvt & Hbok).
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hf2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd & Hfrl & Hfrb &
@@ -243,7 +243,7 @@ Local Instance puts_inv_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Lemma live_halves b reg : live b reg ⊣⊢ liveq (DfracOwn (1 / 2)) b reg ∗ liveq (DfracOwn (1 / 2)) b reg.
-Proof. rewrite /live /liveq pts_ptsq -ptsq_split Qp.half_half. done. Qed.
+Proof using Type. rewrite /live /liveq pts_ptsq -ptsq_split Qp.half_half. done. Qed.
 Definition xsputn_spec_for (F : ptr -> Z -> option Z -> iProp Σ)
     (G : list Z -> ptr -> Z -> option Z -> iProp Σ) (Rx : iProp Σ) : Prop := forall fr fp p dq s Φ,
   call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr p; WInt (Z.of_nat (length s))] = Some fr ->

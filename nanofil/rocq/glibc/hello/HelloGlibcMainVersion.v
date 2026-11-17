@@ -43,7 +43,7 @@ Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 (** The name cells holding the suffixes pn and sn of argv's first
     argument are [names]. *)
 Lemma names_intro : ncells o pn pn sn -∗ str_ro pn -∗ str_ro sn -∗ names o.
-Proof.
+Proof using Type.
   iIntros "Hn #Hp #Hs". iExists pn, pn, sn. iSplitL "Hn"; [iExact "Hn"|].
   iSplitR; [iExact "Hp"|]. iSplitR; [iExact "Hp" | iExact "Hs"].
 Qed.
@@ -60,7 +60,7 @@ Lemma wp_std_stream f e ls lab vc chk d rest j sb sreg g Ψ :
        (Exec lab (Let chk A (Check 0 8 Read 8) [Tmp vc] ::
                   Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [Tmp chk] :: rest) j)) : gexpr)
     {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hv (Hs0 & Hs8 & Hse & Hsr). iIntros "Hl Hc Hf HK".
   rule1 "Hl" ltac:(eapply LibioLogic.wp_check_read_dq; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_load_stream with "Hl Hc Hf"); [apply Symbolic.lookup_after_put_same | lia | exact Hs8 |].
@@ -78,7 +78,7 @@ Lemma wp_name_load f e ls lab vc chk d rest j x Ψ :
        (Exec lab (Let chk A (Check 0 8 Read 8) [Tmp vc] ::
                   Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [Tmp chk] :: rest) j)) : gexpr)
     {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hl Hv. pose proof (hy_pb_at _ _ Hl) as (Hp0 & Hp8 & Hpe & Hpr). iIntros "Hl Hc Hx HK".
   rule1 "Hl" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_load_str w0 ge _ _ _ _ _ _ _ _ _ _ _ (DfracOwn 1) (DfracOwn 1) with "Hl Hc Hx");
@@ -91,7 +91,7 @@ Lemma wp_exit_call f e ls lab r args rest j n Ψ :
   map_option (arg_x ge e) args = Some [WInt n] ->
   hello_ro ge o -∗ hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗ names o -∗ X -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global (TAtom "exit")) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Lb.
   intros Hx. iIntros "#Hro Hio Hpv Hn HX".
   iApply (wp_call_never with "[Hio Hpv Hn HX]"); [exact (hl_exit _ _ _ _ _ _ Lb n) | exact Hx |].
   iSplitR; [iExact "Hro"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
@@ -108,7 +108,7 @@ Lemma wp_proper_name s f e ls lab d v rest j Ψ :
   WP (ERun (mkFrame f e ls None
        (Exec lab (Call (CResult d P) (Global (TAtom "proper_name")) [Arg P (Tmp v)] :: rest) j)) : gexpr)
     {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hs Hv. iIntros "#Hro Hio Hpv HK".
   iApply (wp_call_ptr w0 ge _ _ _ (fun q => hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ str_ro q)%I
             with "[Hio Hpv]");
@@ -120,7 +120,7 @@ Qed.
 (** The version branch runs from the loop exit to successful termination. *)
 Lemma main_version Φ :
   hello_ro ge o -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L21" "iw_1.L19" Φ.
-Proof.
+Proof using Hy Lb.
   iIntros "#Hro" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
   iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".
   iPoseProof "Hro" as "(_ & _ & #Hsol & #Hsoc & _)".

@@ -77,7 +77,7 @@ Existing Instance Hdt.
 
 (** The empty destructor function returns immediately and preserves the caller's resources. *)
 Lemma dtors_rule_tls (P : iProp Σ) : ⊢ ExitRun.dtors_rule w0 ge P P.
-Proof.
+Proof using Hdt.
   iIntros (f e ls lab rest j Ψ) "HP HK".
   iApply wp_call_bind; [reflexivity | exact Hdt | reflexivity |]. iNext.
   iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].

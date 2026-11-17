@@ -86,7 +86,7 @@ Lemma wp_call_fx_loan S G vb sb sreg fp fmt ys R X Q f e ls l d args rest j Φ :
   ▷ (∀ x, G -∗ WP (ERun (mkFrame f (put d (WInt (x mod 2 ^ 32)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfn Hself Hselfr Hargs Hys Hl Hfm. iIntros "HS HX HK".
   iDestruct (Hl with "HS") as (mode flags2 held dqf regf (Hm & Hc & Hfr)) "(#Hs & Hst & Ho & Hfc & HR & Hb)".
   iApply (wp_call_fxprintf_at Hreg Hext f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 held dqf regf

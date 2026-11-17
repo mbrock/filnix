@@ -83,19 +83,19 @@ Context `{!gen_heapGS piece pval Σ}.
 
 (** Names that avoid two lists avoid their concatenation. *)
 Lemma avoids_app ks W1 W2 : avoids ks (W1 ++ W2) = true -> avoids ks W1 = true /\ avoids ks W2 = true.
-Proof.
+Proof using Type*.
   unfold avoids. rewrite !forallb_forall. intros H. split; intros k Hk; specialize (H k Hk);
     rewrite forallb_app in H; apply andb_prop in H; tauto.
 Qed.
 
 (** Names avoid a list exactly when each avoids it. *)
 Lemma avoids_cons k ks W : avoids (k :: ks) W = forallb (fun w => negb (name_eqb k w)) W && avoids ks W.
-Proof. reflexivity. Qed.
+Proof using Type*. reflexivity. Qed.
 
 (** A shared string pointer carries the lifetime its loads need. *)
 Lemma argv_str_cap q s : word_string DfracDiscarded q s ⊢
   ∃ reg, live_capq DfracDiscarded (ptr_cap q) reg ∗ ⌜0 <= ptr_addr q < 2 ^ 64⌝.
-Proof.
+Proof using Type.
   iIntros "#H". iDestruct (ws_shape with "H") as %(_ & Hq0 & Hqe).
   iDestruct (ws_byte q s 0 with "H") as (b reg) "(%Hb & Hl & _)"; [lia|].
   destruct Hb as (Hc & _). iExists reg. iSplit; [|iPureIntro; lia].
@@ -108,7 +108,7 @@ Definition argv_strs (ps : list ptr) : iProp Σ := [∗ list] q ∈ ps, ∃ s, w
 (** A vector entry in range has a shared string with a usable lifetime. *)
 Lemma argv_strs_cap ps j : (j < List.length ps)%nat -> argv_strs ps ⊢
   ∃ reg, live_capq DfracDiscarded (ptr_cap (nth j ps null)) reg ∗ ⌜0 <= ptr_addr (nth j ps null) < 2 ^ 64⌝.
-Proof.
+Proof using Type.
   intros Hj. iIntros "H". destruct (lookup_lt_is_Some_2 ps j Hj) as [x Hx].
   rewrite (nth_lookup_Some _ _ _ _ Hx).
   iDestruct (big_sepL_lookup with "H") as (s) "Hs"; [exact Hx|]. by iApply argv_str_cap.

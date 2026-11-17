@@ -96,7 +96,7 @@ Lemma wp_xs_L19 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys e Φ :
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "L19") (Some (TAtom "L25")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hn0 Hv0 Hc0 Hv2 Hv4.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp (Hwc & Hwp & Hwe & Hroom) Hos Hl' Hys HK".
@@ -139,7 +139,7 @@ Lemma wp_xs_L18 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys e Φ :
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "L18") (Some (TAtom "L25")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hn0 Hv0 Hc0 Hv2 Hv4.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp ((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom) Hos Hl' Hys HK".

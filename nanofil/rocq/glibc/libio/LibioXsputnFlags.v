@@ -108,7 +108,7 @@ Lemma wp_xs_L122 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d r fl f2 f
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L122") (Some (TAtom "iw_2.L70"))))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Happ Hf2 Hfd Hm Hflags Hfd31 Hf2160
     Hv0 Hc0 Hc14 Hc15 Hv114 Hv4 Hp5 Hv67 Hv175 Hp1.
   unfold file_size in Hfend.

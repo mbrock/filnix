@@ -113,7 +113,7 @@ Lemma mbszero_glibc b reg o xs cs Φ :
   live b reg -∗ bytes b o xs -∗ auxes b o cs -∗
   ▷ (live b reg -∗ bytes b o (replicate 8 0) -∗ auxes b o (MemLogic.clear_slots o cs) -∗ Φ RetVoid) -∗
   WP (ERun (invocation mbszero_fn [WPtr (mkPtr (b + o) (Obj b))]) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hmemset Hset Hset_fn Hset_sym.
   intros Hx Hc Hb8 Ho8 Ho Hend. iIntros "Hl Hx Hcs HΦ". rewrite mbszero_entry.
   iApply wp_enter; [exact find_z_start | reflexivity |]. iNext. cbn [b_insts b_jump z_start].
   iApply (MemFwdLogic.wp_call_glibc_memset Hset Hset_fn Hset_sym _ _ _ _ _ _ _ _ _ b reg o xs cs 0
@@ -131,7 +131,7 @@ Lemma strnlen1_glibc dq p s n Φ :
   word_string dq p s -∗
   ▷ (word_string dq p s -∗ Φ (Ret (WInt (Z.min (Z.of_nat (length s) + 1) n)))) -∗
   WP (ERun (invocation strnlen1_fn [WPtr p; WInt n]) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hmemchr.
   intros Hn. iIntros "Hs HΦ". rewrite strnlen1_entry.
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hr Hby Hch].
@@ -170,7 +170,7 @@ Lemma streq_glibc (Hcmp : (strcmp_spec w0 registry ge)) dq1 dq2 p q s t Φ :
   ▷ (word_string dq1 p s -∗ word_string dq2 q t -∗
      Φ (Ret (WInt (if decide (s = t) then 1 else 0)))) -∗
   WP (ERun (invocation streq_fn [WPtr p; WPtr q]) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   destruct Hcmp as (F & HF & Hfr & Hspec). iIntros "Hs Ht HΦ". rewrite streq_entry.
   destruct (Hfr p q) as [fr Hfr'].
   iApply wp_enter; [exact find_q_start | reflexivity |]. iNext. cbn [b_insts b_jump q_start].
@@ -198,7 +198,7 @@ Lemma memeq_glibc (Hcmp : (memcmp_spec w0 registry ge)) dq1 dq2 b reg o c xs b' 
      Φ (Ret (WInt (if decide (xs = ys) then 1 else 0)))) -∗
   WP (ERun (invocation memeq_fn [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length xs))])
         : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   destruct Hcmp as (F & HF & Hfr & Hspec).
   intros Hb0 H16 Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy. iIntros "Hl Hx Hl' Hy HΦ". rewrite memeq_entry.
   assert (Hn : Z.of_nat (length xs) < 2 ^ 64) by lia.

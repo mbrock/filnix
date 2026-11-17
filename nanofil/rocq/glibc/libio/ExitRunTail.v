@@ -166,7 +166,7 @@ Lemma exit_tail x c status e from P Φ :
   loop_env x -> loop_vars x status e ->
   exit_held x [] c -∗ P -∗ cleanup_rule P -∗
   WP (ERun (mkFrame glibc___run_exit_handlers e [] None (Enter (TAtom "L101") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   destruct x as [lk lkr dn dnr cl clr fs fsr ib ibr].
   intros (Hlay & Hgl & Hwi & Hwdn & Hwfs & Hxf & Hxg) (H0 & H2 & H4 & H6 & H90 & H96).
   destruct Hlay as (Hl0 & Hl4 & Hle & Hd0 & Hde & Hc0 & Hce & Hf0 & Hf8 & Hfe & Hi0 & Hi8 & Hie).

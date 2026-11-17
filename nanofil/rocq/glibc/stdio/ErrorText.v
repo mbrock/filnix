@@ -126,7 +126,7 @@ Lemma wp_error_text e from status errnum fmt ap mode cb nb nreg count
       (Enter (TAtom "iw_2.L92") (Some predecessor))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hinputs Herrrange Hglobal Hnb Hne Hnr Htext Hstr Hfx Hstrcall Hfxcall.
   iIntros "Hl Hcount HR HE HK".
   iApply (wp_error_text_loan e from status errnum fmt ap mode cb nb nreg count

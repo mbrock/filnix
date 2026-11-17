@@ -74,7 +74,7 @@ Lemma wp_dx_loop os fb freg vb vreg dq b' reg' so c' ys Φ :
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys ->
   vtables_ro ge vb vreg ⊢ dx_loop w0 registry ge os fb freg vb vreg dq b' reg' so c' ys Φ.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hc' Hb8' Hso Hyend Hyreg Hy. unfold file_size in Hfend.
   iIntros "#Hvt". iLöb as "IH". iEval (unfold dx_loop; cbv zeta).
   iIntros (e t nb wp we (Hv0 & Hv4 & Hp7 & Hp2 & Ht & Hprogress)) "Hl Hvtp Hwb Hos Hl' Hys HK".

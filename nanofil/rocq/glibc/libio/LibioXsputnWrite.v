@@ -89,7 +89,7 @@ Lemma wp_xs_L132 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T e from Φ :
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "L132") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hnb Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy HT Hv0 Hc0 Hc11 Hv4 Hp5 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp ((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom) Hos Hl' Hys HK".

@@ -93,7 +93,7 @@ Lemma wp_optind_load f e ls lab vc chk d rest j i Ψ :
   WP (ERun (mkFrame f e ls None
        (Exec lab (Let chk A (Check 0 4 Read 1) [Tmp vc] ::
                   Let d W (RawLoad (LdNarrow Sw) 0) [Tmp chk] :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Hy.
   intros Hv Hi. pose proof (hy_oi_at _ _ Hy) as (Hoi0 & Hoie & Hoir). iIntros "Hl [%Hi32 Hb] HK".
   rule1 "Hl" ltac:(eapply wp_check_read; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   rule2 "Hl" "Hb" ltac:(eapply wp_raw_load_sub_bytes_dq; inst;
@@ -113,7 +113,7 @@ Lemma wp_let_as w f e ls lab d k op args rest j classes xs w' Ψ :
   (forall m, op_res op k xs m = Some (OpRes (RVal w') m)) -> w' = w ->
   ⊢ ▷ WP (ERun (mkFrame f (put d w e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }} -∗
     WP (ERun (mkFrame f e ls None (Exec lab (Let d k op args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof. intros Hg Hc Hx Ho <-. iIntros "H". iApply (wp_let with "H"); eassumption. Qed.
+Proof using Type. intros Hg Hc Hx Ho <-. iIntros "H". iApply (wp_let with "H"); eassumption. Qed.
 
 (** An equality rewrites the computed address before the caller resumes. *)
 Lemma wp_flight_as n f e ls lab d op args lw rest j xs n' c Ψ :
@@ -121,7 +121,7 @@ Lemma wp_flight_as n f e ls lab d op args lw rest j xs n' c Ψ :
   n' = n ->
   ⊢ ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }} -∗
     WP (ERun (mkFrame f e ls None (Exec lab (Flight d op args lw :: rest) j)) : gexpr) {{ Ψ }}.
-Proof. intros Hx Ha Hc <-. iIntros "H". iApply (wp_flight with "H"); eassumption. Qed.
+Proof using Type. intros Hx Ha Hc <-. iIntros "H". iApply (wp_flight with "H"); eassumption. Qed.
 
 (** This tactic checks and loads the operand after selecting the block's names. *)
 Ltac operand_steps Havp a i :=
@@ -157,14 +157,14 @@ Lemma wp_operand_load (b : bool) f e ls lab rest j ps i Ψ :
                   Let chk A (Check 0 8 Read 8) [Tmp va] ::
                   Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [Tmp chk] :: rest) j)) : gexpr)
     {{ Ψ }}.
-Proof.
+Proof using Type.
   destruct b; cbn [op_names]; intros H2 Hvi Hi; iIntros "(%Havp & Hal & Hsl) #Hps HK"; operand_steps Havp av i.
 Qed.
 
 (** The operand argv[k], k at most argc, is an argument a debt may be
     handed: a read-only string or null. *)
 Lemma nth_arg_ro ps (k : nat) : ([∗ list] q ∈ ps, str_ro q) ⊢ arg_ro o (WPtr (nth k (ps ++ [null]) null)).
-Proof.
+Proof using Type.
   iIntros "#Hps". destruct (decide (k < length ps)%nat) as [Hk | Hk].
   - rewrite app_nth1; [|lia]. iApply str_ro_arg. iApply (big_sepL_elem_of with "Hps").
     apply list_elem_of_In, nth_In. lia.
@@ -177,7 +177,7 @@ Qed.
 Lemma operand_hint e from Ψ :
   hello_ro ge o -∗ io -∗ names o -∗ X -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L113") (Some (TAtom from)))) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Hy Lb.
   iIntros "#Hro [Hio Hpv] Hn HX".
   iPoseProof "Hro" as "(_ & _ & _ & _ & #Hsel & #Hsec & _)".
   iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & Hen)".
@@ -207,7 +207,7 @@ Lemma operand_L55 e ps i Ψ :
   hello_ro ge o -∗ io -∗ names o -∗ X -∗ argv_own av ar ps -∗ ([∗ list] q ∈ ps, str_ro q) -∗
   live (ho_oi o) (ho_oireg o) -∗ int_cell (ho_oi o) 0 i -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L55") (Some (TAtom "iw_1.L60")))) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Hy Lb S.
   intros H2 Hi. iIntros "#Hro [Hio Hpv] Hn HX Hav #Hps Hoil Hoic".
   iAssert (⌜Z.of_nat (length ps) < 2 ^ 31⌝)%I with "[Hav]" as %H31; [iDestruct "Hav" as "[%Hp _]"; iPureIntro; tauto|].
   assert (Hi31 : 0 <= i < 2 ^ 31) by lia.
@@ -235,7 +235,7 @@ Qed.
 (** The operand check either proceeds to the greeting or exits with status one. *)
 Lemma main_operands Φ :
   hello_ro ge o -∗ join_cont Φ -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L10" "iw_1.L8" Φ.
-Proof.
+Proof using Hy Lb.
   iIntros "#Hro HJ" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
   destruct Hf as ((H0 & H2 & H4 & H6 & Hc1) & Hb4 & Hb6 & Hi).
   iDestruct "Hr" as "(Hav & #Hps & (Hoal & Hoac & Hoil & Hoic) & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".

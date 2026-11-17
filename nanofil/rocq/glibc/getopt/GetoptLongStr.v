@@ -133,11 +133,11 @@ Proof. unfold arg_str. destruct (x =? c); apply _. Qed.
 
 (** A return with another code needs no string. *)
 Lemma arg_str_other c x a : x <> c -> ⊢ arg_str c x a.
-Proof. intros H. unfold arg_str. rewrite (proj2 (Z.eqb_neq x c) H). done. Qed.
+Proof using Type. intros H. unfold arg_str. rewrite (proj2 (Z.eqb_neq x c) H). done. Qed.
 
 (** A word of the vector below its length holds a string. *)
 Lemma arg_str_next c x ps k : (k < List.length ps)%nat -> argv_strs ps ⊢ arg_str c x (nth k ps null).
-Proof.
+Proof using Type.
   intros Hk. iIntros "Hs". unfold arg_str. destruct (x =? c); [|done].
   destruct (lookup_lt_is_Some_2 ps k Hk) as [q Hq]. rewrite (nth_lookup_Some _ _ _ _ Hq).
   iDestruct (big_sepL_lookup with "Hs") as (s) "Hw"; [exact Hq|]. by iExists s.
@@ -146,7 +146,7 @@ Qed.
 (** The rest of a word after a byte that is not its end holds a string. *)
 Lemma arg_str_one c x cur t : sbyte t 1 <> 0 ->
   word_string DfracDiscarded cur t ⊢ arg_str c x (ptr_add cur 1).
-Proof.
+Proof using Type.
   intros Ht. iIntros "Hw". unfold arg_str. destruct (x =? c); [|done].
   pose proof (sbyte_in_len t 1 Ht). iExists (drop 1 t). iApply (ws_suffix cur t 1 with "Hw"). lia.
 Qed.
@@ -155,7 +155,7 @@ Qed.
     empty. *)
 Lemma arg_str_eq c x cur s : sbyte s (eq_len s) = 61 ->
   word_string DfracDiscarded cur s ⊢ arg_str c x (ptr_add cur (Z.of_nat (eq_len s) + 1)).
-Proof.
+Proof using Type.
   intros He. iIntros "Hw". unfold arg_str. destruct (x =? c); [|done].
   assert (Hl : (eq_len s < List.length s)%nat) by (apply sbyte_in_len; lia).
   iExists (drop (S (eq_len s)) s). replace (Z.of_nat (eq_len s) + 1) with (Z.of_nat (S (eq_len s))) by lia.
@@ -167,7 +167,7 @@ Qed.
 Lemma plo_arg_str ps i n cur s a so los x i' a' c :
   str_code so los c -> plo_arg_case ps i n cur s a los x i' a' -> Z.of_nat (List.length ps) = n -> 0 <= i ->
   word_string DfracDiscarded cur s -∗ argv_strs ps -∗ arg_str c x a'.
-Proof.
+Proof using Type.
   intros Hc Ha Hn Hi. iIntros "#Hw #Hs". destruct (decide (x = c)) as [Hx | Hx]; [|by iApply arg_str_other].
   destruct (plo_code_arg ps i n cur s a so los x i' a' c Hc Ha Hx) as [[-> He] | [-> Hlt]].
   - by iApply arg_str_eq.
@@ -179,7 +179,7 @@ Qed.
 Lemma char_arg_str ps n i oo cur a t so los x i' oo' a' c' c :
   str_code so los c -> char_ret_case ps n i oo cur a t so x i' oo' a' c' -> Z.of_nat (List.length ps) = n ->
   0 <= i -> word_string DfracDiscarded cur t -∗ argv_strs ps -∗ arg_str c x a'.
-Proof.
+Proof using Type.
   intros Hc Ha Hn Hi. iIntros "#Hw #Hs". destruct (decide (x = c)) as [Hx | Hx]; [|by iApply arg_str_other].
   destruct (char_code_arg ps n i oo cur a t so los x i' oo' a' c' c Hc Ha Hx) as [[-> Ht] | [-> Hlt]].
   - by iApply arg_str_one.
@@ -206,7 +206,7 @@ Lemma str_ret b r av ar ps ps' (G : iProp Σ) F (M : iProp Σ) li c x i' oo' a' 
      getopt_session b r av ar ps' i') -∗
   live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
   arg_str c x a' -∗ wrap_post b r (str_rest b r av ar ps G F M li c) (Ret (WInt x)).
-Proof.
+Proof using Type.
   intros Hx Hp. iIntros "Hl Hi Ho Hab Hcur Hw Ha Hcl #Hs HG HF HM Hli [[%ra #Hcap] %Hra] #Hstr".
   iExists x, i', oo', a', ra. iSplit; [iPureIntro; split_and!; [reflexivity | lia | lia | lia | lia] |].
   iSplitL "Hl"; [done|]. iSplitL "Hi"; [done|]. iSplitL "Ho"; [done|]. iSplitL "Hab"; [done|].
@@ -224,7 +224,7 @@ Lemma w_ret_exits_str b r av ar ps ps' los li F (G M : iProp Σ) i n cw a so q s
   word_string DfracDiscarded q sq -∗ argv_strs ps' -∗
   w_ret_exits_arg b r av ar ps' los li F G M i n cw a so q sq k0
     (wrap_post b r (str_rest b r av ar ps G F M li c)).
-Proof.
+Proof using Type.
   intros Hp Hn Hc Hi. iIntros "#Hq #Hs". unfold w_ret_exits_arg. iSplit; [|iSplit].
   - iIntros (x i' oo' a' c' (Hs1 & Hr & Ha)) "Hl Hi Ho Hab Hcur Hw Ha Hcl HG HF HM Hli Hca".
     pose proof (sbyte_in_len sq (S k0) Hs1).
@@ -482,7 +482,7 @@ Proof. reflexivity. Qed.
 Lemma argv_cells_null av ps :
   ([∗ list] k ↦ q ∈ ps ++ [null], pcell av (8 * Z.of_nat k) q) ⊣⊢
   argv_cells av ps ∗ pcell av (8 * Z.of_nat (List.length ps)) null.
-Proof. unfold argv_cells. rewrite big_sepL_app big_sepL_singleton Nat.add_0_r. reflexivity. Qed.
+Proof using Type. unfold argv_cells. rewrite big_sepL_app big_sepL_singleton Nat.add_0_r. reflexivity. Qed.
 
 (** A session keeps its index between zero and the count of words. *)
 Lemma getopt_session_index b r av ar ps i :

@@ -71,7 +71,7 @@ Lemma plo_res_intro b r av ar ps li F (G M : iProp Σ) i n cur s a os x i' oo' a
   live b r -∗ int_cell b 0 i' -∗ int_cell b 8 oo' -∗ pcell b 16 a' -∗ pcell b 32 c' -∗
   live av ar -∗ argv_cells av ps -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗
   plo_res b r av ar ps li F G M i n cur s a os x.
-Proof.
+Proof using Type.
   intros Hi Hc Ha Hr Hx. iIntros "Hl Hib Hoob Hab Hcur Ha Hcl HG HF HM Hli".
   iExists i', oo', a', c'. iFrame. iPureIntro. auto.
 Qed.
@@ -102,7 +102,7 @@ Definition plo_res_arg (b : Z) (r : region) (av : Z) (ar : region) (ps : list pt
 (** A caller that does not read the argument can forget the relation. *)
 Lemma plo_res_arg_old b r av ar ps li F (G M : iProp Σ) i n cur s a os x :
   plo_res_arg b r av ar ps li F G M i n cur s a os x ⊢ plo_res b r av ar ps li F G M i n cur s a os x.
-Proof.
+Proof using Type.
   iIntros "(%i' & %oo' & %a' & %c' & Hl & Hi & Ho & Ha & Hc & Hav & Hcl & HG & HF & HM & Hli & %H & _)".
   iExists i', oo', a', c'. iFrame. done.
 Qed.

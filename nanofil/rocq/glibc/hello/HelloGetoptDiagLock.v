@@ -79,7 +79,7 @@ Definition dlk_ready (s : dlk_state) : Prop :=
 (** The earlier rules asked for both kinds of fact at once, and the two
     parts say exactly the same. *)
 Lemma dlk_lock_iff lk a ar s : dtx_lock tid lk a ar (dl_r s) (dl_cw s) <-> dlk_place lk a ar /\ dlk_ready s.
-Proof. unfold dtx_lock, dlk_place, dlk_ready. tauto. Qed.
+Proof using Q eb. unfold dtx_lock, dlk_place, dlk_ready. tauto. Qed.
 
 (** ## The resources between reports *)
 
@@ -98,17 +98,17 @@ Definition dlk_T (v : Z) (mid q : ptr) : iProp Σ := ⌜q = mid⌝ ∗ dlk_G v.
 
 (** Any ready states can enter G. *)
 Lemma dlk_pack s1 s2 s3 v : dlk_ready s1 -> dlk_ready s2 -> dlk_ready s3 -> dlk_G0 s1 s2 s3 v ⊢ dlk_G v.
-Proof. intros H1 H2 H3. iIntros "H". iExists s1, s2, s3. iSplit; [iPureIntro; tauto | iExact "H"]. Qed.
+Proof using Q. intros H1 H2 H3. iIntros "H". iExists s1, s2, s3. iSplit; [iPureIntro; tauto | iExact "H"]. Qed.
 
 (** Whatever G holds, its lock states are ready. *)
 Lemma dlk_ready_of v : dlk_G v ⊢ ∃ s1 s2 s3, ⌜dlk_ready s1 /\ dlk_ready s2 /\ dlk_ready s3⌝.
-Proof. iIntros "(%s1 & %s2 & %s3 & %Hr & _)". iExists s1, s2, s3. done. Qed.
+Proof using Type. iIntros "(%s1 & %s2 & %s3 & %Hr & _)". iExists s1, s2, s3. done. Qed.
 
 (** The caller can still lend the thread's bookkeeping between
     reports. G gives it away whole and accepts it back in any
     region. *)
 Lemma dlk_lend v : dlk_G v ⊢ tcb_cleanup_inv (ow_self w0) ∗ (tcb_cleanup_inv (ow_self w0) -∗ dlk_G v).
-Proof.
+Proof using Type.
   iIntros "(%s1 & %s2 & %s3 & %Hr & H)". unfold dlk_G0.
   iDestruct (dtx_lend eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg ob dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     a1 ar1 (dl_r s1) (dl_cw s1) (dl_sh s1) (dl_fl s1) i1 a2 ar2 (dl_r s2) (dl_cw s2) (dl_sh s2) (dl_fl s2) i2 a3 ar3 (dl_r s3) (dl_cw s3) (dl_sh s3) (dl_fl s3) i3
@@ -118,7 +118,7 @@ Qed.
 
 (** Errno can change between reports, and G takes any bytes back. *)
 Lemma dlk_errno v : dlk_G v ⊢ ∃ bs, errno_own eb bs ∗ (∀ bs', errno_own eb bs' -∗ dlk_G v).
-Proof.
+Proof using Type.
   iIntros "(%s1 & %s2 & %s3 & %Hr & H)". unfold dlk_G0.
   iDestruct (dtx_errno eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg ob dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     a1 ar1 (dl_r s1) (dl_cw s1) (dl_sh s1) (dl_fl s1) i1 a2 ar2 (dl_r s2) (dl_cw s2) (dl_sh s2) (dl_fl s2) i2 a3 ar3 (dl_r s3) (dl_cw s3) (dl_sh s3) (dl_fl s3) i3
@@ -129,7 +129,7 @@ Qed.
 
 (** A report reads the stream's lifetime, and G lends a share of it. *)
 Lemma dlk_cap v : ⊢ dlk_G v -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ dlk_G v).
-Proof.
+Proof using Type.
   iIntros "(%s1 & %s2 & %s3 & %Hr & H)". unfold dlk_G0.
   iDestruct (dtx_cap eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg ob dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     a1 ar1 (dl_r s1) (dl_cw s1) (dl_sh s1) (dl_fl s1) i1 a2 ar2 (dl_r s2) (dl_cw s2) (dl_sh s2) (dl_fl s2) i2 a3 ar3 (dl_r s3) (dl_cw s3) (dl_sh s3) (dl_fl s3) i3
@@ -163,7 +163,7 @@ Lemma dlk_premises_at v s1 s2 s3 :
   dlk_premises v -> dlk_ready s1 -> dlk_ready s2 -> dlk_ready s3 ->
   dtx_premises eb dom nb nc k p276 p277 db dbreg ib ic ireg sec secreg tc dd ob rb ro rreg gb go greg lp lb lreg
     lk1 a1 ar1 (dl_r s1) (dl_cw s1) lk2 a2 ar2 (dl_r s2) (dl_cw s2) lkt a3 ar3 (dl_r s3) (dl_cw s3) tid fp F Q v.
-Proof.
+Proof using Type.
   intros (A1 & A2 & A3 & A4 & P1 & P2 & P3 & A8 & A9 & A10 & A11 & A12 & A13 & A14 & A15 & A16) R1 R2 R3.
   pose proof (proj2 (dlk_lock_iff lk1 a1 ar1 s1) (conj P1 R1)) as L1.
   pose proof (proj2 (dlk_lock_iff lk2 a2 ar2 s2) (conj P2 R2)) as L2.
@@ -183,7 +183,7 @@ Lemma dlk_translate v (Mm : ptr -> Prop) f e ls l d args rest j mid Φ :
   ⊢ dlk_G v -∗ ▷ (∀ q, dlk_T v mid q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Herr Hreg.
   intros Hp Hm Hmid Hargs. iIntros "(%s1 & %s2 & %s3 & %Hr & H) HK".
   destruct Hr as (R1 & R2 & R3). pose proof (dlk_premises_at v s1 s2 s3 Hp R1 R2 R3) as Hq. unfold dlk_G0.
   iApply (dtx_translate eb Herr Hreg dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg tc dd ob dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
@@ -204,7 +204,7 @@ Lemma dlk_print v fmt ys X f e ls l d args rest j Φ :
   ⊢ dlk_G v -∗ X -∗ ▷ (∀ x, dlk_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hreg.
   intros Hp Hfr Hys Hlm Hfm Hargs. iIntros "(%s1 & %s2 & %s3 & %Hr & H) HX HK".
   destruct Hr as (R1 & R2 & R3). pose proof (dlk_premises_at v s1 s2 s3 Hp R1 R2 R3) as Hq. unfold dlk_G0.
   iApply (dtx_print eb Hreg dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg tc dd ob dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg

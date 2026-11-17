@@ -141,7 +141,7 @@ Qed.
 (** The linked device-number helper establishes its pure result contract. *)
 #[global] Instance major_has_spec n `{!Defines ge n glibc___gnu_dev_major} :
   HasSpec registry (os_wi w0) ge (TAtom n) major_spec.
-Proof.
+Proof using Type.
   intros d. exists glibc___gnu_dev_major. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post major_spec]. iIntros "%Hd HK".

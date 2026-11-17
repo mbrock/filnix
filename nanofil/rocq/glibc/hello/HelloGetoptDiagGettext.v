@@ -92,7 +92,7 @@ Definition dgx_T (v : Z) (mid q : ptr) : iProp Σ := (∃ bs, dgx_after v bs mid
 (** The translation gives back every resource it borrowed, and the
     message as its result. Only errno's bytes change. *)
 Lemma dgx_cycle v bs mid q : dgx_after v bs mid q ⊢ ⌜q = mid⌝ ∗ dgx_before v (le_bytes (dci_w bs) 4).
-Proof. unfold dgx_after, dgx_before, dcg_after_v, dcg_before_v. iIntros "[%Hq H]". iSplit; [done | iExact "H"]. Qed.
+Proof using Type. unfold dgx_after, dgx_before, dcg_after_v, dcg_before_v. iIntros "[%Hq H]". iSplit; [done | iExact "H"]. Qed.
 
 (** Lm lends a lifetime share of each format string that P allows. *)
 Definition dgx_lends (P : ptr -> Prop) : Prop :=
@@ -100,7 +100,7 @@ Definition dgx_lends (P : ptr -> Prop) : Prop :=
 
 (** A report reads the stream's lifetime, and G lends a share of it. *)
 Lemma dgx_cap v : ⊢ dgx_G v -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ dgx_G v).
-Proof.
+Proof using Type.
   unfold dgx_G, dgx_stream.
   iIntros "(HB & (#Hs & %mode & %flags2 & %held & %Hp & Hst & Ho & HF) & HL)".
   iDestruct "Hst" as (fb freg st nb' vt) "(%Hq & Hl & Hrest)".
@@ -118,7 +118,7 @@ Lemma dgx_loan K Kb fmt :
   (Lm ⊢ ∃ dq reg, live_capq dq (ptr_cap fmt) reg ∗ (live_capq dq (ptr_cap fmt) reg -∗ Lm)) ->
   (forall x m, Q x m ⊢ ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ ∗ F) -> (K ⊢ Kb) ->
   fx_loan (K ∗ dgx_stream ∗ Lm) vb sb sreg fp fmt F Q (Kb ∗ dgx_stream ∗ Lm).
-Proof.
+Proof using Type.
   intros Hfr Hl Hcy Hk. unfold fx_loan, dgx_stream.
   iIntros "(HK & (#Hs & %mode & %flags2 & %held & %Hp & Hst & Ho & HF) & HL)".
   iDestruct (Hl with "HL") as (dq reg) "[Hc HL]".
@@ -155,7 +155,7 @@ Lemma dgx_translate v (M : ptr -> Prop) f e ls l d args rest j mid Φ :
   ⊢ dgx_G v -∗ ▷ (∀ q, dgx_T v mid q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Herr Hreg.
   intros (Hk & Hg & Hchr & Hchrn & H1 & H2 & H3 & Hl & (Hrb & Hro & Hal & Hend & Hrr) & Hglo & Hbnd & Hv & _) Hm Hmid Hargs.
   pose proof (hello_heap_glibc ob Hk Hg) as Hh.
   pose proof (hk_gi_strlen _ _ Hk). pose proof (hk_free _ _ Hk).
@@ -179,7 +179,7 @@ Lemma dgx_print_t v mid q ys X f e ls l d args rest j Φ :
   ⊢ dgx_T v mid q -∗ X -∗ ▷ (∀ x, dgx_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hreg.
   intros Hp Hmr Hys Hlm Hfm Hargs. pose proof Hp as (Hk & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hfn & Hself & Hselfr & _ & _ & Hcy).
   iIntros "((%bs & HA) & HS & HL) HX HK". iDestruct (dgx_cycle with "HA") as "[%Hq HB]". subst q.
   iApply (wp_call_fx_loan Hreg (hk_sys _ _ Hk) (dgx_before v (le_bytes (dci_w bs) 4) ∗ dgx_stream ∗ Lm) (dgx_G v)
@@ -199,7 +199,7 @@ Lemma dgx_print_g v fmt ys X f e ls l d args rest j Φ :
   ⊢ dgx_G v -∗ X -∗ ▷ (∀ x, dgx_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hreg.
   intros Hp Hmr Hys Hlm Hfm Hargs. pose proof Hp as (Hk & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hfn & Hself & Hselfr & _ & _ & Hcy).
   iIntros "HG HX HK".
   iApply (wp_call_fx_loan Hreg (hk_sys _ _ Hk) (dgx_G v) (dgx_G v) vb sb sreg fp fmt ys F X Q with "HG HX [HK]");
@@ -306,7 +306,7 @@ Qed.
 (** The resources before a translation hold errno's bytes once, and
     the rest of them accepts any new bytes. *)
 Lemma dgx_errno v bs : dgx_before v bs ⊢ errno_own eb bs ∗ (∀ bs', errno_own eb bs' -∗ dgx_before v bs').
-Proof.
+Proof using Type.
   unfold dgx_before, dcg_before_v. iIntros "(H1 & H2 & H3 & H4 & H5 & H6 & H7 & He)".
   iSplitL "He"; [iExact "He"|]. iIntros (bs') "He". iSplitL "H1"; [iExact "H1"|].
   iSplitL "H2"; [iExact "H2"|]. iSplitL "H3"; [iExact "H3"|]. iSplitL "H4"; [iExact "H4"|].
@@ -322,7 +322,7 @@ Lemma dgx_loan_e K Kb fmt :
   (Lm ⊢ ∃ dq reg, live_capq dq (ptr_cap fmt) reg ∗ (live_capq dq (ptr_cap fmt) reg -∗ Lm)) ->
   dgx_qe -> (K ∗ errno_any eb ⊢ Kb) ->
   fx_loan ((K ∗ errno_any eb) ∗ dgx_stream ∗ Lm) vb sb sreg fp fmt (errno_any eb ∗ F) Q (Kb ∗ dgx_stream ∗ Lm).
-Proof.
+Proof using Type.
   intros Hfr Hl Hqe Hk. unfold fx_loan, dgx_stream.
   iIntros "((HK & He) & (#Hs & %mode & %flags2 & %held & %Hp & Hst & Ho & HF) & HL)".
   iDestruct (Hl with "HL") as (dq reg) "[Hc HL]".
@@ -339,7 +339,7 @@ Qed.
     them. *)
 Lemma dgx_errno_back v :
   (∀ bs', errno_own eb bs' -∗ dgx_before v bs') ∗ errno_any eb ⊢ ∃ bs, dgx_before v bs.
-Proof. iIntros "[HK [%bs He]]". iExists bs. iApply ("HK" with "He"). Qed.
+Proof using Type. iIntros "[HK [%bs He]]". iExists bs. iApply ("HK" with "He"). Qed.
 
 (** Printing a translated message takes T and gives G back, and the
     formatter borrows errno once. *)
@@ -351,7 +351,7 @@ Lemma dgx_print_t_e v mid q ys X f e ls l d args rest j Φ :
   ⊢ dgx_T v mid q -∗ X -∗ ▷ (∀ x, dgx_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hreg.
   intros Hp Hmr Hys Hlm Hfm Hargs. pose proof Hp as (Hk & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hfn & Hself & Hselfr & _ & _ & Hqe).
   iIntros "((%bs & HA) & HS & HL) HX HK". iDestruct (dgx_cycle with "HA") as "[%Hq HB]". subst q.
   iDestruct (dgx_errno with "HB") as "[He HB]".
@@ -374,7 +374,7 @@ Lemma dgx_print_g_e v fmt ys X f e ls l d args rest j Φ :
   ⊢ dgx_G v -∗ X -∗ ▷ (∀ x, dgx_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hreg.
   intros Hp Hmr Hys Hlm Hfm Hargs. pose proof Hp as (Hk & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hfn & Hself & Hselfr & _ & _ & Hqe).
   iIntros "((%bs & HB) & HS & HL) HX HK". iDestruct (dgx_errno with "HB") as "[He HB]".
   iAssert (errno_any eb) with "[He]" as "He"; [iExists _; iExact "He"|].

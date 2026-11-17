@@ -67,7 +67,7 @@ Local Notation qq := (DfracOwn (1 / 2 / 2)%Qp).
 
 (** The three shares make up the whole lifetime. *)
 Lemma dtx_live_split b reg : live b reg ⊣⊢ liveq qh b reg ∗ liveq qq b reg ∗ liveq qq b reg.
-Proof.
+Proof using Type.
   rewrite /live /liveq pts_ptsq -(ptsq_split (1 / 2 / 2) (1 / 2 / 2)) Qp.div_2 -ptsq_split Qp.div_2. reflexivity.
 Qed.
 
@@ -88,7 +88,7 @@ Definition dtx_T0 (tbreg : region) (v : Z) (mid q : ptr) : iProp Σ :=
     whole object, and the rest accepts the object back in any
     region. *)
 Lemma dtx_shares tbreg v : dtx_G0 tbreg v ⊢ live tb tbreg ∗ (∀ tbreg', live tb tbreg' -∗ dtx_G0 tbreg' v).
-Proof.
+Proof using Type.
   unfold dtx_G0, dgx_G, dgx_before, dcg_before_v, rw_held.
   iIntros "((%bs & H1 & (Hk1 & Hl1 & Hi1) & (Hk2 & Hl2 & Hi2) & (Hk3 & Hl3 & Hi3) & H5 & H6 & H7 & He) & HS & HL)".
   iSplitL "Hl1 Hl2 Hl3"; [iApply dtx_live_split; iFrame "Hl1 Hl2 Hl3"|].
@@ -119,7 +119,7 @@ Definition dtx_T (v : Z) (mid q : ptr) : iProp Σ := ⌜q = mid⌝ ∗ dtx_G v.
 (** Between reports, G lends the whole cleanup state. The callee may
     hand it back in any region, and G takes that region. *)
 Lemma dtx_lend v : dtx_G v ⊢ tcb_cleanup_inv (ow_self w0) ∗ (tcb_cleanup_inv (ow_self w0) -∗ dtx_G v).
-Proof.
+Proof using Type.
   iIntros "(%tbreg & %jb & %Hc & Hcl & Hj & Hx & H0)". iDestruct (dtx_shares with "H0") as "[Hl Hb]".
   pose proof Hc as (Hs & _).
   iSplitL "Hl Hcl Hj Hx"; [iExists tb, tbreg, jb; iSplit; [iPureIntro; exact Hc | iFrame "Hl Hcl Hj Hx"]|].
@@ -130,7 +130,7 @@ Qed.
 
 (** Errno can change between reports, and G takes any bytes back. *)
 Lemma dtx_errno v : dtx_G v ⊢ ∃ bs, errno_own eb bs ∗ (∀ bs', errno_own eb bs' -∗ dtx_G v).
-Proof.
+Proof using Type.
   unfold dtx_G, dtx_G0, dgx_G. iIntros "(%tbreg & %jb & %Hc & Hcl & Hj & Hx & (%bs & HB) & HS & HL)".
   iDestruct (dgx_errno with "HB") as "[He HB]". iExists bs. iFrame "He". iIntros (bs') "He".
   iExists tbreg, jb. iSplit; [done|]. iFrame "Hcl Hj Hx HS HL". iExists bs'. iApply ("HB" with "He").
@@ -169,7 +169,7 @@ Lemma dtx_premises_at v tbreg :
   dtx_premises v -> dtx_tcb_at tbreg ->
   dgx_premises_e eb dom nb nc k p276 p277 db dbreg ib ic ireg sec secreg tc dd ob rb ro rreg gb go greg lp lb lreg
     lk1 a1 ar1 r1 cw1 lk2 a2 ar2 r2 cw2 lkt a3 ar3 r3 cw3 tb tbreg tid fp F Q v.
-Proof.
+Proof using Type.
   intros (A1 & A2 & A3 & A4 & L1 & L2 & L3 & A8 & A9 & A10 & A11 & A12 & A13 & A14 & A15 & A16)
     (Hs & Htb & _ & Hend & Hr).
   assert (Hoff : off_cancelhandling = 792) by reflexivity. rewrite Hoff in Hend.
@@ -186,7 +186,7 @@ Qed.
 
 (** A report reads the stream's lifetime, and G lends a share of it. *)
 Lemma dtx_cap v : ⊢ dtx_G v -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ dtx_G v).
-Proof.
+Proof using Type.
   unfold dtx_G, dtx_G0. iIntros "(%tbreg & %jb & %Hc & Hcl & Hj & Hx & H0)".
   iDestruct (dgx_cap with "H0") as (dq reg) "[Hc0 Hb]". iExists dq, reg. iFrame "Hc0". iIntros "Hc0".
   iExists tbreg, jb. iSplit; [done|]. iFrame "Hcl Hj Hx". iApply ("Hb" with "Hc0").
@@ -194,7 +194,7 @@ Qed.
 
 (** The old T gives back the message and the old G. *)
 Lemma dtx_T0_G tbreg v mid q : dtx_T0 tbreg v mid q ⊢ ⌜q = mid⌝ ∗ dtx_G0 tbreg v.
-Proof.
+Proof using Type.
   unfold dtx_T0, dtx_G0, dgx_T, dgx_G. iIntros "((%bs & HA) & HS & HL)".
   iDestruct (dgx_cycle with "HA") as "[%Hq HB]". iSplit; [done|].
   iSplitL "HB"; [iExists _; iExact "HB"|]. iSplitL "HS"; [iExact "HS" | iExact "HL"].
@@ -209,7 +209,7 @@ Lemma dtx_translate v (Mm : ptr -> Prop) f e ls l d args rest j mid Φ :
   ⊢ dtx_G v -∗ ▷ (∀ q, dtx_T v mid q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Herr Hreg.
   intros Hp Hm Hmid Hargs. iIntros "(%tbreg & %jb & %Hc & Hcl & Hj & Hx & H0) HK".
   pose proof (dtx_premises_at v tbreg Hp Hc) as Ho. apply dgx_premises_of_e in Ho.
   unfold dtx_G0.
@@ -231,7 +231,7 @@ Lemma dtx_print v fmt ys X f e ls l d args rest j Φ :
   ⊢ dtx_G v -∗ X -∗ ▷ (∀ x, dtx_G v -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hreg.
   intros Hp Hfr Hys Hlm Hfm Hargs. iIntros "(%tbreg & %jb & %Hc & Hcl & Hj & Hx & H0) HX HK".
   pose proof (dtx_premises_at v tbreg Hp Hc) as Hpe. unfold dtx_G0.
   iApply (dgx_print_g_e eb Hreg dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg

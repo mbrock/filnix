@@ -53,7 +53,7 @@ Lemma libs_name : hello_link ge o -> forall p s x y z,
     (D.hello_ro ge o ∗ word_string DfracDiscarded p s ∗ D.ncells o x y z)
     (fun r => ⌜r = RetVoid⌝ ∗ D.ncells o (ptr_add p (Z.of_nat (name_idx s)))
        (ptr_add p (Z.of_nat (name_idx s))) (ptr_add p (Z.of_nat (short_idx s))))%I.
-Proof.
+Proof using Type.
   intros Hk p s x y z. exists set_program_name_fn. split; [exact (hk_name _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   assert (E : invocation set_program_name_fn [WPtr p] = fr)

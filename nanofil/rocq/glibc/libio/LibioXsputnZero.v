@@ -35,7 +35,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Lemma wp_xsputn_zero fr fp src (P : iProp Σ) Φ :
   call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr src; WInt 0] = Some fr ->
   P -∗ ▷ (P -∗ Φ (Ret (WInt 0))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfr. injection Hfr as <-. iIntros "HP HK".
   iApply wp_enter; [reflexivity | reflexivity |]. iNext.
   sym_frun "" (@nil name).

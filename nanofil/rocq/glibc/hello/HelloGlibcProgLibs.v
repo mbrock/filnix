@@ -87,7 +87,7 @@ Lemma spn_L8 (Hcmp : memcmp_spec) dq p s e x0 y0 z0 Φ :
        (ptr_add p (Z.of_nat (short_idx s))) -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L8") (b_insts s_L8) (b_jump s_L8))) : gexpr)
      {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hdq Hv15 Hv0. iIntros "Hs #Hlibs #Hlt Hc HΦ". cbn [b_insts b_jump s_L8].
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)". iDestruct (word_string_intro with "Hw") as "Hs"; [exact Hs|].
   pose proof (base_idx_le s) as Hj. destruct (str_shape_addr _ _ _ _ _ Hs) as [Ha0 Ha48].

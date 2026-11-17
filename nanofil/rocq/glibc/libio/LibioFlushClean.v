@@ -83,7 +83,7 @@ Lemma wp_flush_L192 e from r2 fb freg md fd c breg arp are cb a31 Φ :
      WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L192") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hp5 Hc13 Hc31 Hv3 Hph Hr Hfb Hfal Hfend Hfreg Hmd Hfd Hrd Hrp. subst fp.
   unfold file_size in Hfend.
   iIntros "Hl [%Hmdr Hmd] [%Hfdr Hfd] Hrp Hre Hbc HK".

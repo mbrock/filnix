@@ -65,7 +65,7 @@ Lemma wp_puts_L180 e so soreg fb Φ :
      live so soreg -∗ pcell so 0 fp -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hgso Hsoal Hsoend. subst fp.
   iIntros "Hso Hsoc Hf HRx HK".
   iDestruct (file_at_nl with "Hf") as (fb' freg nb wp we col) "(%Hp & Hl & Hwp & Hwe & Hcol & Hb & Hcl)".

@@ -104,7 +104,7 @@ Lemma wrap_ret b r av ar ps ps' (G : iProp Σ) F (M : iProp Σ) li x i' oo' a' c
      getopt_session b r av ar ps' i') -∗
   live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗ flags_own F -∗ M -∗ longind_own li -∗ arg_cap a' -∗
   wrap_post b r (wrap_rest b r av ar ps G F M li) (Ret (WInt x)).
-Proof.
+Proof using Type.
   intros Hx Hp. iIntros "Hl Hi Ho Hab Hcur Hw Ha Hcl #Hs HG HF HM Hli [[%ra #Hcap] %Hra]".
   iExists x, i', oo', a', ra. iSplit; [iPureIntro; split_and!; [reflexivity | lia | lia | lia | lia] |].
   iSplitL "Hl"; [done|]. iSplitL "Hi"; [done|]. iSplitL "Ho"; [done|]. iSplitL "Hab"; [done|].
@@ -190,14 +190,14 @@ Definition copy_in_view (b : Z) (r : region) (av : Z) (ar : region) (ps : list p
 (** A session at index i admits the public index i, or 0 to start over. *)
 Lemma session_copy_in b r av ar ps i j err :
   j = i \/ j = 0 -> getopt_session b r av ar ps i ⊢ copy_in_view b r av ar ps j err.
-Proof. intros Hj. apply (session_entry_pre b r av ar ps i j err Hj). Qed.
+Proof using Type. intros Hj. apply (session_entry_pre b r av ar ps i j err Hj). Qed.
 
 (** Fresh zeroed storage admits any public index within the count. *)
 Lemma zero_copy_in b r av ar ps j err :
   0 < av -> av mod 8 = 0 -> av + 8 * (Z.of_nat (List.length ps) + 1) <= r_end ar -> r_end ar <= 2 ^ 48 ->
   1 <= Z.of_nat (List.length ps) < 2 ^ 31 -> 0 <= j <= Z.of_nat (List.length ps) ->
   getopt_state_own b r getopt_zero ⊢ copy_in_view b r av ar ps j err.
-Proof.
+Proof using Type.
   intros Hav Hal Hfit Har Hn Hj. iIntros "H". iExists 0, 0.
   iApply (zero_entry_pre b r av ar ps j err Hav Hal Hfit Har Hn Hj with "H").
 Qed.

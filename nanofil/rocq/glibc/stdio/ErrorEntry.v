@@ -57,7 +57,7 @@ Lemma error_disable fr tb treg cb creg state Φ :
   live tb treg -∗ int_cell tb 792 state -∗ live cb creg -∗ int_cell cb 0 0 -∗
   ▷ (live tb treg -∗ int_cell tb 792 1 -∗ live cb creg -∗ int_cell cb 0 state -∗
     Φ (Ret (WInt 0))) -∗ WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hself Htb Htal Hte Htr Hcb Hce Hcr [-> | ->];
     iIntros "Ht Hs Hl Hv HK".
   - iApply (wp_cancel_disable_save Hreg Hext fr tb treg cb creg 0 0 with "Ht Hs Hl Hv HK");

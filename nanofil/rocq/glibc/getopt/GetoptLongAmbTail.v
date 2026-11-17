@@ -92,7 +92,7 @@ Lemma wp_amb_tail ks e fr n m sp cur s i oo b r Φ :
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Exec (TAtom "L307") [] (JRet (Const 63)))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L241") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hfree Hgl H30 H21 H12 Hc0 Hm Hi Hb Hal Hend Hr.
   iIntros "#Hws Hs Hl [%Hi0 Hib] [%Hoo Hoob] Hcur HK".
   iDestruct (argv_str_cap with "Hws") as (rc) "[#Hcapc %Hc0']".

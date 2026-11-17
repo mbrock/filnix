@@ -61,7 +61,7 @@ Definition unlink_spec : Prop := forall fr pre post fb freg fl lb lbreg sb sreg 
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Lemma unlink_has fl : has (Z.land fl 4294967167) io_linked = false.
-Proof.
+Proof using Type*.
   unfold has, io_linked. rewrite <- Z.land_assoc. change (Z.land 4294967167 128) with 0.
   rewrite Z.land_0_r. reflexivity.
 Qed.
@@ -216,7 +216,7 @@ Lemma wp_fclose_L8 e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pi
      pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
   WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd.
   apply (wp_fclose_L8_static_output e from p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin fp md Φ);
     try assumption. left. reflexivity.

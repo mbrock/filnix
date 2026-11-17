@@ -46,7 +46,7 @@ Lemma head_life (P : ptr -> iProp Σ) fs :
   ([∗ list] g ∈ fs, stream_life g ∗ P g) ⊢
   ∃ hreg, ⌜0 <= ptr_addr (head_ptr fs) < 2 ^ 64⌝ ∗ live_cap (ptr_cap (head_ptr fs)) hreg ∗
     (live_cap (ptr_cap (head_ptr fs)) hreg -∗ [∗ list] g ∈ fs, stream_life g ∗ P g).
-Proof.
+Proof using Type.
   destruct fs as [|g fs]; cbn [head_ptr].
   - iIntros "H". iExists (mkRegion 0 0 Heap Live). iSplit; [iPureIntro; cbn; lia|]. iSplit; [done|].
     iIntros "_". iExact "H".
@@ -96,7 +96,7 @@ Lemma flush_loop (P Q : ptr -> iProp Σ) rest prev e from r cb rf rfreg sb sreg 
      WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L414") (Some (TAtom "L82")))) : sexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L82") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hbody Hgrf Hral Hrend Hsz. revert prev e from r.
   induction rest as [|g rest IH]; intros prev e from r Hph Hv3 Hr; cbn [head_ptr] in Hph.
   - iIntros "#Hs Hrl Hrc Hch Hfs HK".

@@ -42,7 +42,7 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma arg_cap_long ps i cur s a a' :
   a' = a \/ a' = ptr_add cur (Z.of_nat (eq_len s) + 1) \/ a' = nth (Z.to_nat (i + 1)) ps null ->
   word_string DfracDiscarded cur s -∗ argv_strs ps -∗ arg_cap a -∗ arg_cap a'.
-Proof.
+Proof using Type.
   intros [-> | [-> | ->]]; iIntros "#Hws #Hs Ha".
   - iExact "Ha".
   - iDestruct (ws_shape with "Hws") as %(_ & Hc0 & Hce). pose proof (eq_len_le s).

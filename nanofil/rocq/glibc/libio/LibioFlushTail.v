@@ -81,7 +81,7 @@ Lemma wp_flush_L414 e r cb creg lk lkreg sb sreg Φ :
   ▷ (lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L414") (Some (TAtom "L82")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hglk Hv3 Hp4 Hr Hcb Hcal Hcend Hcreg.
   iIntros "#(%Hs & Hsl & Hsb) (%Hlk & Hll & Hl0 & [%Hc0 Hl4] & Hlo) Htcb Hcl Hcp Hct HK".
   destruct Hs as (Hgs & Hsend). destruct Hlk as (Hlal & Hlend & Hlreg).

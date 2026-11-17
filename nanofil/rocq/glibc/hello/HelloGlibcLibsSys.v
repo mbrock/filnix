@@ -65,7 +65,7 @@ Lemma libs_xmalloc : hello_link ge o -> forall n, 0 <= n < 2 ^ 64 ->
   D.fn_triple w0 ge (TAtom "xmalloc") [WInt n] (D.hello_ro ge o)
     (fun r => ∃ b, ⌜r = Ret (WPtr (mkPtr b (Obj b))) /\ 0 < b /\ b mod 16 = 0 /\
       b + req_extent (wreq n) <= 2 ^ 48⌝ ∗ obj b (wreq n))%I.
-Proof.
+Proof using Type.
   intros Hk n Hn. exists xmalloc_fn. split; [exact (hk_xmalloc _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   rewrite xmalloc_frame in Hfr. injection Hfr as <-.
@@ -79,7 +79,7 @@ Qed.
 (** Deallocation consumes the heap object's live token. *)
 Lemma libs_free : hello_link ge o -> forall b reg, r_kind reg = Heap -> b <> 0 ->
   D.fn_triple w0 ge (TAtom "free") [WPtr (mkPtr b (Obj b))] (live b reg) (fun r => ⌜r = RetVoid⌝)%I.
-Proof.
+Proof using Type.
   intros Hk b reg Hheap Hb. exists free_fn. split; [exact (hk_free _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   change (Some (mkFrame free_fn [(TAtom "v0", WPtr (mkPtr b (Obj b)))] [] None
@@ -95,7 +95,7 @@ Qed.
 Lemma libs_ignores (w : os_world) (ob : hello_objs) : hello_os_layout w ob -> forall b e,
   In b [xo_lock (ho_x ob); xo_done (ho_x ob); xo_called (ho_x ob);
         xo_funcs (ho_x ob); xo_init (ho_x ob); ho_el ob] -> AX.wi_ignores (os_wi w) b e.
-Proof.
+Proof using Type*.
   intros Hos b e Hb. exact (hello_os_write w ob b e Hos Hb).
 Qed.
 
@@ -104,7 +104,7 @@ Lemma libs_atexit : hello_link ge o -> hello_os_layout w0 o -> forall c,
   D.fn_triple w0 ge (TAtom "atexit") [WPtr (ho_cp o)] (AX.exit_funcs_inv (ho_x o) [] c)
     (fun r => ∃ k, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 32⌝ ∗
       AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64))%I.
-Proof.
+Proof using Type.
   intros Hk Hos c. exists atexit_fn. split; [exact (hk_atexit _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   change (Some (mkFrame atexit_fn [(TAtom "v0", WPtr (ho_cp o))] [] None

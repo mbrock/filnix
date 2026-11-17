@@ -46,7 +46,7 @@ Lemma wp_do_write_end fb freg fl bb breg we be n r e from Φ :
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L122") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hv0 Hc0 Hc16 Hv114 Hv4 Hv67. unfold file_size in Hend.
   destruct be as [bea bec]. cbn in Hbe, Hbec. subst bec.
   iIntros "Hl Hbl Hfl Hwe Hbase Hbend HK".

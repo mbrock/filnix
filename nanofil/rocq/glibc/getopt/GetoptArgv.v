@@ -72,7 +72,7 @@ Lemma argv_cells_two av ps j k : j <> k -> (j < length ps)%nat -> (k < length ps
   pcell av (8 * Z.of_nat j) (nth j ps null) ∗ pcell av (8 * Z.of_nat k) (nth k ps null) ∗
   (∀ a b, pcell av (8 * Z.of_nat j) a -∗ pcell av (8 * Z.of_nat k) b -∗
      argv_cells av (<[k := b]> (<[j := a]> ps))).
-Proof.
+Proof using Type.
   intros Hne Hj Hk. iIntros "H".
   destruct (lookup_lt_is_Some_2 ps j Hj) as [x Hx].
   destruct (lookup_lt_is_Some_2 ps k Hk) as [y Hy].

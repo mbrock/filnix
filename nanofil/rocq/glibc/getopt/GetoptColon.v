@@ -163,7 +163,7 @@ Lemma wp_getopt_colon e p os b r cur tail err Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "L31") (b_insts getopt_blk31) (b_jump getopt_blk31))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hp1 Hv12 Hc0 Hv19 Herr Hb Ha He Hr. iIntros "Hl Hnext #Hos #Hcur HK".
   cbn [b_insts b_jump getopt_blk31].
   pose proof (opt_skip_le os) as Hsk.

@@ -93,7 +93,7 @@ Lemma wp_amb_report ks e (G : iProp Σ) T fp dom se sereg f138 f139 f140 f141 av
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L228") (Some (TAtom "L235")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksl Hkst Hrule Hfree Hgl Hse H138 H139 H140 H141 H2 H6 H12 H14 H16 Hc0 H9 H39 H30 H21
     Hpe Ha Hsa Hm Hos Hi Hb Hal Hend Hr Hav Hala Hda Hra Hps Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hwc #Hsl #Hsc Hs Hl Hib Hoob Hcur Ha Hcl #Hargs HG HK".

@@ -36,7 +36,7 @@ Lemma wp_find_specmb dq p s Φ :
   (word_string dq p s -∗ Φ (Ret (WPtr (ptr_add p (Z.of_nat (chr_idx 37 s)))))) -∗
   WP (ERun (mkFrame glibc_find_specmb [(TAtom "v0", WPtr p)] [] None
     (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hg. iIntros "Hs HK". step.
   iApply (wp_call_glibc_strchrnul registry (OsWorld.os_wi w0) ge
     _ _ _ _ _ _ _ _ _ dq p s 37 with "Hs");

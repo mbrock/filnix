@@ -220,7 +220,7 @@ Lemma wp_pfx_step ks e (M : iProp Σ) k lo os F b s lonly pe p w a m sp Φ :
        (Exec (TAtom "L108") (b_insts plo_blk108) (b_jump plo_blk108))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L106") (Some (TAtom "L99")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 Hcut.
   exact (wp_pfx_step_with ks e M k lo os F b s lonly pe p w a m sp Φ H0 H1 H2 H3 H4 (getopt_cutoff_rule_with_any w0 registry ge M Hcut)).
 Qed.

@@ -35,7 +35,7 @@ Existing Instance gen_heapGS0.
 Lemma stat_fields sb xs : length xs = 144%nat ->
   bytes sb 0 xs -∗
   bytes sb 24 (take 4 (drop 24 xs)) ∗ bytes sb 40 (take 8 (drop 40 xs)) ∗ bytes sb 56 (take 8 (drop 56 xs)).
-Proof.
+Proof using Type.
   iIntros (Hl) "H".
   iDestruct (bytes_take_drop _ _ _ 24 with "H") as "[_ H]"; [lia|].
   iDestruct (bytes_take_drop _ _ _ 4 with "H") as "[H1 H]"; [rewrite length_drop; lia|].

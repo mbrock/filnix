@@ -79,7 +79,7 @@ Lemma wp_unlink_L22 e from pre post fb freg fl lb lbreg la lareg lk lkreg rf rfr
      ([∗ list] g ∈ pre ++ post, stream_life g) -∗
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L22") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hgla Hglk Hgrf Hv0 Hc0 Hv10 Hsz Hfb Hfal Hfend Hfreg Hfl Hul Hlaal Hlaend Hral Hrend Hcb Hcal8 Hcend
     Hcreg.
   unfold file_size in Hfend. assert (0 <= Z.land fl 32768 < 2 ^ 32) by (rewrite Hul; lia).

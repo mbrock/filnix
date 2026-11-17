@@ -84,7 +84,7 @@ Lemma wp_dash_test ks e i n b r av ar ps pdd sdd Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "L119") (b_insts getopt_blk119) (b_jump getopt_blk119))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hg Hdd Hv0 Hv2 Hv12 Hc2 Hi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi0 Hib] Ha Hc #Hs #Hdd HK".
   cbn [b_insts b_jump getopt_blk119].

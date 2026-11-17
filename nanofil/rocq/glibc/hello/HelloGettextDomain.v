@@ -40,7 +40,7 @@ Lemma libc_domain_own b reg :
   libc_domain_at (Semantics.ge_globals program_ge) b -> lit_fit (b,reg) libc_domain_text ->
   pts (libc_domain_ps b reg) ==∗
   word_string DfracDiscarded (mkPtr b (Ro b)) libc_domain_text.
-Proof.
+Proof using Type.
   intros Hlookup (Hb & H8 & Hfit & Htop). iIntros "H".
   iApply (lit_own with "H"); [exact Hb | exact H8 | exact Hfit | exact Htop | reflexivity].
 Qed.

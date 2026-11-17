@@ -56,7 +56,7 @@ Lemma wp_x3_loop ks e bot mid top av ar n ps Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None
               (Exec (TAtom "iw_3.L16") (b_insts x3_blk16) (b_jump x3_blk16))) : gexpr) {{ Φ }}.
-Proof. x_outer (GetoptSwap3Lower.wp_x3_lower) (GetoptSwap3Upper.wp_x3_upper)
+Proof using Type. x_outer (GetoptSwap3Lower.wp_x3_lower) (GetoptSwap3Upper.wp_x3_upper)
   (TAtom "iw_3.pr.1") (TAtom "iw_3.pr.3") (TAtom "iw_3.v11") ks e bot mid top av ar n ps. Qed.
 
 End exchange.

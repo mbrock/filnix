@@ -442,7 +442,7 @@ Lemma scan_dash_exit ks4 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp d
       live av ar -∗ argv_cells av ps' -∗ argv_strs ps' -∗ G -∗
       WP (ERun (mkFrame glibc_getopt_internal_r e1 [] None (Exec (TAtom "L342") long_call long_jump)) : gexpr)
         {{ Φ }}.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hpfx Hos HF HM Hli HK".
   iApply (scan_dash_exit_arg ks4 n av ar p os lo li lonly b r ps j G T fp dom M se sereg f138 f139 f140 f141 mid mid3 mid4 pfx pxs los F Φ with "Ht Hpfx Hos HF HM Hli");
     try eassumption.

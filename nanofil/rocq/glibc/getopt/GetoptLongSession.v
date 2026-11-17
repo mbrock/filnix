@@ -106,7 +106,7 @@ Lemma long_session b r av ar ps s i' oo a c t :
   int_cell b 24 (gs_initialized s) -∗ pcell b 32 c -∗ int_cell b 40 (gs_order s) -∗
   int_cell b 44 (gs_first s) -∗ int_cell b 48 (gs_last s) -∗
   getopt_session b r av ar ps i'.
-Proof.
+Proof using Type.
   intros Hbd Hlt Hin Hord Hb Hal Hend Hr Hav Hala Hda Hra Hi Hc.
   iIntros "#Hcu #Hws Hl Hib Her Hoo Hab Hini Hcur Hord Hfi Hla".
   iSplit; [iPureIntro; lia|]. iExists (long_state s i' oo a c).
@@ -158,7 +158,7 @@ Lemma short_session b r av ar ps s oo a t :
   int_cell b 24 (gs_initialized s) -∗ pcell b 32 (ptr_add (gs_next s) 1) -∗ int_cell b 40 (gs_order s) -∗
   int_cell b 44 (gs_first s) -∗ int_cell b 48 (gs_last s) -∗
   getopt_session b r av ar ps (gs_ind s).
-Proof.
+Proof using Type.
   intros Hbd Hlt Hin Hord Hb Hal Hend Hr Hav Hala Hda Hra Ht.
   iIntros "Hcu #Hws Hl Hib Her Hoo Hab Hini Hcur Hord Hfi Hla".
   iDestruct (GetoptBytes.ws_shape with "Hws") as %(Htc & Hp0 & _).

@@ -125,7 +125,7 @@ Lemma zero_entry_pre b r av ar ps j err :
   1 <= Z.of_nat (length ps) < 2 ^ 31 -> 0 <= j <= Z.of_nat (length ps) ->
   getopt_state_own b r getopt_zero ⊢ live b r ∗ int_cell b 0 0 ∗ int_cell b 4 0 ∗
     (live b r -∗ int_cell b 0 j -∗ int_cell b 4 err -∗ getopt_entry_pre b r av ar ps j).
-Proof.
+Proof using Type.
   intros Hav Hal Hfit Har Hn Hj. iIntros "(%Hb & Hl & Hi & He & Ho & Ha & Hn & Hx & Hr & Hf & Hla)".
   iFrame "Hl Hi He". iIntros "Hl Hi He". iSplit; [iPureIntro; lia|].
   iExists (getopt_copy_in getopt_zero j err). iSplitL; [|iSplit; [done|]].

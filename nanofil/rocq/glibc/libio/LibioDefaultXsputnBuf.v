@@ -101,7 +101,7 @@ Definition wbuf (fb : Z) (nb : option (Z * Z)) (wp we : ptr) : iProp Σ :=
 #[global] Instance wbuf_into_sep fb nb wp we :
   IntoSep (wbuf fb nb wp we) (wcells fb nb)
     (pcell fb off_write_ptr wp ∗ pcell fb off_write_end we ∗ wroom nb wp we).
-Proof. unfold wbuf. apply _. Qed.
+Proof using Type. unfold wbuf. apply _. Qed.
 
 (** Framing can assemble a buffer from its fields without opening an
     unrelated buffer already owned by the caller. *)
@@ -109,12 +109,12 @@ Proof. unfold wbuf. apply _. Qed.
   Frame p R (wcells fb nb ∗ pcell fb off_write_ptr wp ∗
     pcell fb off_write_end we ∗ wroom nb wp we) Q ->
   Frame p R (wbuf fb nb wp we) Q.
-Proof. unfold wbuf. intros H. exact H. Qed.
+Proof using Type. unfold wbuf. intros H. exact H. Qed.
 
 (** Reading a selected byte splits its ownership from the bytes before and after it. *)
 Lemma bytes_at b xs (k : nat) x : xs !! k = Some x ->
   bytes b 0 xs ⊣⊢ bytes b 0 (take k xs) ∗ ibyte b (Z.of_nat k) x ∗ bytes b (Z.of_nat k + 1) (drop (S k) xs).
-Proof.
+Proof using Type.
   intros Hk. rewrite -{1}(take_drop_middle xs k x Hk) bytes_app.
   rewrite length_take_le; [|apply lookup_lt_Some in Hk; lia]. rewrite Z.add_0_l.
   rewrite /bytes byte_ps_cons /ibyte /pts !big_sepL_cons big_sepL_nil.
@@ -125,7 +125,7 @@ Qed.
 Lemma bytes_put b xs (k : nat) y : (k < length xs)%nat ->
   bytes b 0 (take k xs) ∗ ibyte b (Z.of_nat k) y ∗ bytes b (Z.of_nat k + 1) (drop (S k) xs) ⊢
   bytes b 0 (<[k := y]> xs).
-Proof.
+Proof using Type.
   intros Hk. rewrite (bytes_at b (<[k := y]> xs) k y); [|apply list_lookup_insert_eq; lia].
   rewrite take_insert_ge; [|lia]. rewrite drop_insert_lt; [|lia]. done.
 Qed.
@@ -133,7 +133,7 @@ Qed.
 (** A shared reader can borrow one byte and then return it to recover the whole source. *)
 Lemma bytesq_at dq b o ys (k : nat) y : ys !! k = Some y ->
   bytesq dq b o ys ⊢ bytesq dq b (o + Z.of_nat k) [y] ∗ (bytesq dq b (o + Z.of_nat k) [y] -∗ bytesq dq b o ys).
-Proof.
+Proof using Type.
   intros Hk. rewrite -{1 2}(take_drop_middle ys k y Hk).
   rewrite /bytesq !byte_ps_app !ptsq_app length_take_le; [|apply lookup_lt_Some in Hk; lia].
   rewrite (byte_ps_cons _ _ y (drop (S k) ys)) /byte_ps. cbn [length seqZ].
@@ -145,7 +145,7 @@ Qed.
 Lemma bytesq_sub dq b o ys (j c : nat) : (j + c <= length ys)%nat ->
   bytesq dq b o ys ⊢ bytesq dq b (o + Z.of_nat j) (take c (drop j ys)) ∗
     (bytesq dq b (o + Z.of_nat j) (take c (drop j ys)) -∗ bytesq dq b o ys).
-Proof.
+Proof using Type.
   intros H. set (zs := take c (drop j ys)).
   assert (E : ys = (take j ys ++ zs ++ drop c (drop j ys))%list) by (unfold zs; rewrite !take_drop; reflexivity).
   assert (Lj : length (take j ys) = j) by (rewrite length_take_le; lia).
@@ -157,7 +157,7 @@ Qed.
 Lemma wroom_some b sz wp we :
   wroom (Some (b, sz)) wp we ⊣⊢
   ∃ reg xs cs, ⌜room_ok b sz reg xs cs wp we⌝ ∗ live b reg ∗ bytes b 0 xs ∗ auxes b 0 cs.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 End buf.
 (** Automatic framing leaves unrelated owned buffers closed. The structural

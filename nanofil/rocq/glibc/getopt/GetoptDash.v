@@ -76,7 +76,7 @@ Lemma wp_getopt_dash ks e i n f l b r av ar ps Φ :
                  (Exec (TAtom "L203") (b_insts getopt_blk203) (b_jump getopt_blk203))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L201") (Some (TAtom "L209")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hkx Hkd Hv0 Hv2 Hv12 Hc0 Hc2 Hc23 Hfl Hli Hin Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi Hib] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".
   assert (Hi1 : 0 <= i + 1 < 2 ^ 32) by lia.

@@ -77,7 +77,7 @@ Lemma main_loop Φ : loop_getopt ->
   ∀ from e lose ps a i g,
   ⌜loop_entry from e lose /\ loop_facts e av b4 b6 ps i⌝ -∗ res ps a i g -∗ exits Φ -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom from)))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hy.
   intros Hgr. iIntros "#Hro". iLöb as "IH". iIntros (from e lose ps a i g [Hent Hf]) "Hr HK".
   iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".
   pose proof Hf as ((H0 & H2 & H4 & H6 & Hc1) & Hb4 & Hb6 & Hi).

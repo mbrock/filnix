@@ -91,7 +91,7 @@ Lemma wp_dx_L44 os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cn
   ▷ dx_post registry ge os fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L44") (b_insts dx_L44) (b_jump dx_L44)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hok Hc' Hb8' Hso Hyend Hyreg Hy Ht Hcnt Hroom Hv0 Hc0 Hv4 Hp7 Hp9 Hp2.
   unfold file_size in Hfend.
   destruct Hok as (Hb0 & Hb8 & Hsz & Hbend & Hbreg & Hlx & Hlc & Hx & [_ Hwa] & [_ Hea] & Hheap). cbn in Hwa, Hea.

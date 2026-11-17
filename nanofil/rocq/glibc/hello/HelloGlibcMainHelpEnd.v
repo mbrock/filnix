@@ -46,7 +46,7 @@ Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
 
 (** `stdout` is an argument a printing debt may be handed. *)
 Lemma arg_out : ⊢ arg_ro o (WPtr (ho_out o)).
-Proof. iLeft. iPureIntro. right. left. reflexivity. Qed.
+Proof using Type. iLeft. iPureIntro. right. left. reflexivity. Qed.
 
 (** A call of `fprintf` or `fputs` at one of `main`'s sites: it returns
     an int and keeps the stdio state. *)
@@ -55,7 +55,7 @@ Lemma wp_print g xs f e ls lab d args rest j Ψ :
   hello_ro ge o -∗ io -∗ ([∗ list] x ∈ xs, arg_ro o x) -∗
   ▷ (∀ n, io -∗ WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hs Hx. iIntros "#Hro [Hio Hpv] Hxs HK".
   iApply (wp_call_int with "[Hio Hpv Hxs]"); [exact (hd_print _ _ _ D g xs Hs) | exact Hx |
     iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hxs"] |].
@@ -69,7 +69,7 @@ Lemma wp_fputs s f e ls lab d vs vo rest j Ψ :
   ▷ (∀ n, io -∗ WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global (TAtom "fputs"))
                                              [Arg P (Tmp vs); Arg P (Tmp vo)] :: rest) j)) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hs Hvs Hvo. iIntros "#Hro Hio HK".
   iApply (wp_print with "Hro Hio [] HK"); [left; split; [reflexivity | exists s; split; [exact Hs | reflexivity]] |
     cbn; rewrite Hvs Hvo; reflexivity |].
@@ -82,7 +82,7 @@ Lemma help_L32 e from Ψ :
   lookup (TAtom "iw_1.v41") e = Some (WPtr (ho_out o)) ->
   hello_ro ge o -∗ io -∗ names o -∗ X -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.iw_1.L32") (Some (TAtom from)))) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type*.
   intros Hv41. iIntros "#Hro [Hio Hpv] Hn HX".
   iPoseProof "Hro" as "(_ & _ & _ & _ & #Hsel & #Hsec & _)".
   iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & Hen)".
@@ -100,7 +100,7 @@ Qed.
 
 (** A read-only string's address is positive and a machine word. *)
 Lemma str_ro_pos q : str_ro q ⊢ ⌜0 < ptr_addr q < 2 ^ 64⌝.
-Proof.
+Proof using Type.
   iIntros "(%s & %b & %reg & %ws & %Hsh & _)". iPureIntro.
   pose proof (ss_base _ _ _ _ _ Hsh). pose proof (ss_start _ _ _ _ _ Hsh).
   pose proof (ss_fit _ _ _ _ _ Hsh). pose proof (ss_space _ _ _ _ _ Hsh). unfold wstart in *.
@@ -117,7 +117,7 @@ Lemma help_note e q Ψ :
      Let (TAtom "iw_1.iw_1.v35") W (Cmp Ne L) [Tmp (TAtom "iw_1.iw_1.v34"); Const 0]]
     (JBranch (Tmp (TAtom "iw_1.iw_1.v35")) (To (TAtom "iw_1.iw_1.L36")) (To (TAtom "iw_1.iw_1.L37"))))) : gexpr)
     {{ Ψ }}.
-Proof.
+Proof using Type*.
   intros Hv41 Hv3. iIntros "#Hro Hio Hq Hn HX".
   (* The note on translations, when the message locale is not English. *)
   iDestruct "Hq" as "[%Hq0 | #Hq]".

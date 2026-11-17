@@ -63,7 +63,7 @@ Lemma wp_amb_print ks e fr (G : iProp Σ) T fp dom se sereg f140 lo os pfx ps (k
      WP (ERun (mkFrame glibc_process_long_option e' [] None (Enter (TAtom "L275") (Some (TAtom "L280")))) : gexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None (Enter (TAtom "L280") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hrule Hse H140 H6 H16 H285 Hy Hos Hse0 Hsea Hsee Hser.
   pose proof Hrule as (Hdom & Hfp & Hlend & Hgt & Hfx & Hf4 & Hf5).
   pose proof (lookup_lt_Some _ _ _ Hy) as Hk.

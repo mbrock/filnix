@@ -117,7 +117,7 @@ Lemma entry_scan_ret ks n av ar p os lo li lonly b r ps j (G : iProp Σ) pdd sdd
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L291") (Some (TAtom "L303")))) : gexpr)
         {{ Φ }})) -∗
   entry_scan_exit n av ar p os lo li lonly b r ps j G Φ.
-Proof.
+Proof using Type.
   intros Hki Hks Hin Hg Hdd Hlen. iIntros "#Hdd Hsl Hsc Ha Hcl #Hs HK".
   iIntros (e0 s s' (Hst & Henv & Hj & Hini & Hord & Hbd & Harg & Hix & Hb & Hal & Hend & Hr & Hav & Hala & Hda & Hra))
     "Hl Hi He Hoo Hab Hin1 Hcur Ho Hf Hla #Hc HG".

@@ -80,7 +80,7 @@ Lemma wp_do_write_ret fb freg fl bb breg rp re rb wb wp we be n r e mode Φ :
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun (mkFrame glibc__IO_new_do_write e [] None
               (Exec (TAtom "iw_1.iw_2.join") (skipn 5 (b_insts dw_join)) (b_jump dw_join))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hmd Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.
   iIntros "Hl Hbl Hfl Hmode Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol HK".
   cbn [dw_join b_insts b_jump skipn].

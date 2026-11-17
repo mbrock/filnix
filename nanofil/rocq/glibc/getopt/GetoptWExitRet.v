@@ -127,7 +127,7 @@ Lemma entry_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T 
   (∀ s q sq k0, ⌜entry_resume_facts n av ar b r ps j s q sq k0⌝ -∗ word_string DfracDiscarded q sq -∗
      w_ret_exits_arg b r av ar ps los li F G M j n 87 null (drop (opt_skip os) os) q sq k0 Φ) -∗
   entry_w_exit n av ar p os lo li lonly b r ps j G ks ks2 Φ.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 Hcut.
   exact (entry_w_ret_arg_with ks ks2 n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -163,7 +163,7 @@ Lemma entry_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp d
   (∀ s q sq k0, ⌜entry_resume_facts n av ar b r ps j s q sq k0⌝ -∗
      w_ret_exits b r av ar ps los li F G M j n 87 null (drop (opt_skip os) os) q sq k0 Φ) -∗
   entry_w_exit n av ar p os lo li lonly b r ps j G ks ks2 Φ.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hpfx Hos Hsl Hsc Hs HF HM Hli HK".
   iApply (entry_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hpfx Hos Hsl Hsc Hs HF HM Hli");
     try eassumption.
@@ -253,7 +253,7 @@ Lemma scan_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T f
      word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
      w_ret_exits_arg b r av ar ps' los li F G M i' n 87 null (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) -∗
   scan_w_exit n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 Hcut.
   exact (scan_w_ret_arg_with ks ks2 n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.
@@ -288,7 +288,7 @@ Lemma scan_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp do
      word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
      w_ret_exits b r av ar ps' los li F G M i' n 87 null (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) -∗
   scan_w_exit n av ar p os lo li lonly b r ps j G se sereg fp ks ks2 Φ.
-Proof.
+Proof using Type.
   intros. iIntros "Ht Hpfx Hos HF HM Hli HK".
   iApply (scan_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ with "Ht Hpfx Hos HF HM Hli");
     try eassumption.
@@ -382,7 +382,7 @@ Lemma long_only_w_ret kc kr n av ar p os lo li lonly b r ps j (G : iProp Σ) T f
      word_string DfracDiscarded (nth (Z.to_nat i') ps' null) w -∗ argv_strs ps' -∗
      w_ret_exits b r av ar ps' los li F G M i' n 87 a' (drop (opt_skip os) os) (nth (Z.to_nat i') ps' null) w 1 Φ) -∗
   long_only_w_exit n av ar p os lo li lonly b r ps j G se sereg fp kc kr F M Φ.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 Hcut.
   exact (long_only_w_ret_with kc kr n av ar p os lo li lonly b r ps j G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

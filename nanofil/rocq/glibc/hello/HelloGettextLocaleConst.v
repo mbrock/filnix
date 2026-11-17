@@ -194,7 +194,7 @@ Lemma lc_own nb nr ib ir cb cr : lc_fit nb nr ib ir cb cr ->
   □ (word_string DfracDiscarded (mkPtr (nb + lc_messages_off) (Ro nb)) lc_messages ∗
      liveq DfracDiscarded ib ir ∗ bytesq DfracDiscarded ib 5 [lc_messages_off] ∗
      word_string DfracDiscarded (mkPtr cb (Ro cb)) lc_c).
-Proof.
+Proof using Type.
   intros ((Hn0 & Hn8 & Hne & Hnr) & _ & (Hc0 & Hc8 & Hce & Hcr)). unfold lc_ps. rewrite !pts_app.
   iIntros "(Hn & Hi & Hc)".
   iAssert (word_string (DfracOwn 1) (mkPtr (nb + lc_messages_off) (Ro nb)) lc_messages) with "[Hn]" as "Hn".

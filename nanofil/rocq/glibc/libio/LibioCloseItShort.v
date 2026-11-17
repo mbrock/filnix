@@ -33,7 +33,7 @@ Definition short_base (fb fl : Z) (ob : ptr) : iProp Σ :=
   ⌜ob = mkPtr (fb + off_shortbuf) (Obj fb) /\ Z.land fl io_user_buf <> 0⌝.
 
 Lemma short_setb_spec : LibioCloseItEnd.setb_spec_with w0 registry ge short_base.
-Proof.
+Proof using Type.
   intros fr fb freg fl ob oe nb ne a Φ Hfr Hfb Hal Hend Hreg' Ha.
   iIntros "Hl Hfl Hb He [%Hob %Huser] HK". subst ob.
   iApply (wp_glibc__IO_setb_short with "Hl Hfl Hb He HK"); assumption.

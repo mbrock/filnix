@@ -64,7 +64,7 @@ Lemma wp_cleanup_L93 e fb freg fl md r cb Φ :
           : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L93") (Some (TAtom "iw_1.L103"))))
        : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hp1 Hc13 Hv1 Hv2 Hfb Hfal Hfend Hfreg Hul Hmd Hub. subst fp.
   unfold file_size in Hfend. unfold io_unbuffered in Hub.
   iIntros "Hl [%Hflr Hfl] [%Hmdr Hmd] H80 HK".

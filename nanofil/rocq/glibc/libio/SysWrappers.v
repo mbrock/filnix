@@ -57,14 +57,14 @@ Context {Σ : gFunctors}
   (Hext : sys_external ge).
 Existing Instance gen_heapGS0.
 Lemma reg_of s c : glibc_os_registry (TAtom s) = Some c -> registry (TAtom s) = Some c.
-Proof. apply Hreg. Qed.
+Proof using Type*. apply Hreg. Qed.
 Lemma ext_fn s : In s sys_externals -> find_fn ge (TAtom s) = None.
-Proof. intros Hin. exact (proj1 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
+Proof using Type*. intros Hin. exact (proj1 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
 Lemma ext_data s : In s sys_externals -> lookup (TAtom s) (ge_globals ge) = None.
-Proof. intros Hin. exact (proj2 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
+Proof using Type*. intros Hin. exact (proj2 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
 Lemma obj_blk b q :
   0 <= req_extent q -> obj b q -∗ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗ blk_any b 0 (req_extent q).
-Proof.
+Proof using Type.
   iIntros (H) "Ho". rewrite obj_zero_block; [|exact H]. iDestruct "Ho" as "($ & Hb & Ha)".
   iExists (replicate (Z.to_nat (req_extent q)) 0), (replicate (Z.to_nat (req_extent q)) CNone).
   rewrite /bytes /auxes pts_app. iFrame. iPureIntro. rewrite !length_replicate. done.
@@ -98,7 +98,7 @@ Ltac sides := try first [os_side | args_x | assumption].
     It therefore satisfies any postcondition without returning to its caller. *)
 Lemma wp_glibc__exit fr bits Φ :
   call_frame glibc__exit [WInt bits] = Some fr -> ⊢ WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr. injection Hfr as <-. step.
   iApply (OsExit.wp_zsys_exit_hard); sides.
 Qed.
@@ -225,7 +225,7 @@ Qed.
 (** The linked close wrapper establishes the descriptor-close contract. *)
 #[global] Instance close_has_spec n `{!Defines ge n glibc___close_nocancel} :
   HasSpec registry (os_wi w0) ge (TAtom n) LibioSpecs.close_spec.
-Proof.
+Proof using Type*.
   intros [fd eb]. exists glibc___close_nocancel. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post LibioSpecs.close_spec]. iIntros "((%Hfd & %He) & Herr) HK".
@@ -236,7 +236,7 @@ Qed.
 (** The linked terminal wrapper establishes the terminal-query contract. *)
 #[global] Instance isatty_has_spec n `{!Defines ge n glibc___isatty_nostatus} :
   HasSpec registry (os_wi w0) ge (TAtom n) isatty_spec.
-Proof.
+Proof using Type*.
   intros [fd eb]. exists glibc___isatty_nostatus. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post isatty_spec]. iIntros "((%Hfd & %He & %Hin) & Herr) HK".
@@ -247,7 +247,7 @@ Qed.
 (** The linked stat wrapper establishes the stat-buffer contract. *)
 #[global] Instance fstat_has_spec n `{!Defines ge n glibc___fstat64} :
   HasSpec registry (os_wi w0) ge (TAtom n) fstat_spec.
-Proof.
+Proof using Type*.
   intros [[[[fd b] reg] o] eb]. exists glibc___fstat64. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fstat_spec]. iIntros "((%Hfd & %He & %Hin & %Ho & %Hend) & Hl & Hb & Herr) HK".

@@ -37,7 +37,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Pushing a cleanup buffer satisfies the stream traversal's contract at offset zero. *)
 Lemma push_spec_holds : push_spec w0 registry ge.
-Proof.
+Proof using Type*.
   intros fr cb creg pv xs Φ Hfr Hcb Hcal Hcend Hcreg Hxs.
   iIntros "Htcb Hcl Hc24 Hc16 HK".
   iApply (SysCleanup.wp_glibc___libc_cleanup_push_defer Hreg Hext fr cb creg 0 pv xs
@@ -49,7 +49,7 @@ Qed.
 
 (** Popping that buffer restores the thread's cleanup state at offset zero. *)
 Lemma pop_spec_holds : pop_spec w0 registry ge.
-Proof.
+Proof using Type*.
   intros fr cb creg Φ Hfr Hcb Hcal Hcend Hcreg.
   iIntros "Htcb Hcl Hcp Hct HK".
   assert (E : mkPtr cb (Obj cb) = mkPtr (cb + 0) (Obj cb)) by (rewrite Z.add_0_r; reflexivity).
@@ -96,7 +96,7 @@ Local Instance cleanup_rule_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_regis
 
 (** [glibc_os_registry] holds its own contracts. *)
 Lemma holds_os_glibc : holds_os glibc_os_registry.
-Proof. intros n c H. exact H. Qed.
+Proof using Type*. intros n c H. exact H. Qed.
 
 (** Cleanup consumes the stream list after flushing each stream into its exit state.
     The caller supplies the thread's cleanup fields and the single-threaded flag. *)
@@ -105,7 +105,7 @@ Lemma cleanup_rule_io (P : ptr -> iProp Σ) fs sb sreg fcp :
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   ⊢ ExitRunTail.cleanup_rule w0 ge (single_ro ge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge fs ∗
                            [∗ list] g ∈ fs, stream_life g ∗ P g).
-Proof.
+Proof using Hcl Hext Hflush Hpop Hpush.
   intros Hbody Hfc Hfcr. iIntros (f e ls lab d rest j Ψ) "(#Hs & Htcb & Hio & Hfs) HK".
   iApply wp_call_bind; [reflexivity | exact Hcl | reflexivity |]. iNext.
   iApply (wp_glibc__IO_cleanup_exit (glibc_program := program_of w0 glibc_os_registry ge) holds_os_glibc Hext with "Hs Htcb Hio Hfs");

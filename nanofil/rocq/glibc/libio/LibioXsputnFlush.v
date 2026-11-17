@@ -90,7 +90,7 @@ Lemma wp_xs_L96 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T mf e Φ :
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L96") (b_insts xs_L96) (b_jump xs_L96)))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy HT Hprogress Hmf Hv0 Hc0 Hv4 Hp5 Hp6 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hl' Hys HK".

@@ -136,7 +136,7 @@ Lemma wp_getopt_long e n av p lo li b r oi roi oe roe oa roa oo roo i err a0 c0 
      pcell b 16 a' -∗ live oi roi -∗ int_cell oi 0 i' -∗ live oe roe -∗ int_cell oe 0 err -∗
      live oa roa -∗ pcell oa 0 a' -∗ live oo roo -∗ int_cell oo 0 c' -∗ Φ (Ret (WInt x))) -∗
   WP (ERun (mkFrame glibc_getopt_long e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H2 H4 H6 H8 Hn Hfi Hfr Hgd Hgi Hge Hga Hgo
     Hb Hal Hend Hr Hoi Hoie Hoir Hoe Hoee Hoer Hoa Hoaa Hoae Hoar Hoo Hooe Hoor.
   iIntros "Hli Hi Hle He Hla Hab Hlo Hc Hl Hb0 Hb4 HR HK".

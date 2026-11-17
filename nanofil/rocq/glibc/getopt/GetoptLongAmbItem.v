@@ -92,7 +92,7 @@ Lemma wp_amb_item ks e (G : iProp Σ) T fp dom se sereg f140 lo os pfx ps (k : n
        (Exec (TAtom "L273") (b_insts plo_blk273) (b_jump plo_blk273))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_process_long_option e [] None
               (Exec (TAtom "L273") (b_insts plo_blk273) (b_jump plo_blk273))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hrule Hse H140 H6 H16 H9 H10 H21 Hk Hos Hxs Hsb Hse' Hsr Hse0 Hsea Hsee Hser.
   iIntros "#Ht #Hpfx #Hsl #Hsc Hl Hx HG HK".
   iAssert (∀ e1 fr1, ⌜keeps ks e e1 /\ lookup (TAtom "v6") e1 = Some (WPtr lo) /\

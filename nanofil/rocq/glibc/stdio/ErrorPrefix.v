@@ -58,7 +58,7 @@ Lemma wp_error_prefix (Hregistry : holds_os registry) (Hext : sys_external ge)
     {{ v, ∃ r md', ⌜v = Ret (WInt (r mod 2 ^ 32))⌝ ∗ live_capq dqn (ptr_cap pname) namer ∗
       live gb greg ∗ pcell gb 0 (mkPtr fb (Obj fb)) ∗ live fb freg ∗
       error_prefix_fields fb fl lb lbreg md' nb nreg ∗ error_prefix_name pname nameb namer dqb chars ∗ Q r md' ∗ E }}.
-Proof.
+Proof using Type.
   intros Hg Hgb Hga Hge Hgr Hfb Hal Hend Hreg Huser Hnb Hmd Hself Hselfr Hfn Hformat.
   iIntros "Hname (#Hs & Hgl & Hgp & Hl & (Hfl & Hlp & Hlk & Hmd & Hfmt & Htext) & Hbytes & HR) HE".
   iApply (wp_fxprintf_normal_null Hregistry Hext fb freg fl lb lbreg (mkPtr nb (Ro nb)) [WPtr pname] md

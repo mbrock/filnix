@@ -58,7 +58,7 @@ Local Instance exit_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) 
 
 (** The concrete object layout establishes all preservation premises of the loop. *)
 Lemma hello_exit_env : ExitRunTail.loop_env w0 ge (ho_x o).
-Proof.
+Proof using Type*.
   split; [exact (hk_exit_layout _ _ Hk)|]. split; [exact (hk_exit_globals _ _ Hk)|].
   split.
   - split; [|split]; refine (hello_os_write w0 o _ _ Hos _); cbn; tauto.
@@ -77,7 +77,7 @@ Qed.
 
 (** The compiled TLS destructor function returns immediately in this build. *)
 Lemma hello_dtors (P : iProp Σ) : ⊢ ExitRun.dtors_rule w0 ge P P.
-Proof.
+Proof using Hk.
   iIntros (f e ls lab rest j Ψ) "HP HK".
   iApply wp_call_bind; [reflexivity | exact (hk_dtors _ _ Hk) | reflexivity |]. iNext.
   iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
@@ -87,7 +87,7 @@ Qed.
 
 (** The concrete cleanup triple supplies the exit loop's cleanup call rule. *)
 Lemma hello_cleanup : ⊢ ExitRunTail.cleanup_rule w0 ge (D.exit_io w0 ge o).
-Proof.
+Proof using Hk.
   iIntros (f e ls lab d rest j Ψ) "HP HK".
   iApply (D.wp_call_fn w0 ge _ [] with "HP"); [exact (CL.libs_cleanup w0 ge o Hk)|reflexivity|].
   iIntros (r) "(%n & %Hr & _)". destruct Hr as [-> Hn].
@@ -100,7 +100,7 @@ Lemma libs_exit (debt : D.HelloCore w0 ge o) c n :
   D.fn_triple w0 ge (TAtom "exit") [WInt n]
     (D.hello_ro ge o ∗ D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
-Proof.
+Proof using Hk Hos.
   exists glibc_exit. split; [exact (hk_exit _ _ Hk)|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   change (Some (mkFrame glibc_exit [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) = Some fr)
     in Hfr. injection Hfr as <-.

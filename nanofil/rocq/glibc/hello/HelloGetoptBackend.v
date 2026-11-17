@@ -51,11 +51,11 @@ Definition hello_tcache : iProp Σ :=
 
 (** Hello's read-only promise includes that share. *)
 Lemma hello_ro_tcache : hello_ro ge o ⊢ hello_tcache.
-Proof. iIntros "(_ & _ & _ & _ & _ & _ & _ & Htc & _)". iExact "Htc". Qed.
+Proof using Type. iIntros "(_ & _ & _ & _ & _ & _ & _ & Htc & _)". iExact "Htc". Qed.
 
 (** glibc's free meets the parser's rule for free. *)
 Lemma hello_free_rule : getopt_free_rule w0 glibc_os_registry ge.
-Proof.
+Proof using Hk.
   intros f e ls l v rest j b reg Φ Hx Hheap Hb. iIntros "Hl HK".
   iApply wp_call_bind; [cbn [map_option]; rewrite Hx; reflexivity | exact (hk_free _ _ Hk) | reflexivity |].
   iNext. destruct (hk_frees _ _ Hk) as (Hfree & Hfn & Hglobal).

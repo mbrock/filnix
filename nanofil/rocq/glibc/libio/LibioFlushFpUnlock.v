@@ -65,7 +65,7 @@ Lemma wp_flush_L182 e r1 fb freg fl lb lbreg rf rfreg sb sreg x cb nx nreg Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hgrf Hp5 Hc13 Hp2 Hv3 Hr1 Hnx Hfb Hfal Hfend Hfreg Hfl Hul Hral Hrend. subst fp.
   unfold file_size in Hfend. assert (0 <= Z.land fl 32768 < 2 ^ 32) by (rewrite Hul; lia).
   iIntros "#Hs Hl [_ Hfl] Hlp Hlb Hrl Hrc Hch Hnl HK".

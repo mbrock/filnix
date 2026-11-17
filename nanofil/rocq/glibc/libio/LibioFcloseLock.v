@@ -61,7 +61,7 @@ Lemma wp_fclose_start fr fb freg fl lb lbreg sb sreg Φ :
      pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 1 0 (ow_self w0) -∗
      WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L13") (Some from))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg.
   apply (LibioFcloseAcquire.wp_fclose_start Hreg Hext).
 Qed.
 
@@ -156,7 +156,7 @@ Lemma wp_fclose_L101 e p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin m
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
   WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L101") (Some (TAtom "L99")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Hdf Hff Hunl Hunl_spec Hunl_unlinked.
   intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd.
   apply (wp_fclose_L101_static_output e p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin fp md Φ);
     try assumption. left. reflexivity.

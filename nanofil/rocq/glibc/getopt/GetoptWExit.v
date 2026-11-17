@@ -383,7 +383,7 @@ Lemma w_exit_bridge kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 
   w_ret_exits b r av ar ps los li F G M i n 87 a (drop (opt_skip os) os) q sq k0 Φ -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e3 [] None (Enter (TAtom "L508") (Some (TAtom "L524")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 Hcut.
   exact (w_exit_bridge_with kc kr e1 e2 e3 n av ar p os lo li lonly pe b r ps i q sq k0 oo a er ord fst lst G T fp dom M se sereg mid f138 f139 f140 f141 lmid mid3 mid4 los F pfx pxs Φ H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13 H14 H15 (getopt_cutoff_rule_with_any w0 registry ge G Hcut)).
 Qed.

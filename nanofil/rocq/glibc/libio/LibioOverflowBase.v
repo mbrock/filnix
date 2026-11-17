@@ -115,7 +115,7 @@ Lemma ovf_state_intro fb bb breg sz k we xs fl tw off :
   pcell fb off_write_ptr (mkPtr (bb + k) (Obj bb)) -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
   ovf_state fb bb breg sz k we xs fl tw off.
-Proof.
+Proof using Type.
   iIntros (Hb Hbe Hbr Hsz Hk Hxl Hxr Hwc Hwa Hfl) "Hbl Hxs Hfl Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend".
   rewrite /ovf_state /int_cell. iFrame. iPureIntro. repeat split; try assumption; lia.
 Qed.
@@ -130,19 +130,19 @@ Lemma ovf_state_base fb bb breg sz we xs fl tw off :
   pcell fb off_write_ptr (mkPtr bb (Obj bb)) -∗ pcell fb off_write_end we -∗
   pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
   ovf_state fb bb breg sz 0 we xs fl tw off.
-Proof.
+Proof using Type.
   iIntros (Hb Hbe Hbr Hsz Hxl Hxr Hwc Hwa) "Hbl Hxs Hfl Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend".
   rewrite /ovf_state Z.add_0_r. iFrame. iPureIntro. repeat split; try assumption; lia.
 Qed.
 
 (** One byte as a list is that byte. *)
 Lemma bytes_ibyte b o x : bytes b o [x] ⊣⊢ ibyte b o x.
-Proof. rewrite /bytes /ibyte /byte_ps. cbn. done. Qed.
+Proof using Type. rewrite /bytes /ibyte /byte_ps. cbn. done. Qed.
 
 (** The bytes xs split around byte k. *)
 Lemma bytes_focus b xs k : (k < length xs)%nat ->
   bytes b 0 xs ⊣⊢ bytes b 0 (take k xs) ∗ ibyte b (Z.of_nat k) (nth k xs 0) ∗ bytes b (Z.of_nat k + 1) (drop (S k) xs).
-Proof.
+Proof using Type.
   intros Hk. rewrite (bytes_take_drop b 0 xs k); [|lia]. rewrite Z.add_0_l.
   rewrite (bytes_take_drop b (Z.of_nat k) (drop k xs) 1); [|rewrite length_drop; lia].
   rewrite drop_drop -bytes_ibyte. replace (k + 1)%nat with (S k) by lia.
@@ -156,7 +156,7 @@ Qed.
 Lemma bytes_unfocus b xs k y : (k < length xs)%nat ->
   bytes b 0 (take k xs) -∗ ibyte b (Z.of_nat k) y -∗ bytes b (Z.of_nat k + 1) (drop (S k) xs) -∗
   bytes b 0 (<[k := y]> xs).
-Proof.
+Proof using Type.
   iIntros (Hk) "H0 H1 H2". rewrite (bytes_focus b (<[k:=y]> xs) k); [|rewrite length_insert; lia].
   rewrite take_insert_ge; [|lia]. rewrite drop_insert_lt; [|lia].
   rewrite nth_lookup list_lookup_insert_eq; [|lia]. cbn. iFrame.

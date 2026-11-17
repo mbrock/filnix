@@ -186,7 +186,7 @@ Lemma wp_glibc_exit x el elr ents c status (P : iProp Σ) (R : nat -> iProp Σ) 
   cleanup_rule w0 ge (R 0%nat) -∗
   WP (ERun (mkFrame glibc_exit [(TAtom "v0", WInt status)] [] None (Enter (TAtom "start") None)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Henv Hlk Hrun. pose proof Henv as (_ & (_ & _ & _ & Hgfs) & _).
   iIntros "Hinv Hlock HP HD Hhs HK". step. step_global Hgfs.
   eapply step_wand; [eapply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _

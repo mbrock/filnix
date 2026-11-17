@@ -70,7 +70,7 @@ Lemma wp_fputs_L161 e p dq s fb Φ :
      file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L161") (Some (TAtom "L125")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv2 Hc0. subst fp.
   iIntros "#Hvt Hf Hstr HRx HK".
   iDestruct (word_string_len with "Hstr") as %Hlen.
@@ -123,7 +123,7 @@ Lemma wp_fputs_L113 e p dq s fb mode Φ :
      file_at vb (ow_self w0) fp (oriented mode) (Some 0) -∗ word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L113") (Some (TAtom "L29")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv2 Hc0. subst fp.
   iIntros "#Hvt Hf Hstr HRx HK".
   iDestruct (file_at_open with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".

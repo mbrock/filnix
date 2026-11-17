@@ -90,7 +90,7 @@ Lemma wp_getopt_scan ks e fr0 n i o f l a b r av ar ps pdd sdd Φ :
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Enter (TAtom "L291") (Some (TAtom "L303")))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L73") (Some fr0))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hki Hks Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc1 Hc2 Hfl Hln Hfi Hin Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hi Hab Ho Hf Hla Ha Hc #Hs #Hdd HK".
   iApply (GetoptIdlePath.wp_getopt_idle (ks ++ scan_keys) e fr0 n i o f l b r av ar ps pdd sdd

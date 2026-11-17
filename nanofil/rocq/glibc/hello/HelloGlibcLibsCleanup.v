@@ -41,7 +41,7 @@ Local Instance cleanup_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry g
 (** Cleanup consumes the resources left by the close callback. *)
 Lemma libs_cleanup : hello_link ge o ->
   D.fn_triple w0 ge (TAtom "_IO_cleanup") [] (D.exit_io w0 ge o) (D.ret_int True)%I.
-Proof.
+Proof using Type.
   intros Hk. exists glibc__IO_cleanup. split; [exact (hk_cleanup _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   iIntros "(Hs & Htc & Hls & Hfs) HK".

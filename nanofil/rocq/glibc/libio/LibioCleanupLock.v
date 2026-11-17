@@ -60,7 +60,7 @@ Lemma wp_cleanup_L23 e la lareg lk lkreg h hreg r cb Φ :
        {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L23") (Some (TAtom "start")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hgla Hglk Hv16 Hv1 Hv2 Hlaal Hlaend Hh.
   iIntros "Hla Hlah Hhl Hlk HK".
   iDestruct "Hlk" as "(%Hk & Hkl & [%Hk0r Hk0] & [%Hk4r Hk4] & Hko)". destruct Hk as (Hkal & Hkend & Hkreg).
@@ -97,7 +97,7 @@ Lemma wp_cleanup_L386 e r cb creg lk lkreg sb sreg Φ :
   ▷ (lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L386") (Some (TAtom "iw_1.L81")))) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hglk Hv2 Hv1 Hr Hcb Hcal Hcend Hcreg.
   iIntros "#(%Hs & Hsl & Hsb) (%Hlk & Hll & Hl0 & [%Hc0 Hl4] & Hlo) Htcb Hcl Hcp Hct HK".
   destruct Hs as (Hgs & Hsend). destruct Hlk as (Hlal & Hlend & Hlreg).

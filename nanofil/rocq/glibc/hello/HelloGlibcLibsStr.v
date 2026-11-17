@@ -83,7 +83,7 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Lemma obj16_split b : obj b (heap_req 4 8) ⊢
   live b (mkRegion b (b + 16) Heap Live) ∗ bytes b 0 (replicate 8 0) ∗ bytes b 8 (replicate 8 0) ∗
   auxes b 0 (replicate 8 CNone) ∗ auxes b 8 (replicate 8 CNone).
-Proof.
+Proof using Type.
   rewrite (obj_zero_block b _); [|vm_compute; congruence].
   change (req_extent (heap_req 4 8)) with 16. change (req_kind (heap_req 4 8)) with Heap.
   change (replicate (Z.to_nat 16) 0) with (replicate 8 0 ++ replicate 8 0).
@@ -95,7 +95,7 @@ Qed.
 Lemma obj16_join b :
   live b (mkRegion b (b + 16) Heap Live) -∗ bytes b 0 (replicate 8 0) -∗ bytes b 8 (replicate 8 0) -∗
   auxes b 0 (MemLogic.clear_slots 0 (replicate 8 CNone)) -∗ auxes b 8 (replicate 8 CNone) -∗ obj b (heap_req 4 8).
-Proof.
+Proof using Type.
   rewrite (obj_zero_block b _); [|vm_compute; congruence].
   change (req_extent (heap_req 4 8)) with 16. change (req_kind (heap_req 4 8)) with Heap.
   change (replicate (Z.to_nat 16) 0) with (replicate 8 0 ++ replicate 8 0).
@@ -118,7 +118,7 @@ Lemma libs_mbszero :
   hello_link ge o -> forall b, 0 < b -> b mod 16 = 0 -> b + 16 <= 2 ^ 48 ->
   D.fn_triple w0 ge (TAtom "mbszero") [WPtr (mkPtr b (Obj b))] (obj b (heap_req 4 8))
     (fun r => ⌜r = RetVoid⌝ ∗ obj b (heap_req 4 8))%I.
-Proof.
+Proof using Type.
   intros Hk b Hb0 Hb16 Hb48. exists mbszero_fn. split; [exact (hk_mbszero _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   assert (Ei : invocation mbszero_fn [WPtr (mkPtr b (Obj b))] = fr) by (unfold invocation; rewrite Hfr; reflexivity).
@@ -141,7 +141,7 @@ Lemma libs_strlen :
   hello_link ge o -> forall dq p s,
   D.fn_triple w0 ge (TAtom "strlen") [WPtr p] (word_string dq p s)
     (fun r => ⌜r = Ret (WInt (Z.of_nat (length s)))⌝ ∗ word_string dq p s)%I.
-Proof.
+Proof using Type.
   intros Hk dq p s. exists glibc_strlen. split; [exact (hk_strlen _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   assert (E : call_frame glibc_strlen [WPtr p] =
@@ -157,7 +157,7 @@ Lemma libs_strncmp :
   D.fn_triple w0 ge (TAtom "strncmp") [WPtr p1; WPtr p2; WInt 3]
     (word_string DfracDiscarded p1 s1 ∗ word_string DfracDiscarded p2 s2)
     (fun r => ∃ k, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 32⌝)%I.
-Proof.
+Proof using Type.
   intros Hk p1 p2 s1 s2. exists glibc_strncmp. split; [exact (hk_strncmp _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   assert (E : call_frame glibc_strncmp [WPtr p1; WPtr p2; WInt 3] =
@@ -174,7 +174,7 @@ Lemma libs_errno :
   hello_link ge o ->
   D.fn_triple w0 ge (TAtom "__errno_location") [] True
     (fun r => ⌜r = Ret (WPtr (mkPtr (ho_eb o) (Obj (ho_eb o))))⌝)%I.
-Proof.
+Proof using Type.
   intros Hk. exists errno_location_fn. split; [exact (hk_errno _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   assert (E : call_frame errno_location_fn [] =

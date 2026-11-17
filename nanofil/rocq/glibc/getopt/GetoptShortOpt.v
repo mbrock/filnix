@@ -170,7 +170,7 @@ Lemma wp_getopt_known ks e i cur t po so k a lo b r Φ :
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L473") (Some (TAtom "L485")))) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks H6 H12 H80 H459 Hc1 Hc2 Hc20 H137 Hk Hi Ht0 Hb Hal Hend Hr.
   iIntros "#Hws #Hpo Hl Hib Hab Hcur HK".
   iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).

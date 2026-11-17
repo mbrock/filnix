@@ -78,7 +78,7 @@ Lemma wp_fxprintf_at vb sb sreg fp fmt ys mode flags2 held dqf regf (R : iProp �
   ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
      live_capq dqf (ptr_cap fmt) regf -∗ Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (fx_frame fp fmt ys) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
   iIntros "#Hs Hst Ho Hfc HR HK".
   iDestruct (printf_stream_fx with "Hst") as (fb freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
@@ -138,7 +138,7 @@ Lemma wp_fxprintf vb sb sreg fp fmt ys mode flags2 held dqf regf (R : iProp Σ) 
   ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
      live_capq dqf (ptr_cap fmt) regf -∗ Q x -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (fx_frame fp fmt ys) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hys Hself Hselfr Hfmtr Hmode Hcnt Hfmt.
   exact (wp_fxprintf_at vb sb sreg fp fmt ys mode flags2 held dqf regf R (fun x _ => Q x) Φ
     Hys Hself Hselfr Hfmtr Hmode Hcnt (fx_vfprintf_rule_at_of _ _ _ _ _ _ _ _ _ Hfmt)).

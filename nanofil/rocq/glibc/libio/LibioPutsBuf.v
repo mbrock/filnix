@@ -52,7 +52,7 @@ Lemma wp_buf_fit fb nb fr Φ :
   0 <= fb -> fb + 132 <= 2 ^ 63 ->
   buf_own nb -∗ (⌜forall p, in_buf fb nb p -> 0 <= ptr_addr p <= 2 ^ 63⌝ -∗ buf_own nb -∗ WP (ERun fr : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfb Hend. iIntros "Hb HK". destruct nb as [| |bb sz|bb]; cbn [in_buf].
   - iApply ("HK" with "[%] Hb"). intros p ->. cbn. lia.
   - iApply ("HK" with "[%] Hb"). intros p [_ H]. lia.
@@ -76,7 +76,7 @@ Lemma wp_load_bufptr f e ls l d off args rest j classes p fb freg o nb x Φ :
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
        : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hx Hp Ha Hal Hr Hin. iIntros "Hl Hpc Hb HK".
   destruct nb as [| |bb sz|bb]; cbn [in_buf] in Hin.
   - subst x. iApply (wp_raw_load_null with "Hl Hpc"); [exact Hc | exact Hx | exact Hp | exact Ha
@@ -107,7 +107,7 @@ Lemma wp_buf_putc f e ls l d v rest j fb freg nb wp we col Φ :
      WP (ERun (mkFrame f (put d (WPtr wp) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d A (Check 0 1 Write 1) [v] :: RawStore Wb 0 (Const 10) (Tmp d) :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hfb Hfal Hfend Hfreg Hw He Hlt Hcl. unfold file_size in Hfend. iIntros "Hl Hcol Hb HK".
   destruct nb as [| |bb sz|bb]; cbn [in_buf] in Hw, He.
   - subst wp we. cbn in Hlt. lia.

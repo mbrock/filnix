@@ -85,7 +85,7 @@ Definition old_base (fl : Z) (ob : ptr) : iProp Σ :=
   ⌜ob = null⌝ ∨ ∃ bb breg, ⌜ob = mkPtr bb (Obj bb) /\ r_kind breg = Heap /\ 0 < bb /\ bb < 2 ^ 64 /\
                             Z.land fl io_user_buf = 0⌝ ∗ live bb breg.
 Lemma bytes_le_eq b o x y n : x = y -> bytes b o (le_bytes x n) -∗ bytes b o (le_bytes y n).
-Proof. intros ->. auto. Qed.
+Proof using Type. intros ->. auto. Qed.
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -100,7 +100,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     holds: the model frees b, and [os_wi] keeps no piece of a heap
     object. *)
 Lemma heap_free_rule : heap_fns ge -> (free_rule w0 registry ge).
-Proof.
+Proof using Type.
   intros (Hfh & Hff & Hfd & _) f e ls l v rest j b reg Φ Hx Hk Hb. iIntros "Hbl HK".
   iApply (wp_free_sym _ _ _ (TAtom "free") with "Hbl"); [reflexivity | exact Hfh | exact Hff | exact Hfd | exact Hx |
     exact Hk | lia | |].
@@ -156,7 +156,7 @@ Lemma wp_setb_tail fb freg fl ob oe nb ne a e from Φ :
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
      pcell fb off_buf_end ne -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc__IO_setb e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfb Hal Hend Hfreg Ha Hv0 Hc0 Hv2 Hv4 Hv6.
   iIntros "Hl [%Hf Hfl] Hb He HK". step. setb_tail a fl.
 Qed.

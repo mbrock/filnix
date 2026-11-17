@@ -129,7 +129,7 @@ Lemma wp_ovf_L113 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 w
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L113") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ Hbk He Hmd Hbb Hbe Hbreg Hsz Hxl Hxr Hv0 Hv2 Hc0 Hc6 Hc24 Hc25.
   iIntros "#Hvt Hl Hfx Hbl Hxs [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".
   unfold file_size in Hend.

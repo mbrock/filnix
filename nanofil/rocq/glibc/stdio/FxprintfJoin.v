@@ -48,7 +48,7 @@ Lemma wp_fx_join e vb sb sreg fb a19 f flags2 held r md Φ :
   ▷ (printf_stream vb (ow_self w0) fp md flags2 held -∗ Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None
     (Enter (TAtom "iw_1.join") (Some (TAtom "iw_1.L8")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hr Hpr Hc2 Hc19 Ha19 Hv107 Hf Hf2r Hnl Hcnt.
   iIntros "#Hs Hst HK".
   iDestruct (printf_stream_fx with "Hst") as (fb' freg' fl' lp' Hp') "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".

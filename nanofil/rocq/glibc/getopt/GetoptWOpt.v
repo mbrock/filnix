@@ -89,7 +89,7 @@ Lemma wp_getopt_wopt ks e0 e fr i n c pe cur t po so a oo b r av ar ps (G : iPro
       WP (ERun (mkFrame glibc_getopt_internal_r e' [] None (Exec (TAtom "L570") [] (b_jump getopt_blk570))) : gexpr)
         {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L508") (Some fr))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hks Hksd Hk0 Hrule Hse Hmid H0 H2 H12 H455 Hpo Hpe Hc0 Hc1 Hc2 Hc19 Hc20 H137 Hi Hn Hlen Ht0 Hc Hper
     Hb Hal Hend Hr Hav Hala Hda Hra Hse0 Hsea Hsee Hser.
   iIntros "#Hws #Hpo #Hsl #Hsc Hl Hib Hoo Hab Hcur Ha Hcl #Hs HG HK".

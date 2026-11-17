@@ -68,7 +68,7 @@ Lemma wp_unlink_L257 e from cb creg lk lkreg rf rfreg sb sreg x Φ :
   ▷ (live rf rfreg -∗ pcell rf 0 null -∗ lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗
      live cb creg -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L257") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hglk Hgrf Hv10 Hcb Hcal Hcend Hcreg Hral Hrend.
   iIntros "#(%Hs & Hsl & Hsb) Hrl Hrc (%Hlk & Hll & Hl0 & [%Hc0 Hl4] & Hlo) Htcb Hcl Hcp Hct HK".
   destruct Hs as (Hgs & Hsend). destruct Hlk as (Hlal & Hlend & Hlreg).
@@ -118,7 +118,7 @@ Lemma wp_unlink_L179 e from fb freg fl lb lbreg cb creg lk lkreg rf rfreg sb sre
      live rf rfreg -∗ pcell rf 0 null -∗ lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗
      live cb creg -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L179") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hglk Hgrf Hv0 Hc0 Hv10 Hfb Hfal Hfend Hfreg Hfl Hul Hcb Hcal Hcend Hcreg Hral Hrend.
   iIntros "#Hs Hl [_ Hfl] Hlp (%Hb & Hbl & Hb0 & [%Hb4r Hb4] & Hbo) Hrl Hrc Hlk Htcb Hcl Hcp Hct HK".
   destruct Hb as (Hbal & Hbend & Hbreg). unfold file_size in Hfend.

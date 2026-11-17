@@ -108,7 +108,7 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma ws_shape p s : word_string DfracDiscarded p s ⊢
   ⌜Forall (fun c => 0 < c < 256) s /\ 0 < ptr_addr p /\
    ptr_addr p + Z.of_nat (length s) + 1 <= 2 ^ 48⌝.
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hs & _)". iPureIntro.
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hr Hby Hch]. unfold wstart in Hf.
   pose proof (Z.div_mod (ptr_addr p mod 8 + Z.of_nat (length s) + 8) 8 ltac:(lia)).
@@ -124,7 +124,7 @@ Lemma ws_byte p s (k : nat) : (k <= length s)%nat ->
     ⌜(ptr_cap p = Obj b \/ ptr_cap p = Ro b) /\ 0 < b /\ b <= ptr_addr p /\
      ptr_addr p + Z.of_nat (length s) + 1 <= r_end reg /\ r_end reg <= 2 ^ 48⌝ ∗
     liveq DfracDiscarded b reg ∗ bytesq DfracDiscarded b (ptr_addr p + Z.of_nat k - b) [sbyte s k].
-Proof.
+Proof using Type.
   intros Hk. iIntros "(%b & %reg & %ws & %Hs & Hl & Hw)".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hr Hby Hch]. unfold wstart in Hf.
   pose proof (Z.div_mod (ptr_addr p mod 8 + Z.of_nat (length s) + 8) 8 ltac:(lia)).
@@ -147,7 +147,7 @@ Qed.
 Lemma ws_suffix p s k : (k <= length s)%nat ->
   word_string DfracDiscarded p s ⊢
   word_string DfracDiscarded (ptr_add p (Z.of_nat k)) (drop k s).
-Proof.
+Proof using Type.
   intros Hk. iIntros "H". rewrite -{1}(take_drop k s).
   iDestruct (word_string_suffix with "H") as "H".
   assert (Hl : length (take k s) = k) by (apply length_take_le; exact Hk).
@@ -156,7 +156,7 @@ Qed.
 
 (** Reading the first byte of an advanced position reads the original byte. *)
 Lemma sbyte_drop s k j : (k <= length s)%nat -> sbyte (drop k s) j = sbyte s (k + j).
-Proof.
+Proof using Type*.
   intros Hk. unfold sbyte.
   assert (Hl : length (take k s) = k) by (apply length_take_le; exact Hk).
   rewrite -{2}(take_drop k s) -app_assoc (app_nth2 (take k s)); rewrite Hl; [|lia].

@@ -76,11 +76,11 @@ Context {Σ : gFunctors}
   {gen_heapGS0 : gen_heapGS piece pval Σ}.
 Existing Instance gen_heapGS0.
 Lemma bytes_le_eq b o x y n : x = y -> bytes b o (le_bytes x n) -∗ bytes b o (le_bytes y n).
-Proof. intros ->. auto. Qed.
+Proof using Type. intros ->. auto. Qed.
 Lemma live_bytes_pts b reg o xs : live b reg -∗ bytes b o xs -∗ pts ([(PLive b, VLive reg)] ++ byte_ps b o xs).
-Proof. iIntros "Hl Hb". rewrite pts_app. iFrame. Qed.
+Proof using Type. iIntros "Hl Hb". rewrite pts_app. iFrame. Qed.
 Lemma pts_live_bytes b reg o xs : pts ([(PLive b, VLive reg)] ++ byte_ps b o xs) -∗ live b reg ∗ bytes b o xs.
-Proof. rewrite pts_app. auto. Qed.
+Proof using Type. rewrite pts_app. auto. Qed.
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

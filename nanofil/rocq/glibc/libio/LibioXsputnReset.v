@@ -79,7 +79,7 @@ Lemma wp_xs_L70 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d r e from �
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L70") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Hv0 Hc0 Hc14 Hc15 Hv4 Hp5 Hv67 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp ((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom) (Hxf & HX) Hl' Hys HK".

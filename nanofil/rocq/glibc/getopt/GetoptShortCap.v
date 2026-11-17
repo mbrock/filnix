@@ -65,12 +65,12 @@ Definition arg_cap (a : ptr) : iProp Σ :=
 
 (** A null argument names no object. *)
 Lemma arg_cap_null : ⊢ arg_cap null.
-Proof. iSplit; [by iExists (mkRegion 0 0 Heap Freed) | iPureIntro; cbn; lia]. Qed.
+Proof using Type. iSplit; [by iExists (mkRegion 0 0 Heap Freed) | iPureIntro; cbn; lia]. Qed.
 
 (** The rest of a cluster lies inside the shared word, so it keeps the
     word's capability, and its address stays below 2^48. *)
 Lemma arg_cap_rest cur t : word_string DfracDiscarded cur t ⊢ arg_cap (ptr_add cur 1).
-Proof.
+Proof using Type.
   iIntros "#Hws". iDestruct (ws_shape with "Hws") as %(_ & Hc0 & Hce).
   iDestruct (argv_str_cap with "Hws") as (rc) "[Hc _]".
   iSplitL "Hc"; [by iExists rc | iPureIntro; unfold ptr_add; cbn; lia].
@@ -80,14 +80,14 @@ Qed.
     cluster ends after the option. *)
 Lemma arg_cap_opt cur t : word_string DfracDiscarded cur t ⊢
   arg_cap (if sbyte t 1 =? 0 then null else ptr_add cur 1).
-Proof.
+Proof using Type.
   iIntros "#Hws". destruct (sbyte t 1 =? 0); [iApply arg_cap_null | by iApply arg_cap_rest].
 Qed.
 
 (** A word of the vector has its own string, and an index past the end
     gives null. *)
 Lemma arg_cap_nth ps k : argv_strs ps ⊢ arg_cap (nth k ps null).
-Proof.
+Proof using Type.
   iIntros "Hs". destruct (Nat.lt_ge_cases k (List.length ps)) as [Hlt | Hge].
   - iDestruct (argv_strs_cap ps k Hlt with "Hs") as (rn) "[Hc %Hn]".
     iSplitL "Hc"; [by iExists rn | done].

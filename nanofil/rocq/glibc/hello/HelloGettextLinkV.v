@@ -175,7 +175,7 @@ Example hello_v_zero :
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
       (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hello_gettext_cache ob) bs)
     dom.
-Proof.
+Proof using H1 H2 H3 Hal Hbnd Hend Herr Hg Hglo Hk Hl Hm Hrb Hreg Hro Hrr.
   split; [|reflexivity]. unfold Hb, Ha.
   eapply dcg_diag_translate_hello_v; try eassumption; [lia | left; reflexivity].
 Qed.
@@ -188,7 +188,7 @@ Example hello_v_set :
   diag_translate (Hb 1) (Ha 1) dom /\ diag_translate (Hb 3735928559) (Ha 3735928559) dom /\
   (forall mid q, Ha 1 mid q ⊢ ⌜q = mid⌝ ∗ liveq dqs sec secreg ∗ int_cellq dqs sec 0 1) /\
   (forall mid q, Ha 3735928559 mid q ⊢ ⌜q = mid⌝ ∗ liveq dqs sec secreg ∗ int_cellq dqs sec 0 3735928559).
-Proof.
+Proof using H1 H2 H3 Hal Hbnd Hend Herr Hg Hglo Hk Hl Hm Hrb Hreg Hro Hrr bs cat cv dqb dqc dqd dqg dqi dql dqn dqr dqt ds fl1 fl2 fl3 i1 i2 i3 q1 q2 q3 sh1 sh2 sh3 treg.
   intros Hagree. unfold Hb, Ha. split_and!;
     try (eapply dcg_diag_translate_hello_v; try eassumption; [lia | right; exact Hagree]);
     intros mid q; apply dcg_after_v_flag.
@@ -200,6 +200,6 @@ Example hello_v_refuses :
   (hello_secure_links 1 -> Forall (lookup_agrees (ge_module ge) hellostrchrimage_module) hello_strchr_names) /\
   (hello_secure_links 3735928559 -> Forall (lookup_agrees (ge_module ge) hellostrchrimage_module) hello_strchr_names) /\
   ~ (0 <= 2 ^ 32 < 2 ^ 32).
-Proof. unfold hello_secure_links. split_and!; try (intros [H | H]; [discriminate H | exact H]); lia. Qed.
+Proof using Type. unfold hello_secure_links. split_and!; try (intros [H | H]; [discriminate H | exact H]); lia. Qed.
 End controls.
 End rules.

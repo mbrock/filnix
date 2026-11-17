@@ -75,7 +75,7 @@ Lemma wp_getopt_clamp ks e fr0 n i o f l b r av ar ps Φ :
      WP (ERun (mkFrame glibc_getopt_internal_r e' [] None
                  (Exec (TAtom "L119") (b_insts getopt_blk119) (b_jump getopt_blk119))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_getopt_internal_r e [] None (Enter (TAtom "L73") (Some fr0))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hkx Hkc Hv2 Hv12 Hc0 Hc2 Hfl Hln Hfi Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl [%Hi Hib] [%Ho Hob] [%Hf Hfb] [%Hla Hlab] Ha Hc #Hs HK".
   step. step. norm. check "Hl". load_s32_using ltac:(arith) "Hl Hlab". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step.
