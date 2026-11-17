@@ -11,7 +11,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle WordString.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle WordString AllocRo.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -47,8 +47,11 @@ Proof using Type. unfold fputs_ro. apply _. Qed.
 (** The call `c: fputs (s, fp)` writes the string s to the stream fp.
     A full buffer makes it write to the stream's descriptor, so that
     descriptor must be open. A failed write sets errno, so the caller
-    lends errno too. The call returns 1 when it wrote the whole string
-    and `c: EOF` otherwise. Afterwards the stream is idle again. *)
+    lends errno too. A stream without a buffer gets one from
+    `c: malloc` on its first write, so the caller also shows that the
+    allocator is ready ([malloc_ro]). The call returns 1 when it wrote
+    the whole string and `c: EOF` otherwise. Afterwards the stream is
+    idle again. *)
 Definition fputs_spec : fspec Σ :=
   FSpec fputs_in
     (fun x => [WPtr (fi_p x); WPtr (fi_fp x)])
@@ -56,7 +59,7 @@ Definition fputs_spec : fspec Σ :=
        ⌜ow_errno w0 = Some (mkPtr (fi_eb x) (Obj (fi_eb x))) /\ In (fi_fd x) (ow_fds w0)⌝ ∗
        word_string (fi_dq x) (fi_p x) (fi_s x) ∗
        file_idle (fi_vb x) (ow_self w0) (fi_fp x) (fi_fd x) ∗
-       errno_any (fi_eb x) ∗ fputs_ro (fi_vb x))%I
+       errno_any (fi_eb x) ∗ fputs_ro (fi_vb x) ∗ malloc_ro)%I
     (fun x o =>
        ∃ r, ⌜o = Ret (WInt r) /\ (r = 1 \/ r = 2 ^ 32 - 1)⌝ ∗
        word_string (fi_dq x) (fi_p x) (fi_s x) ∗
