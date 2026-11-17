@@ -21,7 +21,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic VariadicLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle LibioFputsSpec WordString PrintfStreamInv
+From Glibc Require Import Fix OsBlocks OsWorld AllocRo FileInv FileIdle LibioFputsSpec WordString PrintfStreamInv
   FileTidy FxprintfStream NarrowFormat NarrowArgs FormatterCode FormatterStringTable CStruct PrintfLayout PrintfOut StrchrnulLogic.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope string_scope.
@@ -48,15 +48,28 @@ Definition loaded_bytes (n : string) : list Z :=
 Definition jump_table_bytes : list Z := Eval vm_compute in loaded_bytes jump_table.
 Definition step0_jumps_bytes : list Z := Eval vm_compute in loaded_bytes step0_jumps.
 
+(** The conversion `%d` turns a number into text with
+    `c: _itoa_word`, which reads each digit's character from a table
+    in another unit. The table holds the ten digits and then the 26
+    lower-case letters, for bases up to 36. The linked program knows
+    it under the name below. *)
+Definition lower_digits : string := "__GI__itoa_lower_digits".
+Definition lower_digits_bytes : list Z :=
+  Eval vm_compute in map (fun i => 48 + Z.of_nat i) (seq 0 10) ++ map (fun i => 97 + Z.of_nat i) (seq 0 26).
+
 (** The function [table_bytes] gives the bytes of one of the
-    formatter's two dispatch tables. *)
+    formatter's tables: its two dispatch tables and the table of
+    digits. *)
 Definition table_bytes (n : string) : list Z :=
   if String.eqb n jump_table then jump_table_bytes else
-  if String.eqb n step0_jumps then step0_jumps_bytes else [].
+  if String.eqb n step0_jumps then step0_jumps_bytes else
+  if String.eqb n lower_digits then lower_digits_bytes else [].
 
-(** Both tables have their bytes, so the definition above did not fall
+(** Each table has its bytes, so the definition above did not fall
     back to the empty list. *)
-Lemma table_bytes_sizes : (length (table_bytes jump_table), length (table_bytes step0_jumps)) = (91, 128)%nat.
+Lemma table_bytes_sizes :
+  (length (table_bytes jump_table), length (table_bytes step0_jumps), length (table_bytes lower_digits)) =
+  (91, 128, 36)%nat.
 Proof. vm_compute. reflexivity. Qed.
 
 Section spec.
@@ -74,11 +87,12 @@ Definition null_global (n : string) : iProp Σ :=
             b + 8 <= r_end reg /\ r_end reg <= 2 ^ 63⌝ ∗
     liveq DfracDiscarded b reg ∗ pcellq DfracDiscarded b 0 null.
 
-(** The formatter reads its two dispatch tables. It also reads three
+(** The formatter reads its two dispatch tables, and the conversion
+    `%d` reads the table of digits. The formatter also reads three
     globals that are null while the program has registered no
     conversion of its own, and Hello registers none. *)
 Definition printf_ro : iProp Σ :=
-  ro_table jump_table ∗ ro_table step0_jumps ∗
+  ro_table jump_table ∗ ro_table step0_jumps ∗ ro_table lower_digits ∗
   null_global "__printf_function_table" ∗ null_global "__printf_modifier_table" ∗
   null_global "__printf_va_arg_table".
 
@@ -132,17 +146,24 @@ Definition vfp_fits (x : vfp_in) : Prop :=
   (forall c, vi_held x = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) /\
   ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x))) /\ In (vi_fd x) (ow_fds w0).
 
-(** `c: __vfprintf_internal (fp, fmt, ap, 0)` is safe when the format
-    and the arguments meet [vfp_fits] and the stream is tidy, as
-    [file_tidy] says. Each argument after the named ones must be an
-    integer, null or a read-only string. The contract asks nothing of
-    the named arguments that the cursor has already passed, because
-    the formatter never reads them. The formatter reads the stream's
-    jump table and the flag that says the process has one thread, as
-    `c: fputs` does, so the caller lends [fputs_ro] too. The function
-    returns an int and gives back the format and errno. It gives back
-    the stream as tidy as it got it, with the same descriptor, the same
-    second flags word and the same lock state. *)
+(** This is the contract of `c: __vfprintf_internal (fp, fmt, ap, 0)`.
+    The call is safe when the format and the arguments meet [vfp_fits]
+    and the stream is tidy. Each argument after the named ones must be
+    an integer, null or a read-only string. The contract asks nothing
+    of the named arguments that the cursor has already passed, because
+    the formatter never reads them.
+
+    The caller also lends three kinds of read-only data. The first is
+    the formatter's own tables, [printf_ro]. The second is what
+    `c: fputs` reads as well, [fputs_ro]: the stream's jump table and
+    the flag that says the process has one thread. The third is what
+    `c: malloc` reads, [malloc_ro] of [AllocRo](../stdlib/AllocRo.v).
+    The formatter needs it because a stream gets its buffer on its
+    first write, and the buffer comes from `c: malloc`.
+
+    The function returns an int and gives back the format and errno.
+    It gives back the stream as tidy as it got it, with the same
+    descriptor, the same second flags word and the same lock state. *)
 Definition vfprintf_spec : fspec Σ :=
   FSpec vfp_in
     (fun x => [WPtr (vi_fp x); WPtr (vi_fmt x); WPtr (vi_ap x); WInt 0])
@@ -151,7 +172,7 @@ Definition vfprintf_spec : fspec Σ :=
        file_tidy (vi_vb x) (ow_self w0) (vi_fp x) (vi_fd x) (vi_flags2 x) (vi_held x) ∗
        word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ va_at (vi_ap x) (vi_skip x) (vi_xs x) ∗
        ([∗ list] a ∈ skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x), str_arg a) ∗ errno_any (vi_eb x) ∗
-       printf_ro ∗ fputs_ro (vi_vb x))%I
+       printf_ro ∗ fputs_ro (vi_vb x) ∗ malloc_ro)%I
     (fun x o =>
        ∃ n, ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
        file_tidy (vi_vb x) (ow_self w0) (vi_fp x) (vi_fd x) (vi_flags2 x) (vi_held x) ∗
@@ -247,12 +268,13 @@ Definition pf_fits (x : pf_in) : Prop :=
   ow_errno w0 = Some (mkPtr (pf_eb x) (Obj (pf_eb x))) /\ In (pf_fd x) (ow_fds w0).
 
 (** A wrapper borrows an idle stream, the format, errno and the
-    read-only data of the formatter and of `c: fputs`. Each argument
-    after the format must be an integer, null or a read-only string. *)
+    read-only data of the formatter, of `c: fputs` and of `c: malloc`.
+    Each argument after the format must be an integer, null or a
+    read-only string. *)
 Definition pf_pre (x : pf_in) : iProp Σ :=
   file_idle (pf_vb x) (ow_self w0) (pf_fp x) (pf_fd x) ∗
   word_string (pf_dq x) (pf_fmt x) (pf_bytes x) ∗
-  ([∗ list] a ∈ pf_ys x, str_arg a) ∗ errno_any (pf_eb x) ∗ printf_ro ∗ fputs_ro (pf_vb x).
+  ([∗ list] a ∈ pf_ys x, str_arg a) ∗ errno_any (pf_eb x) ∗ printf_ro ∗ fputs_ro (pf_vb x) ∗ malloc_ro.
 
 (** A wrapper returns the formatter's int. It gives back the format
     and errno, and the stream is idle again with the same descriptor,

@@ -129,6 +129,7 @@ Proof using Type.
   iDestruct (pts_app with "HR") as "[L1 HR]". iDestruct (pts_app with "HR") as "[L2 HR]".
   iDestruct (pts_app with "HR") as "[L3 HR]". iDestruct (pts_app with "HR") as "[Rt Db]".
   iDestruct (pts_app with "HP") as "[J HP]". iDestruct (pts_app with "HP") as "[S HP]".
+  iDestruct (pts_app with "HP") as "[Dg HP]".
   iDestruct (pts_app with "HP") as "[N1 HP]". iDestruct (pts_app with "HP") as "[N2 N3]".
   iMod (lc_own with "Hlc") as "#(Hcat & Hil & Hib & Hc)"; [vm_compute; intuition congruence|].
   iMod (dgx_msgs_own with "Hmsg") as "#Hm".
@@ -141,6 +142,9 @@ Proof using Type.
   iMod (ro_table_own step0_jumps with "S") as "#S";
     [rewrite Hg; vm_compute; reflexivity | vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
      vm_compute; reflexivity|].
+  iMod (ro_table_own lower_digits with "Dg") as "#Dg";
+    [rewrite Hg; vm_compute; reflexivity | vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
+     vm_compute; reflexivity|].
   iMod (null_global_own "__printf_function_table" with "N1") as "#N1";
     [rewrite Hg; vm_compute; reflexivity | vm_compute; first [reflexivity | congruence].. |].
   iMod (null_global_own "__printf_modifier_table" with "N2") as "#N2";
@@ -151,7 +155,7 @@ Proof using Type.
   { rewrite /hello_getopt_ro /printf_ro.
     iSplit; [iExact "Hm"|]. iSplit; [iExact "H276"|]. iSplit; [iExact "H277"|]. iSplit; [iExact "Hcat"|].
     iSplit; [iExact "Hil"|]. iSplit; [iExact "Hib"|]. iSplit; [iExact "Hc"|]. iSplit; [iExact "Hd"|].
-    iSplit; [iExact "J"|]. iSplit; [iExact "S"|]. iSplit; [iExact "N1"|]. iSplit; [iExact "N2" | iExact "N3"]. }
+    iSplit; [iExact "J"|]. iSplit; [iExact "S"|]. iSplit; [iExact "Dg"|]. iSplit; [iExact "N1"|]. iSplit; [iExact "N2" | iExact "N3"]. }
   rewrite /hello_getopt_rw (zero_rw_lock _ _) (zero_rw_lock _ _) (zero_rw_lock _ _).
   iDestruct (zero_null_cell with "Rt") as "[Rl Rc]". iDestruct (zero_null_cell with "Db") as "[Dl Dc]".
   iFrame "L1 L2 L3". rewrite /hello_locale_slot_ps. rewrite /tfind_root /liveq /pcellq /live /pcell -!pts_ptsq. iFrame.

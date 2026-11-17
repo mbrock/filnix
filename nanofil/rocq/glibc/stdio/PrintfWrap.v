@@ -107,7 +107,7 @@ Proof using Hvf.
   iIntros "[%Hfit Hpre] HK".
   destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd).
   unfold pf_pre, pf_post. cbn [pf_vb pf_fp pf_fd pf_fmt pf_dq pf_bytes pf_ds pf_ys pf_rest pf_eb] in *.
-  iDestruct "Hpre" as "(Hst & Hf & Hargs & He & #Hro & #Hfro)".
+  iDestruct "Hpre" as "(Hst & Hf & Hargs & He & #Hro & #Hfro & #Hmro)".
   iApply WrapVL.wp_snapshot; [discriminate | cbn; exact Hys |
     intros ? ? ? ? Hf Hw; exact (os_wi_snapshot _ _ _ _ _ _ _ Hf Hw) |].
   iNext. iIntros (sb Hsnap) "Hsnap".
@@ -122,7 +122,7 @@ Proof using Hvf.
   - cbn [fs_pre vfprintf_spec]. unfold vfp_fits.
     cbn [vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (16 / 8)) (WPtr fp :: WPtr fmt :: ys)) with ys.
-    iFrame "Hst Hf Hva Hargs He Hro Hfro". iPureIntro.
+    iFrame "Hst Hf Hva Hargs He Hro Hfro Hmro". iPureIntro.
     split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd].
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%r & [-> %Hr] & Hst & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
@@ -144,7 +144,7 @@ Proof using Hvf.
   iIntros "(%Hfit & Hso & Hpre) HK".
   destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd).
   unfold pf_pre, pf_post. cbn [pf_vb pf_fp pf_fd pf_fmt pf_dq pf_bytes pf_ds pf_ys pf_rest pf_eb] in *.
-  iDestruct "Hpre" as "(Hst & Hf & Hargs & He & #Hro & #Hfro)".
+  iDestruct "Hpre" as "(Hst & Hf & Hargs & He & #Hro & #Hfro & #Hmro)".
   iDestruct "Hso" as (so soreg (Hgso & Hso8 & Hsoend)) "[Hsol Hsoc]".
   iApply (wp_live_fit with "Hsol"). iIntros ([Hso0 Hso48]) "Hsol".
   iApply WrapVL.wp_snapshot; [discriminate | cbn; exact Hys |
@@ -166,7 +166,7 @@ Proof using Hvf.
   - cbn [fs_pre vfprintf_spec]. unfold vfp_fits.
     cbn [vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (8 / 8)) (WPtr fmt :: ys)) with ys.
-    iFrame "Hst Hf Hva Hargs He Hro Hfro". iPureIntro.
+    iFrame "Hst Hf Hva Hargs He Hro Hfro Hmro". iPureIntro.
     split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd].
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%r & [-> %Hr] & Hst & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.

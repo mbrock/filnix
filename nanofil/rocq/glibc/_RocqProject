@@ -294,6 +294,7 @@ startup/StartCtorVtablesSpec.v
 startup/StartCtorVtables.v
 stdlib/StdlibSpecs.v
 stdlib/AllocLogic.v
+stdlib/AllocRo.v
 stdlib/AtexitLogic.v
 string/WordString.v
 nptl/CutoffLogic.v
