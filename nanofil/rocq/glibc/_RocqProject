@@ -95,6 +95,8 @@ stdio/FormatterSrc02.v
 stdio/FormatterSrc.v
 stdio/FormatterScan.v
 stdio/PrintfBufferFileCode.v
+stdio/PrintfBufferFileLayout.v
+stdio/PrintfBufferIoLayout.v
 stdio/PrintfBufferIoCode.v
 stdio/PrintfCountBits.v
 stdio/PrintfStateCode.v

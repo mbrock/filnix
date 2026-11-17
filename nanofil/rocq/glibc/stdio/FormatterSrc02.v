@@ -19,11 +19,11 @@ Module FormatterSrc02.
 Module fn___vfprintf_internal.
 
 (** This location identifies the C function definition when its context records contain one. *)
-Definition source : option (string * N) := Some (file_1, 1526%N).
+Definition source : option (string * N) := Some (file_2, 1526%N).
 
 (** Each entry records the first located site in a block, in execution order. *)
 Definition block_src : list (name * (string * N)) :=
-  [((TAtom "start"), (file_1, 1548%N)); ((TAtom "L26"), (file_1, 1531%N)); ((TAtom "L28"), (file_1, 1531%N)); ((TAtom "L8"), (file_1, 1531%N)); ((TAtom "L71"), (file_1, 1535%N)); ((TAtom "L72"), (file_1, 1535%N)); ((TAtom "L74"), (file_1, 1535%N)); ((TAtom "L84"), (file_1, 1535%N)); ((TAtom "L107"), (file_1, 1540%N)); ((TAtom "L117"), (file_1, 1540%N)); ((TAtom "L119"), (file_1, 1540%N)); ((TAtom "L94"), (file_1, 1543%N)); ((TAtom "L96"), (file_1, 1546%N)); ((TAtom "L167"), (file_1, 1549%N)); ((TAtom "L169"), (file_1, 1557%N)); ((TAtom "L192"), (file_1, 1557%N)); ((TAtom "L194"), (file_1, 1557%N)); ((TAtom "L209"), (file_1, 1558%N)); ((TAtom "L220"), (file_1, 1558%N)); ((TAtom "L221"), (file_1, 1558%N)); ((TAtom "L214"), (file_1, 1558%N)); ((TAtom "L215"), (file_1, 1558%N)); ((TAtom "L240"), (file_1, 1558%N)); ((TAtom "L264"), (file_1, 1558%N)); ((TAtom "L265"), (file_1, 1558%N)); ((TAtom "L269"), (file_1, 1558%N)); ((TAtom "L258"), (file_1, 1558%N)); ((TAtom "L241"), (file_1, 1558%N)); ((TAtom "L204"), (file_1, 1562%N)); ((TAtom "L303"), (file_1, 1569%N)); ((TAtom "L312"), (file_1, 1569%N)); ((TAtom "L313"), (file_1, 1569%N)); ((TAtom "L306"), (file_1, 1569%N)); ((TAtom "L307"), (file_1, 1569%N)); ((TAtom "L329"), (file_1, 1569%N)); ((TAtom "L350"), (file_1, 1569%N)); ((TAtom "L351"), (file_1, 1569%N)); ((TAtom "L362"), (file_1, 1569%N)); ((TAtom "L330"), (file_1, 1569%N)); ((TAtom "L298"), (file_1, 1570%N)); ((TAtom "L379"), (file_1, 1570%N)); ((TAtom "L385"), (file_1, 1572%N))].
+  [((TAtom "start"), (file_2, 1548%N)); ((TAtom "L26"), (file_2, 1531%N)); ((TAtom "L28"), (file_2, 1531%N)); ((TAtom "L8"), (file_2, 1531%N)); ((TAtom "L71"), (file_2, 1535%N)); ((TAtom "L72"), (file_2, 1535%N)); ((TAtom "L74"), (file_2, 1535%N)); ((TAtom "L84"), (file_2, 1535%N)); ((TAtom "L107"), (file_2, 1540%N)); ((TAtom "L117"), (file_2, 1540%N)); ((TAtom "L119"), (file_2, 1540%N)); ((TAtom "L94"), (file_2, 1543%N)); ((TAtom "L96"), (file_2, 1546%N)); ((TAtom "L167"), (file_2, 1549%N)); ((TAtom "L169"), (file_2, 1557%N)); ((TAtom "L192"), (file_2, 1557%N)); ((TAtom "L194"), (file_2, 1557%N)); ((TAtom "L209"), (file_2, 1558%N)); ((TAtom "L220"), (file_2, 1558%N)); ((TAtom "L221"), (file_2, 1558%N)); ((TAtom "L214"), (file_2, 1558%N)); ((TAtom "L215"), (file_2, 1558%N)); ((TAtom "L240"), (file_2, 1558%N)); ((TAtom "L264"), (file_2, 1558%N)); ((TAtom "L265"), (file_2, 1558%N)); ((TAtom "L269"), (file_2, 1558%N)); ((TAtom "L258"), (file_2, 1558%N)); ((TAtom "L241"), (file_2, 1558%N)); ((TAtom "L204"), (file_2, 1562%N)); ((TAtom "L303"), (file_2, 1569%N)); ((TAtom "L312"), (file_2, 1569%N)); ((TAtom "L313"), (file_2, 1569%N)); ((TAtom "L306"), (file_2, 1569%N)); ((TAtom "L307"), (file_2, 1569%N)); ((TAtom "L329"), (file_2, 1569%N)); ((TAtom "L350"), (file_2, 1569%N)); ((TAtom "L351"), (file_2, 1569%N)); ((TAtom "L362"), (file_2, 1569%N)); ((TAtom "L330"), (file_2, 1569%N)); ((TAtom "L298"), (file_2, 1570%N)); ((TAtom "L379"), (file_2, 1570%N)); ((TAtom "L385"), (file_2, 1572%N))].
 
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
@@ -49,5 +49,39 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 
 
 End fn___vfprintf_internal.
+
+Module fn_glibc_vfprintf_internal___printf_buffer_putc.
+
+(** This location identifies the C function definition when its context records contain one. *)
+Definition source : option (string * N) := Some (file_0, 145%N).
+
+(** Each entry records the first located site in a block, in execution order. *)
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 148%N)); ((TAtom "L4"), (file_0, 149%N)); ((TAtom "L5"), (file_0, 151%N)); ((TAtom "L6"), (file_0, 145%N))].
+
+(** These recorded temporaries have a primary value hint naming their C declaration. *)
+Definition temp_names : list (name * string) :=
+  [((TAtom "v0"), "buf"); ((TAtom "v10"), "buf"); ((TAtom "v16"), "buf"); ((TAtom "v2"), "ch"); ((TAtom "v20"), "ch"); ((TAtom "v21"), "buf"); ((TAtom "v22"), "ch"); ((TAtom "v7"), "buf")].
+
+(** The compiler finds these reachable natural-loop headers using dominators. *)
+Definition loop_heads : list name := [].
+
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2")]); ((TAtom "L4"), [(TAtom "chk0"); (TAtom "v0"); (TAtom "v2")]); ((TAtom "L5"), [(TAtom "v0"); (TAtom "v2")]); ((TAtom "L6"), [])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "chk0"); (TAtom "v0"); (TAtom "v2")]); ((TAtom "L4"), []); ((TAtom "L5"), []); ((TAtom "L6"), [])].
+
+(** Stop messages can name a C field instead of reporting only an address.
+    Source origins and completed layouts supply the field path; unresolved paths use "opaque".
+    These paths guide messages and annotations, not memory-safety arguments.
+    Local addresses name storage owned by this invocation.
+    Accesses with runtime byte counts have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z * string)) :=
+  [((TAtom "start"), [(2%N, (TApp "tmp" [(TAtom "v8")]), (0), (Some 8), true, false, (Some (TAtom "v0")), (Some (8)), "buf->write_ptr"); (5%N, (TApp "tmp" [(TAtom "v11")]), (0), (Some 8), true, false, (Some (TAtom "v0")), (Some (16)), "buf->write_end")]); ((TAtom "L4"), [(1%N, (TApp "tmp" [(TAtom "v8")]), (0), (Some 8), true, false, (Some (TAtom "v0")), (Some (8)), "buf->write_ptr"); (4%N, (TApp "tmp" [(TAtom "v17")]), (0), (Some 8), false, true, (Some (TAtom "v0")), (Some (8)), "buf->write_ptr"); (7%N, (TApp "tmp" [(TAtom "v18")]), (0), (Some 1), false, true, (Some (TAtom "v18")), (Some (0)), "opaque")]); ((TAtom "L5"), []); ((TAtom "L6"), [])].
+
+
+End fn_glibc_vfprintf_internal___printf_buffer_putc.
 
 End FormatterSrc02.

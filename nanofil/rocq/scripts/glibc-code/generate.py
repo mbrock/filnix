@@ -85,8 +85,9 @@ Definition {prefix}_fn (n : string) : func :=
   end.
 '''
     for fn in fns.split():
-        stem = re.sub(r"^__GI_", "", fn)
-        g = ("glibc" + re.sub(r"^_*", "_", stem) if layout == "string"
+        # A unit-private function is linked as UNIT#NAME; its constant is named after NAME alone.
+        stem = re.sub(r"^__GI_", "", fn.split("#", 1)[-1] if layout == "string" else fn)
+        g = ("glibc" + re.sub(r"^_*", "_", re.sub(r"[^A-Za-z0-9_]", "_", stem)) if layout == "string"
              else "glibc_" + stem.replace("#", "_"))
         text += f'''
 (** glibc's `{fn}`. *)

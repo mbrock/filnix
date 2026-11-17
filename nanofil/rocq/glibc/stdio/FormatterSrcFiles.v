@@ -14,8 +14,10 @@ Open Scope Z_scope.
 
 Module FormatterSrcFiles.
 
-Definition file_0 : string := "./vfprintf-process-arg.c".
+Definition file_0 : string := "../include/printf_buffer.h".
 
-Definition file_1 : string := "vfprintf-internal.c".
+Definition file_1 : string := "./vfprintf-process-arg.c".
+
+Definition file_2 : string := "vfprintf-internal.c".
 
 End FormatterSrcFiles.

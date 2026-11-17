@@ -186,6 +186,7 @@ which this generator does not add.
 The compiler's `cc-layouts FILE` command exposes the completed C layouts
 without changing `cc-ir`, checked terms or assembly output. The generator
 uses this command for manifests with `layouts = true`; libio enables it first.
+A stdio batch enables it with `layouts = true` on the batch.
 Each fixture receives a `<Name>Layout.v` beside its source tables.
 
 The command prints `layouts(Records, Uses)` as a Prolog term. A record is
@@ -253,6 +254,13 @@ object names, unit order and root order: the linker uses them to name private
 symbols and order the resulting terms. `FUNCTIONS` lists the bodies to decode;
 the libio and stdio layouts also select only those functions from the link.
 `PROGRAM` names a C source relative to `nanofil`.
+
+A function that is private to its unit is listed by its linked name,
+`OBJECT#NAME`, such as `glibc_vfprintf_internal#__printf_buffer_putc`. In the
+`string` and `formatter` layouts its Rocq constant is named after `NAME` alone,
+here `glibc_printf_buffer_putc`. Its source tables are the module
+`fn_OBJECT_NAME`, with every character that is not a letter, a digit or an
+underscore changed to an underscore.
 
 Existing fixtures must keep their names and presentation when units are added.
 The `layout` setting chooses those conventions. The `mode` setting preserves

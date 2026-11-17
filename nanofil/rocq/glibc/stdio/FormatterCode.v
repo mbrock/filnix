@@ -35,3 +35,9 @@ Definition glibc_printf_buffer : func := Eval vm_compute in formatter_fn "__prin
 (** The module defines `__printf_buffer` as [glibc_printf_buffer]. *)
 Lemma glibc_printf_buffer_found : find_direct (TAtom "__printf_buffer") formatter_module = Some (Defined glibc_printf_buffer).
 Proof. vm_compute. reflexivity. Qed.
+
+(** glibc's `glibc_vfprintf_internal#__printf_buffer_putc`. *)
+Definition glibc_printf_buffer_putc : func := Eval vm_compute in formatter_fn "glibc_vfprintf_internal#__printf_buffer_putc".
+(** The module defines `glibc_vfprintf_internal#__printf_buffer_putc` as [glibc_printf_buffer_putc]. *)
+Lemma glibc_printf_buffer_putc_found : find_direct (TAtom "glibc_vfprintf_internal#__printf_buffer_putc") formatter_module = Some (Defined glibc_printf_buffer_putc).
+Proof. vm_compute. reflexivity. Qed.
