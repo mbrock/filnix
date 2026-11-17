@@ -44,15 +44,11 @@ Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 (** This notation combines the stream state and the callees' private state. *)
 Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
 
-(** `stdout` is an argument a printing debt may be handed. *)
-Lemma arg_out : ⊢ arg_ro o (WPtr (ho_out o)).
-Proof using Type. iLeft. iPureIntro. right. left. reflexivity. Qed.
-
 (** A call of `fprintf` or `fputs` at one of `main`'s sites: it returns
     an int and keeps the stdio state. *)
 Lemma wp_print g xs f e ls lab d args rest j Ψ :
   print_site ge o g xs -> map_option (arg_x ge e) args = Some xs ->
-  hello_ro ge o -∗ io -∗ ([∗ list] x ∈ xs, arg_ro o x) -∗
+  hello_ro ge o -∗ io -∗ ([∗ list] x ∈ skipn 2 xs, str_arg x) -∗
   ▷ (∀ n, io -∗ WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
 Proof using Type.
@@ -73,8 +69,7 @@ Proof using Type.
   intros Hs Hvs Hvo. iIntros "#Hro Hio HK".
   iApply (wp_print with "Hro Hio [] HK"); [left; split; [reflexivity | exists s; split; [exact Hs | reflexivity]] |
     cbn; rewrite Hvs Hvo; reflexivity |].
-  iSplitL; [|iSplitL; [iApply arg_out | done]]. iApply str_ro_arg. iApply (lit_ro with "Hro").
-  unfold fputs_lits in Hs. cbn. cbn in Hs. tauto.
+  cbn. done.
 Qed.
 
 (** Help compares stdout with stderr and exits with the resulting status. *)
@@ -136,8 +131,7 @@ Proof using Type*.
     + (branch_symbolic; LeavesLogic.decide_branch). step. step_global (hy_lits _ _ Hy "hello#str.62" ltac:(cbn; tauto)).
       step_global (hy_lits _ _ Hy "hello#str.63" ltac:(cbn; tauto)).
       iApply (wp_print with "Hro Hio [] [-]"); [right; right; left; split; reflexivity | vx | |].
-      { iSplitL; [iApply arg_out|]. iSplitL; [iApply str_ro_arg; iApply (lit_ro with "Hro"); cbn; tauto|].
-        iSplitL; [iApply str_ro_arg; iApply (lit_ro with "Hro"); cbn; tauto | done]. }
+      { iSplitL; [iApply str_ro_arg; iApply (lit_ro with "Hro"); cbn; tauto | done]. }
       iNext. iIntros (n8) "Hio". step. iApply (help_L32 with "Hro Hio Hn HX"). lk_prove.
 Qed.
 

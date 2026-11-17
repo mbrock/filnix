@@ -97,7 +97,9 @@ Section debts.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (o : hello_objs).
 
-(** [os_wi] w0 survives safepoints. *)
+(** The proof rules need to know that the world invariant holds again
+    after a safepoint. This instance says so for the invariant of the
+    world w0. *)
 Local Instance debts_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
 (** The program logic uses glibc's OS registry and concrete world interpretation. *)
 Local Instance debts_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) Σ :=
@@ -124,14 +126,6 @@ Qed.
 
 (** The pointer identifies a read-only string whose bytes need not be specified. *)
 Definition str_ro (q : ptr) : iProp Σ := ∃ s, word_string DfracDiscarded q s.
-
-(** A call argument may be an integer, null, a standard stream or a read-only string. *)
-Definition arg_ro (x : word) : iProp Σ :=
-  match x with
-  | WPtr q => ⌜ptr_addr q = 0 \/ q = ho_out o \/ q = ho_err o⌝ ∨
-              ∃ p s k, ⌜q = ptr_add p (Z.of_nat k) /\ (k <= length s)%nat⌝ ∗ word_string DfracDiscarded p s
-  | _ => True
-  end.
 
 (** The thread owns the standard streams, their open-stream list,
     its cleanup fields and the bytes of errno. *)
@@ -181,7 +175,9 @@ Definition wbuf (bd n : Z) (ws : list Z) : iProp Σ :=
   ∃ cs, ⌜length ws = Z.to_nat (req_extent (wreq n)) /\ length cs = length ws⌝ ∗
     live bd (mkRegion bd (bd + req_extent (wreq n)) Heap Live) ∗ bytes bd 0 ws ∗ auxes bd 0 cs.
 
-(** Main prints help text to stdout and the usage hint to stderr. *)
+(** Main prints help text to stdout and the usage hint to stderr. Each
+    site passes a stream and a literal first. A site of `c: fprintf`
+    passes one more argument, the string that `%s` prints. *)
 Definition print_site (g : name) (xs : list word) : Prop :=
   (g = TAtom "fputs" /\ exists s, In s fputs_lits /\ xs = [WPtr (sym_ptr ge s); WPtr (ho_out o)]) \/
   (g = TAtom "fprintf" /\ exists q, xs = [WPtr (ho_out o); WPtr (sym_ptr ge "hello#str.54"); WPtr q]) \/
@@ -226,7 +222,7 @@ Record HelloCore : Type := mkHelloCore {
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ str_ro q1 ∗ str_ro q2 ∗ str_ro q3 ∗ str_ro q4)%I
       (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ hd_priv)%I;
   hd_print : forall g xs, print_site g xs ->
-    fn_triple g xs (hello_ro ∗ hello_stdio ∗ hd_priv ∗ [∗ list] x ∈ xs, arg_ro x)%I
+    fn_triple g xs (hello_ro ∗ hello_stdio ∗ hd_priv ∗ [∗ list] x ∈ skipn 2 xs, str_arg x)%I
       (ret_int (hello_stdio ∗ hd_priv))%I;
   hd_emit_bug :
     fn_triple (TAtom "emit_bug_reporting_address") [] (hello_ro ∗ hello_stdio ∗ hd_priv)%I
@@ -234,7 +230,7 @@ Record HelloCore : Type := mkHelloCore {
   hd_error_operand : forall q,
     fn_triple (TAtom "error")
       [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ arg_ro (WPtr q))%I
+      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ str_arg (WPtr q))%I
       (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ hd_priv ∗ names)%I;
   hd_error_conv : forall n (E : iProp Σ),
     fn_triple (TAtom "exit") [WInt 1]
@@ -259,10 +255,12 @@ Record HelloCore : Type := mkHelloCore {
       (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I
 }.
 
-(** The concrete library bridges establish these call contracts.
-    Registration changes the exit-handler state from X0 to X, and exit
-    consumes X while invoking the close callback. HelloGlibcMainLibs.v
-    constructs this record from the proved glibc implementations. *)
+(** The record [HelloLibs] holds the contracts of the library calls
+    that are already proved from glibc's code. Registering the close
+    callback changes the exit-handler state from X0 to X, and
+    `c: exit` consumes X when it invokes the callback.
+    HelloGlibcMainLibs.v builds this record from the proofs of the
+    glibc functions. *)
 Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
   hl_mbszero : forall b, 0 < b -> b mod 16 = 0 -> b + 16 <= 2 ^ 48 ->
     fn_triple (TAtom "mbszero") [WPtr (mkPtr b (Obj b))] (obj b (heap_req 4 8))

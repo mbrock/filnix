@@ -163,17 +163,18 @@ Qed.
 
 (** The operand argv[k], k at most argc, is an argument a debt may be
     handed: a read-only string or null. *)
-Lemma nth_arg_ro ps (k : nat) : ([∗ list] q ∈ ps, str_ro q) ⊢ arg_ro o (WPtr (nth k (ps ++ [null]) null)).
+Lemma nth_arg_ro ps (k : nat) : ([∗ list] q ∈ ps, str_ro q) ⊢ str_arg (WPtr (nth k (ps ++ [null]) null)).
 Proof using Type.
   iIntros "#Hps". destruct (decide (k < length ps)%nat) as [Hk | Hk].
   - rewrite app_nth1; [|lia]. iApply str_ro_arg. iApply (big_sepL_elem_of with "Hps").
     apply list_elem_of_In, nth_In. lia.
-  - rewrite app_nth2; [|lia]. destruct (k - length ps)%nat as [|[|n]]; cbn; iLeft; iPureIntro; left; reflexivity.
+  - rewrite app_nth2; [|lia]. destruct (k - length ps)%nat as [|[|n]]; cbn; iLeft; iPureIntro; reflexivity.
 Qed.
 
-(** The hint on `stderr`, from `iw_1.L113` entered from any block:
-    `stderr` and `program_name` are loaded, `fprintf` prints the hint,
-    and `exit (1)` is called. *)
+(** This lemma covers the hint that Hello prints on `stderr`. The
+    block `iw_1.L113` may be entered from any block. It loads `stderr`
+    and `program_name`, prints the hint with `fprintf`, and calls
+    `exit (1)`. *)
 Lemma operand_hint e from Ψ :
   hello_ro ge o -∗ io -∗ names o -∗ X -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L113") (Some (TAtom from)))) : gexpr) {{ Ψ }}.
@@ -192,9 +193,7 @@ Proof using Hy Lb.
   iApply (wp_name_load with "Hpl Hpc Hx"); [exact Hy | lk_prove |]. iIntros "Hpl Hpc".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
   iApply (wp_print w0 ge o D with "Hro Hio [] [-]"); [right; right; right; split; [reflexivity | eexists; reflexivity] | vx | |].
-  { iSplitL; [iLeft; iPureIntro; right; right; reflexivity|].
-    iSplitL; [iApply str_ro_arg; iApply (lit_ro with "Hro"); cbn; tauto|].
-    iSplitL; [iApply (str_ro_arg with "Hx") | done]. }
+  { iSplitL; [iApply (str_ro_arg with "Hx") | done]. }
   iNext. iIntros (n) "[Hio Hpv]".
   iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv [Hpl Hpc Hncr] HX"); [reflexivity|].
   iExists x, y, z. iSplitL; [|iSplitR; [iExact "Hx" | iSplitR; [iExact "Hy'" | iExact "Hz"]]].

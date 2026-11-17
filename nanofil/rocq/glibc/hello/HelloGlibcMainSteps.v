@@ -24,7 +24,9 @@ Open Scope Z_scope.
 (** The debt record supplies the call contracts and their resources. *)
 Import HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
-(** This tactic supplies the safepoint instance left by a step rule. *)
+(** Some step rules leave a goal that asks whether the world invariant
+    holds across a safepoint. This tactic proves that goal from the
+    instance in the context. *)
 
 
 (** This tactic takes one pure step after computing its argument values. *)
@@ -52,8 +54,8 @@ Local Instance steps_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge)
 Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 
 (** A call may reuse a read-only pointer argument. *)
-Global Instance arg_ro_ptr_persistent q : Persistent (arg_ro o (WPtr q)).
-Proof using Type. rewrite /arg_ro. apply _. Qed.
+Global Instance str_arg_ptr_persistent q : Persistent (str_arg (WPtr q)).
+Proof using Type. rewrite /str_arg. apply _. Qed.
 
 (** The caller keeps the bounded integer returned by this call. *)
 Lemma wp_call_int g xs P Q f e ls lab d args rest j Ψ :
@@ -198,8 +200,8 @@ Proof using Type.
   iPoseProof (word_string_suffix with "H") as "H". rewrite length_take_le; [iExact "H" | exact Hk].
 Qed.
 
-(** A read-only string satisfies the output calls' argument contract. *)
-Lemma str_ro_arg q : str_ro q ⊢ arg_ro o (WPtr q).
+(** A read-only string is a string argument of an output call. *)
+Lemma str_ro_arg q : str_ro q ⊢ str_arg (WPtr q).
 Proof using Type.
   iIntros "(%s & Hs)". iRight. iExists q, s, O. iFrame "Hs". iPureIntro. split; [|lia].
   destruct q as [qa qc]. rewrite /ptr_add /=. f_equal. lia.
@@ -223,8 +225,10 @@ Proof using Type.
   iNext. iIntros "Hl Hp _". iApply ("HK" with "Hl Hp").
 Qed.
 
-(** Loading a standard stream reads its shared pointer cell and
-    borrows the live token from the stream invariant. *)
+(** Main loads `c: stdout` or `c: stderr` from a global cell that
+    every reader shares. The load needs to know that the stream is
+    alive, and this lemma borrows that fact from the stream's
+    invariant and gives the invariant back. *)
 Lemma wp_load_stream f e ls lab d c rest j sb sreg g Ψ :
   lookup c e = Some (WPtr (mkPtr sb (Obj sb))) -> 0 <= sb < 2 ^ 64 -> sb mod 8 = 0 ->
   liveq DfracDiscarded sb sreg -∗ pcellq DfracDiscarded sb 0 g -∗ file_inv (ho_vb o) (ow_self w0) g -∗

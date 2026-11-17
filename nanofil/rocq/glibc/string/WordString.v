@@ -267,6 +267,16 @@ Definition wwin (dq : dfrac) (b : Z) (reg : region) (wo : Z) (ws : list Z) : iPr
 Definition word_string (dq : dfrac) (p : ptr) (s : list Z) : iProp Σ :=
   ∃ b reg ws, ⌜str_shape p b reg ws s⌝ ∗ wwin dq b reg (wstart p - b) ws.
 
+(** A string argument of a formatted print is null or points into a
+    read-only string. An integer argument asks for nothing. glibc
+    prints `(null)` for a null string. *)
+Definition str_arg (x : word) : iProp Σ :=
+  match x with
+  | WPtr q => ⌜ptr_addr q = 0⌝ ∨
+      ∃ p s k, ⌜q = ptr_add p (Z.of_nat k) /\ (k <= length s)%nat⌝ ∗ word_string DfracDiscarded p s
+  | _ => True
+  end.
+
 (** Two fractional piece maps with identical keys must hold identical
     values, as [ptsq_agree] proves. *)
 Lemma ptsq_agree dq1 dq2 ps1 ps2 : ps1.*1 = ps2.*1 -> ptsq dq1 ps1 -∗ ptsq dq2 ps2 -∗ ⌜ps1 = ps2⌝.

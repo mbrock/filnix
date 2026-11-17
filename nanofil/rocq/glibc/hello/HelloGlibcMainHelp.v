@@ -70,8 +70,7 @@ Proof using Hy Lb.
   iDestruct "Hnc" as "(Hpl & Hpc & Hncr)".
   iApply (wp_name_load with "Hpl Hpc Hpn"); [exact Hy | lk_prove |]. iIntros "Hpl Hpc".
   iApply (wp_print w0 ge o D with "Hro Hio [] [-]"); [right; left; split; [reflexivity | eexists; reflexivity] | vx | |].
-  { iSplitL; [iApply (arg_out o)|]. iSplitL; [iApply str_ro_arg; iApply (lit_ro with "Hro"); cbn; tauto|].
-    iSplitL; [iApply (str_ro_arg with "Hpn") | done]. }
+  { iSplitL; [iApply (str_ro_arg with "Hpn") | done]. }
   iNext. iIntros (n0) "Hio".
   iAssert (names o) with "[Hpl Hpc Hncr]" as "Hn".
   { iApply (names_intro o pn sn with "[Hpl Hpc Hncr] Hpn Hsn").
