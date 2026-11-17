@@ -890,8 +890,9 @@ tactic_subject(goal) --> tk(id(goal)), !.
 tactic_subject(type(E)) --> tk(id(type)), tk(id(of)), !, term(E).
 tactic_subject(term(E)) --> term(E).
 
+%  In t; [a | b.. | c], b.. runs b on every goal between a's and c's.
 tactic_choices([T|Ts]) -->
-    ( tactic(T) -> [] ; { T = empty } ),
+    ( tactic(T0) -> ( tk(sym('.')), tk(sym('.')) -> { T = rest(T0) } ; { T = T0 } ) ; { T = empty } ),
     ( tk(sym('|')) -> tactic_choices(Ts) ; { Ts = [] } ).
 tactic_branches([tbr(Ps, T)|Bs]) --> tactic_match_pattern(Ps), tk(sym('=>')), tactic(T),
     ( tk(sym('|')) -> tactic_branches(Bs) ; { Bs = [] } ).
@@ -982,7 +983,7 @@ intro_pairs([P|Ps]) --> tk(sym('&')), intro_pattern(P), !, intro_pairs(Ps).
 intro_pairs([]) --> [].
 
 tactic_token(K) :- \+ memberchk(K, [p(';'), p('('), p(')'), p('['), p(']'),
-                                    sym('|'), sym('=>'), sym('||'), kw(end)]).
+                                    sym('|'), sym('=>'), sym('||'), sym('.'), kw(end)]).
 matching('(', ')').
 matching('[', ']').
 matching('{', '}').

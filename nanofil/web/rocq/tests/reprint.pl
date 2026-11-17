@@ -261,6 +261,7 @@ pt(tletrec(n(_, N), Args, V, B)) :-
     format("(let rec ~w ", [N]), names(Args), write(" := "), pt(V), write(" in "), pt(B), write(")").
 pt(teval(Ws, E)) :- write("eval "), atomic_list_concat(Ws, ' ', W), write(W), write(" in "), pr(E).
 pt(empty).
+pt(rest(T)) :- pt(T), write(" ..").
 
 pt_subject(goal) :- write("goal").
 pt_subject(type(E)) :- write("type of "), pr(E).

@@ -1288,6 +1288,7 @@ tactic_inline(call(N, Ps), Env) -->
     el(span, "c rq-tac-call", ['data-d'=args], ( name_ref(N, Env, head), " ", el(span, "args rq-tac-args", tactic_parts(Ps, Env)) )),
     { nb_setval(rq_ipm, I0) }.
 tactic_inline(empty, _) --> el(span, "rq-empty", []).
+tactic_inline(rest(T), Env) --> tactic_inline(T, Env), "..".
 
 ipm_tactic(N) :- atom_codes(N, [0'i, C|_]), between(0'A, 0'Z, C).
 

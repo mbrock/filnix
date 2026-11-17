@@ -23,6 +23,14 @@ test(tactic_notation_body) :-
     assertion(Items = [tacnotation(_, [literal("load_cell"), argument(constr, n(_, 'H')),
         literal("by"), argument(tactic3, n(_, side))], dispatch(_, [_, _, _]))]).
 
+% In t; [a | b.. | c], b.. covers the goals between a's and c's.
+test(dispatch_rest) :-
+    string_codes("Goal True /\\ True. Proof. split; [done..|]. Qed.", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    Items = [proved(_, pf([step(_, _, Ts)|_], _))],
+    rocq_syntax:rocq_tactic_tokens(Ts, T),
+    assertion(T = dispatch(call(split, []), [rest(call(done, [])), empty])).
+
 % Rocq 9.2 deprecates Notation x := t for Abbreviation x := t.
 test(abbreviation) :-
     string_codes("Abbreviation twice f x := (f (f x)) (only parsing).", Cs),
