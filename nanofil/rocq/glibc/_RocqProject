@@ -948,6 +948,7 @@ hello/HelloImageFnLink.v
 hello/HelloImageLayout.v
 startup/CpuHello.v
 hello/HelloImageCpu.v
+hello/HelloImageEarly.v
 hello/HelloImageDisjoint.v
 startup/StartLsmHello.v
 hello/HelloImageLayoutRefused.v
