@@ -161,6 +161,13 @@ sbody([C|Cs0], [C|B], Cs) :- sbody(Cs0, B, Cs).
 token([0'"|Cs0], O0, str(S), Cs, O) :- !,
     sbody(Cs0, B, Cs), string_codes(S, B), length(B, N), O is O0 + N + 2.
 token([0'.|Cs], O0, dot, Cs, O) :- ( Cs == [] ; Cs = [C|_], white(C) ), !, O is O0 + 1.
+%  The glibc code generator names a temporary of compiled C after the C
+%  expression it holds and writes the name between single guillemets,
+%  ‹buf+8› or ‹s->_lock@L214›. Rocq reads such a name as one notation
+%  token, so it is one name here, whatever symbols it contains.
+token([0'‹|Cs0], O0, id(A), Cs, O) :-
+    span(quoted_name_char, Cs0, Body, [0'›|Cs]), Body \== [], !,
+    append([0'‹|Body], [0'›], Name), atom_codes(A, Name), length(Name, N), O is O0 + N.
 token([0'., 0'(|Cs], O0, sym('.('), Cs, O) :- !, O is O0 + 2.
 %  stdpp's projections, written against their operand: lv.1, ps.*1.
 token([0'., 0'*, D|Cs], O0, sym(A), Cs, O) :- memberchk(D, `12`), !, atom_codes(A, [0'., 0'*, D]), O is O0 + 3.
@@ -197,6 +204,7 @@ single_sym(C) :- memberchk(C, `⌜⌝▷□◇■⊤∅↑●◯£`).
 keyword(A) :- memberchk(A, [forall, fun, exists, let, in, match, with, end, if, then, else,
                             as, return, fix, cofix]).
 
+quoted_name_char(C) :- C \== 0'›, C \== 0'‹, C \== 0'", \+ white(C).
 digit(C) :- between(0'0, 0'9, C).
 num_char(C) :- digit(C) ; C == 0'_.
 letter(C) :- between(0'a, 0'z, C) ; between(0'A, 0'Z, C) ; between(128, 0x1FFF, C), \+ latin_sym(C) ; C == 0'ℓ.

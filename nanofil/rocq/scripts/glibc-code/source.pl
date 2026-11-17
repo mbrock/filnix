@@ -35,9 +35,49 @@ function_row(N, Ps, Bs, Rs, Row) :-
     assoc_to_keys(Loops, Headers),
     length(Bs, Blocks), length(Ts, Temps),
     temp_keys(Ps, Bs, Rs, Keys, Kinds),
+    findall(Shape, temp_shape(Ps, Bs, Rs, Shape), Shapes),
     Row = _{function:N, source:Source, block_src:Locations, temp_names:Names,
-            temp_keys:Keys, key_kinds:Kinds,
+            temp_keys:Keys, key_kinds:Kinds, temp_shapes:Shapes,
             loop_heads:Headers, blocks:Blocks, temps:Temps}.
+
+% A shape says how the value of a temporary of the body is made, so that names.py
+% can write the C expression it holds. Each row is [Temp, Label, Index, Shape],
+% in the order parameters, phis, instructions. Index is the instruction's
+% position in its block, and -1 for a parameter or a phi. A hint of the
+% temporary's own comes first. The shape [raw] has no C expression.
+temp_shape(Ps, _, Rs, [T, start, -1, S]) :-
+    member(param(_, tmp(T)), Ps), shape(T, none, Rs, S).
+temp_shape(_, Bs, Rs, [T, L, -1, S]) :-
+    member(block(L, Phis, _, _), Bs), member(phi(tmp(T), _, _), Phis), shape(T, none, Rs, S).
+temp_shape(_, Bs, Rs, [T, L, I, S]) :-
+    member(block(L, _, Is, _), Bs), nth0(I, Is, Inst), defines(Inst, T), shape(T, Inst, Rs, S).
+
+defines(let(tmp(T), _, _, _), T).
+defines(flight(tmp(T), _, _, _), T).
+defines(call(result(tmp(T), _), _, _), T).
+defines(raw_call(result(tmp(T), _), _, _), T).
+defines(local_load(tmp(T), _, _, _, _), T).
+
+% JSON reads the atoms null, true and false as constants, and vfprintf has a
+% variable called null, so a C name is written as a string.
+shape(T, _, Rs, [Kind, Name]) :- own_key(T, Rs, Kind, _), !,
+    memberchk(value(T, named(Id, _), _), Rs), memberchk(binding(Id, Name0, _, _), Rs),
+    atom_string(Name0, Name).
+shape(_, Inst, _, [add, R, K]) :- source_of(Inst, R, K), Inst = flight(_, _, _, _), !.
+shape(_, Inst, _, [check, R]) :- source_of(Inst, R, 0), !.
+shape(_, let(_, _, copy, [global(G0)]), _, [global, G]) :- !, atom_string(G0, G).
+shape(_, let(_, _, copy, [tmp(R)]), _, [same, R]) :- !.
+shape(_, let(_, _, ptoi, [tmp(R)]), _, [addr, R]) :- !.
+shape(_, let(_, _, cmp(Op, _), [A, B]), _, [cmp, Op, SA, SB]) :- operand(A, SA), operand(B, SB), !.
+shape(_, let(_, _, Op, [tmp(R)]), _, [load, R, Off]) :- load_offset(Op, Off), !.
+shape(_, call(_, global(G0), _), _, [call, G]) :- !, atom_string(G0, G).
+shape(_, _, _, [raw]).
+
+load_offset(raw_load(_, Off), Off).
+load_offset(raw_load_pointer(Off, _), Off).
+load_offset(load(_), 0).
+operand(tmp(T), [tmp, T]).
+operand(const(K), [const, K]) :- integer(K).
 
 % A key says which C value a temporary of the body holds. A temporary with a
 % value hint holds the variable; one with an address hint holds the variable's

@@ -131,6 +131,20 @@ test(let_question_and_mutual) :-
     findall(V, ( sub_term(element(span, As1, [V]), DOM), memberchk('data-v'=a, As1) ), Vs),
     assertion(Vs = [_, _|_]).
 
+% The glibc code generator writes the name of a temporary between single
+% guillemets. The name is one token whatever symbols it holds, so chk(buf+8)
+% inside it is not an application and -> is not an arrow.
+test(quoted_temporary_name) :-
+    string_codes("Lemma a (e : env) : lookup ‹chk(buf+8)@L4› e = lookup ‹s->_lock› e.", Cs),
+    rocq_syntax:rocq_parse_codes(Cs, Items, _),
+    assertion(Items = [proved(thm(_, 'Lemma', _, _,
+        bin(_, =, app(_, id(_, lookup), [id(_, '‹chk(buf+8)@L4›'), id(_, e)]),
+                  app(_, id(_, lookup), [id(_, '‹s->_lock›'), id(_, e)]))), _)]),
+    fence_dom(["Lemma a (e : env) : lookup ‹chk(buf+8)@L4› e = lookup ‹s->_lock› e.", "Proof.", "Admitted."], DOM),
+    assertion(sub_term(element(span, [class=g], ['‹chk(buf+8)@L4›']), DOM)),
+    assertion(sub_term(element(span, [class=g], ['‹s->_lock›']), DOM)),
+    assertion(\+ ( sub_term(element(_, As, _), DOM), memberchk(class=C, As), sub_atom(C, _, _, _, unparsed) )).
+
 fence_dom(Lines, DOM) :-
     call_with_time_limit(2, phrase(rocq_fence(Lines), Codes)),
     string_codes(Html, Codes),

@@ -123,6 +123,55 @@ selects the right context records. It checks site order, missing locations,
 recorded names and loop headers without a capture. The test driver runs this
 test before its capture checks.
 
+## Name temporaries after C expressions
+
+A batch with `names = true` also gets `<Name>Names.v` beside each fixture.
+It holds one module per function, `<Name>Names.fn_<symbol>`, and each module
+holds one notation per temporary that has a C expression. A proof imports the
+module of its own function. It can then write `‹buf+8›` where it would write
+`TAtom "v8"`, and Rocq prints goals with the same names. A notation changes
+only how a term is written and printed, so tactics that match
+`lookup (TAtom t) e` work as before, and a wrong name can only make a lemma
+harder to read.
+
+Every name is one token between single guillemets. Without them Rocq would
+read `s+192` as the temporary wherever the module is imported, even in a
+statement about an integer `s`. The site's grammar reads a guillemet name as
+one name too. Do not write these names without the guillemets.
+
+The names come from the `temp_shapes` rows of `source.pl` and the field paths
+of the block footprints:
+
+| Temporary | Name |
+| --- | --- |
+| holds a C variable | `‹buf›` |
+| holds a variable's or a global's address | `‹&wrap›` |
+| constant pointer addition | `‹buf+8›` |
+| check of a pointer | `‹chk(buf+8)›` |
+| load of a field the layouts name | `‹buf->write_ptr›` |
+| load without a field path | `‹[buf->fp+216]›` |
+| address of a pointer as an integer | `‹addr(format)›` |
+| comparison | `‹s->_mode==0›` |
+| result of a direct call | `‹__printf_buffer_to_file_done()›` |
+
+Arithmetic, phis without a hint and results of indirect calls have no name,
+and neither does anything computed from them.
+
+The compiler often computes one C expression again in a later block. The
+first temporary gets the plain name. A later one gets `@` and the label of
+its block, such as `‹buf+8@L4›`, and a further one in the same block gets
+`‹buf+8@L4.2›`. Only these ambiguous names carry a suffix. The suffixes follow
+the compiler's label numbering, so a recompile that renumbers labels changes
+them. New proofs state their frames with `c_env` keys, which do not depend on
+labels, and use these names for reading goals and for the statements of
+lemmas about single instructions.
+
+The stdio printf batches turn names on. Another batch opts in when someone
+next works on its proofs. The two whole-image fixtures have no source tables,
+so they have no names. For each function the generator prints how many names
+come from a hint, how many are derived, how many carry a suffix and how many
+temporaries stay unnamed.
+
 ## Use block hints
 
 An executor can forget a temporary once no later block can read it.

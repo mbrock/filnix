@@ -21,6 +21,7 @@ shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
 layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
 block_definitions = runpy.run_path(str(HERE / "block-facts.py"))["block_definitions"]
+name_tables = runpy.run_path(str(HERE / "names.py"))["name_tables"]
 PRELUDE = GLIBC / "CodePrelude.v"
 
 
@@ -483,6 +484,13 @@ class Generator:
                     k = r["key_kinds"]
                     print(f'  {r["function"]}: temporaries {k["current"]}; named {k["named"]}; '
                           f'addresses {k["address"]}; derived {k["derived"]}; fallback {k["raw"]}', flush=True)
+                if cfg.get("names", False):
+                    text, counts = name_tables(name, facts, block_facts)
+                    (output / (name + "Names.v")).write_text(text)
+                    print(f"{name}Names: functions {len(counts)}", flush=True)
+                    for fn, k in counts.items():
+                        print(f'  {fn}: named {k["named"]}; derived {k["derived"]}; '
+                              f'suffixed {k["suffixed"]}; unnamed {k["raw"]}', flush=True)
             if layout == "image":
                 whole, report = self.work / "image.term", self.work / "image.report"
                 whole.write_text(linked)
@@ -604,6 +612,9 @@ def main():
             if not args.output and args.form == 'shared-prelude':
                 for pattern in ('*Src[0-9]*.v', '*SrcFiles.v', '*Blocks[0-9]*.v'):
                     stale.update(p for p in target.glob(pattern) if not (out / p.name).exists())
+                # A names file is the generator's when its header says so.
+                stale.update(p for p in target.glob('*Names.v') if not (out / p.name).exists()
+                             and 'The code generator reproduces this file' in p.read_text()[:1000])
                 for path in out.glob('*Src.v'):
                     old = target / (path.name.removesuffix('Src.v') + 'Blocks.v')
                     if old.exists():

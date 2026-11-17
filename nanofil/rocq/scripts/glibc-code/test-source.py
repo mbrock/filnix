@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import tempfile
 
@@ -46,7 +47,10 @@ func(win,export,w,[],[block(start,[],[],ret)])]).
 func(f,export,w,[param(w,tmp(arg))],[
 block(start,[],[copy(tmp(v),w,tmp(arg)),let(tmp(c),a,check(0,8,read,8),[tmp(arg)]),
 flight(tmp(q),add,[address(tmp(c)),const(8)],lower(tmp(c))),
-flight(tmp(r),add,[address(tmp(u)),const(-4)],lower(tmp(u)))],goto(loop)),
+flight(tmp(r),add,[address(tmp(u)),const(-4)],lower(tmp(u))),
+let(tmp(ld),w,raw_load(sw,4),[tmp(c)]),let(tmp(t),w,cmp(ne,w),[tmp(ld),const(0)]),
+let(tmp(g),p,copy,[global(null)]),call(result(tmp(k),w),global(callee),[]),
+let(tmp(c2),a,check(0,8,read,8),[tmp(arg)])],goto(loop)),
 block(loop,[phi(tmp(p),w,[start-tmp(v),loop-tmp(p)])],[],branch(tmp(p),loop,done)),
 block(done,[],[],ret(tmp(p))),block(dead,[],[],ret)]),
 context(f,[origin(0,at('unit.c',4),statement(function),[]),
@@ -65,12 +69,47 @@ func(no_context,export,w,[],[block(start,[],[],ret)])]).
                                      ['done', 'unit.c', 30]],
                           temp_names=[['arg', 'count'], ['p', 'count'], ['retired', 'count']],
                           temp_keys=[['arg', 'arg', 'count', 0], ['c', 'arg', 'count', 0],
+                                     ['c2', 'arg', 'count', 0],
                                      ['p', 'p', 'count', 0], ['q', 'arg', 'count', 8],
                                      ['r', 'u', 'u', -4], ['v', 'v', '&count', 0]],
-                          key_kinds=dict(current=7, named=2, address=1, derived=2, raw=2),
-                          loop_heads=['loop'], blocks=4, temps=8),
+                          key_kinds=dict(current=12, named=2, address=1, derived=3, raw=6),
+                          temp_shapes=[['arg', 'start', -1, ['named', 'count']],
+                                       ['p', 'loop', -1, ['named', 'count']],
+                                       ['c', 'start', 1, ['check', 'arg']],
+                                       ['q', 'start', 2, ['add', 'c', 8]],
+                                       ['r', 'start', 3, ['add', 'u', -4]],
+                                       ['ld', 'start', 4, ['load', 'c', 4]],
+                                       ['t', 'start', 5, ['cmp', 'ne', ['tmp', 'ld'], ['const', 0]]],
+                                       ['g', 'start', 6, ['global', 'null']],
+                                       ['k', 'start', 7, ['call', 'callee']],
+                                       ['c2', 'start', 8, ['check', 'arg']]],
+                          loop_heads=['loop'], blocks=4, temps=13),
                      dict(function='no_context', source=None, block_src=[],
                           temp_names=[], temp_keys=[],
                           key_kinds=dict(current=0, named=0, address=0, derived=0, raw=0),
-                          loop_heads=[], blocks=1, temps=0)], facts
-print('source tables: default bytes, local/weak/archive contexts, sites, recorded names, keys and loop headers passed')
+                          temp_shapes=[], loop_heads=[], blocks=1, temps=0)], facts
+
+# A name is the C expression of its temporary. A load without a field path is
+# written as its address in brackets, and one with a path is the path. Only a
+# later temporary with a taken name gets a label suffix. A temporary that rests
+# on an unnamed one gets no name, and neither does a name that Rocq could not
+# read as one token.
+names = runpy.run_path(str(HERE / 'names.py'))
+rows, count = names['function_names'](facts[0]['temp_shapes'], {})
+assert rows == [('arg', 'count'), ('p', 'count@loop'), ('c', 'chk(count)'), ('q', 'chk(count)+8'),
+                ('ld', '[count+4]'), ('t', '[count+4]!=0'), ('g', '&null'), ('k', 'callee()'),
+                ('c2', 'chk(count)@start')], rows
+assert count == dict(named=3, derived=6, raw=1, suffixed=2), count
+rows, _ = names['function_names'](facts[0]['temp_shapes'], {('start', 4): 'count->field'})
+assert ('ld', 'count->field') in rows and ('t', 'count->field!=0') in rows, rows
+rows, count = names['function_names'](
+    [['x', 'start', -1, ['named', 'x']], ['a', 'L1', 0, ['check', 'x']], ['b', 'L1', 1, ['check', 'x']],
+     ['c', 'L1', 2, ['check', 'x']], ['d', 'L2', 0, ['add', 'x', -8]], ['e', 'L2', 1, ['named', 'a b']],
+     ['f', 'L2', 2, ['load', 'e', 0]], ['g', 'L2', 3, ['named', "it's"]], ['h', 'L2', 4, ['raw']]], {})
+assert rows == [('x', 'x'), ('a', 'chk(x)'), ('b', 'chk(x)@L1'), ('c', 'chk(x)@L1.2'), ('d', 'x-8')], rows
+assert count == dict(named=1, derived=4, raw=4, suffixed=2), count
+text, counts = names['name_tables']('Unit', facts, [dict(function='f', blocks=[])])
+assert 'Module UnitNames.\n\nModule fn_f.\nNotation "\'\u2039count\u203a\'" := (TAtom "arg").\n' in text, text
+assert 'Notation "\'\u2039chk(count)@start\u203a\'" := (TAtom "c2").\nEnd fn_f.\n\nModule fn_no_context.\nEnd fn_no_context.' in text
+assert 'do not edit' in text[:1000].lower() and list(counts) == ['f', 'no_context']
+print('source tables: default bytes, local/weak/archive contexts, sites, recorded names, keys, shapes, notation names and loop headers passed')

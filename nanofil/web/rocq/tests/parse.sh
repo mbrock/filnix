@@ -278,6 +278,12 @@ Definition aliased (l : list nat) : nat :=
 Definition named : nat := @fst nat bool (pair (A:=nat) (B:=bool) 1 true).
 Definition paired : list nat := map (fun '(a, b) => a + b) [(1, 2); (3, 4)].
 Definition digits : positive := (xH)~0~1.
+Notation "'‹buf+8›'" := 5.
+Notation "'‹chk(buf+8)@L4›'" := 7.
+Notation "'‹s->_lock›'" := 11.
+Definition quoted_names (buf s : nat) : nat := ‹buf+8› + ‹chk(buf+8)@L4› * ‹s->_lock› + (buf+8) + s.
+Example quoted_names_value : quoted_names 1 2 = 93.
+Proof. reflexivity. Qed.
 Module Type Value.
   Parameter value : nat.
 End Value.

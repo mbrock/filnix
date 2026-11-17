@@ -1,4 +1,5 @@
 layout = "stdio"
+names = true
 ctors = true
 roots = "__printf_buffer_done __GI___pthread_setcancelstate"
 units = '''
@@ -11,6 +12,7 @@ PrintfState|||__printf_buffer_done __GI___pthread_setcancelstate
 [[batch]]
 layout = "buffer"
 layouts = true
+names = true
 ctors = true
 roots = "__printf_buffer_write __printf_buffer_flush __printf_buffer_flush_to_file __printf_buffer_to_file_init __printf_buffer_to_file_done"
 units = '''
@@ -24,6 +26,7 @@ PrintfBufferFile|||__printf_buffer_to_file_switch __printf_buffer_flush_to_file 
 [[batch]]
 layout = "string"
 mode = "checked"
+names = true
 fixtures = '''
 Fxprintf|__fxprintf_nocancel|stdio-common/fxprintf.os|__fxprintf_nocancel
 FxprintfNormal|__fxprintf|stdio-common/fxprintf.os|__fxprintf __vfxprintf
@@ -56,6 +59,7 @@ ErrlistData|_sys_errlist_internal _sys_errlist_internal_len|stdio-common/errlist
 [[batch]]
 layout = "formatter"
 mode = "checked"
+names = true
 fixtures = '''
 Formatter|__vfprintf_internal|stdio-common/vfprintf-internal.os|__vfprintf_internal __printf_buffer glibc_vfprintf_internal#__printf_buffer_putc
 '''

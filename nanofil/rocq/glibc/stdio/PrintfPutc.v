@@ -5,13 +5,14 @@
     module proves that the compiled function meets [putc_spec] of
     [PrintfSpec](PrintfSpec.v).
 
-    The proof follows the shape of the compiled function, which has
-    four blocks. It states what holds at the start of each block and
-    proves the blocks one at a time, as [CBlocks](../CBlocks.v)
-    describes. The statements name the two parameters `c: buf` and
-    `c: ch` as the C source does, and they name the buffer's fields as
-    the C structure does. The proof assumes a contract for
-    `c: __printf_buffer_putc_1`, the one function that is called. *)
+    The compiled function has four blocks, and the proof has one part
+    for each block. Each part assumes a statement of what holds when
+    its block starts, and [CBlocks](../CBlocks.v) joins the four parts
+    into a proof about the whole function. The statements call the two
+    parameters `c: buf` and `c: ch`, as the C source does, and they
+    call the buffer's fields by their names in the C structure. The
+    function calls one other function, `c: __printf_buffer_putc_1`,
+    and the proof assumes a contract for it. *)
 
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -21,7 +22,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic FormatterCode FormatterSrc
-  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec.
+  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec FormatterNames.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -38,6 +39,25 @@ Module S := FormatterSrc.fn_glibc_vfprintf_internal___printf_buffer_putc.
     are live there and the C variable that each one holds. *)
 Definition putc_cuts : list (string * cut_sig) :=
   Eval vm_compute in cut_table S.temp_keys S.live_in.
+
+(** The compiled function stores its values under numbered names such
+    as `v0` and `chk0`, which tell a reader nothing. The module
+    [FormatterNames](FormatterNames.v) lets a proof write each of them
+    as the C expression whose value it holds, between the marks `‹`
+    and `›`. The lemma below states the table above in that form, so
+    that a reader can compare it with the C source. When the block
+    `L4` starts, the function has already computed the address of the
+    field `c: write_ptr`. That address is the address of the buffer
+    plus 8, and the second row of the table says so. *)
+Import FormatterNames.fn_glibc_vfprintf_internal___printf_buffer_putc.
+
+Lemma putc_cuts_read :
+  putc_cuts =
+    [("start", [(‹buf›, ("buf", 0)); (‹ch›, ("ch", 0))]);
+     ("L4", [(‹chk(buf+8)›, ("buf", 8)); (‹buf›, ("buf", 0)); (‹ch›, ("ch", 0))]);
+     ("L5", [(‹buf›, ("buf", 0)); (‹ch›, ("ch", 0))]);
+     ("L6", [])].
+Proof. reflexivity. Qed.
 
 Section putc.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
