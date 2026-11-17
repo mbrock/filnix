@@ -15,6 +15,11 @@ arrow's left side is one premise, except:
   record it chooses. The field hd_priv is the callees' private state,
   which the caller picks rather than proves, so it is not counted.
 
+A section hypothesis that the proof uses (`Proof using H`) is a premise
+of the closed theorem even though the statement does not show it, so it
+counts once, with the label from SECTION_LABELS. Premises that are
+runtime contracts are labelled as such.
+
 The binders (addresses, regions, argv) are not premises. The conclusion
 is not counted. The script exits 1 if it cannot find the statement.
 """
@@ -30,6 +35,8 @@ RECORDS = {
     'HelloCore': GLIBC / 'hello' / 'HelloGlibcDebts.v',
 }
 NOT_PREMISES = {'hd_priv'}
+SECTION_LABELS = {'Hasm': 'startup assembly (pending)'}
+RUNTIME_CONTRACTS = {'frees_heap': "runtime contract: the environment's free frees heap objects"}
 
 
 def uncomment(text):
@@ -81,7 +88,7 @@ def strip_parens(s):
 
 def premises():
     text = uncomment(THEOREM.read_text())
-    m = re.search(r'Theorem hello_never_panics\b(.*?)\nProof\b', text, re.S)
+    m = re.search(r'Theorem hello_never_panics\b(.*?)\nProof\b([^.]*)\.', text, re.S)
     if not m:
         sys.exit('hello_premises: Theorem hello_never_panics not found')
     statement = split_top(m[1], ':')
@@ -90,6 +97,9 @@ def premises():
     for p in arrows[:-1]:
         head = p.split()
         if p.startswith('start_state '):
+            continue
+        if p.split()[0] in RUNTIME_CONTRACTS:
+            out.append(f'{RUNTIME_CONTRACTS[p.split()[0]]} ({p})')
             continue
         if p in ('hello_link ge o', 'hello_layout ge o'):
             out += [f'{head[0]}.{f}' for f in record_fields(head[0])]
@@ -103,6 +113,11 @@ def premises():
         out += [f'HelloCore.{f}' for f in record_fields('HelloCore') if f not in NOT_PREMISES]
     body = split_top(body.strip(), ' in ')[-1]
     out += split_top(body, '/\\')
+    used = m[2].split()
+    if used[:1] == ['using']:
+        for h in used[1:]:
+            if re.search(rf'Context \({h}\b', text):
+                out.append(f'{SECTION_LABELS.get(h, "section hypothesis")} [{h}]')
     return out
 
 
