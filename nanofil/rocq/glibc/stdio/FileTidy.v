@@ -49,7 +49,7 @@ Definition file_tidy (vb : Z) (self fp : ptr) (fd flags2 : Z) (held : option Z) 
      idle_ok fd (fs_with_flags2 st 0) /\ fs_flags2 st = flags2 /\
      fs_vtable st = mkPtr (vb + vt_file) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st)⌝ ∗
     live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) held ∗ buf_idle nb ∗
-    wide_idle (fs_wide st) (fs_codecvt st).
+    wide_idle vb (fs_wide st) (fs_codecvt st).
 
 (** An idle stream is a tidy stream with a free lock whose second
     flags word has the two bits clear that [idle_ok] names. A caller

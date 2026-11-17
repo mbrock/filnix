@@ -120,17 +120,33 @@ Definition hello_kept_state (fl fd lk wd vb : Z) : fstate :=
   mkFstate fl (replicate 12 null) fd 0 (2 ^ 64 - 1) (replicate 8 0) (mkPtr lk (Obj lk)) (2 ^ 64 - 1)
     null (mkPtr wd (Obj wd)) null null 0 0 (mkPtr (vb + vt_file) (Ro vb)).
 
+(** The linker's wide data object of a stream is the wide data that an
+    idle stream owns. *)
+Lemma hello_start_wide_own wd wreg vb :
+  0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
+  pts (hello_wide_kept_ps wd wreg vb) -∗ wide_idle vb (mkPtr wd (Obj wd)) null.
+Proof using Type.
+  intros H0 H8 He Hr. iIntros "H". rewrite /hello_wide_kept_ps.
+  change ((PLive wd, VLive wreg) :: ?l) with ([(PLive wd, VLive wreg)] ++ l).
+  rewrite !pts_app. iDestruct "H" as "(Hl & Hb & Ha & Hp)".
+  iExists wd, wreg. iSplit; [iPureIntro; split_and!; done|].
+  iFrame "Hl Hb Ha". iExact "Hp".
+Qed.
+
 (** Main prints through a stream only when the stream is whole: it must
     own the stream, its fields and its lock. Startup gives back the
     stream's life and its table pointer, and the linker set the rest. *)
-Lemma hello_start_file_own fb fl fd lk lkreg wd vb self :
+Lemma hello_start_file_own fb fl fd lk lkreg wd wreg vb self :
   flags_ok (hello_kept_state fl fd lk wd vb) -> (fd = 0 \/ fd = 1 \/ fd = 2) ->
   (fd <> 0 -> has fl io_no_writes = false) -> has fl io_is_appending = false -> 0 <= fd < 2 ^ 32 ->
   lk mod 8 = 0 -> lk + 16 <= r_end lkreg -> r_end lkreg <= 2 ^ 63 ->
+  0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   stream_live (mkPtr fb (Obj fb)) -∗ pcell fb 216 (mkPtr (vb + 336) (Ro vb)) -∗
-  pts (hello_stream_kept_ps fb fl fd lk lkreg wd) -∗ file_idle vb self (mkPtr fb (Obj fb)) fd.
+  pts (hello_stream_kept_ps fb fl fd lk lkreg wd) -∗ pts (hello_wide_kept_ps wd wreg vb) -∗
+  file_idle vb self (mkPtr fb (Obj fb)) fd.
 Proof using Type.
-  intros Hok H012 Hnw Hap Hfd Hlk Hlke Hlkr. iIntros "Hlv Hvt H".
+  intros Hok H012 Hnw Hap Hfd Hlk Hlke Hlkr Hw0 Hw8 Hwe Hwr. iIntros "Hlv Hvt H Hw".
+  iDestruct (hello_start_wide_own with "Hw") as "Hw"; [done..|].
   iDestruct "Hlv" as (b freg (Heq & Hb & Hal & Hend & Htop)) "Hl". injection Heq as <-.
   rewrite /hello_stream_kept_ps pts_concat.
   change (seqZ 0 12) with [0; 1; 2; 3; 4; 5; 6; 7; 8; 9; 10; 11].
@@ -157,7 +173,7 @@ Proof using Type.
     iSplitL "Hcv"; [iExact "Hcv"|]. iSplitL "Hwd"; [iExact "Hwd"|].
     iSplitL "Hfrl"; [iExact "Hfrl"|]. iSplitL "Hfrb"; [iExact "Hfrb"|].
     iSplitL "Hmd"; [iSplit; [iPureIntro; lia|iExact "Hmd"]|]. iSplitL "Htot"; [iExact "Htot"|]. iExact "Hvt".
-  - iSplitL; [|iSplit; [cbv [buf_idle]; done | cbv [wide_idle]; done]]. iExists lk, lkreg. iSplit; [iPureIntro; reflexivity|].
+  - iSplitL "Hlv Hl0 Hl4 Hl8"; [|iSplit; [cbv [buf_idle]; done | iExact "Hw"]]. iExists lk, lkreg. iSplit; [iPureIntro; reflexivity|].
     rewrite /lock_state /int_cell. destruct lock_offsets as (-> & -> & ->).
     iSplitR; [iPureIntro; split_and!; lia|]. iSplitL "Hlv"; [iExact "Hlv"|].
     iSplitL "Hl0"; [iSplit; [iPureIntro; lia|iExact "Hl0"]|].
@@ -270,12 +286,13 @@ Proof using Hi.
   iEval (cbv [take hello_lit_strs]; cbn [big_opL fst snd]) in "Hl3".
   iDestruct "Hl3" as "(#Hlp & #Htp & #Hkey & _)". iEval (rewrite E3) in "Hlp". iEval (rewrite E4) in "Htp".
   iEval (rewrite /hello_io_kept_ps pts_concat; cbn [big_opL]) in "Hio".
-  iDestruct "Hio" as "(Ser & Sout & Sin & Lso & Hso & Lse & Hse & Hjmp & Lpn & Hpn & Loa & Hoa & Loi & Hoi & _)".
-  iDestruct (hello_start_file_own _ _ _ _ _ _ _ (ow_self w) with "Lo Vo Sout") as "Fo";
+  iDestruct "Hio" as "(Ser & Sout & Sin & Lso & Hso & Lse & Hse & Hjmp & Lpn & Hpn & Loa & Hoa & Loi & Hoi &
+    Wer & Wout & _)".
+  iDestruct (hello_start_file_own _ _ _ _ _ _ _ _ (ow_self w) with "Lo Vo Sout Wout") as "Fo";
     [vm_compute; intuition congruence..|].
   iDestruct (hello_start_stdin_own with "Li Sin") as "Fi";
     [vm_compute; intuition congruence..|].
-  iDestruct (hello_start_file_own _ _ _ _ _ _ _ (ow_self w) with "Le Ve Ser") as "Fe";
+  iDestruct (hello_start_file_own _ _ _ _ _ _ _ _ (ow_self w) with "Le Ve Ser Wer") as "Fe";
     [vm_compute; intuition congruence..|].
   iMod (ptsq_persist with "Lso") as "#Lso". iMod (ptsq_persist with "Hso") as "#Hso".
   iMod (ptsq_persist with "Lse") as "#Lse". iMod (ptsq_persist with "Hse") as "#Hse".

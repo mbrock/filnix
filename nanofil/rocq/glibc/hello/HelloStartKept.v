@@ -49,6 +49,14 @@ Definition hello_stream_kept_ps (fb fl fd lk : Z) (lkreg : region) (wd : Z) : li
     [(PLive lk, VLive lkreg)]; byte_ps lk 0 (int_bytes 0); byte_ps lk 4 (int_bytes 0);
     hello_pointer_ps lk 8 null].
 
+(** The wide data object wd of a stream, which `c: _IO_fwide` uses
+    when it makes the stream wide, holds 224 zero bytes and then, at
+    offset 224, a pointer to the wide jump table, 840 bytes into
+    `c: __io_vtables`. *)
+Definition hello_wide_kept_ps (wd : Z) (wreg : region) (vb : Z) : list (piece * pval) :=
+  (PLive wd, VLive wreg) :: byte_ps wd 0 (replicate 224 0) ++ aux_ps wd 0 (replicate 224 CNone) ++
+  hello_pointer_ps wd 224 (mkPtr (vb + 840) (Ro vb)).
+
 (** The jump table of narrow file streams lies 336 bytes into
     `c: __io_vtables`, and its slots point at glibc's file functions. *)
 Definition hello_jumps_kept_ps : list (piece * pval) := Eval vm_compute in
@@ -58,7 +66,8 @@ Definition hello_jumps_kept_ps : list (piece * pval) := Eval vm_compute in
 (** This list holds the three streams' fields and the globals stdout
     and stderr that point at two of them. It also holds the jump table,
     gnulib's program name, which starts null, and the parser's globals
-    optarg, which starts null, and optind, which starts at one. *)
+    optarg, which starts null, and optind, which starts at one. Last
+    come the wide data objects of stderr and stdout. *)
 Definition hello_io_kept_ps : list (piece * pval) :=
   List.concat [
     hello_stream_kept_ps (img_a "_IO_2_1_stderr_") 4222427270 2 (img_a "glibc_stdfiles#_IO_stdfile_2_lock")
@@ -74,7 +83,11 @@ Definition hello_io_kept_ps : list (piece * pval) :=
     hello_jumps_kept_ps;
     [(PLive (img_a "program_name"), VLive (img_gd "program_name"))]; hello_pointer_ps (img_a "program_name") 0 null;
     [(PLive (img_a "optarg"), VLive (img_gd "optarg"))]; hello_pointer_ps (img_a "optarg") 0 null;
-    [(PLive (img_a "optind"), VLive (img_gd "optind"))]; byte_ps (img_a "optind") 0 (int_bytes 1)].
+    [(PLive (img_a "optind"), VLive (img_gd "optind"))]; byte_ps (img_a "optind") 0 (int_bytes 1);
+    hello_wide_kept_ps (img_a "glibc_stdfiles#_IO_wide_data_2") (img_gd "glibc_stdfiles#_IO_wide_data_2")
+      (img_a "__io_vtables");
+    hello_wide_kept_ps (img_a "glibc_stdfiles#_IO_wide_data_1") (img_gd "glibc_stdfiles#_IO_wide_data_1")
+      (img_a "__io_vtables")].
 
 (** ## The strings *)
 
@@ -92,7 +105,8 @@ Definition hello_lit_names : list string :=
 Definition hello_io_names : list string :=
   ["_IO_2_1_stderr_"; "_IO_2_1_stdout_"; "_IO_2_1_stdin_"; "glibc_stdfiles#_IO_stdfile_0_lock";
    "glibc_stdfiles#_IO_stdfile_1_lock"; "glibc_stdfiles#_IO_stdfile_2_lock"; "stdout"; "stderr";
-   "__io_vtables"; "program_name"; "optarg"; "optind"]%string.
+   "__io_vtables"; "program_name"; "optarg"; "optind"; "glibc_stdfiles#_IO_wide_data_1";
+   "glibc_stdfiles#_IO_wide_data_2"]%string.
 
 Definition hello_kept_main_keep (n : name) : bool :=
   existsb (name_eqb n) (map TAtom (hello_io_names ++ hello_lit_names)).

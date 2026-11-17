@@ -36,12 +36,19 @@ Context `{!gen_heapGS piece pval Σ}.
 (** Every stream points at a `c: struct _IO_wide_data` and a
     `c: struct _IO_codecvt` from the time it is loaded, and
     `c: _IO_fwide` writes them when it first makes the stream wide.
-    The predicate [wide_idle] is the place for owning those two objects
-    while the stream is not wide. No proof states that ownership yet,
-    so it holds nothing for now. Narrow code never reads or writes the
+    While the stream is not wide, its owner owns the wide data object
+    in the state the linker gives it: 224 zero bytes, which hold the
+    wide buffer's pointers and conversion state, and at offset 224
+    `c: _wide_vtable`, which points at the wide jump table of
+    `c: __io_vtables`. The stream has no conversion object yet, so its
+    codecvt pointer is null. Narrow code never reads or writes these
     objects, so every narrow contract passes [wide_idle] through
-    unchanged. *)
-Definition wide_idle (wd cv : ptr) : iProp Σ := True.
+    unchanged, and a wide call can rely on finding them in this state. *)
+Definition wide_idle (vb : Z) (wd cv : ptr) : iProp Σ :=
+  ∃ wb wreg, ⌜wd = mkPtr wb (Obj wb) /\ cv = null /\ 0 < wb /\ wb mod 8 = 0 /\
+              wb + 232 <= r_end wreg /\ r_end wreg <= 2 ^ 63⌝ ∗
+    live wb wreg ∗ bytes wb 0 (replicate 224 0) ∗ auxes wb 0 (replicate 224 CNone) ∗
+    pcell wb 224 (mkPtr (vb + vt_wfile) (Ro vb)).
 
 (** ## The buffer
 
@@ -108,7 +115,7 @@ Definition file_idle (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ flags_ok st /\ idle_ok fd st /\
      fs_vtable st = mkPtr (vb + vt_file) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st)⌝ ∗
     live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) None ∗ buf_idle nb ∗
-    wide_idle (fs_wide st) (fs_codecvt st).
+    wide_idle vb (fs_wide st) (fs_codecvt st).
 
 (** Many existing libio proofs ask for a stream in the wider form
     [file_inv]. A caller holding an idle stream can still use them,
