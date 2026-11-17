@@ -17,8 +17,8 @@ arrow's left side is one premise, except:
 
 A section hypothesis that the proof uses (`Proof using H`) is a premise
 of the closed theorem even though the statement does not show it, so it
-counts once, with the label from SECTION_LABELS. Premises that are
-runtime contracts are labelled as such.
+counts once, with the label from SECTION_LABELS. Premises in
+PREMISE_LABELS, such as runtime contracts, print with their label.
 
 The binders (addresses, regions, argv) are not premises. The conclusion
 is not counted. The script exits 1 if it cannot find the statement.
@@ -36,7 +36,10 @@ RECORDS = {
 }
 NOT_PREMISES = {'hd_priv'}
 SECTION_LABELS = {'Hasm': 'startup assembly (pending)'}
-RUNTIME_CONTRACTS = {'frees_heap': "runtime contract: the environment's free frees heap objects"}
+PREMISE_LABELS = {
+    'frees_heap': "runtime contract: the environment's free frees heap objects",
+    'start_c_locale': 'environment: the process environment selects the C locale',
+}
 
 
 def uncomment(text):
@@ -98,8 +101,8 @@ def premises():
         head = p.split()
         if p.startswith('start_state '):
             continue
-        if p.split()[0] in RUNTIME_CONTRACTS:
-            out.append(f'{RUNTIME_CONTRACTS[p.split()[0]]} ({p})')
+        if p.split()[0] in PREMISE_LABELS:
+            out.append(f'{PREMISE_LABELS[p.split()[0]]} ({p})')
             continue
         if p in ('hello_link ge o', 'hello_layout ge o'):
             out += [f'{head[0]}.{f}' for f in record_fields(head[0])]
