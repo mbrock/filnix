@@ -131,8 +131,11 @@ Proof. intros [-> | ->]; reflexivity. Qed.
 
 (** `c: __vfprintf_internal (fp, fmt, ap, 0)` is safe when the format
     parses in the narrow grammar and the arguments after the named ones
-    fit its conversions. Each of those arguments must be an integer,
-    null or a read-only string. The contract asks nothing of the named
+    fit its conversions, as [narrow_fits] says. The format must get a
+    pointer for each `%s` and an integer for each `%c` and `%d`. The
+    cursor must stand at the start of an argument, which is 8 bytes
+    wide. Each of those arguments must be an integer, null or a
+    read-only string. The contract asks nothing of the named
     arguments that the cursor has already passed, because the
     formatter never reads them. The function returns an int and gives
     back the stream, the format and errno. The stream has the mode
@@ -142,7 +145,8 @@ Definition vfprintf_spec : fspec Σ :=
     (fun x => [WPtr (vi_fp x); WPtr (vi_fmt x); WPtr (vi_ap x); WInt 0])
     (fun x =>
        ⌜parse_narrow (vi_bytes x) = Some (vi_ds x) /\
-        narrow_progress (vi_ds x) (skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x)) (vi_rest x) /\
+        narrow_fits (vi_ds x) (skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x)) (vi_rest x) /\
+        0 <= vi_skip x /\ vi_skip x mod 8 = 0 /\
         ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x)))⌝ ∗
        printf_stream (vi_vb x) (ow_self w0) (vi_fp x) (vi_mode x) (vi_flags2 x) (vi_held x) ∗
        word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ va_at (vi_ap x) (vi_skip x) (vi_xs x) ∗
@@ -249,7 +253,8 @@ Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z 
     (fun x => [WPtr (mkPtr (pb_buf x) (Obj (pb_buf x))); WPtr (pb_fmt x); WPtr (pb_ap x); WInt 0])
     (fun x =>
        ⌜parse_narrow (pb_bytes x) = Some (pb_ds x) /\ Forall cover (pb_ds x) /\
-        narrow_progress (pb_ds x) (skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x)) (pb_rest x) /\
+        narrow_fits (pb_ds x) (skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x)) (pb_rest x) /\
+        0 <= pb_skip x /\ pb_skip x mod 8 = 0 /\
         ow_errno w0 = Some (mkPtr (pb_eb x) (Obj (pb_eb x)))⌝ ∗
        printf_out k R (pb_buf x) ∗
        word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ va_at (pb_ap x) (pb_skip x) (pb_xs x) ∗

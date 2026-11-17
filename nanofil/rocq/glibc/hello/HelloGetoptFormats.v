@@ -72,7 +72,7 @@ Proof using Herr Hvf.
     with "[Hs Hf Hva Hys He]"); [exact Hargs| |].
   - cbn [fs_pre vfprintf_spec vi_vb vi_fp vi_mode vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (16 / 8)) (WPtr fp :: WPtr fmt :: ys)) with ys.
-    iFrame "Hs Hf Hys He Hro". iSplit; [iPureIntro; split_and!; [exact Hp | exact (narrow_progress_all _ _ Ha) | exact Herr]|].
+    iFrame "Hs Hf Hys He Hro". iSplit; [iPureIntro; split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | exact Herr]|].
     iExact "Hva".
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_mode vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%n & [-> %Hn] & Hs & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
