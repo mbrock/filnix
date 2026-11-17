@@ -203,6 +203,7 @@ zsys/OsClockGettime.v
 zsys/OsStart.v
 zsys/StartCtors.v
 zsys/StartState.v
+locale/LocaleEnv.v
 LenLogic.v
 SayLogic.v
 getopt/GetoptModule.v
