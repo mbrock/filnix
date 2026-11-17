@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """List the open premises of Hello's safety theorem and count them.
 
-The theorem is hello_never_panics in rocq/glibc/hello/HelloNeverPanics.v.
-This script reads its statement from the source and splits it at the
-top-level arrows. Each arrow's left side is one premise, except:
+The theorem is hello_never_panics in rocq/glibc/hello/HelloStartNeverPanics.v,
+which starts where the runtime calls __libc_start_main. This script reads
+its statement from the source and splits it at the top-level arrows. Each
+arrow's left side is one premise, except:
 
+- the start_state premise says which states the theorem covers, like the
+  binders, so it is not counted;
 - hello_link ge o and hello_layout ge o count once per field of their
   records, which are read from their Record definitions;
 - the last premise, which describes the initial heap for every ghost
@@ -20,7 +23,7 @@ import sys
 from pathlib import Path
 
 GLIBC = Path(__file__).resolve().parent.parent / 'rocq' / 'glibc'
-THEOREM = GLIBC / 'hello' / 'HelloNeverPanics.v'
+THEOREM = GLIBC / 'hello' / 'HelloStartNeverPanics.v'
 RECORDS = {
     'hello_link': GLIBC / 'hello' / 'HelloGlibcLibsT.v',
     'hello_layout': GLIBC / 'hello' / 'HelloGlibcDebts.v',
@@ -78,7 +81,7 @@ def strip_parens(s):
 
 def premises():
     text = uncomment(THEOREM.read_text())
-    m = re.search(r'Theorem hello_never_panics\b(.*?)\nProof\.', text, re.S)
+    m = re.search(r'Theorem hello_never_panics\b(.*?)\nProof\b', text, re.S)
     if not m:
         sys.exit('hello_premises: Theorem hello_never_panics not found')
     statement = split_top(m[1], ':')
@@ -86,6 +89,8 @@ def premises():
     out = []
     for p in arrows[:-1]:
         head = p.split()
+        if p.startswith('start_state '):
+            continue
         if p in ('hello_link ge o', 'hello_layout ge o'):
             out += [f'{head[0]}.{f}' for f in record_fields(head[0])]
         else:
