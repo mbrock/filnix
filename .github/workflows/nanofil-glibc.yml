@@ -48,8 +48,12 @@ permissions:
   contents: read
 
 # The push check and the scheduled or manual abstract check run independently.
+# Every push gets its own group: GitHub keeps one queued run per group and
+# cancels the rest, so on a busy main a shared group let few runs finish,
+# and the cache of compiled objects fell behind main. Runs that overlap
+# share their objects through Cachix as they build them.
 concurrency:
-  group: nanofil-glibc-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || 'full' }}
+  group: nanofil-glibc-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'full' }}
   cancel-in-progress: false
 
 env:
@@ -77,11 +81,20 @@ jobs:
       # it prints is the Hello proof's progress measure.
       - name: Count the open premises of hello_never_panics
         run: python3 nanofil/tests/hello_premises.py
+      # On main, cachix watch-exec publishes each object as it is built, so a
+      # run that fails or that a later push overtakes still fills the cache
+      # that glibc-tools/warm.sh reads. The last step below remains a backstop.
       - name: Compile and probe glibc contracts
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           set -o pipefail
+          publish=()
+          if [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$CACHIX_AUTH_TOKEN" ]; then
+            publish=(cachix watch-exec filc --)
+          fi
           python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 3600 -- \
-            nix build -L --no-link --keep-going --max-jobs auto --cores 0 \
+            "${publish[@]}" nix build -L --no-link --keep-going --max-jobs auto --cores 0 \
             .#checks.x86_64-linux.nanofil-glibc \
             .#checks.x86_64-linux.nanofil-rocq.kernelFlags 2>&1 | tee nanofil-glibc.log
       # The Fil-C glibc source fixes (survey/glibc/patches): the stock

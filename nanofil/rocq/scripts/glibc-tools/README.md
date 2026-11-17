@@ -29,7 +29,7 @@ nanofil/rocq/scripts/glibc-tools/affected.sh --list nanofil/rocq/glibc/GlibcEnv.
 
 ## Start from cached objects
 
-A fresh orb can start from compiled objects instead of a cold build. `warm.sh` copies the objects that importers load from the binary cache into a tree, which defaults to the checkout's `nanofil/rocq/glibc`. It gives them one modification time, later than every source. `build.sh` then compiles the files edited since the cached commit and every file that imports them, because make knows nothing of interfaces. It reports the files of `runtime-concrete.txt` as failures, because they need the concrete runtime and the tree's `Fix.v` seals it.
+A fresh orb can start from compiled objects instead of a cold build. `warm.sh` copies the objects that importers load from the binary cache into a tree, which defaults to the checkout's `nanofil/rocq/glibc`. It gives them one modification time, later than every source. CI publishes a commit's objects while it builds them, so the newest commits of main can lag the cache. When the checkout's commit misses many objects, `warm.sh` warms from the most recent commit of `origin/main` that is cached. It then deletes the objects of files that differ from that commit, and of files that import a changed theory, and reports how many files still have no object. `build.sh` then compiles the files edited since the cached commit and every file that imports them, because make knows nothing of interfaces. It reports the files of `runtime-concrete.txt` as failures, because they need the concrete runtime and the tree's `Fix.v` seals it.
 
 ```sh
 . nanofil/rocq/scripts/glibc-tools/env.sh
