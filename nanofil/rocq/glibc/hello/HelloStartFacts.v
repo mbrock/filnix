@@ -126,3 +126,46 @@ Proof.
       split_and!; vm_compute; first [reflexivity | intros H; discriminate H].
   - apply IH. intros g H. apply Hin. right. exact H.
 Qed.
+
+(** ## The whole link
+
+    Main calls into many library functions, and each of their proofs
+    assumes something about the program they are linked into: that a
+    called name finds the right body, that a system call stays outside
+    the program, and that a global lies at its symbol. One record,
+    [hello_link], gathers those assumptions. This section shows that
+    Hello's linked image meets all of them. *)
+
+(** Hello's linked image satisfies the whole link record, whatever
+    free the runtime supplies, as long as that free releases heap
+    objects. *)
+Lemma hello_link_all fr : frees_heap fr -> hello_link (mkGenv hello_image_module img_globals fr) hello_image_objs.
+Proof.
+  intros Hf. destruct hello_image_memory as (g & m & Hi).
+  destruct (hello_loaded_tables g m Hi) as [Eg _]. subst g.
+  destruct (hello_image_fn_link _ _ fr Hi) as (_ & Hfns & Habs).
+  pose proof (hello_image_link_objects _ _ fr Hi) as O. cbv zeta in O.
+  unfold hello_image_fns in Hfns. unfold hello_image_absent in Habs.
+  do 28 (let a := fresh "F" in pose proof (List.Forall_inv Hfns) as a; apply List.Forall_inv_tail in Hfns;
+    cbn [fst snd] in a).
+  do 2 (let a := fresh "A" in pose proof (List.Forall_inv Habs) as a; apply List.Forall_inv_tail in Habs).
+  pose proof Habs as Hsys. unfold SysWrappers.sys_externals in Hsys.
+  do 8 (let a := fresh "S" in pose proof (List.Forall_inv Hsys) as a; apply List.Forall_inv_tail in Hsys).
+  destruct O as (O1 & O2 & O3 & O4 & O5 & O6 & O7 & O8 & O9 & O10 & O11 & O12 & O13 & O14 & O15 & O16).
+  constructor; try assumption.
+  - split; [exact Hf | assumption].
+  - unfold AtexitLogic.exit_fns. split_and!; assumption.
+Qed.
+
+(** When startup ends, the thread has an address and none of the exit
+    objects is the errno object. *)
+Lemma hello_os_layout_final w0 tb :
+  lookup (TAtom "__libc_errno") img_globals = Some (ow_errno_cell w0) -> 0 < tb < 2 ^ 64 ->
+  hello_os_layout (final_world w0 tb) hello_image_objs.
+Proof.
+  intros He Htb. destruct (hello_final_world_facts w0 tb He Htb) as (Herr & Hself & _).
+  split; [rewrite Hself; exact Htb|].
+  intros p Hp b Hb. rewrite Herr in Hp. injection Hp as <-.
+  revert b Hb. apply List.Forall_forall.
+  repeat constructor; apply Z.eqb_neq; vm_compute; reflexivity.
+Qed.
