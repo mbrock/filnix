@@ -234,6 +234,7 @@ startup/StartInitMisc.v
 startup/StartInitFirstSpec.v
 startup/StartInitFirst.v
 startup/StartInitFirstImage.v
+startup/StartRawCall.v
 startup/StartPtmallocInitSpec.v
 startup/StartPtmallocInit.v
 startup/StartPthreadTunablesSpec.v
