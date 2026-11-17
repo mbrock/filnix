@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Piec
   Language Logic MemLogic StringLogic.
 From Glibc Require Import StrerrorEnoentLoan ErrorErrnoLoan ErrorReportNormal
   ErrorTextTail ErrorTextTailNormal ErrorTextPrint FxprintfNormalCall ErrorFlushShort
-  DcigettextRouteV DcgettextLocale DcgettextRwlock DcigettextPreRules DcigettextSecure
+  DcigettextRouteV DcgettextLocale DcgettextRwlock RwlockIdle DcigettextPreRules DcigettextSecure
   ErrlistCode ErrlistEnoent ErrlistFacts StrerrorCode AllocLogic HiAtexitAlloc GetoptMallocGlibc
   StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode RdlockLogic
   StrlenLogic MemFwdCode WordString DcgettextCode DcigettextCode DcigettextRoute
@@ -49,7 +49,7 @@ Let pack := enoent_translation_pack eb dom dqd nb nc k cat dqc cv p276 p277 db d
     the thread-id permission, but no thread lifetime or cancellation cell. *)
 Definition error_enoent_translation_rest : iProp Σ :=
   dci_reads_v dom [108;105;98;99] dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v ∗
-  rw_lock a1 ar1 r1 cw1 sh1 fl1 ∗ rw_lock a2 ar2 r2 cw2 sh2 fl2 ∗ rw_lock a3 ar3 r3 cw3 sh3 fl3 ∗
+  rw_state a1 ar1 r1 cw1 sh1 fl1 ∗ rw_state a2 ar2 r2 cw2 sh2 fl2 ∗ rw_state a3 ar3 r3 cw3 sh3 fl3 ∗
   tfind_root dqr rb ro rreg ∗ locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg ∗
   hi_malloc_state dq mpb tcb dmb mpr tcr dr ∗ int_cell tb 720 tid.
 

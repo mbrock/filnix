@@ -28,7 +28,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString SysWrappers.
 From Glibc Require Import LibioSetb StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic.
-From Glibc Require Import RdlockCode RwunlockCode RdlockLogic RwunlockLogic.
+From Glibc Require Import RdlockCode RwunlockCode RdlockLogic RwunlockLogic RwlockIdle.
 From Glibc Require Import GetoptLongPfxAlloc GetoptDiag GetoptLongDiag GetoptDiagFx.
 From Glibc Require Import DcgettextCode DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
 From Glibc Require Import DcgettextC.
@@ -48,11 +48,12 @@ Context (Hreg : holds_os registry) (Hext : sys_external ge).
 
 (** ## The read locks *)
 
-(** A lock that gettext reads holds this resource: the lock's fields and
-    a share of the calling thread's id. *)
+(** A lock that gettext reads holds this resource: the lock's fields at
+    reader count r and a share of the calling thread's id. With no
+    reader, the word may also be the 1 that setlocale's unlock leaves. *)
 Definition rw_held (lb : Z) (lreg : region) (r cw sh fl : Z) (dqt : dfrac) (tb : Z) (treg : region) (dqi : dfrac)
     (tid : Z) : iProp Σ :=
-  rw_lock lb lreg r cw sh fl ∗ rw_self dqt tb treg dqi tid.
+  rw_state lb lreg r cw sh fl ∗ rw_self dqt tb treg dqi tid.
 
 (** The lock is free: its count has room for one more reader, no flag
     is set, and the calling thread does not hold the write lock. *)
@@ -66,7 +67,7 @@ Lemma dci_rdlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthr
   dci_rdlock_rule lk (rw_held lb lreg r cw sh fl dqt tb treg dqi tid) (rw_held lb lreg (r + 8) cw sh fl dqt tb treg dqi tid).
 Proof.
   intros (Hp & Hr0 & Hr & Hr8 & Hcw) f e ls l d args rest j Φ Hargs. iIntros "U HK".
-  iApply (wp_call_glibc_rdlock Hreg Hext with "U [HK]"); [exact Hargs | exact Hp | exact Hr | exact Hr8 | exact Hcw |].
+  iApply (wp_call_rdlock_state Hreg Hext with "U [HK]"); [exact Hargs | exact Hp | exact Hr0 | exact Hr | exact Hr8 | exact Hcw |].
   iNext. iIntros "U". iApply ("HK" $! 0 with "U").
 Qed.
 
@@ -78,9 +79,8 @@ Lemma dci_unlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthr
   dci_unlock_rule lk (rw_held lb lreg (r + 8) cw sh fl dqt tb treg dqi tid) (rw_held lb lreg r cw sh fl dqt tb treg dqi tid).
 Proof.
   intros (Hp & Hr0 & Hr & Hr8 & Hcw) f e ls l d args rest j Φ Hargs. iIntros "U HK".
-  iApply (wp_call_glibc_rwunlock Hreg Hext with "U [HK]");
-    [exact Hargs | exact Hp | Z.div_mod_to_equations; lia | lia | exact Hcw |].
-  iNext. iIntros "U". rewrite Z.add_simpl_r. iApply ("HK" $! 0 with "U").
+  iApply (wp_call_rwunlock_state Hreg Hext with "U [HK]"); [exact Hargs | exact Hp | exact Hr0 | exact Hr | exact Hcw |].
+  iNext. iIntros "U". iApply ("HK" $! 0 with "U").
 Qed.
 
 (** These are the rules that the translation still needs once the real

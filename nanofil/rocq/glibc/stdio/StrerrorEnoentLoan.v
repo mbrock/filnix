@@ -10,7 +10,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Piec
   Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic SysWrappers
   AllocLogic HiAtexitAlloc GetoptMallocGlibc StpcpyCode TfindCode TfindEmpty
-  LocalenameCode LocalenameLogic RdlockCode RwunlockCode RdlockLogic RwunlockLogic
+  LocalenameCode LocalenameLogic RdlockCode RwunlockCode RdlockLogic RwunlockLogic RwlockIdle
   StrlenLogic MemFwdCode WordString DcgettextCode DcigettextCode DcigettextRoute
   DcigettextPreRules DcigettextSecure DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
   StrerrorCode ErrlistCode ErrlistEnoent ErrlistFacts ErrorText ErrorTextPrint StrerrorEnoent Fix.
@@ -36,8 +36,8 @@ Context (dom : ptr) (dqd : dfrac) (nb : Z) (nc : cap) (k : Z) (cat : list Z) (dq
     but no thread lifetime. The caller supplies the lifetime separately. *)
 Definition enoent_translation_pack (bs : list Z) : iProp Σ :=
   dcg_before_v eb dom [108;105;98;99] dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v
-    (rw_lock a1 ar1 r1 cw1 sh1 fl1) (rw_lock a2 ar2 r2 cw2 sh2 fl2)
-    (rw_lock a3 ar3 r3 cw3 sh3 fl3)
+    (rw_state a1 ar1 r1 cw1 sh1 fl1) (rw_state a2 ar2 r2 cw2 sh2 fl2)
+    (rw_state a3 ar3 r3 cw3 sh3 fl3)
     (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg)
     (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs ∗ int_cell tb 720 tid.
 

@@ -7,16 +7,19 @@ From Glibc Require Import GlibcProgram.
     parameters, so a caller would have to know them in advance.
 
     This module lets the caller hold the locks in whatever state they
-    are in, as long as each one is ready for another reader. A lock is
-    ready when its reader count is not negative, is a multiple of 8 and
-    has room for one more reader, and when this thread is not its
-    writer. G carries these facts with the lock words. A translation
-    reads the current words, runs the earlier proof for them, and puts
-    back the words that the locks return. Where each lock lies stays
-    fixed, and errno and the thread's bookkeeping are lent as before.
+    are in, as long as each one is idle. A lock is idle when no reader
+    holds it, no flag is set and this thread is not its writer. Its
+    word may still be the 1 that setlocale's unlock leaves, because the
+    lock's resource counts readers rather than fixing the word. Setlocale
+    needs exactly this state to take the lock for writing, and a
+    translation brings each lock back to it. G carries these facts with
+    the lock states. A translation reads the current states, runs the
+    earlier proof for them, and puts back the states that the locks
+    return. Where each lock lies stays fixed, and errno and the thread's
+    bookkeeping are lent as before.
 
     This module only packages resources. It does not show that
-    setlocale or startup leaves the locks ready. *)
+    setlocale or startup leaves the locks idle. *)
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -70,16 +73,16 @@ Context (vb sb : Z) (sreg : region) (fp f140 f141 : ptr) (F : iProp Σ) (Q : Z -
 Definition dlk_place (lk : ptr) (a : Z) (ar : region) : Prop :=
   lk = mkPtr a (Obj a) /\ 0 < a /\ a mod 8 = 0 /\ a + 56 <= r_end ar /\ r_end ar <= 2 ^ 63.
 
-(** A lock is ready for a new reader when its count is not negative, is
-    a multiple of 8 and has room for 8 more, and when this thread is not
-    its writer. *)
+(** A lock is idle when no reader holds it, no flag is set and this
+    thread is not its writer. Such a lock is ready for a reader, and
+    setlocale can also take it for writing. *)
 Definition dlk_ready (s : dlk_state) : Prop :=
-  0 <= dl_r s /\ dl_r s mod 8 = 0 /\ dl_r s + 8 < 2 ^ 31 /\ dl_cw s <> tid.
+  dl_r s = 0 /\ dl_fl s = 0 /\ dl_cw s <> tid.
 
-(** The earlier rules asked for both kinds of fact at once, and the two
-    parts say exactly the same. *)
-Lemma dlk_lock_iff lk a ar s : dtx_lock tid lk a ar (dl_r s) (dl_cw s) <-> dlk_place lk a ar /\ dlk_ready s.
-Proof using Q eb. unfold dtx_lock, dlk_place, dlk_ready. tauto. Qed.
+(** The earlier rules asked for a lock ready for a reader. An idle lock
+    in its place meets them. *)
+Lemma dlk_lock_of lk a ar s : dlk_place lk a ar -> dlk_ready s -> dtx_lock tid lk a ar (dl_r s) (dl_cw s).
+Proof using Q eb. unfold dtx_lock, dlk_place, dlk_ready. intros (? & ? & ? & ? & ?) (-> & _ & Hcw). cbn. split_and!; first [assumption | lia | reflexivity]. Qed.
 
 (** ## The resources between reports *)
 
@@ -165,9 +168,9 @@ Lemma dlk_premises_at v s1 s2 s3 :
     lk1 a1 ar1 (dl_r s1) (dl_cw s1) lk2 a2 ar2 (dl_r s2) (dl_cw s2) lkt a3 ar3 (dl_r s3) (dl_cw s3) tid fp F Q v.
 Proof using Type.
   intros (A1 & A2 & A3 & A4 & P1 & P2 & P3 & A8 & A9 & A10 & A11 & A12 & A13 & A14 & A15 & A16) R1 R2 R3.
-  pose proof (proj2 (dlk_lock_iff lk1 a1 ar1 s1) (conj P1 R1)) as L1.
-  pose proof (proj2 (dlk_lock_iff lk2 a2 ar2 s2) (conj P2 R2)) as L2.
-  pose proof (proj2 (dlk_lock_iff lkt a3 ar3 s3) (conj P3 R3)) as L3.
+  pose proof (dlk_lock_of lk1 a1 ar1 s1 P1 R1) as L1.
+  pose proof (dlk_lock_of lk2 a2 ar2 s2 P2 R2) as L2.
+  pose proof (dlk_lock_of lkt a3 ar3 s3 P3 R3) as L3.
   exact (conj A1 (conj A2 (conj A3 (conj A4 (conj L1 (conj L2 (conj L3 (conj A8 (conj A9 (conj A10 (conj A11
     (conj A12 (conj A13 (conj A14 (conj A15 A16))))))))))))))).
 Qed.
@@ -271,10 +274,11 @@ Qed.
 
 (** ## Controls *)
 
-(** These are two different ready states. The first lock is free, and
-    the second has two readers, another writer and some flags set. *)
+(** These are two different idle states. The first lock is free, and
+    the second names another thread as its last writer and has its
+    shared flag set. *)
 Definition dlk_free : dlk_state := mkDlk 0 (tid + 1) 0 0.
-Definition dlk_busy : dlk_state := mkDlk 16 (tid + 7) 3 1.
+Definition dlk_busy : dlk_state := mkDlk 0 (tid + 7) 3 0.
 
 (** Both states are ready and differ, and G accepts either of them in
     any of the three locks. *)
@@ -282,19 +286,18 @@ Example dlk_state_controls v :
   dlk_ready dlk_free /\ dlk_ready dlk_busy /\ dlk_free <> dlk_busy /\
   (dlk_G0 dlk_free dlk_free dlk_free v ⊢ dlk_G v) /\ (dlk_G0 dlk_busy dlk_free dlk_busy v ⊢ dlk_G v).
 Proof.
-  assert (Hf : dlk_ready dlk_free) by (unfold dlk_ready, dlk_free; cbn; split_and!; first [lia | vm_compute; reflexivity]).
-  assert (Hb : dlk_ready dlk_busy) by (unfold dlk_ready, dlk_busy; cbn; split_and!; first [lia | vm_compute; reflexivity]).
+  assert (Hf : dlk_ready dlk_free) by (unfold dlk_ready, dlk_free; cbn; split_and!; lia).
+  assert (Hb : dlk_ready dlk_busy) by (unfold dlk_ready, dlk_busy; cbn; split_and!; lia).
   split_and!; [exact Hf | exact Hb | unfold dlk_free, dlk_busy; intros H; discriminate H |
     apply dlk_pack; assumption | apply dlk_pack; assumption].
 Qed.
 
-(** A lock that is not ready cannot enter G. Each state below breaks one
-    fact: a negative count, a count that is not a multiple of 8, a count
-    with no room for another reader, and this thread as the writer. *)
-Example dlk_bad_controls sh fl :
-  ~ dlk_ready (mkDlk (-8) (tid + 1) sh fl) /\ ~ dlk_ready (mkDlk 4 (tid + 1) sh fl) /\
-  ~ dlk_ready (mkDlk (2 ^ 31 - 8) (tid + 1) sh fl) /\ ~ dlk_ready (mkDlk 0 tid sh fl).
-Proof using Type. unfold dlk_ready; cbn. split_and!; intros (H1 & H2 & H3 & H4); first [lia | vm_compute in H2; discriminate | vm_compute in H3; discriminate | apply H4; reflexivity]. Qed.
+(** A lock that is not idle cannot enter G. Each state below breaks one
+    fact: a reader holds the lock, a flag is set, or this thread is the
+    writer. *)
+Example dlk_bad_controls sh :
+  ~ dlk_ready (mkDlk 8 (tid + 1) sh 0) /\ ~ dlk_ready (mkDlk 0 (tid + 1) sh 1) /\ ~ dlk_ready (mkDlk 0 tid sh 0).
+Proof using Type. unfold dlk_ready; cbn. split_and!; intros (H1 & H2 & H3); lia. Qed.
 
 (** A caller may report twice, and between the reports getenv may
     borrow the bookkeeping. Each report may change errno. This example

@@ -195,4 +195,110 @@ Proof using Type*.
   iApply ("HK" with "[$Hl $Hr $Hwp $Hwf $Hcw $Hsh $Hfl $Htl $Hti]").
 Qed.
 
+(** ## The lock between calls
+
+    Callers outside this directory should not need to know which word
+    the lock holds after setlocale, because a reader cannot tell the
+    idle write phase from a lock that no one has used. So they count
+    readers instead. A lock with reader count r holds the word r, or the
+    word 1 when the count is 0. In both cases its futexes hold 0 or 1.
+    Every call keeps this form, and a reader's lock and unlock bring the
+    count back to where it was. *)
+
+(** Callers name a lock by how many readers hold it, not by its word.
+    So this resource gives the lock at lb its reader count r, together
+    with its writer cw, its shared flag sh and its flags fl. *)
+Definition rw_state (lb : Z) (lreg : region) (r cw sh fl : Z) : iProp Σ :=
+  ∃ w wp wf, ⌜(w = r \/ (r = 0 /\ w = 1)) /\ (wp = 0 \/ wp = 1) /\ (wf = 0 \/ wf = 1)⌝ ∗
+    rw_cells lb lreg w wp wf cw sh fl.
+
+(** Setlocale changes the locale between taking and releasing the write
+    lock, and its unlock needs to know what it took. While it holds the
+    lock, the word is 3, the writers futex is 1 and the calling thread
+    is the writer. *)
+Definition rw_writing (lb : Z) (lreg : region) (tid sh fl : Z) : iProp Σ :=
+  ∃ wp, ⌜wp = 0 \/ wp = 1⌝ ∗ rw_cells lb lreg 3 wp 1 tid sh fl.
+
+(** A lock whose fields are all zero has no reader. *)
+Lemma rw_state_zero lb lreg cw sh fl : rw_cells lb lreg 0 0 0 cw sh fl ⊢ rw_state lb lreg 0 cw sh fl.
+Proof using Type. iIntros "H". iExists 0, 0, 0. iFrame "H". iPureIntro. lia. Qed.
+
+(** A reader's lock adds one to the count. When the count is 0 and the
+    word is 1, this is the phase route, which also clears the
+    write-phase futex. *)
+Lemma wp_call_rdlock_state `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock}
+    f e ls l d args rest j lk lb lreg tb treg r cw sh fl dqt dqi tid Φ :
+  map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
+  0 <= r -> r mod 8 = 0 -> r + 8 < 2 ^ 31 -> cw <> tid ->
+  rw_state lb lreg r cw sh fl ∗ rw_self dqt tb treg dqi tid -∗
+  ▷ (rw_state lb lreg (r + 8) cw sh fl ∗ rw_self dqt tb treg dqi tid -∗
+     WP (ERun (mkFrame f (put d (WInt 0) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d W) (Global (TAtom "__GI___pthread_rwlock_rdlock")) args :: rest) j)) : sexpr) {{ Φ }}.
+Proof using Type*.
+  intros Hargs Hp Hr0 Hr Hr8 Hcw. iIntros "[(%w & %wp & %wf & %Hw & Hc) U] HK".
+  destruct Hw as (Hw & Hwp & Hwf).
+  assert (Hready : rw_word_ready w wp /\ rd_word w = r + 8 /\ (rd_wp w wp = 0 \/ rd_wp w wp = 1)).
+  { unfold rw_word_ready, rd_word, rd_wp. destruct Hw as [-> | [-> ->]].
+    - rewrite Hr. cbn. split_and!; auto; lia.
+    - cbn. split_and!; auto; lia. }
+  destruct Hready as (Hready & Hrd & Hrw).
+  iApply (wp_call_rdlock_ready with "[$Hc $U]"); [exact Hargs | exact Hp | exact Hready | exact Hcw |].
+  iNext. iIntros "[Hc U]". iApply ("HK" with "[Hc $U]"). rewrite Hrd.
+  iExists (r + 8), _, wf. iFrame "Hc". iPureIntro. auto.
+Qed.
+
+(** A reader's unlock takes the count back down by one reader. *)
+Lemma wp_call_rwunlock_state `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+    f e ls l d args rest j lk lb lreg tb treg r cw sh fl dqt dqi tid Φ :
+  map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
+  0 <= r -> r mod 8 = 0 -> cw <> tid ->
+  rw_state lb lreg (r + 8) cw sh fl ∗ rw_self dqt tb treg dqi tid -∗
+  ▷ (rw_state lb lreg r cw sh fl ∗ rw_self dqt tb treg dqi tid -∗
+     WP (ERun (mkFrame f (put d (WInt 0) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d W) (Global (TAtom "__GI___pthread_rwlock_unlock")) args :: rest) j)) : sexpr) {{ Φ }}.
+Proof using Type*.
+  intros Hargs Hp Hr0 Hr Hcw. iIntros "[(%w & %wp & %wf & %Hw & Hc) U] HK".
+  destruct Hw as ([-> | [? _]] & Hwp & Hwf); [|lia].
+  iApply (wp_call_rwunlock_held with "[$Hc $U]");
+    [exact Hargs | exact Hp | Z.div_mod_to_equations; lia | lia | exact Hcw |].
+  iNext. iIntros "[Hc U]". iApply ("HK" with "[Hc $U]"). rewrite Z.add_simpl_r.
+  iExists r, wp, wf. iFrame "Hc". iPureIntro. auto.
+Qed.
+
+(** Setlocale's write lock takes a lock with no reader and makes the
+    calling thread its writer. *)
+Lemma wp_call_wrlock_state `{!Defines ge "__GI___pthread_rwlock_wrlock" glibc_pthread_rwlock_wrlock}
+    f e ls l d args rest j lk lb lreg tb treg cw sh fl dqt dqi tid Φ :
+  map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg -> cw <> tid ->
+  rw_state lb lreg 0 cw sh fl ∗ rw_self dqt tb treg dqi tid -∗
+  ▷ (rw_writing lb lreg tid sh fl ∗ rw_self dqt tb treg dqi tid -∗
+     WP (ERun (mkFrame f (put d (WInt 0) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d W) (Global (TAtom "__GI___pthread_rwlock_wrlock")) args :: rest) j)) : sexpr) {{ Φ }}.
+Proof using Type*.
+  intros Hargs Hp Hcw. iIntros "[(%w & %wp & %wf & %Hw & Hc) U] HK".
+  destruct Hw as (Hw & Hwp & Hwf).
+  assert (Hidle : rw_word_idle w wp wf) by (unfold rw_word_idle; lia).
+  pose proof (wr_word_after _ _ _ Hidle) as (_ & Hwp' & _).
+  iApply (wp_call_wrlock_idle with "[$Hc $U]"); [exact Hargs | exact Hp | exact Hidle | exact Hcw |].
+  iNext. iIntros "[Hc U]". iApply ("HK" with "[Hc $U]"). iExists _. iFrame "Hc". iPureIntro. exact Hwp'.
+Qed.
+
+(** Setlocale's unlock leaves a lock with no reader and no writer. *)
+Lemma wp_call_rwunlock_writing `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+    f e ls l d args rest j lk lb lreg tb treg sh dqt dqi tid Φ :
+  map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
+  rw_writing lb lreg tid sh 0 ∗ rw_self dqt tb treg dqi tid -∗
+  ▷ (rw_state lb lreg 0 0 sh 0 ∗ rw_self dqt tb treg dqi tid -∗
+     WP (ERun (mkFrame f (put d (WInt 0) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None
+    (Exec l (Call (CResult d W) (Global (TAtom "__GI___pthread_rwlock_unlock")) args :: rest) j)) : sexpr) {{ Φ }}.
+Proof using Type*.
+  intros Hargs Hp. iIntros "[(%wp & %Hwp & Hc) U] HK".
+  iApply (wp_call_rwunlock_writer with "[$Hc $U]"); [exact Hargs | exact Hp | right; reflexivity |].
+  iNext. iIntros "[Hc U]". iApply ("HK" with "[Hc $U]"). iExists 1, wp, 0. iFrame "Hc". iPureIntro. lia.
+Qed.
+
 End rules.

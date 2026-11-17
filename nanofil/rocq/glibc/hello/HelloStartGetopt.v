@@ -18,7 +18,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic StringLogic.
-From Glibc Require Import FileInv WordString RdlockLogic TfindEmpty PrintfSpec StartImageCpu
+From Glibc Require Import FileInv WordString RdlockLogic RwlockIdle TfindEmpty PrintfSpec StartImageCpu
   HelloGetoptDiagMsgs HelloGettextLocaleConst HelloGettextSuffix HelloGettextDomain
   HelloImageModule HelloImageLoad HelloImageKept HelloImageDiagObjs.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
@@ -58,9 +58,9 @@ Proof using Type. rewrite /hello_getopt_ro. apply _. Qed.
     cache, which is empty, and its list of domains, which is empty. It
     also owns the name of the messages' locale, which is "C". *)
 Definition hello_getopt_rw : iProp Σ :=
-  rw_lock (img_a "_nl_state_lock") (img_gd "_nl_state_lock") 0 0 0 0 ∗
-  rw_lock (img_a "__libc_setlocale_lock") (img_gd "__libc_setlocale_lock") 0 0 0 0 ∗
-  rw_lock (img_a "glibc_dcigettext#tree_lock") (img_gd "glibc_dcigettext#tree_lock") 0 0 0 0 ∗
+  rw_state (img_a "_nl_state_lock") (img_gd "_nl_state_lock") 0 0 0 0 ∗
+  rw_state (img_a "__libc_setlocale_lock") (img_gd "__libc_setlocale_lock") 0 0 0 0 ∗
+  rw_state (img_a "glibc_dcigettext#tree_lock") (img_gd "glibc_dcigettext#tree_lock") 0 0 0 0 ∗
   tfind_root (DfracOwn 1) (img_a "glibc_dcigettext#root") 0 (img_gd "glibc_dcigettext#root") ∗
   liveq (DfracOwn 1) (img_a "_nl_domain_bindings") (img_gd "_nl_domain_bindings") ∗
   pcellq (DfracOwn 1) (img_a "_nl_domain_bindings") 0 null ∗
@@ -78,14 +78,17 @@ Proof using Type.
 Qed.
 
 (** A lock of 56 zero bytes is free: no reader, no writer and no flag. *)
-Lemma zero_rw_lock b reg : pts (obj_ps (b, reg) (repeat 0 56%nat)) ⊢ rw_lock b reg 0 0 0 0.
+Lemma zero_rw_lock b reg : pts (obj_ps (b, reg) (repeat 0 56%nat)) ⊢ rw_state b reg 0 0 0 0.
 Proof using Type.
   rewrite obj_ps_own. cbn [fst snd].
-  assert (E : repeat 0 56%nat = int_bytes 0 ++ repeat 0 20%nat ++ int_bytes 0 ++ int_bytes 0 ++
-    repeat 0 16%nat ++ int_bytes 0 ++ repeat 0 4%nat) by reflexivity.
+  assert (E : repeat 0 56%nat = int_bytes 0 ++ repeat 0 4%nat ++ int_bytes 0 ++ int_bytes 0 ++ repeat 0 8%nat ++
+    int_bytes 0 ++ int_bytes 0 ++ repeat 0 16%nat ++ int_bytes 0 ++ repeat 0 4%nat) by reflexivity.
   rewrite E !bytes_app. cbn [length repeat Z.of_nat int_bytes].
-  iIntros "(Hl & (B0 & _ & B24 & B28 & _ & B48 & _) & _)". rewrite /rw_lock /int_cell.
-  iFrame "Hl". iSplitL "B0"; [iSplit; [iPureIntro; lia | iExact "B0"]|].
+  iIntros "(Hl & (B0 & _ & B8 & B12 & _ & B24 & B28 & _ & B48 & _) & _)". iApply rw_state_zero.
+  rewrite /rw_cells /int_cell. iFrame "Hl".
+  iSplitL "B0"; [iSplit; [iPureIntro; lia | iExact "B0"]|].
+  iSplitL "B8"; [iSplit; [iPureIntro; lia | iExact "B8"]|].
+  iSplitL "B12"; [iSplit; [iPureIntro; lia | iExact "B12"]|].
   iSplitL "B24"; [iSplit; [iPureIntro; lia | iExact "B24"]|].
   iSplitL "B28"; [iSplit; [iPureIntro; lia | iExact "B28"]|]. iSplit; [iPureIntro; lia | iExact "B48"].
 Qed.
