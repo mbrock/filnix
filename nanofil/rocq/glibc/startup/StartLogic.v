@@ -21,8 +21,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list gmap.
-From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsWorld OsStart FileInv LibioLogic LibioCloseSteps.
+From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Pieces Heap ExternalCalls StepRules Language Logic StringLogic MemLogic.
+From Glibc Require Import Fix OsBlocks OsWorld OsStart FileInv LibioLogic LibioCloseSteps.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -160,7 +160,7 @@ Fixpoint layout_own (b o : Z) (fs : list field) : iProp Σ :=
 (** A zero range of a field's size gives that field. *)
 Lemma zero_field b o f :
   bytes b o (replicate (field_len f) 0) ∗ auxes b o (replicate (field_len f) CNone) ⊢ field_own b o f.
-Proof.
+Proof using Type.
   destruct f; cbn [field_len field_own replicate].
   - iIntros "_". done.
   - iIntros "[Hb Ha]". iApply pcell_null_of. rewrite (auxes_app b o [CNone] (replicate 7 CNone)).
@@ -173,7 +173,7 @@ Qed.
 (** A zero range of a layout's size gives all of its fields. *)
 Lemma zero_layout b o fs :
   bytes b o (replicate (layout_len fs) 0) ∗ auxes b o (replicate (layout_len fs) CNone) ⊢ layout_own b o fs.
-Proof.
+Proof using Type.
   revert o. induction fs as [|f fs IH]; intros o; cbn [layout_len fold_right layout_own].
   - iIntros "_". done.
   - rewrite !replicate_add bytes_app auxes_app !length_replicate.
@@ -181,4 +181,108 @@ Proof.
     iApply IH. iFrame.
 Qed.
 
+(** A fresh object whose size matches a layout gives its lifetime and
+    the layout's zero fields. *)
+Lemma obj_layout b q fs :
+  0 <= req_extent q -> Z.to_nat (req_extent q) = layout_len fs ->
+  obj b q ⊢ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗ layout_own b 0 fs.
+Proof using Type.
+  intros H Hl. rewrite obj_zero_block; [|exact H]. rewrite Hl. iIntros "[$ H]". iApply zero_layout. iExact "H".
+Qed.
+
+(** A fresh object can be lent whole to a system call that fills it.
+    Its zero bytes and empty capability slots then become a block of
+    unknown contents. *)
+Lemma obj_blk_any b q :
+  0 <= req_extent q -> obj b q ⊢ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗ blk_any b 0 (req_extent q).
+Proof using Type.
+  iIntros (H) "Ho". rewrite obj_zero_block; [|exact H]. iDestruct "Ho" as "($ & Hb & Ha)".
+  iExists (replicate (Z.to_nat (req_extent q)) 0), (replicate (Z.to_nat (req_extent q)) CNone).
+  rewrite /bytes /auxes pts_app. iFrame. iPureIntro. rewrite !length_replicate. done.
+Qed.
+
 End fields.
+
+(** ## Reading bytes whose values are unknown
+
+    A system call that fills a buffer leaves bytes that the proof knows
+    nothing about, such as the time that `c: clock_gettime` reports.
+    Startup still reads such bytes as an eight-byte integer and mixes
+    them into a random key, and it stores the key back over them. The
+    rules below read and write eight owned bytes whatever their values. *)
+
+Section loads.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+Context {world : Type} (registry : name -> option (contract world))
+  (wi : mem -> world -> gmap piece pval -> Prop) `{Hstable : !SafepointStable wi} (ge : genv).
+Local Instance load_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
+Local Notation lexpr := (language.expr (nanofil_lang registry ge)).
+
+(** An eight-byte load from owned bytes bs yields the little-endian
+    integer that bs spell, through a writable or read-only capability. *)
+Lemma wp_raw_load_long_bytes f e ls l d k off args rest j classes p b reg o bs Φ :
+  op_arg_classes (RawLoad LdL off) k = Some classes ->
+  map2_option (value_x ge e) classes args = Some [WPtr p] ->
+  length bs = 8%nat -> ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + o ->
+  live b reg -∗ bytes b o bs -∗
+  ▷ (live b reg -∗ bytes b o bs -∗
+     WP (ERun (mkFrame f (put d (WInt (of_bytes bs)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : lexpr) {{ Φ }}.
+Proof using Hstable.
+  intros Hc Hx Hlen Hp Ha. iIntros "Hl Hb HK".
+  iApply (wp_read_with _ _ _ (live b reg ∗ bytes b o bs)
+            (fun m => live_at m b reg /\ all_agree m (byte_ps b o bs)) _ _ [] with "[$Hl $Hb] [HK]").
+  - iIntros (σ) "Hσ [Hl Hb]".
+    iDestruct (pts_facts with "Hσ Hl") as %([Hlv _] & _).
+    iDestruct (pts_facts with "Hσ Hb") as %(Hbs & _). iPureIntro. auto.
+  - intros m fuel (Hlv & Hbs).
+    destruct (lookup_lt_is_Some_2 bs 0 ltac:(lia)) as [x0 H0].
+    destruct (lookup_lt_is_Some_2 bs (length bs - 1) ltac:(lia)) as [x1 H1].
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H0) as (_ & Hlo & _).
+    destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hbs H1) as (_ & _ & Hhi).
+    apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
+    rewrite (op_raw_load m k p off).
+    + rewrite Ha. replace 8 with (Z.of_nat (length bs)) by (rewrite Hlen; reflexivity).
+      rewrite (bytes_load m b reg o bs Hlv Hbs). reflexivity.
+    + rewrite Ha. apply (access_read _ b reg); [exact Hp | exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+  - iNext. iIntros "[Hl Hb]". iApply ("HK" with "Hl Hb").
+Qed.
+
+(** An eight-byte store over owned bytes bs, whatever their values,
+    leaves the little-endian bytes of the stored integer. *)
+Lemma wp_raw_store_long_bytes f e ls l off v a rest j p b reg o xs y Φ :
+  value_x ge e L v = Some (WInt y) -> value_x ge e A a = Some (WPtr p) ->
+  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> length xs = 8%nat ->
+  (forall m wd h, (forall l v, (l, v) ∈ (PLive b, VLive reg) :: byte_ps b o xs -> h !! l = Some v) ->
+     wi m wd h ->
+     wi (store_bytes m (b + o) 8 y) wd (overwrite ((PLive b, VLive reg) :: byte_ps b o (le_bytes y 8)) h)) ->
+  live b reg -∗ bytes b o xs -∗
+  ▷ (live b reg -∗ bytes b o (le_bytes y 8) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) : lexpr) {{ Φ }}.
+Proof using Hstable.
+  intros Hv Ha Hp Hoff Hlen Hwi. iIntros "Hl Hx HK".
+  iApply (wp_write _ _ _ ((PLive b, VLive reg) :: byte_ps b o xs) ((PLive b, VLive reg) :: byte_ps b o (le_bytes y 8))
+            _ _ [] (fun m => store_bytes m (b + o) 8 y) with "[Hl Hx] [HK]");
+    [cbn [fmap list_fmap fst]; rewrite !byte_ps_keys length_le_bytes Hlen; reflexivity | | exact Hwi |
+     rewrite /live /bytes /pts !big_sepL_cons big_sepL_nil; iFrame; iDestruct "Hl" as "[$ _]" |].
+  - intros m fuel (Hf & Hd & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [Hlv Hx].
+    destruct (store_after m b reg o xs y Hd Hlv Hx) as [Hag Hfr]. rewrite Hlen in Hag Hfr. cbn in Hag, Hfr.
+    assert (Hb : forall i, (i < 8)%nat -> 0 <= o + Z.of_nat i /\ b + (o + Z.of_nat i) < r_end reg).
+    { intros i Hi. rewrite <- Hlen in Hi. destruct (lookup_lt_is_Some_2 xs i Hi) as [x Hxi].
+      destruct (byte_ps_agree _ _ _ _ _ _ _ Hlv Hx Hxi) as (_ & H1 & H2). lia. }
+    destruct (Hb 0%nat ltac:(lia)) as [H0 _]. destruct (Hb 7%nat ltac:(lia)) as [_ H7]. cbn in H0, H7.
+    split; [|split; [reflexivity|split; [|split]]].
+    + apply rule_raw_store with (vk := L) (x := WInt y) (p := p); [reflexivity | exact Hv | exact Ha |].
+      rewrite Hoff. apply store_res_long. rewrite Hp.
+      apply (access_obj _ _ reg); [exact (proj1 Hlv) | lia | lia | apply Z.mod_1_r].
+    + apply store_bytes_kept. intros a' Ha'. exists b, reg. split; [exact (proj1 Hlv)|lia].
+    + cbn [all_agree agree_piece fst snd]. split; [exact Hlv | exact Hag].
+    + intros l' v' Hn Ha'. apply Hfr; [|exact Ha'].
+      intros Hin. apply Hn. cbn [fmap list_fmap fst]. apply elem_of_cons. right.
+      rewrite byte_ps_keys length_le_bytes. rewrite byte_ps_keys Hlen in Hin. exact Hin.
+  - iNext. iIntros "H".
+    iDestruct (pts_app [(PLive b, VLive reg)] (byte_ps b o (le_bytes y 8)) with "H") as "[Hl Hx]".
+    iApply ("HK" with "Hl Hx").
+Qed.
+
+End loads.
