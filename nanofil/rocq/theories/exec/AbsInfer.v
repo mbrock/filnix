@@ -6,10 +6,11 @@
     its cuts stop growing, and it then checks that every path from the
     entry or from a cut ends at a return or inside an invariant.
 
-    This module is not proved sound, and neither is the interpreter it
-    drives. It states no theorem about a program. A function that
-    passes [check] has been examined by an unproved program, and the
-    soundness proof is being written. *)
+    The search for invariants needs no proof, because no proof trusts
+    its result. The function [verify] checks the invariants that the
+    search found, and a proof uses only that check. The theorem
+    [verify_sound] of [AbsSound](AbsSound.v) proves that a function
+    which passes [verify] satisfies its specification. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Maps.

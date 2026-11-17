@@ -1,7 +1,7 @@
 (** A proof that a function never panics has to hold for every input,
     and a function of several thousand IR instructions is too long to
     step through by hand. This module is the first half of a checker
-    that is meant to carry out such a proof by computation.
+    that carries out such a proof by computation.
 
     The checker runs a function on abstract values. An integer is a
     constant or a named unknown with a range. A pointer is an object
@@ -17,9 +17,10 @@
     outside the program, which it calls the guard, and which a hook may
     require before a call.
 
-    This checker is not proved sound. Nothing in this file is a theorem
-    about a program, so a successful run is evidence and not a proof.
-    The soundness proof against the program logic is being written.
+    This file defines the checker, and it states no theorem about a
+    program. The theorem [verify_sound] of [AbsSound](AbsSound.v)
+    proves that the checker is sound. It says that a function which
+    passes the check satisfies its specification in the program logic.
     [AbsInfer](AbsInfer.v) finds the loop invariants that a run needs. *)
 
 From Stdlib Require Import String ZArith List Bool.
