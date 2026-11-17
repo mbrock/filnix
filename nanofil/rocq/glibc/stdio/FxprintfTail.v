@@ -46,7 +46,7 @@ Lemma wp_fx_tail e from vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf
   lookup (TAtom "v2") e = Some (WPtr fmt) -> lookup (TAtom "v13") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   0 < sb' -> sb' mod 16 = 0 -> sb' + req_extent (fx_req xs) <= 2 ^ 48 -> 0 <= ptr_addr fmt < 2 ^ 64 ->
   mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
-  fx_vfprintf_rule_at vb fd fp fmt xs mode flags2 held R Q ->
+  fx_vfprintf_rule_at vb fd fp fmt xs mode flags2 held R Q -> 0 < cb /\ cb mod 8 = 0 /\ cb + 32 <= 2 ^ 48 ->
   single_ro ge sb sreg -∗ fx_stream vb (ow_self w0) fp fd mode flags2 (Some (fx_cnt held)) -∗
   pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb' + 16) (Ro sb'))) -∗
   pts (snapshot_ps xs sb' (fx_req xs)) -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
@@ -54,7 +54,7 @@ Lemma wp_fx_tail e from vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf
      Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None (Enter (TAtom "L16") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
-  intros fp xs Hpr Hc2 Hv2 Hv13 Hsb Hsmod Hsend Hfmtr Hmode Hcnt Hfmt.
+  intros fp xs Hpr Hc2 Hv2 Hv13 Hsb Hsmod Hsend Hfmtr Hmode Hcnt Hfmt (Hcb & Hc8 & Hcend).
   iIntros "#Hs Hst Hcur Hsnap Hfc HR HK".
   iDestruct (fx_stream_fx with "Hst") as (fb' freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
   destruct Hp as (Hfp & Hal & Hfb & Hend & Hfreg & Hflr & Hul & Hnl & Hf2r & Hmdr).

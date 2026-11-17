@@ -267,12 +267,16 @@ Definition wwin (dq : dfrac) (b : Z) (reg : region) (wo : Z) (ws : list Z) : iPr
 Definition word_string (dq : dfrac) (p : ptr) (s : list Z) : iProp Σ :=
   ∃ b reg ws, ⌜str_shape p b reg ws s⌝ ∗ wwin dq b reg (wstart p - b) ws.
 
-(** A string argument of a formatted print is null or points into a
-    read-only string. An integer argument asks for nothing. glibc
-    prints `(null)` for a null string. *)
+(** A string argument of a formatted print is the null pointer or
+    points into a read-only string. An integer argument asks for
+    nothing. glibc prints `(null)` for a null string. The null pointer
+    here has no [[capability]]. A pointer with the address 0 and a
+    capability for some object is not covered, because the formatter
+    loads the capability with the argument, and this predicate says
+    nothing about that object. *)
 Definition str_arg (x : word) : iProp Σ :=
   match x with
-  | WPtr q => ⌜ptr_addr q = 0⌝ ∨
+  | WPtr q => ⌜q = null⌝ ∨
       ∃ p s k, ⌜q = ptr_add p (Z.of_nat k) /\ (k <= length s)%nat⌝ ∗ word_string DfracDiscarded p s
   | _ => True
   end.

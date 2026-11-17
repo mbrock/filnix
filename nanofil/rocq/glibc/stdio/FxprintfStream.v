@@ -198,9 +198,12 @@ Section stream.
 Context `{!gen_heapGS piece pval Σ}.
 
 (** The cursor object points 16 bytes into the snapshot, past the two
-    named arguments. The formatter reads the other arguments through it. *)
+    named arguments. The formatter reads the other arguments through it.
+    The cursor is a heap object at an 8-aligned address, because the
+    formatter loads a pointer from it. *)
 Definition fx_va (ap : ptr) (xs : list word) : iProp Σ :=
-  ∃ cb sb, ⌜ap = mkPtr cb (Obj cb) /\ 0 < sb /\ sb mod 16 = 0 /\ sb + req_extent (fx_req xs) <= 2 ^ 48⌝ ∗
+  ∃ cb sb, ⌜ap = mkPtr cb (Obj cb) /\ 0 < cb /\ cb mod 8 = 0 /\ cb + 32 <= 2 ^ 48 /\
+            0 < sb /\ sb mod 16 = 0 /\ sb + req_extent (fx_req xs) <= 2 ^ 48⌝ ∗
     pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb + 16) (Ro sb))) ∗
     pts (snapshot_ps xs sb (fx_req xs)).
 

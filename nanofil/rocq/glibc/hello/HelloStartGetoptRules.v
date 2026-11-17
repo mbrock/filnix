@@ -272,7 +272,7 @@ Proof using Hfr Herr Hvf Hloc.
   - exact (hello_dg_premises v Hv).
   - intros mid Hm. apply hello_dg_msgs_pos. left. exact Hm.
   - apply dgx_msgs_lends_diag. exact hello_msg_at.
-  - intros mid a0 s0 c Hm Hc. eapply getopt_diag_formats; [exact Herr | exact hello_dg_HQ | | exact Hm | exact Hc].
+  - intros mid a0 s0 c Hm Hc. eapply getopt_diag_formats; [exact Herr | vm_compute; reflexivity | exact hello_dg_HQ | | exact Hm | exact Hc].
     intros n m Hin Hl. exact (hello_dg_ws n m Hin Hl).
 Qed.
 
@@ -291,12 +291,12 @@ Proof using Hfr Herr Hvf Hloc.
   - vm_compute; split; congruence.
   - vm_compute; reflexivity.
   - vm_compute; split; congruence.
-  - intros mid a0 s0 pfx sp nm sn Hm. eapply getopt_ldiag_formats; [exact Herr | exact hello_dg_HQ | | exact Hm].
+  - intros mid a0 s0 pfx sp nm sn Hm. eapply getopt_ldiag_formats; [exact Herr | vm_compute; reflexivity | exact hello_dg_HQ | | exact Hm].
     intros n m Hin Hl. exact (hello_dg_ws n m Hin Hl).
-  - intros pfx sp nm sn. eapply getopt_f140_format; [exact Herr | exact hello_dg_HQ | |].
+  - intros pfx sp nm sn. eapply getopt_f140_format; [exact Herr | vm_compute; reflexivity | exact hello_dg_HQ | |].
     + intros n m Hin Hl. exact (hello_dg_ws n m Hin Hl).
     + vm_compute; reflexivity.
-  - eapply getopt_f141_format; [exact Herr | exact hello_dg_HQ | |].
+  - eapply getopt_f141_format; [exact Herr | vm_compute; reflexivity | exact hello_dg_HQ | |].
     + intros n m Hin Hl. exact (hello_dg_ws n m Hin Hl).
     + vm_compute; reflexivity.
 Qed.

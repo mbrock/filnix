@@ -59,17 +59,17 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     it gives [va_at]. The stored pointer is skip bytes past the start
     of the copy, and skip must not exceed the size of the copy. *)
 Lemma va_at_intro cb sb skip xs :
-  0 < sb /\ sb mod 16 = 0 /\ sb + req_extent (fx_req xs) <= 2 ^ 48 ->
+  0 < cb /\ cb mod 8 = 0 /\ cb + 32 <= 2 ^ 48 -> 0 < sb /\ sb mod 16 = 0 /\ sb + req_extent (fx_req xs) <= 2 ^ 48 ->
   0 <= skip -> skip <= 8 * Z.of_nat (length xs) ->
   live cb (mkRegion cb (cb + 32) Heap Live) -∗
   pcell cb 0 (mkPtr ((ptr_addr (mkPtr sb (Ro sb)) + skip) mod 2 ^ 64) (ptr_cap (mkPtr sb (Ro sb)))) -∗
   pts (snapshot_ps xs sb (fx_req xs)) -∗
   va_at (mkPtr cb (Obj cb)) skip xs.
 Proof using Type.
-  intros (Hsb & Hmod & Hend) Hs0 Hs1. iIntros "Hcl Hcc Hsnap".
+  intros (Hcb & Hc8 & Hcend) (Hsb & Hmod & Hend) Hs0 Hs1. iIntros "Hcl Hcc Hsnap".
   pose proof (heap_req_extent 16 (8 * Z.of_nat (length xs))) as Hext. unfold fx_req in Hend.
   assert (Hva : (ptr_addr (mkPtr sb (Ro sb)) + skip) mod 2 ^ 64 = sb + skip) by (cbn; apply Z.mod_small; lia).
-  rewrite Hva. iExists cb, sb. iSplit; [iPureIntro; split_and!; [reflexivity | assumption..]|].
+  rewrite Hva. iExists cb, sb. iSplit; [iPureIntro; split_and!; [reflexivity | first [assumption | lia]..]|].
   iSplitR "Hsnap"; [|iExact "Hsnap"].
   replace (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb + skip) (Ro sb))) with
     ([(PLive cb, VLive (mkRegion cb (cb + 32) Heap Live))] ++
@@ -105,7 +105,7 @@ Proof using Hvf.
   intros x. exists glibc_fprintf. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-. cbn [fs_pre fs_post fs_args fprintf_spec].
   iIntros "[%Hfit Hpre] HK".
-  destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd).
+  destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd & Hge).
   unfold pf_pre, pf_post. cbn [pf_vb pf_fp pf_fd pf_fmt pf_dq pf_bytes pf_ds pf_ys pf_rest pf_eb] in *.
   iDestruct "Hpre" as "(Hst & Hf & Hargs & He & #Hro & #Hfro & #Hmro)".
   iApply WrapVL.wp_snapshot; [discriminate | cbn; exact Hys |
@@ -114,7 +114,7 @@ Proof using Hvf.
   step. cursor_alloc cb.
   iApply WrapVL.wp_va_args; [reflexivity |]. iNext. check "Hcl". store "Hcl" "Hcc".
   iDestruct (va_at_intro cb sb 16 (WPtr fp :: WPtr fmt :: ys) with "Hcl Hcc Hsnap") as "Hva";
-    [exact Hsnap | lia | cbn [length]; lia |].
+    [split_and!; assumption | exact Hsnap | lia | cbn [length]; lia |].
   iDestruct (file_idle_tidy with "Hst") as (flags2 Hbits) "Hst".
   iApply (wp_call_spec registry (os_wi w0) ge _ vfprintf_spec
     (VfpIn vb fp fd flags2 None fmt dq bytes ds (mkPtr cb (Obj cb)) 16 (WPtr fp :: WPtr fmt :: ys) rest eb)
@@ -123,7 +123,7 @@ Proof using Hvf.
     cbn [vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (16 / 8)) (WPtr fp :: WPtr fmt :: ys)) with ys.
     iFrame "Hst Hf Hva Hargs He Hro Hfro Hmro". iPureIntro.
-    split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd].
+    split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd | exact Hge].
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%r & [-> %Hr] & Hst & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
     cbn. iApply wp_ret; [reflexivity | vx |]. iNext. iApply "HK".
@@ -142,7 +142,7 @@ Proof using Hvf.
   intros [dqo x]. exists glibc_printf. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-. cbn [fs_pre fs_post fs_args printf_spec].
   iIntros "(%Hfit & Hso & Hpre) HK".
-  destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd).
+  destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd & Hge).
   unfold pf_pre, pf_post. cbn [pf_vb pf_fp pf_fd pf_fmt pf_dq pf_bytes pf_ds pf_ys pf_rest pf_eb] in *.
   iDestruct "Hpre" as "(Hst & Hf & Hargs & He & #Hro & #Hfro & #Hmro)".
   iDestruct "Hso" as (so soreg (Hgso & Hso8 & Hsoend)) "[Hsol Hsoc]".
@@ -153,7 +153,7 @@ Proof using Hvf.
   step. cursor_alloc cb.
   iApply WrapVL.wp_va_args; [reflexivity |]. iNext. check "Hcl". store "Hcl" "Hcc".
   iDestruct (va_at_intro cb sb 8 (WPtr fmt :: ys) with "Hcl Hcc Hsnap") as "Hva";
-    [exact Hsnap | lia | cbn [length]; lia |].
+    [split_and!; assumption | exact Hsnap | lia | cbn [length]; lia |].
   step_global Hgso.
   check_read_dq "Hsol" by a2. iNext. iIntros "Hsol".
   iDestruct (file_idle_tidy with "Hst") as (flags2 Hbits) "Hst".
@@ -167,7 +167,7 @@ Proof using Hvf.
     cbn [vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (8 / 8)) (WPtr fmt :: ys)) with ys.
     iFrame "Hst Hf Hva Hargs He Hro Hfro Hmro". iPureIntro.
-    split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd].
+    split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd | exact Hge].
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%r & [-> %Hr] & Hst & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
     cbn. iApply wp_ret; [reflexivity | vx |]. iNext. iApply "HK".

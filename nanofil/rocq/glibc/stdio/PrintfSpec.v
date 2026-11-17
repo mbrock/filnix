@@ -57,6 +57,11 @@ Definition lower_digits : string := "__GI__itoa_lower_digits".
 Definition lower_digits_bytes : list Z :=
   Eval vm_compute in map (fun i => 48 + Z.of_nat i) (seq 0 10) ++ map (fun i => 97 + Z.of_nat i) (seq 0 26).
 
+(** The conversion `%s` prints this constant for a null argument. Its
+    characters spell `(null)`. *)
+Definition null_text : string := "glibc_vfprintf_internal#null".
+Definition null_text_bytes : list Z := [40; 110; 117; 108; 108; 41].
+
 (** The function [table_bytes] gives the bytes of one of the
     formatter's tables: its two dispatch tables and the table of
     digits. *)
@@ -87,19 +92,27 @@ Definition null_global (n : string) : iProp Σ :=
             b + 8 <= r_end reg /\ r_end reg <= 2 ^ 63⌝ ∗
     liveq DfracDiscarded b reg ∗ pcellq DfracDiscarded b 0 null.
 
+(** The global n is a string constant with the characters s, and
+    anyone may read it. *)
+Definition ro_string (n : string) (s : list Z) : iProp Σ :=
+  ∃ b, ⌜lookup (TAtom n) (ge_globals ge) = Some (mkPtr b (Ro b))⌝ ∗ word_string DfracDiscarded (mkPtr b (Ro b)) s.
+
 (** The formatter reads its two dispatch tables, and the conversion
-    `%d` reads the table of digits. The formatter also reads three
-    globals that are null while the program has registered no
-    conversion of its own, and Hello registers none. *)
+    `%d` reads the table of digits. The conversion `%s` prints the
+    constant `(null)` when its argument is the null pointer. The
+    formatter also reads three globals that are null while the program
+    has registered no conversion of its own, and Hello registers
+    none. *)
 Definition printf_ro : iProp Σ :=
   ro_table jump_table ∗ ro_table step0_jumps ∗ ro_table lower_digits ∗
+  ro_string null_text null_text_bytes ∗
   null_global "__printf_function_table" ∗ null_global "__printf_modifier_table" ∗
   null_global "__printf_va_arg_table".
 
 (** A caller keeps the formatter's read-only data across a call,
     because anyone may read it at any time. *)
 #[global] Instance printf_ro_persistent : Persistent printf_ro.
-Proof using Type. rewrite /printf_ro /ro_table /null_global. apply _. Qed.
+Proof using Type. rewrite /printf_ro /ro_table /ro_string /null_global. apply _. Qed.
 
 (** ## Arguments *)
 
@@ -108,9 +121,13 @@ Proof using Type. rewrite /printf_ro /ro_table /null_global. apply _. Qed.
     pointers into read-only strings. *)
 
 (** The argument cursor ap points skip bytes into a snapshot of the
-    call's arguments xs, past the named ones. *)
+    call's arguments xs, past the named ones. The cursor is an object
+    of its own at an 8-aligned address, and the formatter loads a
+    pointer from it. That pointer does not point past the end of the
+    snapshot. *)
 Definition va_at (ap : ptr) (skip : Z) (xs : list word) : iProp Σ :=
-  ∃ cb sb, ⌜ap = mkPtr cb (Obj cb) /\ 0 < sb /\ sb mod 16 = 0 /\ sb + req_extent (fx_req xs) <= 2 ^ 48⌝ ∗
+  ∃ cb sb, ⌜ap = mkPtr cb (Obj cb) /\ 0 < cb /\ cb mod 8 = 0 /\ cb + 32 <= 2 ^ 48 /\ 0 < sb /\ sb mod 16 = 0 /\
+            sb + req_extent (fx_req xs) <= 2 ^ 48 /\ 0 <= skip <= 8 * Z.of_nat (length xs)⌝ ∗
     pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb + skip) (Ro sb))) ∗
     pts (snapshot_ps xs sb (fx_req xs)).
 
@@ -138,13 +155,16 @@ Record vfp_in : Type := VfpIn {
     takes the stream's lock once more, so the count of a lock that this
     thread holds must have room for one more. When the buffer is full
     the formatter writes to the stream's descriptor, so that descriptor
-    must be open. *)
+    must be open. The formatter saves errno when it starts, and it
+    reads errno through the global `c: __libc_errno`, so this global
+    must be the errno cell of the thread. *)
 Definition vfp_fits (x : vfp_in) : Prop :=
   parse_narrow (vi_bytes x) = Some (vi_ds x) /\
   narrow_fits (vi_ds x) (skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x)) (vi_rest x) /\
   0 <= vi_skip x /\ vi_skip x mod 8 = 0 /\
   (forall c, vi_held x = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) /\
-  ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x))) /\ In (vi_fd x) (ow_fds w0).
+  ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x))) /\ In (vi_fd x) (ow_fds w0) /\
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (vi_eb x) (Obj (vi_eb x))).
 
 (** This is the contract of `c: __vfprintf_internal (fp, fmt, ap, 0)`.
     The call is safe when the format and the arguments meet [vfp_fits]
@@ -206,11 +226,13 @@ Record pf_in : Type := PfIn {
     asks. The format must parse in the narrow grammar. The arguments
     after the format must fit its conversions. The entry copy holds
     only integers and pointers, so each argument must be one of the
-    two. The stream's descriptor must be open. *)
+    two. The stream's descriptor must be open, and the global
+    `c: __libc_errno` must be the errno cell of the thread. *)
 Definition pf_fits (x : pf_in) : Prop :=
   parse_narrow (pf_bytes x) = Some (pf_ds x) /\ narrow_fits (pf_ds x) (pf_ys x) (pf_rest x) /\
   forallb snapshot_word (pf_ys x) = true /\
-  ow_errno w0 = Some (mkPtr (pf_eb x) (Obj (pf_eb x))) /\ In (pf_fd x) (ow_fds w0).
+  ow_errno w0 = Some (mkPtr (pf_eb x) (Obj (pf_eb x))) /\ In (pf_fd x) (ow_fds w0) /\
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (pf_eb x) (Obj (pf_eb x))).
 
 (** A wrapper borrows an idle stream, the format, errno and the
     read-only data of the formatter, of `c: fputs` and of `c: malloc`.
@@ -294,6 +316,16 @@ Definition write_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
     (fun '(bb, dq, p, s, n) => ⌜0 <= n <= Z.of_nat (length s)⌝ ∗ printf_out k R bb ∗ word_string dq p s)%I
     (fun '(bb, dq, p, s, _) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb ∗ word_string dq p s)%I.
 
+(** `c: __printf_buffer_pad (buf, ch, width)` appends width copies of
+    a character, and it appends nothing when the width is zero or
+    negative. The width is a signed 64-bit number, which the contract
+    takes as the word that holds it. The function keeps the buffer
+    usable with the same backend. *)
+Definition pad_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+  FSpec (Z * Z * Z) (fun '(bb, c, w) => [WPtr (mkPtr bb (Obj bb)); WInt c; WInt w])
+    (fun '(bb, c, w) => ⌜0 <= c < 2 ^ 32 /\ 0 <= w < 2 ^ 64⌝ ∗ printf_out k R bb)%I
+    (fun '(bb, _, _) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb)%I.
+
 (** `c: memcpy (dest, src, n)` copies n bytes into a window. The
     caller lends the window with its capability slots, the lifetime of
     the window's object and a reader's share of the source bytes, and
@@ -340,7 +372,10 @@ Record pb_in : Type := PbIn {
     Its parameter cover says which directives a proof handles, so that
     a proof of some conversions states exactly what it covers. The
     function returns nothing. A failure shows only in the buffer's
-    mode, which the invariant hides. *)
+    mode, which the invariant hides.
+    The function saves errno when it starts, and it reads errno
+    through the global `c: __libc_errno`. So the contract also asks
+    that this global is the errno cell of the thread. *)
 Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z * region * Z * Z -> iProp Σ) :
     fspec Σ :=
   FSpec pb_in
@@ -349,7 +384,8 @@ Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z 
        ⌜parse_narrow (pb_bytes x) = Some (pb_ds x) /\ Forall cover (pb_ds x) /\
         narrow_fits (pb_ds x) (skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x)) (pb_rest x) /\
         0 <= pb_skip x /\ pb_skip x mod 8 = 0 /\
-        ow_errno w0 = Some (mkPtr (pb_eb x) (Obj (pb_eb x)))⌝ ∗
+        ow_errno w0 = Some (mkPtr (pb_eb x) (Obj (pb_eb x))) /\
+        lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (pb_eb x) (Obj (pb_eb x)))⌝ ∗
        printf_out k R (pb_buf x) ∗
        word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ va_at (pb_ap x) (pb_skip x) (pb_xs x) ∗
        ([∗ list] a ∈ skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x), str_arg a) ∗ errno_any (pb_eb x) ∗ printf_ro)%I

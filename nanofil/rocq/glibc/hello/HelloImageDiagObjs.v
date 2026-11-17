@@ -3,15 +3,15 @@
     constants, which [HelloImageKept](HelloImageKept.v) lists, and five
     writable globals: three read-write locks, the root of the cache of
     translations and the head of the list of bound domains. The
-    formatter reads its two dispatch tables, the table of digits and
-    three globals that hold the conversions a program registers.
-    Gettext also reads the name of
-    the message category in the global locale. No other start list holds
-    these eleven objects or that name. This module lists them and shows
+    formatter reads its two dispatch tables, the table of digits, the
+    text `(null)` and three globals that hold the conversions a program
+    registers. Gettext also reads the name of the message category in
+    the global locale. No other start list holds these twelve objects
+    or that name. This module lists them and shows
     what Hello's image holds in each. The five gettext globals are zero,
     so every lock is free, the cache is empty and no domain is bound.
-    The three conversion globals are null, the tables hold their bytes,
-    and the name is "C".
+    The three conversion globals are null, the tables and the text hold
+    their bytes, and the name is "C".
 
     To keep the check fast, it runs on a copy of the image that keeps
     only these objects. *)
@@ -19,7 +19,7 @@
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap.
-From Glibc Require Import StartImageUnique StartImageCpu HelloImageErase HelloImageEraseMem HelloImagePieces
+From Glibc Require Import WordString HelloGetoptTable StartImageUnique StartImageCpu HelloImageErase HelloImageEraseMem HelloImagePieces
   HelloImageModule HelloImageLoad HelloStartKept HelloImageKept StartImageEarly.
 Import ListNotations.
 Open Scope Z_scope.
@@ -48,17 +48,21 @@ Definition hello_step0_jumps_bytes : list Z := Eval vm_compute in
 Definition hello_lower_digits_bytes : list Z := Eval vm_compute in
   data_bytes hello_image_module "__GI__itoa_lower_digits".
 
-(** These are the formatter's six objects. The tables hold their bytes
-    and the three conversion globals hold null. *)
+(** The conversion `%s` prints this text for a null argument. *)
+Definition hello_null_text : list Z := [40; 110; 117; 108; 108; 41].
+
+(** These are the formatter's seven objects. The tables and the text
+    hold their bytes, and the three conversion globals hold null. *)
 Definition hello_printf_names : list string :=
   ["glibc_vfprintf_internal#jump_table"; "glibc_vfprintf_internal#__printf_buffer.step0_jumps.277";
-   "__GI__itoa_lower_digits";
+   "__GI__itoa_lower_digits"; "glibc_vfprintf_internal#null";
    "__printf_function_table"; "__printf_modifier_table"; "__printf_va_arg_table"]%string.
 
 Definition hello_printf_ro_ps : list (piece * pval) :=
   obj_ps (img_ob "glibc_vfprintf_internal#jump_table") hello_jump_table_bytes ++
   obj_ps (img_ob "glibc_vfprintf_internal#__printf_buffer.step0_jumps.277") hello_step0_jumps_bytes ++
   obj_ps (img_ob "__GI__itoa_lower_digits") hello_lower_digits_bytes ++
+  lit_ps (img_a "glibc_vfprintf_internal#null") (img_gd "glibc_vfprintf_internal#null") (lit_words hello_null_text) ++
   obj_ps (img_ob "__printf_function_table") (repeat 0 8%nat) ++
   obj_ps (img_ob "__printf_modifier_table") (repeat 0 8%nat) ++
   obj_ps (img_ob "__printf_va_arg_table") (repeat 0 8%nat).
@@ -119,7 +123,7 @@ Proof. apply pieces_unique_sound. vm_compute. reflexivity. Qed.
 
 (** ## Hello's private start list *)
 
-(** Hello starts with these eleven objects, the category's name and
+(** Hello starts with these twelve objects, the category's name and
     gettext's fifteen constants in its private state. *)
 Definition hello_getopt_priv_ps : list (piece * pval) := hello_kept_ps ++ hello_diag_objs_ps.
 

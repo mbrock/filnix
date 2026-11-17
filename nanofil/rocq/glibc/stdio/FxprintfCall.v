@@ -124,7 +124,8 @@ Proof using Type*.
   { exact Hnl. }
   { iSplit; [done | iExact "Hfl"]. }
   iApply (wp_fx_lock _ vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf R Q with "Hs Hst Ho Hcur Hsnap Hfc HR HK");
-    first [exact Hself | exact Hselfr | exact Hok | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | lk_prove].
+    first [exact Hself | exact Hselfr | exact Hok | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt |
+           exact (conj Hcb (conj Hc8 Hcend)) | lk_prove].
 Qed.
 
 (** The same holds when the result resource ignores the returned mode. *)

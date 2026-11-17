@@ -49,6 +49,10 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hvf : !HasSpec registry (os_wi w0) ge (TAtom "__vfprintf_internal") vfprintf_spec}.
 Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 
+(** The formatter reads errno through the global `c: __libc_errno`,
+    so that global must be the errno cell. *)
+Context (Hgerr : lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb))).
+
 (** A call of the formatter on a tidy stream gives the stream back
     tidy, with the same flags and lock count, though perhaps at another
     mode. The stream must write to an open descriptor, and a held lock
@@ -64,7 +68,7 @@ Lemma fx_rule_of_vfprintf vb fd fp fmt bytes ds ys mode flags2 held (R : iProp �
        ([∗ list] a ∈ ys, str_arg a) ∗
        (∀ x m, ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ -∗ errno_any eb -∗ word_string dq fmt bytes -∗ Q x m)) ->
   fx_vfprintf_rule_at vb fd fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q.
-Proof using Herr Hvf.
+Proof using Herr Hgerr Hvf.
   intros Hp Ha Hfd Hc HR f e ls l d args rest j ap Φ Hargs.
   iIntros "Hs HR Hva HK". iDestruct (HR with "HR") as (dq) "(He & Hf & #Hro & #Hfro & #Hmro & Hys & HQ)".
   iAssert (file_tidy vb (ow_self w0) fp fd (Z.lor flags2 2) (Some (fx_cnt held))) with "[Hs]" as "Hs".
@@ -74,8 +78,11 @@ Proof using Herr Hvf.
     with "[Hs Hf Hva Hys He]"); [exact Hargs| |].
   - cbn [fs_pre vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (16 / 8)) (WPtr fp :: WPtr fmt :: ys)) with ys.
-    iFrame "Hs Hf Hys He Hro Hfro Hmro". iSplit; [|iExact "Hva"]. iPureIntro. unfold vfp_fits. cbn.
-    split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | | exact Herr | exact Hfd].
+    iFrame "Hs Hf Hys He Hro Hfro Hmro". iSplit.
+    2: { iDestruct "Hva" as (cb sb) "(%Hv & Hcur & Hsnap)". iExists cb, sb. iFrame "Hcur Hsnap". iPureIntro.
+         cbn [length]. split_and!; first [apply Hv | lia]. }
+    iPureIntro. unfold vfp_fits. cbn.
+    split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | | exact Herr | exact Hfd | exact Hgerr].
     intros c Hcs. destruct held as [c0|]; cbn in Hcs; injection Hcs as <-; [destruct (Hc c0 eq_refl)|]; lia.
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%n & [-> %Hn] & Hs & Hf & He)".
@@ -124,7 +131,7 @@ Lemma fx_format_named n mid ds ys (W : iProp Σ) :
   In n getopt_fmt_names -> lookup (TAtom n) (ge_globals ge) = Some mid ->
   parse_narrow (getopt_fmt n) = Some ds -> narrow_args ds ys -> (W ⊢ [∗ list] a ∈ ys, str_arg a) ->
   fx_format vb fp mid ys ((errno_any eb ∗ F) ∗ W) Q.
-Proof using Herr Hvf HQ Hws.
+Proof using Herr Hgerr Hvf HQ Hws.
   intros Hin Hl Hp Ha HW fd mode flags2 held Hfd Hc.
   apply (fx_rule_of_vfprintf _ _ _ _ (getopt_fmt n) ds); [exact Hp | exact Ha | exact Hfd | exact Hc |].
   iIntros "[[He HF] HW]". iDestruct (Hws n mid Hin Hl with "HF") as (dq) "(Hf & #Hro & #Hfro & #Hmro & HF)".
@@ -137,7 +144,7 @@ Qed.
 Lemma getopt_diag_formats mid a0 s0 c :
   diag_msg ge mid -> 0 <= c < 2 ^ 32 ->
   fx_format vb fp mid [WPtr a0; WInt c] ((errno_any eb ∗ F) ∗ word_string DfracDiscarded a0 s0) Q.
-Proof using Herr Hvf HQ Hws.
+Proof using Herr Hgerr Hvf HQ Hws.
   intros Hm Hc. assert (HW : word_string DfracDiscarded a0 s0 ⊢ [∗ list] a ∈ [WPtr a0; WInt c], str_arg a).
   { iIntros "Hs". cbn. iSplitL; [iApply (str_arg_of_string with "Hs") | done]. }
   destruct Hm as [Hl | Hl].
@@ -152,7 +159,7 @@ Lemma getopt_ldiag_formats mid a0 s0 pfx sp nm sn :
   fx_format vb fp mid [WPtr a0; WPtr pfx; WPtr nm]
     ((errno_any eb ∗ F) ∗ (word_string DfracDiscarded a0 s0 ∗ word_string DfracDiscarded pfx sp ∗
       word_string DfracDiscarded nm sn)) Q.
-Proof using Herr Hvf HQ Hws.
+Proof using Herr Hgerr Hvf HQ Hws.
   intros Hm. assert (HW : word_string DfracDiscarded a0 s0 ∗ word_string DfracDiscarded pfx sp ∗
       word_string DfracDiscarded nm sn ⊢ [∗ list] a ∈ [WPtr a0; WPtr pfx; WPtr nm], str_arg a).
   { iIntros "(H1 & H2 & H3)". cbn. iSplitL "H1"; [iApply (str_arg_of_string with "H1")|].
@@ -168,7 +175,7 @@ Lemma getopt_f140_format f140 pfx sp nm sn :
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
   fx_format vb fp f140 [WPtr pfx; WPtr nm]
     ((errno_any eb ∗ F) ∗ (word_string DfracDiscarded pfx sp ∗ word_string DfracDiscarded nm sn)) Q.
-Proof using Herr Hvf HQ Hws.
+Proof using Herr Hgerr Hvf HQ Hws.
   intros Hl. eapply (fx_format_named "glibc_getopt#str.140"); [cbn; tauto | exact Hl | vm_compute; reflexivity | narrow_args_by |].
   iIntros "(H1 & H2)". cbn. iSplitL "H1"; [iApply (str_arg_of_string with "H1")|].
   iSplitL; [iApply (str_arg_of_string with "H2") | done].
@@ -178,7 +185,7 @@ Qed.
 Lemma getopt_f141_format f141 :
   lookup (TAtom "glibc_getopt#str.141") (ge_globals ge) = Some f141 ->
   fx_format vb fp f141 [] ((errno_any eb ∗ F) ∗ True) Q.
-Proof using Herr Hvf HQ Hws.
+Proof using Herr Hgerr Hvf HQ Hws.
   intros Hl. eapply (fx_format_named "glibc_getopt#str.141"); [cbn; tauto | exact Hl | vm_compute; reflexivity | narrow_args_by |].
   iIntros "_". done.
 Qed.

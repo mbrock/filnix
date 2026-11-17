@@ -51,7 +51,7 @@ Lemma wp_fx_lock e vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R :
   ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 -> fx_snap_ok sb' xs ->
   0 <= ptr_addr fmt < 2 ^ 64 ->
   mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
-  fx_vfprintf_rule_at vb fd fp fmt xs mode flags2 held R Q ->
+  fx_vfprintf_rule_at vb fd fp fmt xs mode flags2 held R Q -> 0 < cb /\ cb mod 8 = 0 /\ cb + 32 <= 2 ^ 48 ->
   single_ro ge sb sreg -∗ fx_stream vb (ow_self w0) fp fd mode flags2 held -∗ fx_owner (ow_self w0) held -∗
   pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb' + 16) (Ro sb'))) -∗
   pts (snapshot_ps xs sb' (fx_req xs)) -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
@@ -59,7 +59,7 @@ Lemma wp_fx_lock e vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R :
      live_capq dqf (ptr_cap fmt) regf -∗ Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None (Enter (TAtom "L32") (Some (TAtom "L21")))) : gexpr) {{ Φ }}.
 Proof using Type.
-  intros fp xs Hpr Hc2 Hv2 Hv13 Hv9 Hv25 Hself Hselfr Hok Hfmtr Hmode Hcnt Hfmt.
+  intros fp xs Hpr Hc2 Hv2 Hv13 Hv9 Hv25 Hself Hselfr Hok Hfmtr Hmode Hcnt Hfmt Hcok.
   iIntros "#Hs Hst Ho Hcur Hsnap Hfc HR HK".
   iDestruct (fx_stream_fx with "Hst") as (fb' freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
   destruct Hp as (Hfp & Hal & Hfb & Hend & Hfreg & Hflr & Hul & Hnl & Hf2r & Hmdr).
@@ -99,9 +99,9 @@ Proof using Type.
     { iSplit; [done | iExact "Hfl"]. }
     iApply (wp_fx_tail _ (TAtom "L53") vb fd sb sreg fb cb sb' fmt ys mode flags2 (Some c) dqf regf R Q
       with "Hs Hst Hcur Hsnap Hfc HR [HK Ho]").
-    all: cycle 11.
+    all: cycle 12.
     { iNext. iIntros (x md) "Hst Hfc HQ". iApply ("HK" with "Hst [Ho] Hfc HQ"). iExists dqo, rego. iExact "Ho". }
-    all: first [exact (proj1 Hok) | exact (proj1 (proj2 Hok)) | exact (proj2 (proj2 Hok)) | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | lk_prove].
+    all: first [exact (proj1 Hok) | exact (proj1 (proj2 Hok)) | exact (proj2 (proj2 Hok)) | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | exact Hcok | lk_prove].
   - iDestruct "Hlk" as "(%Hb & Hbl & [%Hb0r Hb0] & [%Hb4r Hb4] & Hbo)". destruct Hb as (Hbal & Hbend & Hbreg).
     iApply (wp_live_fit1 with "Hbl"). iIntros ([Hlb0 Hlb48]) "Hbl".
     step. step. check "Hl". load "Hl" "Hlp" "Hbl". step. check "Hbl". load_null "Hbl" "Hbo".
@@ -117,9 +117,9 @@ Proof using Type.
     { iSplit; [done | iExact "Hfl"]. }
     iApply (wp_fx_tail _ (TAtom "L26") vb fd sb sreg fb cb sb' fmt ys mode flags2 None dqf regf R Q
       with "Hs Hst Hcur Hsnap Hfc HR [HK Ho]").
-    all: cycle 11.
+    all: cycle 12.
     { iNext. iIntros (x md) "Hst Hfc HQ". iApply ("HK" with "Hst Ho Hfc HQ"). }
-    all: first [exact (proj1 Hok) | exact (proj1 (proj2 Hok)) | exact (proj2 (proj2 Hok)) | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | lk_prove].
+    all: first [exact (proj1 Hok) | exact (proj1 (proj2 Hok)) | exact (proj2 (proj2 Hok)) | exact Hfmtr | exact Hmode | exact Hcnt | exact Hfmt | exact Hcok | lk_prove].
 Qed.
 
 End rules.

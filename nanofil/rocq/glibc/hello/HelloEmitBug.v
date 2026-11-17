@@ -138,7 +138,8 @@ Proof using Herr Hfd Hy Hk Hprintf.
     with "[Hout He Hys]"); [exact Hx| |].
   { cbn [fs_pre printf_spec pf_pre pf_vb pf_fp pf_fd pf_fmt pf_dq pf_bytes pf_ys pf_eb
       emit_program program_of program_world program_ge].
-    iSplit; [iPureIntro; split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | exact Hs | exact Herr | exact Hfd]|].
+    iSplit; [iPureIntro; split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | exact Hs | exact Herr | exact Hfd |
+      exact (hk_errno_at _ _ Hk)]|].
     iPoseProof "Hro" as "(Hv & Hsg & Hsol & Hsoc & _ & _ & _ & _ & _ & _ & _ & _ & Hpr)".
     iSplitR; [iExists (ho_so o), (ho_soreg o); iSplit; [iPureIntro; split_and!; [exact (hy_so _ _ Hy) | exact Hs8 | exact Hse]|];
       iSplitR; [iExact "Hsol" | iExact "Hsoc"]|].
