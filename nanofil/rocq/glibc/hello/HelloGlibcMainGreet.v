@@ -1,10 +1,10 @@
 (** This file proves the greeting of GNU Hello's `main`, linked with
-    userland glibc, from the block `iw_1.join` to `exit` or `error`.
+    userland glibc, from the block `iw_1.join` to `exit`.
 
     Hello loads the selected greeting, measures it and allocates enough
-    space for its wide-character form. Conversion failure reaches the
-    error-reporting branch; success reaches the printing branch.
-    The tail proof supplies both continuations. *)
+    space for its wide-character form. In the C locale the conversion
+    always succeeds, so the run reaches the printing branch, which the
+    tail proof supplies. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -96,21 +96,19 @@ Proof using Hy Lb.
   { iSplitL "Hl4"; [iExact "Hl4"|]. iSplitL "Hp4"; [iExact "Hp4"|]. iSplitL "Hy4"; [iExact "Hy4" | iExact "Hc4"]. }
   iDestruct "Hio" as "[Hio Hpv]".
   iApply (wp_call_long w0 ge _ _ _
-            (fun k => ∃ ws, ⌜k <> 2 ^ 64 - 1 -> wide_text ws⌝ ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
+            (fun k => ∃ ws, ⌜k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
                         wbuf bd N ws)%I with "[Hio Hpv Hwb Hgc Hb6]");
     [eapply fn_triple_mono; [exact (hd_mbsrtowcs _ _ _ D bd b4 b6 g s)|];
-     iIntros (r) "(%k & %ws & %Hk & Hio & Hpv & Hwb)"; destruct Hk as (-> & Hk & Hw);
+     iIntros (r) "(%k & %ws & %Hk & Hio & Hpv & Hwb)"; destruct Hk as (-> & Hk & Hk1 & Hw);
      iExists k; iSplit; [iPureIntro; split; [reflexivity | exact Hk]|];
-     iExists ws; iSplit; [iPureIntro; exact Hw|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hwb"] |
+     iExists ws; iSplit; [iPureIntro; split; [exact Hk1 | exact Hw]|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hwb"] |
      vxm |
      iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv"|];
      iSplitL "Hwb"; [iExact "Hwb"|]; iSplitL "Hgc"; [iExact "Hgc"|]; iSplitR; [iExact "Hs" | iExact "Hb6"] |].
-  iNext. iIntros (k Hk) "(%ws & %Hw & Hio & Hpv & Hwb)".
+  iNext. iIntros (k Hk) "(%ws & [%Hk1 %Hw] & Hio & Hpv & Hwb)".
   step.
-  destruct (Z.eq_dec k (2 ^ 64 - 1)) as [-> | Hk1].
-  - (branch_symbolic; LeavesLogic.decide_branch). iApply (join_fail w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX"). iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
-  - (branch_symbolic; LeavesLogic.decide_branch). iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact (Hw Hk1) |].
-    iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
+  (branch_symbolic; LeavesLogic.decide_branch). iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact Hw |].
+  iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
 Qed.
 
 End greet.

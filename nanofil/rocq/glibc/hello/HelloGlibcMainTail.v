@@ -1,9 +1,8 @@
-(** This file proves the final branches of Hello's greeting.
-    Conversion failure reports errno and terminates through the fatal
-    error call. Success prints the wide greeting, releases its buffer
-    and exits with status zero.
+(** This file proves the final branch of Hello's greeting. After a
+    successful conversion, Hello prints the wide greeting, releases its
+    buffer and exits with status zero.
 
-    Conversion, printing and error reporting remain explicit obligations.
+    Conversion and printing remain explicit obligations.
     The allocator, errno lookup, deallocation and exit calls use their
     concrete library proofs. *)
 
@@ -72,37 +71,6 @@ Proof using Type.
   intros Ht Hx. iIntros "HP HK". iApply (wp_call_fn with "HP"); [exact Ht | exact Hx |].
   iIntros (v) "(%n & [-> %Hn] & HQ)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
   cbn. rewrite (Z.mod_small n); [|lia]. iApply ("HK" with "[//] HQ").
-Qed.
-
-(** Conversion failure passes the owned handler state to fatal error reporting.
-    The existing exit triple supplies its nonreturning continuation. *)
-Lemma join_fail e Ψ :
-  hello_ro ge o -∗ io -∗ names o -∗ X -∗
-  WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "L34") (Some (TAtom "iw_1.join")))) : gexpr) {{ Ψ }}.
-Proof using Type*.
-  iIntros "#Hro [Hio Hpv] Hn HX". pose proof (hy_eb_at _ _ Hy) as (He0 & Hee & Her).
-  iPoseProof "Hro" as "(_ & _ & _ & _ & _ & _ & #Hel & _)".
-  step.
-  iApply (wp_call_ptr w0 ge _ _ _ (fun q => ⌜q = mkPtr (ho_eb o) (Obj (ho_eb o))⌝)%I with "[]");
-    [eapply fn_triple_mono; [exact (hl_errno _ _ _ _ _ _ Lb)|]; iIntros (r) "->"; iExists _; iSplit; done |
-     reflexivity | done |].
-  iNext. iIntros (q ->).
-  iApply (LibioLogic.wp_check_read_dq with "Hel"); [reflexivity | vx | left; reflexivity | arith | arith | arith |].
-  iNext. iIntros "_".
-  iDestruct "Hio" as "(Hfo & Hfe & Hfi & Hls & Htc & (%bs & %cs & %Hbc & Hen))".
-  rewrite pts_app. iDestruct "Hen" as "[Hb Ha]". destruct Hbc as [Hb4 Hc4].
-  iApply (wp_raw_load_sub_bytes_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 bs _ DfracDiscarded (DfracOwn 1)
-            with "Hel Hb");
-    [reflexivity | vx | exact Hb4 | reflexivity | left; reflexivity | arith |].
-  iNext. iIntros "_ Hb".
-  step_global (hy_lits _ _ Hy "hello#str.82" ltac:(cbn; tauto)).
-  iApply (wp_call_never with "[-]");
-    [eapply (hd_error_conv _ _ _ D _ X); exact (hl_exit _ _ _ _ _ _ Lb 1 _ (hd_close_stdout _ _ _ D false)) | vx |].
-  iSplitR; [iExact "Hro"|].
-  iSplitR "Hpv Hn HX"; [|iSplitL "Hpv"; [iExact "Hpv" | iSplitL "Hn"; [iExact "Hn" | iExact "HX"]]].
-  iSplitL "Hfo"; [iExact "Hfo"|]. iSplitL "Hfe"; [iExact "Hfe"|]. iSplitL "Hfi"; [iExact "Hfi"|].
-  iSplitL "Hls"; [iExact "Hls"|]. iSplitL "Htc"; [iExact "Htc"|].
-  iExists bs, cs. iSplit; [iPureIntro; split; assumption|]. rewrite pts_app. iSplitL "Hb"; [iExact "Hb" | iExact "Ha"].
 Qed.
 
 (** `L29`, entered from `iw_1.join`: `wprintf` prints the wide

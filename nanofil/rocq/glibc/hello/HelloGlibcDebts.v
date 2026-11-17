@@ -218,7 +218,8 @@ Definition names : iProp Σ := ∃ x y z, ncells x y z ∗ str_ro x ∗ str_ro y
     Printing the greeting orients stdout wide, so close_stdout takes
     stdout in either orientation.
     Milestone M4 covers the other calls, including the close callback.
-    Fatal error reporting never returns. Error reporting and the close
+    In the C locale the conversion of the greeting cannot fail, so main
+    never reaches its fatal error report. Error reporting and the close
     callback may read the program-name cells. glibc's option parser is
     proved over its own code, so its contract is not a field here. *)
 Record HelloCore : Type := mkHelloCore {
@@ -251,11 +252,6 @@ Record HelloCore : Type := mkHelloCore {
       [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ str_arg (WPtr q))%I
       (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ hd_priv ∗ names)%I;
-  hd_error_conv : forall n (E : iProp Σ),
-    fn_triple (TAtom "exit") [WInt 1]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ E)%I (fun _ => False)%I ->
-    fn_triple (TAtom "error") [WInt 1; WInt n; WPtr (sym_ptr ge "hello#str.82")]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ E)%I (fun _ => False)%I;
   hd_mbsrtowcs : forall bd b4 b6 g gs,
     let n := 4 * (Z.of_nat (length gs) + 1) in
     fn_triple (TAtom "rpl_mbsrtowcs")
@@ -263,7 +259,7 @@ Record HelloCore : Type := mkHelloCore {
        WPtr (mkPtr b6 (Obj b6))]
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n (replicate (Z.to_nat (req_extent (wreq n))) 0) ∗
        gcell b4 g ∗ word_string DfracDiscarded g gs ∗ obj b6 (heap_req 4 8))%I
-      (fun r => ∃ k ws, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 64 /\ (k <> 2 ^ 64 - 1 -> wide_text ws)⌝ ∗
+      (fun r => ∃ k ws, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 64 /\ k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗
                   hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I;
   hd_wprintf : forall bd n ws,
     wide_text ws ->
