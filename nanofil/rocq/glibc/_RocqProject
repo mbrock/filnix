@@ -285,6 +285,7 @@ startup/CpuInitTunables.v
 startup/CpuSpec.v
 startup/CpuPlace.v
 startup/CpuHiAtexit.v
+startup/StartLsmImage.v
 hi_atexit/HiAtexitImage.v
 hi_atexit/HiAtexitPrepare.v
 libio/ExitRunLoop.v
@@ -941,6 +942,7 @@ hello/HelloImageCtors.v
 hello/HelloImageFnLink.v
 hello/HelloImageLayout.v
 startup/CpuHello.v
+startup/StartLsmHello.v
 hello/HelloImageLayoutRefused.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
