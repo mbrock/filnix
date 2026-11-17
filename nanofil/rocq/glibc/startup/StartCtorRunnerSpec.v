@@ -43,12 +43,18 @@ Section spec.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
+(** The runner passes the same three arguments to every constructor:
+    argc as an integer word and the two arrays as pointers. *)
+Definition ctor_args : list arg :=
+  [Arg W (Tmp (TAtom "argc")); Arg P (Tmp (TAtom "argv")); Arg P (Tmp (TAtom "environ"))].
+
 (** The runner needs to know what each constructor does when it is called.
-    This promise says that calling g through a checked pointer, with
-    arguments that evaluate to xs, turns P into Q and then returns to the
-    caller. *)
+    This promise says that calling g through a checked pointer, with the
+    runner's arguments evaluating to xs, turns P into Q and then returns
+    to the caller. *)
 Definition ctor_call_ok (g : name) (xs : list word) (P Q : iProp Σ) : Prop :=
-  forall f e ls lab callee args rest j p Ψ,
+  forall f e ls lab callee rest j p Ψ,
+    let args := ctor_args in
     value_x ge e F callee = Some (WPtr p) -> ptr_cap p = Fn g -> function_check_res ge p = Some ok ->
     map_option (arg_x ge e) args = Some xs ->
     ⊢ P -∗ ▷ (Q -∗ WP (ERun (mkFrame f e ls None (Exec lab rest j)) : sexpr) {{ Ψ }}) -∗

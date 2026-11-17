@@ -23,10 +23,11 @@ Definition start_ctor_runner_fn : func := Eval vm_compute in ctor_runner 3.
 
 (** ## The runner's body
 
-    The runner checks its flag, sets it, reads the three saved
-    arguments and every constructor pointer, and then calls the
-    constructors in table order. The proof keeps each constructor's
-    resources apart and hands them to its call. *)
+    Startup must run each constructor exactly once, with the program's
+    arguments. So the runner checks its flag and sets it, reads the three
+    saved arguments and every constructor pointer, and then calls the
+    constructors in table order. The proof gives each call only the
+    resources of its own constructor. *)
 
 Section runner.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -85,6 +86,30 @@ Proof using Type.
   iApply (Hc2 with "HP2"); [vx | exact Hf2 | exact Hk2 | rewrite /cr_args /= Z.mod_small; [reflexivity | lia] |].
   iNext. iIntros "HQ2".
   iApply wp_ret_void. iNext. iApply "HK". iSplit; [done|]. iFrame.
+Qed.
+
+(** ## Constructors with contracts
+
+    The runner's contract asks each constructor for a promise about its
+    call. A constructor with its own contract keeps that promise when the
+    runner's three arguments convert to the contract's arguments, the
+    call needs no conversion of its result, and the contract's
+    postcondition says the call returned nothing. *)
+
+(** A constructor g with contract s keeps the promise that the runner
+    needs, with the contract's precondition and the rest of its
+    postcondition. *)
+Lemma ctor_call_ok_spec g s `{Hs : !HasSpec registry (os_wi w0) ge g s} x xs gf ys Q :
+  find_fn ge g = Some (Defined gf) ->
+  indirect_call_conv gf CVoid ctor_args xs = Some (Converted ys None) ->
+  (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else []))%list = fs_args s x ->
+  (forall v, fs_post s x v ⊢ ⌜v = RetVoid⌝ ∗ Q) ->
+  ctor_call_ok g xs (fs_pre s x) Q.
+Proof using Type.
+  intros Hf Hcv Hys HQ f e ls lab callee rest j p Ψ args Hv Hp Hc Hx. iIntros "HP HK".
+  iApply (wp_raw_call_spec g s x with "HP"); [exact Hv | exact Hp | exact Hc | exact Hx | exact Hf | exact Hcv | exact Hys |].
+  iIntros (v) "Hpost". iDestruct (HQ v with "Hpost") as "[-> HQ]".
+  iExists _. iSplit; [done|]. iNext. iApply ("HK" with "HQ").
 Qed.
 
 End runner.
