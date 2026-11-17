@@ -42,7 +42,7 @@ Definition icf_names : list string :=
     below read a smaller memory instead. It keeps the eighteen objects
     and holds zeros everywhere else. This function says which objects
     it keeps. *)
-Definition hi_cpu_keep (n : name) : bool := existsb (name_eqb n) (map TAtom icf_names).
+Definition icf_keep (n : name) : bool := existsb (name_eqb n) (map TAtom icf_names).
 
 (** This function reads n bytes of a memory, starting at the address
     b. *)
@@ -50,12 +50,12 @@ Definition bytes_at (m : mem) (b n : Z) : list Z := map (fun i => m_bytes m (b +
 
 (** These are the 4896 bytes of the tunable table in hi_atexit. *)
 Definition hi_tunable_bytes : list Z := Eval vm_compute in
-  bytes_at (hi_erased hi_cpu_keep) (icf_tl hi_icf_objs) 4896.
+  bytes_at (hi_erased icf_keep) (icf_tl hi_icf_objs) 4896.
 
 (** These are the bytes of the fifteen small globals in hi_atexit, in
     the order of [icf_small_globals]. *)
 Definition hi_small_bytes : list (list Z) := Eval vm_compute in
-  zip_with (fun q g => bytes_at (hi_erased hi_cpu_keep) (fst q) (snd g)) (icf_small hi_icf_objs) icf_small_globals.
+  zip_with (fun q g => bytes_at (hi_erased icf_keep) (fst q) (snd g)) (icf_small hi_icf_objs) icf_small_globals.
 
 (** This list holds one whole object. The object lies at the address
     and in the region that the pair q gives. It holds the bytes xs,
@@ -80,9 +80,9 @@ Definition hi_cpu_globals_ps : list (piece * pval) :=
     its result over to the full initial memory. *)
 Lemma hi_cpu_globals_agree : all_agree hi_m0 hi_cpu_globals_ps.
 Proof.
-  destruct (image_pieces hi_cpu_keep hi_module hi_module hi_globals hi_m0 hi_cpu_globals_ps (incl_refl _)
+  destruct (image_pieces icf_keep hi_module hi_module hi_globals hi_m0 hi_cpu_globals_ps (incl_refl _)
     hi_initial hi_module_names hi_module_zeros) as (m' & E & _ & H).
-  apply H. assert (Hm : m' = hi_erased hi_cpu_keep) by (unfold hi_erased; rewrite E; reflexivity).
+  apply H. assert (Hm : m' = hi_erased icf_keep) by (unfold hi_erased; rewrite E; reflexivity).
   rewrite Hm. vm_cast_no_check (eq_refl true).
 Qed.
 
@@ -154,16 +154,18 @@ Qed.
 (** Owning the lists of the small globals gives each one in the form
     that the contract asks for. The contract does not care what a
     small global holds, so the known bytes are given up. *)
-Lemma smalls_own gs : forall qs xss, smalls_ok gs xss = true -> length qs = length gs ->
+Lemma smalls_own ge gs : forall qs xss, smalls_ok gs xss = true -> length qs = length gs ->
   pts (concat (zip_with obj_ps qs xss)) ⊢
-  [∗ list] g; q ∈ gs; qs, live (fst q) (snd q) ∗ blk_u8 (glibc_program := hi_program) (fst q) (snd g).
+  [∗ list] g; q ∈ gs; qs, live (fst q) (snd q) ∗
+    blk_u8 (glibc_program := program_of w0 glibc_os_registry ge) (fst q) (snd g).
 Proof using Type.
   induction gs as [|g gs IH]; intros [|q qs] [|xs xss] Hok Hlen; cbn in Hok, Hlen; try discriminate.
   - iIntros "_". done.
   - cbn [zip_with concat]. rewrite pts_app obj_ps_own.
     apply andb_prop in Hok as [Hok Hr]. apply andb_prop in Hok as [Hl Hb]. apply Nat.eqb_eq in Hl.
     iIntros "((L & Hx & Ha) & Hr)". rewrite big_sepL2_cons. iFrame "L". iSplitL "Hx Ha".
-    + iApply (blk_u8_intro (glibc_program := hi_program) (fst q) (snd g) xs (repeat CNone (length xs)) with "Hx Ha");
+    + iApply (blk_u8_intro (glibc_program := program_of w0 glibc_os_registry ge) (fst q) (snd g) xs
+                (repeat CNone (length xs)) with "Hx Ha");
         [exact Hl | rewrite repeat_length; exact Hl | exact (bytes_ok _ Hb)].
     + iApply (IH with "Hr"); [exact Hr | lia].
 Qed.
@@ -178,7 +180,7 @@ Lemma hi_cpu_globals_own :
   pts hi_cpu_globals_ps ⊢ icf_owns (glibc_program := hi_program) hi_icf_objs.
 Proof using Type.
   assert (Hk : length icf_known_bytes = 544%nat) by (vm_compute; reflexivity).
-  pose proof (smalls_own icf_small_globals (icf_small hi_icf_objs) hi_small_bytes
+  pose proof (smalls_own hge icf_small_globals (icf_small hi_icf_objs) hi_small_bytes
                 ltac:(vm_compute; reflexivity) ltac:(vm_compute; reflexivity)) as Hsm.
   rewrite /hi_cpu_globals_ps. revert Hsm.
   generalize (concat (zip_with obj_ps (icf_small hi_icf_objs) hi_small_bytes)). intros sm Hsm.

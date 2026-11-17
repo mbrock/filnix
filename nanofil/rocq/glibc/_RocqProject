@@ -946,6 +946,7 @@ hello/HelloImageCtors.v
 hello/HelloImageFnLink.v
 hello/HelloImageLayout.v
 startup/CpuHello.v
+hello/HelloImageCpu.v
 startup/StartLsmHello.v
 hello/HelloImageLayoutRefused.v
 hello/HelloGlibcMainSteps.v
