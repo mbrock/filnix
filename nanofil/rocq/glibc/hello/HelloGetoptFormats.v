@@ -49,11 +49,6 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hvf : !HasSpec registry (os_wi w0) ge (TAtom "__vfprintf_internal") vfprintf_spec}.
 Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 
-(** Arguments that fit a format are also a valid start of the
-    formatter's progress through them. *)
-Lemma narrow_progress_all ds ys : narrow_args ds ys -> narrow_progress ds ys [].
-Proof using Type. intros H. exists ds, [], ys. rw !app_nil_r. auto. Qed.
-
 (** A call of the formatter on a narrow or unoriented stream leaves a
     narrow stream with the same flags and lock count. The resource R
     must lend errno, the format, the formatter's tables and the string
@@ -94,9 +89,10 @@ Qed.
     the caller must rebuild what it promised, Q, from errno and F. *)
 Context (vb : Z) (fp : ptr) (F : iProp Σ) (Q : Z -> Z -> iProp Σ).
 
-(** The natural result resource says that the stream stays narrow and
-    gives back errno and F. It meets both the hypothesis below and the
-    promise [dgx_qe] that the diagnostic rules ask of Q. *)
+(** After a print, the caller usually wants errno and F back and to
+    know that the stream is still narrow. This choice of Q says exactly
+    that, and it meets both what this section assumes and what the
+    diagnostic rules ask of Q. *)
 Definition getopt_q (x m : Z) : iProp Σ := ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ ∗ errno_any eb ∗ F.
 
 Lemma getopt_q_narrow x : errno_any eb ∗ F ⊢ getopt_q x (2 ^ 32 - 1).

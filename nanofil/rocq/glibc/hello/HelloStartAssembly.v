@@ -18,6 +18,7 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn StartJoin HelloImageModule HelloImageLoad HelloImageCtors
+  HelloImageDiagObjs
   HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm HelloImageEnviron StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
@@ -48,9 +49,11 @@ Qed.
 
 (** Hello's private state, which the open contracts describe, may own
     objects of the image that neither startup nor main's kept frame
-    uses. This list holds them. It is empty until the locale cells and
-    the cells of the close callback join it. *)
-Definition hello_priv_ps : list (piece * pval) := [].
+    uses. This list holds them. So far it holds what getopt's
+    diagnostics read, which [HelloImageDiagObjs](HelloImageDiagObjs.v)
+    lists. The locale cells and the cells of the close callback will
+    join it. *)
+Definition hello_priv_ps : list (piece * pval) := hello_getopt_priv_ps.
 
 (** These are all the pieces that Hello's startup owns or hands to main
     unchanged. *)
@@ -75,7 +78,7 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_lsm_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_stdout_life_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_environ_counter_agree g m0 Hi)|].
-  exact I.
+  exact (hello_getopt_priv_agree g m0 Hi).
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the
