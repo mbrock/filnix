@@ -937,6 +937,7 @@ hello/HelloImageKeptRefused.v
 hello/HelloImageGettextLink.v
 hello/HelloImageStart.v
 hello/HelloImageStartRefused.v
+hello/HelloImageCtors.v
 hello/HelloImageFnLink.v
 hello/HelloImageLayout.v
 startup/CpuHello.v
