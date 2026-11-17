@@ -16,7 +16,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic HelloName.
-From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv SysWrappers AtexitLogic AllocLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv FileIdle SysWrappers AtexitLogic AllocLogic
   LibioLogic HelloGlibcProgCells HelloGlibcMainStreams HelloGlibcMainAlloc.
 From Glibc Require FileInv LibioLogic.
 From Glibc Require Import Fix.
@@ -135,19 +135,22 @@ Qed.
 (** The pointer identifies a read-only string whose bytes need not be specified. *)
 Definition str_ro (q : ptr) : iProp Σ := ∃ s, word_string DfracDiscarded q s.
 
-(** The thread owns the standard streams, their open-stream list,
-    its cleanup fields and the bytes of errno. *)
+(** Between two library calls, the thread owns the three standard
+    streams and the list that links them. It also owns its cleanup
+    fields and errno. Stdout and stderr are idle on descriptors 1 and 2.
+    Hello never reads stdin, so stdin stays in the form that the exit
+    path's cleanup reads. *)
 Definition hello_stdio : iProp Σ :=
-  file_inv (ho_vb o) (ow_self w0) (ho_out o) ∗ file_inv (ho_vb o) (ow_self w0) (ho_err o) ∗
-  file_inv (ho_vb o) (ow_self w0) (ho_in o) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
+  file_idle (ho_vb o) (ow_self w0) (ho_out o) 1 ∗ file_idle (ho_vb o) (ow_self w0) (ho_err o) 2 ∗
+  (stream_life (ho_in o) ∗ exit_stream false (ho_in o)) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
   tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o).
 
 (** Once a call orients stdout wide, the thread owns the wide stream
-    out in place of stdout's narrow [file_inv], and the rest of
+    out in place of stdout's narrow [file_idle], and the rest of
     [hello_stdio] as before. *)
 Definition hello_stdio_wide (out : iProp Σ) : iProp Σ :=
-  out ∗ file_inv (ho_vb o) (ow_self w0) (ho_err o) ∗
-  file_inv (ho_vb o) (ow_self w0) (ho_in o) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
+  out ∗ file_idle (ho_vb o) (ow_self w0) (ho_err o) 2 ∗
+  (stream_life (ho_in o) ∗ exit_stream false (ho_in o)) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
   tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o).
 
 (** Calls share read-only ownership of the linked constants, stream

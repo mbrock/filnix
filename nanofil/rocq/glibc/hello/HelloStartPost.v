@@ -28,7 +28,7 @@ From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic StringLogic MemLogic HelloName.
-From Glibc Require Import OsBlocks OsWorld FileInv WordString LibioStdfiles HelloGlibcDebts
+From Glibc Require Import OsBlocks OsWorld FileInv FileIdle WordString LibioStdfiles HelloGlibcDebts
   HelloGetoptStart HelloImageModule HelloImageLoad HelloImageCtors HelloImageEarly HelloImageLayout
   HelloImageStart HelloStartKeptAlloc HelloStartKept.
 From Glibc Require AllocLogic AtexitLogic ExitRun HelloGlibcJoin.
@@ -119,23 +119,25 @@ Definition hello_kept_state (fl fd lk wd vb : Z) : fstate :=
     own the stream, its fields and its lock. Startup gives back the
     stream's life and its table pointer, and the linker set the rest. *)
 Lemma hello_start_file_own fb fl fd lk lkreg wd vb self :
-  flags_ok (hello_kept_state fl fd lk wd vb) -> 0 <= fd < 2 ^ 32 ->
+  flags_ok (hello_kept_state fl fd lk wd vb) -> (fd = 0 \/ fd = 1 \/ fd = 2) ->
+  (fd <> 0 -> has fl io_no_writes = false) -> has fl io_is_appending = false -> 0 <= fd < 2 ^ 32 ->
   lk mod 8 = 0 -> lk + 16 <= r_end lkreg -> r_end lkreg <= 2 ^ 63 ->
   stream_live (mkPtr fb (Obj fb)) -∗ pcell fb 216 (mkPtr (vb + 336) (Ro vb)) -∗
-  pts (hello_stream_kept_ps fb fl fd lk lkreg wd) -∗ file_inv vb self (mkPtr fb (Obj fb)).
+  pts (hello_stream_kept_ps fb fl fd lk lkreg wd) -∗ file_idle vb self (mkPtr fb (Obj fb)) fd.
 Proof using Type.
-  intros Hok Hfd Hlk Hlke Hlkr. iIntros "Hlv Hvt H".
+  intros Hok H012 Hnw Hap Hfd Hlk Hlke Hlkr. iIntros "Hlv Hvt H".
   iDestruct "Hlv" as (b freg (Heq & Hb & Hal & Hend & Htop)) "Hl". injection Heq as <-.
   rewrite /hello_stream_kept_ps pts_concat.
   change (seqZ 0 12) with [0; 1; 2; 3; 4; 5; 6; 7; 8; 9; 10; 11].
   cbn [big_opL map List.concat]. rewrite !pts_app.
   iDestruct "H" as "(Hfl & (P0 & P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10 & P11 & _) & Hfd & Hf2 &
     Hold & Hcol & Hlp & Hoff & Hcv & Hwd & Hfrl & Hfrb & Hmd & Htot & Hlv & Hl0 & Hl4 & Hl8 & _)".
-  iExists fb, freg, (hello_kept_state fl fd lk wd vb), NbNone, vt_file, None.
+  iExists fb, freg, (hello_kept_state fl fd lk wd vb), NbNone.
   iSplit.
   { iPureIntro. split; [reflexivity|]. split; [exact Hal|]. split; [exact Hb|]. split; [exact Hend|].
-    split; [lia|]. split; [exact Hok|]. split; [left; split; [left|]; reflexivity|].
-    split; reflexivity. }
+    split; [lia|]. split; [exact Hok|]. split; [|split; reflexivity].
+    unfold idle_ok, hello_kept_state, fs_ptr; cbn [fs_fileno fs_mode fs_ptrs fs_flags fs_flags2 fs_column].
+    cbn. split_and!; auto; lia. }
   iFrame "Hl". iSplitL "Hfl P0 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 Hfd Hf2 Hold Hcol Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htot Hvt".
   - destruct Hok as (Hfl & _). cbn [hello_kept_state fs_flags] in Hfl.
     rewrite /file_fields /hello_kept_state.
@@ -150,11 +152,36 @@ Proof using Type.
     iSplitL "Hcv"; [iExact "Hcv"|]. iSplitL "Hwd"; [iExact "Hwd"|].
     iSplitL "Hfrl"; [iExact "Hfrl"|]. iSplitL "Hfrb"; [iExact "Hfrb"|].
     iSplitL "Hmd"; [iSplit; [iPureIntro; lia|iExact "Hmd"]|]. iSplitL "Htot"; [iExact "Htot"|]. iExact "Hvt".
-  - iSplitL; [|done]. iExists lk, lkreg. iSplit; [iPureIntro; reflexivity|].
+  - iSplitL; [|iSplit; [cbv [buf_idle]; done | cbv [wide_idle]; done]]. iExists lk, lkreg. iSplit; [iPureIntro; reflexivity|].
     rewrite /lock_state /int_cell. destruct lock_offsets as (-> & -> & ->).
     iSplitR; [iPureIntro; split_and!; lia|]. iSplitL "Hlv"; [iExact "Hlv"|].
     iSplitL "Hl0"; [iSplit; [iPureIntro; lia|iExact "Hl0"]|].
     iSplitL "Hl4"; [iSplit; [iPureIntro; lia|iExact "Hl4"]|]. iExact "Hl8".
+Qed.
+
+(** Hello never reads stdin, and the exit path's cleanup only checks
+    that stdin has nothing pending and its lock is free. So main holds
+    stdin in the form that cleanup reads ([exit_stream] with false),
+    together with the stream's life. The linker's state of stdin already
+    has that form: its buffer pointers are null and its lock is free. *)
+Lemma hello_start_stdin_own fb fl fd lk lkreg wd :
+  0 <= fl < 2 ^ 32 -> Z.land fl 32768 = 0 -> 0 <= fd < 2 ^ 31 ->
+  lk mod 8 = 0 -> lk + 16 <= r_end lkreg -> r_end lkreg <= 2 ^ 63 ->
+  stream_live (mkPtr fb (Obj fb)) -∗ pts (hello_stream_kept_ps fb fl fd lk lkreg wd) -∗
+  LibioFlushInv.stream_life (mkPtr fb (Obj fb)) ∗ LibioFlushInv.exit_stream false (mkPtr fb (Obj fb)).
+Proof using Type.
+  intros Hfl Hbits Hfd Hlk Hlke Hlkr. iIntros "Hlv H".
+  iSplitL "Hlv"; [rewrite /stream_live /LibioFlushInv.stream_life; iExact "Hlv"|].
+  rewrite /hello_stream_kept_ps pts_concat.
+  change (seqZ 0 12) with [0; 1; 2; 3; 4; 5; 6; 7; 8; 9; 10; 11].
+  cbn [big_opL map List.concat]. rewrite !pts_app.
+  iDestruct "H" as "(Hfl & (P0 & P1 & _ & P3 & P4 & _ & _ & _ & _ & P9 & _) & Hfd & Hf2 &
+    _ & _ & Hlp & _ & _ & _ & _ & _ & Hmd & _ & Hlv & Hl0 & Hl4 & Hl8 & _)".
+  iExists fb, fl, 0, fd, 0, lk, lkreg, CNone, (mkRegion 0 0 Heap Live), 0, 0, 0, 0.
+  iSplitR; [iPureIntro; split_and!; try reflexivity; try assumption; try lia; right; reflexivity|].
+  rewrite /lock_state /int_cell. destruct file_offsets as (-> & -> & -> & _ & _ & -> & _ & _ & _ & _ & _ & -> & _).
+  destruct lock_offsets as (-> & -> & ->).
+  iFrame "Hfl Hf2 Hfd Hmd Hlp Hlv Hl0 Hl4 Hl8 P0 P1 P3 P4 P9". iPureIntro; split_and!; lia.
 Qed.
 
 (** ## The post *)
@@ -240,7 +267,7 @@ Proof using Hi.
   iDestruct "Hio" as "(Ser & Sout & Sin & Lso & Hso & Lse & Hse & Hjmp & Lpn & Hpn & Loa & Hoa & Loi & Hoi & _)".
   iDestruct (hello_start_file_own _ _ _ _ _ _ _ (ow_self w) with "Lo Vo Sout") as "Fo";
     [vm_compute; intuition congruence..|].
-  iDestruct (hello_start_file_own _ _ _ _ _ _ _ (ow_self w) with "Li Vi Sin") as "Fi";
+  iDestruct (hello_start_stdin_own with "Li Sin") as "Fi";
     [vm_compute; intuition congruence..|].
   iDestruct (hello_start_file_own _ _ _ _ _ _ _ (ow_self w) with "Le Ve Ser") as "Fe";
     [vm_compute; intuition congruence..|].

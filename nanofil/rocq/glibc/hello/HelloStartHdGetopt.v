@@ -13,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic TfindEmpty LocalenameLogic
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle WordString RdlockLogic TfindEmpty LocalenameLogic
   DcgettextLocale DcgettextRwlock DcgettextRealV DcigettextRouteV PrintfSpec PrintfStreamInv FxprintfStream
   GetoptDiag GetoptLongDiag GetenvEntry GetenvStatic StartCtypeInitSpec StartGetenv
   HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagTcb HelloGetoptDiagLock HelloGetoptDiagMsgs HelloGettextLink
@@ -115,10 +115,13 @@ Proof using Type.
   iExact "HF".
 Qed.
 
-(** Nobody has shown yet that Hello's stderr stays narrow and has room
-    on its lock while main runs, because [hello_stdio] does not record
-    the stream's mode. Until it does, this lend is a hypothesis. *)
-Context (hello_stderr_lend : file_inv (ho_vb ob) self (ho_err ob) ⊢ hello_err_view).
+(** Main keeps stderr in a tidy state between calls. A warning prints
+    to stderr and may leave it untidy. Two unproved facts link the two
+    forms. The first says a tidy stderr gives the warnings their view.
+    The second says the view they return is tidy again, which needs a
+    better printing contract. Both are hypotheses for now. *)
+Context (hello_stderr_lend : file_idle (ho_vb ob) self (ho_err ob) 2 ⊢ hello_err_view).
+Context (hello_stderr_back : hello_err_view ⊢ file_idle (ho_vb ob) self (ho_err ob) 2).
 
 (** Main lends the warnings what they need from its streams and its
     private state. After a warning, main gets both back, whatever the
@@ -126,14 +129,14 @@ Context (hello_stderr_lend : file_inv (ho_vb ob) self (ho_err ob) ⊢ hello_err_
 Lemma hello_hd_lend (N X : iProp Σ) :
   hello_stdio w hge ob ∗ (N ∗ hello_hd_getopt ∗ X) ⊢
     (N ∗ hello_getopt_E) ∗ (N ∗ hello_getopt_E -∗ hello_stdio w hge ob ∗ (N ∗ hello_hd_getopt ∗ X)).
-Proof using hello_stderr_lend.
+Proof using hello_stderr_lend hello_stderr_back.
   iIntros "[(Ho & He & Hi & Hl & Ht & Hn) (HN & (%x & %Hx & Hw) & HX)]".
   iDestruct (hello_stderr_lend with "He") as "Hv".
   iDestruct ("Hw" with "[Ht Hn Hv]") as "HG"; [iFrame "Ht Hv"; iExact "Hn"|].
   iSplitL "HN HG"; [iFrame "HN"; iExists x; iSplit; [done | iExact "HG"]|].
   iIntros "[HN (%y & %Hy & HG)]". iDestruct (hello_dgx_lend with "HG") as "(Ht & Hn & Hv & Hb)".
   iSplitR "HN Hb HX".
-  { iSplitL "Ho"; [iExact "Ho"|]. iSplitL "Hv"; [iApply hello_err_view_back; iExact "Hv"|].
+  { iSplitL "Ho"; [iExact "Ho"|]. iSplitL "Hv"; [iApply hello_stderr_back; iExact "Hv"|].
     iSplitL "Hi"; [iExact "Hi"|]. iSplitL "Hl"; [iExact "Hl"|]. iSplitL "Ht"; [iExact "Ht" | iExact "Hn"]. }
   iSplitL "HN"; [iExact "HN"|]. iSplitR "HX"; [iExists y; iSplit; [done | iExact "Hb"] | iExact "HX"].
 Qed.

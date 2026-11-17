@@ -14,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   HelloModule HelloLeaf HelloMain.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
+From Glibc Require Import OsWorld OsRegistry WordString FileInv FileIdle LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop.
 From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainLoop HelloGlibcMainStart HelloGlibcMainSteps LibioLogic.
 From Glibc Require Import Fix.
@@ -49,11 +49,11 @@ Proof using Type.
 Qed.
 
 (** A standard-stream load checks its shared pointer cell before reading it. *)
-Lemma wp_std_stream f e ls lab vc chk d rest j sb sreg g Ψ :
+Lemma wp_std_stream f e ls lab vc chk d rest j sb sreg g fd Ψ :
   lookup vc e = Some (WPtr (mkPtr sb (Obj sb))) ->
   0 <= sb /\ sb mod 8 = 0 /\ sb + 8 <= r_end sreg /\ r_end sreg <= 2 ^ 48 ->
-  liveq DfracDiscarded sb sreg -∗ pcellq DfracDiscarded sb 0 g -∗ file_inv (ho_vb o) (ow_self w0) g -∗
-  (file_inv (ho_vb o) (ow_self w0) g -∗
+  liveq DfracDiscarded sb sreg -∗ pcellq DfracDiscarded sb 0 g -∗ file_idle (ho_vb o) (ow_self w0) g fd -∗
+  (file_idle (ho_vb o) (ow_self w0) g fd -∗
    WP (ERun (mkFrame f (put d (WPtr g) (put chk (WPtr (mkPtr sb (Obj sb))) e)) ls None (Exec lab rest j)) : gexpr)
      {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None

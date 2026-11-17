@@ -14,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic ExitRunTail HelloGlibcDebts.
+From Glibc Require Import OsWorld OsRegistry WordString FileInv FileIdle LeavesLogic ExitRunTail HelloGlibcDebts.
 From Glibc Require HelloGlibcDebts.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -229,23 +229,23 @@ Qed.
     every reader shares. The load needs to know that the stream is
     alive, and this lemma borrows that fact from the stream's
     invariant and gives the invariant back. *)
-Lemma wp_load_stream f e ls lab d c rest j sb sreg g Ψ :
+Lemma wp_load_stream f e ls lab d c rest j sb sreg g fd Ψ :
   lookup c e = Some (WPtr (mkPtr sb (Obj sb))) -> 0 <= sb < 2 ^ 64 -> sb mod 8 = 0 ->
-  liveq DfracDiscarded sb sreg -∗ pcellq DfracDiscarded sb 0 g -∗ file_inv (ho_vb o) (ow_self w0) g -∗
-  ▷ (file_inv (ho_vb o) (ow_self w0) g -∗
+  liveq DfracDiscarded sb sreg -∗ pcellq DfracDiscarded sb 0 g -∗ file_idle (ho_vb o) (ow_self w0) g fd -∗
+  ▷ (file_idle (ho_vb o) (ow_self w0) g fd -∗
      WP (ERun (mkFrame f (put d (WPtr g) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead])
                                              [Tmp c] :: rest) j)) : gexpr) {{ Ψ }}.
 Proof using Type.
   intros Hc Hb0 Hb8. iIntros "Hl Hp Hf HK".
-  iDestruct "Hf" as "(%fb & %freg & %st & %nb & %vt & %held & %Hp & Hfl & Hrest)".
+  iDestruct "Hf" as "(%fb & %freg & %st & %nb & %Hp & Hfl & Hrest)".
   pose proof Hp as (Hg & Hal & Hfb & Hend & Hreg & _).
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ sb sreg 0 g freg DfracDiscarded DfracDiscarded
             (DfracOwn 1) with "Hl Hp [Hfl]");
     [reflexivity | cbn; rewrite Hc; reflexivity | left; reflexivity |
      cbn; unfold raw_address; rewrite !Z.add_0_r; apply Z.mod_small; lia | rewrite Z.add_0_r; exact Hb8 |
      subst g; cbn; unfold file_size in *; lia | subst g; iExact "Hfl" |].
-  iNext. iIntros "_ _ Hfl". iApply "HK". iExists fb, freg, st, nb, vt, held. iFrame. iSplit; [iPureIntro; exact Hp|].
+  iNext. iIntros "_ _ Hfl". iApply "HK". iExists fb, freg, st, nb. iFrame. iSplit; [iPureIntro; exact Hp|].
   subst g. iExact "Hfl".
 Qed.
 

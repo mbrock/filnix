@@ -23,7 +23,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic HelloMain.
-From Glibc Require Import FileInv OsWorld OsRegistry OsStart OsCpuid StartCtors StartLogic StartCode StartState StartOwn
+From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid StartCtors StartLogic StartCode StartState StartOwn
   StartJoin StartGetenv StartLibcStartMain StartLsmImage StartLsmHello StartEarlyInitSpec StartCtorRunnerSpec
   StartCallMainSpec StartPtmallocInitSpec StartCtypeInitSpec StartInitFirstSpec StartInitMiscSpec StartCtorChain StartImageEarly StartTunablesEarly CpuInitSpec
   WordString GetenvScan GetenvEntry GetenvStatic GetoptDiag GetoptLongDiag HelloGlibcDebts HelloGlibcLibsT HelloImageModule
@@ -99,13 +99,12 @@ Local Instance run_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry hge) 
   nanofil_irisGS glibc_os_registry (os_wi_start w0 k) hge.
 Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 
-(** The proof of main assumes some facts about Hello's library calls.
-    For one thread and one environment, these facts say what the calls
-    keep between them. Part of what they keep serves getopt's warnings,
-    and the objects that startup leaves unused provide that part. Two
-    facts are assumed because their proofs are not done yet. One says
-    that glibc's formatter works as its contract says. The other says
-    that stderr is narrow whenever main lends it. *)
+(** Hello's main calls glibc functions, and some of those calls have
+    no proof yet. To prove main anyway, this definition lists what those
+    calls must provide for one thread and one environment. Glibc's
+    formatter must keep its contract. Stderr must pass from main to the
+    warnings and back. The objects that startup leaves unused give the
+    warnings everything else. *)
 Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
   let envp := mkPtr env.1 (Obj env.1) in
   let half := (getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
@@ -113,7 +112,8 @@ Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
     getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env))%I in
   HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "__vfprintf_internal")
     (vfprintf_stream_spec (glibc_program := P tb)) /\
-  (file_inv (ho_vb o) (ow_self (final_world w0 tb)) (ho_err o) ⊢ hello_err_view (final_world w0 tb)) /\
+  ((file_idle (ho_vb o) (ow_self (final_world w0 tb)) (ho_err o) 2 ⊢ hello_err_view (final_world w0 tb)) /\
+   (hello_err_view (final_world w0 tb) ⊢ file_idle (ho_vb o) (ow_self (final_world w0 tb)) (ho_err o) 2)) /\
   exists X : iProp Σ,
   (hd_priv (final_world w0 tb) hge o (debt tb) ⊣⊢ half ∗ hello_hd_getopt (final_world w0 tb) fr tb ∗ X) /\
   (half ∗ hello_hd_rest (final_world w0 tb) fr ==∗ X).
@@ -313,7 +313,7 @@ Proof using Hi.
   iMod (getenv_own (glibc_program := P tb) m env 176352 _ 176320 _ He2
     with "Lc Bc Len Ien Lev Pev Nev Sev") as "[Gg Gs]".
   rewrite /StartTlsInitTpSpec.tp_fields. iDestruct "Htp" as "(Htid & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hsz)".
-  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & Hlend & X & Hpv & Hx).
+  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & (Hlend & Hback) & X & Hpv & Hx).
   iDestruct (getenv_half with "[$Gg $Gs]") as "[Gh1 Gh2]".
   iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".
   iDestruct "Hes" as (sv) "Hes".
@@ -338,7 +338,7 @@ Proof using Hi.
     (gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb) -∗ hello_stdio (final_world w0 tb) hge o ∗
       hd_priv (final_world w0 tb) hge o (debt tb))).
   { rewrite Hpv. iIntros "H".
-    iDestruct (hello_hd_lend (final_world w0 tb) fr tb Hlend (gg ∗ gs) X with "H") as "[[[A B] C] W]".
+    iDestruct (hello_hd_lend (final_world w0 tb) fr tb Hlend Hback (gg ∗ gs) X with "H") as "[[[A B] C] W]".
     iFrame "A B C". iIntros "(A & B & C)". iApply ("W" with "[$A $B $C]"). }
   iMod (hello_main_entry (final_world w0 tb) m0 fr Hi (hello_link_all fr Hfree) (debt tb)
     (hello_getopt_E (final_world w0 tb) fr tb)

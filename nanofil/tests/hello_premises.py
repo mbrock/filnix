@@ -17,8 +17,8 @@ arrow's left side is one premise, except:
   neither is hd_wide, the state of stdout once it is wide.
   Its body, hello_tb_contracts in HelloStartWp.v, counts three
   obligations, each with its own label: the contract of glibc's
-  formatter (vfprintf_has_spec), the lend of stderr in the narrow mode
-  that getopt's warnings print in (hello_stderr_lend), and the build of
+  formatter (vfprintf_has_spec), the lend of main's idle stderr to the
+  view getopt's warnings print through, and back (hello_stderr_lend), and the build of
   the private state's free part X from the objects that startup leaves.
   The conjunct that fixes hd_priv's shape only says which state the
   caller picks, so it is not counted.
@@ -129,8 +129,8 @@ def tb_contracts():
         c = strip_parens(c)
         if c.startswith('HasSpec') and '__vfprintf_internal' in c:
             out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
-        elif c.startswith('file_inv') and 'hello_err_view' in c:
-            out.append(f"contract: stderr is narrow when main lends it, hello_stderr_lend ({c})")
+        elif 'file_idle' in c and 'hello_err_view' in c:
+            out.append(f"contract: idle stderr gives the warnings' view and takes it back, hello_stderr_lend ({c})")
         elif c.endswith('==∗ X'):
             out.append(f"contract: build X, the setlocale and close_stdout state, from what startup leaves ({c})")
     if len(out) != 3:
