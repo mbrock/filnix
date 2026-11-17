@@ -1091,6 +1091,7 @@ getopt/GetoptLongAmbItem.v
 hi_atexit/HiAtexitEntryOwn.v
 getopt/GetoptLongAmbList.v
 hi_atexit/HiAtexitSafe.v
+hi_atexit/HiAtexitStartBridge.v
 getopt/GetoptLongAmbHead.v
 getopt/GetoptLongAmbPoss.v
 getopt/GetoptLongAmbRep.v
