@@ -3,9 +3,9 @@
     [StartState](../zsys/StartState.v) allows. The proof of the startup
     body in [StartLibcStartMain](../startup/StartLibcStartMain.v) takes
     the memory that startup reads and writes as separate resources, and
-    earlier modules list that memory for Hello as five lists of pieces
+    earlier modules list that memory for Hello as six lists of pieces
     of the loader's image. This module shows that every start state
-    holds all five lists, and turns them into owned resources.
+    holds all six lists, and turns them into owned resources.
 
     A start state keeps every object of the loader's image, except that
     it fills in the constructor table. The step from a kept image to
@@ -18,21 +18,27 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld StartCtors StartState StartOwn HelloImageModule HelloImageLoad HelloImageCtors
-  HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint.
+  HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The five lists in every start state
+(** ## The six lists in every start state
 
     The lists are the CPU globals, the memory of early init and of the
-    constructor runner, the inputs of the constructors, and the frame
-    that startup hands to main unchanged. The loader's image holds all
+    constructor runner, the inputs of the constructors, the frame that
+    startup hands to main unchanged, and the globals of the startup
+    body. The loader's image holds all
     of them, and none is a byte of the constructor table. *)
 
 (** These are all the pieces that Hello's startup owns or hands to main
     unchanged. *)
 Definition hello_start_all_ps : list (piece * pval) :=
-  hello_cpu_globals_ps ++ hello_early_ps ++ hello_runner_ps ++ hello_ctor_ps ++ hello_start_kept_ps.
+  hello_cpu_globals_ps ++ hello_early_ps ++ hello_runner_ps ++ hello_ctor_ps ++ hello_start_kept_ps ++
+  hello_lsm_ps.
+
+(** No object and no byte occurs twice in the six lists. *)
+Lemma hello_start_all_nodup : NoDup hello_start_all_ps.*1.
+Proof. apply pieces_unique_sound. vm_cast_no_check (eq_refl true). Qed.
 
 (** The loader's image holds every one of those pieces. *)
 Lemma hello_start_all_agree g m0 : initial_memory hello_image_module = Some (g, m0) ->
@@ -43,7 +49,8 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_early_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_runner_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (proj1 (proj2 (hello_image_ctors g m0 Hi)))|].
-  exact (hello_start_kept_agree g m0 Hi).
+  apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_start_kept_agree g m0 Hi)|].
+  exact (hello_lsm_agree g m0 Hi).
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the
@@ -70,7 +77,7 @@ Definition hello_ctor_count : nat := Eval vm_compute in length (ctor_names hello
 Lemma hello_ctor_count_eq : length (ctor_names hello_image_module) = hello_ctor_count.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Every state in which the runtime can start Hello holds all five
+(** Every state in which the runtime can start Hello holds all six
     lists. *)
 Theorem hello_start_agree w0 m w xs :
   start_state hello_image_module w0 m w xs -> all_agree m hello_start_all_ps.
@@ -88,11 +95,11 @@ Proof.
   - exact hello_start_all_off.
 Qed.
 
-(** ## Owning the five lists
+(** ## Owning the six lists
 
     The proof of a whole run begins from a heap whose points-to
     assertions are the start memory's pieces. Since no piece appears
-    twice, that heap splits into the five lists, one separate
+    twice, that heap splits into the six lists, one separate
     [[separation-logic]] resource each. *)
 
 Section own.
@@ -101,12 +108,12 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma hello_start_own :
   ([∗ map] l ↦ v ∈ list_to_map hello_start_all_ps, pointsto l (DfracOwn 1) v) ⊣⊢
   pts hello_cpu_globals_ps ∗ pts hello_early_ps ∗ pts hello_runner_ps ∗ pts hello_ctor_ps ∗
-  pts hello_start_kept_ps.
+  pts hello_start_kept_ps ∗ pts hello_lsm_ps.
 Proof using Type.
-  etrans; [exact (pts_map hello_start_all_ps hello_start_nodup)|].
+  etrans; [exact (pts_map hello_start_all_ps hello_start_all_nodup)|].
   unfold hello_start_all_ps.
   rewrite (pts_app hello_cpu_globals_ps) (pts_app hello_early_ps) (pts_app hello_runner_ps)
-    (pts_app hello_ctor_ps).
+    (pts_app hello_ctor_ps) (pts_app hello_start_kept_ps).
   done.
 Qed.
 
