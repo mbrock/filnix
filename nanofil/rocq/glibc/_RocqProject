@@ -1003,6 +1003,7 @@ hello/HelloImageGettextLink.v
 hello/HelloGetoptDiagImage.v
 hello/HelloGetoptFormats.v
 hello/HelloImageDiagObjs.v
+hello/HelloImageCloseObjs.v
 hello/HelloStartGetopt.v
 hello/HelloStartGetoptRules.v
 hello/HelloStartHdGetopt.v

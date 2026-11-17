@@ -316,12 +316,15 @@ Proof using Hi.
   iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".
   iDestruct "Hes" as (sv) "Hes".
   assert (Esec : hello_sec = (lo_es hello_lsm_objs, lo_esreg hello_lsm_objs)) by (vm_compute; reflexivity).
-  iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv [Les] [Hes] Htid Hrr Loc")
+  iEval (rewrite /hello_priv_ps) in "Hpriv". iDestruct (pts_app with "Hpriv") as "[Hpriv Hco]".
+  iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv Hco [Les] [Hes] Htid Hrr Loc")
     as "[Hgo Hrest]"; [rewrite Esec; iExact "Les" | rewrite Esec; iExact "Hes" |].
-  iDestruct "Hrest" as "[Hgl #Hgro]".
+  iDestruct "Hrest" as "(Hgl & #Hgro & Hcr)".
   iAssert (hello_printf_ro hge) as "#Hpr".
   { iDestruct "Hgro" as "(_ & _ & _ & _ & _ & _ & _ & _ & Hp)". iExact "Hp". }
-  iMod (Hx with "[Gh2 Hgl]") as "HX"; [iDestruct "Gh2" as "[A B]"; iFrame "A B Hgl Hgro"|].
+  iMod (Hx with "[Gh2 Hgl Hcr]") as "HX".
+  { iDestruct "Gh2" as "[A B]". iSplitL "A B"; [iFrame "A B"|]. rewrite /hello_hd_rest.
+    iSplitL "Hgl"; [iExact "Hgl"|]. iSplitR; [iExact "Hgro" | iExact "Hcr"]. }
   pose (gg := getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
       (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp).
   pose (gs := getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env)).
