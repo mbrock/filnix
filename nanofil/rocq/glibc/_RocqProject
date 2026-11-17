@@ -290,6 +290,7 @@ startup/CpuSpec.v
 startup/CpuPlace.v
 startup/CpuHiAtexit.v
 startup/StartLsmImage.v
+startup/StartImageEarly.v
 hi_atexit/HiAtexitImage.v
 hi_atexit/HiAtexitPrepare.v
 libio/ExitRunLoop.v
