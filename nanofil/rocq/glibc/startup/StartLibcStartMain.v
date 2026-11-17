@@ -256,10 +256,13 @@ Lemma wp_libc_start_main fr xs mainp argc argv envp av avreg ps
     `{Hicf : !HasSpec registry (os_wi (start_world w0 null false false)) ge
                 (TAtom "glibc_libc_start#init_cpu_features") icf_s}
     `{Htls : !HasSpec registry (os_wi_start w0 k) ge (TAtom "__libc_setup_tls") (setup_tls_spec ge k)}
-    (Hei : forall tb, HasSpec registry (os_wi (final_world tb)) ge (TAtom "__libc_early_init") (ei_s tb))
-    (Hcr : forall tb, HasSpec registry (os_wi (final_world tb)) ge ctor_runner_name (cr_s tb))
-    (Hcm : forall tb, HasSpec registry (os_wi (final_world tb)) ge
-                        (TAtom "glibc_libc_start#__libc_start_call_main") (cm_s tb)) :
+    (Hei : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
+       HasSpec registry (os_wi (final_world tb)) ge (TAtom "__libc_early_init") (ei_s tb))
+    (Hcr : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
+       HasSpec registry (os_wi (final_world tb)) ge ctor_runner_name (cr_s tb))
+    (Hcm : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
+       HasSpec registry (os_wi (final_world tb)) ge
+         (TAtom "glibc_libc_start#__libc_start_call_main") (cm_s tb)) :
   call_frame start_libc_start_main_fn xs = Some fr ->
   xs = [WPtr mainp; WInt argc; WPtr argv; WPtr envp; WPtr (mkPtr av (Obj av))] ->
   0 <= argc < 2 ^ 32 ->
@@ -357,9 +360,10 @@ Proof using Type.
     [exact Rdl | exact Fdl | exact Gdl | vx | exact Hdp |].
   iNext. iIntros "Hk".
   (* The continuation gives early init's precondition, and the body passes it 1. *)
+  pose proof Htb as (Htb0 & _ & Htb1 & _).
   iDestruct ("HK" $! tb t a Htb with "H1 Ltb H0 H16 Htp H776 H784 H792 Lre Hre Lse Hse Hcap Len Hen Ldx Hdx
               La Hc Ht Ls Hs Leb") as (x3 Hx3) "[H3 HK]".
-  iApply (wp_call_spec_start registry ge w0 k (mkPtr tb (Obj tb)) true true _ (ei_s tb) x3 with "Hk H3");
+  iApply (wp_call_spec_start registry ge w0 k (mkPtr tb (Obj tb)) true true _ (ei_s tb) (Hs := Hei tb Htb0 Htb1) x3 with "Hk H3");
     [rewrite Hx3; vx |].
   iIntros (v3) "Hk H3". iDestruct ("HK" with "H3") as (->) "HK".
   iExists _. iSplit; [done|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
@@ -372,7 +376,7 @@ Proof using Type.
   (* The constructor runner runs in the final world. *)
   iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
   iDestruct "HK" as (x4 Hx4) "[H4 HK]".
-  iApply (wp_call_spec_start registry ge w0 k (mkPtr tb (Obj tb)) true true _ (cr_s tb) x4 with "Hk H4");
+  iApply (wp_call_spec_start registry ge w0 k (mkPtr tb (Obj tb)) true true _ (cr_s tb) (Hs := Hcr tb Htb0 Htb1) x4 with "Hk H4");
     [rewrite Hx4; vx |].
   iIntros (v4) "Hk H4". iDestruct ("HK" with "H4") as (->) "HK".
   iExists _. iSplit; [done|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
@@ -383,7 +387,7 @@ Proof using Type.
   (* __libc_start_call_main gets main, argc and argv, and never returns. *)
   iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
   iDestruct "HK" as (x5 Hx5) "[H5 HK]".
-  iApply (wp_call_spec_start registry ge w0 k (mkPtr tb (Obj tb)) true true _ (cm_s tb) x5 with "Hk H5").
+  iApply (wp_call_spec_start registry ge w0 k (mkPtr tb (Obj tb)) true true _ (cm_s tb) (Hs := Hcm tb Htb0 Htb1) x5 with "Hk H5").
   { rewrite Hx5. cbn -[put]. rewrite !lookup_after_put_other; try reflexivity. rewrite L0 L2 L4. cbn.
     rewrite (Z.mod_small argc); [reflexivity | lia]. }
   iIntros (v5) "_ H5". iDestruct ("HK" with "H5") as "[]".
