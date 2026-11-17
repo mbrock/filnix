@@ -15,11 +15,10 @@ arrow's left side is one premise, except:
   record it chooses. The field hd_priv is the callees' private state,
   which the caller picks rather than proves, so it is not counted, and
   neither is hd_wide, the state of stdout once it is wide.
-  Its body, hello_tb_contracts in HelloStartWp.v, counts three
+  Its body, hello_tb_contracts in HelloStartWp.v, counts two
   obligations, each with its own label: the contract of glibc's
-  formatter (vfprintf_has_spec), the lend of main's idle stderr to the
-  view getopt's warnings print through, and back (hello_stderr_lend), and the build of
-  the private state's free part X from the objects that startup leaves.
+  formatter (vfprintf_has_spec), and the build of the private state's
+  free part X from the objects that startup leaves.
   The conjunct that fixes hd_priv's shape only says which state the
   caller picks, so it is not counted.
 
@@ -60,7 +59,6 @@ TAGS = [
     (r'hd_version_etc|hd_print|hd_emit_bug|hd_error_', 'printf'),
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
-    (r'hello_stderr_lend', 'file_idle'),
     (r'build X', 'locale'),
 ]
 PREMISE_LABELS = {
@@ -129,12 +127,10 @@ def tb_contracts():
         c = strip_parens(c)
         if c.startswith('HasSpec') and '__vfprintf_internal' in c:
             out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
-        elif 'file_idle' in c and 'hello_err_view' in c:
-            out.append(f"contract: idle stderr gives the warnings' view and takes it back, hello_stderr_lend ({c})")
         elif c.endswith('==∗ X'):
             out.append(f"contract: build X, the setlocale and close_stdout state, from what startup leaves ({c})")
-    if len(out) != 3:
-        sys.exit(f'hello_premises: expected 3 counted conjuncts in hello_tb_contracts, found {len(out)}')
+    if len(out) != 2:
+        sys.exit(f'hello_premises: expected 2 counted conjuncts in hello_tb_contracts, found {len(out)}')
     return out
 
 

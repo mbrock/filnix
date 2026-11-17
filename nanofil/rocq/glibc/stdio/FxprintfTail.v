@@ -17,7 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfCode FxprintfStream FxprintfJoin.
+  PrintfStreamInv FxprintfCode FxprintfTidy FxprintfStream FxprintfJoin.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -40,23 +40,23 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     the wide-conversion locals that it does not use on a narrow stream, stores
     the format pointer, tests the orientation and calls the formatter. A wide
     stream is outside this rule: the caller must show the mode is narrow. *)
-Lemma wp_fx_tail e from vb sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R : iProp Σ) (Q : Z -> Z -> iProp Σ) Φ :
+Lemma wp_fx_tail e from vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R : iProp Σ) (Q : Z -> Z -> iProp Σ) Φ :
   let fp := mkPtr fb (Obj fb) in let xs := WPtr fp :: WPtr fmt :: ys in
   lookup (TAtom "pr.1") e = Some (WPtr fp) -> lookup (TAtom "chk2") e = Some (WPtr fp) ->
   lookup (TAtom "v2") e = Some (WPtr fmt) -> lookup (TAtom "v13") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   0 < sb' -> sb' mod 16 = 0 -> sb' + req_extent (fx_req xs) <= 2 ^ 48 -> 0 <= ptr_addr fmt < 2 ^ 64 ->
   mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
-  fx_vfprintf_rule_at vb fp fmt xs mode flags2 held R Q ->
-  single_ro ge sb sreg -∗ printf_stream vb (ow_self w0) fp mode flags2 (Some (fx_cnt held)) -∗
+  fx_vfprintf_rule_at vb fd fp fmt xs mode flags2 held R Q ->
+  single_ro ge sb sreg -∗ fx_stream vb (ow_self w0) fp fd mode flags2 (Some (fx_cnt held)) -∗
   pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb' + 16) (Ro sb'))) -∗
   pts (snapshot_ps xs sb' (fx_req xs)) -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
-  ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ live_capq dqf (ptr_cap fmt) regf -∗
+  ▷ (∀ x mode', fx_stream vb (ow_self w0) fp fd mode' flags2 held -∗ live_capq dqf (ptr_cap fmt) regf -∗
      Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None (Enter (TAtom "L16") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros fp xs Hpr Hc2 Hv2 Hv13 Hsb Hsmod Hsend Hfmtr Hmode Hcnt Hfmt.
   iIntros "#Hs Hst Hcur Hsnap Hfc HR HK".
-  iDestruct (printf_stream_fx with "Hst") as (fb' freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
+  iDestruct (fx_stream_fx with "Hst") as (fb' freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
   destruct Hp as (Hfp & Hal & Hfb & Hend & Hfreg & Hflr & Hul & Hnl & Hf2r & Hmdr).
   unfold fp in Hfp. injection Hfp as <-. unfold file_size in Hend. subst fp xs.
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend1).
@@ -102,7 +102,7 @@ Proof using Type.
   iAssert (fx_va (mkPtr cb (Obj cb)) (WPtr (mkPtr fb (Obj fb)) :: WPtr fmt :: ys)) with "[Hcur Hsnap]" as "Hva".
   { iExists cb, sb'. iFrame. iPureIntro. split_and!; auto. }
     iApply (Hfmt with "Hst HR Hva"); [vx |]. iNext. iIntros (r md) "Hst HQ". step.
-  iApply (wp_fx_join _ vb sb sreg fb _ x0 flags2 held r md with "Hs Hst [HK Hfc HQ]");
+  iApply (wp_fx_join _ vb fd sb sreg fb _ x0 flags2 held r md with "Hs Hst [HK Hfc HQ]");
     [lk_prove | lk_prove | lk_prove | lk_prove | a2 | lk_prove | exact Hx0 | exact Hf2r | exact Hnl | exact Hcnt |].
   iNext. iIntros "Hst". iApply ("HK" with "Hst Hfc HQ").
 Qed.

@@ -13,7 +13,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfCode FxprintfStream.
+  PrintfStreamInv FxprintfCode FxprintfTidy FxprintfStream.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -37,21 +37,21 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     the formatter's result as a C int. The rule needs from the frame only
     the result, the stream pointer, the checked pointer to the flags word
     and the saved bitfield. *)
-Lemma wp_fx_join e vb sb sreg fb a19 f flags2 held r md Φ :
+Lemma wp_fx_join e vb fd sb sreg fb a19 f flags2 held r md Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "iw_1.v60") e = Some (WInt r) -> lookup (TAtom "pr.1") e = Some (WPtr fp) ->
   lookup (TAtom "chk2") e = Some (WPtr fp) -> lookup (TAtom "chk19") e = Some (WPtr (mkPtr a19 (Obj fb))) ->
   a19 = fb + 116 -> lookup (TAtom "v107") e = Some (WInt f) -> f = fx_field flags2 ->
   0 <= flags2 < 2 ^ 32 -> Z.land flags2 io_need_lock = 0 ->
   (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
-  single_ro ge sb sreg -∗ printf_stream vb (ow_self w0) fp md (Z.lor flags2 2) (Some (fx_cnt held)) -∗
-  ▷ (printf_stream vb (ow_self w0) fp md flags2 held -∗ Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
+  single_ro ge sb sreg -∗ fx_stream vb (ow_self w0) fp fd md (Z.lor flags2 2) (Some (fx_cnt held)) -∗
+  ▷ (fx_stream vb (ow_self w0) fp fd md flags2 held -∗ Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None
     (Enter (TAtom "iw_1.join") (Some (TAtom "iw_1.L8")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hr Hpr Hc2 Hc19 Ha19 Hv107 Hf Hf2r Hnl Hcnt.
   iIntros "#Hs Hst HK".
-  iDestruct (printf_stream_fx with "Hst") as (fb' freg' fl' lp' Hp') "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
+  iDestruct (fx_stream_fx with "Hst") as (fb' freg' fl' lp' Hp') "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
   destruct Hp' as (Hfp' & Hal' & Hfb' & Hend' & Hfreg' & Hflr' & Hul' & _ & _ & _).
   unfold fp in Hfp'. injection Hfp' as <-. unfold file_size in Hend'. subst fp a19.
   iPoseProof "Hs" as "(%Hs' & Hsl & Hsb)". destruct Hs' as (Hgs & Hsend1).

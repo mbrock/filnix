@@ -19,7 +19,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Piec
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString GlibcSpec PrintfSpec GetoptDiag GetoptLongDiag
   DcgettextLocale HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagLock HelloGetoptDiagMsgs HelloGettextLocaleConst
   HelloGettextDomain HelloImageModule HelloImageLoad HelloImageEarly HelloImageKept HelloImageLayout HelloStartFacts
-  HelloGetoptFormats HelloGetoptDiagImage HelloStartGetopt HelloGettextLink HiAtexitAlloc HelloGlibcMainAlloc.
+  HelloGetoptFormats HelloGetoptDiagImage HelloStartGetopt HelloGettextLink HiAtexitAlloc HelloGlibcMainAlloc
+  AllocRo LibioFputsSpec.
 From Glibc Require LibioCleanupExit.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -184,7 +185,7 @@ Context (Herr : ow_errno w = Some (mkPtr eb (Obj eb))).
 (** Nobody has proved glibc's formatter or the C locale after startup
     yet. Until then, the formatter's contract and the place of the
     locale's cells are hypotheses. *)
-Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_internal") vfprintf_stream_spec}.
+Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_internal") vfprintf_spec}.
 Context (gb go : Z) (greg : region) (dqg : dfrac) (lp : ptr) (lb : Z) (lreg : region) (dql dqn dqt : dfrac)
   (treg : region) (cv : ptr) (Hloc : locale_cells gb go greg lp lb lreg).
 
@@ -194,9 +195,11 @@ Context (gb go : Z) (greg : region) (dqg : dfrac) (lp : ptr) (lb : Z) (lreg : re
 Context (i1 i2 i3 : dfrac) (tb : Z) (dqs : dfrac).
 
 (** Hello reports to stderr. Between reports, F keeps the read-only
-    objects of Hello's private state, and Lm lends the nine messages. *)
+    objects that the reports read. These are Hello's own constants, the
+    stream jump tables and the allocator's idle state. Lm lends the nine
+    messages. *)
 Local Abbreviation ob := hello_image_objs.
-Definition hello_dg_F : iProp Σ := hello_getopt_ro.
+Definition hello_dg_F : iProp Σ := hello_getopt_ro ∗ fputs_ro (ho_vb ob) ∗ malloc_ro.
 Definition hello_dg_Lm : iProp Σ := dgx_msgs hello_msg_bases.
 Definition hello_dg_Q : Z -> Z -> iProp Σ := getopt_q eb hello_dg_F.
 
@@ -233,14 +236,20 @@ Proof using Hfr Hloc.
   - intros x m. rewrite /hello_dg_Q /getopt_q. iIntros "($ & $ & $)".
 Qed.
 
-(** F lends each format with the formatter's tables, as the
+(** F lends each format with the formatter's read-only data, as the
     formatter bridge asks. *)
 Lemma hello_dg_ws n mid : In n getopt_fmt_names -> lookup (TAtom n) (ge_globals hge) = Some mid ->
-  hello_dg_F ⊢ ∃ dq, word_string dq mid (getopt_fmt n) ∗ printf_ro ∗ (word_string dq mid (getopt_fmt n) -∗ hello_dg_F).
-Proof using Type. exact (hello_getopt_ws (glibc_program := hello_rules_program) n mid eq_refl). Qed.
+  hello_dg_F ⊢ ∃ dq, word_string dq mid (getopt_fmt n) ∗ printf_ro ∗ fputs_ro (ho_vb ob) ∗ malloc_ro ∗
+    (word_string dq mid (getopt_fmt n) -∗ hello_dg_F).
+Proof using Type.
+  intros Hin Hl. rewrite /hello_dg_F. iIntros "(Hg & #Hf & #Hm)".
+  iDestruct (hello_getopt_ws (glibc_program := hello_rules_program) n mid eq_refl Hin Hl with "Hg") as (dq) "(Hw & #Hp & Hb)".
+  iExists dq. iSplitL "Hw"; [iExact "Hw"|]. iSplitR; [iExact "Hp"|]. iSplitR; [iExact "Hf"|].
+  iSplitR; [iExact "Hm"|]. iIntros "Hw". iSplitL; [iApply ("Hb" with "Hw")|]. iSplit; [iExact "Hf" | iExact "Hm"].
+Qed.
 
-Lemma hello_dg_HQ x : errno_any eb ∗ hello_dg_F ⊢ hello_dg_Q x (2 ^ 32 - 1).
-Proof using Type. exact (getopt_q_narrow eb hello_dg_F x). Qed.
+Lemma hello_dg_HQ x m : m = 0 \/ m = 2 ^ 32 - 1 -> errno_any eb ∗ hello_dg_F ⊢ hello_dg_Q x m.
+Proof using Type. exact (getopt_q_tidy eb hello_dg_F x m). Qed.
 
 (** The messages lie at positive addresses below 2^64. *)
 Lemma hello_dg_msgs_pos mid : diag_msg hge mid \/ ldiag_msg hge mid \/

@@ -27,7 +27,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers WordString PrintfStreamInv
-  FxprintfCode FxprintfStream FxprintfCall GetoptDiag GetoptLongDiag.
+  FxprintfCode FxprintfTidy FxprintfStream FxprintfCall GetoptDiag GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -52,26 +52,32 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     the process is single-threaded, the stream with its flags2 word and
     its lock, and a share of the lock owner's lifetime when the lock is
     held. It also hands over a share of the format string's lifetime and
-    the formatter's resource R. The stream must be unoriented or narrow.
-    When the call returns, the caller gives back the stream at the same
-    flags2 word and lock state, in any mode, together with the formatter's
-    result resource Q, and it receives G. *)
+    the formatter's resource R. The stream is tidy, so it is unoriented
+    or narrow, and it writes to an open descriptor fd. The formatter
+    takes the lock once more than the wrapper does, so a held lock's
+    count must leave room for two more acquisitions. When the call
+    returns, the caller gives back the stream at the same flags2 word and
+    lock state, in any mode, together with the formatter's result
+    resource Q, and it receives G. *)
 Definition fx_loan (S : iProp Σ) (vb sb : Z) (sreg : region) (fp fmt : ptr) (R : iProp Σ)
     (Q : Z -> Z -> iProp Σ) (G : iProp Σ) : Prop :=
-  ⊢ S -∗ ∃ mode flags2 held dqf regf,
-    ⌜(mode = 0 \/ mode = 2 ^ 32 - 1) /\ (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) /\
+  ⊢ S -∗ ∃ fd mode flags2 held dqf regf,
+    ⌜In fd (ow_fds w0) /\ (forall c, held = Some c -> 0 <= c /\ c + 2 < 2 ^ 32) /\
      0 <= ptr_addr fmt < 2 ^ 64⌝ ∗
-    single_ro ge sb sreg ∗ printf_stream vb (ow_self w0) fp mode flags2 held ∗ fx_owner (ow_self w0) held ∗
+    single_ro ge sb sreg ∗ fx_stream vb (ow_self w0) fp fd mode flags2 held ∗ fx_owner (ow_self w0) held ∗
     live_capq dqf (ptr_cap fmt) regf ∗ R ∗
-    (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
+    (∀ x mode', fx_stream vb (ow_self w0) fp fd mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
        live_capq dqf (ptr_cap fmt) regf -∗ Q x mode' -∗ G).
 
-(** The formatter premise covers every stream state that a loan may
-    lend. The caller proves it for the format string fmt and the
-    remaining arguments ys. *)
+(** A caller cannot know in advance which state a loan will hand over,
+    so it must show that the formatter call is safe in all of them. The
+    stream may write to any open descriptor, hold any second flags word,
+    and have any lock count that leaves room for two more acquisitions.
+    The caller proves this for the format string fmt and the remaining
+    arguments ys. *)
 Definition fx_format (vb : Z) (fp fmt : ptr) (ys : list word) (R : iProp Σ) (Q : Z -> Z -> iProp Σ) : Prop :=
-  forall mode flags2 held, mode = 0 \/ mode = 2 ^ 32 - 1 ->
-    fx_vfprintf_rule_at vb fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q.
+  forall fd mode flags2 held, In fd (ow_fds w0) -> (forall c, held = Some c -> 0 <= c /\ c + 2 < 2 ^ 32) ->
+    fx_vfprintf_rule_at vb fd fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q.
 
 (** This lemma lets a report use the wrapper proof. Given a loan and a
     formatter premise, one call of __fxprintf_nocancel takes S and the
@@ -88,10 +94,12 @@ Lemma wp_call_fx_loan S G vb sb sreg fp fmt ys R X Q f e ls l d args rest j Φ :
     (Exec l (Call (CResult d W) (Global (TAtom "__fxprintf_nocancel")) args :: rest) j)) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfn Hself Hselfr Hargs Hys Hl Hfm. iIntros "HS HX HK".
-  iDestruct (Hl with "HS") as (mode flags2 held dqf regf (Hm & Hc & Hfr)) "(#Hs & Hst & Ho & Hfc & HR & Hb)".
-  iApply (wp_call_fxprintf_at Hreg Hext f e ls l d args rest j vb sb sreg fp fmt ys mode flags2 held dqf regf
+  iDestruct (Hl with "HS") as (fd mode flags2 held dqf regf (Hfd & Hc & Hfr)) "(#Hs & Hst & Ho & Hfc & HR & Hb)".
+  iDestruct (fx_stream_mode with "Hst") as %Hm.
+  iApply (wp_call_fxprintf_at Hreg Hext f e ls l d args rest j vb fd sb sreg fp fmt ys mode flags2 held dqf regf
     (R ∗ X) Q with "Hs Hst Ho Hfc [$HR $HX]"); [exact Hargs | exact Hfn | exact Hys | exact Hself |
-    exact Hselfr | exact Hfr | exact Hm | exact Hc | exact (Hfm mode flags2 held Hm) |].
+    exact Hselfr | exact Hfr | exact Hm | | exact (Hfm fd mode flags2 held Hfd Hc) |].
+  { intros c Hcs. destruct (Hc c Hcs). lia. }
   iNext. iIntros (x mode') "Hst Ho Hfc HQ". iApply "HK". iApply ("Hb" with "Hst Ho Hfc HQ").
 Qed.
 

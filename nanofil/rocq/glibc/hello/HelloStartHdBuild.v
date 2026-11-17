@@ -15,7 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic TfindEmpty LocalenameLogic
   DcgettextRwlock DcgettextRealV DcigettextRouteV StartCtypeInitSpec HelloGlibcDebts HelloGetoptDiagGettext
   HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink HiAtexitAlloc HelloImageModule HelloImageLoad HelloImageLayout
-  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt.
+  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt
+  AllocRo LibioFputsSpec.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -45,7 +46,7 @@ Local Abbreviation cc := (ct_cc hello_ct_objs).
 
 (** The thread's object lies at tb, and the world names it as the
     calling thread. *)
-Context (tb : Z) (Hself : ow_self w = mkPtr tb (Obj tb)).
+Context (tb : Z) (Hself : ow_self w = mkPtr tb (Obj tb)) (Hfd2 : In 2 (ow_fds w)).
 
 (** A thread id's cell splits into a half and two quarters, one for
     each lock. *)
@@ -53,6 +54,22 @@ Lemma bytes_thirds b o xs :
   bytes b o xs ⊢ bytesq (DfracOwn (1/2)) b o xs ∗ bytesq (DfracOwn (1/2/2)) b o xs ∗ bytesq (DfracOwn (1/2/2)) b o xs.
 Proof using Type.
   rewrite /bytes /bytesq pts_ptsq -(ptsq_split (1 / 2 / 2) (1 / 2 / 2)) Qp.div_2 -ptsq_split Qp.div_2. done.
+Qed.
+
+(** The formatter reads the stream jump tables, the flag that says
+    the process has one thread and the allocator's idle state. Startup
+    leaves all three among Hello's read-only objects, and the image
+    names the allocator's two globals where the read-only promise puts
+    them. *)
+Lemma hello_fx_ro : hello_ro_rest hge ob ⊢ fputs_ro (ho_vb ob) ∗ malloc_ro.
+Proof using Type.
+  destruct hello_image_memory as (g & m & Hi). destruct (hello_loaded_tables g m Hi) as [Eg _]. subst g.
+  destruct (hello_image_link_objects _ _ fr Hi) as (_ & _ & _ & _ & _ & _ & _ & _ & _ & Hmp & Htc & _).
+  iIntros "#H". iSplitR.
+  - iDestruct "H" as "(V & S & _)". iExists (ho_vreg ob), (ho_sb ob), (ho_sreg ob). iFrame "V S".
+  - iDestruct "H" as "(_ & _ & _ & _ & _ & _ & _ & T & _)".
+    iExists (ho_mp ob), (ho_tc ob), (ho_dm ob), (ho_mpreg ob), (ho_tcreg ob), (ho_dmreg ob).
+    iSplit; [iPureIntro; split; [exact Hmp | exact Htc] | iExact "T"].
 Qed.
 
 (** The private state keeps what the reports do not need: the first
@@ -65,7 +82,7 @@ Lemma hello_hd_build v t : 0 < t < 2 ^ 32 ->
   pts hello_getopt_priv_ps -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
   bytes tb 720 (le_bytes t 4) -∗ hello_ro_rest hge ob -∗ ct_locale hello_ct_objs ==∗
   hello_hd_getopt w fr tb ∗ hello_hd_rest.
-Proof using Hself.
+Proof using Hself Hfd2.
   intros Ht. iIntros "Hp Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
   iMod (hello_getopt_own (glibc_program := hb_program) with "Hp") as "[#Ro (K1 & K2 & K3 & Rt & Ldb & Pdb & Pms)]";
     [reflexivity|].
@@ -74,7 +91,7 @@ Proof using Hself.
   destruct Csh as [[Hc|Hc] _ _ _ _ _ _ _ _]; [discriminate|]. injection Hc as <-.
   iEval (rewrite le_bytes_mod32) in "Bs". iDestruct (bytes_thirds with "Bt") as "(B1 & B2 & B3)".
   iExists (v mod 2 ^ 32, t, creg). iSplit; [iPureIntro; cbn; apply Z.mod_pos_bound; lia|].
-  iIntros "((%tb2 & %tbreg & %jb & %Hc & Hl & Hcl & Hj & Hx) & (%bs & He) & (%mode & %flags2 & %held & %Hm & Hps & Hfo))".
+  iIntros "((%tb2 & %tbreg & %jb & %Hc & Hl & Hcl & Hj & Hx) & (%bs & He) & Hps)".
   destruct Hc as (Hs & Hc). rewrite Hself in Hs. injection Hs as <-.
   iPoseProof (dtx_live_split (glibc_program := hb_program) tb tbreg) as "[Hb _]".
   iDestruct ("Hb" with "Hl") as "(Hl1 & Hl2 & Hl3)".
@@ -87,7 +104,7 @@ Proof using Hself.
   iEval (rewrite /hello_sec /bytes pts_ptsq; cbn [fst snd]) in "Bs".
   iEval (rewrite /hello_sec /live pts_ptsq; cbn [fst snd]) in "Ls".
   iEval (rewrite /live pts_ptsq) in "Llt Lgl". iEval (rewrite /pcell pts_ptsq) in "Plt Pms".
-  iSplitR "Hps Hfo".
+  iSplitR "Hps".
   { iExists bs. iPoseProof "Ro" as "(_ & H276 & H277 & Hcat & Hil & Hib & Hcc & Hdm & _)".
     iSplitL "Ldb Pdb Ls Bs".
     { iSplit; [iExact "Hdm"|]. iSplit; [iExact "Hcat"|]. iSplit; [iExact "Hcc"|]. iSplit; [iExact "H276"|].
@@ -106,9 +123,9 @@ Proof using Hself.
       iSplitL "Pms"; [iExact "Pms" | iExact "Cl"]. }
     iSplitR "He"; [|iExact "He"]. rewrite /hello_gettext_cache /hi_malloc_state.
     iPoseProof "Hro" as "(_ & _ & _ & _ & _ & _ & _ & $ & _)". }
-  iSplitL "Hps Hfo"; [|iPoseProof "Ro" as "($ & _)"].
+  iSplitL "Hps"; [|iPoseProof "Ro" as "($ & _)"].
   iSplit; [iPoseProof "Hro" as "(_ & $ & _)"|].
-  iExists mode, flags2, held. iFrame "Hps Hfo". iSplit; [done | iExact "Ro"].
+  iSplit; [done|]. iSplitL "Hps"; [iExact "Hps"|]. iSplit; [iExact "Ro" | iApply (hello_fx_ro with "Hro")].
 Qed.
 
 End build.

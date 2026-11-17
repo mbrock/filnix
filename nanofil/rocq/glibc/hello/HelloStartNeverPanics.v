@@ -51,8 +51,8 @@ Proof. eexists. reflexivity. Qed.
     returns. The last premise gives the open contracts. For each ghost
     state, it chooses the library calls of [HelloCore]. For every
     environment array and thread object, it gives the contracts that
-    [hello_tb_contracts] states: the formatter's contract, the lend of
-    stderr, and the private state's shape. *)
+    [hello_tb_contracts] states: the formatter's contract and the
+    private state's shape. *)
 Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     w0 m s w xs frt fuel :
   start_state hello_image_module w0 m w xs ->
@@ -67,7 +67,7 @@ Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piec
   labelled_safe glibc_os_registry (hello_start_ge frt) (invocation start_libc_start_main_fn xs)
     m s w fuel (fun _ => False).
 Proof.
-  intros Hst _ _ _ Hleaf Hr Hf Hc.
+  intros Hst _ Hfd2 _ Hleaf Hr Hf Hc.
   destruct Hst as (g & m0 & mainp & tb & argc & argv & env & av & aps & order & Hi & Hm & Ht & Hxs & Hargc & Hargc2 &
     Ha & He & Hv & Hd & Hk & Hord & Hct & Hos & Hnd).
   destruct (hello_first_heap g m0 m w0 w tb argc argv env av aps order 0 Hi Ht Ha He Hv Hd Hk Hord Hct Hos Hnd)
@@ -82,7 +82,7 @@ Proof.
     Hr Hd Agr Wi).
   intros HinvG HheapG. destruct (Hc HinvG HheapG) as [debt Hdebt]. iIntros "H".
   iDestruct (start_ps_own with "H") as "(L & T & A & E & V & K)"; [exact Nd|].
-  iApply (hello_start_wp w0 0 m0 m frt Hi debt fr argv env av aps order argc Hleaf Hf Herr Hfr Ha He Hv
+  iApply (hello_start_wp w0 0 m0 m frt Hi debt fr argv env av aps order argc Hleaf Hf Hfd2 Herr Hfr Ha He Hv
     Hargc Hargc2 Hord with "L T A E V K").
   intros tb Htb Htb2. destruct env as [b ss]. exact (Hdebt b ss eq_refl He tb Htb Htb2).
 Qed.

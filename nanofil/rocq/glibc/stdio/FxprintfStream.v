@@ -20,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Pieces Heap
   Language Logic Identity VariadicLogic.
-From Glibc Require Import GlibcProgram OsWorld FileInv LibioLogic PrintfStreamInv.
+From Glibc Require Import GlibcProgram OsWorld FileInv LibioLogic PrintfStreamInv FxprintfTidy.
 From Glibc Require FileInv LibioPutsInv PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -210,45 +210,6 @@ Definition fx_va (ap : ptr) (xs : list word) : iProp Σ :=
 Definition fx_owner (self : ptr) (held : option Z) : iProp Σ :=
   match held with None => True | Some _ => ∃ dq reg, live_capq dq (ptr_cap self) reg end.
 
-(** The wrapper reads and writes these fields of the stream: the flags,
-    the flags2 word, the mode and the lock pointer, with the lock itself.
-    Closing the view may change only flags2, within the need-lock
-    restriction, and the lock's state. *)
-Lemma printf_stream_fx vb self fp mode flags2 held :
-  printf_stream vb self fp mode flags2 held -∗
-  ∃ fb freg fl lp, ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
-     fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ 0 <= fl < 2 ^ 32 /\
-     Z.land fl io_user_lock = 0 /\ Z.land flags2 io_need_lock = 0 /\ 0 <= flags2 < 2 ^ 32 /\
-     0 <= mode < 2 ^ 32⌝ ∗
-    live fb freg ∗ int_cell fb off_flags fl ∗ int_cell fb off_flags2 flags2 ∗ int_cell fb off_mode mode ∗
-    pcell fb off_lock lp ∗ lock_inv self lp held ∗
-    (∀ flags2' held', ⌜Z.land flags2' io_need_lock = 0⌝ -∗ live fb freg -∗ int_cell fb off_flags fl -∗
-       int_cell fb off_flags2 flags2' -∗ int_cell fb off_mode mode -∗ pcell fb off_lock lp -∗
-       lock_inv self lp held' -∗ printf_stream vb self fp mode flags2' held').
-Proof using Type.
-  iIntros "(%fb & %freg & %st & %nb & %vt & %Hp & Hl & Hf & Hk & Hb)".
-  destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hm & Hmv & Hvt & Hbok & Hf2).
-  iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hflags2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd &
-    Hfrl & Hfrb & Hmd & Htot & Hvtp)".
-  iDestruct "Hfl" as "[%Hflr Hfl]". iDestruct "Hflags2" as "[%Hf2r Hflags2]".
-  iDestruct "Hmd" as "[%Hmdr Hmd]".
-  pose proof Hok as (_ & _ & _ & _ & Hul & Hnl & _). unfold has in Hul.
-  apply negb_false_iff, Z.eqb_eq in Hul.
-  iExists fb, freg, (fs_flags st), (fs_lock st). rewrite -Hf2 -Hm.
-  iFrame "Hl Hk Hlp". iSplitR; [iPureIntro; split_and!; tauto|].
-  iSplitL "Hfl"; [iSplit; [done|iExact "Hfl"]|].
-  iSplitL "Hflags2"; [iSplit; [done|iExact "Hflags2"]|].
-  iSplitL "Hmd"; [iSplit; [done|iExact "Hmd"]|].
-  iIntros (flags2' held' Hmask) "Hl Hfl Hflags2 Hmd Hlp Hk".
-  iExists fb, freg, (fs_with_flags2 st flags2'), nb, vt.
-  unfold fs_with_flags2, file_fields.
-  cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset fs_codecvt fs_wide
-    fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable].
-  iSplitR; [iPureIntro; unfold flags_ok in *; cbn [fs_flags fs_flags2];
-    destruct Hok as (? & ? & ? & ? & ? & ? & ?); split_and!; first [reflexivity | assumption | lia | rewrite Hm; assumption]|].
-  iFrame "Hl Hk Hb Hfl Hps Hfd Hflags2 Hold Hcol Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htot Hvtp". iSplit; done.
-Qed.
-
 End stream.
 
 Import ProgramAbbreviations.
@@ -264,12 +225,12 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     must return the stream with the same flags and lock count, together
     with the caller's result resource Q, though it may change the stream's
     mode. The caller owes this rule, and nothing in this file proves it. *)
-Definition fx_vfprintf_rule (vb : Z) (fp fmt : ptr) (xs : list word) (mode flags2 : Z)
+Definition fx_vfprintf_rule (vb fd : Z) (fp fmt : ptr) (xs : list word) (mode flags2 : Z)
     (held : option Z) (R : iProp Σ) (Q : Z -> iProp Σ) : Prop :=
   forall f e ls l d args rest j ap Φ,
     map_option (arg_x ge e) args = Some [WPtr fp; WPtr fmt; WPtr ap; WInt 0] ->
-    ⊢ printf_stream vb (ow_self w0) fp mode (Z.lor flags2 2) (Some (fx_cnt held)) -∗ R -∗ fx_va ap xs -∗
-      ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' (Z.lor flags2 2) (Some (fx_cnt held)) -∗ Q x -∗
+    ⊢ fx_stream vb (ow_self w0) fp fd mode (Z.lor flags2 2) (Some (fx_cnt held)) -∗ R -∗ fx_va ap xs -∗
+      ▷ (∀ x mode', fx_stream vb (ow_self w0) fp fd mode' (Z.lor flags2 2) (Some (fx_cnt held)) -∗ Q x -∗
           WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
       WP (ERun (mkFrame f e ls None
         (Exec l (Call (CResult d W) (Global (TAtom "__vfprintf_internal")) args :: rest) j)) : gexpr) {{ Φ }}.
@@ -278,12 +239,12 @@ Definition fx_vfprintf_rule (vb : Z) (fp fmt : ptr) (xs : list word) (mode flags
     formatter leaves behind, because the wrapper accepts only an
     unoriented or narrow stream. This variant lets the result resource Q
     depend on that returned mode as well as on the result. *)
-Definition fx_vfprintf_rule_at (vb : Z) (fp fmt : ptr) (xs : list word) (mode flags2 : Z)
+Definition fx_vfprintf_rule_at (vb fd : Z) (fp fmt : ptr) (xs : list word) (mode flags2 : Z)
     (held : option Z) (R : iProp Σ) (Q : Z -> Z -> iProp Σ) : Prop :=
   forall f e ls l d args rest j ap Φ,
     map_option (arg_x ge e) args = Some [WPtr fp; WPtr fmt; WPtr ap; WInt 0] ->
-    ⊢ printf_stream vb (ow_self w0) fp mode (Z.lor flags2 2) (Some (fx_cnt held)) -∗ R -∗ fx_va ap xs -∗
-      ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' (Z.lor flags2 2) (Some (fx_cnt held)) -∗ Q x mode' -∗
+    ⊢ fx_stream vb (ow_self w0) fp fd mode (Z.lor flags2 2) (Some (fx_cnt held)) -∗ R -∗ fx_va ap xs -∗
+      ▷ (∀ x mode', fx_stream vb (ow_self w0) fp fd mode' (Z.lor flags2 2) (Some (fx_cnt held)) -∗ Q x mode' -∗
           WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
       WP (ERun (mkFrame f e ls None
         (Exec l (Call (CResult d W) (Global (TAtom "__vfprintf_internal")) args :: rest) j)) : gexpr) {{ Φ }}.
@@ -291,9 +252,9 @@ Definition fx_vfprintf_rule_at (vb : Z) (fp fmt : ptr) (xs : list word) (mode fl
 (** A caller that does not care about the stream's orientation can keep
     the older rule, because it says the same thing as this one with a
     result resource that ignores the mode. *)
-Lemma fx_vfprintf_rule_at_of vb fp fmt xs mode flags2 held R Q :
-  fx_vfprintf_rule vb fp fmt xs mode flags2 held R Q ->
-  fx_vfprintf_rule_at vb fp fmt xs mode flags2 held R (fun x _ => Q x).
+Lemma fx_vfprintf_rule_at_of vb fd fp fmt xs mode flags2 held R Q :
+  fx_vfprintf_rule vb fd fp fmt xs mode flags2 held R Q ->
+  fx_vfprintf_rule_at vb fd fp fmt xs mode flags2 held R (fun x _ => Q x).
 Proof using Type. intros H. exact H. Qed.
 
 End rule.

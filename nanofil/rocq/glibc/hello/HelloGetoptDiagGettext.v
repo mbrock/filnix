@@ -28,7 +28,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString SysWrappers.
 From Glibc Require Import AllocLogic HiAtexitAlloc HiAtexitModule HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require Import StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode StrchrCode.
-From Glibc Require Import PrintfStreamInv FxprintfCode FxprintfStream FxprintfCall.
+From Glibc Require Import PrintfStreamInv FileIdle FileTidy FxprintfCode FxprintfTidy FxprintfStream FxprintfCall.
 From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
 From Glibc Require Import DcgettextCode DcigettextCode DcigettextPreRules DcigettextRoute DcigettextSecure.
 From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV HelloGettextLink.
@@ -77,13 +77,11 @@ Definition dgx_after (v : Z) (bs : list Z) (mid q : ptr) : iProp Σ :=
     (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
     (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hello_gettext_cache ob) bs mid q.
 
-(** A print writes to stderr, so the caller lends the stream. Its mode
-    must be 0 or narrow, its lock count must have room for one more
-    holder, and the formatter's resource F comes with it. *)
+(** A print writes to stderr, so the caller lends the stream. Between
+    prints, stderr is idle on descriptor 2, which is open, and the
+    formatter's resource F comes with it. *)
 Definition dgx_stream : iProp Σ :=
-  single_ro ge sb sreg ∗ ∃ mode flags2 held,
-    ⌜(mode = 0 \/ mode = 2 ^ 32 - 1) /\ (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32)⌝ ∗
-    printf_stream vb (ow_self w0) fp mode flags2 held ∗ fx_owner (ow_self w0) held ∗ F.
+  single_ro ge sb sreg ∗ ⌜In 2 (ow_fds w0)⌝ ∗ file_idle vb (ow_self w0) fp 2 ∗ F.
 
 (** These are the rules' G and T. *)
 Definition dgx_G (v : Z) : iProp Σ := (∃ bs, dgx_before v bs) ∗ dgx_stream ∗ Lm.
@@ -102,17 +100,19 @@ Definition dgx_lends (P : ptr -> Prop) : Prop :=
 Lemma dgx_cap v : ⊢ dgx_G v -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ dgx_G v).
 Proof using Type.
   unfold dgx_G, dgx_stream.
-  iIntros "(HB & (#Hs & %mode & %flags2 & %held & %Hp & Hst & Ho & HF) & HL)".
-  iDestruct "Hst" as (fb freg st nb' vt) "(%Hq & Hl & Hrest)".
-  assert (Hc : ptr_cap fp = Obj fb) by (destruct Hq as [-> _]; reflexivity).
+  iIntros "(HB & (#Hs & %Hfd & Hst & HF) & HL)".
+  iDestruct (file_idle_tidy with "Hst") as (flags2 Hb) "Hst".
+  iDestruct (file_tidy_live with "Hst") as (fb freg [Hq _]) "[Hl Hst]".
+  assert (Hc : ptr_cap fp = Obj fb) by (rewrite Hq; reflexivity).
   iExists (DfracOwn 1), freg. rewrite Hc. iSplitL "Hl"; [iExact "Hl"|]. iIntros "Hl".
-  iFrame "HB HL". iSplitR; [iExact "Hs"|]. iExists mode, flags2, held. iSplit; [done|]. iFrame "Ho HF".
-  iExists fb, freg, st, nb', vt. iFrame "Hl Hrest". done.
+  iFrame "HB HL HF". iSplitR; [iExact "Hs"|]. iSplit; [done|].
+  iApply file_idle_tidy. iExists flags2. iSplit; [done|]. iApply ("Hst" with "Hl").
 Qed.
 
-(** A print takes the stream from K ∗ dgx_stream ∗ Lm and gives it back
-    with the mode that the formatter leaves. The formatter's Q must say
-    that this mode is not wide and must return F. *)
+(** A print borrows stderr, and afterwards the caller needs it back in
+    the same idle state. The formatter may orient the stream, but it
+    only ever makes it narrow, so the stream is still idle when the
+    print returns. The formatter's result Q must hand back F. *)
 Lemma dgx_loan K Kb fmt :
   0 <= ptr_addr fmt < 2 ^ 64 ->
   (Lm ⊢ ∃ dq reg, live_capq dq (ptr_cap fmt) reg ∗ (live_capq dq (ptr_cap fmt) reg -∗ Lm)) ->
@@ -120,12 +120,14 @@ Lemma dgx_loan K Kb fmt :
   fx_loan (K ∗ dgx_stream ∗ Lm) vb sb sreg fp fmt F Q (Kb ∗ dgx_stream ∗ Lm).
 Proof using Type.
   intros Hfr Hl Hcy Hk. unfold fx_loan, dgx_stream.
-  iIntros "(HK & (#Hs & %mode & %flags2 & %held & %Hp & Hst & Ho & HF) & HL)".
+  iIntros "(HK & (#Hs & %Hfd & Hst & HF) & HL)".
+  iDestruct (file_idle_fx_stream with "Hst") as (mode flags2 Hb) "Hst".
   iDestruct (Hl with "HL") as (dq reg) "[Hc HL]".
-  iExists mode, flags2, held, dq, reg. iSplit; [iPureIntro; tauto|]. iSplitR; [iExact "Hs"|]. iFrame "Hst Ho Hc HF".
-  iIntros (x mode') "Hst Ho Hc HQ". iDestruct (Hcy x mode' with "HQ") as "[%Hm HF]".
+  iExists 2, mode, flags2, None, dq, reg. iSplit; [iPureIntro; split_and!; first [exact Hfd | intros ? [=] | lia]|].
+  iSplitR; [iExact "Hs"|]. iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [done|]. iFrame "Hc HF".
+  iIntros (x mode') "Hst _ Hc HQ". iDestruct (Hcy x mode' with "HQ") as "[_ HF]".
   iSplitL "HK"; [iApply (Hk with "HK")|]. iSplitR "Hc HL"; [|iApply ("HL" with "Hc")].
-  iSplitR; [iExact "Hs"|]. iExists mode', flags2, held. iFrame "Hst Ho HF". iPureIntro. tauto.
+  iFrame "Hs HF". iSplit; [done|]. iApply file_idle_fx_stream. iExists mode', flags2. iSplit; [done | iExact "Hst"].
 Qed.
 
 (** A diagnostic can run only when the program contains the code that
@@ -324,14 +326,16 @@ Lemma dgx_loan_e K Kb fmt :
   fx_loan ((K ∗ errno_any eb) ∗ dgx_stream ∗ Lm) vb sb sreg fp fmt (errno_any eb ∗ F) Q (Kb ∗ dgx_stream ∗ Lm).
 Proof using Type.
   intros Hfr Hl Hqe Hk. unfold fx_loan, dgx_stream.
-  iIntros "((HK & He) & (#Hs & %mode & %flags2 & %held & %Hp & Hst & Ho & HF) & HL)".
+  iIntros "((HK & He) & (#Hs & %Hfd & Hst & HF) & HL)".
+  iDestruct (file_idle_fx_stream with "Hst") as (mode flags2 Hb) "Hst".
   iDestruct (Hl with "HL") as (dq reg) "[Hc HL]".
-  iExists mode, flags2, held, dq, reg. iSplit; [iPureIntro; tauto|]. iSplitR; [iExact "Hs"|].
-  iSplitL "Hst"; [iExact "Hst"|]. iSplitL "Ho"; [iExact "Ho"|]. iSplitL "Hc"; [iExact "Hc"|].
+  iExists 2, mode, flags2, None, dq, reg. iSplit; [iPureIntro; split_and!; first [exact Hfd | intros ? [=] | lia]|].
+  iSplitR; [iExact "Hs"|].
+  iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [done|]. iSplitL "Hc"; [iExact "Hc"|].
   iSplitL "He HF"; [iSplitL "He"; [iExact "He" | iExact "HF"]|].
-  iIntros (x mode') "Hst Ho Hc HQ". iDestruct (Hqe x mode' with "HQ") as "(%Hm & He & HF)".
+  iIntros (x mode') "Hst _ Hc HQ". iDestruct (Hqe x mode' with "HQ") as "(_ & He & HF)".
   iSplitL "HK He"; [iApply Hk; iSplitL "HK"; [iExact "HK" | iExact "He"]|]. iSplitR "Hc HL"; [|iApply ("HL" with "Hc")].
-  iSplitR; [iExact "Hs"|]. iExists mode', flags2, held. iFrame "Hst Ho HF". iPureIntro. tauto.
+  iFrame "Hs HF". iSplit; [done|]. iApply file_idle_fx_stream. iExists mode', flags2. iSplit; [done | iExact "Hst"].
 Qed.
 
 (** After the print, the caller puts errno back with the resources that
@@ -519,7 +523,7 @@ Qed.
     for the same cell twice, and no state could hold it. *)
 Example dgx_duplicate_errno_refused v : (F ⊢ errno_any eb ∗ True) -> dgx_G v ⊢ False.
 Proof using Type.
-  intros HF. unfold dgx_G, dgx_stream. iIntros "((%bs & HB) & (_ & %mode & %flags2 & %held & _ & _ & _ & HF) & _)".
+  intros HF. unfold dgx_G, dgx_stream. iIntros "((%bs & HB) & (_ & _ & _ & HF) & _)".
   iDestruct (dgx_errno with "HB") as "[He _]". iDestruct (HF with "HF") as "[[%bs' He'] _]".
   iDestruct "He" as (cs) "([%Hl _] & He)". iDestruct "He'" as (cs') "([%Hl' _] & He')".
   destruct bs as [|b0 bs]; [discriminate|]. destruct bs' as [|b0' bs']; [discriminate|].

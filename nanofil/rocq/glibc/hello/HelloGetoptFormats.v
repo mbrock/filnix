@@ -3,9 +3,8 @@
     `c: __vfprintf_internal`. The diagnostic rules of
     [HelloGetoptDiagLock](HelloGetoptDiagLock.v) ask the caller for one
     premise per format, [fx_format], which says what the formatter call
-    does. This module derives those premises from the older form of the
-    formatter's contract, [vfprintf_stream_spec], for the nine formats
-    that getopt uses.
+    does. This module derives those premises from the formatter's
+    contract, [vfprintf_spec], for the nine formats that getopt uses.
 
     Nobody has proved the formatter yet, so this module assumes its
     contract. Once the formatter is proved, getopt's prints need no
@@ -17,8 +16,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Logic MemLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv WordString PrintfStreamInv FxprintfStream NarrowFormat NarrowArgs
-  PrintfSpec GetoptDiag GetoptLongDiag GetoptDiagFx HelloImageModule HelloStartKept.
+From Glibc Require Import OsWorld OsBlocks FileInv WordString PrintfStreamInv FileTidy FxprintfTidy FxprintfStream NarrowFormat NarrowArgs
+  PrintfSpec AllocRo LibioFputsSpec GetoptDiag GetoptLongDiag GetoptDiagFx HelloImageModule HelloStartKept.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -47,33 +46,43 @@ Ltac narrow_args_by :=
 
 Section bridge.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hvf : !HasSpec registry (os_wi w0) ge (TAtom "__vfprintf_internal") vfprintf_stream_spec}.
+Context `{Hvf : !HasSpec registry (os_wi w0) ge (TAtom "__vfprintf_internal") vfprintf_spec}.
 Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 
-(** A call of the formatter on a narrow or unoriented stream leaves a
-    narrow stream with the same flags and lock count. The resource R
-    must lend errno, the format, the formatter's tables and the string
-    arguments, and it must turn errno and the format back into the
-    caller's result resource. *)
-Lemma fx_rule_of_vfprintf vb fp fmt bytes ds ys mode flags2 held (R : iProp Σ) (Q : Z -> Z -> iProp Σ) :
-  parse_narrow bytes = Some ds -> narrow_args ds ys -> mode = 0 \/ mode = 2 ^ 32 - 1 ->
-  (R ⊢ ∃ dq, errno_any eb ∗ word_string dq fmt bytes ∗ printf_ro ∗ ([∗ list] a ∈ ys, str_arg a) ∗
-       (∀ x, errno_any eb -∗ word_string dq fmt bytes -∗ Q x (2 ^ 32 - 1))) ->
-  fx_vfprintf_rule_at vb fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q.
+(** A call of the formatter on a tidy stream gives the stream back
+    tidy, with the same flags and lock count, though perhaps at another
+    mode. The stream must write to an open descriptor, and a held lock
+    must have room for the formatter's own acquisition on top of the
+    wrapper's. The resource R must lend errno, the format, the
+    formatter's read-only data and the string arguments, and it must
+    turn errno and the format back into the caller's result resource,
+    at whatever mode the formatter leaves. *)
+Lemma fx_rule_of_vfprintf vb fd fp fmt bytes ds ys mode flags2 held (R : iProp Σ) (Q : Z -> Z -> iProp Σ) :
+  parse_narrow bytes = Some ds -> narrow_args ds ys -> In fd (ow_fds w0) ->
+  (forall c, held = Some c -> 0 <= c /\ c + 2 < 2 ^ 32) ->
+  (R ⊢ ∃ dq, errno_any eb ∗ word_string dq fmt bytes ∗ printf_ro ∗ fputs_ro vb ∗ malloc_ro ∗
+       ([∗ list] a ∈ ys, str_arg a) ∗
+       (∀ x m, ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ -∗ errno_any eb -∗ word_string dq fmt bytes -∗ Q x m)) ->
+  fx_vfprintf_rule_at vb fd fp fmt (WPtr fp :: WPtr fmt :: ys) mode flags2 held R Q.
 Proof using Herr Hvf.
-  intros Hp Ha Hm HR f e ls l d args rest j ap Φ Hargs.
-  iIntros "Hs HR Hva HK". iDestruct (HR with "HR") as (dq) "(He & Hf & #Hro & Hys & HQ)".
-  iApply (wp_call_spec registry (os_wi w0) ge _ vfprintf_stream_spec
-    (VfsIn vb fp mode (Z.lor flags2 2) (Some (fx_cnt held)) fmt dq bytes ds ap 16 (WPtr fp :: WPtr fmt :: ys) [] eb)
+  intros Hp Ha Hfd Hc HR f e ls l d args rest j ap Φ Hargs.
+  iIntros "Hs HR Hva HK". iDestruct (HR with "HR") as (dq) "(He & Hf & #Hro & #Hfro & #Hmro & Hys & HQ)".
+  iAssert (file_tidy vb (ow_self w0) fp fd (Z.lor flags2 2) (Some (fx_cnt held))) with "[Hs]" as "Hs".
+  { iApply file_tidy_fx_stream. iExists mode. iExact "Hs". }
+  iApply (wp_call_spec registry (os_wi w0) ge _ vfprintf_spec
+    (VfpIn vb fp fd (Z.lor flags2 2) (Some (fx_cnt held)) fmt dq bytes ds ap 16 (WPtr fp :: WPtr fmt :: ys) [] eb)
     with "[Hs Hf Hva Hys He]"); [exact Hargs| |].
-  - cbn [fs_pre vfprintf_stream_spec vs_vb vs_fp vs_mode vs_flags2 vs_held vs_fmt vs_dq vs_bytes vs_ds vs_ap vs_skip vs_xs vs_rest vs_eb].
+  - cbn [fs_pre vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (16 / 8)) (WPtr fp :: WPtr fmt :: ys)) with ys.
-    iFrame "Hs Hf Hys He Hro". iSplit; [iPureIntro; split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | exact Herr]|].
-    iExact "Hva".
-  - iIntros (v). cbn [fs_post vfprintf_stream_spec vs_vb vs_fp vs_mode vs_flags2 vs_held vs_fmt vs_dq vs_bytes vs_eb].
-    iIntros "(%n & [-> %Hn] & Hs & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
-    cbn. rewrite (Z.mod_small n); [|lia]. rewrite (narrow_mode_stays mode Hm).
-    iApply ("HK" with "Hs"). iApply ("HQ" with "He Hf").
+    iFrame "Hs Hf Hys He Hro Hfro Hmro". iSplit; [|iExact "Hva"]. iPureIntro. unfold vfp_fits. cbn.
+    split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | | exact Herr | exact Hfd].
+    intros c Hcs. destruct held as [c0|]; cbn in Hcs; injection Hcs as <-; [destruct (Hc c0 eq_refl)|]; lia.
+  - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
+    iIntros "(%n & [-> %Hn] & Hs & Hf & He)".
+    iDestruct (file_tidy_fx_stream with "Hs") as (m') "Hs". iDestruct (fx_stream_mode with "Hs") as %Hm'.
+    iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
+    cbn. rewrite (Z.mod_small n); [|lia].
+    iApply ("HK" with "Hs"). iApply ("HQ" with "[%] He Hf"). exact Hm'.
 Qed.
 
 (** A read-only string is a valid string argument. *)
@@ -91,20 +100,23 @@ Qed.
 Context (vb : Z) (fp : ptr) (F : iProp Σ) (Q : Z -> Z -> iProp Σ).
 
 (** After a print, the caller usually wants errno and F back and to
-    know that the stream is still narrow. This choice of Q says exactly
-    that, and it meets both what this section assumes and what the
-    diagnostic rules ask of Q. *)
+    know that the stream is still unoriented or narrow. This choice of Q
+    says exactly that, and it meets both what this section assumes and
+    what the diagnostic rules ask of Q. *)
 Definition getopt_q (x m : Z) : iProp Σ := ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ ∗ errno_any eb ∗ F.
 
-Lemma getopt_q_narrow x : errno_any eb ∗ F ⊢ getopt_q x (2 ^ 32 - 1).
-Proof using Type. iIntros "[He HF]". iFrame. iPureIntro. right. reflexivity. Qed.
+Lemma getopt_q_tidy x m : m = 0 \/ m = 2 ^ 32 - 1 -> errno_any eb ∗ F ⊢ getopt_q x m.
+Proof using Type. iIntros (Hm) "[He HF]". iFrame. iPureIntro. exact Hm. Qed.
 
-Context (HQ : forall x, errno_any eb ∗ F ⊢ Q x (2 ^ 32 - 1)).
+Context (HQ : forall x m, m = 0 \/ m = 2 ^ 32 - 1 -> errno_any eb ∗ F ⊢ Q x m).
 
-(** F lends each format string, with the formatter's tables, for the
-    length of one print. *)
+(** F lends each format string, with the formatter's read-only data,
+    for the length of one print. That data is the formatter's tables,
+    the stream jump tables that `c: fputs` also reads, and the
+    allocator's idle state for a stream that has no buffer yet. *)
 Context (Hws : forall n mid, In n getopt_fmt_names -> lookup (TAtom n) (ge_globals ge) = Some mid ->
-  F ⊢ ∃ dq, word_string dq mid (getopt_fmt n) ∗ printf_ro ∗ (word_string dq mid (getopt_fmt n) -∗ F)).
+  F ⊢ ∃ dq, word_string dq mid (getopt_fmt n) ∗ printf_ro ∗ fputs_ro vb ∗ malloc_ro ∗
+    (word_string dq mid (getopt_fmt n) -∗ F)).
 
 (** A print is safe when its arguments fit the format and the caller
     can show their strings. The resource W holds those strings. *)
@@ -113,10 +125,11 @@ Lemma fx_format_named n mid ds ys (W : iProp Σ) :
   parse_narrow (getopt_fmt n) = Some ds -> narrow_args ds ys -> (W ⊢ [∗ list] a ∈ ys, str_arg a) ->
   fx_format vb fp mid ys ((errno_any eb ∗ F) ∗ W) Q.
 Proof using Herr Hvf HQ Hws.
-  intros Hin Hl Hp Ha HW mode flags2 held Hm. apply (fx_rule_of_vfprintf _ _ _ (getopt_fmt n) ds); [exact Hp | exact Ha | exact Hm |].
-  iIntros "[[He HF] HW]". iDestruct (Hws n mid Hin Hl with "HF") as (dq) "(Hf & #Hro & HF)".
-  iDestruct (HW with "HW") as "Hys". iExists dq. iFrame "He Hf Hro Hys". iIntros (x) "He Hf".
-  iApply HQ. iFrame "He". iApply ("HF" with "Hf").
+  intros Hin Hl Hp Ha HW fd mode flags2 held Hfd Hc.
+  apply (fx_rule_of_vfprintf _ _ _ _ (getopt_fmt n) ds); [exact Hp | exact Ha | exact Hfd | exact Hc |].
+  iIntros "[[He HF] HW]". iDestruct (Hws n mid Hin Hl with "HF") as (dq) "(Hf & #Hro & #Hfro & #Hmro & HF)".
+  iDestruct (HW with "HW") as "Hys". iExists dq. iFrame "He Hf Hro Hfro Hmro Hys". iIntros (x m Hm) "He Hf".
+  iApply (HQ x m Hm). iFrame "He". iApply ("HF" with "Hf").
 Qed.
 
 (** The short-option diagnostics print the program name and the

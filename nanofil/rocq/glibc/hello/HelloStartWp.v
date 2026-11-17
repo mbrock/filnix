@@ -102,18 +102,15 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 (** Hello's main calls glibc functions, and some of those calls have
     no proof yet. To prove main anyway, this definition lists what those
     calls must provide for one thread and one environment. Glibc's
-    formatter must keep its contract. Stderr must pass from main to the
-    warnings and back. The objects that startup leaves unused give the
-    warnings everything else. *)
+    formatter must keep its contract, and the objects that startup
+    leaves unused must give the private state everything else. *)
 Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
   let envp := mkPtr env.1 (Obj env.1) in
   let half := (getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
       (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp ∗
     getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env))%I in
   HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "__vfprintf_internal")
-    (vfprintf_stream_spec (glibc_program := P tb)) /\
-  ((file_idle (ho_vb o) (ow_self (final_world w0 tb)) (ho_err o) 2 ⊢ hello_err_view (final_world w0 tb)) /\
-   (hello_err_view (final_world w0 tb) ⊢ file_idle (ho_vb o) (ow_self (final_world w0 tb)) (ho_err o) 2)) /\
+    (vfprintf_spec (glibc_program := P tb)) /\
   exists X : iProp Σ,
   (hd_priv (final_world w0 tb) hge o (debt tb) ⊣⊢ half ∗ hello_hd_getopt (final_world w0 tb) fr tb ∗ X) /\
   (half ∗ hello_hd_rest (final_world w0 tb) fr ==∗ X).
@@ -121,7 +118,7 @@ Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
 (** The run's memory, split into the parts the image proofs name, lets
     the startup body reach main and lets main run without a panic. *)
 Lemma hello_start_wp fr0 argv env av aps order argc :
-  ow_leaf4_ends w0 = true -> frees_heap fr ->
+  ow_leaf4_ends w0 = true -> frees_heap fr -> In 2 (ow_fds w0) ->
   lookup (TAtom "__libc_errno") img_globals = Some (ow_errno_cell w0) ->
   call_frame start_libc_start_main_fn
     [WPtr (mkPtr (img_a "main") (Fn (TAtom "main"))); WInt argc; WPtr (mkPtr argv.1 (Obj argv.1));
@@ -139,7 +136,7 @@ Lemma hello_start_wp fr0 argv env av aps order argc :
   pointsto (PName k) (DfracOwn 1) (start_ghost null false false) -∗
   WP (ERun fr0 : sexpr) {{ _, ⌜False⌝ }}.
 Proof using Hi.
-  intros Hleaf Hfree He Hfr Ha He2 Hv Hargc Hargc2 Hord Hc.
+  intros Hleaf Hfree Hfd2 He Hfr Ha He2 Hv Hargc Hargc2 Hord Hc.
   pose proof (hello_image_layout img_globals m0 fr Hi) as Hy.
   assert (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
     HelloLibs (final_world w0 tb) hge o (hd_priv (final_world w0 tb) hge o (debt tb)) hello_exit0
@@ -313,12 +310,13 @@ Proof using Hi.
   iMod (getenv_own (glibc_program := P tb) m env 176352 _ 176320 _ He2
     with "Lc Bc Len Ien Lev Pev Nev Sev") as "[Gg Gs]".
   rewrite /StartTlsInitTpSpec.tp_fields. iDestruct "Htp" as "(Htid & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hsz)".
-  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & (Hlend & Hback) & X & Hpv & Hx).
+  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & X & Hpv & Hx).
+  assert (Hfd2' : In 2 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd2).
   iDestruct (getenv_half with "[$Gg $Gs]") as "[Gh1 Gh2]".
   iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".
   iDestruct "Hes" as (sv) "Hes".
   assert (Esec : hello_sec = (lo_es hello_lsm_objs, lo_esreg hello_lsm_objs)) by (vm_compute; reflexivity).
-  iMod (hello_hd_build (final_world w0 tb) fr tb Hself sv t Ht0 with "Hpriv [Les] [Hes] Htid Hrr Loc")
+  iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv [Les] [Hes] Htid Hrr Loc")
     as "[Hgo Hrest]"; [rewrite Esec; iExact "Les" | rewrite Esec; iExact "Hes" |].
   iDestruct "Hrest" as "[Hgl #Hgro]".
   iAssert (hello_printf_ro hge) as "#Hpr".
@@ -341,7 +339,7 @@ Proof using Hi.
     (gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb) -∗ hello_stdio (final_world w0 tb) hge o ∗
       hd_priv (final_world w0 tb) hge o (debt tb))).
   { rewrite Hpv. iIntros "H".
-    iDestruct (hello_hd_lend (final_world w0 tb) fr tb Hlend Hback (gg ∗ gs) X with "H") as "[[[A B] C] W]".
+    iDestruct (hello_hd_lend (final_world w0 tb) fr tb Hfd2' (gg ∗ gs) X with "H") as "[[[A B] C] W]".
     iFrame "A B C". iIntros "(A & B & C)". iApply ("W" with "[$A $B $C]"). }
   iMod (hello_main_entry (final_world w0 tb) m0 fr Hi (hello_link_all fr Hfree) (debt tb)
     (hello_getopt_E (final_world w0 tb) fr tb)

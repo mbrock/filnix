@@ -15,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfCode FxprintfStream FxprintfTail.
+  PrintfStreamInv FxprintfCode FxprintfTidy FxprintfStream FxprintfTail.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -43,7 +43,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     single-threaded. The environment holds the stream, the format string,
     the cursor object, the null address and this thread's identity. The
     lock count before the call must leave room for one more acquisition. *)
-Lemma wp_fx_lock e vb sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R : iProp Σ) (Q : Z -> Z -> iProp Σ) Φ :
+Lemma wp_fx_lock e vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R : iProp Σ) (Q : Z -> Z -> iProp Σ) Φ :
   let fp := mkPtr fb (Obj fb) in let xs := WPtr fp :: WPtr fmt :: ys in
   lookup (TAtom "pr.1") e = Some (WPtr fp) -> lookup (TAtom "chk2") e = Some (WPtr fp) ->
   lookup (TAtom "v2") e = Some (WPtr fmt) -> lookup (TAtom "v13") e = Some (WPtr (mkPtr cb (Obj cb))) ->
@@ -51,17 +51,17 @@ Lemma wp_fx_lock e vb sb sreg fb cb sb' fmt ys mode flags2 held dqf regf (R : iP
   ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 -> fx_snap_ok sb' xs ->
   0 <= ptr_addr fmt < 2 ^ 64 ->
   mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
-  fx_vfprintf_rule_at vb fp fmt xs mode flags2 held R Q ->
-  single_ro ge sb sreg -∗ printf_stream vb (ow_self w0) fp mode flags2 held -∗ fx_owner (ow_self w0) held -∗
+  fx_vfprintf_rule_at vb fd fp fmt xs mode flags2 held R Q ->
+  single_ro ge sb sreg -∗ fx_stream vb (ow_self w0) fp fd mode flags2 held -∗ fx_owner (ow_self w0) held -∗
   pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb' + 16) (Ro sb'))) -∗
   pts (snapshot_ps xs sb' (fx_req xs)) -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
-  ▷ (∀ x mode', printf_stream vb (ow_self w0) fp mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
+  ▷ (∀ x mode', fx_stream vb (ow_self w0) fp fd mode' flags2 held -∗ fx_owner (ow_self w0) held -∗
      live_capq dqf (ptr_cap fmt) regf -∗ Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None (Enter (TAtom "L32") (Some (TAtom "L21")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros fp xs Hpr Hc2 Hv2 Hv13 Hv9 Hv25 Hself Hselfr Hok Hfmtr Hmode Hcnt Hfmt.
   iIntros "#Hs Hst Ho Hcur Hsnap Hfc HR HK".
-  iDestruct (printf_stream_fx with "Hst") as (fb' freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
+  iDestruct (fx_stream_fx with "Hst") as (fb' freg fl lp Hp) "(Hl & Hfl & Hf2 & Hmd & Hlp & Hk & Hclose)".
   destruct Hp as (Hfp & Hal & Hfb & Hend & Hfreg & Hflr & Hul & Hnl & Hf2r & Hmdr).
   unfold fp in Hfp. injection Hfp as <-. unfold file_size in Hend. subst fp xs.
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
@@ -97,7 +97,7 @@ Proof using Type.
     iDestruct ("Hclose" $! flags2 (Some (c + 1)) with "[%] Hl [Hfl] Hf2 Hmd Hlp Hlk") as "Hst".
     { exact Hnl. }
     { iSplit; [done | iExact "Hfl"]. }
-    iApply (wp_fx_tail _ (TAtom "L53") vb sb sreg fb cb sb' fmt ys mode flags2 (Some c) dqf regf R Q
+    iApply (wp_fx_tail _ (TAtom "L53") vb fd sb sreg fb cb sb' fmt ys mode flags2 (Some c) dqf regf R Q
       with "Hs Hst Hcur Hsnap Hfc HR [HK Ho]").
     all: cycle 11.
     { iNext. iIntros (x md) "Hst Hfc HQ". iApply ("HK" with "Hst [Ho] Hfc HQ"). iExists dqo, rego. iExact "Ho". }
@@ -115,7 +115,7 @@ Proof using Type.
     iDestruct ("Hclose" $! flags2 (Some 0) with "[%] Hl [Hfl] Hf2 Hmd Hlp Hlk") as "Hst".
     { exact Hnl. }
     { iSplit; [done | iExact "Hfl"]. }
-    iApply (wp_fx_tail _ (TAtom "L26") vb sb sreg fb cb sb' fmt ys mode flags2 None dqf regf R Q
+    iApply (wp_fx_tail _ (TAtom "L26") vb fd sb sreg fb cb sb' fmt ys mode flags2 None dqf regf R Q
       with "Hs Hst Hcur Hsnap Hfc HR [HK Ho]").
     all: cycle 11.
     { iNext. iIntros (x md) "Hst Hfc HQ". iApply ("HK" with "Hst Ho Hfc HQ"). }

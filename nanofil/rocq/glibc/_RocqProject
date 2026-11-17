@@ -456,6 +456,7 @@ stdio/PrintfBufferXsputnPrelude.v
 stdio/PrintfBufferXsputnZero.v
 stdio/PrintfStreamInv.v
 stdio/FileTidy.v
+stdio/FxprintfTidy.v
 stdio/FxprintfStream.v
 stdio/PrintfLayout.v
 stdio/PrintfOut.v
