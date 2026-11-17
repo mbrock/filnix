@@ -42,6 +42,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     the function's caller gets back. *)
 Record bspec : Type := BSpec {
   bs_label : string;
+  bs_from : option string;
   bs_sig : cut_sig;
   bs_binder : Type;
   bs_vals : bs_binder -> list (string * word);
@@ -49,11 +50,24 @@ Record bspec : Type := BSpec {
   bs_post : bs_binder -> outcome -> iProp Σ
 }.
 
+(** Compiled code can reach a block from several other blocks. A
+    variable may then have a different value on each way in, and the
+    block starts with phi nodes that pick the value for the way that
+    was taken. The start of a loop is the usual case, because the
+    function reaches it once from before the loop and again from the
+    end of every round. A row for such a block therefore names the
+    block that the function comes from, and the table has one row for
+    each way in. A row that names no block is for a block without phi
+    nodes, and it covers every way in. *)
+Definition edge_fits (edge : option string) (from : option name) : Prop :=
+  match edge with None => True | Some l => from = Some (TAtom l) end.
+
 (** A block meets its specification when the function runs safely from
-    the block's entry, from any earlier block, in every environment
-    that fits the signature. *)
+    the block's entry, along the row's edge, in every environment that
+    fits the signature. *)
 Definition block_triple (f : func) (b : bspec) : iProp Σ :=
-  □ ∀ x e from Φ, ⌜c_env (bs_sig b) e (bs_vals b x)⌝ -∗ bs_pre b x -∗ (∀ r, bs_post b x r -∗ Φ r) -∗
+  □ ∀ x e from Φ, ⌜edge_fits (bs_from b) from⌝ -∗ ⌜c_env (bs_sig b) e (bs_vals b x)⌝ -∗ bs_pre b x -∗
+      (∀ r, bs_post b x r -∗ Φ r) -∗
       WP (ERun (mkFrame f e [] None (Enter (TAtom (bs_label b)) from)) : sexpr) {{ Φ }}.
 
 (** Every block of a table meets its specification. *)
@@ -80,23 +94,25 @@ Qed.
 
 (** A jump to a block of the table uses that block's specification. *)
 Lemma wp_block f bs i b x e from Φ :
-  bs !! i = Some b -> c_env (bs_sig b) e (bs_vals b x) ->
+  bs !! i = Some b -> edge_fits (bs_from b) from -> c_env (bs_sig b) e (bs_vals b x) ->
   blocks_hold f bs -∗ bs_pre b x -∗ (∀ r, bs_post b x r -∗ Φ r) -∗
   WP (ERun (mkFrame f e [] None (Enter (TAtom (bs_label b)) from)) : sexpr) {{ Φ }}.
 Proof using Type.
-  intros Hb He. iIntros "#H HP HK". iPoseProof (blocks_at f bs i b Hb with "H") as "#Hb".
-  iApply ("Hb" $! x e from Φ with "[] HP HK"). iPureIntro. exact He.
+  intros Hb Hfrom He. iIntros "#H HP HK". iPoseProof (blocks_at f bs i b Hb with "H") as "#Hb".
+  iApply ("Hb" $! x e from Φ with "[] [] HP HK"); iPureIntro; [exact Hfrom | exact He].
 Qed.
 
 (** ## From the entry block to the function's contract *)
 
 (** A function meets a contract when the first row of its table
-    covers the contract. The frame that a call builds must start at
-    that row's block with an environment that fits its signature. The
+    covers the contract. That row names no edge, because a call
+    enters the function from no block. The frame that a call builds
+    must start at that row's block with an environment that fits its
+    signature. The
     contract's precondition must give the row's precondition, and the
     row's postcondition must give the contract's. *)
 Lemma blocks_has_spec n f s bs b :
-  find_fn ge n = Some (Defined f) -> bs !! 0%nat = Some b ->
+  find_fn ge n = Some (Defined f) -> bs !! 0%nat = Some b -> bs_from b = None ->
   (forall x, exists e y,
       call_frame f (fs_args s x) = Some (mkFrame f e [] None (Enter (TAtom (bs_label b)) None)) /\
       c_env (bs_sig b) e (bs_vals b y) /\
@@ -104,12 +120,12 @@ Lemma blocks_has_spec n f s bs b :
   (⊢ blocks_hold f bs) ->
   HasSpec registry (os_wi w0) ge n s.
 Proof using Type.
-  intros Hf Hrow Hentry Hbs x. destruct (Hentry x) as (e & y & Hfr & He & Hpre).
+  intros Hf Hrow Hedge Hentry Hbs x. destruct (Hentry x) as (e & y & Hfr & He & Hpre).
   exists f. split; [exact Hf|]. split; [eexists; exact Hfr|].
   intros fr Φ Hfr'. rewrite Hfr in Hfr'. injection Hfr' as <-.
   iIntros "HP HK". iDestruct (Hpre with "HP") as "[HP HQ]".
   iPoseProof (blocks_at f bs 0%nat b Hrow with "[]") as "#Hb"; [iApply Hbs|].
-  iApply ("Hb" $! y e None Φ with "[] HP"); [iPureIntro; exact He|].
+  iApply ("Hb" $! y e None Φ with "[] [] HP"); [iPureIntro; rewrite Hedge; exact I | iPureIntro; exact He |].
   iIntros (r) "Hr". iApply "HK". iApply ("HQ" with "Hr").
 Qed.
 
@@ -174,14 +190,21 @@ Tactic Notation "call_callee" "with" uconstr(x) "giving" constr(Hs) :=
 Ltac block_resume :=
   iExists _; iSplit; [iPureIntro; reflexivity|]; iNext; cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
 
-(** The tactic [block_enter] takes the step into a block. The blocks
-    of a table are entered from any earlier block, so the tactic works
-    only for a block without phi nodes. *)
+(** The tactic [block_enter] takes the step into a block of a row
+    without an edge. Such a block is entered from any earlier block,
+    so the tactic works only for a block without phi nodes. *)
 Ltac block_enter :=
   iApply wp_enter;
     [reflexivity
     | lazymatch goal with |- phis_env _ _ ?from _ = _ => first [reflexivity | destruct from; reflexivity] end
     | iNext; cbn [b_insts b_jump]].
+
+(** The tactic [block_enter_from] takes the step into a block of a row
+    with an edge. The hypothesis H says which block the function came
+    from, and the phi nodes read their values along that edge. *)
+Ltac block_enter_from H :=
+  cbn [edge_fits bs_from] in H; subst;
+  iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]].
 
 (** The tactic [branch_eqn] takes a conditional jump and leaves one
     goal for each edge, with the condition's value as the hypothesis E. *)
@@ -208,7 +231,7 @@ Tactic Notation "goto_block" constr(IH) constr(K) constr(i) "with" uconstr(x) :=
       lazymatch b with
       | Some ?b' =>
           iRevert K; iApply (wp_block f bs i b' x with IH);
-            [reflexivity | cbn [bs_sig bs_vals]; c_env_close | cbn [bs_pre]]
+            [reflexivity | first [exact I | reflexivity] | cbn [bs_sig bs_vals]; c_env_close | cbn [bs_pre]]
       | _ => fail "goto_block: the table has no row" i
       end
   end.

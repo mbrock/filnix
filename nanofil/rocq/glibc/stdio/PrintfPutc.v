@@ -78,16 +78,16 @@ Definition putc_post (bb : Z) (o : outcome) : iProp Σ := (⌜o = RetVoid⌝ ∗
     character also knows that the window has a free byte. The block
     that returns needs no parameter, so its signature is empty. *)
 Definition putc_blocks : list bspec :=
-  [BSpec "start" (cut_in putc_cuts "start") (Z * Z) (fun '(bb, c) => putc_vals bb c)
+  [BSpec "start" None (cut_in putc_cuts "start") (Z * Z) (fun '(bb, c) => putc_vals bb c)
      (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out R bb)%I (fun '(bb, _) => putc_post bb);
-   BSpec "L4" (cut_in putc_cuts "L4") (Z * Z * region * pwin * Z * Z)
+   BSpec "L4" None (cut_in putc_cuts "L4") (Z * Z * region * pwin * Z * Z)
      (fun '(bb, c, _, _, _, _) => putc_vals bb c)
      (fun '(bb, c, breg, w, written, mode) =>
         ⌜0 <= c < 2 ^ 32 /\ pw_ptr w < pw_end w⌝ ∗ printf_buf bb breg w written mode ∗ R (pw_place w))%I
      (fun '(bb, _, _, _, _, _) => putc_post bb);
-   BSpec "L5" (cut_in putc_cuts "L5") (Z * Z) (fun '(bb, c) => putc_vals bb c)
+   BSpec "L5" None (cut_in putc_cuts "L5") (Z * Z) (fun '(bb, c) => putc_vals bb c)
      (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out R bb)%I (fun '(bb, _) => putc_post bb);
-   BSpec "L6" (cut_in putc_cuts "L6") Z (fun bb => putc_vals bb 0)
+   BSpec "L6" None (cut_in putc_cuts "L6") Z (fun bb => putc_vals bb 0)
      (fun bb => printf_out R bb) putc_post].
 
 (** ## The blocks *)
@@ -96,7 +96,7 @@ Lemma putc_table : ⊢ blocks_hold glibc_printf_buffer_putc putc_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". repeat iSplit; [| | | | done]; iModIntro.
   - (* start: is the window full? *)
-    iIntros ([bb c] e from Φ) "%He [%Hc Hout] HK". cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *.
+    iIntros ([bb c] e from Φ) "_ %He [%Hc Hout] HK". cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *.
     c_env_open He. iDestruct "Hout" as (breg w written mode) "[Hbuf HR]". buf_open "Hbuf".
     block_enter. step. check "Hl". load_window "Hl" "Hptr" "Hwl".
     step. check "Hl". load_window "Hl" "Hend" "Hwl". step. step. step. branch_eqn E.
@@ -107,7 +107,7 @@ Proof using Type*.
       split; [exact Hc|]. assert (pw_ptr w <> pw_end w); [|unfold pwin_ok in Hw; lia].
       intros Heq. rewrite Heq Z.eqb_refl in E. discriminate E.
   - (* L4: store the character and advance the write pointer. *)
-    iIntros ([[[[[bb c] breg] w] written] mode] e from Φ) "%He [[%Hc %Hfree] [Hbuf HR]] HK".
+    iIntros ([[[[[bb c] breg] w] written] mode] e from Φ) "_ %He [[%Hc %Hfree] [Hbuf HR]] HK".
     cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *. c_env_open He. buf_open "Hbuf".
     block_enter. step. load_window "Hl" "Hptr" "Hwl". step. check "Hl". store "Hl" "Hptr". step.
     iDestruct (win_live_acc with "Hl Hwl") as "[Hwo Hback]". iDestruct "Hbytes" as (xs) "[%Hlen Hbytes]".
@@ -118,13 +118,13 @@ Proof using Type*.
     out_close "HR" with (PWin (pw_obj w) (pw_reg w) (pw_base w) (pw_ptr w + 1) (pw_end w)).
     unfold pwin_ok. cbn [pw_obj pw_reg pw_base pw_ptr pw_end]. lia.
   - (* L5: the window is full, so the out-of-line function flushes and appends. *)
-    iIntros ([bb c] e from Φ) "%He [%Hc Hout] HK". cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *.
+    iIntros ([bb c] e from Φ) "_ %He [%Hc Hout] HK". cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *.
     c_env_open He. block_enter. step.
     call_callee with (bb, _) giving "Hout".
     { iFrame "Hout". iPureIntro. apply Z.mod_pos_bound. lia. }
     iDestruct "Hpost" as "[-> Hout]". block_resume. step. goto_block "IH" "HK" 3%nat with bb. iExact "Hout".
   - (* L6: return. *)
-    iIntros (bb e from Φ) "_ Hout HK". cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *.
+    iIntros (bb e from Φ) "_ _ Hout HK". cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *.
     block_enter. iApply wp_ret_void. iNext. iApply "HK". iSplit; [done|iExact "Hout"].
 Qed.
 
@@ -135,7 +135,7 @@ Qed.
 Lemma putc_has_spec `{!Defines ge "glibc_vfprintf_internal#__printf_buffer_putc" glibc_printf_buffer_putc} :
   HasSpec registry (os_wi w0) ge (TAtom "glibc_vfprintf_internal#__printf_buffer_putc") (putc_spec R).
 Proof using Type*.
-  eapply (blocks_has_spec _ _ _ putc_blocks); [exact defines | reflexivity | | exact putc_table].
+  eapply (blocks_has_spec _ _ _ putc_blocks); [exact defines | reflexivity | reflexivity | | exact putc_table].
   intros [bb c]. eexists _, (bb, c). split; [reflexivity|]. split; [c_env_close|].
   cbn [fs_pre fs_post bs_pre bs_post putc_spec]. iIntros "$" (r) "$".
 Qed.

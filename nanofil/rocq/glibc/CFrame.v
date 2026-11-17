@@ -76,6 +76,34 @@ Definition cut_sig_of (keys : key_table) (live : list name) : cut_sig :=
 Definition cut_table (keys : key_table) (live_in : list (name * list name)) : list (string * cut_sig) :=
   map (fun '(l, ts) => (name_string l, cut_sig_of keys ts)) live_in.
 
+(** The function [cut_at] computes the signature of one label. A
+    large function has hundreds of labels, and a proof cuts it at a
+    few, so it computes only their signatures. *)
+Definition cut_at (keys : key_table) (live_in : list (name * list name)) (l : string) : cut_sig :=
+  cut_sig_of keys (match lookup (TAtom l) live_in with Some ts => ts | None => [] end).
+
+(** A block with phi nodes reads, along each edge, the temporaries
+    that the phi nodes name for that edge. The function [phi_sources]
+    lists them for the edge from the block named from. *)
+Definition phi_sources (phis : list phi) (from : string) : list name :=
+  flat_map (fun ph => match ph with
+                      | Phi _ _ pairs => match lookup (TAtom from) pairs with Some (Tmp t) => [t] | _ => [] end
+                      end) phis.
+
+Fixpoint add_new (ts seen : list name) : list name :=
+  match ts with
+  | [] => seen
+  | t :: rest => add_new rest (if existsb (name_eqb t) seen then seen else seen ++ [t])
+  end.
+
+(** The signature of an edge lists the temporaries that are live at
+    the label together with the temporaries that its phi nodes read
+    along the edge. *)
+Definition cut_edge (keys : key_table) (live_in : list (name * list name)) (f : func) (l from : string) : cut_sig :=
+  let live := match lookup (TAtom l) live_in with Some ts => ts | None => [] end in
+  let phis := match find_block (TAtom l) (fn_blocks f) with Some b => b_phis b | None => [] end in
+  cut_sig_of keys (add_new (phi_sources phis from) live).
+
 Fixpoint cut_in (table : list (string * cut_sig)) (l : string) : cut_sig :=
   match table with
   | [] => []

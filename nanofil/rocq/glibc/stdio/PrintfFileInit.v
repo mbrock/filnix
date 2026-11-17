@@ -39,14 +39,14 @@ Context `{!Callees [(TAtom "__printf_buffer_to_file_switch", switch_spec)] }.
 (** The function has one block, and the block's specification is the
     function's contract. *)
 Definition init_blocks : list bspec :=
-  [BSpec "start" (cut_in init_cuts "start") fwin_in
+  [BSpec "start" None (cut_in init_cuts "start") fwin_in
      (fun i => [("buf", WPtr (mkPtr (fi_buf i) (Obj (fi_buf i)))); ("fp", WPtr (mkPtr (fi_file i) (Obj (fi_file i))))])
      (fs_pre file_init_spec) (fs_post file_init_spec)].
 
 Lemma init_table : ⊢ blocks_hold glibc___printf_buffer_to_file_init init_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". repeat iSplit; [|done]; iModIntro.
-  iIntros (i e from Φ) "%He (Hs & Hbl & Hfp & Hb) HK". cbn [bs_sig bs_vals bs_label bs_post] in *. c_env_open He.
+  iIntros (i e from Φ) "_ %He (Hs & Hbl & Hfp & Hb) HK". cbn [bs_sig bs_vals bs_label bs_post] in *. c_env_open He.
   cbn [fs_pre fs_post file_init_spec]. iDestruct "Hfp" as (ofp) "Hfp". iDestruct "Hb" as (ob op oe written mode) "Hb".
   struct_live_open "Hbl" as "[%Hbb Hl]". struct_open "Hfp" as "[Hfp _]".
   struct_open "Hb" as "(Hbase & Hptr & Hend & Hwr & [%Hm Hmode] & _)".
@@ -66,7 +66,7 @@ Qed.
 Lemma file_init_has_spec `{!Defines ge "__printf_buffer_to_file_init" glibc___printf_buffer_to_file_init} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_to_file_init") file_init_spec.
 Proof using Type*.
-  eapply (blocks_has_spec _ _ _ init_blocks); [exact defines | reflexivity | | exact init_table].
+  eapply (blocks_has_spec _ _ _ init_blocks); [exact defines | reflexivity | reflexivity | | exact init_table].
   intros i. eexists _, i. split; [reflexivity|]. split; [c_env_close|].
   cbn [bs_pre bs_post]. iIntros "$" (r) "$".
 Qed.
