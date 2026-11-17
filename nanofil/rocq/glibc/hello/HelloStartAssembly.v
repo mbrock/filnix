@@ -95,6 +95,19 @@ Proof.
   - exact hello_start_all_off.
 Qed.
 
+(** The loader registers no heap object for Hello, so the objects that
+    the runtime allocates for the arguments and the auxiliary vector are
+    none of the image's objects. *)
+Lemma hello_no_heap_regions g m0 : initial_memory hello_image_module = Some (g, m0) ->
+  no_heap_regions m0.
+Proof.
+  intros Hi. unfold no_heap_regions. destruct (hello_loaded_tables g m0 Hi) as [_ ->].
+  assert (C : forallb (fun r => match r_kind r with Heap => false | _ => true end) img_regions = true)
+    by (vm_compute; reflexivity).
+  apply List.Forall_forall. intros r Hr. rewrite forallb_forall in C. specialize (C r Hr).
+  destruct (r_kind r); congruence.
+Qed.
+
 (** ## Owning the six lists
 
     The proof of a whole run begins from a heap whose points-to
