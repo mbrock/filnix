@@ -82,6 +82,11 @@ Definition printf_ro : iProp Σ :=
   null_global "__printf_function_table" ∗ null_global "__printf_modifier_table" ∗
   null_global "__printf_va_arg_table".
 
+(** A caller keeps the formatter's read-only data across a call,
+    because anyone may read it at any time. *)
+#[global] Instance printf_ro_persistent : Persistent printf_ro.
+Proof using Type. rewrite /printf_ro /ro_table /null_global. apply _. Qed.
+
 (** ## Arguments *)
 
 (** The formatter's arguments are the string arguments [str_arg] of
@@ -109,11 +114,29 @@ Record vfp_in : Type := VfpIn {
   vi_eb : Z                       (* errno *)
 }.
 
+(** A stream starts without an orientation, and the first narrow or
+    wide operation on it fixes one. The formatter is a narrow
+    operation. Before it does anything else it makes a stream without
+    an orientation narrow, and it leaves the orientation of any other
+    stream alone. The field `c: _mode` holds 0 for no orientation and
+    -1 for narrow, and -1 is 2^32 - 1 as an unsigned 4-byte integer.
+    The function [narrow_mode] gives the mode that the formatter
+    leaves. *)
+Definition narrow_mode (mode : Z) : Z := if mode =? 0 then 2 ^ 32 - 1 else mode.
+
+(** A stream that is narrow or has no orientation is narrow after a
+    print, so a caller can print to it again. *)
+Lemma narrow_mode_stays mode : mode = 0 \/ mode = 2 ^ 32 - 1 -> narrow_mode mode = 2 ^ 32 - 1.
+Proof. intros [-> | ->]; reflexivity. Qed.
+
 (** `c: __vfprintf_internal (fp, fmt, ap, 0)` is safe when the format
-    parses in the narrow grammar, the arguments after the named ones
-    fit its conversions, and every argument is an integer, null or a
-    read-only string. It returns an int and gives back the stream, the
-    format and errno. The stream may have become narrow. *)
+    parses in the narrow grammar and the arguments after the named ones
+    fit its conversions. Each of those arguments must be an integer,
+    null or a read-only string. The contract asks nothing of the named
+    arguments that the cursor has already passed, because the
+    formatter never reads them. The function returns an int and gives
+    back the stream, the format and errno. The stream has the mode
+    that [narrow_mode] gives. *)
 Definition vfprintf_spec : fspec Σ :=
   FSpec vfp_in
     (fun x => [WPtr (vi_fp x); WPtr (vi_fmt x); WPtr (vi_ap x); WInt 0])
@@ -123,10 +146,10 @@ Definition vfprintf_spec : fspec Σ :=
         ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x)))⌝ ∗
        printf_stream (vi_vb x) (ow_self w0) (vi_fp x) (vi_mode x) (vi_flags2 x) (vi_held x) ∗
        word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ va_at (vi_ap x) (vi_skip x) (vi_xs x) ∗
-       ([∗ list] a ∈ vi_xs x, str_arg a) ∗ errno_any (vi_eb x) ∗ printf_ro)%I
+       ([∗ list] a ∈ skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x), str_arg a) ∗ errno_any (vi_eb x) ∗ printf_ro)%I
     (fun x o =>
-       ∃ n mode', ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
-       printf_stream (vi_vb x) (ow_self w0) (vi_fp x) mode' (vi_flags2 x) (vi_held x) ∗
+       ∃ n, ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
+       printf_stream (vi_vb x) (ow_self w0) (vi_fp x) (narrow_mode (vi_mode x)) (vi_flags2 x) (vi_held x) ∗
        word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ errno_any (vi_eb x))%I.
 
 (** ## Appending to a buffer *)
@@ -230,7 +253,7 @@ Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z 
         ow_errno w0 = Some (mkPtr (pb_eb x) (Obj (pb_eb x)))⌝ ∗
        printf_out k R (pb_buf x) ∗
        word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ va_at (pb_ap x) (pb_skip x) (pb_xs x) ∗
-       ([∗ list] a ∈ pb_xs x, str_arg a) ∗ errno_any (pb_eb x) ∗ printf_ro)%I
+       ([∗ list] a ∈ skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x), str_arg a) ∗ errno_any (pb_eb x) ∗ printf_ro)%I
     (fun x o => ⌜o = RetVoid⌝ ∗ printf_out k R (pb_buf x) ∗
        word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ errno_any (pb_eb x))%I.
 
