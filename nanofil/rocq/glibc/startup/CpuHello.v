@@ -17,7 +17,7 @@ From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap.
 From Glibc Require Import Fix GlibcProgram GlibcSpec OsWorld OsCpuid OsRegistry HelloImageModule HelloImageLoad
-  HelloImageFnLink CpuSetup CpuSound CpuInit CpuInitSpec CpuSpec.
+  HelloImageFnLink CpuSetup CpuSound CpuInit CpuInitSpec CpuSpec CpuPlace.
 Import ListNotations.
 Open Scope string_scope.
 
@@ -60,6 +60,36 @@ Qed.
 Lemma hello_icf_start : icf_start_ok hello_image_module = true.
 Proof. vm_compute. reflexivity. Qed.
 
+(** The contract names eighteen global objects, and its caller must
+    say where they lie. This record gives the address and the region
+    of each one in Hello. It is computed from the memory that the
+    loader builds for the image. *)
+Definition hello_icf_objs : icf_objs := Eval vm_compute in
+  match hello_loaded with
+  | Some (g, m) => match icf_objs_in g (m_regions m) with Some o => o | None => icf_no_objs end
+  | None => icf_no_objs
+  end.
+
+(** The search succeeds on Hello, whatever memory the loader builds.
+    Each of the eighteen globals therefore has the right kind of
+    pointer, is aligned, and fits in its region. *)
+Lemma hello_icf_found g m : initial_memory hello_image_module = Some (g, m) ->
+  icf_objs_in g (m_regions m) = Some hello_icf_objs.
+Proof.
+  intros Hi.
+  assert (C : option_map (fun gm => icf_objs_in (fst gm) (m_regions (snd gm))) (initial_memory hello_image_module) =
+              Some (Some hello_icf_objs)) by (rewrite hello_loaded_eq; vm_compute; reflexivity).
+  rewrite Hi in C. cbn [option_map fst snd] in C. injection C as C. exact C.
+Qed.
+
+(** The loader gives every global a region when Hello starts. The
+    regions in the record are exactly those, so a proof that owns
+    the globals at the start owns them in the form that the contract
+    asks for. *)
+Lemma hello_icf_regions g m : initial_memory hello_image_module = Some (g, m) ->
+  Forall (fun q => object_region (fst q) (m_regions m) = Some (snd q)) (icf_regions hello_icf_objs).
+Proof. intros Hi. exact (icf_objs_in_regions _ _ _ (hello_icf_found g m Hi)). Qed.
+
 Section hello.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
 Context (g : list (name * ptr)) (m : mem) (fr : word -> mem -> option (res unit * mem)).
@@ -74,6 +104,18 @@ Theorem hello_init_cpu_features_has_spec :
 Proof using Type.
   intros Hi. pose proof (hello_cpu_image g m fr Hi) as Himg.
   exact (init_cpu_features_has_spec w0 (mkGenv hello_image_module g fr)).
+Qed.
+
+(** The contract first asks that each global lies where the record
+    says, is aligned, and fits in its region. The record of Hello
+    passes all of that. A caller in Hello is left with one duty,
+    which is to own the eighteen objects. *)
+Lemma hello_icf_ok : initial_memory hello_image_module = Some (g, m) ->
+  icf_ok (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module g fr)) hello_icf_objs.
+Proof using Type.
+  intros Hi.
+  exact (icf_objs_in_ok (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module g fr)) _ _
+           (hello_icf_found g m Hi)).
 Qed.
 
 End hello.
