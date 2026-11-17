@@ -406,3 +406,349 @@ Proof using Type.
 Qed.
 
 End heap_own.
+
+(** ## Why each piece of the runtime's objects has one owner
+
+    A proof can own a list of pieces only when no piece occurs twice in
+    it. The runtime's objects are distinct from each other, as
+    [start_state] requires, and they are heap objects while the image
+    has none. Inside one object, every word and byte has its own
+    offset. The lemmas below turn those three facts into the absence of
+    duplicates. *)
+
+(** This function gives the object that a memory piece belongs to. *)
+Definition piece_obj (l : piece) : option Z :=
+  match l with PLive b | PByte b _ | PAux b _ => Some b | PName _ => None end.
+
+(** This function gives the offset of a byte or capability piece. A
+    life sits before every offset, at -1. *)
+Definition piece_at (l : piece) : Z :=
+  match l with PByte _ o | PAux _ o => o | _ => -1 end.
+
+(** Every piece of the list belongs to object b, at an offset from lo up
+    to but not including hi. *)
+Definition ranged (b lo hi : Z) (L : list (piece * pval)) : Prop :=
+  Forall (fun lv => piece_obj lv.1 = Some b /\ lo <= piece_at lv.1 < hi) L.
+
+(** Every piece of the list belongs to one of the objects in S. *)
+Definition in_objs (S : list Z) (L : list (piece * pval)) : Prop :=
+  Forall (fun lv => exists b, piece_obj lv.1 = Some b /\ In b S) L.
+
+(** Two lists share no key when every pair of their keys differs. *)
+Lemma keys_apart (P Q : piece -> Prop) (L1 L2 : list (piece * pval)) :
+  Forall (fun lv => P lv.1) L1 -> Forall (fun lv => Q lv.1) L2 -> (forall l, P l -> Q l -> False) ->
+  forall l, l ∈ L1.*1 -> l ∉ L2.*1.
+Proof.
+  intros H1 H2 HPQ l Hl Hl2.
+  apply list_elem_of_fmap in Hl as ([l1 v1] & -> & Hin1). apply list_elem_of_fmap in Hl2 as ([l2 v2] & E & Hin2).
+  cbn in E |- *. subst l2. apply (HPQ l1).
+  - exact (proj1 (Forall_forall _ _) H1 _ Hin1).
+  - exact (proj1 (Forall_forall _ _) H2 _ Hin2).
+Qed.
+
+(** Two lists in the same object share no key when their offsets lie in
+    ranges that do not meet. *)
+Lemma ranged_apart b lo1 hi1 (L1 : list (piece * pval)) lo2 hi2 L2 :
+  ranged b lo1 hi1 L1 -> ranged b lo2 hi2 L2 -> hi1 <= lo2 -> forall l, l ∈ L1.*1 -> l ∉ L2.*1.
+Proof.
+  intros H1 H2 Hr.
+  apply (keys_apart (fun l => piece_obj l = Some b /\ lo1 <= piece_at l < hi1)
+                    (fun l => piece_obj l = Some b /\ lo2 <= piece_at l < hi2) _ _ H1 H2).
+  intros l [_ A] [_ B]. lia.
+Qed.
+
+(** Two lists of objects share no key when no object is in both. *)
+Lemma objs_apart S1 S2 (L1 L2 : list (piece * pval)) :
+  in_objs S1 L1 -> in_objs S2 L2 -> (forall b, In b S1 -> In b S2 -> False) -> forall l, l ∈ L1.*1 -> l ∉ L2.*1.
+Proof.
+  intros H1 H2 HS.
+  apply (keys_apart (fun l => exists b, piece_obj l = Some b /\ In b S1)
+                    (fun l => exists b, piece_obj l = Some b /\ In b S2) _ _ H1 H2).
+  intros l (b & E & B) (b' & E' & B').
+  rewrite E in E'. injection E' as <-. exact (HS b B B').
+Qed.
+
+(** Joining two lists without duplicates that share no key gives a list
+    without duplicates. *)
+Lemma nodup_join (L1 L2 : list (piece * pval)) : NoDup L1.*1 -> NoDup L2.*1 -> (forall l, l ∈ L1.*1 -> l ∉ L2.*1) -> NoDup (L1 ++ L2).*1.
+Proof. intros A B C. rewrite fmap_app. apply NoDup_app. auto. Qed.
+
+(** A range can always be widened. *)
+Lemma ranged_widen b lo hi lo' hi' L : lo' <= lo -> hi <= hi' -> ranged b lo hi L -> ranged b lo' hi' L.
+Proof. intros A B H. apply (Forall_impl _ _ _ H). intros lv [E C]. split; [exact E | lia]. Qed.
+
+(** Two lists in one range form a list in that range. *)
+Lemma ranged_app b lo hi L1 L2 : ranged b lo hi L1 -> ranged b lo hi L2 -> ranged b lo hi (L1 ++ L2).
+Proof. apply Forall_app_2. Qed.
+
+(** A list in one object lies among any objects that include it. *)
+Lemma ranged_objs b lo hi S L : In b S -> ranged b lo hi L -> in_objs S L.
+Proof. intros Hb H. apply (Forall_impl _ _ _ H). intros lv [E _]. exists b. auto. Qed.
+
+(** A list among some objects lies among any objects that include them. *)
+Lemma objs_widen S S' L : (forall b, In b S -> In b S') -> in_objs S L -> in_objs S' L.
+Proof. intros HS H. apply (Forall_impl _ _ _ H). intros lv (b & E & B). exists b. auto. Qed.
+
+(** This tactic proves that a short list of byte and capability keys
+    at distinct offsets has no duplicates. *)
+Local Ltac nodup_offsets :=
+  repeat (apply NoDup_cons_2;
+    [let H := fresh in intros H;
+     repeat (apply elem_of_cons in H as [H|H]; [first [discriminate H | injection H; intros; lia]|]);
+     exact (not_elem_of_nil _ H) |]);
+  apply NoDup_nil_2.
+
+(** An integer word fills offsets o to o + 8 of its object. *)
+Lemma cell_ranged b o x : ranged b o (o + 8) (cell b o x).
+Proof.
+  unfold ranged, cell. cbn [List.map].
+  repeat (apply List.Forall_cons; [cbn; split; [reflexivity | lia]|]). apply List.Forall_nil.
+Qed.
+
+(** An integer word has eight distinct byte keys. *)
+Lemma cell_nodup b o x : NoDup (cell b o x).*1.
+Proof. unfold cell. cbn. nodup_offsets. Qed.
+
+(** A stored pointer fills offsets o to o + 8 of its object. *)
+Lemma ptr_cell_ranged b o p : ranged b o (o + 8) (ptr_cell_ps b o p).
+Proof. apply List.Forall_cons; [cbn; split; [reflexivity | lia] | apply cell_ranged]. Qed.
+
+(** A stored pointer has nine distinct keys. *)
+Lemma ptr_cell_nodup b o p : NoDup (ptr_cell_ps b o p).*1.
+Proof. unfold ptr_cell_ps, cell. cbn. nodup_offsets. Qed.
+
+(** An array's pointers fill one word per string and one more. *)
+Lemma slots_ranged b o ss : ranged b o (o + 8 * (Z.of_nat (length ss) + 1)) (slots_ps b o ss).
+Proof.
+  revert o. induction ss as [|[sb s] ss IH]; intros o; cbn [slots_ps length].
+  - apply (ranged_widen _ o (o + 8)); [lia | lia | apply ptr_cell_ranged].
+  - apply ranged_app.
+    + apply (ranged_widen _ o (o + 8)); [lia | lia | apply ptr_cell_ranged].
+    + apply (ranged_widen _ (o + 8) (o + 8 + 8 * (Z.of_nat (length ss) + 1))); [lia | lia | apply IH].
+Qed.
+
+(** An array's pointers have no duplicate keys. *)
+Lemma slots_nodup b o ss : NoDup (slots_ps b o ss).*1.
+Proof.
+  revert o. induction ss as [|[sb s] ss IH]; intros o; cbn [slots_ps]; [apply ptr_cell_nodup|].
+  apply nodup_join; [apply ptr_cell_nodup | apply IH |].
+  exact (ranged_apart _ _ _ _ _ _ _ (ptr_cell_ranged b o _) (slots_ranged b (o + 8) ss) ltac:(lia)).
+Qed.
+
+(** A run of bytes fills one offset per byte. *)
+Lemma bytes_ranged b o xs : ranged b o (o + Z.of_nat (length xs)) (byte_ps b o xs).
+Proof.
+  revert o. induction xs as [|x xs IH]; intros o; [cbn; apply List.Forall_nil|].
+  rewrite byte_ps_cons. cbn [length]. apply List.Forall_cons; [cbn; split; [reflexivity | lia]|].
+  apply (ranged_widen _ (o + 1) (o + 1 + Z.of_nat (length xs))); [lia | lia | apply IH].
+Qed.
+
+(** A run of bytes has no duplicate keys. *)
+Lemma bytes_nodup b o xs : NoDup (byte_ps b o xs).*1.
+Proof.
+  revert o. induction xs as [|x xs IH]; intros o; [cbn; apply NoDup_nil_2|].
+  rewrite byte_ps_cons. apply (nodup_join [(PByte b o, VByte x)] (byte_ps b (o + 1) xs)).
+  - cbn. nodup_offsets.
+  - apply IH.
+  - apply (ranged_apart b o (o + 1) _ (o + 1) (o + 1 + Z.of_nat (length xs))); [| apply bytes_ranged | lia].
+    apply List.Forall_cons; [cbn; split; [reflexivity | lia] | apply List.Forall_nil].
+Qed.
+
+(** The words of an auxiliary vector fill two words per pair and one
+    more. *)
+Lemma pairs_ranged b o ps : ranged b o (o + 16 * Z.of_nat (length ps) + 8) (pairs_ps b o ps).
+Proof.
+  revert o. induction ps as [|kv ps IH]; intros o; cbn [pairs_ps length].
+  - apply (ranged_widen _ o (o + 8)); [lia | lia | apply cell_ranged].
+  - apply ranged_app; [apply (ranged_widen _ o (o + 8)); [lia | lia | apply cell_ranged]|].
+    apply ranged_app; [apply (ranged_widen _ (o + 8) (o + 8 + 8)); [lia | lia | apply cell_ranged]|].
+    apply (ranged_widen _ (o + 16) (o + 16 + 16 * Z.of_nat (length ps) + 8)); [lia | lia | apply IH].
+Qed.
+
+(** The words of an auxiliary vector have no duplicate keys. *)
+Lemma pairs_nodup b o ps : NoDup (pairs_ps b o ps).*1.
+Proof.
+  revert o. induction ps as [|kv ps IH]; intros o; cbn [pairs_ps]; [apply cell_nodup|].
+  apply nodup_join; [apply cell_nodup | apply nodup_join; [apply cell_nodup | apply IH |] |].
+  - exact (ranged_apart _ _ _ _ _ _ _ (cell_ranged b (o + 8) _) (pairs_ranged b (o + 16) ps) ltac:(lia)).
+  - apply (ranged_apart b o (o + 8) _ (o + 8) (o + 16 + 16 * Z.of_nat (length ps) + 8)); [apply cell_ranged| |lia].
+    apply ranged_app; [apply (ranged_widen _ (o + 8) (o + 8 + 8)); [lia | lia | apply cell_ranged]|].
+    apply (ranged_widen _ (o + 16) (o + 16 + 16 * Z.of_nat (length ps) + 8)); [lia | lia | apply pairs_ranged].
+Qed.
+
+(** An object's life sits at offset -1, before all its bytes. *)
+Lemma life_ranged b reg : ranged b (-1) 0 [(PLive b, VLive reg)].
+Proof. apply List.Forall_cons; [cbn; split; [reflexivity | lia] | apply List.Forall_nil]. Qed.
+
+(** An object made of a life and pieces at offsets from zero has no
+    duplicate keys when those pieces have none. *)
+Lemma life_join b reg hi L : ranged b 0 hi L -> NoDup L.*1 -> NoDup ((PLive b, VLive reg) :: L).*1.
+Proof.
+  intros Hr Hn. apply (nodup_join [(PLive b, VLive reg)] L); [cbn; nodup_offsets | exact Hn |].
+  exact (ranged_apart _ _ _ _ _ _ _ (life_ranged b reg) Hr ltac:(lia)).
+Qed.
+
+(** A string object lies in its own object and has no duplicate keys. *)
+Lemma str_ranged m q : ranged q.1 (-1) (Z.of_nat (length (q.2 ++ [0])) + 1) (str_ps m q).
+Proof.
+  apply List.Forall_cons; [cbn; split; [reflexivity | lia]|].
+  apply (ranged_widen _ 0 (0 + Z.of_nat (length (q.2 ++ [0])))); [lia | lia | apply bytes_ranged].
+Qed.
+
+Lemma str_nodup m q : NoDup (str_ps m q).*1.
+Proof. apply (life_join _ _ _ _ (bytes_ranged q.1 0 _) (bytes_nodup _ _ _)). Qed.
+
+(** The strings of an array lie in their own objects, and with distinct
+    objects they have no duplicate keys. *)
+Lemma strs_objs m ss : in_objs (map fst ss) (concat (map (str_ps m) ss)).
+Proof.
+  induction ss as [|q ss IH]; [apply List.Forall_nil|]. cbn [map concat]. apply Forall_app_2.
+  - apply (ranged_objs q.1 (-1) _ (q.1 :: map fst ss) _ (or_introl eq_refl) (str_ranged m q)).
+  - apply (objs_widen (map fst ss)); [intros b Hb; right; exact Hb | exact IH].
+Qed.
+
+Lemma strs_nodup m ss : List.NoDup (map fst ss) -> NoDup (concat (map (str_ps m) ss)).*1.
+Proof.
+  induction ss as [|q ss IH]; intros Hn; [cbn; apply NoDup_nil_2|]. cbn [map concat] in *.
+  inversion Hn as [|? ? Hq Hn']; subst.
+  apply nodup_join; [apply str_nodup | exact (IH Hn') |].
+  apply (objs_apart [q.1] (map fst ss)); [| apply strs_objs |].
+  - apply (ranged_objs q.1 (-1) _ [q.1] _ (or_introl eq_refl) (str_ranged m q)).
+  - intros b [<-|[]] Hb. exact (Hq Hb).
+Qed.
+
+(** An array of strings lies in its own object and its strings' objects,
+    and with all of those distinct it has no duplicate keys. *)
+Lemma array_objs m a : in_objs (a.1 :: map fst a.2) (array_ps m a).
+Proof.
+  apply List.Forall_cons; [exists a.1; split; [reflexivity | left; reflexivity]|]. apply Forall_app_2.
+  - apply (ranged_objs a.1 0 _ (a.1 :: map fst a.2) _ (or_introl eq_refl) (slots_ranged a.1 0 a.2)).
+  - apply (objs_widen (map fst a.2)); [intros b Hb; right; exact Hb | apply strs_objs].
+Qed.
+
+Lemma array_nodup m a : List.NoDup (a.1 :: map fst a.2) -> NoDup (array_ps m a).*1.
+Proof.
+  intros Hn. inversion Hn as [|? ? Ha Hn']; subst.
+  assert (Hrest : NoDup (slots_ps a.1 0 a.2 ++ concat (map (str_ps m) a.2)).*1).
+  { apply nodup_join; [apply slots_nodup | exact (strs_nodup m _ Hn') |].
+    apply (objs_apart [a.1] (map fst a.2)); [| apply strs_objs |].
+    - apply (ranged_objs a.1 0 _ [a.1] _ (or_introl eq_refl) (slots_ranged a.1 0 a.2)).
+    - intros b [<-|[]] Hb. exact (Ha Hb). }
+  apply (nodup_join [(PLive a.1, VLive (reg_of m a.1))] _); [cbn; nodup_offsets | exact Hrest |].
+  (* The life is the only piece at offset -1 of the array's object, and
+     the strings belong to other objects. *)
+  apply (keys_apart (fun l => l = PLive a.1) (fun l => l <> PLive a.1)).
+  - apply List.Forall_cons; [reflexivity | apply List.Forall_nil].
+  - apply Forall_app_2.
+    + apply (Forall_impl _ _ _ (slots_ranged a.1 0 a.2)). intros lv [_ H] E. rewrite E in H. cbn in H. lia.
+    + apply (Forall_impl _ _ _ (strs_objs m a.2)). intros lv (b & Hb & Hin) E.
+      rewrite E in Hb. cbn in Hb. injection Hb as <-. exact (Ha Hin).
+  - intros l -> H. exact (H eq_refl).
+Qed.
+
+(** The auxiliary vector lies in its own object and has no duplicate
+    keys. *)
+Lemma auxv_objs m av ps : in_objs [av] (auxv_ps m av ps).
+Proof.
+  apply List.Forall_cons; [exists av; split; [reflexivity | left; reflexivity]|].
+  exact (ranged_objs av 0 _ [av] _ (or_introl eq_refl) (pairs_ranged av 0 ps)).
+Qed.
+
+Lemma auxv_nodup m av ps : NoDup (auxv_ps m av ps).*1.
+Proof. exact (life_join _ _ _ _ (pairs_ranged av 0 ps) (pairs_nodup _ _ _)). Qed.
+
+(** These are the bases of all the runtime's objects for one start. *)
+Definition start_bases (argv env : Z * list (Z * list Z)) (av : Z) : list Z :=
+  (argv.1 :: map fst argv.2) ++ (env.1 :: map fst env.2) ++ [av].
+
+(** All the runtime's objects lie among their bases. *)
+Lemma start_heap_objs m argv env av ps : in_objs (start_bases argv env av) (start_heap_ps m argv env av ps).
+Proof.
+  unfold start_heap_ps, start_bases. apply Forall_app_2; [|apply Forall_app_2].
+  - apply (objs_widen _ _ _ (fun b H => in_or_app _ _ _ (or_introl H)) (array_objs m argv)).
+  - apply (objs_widen _ _ _ (fun b H => in_or_app _ _ _ (or_intror (in_or_app _ _ _ (or_introl H))))
+      (array_objs m env)).
+  - apply (objs_widen _ _ _ (fun b H => in_or_app _ _ _ (or_intror (in_or_app _ _ _ (or_intror H))))
+      (auxv_objs m av ps)).
+Qed.
+
+(** The bases that [start_state] lists distinct are the same bases in
+    another order. *)
+Lemma start_bases_perm (argv env : Z * list (Z * list Z)) av :
+  Permutation (argv.1 :: env.1 :: av :: map fst argv.2 ++ map fst env.2) (start_bases argv env av).
+Proof. unfold start_bases. cbn [app]. solve_Permutation. Qed.
+
+(** When the runtime's objects are distinct, as [start_state] requires,
+    their pieces have no duplicate keys. *)
+Lemma start_heap_nodup m argv env av ps :
+  List.NoDup (fst argv :: fst env :: av :: map fst (snd argv) ++ map fst (snd env)) ->
+  NoDup (start_heap_ps m argv env av ps).*1.
+Proof.
+  intros Hn. apply (Permutation_NoDup (start_bases_perm argv env av)) in Hn. unfold start_bases in Hn.
+  apply NoDup_ListNoDup, NoDup_app in Hn as (Ha & Hae & Hn). apply NoDup_app in Hn as (He & Hev & _).
+  apply NoDup_ListNoDup in Ha, He.
+  unfold start_heap_ps. apply nodup_join; [exact (array_nodup m _ Ha) | apply nodup_join |].
+  - exact (array_nodup m _ He).
+  - apply auxv_nodup.
+  - apply (objs_apart _ _ _ _ (array_objs m env) (auxv_objs m av ps)).
+    intros b Hb Hb'. apply (Hev b); apply list_elem_of_In; assumption.
+  - apply (objs_apart (argv.1 :: map fst argv.2) ((env.1 :: map fst env.2) ++ [av]) _ _ (array_objs m argv)).
+    + apply Forall_app_2.
+      * apply (objs_widen _ _ _ (fun b H => in_or_app _ _ _ (or_introl H)) (array_objs m env)).
+      * apply (objs_widen _ _ _ (fun b H => in_or_app _ _ _ (or_intror H)) (auxv_objs m av ps)).
+    + intros b Hb Hb'. apply (Hae b); apply list_elem_of_In; assumption.
+Qed.
+
+(** ## Why the runtime's objects never meet the image
+
+    A whole run owns the image's memory and the runtime's objects at
+    the same time, so the two must never overlap. They cannot, because
+    the runtime allocates its objects on the heap, the start state keeps
+    every image object under its image region, and an image has no heap
+    regions. *)
+
+(** No region of the image's memory is a heap region. Each image proves
+    this by computation. *)
+Definition no_heap_regions (m0 : mem) : Prop := Forall (fun r => r_kind r <> Heap) (m_regions m0).
+
+(** Every base of the runtime's objects names a heap object of the start
+    memory. *)
+Lemma start_bases_heap m argv env av ps :
+  string_array m argv.1 argv.2 -> string_array m env.1 env.2 -> auxv_array m av ps ->
+  forall b, In b (start_bases argv env av) -> exists n, heap_object m b n.
+Proof.
+  intros Ha He Hv b Hb. unfold start_bases in Hb.
+  assert (Arr : forall a, string_array m a.1 a.2 -> In b (a.1 :: map fst a.2) -> exists n, heap_object m b n).
+  { intros a (H & Hs & _) [<-|Hin]; [eexists; exact H|].
+    apply in_map_iff in Hin as ([sb s] & <- & Hq). destruct (In_nth_error _ _ Hq) as [i Hi].
+    destruct (Hs i sb s Hi) as [_ (Hc & _)]. eexists; exact Hc. }
+  apply in_app_or in Hb as [Hb|Hb]; [exact (Arr _ Ha Hb)|].
+  apply in_app_or in Hb as [Hb|[<-|[]]]; [exact (Arr _ He Hb)|]. destruct Hv as (H & _). eexists; exact H.
+Qed.
+
+(** A proof may own an image list and the runtime's objects side by
+    side. This lemma shows they never name the same piece, for any list
+    that the image's memory holds, when the image has no heap regions. *)
+Lemma image_heap_apart m0 m tb tsize ps argv env av aps :
+  keeps_image m0 m tb tsize -> no_heap_regions m0 -> all_agree m0 ps ->
+  string_array m argv.1 argv.2 -> string_array m env.1 env.2 -> auxv_array m av aps ->
+  forall l, l ∈ ps.*1 -> l ∉ (start_heap_ps m argv env av aps).*1.
+Proof.
+  intros (Hr & _) Hn A Ha He Hv.
+  apply (keys_apart (fun l => forall b, piece_obj l = Some b -> registered m0 b)
+                    (fun l => exists b, piece_obj l = Some b /\ In b (start_bases argv env av))).
+  - apply List.Forall_forall. intros [l v] Hin b Hb. cbn in Hb |- *.
+    pose proof (all_agree_elem _ _ _ _ A (proj2 (list_elem_of_In _ _) Hin)) as P.
+    destruct l as [b'|b' o|b' o|k]; cbn in Hb; try discriminate; injection Hb as <-;
+      destruct v; cbn in P; try contradiction.
+    + destruct P as [E _]. unfold registered. rewrite E. discriminate.
+    + exact P.
+    + exact (proj1 P).
+    + exact (proj1 P).
+  - apply start_heap_objs.
+  - intros l HP (b & Hb & Hin). specialize (HP b Hb). unfold registered in HP.
+    destruct (object_region b (m_regions m0)) as [r0|] eqn:E; [|exact (HP eq_refl)].
+    destruct (start_bases_heap _ _ _ _ _ Ha He Hv b Hin) as (n & reg & [E' _] & Hk & _).
+    rewrite (Hr _ _ E) in E'. injection E' as ->.
+    apply (proj1 (Forall_forall _ _) Hn reg (proj2 (list_elem_of_In _ _) (proj1 (object_region_in _ _ _ E))) Hk).
+Qed.

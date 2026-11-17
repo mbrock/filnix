@@ -142,3 +142,18 @@ Proof using Type.
 Qed.
 
 End own.
+
+(** ## The image has no heap objects
+
+    The runtime's own objects, argv, environ and the auxiliary vector,
+    are heap objects. The image of hi_atexit has none, so the runtime's
+    objects never share a piece with the eight lists. *)
+
+(** No region of hi_atexit's initial memory is a heap region. *)
+Lemma hi_no_heap_regions : no_heap_regions hi_m0.
+Proof.
+  assert (C : forallb (fun r => match r_kind r with Heap => false | _ => true end) (m_regions hi_m0) = true)
+    by (vm_cast_no_check (eq_refl true)).
+  apply List.Forall_forall. intros r Hr E. rewrite forallb_forall in C. specialize (C r Hr).
+  rewrite E in C. discriminate.
+Qed.
