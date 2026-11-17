@@ -26,7 +26,7 @@ From Glibc Require Import OsWorld OsRegistry OsStart StartCtors StartLogic Start
   StartCode StartTunableGetValSpec StartTunableGetVal StartTunableIsInitializedSpec StartTunableIsInitialized
   StartClockGettimeSpec StartClockGettime StartGetrlimitSpec StartGetrlimit StartCtypeInitSpec StartCtypeInit
   StartPthreadTunablesSpec StartPthreadTunables StartPtmallocInitSpec StartPtmallocInit
-  StartEarlyInitSpec StartEarlyInit.
+  StartEarlyInitSpec StartEarlyInit StartTlsInitTpSpec StartTlsInitTp StartSetupTlsSpec StartSetupTls.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -104,6 +104,41 @@ Proof using Hi.
   pose proof (ptmalloc_init_has_spec (glibc_program := Pg) eq_refl
     (X "zsys_getrandom" ltac:(vm_compute; reflexivity)) Hcbs) as Hpm.
   exact (early_init_has_spec (glibc_program := Pg)).
+Qed.
+
+(** ## The thread
+
+    Before it calls early init, startup makes the thread through
+    `c: __libc_setup_tls`, which sets the thread's cookie and then calls
+    `c: __tls_init_tp` in the world that names the new thread. Both are
+    Hello's own code, and the thread calls they make are left to the
+    runtime. *)
+
+(** For every thread object tb, `c: __tls_init_tp` meets its contract in
+    the world whose cookie names tb. *)
+Lemma hello_tls_init_tp_has_spec tb :
+  HasSpec glibc_os_registry (os_wi (start_world w0 (mkPtr tb (Obj tb)) false false)) hello_ge
+    (TAtom "__tls_init_tp") (tls_init_tp_spec hello_ge tb).
+Proof using Hi.
+  assert (X : forall s, absent_ok hello_image_module s = true -> os_ext hello_ge s)
+    by (intros s Hs; exact (absent_ok_sound _ _ _ fr _ Hi Hs)).
+  assert (D : Defines hello_ge "__tls_init_tp" start_tls_init_tp_fn) by (vm_compute; reflexivity).
+  exact (tls_init_tp_has_spec (glibc_program := program_of (start_world w0 (mkPtr tb (Obj tb)) false false)
+    glibc_os_registry hello_ge) tb eq_refl eq_refl eq_refl
+    (X "zthread_self_cookie" ltac:(vm_compute; reflexivity)) (X "zthread_self_id" ltac:(vm_compute; reflexivity))
+    (X "zthread_self" ltac:(vm_compute; reflexivity)) eq_refl).
+Qed.
+
+(** With the key k of the world's ghost state, `c: __libc_setup_tls`
+    meets its contract in the world that startup starts from. *)
+Lemma hello_setup_tls_has_spec k :
+  HasSpec glibc_os_registry (os_wi_start w0 k) hello_ge (TAtom "__libc_setup_tls") (setup_tls_spec hello_ge k).
+Proof using Hi.
+  apply (setup_tls_has_spec glibc_os_registry hello_ge w0 k hello_tls_init_tp_has_spec).
+  - vm_compute. reflexivity.
+  - reflexivity.
+  - assert (C : absent_ok hello_image_module "zthread_set_self_cookie" = true) by (vm_compute; reflexivity).
+    exact (absent_ok_sound _ _ _ fr _ Hi C).
 Qed.
 
 (** ## The call of main
