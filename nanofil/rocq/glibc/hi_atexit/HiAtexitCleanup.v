@@ -56,7 +56,7 @@ Lemma hi_cleanup_rule fs sb sreg fcp :
   ⊢ ExitRunTail.cleanup_rule w0 hge
     (single_ro hge sb sreg ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv hge fs ∗
       [∗ list] g ∈ fs, stream_life g ∗ exit_stream false g).
-Proof.
+Proof using Type.
   intros Hfc Hfcr.
   exact (LibioCleanupExit.cleanup_rule_exit w0 hge (hi_sys_external _)
     (hi_find___GI___libc_cleanup_push_defer _) (hi_find___GI___libc_cleanup_pop_restore _)

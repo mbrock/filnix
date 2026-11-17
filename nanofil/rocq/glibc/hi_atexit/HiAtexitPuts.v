@@ -52,7 +52,7 @@ Lemma hi_puts fr p dq' s so soreg fp mode eb vb vreg sb sreg Φ :
      live so soreg -∗ pcell so 0 fp -∗ hi_stdout_after w0 eb vb s fp None -∗
      hi_malloc_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hmp Htc.
   intros Hfr Hgso Hsoal Hsoend Heb Hself.
   iIntros "#Hvt #Hsingle Hstr Hso Hsoc Hf HM HK".
   iApply (LibioPuts.wp_glibc__IO_puts_for (glibc_program := program_of w0 glibc_os_registry hge) (fun n c H => H) (hi_sys_external _)

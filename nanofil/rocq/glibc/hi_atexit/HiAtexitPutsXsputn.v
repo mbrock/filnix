@@ -43,7 +43,7 @@ Lemma hi_puts_xsputn eb vb vreg :
   xsputn_spec_for w0 glibc_os_registry hge (hi_stdout_before w0 eb vb)
     (fun s fp _ held => hi_stdout_after w0 eb vb s fp held)
     (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr).
-Proof.
+Proof using Hmp Htc.
   intros Heb fr fp p dq' s Φ Hfr. iIntros "Hf Hstr [#Hvt HM] HK".
   iEval (unfold hi_stdout_before) in "Hf".
   iDestruct "Hf" as (fb freg nb wp we lb fl f2 fd tw off Hp) "(Hl & Hvtp & Hwb & Hxf & Htail)".

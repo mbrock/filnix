@@ -47,7 +47,7 @@ Context `{!gen_heapGS piece pval Σ}.
     used by the existing call rules. No extra ownership is assumed. *)
 Lemma hi_entry_vtables_own : pts hi_entry_vtables_ps ==∗
   vtables_ro hge 73504 (mkRegion 73504 75856 GlobalData Live).
-Proof.
+Proof using Type.
   iIntros "H". iMod (ptsq_persist (DfracOwn 1) _ with "H") as "#H".
   iModIntro. rewrite /vtables_ro. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
   iEval (rewrite /hi_entry_vtables_ps /ptsq;
@@ -59,7 +59,7 @@ Qed.
 (** The initialized byte supplies the persistent single-thread flag. *)
 Lemma hi_entry_single_own : pts hi_entry_single_ps ==∗
   single_ro hge 76240 (mkRegion 76240 76248 GlobalData Live).
-Proof.
+Proof using Type.
   iIntros "H". iMod (ptsq_persist (DfracOwn 1) _ with "H") as "#H".
   iModIntro. rewrite /single_ro /FileInv.ML.bytesq. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
   iEval (rewrite /hi_entry_single_ps /ptsq; cbn [big_opL]) in "H".
@@ -72,7 +72,7 @@ Lemma hi_entry_program_own : pts hi_entry_program_ps ⊢
   live 73408 (mkRegion 73408 73416 GlobalData Live) ∗
   pcell 73408 0 (mkPtr 72240 (Obj 72240)) ∗
   word_string (DfracOwn 1) (mkPtr 65568 (Ro 65568)) [104; 101; 108; 108; 111].
-Proof.
+Proof using Type.
   rewrite /hi_entry_program_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hso & Hsoc & Hstr & Hword & _)". iFrame "Hso Hsoc".
   iExists 65568, (mkRegion 65568 65576 GlobalData Live), [478560413032].
@@ -84,7 +84,7 @@ Qed.
     by push, pop and cleanup, for every saved jump-buffer value. *)
 Lemma hi_entry_thread_own jb : pts (hi_entry_thread_ps jb) ⊢
   tcb_cleanup_inv (mkPtr 4294967296 (Obj 4294967296)).
-Proof.
+Proof using Type.
   rewrite /hi_entry_thread_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hl & Hcleanup & Hjmp & Hcancel & _)".
   iExists 4294967296, (mkRegion 4294967296 4294969856 Heap Live), jb.

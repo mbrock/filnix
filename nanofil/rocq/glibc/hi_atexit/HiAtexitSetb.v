@@ -44,7 +44,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     [wp_glibc_free] gives up b's life, and the call returns to the rest
     of the block. *)
 Lemma hi_free_rule : LibioSetb.free_rule w0 registry ge.
-Proof.
+Proof using Type*.
   intros f e ls l v rest j b reg Φ Hx Hk Hb. iIntros "Hbl HK".
   iApply wp_call_bind; [cbn [map_option]; rewrite Hx; reflexivity | exact Hfree_fn | reflexivity |]. iNext.
   iApply (AllocLogic.wp_glibc_free registry (os_wi w0) ge b reg with "Hbl [HK]");

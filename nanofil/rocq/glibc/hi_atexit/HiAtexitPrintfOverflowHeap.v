@@ -50,7 +50,7 @@ Lemma hi_printf_heap_file_overflow_with B fr eb vb vreg self fp mode flags2 held
   ▷ (∀ r, ⌜ovf_ret ch r⌝ -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
      errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hch Hready Heb. iIntros "#Hvt Hf Herr HK".
   iDestruct "Hf" as (fb freg st bb breg sz k we xs fl tw off col Hp)
     "(Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvtp & Htail & HB)".
@@ -87,7 +87,7 @@ Lemma hi_printf_heap_file_overflow fr eb vb vreg self fp mode flags2 held ch Φ 
   ▷ (∀ r, ⌜ovf_ret ch r⌝ -∗ printf_heap_stream w0 vb self fp mode flags2 held -∗
      errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof. exact (hi_printf_heap_file_overflow_with (fun _ _ => emp%I) fr eb vb vreg self fp mode flags2 held ch Φ). Qed.
+Proof using Type*. exact (hi_printf_heap_file_overflow_with (fun _ _ => emp%I) fr eb vb vreg self fp mode flags2 held ch Φ). Qed.
 
 (** The outer wrapper leaves an already narrow stream's mode unchanged.
     Its checked dispatch reaches the proved heap backend, and every canonical
@@ -104,7 +104,7 @@ Lemma hi_printf_heap_overflow
   ▷ (∀ r, ⌜0 <= r < 2 ^ 32 /\ ovf_ret ch r⌝ -∗
      printf_heap_stream w0 vb self fp (2 ^ 32 - 1) flags2 held -∗ errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hch Hready Heb. iIntros "#Hvt Hf Herr HK".
   iDestruct "Hf" as (fb freg st bb breg sz k we xs fl tw off col Hp)
     "(Hl & Hst & Hf2 & Hfd & Hcol & Hmd & Hvtp & Htail)".
@@ -135,7 +135,7 @@ Lemma hi_printf_heap_overflow_spec
   PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
     (fun fp => printf_heap_stream w0 vb self fp (2 ^ 32 - 1) flags2 held)
     (vtables_ro ge vb vreg ∗ errno_any eb).
-Proof.
+Proof using Type*.
   intros Hready Heb fr fp ch Φ Hch Hfr. iIntros "Hf [#Hvt Herr] HK".
   iApply (hi_printf_heap_overflow Hovf fr eb vb vreg self fp flags2 held ch with "Hvt Hf Herr");
     try assumption.

@@ -32,7 +32,7 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
     is absent or allocated. The owned pieces remain available. *)
 Lemma hi_room_bounds nb wp we :
   wroom nb wp we ⊢ ⌜0 <= ptr_addr wp <= 2 ^ 63 /\ 0 <= ptr_addr we <= 2 ^ 63⌝ ∗ wroom nb wp we.
-Proof.
+Proof using Type.
   destruct nb as [[b sz]|].
   - iIntros "(%reg & %xs & %cs & %Hp & Hl & Hxs & Hcs)".
     iSplitR; [iPureIntro; unfold room_ok, in_buf in Hp; lia|].
@@ -53,7 +53,7 @@ Lemma hi_load_bufptr f e ls l d off args rest j classes p fb freg o nb wp we x �
      WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hx Hp Ha Hal Hwhich. iIntros "Hl Hpc Hb HK".
   destruct nb as [[b sz]|].
   - iDestruct "Hb" as (reg xs cs Hroom) "(Hbl & Hxs & Hcs)".
@@ -78,7 +78,7 @@ Lemma hi_buf_putc f e ls l d v rest j nb wp we Φ :
      WP (ERun (mkFrame f (put d (WPtr wp) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Let d A (Check 0 1 Write 1) [v] :: RawStore Wb 0 (Const 10) (Tmp d) :: rest) j)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Hlt. iIntros "Hb HK". destruct nb as [[b sz]|].
   - iDestruct "Hb" as (reg xs cs Hp) "(Hbl & Hxs & Hcs)".
     destruct Hp as (Hb & Hal & Hsz & Hend & Hreg & Hlx & Hlc & Hxs & Hwp & Hwe & Hheap).

@@ -54,7 +54,7 @@ Lemma hi_setb_null fr fb freg fl oe nb ne a Φ :
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
      pcell fb off_buf_end ne -∗ Φ RetVoid) -∗
   WP (ERun fr : language.expr (nanofil_lang registry ge)) {{ Φ }}.
-Proof.
+Proof using Hfh Hfree_fn Hzf Hzg.
   intros Hfr Hfb Hal Hend Hr Ha. iIntros "Hl Hfl Hb He HK".
   iApply (hi_setb Hfh Hzf Hzg with "Hl Hfl Hb He [] HK"); try assumption.
   iLeft. done.
@@ -94,7 +94,7 @@ Lemma hi_file_stat fr fb freg fd b reg o eb Φ :
   ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ live fb freg -∗ int_cell fb off_fileno fd -∗ live b reg -∗
      blk_any b o stat_size -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : language.expr (nanofil_lang registry ge)) {{ Φ }}.
-Proof.
+Proof using Hext Hfstat Hreg.
   intros Hfr Hfb Hal Hend Hr He Hfd Ho Hstatend. iIntros "Hl Hfd Hb Hs Herr HK".
   iApply (LibioRead.wp_glibc__IO_file_stat Hreg Hext with "Hl Hfd Hb Hs Herr HK"); assumption.
 Qed.

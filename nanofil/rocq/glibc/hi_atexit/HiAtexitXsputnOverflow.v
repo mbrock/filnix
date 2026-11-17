@@ -56,7 +56,7 @@ Context (eb : Z)
     later writes. Both paths call only functions proved here. *)
 Lemma hi_xsputn_overflow :
   overflow_spec w0 registry ge (xos w0 eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)).
-Proof.
+Proof using Hda Hdab Hdwf Heb Hext Hfh Hfree_fn Hfstat Hfw Hisatty Hmaj Hmalloc2 Hmalloc_fn Hmp Hreg Hsetb Hstat Htc Hwrite Hzf Hzg.
   intros fr fb freg nb wp we ch vb vreg Φ Hfr Hch Hfb Hal Hend Hregend.
   iIntros "#Hvt Hl Hvtp Hwb (Hxf & HM) HK".
   destruct nb as [[bb sz] |].

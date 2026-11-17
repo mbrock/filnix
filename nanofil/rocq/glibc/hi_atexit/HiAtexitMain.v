@@ -78,7 +78,7 @@ Lemma hi_main_wp Φ :
   loop_env w0 hge hi_exit_objs ->
   exit_lock_env w0 hge 76160 (mkRegion 76160 76176 GlobalData Live) ->
   hi_main_state w0 -∗ WP (ERun hi_main_frame : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Heb Hself Henv Hlock. pose proof Henv as (Hlay & Hgl & Hwi & _).
   assert (Hfns : exit_fns hge).
   { split; [exact (hi_find___new_exitfn _)|]. split; [exact (hi_find___internal_atexit _)|exact (hi_find___cxa_atexit _)]. }

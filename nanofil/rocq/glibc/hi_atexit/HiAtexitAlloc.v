@@ -57,7 +57,7 @@ Lemma hi_malloc_rule f e ls lab d v rest j n Φ :
   WP (ERun (mkFrame f e ls None
     (Exec lab (Call (CResult d P) (Global (TAtom "malloc")) [Arg L v] :: rest) j))
         : language.expr (nanofil_lang registry ge)) {{ Φ }}.
-Proof.
+Proof using Hmalloc2 Hmalloc_fn Hmp Htc.
   intros Hx Hn. iIntros "HM HK".
   iApply wp_call_bind; [cbn [map_option]; rewrite Hx; reflexivity | exact Hmalloc_fn | reflexivity |].
   iNext.

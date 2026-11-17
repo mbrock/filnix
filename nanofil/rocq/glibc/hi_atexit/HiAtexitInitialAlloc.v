@@ -18,13 +18,13 @@ Context `{!gen_heapGS piece pval Σ}.
 
 (** Owning a flattened image is owning each of its constituent images. *)
 Lemma hi_pts_concat pss : pts (concat pss) ⊣⊢ [∗ list] ps ∈ pss, pts ps.
-Proof. induction pss as [|ps pss IH]; cbn [concat]; rewrite ?pts_app ?IH; done. Qed.
+Proof using Type. induction pss as [|ps pss IH]; cbn [concat]; rewrite ?pts_app ?IH; done. Qed.
 
 (** Puts can use the allocator's initial fields directly. The proof
     supplies its allocation precondition without assuming extra storage. *)
 Lemma hi_allocator_own : pts hi_allocator_ps ⊢
   hi_malloc_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg.
-Proof.
+Proof using Type.
   rewrite /hi_allocator_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hmp & Hmax & Htc & Htcp & Hdm & Hbins & _)".
   rewrite /hi_malloc_state /AllocLogic.tcache_idle.

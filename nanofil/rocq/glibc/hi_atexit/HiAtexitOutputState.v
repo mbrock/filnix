@@ -62,7 +62,7 @@ Lemma hi_wbuf_to_ovf fb bb sz wp we fl tw off :
   icell fb off_total_written tw -∗ icell fb off_offset off -∗
   ∃ breg xs cs k, ⌜bb mod 8 = 0 /\ r_kind breg = Heap /\ length cs = Z.to_nat sz⌝ ∗
     ovf_state fb bb breg sz k we xs fl tw off ∗ auxes bb 0 cs.
-Proof.
+Proof using Type.
   iIntros "((Hrp & Hre & Hrb & Hwb & Hbase & Hbend) & Hwp & Hwe & Hroom) Hfl Htw Hoff".
   iDestruct "Hroom" as (breg xs cs Hp) "(Hbl & Hxs & Hcs)".
   destruct Hp as (Hb & Hal & Hsz & Hend & Hreg & Hlx & Hlc & Hx & [Hpc Hpa] & [Hec Hea] & Hheap).
@@ -80,7 +80,7 @@ Lemma hi_ovf_to_wbuf fb bb breg sz k we xs fl tw off cs :
   ovf_state fb bb breg sz k we xs fl tw off -∗ auxes bb 0 cs -∗
   wbuf fb (Some (bb, sz)) (mkPtr (bb + k) (Obj bb)) we ∗
   int_cell fb off_flags fl ∗ icell fb off_total_written tw ∗ icell fb off_offset off.
-Proof.
+Proof using Type.
   intros Hal Hheap Hlc.
   iIntros "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend) Hcs".
   destruct Hp as (Hb & Hend & Hreg & Hsz & Hk & Hlx & Hx & Hec & Hea).

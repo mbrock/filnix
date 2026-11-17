@@ -145,7 +145,7 @@ Lemma wp_hi_close_stdout pre post fb freg fl f2 fd tw off bb breg i xs rp rb we 
   ▷ (tcb_cleanup_inv (ow_self w0) -∗ io_list_inv hge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
      Φ RetVoid) -∗
   WP (ERun hi_close_frame : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros n fp wb base Hgso Hsoal Hsoend Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hf22 Hf232 Hnl Hf2r Hfd
     Hfdr Hfl Happ Hnw Hcp Hub Hul Hlnk Hfb8 He Hbk Hb Hi Hbend Hbreg Hy Hbe Hbec Hlb Hmd.
   iIntros "Hvt Hs Htcb Hso Hsoc Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend Hcol

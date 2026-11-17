@@ -74,7 +74,7 @@ Lemma hi_file_write fr fb freg fl f2 fd tw off b reg o xs eb Φ :
      icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ live b reg -∗ bytes b o xs -∗ errno_any eb -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg Hwrite.
   intros Hfr Hfb Hfal Hfend Hfreg Hf2 Hf2r Hfd Hfl He Hb Ho Hbend Hbreg Hxs.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   iApply (LibioWriteDq.wp_glibc__IO_new_file_write_dq Hreg Hext fr fb freg fl f2 fd tw off
@@ -120,7 +120,7 @@ Lemma hi_file_write_nocancel fr fb freg fl f2 fd tw off b reg o xs eb Φ :
      icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ live b reg -∗ bytes b o xs -∗ errno_any eb -∗
      Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg Hwrite.
   intros Hfr Hfb Hfal Hfend Hfreg Hf2 Hf2r Hfd Hfl He Hb Ho Hbend Hbreg Hxs.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   iApply (LibioWriteDq.wp_glibc__IO_new_file_write_dq Hreg Hext fr fb freg fl f2 fd tw off

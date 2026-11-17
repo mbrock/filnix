@@ -66,7 +66,7 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 Lemma hi_exit_callback s : s <> [] -> ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) ->
   hi_exit_callback_state w0 s -∗
   WP (ERun hi_close_frame : sexpr) {{ o, ⌜o = RetVoid⌝ ∗ hi_exit_tail_state w0 }}.
-Proof.
+Proof using Type.
   intros Hs Heb. rewrite /hi_exit_callback_state.
   iIntros "(Hvt & #Hs & Htcb & Hso & Hsoc & Hout & Hio & Hrest)".
   iDestruct (big_sepL_sep with "Hrest") as "[Hlives Hfields]".
@@ -88,7 +88,7 @@ Qed.
 Lemma hi_exit_handler s : s <> [] -> ow_errno w0 = Some (mkPtr 70608 (Obj 70608)) ->
   ⊢ exit_handler w0 hge 0 (hi_close_ptr, null, null)
     (hi_exit_callback_state w0 s) (hi_exit_tail_state w0).
-Proof.
+Proof using Type.
   intros Hs Heb.
   iApply (exit_handler_void w0 hge 0 hi_close_ptr null (TAtom "hi_atexit#close_stdout_hi")
     hi_close_fn hi_close_frame);
@@ -108,7 +108,7 @@ Lemma hi_exit_after_puts s Φ :
   exit_lock_free 76160 (mkRegion 76160 76176 GlobalData Live) -∗
   hi_exit_callback_state w0 s -∗
   WP (ERun (mkFrame glibc_exit [(TAtom "v0", WInt 0)] [] None (Enter (TAtom "start") None)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hs Heb Henv Hlock. iIntros "Hinv Hlock HP".
   iApply (wp_glibc_exit w0 hge hi_exit_objs 76160 (mkRegion 76160 76176 GlobalData Live)
     [(hi_close_ptr, null, null)] 1 0 (hi_exit_callback_state w0 s)

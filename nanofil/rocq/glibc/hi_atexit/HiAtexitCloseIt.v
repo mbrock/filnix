@@ -54,7 +54,7 @@ Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
 (** LibioCloseItMid.v's [close_spec]: LibioRead.v's
     [wp_glibc__IO_file_close], ge's `c: __close_nocancel` glibc's. *)
 Lemma hi_close : LibioCloseItMid.close_spec w0 registry ge.
-Proof.
+Proof using Hcn Hext Hreg.
   intros fr fb freg fd eb Φ Hfr Hfb Hfal Hfend Hfreg He.
   exact (LibioRead.wp_glibc__IO_file_close Hreg Hext fr fb freg fd eb Φ Hfr Hcn Hfb Hfal Hfend Hfreg He).
 Qed.

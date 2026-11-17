@@ -52,7 +52,7 @@ Context `{!gen_heapGS piece pval Σ}.
     It also finds the list lock free. *)
 Lemma hi_entry_list_own : pts hi_entry_list_ps ⊢
   io_list_inv hge [mkPtr 71760 (Obj 71760); mkPtr 72240 (Obj 72240); mkPtr 72000 (Obj 72000)].
-Proof.
+Proof using Type.
   rewrite /hi_entry_list_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hep & Hec & Hop & Hoc & Hip & Hic & Hla & Hlac & Hlk & Hlk0 & Hlk4 & Hlk8 & Hrf & Hrfc & _)".
   iExists 72480, (mkRegion 72480 72488 GlobalData Live),
@@ -75,7 +75,7 @@ Lemma hi_entry_stream_own fb lk fl fd :
   0 <= fl < 2 ^ 32 -> Z.land fl 32768 = 0 -> 0 <= fd < 2 ^ 31 ->
   pts (hi_entry_stream_ps fb lk fl fd) ⊢
   stream_life (mkPtr fb (Obj fb)) ∗ exit_stream false (mkPtr fb (Obj fb)).
-Proof.
+Proof using Type.
   intros Hfb Hmod Hbound Hlkmod Hlkbound Hfl Hbits Hfd.
   rewrite /hi_entry_stream_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hl & Hfl & Hf2 & Hfd & Hmd & Hlp & Hlk & Hlk0 & Hlk4 & Hlk8 & Hptrs & _)".
@@ -96,7 +96,7 @@ Qed.
 Lemma hi_entry_rest_own : pts hi_entry_rest_ps ⊢
   [∗ list] g ∈ [mkPtr 71760 (Obj 71760); mkPtr 72000 (Obj 72000)],
     stream_life g ∗ exit_stream false g.
-Proof.
+Proof using Type.
   rewrite /hi_entry_rest_ps pts_app. cbn [big_opL]. iIntros "[He Hi]".
   iSplitL "He"; [iApply (hi_entry_stream_own with "He")|iSplitL "Hi"; [iApply (hi_entry_stream_own with "Hi")|done]].
   all: vm_compute; intuition congruence.

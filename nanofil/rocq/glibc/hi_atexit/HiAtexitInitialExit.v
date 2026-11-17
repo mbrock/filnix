@@ -53,7 +53,7 @@ Context `{!gen_heapGS piece pval Σ}.
 (** An unused initial slot supplies the spare storage that atexit
     consumes when it registers a callback. *)
 Lemma hi_exit_slot_own i : pts (hi_exit_slot_ps i) ⊢ spare 69360 (16 + 32 * i).
-Proof.
+Proof using Type.
   rewrite /hi_exit_slot_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hv & Hx & Hy & Hz & _)". iExists 0, null, null, null.
   rewrite /slot. iFrame.
@@ -62,7 +62,7 @@ Qed.
 (** Grouping unused slots preserves each slot's independent ownership. *)
 Lemma hi_exit_slots_own ns : pts (concat (map hi_exit_slot_ps ns)) ⊢
   [∗ list] i ∈ ns, spare 69360 (16 + 32 * i).
-Proof.
+Proof using Type.
   rewrite hi_pts_concat big_sepL_fmap. iIntros "Hslots".
   iApply (big_sepL_mono with "Hslots"). iIntros (i n Hin) "Hslot".
   iApply hi_exit_slot_own. iExact "Hslot".
@@ -72,7 +72,7 @@ Qed.
     state and free exit lock without additional resources. *)
 Lemma hi_initial_exit_own : pts hi_initial_exit_ps ⊢
   exit_funcs_inv hi_exit_objs [] 0 ∗ exit_lock_free 76160 (mkRegion 76160 76176 GlobalData Live).
-Proof.
+Proof using Type.
   rewrite /hi_initial_exit_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hll & Hlb & Hdl & Hdb & Hcl & Hcc & Hfl & Hfc & Hil & Hnext & Hidx & Hslots &
     Hel & He0 & He4 & He8 & _)".

@@ -19,7 +19,7 @@ Context `{!gen_heapGS piece pval Σ}.
 (** Every conjunct comes from its part of the same checked entry
     image. The caller does not supply any additional library resource. *)
 Lemma hi_entry_own : pts hi_entry_ps ==∗ hi_main_state (hi_entry_world 4294967296).
-Proof.
+Proof using Type.
   rewrite /hi_entry_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Ho & Hex & Hlist & Hrest & Hvt & Hs & Hprog & Hthread & _)".
   iDestruct (hi_initial_output_own (hi_entry_world 4294967296) with "Ho") as "[HM Hout]";

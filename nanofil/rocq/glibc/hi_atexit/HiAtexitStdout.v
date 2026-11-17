@@ -57,7 +57,7 @@ Definition hi_stdout_after (w0 : os_world) (eb vb : Z) (s : list Z) (fp : ptr) (
 Lemma hi_stdout_before_open w0 eb vb fp mode held :
   hi_stdout_before w0 eb vb fp mode held ⊢
   file_open vb (ow_self w0) (hi_stdout_before w0 eb vb) fp mode held.
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %nb & %wp & %we & %lb & %fl & %f2 & %fd & %tw & %off & %Hp &
     Hl & Hvtp & Hwb & Hxf & Htail)".
   destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hlb).
@@ -84,7 +84,7 @@ Qed.
     puts proof's skipped-output branch is therefore unreachable here. *)
 Lemma hi_stdout_before_wide w0 eb vb s fp held :
   hi_stdout_before w0 eb vb fp 1 held ⊢ hi_stdout_after w0 eb vb s fp held.
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %nb & %wp & %we & %lb & %fl & %f2 & %fd & %tw & %off & _ &
     _ & _ & _ & Hxf & _)".
   iDestruct "Hxf" as "[%Hp _]". destruct Hp as (_ & _ & _ & Hm & _). destruct Hm; lia.
@@ -95,7 +95,7 @@ Qed.
 Lemma hi_stdout_after_lock w0 eb vb s fp held :
   hi_stdout_after w0 eb vb s fp held ⊢
   file_lock_open (ow_self w0) fp (hi_stdout_after w0 eb vb s fp) held.
-Proof.
+Proof using Type.
   iIntros "(%fb & %freg & %nb & %wp & %we & %lb & %Hp & Hl & Hvtp & Hwb & Hxf & Htail)".
   destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hlb & Hprogress).
   iDestruct "Hxf" as (fl f2 fd tw off m Hfields) "(Hfl & Hfl2 & Hfd & Htw & Hoff & Hcol & Hmd & Herr)".

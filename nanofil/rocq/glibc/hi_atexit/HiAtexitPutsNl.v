@@ -70,7 +70,7 @@ Lemma hi_puts_L180 s e so soreg fb eb vb vreg Φ :
      (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
      WP (ERun (mkFrame glibc__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hov.
   intros Hgso Hsoal Hsoend Heb.
   assert (Hsofixed : so = 73408) by (vm_compute in Hgso; congruence). subst so.
   iIntros "Hso Hsoc Hf [#Hvt HM] HK".

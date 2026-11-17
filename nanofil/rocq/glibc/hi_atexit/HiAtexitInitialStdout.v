@@ -70,7 +70,7 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma hi_stdout_own w0 : In 1 (ow_fds w0) ->
   pts hi_stdout_ps -∗ errno_any 70608 -∗
   hi_stdout_before w0 70608 73504 (mkPtr 72240 (Obj 72240)) 0 None.
-Proof.
+Proof using Type.
   intros Hfd.
   rewrite /hi_stdout_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hl & Hvtp & Hbuf & Hfl & Hf2 & Hfd & Htw & Hoff & Hcol & Hmode & Hsaved & Hlp &
@@ -101,7 +101,7 @@ Lemma hi_initial_output_own w0 : In 1 (ow_fds w0) ->
   pts hi_initial_output_ps ⊢
   hi_malloc_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
   hi_stdout_before w0 70608 73504 (mkPtr 72240 (Obj 72240)) 0 None.
-Proof.
+Proof using Type.
   intros Hfd. rewrite /hi_initial_output_ps hi_pts_concat. cbn [big_opL].
   iIntros "(Hout & Halloc & Herr & _)".
   iDestruct (hi_allocator_own with "Halloc") as "Halloc". iFrame "Halloc".

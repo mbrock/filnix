@@ -45,7 +45,7 @@ Lemma hi_stdout_after_close s pre post fp eb vb vreg sb sreg fcp pin so soreg Φ
   ▷ (tcb_cleanup_inv (ow_self w0) -∗ io_list_inv hge (pre ++ post) -∗
      ([∗ list] g ∈ pre ++ post, stream_life g) -∗ Φ RetVoid) -∗
   WP (ERun hi_close_frame : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hs Hgso Hsoal Hsoend Hgout Hgin Hin Hinr Hfc Hfcr Heb.
   iIntros "Hvt Hsingle Htcb Hso Hsoc Hf Hio Hlives HK".
   iDestruct "Hf" as (fb freg nb wp we lb (Hfp & Hfb & Hal & Hend & Hreg & Hlb & Hprogress))

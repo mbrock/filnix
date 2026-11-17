@@ -52,7 +52,7 @@ Lemma hi_output_close pre post fb freg bb sz wp we eb vb vreg
   ▷ (tcb_cleanup_inv (ow_self w0) -∗ io_list_inv hge (pre ++ post) -∗
      ([∗ list] g ∈ pre ++ post, stream_life g) -∗ Φ RetVoid) -∗
   WP (ERun hi_close_frame : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros fp Hgso Hsoal Hsoend Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Heb Hlb.
   iIntros "Hvt Hs Htcb Hso Hsoc Hl Hvtp Hwb Hxf H72 H80 H96 Hlp Hlk Hio Hlives HK".
   iDestruct "Hxf" as (fl f2 fd tw off md (Happ & Hf22 & Hfd & Hmd & Hflags & Hfd31 & Hf2160))

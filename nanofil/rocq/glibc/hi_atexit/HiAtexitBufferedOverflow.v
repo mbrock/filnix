@@ -45,7 +45,7 @@ Lemma hi_buffered_overflow fr eb fb freg vb vreg bb sz wp we ch Φ :
      pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      wbuf fb (Some (bb, sz)) wp' we' -∗ xfields w0 eb fb (Some (bb, sz)) -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hfr Hch Heb Hfb Hal Hend Hregend.
   iIntros "#Hvt Hl Hvtp Hwb Hxf HK".
   iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160))

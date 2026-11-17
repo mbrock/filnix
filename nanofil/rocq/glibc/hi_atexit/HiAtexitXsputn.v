@@ -68,7 +68,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     cancellation flags unchanged. The noncanceling branch requires the
     captured wrapper. *)
 Lemma hi_file_write_dq : fwq_spec w0 registry ge.
-Proof.
+Proof using Hext Hreg Hwrite.
   intros fr fb freg fl f2 fd tw off dq' b reg o c xs eb Φ Hfr Hc Hfb Hal Hend Hregend Hf2 Hf2r Hfd Hfl Heb
     Hb Ho Hbend Hbreg Hxs.
   iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
@@ -93,7 +93,7 @@ Lemma hi_xsputn fr eb fb freg vb vreg nb wp we dq' b' reg' so c' ys Φ :
   ▷ xs_post w0 registry ge eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)
     fb freg vb n dq' b' reg' so ys Φ -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hcpy Hda Hdab Hdwf Hdxf Hext Hfh Hfo Hfree_fn Hfstat Hfw Hisatty Hmaj Hmalloc2 Hmalloc_fn Hmove Hmove_fn Hmove_sym Hmp Hpcpy Hreg Hsetb Hstat Htc Hwrite Hzf Hzg.
   intros n Hfr Heb Hfb Hal Hend Hregend Hc Hb Hb8 Ho Hbend Hbreg Hys.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hbl Hys HK".
   iApply (LibioXsputn.wp_glibc__IO_new_file_xsputn Hmove Hmove_fn Hmove_sym Hfw

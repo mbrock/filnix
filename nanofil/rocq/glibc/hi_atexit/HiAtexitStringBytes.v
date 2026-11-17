@@ -42,7 +42,7 @@ Lemma hi_word_string_bytes dq p s :
       r_end reg <= 2 ^ 48 /\ Forall (fun y => 0 <= y < 256) s⌝ ∗
     liveq dq b reg ∗ bytesq dq b so s ∗
     (liveq dq b reg -∗ bytesq dq b so s -∗ word_string dq p s).
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hs & Hl & Hw)".
   pose proof Hs as Hshape.
   destruct Hshape as [Hcap Hb Hal Hstart Hfit Hspace Hlen Hwords Hbytes Hchars].

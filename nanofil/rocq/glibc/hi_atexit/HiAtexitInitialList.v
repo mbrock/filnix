@@ -63,7 +63,7 @@ Lemma hi_initial_list_construct Φ :
   pts hi_initial_list_ps -∗ live 72240 hi_stdout_reg -∗
   ▷ (io_list_inv hge hi_initial_streams -∗ ([∗ list] f ∈ hi_initial_streams, stream_live f) -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_stdfiles_init [] [] None (Enter (TAtom "start") None)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   rewrite /hi_initial_list_ps hi_pts_concat. cbn [big_opL].
   iIntros "(He & Hi & Hep & Hec & Hop & Hoc & Hip & Hic & Hla & Hlac & Hlk & Hlk0 & Hlk4 & Hlk8 & Hrf & Hrfc & _) Ho HK".
   iApply (wp_glibc_stdfiles_init (glibc_program := program_of w0 glibc_os_registry hge) _
