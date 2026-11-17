@@ -17,7 +17,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
-From Glibc Require Import OsWorld StartCtors StartState StartOwn HelloImageModule HelloImageLoad HelloImageCtors
+From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn HelloImageModule HelloImageLoad HelloImageCtors
   HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
@@ -143,3 +143,66 @@ Proof using Type.
 Qed.
 
 End own.
+
+(** ## The whole start heap
+
+    A run of Hello owns three things when it begins: the six lists of
+    the image, the objects that the runtime allocates for the arguments,
+    the environment and the auxiliary vector, and the ghost key that
+    records which startup calls have happened. This section joins them
+    into the one heap that the adequacy theorem starts from, and shows
+    that the heap agrees with the start memory and with startup's world
+    interpretation. *)
+
+(** These are all the pieces of a run's first heap, for the runtime's
+    objects argv, env and av, and the ghost key k. *)
+Definition hello_heap_ps (m : mem) argv env av aps (k : Z) : list (piece * pval) :=
+  hello_start_all_ps ++ start_heap_ps m argv env av aps ++ start_key_ps k.
+
+(** A run's first heap has no repeated piece. It agrees with the start
+    memory, and the world check of startup accepts it with key k. *)
+Lemma hello_heap_ok g m0 m w0 w tb argv env av aps k :
+  initial_memory hello_image_module = Some (g, m0) ->
+  keeps_image m0 m tb (ctor_table_size (length (ctor_names hello_image_module))) ->
+  string_array m argv.1 argv.2 -> string_array m env.1 env.2 -> auxv_array m av aps ->
+  start_os g w0 w ->
+  List.NoDup (argv.1 :: env.1 :: av :: map fst argv.2 ++ map fst env.2) ->
+  all_agree m hello_start_all_ps ->
+  NoDup (hello_heap_ps m argv env av aps k).*1 /\
+  agrees m (list_to_map (hello_heap_ps m argv env av aps k)) /\
+  os_wi_start w0 k m w (list_to_map (hello_heap_ps m argv env av aps k)).
+Proof.
+  intros Hi Hk Ha He Hv Hos Hn Hag.
+  assert (Nd : NoDup (hello_heap_ps m argv env av aps k).*1).
+  { unfold hello_heap_ps. apply nodup_join; [exact hello_start_all_nodup | apply nodup_join |].
+    - exact (start_heap_nodup m argv env av aps Hn).
+    - apply List.NoDup_cons; [intros []|apply List.NoDup_nil] || (cbn; apply NoDup_singleton).
+    - intros l Hl Hl'. apply (start_key_heap_apart k m argv env av aps l Hl' Hl).
+    - intros l Hl Hin. rewrite fmap_app in Hin. apply elem_of_app in Hin as [Hin|Hin].
+      + exact (image_heap_apart m0 m tb _ _ argv env av aps Hk (hello_no_heap_regions g m0 Hi)
+                 (hello_start_all_agree g m0 Hi) Ha He Hv l Hl Hin).
+      + exact (hello_start_key_apart k l Hin Hl). }
+  split; [exact Nd|]. split.
+  - apply all_agree_map. unfold hello_heap_ps.
+    apply (proj2 (all_agree_app _ _ _)). split; [exact Hag|].
+    apply (proj2 (all_agree_app _ _ _)). split; [exact (start_heap_agree m argv env av aps Ha He Hv)|].
+    apply start_key_agree.
+  - apply (start_os_wi g w0 w k m _ Hos). apply elem_of_list_to_map_1; [exact Nd|].
+    unfold hello_heap_ps. apply elem_of_app. right. apply elem_of_app. right. left.
+Qed.
+
+Section heap_own.
+Context `{!gen_heapGS piece pval Σ}.
+
+(** A proof can own the first heap as three separate parts: the image
+    lists, the runtime's objects and the ghost key. *)
+Lemma hello_heap_own m argv env av aps k :
+  NoDup (hello_heap_ps m argv env av aps k).*1 ->
+  ([∗ map] l ↦ v ∈ list_to_map (hello_heap_ps m argv env av aps k), pointsto l (DfracOwn 1) v) ⊣⊢
+  pts hello_start_all_ps ∗ pts (start_heap_ps m argv env av aps) ∗ pts (start_key_ps k).
+Proof using Type.
+  intros Nd. etrans; [exact (pts_map _ Nd)|]. unfold hello_heap_ps.
+  rewrite (pts_app hello_start_all_ps) (pts_app (start_heap_ps m argv env av aps)). done.
+Qed.
+
+End heap_own.
