@@ -59,7 +59,7 @@ Local Notation ent Δ P := (environments.envs_entails Δ P).
 (** Lemma [next_to] strips a leading later modality from a weakest
     precondition rule when proving a proof-mode entailment. *)
 Lemma next_to Δ (P Q : iProp Σ) : (⊢ ▷ P -∗ Q) -> ent Δ P -> ent Δ Q.
-Proof. rewrite environments.envs_entails_unseal. intros HPQ HP. iIntros "H". iApply HPQ. iNext. by iApply HP. Qed.
+Proof using Type. rewrite environments.envs_entails_unseal. intros HPQ HP. iIntros "H". iApply HPQ. iNext. by iApply HP. Qed.
 
 (** Lemma [s_let] steps past a pure `let` instruction inside a
     proof-mode entailment. *)
@@ -68,7 +68,7 @@ Lemma s_let Δ f e ls l d k o args rest j classes xs w Φ :
   (forall m, op_res o k xs m = Some (OpRes (RVal w) m)) ->
   ent Δ (WP (ERun (mkFrame f (put d w e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : gexpr) {{ Φ }}).
-Proof. intros. eapply next_to; [eapply (wp_let registry wi ge); eauto | done]. Qed.
+Proof using SafepointStable0. intros. eapply next_to; [eapply (wp_let registry wi ge); eauto | done]. Qed.
 
 (** Lemma [s_letn] steps past an integer `let` and binds a fresh Rocq
     variable x equal to the result so later steps stay compact. *)
@@ -77,7 +77,7 @@ Lemma s_letn Δ f e ls l d k o args rest j classes xs X Φ :
   (forall m, op_res o k xs m = Some (OpRes (RVal (WInt X)) m)) ->
   (forall x, x = X -> ent Δ (WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }})) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : gexpr) {{ Φ }}).
-Proof. intros. eapply s_let; eauto. Qed.
+Proof using SafepointStable0. intros. eapply s_let; eauto. Qed.
 
 (** Pointer arithmetic in Fil-C produces a derived pointer through a
     `flight` instruction, which [s_flight] steps past in one rule. *)
@@ -85,7 +85,7 @@ Lemma s_flight Δ f e ls l d o args lw rest j xs n c Φ :
   map_option (flight_arg_x ge e) args = Some xs -> alu o L xs = Some (WInt n) -> flight_cap ge e lw = Some c ->
   ent Δ (WP (ERun (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) : gexpr) {{ Φ }}).
-Proof. intros. eapply next_to; [eapply (wp_flight registry wi ge); eauto | done]. Qed.
+Proof using SafepointStable0. intros. eapply next_to; [eapply (wp_flight registry wi ge); eauto | done]. Qed.
 
 (** Entering a basic block resolves its phi bindings from the incoming
     edge, which [s_enter] performs in a single step. *)
@@ -93,14 +93,14 @@ Lemma s_enter Δ f e ls l from b e' Φ :
   find_block l (fn_blocks f) = Some b -> phis_env ge (b_phis b) from e = Some e' ->
   ent Δ (WP (ERun (mkFrame f e' ls None (Exec l (b_insts b) (b_jump b))) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Enter l from)) : gexpr) {{ Φ }}).
-Proof. intros. eapply next_to; [eapply (wp_enter registry wi ge); eauto | done]. Qed.
+Proof using SafepointStable0. intros. eapply next_to; [eapply (wp_enter registry wi ge); eauto | done]. Qed.
 
 (** Lemma [s_goto] steps past an unconditional `goto` jump inside a
     proof-mode entailment. *)
 Lemma s_goto Δ f e ls l t Φ :
   ent Δ (WP (ERun (mkFrame f e ls None (Enter (edge_label t) (Some l))) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l [] (JGoto t))) : gexpr) {{ Φ }}).
-Proof. intros. eapply next_to; [apply (wp_goto registry wi ge) | done]. Qed.
+Proof using SafepointStable0. intros. eapply next_to; [apply (wp_goto registry wi ge) | done]. Qed.
 
 (** Lemma [s_branch] steps past a conditional `branch` instruction
     inside a proof-mode entailment. *)
@@ -108,14 +108,14 @@ Lemma s_branch Δ f e ls l v t1 t2 n Φ :
   value_x ge e W v = Some (WInt n) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Enter (edge_label (if n =? 0 then t2 else t1)) (Some l))) : gexpr) {{ Φ }}) ->
   ent Δ (WP (ERun (mkFrame f e ls None (Exec l [] (JBranch v t1 t2))) : gexpr) {{ Φ }}).
-Proof. intros. eapply next_to; [eapply (wp_branch registry wi ge); eauto | done]. Qed.
+Proof using SafepointStable0. intros. eapply next_to; [eapply (wp_branch registry wi ge); eauto | done]. Qed.
 
 (** Lemma [s_ret] steps past a `ret` instruction and rewrites the
     returned word to any provably equal integer x'. *)
 Lemma s_ret Δ f e l v x x' Φ :
   fn_ret f = RClass W -> value_x ge e W v = Some (WInt x) -> x = x' -> ent Δ (Φ (Ret (WInt x'))) ->
   ent Δ (WP (ERun (mkFrame f e [] None (Exec l [] (JRet v))) : gexpr) {{ Φ }}).
-Proof. intros Hk Hv -> H. eapply next_to; [eapply (wp_ret registry wi ge); eauto | done]. Qed.
+Proof using SafepointStable0. intros Hk Hv -> H. eapply next_to; [eapply (wp_ret registry wi ge); eauto | done]. Qed.
 
 (** Tactic [sl] steps past a `let` instruction while keeping its bound
     value symbolic. *)
@@ -161,7 +161,7 @@ Ltac normp name v :=
     window's pieces, it also agrees with the 8-byte cell for word q. *)
 Lemma win_cell m b wo ws q : all_agree m (words_ps b wo ws) -> 0 <= q < Z.of_nat (List.length ws) ->
   all_agree m (cell b (wo + 8 * q) (wrd ws q)).
-Proof.
+Proof using Type*.
   intros Ha Hq. apply all_agree_cell. intros i Hi.
   pose proof (words_ps_elem b wo ws (Z.to_nat (8 * q + i)) _ (wbytes_bt ws (8 * q + i) ltac:(lia))) as Hin.
   rewrite Z2Nat.id in Hin; [|lia]. rewrite (bt_word ws q i); [|lia|lia].
@@ -178,7 +178,7 @@ Lemma wp_win_word f e ls l c d pr rest j p dq b reg wo ws q Φ :
   (wwin dq b reg wo ws -∗ WP (ERun (mkFrame f (put d (WInt (wrd ws q)) (put c (WPtr p) e)) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let c A (Check 0 8 Read 1) [Tmp pr] :: Let d L (RawLoad LdL 0) [Tmp c] :: rest) j))
         : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hc Ha Hq Hb Hwo Hend Hreg Hr. iIntros "[Hl Hw] HK".
   check_read_dq "Hl" by arith.
   iNext. iIntros "Hl".
@@ -209,7 +209,7 @@ Lemma wp_win_byte f e ls l c d pr rest j p dq b reg wo ws i Φ :
          : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let c A (Check 0 1 Read 1) [Tmp pr] ::
                                          Let d W (RawLoad (LdNarrow Sb) 0) [Tmp c] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hc Ha Hi Hb Hwo Hend Hreg. iIntros "[Hl Hw] HK".
   check_read_dq "Hl" by arith.
   iNext. iIntros "Hl".
@@ -270,7 +270,7 @@ Lemma fin_a Δ e z a b x y j Φ :
   ent Δ (WP (ERun (mkFrame glibc_strcmp (put (TAtom "iw_1.v15") z (put (TAtom "iw_1.pr.1") a (put (TAtom "iw_1.pr.2") b
          (put (TAtom "iw_1.pr.3") (WInt x) (put (TAtom "iw_1.pr.4") (WInt y) e))))) [] None
          (Enter (TAtom "iw_1.iw_2.start") (Some (TAtom "iw_1.L10")))) : gexpr) {{ Φ }}).
-Proof. intros Hj Hst Hs HK. step. fin_tac x y j. exact HK. Qed.
+Proof using SafepointStable0. intros Hj Hst Hs HK. step. fin_tac x y j. exact HK. Qed.
 
 (** Lemma [fin_b] verifies the difference epilogue when the unaligned
     loop finds a mismatch against the merged word y. *)
@@ -282,7 +282,7 @@ Lemma fin_b Δ e z1 z2 z3 z4 z5 z6 z7 z8 x y j Φ :
          (put (TAtom "iw_2.v40") z6 (put (TAtom "iw_2.pr.1") z7 (put (TAtom "iw_2.pr.2") z8
          (put (TAtom "iw_2.pr.4") (WInt x) e)))))))))) [] None
          (Enter (TAtom "iw_2.iw_2.start") (Some (TAtom "iw_2.L36")))) : gexpr) {{ Φ }}).
-Proof. intros Hj Hst Hs HK. step. fin_tac x y j. exact HK. Qed.
+Proof using SafepointStable0. intros Hj Hst Hs HK. step. fin_tac x y j. exact HK. Qed.
 
 (** Function [blk] looks up basic block l in `__GI_strcmp`. *)
 Definition blk (l : string) : block :=
@@ -298,7 +298,7 @@ Lemma fin_c Δ e x y j Φ :
   ent Δ (Φ (Ret (WInt ((byte_of x j - byte_of y j) mod 2 ^ 32)))) ->
   ent Δ (WP (ERun (mkFrame glibc_strcmp (put (TAtom "iw_2.pr.3") (WInt x) (put (TAtom "iw_2.pr.6") (WInt y) e)) [] None
          (Exec (TAtom "iw_2.L30") (b_insts blk30) (b_jump blk30))) : gexpr) {{ Φ }}).
-Proof. intros Hj Hst Hs HK. cbn [blk30 b_insts b_jump]. fin_tac x y j. exact HK. Qed.
+Proof using SafepointStable0. intros Hj Hst Hs HK. cbn [blk30 b_insts b_jump]. fin_tac x y j. exact HK. Qed.
 
 (** To avoid repeating boilerplate at the start of each loop proof,
     tactic [facts] extracts the address bounds and byte-agreement
@@ -325,7 +325,7 @@ Lemma aligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c Q1 Q2 e Φ :
        (put (TAtom "iw_1.pr.2") (WPtr (mkPtr (ptr_addr p2 + c + 8) (ptr_cap p2)))
        (put (TAtom "iw_1.pr.3") (WInt (wrd ws1 Q1)) (put (TAtom "iw_1.pr.4") (WInt (wrd ws2 Q2)) e)))) [] None
        (Exec (TAtom "iw_1.L10") (b_insts blk10a) (b_jump blk10a))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2. facts Hs1 Hs2.
   remember (Z.to_nat (Z.of_nat (List.length ws1) - Q1)) as n eqn:Hn.
   revert c Q1 Q2 e Hn. induction n as [|n IH]; intros c Q1 Q2 e Hn Hc HQ1 HQ2 Hsame;
@@ -383,7 +383,7 @@ Lemma unaligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c o Q1 Q2 e Φ 
        (put (TAtom "iw_2.pr.2") (WPtr (mkPtr (wstart p2 + 8 * Q2 + 8) (ptr_cap p2)))
        (put (TAtom "iw_2.pr.4") (WInt (wrd ws1 Q1)) (put (TAtom "iw_2.pr.5") (WInt (wrd ws2 Q2)) e)))) [] None
        (Exec (TAtom "iw_2.L36") (b_insts blk36) (b_jump blk36))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2. facts Hs1 Hs2.
   remember (Z.to_nat (Z.of_nat (List.length ws1) - Q1)) as n eqn:Hn.
   revert c Q1 Q2 e Hn. induction n as [|n IH]; intros c Q1 Q2 e Hn Hc [Ho0 Ho8] HQ1 HQ2 Hsame Hlo H14 H18;

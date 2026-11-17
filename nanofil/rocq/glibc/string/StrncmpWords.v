@@ -102,7 +102,7 @@ Lemma aligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c r Q1 Q2 e Φ :
        (put (TAtom "iw_1.pr.3") (WInt (wrd ws1 Q1)) (put (TAtom "iw_1.pr.4") (WInt r)
        (put (TAtom "iw_1.pr.5") (WInt (wrd ws2 Q2)) e))))) [] None
        (Exec (TAtom "iw_1.L12") (b_insts blk12) (b_jump blk12))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2. facts Hs1 Hs2.
   remember (Z.to_nat (Z.of_nat (List.length ws1) - Q1)) as n eqn:Hn.
   revert c r Q1 Q2 e Hn. induction n as [|n IH]; intros c r Q1 Q2 e Hn Hc [Hr0 Hr] HQ1 HQ2 Hsame;
@@ -176,7 +176,7 @@ Lemma unaligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c o r Q1 Q2 e �
        (put (TAtom "iw_2.pr.4") (WInt (wrd ws1 Q1)) (put (TAtom "iw_2.pr.6") (WInt r)
        (put (TAtom "iw_2.pr.8") (WInt (wrd ws2 Q2)) e))))) [] None
        (Exec (TAtom "iw_2.L46") (b_insts blk46) (b_jump blk46))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2. facts Hs1 Hs2.
   remember (Z.to_nat (Z.of_nat (List.length ws1) - Q1)) as n eqn:Hn.
   revert c r Q1 Q2 e Hn. induction n as [|n IH];

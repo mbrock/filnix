@@ -164,7 +164,7 @@ Lemma loop_spec_dq dq b reg c a ws o e from t q Φ :
   liveq dq b reg -∗ ptsq dq (words_ps b o ws) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b o ws) -∗ Φ (Ret (WInt (b + o + Z.of_nat t - a)))) -∗
   WP (ERun (mkFrame glibc_strlen e [] None (Enter (TAtom "L28") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   revert o e from t q. induction ws as [|w ws IH]; intros o e from t q Hc Ho Hb8 Hal Ha Hend Hreg Hr Hz Hqa Hqc Hphi Hv4.
   { destruct Hz as [Hz _]. cbn in Hz. discriminate. }
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.

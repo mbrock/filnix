@@ -135,7 +135,7 @@ Lemma wp_read_fact (Q : iProp Σ) (F : mem -> Prop) (P : Prop) fr fr' Φ :
   (forall σ, heap_interp wi σ -∗ Q -∗ ⌜F (ls_mem σ)⌝) -> (forall m, F m -> P) ->
   (forall m fuel, F m -> Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' [] m fuel)) ->
   Q -∗ ▷ (⌜P⌝ -∗ Q -∗ WP (ERun fr' : gexpr) {{ Φ }}) -∗ WP (ERun fr : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros HF HP Hs. iIntros "HQ HK". iCombine "HQ HK" as "H".
   iApply (wp_lift_run registry wi ge with "H").
   - iIntros (σ) "Hσ [HQ _]". iDestruct (HF with "Hσ HQ") as %Hf. iPureIntro.
@@ -161,7 +161,7 @@ Lemma wp_bytes_byte f e ls l c d pr rest j p dq b reg o xs i x Φ :
    WP (ERun (mkFrame f (put d (WInt x) (put c (WPtr p) e)) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let c A (Check 0 1 Read 1) [Tmp pr] ::
                                          Let d W (RawLoad (LdNarrow Ub) 0) [Tmp c] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hc Ha Hi Hx8 Ho Hend Hreg. iIntros "Hl Hb HK".
   pose proof (lookup_lt_Some _ _ _ Hi) as Hlt.
   iApply (wp_read_with registry wi ge (liveq dq b reg)%I
@@ -205,7 +205,7 @@ Lemma byte_loop dq1 dq2 b reg o c xs b' reg' o' c' ys i e Φ :
   WP (ERun (mkFrame glibc_memcmp (put (TAtom "pr.3") (WInt (Z.of_nat (List.length xs - i)))
          (put (TAtom "pr.6") (WInt (b + o + Z.of_nat i)) (put (TAtom "pr.12") (WInt (b' + o' + Z.of_nat i)) e)))
        [] None (Exec (TAtom "L89") (b_insts memcmp_blk89) (b_jump memcmp_blk89))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hb Hb' Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy.
   remember (List.length xs - i)%nat as k eqn:Hk.
   revert i e Hk. induction k as [|k IH]; intros i e Hk Hi Htake H0 H2 H10 H13;

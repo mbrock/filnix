@@ -47,7 +47,7 @@ def sentences(text):
                 j += 1
             i = j + 1
             continue
-        if c == "." and (i + 1 == n or text[i + 1].isspace()) and not (i > 0 and text[i - 1] == "."):
+        if c == "." and (i + 1 == n or text[i + 1].isspace()) and not (text[i - 1 : i + 1] == ".." and text[i - 2 : i - 1] != "."):
             out.append(text[start : i + 1])
             start = i + 1
         i += 1

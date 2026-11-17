@@ -76,6 +76,10 @@ class Interface(unittest.TestCase):
         b = "Lemma a : True /\\ True.\nProof. split; exact I. Qed.\n"
         self.assertNotEqual(interface(a)[0], interface(b)[0])
 
+    def test_ellipsis_ends_a_sentence(self):
+        src = "Lemma a : True.\nProof with auto. idtac... Qed.\nLemma b : True.\nProof. exact I. Qed.\n"
+        self.assertEqual(interface(src)[1:], (2, 0))
+
     def test_proof_term_is_kept(self):
         src = "Lemma a : True.\nProof I.\nLemma b : True.\nProof. exact I. Qed.\n"
         text, replaced, kept = interface(src)

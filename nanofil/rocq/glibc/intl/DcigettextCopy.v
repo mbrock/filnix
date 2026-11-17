@@ -281,7 +281,7 @@ Lemma wp_dci_copy_r e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p27
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
-Proof. intros. eapply wp_dci_copy_r_fr; eauto using dci_free_rule_heap. Qed.
+Proof using Type*. intros. eapply wp_dci_copy_r_fr; eauto using dci_free_rule_heap. Qed.
 
 (** Callers written against the old stpcpy rule still get the same
     statement of the copy block. *)
@@ -318,5 +318,5 @@ Lemma wp_dci_copy e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
-Proof. intros Hmv Hmvf Hmvs Hcpy. apply wp_dci_copy_r; try assumption. exact (dci_stpcpy_rule_r_of Hcpy). Qed.
+Proof using Type*. intros Hmv Hmvf Hmvs Hcpy. apply wp_dci_copy_r; try assumption. exact (dci_stpcpy_rule_r_of Hcpy). Qed.
 End rules.

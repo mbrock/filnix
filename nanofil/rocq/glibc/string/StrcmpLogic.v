@@ -104,7 +104,7 @@ Lemma after_bytes dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c Q1 q1 q2 z1 z2 z
   WP (ERun (mkFrame glibc_strcmp (put (TAtom "v17") z1 (put (TAtom "v16") z2 (put (TAtom "pr.1") (WPtr q1)
        (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") z3 e))))) [] None (Enter (TAtom "L13") (Some (TAtom "L10"))))
        : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2 Hc HQ1 Hsame Hq1 Hc1 Hq2 Hc2. facts Hs1 Hs2.
   destruct (same_upto_len _ _ _ _ _ A1 A2 Hsame) as [L1 L2].
   iIntros "W1 W2 HK". step.
@@ -188,7 +188,7 @@ Lemma byte_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 i q1 q2 e Φ :
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
   WP (ERun (mkFrame glibc_strcmp (put (TAtom "pr.1") (WPtr q1) (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") (WInt i) e)))
        [] None (Exec (TAtom "L10") (b_insts blk10) (b_jump blk10))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2. facts Hs1 Hs2. set (n8 := (- ptr_addr p1) mod 8).
   assert (H8 : 0 <= n8 < 8) by (apply Z.mod_pos_bound; lia).
   remember (Z.to_nat (n8 - i)) as n eqn:Hn.
@@ -250,7 +250,7 @@ Lemma strcmp_entry dq1 dq2 p1 p2 s1 s2 e Φ :
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
   WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros He. iIntros "(%b1 & %reg1 & %ws1 & %Hs1 & W1) (%b2 & %reg2 & %ws2 & %Hs2 & W2) HK". facts Hs1 Hs2.
   destruct He as [-> | ->];
     (step; step_symbolic; step_symbolic; step_symbolic; normt ((- ptr_addr p1) mod 8) ltac:(symmetry; apply neg_land7; lia);
@@ -294,7 +294,7 @@ Qed.
 (** Linked callers supply the comparison function's definition by name. *)
 #[global] Instance strcmp_has_spec n `{!Defines ge n glibc_strcmp} :
   HasSpec registry wi ge (TAtom n) strcmp_spec.
-Proof. apply strcmp_spec_valid. apply defines. Qed.
+Proof using SafepointStable0. apply strcmp_spec_valid. apply defines. Qed.
 
 (** Theorem [wp_call_glibc_strcmp] lets any caller invoke `__GI_strcmp`
     by name g, returning [strcmp_res] and both [word_string]

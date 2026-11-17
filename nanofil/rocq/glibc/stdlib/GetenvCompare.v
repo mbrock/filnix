@@ -71,7 +71,7 @@ Lemma getenv_advance e p ep n old (G : iProp Σ) Φ :
       (Enter (TAtom "L32") (Some (TAtom "L34")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
     (Enter (TAtom "L34") (Some (TAtom "L67")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros (Hp & Hep & Hn & Hold & Hz) Hepbound. iIntros "HG HK".
   step. step. step. iApply ("HK" with "[] HG"). iPureIntro.
   unfold getenv_scan_bindings, ptr_add. repeat split; try vx.
@@ -96,7 +96,7 @@ Lemma getenv_equals e p ep q s t old (G : iProp Σ) Φ :
        (Enter (TAtom "L32") (Some (TAtom "L34")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
     (Enter (TAtom "L66") (Some (TAtom "L58")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros (Hp & Hep & Hn & Hold & Hz) Hepbound Hq Hprefix. iIntros "#Ht HG HK".
   pose proof (getenv_prefix_bound _ _ Hprefix) as Hlen.
   iDestruct (ws_shape with "Ht") as %(Hchars & Hpos & Hfit).

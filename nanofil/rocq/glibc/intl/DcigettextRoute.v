@@ -111,7 +111,7 @@ Definition dci_callees_f (lk1 lk2 lkt rt tc : ptr) (L1 L1' L1'' L2 L2' L2'' T T'
 Lemma dci_others_f_of lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv :
   dci_others lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv.
-Proof.
+Proof using Type.
   intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4).
 Qed.
 
@@ -185,7 +185,7 @@ Lemma wp_dci_route_f e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib i
   ▷ (dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros (Hcpy & Hmv & Hmvf & Hmvs & Hheap & Hmal & Hloc & Hrt1 & Hut & Htf & Hr1 & Hr2 & Hu1 & Hu2)
     (Hlkt & Hrt & Htc & Hge & Hlk1 & Hlk2 & Hdb & Hdd & Hcn & Hci & H276 & H277 & Hsec)
     ((Hdb0 & Hdb8 & Hdbend & Hdbr) & Hic & (Hib0 & Hibend & Hibr) & (Hk & Hnb & Hnbk) & (Hsec0 & Hsec4 & Hsecend & Hsecr))
@@ -236,7 +236,7 @@ Lemma wp_dci_route_r e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib i
   ▷ (dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof. intros Hc. eapply wp_dci_route_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
+Proof using Type*. intros Hc. eapply wp_dci_route_f; first [exact (dci_callees_f_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) | exact _]. Qed.
 
 (** This corollary keeps the statement of the route that assumed the old
     stpcpy rule. *)
@@ -254,5 +254,5 @@ Lemma wp_dci_route e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic 
   ▷ (dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply wp_dci_route_r; first [exact Hr | exact _]. Qed.
+Proof using Type*. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply wp_dci_route_r; first [exact Hr | exact _]. Qed.
 End rules.

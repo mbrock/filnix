@@ -124,7 +124,7 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma bytes_splice b ys k n : (k + n <= length ys)%nat ->
   bytes b 0 ys ⊢ bytes b (Z.of_nat k) (take n (drop k ys)) ∗
     (∀ zs, ⌜length zs = n⌝ -∗ bytes b (Z.of_nat k) zs -∗ bytes b 0 (splice ys k zs)).
-Proof.
+Proof using Type.
   intros H.
   assert (E : ys = take k ys ++ take n (drop k ys) ++ drop (k + n) ys).
   { rewrite -{1}(take_drop k ys). f_equal. rewrite -{1}(take_drop n (drop k ys)) drop_drop. reflexivity. }
@@ -137,7 +137,7 @@ Qed.
 (** One byte of a buffer can be replaced on its own. *)
 Lemma bytes_store1 b ys k : (k < length ys)%nat ->
   bytes b 0 ys ⊢ ∃ x, ibyte b (Z.of_nat k) x ∗ (∀ y, ibyte b (Z.of_nat k) y -∗ bytes b 0 (splice ys k [y])).
-Proof.
+Proof using Type.
   intros H. rewrite (bytes_splice b ys k 1); [|lia]. iIntros "[Hb HK]".
   destruct (take 1 (drop k ys)) as [|x [|x' r]] eqn:E.
   - apply (f_equal (@length Z)) in E. rewrite length_take length_drop in E. cbn [length] in E. lia.

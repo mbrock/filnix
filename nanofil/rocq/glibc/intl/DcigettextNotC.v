@@ -36,7 +36,7 @@ Lemma wp_dci_not_c e sl sreg x p9 Φ :
   ▷ (∀ e', live sl sreg -∗ ibyte sl 0 x -∗
      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L355") (Some (TAtom "L340")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L285") (Some (TAtom "L323")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hsl Hp9 Hsl0 Hslend Hslr Hx Hx67. iIntros "Hl Hb HK".
   assert (Ex : extended Sb W x = Some (WInt (chr_w x))).
   { pose proof (extended_chr x) as E. unfold StrlenBits.of_bytes in E. cbn in E. rewrite Z.add_0_r in E. exact E. }

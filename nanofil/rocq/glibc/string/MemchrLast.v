@@ -337,7 +337,7 @@ Lemma memchr_last dq b reg w ws o e from q c E r Φ :
   liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr q r)))) -∗
   WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Ho Hb0 Hal Hq Hend Hreg Hr HA HE Hphi H78 H7 H40 Hhit. iIntros "Hl Hps HK".
   iApply wp_enter; [reflexivity | exact Hphi |]. iNext. cbn [b_insts b_jump memchr_blk84].
   pose proof (Z.mod_pos_bound E 8 ltac:(lia)) as HE8.

@@ -179,7 +179,7 @@ Qed.
 (** Linked programs provide the lookup fact through their function definitions. *)
 #[global] Instance strlen_has_spec n `{!Defines ge n glibc_strlen} :
   HasSpec registry wi ge (TAtom n) strlen_spec.
-Proof. apply strlen_spec_valid. apply defines. Qed.
+Proof using SafepointStable0. apply strlen_spec_valid. apply defines. Qed.
 
 (** Calling a global function g bound to [glibc_strlen] on a
     [word_string] at any share resumes the caller with the string's

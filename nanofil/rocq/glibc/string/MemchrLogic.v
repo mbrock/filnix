@@ -86,7 +86,7 @@ Lemma memchr_first dq b reg w ws a c0 (k : nat) e from c E r Φ :
   liveq dq b reg -∗ ptsq dq (words_ps b (a - Z.of_nat k - b) (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b (a - Z.of_nat k - b) (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr (mkPtr a c0) r)))) -∗
   WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "iw_2.L6") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hb0 Hb8 Hba Hk Hend Hreg Hr HE Hphi H0 H16 H25 H7 H19 Hchk Hhit. iIntros "Hl Hps HK".
   apply Forall_cons_1 in Hr as [Hw0 Hr]. cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   pose proof (Nat2Z.is_nonneg (List.length ws)) as Hws.

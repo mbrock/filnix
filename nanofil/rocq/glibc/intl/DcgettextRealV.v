@@ -64,12 +64,12 @@ End resources.
 Lemma dcg_before_v_0 dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1 L2 T K C M bs :
   dcg_before_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg 0 L1 L2 T K C M bs =
   dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1 L2 T K C M bs.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 Lemma dcg_after_v_0 dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs :
   dcg_after_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg 0 L1'' L2'' T'' K C M bs =
   dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1'' L2'' T'' K C M bs.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** After the call the caller holds the flag with the value it lent, and
     the returned pointer is the message. *)
@@ -84,7 +84,7 @@ Lemma dcg_before_v_cv dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dq
   dcg_before_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v L1 L2 T K C M bs ⊢
   ⌜0 <= ptr_addr cv < 2 ^ 64⌝ ∗
   dcg_before_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v L1 L2 T K C M bs.
-Proof.
+Proof using Type.
   unfold dcg_before_v, dci_reads_v. iIntros "[(Hd & Hc & #Hv & Hr) Ho]". iDestruct (word_string_life with "Hv") as (reg) "[_ %Hcv]".
   iSplit; [done|]. iFrame "∗ #".
 Qed.

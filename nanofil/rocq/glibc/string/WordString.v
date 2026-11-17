@@ -270,7 +270,7 @@ Definition word_string (dq : dfrac) (p : ptr) (s : list Z) : iProp Σ :=
 (** Two fractional piece maps with identical keys must hold identical
     values, as [ptsq_agree] proves. *)
 Lemma ptsq_agree dq1 dq2 ps1 ps2 : ps1.*1 = ps2.*1 -> ptsq dq1 ps1 -∗ ptsq dq2 ps2 -∗ ⌜ps1 = ps2⌝.
-Proof.
+Proof using Type.
   revert ps2. induction ps1 as [|[l1 v1] ps1 IH]; intros [|[l2 v2] ps2] Hk; try discriminate Hk.
   - by iIntros.
   - cbn in Hk. injection Hk as <- Hk. rewrite /ptsq /=. iIntros "[H1 Hs1] [H2 Hs2]".
@@ -281,12 +281,12 @@ Qed.
     joins them back together. *)
 Lemma wwin_split q1 q2 b reg wo ws :
   wwin (DfracOwn (q1 + q2)) b reg wo ws ⊣⊢ wwin (DfracOwn q1) b reg wo ws ∗ wwin (DfracOwn q2) b reg wo ws.
-Proof. rewrite /wwin !ptsq_split. iSplit; [iIntros "[[$ $] [$ $]]" | iIntros "[[$ $] [$ $]]"]. Qed.
+Proof using Type. rewrite /wwin !ptsq_split. iSplit; [iIntros "[[$ $] [$ $]]" | iIntros "[[$ $] [$ $]]"]. Qed.
 
 (** Any share of a window can be frozen into a persistent read-only
     window by [wwin_persist]. *)
 Lemma wwin_persist dq b reg wo ws : wwin dq b reg wo ws ==∗ □ wwin DfracDiscarded b reg wo ws.
-Proof.
+Proof using Type.
   iIntros "[Hl Hw]". iMod (ptsq_persist with "Hl") as "#Hl". iMod (ptsq_persist with "Hw") as "#Hw".
   iModIntro. iModIntro. iFrame "#".
 Qed.
@@ -295,14 +295,14 @@ Qed.
     without splitting fractions again. Instance [wwin_persistent] marks
     a read-only window as [[persistent-proposition|persistent]]. *)
 Global Instance wwin_persistent b reg wo ws : Persistent (wwin DfracDiscarded b reg wo ws).
-Proof. rewrite /wwin. apply _. Qed.
+Proof using Type. rewrite /wwin. apply _. Qed.
 
 (** Two fractional windows of the same object, offset, and word count
     must share the same region and word values, as [wwin_agree] proves. *)
 Lemma wwin_agree dq1 dq2 b reg1 reg2 wo ws1 ws2 : length ws1 = length ws2 ->
   Forall (fun w => 0 <= w < 2 ^ 64) ws1 -> Forall (fun w => 0 <= w < 2 ^ 64) ws2 ->
   wwin dq1 b reg1 wo ws1 -∗ wwin dq2 b reg2 wo ws2 -∗ ⌜reg1 = reg2 /\ ws1 = ws2⌝.
-Proof.
+Proof using Type.
   iIntros (Hl H1 H2) "[Hl1 Hw1] [Hl2 Hw2]".
   iDestruct (ptsq_agree with "Hl1 Hl2") as %E; [reflexivity|].
   iDestruct (ptsq_agree with "Hw1 Hw2") as %Ew; [exact (words_ps_keys_eq _ _ _ _ Hl)|].
@@ -314,7 +314,7 @@ Qed.
     verifies. *)
 Lemma str_shape_same p b1 b2 reg1 reg2 ws1 ws2 s :
   str_shape p b1 reg1 ws1 s -> str_shape p b2 reg2 ws2 s -> b1 = b2 /\ length ws1 = length ws2.
-Proof.
+Proof using Type*.
   intros [Hc1 _ _ _ _ _ Hl1 _ _ _] [Hc2 _ _ _ _ _ Hl2 _ _ _]. split; [|lia].
   destruct Hc1 as [E1|E1], Hc2 as [E2|E2]; rewrite E1 in E2; congruence.
 Qed.
@@ -466,7 +466,7 @@ Definition lit_ps (b : Z) (reg : region) (ws : list Z) : list (piece * pval) :=
 (** [lit_ps_nodup] proves that all piece keys in [lit_ps] are distinct,
     as required when initializing the program logic heap. *)
 Lemma lit_ps_nodup b reg ws : NoDup (lit_ps b reg ws).*1.
-Proof.
+Proof using Type*.
   cbn [lit_ps fmap list_fmap fst]. rewrite (words_ps_keys b 0 ws). apply NoDup_cons. split.
   - intros Hin. apply list_elem_of_fmap in Hin as (? & ? & _). discriminate.
   - apply NoDup_fmap_2; [intros x y E; congruence | apply NoDup_seqZ].

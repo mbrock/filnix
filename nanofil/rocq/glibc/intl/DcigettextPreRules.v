@@ -47,7 +47,7 @@ Definition dci_w (xs : list Z) : Z :=
 
 (** The saved word is a 32-bit value, which the restore at exit needs. *)
 Lemma dci_w_range xs : 0 <= dci_w xs < 2 ^ 32.
-Proof.
+Proof using Type*.
   unfold dci_w. destruct xs as [|a [|b [|c [|d [|u xs]]]]]; try (cbn; lia).
   apply Z.mod_pos_bound. lia.
 Qed.
@@ -90,7 +90,7 @@ Qed.
     word with every bit set stays 2^32 - 1. *)
 Example dci_w_controls : dci_w [1; 0; 0; 0] = 1 /\ dci_w [0; 1; 0; 0] = 256 /\
   dci_w [255; 255; 255; 255] = 2 ^ 32 - 1 /\ dci_w [1; 0; 0] = 0.
-Proof. repeat split. Qed.
+Proof using Type*. repeat split. Qed.
 
 (** ## The callees of the prefix *)
 

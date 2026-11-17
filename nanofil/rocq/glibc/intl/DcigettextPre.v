@@ -67,7 +67,7 @@ Lemma wp_dci_pre e dom msgid lk1 lk2 L1 L1' L2 L2' bs C cv lkt T T' T'' rt tc K 
      pcell sb 56 msgid -∗ errno_own eb bs -∗ L1' -∗ L2' -∗ C -∗ T'' -∗ K -∗
      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L102") (Some (TAtom "L108")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Hloc Hlkt Hrt Htc Hrt1 Hut Htf Hge Hlk1 Hlk2 Hr1 Hr2 Hv0 Hv2 Hv6 Hv10 Hm Hd.
   iIntros "HL1 HL2 Herr HC HT HK HΦ".
   step.

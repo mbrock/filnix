@@ -121,7 +121,7 @@ Lemma wp_libc_malloc2 n Φ :
   (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
      obj base (heap_req 16 n) -∗ Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
   WP (ERun (mkFrame malloc2_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hn Hk. iIntros "HΦ". step.
   iApply (wp_alloc_any _ _ _ _ _ _ _ _ _ _ _ _ _ n);
     [cbn; rewrite Z.mod_small; [reflexivity | lia] | lia | exact Hk |].
@@ -154,7 +154,7 @@ Lemma wp_glibc_free b reg Φ :
   live b reg -∗ Φ RetVoid -∗
   WP (ERun (mkFrame free_fn [(TAtom "v0", WPtr (mkPtr b (Obj b)))] [] None (Enter (TAtom "start") None))
       : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hf Hfn Hdata Hk Hb Hwi. iIntros "Hl HΦ". step.
   iApply (wp_free_sym with "Hl"); [reflexivity | exact Hf | exact Hfn | exact Hdata | reflexivity
                                   | exact Hk | exact Hb | exact Hwi |].
@@ -191,7 +191,7 @@ Definition tcache_idle (dq : dfrac) (mp_b tc_b dummy_b : Z) (mp_reg tc_reg dummy
 Lemma malloc2_frame n :
   call_frame malloc2_fn [WInt n] =
   Some (mkFrame malloc2_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)).
-Proof. reflexivity. Qed.
+Proof using Type*. reflexivity. Qed.
 
 (** Every branch of `c: malloc`'s tcache prelude ends at block `L7`,
     which calls `__libc_malloc2` and returns its result. The tactic
@@ -222,7 +222,7 @@ Ltac join Hmp :=
 (** [seqZ_bin] confirms that any small-bin index i below 64 appears at
     position i in `seqZ 0 64`. *)
 Lemma seqZ_bin i : 0 <= i < 64 -> seqZ 0 64 !! Z.to_nat i = Some i.
-Proof. intros Hi. rewrite lookup_seqZ_lt; [f_equal; lia | lia]. Qed.
+Proof using Type*. intros Hi. rewrite lookup_seqZ_lt; [f_equal; lia | lia]. Qed.
 
 (** Small allocations check whether a cached chunk is waiting in the
     thread's dummy tcache table before falling back to the runtime
@@ -259,7 +259,7 @@ Lemma wp_glibc_malloc n dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg Φ :
      obj base (heap_req 16 n) -∗ tcache_idle dq mp_b tc_b dummy_b mp_reg tc_reg dummy_reg -∗
      Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
   WP (ERun (mkFrame malloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hn Hk Hmp Htc Hm2. iIntros "Hidle HΦ".
   assert (Hm2_def : Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn) by exact Hm2.
   pose proof (malloc2_has_spec "glibc_malloc#__libc_malloc2") as Hspec.

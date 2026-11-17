@@ -38,7 +38,7 @@ Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 (** A string at any share fits below the 48-bit address limit. *)
 Lemma dci_ws_bounds dq p s : word_string dq p s ⊢
   ⌜0 < ptr_addr p /\ ptr_addr p + Z.of_nat (length s) + 1 <= 2 ^ 48⌝ ∗ word_string dq p s.
-Proof.
+Proof using Type.
   iIntros "(%b & %reg & %ws & %Hs & H)". iSplit; [iPureIntro | iExists b, reg, ws; by iFrame].
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hr Hby Hch]. unfold wstart in Hf.
   pose proof (Z.div_mod (ptr_addr p mod 8 + Z.of_nat (length s) + 8) 8 ltac:(lia)).
@@ -79,7 +79,7 @@ Lemma wp_dci_join_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd lk1 lk2 U1
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros Henv Hv7 Hv9 Hs Hxs0 Hxs8 Hxsend Hxsr Hheap Hmal Hge Hlk1 Hlk2 Hu1 Hu2.
   pose proof Henv as (Hv17 & Hc0 & Hv21 & Hv23 & Hpr1 & Hv2 & Hv6 & Hv10 & Hv32 & Hv69 & Hv90).
   iIntros "Hcat Hdom HM Hxl Hxc HU1 HU2 Herr HK".
@@ -139,5 +139,5 @@ Lemma wp_dci_join e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd lk1 lk2 U1 U1
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}.
-Proof. intros. eapply wp_dci_join_fr; eauto using dci_free_rule_heap. Qed.
+Proof using Type*. intros. eapply wp_dci_join_fr; eauto using dci_free_rule_heap. Qed.
 End rules.

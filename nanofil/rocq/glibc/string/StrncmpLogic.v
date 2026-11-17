@@ -113,7 +113,7 @@ Lemma after_bytes dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 n c Q1 q1 q2 z1 z2
   WP (ERun (mkFrame glibc_strncmp (put (TAtom "v65") z1 (put (TAtom "v31") z2 (put (TAtom "v30") z3
        (put (TAtom "pr.1") (WPtr q1) (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") z4 e)))))) [] None
        (Enter (TAtom "L62") (Some (TAtom "L27")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2 [Hc Hcn] Hn HQ1 Hsame Hq1 Hc1 Hq2 Hc2 H4 H21. facts Hs1 Hs2.
   destruct (same_upto_len _ _ _ _ _ A1 A2 Hsame) as [L1 L2].
   iIntros "W1 W2 HK". step.
@@ -211,7 +211,7 @@ Lemma byte_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 n i q1 q2 e Φ :
    Φ (Ret (WInt (strncmp_res n s1 s2)))) -∗
   WP (ERun (mkFrame glibc_strncmp (put (TAtom "pr.1") (WPtr q1) (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") (WInt i) e)))
        [] None (Exec (TAtom "L24") (b_insts blk24) (b_jump blk24))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs1 Hs2 [Hn0 Hn]. facts Hs1 Hs2. set (n8 := (- ptr_addr p1) mod 8). set (m := Z.min n8 n).
   assert (H8 : 0 <= n8 < 8) by (apply Z.mod_pos_bound; lia).
   assert (Hm : 0 <= m <= n /\ m <= n8) by lia.
@@ -282,7 +282,7 @@ Lemma strncmp_entry dq1 dq2 p1 p2 s1 s2 n e Φ :
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strncmp_res n s1 s2)))) -∗
   WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hn He. iIntros "(%b1 & %reg1 & %ws1 & %Hs1 & W1) (%b2 & %reg2 & %ws2 & %Hs2 & W2) HK". facts Hs1 Hs2.
   set (n8 := (- ptr_addr p1) mod 8). assert (H8 : 0 <= n8 < 8) by (apply Z.mod_pos_bound; lia).
   iAssert (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗

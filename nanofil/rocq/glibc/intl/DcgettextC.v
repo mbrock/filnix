@@ -128,7 +128,7 @@ Lemma wp_dcgettext_c f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply wp_dcgettext_c_r; first [exact Hr | exact _]. Qed.
+Proof using Type*. intros Hc. pose proof (dci_callees_r_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hc) as Hr. eapply wp_dcgettext_c_r; first [exact Hr | exact _]. Qed.
 
 (** ## The translation premises of getopt *)
 

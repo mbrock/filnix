@@ -96,7 +96,7 @@ Lemma getenv_empty p s dq bc rc be re counter (E : iProp Σ) Φ :
   (word_string DfracDiscarded p s -∗ getenv_globals dq bc rc be re counter null -∗ E -∗
    Φ (Ret (WPtr null))) -∗
   WP (ERun (getenv_frame p) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcounter Henv Hbc Hrc Hrcmax Hbe Hre Hremax Hal.
   iIntros "#Hname (Hcl & Hcc & Hel & Hec) HE HK".
   unfold getenv_frame.

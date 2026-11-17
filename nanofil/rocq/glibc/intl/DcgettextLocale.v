@@ -91,7 +91,7 @@ Lemma dcg_before_cv dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi 
   dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1 L2 T K C M bs ⊢
   ⌜0 <= ptr_addr cv < 2 ^ 64⌝ ∗
   dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg L1 L2 T K C M bs.
-Proof.
+Proof using Type.
   unfold dcg_before, dci_reads. iIntros "[(Hd & Hc & #Hv & Hr) Ho]". iDestruct (word_string_life with "Hv") as (reg) "[_ %Hcv]".
   iSplit; [done|]. iFrame "∗ #".
 Qed.
@@ -116,7 +116,7 @@ Lemma dci_rest_cur `{!Defines ge "__current_locale_name" glibc_current_locale_na
   locale_cells gb go greg lp lb lreg -> 0 <= ptr_addr cv < 2 ^ 64 ->
   dci_rest lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T''
     (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M cv.
-Proof.
+Proof using Type.
   intros (H1 & H2 & H3 & H4 & H5 & H7 & H8 & H9 & H10 & H11 & H12) Hl Hcv.
   unfold dci_rest. split_and!; try assumption. apply dci_locale_rule_cur; assumption.
 Qed.
@@ -134,7 +134,7 @@ Definition dci_rest_lf (lk1 lk2 lkt : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' M :
 (** The model's free meets that rule. *)
 Lemma dci_rest_lf_of lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M :
   dci_rest_l lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M.
-Proof. intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4). Qed.
+Proof using Type. intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4). Qed.
 
 (** The real locale query answers here as well. *)
 Lemma dci_rest_cur_f `{!Defines ge "__current_locale_name" glibc_current_locale_name}
@@ -143,7 +143,7 @@ Lemma dci_rest_cur_f `{!Defines ge "__current_locale_name" glibc_current_locale_
   locale_cells gb go greg lp lb lreg -> 0 <= ptr_addr cv < 2 ^ 64 ->
   dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T''
     (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) M cv.
-Proof.
+Proof using Type.
   intros (H1 & H2 & H3 & H4 & H5 & H7 & H8 & H9 & H10 & H11 & H12) Hl Hcv.
   unfold dci_rest_f. split_and!; try assumption. apply dci_locale_rule_cur; assumption.
 Qed.

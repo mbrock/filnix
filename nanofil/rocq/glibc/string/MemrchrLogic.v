@@ -106,7 +106,7 @@ Lemma memrchr_win dq b reg ws a cp c (k n : nat) e r Φ :
   wwin dq b reg (a - Z.of_nat k - b) ws -∗
   (wwin dq b reg (a - Z.of_nat k - b) ws -∗ Φ (Ret (WPtr (hit_ptr (mkPtr a cp) r)))) -∗
   WP (ERun (mkFrame glibc_memrchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hb0 Hc Hb8 Hba Hk Hend Hreg Hr Hcr Hlen Hhit H0 H2 H4. iIntros "Hw HK".
   assert (Han : Z.of_nat k + Z.of_nat n <= 8 * Z.of_nat (List.length ws)) by (Z.div_mod_to_equations; lia).
   pose proof (Z.mod_pos_bound a 8 ltac:(lia)) as Hk8.

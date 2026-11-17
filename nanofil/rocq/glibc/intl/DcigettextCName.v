@@ -88,7 +88,7 @@ Lemma wp_dci_c_name e cv sl sreg a0 a1 Φ :
      live sl sreg -∗ ibyte sl 0 67 -∗ ibyte sl 1 a1 -∗
      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L298") (Some (TAtom "L304")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hcv Hsl Hsl0 Hslend Hslr.
   iIntros "#Hw Hl Hb0 Hb1 HK".
   step. step. step.

@@ -100,7 +100,7 @@ Lemma dci_rest_l_rw `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_r
   dci_rest_l lk1 lk2 lkt (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 (r1 + 8) cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid)
     (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid) (rw_held a2 ar2 (r2 + 8) cw2 sh2 fl2 q2 tb tbreg i2 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
     (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid) (rw_held a3 ar3 (r3 + 8) cw3 sh3 fl3 q3 tb tbreg i3 tid) (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid) M.
-Proof.
+Proof using Hext Hreg.
   intros (H1 & H2 & H3 & H4 & H5) R1 R2 Rt. unfold dci_rest_l. split_and!; try assumption;
     first [apply dci_rdlock_rule_rw | apply dci_unlock_rule_rw]; assumption.
 Qed.
@@ -114,7 +114,7 @@ Definition dci_rest_rwf (M : iProp Σ) : Prop :=
 
 (** The model's free meets that rule. *)
 Lemma dci_rest_rwf_of M : dci_rest_rw M -> dci_rest_rwf M.
-Proof. intros (H1 & H2 & H3 & H4 & H5). split_and!; try assumption. exact (dci_free_rule_heap H4). Qed.
+Proof using Type. intros (H1 & H2 & H3 & H4 & H5). split_and!; try assumption. exact (dci_free_rule_heap H4). Qed.
 
 (** The real locks answer here as well. *)
 Lemma dci_rest_l_rwf `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
@@ -124,7 +124,7 @@ Lemma dci_rest_l_rwf `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_
   dci_rest_lf lk1 lk2 lkt (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 (r1 + 8) cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid)
     (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid) (rw_held a2 ar2 (r2 + 8) cw2 sh2 fl2 q2 tb tbreg i2 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
     (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid) (rw_held a3 ar3 (r3 + 8) cw3 sh3 fl3 q3 tb tbreg i3 tid) (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid) M.
-Proof.
+Proof using Hext Hreg.
   intros (H1 & H2 & H3 & H4 & H5) R1 R2 Rt. unfold dci_rest_lf. split_and!; try assumption;
     first [apply dci_rdlock_rule_rw | apply dci_unlock_rule_rw]; assumption.
 Qed.
@@ -323,7 +323,7 @@ Example rw_pair_16 `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rw
   rw_place lk lb lreg tb treg -> cw <> tid ->
   dci_rdlock_rule lk (rw_held lb lreg 16 cw sh fl dqt tb treg dqi tid) (rw_held lb lreg 24 cw sh fl dqt tb treg dqi tid) /\
   dci_unlock_rule lk (rw_held lb lreg 24 cw sh fl dqt tb treg dqi tid) (rw_held lb lreg 16 cw sh fl dqt tb treg dqi tid).
-Proof.
+Proof using Hext Hreg.
   intros Hp Hcw. assert (Hr : rw_ready lk lb lreg tb treg 16 cw tid) by (split_and!; first [exact Hp | exact Hcw | reflexivity | lia]).
   split; [exact (dci_rdlock_rule_rw lk lb lreg tb treg 16 cw sh fl dqt dqi tid Hr)
          | exact (dci_unlock_rule_rw lk lb lreg tb treg 16 cw sh fl dqt dqi tid Hr)].

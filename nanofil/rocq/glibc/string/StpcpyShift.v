@@ -100,7 +100,7 @@ Lemma stp_shift_loop e bd rd xs o q b reg ws dq s d v Q Φ :
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
   WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "iw_2.L34") (b_insts blk_34) (b_jump blk_34))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hs. destruct (shape_facts _ _ _ _ _ Hs) as (B & S1 & M & P & K & E & R & N & C).
   pose proof (ss_words _ _ _ _ _ Hs) as F. pose proof (ss_chars _ _ _ _ _ Hs) as Hch. pose proof (sbyte_agree _ _ _ _ _ Hs) as A.
   set (n := Z.of_nat (length s)) in *. set (S := (s ++ [0])%list) in *.

@@ -138,7 +138,7 @@ Lemma wp_dci_exit_fr e xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ live sl sreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L356")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros [Hfn Hfl] Hge Hlk1 Hlk2 Hu1 Hu2 Hv17 Hc0 Hv232 Hv254 Hv69 Hs Hv6 Hv2
     Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd Hsk Hsl.
   iIntros "Hxl Hxc Hdl Hsl HU1 HU2 Herr HK".
@@ -175,5 +175,5 @@ Lemma wp_dci_exit e xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ live sl sreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L356")))) : gexpr) {{ Φ }}.
-Proof. intros Hh. apply wp_dci_exit_fr, dci_free_rule_heap, Hh. Qed.
+Proof using Type*. intros Hh. apply wp_dci_exit_fr, dci_free_rule_heap, Hh. Qed.
 End rules.

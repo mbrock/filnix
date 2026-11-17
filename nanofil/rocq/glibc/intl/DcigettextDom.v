@@ -38,7 +38,7 @@ Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 
 (** An unsigned byte load of x returns x itself. *)
 Lemma extended_ub x : 0 <= x < 256 -> extended Ub W (of_bytes [x]) = Some (WInt x).
-Proof.
+Proof using Type*.
   intros Hx. unfold extended, of_bytes. cbn. rewrite Z.add_0_r.
   rewrite !Z.mod_small; try lia. reflexivity.
 Qed.
@@ -90,7 +90,7 @@ Lemma wp_dci_dom e xs rl sb dom msgid cv s db dqb dbreg dd nb nc ib ic dqi ireg 
       liveq dqb db dbreg -∗ pcellq dqb db 0 null -∗ liveq dqi ib ireg -∗ bytesq dqi ib 5 [k] -∗ C -∗
       WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L102") (Some (TAtom "L108")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Henv Hloc Hdb Hdb0 Hdb8 Hdbend Hdbr Hdd Hcn Hci Hic Hib0 Hibend Hibr Hk Hnb Hnbk.
   pose proof Henv as (Hv17 & Hc0 & Hv21 & Hv23 & Hpr1 & Hv2 & Hv6 & Hv10 & Hv32 & Hv69 & Hv90).
   iIntros "Hnl Hnc Hil Hib #Hcv HC HK".

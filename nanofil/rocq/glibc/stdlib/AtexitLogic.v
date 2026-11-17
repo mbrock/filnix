@@ -250,7 +250,7 @@ Lemma spares_cons b k :
   0 <= k < 32 ->
   ([∗ list] i ∈ seqZ k (32 - k), spare b (16 + 32 * i)) ⊣⊢
   spare b (16 + 32 * k) ∗ [∗ list] i ∈ seqZ (k + 1) (32 - (k + 1)), spare b (16 + 32 * i).
-Proof.
+Proof using Type.
   intros Hk. rewrite (seqZ_cons k (32 - k)); [|lia]. rewrite big_sepL_cons.
   replace (Z.succ k) with (k + 1) by lia. replace (Z.pred (32 - k)) with (32 - (k + 1)) by lia. done.
 Qed.
@@ -278,7 +278,7 @@ Lemma wp_new_exitfn x ents c Φ :
    Φ (Ret (WPtr (mkPtr (xo_init x + 16 + 32 * Z.of_nat (List.length ents)) (Obj (xo_init x)))))) -∗
   WP (ERun (mkFrame new_exitfn_fn [(TAtom "v0", WPtr (mkPtr (xo_funcs x) (Obj (xo_funcs x))))] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   destruct x as [lk lkr dn dnr cl clr fs fsr ib ibr]. unfold exit_layout, exit_globals, exit_wi.
   cbn [xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg xo_funcs xo_funcs_reg xo_init xo_init_reg].
   intros (Hl0 & Hl4 & Hle & Hd0 & Hde & Hc0 & Hce & Hf0 & Hf8 & Hfe & Hi0 & Hi8 & Hie)
@@ -357,7 +357,7 @@ Lemma exit_block_snoc b reg ents e :
   ([∗ list] i ∈ seqZ (Z.of_nat (List.length ents) + 1) (32 - (Z.of_nat (List.length ents) + 1)),
      spare b (16 + 32 * i)) ⊢
   exit_block b reg (ents ++ [e]).
-Proof.
+Proof using Type.
   rewrite /exit_block length_app big_sepL_snoc. cbn [List.length].
   replace (Z.of_nat (List.length ents + 1)) with (Z.of_nat (List.length ents) + 1) by lia.
   iIntros "($ & $ & $ & $ & $ & $)".
@@ -510,7 +510,7 @@ Lemma wp_glibc_atexit x ents c fnp Φ :
   exit_funcs_inv x ents c -∗
   (exit_funcs_inv x (ents ++ [(fnp, null, null)]) ((c + 1) mod 2 ^ 64) -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun (mkFrame atexit_fn [(TAtom "v0", WPtr fnp)] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hlay Hgl Hwi Hfns Hk Hfp. pose proof (cxa_atexit_has_spec _ (proj2 (proj2 Hfns))) as Hspec.
   iIntros "Hinv HΦ". step.
   call_spec with (x, ents, c, fnp, null, null); [repeat (split; [assumption|]); assumption|].

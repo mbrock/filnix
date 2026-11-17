@@ -284,7 +284,7 @@ Definition stack_size_cell (self : ptr) (dq : dfrac) (sz : Z) : iProp Σ :=
     find them in the starting memory. *)
 Lemma stack_size_own tb sz : ow_self w0 = mkPtr tb (Obj tb) ->
   pts (cell tb off_stackblock_size sz) ==∗ □ stack_size_cell (ow_self w0) DfracDiscarded sz.
-Proof.
+Proof using Type.
   intros Hs. iIntros "H". rewrite pts_ptsq. iMod (ptsq_persist with "H") as "#H".
   iModIntro. iModIntro. iExists tb. iSplit; [done | iExact "H"].
 Qed.

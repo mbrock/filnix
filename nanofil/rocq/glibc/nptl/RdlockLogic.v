@@ -55,10 +55,10 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
   | apply (ext_fn ge Hext); cbn; tauto | apply (ext_data ge Hext); cbn; tauto].
 
 Lemma load_uw_int x : 0 <= x < 2 ^ 32 -> extended Uw W (of_bytes (le_bytes x 4)) = Some (WInt x).
-Proof. intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. f_equal. f_equal. rewrite !Z.mod_small; lia. Qed.
+Proof using Type*. intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. f_equal. f_equal. rewrite !Z.mod_small; lia. Qed.
 
 Lemma land_low r m : r mod 8 = 0 -> Z.land 7 m = m -> Z.land r m = 0.
-Proof.
+Proof using Type*.
   intros H Hm. rewrite <- Hm. rewrite Z.land_assoc. change 7 with (Z.ones 3). rewrite Z.land_ones; [|lia].
   change (2 ^ 3) with 8. rewrite H. apply Z.land_0_l.
 Qed.

@@ -127,7 +127,7 @@ Lemma rloop dq b reg wo ws cp c (k n i : nat) e r Φ :
   WP (ERun (mkFrame glibc_memrchr (put (TAtom "pr.1") (WPtr (mkPtr (b + wo + 8 * Z.of_nat i) cp))
          (put (TAtom "pr.2") (WInt (wrd ws (Z.of_nat i))) e)) [] None
        (Exec (TAtom "L83") (b_insts rblk83) (b_jump rblk83))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hb0 Hc Hwo Hal Hend Hreg Hr Hk Hkn.
   assert (HB : (k + n <= List.length (wbytes ws))%nat) by (rewrite wbytes_length; lia).
   revert e. induction i as [|i IH]; intros e Hi Hnone Hhit H77 H26 H7; iIntros "Hw HK"; cbn [rblk83 b_insts b_jump];

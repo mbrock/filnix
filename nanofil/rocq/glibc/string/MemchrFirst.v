@@ -91,7 +91,7 @@ Lemma memchr_hit e from m j a c0 E Φ :
   lookup (TAtom "v40") e = Some (WInt E) ->
   Φ (Ret (WPtr (hit_ptr (mkPtr a c0) (if a + j <=? E then Some (Z.to_nat j) else None)))) -∗
   WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "iw_6.start") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hmr H01 Hj Hb Hlow Ha HE H12 H0 H40. iIntros "HK".
   assert (Hm0 : (m =? 0) = false).
   { apply Z.eqb_neq. intros E'. rewrite E' in Hb. unfold byte_of in Hb. rewrite Z.div_0_l in Hb; [discriminate|].
@@ -134,7 +134,7 @@ Lemma memchr_next dq b reg w ws A c0 c1 e from c E r Φ :
   liveq dq b reg -∗ ptsq dq (words_ps b (A - b) (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b (A - b) (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr (mkPtr (A + 8) c0) r)))) -∗
   WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L52") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hb0 HbA Hal Hend Hreg Hr HE H19 Hchk H43 H7 H40 Hlast Hnext. iIntros "Hl Hps HK".
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
   pose proof (Nat2Z.is_nonneg (List.length ws)) as Hws.

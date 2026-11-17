@@ -104,7 +104,7 @@ Lemma wp_win_half f e ls l c d bd p1n pr rest j p1 p dq b reg wo ws q Φ :
   (wwin dq b reg wo ws -∗ WP (ERun (mkFrame f (put d (WInt (wrd ws q)) (put c (WPtr p) e)) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let c A (HalfCheck bd 0 8 Read 1) [Tmp p1n; Tmp pr] ::
                                          Let d L (RawLoad LdL 0) [Tmp c] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hp1 Hc Ha Hq Hb Hwo Hend Hreg Hr. iIntros "[Hl Hw] HK".
   iApply (MemchrLast.wp_half_check_read_dq registry wi ge with "Hl"); [reflexivity | exact Hx | exact Hp1 | exact Hc
     | arith | arith | lia | arith | apply Z.mod_1_r |].
@@ -142,7 +142,7 @@ Lemma memrchr_mask dq b reg ws a cp c (k n : nat) (Lz e' fm : Z) e r Φ :
   (wwin dq b reg (a - Z.of_nat k - b) ws -∗ Φ (Ret (WPtr (hit_ptr (mkPtr a cp) r)))) -∗
   WP (ERun (mkFrame glibc_memrchr (put (TAtom "v48") (WInt fm) e) [] None
        (Exec (TAtom "iw_3.join") (b_insts rblk_join) (b_jump rblk_join))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hb0 Hc Hba HW8 Hk Hend Hreg Hr HL0 HLw He' He Hfm Hbyte Hhit H31 H26 H42 Hchk H7. iIntros "Hw HK".
   set (W := a - Z.of_nat k) in *. set (w := wrd ws Lz) in *. assert (EW : W + Z.of_nat k = a) by (unfold W; lia).
   assert (He'' : Z.of_nat k + Z.of_nat n = 8 * Lz + e') by lia. clear He'.

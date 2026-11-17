@@ -335,7 +335,7 @@ Lemma nul_loop dq p b reg ws s c t Q A e Φ :
   (wwin dq b reg (wstart p - b) ws -∗ Φ (Ret (WPtr (ptr_add p (Z.of_nat t))))) -∗
   WP (ERun (mkFrame glibc_strchrnul (put (TAtom "pr.1") (WPtr (mkPtr A (ptr_cap p))) e) [] None
          (Exec (TAtom "L37") (b_insts blk37) (b_jump blk37))) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs. destruct (shape_facts _ _ _ _ _ Hs) as (B1 & S1 & M1 & P1 & K1 & E1 & R1 & N1 & C1).
   pose proof (ss_words _ _ _ _ _ Hs) as F1.
   remember (Z.to_nat (Z.of_nat (List.length ws) - Q)) as n eqn:Hn.
@@ -491,7 +491,7 @@ Lemma wp_win_ubyte f e ls l c d pr rest j p dq b reg wo ws i Φ :
    WP (ERun (mkFrame f (put d (WInt (bt ws i)) (put c (WPtr p) e)) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let c A (Check 0 1 Read 1) [Tmp pr] ::
                                          Let d W (RawLoad (LdNarrow Ub) 0) [Tmp c] :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hc Ha Hi Hb Hwo Hend Hreg. iIntros "[Hl Hw] HK".
   check_read_dq "Hl" by arith.
   iNext. iIntros "Hl".
@@ -570,7 +570,7 @@ Qed.
 #[global] Instance strchr_has_spec n `{!Defines ge n glibc_strchr,
     !Defines ge "__GI___strchrnul" glibc_strchrnul} :
   HasSpec registry wi ge (TAtom n) strchr_spec.
-Proof. apply strchr_spec_valid; apply defines. Qed.
+Proof using SafepointStable0. apply strchr_spec_valid; apply defines. Qed.
 
 (** When a caller invokes `c: strchr` in a module that links
     `__GI___strchrnul` to [glibc_strchrnul], [wp_call_glibc_strchr]

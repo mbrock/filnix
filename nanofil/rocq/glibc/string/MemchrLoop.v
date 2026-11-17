@@ -61,7 +61,7 @@ Lemma memchr_loop_ind (dq : dfrac) (b : Z) (reg : region) (c E : Z) (Φ : outcom
     liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗
     (liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr q r)))) -∗
     WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hb0 Hreg. iLöb as "IH".
   iIntros (w ws o e from q r Hc Ho Hal Hq Hend Hr HE Hphi H78 H7 H40 Hhit) "Hl Hps HK".
   destruct (Z.eq_dec (b + o) (E - E mod 8)) as [HA|HA].
@@ -136,7 +136,7 @@ Lemma memchr_loop dq b reg w ws o e from q c E r Φ :
   liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr q r)))) -∗
   WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Ho Hb0 Hal Hq Hend Hreg Hr HE Hphi H78 H7 H40 Hhit. iIntros "Hl Hps HK".
   iApply (memchr_loop_ind dq b reg c E Φ Hb0 Hreg $! w ws o e from q r
             with "[//] [//] [//] [//] [//] [//] [//] [//] [//] [//] [//] [//] Hl Hps HK").

@@ -93,7 +93,7 @@ Lemma stp_tail1 e bd rd xs o s k u w Φ :
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
   WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "iw_1.iw_2.L7") (b_insts blk_t1) (b_jump blk_t1))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hu Ha Hw Hw64 Hk Hu0 Hn Hbyte Hs Ho Hox Hbd Hend Hreg.
   set (n := Z.of_nat (length s)) in *. set (S := (s ++ [0])%list) in *.
   assert (HS : Z.of_nat (length S) = n + 1) by (unfold S, n; rewrite length_app; cbn; lia).
@@ -153,7 +153,7 @@ Lemma stp_tail2 e bd rd xs o s k u w Φ :
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
   WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "iw_2.iw_4.L7") (b_insts blk_t2) (b_jump blk_t2))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hu Ha Hw Hw64 Hk Hu0 Hn Hbyte Hs Ho Hox Hbd Hend Hreg.
   set (n := Z.of_nat (length s)) in *. set (S := (s ++ [0])%list) in *.
   assert (HS : Z.of_nat (length S) = n + 1) by (unfold S, n; rewrite length_app; cbn; lia).

@@ -248,7 +248,7 @@ Lemma wp_zmemset f e ls lab vp vc vn rest j b reg o xs cs c Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zmemset")) [Arg P vp; Arg W vc; Arg L vn] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using Hset Hset_fn Hset_sym.
   intros Hp Hc Hn Hc32 Hb8 Ho8 Ho Hend Hlen. iIntros "Hl Hx Hcs HK".
   iDestruct (block_pts b reg o xs cs with "[$Hl $Hx $Hcs]") as "Hps".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (void_only (memset_contract os_world))
@@ -314,7 +314,7 @@ Lemma wp_zmemmove f e ls lab vd vs vn rest j b reg o xs cs dq b' reg' o' c' ys �
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call CVoid (Global (TAtom "zmemmove")) [Arg P vd; Arg P vs; Arg L vn] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using Hmove Hmove_fn Hmove_sym.
   intros Hpd Hps Hc' Hn Hb8 Ho8 Hb8' Ho Ho' Hend Hend' Hly Hlc Hy. iIntros "Hl Hx Hcs Hl' Hy HK".
   iAssert (⌜b <> b'⌝)%I as %Hne.
   { rewrite /live /liveq /pts /ptsq !big_sepL_singleton. cbn [fst snd].
@@ -416,7 +416,7 @@ Qed.
 (** Linked callers provide memset's definition alongside the runtime fill contract. *)
 #[global] Instance memset_has_spec n `{!Defines ge n glibc_memset} :
   HasSpec registry (os_wi w0) ge (TAtom n) memset_spec.
-Proof. apply memset_spec_valid. apply defines. Qed.
+Proof using Hset Hset_fn Hset_sym. apply memset_spec_valid. apply defines. Qed.
 
 (** Calling a global function g bound to [glibc_memset] fills an owned
     8-aligned block with `c mod 256`, clears touched capability slots,
@@ -580,7 +580,7 @@ Lemma wp_glibc_strdup dq p s Φ :
           live base reg' ∗ bytes base 0 (s ++ [0])) -∗
        Φ (Ret (WPtr q))) -∗
   WP (ERun (mkFrame glibc_strdup [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hmove Hmove_fn Hmove_sym.
   intros Hm Hsl Hcpy. iIntros "Hs HK".
   iDestruct "Hs" as "(%b & %reg & %ws & %Hs & Hw)".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hr Hby Hch].

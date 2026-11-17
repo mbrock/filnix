@@ -96,7 +96,7 @@ Definition dci_rest_f (lk1 lk2 lkt : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' C M 
 Lemma dci_rest_f_of lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv :
   dci_rest lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv.
-Proof. intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4). Qed.
+Proof using Type. intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4). Qed.
 
 (** The empty cache answers the tfind question here as well. *)
 Lemma dci_others_empty_f `{!Defines ge "__GI___tfind" glibc_tfind} lk1 lk2 lkt tc L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv

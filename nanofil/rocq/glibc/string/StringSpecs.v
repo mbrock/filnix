@@ -30,7 +30,7 @@ Definition mempcpy_spec := spec_choice (MemFwdLogic.copy_spec true)
 (** The linked memcpy definition establishes both ownership alternatives. *)
 #[global] Instance memcpy_has_spec n `{!Defines ge n glibc_memcpy} :
   HasSpec registry (os_wi w0) ge (TAtom n) memcpy_spec.
-Proof.
+Proof using Type*.
   apply has_spec_choice.
   - apply MemFwdLogic.memcpy_spec_valid; try assumption; apply defines.
   - apply LibioDefaultXsputnCopy.memcpy_in_spec_valid; try assumption; apply defines.

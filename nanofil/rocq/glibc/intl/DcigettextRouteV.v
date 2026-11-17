@@ -48,7 +48,7 @@ Definition dci_reads_v (dom : ptr) (ds : list Z) (dqd : dfrac) (nb : Z) (nc : ca
 Lemma dci_reads_v_0 dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg :
   dci_reads_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg 0 =
   dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** The route returns the message id for every value of the flag. *)
 Lemma wp_dci_route_v e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg v
@@ -66,7 +66,7 @@ Lemma wp_dci_route_v e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib i
   ▷ (dci_reads_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v -∗
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
   WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type*.
   intros (Hcpy & Hmv & Hmvf & Hmvs & Hheap & Hmal & Hloc & Hrt1 & Hut & Htf & Hr1 & Hr2 & Hu1 & Hu2)
     (Hlkt & Hrt & Htc & Hge & Hlk1 & Hlk2 & Hdb & Hdd & Hcn & Hci & H276 & H277 & Hsec)
     ((Hdb0 & Hdb8 & Hdbend & Hdbr) & Hic & (Hib0 & Hibend & Hibr) & (Hk & Hnb & Hnbk) & (Hsec0 & Hsec4 & Hsecend & Hsecr))

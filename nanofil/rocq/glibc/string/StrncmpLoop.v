@@ -128,7 +128,7 @@ Lemma fin_a Δ e fl s1 s2 f1 f2 c x y L r Φ :
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> last_cmp f1 f2 c x y L r ->
   ent Δ (Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) ->
   ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "iw_1.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
-Proof. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. step. fin_tac x y r Hl HK Hc A1 A2. Qed.
+Proof using SafepointStable0. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. step. fin_tac x y r Hl HK Hc A1 A2. Qed.
 
 (** Lemma [fin_b] verifies the final comparison epilogue for the
     unaligned word loop against merged word y in v58. *)
@@ -138,7 +138,7 @@ Lemma fin_b Δ e fl s1 s2 f1 f2 c x y L r Φ :
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> last_cmp f1 f2 c x y L r ->
   ent Δ (Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) ->
   ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "iw_2.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
-Proof. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. step. fin_tac x y r Hl HK Hc A1 A2. Qed.
+Proof using SafepointStable0. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. step. fin_tac x y r Hl HK Hc A1 A2. Qed.
 
 (** Function [nblk] looks up basic block l in `__GI_strncmp`. *)
 Definition nblk (l : string) : block :=
@@ -157,6 +157,6 @@ Lemma fin_c Δ e s1 s2 f1 f2 c x y L r Φ :
   ent Δ (Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) ->
   ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Exec (TAtom "iw_2.L32") (b_insts blk32) (b_jump blk32))) : gexpr)
            {{ Φ }}).
-Proof. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. cbn [blk32 b_insts b_jump]. fin_tac x y r Hl HK Hc A1 A2. Qed.
+Proof using SafepointStable0. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. cbn [blk32 b_insts b_jump]. fin_tac x y r Hl HK Hc A1 A2. Qed.
 
 End rules.

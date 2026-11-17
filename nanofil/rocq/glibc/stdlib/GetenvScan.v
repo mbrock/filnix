@@ -146,7 +146,7 @@ Lemma getenv_scan e (first : bool) p s entries b reg o dq dqt bc rc dc counter (
     Φ (Ret (WPtr (getenv_scan_result s entries)))) -∗
   WP (ERun (mkFrame glibc_getenv e [] None
     (Enter (TAtom "L32") (Some (TAtom (if first then "L13" else "L34"))))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   revert e first o E. induction entries as [|x xs IH];
     intros e first o E Hne Hp Hcur Hn Hold Hz Hcounter Hbc Hrc Hrcmax;
     iIntros "#Hname (%Hbounds & Hl & Hcells) Hcl Hcc HE HK";
