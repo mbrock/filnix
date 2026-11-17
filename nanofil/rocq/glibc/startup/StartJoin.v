@@ -1,28 +1,21 @@
-(** A never-panics theorem that starts at `c: __libc_start_main` must
-    hand its proof the whole first heap at once: the image's memory,
-    the constructor table that the runtime fills in, the runtime's own
-    objects and the startup key. Earlier modules describe each of these
-    as a list of pieces. This module joins them into one list for any
-    image, and shows that the joined list is a heap that adequacy
-    accepts. The heap has no duplicate keys, it agrees with the start
-    memory, and startup's world interpretation holds of it.
-
-    ## The four parts
-
-    When the program starts, four kinds of memory already hold data
-    that startup will read. The linked image holds its globals. The
-    runtime has written the saved arguments and the constructor
-    pointers into the table. The runtime has also allocated argv,
-    environ and the auxiliary vector, as [StartOwn](StartOwn.v)
-    describes. Finally, the proof keeps one [[ghost-state]] key that
-    says that startup has done nothing yet. *)
+(** We want to prove that a program never panics from the moment the
+    runtime calls `c: __libc_start_main`. Such a proof begins by owning
+    all the memory that exists at that moment, and that memory comes
+    from four places: the image's globals, the constructor table that
+    the runtime fills in, the arrays and strings that the runtime
+    allocates, and a [[ghost-state]] key. Earlier modules describe each
+    place as a list of pieces. This module joins the lists for any
+    image and shows that the safety theorem can start from the result:
+    no piece occurs twice, every piece matches memory, and the world
+    starts as startup expects. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsStart StartCtors StartState StartLibcStartMain StartOwn.
+From Glibc Require Import OsWorld OsStart StartCtors StartState StartLibcStartMain StartOwn StrlenBits StrlenLogic WordString.
+From Nanofil Require AbsRun AbsMem.
 From Glibc Require FileInv.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -192,12 +185,12 @@ Definition start_ps (L : list (piece * pval)) (m : mem) (g : list (name * ptr)) 
   (L ++ table_ps tb argc (mkPtr argv.1 (Obj argv.1)) (mkPtr env.1 (Obj env.1)) (ctor_ptrs g order) ++
    start_heap_ps m argv env av aps ++ start_key_ps k)%list.
 
-(** Every start state gives a first heap that the safety theorem can
-    begin from. For that, the image's list L must match both the image
-    and the start memory, name each piece once, stay off the table's
-    bytes and hold no ghost key. The table must be a live global of the
-    image that is large enough for its constructors. Every other fact
-    comes from [start_state]. *)
+(** A safety proof may start from any state the runtime can build,
+    so this theorem shows that every start state gives a usable first
+    heap. It asks only plain facts of the image: its list L matches the
+    image and the start memory, names each piece once, avoids the
+    table's bytes and holds no ghost key, and the table is a large
+    enough global. The rest comes from [start_state]. *)
 Theorem start_ps_ok m0 m g w0 w tb treg tsize argc argv env av aps order L k :
   keeps_image m0 m tb tsize -> no_heap_regions m0 ->
   live_at m0 tb treg -> r_kind treg <> Heap -> tb + ctor_table_size (length order) <= r_end treg ->
@@ -305,4 +298,91 @@ Proof using Type.
   iIntros "($ & $ & ($ & $ & $) & H)". iEval (rewrite /start_key_ps /pts big_sepL_singleton) in "H". iExact "H".
 Qed.
 
+(** ## The runtime's strings as words
+
+    String routines such as `c: strlen` read a string a whole 8-byte
+    word at a time, so their contracts own a string as [word_string].
+    The start state gives each argument and environment string as bytes
+    padded with zeros to the next word. This section regroups those
+    bytes into words. *)
+
+(** This function groups n words' worth of bytes into n words. *)
+Fixpoint words_of (n : nat) (xs : list Z) : list Z :=
+  match n with O => [] | S n => AbsRun.of_bytes' (take 8 xs) :: words_of n (drop 8 xs) end.
+
+(** Splitting each word into its bytes turns [words_ps] into
+    [byte_ps] at the same offset. *)
+Lemma start_words_ps_bytes b o ws : words_ps b o ws = byte_ps b o (wbytes ws).
+Proof.
+  revert o. induction ws as [|w ws IH]; intros o; [reflexivity|].
+  cbn [words_ps]. rewrite wbytes_cons byte_ps_app IH.
+  unfold cell. cbn [List.map]. rewrite !byte_ps_cons. unfold byte_ps. cbn. repeat (f_equal; try lia).
+Qed.
+
+(** Grouping bytes into words and splitting them again gives the same
+    bytes, and every word fits in 64 bits. *)
+Lemma words_of_ok n xs : length xs = (8 * n)%nat -> Forall (fun x => 0 <= x < 256) xs ->
+  wbytes (words_of n xs) = xs /\ Forall (fun w => 0 <= w < 2 ^ 64) (words_of n xs) /\ length (words_of n xs) = n.
+Proof.
+  revert xs. induction n as [|n IH]; intros xs L Hx.
+  - destruct xs; [|cbn in L; lia]. split; [reflexivity|]. split; [constructor | reflexivity].
+  - destruct xs as [|y0 [|y1 [|y2 [|y3 [|y4 [|y5 [|y6 [|y7 rest]]]]]]]]; cbn in L; try lia.
+    apply Forall_cons in Hx as [H0 Hx]. apply Forall_cons in Hx as [H1 Hx]. apply Forall_cons in Hx as [H2 Hx].
+    apply Forall_cons in Hx as [H3 Hx]. apply Forall_cons in Hx as [H4 Hx]. apply Forall_cons in Hx as [H5 Hx].
+    apply Forall_cons in Hx as [H6 Hx]. apply Forall_cons in Hx as [H7 Hx].
+    destruct (IH rest ltac:(lia) Hx) as (E & B & Ln).
+    assert (Hy : Forall AbsMem.is_byte [y0; y1; y2; y3; y4; y5; y6; y7]) by (repeat (apply List.Forall_cons; [assumption|]); apply List.Forall_nil).
+    pose proof (fun i y => AbsMem.byte_of_of_bytes' _ i y Hy) as Eb.
+    cbn [words_of take drop length]. split; [|split].
+    + rewrite wbytes_cons E. cbn [List.map idx8 app].
+      repeat (apply (f_equal2 cons);
+        [first [exact (Eb 0%nat _ eq_refl) | exact (Eb 1%nat _ eq_refl) | exact (Eb 2%nat _ eq_refl)
+               | exact (Eb 3%nat _ eq_refl) | exact (Eb 4%nat _ eq_refl) | exact (Eb 5%nat _ eq_refl)
+               | exact (Eb 6%nat _ eq_refl) | exact (Eb 7%nat _ eq_refl)] |]).
+      reflexivity.
+    + constructor; [|exact B]. pose proof (AbsMem.of_bytes'_bound _ Hy) as Bd. cbn [length] in Bd.
+      change (8 * Z.of_nat 8) with 64 in Bd. exact Bd.
+    + cbn [length]. rewrite Ln. reflexivity.
+Qed.
+
+(** Owning a start string's life and its padded bytes is owning it as
+    a [word_string], which is how string routines and `c: __init_misc`
+    take it. *)
+Lemma str_word_string m q : c_string m q.1 q.2 ->
+  live q.1 (reg_of m q.1) -∗ bytes q.1 0 (str_bytes q.2) -∗ word_string (DfracOwn 1) (mkPtr q.1 (Obj q.1)) q.2.
+Proof using Type.
+  destruct q as [b s]. cbn [fst snd]. intros (Hh & Hc & Hz & _).
+  pose proof Hh as (reg & [Er Lr] & _ & H0 & Ha & He & Hs).
+  assert (Rg : reg_of m b = reg) by (unfold reg_of; rewrite Er; reflexivity). rewrite Rg.
+  set (n := Z.to_nat ((Z.of_nat (length s) + 8) / 8)).
+  pose proof (length_str_bytes s) as Ls.
+  assert (Ln : length (str_bytes s) = (8 * n)%nat).
+  { unfold n. assert (0 <= (Z.of_nat (length s) + 8) / 8) by (Z.div_mod_to_equations; lia). lia. }
+  assert (Hch : Forall (fun c => 0 < c < 256) s).
+  { apply List.Forall_forall. intros c Hin. destruct (In_nth_error _ _ Hin) as [i Hi].
+    destruct (Hc i (proj1 (nth_error_Some s i) ltac:(intros E; rewrite Hi in E; discriminate))) as (y & Hy & Hb & _).
+    rewrite Hi in Hy. injection Hy as ->. exact Hb. }
+  assert (Hby : Forall (fun x => 0 <= x < 256) (str_bytes s)).
+  { unfold str_bytes. apply Forall_app_2.
+    - apply (Forall_impl _ _ _ Hch). intros c Hc'. lia.
+    - apply List.Forall_forall. intros x Hx. apply repeat_spec in Hx as ->. lia. }
+  destruct (words_of_ok n (str_bytes s) Ln Hby) as (Ew & Bw & Lw).
+  assert (Hb8 : b mod 8 = 0) by (Z.div_mod_to_equations; lia).
+  iIntros "L B". iExists b, reg, (words_of n (str_bytes s)).
+  iSplitR.
+  - iPureIntro.
+    assert (Hr : 8 * ((Z.of_nat (length s) + 8) / 8) <= (Z.of_nat (length s) + 1 + 15) / 16 * 16)
+      by (Z.div_mod_to_equations; lia).
+    split; cbn [ptr_cap ptr_addr wstart]; unfold wstart; cbn [ptr_addr]; rewrite ?Hb8 ?Lw.
+    all: try (left; reflexivity). all: try assumption. all: try reflexivity. all: try lia.
+    + unfold n. rewrite Z2Nat.id; [rewrite Z.add_0_l; reflexivity | Z.div_mod_to_equations; lia].
+    + rewrite Ew. cbn [Z.to_nat drop]. unfold str_bytes. rewrite firstn_app firstn_all2; [|lia].
+      replace (S (length s) - length s)%nat with 1%nat by lia.
+      destruct (Z.to_nat (8 * ((Z.of_nat (length s) + 8) / 8)) - length s)%nat as [|k] eqn:Ek; [|reflexivity].
+      exfalso. assert (Z.of_nat (length s) < 8 * ((Z.of_nat (length s) + 8) / 8)) by (Z.div_mod_to_equations; lia).
+      lia.
+  - rewrite /wwin /wstart. cbn [ptr_addr]. rewrite Hb8 Z.sub_0_r Z.sub_diag start_words_ps_bytes Ew. iFrame.
+Qed.
+
 End own.
+

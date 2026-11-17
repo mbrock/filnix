@@ -147,9 +147,17 @@ Fixpoint slots_ps (b o : Z) (ss : list (Z * list Z)) : list (piece * pval) :=
   | (sb, _) :: ss => ptr_cell_ps b o (mkPtr sb (Obj sb)) ++ slots_ps b (o + 8) ss
   end.
 
-(** A string object holds its characters and a final NUL. *)
+(** String routines read a string in whole 8-byte words, so a proof
+    must own the zero bytes after the NUL up to the next word boundary.
+    This list holds the characters of s and then zeros up to that
+    boundary. *)
+Definition str_bytes (s : list Z) : list Z :=
+  s ++ repeat 0 (Z.to_nat (8 * ((Z.of_nat (length s) + 8) / 8)) - length s).
+
+(** A string object holds its characters, a final NUL and the zeros
+    after it up to the next word boundary. *)
 Definition str_ps (m : mem) (q : Z * list Z) : list (piece * pval) :=
-  (PLive q.1, VLive (reg_of m q.1)) :: byte_ps q.1 0 (q.2 ++ [0]).
+  (PLive q.1, VLive (reg_of m q.1)) :: byte_ps q.1 0 (str_bytes q.2).
 
 (** An array of strings is its own life, its pointers and every string
     it points to. *)
@@ -254,19 +262,45 @@ Proof.
     intros i y Hi. specialize (Hx (S i) y Hi). rewrite <- Hx. f_equal. lia.
 Qed.
 
-(** A string of the start state agrees as its life and its bytes. *)
+(** A string's words fill whole words and stay inside its 16-byte
+    granules. *)
+Lemma length_str_bytes s : Z.of_nat (length (str_bytes s)) = 8 * ((Z.of_nat (length s) + 8) / 8).
+Proof.
+  unfold str_bytes. rewrite length_app repeat_length.
+  assert (Z.of_nat (length s) < 8 * ((Z.of_nat (length s) + 8) / 8)) by (Z.div_mod_to_equations; lia). lia.
+Qed.
+
+(** A heap object has room for any size up to its rounded size. *)
+Lemma heap_object_within m b n n' : heap_object m b n -> 0 <= n' <= (n + 15) / 16 * 16 -> heap_object m b n'.
+Proof.
+  intros (reg & Hl & Hk & H0 & Ha & He & Hs) Hn. exists reg. split_and!; try assumption.
+  assert ((n' + 15) / 16 * 16 <= (n + 15) / 16 * 16) by (Z.div_mod_to_equations; lia). lia.
+Qed.
+
+(** Each argument and environment string matches memory: the object is
+    alive, and its characters, its NUL and the zeros after it are the
+    bytes that memory holds. *)
 Lemma str_agree m q : c_string m q.1 q.2 -> all_agree m (str_ps m q).
 Proof.
-  destruct q as [sb s]. cbn [fst snd]. intros (H & Hc & Hz). cbn [str_ps fst snd all_agree]. split.
+  destruct q as [sb s]. cbn [fst snd]. intros (H & Hc & Hz & Hp). cbn [str_ps fst snd all_agree]. split.
   - exact (heap_object_live _ _ _ H).
-  - apply (bytes_agree _ _ _ _ 0 H); [lia | rewrite length_app; cbn [length]; lia |].
-    intros i x Hi. rewrite Z.add_0_r.
+  - pose proof (length_str_bytes s) as Ls.
+    assert (Hr : 8 * ((Z.of_nat (length s) + 8) / 8) <= (Z.of_nat (length s) + 16) / 16 * 16)
+      by (Z.div_mod_to_equations; lia).
+    assert (Hw : 0 <= 8 * ((Z.of_nat (length s) + 8) / 8) <= (Z.of_nat (length s) + 1 + 15) / 16 * 16)
+      by (Z.div_mod_to_equations; lia).
+    apply (bytes_agree _ _ _ _ 0 (heap_object_within _ _ _ _ H Hw)); [lia | lia |].
+    intros i x Hi. rewrite Z.add_0_r. unfold str_bytes in Hi.
     destruct (Nat.lt_ge_cases i (length s)) as [Hl|Hl].
     + rewrite (nth_error_app1 _ _ Hl) in Hi. destruct (Hc i Hl) as (y & Hy & _ & Hm).
       rewrite Hi in Hy. injection Hy as ->. exact Hm.
-    + assert (Hlt : (i < length (s ++ [0%Z]))%nat) by (apply nth_error_Some; rewrite Hi; discriminate).
-      rewrite length_app in Hlt. cbn [length] in Hlt. assert (i = length s) by lia. subst i.
-      rewrite (nth_error_app2 _ _ (Nat.le_refl _)) Nat.sub_diag in Hi. cbn in Hi. injection Hi as <-. exact Hz.
+    + rewrite (nth_error_app2 _ _ Hl) in Hi.
+      pose proof (nth_error_In _ _ Hi) as Hin. apply repeat_spec in Hin as ->.
+      assert (Hk : (i - length s < length (repeat 0%Z (Z.to_nat (8 * ((Z.of_nat (length s) + 8) / 8)) - length s)))%nat)
+        by (apply nth_error_Some; intros E; rewrite E in Hi; discriminate).
+      rewrite repeat_length in Hk.
+      destruct (Nat.eq_dec i (length s)) as [->|Hne]; [exact Hz|].
+      apply Hp. lia.
 Qed.
 
 (** Every string of a list agrees when each one is a string of the start
@@ -385,7 +419,7 @@ Proof using Type.
 Qed.
 
 (** A string object is its life and its bytes with the final NUL. *)
-Lemma str_own m q : pts (str_ps m q) ⊢ live q.1 (reg_of m q.1) ∗ bytes q.1 0 (q.2 ++ [0]).
+Lemma str_own m q : pts (str_ps m q) ⊢ live q.1 (reg_of m q.1) ∗ bytes q.1 0 (str_bytes q.2).
 Proof using Type. rewrite /str_ps (pts_app [_] (byte_ps _ _ _)). auto. Qed.
 
 (** Owning an array's list gives the array's life, one stored pointer
@@ -396,7 +430,7 @@ Lemma array_own m a :
   live a.1 (reg_of m a.1) ∗
   ([∗ list] i ↦ q ∈ a.2, pcell a.1 (8 * Z.of_nat i) (mkPtr q.1 (Obj q.1))) ∗
   pcell a.1 (8 * Z.of_nat (length a.2)) (mkPtr 0 CNone) ∗
-  ([∗ list] q ∈ a.2, live q.1 (reg_of m q.1) ∗ bytes q.1 0 (q.2 ++ [0])).
+  ([∗ list] q ∈ a.2, live q.1 (reg_of m q.1) ∗ bytes q.1 0 (str_bytes q.2)).
 Proof using Type.
   rewrite /array_ps (pts_app [_] (slots_ps _ _ _ ++ _)) pts_app slots_own.
   iIntros "($ & [Hs $] & Hq)". iSplitL "Hs".
@@ -589,10 +623,10 @@ Proof.
 Qed.
 
 (** A string object lies in its own object and has no duplicate keys. *)
-Lemma str_ranged m q : ranged q.1 (-1) (Z.of_nat (length (q.2 ++ [0])) + 1) (str_ps m q).
+Lemma str_ranged m q : ranged q.1 (-1) (Z.of_nat (length (str_bytes q.2)) + 1) (str_ps m q).
 Proof.
   apply List.Forall_cons; [cbn; split; [reflexivity | lia]|].
-  apply (ranged_widen _ 0 (0 + Z.of_nat (length (q.2 ++ [0])))); [lia | lia | apply bytes_ranged].
+  apply (ranged_widen _ 0 (0 + Z.of_nat (length (str_bytes q.2)))); [lia | lia | apply bytes_ranged].
 Qed.
 
 Lemma str_nodup m q : NoDup (str_ps m q).*1.

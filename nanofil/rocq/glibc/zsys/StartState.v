@@ -76,11 +76,19 @@ Definition int_slot (m : mem) (a v : Z) : Prop :=
   0 <= v < 2 ^ 64 /\ (forall i, 0 <= i < 8 -> m_bytes m (a + i) = byte_of v i) /\ m_aux m a = CNone.
 
 (** A heap object at b holds the NUL-terminated string s. Every
-    character of s is a byte other than NUL. *)
+    character of s is a byte other than NUL. The runtime copies each
+    argument and environment string with `c: filc_allocate` of its
+    length plus one and a `c: memcpy` of that many bytes
+    (`filc_start_program.c`, lines 81 to 83 and 111 to 113). The
+    allocator rounds the size up to 16 bytes, sets the object's upper
+    bound there, and zeroes the whole rounded payload in
+    `c: finish_allocate_small` (`filc_runtime.c`). So every byte after
+    the NUL, up to that bound, is zero. *)
 Definition c_string (m : mem) (b : Z) (s : list Z) : Prop :=
   heap_object m b (Z.of_nat (length s) + 1) /\
   (forall i, (i < length s)%nat -> exists x, nth_error s i = Some x /\ 0 < x < 256 /\ m_bytes m (b + Z.of_nat i) = x) /\
-  m_bytes m (b + Z.of_nat (length s)) = 0.
+  m_bytes m (b + Z.of_nat (length s)) = 0 /\
+  (forall i, Z.of_nat (length s) < i < (Z.of_nat (length s) + 16) / 16 * 16 -> m_bytes m (b + i) = 0).
 
 (** This predicate says that a heap array at b holds one pointer for
     each string of ss and then a null pointer, and that each string
